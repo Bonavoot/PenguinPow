@@ -1,19 +1,24 @@
 import { useEffect, useState } from "react";
 import "./App.css";
-import io from "socket.io-client";
+import { io } from "socket.io-client";
 import MainMenu from "./MainMenu";
 
-const socket = io.connect("http://localhost:3001");
+const socket = io("http://localhost:3001");
 
 function App() {
   const [start, setStart] = useState(false);
-  useEffect(() => {
-    socket.on("connection", (socket) => {
-      console.log(socket);
-    });
 
-    socket.on("start", () => {
-      setStart(true);
+  useEffect(() => {
+    socket.on("connect", () => {
+      console.log(socket.id);
+    });
+    socket.on("connect_error", () => {
+      setTimeout(() => socket.connect(), 5000);
+
+      socket.on("start", (bool) => {
+        console.log("start");
+        setStart(bool);
+      });
     });
   }, []);
 
