@@ -14,17 +14,15 @@ function App() {
     });
     socket.on("connect_error", () => {
       setTimeout(() => socket.connect(), 5000);
+    });
 
-      socket.on("start", (bool) => {
-        console.log("start");
-        setStart(bool);
-      });
+    socket.on("start", () => {
+      console.log("start");
+      setStart(true);
     });
   }, []);
 
-  return (
-    <>{start ? <h1>Game Started!</h1> : <MainMenu socketId={socket.id} />}</>
-  );
+  return <>{start ? <h1>Game Started!</h1> : <MainMenu />}</>;
 }
 
 export default App;

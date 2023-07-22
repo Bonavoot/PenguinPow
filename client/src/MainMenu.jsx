@@ -3,10 +3,10 @@ import io from "socket.io-client";
 import "./MainMenu.css";
 const socket = io.connect("http://localhost:3001");
 
-const MainMenu = ({ socketId }) => {
+const MainMenu = () => {
   const [matchmaking, setMatchmaking] = useState(false);
   const handleQuickplay = () => {
-    socket.emit("quickplay", socketId);
+    socket.emit("quickplay");
     setMatchmaking(true);
   };
 

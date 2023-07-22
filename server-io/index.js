@@ -22,30 +22,32 @@ function cleanUpRoom(roomId) {
 
 io.on("connection", (socket) => {
   console.log(`Client connected: ${socket.id}`);
+
   socket.on("quickplay", () => {
     let room = rooms.find(
       (room) => room.players.length < 2 && room.inGame === false
     );
+
+    // if room doesnt exist, create room otherwise add player to available room
     if (!room) {
       room = {
         id: Math.random().toString(36).substring(7),
         players: [socket.id],
         inGame: false,
       };
+      console.log(room.id);
       rooms.push(room);
+      socket.join(room.id);
+      console.log(`${socket.id} joined room ${room.id}`);
     } else {
+      console.log(`${socket.id} joined room ${room.id}`);
       room.players.push(socket.id);
+      socket.join(room.id);
       room.inGame = true;
-      socket.broadcast.to(room.id).emit("start", true);
-      socket.emit("start", true);
+      console.log(room.id);
+      io.sockets.in(room.id).emit("start");
+      console.log("game should start");
     }
-    socket.join(room.id, () => {
-      if (room.inGame) {
-        socket.broadcast.to(room.id).emit("start", true);
-        socket.emit("start", true);
-      }
-    });
-    console.log(`${socket.id} joined room ${room.id}`);
   });
 
   socket.on("disconnect", (reason) => {
