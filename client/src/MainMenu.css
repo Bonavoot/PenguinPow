@@ -5,3 +5,11 @@
   text-align: center;
   background-color: black;
 }
+
+.rooms {
+  color: white;
+  background-color: blue;
+  width: fit-content;
+  padding-right: 100px;
+  padding-bottom: 100px;
+}
