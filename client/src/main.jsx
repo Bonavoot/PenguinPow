@@ -3,14 +3,17 @@ import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
 import "./index.css";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
-import Play from "./components/Play.jsx";
+import Lobby from "./pages/Lobby.jsx";
 
 const router = createBrowserRouter([
   {
     path: "/",
     element: <App />,
   },
-  { path: "/rooms", element: <Play /> },
+  {
+    path: "/:roomId",
+    element: <Lobby />,
+  },
 ]);
 
 ReactDOM.createRoot(document.getElementById("root")).render(

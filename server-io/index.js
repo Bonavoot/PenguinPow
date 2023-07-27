@@ -30,16 +30,23 @@ io.on("connection", (socket) => {
   socket.on("join_room", (socketId, roomId) => {
     socket.join(roomId);
     console.log(`${socketId} joined ${roomId}`);
-
     let index = rooms.findIndex((room) => room.id === roomId);
     rooms[index].players.push(socketId);
-
     io.emit("rooms", rooms);
+    socket.emit("lobby", rooms[index].players);
+    console.log(rooms[index].players);
+  });
 
-    console.log(rooms[index]);
+  socket.on("lobby", () => {
+    io.emit("lobby", rooms);
   });
 
   socket.on("disconnect", (reason) => {
+    rooms.forEach((room) => {
+      room.players = room.players.filter((player) => player !== socket.id);
+    });
+    socket.emit("rooms", rooms);
+    socket.emit("lobby", rooms);
     console.log(`${reason}: ${socket.id}`);
   });
 });

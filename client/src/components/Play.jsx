@@ -1,6 +1,7 @@
+import { useState } from "react";
 import Room from "./Room";
 
-const Play = ({ rooms, toggle, setToggle, socketId }) => {
+const Play = ({ rooms, join, setJoin, socketId }) => {
   return (
     <div className="rooms">
       {rooms.map((room) => {
@@ -9,8 +10,8 @@ const Play = ({ rooms, toggle, setToggle, socketId }) => {
             key={room.id}
             room={room}
             socketId={socketId}
-            setToggle={setToggle}
-            toggle={toggle}
+            setJoin={setJoin}
+            join={join}
           />
         );
       })}
