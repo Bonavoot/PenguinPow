@@ -3,8 +3,8 @@
   justify-content: space-between;
   flex-wrap: wrap;
   height: 100vh;
-  margin-left: 10%;
-  margin-right: 10%;
+  margin-left: 15%;
+  margin-right: 15%;
   background-color: rgba(0, 0, 0, 0.3);
 }
 
@@ -13,9 +13,37 @@ img {
 }
 
 .player-lobby {
+  margin-top: 15%;
   text-align: center;
 }
 
+.player-side {
+  font-family: "Bungee Outline", cursive;
+}
+
+.fighter1 {
+  margin-top: 100px;
+}
+
 .fighter2 {
+  margin-top: 100px;
   transform: scaleX(-1);
+}
+
+.fighter-select {
+  color: black;
+  font-size: 14pt;
+  font-family: "Bungee Outline", cursive;
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  left: 46%;
+  top: 30%;
+}
+
+.fighter-select > button {
+  height: 150px;
+  width: 150px;
 }

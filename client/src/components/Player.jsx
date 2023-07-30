@@ -7,7 +7,7 @@ const Player = ({ player, index }) => {
 
   return (
     <div className="player-lobby">
-      Player {index + 1}
+      <h1 className="player-side">PLAYER {index + 1}</h1>
       <div>
         <Fighter index={index} fighter={fighter} />
       </div>
