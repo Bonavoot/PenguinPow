@@ -13,11 +13,11 @@ const Room = ({ room, socketId }) => {
   return (
     <div className="room">
       <h1 className="room-id">{room.id.toUpperCase()}</h1>
-      <h2 className="room-count">{room.players.length}/2</h2>
+      <h2 className="room-count">{room.players.length} / 2</h2>
       {room.players.length === 2 ? (
         <button
           className="join-btn"
-          style={{ color: "black", backgroundColor: "white" }}
+          style={{ color: "black", backgroundColor: "white", opacity: ".2" }}
         >
           FULL
         </button>

@@ -84,14 +84,14 @@ body {
   position: absolute;
   left: -300px;
   bottom: -10px;
-  background-color: rgb(12, 12, 12);
+  background-color: white;
   margin-top: 100px;
   width: fit-content;
   padding: 10px 20px;
   border-radius: 10px;
-  border: 1px white solid;
+  border: 2px black solid;
   font-size: 21pt;
-  color: white;
+  color: black;
   font-family: "Bungee Outline", cursive;
   text-align: start;
   margin-left: 20px;
