@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { io } from "socket.io-client";
 import Player from "../components/Player";
+import "./Lobby.css";
 
 const socket = io.connect("http://localhost:3001");
 
@@ -21,7 +22,7 @@ const Lobby = () => {
   }, []);
 
   return (
-    <div>
+    <div className="lobby">
       {players.map((player, i) => {
         return <Player index={i} player={player} />;
       })}

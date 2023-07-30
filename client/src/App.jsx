@@ -7,7 +7,7 @@ const socket = io("http://localhost:3001");
 
 function App() {
   const [rooms, setRooms] = useState([]);
-  const [join, setJoin] = useState(false);
+  const [play, setPlay] = useState(false);
 
   useEffect(() => {
     socket.on("connect", () => {
@@ -22,8 +22,20 @@ function App() {
     });
   }, []);
 
+  const handlePlay = () => {
+    setPlay(!play);
+  };
+
   return (
-    <Play rooms={rooms} join={join} setJoin={setJoin} socketId={socket.id} />
+    <div className="main-menu">
+      <h1 className="logo">Penguin POW !</h1>
+
+      {play ? (
+        <Play rooms={rooms} socketId={socket.id} />
+      ) : (
+        <button onClick={handlePlay}>PLAY</button>
+      )}
+    </div>
   );
 }
 

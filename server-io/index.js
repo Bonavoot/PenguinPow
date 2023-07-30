@@ -25,7 +25,7 @@ const rooms = [
 io.on("connection", (socket) => {
   console.log(`Client connected: ${socket.id}`);
 
-  socket.emit("rooms", rooms);
+  io.emit("rooms", rooms);
 
   socket.on("join_room", (socketId, roomId) => {
     socket.join(roomId);
@@ -33,7 +33,7 @@ io.on("connection", (socket) => {
     let index = rooms.findIndex((room) => room.id === roomId);
     rooms[index].players.push(socketId);
     io.emit("rooms", rooms);
-    socket.emit("lobby", rooms[index].players);
+    io.emit("lobby", rooms[index].players);
     console.log(rooms[index].players);
   });
 
@@ -45,8 +45,8 @@ io.on("connection", (socket) => {
     rooms.forEach((room) => {
       room.players = room.players.filter((player) => player !== socket.id);
     });
-    socket.emit("rooms", rooms);
-    socket.emit("lobby", rooms);
+    io.emit("rooms", rooms);
+    io.emit("lobby", rooms);
     console.log(`${reason}: ${socket.id}`);
   });
 });

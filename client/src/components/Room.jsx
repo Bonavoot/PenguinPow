@@ -3,19 +3,28 @@ import { io } from "socket.io-client";
 
 const socket = io.connect("http://localhost:3001");
 
-const Room = ({ room, socketId, setJoin, join }) => {
+const Room = ({ room, socketId }) => {
   let navigate = useNavigate();
   const handleJoin = () => {
     socket.emit("join_room", socketId, room.id);
     navigate(`/${room.id}`, { state: { id: room.id, player: socketId } });
-    setJoin(!join);
   };
 
   return (
-    <div>
-      {room.id} {room.players.length}/2
-      {room.players.length === 3 ? null : (
-        <button onClick={handleJoin}>JOIN</button>
+    <div className="room">
+      <h1 className="room-id">{room.id.toUpperCase()}</h1>
+      <h2 className="room-count">{room.players.length}/2</h2>
+      {room.players.length === 2 ? (
+        <button
+          className="join-btn"
+          style={{ color: "black", backgroundColor: "white" }}
+        >
+          FULL
+        </button>
+      ) : (
+        <button className="join-btn" onClick={handleJoin}>
+          JOIN
+        </button>
       )}
     </div>
   );
