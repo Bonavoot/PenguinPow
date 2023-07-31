@@ -1,6 +1,6 @@
 import Room from "./Room";
 
-const Play = ({ rooms, socketId }) => {
+const Play = ({ rooms, setLobby }) => {
   return (
     <div className="rooms">
       <button
@@ -10,7 +10,7 @@ const Play = ({ rooms, socketId }) => {
         BACK
       </button>
       {rooms.map((room) => {
-        return <Room key={room.id} room={room} socketId={socketId} />;
+        return <Room key={room.id} room={room} setLobby={setLobby} />;
       })}
     </div>
   );

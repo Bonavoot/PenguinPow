@@ -1,4 +1,4 @@
-const Fighter = ({ fighter, index }) => {
+const Fighter = ({ index, fighter }) => {
   return (
     <>
       {index > 0 ? (

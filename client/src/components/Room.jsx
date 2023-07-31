@@ -1,13 +1,15 @@
+import { useContext } from "react";
 import { useNavigate } from "react-router-dom";
-import { io } from "socket.io-client";
+import { SocketContext } from "../SocketContext";
 
-const socket = io.connect("http://localhost:3001");
-
-const Room = ({ room, socketId }) => {
+const Room = ({ room, setLobby }) => {
   let navigate = useNavigate();
+  const socket = useContext(SocketContext);
+
   const handleJoin = () => {
-    socket.emit("join_room", socketId, room.id);
-    navigate(`/${room.id}`, { state: { id: room.id, player: socketId } });
+    socket.emit("join_room", socket.id, room.id);
+    setLobby({ roomId: room.id, isJoined: true });
+    // navigate(`/${room.id}`, { state: { id: room.id } });
   };
 
   return (

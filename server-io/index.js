@@ -2,7 +2,8 @@ const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
-
+const sharedsession = require("express-socket.io-session");
+const session = require("express-session");
 const app = express();
 app.use(cors());
 
@@ -14,6 +15,19 @@ const io = new Server(server, {
   },
 });
 
+const expressSession = session({
+  secret: "my-secret",
+  resave: true,
+  saveUninitialized: true,
+});
+
+app.use(expressSession);
+
+io.use(
+  sharedsession(expressSession, {
+    autoSave: true,
+  })
+);
 const rooms = [
   { id: "Room 1", players: [] },
   { id: "Room 2", players: [] },
@@ -25,6 +39,9 @@ const rooms = [
 io.on("connection", (socket) => {
   console.log(`Client connected: ${socket.id}`);
 
+  socket.handshake.session.socketId = socket.id;
+  socket.handshake.session.save();
+
   io.emit("rooms", rooms);
 
   socket.on("join_room", (socketId, roomId) => {
@@ -35,6 +52,12 @@ io.on("connection", (socket) => {
     io.emit("rooms", rooms);
     io.emit("lobby", rooms[index].players);
     console.log(rooms[index].players);
+
+    socket.on("fighter-select", (data) => {
+      if (socket.id === data.socketId) {
+        io.in(roomId).emit("fighter-select", data.fighter);
+      }
+    });
   });
 
   socket.on("lobby", () => {

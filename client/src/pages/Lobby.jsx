@@ -1,23 +1,22 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { io } from "socket.io-client";
 import Player from "../components/Player";
 import "./Lobby.css";
 import standing from "../assets/standing.gif";
 import FighterSelect from "../components/FighterSelect";
+import { SocketContext } from "../SocketContext";
 
-const socket = io.connect("http://localhost:3001");
-
-const Lobby = () => {
+const Lobby = ({ roomId }) => {
   const [players, setPlayers] = useState([]);
 
-  let location = useLocation();
+  const socket = useContext(SocketContext);
+
+  console.log(socket);
 
   useEffect(() => {
     socket.emit("lobby");
     socket.on("lobby", (rooms) => {
-      let index = rooms.findIndex((room) => room.id === location.state.id);
-
+      let index = rooms.findIndex((room) => room.id === roomId);
       setPlayers(rooms[index].players);
       console.log(players);
     });
@@ -26,7 +25,7 @@ const Lobby = () => {
   return (
     <div className="lobby">
       {players.map((player, i) => {
-        return <Player key={player} index={i} player={player} />;
+        return <Player key={player} index={i} />;
       })}
       <FighterSelect />
     </div>
