@@ -5,7 +5,7 @@ body {
   overflow: hidden;
   margin: 0;
   color: white;
-  background-color: rgb(164, 164, 250);
+  background-image: linear-gradient(steelblue, white);
 }
 
 .main-menu {
@@ -16,20 +16,29 @@ body {
 }
 
 .logo {
-  font-size: 48pt;
+  font-size: 24pt;
   margin: 0;
+  color: black;
+  font-family: "Bungee", cursive;
+  margin-left: 15px;
+}
+
+.pow {
+  font-size: 34pt;
+  color: red;
+  font-family: "Bungee Shade", cursive;
 }
 
 .main-menu > button {
   background-color: rgb(12, 12, 12);
   margin-top: 100px;
   width: fit-content;
-  padding: 10px 20px;
+  padding: 0px 25px;
   border-radius: 10px;
-  border: 1px white solid;
+  border: 1px grey solid;
   font-size: 21pt;
   color: white;
-  font-family: "Bungee Outline", cursive;
+  font-family: "Bungee", cursive;
   text-align: start;
   margin-left: 20px;
   cursor: pointer;
@@ -44,21 +53,22 @@ body {
 .rooms {
   display: flex;
   flex-direction: column;
-  margin-top: 100px;
+  margin-top: 50px;
   background-color: black;
   height: 600px;
   width: 800px;
   align-self: center;
   padding: 25px;
-  border: solid white 6px;
+  border: solid rgb(70, 70, 70) 6px;
   position: relative;
+  font-family: cursive;
 }
 
 .room {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 14pt;
+  font-size: 12pt;
   border-top: grey solid 1px;
   border-bottom: grey solid 1px;
   flex-grow: 1;
@@ -66,14 +76,17 @@ body {
 }
 
 .room > button {
-  height: 50px;
-  width: 150px;
   margin: 10px;
+  padding-left: 15px;
+  padding-right: 15px;
   background-color: green;
   border: none;
+  border-radius: 5%;
   color: white;
   font-size: 21pt;
   cursor: pointer;
+  font-family: "Bungee", cursive;
+  text-align: center;
 }
 
 .room > button:hover {
@@ -84,15 +97,15 @@ body {
   position: absolute;
   left: -300px;
   bottom: -10px;
-  background-color: white;
+  background-color: red;
   margin-top: 100px;
   width: fit-content;
-  padding: 10px 20px;
+  padding: 0px 25px;
   border-radius: 10px;
   border: 2px black solid;
   font-size: 21pt;
-  color: black;
-  font-family: "Bungee Outline", cursive;
+  color: white;
+  font-family: "Bungee", cursive;
   text-align: start;
   margin-left: 20px;
   cursor: pointer;
@@ -102,7 +115,4 @@ body {
   background-color: rgba(12, 12, 12, 0.75);
   cursor: pointer;
   border: 1px black solid;
-}
-
-.daiba {
 }

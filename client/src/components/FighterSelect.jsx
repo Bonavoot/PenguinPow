@@ -1,6 +1,6 @@
 import { useContext } from "react";
-import standing from "../assets/standing.gif";
-import standingDaiba from "../assets/standingDaiba.gif";
+import lilDinkey from "../assets/lil-dinkey-avatar.png";
+import daiba from "../assets/daiba-avatar.png";
 import { SocketContext } from "../SocketContext";
 
 const FighterSelect = () => {
@@ -9,7 +9,7 @@ const FighterSelect = () => {
   const handleSelect = (e) => {
     socket.emit("fighter-select", {
       fighter: e.target.className,
-      socketId: socket.id,
+      player: socket.id,
     });
 
     console.log("emitted");
@@ -17,20 +17,19 @@ const FighterSelect = () => {
 
   return (
     <div className="fighter-select">
-      <h1 className="select-penguin-txt">SELECT PENGUIN</h1>
       <button onClick={handleSelect}>
         <img
-          style={{ height: "150px" }}
+          style={{ height: "110px", width: "110px" }}
           className="lil-dinkey"
-          src={standing}
+          src={lilDinkey}
           alt="lil-dinkey"
         />
       </button>
       <button onClick={handleSelect}>
         <img
           className="daiba"
-          style={{ height: "135px" }}
-          src={standingDaiba}
+          style={{ height: "110px", width: "110px" }}
+          src={daiba}
           alt="Daiba"
         />
       </button>

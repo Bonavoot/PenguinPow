@@ -1,11 +1,12 @@
 .lobby {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   height: 80vh;
   margin-left: 13%;
   margin-right: 13%;
-
   position: relative;
+  margin-top: -50px;
 }
 
 img {
@@ -13,14 +14,15 @@ img {
 }
 
 .player-lobby {
-  margin-top: 15%;
-  margin-left: 5%;
-  margin-right: 5%;
   text-align: center;
+  margin-left: 100px;
+  margin-right: 100px;
 }
 
 .player-side {
   font-family: "Bungee Outline", cursive;
+  color: black;
+  font-size: 28pt;
 }
 
 .fighter1 {
@@ -32,9 +34,15 @@ img {
 
 .select-penguin-txt {
   position: absolute;
-  top: -175px;
-  width: 338px;
+  left: 0;
+  top: 0;
+  font-size: 34pt;
+  color: white;
+  font-family: "Bungee", cursive;
+  width: 100%;
+  height: 100px;
   text-align: center;
+  border-bottom: 2px black solid;
 }
 
 .fighter-select {
@@ -42,29 +50,58 @@ img {
   font-size: 14pt;
   font-family: "Bungee Outline", cursive;
   position: absolute;
+  margin-left: auto;
+  margin-right: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  left: 43%;
-  top: 30%;
+  text-align: center;
+  gap: 30px;
+  left: 0;
+  right: 0;
+  background-color: rgba(0, 0, 0, 0.349);
+  width: fit-content;
+  padding: 50px;
+  box-shadow: 0px 0px 2px 4px black;
 }
 
 .fighter-select > button {
-  height: 150px;
-  width: 150px;
+  height: 120px;
+  width: 120px;
+  border: black solid 1px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: black;
+  border-radius: 50%;
+  box-shadow: 0px 0px 3px 1px black;
+}
+
+.fighter-select > button:hover {
+  border: white solid 2px;
+  box-shadow: 0px 0px 2px 2px white;
+  background-color: black;
+  cursor: pointer;
+}
+
+.lil-dinkey,
+.daiba {
+  border: black solid 1px;
+  border-radius: 50%;
 }
 
 .exit-btn {
   position: absolute;
   bottom: 0;
   left: -150px;
-  background-color: white;
+  background-color: red;
+  padding-left: 20px;
+  padding-right: 20px;
   border-radius: 10px;
   border: 2px black solid;
   font-size: 21pt;
-  color: black;
-  font-family: "Bungee Outline", cursive;
+  color: white;
+  font-family: "Bungee", cursive;
   text-align: start;
 }
 
@@ -72,4 +109,7 @@ img {
   background-color: rgba(12, 12, 12, 0.75);
   cursor: pointer;
   border: 1px black solid;
+}
+
+.avatar {
 }

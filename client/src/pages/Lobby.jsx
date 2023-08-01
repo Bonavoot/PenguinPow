@@ -4,7 +4,7 @@ import "./Lobby.css";
 import FighterSelect from "../components/FighterSelect";
 import { SocketContext } from "../SocketContext";
 
-const Lobby = ({ roomName }) => {
+const Lobby = () => {
   const [players, setPlayers] = useState([]);
 
   const socket = useContext(SocketContext);
@@ -13,18 +13,24 @@ const Lobby = ({ roomName }) => {
 
   useEffect(() => {
     socket.emit("lobby");
-    socket.on("lobby", (rooms) => {
-      let index = rooms.findIndex((room) => room.id === roomName);
-      setPlayers(rooms[index].players);
-      console.log(players);
+    socket.on("lobby", (playerData) => {
+      setPlayers(playerData);
+      console.log(playerData);
     });
   }, []);
 
   return (
     <div className="lobby">
       {players.map((player, i) => {
-        return <Player key={player} index={i} />;
+        return (
+          <>
+            {i > 1 ? null : (
+              <Player key={player + i} index={i} fighter={player.fighter} />
+            )}
+          </>
+        );
       })}
+      <h1 className="select-penguin-txt">SELECT PENGUIN</h1>
       <FighterSelect />
       <button
         className="exit-btn"

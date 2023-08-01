@@ -25,7 +25,9 @@ function App() {
 
   return (
     <SocketContext.Provider value={socket}>
-      <h1 className="logo">Penguin POW !</h1>
+      <h1 className="logo">
+        Penguin <span className="pow"> POW !</span>
+      </h1>
       <MainMenu rooms={rooms} />
     </SocketContext.Provider>
   );

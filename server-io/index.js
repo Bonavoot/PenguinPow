@@ -48,15 +48,17 @@ io.on("connection", (socket) => {
     socket.join(roomId);
     console.log(`${socketId} joined ${roomId}`);
     let index = rooms.findIndex((room) => room.id === roomId);
-    rooms[index].players.push(socketId);
+    rooms[index].players.push({ id: socketId, fighter: "lil-dinkey" });
     io.emit("rooms", rooms);
     io.emit("lobby", rooms[index].players);
     console.log(rooms[index].players);
 
     socket.on("fighter-select", (data) => {
-      if (socket.id === data.socketId) {
-        io.in(roomId).emit("fighter-select", data.fighter);
-      }
+      let playerIndex = rooms[index].players.findIndex(
+        (player) => player.id === socket.id
+      );
+      rooms[index].players[playerIndex].fighter = data.fighter;
+      io.in(roomId).emit("lobby", rooms[index].players); // Update all players in the room
     });
   });
 
@@ -66,7 +68,7 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", (reason) => {
     rooms.forEach((room) => {
-      room.players = room.players.filter((player) => player !== socket.id);
+      room.players = room.players.filter((player) => player.id !== socket.id);
     });
     io.emit("rooms", rooms);
     io.emit("lobby", rooms);
