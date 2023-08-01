@@ -1,11 +1,11 @@
 .lobby {
   display: flex;
   justify-content: space-between;
-  flex-wrap: wrap;
-  height: 100vh;
-  margin-left: 15%;
-  margin-right: 15%;
-  background-color: rgba(0, 0, 0, 0.3);
+  height: 80vh;
+  margin-left: 13%;
+  margin-right: 13%;
+
+  position: relative;
 }
 
 img {
@@ -14,6 +14,8 @@ img {
 
 .player-lobby {
   margin-top: 15%;
+  margin-left: 5%;
+  margin-right: 5%;
   text-align: center;
 }
 
@@ -22,12 +24,17 @@ img {
 }
 
 .fighter1 {
-  margin-top: 100px;
 }
 
 .fighter2 {
-  margin-top: 100px;
   transform: scaleX(-1);
+}
+
+.select-penguin-txt {
+  position: absolute;
+  top: -175px;
+  width: 338px;
+  text-align: center;
 }
 
 .fighter-select {
@@ -39,11 +46,30 @@ img {
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  left: 46%;
+  left: 43%;
   top: 30%;
 }
 
 .fighter-select > button {
   height: 150px;
   width: 150px;
+}
+
+.exit-btn {
+  position: absolute;
+  bottom: 0;
+  left: -150px;
+  background-color: white;
+  border-radius: 10px;
+  border: 2px black solid;
+  font-size: 21pt;
+  color: black;
+  font-family: "Bungee Outline", cursive;
+  text-align: start;
+}
+
+.exit-btn:hover {
+  background-color: rgba(12, 12, 12, 0.75);
+  cursor: pointer;
+  border: 1px black solid;
 }

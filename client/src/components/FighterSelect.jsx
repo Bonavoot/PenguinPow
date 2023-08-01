@@ -17,7 +17,7 @@ const FighterSelect = () => {
 
   return (
     <div className="fighter-select">
-      SELECT PENGUIN
+      <h1 className="select-penguin-txt">SELECT PENGUIN</h1>
       <button onClick={handleSelect}>
         <img
           style={{ height: "150px" }}

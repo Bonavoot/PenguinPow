@@ -1,16 +1,13 @@
 import { useEffect, useState } from "react";
-import "./App.css";
 import { io } from "socket.io-client";
-import Play from "./components/Play";
 import { SocketContext } from "./SocketContext";
-import Lobby from "./pages/Lobby";
+import MainMenu from "./components/MainMenu";
+import "./App.css";
 
 const socket = io("http://localhost:3001");
 
 function App() {
   const [rooms, setRooms] = useState([]);
-  const [play, setPlay] = useState(false);
-  const [lobby, setLobby] = useState(false);
 
   console.log(socket);
   useEffect(() => {
@@ -26,21 +23,10 @@ function App() {
     });
   }, []);
 
-  const handlePlay = () => {
-    setPlay(!play);
-  };
-
   return (
     <SocketContext.Provider value={socket}>
-      <div className="main-menu">
-        <h1 className="logo">Penguin POW !</h1>
-        {play && !lobby.isJoined ? (
-          <Play rooms={rooms} setLobby={setLobby} />
-        ) : (
-          <button onClick={handlePlay}>PLAY</button>
-        )}
-        {lobby.isJoined ? <Lobby roomId={lobby.roomId} /> : null}
-      </div>
+      <h1 className="logo">Penguin POW !</h1>
+      <MainMenu rooms={rooms} />
     </SocketContext.Provider>
   );
 }

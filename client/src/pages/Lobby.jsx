@@ -1,12 +1,10 @@
 import { useContext, useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
 import Player from "../components/Player";
 import "./Lobby.css";
-import standing from "../assets/standing.gif";
 import FighterSelect from "../components/FighterSelect";
 import { SocketContext } from "../SocketContext";
 
-const Lobby = ({ roomId }) => {
+const Lobby = ({ roomName }) => {
   const [players, setPlayers] = useState([]);
 
   const socket = useContext(SocketContext);
@@ -16,7 +14,7 @@ const Lobby = ({ roomId }) => {
   useEffect(() => {
     socket.emit("lobby");
     socket.on("lobby", (rooms) => {
-      let index = rooms.findIndex((room) => room.id === roomId);
+      let index = rooms.findIndex((room) => room.id === roomName);
       setPlayers(rooms[index].players);
       console.log(players);
     });
@@ -28,6 +26,12 @@ const Lobby = ({ roomId }) => {
         return <Player key={player} index={i} />;
       })}
       <FighterSelect />
+      <button
+        className="exit-btn"
+        onClick={() => window.location.reload(false)}
+      >
+        EXIT
+      </button>
     </div>
   );
 };
