@@ -106,8 +106,8 @@ io.on("connection", (socket) => {
 
     if (roomIndex !== -1) {
       rooms[roomIndex].readyCount = 0;
-      io.in(roomId).emit("player-left");
-      io.in(roomId).emit("readyCount", 0);
+      io.in(roomId).emit("player_left");
+      io.in(roomId).emit("ready_count", 0);
 
       rooms[roomIndex].players = rooms[roomIndex].players.filter(
         (player) => player.id !== socket.id

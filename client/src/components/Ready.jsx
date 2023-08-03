@@ -11,11 +11,11 @@ const Ready = ({ rooms, roomName }) => {
   let playerCount = rooms[index].players.length;
 
   useEffect(() => {
-    socket.on("readyCount", (readyCount) => {
+    socket.on("ready_count", (readyCount) => {
       setCount(readyCount);
     });
 
-    socket.on("player-left", () => {
+    socket.on("player_left", () => {
       setReady(false);
     });
   }, []);
