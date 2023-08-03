@@ -143,10 +143,18 @@ img {
   font-family: "Bungee", cursive;
 }
 
+#cancel-btn {
+  background-color: red;
+}
+
+#cancel-btn:hover {
+  background-color: grey;
+}
+
 .ready-btn:hover {
-  background-color: rgba(12, 12, 12, 0.75);
+  background-color: grey;
   cursor: pointer;
-  border: 1px black solid;
+  border: 2px black solid;
 }
 
 .ready-count {

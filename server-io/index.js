@@ -68,6 +68,7 @@ io.on("connection", (socket) => {
 
   socket.on("readyCount", (data) => {
     let index = rooms.findIndex((room) => room.id === data.roomId);
+
     if (data.isReady && data.playerId === socket.id) {
       rooms[index].readyCount++;
       io.in(data.roomId).emit("readyCount", rooms[index].readyCount);
@@ -84,22 +85,28 @@ io.on("connection", (socket) => {
     let playerIndex = rooms[index].players.findIndex(
       (player) => player.id === socket.id
     );
-    rooms[index].players[playerIndex].fighter = data.fighter;
 
+    rooms[index].players[playerIndex].fighter = data.fighter;
     io.in(roomId).emit("lobby", rooms[index].players); // Update all players in the room
   });
 
   socket.on("disconnect", (reason) => {
     const roomId = socket.roomId;
     const roomIndex = rooms.findIndex((room) => room.id === roomId);
+
     rooms.forEach((room) => {
       room.players = room.players.filter((player) => player.id !== socket.id);
     });
 
     if (roomIndex !== -1) {
+      rooms[roomIndex].readyCount = 0;
+      io.in(roomId).emit("player-left");
+      io.in(roomId).emit("readyCount", 0);
+
       rooms[roomIndex].players = rooms[roomIndex].players.filter(
         (player) => player.id !== socket.id
       );
+
       io.to(roomId).emit("lobby", rooms[roomIndex].players); // Update the lobby for the clients in this room
       io.emit("rooms", rooms);
     }

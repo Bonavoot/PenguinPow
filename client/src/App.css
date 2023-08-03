@@ -46,7 +46,7 @@ body {
 }
 
 .main-menu > button:hover {
-  background-color: rgba(12, 12, 12, 0.75);
+  background-color: gray;
   cursor: pointer;
   border: 1px black solid;
 }
@@ -113,30 +113,31 @@ body {
 }
 
 .back-btn:hover {
-  background-color: rgba(12, 12, 12, 0.75);
+  background-color: gray;
   cursor: pointer;
-  border: 1px black solid;
+  border: none;
 }
 
 .refresh-btn {
   position: absolute;
   border-radius: 10px;
   border: black solid 2px;
-  color: white;
+  color: black;
   right: 0;
   top: -55px;
   width: 45px;
   height: 3em;
-  background-color: rgb(0, 0, 0);
+  background-color: white;
   display: flex;
   justify-content: center;
   align-items: center;
 }
 
 .refresh-btn:hover {
-  color: black;
-  background-color: white;
+  color: white;
+  background-color: black;
   cursor: pointer;
+  border: none;
 }
 
 .refresh-btn:active {

@@ -8,9 +8,15 @@ const Ready = ({ rooms, roomName }) => {
 
   let index = rooms.findIndex((room) => room.id === roomName);
 
+  let playerCount = rooms[index].players.length;
+
   useEffect(() => {
     socket.on("readyCount", (readyCount) => {
       setCount(readyCount);
+    });
+
+    socket.on("player-left", () => {
+      setReady(false);
     });
   }, []);
 
@@ -35,19 +41,24 @@ const Ready = ({ rooms, roomName }) => {
   return (
     <div className="ready">
       {ready ? (
-        <button
-          style={{ backgroundColor: "red" }}
-          onClick={handleReady}
-          className="ready-btn"
-        >
-          CANCEL
-        </button>
+        <>
+          <button onClick={handleReady} className="ready-btn" id="cancel-btn">
+            CANCEL
+          </button>
+          <div className="ready-count">{count} / 2</div>
+        </>
       ) : (
-        <button onClick={handleReady} className="ready-btn">
-          READY
-        </button>
+        <>
+          {playerCount > 1 ? (
+            <>
+              <button onClick={handleReady} className="ready-btn">
+                READY
+              </button>
+              <div className="ready-count">{count} / 2</div>
+            </>
+          ) : null}
+        </>
       )}
-      <div className="ready-count">{count} / 2</div>
     </div>
   );
 };
