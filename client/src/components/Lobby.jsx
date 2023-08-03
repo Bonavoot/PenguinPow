@@ -1,9 +1,9 @@
 import { useContext, useEffect, useState } from "react";
-import Player from "../components/Player";
+import Player from "./Player";
 import "./Lobby.css";
-import FighterSelect from "../components/FighterSelect";
+import FighterSelect from "./FighterSelect";
 import { SocketContext } from "../SocketContext";
-import Ready from "../components/Ready";
+import Ready from "./Ready";
 import { v4 as uuidv4 } from "uuid";
 import React from "react";
 

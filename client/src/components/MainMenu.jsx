@@ -1,4 +1,4 @@
-import Lobby from "../pages/Lobby";
+import Lobby from "./Lobby";
 import Rooms from "./Rooms";
 import { useState } from "react";
 

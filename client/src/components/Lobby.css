@@ -25,8 +25,8 @@ img {
   font-size: 28pt;
 }
 
-.fighter1 {
-}
+/* .fighter1 {
+} */
 
 .fighter2 {
   transform: scaleX(-1);
@@ -164,5 +164,5 @@ img {
   font-size: 18pt;
 }
 
-.avatar {
-}
+/* .avatar {
+} */
