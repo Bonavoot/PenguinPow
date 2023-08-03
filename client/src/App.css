@@ -135,9 +135,8 @@ body {
 
 .refresh-btn:hover {
   color: white;
-  background-color: black;
+  background-color: grey;
   cursor: pointer;
-  border: none;
 }
 
 .refresh-btn:active {

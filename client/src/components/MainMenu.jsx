@@ -40,7 +40,7 @@ const MainMenu = ({ rooms }) => {
       );
       break;
     case "lobby":
-      currentPageComponent = <Lobby rooms={rooms} roomName={roomName} />; //<App roomCode={roomCode} />;
+      currentPageComponent = <Lobby rooms={rooms} roomName={roomName} />;
       break;
     default:
       currentPageComponent = (

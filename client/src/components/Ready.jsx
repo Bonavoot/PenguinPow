@@ -23,14 +23,14 @@ const Ready = ({ rooms, roomName }) => {
   const handleReady = (e) => {
     if (e.target.textContent === "READY") {
       setReady(true);
-      socket.emit("readyCount", {
+      socket.emit("ready_count", {
         playerId: socket.id,
         isReady: true,
         roomId: roomName,
       });
     } else {
       setReady(false);
-      socket.emit("readyCount", {
+      socket.emit("ready_count", {
         playerId: socket.id,
         isReady: false,
         roomId: roomName,

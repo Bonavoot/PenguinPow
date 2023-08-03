@@ -16,7 +16,7 @@ const Player = ({ index, fighter }) => {
 
   return (
     <div className="player-lobby">
-      <h1 className="player-side">PLAYER {index + 1}</h1>
+      <h1 className={`player-side player${index}`}>PLAYER {index + 1}</h1>
       <div>
         <Fighter index={index} fighter={penguin} />
       </div>
