@@ -1,13 +1,12 @@
 import { useContext } from "react";
-import { useNavigate } from "react-router-dom";
 import { SocketContext } from "../SocketContext";
 
 const Room = ({ room, setRoomName, handleJoinRoom }) => {
-  const socket = useContext(SocketContext);
+  const { socket } = useContext(SocketContext);
 
   const handleJoin = () => {
     console.log(room);
-    socket.emit("join_room", socket.id, room.id);
+    socket.emit("join_room", { socketId: socket.id, roomId: room.id });
     setRoomName(room.id);
     handleJoinRoom();
   };
@@ -33,6 +32,3 @@ const Room = ({ room, setRoomName, handleJoinRoom }) => {
 };
 
 export default Room;
-
-//handleJoin
-// setLobby component up here

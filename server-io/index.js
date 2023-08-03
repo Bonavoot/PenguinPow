@@ -28,13 +28,16 @@ io.use(
     autoSave: true,
   })
 );
+
 const rooms = [
-  { id: "Room 1", players: [] },
-  { id: "Room 2", players: [] },
-  { id: "Room 3", players: [] },
-  { id: "Room 4", players: [] },
-  { id: "Room 5", players: [] },
+  { id: "Room 1", players: [], readyCount: 0 },
+  { id: "Room 2", players: [], readyCount: 0 },
+  { id: "Room 3", players: [], readyCount: 0 },
+  { id: "Room 4", players: [], readyCount: 0 },
+  { id: "Room 5", players: [], readyCount: 0 },
 ];
+
+let index;
 
 io.on("connection", (socket) => {
   console.log(`Client connected: ${socket.id}`);
@@ -44,34 +47,62 @@ io.on("connection", (socket) => {
 
   io.emit("rooms", rooms);
 
-  socket.on("join_room", (socketId, roomId) => {
-    socket.join(roomId);
-    console.log(`${socketId} joined ${roomId}`);
-    let index = rooms.findIndex((room) => room.id === roomId);
-    rooms[index].players.push({ id: socketId, fighter: "lil-dinkey" });
-    io.emit("rooms", rooms);
-    io.emit("lobby", rooms[index].players);
-    console.log(rooms[index].players);
-
-    socket.on("fighter-select", (data) => {
-      let playerIndex = rooms[index].players.findIndex(
-        (player) => player.id === socket.id
-      );
-      rooms[index].players[playerIndex].fighter = data.fighter;
-      io.in(roomId).emit("lobby", rooms[index].players); // Update all players in the room
-    });
+  socket.on("get_rooms", () => {
+    socket.emit("rooms", rooms);
   });
 
-  socket.on("lobby", () => {
-    io.emit("lobby", rooms);
+  socket.on("join_room", (data) => {
+    socket.join(data.roomId);
+    console.log(`${data.socketId} joined ${data.roomId}`);
+    index = rooms.findIndex((room) => room.id === data.roomId);
+    rooms[index].players.push({ id: data.socketId, fighter: "lil-dinkey" });
+    socket.roomId = data.roomId;
+    io.to(data.roomId).emit("rooms", rooms);
+    io.to(data.roomId).emit("lobby", rooms[index].players);
+    console.log(rooms[index].players);
+  });
+
+  socket.on("lobby", (data) => {
+    let index = rooms.findIndex((room) => room.id === data.roomId);
+  });
+
+  socket.on("readyCount", (data) => {
+    let index = rooms.findIndex((room) => room.id === data.roomId);
+    if (data.isReady && data.playerId === socket.id) {
+      rooms[index].readyCount++;
+      io.in(data.roomId).emit("readyCount", rooms[index].readyCount);
+    } else if (!data.isReady && data.playerId === socket.id) {
+      rooms[index].readyCount--;
+      io.in(data.roomId).emit("readyCount", rooms[index].readyCount);
+    }
+  });
+
+  socket.on("fighter-select", (data) => {
+    let roomId = socket.roomId;
+    let index = rooms.findIndex((room) => room.id === roomId);
+
+    let playerIndex = rooms[index].players.findIndex(
+      (player) => player.id === socket.id
+    );
+    rooms[index].players[playerIndex].fighter = data.fighter;
+
+    io.in(roomId).emit("lobby", rooms[index].players); // Update all players in the room
   });
 
   socket.on("disconnect", (reason) => {
+    const roomId = socket.roomId;
+    const roomIndex = rooms.findIndex((room) => room.id === roomId);
     rooms.forEach((room) => {
       room.players = room.players.filter((player) => player.id !== socket.id);
     });
-    io.emit("rooms", rooms);
-    io.emit("lobby", rooms);
+
+    if (roomIndex !== -1) {
+      rooms[roomIndex].players = rooms[roomIndex].players.filter(
+        (player) => player.id !== socket.id
+      );
+      io.to(roomId).emit("lobby", rooms[roomIndex].players); // Update the lobby for the clients in this room
+      io.emit("rooms", rooms);
+    }
     console.log(`${reason}: ${socket.id}`);
   });
 });

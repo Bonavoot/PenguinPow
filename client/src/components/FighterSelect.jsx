@@ -4,15 +4,13 @@ import daiba from "../assets/daiba-avatar.png";
 import { SocketContext } from "../SocketContext";
 
 const FighterSelect = () => {
-  const socket = useContext(SocketContext);
+  const { socket } = useContext(SocketContext);
 
   const handleSelect = (e) => {
     socket.emit("fighter-select", {
       fighter: e.target.className,
       player: socket.id,
     });
-
-    console.log("emitted");
   };
 
   return (

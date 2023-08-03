@@ -37,7 +37,7 @@ img {
   left: 0;
   top: 0;
   font-size: 34pt;
-  color: white;
+  color: rgb(31, 31, 31);
   font-family: "Bungee", cursive;
   width: 100%;
   height: 100px;
@@ -47,7 +47,6 @@ img {
 
 .fighter-select {
   color: black;
-  font-size: 14pt;
   font-family: "Bungee Outline", cursive;
   position: absolute;
   margin-left: auto;
@@ -62,23 +61,30 @@ img {
   background-color: rgba(0, 0, 0, 0.349);
   width: fit-content;
   padding: 50px;
-  box-shadow: 0px 0px 2px 4px black;
+  box-shadow: 0px 0px 2px 3px black;
 }
 
 .fighter-select > button {
-  height: 120px;
-  width: 120px;
+  height: 118px;
+  width: 118px;
   border: black solid 1px;
   display: flex;
   justify-content: center;
   align-items: center;
   background-color: black;
   border-radius: 50%;
-  box-shadow: 0px 0px 3px 1px black;
+  box-shadow: 0px 0px 1px 1px black;
 }
 
 .fighter-select > button:hover {
   border: white solid 2px;
+  box-shadow: 0px 0px 2px 2px white;
+  background-color: black;
+  cursor: pointer;
+}
+
+.lil-dinkey:active,
+.daiba:active {
   box-shadow: 0px 0px 2px 2px white;
   background-color: black;
   cursor: pointer;
@@ -109,6 +115,45 @@ img {
   background-color: rgba(12, 12, 12, 0.75);
   cursor: pointer;
   border: 1px black solid;
+}
+
+.ready {
+  width: fit-content;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 30px;
+  margin-left: auto;
+  margin-right: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.ready-btn {
+  width: 200px;
+  height: 100px;
+  font-size: 28pt;
+  background-color: green;
+  padding-left: 20px;
+  padding-right: 20px;
+  border-radius: 10px;
+  border: 2px black solid;
+  color: white;
+  font-family: "Bungee", cursive;
+}
+
+.ready-btn:hover {
+  background-color: rgba(12, 12, 12, 0.75);
+  cursor: pointer;
+  border: 1px black solid;
+}
+
+.ready-count {
+  color: black;
+  font-family: cursive;
+  text-align: center;
+  font-size: 18pt;
 }
 
 .avatar {

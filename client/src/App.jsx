@@ -9,6 +9,10 @@ const socket = io("http://localhost:3001");
 function App() {
   const [rooms, setRooms] = useState([]);
 
+  const getRooms = () => {
+    socket.emit("get_rooms");
+  };
+
   console.log(socket);
   useEffect(() => {
     socket.on("connect", () => {
@@ -24,9 +28,9 @@ function App() {
   }, []);
 
   return (
-    <SocketContext.Provider value={socket}>
+    <SocketContext.Provider value={{ socket, getRooms }}>
       <h1 className="logo">
-        Penguin <span className="pow"> POW !</span>
+        Penguin <span className="pow">POW !</span>
       </h1>
       <MainMenu rooms={rooms} />
     </SocketContext.Provider>

@@ -6,6 +6,10 @@ const MainMenu = ({ rooms }) => {
   const [currentPage, setCurrentPage] = useState("mainMenu");
   const [roomName, setRoomName] = useState("");
 
+  const handleMainMenuPage = () => {
+    setCurrentPage("mainMenu");
+  };
+
   const handleDisplayRooms = () => {
     setCurrentPage("rooms");
   };
@@ -29,19 +33,20 @@ const MainMenu = ({ rooms }) => {
       currentPageComponent = (
         <Rooms
           rooms={rooms}
+          handleMainMenuPage={handleMainMenuPage}
           handleJoinRoom={handleJoinRoom}
           setRoomName={setRoomName}
         />
       );
       break;
     case "lobby":
-      currentPageComponent = <Lobby roomName={roomName} />; //<App roomCode={roomCode} />;
+      currentPageComponent = <Lobby rooms={rooms} roomName={roomName} />; //<App roomCode={roomCode} />;
       break;
     default:
       currentPageComponent = (
         <div>
           <h1>Error: Unknown page "{currentPage}"</h1>
-          <button onClick={handleMainMenu}>Back to Main Menu</button>
+          <button onClick={handleMainMenuPage}>Back to Main Menu</button>
         </div>
       );
   }
@@ -50,11 +55,3 @@ const MainMenu = ({ rooms }) => {
 };
 
 export default MainMenu;
-
-//{
-//   roomsPage ? (
-//     <Rooms rooms={rooms} />
-//   ) : (
-//     <button onClick={displayRooms}>PLAY</button>
-//   );
-// }
