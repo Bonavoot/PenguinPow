@@ -152,3 +152,19 @@ body {
 .map {
   position: relative;
 }
+
+.player1,
+.player2 {
+  position: absolute;
+  bottom: 10%;
+  height: 250px;
+}
+
+.player1 {
+  left: 10%;
+}
+
+.player2 {
+  right: 10%;
+  transform: scaleX(-1);
+}
