@@ -66,6 +66,8 @@ io.on("connection", (socket) => {
     let index = rooms.findIndex((room) => room.id === data.roomId);
   });
 
+  socket.on;
+
   socket.on("ready_count", (data) => {
     let index = rooms.findIndex((room) => room.id === data.roomId);
 
@@ -75,6 +77,10 @@ io.on("connection", (socket) => {
     } else if (!data.isReady && data.playerId === socket.id) {
       rooms[index].readyCount--;
       io.in(data.roomId).emit("ready_count", rooms[index].readyCount);
+    }
+
+    if (rooms[index].readyCount > 1) {
+      io.in(data.roomId).emit("game_start", rooms[index]);
     }
 
     // if (rooms[index].readyCount > 1) {

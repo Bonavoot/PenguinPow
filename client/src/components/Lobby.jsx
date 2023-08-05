@@ -7,7 +7,7 @@ import Ready from "./Ready";
 import { v4 as uuidv4 } from "uuid";
 import React from "react";
 
-const Lobby = ({ rooms, roomName }) => {
+const Lobby = ({ rooms, roomName, handleGame }) => {
   const [players, setPlayers] = useState([]);
 
   const { socket } = useContext(SocketContext);
@@ -41,7 +41,7 @@ const Lobby = ({ rooms, roomName }) => {
       >
         EXIT
       </button>
-      <Ready rooms={rooms} roomName={roomName} />
+      <Ready rooms={rooms} roomName={roomName} handleGame={handleGame} />
     </div>
   );
 };

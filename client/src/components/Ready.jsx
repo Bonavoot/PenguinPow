@@ -1,7 +1,7 @@
 import { useContext, useEffect, useState } from "react";
 import { SocketContext } from "../SocketContext";
 
-const Ready = ({ rooms, roomName }) => {
+const Ready = ({ rooms, roomName, handleGame }) => {
   const [ready, setReady] = useState(false);
   const [count, setCount] = useState(0);
   const { socket } = useContext(SocketContext);
@@ -17,6 +17,10 @@ const Ready = ({ rooms, roomName }) => {
 
     socket.on("player_left", () => {
       setReady(false);
+    });
+
+    socket.on("game_start", () => {
+      handleGame();
     });
   }, []);
 

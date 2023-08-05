@@ -1,5 +1,6 @@
 import Lobby from "./Lobby";
 import Rooms from "./Rooms";
+import Game from "./Game";
 import { useState } from "react";
 
 const MainMenu = ({ rooms }) => {
@@ -12,6 +13,10 @@ const MainMenu = ({ rooms }) => {
 
   const handleDisplayRooms = () => {
     setCurrentPage("rooms");
+  };
+
+  const handleGame = () => {
+    setCurrentPage("game");
   };
 
   const handleJoinRoom = () => {
@@ -40,7 +45,12 @@ const MainMenu = ({ rooms }) => {
       );
       break;
     case "lobby":
-      currentPageComponent = <Lobby rooms={rooms} roomName={roomName} />;
+      currentPageComponent = (
+        <Lobby rooms={rooms} roomName={roomName} handleGame={handleGame} />
+      );
+      break;
+    case "game":
+      currentPageComponent = <Game rooms={rooms} roomName={roomName} />;
       break;
     default:
       currentPageComponent = (
