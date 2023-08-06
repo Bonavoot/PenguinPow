@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import daiba from "../assets/standingDaiba.gif";
 import dinkey from "../assets/standing.gif";
+import { SocketContext } from "../SocketContext";
 
 const GameFighter = ({ fighter, index }) => {
+  const { socket } = useContext(SocketContext);
   const [penguin, setPenguin] = useState("../assets/standing.gif");
 
   useEffect(() => {
@@ -13,7 +15,9 @@ const GameFighter = ({ fighter, index }) => {
     }
   }, []);
 
-  return <img className={`player${index + 1}`} src={penguin} alt="fighter" />;
+  return (
+    <img className={`game-player${index + 1}`} src={penguin} alt="fighter" />
+  );
 };
 
 export default GameFighter;

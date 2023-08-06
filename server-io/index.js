@@ -66,26 +66,22 @@ io.on("connection", (socket) => {
     let index = rooms.findIndex((room) => room.id === data.roomId);
   });
 
-  socket.on;
-
   socket.on("ready_count", (data) => {
     let index = rooms.findIndex((room) => room.id === data.roomId);
 
     if (data.isReady && data.playerId === socket.id) {
       rooms[index].readyCount++;
       io.in(data.roomId).emit("ready_count", rooms[index].readyCount);
+      io.in(data.roomId).emit("lobby", rooms[index].players);
     } else if (!data.isReady && data.playerId === socket.id) {
       rooms[index].readyCount--;
       io.in(data.roomId).emit("ready_count", rooms[index].readyCount);
+      io.in(data.roomId).emit("lobby", rooms[index].players);
     }
 
     if (rooms[index].readyCount > 1) {
       io.in(data.roomId).emit("game_start", rooms[index]);
     }
-
-    // if (rooms[index].readyCount > 1) {
-    //   io.in(data.roomId).emit("game_start");
-    // }
 
     console.log(rooms[index].readyCount);
   });
@@ -100,6 +96,9 @@ io.on("connection", (socket) => {
 
     rooms[index].players[playerIndex].fighter = data.fighter;
     io.in(roomId).emit("lobby", rooms[index].players); // Update all players in the room
+    io.to(roomId).emit("rooms", rooms);
+    io.to(roomId).emit("lobby", rooms[index].players);
+    console.log(rooms[index].players);
   });
 
   socket.on("disconnect", (reason) => {

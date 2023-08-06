@@ -131,12 +131,12 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
+  cursor: pointer;
 }
 
-.refresh-btn:hover {
+.refresh-btn:active {
   color: white;
   background-color: grey;
-  cursor: pointer;
 }
 
 .refresh-btn:active {
@@ -153,18 +153,18 @@ body {
   position: relative;
 }
 
-.player1,
-.player2 {
+.game-player1,
+.game-player2 {
   position: absolute;
   bottom: 10%;
   height: 250px;
 }
 
-.player1 {
+.game-player1 {
   left: 10%;
 }
 
-.player2 {
+.game-player2 {
   right: 10%;
   transform: scaleX(-1);
 }
