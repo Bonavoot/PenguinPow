@@ -147,10 +147,14 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
+  position: relative;
+  min-width: 1450px;
+  min-height: 768px;
 }
 
 .map {
-  position: relative;
+  min-width: 1450px;
+  min-height: 768px;
 }
 
 .game-player1,

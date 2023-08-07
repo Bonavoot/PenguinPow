@@ -4,6 +4,7 @@ const { Server } = require("socket.io");
 const cors = require("cors");
 const sharedsession = require("express-socket.io-session");
 const session = require("express-session");
+const { deflate } = require("zlib");
 const app = express();
 app.use(cors());
 
@@ -37,6 +38,8 @@ const rooms = [
   { id: "Room 5", players: [], readyCount: 0 },
 ];
 
+const tick = (delta) => {};
+
 let index;
 
 io.on("connection", (socket) => {
@@ -55,7 +58,31 @@ io.on("connection", (socket) => {
     socket.join(data.roomId);
     console.log(`${data.socketId} joined ${data.roomId}`);
     index = rooms.findIndex((room) => room.id === data.roomId);
-    rooms[index].players.push({ id: data.socketId, fighter: "lil-dinkey" });
+
+    if (rooms[index].players.length > 0) {
+      rooms[index].players.push({
+        id: data.socketId,
+        fighter: "lil-dinkey",
+        isJumping: false,
+        isAttacking: false,
+        isMoving: false,
+        facing: -1,
+        x: 1500,
+        y: 100,
+      });
+    } else {
+      rooms[index].players.push({
+        id: data.socketId,
+        fighter: "lil-dinkey",
+        isJumping: false,
+        isAttacking: false,
+        isMoving: false,
+        facing: 1,
+        x: 200,
+        y: 100,
+      });
+    }
+
     socket.roomId = data.roomId;
     io.to(data.roomId).emit("rooms", rooms);
     io.to(data.roomId).emit("lobby", rooms[index].players);
@@ -95,10 +122,44 @@ io.on("connection", (socket) => {
     );
 
     rooms[index].players[playerIndex].fighter = data.fighter;
+    console.log(rooms[index].players[playerIndex]);
+
     io.in(roomId).emit("lobby", rooms[index].players); // Update all players in the room
     io.to(roomId).emit("rooms", rooms);
-    io.to(roomId).emit("lobby", rooms[index].players);
     console.log(rooms[index].players);
+  });
+
+  socket.on("fighter_action", (data) => {
+    let roomId = socket.roomId;
+    let index = rooms.findIndex((room) => room.id === roomId);
+
+    let playerIndex = rooms[index].players.findIndex(
+      (player) => player.id === data.id
+    );
+
+    let keyPressed = data.action.toLowerCase();
+    let player = rooms[index].players[playerIndex];
+
+    console.log(data.action);
+
+    if (keyPressed === "d") {
+      player.x += 25;
+      player.facing = 1;
+    } else if (keyPressed === "a") {
+      player.x -= 25;
+      player.facing = -1;
+    } else if (keyPressed === "w") {
+      player.isJumping = true;
+      player.yVelocity = 25;
+    }
+
+    if (player.isJumping === true) {
+      player.yVelocity -= 1;
+      player.y += player.yVelocity;
+    }
+
+    io.in(roomId).emit("fighter_action", rooms[index].players[playerIndex]);
+    console.log(rooms[index].players[playerIndex]);
   });
 
   socket.on("disconnect", (reason) => {
@@ -128,3 +189,15 @@ io.on("connection", (socket) => {
 server.listen(3001, () => {
   console.log("Server is online!");
 });
+
+// let playerObj = {
+//   id: data.player,
+//   fighter: data.fighter,
+//   isJumping: false,
+//   isAttacking: false,
+//   isMoving: false,
+//   x: 0,
+//   y: 0,
+// };
+
+// rooms[index].players[playerIndex].fighter = data.fighter;

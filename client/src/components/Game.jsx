@@ -8,17 +8,20 @@ const Game = ({ rooms, roomName }) => {
   let index = rooms.findIndex((room) => room.id === roomName);
 
   useEffect(() => {
-    const handleKeyPress = (e) => {
+    const handleKeyDown = (e) => {
       const fighterId = socket.id;
-      if (fighterId) {
-        socket.emit("fighter_action", { id: fighterId, action: e.key });
-      }
+      socket.emit("fighter_action", { id: fighterId, action: e.key });
     };
 
-    window.addEventListener("keydown", handleKeyPress);
+    const handleKeyUp = (e) => {
+      const fighterId = socket.id;
+      socket.emit();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      window.removeEventListener("keydown", handleKeyPress);
+      window.removeEventListener("keydown", handleKeyDown);
     };
   });
 
@@ -29,13 +32,18 @@ const Game = ({ rooms, roomName }) => {
     <div className="game-container">
       <img
         className="map"
-        style={{ height: "825px", width: "1650px" }}
+        style={{ height: "768px", width: "1450px" }}
         src={map}
         alt="map"
       />
       {rooms[index].players.map((player, i) => {
         return (
-          <GameFighter key={player.id + i} fighter={player.fighter} index={i} />
+          <GameFighter
+            key={player.id + i}
+            player={player}
+            fighter={player.fighter}
+            index={i}
+          />
         );
       })}
     </div>
