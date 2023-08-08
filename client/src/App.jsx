@@ -4,7 +4,7 @@ import { SocketContext } from "./SocketContext";
 import MainMenu from "./components/MainMenu";
 import "./App.css";
 
-const socket = io("http://localhost:3001");
+const socket = io("https://secure-beach-15962-3c882c6fcbf9.herokuapp.com/");
 
 function App() {
   const [rooms, setRooms] = useState([]);
