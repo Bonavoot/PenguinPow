@@ -15,13 +15,15 @@ const Game = ({ rooms, roomName }) => {
 
     const handleKeyUp = (e) => {
       const fighterId = socket.id;
-      socket.emit();
+      socket.emit("fighter_action", { id: fighterId, action: e.key });
     };
 
     window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyUp);
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keydown", handleKeyUp);
     };
   });
 
@@ -37,14 +39,7 @@ const Game = ({ rooms, roomName }) => {
         alt="map"
       />
       {rooms[index].players.map((player, i) => {
-        return (
-          <GameFighter
-            key={player.id + i}
-            player={player}
-            fighter={player.fighter}
-            index={i}
-          />
-        );
+        return <GameFighter key={player.id + i} player={player} index={i} />;
       })}
     </div>
   );
@@ -74,9 +69,6 @@ if player is moving on x axis, we need to use the walking animation
 if jumping, jumping animation y axis
 attacking animation 
 
-IDEAS:
-
-MAKE THROWABLE BALL IN THE MIDDLE EVERY ROUND THAT DOES DAMAGE IF THROWN 
-
-
+IDEAS: 
+- MAKE THROWABLE BALL IN THE MIDDLE EVERY ROUND THAT DOES DAMAGE IF THROWN 
 */

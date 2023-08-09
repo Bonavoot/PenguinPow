@@ -29,8 +29,9 @@ const MainMenu = ({ rooms }) => {
       currentPageComponent = (
         <div className="main-menu">
           <button onClick={handleDisplayRooms}>PLAY</button>
-          <button>SHOP</button>
-          <button>SETTINGS</button>
+          <button>TRAINING</button>
+          <button id="closed">SHOP</button>
+          <button id="closed">SETTINGS</button>
         </div>
       );
       break;
@@ -52,6 +53,8 @@ const MainMenu = ({ rooms }) => {
     case "game":
       currentPageComponent = <Game rooms={rooms} roomName={roomName} />;
       break;
+    case "training":
+    //currentPageComponent = <Training />;
     default:
       currentPageComponent = (
         <div>

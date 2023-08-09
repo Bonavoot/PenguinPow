@@ -4,8 +4,37 @@ import dinkey from "../assets/standing.gif";
 import { SocketContext } from "../SocketContext";
 import styled from "styled-components";
 
-const StyledImage = styled.img.attrs((props) => ({
-  src: props.fighter === "lil-dinkey" ? dinkey : daiba,
+const getImageSrc = (fighter, isDiving, isJumping, isAttacking, isStrafing) => {
+  if (fighter === "lil-dinkey") {
+    if (isDiving) return dinkey;
+    if (isJumping) return dinkey;
+    if (isAttacking) return dinkey;
+    if (isStrafing) return dinkey;
+
+    return dinkey;
+  } else {
+    if (isDiving) return daiba;
+    if (isJumping) return daiba;
+    if (isAttacking) return daiba;
+    if (isStrafing) return daiba;
+    return daiba;
+  }
+};
+
+const StyledImage = styled("img", {
+  shouldForwardProp: (prop) =>
+    isPropValid(prop) &&
+    !["fighter", "isJumping", "isDiving", "isAttacking", "isStrafing"].includes(
+      prop
+    ),
+}).attrs((props) => ({
+  src: getImageSrc(
+    props.fighter,
+    props.isDiving,
+    props.isJumping,
+    props.isAttacking,
+    props.isStrafing
+  ),
 }))`
   position: absolute;
   left: ${(props) => props.x}px;
@@ -15,17 +44,24 @@ const StyledImage = styled.img.attrs((props) => ({
   height: 250px;
 `;
 
-const GameFighter = ({ fighter, index, player }) => {
+const GameFighter = ({ player, index }) => {
   const { socket } = useContext(SocketContext);
   const [penguin, setPenguin] = useState(player);
   console.log(player);
 
   useEffect(() => {
     socket.on("fighter_action", (data) => {
-      if (data.id === player.id) {
-        setPenguin(data);
+      console.log(data);
+      if (index < 1) {
+        setPenguin(data.player1);
+      } else {
+        setPenguin(data.player2);
       }
     });
+
+    return () => {
+      socket.off("fighter_action");
+    };
   }, []);
 
   return <StyledImage {...penguin} />;

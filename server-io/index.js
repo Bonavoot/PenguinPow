@@ -4,7 +4,6 @@ const { Server } = require("socket.io");
 const cors = require("cors");
 const sharedsession = require("express-socket.io-session");
 const session = require("express-session");
-const { deflate } = require("zlib");
 const app = express();
 app.use(cors());
 
@@ -38,9 +37,9 @@ const rooms = [
   { id: "Room 5", players: [], readyCount: 0 },
 ];
 
-const tick = (delta) => {};
-
 let index;
+let gameLoop = null;
+const TICK_RATE = 25;
 
 io.on("connection", (socket) => {
   console.log(`Client connected: ${socket.id}`);
@@ -50,6 +49,36 @@ io.on("connection", (socket) => {
 
   io.emit("rooms", rooms);
 
+  function tick(delta) {
+    rooms.forEach((room) => {
+      room.players.forEach((player) => {
+        // map boundries
+        if (player.x < 150) {
+          player.x = 150;
+        } else if (player.x > 1550) {
+          player.x = 1550;
+        }
+
+        if (player.keyPressed === "d") {
+          player.x += delta;
+          player.facing = 1;
+        } else if (player.keyPressed === "a") {
+          player.x -= delta;
+          player.facing = -1;
+        }
+      });
+      io.in(room.id).emit("fighter_action", {
+        player1: room.players[0],
+        player2: room.players[1],
+      });
+    });
+  }
+
+  if (!gameLoop) {
+    gameLoop = setInterval(() => {
+      tick(750 / TICK_RATE);
+    }, 1000 / TICK_RATE);
+  }
   socket.on("get_rooms", () => {
     socket.emit("rooms", rooms);
   });
@@ -65,10 +94,11 @@ io.on("connection", (socket) => {
         fighter: "lil-dinkey",
         isJumping: false,
         isAttacking: false,
-        isMoving: false,
+        isStrafing: false,
+        isDiving: false,
         facing: -1,
         x: 1500,
-        y: 100,
+        y: 15,
       });
     } else {
       rooms[index].players.push({
@@ -77,9 +107,11 @@ io.on("connection", (socket) => {
         isJumping: false,
         isAttacking: false,
         isMoving: false,
+        isStrafing: false,
+        isDiving: false,
         facing: 1,
         x: 200,
-        y: 100,
+        y: 15,
       });
     }
 
@@ -137,29 +169,10 @@ io.on("connection", (socket) => {
       (player) => player.id === data.id
     );
 
-    let keyPressed = data.action.toLowerCase();
     let player = rooms[index].players[playerIndex];
+    player.keyPressed = data.action.toLowerCase();
 
-    console.log(data.action);
-
-    if (keyPressed === "d") {
-      player.x += 25;
-      player.facing = 1;
-    } else if (keyPressed === "a") {
-      player.x -= 25;
-      player.facing = -1;
-    } else if (keyPressed === "w") {
-      player.isJumping = true;
-      player.yVelocity = 25;
-    }
-
-    if (player.isJumping === true) {
-      player.yVelocity -= 1;
-      player.y += player.yVelocity;
-    }
-
-    io.in(roomId).emit("fighter_action", rooms[index].players[playerIndex]);
-    console.log(rooms[index].players[playerIndex]);
+    console.log(player.keyPressed);
   });
 
   socket.on("disconnect", (reason) => {
@@ -195,9 +208,13 @@ server.listen(process.env.PORT || 3001, () => {
 //   fighter: data.fighter,
 //   isJumping: false,
 //   isAttacking: false,
-//   isMoving: false,
+//   isStrafing: false,
+//   isDiving: false
 //   x: 0,
 //   y: 0,
 // };
 
 // rooms[index].players[playerIndex].fighter = data.fighter;
+
+// Use this for HEROKU vvvvvv
+// process.env.PORT ||
