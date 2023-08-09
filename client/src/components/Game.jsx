@@ -1,6 +1,6 @@
 import { useContext, useEffect } from "react";
 import { SocketContext } from "../SocketContext";
-import map from "../assets/mapZoni.jpg";
+import map from "../assets/map.gif";
 import GameFighter from "./GameFighter";
 
 const Game = ({ rooms, roomName }) => {
