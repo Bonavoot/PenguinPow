@@ -40,7 +40,7 @@ const StyledImage = styled("img", {
   left: ${(props) => props.x}px;
   bottom: ${(props) => props.y}px;
   transform: scaleX(${(props) => props.facing});
-  transition: left 0.25s ease-out;
+  transition: left 0.45s ease-out;
   height: 250px;
 `;
 

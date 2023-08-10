@@ -41,6 +41,7 @@ let index;
 let gameLoop = null;
 const TICK_RATE = 60;
 const delta = 1000 / TICK_RATE;
+const speedFactor = 1.25;
 
 io.on("connection", (socket) => {
   console.log(`Client connected: ${socket.id}`);
@@ -64,11 +65,11 @@ io.on("connection", (socket) => {
 
         // Strafing
         if (player.keys.d) {
-          player.x += delta;
+          player.x += delta * speedFactor;
           player.facing = 1;
           player.isStrafing = true;
         } else if (player.keys.a) {
-          player.x -= delta;
+          player.x -= delta * speedFactor;
           player.facing = -1;
           player.isStrafing = true;
         } else {
@@ -77,7 +78,7 @@ io.on("connection", (socket) => {
 
         // Diving / down
         if (player.keys.s) {
-          player.y -= delta + 15;
+          player.y -= delta * speedFactor + 5;
           player.y = Math.max(player.y, 75);
         }
 
