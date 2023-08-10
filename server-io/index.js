@@ -39,7 +39,7 @@ const rooms = [
 
 let index;
 let gameLoop = null;
-const TICK_RATE = 25;
+const TICK_RATE = 60;
 
 io.on("connection", (socket) => {
   console.log(`Client connected: ${socket.id}`);
@@ -52,19 +52,46 @@ io.on("connection", (socket) => {
   function tick(delta) {
     rooms.forEach((room) => {
       room.players.forEach((player) => {
-        // map boundries
-        if (player.x < 150) {
-          player.x = 150;
-        } else if (player.x > 1550) {
-          player.x = 1550;
+        // Map boundries
+        if (player.x < -15) {
+          player.x = -15;
+        } else if (player.x > 1300) {
+          player.x = 1300;
         }
 
+        // Strafing
         if (player.keyPressed === "d") {
           player.x += delta;
           player.facing = 1;
-        } else if (player.keyPressed === "a") {
+          player.isStrafing = true;
+        }
+        if (player.keyPressed === "a") {
+          player.isStrafing = true;
           player.x -= delta;
           player.facing = -1;
+        }
+
+        // Diving / down
+        if (player.keyPressed === "s") {
+          player.y -= delta;
+          if (player.y < 75) {
+            player.y = 75;
+          }
+        }
+
+        // Jumping
+        if (player.keyPressed === "w" && !player.isJumping) {
+          player.isJumping = true;
+          player.yVelocity = 25;
+        }
+
+        if (player.isJumping) {
+          player.yVelocity -= 1;
+          player.y += player.yVelocity;
+          if (player.y < 70) {
+            player.y = 75;
+            player.jumping = false;
+          }
         }
       });
       io.in(room.id).emit("fighter_action", {
@@ -76,7 +103,7 @@ io.on("connection", (socket) => {
 
   if (!gameLoop) {
     gameLoop = setInterval(() => {
-      tick(750 / TICK_RATE);
+      tick(950 / TICK_RATE);
     }, 1000 / TICK_RATE);
   }
   socket.on("get_rooms", () => {
@@ -97,8 +124,8 @@ io.on("connection", (socket) => {
         isStrafing: false,
         isDiving: false,
         facing: -1,
-        x: 1500,
-        y: 15,
+        x: 1135,
+        y: 75,
       });
     } else {
       rooms[index].players.push({
@@ -110,8 +137,8 @@ io.on("connection", (socket) => {
         isStrafing: false,
         isDiving: false,
         facing: 1,
-        x: 200,
-        y: 15,
+        x: 15,
+        y: 75,
       });
     }
 
@@ -170,7 +197,12 @@ io.on("connection", (socket) => {
     );
 
     let player = rooms[index].players[playerIndex];
-    player.keyPressed = data.action.toLowerCase();
+
+    if (data.action) {
+      player.keyPressed = data.action.toLowerCase();
+    } else {
+      player.keyPressed = null;
+    }
 
     console.log(player.keyPressed);
   });

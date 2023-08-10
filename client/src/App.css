@@ -5,21 +5,21 @@ body {
   overflow: hidden;
   margin: 0;
   color: white;
-  background-image: linear-gradient(white, steelblue);
+  background-image: linear-gradient(white, steelblue, rgb(0, 0, 0));
 }
 
 .main-menu {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  gap: 75px;
-  margin-top: 50px;
+  gap: 100px;
 }
 
 .logo {
   font-size: 24pt;
   margin: 0;
   margin-top: -20px;
+  margin-bottom: 50px;
   color: black;
   font-family: "Bungee", cursive;
   margin-left: 15px;
@@ -152,31 +152,17 @@ body {
 }
 
 .game-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
+  overflow: hidden;
+
   position: relative;
-  min-width: 1450px;
-  min-height: 768px;
-}
-
-.map {
-  min-width: 1450px;
-  min-height: 768px;
-}
-
-.game-player1,
-.game-player2 {
-  position: absolute;
-  bottom: 10%;
-  height: 250px;
-}
-
-.game-player1 {
-  left: 10%;
-}
-
-.game-player2 {
-  right: 10%;
-  transform: scaleX(-1);
+  align-self: center;
+  width: 1350px;
+  height: 750px;
+  min-width: 1350px;
+  min-height: 750px;
+  background-image: url("./assets/map.gif");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  box-shadow: 0px 0px 4px 4px black;
 }

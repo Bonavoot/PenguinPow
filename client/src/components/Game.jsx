@@ -6,24 +6,44 @@ import GameFighter from "./GameFighter";
 const Game = ({ rooms, roomName }) => {
   const { socket } = useContext(SocketContext);
   let index = rooms.findIndex((room) => room.id === roomName);
+  let currentKey = null;
+  let nextKey = null;
 
   useEffect(() => {
     const handleKeyDown = (e) => {
-      const fighterId = socket.id;
-      socket.emit("fighter_action", { id: fighterId, action: e.key });
+      if (!currentKey) {
+        currentKey = e.key;
+        const fighterId = socket.id;
+        socket.emit("fighter_action", { id: fighterId, action: e.key });
+      } else if (!nextKey && e.key !== currentKey) {
+        nextKey = e.key;
+        const fighterId = socket.id;
+        socket.emit("fighter_action", { id: fighterId, action: e.key });
+      }
     };
 
     const handleKeyUp = (e) => {
-      const fighterId = socket.id;
-      socket.emit("fighter_action", { id: fighterId, action: e.key });
+      if (e.key === currentKey) {
+        if (nextKey) {
+          currentKey = nextKey;
+          nextKey = null;
+        } else {
+          currentKey = null;
+          // Send a stop action here
+          const fighterId = socket.id;
+          socket.emit("fighter_action", { id: fighterId, action: "stop" });
+        }
+      } else if (e.key === nextKey) {
+        nextKey = null;
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keydown", handleKeyUp);
+    window.addEventListener("keyup", handleKeyUp);
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keydown", handleKeyUp);
+      window.removeEventListener("keyup", handleKeyUp);
     };
   });
 
@@ -32,12 +52,6 @@ const Game = ({ rooms, roomName }) => {
   console.log(roomName);
   return (
     <div className="game-container">
-      <img
-        className="map"
-        style={{ height: "768px", width: "1450px" }}
-        src={map}
-        alt="map"
-      />
       {rooms[index].players.map((player, i) => {
         return <GameFighter key={player.id + i} player={player} index={i} />;
       })}
