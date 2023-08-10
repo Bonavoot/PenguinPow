@@ -1,40 +1,25 @@
 import { useContext, useEffect } from "react";
 import { SocketContext } from "../SocketContext";
-import map from "../assets/map.gif";
 import GameFighter from "./GameFighter";
 
 const Game = ({ rooms, roomName }) => {
   const { socket } = useContext(SocketContext);
   let index = rooms.findIndex((room) => room.id === roomName);
-  let currentKey = null;
-  let nextKey = null;
 
   useEffect(() => {
+    const keyState = { w: false, a: false, s: false, d: false };
+
     const handleKeyDown = (e) => {
-      if (!currentKey) {
-        currentKey = e.key;
-        const fighterId = socket.id;
-        socket.emit("fighter_action", { id: fighterId, action: e.key });
-      } else if (!nextKey && e.key !== currentKey) {
-        nextKey = e.key;
-        const fighterId = socket.id;
-        socket.emit("fighter_action", { id: fighterId, action: e.key });
+      if (keyState.hasOwnProperty(e.key)) {
+        keyState[e.key] = true;
+        socket.emit("fighter_action", { id: socket.id, keys: keyState });
       }
     };
 
     const handleKeyUp = (e) => {
-      if (e.key === currentKey) {
-        if (nextKey) {
-          currentKey = nextKey;
-          nextKey = null;
-        } else {
-          currentKey = null;
-          // Send a stop action here
-          const fighterId = socket.id;
-          socket.emit("fighter_action", { id: fighterId, action: "stop" });
-        }
-      } else if (e.key === nextKey) {
-        nextKey = null;
+      if (keyState.hasOwnProperty(e.key)) {
+        keyState[e.key] = false;
+        socket.emit("fighter_action", { id: socket.id, keys: keyState });
       }
     };
 
@@ -47,9 +32,6 @@ const Game = ({ rooms, roomName }) => {
     };
   });
 
-  console.log(rooms[index].players[0].fighter);
-  console.log(rooms);
-  console.log(roomName);
   return (
     <div className="game-container">
       {rooms[index].players.map((player, i) => {

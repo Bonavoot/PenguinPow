@@ -52,35 +52,30 @@ io.on("connection", (socket) => {
   function tick(delta) {
     rooms.forEach((room) => {
       room.players.forEach((player) => {
-        // Map boundries
-        if (player.x < -15) {
-          player.x = -15;
-        } else if (player.x > 1300) {
-          player.x = 1300;
-        }
+        // Map boundaries
+        player.x = Math.max(-50, Math.min(player.x, 1200));
 
         // Strafing
-        if (player.keyPressed === "d") {
+        if (player.keys.d) {
           player.x += delta;
           player.facing = 1;
           player.isStrafing = true;
-        }
-        if (player.keyPressed === "a") {
-          player.isStrafing = true;
+        } else if (player.keys.a) {
           player.x -= delta;
           player.facing = -1;
+          player.isStrafing = true;
+        } else {
+          player.isStrafing = false;
         }
 
         // Diving / down
-        if (player.keyPressed === "s") {
+        if (player.keys.s) {
           player.y -= delta;
-          if (player.y < 75) {
-            player.y = 75;
-          }
+          player.y = Math.max(player.y, 75);
         }
 
         // Jumping
-        if (player.keyPressed === "w" && !player.isJumping) {
+        if (player.keys.w && !player.isJumping) {
           player.isJumping = true;
           player.yVelocity = 25;
         }
@@ -88,12 +83,13 @@ io.on("connection", (socket) => {
         if (player.isJumping) {
           player.yVelocity -= 1;
           player.y += player.yVelocity;
-          if (player.y < 70) {
+          if (player.y < 75) {
             player.y = 75;
-            player.jumping = false;
+            player.isJumping = false;
           }
         }
       });
+
       io.in(room.id).emit("fighter_action", {
         player1: room.players[0],
         player2: room.players[1],
@@ -126,6 +122,7 @@ io.on("connection", (socket) => {
         facing: -1,
         x: 1135,
         y: 75,
+        keys: { w: false, a: false, s: false, d: false },
       });
     } else {
       rooms[index].players.push({
@@ -139,6 +136,7 @@ io.on("connection", (socket) => {
         facing: 1,
         x: 15,
         y: 75,
+        keys: { w: false, a: false, s: false, d: false },
       });
     }
 
@@ -191,20 +189,15 @@ io.on("connection", (socket) => {
   socket.on("fighter_action", (data) => {
     let roomId = socket.roomId;
     let index = rooms.findIndex((room) => room.id === roomId);
-
     let playerIndex = rooms[index].players.findIndex(
       (player) => player.id === data.id
     );
-
     let player = rooms[index].players[playerIndex];
 
-    if (data.action) {
-      player.keyPressed = data.action.toLowerCase();
-    } else {
-      player.keyPressed = null;
+    if (data.keys) {
+      player.keys = data.keys;
     }
-
-    console.log(player.keyPressed);
+    console.log(player.keys);
   });
 
   socket.on("disconnect", (reason) => {
@@ -235,18 +228,4 @@ server.listen(process.env.PORT || 3001, () => {
   console.log("Server is online!");
 });
 
-// let playerObj = {
-//   id: data.player,
-//   fighter: data.fighter,
-//   isJumping: false,
-//   isAttacking: false,
-//   isStrafing: false,
-//   isDiving: false
-//   x: 0,
-//   y: 0,
-// };
-
-// rooms[index].players[playerIndex].fighter = data.fighter;
-
-// Use this for HEROKU vvvvvv
 // process.env.PORT ||
