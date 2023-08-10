@@ -153,14 +153,13 @@ body {
 
 .game-container {
   overflow: hidden;
-
   position: relative;
   align-self: center;
   width: 1350px;
   height: 750px;
   min-width: 1350px;
   min-height: 750px;
-  background-image: url("./assets/map.gif");
+  background-image: url("./assets/mapZoni.jpg");
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;

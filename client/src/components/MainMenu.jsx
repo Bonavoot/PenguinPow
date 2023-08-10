@@ -30,7 +30,7 @@ const MainMenu = ({ rooms }) => {
         <div className="main-menu">
           <button onClick={handleDisplayRooms}>PLAY</button>
           <button>TRAINING</button>
-          <button id="closed">SHOP</button>
+          <button id="closed">GAMBA</button>
           <button id="closed">SETTINGS</button>
         </div>
       );

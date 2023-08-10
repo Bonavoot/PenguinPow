@@ -40,6 +40,7 @@ const rooms = [
 let index;
 let gameLoop = null;
 const TICK_RATE = 60;
+const delta = 1000 / TICK_RATE;
 
 io.on("connection", (socket) => {
   console.log(`Client connected: ${socket.id}`);
@@ -48,6 +49,12 @@ io.on("connection", (socket) => {
   socket.handshake.session.save();
 
   io.emit("rooms", rooms);
+
+  if (!gameLoop) {
+    gameLoop = setInterval(() => {
+      tick(delta);
+    }, delta);
+  }
 
   function tick(delta) {
     rooms.forEach((room) => {
@@ -70,7 +77,7 @@ io.on("connection", (socket) => {
 
         // Diving / down
         if (player.keys.s) {
-          player.y -= delta;
+          player.y -= delta + 15;
           player.y = Math.max(player.y, 75);
         }
 
@@ -97,11 +104,6 @@ io.on("connection", (socket) => {
     });
   }
 
-  if (!gameLoop) {
-    gameLoop = setInterval(() => {
-      tick(950 / TICK_RATE);
-    }, 1000 / TICK_RATE);
-  }
   socket.on("get_rooms", () => {
     socket.emit("rooms", rooms);
   });
