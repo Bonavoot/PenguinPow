@@ -47,11 +47,9 @@ const StyledImage = styled("img", {
 const GameFighter = ({ player, index }) => {
   const { socket } = useContext(SocketContext);
   const [penguin, setPenguin] = useState(player);
-  console.log(player);
 
   useEffect(() => {
     socket.on("fighter_action", (data) => {
-      console.log(data);
       if (index < 1) {
         setPenguin(data.player1);
       } else {

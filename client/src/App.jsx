@@ -12,16 +12,12 @@ const socket = io("https://secure-beach-15962-3c882c6fcbf9.herokuapp.com/");
 
 function App() {
   const [rooms, setRooms] = useState([]);
-
   const getRooms = () => {
     socket.emit("get_rooms");
   };
 
-  console.log(socket);
   useEffect(() => {
-    socket.on("connect", () => {
-      console.log(socket.id);
-    });
+    socket.on("connect", () => {});
     socket.on("connect_error", () => {
       setTimeout(() => socket.connect(), 5000);
     });

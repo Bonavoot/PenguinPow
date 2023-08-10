@@ -5,7 +5,6 @@ const Room = ({ room, setRoomName, handleJoinRoom }) => {
   const { socket } = useContext(SocketContext);
 
   const handleJoin = () => {
-    console.log(room);
     socket.emit("join_room", { socketId: socket.id, roomId: room.id });
     setRoomName(room.id);
     handleJoinRoom();

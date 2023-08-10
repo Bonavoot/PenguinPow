@@ -11,12 +11,11 @@ const Lobby = ({ rooms, roomName, handleGame }) => {
   const [players, setPlayers] = useState([]);
 
   const { socket } = useContext(SocketContext);
-  console.log(rooms);
+
   useEffect(() => {
     socket.emit("lobby", { roomId: roomName });
     socket.on("lobby", (playerData) => {
       setPlayers(playerData);
-      console.log(playerData);
     });
 
     return () => {
