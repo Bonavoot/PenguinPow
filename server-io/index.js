@@ -41,7 +41,7 @@ let index;
 let gameLoop = null;
 const TICK_RATE = 60;
 const delta = 1000 / TICK_RATE;
-const speedFactor = 1.25;
+const speedFactor = 1.1;
 
 io.on("connection", (socket) => {
   console.log(`Client connected: ${socket.id}`);
@@ -68,12 +68,12 @@ io.on("connection", (socket) => {
           player.x += delta * speedFactor;
           player.facing = 1;
           player.isStrafing = true;
-        } else if (player.keys.a) {
+        }
+
+        if (player.keys.a) {
           player.x -= delta * speedFactor;
           player.facing = -1;
           player.isStrafing = true;
-        } else {
-          player.isStrafing = false;
         }
 
         // Diving / down
@@ -96,6 +96,10 @@ io.on("connection", (socket) => {
             player.isJumping = false;
           }
         }
+
+        // if (player.keys[" "]) {
+        //   player.isAttacking = true;
+        // }
       });
 
       io.in(room.id).emit("fighter_action", {
@@ -125,7 +129,7 @@ io.on("connection", (socket) => {
         facing: -1,
         x: 1135,
         y: 75,
-        keys: { w: false, a: false, s: false, d: false },
+        keys: { w: false, a: false, s: false, d: false, " ": false },
       });
     } else {
       rooms[index].players.push({
@@ -139,7 +143,7 @@ io.on("connection", (socket) => {
         facing: 1,
         x: 15,
         y: 75,
-        keys: { w: false, a: false, s: false, d: false },
+        keys: { w: false, a: false, s: false, d: false, " ": false },
       });
     }
 

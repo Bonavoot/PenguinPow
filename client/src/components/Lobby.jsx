@@ -32,6 +32,9 @@ const Lobby = ({ rooms, roomName, handleGame }) => {
           </React.Fragment>
         );
       })}
+      {players.length < 2 ? (
+        <div className="waiting">Waiting for opponent ...</div>
+      ) : null}
       <h1 className="select-penguin-txt">SELECT PENGUIN</h1>
       <FighterSelect />
       <button

@@ -7,7 +7,7 @@ const Game = ({ rooms, roomName }) => {
   let index = rooms.findIndex((room) => room.id === roomName);
 
   useEffect(() => {
-    const keyState = { w: false, a: false, s: false, d: false };
+    const keyState = { w: false, a: false, s: false, d: false, " ": false };
 
     const handleKeyDown = (e) => {
       if (keyState.hasOwnProperty(e.key)) {

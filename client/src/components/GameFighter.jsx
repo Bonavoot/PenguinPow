@@ -1,6 +1,8 @@
 import { useContext, useEffect, useState } from "react";
 import daiba from "../assets/standingDaiba.gif";
 import dinkey from "../assets/standing.gif";
+import daibaAttacking from "../assets/daibaAttacking.gif";
+import dinkeyAttacking from "../assets/dinkeyAttacking.gif";
 import { SocketContext } from "../SocketContext";
 import styled from "styled-components";
 
@@ -8,14 +10,14 @@ const getImageSrc = (fighter, isDiving, isJumping, isAttacking, isStrafing) => {
   if (fighter === "lil-dinkey") {
     if (isDiving) return dinkey;
     if (isJumping) return dinkey;
-    if (isAttacking) return dinkey;
+    if (isAttacking) return dinkeyAttacking;
     if (isStrafing) return dinkey;
 
     return dinkey;
   } else {
     if (isDiving) return daiba;
     if (isJumping) return daiba;
-    if (isAttacking) return daiba;
+    if (isAttacking) return daibaAttacking;
     if (isStrafing) return daiba;
     return daiba;
   }
@@ -40,7 +42,7 @@ const StyledImage = styled("img", {
   left: ${(props) => props.x}px;
   bottom: ${(props) => props.y}px;
   transform: scaleX(${(props) => props.facing});
-  transition: left 0.45s ease-out;
+  transition: left 0.15s ease-out;
   height: 250px;
 `;
 
