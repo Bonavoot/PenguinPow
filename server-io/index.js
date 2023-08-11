@@ -41,7 +41,7 @@ let index;
 let gameLoop = null;
 const TICK_RATE = 60;
 const delta = 1000 / TICK_RATE;
-const speedFactor = 1.1;
+const speedFactor = 0.9;
 
 io.on("connection", (socket) => {
   console.log(`Client connected: ${socket.id}`);
