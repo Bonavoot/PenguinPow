@@ -3,6 +3,7 @@ import daiba from "../assets/standingDaiba.gif";
 import dinkey from "../assets/standing.gif";
 import daibaAttacking from "../assets/daibaAttacking.gif";
 import dinkeyAttacking from "../assets/dinkeyAttacking.gif";
+import dinkeyJumping from "../assets/dinkeyJumping.gif";
 import { SocketContext } from "../SocketContext";
 import styled from "styled-components";
 

@@ -10,15 +10,15 @@ const Game = ({ rooms, roomName }) => {
     const keyState = { w: false, a: false, s: false, d: false, " ": false };
 
     const handleKeyDown = (e) => {
-      if (keyState.hasOwnProperty(e.key)) {
-        keyState[e.key] = true;
+      if (keyState.hasOwnProperty(e.key.toLowerCase())) {
+        keyState[e.key.toLowerCase()] = true;
         socket.emit("fighter_action", { id: socket.id, keys: keyState });
       }
     };
 
     const handleKeyUp = (e) => {
-      if (keyState.hasOwnProperty(e.key)) {
-        keyState[e.key] = false;
+      if (keyState.hasOwnProperty(e.key.toLowerCase())) {
+        keyState[e.key.toLowerCase()] = false;
         socket.emit("fighter_action", { id: socket.id, keys: keyState });
       }
     };
