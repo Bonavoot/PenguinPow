@@ -41,7 +41,7 @@ let index;
 let gameLoop = null;
 const TICK_RATE = 60;
 const delta = 1000 / TICK_RATE;
-const speedFactor = 0.9;
+const speedFactor = 0.8;
 
 io.on("connection", (socket) => {
   console.log(`Client connected: ${socket.id}`);
@@ -78,18 +78,19 @@ io.on("connection", (socket) => {
 
         // Diving / down
         if (player.keys.s) {
-          player.y -= delta * speedFactor + 5;
+          player.y -= delta * speedFactor + 15;
           player.y = Math.max(player.y, 75);
         }
 
         // Jumping
+
         if (player.keys.w && !player.isJumping) {
           player.isJumping = true;
           player.yVelocity = 25;
         }
 
         if (player.isJumping) {
-          player.yVelocity -= 1;
+          player.yVelocity -= 1.5;
           player.y += player.yVelocity;
           if (player.y < 75) {
             player.y = 75;

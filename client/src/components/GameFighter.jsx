@@ -43,7 +43,7 @@ const StyledImage = styled("img", {
   bottom: ${(props) => props.y}px;
   transform: scaleX(${(props) => props.facing});
   transition: left 0.15s ease-out;
-  height: 150px;
+  height: 185px;
 `;
 
 const GameFighter = ({ player, index }) => {

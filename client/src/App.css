@@ -155,10 +155,10 @@ body {
   overflow: hidden;
   position: relative;
   align-self: center;
-  width: 1350px;
-  height: 750px;
-  min-width: 1350px;
-  min-height: 750px;
+  width: 1280;
+  height: 720;
+  min-width: 1280px;
+  min-height: 720px;
   background-image: url("./assets/boxing.gif");
   background-position: bottom;
   background-repeat: no-repeat;
