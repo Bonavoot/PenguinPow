@@ -6,6 +6,7 @@ import { SocketContext } from "../SocketContext";
 import Ready from "./Ready";
 import { v4 as uuidv4 } from "uuid";
 import React from "react";
+import ellipses from "../assets/ellipses.gif";
 
 const Lobby = ({ rooms, roomName, handleGame }) => {
   const [players, setPlayers] = useState([]);
@@ -33,7 +34,10 @@ const Lobby = ({ rooms, roomName, handleGame }) => {
         );
       })}
       {players.length < 2 ? (
-        <div className="waiting">Waiting for opponent ...</div>
+        <div className="waiting">
+          Waiting for opponent{" "}
+          <img id="ellipses" src={ellipses} alt="waiting" />
+        </div>
       ) : null}
       <h1 className="select-penguin-txt">SELECT PENGUIN</h1>
       <FighterSelect />

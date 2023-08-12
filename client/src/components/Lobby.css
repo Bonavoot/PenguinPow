@@ -112,6 +112,10 @@ img {
   border-radius: 50%;
 }
 
+#ellipses {
+  height: 7px;
+}
+
 .exit-btn {
   position: absolute;
   bottom: 0;
