@@ -169,3 +169,7 @@ body {
 .game-container > [src*="daibaStanding"] {
   height: 165px;
 }
+
+.game-container > [src*="daibaDiving"] {
+  height: 145px;
+}

@@ -82,8 +82,13 @@ io.on("connection", (socket) => {
 
         // Diving / down
         if (player.keys.s) {
-          player.y -= delta * speedFactor + 15;
+          player.y -= delta * speedFactor + 10;
           player.y = Math.max(player.y, 75);
+          player.isDiving = true;
+        }
+
+        if (player.y <= 75) {
+          player.isDiving = false;
         }
 
         // Jumping
@@ -93,7 +98,7 @@ io.on("connection", (socket) => {
         }
 
         if (player.isJumping) {
-          player.yVelocity -= 1.2;
+          player.yVelocity -= 1.1;
           player.y += player.yVelocity;
           if (player.y < 75) {
             player.y = 75;

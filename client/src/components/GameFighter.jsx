@@ -2,6 +2,7 @@ import { useContext, useEffect, useState } from "react";
 import daiba from "../assets/daibaStanding.gif";
 //import daibaStrafing from "../assets/daibaStrafing.gif";
 import daibaJumping from "../assets/daibaJumping.gif";
+import daibaDiving from "../assets/daibaDiving.gif";
 import dinkey from "../assets/standing.gif";
 //import daibaAttacking from "../assets/daibaAttacking.gif";
 //import dinkeyAttacking from "../assets/dinkeyAttacking.gif";
@@ -18,7 +19,7 @@ const getImageSrc = (fighter, isDiving, isJumping, isAttacking, isStrafing) => {
 
     return dinkey;
   } else {
-    if (isDiving) return daiba;
+    if (isDiving) return daibaDiving;
     if (isJumping) return daibaJumping;
     if (isAttacking) return daiba;
     if (isStrafing) return daiba;
