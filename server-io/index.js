@@ -30,11 +30,11 @@ io.use(
 );
 
 const rooms = [
-  { id: "Room 1", players: [], readyCount: 0 },
-  { id: "Room 2", players: [], readyCount: 0 },
-  { id: "Room 3", players: [], readyCount: 0 },
-  { id: "Room 4", players: [], readyCount: 0 },
-  { id: "Room 5", players: [], readyCount: 0 },
+  { id: "Room 1", players: [], readyCount: 0, projectiles: [] },
+  { id: "Room 2", players: [], readyCount: 0, projectiles: [] },
+  { id: "Room 3", players: [], readyCount: 0, projectiles: [] },
+  { id: "Room 4", players: [], readyCount: 0, projectiles: [] },
+  { id: "Room 5", players: [], readyCount: 0, projectiles: [] },
 ];
 
 let index;
@@ -76,6 +76,10 @@ io.on("connection", (socket) => {
           player.isStrafing = true;
         }
 
+        if (!player.keys.a && !player.keys.d) {
+          player.isStrafing = false;
+        }
+
         // Diving / down
         if (player.keys.s) {
           player.y -= delta * speedFactor + 15;
@@ -83,24 +87,26 @@ io.on("connection", (socket) => {
         }
 
         // Jumping
-
         if (player.keys.w && !player.isJumping) {
           player.isJumping = true;
           player.yVelocity = 25;
         }
 
         if (player.isJumping) {
-          player.yVelocity -= 1.5;
+          player.yVelocity -= 1.2;
           player.y += player.yVelocity;
           if (player.y < 75) {
             player.y = 75;
             player.isJumping = false;
           }
         }
+        // Attacking
+        if (player.keys[" "]) {
+          player.isAttacking = true;
+        }
 
-        // if (player.keys[" "]) {
-        //   player.isAttacking = true;
-        // }
+        // Collision Detection
+        // if(player)
       });
 
       io.in(room.id).emit("fighter_action", {

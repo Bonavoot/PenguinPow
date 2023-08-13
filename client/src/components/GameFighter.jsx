@@ -1,9 +1,11 @@
 import { useContext, useEffect, useState } from "react";
-import daiba from "../assets/standingDaiba.gif";
+import daiba from "../assets/daibaStanding.gif";
+//import daibaStrafing from "../assets/daibaStrafing.gif";
+import daibaJumping from "../assets/daibaJumping.gif";
 import dinkey from "../assets/standing.gif";
-import daibaAttacking from "../assets/daibaAttacking.gif";
-import dinkeyAttacking from "../assets/dinkeyAttacking.gif";
-import dinkeyJumping from "../assets/dinkeyJumping.gif";
+//import daibaAttacking from "../assets/daibaAttacking.gif";
+//import dinkeyAttacking from "../assets/dinkeyAttacking.gif";
+//import dinkeyStrafing from "../assets/dinkeyStrafing.gif";
 import { SocketContext } from "../SocketContext";
 import styled from "styled-components";
 
@@ -11,14 +13,14 @@ const getImageSrc = (fighter, isDiving, isJumping, isAttacking, isStrafing) => {
   if (fighter === "lil-dinkey") {
     if (isDiving) return dinkey;
     if (isJumping) return dinkey;
-    if (isAttacking) return dinkeyAttacking;
+    if (isAttacking) return dinkey;
     if (isStrafing) return dinkey;
 
     return dinkey;
   } else {
     if (isDiving) return daiba;
-    if (isJumping) return daiba;
-    if (isAttacking) return daibaAttacking;
+    if (isJumping) return daibaJumping;
+    if (isAttacking) return daiba;
     if (isStrafing) return daiba;
     return daiba;
   }

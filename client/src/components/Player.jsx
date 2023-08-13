@@ -1,7 +1,7 @@
 import Fighter from "./Fighter";
 import { useState, useEffect } from "react";
 import standing from "../assets/standing.gif";
-import standingDaiba from "../assets/standingDaiba.gif";
+import standingDaiba from "../assets/daibaStanding.gif";
 
 const Player = ({ index, fighter }) => {
   const [penguin, setPenguin] = useState(standing);
