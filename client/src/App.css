@@ -159,7 +159,7 @@ body {
   height: 720;
   min-width: 1280px;
   min-height: 720px;
-  background-image: url("./assets/boxing.gif");
+  background-image: linear-gradient(steelblue, lightgrey, white, black);
   background-position: bottom;
   background-repeat: no-repeat;
   background-size: cover;
