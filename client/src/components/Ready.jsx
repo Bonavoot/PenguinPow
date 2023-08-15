@@ -46,19 +46,19 @@ const Ready = ({ rooms, roomName, handleGame }) => {
     <div className="ready">
       {ready ? (
         <>
-          <button onClick={handleReady} className="ready-btn" id="cancel-btn">
+          <button onClick={handleReady} id="cancel-btn">
             CANCEL
           </button>
-          <div className="ready-count">{count} / 2</div>
+          <div className="ready-count">{count} / 3</div>
         </>
       ) : (
         <>
-          {playerCount > 1 ? (
+          {playerCount > 2 ? (
             <>
               <button onClick={handleReady} className="ready-btn">
                 READY
               </button>
-              <div className="ready-count">{count} / 2</div>
+              <div className="ready-count">{count} / 3</div>
             </>
           ) : null}
         </>

@@ -16,7 +16,7 @@ const FighterSelect = () => {
   return (
     <div className="fighter-select">
       <img
-        style={{ height: "110px", width: "110px" }}
+        style={{ height: "100px", width: "100px" }}
         onClick={handleSelect}
         className="dinkey"
         src={dinkey}
@@ -26,10 +26,11 @@ const FighterSelect = () => {
       <img
         className="daiba"
         onClick={handleSelect}
-        style={{ height: "110px", width: "110px" }}
+        style={{ height: "100px", width: "100px" }}
         src={daiba}
         alt="Daiba"
       />
+
       <p className="daiba-name">DAIBA</p>
     </div>
   );

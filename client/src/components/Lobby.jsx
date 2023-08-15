@@ -35,12 +35,15 @@ const Lobby = ({ rooms, roomName, handleGame }) => {
       })}
       {players.length < 3 ? (
         <div className="waiting">
-          Waiting for opponent{" "}
+          Waiting for opponent
           <img id="ellipses" src={ellipses} alt="waiting" />
         </div>
       ) : null}
-      <h1 className="select-penguin-txt">SELECT PENGUIN</h1>
-      <FighterSelect />
+      <div className="select-penguin-container">
+        <h2 className="select-penguin-txt">SELECT PENGUIN</h2>
+        <FighterSelect />
+      </div>
+
       <button
         className="exit-btn"
         onClick={() => window.location.reload(false)}
