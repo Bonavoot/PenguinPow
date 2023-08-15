@@ -39,7 +39,7 @@ const rooms = [
 
 let index;
 let gameLoop = null;
-const TICK_RATE = 90;
+const TICK_RATE = 60;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.8;
 
@@ -93,20 +93,18 @@ io.on("connection", (socket) => {
                 playerHitbox.bottom > opponentHitbox.top
               ) {
                 console.log("hit");
-                if (player.isJumping) {
-                  if (player.facing === 1) {
-                    otherPlayer.x += 200;
-                  } else {
-                    otherPlayer.x -= 200;
-                  }
-                }
+
                 if (player.facing === 1) {
+                  otherPlayer.isHit = true;
                   otherPlayer.x += 200;
                 } else {
                   otherPlayer.x -= 200;
+                  otherPlayer.isHit = true;
                 }
-                // Here you can implement the logic for what should happen on a collision.
-                // For example, reduce the other player's health or trigger some animation.
+
+                setTimeout(() => {
+                  otherPlayer.isHit = false;
+                }, 300);
               }
             }
           }
@@ -186,6 +184,7 @@ io.on("connection", (socket) => {
         isAttacking: false,
         isStrafing: false,
         isDiving: false,
+        isHit: false,
         facing: -1,
         x: 1135,
         y: 75,
@@ -200,6 +199,7 @@ io.on("connection", (socket) => {
         isMoving: false,
         isStrafing: false,
         isDiving: false,
+        isHit: false,
         facing: 1,
         x: 15,
         y: 75,

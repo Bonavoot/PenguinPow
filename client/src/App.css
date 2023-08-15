@@ -173,3 +173,16 @@ body {
 .game-container > [src*="daibaDiving"] {
   height: 145px;
 }
+
+.game-container > [src*="dinkeyDiving"] {
+  height: 155px;
+  width: 115px;
+}
+
+.game-container > [src*="dinkeyHit"] {
+  height: 155px;
+}
+
+.game-container > [src*="daibaHit"] {
+  height: 158px;
+}

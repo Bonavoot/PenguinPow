@@ -4,18 +4,29 @@ import daiba from "../assets/daibaStanding.gif";
 import daibaJumping from "../assets/daibaJumping.gif";
 import daibaDiving from "../assets/daibaDiving.gif";
 import dinkey from "../assets/standing.gif";
+import dinkeyDiving from "../assets/dinkeyDiving.gif";
+import dinkeyHit from "../assets/dinkeyHit.gif";
+import daibaHit from "../assets/daibaHit.gif";
 //import daibaAttacking from "../assets/daibaAttacking.gif";
 //import dinkeyAttacking from "../assets/dinkeyAttacking.gif";
 //import dinkeyStrafing from "../assets/dinkeyStrafing.gif";
 import { SocketContext } from "../SocketContext";
 import styled from "styled-components";
 
-const getImageSrc = (fighter, isDiving, isJumping, isAttacking, isStrafing) => {
+const getImageSrc = (
+  fighter,
+  isDiving,
+  isJumping,
+  isAttacking,
+  isStrafing,
+  isHit
+) => {
   if (fighter === "dinkey") {
-    if (isDiving) return dinkey;
+    if (isDiving) return dinkeyDiving;
     if (isJumping) return dinkey;
     if (isAttacking) return dinkey;
     if (isStrafing) return dinkey;
+    if (isHit) return dinkeyHit;
 
     return dinkey;
   } else {
@@ -23,6 +34,7 @@ const getImageSrc = (fighter, isDiving, isJumping, isAttacking, isStrafing) => {
     if (isJumping) return daibaJumping;
     if (isAttacking) return daiba;
     if (isStrafing) return daiba;
+    if (isHit) return daibaHit;
     return daiba;
   }
 };
@@ -30,16 +42,22 @@ const getImageSrc = (fighter, isDiving, isJumping, isAttacking, isStrafing) => {
 const StyledImage = styled("img", {
   shouldForwardProp: (prop) =>
     isPropValid(prop) &&
-    !["fighter", "isJumping", "isDiving", "isAttacking", "isStrafing"].includes(
-      prop
-    ),
+    ![
+      "fighter",
+      "isJumping",
+      "isDiving",
+      "isAttacking",
+      "isStrafing",
+      "isHit",
+    ].includes(prop),
 }).attrs((props) => ({
   src: getImageSrc(
     props.fighter,
     props.isDiving,
     props.isJumping,
     props.isAttacking,
-    props.isStrafing
+    props.isStrafing,
+    props.isHit
   ),
 }))`
   position: absolute;
