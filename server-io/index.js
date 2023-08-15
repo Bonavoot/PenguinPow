@@ -39,7 +39,7 @@ const rooms = [
 
 let index;
 let gameLoop = null;
-const TICK_RATE = 60;
+const TICK_RATE = 90;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.8;
 
@@ -71,7 +71,7 @@ io.on("connection", (socket) => {
             const player = players[order[i]];
             const otherPlayer = players[order[1 - i]];
 
-            if (player.isDiving || player.isJumping) {
+            if (player.isDiving) {
               const playerHitbox = {
                 left: player.x - 50,
                 right: player.x + 50,
@@ -95,15 +95,15 @@ io.on("connection", (socket) => {
                 console.log("hit");
                 if (player.isJumping) {
                   if (player.facing === 1) {
-                    otherPlayer.x += 300;
+                    otherPlayer.x += 200;
                   } else {
-                    otherPlayer.x -= 300;
+                    otherPlayer.x -= 200;
                   }
                 }
                 if (player.facing === 1) {
-                  otherPlayer.x += 300;
+                  otherPlayer.x += 200;
                 } else {
-                  otherPlayer.x -= 300;
+                  otherPlayer.x -= 200;
                 }
                 // Here you can implement the logic for what should happen on a collision.
                 // For example, reduce the other player's health or trigger some animation.
