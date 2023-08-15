@@ -7,7 +7,7 @@ const Player = ({ index, fighter }) => {
   const [penguin, setPenguin] = useState(standing);
 
   useEffect(() => {
-    if (fighter === "lil-dinkey") {
+    if (fighter === "dinkey") {
       setPenguin(standing);
     } else if (fighter === "daiba") {
       setPenguin(standingDaiba);
@@ -18,7 +18,11 @@ const Player = ({ index, fighter }) => {
     <div className="player-lobby">
       <h1 className={`player-side player${index}`}>PLAYER {index + 1}</h1>
       <div>
-        <Fighter index={index} fighter={penguin} />
+        <Fighter
+          index={index}
+          fighterImgSrc={penguin}
+          fighterName={fighter.toUpperCase()}
+        />
       </div>
     </div>
   );

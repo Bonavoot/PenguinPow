@@ -63,6 +63,53 @@ io.on("connection", (socket) => {
         // Map boundaries
         player.x = Math.max(-50, Math.min(player.x, 1200));
 
+        if (room.players.length > 1) {
+          const player1 = room.players[0];
+          const player2 = room.players[1];
+
+          room.players.forEach((player, index) => {
+            if (player.isDiving || player.isJumping) {
+              const playerHitbox = {
+                left: player.x - 50,
+                right: player.x + 50,
+                top: player.y - 50,
+                bottom: player.y + 50,
+              };
+
+              const otherPlayer = index === 0 ? player2 : player1;
+              const opponentHitbox = {
+                left: otherPlayer.x - 50,
+                right: otherPlayer.x + 50,
+                top: otherPlayer.y - 50,
+                bottom: otherPlayer.y + 50,
+              };
+
+              if (
+                playerHitbox.left < opponentHitbox.right &&
+                playerHitbox.right > opponentHitbox.left &&
+                playerHitbox.top < opponentHitbox.bottom &&
+                playerHitbox.bottom > opponentHitbox.top
+              ) {
+                console.log("hit");
+                if (player.isJumping) {
+                  if (player.facing === 1) {
+                    otherPlayer.x += 300;
+                  } else {
+                    otherPlayer.x -= 300;
+                  }
+                }
+                if (player.facing === 1) {
+                  otherPlayer.x += 300;
+                } else {
+                  otherPlayer.x -= 300;
+                }
+                // Here you can implement the logic for what should happen on a collision.
+                // For example, reduce the other player's health or trigger some animation.
+              }
+            }
+          });
+        }
+
         // Strafing
         if (player.keys.d) {
           player.x += delta * speedFactor;
@@ -111,7 +158,6 @@ io.on("connection", (socket) => {
         }
 
         // Collision Detection
-        // if(player)
       });
 
       io.in(room.id).emit("fighter_action", {
@@ -133,7 +179,7 @@ io.on("connection", (socket) => {
     if (rooms[index].players.length > 0) {
       rooms[index].players.push({
         id: data.socketId,
-        fighter: "lil-dinkey",
+        fighter: "dinkey",
         isJumping: false,
         isAttacking: false,
         isStrafing: false,
@@ -146,7 +192,7 @@ io.on("connection", (socket) => {
     } else {
       rooms[index].players.push({
         id: data.socketId,
-        fighter: "lil-dinkey",
+        fighter: "dinkey",
         isJumping: false,
         isAttacking: false,
         isMoving: false,

@@ -1,5 +1,5 @@
 import { useContext } from "react";
-import lilDinkey from "../assets/lil-dinkey-avatar.png";
+import dinkey from "../assets/lil-dinkey-avatar.png";
 import daiba from "../assets/daiba-avatar.png";
 import { SocketContext } from "../SocketContext";
 
@@ -15,22 +15,22 @@ const FighterSelect = () => {
 
   return (
     <div className="fighter-select">
-      <button onClick={handleSelect}>
-        <img
-          style={{ height: "110px", width: "110px" }}
-          className="lil-dinkey"
-          src={lilDinkey}
-          alt="lil-dinkey"
-        />
-      </button>
-      <button onClick={handleSelect}>
-        <img
-          className="daiba"
-          style={{ height: "110px", width: "110px" }}
-          src={daiba}
-          alt="Daiba"
-        />
-      </button>
+      <img
+        style={{ height: "110px", width: "110px" }}
+        onClick={handleSelect}
+        className="dinkey"
+        src={dinkey}
+        alt="dinkey"
+      />
+      <p className="dinkey-name">DINKEY</p>
+      <img
+        className="daiba"
+        onClick={handleSelect}
+        style={{ height: "110px", width: "110px" }}
+        src={daiba}
+        alt="Daiba"
+      />
+      <p className="daiba-name">DAIBA</p>
     </div>
   );
 };

@@ -11,7 +11,7 @@ import { SocketContext } from "../SocketContext";
 import styled from "styled-components";
 
 const getImageSrc = (fighter, isDiving, isJumping, isAttacking, isStrafing) => {
-  if (fighter === "lil-dinkey") {
+  if (fighter === "dinkey") {
     if (isDiving) return dinkey;
     if (isJumping) return dinkey;
     if (isAttacking) return dinkey;
