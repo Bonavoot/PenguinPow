@@ -64,10 +64,13 @@ io.on("connection", (socket) => {
         player.x = Math.max(-50, Math.min(player.x, 1200));
 
         if (room.players.length > 1) {
-          const player1 = room.players[0];
-          const player2 = room.players[1];
+          const players = room.players;
+          const order = Math.random() > 0.5 ? [0, 1] : [1, 0];
 
-          room.players.forEach((player, index) => {
+          for (let i = 0; i < 2; i++) {
+            const player = players[order[i]];
+            const otherPlayer = players[order[1 - i]];
+
             if (player.isDiving || player.isJumping) {
               const playerHitbox = {
                 left: player.x - 50,
@@ -76,7 +79,6 @@ io.on("connection", (socket) => {
                 bottom: player.y + 50,
               };
 
-              const otherPlayer = index === 0 ? player2 : player1;
               const opponentHitbox = {
                 left: otherPlayer.x - 50,
                 right: otherPlayer.x + 50,
@@ -107,7 +109,7 @@ io.on("connection", (socket) => {
                 // For example, reduce the other player's health or trigger some animation.
               }
             }
-          });
+          }
         }
 
         // Strafing
