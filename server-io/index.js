@@ -59,55 +59,11 @@ io.on("connection", (socket) => {
 
   function tick(delta) {
     rooms.forEach((room) => {
+      if (room.players.length < 3) return;
+
       room.players.forEach((player) => {
-        // Map boundaries
-        player.x = Math.max(-50, Math.min(player.x, 1200));
-
-        if (room.players.length > 1) {
-          const players = room.players;
-          const order = Math.random() > 0.5 ? [0, 1] : [1, 0];
-
-          for (let i = 0; i < 2; i++) {
-            const player = players[order[i]];
-            const otherPlayer = players[order[1 - i]];
-
-            if (player.isDiving) {
-              const playerHitbox = {
-                left: player.x - 50,
-                right: player.x + 50,
-                top: player.y - 50,
-                bottom: player.y + 50,
-              };
-
-              const opponentHitbox = {
-                left: otherPlayer.x - 50,
-                right: otherPlayer.x + 50,
-                top: otherPlayer.y - 50,
-                bottom: otherPlayer.y + 50,
-              };
-
-              if (
-                playerHitbox.left < opponentHitbox.right &&
-                playerHitbox.right > opponentHitbox.left &&
-                playerHitbox.top < opponentHitbox.bottom &&
-                playerHitbox.bottom > opponentHitbox.top
-              ) {
-                console.log("hit");
-
-                if (player.facing === 1) {
-                  otherPlayer.isHit = true;
-                  otherPlayer.x += 200;
-                } else {
-                  otherPlayer.x -= 200;
-                  otherPlayer.isHit = true;
-                }
-
-                setTimeout(() => {
-                  otherPlayer.isHit = false;
-                }, 300);
-              }
-            }
-          }
+        if (player.x < -650 || player.x > 1780) {
+          console.log("game over!");
         }
 
         // Strafing
@@ -152,19 +108,71 @@ io.on("connection", (socket) => {
             player.isJumping = false;
           }
         }
-        // Attacking
-        if (player.keys[" "]) {
-          player.isAttacking = true;
+
+        for (let i = 0; i < 3; i++) {
+          const player = room.players[i];
+
+          if (player.isDiving) {
+            for (let j = 0; j < 3; j++) {
+              if (i !== j) {
+                const otherPlayer = room.players[j];
+                checkCollision(player, otherPlayer);
+              }
+            }
+          }
         }
 
-        // Collision Detection
+        // Attacking
+        // if (player.keys[" "]) {
+        //   player.isAttacking = true;
+        // }
       });
 
       io.in(room.id).emit("fighter_action", {
         player1: room.players[0],
         player2: room.players[1],
+        player3: room.players[2],
       });
     });
+  }
+
+  function checkCollision(player, otherPlayer) {
+    const playerHitbox = {
+      left: player.x - 50,
+      right: player.x + 50,
+      top: player.y - 50,
+      bottom: player.y + 50,
+    };
+
+    const opponentHitbox = {
+      left: otherPlayer.x - 50,
+      right: otherPlayer.x + 50,
+      top: otherPlayer.y - 50,
+      bottom: otherPlayer.y + 50,
+    };
+
+    if (
+      playerHitbox.left < opponentHitbox.right &&
+      playerHitbox.right > opponentHitbox.left &&
+      playerHitbox.top < opponentHitbox.bottom &&
+      playerHitbox.bottom > opponentHitbox.top
+    ) {
+      console.log("hit");
+
+      if (player.facing === 1) {
+        otherPlayer.isHit = true;
+        otherPlayer.facing = -1;
+        otherPlayer.x += 200;
+      } else {
+        otherPlayer.x -= 200;
+        otherPlayer.facing = 1;
+        otherPlayer.isHit = true;
+      }
+
+      setTimeout(() => {
+        otherPlayer.isHit = false;
+      }, 300);
+    }
   }
 
   socket.on("get_rooms", () => {
@@ -176,7 +184,7 @@ io.on("connection", (socket) => {
     console.log(`${data.socketId} joined ${data.roomId}`);
     index = rooms.findIndex((room) => room.id === data.roomId);
 
-    if (rooms[index].players.length > 0) {
+    if (rooms[index].players.length < 1) {
       rooms[index].players.push({
         id: data.socketId,
         fighter: "dinkey",
@@ -186,11 +194,12 @@ io.on("connection", (socket) => {
         isDiving: false,
         isHit: false,
         facing: -1,
+        health: 100,
         x: 1135,
         y: 75,
         keys: { w: false, a: false, s: false, d: false, " ": false },
       });
-    } else {
+    } else if (rooms[index].players.length === 1) {
       rooms[index].players.push({
         id: data.socketId,
         fighter: "dinkey",
@@ -201,7 +210,24 @@ io.on("connection", (socket) => {
         isDiving: false,
         isHit: false,
         facing: 1,
+        health: 100,
         x: 15,
+        y: 75,
+        keys: { w: false, a: false, s: false, d: false, " ": false },
+      });
+    } else if (rooms[index].players.length === 2) {
+      rooms[index].players.push({
+        id: data.socketId,
+        fighter: "dinkey",
+        isJumping: false,
+        isAttacking: false,
+        isMoving: false,
+        isStrafing: false,
+        isDiving: false,
+        isHit: false,
+        facing: 1,
+        health: 100,
+        x: 600,
         y: 75,
         keys: { w: false, a: false, s: false, d: false, " ": false },
       });
@@ -230,7 +256,7 @@ io.on("connection", (socket) => {
       io.in(data.roomId).emit("lobby", rooms[index].players);
     }
 
-    if (rooms[index].readyCount > 1) {
+    if (rooms[index].readyCount > 2) {
       io.in(data.roomId).emit("game_start", rooms[index]);
     }
 

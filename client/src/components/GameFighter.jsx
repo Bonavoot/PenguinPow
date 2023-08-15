@@ -74,10 +74,12 @@ const GameFighter = ({ player, index }) => {
 
   useEffect(() => {
     socket.on("fighter_action", (data) => {
-      if (index < 1) {
+      if (index === 0) {
         setPenguin(data.player1);
-      } else {
+      } else if (index === 1) {
         setPenguin(data.player2);
+      } else if (index === 2) {
+        setPenguin(data.player3);
       }
     });
 

@@ -175,8 +175,8 @@ body {
 }
 
 .game-container > [src*="dinkeyDiving"] {
-  height: 155px;
-  width: 115px;
+  height: 165px;
+  width: 110px;
 }
 
 .game-container > [src*="dinkeyHit"] {
