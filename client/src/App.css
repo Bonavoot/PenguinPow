@@ -5,7 +5,7 @@ body {
   overflow: hidden;
   margin: 0;
   color: white;
-  background-image: linear-gradient(white, steelblue, rgb(0, 0, 0));
+  background-image: url("assets/map.gif");
 }
 
 .main-menu {
