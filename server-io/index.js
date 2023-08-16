@@ -42,7 +42,7 @@ let gameLoop = null;
 const TICK_RATE = 60;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.8;
-const GROUND_LEVEL = 75;
+const GROUND_LEVEL = 100;
 
 io.on("connection", (socket) => {
   console.log(`Client connected: ${socket.id}`);
@@ -63,6 +63,29 @@ io.on("connection", (socket) => {
       if (room.players.length < 3) return;
 
       room.players.forEach((player) => {
+        if (player.isHit) {
+          player.x += player.knockbackVelocity.x * delta * speedFactor;
+          player.y += player.knockbackVelocity.y * delta * speedFactor;
+
+          // Apply some deceleration or friction
+          player.knockbackVelocity.x *= 0.8; // Adjust as needed
+          player.knockbackVelocity.y *= 0.8;
+
+          // When the velocity is low enough, you can stop the knockback effect
+          if (Math.abs(player.knockbackVelocity.x) < 0.1) {
+            player.knockbackVelocity.x = 0;
+          }
+          if (Math.abs(player.knockbackVelocity.y) < 0.1) {
+            player.knockbackVelocity.y = 0;
+          }
+
+          // Make sure the player doesn't float in the air
+          if (player.y < 75) {
+            player.y = 75;
+            player.knockbackVelocity.y = 0; // Reset vertical knockback
+          }
+        }
+
         if (player.isHit) return;
 
         if (player.x < -650 || player.x > 1780) {
@@ -169,7 +192,8 @@ io.on("connection", (socket) => {
           (otherPlayer.isStrafing = false),
           (otherPlayer.isDiving = false),
           (otherPlayer.facing = -1);
-        otherPlayer.x += 200;
+        otherPlayer.knockbackVelocity.x = 6;
+        otherPlayer.knockbackVelocity.y = 3;
       } else {
         otherPlayer.isHit = true;
         (otherPlayer.isJumping = false),
@@ -177,7 +201,8 @@ io.on("connection", (socket) => {
           (otherPlayer.isStrafing = false),
           (otherPlayer.isDiving = false),
           (otherPlayer.facing = 1);
-        otherPlayer.x -= 200;
+        otherPlayer.knockbackVelocity.x = -6;
+        otherPlayer.knockbackVelocity.y = 3;
       }
 
       setTimeout(() => {
@@ -208,6 +233,7 @@ io.on("connection", (socket) => {
         health: 100,
         x: 1135,
         y: GROUND_LEVEL,
+        knockbackVelocity: { x: 0, y: 0 },
         keys: { w: false, a: false, s: false, d: false, " ": false },
       });
     } else if (rooms[index].players.length === 1) {
@@ -224,6 +250,7 @@ io.on("connection", (socket) => {
         health: 100,
         x: 15,
         y: GROUND_LEVEL,
+        knockbackVelocity: { x: 0, y: 0 },
         keys: { w: false, a: false, s: false, d: false, " ": false },
       });
     } else if (rooms[index].players.length === 2) {
@@ -240,6 +267,7 @@ io.on("connection", (socket) => {
         health: 100,
         x: 600,
         y: GROUND_LEVEL,
+        knockbackVelocity: { x: 0, y: 0 },
         keys: { w: false, a: false, s: false, d: false, " ": false },
       });
     }
