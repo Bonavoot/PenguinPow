@@ -163,12 +163,20 @@ io.on("connection", (socket) => {
 
       if (player.facing === 1) {
         otherPlayer.isHit = true;
-        otherPlayer.facing = -1;
-        otherPlayer.x += 300;
+        (otherPlayer.isJumping = false),
+          (otherPlayer.isAttacking = false),
+          (otherPlayer.isStrafing = false),
+          (otherPlayer.isDiving = false),
+          (otherPlayer.facing = -1);
+        otherPlayer.x += 200;
       } else {
         otherPlayer.isHit = true;
-        otherPlayer.facing = 1;
-        otherPlayer.x -= 300;
+        (otherPlayer.isJumping = false),
+          (otherPlayer.isAttacking = false),
+          (otherPlayer.isStrafing = false),
+          (otherPlayer.isDiving = false),
+          (otherPlayer.facing = 1);
+        otherPlayer.x -= 200;
       }
 
       setTimeout(() => {
