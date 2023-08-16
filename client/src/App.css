@@ -37,7 +37,7 @@ body {
   border-radius: 10px;
   width: fit-content;
   padding: 5px 20px;
-  border: 1px grey solid;
+  border: none;
   font-size: 2em;
   color: white;
   font-family: "Bungee", cursive;

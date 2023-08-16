@@ -62,6 +62,8 @@ io.on("connection", (socket) => {
       if (room.players.length < 3) return;
 
       room.players.forEach((player) => {
+        if (player.isHit) return;
+
         if (player.x < -650 || player.x > 1780) {
           console.log("game over!");
         }
@@ -160,13 +162,16 @@ io.on("connection", (socket) => {
       console.log("hit");
 
       if (player.facing === 1) {
-        otherPlayer.isHit = true;
         otherPlayer.facing = -1;
         otherPlayer.x += 200;
       } else {
-        otherPlayer.x -= 200;
+        // otherPlayer.isHit = true;
+        // otherPlayer.isJumping = false,
+        // otherPlayer.isAttacking = false,
+        // otherPlayer.isStrafing = false,
+        // otherPlayer.isDiving = false,
         otherPlayer.facing = 1;
-        otherPlayer.isHit = true;
+        otherPlayer.x -= 200;
       }
 
       setTimeout(() => {
@@ -193,7 +198,7 @@ io.on("connection", (socket) => {
         isStrafing: false,
         isDiving: false,
         isHit: false,
-        facing: -1,
+        facing: 1,
         health: 100,
         x: 1135,
         y: 75,
@@ -225,7 +230,7 @@ io.on("connection", (socket) => {
         isStrafing: false,
         isDiving: false,
         isHit: false,
-        facing: 1,
+        facing: -1,
         health: 100,
         x: 600,
         y: 75,
