@@ -42,6 +42,7 @@ let gameLoop = null;
 const TICK_RATE = 60;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.8;
+const GROUND_LEVEL = 75;
 
 io.on("connection", (socket) => {
   console.log(`Client connected: ${socket.id}`);
@@ -85,14 +86,14 @@ io.on("connection", (socket) => {
           player.isStrafing = false;
         }
 
-        // Diving / down
-        if (player.keys.s) {
+        // Diving / down or gravity
+        if (player.keys.s || player.y > GROUND_LEVEL) {
           player.y -= delta * speedFactor + 10;
-          player.y = Math.max(player.y, 75);
-          player.isDiving = true;
+          player.y = Math.max(player.y, GROUND_LEVEL);
+          player.isDiving = player.keys.s;
         }
 
-        if (player.y <= 75) {
+        if (player.y <= GROUND_LEVEL) {
           player.isDiving = false;
         }
 
@@ -105,8 +106,8 @@ io.on("connection", (socket) => {
         if (player.isJumping) {
           player.yVelocity -= 1.1;
           player.y += player.yVelocity;
-          if (player.y < 75) {
-            player.y = 75;
+          if (player.y < GROUND_LEVEL) {
+            player.y = GROUND_LEVEL;
             player.isJumping = false;
           }
         }
@@ -206,7 +207,7 @@ io.on("connection", (socket) => {
         facing: 1,
         health: 100,
         x: 1135,
-        y: 75,
+        y: GROUND_LEVEL,
         keys: { w: false, a: false, s: false, d: false, " ": false },
       });
     } else if (rooms[index].players.length === 1) {
@@ -222,7 +223,7 @@ io.on("connection", (socket) => {
         facing: 1,
         health: 100,
         x: 15,
-        y: 75,
+        y: GROUND_LEVEL,
         keys: { w: false, a: false, s: false, d: false, " ": false },
       });
     } else if (rooms[index].players.length === 2) {
@@ -238,7 +239,7 @@ io.on("connection", (socket) => {
         facing: -1,
         health: 100,
         x: 600,
-        y: 75,
+        y: GROUND_LEVEL,
         keys: { w: false, a: false, s: false, d: false, " ": false },
       });
     }
