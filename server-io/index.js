@@ -87,7 +87,7 @@ io.on("connection", (socket) => {
         }
 
         // Diving / down or gravity
-        if (player.keys.s || player.y > GROUND_LEVEL) {
+        if (player.keys.s || (player.y > GROUND_LEVEL && !player.isJumping)) {
           player.y -= delta * speedFactor + 10;
           player.y = Math.max(player.y, GROUND_LEVEL);
           player.isDiving = player.keys.s;
