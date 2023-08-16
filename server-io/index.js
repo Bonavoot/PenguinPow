@@ -162,16 +162,13 @@ io.on("connection", (socket) => {
       console.log("hit");
 
       if (player.facing === 1) {
+        otherPlayer.isHit = true;
         otherPlayer.facing = -1;
-        otherPlayer.x += 200;
+        otherPlayer.x += 300;
       } else {
-        // otherPlayer.isHit = true;
-        // otherPlayer.isJumping = false,
-        // otherPlayer.isAttacking = false,
-        // otherPlayer.isStrafing = false,
-        // otherPlayer.isDiving = false,
+        otherPlayer.isHit = true;
         otherPlayer.facing = 1;
-        otherPlayer.x -= 200;
+        otherPlayer.x -= 300;
       }
 
       setTimeout(() => {
