@@ -11,6 +11,9 @@
   margin-top: -50px;
   align-self: center;
   gap: 150px;
+  background-image: linear-gradient(SlateBlue, white, LightSkyBlue, black);
+
+  border: black 3px solid;
 }
 
 .player-lobby {
@@ -29,7 +32,7 @@
   flex-direction: column;
   align-items: center;
   gap: 5px;
-  color: rgb(0, 0, 0);
+  color: black;
   margin-top: -250px;
 }
 
@@ -47,14 +50,14 @@
 
 .player1 {
   font-family: "Bungee Outline", cursive;
-  color: purple;
+  color: rgb(245, 190, 71);
   font-size: 28pt;
   text-align: center;
 }
 
 .player2 {
   font-family: "Bungee Outline", cursive;
-  color: rgb(245, 190, 71);
+  color: purple;
 }
 
 .fighter1,
@@ -69,7 +72,7 @@
 
 .select-penguin-container {
   position: absolute;
-  bottom: -10px;
+  bottom: 15px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -79,11 +82,12 @@
 .select-penguin-txt {
   font-size: 2.1em;
   font-weight: 400;
-  color: rgb(255, 255, 255);
+  color: rgb(0, 0, 0);
   font-family: "Bungee", cursive;
-  width: 400px;
+  width: 1000px;
   text-align: center;
-  border-bottom: 2px white solid;
+  border-top: black 3px solid;
+  margin: 0;
 }
 
 .fighter-select {
@@ -121,10 +125,9 @@
 .dinkey-name,
 .daiba-name {
   position: relative;
-  color: black;
+  color: rgb(255, 255, 255);
   font-size: 1em;
   font-family: "Bungee", cursive;
-  z-index: 99;
 }
 
 /* .fighter-container {
@@ -136,13 +139,13 @@
 
 .exit-btn {
   position: absolute;
-  bottom: 0;
-  left: 0;
+  bottom: 84px;
+  left: 100px;
   background-color: black;
   padding-left: 20px;
   padding-right: 20px;
   border-radius: 10px;
-  border: 2px black solid;
+  border: none;
   font-size: 21pt;
   color: white;
   font-family: "Bungee", cursive;
@@ -162,8 +165,8 @@
   gap: 20px;
   position: absolute;
   right: 0px;
-  bottom: 20px;
-  right: 150px;
+  bottom: 80px;
+  right: 110px;
 }
 
 .ready-btn {
@@ -199,7 +202,7 @@
     opacity: 1;
   }
   50% {
-    opacity: 0.3;
+    opacity: 0.4;
   }
   100% {
     opacity: 0.990099773451273;
@@ -214,7 +217,7 @@
     opacity: 1;
   }
   50% {
-    opacity: 0.3;
+    opacity: 0.4;
   }
   100% {
     opacity: 0.990099773451273;
@@ -229,7 +232,7 @@
     opacity: 1;
   }
   50% {
-    opacity: 0.3;
+    opacity: 0.4;
   }
   100% {
     opacity: 0.990099773451273;
@@ -244,7 +247,7 @@
     opacity: 1;
   }
   50% {
-    opacity: 0.3;
+    opacity: 0.4;
   }
   100% {
     opacity: 0.990099773451273;
@@ -259,7 +262,7 @@
     opacity: 1;
   }
   50% {
-    opacity: 0.3;
+    opacity: 0.4;
   }
   100% {
     opacity: 0.990099773451273;

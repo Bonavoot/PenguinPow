@@ -5,7 +5,7 @@ body {
   overflow: hidden;
   margin: 0;
   color: white;
-  background-image: url("assets/map.gif");
+  background-image: url("./assets/game-map-old.png");
 }
 
 .main-menu {
@@ -62,13 +62,13 @@ body {
 .rooms {
   display: flex;
   flex-direction: column;
-  margin-top: 50px;
+  margin-top: -25px;
   background-color: black;
   height: 600px;
   width: 800px;
   align-self: center;
   padding: 25px;
-  border: solid rgb(70, 70, 70) 6px;
+  border: solid grey 3px;
   position: relative;
   font-family: cursive;
 }
@@ -159,19 +159,27 @@ body {
   height: 720;
   min-width: 1280px;
   min-height: 720px;
-  background-image: linear-gradient(steelblue, lightgrey, white, black);
-  background-position: bottom;
+  background-image: url(./assets/game-map.png);
   background-repeat: no-repeat;
   background-size: cover;
   box-shadow: 0px 0px 4px 4px black;
+  margin-top: -50px;
 }
 
 .game-container > [src*="daibaStanding"] {
-  height: 165px;
+  height: 145px;
 }
 
 .game-container > [src*="daibaDiving"] {
-  height: 145px;
+  height: 125px;
+}
+
+.game-container > [src*="standing"] {
+  height: 160px;
+}
+
+.game-container > [src*="daibaHit"] {
+  height: 140px;
 }
 
 .game-container > [src*="dinkeyDiving"] {
@@ -181,8 +189,4 @@ body {
 
 .game-container > [src*="dinkeyHit"] {
   height: 155px;
-}
-
-.game-container > [src*="daibaHit"] {
-  height: 158px;
 }
