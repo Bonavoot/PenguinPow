@@ -63,7 +63,11 @@ io.on("connection", (socket) => {
       if (room.players.length < 3) return;
 
       room.players.forEach((player) => {
-        if (player.isDead) return;
+        if (player.isDead) {
+          player.y = GROUND_LEVEL;
+
+          return;
+        }
         if (player.isHit) {
           player.x += player.knockbackVelocity.x * delta * speedFactor;
           player.y += player.knockbackVelocity.y * delta * speedFactor;
