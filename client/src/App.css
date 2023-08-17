@@ -192,10 +192,10 @@ body {
   overflow: hidden;
   position: relative;
   align-self: center;
-  width: 1350;
-  height: 720;
-  min-width: 1350px;
-  min-height: 720px;
+  width: 100em;
+  height: 50em;
+  min-width: 100em;
+  min-height: 50em;
   background-image: url(./assets/snow-map.gif);
   background-repeat: no-repeat;
   background-size: cover;
