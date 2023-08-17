@@ -1,8 +1,6 @@
 import { useContext, useEffect } from "react";
 import { SocketContext } from "../SocketContext";
 import GameFighter from "./GameFighter";
-import GameUi from "./GameUi";
-
 const Game = ({ rooms, roomName }) => {
   const { socket } = useContext(SocketContext);
   let index = rooms.findIndex((room) => room.id === roomName);
@@ -35,7 +33,6 @@ const Game = ({ rooms, roomName }) => {
 
   return (
     <div className="game-container">
-      <GameUi rooms={rooms} index={index} />
       {rooms[index].players.map((player, i) => {
         return <GameFighter key={player.id + i} player={player} index={i} />;
       })}

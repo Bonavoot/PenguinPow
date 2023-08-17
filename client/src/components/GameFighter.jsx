@@ -12,6 +12,7 @@ import daibaHit from "../assets/daibaHit.gif";
 //import dinkeyStrafing from "../assets/dinkeyStrafing.gif";
 import { SocketContext } from "../SocketContext";
 import styled from "styled-components";
+import PlayerHealthUi from "./PlayerHealthUi";
 
 const getImageSrc = (
   fighter,
@@ -81,15 +82,19 @@ const StyledLabel = styled.div`
 const GameFighter = ({ player, index }) => {
   const { socket } = useContext(SocketContext);
   const [penguin, setPenguin] = useState(player);
+  const [health, setHealth] = useState(player);
 
   useEffect(() => {
     socket.on("fighter_action", (data) => {
       if (index === 0) {
         setPenguin(data.player1);
+        setHealth(data.player1.health);
       } else if (index === 1) {
         setPenguin(data.player2);
+        setHealth(data.player2.health);
       } else if (index === 2) {
         setPenguin(data.player3);
+        setHealth(data.player3.health);
       }
     });
 
@@ -100,6 +105,7 @@ const GameFighter = ({ player, index }) => {
 
   return (
     <>
+      <PlayerHealthUi health={health} index={index} />
       <StyledLabel {...penguin}>P{index + 1}</StyledLabel>
       <StyledImage {...penguin} />
     </>

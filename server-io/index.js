@@ -159,6 +159,12 @@ io.on("connection", (socket) => {
         player2: room.players[1],
         player3: room.players[2],
       });
+
+      io.in(room.id).emit("update_player_health", {
+        player1Health: room.players[0].health,
+        player2Health: room.players[1].health,
+        player3Health: room.players[2].health,
+      });
     });
   }
 
