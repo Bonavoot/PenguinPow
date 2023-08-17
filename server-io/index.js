@@ -247,7 +247,7 @@ io.on("connection", (socket) => {
       rooms[index].players.push({
         id: data.socketId,
         fighter: "daiba",
-        color: "DarkGoldenRod",
+        color: "orange",
         isJumping: false,
         isAttacking: false,
         isMoving: false,

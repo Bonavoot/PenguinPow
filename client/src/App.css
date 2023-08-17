@@ -177,13 +177,12 @@ body {
   background-color: black;
   width: 150px;
   height: 25px;
-  margin-top: -10px;
+
   border: black solid 3px;
 }
 
 .ui-player-health {
   background-color: rgb(0, 255, 0);
-
   height: 100%;
 }
 
