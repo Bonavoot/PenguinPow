@@ -214,7 +214,7 @@ body {
 }
 
 .game-container > [src*="daibaHit"] {
-  height: 120px;
+  height: 135px;
 }
 
 .game-container > [src*="daibaDeath"] {
