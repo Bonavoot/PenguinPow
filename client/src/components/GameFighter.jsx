@@ -67,6 +67,17 @@ const StyledImage = styled("img", {
   height: 185px;
 `;
 
+const StyledLabel = styled.div`
+  position: absolute;
+  bottom: ${(props) => props.y + 135}px; // Adjust based on the image height
+  left: ${(props) =>
+    props.facing === -1
+      ? props.x + 45
+      : props.x + 65}px; // Adjust based on the label position
+  color: ${(props) => props.color || "black"};
+  font-family: "Bungee";
+`;
+
 const GameFighter = ({ player, index }) => {
   const { socket } = useContext(SocketContext);
   const [penguin, setPenguin] = useState(player);
@@ -87,7 +98,12 @@ const GameFighter = ({ player, index }) => {
     };
   }, []);
 
-  return <StyledImage {...penguin} />;
+  return (
+    <>
+      <StyledLabel {...penguin}>P{index + 1}</StyledLabel>
+      <StyledImage {...penguin} />
+    </>
+  );
 };
 
 export default GameFighter;

@@ -151,35 +151,77 @@ body {
   background-color: gray;
 }
 
+.ui-player-container {
+  display: flex;
+  flex-direction: column;
+  margin-left: 15px;
+  margin-top: 15px;
+}
+
+.ui-player-name {
+  font-family: "Bungee";
+  font-size: 1.2em;
+}
+
+#ui-name-1 {
+  color: rgb(0, 238, 255);
+}
+#ui-name-2 {
+  color: rgb(245, 190, 71);
+}
+
+#ui-name-3 {
+  color: purple;
+}
+
+.ui-player-health-container {
+  background-color: black;
+  width: 150px;
+  height: 25px;
+  margin-top: -10px;
+  border: black solid 3px;
+}
+
+.ui-player-health {
+  background-color: rgb(0, 255, 0);
+
+  height: 100%;
+}
+
 .game-container {
   overflow: hidden;
   position: relative;
   align-self: center;
-  width: 1280;
+  width: 1350;
   height: 720;
-  min-width: 1280px;
+  min-width: 1350px;
   min-height: 720px;
-  background-image: url(./assets/game-map.png);
+  background-image: url(./assets/snow-map.gif);
   background-repeat: no-repeat;
   background-size: cover;
+  background-position: center;
   box-shadow: 0px 0px 4px 4px black;
   margin-top: -50px;
 }
 
 .game-container > [src*="daibaStanding"] {
-  height: 145px;
+  height: 135px;
 }
 
 .game-container > [src*="daibaDiving"] {
   height: 125px;
 }
 
-.game-container > [src*="standing"] {
-  height: 160px;
+.game-container > [src*="daibaJumping"] {
+  height: 147px;
 }
 
 .game-container > [src*="daibaHit"] {
-  height: 140px;
+  height: 120px;
+}
+
+.game-container > [src*="standing"] {
+  height: 160px;
 }
 
 .game-container > [src*="dinkeyDiving"] {

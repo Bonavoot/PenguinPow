@@ -1,6 +1,7 @@
 import { useContext, useEffect } from "react";
 import { SocketContext } from "../SocketContext";
 import GameFighter from "./GameFighter";
+import GameUi from "./GameUi";
 
 const Game = ({ rooms, roomName }) => {
   const { socket } = useContext(SocketContext);
@@ -34,6 +35,7 @@ const Game = ({ rooms, roomName }) => {
 
   return (
     <div className="game-container">
+      <GameUi rooms={rooms} index={index} />
       {rooms[index].players.map((player, i) => {
         return <GameFighter key={player.id + i} player={player} index={i} />;
       })}
@@ -42,29 +44,3 @@ const Game = ({ rooms, roomName }) => {
 };
 
 export default Game;
-
-/*
-dont give each fighter its own personal emit and shit for inputs
-keep it generic, and let React handle the animation rendering depending on the 
-fighter picked
-for example 
-fighter {
-  attack: false,
-  jump: false,
-  x: 0,
-  y: 0,
-}
-this is what the server will recieve
-
-React needs to handle the values of the animations x and y 
-
-left: fighter.x
-bottom: fighter.y
-
-if player is moving on x axis, we need to use the walking animation 
-if jumping, jumping animation y axis
-attacking animation 
-
-IDEAS: 
-- MAKE THROWABLE BALL IN THE MIDDLE EVERY ROUND THAT DOES DAMAGE IF THROWN 
-*/

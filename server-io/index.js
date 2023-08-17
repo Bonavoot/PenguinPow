@@ -69,7 +69,7 @@ io.on("connection", (socket) => {
 
           // Apply some deceleration or friction
           player.knockbackVelocity.x *= 0.8; // Adjust as needed
-          player.knockbackVelocity.y *= 0.8;
+          player.knockbackVelocity.y *= 0.5;
 
           // When the velocity is low enough, you can stop the knockback effect
           if (Math.abs(player.knockbackVelocity.x) < 0.1) {
@@ -80,8 +80,8 @@ io.on("connection", (socket) => {
           }
 
           // Make sure the player doesn't float in the air
-          if (player.y < 75) {
-            player.y = 75;
+          if (player.y < GROUND_LEVEL) {
+            player.y = GROUND_LEVEL;
             player.knockbackVelocity.y = 0; // Reset vertical knockback
           }
         }
@@ -123,11 +123,11 @@ io.on("connection", (socket) => {
         // Jumping
         if (player.keys.w && !player.isJumping) {
           player.isJumping = true;
-          player.yVelocity = 25;
+          player.yVelocity = 22;
         }
 
         if (player.isJumping) {
-          player.yVelocity -= 1.1;
+          player.yVelocity -= 1;
           player.y += player.yVelocity;
           if (player.y < GROUND_LEVEL) {
             player.y = GROUND_LEVEL;
@@ -181,9 +181,11 @@ io.on("connection", (socket) => {
       playerHitbox.left < opponentHitbox.right &&
       playerHitbox.right > opponentHitbox.left &&
       playerHitbox.top < opponentHitbox.bottom &&
-      playerHitbox.bottom > opponentHitbox.top
+      playerHitbox.bottom > opponentHitbox.top &&
+      !otherPlayer.isAlreadyHit
     ) {
       console.log("hit");
+      otherPlayer.health -= 10;
 
       if (player.facing === 1) {
         otherPlayer.isHit = true;
@@ -205,8 +207,11 @@ io.on("connection", (socket) => {
         otherPlayer.knockbackVelocity.y = 3;
       }
 
+      otherPlayer.isAlreadyHit = true;
+      console.log(otherPlayer.health);
       setTimeout(() => {
         otherPlayer.isHit = false;
+        otherPlayer.isAlreadyHit = false;
       }, 300);
     }
   }
@@ -223,12 +228,14 @@ io.on("connection", (socket) => {
     if (rooms[index].players.length < 1) {
       rooms[index].players.push({
         id: data.socketId,
-        fighter: "dinkey",
+        fighter: "daiba",
+        color: "aqua",
         isJumping: false,
         isAttacking: false,
         isStrafing: false,
         isDiving: false,
         isHit: false,
+        isAlreadyHit: false,
         facing: 1,
         health: 100,
         x: 1135,
@@ -239,13 +246,15 @@ io.on("connection", (socket) => {
     } else if (rooms[index].players.length === 1) {
       rooms[index].players.push({
         id: data.socketId,
-        fighter: "dinkey",
+        fighter: "daiba",
+        color: "DarkGoldenRod",
         isJumping: false,
         isAttacking: false,
         isMoving: false,
         isStrafing: false,
         isDiving: false,
         isHit: false,
+        isAlreadyHit: false,
         facing: 1,
         health: 100,
         x: 15,
@@ -256,13 +265,15 @@ io.on("connection", (socket) => {
     } else if (rooms[index].players.length === 2) {
       rooms[index].players.push({
         id: data.socketId,
-        fighter: "dinkey",
+        fighter: "daiba",
+        color: "purple",
         isJumping: false,
         isAttacking: false,
         isMoving: false,
         isStrafing: false,
         isDiving: false,
         isHit: false,
+        isAlreadyHit: false,
         facing: -1,
         health: 100,
         x: 600,
