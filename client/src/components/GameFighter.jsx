@@ -7,6 +7,7 @@ import dinkey from "../assets/standing.gif";
 import dinkeyDiving from "../assets/dinkeyDiving.gif";
 import dinkeyHit from "../assets/dinkeyHit.gif";
 import daibaHit from "../assets/daibaHit.gif";
+import daibaDeath from "../assets/daibaDeath.png";
 //import daibaAttacking from "../assets/daibaAttacking.gif";
 //import dinkeyAttacking from "../assets/dinkeyAttacking.gif";
 //import dinkeyStrafing from "../assets/dinkeyStrafing.gif";
@@ -20,7 +21,8 @@ const getImageSrc = (
   isJumping,
   isAttacking,
   isStrafing,
-  isHit
+  isHit,
+  isDead
 ) => {
   if (fighter === "dinkey") {
     if (isDiving) return dinkeyDiving;
@@ -36,6 +38,7 @@ const getImageSrc = (
     if (isAttacking) return daiba;
     if (isStrafing) return daiba;
     if (isHit) return daibaHit;
+    if (isDead) return daibaDeath;
     return daiba;
   }
 };
@@ -50,6 +53,7 @@ const StyledImage = styled("img", {
       "isAttacking",
       "isStrafing",
       "isHit",
+      "isDead",
     ].includes(prop),
 }).attrs((props) => ({
   src: getImageSrc(
@@ -58,7 +62,8 @@ const StyledImage = styled("img", {
     props.isJumping,
     props.isAttacking,
     props.isStrafing,
-    props.isHit
+    props.isHit,
+    props.isDead
   ),
 }))`
   position: absolute;

@@ -217,6 +217,11 @@ body {
   height: 120px;
 }
 
+.game-container > [src*="daibaDeath"] {
+  height: 90px;
+  opacity: 0.9;
+}
+
 .game-container > [src*="standing"] {
   height: 160px;
 }

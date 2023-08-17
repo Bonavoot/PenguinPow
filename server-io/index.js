@@ -63,6 +63,7 @@ io.on("connection", (socket) => {
       if (room.players.length < 3) return;
 
       room.players.forEach((player) => {
+        if (player.isDead) return;
         if (player.isHit) {
           player.x += player.knockbackVelocity.x * delta * speedFactor;
           player.y += player.knockbackVelocity.y * delta * speedFactor;
@@ -192,29 +193,27 @@ io.on("connection", (socket) => {
     ) {
       console.log("hit");
       otherPlayer.health -= 10;
+      otherPlayer.isHit = true;
+      otherPlayer.isJumping = false;
+      otherPlayer.isAttacking = false;
+      otherPlayer.isStrafing = false;
+      otherPlayer.isDiving = false;
 
       if (player.facing === 1) {
-        otherPlayer.isHit = true;
-        (otherPlayer.isJumping = false),
-          (otherPlayer.isAttacking = false),
-          (otherPlayer.isStrafing = false),
-          (otherPlayer.isDiving = false),
-          (otherPlayer.facing = -1);
+        otherPlayer.facing = -1;
         otherPlayer.knockbackVelocity.x = 6;
         otherPlayer.knockbackVelocity.y = 3;
       } else {
-        otherPlayer.isHit = true;
-        (otherPlayer.isJumping = false),
-          (otherPlayer.isAttacking = false),
-          (otherPlayer.isStrafing = false),
-          (otherPlayer.isDiving = false),
-          (otherPlayer.facing = 1);
+        otherPlayer.facing = 1;
         otherPlayer.knockbackVelocity.x = -6;
         otherPlayer.knockbackVelocity.y = 3;
       }
 
       otherPlayer.isAlreadyHit = true;
       console.log(otherPlayer.health);
+      if (otherPlayer.health <= 0) {
+        otherPlayer.isDead = true;
+      }
       setTimeout(() => {
         otherPlayer.isHit = false;
         otherPlayer.isAlreadyHit = false;
@@ -242,6 +241,7 @@ io.on("connection", (socket) => {
         isDiving: false,
         isHit: false,
         isAlreadyHit: false,
+        isDead: false,
         facing: 1,
         health: 100,
         x: 1135,
@@ -261,6 +261,7 @@ io.on("connection", (socket) => {
         isDiving: false,
         isHit: false,
         isAlreadyHit: false,
+        isDead: false,
         facing: 1,
         health: 100,
         x: 15,
@@ -279,6 +280,7 @@ io.on("connection", (socket) => {
         isStrafing: false,
         isDiving: false,
         isHit: false,
+        isDead: false,
         isAlreadyHit: false,
         facing: -1,
         health: 100,
