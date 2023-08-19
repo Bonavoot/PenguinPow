@@ -39,10 +39,10 @@ const rooms = [
 
 let index;
 let gameLoop = null;
-const TICK_RATE = 60;
+const TICK_RATE = 90;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.8;
-const GROUND_LEVEL = 100;
+const GROUND_LEVEL = 75;
 
 io.on("connection", (socket) => {
   console.log(`Client connected: ${socket.id}`);
@@ -74,7 +74,7 @@ io.on("connection", (socket) => {
 
           // Apply some deceleration or friction
           player.knockbackVelocity.x *= 0.8; // Adjust as needed
-          player.knockbackVelocity.y *= 0.5;
+          player.knockbackVelocity.y *= 0.7;
 
           // When the velocity is low enough, you can stop the knockback effect
           if (Math.abs(player.knockbackVelocity.x) < 0.1) {
@@ -132,7 +132,7 @@ io.on("connection", (socket) => {
         }
 
         if (player.isJumping) {
-          player.yVelocity -= 1;
+          player.yVelocity -= 0.9;
           player.y += player.yVelocity;
           if (player.y < GROUND_LEVEL) {
             player.y = GROUND_LEVEL;
@@ -241,7 +241,7 @@ io.on("connection", (socket) => {
         isHit: false,
         isAlreadyHit: false,
         isDead: false,
-        facing: 1,
+        facing: -1,
         health: 100,
         x: 1135,
         y: GROUND_LEVEL,

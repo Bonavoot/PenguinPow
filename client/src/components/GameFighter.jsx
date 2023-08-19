@@ -2,7 +2,7 @@ import { useContext, useEffect, useState } from "react";
 import daiba from "../assets/daibaStanding.gif";
 //import daibaStrafing from "../assets/daibaStrafing.gif";
 import daibaJumping from "../assets/daibaJumping.gif";
-import daibaDiving from "../assets/daibaDiving.gif";
+import daibaDiving from "../assets/daibaDiving.png";
 import dinkey from "../assets/standing.gif";
 import dinkeyDiving from "../assets/dinkeyDiving.gif";
 import dinkeyHit from "../assets/dinkeyHit.gif";
@@ -75,6 +75,7 @@ const StyledImage = styled("img", {
 
 const StyledLabel = styled.div`
   position: absolute;
+
   bottom: ${(props) => props.y + 135}px; // Adjust based on the image height
   left: ${(props) =>
     props.facing === -1

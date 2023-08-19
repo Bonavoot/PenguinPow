@@ -206,11 +206,11 @@ body {
 }
 
 .game-container > [src*="daibaDiving"] {
-  height: 125px;
+  height: 120px;
 }
 
 .game-container > [src*="daibaJumping"] {
-  height: 147px;
+  height: 150px;
 }
 
 .game-container > [src*="daibaHit"] {
