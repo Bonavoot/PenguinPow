@@ -5,7 +5,7 @@ body {
   overflow: hidden;
   margin: 0;
   color: white;
-  background-image: linear-gradient(aqua, LightSkyBlue, black);
+  background-color: #121213;
 }
 
 .main-menu {
@@ -18,7 +18,7 @@ body {
 .logo {
   font-size: 24pt;
   margin: 0;
-  color: black;
+  color: white;
   font-family: "Bungee", cursive;
   margin-left: 15px;
   padding-bottom: 75px;
@@ -209,8 +209,8 @@ body {
   background-repeat: no-repeat;
   background-size: cover;
   background-position: center;
-  box-shadow: 0px 0px 4px 4px black;
-  margin-top: -60px;
+  border: solid 4px black;
+  margin-top: -10px;
 }
 
 .game-container > [src*="daibaStanding"] {

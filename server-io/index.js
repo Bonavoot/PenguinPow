@@ -43,7 +43,7 @@ let healthRegenCounter = 0;
 const TICK_RATE = 90;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.8;
-const GROUND_LEVEL = 100;
+const GROUND_LEVEL = 125;
 
 io.on("connection", (socket) => {
   console.log(`Client connected: ${socket.id}`);

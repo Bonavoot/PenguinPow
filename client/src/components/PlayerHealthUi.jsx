@@ -10,7 +10,7 @@ const PlayerHealthUi = ({ health, index }) => {
             className="ui-player-health-red"
             style={{
               width: health + "%",
-              transition: "width 2s ease-in",
+              transition: "width 2s ease-out",
               backgroundColor: "red",
             }}
           ></div>
