@@ -54,11 +54,12 @@ const MainMenu = ({ rooms }) => {
       currentPageComponent = <Game rooms={rooms} roomName={roomName} />;
       break;
     case "training":
-    //currentPageComponent = <Training />;
+      //currentPageComponent = <Training />;
+      break;
     default:
       currentPageComponent = (
         <div>
-          <h1>Error: Unknown page "{currentPage}"</h1>
+          <h1>Error: Unknown page {currentPage}</h1>
           <button onClick={handleMainMenuPage}>Back to Main Menu</button>
         </div>
       );

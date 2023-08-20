@@ -1,6 +1,7 @@
 import { useContext, useEffect } from "react";
 import { SocketContext } from "../SocketContext";
 import GameFighter from "./GameFighter";
+
 const Game = ({ rooms, roomName }) => {
   const { socket } = useContext(SocketContext);
   let index = rooms.findIndex((room) => room.id === roomName);

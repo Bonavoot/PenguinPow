@@ -22,7 +22,7 @@ const Lobby = ({ rooms, roomName, handleGame }) => {
     return () => {
       socket.off("lobby");
     };
-  }, []);
+  }, [roomName, socket]);
 
   return (
     <div className="lobby">

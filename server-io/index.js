@@ -39,10 +39,11 @@ const rooms = [
 
 let index;
 let gameLoop = null;
+let healthRegenCounter = 0;
 const TICK_RATE = 90;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.8;
-const GROUND_LEVEL = 75;
+const GROUND_LEVEL = 100;
 
 io.on("connection", (socket) => {
   console.log(`Client connected: ${socket.id}`);
@@ -61,20 +62,29 @@ io.on("connection", (socket) => {
   function tick(delta) {
     rooms.forEach((room) => {
       if (room.players.length < 3) return;
+      healthRegenCounter += delta;
 
       room.players.forEach((player) => {
         if (player.isDead) {
           player.y = GROUND_LEVEL;
-
+          player.health = 0;
           return;
         }
+
+        if (player.health < 100) {
+          if (healthRegenCounter >= 1000) {
+            player.health += 1;
+            player.health = Math.min(player.health, 100);
+          }
+        }
+
         if (player.isHit) {
           player.x += player.knockbackVelocity.x * delta * speedFactor;
           player.y += player.knockbackVelocity.y * delta * speedFactor;
 
           // Apply some deceleration or friction
-          player.knockbackVelocity.x *= 0.8; // Adjust as needed
-          player.knockbackVelocity.y *= 0.7;
+          player.knockbackVelocity.x *= 0.9; // Adjust as needed
+          player.knockbackVelocity.y *= 0.8;
 
           // When the velocity is low enough, you can stop the knockback effect
           if (Math.abs(player.knockbackVelocity.x) < 0.1) {
@@ -128,11 +138,11 @@ io.on("connection", (socket) => {
         // Jumping
         if (player.keys.w && !player.isJumping) {
           player.isJumping = true;
-          player.yVelocity = 22;
+          player.yVelocity = 23;
         }
 
         if (player.isJumping) {
-          player.yVelocity -= 0.9;
+          player.yVelocity -= 0.8;
           player.y += player.yVelocity;
           if (player.y < GROUND_LEVEL) {
             player.y = GROUND_LEVEL;
@@ -165,6 +175,10 @@ io.on("connection", (socket) => {
         player3: room.players[2],
       });
     });
+
+    if (healthRegenCounter >= 1000) {
+      healthRegenCounter = 0; // Reset the counter after a second has passed
+    }
   }
 
   function checkCollision(player, otherPlayer) {

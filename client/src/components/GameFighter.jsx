@@ -1,6 +1,10 @@
 import { useContext, useEffect, useState } from "react";
+import { SocketContext } from "../SocketContext";
+import PropTypes from "prop-types";
+import styled from "styled-components";
+import PlayerHealthUi from "./PlayerHealthUi";
+
 import daiba from "../assets/daibaStanding.gif";
-//import daibaStrafing from "../assets/daibaStrafing.gif";
 import daibaJumping from "../assets/daibaJumping.gif";
 import daibaDiving from "../assets/daibaDiving.png";
 import dinkey from "../assets/standing.gif";
@@ -8,12 +12,6 @@ import dinkeyDiving from "../assets/dinkeyDiving.gif";
 import dinkeyHit from "../assets/dinkeyHit.gif";
 import daibaHit from "../assets/daibaHit.gif";
 import daibaDeath from "../assets/daibaDeath.png";
-//import daibaAttacking from "../assets/daibaAttacking.gif";
-//import dinkeyAttacking from "../assets/dinkeyAttacking.gif";
-//import dinkeyStrafing from "../assets/dinkeyStrafing.gif";
-import { SocketContext } from "../SocketContext";
-import styled from "styled-components";
-import PlayerHealthUi from "./PlayerHealthUi";
 
 const getImageSrc = (
   fighter,
@@ -75,8 +73,8 @@ const StyledImage = styled("img", {
 
 const StyledLabel = styled.div`
   position: absolute;
-
-  bottom: ${(props) => props.y + 135}px; // Adjust based on the image height
+  font-size: 2rem;
+  bottom: ${(props) => props.y + 170}px; // Adjust based on the image height
   left: ${(props) =>
     props.facing === -1
       ? props.x + 45
@@ -107,7 +105,7 @@ const GameFighter = ({ player, index }) => {
     return () => {
       socket.off("fighter_action");
     };
-  }, []);
+  }, [index, socket]);
 
   return (
     <>
@@ -116,6 +114,25 @@ const GameFighter = ({ player, index }) => {
       <StyledImage {...penguin} />
     </>
   );
+};
+
+GameFighter.propTypes = {
+  player: PropTypes.shape({
+    id: PropTypes.string.isRequired,
+    fighter: PropTypes.string.isRequired,
+    color: PropTypes.string,
+    isJumping: PropTypes.bool,
+    isAttacking: PropTypes.bool,
+    isStrafing: PropTypes.bool,
+    isDiving: PropTypes.bool,
+    isHit: PropTypes.bool,
+    isDead: PropTypes.bool,
+    facing: PropTypes.number,
+    health: PropTypes.number,
+    x: PropTypes.number,
+    y: PropTypes.number,
+  }),
+  index: PropTypes.number.isRequired,
 };
 
 export default GameFighter;
