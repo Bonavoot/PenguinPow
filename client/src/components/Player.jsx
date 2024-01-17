@@ -1,6 +1,6 @@
 import Fighter from "./Fighter";
 import { useState, useEffect } from "react";
-import standing from "../assets/standing.gif";
+import standing from "../assets/pumo.png";
 import standingDaiba from "../assets/daibaStanding.gif";
 
 const Player = ({ index, fighter }) => {

@@ -3,17 +3,14 @@
   color: black;
   align-items: center;
   justify-content: center;
-  width: 1280px;
-  height: 720px;
-  min-width: 1280px;
-  min-height: 720px;
+  width: 1140px;
+  height: 680px;
   position: relative;
-  margin-top: -50px;
   align-self: center;
   gap: 150px;
-  background-image: linear-gradient(SlateBlue, white, LightSkyBlue, black);
-
-  border: black 3px solid;
+  background-image: linear-gradient(tan, white, lightyellow);
+  border: black 2px solid;
+  border-radius: 0.5rem;
 }
 
 .player-lobby {

@@ -15,9 +15,9 @@ const Rooms = ({ rooms, setRoomName, handleJoinRoom, handleMainMenuPage }) => {
 
   return (
     <div className="rooms">
-      <button className="back-btn" onClick={handleMainMenuPage}>
+      {/* <button className="back-btn" onClick={handleMainMenuPage}>
         BACK
-      </button>
+      </button> */}
       <button className="refresh-btn" onClick={handleRefresh}>
         <span className="material-symbols-outlined">refresh</span>
       </button>

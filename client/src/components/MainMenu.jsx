@@ -3,8 +3,7 @@ import Rooms from "./Rooms";
 import Game from "./Game";
 import { useState } from "react";
 
-const MainMenu = ({ rooms }) => {
-  const [currentPage, setCurrentPage] = useState("mainMenu");
+const MainMenu = ({ rooms, currentPage, setCurrentPage }) => {
   const [roomName, setRoomName] = useState("");
 
   const handleMainMenuPage = () => {
@@ -28,10 +27,15 @@ const MainMenu = ({ rooms }) => {
     case "mainMenu":
       currentPageComponent = (
         <div className="main-menu">
-          <button onClick={handleDisplayRooms}>PLAY</button>
-          <button>TRAINING</button>
-          <button id="closed">GAMBA</button>
-          <button id="closed">SETTINGS</button>
+          <div className="main-menu-btn-container">
+            <button id="play" onClick={handleDisplayRooms}>
+              PLAY
+            </button>
+            <button id="closed">TRAINING</button>
+            <button id="closed">GAMBA</button>
+            <button id="closed">PROFILE</button>
+            <button id="closed">SETTINGS</button>
+          </div>
         </div>
       );
       break;
