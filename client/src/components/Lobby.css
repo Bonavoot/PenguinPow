@@ -8,7 +8,7 @@
   position: relative;
   align-self: center;
   gap: 150px;
-  background-image: linear-gradient(tan, white, lightyellow);
+  background-image: linear-gradient(tan, white, tan, black);
   border: black 2px solid;
   border-radius: 0.5rem;
 }

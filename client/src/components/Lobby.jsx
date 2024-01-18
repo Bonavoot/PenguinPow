@@ -29,11 +29,11 @@ const Lobby = ({ rooms, roomName, handleGame }) => {
       {players.map((player, i) => {
         return (
           <React.Fragment key={uuidv4()}>
-            {i > 3 ? null : <Player index={i} fighter={player.fighter} />}
+            {i > 2 ? null : <Player index={i} fighter={player.fighter} />}
           </React.Fragment>
         );
       })}
-      {players.length < 3 ? (
+      {players.length < 2 ? (
         <div className="waiting">
           Waiting for opponent
           <img id="ellipses" src={ellipses} alt="waiting" />

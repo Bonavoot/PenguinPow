@@ -61,7 +61,7 @@ io.on("connection", (socket) => {
 
   function tick(delta) {
     rooms.forEach((room) => {
-      if (room.players.length < 3) return;
+      if (room.players.length < 2) return;
       healthRegenCounter += delta;
 
       room.players.forEach((player) => {
@@ -172,7 +172,6 @@ io.on("connection", (socket) => {
       io.in(room.id).emit("fighter_action", {
         player1: room.players[0],
         player2: room.players[1],
-        player3: room.players[2],
       });
     });
 
@@ -282,26 +281,6 @@ io.on("connection", (socket) => {
         knockbackVelocity: { x: 0, y: 0 },
         keys: { w: false, a: false, s: false, d: false, " ": false },
       });
-    } else if (rooms[index].players.length === 2) {
-      rooms[index].players.push({
-        id: data.socketId,
-        fighter: "daiba",
-        color: "purple",
-        isJumping: false,
-        isAttacking: false,
-        isMoving: false,
-        isStrafing: false,
-        isDiving: false,
-        isHit: false,
-        isDead: false,
-        isAlreadyHit: false,
-        facing: -1,
-        health: 100,
-        x: 600,
-        y: GROUND_LEVEL,
-        knockbackVelocity: { x: 0, y: 0 },
-        keys: { w: false, a: false, s: false, d: false, " ": false },
-      });
     }
 
     socket.roomId = data.roomId;
@@ -327,7 +306,7 @@ io.on("connection", (socket) => {
       io.in(data.roomId).emit("lobby", rooms[index].players);
     }
 
-    if (rooms[index].readyCount > 2) {
+    if (rooms[index].readyCount > 1) {
       io.in(data.roomId).emit("game_start", rooms[index]);
     }
 

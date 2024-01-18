@@ -96,10 +96,10 @@ const GameFighter = ({ player, index }) => {
       } else if (index === 1) {
         setPenguin(data.player2);
         setHealth(data.player2.health);
-      } else if (index === 2) {
-        setPenguin(data.player3);
-        setHealth(data.player3.health);
-      }
+      } //else if (index === 2) {
+      //   setPenguin(data.player3);
+      //   setHealth(data.player3.health);
+      // }
     });
 
     return () => {
