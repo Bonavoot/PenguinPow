@@ -164,10 +164,10 @@
 
 .exit-btn {
   position: absolute;
-  bottom: 84px;
-  left: 100px;
+  bottom: 3rem;
+  left: 3rem;
   background-color: black;
-  padding: 1rem 2rem;
+  padding: 0.5rem 1.5rem;
   border-radius: 10px;
   border: none;
   font-size: 21pt;
@@ -188,13 +188,14 @@
   flex-direction: column;
   gap: 15px;
   align-self: center;
-  margin-top: 9rem;
+  position: absolute;
+  bottom: 3rem;
 }
 
 .ready-btn {
-  font-size: 3rem;
+  font-size: 2.5rem;
   background-color: forestgreen;
-  padding: 1rem 2rem;
+  padding: 0.5rem 2rem;
   border-radius: 10px;
   border: none;
   color: white;
@@ -294,9 +295,9 @@
 
 #cancel-btn {
   background-color: red;
-  padding: 1rem 2rem;
+  padding: 0.5rem 1.5rem;
   border: none;
-  font-size: 3rem;
+  font-size: 2.5rem;
   border-radius: 10px;
   font-family: "Bungee", Arial;
   color: white;
