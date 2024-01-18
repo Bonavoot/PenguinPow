@@ -35,6 +35,11 @@ const rooms = [
   { id: "Room 3", players: [], readyCount: 0, projectiles: [] },
   { id: "Room 4", players: [], readyCount: 0, projectiles: [] },
   { id: "Room 5", players: [], readyCount: 0, projectiles: [] },
+  { id: "Room 6", players: [], readyCount: 0, projectiles: [] },
+  { id: "Room 7", players: [], readyCount: 0, projectiles: [] },
+  { id: "Room 8", players: [], readyCount: 0, projectiles: [] },
+  { id: "Room 9", players: [], readyCount: 0, projectiles: [] },
+  { id: "Room 10", players: [], readyCount: 0, projectiles: [] },
 ];
 
 let index;
@@ -42,7 +47,7 @@ let gameLoop = null;
 let healthRegenCounter = 0;
 const TICK_RATE = 90;
 const delta = 1000 / TICK_RATE;
-const speedFactor = 0.8;
+const speedFactor = 0.3;
 const GROUND_LEVEL = 125;
 
 io.on("connection", (socket) => {
@@ -63,6 +68,21 @@ io.on("connection", (socket) => {
     rooms.forEach((room) => {
       if (room.players.length < 2) return;
       healthRegenCounter += delta;
+
+      if (room.players.length === 2) {
+        const [player1, player2] = room.players;
+
+        // Update facing direction based on relative positions
+        if (player1.x < player2.x) {
+          player1.facing = -1; // Player 1 faces right
+          player2.facing = 1; // Player 2 faces left
+        } else {
+          player1.facing = 1; // Player 1 faces left
+          player2.facing = -1; // Player 2 faces right
+        }
+
+        // ... existing code that updates players' positions and states ...
+      }
 
       room.players.forEach((player) => {
         if (player.isDead) {
@@ -110,13 +130,13 @@ io.on("connection", (socket) => {
         // Strafing
         if (player.keys.d) {
           player.x += delta * speedFactor;
-          player.facing = 1;
+
           player.isStrafing = true;
         }
 
         if (player.keys.a) {
           player.x -= delta * speedFactor;
-          player.facing = -1;
+
           player.isStrafing = true;
         }
 
@@ -138,11 +158,11 @@ io.on("connection", (socket) => {
         // Jumping
         if (player.keys.w && !player.isJumping) {
           player.isJumping = true;
-          player.yVelocity = 23;
+          player.yVelocity = 15;
         }
 
         if (player.isJumping) {
-          player.yVelocity -= 0.8;
+          player.yVelocity -= 0.9;
           player.y += player.yVelocity;
           if (player.y < GROUND_LEVEL) {
             player.y = GROUND_LEVEL;
@@ -150,11 +170,11 @@ io.on("connection", (socket) => {
           }
         }
 
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 2; i++) {
           const player = room.players[i];
 
           if (player.isDiving) {
-            for (let j = 0; j < 3; j++) {
+            for (let j = 0; j < 2; j++) {
               if (i !== j) {
                 const otherPlayer = room.players[j];
                 checkCollision(player, otherPlayer);
@@ -211,7 +231,7 @@ io.on("connection", (socket) => {
       otherPlayer.isStrafing = false;
       otherPlayer.isDiving = false;
 
-      if (player.facing === 1) {
+      if (player.facing === -1) {
         otherPlayer.facing = -1;
         otherPlayer.knockbackVelocity.x = 6;
         otherPlayer.knockbackVelocity.y = 3;
@@ -245,7 +265,7 @@ io.on("connection", (socket) => {
     if (rooms[index].players.length < 1) {
       rooms[index].players.push({
         id: data.socketId,
-        fighter: "daiba",
+        fighter: "pumo",
         color: "aqua",
         isJumping: false,
         isAttacking: false,
@@ -264,7 +284,7 @@ io.on("connection", (socket) => {
     } else if (rooms[index].players.length === 1) {
       rooms[index].players.push({
         id: data.socketId,
-        fighter: "daiba",
+        fighter: "pumo",
         color: "orange",
         isJumping: false,
         isAttacking: false,

@@ -10,7 +10,7 @@ const Player = ({ index, fighter }) => {
     if (fighter === "dinkey") {
       setPenguin(standing);
     } else if (fighter === "daiba") {
-      setPenguin(standingDaiba);
+      setPenguin(standing);
     }
   }, [fighter]);
 

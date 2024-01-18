@@ -89,16 +89,20 @@ body {
   display: flex;
   flex-direction: column;
   background-color: rgb(22, 22, 22);
-  height: 500px;
-  width: 80%;
-  max-width: 800px;
+  width: 1140px;
+  height: 680px;
   align-self: center;
-  padding: 25px;
-  border: solid grey 3px;
+  box-shadow: 0px 0px 2px 1px black;
   border-radius: 1%;
   position: relative;
   font-family: cursive;
+  overflow-y: scroll;
+  background-color: rgb(50, 50, 50);
 }
+
+/* .rooms > :first-child {
+  margin-top: 4rem;
+} */
 
 .room {
   display: flex;
@@ -107,8 +111,7 @@ body {
   font-size: 1.6rem;
   border-top: grey solid 1px;
   border-bottom: grey solid 1px;
-  flex-grow: 1;
-  margin: 10px;
+  background-color: rgb(25, 25, 25);
 }
 
 .room > button {
@@ -131,6 +134,7 @@ body {
 .room-id {
   font-family: "Bungee";
   font-size: 1.6rem;
+  margin-left: 1rem;
 }
 
 .room-count {
@@ -162,15 +166,14 @@ body {
 }
 
 .refresh-btn {
-  position: absolute;
   border-radius: 10px;
   border: none;
-  color: white;
+  color: black;
   right: 0;
-  top: -55px;
-  width: 45px;
-  height: 3em;
-  background-color: rgba(0, 0, 0, 0.7);
+  align-self: flex-end;
+  padding: 0.5rem;
+  margin: 0.3rem;
+  background-color: white;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -243,7 +246,7 @@ body {
   background-repeat: no-repeat;
   background-size: cover;
   background-position: center;
-  border: solid 4px black;
+  border: solid 2px black;
 }
 
 .game-container > [src*="daibaStanding"] {

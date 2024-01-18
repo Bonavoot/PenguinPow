@@ -7,11 +7,13 @@ import PlayerHealthUi from "./PlayerHealthUi";
 import daiba from "../assets/daibaStanding.gif";
 import daibaJumping from "../assets/daibaJumping.gif";
 import daibaDiving from "../assets/daibaDiving.png";
-import dinkey from "../assets/standing.gif";
-import dinkeyDiving from "../assets/dinkeyDiving.gif";
-import dinkeyHit from "../assets/dinkeyHit.gif";
+import dinkey from "../assets/pumo.png";
+import dinkeyDiving from "../assets/pumo.png";
+import dinkeyHit from "../assets/pumo.png";
 import daibaHit from "../assets/daibaHit.gif";
 import daibaDeath from "../assets/daibaDeath.png";
+
+import pumo from "../assets/pumo.png";
 
 const getImageSrc = (
   fighter,
@@ -22,22 +24,14 @@ const getImageSrc = (
   isHit,
   isDead
 ) => {
-  if (fighter === "dinkey") {
-    if (isDiving) return dinkeyDiving;
-    if (isJumping) return dinkey;
-    if (isAttacking) return dinkey;
-    if (isStrafing) return dinkey;
-    if (isHit) return dinkeyHit;
-
-    return dinkey;
-  } else {
-    if (isDiving) return daibaDiving;
-    if (isJumping) return daibaJumping;
-    if (isAttacking) return daiba;
-    if (isStrafing) return daiba;
-    if (isHit) return daibaHit;
-    if (isDead) return daibaDeath;
-    return daiba;
+  if (fighter === "pumo") {
+    if (isDiving) return pumo;
+    if (isJumping) return pumo;
+    if (isAttacking) return pumo;
+    if (isStrafing) return pumo;
+    if (isHit) return pumo;
+    if (isDead) return pumo;
+    return pumo;
   }
 };
 
