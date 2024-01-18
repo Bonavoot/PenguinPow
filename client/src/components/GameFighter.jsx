@@ -4,14 +4,14 @@ import PropTypes from "prop-types";
 import styled from "styled-components";
 import PlayerHealthUi from "./PlayerHealthUi";
 
-import daiba from "../assets/daibaStanding.gif";
-import daibaJumping from "../assets/daibaJumping.gif";
-import daibaDiving from "../assets/daibaDiving.png";
-import dinkey from "../assets/pumo.png";
-import dinkeyDiving from "../assets/pumo.png";
-import dinkeyHit from "../assets/pumo.png";
-import daibaHit from "../assets/daibaHit.gif";
-import daibaDeath from "../assets/daibaDeath.png";
+// import daiba from "../assets/daibaStanding.gif";
+// import daibaJumping from "../assets/daibaJumping.gif";
+// import daibaDiving from "../assets/daibaDiving.png";
+// import dinkey from "../assets/pumo.png";
+// import dinkeyDiving from "../assets/pumo.png";
+// import dinkeyHit from "../assets/pumo.png";
+// import daibaHit from "../assets/daibaHit.gif";
+// import daibaDeath from "../assets/daibaDeath.png";
 
 import pumo from "../assets/pumo.png";
 
@@ -62,17 +62,17 @@ const StyledImage = styled("img", {
   left: ${(props) => props.x}px;
   bottom: ${(props) => props.y}px;
   transform: scaleX(${(props) => props.facing});
-  height: 185px;
+  height: 225px;
 `;
 
 const StyledLabel = styled.div`
   position: absolute;
   font-size: 2rem;
-  bottom: ${(props) => props.y + 170}px; // Adjust based on the image height
+  bottom: ${(props) => props.y + 230}px; // Adjust based on the image height
   left: ${(props) =>
     props.facing === -1
-      ? props.x + 45
-      : props.x + 65}px; // Adjust based on the label position
+      ? props.x + 100
+      : props.x + 100}px; // Adjust based on the label position
   color: ${(props) => props.color || "black"};
   font-family: "Bungee";
 `;

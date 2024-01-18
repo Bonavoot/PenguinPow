@@ -89,8 +89,8 @@ body {
   display: flex;
   flex-direction: column;
   background-color: rgb(22, 22, 22);
-  width: 1140px;
-  height: 680px;
+  width: 1300px;
+  height: 700px;
   align-self: center;
   box-shadow: 0px 0px 2px 1px black;
   border-radius: 1%;
@@ -240,8 +240,8 @@ body {
   overflow: hidden;
   position: relative;
   align-self: center;
-  width: 1140px;
-  height: 680px;
+  width: 1300px;
+  height: 700px;
   background-image: url(./assets/game-map.png);
   background-repeat: no-repeat;
   background-size: cover;

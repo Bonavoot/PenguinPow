@@ -48,7 +48,7 @@ let healthRegenCounter = 0;
 const TICK_RATE = 90;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.3;
-const GROUND_LEVEL = 125;
+const GROUND_LEVEL = 100;
 
 io.on("connection", (socket) => {
   console.log(`Client connected: ${socket.id}`);
@@ -266,7 +266,7 @@ io.on("connection", (socket) => {
       rooms[index].players.push({
         id: data.socketId,
         fighter: "pumo",
-        color: "aqua",
+        color: "blue",
         isJumping: false,
         isAttacking: false,
         isStrafing: false,
@@ -276,7 +276,7 @@ io.on("connection", (socket) => {
         isDead: false,
         facing: -1,
         health: 100,
-        x: 1135,
+        x: 810,
         y: GROUND_LEVEL,
         knockbackVelocity: { x: 0, y: 0 },
         keys: { w: false, a: false, s: false, d: false, " ": false },
@@ -285,7 +285,7 @@ io.on("connection", (socket) => {
       rooms[index].players.push({
         id: data.socketId,
         fighter: "pumo",
-        color: "orange",
+        color: "red",
         isJumping: false,
         isAttacking: false,
         isMoving: false,
@@ -296,7 +296,7 @@ io.on("connection", (socket) => {
         isDead: false,
         facing: 1,
         health: 100,
-        x: 15,
+        x: 150,
         y: GROUND_LEVEL,
         knockbackVelocity: { x: 0, y: 0 },
         keys: { w: false, a: false, s: false, d: false, " ": false },
