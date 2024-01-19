@@ -84,27 +84,42 @@ io.on("connection", (socket) => {
         if (room.gameStart === false) {
           if (player1.x >= 340) {
             player1.x = 340;
-            console.log(player1);
           }
 
           if (player2.x <= 755) {
             player2.x = 755;
           }
-          //testing purposes
-          if (player2.x !== 755) {
-            player2.x = 755;
-            player2.isCrouching = true;
+
+          if (player1.x === 340) {
+            player1.isReady = true;
           }
+
+          if (player2.x === 755) {
+            player2.isReady = true;
+          }
+          console.log(player1.isReady);
+
+          //testing purposes
+          // if (player2.x !== 755) {
+          //   player2.x = 755;
+          //   player2.isCrouching = true;
+          // }
         }
 
         if (
-          player1.x === 340 &&
-          player2.x === 755 &&
-          player1.isCrouching &&
-          player2.isCrouching
+          player1.isReady &&
+          player2.isReady &&
+          !player1.isCrouching &&
+          !player1.isStrafing &&
+          !player1.isJumping &&
+          !player2.isCrouching &&
+          !player2.isStrafing &&
+          !player2.isJumping
         ) {
           room.gameStart = true;
           io.emit("game_start", true);
+          player1.isReady = false;
+          player2.isReady = false;
         }
       }
 
@@ -157,10 +172,12 @@ io.on("connection", (socket) => {
           if (player.keys.d) {
             player.x += delta * speedFactor;
             player.isStrafing = true;
+            player.isReady = false;
           }
           if (player.keys.a) {
             player.x -= delta * speedFactor;
             player.isStrafing = true;
+            player.isReady = false;
           }
           if (!player.keys.a && !player.keys.d) {
             player.isStrafing = false;
@@ -169,7 +186,9 @@ io.on("connection", (socket) => {
         if (!player.keys.a && !player.keys.d) {
           player.isStrafing = false;
         }
-
+        if (player.keys.a && player.keys.d) {
+          player.isStrafing = false;
+        }
         // Diving / down or gravity
         if (
           (player.keys.s && player.y > GROUND_LEVEL) ||
@@ -187,6 +206,7 @@ io.on("connection", (socket) => {
         // Crouching
         if (player.keys.s && player.y === GROUND_LEVEL) {
           player.isCrouching = true;
+          player.isReady = false;
         }
 
         if (!player.keys.s) {
@@ -198,9 +218,11 @@ io.on("connection", (socket) => {
           player.isJumping = true;
           player.yVelocity = 15;
           player.stamina -= 8;
+          player.isReady = false;
         }
 
         if (player.isJumping) {
+          player.isReady = false;
           player.yVelocity -= 0.9;
           player.y += player.yVelocity;
           if (player.y < GROUND_LEVEL) {
@@ -305,6 +327,7 @@ io.on("connection", (socket) => {
         isStrafing: false,
         isDiving: false,
         isCrouching: false,
+        isReady: false,
         isHit: false,
         isAlreadyHit: false,
         isDead: false,
@@ -326,6 +349,7 @@ io.on("connection", (socket) => {
         isStrafing: false,
         isDiving: false,
         isCrouching: false,
+        isReady: false,
         isHit: false,
         isAlreadyHit: false,
         isDead: false,
@@ -401,7 +425,10 @@ io.on("connection", (socket) => {
   socket.on("disconnect", (reason) => {
     const roomId = socket.roomId;
     const roomIndex = rooms.findIndex((room) => room.id === roomId);
-    rooms[roomIndex].gameStart = false;
+
+    if (rooms[roomIndex]) {
+      rooms[roomIndex].gameStart = false;
+    }
 
     rooms.forEach((room) => {
       room.players = room.players.filter((player) => player.id !== socket.id);

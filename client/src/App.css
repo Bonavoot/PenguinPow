@@ -45,6 +45,8 @@ body {
 .main-menu-btn-container {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
+  gap: 1rem;
   margin-top: -4rem;
 }
 
@@ -68,10 +70,6 @@ body {
   color: black;
   font-family: "Bungee", cursive;
   cursor: pointer;
-}
-
-.main-menu-btn-container > :nth-child(2) {
-  margin-top: -4rem;
 }
 
 #closed {

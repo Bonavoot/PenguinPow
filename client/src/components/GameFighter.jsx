@@ -7,7 +7,7 @@ import pumo from "../assets/pumo.png";
 import pumoWaddle from "../assets/pumo-waddle.gif";
 
 import daiba from "../assets/daibaStanding.gif";
-// import daibaJumping from "../assets/daibaJumping.gif";
+import daibaJumping from "../assets/daibaJumping.gif";
 // import daibaDiving from "../assets/daibaDiving.png";
 // import dinkey from "../assets/pumo.png";
 // import dinkeyDiving from "../assets/pumo.png";
@@ -22,6 +22,7 @@ const getImageSrc = (
   isAttacking,
   isStrafing,
   isCrouching,
+  isReady,
   isHit,
   isDead
 ) => {
@@ -30,8 +31,10 @@ const getImageSrc = (
     if (isJumping) return pumo;
     if (isAttacking) return pumo;
     if (isCrouching) return daiba;
+    if (isReady) return daibaJumping;
     if (isStrafing) return pumoWaddle;
     if (isHit) return pumo;
+
     if (isDead) return pumo;
     return pumo;
   }
@@ -47,6 +50,7 @@ const StyledImage = styled("img", {
       "isAttacking",
       "isStrafing",
       "isCrouching",
+      "isReady",
       "isHit",
       "isDead",
     ].includes(prop),
@@ -58,6 +62,7 @@ const StyledImage = styled("img", {
     props.isAttacking,
     props.isStrafing,
     props.isCrouching,
+    props.isReady,
     props.isHit,
     props.isDead
   ),
@@ -140,6 +145,7 @@ GameFighter.propTypes = {
     isStrafing: PropTypes.bool,
     isDiving: PropTypes.bool,
     isCrouching: PropTypes.bool,
+    isReady: PropTypes.bool,
     isHit: PropTypes.bool,
     isDead: PropTypes.bool,
     facing: PropTypes.number,
