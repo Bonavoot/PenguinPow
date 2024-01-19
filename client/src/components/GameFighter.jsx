@@ -3,6 +3,8 @@ import { SocketContext } from "../SocketContext";
 import PropTypes from "prop-types";
 import styled from "styled-components";
 import PlayerHealthUi from "./PlayerHealthUi";
+import pumo from "../assets/pumo.png";
+import pumoWaddle from "../assets/pumo-waddle.gif";
 
 // import daiba from "../assets/daibaStanding.gif";
 // import daibaJumping from "../assets/daibaJumping.gif";
@@ -12,8 +14,6 @@ import PlayerHealthUi from "./PlayerHealthUi";
 // import dinkeyHit from "../assets/pumo.png";
 // import daibaHit from "../assets/daibaHit.gif";
 // import daibaDeath from "../assets/daibaDeath.png";
-
-import pumo from "../assets/pumo.png";
 
 const getImageSrc = (
   fighter,
@@ -28,7 +28,7 @@ const getImageSrc = (
     if (isDiving) return pumo;
     if (isJumping) return pumo;
     if (isAttacking) return pumo;
-    if (isStrafing) return pumo;
+    if (isStrafing) return pumoWaddle;
     if (isHit) return pumo;
     if (isDead) return pumo;
     return pumo;
@@ -62,7 +62,7 @@ const StyledImage = styled("img", {
   left: ${(props) => props.x}px;
   bottom: ${(props) => props.y}px;
   transform: scaleX(${(props) => props.facing});
-  height: 225px;
+  height: 235px;
 `;
 
 const StyledLabel = styled.div`

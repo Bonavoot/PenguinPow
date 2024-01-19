@@ -39,7 +39,7 @@ const rooms = [
   { id: "Room 7", players: [], readyCount: 0, projectiles: [] },
   { id: "Room 8", players: [], readyCount: 0, projectiles: [] },
   { id: "Room 9", players: [], readyCount: 0, projectiles: [] },
-  { id: "Room 10", players: [], readyCount: 0, projectiles: [] },
+  { id: "Room10", players: [], readyCount: 0, projectiles: [] },
 ];
 
 let index;
@@ -47,7 +47,7 @@ let gameLoop = null;
 let healthRegenCounter = 0;
 const TICK_RATE = 90;
 const delta = 1000 / TICK_RATE;
-const speedFactor = 0.3;
+const speedFactor = 0.25;
 const GROUND_LEVEL = 100;
 
 io.on("connection", (socket) => {

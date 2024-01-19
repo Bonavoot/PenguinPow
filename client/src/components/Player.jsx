@@ -1,16 +1,15 @@
 import Fighter from "./Fighter";
 import { useState, useEffect } from "react";
-import standing from "../assets/pumo.png";
-import standingDaiba from "../assets/daibaStanding.gif";
+import pumo from "../assets/pumo.png";
 
 const Player = ({ index, fighter }) => {
-  const [penguin, setPenguin] = useState(standing);
+  const [penguin, setPenguin] = useState(pumo);
 
   useEffect(() => {
     if (fighter === "dinkey") {
-      setPenguin(standing);
+      setPenguin(pumo);
     } else if (fighter === "daiba") {
-      setPenguin(standing);
+      setPenguin(pumo);
     }
   }, [fighter]);
 
