@@ -1,24 +1,24 @@
-const PlayerHealthUi = ({ health, index }) => {
+const PlayerStaminaUi = ({ stamina, index }) => {
   return (
     <div className="ui">
       <div className={"ui-player-container"}>
         <div className="ui-player-name" id={"ui-name-" + (index + 1)}>
           Player {index + 1}
         </div>
-        <div className="ui-player-health-container">
+        <div className="ui-player-stamina-container">
           <div
-            className="ui-player-health-red"
+            className="ui-player-stamina-red"
             style={{
-              width: health + "%",
+              width: stamina + "%",
               transition: "width 2s ease-out",
               backgroundColor: "red",
             }}
           ></div>
           <div
-            className="ui-player-health-green"
+            className="ui-player-stamina-yellow"
             style={{
-              width: health + "%",
-              backgroundColor: "Chartreuse",
+              width: stamina + "%",
+              backgroundColor: "Yellow",
             }}
           ></div>
         </div>
@@ -27,4 +27,4 @@ const PlayerHealthUi = ({ health, index }) => {
   );
 };
 
-export default PlayerHealthUi;
+export default PlayerStaminaUi;

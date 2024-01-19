@@ -2,7 +2,7 @@ import { useContext, useEffect, useState } from "react";
 import { SocketContext } from "../SocketContext";
 import PropTypes from "prop-types";
 import styled from "styled-components";
-import PlayerHealthUi from "./PlayerHealthUi";
+import PlayerStaminaUi from "./PlayerStaminaUi";
 import pumo from "../assets/pumo.png";
 import pumoWaddle from "../assets/pumo-waddle.gif";
 
@@ -80,16 +80,16 @@ const StyledLabel = styled.div`
 const GameFighter = ({ player, index }) => {
   const { socket } = useContext(SocketContext);
   const [penguin, setPenguin] = useState(player);
-  const [health, setHealth] = useState(player);
+  const [stamina, setStamina] = useState(player);
 
   useEffect(() => {
     socket.on("fighter_action", (data) => {
       if (index === 0) {
         setPenguin(data.player1);
-        setHealth(data.player1.health);
+        setStamina(data.player1.stamina);
       } else if (index === 1) {
         setPenguin(data.player2);
-        setHealth(data.player2.health);
+        setStamina(data.player2.stamina);
       } //else if (index === 2) {
       //   setPenguin(data.player3);
       //   setHealth(data.player3.health);
@@ -102,11 +102,11 @@ const GameFighter = ({ player, index }) => {
   }, [index, socket]);
 
   return (
-    <>
-      <PlayerHealthUi health={health} index={index} />
+    <div className="ui-container">
+      <PlayerStaminaUi stamina={stamina} index={index} />
       <StyledLabel {...penguin}>P{index + 1}</StyledLabel>
       <StyledImage {...penguin} />
-    </>
+    </div>
   );
 };
 
@@ -122,7 +122,7 @@ GameFighter.propTypes = {
     isHit: PropTypes.bool,
     isDead: PropTypes.bool,
     facing: PropTypes.number,
-    health: PropTypes.number,
+    stamina: PropTypes.number,
     x: PropTypes.number,
     y: PropTypes.number,
   }),

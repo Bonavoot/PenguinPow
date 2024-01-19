@@ -44,7 +44,7 @@ const rooms = [
 
 let index;
 let gameLoop = null;
-let healthRegenCounter = 0;
+let staminaRegenCounter = 0;
 const TICK_RATE = 90;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.3;
@@ -67,7 +67,7 @@ io.on("connection", (socket) => {
   function tick(delta) {
     rooms.forEach((room) => {
       if (room.players.length < 2) return;
-      healthRegenCounter += delta;
+      staminaRegenCounter += delta;
 
       if (room.players.length === 2) {
         const [player1, player2] = room.players;
@@ -87,14 +87,14 @@ io.on("connection", (socket) => {
       room.players.forEach((player) => {
         if (player.isDead) {
           player.y = GROUND_LEVEL;
-          player.health = 0;
+          player.stamina = 0;
           return;
         }
 
-        if (player.health < 100) {
-          if (healthRegenCounter >= 1000) {
-            player.health += 1;
-            player.health = Math.min(player.health, 100);
+        if (player.stamina < 100) {
+          if (staminaRegenCounter >= 1000) {
+            player.stamina += 12;
+            player.stamina = Math.min(player.stamina, 100);
           }
         }
 
@@ -159,6 +159,7 @@ io.on("connection", (socket) => {
         if (player.keys.w && !player.isJumping) {
           player.isJumping = true;
           player.yVelocity = 15;
+          player.stamina -= 8;
         }
 
         if (player.isJumping) {
@@ -195,8 +196,8 @@ io.on("connection", (socket) => {
       });
     });
 
-    if (healthRegenCounter >= 1000) {
-      healthRegenCounter = 0; // Reset the counter after a second has passed
+    if (staminaRegenCounter >= 1000) {
+      staminaRegenCounter = 0; // Reset the counter after a second has passed
     }
   }
 
@@ -224,7 +225,6 @@ io.on("connection", (socket) => {
       !otherPlayer.isDead
     ) {
       console.log("hit");
-      otherPlayer.health -= 10;
       otherPlayer.isHit = true;
       otherPlayer.isJumping = false;
       otherPlayer.isAttacking = false;
@@ -234,18 +234,13 @@ io.on("connection", (socket) => {
       if (player.facing === -1) {
         otherPlayer.facing = -1;
         otherPlayer.knockbackVelocity.x = 6;
-        otherPlayer.knockbackVelocity.y = 3;
       } else {
         otherPlayer.facing = 1;
         otherPlayer.knockbackVelocity.x = -6;
-        otherPlayer.knockbackVelocity.y = 3;
       }
 
       otherPlayer.isAlreadyHit = true;
-      console.log(otherPlayer.health);
-      if (otherPlayer.health <= 0) {
-        otherPlayer.isDead = true;
-      }
+
       setTimeout(() => {
         otherPlayer.isHit = false;
         otherPlayer.isAlreadyHit = false;
@@ -274,9 +269,9 @@ io.on("connection", (socket) => {
         isHit: false,
         isAlreadyHit: false,
         isDead: false,
-        facing: -1,
-        health: 100,
-        x: 810,
+        facing: 1,
+        stamina: 100,
+        x: 150,
         y: GROUND_LEVEL,
         knockbackVelocity: { x: 0, y: 0 },
         keys: { w: false, a: false, s: false, d: false, " ": false },
@@ -294,9 +289,9 @@ io.on("connection", (socket) => {
         isHit: false,
         isAlreadyHit: false,
         isDead: false,
-        facing: 1,
-        health: 100,
-        x: 150,
+        facing: -1,
+        stamina: 100,
+        x: 900,
         y: GROUND_LEVEL,
         knockbackVelocity: { x: 0, y: 0 },
         keys: { w: false, a: false, s: false, d: false, " ": false },

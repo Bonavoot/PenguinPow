@@ -193,11 +193,12 @@ body {
   background-color: gray;
 }
 
+.ui-container {
+  height: fit-content;
+}
+
 .ui-player-container {
-  display: flex;
-  flex-direction: column;
-  margin-left: 15px;
-  margin-top: 15px;
+  position: relative;
 }
 
 .ui-player-name {
@@ -206,41 +207,48 @@ body {
 }
 
 #ui-name-1 {
-  color: rgb(0, 238, 255);
+  color: blue;
+  position: absolute;
+  top: -2.2rem;
+  left: 3.1rem;
 }
 #ui-name-2 {
-  color: rgb(245, 190, 71);
+  color: red;
+  position: absolute;
+  top: -2.2rem;
+  right: 3.2rem;
 }
 
-#ui-name-3 {
-  color: purple;
-}
-
-.ui-player-health-container {
+.ui-player-stamina-container {
   background-color: black;
-  width: 150px;
-  height: 25px;
+  width: 14rem;
+  height: 2rem;
   border: black solid 3px;
   position: relative;
   z-index: 1;
+  margin-left: 3rem;
+  margin-right: 3rem;
+  margin-top: 3rem;
 }
 
-.ui-player-health-red,
-.ui-player-health-green {
+.ui-player-stamina-red,
+.ui-player-stamina-yellow {
   height: 100%;
 }
 
-.ui-player-health-red {
+.ui-player-stamina-red {
   position: absolute;
   z-index: 2;
 }
 
-.ui-player-health-green {
+.ui-player-stamina-yellow {
   position: absolute;
   z-index: 99;
 }
 
 .game-container {
+  display: flex;
+  justify-content: space-between;
   overflow: hidden;
   position: relative;
   align-self: center;
@@ -253,7 +261,7 @@ body {
   border: solid 2px black;
 }
 
-.game-container > [src*="daibaStanding"] {
+/* .game-container > [src*="daibaStanding"] {
   height: 165px;
 }
 
@@ -285,4 +293,4 @@ body {
 
 .game-container > [src*="dinkeyHit"] {
   height: 155px;
-}
+} */
