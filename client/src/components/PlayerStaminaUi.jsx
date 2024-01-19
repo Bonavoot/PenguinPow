@@ -19,6 +19,7 @@ const PlayerStaminaUi = ({ stamina, index }) => {
             style={{
               width: stamina + "%",
               backgroundColor: "Yellow",
+              transition: "width 1s ease-out",
             }}
           ></div>
         </div>

@@ -6,7 +6,7 @@ import PlayerStaminaUi from "./PlayerStaminaUi";
 import pumo from "../assets/pumo.png";
 import pumoWaddle from "../assets/pumo-waddle.gif";
 
-// import daiba from "../assets/daibaStanding.gif";
+import daiba from "../assets/daibaStanding.gif";
 // import daibaJumping from "../assets/daibaJumping.gif";
 // import daibaDiving from "../assets/daibaDiving.png";
 // import dinkey from "../assets/pumo.png";
@@ -21,6 +21,7 @@ const getImageSrc = (
   isJumping,
   isAttacking,
   isStrafing,
+  isCrouching,
   isHit,
   isDead
 ) => {
@@ -28,6 +29,7 @@ const getImageSrc = (
     if (isDiving) return pumo;
     if (isJumping) return pumo;
     if (isAttacking) return pumo;
+    if (isCrouching) return daiba;
     if (isStrafing) return pumoWaddle;
     if (isHit) return pumo;
     if (isDead) return pumo;
@@ -44,6 +46,7 @@ const StyledImage = styled("img", {
       "isDiving",
       "isAttacking",
       "isStrafing",
+      "isCrouching",
       "isHit",
       "isDead",
     ].includes(prop),
@@ -54,6 +57,7 @@ const StyledImage = styled("img", {
     props.isJumping,
     props.isAttacking,
     props.isStrafing,
+    props.isCrouching,
     props.isHit,
     props.isDead
   ),
@@ -81,6 +85,7 @@ const GameFighter = ({ player, index }) => {
   const { socket } = useContext(SocketContext);
   const [penguin, setPenguin] = useState(player);
   const [stamina, setStamina] = useState(player);
+  const [hakkiyoi, setHakkiyoi] = useState(false);
 
   useEffect(() => {
     socket.on("fighter_action", (data) => {
@@ -96,13 +101,28 @@ const GameFighter = ({ player, index }) => {
       // }
     });
 
+    socket.on("game_start", (data) => {
+      console.log(data);
+      setHakkiyoi(true);
+
+      const timer = setTimeout(() => {
+        setHakkiyoi(false);
+      }, 2000);
+
+      return () => clearTimeout(timer);
+    });
+
     return () => {
       socket.off("fighter_action");
+      socket.off("game_start");
     };
   }, [index, socket]);
 
+  useEffect(() => {});
+
   return (
     <div className="ui-container">
+      {hakkiyoi && <div className="hakkiyoi">HAKKI-YOI !</div>}
       <PlayerStaminaUi stamina={stamina} index={index} />
       <StyledLabel {...penguin}>P{index + 1}</StyledLabel>
       <StyledImage {...penguin} />
@@ -119,6 +139,7 @@ GameFighter.propTypes = {
     isAttacking: PropTypes.bool,
     isStrafing: PropTypes.bool,
     isDiving: PropTypes.bool,
+    isCrouching: PropTypes.bool,
     isHit: PropTypes.bool,
     isDead: PropTypes.bool,
     facing: PropTypes.number,

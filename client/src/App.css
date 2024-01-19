@@ -223,7 +223,7 @@ body {
   background-color: black;
   width: 14rem;
   height: 2rem;
-  border: black solid 3px;
+  border: rgb(117, 121, 0) solid 3px;
   position: relative;
   z-index: 1;
   margin-left: 3rem;
@@ -244,6 +244,21 @@ body {
 .ui-player-stamina-yellow {
   position: absolute;
   z-index: 99;
+}
+
+.hakkiyoi {
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 48px;
+  color: #fff;
+  text-align: center;
+  opacity: 1; /* Start invisible */
+  transition: opacity 2s ease-out; /* Fade out in 2 seconds */
+  pointer-events: none;
+  font-family: "Bungee";
+  letter-spacing: 0.1em;
 }
 
 .game-container {

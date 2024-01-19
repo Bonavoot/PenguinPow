@@ -30,16 +30,16 @@ io.use(
 );
 
 const rooms = [
-  { id: "Room 1", players: [], readyCount: 0, projectiles: [] },
-  { id: "Room 2", players: [], readyCount: 0, projectiles: [] },
-  { id: "Room 3", players: [], readyCount: 0, projectiles: [] },
-  { id: "Room 4", players: [], readyCount: 0, projectiles: [] },
-  { id: "Room 5", players: [], readyCount: 0, projectiles: [] },
-  { id: "Room 6", players: [], readyCount: 0, projectiles: [] },
-  { id: "Room 7", players: [], readyCount: 0, projectiles: [] },
-  { id: "Room 8", players: [], readyCount: 0, projectiles: [] },
-  { id: "Room 9", players: [], readyCount: 0, projectiles: [] },
-  { id: "Room10", players: [], readyCount: 0, projectiles: [] },
+  { id: "Room 1", players: [], readyCount: 0, gameStart: false },
+  { id: "Room 2", players: [], readyCount: 0, gameStart: false },
+  { id: "Room 3", players: [], readyCount: 0, gameStart: false },
+  { id: "Room 4", players: [], readyCount: 0, gameStart: false },
+  { id: "Room 5", players: [], readyCount: 0, gameStart: false },
+  { id: "Room 6", players: [], readyCount: 0, gameStart: false },
+  { id: "Room 7", players: [], readyCount: 0, gameStart: false },
+  { id: "Room 8", players: [], readyCount: 0, gameStart: false },
+  { id: "Room 9", players: [], readyCount: 0, gameStart: false },
+  { id: "Room10", players: [], readyCount: 0, gameStart: false },
 ];
 
 let index;
@@ -81,7 +81,31 @@ io.on("connection", (socket) => {
           player2.facing = -1; // Player 2 faces right
         }
 
-        // ... existing code that updates players' positions and states ...
+        if (room.gameStart === false) {
+          if (player1.x >= 340) {
+            player1.x = 340;
+            console.log(player1);
+          }
+
+          if (player2.x <= 755) {
+            player2.x = 755;
+          }
+          //testing purposes
+          if (player2.x !== 755) {
+            player2.x = 755;
+            player2.isCrouching = true;
+          }
+        }
+
+        if (
+          player1.x === 340 &&
+          player2.x === 755 &&
+          player1.isCrouching &&
+          player2.isCrouching
+        ) {
+          room.gameStart = true;
+          io.emit("game_start", true);
+        }
       }
 
       room.players.forEach((player) => {
@@ -123,29 +147,34 @@ io.on("connection", (socket) => {
 
         if (player.isHit) return;
 
+        // win condition
         if (player.x < -650 || player.x > 1780) {
           console.log("game over!");
         }
 
         // Strafing
-        if (player.keys.d) {
-          player.x += delta * speedFactor;
-
-          player.isStrafing = true;
+        if (!player.keys.s) {
+          if (player.keys.d) {
+            player.x += delta * speedFactor;
+            player.isStrafing = true;
+          }
+          if (player.keys.a) {
+            player.x -= delta * speedFactor;
+            player.isStrafing = true;
+          }
+          if (!player.keys.a && !player.keys.d) {
+            player.isStrafing = false;
+          }
         }
-
-        if (player.keys.a) {
-          player.x -= delta * speedFactor;
-
-          player.isStrafing = true;
-        }
-
         if (!player.keys.a && !player.keys.d) {
           player.isStrafing = false;
         }
 
         // Diving / down or gravity
-        if (player.keys.s || (player.y > GROUND_LEVEL && !player.isJumping)) {
+        if (
+          (player.keys.s && player.y > GROUND_LEVEL) ||
+          (player.y > GROUND_LEVEL && !player.isJumping)
+        ) {
           player.y -= delta * speedFactor + 10;
           player.y = Math.max(player.y, GROUND_LEVEL);
           player.isDiving = player.keys.s;
@@ -153,6 +182,15 @@ io.on("connection", (socket) => {
 
         if (player.y <= GROUND_LEVEL) {
           player.isDiving = false;
+        }
+
+        // Crouching
+        if (player.keys.s && player.y === GROUND_LEVEL) {
+          player.isCrouching = true;
+        }
+
+        if (!player.keys.s) {
+          player.isCrouching = false;
         }
 
         // Jumping
@@ -203,17 +241,17 @@ io.on("connection", (socket) => {
 
   function checkCollision(player, otherPlayer) {
     const playerHitbox = {
-      left: player.x - 50,
-      right: player.x + 50,
-      top: player.y - 50,
-      bottom: player.y + 50,
+      left: player.x - 65,
+      right: player.x + 65,
+      top: player.y - 65,
+      bottom: player.y + 65,
     };
 
     const opponentHitbox = {
-      left: otherPlayer.x - 50,
-      right: otherPlayer.x + 50,
-      top: otherPlayer.y - 50,
-      bottom: otherPlayer.y + 50,
+      left: otherPlayer.x - 65,
+      right: otherPlayer.x + 65,
+      top: otherPlayer.y - 65,
+      bottom: otherPlayer.y + 65,
     };
 
     if (
@@ -266,6 +304,7 @@ io.on("connection", (socket) => {
         isAttacking: false,
         isStrafing: false,
         isDiving: false,
+        isCrouching: false,
         isHit: false,
         isAlreadyHit: false,
         isDead: false,
@@ -286,6 +325,7 @@ io.on("connection", (socket) => {
         isMoving: false,
         isStrafing: false,
         isDiving: false,
+        isCrouching: false,
         isHit: false,
         isAlreadyHit: false,
         isDead: false,
@@ -361,6 +401,7 @@ io.on("connection", (socket) => {
   socket.on("disconnect", (reason) => {
     const roomId = socket.roomId;
     const roomIndex = rooms.findIndex((room) => room.id === roomId);
+    rooms[roomIndex].gameStart = false;
 
     rooms.forEach((room) => {
       room.players = room.players.filter((player) => player.id !== socket.id);
