@@ -47,7 +47,7 @@ let gameLoop = null;
 let healthRegenCounter = 0;
 const TICK_RATE = 90;
 const delta = 1000 / TICK_RATE;
-const speedFactor = 0.25;
+const speedFactor = 0.3;
 const GROUND_LEVEL = 100;
 
 io.on("connection", (socket) => {
