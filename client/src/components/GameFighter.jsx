@@ -5,14 +5,15 @@ import styled from "styled-components";
 import PlayerStaminaUi from "./PlayerStaminaUi";
 import pumo from "../assets/pumo.png";
 import pumoWaddle from "../assets/pumo-waddle.gif";
-
-import daiba from "../assets/daibaStanding.gif";
+import crouching from "../assets/crouching.png";
 import daibaJumping from "../assets/daibaJumping.gif";
+import daibaHit from "../assets/daibaHit.gif";
+import isPropValid from "@emotion/is-prop-valid";
 // import daibaDiving from "../assets/daibaDiving.png";
 // import dinkey from "../assets/pumo.png";
 // import dinkeyDiving from "../assets/pumo.png";
 // import dinkeyHit from "../assets/pumo.png";
-// import daibaHit from "../assets/daibaHit.gif";
+
 // import daibaDeath from "../assets/daibaDeath.png";
 
 const getImageSrc = (
@@ -20,6 +21,7 @@ const getImageSrc = (
   isDiving,
   isJumping,
   isAttacking,
+  isDodging,
   isStrafing,
   isCrouching,
   isReady,
@@ -30,7 +32,8 @@ const getImageSrc = (
     if (isDiving) return pumo;
     if (isJumping) return pumo;
     if (isAttacking) return pumo;
-    if (isCrouching) return daiba;
+    if (isDodging) return daibaHit;
+    if (isCrouching) return crouching;
     if (isReady) return daibaJumping;
     if (isStrafing) return pumoWaddle;
     if (isHit) return pumo;
@@ -40,49 +43,100 @@ const getImageSrc = (
   }
 };
 
-const StyledImage = styled("img", {
-  shouldForwardProp: (prop) =>
-    isPropValid(prop) &&
-    ![
-      "fighter",
-      "isJumping",
-      "isDiving",
-      "isAttacking",
-      "isStrafing",
-      "isCrouching",
-      "isReady",
-      "isHit",
-      "isDead",
-    ].includes(prop),
-}).attrs((props) => ({
-  src: getImageSrc(
-    props.fighter,
-    props.isDiving,
-    props.isJumping,
-    props.isAttacking,
-    props.isStrafing,
-    props.isCrouching,
-    props.isReady,
-    props.isHit,
-    props.isDead
-  ),
-}))`
+const validProps = [
+  // Add any valid HTML attributes that you want to allow
+  "src",
+  "style",
+  "alt",
+  "className",
+  "id",
+  "onClick",
+];
+
+const StyledImage = styled("img")
+  .withConfig({
+    shouldForwardProp: (prop) =>
+      validProps.includes(prop) ||
+      ![
+        "fighter",
+        "isJumping",
+        "isDiving",
+        "isAttacking",
+        "isDodging",
+        "isStrafing",
+        "isCrouching",
+        "isReady",
+        "isHit",
+        "isDead",
+        "x",
+        "y",
+        "facing",
+        "yVelocity",
+        "attackEndTime",
+        "knockbackVelocity",
+        "dodgeEndTime",
+        "isAlreadyHit",
+        // ...any other prop names that should not be forwarded
+      ].includes(prop),
+  })
+  .attrs((props) => ({
+    src: getImageSrc(
+      props.fighter,
+      props.isDiving,
+      props.isJumping,
+      props.isAttacking,
+      props.isDodging,
+      props.isStrafing,
+      props.isCrouching,
+      props.isReady,
+      props.isHit,
+      props.isDead
+    ),
+    style: {
+      left: `${props.x}px`,
+      bottom: `${props.y}px`,
+      transform: `scaleX(${props.facing})`,
+    },
+  }))`
   position: absolute;
-  left: ${(props) => props.x}px;
-  bottom: ${(props) => props.y}px;
-  transform: scaleX(${(props) => props.facing});
   height: 235px;
+  will-change: transform, bottom, left; // optimize for animations
 `;
 
-const StyledLabel = styled.div`
+const StyledLabel = styled.div
+  .withConfig({
+    shouldForwardProp: (prop) =>
+      ![
+        "fighter",
+        "isJumping",
+        "isDiving",
+        "isAttacking",
+        "isDodging",
+        "isStrafing",
+        "isCrouching",
+        "isReady",
+        "isHit",
+        "isDead",
+        "x",
+        "y",
+        "facing",
+        "yVelocity",
+        "attackEndTime",
+        "knockbackVelocity",
+        "dodgeEndTime",
+        "isAlreadyHit",
+        // ...any other prop names that should not be forwarded
+      ].includes(prop),
+  })
+  .attrs((props) => ({
+    style: {
+      bottom: `${props.y + 230}px`, // Adjust based on the image height
+      left: `${props.facing === -1 ? props.x + 100 : props.x + 100}px`, // Adjust based on the label position
+      color: props.color || "black",
+    },
+  }))`
   position: absolute;
   font-size: 2rem;
-  bottom: ${(props) => props.y + 230}px; // Adjust based on the image height
-  left: ${(props) =>
-    props.facing === -1
-      ? props.x + 100
-      : props.x + 100}px; // Adjust based on the label position
-  color: ${(props) => props.color || "black"};
   font-family: "Bungee";
 `;
 
@@ -142,20 +196,36 @@ GameFighter.propTypes = {
     color: PropTypes.string,
     isJumping: PropTypes.bool,
     isAttacking: PropTypes.bool,
+    isDodging: PropTypes.bool,
     isStrafing: PropTypes.bool,
     isDiving: PropTypes.bool,
     isCrouching: PropTypes.bool,
     isReady: PropTypes.bool,
     isHit: PropTypes.bool,
+    isAlreadyHit: PropTypes.bool, // Added property
     isDead: PropTypes.bool,
     facing: PropTypes.number,
     stamina: PropTypes.number,
+    dodgeEndTime: PropTypes.number, // Added property
     x: PropTypes.number,
     y: PropTypes.number,
+    knockbackVelocity: PropTypes.shape({
+      // Shape added to specify object structure
+      x: PropTypes.number,
+      y: PropTypes.number,
+    }),
+    keys: PropTypes.shape({
+      // Shape added to specify object structure
+      w: PropTypes.bool,
+      a: PropTypes.bool,
+      s: PropTypes.bool,
+      d: PropTypes.bool,
+      " ": PropTypes.bool,
+      shift: PropTypes.bool, // Added property
+    }),
   }),
   index: PropTypes.number.isRequired,
 };
-
 export default GameFighter;
 
 // <img className={`game-player${index + 1}`} src={penguin.fighter === "daiba" ? daiba : dinkey} alt="fighter" />

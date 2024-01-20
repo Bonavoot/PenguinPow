@@ -7,7 +7,14 @@ const Game = ({ rooms, roomName }) => {
   let index = rooms.findIndex((room) => room.id === roomName);
 
   useEffect(() => {
-    const keyState = { w: false, a: false, s: false, d: false, " ": false };
+    const keyState = {
+      w: false,
+      a: false,
+      s: false,
+      d: false,
+      " ": false,
+      shift: false,
+    };
 
     const handleKeyDown = (e) => {
       if (keyState.hasOwnProperty(e.key.toLowerCase())) {
@@ -34,9 +41,11 @@ const Game = ({ rooms, roomName }) => {
 
   return (
     <div className="game-container">
-      {rooms[index].players.map((player, i) => {
-        return <GameFighter key={player.id + i} player={player} index={i} />;
-      })}
+      <div className="ui">
+        {rooms[index].players.map((player, i) => {
+          return <GameFighter key={player.id + i} player={player} index={i} />;
+        })}
+      </div>
     </div>
   );
 };

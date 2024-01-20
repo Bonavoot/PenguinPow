@@ -191,6 +191,14 @@ body {
   background-color: gray;
 }
 
+.ui {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  height: fit-content;
+  padding-bottom: 1rem;
+}
+
 .ui-container {
   height: fit-content;
 }
@@ -221,7 +229,8 @@ body {
   background-color: black;
   width: 14rem;
   height: 2rem;
-  border: rgb(117, 121, 0) solid 3px;
+  border: rgba(71, 71, 71, 0.7) solid 2px;
+  border-radius: 3px;
   position: relative;
   z-index: 1;
   margin-left: 3rem;

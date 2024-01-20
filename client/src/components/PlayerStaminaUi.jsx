@@ -1,6 +1,6 @@
 const PlayerStaminaUi = ({ stamina, index }) => {
   return (
-    <div className="ui">
+    <div>
       <div className={"ui-player-container"}>
         <div className="ui-player-name" id={"ui-name-" + (index + 1)}>
           Player {index + 1}

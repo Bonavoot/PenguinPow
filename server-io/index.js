@@ -29,18 +29,13 @@ io.use(
   })
 );
 
-const rooms = [
-  { id: "Room 1", players: [], readyCount: 0, gameStart: false },
-  { id: "Room 2", players: [], readyCount: 0, gameStart: false },
-  { id: "Room 3", players: [], readyCount: 0, gameStart: false },
-  { id: "Room 4", players: [], readyCount: 0, gameStart: false },
-  { id: "Room 5", players: [], readyCount: 0, gameStart: false },
-  { id: "Room 6", players: [], readyCount: 0, gameStart: false },
-  { id: "Room 7", players: [], readyCount: 0, gameStart: false },
-  { id: "Room 8", players: [], readyCount: 0, gameStart: false },
-  { id: "Room 9", players: [], readyCount: 0, gameStart: false },
-  { id: "Room10", players: [], readyCount: 0, gameStart: false },
-];
+// Creates rooms to join, 10 total as of now
+const rooms = Array.from({ length: 10 }, (_, i) => ({
+  id: `Room ${i + 1}`,
+  players: [],
+  readyCount: 0,
+  gameStart: false,
+}));
 
 let index;
 let gameLoop = null;
@@ -72,6 +67,15 @@ io.on("connection", (socket) => {
       if (room.players.length === 2) {
         const [player1, player2] = room.players;
 
+        // Check for collision and adjust positions
+        if (
+          arePlayersColliding(player1, player2) &&
+          !player1.isAttacking &&
+          !player2.isAttacking
+        ) {
+          adjustPlayerPositions(player1, player2, delta);
+        }
+
         // Update facing direction based on relative positions
         if (player1.x < player2.x) {
           player1.facing = -1; // Player 1 faces right
@@ -97,7 +101,6 @@ io.on("connection", (socket) => {
           if (player2.x === 755) {
             player2.isReady = true;
           }
-          console.log(player1.isReady);
 
           //testing purposes
           // if (player2.x !== 755) {
@@ -106,15 +109,71 @@ io.on("connection", (socket) => {
           // }
         }
 
+        function arePlayersColliding(player1, player2) {
+          if (player1.isDodging || player2.isDodging) {
+            return false;
+          }
+          const player1Hitbox = {
+            left: player1.x - 35,
+            right: player1.x + 35,
+            top: player1.y - 35,
+            bottom: player1.y + 35,
+          };
+
+          const player2Hitbox = {
+            left: player2.x - 35,
+            right: player2.x + 35,
+            top: player2.y - 35,
+            bottom: player2.y + 35,
+          };
+
+          return (
+            player1Hitbox.left < player2Hitbox.right &&
+            player1Hitbox.right > player2Hitbox.left &&
+            player1Hitbox.top < player2Hitbox.bottom &&
+            player1Hitbox.bottom > player2Hitbox.top
+          );
+        }
+        function adjustPlayerPositions(player1, player2, delta) {
+          // Calculate the overlap between players
+          const overlap =
+            Math.min(player1.x + 65, player2.x + 65) -
+            Math.max(player1.x - 65, player2.x - 65);
+
+          if (overlap > 0) {
+            // Calculate adjustment value (half the overlap so both players move equally)
+            const adjustment = overlap / 2;
+            const smoothFactor = delta * 0.01; // Adjust this value to make the movement smoother or more abrupt
+
+            // Determine the direction to move each player and apply the smooth factor
+            if (player1.x < player2.x) {
+              player1.x -= adjustment * smoothFactor;
+              player2.x += adjustment * smoothFactor;
+            } else {
+              player1.x += adjustment * smoothFactor;
+              player2.x -= adjustment * smoothFactor;
+            }
+          }
+        }
+
+        if (player1.isAttacking) {
+          checkCollision(player1, player2);
+        }
+        if (player2.isAttacking) {
+          checkCollision(player2, player1);
+        }
+
         if (
           player1.isReady &&
           player2.isReady &&
           !player1.isCrouching &&
           !player1.isStrafing &&
           !player1.isJumping &&
+          !player1.isAttacking &&
           !player2.isCrouching &&
           !player2.isStrafing &&
-          !player2.isJumping
+          !player2.isJumping &&
+          !player2.isAttacking
         ) {
           room.gameStart = true;
           io.emit("game_start", true);
@@ -167,6 +226,28 @@ io.on("connection", (socket) => {
           console.log("game over!");
         }
 
+        // Dodging
+        if (player.isDodging) {
+          // Move the player forward on the x-axis
+
+          if (player.keys.a) {
+            player.x += -1 * delta * speedFactor * 2.5;
+          } else if (player.keys.d) {
+            player.x += 1 * delta * speedFactor * 2.5;
+          } else if (player.keys.a && player.keys.d) {
+            player.x +=
+              (player.facing === -1 ? 1 : -1) * delta * speedFactor * 2.5;
+          } else {
+            player.x +=
+              (player.facing === -1 ? 1 : -1) * delta * speedFactor * 2.5;
+          }
+
+          // End dodge if the duration is over
+          if (Date.now() >= player.dodgeEndTime) {
+            player.isDodging = false;
+          }
+        }
+
         // Strafing
         if (!player.keys.s) {
           if (player.keys.d) {
@@ -214,7 +295,7 @@ io.on("connection", (socket) => {
         }
 
         // Jumping
-        if (player.keys.w && !player.isJumping) {
+        if (player.keys.w && !player.isJumping && player.stamina >= 8) {
           player.isJumping = true;
           player.yVelocity = 15;
           player.stamina -= 8;
@@ -231,23 +312,14 @@ io.on("connection", (socket) => {
           }
         }
 
-        for (let i = 0; i < 2; i++) {
-          const player = room.players[i];
+        if (player.isAttacking) {
+          player.x +=
+            (player.facing === 1 ? -1 : 1) * delta * speedFactor * 2.5; // Adjust speed as needed
 
-          if (player.isDiving) {
-            for (let j = 0; j < 2; j++) {
-              if (i !== j) {
-                const otherPlayer = room.players[j];
-                checkCollision(player, otherPlayer);
-              }
-            }
+          if (Date.now() >= player.attackEndTime) {
+            player.isAttacking = false;
           }
         }
-
-        // Attacking
-        // if (player.keys[" "]) {
-        //   player.isAttacking = true;
-        // }
       });
 
       io.in(room.id).emit("fighter_action", {
@@ -262,6 +334,11 @@ io.on("connection", (socket) => {
   }
 
   function checkCollision(player, otherPlayer) {
+    // Check if the player is attacking or other player is already hit or dead
+    if (!player.isAttacking || otherPlayer.isAlreadyHit || otherPlayer.isDead) {
+      return;
+    }
+
     const playerHitbox = {
       left: player.x - 65,
       right: player.x + 65,
@@ -276,36 +353,37 @@ io.on("connection", (socket) => {
       bottom: otherPlayer.y + 65,
     };
 
-    if (
+    // Simplified collision check
+    const isCollision =
       playerHitbox.left < opponentHitbox.right &&
       playerHitbox.right > opponentHitbox.left &&
       playerHitbox.top < opponentHitbox.bottom &&
-      playerHitbox.bottom > opponentHitbox.top &&
-      !otherPlayer.isAlreadyHit &&
-      !otherPlayer.isDead
-    ) {
+      playerHitbox.bottom > opponentHitbox.top;
+
+    if (isCollision) {
       console.log("hit");
-      otherPlayer.isHit = true;
-      otherPlayer.isJumping = false;
-      otherPlayer.isAttacking = false;
-      otherPlayer.isStrafing = false;
-      otherPlayer.isDiving = false;
-
-      if (player.facing === -1) {
-        otherPlayer.facing = -1;
-        otherPlayer.knockbackVelocity.x = 6;
-      } else {
-        otherPlayer.facing = 1;
-        otherPlayer.knockbackVelocity.x = -6;
-      }
-
-      otherPlayer.isAlreadyHit = true;
-
-      setTimeout(() => {
-        otherPlayer.isHit = false;
-        otherPlayer.isAlreadyHit = false;
-      }, 300);
+      processHit(player, otherPlayer);
     }
+  }
+
+  function processHit(player, otherPlayer) {
+    player.isAttacking = false;
+    otherPlayer.isHit = true;
+    otherPlayer.isJumping = false;
+    otherPlayer.isAttacking = false;
+    otherPlayer.isStrafing = false;
+    otherPlayer.isDiving = false;
+
+    const knockbackDirection = player.facing === -1 ? 1 : -1;
+    otherPlayer.knockbackVelocity.x = 6 * knockbackDirection;
+    otherPlayer.stamina -= 10;
+
+    otherPlayer.isAlreadyHit = true;
+
+    setTimeout(() => {
+      otherPlayer.isHit = false;
+      otherPlayer.isAlreadyHit = false;
+    }, 300);
   }
 
   socket.on("get_rooms", () => {
@@ -327,6 +405,8 @@ io.on("connection", (socket) => {
         isStrafing: false,
         isDiving: false,
         isCrouching: false,
+        isDodging: false,
+        dodgeEndTime: 0,
         isReady: false,
         isHit: false,
         isAlreadyHit: false,
@@ -336,7 +416,14 @@ io.on("connection", (socket) => {
         x: 150,
         y: GROUND_LEVEL,
         knockbackVelocity: { x: 0, y: 0 },
-        keys: { w: false, a: false, s: false, d: false, " ": false },
+        keys: {
+          w: false,
+          a: false,
+          s: false,
+          d: false,
+          " ": false,
+          shift: false,
+        },
       });
     } else if (rooms[index].players.length === 1) {
       rooms[index].players.push({
@@ -345,10 +432,11 @@ io.on("connection", (socket) => {
         color: "red",
         isJumping: false,
         isAttacking: false,
-        isMoving: false,
         isStrafing: false,
         isDiving: false,
         isCrouching: false,
+        isDodging: false,
+        dodgeEndTime: 0,
         isReady: false,
         isHit: false,
         isAlreadyHit: false,
@@ -358,7 +446,14 @@ io.on("connection", (socket) => {
         x: 900,
         y: GROUND_LEVEL,
         knockbackVelocity: { x: 0, y: 0 },
-        keys: { w: false, a: false, s: false, d: false, " ": false },
+        keys: {
+          w: false,
+          a: false,
+          s: false,
+          d: false,
+          " ": false,
+          shift: false,
+        },
       });
     }
 
@@ -418,7 +513,22 @@ io.on("connection", (socket) => {
 
     if (data.keys) {
       player.keys = data.keys;
+
+      console.log(data.keys);
+
+      if (player.keys["shift"] && !player.isDodging && player.stamina >= 20) {
+        player.isDodging = true;
+        player.dodgeEndTime = Date.now() + 300; // Dodge lasts for 0.3 seconds
+        player.stamina -= 20; // Consume some stamina for the dodge
+      }
+      if (player.keys[" "] && !player.isAttacking && player.stamina >= 20) {
+        player.isAttacking = true;
+        console.log(player.keys[" "]);
+        player.stamina -= 20; // Consume some stamina for the attack
+        player.attackEndTime = Date.now() + 250; // Attack lasts for 1 second
+      }
     }
+
     console.log(player.keys);
   });
 
