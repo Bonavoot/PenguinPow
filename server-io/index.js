@@ -35,6 +35,7 @@ const rooms = Array.from({ length: 10 }, (_, i) => ({
   players: [],
   readyCount: 0,
   gameStart: false,
+  gameOver: false,
 }));
 
 let index;
@@ -62,6 +63,7 @@ io.on("connection", (socket) => {
   function tick(delta) {
     rooms.forEach((room) => {
       if (room.players.length < 2) return;
+
       staminaRegenCounter += delta;
 
       if (room.players.length === 2) {
@@ -101,12 +103,6 @@ io.on("connection", (socket) => {
           if (player2.x === 755) {
             player2.isReady = true;
           }
-
-          //testing purposes
-          // if (player2.x !== 755) {
-          //   player2.x = 755;
-          //   player2.isCrouching = true;
-          // }
         }
 
         function arePlayersColliding(player1, player2) {
@@ -114,17 +110,17 @@ io.on("connection", (socket) => {
             return false;
           }
           const player1Hitbox = {
-            left: player1.x - 35,
-            right: player1.x + 35,
-            top: player1.y - 35,
-            bottom: player1.y + 35,
+            left: player1.x - 50,
+            right: player1.x + 50,
+            top: player1.y - 30,
+            bottom: player1.y + 30,
           };
 
           const player2Hitbox = {
-            left: player2.x - 35,
-            right: player2.x + 35,
-            top: player2.y - 35,
-            bottom: player2.y + 35,
+            left: player2.x - 50,
+            right: player2.x + 50,
+            top: player2.y - 30,
+            bottom: player2.y + 30,
           };
 
           return (
@@ -182,11 +178,21 @@ io.on("connection", (socket) => {
         }
       }
 
+      // Players Loop
       room.players.forEach((player) => {
-        if (player.isDead) {
-          player.y = GROUND_LEVEL;
-          player.stamina = 0;
-          return;
+        // map boundries
+        player.x = Math.max(-50, Math.min(player.x, 1115));
+
+        // Win Conditions
+        if (
+          (player.isHit && player.x <= -50) ||
+          (player.isHit && player.x >= 1115) ||
+          (player.isHit && player.stamina <= 0)
+        ) {
+          console.log("game over");
+          // player.isDead = true;
+          // room.gameOver = true;
+          //  io.emit("game_over", true)
         }
 
         if (player.stamina < 100) {
@@ -222,9 +228,9 @@ io.on("connection", (socket) => {
         if (player.isHit) return;
 
         // win condition
-        if (player.x < -650 || player.x > 1780) {
-          console.log("game over!");
-        }
+        // if (player.x < -50 || player.x > 1115) {
+        //   console.log("game over!");
+        // }
 
         // Dodging
         if (player.isDodging) {
@@ -424,6 +430,7 @@ io.on("connection", (socket) => {
           " ": false,
           shift: false,
         },
+        wins: 0,
       });
     } else if (rooms[index].players.length === 1) {
       rooms[index].players.push({
@@ -454,6 +461,7 @@ io.on("connection", (socket) => {
           " ": false,
           shift: false,
         },
+        wins: 0,
       });
     }
 
