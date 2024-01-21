@@ -4,6 +4,7 @@ const { Server } = require("socket.io");
 const cors = require("cors");
 const sharedsession = require("express-socket.io-session");
 const session = require("express-session");
+const e = require("express");
 const app = express();
 app.use(cors());
 
@@ -373,7 +374,18 @@ io.on("connection", (socket) => {
   }
 
   function processHit(player, otherPlayer) {
-    player.isAttacking = false;
+    const MIN_ATTACK_DISPLAY_TIME = 175;
+    const currentTime = Date.now();
+    const attackDuration = currentTime - player.attackStartTime;
+
+    if (attackDuration < MIN_ATTACK_DISPLAY_TIME) {
+      setTimeout(() => {
+        player.isAttacking = false;
+      }, MIN_ATTACK_DISPLAY_TIME - attackDuration);
+    } else {
+      player.isAttacking = false;
+    }
+
     otherPlayer.isHit = true;
     otherPlayer.isJumping = false;
     otherPlayer.isAttacking = false;
@@ -537,6 +549,7 @@ io.on("connection", (socket) => {
       ) {
         player.isAttacking = true;
         console.log(player.keys[" "]);
+        player.attackStartTime = Date.now(); // Store the attack start time
         player.stamina -= 20; // Consume some stamina for the attack
         player.attackEndTime = Date.now() + 500; // Attack lasts for .5 seconds
       }

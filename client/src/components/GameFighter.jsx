@@ -12,12 +12,6 @@ import ready from "../assets/ready.png";
 import attack from "../assets/attack.png";
 import dodging from "../assets/dodging.gif";
 import isPropValid from "@emotion/is-prop-valid";
-// import daibaDiving from "../assets/daibaDiving.png";
-// import dinkey from "../assets/pumo.png";
-// import dinkeyDiving from "../assets/pumo.png";
-// import dinkeyHit from "../assets/pumo.png";
-
-// import daibaDeath from "../assets/daibaDeath.png";
 
 const getImageSrc = (
   fighter,
@@ -157,10 +151,7 @@ const GameFighter = ({ player, index }) => {
       } else if (index === 1) {
         setPenguin(data.player2);
         setStamina(data.player2.stamina);
-      } //else if (index === 2) {
-      //   setPenguin(data.player3);
-      //   setHealth(data.player3.health);
-      // }
+      }
     });
 
     socket.on("game_start", (data) => {
