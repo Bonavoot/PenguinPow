@@ -25,7 +25,7 @@ const getImageSrc = (
   isHit,
   isDead
 ) => {
-  if (fighter === "player1" || fighter === "player2") {
+  if (fighter === "player 1" || fighter === "player 2") {
     if (isDiving) return pumo;
     if (isJumping) return pumoWaddle;
     if (isAttacking) return attack;
@@ -148,7 +148,7 @@ const GameFighter = ({ player, index }) => {
   const [stamina, setStamina] = useState(player);
   const [hakkiyoi, setHakkiyoi] = useState(false);
   const [gameOver, setGameOver] = useState(false);
-  // const [winner, setWinner] = useState("");
+  const [winner, setWinner] = useState("");
 
   useEffect(() => {
     socket.on("fighter_action", (data) => {
@@ -177,7 +177,8 @@ const GameFighter = ({ player, index }) => {
     });
 
     socket.on("game_over", (data) => {
-      setGameOver(data);
+      setGameOver(data.isGameOver);
+      setWinner(data.winner);
     });
 
     return () => {
@@ -193,7 +194,14 @@ const GameFighter = ({ player, index }) => {
   return (
     <div className="ui-container">
       {hakkiyoi && <div className="hakkiyoi">HAKKI-YOI !</div>}
-      {gameOver && <div className="hakkiyoi">GAME OVA !</div>}
+      {gameOver && (
+        <div
+          className="hakkiyoi"
+          style={{ color: `${winner === "player 1" ? "aqua" : "salmon"}` }}
+        >
+          {winner} wins !
+        </div>
+      )}
       <PlayerStaminaUi stamina={stamina} index={index} />
       <StyledLabel {...penguin}>P{index + 1}</StyledLabel>
       <StyledImage {...penguin} />

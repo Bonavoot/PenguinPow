@@ -67,7 +67,7 @@ function resetRoomAndPlayers(room) {
     player.isAlreadyHit = false;
     player.isDead = false;
     player.stamina = 100;
-    player.x = player.fighter === "player1" ? 150 : 900; // Reset position based on facing
+    player.x = player.fighter === "player 1" ? 150 : 900; // Reset position based on facing
     player.y = GROUND_LEVEL;
     player.knockbackVelocity = { x: 0, y: 0 };
   });
@@ -230,7 +230,12 @@ io.on("connection", (socket) => {
         ) {
           console.log("game over");
           room.gameOver = true;
-          io.in(room.id).emit("game_over", true);
+          const winner = room.players.find((p) => p.id !== player.id);
+          winner.wins += 1;
+          io.in(room.id).emit("game_over", {
+            isGameOver: true,
+            winner: winner.fighter,
+          });
           if (!room.gameOverTime) {
             room.gameOverTime = Date.now();
           }
@@ -471,7 +476,7 @@ io.on("connection", (socket) => {
     if (rooms[index].players.length < 1) {
       rooms[index].players.push({
         id: data.socketId,
-        fighter: "player1",
+        fighter: "player 1",
         color: "aqua",
         isJumping: false,
         isAttacking: false,
@@ -503,7 +508,7 @@ io.on("connection", (socket) => {
     } else if (rooms[index].players.length === 1) {
       rooms[index].players.push({
         id: data.socketId,
-        fighter: "player2",
+        fighter: "player 2",
         color: "salmon",
         isJumping: false,
         isAttacking: false,
