@@ -529,11 +529,16 @@ io.on("connection", (socket) => {
         player.dodgeEndTime = Date.now() + 300; // Dodge lasts for 0.3 seconds
         player.stamina -= 20; // Consume some stamina for the dodge
       }
-      if (player.keys[" "] && !player.isAttacking && player.stamina >= 20) {
+      if (
+        player.keys[" "] &&
+        !player.isAttacking &&
+        player.stamina >= 20 &&
+        !player.isJumping
+      ) {
         player.isAttacking = true;
         console.log(player.keys[" "]);
         player.stamina -= 20; // Consume some stamina for the attack
-        player.attackEndTime = Date.now() + 250; // Attack lasts for 1 second
+        player.attackEndTime = Date.now() + 500; // Attack lasts for .5 seconds
       }
     }
 

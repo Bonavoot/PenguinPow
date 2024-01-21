@@ -8,6 +8,9 @@ import pumoWaddle from "../assets/pumo-waddle.gif";
 import crouching from "../assets/crouching.png";
 import daibaJumping from "../assets/daibaJumping.gif";
 import daibaHit from "../assets/daibaHit.gif";
+import ready from "../assets/ready.png";
+import attack from "../assets/attack.png";
+import dodging from "../assets/dodging.gif";
 import isPropValid from "@emotion/is-prop-valid";
 // import daibaDiving from "../assets/daibaDiving.png";
 // import dinkey from "../assets/pumo.png";
@@ -30,11 +33,11 @@ const getImageSrc = (
 ) => {
   if (fighter === "pumo") {
     if (isDiving) return pumo;
-    if (isJumping) return pumo;
-    if (isAttacking) return pumo;
-    if (isDodging) return daibaHit;
+    if (isJumping) return pumoWaddle;
+    if (isAttacking) return attack;
+    if (isDodging) return dodging;
     if (isCrouching) return crouching;
-    if (isReady) return daibaJumping;
+    if (isReady) return ready;
     if (isStrafing) return pumoWaddle;
     if (isHit) return pumo;
 
