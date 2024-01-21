@@ -25,7 +25,7 @@ const getImageSrc = (
   isHit,
   isDead
 ) => {
-  if (fighter === "pumo") {
+  if (fighter === "player1" || fighter === "player2") {
     if (isDiving) return pumo;
     if (isJumping) return pumoWaddle;
     if (isAttacking) return attack;
@@ -73,6 +73,9 @@ const StyledImage = styled("img")
         "knockbackVelocity",
         "dodgeEndTime",
         "isAlreadyHit",
+        "attackStartTime",
+        "isSpaceBarPressed",
+
         // ...any other prop names that should not be forwarded
       ].includes(prop),
   })
@@ -122,6 +125,8 @@ const StyledLabel = styled.div
         "knockbackVelocity",
         "dodgeEndTime",
         "isAlreadyHit",
+        "attackStartTime",
+        "isSpaceBarPressed",
         // ...any other prop names that should not be forwarded
       ].includes(prop),
   })
@@ -142,6 +147,8 @@ const GameFighter = ({ player, index }) => {
   const [penguin, setPenguin] = useState(player);
   const [stamina, setStamina] = useState(player);
   const [hakkiyoi, setHakkiyoi] = useState(false);
+  const [gameOver, setGameOver] = useState(false);
+  // const [winner, setWinner] = useState("");
 
   useEffect(() => {
     socket.on("fighter_action", (data) => {
@@ -165,9 +172,19 @@ const GameFighter = ({ player, index }) => {
       return () => clearTimeout(timer);
     });
 
+    socket.on("game_reset", (data) => {
+      setGameOver(data);
+    });
+
+    socket.on("game_over", (data) => {
+      setGameOver(data);
+    });
+
     return () => {
       socket.off("fighter_action");
       socket.off("game_start");
+      socket.off("game_reset");
+      socket.off("game_over");
     };
   }, [index, socket]);
 
@@ -176,6 +193,7 @@ const GameFighter = ({ player, index }) => {
   return (
     <div className="ui-container">
       {hakkiyoi && <div className="hakkiyoi">HAKKI-YOI !</div>}
+      {gameOver && <div className="hakkiyoi">GAME OVA !</div>}
       <PlayerStaminaUi stamina={stamina} index={index} />
       <StyledLabel {...penguin}>P{index + 1}</StyledLabel>
       <StyledImage {...penguin} />
@@ -216,6 +234,7 @@ GameFighter.propTypes = {
       d: PropTypes.bool,
       " ": PropTypes.bool,
       shift: PropTypes.bool, // Added property
+      f: PropTypes.bool,
     }),
   }),
   index: PropTypes.number.isRequired,

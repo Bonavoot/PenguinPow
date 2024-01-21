@@ -14,6 +14,7 @@ const Game = ({ rooms, roomName }) => {
       d: false,
       " ": false,
       shift: false,
+      f: false,
     };
 
     const handleKeyDown = (e) => {

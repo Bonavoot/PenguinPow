@@ -213,13 +213,13 @@ body {
 }
 
 #ui-name-1 {
-  color: blue;
+  color: aqua;
   position: absolute;
   top: -2.2rem;
   left: 3.1rem;
 }
 #ui-name-2 {
-  color: red;
+  color: salmon;
   position: absolute;
   top: -2.2rem;
   right: 3.2rem;

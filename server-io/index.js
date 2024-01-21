@@ -37,6 +37,7 @@ const rooms = Array.from({ length: 10 }, (_, i) => ({
   readyCount: 0,
   gameStart: false,
   gameOver: false,
+  readyStartTime: null,
 }));
 
 let index;
@@ -46,6 +47,34 @@ const TICK_RATE = 90;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.3;
 const GROUND_LEVEL = 100;
+
+function resetRoomAndPlayers(room) {
+  // Reset room state
+  room.gameStart = false;
+  room.gameOver = false;
+  room.gameOverTime = null;
+
+  // Reset each player in the room
+  room.players.forEach((player) => {
+    player.isJumping = false;
+    player.isAttacking = false;
+    player.isStrafing = false;
+    player.isDiving = false;
+    player.isCrouching = false;
+    player.isDodging = false;
+    player.isReady = false;
+    player.isHit = false;
+    player.isAlreadyHit = false;
+    player.isDead = false;
+    player.stamina = 100;
+    player.x = player.fighter === "player1" ? 150 : 900; // Reset position based on facing
+    player.y = GROUND_LEVEL;
+    player.knockbackVelocity = { x: 0, y: 0 };
+  });
+
+  // Emit an event to inform clients that the game has been reset
+  io.in(room.id).emit("game_reset", false);
+}
 
 io.on("connection", (socket) => {
   console.log(`Client connected: ${socket.id}`);
@@ -172,10 +201,20 @@ io.on("connection", (socket) => {
           !player2.isJumping &&
           !player2.isAttacking
         ) {
-          room.gameStart = true;
-          io.emit("game_start", true);
-          player1.isReady = false;
-          player2.isReady = false;
+          const currentTime = Date.now();
+          if (!room.readyStartTime) {
+            room.readyStartTime = currentTime;
+          }
+
+          if (currentTime - room.readyStartTime >= 1000) {
+            room.gameStart = true;
+            io.emit("game_start", true);
+            player1.isReady = false;
+            player2.isReady = false;
+            room.readyStartTime = null;
+          }
+        } else {
+          room.readyStartTime = null;
         }
       }
 
@@ -187,13 +226,19 @@ io.on("connection", (socket) => {
         // Win Conditions
         if (
           (player.isHit && player.x <= -50) ||
-          (player.isHit && player.x >= 1115) ||
-          (player.isHit && player.stamina <= 0)
+          (player.isHit && player.x >= 1115)
         ) {
           console.log("game over");
-          // player.isDead = true;
-          // room.gameOver = true;
-          //  io.emit("game_over", true)
+          room.gameOver = true;
+          io.in(room.id).emit("game_over", true);
+          if (!room.gameOverTime) {
+            room.gameOverTime = Date.now();
+          }
+        }
+
+        if (room.gameOver && Date.now() - room.gameOverTime >= 5000) {
+          // 5 seconds
+          resetRoomAndPlayers(room);
         }
 
         if (player.stamina < 100) {
@@ -302,7 +347,12 @@ io.on("connection", (socket) => {
         }
 
         // Jumping
-        if (player.keys.w && !player.isJumping && player.stamina >= 8) {
+        if (
+          player.keys.w &&
+          !player.isJumping &&
+          !player.isDodging &&
+          player.stamina >= 8
+        ) {
           player.isJumping = true;
           player.yVelocity = 15;
           player.stamina -= 8;
@@ -393,7 +443,12 @@ io.on("connection", (socket) => {
     otherPlayer.isDiving = false;
 
     const knockbackDirection = player.facing === -1 ? 1 : -1;
-    otherPlayer.knockbackVelocity.x = 6 * knockbackDirection;
+    if (otherPlayer.isCrouching) {
+      otherPlayer.knockbackVelocity.x = 2 * knockbackDirection;
+    } else {
+      otherPlayer.knockbackVelocity.x = 6 * knockbackDirection;
+    }
+
     otherPlayer.stamina -= 10;
 
     otherPlayer.isAlreadyHit = true;
@@ -416,8 +471,8 @@ io.on("connection", (socket) => {
     if (rooms[index].players.length < 1) {
       rooms[index].players.push({
         id: data.socketId,
-        fighter: "pumo",
-        color: "blue",
+        fighter: "player1",
+        color: "aqua",
         isJumping: false,
         isAttacking: false,
         isStrafing: false,
@@ -441,14 +496,15 @@ io.on("connection", (socket) => {
           d: false,
           " ": false,
           shift: false,
+          f: false,
         },
         wins: 0,
       });
     } else if (rooms[index].players.length === 1) {
       rooms[index].players.push({
         id: data.socketId,
-        fighter: "pumo",
-        color: "red",
+        fighter: "player2",
+        color: "salmon",
         isJumping: false,
         isAttacking: false,
         isStrafing: false,
@@ -472,6 +528,7 @@ io.on("connection", (socket) => {
           d: false,
           " ": false,
           shift: false,
+          f: false,
         },
         wins: 0,
       });
@@ -526,6 +583,7 @@ io.on("connection", (socket) => {
   socket.on("fighter_action", (data) => {
     let roomId = socket.roomId;
     let index = rooms.findIndex((room) => room.id === roomId);
+
     let playerIndex = rooms[index].players.findIndex(
       (player) => player.id === data.id
     );
@@ -536,22 +594,37 @@ io.on("connection", (socket) => {
 
       console.log(data.keys);
 
-      if (player.keys["shift"] && !player.isDodging && player.stamina >= 20) {
+      if (
+        player.keys["shift"] &&
+        !player.isDodging &&
+        !player.isAttacking &&
+        player.stamina >= 20
+      ) {
         player.isDodging = true;
         player.dodgeEndTime = Date.now() + 300; // Dodge lasts for 0.3 seconds
         player.stamina -= 20; // Consume some stamina for the dodge
       }
       if (
         player.keys[" "] &&
-        !player.isAttacking &&
+        !player.isAttacking && // Check if the player is not already attacking
+        !player.isJumping && // Check if the player is not jumping
+        !player.isDodging && // Check if the player is not dodging
         player.stamina >= 20 &&
-        !player.isJumping
+        !player.isSpaceBarPressed
       ) {
         player.isAttacking = true;
+        player.isSpaceBarPressed = true;
         console.log(player.keys[" "]);
         player.attackStartTime = Date.now(); // Store the attack start time
         player.stamina -= 20; // Consume some stamina for the attack
         player.attackEndTime = Date.now() + 500; // Attack lasts for .5 seconds
+
+        // Reset the attack state after the attack duration
+        setTimeout(() => {
+          player.isAttacking = false;
+        }, 500); // Attack lasts for .5 seconds
+      } else if (!player.keys[" "]) {
+        player.isSpaceBarPressed = false; // Space is released, ready for next attack
       }
     }
 
