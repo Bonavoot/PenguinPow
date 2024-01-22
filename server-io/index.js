@@ -45,7 +45,7 @@ let gameLoop = null;
 let staminaRegenCounter = 0;
 const TICK_RATE = 90;
 const delta = 1000 / TICK_RATE;
-const speedFactor = 0.3;
+const speedFactor = 0.25;
 const GROUND_LEVEL = 100;
 
 function resetRoomAndPlayers(room) {
@@ -89,35 +89,35 @@ io.on("connection", (socket) => {
       tick(delta);
     }, delta);
 
-    setInterval(() => {
-      rooms.forEach((room) => {
-        if (room.players.length === 2) {
-          automatePlayer2(room);
-        }
-      });
-    }, 2000);
+    // setInterval(() => {
+    //   rooms.forEach((room) => {
+    //     if (room.players.length === 2) {
+    //       // automatePlayer2(room);
+    //     }
+    //   });
+    // }, 2000);
   }
 
   // automate cpu for testing purposes
-  function automatePlayer2(room) {
-    const player2 = room.players.find((p) => p.fighter === "player 2");
-    if (player2 && !player2.isAttacking && player2.stamina >= 50) {
-      // Simulate space bar press
-      player2.keys[" "] = true;
-      player2.isAttacking = true;
-      player2.isSpaceBarPressed = true; // Ensure this mimics the actual key press
-      player2.attackStartTime = Date.now(); // Store the attack start time
-      player2.stamina -= 20; // Consume some stamina for the attack
-      player2.attackEndTime = Date.now() + 150; // Attack lasts for .05 seconds
+  // function automatePlayer2(room) {
+  //   const player2 = room.players.find((p) => p.fighter === "player 1");
+  //   if (player2 && !player2.isAttacking && player2.stamina >= 50) {
+  //     // Simulate space bar press
+  //     player2.keys[" "] = true;
+  //     player2.isAttacking = true;
+  //     player2.isSpaceBarPressed = true; // Ensure this mimics the actual key press
+  //     player2.attackStartTime = Date.now(); // Store the attack start time
+  //     player2.stamina -= 20; // Consume some stamina for the attack
+  //     player2.attackEndTime = Date.now() + 150; // Attack lasts for .05 seconds
 
-      // Reset the attack state after the attack duration
-      setTimeout(() => {
-        player2.isAttacking = false;
-        player2.isSpaceBarPressed = false; // Space is released, ready for next attack
-        player2.keys[" "] = false; // Ensure this mimics the actual key release
-      }, 150); // Attack lasts for .05 seconds
-    }
-  }
+  //     // Reset the attack state after the attack duration
+  //     setTimeout(() => {
+  //       player2.isAttacking = false;
+  //       player2.isSpaceBarPressed = false; // Space is released, ready for next attack
+  //       player2.keys[" "] = false; // Ensure this mimics the actual key release
+  //     }, 150); // Attack lasts for .05 seconds
+  //   }
+  // }
 
   function tick(delta) {
     rooms.forEach((room) => {
@@ -127,9 +127,11 @@ io.on("connection", (socket) => {
 
       if (room.players.length === 2) {
         const [player1, player2] = room.players;
-        if (room.gameStart && room.players.length === 2) {
-          automatePlayer2(room);
-        }
+
+        // automate
+        // if (room.gameStart && room.players.length === 2) {
+        //   automatePlayer2(room);
+        // }
         // Check for collision and adjust positions
         if (
           arePlayersColliding(player1, player2) &&
@@ -171,17 +173,17 @@ io.on("connection", (socket) => {
             return false;
           }
           const player1Hitbox = {
-            left: player1.x - 50,
-            right: player1.x + 50,
-            top: player1.y - 30,
-            bottom: player1.y + 30,
+            left: player1.x - 65,
+            right: player1.x + 65,
+            top: player1.y - 65,
+            bottom: player1.y + 65,
           };
 
           const player2Hitbox = {
-            left: player2.x - 50,
-            right: player2.x + 50,
-            top: player2.y - 30,
-            bottom: player2.y + 30,
+            left: player2.x - 65,
+            right: player2.x + 65,
+            top: player2.y - 65,
+            bottom: player2.y + 65,
           };
 
           return (
@@ -279,7 +281,7 @@ io.on("connection", (socket) => {
 
         if (player.stamina < 100) {
           if (staminaRegenCounter >= 1000) {
-            player.stamina += 12;
+            player.stamina += 20;
             player.stamina = Math.min(player.stamina, 100);
           }
         }
@@ -337,7 +339,7 @@ io.on("connection", (socket) => {
         }
 
         // Strafing
-        if (!player.keys.s) {
+        if (!player.keys.s && !player.isAttacking) {
           if (player.keys.d) {
             player.x += delta * speedFactor;
             player.isStrafing = true;
