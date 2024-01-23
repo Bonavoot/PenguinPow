@@ -43,10 +43,12 @@ const rooms = Array.from({ length: 10 }, (_, i) => ({
 let index;
 let gameLoop = null;
 let staminaRegenCounter = 0;
-const TICK_RATE = 90;
+const TICK_RATE = 128;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.25;
 const GROUND_LEVEL = 100;
+const CLOSE_COMBAT_DISTANCE = 185;
+const HITBOX_DISTANCE_VALUE = 85;
 
 function resetRoomAndPlayers(room) {
   // Reset room state
@@ -89,35 +91,40 @@ io.on("connection", (socket) => {
       tick(delta);
     }, delta);
 
-    // setInterval(() => {
-    //   rooms.forEach((room) => {
-    //     if (room.players.length === 2) {
-    //       // automatePlayer2(room);
-    //     }
-    //   });
-    // }, 2000);
+    setInterval(() => {
+      rooms.forEach((room) => {
+        if (room.players.length === 2) {
+          automatePlayer2(room);
+        }
+      });
+    }, 2000);
   }
 
   // automate cpu for testing purposes
-  // function automatePlayer2(room) {
-  //   const player2 = room.players.find((p) => p.fighter === "player 1");
-  //   if (player2 && !player2.isAttacking && player2.stamina >= 50) {
-  //     // Simulate space bar press
-  //     player2.keys[" "] = true;
-  //     player2.isAttacking = true;
-  //     player2.isSpaceBarPressed = true; // Ensure this mimics the actual key press
-  //     player2.attackStartTime = Date.now(); // Store the attack start time
-  //     player2.stamina -= 20; // Consume some stamina for the attack
-  //     player2.attackEndTime = Date.now() + 150; // Attack lasts for .05 seconds
+  function automatePlayer2(room) {
+    const player2 = room.players.find((p) => p.fighter === "player 2");
+    if (player2 && !player2.isAttacking) {
+      // Simulate space bar press
+      player2.keys[" "] = true;
+      player2.isAttacking = true;
+      player2.isSpaceBarPressed = true; // Ensure this mimics the actual key press
+      player2.attackStartTime = Date.now(); // Store the attack start time
+      // Consume some stamina for the attack
+      player2.attackEndTime = Date.now() + 500; // Attack lasts for .05 seconds
 
-  //     // Reset the attack state after the attack duration
-  //     setTimeout(() => {
-  //       player2.isAttacking = false;
-  //       player2.isSpaceBarPressed = false; // Space is released, ready for next attack
-  //       player2.keys[" "] = false; // Ensure this mimics the actual key release
-  //     }, 150); // Attack lasts for .05 seconds
-  //   }
-  // }
+      // Reset the attack state after the attack duration
+      setTimeout(() => {
+        player2.isAttacking = false;
+        player2.isSpaceBarPressed = false; // Space is released, ready for next attack
+        player2.keys[" "] = false; // Ensure this mimics the actual key release
+      }, 500); // Attack lasts for .05 seconds
+    }
+  }
+  function isOpponentCloseEnoughForThrow(player, opponent) {
+    const distance = Math.abs(player.x - opponent.x); // Calculate the distance between the player and the opponent
+    const THROW_DISTANCE_THRESHOLD = 180; // Define the maximum distance for a throw to be possible
+    return distance <= THROW_DISTANCE_THRESHOLD; // Return true if the distance is within the threshold, otherwise false
+  }
 
   function tick(delta) {
     rooms.forEach((room) => {
@@ -139,6 +146,18 @@ io.on("connection", (socket) => {
           !player2.isAttacking
         ) {
           adjustPlayerPositions(player1, player2, delta);
+        }
+
+        if (
+          player1.x < player2.x &&
+          !player1.isThrowing &&
+          !player2.isThrowing
+        ) {
+          player1.facing = -1; // Player 1 faces right
+          player2.facing = 1; // Player 2 faces left
+        } else if (!player1.isThrowing && !player2.isThrowing) {
+          player1.facing = 1; // Player 1 faces left
+          player2.facing = -1; // Player 2 faces right
         }
 
         // Update facing direction based on relative positions
@@ -173,17 +192,17 @@ io.on("connection", (socket) => {
             return false;
           }
           const player1Hitbox = {
-            left: player1.x - 65,
-            right: player1.x + 65,
-            top: player1.y - 65,
-            bottom: player1.y + 65,
+            left: player1.x - 100,
+            right: player1.x + 100,
+            top: player1.y - 100,
+            bottom: player1.y + 100,
           };
 
           const player2Hitbox = {
-            left: player2.x - 65,
-            right: player2.x + 65,
-            top: player2.y - 65,
-            bottom: player2.y + 65,
+            left: player2.x - 100,
+            right: player2.x + 100,
+            top: player2.y - 100,
+            bottom: player2.y + 100,
           };
 
           return (
@@ -196,8 +215,14 @@ io.on("connection", (socket) => {
         function adjustPlayerPositions(player1, player2, delta) {
           // Calculate the overlap between players
           const overlap =
-            Math.min(player1.x + 65, player2.x + 65) -
-            Math.max(player1.x - 65, player2.x - 65);
+            Math.min(
+              player1.x + HITBOX_DISTANCE_VALUE,
+              player2.x + HITBOX_DISTANCE_VALUE
+            ) -
+            Math.max(
+              player1.x - HITBOX_DISTANCE_VALUE,
+              player2.x - HITBOX_DISTANCE_VALUE
+            );
 
           if (overlap > 0) {
             // Calculate adjustment value (half the overlap so both players move equally)
@@ -254,7 +279,10 @@ io.on("connection", (socket) => {
       // Players Loop
       room.players.forEach((player) => {
         // map boundries
-        player.x = Math.max(-50, Math.min(player.x, 1115));
+
+        if (!player.isHit && !room.gameOver) {
+          player.x = Math.max(-50, Math.min(player.x, 1115));
+        }
 
         // Win Conditions
         if (
@@ -274,14 +302,14 @@ io.on("connection", (socket) => {
           }
         }
 
-        if (room.gameOver && Date.now() - room.gameOverTime >= 5000) {
+        if (room.gameOver && Date.now() - room.gameOverTime >= 3000) {
           // 5 seconds
           resetRoomAndPlayers(room);
         }
 
         if (player.stamina < 100) {
           if (staminaRegenCounter >= 1000) {
-            player.stamina += 20;
+            player.stamina += 25;
             player.stamina = Math.min(player.stamina, 100);
           }
         }
@@ -311,25 +339,58 @@ io.on("connection", (socket) => {
 
         if (player.isHit) return;
 
-        // win condition
-        // if (player.x < -50 || player.x > 1115) {
-        //   console.log("game over!");
-        // }
+        if (player.isThrowing && player.throwOpponent) {
+          const currentTime = Date.now();
+          const throwDuration = currentTime - player.throwStartTime;
+          const throwProgress =
+            throwDuration / (player.throwEndTime - player.throwStartTime);
+
+          const opponent = room.players.find(
+            (p) => p.id === player.throwOpponent
+          );
+          if (opponent) {
+            const throwArcHeight = 415; // Adjust as needed
+            // Calculate opponent's position in the throw arc
+            if (!player.throwingFacingDirection) {
+              player.throwingFacingDirection = player.facing;
+              opponent.beingThrownFacingDirection = opponent.facing;
+            }
+            opponent.x =
+              player.x + player.throwingFacingDirection * 200 * throwProgress; // Adjust 130 to control throw distance
+            opponent.y =
+              GROUND_LEVEL +
+              3.2 * throwArcHeight * throwProgress * (1 - throwProgress); // Parabolic trajectory
+
+            // Check if throw is complete
+            if (currentTime >= player.throwEndTime) {
+              player.isThrowing = false;
+              opponent.isBeingThrown = false;
+              opponent.isHit = false;
+              player.throwOpponent = null;
+              // Handle landing of the opponent
+              opponent.y = GROUND_LEVEL;
+              // opponent.knockbackVelocity.x = player.facing * 5; // Adjust for knockback effect
+              opponent.knockbackVelocity.y = 0;
+              player.throwingFacingDirection = null;
+              opponent.beingThrownFacingDirection = null;
+            }
+          }
+        }
 
         // Dodging
         if (player.isDodging) {
           // Move the player forward on the x-axis
 
           if (player.keys.a) {
-            player.x += -1 * delta * speedFactor * 2.5;
+            player.x += -1 * delta * speedFactor * 1.9;
           } else if (player.keys.d) {
-            player.x += 1 * delta * speedFactor * 2.5;
+            player.x += 1 * delta * speedFactor * 1.9;
           } else if (player.keys.a && player.keys.d) {
             player.x +=
-              (player.facing === -1 ? 1 : -1) * delta * speedFactor * 2.5;
+              (player.facing === -1 ? 1 : -1) * delta * speedFactor * 1.9;
           } else {
             player.x +=
-              (player.facing === -1 ? 1 : -1) * delta * speedFactor * 2.5;
+              (player.facing === -1 ? 1 : -1) * delta * speedFactor * 1.9;
           }
 
           // End dodge if the duration is over
@@ -339,7 +400,10 @@ io.on("connection", (socket) => {
         }
 
         // Strafing
-        if (!player.keys.s && !player.isAttacking) {
+        if (
+          (!player.keys.s && !player.isAttacking) ||
+          (!player.keys.s && player.isSlapAttack)
+        ) {
           if (player.keys.d) {
             player.x += delta * speedFactor;
             player.isStrafing = true;
@@ -387,13 +451,13 @@ io.on("connection", (socket) => {
         // Jumping
         if (player.keys.w && !player.isJumping && !player.isDodging) {
           player.isJumping = true;
-          player.yVelocity = 15;
+          player.yVelocity = 12;
           player.isReady = false;
         }
 
         if (player.isJumping) {
           player.isReady = false;
-          player.yVelocity -= 0.9;
+          player.yVelocity -= 0.6;
           player.y += player.yVelocity;
           if (player.y < GROUND_LEVEL) {
             player.y = GROUND_LEVEL;
@@ -401,7 +465,7 @@ io.on("connection", (socket) => {
           }
         }
 
-        if (player.isAttacking) {
+        if (player.isAttacking && !player.isSlapAttack) {
           player.x +=
             (player.facing === 1 ? -1 : 1) * delta * speedFactor * 2.5; // Adjust speed as needed
 
@@ -434,17 +498,17 @@ io.on("connection", (socket) => {
     }
 
     const playerHitbox = {
-      left: player.x - 65,
-      right: player.x + 65,
-      top: player.y - 65,
-      bottom: player.y + 65,
+      left: player.x - HITBOX_DISTANCE_VALUE,
+      right: player.x + HITBOX_DISTANCE_VALUE,
+      top: player.y - HITBOX_DISTANCE_VALUE,
+      bottom: player.y + HITBOX_DISTANCE_VALUE,
     };
 
     const opponentHitbox = {
-      left: otherPlayer.x - 65,
-      right: otherPlayer.x + 65,
-      top: otherPlayer.y - 65,
-      bottom: otherPlayer.y + 65,
+      left: otherPlayer.x - HITBOX_DISTANCE_VALUE,
+      right: otherPlayer.x + HITBOX_DISTANCE_VALUE,
+      top: otherPlayer.y - HITBOX_DISTANCE_VALUE,
+      bottom: otherPlayer.y + HITBOX_DISTANCE_VALUE,
     };
 
     // Simplified collision check
@@ -461,7 +525,7 @@ io.on("connection", (socket) => {
   }
 
   function processHit(player, otherPlayer) {
-    const MIN_ATTACK_DISPLAY_TIME = 175;
+    const MIN_ATTACK_DISPLAY_TIME = 300;
     const currentTime = Date.now();
     const attackDuration = currentTime - player.attackStartTime;
 
@@ -481,12 +545,10 @@ io.on("connection", (socket) => {
 
     const knockbackDirection = player.facing === -1 ? 1 : -1;
     if (otherPlayer.isCrouching) {
-      otherPlayer.knockbackVelocity.x = 2 * knockbackDirection;
+      otherPlayer.knockbackVelocity.x = 4.5 * knockbackDirection;
     } else {
-      otherPlayer.knockbackVelocity.x = 6 * knockbackDirection;
+      otherPlayer.knockbackVelocity.x = 8 * knockbackDirection;
     }
-
-    otherPlayer.stamina -= 10;
 
     otherPlayer.isAlreadyHit = true;
 
@@ -512,6 +574,13 @@ io.on("connection", (socket) => {
         color: "aqua",
         isJumping: false,
         isAttacking: false,
+        isSlapAttack: false,
+        isThrowing: false,
+        throwStartTime: 0,
+        throwEndTime: 0,
+        throwOpponent: null,
+        throwingFacingDirection: null,
+        beingThrownFacingDirection: null,
         isStrafing: false,
         isDiving: false,
         isCrouching: false,
@@ -544,6 +613,13 @@ io.on("connection", (socket) => {
         color: "salmon",
         isJumping: false,
         isAttacking: false,
+        isSlapAttack: false,
+        isThrowing: false,
+        throwStartTime: 0,
+        throwEndTime: 0,
+        throwOpponent: null,
+        throwingFacingDirection: null,
+        beingThrownFacingDirection: null,
         isStrafing: false,
         isDiving: false,
         isCrouching: false,
@@ -625,6 +701,7 @@ io.on("connection", (socket) => {
       (player) => player.id === data.id
     );
     let player = rooms[index].players[playerIndex];
+    let opponent = rooms[index].players.find((p) => p.id !== player.id);
 
     if (data.keys) {
       player.keys = data.keys;
@@ -632,38 +709,84 @@ io.on("connection", (socket) => {
       console.log(data.keys);
 
       if (
+        player.keys.f &&
+        !player.isThrowing &&
+        !player.isBeingThrown &&
+        !player.isDodging &&
+        !player.isAttacking &&
+        !player.isJumping
+      ) {
+        // Find the opponent player
+        const opponentIndex = rooms[index].players.findIndex(
+          (p) => p.id !== player.id
+        );
+        const opponent = rooms[index].players[opponentIndex];
+
+        // Check if opponent is close enough and not already being thrown
+        if (
+          isOpponentCloseEnoughForThrow(player, opponent) &&
+          !opponent.isBeingThrown
+        ) {
+          player.isThrowing = true;
+          player.throwStartTime = Date.now();
+          player.throwEndTime = Date.now() + 500; // Adjust time as needed
+          player.throwOpponent = opponent.id;
+          opponent.isBeingThrown = true;
+          opponent.isHit = true;
+
+          // Calculate throw trajectory here or in the game loop
+        }
+      }
+
+      if (
         player.keys["shift"] &&
         !player.isDodging &&
         !player.isAttacking &&
-        player.stamina >= 20
+        !player.isThrowing &&
+        !player.isBeingThrown &&
+        player.stamina >= 50
       ) {
         player.isDodging = true;
-        player.dodgeEndTime = Date.now() + 300; // Dodge lasts for 0.3 seconds
-        player.stamina -= 20; // Consume some stamina for the dodge
+        player.dodgeEndTime = Date.now() + 400; // Dodge lasts for 0.3 seconds
+        player.stamina -= 50; // Consume some stamina for the dodge
         // Reset dodge state after duration
         setTimeout(() => {
           player.isDodging = false;
-        }, 300);
+        }, 400);
       }
       if (
         player.keys[" "] &&
         !player.isAttacking && // Check if the player is not already attacking
         !player.isJumping && // Check if the player is not jumping
         !player.isDodging && // Check if the player is not dodging
-        player.stamina >= 20 &&
         !player.isSpaceBarPressed
       ) {
-        player.isAttacking = true;
-        player.isSpaceBarPressed = true;
-        console.log(player.keys[" "]);
-        player.attackStartTime = Date.now(); // Store the attack start time
-        player.stamina -= 20; // Consume some stamina for the attack
-        player.attackEndTime = Date.now() + 500; // Attack lasts for .5 seconds
+        const distanceToOpponent = Math.abs(player.x - opponent.x);
+        if (distanceToOpponent <= CLOSE_COMBAT_DISTANCE) {
+          // Perform slap
+          player.isAttacking = true;
+          player.isSlapAttack = true;
+          player.attackStartTime = Date.now();
+          player.attackEndTime = Date.now() + 300;
 
-        // Reset the attack state after the attack duration
-        setTimeout(() => {
-          player.isAttacking = false;
-        }, 500); // Attack lasts for .5 seconds
+          opponent.knockbackVelocity.x = player.facing * 2;
+
+          setTimeout(() => {
+            player.isAttacking = false;
+            player.isSlapAttack = false;
+          }, 150);
+        } else {
+          player.isAttacking = true;
+          player.isSpaceBarPressed = true;
+          player.isSlapAttack = false;
+          player.attackStartTime = Date.now(); // Store the attack start time
+          player.attackEndTime = Date.now() + 500; // Attack lasts for .5 seconds
+          // Reset the attack state after the attack duration
+          setTimeout(() => {
+            player.isAttacking = false;
+            player.isSpaceBarPressed = false;
+          }, 500); // Attack lasts for .5 seconds
+        }
       } else if (!player.keys[" "]) {
         player.isSpaceBarPressed = false; // Space is released, ready for next attack
       }

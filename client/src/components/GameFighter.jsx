@@ -23,12 +23,14 @@ const getImageSrc = (
   isCrouching,
   isReady,
   isHit,
-  isDead
+  isDead,
+  isSlapAttack
 ) => {
   if (fighter === "player 1" || fighter === "player 2") {
     if (isDiving) return pumo;
     if (isJumping) return pumoWaddle;
-    if (isAttacking) return attack;
+    if (isAttacking && !isSlapAttack) return attack;
+    if (isSlapAttack) return daibaJumping;
     if (isDodging) return dodging;
     if (isCrouching) return crouching;
     if (isReady) return ready;
@@ -75,6 +77,15 @@ const StyledImage = styled("img")
         "isAlreadyHit",
         "attackStartTime",
         "isSpaceBarPressed",
+        "isThrowing",
+        "throwStartTime",
+        "throwEndTime",
+        "throwOpponent",
+        "throwingFacingDirection",
+        "throwFacingDirection",
+        "beingThrownFacingDirection",
+        "isBeingThrown",
+        "isSlapAttack",
 
         // ...any other prop names that should not be forwarded
       ].includes(prop),
@@ -90,7 +101,8 @@ const StyledImage = styled("img")
       props.isCrouching,
       props.isReady,
       props.isHit,
-      props.isDead
+      props.isDead,
+      props.isSlapAttack
     ),
     style: {
       left: `${props.x}px`,
@@ -127,6 +139,15 @@ const StyledLabel = styled.div
         "isAlreadyHit",
         "attackStartTime",
         "isSpaceBarPressed",
+        "isThrowing",
+        "throwStartTime",
+        "throwEndTime",
+        "throwOpponent",
+        "throwFacingDirection",
+        "throwingFacingDirection",
+        "beingThrownFacingDirection",
+        "isBeingThrown",
+        "isSlapAttack",
         // ...any other prop names that should not be forwarded
       ].includes(prop),
   })
@@ -215,7 +236,9 @@ GameFighter.propTypes = {
     fighter: PropTypes.string.isRequired,
     color: PropTypes.string,
     isJumping: PropTypes.bool,
+    isThrowing: PropTypes.bool,
     isAttacking: PropTypes.bool,
+    isSlapAttack: PropTypes.bool,
     isDodging: PropTypes.bool,
     isStrafing: PropTypes.bool,
     isDiving: PropTypes.bool,
