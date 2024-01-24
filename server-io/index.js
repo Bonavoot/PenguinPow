@@ -97,7 +97,7 @@ io.on("connection", (socket) => {
           automatePlayer2(room);
         }
       });
-    }, 2000);
+    }, 2500);
   }
 
   // automate cpu for testing purposes
@@ -122,7 +122,7 @@ io.on("connection", (socket) => {
   }
   function isOpponentCloseEnoughForThrow(player, opponent) {
     const distance = Math.abs(player.x - opponent.x); // Calculate the distance between the player and the opponent
-    const THROW_DISTANCE_THRESHOLD = 180; // Define the maximum distance for a throw to be possible
+    const THROW_DISTANCE_THRESHOLD = 200; // Define the maximum distance for a throw to be possible
     return distance <= THROW_DISTANCE_THRESHOLD; // Return true if the distance is within the threshold, otherwise false
   }
 
@@ -317,7 +317,8 @@ io.on("connection", (socket) => {
         if (player.isHit) {
           player.x += player.knockbackVelocity.x * delta * speedFactor;
           player.y += player.knockbackVelocity.y * delta * speedFactor;
-
+          player.isAttacking = false;
+          player.isStrafing = false;
           // Apply some deceleration or friction
           player.knockbackVelocity.x *= 0.9; // Adjust as needed
           player.knockbackVelocity.y *= 0.8;
@@ -382,15 +383,15 @@ io.on("connection", (socket) => {
           // Move the player forward on the x-axis
 
           if (player.keys.a) {
-            player.x += -1 * delta * speedFactor * 1.9;
+            player.x += -1 * delta * speedFactor * 1.6;
           } else if (player.keys.d) {
-            player.x += 1 * delta * speedFactor * 1.9;
+            player.x += 1 * delta * speedFactor * 1.6;
           } else if (player.keys.a && player.keys.d) {
             player.x +=
-              (player.facing === -1 ? 1 : -1) * delta * speedFactor * 1.9;
+              (player.facing === -1 ? 1 : -1) * delta * speedFactor * 1.6;
           } else {
             player.x +=
-              (player.facing === -1 ? 1 : -1) * delta * speedFactor * 1.9;
+              (player.facing === -1 ? 1 : -1) * delta * speedFactor * 1.6;
           }
 
           // End dodge if the duration is over
@@ -449,7 +450,12 @@ io.on("connection", (socket) => {
         }
 
         // Jumping
-        if (player.keys.w && !player.isJumping && !player.isDodging) {
+        if (
+          player.keys.w &&
+          !player.isJumping &&
+          !player.isDodging &&
+          !player.isAttacking
+        ) {
           player.isJumping = true;
           player.yVelocity = 12;
           player.isReady = false;
@@ -520,8 +526,19 @@ io.on("connection", (socket) => {
 
     if (isCollision) {
       console.log("hit");
-      processHit(player, otherPlayer);
+      if (player.isAttacking && otherPlayer.isAttacking) {
+        resolveAttackConflict(player, otherPlayer);
+      } else {
+        processHit(player, otherPlayer);
+      }
     }
+  }
+
+  function resolveAttackConflict(player1, player2) {
+    const winner = Math.random() < 0.5 ? player1 : player2;
+    const loser = winner === player1 ? player2 : player1;
+
+    processHit(winner, loser);
   }
 
   function processHit(player, otherPlayer) {
@@ -774,7 +791,7 @@ io.on("connection", (socket) => {
           setTimeout(() => {
             player.isAttacking = false;
             player.isSlapAttack = false;
-          }, 150);
+          }, 250);
         } else {
           player.isAttacking = true;
           player.isSpaceBarPressed = true;
