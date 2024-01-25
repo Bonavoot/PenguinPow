@@ -300,8 +300,8 @@ io.on("connection", (socket) => {
             isGameOver: true,
             winner: winner.fighter,
           });
-          room.winnerId = winner.id; // Add this line
-          room.loserId = player.id; // Add this line
+          room.winnerId = winner.id;
+          room.loserId = player.id;
           if (!room.gameOverTime) {
             room.gameOverTime = Date.now();
           }
