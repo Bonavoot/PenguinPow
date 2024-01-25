@@ -778,21 +778,6 @@ io.on("connection", (socket) => {
         !player.isDodging && // Check if the player is not dodging
         !player.isSpaceBarPressed
       ) {
-        const distanceToOpponent = Math.abs(player.x - opponent.x);
-        if (distanceToOpponent <= CLOSE_COMBAT_DISTANCE) {
-          // Perform slap
-          player.isAttacking = true;
-          player.isSlapAttack = true;
-          player.attackStartTime = Date.now();
-          player.attackEndTime = Date.now() + 300;
-
-          opponent.knockbackVelocity.x = player.facing * 2.1;
-
-          setTimeout(() => {
-            player.isAttacking = false;
-            player.isSlapAttack = false;
-          }, 250);
-        } else {
           player.isAttacking = true;
           player.isSpaceBarPressed = true;
           player.isSlapAttack = false;
@@ -803,12 +788,10 @@ io.on("connection", (socket) => {
             player.isAttacking = false;
             player.isSpaceBarPressed = false;
           }, 500); // Attack lasts for .5 seconds
-        }
-      } else if (!player.keys[" "]) {
+        } else (!player.keys[" "]) {
         player.isSpaceBarPressed = false; // Space is released, ready for next attack
-      }
     }
-
+  }
     console.log(player.keys);
   });
 
