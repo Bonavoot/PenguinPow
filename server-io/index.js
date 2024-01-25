@@ -778,20 +778,20 @@ io.on("connection", (socket) => {
         !player.isDodging && // Check if the player is not dodging
         !player.isSpaceBarPressed
       ) {
-          player.isAttacking = true;
-          player.isSpaceBarPressed = true;
-          player.isSlapAttack = false;
-          player.attackStartTime = Date.now(); // Store the attack start time
-          player.attackEndTime = Date.now() + 500; // Attack lasts for .5 seconds
-          // Reset the attack state after the attack duration
-          setTimeout(() => {
-            player.isAttacking = false;
-            player.isSpaceBarPressed = false;
-          }, 500); // Attack lasts for .5 seconds
-        } else (!player.keys[" "]) {
+        player.isAttacking = true;
+        player.isSpaceBarPressed = true;
+        player.isSlapAttack = false;
+        player.attackStartTime = Date.now(); // Store the attack start time
+        player.attackEndTime = Date.now() + 500; // Attack lasts for .5 seconds
+        // Reset the attack state after the attack duration
+        setTimeout(() => {
+          player.isAttacking = false;
+          player.isSpaceBarPressed = false;
+        }, 500); // Attack lasts for .5 seconds
+      } else if (!player.keys[" "]) {
         player.isSpaceBarPressed = false; // Space is released, ready for next attack
+      }
     }
-  }
     console.log(player.keys);
   });
 
