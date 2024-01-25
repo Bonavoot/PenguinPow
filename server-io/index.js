@@ -46,9 +46,8 @@ let staminaRegenCounter = 0;
 const TICK_RATE = 90;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.25;
-const GROUND_LEVEL = 100;
-const CLOSE_COMBAT_DISTANCE = 185;
-const HITBOX_DISTANCE_VALUE = 85;
+const GROUND_LEVEL = 130;
+const HITBOX_DISTANCE_VALUE = 80;
 
 function resetRoomAndPlayers(room) {
   // Reset room state
@@ -170,19 +169,19 @@ io.on("connection", (socket) => {
         }
 
         if (room.gameStart === false) {
-          if (player1.x >= 340) {
-            player1.x = 340;
+          if (player1.x >= 330) {
+            player1.x = 330;
           }
 
-          if (player2.x <= 755) {
-            player2.x = 755;
+          if (player2.x <= 735) {
+            player2.x = 735;
           }
 
-          if (player1.x === 340) {
+          if (player1.x === 330) {
             player1.isReady = true;
           }
 
-          if (player2.x === 755) {
+          if (player2.x === 735) {
             player2.isReady = true;
           }
         }
@@ -192,17 +191,17 @@ io.on("connection", (socket) => {
             return false;
           }
           const player1Hitbox = {
-            left: player1.x - 100,
-            right: player1.x + 100,
-            top: player1.y - 100,
-            bottom: player1.y + 100,
+            left: player1.x - 90,
+            right: player1.x + 90,
+            top: player1.y - 90,
+            bottom: player1.y + 90,
           };
 
           const player2Hitbox = {
-            left: player2.x - 100,
-            right: player2.x + 100,
-            top: player2.y - 100,
-            bottom: player2.y + 100,
+            left: player2.x - 90,
+            right: player2.x + 90,
+            top: player2.y - 90,
+            bottom: player2.y + 90,
           };
 
           return (
@@ -775,6 +774,9 @@ io.on("connection", (socket) => {
         !player.isAttacking && // Check if the player is not already attacking
         !player.isJumping && // Check if the player is not jumping
         !player.isDodging && // Check if the player is not dodging
+        !player.isThrowing &&
+        !player.isBeingThrown &&
+        !player.isHit &&
         !player.isSpaceBarPressed
       ) {
         player.isAttacking = true;
