@@ -249,16 +249,16 @@ const GameFighter = ({ player, index }) => {
   }, [penguin.isAttacking]);
 
   useEffect(() => {
-    if (penguin.isHit && !lastHitState.current) {
-      hitAudio.volume = 0.2;
+    if (penguin.isHit && !lastHitState.current && !penguin.isBeingThrown) {
+      hitAudio.volume = 0.1;
       hitAudio.play();
     }
     lastHitState.current = penguin.isHit;
-  }, [penguin.isHit]);
+  }, [penguin.isHit, penguin.isBeingThrown]);
 
   useEffect(() => {
     if (penguin.isThrowing && !lastThrowState.current) {
-      throwAudio.volume = 0.2;
+      throwAudio.volume = 0.1;
       throwAudio.play();
     }
     lastThrowState.current = penguin.isThrowing;
@@ -266,7 +266,7 @@ const GameFighter = ({ player, index }) => {
 
   useEffect(() => {
     if (penguin.isDodging && !lastDodgeState.current) {
-      dodgeAudio.volume = 0.08;
+      dodgeAudio.volume = 0.05;
       dodgeAudio.play();
     }
     lastDodgeState.current = penguin.isDodging;
