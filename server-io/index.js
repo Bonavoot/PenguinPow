@@ -91,35 +91,35 @@ io.on("connection", (socket) => {
       tick(delta);
     }, delta);
 
-    setInterval(() => {
-      rooms.forEach((room) => {
-        if (room.players.length === 2) {
-          automatePlayer2(room);
-        }
-      });
-    }, 2500);
+    // setInterval(() => {
+    //   rooms.forEach((room) => {
+    //     if (room.players.length === 2) {
+    //       automatePlayer2(room);
+    //     }
+    //   });
+    // }, 2500);
   }
 
   // automate cpu for testing purposes
-  function automatePlayer2(room) {
-    const player2 = room.players.find((p) => p.fighter === "player 2");
-    if (player2 && !player2.isAttacking) {
-      // Simulate space bar press
-      player2.keys[" "] = true;
-      player2.isAttacking = true;
-      player2.isSpaceBarPressed = true; // Ensure this mimics the actual key press
-      player2.attackStartTime = Date.now(); // Store the attack start time
-      // Consume some stamina for the attack
-      player2.attackEndTime = Date.now() + 500; // Attack lasts for .05 seconds
+  // function automatePlayer2(room) {
+  //   const player2 = room.players.find((p) => p.fighter === "player 2");
+  //   if (player2 && !player2.isAttacking) {
+  //     // Simulate space bar press
+  //     player2.keys[" "] = true;
+  //     player2.isAttacking = true;
+  //     player2.isSpaceBarPressed = true; // Ensure this mimics the actual key press
+  //     player2.attackStartTime = Date.now(); // Store the attack start time
+  //     // Consume some stamina for the attack
+  //     player2.attackEndTime = Date.now() + 500; // Attack lasts for .05 seconds
 
-      // Reset the attack state after the attack duration
-      setTimeout(() => {
-        player2.isAttacking = false;
-        player2.isSpaceBarPressed = false; // Space is released, ready for next attack
-        player2.keys[" "] = false; // Ensure this mimics the actual key release
-      }, 500); // Attack lasts for .05 seconds
-    }
-  }
+  //     // Reset the attack state after the attack duration
+  //     setTimeout(() => {
+  //       player2.isAttacking = false;
+  //       player2.isSpaceBarPressed = false; // Space is released, ready for next attack
+  //       player2.keys[" "] = false; // Ensure this mimics the actual key release
+  //     }, 500); // Attack lasts for .05 seconds
+  //   }
+  // }
   function isOpponentCloseEnoughForThrow(player, opponent) {
     const distance = Math.abs(player.x - opponent.x); // Calculate the distance between the player and the opponent
     const THROW_DISTANCE_THRESHOLD = 200; // Define the maximum distance for a throw to be possible
