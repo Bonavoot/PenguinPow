@@ -43,7 +43,7 @@ const rooms = Array.from({ length: 10 }, (_, i) => ({
 let index;
 let gameLoop = null;
 let staminaRegenCounter = 0;
-const TICK_RATE = 128;
+const TICK_RATE = 90;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.25;
 const GROUND_LEVEL = 100;
