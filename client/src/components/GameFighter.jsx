@@ -282,7 +282,7 @@ const GameFighter = ({ player, index }) => {
 
   useEffect(() => {
     if (hakkiyoi) {
-      playSound(hakkiyoiSound, 0.2);
+      playSound(hakkiyoiSound, 0.1);
     }
   }, [hakkiyoi]);
 
