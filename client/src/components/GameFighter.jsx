@@ -180,10 +180,10 @@ const StyledLabel = styled.div
   font-family: "Bungee";
 `;
 
-const attackAudio = new Audio(attackSound);
-const hitAudio = new Audio(hitSound);
-const dodgeAudio = new Audio(dodgeSound);
-const throwAudio = new Audio(throwSound);
+// const attackAudio = new Audio(attackSound);
+// const hitAudio = new Audio(hitSound);
+// const dodgeAudio = new Audio(dodgeSound);
+// const throwAudio = new Audio(throwSound);
 const winnerAudio = new Audio(winnerSound);
 
 const GameFighter = ({ player, index }) => {
@@ -241,8 +241,7 @@ const GameFighter = ({ player, index }) => {
 
   useEffect(() => {
     if (penguin.isAttacking && !lastAttackState.current) {
-      attackAudio.volume = 0.02;
-      attackAudio.play();
+      playSound(attackSound, 0.01);
     }
     // Update the last attack state
     lastAttackState.current = penguin.isAttacking;
@@ -250,31 +249,28 @@ const GameFighter = ({ player, index }) => {
 
   useEffect(() => {
     if (penguin.isHit && !lastHitState.current && !penguin.isBeingThrown) {
-      hitAudio.volume = 0.1;
-      hitAudio.play();
+      playSound(hitSound, 0.01);
     }
     lastHitState.current = penguin.isHit;
   }, [penguin.isHit, penguin.isBeingThrown]);
 
   useEffect(() => {
     if (penguin.isThrowing && !lastThrowState.current) {
-      throwAudio.volume = 0.1;
-      throwAudio.play();
+      playSound(throwSound, 0.01);
     }
     lastThrowState.current = penguin.isThrowing;
   }, [penguin.isThrowing]);
 
   useEffect(() => {
     if (penguin.isDodging && !lastDodgeState.current) {
-      dodgeAudio.volume = 0.05;
-      dodgeAudio.play();
+      playSound(dodgeSound, 0.01);
     }
     lastDodgeState.current = penguin.isDodging;
   }, [penguin.isDodging]);
 
   useEffect(() => {
     if (gameOver && !lastWinnerState.current) {
-      winnerAudio.volume = 0.08;
+      winnerAudio.volume = 0.01;
       winnerAudio.play();
     }
     lastWinnerState.current = gameOver;
@@ -282,7 +278,7 @@ const GameFighter = ({ player, index }) => {
 
   useEffect(() => {
     if (hakkiyoi) {
-      playSound(hakkiyoiSound, 0.1);
+      playSound(hakkiyoiSound, 0.01);
     }
   }, [hakkiyoi]);
 
