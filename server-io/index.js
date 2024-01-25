@@ -553,7 +553,6 @@ io.on("connection", (socket) => {
     } else {
       player.isAttacking = false;
     }
-
     otherPlayer.isHit = true;
     otherPlayer.isJumping = false;
     otherPlayer.isAttacking = false;
@@ -782,12 +781,12 @@ io.on("connection", (socket) => {
         player.isSpaceBarPressed = true;
         player.isSlapAttack = false;
         player.attackStartTime = Date.now(); // Store the attack start time
-        player.attackEndTime = Date.now() + 500; // Attack lasts for .5 seconds
+        player.attackEndTime = Date.now() + 300; // Attack lasts for .5 seconds
         // Reset the attack state after the attack duration
         setTimeout(() => {
           player.isAttacking = false;
           player.isSpaceBarPressed = false;
-        }, 500); // Attack lasts for .5 seconds
+        }, 300); // Attack lasts for .5 seconds
       } else if (!player.keys[" "]) {
         player.isSpaceBarPressed = false; // Space is released, ready for next attack
       }
