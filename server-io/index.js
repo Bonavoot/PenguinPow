@@ -576,7 +576,7 @@ io.on("connection", (socket) => {
     setTimeout(() => {
       otherPlayer.isHit = false;
       otherPlayer.isAlreadyHit = false;
-    }, 300);
+    }, 250);
   }
 
   socket.on("get_rooms", () => {

@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useState, useRef } from "react";
 import { SocketContext } from "../SocketContext";
 import PropTypes from "prop-types";
 import styled from "styled-components";
@@ -13,7 +13,19 @@ import attack from "../assets/attack.png";
 import dodging from "../assets/dodging.gif";
 import throwing from "../assets/throwing.png";
 import hit from "../assets/hit.png";
+import attackSound from "../sounds/attack-sound.mp3";
+import hitSound from "../sounds/hit-sound.mp3";
+import dodgeSound from "../sounds/dodge-sound.mp3";
+import throwSound from "../sounds/throw-sound.mp3";
+import winnerSound from "../sounds/winner-sound.mp3";
+import hakkiyoiSound from "../sounds/hakkiyoi-sound.mp3";
 //import isPropValid from "@emotion/is-prop-valid";
+
+const playSound = (audioFile, volume = 1.0) => {
+  const sound = new Audio(audioFile);
+  sound.volume = volume;
+  sound.play();
+};
 
 const getImageSrc = (
   fighter,
@@ -168,6 +180,12 @@ const StyledLabel = styled.div
   font-family: "Bungee";
 `;
 
+const attackAudio = new Audio(attackSound);
+const hitAudio = new Audio(hitSound);
+const dodgeAudio = new Audio(dodgeSound);
+const throwAudio = new Audio(throwSound);
+const winnerAudio = new Audio(winnerSound);
+
 const GameFighter = ({ player, index }) => {
   const { socket } = useContext(SocketContext);
   const [penguin, setPenguin] = useState(player);
@@ -175,6 +193,12 @@ const GameFighter = ({ player, index }) => {
   const [hakkiyoi, setHakkiyoi] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const [winner, setWinner] = useState("");
+
+  const lastAttackState = useRef(player.isAttacking);
+  const lastHitState = useRef(player.isHit);
+  const lastThrowState = useRef(player.isThrowing);
+  const lastDodgeState = useRef(player.isDodging);
+  const lastWinnerState = useRef(gameOver);
 
   useEffect(() => {
     socket.on("fighter_action", (data) => {
@@ -215,7 +239,52 @@ const GameFighter = ({ player, index }) => {
     };
   }, [index, socket]);
 
-  useEffect(() => {});
+  useEffect(() => {
+    if (penguin.isAttacking && !lastAttackState.current) {
+      attackAudio.volume = 0.02;
+      attackAudio.play();
+    }
+    // Update the last attack state
+    lastAttackState.current = penguin.isAttacking;
+  }, [penguin.isAttacking]);
+
+  useEffect(() => {
+    if (penguin.isHit && !lastHitState.current) {
+      hitAudio.volume = 0.2;
+      hitAudio.play();
+    }
+    lastHitState.current = penguin.isHit;
+  }, [penguin.isHit]);
+
+  useEffect(() => {
+    if (penguin.isThrowing && !lastThrowState.current) {
+      throwAudio.volume = 0.2;
+      throwAudio.play();
+    }
+    lastThrowState.current = penguin.isThrowing;
+  }, [penguin.isThrowing]);
+
+  useEffect(() => {
+    if (penguin.isDodging && !lastDodgeState.current) {
+      dodgeAudio.volume = 0.08;
+      dodgeAudio.play();
+    }
+    lastDodgeState.current = penguin.isDodging;
+  }, [penguin.isDodging]);
+
+  useEffect(() => {
+    if (gameOver && !lastWinnerState.current) {
+      winnerAudio.volume = 0.08;
+      winnerAudio.play();
+    }
+    lastWinnerState.current = gameOver;
+  }, [gameOver]);
+
+  useEffect(() => {
+    if (hakkiyoi) {
+      playSound(hakkiyoiSound, 0.2);
+    }
+  }, [hakkiyoi]);
 
   return (
     <div className="ui-container">
