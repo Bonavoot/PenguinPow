@@ -7,11 +7,12 @@ import pumo from "../assets/pumo.png";
 import pumoWaddle from "../assets/pumo-waddle.gif";
 import crouching from "../assets/crouching.png";
 import daibaJumping from "../assets/daibaJumping.gif";
-import daibaHit from "../assets/daibaHit.gif";
+//import daibaHit from "../assets/daibaHit.gif";
 import ready from "../assets/ready.png";
 import attack from "../assets/attack.png";
 import dodging from "../assets/dodging.gif";
-import isPropValid from "@emotion/is-prop-valid";
+import throwing from "../assets/throwing.png";
+//import isPropValid from "@emotion/is-prop-valid";
 
 const getImageSrc = (
   fighter,
@@ -24,20 +25,22 @@ const getImageSrc = (
   isReady,
   isHit,
   isDead,
-  isSlapAttack
+  isSlapAttack,
+  isThrowing
 ) => {
   if (fighter === "player 1" || fighter === "player 2") {
     if (isDiving) return pumo;
-    if (isJumping) return pumoWaddle;
+
+    if (isJumping) return throwing;
     if (isAttacking && !isSlapAttack) return attack;
     if (isSlapAttack) return daibaJumping;
     if (isDodging) return dodging;
     if (isCrouching) return crouching;
     if (isReady) return ready;
-    if (isStrafing) return pumoWaddle;
+    if (isStrafing && !isThrowing) return pumoWaddle;
     if (isHit) return pumo;
-
     if (isDead) return pumo;
+    if (isThrowing) return throwing;
     return pumo;
   }
 };
@@ -102,7 +105,8 @@ const StyledImage = styled("img")
       props.isReady,
       props.isHit,
       props.isDead,
-      props.isSlapAttack
+      props.isSlapAttack,
+      props.isThrowing
     ),
     style: {
       left: `${props.x}px`,

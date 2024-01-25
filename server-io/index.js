@@ -449,27 +449,27 @@ io.on("connection", (socket) => {
           player.isCrouching = false;
         }
 
-        // Jumping
-        if (
-          player.keys.w &&
-          !player.isJumping &&
-          !player.isDodging &&
-          !player.isAttacking
-        ) {
-          player.isJumping = true;
-          player.yVelocity = 12;
-          player.isReady = false;
-        }
+        // // Jumping
+        // if (
+        //   player.keys.w &&
+        //   !player.isJumping &&
+        //   !player.isDodging &&
+        //   !player.isAttacking
+        // ) {
+        //   player.isJumping = true;
+        //   player.yVelocity = 12;
+        //   player.isReady = false;
+        // }
 
-        if (player.isJumping) {
-          player.isReady = false;
-          player.yVelocity -= 0.6;
-          player.y += player.yVelocity;
-          if (player.y < GROUND_LEVEL) {
-            player.y = GROUND_LEVEL;
-            player.isJumping = false;
-          }
-        }
+        // if (player.isJumping) {
+        //   player.isReady = false;
+        //   player.yVelocity -= 0.6;
+        //   player.y += player.yVelocity;
+        //   if (player.y < GROUND_LEVEL) {
+        //     player.y = GROUND_LEVEL;
+        //     player.isJumping = false;
+        //   }
+        //}
 
         if (player.isAttacking && !player.isSlapAttack) {
           player.x +=
@@ -726,7 +726,7 @@ io.on("connection", (socket) => {
       console.log(data.keys);
 
       if (
-        player.keys.f &&
+        player.keys.w &&
         !player.isThrowing &&
         !player.isBeingThrown &&
         !player.isDodging &&
@@ -746,7 +746,7 @@ io.on("connection", (socket) => {
         ) {
           player.isThrowing = true;
           player.throwStartTime = Date.now();
-          player.throwEndTime = Date.now() + 500; // Adjust time as needed
+          player.throwEndTime = Date.now() + 400; // Adjust time as needed
           player.throwOpponent = opponent.id;
           opponent.isBeingThrown = true;
           opponent.isHit = true;
@@ -786,7 +786,7 @@ io.on("connection", (socket) => {
           player.attackStartTime = Date.now();
           player.attackEndTime = Date.now() + 300;
 
-          opponent.knockbackVelocity.x = player.facing * 2;
+          opponent.knockbackVelocity.x = player.facing * 2.1;
 
           setTimeout(() => {
             player.isAttacking = false;
