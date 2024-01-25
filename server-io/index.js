@@ -54,7 +54,8 @@ function resetRoomAndPlayers(room) {
   room.gameStart = false;
   room.gameOver = false;
   room.gameOverTime = null;
-
+  delete room.winnerId;
+  delete room.loserId;
   // Reset each player in the room
   room.players.forEach((player) => {
     player.isJumping = false;
@@ -277,6 +278,9 @@ io.on("connection", (socket) => {
 
       // Players Loop
       room.players.forEach((player) => {
+        if (room.gameOver && player.id === room.loserId) {
+          return;
+        }
         // map boundries
 
         if (!player.isHit && !room.gameOver) {
@@ -296,6 +300,8 @@ io.on("connection", (socket) => {
             isGameOver: true,
             winner: winner.fighter,
           });
+          room.winnerId = winner.id; // Add this line
+          room.loserId = player.id; // Add this line
           if (!room.gameOverTime) {
             room.gameOverTime = Date.now();
           }
