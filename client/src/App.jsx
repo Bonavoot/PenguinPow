@@ -40,9 +40,9 @@ function App() {
       </h1>
       <iframe
         src="https://player.twitch.tv/?channel=bonba_tk&parent=penguinpow.netlify.app"
-        height="720"
-        width="1280"
-        allowFullScreen
+        allowfullscreen="true"
+        height="378"
+        width="620"
       ></iframe>
       <img className="sumo" src={sumo} alt="sumo" />
       <MainMenu
