@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "react-player": "^2.15.1",
     "uuid": "^9.0.0"
   }
 }

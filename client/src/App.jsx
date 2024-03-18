@@ -4,7 +4,7 @@ import { SocketContext } from "./SocketContext";
 import MainMenu from "./components/MainMenu";
 import "./App.css";
 import sumo from "./assets/pumo-bkg.png";
-
+import ReactPlayer from "react-player";
 // Use this for HEROKU vvvvv
 // "https://secure-beach-15962-3c882c6fcbf9.herokuapp.com/"
 // "http://localhost:3001"
@@ -38,6 +38,16 @@ function App() {
       <h1 onClick={handleLogoClick} className="logo">
         P u m o <span className="pow"> PUMO !</span>
       </h1>
+      <ReactPlayer
+        url="https://player.twitch.tv/?channel=bonba_tk&parent=penguinpow.netlify.app/"
+        playing={true}
+      />
+      <iframe
+        src="https://player.twitch.tv/?bonba_tk&parent=penguinpow.netlify.app"
+        height="720"
+        width="1280"
+        allowFullScreen={true}
+      ></iframe>
       <img className="sumo" src={sumo} alt="sumo" />
       <MainMenu
         rooms={rooms}
