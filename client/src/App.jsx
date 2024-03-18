@@ -38,15 +38,11 @@ function App() {
       <h1 onClick={handleLogoClick} className="logo">
         P u m o <span className="pow"> PUMO !</span>
       </h1>
-      <ReactPlayer
-        url="https://player.twitch.tv/?channel=bonba_tk&parent=penguinpow.netlify.app/"
-        playing={true}
-      />
       <iframe
-        src="https://player.twitch.tv/?bonba_tk&parent=penguinpow.netlify.app"
+        src="https://player.twitch.tv/?channel=bonba_tk&parent=penguinpow.netlify.app"
         height="720"
         width="1280"
-        allowFullScreen={true}
+        allowFullScreen
       ></iframe>
       <img className="sumo" src={sumo} alt="sumo" />
       <MainMenu
