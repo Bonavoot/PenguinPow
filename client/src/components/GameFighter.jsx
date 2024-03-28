@@ -169,7 +169,7 @@ const StyledLabel = styled.div
   })
   .attrs((props) => ({
     style: {
-      bottom: `${props.y + 230}px`, // Adjust based on the image height
+      bottom: `${props.y + 210}px`, // Adjust based on the image height
       left: `${props.facing === -1 ? props.x + 100 : props.x + 100}px`, // Adjust based on the label position
       color: props.color || "black",
     },

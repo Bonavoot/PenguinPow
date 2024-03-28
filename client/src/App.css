@@ -45,8 +45,8 @@ body {
 .main-menu-btn-container {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: -50px;
+
+  width: fit-content;
 }
 
 #play {
