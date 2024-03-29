@@ -746,7 +746,8 @@ io.on("connection", (socket) => {
         // Check if opponent is close enough and not already being thrown
         if (
           isOpponentCloseEnoughForThrow(player, opponent) &&
-          !opponent.isBeingThrown
+          !opponent.isBeingThrown &&
+          !opponent.isAttacking
         ) {
           player.isThrowing = true;
           player.throwStartTime = Date.now();

@@ -19,6 +19,7 @@ import dodgeSound from "../sounds/dodge-sound.mp3";
 import throwSound from "../sounds/throw-sound.mp3";
 import winnerSound from "../sounds/winner-sound.mp3";
 import hakkiyoiSound from "../sounds/hakkiyoi-sound.mp3";
+//import gameMusic from "../sounds/game-music.mp3";
 
 const playSound = (audioFile, volume = 1.0) => {
   const sound = new Audio(audioFile);
