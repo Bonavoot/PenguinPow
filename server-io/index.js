@@ -289,16 +289,17 @@ io.on("connection", (socket) => {
 
         // Win Conditions
         if (
-          (player.isHit && player.x <= -50) ||
-          (player.isHit && player.x >= 1115)
+          (player.isHit && player.x <= -50 && !room.gameOver) ||
+          (player.isHit && player.x >= 1115 && !room.gameOver)
         ) {
           console.log("game over");
           room.gameOver = true;
           const winner = room.players.find((p) => p.id !== player.id);
-          winner.wins += 1;
+          winner.wins.push("w");
           io.in(room.id).emit("game_over", {
             isGameOver: true,
             winner: winner.fighter,
+            wins: winner.wins.length,
           });
           room.winnerId = winner.id;
           room.loserId = player.id;
@@ -558,25 +559,34 @@ io.on("connection", (socket) => {
     } else {
       player.isAttacking = false;
     }
-    otherPlayer.isHit = true;
-    otherPlayer.isJumping = false;
-    otherPlayer.isAttacking = false;
-    otherPlayer.isStrafing = false;
-    otherPlayer.isDiving = false;
 
-    const knockbackDirection = player.facing === -1 ? 1 : -1;
+    // Check if the other player is blocking (crouching)
     if (otherPlayer.isCrouching) {
-      otherPlayer.knockbackVelocity.x = 4.5 * knockbackDirection;
+      // Apply knockback to the attacking player instead
+      const knockbackDirection = player.facing === 1 ? 1 : -1;
+      player.knockbackVelocity.x = 8 * knockbackDirection; // Adjust the knockback magnitude as necessary
+      player.isHit = true; // Optional: If you want the attacker to also show a hit reaction
+
+      // Set a timeout to reset the hit state of the attacking player, if needed
+      setTimeout(() => {
+        player.isHit = false;
+      }, 300); // Adjust timeout as necessary
     } else {
-      otherPlayer.knockbackVelocity.x = 8 * knockbackDirection;
+      // Apply the knockback to the defending player
+      otherPlayer.isHit = true;
+      otherPlayer.isJumping = false;
+      otherPlayer.isAttacking = false;
+      otherPlayer.isStrafing = false;
+      otherPlayer.isDiving = false;
+      const knockbackDirection = player.facing === -1 ? 1 : -1;
+      otherPlayer.knockbackVelocity.x = 12 * knockbackDirection;
+
+      otherPlayer.isAlreadyHit = true;
+      setTimeout(() => {
+        otherPlayer.isHit = false;
+        otherPlayer.isAlreadyHit = false;
+      }, 300);
     }
-
-    otherPlayer.isAlreadyHit = true;
-
-    setTimeout(() => {
-      otherPlayer.isHit = false;
-      otherPlayer.isAlreadyHit = false;
-    }, 300);
   }
 
   socket.on("get_rooms", () => {
@@ -625,7 +635,7 @@ io.on("connection", (socket) => {
           shift: false,
           f: false,
         },
-        wins: 0,
+        wins: [],
       });
     } else if (rooms[index].players.length === 1) {
       rooms[index].players.push({
@@ -664,7 +674,7 @@ io.on("connection", (socket) => {
           shift: false,
           f: false,
         },
-        wins: 0,
+        wins: [],
       });
     }
 

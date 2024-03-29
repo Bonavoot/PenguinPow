@@ -193,6 +193,8 @@ const GameFighter = ({ player, index }) => {
   const [hakkiyoi, setHakkiyoi] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const [winner, setWinner] = useState("");
+  const [playerOneWinCount, setPlayerOneWinCount] = useState(0);
+  const [playerTwoWinCount, setPlayerTwoWinCount] = useState(0);
 
   const lastAttackState = useRef(player.isAttacking);
   const lastHitState = useRef(player.isHit);
@@ -229,6 +231,11 @@ const GameFighter = ({ player, index }) => {
     socket.on("game_over", (data) => {
       setGameOver(data.isGameOver);
       setWinner(data.winner);
+      if (data.winner === "player 1") {
+        setPlayerOneWinCount(data.wins);
+      } else {
+        setPlayerTwoWinCount(data.wins);
+      }
     });
 
     return () => {
@@ -286,16 +293,18 @@ const GameFighter = ({ player, index }) => {
     <div className="ui-container">
       {hakkiyoi && <div className="hakkiyoi">HAKKI-YOI !</div>}
       {gameOver && (
-        <div
+        <divda
           className="hakkiyoi"
           style={{ color: `${winner === "player 1" ? "aqua" : "salmon"}` }}
         >
           {winner} wins !
-        </div>
+        </divda>
       )}
       <PlayerStaminaUi stamina={stamina} index={index} />
       <StyledLabel {...penguin}>P{index + 1}</StyledLabel>
       <StyledImage {...penguin} />
+      <div className="player1-win-count">{playerOneWinCount}</div>
+      <div className="player2-win-count">{playerTwoWinCount}</div>
     </div>
   );
 };

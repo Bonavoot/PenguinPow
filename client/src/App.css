@@ -221,6 +221,25 @@ body {
   font-size: 1.2em;
 }
 
+.player1-win-count,
+.player2-win-count {
+  font-family: "Bungee";
+  font-size: 5rem;
+  top: 0;
+  margin-top: -2.25rem;
+}
+
+.player1-win-count {
+  position: absolute;
+  left: 40%;
+  color: aqua;
+}
+.player2-win-count {
+  position: absolute;
+  right: 40%;
+  color: salmon;
+}
+
 #ui-name-1 {
   color: aqua;
   position: absolute;
