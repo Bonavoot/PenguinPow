@@ -306,8 +306,12 @@ const GameFighter = ({ player, index }) => {
       <PlayerStaminaUi stamina={stamina} index={index} />
       <StyledLabel {...penguin}>P{index + 1}</StyledLabel>
       <StyledImage {...penguin} />
-      <div className="player1-win-count">{playerOneWinCount}</div>
-      <div className="player2-win-count">{playerTwoWinCount}</div>
+
+      <div className="scoreboard">
+        <div className="player1-win-count">{playerOneWinCount}</div>
+        <div className="dash">-</div>
+        <div className="player2-win-count">{playerTwoWinCount}</div>
+      </div>
     </div>
   );
 };

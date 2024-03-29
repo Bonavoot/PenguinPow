@@ -221,23 +221,37 @@ body {
   font-size: 1.2em;
 }
 
+.scoreboard {
+  display: flex;
+  position: absolute;
+  left: 50%;
+  top: 15%;
+  transform: translate(-50%, -50%);
+  justify-content: space-between;
+  align-items: center;
+}
+
 .player1-win-count,
 .player2-win-count {
   font-family: "Bungee";
   font-size: 5rem;
-  top: 0;
+  top: 2rem;
   margin-top: -2.25rem;
 }
 
 .player1-win-count {
-  position: absolute;
-  left: 40%;
   color: aqua;
+  margin-right: 25px;
 }
 .player2-win-count {
-  position: absolute;
-  right: 40%;
   color: salmon;
+  margin-left: 25px;
+}
+
+.dash {
+  font-family: "Bungee";
+  margin-top: -25px;
+  font-size: 5rem;
 }
 
 #ui-name-1 {
