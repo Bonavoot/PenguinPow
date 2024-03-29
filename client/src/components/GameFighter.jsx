@@ -19,6 +19,8 @@ import dodgeSound from "../sounds/dodge-sound.mp3";
 import throwSound from "../sounds/throw-sound.mp3";
 import winnerSound from "../sounds/winner-sound.mp3";
 import hakkiyoiSound from "../sounds/hakkiyoi-sound.mp3";
+import bellSound from "../sounds/bell-sound.mp3";
+
 //import gameMusic from "../sounds/game-music.mp3";
 
 const playSound = (audioFile, volume = 1.0) => {
@@ -285,7 +287,8 @@ const GameFighter = ({ player, index }) => {
 
   useEffect(() => {
     if (hakkiyoi) {
-      playSound(hakkiyoiSound, 0.01);
+      playSound(hakkiyoiSound, 0.015);
+      playSound(bellSound, 0.005);
     }
   }, [hakkiyoi]);
 
@@ -293,12 +296,12 @@ const GameFighter = ({ player, index }) => {
     <div className="ui-container">
       {hakkiyoi && <div className="hakkiyoi">HAKKI-YOI !</div>}
       {gameOver && (
-        <divda
+        <div
           className="hakkiyoi"
           style={{ color: `${winner === "player 1" ? "aqua" : "salmon"}` }}
         >
           {winner} wins !
-        </divda>
+        </div>
       )}
       <PlayerStaminaUi stamina={stamina} index={index} />
       <StyledLabel {...penguin}>P{index + 1}</StyledLabel>
