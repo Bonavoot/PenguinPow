@@ -6,10 +6,12 @@ body {
   margin: 0;
   color: white;
   background-color: #ffebb6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .main-menu {
-  height: 100vh;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -45,8 +47,10 @@ body {
 .main-menu-btn-container {
   display: flex;
   flex-direction: column;
-
   width: fit-content;
+  position: absolute;
+  left: 0;
+  top: 15rem;
 }
 
 #play {
