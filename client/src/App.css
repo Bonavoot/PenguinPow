@@ -18,6 +18,8 @@ body {
   gap: 85px;
   margin-top: 1rem;
   z-index: 1;
+  width: 100vw;
+  height: 100vh;
 }
 
 .logo {
@@ -47,16 +49,12 @@ body {
 .main-menu-btn-container {
   display: flex;
   flex-direction: column;
-  width: fit-content;
-  position: absolute;
-  left: 0;
-  top: 15rem;
+  gap: 1rem;
 }
 
 #play {
   font-size: 6rem;
   color: rgb(255, 0, 0);
-  margin-bottom: -2rem;
 }
 
 #play:hover {

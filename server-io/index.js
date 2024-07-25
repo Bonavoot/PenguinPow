@@ -43,9 +43,9 @@ const rooms = Array.from({ length: 10 }, (_, i) => ({
 let index;
 let gameLoop = null;
 let staminaRegenCounter = 0;
-const TICK_RATE = 128;
+const TICK_RATE = 64;
 const delta = 1000 / TICK_RATE;
-const speedFactor = 0.25;
+const speedFactor = 0.3;
 const GROUND_LEVEL = 130;
 const HITBOX_DISTANCE_VALUE = 80;
 
@@ -382,6 +382,20 @@ io.on("connection", (socket) => {
               opponent.beingThrownFacingDirection = null;
             }
           }
+        } else if (player.isThrowing && !player.throwOpponent) {
+          const currentTime = Date.now();
+          const throwDuration = currentTime - player.throwStartTime;
+          const throwProgress =
+            throwDuration / (player.throwEndTime - player.throwStartTime);
+          if (player.facing === 1) {
+            player.facing = -1;
+          } else {
+            player.facing = 1;
+          }
+
+          if (currentTime >= player.throwEndTime) {
+            player.isThrowing = false;
+          }
         }
 
         // Dodging
@@ -564,7 +578,7 @@ io.on("connection", (socket) => {
     if (otherPlayer.isCrouching) {
       // Apply knockback to the attacking player instead
       const knockbackDirection = player.facing === 1 ? 1 : -1;
-      player.knockbackVelocity.x = 8 * knockbackDirection; // Adjust the knockback magnitude as necessary
+      player.knockbackVelocity.x = 3 * knockbackDirection; // Adjust the knockback magnitude as necessary
       player.isHit = true; // Optional: If you want the attacker to also show a hit reaction
 
       // Set a timeout to reset the hit state of the attacking player, if needed
@@ -579,7 +593,7 @@ io.on("connection", (socket) => {
       otherPlayer.isStrafing = false;
       otherPlayer.isDiving = false;
       const knockbackDirection = player.facing === -1 ? 1 : -1;
-      otherPlayer.knockbackVelocity.x = 12 * knockbackDirection;
+      otherPlayer.knockbackVelocity.x = 7 * knockbackDirection;
 
       otherPlayer.isAlreadyHit = true;
       setTimeout(() => {
@@ -744,6 +758,7 @@ io.on("connection", (socket) => {
         !player.isThrowing &&
         !player.isBeingThrown &&
         !player.isDodging &&
+        !player.isCrouching &&
         !player.isAttacking &&
         !player.isJumping
       ) {
@@ -767,6 +782,10 @@ io.on("connection", (socket) => {
           opponent.isHit = true;
 
           // Calculate throw trajectory here or in the game loop
+        } else {
+          player.isThrowing = true;
+          player.throwStartTime = Date.now();
+          player.throwEndTime = Date.now() + 400;
         }
       }
 

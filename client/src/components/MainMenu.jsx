@@ -31,9 +31,9 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage }) => {
             <button id="play" onClick={handleDisplayRooms}>
               PLAY
             </button>
-            <button id="closed">TRAINING</button>
-            <button id="closed">GAMBA</button>
-            <button id="closed">PROFILE</button>
+            <button id="closed">BASHO</button>
+            <button id="closed">CUSTOMIZE</button>
+            <button id="closed">STATS</button>
             <button id="closed">SETTINGS</button>
           </div>
         </div>
