@@ -208,6 +208,10 @@ body {
   margin-bottom: 25px;
 }
 
+#ui-container-2 {
+  transform: scaleX(-1);
+}
+
 .wins {
   font-size: 1000px;
 }
@@ -293,9 +297,11 @@ body {
 
 .ui-player-1-name {
   margin-left: -225px;
+  color: black;
 }
 .ui-player-2-name {
   margin-right: -225px;
+  color: black;
 }
 
 .scoreboard {
@@ -337,11 +343,27 @@ body {
   top: -2.2rem;
   left: 3.1rem;
 }
+
 #ui-name-2 {
   color: salmon;
   position: absolute;
   top: -2.2rem;
-  right: 3.2rem;
+  left: 3.1rem;
+  transform: scaleX(-1);
+}
+
+#dodge-label-1 {
+  color: black;
+  font-family: "Bungee";
+  position: absolute;
+  top: 0.2rem;
+}
+
+#dodge-label-2 {
+  color: black;
+  font-family: "Bungee";
+  position: absolute;
+  top: 0.2rem;
 }
 
 .ui-player-stamina-container {
@@ -355,6 +377,7 @@ body {
   margin-left: 3rem;
   margin-right: 3rem;
   margin-top: 3rem;
+  text-align: center;
 }
 
 .ui-player-stamina-red,

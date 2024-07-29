@@ -1,7 +1,7 @@
 const PlayerStaminaUi = ({ stamina, index }) => {
   return (
     <div>
-      <div className={"ui-player-container"}>
+      <div className={"ui-player-container"} id={"ui-container-" + (index + 1)}>
         <div className="ui-player-name" id={"ui-name-" + (index + 1)}>
           Player {index + 1}
         </div>
@@ -20,7 +20,11 @@ const PlayerStaminaUi = ({ stamina, index }) => {
               width: stamina + "%",
               backgroundColor: "Yellow",
             }}
-          ></div>
+          >
+            <div id={"dodge-label-" + (index + 1)}>
+              <span className="material-symbols-outlined">bolt</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -5,9 +5,9 @@ const UiPlayerInfo = () => {
         <div className="rank">UNRANKED</div>
         <div className="record">
           <div className="win-circle"></div>
-          <div className="win-count">1</div>
+          <div className="win-count">0</div>
           <div className="loss-circle"></div>
-          <div className="loss-count">4</div>
+          <div className="loss-count">0</div>
         </div>
       </div>
       <div className="ui-player-1-name">PLAYER 1</div>
@@ -16,9 +16,9 @@ const UiPlayerInfo = () => {
         <div className="rank">UNRANKED</div>
         <div className="record">
           <div className="win-circle"></div>
-          <div className="win-count">1</div>
+          <div className="win-count">0</div>
           <div className="loss-circle"></div>
-          <div className="loss-count">4</div>
+          <div className="loss-count">0</div>
         </div>
       </div>
     </div>
