@@ -2,6 +2,7 @@ import { useContext, useEffect } from "react";
 import { SocketContext } from "../SocketContext";
 import GameFighter from "./GameFighter";
 import gameMusic from "../sounds/game-music.mp3";
+import UiPlayerInfo from "./ui-player-info";
 
 const gameMusicAudio = new Audio(gameMusic);
 gameMusicAudio.loop = true;
@@ -59,6 +60,7 @@ const Game = ({ rooms, roomName }) => {
   return (
     <div className="game-container">
       <div className="ui">
+        <UiPlayerInfo />
         {rooms[index].players.map((player, i) => {
           return <GameFighter key={player.id + i} player={player} index={i} />;
         })}

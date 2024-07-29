@@ -776,7 +776,7 @@ io.on("connection", (socket) => {
         ) {
           player.isThrowing = true;
           player.throwStartTime = Date.now();
-          player.throwEndTime = Date.now() + 400; // Adjust time as needed
+          player.throwEndTime = Date.now() + 400;
           player.throwOpponent = opponent.id;
           opponent.isBeingThrown = true;
           opponent.isHit = true;

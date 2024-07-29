@@ -198,12 +198,14 @@ body {
   display: flex;
   justify-content: space-between;
   width: 100%;
-  height: fit-content;
+  height: 100%;
   padding-bottom: 1rem;
 }
 
 .ui-container {
   height: fit-content;
+  align-self: flex-end;
+  margin-bottom: 25px;
 }
 
 .wins {
@@ -219,11 +221,88 @@ body {
   font-size: 1.2em;
 }
 
+.ui-player-info {
+  position: absolute;
+  top: 0;
+  height: 85px;
+  width: 1300px;
+  background-color: rgba(255, 255, 255, 0.75);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: black;
+  text-align: center;
+  font-family: "Bungee";
+}
+
+.rank-record-1,
+.rank-record-2 {
+  display: flex;
+  flex-direction: column;
+  height: 90%;
+  gap: 10px;
+}
+
+.rank,
+.record {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: white;
+  opacity: 100%;
+  width: 150px;
+  height: 100%;
+  border: red solid 2px;
+  margin-left: 25px;
+  margin-right: 25px;
+  text-align: center;
+}
+
+.record {
+  display: flex;
+  gap: 15px;
+}
+
+.win-circle {
+  border: black solid 2px;
+  border-radius: 50%;
+  width: 15px;
+  height: 15px;
+  background-color: white;
+}
+
+.loss-circle {
+  border: black solid 2px;
+  border-radius: 50%;
+  width: 15px;
+  height: 15px;
+  background-color: black;
+}
+
+.ui-player-1-name,
+.ui-player-2-name {
+  border: red solid 2px;
+  height: 85%;
+  width: 25%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 2.5em;
+  background-color: white;
+}
+
+.ui-player-1-name {
+  margin-left: -225px;
+}
+.ui-player-2-name {
+  margin-right: -225px;
+}
+
 .scoreboard {
   display: flex;
   position: absolute;
   left: 50%;
-  top: 15%;
+  top: 8%;
   transform: translate(-50%, -50%);
   justify-content: space-between;
   align-items: center;
@@ -316,6 +395,7 @@ body {
   align-self: center;
   width: 1300px;
   height: 720px;
+  margin-top: 20px;
   background-image: url(./assets/game-map.png);
   background-repeat: no-repeat;
   background-size: cover;
