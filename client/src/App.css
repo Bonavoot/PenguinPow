@@ -205,7 +205,10 @@ body {
 .ui-container {
   height: fit-content;
   align-self: flex-end;
-  margin-bottom: 25px;
+
+  margin-left: -25px;
+  margin-right: -25px;
+  margin-bottom: 15px;
 }
 
 #ui-container-2 {
@@ -342,6 +345,7 @@ body {
   position: absolute;
   top: -2.2rem;
   left: 3.1rem;
+  visibility: hidden;
 }
 
 #ui-name-2 {
@@ -350,6 +354,7 @@ body {
   top: -2.2rem;
   left: 3.1rem;
   transform: scaleX(-1);
+  visibility: hidden;
 }
 
 #dodge-label-1 {
