@@ -324,6 +324,7 @@ io.on("connection", (socket) => {
           player.x += player.knockbackVelocity.x * delta * speedFactor;
           player.y += player.knockbackVelocity.y * delta * speedFactor;
           player.isAttacking = false;
+
           player.isStrafing = false;
           // Apply some deceleration or friction
           player.knockbackVelocity.x *= 0.9; // Adjust as needed
@@ -378,6 +379,7 @@ io.on("connection", (socket) => {
               opponent.y = GROUND_LEVEL;
               // opponent.knockbackVelocity.x = player.facing * 5; // Adjust for knockback effect
               opponent.knockbackVelocity.y = 0;
+              player.facing = player.throwingFacingDirection;
               player.throwingFacingDirection = null;
               opponent.beingThrownFacingDirection = null;
             }
@@ -387,14 +389,24 @@ io.on("connection", (socket) => {
           const throwDuration = currentTime - player.throwStartTime;
           const throwProgress =
             throwDuration / (player.throwEndTime - player.throwStartTime);
-          if (player.facing === 1) {
-            player.facing = -1;
-          } else {
-            player.facing = 1;
+
+          // Set facing direction only at the start of the throw
+          if (throwProgress === 0) {
+            player.throwingFacingDirection = player.facing;
+            // player.facing = player.facing === 1 ? -1 : 1;
           }
 
           if (currentTime >= player.throwEndTime) {
             player.isThrowing = false;
+            // Reset facing direction to the original direction after throw
+            player.facing = player.throwingFacingDirection;
+            player.throwingFacingDirection = null;
+          }
+
+          if (player.facing === 1) {
+            player.facing = -1;
+          } else {
+            player.facing = 1;
           }
         }
 
@@ -403,15 +415,15 @@ io.on("connection", (socket) => {
           // Move the player forward on the x-axis
 
           if (player.keys.a) {
-            player.x += -1 * delta * speedFactor * 1.6;
+            player.x += -1 * delta * speedFactor * 1.8;
           } else if (player.keys.d) {
-            player.x += 1 * delta * speedFactor * 1.6;
+            player.x += 1 * delta * speedFactor * 1.8;
           } else if (player.keys.a && player.keys.d) {
             player.x +=
-              (player.facing === -1 ? 1 : -1) * delta * speedFactor * 1.6;
+              (player.facing === -1 ? 1 : -1) * delta * speedFactor * 1.8;
           } else {
             player.x +=
-              (player.facing === -1 ? 1 : -1) * delta * speedFactor * 1.6;
+              (player.facing === -1 ? 1 : -1) * delta * speedFactor * 1.8;
           }
 
           // End dodge if the duration is over
@@ -619,6 +631,7 @@ io.on("connection", (socket) => {
         color: "aqua",
         isJumping: false,
         isAttacking: false,
+        isAttackCooldown: false,
         isSlapAttack: false,
         isThrowing: false,
         throwStartTime: 0,
@@ -658,6 +671,7 @@ io.on("connection", (socket) => {
         color: "salmon",
         isJumping: false,
         isAttacking: false,
+        isAttackCooldown: false,
         isSlapAttack: false,
         isThrowing: false,
         throwStartTime: 0,
@@ -807,26 +821,34 @@ io.on("connection", (socket) => {
       }
       if (
         player.keys[" "] &&
-        !player.isAttacking && // Check if the player is not already attacking
-        !player.isJumping && // Check if the player is not jumping
-        !player.isDodging && // Check if the player is not dodging
+        !player.isAttacking &&
+        !player.isJumping &&
+        !player.isDodging &&
         !player.isThrowing &&
         !player.isBeingThrown &&
         !player.isHit &&
-        !player.isSpaceBarPressed
+        !player.isSpaceBarPressed &&
+        !player.isAttackCooldown
       ) {
         player.isAttacking = true;
         player.isSpaceBarPressed = true;
         player.isSlapAttack = false;
-        player.attackStartTime = Date.now(); // Store the attack start time
-        player.attackEndTime = Date.now() + 300; // Attack lasts for .5 seconds
+        player.attackStartTime = Date.now();
+        player.attackEndTime = Date.now() + 300; // Attack lasts for 0.3 seconds
+
         // Reset the attack state after the attack duration
         setTimeout(() => {
           player.isAttacking = false;
           player.isSpaceBarPressed = false;
-        }, 300); // Attack lasts for .5 seconds
+          player.isAttackCooldown = true;
+
+          // Reset the cooldown state after additional 0.3 seconds
+          setTimeout(() => {
+            player.isAttackCooldown = false;
+          }, 150);
+        }, 300);
       } else if (!player.keys[" "]) {
-        player.isSpaceBarPressed = false; // Space is released, ready for next attack
+        player.isSpaceBarPressed = false;
       }
     }
     console.log(player.keys);

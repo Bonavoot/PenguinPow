@@ -79,6 +79,7 @@ const StyledImage = styled("img")
         "isJumping",
         "isDiving",
         "isAttacking",
+        "isAttackCooldown",
         "isDodging",
         "isStrafing",
         "isCrouching",
@@ -142,6 +143,7 @@ const StyledLabel = styled.div
         "isJumping",
         "isDiving",
         "isAttacking",
+        "isAttackCooldown",
         "isDodging",
         "isStrafing",
         "isCrouching",
@@ -172,7 +174,7 @@ const StyledLabel = styled.div
   })
   .attrs((props) => ({
     style: {
-      bottom: `${props.y + 210}px`, // Adjust based on the image height
+      bottom: `${props.y + 230}px`, // Adjust based on the image height
       left: `${props.facing === -1 ? props.x + 100 : props.x + 100}px`, // Adjust based on the label position
       color: props.color || "black",
     },
@@ -325,6 +327,7 @@ GameFighter.propTypes = {
     isJumping: PropTypes.bool,
     isThrowing: PropTypes.bool,
     isAttacking: PropTypes.bool,
+    isAttackCooldown: PropTypes.bool,
     isSlapAttack: PropTypes.bool,
     isDodging: PropTypes.bool,
     isStrafing: PropTypes.bool,

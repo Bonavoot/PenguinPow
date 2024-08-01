@@ -21,7 +21,7 @@
   position: relative;
   align-self: center;
   gap: 450px;
-  background-color: rgba(0, 221, 255, 0.292);
+  background-color: rgb(175, 236, 255);
 }
 
 .player-lobby {
@@ -72,14 +72,20 @@
 
 .player0 {
   font-family: "Bungee Outline", cursive;
-  color: blue;
+  color: aqua;
+  background-color: rgba(0, 0, 0, 0.8);
+  padding: 0.2rem 0.5rem 0.2rem 0.5rem;
+  width: 100%;
 }
 
 .player1 {
   font-family: "Bungee Outline", cursive;
-  color: red;
+  color: salmon;
   font-size: 28pt;
   text-align: center;
+  background-color: rgba(0, 0, 0, 0.8);
+  padding: 0.2rem 0.5rem 0.2rem 0.5rem;
+  width: 100%;
 }
 
 .fighter1,
