@@ -447,7 +447,12 @@ io.on("connection", (socket) => {
         }
 
         // Crouching
-        if (player.keys.s && player.y === GROUND_LEVEL) {
+        if (
+          player.keys.s &&
+          player.y === GROUND_LEVEL &&
+          !player.isGrabbing &&
+          !player.isBeingGrabbed
+        ) {
           player.isCrouching = true;
           player.isReady = false;
         }
