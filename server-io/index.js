@@ -90,36 +90,8 @@ io.on("connection", (socket) => {
     gameLoop = setInterval(() => {
       tick(delta);
     }, delta);
-
-    // setInterval(() => {
-    //   rooms.forEach((room) => {
-    //     if (room.players.length === 2) {
-    //       automatePlayer2(room);
-    //     }
-    //   });
-    // }, 2500);
   }
 
-  // automate cpu for testing purposes
-  // function automatePlayer2(room) {
-  //   const player2 = room.players.find((p) => p.fighter === "player 2");
-  //   if (player2 && !player2.isAttacking) {
-  //     // Simulate space bar press
-  //     player2.keys[" "] = true;
-  //     player2.isAttacking = true;
-  //     player2.isSpaceBarPressed = true; // Ensure this mimics the actual key press
-  //     player2.attackStartTime = Date.now(); // Store the attack start time
-  //     // Consume some stamina for the attack
-  //     player2.attackEndTime = Date.now() + 500; // Attack lasts for .05 seconds
-
-  //     // Reset the attack state after the attack duration
-  //     setTimeout(() => {
-  //       player2.isAttacking = false;
-  //       player2.isSpaceBarPressed = false; // Space is released, ready for next attack
-  //       player2.keys[" "] = false; // Ensure this mimics the actual key release
-  //     }, 500); // Attack lasts for .05 seconds
-  //   }
-  // }
   function isOpponentCloseEnoughForThrow(player, opponent) {
     const distance = Math.abs(player.x - opponent.x); // Calculate the distance between the player and the opponent
     const THROW_DISTANCE_THRESHOLD = 200; // Define the maximum distance for a throw to be possible
@@ -135,10 +107,6 @@ io.on("connection", (socket) => {
       if (room.players.length === 2) {
         const [player1, player2] = room.players;
 
-        // automate
-        // if (room.gameStart && room.players.length === 2) {
-        //   automatePlayer2(room);
-        // }
         // Check for collision and adjust positions
         if (
           arePlayersColliding(player1, player2) &&
@@ -149,15 +117,22 @@ io.on("connection", (socket) => {
         }
 
         if (
-          player1.x < player2.x &&
-          !player1.isThrowing &&
-          !player2.isThrowing
+          !player1.isGrabbing &&
+          !player1.isBeingGrabbed &&
+          !player2.isGrabbing &&
+          !player2.isBeingGrabbed
         ) {
-          player1.facing = -1; // Player 1 faces right
-          player2.facing = 1; // Player 2 faces left
-        } else if (!player1.isThrowing && !player2.isThrowing) {
-          player1.facing = 1; // Player 1 faces left
-          player2.facing = -1; // Player 2 faces right
+          if (
+            player1.x < player2.x &&
+            !player1.isThrowing &&
+            !player2.isThrowing
+          ) {
+            player1.facing = -1; // Player 1 faces right
+            player2.facing = 1; // Player 2 faces left
+          } else if (!player1.isThrowing && !player2.isThrowing) {
+            player1.facing = 1; // Player 1 faces left
+            player2.facing = -1; // Player 2 faces right
+          }
         }
 
         // Update facing direction based on relative positions
@@ -481,34 +456,52 @@ io.on("connection", (socket) => {
           player.isCrouching = false;
         }
 
-        // // Jumping
-        // if (
-        //   player.keys.w &&
-        //   !player.isJumping &&
-        //   !player.isDodging &&
-        //   !player.isAttacking
-        // ) {
-        //   player.isJumping = true;
-        //   player.yVelocity = 12;
-        //   player.isReady = false;
-        // }
-
-        // if (player.isJumping) {
-        //   player.isReady = false;
-        //   player.yVelocity -= 0.6;
-        //   player.y += player.yVelocity;
-        //   if (player.y < GROUND_LEVEL) {
-        //     player.y = GROUND_LEVEL;
-        //     player.isJumping = false;
-        //   }
-        //}
-
         if (player.isAttacking && !player.isSlapAttack) {
           player.x +=
             (player.facing === 1 ? -1 : 1) * delta * speedFactor * 2.5; // Adjust speed as needed
 
           if (Date.now() >= player.attackEndTime) {
             player.isAttacking = false;
+          }
+        }
+        if (player.isGrabbing) {
+          const opponent = room.players.find(
+            (p) => p.id === player.grabbedOpponent
+          );
+          if (opponent) {
+            const grabDuration = Date.now() - player.grabStartTime;
+            if (grabDuration >= 1000) {
+              // Release after 1.5 seconds
+              player.isGrabbing = false;
+              player.grabbedOpponent = null;
+              opponent.isBeingGrabbed = false;
+              delete player.grabFacingDirection;
+            } else {
+              // Move the opponent with the player
+              const grabSpeed = speedFactor * 0.01; // Adjust this value to make it slower than normal walking speed
+              let movement = 0;
+              if (player.keys.d) {
+                movement = delta * grabSpeed;
+              } else if (player.keys.a) {
+                movement = -delta * grabSpeed;
+              }
+
+              player.x += movement;
+              opponent.x += movement;
+
+              // maintain distance between players
+              const fixedDistance = 150; // Adjust this value as needed
+              if (player.grabFacingDirection === 1) {
+                // player facing left
+                opponent.x = player.x - fixedDistance;
+              } else {
+                // player facing right
+                opponent.x = player.x + fixedDistance;
+              }
+
+              player.facing = player.grabFacingDirection;
+              opponent.facing = -player.grabFacingDirection;
+            }
           }
         }
       });
@@ -639,6 +632,9 @@ io.on("connection", (socket) => {
         throwOpponent: null,
         throwingFacingDirection: null,
         beingThrownFacingDirection: null,
+        isGrabbing: false,
+        grabStartTime: 0,
+        grabbedOpponent: null,
         isStrafing: false,
         isDiving: false,
         isCrouching: false,
@@ -660,7 +656,7 @@ io.on("connection", (socket) => {
           d: false,
           " ": false,
           shift: false,
-          f: false,
+          e: false,
         },
         wins: [],
       });
@@ -679,6 +675,9 @@ io.on("connection", (socket) => {
         throwOpponent: null,
         throwingFacingDirection: null,
         beingThrownFacingDirection: null,
+        isGrabbing: false,
+        grabStartTime: 0,
+        grabbedOpponent: null,
         isStrafing: false,
         isDiving: false,
         isCrouching: false,
@@ -700,7 +699,7 @@ io.on("connection", (socket) => {
           d: false,
           " ": false,
           shift: false,
-          f: false,
+          e: false,
         },
         wins: [],
       });
@@ -771,6 +770,8 @@ io.on("connection", (socket) => {
         player.keys.w &&
         !player.isThrowing &&
         !player.isBeingThrown &&
+        !player.isGrabbing &&
+        !player.isBeingGrabbed &&
         !player.isDodging &&
         !player.isCrouching &&
         !player.isAttacking &&
@@ -809,6 +810,8 @@ io.on("connection", (socket) => {
         !player.isAttacking &&
         !player.isThrowing &&
         !player.isBeingThrown &&
+        !player.isGrabbing &&
+        !player.isBeingGrabbed &&
         player.stamina >= 50
       ) {
         player.isDodging = true;
@@ -826,6 +829,8 @@ io.on("connection", (socket) => {
         !player.isDodging &&
         !player.isThrowing &&
         !player.isBeingThrown &&
+        !player.isGrabbing &&
+        !player.isBeingGrabbed &&
         !player.isHit &&
         !player.isSpaceBarPressed &&
         !player.isAttackCooldown
@@ -849,6 +854,34 @@ io.on("connection", (socket) => {
         }, 300);
       } else if (!player.keys[" "]) {
         player.isSpaceBarPressed = false;
+      }
+      function isOpponentCloseEnoughForGrab(player, opponent) {
+        const distance = Math.abs(player.x - opponent.x);
+        const GRAB_DISTANCE_THRESHOLD = 200; // Use the same threshold as the throw
+        return distance <= GRAB_DISTANCE_THRESHOLD;
+      }
+      if (
+        player.keys.e &&
+        !player.isGrabbing &&
+        !player.isBeingThrown &&
+        !player.isDodging &&
+        !player.isCrouching &&
+        !player.isAttacking &&
+        !player.isJumping &&
+        !player.isThrowing
+      ) {
+        const opponent = rooms[index].players.find((p) => p.id !== player.id);
+        if (
+          isOpponentCloseEnoughForGrab(player, opponent) &&
+          !opponent.isBeingThrown &&
+          !opponent.isAttacking
+        ) {
+          player.isGrabbing = true;
+          player.grabStartTime = Date.now();
+          player.grabbedOpponent = opponent.id;
+          opponent.isBeingGrabbed = true;
+          player.grabFacingDirection = player.facing;
+        }
       }
     }
     console.log(player.keys);

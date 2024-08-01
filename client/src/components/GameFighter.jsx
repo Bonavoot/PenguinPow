@@ -7,6 +7,9 @@ import pumo from "../assets/pumo.png";
 import pumoWaddle from "../assets/pumo-waddle.gif";
 import crouching from "../assets/crouching.png";
 import daibaJumping from "../assets/daibaJumping.gif";
+import grabbing from "../assets/crouching.png"; // You'll need to create this asset
+import grabSound from "../sounds/attack-sound.mp3"; // You'll need to create this sound
+
 //import daibaHit from "../assets/daibaHit.gif";
 import ready from "../assets/ready.png";
 import attack from "../assets/attack.png";
@@ -41,13 +44,15 @@ const getImageSrc = (
   isHit,
   isDead,
   isSlapAttack,
-  isThrowing
+  isThrowing,
+  isGrabbing
 ) => {
   if (fighter === "player 1" || fighter === "player 2") {
     if (isDiving) return pumo;
 
     if (isJumping) return throwing;
     if (isAttacking && !isSlapAttack) return attack;
+    if (isGrabbing) return grabbing;
     if (isSlapAttack) return daibaJumping;
     if (isDodging) return dodging;
     if (isCrouching) return crouching;
@@ -104,6 +109,8 @@ const StyledImage = styled("img")
         "throwFacingDirection",
         "beingThrownFacingDirection",
         "isBeingThrown",
+        "isGrabbing",
+        "isBeingGrabbed",
         "isSlapAttack",
 
         // ...any other prop names that should not be forwarded
@@ -122,7 +129,8 @@ const StyledImage = styled("img")
       props.isHit,
       props.isDead,
       props.isSlapAttack,
-      props.isThrowing
+      props.isThrowing,
+      props.isGrabbing
     ),
     style: {
       left: `${props.x}px`,
@@ -184,10 +192,6 @@ const StyledLabel = styled.div
   font-family: "Bungee";
 `;
 
-// const attackAudio = new Audio(attackSound);
-// const hitAudio = new Audio(hitSound);
-// const dodgeAudio = new Audio(dodgeSound);
-// const throwAudio = new Audio(throwSound);
 const winnerAudio = new Audio(winnerSound);
 
 const GameFighter = ({ player, index }) => {
@@ -205,6 +209,7 @@ const GameFighter = ({ player, index }) => {
   const lastThrowState = useRef(player.isThrowing);
   const lastDodgeState = useRef(player.isDodging);
   const lastWinnerState = useRef(gameOver);
+  const lastGrabState = useRef(player.isGrabbing);
 
   useEffect(() => {
     socket.on("fighter_action", (data) => {
@@ -280,6 +285,13 @@ const GameFighter = ({ player, index }) => {
   }, [penguin.isDodging]);
 
   useEffect(() => {
+    if (penguin.isGrabbing && !lastGrabState.current) {
+      playSound(grabSound, 0.01);
+    }
+    lastGrabState.current = penguin.isGrabbing;
+  }, [penguin.isGrabbing]);
+
+  useEffect(() => {
     if (gameOver && !lastWinnerState.current) {
       winnerAudio.volume = 0.01;
       winnerAudio.play();
@@ -326,6 +338,8 @@ GameFighter.propTypes = {
     color: PropTypes.string,
     isJumping: PropTypes.bool,
     isThrowing: PropTypes.bool,
+    isGrabbing: PropTypes.bool,
+    isBeingGrabbed: PropTypes.bool,
     isAttacking: PropTypes.bool,
     isAttackCooldown: PropTypes.bool,
     isSlapAttack: PropTypes.bool,
@@ -335,11 +349,11 @@ GameFighter.propTypes = {
     isCrouching: PropTypes.bool,
     isReady: PropTypes.bool,
     isHit: PropTypes.bool,
-    isAlreadyHit: PropTypes.bool, // Added property
+    isAlreadyHit: PropTypes.bool,
     isDead: PropTypes.bool,
     facing: PropTypes.number,
     stamina: PropTypes.number,
-    dodgeEndTime: PropTypes.number, // Added property
+    dodgeEndTime: PropTypes.number,
     x: PropTypes.number,
     y: PropTypes.number,
     knockbackVelocity: PropTypes.shape({
@@ -348,18 +362,15 @@ GameFighter.propTypes = {
       y: PropTypes.number,
     }),
     keys: PropTypes.shape({
-      // Shape added to specify object structure
       w: PropTypes.bool,
       a: PropTypes.bool,
       s: PropTypes.bool,
       d: PropTypes.bool,
       " ": PropTypes.bool,
-      shift: PropTypes.bool, // Added property
-      f: PropTypes.bool,
+      shift: PropTypes.bool,
+      e: PropTypes.bool,
     }),
   }),
   index: PropTypes.number.isRequired,
 };
 export default GameFighter;
-
-// <img className={`game-player${index + 1}`} src={penguin.fighter === "daiba" ? daiba : dinkey} alt="fighter" />
