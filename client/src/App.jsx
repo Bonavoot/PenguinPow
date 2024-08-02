@@ -44,11 +44,13 @@ function App() {
         width="620"
       ></iframe> */}
       <img className="sumo" src={sumo} alt="sumo" />
-      <MainMenu
-        rooms={rooms}
-        currentPage={currentPage}
-        setCurrentPage={setCurrentPage}
-      />
+      <div className="game-wrapper">
+        <MainMenu
+          rooms={rooms}
+          currentPage={currentPage}
+          setCurrentPage={setCurrentPage}
+        />
+      </div>
     </SocketContext.Provider>
   );
 }

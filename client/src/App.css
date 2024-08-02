@@ -50,6 +50,8 @@ body {
   position: absolute;
   right: -250px;
   bottom: -125px;
+  height: 65rem;
+  width: 65rem;
 }
 
 .main-menu-btn-container {
@@ -64,7 +66,7 @@ body {
 }
 
 #play:hover {
-  color: maroon;
+  color: rgb(70, 0, 0);
 }
 
 .main-menu-btn-container > button {
@@ -201,23 +203,30 @@ body {
 }
 
 .ui {
-  display: flex;
-  justify-content: space-between;
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
+  display: flex;
+  justify-content: space-between;
   padding-bottom: 1rem;
 }
 
 .ui-container {
-  height: fit-content;
-  align-self: flex-end;
+  position: absolute;
+  bottom: 25px;
+  left: 0;
+  width: 100%;
+}
 
-  margin-left: -25px;
-  margin-right: -25px;
-  margin-bottom: 15px;
+#ui-container-1 {
+  left: -25px;
 }
 
 #ui-container-2 {
+  right: -25px;
+  left: auto;
   transform: scaleX(-1);
 }
 
@@ -236,7 +245,7 @@ body {
 
 .ui-player-info {
   position: absolute;
-  top: 0;
+  top: -633px;
   height: 85px;
   width: 1300px;
   background-color: rgba(255, 255, 255, 0.75);
@@ -314,11 +323,11 @@ body {
 }
 
 .scoreboard {
-  display: flex;
   position: absolute;
   left: 50%;
-  top: 8%;
+  top: -570px;
   transform: translate(-50%, -50%);
+  display: flex;
   justify-content: space-between;
   align-items: center;
   font-size: 1rem;
@@ -409,7 +418,7 @@ body {
 
 .hakkiyoi {
   position: absolute;
-  top: 30%;
+  top: -425px;
   left: 50%;
   transform: translate(-50%, -50%);
   font-size: 48px;
@@ -422,15 +431,26 @@ body {
   letter-spacing: 0.1em;
 }
 
-.game-container {
+.game-wrapper {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
+  align-items: center;
   overflow: hidden;
-  position: relative;
-  align-self: center;
+}
+
+.game-container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   width: 1300px;
   height: 725px;
-  margin-top: 20px;
+  overflow: hidden;
   background-image: url(./assets/game-map.png);
   background-repeat: no-repeat;
   background-size: cover;

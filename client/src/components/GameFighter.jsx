@@ -8,7 +8,7 @@ import pumoWaddle from "../assets/pumo-waddle.gif";
 import crouching from "../assets/crouching.png";
 import daibaJumping from "../assets/daibaJumping.gif";
 import grabbing from "../assets/grabbing.png"; // You'll need to create this asset
-import grabSound from "../sounds/attack-sound.mp3"; // You'll need to create this sound
+import grabSound from "../sounds/grab-sound.mp3"; // You'll need to create this sound
 
 //import daibaHit from "../assets/daibaHit.gif";
 import ready from "../assets/ready.png";
@@ -23,6 +23,7 @@ import throwSound from "../sounds/throw-sound.mp3";
 import winnerSound from "../sounds/winner-sound.mp3";
 import hakkiyoiSound from "../sounds/hakkiyoi-sound.mp3";
 import bellSound from "../sounds/bell-sound.mp3";
+import UiPlayerInfo from "./UiPlayerInfo";
 
 //import gameMusic from "../sounds/game-music.mp3";
 
@@ -133,6 +134,7 @@ const StyledImage = styled("img")
       props.isGrabbing
     ),
     style: {
+      position: "absolute",
       left: `${props.x}px`,
       bottom: `${props.y}px`,
       transform: `scaleX(${props.facing})`,
@@ -141,6 +143,7 @@ const StyledImage = styled("img")
   position: absolute;
   height: 235px;
   will-change: transform, bottom, left; // optimize for animations
+  pointer-events: none;
 `;
 
 const StyledLabel = styled.div
@@ -190,6 +193,7 @@ const StyledLabel = styled.div
   position: absolute;
   font-size: 2rem;
   font-family: "Bungee";
+  pointer-events: none;
 `;
 
 const winnerAudio = new Audio(winnerSound);
@@ -272,7 +276,7 @@ const GameFighter = ({ player, index }) => {
 
   useEffect(() => {
     if (penguin.isThrowing && !lastThrowState.current) {
-      playSound(throwSound, 0.01);
+      playSound(throwSound, 0.03);
     }
     lastThrowState.current = penguin.isThrowing;
   }, [penguin.isThrowing]);
@@ -286,7 +290,7 @@ const GameFighter = ({ player, index }) => {
 
   useEffect(() => {
     if (penguin.isGrabbing && !lastGrabState.current) {
-      playSound(grabSound, 0.01);
+      playSound(grabSound, 0.03);
     }
     lastGrabState.current = penguin.isGrabbing;
   }, [penguin.isGrabbing]);
@@ -308,6 +312,10 @@ const GameFighter = ({ player, index }) => {
 
   return (
     <div className="ui-container">
+      <UiPlayerInfo
+        playerOneWinCount={playerOneWinCount}
+        playerTwoWinCount={playerTwoWinCount}
+      />
       {hakkiyoi && <div className="hakkiyoi">HAKKI-YOI !</div>}
       {gameOver && (
         <div
