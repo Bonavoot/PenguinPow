@@ -5,7 +5,13 @@ body {
   overflow: hidden;
   margin: 0;
   color: white;
-  background-color: #ffebb6;
+  background-image: linear-gradient(
+    rgb(255, 243, 187),
+    white,
+    white,
+    white,
+    rgb(255, 243, 187)
+  );
   display: flex;
   align-items: center;
   justify-content: center;
@@ -42,8 +48,8 @@ body {
 
 .sumo {
   position: absolute;
-  right: -15rem;
-  bottom: -8rem;
+  right: -250px;
+  bottom: -125px;
 }
 
 .main-menu-btn-container {
@@ -315,29 +321,30 @@ body {
   transform: translate(-50%, -50%);
   justify-content: space-between;
   align-items: center;
+  font-size: 1rem;
 }
 
 .player1-win-count,
 .player2-win-count {
   font-family: "Bungee";
-  font-size: 5rem;
+  font-size: 3.75rem;
   top: 2rem;
   margin-top: -2.25rem;
 }
 
 .player1-win-count {
   color: aqua;
-  margin-right: 25px;
+  margin-right: 15px;
 }
 .player2-win-count {
   color: salmon;
-  margin-left: 25px;
+  margin-left: 15px;
 }
 
 .dash {
   font-family: "Bungee";
   margin-top: -25px;
-  font-size: 5rem;
+  font-size: 3.5rem;
 }
 
 #ui-name-1 {
@@ -422,7 +429,7 @@ body {
   position: relative;
   align-self: center;
   width: 1300px;
-  height: 720px;
+  height: 725px;
   margin-top: 20px;
   background-image: url(./assets/game-map.png);
   background-repeat: no-repeat;

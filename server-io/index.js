@@ -265,7 +265,9 @@ io.on("connection", (socket) => {
         // Win Conditions
         if (
           (player.isHit && player.x <= -50 && !room.gameOver) ||
-          (player.isHit && player.x >= 1115 && !room.gameOver)
+          (player.isHit && player.x >= 1115 && !room.gameOver) ||
+          (player.isBeingGrabbed && player.x <= -50 && !room.gameOver) ||
+          (player.isBeingGrabbed && player.x >= 1115 && !room.gameOver)
         ) {
           console.log("game over");
           room.gameOver = true;
@@ -469,7 +471,7 @@ io.on("connection", (socket) => {
             player.isAttacking = false;
           }
         }
-        if (player.isGrabbing) {
+        if (player.isGrabbing && player.grabbedOpponent) {
           const opponent = room.players.find(
             (p) => p.id === player.grabbedOpponent
           );
@@ -507,6 +509,11 @@ io.on("connection", (socket) => {
               player.facing = player.grabFacingDirection;
               opponent.facing = -player.grabFacingDirection;
             }
+          }
+        } else if (player.isGrabbing && !player.grabbedOpponent) {
+          const grabDuration = Date.now() - player.grabStartTime;
+          if (grabDuration >= 500) {
+            player.isGrabbing = false;
           }
         }
       });
@@ -588,7 +595,7 @@ io.on("connection", (socket) => {
     if (otherPlayer.isCrouching) {
       // Apply knockback to the attacking player instead
       const knockbackDirection = player.facing === 1 ? 1 : -1;
-      player.knockbackVelocity.x = 3 * knockbackDirection; // Adjust the knockback magnitude as necessary
+      player.knockbackVelocity.x = 5 * knockbackDirection; // Adjust the knockback magnitude as necessary
       player.isHit = true; // Optional: If you want the attacker to also show a hit reaction
 
       // Set a timeout to reset the hit state of the attacking player, if needed
@@ -855,7 +862,7 @@ io.on("connection", (socket) => {
           // Reset the cooldown state after additional 0.3 seconds
           setTimeout(() => {
             player.isAttackCooldown = false;
-          }, 150);
+          }, 125);
         }, 300);
       } else if (!player.keys[" "]) {
         player.isSpaceBarPressed = false;
@@ -886,6 +893,9 @@ io.on("connection", (socket) => {
           player.grabbedOpponent = opponent.id;
           opponent.isBeingGrabbed = true;
           player.grabFacingDirection = player.facing;
+        } else {
+          player.isGrabbing = true;
+          player.grabStartTime = Date.now();
         }
       }
     }

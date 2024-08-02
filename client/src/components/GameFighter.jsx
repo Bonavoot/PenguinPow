@@ -7,7 +7,7 @@ import pumo from "../assets/pumo.png";
 import pumoWaddle from "../assets/pumo-waddle.gif";
 import crouching from "../assets/crouching.png";
 import daibaJumping from "../assets/daibaJumping.gif";
-import grabbing from "../assets/crouching.png"; // You'll need to create this asset
+import grabbing from "../assets/grabbing.png"; // You'll need to create this asset
 import grabSound from "../sounds/attack-sound.mp3"; // You'll need to create this sound
 
 //import daibaHit from "../assets/daibaHit.gif";
