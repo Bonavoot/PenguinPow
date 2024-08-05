@@ -154,23 +154,6 @@ body {
   font-family: Tahoma, sans-serif;
   font-size: 1.3rem;
 }
-/* 
-.back-btn {
-  position: absolute;
-  left: -300px;
-  bottom: -10px;
-  background-color: black;
-  margin-top: 100px;
-  padding: 5px 25px;
-  border-radius: 10px;
-  border: 1px black solid;
-  font-size: 1.6rem;
-  color: white;
-  font-family: "Bungee", cursive;
-  text-align: start;
-  margin-left: 20px;
-  cursor: pointer;
-} */
 
 .back-btn:hover {
   background-color: gray;
@@ -457,37 +440,3 @@ body {
   background-position: center;
   border: solid 2px black;
 }
-
-/* .game-container > [src*="daibaStanding"] {
-  height: 165px;
-}
-
-.game-container > [src*="daibaDiving"] {
-  height: 130px;
-}
-
-.game-container > [src*="daibaJumping"] {
-  height: 180px;
-}
-
-.game-container > [src*="daibaHit"] {
-  height: 165px;
-}
-
-.game-container > [src*="daibaDeath"] {
-  height: 100px;
-  opacity: 0.7;
-}
-
-.game-container > [src*="standing"] {
-  height: 160px;
-}
-
-.game-container > [src*="dinkeyDiving"] {
-  height: 165px;
-  width: 110px;
-}
-
-.game-container > [src*="dinkeyHit"] {
-  height: 155px;
-} */

@@ -8,7 +8,7 @@ import sumo from "./assets/pumo-bkg.png";
 // "https://secure-beach-15962-3c882c6fcbf9.herokuapp.com/"
 // "http://localhost:3001"
 
-const socket = io("http://localhost:3001");
+const socket = io("https://secure-beach-15962-3c882c6fcbf9.herokuapp.com/");
 
 function App() {
   const [rooms, setRooms] = useState([]);
@@ -37,12 +37,6 @@ function App() {
       <h1 onClick={handleLogoClick} className="logo">
         P u m o <span className="pow"> PUMO !</span>
       </h1>
-      {/* <iframe
-        src="https://player.twitch.tv/?channel=bonba_tk&parent=penguinpow.netlify.app"
-        allowfullscreen="true"
-        height="378"
-        width="620"
-      ></iframe> */}
       <img className="sumo" src={sumo} alt="sumo" />
       <div className="game-wrapper">
         <MainMenu
