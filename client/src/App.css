@@ -28,6 +28,25 @@ body {
   height: 100vh;
 }
 
+.cherry-blossom {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background-color: #ffc0cb;
+  border-radius: 50%;
+  opacity: 0.7;
+  animation: fall 10s linear infinite;
+}
+
+@keyframes fall {
+  0% {
+    transform: translateY(-100vh) rotate(0deg);
+  }
+  100% {
+    transform: translateY(100vh) rotate(360deg);
+  }
+}
+
 .logo {
   position: absolute;
   top: 0;

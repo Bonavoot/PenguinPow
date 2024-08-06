@@ -2,7 +2,6 @@ import { useContext, useEffect } from "react";
 import { SocketContext } from "../SocketContext";
 import GameFighter from "./GameFighter";
 import gameMusic from "../sounds/game-music.mp3";
-import UiPlayerInfo from "./UiPlayerInfo";
 
 const gameMusicAudio = new Audio(gameMusic);
 gameMusicAudio.loop = true;

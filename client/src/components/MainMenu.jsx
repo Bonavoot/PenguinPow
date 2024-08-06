@@ -1,10 +1,43 @@
 import Lobby from "./Lobby";
 import Rooms from "./Rooms";
 import Game from "./Game";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+
+const createCherryBlossoms = () => {
+  const numPetals = 50;
+  const petals = [];
+
+  for (let i = 0; i < numPetals; i++) {
+    const left = `${Math.random() * 100}%`;
+    const animationDuration = `${Math.random() * 5 + 5}s`;
+    const animationDelay = `${Math.random() * 5}s`;
+    const size = `${Math.random() * 5 + 5}px`;
+
+    petals.push(
+      <div
+        key={i}
+        className="cherry-blossom"
+        style={{
+          left,
+          animationDuration,
+          animationDelay,
+          width: size,
+          height: size,
+        }}
+      />
+    );
+  }
+
+  return petals;
+};
 
 const MainMenu = ({ rooms, currentPage, setCurrentPage }) => {
   const [roomName, setRoomName] = useState("");
+  const [cherryBlossoms, setCherryBlossoms] = useState([]);
+
+  useEffect(() => {
+    setCherryBlossoms(createCherryBlossoms());
+  }, []);
 
   const handleMainMenuPage = () => {
     setCurrentPage("mainMenu");
@@ -69,7 +102,12 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage }) => {
       );
   }
 
-  return <div className="main-menu">{currentPageComponent}</div>;
+  return (
+    <div>
+      {cherryBlossoms}
+      {currentPageComponent}
+    </div>
+  );
 };
 
 export default MainMenu;
