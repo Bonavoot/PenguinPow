@@ -10,7 +10,7 @@ const createCherryBlossoms = () => {
   for (let i = 0; i < numPetals; i++) {
     const left = `${Math.random() * 100}%`;
     const animationDuration = `${Math.random() * 5 + 5}s`;
-    const animationDelay = `${Math.random() * 5}s`;
+    const animationDelay = "0s";
     const size = `${Math.random() * 5 + 5}px`;
 
     petals.push(
