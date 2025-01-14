@@ -141,7 +141,7 @@ const StyledImage = styled("img")
     },
   }))`
   position: absolute;
-  height: 235px;
+  height: 300px;
   will-change: transform, bottom, left; // optimize for animations
   pointer-events: none;
 `;
@@ -185,13 +185,13 @@ const StyledLabel = styled.div
   })
   .attrs((props) => ({
     style: {
-      bottom: `${props.y + 230}px`, // Adjust based on the image height
-      left: `${props.facing === -1 ? props.x + 100 : props.x + 100}px`, // Adjust based on the label position
+      bottom: `${props.y + 295}px`, // Adjust based on the image height
+      left: `${props.facing === -1 ? props.x + 120 : props.x + 125}px`, // Adjust based on the label position
       color: props.color || "black",
     },
   }))`
   position: absolute;
-  font-size: 2rem;
+  font-size: 2.5rem;
   font-family: "Bungee";
   pointer-events: none;
 `;

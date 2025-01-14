@@ -47,7 +47,7 @@ const TICK_RATE = 64;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.3;
 const GROUND_LEVEL = 130;
-const HITBOX_DISTANCE_VALUE = 80;
+const HITBOX_DISTANCE_VALUE = 90;
 
 function resetRoomAndPlayers(room) {
   // Reset room state
@@ -94,7 +94,7 @@ io.on("connection", (socket) => {
 
   function isOpponentCloseEnoughForThrow(player, opponent) {
     const distance = Math.abs(player.x - opponent.x); // Calculate the distance between the player and the opponent
-    const THROW_DISTANCE_THRESHOLD = 200; // Define the maximum distance for a throw to be possible
+    const THROW_DISTANCE_THRESHOLD = 235; // Define the maximum distance for a throw to be possible
     return distance <= THROW_DISTANCE_THRESHOLD; // Return true if the distance is within the threshold, otherwise false
   }
 
@@ -145,19 +145,19 @@ io.on("connection", (socket) => {
         }
 
         if (room.gameStart === false) {
-          if (player1.x >= 330) {
-            player1.x = 330;
+          if (player1.x >= 275) {
+            player1.x = 275;
           }
 
-          if (player2.x <= 735) {
-            player2.x = 735;
+          if (player2.x <= 725) {
+            player2.x = 725;
           }
 
-          if (player1.x === 330) {
+          if (player1.x === 275) {
             player1.isReady = true;
           }
 
-          if (player2.x === 735) {
+          if (player2.x === 725) {
             player2.isReady = true;
           }
         }
@@ -259,15 +259,15 @@ io.on("connection", (socket) => {
         // map boundries
 
         if (!player.isHit && !room.gameOver) {
-          player.x = Math.max(-50, Math.min(player.x, 1115));
+          player.x = Math.max(-50, Math.min(player.x, 1055));
         }
 
         // Win Conditions
         if (
           (player.isHit && player.x <= -50 && !room.gameOver) ||
-          (player.isHit && player.x >= 1115 && !room.gameOver) ||
+          (player.isHit && player.x >= 1055 && !room.gameOver) ||
           (player.isBeingGrabbed && player.x <= -50 && !room.gameOver) ||
-          (player.isBeingGrabbed && player.x >= 1115 && !room.gameOver)
+          (player.isBeingGrabbed && player.x >= 1055 && !room.gameOver)
         ) {
           console.log("game over");
           room.gameOver = true;
@@ -869,7 +869,7 @@ io.on("connection", (socket) => {
       }
       function isOpponentCloseEnoughForGrab(player, opponent) {
         const distance = Math.abs(player.x - opponent.x);
-        const GRAB_DISTANCE_THRESHOLD = 200; // Use the same threshold as the throw
+        const GRAB_DISTANCE_THRESHOLD = 225; // Use the same threshold as the throw
         return distance <= GRAB_DISTANCE_THRESHOLD;
       }
       if (
