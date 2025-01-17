@@ -17,13 +17,12 @@ import { useMemo } from "react";
 import pumo from "../assets/pumo.png";
 import pumoWaddle from "../assets/pumo-waddle-old.gif";
 import crouching from "../assets/crouching.png";
-import daibaJumping from "../assets/daibaJumping.gif";
 import grabbing from "../assets/grabbing.png";
 import ready from "../assets/ready.png";
 import attack from "../assets/attack.png";
 import dodging from "../assets/dodging.gif";
-import throwing from "../assets/throwing.png";
-import hit from "../assets/lil-dinkey-avatar.png";
+import throwing from "../assets/throwing-nonmirror.png";
+import hit from "../assets/hit.png";
 
 import gameMusic from "../sounds/game-music.mp3";
 import grabSound from "../sounds/grab-sound.mp3";
@@ -39,7 +38,6 @@ const fighterImages = {
 const additionalImages = [
   pumoWaddle,
   crouching,
-  daibaJumping,
   grabbing,
   ready,
   attack,

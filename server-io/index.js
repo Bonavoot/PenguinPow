@@ -368,23 +368,23 @@ io.on("connection", (socket) => {
             throwDuration / (player.throwEndTime - player.throwStartTime);
 
           // Set facing direction only at the start of the throw
-          if (throwProgress === 0) {
-            player.throwingFacingDirection = player.facing;
-            // player.facing = player.facing === 1 ? -1 : 1;
-          }
+          // if (throwProgress === 0) {
+          //   player.throwingFacingDirection = player.facing;
+          //   // player.facing = player.facing === 1 ? -1 : 1;
+          // }
 
           if (currentTime >= player.throwEndTime) {
             player.isThrowing = false;
             // Reset facing direction to the original direction after throw
-            player.facing = player.throwingFacingDirection;
+            // player.facing = player.throwingFacingDirection;
             player.throwingFacingDirection = null;
           }
 
-          if (player.facing === 1) {
-            player.facing = -1;
-          } else {
-            player.facing = 1;
-          }
+          // if (player.facing === 1) {
+          //   player.facing = -1;
+          // } else {
+          //   player.facing = 1;
+          // }
         }
 
         // Dodging

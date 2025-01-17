@@ -6,7 +6,6 @@ import PlayerStaminaUi from "./PlayerStaminaUi";
 import pumo from "../assets/pumo.png";
 import pumoWaddle from "../assets/pumo-waddle.gif";
 import crouching from "../assets/crouching.png";
-import daibaJumping from "../assets/daibaJumping.gif";
 import grabbing from "../assets/grabbing.png"; // You'll need to create this asset
 import grabSound from "../sounds/grab-sound.mp3"; // You'll need to create this sound
 
@@ -14,7 +13,7 @@ import grabSound from "../sounds/grab-sound.mp3"; // You'll need to create this 
 import ready from "../assets/ready.png";
 import attack from "../assets/attack.png";
 import dodging from "../assets/dodging.gif";
-import throwing from "../assets/throwing.png";
+import throwing from "../assets/throwing-nonmirror.png";
 import hit from "../assets/hit.png";
 import attackSound from "../sounds/attack-sound.mp3";
 import hitSound from "../sounds/hit-sound.mp3";
@@ -54,7 +53,6 @@ const getImageSrc = (
     if (isJumping) return throwing;
     if (isAttacking && !isSlapAttack) return attack;
     if (isGrabbing) return grabbing;
-    if (isSlapAttack) return daibaJumping;
     if (isDodging) return dodging;
     if (isCrouching) return crouching;
     if (isReady) return ready;
@@ -381,4 +379,5 @@ GameFighter.propTypes = {
   }),
   index: PropTypes.number.isRequired,
 };
+
 export default GameFighter;
