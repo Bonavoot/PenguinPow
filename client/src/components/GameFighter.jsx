@@ -4,16 +4,25 @@ import PropTypes from "prop-types";
 import styled from "styled-components";
 import PlayerStaminaUi from "./PlayerStaminaUi";
 import pumo from "../assets/pumo.png";
+import pumo2 from "../assets/pumo2.png";
 import pumoWaddle from "../assets/pumo-waddle.gif";
+import pumoWaddle2 from "../assets/pumo-waddle2.gif";
 import crouching from "../assets/crouching.png";
+import crouching2 from "../assets/crouching2.png";
 import grabbing from "../assets/grabbing.png"; // You'll need to create this asset
+import grabbing2 from "../assets/grabbing2.png";
+
 import grabSound from "../sounds/grab-sound.mp3"; // You'll need to create this sound
 
 //import daibaHit from "../assets/daibaHit.gif";
 import ready from "../assets/ready.png";
+import ready2 from "../assets/ready2.png";
 import attack from "../assets/attack.png";
+import attack2 from "../assets/attack2.png";
 import dodging from "../assets/dodging.gif";
+import dodging2 from "../assets/dodging2.gif";
 import throwing from "../assets/throwing-nonmirror.png";
+import throwing2 from "../assets/throwing2.png";
 import hit from "../assets/hit.png";
 import attackSound from "../sounds/attack-sound.mp3";
 import hitSound from "../sounds/hit-sound.mp3";
@@ -47,7 +56,7 @@ const getImageSrc = (
   isThrowing,
   isGrabbing
 ) => {
-  if (fighter === "player 1" || fighter === "player 2") {
+  if (fighter === "player 2") {
     if (isDiving) return pumo;
 
     if (isJumping) return throwing;
@@ -61,6 +70,20 @@ const getImageSrc = (
     if (isDead) return pumo;
     if (isThrowing) return throwing;
     return pumo;
+  } else if (fighter === "player 1") {
+    if (isDiving) return pumo;
+
+    if (isJumping) return throwing2;
+    if (isAttacking && !isSlapAttack) return attack2;
+    if (isGrabbing) return grabbing2;
+    if (isDodging) return dodging2;
+    if (isCrouching) return crouching2;
+    if (isReady) return ready2;
+    if (isStrafing && !isThrowing) return pumoWaddle2;
+    if (isHit) return hit;
+    if (isDead) return pumo;
+    if (isThrowing) return throwing2;
+    return pumo2;
   }
 };
 
