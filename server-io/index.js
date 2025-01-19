@@ -480,6 +480,7 @@ io.on("connection", (socket) => {
             if (grabDuration >= 1000) {
               // Release after 1.5 seconds
               player.isGrabbing = false;
+              opponent.isHit = false;
               player.grabbedOpponent = null;
               opponent.isBeingGrabbed = false;
               delete player.grabFacingDirection;
@@ -876,6 +877,7 @@ io.on("connection", (socket) => {
         player.keys.e &&
         !player.isGrabbing &&
         !player.isBeingThrown &&
+        !player.isBeingGrabbed &&
         !player.isDodging &&
         !player.isCrouching &&
         !player.isAttacking &&
@@ -886,9 +888,12 @@ io.on("connection", (socket) => {
         if (
           isOpponentCloseEnoughForGrab(player, opponent) &&
           !opponent.isBeingThrown &&
-          !opponent.isAttacking
+          !opponent.isAttacking &&
+          !opponent.isBeingGrabbed &&
+          !player.isBeingGrabbed
         ) {
           player.isGrabbing = true;
+          opponent.isHit = true;
           player.grabStartTime = Date.now();
           player.grabbedOpponent = opponent.id;
           opponent.isBeingGrabbed = true;
