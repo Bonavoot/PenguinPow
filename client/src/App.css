@@ -247,7 +247,7 @@ body {
 
 .ui-player-info {
   position: absolute;
-  top: -633px;
+  top: -658px;
   height: 85px;
   width: 1300px;
   background-color: rgba(255, 255, 255, 0.75);
@@ -340,7 +340,9 @@ body {
   font-family: "Bungee";
   font-size: 3.75rem;
   top: 2rem;
-  margin-top: -2.25rem;
+  margin-top: -5.25rem;
+  text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000,
+    2px 2px 0 #000;
 }
 
 .player1-win-count {
@@ -354,8 +356,10 @@ body {
 
 .dash {
   font-family: "Bungee";
-  margin-top: -25px;
+  margin-top: -75px;
   font-size: 3.5rem;
+  text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000,
+    2px 2px 0 #000;
 }
 
 #ui-name-1 {
@@ -453,7 +457,7 @@ body {
   left: 50%;
   transform: translate(-50%, -50%);
   width: 1300px;
-  height: 725px;
+  height: 750px;
   overflow: hidden;
   background-image: url(./assets/game-map-test.jpg);
   background-repeat: no-repeat;

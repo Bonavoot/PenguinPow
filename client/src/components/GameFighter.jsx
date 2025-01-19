@@ -9,12 +9,9 @@ import pumoWaddle from "../assets/pumo-waddle.gif";
 import pumoWaddle2 from "../assets/pumo-waddle2.gif";
 import crouching from "../assets/crouching.png";
 import crouching2 from "../assets/crouching2.png";
-import grabbing from "../assets/grabbing.png"; // You'll need to create this asset
+import grabbing from "../assets/grabbing.png";
 import grabbing2 from "../assets/grabbing2.png";
-
-import grabSound from "../sounds/grab-sound.mp3"; // You'll need to create this sound
-
-//import daibaHit from "../assets/daibaHit.gif";
+import grabSound from "../sounds/grab-sound.mp3";
 import ready from "../assets/ready.png";
 import ready2 from "../assets/ready2.png";
 import attack from "../assets/attack.png";
