@@ -420,7 +420,9 @@ body {
 
 .hakkiyoi {
   position: absolute;
-  top: -425px;
+  text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000,
+    2px 2px 0 #000;
+  top: -450px;
   left: 50%;
   transform: translate(-50%, -50%);
   font-size: 48px;
@@ -453,7 +455,7 @@ body {
   width: 1300px;
   height: 725px;
   overflow: hidden;
-  background-image: url(./assets/game-map.png);
+  background-image: url(./assets/game-map-test.jpg);
   background-repeat: no-repeat;
   background-size: cover;
   background-position: center;

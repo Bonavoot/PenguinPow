@@ -24,6 +24,7 @@ import dodging2 from "../assets/dodging2.gif";
 import throwing from "../assets/throwing-nonmirror.png";
 import throwing2 from "../assets/throwing2.png";
 import hit from "../assets/hit.png";
+import hit2 from "../assets/hit2.png";
 import attackSound from "../sounds/attack-sound.mp3";
 import hitSound from "../sounds/hit-sound.mp3";
 import dodgeSound from "../sounds/dodge-sound.mp3";
@@ -80,7 +81,7 @@ const getImageSrc = (
     if (isCrouching) return crouching2;
     if (isReady) return ready2;
     if (isStrafing && !isThrowing) return pumoWaddle2;
-    if (isHit) return hit;
+    if (isHit) return hit2;
     if (isDead) return pumo;
     if (isThrowing) return throwing2;
     return pumo2;
@@ -215,6 +216,7 @@ const StyledLabel = styled.div
   font-size: 2.5rem;
   font-family: "Bungee";
   pointer-events: none;
+  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
 `;
 
 const winnerAudio = new Audio(winnerSound);

@@ -24,6 +24,7 @@ import dodging from "../assets/dodging.gif";
 
 import throwing from "../assets/throwing-nonmirror.png";
 import hit from "../assets/hit.png";
+import hit2 from "../assets/hit2.png";
 
 import pumo2 from "../assets/pumo2.png";
 import pumoWaddle2 from "../assets/pumo-waddle2.gif";
@@ -61,6 +62,7 @@ const additionalImages = [
   throwing,
   throwing2,
   hit,
+  hit2,
 ];
 const audioSources = [gameMusic, grabSound, attackSound, hitSound, dodgeSound];
 
