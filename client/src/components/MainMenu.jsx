@@ -103,7 +103,7 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage }) => {
   }
 
   return (
-    <div>
+    <div className="current-page">
       {cherryBlossoms}
       {currentPageComponent}
     </div>
