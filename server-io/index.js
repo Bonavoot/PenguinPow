@@ -241,7 +241,7 @@ io.on("connection", (socket) => {
 
           if (currentTime - room.readyStartTime >= 1000) {
             room.gameStart = true;
-            io.emit("game_start", true);
+            io.in(room.id).emit("game_start", true);
             player1.isReady = false;
             player2.isReady = false;
             room.readyStartTime = null;
