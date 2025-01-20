@@ -47,7 +47,7 @@ body {
   position: absolute;
   top: 0;
   left: 0.25rem;
-  font-size: 2.5rem;
+  font-size: 5vh;
   margin: 0;
   color: black;
   font-family: "Bungee", cursive;
@@ -57,7 +57,7 @@ body {
 }
 
 .pow {
-  font-size: 2.5rem;
+  font-size: 5vh;
   color: red;
   font-family: "Bungee Shade", cursive;
 }
@@ -80,7 +80,7 @@ body {
 }
 
 #play {
-  font-size: 6rem;
+  font-size: 12vh;
   color: rgb(255, 0, 0);
 }
 
@@ -95,7 +95,7 @@ body {
   border-radius: 10px;
   width: fit-content;
   border: none;
-  font-size: 2rem;
+  font-size: 4vh;
   color: black;
   font-family: "Bungee", cursive;
   cursor: pointer;
