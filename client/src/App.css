@@ -53,6 +53,7 @@ body {
   font-family: "Bungee", cursive;
   margin-left: 15px;
   cursor: pointer;
+  z-index: 99;
 }
 
 .pow {
@@ -128,10 +129,10 @@ body {
   flex-direction: column;
   justify-self: center;
   align-self: center;
-  width: 75vw;
+  width: 100%;
+  max-width: 1280px;
   height: auto;
-  aspect-ratio: auto 16 / 9;
-  max-height: 90vh;
+  aspect-ratio: 16 / 9;
   background-color: rgb(22, 22, 22);
   box-shadow: 0px 0px 2px 1px black;
   border-radius: 1%;
@@ -214,31 +215,60 @@ body {
   background-color: gray;
 }
 
+.game-wrapper {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.game-container {
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  max-width: 1280px;
+  height: auto;
+  position: relative;
+  border: 2px solid black;
+  overflow: hidden;
+  background-image: url(./assets/game-map-test.jpg);
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center;
+  z-index: 99;
+}
+
 .ui {
   position: absolute;
   top: 0;
   left: 0;
+  /* 100% of the .game-container */
   width: 100%;
   height: 100%;
   display: flex;
   justify-content: space-between;
-  padding-bottom: 1rem;
 }
 
 .ui-container {
   position: absolute;
-  bottom: 25px;
+  bottom: 0px;
   left: 0;
   width: 100%;
+  height: 100%;
 }
 
 #ui-container-1 {
-  left: -25px;
+  height: 5%;
+  left: 3vw;
+  bottom: 3vw;
 }
 
 #ui-container-2 {
-  right: -25px;
-  left: auto;
+  height: 5%;
+  right: 3vw;
+  bottom: 3vw;
   transform: scaleX(-1);
 }
 
@@ -247,22 +277,22 @@ body {
 }
 
 .ui-player-container {
-  position: relative;
+  position: absolute;
+  bottom: 0;
 }
 
-.ui-player-name {
+/* .ui-player-name {
   font-family: "Bungee";
-  font-size: 1.2em;
-}
+  font-size: 2vw;
+} */
 
 .ui-player-info {
-  position: absolute;
-  top: -633px;
-  height: 85px;
-  width: 1300px;
+  height: 12%;
+  width: 100%;
   background-color: rgba(255, 255, 255, 0.75);
   display: flex;
-  justify-content: space-between;
+  gap: 8%;
+  justify-content: space-around;
   align-items: center;
   color: black;
   text-align: center;
@@ -273,8 +303,11 @@ body {
 .rank-record-2 {
   display: flex;
   flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 1px;
   height: 90%;
-  gap: 10px;
+  width: fit-content;
 }
 
 .rank,
@@ -284,90 +317,86 @@ body {
   align-items: center;
   background-color: white;
   opacity: 100%;
-  width: 150px;
+  width: 100%;
   height: 100%;
+  padding: 1% 10%;
   border: red solid 2px;
-  margin-left: 25px;
-  margin-right: 25px;
   text-align: center;
+  font-size: 1vw;
 }
 
 .record {
   display: flex;
-  gap: 15px;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .win-circle {
   border: black solid 2px;
   border-radius: 50%;
-  width: 15px;
-  height: 15px;
+  width: 1em;
+  height: 1em;
   background-color: white;
 }
 
 .loss-circle {
   border: black solid 2px;
   border-radius: 50%;
-  width: 15px;
-  height: 15px;
+  width: 1em;
+  height: 1em;
   background-color: black;
 }
 
 .ui-player-1-name,
 .ui-player-2-name {
   border: red solid 2px;
-  height: 85%;
-  width: 25%;
+  height: 80%;
+  width: 22%;
   display: flex;
   justify-content: center;
   align-items: center;
-  font-size: 2.5em;
+  font-size: 2vw;
   background-color: white;
 }
 
 .ui-player-1-name {
-  margin-left: -225px;
   color: black;
 }
 .ui-player-2-name {
-  margin-right: -225px;
   color: black;
 }
 
 .scoreboard {
   position: absolute;
   left: 50%;
-  top: -570px;
+  top: 6%;
+  width: 8%;
   transform: translate(-50%, -50%);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 1rem;
+  font-size: 3vw;
 }
 
 .player1-win-count,
 .player2-win-count {
   font-family: "Bungee";
-  font-size: 3.75rem;
-  top: 2rem;
-  margin-top: -2.25rem;
+  font-size: 3vw;
+  top: 0;
   text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000,
     2px 2px 0 #000;
 }
 
 .player1-win-count {
   color: aqua;
-  margin-right: 15px;
 }
 .player2-win-count {
   color: salmon;
-  margin-left: 15px;
 }
 
 .dash {
   font-family: "Bungee";
-  margin-top: -25px;
-  font-size: 3.5rem;
+  font-size: 3vw;
   text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000,
     2px 2px 0 #000;
 }
@@ -389,31 +418,53 @@ body {
   visibility: hidden;
 }
 
+/* .material-symbols-outlined {
+  font-size: 1vh;
+  text-align: center;
+}
+
 #dodge-label-1 {
   color: black;
   font-family: "Bungee";
   position: absolute;
-  top: 0.2rem;
 }
 
 #dodge-label-2 {
   color: black;
   font-family: "Bungee";
   position: absolute;
-  top: 0.2rem;
+} */
+
+.ui-container {
+  position: absolute;
+  bottom: 0px;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+#ui-container-1 {
+  height: 5%;
+  width: 15%;
+  left: 2vw;
+  bottom: 1vw;
+}
+
+#ui-container-2 {
+  height: 5%;
+  width: 15%;
+  right: 2vw;
+  bottom: 1vw;
+  transform: scaleX(-1);
 }
 
 .ui-player-stamina-container {
   background-color: black;
-  width: 14rem;
-  height: 2rem;
+  height: 100%;
   border: rgba(71, 71, 71, 0.7) solid 2px;
   border-radius: 3px;
   position: relative;
   z-index: 1;
-  margin-left: 3rem;
-  margin-right: 3rem;
-  margin-top: 3rem;
   text-align: center;
 }
 
@@ -436,10 +487,14 @@ body {
   position: absolute;
   text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000,
     2px 2px 0 #000;
-  top: -450px;
+  top: 25%;
   left: 50%;
+  width: 50%; /* Scales with the .lobby */
+  margin: 0 auto; /* Center horizontally */
   transform: translate(-50%, -50%);
-  font-size: 48px;
+  white-space: nowrap;
+  max-width: 100%;
+  font-size: clamp(1rem, 4vw, 2rem); /* <-- MAIN CHANGE */
   color: #fff;
   text-align: center;
   opacity: 1; /* Start invisible */
@@ -447,28 +502,4 @@ body {
   pointer-events: none;
   font-family: "Bungee";
   letter-spacing: 0.1em;
-}
-
-/* .game-wrapper {
-  width: 100%;
-  height: 100%;
-
-  align-items: center;
-  overflow: hidden;
-} */
-
-.game-container {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 1300px;
-  height: 725px;
-  overflow: hidden;
-  background-image: url(./assets/game-map-test.jpg);
-  background-repeat: no-repeat;
-  background-size: cover;
-  background-position: center;
-  border: solid 2px black;
-  z-index: 99;
 }

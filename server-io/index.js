@@ -94,7 +94,7 @@ io.on("connection", (socket) => {
 
   function isOpponentCloseEnoughForThrow(player, opponent) {
     const distance = Math.abs(player.x - opponent.x); // Calculate the distance between the player and the opponent
-    const THROW_DISTANCE_THRESHOLD = 235; // Define the maximum distance for a throw to be possible
+    const THROW_DISTANCE_THRESHOLD = 230; // Define the maximum distance for a throw to be possible
     return distance <= THROW_DISTANCE_THRESHOLD; // Return true if the distance is within the threshold, otherwise false
   }
 
@@ -149,15 +149,15 @@ io.on("connection", (socket) => {
             player1.x = 275;
           }
 
-          if (player2.x <= 725) {
-            player2.x = 725;
+          if (player2.x <= 715) {
+            player2.x = 715;
           }
 
           if (player1.x === 275) {
             player1.isReady = true;
           }
 
-          if (player2.x === 725) {
+          if (player2.x === 715) {
             player2.isReady = true;
           }
         }
@@ -264,10 +264,10 @@ io.on("connection", (socket) => {
 
         // Win Conditions
         if (
-          (player.isHit && player.x <= -50 && !room.gameOver) ||
-          (player.isHit && player.x >= 1055 && !room.gameOver) ||
-          (player.isBeingGrabbed && player.x <= -50 && !room.gameOver) ||
-          (player.isBeingGrabbed && player.x >= 1055 && !room.gameOver)
+          (player.isHit && player.x <= -60 && !room.gameOver) ||
+          (player.isHit && player.x >= 1080 && !room.gameOver) ||
+          (player.isBeingGrabbed && player.x <= -60 && !room.gameOver) ||
+          (player.isBeingGrabbed && player.x >= 1080 && !room.gameOver)
         ) {
           console.log("game over");
           room.gameOver = true;
@@ -870,7 +870,7 @@ io.on("connection", (socket) => {
       }
       function isOpponentCloseEnoughForGrab(player, opponent) {
         const distance = Math.abs(player.x - opponent.x);
-        const GRAB_DISTANCE_THRESHOLD = 225; // Use the same threshold as the throw
+        const GRAB_DISTANCE_THRESHOLD = 230; // Use the same threshold as the throw
         return distance <= GRAB_DISTANCE_THRESHOLD;
       }
       if (

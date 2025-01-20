@@ -3,10 +3,10 @@
   position: relative;
   align-self: center;
   justify-content: center;
-  width: 75vw;
+  width: 100%;
+  max-width: 1280px;
   height: auto;
-  max-height: 90vh;
-  aspect-ratio: auto 16 / 9;
+  aspect-ratio: 16 / 9;
   background-image: linear-gradient(
     rgb(167, 252, 255),
     rgb(206, 255, 253),

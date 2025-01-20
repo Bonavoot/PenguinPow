@@ -157,14 +157,21 @@ const StyledImage = styled("img")
     ),
     style: {
       position: "absolute",
-      left: `${props.x}px`,
-      bottom: `${props.y}px`,
+      /* Convert x, y from 1280×720 to percentages of the container */
+      left: `${(props.x / 1280) * 100}%`,
+      bottom: `${(props.y / 720) * 100}%`,
+      /* Flip horizontally if facing is -1; scaleX(1) is normal, scaleX(-1) is mirrored */
       transform: `scaleX(${props.facing})`,
     },
+    /* Or define src via a getImageSrc function, like your code already does. */
   }))`
   position: absolute;
-  height: 300px;
-  will-change: transform, bottom, left; // optimize for animations
+
+  /* Use a relative width (e.g., 10% of container width) so it scales */
+  width: 23%;
+  height: auto;
+
+  will-change: transform, bottom, left;
   pointer-events: none;
 `;
 
@@ -207,17 +214,22 @@ const StyledLabel = styled.div
   })
   .attrs((props) => ({
     style: {
-      bottom: `${props.y + 295}px`, // Adjust based on the image height
-      left: `${props.facing === -1 ? props.x + 120 : props.x + 125}px`, // Adjust based on the label position
-      color: props.color || "black",
+      position: "absolute",
+      // The base vertical position is y + some offset
+      // so it ends up above the player's head
+      left: `${(props.x / 1280) * 100}%`,
+      bottom: `${((props.y + 290) / 720) * 100}%`,
+      transform: "translateX(265%)",
     },
   }))`
-  position: absolute;
-  font-size: 2.5rem;
-  font-family: "Bungee";
-  pointer-events: none;
-  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
-`;
+    position: absolute;
+    font-size: clamp(1rem, 2.5vw, 2rem); /* optional fluid sizing */
+    font-family: "Bungee";
+    pointer-events: none;
+    color: ${(props) => props.color || "black"};
+    text-shadow: -1px -1px 0 #000, 1px -1px 0 #000,
+                 -1px 1px 0 #000, 1px 1px 0 #000;
+  `;
 
 const winnerAudio = new Audio(winnerSound);
 
