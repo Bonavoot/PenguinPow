@@ -11,7 +11,6 @@ const preloadAssets = (sources, type = "image") => {
   });
 };
 
-// Refactored Player component
 import Fighter from "./Fighter";
 import { useMemo } from "react";
 import pumo from "../assets/pumo.png";
@@ -21,11 +20,9 @@ import grabbing from "../assets/grabbing.png";
 import ready from "../assets/ready.png";
 import attack from "../assets/attack.png";
 import dodging from "../assets/dodging.gif";
-
 import throwing from "../assets/throwing-nonmirror.png";
 import hit from "../assets/hit.png";
 import hit2 from "../assets/hit2.png";
-
 import pumo2 from "../assets/pumo2.png";
 import pumoWaddle2 from "../assets/pumo-waddle2.gif";
 import crouching2 from "../assets/crouching2.png";
@@ -34,7 +31,6 @@ import ready2 from "../assets/ready2.png";
 import attack2 from "../assets/attack2.png";
 import dodging2 from "../assets/dodging2.gif";
 import throwing2 from "../assets/throwing2.png";
-
 import gameMusic from "../sounds/game-music.mp3";
 import grabSound from "../sounds/grab-sound.mp3";
 import attackSound from "../sounds/attack-sound.mp3";
@@ -72,7 +68,6 @@ preloadAssets(audioSources, "audio");
 
 const Player = ({ index, fighter }) => {
   // Determine the image source for the fighter
-  // const penguin = useMemo(() => fighterImages[fighter] || pumo, [fighter]);
 
   const penguin = useMemo(() => {
     if (index === 0) {
@@ -85,15 +80,12 @@ const Player = ({ index, fighter }) => {
   }, [index, fighter]);
 
   return (
-    <div className="player-lobby">
-      <h1 className={`player-side player${index}`}>PLAYER {index + 1}</h1>
-      <div>
-        <Fighter
-          index={index}
-          fighterImgSrc={penguin}
-          fighterName={fighter.toUpperCase()}
-        />
-      </div>
+    <div className={`player${index}-lobby`}>
+      <Fighter
+        index={index}
+        fighterImgSrc={penguin}
+        fighterName={fighter.toUpperCase()}
+      />
     </div>
   );
 };

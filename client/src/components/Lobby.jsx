@@ -1,7 +1,6 @@
 import { useContext, useEffect, useState } from "react";
 import Player from "./Player";
 import "./Lobby.css";
-// import FighterSelect from "./FighterSelect";
 import { SocketContext } from "../SocketContext";
 import Ready from "./Ready";
 import { v4 as uuidv4 } from "uuid";
@@ -26,27 +25,21 @@ const Lobby = ({ rooms, roomName, handleGame }) => {
 
   return (
     <div className="lobby">
-      <div className="lobby-fighters-container">
-        {players.map((player, i) => {
-          return (
-            <React.Fragment key={uuidv4()}>
-              {i > 2 ? null : <Player index={i} fighter={player.fighter} />}
-            </React.Fragment>
-          );
-        })}
-        {players.length < 2 ? (
-          <div className="waiting">
-            Waiting for opponent
-            <img id="ellipses" src={ellipses} alt="waiting" />
-          </div>
-        ) : null}
-        {/* <div className="select-penguin-container">
-        <h2 className="select-penguin-txt">SELECT PENGUIN</h2>
-        <FighterSelect />
-      </div> */}
-        <h1 className="kana1">横</h1>
-        <h1 className="kana2">綱</h1>
-      </div>
+      {players.map((player, i) => {
+        return (
+          <React.Fragment key={uuidv4()}>
+            {i > 2 ? null : <Player index={i} fighter={player.fighter} />}
+          </React.Fragment>
+        );
+      })}
+      {players.length < 2 ? (
+        <div className="waiting">
+          Waiting for opponent
+          <img id="ellipses" src={ellipses} alt="waiting" />
+        </div>
+      ) : null}
+      {/* <h1 className="kana1">横</h1>
+        <h1 className="kana2">綱</h1> */}
       <button
         className="exit-btn"
         onClick={() => window.location.reload(false)}

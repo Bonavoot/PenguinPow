@@ -3,6 +3,7 @@ import { SocketContext } from "../SocketContext";
 import PropTypes from "prop-types";
 import styled from "styled-components";
 import PlayerStaminaUi from "./PlayerStaminaUi";
+
 import pumo from "../assets/pumo.png";
 import pumo2 from "../assets/pumo2.png";
 import pumoWaddle from "../assets/pumo-waddle.gif";
@@ -22,6 +23,7 @@ import throwing from "../assets/throwing-nonmirror.png";
 import throwing2 from "../assets/throwing2.png";
 import hit from "../assets/hit.png";
 import hit2 from "../assets/hit2.png";
+
 import attackSound from "../sounds/attack-sound.mp3";
 import hitSound from "../sounds/hit-sound.mp3";
 import dodgeSound from "../sounds/dodge-sound.mp3";
@@ -29,6 +31,7 @@ import throwSound from "../sounds/throw-sound.mp3";
 import winnerSound from "../sounds/winner-sound.mp3";
 import hakkiyoiSound from "../sounds/hakkiyoi-sound.mp3";
 import bellSound from "../sounds/bell-sound.mp3";
+
 import UiPlayerInfo from "./UiPlayerInfo";
 
 //import gameMusic from "../sounds/game-music.mp3";
