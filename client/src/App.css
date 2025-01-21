@@ -89,7 +89,7 @@ body {
 }
 
 .main-menu-btn-container > button {
-  margin-left: 30px;
+  margin-left: 3vw;
   background-color: none;
   background: none;
   border-radius: 10px;
@@ -99,6 +99,7 @@ body {
   color: black;
   font-family: "Bungee", cursive;
   cursor: pointer;
+  padding: 0;
 }
 
 #closed {
@@ -287,12 +288,12 @@ body {
 } */
 
 .ui-player-info {
-  height: 12%;
+  height: 10%;
   width: 100%;
   background-color: rgba(255, 255, 255, 0.75);
   display: flex;
-  gap: 8%;
-  justify-content: space-around;
+  gap: 5%;
+  justify-content: center;
   align-items: center;
   color: black;
   text-align: center;
@@ -305,9 +306,7 @@ body {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  gap: 1px;
-  height: 90%;
-  width: fit-content;
+  height: 80%;
 }
 
 .rank,
@@ -320,15 +319,16 @@ body {
   width: 100%;
   height: 100%;
   padding: 1% 10%;
-  border: red solid 2px;
+  border: red solid 0.15rem;
   text-align: center;
-  font-size: 1vw;
+  font-size: clamp(0.2rem, 1vw, 1rem);
 }
 
 .record {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  border-top: none;
 }
 
 .win-circle {
@@ -351,11 +351,11 @@ body {
 .ui-player-2-name {
   border: red solid 2px;
   height: 80%;
-  width: 22%;
+  width: 20%;
   display: flex;
   justify-content: center;
   align-items: center;
-  font-size: 2vw;
+  font-size: clamp(0.5rem, 2vw, 2rem);
   background-color: white;
 }
 
@@ -367,21 +367,23 @@ body {
 }
 
 .scoreboard {
-  position: absolute;
+  /* position: absolute;
   left: 50%;
-  top: 6%;
-  width: 8%;
-  transform: translate(-50%, -50%);
+  top: 5%; */
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
-  font-size: 3vw;
+  gap: 1vw;
+  /* Let the width auto-adjust for two-digit numbers */
+  width: auto;
+  padding: 0 1vw; /* optional padding to give some space on sides */
+  font-size: clamp(0.75rem, 4.25vw, 3rem);
 }
 
 .player1-win-count,
 .player2-win-count {
   font-family: "Bungee";
-  font-size: 3vw;
+  font-size: clamp(0.75rem, 4.25vw, 3rem);
   top: 0;
   text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000,
     2px 2px 0 #000;
@@ -396,7 +398,8 @@ body {
 
 .dash {
   font-family: "Bungee";
-  font-size: 3vw;
+  font-size: clamp(0.75rem, 4vw, 2.75rem);
+  color: white;
   text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000,
     2px 2px 0 #000;
 }
@@ -494,7 +497,7 @@ body {
   transform: translate(-50%, -50%);
   white-space: nowrap;
   max-width: 100%;
-  font-size: clamp(1rem, 4vw, 2rem); /* <-- MAIN CHANGE */
+  font-size: clamp(1rem, 4vw, 3rem); /* <-- MAIN CHANGE */
   color: #fff;
   text-align: center;
   opacity: 1; /* Start invisible */

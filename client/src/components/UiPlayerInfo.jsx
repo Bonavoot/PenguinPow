@@ -10,7 +10,13 @@ const UiPlayerInfo = ({ playerOneWinCount, playerTwoWinCount }) => {
           <div className="loss-count">{playerTwoWinCount}</div>
         </div>
       </div>
+
       <div className="ui-player-1-name">PLAYER 1</div>
+      <div className="scoreboard">
+        <div className="player1-win-count">{playerOneWinCount}</div>
+        <div className="dash">-</div>
+        <div className="player2-win-count">{playerTwoWinCount}</div>
+      </div>
       <div className="ui-player-2-name">PLAYER 2</div>
       <div className="rank-record-2">
         <div className="rank">UNRANKED</div>

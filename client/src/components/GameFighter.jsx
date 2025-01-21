@@ -365,11 +365,11 @@ const GameFighter = ({ player, index }) => {
       <StyledLabel {...penguin}>P{index + 1}</StyledLabel>
       <StyledImage {...penguin} />
 
-      <div className="scoreboard">
+      {/* <div className="scoreboard">
         <div className="player1-win-count">{playerOneWinCount}</div>
         <div className="dash">-</div>
         <div className="player2-win-count">{playerTwoWinCount}</div>
-      </div>
+      </div> */}
     </div>
   );
 };
