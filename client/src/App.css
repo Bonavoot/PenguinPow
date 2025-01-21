@@ -80,7 +80,7 @@ body {
 }
 
 #play {
-  font-size: clamp(3rem, 8vw, 6rem);
+  font-size: clamp(3rem, 10vw, 6rem);
   color: rgb(255, 0, 0);
 }
 
@@ -95,7 +95,7 @@ body {
   border-radius: 10px;
   width: fit-content;
   border: none;
-  font-size: clamp(0.75rem, 4vw, 2rem);
+  font-size: clamp(0.5rem, 2.5vw, 2rem);
   color: black;
   font-family: "Bungee", cursive;
   cursor: pointer;
