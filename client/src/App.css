@@ -47,7 +47,7 @@ body {
   position: absolute;
   top: 0;
   left: 0.25rem;
-  font-size: 5vh;
+  font-size: clamp(0.75rem, 4vw, 2.75rem);
   margin: 0;
   color: black;
   font-family: "Bungee", cursive;
@@ -57,7 +57,7 @@ body {
 }
 
 .pow {
-  font-size: 5vh;
+  font-size: clamp(0.75rem, 4vw, 2.75rem);
   color: red;
   font-family: "Bungee Shade", cursive;
 }
@@ -80,7 +80,7 @@ body {
 }
 
 #play {
-  font-size: 12vh;
+  font-size: clamp(3rem, 8vw, 6rem);
   color: rgb(255, 0, 0);
 }
 
@@ -95,7 +95,7 @@ body {
   border-radius: 10px;
   width: fit-content;
   border: none;
-  font-size: 4vh;
+  font-size: clamp(0.75rem, 4vw, 2rem);
   color: black;
   font-family: "Bungee", cursive;
   cursor: pointer;
@@ -497,7 +497,7 @@ body {
   transform: translate(-50%, -50%);
   white-space: nowrap;
   max-width: 100%;
-  font-size: clamp(1rem, 4vw, 3rem); /* <-- MAIN CHANGE */
+  font-size: clamp(1rem, 4vw, 2.5rem); /* <-- MAIN CHANGE */
   color: #fff;
   text-align: center;
   opacity: 1; /* Start invisible */
