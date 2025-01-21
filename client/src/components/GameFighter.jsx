@@ -3,6 +3,7 @@ import { SocketContext } from "../SocketContext";
 import PropTypes from "prop-types";
 import styled from "styled-components";
 import PlayerStaminaUi from "./PlayerStaminaUi";
+import Gyoji from "./Gyoji";
 
 import pumo from "../assets/pumo.png";
 import pumo2 from "../assets/pumo2.png";
@@ -23,6 +24,8 @@ import throwing from "../assets/throwing-nonmirror.png";
 import throwing2 from "../assets/throwing2.png";
 import hit from "../assets/hit.png";
 import hit2 from "../assets/hit2.png";
+
+import gyoji from "../assets/gyoji.png";
 
 import attackSound from "../sounds/attack-sound.mp3";
 import hitSound from "../sounds/hit-sound.mp3";
@@ -238,6 +241,7 @@ const GameFighter = ({ player, index }) => {
   const [penguin, setPenguin] = useState(player);
   const [stamina, setStamina] = useState(player);
   const [hakkiyoi, setHakkiyoi] = useState(false);
+  const [gyojiState, setGyojiState] = useState("idle");
   const [gameOver, setGameOver] = useState(false);
   const [winner, setWinner] = useState("");
   const [playerOneWinCount, setPlayerOneWinCount] = useState(0);
@@ -269,11 +273,13 @@ const GameFighter = ({ player, index }) => {
         setHakkiyoi(false);
       }, 2000);
 
+      setGyojiState("ready");
       return () => clearTimeout(timer);
     });
 
     socket.on("game_reset", (data) => {
       setGameOver(data);
+      setGyojiState("idle");
     });
 
     socket.on("game_over", (data) => {
@@ -281,8 +287,10 @@ const GameFighter = ({ player, index }) => {
       setWinner(data.winner);
       if (data.winner === "player 1") {
         setPlayerOneWinCount(data.wins);
+        setGyojiState("player1Win");
       } else {
         setPlayerTwoWinCount(data.wins);
+        setGyojiState("player2Win");
       }
     });
 
@@ -351,6 +359,8 @@ const GameFighter = ({ player, index }) => {
         playerOneWinCount={playerOneWinCount}
         playerTwoWinCount={playerTwoWinCount}
       />
+
+      <Gyoji gyojiState={gyojiState} />
       {hakkiyoi && <div className="hakkiyoi">HAKKI-YOI !</div>}
       {gameOver && (
         <div
