@@ -36,6 +36,10 @@ import grabSound from "../sounds/grab-sound.mp3";
 import attackSound from "../sounds/attack-sound.mp3";
 import hitSound from "../sounds/hit-sound.mp3";
 import dodgeSound from "../sounds/dodge-sound.mp3";
+import gyoji from "../assets/gyoji.png";
+import gyojiReady from "../assets/gyoji-ready.png";
+import gyojiPlayer1wins from "../assets/gyoji-player1-wins.png";
+import gyojiPlayer2wins from "../assets/gyoji-player2-wins.png";
 
 // Preload assets at the start of the application
 const fighterImages = {
@@ -59,6 +63,10 @@ const additionalImages = [
   throwing2,
   hit,
   hit2,
+  gyoji,
+  gyojiReady,
+  gyojiPlayer1wins,
+  gyojiPlayer2wins,
 ];
 const audioSources = [gameMusic, grabSound, attackSound, hitSound, dodgeSound];
 
