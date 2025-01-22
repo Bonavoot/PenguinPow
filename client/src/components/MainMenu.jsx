@@ -4,6 +4,8 @@ import Game from "./Game";
 import { useState, useEffect } from "react";
 import sumo from "../assets/pumo-bkg.png";
 import lobbyBackground from "../assets/lobby-bkg.webp";
+import pumo from "../assets/pumo.png";
+import pumo2 from "../assets/pumo2.png";
 
 const createCherryBlossoms = () => {
   const numPetals = 50;
@@ -40,17 +42,13 @@ const preloadAssets = (sources) => {
   });
 };
 
-const preGameImages = [lobbyBackground];
+const preGameImages = [lobbyBackground, pumo, pumo2];
 
 preloadAssets(preGameImages);
 
 const MainMenu = ({ rooms, currentPage, setCurrentPage }) => {
   const [roomName, setRoomName] = useState("");
   const [cherryBlossoms, setCherryBlossoms] = useState([]);
-
-  const handleLogoClick = () => {
-    window.location.reload(false);
-  };
 
   useEffect(() => {
     setCherryBlossoms(createCherryBlossoms());
