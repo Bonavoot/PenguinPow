@@ -341,7 +341,7 @@ io.on("connection", (socket) => {
               opponent.beingThrownFacingDirection = opponent.facing;
             }
             opponent.x =
-              player.x + player.throwingFacingDirection * 200 * throwProgress; // Adjust 130 to control throw distance
+              player.x + player.throwingFacingDirection * 215 * throwProgress; // Adjust 130 to control throw distance
             opponent.y =
               GROUND_LEVEL +
               3.2 * throwArcHeight * throwProgress * (1 - throwProgress); // Parabolic trajectory
@@ -356,7 +356,7 @@ io.on("connection", (socket) => {
               opponent.y = GROUND_LEVEL;
               // opponent.knockbackVelocity.x = player.facing * 5; // Adjust for knockback effect
               opponent.knockbackVelocity.y = 0;
-              player.facing = player.throwingFacingDirection;
+              // player.facing = player.throwingFacingDirection;
               player.throwingFacingDirection = null;
               opponent.beingThrownFacingDirection = null;
             }
@@ -377,7 +377,7 @@ io.on("connection", (socket) => {
             player.isThrowing = false;
             // Reset facing direction to the original direction after throw
             // player.facing = player.throwingFacingDirection;
-            player.throwingFacingDirection = null;
+            // player.throwingFacingDirection = null;
           }
 
           // if (player.facing === 1) {
@@ -411,8 +411,12 @@ io.on("connection", (socket) => {
 
         // Strafing
         if (
-          (!player.keys.s && !player.isAttacking) ||
-          (!player.keys.s && player.isSlapAttack)
+          (!player.keys.s &&
+            !player.isAttacking &&
+            player.saltCooldown === false) ||
+          (!player.keys.s &&
+            player.isSlapAttack &&
+            player.saltCooldown === false)
         ) {
           if (player.keys.d) {
             player.x += delta * speedFactor;
@@ -640,6 +644,8 @@ io.on("connection", (socket) => {
         isAttackCooldown: false,
         isSlapAttack: false,
         isThrowing: false,
+        isThrowingSalt: false,
+        saltCooldown: false,
         throwStartTime: 0,
         throwEndTime: 0,
         throwOpponent: null,
@@ -670,6 +676,7 @@ io.on("connection", (socket) => {
           " ": false,
           shift: false,
           e: false,
+          f: false,
         },
         wins: [],
       });
@@ -683,6 +690,8 @@ io.on("connection", (socket) => {
         isAttackCooldown: false,
         isSlapAttack: false,
         isThrowing: false,
+        isThrowingSalt: false,
+        saltCooldown: false,
         throwStartTime: 0,
         throwEndTime: 0,
         throwOpponent: null,
@@ -713,6 +722,7 @@ io.on("connection", (socket) => {
           " ": false,
           shift: false,
           e: false,
+          f: false,
         },
         wins: [],
       });
@@ -773,6 +783,24 @@ io.on("connection", (socket) => {
     );
     let player = rooms[index].players[playerIndex];
     let opponent = rooms[index].players.find((p) => p.id !== player.id);
+
+    if (
+      player.keys.f &&
+      !player.saltCooldown &&
+      (player.x <= -20 || player.x >= 1025) &&
+      rooms[index].gameStart === false
+    ) {
+      player.isThrowingSalt = true;
+      player.saltCooldown = true;
+
+      setTimeout(() => {
+        player.isThrowingSalt = false;
+      }, 500);
+
+      setTimeout(() => {
+        player.saltCooldown = false;
+      }, 1000);
+    }
 
     if (data.keys) {
       player.keys = data.keys;

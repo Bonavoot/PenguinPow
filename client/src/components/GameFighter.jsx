@@ -24,6 +24,8 @@ import throwing from "../assets/throwing-nonmirror.png";
 import throwing2 from "../assets/throwing2.png";
 import hit from "../assets/hit.png";
 import hit2 from "../assets/hit2.png";
+import salt2 from "../assets/salt2.png";
+import salt from "../assets/salt.png";
 
 import attackSound from "../sounds/attack-sound.mp3";
 import hitSound from "../sounds/hit-sound.mp3";
@@ -34,6 +36,7 @@ import hakkiyoiSound from "../sounds/hakkiyoi-sound.mp3";
 import bellSound from "../sounds/bell-sound.mp3";
 
 import UiPlayerInfo from "./UiPlayerInfo";
+import SaltEffect from "./SaltEffect";
 
 const playSound = (audioFile, volume = 1.0) => {
   const sound = new Audio(audioFile);
@@ -54,7 +57,8 @@ const getImageSrc = (
   isDead,
   isSlapAttack,
   isThrowing,
-  isGrabbing
+  isGrabbing,
+  isThrowingSalt
 ) => {
   if (fighter === "player 2") {
     if (isDiving) return pumo;
@@ -69,10 +73,10 @@ const getImageSrc = (
     if (isHit) return hit;
     if (isDead) return pumo;
     if (isThrowing) return throwing;
+    if (isThrowingSalt) return salt;
     return pumo;
   } else if (fighter === "player 1") {
     if (isDiving) return pumo;
-
     if (isJumping) return throwing2;
     if (isAttacking && !isSlapAttack) return attack2;
     if (isGrabbing) return grabbing2;
@@ -83,6 +87,7 @@ const getImageSrc = (
     if (isHit) return hit2;
     if (isDead) return pumo;
     if (isThrowing) return throwing2;
+    if (isThrowingSalt) return salt2;
     return pumo2;
   }
 };
@@ -152,7 +157,8 @@ const StyledImage = styled("img")
       props.isDead,
       props.isSlapAttack,
       props.isThrowing,
-      props.isGrabbing
+      props.isGrabbing,
+      props.isThrowingSalt
     ),
     style: {
       position: "absolute",
@@ -221,7 +227,7 @@ const StyledLabel = styled.div
     },
   }))`
     position: absolute;
-    font-size: clamp(1rem, 2.5vw, 2rem); /* optional fluid sizing */
+    font-size: clamp(.2rem, 2.5vw, 2rem); /* optional fluid sizing */
     font-family: "Bungee";
     pointer-events: none;
     color: ${(props) => props.color || "black"};
@@ -369,6 +375,12 @@ const GameFighter = ({ player, index }) => {
       <PlayerStaminaUi stamina={stamina} index={index} />
       <StyledLabel {...penguin}>P{index + 1}</StyledLabel>
       <StyledImage {...penguin} />
+      <SaltEffect
+        isActive={penguin.isThrowingSalt}
+        playerFacing={penguin.facing}
+        playerX={penguin.x}
+        playerY={penguin.y}
+      />
     </div>
   );
 };

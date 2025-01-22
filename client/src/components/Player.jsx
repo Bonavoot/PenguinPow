@@ -27,7 +27,8 @@ import gyoji from "../assets/gyoji.png";
 import gyojiReady from "../assets/gyoji-ready.png";
 import gyojiPlayer1wins from "../assets/gyoji-player1-wins.png";
 import gyojiPlayer2wins from "../assets/gyoji-player2-wins.png";
-import gameMap from "../assets/game-map-test.jpg";
+import salt from "../assets/salt.png";
+import salt2 from "../assets/salt2.png";
 
 // Utility to preload assets
 const preloadAssets = (sources, type = "image") => {
@@ -68,7 +69,8 @@ const additionalImages = [
   gyojiReady,
   gyojiPlayer1wins,
   gyojiPlayer2wins,
-  gameMap,
+  salt,
+  salt2,
 ];
 const audioSources = [gameMusic, grabSound, attackSound, hitSound, dodgeSound];
 
