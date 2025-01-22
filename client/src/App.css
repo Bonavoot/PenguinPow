@@ -152,7 +152,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 1.5vw;
+  font-size: clamp(0.2rem, 1vw, 1rem);
   border-top: grey solid 1px;
   border-bottom: grey solid 1px;
   background-color: rgb(25, 25, 25);
@@ -165,7 +165,7 @@ body {
   border: none;
   border-radius: 5%;
   color: white;
-  font-size: 1.5vw;
+  font-size: clamp(0.5rem, 2vw, 1.5rem);
   cursor: pointer;
   font-family: "Bungee", cursive;
   text-align: center;
@@ -177,19 +177,23 @@ body {
 
 .room-id {
   font-family: "Bungee";
-  font-size: 1.5vw;
+  font-size: clamp(0.5rem, 2vw, 1.5rem);
   margin-left: 1rem;
 }
 
 .room-count {
   font-family: Tahoma, sans-serif;
-  font-size: 1.5vw;
+  font-size: clamp(0.5rem, 2vw, 1.5rem);
 }
 
 .back-btn:hover {
   background-color: gray;
   cursor: pointer;
   border: none;
+}
+
+.material-symbols-outlined {
+  font-size: clamp(0.5rem, 2vw, 1.5rem);
 }
 
 .refresh-btn {
