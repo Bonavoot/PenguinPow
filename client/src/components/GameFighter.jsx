@@ -25,8 +25,6 @@ import throwing2 from "../assets/throwing2.png";
 import hit from "../assets/hit.png";
 import hit2 from "../assets/hit2.png";
 
-import gyoji from "../assets/gyoji.png";
-
 import attackSound from "../sounds/attack-sound.mp3";
 import hitSound from "../sounds/hit-sound.mp3";
 import dodgeSound from "../sounds/dodge-sound.mp3";
@@ -36,8 +34,6 @@ import hakkiyoiSound from "../sounds/hakkiyoi-sound.mp3";
 import bellSound from "../sounds/bell-sound.mp3";
 
 import UiPlayerInfo from "./UiPlayerInfo";
-
-//import gameMusic from "../sounds/game-music.mp3";
 
 const playSound = (audioFile, volume = 1.0) => {
   const sound = new Audio(audioFile);
@@ -92,7 +88,7 @@ const getImageSrc = (
 };
 
 const validProps = [
-  // Add any valid HTML attributes that you want to allow
+  // valid HTML attributes
   "src",
   "style",
   "alt",
@@ -166,14 +162,13 @@ const StyledImage = styled("img")
       /* Flip horizontally if facing is -1; scaleX(1) is normal, scaleX(-1) is mirrored */
       transform: `scaleX(${props.facing})`,
     },
-    /* Or define src via a getImageSrc function, like your code already does. */
   }))`
   position: absolute;
 
   /* Use a relative width (e.g., 10% of container width) so it scales */
   width: 23%;
   height: auto;
-
+  z-index: 99;
   will-change: transform, bottom, left;
   pointer-events: none;
 `;
@@ -374,12 +369,6 @@ const GameFighter = ({ player, index }) => {
       <PlayerStaminaUi stamina={stamina} index={index} />
       <StyledLabel {...penguin}>P{index + 1}</StyledLabel>
       <StyledImage {...penguin} />
-
-      {/* <div className="scoreboard">
-        <div className="player1-win-count">{playerOneWinCount}</div>
-        <div className="dash">-</div>
-        <div className="player2-win-count">{playerTwoWinCount}</div>
-      </div> */}
     </div>
   );
 };
@@ -410,7 +399,6 @@ GameFighter.propTypes = {
     x: PropTypes.number,
     y: PropTypes.number,
     knockbackVelocity: PropTypes.shape({
-      // Shape added to specify object structure
       x: PropTypes.number,
       y: PropTypes.number,
     }),

@@ -3,7 +3,7 @@ import { io } from "socket.io-client";
 import { SocketContext } from "./SocketContext";
 import MainMenu from "./components/MainMenu";
 import "./App.css";
-import sumo from "./assets/pumo-bkg.png";
+
 // Use this for HEROKU vvvvv
 // "https://secure-beach-15962-3c882c6fcbf9.herokuapp.com/"
 // "http://localhost:3001"
@@ -37,7 +37,6 @@ function App() {
       <h1 onClick={handleLogoClick} className="logo">
         P u m o <span className="pow"> PUMO !</span>
       </h1>
-      <img className="sumo" src={sumo} alt="sumo" />
 
       <MainMenu
         rooms={rooms}

@@ -5,6 +5,20 @@ body {
   overflow: hidden;
   margin: 0;
   color: white;
+  background-color: #121213;
+}
+
+.main-menu {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  max-width: 1280px;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  z-index: 1;
+  position: relative;
+  overflow: hidden;
+  border: black 2px solid;
   background-image: linear-gradient(
     rgb(255, 243, 187),
     white,
@@ -14,14 +28,11 @@ body {
   );
 }
 
-.main-menu {
+.main-menu-btn-container {
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
-  gap: 85px;
-  margin-top: 1rem;
-  z-index: 1;
-  width: 100vw;
+  gap: 1rem;
+  z-index: 2;
 }
 
 .cherry-blossom {
@@ -47,9 +58,9 @@ body {
   position: absolute;
   top: 0;
   left: 0.25rem;
-  font-size: clamp(0.75rem, 4vw, 2.75rem);
+  font-size: clamp(0.75rem, 4vw, 2.25rem);
   margin: 0;
-  color: black;
+  color: white;
   font-family: "Bungee", cursive;
   margin-left: 15px;
   cursor: pointer;
@@ -69,14 +80,6 @@ body {
   width: 50%;
   aspect-ratio: auto 16 / 9;
   z-index: 1;
-}
-
-.main-menu-btn-container {
-  display: flex;
-  align-self: flex-start;
-  flex-direction: column;
-  gap: 1rem;
-  z-index: 2;
 }
 
 #play {
@@ -123,6 +126,7 @@ body {
   align-items: center;
   justify-content: center;
   height: 100vh;
+  width: 100vw;
 }
 
 .rooms {
@@ -186,29 +190,28 @@ body {
   font-size: clamp(0.5rem, 2vw, 1.5rem);
 }
 
-.back-btn:hover {
-  background-color: gray;
-  cursor: pointer;
-  border: none;
+.rooms-button-container {
+  display: flex;
+  justify-content: space-between;
 }
 
-.material-symbols-outlined {
-  font-size: clamp(0.5rem, 2vw, 1.5rem);
-}
-
-.refresh-btn {
+.refresh-btn,
+.back-btn {
   border-radius: 10px;
   border: none;
   color: black;
   right: 0;
   align-self: flex-end;
-  padding: 0.5rem;
-  margin: 0.3rem;
+  padding: 0.5%;
+  margin: 0.3%;
   background-color: white;
   display: flex;
   justify-content: center;
   align-items: center;
   cursor: pointer;
+}
+.material-symbols-outlined {
+  font-size: clamp(0.5rem, 2vw, 1.5rem);
 }
 
 .refresh-btn:active {
@@ -218,6 +221,19 @@ body {
 
 .refresh-btn:active {
   background-color: gray;
+}
+
+.back-btn {
+  background-color: black;
+  color: white;
+  font-size: clamp(0.5rem, 2vw, 1rem);
+  font-family: "Bungee", cursive;
+}
+
+.back-btn:hover {
+  background-color: gray;
+  cursor: pointer;
+  border: none;
 }
 
 .game-wrapper {

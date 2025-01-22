@@ -7,12 +7,17 @@
   max-width: 1280px;
   height: auto;
   aspect-ratio: 16 / 9;
-  background-image: linear-gradient(
+  background-image: url(../assets/lobby-bkg.webp);
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center;
+
+  /* background-image: linear-gradient(
     rgb(167, 252, 255),
     rgb(206, 255, 253),
     rgb(255, 255, 255),
     rgb(0, 0, 0)
-  );
+  ); */
   border: black 1px solid;
   border-radius: 0.5rem;
   box-shadow: 0px 0px 2px 1px black;
@@ -56,9 +61,9 @@
 
 .waiting {
   font-family: "Bungee", Arial;
-  font-size: 1vw; /* Responsive font size */
+  font-size: 1.2vw; /* Responsive font size */
   width: 50%; /* Scales with the .lobby */
-  max-width: 400px; /* Optional: Prevent it from becoming too wide */
+  max-width: 400px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -68,6 +73,12 @@
   position: absolute;
   top: 50%; /* Center vertically */
   right: 8%;
+  text-shadow: -1px -1px 0 #ffffff, 1px -1px 0 #ffffff, -1px 1px 0 #ffffff,
+    1px 1px 0 #ffffff;
+}
+
+#ellipses {
+  height: 7px;
 }
 
 .player-side {
@@ -187,10 +198,6 @@
 
 /* .fighter-container {
 } */
-
-#ellipses {
-  height: 7px;
-}
 
 .exit-btn {
   position: absolute;
@@ -336,7 +343,7 @@
 
 .ready-count {
   color: white;
-  font-family: Tahoma, sans-serif;
+  font-family: "Bungee", sans-serif;
   text-align: center;
   font-size: 1.5vw;
   max-width: 100%;

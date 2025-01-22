@@ -2,6 +2,8 @@ import Lobby from "./Lobby";
 import Rooms from "./Rooms";
 import Game from "./Game";
 import { useState, useEffect } from "react";
+import sumo from "../assets/pumo-bkg.png";
+import lobbyBackground from "../assets/lobby-bkg.webp";
 
 const createCherryBlossoms = () => {
   const numPetals = 50;
@@ -31,9 +33,24 @@ const createCherryBlossoms = () => {
   return petals;
 };
 
+const preloadAssets = (sources) => {
+  sources.forEach((src) => {
+    const img = new Image();
+    img.src = src;
+  });
+};
+
+const preGameImages = [lobbyBackground];
+
+preloadAssets(preGameImages);
+
 const MainMenu = ({ rooms, currentPage, setCurrentPage }) => {
   const [roomName, setRoomName] = useState("");
   const [cherryBlossoms, setCherryBlossoms] = useState([]);
+
+  const handleLogoClick = () => {
+    window.location.reload(false);
+  };
 
   useEffect(() => {
     setCherryBlossoms(createCherryBlossoms());
@@ -60,6 +77,9 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage }) => {
     case "mainMenu":
       currentPageComponent = (
         <div className="main-menu">
+          {cherryBlossoms}
+
+          <img className="sumo" src={sumo} alt="sumo" />
           <div className="main-menu-btn-container">
             <button id="play" onClick={handleDisplayRooms}>
               PLAY
@@ -102,12 +122,7 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage }) => {
       );
   }
 
-  return (
-    <div className="current-page">
-      {cherryBlossoms}
-      {currentPageComponent}
-    </div>
-  );
+  return <div className="current-page">{currentPageComponent}</div>;
 };
 
 export default MainMenu;

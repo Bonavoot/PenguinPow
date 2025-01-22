@@ -1,16 +1,3 @@
-// Utility to preload assets
-const preloadAssets = (sources, type = "image") => {
-  sources.forEach((src) => {
-    if (type === "image") {
-      const img = new Image();
-      img.src = src;
-    } else if (type === "audio") {
-      const audio = new Audio();
-      audio.src = src;
-    }
-  });
-};
-
 import Fighter from "./Fighter";
 import { useMemo } from "react";
 import pumo from "../assets/pumo.png";
@@ -40,6 +27,20 @@ import gyoji from "../assets/gyoji.png";
 import gyojiReady from "../assets/gyoji-ready.png";
 import gyojiPlayer1wins from "../assets/gyoji-player1-wins.png";
 import gyojiPlayer2wins from "../assets/gyoji-player2-wins.png";
+import gameMap from "../assets/game-map-test.jpg";
+
+// Utility to preload assets
+const preloadAssets = (sources, type = "image") => {
+  sources.forEach((src) => {
+    if (type === "image") {
+      const img = new Image();
+      img.src = src;
+    } else if (type === "audio") {
+      const audio = new Audio();
+      audio.src = src;
+    }
+  });
+};
 
 // Preload assets at the start of the application
 const fighterImages = {
@@ -67,6 +68,7 @@ const additionalImages = [
   gyojiReady,
   gyojiPlayer1wins,
   gyojiPlayer2wins,
+  gameMap,
 ];
 const audioSources = [gameMusic, grabSound, attackSound, hitSound, dodgeSound];
 

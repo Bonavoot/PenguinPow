@@ -15,12 +15,17 @@ const Rooms = ({ rooms, setRoomName, handleJoinRoom, handleMainMenuPage }) => {
 
   return (
     <div className="rooms">
-      {/* <button className="back-btn" onClick={handleMainMenuPage}>
-        BACK
-      </button> */}
-      <button className="refresh-btn" onClick={handleRefresh}>
-        <span className="material-symbols-outlined">refresh</span>
-      </button>
+      <div className="rooms-button-container">
+        <button
+          className="back-btn"
+          onClick={() => window.location.reload(false)}
+        >
+          BACK
+        </button>
+        <button className="refresh-btn" onClick={handleRefresh}>
+          <span className="material-symbols-outlined">refresh</span>
+        </button>
+      </div>
       {rooms.map((room) => {
         return (
           <Room
