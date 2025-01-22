@@ -35,7 +35,11 @@ const Lobby = ({ rooms, roomName, handleGame }) => {
       {players.length < 2 ? (
         <div className="waiting">
           Waiting for opponent
-          <img id="ellipses" src={ellipses} alt="waiting" />
+          <div className="loading-ellipsis">
+            <div className="dot"></div>
+            <div className="dot"></div>
+            <div className="dot"></div>
+          </div>
         </div>
       ) : null}
       {/* <h1 className="kana1">横</h1>
