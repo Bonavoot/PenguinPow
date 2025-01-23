@@ -788,7 +788,7 @@ io.on("connection", (socket) => {
       io.in(data.roomId).emit("rematch_count", rooms[index].rematchCount);
     }
 
-    if (rooms[index].rematchCount > 1) {
+    if (rooms[index].rematchCount > 7) {
       rooms[index].matchOver = false;
       rooms[index].gameOver = true;
       rooms[index].rematchCount = 0;
