@@ -799,7 +799,7 @@ io.on("connection", (socket) => {
 
       setTimeout(() => {
         player.saltCooldown = false;
-      }, 1000);
+      }, 500);
     }
 
     if (data.keys) {
