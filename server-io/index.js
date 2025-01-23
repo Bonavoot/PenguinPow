@@ -276,7 +276,7 @@ io.on("connection", (socket) => {
           const winner = room.players.find((p) => p.id !== player.id);
           winner.wins.push("w");
 
-          if (winner.wins.length > 0) {
+          if (winner.wins.length > 7) {
             io.in(room.id).emit("match_over", {
               isMatchOver: true,
               winner: winner.fighter,
@@ -788,7 +788,7 @@ io.on("connection", (socket) => {
       io.in(data.roomId).emit("rematch_count", rooms[index].rematchCount);
     }
 
-    if (rooms[index].rematchCount > 7) {
+    if (rooms[index].rematchCount > 1) {
       rooms[index].matchOver = false;
       rooms[index].gameOver = true;
       rooms[index].rematchCount = 0;
