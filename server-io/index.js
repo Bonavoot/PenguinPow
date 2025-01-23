@@ -276,7 +276,7 @@ io.on("connection", (socket) => {
           const winner = room.players.find((p) => p.id !== player.id);
           winner.wins.push("w");
 
-          if (winner.wins.length > 1) {
+          if (winner.wins.length > 7) {
             io.in(room.id).emit("match_over", {
               isMatchOver: true,
               winner: winner.fighter,
