@@ -283,6 +283,7 @@ io.on("connection", (socket) => {
             });
             room.matchOver = true;
             winner.wins = [];
+            player.wins = [];
           }
 
           io.in(room.id).emit("game_over", {
