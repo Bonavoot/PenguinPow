@@ -76,7 +76,9 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage }) => {
       currentPageComponent = (
         <div className="main-menu">
           {cherryBlossoms}
-
+          <h1 className="main-menu-logo">
+            P u m o <span className="pow"> PUMO !</span>
+          </h1>
           <img className="sumo" src={sumo} alt="sumo" />
           <div className="main-menu-btn-container">
             <button id="play" onClick={handleDisplayRooms}>

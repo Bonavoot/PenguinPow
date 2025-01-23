@@ -61,7 +61,7 @@
 
 .waiting {
   font-family: "Bungee", Arial;
-  font-size: clamp(0.2rem, 1vw, 1.25rem); /* Responsive font size */
+  font-size: clamp(0.2rem, 2vw, 1.25rem); /* Responsive font size */
   width: 50%; /* Scales with the .lobby */
   max-width: 400px;
   display: flex;

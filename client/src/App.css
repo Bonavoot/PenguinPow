@@ -15,7 +15,7 @@ body {
   max-width: 1280px;
   height: auto;
   aspect-ratio: 16 / 9;
-  z-index: 1;
+  z-index: 100;
   position: relative;
   overflow: hidden;
   border: black 2px solid;
@@ -52,6 +52,19 @@ body {
   100% {
     transform: translateY(100vh) rotate(360deg);
   }
+}
+
+.main-menu-logo {
+  position: absolute;
+  top: 0;
+  left: 0.25rem;
+  font-size: clamp(0.75rem, 4vw, 2.25rem);
+  margin: 0;
+  color: black;
+  font-family: "Bungee", cursive;
+  margin-left: 15px;
+  cursor: pointer;
+  z-index: 99;
 }
 
 .logo {
