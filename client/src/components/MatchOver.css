@@ -20,7 +20,7 @@
   font-size: clamp(0.2rem, 1vw, 1.25rem);
   transform: translate(-50%, -50%);
   border-radius: 2%;
-  border: rgb(220, 220, 220) 0.5vw solid;
+  border: rgb(255, 255, 255) 0.2vw solid;
 }
 
 .rematch {
