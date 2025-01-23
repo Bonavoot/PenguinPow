@@ -35,8 +35,10 @@ const rooms = Array.from({ length: 10 }, (_, i) => ({
   id: `Room ${i + 1}`,
   players: [],
   readyCount: 0,
+  rematchCount: 0,
   gameStart: false,
   gameOver: false,
+  matchOver: false,
   readyStartTime: null,
 }));
 
@@ -273,6 +275,16 @@ io.on("connection", (socket) => {
           room.gameOver = true;
           const winner = room.players.find((p) => p.id !== player.id);
           winner.wins.push("w");
+
+          if (winner.wins.length > 1) {
+            io.in(room.id).emit("match_over", {
+              isMatchOver: true,
+              winner: winner.fighter,
+            });
+            room.matchOver = true;
+            winner.wins = [];
+          }
+
           io.in(room.id).emit("game_over", {
             isGameOver: true,
             winner: winner.fighter,
@@ -285,7 +297,11 @@ io.on("connection", (socket) => {
           }
         }
 
-        if (room.gameOver && Date.now() - room.gameOverTime >= 3000) {
+        if (
+          room.gameOver &&
+          Date.now() - room.gameOverTime >= 3000 &&
+          !room.matchOver
+        ) {
           // 5 seconds
           resetRoomAndPlayers(room);
         }
@@ -758,6 +774,25 @@ io.on("connection", (socket) => {
     console.log(rooms[index].readyCount);
   });
 
+  socket.on("rematch_count", (data) => {
+    let index = rooms.findIndex((room) => room.id === data.roomId);
+
+    if (data.acceptedRematch && data.playerId === socket.id) {
+      rooms[index].rematchCount++;
+      io.in(data.roomId).emit("rematch_count", rooms[index].rematchCount);
+    } else if (!data.acceptedRematch && data.playerId === socket.id) {
+      rooms[index].rematchCount--;
+      io.in(data.roomId).emit("rematch_count", rooms[index].rematchCount);
+    }
+
+    if (rooms[index].rematchCount > 1) {
+      rooms[index].matchOver = false;
+      rooms[index].gameOver = true;
+      rooms[index].rematchCount = 0;
+      io.in(data.roomId).emit("rematch_count", rooms[index].rematchCount);
+    }
+  });
+
   socket.on("fighter-select", (data) => {
     let roomId = socket.roomId;
     let index = rooms.findIndex((room) => room.id === roomId);
@@ -940,7 +975,9 @@ io.on("connection", (socket) => {
     const roomIndex = rooms.findIndex((room) => room.id === roomId);
 
     if (rooms[roomIndex]) {
-      rooms[roomIndex].gameStart = false;
+      rooms[roomIndex].rematchCount = 0;
+      (rooms[roomIndex].matchOver = false),
+        (rooms[roomIndex].gameStart = false);
     }
 
     rooms.forEach((room) => {

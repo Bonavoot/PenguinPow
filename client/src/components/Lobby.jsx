@@ -41,8 +41,6 @@ const Lobby = ({ rooms, roomName, handleGame }) => {
           </div>
         </div>
       ) : null}
-      {/* <h1 className="kana1">横</h1>
-        <h1 className="kana2">綱</h1> */}
       <button
         className="exit-btn"
         onClick={() => window.location.reload(false)}

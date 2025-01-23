@@ -2,6 +2,7 @@ import { useContext, useEffect, useState, useRef } from "react";
 import { SocketContext } from "../SocketContext";
 import PropTypes from "prop-types";
 import styled from "styled-components";
+import "./MatchOver.css";
 import PlayerStaminaUi from "./PlayerStaminaUi";
 import Gyoji from "./Gyoji";
 
@@ -37,6 +38,7 @@ import bellSound from "../sounds/bell-sound.mp3";
 
 import UiPlayerInfo from "./UiPlayerInfo";
 import SaltEffect from "./SaltEffect";
+import MatchOver from "./MatchOver";
 
 const playSound = (audioFile, volume = 1.0) => {
   const sound = new Audio(audioFile);
@@ -237,7 +239,7 @@ const StyledLabel = styled.div
 
 const winnerAudio = new Audio(winnerSound);
 
-const GameFighter = ({ player, index }) => {
+const GameFighter = ({ player, index, roomName }) => {
   const { socket } = useContext(SocketContext);
   const [penguin, setPenguin] = useState(player);
   const [stamina, setStamina] = useState(player);
@@ -247,6 +249,7 @@ const GameFighter = ({ player, index }) => {
   const [winner, setWinner] = useState("");
   const [playerOneWinCount, setPlayerOneWinCount] = useState(0);
   const [playerTwoWinCount, setPlayerTwoWinCount] = useState(0);
+  const [matchOver, setMatchOver] = useState(false);
 
   const lastAttackState = useRef(player.isAttacking);
   const lastHitState = useRef(player.isHit);
@@ -281,6 +284,7 @@ const GameFighter = ({ player, index }) => {
     socket.on("game_reset", (data) => {
       setGameOver(data);
       setGyojiState("idle");
+      setMatchOver(false);
     });
 
     socket.on("game_over", (data) => {
@@ -295,11 +299,22 @@ const GameFighter = ({ player, index }) => {
       }
     });
 
+    socket.on("match_over", (data) => {
+      setMatchOver(data.isMatchOver);
+      setPlayerOneWinCount(0);
+      setPlayerTwoWinCount(0);
+    });
+
+    socket.on("rematch", () => {
+      setMatchOver(false);
+    });
+
     return () => {
       socket.off("fighter_action");
       socket.off("game_start");
       socket.off("game_reset");
       socket.off("game_over");
+      socket.off("match_over");
     };
   }, [index, socket]);
 
@@ -371,7 +386,7 @@ const GameFighter = ({ player, index }) => {
           {winner} wins !
         </div>
       )}
-
+      {matchOver && <MatchOver winner={winner} roomName={roomName} />}
       <PlayerStaminaUi stamina={stamina} index={index} />
       <StyledLabel {...penguin}>P{index + 1}</StyledLabel>
       <StyledImage {...penguin} />

@@ -63,7 +63,12 @@ const Game = ({ rooms, roomName }) => {
         <div className="ui">
           {rooms[index].players.map((player, i) => {
             return (
-              <GameFighter key={player.id + i} player={player} index={i} />
+              <GameFighter
+                key={player.id + i}
+                player={player}
+                index={i}
+                roomName={roomName}
+              />
             );
           })}
         </div>
