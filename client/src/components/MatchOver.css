@@ -20,7 +20,6 @@
   font-size: clamp(0.2rem, 1vw, 1.25rem);
   transform: translate(-50%, -50%);
   border-radius: 2%;
-  gap: 20%;
   border: rgb(220, 220, 220) 0.5vw solid;
 }
 
@@ -29,9 +28,9 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1.5vh;
   font-size: clamp(0.2rem, 1vw, 1.25rem);
-  width: 20%;
+  width: 100%;
+  height: 50%;
 }
 
 .rematch-winner {
@@ -39,18 +38,27 @@
   font-size: clamp(0.5rem, 4vw, 2.5rem);
   justify-self: flex-start;
   color: lime;
+  padding-bottom: 10%;
+}
+
+.rematch-btn-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: fit-content;
+  padding-bottom: 5%;
 }
 
 .rematch-ready-btn,
 .rematch-cancel-btn {
   font-size: clamp(0.5rem, 4vw, 2.5rem);
   background-color: forestgreen;
-  padding: 25% 10%; /* Use percentage for padding */
+  padding: 8% 4%; /* Use percentage for padding */
   border: none;
-  border-radius: 10px;
+  border-radius: 2%;
   color: white;
   cursor: pointer;
-  width: fit-content;
   font-family: "Bungee", cursive;
   animation: logo-animation linear 4s;
   animation-iteration-count: infinite;
@@ -74,12 +82,11 @@
 }
 
 .rematch-exit-btn {
-  font-size: clamp(0.5rem, 2vw, 1.25rem);
+  font-size: clamp(0.3rem, 2vw, 1.25rem);
   background-color: black;
   font-family: "Bungee", cursive;
   color: white;
   border: 1px solid white;
-
   cursor: pointer;
-  padding: 3% 5%;
+  padding: 1% 3%;
 }

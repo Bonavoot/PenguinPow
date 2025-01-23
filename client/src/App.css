@@ -530,7 +530,7 @@ body {
   transform: translate(-50%, -50%);
   white-space: nowrap;
   max-width: 100%;
-  font-size: clamp(1rem, 4vw, 2.5rem); /* <-- MAIN CHANGE */
+  font-size: clamp(0.5rem, 4vw, 2.5rem); /* <-- MAIN CHANGE */
   color: #fff;
   text-align: center;
   opacity: 1; /* Start invisible */

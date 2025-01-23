@@ -8,11 +8,12 @@ import "./App.css";
 // "https://secure-beach-15962-3c882c6fcbf9.herokuapp.com/"
 // "http://localhost:3001"
 
-const socket = io("https://secure-beach-15962-3c882c6fcbf9.herokuapp.com/");
+const socket = io("http://localhost:3001");
 
 function App() {
   const [rooms, setRooms] = useState([]);
   const [currentPage, setCurrentPage] = useState("mainMenu");
+  const [localId, setLocalId] = useState("");
 
   const handleLogoClick = () => {
     window.location.reload(false);
@@ -22,7 +23,9 @@ function App() {
   };
 
   useEffect(() => {
-    socket.on("connect", () => {});
+    socket.on("connect", () => {
+      setLocalId(socket.id);
+    });
     socket.on("connect_error", () => {
       setTimeout(() => socket.connect(), 5000);
     });
@@ -42,6 +45,7 @@ function App() {
         rooms={rooms}
         currentPage={currentPage}
         setCurrentPage={setCurrentPage}
+        localId={localId}
       />
     </SocketContext.Provider>
   );

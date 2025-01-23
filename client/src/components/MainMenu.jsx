@@ -46,7 +46,7 @@ const preGameImages = [lobbyBackground, pumo, pumo2];
 
 preloadAssets(preGameImages);
 
-const MainMenu = ({ rooms, currentPage, setCurrentPage }) => {
+const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
   const [roomName, setRoomName] = useState("");
   const [cherryBlossoms, setCherryBlossoms] = useState([]);
 
@@ -108,7 +108,9 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage }) => {
       );
       break;
     case "game":
-      currentPageComponent = <Game rooms={rooms} roomName={roomName} />;
+      currentPageComponent = (
+        <Game localId={localId} rooms={rooms} roomName={roomName} />
+      );
       break;
     case "training":
       //currentPageComponent = <Training />;

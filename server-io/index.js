@@ -276,7 +276,7 @@ io.on("connection", (socket) => {
           const winner = room.players.find((p) => p.id !== player.id);
           winner.wins.push("w");
 
-          if (winner.wins.length > 7) {
+          if (winner.wins.length > 0) {
             io.in(room.id).emit("match_over", {
               isMatchOver: true,
               winner: winner.fighter,
@@ -287,7 +287,10 @@ io.on("connection", (socket) => {
 
           io.in(room.id).emit("game_over", {
             isGameOver: true,
-            winner: winner.fighter,
+            winner: {
+              id: winner.id,
+              fighter: winner.fighter,
+            },
             wins: winner.wins.length,
           });
           room.winnerId = winner.id;

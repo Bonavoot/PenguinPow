@@ -7,7 +7,7 @@ const gameMusicAudio = new Audio(gameMusic);
 gameMusicAudio.loop = true;
 gameMusicAudio.volume = 0.02;
 
-const Game = ({ rooms, roomName }) => {
+const Game = ({ rooms, roomName, localId }) => {
   const { socket } = useContext(SocketContext);
   let index = rooms.findIndex((room) => room.id === roomName);
 
@@ -64,6 +64,7 @@ const Game = ({ rooms, roomName }) => {
           {rooms[index].players.map((player, i) => {
             return (
               <GameFighter
+                localId={localId}
                 key={player.id + i}
                 player={player}
                 index={i}

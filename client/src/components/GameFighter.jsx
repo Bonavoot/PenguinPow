@@ -35,6 +35,7 @@ import throwSound from "../sounds/throw-sound.mp3";
 import winnerSound from "../sounds/winner-sound.mp3";
 import hakkiyoiSound from "../sounds/hakkiyoi-sound.mp3";
 import bellSound from "../sounds/bell-sound.mp3";
+import saltSound from "../sounds/salt-sound.mp3";
 
 import UiPlayerInfo from "./UiPlayerInfo";
 import SaltEffect from "./SaltEffect";
@@ -239,7 +240,7 @@ const StyledLabel = styled.div
 
 const winnerAudio = new Audio(winnerSound);
 
-const GameFighter = ({ player, index, roomName }) => {
+const GameFighter = ({ player, index, roomName, localId }) => {
   const { socket } = useContext(SocketContext);
   const [penguin, setPenguin] = useState(player);
   const [stamina, setStamina] = useState(player);
@@ -257,6 +258,7 @@ const GameFighter = ({ player, index, roomName }) => {
   const lastDodgeState = useRef(player.isDodging);
   const lastWinnerState = useRef(gameOver);
   const lastGrabState = useRef(player.isGrabbing);
+  const lastThrowingSaltState = useRef(player.isThrowingSalt);
 
   useEffect(() => {
     socket.on("fighter_action", (data) => {
@@ -290,7 +292,8 @@ const GameFighter = ({ player, index, roomName }) => {
     socket.on("game_over", (data) => {
       setGameOver(data.isGameOver);
       setWinner(data.winner);
-      if (data.winner === "player 1") {
+      console.log(data.winner);
+      if (data.winner.fighter === "player 1") {
         setPlayerOneWinCount(data.wins);
         setGyojiState("player1Win");
       } else {
@@ -332,6 +335,14 @@ const GameFighter = ({ player, index, roomName }) => {
     }
     lastHitState.current = penguin.isHit;
   }, [penguin.isHit, penguin.isBeingThrown]);
+
+  useEffect(() => {
+    if (penguin.isThrowingSalt) {
+      playSound(saltSound, 0.03);
+      console.log("sound on");
+    }
+    lastThrowingSaltState.current = penguin.isThrowingSalt;
+  }, [penguin.isThrowingSalt]);
 
   useEffect(() => {
     if (penguin.isThrowing && !lastThrowState.current) {
@@ -381,12 +392,16 @@ const GameFighter = ({ player, index, roomName }) => {
       {gameOver && (
         <div
           className="hakkiyoi"
-          style={{ color: `${winner === "player 1" ? "aqua" : "salmon"}` }}
+          style={{
+            color: `${winner.fighter === "player 1" ? "aqua" : "salmon"}`,
+          }}
         >
-          {winner} wins !
+          {winner.fighter} wins !
         </div>
       )}
-      {matchOver && <MatchOver winner={winner} roomName={roomName} />}
+      {matchOver && (
+        <MatchOver winner={winner} localId={localId} roomName={roomName} />
+      )}
       <PlayerStaminaUi stamina={stamina} index={index} />
       <StyledLabel {...penguin}>P{index + 1}</StyledLabel>
       <StyledImage {...penguin} />
@@ -407,6 +422,7 @@ GameFighter.propTypes = {
     color: PropTypes.string,
     isJumping: PropTypes.bool,
     isThrowing: PropTypes.bool,
+    isThrowingSalt: PropTypes.bool,
     isGrabbing: PropTypes.bool,
     isBeingGrabbed: PropTypes.bool,
     isAttacking: PropTypes.bool,
@@ -437,6 +453,7 @@ GameFighter.propTypes = {
       " ": PropTypes.bool,
       shift: PropTypes.bool,
       e: PropTypes.bool,
+      f: PropTypes.bool,
     }),
   }),
   index: PropTypes.number.isRequired,

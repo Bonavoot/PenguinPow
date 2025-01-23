@@ -39,19 +39,19 @@ const Rematch = ({ roomName }) => {
   return (
     <div className="rematch">
       {rematch ? (
-        <>
+        <div className="rematch-btn-container">
           <button onClick={handleRematch} className="rematch-cancel-btn">
             CANCEL
           </button>
           <div className="ready-count">{count} / 2</div>
-        </>
+        </div>
       ) : (
-        <>
+        <div className="rematch-btn-container">
           <button onClick={handleRematch} className="rematch-ready-btn">
             REMATCH
           </button>
           <div className="ready-count">{count} / 2</div>
-        </>
+        </div>
       )}
       <button
         className="rematch-exit-btn"
