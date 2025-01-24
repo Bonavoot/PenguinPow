@@ -354,12 +354,14 @@ io.on("connection", (socket) => {
             (p) => p.id === player.throwOpponent
           );
           if (opponent) {
-            const throwArcHeight = 415; // Adjust as needed
+            const throwArcHeight = 450; // Adjust as needed
             // Calculate opponent's position in the throw arc
             if (!player.throwingFacingDirection) {
               player.throwingFacingDirection = player.facing;
               opponent.beingThrownFacingDirection = opponent.facing;
             }
+            player.facing = player.throwingFacingDirection;
+            opponent.facing = opponent.beingThrownFacingDirection;
             opponent.x =
               player.x + player.throwingFacingDirection * 215 * throwProgress; // Adjust 130 to control throw distance
             opponent.y =
@@ -386,25 +388,9 @@ io.on("connection", (socket) => {
           const throwDuration = currentTime - player.throwStartTime;
           const throwProgress =
             throwDuration / (player.throwEndTime - player.throwStartTime);
-
-          // Set facing direction only at the start of the throw
-          // if (throwProgress === 0) {
-          //   player.throwingFacingDirection = player.facing;
-          //   // player.facing = player.facing === 1 ? -1 : 1;
-          // }
-
           if (currentTime >= player.throwEndTime) {
             player.isThrowing = false;
-            // Reset facing direction to the original direction after throw
-            // player.facing = player.throwingFacingDirection;
-            // player.throwingFacingDirection = null;
           }
-
-          // if (player.facing === 1) {
-          //   player.facing = -1;
-          // } else {
-          //   player.facing = 1;
-          // }
         }
 
         // Dodging

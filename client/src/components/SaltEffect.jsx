@@ -12,7 +12,7 @@ const SaltContainer = styled.div.attrs((props) => ({
   width: 23%;
   height: auto;
   pointer-events: none;
-  z-index: 98;
+  z-index: 999; // Increase this to be above characters
 `;
 
 const SaltParticle = styled.div.attrs((props) => ({
@@ -22,8 +22,8 @@ const SaltParticle = styled.div.attrs((props) => ({
   },
 }))`
   position: absolute;
-  width: 0.5vw;
-  height: 0.5vh;
+  width: calc(0.3vw * (16 / 9)); // Scale width based on 16:9 aspect ratio
+  height: calc(0.3vh * (16 / 9)); // Scale height based on 16:9 aspect ratio
   background-color: white;
   border-radius: 50%;
   transition: transform 16ms linear, opacity 300ms linear;
@@ -33,7 +33,7 @@ const SaltEffect = ({ isActive, playerFacing, playerX, playerY }) => {
   const [particles, setParticles] = useState([]);
 
   const updateParticle = useCallback((particle) => {
-    const gravity = 0.2;
+    const gravity = 0.3;
     const drag = 0.99;
 
     return {
@@ -49,14 +49,20 @@ const SaltEffect = ({ isActive, playerFacing, playerX, playerY }) => {
 
   useEffect(() => {
     if (isActive) {
-      const baseAngle = playerFacing === 1 ? 150 : 30;
+      const baseAngle = playerFacing === 1 ? 135 : 40;
+      const windowWidth = window.innerWidth;
+      const maxWidth = 1280;
+      const velocityScale = Math.min(windowWidth / maxWidth, 1);
+
       const newParticles = Array.from({ length: 20 }, () => {
         const angle = (baseAngle + (Math.random() * 60 - 30)) * (Math.PI / 180);
-        const speed = 10 + Math.random() * 5;
+        const baseSpeed = 10 + Math.random() * 5;
+        const speed = baseSpeed * velocityScale;
+
         return {
           id: Math.random(),
-          x: 50,
-          y: 150,
+          x: (1050 / 1280) * 100,
+          y: (1000 / 720) * 100,
           velocityX: Math.cos(angle) * speed * (playerFacing === 1 ? 1 : -1),
           velocityY: Math.sin(angle) * speed,
           opacity: 1,
