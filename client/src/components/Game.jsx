@@ -1,26 +1,26 @@
 import { useContext, useEffect } from "react";
 import { SocketContext } from "../SocketContext";
 import GameFighter from "./GameFighter";
-import gameMusic from "../sounds/game-music.mp3";
+// import gameMusic from "../sounds/game-music.mp3";
 
-const gameMusicAudio = new Audio(gameMusic);
-gameMusicAudio.loop = true;
-gameMusicAudio.volume = 0.02;
+// const gameMusicAudio = new Audio(gameMusic);
+// gameMusicAudio.loop = true;
+// gameMusicAudio.volume = 0.02;
 
 const Game = ({ rooms, roomName, localId }) => {
   const { socket } = useContext(SocketContext);
   let index = rooms.findIndex((room) => room.id === roomName);
 
-  useEffect(() => {
-    gameMusicAudio
-      .play()
-      .catch((error) => console.error("Error while playing game music", error));
+  // useEffect(() => {
+  //   gameMusicAudio
+  //     .play()
+  //     .catch((error) => console.error("Error while playing game music", error));
 
-    return () => {
-      gameMusicAudio.pause();
-      gameMusicAudio.currentTime = 0;
-    };
-  }, []);
+  //   return () => {
+  //     gameMusicAudio.pause();
+  //     gameMusicAudio.currentTime = 0;
+  //   };
+  // }, []);
 
   useEffect(() => {
     const keyState = {

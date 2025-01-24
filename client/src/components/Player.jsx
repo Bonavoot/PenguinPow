@@ -18,17 +18,19 @@ import ready2 from "../assets/ready2.png";
 import attack2 from "../assets/attack2.png";
 import dodging2 from "../assets/dodging2.gif";
 import throwing2 from "../assets/throwing2.png";
+import salt from "../assets/salt.png";
+import salt2 from "../assets/salt2.png";
+
+import gyoji from "../assets/gyoji.png";
+import gyojiReady from "../assets/gyoji-ready.png";
+import gyojiPlayer1wins from "../assets/gyoji-player1-wins.png";
+import gyojiPlayer2wins from "../assets/gyoji-player2-wins.png";
+
 import gameMusic from "../sounds/game-music.mp3";
 import grabSound from "../sounds/grab-sound.mp3";
 import attackSound from "../sounds/attack-sound.mp3";
 import hitSound from "../sounds/hit-sound.mp3";
 import dodgeSound from "../sounds/dodge-sound.mp3";
-import gyoji from "../assets/gyoji.png";
-import gyojiReady from "../assets/gyoji-ready.png";
-import gyojiPlayer1wins from "../assets/gyoji-player1-wins.png";
-import gyojiPlayer2wins from "../assets/gyoji-player2-wins.png";
-import salt from "../assets/salt.png";
-import salt2 from "../assets/salt2.png";
 
 // Utility to preload assets
 const preloadAssets = (sources, type = "image") => {

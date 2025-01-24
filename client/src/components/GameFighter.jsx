@@ -32,10 +32,12 @@ import attackSound from "../sounds/attack-sound.mp3";
 import hitSound from "../sounds/hit-sound.mp3";
 import dodgeSound from "../sounds/dodge-sound.mp3";
 import throwSound from "../sounds/throw-sound.mp3";
-import winnerSound from "../sounds/winner-sound.mp3";
+import winnerSound from "../sounds/winner-sound.wav";
 import hakkiyoiSound from "../sounds/hakkiyoi-sound.mp3";
 import bellSound from "../sounds/bell-sound.mp3";
 import saltSound from "../sounds/salt-sound.mp3";
+import gameMusic from "../sounds/game-music.mp3";
+import eeshiMusic from "../sounds/eeshi.mp3";
 
 import UiPlayerInfo from "./UiPlayerInfo";
 import SaltEffect from "./SaltEffect";
@@ -238,8 +240,6 @@ const StyledLabel = styled.div
                  -1px 1px 0 #000, 1px 1px 0 #000;
   `;
 
-const winnerAudio = new Audio(winnerSound);
-
 const GameFighter = ({ player, index, roomName, localId }) => {
   const { socket } = useContext(SocketContext);
   const [penguin, setPenguin] = useState(player);
@@ -256,9 +256,12 @@ const GameFighter = ({ player, index, roomName, localId }) => {
   const lastHitState = useRef(player.isHit);
   const lastThrowState = useRef(player.isThrowing);
   const lastDodgeState = useRef(player.isDodging);
-  const lastWinnerState = useRef(gameOver);
   const lastGrabState = useRef(player.isGrabbing);
   const lastThrowingSaltState = useRef(player.isThrowingSalt);
+  const gameMusicRef = useRef(null);
+  const eeshiMusicRef = useRef(null);
+  const lastWinnerState = useRef(gameOver);
+  const lastWinnerSoundPlay = useRef(0);
 
   useEffect(() => {
     socket.on("fighter_action", (data) => {
@@ -322,6 +325,41 @@ const GameFighter = ({ player, index, roomName, localId }) => {
   }, [index, socket]);
 
   useEffect(() => {
+    gameMusicRef.current = new Audio(gameMusic);
+    gameMusicRef.current.volume = 0.009; // lower volume
+    eeshiMusicRef.current = new Audio(eeshiMusic);
+    eeshiMusicRef.current.volume = 0.009; // lower volume
+    eeshiMusicRef.current.loop = true;
+    eeshiMusicRef.current.play();
+
+    return () => {
+      eeshiMusicRef.current.pause();
+    };
+  }, []);
+
+  useEffect(() => {
+    socket.on("game_start", () => {
+      eeshiMusicRef.current.pause();
+      eeshiMusicRef.current.currentTime = 0;
+      gameMusicRef.current.loop = true;
+      gameMusicRef.current.play();
+    });
+
+    socket.on("game_over", () => {
+      gameMusicRef.current.pause();
+      gameMusicRef.current.currentTime = 0;
+      // eeshiMusicRef.current.volume = 0.006;
+      eeshiMusicRef.current.loop = true;
+      eeshiMusicRef.current.play();
+    });
+
+    return () => {
+      socket.off("game_start");
+      socket.off("game_over");
+    };
+  }, [socket]);
+
+  useEffect(() => {
     if (penguin.isAttacking && !lastAttackState.current) {
       playSound(attackSound, 0.01);
     }
@@ -366,19 +404,24 @@ const GameFighter = ({ player, index, roomName, localId }) => {
   }, [penguin.isGrabbing]);
 
   useEffect(() => {
-    if (gameOver && !lastWinnerState.current) {
-      winnerAudio.volume = 0.01;
-      winnerAudio.play();
-    }
-    lastWinnerState.current = gameOver;
-  }, [gameOver]);
-
-  useEffect(() => {
     if (hakkiyoi) {
       playSound(hakkiyoiSound, 0.015);
       playSound(bellSound, 0.005);
     }
   }, [hakkiyoi]);
+
+  useEffect(() => {
+    const currentTime = Date.now();
+    if (
+      gameOver &&
+      !lastWinnerState.current &&
+      currentTime - lastWinnerSoundPlay.current > 1000
+    ) {
+      playSound(winnerSound, 0.01);
+      lastWinnerSoundPlay.current = currentTime;
+    }
+    lastWinnerState.current = gameOver;
+  }, [gameOver]);
 
   return (
     <div className="ui-container">

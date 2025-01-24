@@ -388,6 +388,7 @@ io.on("connection", (socket) => {
           const throwDuration = currentTime - player.throwStartTime;
           const throwProgress =
             throwDuration / (player.throwEndTime - player.throwStartTime);
+
           if (currentTime >= player.throwEndTime) {
             player.isThrowing = false;
           }
