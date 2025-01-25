@@ -50,6 +50,7 @@ const delta = 1000 / TICK_RATE;
 const speedFactor = 0.3;
 const GROUND_LEVEL = 130;
 const HITBOX_DISTANCE_VALUE = 90;
+const SLAP_HITBOX_DISTANCE_VALUE = 110; // Increased from 90
 
 function resetRoomAndPlayers(room) {
   // Reset room state
@@ -319,27 +320,25 @@ io.on("connection", (socket) => {
 
         if (player.isHit) {
           player.x += player.knockbackVelocity.x * delta * speedFactor;
-          player.y += player.knockbackVelocity.y * delta * speedFactor;
+          // player.y = GROUND_LEVEL;
           player.isAttacking = false;
-
           player.isStrafing = false;
           // Apply some deceleration or friction
           player.knockbackVelocity.x *= 0.9; // Adjust as needed
-          player.knockbackVelocity.y *= 0.8;
 
           // When the velocity is low enough, you can stop the knockback effect
           if (Math.abs(player.knockbackVelocity.x) < 0.1) {
             player.knockbackVelocity.x = 0;
           }
-          if (Math.abs(player.knockbackVelocity.y) < 0.1) {
-            player.knockbackVelocity.y = 0;
-          }
+          // if (Math.abs(player.knockbackVelocity.y) < 0.1) {
+          //   player.knockbackVelocity.y = 0;
+          // }
 
-          // Make sure the player doesn't float in the air
-          if (player.y < GROUND_LEVEL) {
-            player.y = GROUND_LEVEL;
-            player.knockbackVelocity.y = 0; // Reset vertical knockback
-          }
+          // // Make sure the player doesn't float in the air
+          // if (player.y < GROUND_LEVEL) {
+          //   player.y = GROUND_LEVEL;
+          //   player.knockbackVelocity.y = 0; // Reset vertical knockback
+          // }
         }
 
         if (player.isHit) return;
@@ -552,18 +551,22 @@ io.on("connection", (socket) => {
       return;
     }
 
+    const hitboxDistance = player.isSlapAttack
+      ? SLAP_HITBOX_DISTANCE_VALUE
+      : HITBOX_DISTANCE_VALUE;
+
     const playerHitbox = {
-      left: player.x - HITBOX_DISTANCE_VALUE,
-      right: player.x + HITBOX_DISTANCE_VALUE,
-      top: player.y - HITBOX_DISTANCE_VALUE,
-      bottom: player.y + HITBOX_DISTANCE_VALUE,
+      left: player.x - hitboxDistance,
+      right: player.x + hitboxDistance,
+      top: player.y - hitboxDistance,
+      bottom: player.y + hitboxDistance,
     };
 
     const opponentHitbox = {
-      left: otherPlayer.x - HITBOX_DISTANCE_VALUE,
-      right: otherPlayer.x + HITBOX_DISTANCE_VALUE,
-      top: otherPlayer.y - HITBOX_DISTANCE_VALUE,
-      bottom: otherPlayer.y + HITBOX_DISTANCE_VALUE,
+      left: otherPlayer.x - hitboxDistance,
+      right: otherPlayer.x + hitboxDistance,
+      top: otherPlayer.y - hitboxDistance,
+      bottom: otherPlayer.y + hitboxDistance,
     };
 
     // Simplified collision check
@@ -607,13 +610,14 @@ io.on("connection", (socket) => {
     if (otherPlayer.isCrouching) {
       // Apply knockback to the attacking player instead
       const knockbackDirection = player.facing === 1 ? 1 : -1;
-      player.knockbackVelocity.x = 5 * knockbackDirection; // Adjust the knockback magnitude as necessary
-      player.isHit = true; // Optional: If you want the attacker to also show a hit reaction
+      player.knockbackVelocity.x =
+        5 * knockbackDirection * player.chargeAttackPower;
+      player.knockbackVelocity.y = 0;
+      player.isHit = true;
 
-      // Set a timeout to reset the hit state of the attacking player, if needed
       setTimeout(() => {
         player.isHit = false;
-      }, 300); // Adjust timeout as necessary
+      }, 300);
     } else {
       // Apply the knockback to the defending player
       otherPlayer.isHit = true;
@@ -622,7 +626,17 @@ io.on("connection", (socket) => {
       otherPlayer.isStrafing = false;
       otherPlayer.isDiving = false;
       const knockbackDirection = player.facing === -1 ? 1 : -1;
-      otherPlayer.knockbackVelocity.x = 7 * knockbackDirection;
+
+      if (player.isSlapAttack) {
+        otherPlayer.knockbackVelocity.x =
+          4 * knockbackDirection * player.chargeAttackPower; // Reduced knockback for slap
+      } else {
+        otherPlayer.knockbackVelocity.x =
+          7 * knockbackDirection * player.chargeAttackPower; // Regular knockback
+      }
+
+      otherPlayer.knockbackVelocity.y = 0; // Remove vertical knockback
+      otherPlayer.y = GROUND_LEVEL;
 
       otherPlayer.isAlreadyHit = true;
       setTimeout(() => {
@@ -630,6 +644,10 @@ io.on("connection", (socket) => {
         otherPlayer.isAlreadyHit = false;
       }, 300);
     }
+    // Toggle slapAnimation if it's a slap attack
+    // if (player.isSlapAttack) {
+    //   player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
+    // }
   }
 
   socket.on("get_rooms", () => {
@@ -649,7 +667,12 @@ io.on("connection", (socket) => {
         isJumping: false,
         isAttacking: false,
         isAttackCooldown: false,
+        isChargingAttack: false,
+        chargeStartTime: 0,
+        chargeMaxDuration: 5000,
+        chargeAttackPower: 1,
         isSlapAttack: false,
+        slapAnimation: 2,
         isThrowing: false,
         isThrowingSalt: false,
         saltCooldown: false,
@@ -695,7 +718,12 @@ io.on("connection", (socket) => {
         isJumping: false,
         isAttacking: false,
         isAttackCooldown: false,
+        isChargingAttack: false,
+        chargeStartTime: 0,
+        chargeMaxDuration: 5000,
+        chargeAttackPower: 1,
         isSlapAttack: false,
+        slapAnimation: 2,
         isThrowing: false,
         isThrowingSalt: false,
         saltCooldown: false,
@@ -889,6 +917,7 @@ io.on("connection", (socket) => {
           player.isDodging = false;
         }, 400);
       }
+
       if (
         player.keys[" "] &&
         !player.isAttacking &&
@@ -899,28 +928,61 @@ io.on("connection", (socket) => {
         !player.isGrabbing &&
         !player.isBeingGrabbed &&
         !player.isHit &&
-        !player.isSpaceBarPressed &&
         !player.isAttackCooldown
       ) {
-        player.isAttacking = true;
-        player.isSpaceBarPressed = true;
-        player.isSlapAttack = false;
-        player.attackStartTime = Date.now();
-        player.attackEndTime = Date.now() + 300; // Attack lasts for 0.3 seconds
+        // Start charging if not already charging
+        if (!player.isChargingAttack) {
+          player.isChargingAttack = true;
+          player.chargeStartTime = Date.now();
+          player.chargeAttackPower = 1; // Reset charge power
+        }
 
-        // Reset the attack state after the attack duration
+        // Calculate charge power (up to max)
+        const chargeDuration = Date.now() - player.chargeStartTime;
+        player.chargeAttackPower = Math.min(
+          1 + (chargeDuration / player.chargeMaxDuration) ** 2, // Increase power over time
+          8 // Max power multiplier
+        );
+
+        // Prevent movement while charging
+        player.isStrafing = false;
+      }
+      // Release attack when spacebar is released
+      else if (!player.keys[" "] && player.isChargingAttack) {
+        const chargeDuration = Date.now() - player.chargeStartTime;
+        const SLAP_ATTACK_THRESHOLD = 250; // charge time before getting headbutt
+
+        if (chargeDuration < SLAP_ATTACK_THRESHOLD) {
+          player.isSlapAttack = true;
+          player.isAttacking = false;
+          player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
+          setTimeout(() => {
+            player.isSlapAttack = false;
+            player.isAttacking = false;
+          }, 300); // this controls how long the slap animation stays out for
+        } else {
+          player.isSlapAttack = false;
+        }
+
+        player.isAttacking = true;
+        player.isSlapAttack = player.isSlapAttack; // Ensure the flag is set correctly
+        player.isChargingAttack = false;
+        player.attackStartTime = Date.now();
+
+        // Calculate attack duration based on charge time
+        const scaledDuration = Math.min(
+          300 + (chargeDuration / player.chargeMaxDuration) * 600, // Base 300ms + scaled duration
+          1000 // Max attack duration of 1000ms
+        );
+
+        player.attackEndTime = Date.now() + scaledDuration;
+        player.isAttackCooldown = true;
+
+        // Reset after attack
         setTimeout(() => {
           player.isAttacking = false;
-          player.isSpaceBarPressed = false;
-          player.isAttackCooldown = true;
-
-          // Reset the cooldown state after additional 0.3 seconds
-          setTimeout(() => {
-            player.isAttackCooldown = false;
-          }, 125);
-        }, 300);
-      } else if (!player.keys[" "]) {
-        player.isSpaceBarPressed = false;
+          player.isAttackCooldown = false;
+        }, scaledDuration);
       }
       function isOpponentCloseEnoughForGrab(player, opponent) {
         const distance = Math.abs(player.x - opponent.x);

@@ -19,6 +19,8 @@ import ready from "../assets/ready.png";
 import ready2 from "../assets/ready2.png";
 import attack from "../assets/attack.png";
 import attack2 from "../assets/attack2.png";
+import slapAttack1Blue from "../assets/slapAttack1blue.png";
+import slapAttack2Blue from "../assets/slapAttack2blue.png";
 import dodging from "../assets/dodging.gif";
 import dodging2 from "../assets/dodging2.gif";
 import throwing from "../assets/throwing-nonmirror.png";
@@ -63,7 +65,8 @@ const getImageSrc = (
   isSlapAttack,
   isThrowing,
   isGrabbing,
-  isThrowingSalt
+  isThrowingSalt,
+  slapAnimation
 ) => {
   if (fighter === "player 2") {
     if (isDiving) return pumo;
@@ -84,6 +87,10 @@ const getImageSrc = (
     if (isDiving) return pumo;
     if (isJumping) return throwing2;
     if (isAttacking && !isSlapAttack) return attack2;
+    if (isSlapAttack) {
+      // Toggle between two slap attack animations based on slapAnimation value
+      return slapAnimation === 1 ? slapAttack1Blue : slapAttack2Blue;
+    }
     if (isGrabbing) return grabbing2;
     if (isDodging) return dodging2;
     if (isCrouching) return crouching2;
@@ -144,6 +151,7 @@ const StyledImage = styled("img")
         "isGrabbing",
         "isBeingGrabbed",
         "isSlapAttack",
+        "slapAnimation",
 
         // ...any other prop names that should not be forwarded
       ].includes(prop),
@@ -163,7 +171,8 @@ const StyledImage = styled("img")
       props.isSlapAttack,
       props.isThrowing,
       props.isGrabbing,
-      props.isThrowingSalt
+      props.isThrowingSalt,
+      props.slapAnimation
     ),
     style: {
       position: "absolute",
