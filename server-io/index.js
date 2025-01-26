@@ -48,9 +48,9 @@ let staminaRegenCounter = 0;
 const TICK_RATE = 64;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.3;
-const GROUND_LEVEL = 130;
+const GROUND_LEVEL = 150;
 const HITBOX_DISTANCE_VALUE = 90;
-const SLAP_HITBOX_DISTANCE_VALUE = 110; // Increased from 90
+const SLAP_HITBOX_DISTANCE_VALUE = 110;
 
 function resetRoomAndPlayers(room) {
   // Reset room state
@@ -123,29 +123,30 @@ io.on("connection", (socket) => {
           !player1.isGrabbing &&
           !player1.isBeingGrabbed &&
           !player2.isGrabbing &&
-          !player2.isBeingGrabbed
+          !player2.isBeingGrabbed &&
+          !player1.isThrowing &&
+          !player2.isThrowing
         ) {
-          if (
-            player1.x < player2.x &&
-            !player1.isThrowing &&
-            !player2.isThrowing
-          ) {
-            player1.facing = -1; // Player 1 faces right
-            player2.facing = 1; // Player 2 faces left
-          } else if (!player1.isThrowing && !player2.isThrowing) {
-            player1.facing = 1; // Player 1 faces left
-            player2.facing = -1; // Player 2 faces right
+          // Preserve facing direction during attacks and throws
+          if (!player1.isAttacking && !player2.isAttacking) {
+            if (player1.x < player2.x) {
+              player1.facing = -1; // Player 1 faces right
+              player2.facing = 1; // Player 2 faces left
+            } else {
+              player1.facing = 1; // Player 1 faces left
+              player2.facing = -1; // Player 2 faces right
+            }
           }
         }
 
-        // Update facing direction based on relative positions
-        if (player1.x < player2.x) {
-          player1.facing = -1; // Player 1 faces right
-          player2.facing = 1; // Player 2 faces left
-        } else {
-          player1.facing = 1; // Player 1 faces left
-          player2.facing = -1; // Player 2 faces right
-        }
+        // // Update facing direction based on relative positions
+        // if (player1.x < player2.x) {
+        //   player1.facing = -1; // Player 1 faces right
+        //   player2.facing = 1; // Player 2 faces left
+        // } else {
+        //   player1.facing = 1; // Player 1 faces left
+        //   player2.facing = -1; // Player 2 faces right
+        // }
 
         if (room.gameStart === false) {
           if (player1.x >= 275) {
@@ -166,7 +167,14 @@ io.on("connection", (socket) => {
         }
 
         function arePlayersColliding(player1, player2) {
-          if (player1.isDodging || player2.isDodging) {
+          if (
+            player1.isDodging ||
+            player2.isDodging ||
+            player1.isThrowing ||
+            player2.isThrowing ||
+            player1.isBeingThrown ||
+            player2.isBeingThrown
+          ) {
             return false;
           }
           const player1Hitbox = {
@@ -192,6 +200,14 @@ io.on("connection", (socket) => {
         }
         function adjustPlayerPositions(player1, player2, delta) {
           // Calculate the overlap between players
+          if (
+            player1.isThrowing ||
+            player2.isThrowing ||
+            player1.isBeingThrown ||
+            player2.isBeingThrown
+          ) {
+            return;
+          }
           const overlap =
             Math.min(
               player1.x + HITBOX_DISTANCE_VALUE,
@@ -261,8 +277,15 @@ io.on("connection", (socket) => {
         }
         // map boundries
 
-        if (!player.isHit && !room.gameOver) {
-          player.x = Math.max(-50, Math.min(player.x, 1055));
+        if (
+          !player.isHit &&
+          !room.gameOver &&
+          !(player.isAttacking && !player.isSlapAttacking)
+        ) {
+          // Remove boundary restriction for attacking players entirely
+          if (!player.isAttacking) {
+            player.x = Math.max(-50, Math.min(player.x, 1055));
+          }
         }
 
         // Win Conditions
@@ -270,7 +293,15 @@ io.on("connection", (socket) => {
           (player.isHit && player.x <= -60 && !room.gameOver) ||
           (player.isHit && player.x >= 1080 && !room.gameOver) ||
           (player.isBeingGrabbed && player.x <= -60 && !room.gameOver) ||
-          (player.isBeingGrabbed && player.x >= 1080 && !room.gameOver)
+          (player.isBeingGrabbed && player.x >= 1080 && !room.gameOver) ||
+          (player.isAttacking &&
+            !player.isSlapAttack &&
+            player.x <= -60 &&
+            !room.gameOver) ||
+          (player.isAttacking &&
+            !player.isSlapAttack &&
+            player.x >= 1080 &&
+            !room.gameOver)
         ) {
           console.log("game over");
           room.gameOver = true;
@@ -301,6 +332,45 @@ io.on("connection", (socket) => {
             room.gameOverTime = Date.now();
           }
         }
+
+        // // Charged attack out-of-bounds win condition
+        // if (
+        //   player.isAttacking &&
+        //   player.isChargingAttack &&
+        //   !room.gameOver &&
+        //   (player.x <= -60 || player.x >= 1080)
+        // ) {
+        //   console.log("game over");
+        //   room.gameOver = true;
+
+        //   const winner = room.players.find((p) => p.id !== player.id);
+        //   winner.wins.push("w");
+
+        //   if (winner.wins.length > 7) {
+        //     io.in(room.id).emit("match_over", {
+        //       isMatchOver: true,
+        //       winner: winner.fighter,
+        //     });
+        //     room.matchOver = true;
+        //     winner.wins = [];
+        //     player.wins = [];
+        //   }
+
+        //   io.in(room.id).emit("game_over", {
+        //     isGameOver: true,
+        //     winner: {
+        //       id: winner.id,
+        //       fighter: winner.fighter,
+        //     },
+        //     wins: winner.wins.length,
+        //   });
+        //   room.winnerId = winner.id;
+        //   room.loserId = player.id;
+
+        //   if (!room.gameOverTime) {
+        //     room.gameOverTime = Date.now();
+        //   }
+        // }
 
         if (
           room.gameOver &&
@@ -354,6 +424,7 @@ io.on("connection", (socket) => {
           );
           if (opponent) {
             const throwArcHeight = 450; // Adjust as needed
+            const throwDistance = 240;
             // Calculate opponent's position in the throw arc
             if (!player.throwingFacingDirection) {
               player.throwingFacingDirection = player.facing;
@@ -361,8 +432,10 @@ io.on("connection", (socket) => {
             }
             player.facing = player.throwingFacingDirection;
             opponent.facing = opponent.beingThrownFacingDirection;
+
             opponent.x =
-              player.x + player.throwingFacingDirection * 215 * throwProgress; // Adjust 130 to control throw distance
+              player.x +
+              player.throwingFacingDirection * throwDistance * throwProgress; // Adjust 130 to control throw distance
             opponent.y =
               GROUND_LEVEL +
               3.2 * throwArcHeight * throwProgress * (1 - throwProgress); // Parabolic trajectory
@@ -377,6 +450,7 @@ io.on("connection", (socket) => {
               opponent.y = GROUND_LEVEL;
               // opponent.knockbackVelocity.x = player.facing * 5; // Adjust for knockback effect
               opponent.knockbackVelocity.y = 0;
+              opponent.knockbackVelocity.x = player.throwingFacingDirection * 7;
               // player.facing = player.throwingFacingDirection;
               player.throwingFacingDirection = null;
               opponent.beingThrownFacingDirection = null;
@@ -629,7 +703,7 @@ io.on("connection", (socket) => {
 
       if (player.isSlapAttack) {
         otherPlayer.knockbackVelocity.x =
-          4 * knockbackDirection * player.chargeAttackPower; // Reduced knockback for slap
+          3.5 * knockbackDirection * player.chargeAttackPower; // Reduced knockback for slap
       } else {
         otherPlayer.knockbackVelocity.x =
           7 * knockbackDirection * player.chargeAttackPower; // Regular knockback
@@ -671,6 +745,7 @@ io.on("connection", (socket) => {
         chargeStartTime: 0,
         chargeMaxDuration: 5000,
         chargeAttackPower: 1,
+        chargingFacingDirection: null,
         isSlapAttack: false,
         slapAnimation: 2,
         isThrowing: false,
@@ -722,6 +797,7 @@ io.on("connection", (socket) => {
         chargeStartTime: 0,
         chargeMaxDuration: 5000,
         chargeAttackPower: 1,
+        chargingFacingDirection: null,
         isSlapAttack: false,
         slapAnimation: 2,
         isThrowing: false,
@@ -935,6 +1011,7 @@ io.on("connection", (socket) => {
           player.isChargingAttack = true;
           player.chargeStartTime = Date.now();
           player.chargeAttackPower = 1; // Reset charge power
+          player.chargingFacingDirection = player.facing;
         }
 
         // Calculate charge power (up to max)
@@ -946,6 +1023,10 @@ io.on("connection", (socket) => {
 
         // Prevent movement while charging
         player.isStrafing = false;
+
+        if (player.chargingFacingDirection !== null) {
+          player.facing = player.chargingFacingDirection;
+        }
       }
       // Release attack when spacebar is released
       else if (!player.keys[" "] && player.isChargingAttack) {
@@ -965,23 +1046,29 @@ io.on("connection", (socket) => {
         }
 
         player.isAttacking = true;
-        player.isSlapAttack = player.isSlapAttack; // Ensure the flag is set correctly
+        player.isSlapAttack = player.isSlapAttack;
         player.isChargingAttack = false;
         player.attackStartTime = Date.now();
 
         // Calculate attack duration based on charge time
         const scaledDuration = Math.min(
-          300 + (chargeDuration / player.chargeMaxDuration) * 600, // Base 300ms + scaled duration
+          250 + (chargeDuration / player.chargeMaxDuration) * 600, // Base 300ms + scaled duration
           1000 // Max attack duration of 1000ms
         );
 
         player.attackEndTime = Date.now() + scaledDuration;
         player.isAttackCooldown = true;
 
+        // **Lock the facing direction during the attack**
+        if (player.chargingFacingDirection !== null) {
+          player.facing = player.chargingFacingDirection;
+        }
+
         // Reset after attack
         setTimeout(() => {
           player.isAttacking = false;
           player.isAttackCooldown = false;
+          player.chargingFacingDirection = null;
         }, scaledDuration);
       }
       function isOpponentCloseEnoughForGrab(player, opponent) {
