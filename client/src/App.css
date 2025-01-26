@@ -269,7 +269,7 @@ body {
   position: relative;
   border: 2px solid black;
   overflow: hidden;
-  background-image: url(./assets/game-map-test.jpg);
+  background-image: url(./assets/game-map-1.png);
   background-repeat: no-repeat;
   background-size: cover;
   background-position: center;
@@ -546,7 +546,7 @@ body {
   position: absolute;
   /* Choose coordinates in percentages (for 1280x720) */
   left: 36%;
-  bottom: 33%;
+  bottom: 36%;
 
   /* Scale the same as the penguins, e.g. 12% of container width */
   width: 26%;
