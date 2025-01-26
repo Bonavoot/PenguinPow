@@ -431,6 +431,9 @@ io.on("connection", (socket) => {
               opponent.beingThrownFacingDirection = opponent.facing;
             }
             player.facing = player.throwingFacingDirection;
+            if (player.isChargingAttack) {
+              player.chargingFacingDirection = player.throwingFacingDirection;
+            }
             opponent.facing = opponent.beingThrownFacingDirection;
 
             opponent.x =
@@ -448,6 +451,10 @@ io.on("connection", (socket) => {
               player.throwOpponent = null;
               // Handle landing of the opponent
               opponent.y = GROUND_LEVEL;
+              if (player.isChargingAttack) {
+                player.chargingFacingDirection = player.facing; // Use current facing direction
+              }
+
               // opponent.knockbackVelocity.x = player.facing * 5; // Adjust for knockback effect
               opponent.knockbackVelocity.y = 0;
               opponent.knockbackVelocity.x = player.throwingFacingDirection * 7;
@@ -1011,7 +1018,9 @@ io.on("connection", (socket) => {
           player.isChargingAttack = true;
           player.chargeStartTime = Date.now();
           player.chargeAttackPower = 1; // Reset charge power
-          player.chargingFacingDirection = player.facing;
+          player.chargingFacingDirection = player.isThrowing
+            ? player.throwingFacingDirection
+            : player.facing;
         }
 
         // Calculate charge power (up to max)
@@ -1024,6 +1033,11 @@ io.on("connection", (socket) => {
         // Prevent movement while charging
         player.isStrafing = false;
 
+        // Use throwingFacingDirection if throwing, otherwise use chargingFacingDirection
+        if (player.isThrowing && player.throwingFacingDirection !== null) {
+          player.chargingFacingDirection = player.throwingFacingDirection;
+        }
+
         if (player.chargingFacingDirection !== null) {
           player.facing = player.chargingFacingDirection;
         }
@@ -1032,6 +1046,8 @@ io.on("connection", (socket) => {
       else if (!player.keys[" "] && player.isChargingAttack) {
         const chargeDuration = Date.now() - player.chargeStartTime;
         const SLAP_ATTACK_THRESHOLD = 250; // charge time before getting headbutt
+
+        player.chargingFacingDirection = player.facing;
 
         if (chargeDuration < SLAP_ATTACK_THRESHOLD) {
           player.isSlapAttack = true;
