@@ -333,45 +333,6 @@ io.on("connection", (socket) => {
           }
         }
 
-        // // Charged attack out-of-bounds win condition
-        // if (
-        //   player.isAttacking &&
-        //   player.isChargingAttack &&
-        //   !room.gameOver &&
-        //   (player.x <= -60 || player.x >= 1080)
-        // ) {
-        //   console.log("game over");
-        //   room.gameOver = true;
-
-        //   const winner = room.players.find((p) => p.id !== player.id);
-        //   winner.wins.push("w");
-
-        //   if (winner.wins.length > 7) {
-        //     io.in(room.id).emit("match_over", {
-        //       isMatchOver: true,
-        //       winner: winner.fighter,
-        //     });
-        //     room.matchOver = true;
-        //     winner.wins = [];
-        //     player.wins = [];
-        //   }
-
-        //   io.in(room.id).emit("game_over", {
-        //     isGameOver: true,
-        //     winner: {
-        //       id: winner.id,
-        //       fighter: winner.fighter,
-        //     },
-        //     wins: winner.wins.length,
-        //   });
-        //   room.winnerId = winner.id;
-        //   room.loserId = player.id;
-
-        //   if (!room.gameOverTime) {
-        //     room.gameOverTime = Date.now();
-        //   }
-        // }
-
         if (
           room.gameOver &&
           Date.now() - room.gameOverTime >= 3000 &&
@@ -588,18 +549,13 @@ io.on("connection", (socket) => {
               player.x += movement;
               opponent.x += movement;
 
-              // maintain distance between players
-              const fixedDistance = 150; // Adjust this value as needed
-              if (player.grabFacingDirection === 1) {
-                // player facing left
-                opponent.x = player.x - fixedDistance;
-              } else {
-                // player facing right
-                opponent.x = player.x + fixedDistance;
-              }
+              const fixedDistance = 150;
+              opponent.x =
+                player.facing === 1
+                  ? player.x - fixedDistance
+                  : player.x + fixedDistance;
 
-              player.facing = player.grabFacingDirection;
-              opponent.facing = -player.grabFacingDirection;
+              opponent.facing = -player.facing;
             }
           }
         } else if (player.isGrabbing && !player.grabbedOpponent) {
@@ -995,8 +951,15 @@ io.on("connection", (socket) => {
         player.isDodging = true;
         player.dodgeEndTime = Date.now() + 400; // Dodge lasts for 0.3 seconds
         player.stamina -= 50; // Consume some stamina for the dodge
+
+        if (player.isChargingAttack) {
+          player.chargingFacingDirection = player.facing;
+        }
         // Reset dodge state after duration
         setTimeout(() => {
+          if (player.isChargingAttack) {
+            player.chargingFacingDirection = player.facing;
+          }
           player.isDodging = false;
         }, 400);
       }
@@ -1116,6 +1079,8 @@ io.on("connection", (socket) => {
           player.grabStartTime = Date.now();
           player.grabbedOpponent = opponent.id;
           opponent.isBeingGrabbed = true;
+
+          // Use charging direction if charging attack, otherwise use current facing
           player.grabFacingDirection = player.facing;
         } else {
           player.isGrabbing = true;
