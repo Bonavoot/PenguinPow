@@ -2,7 +2,7 @@ import styled from "styled-components";
 
 const GyojiShadowElement = styled.div`
   position: absolute;
-  left: ${(props) => (props.gyojiState === "idle" ? "38.8%" : "41.2%")};
+  left: ${(props) => (props.gyojiState === "idle" ? "38.9%" : "41.2%")};
   bottom: ${(props) => (props.gyojiState === "idle" ? "34.2%" : "35.5%")};
   width: ${(props) => (props.gyojiState === "idle" ? "21%" : "15%")};
   height: 6%;
