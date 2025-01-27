@@ -29,6 +29,7 @@ import hit from "../assets/hit.png";
 import hit2 from "../assets/hit2.png";
 import salt2 from "../assets/salt2.png";
 import salt from "../assets/salt.png";
+import dancing from "../assets/dancing.gif";
 
 import attackSound from "../sounds/attack-sound.mp3";
 import hitSound from "../sounds/hit-sound.mp3";
@@ -66,11 +67,12 @@ const getImageSrc = (
   isThrowing,
   isGrabbing,
   isThrowingSalt,
-  slapAnimation
+  slapAnimation,
+  isDancing
 ) => {
   if (fighter === "player 2") {
     if (isDiving) return pumo;
-
+    if (isDancing) return dancing;
     if (isJumping) return throwing;
     if (isAttacking && !isSlapAttack) return attack;
     if (isGrabbing) return grabbing;
@@ -87,6 +89,7 @@ const getImageSrc = (
     if (isDiving) return pumo;
     if (isJumping) return throwing2;
     if (isAttacking && !isSlapAttack) return attack2;
+    if (isDancing) return dancing;
     if (isSlapAttack) {
       // Toggle between two slap attack animations based on slapAnimation value
       return slapAnimation === 1 ? slapAttack1Blue : slapAttack2Blue;
@@ -152,6 +155,7 @@ const StyledImage = styled("img")
         "isBeingGrabbed",
         "isSlapAttack",
         "slapAnimation",
+        "isDancing",
 
         // ...any other prop names that should not be forwarded
       ].includes(prop),
@@ -172,7 +176,8 @@ const StyledImage = styled("img")
       props.isThrowing,
       props.isGrabbing,
       props.isThrowingSalt,
-      props.slapAnimation
+      props.slapAnimation,
+      props.isDancing
     ),
     style: {
       position: "absolute",
@@ -227,6 +232,7 @@ const StyledLabel = styled.div
         "beingThrownFacingDirection",
         "isBeingThrown",
         "isSlapAttack",
+        "isDancing",
         // ...any other prop names that should not be forwarded
       ].includes(prop),
   })
