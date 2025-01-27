@@ -29,7 +29,8 @@ import hit from "../assets/hit.png";
 import hit2 from "../assets/hit2.png";
 import salt2 from "../assets/salt2.png";
 import salt from "../assets/salt.png";
-import dancing from "../assets/dancing.gif";
+import bow from "../assets/bow.png";
+import bow2 from "../assets/bow2.png";
 
 import attackSound from "../sounds/attack-sound.mp3";
 import hitSound from "../sounds/hit-sound.mp3";
@@ -71,8 +72,7 @@ const getImageSrc = (
   isDancing
 ) => {
   if (fighter === "player 2") {
-    if (isDiving) return pumo;
-    if (isDancing) return dancing;
+    if (isDancing) return bow;
     if (isJumping) return throwing;
     if (isAttacking && !isSlapAttack) return attack;
     if (isGrabbing) return grabbing;
@@ -86,10 +86,9 @@ const getImageSrc = (
     if (isThrowingSalt) return salt;
     return pumo;
   } else if (fighter === "player 1") {
-    if (isDiving) return pumo;
     if (isJumping) return throwing2;
     if (isAttacking && !isSlapAttack) return attack2;
-    if (isDancing) return dancing;
+    if (isDancing) return bow2;
     if (isSlapAttack) {
       // Toggle between two slap attack animations based on slapAnimation value
       return slapAnimation === 1 ? slapAttack1Blue : slapAttack2Blue;
