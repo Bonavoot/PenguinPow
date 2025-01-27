@@ -128,7 +128,12 @@ io.on("connection", (socket) => {
           !player2.isThrowing
         ) {
           // Preserve facing direction during attacks and throws
-          if (!player1.isAttacking && !player2.isAttacking) {
+          if (
+            !player1.isAttacking &&
+            !player2.isAttacking &&
+            !player1.isDodging &&
+            !player2.isDodging
+          ) {
             if (player1.x < player2.x) {
               player1.facing = -1; // Player 1 faces right
               player2.facing = 1; // Player 2 faces left
@@ -167,13 +172,20 @@ io.on("connection", (socket) => {
         }
 
         function arePlayersColliding(player1, player2) {
+          // If either player is dodging, return false immediately
+          if (player1.isDodging || player2.isDodging) {
+            return false;
+          }
+
           if (
             player1.isDodging ||
             player2.isDodging ||
             player1.isThrowing ||
             player2.isThrowing ||
             player1.isBeingThrown ||
-            player2.isBeingThrown
+            player2.isBeingThrown ||
+            player1.isDodging ||
+            player2.isDodging
           ) {
             return false;
           }
@@ -201,6 +213,8 @@ io.on("connection", (socket) => {
         function adjustPlayerPositions(player1, player2, delta) {
           // Calculate the overlap between players
           if (
+            player1.isDodging ||
+            player2.isDodging ||
             player1.isThrowing ||
             player2.isThrowing ||
             player1.isBeingThrown ||
@@ -386,12 +400,16 @@ io.on("connection", (socket) => {
           if (opponent) {
             const throwArcHeight = 450; // Adjust as needed
             const throwDistance = 240;
+
             // Calculate opponent's position in the throw arc
             if (!player.throwingFacingDirection) {
+              console.log(player.facing, "while player is throwing");
               player.throwingFacingDirection = player.facing;
               opponent.beingThrownFacingDirection = opponent.facing;
             }
+
             player.facing = player.throwingFacingDirection;
+
             if (player.isChargingAttack) {
               player.chargingFacingDirection = player.throwingFacingDirection;
             }
@@ -412,14 +430,14 @@ io.on("connection", (socket) => {
               player.throwOpponent = null;
               // Handle landing of the opponent
               opponent.y = GROUND_LEVEL;
+              // Update charging direction to match throw direction if charging
               if (player.isChargingAttack) {
-                player.chargingFacingDirection = player.facing; // Use current facing direction
+                player.chargingFacingDirection = player.throwingFacingDirection;
+                player.facing = player.throwingFacingDirection;
               }
 
-              // opponent.knockbackVelocity.x = player.facing * 5; // Adjust for knockback effect
               opponent.knockbackVelocity.y = 0;
               opponent.knockbackVelocity.x = player.throwingFacingDirection * 7;
-              // player.facing = player.throwingFacingDirection;
               player.throwingFacingDirection = null;
               opponent.beingThrownFacingDirection = null;
             }
@@ -439,17 +457,16 @@ io.on("connection", (socket) => {
         if (player.isDodging) {
           // Move the player forward on the x-axis
 
-          if (player.keys.a) {
-            player.x += -1 * delta * speedFactor * 1.8;
-          } else if (player.keys.d) {
-            player.x += 1 * delta * speedFactor * 1.8;
-          } else if (player.keys.a && player.keys.d) {
-            player.x +=
-              (player.facing === -1 ? 1 : -1) * delta * speedFactor * 1.8;
-          } else {
-            player.x +=
-              (player.facing === -1 ? 1 : -1) * delta * speedFactor * 1.8;
-          }
+          // if (player.keys.a) {
+          //   player.x += -1 * delta * speedFactor * 1.8;
+          // } else if (player.keys.d) {
+          //   player.x += 1 * delta * speedFactor * 1.8;
+          // } else if (player.keys.a && player.keys.d) {
+          //   player.x +=
+          //     (player.facing === -1 ? 1 : -1) * delta * speedFactor * 1.8;
+          // } else {
+          player.x +=
+            (player.facing === -1 ? 1 : -1) * delta * speedFactor * 2.5;
 
           // End dodge if the duration is over
           if (Date.now() >= player.dodgeEndTime) {
@@ -466,12 +483,12 @@ io.on("connection", (socket) => {
             player.isSlapAttack &&
             player.saltCooldown === false)
         ) {
-          if (player.keys.d) {
+          if (player.keys.d && !player.isDodging) {
             player.x += delta * speedFactor;
             player.isStrafing = true;
             player.isReady = false;
           }
-          if (player.keys.a) {
+          if (player.keys.a && !player.isDodging) {
             player.x -= delta * speedFactor;
             player.isStrafing = true;
             player.isReady = false;
@@ -532,6 +549,7 @@ io.on("connection", (socket) => {
             if (grabDuration >= 1000) {
               // Release after 1.5 seconds
               player.isGrabbing = false;
+              //opponent.y = GROUND_LEVEL;
               opponent.isHit = false;
               player.grabbedOpponent = null;
               opponent.isBeingGrabbed = false;
@@ -549,7 +567,7 @@ io.on("connection", (socket) => {
               player.x += movement;
               opponent.x += movement;
 
-              const fixedDistance = 150;
+              const fixedDistance = 180;
               opponent.x =
                 player.facing === 1
                   ? player.x - fixedDistance
@@ -583,7 +601,10 @@ io.on("connection", (socket) => {
       !player.isAttacking ||
       otherPlayer.isAlreadyHit ||
       otherPlayer.isDead ||
-      otherPlayer.isDodging
+      otherPlayer.isDodging || // Already present in your code
+      player.isDodging || // Already present in your code
+      player.isBeingThrown ||
+      otherPlayer.isBeingThrown
     ) {
       return;
     }
@@ -805,7 +826,7 @@ io.on("connection", (socket) => {
     socket.roomId = data.roomId;
     io.to(data.roomId).emit("rooms", rooms);
     io.to(data.roomId).emit("lobby", rooms[index].players);
-    console.log(rooms[index].players);
+    // console.log(rooms[index].players);
   });
 
   socket.on("lobby", (data) => {
@@ -829,7 +850,7 @@ io.on("connection", (socket) => {
       io.in(data.roomId).emit("game_start", rooms[index]);
     }
 
-    console.log(rooms[index].readyCount);
+    // console.log(rooms[index].readyCount);
   });
 
   socket.on("rematch_count", (data) => {
@@ -860,11 +881,11 @@ io.on("connection", (socket) => {
     );
 
     rooms[index].players[playerIndex].fighter = data.fighter;
-    console.log(rooms[index].players[playerIndex]);
+    // console.log(rooms[index].players[playerIndex]);
 
     io.in(roomId).emit("lobby", rooms[index].players); // Update all players in the room
     io.to(roomId).emit("rooms", rooms);
-    console.log(rooms[index].players);
+    // console.log(rooms[index].players);
   });
 
   socket.on("fighter_action", (data) => {
@@ -898,7 +919,7 @@ io.on("connection", (socket) => {
     if (data.keys) {
       player.keys = data.keys;
 
-      console.log(data.keys);
+      // console.log(data.keys);
 
       if (
         player.keys.w &&
@@ -977,13 +998,11 @@ io.on("connection", (socket) => {
         !player.isAttackCooldown
       ) {
         // Start charging if not already charging
+        // Start charging if not already charging
         if (!player.isChargingAttack) {
           player.isChargingAttack = true;
           player.chargeStartTime = Date.now();
-          player.chargeAttackPower = 1; // Reset charge power
-          player.chargingFacingDirection = player.isThrowing
-            ? player.throwingFacingDirection
-            : player.facing;
+          player.chargeAttackPower = 1;
         }
 
         // Calculate charge power (up to max)
@@ -995,12 +1014,13 @@ io.on("connection", (socket) => {
 
         // Prevent movement while charging
         player.isStrafing = false;
-
-        // Use throwingFacingDirection if throwing, otherwise use chargingFacingDirection
-        if (player.isThrowing && player.throwingFacingDirection !== null) {
+        if (player.isThrowing || player.throwingFacingDirection !== null) {
           player.chargingFacingDirection = player.throwingFacingDirection;
+        } else {
+          player.chargingFacingDirection = player.facing;
         }
 
+        // Update facing to match charging direction
         if (player.chargingFacingDirection !== null) {
           player.facing = player.chargingFacingDirection;
         }
@@ -1050,6 +1070,7 @@ io.on("connection", (socket) => {
           player.chargingFacingDirection = null;
         }, scaledDuration);
       }
+
       function isOpponentCloseEnoughForGrab(player, opponent) {
         const distance = Math.abs(player.x - opponent.x);
         const GRAB_DISTANCE_THRESHOLD = 230; // Use the same threshold as the throw
@@ -1080,15 +1101,19 @@ io.on("connection", (socket) => {
           player.grabbedOpponent = opponent.id;
           opponent.isBeingGrabbed = true;
 
-          // Use charging direction if charging attack, otherwise use current facing
-          player.grabFacingDirection = player.facing;
+          // Preserve charging direction if charging, otherwise use current facing
+          if (player.isChargingAttack) {
+            player.grabFacingDirection = player.chargingFacingDirection;
+          } else {
+            player.grabFacingDirection = player.facing;
+          }
         } else {
           player.isGrabbing = true;
           player.grabStartTime = Date.now();
         }
       }
     }
-    console.log(player.keys);
+    // console.log(player.keys);
   });
 
   socket.on("disconnect", (reason) => {
