@@ -5,6 +5,9 @@ import styled from "styled-components";
 import "./MatchOver.css";
 import PlayerStaminaUi from "./PlayerStaminaUi";
 import Gyoji from "./Gyoji";
+import PlayerShadow from "./PlayerShadow";
+// import "./DustEffect.css";
+// import DustEffect from "./DustEffect";
 
 import pumo from "../assets/pumo.png";
 import pumo2 from "../assets/pumo2.png";
@@ -464,6 +467,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
       )}
       <PlayerStaminaUi stamina={stamina} index={index} />
       <StyledLabel {...penguin}>P{index + 1}</StyledLabel>
+      <PlayerShadow x={penguin.x} y={penguin.y} facing={penguin.facing} />
       <StyledImage {...penguin} />
       <SaltEffect
         isActive={penguin.isThrowingSalt}
