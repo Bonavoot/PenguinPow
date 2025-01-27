@@ -455,22 +455,11 @@ io.on("connection", (socket) => {
 
         // Dodging
         if (player.isDodging) {
-          // Move the player forward on the x-axis
+          player.x += player.dodgeDirection * delta * speedFactor * 2.5;
 
-          // if (player.keys.a) {
-          //   player.x += -1 * delta * speedFactor * 1.8;
-          // } else if (player.keys.d) {
-          //   player.x += 1 * delta * speedFactor * 1.8;
-          // } else if (player.keys.a && player.keys.d) {
-          //   player.x +=
-          //     (player.facing === -1 ? 1 : -1) * delta * speedFactor * 1.8;
-          // } else {
-          player.x +=
-            (player.facing === -1 ? 1 : -1) * delta * speedFactor * 2.5;
-
-          // End dodge if the duration is over
           if (Date.now() >= player.dodgeEndTime) {
             player.isDodging = false;
+            player.dodgeDirection = null;
           }
         }
 
@@ -747,6 +736,7 @@ io.on("connection", (socket) => {
         isDiving: false,
         isCrouching: false,
         isDodging: false,
+        dodgeDirection: false,
         dodgeEndTime: 0,
         isReady: false,
         isHit: false,
@@ -799,6 +789,7 @@ io.on("connection", (socket) => {
         isDiving: false,
         isCrouching: false,
         isDodging: false,
+        dodgeDirection: null,
         dodgeEndTime: 0,
         isReady: false,
         isHit: false,
@@ -973,6 +964,16 @@ io.on("connection", (socket) => {
         player.dodgeEndTime = Date.now() + 400; // Dodge lasts for 0.3 seconds
         player.stamina -= 50; // Consume some stamina for the dodge
 
+        // Store the dodge direction based on which key was held
+        if (player.keys.a) {
+          player.dodgeDirection = -1;
+        } else if (player.keys.d) {
+          player.dodgeDirection = 1;
+        } else {
+          // If no direction key was held, dodge in the facing direction
+          player.dodgeDirection = player.facing === -1 ? 1 : -1;
+        }
+
         if (player.isChargingAttack) {
           player.chargingFacingDirection = player.facing;
         }
@@ -980,6 +981,7 @@ io.on("connection", (socket) => {
         setTimeout(() => {
           if (player.isChargingAttack) {
             player.chargingFacingDirection = player.facing;
+            player.dodgeDirection = null;
           }
           player.isDodging = false;
         }, 400);
