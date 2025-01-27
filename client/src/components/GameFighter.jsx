@@ -186,14 +186,15 @@ const StyledImage = styled("img")
       bottom: `${(props.y / 720) * 100}%`,
       /* Flip horizontally if facing is -1; scaleX(1) is normal, scaleX(-1) is mirrored */
       transform: `scaleX(${props.facing})`,
+      zIndex:
+        (props.fighter === "player 2" && props.isGrabbing) || props.isThrowing
+          ? 98
+          : 99,
     },
   }))`
   position: absolute;
-
-  /* Use a relative width (e.g., 10% of container width) so it scales */
   width: 23%;
   height: auto;
-  z-index: 99;
   will-change: transform, bottom, left;
   pointer-events: none;
 `;
