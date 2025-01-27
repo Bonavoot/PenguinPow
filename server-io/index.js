@@ -1154,7 +1154,7 @@ io.on("connection", (socket) => {
           player.throwCooldown = true;
           setTimeout(() => {
             player.throwCooldown = false;
-          }, 1500); // 1.5 second cooldown
+          }, 250); // 1.5 second cooldown
         } else {
           player.isThrowing = true;
           player.throwStartTime = Date.now();
@@ -1164,7 +1164,7 @@ io.on("connection", (socket) => {
           player.throwCooldown = true;
           setTimeout(() => {
             player.throwCooldown = false;
-          }, 1500);
+          }, 250);
         }
       }
 
@@ -1205,7 +1205,7 @@ io.on("connection", (socket) => {
           player.grabCooldown = true;
           setTimeout(() => {
             player.grabCooldown = false;
-          }, 500); // 2 second cooldown
+          }, 1100); // 2 second cooldown
         } else {
           player.isGrabbing = true;
           player.grabStartTime = Date.now();
@@ -1214,7 +1214,7 @@ io.on("connection", (socket) => {
           player.grabCooldown = true;
           setTimeout(() => {
             player.grabCooldown = false;
-          }, 500);
+          }, 1100);
         }
       }
     }
