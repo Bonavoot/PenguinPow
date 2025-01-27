@@ -187,7 +187,9 @@ const StyledImage = styled("img")
       /* Flip horizontally if facing is -1; scaleX(1) is normal, scaleX(-1) is mirrored */
       transform: `scaleX(${props.facing})`,
       zIndex:
-        (props.fighter === "player 2" && props.isGrabbing) || props.isThrowing
+        (props.fighter === "player 2" && props.isGrabbing) ||
+        props.isThrowing ||
+        props.isDodging
           ? 98
           : 99,
     },
