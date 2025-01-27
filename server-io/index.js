@@ -663,6 +663,43 @@ io.on("connection", (socket) => {
     processHit(winner, loser);
   }
 
+  function resolveSimultaneousAction(player1, player2, actionType) {
+    const winner = Math.random() < 0.5 ? player1 : player2;
+    const loser = winner === player1 ? player2 : player1;
+
+    // Reset any ongoing action states for the loser
+    loser.isGrabbing = false;
+    loser.isThrowing = false;
+    loser.grabStartTime = null;
+    loser.throwStartTime = null;
+    loser.throwEndTime = null;
+    loser.grabbedOpponent = null;
+    loser.throwOpponent = null;
+
+    // Apply the winning action
+    if (actionType === "grab") {
+      winner.isGrabbing = true;
+      winner.grabStartTime = Date.now();
+      winner.grabbedOpponent = loser.id;
+      loser.isBeingGrabbed = true;
+      loser.isHit = true;
+
+      // Preserve charging direction if charging, otherwise use current facing
+      if (winner.isChargingAttack) {
+        winner.grabFacingDirection = winner.chargingFacingDirection;
+      } else {
+        winner.grabFacingDirection = winner.facing;
+      }
+    } else if (actionType === "throw") {
+      winner.isThrowing = true;
+      winner.throwStartTime = Date.now();
+      winner.throwEndTime = Date.now() + 400;
+      winner.throwOpponent = loser.id;
+      loser.isBeingThrown = true;
+      loser.isHit = true;
+    }
+  }
+
   function processHit(player, otherPlayer) {
     const MIN_ATTACK_DISPLAY_TIME = 300;
     const currentTime = Date.now();
@@ -952,26 +989,30 @@ io.on("connection", (socket) => {
         !player.isAttacking &&
         !player.isJumping
       ) {
-        // Find the opponent player
-        const opponentIndex = rooms[index].players.findIndex(
-          (p) => p.id !== player.id
-        );
-        const opponent = rooms[index].players[opponentIndex];
+        const opponent = rooms[index].players.find((p) => p.id !== player.id);
 
-        // Check if opponent is close enough and not already being thrown
         if (
           isOpponentCloseEnoughForThrow(player, opponent) &&
           !opponent.isBeingThrown &&
           !opponent.isAttacking
         ) {
-          player.isThrowing = true;
-          player.throwStartTime = Date.now();
-          player.throwEndTime = Date.now() + 400;
-          player.throwOpponent = opponent.id;
-          opponent.isBeingThrown = true;
-          opponent.isHit = true;
-
-          // Calculate throw trajectory here or in the game loop
+          // Check if both players are attempting to throw simultaneously
+          if (
+            opponent.keys.w &&
+            !opponent.isThrowing &&
+            !opponent.isBeingThrown &&
+            isOpponentCloseEnoughForThrow(opponent, player)
+          ) {
+            resolveSimultaneousAction(player, opponent, "throw");
+          } else {
+            // Original throw logic
+            player.isThrowing = true;
+            player.throwStartTime = Date.now();
+            player.throwEndTime = Date.now() + 400;
+            player.throwOpponent = opponent.id;
+            opponent.isBeingThrown = true;
+            opponent.isHit = true;
+          }
         } else {
           player.isThrowing = true;
           player.throwStartTime = Date.now();
@@ -1119,6 +1160,7 @@ io.on("connection", (socket) => {
         !player.isThrowing
       ) {
         const opponent = rooms[index].players.find((p) => p.id !== player.id);
+
         if (
           isOpponentCloseEnoughForGrab(player, opponent) &&
           !opponent.isBeingThrown &&
@@ -1126,17 +1168,27 @@ io.on("connection", (socket) => {
           !opponent.isBeingGrabbed &&
           !player.isBeingGrabbed
         ) {
-          player.isGrabbing = true;
-          opponent.isHit = true;
-          player.grabStartTime = Date.now();
-          player.grabbedOpponent = opponent.id;
-          opponent.isBeingGrabbed = true;
-
-          // Preserve charging direction if charging, otherwise use current facing
-          if (player.isChargingAttack) {
-            player.grabFacingDirection = player.chargingFacingDirection;
+          // Check if both players are attempting to grab simultaneously
+          if (
+            opponent.keys.e &&
+            !opponent.isGrabbing &&
+            !opponent.isBeingThrown &&
+            isOpponentCloseEnoughForGrab(opponent, player)
+          ) {
+            resolveSimultaneousAction(player, opponent, "grab");
           } else {
-            player.grabFacingDirection = player.facing;
+            // Original grab logic
+            player.isGrabbing = true;
+            opponent.isHit = true;
+            player.grabStartTime = Date.now();
+            player.grabbedOpponent = opponent.id;
+            opponent.isBeingGrabbed = true;
+
+            if (player.isChargingAttack) {
+              player.grabFacingDirection = player.chargingFacingDirection;
+            } else {
+              player.grabFacingDirection = player.facing;
+            }
           }
         } else {
           player.isGrabbing = true;
