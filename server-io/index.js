@@ -737,6 +737,8 @@ io.on("connection", (socket) => {
         isJumping: false,
         isAttacking: false,
         isAttackCooldown: false,
+        throwCooldown: false,
+        grabCooldown: false,
         isChargingAttack: false,
         chargeStartTime: 0,
         chargeMaxDuration: 5000,
@@ -791,6 +793,8 @@ io.on("connection", (socket) => {
         isJumping: false,
         isAttacking: false,
         isAttackCooldown: false,
+        throwCooldown: false,
+        grabCooldown: false,
         isChargingAttack: false,
         chargeStartTime: 0,
         chargeMaxDuration: 5000,
@@ -941,6 +945,7 @@ io.on("connection", (socket) => {
 
       // console.log(data.keys);
 
+      // In the throwing section, update the if condition and add cooldown:
       if (
         player.keys.w &&
         !player.isThrowing &&
@@ -950,15 +955,14 @@ io.on("connection", (socket) => {
         !player.isDodging &&
         !player.isCrouching &&
         !player.isAttacking &&
-        !player.isJumping
+        !player.isJumping &&
+        !player.throwCooldown // Add this condition
       ) {
-        // Find the opponent player
         const opponentIndex = rooms[index].players.findIndex(
           (p) => p.id !== player.id
         );
         const opponent = rooms[index].players[opponentIndex];
 
-        // Check if opponent is close enough and not already being thrown
         if (
           isOpponentCloseEnoughForThrow(player, opponent) &&
           !opponent.isBeingThrown &&
@@ -971,11 +975,21 @@ io.on("connection", (socket) => {
           opponent.isBeingThrown = true;
           opponent.isHit = true;
 
-          // Calculate throw trajectory here or in the game loop
+          // Add cooldown
+          player.throwCooldown = true;
+          setTimeout(() => {
+            player.throwCooldown = false;
+          }, 500); // 1.5 second cooldown
         } else {
           player.isThrowing = true;
           player.throwStartTime = Date.now();
           player.throwEndTime = Date.now() + 400;
+
+          // Add cooldown even for missed throws
+          player.throwCooldown = true;
+          setTimeout(() => {
+            player.throwCooldown = false;
+          }, 500);
         }
       }
 
@@ -1108,6 +1122,54 @@ io.on("connection", (socket) => {
         return distance <= GRAB_DISTANCE_THRESHOLD;
       }
       if (
+        player.keys.w &&
+        !player.isThrowing &&
+        !player.isBeingThrown &&
+        !player.isGrabbing &&
+        !player.isBeingGrabbed &&
+        !player.isDodging &&
+        !player.isCrouching &&
+        !player.isAttacking &&
+        !player.isJumping &&
+        !player.throwCooldown // Add this condition
+      ) {
+        const opponentIndex = rooms[index].players.findIndex(
+          (p) => p.id !== player.id
+        );
+        const opponent = rooms[index].players[opponentIndex];
+
+        if (
+          isOpponentCloseEnoughForThrow(player, opponent) &&
+          !opponent.isBeingThrown &&
+          !opponent.isAttacking
+        ) {
+          player.isThrowing = true;
+          player.throwStartTime = Date.now();
+          player.throwEndTime = Date.now() + 400;
+          player.throwOpponent = opponent.id;
+          opponent.isBeingThrown = true;
+          opponent.isHit = true;
+
+          // Add cooldown
+          player.throwCooldown = true;
+          setTimeout(() => {
+            player.throwCooldown = false;
+          }, 1500); // 1.5 second cooldown
+        } else {
+          player.isThrowing = true;
+          player.throwStartTime = Date.now();
+          player.throwEndTime = Date.now() + 400;
+
+          // Add cooldown even for missed throws
+          player.throwCooldown = true;
+          setTimeout(() => {
+            player.throwCooldown = false;
+          }, 1500);
+        }
+      }
+
+      // In the grabbing section, update the if condition and add cooldown:
+      if (
         player.keys.e &&
         !player.isGrabbing &&
         !player.isBeingThrown &&
@@ -1116,7 +1178,8 @@ io.on("connection", (socket) => {
         !player.isCrouching &&
         !player.isAttacking &&
         !player.isJumping &&
-        !player.isThrowing
+        !player.isThrowing &&
+        !player.grabCooldown // Add this condition
       ) {
         const opponent = rooms[index].players.find((p) => p.id !== player.id);
         if (
@@ -1132,15 +1195,26 @@ io.on("connection", (socket) => {
           player.grabbedOpponent = opponent.id;
           opponent.isBeingGrabbed = true;
 
-          // Preserve charging direction if charging, otherwise use current facing
           if (player.isChargingAttack) {
             player.grabFacingDirection = player.chargingFacingDirection;
           } else {
             player.grabFacingDirection = player.facing;
           }
+
+          // Add cooldown
+          player.grabCooldown = true;
+          setTimeout(() => {
+            player.grabCooldown = false;
+          }, 500); // 2 second cooldown
         } else {
           player.isGrabbing = true;
           player.grabStartTime = Date.now();
+
+          // Add cooldown even for missed grabs
+          player.grabCooldown = true;
+          setTimeout(() => {
+            player.grabCooldown = false;
+          }, 500);
         }
       }
     }
