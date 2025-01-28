@@ -34,6 +34,8 @@ import salt2 from "../assets/salt2.png";
 import salt from "../assets/salt.png";
 import bow from "../assets/bow.png";
 import bow2 from "../assets/bow2.png";
+import throwTech from "../assets/throw-tech.png";
+import throwTech2 from "../assets/throw-tech2.png";
 
 import attackSound from "../sounds/attack-sound.mp3";
 import hitSound from "../sounds/hit-sound.mp3";
@@ -72,10 +74,12 @@ const getImageSrc = (
   isGrabbing,
   isThrowingSalt,
   slapAnimation,
-  isBowing
+  isBowing,
+  isThrowTeching
 ) => {
   if (fighter === "player 2") {
     if (isBowing) return bow;
+    if (isThrowTeching) return throwTech;
     if (isJumping) return throwing;
     if (isAttacking && !isSlapAttack) return attack;
     if (isGrabbing) return grabbing;
@@ -92,6 +96,7 @@ const getImageSrc = (
     if (isJumping) return throwing2;
     if (isAttacking && !isSlapAttack) return attack2;
     if (isBowing) return bow2;
+    if (isThrowTeching) return throwTech2;
     if (isSlapAttack) {
       // Toggle between two slap attack animations based on slapAnimation value
       return slapAnimation === 1 ? slapAttack1Blue : slapAttack2Blue;
@@ -158,6 +163,7 @@ const StyledImage = styled("img")
         "isSlapAttack",
         "slapAnimation",
         "isBowing",
+        "isThrowTeching",
 
         // ...any other prop names that should not be forwarded
       ].includes(prop),
@@ -179,7 +185,8 @@ const StyledImage = styled("img")
       props.isGrabbing,
       props.isThrowingSalt,
       props.slapAnimation,
-      props.isBowing
+      props.isBowing,
+      props.isThrowTeching
     ),
     style: {
       position: "absolute",
@@ -238,6 +245,7 @@ const StyledLabel = styled.div
         "isBeingThrown",
         "isSlapAttack",
         "isBowing",
+        "isThrowTeching",
         // ...any other prop names that should not be forwarded
       ].includes(prop),
   })
