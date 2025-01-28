@@ -1225,7 +1225,7 @@ io.on("connection", (socket) => {
               player.throwCooldown = false;
             }, 250);
           }
-        }, 32);
+        }, 64);
       }
 
       // In the grabbing section, update the if condition and add cooldown:
@@ -1288,7 +1288,7 @@ io.on("connection", (socket) => {
               player.grabCooldown = false;
             }, 1100);
           }
-        }, 32);
+        }, 64);
       }
     }
     // console.log(player.keys);
