@@ -72,7 +72,7 @@ function resetRoomAndPlayers(room) {
     player.isAlreadyHit = false;
     player.isDead = false;
     player.stamina = 100;
-    player.isDancing = false; // Add this line
+    player.isBowing = false; // Add this line
     player.x = player.fighter === "player 1" ? 150 : 900; // Reset position based on facing
     player.y = GROUND_LEVEL;
     player.knockbackVelocity = { x: 0, y: 0 };
@@ -332,12 +332,18 @@ io.on("connection", (socket) => {
             winner.wins = [];
             player.wins = [];
           } else {
-            winner.isDancing = true;
+            setTimeout(() => {
+              winner.isBowing = true;
+              player.isBowing = true;
+            }, 350);
           }
 
           // Reset all key states for both players
           room.players.forEach((p) => {
             // Clear all movement keys
+            const currentX = p.x;
+            p.isStrafing = false;
+            p.knockbackVelocity = { x: 0, y: 0 };
             p.keys = {
               w: false,
               a: false,
@@ -349,10 +355,7 @@ io.on("connection", (socket) => {
               f: false,
             };
             // Clear any ongoing movement states
-            p.isStrafing = false;
-            p.isDiving = false;
-            p.isJumping = false;
-            p.knockbackVelocity = { x: 0, y: 0 };
+            p.x = currentX;
           });
 
           io.in(room.id).emit("game_over", {
@@ -767,7 +770,7 @@ io.on("connection", (socket) => {
         isHit: false,
         isAlreadyHit: false,
         isDead: false,
-        isDancing: false,
+        isBowing: false,
         facing: 1,
         stamina: 100,
         x: 150,
@@ -823,7 +826,7 @@ io.on("connection", (socket) => {
         isHit: false,
         isAlreadyHit: false,
         isDead: false,
-        isDancing: false,
+        isBowing: false,
         facing: -1,
         stamina: 100,
         x: 900,
@@ -918,8 +921,8 @@ io.on("connection", (socket) => {
     let player = rooms[index].players[playerIndex];
     let opponent = rooms[index].players.find((p) => p.id !== player.id);
 
-    if (player.isDancing) {
-      return; // Skip all other actions if the player is dancing
+    if (rooms[index].gameOver && !rooms[index].matchOver) {
+      return; // Skip all other actions if the game is over
     }
 
     if (

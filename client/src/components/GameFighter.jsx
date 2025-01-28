@@ -72,10 +72,10 @@ const getImageSrc = (
   isGrabbing,
   isThrowingSalt,
   slapAnimation,
-  isDancing
+  isBowing
 ) => {
   if (fighter === "player 2") {
-    if (isDancing) return bow;
+    if (isBowing) return bow;
     if (isJumping) return throwing;
     if (isAttacking && !isSlapAttack) return attack;
     if (isGrabbing) return grabbing;
@@ -91,7 +91,7 @@ const getImageSrc = (
   } else if (fighter === "player 1") {
     if (isJumping) return throwing2;
     if (isAttacking && !isSlapAttack) return attack2;
-    if (isDancing) return bow2;
+    if (isBowing) return bow2;
     if (isSlapAttack) {
       // Toggle between two slap attack animations based on slapAnimation value
       return slapAnimation === 1 ? slapAttack1Blue : slapAttack2Blue;
@@ -157,7 +157,7 @@ const StyledImage = styled("img")
         "isBeingGrabbed",
         "isSlapAttack",
         "slapAnimation",
-        "isDancing",
+        "isBowing",
 
         // ...any other prop names that should not be forwarded
       ].includes(prop),
@@ -179,7 +179,7 @@ const StyledImage = styled("img")
       props.isGrabbing,
       props.isThrowingSalt,
       props.slapAnimation,
-      props.isDancing
+      props.isBowing
     ),
     style: {
       position: "absolute",
@@ -237,7 +237,7 @@ const StyledLabel = styled.div
         "beingThrownFacingDirection",
         "isBeingThrown",
         "isSlapAttack",
-        "isDancing",
+        "isBowing",
         // ...any other prop names that should not be forwarded
       ].includes(prop),
   })

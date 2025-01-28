@@ -67,14 +67,14 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.5vw; /* Proportional gap between elements */
-  color: black;
+  gap: 0.2vw; /* Proportional gap between elements */
+  color: white;
   margin: 0 auto; /* Center horizontally */
   position: absolute;
   top: 50%; /* Center vertically */
   right: 8%;
-  text-shadow: -1px -1px 0 #ffffff, 1px -1px 0 #ffffff, -1px 1px 0 #ffffff,
-    1px 1px 0 #ffffff;
+  text-shadow: -2px -2px 0 #000000, 2px -2px 0 #000000, -2px 2px 0 #000000,
+    2px 2px 0 #000000;
 }
 
 .loading-ellipsis {
