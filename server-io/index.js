@@ -104,37 +104,28 @@ io.on("connection", (socket) => {
 
   function checkForThrowTech(player, opponent) {
     const currentTime = Date.now();
-    const TECH_WINDOW = 300; // 200ms window for throw techs
-    console.log(player.isThrowTeching);
-    // Only check for throw tech if both players have recent attempt times
+    const TECH_WINDOW = 300;
+
+    // Early exit if no recent throw attempts
     if (!opponent.lastThrowAttemptTime && !opponent.lastGrabAttemptTime) {
       return false;
     }
 
-    // First, clean up old attempts
-    if (currentTime - player.lastThrowAttemptTime > TECH_WINDOW) {
-      player.lastThrowAttemptTime = 0;
-    }
-    if (currentTime - player.lastGrabAttemptTime > TECH_WINDOW) {
-      player.lastGrabAttemptTime = 0;
-    }
-    if (currentTime - opponent.lastThrowAttemptTime > TECH_WINDOW) {
-      opponent.lastThrowAttemptTime = 0;
-    }
-    if (currentTime - opponent.lastGrabAttemptTime > TECH_WINDOW) {
-      opponent.lastGrabAttemptTime = 0;
+    // Quick validity check for timing
+    const playerAttemptValid =
+      currentTime - player.lastThrowAttemptTime <= TECH_WINDOW ||
+      currentTime - player.lastGrabAttemptTime <= TECH_WINDOW;
+
+    const opponentAttemptValid =
+      currentTime - opponent.lastThrowAttemptTime <= TECH_WINDOW ||
+      currentTime - opponent.lastGrabAttemptTime <= TECH_WINDOW;
+
+    if (!playerAttemptValid || !opponentAttemptValid) {
+      return false;
     }
 
-    // Now check all possible tech scenarios
-    const bothThrew =
-      player.lastThrowAttemptTime && opponent.lastThrowAttemptTime;
-    const bothGrabbed =
-      player.lastGrabAttemptTime && opponent.lastGrabAttemptTime;
-    const throwAndGrab =
-      (player.lastThrowAttemptTime && opponent.lastGrabAttemptTime) ||
-      (player.lastGrabAttemptTime && opponent.lastThrowAttemptTime);
-
-    return bothThrew || bothGrabbed || throwAndGrab;
+    // If we get here, we have valid attempts from both players
+    return true;
   }
 
   // Update applyThrowTech to clear all relevant states:
@@ -1188,6 +1179,7 @@ io.on("connection", (socket) => {
         const GRAB_DISTANCE_THRESHOLD = 230; // Use the same threshold as the throw
         return distance <= GRAB_DISTANCE_THRESHOLD;
       }
+      // Modify the throw mechanics in the fighter_action event handler
       if (
         player.keys.w &&
         !player.isThrowing &&
@@ -1200,38 +1192,21 @@ io.on("connection", (socket) => {
         !player.isJumping &&
         !player.throwCooldown
       ) {
+        // Record throw attempt immediately
         player.lastThrowAttemptTime = Date.now();
+        const opponent = rooms[index].players.find((p) => p.id !== player.id);
 
-        setTimeout(() => {
-          const opponent = rooms[index].players.find((p) => p.id !== player.id);
-
-          if (
-            isOpponentCloseEnoughForThrow(player, opponent) &&
-            !opponent.isBeingThrown &&
-            !opponent.isAttacking &&
-            !opponent.isDodging
-          ) {
-            if (checkForThrowTech(player, opponent)) {
-              applyThrowTech(player, opponent);
-            } else if (!player.throwTechCooldown) {
-              player.isChargingAttack = false;
-              player.chargeStartTime = 0;
-              player.chargeAttackPower = 1;
-              player.chargingFacingDirection = null;
-
-              player.isThrowing = true;
-              player.throwStartTime = Date.now();
-              player.throwEndTime = Date.now() + 400;
-              player.throwOpponent = opponent.id;
-              opponent.isBeingThrown = true;
-              opponent.isHit = true;
-
-              player.throwCooldown = true;
-              setTimeout(() => {
-                player.throwCooldown = false;
-              }, 250);
-            }
-          } else {
+        // Check for throw tech immediately
+        if (
+          isOpponentCloseEnoughForThrow(player, opponent) &&
+          !opponent.isBeingThrown &&
+          !opponent.isAttacking &&
+          !opponent.isDodging
+        ) {
+          if (checkForThrowTech(player, opponent)) {
+            applyThrowTech(player, opponent);
+          } else if (!player.throwTechCooldown) {
+            // Execute throw immediately if no tech
             player.isChargingAttack = false;
             player.chargeStartTime = 0;
             player.chargeAttackPower = 1;
@@ -1240,13 +1215,32 @@ io.on("connection", (socket) => {
             player.isThrowing = true;
             player.throwStartTime = Date.now();
             player.throwEndTime = Date.now() + 400;
+            player.throwOpponent = opponent.id;
+            opponent.isBeingThrown = true;
+            opponent.isHit = true;
 
+            // Apply cooldown
             player.throwCooldown = true;
             setTimeout(() => {
               player.throwCooldown = false;
             }, 250);
           }
-        }, 64);
+        } else {
+          // Execute empty throw immediately
+          player.isChargingAttack = false;
+          player.chargeStartTime = 0;
+          player.chargeAttackPower = 1;
+          player.chargingFacingDirection = null;
+
+          player.isThrowing = true;
+          player.throwStartTime = Date.now();
+          player.throwEndTime = Date.now() + 400;
+
+          player.throwCooldown = true;
+          setTimeout(() => {
+            player.throwCooldown = false;
+          }, 250);
+        }
       }
 
       // In the grabbing section, update the if condition and add cooldown:

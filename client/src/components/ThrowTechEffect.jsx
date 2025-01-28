@@ -10,7 +10,6 @@ const ThrowTechEffect = () => {
     y: 0,
   });
 
-  // Track the last throw tech sequence to prevent retriggering
   const lastTechTime = useRef(0);
   const wasTeching = useRef(false);
 
@@ -20,10 +19,6 @@ const ThrowTechEffect = () => {
         data.player1.isThrowTeching || data.player2.isThrowTeching;
       const currentTime = Date.now();
 
-      // Only trigger if:
-      // 1. We're now teching
-      // 2. Weren't teching before
-      // 3. Haven't triggered recently (within 500ms to be safe)
       if (
         isTeching &&
         !wasTeching.current &&
@@ -40,13 +35,11 @@ const ThrowTechEffect = () => {
 
         lastTechTime.current = currentTime;
 
-        // Hide effect after 100ms
         setTimeout(() => {
           setEffectState((prev) => ({ ...prev, isVisible: false }));
         }, 100);
       }
 
-      // Update teching state for next frame
       wasTeching.current = isTeching;
     };
 
@@ -67,11 +60,18 @@ const ThrowTechEffect = () => {
         bottom: `${(effectState.y / 720) * 100}%`,
       }}
     >
-      <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path
-          d="M50 0 L61 35 L98 35 L68 57 L79 91 L50 70 L21 91 L32 57 L2 35 L39 35 Z"
-          className="tech-star"
-        />
+      <svg
+        viewBox="0 0 100 100"
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ background: "none" }}
+      >
+        <defs>
+          <path
+            id="star-path"
+            d="M50 0 L61 35 L98 35 L68 57 L79 91 L50 70 L21 91 L32 57 L2 35 L39 35 Z"
+          />
+        </defs>
+        <use href="#star-path" className="tech-star" />
       </svg>
     </div>
   );
