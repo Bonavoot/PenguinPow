@@ -154,6 +154,17 @@ io.on("connection", (socket) => {
     opponent.isBeingThrown = false;
     opponent.isBeingGrabbed = false;
 
+    // Clear charge attack states for both players
+    player.isChargingAttack = false;
+    player.chargeStartTime = 0;
+    player.chargeAttackPower = 1;
+    player.chargingFacingDirection = null;
+
+    opponent.isChargingAttack = false;
+    opponent.chargeStartTime = 0;
+    opponent.chargeAttackPower = 1;
+    opponent.chargingFacingDirection = null;
+
     // Set up the tech state
     player.isThrowTeching = true;
     opponent.isThrowTeching = true;
