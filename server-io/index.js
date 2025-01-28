@@ -966,7 +966,8 @@ io.on("connection", (socket) => {
         if (
           isOpponentCloseEnoughForThrow(player, opponent) &&
           !opponent.isBeingThrown &&
-          !opponent.isAttacking
+          !opponent.isAttacking &&
+          !opponent.isDodging
         ) {
           player.isThrowing = true;
           player.throwStartTime = Date.now();
@@ -1179,7 +1180,7 @@ io.on("connection", (socket) => {
         !player.isAttacking &&
         !player.isJumping &&
         !player.isThrowing &&
-        !player.grabCooldown // Add this condition
+        !player.grabCooldown
       ) {
         const opponent = rooms[index].players.find((p) => p.id !== player.id);
         if (
@@ -1187,7 +1188,8 @@ io.on("connection", (socket) => {
           !opponent.isBeingThrown &&
           !opponent.isAttacking &&
           !opponent.isBeingGrabbed &&
-          !player.isBeingGrabbed
+          !player.isBeingGrabbed &&
+          !opponent.isDodging
         ) {
           player.isGrabbing = true;
           opponent.isHit = true;
