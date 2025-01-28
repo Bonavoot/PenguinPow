@@ -6,6 +6,7 @@ import "./MatchOver.css";
 import PlayerStaminaUi from "./PlayerStaminaUi";
 import Gyoji from "./Gyoji";
 import PlayerShadow from "./PlayerShadow";
+import ThrowTechEffect from "./ThrowTechEffect";
 // import "./DustEffect.css";
 // import DustEffect from "./DustEffect";
 
@@ -483,6 +484,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         playerX={penguin.x}
         playerY={penguin.y}
       />
+      <ThrowTechEffect />
     </div>
   );
 };

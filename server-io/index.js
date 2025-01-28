@@ -138,9 +138,11 @@ io.on("connection", (socket) => {
   }
 
   // Update applyThrowTech to clear all relevant states:
+  const TECH_FREEZE_DURATION = 200; // Duration of the freeze in milliseconds
+  const TECH_KNOCKBACK_VELOCITY = 5;
+
   function applyThrowTech(player, opponent) {
     const knockbackDirection = player.x < opponent.x ? -1 : 1;
-    const TECH_KNOCKBACK_VELOCITY = 5;
 
     // Clear all throw/grab states first
     player.isThrowing = false;
@@ -152,13 +154,17 @@ io.on("connection", (socket) => {
     opponent.isBeingThrown = false;
     opponent.isBeingGrabbed = false;
 
-    // Apply the tech effects
-    player.knockbackVelocity.x = TECH_KNOCKBACK_VELOCITY * knockbackDirection;
-    opponent.knockbackVelocity.x =
-      TECH_KNOCKBACK_VELOCITY * -knockbackDirection;
-
+    // Set up the tech state
     player.isThrowTeching = true;
     opponent.isThrowTeching = true;
+
+    // Add freeze timing properties
+    player.techFreezeStartTime = Date.now();
+    opponent.techFreezeStartTime = Date.now();
+
+    // Store knockback values but don't apply them yet
+    player.pendingKnockback = TECH_KNOCKBACK_VELOCITY * knockbackDirection;
+    opponent.pendingKnockback = TECH_KNOCKBACK_VELOCITY * -knockbackDirection;
 
     // Clear attempt times
     player.lastThrowAttemptTime = 0;
@@ -551,12 +557,27 @@ io.on("connection", (socket) => {
 
         // Throw tech
         if (player.isThrowTeching) {
-          player.x += player.knockbackVelocity.x * delta * speedFactor;
-          player.knockbackVelocity.x *= 0.9; // Apply some friction
+          const currentTime = Date.now();
+          const freezeElapsed = currentTime - player.techFreezeStartTime;
 
-          if (Math.abs(player.knockbackVelocity.x) < 0.1) {
+          if (freezeElapsed >= TECH_FREEZE_DURATION) {
+            // Only apply knockback after freeze duration
+            if (player.pendingKnockback !== undefined) {
+              player.knockbackVelocity.x = player.pendingKnockback;
+              delete player.pendingKnockback;
+            }
+
+            player.x += player.knockbackVelocity.x * delta * speedFactor;
+            player.knockbackVelocity.x *= 0.9; // Apply friction
+
+            if (Math.abs(player.knockbackVelocity.x) < 0.1) {
+              player.knockbackVelocity.x = 0;
+              player.isThrowTeching = false;
+            }
+          }
+          // During freeze duration, ensure the player doesn't move
+          else {
             player.knockbackVelocity.x = 0;
-            player.isThrowTeching = false;
           }
         }
         // Dodging
