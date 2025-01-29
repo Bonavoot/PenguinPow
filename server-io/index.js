@@ -539,13 +539,16 @@ io.on("connection", (socket) => {
           );
           if (opponent) {
             const throwArcHeight = 450; // Adjust as needed
-            const throwDistance = 240;
+            const throwDistance = 220;
+            const armsReachDistance = -100; // Adjust this value for proper "arms reach" distance
 
             // Calculate opponent's position in the throw arc
             if (!player.throwingFacingDirection) {
-              console.log(player.facing, "while player is throwing");
               player.throwingFacingDirection = player.facing;
               opponent.beingThrownFacingDirection = opponent.facing;
+              opponent.x =
+                player.x + player.throwingFacingDirection * armsReachDistance;
+              opponent.y = GROUND_LEVEL;
             }
 
             player.facing = player.throwingFacingDirection;
@@ -555,12 +558,15 @@ io.on("connection", (socket) => {
             }
             opponent.facing = opponent.beingThrownFacingDirection;
 
+            // Calculate throw position from the arms reach starting point
             opponent.x =
               player.x +
-              player.throwingFacingDirection * throwDistance * throwProgress; // Adjust 130 to control throw distance
+              player.throwingFacingDirection *
+                (armsReachDistance +
+                  (throwDistance - armsReachDistance) * throwProgress);
             opponent.y =
               GROUND_LEVEL +
-              3.2 * throwArcHeight * throwProgress * (1 - throwProgress); // Parabolic trajectory
+              3.2 * throwArcHeight * throwProgress * (1 - throwProgress);
 
             // Check if throw is complete
             if (currentTime >= player.throwEndTime) {
@@ -639,12 +645,12 @@ io.on("connection", (socket) => {
             player.saltCooldown === false &&
             !player.isThrowTeching)
         ) {
-          if (player.keys.d && !player.isDodging) {
+          if (player.keys.d && !player.isDodging && !player.isThrowing) {
             player.x += delta * speedFactor;
             player.isStrafing = true;
             player.isReady = false;
           }
-          if (player.keys.a && !player.isDodging) {
+          if (player.keys.a && !player.isDodging && !player.isThrowing) {
             player.x -= delta * speedFactor;
             player.isStrafing = true;
             player.isReady = false;
@@ -1081,7 +1087,7 @@ io.on("connection", (socket) => {
 
       setTimeout(() => {
         player.saltCooldown = false;
-      }, 500);
+      }, 750);
     }
 
     if (data.keys) {

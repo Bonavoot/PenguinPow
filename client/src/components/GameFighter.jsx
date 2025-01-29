@@ -27,7 +27,7 @@ import slapAttack1Blue from "../assets/slapAttack1blue.png";
 import slapAttack2Blue from "../assets/slapAttack2blue.png";
 import dodging from "../assets/dodging.gif";
 import dodging2 from "../assets/dodging2.gif";
-import throwing from "../assets/throwing-nonmirror.png";
+import throwing from "../assets/throwing.png";
 import throwing2 from "../assets/throwing2.png";
 import hit from "../assets/hit.png";
 import hit2 from "../assets/hit2.png";
@@ -197,7 +197,7 @@ const StyledImage = styled("img")
       /* Flip horizontally if facing is -1; scaleX(1) is normal, scaleX(-1) is mirrored */
       transform: `scaleX(${props.facing})`,
 
-      zIndex: props.isBeingThrown || !props.isDodging ? 99 : 98,
+      zIndex: props.isThrowing || props.isDodging || props.isGrabbing ? 98 : 99,
     },
   }))`
   position: absolute;
