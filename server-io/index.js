@@ -143,37 +143,46 @@ io.on("connection", (socket) => {
 
   function applyThrowTech(player, opponent) {
     const knockbackDirection = player.x < opponent.x ? -1 : 1;
+    const currentTime = Date.now();
 
-    // Clear all throw/grab states first
-    player.isThrowing = false;
-    player.isGrabbing = false;
-    player.isBeingThrown = false;
-    player.isBeingGrabbed = false;
-    opponent.isThrowing = false;
-    opponent.isGrabbing = false;
-    opponent.isBeingThrown = false;
-    opponent.isBeingGrabbed = false;
+    // Force clear ALL possible action states
+    const statesToClear = [
+      "isThrowing",
+      "isGrabbing",
+      "isBeingThrown",
+      "isBeingGrabbed",
+      "isAttacking",
+      "isChargingAttack",
+      "isSlapAttack",
+      "isDodging",
+      "isJumping",
+      "isStrafing",
+      "isDiving",
+      "isCrouching",
+    ];
 
-    // Clear charge attack states for both players
-    player.isChargingAttack = false;
-    player.chargeStartTime = 0;
-    player.chargeAttackPower = 1;
-    player.chargingFacingDirection = null;
+    // Clear states for both players
+    [player, opponent].forEach((p) => {
+      statesToClear.forEach((state) => (p[state] = false));
 
-    opponent.isChargingAttack = false;
-    opponent.chargeStartTime = 0;
-    opponent.chargeAttackPower = 1;
-    opponent.chargingFacingDirection = null;
+      // Reset all charge/attack related values
+      p.isChargingAttack = false;
+      p.chargeStartTime = 0;
+      p.chargeAttackPower = 1;
+      p.chargingFacingDirection = null;
 
-    // Set up the tech state
-    player.isThrowTeching = true;
-    opponent.isThrowTeching = true;
+      // Clear all keys to prevent immediate actions after tech
+      Object.keys(p.keys).forEach((key) => (p.keys[key] = false));
 
-    // Add freeze timing properties
-    player.techFreezeStartTime = Date.now();
-    opponent.techFreezeStartTime = Date.now();
+      // Force throw tech state
+      p.isThrowTeching = true;
+      p.techFreezeStartTime = currentTime;
 
-    // Store knockback values but don't apply them yet
+      // Clear any existing velocities
+      p.knockbackVelocity = { x: 0, y: 0 };
+    });
+
+    // Store knockback values to be applied after freeze
     player.pendingKnockback = TECH_KNOCKBACK_VELOCITY * knockbackDirection;
     opponent.pendingKnockback = TECH_KNOCKBACK_VELOCITY * -knockbackDirection;
 
@@ -571,26 +580,31 @@ io.on("connection", (socket) => {
           const currentTime = Date.now();
           const freezeElapsed = currentTime - player.techFreezeStartTime;
 
+          // Ensure no other states can be active during throw tech
+          statesToClear.forEach((state) => (player[state] = false));
+
           if (freezeElapsed >= TECH_FREEZE_DURATION) {
             // Only apply knockback after freeze duration
             if (player.pendingKnockback !== undefined) {
               player.knockbackVelocity.x = player.pendingKnockback;
               delete player.pendingKnockback;
-            }
 
-            player.x += player.knockbackVelocity.x * delta * speedFactor;
-            player.knockbackVelocity.x *= 0.9; // Apply friction
+              // Force movement regardless of other states
+              player.x += player.knockbackVelocity.x * delta * speedFactor;
+              player.knockbackVelocity.x *= 0.9; // Apply friction
 
-            if (Math.abs(player.knockbackVelocity.x) < 0.1) {
-              player.knockbackVelocity.x = 0;
-              player.isThrowTeching = false;
+              if (Math.abs(player.knockbackVelocity.x) < 0.1) {
+                player.knockbackVelocity.x = 0;
+                player.isThrowTeching = false;
+              }
             }
-          }
-          // During freeze duration, ensure the player doesn't move
-          else {
+          } else {
+            // During freeze duration, ensure the player doesn't move
             player.knockbackVelocity.x = 0;
+            player.x = player.x; // Force position to stay the same
           }
         }
+
         // Dodging
         if (player.isDodging) {
           player.x += player.dodgeDirection * delta * speedFactor * 2.5;
