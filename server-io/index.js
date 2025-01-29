@@ -1254,8 +1254,7 @@ io.on("connection", (socket) => {
           if (
             isOpponentCloseEnoughForThrow(player, opponent) &&
             !opponent.isBeingThrown &&
-            !opponent.isAttacking &&
-            !opponent.isDodging
+            !opponent.isAttacking
           ) {
             if (checkForThrowTech(player, opponent)) {
               applyThrowTech(player, opponent);
@@ -1318,8 +1317,7 @@ io.on("connection", (socket) => {
             !opponent.isBeingThrown &&
             !opponent.isAttacking &&
             !opponent.isBeingGrabbed &&
-            !player.isBeingGrabbed &&
-            !opponent.isDodging
+            !player.isBeingGrabbed
           ) {
             if (checkForThrowTech(player, opponent)) {
               applyThrowTech(player, opponent);
