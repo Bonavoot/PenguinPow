@@ -103,30 +103,29 @@ io.on("connection", (socket) => {
   }
 
   function checkForThrowTech(player, opponent) {
-    // First check if either player is currently in a throw tech animation
-    if (player.isThrowTeching || opponent.isThrowTeching) {
-      return false;
-    }
-
-    // Check if either player is on cooldown
-    if (player.throwTechCooldown || opponent.throwTechCooldown) {
-      return false;
-    }
-
     const currentTime = Date.now();
     const TECH_WINDOW = 300; // 300ms window for throw techs
-
+    console.log(player.isThrowTeching);
     // Only check for throw tech if both players have recent attempt times
     if (!opponent.lastThrowAttemptTime && !opponent.lastGrabAttemptTime) {
       return false;
     }
 
-    // Rest of your existing code...
+    // First, clean up old attempts
     if (currentTime - player.lastThrowAttemptTime > TECH_WINDOW) {
       player.lastThrowAttemptTime = 0;
     }
-    // ... (rest of the cleanup code)
+    if (currentTime - player.lastGrabAttemptTime > TECH_WINDOW) {
+      player.lastGrabAttemptTime = 0;
+    }
+    if (currentTime - opponent.lastThrowAttemptTime > TECH_WINDOW) {
+      opponent.lastThrowAttemptTime = 0;
+    }
+    if (currentTime - opponent.lastGrabAttemptTime > TECH_WINDOW) {
+      opponent.lastGrabAttemptTime = 0;
+    }
 
+    // Now check all possible tech scenarios
     const bothThrew =
       player.lastThrowAttemptTime && opponent.lastThrowAttemptTime;
     const bothGrabbed =
@@ -150,7 +149,6 @@ io.on("connection", (socket) => {
     player.isGrabbing = false;
     player.isBeingThrown = false;
     player.isBeingGrabbed = false;
-
     opponent.isThrowing = false;
     opponent.isGrabbing = false;
     opponent.isBeingThrown = false;
@@ -732,12 +730,10 @@ io.on("connection", (socket) => {
       !player.isAttacking ||
       otherPlayer.isAlreadyHit ||
       otherPlayer.isDead ||
-      otherPlayer.isDodging ||
-      player.isDodging ||
+      otherPlayer.isDodging || // Already present in your code
+      player.isDodging || // Already present in your code
       player.isBeingThrown ||
-      otherPlayer.isBeingThrown ||
-      player.isThrowTeching ||
-      otherPlayer.isThrowTeching
+      otherPlayer.isBeingThrown
     ) {
       return;
     }
@@ -1074,7 +1070,6 @@ io.on("connection", (socket) => {
         !player.isBeingThrown &&
         !player.isGrabbing &&
         !player.isBeingGrabbed &&
-        !player.isThrowTeching &&
         player.stamina >= 50
       ) {
         player.isDodging = true;
@@ -1118,8 +1113,7 @@ io.on("connection", (socket) => {
         !player.isGrabbing &&
         !player.isBeingGrabbed &&
         !player.isHit &&
-        !player.isAttackCooldown &&
-        !player.isThrowTeching
+        !player.isAttackCooldown
       ) {
         // Start charging if not already charging
         // Start charging if not already charging
@@ -1217,8 +1211,7 @@ io.on("connection", (socket) => {
         !player.isCrouching &&
         !player.isAttacking &&
         !player.isJumping &&
-        !player.throwCooldown &&
-        !player.isThrowTeching
+        !player.throwCooldown
       ) {
         player.lastThrowAttemptTime = Date.now();
 
@@ -1280,8 +1273,7 @@ io.on("connection", (socket) => {
         !player.isAttacking &&
         !player.isJumping &&
         !player.isThrowing &&
-        !player.grabCooldown &&
-        !player.isThrowTeching
+        !player.grabCooldown
       ) {
         player.lastGrabAttemptTime = Date.now();
 
