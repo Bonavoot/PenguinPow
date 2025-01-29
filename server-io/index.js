@@ -605,10 +605,12 @@ io.on("connection", (socket) => {
         if (
           (!player.keys.s &&
             !player.isAttacking &&
-            player.saltCooldown === false) ||
+            player.saltCooldown === false &&
+            !player.isThrowTeching) ||
           (!player.keys.s &&
             player.isSlapAttack &&
-            player.saltCooldown === false)
+            player.saltCooldown === false &&
+            !player.isThrowTeching)
         ) {
           if (player.keys.d && !player.isDodging) {
             player.x += delta * speedFactor;
@@ -624,7 +626,7 @@ io.on("connection", (socket) => {
             player.isStrafing = false;
           }
         }
-        if (!player.keys.a && !player.keys.d) {
+        if ((!player.keys.a && !player.keys.d) || player.isThrowTeching) {
           player.isStrafing = false;
         }
         if (player.keys.a && player.keys.d) {
