@@ -105,7 +105,17 @@ io.on("connection", (socket) => {
   function checkForThrowTech(player, opponent) {
     const currentTime = Date.now();
     const TECH_WINDOW = 300; // 300ms window for throw techs
-    console.log(player.isThrowTeching);
+
+    // If either player is already in a throw tech state, return false
+    if (player.isThrowTeching || opponent.isThrowTeching) {
+      return false;
+    }
+
+    // If either player is in throw tech cooldown, return false
+    if (player.throwTechCooldown || opponent.throwTechCooldown) {
+      return false;
+    }
+
     // Only check for throw tech if both players have recent attempt times
     if (!opponent.lastThrowAttemptTime && !opponent.lastGrabAttemptTime) {
       return false;
@@ -142,6 +152,16 @@ io.on("connection", (socket) => {
   const TECH_KNOCKBACK_VELOCITY = 5;
 
   function applyThrowTech(player, opponent) {
+    // If either player is already in a throw tech state or cooldown, return immediately
+    if (
+      player.isThrowTeching ||
+      opponent.isThrowTeching ||
+      player.throwTechCooldown ||
+      opponent.throwTechCooldown
+    ) {
+      return;
+    }
+
     const knockbackDirection = player.x < opponent.x ? -1 : 1;
 
     // Clear all throw/grab states first
@@ -170,14 +190,15 @@ io.on("connection", (socket) => {
     opponent.isThrowTeching = true;
 
     // Add freeze timing properties
-    player.techFreezeStartTime = Date.now();
-    opponent.techFreezeStartTime = Date.now();
+    const techStartTime = Date.now();
+    player.techFreezeStartTime = techStartTime;
+    opponent.techFreezeStartTime = techStartTime;
 
     // Store knockback values but don't apply them yet
     player.pendingKnockback = TECH_KNOCKBACK_VELOCITY * knockbackDirection;
     opponent.pendingKnockback = TECH_KNOCKBACK_VELOCITY * -knockbackDirection;
 
-    // Clear attempt times
+    // Clear attempt times immediately to prevent multiple techs
     player.lastThrowAttemptTime = 0;
     player.lastGrabAttemptTime = 0;
     opponent.lastThrowAttemptTime = 0;
@@ -191,9 +212,18 @@ io.on("connection", (socket) => {
     setTimeout(() => {
       player.isThrowTeching = false;
       opponent.isThrowTeching = false;
-    }, 300);
+      // Apply knockback after the freeze period
+      if (player.pendingKnockback) {
+        player.knockbackVelocity.x = player.pendingKnockback;
+        delete player.pendingKnockback;
+      }
+      if (opponent.pendingKnockback) {
+        opponent.knockbackVelocity.x = opponent.pendingKnockback;
+        delete opponent.pendingKnockback;
+      }
+    }, TECH_FREEZE_DURATION);
 
-    // Reset cooldown
+    // Reset cooldown after a longer duration
     setTimeout(() => {
       player.throwTechCooldown = false;
       opponent.throwTechCooldown = false;
