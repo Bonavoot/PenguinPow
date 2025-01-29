@@ -103,29 +103,30 @@ io.on("connection", (socket) => {
   }
 
   function checkForThrowTech(player, opponent) {
+    // First check if either player is currently in a throw tech animation
+    if (player.isThrowTeching || opponent.isThrowTeching) {
+      return false;
+    }
+
+    // Check if either player is on cooldown
+    if (player.throwTechCooldown || opponent.throwTechCooldown) {
+      return false;
+    }
+
     const currentTime = Date.now();
     const TECH_WINDOW = 300; // 300ms window for throw techs
-    console.log(player.isThrowTeching);
+
     // Only check for throw tech if both players have recent attempt times
     if (!opponent.lastThrowAttemptTime && !opponent.lastGrabAttemptTime) {
       return false;
     }
 
-    // First, clean up old attempts
+    // Rest of your existing code...
     if (currentTime - player.lastThrowAttemptTime > TECH_WINDOW) {
       player.lastThrowAttemptTime = 0;
     }
-    if (currentTime - player.lastGrabAttemptTime > TECH_WINDOW) {
-      player.lastGrabAttemptTime = 0;
-    }
-    if (currentTime - opponent.lastThrowAttemptTime > TECH_WINDOW) {
-      opponent.lastThrowAttemptTime = 0;
-    }
-    if (currentTime - opponent.lastGrabAttemptTime > TECH_WINDOW) {
-      opponent.lastGrabAttemptTime = 0;
-    }
+    // ... (rest of the cleanup code)
 
-    // Now check all possible tech scenarios
     const bothThrew =
       player.lastThrowAttemptTime && opponent.lastThrowAttemptTime;
     const bothGrabbed =
