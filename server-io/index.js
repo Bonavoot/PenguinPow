@@ -150,15 +150,11 @@ io.on("connection", (socket) => {
     player.isGrabbing = false;
     player.isBeingThrown = false;
     player.isBeingGrabbed = false;
-    player.isSlapAttack = false;
-    player.isDodging = false;
 
     opponent.isThrowing = false;
     opponent.isGrabbing = false;
     opponent.isBeingThrown = false;
     opponent.isBeingGrabbed = false;
-    opponent.isSlapAttack = false;
-    opponent.isDodging = false;
 
     // Clear charge attack states for both players
     player.isChargingAttack = false;
@@ -736,10 +732,12 @@ io.on("connection", (socket) => {
       !player.isAttacking ||
       otherPlayer.isAlreadyHit ||
       otherPlayer.isDead ||
-      otherPlayer.isDodging || // Already present in your code
-      player.isDodging || // Already present in your code
+      otherPlayer.isDodging ||
+      player.isDodging ||
       player.isBeingThrown ||
-      otherPlayer.isBeingThrown
+      otherPlayer.isBeingThrown ||
+      player.isThrowTeching ||
+      otherPlayer.isThrowTeching
     ) {
       return;
     }
@@ -1076,6 +1074,7 @@ io.on("connection", (socket) => {
         !player.isBeingThrown &&
         !player.isGrabbing &&
         !player.isBeingGrabbed &&
+        !player.isThrowTeching &&
         player.stamina >= 50
       ) {
         player.isDodging = true;
@@ -1119,7 +1118,8 @@ io.on("connection", (socket) => {
         !player.isGrabbing &&
         !player.isBeingGrabbed &&
         !player.isHit &&
-        !player.isAttackCooldown
+        !player.isAttackCooldown &&
+        !player.isThrowTeching
       ) {
         // Start charging if not already charging
         // Start charging if not already charging
@@ -1217,7 +1217,8 @@ io.on("connection", (socket) => {
         !player.isCrouching &&
         !player.isAttacking &&
         !player.isJumping &&
-        !player.throwCooldown
+        !player.throwCooldown &&
+        !player.isThrowTeching
       ) {
         player.lastThrowAttemptTime = Date.now();
 
@@ -1279,7 +1280,8 @@ io.on("connection", (socket) => {
         !player.isAttacking &&
         !player.isJumping &&
         !player.isThrowing &&
-        !player.grabCooldown
+        !player.grabCooldown &&
+        !player.isThrowTeching
       ) {
         player.lastGrabAttemptTime = Date.now();
 
