@@ -194,9 +194,10 @@ io.on("connection", (socket) => {
     player.techFreezeStartTime = techStartTime;
     opponent.techFreezeStartTime = techStartTime;
 
-    // Store knockback values but don't apply them yet
-    player.pendingKnockback = TECH_KNOCKBACK_VELOCITY * knockbackDirection;
-    opponent.pendingKnockback = TECH_KNOCKBACK_VELOCITY * -knockbackDirection;
+    // Store knockback values
+    player.knockbackVelocity.x = TECH_KNOCKBACK_VELOCITY * knockbackDirection;
+    opponent.knockbackVelocity.x =
+      TECH_KNOCKBACK_VELOCITY * -knockbackDirection;
 
     // Clear attempt times immediately to prevent multiple techs
     player.lastThrowAttemptTime = 0;
@@ -212,15 +213,6 @@ io.on("connection", (socket) => {
     setTimeout(() => {
       player.isThrowTeching = false;
       opponent.isThrowTeching = false;
-      // Apply knockback after the freeze period
-      if (player.pendingKnockback) {
-        player.knockbackVelocity.x = player.pendingKnockback;
-        delete player.pendingKnockback;
-      }
-      if (opponent.pendingKnockback) {
-        opponent.knockbackVelocity.x = opponent.pendingKnockback;
-        delete opponent.pendingKnockback;
-      }
     }, TECH_FREEZE_DURATION);
 
     // Reset cooldown after a longer duration
@@ -602,25 +594,23 @@ io.on("connection", (socket) => {
           const freezeElapsed = currentTime - player.techFreezeStartTime;
 
           if (freezeElapsed >= TECH_FREEZE_DURATION) {
-            // Only apply knockback after freeze duration
-            if (player.pendingKnockback !== undefined) {
-              player.knockbackVelocity.x = player.pendingKnockback;
-              delete player.pendingKnockback;
-            }
-
+            // Apply knockback movement after freeze duration
             player.x += player.knockbackVelocity.x * delta * speedFactor;
-            player.knockbackVelocity.x *= 0.9; // Apply friction
 
+            // Apply friction to gradually slow down the knockback
+            player.knockbackVelocity.x *= 0.95; // Adjust this value to control how quickly the knockback slows down
+
+            // Stop the throw tech state when the knockback is very small
             if (Math.abs(player.knockbackVelocity.x) < 0.1) {
               player.knockbackVelocity.x = 0;
               player.isThrowTeching = false;
             }
-          }
-          // During freeze duration, ensure the player doesn't move
-          else {
-            player.knockbackVelocity.x = 0;
+          } else {
+            // During freeze duration, ensure the player doesn't move
+            player.knockbackVelocity.x = player.knockbackVelocity.x; // Preserve the velocity but don't apply it yet
           }
         }
+
         // Dodging
         if (player.isDodging) {
           player.x += player.dodgeDirection * delta * speedFactor * 2.5;
