@@ -137,58 +137,43 @@ io.on("connection", (socket) => {
     return bothThrew || bothGrabbed || throwAndGrab;
   }
 
-  const statesToClear = [
-    "isThrowing",
-    "isGrabbing",
-    "isBeingThrown",
-    "isBeingGrabbed",
-    "isAttacking",
-    "isChargingAttack",
-    "isSlapAttack",
-    "isDodging",
-    "isJumping",
-    "isStrafing",
-    "isDiving",
-    "isCrouching",
-  ];
   // Update applyThrowTech to clear all relevant states:
   const TECH_FREEZE_DURATION = 200; // Duration of the freeze in milliseconds
   const TECH_KNOCKBACK_VELOCITY = 5;
 
   function applyThrowTech(player, opponent) {
     const knockbackDirection = player.x < opponent.x ? -1 : 1;
-    const currentTime = Date.now();
 
-    // Clear states for both players
-    [player, opponent].forEach((p) => {
-      // Clear all action states
-      statesToClear.forEach((state) => {
-        if (p[state] !== undefined) {
-          // Check if the state exists before clearing
-          p[state] = false;
-        }
-      });
+    // Clear all throw/grab states first
+    player.isThrowing = false;
+    player.isGrabbing = false;
+    player.isBeingThrown = false;
+    player.isBeingGrabbed = false;
+    opponent.isThrowing = false;
+    opponent.isGrabbing = false;
+    opponent.isBeingThrown = false;
+    opponent.isBeingGrabbed = false;
 
-      // Reset all charge/attack related values
-      p.isChargingAttack = false;
-      p.chargeStartTime = 0;
-      p.chargeAttackPower = 1;
-      p.chargingFacingDirection = null;
+    // Clear charge attack states for both players
+    player.isChargingAttack = false;
+    player.chargeStartTime = 0;
+    player.chargeAttackPower = 1;
+    player.chargingFacingDirection = null;
 
-      // Clear all keys
-      if (p.keys) {
-        Object.keys(p.keys).forEach((key) => (p.keys[key] = false));
-      }
+    opponent.isChargingAttack = false;
+    opponent.chargeStartTime = 0;
+    opponent.chargeAttackPower = 1;
+    opponent.chargingFacingDirection = null;
 
-      // Set up throw tech state
-      p.isThrowTeching = true;
-      p.techFreezeStartTime = currentTime;
+    // Set up the tech state
+    player.isThrowTeching = true;
+    opponent.isThrowTeching = true;
 
-      // Clear velocities
-      p.knockbackVelocity = { x: 0, y: 0 };
-    });
+    // Add freeze timing properties
+    player.techFreezeStartTime = Date.now();
+    opponent.techFreezeStartTime = Date.now();
 
-    // Store knockback values
+    // Store knockback values but don't apply them yet
     player.pendingKnockback = TECH_KNOCKBACK_VELOCITY * knockbackDirection;
     opponent.pendingKnockback = TECH_KNOCKBACK_VELOCITY * -knockbackDirection;
 
@@ -204,20 +189,14 @@ io.on("connection", (socket) => {
 
     // Reset states after animation
     setTimeout(() => {
-      if (player && opponent) {
-        // Check if players still exist
-        player.isThrowTeching = false;
-        opponent.isThrowTeching = false;
-      }
+      player.isThrowTeching = false;
+      opponent.isThrowTeching = false;
     }, 300);
 
     // Reset cooldown
     setTimeout(() => {
-      if (player && opponent) {
-        // Check if players still exist
-        player.throwTechCooldown = false;
-        opponent.throwTechCooldown = false;
-      }
+      player.throwTechCooldown = false;
+      opponent.throwTechCooldown = false;
     }, 500);
   }
 
@@ -592,41 +571,26 @@ io.on("connection", (socket) => {
           const currentTime = Date.now();
           const freezeElapsed = currentTime - player.techFreezeStartTime;
 
-          try {
-            // Clear states safely
-            statesToClear.forEach((state) => {
-              if (player[state] !== undefined) {
-                player[state] = false;
-              }
-            });
-
-            if (freezeElapsed >= TECH_FREEZE_DURATION) {
-              if (player.pendingKnockback !== undefined) {
-                // Apply knockback
-                player.knockbackVelocity.x = player.pendingKnockback;
-                delete player.pendingKnockback;
-
-                // Force movement
-                player.x += player.knockbackVelocity.x * delta * speedFactor;
-                player.knockbackVelocity.x *= 0.9;
-
-                if (Math.abs(player.knockbackVelocity.x) < 0.1) {
-                  player.knockbackVelocity.x = 0;
-                  player.isThrowTeching = false;
-                }
-              }
-            } else {
-              // Freeze duration
-              player.knockbackVelocity.x = 0;
+          if (freezeElapsed >= TECH_FREEZE_DURATION) {
+            // Only apply knockback after freeze duration
+            if (player.pendingKnockback !== undefined) {
+              player.knockbackVelocity.x = player.pendingKnockback;
+              delete player.pendingKnockback;
             }
-          } catch (error) {
-            console.error("Error in throw tech handling:", error);
-            // Safely reset throw tech state if something goes wrong
-            player.isThrowTeching = false;
-            player.knockbackVelocity = { x: 0, y: 0 };
+
+            player.x += player.knockbackVelocity.x * delta * speedFactor;
+            player.knockbackVelocity.x *= 0.9; // Apply friction
+
+            if (Math.abs(player.knockbackVelocity.x) < 0.1) {
+              player.knockbackVelocity.x = 0;
+              player.isThrowTeching = false;
+            }
+          }
+          // During freeze duration, ensure the player doesn't move
+          else {
+            player.knockbackVelocity.x = 0;
           }
         }
-
         // Dodging
         if (player.isDodging) {
           player.x += player.dodgeDirection * delta * speedFactor * 2.5;
