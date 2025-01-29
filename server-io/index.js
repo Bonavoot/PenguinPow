@@ -150,10 +150,15 @@ io.on("connection", (socket) => {
     player.isGrabbing = false;
     player.isBeingThrown = false;
     player.isBeingGrabbed = false;
+    player.isSlapAttack = false;
+    player.isDodging = false;
+
     opponent.isThrowing = false;
     opponent.isGrabbing = false;
     opponent.isBeingThrown = false;
     opponent.isBeingGrabbed = false;
+    opponent.isSlapAttack = false;
+    opponent.isDodging = false;
 
     // Clear charge attack states for both players
     player.isChargingAttack = false;
