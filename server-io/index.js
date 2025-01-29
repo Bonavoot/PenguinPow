@@ -102,37 +102,64 @@ io.on("connection", (socket) => {
     return distance <= THROW_DISTANCE_THRESHOLD; // Return true if the distance is within the threshold, otherwise false
   }
 
+  const THROW_TECH_COOLDOWN = 500; // 500ms cooldown on throw techs
+  const THROW_TECH_DURATION = 300; // 300ms duration of throw tech animation
+  const THROW_TECH_WINDOW = 300; // 300ms window for throw techs to occur
+
   function checkForThrowTech(player, opponent) {
     const currentTime = Date.now();
-    const TECH_WINDOW = 300; // 300ms window for throw techs
-    console.log(player.isThrowTeching);
+
+    // If either player is on cooldown, no throw tech can occur
+    if (player.throwTechCooldown || opponent.throwTechCooldown) {
+      return false;
+    }
+
+    // If either player is already in a throw tech animation, prevent new throw techs
+    if (player.isThrowTeching || opponent.isThrowTeching) {
+      return false;
+    }
+
     // Only check for throw tech if both players have recent attempt times
     if (!opponent.lastThrowAttemptTime && !opponent.lastGrabAttemptTime) {
       return false;
     }
 
-    // First, clean up old attempts
-    if (currentTime - player.lastThrowAttemptTime > TECH_WINDOW) {
+    // Clean up old attempts that are outside the tech window
+    if (currentTime - player.lastThrowAttemptTime > THROW_TECH_WINDOW) {
       player.lastThrowAttemptTime = 0;
     }
-    if (currentTime - player.lastGrabAttemptTime > TECH_WINDOW) {
+    if (currentTime - player.lastGrabAttemptTime > THROW_TECH_WINDOW) {
       player.lastGrabAttemptTime = 0;
     }
-    if (currentTime - opponent.lastThrowAttemptTime > TECH_WINDOW) {
+    if (currentTime - opponent.lastThrowAttemptTime > THROW_TECH_WINDOW) {
       opponent.lastThrowAttemptTime = 0;
     }
-    if (currentTime - opponent.lastGrabAttemptTime > TECH_WINDOW) {
+    if (currentTime - opponent.lastGrabAttemptTime > THROW_TECH_WINDOW) {
       opponent.lastGrabAttemptTime = 0;
     }
 
-    // Now check all possible tech scenarios
+    // Check all possible tech scenarios
     const bothThrew =
-      player.lastThrowAttemptTime && opponent.lastThrowAttemptTime;
+      player.lastThrowAttemptTime &&
+      opponent.lastThrowAttemptTime &&
+      Math.abs(player.lastThrowAttemptTime - opponent.lastThrowAttemptTime) <=
+        THROW_TECH_WINDOW;
+
     const bothGrabbed =
-      player.lastGrabAttemptTime && opponent.lastGrabAttemptTime;
+      player.lastGrabAttemptTime &&
+      opponent.lastGrabAttemptTime &&
+      Math.abs(player.lastGrabAttemptTime - opponent.lastGrabAttemptTime) <=
+        THROW_TECH_WINDOW;
+
     const throwAndGrab =
-      (player.lastThrowAttemptTime && opponent.lastGrabAttemptTime) ||
-      (player.lastGrabAttemptTime && opponent.lastThrowAttemptTime);
+      (player.lastThrowAttemptTime &&
+        opponent.lastGrabAttemptTime &&
+        Math.abs(player.lastThrowAttemptTime - opponent.lastGrabAttemptTime) <=
+          THROW_TECH_WINDOW) ||
+      (player.lastGrabAttemptTime &&
+        opponent.lastThrowAttemptTime &&
+        Math.abs(player.lastGrabAttemptTime - opponent.lastThrowAttemptTime) <=
+          THROW_TECH_WINDOW);
 
     return bothThrew || bothGrabbed || throwAndGrab;
   }
@@ -144,7 +171,7 @@ io.on("connection", (socket) => {
   function applyThrowTech(player, opponent) {
     const knockbackDirection = player.x < opponent.x ? -1 : 1;
 
-    // Clear all throw/grab states first
+    // Clear all throw/grab states
     player.isThrowing = false;
     player.isGrabbing = false;
     player.isBeingThrown = false;
@@ -154,7 +181,7 @@ io.on("connection", (socket) => {
     opponent.isBeingThrown = false;
     opponent.isBeingGrabbed = false;
 
-    // Clear charge attack states for both players
+    // Clear charge attack states
     player.isChargingAttack = false;
     player.chargeStartTime = 0;
     player.chargeAttackPower = 1;
@@ -165,7 +192,7 @@ io.on("connection", (socket) => {
     opponent.chargeAttackPower = 1;
     opponent.chargingFacingDirection = null;
 
-    // Set up the tech state
+    // Set up tech state
     player.isThrowTeching = true;
     opponent.isThrowTeching = true;
 
@@ -173,7 +200,7 @@ io.on("connection", (socket) => {
     player.techFreezeStartTime = Date.now();
     opponent.techFreezeStartTime = Date.now();
 
-    // Store knockback values but don't apply them yet
+    // Store knockback values
     player.pendingKnockback = TECH_KNOCKBACK_VELOCITY * knockbackDirection;
     opponent.pendingKnockback = TECH_KNOCKBACK_VELOCITY * -knockbackDirection;
 
@@ -183,21 +210,21 @@ io.on("connection", (socket) => {
     opponent.lastThrowAttemptTime = 0;
     opponent.lastGrabAttemptTime = 0;
 
-    // Apply tech cooldown
+    // Apply cooldown
     player.throwTechCooldown = true;
     opponent.throwTechCooldown = true;
 
-    // Reset states after animation
+    // Reset throw tech animation after duration
     setTimeout(() => {
       player.isThrowTeching = false;
       opponent.isThrowTeching = false;
-    }, 300);
+    }, THROW_TECH_DURATION);
 
-    // Reset cooldown
+    // Reset cooldown after longer duration
     setTimeout(() => {
       player.throwTechCooldown = false;
       opponent.throwTechCooldown = false;
-    }, 500);
+    }, THROW_TECH_COOLDOWN);
   }
 
   function tick(delta) {
