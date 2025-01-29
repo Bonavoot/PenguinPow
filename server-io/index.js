@@ -194,22 +194,27 @@ io.on("connection", (socket) => {
     player.techFreezeStartTime = techStartTime;
     opponent.techFreezeStartTime = techStartTime;
 
-    // Store knockback values
-    player.knockbackVelocity.x = TECH_KNOCKBACK_VELOCITY * knockbackDirection;
-    opponent.knockbackVelocity.x =
-      TECH_KNOCKBACK_VELOCITY * -knockbackDirection;
-
     // Clear attempt times immediately to prevent multiple techs
     player.lastThrowAttemptTime = 0;
     player.lastGrabAttemptTime = 0;
     opponent.lastThrowAttemptTime = 0;
     opponent.lastGrabAttemptTime = 0;
 
+    // Set initial knockback velocities
+    player.knockbackVelocity = {
+      x: TECH_KNOCKBACK_VELOCITY * knockbackDirection,
+      y: 0,
+    };
+    opponent.knockbackVelocity = {
+      x: TECH_KNOCKBACK_VELOCITY * -knockbackDirection,
+      y: 0,
+    };
+
     // Apply tech cooldown
     player.throwTechCooldown = true;
     opponent.throwTechCooldown = true;
 
-    // Reset states after animation
+    // Reset throw tech state after animation
     setTimeout(() => {
       player.isThrowTeching = false;
       opponent.isThrowTeching = false;
@@ -594,20 +599,17 @@ io.on("connection", (socket) => {
           const freezeElapsed = currentTime - player.techFreezeStartTime;
 
           if (freezeElapsed >= TECH_FREEZE_DURATION) {
-            // Apply knockback movement after freeze duration
+            // Apply movement
             player.x += player.knockbackVelocity.x * delta * speedFactor;
 
-            // Apply friction to gradually slow down the knockback
-            player.knockbackVelocity.x *= 0.95; // Adjust this value to control how quickly the knockback slows down
+            // Apply friction to gradually slow down
+            player.knockbackVelocity.x *= 0.9;
 
-            // Stop the throw tech state when the knockback is very small
+            // Stop the throw tech state when knockback is very small
             if (Math.abs(player.knockbackVelocity.x) < 0.1) {
               player.knockbackVelocity.x = 0;
               player.isThrowTeching = false;
             }
-          } else {
-            // During freeze duration, ensure the player doesn't move
-            player.knockbackVelocity.x = player.knockbackVelocity.x; // Preserve the velocity but don't apply it yet
           }
         }
 
