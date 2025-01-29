@@ -105,17 +105,7 @@ io.on("connection", (socket) => {
   function checkForThrowTech(player, opponent) {
     const currentTime = Date.now();
     const TECH_WINDOW = 300; // 300ms window for throw techs
-
-    // If either player is already in a throw tech state, return false
-    if (player.isThrowTeching || opponent.isThrowTeching) {
-      return false;
-    }
-
-    // If either player is in throw tech cooldown, return false
-    if (player.throwTechCooldown || opponent.throwTechCooldown) {
-      return false;
-    }
-
+    console.log(player.isThrowTeching);
     // Only check for throw tech if both players have recent attempt times
     if (!opponent.lastThrowAttemptTime && !opponent.lastGrabAttemptTime) {
       return false;
@@ -152,16 +142,6 @@ io.on("connection", (socket) => {
   const TECH_KNOCKBACK_VELOCITY = 5;
 
   function applyThrowTech(player, opponent) {
-    // If either player is already in a throw tech state or cooldown, return immediately
-    if (
-      player.isThrowTeching ||
-      opponent.isThrowTeching ||
-      player.throwTechCooldown ||
-      opponent.throwTechCooldown
-    ) {
-      return;
-    }
-
     const knockbackDirection = player.x < opponent.x ? -1 : 1;
 
     // Clear all throw/grab states first
@@ -190,37 +170,30 @@ io.on("connection", (socket) => {
     opponent.isThrowTeching = true;
 
     // Add freeze timing properties
-    const techStartTime = Date.now();
-    player.techFreezeStartTime = techStartTime;
-    opponent.techFreezeStartTime = techStartTime;
+    player.techFreezeStartTime = Date.now();
+    opponent.techFreezeStartTime = Date.now();
 
-    // Clear attempt times immediately to prevent multiple techs
+    // Store knockback values but don't apply them yet
+    player.pendingKnockback = TECH_KNOCKBACK_VELOCITY * knockbackDirection;
+    opponent.pendingKnockback = TECH_KNOCKBACK_VELOCITY * -knockbackDirection;
+
+    // Clear attempt times
     player.lastThrowAttemptTime = 0;
     player.lastGrabAttemptTime = 0;
     opponent.lastThrowAttemptTime = 0;
     opponent.lastGrabAttemptTime = 0;
 
-    // Set initial knockback velocities
-    player.knockbackVelocity = {
-      x: TECH_KNOCKBACK_VELOCITY * knockbackDirection,
-      y: 0,
-    };
-    opponent.knockbackVelocity = {
-      x: TECH_KNOCKBACK_VELOCITY * -knockbackDirection,
-      y: 0,
-    };
-
     // Apply tech cooldown
     player.throwTechCooldown = true;
     opponent.throwTechCooldown = true;
 
-    // Reset throw tech state after animation
+    // Reset states after animation
     setTimeout(() => {
       player.isThrowTeching = false;
       opponent.isThrowTeching = false;
-    }, TECH_FREEZE_DURATION);
+    }, 300);
 
-    // Reset cooldown after a longer duration
+    // Reset cooldown
     setTimeout(() => {
       player.throwTechCooldown = false;
       opponent.throwTechCooldown = false;
@@ -599,20 +572,25 @@ io.on("connection", (socket) => {
           const freezeElapsed = currentTime - player.techFreezeStartTime;
 
           if (freezeElapsed >= TECH_FREEZE_DURATION) {
-            // Apply movement
+            // Only apply knockback after freeze duration
+            if (player.pendingKnockback !== undefined) {
+              player.knockbackVelocity.x = player.pendingKnockback;
+              delete player.pendingKnockback;
+            }
+
             player.x += player.knockbackVelocity.x * delta * speedFactor;
+            player.knockbackVelocity.x *= 0.9; // Apply friction
 
-            // Apply friction to gradually slow down
-            player.knockbackVelocity.x *= 0.9;
-
-            // Stop the throw tech state when knockback is very small
             if (Math.abs(player.knockbackVelocity.x) < 0.1) {
               player.knockbackVelocity.x = 0;
               player.isThrowTeching = false;
             }
           }
+          // During freeze duration, ensure the player doesn't move
+          else {
+            player.knockbackVelocity.x = 0;
+          }
         }
-
         // Dodging
         if (player.isDodging) {
           player.x += player.dodgeDirection * delta * speedFactor * 2.5;
