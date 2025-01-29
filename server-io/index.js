@@ -104,7 +104,7 @@ io.on("connection", (socket) => {
 
   function checkForThrowTech(player, opponent) {
     const currentTime = Date.now();
-    const TECH_WINDOW = 300; // 200ms window for throw techs
+    const TECH_WINDOW = 300; // 300ms window for throw techs
     console.log(player.isThrowTeching);
     // Only check for throw tech if both players have recent attempt times
     if (!opponent.lastThrowAttemptTime && !opponent.lastGrabAttemptTime) {
