@@ -48,7 +48,7 @@ let staminaRegenCounter = 0;
 const TICK_RATE = 64;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.3;
-const GROUND_LEVEL = 150;
+const GROUND_LEVEL = 145;
 const HITBOX_DISTANCE_VALUE = 90;
 const SLAP_HITBOX_DISTANCE_VALUE = 110;
 

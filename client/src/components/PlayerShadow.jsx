@@ -12,7 +12,7 @@ const ShadowElement = styled.div.attrs((props) => ({
   height: 4%;
   background: radial-gradient(
     ellipse at center,
-    rgba(0, 0, 0, 0.5) 0%,
+    rgba(0, 0, 0, 0.4) 0%,
     rgba(0, 0, 0, 0) 70%
   );
   border-radius: 50%;
