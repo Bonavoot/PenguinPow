@@ -539,7 +539,7 @@ io.on("connection", (socket) => {
           );
           if (opponent) {
             const throwArcHeight = 450; // Adjust as needed
-            const throwDistance = 220;
+            const throwDistance = 150;
             const armsReachDistance = -100; // Adjust this value for proper "arms reach" distance
 
             // Calculate opponent's position in the throw arc
