@@ -829,11 +829,19 @@ io.on("connection", (socket) => {
     // Check if the other player is blocking (crouching)
     if (otherPlayer.isCrouching) {
       // Apply knockback to the attacking player instead
-      const knockbackDirection = player.facing === 1 ? 1 : -1;
-      player.knockbackVelocity.x =
-        1 * knockbackDirection * player.chargeAttackPower;
-      player.knockbackVelocity.y = 0;
-      player.isHit = true;
+      if (player.isSlapAttack) {
+        const knockbackDirection = player.facing === 1 ? 1 : -1;
+        player.knockbackVelocity.x =
+          3.5 * knockbackDirection * player.chargeAttackPower;
+        player.knockbackVelocity.y = 0;
+        player.isHit = true;
+      } else {
+        const knockbackDirection = player.facing === 1 ? 1 : -1;
+        player.knockbackVelocity.x =
+          0.1 * knockbackDirection * player.chargeAttackPower;
+        player.knockbackVelocity.y = 0;
+        player.isHit = true;
+      }
 
       setTimeout(() => {
         player.isHit = false;
