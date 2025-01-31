@@ -1,0 +1,37 @@
+.power-meter {
+  position: absolute;
+  width: clamp(50px, 9vw, 120px); /* Responsive width */
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(2px, 0.4vw, 6px);
+  z-index: 999;
+}
+
+.power-meter-bar {
+  width: 100%; /* Takes full width of parent */
+  height: clamp(8px, 0.8vw, 12px); /* Responsive height */
+  background-color: gray;
+  border: clamp(1px, 0.2vw, 3px) solid black;
+  border-radius: clamp(2px, 0.4vw, 4px);
+  overflow: hidden;
+}
+
+.power-meter-fill {
+  height: 100%;
+  transition: background-color 0.15s ease-out;
+  border-radius: clamp(2px, 0.4vw, 4px);
+  min-height: clamp(8px, 0.8vw, 12px);
+  display: block;
+}
+
+.power-meter-text {
+  color: white;
+  font-size: clamp(10px, 1vw, 16px); /* Responsive font size */
+  font-weight: bold;
+  text-align: center;
+  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
+    1px 1px 0 #000;
+  font-family: "Bungee";
+}

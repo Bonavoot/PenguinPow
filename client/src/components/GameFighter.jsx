@@ -7,6 +7,7 @@ import PlayerStaminaUi from "./PlayerStaminaUi";
 import Gyoji from "./Gyoji";
 import PlayerShadow from "./PlayerShadow";
 import ThrowTechEffect from "./ThrowTechEffect";
+import PowerMeter from "./PowerMeter";
 // import "./DustEffect.css";
 // import DustEffect from "./DustEffect";
 
@@ -470,6 +471,15 @@ const GameFighter = ({ player, index, roomName, localId }) => {
       {matchOver && (
         <MatchOver winner={winner} localId={localId} roomName={roomName} />
       )}
+      <PowerMeter
+        isCharging={penguin.isChargingAttack}
+        chargePower={penguin.chargeAttackPower}
+        x={penguin.x}
+        y={penguin.y}
+        facing={penguin.facing}
+        playerId={penguin.id} // Add this
+        localId={localId} // Add this
+      />
       <PlayerStaminaUi stamina={stamina} index={index} />
       <StyledLabel {...penguin}>P{index + 1}</StyledLabel>
       <PlayerShadow x={penguin.x} y={penguin.y} facing={penguin.facing} />

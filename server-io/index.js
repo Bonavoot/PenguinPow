@@ -184,12 +184,12 @@ io.on("connection", (socket) => {
     // Clear charge attack states
     player.isChargingAttack = false;
     player.chargeStartTime = 0;
-    player.chargeAttackPower = 1;
+    player.chargeAttackPower = 0;
     player.chargingFacingDirection = null;
 
     opponent.isChargingAttack = false;
     opponent.chargeStartTime = 0;
-    opponent.chargeAttackPower = 1;
+    opponent.chargeAttackPower = 0;
     opponent.chargingFacingDirection = null;
 
     // Set up tech state
@@ -831,7 +831,7 @@ io.on("connection", (socket) => {
       // Apply knockback to the attacking player instead
       const knockbackDirection = player.facing === 1 ? 1 : -1;
       player.knockbackVelocity.x =
-        5 * knockbackDirection * player.chargeAttackPower;
+        1 * knockbackDirection * player.chargeAttackPower;
       player.knockbackVelocity.y = 0;
       player.isHit = true;
 
@@ -845,16 +845,18 @@ io.on("connection", (socket) => {
       otherPlayer.isAttacking = false;
       otherPlayer.isStrafing = false;
       otherPlayer.isDiving = false;
+
       const knockbackDirection = player.facing === -1 ? 1 : -1;
+      const chargePercentage = player.chargeAttackPower;
+      const knockbackMultiplier = 0.5 + (chargePercentage / 100) * 1.8;
 
       if (player.isSlapAttack) {
         otherPlayer.knockbackVelocity.x =
-          3.5 * knockbackDirection * player.chargeAttackPower; // Reduced knockback for slap
+          7.5 * knockbackDirection * knockbackMultiplier;
       } else {
         otherPlayer.knockbackVelocity.x =
-          7 * knockbackDirection * player.chargeAttackPower; // Regular knockback
+          5 * knockbackDirection * knockbackMultiplier;
       }
-
       otherPlayer.knockbackVelocity.y = 0; // Remove vertical knockback
       otherPlayer.y = GROUND_LEVEL;
 
@@ -887,8 +889,8 @@ io.on("connection", (socket) => {
         grabCooldown: false,
         isChargingAttack: false,
         chargeStartTime: 0,
-        chargeMaxDuration: 5000,
-        chargeAttackPower: 1,
+        chargeMaxDuration: 2000,
+        chargeAttackPower: 0,
         chargingFacingDirection: null,
         isSlapAttack: false,
         slapAnimation: 2,
@@ -947,8 +949,8 @@ io.on("connection", (socket) => {
         grabCooldown: false,
         isChargingAttack: false,
         chargeStartTime: 0,
-        chargeMaxDuration: 5000,
-        chargeAttackPower: 1,
+        chargeMaxDuration: 2000,
+        chargeAttackPower: 0,
         chargingFacingDirection: null,
         isSlapAttack: false,
         slapAnimation: 2,
@@ -1134,6 +1136,7 @@ io.on("connection", (socket) => {
 
       if (
         player.keys[" "] &&
+        !player.isChargingAttack && // Only check these conditions when starting
         !player.isAttacking &&
         !player.isJumping &&
         !player.isDodging &&
@@ -1141,37 +1144,26 @@ io.on("connection", (socket) => {
         !player.isBeingThrown &&
         !player.isGrabbing &&
         !player.isBeingGrabbed &&
-        !player.isThrowing &&
-        !player.isBeingThrown &&
-        !player.isGrabbing &&
-        !player.isBeingGrabbed &&
         !player.isHit &&
         !player.isAttackCooldown
       ) {
-        // Start charging if not already charging
-        // Start charging if not already charging
-        if (!player.isChargingAttack) {
-          player.isChargingAttack = true;
-          player.chargeStartTime = Date.now();
-          player.chargeAttackPower = 1;
-        }
-
-        // Calculate charge power (up to max)
+        player.isChargingAttack = true;
+        player.chargeStartTime = Date.now();
+        player.chargeAttackPower = 1;
+      }
+      // For continuing a charge
+      else if (player.keys[" "] && player.isChargingAttack && !player.isHit) {
+        // Calculate charge power (0-100%)
         const chargeDuration = Date.now() - player.chargeStartTime;
-        player.chargeAttackPower = Math.min(
-          1 + (chargeDuration / player.chargeMaxDuration) ** 2, // Increase power over time
-          5 // Max power multiplier
-        );
+        player.chargeAttackPower = Math.min((chargeDuration / 1500) * 100, 100);
 
-        // Prevent movement while charging
-        player.isStrafing = false;
+        // Lock facing direction while charging
         if (player.isThrowing || player.throwingFacingDirection !== null) {
           player.chargingFacingDirection = player.throwingFacingDirection;
         } else {
           player.chargingFacingDirection = player.facing;
         }
 
-        // Update facing to match charging direction
         if (player.chargingFacingDirection !== null) {
           player.facing = player.chargingFacingDirection;
         }
@@ -1186,47 +1178,48 @@ io.on("connection", (socket) => {
         !player.isBeingThrown
       ) {
         const chargeDuration = Date.now() - player.chargeStartTime;
-        const SLAP_ATTACK_THRESHOLD = 250; // charge time before getting headbutt
+        const chargePercentage = player.chargeAttackPower;
 
-        player.chargingFacingDirection = player.facing;
-
-        if (chargeDuration < SLAP_ATTACK_THRESHOLD) {
+        // Determine if it's a slap or charged attack
+        if (chargePercentage < 25) {
           player.isSlapAttack = true;
-          player.isAttacking = false;
           player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
-          setTimeout(() => {
-            player.isSlapAttack = false;
-            player.isAttacking = false;
-          }, 300); // this controls how long the slap animation stays out for
+          player.attackEndTime = Date.now() + 300;
         } else {
           player.isSlapAttack = false;
+          // Calculate attack duration based on charge percentage
+          let attackDuration;
+          if (chargePercentage <= 25) {
+            attackDuration = 500;
+          } else if (chargePercentage <= 75) {
+            attackDuration = 500;
+          } else {
+            const extraDuration = ((chargePercentage - 50) / 50) * 1000;
+            attackDuration = 1000 + extraDuration;
+          }
+          player.attackEndTime = Date.now() + attackDuration;
         }
 
+        // Set attack state
         player.isAttacking = true;
-        player.isSlapAttack = player.isSlapAttack;
-        player.isChargingAttack = false;
         player.attackStartTime = Date.now();
 
-        // Calculate attack duration based on charge time
-        const scaledDuration = Math.min(
-          250 + (chargeDuration / player.chargeMaxDuration) * 1000, // Base 250ms + scaled duration
-          2000 // Max attack duration of 1000ms
-        );
-
-        player.attackEndTime = Date.now() + scaledDuration;
-        player.isAttackCooldown = true;
-
-        // **Lock the facing direction during the attack**
+        // Lock facing direction during attack
+        player.chargingFacingDirection = player.facing;
         if (player.chargingFacingDirection !== null) {
           player.facing = player.chargingFacingDirection;
         }
 
-        // Reset after attack
+        // Reset charging state
+        player.isChargingAttack = false;
+        player.isAttackCooldown = true;
+
         setTimeout(() => {
           player.isAttacking = false;
+          player.isSlapAttack = false;
           player.isAttackCooldown = false;
           player.chargingFacingDirection = null;
-        }, scaledDuration);
+        }, player.attackEndTime - Date.now());
       }
 
       function isOpponentCloseEnoughForGrab(player, opponent) {
@@ -1312,6 +1305,11 @@ io.on("connection", (socket) => {
 
         setTimeout(() => {
           const opponent = rooms[index].players.find((p) => p.id !== player.id);
+          // Clear charging attack state regardless of grab success
+          player.isChargingAttack = false;
+          player.chargeStartTime = 0;
+          player.chargeAttackPower = 0;
+          player.chargingFacingDirection = null;
 
           if (
             isOpponentCloseEnoughForGrab(player, opponent) &&
