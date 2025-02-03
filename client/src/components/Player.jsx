@@ -24,6 +24,8 @@ import bow from "../assets/bow.png";
 import bow2 from "../assets/bow2.png";
 import slapAttack1Blue from "../assets/slapAttack1blue.png";
 import slapAttack2Blue from "../assets/slapAttack2blue.png";
+import slapAttack1Red from "../assets/slapAttack1blue.png";
+import slapAttack2Red from "../assets/slapAttack2blue.png";
 
 import gyoji from "../assets/gyoji.png";
 import gyojiReady from "../assets/gyoji-ready.png";
@@ -81,6 +83,8 @@ const additionalImages = [
   bow2,
   slapAttack1Blue,
   slapAttack2Blue,
+  slapAttack1Red,
+  slapAttack2Red,
 ];
 const audioSources = [gameMusic, grabSound, attackSound, hitSound, dodgeSound];
 
