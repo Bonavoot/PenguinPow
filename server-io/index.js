@@ -835,6 +835,11 @@ io.on("connection", (socket) => {
     // Apply parry effects to both players
     applyParryEffect(player1, knockbackDirection1);
     applyParryEffect(player2, knockbackDirection2);
+
+    // Emit the parry event to all clients in the room
+    io.in(player1.roomId).emit("slap_parry", {
+      position: { x: midpointX, y: midpointY },
+    });
   }
 
   // Helper function to apply parry effects to a player
@@ -843,6 +848,7 @@ io.on("connection", (socket) => {
     player.isAttacking = false;
     player.isSlapAttack = true;
     player.isHit = true;
+    player.isParrying = true;
 
     // Apply reduced knockback
     player.knockbackVelocity.x = PARRY_KNOCKBACK_VELOCITY * knockbackDirection;
@@ -853,6 +859,7 @@ io.on("connection", (socket) => {
       player.isHit = false;
       player.isAlreadyHit = false;
       player.isSlapAttack = false;
+      player.isParrying = false;
     }, 200);
   }
 
@@ -958,6 +965,7 @@ io.on("connection", (socket) => {
         grabbedOpponent: null,
         isThrowTeching: false,
         throwTechCooldown: false,
+        isParrying: false,
         lastThrowAttemptTime: 0,
         lastGrabAttemptTime: 0,
         isStrafing: false,
@@ -1018,6 +1026,7 @@ io.on("connection", (socket) => {
         grabbedOpponent: null,
         isThrowTeching: false,
         throwTechCooldown: false,
+        isParrying: false,
         lastThrowAttemptTime: 0,
         lastGrabAttemptTime: 0,
         isStrafing: false,

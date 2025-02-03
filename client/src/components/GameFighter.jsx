@@ -8,8 +8,7 @@ import Gyoji from "./Gyoji";
 import PlayerShadow from "./PlayerShadow";
 import ThrowTechEffect from "./ThrowTechEffect";
 import PowerMeter from "./PowerMeter";
-// import "./DustEffect.css";
-// import DustEffect from "./DustEffect"////;
+import SlapParryEffect from "./SlapParryEffect";
 
 import pumo from "../assets/pumo.png";
 import pumo2 from "../assets/pumo2.png";
@@ -51,6 +50,7 @@ import bellSound from "../sounds/bell-sound.mp3";
 import saltSound from "../sounds/salt-sound.mp3";
 import gameMusic from "../sounds/game-music.mp3";
 import eeshiMusic from "../sounds/eeshi.mp3";
+import parrySound from "../sounds/parry-sound.mp3";
 
 import UiPlayerInfo from "./UiPlayerInfo";
 import SaltEffect from "./SaltEffect";
@@ -283,6 +283,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
   const [playerOneWinCount, setPlayerOneWinCount] = useState(0);
   const [playerTwoWinCount, setPlayerTwoWinCount] = useState(0);
   const [matchOver, setMatchOver] = useState(false);
+  const [parryEffectPosition, setParryEffectPosition] = useState(null);
 
   const lastAttackState = useRef(player.isAttacking);
   const lastHitState = useRef(player.isHit);
@@ -304,6 +305,12 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         setPenguin(data.player2);
         setStamina(data.player2.stamina);
       }
+    });
+
+    socket.on("slap_parry", (data) => {
+      setParryEffectPosition(data.position);
+      // Optional: play a parry sound effect here
+      playSound(parrySound, 0.03);
     });
 
     socket.on("game_start", (data) => {
@@ -495,6 +502,10 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         playerFacing={penguin.facing}
         playerX={penguin.x}
         playerY={penguin.y}
+      />
+      <SlapParryEffect
+        position={parryEffectPosition}
+        isVisible={penguin.isParrying}
       />
       <ThrowTechEffect />
     </div>
