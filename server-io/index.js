@@ -841,8 +841,8 @@ io.on("connection", (socket) => {
   function applyParryEffect(player, knockbackDirection) {
     // Reset attack states
     player.isAttacking = false;
-    //player.isSlapAttack = true;
-    //player.isHit = true;
+    player.isSlapAttack = true;
+    player.isHit = true;
 
     // Apply reduced knockback
     player.knockbackVelocity.x = PARRY_KNOCKBACK_VELOCITY * knockbackDirection;
@@ -852,6 +852,7 @@ io.on("connection", (socket) => {
     setTimeout(() => {
       player.isHit = false;
       player.isAlreadyHit = false;
+      player.isSlapAttack = false;
     }, 200);
   }
 
