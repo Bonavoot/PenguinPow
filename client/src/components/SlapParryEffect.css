@@ -3,12 +3,12 @@
 }
 
 .slap-parry-ring {
-  width: 50px;
-  height: 50px;
+  width: clamp(1rem, 4vw, 3rem); /* Scale with viewport width */
+  height: clamp(1rem, 4vw, 3rem); /* Scale with viewport width */
   border-radius: 50%;
-  border: 4px solid white;
+  border: clamp(2px, 0.3vw, 4px) solid white; /* Responsive border width */
   animation: slapParryRing 0.3s ease-out forwards;
-  box-shadow: 0 0 10px #fff;
+  box-shadow: 0 0 clamp(5px, 0.8vw, 10px) #fff; /* Responsive shadow */
 }
 
 @keyframes slapParryRing {
