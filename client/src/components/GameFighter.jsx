@@ -313,7 +313,10 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         typeof position.x === "number" &&
         typeof position.y === "number"
       ) {
-        setParryEffectPosition(position);
+        setParryEffectPosition({
+          x: position.x + 150,
+          y: position.y + 110, // Add GROUND_LEVEL to match player height
+        });
         playSound(parrySound, 0.03);
       }
     });
@@ -508,10 +511,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         playerX={penguin.x}
         playerY={penguin.y}
       />
-      <SlapParryEffect
-        position={parryEffectPosition}
-        isVisible={penguin.isParrying}
-      />
+      <SlapParryEffect position={parryEffectPosition} />
       <ThrowTechEffect />
     </div>
   );
