@@ -250,7 +250,7 @@ const StyledLabel = styled.div
         "isSlapAttack",
         "isBowing",
         "isThrowTeching",
-        // ...any other prop names that should not be forwarded
+        // ...any other prop names that shouldn't be forwarded
       ].includes(prop),
   })
   .attrs((props) => ({
