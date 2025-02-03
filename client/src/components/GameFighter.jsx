@@ -26,6 +26,8 @@ import attack from "../assets/attack.png";
 import attack2 from "../assets/attack2.png";
 import slapAttack1Blue from "../assets/slapAttack1blue.png";
 import slapAttack2Blue from "../assets/slapAttack2blue.png";
+import slapAttack1Red from "../assets/slapAttack1Red.png";
+import slapAttack2Red from "../assets/slapAttack2Red.png";
 import dodging from "../assets/dodging.gif";
 import dodging2 from "../assets/dodging2.gif";
 import throwing from "../assets/throwing.png";
@@ -82,6 +84,10 @@ const getImageSrc = (
   if (fighter === "player 2") {
     if (isBowing) return bow;
     if (isThrowTeching) return throwTech;
+    if (isSlapAttack) {
+      // Toggle between two slap attack animations based on slapAnimation value
+      return slapAnimation === 1 ? slapAttack1Red : slapAttack2Red;
+    }
     if (isJumping) return throwing;
     if (isAttacking && !isSlapAttack) return attack;
     if (isGrabbing) return grabbing;
