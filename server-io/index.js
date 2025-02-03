@@ -51,6 +51,8 @@ const speedFactor = 0.3;
 const GROUND_LEVEL = 145;
 const HITBOX_DISTANCE_VALUE = 90;
 const SLAP_HITBOX_DISTANCE_VALUE = 110;
+const SLAP_PARRY_WINDOW = 150; // 150ms window for parry
+const PARRY_KNOCKBACK_VELOCITY = 3; // Reduced knockback for parried attacks
 
 function resetRoomAndPlayers(room) {
   // Reset room state
@@ -799,6 +801,16 @@ io.on("connection", (socket) => {
     if (isCollision) {
       console.log("hit");
       if (player.isAttacking && otherPlayer.isAttacking) {
+        if (player.isSlapAttack && otherPlayer.isSlapAttack) {
+          // Check if both slaps occurred within the parry window
+          const timeDifference = Math.abs(
+            player.attackStartTime - otherPlayer.attackStartTime
+          );
+          if (timeDifference <= SLAP_PARRY_WINDOW) {
+            resolveSlapParry(player, otherPlayer);
+            return;
+          }
+        }
         resolveAttackConflict(player, otherPlayer);
       } else {
         processHit(player, otherPlayer);
@@ -811,6 +823,36 @@ io.on("connection", (socket) => {
     const loser = winner === player1 ? player2 : player1;
 
     processHit(winner, loser);
+  }
+
+  function resolveSlapParry(player1, player2) {
+    console.log("Slap Parry!");
+
+    // Calculate knockback directions based on player positions
+    const knockbackDirection1 = player1.x < player2.x ? -1 : 1;
+    const knockbackDirection2 = -knockbackDirection1;
+
+    // Apply parry effects to both players
+    applyParryEffect(player1, knockbackDirection1);
+    applyParryEffect(player2, knockbackDirection2);
+  }
+
+  // Helper function to apply parry effects to a player
+  function applyParryEffect(player, knockbackDirection) {
+    // Reset attack states
+    player.isAttacking = false;
+    player.isSlapAttack = false;
+    player.isHit = true;
+
+    // Apply reduced knockback
+    player.knockbackVelocity.x = PARRY_KNOCKBACK_VELOCITY * knockbackDirection;
+    player.knockbackVelocity.y = 0;
+
+    // Set a brief recovery period
+    setTimeout(() => {
+      player.isHit = false;
+      player.isAlreadyHit = false;
+    }, 200);
   }
 
   function processHit(player, otherPlayer) {
@@ -856,11 +898,11 @@ io.on("connection", (socket) => {
 
       const knockbackDirection = player.facing === -1 ? 1 : -1;
       const chargePercentage = player.chargeAttackPower;
-      const knockbackMultiplier = 0.5 + (chargePercentage / 100) * 1.8;
+      const knockbackMultiplier = 0.5 + (chargePercentage / 100) * 1.1;
 
       if (player.isSlapAttack) {
         otherPlayer.knockbackVelocity.x =
-          7.5 * knockbackDirection * knockbackMultiplier;
+          6.5 * knockbackDirection * knockbackMultiplier;
       } else {
         otherPlayer.knockbackVelocity.x =
           5 * knockbackDirection * knockbackMultiplier;
