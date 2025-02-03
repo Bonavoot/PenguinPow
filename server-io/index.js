@@ -816,7 +816,10 @@ io.on("connection", (socket) => {
             return;
           }
         }
-        resolveAttackConflict(player, otherPlayer);
+        // Handle charge attack collisions with random winner selection
+        const winner = Math.random() < 0.5 ? player : otherPlayer;
+        const loser = winner === player ? otherPlayer : player;
+        processHit(winner, loser);
       } else {
         processHit(player, otherPlayer);
       }
