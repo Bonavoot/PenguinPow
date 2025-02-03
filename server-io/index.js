@@ -52,7 +52,7 @@ const GROUND_LEVEL = 145;
 const HITBOX_DISTANCE_VALUE = 90;
 const SLAP_HITBOX_DISTANCE_VALUE = 110;
 const SLAP_PARRY_WINDOW = 150; // 150ms window for parry
-const PARRY_KNOCKBACK_VELOCITY = 3; // Reduced knockback for parried attacks
+const PARRY_KNOCKBACK_VELOCITY = 1.5; // Reduced knockback for parried attacks
 
 function resetRoomAndPlayers(room) {
   // Reset room state
