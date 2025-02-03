@@ -317,7 +317,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
           x: position.x + 150,
           y: position.y + 110, // Add GROUND_LEVEL to match player height
         });
-        playSound(parrySound, 0.03);
+        playSound(parrySound, 0.01);
       }
     });
     socket.on("game_start", (data) => {
