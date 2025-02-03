@@ -760,13 +760,13 @@ io.on("connection", (socket) => {
   }
 
   function checkCollision(player, otherPlayer) {
-    // Check if the player is attacking or other player is already hit or dead
+    // Existing collision check conditions
     if (
       !player.isAttacking ||
       otherPlayer.isAlreadyHit ||
       otherPlayer.isDead ||
-      otherPlayer.isDodging || // Already present in your code
-      player.isDodging || // Already present in your code
+      otherPlayer.isDodging ||
+      player.isDodging ||
       player.isBeingThrown ||
       otherPlayer.isBeingThrown
     ) {
@@ -791,7 +791,6 @@ io.on("connection", (socket) => {
       bottom: otherPlayer.y + hitboxDistance,
     };
 
-    // Simplified collision check
     const isCollision =
       playerHitbox.left < opponentHitbox.right &&
       playerHitbox.right > opponentHitbox.left &&
@@ -799,7 +798,6 @@ io.on("connection", (socket) => {
       playerHitbox.bottom > opponentHitbox.top;
 
     if (isCollision) {
-      console.log("hit");
       if (player.isAttacking && otherPlayer.isAttacking) {
         if (player.isSlapAttack && otherPlayer.isSlapAttack) {
           // Check if both slaps occurred within the parry window
@@ -807,7 +805,14 @@ io.on("connection", (socket) => {
             player.attackStartTime - otherPlayer.attackStartTime
           );
           if (timeDifference <= SLAP_PARRY_WINDOW) {
-            resolveSlapParry(player, otherPlayer);
+            // Find the current room
+            const currentRoom = rooms.find((room) =>
+              room.players.some((p) => p.id === player.id)
+            );
+
+            if (currentRoom) {
+              resolveSlapParry(player, otherPlayer, currentRoom.id);
+            }
             return;
           }
         }
@@ -818,14 +823,7 @@ io.on("connection", (socket) => {
     }
   }
 
-  function resolveAttackConflict(player1, player2) {
-    const winner = Math.random() < 0.5 ? player1 : player2;
-    const loser = winner === player1 ? player2 : player1;
-
-    processHit(winner, loser);
-  }
-
-  function resolveSlapParry(player1, player2) {
+  function resolveSlapParry(player1, player2, roomId) {
     console.log("Slap Parry!");
 
     // Calculate knockback directions based on player positions
@@ -836,10 +834,31 @@ io.on("connection", (socket) => {
     applyParryEffect(player1, knockbackDirection1);
     applyParryEffect(player2, knockbackDirection2);
 
-    // Emit the parry event to all clients in the room
-    io.in(player1.roomId).emit("slap_parry", {
-      position: { x: midpointX, y: midpointY },
-    });
+    // Calculate the midpoint between the two players
+    const midpointX = (player1.x + player2.x) / 2;
+    const midpointY = (player1.y + player2.y) / 2;
+
+    // Emit the parry event with just the necessary data
+    io.in(roomId).emit("slap_parry", { x: midpointX, y: midpointY });
+  }
+
+  function applyParryEffect(player, knockbackDirection) {
+    // Reset attack states
+    player.isAttacking = false;
+    player.isSlapAttack = false;
+    player.isHit = true;
+    player.isParrying = true;
+
+    // Apply reduced knockback
+    player.knockbackVelocity.x = PARRY_KNOCKBACK_VELOCITY * knockbackDirection;
+    player.knockbackVelocity.y = 0;
+
+    // Set a brief recovery period
+    setTimeout(() => {
+      player.isHit = false;
+      player.isAlreadyHit = false;
+      player.isParrying = false;
+    }, 200);
   }
 
   // Helper function to apply parry effects to a player

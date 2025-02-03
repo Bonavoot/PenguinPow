@@ -307,12 +307,16 @@ const GameFighter = ({ player, index, roomName, localId }) => {
       }
     });
 
-    socket.on("slap_parry", (data) => {
-      setParryEffectPosition(data.position);
-      // Optional: play a parry sound effect here
-      playSound(parrySound, 0.03);
+    socket.on("slap_parry", (position) => {
+      if (
+        position &&
+        typeof position.x === "number" &&
+        typeof position.y === "number"
+      ) {
+        setParryEffectPosition(position);
+        playSound(parrySound, 0.03);
+      }
     });
-
     socket.on("game_start", (data) => {
       console.log(data);
       setHakkiyoi(true);
@@ -356,6 +360,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
 
     return () => {
       socket.off("fighter_action");
+      socket.off("slap_parry");
       socket.off("game_start");
       socket.off("game_reset");
       socket.off("game_over");
