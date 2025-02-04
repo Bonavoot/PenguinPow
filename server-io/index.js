@@ -1226,8 +1226,7 @@ io.on("connection", (socket) => {
         !player.isBeingThrown &&
         !player.isGrabbing &&
         !player.isBeingGrabbed &&
-        !player.isHit &&
-        !player.isAttackCooldown
+        !player.isHit
       ) {
         player.isChargingAttack = true;
         player.chargeStartTime = Date.now();
@@ -1294,13 +1293,12 @@ io.on("connection", (socket) => {
 
         // Reset charging state
         player.isChargingAttack = false;
-        player.isAttackCooldown = true;
 
         setTimeout(() => {
           player.isAttacking = false;
           player.isSlapAttack = false;
-          player.isAttackCooldown = false;
           player.chargingFacingDirection = null;
+          // Remove isAttackCooldown entirely
         }, player.attackEndTime - Date.now());
       }
 
