@@ -956,7 +956,6 @@ io.on("connection", (socket) => {
     socket.join(data.roomId);
     console.log(`${data.socketId} joined ${data.roomId}`);
     index = rooms.findIndex((room) => room.id === data.roomId);
-
     if (rooms[index].players.length < 1) {
       rooms[index].players.push({
         id: data.socketId,
@@ -964,7 +963,6 @@ io.on("connection", (socket) => {
         color: "aqua",
         isJumping: false,
         isAttacking: false,
-        isAttackCooldown: false,
         throwCooldown: false,
         grabCooldown: false,
         isChargingAttack: false,
@@ -1025,7 +1023,6 @@ io.on("connection", (socket) => {
         color: "salmon",
         isJumping: false,
         isAttacking: false,
-        isAttackCooldown: false,
         throwCooldown: false,
         grabCooldown: false,
         isChargingAttack: false,
@@ -1298,7 +1295,6 @@ io.on("connection", (socket) => {
           player.isAttacking = false;
           player.isSlapAttack = false;
           player.chargingFacingDirection = null;
-          // Remove isAttackCooldown entirely
         }, player.attackEndTime - Date.now());
       }
 
