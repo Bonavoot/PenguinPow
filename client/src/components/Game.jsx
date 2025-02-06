@@ -1,6 +1,7 @@
 import { useContext, useEffect } from "react";
 import { SocketContext } from "../SocketContext";
 import GameFighter from "./GameFighter";
+import MobileControls from "./MobileControls";
 // import gameMusic from "../sounds/game-music.mp3";
 
 // const gameMusicAudio = new Audio(gameMusic);
@@ -57,6 +58,15 @@ const Game = ({ rooms, roomName, localId }) => {
     };
   });
 
+  useEffect(() => {
+    const preventDefault = (e) => e.preventDefault();
+    document.addEventListener("touchmove", preventDefault, { passive: false });
+
+    return () => {
+      document.removeEventListener("touchmove", preventDefault);
+    };
+  }, []);
+
   return (
     <div className="game-wrapper">
       <div className="game-container">
@@ -74,6 +84,7 @@ const Game = ({ rooms, roomName, localId }) => {
           })}
         </div>
       </div>
+      <MobileControls />
     </div>
   );
 };
