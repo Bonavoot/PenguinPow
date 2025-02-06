@@ -242,7 +242,11 @@ io.on("connection", (socket) => {
         if (
           arePlayersColliding(player1, player2) &&
           !player1.isAttacking &&
-          !player2.isAttacking
+          !player2.isAttacking &&
+          !player1.isGrabbing &&
+          !player2.isGrabbing &&
+          !player1.isBeingGrabbed &&
+          !player2.isBeingGrabbed
         ) {
           adjustPlayerPositions(player1, player2, delta);
         }
@@ -293,6 +297,15 @@ io.on("connection", (socket) => {
         function arePlayersColliding(player1, player2) {
           // If either player is dodging, return false immediately
           if (player1.isDodging || player2.isDodging) {
+            return false;
+          }
+
+          if (
+            player1.isGrabbing ||
+            player2.isGrabbing ||
+            player1.isBeingGrabbed ||
+            player2.isBeingGrabbed
+          ) {
             return false;
           }
 
@@ -436,6 +449,7 @@ io.on("connection", (socket) => {
         ) {
           console.log("game over");
           room.gameOver = true;
+          player.y = GROUND_LEVEL;
           const winner = room.players.find((p) => p.id !== player.id);
           winner.wins.push("w");
 
@@ -720,7 +734,7 @@ io.on("connection", (socket) => {
               delete player.grabFacingDirection;
             } else {
               // Move the opponent with the player
-              const grabSpeed = speedFactor * 0.01; // Adjust this value to make it slower than normal walking speed
+              const grabSpeed = speedFactor * -0.4; // Adjust this value to make it slower than normal walking speed
               let movement = 0;
               if (player.keys.d) {
                 movement = delta * grabSpeed;
@@ -730,8 +744,8 @@ io.on("connection", (socket) => {
 
               player.x += movement;
               opponent.x += movement;
-
-              const fixedDistance = 180;
+              opponent.y = GROUND_LEVEL + 30;
+              const fixedDistance = 90;
               opponent.x =
                 player.facing === 1
                   ? player.x - fixedDistance

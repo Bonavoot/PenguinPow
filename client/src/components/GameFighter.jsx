@@ -18,6 +18,7 @@ import crouching from "../assets/crouching.png";
 import crouching2 from "../assets/crouching2.png";
 import grabbing from "../assets/grabbing.png";
 import grabbing2 from "../assets/grabbing2.png";
+import beingGrabbed from "../assets/is-being-grabbed.gif";
 import grabSound from "../sounds/grab-sound.mp3";
 import ready from "../assets/ready.png";
 import ready2 from "../assets/ready2.png";
@@ -76,6 +77,7 @@ const getImageSrc = (
   isSlapAttack,
   isThrowing,
   isGrabbing,
+  isBeingGrabbed,
   isThrowingSalt,
   slapAnimation,
   isBowing,
@@ -91,6 +93,7 @@ const getImageSrc = (
     if (isJumping) return throwing;
     if (isAttacking && !isSlapAttack) return attack;
     if (isGrabbing) return grabbing;
+    if (isBeingGrabbed) return beingGrabbed;
     if (isDodging) return dodging;
     if (isCrouching) return crouching;
     if (isReady) return ready;
@@ -191,6 +194,7 @@ const StyledImage = styled("img")
       props.isSlapAttack,
       props.isThrowing,
       props.isGrabbing,
+      props.isBeingGrabbed,
       props.isThrowingSalt,
       props.slapAnimation,
       props.isBowing,
@@ -225,6 +229,7 @@ const StyledLabel = styled.div
         "isAttackCooldown",
         "isDodging",
         "isStrafing",
+        "isBeingGrabbed",
         "isCrouching",
         "isReady",
         "isHit",
