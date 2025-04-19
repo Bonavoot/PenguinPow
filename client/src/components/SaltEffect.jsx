@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import styled from "styled-components";
 
 const SaltContainer = styled.div.attrs((props) => ({
@@ -26,24 +26,30 @@ const SaltParticle = styled.div.attrs((props) => ({
   height: calc(0.3vh * (16 / 9)); // Scale height based on 16:9 aspect ratio
   background-color: white;
   border-radius: 50%;
-  transition: transform 16ms linear, opacity 300ms linear;
+  will-change: transform, opacity;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
 `;
 
 const SaltEffect = ({ isActive, playerFacing, playerX, playerY }) => {
   const [particles, setParticles] = useState([]);
+  const animationFrameRef = useRef();
+  const lastUpdateTime = useRef(0);
 
-  const updateParticle = useCallback((particle) => {
+  const updateParticle = useCallback((particle, deltaTime) => {
     const gravity = 0.3;
     const drag = 0.99;
+    const timeFactor = deltaTime / 16; // Normalize to 16ms frame time
 
     return {
       ...particle,
-      x: particle.x + particle.velocityX,
-      y: particle.y + particle.velocityY,
-      velocityX: particle.velocityX * drag,
-      velocityY: particle.velocityY * drag - gravity,
-      opacity: Math.max(0, particle.opacity - 0.02),
-      life: particle.life - 16,
+      x: particle.x + particle.velocityX * timeFactor,
+      y: particle.y + particle.velocityY * timeFactor,
+      velocityX: particle.velocityX * Math.pow(drag, timeFactor),
+      velocityY:
+        particle.velocityY * Math.pow(drag, timeFactor) - gravity * timeFactor,
+      opacity: Math.max(0, particle.opacity - 0.02 * timeFactor),
+      life: particle.life - deltaTime,
     };
   }, []);
 
@@ -54,7 +60,8 @@ const SaltEffect = ({ isActive, playerFacing, playerX, playerY }) => {
       const maxWidth = 1280;
       const velocityScale = Math.min(windowWidth / maxWidth, 1);
 
-      const newParticles = Array.from({ length: 20 }, () => {
+      // Reduce particle count to 12 for better performance
+      const newParticles = Array.from({ length: 12 }, () => {
         const angle = (baseAngle + (Math.random() * 60 - 30)) * (Math.PI / 180);
         const baseSpeed = 10 + Math.random() * 5;
         const speed = baseSpeed * velocityScale;
@@ -75,15 +82,36 @@ const SaltEffect = ({ isActive, playerFacing, playerX, playerY }) => {
   }, [isActive, playerFacing]);
 
   useEffect(() => {
-    const intervalId = setInterval(() => {
-      setParticles((prevParticles) =>
-        prevParticles
-          .map(updateParticle)
-          .filter((particle) => particle.life > 0 && particle.opacity > 0)
-      );
-    }, 16);
+    const animate = (timestamp) => {
+      if (!lastUpdateTime.current) {
+        lastUpdateTime.current = timestamp;
+      }
 
-    return () => clearInterval(intervalId);
+      const deltaTime = timestamp - lastUpdateTime.current;
+
+      if (deltaTime >= 16) {
+        // Cap at 60fps
+        setParticles((prevParticles) => {
+          const updatedParticles = prevParticles
+            .map((particle) => updateParticle(particle, deltaTime))
+            .filter((particle) => particle.life > 0 && particle.opacity > 0);
+
+          return updatedParticles;
+        });
+
+        lastUpdateTime.current = timestamp;
+      }
+
+      animationFrameRef.current = requestAnimationFrame(animate);
+    };
+
+    animationFrameRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
   }, [updateParticle]);
 
   return (

@@ -40,6 +40,7 @@ const rooms = Array.from({ length: 10 }, (_, i) => ({
   gameOver: false,
   matchOver: false,
   readyStartTime: null,
+  roundStartTimer: null, // Add timer for automatic round start
 }));
 
 let index;
@@ -54,6 +55,20 @@ const SLAP_HITBOX_DISTANCE_VALUE = 110;
 const SLAP_PARRY_WINDOW = 150; // 150ms window for parry
 const PARRY_KNOCKBACK_VELOCITY = 1.5; // Reduced knockback for parried attacks
 
+// Add power-up types
+const POWER_UP_TYPES = {
+  SPEED: "speed",
+  POWER: "power",
+  SIZE: "size",
+};
+
+// Add power-up effects
+const POWER_UP_EFFECTS = {
+  [POWER_UP_TYPES.SPEED]: 1.2, // 20% speed increase
+  [POWER_UP_TYPES.POWER]: 1.3, // 30% knockback increase
+  [POWER_UP_TYPES.SIZE]: 1.15, // 15% size increase
+};
+
 function resetRoomAndPlayers(room) {
   // Reset room state
   room.gameStart = false;
@@ -61,6 +76,21 @@ function resetRoomAndPlayers(room) {
   room.gameOverTime = null;
   delete room.winnerId;
   delete room.loserId;
+
+  // Start the 15-second timer for automatic round start
+  if (room.roundStartTimer) {
+    clearTimeout(room.roundStartTimer);
+  }
+  room.roundStartTimer = setTimeout(() => {
+    if (!room.gameStart && room.players.length === 2) {
+      room.gameStart = true;
+      io.in(room.id).emit("game_start", true);
+      room.players.forEach((player) => {
+        player.isReady = false;
+      });
+    }
+  }, 15000);
+
   // Reset each player in the room
   room.players.forEach((player) => {
     player.isJumping = false;
@@ -74,10 +104,13 @@ function resetRoomAndPlayers(room) {
     player.isAlreadyHit = false;
     player.isDead = false;
     player.stamina = 100;
-    player.isBowing = false; // Add this line
-    player.x = player.fighter === "player 1" ? 150 : 900; // Reset position based on facing
+    player.isBowing = false;
+    player.x = player.fighter === "player 1" ? 50 : 950; // Updated to match salt throw range
     player.y = GROUND_LEVEL;
     player.knockbackVelocity = { x: 0, y: 0 };
+    // Reset power-up state
+    player.activePowerUp = null;
+    player.powerUpMultiplier = 1;
   });
 
   // Emit an event to inform clients that the game has been reset
@@ -403,6 +436,11 @@ io.on("connection", (socket) => {
           }
 
           if (currentTime - room.readyStartTime >= 1000) {
+            // Clear the automatic start timer if players ready up
+            if (room.roundStartTimer) {
+              clearTimeout(room.roundStartTimer);
+              room.roundStartTimer = null;
+            }
             room.gameStart = true;
             io.in(room.id).emit("game_start", true);
             player1.isReady = false;
@@ -642,7 +680,18 @@ io.on("connection", (socket) => {
         }
         // Dodging
         if (player.isDodging) {
-          player.x += player.dodgeDirection * delta * speedFactor * 2.5;
+          let currentDodgeSpeed = speedFactor * 2.5; // Base dodge speed
+
+          // Apply speed power-up to dodge
+          if (player.activePowerUp === POWER_UP_TYPES.SPEED) {
+            currentDodgeSpeed *= player.powerUpMultiplier;
+          }
+          // Reduce dodge speed when size power-up is active
+          if (player.activePowerUp === POWER_UP_TYPES.SIZE) {
+            currentDodgeSpeed *= 0.85; // 15% speed reduction
+          }
+
+          player.x += player.dodgeDirection * delta * currentDodgeSpeed;
 
           if (Date.now() >= player.dodgeEndTime) {
             player.isDodging = false;
@@ -661,13 +710,24 @@ io.on("connection", (socket) => {
             player.saltCooldown === false &&
             !player.isThrowTeching)
         ) {
+          let currentSpeedFactor = speedFactor;
+
+          // Apply speed power-up
+          if (player.activePowerUp === POWER_UP_TYPES.SPEED) {
+            currentSpeedFactor *= player.powerUpMultiplier;
+          }
+          // Reduce speed when size power-up is active
+          if (player.activePowerUp === POWER_UP_TYPES.SIZE) {
+            currentSpeedFactor *= 0.85; // 15% speed reduction
+          }
+
           if (player.keys.d && !player.isDodging && !player.isThrowing) {
-            player.x += delta * speedFactor;
+            player.x += delta * currentSpeedFactor;
             player.isStrafing = true;
             player.isReady = false;
           }
           if (player.keys.a && !player.isDodging && !player.isThrowing) {
-            player.x -= delta * speedFactor;
+            player.x -= delta * currentSpeedFactor;
             player.isStrafing = true;
             player.isReady = false;
           }
@@ -759,6 +819,20 @@ io.on("connection", (socket) => {
           if (grabDuration >= 500) {
             player.isGrabbing = false;
           }
+        }
+
+        // Apply speed power-up effect
+        if (player.activePowerUp === POWER_UP_TYPES.SPEED) {
+          player.speedFactor = speedFactor * player.powerUpMultiplier;
+        } else {
+          player.speedFactor = speedFactor;
+        }
+
+        // Apply size power-up effect
+        if (player.activePowerUp === POWER_UP_TYPES.SIZE) {
+          player.sizeMultiplier = player.powerUpMultiplier;
+        } else {
+          player.sizeMultiplier = 1;
         }
       });
 
@@ -878,27 +952,6 @@ io.on("connection", (socket) => {
     }, 200);
   }
 
-  // Helper function to apply parry effects to a player
-  function applyParryEffect(player, knockbackDirection) {
-    // Reset attack states
-    player.isAttacking = false;
-    player.isSlapAttack = true;
-    player.isHit = true;
-    player.isParrying = true;
-
-    // Apply reduced knockback
-    player.knockbackVelocity.x = PARRY_KNOCKBACK_VELOCITY * knockbackDirection;
-    player.knockbackVelocity.y = 0;
-
-    // Set a brief recovery period
-    setTimeout(() => {
-      player.isHit = false;
-      player.isAlreadyHit = false;
-      player.isSlapAttack = false;
-      player.isParrying = false;
-    }, 200);
-  }
-
   function processHit(player, otherPlayer) {
     const MIN_ATTACK_DISPLAY_TIME = 300;
     const currentTime = Date.now();
@@ -942,14 +995,24 @@ io.on("connection", (socket) => {
 
       const knockbackDirection = player.facing === -1 ? 1 : -1;
       const chargePercentage = player.chargeAttackPower;
-      const knockbackMultiplier = 0.5 + (chargePercentage / 100) * 1.1;
+      let finalKnockbackMultiplier = 0.5 + (chargePercentage / 100) * 1.1;
+
+      // Apply power-up effects
+      if (player.activePowerUp === POWER_UP_TYPES.POWER) {
+        finalKnockbackMultiplier =
+          finalKnockbackMultiplier * player.powerUpMultiplier;
+      }
+      if (otherPlayer.activePowerUp === POWER_UP_TYPES.SIZE) {
+        // Reduce knockback by 30% when the player has size power-up
+        finalKnockbackMultiplier = finalKnockbackMultiplier * 0.7;
+      }
 
       if (player.isSlapAttack) {
         otherPlayer.knockbackVelocity.x =
-          6.5 * knockbackDirection * knockbackMultiplier;
+          6.5 * knockbackDirection * finalKnockbackMultiplier;
       } else {
         otherPlayer.knockbackVelocity.x =
-          5 * knockbackDirection * knockbackMultiplier;
+          5 * knockbackDirection * finalKnockbackMultiplier;
       }
       otherPlayer.knockbackVelocity.y = 0; // Remove vertical knockback
       otherPlayer.y = GROUND_LEVEL;
@@ -1015,7 +1078,7 @@ io.on("connection", (socket) => {
         isBowing: false,
         facing: 1,
         stamina: 100,
-        x: 150,
+        x: 50,
         y: GROUND_LEVEL,
         knockbackVelocity: { x: 0, y: 0 },
         keys: {
@@ -1075,7 +1138,7 @@ io.on("connection", (socket) => {
         isBowing: false,
         facing: -1,
         stamina: 100,
-        x: 900,
+        x: 950,
         y: GROUND_LEVEL,
         knockbackVelocity: { x: 0, y: 0 },
         keys: {
@@ -1170,11 +1233,25 @@ io.on("connection", (socket) => {
     if (
       player.keys.f &&
       !player.saltCooldown &&
-      (player.x <= -20 || player.x >= 1025) &&
-      rooms[index].gameStart === false
+      (player.x <= 50 || player.x >= 950) && // Much wider range, allowing throws from closer to center
+      rooms[index].gameStart === false &&
+      !player.activePowerUp
     ) {
       player.isThrowingSalt = true;
       player.saltCooldown = true;
+
+      // Randomly select a power-up
+      const powerUpTypes = Object.values(POWER_UP_TYPES);
+      const randomPowerUp =
+        powerUpTypes[Math.floor(Math.random() * powerUpTypes.length)];
+      player.activePowerUp = randomPowerUp;
+      player.powerUpMultiplier = POWER_UP_EFFECTS[randomPowerUp];
+
+      // Emit power-up event to clients
+      io.in(roomId).emit("power_up_activated", {
+        playerId: player.id,
+        powerUpType: randomPowerUp,
+      });
 
       setTimeout(() => {
         player.isThrowingSalt = false;

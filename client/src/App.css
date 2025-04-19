@@ -42,15 +42,22 @@ body {
   background-color: #ffc0cb;
   border-radius: 50%;
   opacity: 0.7;
+  will-change: transform, opacity;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
   animation: fall 10s linear infinite;
+  pointer-events: none;
+  top: -10px; /* Start from above the viewport */
 }
 
 @keyframes fall {
   0% {
-    transform: translateY(-100vh) rotate(0deg);
+    transform: translateY(0) rotate(0deg);
+    opacity: 0.7;
   }
   100% {
     transform: translateY(100vh) rotate(360deg);
+    opacity: 0;
   }
 }
 

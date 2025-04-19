@@ -40,6 +40,8 @@ import bow from "../assets/bow.png";
 import bow2 from "../assets/bow2.png";
 import throwTech from "../assets/throw-tech.png";
 import throwTech2 from "../assets/throw-tech2.png";
+import saltBasket from "../assets/salt-basket.png";
+import saltBasketEmpty from "../assets/salt-basket-empty.png";
 
 import attackSound from "../sounds/attack-sound.mp3";
 import hitSound from "../sounds/hit-sound.mp3";
@@ -56,6 +58,8 @@ import parrySound from "../sounds/parry-sound.mp3";
 import UiPlayerInfo from "./UiPlayerInfo";
 import SaltEffect from "./SaltEffect";
 import MatchOver from "./MatchOver";
+
+const GROUND_LEVEL = 145; // Ground level constant
 
 const playSound = (audioFile, volume = 1.0) => {
   const sound = new Audio(audioFile);
@@ -277,6 +281,165 @@ const StyledLabel = styled.div
                  -1px 1px 0 #000, 1px 1px 0 #000;
   `;
 
+const PowerUpText = styled.div`
+  position: absolute;
+  font-family: "Bungee";
+  font-size: clamp(0.5rem, 1.5vw, 1.2rem);
+  color: #ffffff;
+  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
+    1px 1px 0 #000;
+  pointer-events: none;
+  bottom: 50%;
+`;
+
+const FloatingPowerUpText = styled.div`
+  position: absolute;
+  font-family: "Bungee";
+  font-size: clamp(0.5rem, 1.5vw, 1.2rem);
+  color: ${(props) => {
+    switch (props.powerUpType) {
+      case "speed":
+        return "#87ceeb"; // Light sky blue
+      case "power":
+        return "#ff4444"; // red
+      case "size":
+        return "#44ff44"; // green
+      default:
+        return "#ffffff";
+    }
+  }};
+  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
+    1px 1px 0 #000;
+  pointer-events: none;
+  animation: floatUp 2s forwards;
+  bottom: 45%;
+  z-index: 100;
+  @keyframes floatUp {
+    0% {
+      transform: translateY(0);
+      opacity: 1;
+    }
+    100% {
+      transform: translateY(-100px);
+      opacity: 0;
+    }
+  }
+`;
+
+const KeyContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(0.25rem, 0.5vw, 0.5rem);
+`;
+
+const Key = styled.div`
+  width: clamp(1.5rem, 3vw, 2.5rem);
+  height: clamp(1.5rem, 3vw, 2.5rem);
+  background: linear-gradient(145deg, #2a2a2a, #1a1a1a);
+  border-radius: 0.3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Bungee";
+  font-size: clamp(0.8rem, 1.5vw, 1.2rem);
+  color: #ffd700;
+  box-shadow: 0 0.2rem 0.4rem rgba(0, 0, 0, 0.3),
+    inset 0 0.1rem 0.2rem rgba(255, 255, 255, 0.1);
+  position: relative;
+  animation: keyPress 1.5s infinite;
+
+  @keyframes keyPress {
+    0% {
+      transform: translateY(0) scale(1);
+      box-shadow: 0 0.2rem 0.4rem rgba(0, 0, 0, 0.3),
+        inset 0 0.1rem 0.2rem rgba(255, 255, 255, 0.1);
+    }
+    10% {
+      transform: translateY(-0.3rem) scale(0.95);
+      box-shadow: 0 0.1rem 0.2rem rgba(0, 0, 0, 0.2),
+        inset 0 0.05rem 0.1rem rgba(255, 255, 255, 0.05);
+    }
+    20% {
+      transform: translateY(0) scale(1);
+      box-shadow: 0 0.2rem 0.4rem rgba(0, 0, 0, 0.3),
+        inset 0 0.1rem 0.2rem rgba(255, 255, 255, 0.1);
+    }
+    30% {
+      transform: translateY(-0.2rem) scale(0.98);
+      box-shadow: 0 0.15rem 0.3rem rgba(0, 0, 0, 0.25),
+        inset 0 0.08rem 0.15rem rgba(255, 255, 255, 0.08);
+    }
+    40% {
+      transform: translateY(0) scale(1);
+      box-shadow: 0 0.2rem 0.4rem rgba(0, 0, 0, 0.3),
+        inset 0 0.1rem 0.2rem rgba(255, 255, 255, 0.1);
+    }
+    100% {
+      transform: translateY(0) scale(1);
+      box-shadow: 0 0.2rem 0.4rem rgba(0, 0, 0, 0.3),
+        inset 0 0.1rem 0.2rem rgba(255, 255, 255, 0.1);
+    }
+  }
+`;
+
+const KeyLabel = styled.div`
+  font-size: clamp(0.6rem, 1vw, 0.8rem);
+  color: #ffd700;
+  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
+    1px 1px 0 #000;
+`;
+
+const PowerUpEffect = styled.div`
+  position: absolute;
+  font-family: "Bungee";
+  font-size: clamp(0.5rem, 1.5vw, 1.2rem);
+  color: #ffd700;
+  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
+    1px 1px 0 #000;
+  pointer-events: none;
+  animation: float 2s infinite;
+  @keyframes float {
+    0% {
+      transform: translateY(0) scale(1);
+    }
+    50% {
+      transform: translateY(-10px) scale(1.05);
+    }
+    100% {
+      transform: translateY(0) scale(1);
+    }
+  }
+`;
+
+const CountdownTimer = styled.div`
+  position: absolute;
+  font-family: "Bungee";
+  font-size: clamp(1rem, 3vw, 2.5rem);
+  color: #ffffff;
+  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
+    1px 1px 0 #000;
+  pointer-events: none;
+  bottom: 80%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+`;
+
+const SaltBasket = styled.img`
+  position: absolute;
+  width: 8%;
+  height: auto;
+  bottom: ${GROUND_LEVEL + 75}px;
+  left: ${(props) => (props.index === 0 ? ".5%" : "auto")};
+  right: ${(props) => (props.index === 1 ? ".5%" : "auto")};
+  transform: ${(props) => (props.index === 1 ? "scaleX(-1)" : "none")};
+  z-index: 1;
+  pointer-events: none;
+  opacity: ${(props) => (props.isVisible ? 1 : 0)};
+  transition: opacity 0.3s ease;
+`;
+
 const GameFighter = ({ player, index, roomName, localId }) => {
   const { socket } = useContext(SocketContext);
   const [penguin, setPenguin] = useState(player);
@@ -289,6 +452,12 @@ const GameFighter = ({ player, index, roomName, localId }) => {
   const [playerTwoWinCount, setPlayerTwoWinCount] = useState(0);
   const [matchOver, setMatchOver] = useState(false);
   const [parryEffectPosition, setParryEffectPosition] = useState(null);
+  const [hasUsedPowerUp, setHasUsedPowerUp] = useState(false);
+  const [activePowerUp, setActivePowerUp] = useState(null);
+  const [showFloatingPowerUp, setShowFloatingPowerUp] = useState(false);
+  const [floatingPowerUpType, setFloatingPowerUpType] = useState(null);
+  const [countdown, setCountdown] = useState(15);
+  const countdownRef = useRef(null);
 
   const lastAttackState = useRef(player.isAttacking);
   const lastHitState = useRef(player.isHit);
@@ -325,9 +494,36 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         playSound(parrySound, 0.01);
       }
     });
+    socket.on("game_reset", (data) => {
+      setGameOver(data);
+      setGyojiState("idle");
+      setMatchOver(false);
+      setHasUsedPowerUp(false);
+      setActivePowerUp(null);
+      setCountdown(15);
+
+      // Start countdown timer immediately
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current);
+      }
+      countdownRef.current = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(countdownRef.current);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    });
+
     socket.on("game_start", (data) => {
-      console.log(data);
       setHakkiyoi(true);
+      // Clear the countdown timer when game starts
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current);
+        setCountdown(0);
+      }
 
       const timer = setTimeout(() => {
         setHakkiyoi(false);
@@ -335,12 +531,6 @@ const GameFighter = ({ player, index, roomName, localId }) => {
 
       setGyojiState("ready");
       return () => clearTimeout(timer);
-    });
-
-    socket.on("game_reset", (data) => {
-      setGameOver(data);
-      setGyojiState("idle");
-      setMatchOver(false);
     });
 
     socket.on("game_over", (data) => {
@@ -366,6 +556,20 @@ const GameFighter = ({ player, index, roomName, localId }) => {
       setMatchOver(false);
     });
 
+    socket.on("power_up_activated", (data) => {
+      if (data.playerId === penguin.id) {
+        setActivePowerUp(data.powerUpType);
+        setHasUsedPowerUp(true);
+        setShowFloatingPowerUp(true);
+        setFloatingPowerUpType(data.powerUpType);
+
+        // Hide the floating text after animation
+        setTimeout(() => {
+          setShowFloatingPowerUp(false);
+        }, 2000);
+      }
+    });
+
     return () => {
       socket.off("fighter_action");
       socket.off("slap_parry");
@@ -373,6 +577,10 @@ const GameFighter = ({ player, index, roomName, localId }) => {
       socket.off("game_reset");
       socket.off("game_over");
       socket.off("match_over");
+      socket.off("power_up_activated");
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current);
+      }
     };
   }, [index, socket]);
 
@@ -427,9 +635,8 @@ const GameFighter = ({ player, index, roomName, localId }) => {
   }, [penguin.isHit, penguin.isBeingThrown]);
 
   useEffect(() => {
-    if (penguin.isThrowingSalt) {
-      playSound(saltSound, 0.03);
-      console.log("sound on");
+    if (penguin.isThrowingSalt && !lastThrowingSaltState.current) {
+      setHasUsedPowerUp(true);
     }
     lastThrowingSaltState.current = penguin.isThrowingSalt;
   }, [penguin.isThrowingSalt]);
@@ -503,13 +710,60 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         x={penguin.x}
         y={penguin.y}
         facing={penguin.facing}
-        playerId={penguin.id} // Add this
-        localId={localId} // Add this
+        playerId={penguin.id}
+        localId={localId}
       />
       <PlayerStaminaUi stamina={stamina} index={index} />
       <StyledLabel {...penguin}>P{index + 1}</StyledLabel>
+      <SaltBasket
+        src={
+          penguin.isThrowingSalt || hasUsedPowerUp
+            ? saltBasketEmpty
+            : saltBasket
+        }
+        alt="Salt Basket"
+        index={index}
+        isVisible={true}
+      />
+      {penguin.id === localId &&
+        !hasUsedPowerUp &&
+        !penguin.isThrowingSalt &&
+        gyojiState === "idle" && (
+          <PowerUpText
+            style={{
+              left: index === 0 ? "2%" : "auto",
+              right: index === 1 ? "2%" : "auto",
+              textAlign: "center",
+            }}
+          >
+            <KeyContainer>
+              <Key>F</Key>
+              <KeyLabel>POWER UP</KeyLabel>
+            </KeyContainer>
+          </PowerUpText>
+        )}
+      {showFloatingPowerUp && (
+        <FloatingPowerUpText
+          powerUpType={floatingPowerUpType}
+          style={{
+            left: index === 0 ? "2%" : "auto",
+            right: index === 1 ? "2%" : "auto",
+            textAlign: "center",
+          }}
+        >
+          {floatingPowerUpType.toUpperCase()}++
+        </FloatingPowerUpText>
+      )}
       <PlayerShadow x={penguin.x} y={penguin.y} facing={penguin.facing} />
-      <StyledImage {...penguin} />
+      <StyledImage
+        {...penguin}
+        style={{
+          transform: `scaleX(${penguin.facing}) scale(${
+            activePowerUp === "size" ? 1.15 : 1
+          })`,
+          width: activePowerUp === "size" ? "26.45%" : "23%",
+        }}
+      />
       <SaltEffect
         isActive={penguin.isThrowingSalt}
         playerFacing={penguin.facing}
@@ -518,52 +772,21 @@ const GameFighter = ({ player, index, roomName, localId }) => {
       />
       <SlapParryEffect position={parryEffectPosition} />
       <ThrowTechEffect />
+      {countdown > 0 &&
+        !hakkiyoi &&
+        !matchOver &&
+        !gyojiState.includes("ready") && (
+          <CountdownTimer>{countdown}</CountdownTimer>
+        )}
     </div>
   );
 };
 
 GameFighter.propTypes = {
-  player: PropTypes.shape({
-    id: PropTypes.string.isRequired,
-    fighter: PropTypes.string.isRequired,
-    color: PropTypes.string,
-    isJumping: PropTypes.bool,
-    isThrowing: PropTypes.bool,
-    isThrowingSalt: PropTypes.bool,
-    isGrabbing: PropTypes.bool,
-    isBeingGrabbed: PropTypes.bool,
-    isAttacking: PropTypes.bool,
-    isAttackCooldown: PropTypes.bool,
-    isSlapAttack: PropTypes.bool,
-    isDodging: PropTypes.bool,
-    isStrafing: PropTypes.bool,
-    isDiving: PropTypes.bool,
-    isCrouching: PropTypes.bool,
-    isReady: PropTypes.bool,
-    isHit: PropTypes.bool,
-    isAlreadyHit: PropTypes.bool,
-    isDead: PropTypes.bool,
-    facing: PropTypes.number,
-    stamina: PropTypes.number,
-    dodgeEndTime: PropTypes.number,
-    x: PropTypes.number,
-    y: PropTypes.number,
-    knockbackVelocity: PropTypes.shape({
-      x: PropTypes.number,
-      y: PropTypes.number,
-    }),
-    keys: PropTypes.shape({
-      w: PropTypes.bool,
-      a: PropTypes.bool,
-      s: PropTypes.bool,
-      d: PropTypes.bool,
-      " ": PropTypes.bool,
-      shift: PropTypes.bool,
-      e: PropTypes.bool,
-      f: PropTypes.bool,
-    }),
-  }),
+  player: PropTypes.object.isRequired,
   index: PropTypes.number.isRequired,
+  roomName: PropTypes.string.isRequired,
+  localId: PropTypes.string.isRequired,
 };
 
 export default GameFighter;

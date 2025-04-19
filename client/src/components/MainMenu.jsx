@@ -1,7 +1,7 @@
 import Lobby from "./Lobby";
 import Rooms from "./Rooms";
 import Game from "./Game";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import sumo from "../assets/pumo-bkg.png";
 import lobbyBackground from "../assets/lobby-bkg.webp";
 import pumo from "../assets/pumo.png";
@@ -14,7 +14,7 @@ const createCherryBlossoms = () => {
   for (let i = 0; i < numPetals; i++) {
     const left = `${Math.random() * 100}%`;
     const animationDuration = `${Math.random() * 5 + 5}s`;
-    const animationDelay = "0s";
+    const animationDelay = `${Math.random() * 2}s`;
     const size = `${Math.random() * 5 + 5}px`;
 
     petals.push(
@@ -48,11 +48,7 @@ preloadAssets(preGameImages);
 
 const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
   const [roomName, setRoomName] = useState("");
-  const [cherryBlossoms, setCherryBlossoms] = useState([]);
-
-  useEffect(() => {
-    setCherryBlossoms(createCherryBlossoms());
-  }, []);
+  const [cherryBlossoms] = useState(createCherryBlossoms());
 
   const handleMainMenuPage = () => {
     setCurrentPage("mainMenu");
