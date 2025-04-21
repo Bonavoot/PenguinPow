@@ -1,33 +1,60 @@
 import { useEffect, useState, useRef } from "react";
+import PropTypes from "prop-types";
 import "./PowerMeter.css";
 
-const PowerMeter = ({ isCharging, x, y, facing, playerId, localId }) => {
+const PowerMeter = ({
+  isCharging,
+  chargePower,
+  x,
+  y,
+  facing,
+  playerId,
+  localId,
+  activePowerUp,
+}) => {
   const [smoothPower, setSmoothPower] = useState(0);
   const animationFrameRef = useRef();
-  const startTimeRef = useRef(null);
+  const lastPowerRef = useRef(0);
+  const lastChargePowerRef = useRef(0);
 
   useEffect(() => {
     if (isCharging && playerId === localId) {
-      // Set start time if charging just began
-      if (!startTimeRef.current) {
-        startTimeRef.current = Date.now();
+      const animate = () => {
+        const targetPower = chargePower || 0;
+
+        // If charge power changed significantly, update immediately
+        if (Math.abs(targetPower - lastChargePowerRef.current) > 5) {
+          setSmoothPower(targetPower);
+          lastPowerRef.current = targetPower;
+          lastChargePowerRef.current = targetPower;
+        } else {
+          // Otherwise, smooth the transition
+          const currentPower = lastPowerRef.current;
+          const newPower = currentPower + (targetPower - currentPower) * 0.3;
+          setSmoothPower(newPower);
+          lastPowerRef.current = newPower;
+        }
+
+        if (isCharging && playerId === localId) {
+          animationFrameRef.current = requestAnimationFrame(animate);
+        }
+      };
+
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
       }
 
-      const animate = () => {
-        const now = Date.now();
-        const elapsed = now - startTimeRef.current;
-        // Calculate power based on elapsed time directly
-        const currentPower = Math.min((elapsed / 1500) * 100, 100);
-
-        setSmoothPower(currentPower);
-        animationFrameRef.current = requestAnimationFrame(animate);
-      };
+      // Initialize with current charge power
+      lastChargePowerRef.current = chargePower || 0;
+      lastPowerRef.current = chargePower || 0;
+      setSmoothPower(chargePower || 0);
 
       animationFrameRef.current = requestAnimationFrame(animate);
     } else {
       // Reset when charging stops
-      startTimeRef.current = null;
       setSmoothPower(0);
+      lastPowerRef.current = 0;
+      lastChargePowerRef.current = 0;
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
@@ -38,9 +65,8 @@ const PowerMeter = ({ isCharging, x, y, facing, playerId, localId }) => {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [isCharging, playerId, localId]);
+  }, [isCharging, chargePower, playerId, localId]);
 
-  //|| smoothPower < 25
   if (!isCharging || playerId !== localId || smoothPower < 10) return null;
 
   const getColor = () => {
@@ -58,6 +84,7 @@ const PowerMeter = ({ isCharging, x, y, facing, playerId, localId }) => {
   const fillStyle = {
     width: `${smoothPower}%`,
     backgroundColor: getColor(),
+    transition: "width 0.05s ease-out, background-color 0.15s ease-out",
   };
 
   return (
@@ -68,6 +95,16 @@ const PowerMeter = ({ isCharging, x, y, facing, playerId, localId }) => {
       {/* <div className="power-meter-text">{Math.round(smoothPower)}%</div> */}
     </div>
   );
+};
+
+PowerMeter.propTypes = {
+  isCharging: PropTypes.bool.isRequired,
+  chargePower: PropTypes.number.isRequired,
+  x: PropTypes.number.isRequired,
+  y: PropTypes.number.isRequired,
+  facing: PropTypes.number.isRequired,
+  playerId: PropTypes.string.isRequired,
+  localId: PropTypes.string.isRequired,
 };
 
 export default PowerMeter;

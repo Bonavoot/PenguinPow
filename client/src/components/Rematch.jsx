@@ -1,5 +1,6 @@
 import { useContext, useEffect, useState } from "react";
 import { SocketContext } from "../SocketContext";
+import PropTypes from "prop-types";
 
 const Rematch = ({ roomName }) => {
   const [rematch, setRematch] = useState(false);
@@ -28,7 +29,6 @@ const Rematch = ({ roomName }) => {
         roomId: roomName,
       });
     }
-    setRematch(!rematch);
   };
 
   const handleExit = () => {
@@ -38,21 +38,18 @@ const Rematch = ({ roomName }) => {
 
   return (
     <div className="rematch">
-      {rematch ? (
-        <div className="rematch-btn-container">
+      <div className="rematch-btn-container">
+        {rematch ? (
           <button onClick={handleRematch} className="rematch-cancel-btn">
             CANCEL
           </button>
-          <div className="ready-count">{count} / 2</div>
-        </div>
-      ) : (
-        <div className="rematch-btn-container">
+        ) : (
           <button onClick={handleRematch} className="rematch-ready-btn">
             REMATCH
           </button>
-          <div className="ready-count">{count} / 2</div>
-        </div>
-      )}
+        )}
+        <div className="ready-count">{count} / 2</div>
+      </div>
       <button
         className="rematch-exit-btn"
         id="rematch-exit"
@@ -62,6 +59,10 @@ const Rematch = ({ roomName }) => {
       </button>
     </div>
   );
+};
+
+Rematch.propTypes = {
+  roomName: PropTypes.string.isRequired,
 };
 
 export default Rematch;

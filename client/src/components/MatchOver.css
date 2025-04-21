@@ -54,27 +54,18 @@
 .rematch-cancel-btn {
   font-size: clamp(0.5rem, 4vw, 2.5rem);
   background-color: forestgreen;
-  padding: 8% 4%; /* Use percentage for padding */
+  padding: 8% 4%;
   border: none;
   border-radius: 2%;
   color: white;
   cursor: pointer;
   font-family: "Bungee", cursive;
-  animation: logo-animation linear 4s;
-  animation-iteration-count: infinite;
-  transform-origin: 50% 50%;
-  -webkit-animation: logo-animation linear 4s;
-  -webkit-animation-iteration-count: infinite;
-  -webkit-transform-origin: 50% 50%;
-  -moz-animation: logo-animation linear 4s;
-  -moz-animation-iteration-count: infinite;
-  -moz-transform-origin: 50% 50%;
-  -o-animation: logo-animation linear 4s;
-  -o-animation-iteration-count: infinite;
-  -o-transform-origin: 50% 50%;
-  -ms-animation: logo-animation linear 4s;
-  -ms-animation-iteration-count: infinite;
-  -ms-transform-origin: 50% 50%;
+  opacity: 1;
+  width: 250px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .rematch-cancel-btn {

@@ -85,7 +85,8 @@ const getImageSrc = (
   isThrowingSalt,
   slapAnimation,
   isBowing,
-  isThrowTeching
+  isThrowTeching,
+  isBeingPulled
 ) => {
   if (fighter === "player 2") {
     if (isBowing) return bow;
@@ -97,7 +98,7 @@ const getImageSrc = (
     if (isJumping) return throwing;
     if (isAttacking && !isSlapAttack) return attack;
     if (isGrabbing) return grabbing;
-    if (isBeingGrabbed) return beingGrabbed;
+    if (isBeingGrabbed || isBeingPulled) return beingGrabbed;
     if (isDodging) return dodging;
     if (isCrouching) return crouching;
     if (isReady) return ready;
@@ -125,6 +126,7 @@ const getImageSrc = (
     if (isDead) return pumo;
     if (isThrowing) return throwing2;
     if (isThrowingSalt) return salt2;
+    if (isBeingGrabbed || isBeingPulled) return beingGrabbed;
     return pumo2;
   }
 };
@@ -137,6 +139,9 @@ const validProps = [
   "className",
   "id",
   "onClick",
+  "pullSpeed",
+  "pullHopHeight",
+  "pullHopSpeed",
 ];
 
 const StyledImage = styled("img")
@@ -202,7 +207,8 @@ const StyledImage = styled("img")
       props.isThrowingSalt,
       props.slapAnimation,
       props.isBowing,
-      props.isThrowTeching
+      props.isThrowTeching,
+      props.isBeingPulled
     ),
     style: {
       position: "absolute",
@@ -299,7 +305,7 @@ const FloatingPowerUpText = styled.div`
   color: ${(props) => {
     switch (props.powerUpType) {
       case "speed":
-        return "#87ceeb"; // Light sky blue
+        return "#0066ff"; // Electric blue
       case "power":
         return "#ff4444"; // red
       case "size":
@@ -430,9 +436,9 @@ const SaltBasket = styled.img`
   position: absolute;
   width: 8%;
   height: auto;
-  bottom: ${GROUND_LEVEL + 75}px;
-  left: ${(props) => (props.index === 0 ? ".5%" : "auto")};
-  right: ${(props) => (props.index === 1 ? ".5%" : "auto")};
+  bottom: ${(props) => `${((GROUND_LEVEL + 75) / 720) * 100}%`};
+  left: ${(props) => (props.index === 0 ? "0.5%" : "auto")};
+  right: ${(props) => (props.index === 1 ? "0.5%" : "auto")};
   transform: ${(props) => (props.index === 1 ? "scaleX(-1)" : "none")};
   z-index: 1;
   pointer-events: none;
