@@ -50,7 +50,6 @@ import throwSound from "../sounds/throw-sound.mp3";
 import winnerSound from "../sounds/winner-sound.wav";
 import hakkiyoiSound from "../sounds/hakkiyoi-sound.mp3";
 import bellSound from "../sounds/bell-sound.mp3";
-import saltSound from "../sounds/salt-sound.mp3";
 import gameMusic from "../sounds/game-music.mp3";
 import eeshiMusic from "../sounds/eeshi.mp3";
 import parrySound from "../sounds/parry-sound.mp3";
@@ -62,9 +61,18 @@ import MatchOver from "./MatchOver";
 const GROUND_LEVEL = 145; // Ground level constant
 
 const playSound = (audioFile, volume = 1.0) => {
-  const sound = new Audio(audioFile);
-  sound.volume = volume;
-  sound.play();
+  try {
+    const sound = new Audio(audioFile);
+    sound.volume = volume;
+    sound.play().catch((error) => {
+      // Ignore AbortError as it's expected when sounds overlap
+      if (error.name !== "AbortError") {
+        console.error("Error playing sound:", error);
+      }
+    });
+  } catch (error) {
+    console.error("Error creating audio:", error);
+  }
 };
 
 const getImageSrc = (
@@ -86,19 +94,26 @@ const getImageSrc = (
   slapAnimation,
   isBowing,
   isThrowTeching,
-  isBeingPulled
+  isBeingPulled,
+  isBeingPushed,
+  grabState,
+  grabAttemptType
 ) => {
   if (fighter === "player 2") {
     if (isBowing) return bow;
     if (isThrowTeching) return throwTech;
     if (isSlapAttack) {
-      // Toggle between two slap attack animations based on slapAnimation value
       return slapAnimation === 1 ? slapAttack1Red : slapAttack2Red;
     }
     if (isJumping) return throwing;
     if (isAttacking && !isSlapAttack) return attack;
-    if (isGrabbing) return grabbing;
-    if (isBeingGrabbed || isBeingPulled) return beingGrabbed;
+    if (isGrabbing) {
+      if (grabState === "attempting") {
+        return grabAttemptType === "throw" ? throwing : grabbing;
+      }
+      return grabbing;
+    }
+    if (isBeingGrabbed || isBeingPulled || isBeingPushed) return beingGrabbed;
     if (isDodging) return dodging;
     if (isCrouching) return crouching;
     if (isReady) return ready;
@@ -117,7 +132,12 @@ const getImageSrc = (
       // Toggle between two slap attack animations based on slapAnimation value
       return slapAnimation === 1 ? slapAttack1Blue : slapAttack2Blue;
     }
-    if (isGrabbing) return grabbing2;
+    if (isGrabbing) {
+      if (grabState === "attempting") {
+        return grabAttemptType === "throw" ? throwing2 : grabbing2;
+      }
+      return grabbing2;
+    }
     if (isDodging) return dodging2;
     if (isCrouching) return crouching2;
     if (isReady) return ready2;
@@ -126,7 +146,7 @@ const getImageSrc = (
     if (isDead) return pumo;
     if (isThrowing) return throwing2;
     if (isThrowingSalt) return salt2;
-    if (isBeingGrabbed || isBeingPulled) return beingGrabbed;
+    if (isBeingGrabbed || isBeingPulled || isBeingPushed) return beingGrabbed;
     return pumo2;
   }
 };
@@ -184,41 +204,63 @@ const StyledImage = styled("img")
         "slapAnimation",
         "isBowing",
         "isThrowTeching",
-
-        // ...any other prop names that should not be forwarded
+        "isBeingPulled",
+        "isBeingPushed",
+        "grabState",
+        "grabAttemptType",
+        "throwCooldown",
+        "grabCooldown",
+        "isChargingAttack",
+        "chargeStartTime",
+        "chargeMaxDuration",
+        "chargeAttackPower",
+        "chargingFacingDirection",
+        "isThrowingSalt",
+        "saltCooldown",
+        "grabStartTime",
+        "grabbedOpponent",
+        "grabAttemptStartTime",
+        "throwTechCooldown",
+        "isParrying",
+        "lastThrowAttemptTime",
+        "lastGrabAttemptTime",
+        "dodgeDirection",
+        "speedFactor",
+        "sizeMultiplier",
       ].includes(prop),
   })
   .attrs((props) => ({
     src: getImageSrc(
-      props.fighter,
-      props.isDiving,
-      props.isJumping,
-      props.isAttacking,
-      props.isDodging,
-      props.isStrafing,
-      props.isCrouching,
-      props.isReady,
-      props.isHit,
-      props.isDead,
-      props.isSlapAttack,
-      props.isThrowing,
-      props.isGrabbing,
-      props.isBeingGrabbed,
-      props.isThrowingSalt,
-      props.slapAnimation,
-      props.isBowing,
-      props.isThrowTeching,
-      props.isBeingPulled
+      props.$fighter,
+      props.$isDiving,
+      props.$isJumping,
+      props.$isAttacking,
+      props.$isDodging,
+      props.$isStrafing,
+      props.$isCrouching,
+      props.$isReady,
+      props.$isHit,
+      props.$isDead,
+      props.$isSlapAttack,
+      props.$isThrowing,
+      props.$isGrabbing,
+      props.$isBeingGrabbed,
+      props.$isThrowingSalt,
+      props.$slapAnimation,
+      props.$isBowing,
+      props.$isThrowTeching,
+      props.$isBeingPulled,
+      props.$isBeingPushed,
+      props.$grabState,
+      props.$grabAttemptType
     ),
     style: {
       position: "absolute",
-      /* Convert x, y from 1280×720 to percentages of the container */
-      left: `${(props.x / 1280) * 100}%`,
-      bottom: `${(props.y / 720) * 100}%`,
-      /* Flip horizontally if facing is -1; scaleX(1) is normal, scaleX(-1) is mirrored */
-      transform: `scaleX(${props.facing})`,
-
-      zIndex: props.isThrowing || props.isDodging || props.isGrabbing ? 98 : 99,
+      left: `${(props.$x / 1280) * 100}%`,
+      bottom: `${(props.$y / 720) * 100}%`,
+      transform: `scaleX(${props.$facing})`,
+      zIndex:
+        props.$isThrowing || props.$isDodging || props.$isGrabbing ? 98 : 99,
     },
   }))`
   position: absolute;
@@ -227,65 +269,6 @@ const StyledImage = styled("img")
   will-change: transform, bottom, left;
   pointer-events: none;
 `;
-
-const StyledLabel = styled.div
-  .withConfig({
-    shouldForwardProp: (prop) =>
-      ![
-        "fighter",
-        "isJumping",
-        "isDiving",
-        "isAttacking",
-        "isAttackCooldown",
-        "isDodging",
-        "isStrafing",
-        "isBeingGrabbed",
-        "isCrouching",
-        "isReady",
-        "isHit",
-        "isDead",
-        "x",
-        "y",
-        "facing",
-        "yVelocity",
-        "attackEndTime",
-        "knockbackVelocity",
-        "dodgeEndTime",
-        "isAlreadyHit",
-        "attackStartTime",
-        "isSpaceBarPressed",
-        "isThrowing",
-        "throwStartTime",
-        "throwEndTime",
-        "throwOpponent",
-        "throwFacingDirection",
-        "throwingFacingDirection",
-        "beingThrownFacingDirection",
-        "isBeingThrown",
-        "isSlapAttack",
-        "isBowing",
-        "isThrowTeching",
-        // ...any other prop names that shouldn't be forwarded
-      ].includes(prop),
-  })
-  .attrs((props) => ({
-    style: {
-      position: "absolute",
-      // The base vertical position is y + some offset
-      // so it ends up above the player's head
-      left: `${(props.x / 1280) * 100}%`,
-      bottom: `${((props.y + 290) / 720) * 100}%`,
-      transform: "translateX(265%)",
-    },
-  }))`
-    position: absolute;
-    font-size: clamp(.2rem, 2.5vw, 2rem); /* optional fluid sizing */
-    font-family: "Bungee";
-    pointer-events: none;
-    color: ${(props) => props.color || "black"};
-    text-shadow: -1px -1px 0 #000, 1px -1px 0 #000,
-                 -1px 1px 0 #000, 1px 1px 0 #000;
-  `;
 
 const PowerUpText = styled.div`
   position: absolute;
@@ -303,7 +286,7 @@ const FloatingPowerUpText = styled.div`
   font-family: "Bungee";
   font-size: clamp(0.5rem, 1.5vw, 1.2rem);
   color: ${(props) => {
-    switch (props.powerUpType) {
+    switch (props.$powerUpType) {
       case "speed":
         return "#0066ff"; // Electric blue
       case "power":
@@ -396,28 +379,6 @@ const KeyLabel = styled.div`
     1px 1px 0 #000;
 `;
 
-const PowerUpEffect = styled.div`
-  position: absolute;
-  font-family: "Bungee";
-  font-size: clamp(0.5rem, 1.5vw, 1.2rem);
-  color: #ffd700;
-  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
-    1px 1px 0 #000;
-  pointer-events: none;
-  animation: float 2s infinite;
-  @keyframes float {
-    0% {
-      transform: translateY(0) scale(1);
-    }
-    50% {
-      transform: translateY(-10px) scale(1.05);
-    }
-    100% {
-      transform: translateY(0) scale(1);
-    }
-  }
-`;
-
 const CountdownTimer = styled.div`
   position: absolute;
   font-family: "Bungee";
@@ -432,19 +393,25 @@ const CountdownTimer = styled.div`
   z-index: 100;
 `;
 
-const SaltBasket = styled.img`
-  position: absolute;
-  width: 8%;
-  height: auto;
-  bottom: ${(props) => `${((GROUND_LEVEL + 75) / 720) * 100}%`};
-  left: ${(props) => (props.index === 0 ? "0.5%" : "auto")};
-  right: ${(props) => (props.index === 1 ? "0.5%" : "auto")};
-  transform: ${(props) => (props.index === 1 ? "scaleX(-1)" : "none")};
-  z-index: 1;
-  pointer-events: none;
-  opacity: ${(props) => (props.isVisible ? 1 : 0)};
-  transition: opacity 0.3s ease;
-`;
+const SaltBasket = styled.img
+  .withConfig({
+    shouldForwardProp: (prop) => !["isVisible", "index"].includes(prop),
+  })
+  .attrs((props) => ({
+    style: {
+      position: "absolute",
+      width: "8%",
+      height: "auto",
+      bottom: `${((GROUND_LEVEL + 75) / 720) * 100}%`,
+      left: props.$index === 0 ? "0.5%" : "auto",
+      right: props.$index === 1 ? "0.5%" : "auto",
+      transform: props.$index === 1 ? "scaleX(-1)" : "none",
+      zIndex: 1,
+      pointerEvents: "none",
+      opacity: props.$isVisible ? 1 : 0,
+      transition: "opacity 0.3s ease",
+    },
+  }))``;
 
 const GameFighter = ({ player, index, roomName, localId }) => {
   const { socket } = useContext(SocketContext);
@@ -523,20 +490,17 @@ const GameFighter = ({ player, index, roomName, localId }) => {
       }, 1000);
     });
 
-    socket.on("game_start", (data) => {
+    socket.on("game_start", () => {
       setHakkiyoi(true);
       // Clear the countdown timer when game starts
       if (countdownRef.current) {
         clearInterval(countdownRef.current);
         setCountdown(0);
       }
-
-      const timer = setTimeout(() => {
+      // Hide hakkiyoi text after 3 seconds
+      setTimeout(() => {
         setHakkiyoi(false);
-      }, 2000);
-
-      setGyojiState("ready");
-      return () => clearTimeout(timer);
+      }, 3000);
     });
 
     socket.on("game_over", (data) => {
@@ -720,7 +684,6 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         localId={localId}
       />
       <PlayerStaminaUi stamina={stamina} index={index} />
-      <StyledLabel {...penguin}>P{index + 1}</StyledLabel>
       <SaltBasket
         src={
           penguin.isThrowingSalt || hasUsedPowerUp
@@ -728,13 +691,14 @@ const GameFighter = ({ player, index, roomName, localId }) => {
             : saltBasket
         }
         alt="Salt Basket"
-        index={index}
-        isVisible={true}
+        $index={index}
+        $isVisible={true}
       />
       {penguin.id === localId &&
         !hasUsedPowerUp &&
         !penguin.isThrowingSalt &&
-        gyojiState === "idle" && (
+        gyojiState === "idle" &&
+        countdown > 0 && (
           <PowerUpText
             style={{
               left: index === 0 ? "2%" : "auto",
@@ -750,7 +714,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         )}
       {showFloatingPowerUp && (
         <FloatingPowerUpText
-          powerUpType={floatingPowerUpType}
+          $powerUpType={floatingPowerUpType}
           style={{
             left: index === 0 ? "2%" : "auto",
             right: index === 1 ? "2%" : "auto",
@@ -762,7 +726,49 @@ const GameFighter = ({ player, index, roomName, localId }) => {
       )}
       <PlayerShadow x={penguin.x} y={penguin.y} facing={penguin.facing} />
       <StyledImage
-        {...penguin}
+        $fighter={penguin.fighter}
+        $isDiving={penguin.isDiving}
+        $isJumping={penguin.isJumping}
+        $isAttacking={penguin.isAttacking}
+        $isDodging={penguin.isDodging}
+        $isStrafing={penguin.isStrafing}
+        $isCrouching={penguin.isCrouching}
+        $isReady={penguin.isReady}
+        $isHit={penguin.isHit}
+        $isDead={penguin.isDead}
+        $isSlapAttack={penguin.isSlapAttack}
+        $isThrowing={penguin.isThrowing}
+        $isGrabbing={penguin.isGrabbing}
+        $isBeingGrabbed={penguin.isBeingGrabbed}
+        $isThrowingSalt={penguin.isThrowingSalt}
+        $slapAnimation={penguin.slapAnimation}
+        $isBowing={penguin.isBowing}
+        $isThrowTeching={penguin.isThrowTeching}
+        $isBeingPulled={penguin.isBeingPulled}
+        $isBeingPushed={penguin.isBeingPushed}
+        $grabState={penguin.grabState}
+        $grabAttemptType={penguin.grabAttemptType}
+        $x={penguin.x}
+        $y={penguin.y}
+        $facing={penguin.facing}
+        $throwCooldown={penguin.throwCooldown}
+        $grabCooldown={penguin.grabCooldown}
+        $isChargingAttack={penguin.isChargingAttack}
+        $chargeStartTime={penguin.chargeStartTime}
+        $chargeMaxDuration={penguin.chargeMaxDuration}
+        $chargeAttackPower={penguin.chargeAttackPower}
+        $chargingFacingDirection={penguin.chargingFacingDirection}
+        $saltCooldown={penguin.saltCooldown}
+        $grabStartTime={penguin.grabStartTime}
+        $grabbedOpponent={penguin.grabbedOpponent}
+        $grabAttemptStartTime={penguin.grabAttemptStartTime}
+        $throwTechCooldown={penguin.throwTechCooldown}
+        $isParrying={penguin.isParrying}
+        $lastThrowAttemptTime={penguin.lastThrowAttemptTime}
+        $lastGrabAttemptTime={penguin.lastGrabAttemptTime}
+        $dodgeDirection={penguin.dodgeDirection}
+        $speedFactor={penguin.speedFactor}
+        $sizeMultiplier={penguin.sizeMultiplier}
         style={{
           transform: `scaleX(${penguin.facing}) scale(${
             activePowerUp === "size" ? 1.15 : 1

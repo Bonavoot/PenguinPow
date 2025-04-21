@@ -347,28 +347,62 @@ io.on("connection", (socket) => {
               // Stop the animation if we hit a boundary
               player1.isBeingPulled = false;
               player1.y = GROUND_LEVEL;
+              // Reset grab states when animation ends
+              const opponent = room.players.find((p) => p.id !== player1.id);
+              if (opponent) {
+                opponent.isGrabbing = false;
+                opponent.grabbedOpponent = null;
+                opponent.grabState = GRAB_STATES.INITIAL;
+                opponent.grabAttemptType = null;
+                opponent.grabAttemptStartTime = null;
+              }
             }
           } else {
             // Animation complete
             player1.isBeingPulled = false;
             player1.y = GROUND_LEVEL;
+            // Reset grab states when animation ends
+            const opponent = room.players.find((p) => p.id !== player1.id);
+            if (opponent) {
+              opponent.isGrabbing = false;
+              opponent.grabbedOpponent = null;
+              opponent.grabState = GRAB_STATES.INITIAL;
+              opponent.grabAttemptType = null;
+              opponent.grabAttemptStartTime = null;
+            }
           }
         }
 
         // Handle push animation
-        if (player1.isPushing || player1.isBeingPushed) {
+        if (
+          player1.isPushing ||
+          player1.isBeingPushed ||
+          player2.isPushing ||
+          player2.isBeingPushed
+        ) {
           const pushProgress =
-            (Date.now() - player1.pushStartTime) / GRAB_PUSH_DURATION;
+            (Date.now() - (player1.pushStartTime || player2.pushStartTime)) /
+            GRAB_PUSH_DURATION;
 
           if (pushProgress < 1) {
             // Move both players together without boundary restrictions
-            player1.x += player1.pushDirection * player1.pushSpeed * delta;
-            player2.x += player2.pushDirection * player2.pushSpeed * delta;
+            const pushSpeed = GRAB_PUSH_SPEED * delta;
+            player1.x += (player1.pushDirection || 0) * pushSpeed;
+            player2.x += (player2.pushDirection || 0) * pushSpeed;
 
-            // Check for ring-out win condition
-            if (player2.x <= -60 || player2.x >= 1080) {
+            // Check for ring-out win condition for both players
+            if (
+              ((player2.x <= -60 || player2.x >= 1080) &&
+                !player1.hasScoredPoint) ||
+              ((player1.x <= -60 || player1.x >= 1080) &&
+                !player2.hasScoredPoint)
+            ) {
+              const pushedOutPlayer =
+                player2.x <= -60 || player2.x >= 1080 ? player2 : player1;
+              const winner = pushedOutPlayer === player2 ? player1 : player2;
+
+              winner.hasScoredPoint = true; // Set flag to prevent multiple points
               room.gameOver = true;
-              const winner = player1;
               winner.wins.push("w");
 
               if (winner.wins.length > 7) {
@@ -378,13 +412,33 @@ io.on("connection", (socket) => {
                 });
                 room.matchOver = true;
                 winner.wins = [];
-                player2.wins = [];
+                pushedOutPlayer.wins = [];
               } else {
                 setTimeout(() => {
                   winner.isBowing = true;
-                  player2.isBowing = true;
+                  pushedOutPlayer.isBowing = true;
                 }, 350);
               }
+
+              // Clean up all grab-related states for both players
+              player1.isGrabbing = false;
+              player1.isPushing = false;
+              player1.grabbedOpponent = null;
+              player1.grabState = GRAB_STATES.INITIAL;
+              player1.grabAttemptType = null;
+              player1.grabAttemptStartTime = null;
+
+              player2.isGrabbing = false;
+              player2.isPushing = false;
+              player2.grabbedOpponent = null;
+              player2.grabState = GRAB_STATES.INITIAL;
+              player2.grabAttemptType = null;
+              player2.grabAttemptStartTime = null;
+
+              player1.isBeingGrabbed = false;
+              player1.isBeingPushed = false;
+              player2.isBeingGrabbed = false;
+              player2.isBeingPushed = false;
 
               io.in(room.id).emit("game_over", {
                 isGameOver: true,
@@ -395,7 +449,7 @@ io.on("connection", (socket) => {
                 wins: winner.wins.length,
               });
               room.winnerId = winner.id;
-              room.loserId = player2.id;
+              room.loserId = pushedOutPlayer.id;
               room.gameOverTime = Date.now();
 
               // Reset all key states for both players
@@ -422,6 +476,24 @@ io.on("connection", (socket) => {
             player1.isGrabbing = false;
             player2.isBeingPushed = false;
             player2.isBeingGrabbed = false;
+
+            // Reset all grab and push states for both players
+            [player1, player2].forEach((player) => {
+              player.isGrabbing = false;
+              player.isBeingGrabbed = false;
+              player.isPushing = false;
+              player.isBeingPushed = false;
+              player.grabbedOpponent = null;
+              player.grabState = GRAB_STATES.INITIAL;
+              player.grabAttemptType = null;
+              player.grabAttemptStartTime = null;
+              player.grabCooldown = false; // Explicitly reset cooldown
+              player.pushStartTime = null;
+              player.pushEndTime = null;
+              player.pushDirection = null;
+              player.pushSpeed = null;
+              player.hasScoredPoint = false;
+            });
           }
         } else if (player1.isGrabbing && player1.grabbedOpponent) {
           // Only handle grab state if not pushing
@@ -580,13 +652,29 @@ io.on("connection", (socket) => {
             const adjustment = overlap / 2;
             const smoothFactor = delta * 0.01; // Adjust this value to make the movement smoother or more abrupt
 
-            // Determine the direction to move each player and apply the smooth factor
+            // Calculate new positions
+            let newPlayer1X = player1.x;
+            let newPlayer2X = player2.x;
+
+            // Determine the direction to move each player
             if (player1.x < player2.x) {
-              player1.x -= adjustment * smoothFactor;
-              player2.x += adjustment * smoothFactor;
+              newPlayer1X -= adjustment * smoothFactor;
+              newPlayer2X += adjustment * smoothFactor;
             } else {
-              player1.x += adjustment * smoothFactor;
-              player2.x -= adjustment * smoothFactor;
+              newPlayer1X += adjustment * smoothFactor;
+              newPlayer2X -= adjustment * smoothFactor;
+            }
+
+            // Enforce map boundaries for both players
+            const leftBoundary = -40;
+            const rightBoundary = 1050;
+
+            // Only update positions if they stay within boundaries
+            if (newPlayer1X >= leftBoundary && newPlayer1X <= rightBoundary) {
+              player1.x = newPlayer1X;
+            }
+            if (newPlayer2X >= leftBoundary && newPlayer2X <= rightBoundary) {
+              player2.x = newPlayer2X;
             }
           }
         }
@@ -703,8 +791,6 @@ io.on("connection", (socket) => {
         if (
           (player.isHit && player.x <= -60 && !room.gameOver) ||
           (player.isHit && player.x >= 1080 && !room.gameOver) ||
-          (player.isBeingGrabbed && player.x <= -60 && !room.gameOver) ||
-          (player.isBeingGrabbed && player.x >= 1080 && !room.gameOver) ||
           (player.isAttacking &&
             !player.isSlapAttack &&
             player.x <= -60 &&
@@ -1086,13 +1172,7 @@ io.on("connection", (socket) => {
             // Check if grab duration exceeded
             if (grabDuration >= GRAB_DURATION) {
               // Release after 1.5 seconds
-              player.isGrabbing = false;
-              opponent.isHit = false;
-              player.grabbedOpponent = null;
-              opponent.isBeingGrabbed = false;
-              player.grabState = GRAB_STATES.INITIAL;
-              player.grabAttemptType = null;
-              player.grabAttemptStartTime = null;
+              cleanupGrabStates(player, opponent);
               return;
             }
 
@@ -1135,10 +1215,7 @@ io.on("connection", (socket) => {
                 if (opponent.keys[requiredCounter]) {
                   // Successful counter
                   player.grabState = GRAB_STATES.COUNTERED;
-                  player.isGrabbing = false;
-                  opponent.isHit = false;
-                  player.grabbedOpponent = null;
-                  opponent.isBeingGrabbed = false;
+                  cleanupGrabStates(player, opponent);
 
                   // Apply tech animation
                   opponent.isHit = true;
@@ -1180,6 +1257,10 @@ io.on("connection", (socket) => {
                       // Move the opponent to the other side
                       const distance = 200; // Distance to move the opponent
                       opponent.x = player.x + pullDirection * distance;
+
+                      // Keep the grab state active during pull
+                      player.isGrabbing = true;
+                      opponent.isBeingGrabbed = true;
                       break;
 
                     case GRAB_ATTEMPT_TYPES.PUSH:
@@ -1199,6 +1280,7 @@ io.on("connection", (socket) => {
                       opponent.pushDirection = pushDirection;
                       player.pushSpeed = GRAB_PUSH_SPEED;
                       opponent.pushSpeed = GRAB_PUSH_SPEED;
+                      player.hasScoredPoint = false; // Add flag to track if point has been scored
 
                       // Set initial positions
                       const fixedDistance = 90;
@@ -1234,6 +1316,21 @@ io.on("connection", (socket) => {
                         }, 350);
                       }
 
+                      // Clean up all grab-related states for both players
+                      player.isGrabbing = false;
+                      player.isPushing = false;
+                      player.grabbedOpponent = null;
+                      player.grabState = GRAB_STATES.INITIAL;
+                      player.grabAttemptType = null;
+                      player.grabAttemptStartTime = null;
+
+                      opponent.isBeingGrabbed = false;
+                      opponent.isBeingPushed = false;
+                      opponent.grabbedOpponent = null;
+                      opponent.grabState = GRAB_STATES.INITIAL;
+                      opponent.grabAttemptType = null;
+                      opponent.grabAttemptStartTime = null;
+
                       io.in(room.id).emit("game_over", {
                         isGameOver: true,
                         winner: {
@@ -1245,17 +1342,29 @@ io.on("connection", (socket) => {
                       room.winnerId = winner.id;
                       room.loserId = opponent.id;
                       room.gameOverTime = Date.now();
+
+                      // Reset all key states for both players
+                      room.players.forEach((p) => {
+                        const currentX = p.x;
+                        p.isStrafing = false;
+                        p.knockbackVelocity = { x: 0, y: 0 };
+                        p.keys = {
+                          w: false,
+                          a: false,
+                          s: false,
+                          d: false,
+                          " ": false,
+                          shift: false,
+                          e: false,
+                          f: false,
+                        };
+                        p.x = currentX;
+                      });
                       break;
                   }
 
-                  // Reset grab state
-                  player.isGrabbing = false;
-                  opponent.isHit = false;
-                  player.grabbedOpponent = null;
-                  opponent.isBeingGrabbed = false;
-                  player.grabState = GRAB_STATES.INITIAL;
-                  player.grabAttemptType = null;
-                  player.grabAttemptStartTime = null;
+                  // Don't reset grab states here - let the animation complete
+                  return;
                 }
               }
             }
@@ -1419,7 +1528,7 @@ io.on("connection", (socket) => {
   }
 
   function processHit(player, otherPlayer) {
-    const MIN_ATTACK_DISPLAY_TIME = 300;
+    const MIN_ATTACK_DISPLAY_TIME = 100; // Reduced from 300ms to 100ms for faster recovery
     const currentTime = Date.now();
     const attackDuration = currentTime - player.attackStartTime;
 
@@ -1451,7 +1560,7 @@ io.on("connection", (socket) => {
       if (player.isSlapAttack) {
         const knockbackDirection = player.facing === 1 ? 1 : -1;
         player.knockbackVelocity.x =
-          3.5 * knockbackDirection * player.chargeAttackPower;
+          0.4375 * knockbackDirection * player.chargeAttackPower;
         player.knockbackVelocity.y = 0;
         player.isHit = true;
       } else {
@@ -1798,7 +1907,7 @@ io.on("connection", (socket) => {
             if (chargePercentage < 25) {
               player.isSlapAttack = true;
               player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
-              player.attackEndTime = Date.now() + 300;
+              player.attackEndTime = Date.now() + 100; // Reduced from 300ms to 100ms for faster slap attacks
             } else {
               player.isSlapAttack = false;
               // Calculate attack duration based on charge percentage
@@ -1903,7 +2012,7 @@ io.on("connection", (socket) => {
           if (chargePercentage < 25) {
             player.isSlapAttack = true;
             player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
-            player.attackEndTime = Date.now() + 300;
+            player.attackEndTime = Date.now() + 100; // Reduced from 300ms to 100ms for faster slap attacks
           } else {
             player.isSlapAttack = false;
             // Calculate attack duration based on charge percentage
@@ -2023,7 +2132,11 @@ io.on("connection", (socket) => {
         !player.isAttacking &&
         !player.isJumping &&
         !player.isThrowing &&
-        !player.grabCooldown
+        !player.grabCooldown &&
+        !player.isPushing &&
+        !player.isBeingPushed &&
+        !player.isBeingGrabbed && // Add this to prevent grab during grab animations
+        !player.grabbedOpponent // Add this to prevent grab during grab animations
       ) {
         player.lastGrabAttemptTime = Date.now();
 
@@ -2051,10 +2164,10 @@ io.on("connection", (socket) => {
               player.chargingFacingDirection = null;
 
               player.isGrabbing = true;
-              opponent.isHit = true;
               player.grabStartTime = Date.now();
               player.grabbedOpponent = opponent.id;
               opponent.isBeingGrabbed = true;
+              opponent.isHit = false; // Ensure isHit is false for initial grab
 
               if (player.isChargingAttack) {
                 player.grabFacingDirection = player.chargingFacingDirection;
@@ -2071,10 +2184,13 @@ io.on("connection", (socket) => {
             player.isGrabbing = true;
             player.grabStartTime = Date.now();
 
-            player.grabCooldown = true;
-            setTimeout(() => {
-              player.grabCooldown = false;
-            }, 1100);
+            // Only set cooldown if the grab was actually attempted
+            if (isOpponentCloseEnoughForGrab(player, opponent)) {
+              player.grabCooldown = true;
+              setTimeout(() => {
+                player.grabCooldown = false;
+              }, 1100);
+            }
           }
         }, 64);
       }
@@ -2087,26 +2203,153 @@ io.on("connection", (socket) => {
     const roomIndex = rooms.findIndex((room) => room.id === roomId);
 
     if (rooms[roomIndex]) {
+      // Clean up the room state
       rooms[roomIndex].rematchCount = 0;
-      (rooms[roomIndex].matchOver = false),
-        (rooms[roomIndex].gameStart = false);
-    }
-
-    rooms.forEach((room) => {
-      room.players = room.players.filter((player) => player.id !== socket.id);
-    });
-
-    if (roomIndex !== -1) {
+      rooms[roomIndex].matchOver = false;
+      rooms[roomIndex].gameStart = false;
+      rooms[roomIndex].gameOver = false;
       rooms[roomIndex].readyCount = 0;
-      io.in(roomId).emit("player_left");
-      io.in(roomId).emit("ready_count", 0);
+      rooms[roomIndex].readyStartTime = null;
+      rooms[roomIndex].roundStartTimer = null;
+      rooms[roomIndex].gameOverTime = null;
+      rooms[roomIndex].winnerId = null;
+      rooms[roomIndex].loserId = null;
 
+      // Clean up player references
+      const playerIndex = rooms[roomIndex].players.findIndex(
+        (p) => p.id === socket.id
+      );
+      if (playerIndex !== -1) {
+        const player = rooms[roomIndex].players[playerIndex];
+
+        // Clean up all player references
+        player.grabbedOpponent = null;
+        player.throwOpponent = null;
+        player.grabState = GRAB_STATES.INITIAL;
+        player.grabAttemptType = null;
+        player.grabAttemptStartTime = null;
+        player.isGrabbing = false;
+        player.isBeingGrabbed = false;
+        player.isThrowing = false;
+        player.isBeingThrown = false;
+        player.isAttacking = false;
+        player.isHit = false;
+        player.isAlreadyHit = false;
+        player.isDodging = false;
+        player.isCrouching = false;
+        player.isStrafing = false;
+        player.isJumping = false;
+        player.isReady = false;
+        player.isBowing = false;
+        player.knockbackVelocity = { x: 0, y: 0 };
+        player.keys = {
+          w: false,
+          a: false,
+          s: false,
+          d: false,
+          " ": false,
+          shift: false,
+          e: false,
+          f: false,
+        };
+
+        // Clean up opponent references
+        const opponent = rooms[roomIndex].players.find(
+          (p) => p.id !== player.id
+        );
+        if (opponent) {
+          opponent.isBeingGrabbed = false;
+          opponent.isBeingPushed = false;
+          opponent.isBeingPulled = false;
+          opponent.isBeingThrown = false;
+          opponent.grabbedOpponent = null;
+          opponent.throwOpponent = null;
+        }
+      }
+
+      // Remove the player
       rooms[roomIndex].players = rooms[roomIndex].players.filter(
         (player) => player.id !== socket.id
       );
 
-      io.to(roomId).emit("lobby", rooms[roomIndex].players); // Update the lobby for the clients in this room
-      io.emit("rooms", rooms);
+      // Emit updates with cleaned data
+      const cleanedRoom = {
+        ...rooms[roomIndex],
+        players: rooms[roomIndex].players.map((p) => ({
+          ...p,
+          grabbedOpponent: null,
+          throwOpponent: null,
+          grabState: GRAB_STATES.INITIAL,
+          grabAttemptType: null,
+          grabAttemptStartTime: null,
+          isGrabbing: false,
+          isBeingGrabbed: false,
+          isThrowing: false,
+          isBeingThrown: false,
+          isAttacking: false,
+          isHit: false,
+          isAlreadyHit: false,
+          isDodging: false,
+          isCrouching: false,
+          isStrafing: false,
+          isJumping: false,
+          isReady: false,
+          isBowing: false,
+          knockbackVelocity: { x: 0, y: 0 },
+          keys: {
+            w: false,
+            a: false,
+            s: false,
+            d: false,
+            " ": false,
+            shift: false,
+            e: false,
+            f: false,
+          },
+        })),
+      };
+
+      io.in(roomId).emit("player_left");
+      io.in(roomId).emit("ready_count", 0);
+      io.to(roomId).emit("lobby", cleanedRoom.players);
+      io.emit(
+        "rooms",
+        rooms.map((r) => ({
+          ...r,
+          players: r.players.map((p) => ({
+            ...p,
+            grabbedOpponent: null,
+            throwOpponent: null,
+            grabState: GRAB_STATES.INITIAL,
+            grabAttemptType: null,
+            grabAttemptStartTime: null,
+            isGrabbing: false,
+            isBeingGrabbed: false,
+            isThrowing: false,
+            isBeingThrown: false,
+            isAttacking: false,
+            isHit: false,
+            isAlreadyHit: false,
+            isDodging: false,
+            isCrouching: false,
+            isStrafing: false,
+            isJumping: false,
+            isReady: false,
+            isBowing: false,
+            knockbackVelocity: { x: 0, y: 0 },
+            keys: {
+              w: false,
+              a: false,
+              s: false,
+              d: false,
+              " ": false,
+              shift: false,
+              e: false,
+              f: false,
+            },
+          })),
+        }))
+      );
     }
     console.log(`${reason}: ${socket.id}`);
   });
@@ -2117,3 +2360,36 @@ server.listen(process.env.PORT || 3001, () => {
 });
 
 // process.env.PORT ||
+
+// Add new function for grab state cleanup
+function cleanupGrabStates(player, opponent) {
+  // Clean up grabber states
+  player.isGrabbing = false;
+  player.grabbedOpponent = null;
+  player.grabState = GRAB_STATES.INITIAL;
+  player.grabAttemptType = null;
+  player.grabAttemptStartTime = null;
+  player.isPushing = false;
+  player.isThrowing = false;
+  player.throwStartTime = 0;
+  player.throwEndTime = 0;
+  player.throwOpponent = null;
+  player.grabCooldown = false; // Add this to ensure cooldown is reset
+  player.isBeingGrabbed = false; // Add this to ensure being grabbed state is reset
+  player.isBeingPushed = false; // Add this to ensure being pushed state is reset
+
+  // Clean up grabbed player states
+  opponent.isBeingGrabbed = false;
+  opponent.isBeingPushed = false;
+  opponent.isBeingPulled = false;
+  opponent.isBeingThrown = false;
+  opponent.grabbedOpponent = null;
+  opponent.throwOpponent = null;
+  opponent.grabState = GRAB_STATES.INITIAL;
+  opponent.grabAttemptType = null;
+  opponent.grabAttemptStartTime = null;
+  opponent.isHit = false;
+  opponent.grabCooldown = false; // Add this to ensure cooldown is reset
+  opponent.isGrabbing = false; // Add this to ensure grabbing state is reset
+  opponent.isPushing = false; // Add this to ensure pushing state is reset
+}

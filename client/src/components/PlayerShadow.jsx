@@ -1,11 +1,12 @@
 import styled from "styled-components";
+import PropTypes from "prop-types";
 
 const ShadowElement = styled.div.attrs((props) => ({
   style: {
     position: "absolute",
-    left: `${(props.x / 1280) * 100}%`,
-    bottom: `${((props.y - 2) / 720) * 100}%`, // Slightly below player
-    transform: `translateX(${props.facing === -1 ? "9%" : "6%"}) `,
+    left: `${(props.$x / 1280) * 100}%`,
+    bottom: `${((props.$y - 2) / 720) * 100}%`, // Slightly below player
+    transform: `translateX(${props.$facing === -1 ? "9%" : "6%"}) `,
   },
 }))`
   width: 20%;
@@ -22,7 +23,13 @@ const ShadowElement = styled.div.attrs((props) => ({
 `;
 
 const PlayerShadow = ({ x, y, facing }) => {
-  return <ShadowElement x={x} y={y} facing={facing} />;
+  return <ShadowElement $x={x} $y={y} $facing={facing} />;
+};
+
+PlayerShadow.propTypes = {
+  x: PropTypes.number.isRequired,
+  y: PropTypes.number.isRequired,
+  facing: PropTypes.number.isRequired,
 };
 
 export default PlayerShadow;

@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import styled from "styled-components";
+import PropTypes from "prop-types";
 
 const SaltContainer = styled.div.attrs((props) => ({
   style: {
-    left: `${(props.x / 1280) * 100}%`,
-    bottom: `${(props.y / 720) * 100}%`,
-    transform: `scaleX(${props.facing})`,
+    left: `${(props.$x / 1280) * 100}%`,
+    bottom: `${(props.$y / 720) * 100}%`,
+    transform: `scaleX(${props.$facing})`,
   },
 }))`
   position: absolute;
@@ -17,8 +18,8 @@ const SaltContainer = styled.div.attrs((props) => ({
 
 const SaltParticle = styled.div.attrs((props) => ({
   style: {
-    transform: `translate(${props.x}px, ${-props.y}px)`,
-    opacity: props.opacity,
+    transform: `translate(${props.$x}px, ${-props.$y}px)`,
+    opacity: props.$opacity,
   },
 }))`
   position: absolute;
@@ -115,17 +116,24 @@ const SaltEffect = ({ isActive, playerFacing, playerX, playerY }) => {
   }, [updateParticle]);
 
   return (
-    <SaltContainer x={playerX} y={playerY} facing={playerFacing}>
-      {particles.map((particle) => (
+    <SaltContainer $x={playerX} $y={playerY} $facing={playerFacing}>
+      {particles.map((particle, index) => (
         <SaltParticle
-          key={particle.id}
-          x={particle.x}
-          y={particle.y}
-          opacity={particle.opacity}
+          key={index}
+          $x={particle.x}
+          $y={particle.y}
+          $opacity={particle.opacity}
         />
       ))}
     </SaltContainer>
   );
+};
+
+SaltEffect.propTypes = {
+  isActive: PropTypes.bool.isRequired,
+  playerFacing: PropTypes.number.isRequired,
+  playerX: PropTypes.number.isRequired,
+  playerY: PropTypes.number.isRequired,
 };
 
 export default SaltEffect;
