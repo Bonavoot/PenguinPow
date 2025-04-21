@@ -664,9 +664,7 @@ io.on("connection", (socket) => {
           !player.isBeingThrown &&
           !player.isThrowTeching &&
           !player.isGrabbing &&
-          !player.isBeingGrabbed &&
-          !player.keys.a &&
-          !player.keys.d
+          !player.isBeingGrabbed
         ) {
           // Calculate effective boundary based on player size
           const sizeOffset =
@@ -674,10 +672,17 @@ io.on("connection", (socket) => {
               ? HITBOX_DISTANCE_VALUE * (player.powerUpMultiplier - 1)
               : 0;
 
-          player.x = Math.max(
-            -40 + sizeOffset,
-            Math.min(player.x, 1050 - sizeOffset)
-          );
+          // Enforce boundaries for both normal movement and strafing
+          const leftBoundary = -40 + sizeOffset;
+          const rightBoundary = 1050 - sizeOffset;
+
+          // Apply boundary restrictions
+          if (player.keys.a || player.keys.d) {
+            player.x = Math.max(
+              leftBoundary,
+              Math.min(player.x, rightBoundary)
+            );
+          }
         }
 
         // Add separate boundary check for grabbing state
