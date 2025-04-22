@@ -19,6 +19,7 @@ import crouching2 from "../assets/crouching2.png";
 import grabbing from "../assets/grabbing.png";
 import grabbing2 from "../assets/grabbing2.png";
 import beingGrabbed from "../assets/is-being-grabbed.gif";
+import beingGrabbed2 from "../assets/is-being-grabbed2.gif";
 import grabSound from "../sounds/grab-sound.mp3";
 import ready from "../assets/ready.png";
 import ready2 from "../assets/ready2.png";
@@ -146,7 +147,7 @@ const getImageSrc = (
     if (isDead) return pumo;
     if (isThrowing) return throwing2;
     if (isThrowingSalt) return salt2;
-    if (isBeingGrabbed || isBeingPulled || isBeingPushed) return beingGrabbed;
+    if (isBeingGrabbed || isBeingPulled || isBeingPushed) return beingGrabbed2;
     return pumo2;
   }
 };
@@ -682,6 +683,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         facing={penguin.facing}
         playerId={penguin.id}
         localId={localId}
+        activePowerUp={penguin.activePowerUp}
       />
       <PlayerStaminaUi stamina={stamina} index={index} />
       <SaltBasket
