@@ -66,7 +66,7 @@ const POWER_UP_TYPES = {
 
 // Add power-up effects
 const POWER_UP_EFFECTS = {
-  [POWER_UP_TYPES.SPEED]: 1.2, // 20% speed increase
+  [POWER_UP_TYPES.SPEED]: 1.4, // 20% speed increase
   [POWER_UP_TYPES.POWER]: 1.3, // 30% knockback increase
   [POWER_UP_TYPES.SIZE]: 1.15, // 15% size increase
 };
@@ -254,10 +254,25 @@ io.on("connection", (socket) => {
     player.isGrabbing = false;
     player.isBeingThrown = false;
     player.isBeingGrabbed = false;
+    player.grabState = GRAB_STATES.INITIAL;
+    player.grabAttemptType = null;
+    player.grabAttemptStartTime = null;
+    player.grabbedOpponent = null;
+    player.isPushing = false;
+    player.isBeingPushed = false;
+    player.isBeingPulled = false;
+
     opponent.isThrowing = false;
     opponent.isGrabbing = false;
     opponent.isBeingThrown = false;
     opponent.isBeingGrabbed = false;
+    opponent.grabState = GRAB_STATES.INITIAL;
+    opponent.grabAttemptType = null;
+    opponent.grabAttemptStartTime = null;
+    opponent.grabbedOpponent = null;
+    opponent.isPushing = false;
+    opponent.isBeingPushed = false;
+    opponent.isBeingPulled = false;
 
     // Clear charge attack states
     player.isChargingAttack = false;
@@ -287,6 +302,10 @@ io.on("connection", (socket) => {
     player.lastGrabAttemptTime = 0;
     opponent.lastThrowAttemptTime = 0;
     opponent.lastGrabAttemptTime = 0;
+
+    // Reset grab cooldowns
+    player.grabCooldown = false;
+    opponent.grabCooldown = false;
 
     // Apply cooldown
     player.throwTechCooldown = true;
@@ -752,7 +771,9 @@ io.on("connection", (socket) => {
           !player.isBeingThrown &&
           !player.isThrowTeching &&
           !player.isGrabbing &&
-          !player.isBeingGrabbed
+          !player.isBeingGrabbed &&
+          // Add condition to allow going out of bounds during charged attack
+          !(player.isAttacking && !player.isSlapAttack)
         ) {
           // Calculate effective boundary based on player size
           const sizeOffset =
@@ -804,7 +825,13 @@ io.on("connection", (socket) => {
           (player.isBeingThrown &&
             !room.gameOver &&
             ((player.x <= -40 && player.throwerX < 540) ||
-              (player.x >= 1050 && player.throwerX > 540)))
+              (player.x >= 1050 && player.throwerX > 540))) ||
+          // Add new condition for charged attack ring out
+          (player.isAttacking &&
+            !player.isSlapAttack &&
+            ((player.x <= -60 && player.facing === 1) ||
+              (player.x >= 1080 && player.facing === -1)) &&
+            !room.gameOver)
         ) {
           console.log("game over");
           room.gameOver = true;
@@ -1053,7 +1080,23 @@ io.on("connection", (socket) => {
             currentDodgeSpeed *= 0.85; // 15% speed reduction
           }
 
-          player.x += player.dodgeDirection * delta * currentDodgeSpeed;
+          // Calculate new position
+          const newX =
+            player.x + player.dodgeDirection * delta * currentDodgeSpeed;
+
+          // Calculate effective boundary based on player size
+          const sizeOffset =
+            player.activePowerUp === POWER_UP_TYPES.SIZE
+              ? HITBOX_DISTANCE_VALUE * (player.powerUpMultiplier - 1)
+              : 0;
+
+          const leftBoundary = -40 + sizeOffset;
+          const rightBoundary = 1050 - sizeOffset;
+
+          // Only update position if within boundaries
+          if (newX >= leftBoundary && newX <= rightBoundary) {
+            player.x = newX;
+          }
 
           if (Date.now() >= player.dodgeEndTime) {
             player.isDodging = false;
@@ -1214,15 +1257,10 @@ io.on("connection", (socket) => {
                 const requiredCounter =
                   GRAB_COUNTER_MAPPING[player.grabAttemptType];
                 if (opponent.keys[requiredCounter]) {
-                  // Successful counter
+                  // Successful counter - apply throw tech instead of just cleaning up
                   player.grabState = GRAB_STATES.COUNTERED;
-                  cleanupGrabStates(player, opponent);
-
-                  // Apply tech animation
-                  opponent.isHit = true;
-                  setTimeout(() => {
-                    opponent.isHit = false;
-                  }, 300);
+                  applyThrowTech(player, opponent);
+                  return;
                 } else {
                   // Failed counter, execute grab move
                   player.grabState = GRAB_STATES.SUCCESS;
@@ -1774,7 +1812,6 @@ io.on("connection", (socket) => {
 
     if (rooms[index].readyCount > 1) {
       io.in(data.roomId).emit("game_start", rooms[index]);
-
     }
 
     // console.log(rooms[index].readyCount);
