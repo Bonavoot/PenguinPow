@@ -582,9 +582,9 @@ body {
 
 .gyoji {
   position: absolute;
-  left: 37%;
+  left: 35%;
   bottom: 30%;
-  width: 26%;
+  width: 30%;
   height: auto;
   z-index: -1;
   pointer-events: none;
