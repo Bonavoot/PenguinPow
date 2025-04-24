@@ -6,14 +6,14 @@ const ShadowElement = styled.div.attrs((props) => ({
     position: "absolute",
     left: `${(props.$x / 1280) * 100}%`,
     bottom: `${((props.$y - 2) / 720) * 100}%`, // Slightly below player
-    transform: `translateX(${props.$facing === -1 ? "9%" : "6%"}) `,
+    transform: `translateX(${props.$facing === -1 ? "12%" : "9%"}) `,
   },
 }))`
-  width: 20%;
+  width: 15%;
   height: 4%;
   background: radial-gradient(
     ellipse at center,
-    rgba(0, 0, 0, 0.4) 0%,
+    rgba(0, 0, 0, 0.7) 0%,
     rgba(0, 0, 0, 0) 70%
   );
   border-radius: 50%;

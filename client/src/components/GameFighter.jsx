@@ -54,6 +54,7 @@ import bellSound from "../sounds/bell-sound.mp3";
 import gameMusic from "../sounds/game-music.mp3";
 import eeshiMusic from "../sounds/eeshi.mp3";
 import parrySound from "../sounds/parry-sound.mp3";
+import saltSound from "../sounds/salt-sound.mp3"
 
 import UiPlayerInfo from "./UiPlayerInfo";
 import SaltEffect from "./SaltEffect";
@@ -384,7 +385,7 @@ const CountdownTimer = styled.div`
   position: absolute;
   font-family: "Bungee";
   font-size: clamp(1rem, 3vw, 2.5rem);
-  color: #ffffff;
+  color:rgb(255, 0, 0);
   text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
     1px 1px 0 #000;
   pointer-events: none;
@@ -468,6 +469,13 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         playSound(parrySound, 0.01);
       }
     });
+
+    socket.on("power_up_activated", (data) => {
+      if (data.playerId === penguin.id) {
+        playSound(saltSound, 0.01);
+      }
+    });
+
     socket.on("game_reset", (data) => {
       setGameOver(data);
       setGyojiState("idle");

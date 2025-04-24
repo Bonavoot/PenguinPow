@@ -48,7 +48,7 @@ let gameLoop = null;
 let staminaRegenCounter = 0;
 const TICK_RATE = 64;
 const delta = 1000 / TICK_RATE;
-const speedFactor = 0.3;
+const speedFactor = 0.22;
 const GROUND_LEVEL = 235;
 const HITBOX_DISTANCE_VALUE = 72; // Reduced from 90 by 20%
 const SLAP_HITBOX_DISTANCE_VALUE = 88; // Reduced from 110 by 20%
@@ -58,12 +58,16 @@ const THROW_RANGE = 184; // Reduced from 230 by 20%
 const GRAB_RANGE = 184; // Reduced from 230 by 20%
 const GRAB_PUSH_DISTANCE = 50; // Distance to push opponent
 const GRAB_PULL_DISTANCE = 50; // Distance to pull opponent
-const GRAB_PUSH_SPEED = 0.5; // Increased from 0.2 for more substantial movement
+const GRAB_PUSH_SPEED = 0.3; // Increased from 0.2 for more substantial movement
 const GRAB_PULL_SPEED = 0.5; // Increased from 0.1 for faster movement
-const GRAB_PUSH_DURATION = 500;
+const GRAB_PUSH_DURATION = 650;
 const GRAB_PULL_DURATION = 750; // Reduced from 1500ms to 750ms
 const GRAB_HOP_HEIGHT = 50; // Reduced from 100 to make the hop less pronounced
 const GRAB_HOP_SPEED = 0.1;
+
+// Add size power-up boundary multipliers
+const SIZE_POWERUP_LEFT_MULTIPLIER = -.7; // Reduce left side offset
+const SIZE_POWERUP_RIGHT_MULTIPLIER = 2.5; // Increase right side offset
 
 // Add new grab states
 const GRAB_STATES = {
@@ -107,8 +111,8 @@ const GRAB_DURATION = 1500; // 1.5 seconds total grab duration
 const GRAB_ATTEMPT_DURATION = 1000; // 1 second for attempt animation
 
 // Map boundary constants
-const MAP_LEFT_BOUNDARY = 175;
-const MAP_RIGHT_BOUNDARY = 860;
+const MAP_LEFT_BOUNDARY = 160;
+const MAP_RIGHT_BOUNDARY = 880;
 const MAP_RING_OUT_LEFT = 120;
 const MAP_RING_OUT_RIGHT = 915;
 
@@ -762,7 +766,7 @@ io.on("connection", (socket) => {
           player.x += player.knockbackVelocity.x * delta * speedFactor;
 
           // Apply friction
-          player.knockbackVelocity.x *= 0.9;
+          player.knockbackVelocity.x *= 0.875;
 
           // Reset hit state when knockback is nearly complete
           if (Math.abs(player.knockbackVelocity.x) < 0.1) {
@@ -786,15 +790,14 @@ io.on("connection", (socket) => {
           // Add condition to allow going out of bounds during charged attack
           !(player.isAttacking && !player.isSlapAttack)
         ) {
-          // Calculate effective boundary based on player size
-          const sizeOffset =
-            player.activePowerUp === POWER_UP_TYPES.SIZE
-              ? HITBOX_DISTANCE_VALUE * (player.powerUpMultiplier - 1)
-              : 0;
+          // Calculate effective boundary based on player size with different multipliers for left and right
+          const sizeOffset = player.activePowerUp === POWER_UP_TYPES.SIZE
+            ? HITBOX_DISTANCE_VALUE * (player.powerUpMultiplier - 1)
+            : 0;
 
-          // Enforce boundaries for both normal movement and strafing
-          const leftBoundary = MAP_LEFT_BOUNDARY + sizeOffset;
-          const rightBoundary = MAP_RIGHT_BOUNDARY - sizeOffset;
+          // Apply different multipliers for left and right boundaries
+          const leftBoundary = MAP_LEFT_BOUNDARY + (sizeOffset * SIZE_POWERUP_LEFT_MULTIPLIER);
+          const rightBoundary = MAP_RIGHT_BOUNDARY - (sizeOffset * SIZE_POWERUP_RIGHT_MULTIPLIER);
 
           // Apply boundary restrictions
           if (player.keys.a || player.keys.d) {
@@ -807,15 +810,18 @@ io.on("connection", (socket) => {
 
         // Add separate boundary check for grabbing state
         if (player.isGrabbing && !player.isThrowing && !player.isBeingThrown) {
-          // Calculate effective boundary based on player size
-          const sizeOffset =
-            player.activePowerUp === POWER_UP_TYPES.SIZE
-              ? HITBOX_DISTANCE_VALUE * (player.powerUpMultiplier - 1)
-              : 0;
+          // Calculate effective boundary based on player size with different multipliers
+          const sizeOffset = player.activePowerUp === POWER_UP_TYPES.SIZE
+            ? HITBOX_DISTANCE_VALUE * (player.powerUpMultiplier - 1)
+            : 0;
+
+          // Apply different multipliers for left and right ring out boundaries
+          const leftRingOutBoundary = MAP_RING_OUT_LEFT + (sizeOffset * SIZE_POWERUP_LEFT_MULTIPLIER);
+          const rightRingOutBoundary = MAP_RING_OUT_RIGHT - (sizeOffset * SIZE_POWERUP_RIGHT_MULTIPLIER);
 
           player.x = Math.max(
-            MAP_RING_OUT_LEFT + sizeOffset,
-            Math.min(player.x, MAP_RING_OUT_RIGHT - sizeOffset)
+            leftRingOutBoundary,
+            Math.min(player.x, rightRingOutBoundary)
           );
         }
 
@@ -1095,14 +1101,14 @@ io.on("connection", (socket) => {
           const newX =
             player.x + player.dodgeDirection * delta * currentDodgeSpeed;
 
-          // Calculate effective boundary based on player size
-          const sizeOffset =
-            player.activePowerUp === POWER_UP_TYPES.SIZE
-              ? HITBOX_DISTANCE_VALUE * (player.powerUpMultiplier - 1)
-              : 0;
+          // Calculate effective boundary based on player size with different multipliers
+          const sizeOffset = player.activePowerUp === POWER_UP_TYPES.SIZE
+            ? HITBOX_DISTANCE_VALUE * (player.powerUpMultiplier - 1)
+            : 0;
 
-          const leftBoundary = MAP_LEFT_BOUNDARY + sizeOffset;
-          const rightBoundary = MAP_RIGHT_BOUNDARY - sizeOffset;
+          // Apply different multipliers for left and right boundaries
+          const leftBoundary = MAP_LEFT_BOUNDARY + (sizeOffset * SIZE_POWERUP_LEFT_MULTIPLIER);
+          const rightBoundary = MAP_RIGHT_BOUNDARY - (sizeOffset * SIZE_POWERUP_RIGHT_MULTIPLIER);
 
           // Only update position if within boundaries
           if (newX >= leftBoundary && newX <= rightBoundary) {
