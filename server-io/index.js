@@ -49,30 +49,13 @@ let staminaRegenCounter = 0;
 const TICK_RATE = 64;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.3;
-const GROUND_LEVEL = 145;
-const HITBOX_DISTANCE_VALUE = 90;
-const SLAP_HITBOX_DISTANCE_VALUE = 110;
+const GROUND_LEVEL = 235;
+const HITBOX_DISTANCE_VALUE = 72; // Reduced from 90 by 20%
+const SLAP_HITBOX_DISTANCE_VALUE = 88; // Reduced from 110 by 20%
 const SLAP_PARRY_WINDOW = 150; // 150ms window for parry
 const PARRY_KNOCKBACK_VELOCITY = 1.5; // Reduced knockback for parried attacks
-const THROW_RANGE = 230; // Maximum distance for throw to be possible
-const GRAB_RANGE = 230; // Maximum distance for grab to be possible
-
-// Add power-up types
-const POWER_UP_TYPES = {
-  SPEED: "speed",
-  POWER: "power",
-  SIZE: "size",
-};
-
-// Add power-up effects
-const POWER_UP_EFFECTS = {
-  [POWER_UP_TYPES.SPEED]: 1.4, // 20% speed increase
-  [POWER_UP_TYPES.POWER]: 1.3, // 30% knockback increase
-  [POWER_UP_TYPES.SIZE]: 1.15, // 15% size increase
-};
-
-const GRAB_DURATION = 1500; // 1.5 seconds total grab duration
-const GRAB_ATTEMPT_DURATION = 1000; // 1 second for attempt animation
+const THROW_RANGE = 184; // Reduced from 230 by 20%
+const GRAB_RANGE = 184; // Reduced from 230 by 20%
 const GRAB_PUSH_DISTANCE = 50; // Distance to push opponent
 const GRAB_PULL_DISTANCE = 50; // Distance to pull opponent
 const GRAB_PUSH_SPEED = 0.5; // Increased from 0.2 for more substantial movement
@@ -105,6 +88,29 @@ const GRAB_COUNTER_MAPPING = {
   [GRAB_ATTEMPT_TYPES.PUSH]: "a",
   [GRAB_ATTEMPT_TYPES.SLAPDOWN]: "w",
 };
+
+// Add power-up types
+const POWER_UP_TYPES = {
+  SPEED: "speed",
+  POWER: "power",
+  SIZE: "size",
+};
+
+// Add power-up effects
+const POWER_UP_EFFECTS = {
+  [POWER_UP_TYPES.SPEED]: 1.4, // 20% speed increase
+  [POWER_UP_TYPES.POWER]: 1.3, // 30% knockback increase
+  [POWER_UP_TYPES.SIZE]: 1.15, // 15% size increase
+};
+
+const GRAB_DURATION = 1500; // 1.5 seconds total grab duration
+const GRAB_ATTEMPT_DURATION = 1000; // 1 second for attempt animation
+
+// Map boundary constants
+const MAP_LEFT_BOUNDARY = 175;
+const MAP_RIGHT_BOUNDARY = 860;
+const MAP_RING_OUT_LEFT = 120;
+const MAP_RING_OUT_RIGHT = 915;
 
 function resetRoomAndPlayers(room) {
   // Reset room state
@@ -142,7 +148,7 @@ function resetRoomAndPlayers(room) {
     player.isDead = false;
     player.stamina = 100;
     player.isBowing = false;
-    player.x = player.fighter === "player 1" ? 50 : 950; // Updated to match salt throw range
+    player.x = player.fighter === "player 1" ? 230 : 815; // Updated to match salt throw range
     player.y = GROUND_LEVEL;
     player.knockbackVelocity = { x: 0, y: 0 };
     // Reset power-up state
@@ -356,8 +362,8 @@ io.on("connection", (socket) => {
                 ? HITBOX_DISTANCE_VALUE * (player1.powerUpMultiplier - 1)
                 : 0;
 
-            const leftBoundary = -40 + sizeOffset;
-            const rightBoundary = 1050 - sizeOffset;
+            const leftBoundary = MAP_LEFT_BOUNDARY + sizeOffset;
+            const rightBoundary = MAP_RIGHT_BOUNDARY - sizeOffset;
 
             if (newX >= leftBoundary && newX <= rightBoundary) {
               player1.x = newX;
@@ -411,13 +417,18 @@ io.on("connection", (socket) => {
 
             // Check for ring-out win condition for both players
             if (
-              ((player2.x <= -60 || player2.x >= 1080) &&
+              ((player2.x <= MAP_RING_OUT_LEFT ||
+                player2.x >= MAP_RING_OUT_RIGHT) &&
                 !player1.hasScoredPoint) ||
-              ((player1.x <= -60 || player1.x >= 1080) &&
+              ((player1.x <= MAP_RING_OUT_LEFT ||
+                player1.x >= MAP_RING_OUT_RIGHT) &&
                 !player2.hasScoredPoint)
             ) {
               const pushedOutPlayer =
-                player2.x <= -60 || player2.x >= 1080 ? player2 : player1;
+                player2.x <= MAP_RING_OUT_LEFT ||
+                player2.x >= MAP_RING_OUT_RIGHT
+                  ? player2
+                  : player1;
               const winner = pushedOutPlayer === player2 ? player1 : player2;
 
               winner.hasScoredPoint = true; // Set flag to prevent multiple points
@@ -521,7 +532,7 @@ io.on("connection", (socket) => {
           );
           if (opponent) {
             // Keep opponent at fixed distance during grab
-            const fixedDistance = 90 * (opponent.sizeMultiplier || 1);
+            const fixedDistance = 72 * (opponent.sizeMultiplier || 1); // Reduced from 90 by 20%
             opponent.x =
               player1.facing === 1
                 ? player1.x - fixedDistance
@@ -571,21 +582,21 @@ io.on("connection", (socket) => {
         if (room.gameStart === false) {
           // Only adjust player 1's ready position based on size power-up
           const player1ReadyX =
-            player1.activePowerUp === POWER_UP_TYPES.SIZE ? 250 : 275;
+            player1.activePowerUp === POWER_UP_TYPES.SIZE ? 320 : 360;
 
           if (player1.x >= player1ReadyX) {
             player1.x = player1ReadyX;
           }
 
-          if (player2.x <= 715) {
-            player2.x = 715;
+          if (player2.x <= 690) {
+            player2.x = 690;
           }
 
           if (player1.x === player1ReadyX) {
             player1.isReady = true;
           }
 
-          if (player2.x === 715) {
+          if (player2.x === 690) {
             player2.isReady = true;
           }
         }
@@ -685,8 +696,8 @@ io.on("connection", (socket) => {
             }
 
             // Enforce map boundaries for both players
-            const leftBoundary = -40;
-            const rightBoundary = 1050;
+            const leftBoundary = MAP_LEFT_BOUNDARY;
+            const rightBoundary = MAP_RIGHT_BOUNDARY;
 
             // Only update positions if they stay within boundaries
             if (newPlayer1X >= leftBoundary && newPlayer1X <= rightBoundary) {
@@ -782,8 +793,8 @@ io.on("connection", (socket) => {
               : 0;
 
           // Enforce boundaries for both normal movement and strafing
-          const leftBoundary = -40 + sizeOffset;
-          const rightBoundary = 1050 - sizeOffset;
+          const leftBoundary = MAP_LEFT_BOUNDARY + sizeOffset;
+          const rightBoundary = MAP_RIGHT_BOUNDARY - sizeOffset;
 
           // Apply boundary restrictions
           if (player.keys.a || player.keys.d) {
@@ -803,34 +814,34 @@ io.on("connection", (socket) => {
               : 0;
 
           player.x = Math.max(
-            -60 + sizeOffset,
-            Math.min(player.x, 1080 - sizeOffset)
+            MAP_RING_OUT_LEFT + sizeOffset,
+            Math.min(player.x, MAP_RING_OUT_RIGHT - sizeOffset)
           );
         }
 
         // Win Conditions - back to original state
         if (
-          (player.isHit && player.x <= -60 && !room.gameOver) ||
-          (player.isHit && player.x >= 1080 && !room.gameOver) ||
+          (player.isHit && player.x <= MAP_RING_OUT_LEFT && !room.gameOver) ||
+          (player.isHit && player.x >= MAP_RING_OUT_RIGHT && !room.gameOver) ||
           (player.isAttacking &&
             !player.isSlapAttack &&
-            player.x <= -60 &&
+            player.x <= MAP_RING_OUT_LEFT &&
             !room.gameOver &&
-            player.facing === -1) || // Only allow ring out if facing left
+            player.facing === -1) ||
           (player.isAttacking &&
             !player.isSlapAttack &&
-            player.x >= 1080 &&
+            player.x >= MAP_RING_OUT_RIGHT &&
             !room.gameOver &&
-            player.facing === 1) || // Only allow ring out if facing right
+            player.facing === 1) ||
           (player.isBeingThrown &&
             !room.gameOver &&
-            ((player.x <= -40 && player.throwerX < 540) ||
-              (player.x >= 1050 && player.throwerX > 540))) ||
+            ((player.x <= MAP_LEFT_BOUNDARY && player.throwerX < 540) ||
+              (player.x >= MAP_RIGHT_BOUNDARY && player.throwerX > 540))) ||
           // Add new condition for charged attack ring out
           (player.isAttacking &&
             !player.isSlapAttack &&
-            ((player.x <= -60 && player.facing === 1) ||
-              (player.x >= 1080 && player.facing === -1)) &&
+            ((player.x <= MAP_RING_OUT_LEFT && player.facing === 1) ||
+              (player.x >= MAP_RING_OUT_RIGHT && player.facing === -1)) &&
             !room.gameOver)
         ) {
           console.log("game over");
@@ -961,8 +972,8 @@ io.on("connection", (socket) => {
             if (currentTime >= player.throwEndTime) {
               // Check for win condition at the end of throw
               if (
-                (opponent.x <= -40 && player.x < 540) ||
-                (opponent.x >= 1050 && player.x > 540)
+                (opponent.x >= MAP_RIGHT_BOUNDARY && player.x > 540) ||
+                (opponent.x <= MAP_LEFT_BOUNDARY && player.x < 540)
               ) {
                 room.gameOver = true;
                 const winner = room.players.find((p) => p.id !== opponent.id);
@@ -1090,8 +1101,8 @@ io.on("connection", (socket) => {
               ? HITBOX_DISTANCE_VALUE * (player.powerUpMultiplier - 1)
               : 0;
 
-          const leftBoundary = -40 + sizeOffset;
-          const rightBoundary = 1050 - sizeOffset;
+          const leftBoundary = MAP_LEFT_BOUNDARY + sizeOffset;
+          const rightBoundary = MAP_RIGHT_BOUNDARY - sizeOffset;
 
           // Only update position if within boundaries
           if (newX >= leftBoundary && newX <= rightBoundary) {
@@ -1322,7 +1333,7 @@ io.on("connection", (socket) => {
                       player.hasScoredPoint = false; // Add flag to track if point has been scored
 
                       // Set initial positions
-                      const fixedDistance = 90;
+                      const fixedDistance = 72; // Reduced from 90 by 20%
                       if (player.facing === 1) {
                         opponent.x = player.x - fixedDistance;
                       } else {
@@ -1409,7 +1420,7 @@ io.on("connection", (socket) => {
             }
 
             // Keep opponent at fixed distance during grab
-            const fixedDistance = 90 * (opponent.sizeMultiplier || 1);
+            const fixedDistance = 72 * (opponent.sizeMultiplier || 1); // Reduced from 90 by 20%
             opponent.x =
               player.facing === 1
                 ? player.x - fixedDistance
@@ -1711,7 +1722,7 @@ io.on("connection", (socket) => {
         isBowing: false,
         facing: 1,
         stamina: 100,
-        x: 50,
+        x: 230,
         y: GROUND_LEVEL,
         knockbackVelocity: { x: 0, y: 0 },
         keys: {
@@ -1774,7 +1785,7 @@ io.on("connection", (socket) => {
         isBowing: false,
         facing: -1,
         stamina: 100,
-        x: 950,
+        x: 815,
         y: GROUND_LEVEL,
         knockbackVelocity: { x: 0, y: 0 },
         keys: {
@@ -1869,8 +1880,8 @@ io.on("connection", (socket) => {
     if (
       player.keys.f &&
       !player.saltCooldown &&
-      ((player.fighter === "player 1" && player.x <= 50) ||
-        (player.fighter === "player 2" && player.x >= 900)) && // Adjusted range for player 2
+      ((player.fighter === "player 1" && player.x <= 280) ||
+        (player.fighter === "player 2" && player.x >= 765)) && // Adjusted range for player 2
       rooms[index].gameStart === false &&
       !player.activePowerUp
     ) {

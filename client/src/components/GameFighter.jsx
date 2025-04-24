@@ -265,7 +265,7 @@ const StyledImage = styled("img")
     },
   }))`
   position: absolute;
-  width: 23%;
+  width: 18.4%;
   height: auto;
   will-change: transform, bottom, left;
   pointer-events: none;
@@ -279,7 +279,7 @@ const PowerUpText = styled.div`
   text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
     1px 1px 0 #000;
   pointer-events: none;
-  bottom: 50%;
+  bottom: 55%;
 `;
 
 const FloatingPowerUpText = styled.div`
@@ -401,11 +401,11 @@ const SaltBasket = styled.img
   .attrs((props) => ({
     style: {
       position: "absolute",
-      width: "8%",
+      width: "5%",
       height: "auto",
-      bottom: `${((GROUND_LEVEL + 75) / 720) * 100}%`,
-      left: props.$index === 0 ? "0.5%" : "auto",
-      right: props.$index === 1 ? "0.5%" : "auto",
+      bottom: `${((GROUND_LEVEL + 180) / 720) * 100}%`,
+      left: props.$index === 0 ? "17.5%" : "auto",
+      right: props.$index === 1 ? "18%" : "auto",
       transform: props.$index === 1 ? "scaleX(-1)" : "none",
       zIndex: 1,
       pointerEvents: "none",
@@ -703,8 +703,8 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         countdown > 0 && (
           <PowerUpText
             style={{
-              left: index === 0 ? "2%" : "auto",
-              right: index === 1 ? "2%" : "auto",
+              left: index === 0 ? "17.5%" : "auto",
+              right: index === 1 ? "18%" : "auto",
               textAlign: "center",
             }}
           >
@@ -718,8 +718,8 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         <FloatingPowerUpText
           $powerUpType={floatingPowerUpType}
           style={{
-            left: index === 0 ? "2%" : "auto",
-            right: index === 1 ? "2%" : "auto",
+            left: index === 0 ? "15%" : "auto",
+            right: index === 1 ? "15%" : "auto",
             textAlign: "center",
           }}
         >
@@ -775,7 +775,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
           transform: `scaleX(${penguin.facing}) scale(${
             activePowerUp === "size" ? 1.15 : 1
           })`,
-          width: activePowerUp === "size" ? "26.45%" : "23%",
+          width: activePowerUp === "size" ? "21.16%" : "18.4%",
         }}
       />
       <SaltEffect
