@@ -1,6 +1,41 @@
 {
+  "name": "penguin-pow",
+  "version": "1.0.0",
+  "description": "PenguinPow Game",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "vite",
+    "build": "vite build",
+    "electron:build": "electron-builder"
+  },
   "dependencies": {
     "react-player": "^2.15.1",
     "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "electron": "^28.1.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.penguinpow.game",
+    "productName": "PenguinPow",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "dist/**/*",
+      "main.js",
+      "preload.js"
+    ],
+    "mac": {
+      "category": "public.app-category.games"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
   }
 }

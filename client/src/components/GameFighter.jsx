@@ -54,7 +54,7 @@ import bellSound from "../sounds/bell-sound.mp3";
 import gameMusic from "../sounds/game-music.mp3";
 import eeshiMusic from "../sounds/eeshi.mp3";
 import parrySound from "../sounds/parry-sound.mp3";
-import saltSound from "../sounds/salt-sound.mp3"
+import saltSound from "../sounds/salt-sound.mp3";
 
 import UiPlayerInfo from "./UiPlayerInfo";
 import SaltEffect from "./SaltEffect";
@@ -280,7 +280,11 @@ const PowerUpText = styled.div`
   text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
     1px 1px 0 #000;
   pointer-events: none;
-  bottom: 55%;
+  bottom: 57%;
+  left: ${(props) => (props.$index === 0 ? "20%" : "auto")};
+  right: ${(props) => (props.$index === 1 ? "20.5%" : "auto")};
+  text-align: center;
+  transform: translateX(${(props) => (props.$index === 1 ? "50%" : "-50%")});
 `;
 
 const FloatingPowerUpText = styled.div`
@@ -304,14 +308,20 @@ const FloatingPowerUpText = styled.div`
   pointer-events: none;
   animation: floatUp 2s forwards;
   bottom: 45%;
+  left: ${(props) => (props.$index === 0 ? "15%" : "auto")};
+  right: ${(props) => (props.$index === 1 ? "15%" : "auto")};
+  text-align: center;
+  transform: translateX(${(props) => (props.$index === 1 ? "50%" : "-50%")});
   z-index: 100;
   @keyframes floatUp {
     0% {
-      transform: translateY(0);
+      transform: translateY(0)
+        translateX(${(props) => (props.$index === 1 ? "50%" : "-50%")});
       opacity: 1;
     }
     100% {
-      transform: translateY(-100px);
+      transform: translateY(-100px)
+        translateX(${(props) => (props.$index === 1 ? "50%" : "-50%")});
       opacity: 0;
     }
   }
@@ -385,7 +395,7 @@ const CountdownTimer = styled.div`
   position: absolute;
   font-family: "Bungee";
   font-size: clamp(1rem, 3vw, 2.5rem);
-  color:rgb(255, 0, 0);
+  color: rgb(255, 0, 0);
   text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
     1px 1px 0 #000;
   pointer-events: none;
@@ -709,13 +719,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         !penguin.isThrowingSalt &&
         gyojiState === "idle" &&
         countdown > 0 && (
-          <PowerUpText
-            style={{
-              left: index === 0 ? "17.5%" : "auto",
-              right: index === 1 ? "18%" : "auto",
-              textAlign: "center",
-            }}
-          >
+          <PowerUpText $index={index}>
             <KeyContainer>
               <Key>F</Key>
               <KeyLabel>POWER UP</KeyLabel>
@@ -723,14 +727,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
           </PowerUpText>
         )}
       {showFloatingPowerUp && (
-        <FloatingPowerUpText
-          $powerUpType={floatingPowerUpType}
-          style={{
-            left: index === 0 ? "15%" : "auto",
-            right: index === 1 ? "15%" : "auto",
-            textAlign: "center",
-          }}
-        >
+        <FloatingPowerUpText $powerUpType={floatingPowerUpType} $index={index}>
           {floatingPowerUpType.toUpperCase()}++
         </FloatingPowerUpText>
       )}

@@ -5,6 +5,14 @@ const cors = require("cors");
 const sharedsession = require("express-socket.io-session");
 const session = require("express-session");
 const e = require("express");
+const {
+  cleanupPlayerStates,
+  cleanupOpponentStates,
+  cleanupRoomState,
+  getCleanedRoomData,
+  getCleanedRoomsData,
+} = require("./playerCleanup");
+
 const app = express();
 app.use(cors());
 
@@ -49,7 +57,7 @@ let staminaRegenCounter = 0;
 const TICK_RATE = 64;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.22;
-const GROUND_LEVEL = 235;
+const GROUND_LEVEL = 245;
 const HITBOX_DISTANCE_VALUE = 72; // Reduced from 90 by 20%
 const SLAP_HITBOX_DISTANCE_VALUE = 88; // Reduced from 110 by 20%
 const SLAP_PARRY_WINDOW = 150; // 150ms window for parry
@@ -66,7 +74,7 @@ const GRAB_HOP_HEIGHT = 50; // Reduced from 100 to make the hop less pronounced
 const GRAB_HOP_SPEED = 0.1;
 
 // Add size power-up boundary multipliers
-const SIZE_POWERUP_LEFT_MULTIPLIER = -.7; // Reduce left side offset
+const SIZE_POWERUP_LEFT_MULTIPLIER = -0.7; // Reduce left side offset
 const SIZE_POWERUP_RIGHT_MULTIPLIER = 2.5; // Increase right side offset
 
 // Add new grab states
@@ -791,13 +799,16 @@ io.on("connection", (socket) => {
           !(player.isAttacking && !player.isSlapAttack)
         ) {
           // Calculate effective boundary based on player size with different multipliers for left and right
-          const sizeOffset = player.activePowerUp === POWER_UP_TYPES.SIZE
-            ? HITBOX_DISTANCE_VALUE * (player.powerUpMultiplier - 1)
-            : 0;
+          const sizeOffset =
+            player.activePowerUp === POWER_UP_TYPES.SIZE
+              ? HITBOX_DISTANCE_VALUE * (player.powerUpMultiplier - 1)
+              : 0;
 
           // Apply different multipliers for left and right boundaries
-          const leftBoundary = MAP_LEFT_BOUNDARY + (sizeOffset * SIZE_POWERUP_LEFT_MULTIPLIER);
-          const rightBoundary = MAP_RIGHT_BOUNDARY - (sizeOffset * SIZE_POWERUP_RIGHT_MULTIPLIER);
+          const leftBoundary =
+            MAP_LEFT_BOUNDARY + sizeOffset * SIZE_POWERUP_LEFT_MULTIPLIER;
+          const rightBoundary =
+            MAP_RIGHT_BOUNDARY - sizeOffset * SIZE_POWERUP_RIGHT_MULTIPLIER;
 
           // Apply boundary restrictions
           if (player.keys.a || player.keys.d) {
@@ -811,13 +822,16 @@ io.on("connection", (socket) => {
         // Add separate boundary check for grabbing state
         if (player.isGrabbing && !player.isThrowing && !player.isBeingThrown) {
           // Calculate effective boundary based on player size with different multipliers
-          const sizeOffset = player.activePowerUp === POWER_UP_TYPES.SIZE
-            ? HITBOX_DISTANCE_VALUE * (player.powerUpMultiplier - 1)
-            : 0;
+          const sizeOffset =
+            player.activePowerUp === POWER_UP_TYPES.SIZE
+              ? HITBOX_DISTANCE_VALUE * (player.powerUpMultiplier - 1)
+              : 0;
 
           // Apply different multipliers for left and right ring out boundaries
-          const leftRingOutBoundary = MAP_RING_OUT_LEFT + (sizeOffset * SIZE_POWERUP_LEFT_MULTIPLIER);
-          const rightRingOutBoundary = MAP_RING_OUT_RIGHT - (sizeOffset * SIZE_POWERUP_RIGHT_MULTIPLIER);
+          const leftRingOutBoundary =
+            MAP_RING_OUT_LEFT + sizeOffset * SIZE_POWERUP_LEFT_MULTIPLIER;
+          const rightRingOutBoundary =
+            MAP_RING_OUT_RIGHT - sizeOffset * SIZE_POWERUP_RIGHT_MULTIPLIER;
 
           player.x = Math.max(
             leftRingOutBoundary,
@@ -1102,13 +1116,16 @@ io.on("connection", (socket) => {
             player.x + player.dodgeDirection * delta * currentDodgeSpeed;
 
           // Calculate effective boundary based on player size with different multipliers
-          const sizeOffset = player.activePowerUp === POWER_UP_TYPES.SIZE
-            ? HITBOX_DISTANCE_VALUE * (player.powerUpMultiplier - 1)
-            : 0;
+          const sizeOffset =
+            player.activePowerUp === POWER_UP_TYPES.SIZE
+              ? HITBOX_DISTANCE_VALUE * (player.powerUpMultiplier - 1)
+              : 0;
 
           // Apply different multipliers for left and right boundaries
-          const leftBoundary = MAP_LEFT_BOUNDARY + (sizeOffset * SIZE_POWERUP_LEFT_MULTIPLIER);
-          const rightBoundary = MAP_RIGHT_BOUNDARY - (sizeOffset * SIZE_POWERUP_RIGHT_MULTIPLIER);
+          const leftBoundary =
+            MAP_LEFT_BOUNDARY + sizeOffset * SIZE_POWERUP_LEFT_MULTIPLIER;
+          const rightBoundary =
+            MAP_RIGHT_BOUNDARY - sizeOffset * SIZE_POWERUP_RIGHT_MULTIPLIER;
 
           // Only update position if within boundaries
           if (newX >= leftBoundary && newX <= rightBoundary) {
@@ -2260,16 +2277,7 @@ io.on("connection", (socket) => {
 
     if (rooms[roomIndex]) {
       // Clean up the room state
-      rooms[roomIndex].rematchCount = 0;
-      rooms[roomIndex].matchOver = false;
-      rooms[roomIndex].gameStart = false;
-      rooms[roomIndex].gameOver = false;
-      rooms[roomIndex].readyCount = 0;
-      rooms[roomIndex].readyStartTime = null;
-      rooms[roomIndex].roundStartTimer = null;
-      rooms[roomIndex].gameOverTime = null;
-      rooms[roomIndex].winnerId = null;
-      rooms[roomIndex].loserId = null;
+      cleanupRoomState(rooms[roomIndex]);
 
       // Clean up player references
       const playerIndex = rooms[roomIndex].players.findIndex(
@@ -2279,48 +2287,13 @@ io.on("connection", (socket) => {
         const player = rooms[roomIndex].players[playerIndex];
 
         // Clean up all player references
-        player.grabbedOpponent = null;
-        player.throwOpponent = null;
-        player.grabState = GRAB_STATES.INITIAL;
-        player.grabAttemptType = null;
-        player.grabAttemptStartTime = null;
-        player.isGrabbing = false;
-        player.isBeingGrabbed = false;
-        player.isThrowing = false;
-        player.isBeingThrown = false;
-        player.isAttacking = false;
-        player.isHit = false;
-        player.isAlreadyHit = false;
-        player.isDodging = false;
-        player.isCrouching = false;
-        player.isStrafing = false;
-        player.isJumping = false;
-        player.isReady = false;
-        player.isBowing = false;
-        player.knockbackVelocity = { x: 0, y: 0 };
-        player.keys = {
-          w: false,
-          a: false,
-          s: false,
-          d: false,
-          " ": false,
-          shift: false,
-          e: false,
-          f: false,
-        };
+        cleanupPlayerStates(player);
 
         // Clean up opponent references
         const opponent = rooms[roomIndex].players.find(
           (p) => p.id !== player.id
         );
-        if (opponent) {
-          opponent.isBeingGrabbed = false;
-          opponent.isBeingPushed = false;
-          opponent.isBeingPulled = false;
-          opponent.isBeingThrown = false;
-          opponent.grabbedOpponent = null;
-          opponent.throwOpponent = null;
-        }
+        cleanupOpponentStates(opponent);
       }
 
       // Remove the player
@@ -2329,83 +2302,12 @@ io.on("connection", (socket) => {
       );
 
       // Emit updates with cleaned data
-      const cleanedRoom = {
-        ...rooms[roomIndex],
-        players: rooms[roomIndex].players.map((p) => ({
-          ...p,
-          grabbedOpponent: null,
-          throwOpponent: null,
-          grabState: GRAB_STATES.INITIAL,
-          grabAttemptType: null,
-          grabAttemptStartTime: null,
-          isGrabbing: false,
-          isBeingGrabbed: false,
-          isThrowing: false,
-          isBeingThrown: false,
-          isAttacking: false,
-          isHit: false,
-          isAlreadyHit: false,
-          isDodging: false,
-          isCrouching: false,
-          isStrafing: false,
-          isJumping: false,
-          isReady: false,
-          isBowing: false,
-          knockbackVelocity: { x: 0, y: 0 },
-          keys: {
-            w: false,
-            a: false,
-            s: false,
-            d: false,
-            " ": false,
-            shift: false,
-            e: false,
-            f: false,
-          },
-        })),
-      };
+      const cleanedRoom = getCleanedRoomData(rooms[roomIndex]);
 
       io.in(roomId).emit("player_left");
       io.in(roomId).emit("ready_count", 0);
       io.to(roomId).emit("lobby", cleanedRoom.players);
-      io.emit(
-        "rooms",
-        rooms.map((r) => ({
-          ...r,
-          players: r.players.map((p) => ({
-            ...p,
-            grabbedOpponent: null,
-            throwOpponent: null,
-            grabState: GRAB_STATES.INITIAL,
-            grabAttemptType: null,
-            grabAttemptStartTime: null,
-            isGrabbing: false,
-            isBeingGrabbed: false,
-            isThrowing: false,
-            isBeingThrown: false,
-            isAttacking: false,
-            isHit: false,
-            isAlreadyHit: false,
-            isDodging: false,
-            isCrouching: false,
-            isStrafing: false,
-            isJumping: false,
-            isReady: false,
-            isBowing: false,
-            knockbackVelocity: { x: 0, y: 0 },
-            keys: {
-              w: false,
-              a: false,
-              s: false,
-              d: false,
-              " ": false,
-              shift: false,
-              e: false,
-              f: false,
-            },
-          })),
-        }))
-      );
+      io.emit("rooms", getCleanedRoomsData(rooms));
     }
     console.log(`${reason}: ${socket.id}`);
   });

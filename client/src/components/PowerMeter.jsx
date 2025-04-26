@@ -77,8 +77,16 @@ const PowerMeter = ({
 
   const meterStyle = {
     left: `${(x / 1280) * 100}%`,
-    bottom: `${((y + 275 + (activePowerUp === "size" ? -5 : -40)) / 720) * 100}%`,
-    transform: `translateX(${facing === 1 ? (activePowerUp === "size" ? "60%" : "50%") : (activePowerUp === "size" ? "50%" : "45%")})`,
+    bottom: `${((y + (activePowerUp === "size" ? 265 : 235)) / 720) * 100}%`,
+    transform: `translateX(${
+      facing === 1
+        ? activePowerUp === "size"
+          ? "52%"
+          : "40%"
+        : activePowerUp === "size"
+        ? "45%"
+        : "35%"
+    }) scale(${activePowerUp === "size" ? 1.15 : 1})`,
   };
 
   const fillStyle = {
@@ -105,6 +113,7 @@ PowerMeter.propTypes = {
   facing: PropTypes.number.isRequired,
   playerId: PropTypes.string.isRequired,
   localId: PropTypes.string.isRequired,
+  activePowerUp: PropTypes.string,
 };
 
 export default PowerMeter;
