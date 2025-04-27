@@ -131,7 +131,6 @@ const getImageSrc = (
     if (isBowing) return bow2;
     if (isThrowTeching) return throwTech2;
     if (isSlapAttack) {
-      // Toggle between two slap attack animations based on slapAnimation value
       return slapAnimation === 1 ? slapAttack1Blue : slapAttack2Blue;
     }
     if (isGrabbing) {
