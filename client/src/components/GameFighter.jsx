@@ -281,8 +281,8 @@ const PowerUpText = styled.div`
     1px 1px 0 #000;
   pointer-events: none;
   bottom: 57%;
-  left: ${(props) => (props.$index === 0 ? "20%" : "auto")};
-  right: ${(props) => (props.$index === 1 ? "20.5%" : "auto")};
+  left: ${(props) => (props.$index === 0 ? "21.5%" : "auto")};
+  right: ${(props) => (props.$index === 1 ? "21.5%" : "auto")};
   text-align: center;
   transform: translateX(${(props) => (props.$index === 1 ? "50%" : "-50%")});
 `;
@@ -306,22 +306,41 @@ const FloatingPowerUpText = styled.div`
   text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
     1px 1px 0 #000;
   pointer-events: none;
-  animation: floatUp 2s forwards;
-  bottom: 45%;
-  left: ${(props) => (props.$index === 0 ? "15%" : "auto")};
-  right: ${(props) => (props.$index === 1 ? "15%" : "auto")};
+  animation: powerUpFloat 1.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  bottom: 57%;
+  left: ${(props) => (props.$index === 0 ? "21.5%" : "auto")};
+  right: ${(props) => (props.$index === 1 ? "21.5%" : "auto")};
   text-align: center;
-  transform: translateX(${(props) => (props.$index === 1 ? "50%" : "-50%")});
+  transform-origin: center;
   z-index: 100;
-  @keyframes floatUp {
+  opacity: 0;
+  filter: drop-shadow(
+    0 0 8px
+      ${(props) => {
+        switch (props.$powerUpType) {
+          case "speed":
+            return "rgba(0, 102, 255, 0.6)";
+          case "power":
+            return "rgba(255, 68, 68, 0.6)";
+          case "size":
+            return "rgba(68, 255, 68, 0.6)";
+          default:
+            return "rgba(255, 255, 255, 0.6)";
+        }
+      }}
+  );
+
+  @keyframes powerUpFloat {
     0% {
-      transform: translateY(0)
-        translateX(${(props) => (props.$index === 1 ? "50%" : "-50%")});
+      transform: translateY(0) scale(0.8);
+      opacity: 0;
+    }
+    20% {
+      transform: translateY(-20px) scale(1.1);
       opacity: 1;
     }
     100% {
-      transform: translateY(-100px)
-        translateX(${(props) => (props.$index === 1 ? "50%" : "-50%")});
+      transform: translateY(-100px) scale(0.9);
       opacity: 0;
     }
   }
@@ -414,9 +433,9 @@ const SaltBasket = styled.img
       position: "absolute",
       width: "5%",
       height: "auto",
-      bottom: `${((GROUND_LEVEL + 180) / 720) * 100}%`,
-      left: props.$index === 0 ? "17.5%" : "auto",
-      right: props.$index === 1 ? "18%" : "auto",
+      bottom: `${((GROUND_LEVEL + 190) / 720) * 100}%`,
+      left: props.$index === 0 ? "19%" : "auto",
+      right: props.$index === 1 ? "19%" : "auto",
       transform: props.$index === 1 ? "scaleX(-1)" : "none",
       zIndex: 1,
       pointerEvents: "none",
