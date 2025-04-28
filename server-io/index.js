@@ -57,7 +57,7 @@ let staminaRegenCounter = 0;
 const TICK_RATE = 64;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.22;
-const GROUND_LEVEL = 245;
+const GROUND_LEVEL = 257;
 const HITBOX_DISTANCE_VALUE = 72; // Reduced from 90 by 20%
 const SLAP_HITBOX_DISTANCE_VALUE = 88; // Reduced from 110 by 20%
 const SLAP_PARRY_WINDOW = 150; // 150ms window for parry
@@ -119,10 +119,10 @@ const GRAB_DURATION = 1500; // 1.5 seconds total grab duration
 const GRAB_ATTEMPT_DURATION = 1000; // 1 second for attempt animation
 
 // Map boundary constants
-const MAP_LEFT_BOUNDARY = 160;
-const MAP_RIGHT_BOUNDARY = 880;
-const MAP_RING_OUT_LEFT = 120;
-const MAP_RING_OUT_RIGHT = 915;
+const MAP_LEFT_BOUNDARY = 178;
+const MAP_RIGHT_BOUNDARY = 865;
+const MAP_RING_OUT_LEFT = 150;
+const MAP_RING_OUT_RIGHT = 890;
 
 function resetRoomAndPlayers(room) {
   // Reset room state
@@ -1045,6 +1045,12 @@ io.on("connection", (socket) => {
                 if (!room.gameOverTime) {
                   room.gameOverTime = Date.now();
                 }
+              } else {
+                // Emit screen shake for landing after throw
+                io.in(room.id).emit("screen_shake", {
+                  intensity: 0.6,
+                  duration: 200,
+                });
               }
 
               // Reset all throw-related states for both players
@@ -1605,6 +1611,11 @@ io.on("connection", (socket) => {
     const currentTime = Date.now();
     const attackDuration = currentTime - player.attackStartTime;
 
+    // Find the current room
+    const currentRoom = rooms.find((room) =>
+      room.players.some((p) => p.id === player.id)
+    );
+
     if (attackDuration < MIN_ATTACK_DISPLAY_TIME) {
       setTimeout(() => {
         // Reset attack states but preserve power for knockback
@@ -1636,12 +1647,28 @@ io.on("connection", (socket) => {
           0.4375 * knockbackDirection * player.chargeAttackPower;
         player.knockbackVelocity.y = 0;
         player.isHit = true;
+
+        // Emit screen shake for blocked slap
+        if (currentRoom) {
+          io.in(currentRoom.id).emit("screen_shake", {
+            intensity: 0.3,
+            duration: 200,
+          });
+        }
       } else {
         const knockbackDirection = player.facing === 1 ? 1 : -1;
         player.knockbackVelocity.x =
           0.1 * knockbackDirection * player.chargeAttackPower;
         player.knockbackVelocity.y = 0;
         player.isHit = true;
+
+        // Emit screen shake for blocked charged attack
+        if (currentRoom) {
+          io.in(currentRoom.id).emit("screen_shake", {
+            intensity: 0.5,
+            duration: 300,
+          });
+        }
       }
 
       setTimeout(() => {
@@ -1672,9 +1699,25 @@ io.on("connection", (socket) => {
       if (player.isSlapAttack) {
         otherPlayer.knockbackVelocity.x =
           6.5 * knockbackDirection * finalKnockbackMultiplier;
+
+        // Emit screen shake for successful slap
+        if (currentRoom) {
+          io.in(currentRoom.id).emit("screen_shake", {
+            intensity: 0.4,
+            duration: 150,
+          });
+        }
       } else {
         otherPlayer.knockbackVelocity.x =
           5 * knockbackDirection * finalKnockbackMultiplier;
+
+        // Emit screen shake for successful charged attack
+        if (currentRoom) {
+          io.in(currentRoom.id).emit("screen_shake", {
+            intensity: 0.7,
+            duration: 250,
+          });
+        }
       }
       otherPlayer.knockbackVelocity.y = 0; // Remove vertical knockback
       otherPlayer.y = GROUND_LEVEL;

@@ -86,7 +86,9 @@ const SaltEffect = ({
 
         return {
           id: Math.random(),
-          x: ((playerX + xOffset) / 1280) * 100,
+          x:
+            ((playerX + xOffset + (playerFacing === 1 ? -20 : 1000)) / 1280) *
+            100,
           y: ((playerY + yOffset) / 720) * 100,
           velocityX: Math.cos(angle) * speed * (playerFacing === 1 ? 1 : -1),
           velocityY: Math.sin(angle) * speed,

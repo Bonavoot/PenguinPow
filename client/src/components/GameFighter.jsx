@@ -461,6 +461,11 @@ const GameFighter = ({ player, index, roomName, localId }) => {
   const [floatingPowerUpType, setFloatingPowerUpType] = useState(null);
   const [countdown, setCountdown] = useState(15);
   const countdownRef = useRef(null);
+  const [screenShake, setScreenShake] = useState({
+    intensity: 0,
+    duration: 0,
+    startTime: 0,
+  });
 
   const lastAttackState = useRef(player.isAttacking);
   const lastHitState = useRef(player.isHit);
@@ -689,6 +694,58 @@ const GameFighter = ({ player, index, roomName, localId }) => {
     lastWinnerState.current = gameOver;
   }, [gameOver]);
 
+  // Add screen shake effect
+  useEffect(() => {
+    if (screenShake.intensity > 0) {
+      const shakeInterval = setInterval(() => {
+        const elapsed = Date.now() - screenShake.startTime;
+        if (elapsed >= screenShake.duration) {
+          setScreenShake({ intensity: 0, duration: 0, startTime: 0 });
+          clearInterval(shakeInterval);
+          return;
+        }
+
+        // Calculate shake intensity based on elapsed time (fade out)
+        const remainingIntensity =
+          screenShake.intensity * (1 - elapsed / screenShake.duration);
+
+        // Apply random offset based on intensity
+        const offsetX = (Math.random() - 0.5) * remainingIntensity * 10;
+        const offsetY = (Math.random() - 0.5) * remainingIntensity * 10;
+
+        // Apply the shake effect to the game container
+        const gameContainer = document.querySelector(".game-container");
+        if (gameContainer) {
+          gameContainer.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
+        }
+      }, 16); // 60fps
+
+      return () => {
+        clearInterval(shakeInterval);
+        // Reset transform when effect ends
+        const gameContainer = document.querySelector(".game-container");
+        if (gameContainer) {
+          gameContainer.style.transform = "translate(0px, 0px)";
+        }
+      };
+    }
+  }, [screenShake]);
+
+  // Add screen shake event listener
+  useEffect(() => {
+    socket.on("screen_shake", (data) => {
+      setScreenShake({
+        intensity: data.intensity,
+        duration: data.duration,
+        startTime: Date.now(),
+      });
+    });
+
+    return () => {
+      socket.off("screen_shake");
+    };
+  }, [socket]);
+
   return (
     <div className="ui-container">
       <UiPlayerInfo
@@ -805,7 +862,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         isActive={penguin.isThrowingSalt}
         playerFacing={penguin.facing}
         playerX={penguin.x}
-        playerY={penguin.y}
+        playerY={penguin.y + 100}
       />
       <SlapParryEffect position={parryEffectPosition} />
       <ThrowTechEffect />
