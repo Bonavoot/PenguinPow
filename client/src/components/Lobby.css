@@ -11,16 +11,9 @@
   background-repeat: no-repeat;
   background-size: cover;
   background-position: center;
-
-  /* background-image: linear-gradient(
-    rgb(167, 252, 255),
-    rgb(206, 255, 253),
-    rgb(255, 255, 255),
-    rgb(0, 0, 0)
-  ); */
-  border: black 2px solid;
-  border-radius: 0.5rem;
-  box-shadow: 0px 0px 2px 1px black;
+  border: none;
+  border-radius: 1rem;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
   z-index: 99;
   overflow: hidden;
 }
@@ -61,20 +54,33 @@
 
 .waiting {
   font-family: "Bungee", Arial;
-  font-size: clamp(0.2rem, 2vw, 1.25rem); /* Responsive font size */
-  width: 50%; /* Scales with the .lobby */
+  font-size: clamp(0.2rem, 2.5vw, 1.5rem);
+  width: 50%;
   max-width: 400px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.2vw; /* Proportional gap between elements */
+  gap: 0.4vw;
   color: white;
-  margin: 0 auto; /* Center horizontally */
+  margin: 0 auto;
   position: absolute;
-  top: 50%; /* Center vertically */
+  top: 50%;
   right: 8%;
-  text-shadow: -2px -2px 0 #000000, 2px -2px 0 #000000, -2px 2px 0 #000000,
-    2px 2px 0 #000000;
+  text-shadow: 0 0 20px rgba(255, 255, 255, 0.4), -2px -2px 0 #000000,
+    2px -2px 0 #000000, -2px 2px 0 #000000, 2px 2px 0 #000000;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .loading-ellipsis {
@@ -84,13 +90,12 @@
 }
 
 .loading-ellipsis .dot {
-  width: 0.5em;
-  height: 0.5em;
-  margin: 0.2em;
+  width: 0.6em;
+  height: 0.6em;
+  margin: 0.3em;
   border-radius: 50%;
   background-color: white;
-
-  /* Animation properties */
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
   animation: dotFlash 1.4s infinite ease-in-out both;
 }
 
@@ -119,19 +124,31 @@
 } */
 
 .player-side {
-  font-family: "Bungee Outline", cursive;
-  background-color: rgba(0, 0, 0, 0.8);
+  font-family: "Bungee", cursive;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.9) 0%,
+    rgba(0, 0, 0, 0.7) 100%
+  );
   text-align: center;
-  font-size: clamp(0.5rem, 2vw, 2rem);
-  padding: 2% 10%;
+  font-size: clamp(0.5rem, 2.2vw, 2.2rem);
+  padding: 2% 12%;
+  border-radius: 8px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(5px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  text-transform: uppercase;
+  letter-spacing: 2px;
 }
 
 .player0 {
-  color: aqua;
+  color: #00ffff;
+  text-shadow: 0 0 15px rgba(0, 255, 255, 0.6);
 }
 
 .player1 {
-  color: salmon;
+  color: #ff8073;
+  text-shadow: 0 0 15px rgba(255, 128, 115, 0.6);
 }
 
 .lobby-fighter-container {
@@ -238,22 +255,27 @@
 
 .exit-btn {
   position: absolute;
-  bottom: 5%; /* Use percentage-based positioning */
+  bottom: 5%;
   left: 5%;
-  background-color: black;
-  padding: 1% 2%; /* Use percentage for padding */
-  border-radius: 10px;
+  background: linear-gradient(45deg, #ff3636 0%, #ff5c5c 100%);
+  padding: 1% 3%;
+  border-radius: 12px;
   border: none;
-  font-size: 1.5vw; /* Use viewport width for font size */
+  font-size: 1.5vw;
   color: white;
   font-family: "Bungee", cursive;
   text-align: start;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(255, 54, 54, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .exit-btn:hover {
-  background-color: grey;
+  background: linear-gradient(45deg, #ff5c5c 0%, #ff3636 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255, 54, 54, 0.6);
   cursor: pointer;
-  border: none;
 }
 
 .ready {
@@ -267,115 +289,51 @@
 }
 
 .ready-btn {
-  font-size: 1.8vw; /* Use viewport width for font size */
-  background-color: forestgreen;
-  padding: 12% 4%; /* Use percentage for padding */
-  border-radius: 10px;
+  font-size: 1.8vw;
+  background: linear-gradient(45deg, #2ecc71 0%, #27ae60 100%);
+  padding: 12% 4%;
+  border-radius: 12px;
   border: none;
   color: white;
   cursor: pointer;
   font-family: "Bungee", cursive;
-  animation: logo-animation linear 4s;
-  animation-iteration-count: infinite;
-  transform-origin: 50% 50%;
-  -webkit-animation: logo-animation linear 4s;
-  -webkit-animation-iteration-count: infinite;
-  -webkit-transform-origin: 50% 50%;
-  -moz-animation: logo-animation linear 4s;
-  -moz-animation-iteration-count: infinite;
-  -moz-transform-origin: 50% 50%;
-  -o-animation: logo-animation linear 4s;
-  -o-animation-iteration-count: infinite;
-  -o-transform-origin: 50% 50%;
-  -ms-animation: logo-animation linear 4s;
-  -ms-animation-iteration-count: infinite;
-  -ms-transform-origin: 50% 50%;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(46, 204, 113, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  animation: glow 2s infinite;
 }
 
-@keyframes logo-animation {
+@keyframes glow {
   0% {
-    opacity: 1;
+    box-shadow: 0 4px 15px rgba(46, 204, 113, 0.4);
   }
   50% {
-    opacity: 0.4;
+    box-shadow: 0 4px 25px rgba(46, 204, 113, 0.7);
   }
   100% {
-    opacity: 0.990099773451273;
-  }
-  101% {
-    opacity: 0.99;
-  }
-}
-
-@-moz-keyframes logo-animation {
-  0% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.4;
-  }
-  100% {
-    opacity: 0.990099773451273;
-  }
-  101% {
-    opacity: 0.99;
-  }
-}
-
-@-webkit-keyframes logo-animation {
-  0% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.4;
-  }
-  100% {
-    opacity: 0.990099773451273;
-  }
-  101% {
-    opacity: 0.99;
-  }
-}
-
-@-o-keyframes logo-animation {
-  0% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.4;
-  }
-  100% {
-    opacity: 0.990099773451273;
-  }
-  101% {
-    opacity: 0.99;
-  }
-}
-
-@-ms-keyframes logo-animation {
-  0% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.4;
-  }
-  100% {
-    opacity: 0.990099773451273;
-  }
-  101% {
-    opacity: 0.99;
+    box-shadow: 0 4px 15px rgba(46, 204, 113, 0.4);
   }
 }
 
 #cancel-btn {
-  font-size: 1.8vw; /* Use viewport width for font size */
-  background-color: rgb(139, 34, 34);
-  padding: 12% 4%; /* Use percentage for padding */
-  border-radius: 10px;
+  font-size: 1.8vw;
+  background: linear-gradient(45deg, #c0392b 0%, #e74c3c 100%);
+  padding: 12% 4%;
+  border-radius: 12px;
   border: none;
   color: white;
   cursor: pointer;
   font-family: "Bungee", cursive;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(231, 76, 60, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+#cancel-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(231, 76, 60, 0.6);
 }
 
 .ready-count {
@@ -387,4 +345,10 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.4);
+  letter-spacing: 1px;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 10px 20px;
+  border-radius: 8px;
+  backdrop-filter: blur(5px);
 }

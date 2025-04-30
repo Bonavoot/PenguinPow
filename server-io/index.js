@@ -594,7 +594,7 @@ io.on("connection", (socket) => {
         if (room.gameStart === false) {
           // Only adjust player 1's ready position based on size power-up
           const player1ReadyX =
-            player1.activePowerUp === POWER_UP_TYPES.SIZE ? 320 : 360;
+            player1.activePowerUp === POWER_UP_TYPES.SIZE ? 325 : 355;
 
           if (player1.x >= player1ReadyX) {
             player1.x = player1ReadyX;
@@ -1117,9 +1117,18 @@ io.on("connection", (socket) => {
             currentDodgeSpeed *= 0.85; // 15% speed reduction
           }
 
+          // Calculate dodge progress (0 to 1)
+          const dodgeProgress =
+            (Date.now() - player.dodgeStartTime) /
+            (player.dodgeEndTime - player.dodgeStartTime);
+
+          // Calculate hop height using sine wave
+          const hopHeight = Math.sin(dodgeProgress * Math.PI) * 50; // 50 pixels max height
+
           // Calculate new position
           const newX =
             player.x + player.dodgeDirection * delta * currentDodgeSpeed;
+          const newY = GROUND_LEVEL + hopHeight;
 
           // Calculate effective boundary based on player size with different multipliers
           const sizeOffset =
@@ -1136,11 +1145,13 @@ io.on("connection", (socket) => {
           // Only update position if within boundaries
           if (newX >= leftBoundary && newX <= rightBoundary) {
             player.x = newX;
+            player.y = newY;
           }
 
           if (Date.now() >= player.dodgeEndTime) {
             player.isDodging = false;
             player.dodgeDirection = null;
+            player.y = GROUND_LEVEL; // Reset to ground level when dodge ends
           }
         }
 
@@ -1693,20 +1704,20 @@ io.on("connection", (socket) => {
       }
       if (otherPlayer.activePowerUp === POWER_UP_TYPES.SIZE) {
         // Reduce knockback by 30% when the player has size power-up
-        finalKnockbackMultiplier = finalKnockbackMultiplier * 0.7;
+        finalKnockbackMultiplier = finalKnockbackMultiplier * 0.85;
       }
 
       if (player.isSlapAttack) {
         otherPlayer.knockbackVelocity.x =
-          6.5 * knockbackDirection * finalKnockbackMultiplier;
+          6 * knockbackDirection * finalKnockbackMultiplier;
 
-        // Emit screen shake for successful slap
-        if (currentRoom) {
-          io.in(currentRoom.id).emit("screen_shake", {
-            intensity: 0.4,
-            duration: 150,
-          });
-        }
+        // Remove screen shake for successful slap
+        // if (currentRoom) {
+        //   io.in(currentRoom.id).emit("screen_shake", {
+        //     intensity: 0.4,
+        //     duration: 150,
+        //   });
+        // }
       } else {
         otherPlayer.knockbackVelocity.x =
           5 * knockbackDirection * finalKnockbackMultiplier;
@@ -1943,6 +1954,11 @@ io.on("connection", (socket) => {
       return; // Skip all other actions if the game is over
     }
 
+    // Block all actions if player is throwing salt
+    if (player.isThrowingSalt) {
+      return;
+    }
+
     if (
       player.keys.f &&
       !player.saltCooldown &&
@@ -1983,6 +1999,9 @@ io.on("connection", (socket) => {
 
       if (
         player.keys["shift"] &&
+        !player.keys.e &&
+        !player.keys.w &&
+        !player.keys.s &&
         !player.isDodging &&
         !player.isAttacking &&
         !player.isThrowing &&
@@ -1992,8 +2011,11 @@ io.on("connection", (socket) => {
         player.stamina >= 50
       ) {
         player.isDodging = true;
-        player.dodgeEndTime = Date.now() + 400; // Dodge lasts for 0.4 seconds
-        player.stamina -= 50; // Consume some stamina for the dodge
+        player.dodgeStartTime = Date.now();
+        player.dodgeEndTime = Date.now() + 400;
+        player.stamina -= 50;
+        player.dodgeStartX = player.x; // Store initial dodge position
+        player.dodgeStartY = player.y;
 
         // Store the dodge direction based on which key was held
         if (player.keys.a) {
@@ -2172,6 +2194,8 @@ io.on("connection", (socket) => {
       }
       if (
         player.keys.w &&
+        !player.keys.e &&
+        !player.isThrowingSalt &&
         !player.isThrowing &&
         !player.isBeingThrown &&
         !player.isGrabbing &&

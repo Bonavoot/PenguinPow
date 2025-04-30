@@ -9,6 +9,7 @@ import PlayerShadow from "./PlayerShadow";
 import ThrowTechEffect from "./ThrowTechEffect";
 import PowerMeter from "./PowerMeter";
 import SlapParryEffect from "./SlapParryEffect";
+import DodgeDustEffect from "./DodgeDustEffect";
 
 import pumo from "../assets/pumo.png";
 import pumo2 from "../assets/pumo2.png";
@@ -30,7 +31,7 @@ import slapAttack2Blue from "../assets/slapAttack2blue.png";
 import slapAttack1Red from "../assets/slapAttack1Red.png";
 import slapAttack2Red from "../assets/slapAttack2Red.png";
 import dodging from "../assets/dodging.gif";
-import dodging2 from "../assets/dodging2.gif";
+import dodging2 from "../assets/dodging2.png";
 import throwing from "../assets/throwing.png";
 import throwing2 from "../assets/throwing2.png";
 import hit from "../assets/hit.png";
@@ -417,7 +418,7 @@ const CountdownTimer = styled.div`
   text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
     1px 1px 0 #000;
   pointer-events: none;
-  bottom: 80%;
+  bottom: 81%;
   left: 50%;
   transform: translateX(-50%);
   z-index: 100;
@@ -806,7 +807,19 @@ const GameFighter = ({ player, index, roomName, localId }) => {
           {floatingPowerUpType.toUpperCase()}++
         </FloatingPowerUpText>
       )}
-      <PlayerShadow x={penguin.x} y={penguin.y} facing={penguin.facing} />
+      <PlayerShadow
+        x={penguin.x}
+        y={penguin.y}
+        facing={penguin.facing}
+        isDodging={penguin.isDodging}
+      />
+      <DodgeDustEffect
+        x={penguin.dodgeStartX || penguin.x}
+        y={penguin.dodgeStartY || penguin.y}
+        facing={penguin.facing}
+        isDodging={penguin.isDodging}
+        dodgeDirection={penguin.dodgeDirection}
+      />
       <StyledImage
         $fighter={penguin.fighter}
         $isDiving={penguin.isDiving}

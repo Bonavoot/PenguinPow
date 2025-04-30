@@ -5,7 +5,7 @@ const ShadowElement = styled.div.attrs((props) => ({
   style: {
     position: "absolute",
     left: `${(props.$x / 1280) * 100}%`,
-    bottom: `${((props.$y - 2) / 720) * 100}%`, // Slightly below player
+    bottom: `${(((props.$isDodging ? 257 : props.$y) - 2) / 720) * 100}%`, // Stay at GROUND_LEVEL during dodge
     transform: `translateX(${props.$facing === -1 ? "12%" : "9%"}) `,
   },
 }))`
@@ -22,14 +22,17 @@ const ShadowElement = styled.div.attrs((props) => ({
   z-index: 1;
 `;
 
-const PlayerShadow = ({ x, y, facing }) => {
-  return <ShadowElement $x={x} $y={y} $facing={facing} />;
+const PlayerShadow = ({ x, y, facing, isDodging }) => {
+  return (
+    <ShadowElement $x={x} $y={y} $facing={facing} $isDodging={isDodging} />
+  );
 };
 
 PlayerShadow.propTypes = {
   x: PropTypes.number.isRequired,
   y: PropTypes.number.isRequired,
   facing: PropTypes.number.isRequired,
+  isDodging: PropTypes.bool,
 };
 
 export default PlayerShadow;

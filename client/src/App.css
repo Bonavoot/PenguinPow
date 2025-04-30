@@ -279,7 +279,7 @@ body {
   background-image: url(./assets/game-map-1.png);
   background-repeat: no-repeat;
   background-size: cover;
-  background-position: center;
+  background-position: center 10%; /* Start background 10% from the top */
   z-index: 99;
 }
 
@@ -563,7 +563,7 @@ body {
   position: absolute;
   text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000,
     2px 2px 0 #000;
-  top: 20%;
+  top: 16%;
   left: 50%;
   width: 50%; /* Scales with the .lobby */
   margin: 0 auto; /* Center horizontally */

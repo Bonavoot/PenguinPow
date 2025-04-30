@@ -52,6 +52,7 @@ const SaltEffect = ({
   const animationFrameRef = useRef();
   const lastUpdateTime = useRef(0);
   const containerRef = useRef(null);
+  const lastActiveState = useRef(false);
 
   const updateParticle = useCallback((particle, deltaTime) => {
     const gravity = 0.25;
@@ -72,7 +73,8 @@ const SaltEffect = ({
   }, []);
 
   useEffect(() => {
-    if (isActive) {
+    // Only generate particles when isActive changes from false to true
+    if (isActive && !lastActiveState.current) {
       const baseAngle = playerFacing === 1 ? 135 : 40;
       const windowWidth = window.innerWidth;
       const maxWidth = 1280;
@@ -103,6 +105,7 @@ const SaltEffect = ({
 
       setParticles((prev) => [...prev, ...newParticles]);
     }
+    lastActiveState.current = isActive;
   }, [isActive, playerFacing, playerX, playerY, xOffset, yOffset]);
 
   useEffect(() => {

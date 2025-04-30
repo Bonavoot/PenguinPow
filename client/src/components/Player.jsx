@@ -16,7 +16,7 @@ import crouching2 from "../assets/crouching2.png";
 import grabbing2 from "../assets/grabbing2.png";
 import ready2 from "../assets/ready2.png";
 import attack2 from "../assets/attack2.png";
-import dodging2 from "../assets/dodging2.gif";
+import dodging2 from "../assets/dodging2.png";
 import throwing2 from "../assets/throwing2.png";
 import salt from "../assets/salt.png";
 import salt2 from "../assets/salt2.png";
