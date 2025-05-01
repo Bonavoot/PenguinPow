@@ -263,13 +263,46 @@ const StyledImage = styled("img")
       transform: `scaleX(${props.$facing})`,
       zIndex:
         props.$isThrowing || props.$isDodging || props.$isGrabbing ? 98 : 99,
+      filter: props.$isDodging ? "drop-shadow(0 0 6px rgba(255, 255, 255, 0.6)) brightness(1.5)" : "none",
+      animation: props.$isDodging ? "dodgeFlash 0.3s ease-in-out" : "none",
     },
   }))`
   position: absolute;
   width: 18.4%;
   height: auto;
-  will-change: transform, bottom, left;
+  will-change: transform, bottom, left, filter, opacity;
   pointer-events: none;
+
+  @keyframes dodgeFlash {
+    0% {
+      filter: drop-shadow(0 0 0px rgba(255, 255, 255, 0)) brightness(1);
+      opacity: 1;
+    }
+    15% {
+      filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.6)) brightness(2);
+      opacity: 0.95;
+    }
+    30% {
+      filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.3)) brightness(1.2);
+      opacity: 0.98;
+    }
+    45% {
+      filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.6)) brightness(2);
+      opacity: 0.95;
+    }
+    60% {
+      filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.3)) brightness(1.2);
+      opacity: 0.98;
+    }
+    75% {
+      filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.6)) brightness(2);
+      opacity: 0.95;
+    }
+    100% {
+      filter: drop-shadow(0 0 0px rgba(255, 255, 255, 0)) brightness(1);
+      opacity: 1;
+    }
+  }
 `;
 
 const PowerUpText = styled.div`
