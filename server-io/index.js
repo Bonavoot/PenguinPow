@@ -56,7 +56,7 @@ let gameLoop = null;
 let staminaRegenCounter = 0;
 const TICK_RATE = 64;
 const delta = 1000 / TICK_RATE;
-const speedFactor = 0.22;
+const speedFactor = 0.25; // Increased from 0.22 for snappier movement
 const GROUND_LEVEL = 257;
 const HITBOX_DISTANCE_VALUE = 72; // Reduced from 90 by 20%
 const SLAP_HITBOX_DISTANCE_VALUE = 88; // Reduced from 110 by 20%
@@ -123,6 +123,11 @@ const MAP_LEFT_BOUNDARY = 178;
 const MAP_RIGHT_BOUNDARY = 865;
 const MAP_RING_OUT_LEFT = 150;
 const MAP_RING_OUT_RIGHT = 890;
+
+// Add movement constants
+const MOVEMENT_ACCELERATION = 0.15; // How quickly the player reaches max speed
+const MOVEMENT_DECELERATION = 0.2; // How quickly the player stops
+const MAX_MOVEMENT_SPEED = 1.0; // Maximum movement speed multiplier
 
 function resetRoomAndPlayers(room) {
   // Reset room state
@@ -760,6 +765,54 @@ io.on("connection", (socket) => {
         } else {
           room.readyStartTime = null;
         }
+
+        // Handle recovery state
+        [player1, player2].forEach((player) => {
+          if (player.isRecovering) {
+            const recoveryElapsed = Date.now() - player.recoveryStartTime;
+
+            // Apply gravity to vertical knockback (increased gravity effect)
+            player.knockbackVelocity.y -= 0.2 * delta;
+
+            // Apply horizontal knockback with boundary checks
+            const newX =
+              player.x + player.knockbackVelocity.x * delta * speedFactor;
+
+            // Calculate effective boundary based on player size
+            const sizeOffset =
+              player.activePowerUp === POWER_UP_TYPES.SIZE
+                ? HITBOX_DISTANCE_VALUE * (player.powerUpMultiplier - 1)
+                : 0;
+
+            const leftBoundary =
+              MAP_LEFT_BOUNDARY + sizeOffset * SIZE_POWERUP_LEFT_MULTIPLIER;
+            const rightBoundary =
+              MAP_RIGHT_BOUNDARY - sizeOffset * SIZE_POWERUP_RIGHT_MULTIPLIER;
+
+            // Only update position if within boundaries
+            if (newX >= leftBoundary && newX <= rightBoundary) {
+              player.x = newX;
+            }
+
+            // Update vertical position (increased vertical movement)
+            player.y += player.knockbackVelocity.y * delta * speedFactor * 2;
+
+            // Ensure player doesn't go below ground level
+            if (player.y < GROUND_LEVEL) {
+              player.y = GROUND_LEVEL;
+              player.knockbackVelocity.y = 0;
+            }
+
+            // Apply friction to horizontal knockback
+            player.knockbackVelocity.x *= 0.95;
+
+            // End recovery state after duration
+            if (recoveryElapsed >= player.recoveryDuration) {
+              player.isRecovering = false;
+              player.knockbackVelocity = { x: 0, y: 0 };
+            }
+          }
+        });
       }
 
       // Players Loop
@@ -1162,13 +1215,15 @@ io.on("connection", (socket) => {
             player.saltCooldown === false &&
             !player.isThrowTeching &&
             !player.isGrabbing &&
-            !player.isBeingGrabbed) ||
+            !player.isBeingGrabbed &&
+            !player.isRecovering) || // Add isRecovering check
           (!player.keys.s &&
             player.isSlapAttack &&
             player.saltCooldown === false &&
             !player.isThrowTeching &&
             !player.isGrabbing &&
-            !player.isBeingGrabbed)
+            !player.isBeingGrabbed &&
+            !player.isRecovering) // Add isRecovering check
         ) {
           let currentSpeedFactor = speedFactor;
 
@@ -1181,31 +1236,69 @@ io.on("connection", (socket) => {
             currentSpeedFactor *= 0.85; // 15% speed reduction
           }
 
+          // Initialize movement velocity if it doesn't exist
+          if (!player.movementVelocity) {
+            player.movementVelocity = 0;
+          }
+
           if (
             player.keys.d &&
             !player.isDodging &&
             !player.isThrowing &&
-            !player.isGrabbing
+            !player.isGrabbing &&
+            !player.isRecovering // Add isRecovering check
           ) {
-            player.x += delta * currentSpeedFactor;
+            // Accelerate movement
+            player.movementVelocity = Math.min(
+              player.movementVelocity + MOVEMENT_ACCELERATION,
+              MAX_MOVEMENT_SPEED
+            );
+            player.x += delta * currentSpeedFactor * player.movementVelocity;
             player.isStrafing = true;
             player.isReady = false;
-          }
-          if (
+          } else if (
             player.keys.a &&
             !player.isDodging &&
             !player.isThrowing &&
-            !player.isGrabbing
+            !player.isGrabbing &&
+            !player.isRecovering // Add isRecovering check
           ) {
-            player.x -= delta * currentSpeedFactor;
+            // Accelerate movement
+            player.movementVelocity = Math.min(
+              player.movementVelocity + MOVEMENT_ACCELERATION,
+              MAX_MOVEMENT_SPEED
+            );
+            player.x -= delta * currentSpeedFactor * player.movementVelocity;
             player.isStrafing = true;
             player.isReady = false;
+          } else {
+            // Decelerate movement when no keys are pressed
+            player.movementVelocity = Math.max(
+              player.movementVelocity - MOVEMENT_DECELERATION,
+              0
+            );
+            if (player.movementVelocity > 0 && !player.isRecovering) {
+              // Add isRecovering check
+              // Apply remaining velocity in the last direction
+              const direction = player.keys.d ? 1 : -1;
+              player.x +=
+                delta *
+                currentSpeedFactor *
+                player.movementVelocity *
+                direction;
+            }
           }
+
           if (!player.keys.a && !player.keys.d) {
             player.isStrafing = false;
           }
         }
-        if ((!player.keys.a && !player.keys.d) || player.isThrowTeching) {
+        if (
+          (!player.keys.a && !player.keys.d) ||
+          player.isThrowTeching ||
+          player.isRecovering
+        ) {
+          // Add isRecovering check
           player.isStrafing = false;
         }
         if (player.keys.a && player.keys.d) {
@@ -1710,17 +1803,24 @@ io.on("connection", (socket) => {
       if (player.isSlapAttack) {
         otherPlayer.knockbackVelocity.x =
           6 * knockbackDirection * finalKnockbackMultiplier;
-
-        // Remove screen shake for successful slap
-        // if (currentRoom) {
-        //   io.in(currentRoom.id).emit("screen_shake", {
-        //     intensity: 0.4,
-        //     duration: 150,
-        //   });
-        // }
       } else {
         otherPlayer.knockbackVelocity.x =
           5 * knockbackDirection * finalKnockbackMultiplier;
+
+        // Add recovery state for the attacking player on successful charged hit
+        player.isRecovering = true;
+        player.recoveryStartTime = Date.now();
+        player.recoveryDuration = 400; // 400ms recovery duration
+
+        // Calculate attacker knockback based on charge percentage
+        const attackerKnockbackDirection = -knockbackDirection;
+        const attackerKnockbackMultiplier =
+          0.3 + (chargePercentage / 100) * 0.4; // 30-70% of defender's knockback
+
+        // Set velocities for knockback (increased vertical velocity)
+        player.knockbackVelocity.x =
+          3 * attackerKnockbackDirection * attackerKnockbackMultiplier;
+        player.knockbackVelocity.y = 4; // Increased initial upward velocity
 
         // Emit screen shake for successful charged attack
         if (currentRoom) {

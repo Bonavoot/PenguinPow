@@ -263,7 +263,9 @@ const StyledImage = styled("img")
       transform: `scaleX(${props.$facing})`,
       zIndex:
         props.$isThrowing || props.$isDodging || props.$isGrabbing ? 98 : 99,
-      filter: props.$isDodging ? "drop-shadow(0 0 6px rgba(255, 255, 255, 0.6)) brightness(1.5)" : "none",
+      filter: props.$isDodging
+        ? "drop-shadow(0 0 6px rgba(255, 255, 255, 0.6)) brightness(1.5)"
+        : "none",
       animation: props.$isDodging ? "dodgeFlash 0.3s ease-in-out" : "none",
     },
   }))`
