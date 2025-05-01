@@ -119,8 +119,8 @@ const SumoImage = styled.img`
 
 const ButtonContainer = styled.div`
   position: absolute;
-  top: 50%;
-  left: 5%;
+  top: 38%;
+  left: 8%;
   transform: translateY(-50%);
   display: flex;
   flex-direction: column;

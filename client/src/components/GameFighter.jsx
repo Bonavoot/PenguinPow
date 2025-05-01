@@ -418,7 +418,7 @@ const CountdownTimer = styled.div`
   text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
     1px 1px 0 #000;
   pointer-events: none;
-  bottom: 81%;
+  bottom: 80.5%;
   left: 50%;
   transform: translateX(-50%);
   z-index: 100;

@@ -27,18 +27,18 @@ const RoomContainer = styled.div`
   padding: 1.2rem 2rem;
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-  backdrop-filter: blur(5px);
-  transition: all 0.3s ease;
-  animation: ${fadeIn} 0.5s ease-out;
+  will-change: transform;
+  transform: translateZ(0);
+  transition: transform 0.2s ease;
+  animation: ${fadeIn} 0.3s ease-out;
 
   &:hover {
-    transform: translateX(5px);
+    transform: translateX(5px) translateZ(0);
     background: linear-gradient(
       145deg,
       rgba(50, 50, 50, 0.9),
       rgba(30, 30, 30, 0.9)
     );
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
   }
 `;
 
@@ -94,17 +94,18 @@ const JoinButton = styled.button`
   color: ${(props) => (props.isFull ? "rgba(255, 255, 255, 0.5)" : "white")};
   font-family: "Bungee", cursive;
   cursor: ${(props) => (props.isFull ? "default" : "pointer")};
-  transition: all 0.3s ease;
+  will-change: transform;
+  transform: translateZ(0);
+  transition: transform 0.2s ease;
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-  backdrop-filter: blur(5px);
   border: 1px solid
     ${(props) =>
       props.isFull ? "rgba(255, 68, 68, 0.3)" : "rgba(76, 175, 80, 0.3)"};
   min-width: 120px;
 
   &:hover {
-    transform: ${(props) => (props.isFull ? "none" : "translateY(-2px)")};
+    transform: ${(props) => (props.isFull ? "none" : "translateY(-2px) translateZ(0)")};
     background: ${(props) =>
       props.isFull
         ? "linear-gradient(145deg, rgba(255, 68, 68, 0.2), rgba(255, 68, 68, 0.1))"
@@ -112,7 +113,7 @@ const JoinButton = styled.button`
   }
 
   &:active {
-    transform: ${(props) => (props.isFull ? "none" : "translateY(0)")};
+    transform: ${(props) => (props.isFull ? "none" : "translateY(0) translateZ(0)")};
   }
 `;
 

@@ -142,7 +142,11 @@ const Rooms = ({ rooms, setRoomName, handleJoinRoom, handleMainMenuPage }) => {
 
   useEffect(() => {
     getRooms();
-  }, []);
+    // Clean up any existing listeners when component unmounts
+    return () => {
+      // Cleanup if needed
+    };
+  }, [getRooms]); // Add getRooms as dependency
 
   return (
     <RoomsContainer>
