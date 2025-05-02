@@ -84,7 +84,6 @@ body {
   font-family: "Bungee", cursive;
   margin-left: 15px;
   cursor: pointer;
-  z-index: 99;
 }
 
 .pow {

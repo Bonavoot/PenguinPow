@@ -1,7 +1,8 @@
+import PropTypes from "prop-types";
+
 const Fighter = ({ index, fighterImgSrc }) => {
   return (
     <div className={`fighter${index}-container`}>
-      <h1 className={`player-side player${index}`}>PLAYER {index + 1}</h1>
       <img
         className={`fighter${index + 1}`}
         src={fighterImgSrc}
@@ -9,6 +10,11 @@ const Fighter = ({ index, fighterImgSrc }) => {
       />
     </div>
   );
+};
+
+Fighter.propTypes = {
+  index: PropTypes.number.isRequired,
+  fighterImgSrc: PropTypes.string.isRequired,
 };
 
 export default Fighter;

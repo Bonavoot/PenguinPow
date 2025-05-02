@@ -44,6 +44,7 @@ import throwTech from "../assets/throw-tech.png";
 import throwTech2 from "../assets/throw-tech2.png";
 import saltBasket from "../assets/salt-basket.png";
 import saltBasketEmpty from "../assets/salt-basket-empty.png";
+import recovering from "../assets/recovering.png";
 
 import attackSound from "../sounds/attack-sound.mp3";
 import hitSound from "../sounds/hit-sound.mp3";
@@ -100,11 +101,13 @@ const getImageSrc = (
   isBeingPulled,
   isBeingPushed,
   grabState,
-  grabAttemptType
+  grabAttemptType,
+  isRecovering
 ) => {
   if (fighter === "player 2") {
     if (isBowing) return bow;
     if (isThrowTeching) return throwTech;
+    if (isRecovering) return recovering;
     if (isSlapAttack) {
       return slapAnimation === 1 ? slapAttack1Red : slapAttack2Red;
     }
@@ -131,6 +134,7 @@ const getImageSrc = (
     if (isAttacking && !isSlapAttack) return attack2;
     if (isBowing) return bow2;
     if (isThrowTeching) return throwTech2;
+    if (isRecovering) return recovering;
     if (isSlapAttack) {
       return slapAnimation === 1 ? slapAttack1Blue : slapAttack2Blue;
     }
@@ -229,6 +233,7 @@ const StyledImage = styled("img")
         "dodgeDirection",
         "speedFactor",
         "sizeMultiplier",
+        "isRecovering",
       ].includes(prop),
   })
   .attrs((props) => ({
@@ -254,7 +259,8 @@ const StyledImage = styled("img")
       props.$isBeingPulled,
       props.$isBeingPushed,
       props.$grabState,
-      props.$grabAttemptType
+      props.$grabAttemptType,
+      props.$isRecovering
     ),
     style: {
       position: "absolute",
@@ -899,6 +905,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         $dodgeDirection={penguin.dodgeDirection}
         $speedFactor={penguin.speedFactor}
         $sizeMultiplier={penguin.sizeMultiplier}
+        $isRecovering={penguin.isRecovering}
         style={{
           transform: `scaleX(${penguin.facing}) scale(${
             activePowerUp === "size" ? 1.15 : 1

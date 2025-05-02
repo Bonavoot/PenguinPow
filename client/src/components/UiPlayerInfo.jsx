@@ -6,25 +6,36 @@ const glow = keyframes`
   50% { filter: drop-shadow(0 0 8px rgba(219, 255, 38, 0.6)); }
 `;
 
+const pulse = keyframes`
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+`;
+
+const slideIn = keyframes`
+  from { transform: translateX(-100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+`;
+
 const PlayerInfoContainer = styled.div`
-  height: 10%;
+  height: clamp(60px, 8vh, 80px);
   width: 100%;
-  // background: linear-gradient(
-  //   to bottom,
-  //   rgba(0, 0, 0, 0.8),
-  //   rgba(0, 0, 0, 0.6)
-  // );
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.9),
+    rgba(0, 0, 0, 0.7)
+  );
   display: flex;
-  gap: 5%;
+  gap: clamp(1%, 2vw, 3%);
   justify-content: space-between;
   align-items: center;
   color: white;
   text-align: center;
-  font-family: "Bungee";
-  padding: 0 2%;
+  font-family: "Bungee", "Impact", sans-serif;
+  padding: 0 clamp(1%, 2vw, 3%);
   box-sizing: border-box;
-  border-top: 2px solid rgba(255, 255, 255, 0.2);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  border-top: clamp(2px, 0.2vh, 3px) solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
   position: relative;
   overflow: hidden;
 
@@ -34,13 +45,13 @@ const PlayerInfoContainer = styled.div`
     top: 0;
     left: 0;
     right: 0;
-    height: 2px;
+    height: clamp(2px, 0.2vh, 3px);
     background: linear-gradient(
       90deg,
       #ff6b6b,
+      #ffd700,
       #4ecdc4,
-      #45b7d1,
-      #96e6a1,
+      #ffd700,
       #ff6b6b
     );
     animation: ${glow} 3s infinite;
@@ -52,101 +63,143 @@ const RankRecordContainer = styled.div`
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  height: 80%;
-  width: 20%;
-  min-width: 120px;
-  max-width: 200px;
+  height: clamp(45px, 70%, 60px);
+  width: clamp(140px, 18%, 220px);
+  min-width: 140px;
+  max-width: 220px;
   background: linear-gradient(
     145deg,
-    rgba(40, 40, 40, 0.9),
-    rgba(20, 20, 20, 0.9)
+    rgba(60, 60, 60, 0.95),
+    rgba(30, 30, 30, 0.95)
   );
-
-  padding: 8px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-  border: 2px solid rgba(255, 255, 255, 0.1);
+  padding: clamp(6px, 1vh, 8px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+  border: clamp(1px, 0.15vh, 2px) solid rgba(255, 215, 0, 0.3);
+  border-radius: clamp(4px, 0.6vh, 8px);
+  animation: ${slideIn} 0.5s ease-out;
 `;
 
 const Rank = styled.div`
-  font-size: clamp(0.8rem, 1.2vw, 1.2rem);
-  color: #ffffff;
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
-  margin-bottom: 4px;
-  letter-spacing: 1px;
+  font-size: clamp(0.8rem, 1.2vw + 0.2rem, 1.4rem);
+  color: #ffd700;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+  margin-bottom: clamp(2px, 0.4vh, 4px);
+  letter-spacing: clamp(1px, 0.2vw, 2px);
   animation: ${glow} 2s infinite;
+  font-weight: bold;
+  text-transform: uppercase;
 `;
 
 const Record = styled.div`
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 8px;
-  font-size: clamp(0.7rem, 1vw, 1rem);
+  gap: clamp(4px, 0.8vw, 8px);
+  font-size: clamp(0.7rem, 0.9vw + 0.1rem, 1.1rem);
+  background: rgba(0, 0, 0, 0.3);
+  padding: clamp(3px, 0.4vh, 4px) clamp(6px, 1vw, 8px);
+  border-radius: clamp(8px, 1.5vh, 16px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 `;
 
 const PlayerName = styled.div`
-  height: 80%;
-  width: 20%;
+  height: clamp(45px, 70%, 60px);
+  width: clamp(120px, 18%, 200px);
   display: flex;
   justify-content: center;
   align-items: center;
-  font-size: clamp(0.8rem, 1.5vw, 1.8rem);
+  font-size: clamp(0.9rem, 1.5vw + 0.2rem, 2rem);
   background: linear-gradient(
     145deg,
-    rgba(60, 60, 60, 0.9),
-    rgba(30, 30, 30, 0.9)
+    rgba(80, 80, 80, 0.95),
+    rgba(40, 40, 40, 0.95)
   );
+  padding: clamp(6px, 0.8vh, 8px) clamp(10px, 1.5vw, 16px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+  text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.7);
+  border: clamp(1px, 0.15vh, 2px) solid rgba(255, 215, 0, 0.3);
+  border-radius: clamp(4px, 0.6vh, 8px);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
 
-  padding: 8px 16px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
-  border: 2px solid rgba(255, 255, 255, 0.1);
-  transition: background 0.3s ease;
+  &::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+      45deg,
+      transparent 0%,
+      rgba(255, 215, 0, 0.1) 50%,
+      transparent 100%
+    );
+    animation: ${pulse} 2s infinite;
+  }
 `;
 
 const Scoreboard = styled.div`
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 1vw;
-  padding: 0 2vw;
+  gap: clamp(1vw, 2vw, 3vw);
+  padding: 0 clamp(2vw, 3vw, 4vw);
+  height: clamp(45px, 70%, 60px);
   background: linear-gradient(
     145deg,
-    rgba(50, 50, 50, 0.9),
-    rgba(30, 30, 30, 0.9)
+    rgba(70, 70, 70, 0.95),
+    rgba(40, 40, 40, 0.95)
   );
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+  border: clamp(1px, 0.15vh, 2px) solid rgba(255, 215, 0, 0.3);
+  border-radius: clamp(4px, 0.6vh, 8px);
+  position: relative;
+  overflow: hidden;
 
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-  border: 2px solid rgba(255, 255, 255, 0.1);
+  &::before {
+    content: "VS";
+    position: absolute;
+    font-size: clamp(1.2rem, 2vw + 0.5rem, 3rem);
+    color: rgba(255, 215, 0, 0.1);
+    font-weight: bold;
+    transform: rotate(-15deg);
+  }
 `;
 
 const WinCount = styled.div`
-  font-size: clamp(1rem, 2vw, 2.5rem);
+  font-size: clamp(1rem, 2vw + 0.5rem, 3rem);
   color: ${(props) => (props.isPlayer1 ? "#00FFFF" : "#FF6B6B")};
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+  text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.7);
+  font-weight: bold;
+  animation: ${pulse} 2s infinite;
 `;
 
 const Dash = styled.div`
-  font-size: clamp(1rem, 2vw, 2.5rem);
-  color: white;
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
-  margin: 0 8px;
+  font-size: clamp(1rem, 2vw + 0.5rem, 3rem);
+  color: #ffd700;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+  margin: 0 clamp(6px, 1vw, 8px);
+  font-weight: bold;
 `;
 
 const WinCircle = styled.div`
-  width: 12px;
-  height: 12px;
+  width: clamp(8px, 1vh, 12px);
+  height: clamp(8px, 1vh, 12px);
   border-radius: 50%;
   background: #4caf50;
-  box-shadow: 0 0 8px rgba(76, 175, 80, 0.5);
+  box-shadow: 0 0 12px rgba(76, 175, 80, 0.7);
+  animation: ${pulse} 2s infinite;
 `;
 
 const LossCircle = styled.div`
-  width: 12px;
-  height: 12px;
+  width: clamp(8px, 1vh, 12px);
+  height: clamp(8px, 1vh, 12px);
   border-radius: 50%;
   background: #ff4444;
-  box-shadow: 0 0 8px rgba(255, 68, 68, 0.5);
+  box-shadow: 0 0 12px rgba(255, 68, 68, 0.7);
+  animation: ${pulse} 2s infinite;
 `;
 
 const UiPlayerInfo = ({ playerOneWinCount, playerTwoWinCount }) => {
