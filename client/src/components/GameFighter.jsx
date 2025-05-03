@@ -321,9 +321,9 @@ const PowerUpText = styled.div`
   text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
     1px 1px 0 #000;
   pointer-events: none;
-  bottom: 57%;
-  left: ${(props) => (props.$index === 0 ? "21.5%" : "auto")};
-  right: ${(props) => (props.$index === 1 ? "21.5%" : "auto")};
+  bottom: 47%;
+  left: ${(props) => (props.$index === 0 ? "19%" : "auto")};
+  right: ${(props) => (props.$index === 1 ? "19%" : "auto")};
   text-align: center;
   transform: translateX(${(props) => (props.$index === 1 ? "50%" : "-50%")});
 `;
@@ -348,7 +348,7 @@ const FloatingPowerUpText = styled.div`
     1px 1px 0 #000;
   pointer-events: none;
   animation: powerUpFloat 1.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-  bottom: 57%;
+  bottom: 47%;
   left: ${(props) => (props.$index === 0 ? "21.5%" : "auto")};
   right: ${(props) => (props.$index === 1 ? "21.5%" : "auto")};
   text-align: center;
@@ -474,9 +474,9 @@ const SaltBasket = styled.img
       position: "absolute",
       width: "5%",
       height: "auto",
-      bottom: `${((GROUND_LEVEL + 190) / 720) * 100}%`,
-      left: props.$index === 0 ? "19%" : "auto",
-      right: props.$index === 1 ? "19%" : "auto",
+      bottom: `${((GROUND_LEVEL + 100) / 720) * 110}%`,
+      left: props.$index === 0 ? "16.5%" : "auto",
+      right: props.$index === 1 ? "16.5%" : "auto",
       transform: props.$index === 1 ? "scaleX(-1)" : "none",
       zIndex: 1,
       pointerEvents: "none",

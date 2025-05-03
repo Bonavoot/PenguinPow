@@ -159,7 +159,6 @@ const Scoreboard = styled.div`
   overflow: hidden;
 
   &::before {
-    content: "VS";
     position: absolute;
     font-size: clamp(1.2rem, 2vw + 0.5rem, 3rem);
     color: rgba(255, 215, 0, 0.1);
