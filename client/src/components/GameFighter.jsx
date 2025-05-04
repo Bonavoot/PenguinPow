@@ -44,8 +44,8 @@ import throwTech from "../assets/throw-tech.png";
 import throwTech2 from "../assets/throw-tech2.png";
 import saltBasket from "../assets/salt-basket.png";
 import saltBasketEmpty from "../assets/salt-basket-empty.png";
+import recovering2 from "../assets/recovering2.png";
 import recovering from "../assets/recovering.png";
-
 import attackSound from "../sounds/attack-sound.mp3";
 import hitSound from "../sounds/hit-sound.mp3";
 import dodgeSound from "../sounds/dodge-sound.mp3";
@@ -134,7 +134,7 @@ const getImageSrc = (
     if (isAttacking && !isSlapAttack) return attack2;
     if (isBowing) return bow2;
     if (isThrowTeching) return throwTech2;
-    if (isRecovering) return recovering;
+    if (isRecovering) return recovering2;
     if (isSlapAttack) {
       return slapAnimation === 1 ? slapAttack1Blue : slapAttack2Blue;
     }

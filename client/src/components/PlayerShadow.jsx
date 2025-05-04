@@ -1,14 +1,22 @@
 import styled from "styled-components";
 import PropTypes from "prop-types";
 
-const ShadowElement = styled.div.attrs((props) => ({
-  style: {
-    position: "absolute",
-    left: `${(props.$x / 1280) * 100}%`,
-    bottom: `${(((props.$isDodging ? 257 : props.$y) - 2) / 720) * 100}%`, // Stay at GROUND_LEVEL during dodge
-    transform: `translateX(${props.$facing === -1 ? "12%" : "9%"}) `,
-  },
-}))`
+const GROUND_LEVEL = 180; // Match the server's GROUND_LEVEL
+
+const ShadowElement = styled.div.attrs((props) => {
+  // Calculate the bottom position
+  const bottomPos = props.$isDodging ? GROUND_LEVEL : props.$y;
+  console.log('Shadow props:', { x: props.$x, y: props.$y, isDodging: props.$isDodging, bottomPos });
+  
+  return {
+    style: {
+      position: "absolute",
+      left: `${(props.$x / 1280) * 100}%`,
+      bottom: `${(bottomPos / 720) * 100}%`,
+      transform: `translateX(${props.$facing === -1 ? "12%" : "9%"})`,
+    },
+  };
+})`
   width: 15%;
   height: 4%;
   background: radial-gradient(
@@ -23,6 +31,7 @@ const ShadowElement = styled.div.attrs((props) => ({
 `;
 
 const PlayerShadow = ({ x, y, facing, isDodging }) => {
+  console.log('PlayerShadow render:', { x, y, facing, isDodging });
   return (
     <ShadowElement $x={x} $y={y} $facing={facing} $isDodging={isDodging} />
   );

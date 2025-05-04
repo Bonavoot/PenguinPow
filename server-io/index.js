@@ -558,6 +558,11 @@ io.on("connection", (socket) => {
         // Handle recovery state for charged attacks
         [player1, player2].forEach((player) => {
           if (player.isRecovering) {
+            
+            if (player.isDodging) {
+              player.isRecovering = false;
+              player.knockbackVelocity = { x: 0, y: 0 };
+            }
             const recoveryElapsed = Date.now() - player.recoveryStartTime;
 
             // Apply gravity to vertical knockback (increased gravity effect)
@@ -1508,6 +1513,8 @@ io.on("connection", (socket) => {
           f: false,
         },
         wins: [],
+        bufferedAction: null, // Add buffer for pending actions
+        bufferExpiryTime: 0, // Add expiry time for buffered actions
       });
     } else if (rooms[index].players.length === 1) {
       rooms[index].players.push({
@@ -1568,6 +1575,8 @@ io.on("connection", (socket) => {
           f: false,
         },
         wins: [],
+        bufferedAction: null, // Add buffer for pending actions
+        bufferExpiryTime: 0, // Add expiry time for buffered actions
       });
     }
 
@@ -1702,29 +1711,47 @@ io.on("connection", (socket) => {
         !player.isBeingGrabbed &&
         player.stamina >= 50
       ) {
+        console.log("Executing immediate dodge");
         player.isDodging = true;
         player.dodgeStartTime = Date.now();
         player.dodgeEndTime = Date.now() + 400;
         player.stamina -= 50;
-        player.dodgeStartX = player.x; // Store initial dodge position
+        player.dodgeStartX = player.x;
         player.dodgeStartY = player.y;
 
-        // Store the dodge direction based on which key was held
         if (player.keys.a) {
           player.dodgeDirection = -1;
         } else if (player.keys.d) {
           player.dodgeDirection = 1;
         } else {
-          // If no direction key was held, dodge in the facing direction
           player.dodgeDirection = player.facing === -1 ? 1 : -1;
         }
 
-        // Reset dodge state after duration
         setTimeout(() => {
           player.isDodging = false;
           player.dodgeDirection = null;
 
-          // Only release the attack if spacebar was released during dodge
+          // Check for buffered actions after dodge ends
+          if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
+            console.log("Executing buffered action after dodge");
+            const action = player.bufferedAction;
+            player.bufferedAction = null;
+            player.bufferExpiryTime = 0;
+            
+            // Execute the buffered action
+            if (action.type === 'dodge') {
+              player.isDodging = true;
+              player.dodgeStartTime = Date.now();
+              player.dodgeEndTime = Date.now() + 400;
+              player.stamina -= 50;
+              player.dodgeDirection = action.direction;
+              // Add these lines to set the dodge start position
+              player.dodgeStartX = player.x;
+              player.dodgeStartY = player.y;
+            }
+          }
+
+          // Handle pending charge attack
           if (
             player.pendingChargeAttack &&
             player.spacebarReleasedDuringDodge
@@ -1773,6 +1800,25 @@ io.on("connection", (socket) => {
               player.isAttacking = false;
               player.isSlapAttack = false;
               player.chargingFacingDirection = null;
+
+              // Check for buffered actions after attack ends
+              if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
+                const action = player.bufferedAction;
+                player.bufferedAction = null;
+                player.bufferExpiryTime = 0;
+                
+                // Execute the buffered action
+                if (action.type === 'dodge') {
+                  player.isDodging = true;
+                  player.dodgeStartTime = Date.now();
+                  player.dodgeEndTime = Date.now() + 400;
+                  player.stamina -= 50;
+                  player.dodgeDirection = action.direction;
+                  // Add these lines to set the dodge start position
+                  player.dodgeStartX = player.x;
+                  player.dodgeStartY = player.y;
+                }
+              }
             }, player.attackEndTime - Date.now());
           } else {
             // If spacebar wasn't released during dodge, just clear the pending attack
@@ -1780,6 +1826,48 @@ io.on("connection", (socket) => {
             player.spacebarReleasedDuringDodge = false;
           }
         }, 400);
+      } else if (
+        player.keys["shift"] &&
+        (player.isAttacking || player.isThrowing || player.isBeingThrown || player.isGrabbing || player.isBeingGrabbed) && // Removed isDodging from this condition
+        !player.isDodging && // Add explicit check to prevent dodge buffering during dodge
+        player.stamina >= 50
+      ) {
+        // Buffer the dodge action
+        console.log("Buffering dodge action");
+        const dodgeDirection = player.keys.a ? -1 : (player.keys.d ? 1 : (player.facing === -1 ? 1 : -1));
+        player.bufferedAction = {
+          type: 'dodge',
+          direction: dodgeDirection
+        };
+        player.bufferExpiryTime = Date.now() + 500; // Buffer expires after 500ms
+      }
+
+      // Add buffer check in the attack completion logic
+      if (player.isAttacking && Date.now() >= player.attackEndTime) {
+        console.log("Attack completed, checking for buffered actions");
+        player.isAttacking = false;
+        player.isSlapAttack = false;
+        player.chargingFacingDirection = null;
+
+        // Check for buffered actions after attack ends
+        if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
+          console.log("Executing buffered action after attack");
+          const action = player.bufferedAction;
+          player.bufferedAction = null;
+          player.bufferExpiryTime = 0;
+          
+          // Execute the buffered action
+          if (action.type === 'dodge') {
+            player.isDodging = true;
+            player.dodgeStartTime = Date.now();
+            player.dodgeEndTime = Date.now() + 400;
+            player.stamina -= 50;
+            player.dodgeDirection = action.direction;
+            // Add these lines to set the dodge start position
+            player.dodgeStartX = player.x;
+            player.dodgeStartY = player.y;
+          }
+        }
       }
 
       // Start charging attack
@@ -1875,6 +1963,25 @@ io.on("connection", (socket) => {
             player.isAttacking = false;
             player.isSlapAttack = false;
             player.chargingFacingDirection = null;
+
+            // Check for buffered actions after attack ends
+            if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
+              const action = player.bufferedAction;
+              player.bufferedAction = null;
+              player.bufferExpiryTime = 0;
+              
+              // Execute the buffered action
+              if (action.type === 'dodge') {
+                player.isDodging = true;
+                player.dodgeStartTime = Date.now();
+                player.dodgeEndTime = Date.now() + 400;
+                player.stamina -= 50;
+                player.dodgeDirection = action.direction;
+                // Add these lines to set the dodge start position
+                player.dodgeStartX = player.x;
+                player.dodgeStartY = player.y;
+              }
+            }
           }, player.attackEndTime - Date.now());
         }
       }
