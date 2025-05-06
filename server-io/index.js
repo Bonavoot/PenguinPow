@@ -95,9 +95,12 @@ const MAP_RING_OUT_LEFT = 150;
 const MAP_RING_OUT_RIGHT = 890;
 
 // Add movement constants
-const MOVEMENT_ACCELERATION = 0.15; // How quickly the player reaches max speed
-const MOVEMENT_DECELERATION = 0.2; // How quickly the player stops
-const MAX_MOVEMENT_SPEED = 1.0; // Maximum movement speed multiplier
+const MOVEMENT_ACCELERATION = 0.25; // Increased for snappier acceleration
+const MOVEMENT_DECELERATION = 0.35; // Increased for faster stops
+const MAX_MOVEMENT_SPEED = 1.0; // Back to original for better control
+const MOVEMENT_MOMENTUM = 0.85; // New constant for movement momentum
+const MOVEMENT_FRICTION = 0.95; // Reduced friction for less floaty feel
+const MOVEMENT_TURN_SPEED = 0.4; // Increased for faster direction changes
 
 function resetRoomAndPlayers(room) {
   // Reset room state
@@ -558,7 +561,6 @@ io.on("connection", (socket) => {
         // Handle recovery state for charged attacks
         [player1, player2].forEach((player) => {
           if (player.isRecovering) {
-            
             if (player.isDodging) {
               player.isRecovering = false;
               player.knockbackVelocity = { x: 0, y: 0 };
@@ -611,7 +613,7 @@ io.on("connection", (socket) => {
 
       // Players Loop
       room.players.forEach((player) => {
-        if (room.gameOver && player.id === room.loserId) {
+        if (room.gameOver && player.id === room.loserId && !player.isHit) {
           return;
         }
 
@@ -642,6 +644,7 @@ io.on("connection", (socket) => {
           !player.isThrowTeching &&
           !player.isGrabbing &&
           !player.isBeingGrabbed &&
+          !player.isSlapAttack &&
           // Add condition to allow going out of bounds during charged attack
           !(player.isAttacking && !player.isSlapAttack)
         ) {
@@ -711,58 +714,10 @@ io.on("connection", (socket) => {
               (player.x >= MAP_RING_OUT_RIGHT && player.facing === -1)) &&
             !room.gameOver)
         ) {
-          console.log("game over");
-          room.gameOver = true;
-          player.y = GROUND_LEVEL;
           const winner = room.players.find((p) => p.id !== player.id);
-          winner.wins.push("w");
-
-          if (winner.wins.length > 7) {
-            io.in(room.id).emit("match_over", {
-              isMatchOver: true,
-              winner: winner.fighter,
-            });
-            room.matchOver = true;
-            winner.wins = [];
-            player.wins = [];
-          } else {
-            setTimeout(() => {
-              winner.isBowing = true;
-              player.isBowing = true;
-            }, 350);
-          }
-
-          // Reset all key states for both players
-          room.players.forEach((p) => {
-            const currentX = p.x;
-            p.isStrafing = false;
-            p.knockbackVelocity = { x: 0, y: 0 };
-            p.keys = {
-              w: false,
-              a: false,
-              s: false,
-              d: false,
-              " ": false,
-              shift: false,
-              e: false,
-              f: false,
-            };
-            p.x = currentX;
-          });
-
-          io.in(room.id).emit("game_over", {
-            isGameOver: true,
-            winner: {
-              id: winner.id,
-              fighter: winner.fighter,
-            },
-            wins: winner.wins.length,
-          });
-          room.winnerId = winner.id;
-          room.loserId = player.id;
-          if (!room.gameOverTime) {
-            room.gameOverTime = Date.now();
-          }
+          handleWinCondition(room, player, winner);
+          // Don't reset knockback velocity for the loser
+          player.knockbackVelocity = { ...player.knockbackVelocity };
         }
 
         if (
@@ -772,7 +727,6 @@ io.on("connection", (socket) => {
         ) {
           // 5 seconds
           resetRoomAndPlayers(room);
-          console.log(room);
         }
 
         if (player.stamina < 100) {
@@ -782,7 +736,7 @@ io.on("connection", (socket) => {
           }
         }
 
-        if (player.isHit) return;
+        // if (player.isHit) return;
 
         if (player.isThrowing && player.throwOpponent) {
           const currentTime = Date.now();
@@ -842,56 +796,7 @@ io.on("connection", (socket) => {
                 (opponent.x >= MAP_RIGHT_BOUNDARY && player.x > 540) ||
                 (opponent.x <= MAP_LEFT_BOUNDARY && player.x < 540)
               ) {
-                room.gameOver = true;
-                const winner = room.players.find((p) => p.id !== opponent.id);
-                winner.wins.push("w");
-
-                if (winner.wins.length > 7) {
-                  io.in(room.id).emit("match_over", {
-                    isMatchOver: true,
-                    winner: winner.fighter,
-                  });
-                  room.matchOver = true;
-                  winner.wins = [];
-                  opponent.wins = [];
-                } else {
-                  setTimeout(() => {
-                    winner.isBowing = true;
-                    opponent.isBowing = true;
-                  }, 350);
-                }
-
-                // Reset all key states for both players
-                room.players.forEach((p) => {
-                  const currentX = p.x;
-                  p.isStrafing = false;
-                  p.knockbackVelocity = { x: 0, y: 0 };
-                  p.keys = {
-                    w: false,
-                    a: false,
-                    s: false,
-                    d: false,
-                    " ": false,
-                    shift: false,
-                    e: false,
-                    f: false,
-                  };
-                  p.x = currentX;
-                });
-
-                io.in(room.id).emit("game_over", {
-                  isGameOver: true,
-                  winner: {
-                    id: winner.id,
-                    fighter: winner.fighter,
-                  },
-                  wins: winner.wins.length,
-                });
-                room.winnerId = winner.id;
-                room.loserId = opponent.id;
-                if (!room.gameOverTime) {
-                  room.gameOverTime = Date.now();
-                }
+                handleWinCondition(room, opponent, player);
               } else {
                 // Emit screen shake for landing after throw
                 io.in(room.id).emit("screen_shake", {
@@ -1010,14 +915,16 @@ io.on("connection", (socket) => {
             !player.isThrowTeching &&
             !player.isGrabbing &&
             !player.isBeingGrabbed &&
-            !player.isRecovering) || // Add isRecovering check
+            !player.isRecovering &&
+            !player.isHit) || // Add isHit check
           (!player.keys.s &&
             player.isSlapAttack &&
             player.saltCooldown === false &&
             !player.isThrowTeching &&
             !player.isGrabbing &&
             !player.isBeingGrabbed &&
-            !player.isRecovering) // Add isRecovering check
+            !player.isRecovering &&
+            !player.isHit) // Add isHit check
         ) {
           let currentSpeedFactor = speedFactor;
 
@@ -1040,13 +947,19 @@ io.on("connection", (socket) => {
             !player.isDodging &&
             !player.isThrowing &&
             !player.isGrabbing &&
-            !player.isRecovering // Add isRecovering check
+            !player.isRecovering
           ) {
-            // Accelerate movement
+            // Immediate direction change
+            if (player.movementVelocity < 0) {
+              player.movementVelocity = 0;
+            }
+
+            // Quick acceleration to max speed
             player.movementVelocity = Math.min(
               player.movementVelocity + MOVEMENT_ACCELERATION,
               MAX_MOVEMENT_SPEED
             );
+
             player.x += delta * currentSpeedFactor * player.movementVelocity;
             player.isStrafing = true;
             player.isReady = false;
@@ -1055,36 +968,64 @@ io.on("connection", (socket) => {
             !player.isDodging &&
             !player.isThrowing &&
             !player.isGrabbing &&
-            !player.isRecovering // Add isRecovering check
+            !player.isRecovering
           ) {
-            // Accelerate movement
-            player.movementVelocity = Math.min(
-              player.movementVelocity + MOVEMENT_ACCELERATION,
-              MAX_MOVEMENT_SPEED
+            // Immediate direction change
+            if (player.movementVelocity > 0) {
+              player.movementVelocity = 0;
+            }
+
+            // Quick acceleration to max speed
+            player.movementVelocity = Math.max(
+              player.movementVelocity - MOVEMENT_ACCELERATION,
+              -MAX_MOVEMENT_SPEED
             );
-            player.x -= delta * currentSpeedFactor * player.movementVelocity;
+
+            player.x += delta * currentSpeedFactor * player.movementVelocity;
             player.isStrafing = true;
             player.isReady = false;
           } else {
-            // Decelerate movement when no keys are pressed
-            player.movementVelocity = Math.max(
-              player.movementVelocity - MOVEMENT_DECELERATION,
-              0
-            );
-            if (player.movementVelocity > 0 && !player.isRecovering) {
-              // Add isRecovering check
-              // Apply remaining velocity in the last direction
-              const direction = player.keys.d ? 1 : -1;
-              player.x +=
-                delta *
-                currentSpeedFactor *
-                player.movementVelocity *
-                direction;
+            // Quick deceleration when no keys are pressed
+            if (Math.abs(player.movementVelocity) > 0.01) {
+              // Apply deceleration
+              if (player.movementVelocity > 0) {
+                player.movementVelocity = Math.max(
+                  player.movementVelocity - MOVEMENT_DECELERATION,
+                  0
+                );
+              } else {
+                player.movementVelocity = Math.min(
+                  player.movementVelocity + MOVEMENT_DECELERATION,
+                  0
+                );
+              }
+
+              // Apply remaining velocity
+              if (!player.isRecovering) {
+                player.x +=
+                  delta * currentSpeedFactor * player.movementVelocity;
+              }
+            } else {
+              // Snap to zero when velocity is very small
+              player.movementVelocity = 0;
             }
           }
 
+          // Update strafing state
           if (!player.keys.a && !player.keys.d) {
             player.isStrafing = false;
+          }
+
+          // Force stop strafing in certain states
+          if (
+            (!player.keys.a && !player.keys.d) ||
+            player.isThrowTeching ||
+            player.isRecovering ||
+            (player.keys.a && player.keys.d)
+          ) {
+            player.isStrafing = false;
+            // Immediate stop when forced
+            player.movementVelocity = 0;
           }
         }
         if (
@@ -1737,9 +1678,9 @@ io.on("connection", (socket) => {
             const action = player.bufferedAction;
             player.bufferedAction = null;
             player.bufferExpiryTime = 0;
-            
+
             // Execute the buffered action
-            if (action.type === 'dodge') {
+            if (action.type === "dodge") {
               player.isDodging = true;
               player.dodgeStartTime = Date.now();
               player.dodgeEndTime = Date.now() + 400;
@@ -1802,13 +1743,16 @@ io.on("connection", (socket) => {
               player.chargingFacingDirection = null;
 
               // Check for buffered actions after attack ends
-              if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
+              if (
+                player.bufferedAction &&
+                Date.now() < player.bufferExpiryTime
+              ) {
                 const action = player.bufferedAction;
                 player.bufferedAction = null;
                 player.bufferExpiryTime = 0;
-                
+
                 // Execute the buffered action
-                if (action.type === 'dodge') {
+                if (action.type === "dodge") {
                   player.isDodging = true;
                   player.dodgeStartTime = Date.now();
                   player.dodgeEndTime = Date.now() + 400;
@@ -1828,16 +1772,26 @@ io.on("connection", (socket) => {
         }, 400);
       } else if (
         player.keys["shift"] &&
-        (player.isAttacking || player.isThrowing || player.isBeingThrown || player.isGrabbing || player.isBeingGrabbed) && // Removed isDodging from this condition
+        (player.isAttacking ||
+          player.isThrowing ||
+          player.isBeingThrown ||
+          player.isGrabbing ||
+          player.isBeingGrabbed) && // Removed isDodging from this condition
         !player.isDodging && // Add explicit check to prevent dodge buffering during dodge
         player.stamina >= 50
       ) {
         // Buffer the dodge action
         console.log("Buffering dodge action");
-        const dodgeDirection = player.keys.a ? -1 : (player.keys.d ? 1 : (player.facing === -1 ? 1 : -1));
+        const dodgeDirection = player.keys.a
+          ? -1
+          : player.keys.d
+          ? 1
+          : player.facing === -1
+          ? 1
+          : -1;
         player.bufferedAction = {
-          type: 'dodge',
-          direction: dodgeDirection
+          type: "dodge",
+          direction: dodgeDirection,
         };
         player.bufferExpiryTime = Date.now() + 500; // Buffer expires after 500ms
       }
@@ -1855,9 +1809,9 @@ io.on("connection", (socket) => {
           const action = player.bufferedAction;
           player.bufferedAction = null;
           player.bufferExpiryTime = 0;
-          
+
           // Execute the buffered action
-          if (action.type === 'dodge') {
+          if (action.type === "dodge") {
             player.isDodging = true;
             player.dodgeStartTime = Date.now();
             player.dodgeEndTime = Date.now() + 400;
@@ -1969,9 +1923,9 @@ io.on("connection", (socket) => {
               const action = player.bufferedAction;
               player.bufferedAction = null;
               player.bufferExpiryTime = 0;
-              
+
               // Execute the buffered action
-              if (action.type === 'dodge') {
+              if (action.type === "dodge") {
                 player.isDodging = true;
                 player.dodgeStartTime = Date.now();
                 player.dodgeEndTime = Date.now() + 400;
@@ -2206,4 +2160,63 @@ function cleanupGrabStates(player, opponent) {
   opponent.isHit = false;
   opponent.grabCooldown = false; // Add this to ensure cooldown is reset
   opponent.isGrabbing = false; // Add this to ensure grabbing state is reset
+}
+
+function handleWinCondition(room, loser, winner) {
+  if (room.gameOver) return; // Prevent multiple win declarations
+
+  room.gameOver = true;
+  loser.y = GROUND_LEVEL;
+  winner.wins.push("w");
+
+  if (winner.wins.length > 7) {
+    io.in(room.id).emit("match_over", {
+      isMatchOver: true,
+      winner: winner.fighter,
+    });
+    room.matchOver = true;
+    winner.wins = [];
+    loser.wins = [];
+  } else {
+    console.log(winner.wins.length);
+    setTimeout(() => {
+      winner.isBowing = true;
+      loser.isBowing = false;
+    }, 350);
+  }
+
+  // Reset all key states for both players
+  room.players.forEach((p) => {
+    const currentX = p.x;
+    p.isStrafing = false;
+    // Only reset knockback for the winner
+    if (p.id === winner.id) {
+      p.knockbackVelocity = { x: 0, y: 0 };
+    }
+    p.keys = {
+      w: false,
+      a: false,
+      s: false,
+      d: false,
+      " ": false,
+      shift: false,
+      e: false,
+      f: false,
+    };
+    p.x = currentX;
+  });
+
+  io.in(room.id).emit("game_over", {
+    isGameOver: true,
+    winner: {
+      id: winner.id,
+      fighter: winner.fighter,
+    },
+    wins: winner.wins.length,
+  });
+  room.winnerId = winner.id;
+  room.loserId = loser.id;
+  if (!room.gameOverTime) {
+    room.gameOverTime = Date.now();
+  }
 }

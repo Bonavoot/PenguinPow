@@ -8,6 +8,7 @@ import sumo from "../assets/pumo-bkg.png";
 import lobbyBackground from "../assets/lobby-bkg.webp";
 import pumo from "../assets/pumo.png";
 import pumo2 from "../assets/pumo2.png";
+import mainMenuBackground from "../assets/main-menu-bkg.png";
 
 const fadeIn = keyframes`
   from {
@@ -43,19 +44,9 @@ const MainMenuContainer = styled.div`
       rgba(0, 0, 0, 0.85),
       rgba(20, 20, 20, 0.75)
     ),
-    radial-gradient(
-      circle at 50% 50%,
-      rgba(210, 180, 140, 0.15),
-      rgba(0, 0, 0, 0.3)
-    ),
-    repeating-linear-gradient(
-      45deg,
-      rgba(255, 255, 255, 0.03) 0px,
-      rgba(255, 255, 255, 0.03) 1px,
-      transparent 1px,
-      transparent 10px
-    ),
-    linear-gradient(to bottom, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.9));
+    url(${mainMenuBackground});
+  background-size: cover;
+  background-position: center;
   border-radius: 16px;
   box-shadow: 0 0 30px rgba(0, 0, 0, 0.5), 0 0 60px rgba(210, 180, 140, 0.1);
   backdrop-filter: blur(10px);

@@ -795,7 +795,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         playerTwoWinCount={playerTwoWinCount}
       />
 
-      <Gyoji gyojiState={gyojiState} />
+      <Gyoji gyojiState={gyojiState} hakkiyoi={hakkiyoi} />
       {hakkiyoi && <div className="hakkiyoi">HAKKI-YOI !</div>}
       {gameOver && (
         <div

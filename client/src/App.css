@@ -19,13 +19,6 @@ body {
   position: relative;
   overflow: hidden;
   border: black 2px solid;
-  background-image: linear-gradient(
-    rgb(255, 243, 187),
-    white,
-    white,
-    white,
-    rgb(255, 243, 187)
-  );
 }
 
 .main-menu-btn-container {
@@ -37,6 +30,7 @@ body {
 
 .cherry-blossom {
   position: absolute;
+
   width: 10px;
   height: 10px;
   background-color: #ffc0cb;

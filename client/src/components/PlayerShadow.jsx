@@ -6,8 +6,7 @@ const GROUND_LEVEL = 180; // Match the server's GROUND_LEVEL
 const ShadowElement = styled.div.attrs((props) => {
   // Calculate the bottom position
   const bottomPos = props.$isDodging ? GROUND_LEVEL : props.$y;
-  console.log('Shadow props:', { x: props.$x, y: props.$y, isDodging: props.$isDodging, bottomPos });
-  
+
   return {
     style: {
       position: "absolute",
@@ -31,7 +30,6 @@ const ShadowElement = styled.div.attrs((props) => {
 `;
 
 const PlayerShadow = ({ x, y, facing, isDodging }) => {
-  console.log('PlayerShadow render:', { x, y, facing, isDodging });
   return (
     <ShadowElement $x={x} $y={y} $facing={facing} $isDodging={isDodging} />
   );

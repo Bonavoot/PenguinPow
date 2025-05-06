@@ -4,7 +4,6 @@ import "./Lobby.css";
 import { SocketContext } from "../SocketContext";
 import Ready from "./Ready";
 import { v4 as uuidv4 } from "uuid";
-import React from "react";
 import PropTypes from "prop-types";
 
 const Lobby = ({ rooms, roomName, handleGame }) => {
@@ -25,9 +24,9 @@ const Lobby = ({ rooms, roomName, handleGame }) => {
   return (
     <div className="lobby-container">
       <div className="lobby-header">
-        <h1 className="lobby-title">LOBBY</h1>
+        <h1 className="lobby-title">Sumo Arena</h1>
         <div className="room-info">
-          <span className="room-label">ROOM:</span>
+          <span className="room-label">Room</span>
           <span className="room-name">{roomName}</span>
         </div>
       </div>
@@ -43,7 +42,7 @@ const Lobby = ({ rooms, roomName, handleGame }) => {
                 <div className="player-card">
                   <div className="player-info">
                     <span className="player-name">
-                      {player.fighter || "Waiting..."}
+                      {player.fighter || "Waiting for player..."}
                     </span>
                   </div>
                   <div className="player-avatar">
@@ -60,7 +59,7 @@ const Lobby = ({ rooms, roomName, handleGame }) => {
         {players.length < 2 && (
           <div className="waiting-container">
             <div className="waiting-message">
-              <h2>WAITING FOR OPPONENT</h2>
+              <h2>Waiting for opponent</h2>
               <div className="loading-ellipsis">
                 <div className="dot"></div>
                 <div className="dot"></div>
@@ -76,7 +75,7 @@ const Lobby = ({ rooms, roomName, handleGame }) => {
           className="exit-btn"
           onClick={() => window.location.reload(false)}
         >
-          EXIT LOUNGE
+          Exit
         </button>
         <Ready rooms={rooms} roomName={roomName} handleGame={handleGame} />
       </div>
