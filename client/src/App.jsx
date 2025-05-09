@@ -8,7 +8,7 @@ import "./App.css";
 // "https://secure-beach-15962-3c882c6fcbf9.herokuapp.com/"
 // "http://localhost:3001"
 
-const socket = io("https://secure-beach-15962-3c882c6fcbf9.herokuapp.com/");
+const socket = io("https://secure-beach-15962-3c882c6fcbf9.herokuapp.com");
 
 function App() {
   const [rooms, setRooms] = useState([]);
