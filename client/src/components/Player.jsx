@@ -1,14 +1,14 @@
 import Fighter from "./Fighter";
 import { useMemo } from "react";
 import pumo from "../assets/pumo.png";
-import pumoWaddle from "../assets/pumo-waddle-old.gif";
+import pumoWaddle from "../assets/pumo-waddle.gif";
 import crouching from "../assets/crouching.png";
 import grabbing from "../assets/grabbing.png";
 import ready from "../assets/ready.png";
 import attack from "../assets/attack.png";
 import dodging from "../assets/dodging.gif";
 import throwing from "../assets/throwing-nonmirror.png";
-import hit from "../assets/hit.png";
+import hit from "../assets/hit-clean.png";
 import hit2 from "../assets/hit2.png";
 import pumo2 from "../assets/pumo2.png";
 import pumoWaddle2 from "../assets/pumo-waddle2.gif";
@@ -24,8 +24,8 @@ import bow from "../assets/bow.png";
 import bow2 from "../assets/bow2.png";
 import slapAttack1Blue from "../assets/slapAttack1blue.png";
 import slapAttack2Blue from "../assets/slapAttack2blue.png";
-import slapAttack1Red from "../assets/slapAttack1blue.png";
-import slapAttack2Red from "../assets/slapAttack2blue.png";
+import slapAttack1Red from "../assets/slapAttack1Red.png";
+import slapAttack2Red from "../assets/slapAttack2Red.png";
 
 import gyoji from "../assets/gyoji.png";
 import gyojiReady from "../assets/gyoji-ready.png";

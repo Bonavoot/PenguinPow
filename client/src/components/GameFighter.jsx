@@ -34,7 +34,7 @@ import dodging from "../assets/dodging.gif";
 import dodging2 from "../assets/dodging2.png";
 import throwing from "../assets/throwing.png";
 import throwing2 from "../assets/throwing2.png";
-import hit from "../assets/hit.png";
+import hit from "../assets/hit-clean.png";
 import hit2 from "../assets/hit2.png";
 import salt2 from "../assets/salt2.png";
 import salt from "../assets/salt.png";
