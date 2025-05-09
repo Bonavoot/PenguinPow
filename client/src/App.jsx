@@ -21,7 +21,7 @@ function App() {
   const getRooms = () => {
     socket.emit("get_rooms");
   };
-
+  // Had to do this comment in order to resave the heroku server. Please ignore
   useEffect(() => {
     socket.on("connect", () => {
       setLocalId(socket.id);
