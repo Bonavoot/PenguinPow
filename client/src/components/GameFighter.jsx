@@ -61,6 +61,7 @@ import saltSound from "../sounds/salt-sound.mp3";
 import UiPlayerInfo from "./UiPlayerInfo";
 import SaltEffect from "./SaltEffect";
 import MatchOver from "./MatchOver";
+import HitEffect from "./HitEffect";
 
 const GROUND_LEVEL = 145; // Ground level constant
 
@@ -270,8 +271,8 @@ const StyledImage = styled("img")
       zIndex:
         props.$isThrowing || props.$isDodging || props.$isGrabbing ? 98 : 99,
       filter: props.$isDodging
-        ? "drop-shadow(0 0 6px rgba(255, 255, 255, 0.6)) brightness(1.5)"
-        : "none",
+        ? "drop-shadow(0 0 6px rgba(255, 255, 255, 0.6)) brightness(1.5) drop-shadow(0 0 2px #000)"
+        : "drop-shadow(0 0 2px #000)",
       animation: props.$isDodging ? "dodgeFlash 0.3s ease-in-out" : "none",
     },
   }))`
@@ -860,6 +861,12 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         facing={penguin.facing}
         isDodging={penguin.isDodging}
         dodgeDirection={penguin.dodgeDirection}
+      />
+      <HitEffect
+        isActive={penguin.isHit}
+        x={penguin.x}
+        y={penguin.y}
+        facing={penguin.facing}
       />
       <StyledImage
         $fighter={penguin.fighter}

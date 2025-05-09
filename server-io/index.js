@@ -1255,7 +1255,7 @@ io.on("connection", (socket) => {
   }
 
   function processHit(player, otherPlayer) {
-    const MIN_ATTACK_DISPLAY_TIME = 100; // Reduced from 300ms to 100ms for faster recovery
+    const MIN_ATTACK_DISPLAY_TIME = 100;
     const currentTime = Date.now();
     const attackDuration = currentTime - player.attackStartTime;
 
@@ -1264,35 +1264,53 @@ io.on("connection", (socket) => {
       room.players.some((p) => p.id === player.id)
     );
 
-    if (attackDuration < MIN_ATTACK_DISPLAY_TIME) {
-      setTimeout(() => {
-        // Reset attack states but preserve power for knockback
-        player.isAttacking = false;
-        player.isSlapAttack = false;
-        player.attackStartTime = 0;
-        player.attackEndTime = 0;
-        player.chargingFacingDirection = null;
-        player.isChargingAttack = false;
-        player.chargeStartTime = 0;
-      }, MIN_ATTACK_DISPLAY_TIME - attackDuration);
-    } else {
-      // Reset attack states but preserve power for knockback
+    // Use the stored attack type instead of checking isSlapAttack
+    const isSlapAttack = player.attackType === "slap";
+
+    // Store the charge power before resetting states
+    const chargePercentage = player.chargeAttackPower;
+
+    // For charged attacks, end the attack immediately on hit and set recovery
+    if (!isSlapAttack) {
+      // Reset all attack states first
       player.isAttacking = false;
-      player.isSlapAttack = false;
       player.attackStartTime = 0;
       player.attackEndTime = 0;
       player.chargingFacingDirection = null;
       player.isChargingAttack = false;
       player.chargeStartTime = 0;
+      player.chargeAttackPower = 0;
+
+      // Set recovery state immediately
+      player.isRecovering = true;
+      player.recoveryStartTime = Date.now();
+      player.recoveryDuration = 400;
+    } else {
+      // For slap attacks, maintain the existing timing behavior
+      const originalAttackEndTime = player.attackEndTime;
+      const remainingAttackTime = originalAttackEndTime - currentTime;
+
+      if (remainingAttackTime > 0) {
+        setTimeout(() => {
+          player.isAttacking = false;
+          player.isSlapAttack = false;
+          player.attackStartTime = 0;
+          player.attackEndTime = 0;
+          player.chargingFacingDirection = null;
+          player.isChargingAttack = false;
+          player.chargeStartTime = 0;
+          player.chargeAttackPower = 0;
+        }, remainingAttackTime);
+      }
     }
 
     // Check if the other player is blocking (crouching)
     if (otherPlayer.isCrouching) {
       // Apply knockback to the attacking player instead
-      if (player.isSlapAttack) {
+      if (isSlapAttack) {
         const knockbackDirection = player.facing === 1 ? 1 : -1;
         player.knockbackVelocity.x =
-          0.4375 * knockbackDirection * player.chargeAttackPower;
+          0.4375 * knockbackDirection * chargePercentage;
         player.knockbackVelocity.y = 0;
         player.isHit = true;
 
@@ -1306,7 +1324,7 @@ io.on("connection", (socket) => {
       } else {
         const knockbackDirection = player.facing === 1 ? 1 : -1;
         player.knockbackVelocity.x =
-          0.1 * knockbackDirection * player.chargeAttackPower;
+          0.1 * knockbackDirection * chargePercentage;
         player.knockbackVelocity.y = 0;
         player.isHit = true;
 
@@ -1331,8 +1349,15 @@ io.on("connection", (socket) => {
       otherPlayer.isDiving = false;
 
       const knockbackDirection = player.facing === -1 ? 1 : -1;
-      const chargePercentage = player.chargeAttackPower;
-      let finalKnockbackMultiplier = 0.5 + (chargePercentage / 100) * 1.1;
+
+      // Calculate knockback multiplier based on charge percentage
+      let finalKnockbackMultiplier;
+      if (isSlapAttack) {
+        finalKnockbackMultiplier = 0.5 + (chargePercentage / 100) * 1.1;
+      } else {
+        // Reduced knockback scaling for charged attacks
+        finalKnockbackMultiplier = 0.5 + (chargePercentage / 100) * 1.2; // Reduced from 2.0 to 1.2
+      }
 
       // Apply power-up effects
       if (player.activePowerUp === POWER_UP_TYPES.POWER) {
@@ -1340,50 +1365,44 @@ io.on("connection", (socket) => {
           finalKnockbackMultiplier * player.powerUpMultiplier;
       }
       if (otherPlayer.activePowerUp === POWER_UP_TYPES.SIZE) {
-        // Reduce knockback by 30% when the player has size power-up
         finalKnockbackMultiplier = finalKnockbackMultiplier * 0.85;
       }
 
-      if (player.isSlapAttack) {
+      if (isSlapAttack) {
         otherPlayer.knockbackVelocity.x =
           6 * knockbackDirection * finalKnockbackMultiplier;
       } else {
+        // Reduced base knockback for charged attacks
         otherPlayer.knockbackVelocity.x =
-          5 * knockbackDirection * finalKnockbackMultiplier;
-
-        // Set recovery state immediately for the attacking player on successful charged hit
-        player.isRecovering = true;
-        player.recoveryStartTime = Date.now();
-        player.recoveryDuration = 400; // 400ms recovery duration
+          5 * knockbackDirection * finalKnockbackMultiplier; // Reduced from 7 to 5
 
         // Calculate attacker knockback based on charge percentage
         const attackerKnockbackDirection = -knockbackDirection;
         const attackerKnockbackMultiplier =
-          0.3 + (chargePercentage / 100) * 0.4; // 30-70% of defender's knockback
+          0.3 + (chargePercentage / 100) * 0.5; // Reduced from 0.8 to 0.5
 
-        // Set velocities for knockback (increased vertical velocity)
         player.knockbackVelocity.x =
-          3 * attackerKnockbackDirection * attackerKnockbackMultiplier;
-        player.knockbackVelocity.y = 4; // Increased initial upward velocity
+          2 * attackerKnockbackDirection * attackerKnockbackMultiplier; // Reduced from 3 to 2
+        player.knockbackVelocity.y = 3; // Reduced from 4 to 3
 
-        // Emit screen shake for successful charged attack
         if (currentRoom) {
           io.in(currentRoom.id).emit("screen_shake", {
-            intensity: 0.7,
-            duration: 250,
+            intensity: 0.7 + (chargePercentage / 100) * 0.2, // Reduced from 0.3 to 0.2
+            duration: 250 + (chargePercentage / 100) * 100, // Reduced from 150 to 100
           });
         }
       }
-      otherPlayer.knockbackVelocity.y = 0; // Remove vertical knockback
+      otherPlayer.knockbackVelocity.y = 0;
       otherPlayer.y = GROUND_LEVEL;
 
       otherPlayer.isAlreadyHit = true;
-      setTimeout(() => {
-        otherPlayer.isHit = false;
-        otherPlayer.isAlreadyHit = false;
-        // Only reset chargeAttackPower after knockback is applied
-        player.chargeAttackPower = 0;
-      }, 300);
+      setTimeout(
+        () => {
+          otherPlayer.isHit = false;
+          otherPlayer.isAlreadyHit = false;
+        },
+        isSlapAttack ? 250 : 300
+      );
     }
   }
 
@@ -1705,7 +1724,7 @@ io.on("connection", (socket) => {
             if (chargePercentage < 25) {
               player.isSlapAttack = true;
               player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
-              player.attackEndTime = Date.now() + 100; // Reduced from 300ms to 100ms for faster slap attacks
+              player.attackEndTime = Date.now() + 250; // Changed from 100ms to 250ms for slap attacks
             } else {
               player.isSlapAttack = false;
               // Calculate attack duration based on charge percentage
@@ -1837,10 +1856,31 @@ io.on("connection", (socket) => {
         !player.isBeingGrabbed &&
         !player.isHit
       ) {
+        // Initialize slap buffer if it doesn't exist
+        if (!player.slapBuffer) {
+          player.slapBuffer = {
+            lastSlapTime: 0,
+            slapCooldown: 250, // 250ms between slaps
+            pendingSlaps: 0,
+          };
+        }
+
+        const currentTime = Date.now();
+        const timeSinceLastSlap = currentTime - player.slapBuffer.lastSlapTime;
+
+        // If we're within the slap cooldown window, treat it as a slap attempt
+        if (timeSinceLastSlap < player.slapBuffer.slapCooldown) {
+          player.slapBuffer.pendingSlaps++;
+          executeSlapAttack(player);
+          return;
+        }
+
+        // Start charging if we're not in slap cooldown
         player.isChargingAttack = true;
         player.chargeStartTime = Date.now();
         player.chargeAttackPower = 1;
         player.spacebarReleasedDuringDodge = false;
+        player.attackType = "charged"; // Set attack type immediately when charging starts
       }
       // For continuing a charge
       else if (player.keys[" "] && player.isChargingAttack && !player.isHit) {
@@ -1874,17 +1914,16 @@ io.on("connection", (socket) => {
           player.pendingChargeAttack = {
             power: player.chargeAttackPower,
             startTime: player.chargeStartTime,
+            type: "charged", // Store the attack type
           };
           player.spacebarReleasedDuringDodge = true;
         } else {
           const chargeDuration = Date.now() - player.chargeStartTime;
           const chargePercentage = player.chargeAttackPower;
 
-          // Determine if it's a slap or charged attack
+          // Determine if it's a slap or charged attack based on charge percentage
           if (chargePercentage < 25) {
-            player.isSlapAttack = true;
-            player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
-            player.attackEndTime = Date.now() + 100; // Reduced from 300ms to 100ms for faster slap attacks
+            executeSlapAttack(player);
           } else {
             player.isSlapAttack = false;
             // Calculate attack duration based on charge percentage
@@ -1898,6 +1937,9 @@ io.on("connection", (socket) => {
               attackDuration = 1000 + extraDuration;
             }
             player.attackEndTime = Date.now() + attackDuration;
+            player.attackType = "charged";
+            // Store the charge power for knockback calculation
+            player.chargeAttackPower = chargePercentage;
           }
 
           // Set attack state
@@ -1910,13 +1952,16 @@ io.on("connection", (socket) => {
             player.facing = player.chargingFacingDirection;
           }
 
-          // Reset charging state
+          // Reset charging state but keep the charge power for knockback
           player.isChargingAttack = false;
+          player.chargeStartTime = 0;
 
           setTimeout(() => {
             player.isAttacking = false;
             player.isSlapAttack = false;
             player.chargingFacingDirection = null;
+            player.attackType = null; // Clear attack type when attack ends
+            player.chargeAttackPower = 0; // Reset charge power after attack ends
 
             // Check for buffered actions after attack ends
             if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
@@ -1931,10 +1976,15 @@ io.on("connection", (socket) => {
                 player.dodgeEndTime = Date.now() + 400;
                 player.stamina -= 50;
                 player.dodgeDirection = action.direction;
-                // Add these lines to set the dodge start position
                 player.dodgeStartX = player.x;
                 player.dodgeStartY = player.y;
               }
+            }
+
+            // Check for pending slaps after attack ends
+            if (player.slapBuffer && player.slapBuffer.pendingSlaps > 0) {
+              player.slapBuffer.pendingSlaps--;
+              executeSlapAttack(player);
             }
           }, player.attackEndTime - Date.now());
         }
@@ -2218,5 +2268,20 @@ function handleWinCondition(room, loser, winner) {
   room.loserId = loser.id;
   if (!room.gameOverTime) {
     room.gameOverTime = Date.now();
+  }
+}
+
+// Add this new function near the other helper functions
+function executeSlapAttack(player) {
+  player.isSlapAttack = true;
+  player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
+  player.attackEndTime = Date.now() + 180; // Reduced from 250ms to 180ms for faster slaps
+  player.isAttacking = true;
+  player.attackStartTime = Date.now();
+  player.attackType = "slap";
+
+  // Only update lastSlapTime if we're not already in a slap attack
+  if (!player.isAttacking || !player.isSlapAttack) {
+    player.slapBuffer.lastSlapTime = Date.now();
   }
 }
