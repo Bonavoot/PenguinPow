@@ -1132,9 +1132,9 @@ io.on("connection", (socket) => {
         if (player.isChargingAttack) {
           const chargeDuration = Date.now() - player.chargeStartTime;
           player.chargeAttackPower = Math.min(
-            (chargeDuration / 1500) * 100,
+            (chargeDuration / 1200) * 100,
             100
-          );
+          ); // Changed from 1500 to 1200 for 20% faster charge
         }
       });
 
@@ -1883,10 +1883,21 @@ io.on("connection", (socket) => {
         player.attackType = "charged"; // Set attack type immediately when charging starts
       }
       // For continuing a charge
-      else if (player.keys[" "] && player.isChargingAttack && !player.isHit) {
+      else if (
+        player.keys[" "] &&
+        (player.isChargingAttack || player.isDodging) &&
+        !player.isHit
+      ) {
+        // If we're dodging and not already charging, start charging
+        if (player.isDodging && !player.isChargingAttack) {
+          player.isChargingAttack = true;
+          player.chargeStartTime = Date.now();
+          player.chargeAttackPower = 1;
+          player.attackType = "charged";
+        }
         // Calculate charge power (0-100%)
         const chargeDuration = Date.now() - player.chargeStartTime;
-        player.chargeAttackPower = Math.min((chargeDuration / 1500) * 100, 100);
+        player.chargeAttackPower = Math.min((chargeDuration / 1200) * 100, 100); // Changed from 1500 to 1200 for 20% faster charge
 
         // Lock facing direction while charging
         if (player.isThrowing || player.throwingFacingDirection !== null) {
