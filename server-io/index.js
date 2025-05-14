@@ -1132,9 +1132,9 @@ io.on("connection", (socket) => {
         if (player.isChargingAttack) {
           const chargeDuration = Date.now() - player.chargeStartTime;
           player.chargeAttackPower = Math.min(
-            (chargeDuration / 1200) * 100,
+            (chargeDuration / 1000) * 100,
             100
-          ); // Changed from 1500 to 1200 for 20% faster charge
+          ); // Changed from 1200 to 1000 for faster charge
         }
       });
 
@@ -1897,7 +1897,7 @@ io.on("connection", (socket) => {
         }
         // Calculate charge power (0-100%)
         const chargeDuration = Date.now() - player.chargeStartTime;
-        player.chargeAttackPower = Math.min((chargeDuration / 1200) * 100, 100); // Changed from 1500 to 1200 for 20% faster charge
+        player.chargeAttackPower = Math.min((chargeDuration / 1000) * 100, 100); // Changed from 1200 to 1000 for faster charge
 
         // Lock facing direction while charging
         if (player.isThrowing || player.throwingFacingDirection !== null) {
