@@ -9,7 +9,7 @@ import PlayerShadow from "./PlayerShadow";
 import ThrowTechEffect from "./ThrowTechEffect";
 import PowerMeter from "./PowerMeter";
 import SlapParryEffect from "./SlapParryEffect";
-import DodgeDustEffect from "./DodgeDustEffect";
+import DodgeSmokeEffect from "./DodgeDustEffect";
 
 import pumo from "../assets/pumo.png";
 import pumo2 from "../assets/pumo2.png";
@@ -855,11 +855,11 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         facing={penguin.facing}
         isDodging={penguin.isDodging}
       />
-      <DodgeDustEffect
+      <DodgeSmokeEffect
         x={penguin.dodgeStartX || penguin.x}
         y={penguin.dodgeStartY || penguin.y}
-        facing={penguin.facing}
         isDodging={penguin.isDodging}
+        facing={penguin.facing}
         dodgeDirection={penguin.dodgeDirection}
       />
       <HitEffect

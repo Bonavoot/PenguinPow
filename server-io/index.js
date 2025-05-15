@@ -1845,7 +1845,7 @@ io.on("connection", (socket) => {
 
       // Start charging attack
       if (
-        player.keys[" "] &&
+        player.keys.mouse1 &&
         !player.isChargingAttack && // Only check these conditions when starting
         !player.isAttacking &&
         !player.isJumping &&
@@ -1884,7 +1884,7 @@ io.on("connection", (socket) => {
       }
       // For continuing a charge
       else if (
-        player.keys[" "] &&
+        player.keys.mouse1 &&
         (player.isChargingAttack || player.isDodging) &&
         !player.isHit
       ) {
@@ -1911,9 +1911,9 @@ io.on("connection", (socket) => {
         }
       }
 
-      // Release attack when spacebar is released
+      // Release attack when mouse1 is released
       else if (
-        !player.keys[" "] &&
+        !player.keys.mouse1 &&
         player.isChargingAttack &&
         !player.isGrabbing &&
         !player.isBeingGrabbed &&

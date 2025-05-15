@@ -33,6 +33,7 @@ const Game = ({ rooms, roomName, localId }) => {
       shift: false,
       e: false,
       f: false,
+      mouse1: false,
     };
 
     const handleKeyDown = (e) => {
@@ -49,12 +50,38 @@ const Game = ({ rooms, roomName, localId }) => {
       }
     };
 
+    const handleMouseDown = (e) => {
+      if (e.button === 0) {
+        e.preventDefault();
+        keyState.mouse1 = true;
+        socket.emit("fighter_action", { id: socket.id, keys: keyState });
+      }
+    };
+
+    const handleMouseUp = (e) => {
+      if (e.button === 0) {
+        e.preventDefault();
+        keyState.mouse1 = false;
+        socket.emit("fighter_action", { id: socket.id, keys: keyState });
+      }
+    };
+
+    const handleContextMenu = (e) => {
+      e.preventDefault();
+    };
+
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("mousedown", handleMouseDown);
+    window.addEventListener("mouseup", handleMouseUp);
+    window.addEventListener("contextmenu", handleContextMenu);
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("mousedown", handleMouseDown);
+      window.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener("contextmenu", handleContextMenu);
     };
   });
 
