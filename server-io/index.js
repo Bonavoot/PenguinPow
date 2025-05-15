@@ -60,7 +60,7 @@ const speedFactor = 0.25; // Increased from 0.22 for snappier movement
 const GROUND_LEVEL = 245;
 const HITBOX_DISTANCE_VALUE = 85; // Reduced from 90 by 20%
 const SLAP_HITBOX_DISTANCE_VALUE = 88; // Reduced from 110 by 20%
-const SLAP_PARRY_WINDOW = 120; // Reduced from 150ms to 120ms for faster parry window
+const SLAP_PARRY_WINDOW = 150; // 150ms window for parry
 const PARRY_KNOCKBACK_VELOCITY = 1.5; // Reduced knockback for parried attacks
 const THROW_RANGE = 184; // Reduced from 230 by 20%
 const GRAB_RANGE = 184; // Reduced from 230 by 20%
@@ -1860,7 +1860,7 @@ io.on("connection", (socket) => {
         if (!player.slapBuffer) {
           player.slapBuffer = {
             lastSlapTime: 0,
-            slapCooldown: 200, // Reduced from 250ms to 200ms for faster slap chain
+            slapCooldown: 250, // 250ms between slaps
             pendingSlaps: 0,
           };
         }
@@ -2287,7 +2287,7 @@ function handleWinCondition(room, loser, winner) {
 function executeSlapAttack(player) {
   player.isSlapAttack = true;
   player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
-  player.attackEndTime = Date.now() + 150; // Reduced from 180ms to 150ms for faster slaps
+  player.attackEndTime = Date.now() + 180; // Reduced from 250ms to 180ms for faster slaps
   player.isAttacking = true;
   player.attackStartTime = Date.now();
   player.attackType = "slap";
