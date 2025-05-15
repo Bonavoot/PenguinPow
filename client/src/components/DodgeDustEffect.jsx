@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import PropTypes from "prop-types";
-import dodgeSmokeGif from "../assets/dodge-smoke-effect.gif";
+import dodgeSmokeGif from "../assets/dodge-effect.gif";
 
-const GIF_DURATION = 1000; // ms
+const GIF_DURATION = 450; // ms
 
 const SmokeContainer = styled.div.attrs((props) => {
   // Dash is forward if dodgeDirection === facing
@@ -24,11 +24,14 @@ const SmokeContainer = styled.div.attrs((props) => {
     style: {
       position: "absolute",
       left: `calc(${(props.$x / 1280) * 100}% + ${offset}%)`,
-      bottom: `calc(${(props.$y / 720) * 100}% - 4%)`,
+      bottom: `calc(${(props.$y / 720) * 100}% - 0%)`,
       pointerEvents: "none",
-      width: "clamp(144px, 22vw, 384px)",
+      width: "clamp(101px, 15vw, 269px)",
       height: "auto",
-      transform: `translateX(-50%) scaleX(${scaleX})`,
+      transform: `translateX(-50%) scaleX(${scaleX}) `,
+      opacity: 0.6,
+      zIndex: 1000,
+      filter: "brightness(0) invert(1)",
     },
   };
 })``;
@@ -69,11 +72,12 @@ const DodgeSmokeEffect = ({ x, y, isDodging, facing, dodgeDirection }) => {
             src={dodgeSmokeGif}
             alt="Dodge Smoke Effect"
             style={{
-              width: "clamp(144px, 22vw, 384px)",
+              width: "clamp(101px, 15vw, 269px)",
               height: "auto",
               display: "block",
-              filter:
-                "sepia(1) saturate(2.2) hue-rotate(-35deg) brightness(0.8) contrast(1.15)",
+              zIndex: 1000,
+              // filter:
+              //   "sepia(1) saturate(2.2) hue-rotate(-35deg) brightness(0.8) contrast(1.15)",
             }}
             draggable={false}
           />
