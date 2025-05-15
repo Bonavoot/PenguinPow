@@ -8,15 +8,15 @@ const HitEffectImage = styled.img`
   height: auto;
   pointer-events: none;
   z-index: 100;
-  filter: brightness(0.1) invert(1);
+  filter: brightness(0.2) invert(1);
 `;
 
 const HitEffect = ({ isActive, x, y, facing }) => {
   if (!isActive) return null;
 
   // Use fixed position offsets
-  const baseOffsetX = facing === 1 ? 1 : 7; // Adjust for facing direction
-  const baseOffsetY = 10; // Fixed y offset
+  const baseOffsetX = facing === 1 ? 3 : 7; // Adjust for facing direction
+  const baseOffsetY = 14; // Fixed y offset
 
   return (
     <HitEffectImage
