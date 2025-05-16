@@ -10,6 +10,7 @@ import ThrowTechEffect from "./ThrowTechEffect";
 import PowerMeter from "./PowerMeter";
 import SlapParryEffect from "./SlapParryEffect";
 import DodgeSmokeEffect from "./DodgeDustEffect";
+import ChargedAttackSmokeEffect from "./ChargedAttackSmokeEffect";
 
 import pumo from "../assets/pumo.png";
 import pumo2 from "../assets/pumo2.png";
@@ -272,8 +273,12 @@ const StyledImage = styled("img")
         props.$isThrowing || props.$isDodging || props.$isGrabbing ? 98 : 99,
       filter: props.$isDodging
         ? "drop-shadow(0 0 6px rgba(255, 255, 255, 0.6)) brightness(1.5) drop-shadow(0 0 2px #000)"
-        : "drop-shadow(0 0 2px #000)",
-      animation: props.$isDodging ? "dodgeFlash 0.3s ease-in-out" : "none",
+        : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000)",
+      animation: props.$isDodging
+        ? "dodgeFlash 0.3s ease-in-out"
+        : props.$isHit
+        ? "hitFlash 0.2s ease-in-out"
+        : "none",
     },
   }))`
   position: absolute;
@@ -310,6 +315,18 @@ const StyledImage = styled("img")
     100% {
       filter: drop-shadow(0 0 0px rgba(255, 255, 255, 0)) brightness(1);
       opacity: 1;
+    }
+  }
+
+  @keyframes hitFlash {
+    0% {
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000);
+    }
+    50% {
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) brightness(1.1) sepia(0.7) saturate(500%) hue-rotate(-40deg);
+    }
+    100% {
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000);
     }
   }
 `;
@@ -349,7 +366,7 @@ const FloatingPowerUpText = styled.div`
     1px 1px 0 #000;
   pointer-events: none;
   animation: powerUpFloat 1.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-  bottom: 47%;
+  bottom: 52%;
   left: ${(props) => (props.$index === 0 ? "21.5%" : "auto")};
   right: ${(props) => (props.$index === 1 ? "21.5%" : "auto")};
   text-align: center;
@@ -861,6 +878,14 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         isDodging={penguin.isDodging}
         facing={penguin.facing}
         dodgeDirection={penguin.dodgeDirection}
+      />
+      <ChargedAttackSmokeEffect
+        x={penguin.x}
+        y={penguin.y}
+        isChargingAttack={penguin.isChargingAttack}
+        facing={penguin.facing}
+        isSlapAttack={penguin.isSlapAttack}
+        isThrowing={penguin.isThrowing}
       />
       <HitEffect
         isActive={penguin.isHit}

@@ -8,14 +8,16 @@ const HitEffectImage = styled.img`
   height: auto;
   pointer-events: none;
   z-index: 100;
-  filter: brightness(0.2) invert(1);
+  filter: brightness(0.2) invert(1) drop-shadow(1px 0 0 #000)
+    drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000)
+    drop-shadow(0 -1px 0 #000);
 `;
 
 const HitEffect = ({ isActive, x, y, facing }) => {
   if (!isActive) return null;
 
   // Use fixed position offsets
-  const baseOffsetX = facing === 1 ? 3 : 7; // Adjust for facing direction
+  const baseOffsetX = facing === 1 ? 2 : 7; // Adjust for facing direction
   const baseOffsetY = 14; // Fixed y offset
 
   return (

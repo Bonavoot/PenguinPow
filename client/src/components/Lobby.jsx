@@ -23,43 +23,62 @@ const Lobby = ({ rooms, roomName, handleGame }) => {
 
   return (
     <div className="lobby-container">
+      <div className="lobby-background"></div>
+
       <div className="lobby-header">
-        <h1 className="lobby-title">Sumo Arena</h1>
+        <div className="game-logo">
+          <h1 className="lobby-title">Sumo Arena</h1>
+          <div className="game-subtitle">Online Sumo Fighter</div>
+        </div>
         <div className="room-info">
-          <span className="room-label">Room</span>
-          <span className="room-name">{roomName}</span>
+          <div className="room-badge">
+            <span className="room-label">Room Code</span>
+            <span className="room-name">{roomName}</span>
+          </div>
         </div>
       </div>
 
       <div className="lobby-content">
-        <div className="players-grid">
-          {players.map((player, i) => (
-            <div
-              key={uuidv4()}
-              className={`player-slot ${i > 2 ? "hidden" : ""}`}
-            >
-              {i <= 2 && (
-                <div className="player-card">
-                  <div className="player-info">
-                    <span className="player-name">
-                      {player.fighter || "Waiting for player..."}
-                    </span>
+        <div className="versus-container">
+          <div className="players-grid">
+            {players.map((player, i) => (
+              <div
+                key={uuidv4()}
+                className={`player-slot ${i > 2 ? "hidden" : ""}`}
+              >
+                {i <= 2 && (
+                  <div className="player-card">
+                    <div className="player-info">
+                      <div className="player-status">
+                        {player.fighter ? (
+                          <span className="status-indicator ready">Ready</span>
+                        ) : (
+                          <span className="status-indicator waiting">
+                            Waiting
+                          </span>
+                        )}
+                      </div>
+                      <span className="player-name">
+                        {player.fighter || "Waiting for player..."}
+                      </span>
+                    </div>
+                    <div className="player-avatar">
+                      {player.fighter && (
+                        <Player index={i} fighter={player.fighter} />
+                      )}
+                    </div>
                   </div>
-                  <div className="player-avatar">
-                    {player.fighter && (
-                      <Player index={i} fighter={player.fighter} />
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="versus-badge">VS</div>
         </div>
 
         {players.length < 2 && (
           <div className="waiting-container">
             <div className="waiting-message">
-              <h2>Waiting for opponent</h2>
+              <h2>Waiting for Opponent</h2>
               <div className="loading-ellipsis">
                 <div className="dot"></div>
                 <div className="dot"></div>
@@ -75,7 +94,8 @@ const Lobby = ({ rooms, roomName, handleGame }) => {
           className="exit-btn"
           onClick={() => window.location.reload(false)}
         >
-          Exit
+          <span className="btn-icon">←</span>
+          Exit Lobby
         </button>
         <Ready rooms={rooms} roomName={roomName} handleGame={handleGame} />
       </div>

@@ -29,7 +29,7 @@ const SmokeContainer = styled.div.attrs((props) => {
       width: "clamp(101px, 15vw, 269px)",
       height: "auto",
       transform: `translateX(-50%) scaleX(${scaleX}) `,
-      opacity: 0.9,
+      opacity: 0.1,
       zIndex: 1000,
       filter: "brightness(0) invert(1)",
     },
