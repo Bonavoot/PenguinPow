@@ -1,6 +1,7 @@
 import Lobby from "./Lobby";
 import Rooms from "./Rooms";
 import Game from "./Game";
+import Settings from "./Settings";
 import { useState } from "react";
 import PropTypes from "prop-types";
 import styled, { keyframes } from "styled-components";
@@ -224,6 +225,7 @@ preloadAssets(preGameImages);
 const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
   const [roomName, setRoomName] = useState("");
   const [cherryBlossoms] = useState(createCherryBlossoms());
+  const [showSettings, setShowSettings] = useState(false);
 
   const handleMainMenuPage = () => {
     setCurrentPage("mainMenu");
@@ -239,6 +241,10 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
 
   const handleJoinRoom = () => {
     setCurrentPage("lobby");
+  };
+
+  const handleSettings = () => {
+    setShowSettings(true);
   };
 
   let currentPageComponent;
@@ -258,8 +264,11 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
             <MenuButton>BASHO</MenuButton>
             <MenuButton>CUSTOMIZE</MenuButton>
             <MenuButton>STATS</MenuButton>
-            <MenuButton>SETTINGS</MenuButton>
+            <MenuButton isActive onClick={handleSettings}>
+              SETTINGS
+            </MenuButton>
           </ButtonContainer>
+          {showSettings && <Settings onClose={() => setShowSettings(false)} />}
         </MainMenuContainer>
       );
       break;

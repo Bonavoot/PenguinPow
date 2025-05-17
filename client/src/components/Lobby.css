@@ -25,7 +25,7 @@
 }
 
 .lobby-header {
-  padding: 2rem;
+  padding: 1.5rem 2rem;
   background: rgba(26, 26, 46, 0.95);
   border-bottom: 2px solid rgba(255, 255, 255, 0.1);
   position: relative;
@@ -94,21 +94,38 @@
   z-index: 1;
 }
 
-.versus-container {
+.arena-container {
   position: relative;
   display: flex;
   justify-content: center;
   align-items: center;
   height: 400px;
+  margin: 2rem 0;
 }
 
-.players-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 4rem;
-  padding: 1rem;
+.arena-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(
+    circle at center,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(0, 0, 0, 0.2) 100%
+  );
+  border-radius: 50%;
+  transform: scale(0.8);
+}
+
+.players-arena {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   width: 100%;
   max-width: 1000px;
+  padding: 2rem;
+  position: relative;
 }
 
 .player-slot {
@@ -124,11 +141,20 @@
   position: relative;
   overflow: hidden;
   height: 300px;
+  width: 300px;
   backdrop-filter: blur(10px);
 }
 
+.player-left {
+  transform: scaleX(1);
+}
+
+.player-right {
+  transform: scaleX(-1);
+}
+
 .player-slot:hover {
-  transform: translateY(-5px);
+  transform: translateY(-5px) scaleX(var(--scale));
   border-color: rgba(255, 255, 255, 0.2);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
 }
@@ -216,11 +242,24 @@
 
 .versus-badge {
   position: absolute;
-  font-size: 3rem;
+  font-size: 4rem;
   font-weight: 800;
-  color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.15);
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
   z-index: 2;
+  animation: pulse 2s infinite ease-in-out;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.15;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.25;
+  }
 }
 
 .waiting-container {
@@ -380,12 +419,14 @@
     font-size: 2rem;
   }
 
-  .players-grid {
-    gap: 2rem;
+  .players-arena {
+    gap: 1rem;
+    padding: 1rem;
   }
 
   .player-slot {
     height: 240px;
+    width: 240px;
   }
 
   .player-avatar img {

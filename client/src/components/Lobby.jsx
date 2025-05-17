@@ -39,14 +39,17 @@ const Lobby = ({ rooms, roomName, handleGame }) => {
       </div>
 
       <div className="lobby-content">
-        <div className="versus-container">
-          <div className="players-grid">
+        <div className="arena-container">
+          <div className="arena-background"></div>
+          <div className="players-arena">
             {players.map((player, i) => (
               <div
                 key={uuidv4()}
-                className={`player-slot ${i > 2 ? "hidden" : ""}`}
+                className={`player-slot ${i > 1 ? "hidden" : ""} ${
+                  i === 1 ? "player-right" : "player-left"
+                }`}
               >
-                {i <= 2 && (
+                {i <= 1 && (
                   <div className="player-card">
                     <div className="player-info">
                       <div className="player-status">
