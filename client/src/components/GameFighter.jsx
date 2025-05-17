@@ -63,13 +63,14 @@ import UiPlayerInfo from "./UiPlayerInfo";
 import SaltEffect from "./SaltEffect";
 import MatchOver from "./MatchOver";
 import HitEffect from "./HitEffect";
+import { getGlobalVolume } from "./Settings";
 
 const GROUND_LEVEL = 145; // Ground level constant
 
 const playSound = (audioFile, volume = 1.0) => {
   try {
     const sound = new Audio(audioFile);
-    sound.volume = volume;
+    sound.volume = volume * getGlobalVolume();
     sound.play().catch((error) => {
       // Ignore AbortError as it's expected when sounds overlap
       if (error.name !== "AbortError") {

@@ -2,6 +2,9 @@ import { useState, useEffect } from "react";
 import styled from "styled-components";
 import PropTypes from "prop-types";
 
+// Create a global volume state
+let globalVolume = 1.0;
+
 const SettingsContainer = styled.div`
   position: absolute;
   top: 50%;
@@ -94,6 +97,7 @@ const Button = styled.button`
 const Settings = ({ onClose }) => {
   const [brightness, setBrightness] = useState(100);
   const [contrast, setContrast] = useState(100);
+  const [volume, setVolume] = useState(100);
 
   useEffect(() => {
     // Apply the filters to the entire game window
@@ -103,9 +107,15 @@ const Settings = ({ onClose }) => {
     }
   }, [brightness, contrast]);
 
+  useEffect(() => {
+    // Update global volume when local volume changes
+    globalVolume = volume / 100;
+  }, [volume]);
+
   const handleReset = () => {
     setBrightness(100);
     setContrast(100);
+    setVolume(100);
   };
 
   return (
@@ -133,6 +143,17 @@ const Settings = ({ onClose }) => {
         />
         <Value>{contrast}%</Value>
       </ControlGroup>
+      <ControlGroup>
+        <Label>Volume</Label>
+        <Slider
+          type="range"
+          min="0"
+          max="100"
+          value={volume}
+          onChange={(e) => setVolume(Number(e.target.value))}
+        />
+        <Value>{volume}%</Value>
+      </ControlGroup>
       <Button onClick={handleReset}>Reset to Default</Button>
       <Button
         onClick={onClose}
@@ -150,5 +171,8 @@ const Settings = ({ onClose }) => {
 Settings.propTypes = {
   onClose: PropTypes.func.isRequired,
 };
+
+// Export the global volume getter
+export const getGlobalVolume = () => globalVolume;
 
 export default Settings;
