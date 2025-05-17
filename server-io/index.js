@@ -16,7 +16,37 @@ const {
 const app = express();
 app.use(cors());
 
+// Heroku specific configurations
+const PORT = process.env.PORT || 3001;
+app.set("port", PORT);
+
+// Add health check endpoint
+app.get("/health", (req, res) => {
+  res.status(200).send("OK");
+});
+
+// Add error handling middleware
+app.use((err, req, res, next) => {
+  console.error("Express error:", err);
+  res.status(500).send("Something broke!");
+});
+
 const server = http.createServer(app);
+
+// Add keep-alive settings AFTER server creation
+server.keepAliveTimeout = 120000; // 2 minutes
+server.headersTimeout = 120000; // 2 minutes
+
+// Add uncaught exception handler
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught Exception:", err);
+  // Optionally restart the server here
+});
+
+// Add unhandled rejection handler
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+});
 
 const io = new Server(server, {
   cors: {
@@ -160,7 +190,13 @@ io.on("connection", (socket) => {
 
   if (!gameLoop) {
     gameLoop = setInterval(() => {
-      tick(delta);
+      try {
+        tick(delta);
+      } catch (error) {
+        console.error("Error in game loop:", error);
+        // Optionally clear the interval if the error is severe
+        // clearInterval(gameLoop);
+      }
     }, delta);
   }
 
@@ -2214,9 +2250,9 @@ io.on("connection", (socket) => {
   });
 });
 
-const PORT = process.env.PORT || 3001;
+// Update server listen
 server.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
 
 // process.env.PORT ||
@@ -2331,3 +2367,40 @@ function executeSlapAttack(player) {
     player.slapBuffer.lastSlapTime = Date.now();
   }
 }
+
+function cleanupRoom(room) {
+  // Clear any intervals
+  if (room.gameLoop) {
+    clearInterval(room.gameLoop);
+  }
+
+  // Reset room state
+  room.players = [];
+  room.readyCount = 0;
+  room.rematchCount = 0;
+  room.gameStart = false;
+  room.gameOver = false;
+  room.matchOver = false;
+  room.readyStartTime = null;
+  room.gameOverTime = null;
+  room.loserId = null;
+}
+
+// Add socket disconnect handler
+io.on("connection", (socket) => {
+  // ... existing connection code ...
+
+  socket.on("disconnect", () => {
+    // Find and cleanup the room the player was in
+    const room = rooms.find((r) => r.players.some((p) => p.id === socket.id));
+    if (room) {
+      // Remove the player
+      room.players = room.players.filter((p) => p.id !== socket.id);
+
+      // If room is empty, cleanup
+      if (room.players.length === 0) {
+        cleanupRoom(room);
+      }
+    }
+  });
+});
