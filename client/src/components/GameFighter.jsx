@@ -339,9 +339,9 @@ const PowerUpText = styled.div`
   text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
     1px 1px 0 #000;
   pointer-events: none;
-  bottom: 57%;
-  left: ${(props) => (props.$index === 0 ? "20.9%" : "auto")};
-  right: ${(props) => (props.$index === 1 ? "20.9%" : "auto")};
+  bottom: 54%;
+  left: ${(props) => (props.$index === 0 ? "23%" : "auto")};
+  right: ${(props) => (props.$index === 1 ? "23.5%" : "auto")};
   text-align: center;
   transform: translateX(${(props) => (props.$index === 1 ? "50%" : "-50%")});
 `;
@@ -492,9 +492,9 @@ const SaltBasket = styled.img
       position: "absolute",
       width: "5%",
       height: "auto",
-      bottom: `${((GROUND_LEVEL + 100) / 720) * 135}%`,
-      left: props.$index === 0 ? "18.5%" : "auto",
-      right: props.$index === 1 ? "18.5%" : "auto",
+      bottom: `${((GROUND_LEVEL + 100) / 720) * 120}%`,
+      left: props.$index === 0 ? "20.5%" : "auto",
+      right: props.$index === 1 ? "21%" : "auto",
       transform: props.$index === 1 ? "scaleX(-1)" : "none",
       zIndex: 1,
       pointerEvents: "none",

@@ -8,7 +8,7 @@ const HitEffectImage = styled.img`
   height: auto;
   pointer-events: none;
   z-index: 100;
-  filter: brightness(0.2) invert(1) drop-shadow(1px 0 0 #000)
+  filter: brightness(0.1) invert(1) drop-shadow(1px 0 0 #000)
     drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000)
     drop-shadow(0 -1px 0 #000);
 `;

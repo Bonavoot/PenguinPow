@@ -272,7 +272,7 @@ body {
   background-image: url(./assets/game-map-1.png);
   background-repeat: no-repeat;
   background-size: 102% auto; /* Make the background larger */
-  background-position: center 2%; /* Position it lower */
+  background-position: center; /* Position it lower */
   z-index: 99;
 }
 
@@ -576,7 +576,7 @@ body {
 .gyoji {
   position: absolute;
   left: 38.5%;
-  bottom: 45%;
+  bottom: 38%;
   width: 23%;
   height: auto;
   z-index: -1;

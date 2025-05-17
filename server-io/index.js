@@ -57,7 +57,7 @@ let staminaRegenCounter = 0;
 const TICK_RATE = 64;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.25; // Increased from 0.22 for snappier movement
-const GROUND_LEVEL = 245;
+const GROUND_LEVEL = 215;
 const HITBOX_DISTANCE_VALUE = 85; // Reduced from 90 by 20%
 const SLAP_HITBOX_DISTANCE_VALUE = 88; // Reduced from 110 by 20%
 const SLAP_PARRY_WINDOW = 150; // 150ms window for parry
@@ -402,6 +402,22 @@ io.on("connection", (socket) => {
             return false;
           }
 
+          // If either player is in recovery from a dodge + charged attack, allow collision checks
+          const isRecoveringFromDodgeAttack = (player) => {
+            return (
+              player.isRecovering &&
+              player.recoveryStartTime &&
+              Date.now() - player.recoveryStartTime < player.recoveryDuration
+            );
+          };
+
+          if (
+            isRecoveringFromDodgeAttack(player1) ||
+            isRecoveringFromDodgeAttack(player2)
+          ) {
+            return true;
+          }
+
           if (
             player1.isGrabbing ||
             player2.isGrabbing ||
@@ -489,7 +505,10 @@ io.on("connection", (socket) => {
             // Calculate how much they need to move apart
             const overlap = minDistance - distanceBetweenCenters;
             const adjustment = overlap / 2;
-            const smoothFactor = delta * 0.01;
+
+            // Increase adjustment speed during recovery states
+            const isRecovering = player1.isRecovering || player2.isRecovering;
+            const smoothFactor = isRecovering ? delta * 0.05 : delta * 0.01;
 
             // Calculate new positions
             let newPlayer1X = player1.x;
@@ -1348,7 +1367,8 @@ io.on("connection", (socket) => {
       otherPlayer.isStrafing = false;
       otherPlayer.isDiving = false;
 
-      const knockbackDirection = player.facing === -1 ? 1 : -1;
+      // Calculate knockback direction based on relative positions
+      const knockbackDirection = player.x < otherPlayer.x ? 1 : -1;
 
       // Calculate knockback multiplier based on charge percentage
       let finalKnockbackMultiplier;
@@ -2247,10 +2267,24 @@ function handleWinCondition(room, loser, winner) {
     }, 350);
   }
 
-  // Reset all key states for both players
+  // Reset all key states and attack states for both players
   room.players.forEach((p) => {
     const currentX = p.x;
     p.isStrafing = false;
+    // Reset all attack-related states
+    p.isAttacking = false;
+    p.isChargingAttack = false;
+    p.chargeStartTime = 0;
+    p.chargeAttackPower = 0;
+    p.chargingFacingDirection = null;
+    p.isSlapAttack = false;
+    p.slapAnimation = 2;
+    p.attackStartTime = 0;
+    p.attackEndTime = 0;
+    p.pendingChargeAttack = null;
+    p.spacebarReleasedDuringDodge = false;
+    p.attackType = null;
+
     // Only reset knockback for the winner
     if (p.id === winner.id) {
       p.knockbackVelocity = { x: 0, y: 0 };
