@@ -2,7 +2,9 @@ import { useContext, useEffect } from "react";
 import { SocketContext } from "../SocketContext";
 import GameFighter from "./GameFighter";
 import MobileControls from "./MobileControls";
+import SnowEffect from "./SnowEffect";
 // import gameMusic from "../sounds/game-music.mp3";
+import PropTypes from "prop-types";
 
 // const gameMusicAudio = new Audio(gameMusic);
 // gameMusicAudio.loop = true;
@@ -37,14 +39,14 @@ const Game = ({ rooms, roomName, localId }) => {
     };
 
     const handleKeyDown = (e) => {
-      if (keyState.hasOwnProperty(e.key.toLowerCase())) {
+      if (Object.prototype.hasOwnProperty.call(keyState, e.key.toLowerCase())) {
         keyState[e.key.toLowerCase()] = true;
         socket.emit("fighter_action", { id: socket.id, keys: keyState });
       }
     };
 
     const handleKeyUp = (e) => {
-      if (keyState.hasOwnProperty(e.key.toLowerCase())) {
+      if (Object.prototype.hasOwnProperty.call(keyState, e.key.toLowerCase())) {
         keyState[e.key.toLowerCase()] = false;
         socket.emit("fighter_action", { id: socket.id, keys: keyState });
       }
@@ -97,6 +99,7 @@ const Game = ({ rooms, roomName, localId }) => {
   return (
     <div className="game-wrapper">
       <div className="game-container">
+        <SnowEffect />
         <div className="ui">
           {rooms[index].players.map((player, i) => {
             return (
@@ -114,6 +117,21 @@ const Game = ({ rooms, roomName, localId }) => {
       <MobileControls />
     </div>
   );
+};
+
+Game.propTypes = {
+  rooms: PropTypes.arrayOf(
+    PropTypes.shape({
+      id: PropTypes.string.isRequired,
+      players: PropTypes.arrayOf(
+        PropTypes.shape({
+          id: PropTypes.string.isRequired,
+        })
+      ).isRequired,
+    })
+  ).isRequired,
+  roomName: PropTypes.string.isRequired,
+  localId: PropTypes.string.isRequired,
 };
 
 export default Game;

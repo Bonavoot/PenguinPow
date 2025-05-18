@@ -20,7 +20,7 @@ const fadeIn = keyframes`
 const PlayerInfoContainer = styled.div`
   height: clamp(60px, 8vh, 80px);
   width: 100%;
-  background: rgba(18, 18, 18, 0.95);
+  /* background: rgba(18, 18, 18, 0.95); */
   display: flex;
   gap: clamp(1%, 2vw, 3%);
   justify-content: space-between;
@@ -30,11 +30,12 @@ const PlayerInfoContainer = styled.div`
   font-family: "Bungee", "Impact", sans-serif;
   padding: 0 clamp(1%, 2vw, 3%);
   box-sizing: border-box;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  /* border-bottom: 1px solid rgba(255, 255, 255, 0.1); */
+  /* box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2); */
   position: relative;
   overflow: hidden;
   animation: ${fadeIn} 0.3s ease-out;
+  z-index: 1000;
 `;
 
 const RankRecordContainer = styled.div`
@@ -102,9 +103,9 @@ const Scoreboard = styled.div`
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: clamp(1vw, 2vw, 3vw);
+  gap: clamp(0.5vw, 1vw, 1.5vw);
   padding: 0 clamp(2vw, 3vw, 4vw);
-  height: clamp(45px, 70%, 60px);
+  height: clamp(50px, 70%, 60px);
   background: rgba(28, 28, 28, 0.95);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   border: 1px solid rgba(255, 255, 255, 0.1);
