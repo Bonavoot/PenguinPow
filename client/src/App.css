@@ -560,14 +560,14 @@ body {
 
 .hakkiyoi {
   position: absolute;
-  top: 15%;
+  top: 20%;
   left: 50%;
   width: 100%;
   margin: 0 auto;
   transform: translate(-50%, -50%);
   white-space: nowrap;
   max-width: 100%;
-  font-size: clamp(1.5rem, 6vw, 4rem);
+  font-size: clamp(1.2rem, 4vw, 3rem);
   color: #fff;
   text-align: center;
   opacity: 0;
@@ -581,6 +581,7 @@ body {
     2px 2px 0 #000, 0 0 10px rgba(255, 255, 255, 0.5),
     0 0 20px rgba(255, 255, 255, 0.3);
   filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.4));
+  z-index: 1001;
 }
 
 @keyframes announceText {
@@ -612,7 +613,7 @@ body {
 /* Win announcement styles */
 .hakkiyoi[style*="color: aqua"],
 .hakkiyoi[style*="color: salmon"] {
-  font-size: clamp(1.2rem, 4vw, 3rem);
+  font-size: clamp(1rem, 3vw, 2.5rem);
   animation: winAnnounce 3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
   color: var(--win-color);
   -webkit-text-fill-color: var(--win-color);
@@ -620,6 +621,7 @@ body {
     drop-shadow(0 0 25px var(--win-glow-light));
   text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000,
     2px 2px 0 #000, 0 0 15px var(--win-glow), 0 0 25px var(--win-glow-light);
+  z-index: 1001;
 }
 
 .hakkiyoi[style*="color: aqua"] {

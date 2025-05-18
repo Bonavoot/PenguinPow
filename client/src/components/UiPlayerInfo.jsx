@@ -18,17 +18,17 @@ const fadeIn = keyframes`
 `;
 
 const PlayerInfoContainer = styled.div`
-  height: clamp(60px, 8vh, 80px);
+  height: clamp(40px, 8vh, 90px);
   width: 100%;
   /* background: rgba(18, 18, 18, 0.95); */
   display: flex;
-  gap: clamp(1%, 2vw, 3%);
+  gap: clamp(0.5%, 1.5vw, 3%);
   justify-content: space-between;
   align-items: center;
   color: white;
   text-align: center;
   font-family: "Bungee", "Impact", sans-serif;
-  padding: 0 clamp(1%, 2vw, 3%);
+  padding: 0 clamp(0.5%, 1.5vw, 3%);
   box-sizing: border-box;
   /* border-bottom: 1px solid rgba(255, 255, 255, 0.1); */
   /* box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2); */
@@ -43,12 +43,12 @@ const RankRecordContainer = styled.div`
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  height: clamp(45px, 70%, 60px);
-  width: clamp(140px, 18%, 220px);
-  min-width: 140px;
+  height: clamp(35px, 65%, 65px);
+  width: clamp(100px, 18%, 220px);
+  min-width: 100px;
   max-width: 220px;
   background: rgba(28, 28, 28, 0.95);
-  padding: clamp(6px, 1vh, 8px);
+  padding: clamp(4px, 1vh, 8px);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
@@ -56,10 +56,10 @@ const RankRecordContainer = styled.div`
 `;
 
 const Rank = styled.div`
-  font-size: clamp(0.8rem, 1.2vw + 0.2rem, 1.4rem);
+  font-size: clamp(0.7rem, 1.2vw + 0.2rem, 1.6rem);
   color: #ffffff;
   text-shadow: none;
-  margin-bottom: clamp(2px, 0.4vh, 4px);
+  margin-bottom: clamp(1px, 0.4vh, 4px);
   letter-spacing: 0.5px;
   font-weight: 600;
   text-transform: uppercase;
@@ -69,23 +69,23 @@ const Record = styled.div`
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: clamp(4px, 0.8vw, 8px);
-  font-size: clamp(0.7rem, 0.9vw + 0.1rem, 1.1rem);
+  gap: clamp(2px, 0.8vw, 8px);
+  font-size: clamp(0.6rem, 0.9vw + 0.1rem, 1.2rem);
   background: rgba(0, 0, 0, 0.2);
-  padding: clamp(3px, 0.4vh, 4px) clamp(6px, 1vw, 8px);
+  padding: clamp(2px, 0.4vh, 4px) clamp(4px, 1vw, 8px);
   border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.05);
 `;
 
 const PlayerName = styled.div`
-  height: clamp(45px, 70%, 60px);
-  width: clamp(120px, 18%, 200px);
+  height: clamp(35px, 65%, 65px);
+  width: clamp(90px, 18%, 200px);
   display: flex;
   justify-content: center;
   align-items: center;
-  font-size: clamp(0.9rem, 1.5vw + 0.2rem, 2rem);
+  font-size: clamp(0.8rem, 1.5vw + 0.2rem, 2.2rem);
   background: rgba(28, 28, 28, 0.95);
-  padding: clamp(6px, 0.8vh, 8px) clamp(10px, 1.5vw, 16px);
+  padding: clamp(4px, 0.8vh, 8px) clamp(8px, 1.5vw, 16px);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   text-shadow: none;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -103,9 +103,9 @@ const Scoreboard = styled.div`
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: clamp(0.5vw, 1vw, 1.5vw);
-  padding: 0 clamp(2vw, 3vw, 4vw);
-  height: clamp(50px, 70%, 60px);
+  gap: clamp(0.3vw, 1vw, 1.5vw);
+  padding: 0 clamp(1.5vw, 3vw, 4vw);
+  height: clamp(40px, 65%, 65px);
   background: rgba(28, 28, 28, 0.95);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -115,7 +115,7 @@ const Scoreboard = styled.div`
 `;
 
 const WinCount = styled.div`
-  font-size: clamp(1rem, 2vw + 0.5rem, 3rem);
+  font-size: clamp(0.9rem, 2vw + 0.5rem, 3.5rem);
   color: ${(props) => (props.isPlayer1 ? "#00F0FF" : "#FF3D3D")};
   text-shadow: none;
   font-weight: 600;
@@ -123,16 +123,16 @@ const WinCount = styled.div`
 `;
 
 const Dash = styled.div`
-  font-size: clamp(1rem, 2vw + 0.5rem, 3rem);
+  font-size: clamp(0.9rem, 2vw + 0.5rem, 3.5rem);
   color: rgba(255, 255, 255, 0.3);
   text-shadow: none;
-  margin: 0 clamp(6px, 1vw, 8px);
+  margin: 0 clamp(4px, 1vw, 8px);
   font-weight: 300;
 `;
 
 const WinCircle = styled.div`
-  width: clamp(8px, 1vh, 12px);
-  height: clamp(8px, 1vh, 12px);
+  width: clamp(6px, 1vh, 12px);
+  height: clamp(6px, 1vh, 12px);
   border-radius: 50%;
   background: #00f0ff;
   box-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
@@ -140,8 +140,8 @@ const WinCircle = styled.div`
 `;
 
 const LossCircle = styled.div`
-  width: clamp(8px, 1vh, 12px);
-  height: clamp(8px, 1vh, 12px);
+  width: clamp(6px, 1vh, 12px);
+  height: clamp(6px, 1vh, 12px);
   border-radius: 50%;
   background: #ff3d3d;
   box-shadow: 0 0 8px rgba(255, 61, 61, 0.4);
