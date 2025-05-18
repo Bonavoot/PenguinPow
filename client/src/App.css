@@ -576,15 +576,11 @@ body {
   letter-spacing: 0.2em;
   text-transform: uppercase;
   animation: announceText 2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-  background: linear-gradient(45deg, #ff4d4d, #ff0000);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 10px rgba(255, 0, 0, 0.5))
-    drop-shadow(0 0 20px rgba(255, 0, 0, 0.3))
-    drop-shadow(0 0 30px rgba(255, 0, 0, 0.2));
-  text-shadow: 0 0 10px rgba(255, 0, 0, 0.5), 0 0 20px rgba(255, 0, 0, 0.3),
-    0 0 30px rgba(255, 0, 0, 0.2);
+  -webkit-text-fill-color: #ffffff;
+  text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000,
+    2px 2px 0 #000, 0 0 10px rgba(255, 255, 255, 0.5),
+    0 0 20px rgba(255, 255, 255, 0.3);
+  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.4));
 }
 
 @keyframes announceText {
@@ -601,9 +597,10 @@ body {
   30% {
     transform: translate(-50%, -50%) scale(1);
   }
-  80% {
+  85% {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1);
+    filter: blur(0);
   }
   100% {
     opacity: 0;
@@ -617,13 +614,12 @@ body {
 .hakkiyoi[style*="color: salmon"] {
   font-size: clamp(1.2rem, 4vw, 3rem);
   animation: winAnnounce 3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-  background: linear-gradient(45deg, var(--win-color), var(--win-color-light));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--win-color);
+  -webkit-text-fill-color: var(--win-color);
   filter: drop-shadow(0 0 15px var(--win-glow))
     drop-shadow(0 0 25px var(--win-glow-light));
-  text-shadow: 0 0 15px var(--win-glow), 0 0 25px var(--win-glow-light);
+  text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000,
+    2px 2px 0 #000, 0 0 15px var(--win-glow), 0 0 25px var(--win-glow-light);
 }
 
 .hakkiyoi[style*="color: aqua"] {
@@ -657,6 +653,7 @@ body {
   90% {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1);
+    filter: blur(0);
   }
   100% {
     opacity: 0;
