@@ -7,7 +7,7 @@ import grabbing from "../assets/grabbing.png";
 import ready from "../assets/ready.png";
 import attack from "../assets/attack.png";
 import dodging from "../assets/dodging.gif";
-import throwing from "../assets/throwing-nonmirror.png";
+
 import hit from "../assets/hit-clean.png";
 import hit2 from "../assets/hit2.png";
 import pumo2 from "../assets/pumo2.png";
@@ -17,6 +17,7 @@ import grabbing2 from "../assets/grabbing2.png";
 import ready2 from "../assets/ready2.png";
 import attack2 from "../assets/attack2.png";
 import dodging2 from "../assets/dodging2.png";
+import throwing from "../assets/throwing.png";
 import throwing2 from "../assets/throwing2.png";
 import salt from "../assets/salt.png";
 import salt2 from "../assets/salt2.png";
@@ -37,6 +38,22 @@ import grabSound from "../sounds/grab-sound.mp3";
 import attackSound from "../sounds/attack-sound.mp3";
 import hitSound from "../sounds/hit-sound.mp3";
 import dodgeSound from "../sounds/dodge-sound.mp3";
+
+import beingGrabbed from "../assets/is-being-grabbed.gif";
+import beingGrabbed2 from "../assets/is-being-grabbed2.gif";
+import throwTech from "../assets/throw-tech.png";
+import throwTech2 from "../assets/throw-tech2.png";
+import saltBasket from "../assets/salt-basket.png";
+import saltBasketEmpty from "../assets/salt-basket-empty.png";
+import recovering from "../assets/recovering.png";
+import recovering2 from "../assets/recovering2.png";
+import throwSound from "../sounds/throw-sound.mp3";
+import winnerSound from "../sounds/winner-sound.wav";
+import hakkiyoiSound from "../sounds/hakkiyoi-sound.mp3";
+import bellSound from "../sounds/bell-sound.mp3";
+import eeshiMusic from "../sounds/eeshi.mp3";
+import parrySound from "../sounds/parry-sound.mp3";
+import saltSound from "../sounds/salt-sound.mp3";
 
 // Utility to preload assets
 const preloadAssets = (sources, type = "image") => {
@@ -85,8 +102,29 @@ const additionalImages = [
   slapAttack2Blue,
   slapAttack1Red,
   slapAttack2Red,
+  beingGrabbed,
+  beingGrabbed2,
+  throwTech,
+  throwTech2,
+  saltBasket,
+  saltBasketEmpty,
+  recovering,
+  recovering2
 ];
-const audioSources = [gameMusic, grabSound, attackSound, hitSound, dodgeSound];
+const audioSources = [
+  gameMusic,
+  grabSound,
+  attackSound,
+  hitSound,
+  dodgeSound,
+  throwSound,
+  winnerSound,
+  hakkiyoiSound,
+  bellSound,
+  eeshiMusic,
+  parrySound,
+  saltSound
+];
 
 preloadAssets(Object.values(fighterImages), "image");
 preloadAssets(additionalImages, "image");

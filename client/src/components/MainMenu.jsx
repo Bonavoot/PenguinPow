@@ -158,59 +158,6 @@ const MenuButton = styled.button`
   }
 `;
 
-const CherryBlossom = styled.div`
-  position: absolute;
-  width: ${(props) => props.size};
-  height: ${(props) => props.size};
-  background-color: rgba(255, 192, 203, 0.7);
-  border-radius: 50%;
-  opacity: 0.7;
-  will-change: transform, opacity;
-  transform-style: preserve-3d;
-  backface-visibility: hidden;
-  animation: fall ${(props) => props.duration} linear infinite;
-  pointer-events: none;
-  top: -10px;
-  left: ${(props) => props.left};
-  animation-delay: ${(props) => props.delay};
-  filter: blur(1px);
-  box-shadow: 0 0 10px rgba(255, 192, 203, 0.3);
-
-  @keyframes fall {
-    0% {
-      transform: translateY(0) rotate(0deg);
-      opacity: 0.7;
-    }
-    100% {
-      transform: translateY(100vh) rotate(360deg);
-      opacity: 0;
-    }
-  }
-`;
-
-const createCherryBlossoms = () => {
-  const numPetals = 50;
-  const petals = [];
-
-  for (let i = 0; i < numPetals; i++) {
-    const left = `${Math.random() * 100}%`;
-    const duration = `${Math.random() * 5 + 5}s`;
-    const delay = `${Math.random() * 2}s`;
-    const size = `${Math.random() * 5 + 5}px`;
-
-    petals.push(
-      <CherryBlossom
-        key={i}
-        left={left}
-        duration={duration}
-        delay={delay}
-        size={size}
-      />
-    );
-  }
-
-  return petals;
-};
 
 const preloadAssets = (sources) => {
   sources.forEach((src) => {
@@ -224,7 +171,6 @@ preloadAssets(preGameImages);
 
 const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
   const [roomName, setRoomName] = useState("");
-  const [cherryBlossoms] = useState(createCherryBlossoms());
   const [showSettings, setShowSettings] = useState(false);
 
   const handleMainMenuPage = () => {
@@ -252,7 +198,7 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
     case "mainMenu":
       currentPageComponent = (
         <MainMenuContainer>
-          {cherryBlossoms}
+         
           <Logo>
             P u m o <PowText>PUMO!</PowText>
           </Logo>
