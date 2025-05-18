@@ -554,23 +554,109 @@ body {
 
 .hakkiyoi {
   position: absolute;
-  text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000,
-    2px 2px 0 #000;
   top: 15%;
   left: 50%;
-  width: 50%; /* Scales with the .lobby */
-  margin: 0 auto; /* Center horizontally */
+  width: 100%;
+  margin: 0 auto;
   transform: translate(-50%, -50%);
   white-space: nowrap;
   max-width: 100%;
-  font-size: clamp(0.5rem, 4vw, 2.5rem);
+  font-size: clamp(1.5rem, 6vw, 4rem);
   color: #fff;
   text-align: center;
-  opacity: 1; /* Start invisible */
-  transition: opacity 2s ease-out; /* Fade out in 2 seconds */
+  opacity: 0;
   pointer-events: none;
   font-family: "Bungee";
-  letter-spacing: 0.1em;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  animation: announceText 2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  background: linear-gradient(45deg, #ff4d4d, #ff0000);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 10px rgba(255, 0, 0, 0.5))
+    drop-shadow(0 0 20px rgba(255, 0, 0, 0.3))
+    drop-shadow(0 0 30px rgba(255, 0, 0, 0.2));
+  text-shadow: 0 0 10px rgba(255, 0, 0, 0.5), 0 0 20px rgba(255, 0, 0, 0.3),
+    0 0 30px rgba(255, 0, 0, 0.2);
+}
+
+@keyframes announceText {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.5);
+    filter: blur(10px);
+  }
+  20% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.2);
+    filter: blur(0);
+  }
+  30% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  80% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.5);
+    filter: blur(5px);
+  }
+}
+
+/* Win announcement styles */
+.hakkiyoi[style*="color: aqua"],
+.hakkiyoi[style*="color: salmon"] {
+  font-size: clamp(1.2rem, 4vw, 3rem);
+  animation: winAnnounce 3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  background: linear-gradient(45deg, var(--win-color), var(--win-color-light));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 15px var(--win-glow))
+    drop-shadow(0 0 25px var(--win-glow-light));
+  text-shadow: 0 0 15px var(--win-glow), 0 0 25px var(--win-glow-light);
+}
+
+.hakkiyoi[style*="color: aqua"] {
+  --win-color: #00ffff;
+  --win-color-light: #80ffff;
+  --win-glow: rgba(0, 255, 255, 0.6);
+  --win-glow-light: rgba(0, 255, 255, 0.3);
+}
+
+.hakkiyoi[style*="color: salmon"] {
+  --win-color: #ff6b6b;
+  --win-color-light: #ff9e9e;
+  --win-glow: rgba(255, 107, 107, 0.6);
+  --win-glow-light: rgba(255, 107, 107, 0.3);
+}
+
+@keyframes winAnnounce {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.5);
+    filter: blur(10px);
+  }
+  20% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.2);
+    filter: blur(0);
+  }
+  30% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  90% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.5);
+    filter: blur(5px);
+  }
 }
 
 .gyoji {

@@ -17,7 +17,7 @@ import pumo2 from "../assets/pumo2.png";
 import pumoWaddle from "../assets/pumo-waddle.gif";
 import pumoWaddle2 from "../assets/pumo-waddle2.gif";
 import crouching from "../assets/crouching.png";
-import crouching2 from "../assets/crouching2.png";
+import crouching2 from "../assets/blocking.gif";
 import grabbing from "../assets/grabbing.png";
 import grabbing2 from "../assets/grabbing2.png";
 import beingGrabbed from "../assets/is-being-grabbed.gif";
