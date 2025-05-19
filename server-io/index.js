@@ -119,10 +119,10 @@ const GRAB_DURATION = 1500; // 1.5 seconds total grab duration
 const GRAB_ATTEMPT_DURATION = 1000; // 1 second for attempt animation
 
 // Map boundary constants
-const MAP_LEFT_BOUNDARY = 178;
-const MAP_RIGHT_BOUNDARY = 865;
-const MAP_RING_OUT_LEFT = 150;
-const MAP_RING_OUT_RIGHT = 890;
+const MAP_LEFT_BOUNDARY = 110;
+const MAP_RIGHT_BOUNDARY = 965;
+const MAP_RING_OUT_LEFT = 100;
+const MAP_RING_OUT_RIGHT = 975;
 
 // Add movement constants
 const MOVEMENT_ACCELERATION = 0.25; // Increased for snappier acceleration
@@ -625,10 +625,6 @@ io.on("connection", (socket) => {
             // Apply gravity to vertical knockback (increased gravity effect)
             player.knockbackVelocity.y -= 0.2 * delta;
 
-            // Apply horizontal knockback with boundary checks
-            const newX =
-              player.x + player.knockbackVelocity.x * delta * speedFactor;
-
             // Calculate effective boundary based on player size
             const sizeOffset =
               player.activePowerUp === POWER_UP_TYPES.SIZE
@@ -639,6 +635,21 @@ io.on("connection", (socket) => {
               MAP_LEFT_BOUNDARY + sizeOffset * SIZE_POWERUP_LEFT_MULTIPLIER;
             const rightBoundary =
               MAP_RIGHT_BOUNDARY - sizeOffset * SIZE_POWERUP_RIGHT_MULTIPLIER;
+
+            // Add slow forward movement during recovery if it's from a missed charged attack
+            if (player.recoveryDirection) {
+              const forwardDirection = player.recoveryDirection === 1 ? -1 : 1;
+              const forwardSpeed = 0.3; // Slow forward movement speed
+              const newX = player.x + forwardDirection * forwardSpeed * delta * speedFactor;
+              
+              // Only update position if within boundaries
+              if (newX >= leftBoundary && newX <= rightBoundary) {
+                player.x = newX;
+              }
+            }
+
+            // Apply horizontal knockback with boundary checks
+            const newX = player.x + player.knockbackVelocity.x * delta * speedFactor;
 
             // Only update position if within boundaries
             if (newX >= leftBoundary && newX <= rightBoundary) {
@@ -661,6 +672,7 @@ io.on("connection", (socket) => {
             if (recoveryElapsed >= player.recoveryDuration) {
               player.isRecovering = false;
               player.knockbackVelocity = { x: 0, y: 0 };
+              player.recoveryDirection = null; // Clear the recovery direction
             }
           }
         });
@@ -1351,10 +1363,11 @@ io.on("connection", (socket) => {
           player.isSlapAttack = false;
           player.attackStartTime = 0;
           player.attackEndTime = 0;
-          player.chargingFacingDirection = null;
-          player.isChargingAttack = false;
-          player.chargeStartTime = 0;
-          player.chargeAttackPower = 0;
+          // Don't reset charging states for slap attacks
+          // player.chargingFacingDirection = null;
+          // player.isChargingAttack = false;
+          // player.chargeStartTime = 0;
+          // player.chargeAttackPower = 0;
         }, remainingAttackTime);
       }
     }
@@ -1409,7 +1422,7 @@ io.on("connection", (socket) => {
       // Calculate knockback multiplier based on charge percentage
       let finalKnockbackMultiplier;
       if (isSlapAttack) {
-        finalKnockbackMultiplier = 0.5 + (chargePercentage / 100) * 1.1;
+        finalKnockbackMultiplier = 0.5; // Fixed multiplier for slaps, no charge scaling
       } else {
         // Reduced knockback scaling for charged attacks
         finalKnockbackMultiplier = 0.5 + (chargePercentage / 100) * 1.2; // Reduced from 2.0 to 1.2
@@ -1426,7 +1439,7 @@ io.on("connection", (socket) => {
 
       if (isSlapAttack) {
         otherPlayer.knockbackVelocity.x =
-          6 * knockbackDirection * finalKnockbackMultiplier;
+          6 * knockbackDirection * finalKnockbackMultiplier; // Fixed base knockback for slaps
       } else {
         // Reduced base knockback for charged attacks
         otherPlayer.knockbackVelocity.x =
@@ -1527,6 +1540,8 @@ io.on("connection", (socket) => {
           shift: false,
           e: false,
           f: false,
+          mouse1: false,
+          mouse2: false,
         },
         wins: [],
         bufferedAction: null, // Add buffer for pending actions
@@ -1589,6 +1604,8 @@ io.on("connection", (socket) => {
           shift: false,
           e: false,
           f: false,
+          mouse1: false,
+          mouse2: false,
         },
         wins: [],
         bufferedAction: null, // Add buffer for pending actions
@@ -1772,75 +1789,22 @@ io.on("connection", (socket) => {
             player.pendingChargeAttack &&
             player.spacebarReleasedDuringDodge
           ) {
-            const chargeDuration =
-              Date.now() - player.pendingChargeAttack.startTime;
             const chargePercentage = player.pendingChargeAttack.power;
 
             // Determine if it's a slap or charged attack
-            if (chargePercentage < 25) {
+            if (player.keys.mouse1) {
               player.isSlapAttack = true;
               player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
-              player.attackEndTime = Date.now() + 250; // Changed from 100ms to 250ms for slap attacks
+              player.attackEndTime = Date.now() + 250;
+              player.isAttacking = true;
+              player.attackStartTime = Date.now();
+              player.attackType = "slap";
             } else {
-              player.isSlapAttack = false;
-              // Calculate attack duration based on charge percentage
-              let attackDuration;
-              if (chargePercentage <= 25) {
-                attackDuration = 500;
-              } else if (chargePercentage <= 75) {
-                attackDuration = 500;
-              } else {
-                const extraDuration = ((chargePercentage - 50) / 50) * 1000;
-                attackDuration = 1000 + extraDuration;
-              }
-              player.attackEndTime = Date.now() + attackDuration;
-            }
-
-            // Set attack state
-            player.isAttacking = true;
-            player.attackStartTime = Date.now();
-            player.chargeAttackPower = player.pendingChargeAttack.power;
-
-            // Lock facing direction during attack
-            player.chargingFacingDirection = player.facing;
-            if (player.chargingFacingDirection !== null) {
-              player.facing = player.chargingFacingDirection;
+              executeChargedAttack(player, chargePercentage);
             }
 
             // Reset charging state
             player.isChargingAttack = false;
-            player.pendingChargeAttack = null;
-            player.spacebarReleasedDuringDodge = false;
-
-            setTimeout(() => {
-              player.isAttacking = false;
-              player.isSlapAttack = false;
-              player.chargingFacingDirection = null;
-
-              // Check for buffered actions after attack ends
-              if (
-                player.bufferedAction &&
-                Date.now() < player.bufferExpiryTime
-              ) {
-                const action = player.bufferedAction;
-                player.bufferedAction = null;
-                player.bufferExpiryTime = 0;
-
-                // Execute the buffered action
-                if (action.type === "dodge") {
-                  player.isDodging = true;
-                  player.dodgeStartTime = Date.now();
-                  player.dodgeEndTime = Date.now() + 400;
-                  player.stamina -= 50;
-                  player.dodgeDirection = action.direction;
-                  // Add these lines to set the dodge start position
-                  player.dodgeStartX = player.x;
-                  player.dodgeStartY = player.y;
-                }
-              }
-            }, player.attackEndTime - Date.now());
-          } else {
-            // If spacebar wasn't released during dodge, just clear the pending attack
             player.pendingChargeAttack = null;
             player.spacebarReleasedDuringDodge = false;
           }
@@ -1901,8 +1865,80 @@ io.on("connection", (socket) => {
 
       // Start charging attack
       if (
-        player.keys.mouse1 &&
+        player.keys.mouse2 &&
         !player.isChargingAttack && // Only check these conditions when starting
+        !player.isAttacking &&
+        !player.isJumping &&
+        !player.isDodging &&
+        !player.isThrowing &&
+        !player.isBeingThrown &&
+        !player.isGrabbing &&
+        !player.isBeingGrabbed &&
+        !player.isHit &&
+        !player.isRecovering // Add recovery check
+      ) {
+        // Start charging
+        player.isChargingAttack = true;
+        player.chargeStartTime = Date.now();
+        player.chargeAttackPower = 1;
+        player.spacebarReleasedDuringDodge = false;
+        player.attackType = "charged"; // Set attack type immediately when charging starts
+      }
+      // For continuing a charge
+      else if (
+        player.keys.mouse2 &&
+        (player.isChargingAttack || player.isDodging) &&
+        !player.isHit &&
+        !player.isRecovering // Add recovery check
+      ) {
+        // If we're dodging and not already charging, start charging
+        if (player.isDodging && !player.isChargingAttack) {
+          player.isChargingAttack = true;
+          player.chargeStartTime = Date.now();
+          player.chargeAttackPower = 1;
+          player.attackType = "charged";
+        }
+        // Calculate charge power (0-100%)
+        const chargeDuration = Date.now() - player.chargeStartTime;
+        player.chargeAttackPower = Math.min((chargeDuration / 1000) * 100, 100);
+
+        // Lock facing direction while charging
+        if (player.isThrowing || player.throwingFacingDirection !== null) {
+          player.chargingFacingDirection = player.throwingFacingDirection;
+        } else {
+          player.chargingFacingDirection = player.facing;
+        }
+
+        if (player.chargingFacingDirection !== null) {
+          player.facing = player.chargingFacingDirection;
+        }
+      }
+
+      // Release charged attack when mouse2 is released
+      else if (
+        !player.keys.mouse2 &&
+        player.isChargingAttack &&
+        !player.isGrabbing &&
+        !player.isBeingGrabbed &&
+        !player.isThrowing &&
+        !player.isBeingThrown
+      ) {
+        // If dodging, store the charge for later
+        if (player.isDodging) {
+          player.pendingChargeAttack = {
+            power: player.chargeAttackPower,
+            startTime: player.chargeStartTime,
+            type: "charged",
+          };
+          player.spacebarReleasedDuringDodge = true;
+        } else {
+          executeChargedAttack(player, player.chargeAttackPower);
+        }
+      }
+
+      // Handle slap attacks with mouse1
+      if (
+        player.keys.mouse1 &&
         !player.isAttacking &&
         !player.isJumping &&
         !player.isDodging &&
@@ -1916,7 +1952,7 @@ io.on("connection", (socket) => {
         if (!player.slapBuffer) {
           player.slapBuffer = {
             lastSlapTime: 0,
-            slapCooldown: 250, // 250ms between slaps
+            slapCooldown: 250,
             pendingSlaps: 0,
           };
         }
@@ -1931,130 +1967,8 @@ io.on("connection", (socket) => {
           return;
         }
 
-        // Start charging if we're not in slap cooldown
-        player.isChargingAttack = true;
-        player.chargeStartTime = Date.now();
-        player.chargeAttackPower = 1;
-        player.spacebarReleasedDuringDodge = false;
-        player.attackType = "charged"; // Set attack type immediately when charging starts
-      }
-      // For continuing a charge
-      else if (
-        player.keys.mouse1 &&
-        (player.isChargingAttack || player.isDodging) &&
-        !player.isHit
-      ) {
-        // If we're dodging and not already charging, start charging
-        if (player.isDodging && !player.isChargingAttack) {
-          player.isChargingAttack = true;
-          player.chargeStartTime = Date.now();
-          player.chargeAttackPower = 1;
-          player.attackType = "charged";
-        }
-        // Calculate charge power (0-100%)
-        const chargeDuration = Date.now() - player.chargeStartTime;
-        player.chargeAttackPower = Math.min((chargeDuration / 1000) * 100, 100); // Changed from 1200 to 1000 for faster charge
-
-        // Lock facing direction while charging
-        if (player.isThrowing || player.throwingFacingDirection !== null) {
-          player.chargingFacingDirection = player.throwingFacingDirection;
-        } else {
-          player.chargingFacingDirection = player.facing;
-        }
-
-        if (player.chargingFacingDirection !== null) {
-          player.facing = player.chargingFacingDirection;
-        }
-      }
-
-      // Release attack when mouse1 is released
-      else if (
-        !player.keys.mouse1 &&
-        player.isChargingAttack &&
-        !player.isGrabbing &&
-        !player.isBeingGrabbed &&
-        !player.isThrowing &&
-        !player.isBeingThrown
-      ) {
-        // If dodging, store the charge for later
-        if (player.isDodging) {
-          player.pendingChargeAttack = {
-            power: player.chargeAttackPower,
-            startTime: player.chargeStartTime,
-            type: "charged", // Store the attack type
-          };
-          player.spacebarReleasedDuringDodge = true;
-        } else {
-          const chargeDuration = Date.now() - player.chargeStartTime;
-          const chargePercentage = player.chargeAttackPower;
-
-          // Determine if it's a slap or charged attack based on charge percentage
-          if (chargePercentage < 25) {
-            executeSlapAttack(player);
-          } else {
-            player.isSlapAttack = false;
-            // Calculate attack duration based on charge percentage
-            let attackDuration;
-            if (chargePercentage <= 25) {
-              attackDuration = 500;
-            } else if (chargePercentage <= 75) {
-              attackDuration = 500;
-            } else {
-              const extraDuration = ((chargePercentage - 50) / 50) * 1000;
-              attackDuration = 1000 + extraDuration;
-            }
-            player.attackEndTime = Date.now() + attackDuration;
-            player.attackType = "charged";
-            // Store the charge power for knockback calculation
-            player.chargeAttackPower = chargePercentage;
-          }
-
-          // Set attack state
-          player.isAttacking = true;
-          player.attackStartTime = Date.now();
-
-          // Lock facing direction during attack
-          player.chargingFacingDirection = player.facing;
-          if (player.chargingFacingDirection !== null) {
-            player.facing = player.chargingFacingDirection;
-          }
-
-          // Reset charging state but keep the charge power for knockback
-          player.isChargingAttack = false;
-          player.chargeStartTime = 0;
-
-          setTimeout(() => {
-            player.isAttacking = false;
-            player.isSlapAttack = false;
-            player.chargingFacingDirection = null;
-            player.attackType = null; // Clear attack type when attack ends
-            player.chargeAttackPower = 0; // Reset charge power after attack ends
-
-            // Check for buffered actions after attack ends
-            if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
-              const action = player.bufferedAction;
-              player.bufferedAction = null;
-              player.bufferExpiryTime = 0;
-
-              // Execute the buffered action
-              if (action.type === "dodge") {
-                player.isDodging = true;
-                player.dodgeStartTime = Date.now();
-                player.dodgeEndTime = Date.now() + 400;
-                player.stamina -= 50;
-                player.dodgeDirection = action.direction;
-                player.dodgeStartX = player.x;
-                player.dodgeStartY = player.y;
-              }
-            }
-
-            // Check for pending slaps after attack ends
-            if (player.slapBuffer && player.slapBuffer.pendingSlaps > 0) {
-              player.slapBuffer.pendingSlaps--;
-              executeSlapAttack(player);
-            }
-          }, player.attackEndTime - Date.now());
-        }
+        // Execute slap attack
+        executeSlapAttack(player);
       }
 
       function isOpponentCloseEnoughForGrab(player, opponent) {
@@ -2357,7 +2271,7 @@ function handleWinCondition(room, loser, winner) {
 function executeSlapAttack(player) {
   player.isSlapAttack = true;
   player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
-  player.attackEndTime = Date.now() + 180; // Reduced from 250ms to 180ms for faster slaps
+  player.attackEndTime = Date.now() + 180;
   player.isAttacking = true;
   player.attackStartTime = Date.now();
   player.attackType = "slap";
@@ -2366,6 +2280,13 @@ function executeSlapAttack(player) {
   if (!player.isAttacking || !player.isSlapAttack) {
     player.slapBuffer.lastSlapTime = Date.now();
   }
+
+  // Set a timeout to reset the attack state
+  setTimeout(() => {
+    player.isAttacking = false;
+    player.isSlapAttack = false;
+    player.attackType = null;
+  }, 180);
 }
 
 function cleanupRoom(room) {
@@ -2404,3 +2325,79 @@ io.on("connection", (socket) => {
     }
   });
 });
+
+// Add this new function near the other helper functions
+function executeChargedAttack(player, chargePercentage) {
+  player.isSlapAttack = false;
+  
+  // Calculate attack duration based on charge percentage
+  let attackDuration;
+  if (chargePercentage <= 25) {
+    attackDuration = 300; // Reduced from 500 to 300 for low charge
+  } else if (chargePercentage <= 75) {
+    attackDuration = 500;
+  } else {
+    const extraDuration = ((chargePercentage - 50) / 50) * 1000;
+    attackDuration = 1000 + extraDuration;
+  }
+  
+  player.attackEndTime = Date.now() + attackDuration;
+  player.attackType = "charged";
+  player.chargeAttackPower = chargePercentage;
+
+  // Set attack state
+  player.isAttacking = true;
+  player.attackStartTime = Date.now();
+
+  // Lock facing direction during attack
+  player.chargingFacingDirection = player.facing;
+  if (player.chargingFacingDirection !== null) {
+    player.facing = player.chargingFacingDirection;
+  }
+
+  // Reset charging state but keep the charge power for knockback
+  player.isChargingAttack = false;
+  player.chargeStartTime = 0;
+
+  setTimeout(() => {
+    const wasChargedAttack = player.attackType === "charged";
+    const attackDirection = player.facing;
+    player.isAttacking = false;
+    player.isSlapAttack = false;
+    player.chargingFacingDirection = null;
+    player.attackType = null;
+    player.chargeAttackPower = 0;
+
+    // Find the current room and opponent
+    const currentRoom = rooms.find((room) => room.players.some((p) => p.id === player.id));
+    if (currentRoom) {
+      const opponent = currentRoom.players.find((p) => p.id !== player.id);
+      
+      // Add recovery state for missed charged attacks
+      if (wasChargedAttack && opponent && !opponent.isHit) {
+        player.isRecovering = true;
+        player.recoveryStartTime = Date.now();
+        player.recoveryDuration = 250;
+        player.recoveryDirection = attackDirection;
+      }
+    }
+
+    // Check for buffered actions after attack ends
+    if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
+      const action = player.bufferedAction;
+      player.bufferedAction = null;
+      player.bufferExpiryTime = 0;
+
+      // Execute the buffered action
+      if (action.type === "dodge") {
+        player.isDodging = true;
+        player.dodgeStartTime = Date.now();
+        player.dodgeEndTime = Date.now() + 400;
+        player.stamina -= 50;
+        player.dodgeDirection = action.direction;
+        player.dodgeStartX = player.x;
+        player.dodgeStartY = player.y;
+      }
+    }
+  }, player.attackEndTime - Date.now());
+}

@@ -36,6 +36,7 @@ const Game = ({ rooms, roomName, localId }) => {
       e: false,
       f: false,
       mouse1: false,
+      mouse2: false,
     };
 
     const handleKeyDown = (e) => {
@@ -57,6 +58,10 @@ const Game = ({ rooms, roomName, localId }) => {
         e.preventDefault();
         keyState.mouse1 = true;
         socket.emit("fighter_action", { id: socket.id, keys: keyState });
+      } else if (e.button === 2) {
+        e.preventDefault();
+        keyState.mouse2 = true;
+        socket.emit("fighter_action", { id: socket.id, keys: keyState });
       }
     };
 
@@ -64,6 +69,10 @@ const Game = ({ rooms, roomName, localId }) => {
       if (e.button === 0) {
         e.preventDefault();
         keyState.mouse1 = false;
+        socket.emit("fighter_action", { id: socket.id, keys: keyState });
+      } else if (e.button === 2) {
+        e.preventDefault();
+        keyState.mouse2 = false;
         socket.emit("fighter_action", { id: socket.id, keys: keyState });
       }
     };

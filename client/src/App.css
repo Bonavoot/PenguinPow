@@ -270,8 +270,8 @@ body {
   overflow: hidden;
   background-image: url(./assets/game-map-1.png);
   background-repeat: no-repeat;
-  background-size: 100% 100%;
-  background-position: center;
+  background-size: 110% 115%;
+  background-position: 10% 45%;
   z-index: 99;
 }
 
