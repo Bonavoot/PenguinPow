@@ -3,14 +3,11 @@
   flex-direction: column;
   position: relative;
   width: 100%;
-  max-width: 1280px;
-  height: 720px;
+  height: 100vh;
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  border-radius: 16px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-  overflow: hidden;
   font-family: "Inter", sans-serif;
   color: #fff;
+  overflow: hidden;
 }
 
 .lobby-background {
@@ -20,14 +17,14 @@
   width: 100%;
   height: 100%;
   background: url("/assets/lobby-bg.jpg") center/cover;
-  opacity: 0.1;
+  opacity: 0.05;
   z-index: 0;
 }
 
 .lobby-header {
-  padding: 1.5rem 2rem;
-  background: rgba(26, 26, 46, 0.95);
-  border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+  padding: 1rem 2rem;
+  background: rgba(26, 26, 46, 0.8);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   position: relative;
   z-index: 1;
   display: flex;
@@ -40,48 +37,46 @@
 }
 
 .lobby-title {
-  font-size: 2.5rem;
+  font-size: 2rem;
   color: #fff;
   margin: 0;
-  font-weight: 800;
-  letter-spacing: 2px;
+  font-weight: 700;
+  letter-spacing: 1px;
   text-transform: uppercase;
   background: linear-gradient(45deg, #ff6b6b, #ffd93d);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .game-subtitle {
-  font-size: 1rem;
+  font-size: 0.9rem;
   color: #a0a0a0;
-  margin-top: 0.5rem;
-  letter-spacing: 1px;
+  margin-top: 0.25rem;
+  letter-spacing: 0.5px;
 }
 
 .room-badge {
   background: rgba(255, 255, 255, 0.1);
-  padding: 0.75rem 1.5rem;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(10px);
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .room-label {
   color: #a0a0a0;
-  font-size: 0.8rem;
+  font-size: 0.7rem;
   font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
   display: block;
   margin-bottom: 0.25rem;
 }
 
 .room-name {
   color: #fff;
-  font-size: 1.2rem;
+  font-size: 1rem;
   font-weight: 600;
-  letter-spacing: 2px;
+  letter-spacing: 1px;
 }
 
 .lobby-content {
@@ -92,6 +87,9 @@
   gap: 2rem;
   position: relative;
   z-index: 1;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .arena-container {
@@ -99,8 +97,8 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 400px;
-  margin: 2rem 0;
+  height: 60vh;
+  margin: 1rem 0;
 }
 
 .arena-background {
@@ -111,20 +109,21 @@
   height: 100%;
   background: radial-gradient(
     circle at center,
-    rgba(255, 255, 255, 0.1) 0%,
-    rgba(0, 0, 0, 0.2) 100%
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(0, 0, 0, 0.1) 100%
   );
   border-radius: 50%;
-  transform: scale(0.8);
+  transform: scale(0.9);
 }
 
 .players-arena {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
+  gap: 4rem;
   width: 100%;
   max-width: 1000px;
-  padding: 2rem;
+  padding: 1rem;
   position: relative;
 }
 
@@ -133,7 +132,6 @@
   border-radius: 16px;
   padding: 2rem;
   border: 2px solid rgba(255, 255, 255, 0.1);
-  transition: all 0.3s ease;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -146,17 +144,11 @@
 }
 
 .player-left {
-  transform: scaleX(1);
-}
-
-.player-right {
   transform: scaleX(-1);
 }
 
-.player-slot:hover {
-  transform: translateY(-5px) scaleX(var(--scale));
-  border-color: rgba(255, 255, 255, 0.2);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+.player-right {
+  transform: scaleX(1);
 }
 
 .player-card {
@@ -181,33 +173,31 @@
   position: absolute;
   top: 1rem;
   left: 0;
+  text-align: center;
+}
+
+.player-left .player-info {
+  transform: scaleX(-1);
+}
+
+.player-right .player-info {
+  transform: scaleX(1);
 }
 
 .player-status {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
+  display: none;
 }
 
 .status-indicator {
-  font-size: 0.8rem;
-  padding: 0.25rem 0.75rem;
-  border-radius: 20px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  display: none;
 }
 
 .status-indicator.ready {
-  background: rgba(76, 175, 80, 0.2);
-  color: #4caf50;
-  border: 1px solid rgba(76, 175, 80, 0.3);
+  display: none;
 }
 
 .status-indicator.waiting {
-  background: rgba(255, 152, 0, 0.2);
-  color: #ff9800;
-  border: 1px solid rgba(255, 152, 0, 0.3);
+  display: none;
 }
 
 .player-name {
@@ -215,6 +205,9 @@
   color: #fff;
   font-weight: 600;
   letter-spacing: 0.5px;
+  text-transform: uppercase;
+  width: 100%;
+  text-align: center;
 }
 
 .player-avatar {
@@ -228,48 +221,36 @@
   align-items: flex-end;
   overflow: hidden;
   z-index: 1;
-  padding-bottom: 1rem;
+  padding-bottom: 0.75rem;
 }
 
 .player-avatar img {
-  height: 280px;
+  height: 260px;
   width: auto;
   object-fit: contain;
   transform-origin: bottom center;
   transition: transform 0.3s ease;
-  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3));
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
 }
 
 .versus-badge {
   position: absolute;
-  font-size: 4rem;
-  font-weight: 800;
-  color: rgba(255, 255, 255, 0.15);
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  font-size: 3rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.1);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   z-index: 2;
   animation: pulse 2s infinite ease-in-out;
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 0.15;
-  }
-  50% {
-    transform: scale(1.1);
-    opacity: 0.25;
-  }
 }
 
 .waiting-container {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 2rem;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 12px;
-  margin-top: 2rem;
+  padding: 1.5rem;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+  margin-top: 1rem;
 }
 
 .waiting-message {
@@ -278,10 +259,10 @@
 }
 
 .waiting-message h2 {
-  font-size: 1.5rem;
-  margin-bottom: 1rem;
-  font-weight: 600;
-  letter-spacing: 1px;
+  font-size: 1.25rem;
+  margin-bottom: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.5px;
   color: #fff;
 }
 
@@ -292,20 +273,20 @@
 }
 
 .loading-ellipsis .dot {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   background: #ff6b6b;
   border-radius: 50%;
   animation: dotPulse 1.4s infinite ease-in-out;
 }
 
 .lobby-controls {
-  padding: 1.5rem 2rem;
+  padding: 1rem 2rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: rgba(26, 26, 46, 0.95);
-  border-top: 2px solid rgba(255, 255, 255, 0.1);
+  background: rgba(26, 26, 46, 0.8);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
   position: relative;
   z-index: 1;
 }
@@ -313,10 +294,10 @@
 .exit-btn {
   background: rgba(255, 255, 255, 0.1);
   color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  padding: 0.75rem 1.5rem;
-  font-size: 1rem;
-  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  border-radius: 6px;
   cursor: pointer;
   font-weight: 500;
   transition: all 0.2s ease;
@@ -331,65 +312,77 @@
 }
 
 .btn-icon {
-  font-size: 1.2rem;
+  font-size: 1rem;
 }
 
 .ready {
-  width: 12%;
-  min-width: 120px;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  align-self: center;
+  align-items: center;
 }
 
 .ready-btn {
-  font-size: 1rem;
+  font-size: 0.9rem;
   background: linear-gradient(45deg, #4caf50, #45a049);
-  padding: 0.75rem 1.2rem;
-  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
   border: none;
   color: white;
   cursor: pointer;
-  font-weight: 600;
+  font-weight: 500;
   transition: all 0.2s ease;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
+  min-width: 120px;
 }
 
 .ready-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.2);
 }
 
 #cancel-btn {
-  font-size: 1rem;
+  font-size: 0.9rem;
   background: linear-gradient(45deg, #f44336, #e53935);
-  padding: 0.75rem 1.2rem;
-  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
   border: none;
   color: white;
   cursor: pointer;
-  font-weight: 600;
+  font-weight: 500;
   transition: all 0.2s ease;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
+  min-width: 120px;
 }
 
 #cancel-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(244, 67, 54, 0.3);
+  box-shadow: 0 4px 12px rgba(244, 67, 54, 0.2);
 }
 
 .ready-count {
   color: #fff;
   text-align: center;
-  font-size: 0.9rem;
-  padding: 0.75rem;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 8px;
+  font-size: 0.8rem;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
   font-weight: 500;
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.1;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.15;
+  }
 }
 
 @keyframes dotPulse {
@@ -406,38 +399,45 @@
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
-  .lobby-container {
-    height: 100vh;
-    border-radius: 0;
-  }
-
   .lobby-header {
-    padding: 1rem;
+    padding: 0.75rem 1rem;
   }
 
   .lobby-title {
-    font-size: 2rem;
+    font-size: 1.5rem;
   }
 
-  .players-arena {
-    gap: 1rem;
+  .lobby-content {
     padding: 1rem;
   }
 
+  .players-arena {
+    gap: 2rem;
+    padding: 0.5rem;
+  }
+
   .player-slot {
-    height: 240px;
-    width: 240px;
+    height: 220px;
+    width: 220px;
+    padding: 1rem;
   }
 
   .player-avatar img {
-    height: 220px;
-  }
-
-  .player-name {
-    font-size: 1rem;
+    height: 200px;
   }
 
   .versus-badge {
     font-size: 2rem;
+  }
+
+  .lobby-controls {
+    padding: 0.75rem 1rem;
+  }
+
+  .exit-btn,
+  .ready-btn,
+  #cancel-btn {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8rem;
   }
 }
