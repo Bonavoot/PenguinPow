@@ -12,7 +12,7 @@ const SmokeContainer = styled.div.attrs((props) => {
     style: {
       position: "absolute",
       left: `calc(${(props.$x / 1280) * 100}% + ${offset}%)`,
-      bottom: `calc(${(props.$y / 720) * 100}% - 4%) `,
+      bottom: `calc(${(props.$y / 720) * 100}% - 6%) `,
       pointerEvents: "none",
       width: "clamp(192px, 33vw, 426px)",
       height: "auto",

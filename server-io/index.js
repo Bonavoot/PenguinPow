@@ -91,7 +91,7 @@ const GROUND_LEVEL = 215;
 const HITBOX_DISTANCE_VALUE = 85; // Reduced from 90 by 20%
 const SLAP_HITBOX_DISTANCE_VALUE = 88; // Reduced from 110 by 20%
 const SLAP_PARRY_WINDOW = 150; // 150ms window for parry
-const PARRY_KNOCKBACK_VELOCITY = 1.5; // Reduced knockback for parried attacks
+const SLAP_PARRY_KNOCKBACK_VELOCITY = 1.5; // Reduced knockback for parried attacks
 const THROW_RANGE = 184; // Reduced from 230 by 20%
 const GRAB_RANGE = 184; // Reduced from 230 by 20%
 const GRAB_PUSH_SPEED = 0.3; // Increased from 0.2 for more substantial movement
@@ -132,6 +132,9 @@ const MOVEMENT_MOMENTUM = 0.85; // New constant for movement momentum
 const MOVEMENT_FRICTION = 0.95; // Reduced friction for less floaty feel
 const MOVEMENT_TURN_SPEED = 0.4; // Increased for faster direction changes
 
+const RAW_PARRY_KNOCKBACK = 4; // Fixed knockback distance for raw parries
+const RAW_PARRY_STUN_DURATION = 1000; // 1 second stun duration
+
 function resetRoomAndPlayers(room) {
   // Reset room state
   room.gameStart = false;
@@ -160,7 +163,8 @@ function resetRoomAndPlayers(room) {
     player.isAttacking = false;
     player.isStrafing = false;
     player.isDiving = false;
-    player.isCrouching = false;
+    player.isRawParrying = false;
+    player.isRawParryStun = false;
     player.isDodging = false;
     player.isReady = false;
     player.isHit = false;
@@ -583,10 +587,13 @@ io.on("connection", (socket) => {
         if (
           player1.isReady &&
           player2.isReady &&
-          !player1.isCrouching &&
+          !player1.isRawParrying &&
+          !player1.isRawParryStun &&
           !player1.isStrafing &&
           !player1.isJumping &&
           !player1.isAttacking &&
+          !player2.isRawParrying &&
+          !player2.isRawParryStun &&
           !player2.isCrouching &&
           !player2.isStrafing &&
           !player2.isJumping &&
@@ -640,8 +647,10 @@ io.on("connection", (socket) => {
             if (player.recoveryDirection) {
               const forwardDirection = player.recoveryDirection === 1 ? -1 : 1;
               const forwardSpeed = 0.3; // Slow forward movement speed
-              const newX = player.x + forwardDirection * forwardSpeed * delta * speedFactor;
-              
+              const newX =
+                player.x +
+                forwardDirection * forwardSpeed * delta * speedFactor;
+
               // Only update position if within boundaries
               if (newX >= leftBoundary && newX <= rightBoundary) {
                 player.x = newX;
@@ -649,7 +658,8 @@ io.on("connection", (socket) => {
             }
 
             // Apply horizontal knockback with boundary checks
-            const newX = player.x + player.knockbackVelocity.x * delta * speedFactor;
+            const newX =
+              player.x + player.knockbackVelocity.x * delta * speedFactor;
 
             // Only update position if within boundaries
             if (newX >= leftBoundary && newX <= rightBoundary) {
@@ -1014,7 +1024,8 @@ io.on("connection", (socket) => {
             !player.isDodging &&
             !player.isThrowing &&
             !player.isGrabbing &&
-            !player.isRecovering
+            !player.isRecovering &&
+            !player.isRawParryStun
           ) {
             // Immediate direction change
             if (player.movementVelocity < 0) {
@@ -1035,7 +1046,8 @@ io.on("connection", (socket) => {
             !player.isDodging &&
             !player.isThrowing &&
             !player.isGrabbing &&
-            !player.isRecovering
+            !player.isRecovering &&
+            !player.isRawParryStun
           ) {
             // Immediate direction change
             if (player.movementVelocity > 0) {
@@ -1127,12 +1139,12 @@ io.on("connection", (socket) => {
           !player.isGrabbing &&
           !player.isBeingGrabbed
         ) {
-          player.isCrouching = true;
+          player.isRawParrying = true;
           player.isReady = false;
         }
 
         if (!player.keys.s) {
-          player.isCrouching = false;
+          player.isRawParrying = false;
         }
 
         if (player.isAttacking && !player.isSlapAttack) {
@@ -1307,17 +1319,18 @@ io.on("connection", (socket) => {
     player.isAttacking = false;
     player.isSlapAttack = false;
     player.isHit = true;
-    player.isParrying = true;
+    player.isSlapParrying = true;
 
     // Apply reduced knockback
-    player.knockbackVelocity.x = PARRY_KNOCKBACK_VELOCITY * knockbackDirection;
+    player.knockbackVelocity.x =
+      SLAP_PARRY_KNOCKBACK_VELOCITY * knockbackDirection;
     player.knockbackVelocity.y = 0;
 
     // Set a brief recovery period
     setTimeout(() => {
       player.isHit = false;
       player.isAlreadyHit = false;
-      player.isParrying = false;
+      player.isSlapParrying = false;
     }, 200);
   }
 
@@ -1373,41 +1386,41 @@ io.on("connection", (socket) => {
     }
 
     // Check if the other player is blocking (crouching)
-    if (otherPlayer.isCrouching) {
-      // Apply knockback to the attacking player instead
-      if (isSlapAttack) {
-        const knockbackDirection = player.facing === 1 ? 1 : -1;
-        player.knockbackVelocity.x =
-          0.4375 * knockbackDirection * chargePercentage;
-        player.knockbackVelocity.y = 0;
-        player.isHit = true;
+    if (otherPlayer.isRawParrying) {
+      // Apply fixed knockback to the attacking player
+      const knockbackDirection = player.facing === 1 ? 1 : -1;
+      player.knockbackVelocity.x = RAW_PARRY_KNOCKBACK * knockbackDirection;
+      player.knockbackVelocity.y = 0;
+      player.isHit = true;
+      player.isRawParryStun = true;
 
-        // Emit screen shake for blocked slap
-        if (currentRoom) {
-          io.in(currentRoom.id).emit("screen_shake", {
-            intensity: 0.3,
-            duration: 200,
-          });
-        }
-      } else {
-        const knockbackDirection = player.facing === 1 ? 1 : -1;
-        player.knockbackVelocity.x =
-          0.1 * knockbackDirection * chargePercentage;
-        player.knockbackVelocity.y = 0;
-        player.isHit = true;
+      // Clear all attack and recovery states
+      player.isAttacking = false;
+      player.isChargingAttack = false;
+      player.chargeStartTime = 0;
+      player.chargeAttackPower = 0;
+      player.chargingFacingDirection = null;
+      player.isRecovering = false;
+      player.recoveryStartTime = 0;
+      player.recoveryDuration = 0;
+      player.recoveryDirection = null;
+      player.attackType = null;
+      player.pendingChargeAttack = null;
+      player.spacebarReleasedDuringDodge = false;
 
-        // Emit screen shake for blocked charged attack
-        if (currentRoom) {
-          io.in(currentRoom.id).emit("screen_shake", {
-            intensity: 0.5,
-            duration: 300,
-          });
-        }
+      // Emit screen shake for raw parry
+      if (currentRoom) {
+        io.in(currentRoom.id).emit("screen_shake", {
+          intensity: 0.7,
+          duration: 300,
+        });
       }
 
+      // Reset stun after duration
       setTimeout(() => {
         player.isHit = false;
-      }, 300);
+        player.isRawParryStun = false;
+      }, RAW_PARRY_STUN_DURATION);
     } else {
       // Apply the knockback to the defending player
       otherPlayer.isHit = true;
@@ -1512,13 +1525,13 @@ io.on("connection", (socket) => {
         grabbedOpponent: null,
         isThrowTeching: false,
         throwTechCooldown: false,
-        isParrying: false,
+        isSlapParrying: false,
         lastThrowAttemptTime: 0,
         lastGrabAttemptTime: 0,
         isStrafing: false,
         isDiving: false,
-        isCrouching: false,
-        isDodging: false,
+        isRawParrying: false,
+        isRawParryStun: false,
         dodgeDirection: false,
         dodgeEndTime: 0,
         isReady: false,
@@ -1576,13 +1589,13 @@ io.on("connection", (socket) => {
         grabbedOpponent: null,
         isThrowTeching: false,
         throwTechCooldown: false,
-        isParrying: false,
+        isSlapParrying: false,
         lastThrowAttemptTime: 0,
         lastGrabAttemptTime: 0,
         isStrafing: false,
         isDiving: false,
-        isCrouching: false,
-        isDodging: false,
+        isRawParrying: false,
+        isRawParryStun: false,
         dodgeDirection: null,
         dodgeEndTime: 0,
         isReady: false,
@@ -1742,7 +1755,8 @@ io.on("connection", (socket) => {
         !player.isBeingThrown &&
         !player.isGrabbing &&
         !player.isBeingGrabbed &&
-        player.stamina >= 50
+        player.stamina >= 50 &&
+        !player.isRawParryStun
       ) {
         console.log("Executing immediate dodge");
         player.isDodging = true;
@@ -1875,7 +1889,8 @@ io.on("connection", (socket) => {
         !player.isGrabbing &&
         !player.isBeingGrabbed &&
         !player.isHit &&
-        !player.isRecovering // Add recovery check
+        !player.isRecovering && // Add recovery check
+        !player.isRawParryStun
       ) {
         // Start charging
         player.isChargingAttack = true;
@@ -1889,7 +1904,8 @@ io.on("connection", (socket) => {
         player.keys.mouse2 &&
         (player.isChargingAttack || player.isDodging) &&
         !player.isHit &&
-        !player.isRecovering // Add recovery check
+        !player.isRecovering && // Add recovery check
+        !player.isRawParryStun
       ) {
         // If we're dodging and not already charging, start charging
         if (player.isDodging && !player.isChargingAttack) {
@@ -1946,7 +1962,8 @@ io.on("connection", (socket) => {
         !player.isBeingThrown &&
         !player.isGrabbing &&
         !player.isBeingGrabbed &&
-        !player.isHit
+        !player.isHit &&
+        !player.isRawParryStun
       ) {
         // Initialize slap buffer if it doesn't exist
         if (!player.slapBuffer) {
@@ -1985,10 +2002,11 @@ io.on("connection", (socket) => {
         !player.isGrabbing &&
         !player.isBeingGrabbed &&
         !player.isDodging &&
-        !player.isCrouching &&
+        !player.isRawParrying &&
         !player.isAttacking &&
         !player.isJumping &&
-        !player.throwCooldown
+        !player.throwCooldown &&
+        !player.isRawParryStun
       ) {
         // Reset any lingering throw states before starting a new throw
         player.throwingFacingDirection = null;
@@ -2052,15 +2070,16 @@ io.on("connection", (socket) => {
         !player.isBeingThrown &&
         !player.isBeingGrabbed &&
         !player.isDodging &&
-        !player.isCrouching &&
+        !player.isRawParrying &&
         !player.isAttacking &&
         !player.isJumping &&
         !player.isThrowing &&
         !player.grabCooldown &&
         !player.isPushing &&
         !player.isBeingPushed &&
-        !player.isBeingGrabbed && // Add this to prevent grab during grab animations
-        !player.grabbedOpponent // Add this to prevent grab during grab animations
+        !player.isBeingGrabbed &&
+        !player.grabbedOpponent &&
+        !player.isRawParryStun
       ) {
         player.lastGrabAttemptTime = Date.now();
 
@@ -2329,7 +2348,7 @@ io.on("connection", (socket) => {
 // Add this new function near the other helper functions
 function executeChargedAttack(player, chargePercentage) {
   player.isSlapAttack = false;
-  
+
   // Calculate attack duration based on charge percentage
   let attackDuration;
   if (chargePercentage <= 25) {
@@ -2340,7 +2359,7 @@ function executeChargedAttack(player, chargePercentage) {
     const extraDuration = ((chargePercentage - 50) / 50) * 1000;
     attackDuration = 1000 + extraDuration;
   }
-  
+
   player.attackEndTime = Date.now() + attackDuration;
   player.attackType = "charged";
   player.chargeAttackPower = chargePercentage;
@@ -2369,10 +2388,12 @@ function executeChargedAttack(player, chargePercentage) {
     player.chargeAttackPower = 0;
 
     // Find the current room and opponent
-    const currentRoom = rooms.find((room) => room.players.some((p) => p.id === player.id));
+    const currentRoom = rooms.find((room) =>
+      room.players.some((p) => p.id === player.id)
+    );
     if (currentRoom) {
       const opponent = currentRoom.players.find((p) => p.id !== player.id);
-      
+
       // Add recovery state for missed charged attacks
       if (wasChargedAttack && opponent && !opponent.isHit) {
         player.isRecovering = true;

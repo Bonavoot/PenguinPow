@@ -56,7 +56,7 @@ import hakkiyoiSound from "../sounds/hakkiyoi-sound.mp3";
 import bellSound from "../sounds/bell-sound.mp3";
 import gameMusic from "../sounds/game-music.mp3";
 import eeshiMusic from "../sounds/eeshi.mp3";
-import parrySound from "../sounds/parry-sound.mp3";
+import slapParrySound from "../sounds/slap-parry-sound.mp3";
 import saltSound from "../sounds/salt-sound.mp3";
 
 import UiPlayerInfo from "./UiPlayerInfo";
@@ -89,7 +89,7 @@ const getImageSrc = (
   isAttacking,
   isDodging,
   isStrafing,
-  isCrouching,
+  isRawParrying,
   isReady,
   isHit,
   isDead,
@@ -105,7 +105,8 @@ const getImageSrc = (
   isBeingPushed,
   grabState,
   grabAttemptType,
-  isRecovering
+  isRecovering,
+  isRawParryStun
 ) => {
   if (fighter === "player 2") {
     if (isBowing) return bow;
@@ -124,7 +125,8 @@ const getImageSrc = (
     }
     if (isBeingGrabbed || isBeingPulled || isBeingPushed) return beingGrabbed;
     if (isDodging) return dodging;
-    if (isCrouching) return crouching;
+    if (isRawParrying) return crouching;
+    if (isRawParryStun) return hit;
     if (isReady) return ready;
     if (isStrafing && !isThrowing) return pumoWaddle;
     if (isHit) return hit;
@@ -148,7 +150,8 @@ const getImageSrc = (
       return grabbing2;
     }
     if (isDodging) return dodging2;
-    if (isCrouching) return crouching2;
+    if (isRawParrying) return crouching2;
+    if (isRawParryStun) return hit2;
     if (isReady) return ready2;
     if (isStrafing && !isThrowing) return pumoWaddle2;
     if (isHit) return hit2;
@@ -185,7 +188,7 @@ const StyledImage = styled("img")
         "isAttackCooldown",
         "isDodging",
         "isStrafing",
-        "isCrouching",
+        "isRawParrying",
         "isReady",
         "isHit",
         "isDead",
@@ -230,13 +233,14 @@ const StyledImage = styled("img")
         "grabbedOpponent",
         "grabAttemptStartTime",
         "throwTechCooldown",
-        "isParrying",
+        "isSlapParrying",
         "lastThrowAttemptTime",
         "lastGrabAttemptTime",
         "dodgeDirection",
         "speedFactor",
         "sizeMultiplier",
         "isRecovering",
+        "isRawParryStun",
       ].includes(prop),
   })
   .attrs((props) => ({
@@ -247,7 +251,7 @@ const StyledImage = styled("img")
       props.$isAttacking,
       props.$isDodging,
       props.$isStrafing,
-      props.$isCrouching,
+      props.$isRawParrying,
       props.$isReady,
       props.$isHit,
       props.$isDead,
@@ -263,7 +267,8 @@ const StyledImage = styled("img")
       props.$isBeingPushed,
       props.$grabState,
       props.$grabAttemptType,
-      props.$isRecovering
+      props.$isRecovering,
+      props.$isRawParryStun
     ),
     style: {
       position: "absolute",
@@ -560,7 +565,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
           x: position.x + 150,
           y: position.y + 110, // Add GROUND_LEVEL to match player height
         });
-        playSound(parrySound, 0.01);
+        playSound(slapParrySound, 0.01);
       }
     });
 
@@ -901,7 +906,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         $isAttacking={penguin.isAttacking}
         $isDodging={penguin.isDodging}
         $isStrafing={penguin.isStrafing}
-        $isCrouching={penguin.isCrouching}
+        $isRawParrying={penguin.isRawParrying}
         $isReady={penguin.isReady}
         $isHit={penguin.isHit}
         $isDead={penguin.isDead}
@@ -932,13 +937,14 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         $grabbedOpponent={penguin.grabbedOpponent}
         $grabAttemptStartTime={penguin.grabAttemptStartTime}
         $throwTechCooldown={penguin.throwTechCooldown}
-        $isParrying={penguin.isParrying}
+        $isSlapParrying={penguin.isSlapParrying}
         $lastThrowAttemptTime={penguin.lastThrowAttemptTime}
         $lastGrabAttemptTime={penguin.lastGrabAttemptTime}
         $dodgeDirection={penguin.dodgeDirection}
         $speedFactor={penguin.speedFactor}
         $sizeMultiplier={penguin.sizeMultiplier}
         $isRecovering={penguin.isRecovering}
+        $isRawParryStun={penguin.isRawParryStun}
         style={{
           transform: `scaleX(${penguin.facing}) scale(${
             activePowerUp === "size" ? 1.15 : 1
