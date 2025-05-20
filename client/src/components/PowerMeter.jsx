@@ -67,7 +67,7 @@ const PowerMeter = ({
     };
   }, [isCharging, chargePower, playerId, localId]);
 
-  if (!isCharging || playerId !== localId || smoothPower < 10) return null;
+  if (!isCharging || playerId !== localId || smoothPower < 5) return null;
 
   const getColor = () => {
     if (smoothPower < 33) return "#00ff00"; // Green
@@ -77,16 +77,16 @@ const PowerMeter = ({
 
   const meterStyle = {
     left: `${(x / 1280) * 100}%`,
-    bottom: `${((y + (activePowerUp === "size" ? 265 : 235)) / 720) * 100}%`,
+    bottom: `${((y + (activePowerUp === "size" ? 270 : 235)) / 720) * 100}%`,
     transform: `translateX(${
       facing === 1
         ? activePowerUp === "size"
-          ? "52%"
-          : "40%"
+          ? "85%"
+          : "65%"
         : activePowerUp === "size"
-        ? "45%"
-        : "35%"
-    }) scale(${activePowerUp === "size" ? 1.15 : 1})`,
+        ? "75%"
+        : "55%"
+    }) scale(${activePowerUp === "size" ? 1.1 : 1})`,
   };
 
   const fillStyle = {

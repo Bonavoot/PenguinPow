@@ -89,7 +89,7 @@ const delta = 1000 / TICK_RATE;
 const speedFactor = 0.25; // Increased from 0.22 for snappier movement
 const GROUND_LEVEL = 215;
 const HITBOX_DISTANCE_VALUE = 85; // Reduced from 90 by 20%
-const SLAP_HITBOX_DISTANCE_VALUE = 88; // Reduced from 110 by 20%
+const SLAP_HITBOX_DISTANCE_VALUE = 184; // Updated to match GRAB_RANGE
 const SLAP_PARRY_WINDOW = 150; // 150ms window for parry
 const SLAP_PARRY_KNOCKBACK_VELOCITY = 1.5; // Reduced knockback for parried attacks
 const THROW_RANGE = 184; // Reduced from 230 by 20%
@@ -134,6 +134,7 @@ const MOVEMENT_TURN_SPEED = 0.4; // Increased for faster direction changes
 
 const RAW_PARRY_KNOCKBACK = 4; // Fixed knockback distance for raw parries
 const RAW_PARRY_STUN_DURATION = 1000; // 1 second stun duration
+const DODGE_COOLDOWN = 50; // 50ms cooldown between dodges
 
 function resetRoomAndPlayers(room) {
   // Reset room state
@@ -1246,6 +1247,33 @@ io.on("connection", (socket) => {
       ? SLAP_HITBOX_DISTANCE_VALUE
       : HITBOX_DISTANCE_VALUE;
 
+    // For slap attacks, only check horizontal distance like grab
+    if (player.isSlapAttack) {
+      const horizontalDistance = Math.abs(player.x - otherPlayer.x);
+      if (horizontalDistance < hitboxDistance) {
+        if (otherPlayer.isAttacking && otherPlayer.isSlapAttack) {
+          // Check if both slaps occurred within the parry window
+          const timeDifference = Math.abs(
+            player.attackStartTime - otherPlayer.attackStartTime
+          );
+          if (timeDifference <= SLAP_PARRY_WINDOW) {
+            // Find the current room
+            const currentRoom = rooms.find((room) =>
+              room.players.some((p) => p.id === player.id)
+            );
+
+            if (currentRoom) {
+              resolveSlapParry(player, otherPlayer, currentRoom.id);
+            }
+            return;
+          }
+        }
+        processHit(player, otherPlayer);
+      }
+      return;
+    }
+
+    // For charged attacks, use the full circular hitbox
     const playerHitbox = {
       left: player.x - hitboxDistance,
       right: player.x + hitboxDistance,
@@ -1268,23 +1296,6 @@ io.on("connection", (socket) => {
 
     if (isCollision) {
       if (player.isAttacking && otherPlayer.isAttacking) {
-        if (player.isSlapAttack && otherPlayer.isSlapAttack) {
-          // Check if both slaps occurred within the parry window
-          const timeDifference = Math.abs(
-            player.attackStartTime - otherPlayer.attackStartTime
-          );
-          if (timeDifference <= SLAP_PARRY_WINDOW) {
-            // Find the current room
-            const currentRoom = rooms.find((room) =>
-              room.players.some((p) => p.id === player.id)
-            );
-
-            if (currentRoom) {
-              resolveSlapParry(player, otherPlayer, currentRoom.id);
-            }
-            return;
-          }
-        }
         // Handle charge attack collisions with random winner selection
         const winner = Math.random() < 0.5 ? player : otherPlayer;
         const loser = winner === player ? otherPlayer : player;
@@ -1756,7 +1767,8 @@ io.on("connection", (socket) => {
         !player.isGrabbing &&
         !player.isBeingGrabbed &&
         player.stamina >= 50 &&
-        !player.isRawParryStun
+        !player.isRawParryStun &&
+        !player.dodgeCooldown // Add dodge cooldown check
       ) {
         console.log("Executing immediate dodge");
         player.isDodging = true;
@@ -1765,6 +1777,7 @@ io.on("connection", (socket) => {
         player.stamina -= 50;
         player.dodgeStartX = player.x;
         player.dodgeStartY = player.y;
+        player.dodgeCooldown = true; // Set dodge cooldown
 
         if (player.keys.a) {
           player.dodgeDirection = -1;
@@ -1777,6 +1790,11 @@ io.on("connection", (socket) => {
         setTimeout(() => {
           player.isDodging = false;
           player.dodgeDirection = null;
+
+          // Reset dodge cooldown after the cooldown period
+          setTimeout(() => {
+            player.dodgeCooldown = false;
+          }, DODGE_COOLDOWN);
 
           // Check for buffered actions after dodge ends
           if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
@@ -2288,6 +2306,14 @@ function handleWinCondition(room, loser, winner) {
 
 // Add this new function near the other helper functions
 function executeSlapAttack(player) {
+  // Clear any ongoing charge attack
+  player.isChargingAttack = false;
+  player.chargeStartTime = 0;
+  player.chargeAttackPower = 0;
+  player.chargingFacingDirection = null;
+  player.pendingChargeAttack = null;
+  player.spacebarReleasedDuringDodge = false;
+
   player.isSlapAttack = true;
   player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
   player.attackEndTime = Date.now() + 180;
@@ -2347,6 +2373,17 @@ io.on("connection", (socket) => {
 
 // Add this new function near the other helper functions
 function executeChargedAttack(player, chargePercentage) {
+  // Don't execute charged attack if player is in a throw state
+  if (player.isThrowing || player.isBeingThrown) {
+    return;
+  }
+
+  // Clear any existing recovery state when starting a new attack
+  player.isRecovering = false;
+  player.recoveryStartTime = 0;
+  player.recoveryDuration = 0;
+  player.recoveryDirection = null;
+  
   player.isSlapAttack = false;
 
   // Calculate attack duration based on charge percentage
@@ -2379,29 +2416,29 @@ function executeChargedAttack(player, chargePercentage) {
   player.chargeStartTime = 0;
 
   setTimeout(() => {
-    const wasChargedAttack = player.attackType === "charged";
-    const attackDirection = player.facing;
+    // Only set recovery if we're still in a charged attack state and not in a throw state
+    if (player.attackType === "charged" && !player.isThrowing && !player.isBeingThrown) {
+      const currentRoom = rooms.find((room) =>
+        room.players.some((p) => p.id === player.id)
+      );
+      if (currentRoom) {
+        const opponent = currentRoom.players.find((p) => p.id !== player.id);
+        // Only set recovery for missed charged attacks that were actually released
+        if (opponent && !opponent.isHit) {
+          player.isRecovering = true;
+          player.recoveryStartTime = Date.now();
+          player.recoveryDuration = 250;
+          player.recoveryDirection = player.facing;
+        }
+      }
+    }
+
+    // Clear attack states
     player.isAttacking = false;
     player.isSlapAttack = false;
     player.chargingFacingDirection = null;
     player.attackType = null;
     player.chargeAttackPower = 0;
-
-    // Find the current room and opponent
-    const currentRoom = rooms.find((room) =>
-      room.players.some((p) => p.id === player.id)
-    );
-    if (currentRoom) {
-      const opponent = currentRoom.players.find((p) => p.id !== player.id);
-
-      // Add recovery state for missed charged attacks
-      if (wasChargedAttack && opponent && !opponent.isHit) {
-        player.isRecovering = true;
-        player.recoveryStartTime = Date.now();
-        player.recoveryDuration = 250;
-        player.recoveryDirection = attackDirection;
-      }
-    }
 
     // Check for buffered actions after attack ends
     if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
