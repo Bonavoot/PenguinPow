@@ -76,22 +76,25 @@ const SnowEffect = () => {
     return GROUND_LEVEL;
   }, []);
 
-  const createSnowflake = useCallback(() => {
-    const depthLevel = getRandomDepthLevel();
-    return {
-      id: Math.random(),
-      x: Math.random() * window.innerWidth,
-      y: -10,
-      velocityX: (Math.random() - 0.5) * 0.5,
-      velocityY: 1 + Math.random() * 2,
-      opacity: 0.5 + Math.random() * 0.5,
-      scale: 0.5 + Math.random() * 1,
-      blur: Math.random() * 0.5,
-      rotation: Math.random() * 360,
-      rotationSpeed: (Math.random() - 0.5) * 2,
-      depthLevel,
-    };
-  }, [getRandomDepthLevel]);
+  const createSnowflake = useCallback(
+    (initialY = -10) => {
+      const depthLevel = getRandomDepthLevel();
+      return {
+        id: Math.random(),
+        x: Math.random() * window.innerWidth,
+        y: initialY,
+        velocityX: (Math.random() - 0.5) * 0.5,
+        velocityY: 1 + Math.random() * 2,
+        opacity: 0.5 + Math.random() * 0.5,
+        scale: 0.5 + Math.random() * 1,
+        blur: Math.random() * 0.5,
+        rotation: Math.random() * 360,
+        rotationSpeed: (Math.random() - 0.5) * 2,
+        depthLevel,
+      };
+    },
+    [getRandomDepthLevel]
+  );
 
   const updateSnowflake = useCallback(
     (snowflake, deltaTime) => {
@@ -117,9 +120,14 @@ const SnowEffect = () => {
   );
 
   useEffect(() => {
+    // Create initial snowflakes with distributed y-positions
     const initialSnowflakes = Array.from(
       { length: MAX_SNOWFLAKES },
-      createSnowflake
+      (_, index) => {
+        // Distribute snowflakes across the top portion of the screen
+        const initialY = -10 - index * (window.innerHeight / MAX_SNOWFLAKES);
+        return createSnowflake(initialY);
+      }
     );
     setSnowflakes(initialSnowflakes);
 

@@ -2,7 +2,7 @@ import Lobby from "./Lobby";
 import Rooms from "./Rooms";
 import Game from "./Game";
 import Settings from "./Settings";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import styled, { keyframes } from "styled-components";
 import sumo from "../assets/pumo-bkg.png";
@@ -31,13 +31,23 @@ const float = keyframes`
   }
 `;
 
+const glowPulse = keyframes`
+  0%, 100% {
+    text-shadow: 0 0 10px rgba(255, 68, 68, 0.3),
+                 0 0 20px rgba(255, 68, 68, 0.2);
+  }
+  50% {
+    text-shadow: 0 0 15px rgba(255, 68, 68, 0.4),
+                 0 0 30px rgba(255, 68, 68, 0.2);
+  }
+`;
+
 const MainMenuContainer = styled.div`
   display: flex;
   align-items: center;
-  width: 100%;
-  max-width: 1280px;
-  height: auto;
-  aspect-ratio: 16 / 9;
+  justify-content: center;
+  width: 100vw;
+  height: 100vh;
   position: relative;
   overflow: hidden;
   background: linear-gradient(
@@ -48,11 +58,9 @@ const MainMenuContainer = styled.div`
     url(${mainMenuBackground});
   background-size: cover;
   background-position: center;
-  border-radius: 16px;
   box-shadow: 0 0 30px rgba(0, 0, 0, 0.5), 0 0 60px rgba(210, 180, 140, 0.1);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  position: relative;
 
   &::before {
     content: "";
@@ -79,34 +87,55 @@ const Logo = styled.h1`
   position: absolute;
   top: 5%;
   left: 5%;
-  font-size: clamp(2rem, 5vw, 4rem);
+  font-size: clamp(1.8rem, 4vw, 3.5rem);
   margin: 0;
   color: white;
   font-family: "Bungee", cursive;
-  text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.5);
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
   animation: ${fadeIn} 1s ease-out;
   z-index: 2;
+  letter-spacing: 0.2em;
+  background: linear-gradient(45deg, #ffffff, #f0f0f0);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.2));
 `;
 
 const PowText = styled.span`
-  font-size: clamp(2.5rem, 6vw, 5rem);
+  font-size: clamp(2rem, 5vw, 4rem);
   color: #ff4444;
   font-family: "Bungee Shade", cursive;
-  text-shadow: 0 0 20px rgba(255, 68, 68, 0.5);
-  animation: ${float} 3s ease-in-out infinite;
+  text-shadow: 0 0 10px rgba(255, 68, 68, 0.3);
+  animation: ${float} 3s ease-in-out infinite,
+    ${glowPulse} 2s ease-in-out infinite;
+  display: inline-block;
+  margin-left: 0.2em;
+  background: linear-gradient(45deg, #ff4444, #ff0000);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 8px rgba(255, 68, 68, 0.2));
+  transform-origin: center;
+  transition: transform 0.3s ease;
+
+  &:hover {
+    transform: scale(1.05) rotate(-2deg);
+  }
 `;
 
 const SumoImage = styled.img`
   position: absolute;
-  right: -5%;
+  right: -25%;
   bottom: -25%;
-  width: 60%;
+  width: clamp(500px, 80vw, 1200px);
   height: auto;
   filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.5));
   animation: ${float} 4s ease-in-out infinite;
   z-index: 1;
   object-position: top;
-  object-fit: cover;
+  object-fit: contain;
+  transform-origin: bottom right;
+  max-width: 95%;
+  max-height: 95vh;
 `;
 
 const ButtonContainer = styled.div`
@@ -116,7 +145,7 @@ const ButtonContainer = styled.div`
   transform: translateY(-50%);
   display: flex;
   flex-direction: column;
-  gap: clamp(0.8rem, 2vh, 1.2rem);
+  gap: clamp(1.6rem, 4vh, 2.4rem);
   z-index: 2;
   animation: ${fadeIn} 1s ease-out 0.5s both;
   width: clamp(180px, 22vw, 250px);
@@ -158,6 +187,31 @@ const MenuButton = styled.button`
   }
 `;
 
+const SettingsButton = styled.button`
+  position: absolute;
+  top: 5%;
+  right: 5%;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  z-index: 2;
+  padding: 0.5rem;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  .material-symbols-outlined {
+    font-size: clamp(1.5rem, 3vw, 2.5rem);
+  }
+
+  &:hover {
+    color: white;
+    transform: rotate(45deg);
+  }
+`;
+
 const preloadAssets = (sources) => {
   sources.forEach((src) => {
     const img = new Image();
@@ -189,8 +243,25 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
   };
 
   const handleSettings = () => {
-    setShowSettings(true);
+    setShowSettings((prev) => !prev);
   };
+
+  const handleClickOutside = (e) => {
+    if (
+      showSettings &&
+      !e.target.closest(".settings-container") &&
+      !e.target.closest(".settings-button")
+    ) {
+      setShowSettings(false);
+    }
+  };
+
+  useEffect(() => {
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showSettings]);
 
   let currentPageComponent;
   switch (currentPage) {
@@ -208,10 +279,10 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
             <MenuButton>BASHO</MenuButton>
             <MenuButton>CUSTOMIZE</MenuButton>
             <MenuButton>STATS</MenuButton>
-            <MenuButton $isActive onClick={handleSettings}>
-              SETTINGS
-            </MenuButton>
           </ButtonContainer>
+          <SettingsButton className="settings-button" onClick={handleSettings}>
+            <span className="material-symbols-outlined">settings</span>
+          </SettingsButton>
           {showSettings && <Settings onClose={() => setShowSettings(false)} />}
         </MainMenuContainer>
       );

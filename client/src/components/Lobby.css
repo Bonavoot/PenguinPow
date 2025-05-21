@@ -4,7 +4,11 @@
   position: relative;
   width: 100%;
   height: 100vh;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(0, 0, 0, 0.95) 0%,
+    rgba(20, 20, 20, 0.85) 100%
+  );
   font-family: "Inter", sans-serif;
   color: #fff;
   overflow: hidden;
@@ -23,7 +27,7 @@
 
 .lobby-header {
   padding: 1rem 2rem;
-  background: rgba(26, 26, 46, 0.8);
+  background: rgba(0, 0, 0, 0.8);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   position: relative;
   z-index: 1;
@@ -43,27 +47,28 @@
   font-weight: 700;
   letter-spacing: 1px;
   text-transform: uppercase;
-  background: linear-gradient(45deg, #ff6b6b, #ffd93d);
+  background: linear-gradient(45deg, #ff4444, #cc0000);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 10px rgba(255, 68, 68, 0.3);
 }
 
 .game-subtitle {
   font-size: 0.9rem;
-  color: #a0a0a0;
+  color: rgba(255, 255, 255, 0.7);
   margin-top: 0.25rem;
   letter-spacing: 0.5px;
 }
 
 .room-badge {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 68, 68, 0.1);
   padding: 0.5rem 1rem;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 68, 68, 0.2);
 }
 
 .room-label {
-  color: #a0a0a0;
+  color: rgba(255, 255, 255, 0.7);
   font-size: 0.7rem;
   font-weight: 500;
   text-transform: uppercase;
@@ -73,7 +78,7 @@
 }
 
 .room-name {
-  color: #fff;
+  color: #ff4444;
   font-size: 1rem;
   font-weight: 600;
   letter-spacing: 1px;
@@ -108,19 +113,73 @@
   width: 100%;
   height: 100%;
   background: radial-gradient(
-    circle at center,
-    rgba(255, 255, 255, 0.05) 0%,
-    rgba(0, 0, 0, 0.1) 100%
-  );
+      circle at center,
+      rgba(147, 112, 219, 0.15) 0%,
+      rgba(147, 112, 219, 0.05) 30%,
+      transparent 70%
+    ),
+    radial-gradient(
+      circle at center,
+      rgba(255, 255, 255, 0.1) 0%,
+      rgba(255, 255, 255, 0.05) 20%,
+      transparent 60%
+    ),
+    radial-gradient(
+      circle at center,
+      rgba(25, 25, 112, 0.2) 0%,
+      rgba(25, 25, 112, 0.1) 50%,
+      transparent 100%
+    );
   border-radius: 50%;
   transform: scale(0.9);
+  box-shadow: 0 0 60px rgba(147, 112, 219, 0.1),
+    0 0 120px rgba(25, 25, 112, 0.05), inset 0 0 30px rgba(147, 112, 219, 0.1);
+  animation: arenaPulse 4s ease-in-out infinite;
+}
+
+.arena-background::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-radial-gradient(
+    circle at center,
+    transparent 0,
+    transparent 10px,
+    rgba(147, 112, 219, 0.03) 10px,
+    rgba(147, 112, 219, 0.03) 20px
+  );
+  border-radius: 50%;
+  animation: arenaRotate 20s linear infinite;
+}
+
+.arena-background::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(
+    circle at center,
+    transparent 0%,
+    transparent 40%,
+    rgba(25, 25, 112, 0.05) 40%,
+    rgba(25, 25, 112, 0.05) 41%,
+    transparent 41%,
+    transparent 100%
+  );
+  border-radius: 50%;
+  animation: arenaGlow 3s ease-in-out infinite;
 }
 
 .players-arena {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 4rem;
+  gap: 8rem;
   width: 100%;
   max-width: 1000px;
   padding: 1rem;
@@ -128,10 +187,10 @@
 }
 
 .player-slot {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 68, 68, 0.1);
   border-radius: 16px;
   padding: 2rem;
-  border: 2px solid rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(255, 68, 68, 0.2);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -141,6 +200,10 @@
   height: 300px;
   width: 300px;
   backdrop-filter: blur(10px);
+}
+
+.player-slot:empty {
+  opacity: 0.5;
 }
 
 .player-left {
@@ -166,12 +229,12 @@
   align-items: center;
   gap: 0.75rem;
   width: 100%;
-  padding: 1rem;
-  background: rgba(0, 0, 0, 0.3);
+  padding: 1rem 0rem 1rem 0rem;
+  background: rgba(255, 68, 68, 0.15);
   border-radius: 12px;
   z-index: 2;
   position: absolute;
-  top: 1rem;
+  top: 0rem;
   left: 0;
   text-align: center;
 }
@@ -218,16 +281,45 @@
   height: 100%;
   display: flex;
   justify-content: center;
-  align-items: flex-end;
+  align-items: center;
   overflow: hidden;
   z-index: 1;
   padding-bottom: 0.75rem;
+}
+
+.player-avatar .waiting-message {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.7);
+  padding: 1rem;
+}
+
+.player-avatar .waiting-message h2 {
+  font-size: 1.25rem;
+  margin-bottom: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.player-avatar .loading-ellipsis {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.player-avatar .loading-ellipsis .dot {
+  width: 8px;
+  height: 8px;
+  background: #ff4444;
+  border-radius: 50%;
+  animation: dotPulse 1.4s infinite ease-in-out;
 }
 
 .player-avatar img {
   height: 260px;
   width: auto;
   object-fit: contain;
+  margin-top: 4rem;
   transform-origin: bottom center;
   transition: transform 0.3s ease;
   filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
@@ -237,7 +329,7 @@
   position: absolute;
   font-size: 3rem;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.1);
+  color: rgb(230, 230, 230);
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   z-index: 2;
   animation: pulse 2s infinite ease-in-out;
@@ -275,7 +367,7 @@
 .loading-ellipsis .dot {
   width: 8px;
   height: 8px;
-  background: #ff6b6b;
+  background: #ff4444;
   border-radius: 50%;
   animation: dotPulse 1.4s infinite ease-in-out;
 }
@@ -285,30 +377,39 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: rgba(26, 26, 46, 0.8);
+  background: rgba(0, 0, 0, 0.8);
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   position: relative;
   z-index: 1;
 }
 
 .exit-btn {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.1),
+    rgba(255, 255, 255, 0.05)
+  );
   border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 0.5rem 1rem;
-  font-size: 0.9rem;
-  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.7);
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
   cursor: pointer;
-  font-weight: 500;
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 
 .exit-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
-  transform: translateY(-2px);
+  background: linear-gradient(
+    145deg,
+    rgba(255, 68, 68, 0.1),
+    rgba(255, 68, 68, 0.05)
+  );
+  color: #ff4444;
+  transform: translateX(-5px);
 }
 
 .btn-icon {
@@ -393,6 +494,37 @@
   }
   50% {
     transform: scale(1.2);
+    opacity: 1;
+  }
+}
+
+@keyframes arenaPulse {
+  0%,
+  100% {
+    transform: scale(0.9);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.92);
+    opacity: 0.8;
+  }
+}
+
+@keyframes arenaRotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes arenaGlow {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
     opacity: 1;
   }
 }

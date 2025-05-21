@@ -119,7 +119,7 @@ const Settings = ({ onClose }) => {
   };
 
   return (
-    <SettingsContainer>
+    <SettingsContainer className="settings-container">
       <Title>Display Settings</Title>
       <ControlGroup>
         <Label>Brightness</Label>

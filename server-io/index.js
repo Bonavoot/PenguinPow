@@ -1117,8 +1117,12 @@ io.on("connection", (socket) => {
           player.y === GROUND_LEVEL &&
           !player.isGrabbing &&
           !player.isBeingGrabbed &&
+          !player.isThrowing &&
+          !player.isBeingThrown &&
           !player.isRecovering &&
-          !player.isAttacking
+          !player.isAttacking &&
+          !player.isHit &&
+          !player.isRawParryStun
         ) {
           player.isRawParrying = true;
           player.isReady = false;
@@ -1960,6 +1964,35 @@ io.on("connection", (socket) => {
         player.chargeAttackPower = 0;
         player.chargingFacingDirection = null;
         player.attackType = null;
+      }
+
+      // Add new section to handle state transitions while holding mouse2
+      if (
+        player.keys.mouse2 &&
+        !player.isChargingAttack &&
+        !player.isAttacking &&
+        !player.isHit &&
+        !player.isRecovering &&
+        !player.isRawParryStun &&
+        !player.isBeingThrown &&
+        !player.isBeingGrabbed
+      ) {
+        // Check if we should resume charging after a state transition
+        const timeSinceLastCharge =
+          Date.now() - (player.lastChargeEndTime || 0);
+        if (timeSinceLastCharge < 1000) {
+          // Resume charging if within 1 second of last charge
+          player.isChargingAttack = true;
+          player.chargeStartTime = Date.now();
+          player.chargeAttackPower = Math.min(player.lastChargePower || 0, 100);
+          player.attackType = "charged";
+        }
+      }
+
+      // Store charge state when clearing it
+      if (player.isChargingAttack && !player.keys.mouse2) {
+        player.lastChargeEndTime = Date.now();
+        player.lastChargePower = player.chargeAttackPower;
       }
 
       // Handle slap attacks with mouse1

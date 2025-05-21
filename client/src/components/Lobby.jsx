@@ -27,8 +27,8 @@ const Lobby = ({ rooms, roomName, handleGame }) => {
 
       <div className="lobby-header">
         <div className="game-logo">
-          <h1 className="lobby-title">Sumo Arena</h1>
-          <div className="game-subtitle">Online Sumo Fighter</div>
+          <h1 className="lobby-title">PUMO LOBBY</h1>
+          <div className="game-subtitle">RANKED MATCH</div>
         </div>
         <div className="room-info">
           <div className="room-badge">
@@ -42,54 +42,48 @@ const Lobby = ({ rooms, roomName, handleGame }) => {
         <div className="arena-container">
           <div className="arena-background"></div>
           <div className="players-arena">
-            {players.map((player, i) => (
+            {[0, 1].map((i) => (
               <div
                 key={uuidv4()}
-                className={`player-slot ${i > 1 ? "hidden" : ""} ${
+                className={`player-slot ${
                   i === 1 ? "player-right" : "player-left"
-                }`}
+                } ${!players[i]?.fighter ? "empty" : ""}`}
               >
-                {i <= 1 && (
-                  <div className="player-card">
-                    <div className="player-info">
-                      <div className="player-status">
-                        {player.fighter ? (
-                          <span className="status-indicator ready">Ready</span>
-                        ) : (
-                          <span className="status-indicator waiting">
-                            Waiting
-                          </span>
-                        )}
-                      </div>
-                      <span className="player-name">
-                        {player.fighter || "Waiting for player..."}
-                      </span>
-                    </div>
-                    <div className="player-avatar">
-                      {player.fighter && (
-                        <Player index={i} fighter={player.fighter} />
+                <div className="player-card">
+                  <div className="player-info">
+                    <div className="player-status">
+                      {players[i]?.fighter ? (
+                        <span className="status-indicator ready">Ready</span>
+                      ) : (
+                        <span className="status-indicator waiting">
+                          Waiting
+                        </span>
                       )}
                     </div>
+                    <span className="player-name">
+                      {players[i]?.fighter || "OPPONENT"}
+                    </span>
                   </div>
-                )}
+                  <div className="player-avatar">
+                    {players[i]?.fighter ? (
+                      <Player index={i} fighter={players[i].fighter} />
+                    ) : (
+                      <div className="waiting-message">
+                        <h2>Waiting for Opponent</h2>
+                        <div className="loading-ellipsis">
+                          <div className="dot"></div>
+                          <div className="dot"></div>
+                          <div className="dot"></div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             ))}
           </div>
           <div className="versus-badge">VS</div>
         </div>
-
-        {players.length < 2 && (
-          <div className="waiting-container">
-            <div className="waiting-message">
-              <h2>Waiting for Opponent</h2>
-              <div className="loading-ellipsis">
-                <div className="dot"></div>
-                <div className="dot"></div>
-                <div className="dot"></div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="lobby-controls">
