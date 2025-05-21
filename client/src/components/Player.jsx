@@ -154,32 +154,67 @@ const Player = ({
   isRecovering,
   isRawParryStun,
 }) => {
+  const getFighterImage = () => {
+    if (fighter === "player 1") {
+      if (isBowing) return bow2;
+      if (isThrowTeching) return throwTech2;
+      if (isRecovering) return recovering2;
+      if (isSlapAttack) {
+        return slapAnimation === 1 ? slapAttack1Blue : slapAttack2Blue;
+      }
+      if (isJumping) return throwing2;
+      if (isAttacking && !isSlapAttack) return attack2;
+      if (isGrabbing) {
+        if (grabState === "attempting") {
+          return grabAttemptType === "throw" ? throwing2 : grabbing2;
+        }
+        return grabbing2;
+      }
+      if (isDodging) return dodging2;
+      if (isRawParrying) return crouching2;
+      if (isRawParryStun) return hit2;
+      if (isReady) return ready2;
+      if (isStrafing && !isThrowing) return pumoWaddle2;
+      if (isHit) return hit2;
+      if (isDead) return pumo2;
+      if (isThrowing) return throwing2;
+      if (isThrowingSalt) return salt2;
+      if (isBeingGrabbed || isBeingPulled || isBeingPushed)
+        return beingGrabbed2;
+      return pumo2;
+    } else {
+      if (isBowing) return bow;
+      if (isThrowTeching) return throwTech;
+      if (isRecovering) return recovering;
+      if (isSlapAttack) {
+        return slapAnimation === 1 ? slapAttack1Red : slapAttack2Red;
+      }
+      if (isJumping) return throwing;
+      if (isAttacking && !isSlapAttack) return attack;
+      if (isGrabbing) {
+        if (grabState === "attempting") {
+          return grabAttemptType === "throw" ? throwing : grabbing;
+        }
+        return grabbing;
+      }
+      if (isDodging) return dodging;
+      if (isRawParrying) return crouching;
+      if (isRawParryStun) return hit;
+      if (isReady) return ready;
+      if (isStrafing && !isThrowing) return pumoWaddle;
+      if (isHit) return hit;
+      if (isDead) return pumo;
+      if (isThrowing) return throwing;
+      if (isThrowingSalt) return salt;
+      if (isBeingGrabbed || isBeingPulled || isBeingPushed) return beingGrabbed;
+      return pumo;
+    }
+  };
+
   return (
     <Fighter
-      fighter={fighter}
-      isDiving={isDiving}
-      isJumping={isJumping}
-      isAttacking={isAttacking}
-      isDodging={isDodging}
-      isStrafing={isStrafing}
-      isRawParrying={isRawParrying}
-      isReady={isReady}
-      isHit={isHit}
-      isDead={isDead}
-      isSlapAttack={isSlapAttack}
-      isThrowing={isThrowing}
-      isGrabbing={isGrabbing}
-      isBeingGrabbed={isBeingGrabbed}
-      isThrowingSalt={isThrowingSalt}
-      slapAnimation={slapAnimation}
-      isBowing={isBowing}
-      isThrowTeching={isThrowTeching}
-      isBeingPulled={isBeingPulled}
-      isBeingPushed={isBeingPushed}
-      grabState={grabState}
-      grabAttemptType={grabAttemptType}
-      isRecovering={isRecovering}
-      isRawParryStun={isRawParryStun}
+      index={fighter === "player 1" ? 0 : 1}
+      fighterImgSrc={getFighterImage()}
     />
   );
 };

@@ -163,7 +163,6 @@ function resetRoomAndPlayers(room) {
     player.isJumping = false;
     player.isAttacking = false;
     player.isStrafing = false;
-    player.isDiving = false;
     player.isRawParrying = false;
     player.isRawParryStun = false;
     player.isDodging = false;
@@ -435,6 +434,10 @@ io.on("connection", (socket) => {
           if (player2.x === 690) {
             player2.isReady = true;
           }
+        } else {
+          // Clear ready states when game starts
+          player1.isReady = false;
+          player2.isReady = false;
         }
 
         function arePlayersColliding(player1, player2) {
@@ -644,20 +647,6 @@ io.on("connection", (socket) => {
             const rightBoundary =
               MAP_RIGHT_BOUNDARY - sizeOffset * SIZE_POWERUP_RIGHT_MULTIPLIER;
 
-            // Add slow forward movement during recovery if it's from a missed charged attack
-            if (player.recoveryDirection) {
-              const forwardDirection = player.recoveryDirection === 1 ? -1 : 1;
-              const forwardSpeed = 0.3; // Slow forward movement speed
-              const newX =
-                player.x +
-                forwardDirection * forwardSpeed * delta * speedFactor;
-
-              // Only update position if within boundaries
-              if (newX >= leftBoundary && newX <= rightBoundary) {
-                player.x = newX;
-              }
-            }
-
             // Apply horizontal knockback with boundary checks
             const newX =
               player.x + player.knockbackVelocity.x * delta * speedFactor;
@@ -715,16 +704,13 @@ io.on("connection", (socket) => {
         if (
           !player.isHit &&
           !room.gameOver &&
-          !player.isAttacking &&
           !player.isBeingGrabbed &&
           !player.isThrowing &&
           !player.isBeingThrown &&
           !player.isThrowTeching &&
           !player.isGrabbing &&
           !player.isBeingGrabbed &&
-          !player.isSlapAttack &&
-          // Add condition to allow going out of bounds during charged attack
-          !(player.isAttacking && !player.isSlapAttack)
+          !player.isSlapAttack
         ) {
           // Calculate effective boundary based on player size with different multipliers for left and right
           const sizeOffset =
@@ -739,7 +725,7 @@ io.on("connection", (socket) => {
             MAP_RIGHT_BOUNDARY - sizeOffset * SIZE_POWERUP_RIGHT_MULTIPLIER;
 
           // Apply boundary restrictions
-          if (player.keys.a || player.keys.d) {
+          if (player.keys.a || player.keys.d || player.isAttacking) {
             player.x = Math.max(
               leftBoundary,
               Math.min(player.x, rightBoundary)
@@ -1119,26 +1105,20 @@ io.on("connection", (socket) => {
         if (player.keys.a && player.keys.d) {
           player.isStrafing = false;
         }
-        // Diving / down or gravity
-        if (
-          (player.keys.s && player.y > GROUND_LEVEL) ||
-          (player.y > GROUND_LEVEL && !player.isJumping)
-        ) {
+        // Keep player from going below ground level
+        if (player.y > GROUND_LEVEL) {
           player.y -= delta * speedFactor + 10;
           player.y = Math.max(player.y, GROUND_LEVEL);
-          player.isDiving = player.keys.s;
         }
 
-        if (player.y <= GROUND_LEVEL) {
-          player.isDiving = false;
-        }
-
-        // Crouching
+        // raw parry
         if (
           player.keys.s &&
           player.y === GROUND_LEVEL &&
           !player.isGrabbing &&
-          !player.isBeingGrabbed
+          !player.isBeingGrabbed &&
+          !player.isRecovering &&
+          !player.isAttacking
         ) {
           player.isRawParrying = true;
           player.isReady = false;
@@ -1361,8 +1341,11 @@ io.on("connection", (socket) => {
     // Store the charge power before resetting states
     const chargePercentage = player.chargeAttackPower;
 
-    // For charged attacks, end the attack immediately on hit and set recovery
+    // For charged attacks, end the attack immediately on hit
     if (!isSlapAttack) {
+      // Set hit tracking flag for charged attacks
+      player.chargedAttackHit = true;
+
       // Reset all attack states first
       player.isAttacking = false;
       player.attackStartTime = 0;
@@ -1372,10 +1355,11 @@ io.on("connection", (socket) => {
       player.chargeStartTime = 0;
       player.chargeAttackPower = 0;
 
-      // Set recovery state immediately
+      // Set recovery state for successful hits
       player.isRecovering = true;
       player.recoveryStartTime = Date.now();
       player.recoveryDuration = 400;
+      player.recoveryDirection = player.facing;
     } else {
       // For slap attacks, maintain the existing timing behavior
       const originalAttackEndTime = player.attackEndTime;
@@ -1387,11 +1371,6 @@ io.on("connection", (socket) => {
           player.isSlapAttack = false;
           player.attackStartTime = 0;
           player.attackEndTime = 0;
-          // Don't reset charging states for slap attacks
-          // player.chargingFacingDirection = null;
-          // player.isChargingAttack = false;
-          // player.chargeStartTime = 0;
-          // player.chargeAttackPower = 0;
         }, remainingAttackTime);
       }
     }
@@ -1438,7 +1417,6 @@ io.on("connection", (socket) => {
       otherPlayer.isJumping = false;
       otherPlayer.isAttacking = false;
       otherPlayer.isStrafing = false;
-      otherPlayer.isDiving = false;
 
       // Calculate knockback direction based on relative positions
       const knockbackDirection = player.x < otherPlayer.x ? 1 : -1;
@@ -1540,7 +1518,6 @@ io.on("connection", (socket) => {
         lastThrowAttemptTime: 0,
         lastGrabAttemptTime: 0,
         isStrafing: false,
-        isDiving: false,
         isRawParrying: false,
         isRawParryStun: false,
         dodgeDirection: false,
@@ -1604,7 +1581,6 @@ io.on("connection", (socket) => {
         lastThrowAttemptTime: 0,
         lastGrabAttemptTime: 0,
         isStrafing: false,
-        isDiving: false,
         isRawParrying: false,
         isRawParryStun: false,
         dodgeDirection: null,
@@ -1759,7 +1735,6 @@ io.on("connection", (socket) => {
         player.keys["shift"] &&
         !player.keys.e &&
         !player.keys.w &&
-        !player.keys.s &&
         !player.isDodging &&
         !player.isAttacking &&
         !player.isThrowing &&
@@ -1870,27 +1845,37 @@ io.on("connection", (socket) => {
       // Add buffer check in the attack completion logic
       if (player.isAttacking && Date.now() >= player.attackEndTime) {
         console.log("Attack completed, checking for buffered actions");
-        player.isAttacking = false;
-        player.isSlapAttack = false;
-        player.chargingFacingDirection = null;
+        // Only clear attack states if we're not charging
+        if (!player.isChargingAttack) {
+          player.isAttacking = false;
+          player.isSlapAttack = false;
+          player.chargingFacingDirection = null;
+          player.attackType = null; // Clear attack type
 
-        // Check for buffered actions after attack ends
-        if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
-          console.log("Executing buffered action after attack");
-          const action = player.bufferedAction;
-          player.bufferedAction = null;
-          player.bufferExpiryTime = 0;
+          // Check for buffered actions after attack ends
+          if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
+            console.log("Executing buffered action after attack");
+            const action = player.bufferedAction;
+            player.bufferedAction = null;
+            player.bufferExpiryTime = 0;
 
-          // Execute the buffered action
-          if (action.type === "dodge") {
-            player.isDodging = true;
-            player.dodgeStartTime = Date.now();
-            player.dodgeEndTime = Date.now() + 400;
-            player.stamina -= 50;
-            player.dodgeDirection = action.direction;
-            // Add these lines to set the dodge start position
-            player.dodgeStartX = player.x;
-            player.dodgeStartY = player.y;
+            // Clear charging state when executing buffered action
+            player.isChargingAttack = false;
+            player.chargeStartTime = 0;
+            player.chargeAttackPower = 0;
+            player.chargingFacingDirection = null;
+            player.attackType = null;
+
+            // Execute the buffered action
+            if (action.type === "dodge") {
+              player.isDodging = true;
+              player.dodgeStartTime = Date.now();
+              player.dodgeEndTime = Date.now() + 400;
+              player.stamina -= 50;
+              player.dodgeDirection = action.direction;
+              player.dodgeStartX = player.x;
+              player.dodgeStartY = player.y;
+            }
           }
         }
       }
@@ -1947,7 +1932,6 @@ io.on("connection", (socket) => {
           player.facing = player.chargingFacingDirection;
         }
       }
-
       // Release charged attack when mouse2 is released
       else if (
         !player.keys.mouse2 &&
@@ -1968,6 +1952,14 @@ io.on("connection", (socket) => {
         } else {
           executeChargedAttack(player, player.chargeAttackPower);
         }
+      }
+      // Clear charging state if mouse2 is released and we're not in a valid state
+      else if (!player.keys.mouse2 && player.isChargingAttack) {
+        player.isChargingAttack = false;
+        player.chargeStartTime = 0;
+        player.chargeAttackPower = 0;
+        player.chargingFacingDirection = null;
+        player.attackType = null;
       }
 
       // Handle slap attacks with mouse1
@@ -2024,7 +2016,8 @@ io.on("connection", (socket) => {
         !player.isAttacking &&
         !player.isJumping &&
         !player.throwCooldown &&
-        !player.isRawParryStun
+        !player.isRawParryStun &&
+        !player.isRecovering
       ) {
         // Reset any lingering throw states before starting a new throw
         player.throwingFacingDirection = null;
@@ -2383,7 +2376,7 @@ function executeChargedAttack(player, chargePercentage) {
   player.recoveryStartTime = 0;
   player.recoveryDuration = 0;
   player.recoveryDirection = null;
-  
+
   player.isSlapAttack = false;
 
   // Calculate attack duration based on charge percentage
@@ -2405,6 +2398,9 @@ function executeChargedAttack(player, chargePercentage) {
   player.isAttacking = true;
   player.attackStartTime = Date.now();
 
+  // Add hit tracking
+  player.chargedAttackHit = false;
+
   // Lock facing direction during attack
   player.chargingFacingDirection = player.facing;
   if (player.chargingFacingDirection !== null) {
@@ -2415,20 +2411,40 @@ function executeChargedAttack(player, chargePercentage) {
   player.isChargingAttack = false;
   player.chargeStartTime = 0;
 
+  // Store the attack start time for recovery timing
+  const attackStartTime = Date.now();
+
   setTimeout(() => {
-    // Only set recovery if we're still in a charged attack state and not in a throw state
-    if (player.attackType === "charged" && !player.isThrowing && !player.isBeingThrown) {
+    // Only set recovery if:
+    // 1. We're still in a charged attack state
+    // 2. Not in a throw state
+    // 3. The attack was actually released (not cancelled)
+    // 4. The attack duration has completed
+    // 5. No hit occurred during the attack
+    if (
+      player.attackType === "charged" &&
+      !player.isThrowing &&
+      !player.isBeingThrown &&
+      Date.now() - attackStartTime >= attackDuration &&
+      !player.chargedAttackHit
+    ) {
       const currentRoom = rooms.find((room) =>
         room.players.some((p) => p.id === player.id)
       );
+
       if (currentRoom) {
         const opponent = currentRoom.players.find((p) => p.id !== player.id);
-        // Only set recovery for missed charged attacks that were actually released
-        if (opponent && !opponent.isHit) {
+        // Only set recovery for missed charged attacks
+        if (opponent && !opponent.isHit && !player.isChargingAttack) {
           player.isRecovering = true;
           player.recoveryStartTime = Date.now();
           player.recoveryDuration = 250;
           player.recoveryDirection = player.facing;
+          // Apply static knockback for missed attacks
+          player.knockbackVelocity = {
+            x: player.facing * -2, // Static knockback amount
+            y: 0,
+          };
         }
       }
     }
@@ -2439,6 +2455,7 @@ function executeChargedAttack(player, chargePercentage) {
     player.chargingFacingDirection = null;
     player.attackType = null;
     player.chargeAttackPower = 0;
+    player.chargedAttackHit = false; // Reset hit tracking
 
     // Check for buffered actions after attack ends
     if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
@@ -2457,5 +2474,5 @@ function executeChargedAttack(player, chargePercentage) {
         player.dodgeStartY = player.y;
       }
     }
-  }, player.attackEndTime - Date.now());
+  }, attackDuration);
 }

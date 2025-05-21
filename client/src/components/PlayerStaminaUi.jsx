@@ -2,6 +2,8 @@ import PropTypes from "prop-types";
 import "./PlayerStaminaUi.css";
 
 const PlayerStaminaUi = ({ stamina, index }) => {
+  const staminaValue = typeof stamina === "object" ? stamina.stamina : stamina;
+
   return (
     <div>
       <div className="ui-player-container" id={`ui-container-${index + 1}`}>
@@ -9,15 +11,17 @@ const PlayerStaminaUi = ({ stamina, index }) => {
           <div
             className="ui-player-stamina-red"
             style={{
-              width: `${stamina}%`,
+              width: `${staminaValue}%`,
               transition: "width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
               background: `linear-gradient(90deg, 
-                ${stamina <= 25 ? "#ff4d4d" : "#ffd700"} 0%,
-                ${stamina <= 25 ? "#ff8080" : "#ffe066"} 100%)`,
-              boxShadow: `0 0 10px ${stamina <= 25 ? "#ff4d4d" : "#ffd700"}`,
+                ${staminaValue <= 25 ? "#ff4d4d" : "#ffd700"} 0%,
+                ${staminaValue <= 25 ? "#ff8080" : "#ffe066"} 100%)`,
+              boxShadow: `0 0 10px ${
+                staminaValue <= 25 ? "#ff4d4d" : "#ffd700"
+              }`,
             }}
           >
-            {stamina > 90 && (
+            {staminaValue > 90 && (
               <div className="stamina-particles">
                 {[...Array(5)].map((_, i) => (
                   <div
@@ -35,10 +39,10 @@ const PlayerStaminaUi = ({ stamina, index }) => {
           <div
             className="ui-player-stamina-yellow"
             style={{
-              width: `${stamina}%`,
+              width: `${staminaValue}%`,
               background: `linear-gradient(90deg, 
-                ${stamina <= 25 ? "#ff4d4d" : "#ffd700"} 0%,
-                ${stamina <= 25 ? "#ff8080" : "#ffe066"} 100%)`,
+                ${staminaValue <= 25 ? "#ff4d4d" : "#ffd700"} 0%,
+                ${staminaValue <= 25 ? "#ff8080" : "#ffe066"} 100%)`,
             }}
           />
         </div>
@@ -48,7 +52,12 @@ const PlayerStaminaUi = ({ stamina, index }) => {
 };
 
 PlayerStaminaUi.propTypes = {
-  stamina: PropTypes.number.isRequired,
+  stamina: PropTypes.oneOfType([
+    PropTypes.number,
+    PropTypes.shape({
+      stamina: PropTypes.number.isRequired,
+    }),
+  ]).isRequired,
   index: PropTypes.number.isRequired,
 };
 

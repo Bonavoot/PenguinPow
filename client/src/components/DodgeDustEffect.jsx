@@ -8,8 +8,8 @@ const GIF_DURATION = 450; // ms
 const SmokeContainer = styled.div.attrs((props) => {
   // Dash is forward if dodgeDirection === facing
   const isBackward =
-    props.$dodgeDirection &&
-    props.$facing &&
+    props.$dodgeDirection !== undefined &&
+    props.$facing !== undefined &&
     props.$dodgeDirection !== props.$facing;
   // Offset: adjust based on facing and dash direction
   let offset = 0;
@@ -43,7 +43,13 @@ const DodgeSmokeEffect = ({ x, y, isDodging, facing, dodgeDirection }) => {
   useEffect(() => {
     if (isDodging && !lastDodgeState.current) {
       setSmokeInstances([
-        { x, y, facing, dodgeDirection, key: Date.now() + Math.random() },
+        {
+          x,
+          y,
+          facing,
+          dodgeDirection: dodgeDirection || facing,
+          key: Date.now() + Math.random(),
+        },
       ]);
     }
     lastDodgeState.current = isDodging;
@@ -76,8 +82,6 @@ const DodgeSmokeEffect = ({ x, y, isDodging, facing, dodgeDirection }) => {
               height: "auto",
               display: "block",
               zIndex: 1000,
-              // filter:
-              //   "sepia(1) saturate(2.2) hue-rotate(-35deg) brightness(0.8) contrast(1.15)",
             }}
             draggable={false}
           />
@@ -92,7 +96,7 @@ DodgeSmokeEffect.propTypes = {
   y: PropTypes.number.isRequired,
   isDodging: PropTypes.bool.isRequired,
   facing: PropTypes.number.isRequired,
-  dodgeDirection: PropTypes.number.isRequired,
+  dodgeDirection: PropTypes.number,
 };
 
 export default DodgeSmokeEffect;

@@ -511,7 +511,14 @@ const SaltBasket = styled.img
 
 const GameFighter = ({ player, index, roomName, localId }) => {
   const { socket } = useContext(SocketContext);
-  const [penguin, setPenguin] = useState(player);
+  const [penguin, setPenguin] = useState({
+    ...player,
+    isDodging: player.isDodging || false,
+    dodgeDirection:
+      typeof player.dodgeDirection === "number"
+        ? player.dodgeDirection
+        : player.facing || 1,
+  });
   const [stamina, setStamina] = useState(player);
   const [hakkiyoi, setHakkiyoi] = useState(false);
   const [gyojiState, setGyojiState] = useState("idle");
@@ -547,10 +554,24 @@ const GameFighter = ({ player, index, roomName, localId }) => {
   useEffect(() => {
     socket.on("fighter_action", (data) => {
       if (index === 0) {
-        setPenguin(data.player1);
+        setPenguin({
+          ...data.player1,
+          isDodging: data.player1.isDodging || false,
+          dodgeDirection:
+            typeof data.player1.dodgeDirection === "number"
+              ? data.player1.dodgeDirection
+              : data.player1.facing || 1,
+        });
         setStamina(data.player1.stamina);
       } else if (index === 1) {
-        setPenguin(data.player2);
+        setPenguin({
+          ...data.player2,
+          isDodging: data.player2.isDodging || false,
+          dodgeDirection:
+            typeof data.player2.dodgeDirection === "number"
+              ? data.player2.dodgeDirection
+              : data.player2.facing || 1,
+        });
         setStamina(data.player2.stamina);
       }
     });

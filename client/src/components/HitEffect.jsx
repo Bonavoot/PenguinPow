@@ -2,33 +2,31 @@ import styled from "styled-components";
 import PropTypes from "prop-types";
 import hitEffect from "../assets/fire-hit-effect.gif";
 
-const HitEffectImage = styled.img`
-  position: absolute;
-  width: 10%;
-  height: auto;
-  pointer-events: none;
-  z-index: 100;
-  filter: brightness(0.1) invert(1) drop-shadow(1px 0 0 #000)
-    drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000)
-    drop-shadow(0 -1px 0 #000);
-`;
+const HitEffectImage = styled.img.attrs((props) => ({
+  style: {
+    position: "absolute",
+    width: "10%",
+    height: "auto",
+    pointerEvents: "none",
+    zIndex: 100,
+    filter:
+      "brightness(0.1) invert(1) drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000)",
+    left: `${(props.$x / 1280) * 100 + (props.$facing === 1 ? 2 : 7)}%`,
+    bottom: `${(props.$y / 720) * 100 + 14}%`,
+    transform: `scaleX(${props.$facing * -1}) rotateZ(-25deg)`,
+  },
+}))``;
 
 const HitEffect = ({ isActive, x, y, facing }) => {
   if (!isActive) return null;
-
-  // Use fixed position offsets
-  const baseOffsetX = facing === 1 ? 2 : 7; // Adjust for facing direction
-  const baseOffsetY = 14; // Fixed y offset
 
   return (
     <HitEffectImage
       src={hitEffect}
       alt="Hit Effect"
-      style={{
-        left: `${(x / 1280) * 100 + baseOffsetX}%`,
-        bottom: `${(y / 720) * 100 + baseOffsetY}%`,
-        transform: `scaleX(${facing * -1}) rotateZ(-25deg)`, // Flip the effect based on facing direction
-      }}
+      $x={x}
+      $y={y}
+      $facing={facing}
     />
   );
 };

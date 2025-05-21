@@ -4,41 +4,36 @@ import PropTypes from "prop-types";
 
 const SaltContainer = styled.div.attrs((props) => ({
   style: {
+    position: "absolute",
+    width: "23%",
+    height: "auto",
+    pointerEvents: "none",
+    zIndex: 999,
     left: `${(props.$x / 1280) * 100}%`,
     bottom: `${(props.$y / 720) * 100}%`,
     transform: `scaleX(${props.$facing})`,
   },
-}))`
-  position: absolute;
-  width: 23%;
-  height: auto;
-  pointer-events: none;
-  z-index: 999; // Increase this to be above characters
-`;
+}))``;
 
 const SaltParticle = styled.div.attrs((props) => ({
   style: {
+    position: "absolute",
+    width: "calc(0.4vw * (16 / 9))",
+    height: "calc(0.4vh * (16 / 9))",
+    background:
+      "radial-gradient(circle at center, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0) 70%)",
+    borderRadius: "50%",
+    willChange: "transform, opacity",
+    transformStyle: "preserve-3d",
+    backfaceVisibility: "hidden",
+    boxShadow: "0 0 4px rgba(255, 255, 255, 0.3)",
     transform: `translate(${props.$x}px, ${-props.$y}px) scale(${
       props.$scale
     })`,
     opacity: props.$opacity,
     filter: `blur(${props.$blur}px)`,
   },
-}))`
-  position: absolute;
-  width: calc(0.4vw * (16 / 9));
-  height: calc(0.4vh * (16 / 9));
-  background: radial-gradient(
-    circle at center,
-    rgba(255, 255, 255, 0.8) 0%,
-    rgba(255, 255, 255, 0) 70%
-  );
-  border-radius: 50%;
-  will-change: transform, opacity;
-  transform-style: preserve-3d;
-  backface-visibility: hidden;
-  box-shadow: 0 0 4px rgba(255, 255, 255, 0.3);
-`;
+}))``;
 
 const SaltEffect = ({
   isActive,
@@ -49,26 +44,26 @@ const SaltEffect = ({
   yOffset = 0,
 }) => {
   const [particles, setParticles] = useState([]);
-  const animationFrameRef = useRef();
-  const lastUpdateTime = useRef(0);
-  const containerRef = useRef(null);
   const lastActiveState = useRef(false);
+  const lastUpdateTime = useRef(null);
+  const animationFrameRef = useRef(null);
+  const containerRef = useRef(null);
 
   const updateParticle = useCallback((particle, deltaTime) => {
-    const gravity = 0.25;
-    const drag = 0.98;
-    const timeFactor = deltaTime / 16;
+    const newX = particle.x + particle.velocityX * (deltaTime / 16);
+    const newY = particle.y + particle.velocityY * (deltaTime / 16);
+    const newOpacity = particle.opacity - deltaTime / particle.life;
+    const newScale = particle.scale * 0.99;
+    const newBlur = particle.blur + 0.1;
 
     return {
       ...particle,
-      x: particle.x + particle.velocityX * timeFactor,
-      y: particle.y + particle.velocityY * timeFactor,
-      velocityX: particle.velocityX * Math.pow(drag, timeFactor),
-      velocityY:
-        particle.velocityY * Math.pow(drag, timeFactor) - gravity * timeFactor,
-      opacity: Math.max(0, particle.opacity - 0.015 * timeFactor),
+      x: newX,
+      y: newY,
+      opacity: newOpacity,
+      scale: newScale,
+      blur: newBlur,
       life: particle.life - deltaTime,
-      rotation: particle.rotation + particle.rotationSpeed * timeFactor,
     };
   }, []);
 

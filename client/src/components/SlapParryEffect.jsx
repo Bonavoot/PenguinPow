@@ -1,5 +1,18 @@
 import { useEffect, useState } from "react";
+import styled from "styled-components";
+import PropTypes from "prop-types";
 import "./SlapParryEffect.css";
+
+const ParryEffectContainer = styled.div.attrs((props) => ({
+  style: {
+    position: "absolute",
+    left: `${(props.$x / 1280) * 100}%`,
+    bottom: `${(props.$y / 720) * 100}%`,
+    transform: "translate(-50%, -50%)",
+    zIndex: 100,
+    pointerEvents: "none",
+  },
+}))``;
 
 const SlapParryEffect = ({ position }) => {
   const [showEffect, setShowEffect] = useState(false);
@@ -13,25 +26,18 @@ const SlapParryEffect = ({ position }) => {
 
   if (!showEffect || !position) return null;
 
-  // Convert game coordinates to percentage of container
-  const left = `${(position.x / 1280) * 100}%`;
-  const bottom = `${(position.y / 720) * 100}%`;
-
   return (
-    <div
-      className="slap-parry-effect"
-      style={{
-        position: "absolute",
-        left,
-        bottom,
-        transform: "translate(-50%, -50%)",
-        zIndex: 100,
-        pointerEvents: "none",
-      }}
-    >
+    <ParryEffectContainer $x={position.x} $y={position.y}>
       <div className="slap-parry-ring"></div>
-    </div>
+    </ParryEffectContainer>
   );
+};
+
+SlapParryEffect.propTypes = {
+  position: PropTypes.shape({
+    x: PropTypes.number.isRequired,
+    y: PropTypes.number.isRequired,
+  }),
 };
 
 export default SlapParryEffect;

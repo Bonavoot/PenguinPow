@@ -116,7 +116,7 @@ const Scoreboard = styled.div`
 
 const WinCount = styled.div`
   font-size: clamp(0.9rem, 2vw + 0.5rem, 3.5rem);
-  color: ${(props) => (props.isPlayer1 ? "#00F0FF" : "#FF3D3D")};
+  color: ${(props) => (props.$isPlayer1 ? "#00F0FF" : "#FF3D3D")};
   text-shadow: none;
   font-weight: 600;
   animation: ${subtlePulse} 3s infinite;
@@ -163,7 +163,7 @@ const UiPlayerInfo = ({ playerOneWinCount, playerTwoWinCount }) => {
 
       <PlayerName>PLAYER 1</PlayerName>
       <Scoreboard>
-        <WinCount isPlayer1>{playerOneWinCount}</WinCount>
+        <WinCount $isPlayer1>{playerOneWinCount}</WinCount>
         <Dash>-</Dash>
         <WinCount>{playerTwoWinCount}</WinCount>
       </Scoreboard>

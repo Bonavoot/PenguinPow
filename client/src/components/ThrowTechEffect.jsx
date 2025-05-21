@@ -1,6 +1,15 @@
 import { useState, useEffect, useContext, useRef } from "react";
+import styled from "styled-components";
 import { SocketContext } from "../SocketContext";
 import "./ThrowTechEffect.css";
+
+const TechEffectContainer = styled.div.attrs((props) => ({
+  style: {
+    position: "absolute",
+    left: `${(props.$x / 1280) * 100}%`,
+    bottom: `${(props.$y / 720) * 100}%`,
+  },
+}))``;
 
 const ThrowTechEffect = () => {
   const { socket } = useContext(SocketContext);
@@ -53,13 +62,7 @@ const ThrowTechEffect = () => {
   if (!effectState.isVisible) return null;
 
   return (
-    <div
-      className="throw-tech-effect"
-      style={{
-        left: `${(effectState.x / 1280) * 100}%`,
-        bottom: `${(effectState.y / 720) * 100}%`,
-      }}
-    >
+    <TechEffectContainer $x={effectState.x} $y={effectState.y}>
       <svg
         viewBox="0 0 100 100"
         xmlns="http://www.w3.org/2000/svg"
@@ -73,7 +76,7 @@ const ThrowTechEffect = () => {
         </defs>
         <use href="#star-path" className="tech-star" />
       </svg>
-    </div>
+    </TechEffectContainer>
   );
 };
 

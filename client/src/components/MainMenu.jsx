@@ -124,16 +124,16 @@ const ButtonContainer = styled.div`
 
 const MenuButton = styled.button`
   background: ${(props) =>
-    props.isActive
+    props.$isActive
       ? "linear-gradient(145deg, #FF4444, #CC0000)"
       : "linear-gradient(145deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05))"};
   border: none;
   border-radius: 8px;
   padding: clamp(0.7rem, 1.5vh, 1rem) clamp(1.2rem, 2vw, 1.8rem);
   font-size: clamp(1rem, 1.8vh, 1.4rem);
-  color: ${(props) => (props.isActive ? "white" : "rgba(255, 255, 255, 0.5)")};
+  color: ${(props) => (props.$isActive ? "white" : "rgba(255, 255, 255, 0.5)")};
   font-family: "Bungee", cursive;
-  cursor: ${(props) => (props.isActive ? "pointer" : "default")};
+  cursor: ${(props) => (props.$isActive ? "pointer" : "default")};
   transition: all 0.3s ease;
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
@@ -146,18 +146,17 @@ const MenuButton = styled.button`
   justify-content: center;
 
   &:hover {
-    transform: ${(props) => (props.isActive ? "translateX(10px)" : "none")};
+    transform: ${(props) => (props.$isActive ? "translateX(10px)" : "none")};
     background: ${(props) =>
-      props.isActive
+      props.$isActive
         ? "linear-gradient(145deg, #FF6666, #FF0000)"
         : "linear-gradient(145deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05))"};
   }
 
   &:active {
-    transform: ${(props) => (props.isActive ? "translateX(5px)" : "none")};
+    transform: ${(props) => (props.$isActive ? "translateX(5px)" : "none")};
   }
 `;
-
 
 const preloadAssets = (sources) => {
   sources.forEach((src) => {
@@ -198,19 +197,18 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
     case "mainMenu":
       currentPageComponent = (
         <MainMenuContainer>
-         
           <Logo>
             P u m o <PowText>PUMO!</PowText>
           </Logo>
           <SumoImage src={sumo} alt="sumo" />
           <ButtonContainer>
-            <MenuButton isActive onClick={handleDisplayRooms}>
+            <MenuButton $isActive onClick={handleDisplayRooms}>
               PLAY
             </MenuButton>
             <MenuButton>BASHO</MenuButton>
             <MenuButton>CUSTOMIZE</MenuButton>
             <MenuButton>STATS</MenuButton>
-            <MenuButton isActive onClick={handleSettings}>
+            <MenuButton $isActive onClick={handleSettings}>
               SETTINGS
             </MenuButton>
           </ButtonContainer>

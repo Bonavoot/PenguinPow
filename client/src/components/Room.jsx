@@ -70,30 +70,30 @@ const PlayerCountCircle = styled.div`
   height: 24px;
   border-radius: 50%;
   background: ${(props) =>
-    props.isFull ? "rgba(255, 68, 68, 0.2)" : "rgba(76, 175, 80, 0.2)"};
-  border: 2px solid ${(props) => (props.isFull ? "#FF4444" : "#4CAF50")};
+    props.$isFull ? "rgba(255, 68, 68, 0.2)" : "rgba(76, 175, 80, 0.2)"};
+  border: 2px solid ${(props) => (props.$isFull ? "#FF4444" : "#4CAF50")};
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 0.8rem;
-  color: ${(props) => (props.isFull ? "#FF4444" : "#4CAF50")};
+  color: ${(props) => (props.$isFull ? "#FF4444" : "#4CAF50")};
   box-shadow: 0 0 10px
     ${(props) =>
-      props.isFull ? "rgba(255, 68, 68, 0.3)" : "rgba(76, 175, 80, 0.3)"};
+      props.$isFull ? "rgba(255, 68, 68, 0.3)" : "rgba(76, 175, 80, 0.3)"};
 `;
 
 const JoinButton = styled.button`
   background: ${(props) =>
-    props.isFull
+    props.$isFull
       ? "linear-gradient(145deg, rgba(255, 68, 68, 0.2), rgba(255, 68, 68, 0.1))"
       : "linear-gradient(145deg, #4CAF50, #388E3C)"};
   border: none;
   border-radius: 8px;
   padding: 0.8rem 2rem;
   font-size: clamp(0.9rem, 1.2vw, 1.2rem);
-  color: ${(props) => (props.isFull ? "rgba(255, 255, 255, 0.5)" : "white")};
+  color: ${(props) => (props.$isFull ? "rgba(255, 255, 255, 0.5)" : "white")};
   font-family: "Bungee", cursive;
-  cursor: ${(props) => (props.isFull ? "default" : "pointer")};
+  cursor: ${(props) => (props.$isFull ? "default" : "pointer")};
   will-change: transform;
   transform: translateZ(0);
   transition: transform 0.2s ease;
@@ -101,19 +101,21 @@ const JoinButton = styled.button`
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
   border: 1px solid
     ${(props) =>
-      props.isFull ? "rgba(255, 68, 68, 0.3)" : "rgba(76, 175, 80, 0.3)"};
+      props.$isFull ? "rgba(255, 68, 68, 0.3)" : "rgba(76, 175, 80, 0.3)"};
   min-width: 120px;
 
   &:hover {
-    transform: ${(props) => (props.isFull ? "none" : "translateY(-2px) translateZ(0)")};
+    transform: ${(props) =>
+      props.$isFull ? "none" : "translateY(-2px) translateZ(0)"};
     background: ${(props) =>
-      props.isFull
+      props.$isFull
         ? "linear-gradient(145deg, rgba(255, 68, 68, 0.2), rgba(255, 68, 68, 0.1))"
         : "linear-gradient(145deg, #66BB6A, #43A047)"};
   }
 
   &:active {
-    transform: ${(props) => (props.isFull ? "none" : "translateY(0) translateZ(0)")};
+    transform: ${(props) =>
+      props.$isFull ? "none" : "translateY(0) translateZ(0)"};
   }
 `;
 
@@ -134,13 +136,13 @@ const Room = ({ room, setRoomName, handleJoinRoom }) => {
       <RoomInfo>
         <RoomId>{room.id}</RoomId>
         <PlayerCount>
-          <PlayerCountCircle isFull={isFull}>
+          <PlayerCountCircle $isFull={isFull}>
             {room.players.length}
           </PlayerCountCircle>
           / 2
         </PlayerCount>
       </RoomInfo>
-      <JoinButton isFull={isFull} onClick={handleJoin}>
+      <JoinButton $isFull={isFull} onClick={handleJoin}>
         {isFull ? "FULL" : "JOIN"}
       </JoinButton>
     </RoomContainer>

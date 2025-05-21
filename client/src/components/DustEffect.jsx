@@ -1,4 +1,6 @@
 import { useEffect, useState, useRef } from "react";
+import styled from "styled-components";
+import PropTypes from "prop-types";
 
 const getRandomShape = () => {
   const shapes = [
@@ -9,6 +11,27 @@ const getRandomShape = () => {
   ];
   return shapes[Math.floor(Math.random() * shapes.length)];
 };
+
+const DustParticle = styled.div.attrs((props) => ({
+  style: {
+    position: "absolute",
+    left: `${(props.$x / 1280) * 100}%`,
+    bottom: `${(props.$y / 720) * 100}%`,
+    width: `${(props.$size / 1280) * 100}%`,
+    height: `${(props.$size / 720) * 100}%`,
+    backgroundColor: "rgba(151, 127, 17, 0.8)",
+    animation: `dust-rise-${props.$id % 2 ? "a" : "b"} 1s ease-out forwards`,
+    zIndex: 100,
+    pointerEvents: "none",
+    transform: `
+      translateX(${props.$facing === 1 ? "0%" : "-100%"})
+      rotate(${props.$rotation}deg)
+      scale(${props.$initialScale})
+    `,
+    willChange: "transform, opacity",
+    [props.$shape.split(":")[0]]: props.$shape.split(":")[1],
+  },
+}))``;
 
 const DustEffect = ({ playerX, playerY, facing }) => {
   const [particles, setParticles] = useState([]);
@@ -61,32 +84,26 @@ const DustEffect = ({ playerX, playerY, facing }) => {
   return (
     <>
       {particles.map((particle) => (
-        <div
+        <DustParticle
           key={particle.id}
-          style={{
-            position: "absolute",
-            left: `${(particle.x / 1280) * 100}%`,
-            bottom: `${(particle.y / 720) * 100}%`,
-            width: `${(particle.size / 1280) * 100}%`,
-            height: `${(particle.size / 720) * 100}%`,
-            backgroundColor: "rgba(151, 127, 17, 0.8)",
-            animation: `dust-rise-${
-              particle.id % 2 ? "a" : "b"
-            } 1s ease-out forwards`,
-            zIndex: 100,
-            pointerEvents: "none",
-            transform: `
-              translateX(${facing === 1 ? "0%" : "-100%"})
-              rotate(${particle.rotation}deg)
-              scale(${particle.initialScale})
-            `,
-            willChange: "transform, opacity",
-            [particle.shape.split(":")[0]]: particle.shape.split(":")[1],
-          }}
+          $x={particle.x}
+          $y={particle.y}
+          $size={particle.size}
+          $rotation={particle.rotation}
+          $shape={particle.shape}
+          $initialScale={particle.initialScale}
+          $facing={facing}
+          $id={particle.id}
         />
       ))}
     </>
   );
+};
+
+DustEffect.propTypes = {
+  playerX: PropTypes.number.isRequired,
+  playerY: PropTypes.number.isRequired,
+  facing: PropTypes.number.isRequired,
 };
 
 export default DustEffect;
