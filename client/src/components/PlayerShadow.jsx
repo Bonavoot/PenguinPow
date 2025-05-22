@@ -12,7 +12,7 @@ const ShadowElement = styled.div.attrs((props) => {
       position: "absolute",
       left: `${(props.$x / 1280) * 100}%`,
       bottom: `${(bottomPos / 720) * 100}%`,
-      transform: `translateX(${props.$facing === -1 ? "12%" : "9%"})`,
+      transform: `translateX(${props.$facing === -1 ? "12%" : "15%"})`,
     },
   };
 })`

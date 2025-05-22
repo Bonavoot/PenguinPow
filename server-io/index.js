@@ -125,12 +125,14 @@ const MAP_RING_OUT_LEFT = 100;
 const MAP_RING_OUT_RIGHT = 975;
 
 // Add movement constants
-const MOVEMENT_ACCELERATION = 0.25; // Increased for snappier acceleration
-const MOVEMENT_DECELERATION = 0.35; // Increased for faster stops
-const MAX_MOVEMENT_SPEED = 1.0; // Back to original for better control
-const MOVEMENT_MOMENTUM = 0.85; // New constant for movement momentum
-const MOVEMENT_FRICTION = 0.95; // Reduced friction for less floaty feel
-const MOVEMENT_TURN_SPEED = 0.4; // Increased for faster direction changes
+const MOVEMENT_ACCELERATION = 0.08; // Reduced from 0.25 for more slippery feel
+const MOVEMENT_DECELERATION = 0.12; // Reduced from 0.35 for longer slides
+const MAX_MOVEMENT_SPEED = 1.2; // Slightly increased for better momentum
+const MOVEMENT_MOMENTUM = 0.98; // Increased from 0.85 for longer slides
+const MOVEMENT_FRICTION = 0.985; // Increased from 0.95 for more ice-like feel
+const MOVEMENT_TURN_SPEED = 0.15; // Reduced from 0.4 for more drift
+const ICE_DRIFT_FACTOR = 0.92; // New constant for directional drift
+const MIN_MOVEMENT_THRESHOLD = 0.01; // New constant for movement cutoff
 
 const RAW_PARRY_KNOCKBACK = 4; // Fixed knockback distance for raw parries
 const RAW_PARRY_STUN_DURATION = 1000; // 1 second stun duration
@@ -482,35 +484,33 @@ io.on("connection", (socket) => {
             return false;
           }
 
-          // Calculate hitbox size based on power-up multiplier
-          const player1Size =
-            HITBOX_DISTANCE_VALUE * (player1.sizeMultiplier || 1);
-          const player2Size =
-            HITBOX_DISTANCE_VALUE * (player2.sizeMultiplier || 1);
+          // Calculate hitbox sizes based on power-up multiplier
+          const player1Hitbox = calculateEffectiveHitboxSize(player1);
+          const player2Hitbox = calculateEffectiveHitboxSize(player2);
 
           // Calculate hitbox centers
           const player1Center = player1.x;
           const player2Center = player2.x;
 
-          const player1Hitbox = {
-            left: player1Center - player1Size,
-            right: player1Center + player1Size,
-            top: player1.y - player1Size,
-            bottom: player1.y + player1Size,
+          const player1HitboxBounds = {
+            left: player1Center - player1Hitbox.left,
+            right: player1Center + player1Hitbox.right,
+            top: player1.y - player1Hitbox.left,
+            bottom: player1.y + player1Hitbox.left,
           };
 
-          const player2Hitbox = {
-            left: player2Center - player2Size,
-            right: player2Center + player2Size,
-            top: player2.y - player2Size,
-            bottom: player2.y + player2Size,
+          const player2HitboxBounds = {
+            left: player2Center - player2Hitbox.left,
+            right: player2Center + player2Hitbox.right,
+            top: player2.y - player2Hitbox.left,
+            bottom: player2.y + player2Hitbox.left,
           };
 
           return (
-            player1Hitbox.left < player2Hitbox.right &&
-            player1Hitbox.right > player2Hitbox.left &&
-            player1Hitbox.top < player2Hitbox.bottom &&
-            player1Hitbox.bottom > player2Hitbox.top
+            player1HitboxBounds.left < player2HitboxBounds.right &&
+            player1HitboxBounds.right > player2HitboxBounds.left &&
+            player1HitboxBounds.top < player2HitboxBounds.bottom &&
+            player1HitboxBounds.bottom > player2HitboxBounds.top
           );
         }
         function adjustPlayerPositions(player1, player2, delta) {
@@ -527,10 +527,8 @@ io.on("connection", (socket) => {
           }
 
           // Calculate hitbox sizes based on power-ups
-          const player1Size =
-            HITBOX_DISTANCE_VALUE * (player1.sizeMultiplier || 1);
-          const player2Size =
-            HITBOX_DISTANCE_VALUE * (player2.sizeMultiplier || 1);
+          const player1Hitbox = calculateEffectiveHitboxSize(player1);
+          const player2Hitbox = calculateEffectiveHitboxSize(player2);
 
           // Calculate the center points of each player's hitbox
           const player1Center = player1.x;
@@ -542,7 +540,7 @@ io.on("connection", (socket) => {
           );
 
           // Calculate the minimum distance needed between centers to prevent overlap
-          const minDistance = player1Size + player2Size;
+          const minDistance = player1Hitbox.left + player2Hitbox.right;
 
           // If players are overlapping
           if (distanceBetweenCenters < minDistance) {
@@ -686,15 +684,29 @@ io.on("connection", (socket) => {
 
         // Handle knockback movement with NO boundary restrictions
         if (player.isHit) {
-          // Apply knockback without any boundary restrictions
-          player.x += player.knockbackVelocity.x * delta * speedFactor;
+          // Apply immediate knockback without boundary check
+          player.x =
+            player.x + player.knockbackVelocity.x * delta * speedFactor;
 
-          // Apply friction
+          // Apply friction to knockback
           player.knockbackVelocity.x *= 0.875;
 
-          // Reset hit state when knockback is nearly complete
-          if (Math.abs(player.knockbackVelocity.x) < 0.1) {
+          // Apply ice-like sliding physics
+          if (Math.abs(player.movementVelocity) > MIN_MOVEMENT_THRESHOLD) {
+            // Apply momentum and friction
+            player.movementVelocity *= MOVEMENT_MOMENTUM * MOVEMENT_FRICTION;
+
+            // Calculate new position with sliding
+            player.x = player.x + delta * speedFactor * player.movementVelocity;
+          }
+
+          // Reset hit state when both knockback and sliding are nearly complete
+          if (
+            Math.abs(player.knockbackVelocity.x) < 0.1 &&
+            Math.abs(player.movementVelocity) < MIN_MOVEMENT_THRESHOLD
+          ) {
             player.knockbackVelocity.x = 0;
+            player.movementVelocity = 0;
             player.isHit = false;
           }
         }
@@ -922,11 +934,11 @@ io.on("connection", (socket) => {
         }
         // Dodging
         if (player.isDodging) {
-          let currentDodgeSpeed = speedFactor * 2.5; // Base dodge speed
+          let currentDodgeSpeed = speedFactor * 2.2; // Increased from 1.8 to 2.2 for better balance
 
-          // Apply speed power-up to dodge
+          // Apply speed power-up to dodge with moderate multiplier
           if (player.activePowerUp === POWER_UP_TYPES.SPEED) {
-            currentDodgeSpeed *= player.powerUpMultiplier;
+            currentDodgeSpeed *= Math.min(player.powerUpMultiplier * 0.85, 1.5); // Increased multiplier and cap
           }
           // Reduce dodge speed when size power-up is active
           if (player.activePowerUp === POWER_UP_TYPES.SIZE) {
@@ -965,6 +977,20 @@ io.on("connection", (socket) => {
           }
 
           if (Date.now() >= player.dodgeEndTime) {
+            // Transfer dodge momentum to movement velocity
+            // Use a higher percentage of the dodge speed for more natural sliding
+            const dodgeMomentum =
+              currentDodgeSpeed * player.dodgeDirection * 1.2;
+
+            // If no movement keys are pressed, apply full momentum
+            if (!player.keys.a && !player.keys.d) {
+              player.movementVelocity = dodgeMomentum;
+            } else {
+              // If movement keys are pressed, blend the momentum with current movement
+              player.movementVelocity =
+                (player.movementVelocity + dodgeMomentum) * 0.6;
+            }
+
             player.isDodging = false;
             player.dodgeDirection = null;
             player.y = GROUND_LEVEL; // Reset to ground level when dodge ends
@@ -980,7 +1006,7 @@ io.on("connection", (socket) => {
             !player.isGrabbing &&
             !player.isBeingGrabbed &&
             !player.isRecovering &&
-            !player.isHit) || // Add isHit check
+            !player.isHit) ||
           (!player.keys.s &&
             player.isSlapAttack &&
             player.saltCooldown === false &&
@@ -988,7 +1014,7 @@ io.on("connection", (socket) => {
             !player.isGrabbing &&
             !player.isBeingGrabbed &&
             !player.isRecovering &&
-            !player.isHit) // Add isHit check
+            !player.isHit)
         ) {
           let currentSpeedFactor = speedFactor;
 
@@ -998,13 +1024,25 @@ io.on("connection", (socket) => {
           }
           // Reduce speed when size power-up is active
           if (player.activePowerUp === POWER_UP_TYPES.SIZE) {
-            currentSpeedFactor *= 0.85; // 15% speed reduction
+            currentSpeedFactor *= 0.85;
           }
 
           // Initialize movement velocity if it doesn't exist
           if (!player.movementVelocity) {
             player.movementVelocity = 0;
           }
+
+          // Calculate effective boundary based on player size with different multipliers
+          const sizeOffset =
+            player.activePowerUp === POWER_UP_TYPES.SIZE
+              ? HITBOX_DISTANCE_VALUE * (player.sizeMultiplier - 1)
+              : 0;
+
+          // Apply different multipliers for left and right boundaries
+          const leftBoundary =
+            MAP_LEFT_BOUNDARY + sizeOffset * SIZE_POWERUP_LEFT_MULTIPLIER;
+          const rightBoundary =
+            MAP_RIGHT_BOUNDARY - sizeOffset * SIZE_POWERUP_RIGHT_MULTIPLIER;
 
           if (
             player.keys.d &&
@@ -1014,18 +1052,26 @@ io.on("connection", (socket) => {
             !player.isRecovering &&
             !player.isRawParryStun
           ) {
-            // Immediate direction change
+            // Apply ice drift when changing directions
             if (player.movementVelocity < 0) {
-              player.movementVelocity = 0;
+              player.movementVelocity *= ICE_DRIFT_FACTOR;
             }
 
-            // Quick acceleration to max speed
+            // Gradual acceleration on ice
             player.movementVelocity = Math.min(
               player.movementVelocity + MOVEMENT_ACCELERATION,
               MAX_MOVEMENT_SPEED
             );
 
-            player.x += delta * currentSpeedFactor * player.movementVelocity;
+            // Calculate new position and check boundaries
+            const newX =
+              player.x + delta * currentSpeedFactor * player.movementVelocity;
+            if (newX <= rightBoundary) {
+              player.x = newX;
+            } else {
+              player.x = rightBoundary;
+              player.movementVelocity = 0; // Stop sliding at boundary
+            }
             player.isStrafing = true;
             player.isReady = false;
           } else if (
@@ -1036,40 +1082,45 @@ io.on("connection", (socket) => {
             !player.isRecovering &&
             !player.isRawParryStun
           ) {
-            // Immediate direction change
+            // Apply ice drift when changing directions
             if (player.movementVelocity > 0) {
-              player.movementVelocity = 0;
+              player.movementVelocity *= ICE_DRIFT_FACTOR;
             }
 
-            // Quick acceleration to max speed
+            // Gradual acceleration on ice
             player.movementVelocity = Math.max(
               player.movementVelocity - MOVEMENT_ACCELERATION,
               -MAX_MOVEMENT_SPEED
             );
 
-            player.x += delta * currentSpeedFactor * player.movementVelocity;
+            // Calculate new position and check boundaries
+            const newX =
+              player.x + delta * currentSpeedFactor * player.movementVelocity;
+            if (newX >= leftBoundary) {
+              player.x = newX;
+            } else {
+              player.x = leftBoundary;
+              player.movementVelocity = 0; // Stop sliding at boundary
+            }
             player.isStrafing = true;
             player.isReady = false;
           } else {
-            // Quick deceleration when no keys are pressed
-            if (Math.abs(player.movementVelocity) > 0.01) {
-              // Apply deceleration
-              if (player.movementVelocity > 0) {
-                player.movementVelocity = Math.max(
-                  player.movementVelocity - MOVEMENT_DECELERATION,
-                  0
-                );
-              } else {
-                player.movementVelocity = Math.min(
-                  player.movementVelocity + MOVEMENT_DECELERATION,
-                  0
-                );
-              }
+            // Apply ice-like deceleration
+            if (Math.abs(player.movementVelocity) > MIN_MOVEMENT_THRESHOLD) {
+              // Apply momentum and friction
+              player.movementVelocity *= MOVEMENT_MOMENTUM * MOVEMENT_FRICTION;
 
-              // Apply remaining velocity
-              if (!player.isRecovering) {
-                player.x +=
-                  delta * currentSpeedFactor * player.movementVelocity;
+              // Calculate new position and check boundaries
+              const newX =
+                player.x + delta * currentSpeedFactor * player.movementVelocity;
+
+              // Check boundaries and stop sliding if hitting them
+              if (newX >= leftBoundary && newX <= rightBoundary) {
+                player.x = newX;
+              } else {
+                // Stop at boundary and reset velocity
+                player.x = newX < leftBoundary ? leftBoundary : rightBoundary;
+                player.movementVelocity = 0;
               }
             } else {
               // Snap to zero when velocity is very small
@@ -1090,8 +1141,8 @@ io.on("connection", (socket) => {
             (player.keys.a && player.keys.d)
           ) {
             player.isStrafing = false;
-            // Immediate stop when forced
-            player.movementVelocity = 0;
+            // Don't immediately stop on ice
+            player.movementVelocity *= MOVEMENT_FRICTION;
           }
         }
         if (
@@ -1364,6 +1415,11 @@ io.on("connection", (socket) => {
       player.recoveryStartTime = Date.now();
       player.recoveryDuration = 400;
       player.recoveryDirection = player.facing;
+      // Initialize knockback velocity in the opposite direction of the attack
+      player.knockbackVelocity = {
+        x: player.facing * -2, // Static knockback amount
+        y: 0,
+      };
     } else {
       // For slap attacks, maintain the existing timing behavior
       const originalAttackEndTime = player.attackEndTime;
@@ -1444,26 +1500,40 @@ io.on("connection", (socket) => {
       }
 
       if (isSlapAttack) {
-        otherPlayer.knockbackVelocity.x =
-          6 * knockbackDirection * finalKnockbackMultiplier; // Fixed base knockback for slaps
+        // Convert knockback to movement velocity for ice-like sliding
+        otherPlayer.movementVelocity =
+          3.5 * knockbackDirection * finalKnockbackMultiplier; // Increased from 2.5 to 3.5
+        otherPlayer.knockbackVelocity.x = 0; // Clear knockback velocity since we're using movement
+
+        // Add immediate position adjustment to prevent overlap
+        const minDistance = SLAP_HITBOX_DISTANCE_VALUE * 0.8; // 80% of hitbox distance
+        const currentDistance = Math.abs(player.x - otherPlayer.x);
+        if (currentDistance < minDistance) {
+          const adjustment =
+            (minDistance - currentDistance) * knockbackDirection;
+          otherPlayer.x += adjustment;
+        }
       } else {
-        // Reduced base knockback for charged attacks
-        otherPlayer.knockbackVelocity.x =
-          5 * knockbackDirection * finalKnockbackMultiplier; // Reduced from 7 to 5
+        // For charged attacks, use a combination of immediate knockback and sliding
+        const immediateKnockback =
+          2 * knockbackDirection * finalKnockbackMultiplier;
+        otherPlayer.movementVelocity =
+          1.5 * knockbackDirection * finalKnockbackMultiplier;
+        otherPlayer.knockbackVelocity.x = immediateKnockback;
 
         // Calculate attacker knockback based on charge percentage
         const attackerKnockbackDirection = -knockbackDirection;
         const attackerKnockbackMultiplier =
-          0.3 + (chargePercentage / 100) * 0.5; // Reduced from 0.8 to 0.5
+          0.3 + (chargePercentage / 100) * 0.5;
 
         player.knockbackVelocity.x =
-          2 * attackerKnockbackDirection * attackerKnockbackMultiplier; // Reduced from 3 to 2
-        player.knockbackVelocity.y = 3; // Reduced from 4 to 3
+          2 * attackerKnockbackDirection * attackerKnockbackMultiplier;
+        player.knockbackVelocity.y = 3;
 
         if (currentRoom) {
           io.in(currentRoom.id).emit("screen_shake", {
-            intensity: 0.7 + (chargePercentage / 100) * 0.2, // Reduced from 0.3 to 0.2
-            duration: 250 + (chargePercentage / 100) * 100, // Reduced from 150 to 100
+            intensity: 0.7 + (chargePercentage / 100) * 0.2,
+            duration: 250 + (chargePercentage / 100) * 100,
           });
         }
       }
@@ -2280,6 +2350,10 @@ function handleWinCondition(room, loser, winner) {
     }, 350);
   }
 
+  // Store the current states that we want to preserve
+  const loserKnockbackVelocity = { ...loser.knockbackVelocity };
+  const loserMovementVelocity = loser.movementVelocity;
+
   // Reset all key states and attack states for both players
   room.players.forEach((p) => {
     const currentX = p.x;
@@ -2298,10 +2372,15 @@ function handleWinCondition(room, loser, winner) {
     p.spacebarReleasedDuringDodge = false;
     p.attackType = null;
 
-    // Only reset knockback for the winner
-    if (p.id === winner.id) {
+    // Keep the loser's knockback and movement velocity
+    if (p.id === loser.id) {
+      p.knockbackVelocity = loserKnockbackVelocity;
+      p.movementVelocity = loserMovementVelocity;
+    } else {
       p.knockbackVelocity = { x: 0, y: 0 };
+      p.movementVelocity = 0;
     }
+
     p.keys = {
       w: false,
       a: false,
@@ -2328,6 +2407,18 @@ function handleWinCondition(room, loser, winner) {
   if (!room.gameOverTime) {
     room.gameOverTime = Date.now();
   }
+
+  // Wait for winner text to disappear (3 seconds) before resetting states
+  setTimeout(() => {
+    if (room.players) {
+      room.players.forEach((p) => {
+        if (p.id === loser.id) {
+          p.knockbackVelocity = { x: 0, y: 0 };
+          p.movementVelocity = 0;
+        }
+      });
+    }
+  }, 3000);
 }
 
 // Add this new function near the other helper functions
@@ -2508,4 +2599,24 @@ function executeChargedAttack(player, chargePercentage) {
       }
     }
   }, attackDuration);
+}
+
+// Add new function to calculate effective hitbox size based on facing direction
+function calculateEffectiveHitboxSize(player) {
+  const baseSize = HITBOX_DISTANCE_VALUE * (player.sizeMultiplier || 1);
+
+  // Only apply asymmetric adjustments if player has size power-up
+  if (player.activePowerUp === POWER_UP_TYPES.SIZE) {
+    // Return symmetric hitbox for size power-up
+    return {
+      left: baseSize,
+      right: baseSize,
+    };
+  }
+
+  // For normal size, return symmetric hitbox
+  return {
+    left: baseSize,
+    right: baseSize,
+  };
 }
