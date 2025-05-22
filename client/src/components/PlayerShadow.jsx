@@ -1,7 +1,7 @@
 import styled from "styled-components";
 import PropTypes from "prop-types";
 
-const GROUND_LEVEL = 215; // Match the server's GROUND_LEVEL
+const GROUND_LEVEL = 200; // Match the server's GROUND_LEVEL
 
 const ShadowElement = styled.div.attrs((props) => {
   // Calculate the bottom position

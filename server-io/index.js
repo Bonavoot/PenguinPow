@@ -79,6 +79,7 @@ const rooms = Array.from({ length: 10 }, (_, i) => ({
   matchOver: false,
   readyStartTime: null,
   roundStartTimer: null, // Add timer for automatic round start
+  hakkiyoiCount: 0,
 }));
 
 let index;
@@ -87,7 +88,7 @@ let staminaRegenCounter = 0;
 const TICK_RATE = 64;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.25; // Increased from 0.22 for snappier movement
-const GROUND_LEVEL = 215;
+const GROUND_LEVEL = 200;
 const HITBOX_DISTANCE_VALUE = 85; // Reduced from 90 by 20%
 const SLAP_HITBOX_DISTANCE_VALUE = 184; // Updated to match GRAB_RANGE
 const SLAP_PARRY_WINDOW = 150; // 150ms window for parry
@@ -98,8 +99,8 @@ const GRAB_PUSH_SPEED = 0.3; // Increased from 0.2 for more substantial movement
 const GRAB_PUSH_DURATION = 650;
 
 // Add size power-up boundary multipliers
-const SIZE_POWERUP_LEFT_MULTIPLIER = 1; // Changed from -0.7 to 1 for symmetry
-const SIZE_POWERUP_RIGHT_MULTIPLIER = 1; // Changed from 2.5 to 1 for symmetry
+const SIZE_POWERUP_LEFT_MULTIPLIER = 1.1; // Reduced left side by 20%
+const SIZE_POWERUP_RIGHT_MULTIPLIER = 1.1; // Increased right side by 20%
 
 // Add power-up types
 const POWER_UP_TYPES = {
@@ -130,7 +131,6 @@ const MOVEMENT_DECELERATION = 0.12; // Reduced from 0.35 for longer slides
 const MAX_MOVEMENT_SPEED = 1.2; // Slightly increased for better momentum
 const MOVEMENT_MOMENTUM = 0.98; // Increased from 0.85 for longer slides
 const MOVEMENT_FRICTION = 0.985; // Increased from 0.95 for more ice-like feel
-const MOVEMENT_TURN_SPEED = 0.15; // Reduced from 0.4 for more drift
 const ICE_DRIFT_FACTOR = 0.92; // New constant for directional drift
 const MIN_MOVEMENT_THRESHOLD = 0.01; // New constant for movement cutoff
 
@@ -142,6 +142,7 @@ function resetRoomAndPlayers(room) {
   // Reset room state
   room.gameStart = false;
   room.gameOver = false;
+  room.hakkiyoiCount = 0;
   room.gameOverTime = null;
   delete room.winnerId;
   delete room.loserId;
@@ -153,6 +154,7 @@ function resetRoomAndPlayers(room) {
   room.roundStartTimer = setTimeout(() => {
     if (!room.gameStart && room.players.length === 2) {
       room.gameStart = true;
+      room.hakkiyoiCount = 1;
       io.in(room.id).emit("game_start", true);
       room.players.forEach((player) => {
         player.isReady = false;
@@ -362,6 +364,9 @@ io.on("connection", (socket) => {
       if (room.players.length === 2) {
         const [player1, player2] = room.players;
 
+        // Handle ready positions separately from movement
+        handleReadyPositions(room, player1, player2);
+
         if (player1.isGrabbing && player1.grabbedOpponent) {
           // Only handle grab state if not pushing
           const opponent = room.players.find(
@@ -416,169 +421,6 @@ io.on("connection", (socket) => {
           }
         }
 
-        if (room.gameStart === false) {
-          // Only adjust player 1's ready position based on size power-up
-          const player1ReadyX =
-            player1.activePowerUp === POWER_UP_TYPES.SIZE ? 325 : 355;
-
-          if (player1.x >= player1ReadyX) {
-            player1.x = player1ReadyX;
-          }
-
-          if (player2.x <= 690) {
-            player2.x = 690;
-          }
-
-          if (player1.x === player1ReadyX) {
-            player1.isReady = true;
-          }
-
-          if (player2.x === 690) {
-            player2.isReady = true;
-          }
-        } else {
-          // Clear ready states when game starts
-          player1.isReady = false;
-          player2.isReady = false;
-        }
-
-        function arePlayersColliding(player1, player2) {
-          // If either player is dodging, return false immediately
-          if (player1.isDodging || player2.isDodging) {
-            return false;
-          }
-
-          // If either player is in recovery from a dodge + charged attack, allow collision checks
-          const isRecoveringFromDodgeAttack = (player) => {
-            return (
-              player.isRecovering &&
-              player.recoveryStartTime &&
-              Date.now() - player.recoveryStartTime < player.recoveryDuration
-            );
-          };
-
-          if (
-            isRecoveringFromDodgeAttack(player1) ||
-            isRecoveringFromDodgeAttack(player2)
-          ) {
-            return true;
-          }
-
-          if (
-            player1.isGrabbing ||
-            player2.isGrabbing ||
-            player1.isBeingGrabbed ||
-            player2.isBeingGrabbed
-          ) {
-            return false;
-          }
-
-          if (
-            player1.isDodging ||
-            player2.isDodging ||
-            player1.isThrowing ||
-            player2.isThrowing ||
-            player1.isBeingThrown ||
-            player2.isBeingThrown
-          ) {
-            return false;
-          }
-
-          // Calculate hitbox sizes based on power-up multiplier
-          const player1Hitbox = calculateEffectiveHitboxSize(player1);
-          const player2Hitbox = calculateEffectiveHitboxSize(player2);
-
-          // Calculate hitbox centers
-          const player1Center = player1.x;
-          const player2Center = player2.x;
-
-          const player1HitboxBounds = {
-            left: player1Center - player1Hitbox.left,
-            right: player1Center + player1Hitbox.right,
-            top: player1.y - player1Hitbox.left,
-            bottom: player1.y + player1Hitbox.left,
-          };
-
-          const player2HitboxBounds = {
-            left: player2Center - player2Hitbox.left,
-            right: player2Center + player2Hitbox.right,
-            top: player2.y - player2Hitbox.left,
-            bottom: player2.y + player2Hitbox.left,
-          };
-
-          return (
-            player1HitboxBounds.left < player2HitboxBounds.right &&
-            player1HitboxBounds.right > player2HitboxBounds.left &&
-            player1HitboxBounds.top < player2HitboxBounds.bottom &&
-            player1HitboxBounds.bottom > player2HitboxBounds.top
-          );
-        }
-        function adjustPlayerPositions(player1, player2, delta) {
-          // Calculate the overlap between players
-          if (
-            player1.isDodging ||
-            player2.isDodging ||
-            player1.isThrowing ||
-            player2.isThrowing ||
-            player1.isBeingThrown ||
-            player2.isBeingThrown
-          ) {
-            return;
-          }
-
-          // Calculate hitbox sizes based on power-ups
-          const player1Hitbox = calculateEffectiveHitboxSize(player1);
-          const player2Hitbox = calculateEffectiveHitboxSize(player2);
-
-          // Calculate the center points of each player's hitbox
-          const player1Center = player1.x;
-          const player2Center = player2.x;
-
-          // Calculate the distance between centers
-          const distanceBetweenCenters = Math.abs(
-            player1Center - player2Center
-          );
-
-          // Calculate the minimum distance needed between centers to prevent overlap
-          const minDistance = player1Hitbox.left + player2Hitbox.right;
-
-          // If players are overlapping
-          if (distanceBetweenCenters < minDistance) {
-            // Calculate how much they need to move apart
-            const overlap = minDistance - distanceBetweenCenters;
-            const adjustment = overlap / 2;
-
-            // Increase adjustment speed during recovery states
-            const isRecovering = player1.isRecovering || player2.isRecovering;
-            const smoothFactor = isRecovering ? delta * 0.05 : delta * 0.01;
-
-            // Calculate new positions
-            let newPlayer1X = player1.x;
-            let newPlayer2X = player2.x;
-
-            // Move players apart based on their relative positions
-            if (player1.x < player2.x) {
-              newPlayer1X -= adjustment * smoothFactor;
-              newPlayer2X += adjustment * smoothFactor;
-            } else {
-              newPlayer1X += adjustment * smoothFactor;
-              newPlayer2X -= adjustment * smoothFactor;
-            }
-
-            // Enforce map boundaries for both players
-            const leftBoundary = MAP_LEFT_BOUNDARY;
-            const rightBoundary = MAP_RIGHT_BOUNDARY;
-
-            // Only update positions if they stay within boundaries
-            if (newPlayer1X >= leftBoundary && newPlayer1X <= rightBoundary) {
-              player1.x = newPlayer1X;
-            }
-            if (newPlayer2X >= leftBoundary && newPlayer2X <= rightBoundary) {
-              player2.x = newPlayer2X;
-            }
-          }
-        }
-
         if (player1.isAttacking) {
           checkCollision(player1, player2);
         }
@@ -616,6 +458,7 @@ io.on("connection", (socket) => {
             io.in(room.id).emit("game_start", true);
             player1.isReady = false;
             player2.isReady = false;
+            room.hakkiyoiCount = 1;
             room.readyStartTime = null;
           }
         } else {
@@ -627,50 +470,46 @@ io.on("connection", (socket) => {
           if (player.isRecovering) {
             if (player.isDodging) {
               player.isRecovering = false;
-              player.knockbackVelocity = { x: 0, y: 0 };
+              player.movementVelocity = 0;
             }
             const recoveryElapsed = Date.now() - player.recoveryStartTime;
 
-            // Apply gravity to vertical knockback (increased gravity effect)
-            player.knockbackVelocity.y -= 0.2 * delta;
+            // Apply ice-like physics to recovery movement
+            if (Math.abs(player.movementVelocity) > MIN_MOVEMENT_THRESHOLD) {
+              // Apply momentum and friction from global ice physics
+              player.movementVelocity *= MOVEMENT_MOMENTUM * MOVEMENT_FRICTION;
 
-            // Calculate effective boundary based on player size
-            const sizeOffset =
-              player.activePowerUp === POWER_UP_TYPES.SIZE
-                ? HITBOX_DISTANCE_VALUE * (player.sizeMultiplier - 1)
-                : 0;
+              // Calculate new position with sliding
+              const newX =
+                player.x + delta * speedFactor * player.movementVelocity;
 
-            const leftBoundary =
-              MAP_LEFT_BOUNDARY + sizeOffset * SIZE_POWERUP_LEFT_MULTIPLIER;
-            const rightBoundary =
-              MAP_RIGHT_BOUNDARY - sizeOffset * SIZE_POWERUP_RIGHT_MULTIPLIER;
+              // Calculate effective boundary based on player size
+              const sizeOffset =
+                player.activePowerUp === POWER_UP_TYPES.SIZE
+                  ? HITBOX_DISTANCE_VALUE * (player.sizeMultiplier - 1)
+                  : 0;
 
-            // Apply horizontal knockback with boundary checks
-            const newX =
-              player.x + player.knockbackVelocity.x * delta * speedFactor;
+              // Only use map boundaries during recovery
+              const leftBoundary =
+                MAP_LEFT_BOUNDARY + sizeOffset * SIZE_POWERUP_LEFT_MULTIPLIER;
+              const rightBoundary =
+                MAP_RIGHT_BOUNDARY - sizeOffset * SIZE_POWERUP_RIGHT_MULTIPLIER;
 
-            // Only update position if within boundaries
-            if (newX >= leftBoundary && newX <= rightBoundary) {
-              player.x = newX;
+              // Only update position if within boundaries
+              if (newX >= leftBoundary && newX <= rightBoundary) {
+                player.x = newX;
+              } else {
+                // Stop at boundary and reset velocity
+                player.x = newX < leftBoundary ? leftBoundary : rightBoundary;
+                player.movementVelocity = 0;
+              }
             }
-
-            // Update vertical position (increased vertical movement)
-            player.y += player.knockbackVelocity.y * delta * speedFactor * 2;
-
-            // Ensure player doesn't go below ground level
-            if (player.y < GROUND_LEVEL) {
-              player.y = GROUND_LEVEL;
-              player.knockbackVelocity.y = 0;
-            }
-
-            // Apply friction to horizontal knockback
-            player.knockbackVelocity.x *= 0.95;
 
             // End recovery state after duration
             if (recoveryElapsed >= player.recoveryDuration) {
               player.isRecovering = false;
-              player.knockbackVelocity = { x: 0, y: 0 };
-              player.recoveryDirection = null; // Clear the recovery direction
+              player.movementVelocity = 0;
+              player.recoveryDirection = null;
             }
           }
         });
@@ -1278,9 +1117,12 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const hitboxDistance = player.isSlapAttack
+    // Calculate hitbox distance based on attack type and size power-up
+    const baseHitboxDistance = player.isSlapAttack
       ? SLAP_HITBOX_DISTANCE_VALUE
       : HITBOX_DISTANCE_VALUE;
+
+    const hitboxDistance = baseHitboxDistance * (player.sizeMultiplier || 1);
 
     // For slap attacks, only check horizontal distance like grab
     if (player.isSlapAttack) {
@@ -1513,6 +1355,14 @@ io.on("connection", (socket) => {
             (minDistance - currentDistance) * knockbackDirection;
           otherPlayer.x += adjustment;
         }
+
+        // Add screen shake for slap attacks
+        if (currentRoom) {
+          io.in(currentRoom.id).emit("screen_shake", {
+            intensity: 0.55, // Increased from 0.4 but still less than charged attack's 0.7
+            duration: 200, // Increased from 150 but still less than charged attack's 250
+          });
+        }
       } else {
         // For charged attacks, use a combination of immediate knockback and sliding
         const immediateKnockback =
@@ -1521,14 +1371,14 @@ io.on("connection", (socket) => {
           1.5 * knockbackDirection * finalKnockbackMultiplier;
         otherPlayer.knockbackVelocity.x = immediateKnockback;
 
-        // Calculate attacker knockback based on charge percentage
-        const attackerKnockbackDirection = -knockbackDirection;
-        const attackerKnockbackMultiplier =
-          0.3 + (chargePercentage / 100) * 0.5;
+        // Calculate attacker bounce-off based on charge percentage
+        const attackerBounceDirection = -knockbackDirection;
+        const attackerBounceMultiplier = 0.3 + (chargePercentage / 100) * 0.5;
 
-        player.knockbackVelocity.x =
-          2 * attackerKnockbackDirection * attackerKnockbackMultiplier;
-        player.knockbackVelocity.y = 3;
+        // Set movement velocity for the attacker to create bounce-off effect
+        player.movementVelocity =
+          2 * attackerBounceDirection * attackerBounceMultiplier;
+        player.knockbackVelocity = { x: 0, y: 0 }; // Clear knockback velocity since we're using movement
 
         if (currentRoom) {
           io.in(currentRoom.id).emit("screen_shake", {
@@ -2462,6 +2312,7 @@ function cleanupRoom(room) {
   room.readyCount = 0;
   room.rematchCount = 0;
   room.gameStart = false;
+  room.hakkiyoiCount = 0;
   room.gameOver = false;
   room.matchOver = false;
   room.readyStartTime = null;
@@ -2564,11 +2415,9 @@ function executeChargedAttack(player, chargePercentage) {
           player.recoveryStartTime = Date.now();
           player.recoveryDuration = 250;
           player.recoveryDirection = player.facing;
-          // Apply static knockback for missed attacks
-          player.knockbackVelocity = {
-            x: player.facing * -2, // Static knockback amount
-            y: 0,
-          };
+          // Use movement velocity instead of knockback for more natural sliding
+          player.movementVelocity = player.facing * -3; // Increased from -2 for more momentum
+          player.knockbackVelocity = { x: 0, y: 0 }; // Clear knockback velocity
         }
       }
     }
@@ -2607,10 +2456,10 @@ function calculateEffectiveHitboxSize(player) {
 
   // Only apply asymmetric adjustments if player has size power-up
   if (player.activePowerUp === POWER_UP_TYPES.SIZE) {
-    // Return symmetric hitbox for size power-up
+    // Return asymmetric hitbox for size power-up
     return {
-      left: baseSize,
-      right: baseSize,
+      left: baseSize * SIZE_POWERUP_LEFT_MULTIPLIER,
+      right: baseSize * SIZE_POWERUP_RIGHT_MULTIPLIER,
     };
   }
 
@@ -2619,4 +2468,168 @@ function calculateEffectiveHitboxSize(player) {
     left: baseSize,
     right: baseSize,
   };
+}
+
+function handleReadyPositions(room, player1, player2) {
+  if (room.gameStart === false && room.hakkiyoiCount === 0) {
+    // Only adjust player 1's ready position based on size power-up
+    const player1ReadyX =
+      player1.activePowerUp === POWER_UP_TYPES.SIZE ? 325 : 355;
+
+    if (player1.x >= player1ReadyX) {
+      player1.x = player1ReadyX;
+    }
+
+    if (player2.x <= 690) {
+      player2.x = 690;
+    }
+
+    if (player1.x === player1ReadyX) {
+      player1.isReady = true;
+    }
+
+    if (player2.x === 690) {
+      player2.isReady = true;
+    }
+  } else {
+    // Clear ready states when game starts
+    player1.isReady = false;
+    player2.isReady = false;
+  }
+}
+
+function arePlayersColliding(player1, player2) {
+  // If either player is dodging, return false immediately
+  if (player1.isDodging || player2.isDodging) {
+    return false;
+  }
+
+  // If either player is in recovery from a dodge + charged attack, allow collision checks
+  const isRecoveringFromDodgeAttack = (player) => {
+    return (
+      player.isRecovering &&
+      player.recoveryStartTime &&
+      Date.now() - player.recoveryStartTime < player.recoveryDuration
+    );
+  };
+
+  if (
+    isRecoveringFromDodgeAttack(player1) ||
+    isRecoveringFromDodgeAttack(player2)
+  ) {
+    return true;
+  }
+
+  if (
+    player1.isGrabbing ||
+    player2.isGrabbing ||
+    player1.isBeingGrabbed ||
+    player2.isBeingGrabbed
+  ) {
+    return false;
+  }
+
+  if (
+    player1.isDodging ||
+    player2.isDodging ||
+    player1.isThrowing ||
+    player2.isThrowing ||
+    player1.isBeingThrown ||
+    player2.isBeingThrown
+  ) {
+    return false;
+  }
+
+  // Calculate hitbox sizes based on power-up multiplier
+  const player1Hitbox = calculateEffectiveHitboxSize(player1);
+  const player2Hitbox = calculateEffectiveHitboxSize(player2);
+
+  // Calculate hitbox centers
+  const player1Center = player1.x;
+  const player2Center = player2.x;
+
+  const player1HitboxBounds = {
+    left: player1Center - player1Hitbox.left,
+    right: player1Center + player1Hitbox.right,
+    top: player1.y - player1Hitbox.left,
+    bottom: player1.y + player1Hitbox.left,
+  };
+
+  const player2HitboxBounds = {
+    left: player2Center - player2Hitbox.left,
+    right: player2Center + player2Hitbox.right,
+    top: player2.y - player2Hitbox.left,
+    bottom: player2.y + player2Hitbox.left,
+  };
+
+  return (
+    player1HitboxBounds.left < player2HitboxBounds.right &&
+    player1HitboxBounds.right > player2HitboxBounds.left &&
+    player1HitboxBounds.top < player2HitboxBounds.bottom &&
+    player1HitboxBounds.bottom > player2HitboxBounds.top
+  );
+}
+
+function adjustPlayerPositions(player1, player2, delta) {
+  // Calculate the overlap between players
+  if (
+    player1.isDodging ||
+    player2.isDodging ||
+    player1.isThrowing ||
+    player2.isThrowing ||
+    player1.isBeingThrown ||
+    player2.isBeingThrown
+  ) {
+    return;
+  }
+
+  // Calculate hitbox sizes based on power-ups
+  const player1Hitbox = calculateEffectiveHitboxSize(player1);
+  const player2Hitbox = calculateEffectiveHitboxSize(player2);
+
+  // Calculate the center points of each player's hitbox
+  const player1Center = player1.x;
+  const player2Center = player2.x;
+
+  // Calculate the distance between centers
+  const distanceBetweenCenters = Math.abs(player1Center - player2Center);
+
+  // Calculate the minimum distance needed between centers to prevent overlap
+  const minDistance = player1Hitbox.left + player2Hitbox.right;
+
+  // If players are overlapping
+  if (distanceBetweenCenters < minDistance) {
+    // Calculate how much they need to move apart
+    const overlap = minDistance - distanceBetweenCenters;
+    const adjustment = overlap / 2;
+
+    // Increase adjustment speed during recovery states
+    const isRecovering = player1.isRecovering || player2.isRecovering;
+    const smoothFactor = isRecovering ? delta * 0.05 : delta * 0.01;
+
+    // Calculate new positions
+    let newPlayer1X = player1.x;
+    let newPlayer2X = player2.x;
+
+    // Move players apart based on their relative positions
+    if (player1.x < player2.x) {
+      newPlayer1X -= adjustment * smoothFactor;
+      newPlayer2X += adjustment * smoothFactor;
+    } else {
+      newPlayer1X += adjustment * smoothFactor;
+      newPlayer2X -= adjustment * smoothFactor;
+    }
+
+    // Enforce map boundaries for both players
+    const leftBoundary = MAP_LEFT_BOUNDARY;
+    const rightBoundary = MAP_RIGHT_BOUNDARY;
+
+    // Only update positions if they stay within boundaries
+    if (newPlayer1X >= leftBoundary && newPlayer1X <= rightBoundary) {
+      player1.x = newPlayer1X;
+    }
+    if (newPlayer2X >= leftBoundary && newPlayer2X <= rightBoundary) {
+      player2.x = newPlayer2X;
+    }
+  }
 }

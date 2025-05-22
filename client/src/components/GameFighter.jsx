@@ -279,7 +279,7 @@ const StyledImage = styled("img")
         props.$isThrowing || props.$isDodging || props.$isGrabbing ? 98 : 99,
       filter: props.$isDodging
         ? "drop-shadow(0 0 6px rgba(255, 255, 255, 0.6)) brightness(1.5) drop-shadow(0 0 2px #000)"
-        : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000)",
+        : "drop-shadow(0.5px 0 0 #000) drop-shadow(-0.5px 0 0 #000) drop-shadow(0 0.5px 0 #000) drop-shadow(0 -0.5px 0 #000)",
       animation: props.$isDodging
         ? "dodgeFlash 0.3s ease-in-out"
         : props.$isHit
@@ -498,8 +498,8 @@ const SaltBasket = styled.img
       position: "absolute",
       width: "5%",
       height: "auto",
-      bottom: `${((GROUND_LEVEL + 100) / 720) * 123}%`,
-      left: props.$index === 0 ? "15.7%" : "auto",
+      bottom: `${((GROUND_LEVEL + 100) / 720) * 118}%`,
+      left: props.$index === 0 ? "16%" : "auto",
       right: props.$index === 1 ? "15.5%" : "auto",
       transform: props.$index === 1 ? "scaleX(-1)" : "none",
       zIndex: 1,

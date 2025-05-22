@@ -268,11 +268,38 @@ body {
   aspect-ratio: 16 / 9;
   border: 2px solid black;
   overflow: hidden;
+  z-index: 99;
+}
+
+.game-container::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   background-image: url(./assets/game-map-1.png);
   background-repeat: no-repeat;
-  background-size: 110% 115%;
-  background-position: 10% 45%;
-  z-index: 99;
+  background-size: 110% 110%;
+  background-position: 10% 18%;
+  filter: brightness(1.1) saturate(1.1);
+  z-index: -1;
+}
+
+.game-container::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    rgba(255, 255, 255, 0.2),
+    rgba(200, 230, 255, 0.15)
+  );
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  z-index: 0;
 }
 
 @media (min-aspect-ratio: 16/9) {
@@ -667,7 +694,7 @@ body {
 .gyoji {
   position: absolute;
   left: 38.5%;
-  bottom: 38%;
+  bottom: 37%;
   width: 23%;
   height: auto;
   z-index: -1;
