@@ -108,25 +108,17 @@ const Logo = styled.h1`
   z-index: 2;
   padding: 0.3em 0.6em;
   border: 4px solid #8b4513;
-  background: linear-gradient(
-    45deg,
-    #a0522d,
-    #cd853f,
-    #a0522d,
-    #8b4513
-  );
+  background: linear-gradient(45deg, #a0522d, #cd853f, #a0522d, #8b4513);
   background-size: 200% 200%;
   animation: woodGrain 8s linear infinite;
-  box-shadow: 
-    4px 4px 0 #6b3410,
-    inset 0 0 20px rgba(0, 0, 0, 0.2);
+  box-shadow: 4px 4px 0 #6b3410, inset 0 0 20px rgba(0, 0, 0, 0.2);
   transform: rotate(-2deg);
   text-transform: uppercase;
   position: relative;
   overflow: hidden;
 
   &::before {
-    content: '';
+    content: "";
     position: absolute;
     top: 0;
     left: 0;
@@ -143,7 +135,7 @@ const Logo = styled.h1`
   }
 
   &::after {
-    content: '';
+    content: "";
     position: absolute;
     top: 0;
     left: 0;
@@ -167,9 +159,9 @@ const PowText = styled.span`
   font-weight: 900;
   position: relative;
   padding: 0 0.1em;
-  
+
   &::after {
-    content: '';
+    content: "";
     position: absolute;
     bottom: 0;
     left: 0;
@@ -235,7 +227,7 @@ const MenuButton = styled.button`
   overflow: hidden;
 
   &::before {
-    content: '';
+    content: "";
     position: absolute;
     top: 0;
     left: -100%;
@@ -273,7 +265,11 @@ const SettingsButton = styled.button`
   position: absolute;
   top: 3%;
   right: 3%;
-  background: linear-gradient(145deg, rgba(139, 69, 19, 0.1), rgba(180, 200, 220, 0.05));
+  background: linear-gradient(
+    145deg,
+    rgba(139, 69, 19, 0.1),
+    rgba(180, 200, 220, 0.05)
+  );
   border: 2px solid rgba(139, 69, 19, 0.2);
   border-radius: 50%;
   color: #8b4513;
@@ -293,7 +289,11 @@ const SettingsButton = styled.button`
   &:hover {
     color: #d4af37;
     transform: rotate(45deg);
-    background: linear-gradient(145deg, rgba(139, 69, 19, 0.2), rgba(180, 200, 220, 0.1));
+    background: linear-gradient(
+      145deg,
+      rgba(139, 69, 19, 0.2),
+      rgba(180, 200, 220, 0.1)
+    );
     border-color: #d4af37;
   }
 `;

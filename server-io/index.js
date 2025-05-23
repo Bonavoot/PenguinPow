@@ -1558,6 +1558,7 @@ io.on("connection", (socket) => {
 
     if (rooms[index].readyCount > 1) {
       io.in(data.roomId).emit("game_start", rooms[index]);
+      console.log("Game started");
     }
 
     // console.log(rooms[index].readyCount);

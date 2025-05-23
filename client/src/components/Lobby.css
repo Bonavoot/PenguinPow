@@ -6,8 +6,8 @@
   height: 100vh;
   background: linear-gradient(
     135deg,
-    rgba(220, 220, 240, 0.95) 0%,
-    rgba(180, 200, 220, 0.85) 100%
+    rgba(78, 78, 78, 0.95) 0%,
+    rgba(64, 64, 64, 0.85) 100%
   );
   font-family: "Noto Sans JP", sans-serif;
   color: #2c1810;
