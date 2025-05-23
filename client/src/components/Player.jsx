@@ -18,7 +18,7 @@ import grabbing from "../assets/grabbing.png";
 import grabbing2 from "../assets/grabbing2.png";
 import beingGrabbed from "../assets/is-being-grabbed.gif";
 import beingGrabbed2 from "../assets/is-being-grabbed2.gif";
-import pumoWaddle from "../assets/pumo-waddle.gif";
+import pumoWaddle from "../assets/pumo-waddle.png";
 import pumoWaddle2 from "../assets/pumo-waddle2.png";
 import salt from "../assets/salt.png";
 import salt2 from "../assets/salt2.png";

@@ -14,7 +14,7 @@ import ChargedAttackSmokeEffect from "./ChargedAttackSmokeEffect";
 
 import pumo from "../assets/pumo.png";
 import pumo2 from "../assets/pumo2.png";
-import pumoWaddle from "../assets/pumo-waddle.gif";
+import pumoWaddle from "../assets/pumo-waddle.png";
 import pumoWaddle2 from "../assets/pumo-waddle2.png";
 import crouching from "../assets/crouching.png";
 import crouching2 from "../assets/blocking.gif";
