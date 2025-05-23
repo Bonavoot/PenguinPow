@@ -15,7 +15,7 @@ import ChargedAttackSmokeEffect from "./ChargedAttackSmokeEffect";
 import pumo from "../assets/pumo.png";
 import pumo2 from "../assets/pumo2.png";
 import pumoWaddle from "../assets/pumo-waddle.gif";
-import pumoWaddle2 from "../assets/pumo-waddle2.gif";
+import pumoWaddle2 from "../assets/pumo-waddle2.png";
 import crouching from "../assets/crouching.png";
 import crouching2 from "../assets/blocking.gif";
 import grabbing from "../assets/grabbing.png";
@@ -279,7 +279,7 @@ const StyledImage = styled("img")
         props.$isThrowing || props.$isDodging || props.$isGrabbing ? 98 : 99,
       filter: props.$isDodging
         ? "drop-shadow(0 0 6px rgba(255, 255, 255, 0.6)) brightness(1.5) drop-shadow(0 0 2px #000)"
-        : "drop-shadow(0.5px 0 0 #000) drop-shadow(-0.5px 0 0 #000) drop-shadow(0 0.5px 0 #000) drop-shadow(0 -0.5px 0 #000)",
+        : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000)",
       animation: props.$isDodging
         ? "dodgeFlash 0.3s ease-in-out"
         : props.$isHit
@@ -292,6 +292,7 @@ const StyledImage = styled("img")
   height: auto;
   will-change: transform, bottom, left, filter, opacity;
   pointer-events: none;
+  transform-origin: center;
 
   @keyframes dodgeFlash {
     0% {

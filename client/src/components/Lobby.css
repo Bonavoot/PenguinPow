@@ -6,11 +6,11 @@
   height: 100vh;
   background: linear-gradient(
     135deg,
-    rgba(0, 0, 0, 0.95) 0%,
-    rgba(20, 20, 20, 0.85) 100%
+    rgba(220, 220, 240, 0.95) 0%,
+    rgba(180, 200, 220, 0.85) 100%
   );
-  font-family: "Inter", sans-serif;
-  color: #fff;
+  font-family: "Noto Sans JP", sans-serif;
+  color: #2c1810;
   overflow: hidden;
 }
 
@@ -20,15 +20,16 @@
   left: 0;
   width: 100%;
   height: 100%;
-  background: url("/assets/lobby-bg.jpg") center/cover;
-  opacity: 0.05;
+  background: url("../assets/lobby-bkg.webp") center/cover;
+  opacity: 0.1;
   z-index: 0;
+  filter: sepia(0.3) brightness(1.1);
 }
 
 .lobby-header {
   padding: 1rem 2rem;
-  background: rgba(0, 0, 0, 0.8);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(44, 24, 16, 0.9);
+  border-bottom: 2px solid #8b4513;
   position: relative;
   z-index: 1;
   display: flex;
@@ -41,47 +42,46 @@
 }
 
 .lobby-title {
-  font-size: 2rem;
+  font-size: 2.5rem;
   color: #fff;
   margin: 0;
   font-weight: 700;
-  letter-spacing: 1px;
+  letter-spacing: 2px;
   text-transform: uppercase;
-  background: linear-gradient(45deg, #ff4444, #cc0000);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  text-shadow: 0 0 10px rgba(255, 68, 68, 0.3);
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+  font-family: "Noto Serif JP", serif;
 }
 
 .game-subtitle {
-  font-size: 0.9rem;
-  color: rgba(255, 255, 255, 0.7);
+  font-size: 1rem;
+  color: #d4af37;
   margin-top: 0.25rem;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
+  font-weight: 500;
 }
 
 .room-badge {
-  background: rgba(255, 68, 68, 0.1);
-  padding: 0.5rem 1rem;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 68, 68, 0.2);
+  background: rgba(139, 69, 19, 0.2);
+  padding: 0.75rem 1.5rem;
+  border-radius: 4px;
+  border: 2px solid #8b4513;
 }
 
 .room-label {
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 0.7rem;
+  color: #d4af37;
+  font-size: 0.8rem;
   font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
   display: block;
   margin-bottom: 0.25rem;
 }
 
 .room-name {
-  color: #ff4444;
-  font-size: 1rem;
+  color: #fff;
+  font-size: 1.2rem;
   font-weight: 600;
-  letter-spacing: 1px;
+  letter-spacing: 2px;
 }
 
 .lobby-content {
@@ -114,65 +114,20 @@
   height: 100%;
   background: radial-gradient(
       circle at center,
-      rgba(147, 112, 219, 0.15) 0%,
-      rgba(147, 112, 219, 0.05) 30%,
+      rgba(139, 69, 19, 0.15) 0%,
+      rgba(139, 69, 19, 0.1) 30%,
       transparent 70%
     ),
     radial-gradient(
       circle at center,
-      rgba(255, 255, 255, 0.1) 0%,
-      rgba(255, 255, 255, 0.05) 20%,
+      rgba(220, 220, 240, 0.2) 0%,
+      rgba(180, 200, 220, 0.1) 20%,
       transparent 60%
-    ),
-    radial-gradient(
-      circle at center,
-      rgba(25, 25, 112, 0.2) 0%,
-      rgba(25, 25, 112, 0.1) 50%,
-      transparent 100%
     );
   border-radius: 50%;
   transform: scale(0.9);
-  box-shadow: 0 0 60px rgba(147, 112, 219, 0.1),
-    0 0 120px rgba(25, 25, 112, 0.05), inset 0 0 30px rgba(147, 112, 219, 0.1);
-  animation: arenaPulse 4s ease-in-out infinite;
-}
-
-.arena-background::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: repeating-radial-gradient(
-    circle at center,
-    transparent 0,
-    transparent 10px,
-    rgba(147, 112, 219, 0.03) 10px,
-    rgba(147, 112, 219, 0.03) 20px
-  );
-  border-radius: 50%;
-  animation: arenaRotate 20s linear infinite;
-}
-
-.arena-background::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: radial-gradient(
-    circle at center,
-    transparent 0%,
-    transparent 40%,
-    rgba(25, 25, 112, 0.05) 40%,
-    rgba(25, 25, 112, 0.05) 41%,
-    transparent 41%,
-    transparent 100%
-  );
-  border-radius: 50%;
-  animation: arenaGlow 3s ease-in-out infinite;
+  box-shadow: 0 0 60px rgba(139, 69, 19, 0.15),
+    0 0 120px rgba(180, 200, 220, 0.1);
 }
 
 .players-arena {
@@ -187,10 +142,10 @@
 }
 
 .player-slot {
-  background: rgba(255, 68, 68, 0.1);
-  border-radius: 16px;
+  background: rgba(220, 220, 240, 0.1);
+  border-radius: 8px;
   padding: 2rem;
-  border: 2px solid rgba(255, 68, 68, 0.2);
+  border: 3px solid #8b4513;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -199,7 +154,7 @@
   overflow: hidden;
   height: 300px;
   width: 300px;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(5px);
 }
 
 .player-slot:empty {
@@ -230,11 +185,11 @@
   gap: 0.75rem;
   width: 100%;
   padding: 1rem 0rem 1rem 0rem;
-  background: rgba(255, 68, 68, 0.15);
-  border-radius: 12px;
+  background: rgba(44, 24, 16, 0.9);
+  border-radius: 4px;
   z-index: 2;
   position: absolute;
-  top: 0rem;
+  top: 0;
   left: 0;
   text-align: center;
 }
@@ -265,12 +220,15 @@
 
 .player-name {
   font-size: 1.2rem;
-  color: #fff;
+  color: #d4af37;
   font-weight: 600;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
   text-transform: uppercase;
   width: 100%;
   text-align: center;
+  margin: 0 auto;
+  padding: 0;
+  line-height: 1;
 }
 
 .player-avatar {
@@ -327,12 +285,12 @@
 
 .versus-badge {
   position: absolute;
-  font-size: 3rem;
+  font-size: 3.5rem;
   font-weight: 700;
-  color: rgb(230, 230, 230);
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  color: #8b4513;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
   z-index: 2;
-  animation: pulse 2s infinite ease-in-out;
+  font-family: "Noto Serif JP", serif;
 }
 
 .waiting-container {
@@ -377,8 +335,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: rgba(0, 0, 0, 0.8);
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(44, 24, 16, 0.9);
+  border-top: 2px solid #8b4513;
   position: relative;
   z-index: 1;
 }
@@ -386,13 +344,13 @@
 .exit-btn {
   background: linear-gradient(
     145deg,
-    rgba(255, 255, 255, 0.1),
-    rgba(255, 255, 255, 0.05)
+    rgba(139, 69, 19, 0.2),
+    rgba(180, 200, 220, 0.1)
   );
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.7);
+  border: 2px solid #8b4513;
+  color: #d4af37;
   padding: 0.75rem 1.5rem;
-  border-radius: 8px;
+  border-radius: 4px;
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
@@ -405,10 +363,10 @@
 .exit-btn:hover {
   background: linear-gradient(
     145deg,
-    rgba(255, 68, 68, 0.1),
-    rgba(255, 68, 68, 0.05)
+    rgba(139, 69, 19, 0.3),
+    rgba(180, 200, 220, 0.2)
   );
-  color: #ff4444;
+  color: #fff;
   transform: translateX(-5px);
 }
 
@@ -425,53 +383,58 @@
 
 .ready-btn {
   font-size: 0.9rem;
-  background: linear-gradient(45deg, #4caf50, #45a049);
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  border: none;
-  color: white;
+  background: linear-gradient(45deg, #8b4513, #6b3410);
+  padding: 0.75rem 1.5rem;
+  border-radius: 4px;
+  border: 2px solid #d4af37;
+  color: #d4af37;
   cursor: pointer;
-  font-weight: 500;
+  font-weight: 600;
   transition: all 0.2s ease;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
   min-width: 120px;
 }
 
 .ready-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.2);
+  box-shadow: 0 4px 12px rgba(139, 69, 19, 0.3);
+  color: #fff;
+  background: linear-gradient(45deg, #6b3410, #4a2410);
 }
 
 #cancel-btn {
   font-size: 0.9rem;
-  background: linear-gradient(45deg, #f44336, #e53935);
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  border: none;
-  color: white;
+  background: linear-gradient(45deg, #6b3410, #4a2410);
+  padding: 0.75rem 1.5rem;
+  border-radius: 4px;
+  border: 2px solid #d4af37;
+  color: #d4af37;
   cursor: pointer;
-  font-weight: 500;
+  font-weight: 600;
   transition: all 0.2s ease;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
   min-width: 120px;
 }
 
 #cancel-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(244, 67, 54, 0.2);
+  box-shadow: 0 4px 12px rgba(139, 69, 19, 0.3);
+  color: #fff;
+  background: linear-gradient(45deg, #4a2410, #2c1810);
 }
 
 .ready-count {
-  color: #fff;
+  color: #d4af37;
   text-align: center;
   font-size: 0.8rem;
   padding: 0.5rem;
-  background: rgba(0, 0, 0, 0.15);
-  border-radius: 6px;
+  background: rgba(44, 24, 16, 0.9);
+  border-radius: 4px;
   font-weight: 500;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
+  border: 1px solid #8b4513;
 }
 
 @keyframes pulse {

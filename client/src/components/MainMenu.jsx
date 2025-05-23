@@ -33,34 +33,42 @@ const float = keyframes`
 
 const glowPulse = keyframes`
   0%, 100% {
-    text-shadow: 0 0 10px rgba(255, 68, 68, 0.3),
-                 0 0 20px rgba(255, 68, 68, 0.2);
+    text-shadow: 0 0 10px rgba(212, 175, 55, 0.3),
+                 0 0 20px rgba(212, 175, 55, 0.2);
   }
   50% {
-    text-shadow: 0 0 15px rgba(255, 68, 68, 0.4),
-                 0 0 30px rgba(255, 68, 68, 0.2);
+    text-shadow: 0 0 15px rgba(212, 175, 55, 0.4),
+                 0 0 30px rgba(212, 175, 55, 0.2);
+  }
+`;
+
+const woodGrain = keyframes`
+  0% {
+    background-position: 0% 0%;
+  }
+  100% {
+    background-position: 200% 0%;
   }
 `;
 
 const MainMenuContainer = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
   width: 100vw;
   height: 100vh;
   position: relative;
   overflow: hidden;
   background: linear-gradient(
       135deg,
-      rgba(0, 0, 0, 0.85),
-      rgba(20, 20, 20, 0.75)
+      rgba(220, 180, 140, 0.95),
+      rgba(180, 140, 100, 0.85)
     ),
     url(${mainMenuBackground});
+  background-repeat: no-repeat;
   background-size: cover;
   background-position: center;
-  box-shadow: 0 0 30px rgba(0, 0, 0, 0.5), 0 0 60px rgba(210, 180, 140, 0.1);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(5px);
+  border: 2px solid #8b4513;
 
   &::before {
     content: "";
@@ -71,12 +79,12 @@ const MainMenuContainer = styled.div`
     bottom: 0;
     background: radial-gradient(
         circle at 70% 30%,
-        rgba(210, 180, 140, 0.1) 0%,
+        rgba(139, 69, 19, 0.1) 0%,
         transparent 50%
       ),
       radial-gradient(
         circle at 30% 70%,
-        rgba(210, 180, 140, 0.1) 0%,
+        rgba(139, 69, 19, 0.1) 0%,
         transparent 50%
       );
     pointer-events: none;
@@ -85,50 +93,99 @@ const MainMenuContainer = styled.div`
 
 const Logo = styled.h1`
   position: absolute;
-  top: 5%;
-  left: 5%;
-  font-size: clamp(1.8rem, 4vw, 3.5rem);
+  top: 1rem;
+  left: 1rem;
+  font-size: clamp(2.5rem, 6vw, 4.5rem);
   margin: 0;
-  color: white;
-  font-family: "Bungee", cursive;
+  font-family: "Noto Serif JP", serif;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+  color: #fff;
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
-  animation: ${fadeIn} 1s ease-out;
   z-index: 2;
-  letter-spacing: 0.2em;
-  background: linear-gradient(45deg, #ffffff, #f0f0f0);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.2));
+  padding: 0.3em 0.6em;
+  border: 4px solid #8b4513;
+  background: linear-gradient(
+    45deg,
+    #a0522d,
+    #cd853f,
+    #a0522d,
+    #8b4513
+  );
+  background-size: 200% 200%;
+  animation: woodGrain 8s linear infinite;
+  box-shadow: 
+    4px 4px 0 #6b3410,
+    inset 0 0 20px rgba(0, 0, 0, 0.2);
+  transform: rotate(-2deg);
+  text-transform: uppercase;
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.05) 2px,
+      rgba(0, 0, 0, 0.05) 4px
+    );
+    pointer-events: none;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+      45deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.15) 45%,
+      rgba(255, 255, 255, 0.25) 50%,
+      rgba(255, 255, 255, 0.15) 55%,
+      transparent 100%
+    );
+    pointer-events: none;
+  }
 `;
 
 const PowText = styled.span`
-  font-size: clamp(2rem, 5vw, 4rem);
-  color: #ff4444;
-  font-family: "Bungee Shade", cursive;
-  text-shadow: 0 0 10px rgba(255, 68, 68, 0.3);
-  animation: ${float} 3s ease-in-out infinite,
-    ${glowPulse} 2s ease-in-out infinite;
-  display: inline-block;
-  margin-left: 0.2em;
-  background: linear-gradient(45deg, #ff4444, #ff0000);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 8px rgba(255, 68, 68, 0.2));
-  transform-origin: center;
-  transition: transform 0.3s ease;
-
-  &:hover {
-    transform: scale(1.05) rotate(-2deg);
+  font-size: 0.9em;
+  color: #d4af37;
+  font-weight: 900;
+  position: relative;
+  padding: 0 0.1em;
+  
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background: #d4af37;
   }
 `;
 
 const SumoImage = styled.img`
   position: absolute;
-  right: -25%;
+  right: -15%;
   bottom: -25%;
   width: clamp(500px, 80vw, 1200px);
   height: auto;
-  filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.5));
+  filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.3));
   animation: ${float} 4s ease-in-out infinite;
   z-index: 1;
   object-position: top;
@@ -154,32 +211,57 @@ const ButtonContainer = styled.div`
 const MenuButton = styled.button`
   background: ${(props) =>
     props.$isActive
-      ? "linear-gradient(145deg, #FF4444, #CC0000)"
-      : "linear-gradient(145deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05))"};
-  border: none;
-  border-radius: 8px;
+      ? "linear-gradient(45deg, #8b4513, #6b3410)"
+      : "linear-gradient(145deg, rgba(44, 24, 16, 0.9), rgba(34, 14, 6, 0.9))"};
+  border: 2px solid ${(props) => (props.$isActive ? "#d4af37" : "#8b4513")};
+  border-radius: 4px;
   padding: clamp(0.7rem, 1.5vh, 1rem) clamp(1.2rem, 2vw, 1.8rem);
   font-size: clamp(1rem, 1.8vh, 1.4rem);
-  color: ${(props) => (props.$isActive ? "white" : "rgba(255, 255, 255, 0.5)")};
-  font-family: "Bungee", cursive;
+  color: ${(props) => (props.$isActive ? "#d4af37" : "#b4c8dc")};
+  font-family: "Noto Sans JP", sans-serif;
   cursor: ${(props) => (props.$isActive ? "pointer" : "default")};
   transition: all 0.3s ease;
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
   backdrop-filter: blur(5px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
   width: 100%;
   white-space: nowrap;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-weight: 600;
+  letter-spacing: 1px;
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(212, 175, 55, 0.2),
+      transparent
+    );
+    transition: 0.5s;
+  }
 
   &:hover {
     transform: ${(props) => (props.$isActive ? "translateX(10px)" : "none")};
     background: ${(props) =>
       props.$isActive
-        ? "linear-gradient(145deg, #FF6666, #FF0000)"
-        : "linear-gradient(145deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05))"};
+        ? "linear-gradient(45deg, #6b3410, #4a2410)"
+        : "linear-gradient(145deg, rgba(54, 34, 26, 0.95), rgba(44, 24, 16, 0.95))"};
+    color: ${(props) => (props.$isActive ? "#fff" : "#d4af37")};
+    border-color: ${(props) => (props.$isActive ? "#d4af37" : "#d4af37")};
+
+    &::before {
+      left: 100%;
+    }
   }
 
   &:active {
@@ -189,26 +271,30 @@ const MenuButton = styled.button`
 
 const SettingsButton = styled.button`
   position: absolute;
-  top: 5%;
-  right: 5%;
-  background: none;
-  border: none;
-  color: rgba(255, 255, 255, 0.7);
+  top: 3%;
+  right: 3%;
+  background: linear-gradient(145deg, rgba(139, 69, 19, 0.1), rgba(180, 200, 220, 0.05));
+  border: 2px solid rgba(139, 69, 19, 0.2);
+  border-radius: 50%;
+  color: #8b4513;
   cursor: pointer;
   z-index: 2;
-  padding: 0.5rem;
+  padding: 0.8rem;
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
   justify-content: center;
+  backdrop-filter: blur(5px);
 
   .material-symbols-outlined {
     font-size: clamp(1.5rem, 3vw, 2.5rem);
   }
 
   &:hover {
-    color: white;
+    color: #d4af37;
     transform: rotate(45deg);
+    background: linear-gradient(145deg, rgba(139, 69, 19, 0.2), rgba(180, 200, 220, 0.1));
+    border-color: #d4af37;
   }
 `;
 
@@ -263,60 +349,70 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
     };
   }, [showSettings]);
 
-  let currentPageComponent;
+  const renderMainMenu = () => (
+    <MainMenuContainer>
+      <Logo>
+        Pumo Pumo <PowText>!</PowText>
+      </Logo>
+      {/* <SumoImage src={sumo} alt="sumo" /> */}
+      <ButtonContainer>
+        <MenuButton $isActive onClick={handleDisplayRooms}>
+          PLAY
+        </MenuButton>
+        <MenuButton>BASHO</MenuButton>
+        <MenuButton>CUSTOMIZE</MenuButton>
+        <MenuButton>STATS</MenuButton>
+      </ButtonContainer>
+      <SettingsButton className="settings-button" onClick={handleSettings}>
+        <span className="material-symbols-outlined">settings</span>
+      </SettingsButton>
+      {showSettings && <Settings onClose={() => setShowSettings(false)} />}
+    </MainMenuContainer>
+  );
+
+  // Render different pages based on currentPage
   switch (currentPage) {
     case "mainMenu":
-      currentPageComponent = (
-        <MainMenuContainer>
-          <Logo>
-            P u m o <PowText>PUMO!</PowText>
-          </Logo>
-          <SumoImage src={sumo} alt="sumo" />
-          <ButtonContainer>
-            <MenuButton $isActive onClick={handleDisplayRooms}>
-              PLAY
-            </MenuButton>
-            <MenuButton>BASHO</MenuButton>
-            <MenuButton>CUSTOMIZE</MenuButton>
-            <MenuButton>STATS</MenuButton>
-          </ButtonContainer>
-          <SettingsButton className="settings-button" onClick={handleSettings}>
-            <span className="material-symbols-outlined">settings</span>
-          </SettingsButton>
-          {showSettings && <Settings onClose={() => setShowSettings(false)} />}
-        </MainMenuContainer>
+      return (
+        <div className="current-page">
+          {renderMainMenu()}
+          {currentPage === "rooms" && (
+            <Rooms
+              rooms={rooms}
+              handleMainMenuPage={handleMainMenuPage}
+              handleJoinRoom={handleJoinRoom}
+              setRoomName={setRoomName}
+            />
+          )}
+        </div>
       );
-      break;
-    case "rooms":
-      currentPageComponent = (
-        <Rooms
-          rooms={rooms}
-          handleMainMenuPage={handleMainMenuPage}
-          handleJoinRoom={handleJoinRoom}
-          setRoomName={setRoomName}
-        />
-      );
-      break;
     case "lobby":
-      currentPageComponent = (
-        <Lobby rooms={rooms} roomName={roomName} handleGame={handleGame} />
+      return (
+        <div className="current-page">
+          <Lobby rooms={rooms} roomName={roomName} handleGame={handleGame} />
+        </div>
       );
-      break;
     case "game":
-      currentPageComponent = (
-        <Game localId={localId} rooms={rooms} roomName={roomName} />
+      return (
+        <div className="current-page">
+          <Game localId={localId} rooms={rooms} roomName={roomName} />
+        </div>
       );
-      break;
     default:
-      currentPageComponent = (
-        <div>
-          <h1>Error: Unknown page {currentPage}</h1>
-          <button onClick={handleMainMenuPage}>Back to Main Menu</button>
+      return (
+        <div className="current-page">
+          {renderMainMenu()}
+          {currentPage === "rooms" && (
+            <Rooms
+              rooms={rooms}
+              handleMainMenuPage={handleMainMenuPage}
+              handleJoinRoom={handleJoinRoom}
+              setRoomName={setRoomName}
+            />
+          )}
         </div>
       );
   }
-
-  return <div className="current-page">{currentPageComponent}</div>;
 };
 
 MainMenu.propTypes = {

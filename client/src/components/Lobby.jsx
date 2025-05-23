@@ -28,11 +28,11 @@ const Lobby = ({ rooms, roomName, handleGame }) => {
       <div className="lobby-header">
         <div className="game-logo">
           <h1 className="lobby-title">PUMO LOBBY</h1>
-          <div className="game-subtitle">RANKED MATCH</div>
+          <div className="game-subtitle">GRAND TOURNAMENT - RANKED MATCH</div>
         </div>
         <div className="room-info">
           <div className="room-badge">
-            <span className="room-label">Room Code</span>
+            <span className="room-label">Dohyo Code</span>
             <span className="room-name">{roomName}</span>
           </div>
         </div>
@@ -53,10 +53,10 @@ const Lobby = ({ rooms, roomName, handleGame }) => {
                   <div className="player-info">
                     <div className="player-status">
                       {players[i]?.fighter ? (
-                        <span className="status-indicator ready">Ready</span>
+                        <span className="status-indicator ready">Prepared</span>
                       ) : (
                         <span className="status-indicator waiting">
-                          Waiting
+                          Awaiting Rikishi
                         </span>
                       )}
                     </div>
@@ -69,7 +69,7 @@ const Lobby = ({ rooms, roomName, handleGame }) => {
                       <Player index={i} fighter={players[i].fighter} />
                     ) : (
                       <div className="waiting-message">
-                        <h2>Waiting for Opponent</h2>
+                        <h2>Waiting for Pumo</h2>
                         <div className="loading-ellipsis">
                           <div className="dot"></div>
                           <div className="dot"></div>
@@ -82,7 +82,7 @@ const Lobby = ({ rooms, roomName, handleGame }) => {
               </div>
             ))}
           </div>
-          <div className="versus-badge">VS</div>
+          <div className="versus-badge">対</div>
         </div>
       </div>
 
@@ -92,7 +92,7 @@ const Lobby = ({ rooms, roomName, handleGame }) => {
           onClick={() => window.location.reload(false)}
         >
           <span className="btn-icon">←</span>
-          Exit Lobby
+          Leave Dohyo
         </button>
         <Ready rooms={rooms} roomName={roomName} handleGame={handleGame} />
       </div>
