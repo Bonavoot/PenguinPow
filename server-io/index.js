@@ -120,10 +120,11 @@ const GRAB_DURATION = 1500; // 1.5 seconds total grab duration
 const GRAB_ATTEMPT_DURATION = 1000; // 1 second for attempt animation
 
 // Map boundary constants
-const MAP_LEFT_BOUNDARY = 110;
+const MAP_LEFT_BOUNDARY = 80;
+const MAP_RING_OUT_LEFT = 70;
+
 const MAP_RIGHT_BOUNDARY = 965;
-const MAP_RING_OUT_LEFT = 100;
-const MAP_RING_OUT_RIGHT = 975;
+const MAP_RING_OUT_RIGHT = 973;
 
 // Add movement constants
 const MOVEMENT_ACCELERATION = 0.08; // Reduced from 0.25 for more slippery feel
@@ -1320,6 +1321,9 @@ io.on("connection", (socket) => {
       otherPlayer.isAttacking = false;
       otherPlayer.isStrafing = false;
 
+      // Update opponent's facing direction based on attacker's position
+      otherPlayer.facing = player.x < otherPlayer.x ? 1 : -1;
+
       // Calculate knockback direction based on relative positions
       const knockbackDirection = player.x < otherPlayer.x ? 1 : -1;
 
@@ -2274,6 +2278,19 @@ function handleWinCondition(room, loser, winner) {
 
 // Add this new function near the other helper functions
 function executeSlapAttack(player) {
+  // Find the current room and opponent
+  const currentRoom = rooms.find((room) =>
+    room.players.some((p) => p.id === player.id)
+  );
+
+  if (currentRoom) {
+    const opponent = currentRoom.players.find((p) => p.id !== player.id);
+    if (opponent) {
+      // Update facing direction based on opponent's position
+      player.facing = player.x < opponent.x ? -1 : 1;
+    }
+  }
+
   // Clear any ongoing charge attack
   player.isChargingAttack = false;
   player.chargeStartTime = 0;
