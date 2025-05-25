@@ -59,16 +59,27 @@ const RoomsContainer = styled.div`
   animation: ${fadeIn} 0.3s ease-out;
 
   &::before {
-    content: '';
+    content: "";
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
-    background-image: 
-      radial-gradient(2px 2px at 20px 30px, rgba(212, 175, 55, 0.2) 50%, rgba(0,0,0,0)),
-      radial-gradient(2px 2px at 40px 70px, rgba(212, 175, 55, 0.2) 50%, rgba(0,0,0,0)),
-      radial-gradient(2px 2px at 50px 160px, rgba(212, 175, 55, 0.2) 50%, rgba(0,0,0,0));
+    background-image: radial-gradient(
+        2px 2px at 20px 30px,
+        rgba(212, 175, 55, 0.2) 50%,
+        rgba(0, 0, 0, 0)
+      ),
+      radial-gradient(
+        2px 2px at 40px 70px,
+        rgba(212, 175, 55, 0.2) 50%,
+        rgba(0, 0, 0, 0)
+      ),
+      radial-gradient(
+        2px 2px at 50px 160px,
+        rgba(212, 175, 55, 0.2) 50%,
+        rgba(0, 0, 0, 0)
+      );
     background-size: 200px 200px;
     animation: ${snowFall} 8s linear infinite;
     opacity: 0.2;
@@ -86,7 +97,7 @@ const Header = styled.div`
 `;
 
 const Title = styled.h1`
-  font-family: "Noto Serif JP", serif;
+  font-family: "Bungee", cursive;
   font-size: clamp(1.5rem, 3vw, 2.5rem);
   color: #ffffff;
   margin: 0;
@@ -106,12 +117,15 @@ const Button = styled.button`
     props.variant === "back"
       ? "linear-gradient(45deg, #2c2c2c, #1a1a1a)"
       : "linear-gradient(145deg, rgba(40, 40, 40, 0.1), rgba(20, 20, 20, 0.05))"};
-  border: 2px solid ${(props) => (props.variant === "back" ? "#d4af37" : "rgba(139, 69, 19, 0.2)")};
+  border: 2px solid
+    ${(props) =>
+      props.variant === "back" ? "#d4af37" : "rgba(139, 69, 19, 0.2)"};
   border-radius: 4px;
   padding: 0.8rem 1.5rem;
   font-size: clamp(0.9rem, 1.5vw, 1.2rem);
-  color: ${(props) => (props.variant === "back" ? "#ffffff" : "rgba(255, 255, 255, 0.7)")};
-  font-family: "Noto Sans JP", sans-serif;
+  color: ${(props) =>
+    props.variant === "back" ? "#ffffff" : "rgba(255, 255, 255, 0.7)"};
+  font-family: "Bungee", cursive;
   cursor: pointer;
   transition: all 0.3s ease;
   text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
@@ -129,7 +143,8 @@ const Button = styled.button`
       props.variant === "back"
         ? "linear-gradient(45deg, #1a1a1a, #0a0a0a)"
         : "linear-gradient(145deg, rgba(50, 50, 50, 0.2), rgba(30, 30, 30, 0.1))"};
-    color: ${(props) => (props.variant === "back" ? "#ffffff" : "rgba(255, 255, 255, 0.9)")};
+    color: ${(props) =>
+      props.variant === "back" ? "#ffffff" : "rgba(255, 255, 255, 0.9)"};
   }
 
   &:active {
@@ -171,7 +186,7 @@ const EmptyState = styled.div`
   justify-content: center;
   height: 100%;
   color: #ffffff;
-  font-family: "Noto Sans JP", sans-serif;
+  font-family: "Bungee", cursive;
   font-size: clamp(1rem, 2vw, 1.5rem);
   text-align: center;
   padding: 2rem;

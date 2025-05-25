@@ -45,16 +45,27 @@ const RoomContainer = styled.div`
   min-height: 60px;
 
   &::before {
-    content: '';
+    content: "";
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
-    background-image: 
-      radial-gradient(2px 2px at 20px 30px, rgba(212, 175, 55, 0.2) 50%, rgba(0,0,0,0)),
-      radial-gradient(2px 2px at 40px 70px, rgba(212, 175, 55, 0.2) 50%, rgba(0,0,0,0)),
-      radial-gradient(2px 2px at 50px 160px, rgba(212, 175, 55, 0.2) 50%, rgba(0,0,0,0));
+    background-image: radial-gradient(
+        2px 2px at 20px 30px,
+        rgba(212, 175, 55, 0.2) 50%,
+        rgba(0, 0, 0, 0)
+      ),
+      radial-gradient(
+        2px 2px at 40px 70px,
+        rgba(212, 175, 55, 0.2) 50%,
+        rgba(0, 0, 0, 0)
+      ),
+      radial-gradient(
+        2px 2px at 50px 160px,
+        rgba(212, 175, 55, 0.2) 50%,
+        rgba(0, 0, 0, 0)
+      );
     background-size: 200px 200px;
     animation: ${snowFall} 8s linear infinite;
     opacity: 0.2;
@@ -78,7 +89,7 @@ const RoomInfo = styled.div`
 `;
 
 const RoomId = styled.h1`
-  font-family: "Noto Serif JP", serif;
+  font-family: "Bungee", cursive;
   font-size: clamp(1.2rem, 1.5vw, 1.6rem);
   color: #ffffff;
   margin: 0;
@@ -91,7 +102,7 @@ const PlayerCount = styled.div`
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  font-family: "Noto Sans JP", sans-serif;
+  font-family: "Bungee", cursive;
   font-size: clamp(1rem, 1.2vw, 1.3rem);
   color: #ffffff;
   font-weight: 600;
@@ -147,7 +158,8 @@ const JoinButton = styled.button`
       props.$isFull
         ? "linear-gradient(145deg, rgba(40, 40, 40, 0.2), rgba(20, 20, 20, 0.1))"
         : "linear-gradient(45deg, #00cc00, #009900)"};
-    color: ${(props) => (props.$isFull ? "rgba(255, 255, 255, 0.5)" : "#ffffff")};
+    color: ${(props) =>
+      props.$isFull ? "rgba(255, 255, 255, 0.5)" : "#ffffff"};
     box-shadow: ${(props) =>
       props.$isFull
         ? "0 4px 15px rgba(0, 0, 0, 0.2)"

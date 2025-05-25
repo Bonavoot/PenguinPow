@@ -159,6 +159,7 @@ const PowText = styled.span`
   font-weight: 900;
   position: relative;
   padding: 0 0.1em;
+  font-family: "Bungee Shade", cursive;
 
   &::after {
     content: "";
@@ -210,7 +211,7 @@ const MenuButton = styled.button`
   padding: clamp(0.7rem, 1.5vh, 1rem) clamp(1.2rem, 2vw, 1.8rem);
   font-size: clamp(1rem, 1.8vh, 1.4rem);
   color: ${(props) => (props.$isActive ? "#d4af37" : "#b4c8dc")};
-  font-family: "Noto Sans JP", sans-serif;
+  font-family: "Bungee", cursive;
   cursor: ${(props) => (props.$isActive ? "pointer" : "default")};
   transition: all 0.3s ease;
   text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
