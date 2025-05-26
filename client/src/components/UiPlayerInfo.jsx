@@ -13,7 +13,7 @@ const woodGrain = keyframes`
 `;
 
 const PlayerInfoContainer = styled.div`
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
   right: 0;
