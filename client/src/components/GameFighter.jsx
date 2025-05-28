@@ -530,7 +530,6 @@ const GameFighter = ({ player, index, roomName, localId }) => {
   const [matchOver, setMatchOver] = useState(false);
   const [parryEffectPosition, setParryEffectPosition] = useState(null);
   const [hasUsedPowerUp, setHasUsedPowerUp] = useState(false);
-  const [activePowerUp, setActivePowerUp] = useState(null);
   const [showFloatingPowerUp, setShowFloatingPowerUp] = useState(false);
   const [floatingPowerUpType, setFloatingPowerUpType] = useState(null);
   const [countdown, setCountdown] = useState(15);
@@ -593,7 +592,27 @@ const GameFighter = ({ player, index, roomName, localId }) => {
 
     socket.on("power_up_activated", (data) => {
       if (data.playerId === penguin.id) {
+        setPenguin((prev) => ({
+          ...prev,
+          activePowerUp: data.powerUpType,
+          powerUpMultiplier:
+            data.powerUpType === "size"
+              ? 1.15
+              : data.powerUpType === "speed"
+              ? 1.4
+              : data.powerUpType === "power"
+              ? 1.3
+              : 1,
+        }));
+        setHasUsedPowerUp(true);
+        setShowFloatingPowerUp(true);
+        setFloatingPowerUpType(data.powerUpType);
         playSound(saltSound, 0.01);
+
+        // Hide the floating text after animation
+        setTimeout(() => {
+          setShowFloatingPowerUp(false);
+        }, 2000);
       }
     });
 
@@ -602,9 +621,8 @@ const GameFighter = ({ player, index, roomName, localId }) => {
       setGyojiState("idle");
       setMatchOver(false);
       setHasUsedPowerUp(false);
-      setActivePowerUp(null);
       setCountdown(15);
-      console.log("game reset gamefighter.jsx")
+      console.log("game reset gamefighter.jsx");
 
       // Start countdown timer immediately
       if (countdownRef.current) {
@@ -622,7 +640,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
     });
 
     socket.on("game_start", () => {
-      console.log("game start gamefighter.jsx")
+      console.log("game start gamefighter.jsx");
       setHakkiyoi(true);
       // Clear the countdown timer when game starts
       if (countdownRef.current) {
@@ -656,20 +674,6 @@ const GameFighter = ({ player, index, roomName, localId }) => {
 
     socket.on("rematch", () => {
       setMatchOver(false);
-    });
-
-    socket.on("power_up_activated", (data) => {
-      if (data.playerId === penguin.id) {
-        setActivePowerUp(data.powerUpType);
-        setHasUsedPowerUp(true);
-        setShowFloatingPowerUp(true);
-        setFloatingPowerUpType(data.powerUpType);
-
-        // Hide the floating text after animation
-        setTimeout(() => {
-          setShowFloatingPowerUp(false);
-        }, 2000);
-      }
     });
 
     return () => {
@@ -739,6 +743,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
   useEffect(() => {
     if (penguin.isThrowingSalt && !lastThrowingSaltState.current) {
       setHasUsedPowerUp(true);
+      playSound(saltSound, 0.01);
     }
     lastThrowingSaltState.current = penguin.isThrowingSalt;
   }, [penguin.isThrowingSalt]);
@@ -971,9 +976,9 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         $isRawParryStun={penguin.isRawParryStun}
         style={{
           transform: `scaleX(${penguin.facing}) scale(${
-            activePowerUp === "size" ? 1.15 : 1
+            penguin.activePowerUp === "size" ? 1.15 : 1
           })`,
-          width: activePowerUp === "size" ? "21.16%" : "18.4%",
+          width: penguin.activePowerUp === "size" ? "21.16%" : "18.4%",
         }}
       />
       <SaltEffect

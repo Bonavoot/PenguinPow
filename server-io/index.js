@@ -183,6 +183,36 @@ function resetRoomAndPlayers(room) {
     // Reset power-up state
     player.activePowerUp = null;
     player.powerUpMultiplier = 1;
+
+    // Set initial states for automatic salt throwing
+    player.isThrowingSalt = true;
+    player.saltCooldown = true;
+    player.canMoveToReady = false; // New flag to control movement
+
+    // Randomly select a power-up
+    const powerUpTypes = Object.values(POWER_UP_TYPES);
+    const randomPowerUp =
+      powerUpTypes[Math.floor(Math.random() * powerUpTypes.length)];
+    player.activePowerUp = randomPowerUp;
+    player.powerUpMultiplier = POWER_UP_EFFECTS[randomPowerUp];
+
+    // Emit power-up event to clients
+    io.in(room.id).emit("power_up_activated", {
+      playerId: player.id,
+      powerUpType: randomPowerUp,
+    });
+
+    // Reset salt throwing state after animation
+    setTimeout(() => {
+      player.isThrowingSalt = false;
+      // Allow movement after salt throw is complete
+      player.canMoveToReady = true;
+    }, 500);
+
+    // Reset salt cooldown
+    setTimeout(() => {
+      player.saltCooldown = false;
+    }, 750);
   });
 
   // Emit an event to inform clients that the game has been reset
@@ -211,7 +241,7 @@ io.on("connection", (socket) => {
 
   // this is for the initial game start
   socket.on("game_reset", (data) => {
-    console.log("game reset index.js" + data)
+    console.log("game reset index.js" + data);
     resetRoomAndPlayers(rooms[index]);
   });
 
@@ -455,7 +485,7 @@ io.on("connection", (socket) => {
             room.readyStartTime = currentTime;
           }
 
-          console.log(player1.isReady)
+          console.log(player1.isReady);
           if (currentTime - room.readyStartTime >= 1000) {
             // Clear the automatic start timer if players ready up
             if (room.roundStartTimer) {
@@ -976,13 +1006,19 @@ io.on("connection", (socket) => {
           }
 
           // Update strafing state
-          if (!player.keys.a && !player.keys.d) {
+          if (
+            !player.keys.a &&
+            !player.keys.d &&
+            (!player.canMoveToReady || room.gameStart)
+          ) {
             player.isStrafing = false;
           }
 
           // Force stop strafing in certain states
           if (
-            (!player.keys.a && !player.keys.d) ||
+            (!player.keys.a &&
+              !player.keys.d &&
+              (!player.canMoveToReady || room.gameStart)) ||
             player.isThrowTeching ||
             player.isRecovering ||
             (player.keys.a && player.keys.d)
@@ -993,7 +1029,9 @@ io.on("connection", (socket) => {
           }
         }
         if (
-          (!player.keys.a && !player.keys.d) ||
+          (!player.keys.a &&
+            !player.keys.d &&
+            (!player.canMoveToReady || room.gameStart)) ||
           player.isThrowTeching ||
           player.isRecovering
         ) {
@@ -1556,7 +1594,7 @@ io.on("connection", (socket) => {
 
   socket.on("ready_count", (data) => {
     let index = rooms.findIndex((room) => room.id === data.roomId);
-    console.log("ready count activated  ")
+    console.log("ready count activated  ");
     if (data.isReady && data.playerId === socket.id) {
       rooms[index].readyCount++;
       io.in(data.roomId).emit("ready_count", rooms[index].readyCount);
@@ -1569,7 +1607,7 @@ io.on("connection", (socket) => {
 
     if (rooms[index].readyCount > 1) {
       io.in(data.roomId).emit("initial_game_start", rooms[index]);
-      
+
       console.log("Game started");
     }
 
@@ -2501,21 +2539,54 @@ function handleReadyPositions(room, player1, player2) {
     // Only adjust player 1's ready position based on size power-up
     const player1ReadyX =
       player1.activePowerUp === POWER_UP_TYPES.SIZE ? 325 : 355;
+    const player2ReadyX = 690;
 
-    if (player1.x >= player1ReadyX) {
-      player1.x = player1ReadyX;
+    // Only move players if they're allowed to move (after salt throw)
+    if (player1.canMoveToReady) {
+      if (player1.x < player1ReadyX) {
+        player1.x += 2; // Adjust speed as needed
+        player1.isStrafing = true;
+      } else {
+        player1.x = player1ReadyX;
+        // Only set isStrafing to false when we're setting isReady to true
+        if (player2.x === player2ReadyX) {
+          player1.isStrafing = false;
+        }
+      }
     }
 
-    if (player2.x <= 690) {
-      player2.x = 690;
+    if (player2.canMoveToReady) {
+      if (player2.x > player2ReadyX) {
+        player2.x -= 2; // Adjust speed as needed
+        player2.isStrafing = true;
+      } else {
+        player2.x = player2ReadyX;
+        // Only set isStrafing to false when we're setting isReady to true
+        if (player1.x === player1ReadyX) {
+          player2.isStrafing = false;
+        }
+      }
     }
 
-    if (player1.x === player1ReadyX) {
+    // Set ready state when players reach their positions
+    if (player1.x === player1ReadyX && player2.x === player2ReadyX) {
       player1.isReady = true;
-    }
-
-    if (player2.x === 690) {
       player2.isReady = true;
+
+      // Start a timer to trigger hakkiyoi after 1 second of being ready
+      if (!room.readyStartTime) {
+        room.readyStartTime = Date.now();
+      }
+
+      const currentTime = Date.now();
+      if (currentTime - room.readyStartTime >= 1000) {
+        room.gameStart = true;
+        room.hakkiyoiCount = 1;
+        io.in(room.id).emit("game_start", true);
+        player1.isReady = false;
+        player2.isReady = false;
+        room.readyStartTime = null;
+      }
     }
   } else {
     // Clear ready states when game starts
