@@ -12,6 +12,7 @@ const Ready = ({ rooms, roomName, handleGame }) => {
 
   useEffect(() => {
     socket.on("ready_count", (readyCount) => {
+      console.log("ready count activated")
       setCount(readyCount);
     });
 
@@ -19,7 +20,9 @@ const Ready = ({ rooms, roomName, handleGame }) => {
       setReady(false);
     });
 
-    socket.on("game_start", () => {
+    socket.on("initial_game_start", () => {
+      console.log("game start Ready.jsx")
+      socket.emit("game_reset", true);
       handleGame();
     });
   }, []);

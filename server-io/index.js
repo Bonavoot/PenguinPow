@@ -209,6 +209,12 @@ io.on("connection", (socket) => {
     }, delta);
   }
 
+  // this is for the initial game start
+  socket.on("game_reset", (data) => {
+    console.log("game reset index.js" + data)
+    resetRoomAndPlayers(rooms[index]);
+  });
+
   function isOpponentCloseEnoughForThrow(player, opponent) {
     // Calculate throw range based on player size
     const throwRange = THROW_RANGE * (player.sizeMultiplier || 1);
@@ -449,6 +455,7 @@ io.on("connection", (socket) => {
             room.readyStartTime = currentTime;
           }
 
+          console.log(player1.isReady)
           if (currentTime - room.readyStartTime >= 1000) {
             // Clear the automatic start timer if players ready up
             if (room.roundStartTimer) {
@@ -1549,7 +1556,7 @@ io.on("connection", (socket) => {
 
   socket.on("ready_count", (data) => {
     let index = rooms.findIndex((room) => room.id === data.roomId);
-
+    console.log("ready count activated  ")
     if (data.isReady && data.playerId === socket.id) {
       rooms[index].readyCount++;
       io.in(data.roomId).emit("ready_count", rooms[index].readyCount);
@@ -1561,7 +1568,8 @@ io.on("connection", (socket) => {
     }
 
     if (rooms[index].readyCount > 1) {
-      io.in(data.roomId).emit("game_start", rooms[index]);
+      io.in(data.roomId).emit("initial_game_start", rooms[index]);
+      
       console.log("Game started");
     }
 

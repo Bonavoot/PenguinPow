@@ -604,6 +604,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
       setHasUsedPowerUp(false);
       setActivePowerUp(null);
       setCountdown(15);
+      console.log("game reset gamefighter.jsx")
 
       // Start countdown timer immediately
       if (countdownRef.current) {
@@ -621,6 +622,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
     });
 
     socket.on("game_start", () => {
+      console.log("game start gamefighter.jsx")
       setHakkiyoi(true);
       // Clear the countdown timer when game starts
       if (countdownRef.current) {
