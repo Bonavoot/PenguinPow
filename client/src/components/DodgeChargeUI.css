@@ -1,0 +1,76 @@
+.charge-container {
+  position: absolute;
+  top: -20px;
+  display: flex;
+  gap: 8px;
+  z-index: 100;
+  pointer-events: none;
+  width: auto;
+}
+
+.charge-container.player1 {
+  right: 0.5rem;
+  transform: none;
+}
+
+.charge-container.player2 {
+  left: 0.5rem;
+  transform: none;
+}
+
+.charge-icon {
+  width: 16px;
+  height: 16px;
+  position: relative;
+  background: #8b4513; /* Brown color for mawashi */
+  border-radius: 4px;
+  transform: rotate(45deg);
+  box-shadow: 0 0 5px rgba(139, 69, 19, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  overflow: hidden;
+}
+
+.charge-icon::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-45deg);
+  width: 8px;
+  height: 8px;
+  background: #ffd700; /* Gold color for the knot */
+  border-radius: 50%;
+  box-shadow: 0 0 3px rgba(255, 215, 0, 0.5);
+  z-index: 2;
+}
+
+.charge-icon.cooldown {
+  background: #4a4a4a;
+  box-shadow: none;
+}
+
+.charge-icon.cooldown::before {
+  background: #808080;
+  box-shadow: none;
+}
+
+.charge-icon.cooldown::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: #8b4513;
+  transform: translateY(calc(100% - (100% * var(--cooldown-progress))));
+  z-index: 1;
+}
+
+@keyframes cooldown {
+  0% {
+    transform: translateY(100%);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}

@@ -11,6 +11,7 @@ import PowerMeter from "./PowerMeter";
 import SlapParryEffect from "./SlapParryEffect";
 import DodgeSmokeEffect from "./DodgeDustEffect";
 import ChargedAttackSmokeEffect from "./ChargedAttackSmokeEffect";
+import DodgeChargeUI from "./DodgeChargeUI";
 
 import pumo from "../assets/pumo.png";
 import pumo2 from "../assets/pumo2.png";
@@ -513,12 +514,37 @@ const SaltBasket = styled.img
 const GameFighter = ({ player, index, roomName, localId }) => {
   const { socket } = useContext(SocketContext);
   const [penguin, setPenguin] = useState({
-    ...player,
-    isDodging: player.isDodging || false,
-    dodgeDirection:
-      typeof player.dodgeDirection === "number"
-        ? player.dodgeDirection
-        : player.facing || 1,
+    id: "",
+    fighter: "",
+    color: "",
+    isJumping: false,
+    isAttacking: false,
+    isDodging: false,
+    dodgeDirection: null,
+    isStrafing: false,
+    isRawParrying: false,
+    isReady: false,
+    isHit: false,
+    isDead: false,
+    isSlapAttack: false,
+    isThrowing: false,
+    isGrabbing: false,
+    isBeingGrabbed: false,
+    isThrowingSalt: false,
+    slapAnimation: 2,
+    isBowing: false,
+    isThrowTeching: false,
+    isBeingPulled: false,
+    isBeingPushed: false,
+    grabState: null,
+    grabAttemptType: null,
+    isRecovering: false,
+    isRawParryStun: false,
+    facing: 1,
+    x: 0,
+    y: 0,
+    dodgeCharges: 2,
+    dodgeChargeCooldowns: [0, 0],
   });
   const [stamina, setStamina] = useState(player);
   const [hakkiyoi, setHakkiyoi] = useState(false);
@@ -561,6 +587,8 @@ const GameFighter = ({ player, index, roomName, localId }) => {
             typeof data.player1.dodgeDirection === "number"
               ? data.player1.dodgeDirection
               : data.player1.facing || 1,
+          dodgeCharges: data.player1.dodgeCharges || 2,
+          dodgeChargeCooldowns: data.player1.dodgeChargeCooldowns || [0, 0],
         });
         setStamina(data.player1.stamina);
       } else if (index === 1) {
@@ -571,6 +599,8 @@ const GameFighter = ({ player, index, roomName, localId }) => {
             typeof data.player2.dodgeDirection === "number"
               ? data.player2.dodgeDirection
               : data.player2.facing || 1,
+          dodgeCharges: data.player2.dodgeCharges || 2,
+          dodgeChargeCooldowns: data.player2.dodgeChargeCooldowns || [0, 0],
         });
         setStamina(data.player2.stamina);
       }
@@ -873,7 +903,12 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         localId={localId}
         activePowerUp={penguin.activePowerUp}
       />
-      <PlayerStaminaUi stamina={stamina} index={index} />
+      <PlayerStaminaUi
+        stamina={stamina}
+        index={index}
+        dodgeCharges={penguin.dodgeCharges}
+        dodgeChargeCooldowns={penguin.dodgeChargeCooldowns}
+      />
       <SaltBasket
         src={
           penguin.isThrowingSalt || hasUsedPowerUp
@@ -913,6 +948,11 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         isDodging={penguin.isDodging}
         facing={penguin.facing}
         dodgeDirection={penguin.dodgeDirection}
+      />
+      <DodgeChargeUI
+        dodgeCharges={penguin.dodgeCharges}
+        dodgeChargeCooldowns={penguin.dodgeChargeCooldowns}
+        index={index}
       />
       <ChargedAttackSmokeEffect
         x={penguin.x}

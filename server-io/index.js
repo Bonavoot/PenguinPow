@@ -137,7 +137,8 @@ const MIN_MOVEMENT_THRESHOLD = 0.01; // New constant for movement cutoff
 
 const RAW_PARRY_KNOCKBACK = 4; // Fixed knockback distance for raw parries
 const RAW_PARRY_STUN_DURATION = 1000; // 1 second stun duration
-const DODGE_COOLDOWN = 50; // 50ms cooldown between dodges
+const DODGE_COOLDOWN = 2000; // 2 second cooldown between dodges
+const MAX_DODGE_CHARGES = 2; // Maximum number of dodge charges
 
 function resetRoomAndPlayers(room) {
   // Reset room state
@@ -177,9 +178,12 @@ function resetRoomAndPlayers(room) {
     player.isDead = false;
     player.stamina = 100;
     player.isBowing = false;
-    player.x = player.fighter === "player 1" ? 230 : 815; // Updated to match salt throw range
+    player.x = player.fighter === "player 1" ? 230 : 815;
     player.y = GROUND_LEVEL;
     player.knockbackVelocity = { x: 0, y: 0 };
+    // Reset dodge charges
+    player.dodgeCharges = MAX_DODGE_CHARGES;
+    player.dodgeChargeCooldowns = [0, 0];
     // Reset power-up state
     player.activePowerUp = null;
     player.powerUpMultiplier = 1;
@@ -400,6 +404,24 @@ io.on("connection", (socket) => {
 
       if (room.players.length === 2) {
         const [player1, player2] = room.players;
+
+        // Handle dodge charge regeneration
+        [player1, player2].forEach((player) => {
+          const currentTime = Date.now();
+
+          // Check each charge's cooldown independently
+          player.dodgeChargeCooldowns.forEach((cooldownEndTime, index) => {
+            if (cooldownEndTime > 0 && currentTime >= cooldownEndTime) {
+              // Reset this charge's cooldown
+              player.dodgeChargeCooldowns[index] = 0;
+            }
+          });
+
+          // Count available charges based on cooldowns
+          player.dodgeCharges = player.dodgeChargeCooldowns.filter(
+            (cooldown) => cooldown === 0
+          ).length;
+        });
 
         // Handle ready positions separately from movement
         handleReadyPositions(room, player1, player2);
@@ -1668,6 +1690,11 @@ io.on("connection", (socket) => {
       return;
     }
 
+    // Block all actions if player is moving to ready position
+    if (player.canMoveToReady) {
+      return;
+    }
+
     if (
       player.keys.f &&
       !player.saltCooldown &&
@@ -1716,18 +1743,26 @@ io.on("connection", (socket) => {
         !player.isBeingThrown &&
         !player.isGrabbing &&
         !player.isBeingGrabbed &&
-        player.stamina >= 50 &&
         !player.isRawParryStun &&
-        !player.dodgeCooldown // Add dodge cooldown check
+        !player.canMoveToReady && // Prevent dodge during ready position movement
+        player.dodgeCharges > 0 // Check if player has dodge charges
       ) {
         console.log("Executing immediate dodge");
         player.isDodging = true;
         player.dodgeStartTime = Date.now();
         player.dodgeEndTime = Date.now() + 400;
-        player.stamina -= 50;
         player.dodgeStartX = player.x;
         player.dodgeStartY = player.y;
-        player.dodgeCooldown = true; // Set dodge cooldown
+
+        // Find the first available charge (from right to left)
+        for (let i = player.dodgeChargeCooldowns.length - 1; i >= 0; i--) {
+          if (player.dodgeChargeCooldowns[i] === 0) {
+            // Use this charge
+            player.dodgeCharges--;
+            player.dodgeChargeCooldowns[i] = Date.now() + DODGE_COOLDOWN;
+            break;
+          }
+        }
 
         if (player.keys.a) {
           player.dodgeDirection = -1;
@@ -1741,11 +1776,6 @@ io.on("connection", (socket) => {
           player.isDodging = false;
           player.dodgeDirection = null;
 
-          // Reset dodge cooldown after the cooldown period
-          setTimeout(() => {
-            player.dodgeCooldown = false;
-          }, DODGE_COOLDOWN);
-
           // Check for buffered actions after dodge ends
           if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
             console.log("Executing buffered action after dodge");
@@ -1758,9 +1788,7 @@ io.on("connection", (socket) => {
               player.isDodging = true;
               player.dodgeStartTime = Date.now();
               player.dodgeEndTime = Date.now() + 400;
-              player.stamina -= 50;
               player.dodgeDirection = action.direction;
-              // Add these lines to set the dodge start position
               player.dodgeStartX = player.x;
               player.dodgeStartY = player.y;
             }
@@ -1799,7 +1827,7 @@ io.on("connection", (socket) => {
           player.isGrabbing ||
           player.isBeingGrabbed) && // Removed isDodging from this condition
         !player.isDodging && // Add explicit check to prevent dodge buffering during dodge
-        player.stamina >= 50
+        player.dodgeCharges > 0 // Check if player has dodge charges
       ) {
         // Buffer the dodge action
         console.log("Buffering dodge action");
@@ -1868,7 +1896,8 @@ io.on("connection", (socket) => {
         !player.isBeingGrabbed &&
         !player.isHit &&
         !player.isRecovering && // Add recovery check
-        !player.isRawParryStun
+        !player.isRawParryStun &&
+        !player.canMoveToReady // Prevent charging during ready position movement
       ) {
         // Start charging
         player.isChargingAttack = true;
@@ -1977,7 +2006,8 @@ io.on("connection", (socket) => {
         !player.isGrabbing &&
         !player.isBeingGrabbed &&
         !player.isHit &&
-        !player.isRawParryStun
+        !player.isRawParryStun &&
+        !player.canMoveToReady // Prevent slap attacks during ready position movement
       ) {
         // Initialize slap buffer if it doesn't exist
         if (!player.slapBuffer) {
@@ -2021,7 +2051,8 @@ io.on("connection", (socket) => {
         !player.isJumping &&
         !player.throwCooldown &&
         !player.isRawParryStun &&
-        !player.isRecovering
+        !player.isRecovering &&
+        !player.canMoveToReady // Prevent throws during ready position movement
       ) {
         // Reset any lingering throw states before starting a new throw
         player.throwingFacingDirection = null;
@@ -2094,7 +2125,8 @@ io.on("connection", (socket) => {
         !player.isBeingPushed &&
         !player.isBeingGrabbed &&
         !player.grabbedOpponent &&
-        !player.isRawParryStun
+        !player.isRawParryStun &&
+        !player.canMoveToReady // Prevent grabs during ready position movement
       ) {
         player.lastGrabAttemptTime = Date.now();
 
@@ -2248,7 +2280,7 @@ function handleWinCondition(room, loser, winner) {
     setTimeout(() => {
       winner.isBowing = true;
       loser.isBowing = false;
-    }, 350);
+    }, 600);
   }
 
   // Store the current states that we want to preserve
@@ -2582,6 +2614,9 @@ function handleReadyPositions(room, player1, player2) {
       if (currentTime - room.readyStartTime >= 1000) {
         room.gameStart = true;
         room.hakkiyoiCount = 1;
+        // Reset canMoveToReady for both players when game starts
+        player1.canMoveToReady = false;
+        player2.canMoveToReady = false;
         io.in(room.id).emit("game_start", true);
         player1.isReady = false;
         player2.isReady = false;
@@ -2592,6 +2627,9 @@ function handleReadyPositions(room, player1, player2) {
     // Clear ready states when game starts
     player1.isReady = false;
     player2.isReady = false;
+    // Ensure canMoveToReady is false during gameplay
+    player1.canMoveToReady = false;
+    player2.canMoveToReady = false;
   }
 }
 

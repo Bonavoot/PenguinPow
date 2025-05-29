@@ -1,12 +1,22 @@
 import PropTypes from "prop-types";
 import "./PlayerStaminaUi.css";
+import DodgeChargeUI from "./DodgeChargeUI";
 
-const PlayerStaminaUi = ({ stamina, index }) => {
+const PlayerStaminaUi = ({
+  stamina,
+  index,
+  dodgeCharges,
+  dodgeChargeCooldowns,
+}) => {
   const staminaValue = typeof stamina === "object" ? stamina.stamina : stamina;
 
   return (
     <div>
       <div className="ui-player-container" id={`ui-container-${index + 1}`}>
+        <DodgeChargeUI
+          dodgeCharges={dodgeCharges}
+          dodgeChargeCooldowns={dodgeChargeCooldowns}
+        />
         <div className="ui-player-stamina-container">
           <div
             className="ui-player-stamina-red"
@@ -59,6 +69,8 @@ PlayerStaminaUi.propTypes = {
     }),
   ]).isRequired,
   index: PropTypes.number.isRequired,
+  dodgeCharges: PropTypes.number,
+  dodgeChargeCooldowns: PropTypes.arrayOf(PropTypes.number),
 };
 
 export default PlayerStaminaUi;
