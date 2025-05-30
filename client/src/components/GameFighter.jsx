@@ -65,6 +65,7 @@ import SaltEffect from "./SaltEffect";
 import MatchOver from "./MatchOver";
 import HitEffect from "./HitEffect";
 import { getGlobalVolume } from "./Settings";
+import SnowEffect from "./SnowEffect";
 
 const GROUND_LEVEL = 145; // Ground level constant
 
@@ -873,6 +874,11 @@ const GameFighter = ({ player, index, roomName, localId }) => {
 
   return (
     <div className="ui-container">
+      <SnowEffect 
+        mode={matchOver ? 'envelope' : 'snow'} 
+        winner={winner}
+        playerIndex={index}
+      />
       <UiPlayerInfo
         playerOneWinCount={playerOneWinCount}
         playerTwoWinCount={playerTwoWinCount}

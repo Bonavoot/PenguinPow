@@ -1527,6 +1527,8 @@ io.on("connection", (socket) => {
         x: 230,
         y: GROUND_LEVEL,
         knockbackVelocity: { x: 0, y: 0 },
+        dodgeCharges: MAX_DODGE_CHARGES,
+        dodgeChargeCooldowns: [0, 0],
         keys: {
           w: false,
           a: false,
@@ -1590,6 +1592,8 @@ io.on("connection", (socket) => {
         x: 815,
         y: GROUND_LEVEL,
         knockbackVelocity: { x: 0, y: 0 },
+        dodgeCharges: MAX_DODGE_CHARGES,
+        dodgeChargeCooldowns: [0, 0],
         keys: {
           w: false,
           a: false,
@@ -2007,7 +2011,8 @@ io.on("connection", (socket) => {
         !player.isBeingGrabbed &&
         !player.isHit &&
         !player.isRawParryStun &&
-        !player.canMoveToReady // Prevent slap attacks during ready position movement
+        !player.canMoveToReady && // Prevent slap attacks during ready position movement
+        !player.wasMouse1Pressed // Add check for previous mouse1 state
       ) {
         // Initialize slap buffer if it doesn't exist
         if (!player.slapBuffer) {
@@ -2031,6 +2036,9 @@ io.on("connection", (socket) => {
         // Execute slap attack
         executeSlapAttack(player);
       }
+
+      // Store the current mouse1 state for next frame
+      player.wasMouse1Pressed = player.keys.mouse1;
 
       function isOpponentCloseEnoughForGrab(player, opponent) {
         // Calculate grab range based on player size
@@ -2366,7 +2374,29 @@ function executeSlapAttack(player) {
     if (opponent) {
       // Update facing direction based on opponent's position
       player.facing = player.x < opponent.x ? -1 : 1;
+
+      // If opponent is still in hit state or recently hit, don't allow another slap
+      if (opponent.isHit || opponent.isAlreadyHit) {
+        return;
+      }
     }
+  }
+
+  // Initialize slap buffer if it doesn't exist
+  if (!player.slapBuffer) {
+    player.slapBuffer = {
+      lastSlapTime: 0,
+      slapCooldown: 400, // Increased cooldown to prevent any possibility of chaining
+      pendingSlaps: 0,
+    };
+  }
+
+  const currentTime = Date.now();
+  const timeSinceLastSlap = currentTime - player.slapBuffer.lastSlapTime;
+
+  // If we're still in cooldown, don't execute the slap
+  if (timeSinceLastSlap < player.slapBuffer.slapCooldown) {
+    return;
   }
 
   // Clear any ongoing charge attack
@@ -2379,22 +2409,20 @@ function executeSlapAttack(player) {
 
   player.isSlapAttack = true;
   player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
-  player.attackEndTime = Date.now() + 180;
+  player.attackEndTime = Date.now() + 180; // Keep the quick slap animation
   player.isAttacking = true;
   player.attackStartTime = Date.now();
   player.attackType = "slap";
 
-  // Only update lastSlapTime if we're not already in a slap attack
-  if (!player.isAttacking || !player.isSlapAttack) {
-    player.slapBuffer.lastSlapTime = Date.now();
-  }
+  // Update last slap time
+  player.slapBuffer.lastSlapTime = Date.now();
 
   // Set a timeout to reset the attack state
   setTimeout(() => {
     player.isAttacking = false;
     player.isSlapAttack = false;
     player.attackType = null;
-  }, 180);
+  }, 180); // Keep the quick slap animation
 }
 
 function cleanupRoom(room) {
@@ -2738,9 +2766,9 @@ function adjustPlayerPositions(player1, player2, delta) {
     const overlap = minDistance - distanceBetweenCenters;
     const adjustment = overlap / 2;
 
-    // Increase adjustment speed during recovery states
+    // Significantly reduce the smoothFactor for more resistance during collisions
     const isRecovering = player1.isRecovering || player2.isRecovering;
-    const smoothFactor = isRecovering ? delta * 0.05 : delta * 0.01;
+    const smoothFactor = isRecovering ? delta * 0.02 : delta * 0.005; // Reduced from 0.05/0.01 to 0.02/0.005
 
     // Calculate new positions
     let newPlayer1X = player1.x;
@@ -2753,6 +2781,24 @@ function adjustPlayerPositions(player1, player2, delta) {
     } else {
       newPlayer1X += adjustment * smoothFactor;
       newPlayer2X -= adjustment * smoothFactor;
+    }
+
+    // Only apply movement resistance when players are moving towards each other
+    if (!player1.isHit && !player1.isAlreadyHit && player1.movementVelocity) {
+      // Check if player1 is moving towards player2
+      const isMovingTowards = (player1.x < player2.x && player1.movementVelocity > 0) || 
+                             (player1.x > player2.x && player1.movementVelocity < 0);
+      if (isMovingTowards) {
+        player1.movementVelocity *= 0.85; // Add resistance to movement velocity
+      }
+    }
+    if (!player2.isHit && !player2.isAlreadyHit && player2.movementVelocity) {
+      // Check if player2 is moving towards player1
+      const isMovingTowards = (player2.x < player1.x && player2.movementVelocity > 0) || 
+                             (player2.x > player1.x && player2.movementVelocity < 0);
+      if (isMovingTowards) {
+        player2.movementVelocity *= 0.85; // Add resistance to movement velocity
+      }
     }
 
     // Enforce map boundaries for both players

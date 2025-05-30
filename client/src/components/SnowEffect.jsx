@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import styled from "styled-components";
+import envelope from "../assets/envelope.png";
 
 const GROUND_LEVEL = 650; // Main ground level constant
 const DEPTH_LEVELS = [
@@ -9,8 +10,9 @@ const DEPTH_LEVELS = [
 ];
 
 // Performance settings
-const MAX_SNOWFLAKES = 50; // Reduced from 100
-const UPDATE_INTERVAL = 32; // Update every 32ms instead of 16ms
+const MAX_SNOWFLAKES = 15; // Reduced from 100
+const MAX_ENVELOPES = 25; // Fewer envelopes than snowflakes for better performance
+const UPDATE_INTERVAL = 16; // Update every 16ms for smoother animation
 const USE_BLUR = false; // Disable blur effect for better performance
 
 const SnowContainer = styled.div`
@@ -26,31 +28,41 @@ const SnowContainer = styled.div`
 
 const Snowflake = styled.div.attrs((props) => ({
   style: {
-    transform: `translate(${props.$x}px, ${props.$y}px) scale(${props.$scale})`,
+    transform: `translate(${props.$x}px, ${props.$y}px) scale(${props.$scale}) rotate(${props.$rotation}deg)`,
     opacity: props.$opacity,
     ...(USE_BLUR && { filter: `blur(${props.$blur}px)` }),
   },
 }))`
   position: absolute;
-  width: 6px;
-  height: 6px;
-  background: radial-gradient(
-    circle at center,
-    rgba(255, 255, 255, 0.8) 0%,
-    rgba(255, 255, 255, 0) 70%
-  );
-  border-radius: 50%;
+  width: ${props => props.$isEnvelope ? 'clamp(1.5rem, 3vw, 3rem)' : '6px'};
+  height: ${props => props.$isEnvelope ? 'clamp(2.25rem, 4.5vw, 4.5rem)' : '6px'};
+  background: ${props => props.$isEnvelope 
+    ? `url(${envelope}) no-repeat center center`
+    : `radial-gradient(
+        circle at center,
+        rgba(255, 255, 255, 0.8) 0%,
+        rgba(255, 255, 255, 0) 70%
+      )`};
+  background-size: contain;
+  border-radius: ${props => props.$isEnvelope ? '0' : '50%'};
   will-change: transform, opacity;
   transform-style: preserve-3d;
   backface-visibility: hidden;
-  box-shadow: 0 0 4px rgba(255, 255, 255, 0.3);
+  box-shadow: ${props => props.$isEnvelope 
+    ? '0 0 8px rgba(255, 255, 255, 0.0)'
+    : '0 0 4px rgba(255, 255, 255, 0.3)'};
 `;
 
-const SnowEffect = () => {
-  const [snowflakes, setSnowflakes] = useState([]);
+const SnowEffect = ({ mode = 'snow', winner = null, playerIndex = null }) => {
+  const [particles, setParticles] = useState([]);
   const lastUpdateTime = useRef(0);
   const animationFrameRef = useRef(null);
   const isLowPerformance = useRef(false);
+
+  // Determine if this player should show envelopes
+  const shouldShowEnvelopes = mode === 'envelope' && winner && 
+    ((winner.fighter === 'player 1' && playerIndex === 0) || 
+     (winner.fighter === 'player 2' && playerIndex === 1));
 
   // Check for low performance
   useEffect(() => {
@@ -76,60 +88,72 @@ const SnowEffect = () => {
     return GROUND_LEVEL;
   }, []);
 
-  const createSnowflake = useCallback(
+  const createParticle = useCallback(
     (initialY = -10) => {
       const depthLevel = getRandomDepthLevel();
+      const isEnvelope = shouldShowEnvelopes;
       return {
         id: Math.random(),
         x: Math.random() * window.innerWidth,
         y: initialY,
-        velocityX: (Math.random() - 0.5) * 0.5,
-        velocityY: 1 + Math.random() * 2,
+        velocityX: (Math.random() - 0.5) * (isEnvelope ? 0.7 : 0.5),
+        velocityY: (isEnvelope ? 1.5 : 1) + Math.random() * (isEnvelope ? 1.8 : 2),
         opacity: 0.5 + Math.random() * 0.5,
-        scale: 0.5 + Math.random() * 1,
+        scale: isEnvelope ? 0.8 + Math.random() * 0.4 : 0.5 + Math.random() * 1,
         blur: Math.random() * 0.5,
         rotation: Math.random() * 360,
-        rotationSpeed: (Math.random() - 0.5) * 2,
+        rotationSpeed: (Math.random() - 0.5) * (isEnvelope ? 4 : 2),
         depthLevel,
+        isEnvelope,
       };
     },
-    [getRandomDepthLevel]
+    [getRandomDepthLevel, shouldShowEnvelopes]
   );
 
-  const updateSnowflake = useCallback(
-    (snowflake, deltaTime) => {
-      const newY = snowflake.y + snowflake.velocityY * (deltaTime / 16);
-      const newX = snowflake.x + snowflake.velocityX * (deltaTime / 16);
+  const updateParticle = useCallback(
+    (particle, deltaTime) => {
+      // Add easing to the movement
+      const easing = 0.98; // Increased from 0.95 to maintain more momentum
+      const newY = particle.y + particle.velocityY * (deltaTime / 16);
+      const newX = particle.x + particle.velocityX * (deltaTime / 16);
 
-      if (newY >= snowflake.depthLevel) {
-        return createSnowflake();
+      if (newY >= particle.depthLevel) {
+        return createParticle();
       }
 
       let finalX = newX;
       if (newX < -10) finalX = window.innerWidth + 10;
       if (newX > window.innerWidth + 10) finalX = -10;
 
+      // Apply easing to rotation
+      const targetRotation = particle.rotation + particle.rotationSpeed;
+      const easedRotation = particle.rotation + (targetRotation - particle.rotation) * (1 - easing);
+
       return {
-        ...snowflake,
+        ...particle,
         x: finalX,
         y: newY,
-        rotation: snowflake.rotation + snowflake.rotationSpeed,
+        rotation: easedRotation,
+        // Only apply easing to horizontal movement, keep vertical velocity constant
+        velocityX: particle.velocityX * easing,
+        velocityY: particle.velocityY,
       };
     },
-    [createSnowflake]
+    [createParticle]
   );
 
   useEffect(() => {
-    // Create initial snowflakes with distributed y-positions
-    const initialSnowflakes = Array.from(
-      { length: MAX_SNOWFLAKES },
+    // Create initial particles with distributed y-positions
+    const maxParticles = shouldShowEnvelopes ? MAX_ENVELOPES : MAX_SNOWFLAKES;
+    const initialParticles = Array.from(
+      { length: maxParticles },
       (_, index) => {
-        // Distribute snowflakes across the top portion of the screen
-        const initialY = -10 - index * (window.innerHeight / MAX_SNOWFLAKES);
-        return createSnowflake(initialY);
+        // Distribute particles across the top portion of the screen
+        const initialY = -10 - index * (window.innerHeight / maxParticles);
+        return createParticle(initialY);
       }
     );
-    setSnowflakes(initialSnowflakes);
+    setParticles(initialParticles);
 
     const animate = (timestamp) => {
       if (!lastUpdateTime.current) {
@@ -139,20 +163,20 @@ const SnowEffect = () => {
       const deltaTime = timestamp - lastUpdateTime.current;
 
       if (deltaTime >= UPDATE_INTERVAL) {
-        setSnowflakes((prevSnowflakes) => {
-          const updatedSnowflakes = prevSnowflakes
-            .map((snowflake) => updateSnowflake(snowflake, deltaTime))
-            .filter((snowflake) => snowflake.y < snowflake.depthLevel);
+        setParticles((prevParticles) => {
+          const updatedParticles = prevParticles
+            .map((particle) => updateParticle(particle, deltaTime))
+            .filter((particle) => particle.y < particle.depthLevel);
 
-          // Add new snowflakes if needed, but respect performance mode
+          // Add new particles if needed, but respect performance mode
           const targetCount = isLowPerformance.current
-            ? MAX_SNOWFLAKES / 2
-            : MAX_SNOWFLAKES;
-          while (updatedSnowflakes.length < targetCount) {
-            updatedSnowflakes.push(createSnowflake());
+            ? maxParticles / 2
+            : maxParticles;
+          while (updatedParticles.length < targetCount) {
+            updatedParticles.push(createParticle());
           }
 
-          return updatedSnowflakes;
+          return updatedParticles;
         });
 
         lastUpdateTime.current = timestamp;
@@ -168,18 +192,20 @@ const SnowEffect = () => {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [createSnowflake, updateSnowflake]);
+  }, [createParticle, updateParticle, shouldShowEnvelopes]);
 
   return (
     <SnowContainer>
-      {snowflakes.map((snowflake) => (
+      {particles.map((particle) => (
         <Snowflake
-          key={snowflake.id}
-          $x={snowflake.x}
-          $y={snowflake.y}
-          $opacity={snowflake.opacity}
-          $scale={snowflake.scale}
-          $blur={snowflake.blur}
+          key={particle.id}
+          $x={particle.x}
+          $y={particle.y}
+          $opacity={particle.opacity}
+          $scale={particle.scale}
+          $blur={particle.blur}
+          $rotation={particle.rotation}
+          $isEnvelope={particle.isEnvelope}
         />
       ))}
     </SnowContainer>
