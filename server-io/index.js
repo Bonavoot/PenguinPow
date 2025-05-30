@@ -1685,7 +1685,10 @@ io.on("connection", (socket) => {
     let player = rooms[index].players[playerIndex];
     let opponent = rooms[index].players.find((p) => p.id !== player.id);
 
-    if (rooms[index].gameOver && !rooms[index].matchOver) {
+    if (
+      (rooms[index].gameOver && !rooms[index].matchOver) ||
+      rooms[index].matchOver
+    ) {
       return; // Skip all other actions if the game is over
     }
 
@@ -2786,16 +2789,18 @@ function adjustPlayerPositions(player1, player2, delta) {
     // Only apply movement resistance when players are moving towards each other
     if (!player1.isHit && !player1.isAlreadyHit && player1.movementVelocity) {
       // Check if player1 is moving towards player2
-      const isMovingTowards = (player1.x < player2.x && player1.movementVelocity > 0) || 
-                             (player1.x > player2.x && player1.movementVelocity < 0);
+      const isMovingTowards =
+        (player1.x < player2.x && player1.movementVelocity > 0) ||
+        (player1.x > player2.x && player1.movementVelocity < 0);
       if (isMovingTowards) {
         player1.movementVelocity *= 0.85; // Add resistance to movement velocity
       }
     }
     if (!player2.isHit && !player2.isAlreadyHit && player2.movementVelocity) {
       // Check if player2 is moving towards player1
-      const isMovingTowards = (player2.x < player1.x && player2.movementVelocity > 0) || 
-                             (player2.x > player1.x && player2.movementVelocity < 0);
+      const isMovingTowards =
+        (player2.x < player1.x && player2.movementVelocity > 0) ||
+        (player2.x > player1.x && player2.movementVelocity < 0);
       if (isMovingTowards) {
         player2.movementVelocity *= 0.85; // Add resistance to movement velocity
       }

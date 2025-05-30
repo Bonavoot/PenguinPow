@@ -874,8 +874,8 @@ const GameFighter = ({ player, index, roomName, localId }) => {
 
   return (
     <div className="ui-container">
-      <SnowEffect 
-        mode={matchOver ? 'envelope' : 'snow'} 
+      <SnowEffect
+        mode={matchOver ? "envelope" : "snow"}
         winner={winner}
         playerIndex={index}
       />

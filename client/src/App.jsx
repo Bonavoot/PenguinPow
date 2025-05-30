@@ -4,7 +4,7 @@ import { SocketContext } from "./SocketContext";
 import MainMenu from "./components/MainMenu";
 import "./App.css";
 
-const SOCKET_URL = import.meta.env.PROD 
+const SOCKET_URL = import.meta.env.PROD
   ? "https://secure-beach-15962-3c882c6fcbf9.herokuapp.com/"
   : "http://localhost:3001";
 
@@ -12,7 +12,7 @@ const socket = io(SOCKET_URL, {
   reconnection: true,
   reconnectionAttempts: 5,
   reconnectionDelay: 1000,
-  transports: ['websocket', 'polling']
+  transports: ["websocket", "polling"],
 });
 
 function App() {
@@ -24,7 +24,7 @@ function App() {
   const handleLogoClick = () => {
     window.location.reload(false);
   };
-  
+
   const getRooms = () => {
     socket.emit("get_rooms");
   };
@@ -65,7 +65,7 @@ function App() {
         P u m o <span className="pow"> PUMO !</span>
       </h1>
       {connectionError && (
-        <div style={{ color: 'red', textAlign: 'center', marginTop: '20px' }}>
+        <div style={{ color: "red", textAlign: "center", marginTop: "20px" }}>
           Connection error. Attempting to reconnect...
         </div>
       )}

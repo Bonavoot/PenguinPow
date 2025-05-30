@@ -34,35 +34,40 @@ const Snowflake = styled.div.attrs((props) => ({
   },
 }))`
   position: absolute;
-  width: ${props => props.$isEnvelope ? 'clamp(1.5rem, 3vw, 3rem)' : '6px'};
-  height: ${props => props.$isEnvelope ? 'clamp(2.25rem, 4.5vw, 4.5rem)' : '6px'};
-  background: ${props => props.$isEnvelope 
-    ? `url(${envelope}) no-repeat center center`
-    : `radial-gradient(
+  width: ${(props) => (props.$isEnvelope ? "clamp(1.5rem, 3vw, 3rem)" : "6px")};
+  height: ${(props) =>
+    props.$isEnvelope ? "clamp(2.25rem, 4.5vw, 4.5rem)" : "6px"};
+  background: ${(props) =>
+    props.$isEnvelope
+      ? `url(${envelope}) no-repeat center center`
+      : `radial-gradient(
         circle at center,
         rgba(255, 255, 255, 0.8) 0%,
         rgba(255, 255, 255, 0) 70%
       )`};
   background-size: contain;
-  border-radius: ${props => props.$isEnvelope ? '0' : '50%'};
+  border-radius: ${(props) => (props.$isEnvelope ? "0" : "50%")};
   will-change: transform, opacity;
   transform-style: preserve-3d;
   backface-visibility: hidden;
-  box-shadow: ${props => props.$isEnvelope 
-    ? '0 0 8px rgba(255, 255, 255, 0.0)'
-    : '0 0 4px rgba(255, 255, 255, 0.3)'};
+  box-shadow: ${(props) =>
+    props.$isEnvelope
+      ? "0 0 8px rgba(255, 255, 255, 0.0)"
+      : "0 0 4px rgba(255, 255, 255, 0.3)"};
 `;
 
-const SnowEffect = ({ mode = 'snow', winner = null, playerIndex = null }) => {
+const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
   const [particles, setParticles] = useState([]);
   const lastUpdateTime = useRef(0);
   const animationFrameRef = useRef(null);
   const isLowPerformance = useRef(false);
 
   // Determine if this player should show envelopes
-  const shouldShowEnvelopes = mode === 'envelope' && winner && 
-    ((winner.fighter === 'player 1' && playerIndex === 0) || 
-     (winner.fighter === 'player 2' && playerIndex === 1));
+  const shouldShowEnvelopes =
+    mode === "envelope" &&
+    winner &&
+    ((winner.fighter === "player 1" && playerIndex === 0) ||
+      (winner.fighter === "player 2" && playerIndex === 1));
 
   // Check for low performance
   useEffect(() => {
@@ -96,15 +101,19 @@ const SnowEffect = ({ mode = 'snow', winner = null, playerIndex = null }) => {
         id: Math.random(),
         x: Math.random() * window.innerWidth,
         y: initialY,
-        velocityX: (Math.random() - 0.5) * (isEnvelope ? 0.7 : 0.5),
-        velocityY: (isEnvelope ? 1.5 : 1) + Math.random() * (isEnvelope ? 1.8 : 2),
+        velocityX: (Math.random() - 0.5) * (isEnvelope ? 2 : 0.5),
+        velocityY:
+          (isEnvelope ? 1.2 : 1) + Math.random() * (isEnvelope ? 1.5 : 2),
         opacity: 0.5 + Math.random() * 0.5,
         scale: isEnvelope ? 0.8 + Math.random() * 0.4 : 0.5 + Math.random() * 1,
         blur: Math.random() * 0.5,
         rotation: Math.random() * 360,
-        rotationSpeed: (Math.random() - 0.5) * (isEnvelope ? 4 : 2),
+        rotationSpeed: (Math.random() - 0.5) * (isEnvelope ? 8 : 2),
         depthLevel,
         isEnvelope,
+        swayPhase: Math.random() * Math.PI * 2,
+        swayAmplitude: isEnvelope ? 0.5 + Math.random() * 1 : 0,
+        swayFrequency: isEnvelope ? 1.2 + Math.random() * 0.8 : 0,
       };
     },
     [getRandomDepthLevel, shouldShowEnvelopes]
@@ -113,9 +122,19 @@ const SnowEffect = ({ mode = 'snow', winner = null, playerIndex = null }) => {
   const updateParticle = useCallback(
     (particle, deltaTime) => {
       // Add easing to the movement
-      const easing = 0.98; // Increased from 0.95 to maintain more momentum
+      const easing = 0.98;
       const newY = particle.y + particle.velocityY * (deltaTime / 16);
-      const newX = particle.x + particle.velocityX * (deltaTime / 16);
+
+      // Calculate swaying motion for envelopes
+      let swayX = 0;
+      if (particle.isEnvelope) {
+        const time = performance.now() / 1000;
+        swayX =
+          Math.sin(time * particle.swayFrequency + particle.swayPhase) *
+          particle.swayAmplitude;
+      }
+
+      const newX = particle.x + particle.velocityX * (deltaTime / 16) + swayX;
 
       if (newY >= particle.depthLevel) {
         return createParticle();
@@ -125,16 +144,18 @@ const SnowEffect = ({ mode = 'snow', winner = null, playerIndex = null }) => {
       if (newX < -10) finalX = window.innerWidth + 10;
       if (newX > window.innerWidth + 10) finalX = -10;
 
-      // Apply easing to rotation
-      const targetRotation = particle.rotation + particle.rotationSpeed;
-      const easedRotation = particle.rotation + (targetRotation - particle.rotation) * (1 - easing);
+      // Apply easing to rotation with more variation for envelopes
+      const targetRotation =
+        particle.rotation +
+        particle.rotationSpeed * (particle.isEnvelope ? 1.5 : 1);
+      const easedRotation =
+        particle.rotation + (targetRotation - particle.rotation) * (1 - easing);
 
       return {
         ...particle,
         x: finalX,
         y: newY,
         rotation: easedRotation,
-        // Only apply easing to horizontal movement, keep vertical velocity constant
         velocityX: particle.velocityX * easing,
         velocityY: particle.velocityY,
       };
