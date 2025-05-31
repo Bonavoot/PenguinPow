@@ -3,6 +3,7 @@ import PropTypes from "prop-types";
 import styled, { keyframes } from "styled-components";
 import Room from "./Room";
 import { SocketContext } from "../SocketContext";
+import { playButtonHoverSound, playButtonPressSound } from "../utils/soundUtils";
 
 const fadeIn = keyframes`
   from {
@@ -216,11 +217,13 @@ const Rooms = ({ rooms, setRoomName, handleJoinRoom, handleMainMenuPage }) => {
         <Header>
           <Title>SERVER BROWSER</Title>
           <ButtonContainer>
-            <Button variant="back" onClick={handleMainMenuPage}>
+            <Button variant="back" onClick={() => { handleMainMenuPage(); playButtonPressSound(); }} onMouseEnter={playButtonHoverSound}>
+              <span className="material-symbols-outlined">arrow_back</span>
               BACK
             </Button>
-            <Button onClick={handleRefresh}>
+            <Button onClick={() => { handleRefresh(); playButtonPressSound(); }} onMouseEnter={playButtonHoverSound}>
               <span className="material-symbols-outlined">refresh</span>
+              REFRESH
             </Button>
           </ButtonContainer>
         </Header>
@@ -238,6 +241,7 @@ const Rooms = ({ rooms, setRoomName, handleJoinRoom, handleMainMenuPage }) => {
                 room={room}
                 setRoomName={setRoomName}
                 handleJoinRoom={handleJoinRoom}
+                onMouseEnter={playButtonHoverSound}
               />
             ))
           )}

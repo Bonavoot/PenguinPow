@@ -2,6 +2,7 @@ import { useContext, useEffect, useState } from "react";
 import { SocketContext } from "../SocketContext";
 import PropTypes from "prop-types";
 import styled from "styled-components";
+import { playButtonHoverSound, playButtonPressSound, playButtonPressSound2 } from "../utils/soundUtils";
 
 const RematchWrapper = styled.div`
   display: flex;
@@ -131,13 +132,13 @@ const Rematch = ({ roomName }) => {
     <RematchWrapper>
       <ButtonContainer>
         {rematch ? (
-          <CancelButton onClick={handleRematch}>CANCEL</CancelButton>
+          <CancelButton onClick={(e) => { handleRematch(e); playButtonPressSound(); }} onMouseEnter={playButtonHoverSound}>CANCEL</CancelButton>
         ) : (
-          <RematchButton onClick={handleRematch}>REMATCH</RematchButton>
+          <RematchButton onClick={(e) => { handleRematch(e); playButtonPressSound2(); }} onMouseEnter={playButtonHoverSound}>REMATCH</RematchButton>
         )}
         <ReadyCount>{count} / 2</ReadyCount>
       </ButtonContainer>
-      <ExitButton onClick={handleExit}>EXIT</ExitButton>
+      <ExitButton onClick={() => { handleExit(); playButtonPressSound(); }} onMouseEnter={playButtonHoverSound}>EXIT</ExitButton>
     </RematchWrapper>
   );
 };

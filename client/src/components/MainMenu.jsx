@@ -10,6 +10,8 @@ import lobbyBackground from "../assets/lobby-bkg.webp";
 import pumo from "../assets/pumo.png";
 import pumo2 from "../assets/pumo2.png";
 import mainMenuBackground from "../assets/main-menu-bkg.png";
+import mainMenuBackground2 from "../assets/main-menu-bkg-2.png";
+import { playButtonHoverSound, playButtonPressSound2, playBackgroundMusic, stopBackgroundMusic } from "../utils/soundUtils";
 
 const fadeIn = keyframes`
   from {
@@ -51,6 +53,18 @@ const woodGrain = keyframes`
   }
 `;
 
+const backgroundSlide = keyframes`
+  0%, 45% {
+    opacity: 1;
+  }
+  50%, 95% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+`;
+
 const MainMenuContainer = styled.div`
   display: block;
   width: 100vw;
@@ -71,6 +85,27 @@ const MainMenuContainer = styled.div`
   border: 2px solid #8b4513;
 
   &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        135deg,
+        rgba(220, 180, 140, 0.95),
+        rgba(180, 140, 100, 0.85)
+      ),
+      url(${mainMenuBackground2});
+    background-repeat: no-repeat;
+    background-size: cover;
+    background-position: center;
+    opacity: 0;
+    animation: ${backgroundSlide} 20s infinite;
+    pointer-events: none;
+  }
+
+  &::after {
     content: "";
     position: absolute;
     top: 0;
@@ -306,12 +341,29 @@ const preloadAssets = (sources) => {
   });
 };
 
-const preGameImages = [lobbyBackground, pumo, pumo2];
+const preGameImages = [lobbyBackground, pumo, pumo2, mainMenuBackground, mainMenuBackground2];
 preloadAssets(preGameImages);
 
 const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
   const [roomName, setRoomName] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+
+  useEffect(() => {
+    // Start playing background music when MainMenu mounts
+    playBackgroundMusic();
+
+    // Cleanup function to stop music when component unmounts
+    return () => {
+      stopBackgroundMusic();
+    };
+  }, []);
+
+  // Add new effect to handle game start
+  useEffect(() => {
+    if (currentPage === "game") {
+      stopBackgroundMusic();
+    }
+  }, [currentPage]);
 
   const handleMainMenuPage = () => {
     setCurrentPage("mainMenu");
@@ -357,14 +409,14 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
       </Logo>
       {/* <SumoImage src={sumo} alt="sumo" /> */}
       <ButtonContainer>
-        <MenuButton $isActive onClick={handleDisplayRooms}>
+        <MenuButton $isActive onClick={() => { handleDisplayRooms(); playButtonPressSound2(); }} onMouseEnter={playButtonHoverSound}>
           PLAY
         </MenuButton>
-        <MenuButton>BASHO</MenuButton>
-        <MenuButton>CUSTOMIZE</MenuButton>
-        <MenuButton>STATS</MenuButton>
+        <MenuButton onClick={() => playButtonPressSound()} onMouseEnter={playButtonHoverSound}>BASHO</MenuButton>
+        <MenuButton onClick={() => playButtonPressSound()} onMouseEnter={playButtonHoverSound}>CUSTOMIZE</MenuButton>
+        <MenuButton onClick={() => playButtonPressSound()} onMouseEnter={playButtonHoverSound}>STATS</MenuButton>
       </ButtonContainer>
-      <SettingsButton className="settings-button" onClick={handleSettings}>
+      <SettingsButton className="settings-button" onClick={() => { handleSettings(); playButtonPressSound(); }} onMouseEnter={playButtonHoverSound}>
         <span className="material-symbols-outlined">settings</span>
       </SettingsButton>
       {showSettings && <Settings onClose={() => setShowSettings(false)} />}
@@ -390,7 +442,12 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
     case "lobby":
       return (
         <div className="current-page">
-          <Lobby rooms={rooms} roomName={roomName} handleGame={handleGame} />
+          <Lobby 
+            rooms={rooms} 
+            roomName={roomName} 
+            handleGame={handleGame} 
+            setCurrentPage={setCurrentPage}
+          />
         </div>
       );
     case "game":

@@ -2,6 +2,7 @@ import { useContext } from "react";
 import PropTypes from "prop-types";
 import styled, { keyframes } from "styled-components";
 import { SocketContext } from "../SocketContext";
+import { playButtonHoverSound, playButtonPressSound2 } from "../utils/soundUtils";
 
 const fadeIn = keyframes`
   from {
@@ -199,7 +200,11 @@ const Room = ({ room, setRoomName, handleJoinRoom }) => {
           / 2
         </PlayerCount>
       </RoomInfo>
-      <JoinButton $isFull={isFull} onClick={handleJoin}>
+      <JoinButton
+        $isFull={isFull}
+        onClick={() => { handleJoin(); playButtonPressSound2(); }}
+        onMouseEnter={playButtonHoverSound}
+      >
         {isFull ? "FULL" : "JOIN"}
       </JoinButton>
     </RoomContainer>

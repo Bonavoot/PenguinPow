@@ -284,8 +284,6 @@ const StyledImage = styled("img")
         : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000)",
       animation: props.$isDodging
         ? "dodgeFlash 0.3s ease-in-out"
-        : props.$isHit
-        ? "hitFlash 0.2s ease-in-out"
         : "none",
     },
   }))`
@@ -326,18 +324,6 @@ const StyledImage = styled("img")
       opacity: 1;
     }
   }
-
-  @keyframes hitFlash {
-    0% {
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000);
-    }
-    50% {
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) brightness(1.1) sepia(0.7) saturate(500%) hue-rotate(-40deg);
-    }
-    100% {
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000);
-    }
-  }
 `;
 
 const PowerUpText = styled.div`
@@ -365,8 +351,6 @@ const FloatingPowerUpText = styled.div`
         return "#0066ff"; // Electric blue
       case "power":
         return "#ff4444"; // red
-      case "size":
-        return "#44ff44"; // green
       default:
         return "#ffffff";
     }
@@ -390,8 +374,6 @@ const FloatingPowerUpText = styled.div`
             return "rgba(0, 102, 255, 0.6)";
           case "power":
             return "rgba(255, 68, 68, 0.6)";
-          case "size":
-            return "rgba(68, 255, 68, 0.6)";
           default:
             return "rgba(255, 255, 255, 0.6)";
         }
@@ -512,6 +494,28 @@ const SaltBasket = styled.img
     },
   }))``;
 
+const YouLabel = styled.div`
+  position: absolute;
+  bottom: ${props => (props.y / 720) * 100 + 33}%;
+  left: ${props => (props.x / 1280) * 100 + 9}%;
+  transform: translateX(-50%);
+  color: #ffd700;
+  font-family: "Bungee";
+  font-size: clamp(18px, 1.5vw, 24px);
+  text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000;
+  z-index: 1000;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+
+  &::after {
+    content: "↓";
+    font-size: clamp(14px, 1.2vw, 18px);
+  }
+`;
+
 const GameFighter = ({ player, index, roomName, localId }) => {
   const { socket } = useContext(SocketContext);
   const [penguin, setPenguin] = useState({
@@ -622,14 +626,12 @@ const GameFighter = ({ player, index, roomName, localId }) => {
     });
 
     socket.on("power_up_activated", (data) => {
-      if (data.playerId === penguin.id) {
+      if (data.playerId === localId) {
         setPenguin((prev) => ({
           ...prev,
           activePowerUp: data.powerUpType,
           powerUpMultiplier:
-            data.powerUpType === "size"
-              ? 1.15
-              : data.powerUpType === "speed"
+            data.powerUpType === "speed"
               ? 1.4
               : data.powerUpType === "power"
               ? 1.3
@@ -899,6 +901,9 @@ const GameFighter = ({ player, index, roomName, localId }) => {
       {matchOver && (
         <MatchOver winner={winner} localId={localId} roomName={roomName} />
       )}
+      {penguin.id === localId && !hakkiyoi && gyojiState === "idle" && countdown > 0 && (
+        <YouLabel x={penguin.x} y={penguin.y}>YOU</YouLabel>
+      )}
       <PowerMeter
         isCharging={penguin.isChargingAttack}
         chargePower={penguin.chargeAttackPower}
@@ -1021,10 +1026,8 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         $isRecovering={penguin.isRecovering}
         $isRawParryStun={penguin.isRawParryStun}
         style={{
-          transform: `scaleX(${penguin.facing}) scale(${
-            penguin.activePowerUp === "size" ? 1.15 : 1
-          })`,
-          width: penguin.activePowerUp === "size" ? "21.16%" : "18.4%",
+          transform: `scaleX(${penguin.facing})`,
+          width: "18.4%",
         }}
       />
       <SaltEffect

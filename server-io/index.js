@@ -98,22 +98,16 @@ const GRAB_RANGE = 184; // Reduced from 230 by 20%
 const GRAB_PUSH_SPEED = 0.3; // Increased from 0.2 for more substantial movement
 const GRAB_PUSH_DURATION = 650;
 
-// Add size power-up boundary multipliers
-const SIZE_POWERUP_LEFT_MULTIPLIER = 1.1; // Reduced left side by 20%
-const SIZE_POWERUP_RIGHT_MULTIPLIER = 1.1; // Increased right side by 20%
-
 // Add power-up types
 const POWER_UP_TYPES = {
   SPEED: "speed",
   POWER: "power",
-  SIZE: "size",
 };
 
 // Add power-up effects
 const POWER_UP_EFFECTS = {
   [POWER_UP_TYPES.SPEED]: 1.4, // 20% speed increase
   [POWER_UP_TYPES.POWER]: 1.3, // 30% knockback increase
-  [POWER_UP_TYPES.SIZE]: 1.15, // 15% size increase
 };
 
 const GRAB_DURATION = 1500; // 1.5 seconds total grab duration
@@ -544,16 +538,11 @@ io.on("connection", (socket) => {
                 player.x + delta * speedFactor * player.movementVelocity;
 
               // Calculate effective boundary based on player size
-              const sizeOffset =
-                player.activePowerUp === POWER_UP_TYPES.SIZE
-                  ? HITBOX_DISTANCE_VALUE * (player.sizeMultiplier - 1)
-                  : 0;
+              const sizeOffset = 0;
 
               // Only use map boundaries during recovery
-              const leftBoundary =
-                MAP_LEFT_BOUNDARY + sizeOffset * SIZE_POWERUP_LEFT_MULTIPLIER;
-              const rightBoundary =
-                MAP_RIGHT_BOUNDARY - sizeOffset * SIZE_POWERUP_RIGHT_MULTIPLIER;
+              const leftBoundary = MAP_LEFT_BOUNDARY;
+              const rightBoundary = MAP_RIGHT_BOUNDARY;
 
               // Only update position if within boundaries
               if (newX >= leftBoundary && newX <= rightBoundary) {
@@ -624,16 +613,11 @@ io.on("connection", (socket) => {
           !player.isSlapAttack
         ) {
           // Calculate effective boundary based on player size with different multipliers for left and right
-          const sizeOffset =
-            player.activePowerUp === POWER_UP_TYPES.SIZE
-              ? HITBOX_DISTANCE_VALUE * (player.sizeMultiplier - 1)
-              : 0;
+          const sizeOffset = 0;
 
           // Apply different multipliers for left and right boundaries
-          const leftBoundary =
-            MAP_LEFT_BOUNDARY + sizeOffset * SIZE_POWERUP_LEFT_MULTIPLIER;
-          const rightBoundary =
-            MAP_RIGHT_BOUNDARY - sizeOffset * SIZE_POWERUP_RIGHT_MULTIPLIER;
+          const leftBoundary = MAP_LEFT_BOUNDARY;
+          const rightBoundary = MAP_RIGHT_BOUNDARY;
 
           // Apply boundary restrictions
           if (player.keys.a || player.keys.d || player.isAttacking) {
@@ -647,16 +631,11 @@ io.on("connection", (socket) => {
         // Add separate boundary check for grabbing state
         if (player.isGrabbing && !player.isThrowing && !player.isBeingThrown) {
           // Calculate effective boundary based on player size with different multipliers
-          const sizeOffset =
-            player.activePowerUp === POWER_UP_TYPES.SIZE
-              ? HITBOX_DISTANCE_VALUE * (player.sizeMultiplier - 1)
-              : 0;
+          const sizeOffset = 0;
 
           // Apply different multipliers for left and right ring out boundaries
-          const leftRingOutBoundary =
-            MAP_RING_OUT_LEFT + sizeOffset * SIZE_POWERUP_LEFT_MULTIPLIER;
-          const rightRingOutBoundary =
-            MAP_RING_OUT_RIGHT - sizeOffset * SIZE_POWERUP_RIGHT_MULTIPLIER;
+          const leftRingOutBoundary = MAP_RING_OUT_LEFT + sizeOffset;
+          const rightRingOutBoundary = MAP_RING_OUT_RIGHT - sizeOffset;
 
           player.x = Math.max(
             leftRingOutBoundary,
@@ -739,10 +718,7 @@ io.on("connection", (socket) => {
             opponent.facing = opponent.beingThrownFacingDirection;
 
             // Calculate new position with size power-up consideration
-            const sizeOffset =
-              opponent.activePowerUp === POWER_UP_TYPES.SIZE
-                ? HITBOX_DISTANCE_VALUE * (opponent.sizeMultiplier - 1)
-                : 0;
+            const sizeOffset = 0;
 
             const newX =
               player.x +
@@ -858,16 +834,11 @@ io.on("connection", (socket) => {
           const newY = GROUND_LEVEL + hopHeight;
 
           // Calculate effective boundary based on player size with different multipliers
-          const sizeOffset =
-            player.activePowerUp === POWER_UP_TYPES.SIZE
-              ? HITBOX_DISTANCE_VALUE * (player.sizeMultiplier - 1)
-              : 0;
+          const sizeOffset = 0;
 
           // Apply different multipliers for left and right boundaries
-          const leftBoundary =
-            MAP_LEFT_BOUNDARY + sizeOffset * SIZE_POWERUP_LEFT_MULTIPLIER;
-          const rightBoundary =
-            MAP_RIGHT_BOUNDARY - sizeOffset * SIZE_POWERUP_RIGHT_MULTIPLIER;
+          const leftBoundary = MAP_LEFT_BOUNDARY + sizeOffset;
+          const rightBoundary = MAP_RIGHT_BOUNDARY - sizeOffset;
 
           // Only update position if within boundaries
           if (newX >= leftBoundary && newX <= rightBoundary) {
@@ -932,16 +903,11 @@ io.on("connection", (socket) => {
           }
 
           // Calculate effective boundary based on player size with different multipliers
-          const sizeOffset =
-            player.activePowerUp === POWER_UP_TYPES.SIZE
-              ? HITBOX_DISTANCE_VALUE * (player.sizeMultiplier - 1)
-              : 0;
+          const sizeOffset = 0;
 
           // Apply different multipliers for left and right boundaries
-          const leftBoundary =
-            MAP_LEFT_BOUNDARY + sizeOffset * SIZE_POWERUP_LEFT_MULTIPLIER;
-          const rightBoundary =
-            MAP_RIGHT_BOUNDARY - sizeOffset * SIZE_POWERUP_RIGHT_MULTIPLIER;
+          const leftBoundary = MAP_LEFT_BOUNDARY + sizeOffset;
+          const rightBoundary = MAP_RIGHT_BOUNDARY - sizeOffset;
 
           if (
             player.keys.d &&
@@ -1417,8 +1383,7 @@ io.on("connection", (socket) => {
 
       // Apply power-up effects
       if (player.activePowerUp === POWER_UP_TYPES.POWER) {
-        finalKnockbackMultiplier =
-          finalKnockbackMultiplier * player.powerUpMultiplier;
+        finalKnockbackMultiplier = finalKnockbackMultiplier * player.powerUpMultiplier;
       }
       if (otherPlayer.activePowerUp === POWER_UP_TYPES.SIZE) {
         finalKnockbackMultiplier = finalKnockbackMultiplier * 0.85;
@@ -1439,13 +1404,7 @@ io.on("connection", (socket) => {
           otherPlayer.x += adjustment;
         }
 
-        // Add screen shake for slap attacks
-        if (currentRoom) {
-          io.in(currentRoom.id).emit("screen_shake", {
-            intensity: 0.55, // Increased from 0.4 but still less than charged attack's 0.7
-            duration: 200, // Increased from 150 but still less than charged attack's 250
-          });
-        }
+        // Remove screen shake for slap attacks
       } else {
         // For charged attacks, use a combination of immediate knockback and sliding
         const immediateKnockback =
@@ -1473,14 +1432,21 @@ io.on("connection", (socket) => {
       otherPlayer.knockbackVelocity.y = 0;
       otherPlayer.y = GROUND_LEVEL;
 
-      otherPlayer.isAlreadyHit = true;
-      setTimeout(
-        () => {
-          otherPlayer.isHit = false;
+      // Set a shorter hit state duration for slap attacks to allow for rapid hits
+      const hitStateDuration = isSlapAttack ? 100 : 300;
+      
+      // Only set isAlreadyHit for charged attacks
+      if (!isSlapAttack) {
+        otherPlayer.isAlreadyHit = true;
+      }
+
+      // Clear hit state after duration
+      setTimeout(() => {
+        otherPlayer.isHit = false;
+        if (!isSlapAttack) {
           otherPlayer.isAlreadyHit = false;
-        },
-        isSlapAttack ? 250 : 300
-      );
+        }
+      }, hitStateDuration);
     }
   }
 
@@ -1633,23 +1599,38 @@ io.on("connection", (socket) => {
   socket.on("ready_count", (data) => {
     let index = rooms.findIndex((room) => room.id === data.roomId);
     console.log("ready count activated  ");
-    if (data.isReady && data.playerId === socket.id) {
-      rooms[index].readyCount++;
-      io.in(data.roomId).emit("ready_count", rooms[index].readyCount);
-      io.in(data.roomId).emit("lobby", rooms[index].players);
-    } else if (!data.isReady && data.playerId === socket.id) {
-      rooms[index].readyCount--;
-      io.in(data.roomId).emit("ready_count", rooms[index].readyCount);
-      io.in(data.roomId).emit("lobby", rooms[index].players);
+    
+    // Find the player in the room
+    const playerIndex = rooms[index].players.findIndex(
+      (player) => player.id === data.playerId
+    );
+
+    if (playerIndex === -1) return; // Player not found in room
+
+    if (data.isReady) {
+      // Only increment if player wasn't already ready
+      if (!rooms[index].players[playerIndex].isReady) {
+        rooms[index].readyCount++;
+        rooms[index].players[playerIndex].isReady = true;
+      }
+    } else {
+      // Only decrement if player was ready
+      if (rooms[index].players[playerIndex].isReady) {
+        rooms[index].readyCount--;
+        rooms[index].players[playerIndex].isReady = false;
+      }
     }
+
+    // Ensure ready count doesn't go below 0
+    rooms[index].readyCount = Math.max(0, rooms[index].readyCount);
+
+    io.in(data.roomId).emit("ready_count", rooms[index].readyCount);
+    io.in(data.roomId).emit("lobby", rooms[index].players);
 
     if (rooms[index].readyCount > 1) {
       io.in(data.roomId).emit("initial_game_start", rooms[index]);
-
       console.log("Game started");
     }
-
-    // console.log(rooms[index].readyCount);
   });
 
   socket.on("rematch_count", (data) => {
@@ -2202,6 +2183,46 @@ io.on("connection", (socket) => {
     // console.log(player.keys);
   });
 
+  socket.on("leave_room", (data) => {
+    const roomId = data.roomId;
+    const roomIndex = rooms.findIndex((room) => room.id === roomId);
+
+    if (roomIndex !== -1) {
+      // Remove the player from the room
+      rooms[roomIndex].players = rooms[roomIndex].players.filter(
+        (player) => player.id !== socket.id
+      );
+
+      // Reset ready count and player ready states
+      rooms[roomIndex].readyCount = 0;
+      rooms[roomIndex].players.forEach(player => {
+        player.isReady = false;
+      });
+
+      // Clean up the room state
+      cleanupRoomState(rooms[roomIndex]);
+
+      // Reorder remaining players to ensure they're in the correct slots
+      if (rooms[roomIndex].players.length === 1) {
+        // If there's only one player left, ensure they're player 1
+        const p = rooms[roomIndex].players[0];
+        p.fighter = "player 1";
+        p.color = "aqua";
+        p.x = 230;
+        p.facing = 1;
+      }
+
+      // Emit updates to all clients
+      io.in(roomId).emit("player_left");
+      io.in(roomId).emit("ready_count", 0);
+      io.to(roomId).emit("lobby", rooms[roomIndex].players);
+      io.emit("rooms", getCleanedRoomsData(rooms));
+
+      // Leave the socket room
+      socket.leave(roomId);
+    }
+  });
+
   socket.on("disconnect", (reason) => {
     const roomId = socket.roomId;
     const roomIndex = rooms.findIndex((room) => room.id === roomId);
@@ -2231,6 +2252,15 @@ io.on("connection", (socket) => {
       rooms[roomIndex].players = rooms[roomIndex].players.filter(
         (player) => player.id !== socket.id
       );
+
+      // If there's only one player left, ensure they're player 1
+      if (rooms[roomIndex].players.length === 1) {
+        const p = rooms[roomIndex].players[0];
+        p.fighter = "player 1";
+        p.color = "aqua";
+        p.x = 230;
+        p.facing = 1;
+      }
 
       // Emit updates with cleaned data
       const cleanedRoom = getCleanedRoomData(rooms[roomIndex]);
@@ -2301,33 +2331,53 @@ function handleWinCondition(room, loser, winner) {
   const loserKnockbackVelocity = { ...loser.knockbackVelocity };
   const loserMovementVelocity = loser.movementVelocity;
 
-  // Reset all key states and attack states for both players
+  // For the winner, if they're doing a slap attack, let it complete
+  if (winner.isSlapAttack) {
+    const remainingAttackTime = winner.attackEndTime - Date.now();
+    if (remainingAttackTime > 0) {
+      setTimeout(() => {
+        // Reset winner's attack states after animation completes
+        winner.isAttacking = false;
+        winner.isSlapAttack = false;
+        winner.attackStartTime = 0;
+        winner.attackEndTime = 0;
+        winner.attackType = null;
+      }, remainingAttackTime);
+    }
+  } else {
+    // If not doing a slap attack, reset attack states immediately
+    winner.isAttacking = false;
+    winner.isChargingAttack = false;
+    winner.chargeStartTime = 0;
+    winner.chargeAttackPower = 0;
+    winner.chargingFacingDirection = null;
+    winner.isSlapAttack = false;
+    winner.slapAnimation = 2;
+    winner.attackStartTime = 0;
+    winner.attackEndTime = 0;
+    winner.pendingChargeAttack = null;
+    winner.spacebarReleasedDuringDodge = false;
+    winner.attackType = null;
+  }
+
+  // Reset loser's states immediately
+  loser.isAttacking = false;
+  loser.isChargingAttack = false;
+  loser.chargeStartTime = 0;
+  loser.chargeAttackPower = 0;
+  loser.chargingFacingDirection = null;
+  loser.isSlapAttack = false;
+  loser.slapAnimation = 2;
+  loser.attackStartTime = 0;
+  loser.attackEndTime = 0;
+  loser.pendingChargeAttack = null;
+  loser.spacebarReleasedDuringDodge = false;
+  loser.attackType = null;
+
+  // Reset all key states for both players
   room.players.forEach((p) => {
     const currentX = p.x;
     p.isStrafing = false;
-    // Reset all attack-related states
-    p.isAttacking = false;
-    p.isChargingAttack = false;
-    p.chargeStartTime = 0;
-    p.chargeAttackPower = 0;
-    p.chargingFacingDirection = null;
-    p.isSlapAttack = false;
-    p.slapAnimation = 2;
-    p.attackStartTime = 0;
-    p.attackEndTime = 0;
-    p.pendingChargeAttack = null;
-    p.spacebarReleasedDuringDodge = false;
-    p.attackType = null;
-
-    // Keep the loser's knockback and movement velocity
-    if (p.id === loser.id) {
-      p.knockbackVelocity = loserKnockbackVelocity;
-      p.movementVelocity = loserMovementVelocity;
-    } else {
-      p.knockbackVelocity = { x: 0, y: 0 };
-      p.movementVelocity = 0;
-    }
-
     p.keys = {
       w: false,
       a: false,
@@ -2340,6 +2390,12 @@ function handleWinCondition(room, loser, winner) {
     };
     p.x = currentX;
   });
+
+  // Keep the loser's knockback and movement velocity
+  loser.knockbackVelocity = loserKnockbackVelocity;
+  loser.movementVelocity = loserMovementVelocity;
+  winner.knockbackVelocity = { x: 0, y: 0 };
+  winner.movementVelocity = 0;
 
   io.in(room.id).emit("game_over", {
     isGameOver: true,

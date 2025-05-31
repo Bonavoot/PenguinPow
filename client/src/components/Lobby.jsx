@@ -5,8 +5,9 @@ import { SocketContext } from "../SocketContext";
 import Ready from "./Ready";
 import { v4 as uuidv4 } from "uuid";
 import PropTypes from "prop-types";
+import { playButtonHoverSound, playButtonPressSound } from "../utils/soundUtils";
 
-const Lobby = ({ rooms, roomName, handleGame }) => {
+const Lobby = ({ rooms, roomName, handleGame, setCurrentPage }) => {
   const [players, setPlayers] = useState([]);
   const { socket } = useContext(SocketContext);
 
@@ -18,8 +19,23 @@ const Lobby = ({ rooms, roomName, handleGame }) => {
 
     return () => {
       socket.off("lobby");
+      socket.off("ready_count");
+      socket.off("player_left");
+      socket.off("initial_game_start");
     };
   }, [roomName, socket]);
+
+  const handleLeaveDohyo = () => {
+    playButtonPressSound();
+    socket.emit("leave_room", { roomId: roomName });
+    socket.emit("ready_count", {
+      playerId: socket.id,
+      isReady: false,
+      roomId: roomName,
+    });
+    setPlayers([]);
+    setCurrentPage("mainMenu");
+  };
 
   return (
     <div className="lobby-container">
@@ -89,7 +105,8 @@ const Lobby = ({ rooms, roomName, handleGame }) => {
       <div className="lobby-controls">
         <button
           className="exit-btn"
-          onClick={() => window.location.reload(false)}
+          onClick={handleLeaveDohyo}
+          onMouseEnter={playButtonHoverSound}
         >
           <span className="btn-icon">←</span>
           Leave Dohyo
@@ -104,6 +121,7 @@ Lobby.propTypes = {
   rooms: PropTypes.array.isRequired,
   roomName: PropTypes.string.isRequired,
   handleGame: PropTypes.func.isRequired,
+  setCurrentPage: PropTypes.func.isRequired,
 };
 
 export default Lobby;

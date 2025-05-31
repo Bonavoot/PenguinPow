@@ -1,5 +1,6 @@
 import { useContext, useEffect, useState } from "react";
 import { SocketContext } from "../SocketContext";
+import { playButtonHoverSound, playButtonPressSound, playButtonPressSound2 } from "../utils/soundUtils";
 
 const Ready = ({ rooms, roomName, handleGame }) => {
   const [ready, setReady] = useState(false);
@@ -49,7 +50,7 @@ const Ready = ({ rooms, roomName, handleGame }) => {
     <div className="ready">
       {ready ? (
         <>
-          <button onClick={handleReady} id="cancel-btn">
+          <button onClick={(e) => { handleReady(e); playButtonPressSound(); }} id="cancel-btn" onMouseEnter={playButtonHoverSound}>
             CANCEL
           </button>
           <div className="ready-count">{count} / 2</div>
@@ -58,7 +59,7 @@ const Ready = ({ rooms, roomName, handleGame }) => {
         <>
           {playerCount > 1 ? (
             <>
-              <button onClick={handleReady} className="ready-btn">
+              <button onClick={(e) => { handleReady(e); playButtonPressSound2(); }} className="ready-btn" onMouseEnter={playButtonHoverSound}>
                 READY
               </button>
               <div className="ready-count">{count} / 2</div>
