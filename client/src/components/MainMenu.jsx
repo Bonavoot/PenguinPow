@@ -11,6 +11,7 @@ import pumo from "../assets/pumo.png";
 import pumo2 from "../assets/pumo2.png";
 import mainMenuBackground from "../assets/main-menu-bkg.png";
 import mainMenuBackground2 from "../assets/main-menu-bkg-2.png";
+import mainMenuBackground3 from "../assets/main-menu-bkg-3.png";
 import { playButtonHoverSound, playButtonPressSound2, playBackgroundMusic, stopBackgroundMusic } from "../utils/soundUtils";
 
 const fadeIn = keyframes`
@@ -54,10 +55,13 @@ const woodGrain = keyframes`
 `;
 
 const backgroundSlide = keyframes`
-  0%, 45% {
+  0%, 30% {
     opacity: 1;
   }
-  50%, 95% {
+  33%, 63% {
+    opacity: 0;
+  }
+  66%, 96% {
     opacity: 0;
   }
   100% {
@@ -101,7 +105,7 @@ const MainMenuContainer = styled.div`
     background-size: cover;
     background-position: center;
     opacity: 0;
-    animation: ${backgroundSlide} 20s infinite;
+    animation: ${backgroundSlide} 30s infinite;
     pointer-events: none;
   }
 
@@ -112,16 +116,17 @@ const MainMenuContainer = styled.div`
     left: 0;
     right: 0;
     bottom: 0;
-    background: radial-gradient(
-        circle at 70% 30%,
-        rgba(139, 69, 19, 0.1) 0%,
-        transparent 50%
+    background: linear-gradient(
+        135deg,
+        rgba(220, 180, 140, 0.95),
+        rgba(180, 140, 100, 0.85)
       ),
-      radial-gradient(
-        circle at 30% 70%,
-        rgba(139, 69, 19, 0.1) 0%,
-        transparent 50%
-      );
+      url(${mainMenuBackground3});
+    background-repeat: no-repeat;
+    background-size: cover;
+    background-position: center;
+    opacity: 0;
+    animation: ${backgroundSlide} 30s infinite 10s;
     pointer-events: none;
   }
 `;
@@ -341,7 +346,7 @@ const preloadAssets = (sources) => {
   });
 };
 
-const preGameImages = [lobbyBackground, pumo, pumo2, mainMenuBackground, mainMenuBackground2];
+const preGameImages = [lobbyBackground, pumo, pumo2, mainMenuBackground, mainMenuBackground2, mainMenuBackground3];
 preloadAssets(preGameImages);
 
 const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
