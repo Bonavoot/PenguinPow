@@ -114,11 +114,11 @@ const GRAB_DURATION = 1500; // 1.5 seconds total grab duration
 const GRAB_ATTEMPT_DURATION = 1000; // 1 second for attempt animation
 
 // Map boundary constants
-const MAP_LEFT_BOUNDARY = 80;
-const MAP_RING_OUT_LEFT = 70;
+const MAP_LEFT_BOUNDARY = 65;
+const MAP_RING_OUT_LEFT = 60;
 
-const MAP_RIGHT_BOUNDARY = 965;
-const MAP_RING_OUT_RIGHT = 973;
+const MAP_RIGHT_BOUNDARY = 980;
+const MAP_RING_OUT_RIGHT = 985;
 
 // Add movement constants
 const MOVEMENT_ACCELERATION = 0.08; // Reduced from 0.25 for more slippery feel
@@ -1130,9 +1130,9 @@ io.on("connection", (socket) => {
         if (player.isChargingAttack) {
           const chargeDuration = Date.now() - player.chargeStartTime;
           player.chargeAttackPower = Math.min(
-            (chargeDuration / 1000) * 100,
+            (chargeDuration / 750) * 100,
             100
-          ); // Changed from 1200 to 1000 for faster charge
+          ); // Changed from 1200 to 750 for faster charge
         }
       });
 
@@ -1923,7 +1923,7 @@ io.on("connection", (socket) => {
         }
         // Calculate charge power (0-100%)
         const chargeDuration = Date.now() - player.chargeStartTime;
-        player.chargeAttackPower = Math.min((chargeDuration / 1000) * 100, 100);
+        player.chargeAttackPower = Math.min((chargeDuration / 750) * 100, 100);
 
         // Lock facing direction while charging
         if (player.isThrowing || player.throwingFacingDirection !== null) {

@@ -5,14 +5,14 @@ import hitEffect from "../assets/fire-hit-effect.gif";
 const HitEffectImage = styled.img.attrs((props) => ({
   style: {
     position: "absolute",
-    width: "10%",
+    width: "5%",
     height: "auto",
     pointerEvents: "none",
     zIndex: 100,
     filter:
       "brightness(.1) invert(1) drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000)",
-    left: `${(props.$x / 1280) * 100 + (props.$facing === 1 ? 2 : 7)}%`,
-    bottom: `${(props.$y / 720) * 100 + 10}%`,
+    left: `${(props.$x / 1280) * 100 + (props.$facing === 1 ? 4 : 10)}%`,
+    bottom: `${(props.$y / 720) * 100 + 15}%`,
     transform: `scaleX(${props.$facing * -1}) rotateZ(-25deg)`,
   },
 }))``;
