@@ -1375,7 +1375,7 @@ io.on("connection", (socket) => {
       // Calculate knockback multiplier based on charge percentage
       let finalKnockbackMultiplier;
       if (isSlapAttack) {
-        finalKnockbackMultiplier = 0.5; // Fixed multiplier for slaps, no charge scaling
+        finalKnockbackMultiplier = 0.55; // Increased from 0.5 to 0.55
       } else {
         // Reduced knockback scaling for charged attacks
         finalKnockbackMultiplier = 0.5 + (chargePercentage / 100) * 1.2; // Reduced from 2.0 to 1.2
@@ -1392,7 +1392,7 @@ io.on("connection", (socket) => {
       if (isSlapAttack) {
         // Convert knockback to movement velocity for ice-like sliding
         otherPlayer.movementVelocity =
-          3.5 * knockbackDirection * finalKnockbackMultiplier; // Increased from 2.5 to 3.5
+          3.85 * knockbackDirection * finalKnockbackMultiplier; // Increased from 3.5 to 3.85
         otherPlayer.knockbackVelocity.x = 0; // Clear knockback velocity since we're using movement
 
         // Add immediate position adjustment to prevent overlap
