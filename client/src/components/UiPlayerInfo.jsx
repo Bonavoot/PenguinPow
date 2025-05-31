@@ -113,7 +113,7 @@ const PlayerName = styled.div`
   border-radius: 8px;
   font-weight: 500;
   letter-spacing: 0.5px;
-  color: #d4af37;
+  color:rgb(255, 255, 255);
   white-space: nowrap;
   position: relative;
   overflow: hidden;

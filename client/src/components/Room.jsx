@@ -114,7 +114,7 @@ const PlayerCountCircle = styled.div`
   border-radius: 50%;
   background: ${(props) =>
     props.$isFull ? "rgba(40, 40, 40, 0.2)" : "rgba(30, 30, 30, 0.2)"};
-  border: 2px solid ${(props) => (props.$isFull ? "#8b4513" : "#ffffff")};
+  border: 2px solid ${(props) => (props.$isFull ? "#8b4513" : "#d4af37")};
   display: flex;
   align-items: center;
   justify-content: center;
@@ -130,8 +130,8 @@ const JoinButton = styled.button`
   background: ${(props) =>
     props.$isFull
       ? "linear-gradient(145deg, rgba(40, 40, 40, 0.2), rgba(20, 20, 20, 0.1))"
-      : "linear-gradient(45deg, #00ff00, #00cc00)"};
-  border: 2px solid ${(props) => (props.$isFull ? "#8b4513" : "#00ff00")};
+      : "linear-gradient(45deg,rgb(3, 150, 3),rgb(0, 150, 0))"};
+  border: 2px solid ${(props) => (props.$isFull ? "#8b4513" : "rgb(3, 150, 3)")};
   border-radius: 4px;
   padding: 0.75rem 2rem;
   font-size: clamp(0.9rem, 1.2vw, 1.2rem);

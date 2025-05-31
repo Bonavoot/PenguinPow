@@ -58,7 +58,7 @@ const CancelButton = styled(RematchButton)`
 const ReadyCount = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(0.7rem, 1.5vw, 0.9rem);
-  color: #d4af37;
+  color: rgb(255, 255, 255);
   background: rgba(0, 0, 0, 0.3);
   padding: clamp(0.2rem, 0.8vw, 0.4rem) clamp(0.8rem, 1.5vw, 1.2rem);
   border: 1px solid #d4af37;
@@ -71,7 +71,7 @@ const ExitButton = styled.button`
   font-family: "Bungee", cursive;
   font-size: clamp(0.6rem, 1.5vw, 0.8rem);
   background: linear-gradient(45deg, #2c2c2c, #1a1a1a);
-  color: #d4af37;
+  color: rgb(255, 255, 255);
   border: 2px solid #d4af37;
   border-radius: 6px;
   padding: clamp(0.3rem, 1.2vw, 0.6rem) clamp(0.6rem, 1.5vw, 1.2rem);

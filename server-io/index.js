@@ -949,7 +949,8 @@ io.on("connection", (socket) => {
             !player.isThrowing &&
             !player.isGrabbing &&
             !player.isRecovering &&
-            !player.isRawParryStun
+            !player.isRawParryStun &&
+            !player.keys.mouse1 // Add condition to prevent strafing while slapping
           ) {
             // Apply ice drift when changing directions
             if (player.movementVelocity < 0) {
@@ -979,7 +980,8 @@ io.on("connection", (socket) => {
             !player.isThrowing &&
             !player.isGrabbing &&
             !player.isRecovering &&
-            !player.isRawParryStun
+            !player.isRawParryStun &&
+            !player.keys.mouse1 // Add condition to prevent strafing while slapping
           ) {
             // Apply ice drift when changing directions
             if (player.movementVelocity > 0) {
@@ -1010,8 +1012,14 @@ io.on("connection", (socket) => {
               player.movementVelocity *= MOVEMENT_MOMENTUM * MOVEMENT_FRICTION;
 
               // Calculate new position and check boundaries
-              const newX =
-                player.x + delta * currentSpeedFactor * player.movementVelocity;
+              let newX;
+              if (player.isSlapSliding) {
+                // Use fixed speed factor for slap slides
+                newX = player.x + delta * speedFactor * player.movementVelocity;
+              } else {
+                // Use power-up affected speed factor for normal movement
+                newX = player.x + delta * currentSpeedFactor * player.movementVelocity;
+              }
 
               // Check boundaries and stop sliding if hitting them
               if (newX >= leftBoundary && newX <= rightBoundary) {
@@ -1031,7 +1039,8 @@ io.on("connection", (socket) => {
           if (
             !player.keys.a &&
             !player.keys.d &&
-            (!player.canMoveToReady || room.gameStart)
+            (!player.canMoveToReady || room.gameStart) ||
+            player.keys.mouse1 // Add condition to prevent strafing while slapping
           ) {
             player.isStrafing = false;
           }
@@ -1043,7 +1052,8 @@ io.on("connection", (socket) => {
               (!player.canMoveToReady || room.gameStart)) ||
             player.isThrowTeching ||
             player.isRecovering ||
-            (player.keys.a && player.keys.d)
+            (player.keys.a && player.keys.d) ||
+            player.keys.mouse1 // Add condition to prevent strafing while slapping
           ) {
             player.isStrafing = false;
             // Don't immediately stop on ice
@@ -1331,7 +1341,8 @@ io.on("connection", (socket) => {
         y: 0,
       };
     } else {
-      // For slap attacks, maintain the existing timing behavior
+      // For slap attacks, don't clear any states - let the animation complete naturally
+      // This ensures consistent behavior with whiffed slaps
       const originalAttackEndTime = player.attackEndTime;
       const remainingAttackTime = originalAttackEndTime - currentTime;
 
@@ -1341,6 +1352,7 @@ io.on("connection", (socket) => {
           player.isSlapAttack = false;
           player.attackStartTime = 0;
           player.attackEndTime = 0;
+          player.attackType = null;
         }, remainingAttackTime);
       }
     }
@@ -2005,7 +2017,6 @@ io.on("connection", (socket) => {
       // Handle slap attacks with mouse1
       if (
         player.keys.mouse1 &&
-        !player.isAttacking &&
         !player.isJumping &&
         !player.isDodging &&
         !player.isThrowing &&
@@ -2021,22 +2032,14 @@ io.on("connection", (socket) => {
         if (!player.slapBuffer) {
           player.slapBuffer = {
             lastSlapTime: 0,
-            slapCooldown: 250,
+            slapCooldown: 180,
             pendingSlaps: 0,
+            bufferWindow: 200,
           };
         }
 
-        const currentTime = Date.now();
-        const timeSinceLastSlap = currentTime - player.slapBuffer.lastSlapTime;
-
-        // If we're within the slap cooldown window, treat it as a slap attempt
-        if (timeSinceLastSlap < player.slapBuffer.slapCooldown) {
-          player.slapBuffer.pendingSlaps++;
-          executeSlapAttack(player);
-          return;
-        }
-
-        // Execute slap attack
+        // Always try to execute slap attack - the function will handle buffering internally
+        // This allows buffering during strafing and other states
         executeSlapAttack(player);
       }
 
@@ -2378,10 +2381,16 @@ function executeSlapAttack(player) {
       // Update facing direction based on opponent's position
       player.facing = player.x < opponent.x ? -1 : 1;
 
-      // If opponent is still in hit state or recently hit, don't allow another slap
-      if (opponent.isHit || opponent.isAlreadyHit) {
-        return;
-      }
+      // Add forward slide during slap attack with fixed values regardless of power-ups
+      const FIXED_SLAP_SLIDE_VELOCITY = 2.5; // Decreased from 3.5 to 2.5 for shorter slide
+      const slideDirection = player.facing === 1 ? -1 : 1; // Slide in the direction player is facing
+      
+      // Store the current movement velocity to restore after slap
+      const currentMovementVelocity = player.movementVelocity;
+      
+      // Apply fixed slide velocity and mark that we're in a slap slide
+      player.movementVelocity = slideDirection * FIXED_SLAP_SLIDE_VELOCITY;
+      player.isSlapSliding = true; // New flag to track slap slide state
     }
   }
 
@@ -2389,16 +2398,34 @@ function executeSlapAttack(player) {
   if (!player.slapBuffer) {
     player.slapBuffer = {
       lastSlapTime: 0,
-      slapCooldown: 400, // Increased cooldown to prevent any possibility of chaining
+      slapCooldown: 120, // Reduced cooldown for smoother rapid hits
       pendingSlaps: 0,
+      bufferWindow: 100,
+      hasBufferedSlap: false
     };
   }
 
   const currentTime = Date.now();
   const timeSinceLastSlap = currentTime - player.slapBuffer.lastSlapTime;
 
-  // If we're still in cooldown, don't execute the slap
+  // If we're still in cooldown, buffer the input
   if (timeSinceLastSlap < player.slapBuffer.slapCooldown) {
+    // Only buffer if we don't already have a buffered slap
+    if (timeSinceLastSlap < player.slapBuffer.bufferWindow && !player.slapBuffer.hasBufferedSlap) {
+      player.slapBuffer.hasBufferedSlap = true;
+      // Schedule the next slap to execute as soon as cooldown ends
+      setTimeout(() => {
+        if (player.slapBuffer.hasBufferedSlap) {
+          player.slapBuffer.hasBufferedSlap = false;
+          // Only execute if player is still in a valid state
+          if (!player.isDodging && !player.isThrowing && !player.isBeingThrown && 
+              !player.isGrabbing && !player.isBeingGrabbed && !player.isRawParryStun && 
+              !player.canMoveToReady) {
+            executeSlapAttack(player);
+          }
+        }
+      }, player.slapBuffer.slapCooldown - timeSinceLastSlap);
+    }
     return;
   }
 
@@ -2412,7 +2439,7 @@ function executeSlapAttack(player) {
 
   player.isSlapAttack = true;
   player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
-  player.attackEndTime = Date.now() + 180; // Keep the quick slap animation
+  player.attackEndTime = Date.now() + 120; // Reduced animation duration for smoother rapid hits
   player.isAttacking = true;
   player.attackStartTime = Date.now();
   player.attackType = "slap";
@@ -2420,12 +2447,15 @@ function executeSlapAttack(player) {
   // Update last slap time
   player.slapBuffer.lastSlapTime = Date.now();
 
-  // Set a timeout to reset the attack state
+  // Set a timeout to reset the attack state and gradually reduce the slide
   setTimeout(() => {
     player.isAttacking = false;
     player.isSlapAttack = false;
     player.attackType = null;
-  }, 180); // Keep the quick slap animation
+    player.isSlapSliding = false; // Clear the slap slide flag
+    // Gradually reduce the slide velocity
+    player.movementVelocity *= 0.5;
+  }, 120); // Reduced animation duration for smoother rapid hits
 }
 
 function cleanupRoom(room) {
@@ -2763,10 +2793,16 @@ function adjustPlayerPositions(player1, player2, delta) {
   // Calculate the minimum distance needed between centers to prevent overlap
   const minDistance = player1Hitbox.left + player2Hitbox.right;
 
+  // Add extra distance for slap attacks to prevent collision during rapid attacks
+  const extraSlapDistance = 20; // Fixed extra distance for slap attacks
+  const finalMinDistance = (player1.isAttacking && player1.isSlapAttack) || 
+                          (player2.isAttacking && player2.isSlapAttack) ? 
+                          minDistance + extraSlapDistance : minDistance;
+
   // If players are overlapping
-  if (distanceBetweenCenters < minDistance) {
+  if (distanceBetweenCenters < finalMinDistance) {
     // Calculate how much they need to move apart
-    const overlap = minDistance - distanceBetweenCenters;
+    const overlap = finalMinDistance - distanceBetweenCenters;
     const adjustment = overlap / 2;
 
     // Significantly reduce the smoothFactor for more resistance during collisions

@@ -23,7 +23,7 @@
   background: url("../assets/lobby-bkg.webp") center/cover;
   opacity: 0.1;
   z-index: 0;
-  filter: sepia(0.3) brightness(1.1);
+  filter: sepia(0.5) brightness(1.5);
 }
 
 .lobby-header {
@@ -220,7 +220,7 @@
 
 .player-name {
   font-size: 1.2rem;
-  color: #d4af37;
+  color: #ffffff;
   font-weight: 600;
   letter-spacing: 1px;
   text-transform: uppercase;
@@ -399,7 +399,7 @@
 .ready-btn:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(139, 69, 19, 0.3);
-  color: #fff;
+  color: #ffffff;
   background: linear-gradient(45deg, #6b3410, #4a2410);
 }
 
@@ -426,7 +426,7 @@
 }
 
 .ready-count {
-  color: #d4af37;
+  color: #ffffff;
   text-align: center;
   font-size: 0.8rem;
   padding: 0.5rem;

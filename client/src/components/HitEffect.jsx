@@ -10,9 +10,9 @@ const HitEffectImage = styled.img.attrs((props) => ({
     pointerEvents: "none",
     zIndex: 100,
     filter:
-      "brightness(0.1) invert(1) drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000)",
+      "brightness(.1) invert(1) drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000)",
     left: `${(props.$x / 1280) * 100 + (props.$facing === 1 ? 2 : 7)}%`,
-    bottom: `${(props.$y / 720) * 100 + 14}%`,
+    bottom: `${(props.$y / 720) * 100 + 10}%`,
     transform: `scaleX(${props.$facing * -1}) rotateZ(-25deg)`,
   },
 }))``;

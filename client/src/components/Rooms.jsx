@@ -99,7 +99,7 @@ const Header = styled.div`
 const Title = styled.h1`
   font-family: "Bungee", cursive;
   font-size: clamp(1.5rem, 3vw, 2.5rem);
-  color: #ffffff;
+  color: #d4af37;
   margin: 0;
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
   font-weight: 700;
@@ -214,7 +214,7 @@ const Rooms = ({ rooms, setRoomName, handleJoinRoom, handleMainMenuPage }) => {
     <ModalOverlay>
       <RoomsContainer>
         <Header>
-          <Title>Available Rooms</Title>
+          <Title>SERVER BROWSER</Title>
           <ButtonContainer>
             <Button variant="back" onClick={handleMainMenuPage}>
               BACK
