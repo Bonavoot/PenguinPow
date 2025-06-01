@@ -12,6 +12,7 @@ import SlapParryEffect from "./SlapParryEffect";
 import DodgeSmokeEffect from "./DodgeDustEffect";
 import ChargedAttackSmokeEffect from "./ChargedAttackSmokeEffect";
 import DodgeChargeUI from "./DodgeChargeUI";
+import StarStunEffect from "./StarStunEffect";
 
 import pumo from "../assets/pumo.png";
 import pumo2 from "../assets/pumo2.png";
@@ -131,7 +132,7 @@ const getImageSrc = (
     if (isBeingGrabbed || isBeingPulled || isBeingPushed) return beingGrabbed;
     if (isDodging) return dodging;
     if (isRawParrying) return crouching;
-    if (isRawParryStun) return hit;
+    if (isRawParryStun) return bow;
     if (isReady) return ready;
     if (isStrafing && !isThrowing) return pumoWaddle;
     if (isHit) return hit;
@@ -157,7 +158,7 @@ const getImageSrc = (
     }
     if (isDodging) return dodging2;
     if (isRawParrying) return crouching2;
-    if (isRawParryStun) return hit2;
+    if (isRawParryStun) return bow2;
     if (isReady) return ready2;
     if (isStrafing && !isThrowing) return pumoWaddle2;
     if (isHit) return hit2;
@@ -287,9 +288,13 @@ const StyledImage = styled("img")
         props.$isThrowing || props.$isDodging || props.$isGrabbing ? 98 : 99,
       filter: props.$isDodging
         ? "drop-shadow(0 0 6px rgba(255, 255, 255, 0.6)) brightness(1.5) drop-shadow(0 0 2px #000)"
+        : props.$isRawParrying
+        ? "drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3) drop-shadow(0 0 3px #000)"
         : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000)",
       animation: props.$isDodging
         ? "dodgeFlash 0.3s ease-in-out"
+        : props.$isRawParrying
+        ? "rawParryFlash 1.2s ease-in-out infinite"
         : "none",
     },
   }))`
@@ -328,6 +333,24 @@ const StyledImage = styled("img")
     100% {
       filter: drop-shadow(0 0 0px rgba(255, 255, 255, 0)) brightness(1);
       opacity: 1;
+    }
+  }
+
+  @keyframes rawParryFlash {
+    0% {
+      filter: drop-shadow(0 0 2px rgba(0, 150, 255, 0.4)) brightness(1) drop-shadow(0 0 1px #000);
+    }
+    25% {
+      filter: drop-shadow(0 0 12px rgba(0, 150, 255, 0.9)) brightness(1.6) drop-shadow(0 0 4px #000);
+    }
+    50% {
+      filter: drop-shadow(0 0 8px rgba(0, 150, 255, 0.7)) brightness(1.3) drop-shadow(0 0 3px #000);
+    }
+    75% {
+      filter: drop-shadow(0 0 12px rgba(0, 150, 255, 0.9)) brightness(1.6) drop-shadow(0 0 4px #000);
+    }
+    100% {
+      filter: drop-shadow(0 0 2px rgba(0, 150, 255, 0.4)) brightness(1) drop-shadow(0 0 1px #000);
     }
   }
 `;
@@ -675,6 +698,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
   const [playerTwoWinCount, setPlayerTwoWinCount] = useState(0);
   const [matchOver, setMatchOver] = useState(false);
   const [parryEffectPosition, setParryEffectPosition] = useState(null);
+  const [showStarStunEffect, setShowStarStunEffect] = useState(false);
   const [hasUsedPowerUp, setHasUsedPowerUp] = useState(false);
   const [showFloatingPowerUp, setShowFloatingPowerUp] = useState(false);
   const [floatingPowerUpType, setFloatingPowerUpType] = useState(null);
@@ -745,6 +769,24 @@ const GameFighter = ({ player, index, roomName, localId }) => {
           y: position.y + 110, // Add GROUND_LEVEL to match player height
         });
         playSound(slapParrySound, 0.01);
+      }
+    });
+
+    socket.on("perfect_parry", (data) => {
+      if (
+        data &&
+        typeof data.stunnedPlayerX === "number" &&
+        typeof data.stunnedPlayerY === "number" &&
+        data.showStarStunEffect
+      ) {
+        console.log("Perfect parry event received:", data);
+        // Only show the star stun effect for the stunned player (attacking player)
+        if (data.attackingPlayerId === player.id) {
+          console.log("Showing star stun effect for player:", player.id);
+          setShowStarStunEffect(true);
+          
+          // Don't set a timeout here - let the effect disappear when stun ends
+        }
       }
     });
 
@@ -840,6 +882,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
     return () => {
       socket.off("fighter_action");
       socket.off("slap_parry");
+      socket.off("perfect_parry");
       socket.off("game_start");
       socket.off("game_reset");
       socket.off("game_over");
@@ -949,6 +992,20 @@ const GameFighter = ({ player, index, roomName, localId }) => {
     }
     lastWinnerState.current = gameOver;
   }, [gameOver]);
+
+  // Hide star stun effect when stun ends
+  useEffect(() => {
+    if (!penguin.isRawParryStun && showStarStunEffect) {
+      console.log("Hiding star stun effect - isRawParryStun:", penguin.isRawParryStun, "showStarStunEffect:", showStarStunEffect);
+      setShowStarStunEffect(false);
+    }
+    // Also show the effect if the player becomes stunned but the effect isn't showing
+    // This handles cases where the perfect_parry event might arrive after the fighter_action update
+    if (penguin.isRawParryStun && !showStarStunEffect && penguin.id === player.id) {
+      console.log("Player is stunned but no star effect - showing stars for player:", player.id);
+      setShowStarStunEffect(true);
+    }
+  }, [penguin.isRawParryStun, showStarStunEffect, penguin.id, player.id]);
 
   // Add screen shake effect
   useEffect(() => {
@@ -1161,6 +1218,12 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         playerY={penguin.y + 100}
       />
       <SlapParryEffect position={parryEffectPosition} />
+      <StarStunEffect 
+        x={penguin.x}
+        y={penguin.y}
+        facing={penguin.facing}
+        isActive={showStarStunEffect} 
+      />
       <ThrowTechEffect />
       {countdown > 0 &&
         !hakkiyoi &&

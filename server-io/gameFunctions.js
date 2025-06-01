@@ -404,8 +404,8 @@ function handleReadyPositions(room, player1, player2, io) {
     const player1ReadyX = 355; // Removed SIZE power-up condition
     const player2ReadyX = 690;
 
-    // Only move players if they're allowed to move (after salt throw)
-    if (player1.canMoveToReady) {
+    // Only move players if they're allowed to move (after salt throw) AND they're not attacking
+    if (player1.canMoveToReady && !player1.isAttacking && !player1.isChargingAttack) {
       if (player1.x < player1ReadyX) {
         player1.x += 2; // Adjust speed as needed
         player1.isStrafing = true;
@@ -418,7 +418,7 @@ function handleReadyPositions(room, player1, player2, io) {
       }
     }
 
-    if (player2.canMoveToReady) {
+    if (player2.canMoveToReady && !player2.isAttacking && !player2.isChargingAttack) {
       if (player2.x > player2ReadyX) {
         player2.x -= 2; // Adjust speed as needed
         player2.isStrafing = true;
@@ -431,8 +431,10 @@ function handleReadyPositions(room, player1, player2, io) {
       }
     }
 
-    // Set ready state when players reach their positions
-    if (player1.x === player1ReadyX && player2.x === player2ReadyX) {
+    // Set ready state when players reach their positions (but not if they're attacking)
+    if (player1.x === player1ReadyX && player2.x === player2ReadyX && 
+        !player1.isAttacking && !player1.isChargingAttack && 
+        !player2.isAttacking && !player2.isChargingAttack) {
       player1.isReady = true;
       player2.isReady = true;
 

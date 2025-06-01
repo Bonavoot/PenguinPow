@@ -66,6 +66,7 @@ function isPlayerInActiveState(player) {
          !player.isHit &&
          !player.isRecovering &&
          !player.isRawParryStun &&
+         !player.isRawParrying &&
          !player.isThrowingSnowball &&
          !player.canMoveToReady;
 }
@@ -79,6 +80,7 @@ function isPlayerInBasicActiveState(player) {
          !player.isBeingGrabbed &&
          !player.isHit &&
          !player.isRawParryStun &&
+         !player.isRawParrying &&
          !player.isThrowingSnowball;
 }
 
@@ -135,6 +137,7 @@ function canPlayerSlap(player) {
          !player.isBeingGrabbed &&
          !player.isHit &&
          !player.isRawParryStun &&
+         !player.isRawParrying &&
          !player.isThrowingSnowball &&
          !player.canMoveToReady;
 }

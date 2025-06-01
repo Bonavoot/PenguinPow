@@ -164,6 +164,9 @@ const MIN_MOVEMENT_THRESHOLD = 0.01; // New constant for movement cutoff
 
 const RAW_PARRY_KNOCKBACK = 4; // Fixed knockback distance for raw parries
 const RAW_PARRY_STUN_DURATION = 1000; // 1 second stun duration
+const RAW_PARRY_SLAP_KNOCKBACK = 2; // Reduced knockback for slap attack parries
+const RAW_PARRY_SLAP_STUN_DURATION = 500; // Reduced stun duration for slap attack parries
+const PERFECT_PARRY_WINDOW = 100; // 100ms window for perfect parries
 const DODGE_COOLDOWN = 2000; // 2 second cooldown between dodges
 const MAX_DODGE_CHARGES = 2; // Maximum number of dodge charges
 
@@ -265,6 +268,8 @@ function resetRoomAndPlayers(room) {
     player.isAttacking = false;
     player.isStrafing = false;
     player.isRawParrying = false;
+    player.rawParryStartTime = 0;
+    player.rawParryMinDurationMet = false;
     player.isRawParryStun = false;
     player.isDodging = false;
     player.isReady = false;
@@ -745,7 +750,7 @@ io.on("connection", (socket) => {
         }
 
         // Only apply boundary restrictions for normal player movement (walking/strafing)
-        // Exclude hit, grab, throw, and being grabbed states
+        // Exclude hit, grab, throw, attack, and being grabbed states
         if (
           !player.isHit &&
           !room.gameOver &&
@@ -755,7 +760,8 @@ io.on("connection", (socket) => {
           !player.isThrowTeching &&
           !player.isGrabbing &&
           !player.isBeingGrabbed &&
-          !player.isSlapAttack
+          !player.isSlapAttack &&
+          !player.isAttacking // Add this crucial check to exclude all attacks
         ) {
           // Calculate effective boundary based on player size with different multipliers for left and right
           const sizeOffset = 0;
@@ -765,7 +771,7 @@ io.on("connection", (socket) => {
           const rightBoundary = MAP_RIGHT_BOUNDARY;
 
           // Apply boundary restrictions
-          if (player.keys.a || player.keys.d || player.isAttacking) {
+          if (player.keys.a || player.keys.d) {
             player.x = Math.max(
               leftBoundary,
               Math.min(player.x, rightBoundary)
@@ -1034,6 +1040,7 @@ io.on("connection", (socket) => {
             !player.isBeingGrabbed &&
             !player.isRecovering &&
             !player.isThrowingSnowball &&
+            !player.isRawParrying &&
             !player.isHit) ||
           (!player.keys.s &&
             player.isSlapAttack &&
@@ -1043,6 +1050,7 @@ io.on("connection", (socket) => {
             !player.isBeingGrabbed &&
             !player.isRecovering &&
             !player.isThrowingSnowball &&
+            !player.isRawParrying &&
             !player.isHit)
         ) {
           let currentSpeedFactor = speedFactor;
@@ -1075,6 +1083,7 @@ io.on("connection", (socket) => {
             !player.isGrabbing &&
             !player.isRecovering &&
             !player.isRawParryStun &&
+            !player.isRawParrying &&
             !player.isThrowingSnowball &&
             !player.keys.mouse1 // Add condition to prevent strafing while slapping
           ) {
@@ -1099,7 +1108,10 @@ io.on("connection", (socket) => {
               player.movementVelocity = 0; // Stop sliding at boundary
             }
             player.isStrafing = true;
-            player.isReady = false;
+            // Only set isReady to false if we're not in an attack state
+            if (!player.isAttacking && !player.isChargingAttack) {
+              player.isReady = false;
+            }
           } else if (
             player.keys.a &&
             !player.isDodging &&
@@ -1107,6 +1119,7 @@ io.on("connection", (socket) => {
             !player.isGrabbing &&
             !player.isRecovering &&
             !player.isRawParryStun &&
+            !player.isRawParrying &&
             !player.isThrowingSnowball &&
             !player.keys.mouse1 // Add condition to prevent strafing while slapping
           ) {
@@ -1131,7 +1144,10 @@ io.on("connection", (socket) => {
               player.movementVelocity = 0; // Stop sliding at boundary
             }
             player.isStrafing = true;
-            player.isReady = false;
+            // Only set isReady to false if we're not in an attack state
+            if (!player.isAttacking && !player.isChargingAttack) {
+              player.isReady = false;
+            }
           } else {
             // Apply ice-like deceleration
             if (Math.abs(player.movementVelocity) > MIN_MOVEMENT_THRESHOLD) {
@@ -1172,7 +1188,7 @@ io.on("connection", (socket) => {
             player.isStrafing = false;
           }
 
-          // Force stop strafing in certain states
+          // Force stop strafing in certain states and add missing ground level check
           if (
             (!player.keys.a &&
               !player.keys.d &&
@@ -1180,11 +1196,20 @@ io.on("connection", (socket) => {
             player.isThrowTeching ||
             player.isRecovering ||
             (player.keys.a && player.keys.d) ||
-            player.keys.mouse1 // Add condition to prevent strafing while slapping
+            player.keys.mouse1 || // Add condition to prevent strafing while slapping
+            player.isHit // Add isHit to force clear strafing when parried
           ) {
             player.isStrafing = false;
-            // Don't immediately stop on ice
-            player.movementVelocity *= MOVEMENT_FRICTION;
+            // Don't immediately stop on ice unless hit
+            if (!player.isHit) {
+              player.movementVelocity *= MOVEMENT_FRICTION;
+            }
+          }
+          
+          // Keep player from going below ground level
+          if (player.y > GROUND_LEVEL) {
+            player.y -= delta * speedFactor + 10;
+            player.y = Math.max(player.y, GROUND_LEVEL);
           }
         }
         if (
@@ -1192,18 +1217,18 @@ io.on("connection", (socket) => {
             !player.keys.d &&
             (!player.canMoveToReady || room.gameStart)) ||
           player.isThrowTeching ||
-          player.isRecovering
+          player.isRecovering ||
+          player.isHit // Add isHit to force clear strafing when parried
         ) {
-          // Add isRecovering check
+          // Add isRecovering and isHit checks
           player.isStrafing = false;
         }
         if (player.keys.a && player.keys.d) {
           player.isStrafing = false;
         }
-        // Keep player from going below ground level
-        if (player.y > GROUND_LEVEL) {
-          player.y -= delta * speedFactor + 10;
-          player.y = Math.max(player.y, GROUND_LEVEL);
+        // Force clear strafing when hit (parried or otherwise)
+        if (player.isHit) {
+          player.isStrafing = false;
         }
 
         // raw parry
@@ -1219,12 +1244,33 @@ io.on("connection", (socket) => {
           !player.isHit &&
           !player.isRawParryStun
         ) {
-          player.isRawParrying = true;
-          player.isReady = false;
+          // Start raw parry if not already parrying
+          if (!player.isRawParrying) {
+            player.isRawParrying = true;
+            player.rawParryStartTime = Date.now();
+            player.rawParryMinDurationMet = false;
+          }
+          // Only set isReady to false if we're not in an attack state
+          if (!player.isAttacking && !player.isChargingAttack) {
+            player.isReady = false;
+          }
         }
 
-        if (!player.keys.s) {
-          player.isRawParrying = false;
+        // Handle raw parry ending logic
+        if (player.isRawParrying) {
+          const parryDuration = Date.now() - player.rawParryStartTime;
+          
+          // Check if minimum duration has been met
+          if (parryDuration >= 750) {
+            player.rawParryMinDurationMet = true;
+          }
+          
+          // Only end parry if s key is released AND minimum duration is met
+          if (!player.keys.s && player.rawParryMinDurationMet) {
+            player.isRawParrying = false;
+            player.rawParryStartTime = 0;
+            player.rawParryMinDurationMet = false;
+          }
         }
 
         if (player.isAttacking && !player.isSlapAttack) {
@@ -1530,12 +1576,31 @@ io.on("connection", (socket) => {
 
     // Check if the other player is blocking (crouching)
     if (otherPlayer.isRawParrying) {
-      // Apply fixed knockback to the attacking player
-      const knockbackDirection = player.facing === 1 ? 1 : -1;
-      player.knockbackVelocity.x = RAW_PARRY_KNOCKBACK * knockbackDirection;
+      // Determine if this is a slap attack being parried
+      const isSlapBeingParried = player.attackType === "slap" || isSlapAttack;
+      
+      // Check if this is a perfect parry (within 100ms of parry start)
+      const currentTime = Date.now();
+      const parryDuration = currentTime - otherPlayer.rawParryStartTime;
+      const isPerfectParry = parryDuration <= PERFECT_PARRY_WINDOW;
+      
+      // Apply appropriate knockback based on attack type
+      const knockbackAmount = isSlapBeingParried ? RAW_PARRY_SLAP_KNOCKBACK : RAW_PARRY_KNOCKBACK;
+      
+      // Apply knockback to the attacking player
+      // Calculate knockback direction based on relative positions to ensure attacker is always pushed away from defender
+      const knockbackDirection = player.x < otherPlayer.x ? -1 : 1;
+      player.knockbackVelocity.x = knockbackAmount * knockbackDirection;
       player.knockbackVelocity.y = 0;
       player.isHit = true;
-      player.isRawParryStun = true;
+      
+      // Clear all movement and action states when parried (like when getting hit)
+      player.isStrafing = false;
+      player.isJumping = false;
+      player.isAttacking = false;
+
+      // Clear movement velocity to ensure fixed knockback distance
+      player.movementVelocity = 0;
 
       // Clear all attack and recovery states
       player.isAttacking = false;
@@ -1551,40 +1616,91 @@ io.on("connection", (socket) => {
       player.pendingChargeAttack = null;
       player.spacebarReleasedDuringDodge = false;
 
-      // Emit screen shake for raw parry
-      if (currentRoom) {
-        io.in(currentRoom.id).emit("screen_shake", {
-          intensity: 0.7,
-          duration: 300,
-        });
-      }
+      // Only apply stun for perfect parries
+      if (isPerfectParry) {
+        const stunDuration = isSlapBeingParried ? RAW_PARRY_SLAP_STUN_DURATION : RAW_PARRY_STUN_DURATION;
+        player.isRawParryStun = true;
 
-      // Reset stun after duration
-      setPlayerTimeout(player.id, () => {
-        player.isHit = false;
-        player.isRawParryStun = false;
-        
-        // After stun ends, check if we should restart charging
-        if (player.keys.mouse2 && 
-            !player.isAttacking &&
-            !player.isJumping &&
-            !player.isDodging &&
-            !player.isThrowing &&
-            !player.isBeingThrown &&
-            !player.isGrabbing &&
-            !player.isBeingGrabbed &&
-            !player.isHit &&
-            !player.isRecovering &&
-            !player.isRawParryStun &&
-            !player.isThrowingSnowball &&
-            !player.canMoveToReady) {
-          // Restart charging immediately
-          player.isChargingAttack = true;
-          player.chargeStartTime = Date.now();
-          player.chargeAttackPower = 1;
-          player.attackType = "charged";
+        // Emit screen shake for perfect parry with higher intensity
+        if (currentRoom) {
+          io.in(currentRoom.id).emit("screen_shake", {
+            intensity: 0.9,
+            duration: 400,
+          });
+          
+          // Emit perfect parry event
+          io.in(currentRoom.id).emit("perfect_parry", {
+            parryingPlayerId: otherPlayer.id,
+            attackingPlayerId: player.id,
+            stunnedPlayerX: player.x,
+            stunnedPlayerY: player.y,
+            stunnedPlayerFighter: player.fighter, // Add fighter info to help with positioning
+            showStarStunEffect: true // Explicit flag for the star stun effect
+          });
         }
-      }, RAW_PARRY_STUN_DURATION);
+
+        // Reset stun after appropriate duration
+        setPlayerTimeout(player.id, () => {
+          player.isHit = false;
+          player.isRawParryStun = false;
+          
+          // After stun ends, check if we should restart charging
+          if (player.keys.mouse2 && 
+              !player.isAttacking &&
+              !player.isJumping &&
+              !player.isDodging &&
+              !player.isThrowing &&
+              !player.isBeingThrown &&
+              !player.isGrabbing &&
+              !player.isBeingGrabbed &&
+              !player.isHit &&
+              !player.isRecovering &&
+              !player.isRawParryStun &&
+              !player.isThrowingSnowball &&
+              !player.canMoveToReady) {
+            // Restart charging immediately
+            player.isChargingAttack = true;
+            player.chargeStartTime = Date.now();
+            player.chargeAttackPower = 1;
+            player.attackType = "charged";
+          }
+        }, stunDuration);
+      } else {
+        // Regular parry - no stun, just clear hit state quickly
+        // Emit screen shake for regular parry with lower intensity
+        if (currentRoom) {
+          io.in(currentRoom.id).emit("screen_shake", {
+            intensity: 0.5,
+            duration: 200,
+          });
+        }
+
+        // Clear hit state quickly for regular parries
+        setPlayerTimeout(player.id, () => {
+          player.isHit = false;
+          
+          // After knockback ends, check if we should restart charging
+          if (player.keys.mouse2 && 
+              !player.isAttacking &&
+              !player.isJumping &&
+              !player.isDodging &&
+              !player.isThrowing &&
+              !player.isBeingThrown &&
+              !player.isGrabbing &&
+              !player.isBeingGrabbed &&
+              !player.isHit &&
+              !player.isRecovering &&
+              !player.isRawParryStun &&
+              !player.isThrowingSnowball &&
+              !player.canMoveToReady) {
+            // Restart charging immediately
+            player.isChargingAttack = true;
+            player.chargeStartTime = Date.now();
+            player.chargeAttackPower = 1;
+            player.attackType = "charged";
+          }
+        }, 300); // Short duration for regular parry recovery
+      }
     } else {
       // Apply the knockback to the defending player
       otherPlayer.isHit = true;
@@ -1722,6 +1838,8 @@ io.on("connection", (socket) => {
         lastGrabAttemptTime: 0,
         isStrafing: false,
         isRawParrying: false,
+        rawParryStartTime: 0,
+        rawParryMinDurationMet: false,
         isRawParryStun: false,
         dodgeDirection: false,
         dodgeEndTime: 0,
@@ -1793,6 +1911,8 @@ io.on("connection", (socket) => {
         lastGrabAttemptTime: 0,
         isStrafing: false,
         isRawParrying: false,
+        rawParryStartTime: 0,
+        rawParryMinDurationMet: false,
         isRawParryStun: false,
         dodgeDirection: null,
         dodgeEndTime: 0,
@@ -1973,6 +2093,12 @@ io.on("connection", (socket) => {
       return;
     }
 
+    // Block all inputs during salt throwing phase and ready positioning phase
+    // This prevents inputs from power-up selection end until game start (hakkiyoi = 1)
+    if (!rooms[index].gameStart || rooms[index].hakkiyoiCount === 0) {
+      return;
+    }
+
     if (data.keys) {
       player.keys = data.keys;
       
@@ -2062,6 +2188,7 @@ io.on("connection", (socket) => {
       !player.isHit &&
       !player.isRecovering &&
       !player.isRawParryStun &&
+      !player.isRawParrying &&
       !player.canMoveToReady
     ) {
       console.log(`Player ${player.id} attempting to throw snowball`);
@@ -2206,6 +2333,7 @@ io.on("connection", (socket) => {
         player.isBeingGrabbed) && // Removed isDodging from this condition
       !player.isDodging && // Add explicit check to prevent dodge buffering during dodge
       !player.isThrowingSnowball &&
+      !player.isRawParrying &&
       player.dodgeCharges > 0 // Check if player has dodge charges
     ) {
       // Buffer the dodge action
