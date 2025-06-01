@@ -48,6 +48,7 @@ import saltBasket from "../assets/salt-basket.png";
 import saltBasketEmpty from "../assets/salt-basket-empty.png";
 import recovering2 from "../assets/recovering2.png";
 import recovering from "../assets/recovering.png";
+import snowball from "../assets/snowball.png";
 import attackSound from "../sounds/attack-sound.mp3";
 import hitSound from "../sounds/hit-sound.mp3";
 import dodgeSound from "../sounds/dodge-sound.mp3";
@@ -108,12 +109,14 @@ const getImageSrc = (
   grabState,
   grabAttemptType,
   isRecovering,
-  isRawParryStun
+  isRawParryStun,
+  isThrowingSnowball
 ) => {
   if (fighter === "player 2") {
     if (isBowing) return bow;
     if (isThrowTeching) return throwTech;
     if (isRecovering) return recovering;
+    if (isThrowingSnowball) return pumo;
     if (isSlapAttack) {
       return slapAnimation === 1 ? slapAttack1Red : slapAttack2Red;
     }
@@ -142,6 +145,7 @@ const getImageSrc = (
     if (isBowing) return bow2;
     if (isThrowTeching) return throwTech2;
     if (isRecovering) return recovering2;
+    if (isThrowingSnowball) return pumo2;
     if (isSlapAttack) {
       return slapAnimation === 1 ? slapAttack1Blue : slapAttack2Blue;
     }
@@ -230,6 +234,7 @@ const StyledImage = styled("img")
         "chargeAttackPower",
         "chargingFacingDirection",
         "isThrowingSalt",
+        "isThrowingSnowball",
         "saltCooldown",
         "grabStartTime",
         "grabbedOpponent",
@@ -270,7 +275,8 @@ const StyledImage = styled("img")
       props.$grabState,
       props.$grabAttemptType,
       props.$isRecovering,
-      props.$isRawParryStun
+      props.$isRawParryStun,
+      props.$isThrowingSnowball
     ),
     style: {
       position: "absolute",
@@ -326,71 +332,164 @@ const StyledImage = styled("img")
   }
 `;
 
-const PowerUpText = styled.div`
-  position: absolute;
-  font-family: "Bungee";
-  font-size: clamp(0.5rem, 1.5vw, 1.2rem);
-  color: #ffffff;
-  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
-    1px 1px 0 #000;
-  pointer-events: none;
-  bottom: 54%;
-  left: ${(props) => (props.$index === 0 ? "18.3%" : "auto")};
-  right: ${(props) => (props.$index === 1 ? "17.9%" : "auto")};
-  text-align: center;
-  transform: translateX(${(props) => (props.$index === 1 ? "50%" : "-50%")});
-`;
-
 const FloatingPowerUpText = styled.div`
   position: absolute;
   font-family: "Bungee";
-  font-size: clamp(0.5rem, 1.5vw, 1.2rem);
+  font-size: clamp(0.6rem, 1.8vw, 1.4rem);
+  font-weight: 700;
+  background: ${(props) => {
+    switch (props.$powerUpType) {
+      case "speed":
+        return "linear-gradient(45deg, #00ffff 0%, #0066ff 50%, #003399 100%)";
+      case "power":
+        return "linear-gradient(45deg, #ff6b6b 0%, #ff4444 50%, #cc0000 100%)";
+      default:
+        return "linear-gradient(45deg, #ffffff 0%, #ffd700 50%, #ffaa00 100%)";
+    }
+  }};
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: none;
+  pointer-events: none;
+  animation: powerUpFloat 2s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+  bottom: 55%;
+  left: ${(props) => (props.$index === 0 ? "19%" : "auto")};
+  right: ${(props) => (props.$index === 1 ? "19%" : "auto")};
+  text-align: center;
+  transform-origin: center;
+  z-index: 101;
+  opacity: 0;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+  
+  /* Backup text color for browsers that don't support background-clip */
   color: ${(props) => {
     switch (props.$powerUpType) {
       case "speed":
-        return "#0066ff"; // Electric blue
+        return "#00ffff";
       case "power":
-        return "#ff4444"; // red
+        return "#ff4444";
       default:
-        return "#ffffff";
+        return "#ffd700";
     }
   }};
-  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
-    1px 1px 0 #000;
-  pointer-events: none;
-  animation: powerUpFloat 1.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-  bottom: 52%;
-  left: ${(props) => (props.$index === 0 ? "21.5%" : "auto")};
-  right: ${(props) => (props.$index === 1 ? "21.5%" : "auto")};
-  text-align: center;
-  transform-origin: center;
-  z-index: 100;
-  opacity: 0;
-  filter: drop-shadow(
-    0 0 8px
-      ${(props) => {
-        switch (props.$powerUpType) {
-          case "speed":
-            return "rgba(0, 102, 255, 0.6)";
-          case "power":
-            return "rgba(255, 68, 68, 0.6)";
-          default:
-            return "rgba(255, 255, 255, 0.6)";
-        }
-      }}
-  );
+
+  /* Enhanced glow effect */
+  filter: drop-shadow(0 0 2px #000) 
+          drop-shadow(0 0 3px ${(props) => {
+            switch (props.$powerUpType) {
+              case "speed":
+                return "rgba(0, 255, 255, 0.4)";
+              case "power":
+                return "rgba(255, 68, 68, 0.4)";
+              default:
+                return "rgba(255, 215, 0, 0.4)";
+            }
+          }})
+          drop-shadow(0 0 6px ${(props) => {
+            switch (props.$powerUpType) {
+              case "speed":
+                return "rgba(0, 255, 255, 0.2)";
+              case "power":
+                return "rgba(255, 68, 68, 0.2)";
+              default:
+                return "rgba(255, 215, 0, 0.2)";
+            }
+          }});
+
+  /* Add a pseudo-element for additional effects */
+  &::before {
+    content: attr(data-text);
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: -1;
+    background: linear-gradient(45deg, transparent 0%, rgba(255, 255, 255, 0.3) 50%, transparent 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: shimmer 0.8s ease-in-out 0.3s;
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: -5px;
+    left: -5px;
+    right: -5px;
+    bottom: -5px;
+    background: radial-gradient(circle, ${(props) => {
+      switch (props.$powerUpType) {
+        case "speed":
+          return "rgba(0, 255, 255, 0.1)";
+        case "power":
+          return "rgba(255, 68, 68, 0.1)";
+        default:
+          return "rgba(255, 215, 0, 0.1)";
+      }
+    }} 0%, transparent 70%);
+    border-radius: 50%;
+    z-index: -2;
+    animation: pulseGlow 2s ease-in-out;
+  }
 
   @keyframes powerUpFloat {
     0% {
-      transform: translateY(0) scale(0.8);
+      transform: translateY(20px) scale(0.5) rotateX(90deg);
       opacity: 0;
     }
-    20% {
-      transform: translateY(-20px) scale(1.1);
+    15% {
+      transform: translateY(0px) scale(1.3) rotateX(10deg);
       opacity: 1;
     }
+    30% {
+      transform: translateY(-15px) scale(1.1) rotateX(-5deg);
+      opacity: 1;
+    }
+    50% {
+      transform: translateY(-25px) scale(1.15) rotateX(0deg);
+      opacity: 1;
+    }
+    80% {
+      transform: translateY(-60px) scale(1.0) rotateX(0deg);
+      opacity: 0.8;
+    }
     100% {
-      transform: translateY(-100px) scale(0.9);
+      transform: translateY(-120px) scale(0.8) rotateX(0deg);
+      opacity: 0;
+    }
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+
+  @keyframes pulseGlow {
+    0% {
+      transform: scale(0.8);
+      opacity: 0.6;
+    }
+    25% {
+      transform: scale(1.2);
+      opacity: 0.8;
+    }
+    50% {
+      transform: scale(1.4);
+      opacity: 0.4;
+    }
+    75% {
+      transform: scale(1.6);
+      opacity: 0.2;
+    }
+    100% {
+      transform: scale(2.0);
       opacity: 0;
     }
   }
@@ -516,6 +615,17 @@ const YouLabel = styled.div`
   }
 `;
 
+const SnowballProjectile = styled.img`
+  position: absolute;
+  width: 3%;
+  height: auto;
+  left: ${props => (props.$x / 1280) * 100 + 5}%;
+  bottom: ${props => (props.$y / 720) * 100 + 10}%;
+  z-index: 95;
+  pointer-events: none;
+  filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000);
+`;
+
 const GameFighter = ({ player, index, roomName, localId }) => {
   const { socket } = useContext(SocketContext);
   const [penguin, setPenguin] = useState({
@@ -536,6 +646,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
     isGrabbing: false,
     isBeingGrabbed: false,
     isThrowingSalt: false,
+    isThrowingSnowball: false,
     slapAnimation: 2,
     isBowing: false,
     isThrowTeching: false,
@@ -550,6 +661,10 @@ const GameFighter = ({ player, index, roomName, localId }) => {
     y: 0,
     dodgeCharges: 2,
     dodgeChargeCooldowns: [0, 0],
+    snowballs: [],
+    snowballCooldown: false,
+    lastSnowballTime: 0,
+    activePowerUp: null,
   });
   const [stamina, setStamina] = useState(player);
   const [hakkiyoi, setHakkiyoi] = useState(false);
@@ -570,6 +685,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
     duration: 0,
     startTime: 0,
   });
+  const [allSnowballs, setAllSnowballs] = useState([]);
 
   const lastAttackState = useRef(player.isAttacking);
   const lastHitState = useRef(player.isHit);
@@ -609,6 +725,13 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         });
         setStamina(data.player2.stamina);
       }
+      
+      // Update all snowballs from both players
+      const combinedSnowballs = [
+        ...(data.player1.snowballs || []),
+        ...(data.player2.snowballs || [])
+      ];
+      setAllSnowballs(combinedSnowballs);
     });
 
     socket.on("slap_parry", (position) => {
@@ -626,26 +749,31 @@ const GameFighter = ({ player, index, roomName, localId }) => {
     });
 
     socket.on("power_up_activated", (data) => {
-      if (data.playerId === localId) {
-        setPenguin((prev) => ({
-          ...prev,
-          activePowerUp: data.powerUpType,
-          powerUpMultiplier:
-            data.powerUpType === "speed"
-              ? 1.4
-              : data.powerUpType === "power"
-              ? 1.3
-              : 1,
-        }));
-        setHasUsedPowerUp(true);
+      if (data.playerId === player.id) {
+        // Show floating text for this specific player
         setShowFloatingPowerUp(true);
         setFloatingPowerUpType(data.powerUpType);
-        playSound(saltSound, 0.01);
-
+        
         // Hide the floating text after animation
         setTimeout(() => {
           setShowFloatingPowerUp(false);
         }, 2000);
+        
+        // Only update penguin state and play sound for local player
+        if (data.playerId === localId) {
+          setPenguin((prev) => ({
+            ...prev,
+            activePowerUp: data.powerUpType,
+            powerUpMultiplier:
+              data.powerUpType === "speed"
+                ? 1.4
+                : data.powerUpType === "power"
+                ? 1.3
+                : 1,
+          }));
+          setHasUsedPowerUp(true);
+          playSound(saltSound, 0.01);
+        }
       }
     });
 
@@ -919,6 +1047,9 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         index={index}
         dodgeCharges={penguin.dodgeCharges}
         dodgeChargeCooldowns={penguin.dodgeChargeCooldowns}
+        activePowerUp={penguin.activePowerUp}
+        snowballCooldown={penguin.snowballCooldown}
+        lastSnowballTime={penguin.lastSnowballTime}
       />
       <SaltBasket
         src={
@@ -930,20 +1061,12 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         $index={index}
         $isVisible={true}
       />
-      {penguin.id === localId &&
-        !hasUsedPowerUp &&
-        !penguin.isThrowingSalt &&
-        gyojiState === "idle" &&
-        countdown > 0 && (
-          <PowerUpText $index={index}>
-            <KeyContainer>
-              <Key>F</Key>
-              <KeyLabel>POWER UP</KeyLabel>
-            </KeyContainer>
-          </PowerUpText>
-        )}
       {showFloatingPowerUp && (
-        <FloatingPowerUpText $powerUpType={floatingPowerUpType} $index={index}>
+        <FloatingPowerUpText 
+          $powerUpType={floatingPowerUpType} 
+          $index={index}
+          data-text={`${floatingPowerUpType.toUpperCase()}++`}
+        >
           {floatingPowerUpType.toUpperCase()}++
         </FloatingPowerUpText>
       )}
@@ -1025,6 +1148,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         $sizeMultiplier={penguin.sizeMultiplier}
         $isRecovering={penguin.isRecovering}
         $isRawParryStun={penguin.isRawParryStun}
+        $isThrowingSnowball={penguin.isThrowingSnowball}
         style={{
           transform: `scaleX(${penguin.facing})`,
           width: "18.4%",
@@ -1044,6 +1168,15 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         !gyojiState.includes("ready") && (
           <CountdownTimer>{countdown}</CountdownTimer>
         )}
+      {allSnowballs.map((projectile) => (
+        <SnowballProjectile
+          key={projectile.id}
+          src={snowball}
+          alt="Snowball"
+          $x={projectile.x}
+          $y={projectile.y}
+        />
+      ))}
     </div>
   );
 };

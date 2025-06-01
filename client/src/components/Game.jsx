@@ -1,8 +1,9 @@
-import { useContext, useEffect } from "react";
+import { useContext, useEffect, useState } from "react";
 import { SocketContext } from "../SocketContext";
 import GameFighter from "./GameFighter";
 import MobileControls from "./MobileControls";
 import SnowEffect from "./SnowEffect";
+import PowerUpSelection from "./PowerUpSelection";
 // import gameMusic from "../sounds/game-music.mp3";
 import PropTypes from "prop-types";
 
@@ -12,7 +13,11 @@ import PropTypes from "prop-types";
 
 const Game = ({ rooms, roomName, localId }) => {
   const { socket } = useContext(SocketContext);
+  const [isPowerUpSelectionActive, setIsPowerUpSelectionActive] = useState(false);
   let index = rooms.findIndex((room) => room.id === roomName);
+  
+  // Find current player for input blocking checks
+  const currentPlayer = rooms[index]?.players?.find(player => player.id === localId);
 
   // useEffect(() => {
   //   gameMusicAudio
@@ -40,6 +45,12 @@ const Game = ({ rooms, roomName, localId }) => {
     };
 
     const handleKeyDown = (e) => {
+      // Block inputs during power-up selection
+      if (isPowerUpSelectionActive) return;
+      
+      // Block inputs when current player is throwing snowball
+      if (currentPlayer?.isThrowingSnowball) return;
+      
       if (Object.prototype.hasOwnProperty.call(keyState, e.key.toLowerCase())) {
         keyState[e.key.toLowerCase()] = true;
         socket.emit("fighter_action", { id: socket.id, keys: keyState });
@@ -47,6 +58,12 @@ const Game = ({ rooms, roomName, localId }) => {
     };
 
     const handleKeyUp = (e) => {
+      // Block inputs during power-up selection
+      if (isPowerUpSelectionActive) return;
+      
+      // Block inputs when current player is throwing snowball
+      if (currentPlayer?.isThrowingSnowball) return;
+      
       if (Object.prototype.hasOwnProperty.call(keyState, e.key.toLowerCase())) {
         keyState[e.key.toLowerCase()] = false;
         socket.emit("fighter_action", { id: socket.id, keys: keyState });
@@ -54,6 +71,12 @@ const Game = ({ rooms, roomName, localId }) => {
     };
 
     const handleMouseDown = (e) => {
+      // Block inputs during power-up selection
+      if (isPowerUpSelectionActive) return;
+      
+      // Block inputs when current player is throwing snowball
+      if (currentPlayer?.isThrowingSnowball) return;
+      
       if (e.button === 0) {
         e.preventDefault();
         keyState.mouse1 = true;
@@ -66,6 +89,12 @@ const Game = ({ rooms, roomName, localId }) => {
     };
 
     const handleMouseUp = (e) => {
+      // Block inputs during power-up selection
+      if (isPowerUpSelectionActive) return;
+      
+      // Block inputs when current player is throwing snowball
+      if (currentPlayer?.isThrowingSnowball) return;
+      
       if (e.button === 0) {
         e.preventDefault();
         keyState.mouse1 = false;
@@ -94,7 +123,7 @@ const Game = ({ rooms, roomName, localId }) => {
       window.removeEventListener("mouseup", handleMouseUp);
       window.removeEventListener("contextmenu", handleContextMenu);
     };
-  });
+  }, [isPowerUpSelectionActive, socket, currentPlayer]);
 
   useEffect(() => {
     const preventDefault = (e) => e.preventDefault();
@@ -122,8 +151,16 @@ const Game = ({ rooms, roomName, localId }) => {
             );
           })}
         </div>
+        <PowerUpSelection 
+          roomId={roomName}
+          playerId={localId}
+          onSelectionStateChange={setIsPowerUpSelectionActive}
+        />
       </div>
-      <MobileControls />
+      <MobileControls 
+        isInputBlocked={isPowerUpSelectionActive} 
+        currentPlayer={currentPlayer}
+      />
     </div>
   );
 };

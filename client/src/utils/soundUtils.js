@@ -75,7 +75,7 @@ const playButtonPressSound = () => {
 const playButtonPressSound2 = () => {
   try {
     const sound = new Audio(buttonPressSound2);
-    sound.volume = 0.1 * getGlobalVolume();
+    sound.volume = 0.2 * getGlobalVolume();
     sound.play().catch((error) => {
       // Ignore AbortError as it's expected when sounds overlap
       if (error.name !== "AbortError") {

@@ -1,8 +1,9 @@
 import { useState, useEffect, useContext, useCallback } from "react";
 import { SocketContext } from "../SocketContext";
+import PropTypes from "prop-types";
 import "./MobileControls.css";
 
-const MobileControls = () => {
+const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
   const { socket } = useContext(SocketContext);
   const [joystickPos, setJoystickPos] = useState({ x: 0, y: 0 });
   const [isTouchingJoystick, setIsTouchingJoystick] = useState(false);
@@ -25,13 +26,18 @@ const MobileControls = () => {
   // Function to emit key state changes
   const emitKeyState = useCallback(
     (newKeyState) => {
+      // Block inputs during power-up selection or when throwing snowball
+      if (isInputBlocked || currentPlayer?.isThrowingSnowball) return;
       socket.emit("fighter_action", { id: socket.id, keys: newKeyState });
     },
-    [socket]
+    [socket, isInputBlocked, currentPlayer?.isThrowingSnowball]
   );
 
   // Handle joystick touch start
   const handleJoystickStart = (e) => {
+    // Block inputs during power-up selection or when throwing snowball
+    if (isInputBlocked || currentPlayer?.isThrowingSnowball) return;
+    
     e.preventDefault();
     const touch = e.touches[0];
     const joystick = e.target.getBoundingClientRect();
@@ -45,6 +51,9 @@ const MobileControls = () => {
 
   // Handle joystick movement
   const handleJoystickMove = (e) => {
+    // Block inputs during power-up selection or when throwing snowball
+    if (isInputBlocked || currentPlayer?.isThrowingSnowball) return;
+    
     e.preventDefault();
     if (!isTouchingJoystick) return;
 
@@ -62,6 +71,9 @@ const MobileControls = () => {
 
   // Handle joystick release
   const handleJoystickEnd = (e) => {
+    // Block inputs during power-up selection or when throwing snowball
+    if (isInputBlocked || currentPlayer?.isThrowingSnowball) return;
+    
     e.preventDefault();
     setIsTouchingJoystick(false);
     setJoystickPos({ x: 0, y: 0 });
@@ -103,6 +115,9 @@ const MobileControls = () => {
 
   // Handle action button press
   const handleButtonPress = (e, action) => {
+    // Block inputs during power-up selection or when throwing snowball
+    if (isInputBlocked || currentPlayer?.isThrowingSnowball) return;
+    
     e.preventDefault();
     setKeyState((prev) => {
       const newState = { ...prev };
@@ -127,6 +142,9 @@ const MobileControls = () => {
 
   // Handle action button release
   const handleButtonRelease = (e, action) => {
+    // Block inputs during power-up selection or when throwing snowball
+    if (isInputBlocked || currentPlayer?.isThrowingSnowball) return;
+    
     e.preventDefault();
     setKeyState((prev) => {
       const newState = { ...prev };
@@ -220,6 +238,11 @@ const MobileControls = () => {
       </div>
     </div>
   );
+};
+
+MobileControls.propTypes = {
+  isInputBlocked: PropTypes.bool,
+  currentPlayer: PropTypes.object,
 };
 
 export default MobileControls;

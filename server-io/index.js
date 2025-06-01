@@ -13,6 +13,58 @@ const {
   getCleanedRoomsData,
 } = require("./playerCleanup");
 
+// Add timeout manager for memory leak prevention
+class TimeoutManager {
+  constructor() {
+    this.timeouts = new Map(); // playerId -> Set of timeout IDs
+  }
+  
+  set(playerId, callback, delay) {
+    const timeoutId = setTimeout(() => {
+      this.remove(playerId, timeoutId);
+      callback();
+    }, delay);
+    
+    if (!this.timeouts.has(playerId)) {
+      this.timeouts.set(playerId, new Set());
+    }
+    this.timeouts.get(playerId).add(timeoutId);
+    
+    return timeoutId;
+  }
+  
+  remove(playerId, timeoutId) {
+    if (this.timeouts.has(playerId)) {
+      this.timeouts.get(playerId).delete(timeoutId);
+    }
+  }
+  
+  clearPlayer(playerId) {
+    if (this.timeouts.has(playerId)) {
+      for (const timeoutId of this.timeouts.get(playerId)) {
+        clearTimeout(timeoutId);
+      }
+      this.timeouts.delete(playerId);
+    }
+  }
+  
+  clearAll() {
+    for (const [playerId, timeoutSet] of this.timeouts) {
+      for (const timeoutId of timeoutSet) {
+        clearTimeout(timeoutId);
+      }
+    }
+    this.timeouts.clear();
+  }
+}
+
+const timeoutManager = new TimeoutManager();
+
+// Helper function to replace setTimeout calls - keeps exact same behavior
+function setPlayerTimeout(playerId, callback, delay) {
+  return timeoutManager.set(playerId, callback, delay);
+}
+
 const app = express();
 app.use(cors());
 
@@ -102,12 +154,14 @@ const GRAB_PUSH_DURATION = 650;
 const POWER_UP_TYPES = {
   SPEED: "speed",
   POWER: "power",
+  SNOWBALL: "snowball",
 };
 
 // Add power-up effects
 const POWER_UP_EFFECTS = {
   [POWER_UP_TYPES.SPEED]: 1.4, // 20% speed increase
   [POWER_UP_TYPES.POWER]: 1.3, // 30% knockback increase
+  [POWER_UP_TYPES.SNOWBALL]: 1.0, // No stat multiplier, just projectile ability
 };
 
 const GRAB_DURATION = 1500; // 1.5 seconds total grab duration
@@ -134,6 +188,48 @@ const RAW_PARRY_STUN_DURATION = 1000; // 1 second stun duration
 const DODGE_COOLDOWN = 2000; // 2 second cooldown between dodges
 const MAX_DODGE_CHARGES = 2; // Maximum number of dodge charges
 
+
+function handlePowerUpSelection(room) {
+  // Reset power-up selection state for the room
+  room.powerUpSelectionPhase = true;
+  room.playersSelectedPowerUps = {};
+  
+  console.log(`Starting power-up selection for room ${room.id}`);
+  
+  // Emit power-up selection event to all players in the room
+  io.in(room.id).emit("power_up_selection_start", {
+    availablePowerUps: Object.values(POWER_UP_TYPES)
+  });
+}
+
+function handleSaltThrowAndPowerUp(player, room) {
+  // Set initial states for automatic salt throwing
+  player.isThrowingSalt = true;
+  player.saltCooldown = true;
+  player.canMoveToReady = false; // New flag to control movement
+
+  // Use selected power-up instead of random
+  if (player.selectedPowerUp) {
+    player.activePowerUp = player.selectedPowerUp;
+    player.powerUpMultiplier = POWER_UP_EFFECTS[player.selectedPowerUp];
+
+    // Emit power-up event to clients
+    io.in(room.id).emit("power_up_activated", {
+      playerId: player.id,
+      powerUpType: player.selectedPowerUp,
+    });
+  }
+
+  // Reset salt throwing state after animation
+  setPlayerTimeout(player.id, () => {
+    player.isThrowingSalt = false;
+    player.saltCooldown = false;
+    
+    // Allow movement after salt throw is complete
+    player.canMoveToReady = true;
+  }, 500);
+}
+
 function resetRoomAndPlayers(room) {
   // Reset room state
   room.gameStart = false;
@@ -143,18 +239,44 @@ function resetRoomAndPlayers(room) {
   delete room.winnerId;
   delete room.loserId;
 
-  // Start the 15-second timer for automatic round start
+  // Start the 15-second timer for automatic power-up selection
   if (room.roundStartTimer) {
     clearTimeout(room.roundStartTimer);
   }
   room.roundStartTimer = setTimeout(() => {
-    if (!room.gameStart && room.players.length === 2) {
-      room.gameStart = true;
-      room.hakkiyoiCount = 1;
-      io.in(room.id).emit("game_start", true);
+    // Check if we're still in power-up selection phase
+    if (room.powerUpSelectionPhase && room.players.length === 2) {
+      console.log(`Timer expired, auto-selecting power-ups for room ${room.id}`);
+      
+      // Auto-select the first power-up (SPEED) for any players who haven't selected
+      const availablePowerUps = Object.values(POWER_UP_TYPES);
+      const firstPowerUp = availablePowerUps[0]; // This will be "speed"
+      
       room.players.forEach((player) => {
-        player.isReady = false;
+        if (!player.selectedPowerUp) {
+          console.log(`Auto-selecting ${firstPowerUp} for player ${player.id}`);
+          player.selectedPowerUp = firstPowerUp;
+          room.playersSelectedPowerUps[player.id] = firstPowerUp;
+        }
       });
+      
+      // Check if all players now have selections (they should after auto-selection)
+      const selectedCount = Object.keys(room.playersSelectedPowerUps).length;
+      
+      if (selectedCount === room.players.length) {
+        // All players have selections, proceed with normal flow
+        room.powerUpSelectionPhase = false;
+        
+        console.log(`Auto-selection complete, starting salt throwing in room ${room.id}`);
+        
+        // Emit that selection is complete
+        io.in(room.id).emit("power_up_selection_complete");
+        
+        // Start salt throwing for both players
+        room.players.forEach((player) => {
+          handleSaltThrowAndPowerUp(player, room);
+        });
+      }
     }
   }, 15000);
 
@@ -181,37 +303,16 @@ function resetRoomAndPlayers(room) {
     // Reset power-up state
     player.activePowerUp = null;
     player.powerUpMultiplier = 1;
-
-    // Set initial states for automatic salt throwing
-    player.isThrowingSalt = true;
-    player.saltCooldown = true;
-    player.canMoveToReady = false; // New flag to control movement
-
-    // Randomly select a power-up
-    const powerUpTypes = Object.values(POWER_UP_TYPES);
-    const randomPowerUp =
-      powerUpTypes[Math.floor(Math.random() * powerUpTypes.length)];
-    player.activePowerUp = randomPowerUp;
-    player.powerUpMultiplier = POWER_UP_EFFECTS[randomPowerUp];
-
-    // Emit power-up event to clients
-    io.in(room.id).emit("power_up_activated", {
-      playerId: player.id,
-      powerUpType: randomPowerUp,
-    });
-
-    // Reset salt throwing state after animation
-    setTimeout(() => {
-      player.isThrowingSalt = false;
-      // Allow movement after salt throw is complete
-      player.canMoveToReady = true;
-    }, 500);
-
-    // Reset salt cooldown
-    setTimeout(() => {
-      player.saltCooldown = false;
-    }, 750);
+    player.selectedPowerUp = null;
+    // Reset snowball state
+    player.snowballs = [];
+    player.snowballCooldown = false;
+    player.lastSnowballTime = 0;
+    player.isThrowingSnowball = false;
   });
+
+  // Start power-up selection phase instead of automatic salt throwing
+  handlePowerUpSelection(room);
 
   // Emit an event to inform clients that the game has been reset
   io.in(room.id).emit("game_reset", false);
@@ -341,15 +442,8 @@ io.on("connection", (socket) => {
     opponent.isBeingPulled = false;
 
     // Clear charge attack states
-    player.isChargingAttack = false;
-    player.chargeStartTime = 0;
-    player.chargeAttackPower = 0;
-    player.chargingFacingDirection = null;
-
-    opponent.isChargingAttack = false;
-    opponent.chargeStartTime = 0;
-    opponent.chargeAttackPower = 0;
-    opponent.chargingFacingDirection = null;
+    clearChargeState(player);
+    clearChargeState(opponent);
 
     // Set up tech state
     player.isThrowTeching = true;
@@ -378,13 +472,13 @@ io.on("connection", (socket) => {
     opponent.throwTechCooldown = true;
 
     // Reset throw tech animation after duration
-    setTimeout(() => {
+    setPlayerTimeout(player.id, () => {
       player.isThrowTeching = false;
       opponent.isThrowTeching = false;
     }, THROW_TECH_DURATION);
 
     // Reset cooldown after longer duration
-    setTimeout(() => {
+    setPlayerTimeout(player.id, () => {
       player.throwTechCooldown = false;
       opponent.throwTechCooldown = false;
     }, THROW_TECH_COOLDOWN);
@@ -503,7 +597,7 @@ io.on("connection", (socket) => {
 
           console.log(player1.isReady);
           if (currentTime - room.readyStartTime >= 1000) {
-            // Clear the automatic start timer if players ready up
+            // Clear the power-up auto-selection timer if players ready up normally
             if (room.roundStartTimer) {
               clearTimeout(room.roundStartTimer);
               room.roundStartTimer = null;
@@ -559,8 +653,80 @@ io.on("connection", (socket) => {
               player.isRecovering = false;
               player.movementVelocity = 0;
               player.recoveryDirection = null;
+              
+              // Check if we should restart charging immediately after recovery ends
+              if (player.mouse2HeldDuringAttack && player.keys.mouse2) {
+                console.log(`Player ${player.id} restarting charge immediately after recovery ends (mouse2 was held during attack)`);
+                // Restart charging immediately since player was holding mouse2 during attack
+                player.isChargingAttack = true;
+                player.chargeStartTime = Date.now();
+                player.chargeAttackPower = 1;
+                player.attackType = "charged";
+                player.mouse2HeldDuringAttack = false; // Clear the flag
+              }
+              // Otherwise check normal conditions for restart
+              else if (player.keys.mouse2 && 
+                  !player.isAttacking &&
+                  !player.isJumping &&
+                  !player.isDodging &&
+                  !player.isThrowing &&
+                  !player.isBeingThrown &&
+                  !player.isGrabbing &&
+                  !player.isBeingGrabbed &&
+                  !player.isHit &&
+                  !player.isRawParryStun &&
+                  !player.isThrowingSnowball &&
+                  !player.canMoveToReady) {
+                console.log(`Player ${player.id} restarting charge after recovery ends (normal conditions)`);
+                // Restart charging immediately
+                player.isChargingAttack = true;
+                player.chargeStartTime = Date.now();
+                player.chargeAttackPower = 1;
+                player.attackType = "charged";
+              }
             }
           }
+        });
+
+        // Handle snowball updates
+        [player1, player2].forEach((player) => {
+          // Update snowball positions and check for collisions
+          player.snowballs = player.snowballs.filter((snowball) => {
+            // Move snowball
+            snowball.x += snowball.velocityX * delta * speedFactor;
+            
+            // Check if snowball is off-screen
+            if (snowball.x < -50 || snowball.x > 1330) {
+              return false; // Remove snowball
+            }
+            
+            // Check collision with opponent
+            const opponent = room.players.find(p => p.id !== player.id);
+            if (opponent && !opponent.isDodging && !snowball.hasHit) {
+              const distance = Math.abs(snowball.x - opponent.x);
+              if (distance < 50 && Math.abs(snowball.y - opponent.y) < 30) {
+                // Hit opponent
+                snowball.hasHit = true;
+                opponent.isHit = true;
+                opponent.isAlreadyHit = true;
+                
+                // Apply knockback
+                const knockbackDirection = snowball.velocityX > 0 ? 1 : -1;
+                opponent.knockbackVelocity.x = knockbackDirection * 3;
+                opponent.movementVelocity = knockbackDirection * 2;
+                
+                // Reset hit state after duration
+                setPlayerTimeout(opponent.id, () => {
+                  opponent.isHit = false;
+                  opponent.isAlreadyHit = false;
+                }, 300);
+                
+                return false; // Remove snowball after hit
+              }
+            }
+            
+            return true; // Keep snowball
+          });
         });
       }
 
@@ -763,6 +929,27 @@ io.on("connection", (socket) => {
               player.throwStartTime = 0;
               player.throwEndTime = 0;
 
+              // Check if we should restart charging after throw completes
+              if (player.keys.mouse2 && 
+                  !player.isAttacking &&
+                  !player.isJumping &&
+                  !player.isDodging &&
+                  !player.isThrowing &&
+                  !player.isBeingThrown &&
+                  !player.isGrabbing &&
+                  !player.isBeingGrabbed &&
+                  !player.isHit &&
+                  !player.isRecovering &&
+                  !player.isRawParryStun &&
+                  !player.isThrowingSnowball &&
+                  !player.canMoveToReady) {
+                // Restart charging immediately
+                player.isChargingAttack = true;
+                player.chargeStartTime = Date.now();
+                player.chargeAttackPower = 1;
+                player.attackType = "charged";
+              }
+
               opponent.isBeingThrown = false;
               opponent.beingThrownFacingDirection = null;
               opponent.isHit = false;
@@ -779,6 +966,27 @@ io.on("connection", (socket) => {
 
           if (currentTime >= player.throwEndTime) {
             player.isThrowing = false;
+            
+            // Check if we should restart charging after missed throw completes
+            if (player.keys.mouse2 && 
+                !player.isAttacking &&
+                !player.isJumping &&
+                !player.isDodging &&
+                !player.isThrowing &&
+                !player.isBeingThrown &&
+                !player.isGrabbing &&
+                !player.isBeingGrabbed &&
+                !player.isHit &&
+                !player.isRecovering &&
+                !player.isRawParryStun &&
+                !player.isThrowingSnowball &&
+                !player.canMoveToReady) {
+              // Restart charging immediately
+              player.isChargingAttack = true;
+              player.chargeStartTime = Date.now();
+              player.chargeAttackPower = 1;
+              player.attackType = "charged";
+            }
           }
         }
 
@@ -816,9 +1024,9 @@ io.on("connection", (socket) => {
             currentDodgeSpeed *= Math.min(player.powerUpMultiplier * 0.85, 1.5); // Increased multiplier and cap
           }
           // Reduce dodge speed when size power-up is active
-          if (player.activePowerUp === POWER_UP_TYPES.SIZE) {
-            currentDodgeSpeed *= 0.85; // 15% speed reduction
-          }
+          // if (player.activePowerUp === POWER_UP_TYPES.SIZE) {
+          //   currentDodgeSpeed *= 0.85; // 15% speed reduction
+          // }
 
           // Calculate dodge progress (0 to 1)
           const dodgeProgress =
@@ -876,6 +1084,7 @@ io.on("connection", (socket) => {
             !player.isGrabbing &&
             !player.isBeingGrabbed &&
             !player.isRecovering &&
+            !player.isThrowingSnowball &&
             !player.isHit) ||
           (!player.keys.s &&
             player.isSlapAttack &&
@@ -884,6 +1093,7 @@ io.on("connection", (socket) => {
             !player.isGrabbing &&
             !player.isBeingGrabbed &&
             !player.isRecovering &&
+            !player.isThrowingSnowball &&
             !player.isHit)
         ) {
           let currentSpeedFactor = speedFactor;
@@ -893,9 +1103,9 @@ io.on("connection", (socket) => {
             currentSpeedFactor *= player.powerUpMultiplier;
           }
           // Reduce speed when size power-up is active
-          if (player.activePowerUp === POWER_UP_TYPES.SIZE) {
-            currentSpeedFactor *= 0.85;
-          }
+          // if (player.activePowerUp === POWER_UP_TYPES.SIZE) {
+          //   currentSpeedFactor *= 0.85;
+          // }
 
           // Initialize movement velocity if it doesn't exist
           if (!player.movementVelocity) {
@@ -916,6 +1126,7 @@ io.on("connection", (socket) => {
             !player.isGrabbing &&
             !player.isRecovering &&
             !player.isRawParryStun &&
+            !player.isThrowingSnowball &&
             !player.keys.mouse1 // Add condition to prevent strafing while slapping
           ) {
             // Apply ice drift when changing directions
@@ -947,6 +1158,7 @@ io.on("connection", (socket) => {
             !player.isGrabbing &&
             !player.isRecovering &&
             !player.isRawParryStun &&
+            !player.isThrowingSnowball &&
             !player.keys.mouse1 // Add condition to prevent strafing while slapping
           ) {
             // Apply ice drift when changing directions
@@ -1080,7 +1292,8 @@ io.on("connection", (socket) => {
           }
 
           if (Date.now() >= player.attackEndTime) {
-            player.isAttacking = false;
+            // Use helper function to safely end charged attacks
+            safelyEndChargedAttack(player);
           }
         }
         if (player.isGrabbing && player.grabbedOpponent) {
@@ -1094,6 +1307,28 @@ io.on("connection", (socket) => {
             if (grabDuration >= GRAB_DURATION) {
               // Release after 1.5 seconds
               cleanupGrabStates(player, opponent);
+              
+              // Check if we should restart charging after grab completes
+              if (player.keys.mouse2 && 
+                  !player.isAttacking &&
+                  !player.isJumping &&
+                  !player.isDodging &&
+                  !player.isThrowing &&
+                  !player.isBeingThrown &&
+                  !player.isGrabbing &&
+                  !player.isBeingGrabbed &&
+                  !player.isHit &&
+                  !player.isRecovering &&
+                  !player.isRawParryStun &&
+                  !player.isThrowingSnowball &&
+                  !player.canMoveToReady) {
+                // Restart charging immediately
+                player.isChargingAttack = true;
+                player.chargeStartTime = Date.now();
+                player.chargeAttackPower = 1;
+                player.attackType = "charged";
+              }
+              
               return;
             }
 
@@ -1109,6 +1344,27 @@ io.on("connection", (socket) => {
           const grabDuration = Date.now() - player.grabStartTime;
           if (grabDuration >= 500) {
             player.isGrabbing = false;
+            
+            // Check if we should restart charging after missed grab completes
+            if (player.keys.mouse2 && 
+                !player.isAttacking &&
+                !player.isJumping &&
+                !player.isDodging &&
+                !player.isThrowing &&
+                !player.isBeingThrown &&
+                !player.isGrabbing &&
+                !player.isBeingGrabbed &&
+                !player.isHit &&
+                !player.isRecovering &&
+                !player.isRawParryStun &&
+                !player.isThrowingSnowball &&
+                !player.canMoveToReady) {
+              // Restart charging immediately
+              player.isChargingAttack = true;
+              player.chargeStartTime = Date.now();
+              player.chargeAttackPower = 1;
+              player.attackType = "charged";
+            }
           }
         }
 
@@ -1120,11 +1376,11 @@ io.on("connection", (socket) => {
         }
 
         // Apply size power-up effect
-        if (player.activePowerUp === POWER_UP_TYPES.SIZE) {
-          player.sizeMultiplier = player.powerUpMultiplier;
-        } else {
+        // if (player.activePowerUp === POWER_UP_TYPES.SIZE) {
+        //   player.sizeMultiplier = player.powerUpMultiplier;
+        // } else {
           player.sizeMultiplier = 1;
-        }
+        // }
 
         // Update charge attack power in the game loop
         if (player.isChargingAttack) {
@@ -1313,7 +1569,7 @@ io.on("connection", (socket) => {
       const remainingAttackTime = originalAttackEndTime - currentTime;
 
       if (remainingAttackTime > 0) {
-        setTimeout(() => {
+        setPlayerTimeout(player.id, () => {
           player.isAttacking = false;
           player.isSlapAttack = false;
           player.attackStartTime = 0;
@@ -1355,9 +1611,30 @@ io.on("connection", (socket) => {
       }
 
       // Reset stun after duration
-      setTimeout(() => {
+      setPlayerTimeout(player.id, () => {
         player.isHit = false;
         player.isRawParryStun = false;
+        
+        // After stun ends, check if we should restart charging
+        if (player.keys.mouse2 && 
+            !player.isAttacking &&
+            !player.isJumping &&
+            !player.isDodging &&
+            !player.isThrowing &&
+            !player.isBeingThrown &&
+            !player.isGrabbing &&
+            !player.isBeingGrabbed &&
+            !player.isHit &&
+            !player.isRecovering &&
+            !player.isRawParryStun &&
+            !player.isThrowingSnowball &&
+            !player.canMoveToReady) {
+          // Restart charging immediately
+          player.isChargingAttack = true;
+          player.chargeStartTime = Date.now();
+          player.chargeAttackPower = 1;
+          player.attackType = "charged";
+        }
       }, RAW_PARRY_STUN_DURATION);
     } else {
       // Apply the knockback to the defending player
@@ -1385,9 +1662,9 @@ io.on("connection", (socket) => {
       if (player.activePowerUp === POWER_UP_TYPES.POWER) {
         finalKnockbackMultiplier = finalKnockbackMultiplier * player.powerUpMultiplier;
       }
-      if (otherPlayer.activePowerUp === POWER_UP_TYPES.SIZE) {
-        finalKnockbackMultiplier = finalKnockbackMultiplier * 0.85;
-      }
+      // if (otherPlayer.activePowerUp === POWER_UP_TYPES.SIZE) {
+      //   finalKnockbackMultiplier = finalKnockbackMultiplier * 0.85;
+      // }
 
       if (isSlapAttack) {
         // Convert knockback to movement velocity for ice-like sliding
@@ -1441,7 +1718,7 @@ io.on("connection", (socket) => {
       }
 
       // Clear hit state after duration
-      setTimeout(() => {
+      setPlayerTimeout(otherPlayer.id, () => {
         otherPlayer.isHit = false;
         if (!isSlapAttack) {
           otherPlayer.isAlreadyHit = false;
@@ -1477,6 +1754,10 @@ io.on("connection", (socket) => {
         isThrowing: false,
         isThrowingSalt: false,
         saltCooldown: false,
+        snowballCooldown: false,
+        lastSnowballTime: 0,
+        snowballs: [],
+        isThrowingSnowball: false,
         throwStartTime: 0,
         throwEndTime: 0,
         throwOpponent: null,
@@ -1522,6 +1803,8 @@ io.on("connection", (socket) => {
         wins: [],
         bufferedAction: null, // Add buffer for pending actions
         bufferExpiryTime: 0, // Add expiry time for buffered actions
+        wantsToRestartCharge: false, // Add flag for charge restart detection
+        mouse2HeldDuringAttack: false, // Add flag for simpler charge restart detection
       });
     } else if (rooms[index].players.length === 1) {
       rooms[index].players.push({
@@ -1542,6 +1825,10 @@ io.on("connection", (socket) => {
         isThrowing: false,
         isThrowingSalt: false,
         saltCooldown: false,
+        snowballCooldown: false,
+        lastSnowballTime: 0,
+        snowballs: [],
+        isThrowingSnowball: false,
         throwStartTime: 0,
         throwEndTime: 0,
         throwOpponent: null,
@@ -1587,6 +1874,8 @@ io.on("connection", (socket) => {
         wins: [],
         bufferedAction: null, // Add buffer for pending actions
         bufferExpiryTime: 0, // Add expiry time for buffered actions
+        wantsToRestartCharge: false, // Add flag for charge restart detection
+        mouse2HeldDuringAttack: false, // Add flag for simpler charge restart detection
       });
     }
 
@@ -1631,6 +1920,51 @@ io.on("connection", (socket) => {
       io.in(data.roomId).emit("initial_game_start", rooms[index]);
       console.log("Game started");
     }
+  });
+
+  socket.on("power_up_selected", (data) => {
+    const { roomId, playerId, powerUpType } = data;
+    const roomIndex = rooms.findIndex((room) => room.id === roomId);
+    
+    console.log(`Power-up selected: ${powerUpType} by player ${playerId} in room ${roomId}`);
+    
+    if (roomIndex === -1) return;
+    
+    const room = rooms[roomIndex];
+    const player = room.players.find(p => p.id === playerId);
+    
+    if (!player || !room.powerUpSelectionPhase) return;
+    
+    // Store the player's power-up selection
+    player.selectedPowerUp = powerUpType;
+    room.playersSelectedPowerUps[playerId] = powerUpType;
+    
+    // Check if both players have selected their power-ups
+    const selectedCount = Object.keys(room.playersSelectedPowerUps).length;
+    
+    console.log(`${selectedCount} out of ${room.players.length} players have selected power-ups`);
+    
+    if (selectedCount === 2) {
+      // Both players have selected, proceed with salt throwing
+      room.powerUpSelectionPhase = false;
+      
+      console.log(`All players selected, starting salt throwing in room ${roomId}`);
+      
+      // Emit that selection is complete
+      io.in(roomId).emit("power_up_selection_complete");
+      
+      // Start salt throwing for both players
+      room.players.forEach((player) => {
+        handleSaltThrowAndPowerUp(player, room);
+      });
+    }
+    
+    // Emit updated selection status to all players
+    io.in(roomId).emit("power_up_selection_status", {
+      selectedCount,
+      totalPlayers: room.players.length,
+      selections: room.playersSelectedPowerUps
+    });
   });
 
   socket.on("rematch_count", (data) => {
@@ -1685,17 +2019,53 @@ io.on("connection", (socket) => {
       return; // Skip all other actions if the game is over
     }
 
-    // Block all actions if player is throwing salt
-    if (player.isThrowingSalt) {
-      return;
-    }
-
     // Block all actions if player is moving to ready position
     if (player.canMoveToReady) {
       return;
     }
 
+    if (data.keys) {
+      player.keys = data.keys;
+      
+      // Debug logging for F key and snowball power-up
+      if (data.keys.f) {
+        console.log(`Player ${player.id} pressed F key. PowerUp: ${player.activePowerUp}, Cooldown: ${player.snowballCooldown}, isThrowingSnowball: ${player.isThrowingSnowball}`);
+      }
+    }
+
+    // Handle clearing charge during active charged attacks - MUST BE FIRST
     if (
+      player.keys.mouse1 &&
+      player.isAttacking &&
+      player.attackType === "charged" &&
+      !player.wasMouse1Pressed
+    ) {
+      console.log(`Player ${player.id} interrupting charged attack with slap`);
+      // Safely end the current charged attack (with recovery if needed)
+      safelyEndChargedAttack(player);
+      clearChargeState(player);
+      
+      // Execute slap attack immediately
+      executeSlapAttack(player);
+      return; // Exit early to prevent other input processing
+    }
+    
+    // Handle clearing charge during active charged attacks with throw/grab/snowball - MUST BE FIRST
+    if (
+      (player.keys.w || player.keys.e || player.keys.f) &&
+      player.isAttacking &&
+      player.attackType === "charged"
+    ) {
+      console.log(`Player ${player.id} interrupting charged attack with W/E/F input`);
+      // Safely end the current charged attack (with recovery if needed)
+      safelyEndChargedAttack(player);
+      clearChargeState(player);
+      
+      // The existing input handlers will take over for W/E/F
+    }
+
+    if (
+      false && // Disabled: power-ups are now selected via UI
       player.keys.f &&
       !player.saltCooldown &&
       ((player.fighter === "player 1" && player.x <= 280) ||
@@ -1728,459 +2098,564 @@ io.on("connection", (socket) => {
       }, 750);
     }
 
-    if (data.keys) {
-      player.keys = data.keys;
-
-      // console.log(data.keys);
-
-      if (
-        player.keys["shift"] &&
-        !player.keys.e &&
-        !player.keys.w &&
-        !player.isDodging &&
-        !player.isAttacking &&
-        !player.isThrowing &&
-        !player.isBeingThrown &&
-        !player.isGrabbing &&
-        !player.isBeingGrabbed &&
-        !player.isRawParryStun &&
-        !player.canMoveToReady && // Prevent dodge during ready position movement
-        player.dodgeCharges > 0 // Check if player has dodge charges
-      ) {
-        console.log("Executing immediate dodge");
-        player.isDodging = true;
-        player.dodgeStartTime = Date.now();
-        player.dodgeEndTime = Date.now() + 400;
-        player.dodgeStartX = player.x;
-        player.dodgeStartY = player.y;
-
-        // Find the first available charge (from right to left)
-        for (let i = player.dodgeChargeCooldowns.length - 1; i >= 0; i--) {
-          if (player.dodgeChargeCooldowns[i] === 0) {
-            // Use this charge
-            player.dodgeCharges--;
-            player.dodgeChargeCooldowns[i] = Date.now() + DODGE_COOLDOWN;
-            break;
-          }
+    // Handle snowball throwing
+    if (
+      player.keys.f &&
+      player.activePowerUp === POWER_UP_TYPES.SNOWBALL &&
+      !player.snowballCooldown &&
+      !player.isThrowingSnowball &&
+      !player.isAttacking &&
+      !player.isDodging &&
+      !player.isThrowing &&
+      !player.isBeingThrown &&
+      !player.isGrabbing &&
+      !player.isBeingGrabbed &&
+      !player.isHit &&
+      !player.isRecovering &&
+      !player.isRawParryStun &&
+      !player.canMoveToReady
+    ) {
+      console.log(`Player ${player.id} attempting to throw snowball`);
+      const currentTime = Date.now();
+      
+      // Check 5 second cooldown
+      if (currentTime - player.lastSnowballTime >= 5000) {
+        console.log(`Player ${player.id} throwing snowball - cooldown passed`);
+        
+        // Clear charge attack state if player was charging
+        if (player.isChargingAttack) {
+          console.log(`Player ${player.id} cancelling charge attack to throw snowball`);
+          clearChargeState(player);
         }
-
-        if (player.keys.a) {
-          player.dodgeDirection = -1;
-        } else if (player.keys.d) {
-          player.dodgeDirection = 1;
-        } else {
-          player.dodgeDirection = player.facing === -1 ? 1 : -1;
-        }
-
-        setTimeout(() => {
-          player.isDodging = false;
-          player.dodgeDirection = null;
-
-          // Check for buffered actions after dodge ends
-          if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
-            console.log("Executing buffered action after dodge");
-            const action = player.bufferedAction;
-            player.bufferedAction = null;
-            player.bufferExpiryTime = 0;
-
-            // Execute the buffered action
-            if (action.type === "dodge") {
-              player.isDodging = true;
-              player.dodgeStartTime = Date.now();
-              player.dodgeEndTime = Date.now() + 400;
-              player.dodgeDirection = action.direction;
-              player.dodgeStartX = player.x;
-              player.dodgeStartY = player.y;
-            }
-          }
-
-          // Handle pending charge attack
-          if (
-            player.pendingChargeAttack &&
-            player.spacebarReleasedDuringDodge
-          ) {
-            const chargePercentage = player.pendingChargeAttack.power;
-
-            // Determine if it's a slap or charged attack
-            if (player.keys.mouse1) {
-              player.isSlapAttack = true;
-              player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
-              player.attackEndTime = Date.now() + 250;
-              player.isAttacking = true;
-              player.attackStartTime = Date.now();
-              player.attackType = "slap";
-            } else {
-              executeChargedAttack(player, chargePercentage);
-            }
-
-            // Reset charging state
-            player.isChargingAttack = false;
-            player.pendingChargeAttack = null;
-            player.spacebarReleasedDuringDodge = false;
-          }
-        }, 400);
-      } else if (
-        player.keys["shift"] &&
-        (player.isAttacking ||
-          player.isThrowing ||
-          player.isBeingThrown ||
-          player.isGrabbing ||
-          player.isBeingGrabbed) && // Removed isDodging from this condition
-        !player.isDodging && // Add explicit check to prevent dodge buffering during dodge
-        player.dodgeCharges > 0 // Check if player has dodge charges
-      ) {
-        // Buffer the dodge action
-        console.log("Buffering dodge action");
-        const dodgeDirection = player.keys.a
-          ? -1
-          : player.keys.d
-          ? 1
-          : player.facing === -1
-          ? 1
-          : -1;
-        player.bufferedAction = {
-          type: "dodge",
-          direction: dodgeDirection,
+        
+        // Set throwing state
+        player.isThrowingSnowball = true;
+        
+        // Create snowball projectile
+        const snowball = {
+          id: Math.random().toString(36).substr(2, 9),
+          x: player.x,
+          y: player.y + 20, // Slightly above ground
+          velocityX: player.facing === 1 ? -2 : 2, // Slow moving projectile
+          hasHit: false,
+          ownerId: player.id
         };
-        player.bufferExpiryTime = Date.now() + 500; // Buffer expires after 500ms
+        
+        player.snowballs.push(snowball);
+        player.lastSnowballTime = currentTime;
+        player.snowballCooldown = true;
+        
+        console.log(`Created snowball:`, snowball);
+        
+        // Reset throwing state and allow movement after 1 second
+        setPlayerTimeout(player.id, () => {
+          player.isThrowingSnowball = false;
+          console.log(`Player ${player.id} finished throwing snowball`);
+          
+          // Check if we should restart charging after snowball throw completes
+          if (player.keys.mouse2 && 
+              !player.isAttacking &&
+              !player.isJumping &&
+              !player.isDodging &&
+              !player.isThrowing &&
+              !player.isBeingThrown &&
+              !player.isGrabbing &&
+              !player.isBeingGrabbed &&
+              !player.isHit &&
+              !player.isRecovering &&
+              !player.isRawParryStun &&
+              !player.isThrowingSnowball &&
+              !player.canMoveToReady) {
+            // Restart charging immediately
+            player.isChargingAttack = true;
+            player.chargeStartTime = Date.now();
+            player.chargeAttackPower = 1;
+            player.attackType = "charged";
+          }
+        }, 500);
+        
+        // Reset cooldown after 5 seconds
+        setPlayerTimeout(player.id, () => {
+          player.snowballCooldown = false;
+          console.log(`Player ${player.id} snowball cooldown reset`);
+        }, 5000);
+      } else {
+        console.log(`Player ${player.id} snowball still on cooldown`);
+      }
+    }
+
+    if (
+      player.keys["shift"] &&
+      !player.keys.e &&
+      !player.keys.w &&
+      !player.isDodging &&
+      !player.isAttacking &&
+      !player.isThrowing &&
+      !player.isBeingThrown &&
+      !player.isGrabbing &&
+      !player.isBeingGrabbed &&
+      !player.isRawParryStun &&
+      !player.isThrowingSnowball &&
+      !player.canMoveToReady && // Prevent dodge during ready position movement
+      player.dodgeCharges > 0 // Check if player has dodge charges
+    ) {
+      console.log("Executing immediate dodge");
+      player.isDodging = true;
+      player.dodgeStartTime = Date.now();
+      player.dodgeEndTime = Date.now() + 400;
+      player.dodgeStartX = player.x;
+      player.dodgeStartY = player.y;
+
+      // Find the first available charge (from right to left)
+      for (let i = player.dodgeChargeCooldowns.length - 1; i >= 0; i--) {
+        if (player.dodgeChargeCooldowns[i] === 0) {
+          // Use this charge
+          player.dodgeCharges--;
+          player.dodgeChargeCooldowns[i] = Date.now() + DODGE_COOLDOWN;
+          break;
+        }
       }
 
-      // Add buffer check in the attack completion logic
-      if (player.isAttacking && Date.now() >= player.attackEndTime) {
-        console.log("Attack completed, checking for buffered actions");
-        // Only clear attack states if we're not charging
-        if (!player.isChargingAttack) {
-          player.isAttacking = false;
-          player.isSlapAttack = false;
-          player.chargingFacingDirection = null;
-          player.attackType = null; // Clear attack type
+      if (player.keys.a) {
+        player.dodgeDirection = -1;
+      } else if (player.keys.d) {
+        player.dodgeDirection = 1;
+      } else {
+        player.dodgeDirection = player.facing === -1 ? 1 : -1;
+      }
 
-          // Check for buffered actions after attack ends
-          if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
-            console.log("Executing buffered action after attack");
-            const action = player.bufferedAction;
-            player.bufferedAction = null;
-            player.bufferExpiryTime = 0;
+      setTimeout(() => {
+        player.isDodging = false;
+        player.dodgeDirection = null;
 
-            // Clear charging state when executing buffered action
-            player.isChargingAttack = false;
-            player.chargeStartTime = 0;
-            player.chargeAttackPower = 0;
-            player.chargingFacingDirection = null;
-            player.attackType = null;
+        // Check for buffered actions after dodge ends
+        if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
+          console.log("Executing buffered action after dodge");
+          const action = player.bufferedAction;
+          player.bufferedAction = null;
+          player.bufferExpiryTime = 0;
 
-            // Execute the buffered action
-            if (action.type === "dodge") {
-              player.isDodging = true;
-              player.dodgeStartTime = Date.now();
-              player.dodgeEndTime = Date.now() + 400;
-              player.stamina -= 50;
-              player.dodgeDirection = action.direction;
-              player.dodgeStartX = player.x;
-              player.dodgeStartY = player.y;
-            }
+          // Execute the buffered action
+          if (action.type === "dodge") {
+            player.isDodging = true;
+            player.dodgeStartTime = Date.now();
+            player.dodgeEndTime = Date.now() + 400;
+            player.dodgeDirection = action.direction;
+            player.dodgeStartX = player.x;
+            player.dodgeStartY = player.y;
           }
         }
-      }
 
-      // Start charging attack
-      if (
-        player.keys.mouse2 &&
-        !player.isChargingAttack && // Only check these conditions when starting
-        !player.isAttacking &&
-        !player.isJumping &&
-        !player.isDodging &&
-        !player.isThrowing &&
-        !player.isBeingThrown &&
-        !player.isGrabbing &&
-        !player.isBeingGrabbed &&
-        !player.isHit &&
-        !player.isRecovering && // Add recovery check
-        !player.isRawParryStun &&
-        !player.canMoveToReady // Prevent charging during ready position movement
-      ) {
-        // Start charging
-        player.isChargingAttack = true;
-        player.chargeStartTime = Date.now();
-        player.chargeAttackPower = 1;
-        player.spacebarReleasedDuringDodge = false;
-        player.attackType = "charged"; // Set attack type immediately when charging starts
-      }
-      // For continuing a charge
-      else if (
-        player.keys.mouse2 &&
-        (player.isChargingAttack || player.isDodging) &&
-        !player.isHit &&
-        !player.isRecovering && // Add recovery check
-        !player.isRawParryStun
-      ) {
-        // If we're dodging and not already charging, start charging
-        if (player.isDodging && !player.isChargingAttack) {
-          player.isChargingAttack = true;
-          player.chargeStartTime = Date.now();
-          player.chargeAttackPower = 1;
-          player.attackType = "charged";
-        }
-        // Calculate charge power (0-100%)
-        const chargeDuration = Date.now() - player.chargeStartTime;
-        player.chargeAttackPower = Math.min((chargeDuration / 750) * 100, 100);
+        // Handle pending charge attack
+        if (
+          player.pendingChargeAttack &&
+          player.spacebarReleasedDuringDodge
+        ) {
+          const chargePercentage = player.pendingChargeAttack.power;
 
-        // Lock facing direction while charging
-        if (player.isThrowing || player.throwingFacingDirection !== null) {
-          player.chargingFacingDirection = player.throwingFacingDirection;
-        } else {
-          player.chargingFacingDirection = player.facing;
-        }
+          // Determine if it's a slap or charged attack
+          if (player.keys.mouse1) {
+            player.isSlapAttack = true;
+            player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
+            player.attackEndTime = Date.now() + 250;
+            player.isAttacking = true;
+            player.attackStartTime = Date.now();
+            player.attackType = "slap";
+          } else {
+            executeChargedAttack(player, chargePercentage);
+          }
 
-        if (player.chargingFacingDirection !== null) {
-          player.facing = player.chargingFacingDirection;
+          // Reset charging state
+          player.isChargingAttack = false;
+          player.pendingChargeAttack = null;
+          player.spacebarReleasedDuringDodge = false;
         }
-      }
-      // Release charged attack when mouse2 is released
-      else if (
-        !player.keys.mouse2 &&
-        player.isChargingAttack &&
-        !player.isGrabbing &&
-        !player.isBeingGrabbed &&
-        !player.isThrowing &&
-        !player.isBeingThrown
-      ) {
-        // If dodging, store the charge for later
-        if (player.isDodging) {
-          player.pendingChargeAttack = {
-            power: player.chargeAttackPower,
-            startTime: player.chargeStartTime,
-            type: "charged",
-          };
-          player.spacebarReleasedDuringDodge = true;
-        } else {
-          executeChargedAttack(player, player.chargeAttackPower);
-        }
-      }
-      // Clear charging state if mouse2 is released and we're not in a valid state
-      else if (!player.keys.mouse2 && player.isChargingAttack) {
+      }, 400);
+    } else if (
+      player.keys["shift"] &&
+      (player.isAttacking ||
+        player.isThrowing ||
+        player.isBeingThrown ||
+        player.isGrabbing ||
+        player.isBeingGrabbed) && // Removed isDodging from this condition
+      !player.isDodging && // Add explicit check to prevent dodge buffering during dodge
+      !player.isThrowingSnowball &&
+      player.dodgeCharges > 0 // Check if player has dodge charges
+    ) {
+      // Buffer the dodge action
+      console.log("Buffering dodge action");
+      const dodgeDirection = player.keys.a
+        ? -1
+        : player.keys.d
+        ? 1
+        : player.facing === -1
+        ? 1
+        : -1;
+      player.bufferedAction = {
+        type: "dodge",
+        direction: dodgeDirection,
+      };
+      player.bufferExpiryTime = Date.now() + 500; // Buffer expires after 500ms
+    }
+
+    // Add buffer check in the attack completion logic
+    if (player.isAttacking && Date.now() >= player.attackEndTime) {
+      console.log("Attack completed, checking for buffered actions");
+      // Use helper function to safely end charged attacks
+      safelyEndChargedAttack(player);
+      
+      // Check for buffered actions after attack ends
+      if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
+        console.log("Executing buffered action after attack");
+        const action = player.bufferedAction;
+        player.bufferedAction = null;
+        player.bufferExpiryTime = 0;
+
+        // Clear charging state when executing buffered action
         player.isChargingAttack = false;
         player.chargeStartTime = 0;
         player.chargeAttackPower = 0;
         player.chargingFacingDirection = null;
         player.attackType = null;
-      }
 
-      // Add new section to handle state transitions while holding mouse2
-      if (
-        player.keys.mouse2 &&
-        !player.isChargingAttack &&
-        !player.isAttacking &&
-        !player.isHit &&
-        !player.isRecovering &&
-        !player.isRawParryStun &&
-        !player.isBeingThrown &&
-        !player.isBeingGrabbed
-      ) {
-        // Check if we should resume charging after a state transition
-        const timeSinceLastCharge =
-          Date.now() - (player.lastChargeEndTime || 0);
-        if (timeSinceLastCharge < 1000) {
-          // Resume charging if within 1 second of last charge
-          player.isChargingAttack = true;
-          player.chargeStartTime = Date.now();
-          player.chargeAttackPower = Math.min(player.lastChargePower || 0, 100);
-          player.attackType = "charged";
+        // Execute the buffered action
+        if (action.type === "dodge") {
+          player.isDodging = true;
+          player.dodgeStartTime = Date.now();
+          player.dodgeEndTime = Date.now() + 400;
+          player.stamina -= 50;
+          player.dodgeDirection = action.direction;
+          player.dodgeStartX = player.x;
+          player.dodgeStartY = player.y;
         }
       }
+    }
 
-      // Store charge state when clearing it
-      if (player.isChargingAttack && !player.keys.mouse2) {
-        player.lastChargeEndTime = Date.now();
-        player.lastChargePower = player.chargeAttackPower;
+    // Start charging attack
+    if (
+      player.keys.mouse2 &&
+      !player.isChargingAttack && // Only check these conditions when starting
+      !player.isAttacking &&
+      !player.isJumping &&
+      !player.isDodging &&
+      !player.isThrowing &&
+      !player.isBeingThrown &&
+      !player.isGrabbing &&
+      !player.isBeingGrabbed &&
+      !player.isHit &&
+      !player.isRecovering && // Add recovery check
+      !player.isRawParryStun &&
+      !player.isThrowingSnowball &&
+      !player.canMoveToReady // Prevent charging during ready position movement
+    ) {
+      // Start charging
+      player.isChargingAttack = true;
+      player.chargeStartTime = Date.now();
+      player.chargeAttackPower = 1;
+      player.spacebarReleasedDuringDodge = false;
+      player.attackType = "charged"; // Set attack type immediately when charging starts
+    }
+    // For continuing a charge
+    else if (
+      player.keys.mouse2 &&
+      (player.isChargingAttack || player.isDodging) &&
+      !player.isHit &&
+      !player.isRecovering && // Add recovery check
+      !player.isRawParryStun &&
+      !player.isThrowingSnowball
+    ) {
+      // If we're dodging and not already charging, start charging
+      if (player.isDodging && !player.isChargingAttack) {
+        player.isChargingAttack = true;
+        player.chargeStartTime = Date.now();
+        player.chargeAttackPower = 1;
+        player.attackType = "charged";
+      }
+      // Calculate charge power (0-100%)
+      const chargeDuration = Date.now() - player.chargeStartTime;
+      player.chargeAttackPower = Math.min((chargeDuration / 750) * 100, 100);
+
+      // Lock facing direction while charging
+      if (player.isThrowing || player.throwingFacingDirection !== null) {
+        player.chargingFacingDirection = player.throwingFacingDirection;
+      } else {
+        player.chargingFacingDirection = player.facing;
       }
 
-      // Handle slap attacks with mouse1
-      if (
-        player.keys.mouse1 &&
-        !player.isJumping &&
-        !player.isDodging &&
-        !player.isThrowing &&
-        !player.isBeingThrown &&
-        !player.isGrabbing &&
-        !player.isBeingGrabbed &&
-        !player.isHit &&
-        !player.isRawParryStun &&
-        !player.canMoveToReady && // Prevent slap attacks during ready position movement
-        !player.wasMouse1Pressed // Add check for previous mouse1 state
-      ) {
-        // Initialize slap buffer if it doesn't exist
-        if (!player.slapBuffer) {
-          player.slapBuffer = {
-            lastSlapTime: 0,
-            slapCooldown: 180,
-            pendingSlaps: 0,
-            bufferWindow: 200,
-          };
-        }
+      if (player.chargingFacingDirection !== null) {
+        player.facing = player.chargingFacingDirection;
+      }
+    }
+    // Handle mouse2 held during active charged attack - check more broadly
+    if (
+      player.keys.mouse2 &&
+      player.isAttacking &&
+      player.attackType === "charged"
+    ) {
+      // Set flag to indicate player wants to restart charging after attack
+      if (!player.wantsToRestartCharge) {
+        console.log(`Player ${player.id} holding mouse2 during charged attack - setting restart flag`);
+      }
+      player.wantsToRestartCharge = true;
+    }
+    
+    // Also check if mouse2 is being held when we're about to execute a charged attack
+    if (
+      player.keys.mouse2 &&
+      player.pendingChargeAttack &&
+      !player.isAttacking
+    ) {
+      console.log(`Player ${player.id} holding mouse2 with pending charge attack - setting restart flag`);
+      player.wantsToRestartCharge = true;
+    }
+    // Release charged attack when mouse2 is released
+    else if (
+      !player.keys.mouse2 &&
+      player.isChargingAttack &&
+      !player.isGrabbing &&
+      !player.isBeingGrabbed &&
+      !player.isThrowing &&
+      !player.isBeingThrown &&
+      !player.isThrowingSnowball
+    ) {
+      // If dodging, store the charge for later
+      if (player.isDodging) {
+        player.pendingChargeAttack = {
+          power: player.chargeAttackPower,
+          startTime: player.chargeStartTime,
+          type: "charged",
+        };
+        player.spacebarReleasedDuringDodge = true;
+      } else {
+        executeChargedAttack(player, player.chargeAttackPower);
+      }
+    }
+    // Clear charging state if mouse2 is released and we're not in a valid state
+    else if (!player.keys.mouse2 && player.isChargingAttack) {
+      player.isChargingAttack = false;
+      player.chargeStartTime = 0;
+      player.chargeAttackPower = 0;
+      player.chargingFacingDirection = null;
+      player.attackType = null;
+      player.mouse2HeldDuringAttack = false; // Clear flag when mouse2 is released
+    }
 
-        // Always try to execute slap attack - the function will handle buffering internally
-        // This allows buffering during strafing and other states
-        executeSlapAttack(player);
+    // Add new section to handle state transitions while holding mouse2
+    if (
+      player.keys.mouse2 &&
+      !player.isChargingAttack &&
+      !player.isAttacking &&
+      !player.isHit &&
+      !player.isRecovering &&
+      !player.isRawParryStun &&
+      !player.isBeingThrown &&
+      !player.isBeingGrabbed &&
+      !player.isThrowing &&
+      !player.isGrabbing &&
+      !player.isDodging &&
+      !player.isThrowingSnowball &&
+      !player.canMoveToReady &&
+      !player.isSlapAttack && // Add explicit check for slap attacks
+      !player.isJumping // Add explicit check for jumping
+    ) {
+      // Check if we should resume charging after a state transition
+      const timeSinceLastCharge =
+        Date.now() - (player.lastChargeEndTime || 0);
+      
+      // Only auto-resume if it's been less than 500ms since last charge ended
+      // This prevents the weird reset behavior
+      if (timeSinceLastCharge < 500 && timeSinceLastCharge > 0) {
+        // Resume charging if very recent charge history
+        player.isChargingAttack = true;
+        player.chargeStartTime = Date.now();
+        player.chargeAttackPower = Math.min(player.lastChargePower || 0, 100);
+        player.attackType = "charged";
+      }
+      // Remove the "else" clause that was auto-starting fresh charges
+      // This was causing the unwanted charge resets
+    }
+
+    // Store charge state when clearing it
+    if (player.isChargingAttack && !player.keys.mouse2) {
+      player.lastChargeEndTime = Date.now();
+      player.lastChargePower = player.chargeAttackPower;
+    }
+
+    // Handle slap attacks with mouse1
+    if (
+      player.keys.mouse1 &&
+      !player.isJumping &&
+      !player.isDodging &&
+      !player.isThrowing &&
+      !player.isBeingThrown &&
+      !player.isGrabbing &&
+      !player.isBeingGrabbed &&
+      !player.isHit &&
+      !player.isRawParryStun &&
+      !player.isThrowingSnowball &&
+      !player.canMoveToReady && // Prevent slap attacks during ready position movement
+      !player.wasMouse1Pressed // Add check for previous mouse1 state
+    ) {
+      // Initialize slap buffer if it doesn't exist
+      if (!player.slapBuffer) {
+        player.slapBuffer = {
+          lastSlapTime: 0,
+          slapCooldown: 180,
+          pendingSlaps: 0,
+          bufferWindow: 200,
+        };
       }
 
-      // Store the current mouse1 state for next frame
-      player.wasMouse1Pressed = player.keys.mouse1;
+      // Always try to execute slap attack - the function will handle buffering internally
+      // This allows buffering during strafing and other states
+      executeSlapAttack(player);
+    }
 
-      function isOpponentCloseEnoughForGrab(player, opponent) {
-        // Calculate grab range based on player size
-        const grabRange = GRAB_RANGE * (player.sizeMultiplier || 1);
-        return Math.abs(player.x - opponent.x) < grabRange;
-      }
-      if (
-        player.keys.w &&
-        !player.keys.e &&
-        !player.isThrowingSalt &&
-        !player.isThrowing &&
-        !player.isBeingThrown &&
-        !player.isGrabbing &&
-        !player.isBeingGrabbed &&
-        !player.isDodging &&
-        !player.isRawParrying &&
-        !player.isAttacking &&
-        !player.isJumping &&
-        !player.throwCooldown &&
-        !player.isRawParryStun &&
-        !player.isRecovering &&
-        !player.canMoveToReady // Prevent throws during ready position movement
-      ) {
-        // Reset any lingering throw states before starting a new throw
-        player.throwingFacingDirection = null;
-        player.throwStartTime = 0;
-        player.throwEndTime = 0;
-        player.throwOpponent = null;
+    // Store the current mouse1 state for next frame
+    player.wasMouse1Pressed = player.keys.mouse1;
 
-        player.lastThrowAttemptTime = Date.now();
+    function isOpponentCloseEnoughForGrab(player, opponent) {
+      // Calculate grab range based on player size
+      const grabRange = GRAB_RANGE * (player.sizeMultiplier || 1);
+      return Math.abs(player.x - opponent.x) < grabRange;
+    }
+    if (
+      player.keys.w &&
+      !player.keys.e &&
+      !player.isThrowingSalt &&
+      !player.isThrowing &&
+      !player.isBeingThrown &&
+      !player.isGrabbing &&
+      !player.isBeingGrabbed &&
+      !player.isDodging &&
+      !player.isRawParrying &&
+      !player.isAttacking &&
+      !player.isJumping &&
+      !player.throwCooldown &&
+      !player.isRawParryStun &&
+      !player.isRecovering &&
+      !player.isThrowingSnowball &&
+      !player.canMoveToReady // Prevent throws during ready position movement
+    ) {
+      // Reset any lingering throw states before starting a new throw
+      player.throwingFacingDirection = null;
+      player.throwStartTime = 0;
+      player.throwEndTime = 0;
+      player.throwOpponent = null;
 
-        setTimeout(() => {
-          const opponent = rooms[index].players.find((p) => p.id !== player.id);
+      player.lastThrowAttemptTime = Date.now();
 
-          if (
-            isOpponentCloseEnoughForThrow(player, opponent) &&
-            !opponent.isBeingThrown &&
-            !opponent.isAttacking &&
-            !opponent.isDodging
-          ) {
-            if (checkForThrowTech(player, opponent)) {
-              applyThrowTech(player, opponent);
-            } else if (!player.throwTechCooldown) {
-              player.isChargingAttack = false;
-              player.chargeStartTime = 0;
-              player.chargeAttackPower = 1;
-              player.chargingFacingDirection = null;
+      setPlayerTimeout(player.id, () => {
+        const opponent = rooms[index].players.find((p) => p.id !== player.id);
 
-              player.isThrowing = true;
-              player.throwStartTime = Date.now();
-              player.throwEndTime = Date.now() + 400;
-              player.throwOpponent = opponent.id;
-              opponent.isBeingThrown = true;
-              opponent.isHit = true;
-
-              player.throwCooldown = true;
-              setTimeout(() => {
-                player.throwCooldown = false;
-              }, 250);
-            }
-          } else {
-            player.isChargingAttack = false;
-            player.chargeStartTime = 0;
-            player.chargeAttackPower = 1;
-            player.chargingFacingDirection = null;
+        if (
+          isOpponentCloseEnoughForThrow(player, opponent) &&
+          !opponent.isBeingThrown &&
+          !opponent.isAttacking &&
+          !opponent.isDodging
+        ) {
+          if (checkForThrowTech(player, opponent)) {
+            applyThrowTech(player, opponent);
+          } else if (!player.throwTechCooldown) {
+            clearChargeState(player);
 
             player.isThrowing = true;
             player.throwStartTime = Date.now();
             player.throwEndTime = Date.now() + 400;
+            player.throwOpponent = opponent.id;
+            opponent.isBeingThrown = true;
+            opponent.isHit = true;
 
             player.throwCooldown = true;
-            setTimeout(() => {
+            setPlayerTimeout(player.id, () => {
               player.throwCooldown = false;
             }, 250);
           }
-        }, 64);
-      }
+        } else {
+          clearChargeState(player);
 
-      // In the grabbing section, update the if condition and add cooldown:
-      if (
-        player.keys.e &&
-        !player.isGrabbing &&
-        !player.isBeingThrown &&
-        !player.isBeingGrabbed &&
-        !player.isDodging &&
-        !player.isRawParrying &&
-        !player.isAttacking &&
-        !player.isJumping &&
-        !player.isThrowing &&
-        !player.grabCooldown &&
-        !player.isPushing &&
-        !player.isBeingPushed &&
-        !player.isBeingGrabbed &&
-        !player.grabbedOpponent &&
-        !player.isRawParryStun &&
-        !player.canMoveToReady // Prevent grabs during ready position movement
-      ) {
-        player.lastGrabAttemptTime = Date.now();
+          player.isThrowing = true;
+          player.throwStartTime = Date.now();
+          player.throwEndTime = Date.now() + 400;
 
-        setTimeout(() => {
-          const opponent = rooms[index].players.find((p) => p.id !== player.id);
-          // Clear charging attack state regardless of grab success
-          player.isChargingAttack = false;
-          player.chargeStartTime = 0;
-          player.chargeAttackPower = 0;
-          player.chargingFacingDirection = null;
+          player.throwCooldown = true;
+          setPlayerTimeout(player.id, () => {
+            player.throwCooldown = false;
+          }, 250);
+        }
+      }, 64);
+    }
 
-          if (
-            isOpponentCloseEnoughForGrab(player, opponent) &&
-            !opponent.isBeingThrown &&
-            !opponent.isAttacking &&
-            !opponent.isBeingGrabbed &&
-            !player.isBeingGrabbed
-          ) {
-            if (checkForThrowTech(player, opponent)) {
-              applyThrowTech(player, opponent);
-            } else if (!player.throwTechCooldown) {
-              player.isChargingAttack = false;
-              player.chargeStartTime = 0;
-              player.chargeAttackPower = 1;
-              player.chargingFacingDirection = null;
+    // In the grabbing section, update the if condition and add cooldown:
+    if (
+      player.keys.e &&
+      !player.isGrabbing &&
+      !player.isBeingThrown &&
+      !player.isBeingGrabbed &&
+      !player.isDodging &&
+      !player.isRawParrying &&
+      !player.isAttacking &&
+      !player.isJumping &&
+      !player.isThrowing &&
+      !player.grabCooldown &&
+      !player.isPushing &&
+      !player.isBeingPushed &&
+      !player.isBeingGrabbed &&
+      !player.grabbedOpponent &&
+      !player.isRawParryStun &&
+      !player.isThrowingSnowball &&
+      !player.canMoveToReady // Prevent grabs during ready position movement
+    ) {
+      player.lastGrabAttemptTime = Date.now();
 
-              player.isGrabbing = true;
-              player.grabStartTime = Date.now();
-              player.grabbedOpponent = opponent.id;
-              opponent.isBeingGrabbed = true;
-              opponent.isHit = false; // Ensure isHit is false for initial grab
+      setPlayerTimeout(player.id, () => {
+        const opponent = rooms[index].players.find((p) => p.id !== player.id);
+        // Clear charging attack state regardless of grab success
+        clearChargeState(player);
 
-              if (player.isChargingAttack) {
-                player.grabFacingDirection = player.chargingFacingDirection;
-              } else {
-                player.grabFacingDirection = player.facing;
-              }
+        if (
+          isOpponentCloseEnoughForGrab(player, opponent) &&
+          !opponent.isBeingThrown &&
+          !opponent.isAttacking &&
+          !opponent.isBeingGrabbed &&
+          !player.isBeingGrabbed
+        ) {
+          if (checkForThrowTech(player, opponent)) {
+            applyThrowTech(player, opponent);
+          } else if (!player.throwTechCooldown) {
+            clearChargeState(player);
 
-              player.grabCooldown = true;
-              setTimeout(() => {
-                player.grabCooldown = false;
-              }, 1100);
-            }
-          } else {
             player.isGrabbing = true;
             player.grabStartTime = Date.now();
+            player.grabbedOpponent = opponent.id;
+            opponent.isBeingGrabbed = true;
+            opponent.isHit = false; // Ensure isHit is false for initial grab
 
-            // Only set cooldown if the grab was actually attempted
-            if (isOpponentCloseEnoughForGrab(player, opponent)) {
-              player.grabCooldown = true;
-              setTimeout(() => {
-                player.grabCooldown = false;
-              }, 1100);
+            if (player.isChargingAttack) {
+              player.grabFacingDirection = player.chargingFacingDirection;
+            } else {
+              player.grabFacingDirection = player.facing;
             }
+
+            player.grabCooldown = true;
+            setPlayerTimeout(player.id, () => {
+              player.grabCooldown = false;
+            }, 1100);
           }
-        }, 64);
-      }
+        } else {
+          player.isGrabbing = true;
+          player.grabStartTime = Date.now();
+
+          // Only set cooldown if the grab was actually attempted
+          if (isOpponentCloseEnoughForGrab(player, opponent)) {
+            player.grabCooldown = true;
+            setPlayerTimeout(player.id, () => {
+              player.grabCooldown = false;
+            }, 1100);
+          }
+        }
+      }, 64);
     }
-    // console.log(player.keys);
   });
 
   socket.on("leave_room", (data) => {
@@ -2188,6 +2663,9 @@ io.on("connection", (socket) => {
     const roomIndex = rooms.findIndex((room) => room.id === roomId);
 
     if (roomIndex !== -1) {
+      // Clean up timeouts for the leaving player
+      timeoutManager.clearPlayer(socket.id);
+
       // Remove the player from the room
       rooms[roomIndex].players = rooms[roomIndex].players.filter(
         (player) => player.id !== socket.id
@@ -2226,6 +2704,9 @@ io.on("connection", (socket) => {
   socket.on("disconnect", (reason) => {
     const roomId = socket.roomId;
     const roomIndex = rooms.findIndex((room) => room.id === roomId);
+
+    // Clean up timeouts for the disconnecting player
+    timeoutManager.clearPlayer(socket.id);
 
     if (rooms[roomIndex]) {
       // Clean up the room state
@@ -2470,7 +2951,7 @@ function executeSlapAttack(player) {
     if (timeSinceLastSlap < player.slapBuffer.bufferWindow && !player.slapBuffer.hasBufferedSlap) {
       player.slapBuffer.hasBufferedSlap = true;
       // Schedule the next slap to execute as soon as cooldown ends
-      setTimeout(() => {
+      setPlayerTimeout(player.id, () => {
         if (player.slapBuffer.hasBufferedSlap) {
           player.slapBuffer.hasBufferedSlap = false;
           // Only execute if player is still in a valid state
@@ -2485,13 +2966,8 @@ function executeSlapAttack(player) {
     return;
   }
 
-  // Clear any ongoing charge attack
-  player.isChargingAttack = false;
-  player.chargeStartTime = 0;
-  player.chargeAttackPower = 0;
-  player.chargingFacingDirection = null;
-  player.pendingChargeAttack = null;
-  player.spacebarReleasedDuringDodge = false;
+  // Use the new helper function to clear charge with auto-restart
+  clearChargeState(player);
 
   player.isSlapAttack = true;
   player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
@@ -2504,13 +2980,34 @@ function executeSlapAttack(player) {
   player.slapBuffer.lastSlapTime = Date.now();
 
   // Set a timeout to reset the attack state and gradually reduce the slide
-  setTimeout(() => {
+  setPlayerTimeout(player.id, () => {
     player.isAttacking = false;
     player.isSlapAttack = false;
     player.attackType = null;
     player.isSlapSliding = false; // Clear the slap slide flag
     // Gradually reduce the slide velocity
     player.movementVelocity *= 0.5;
+    
+    // After slap attack ends, check if we should restart charging
+    if (player.keys.mouse2 && 
+        !player.isAttacking &&
+        !player.isJumping &&
+        !player.isDodging &&
+        !player.isThrowing &&
+        !player.isBeingThrown &&
+        !player.isGrabbing &&
+        !player.isBeingGrabbed &&
+        !player.isHit &&
+        !player.isRecovering &&
+        !player.isRawParryStun &&
+        !player.isThrowingSnowball &&
+        !player.canMoveToReady) {
+      // Restart charging immediately
+      player.isChargingAttack = true;
+      player.chargeStartTime = Date.now();
+      player.chargeAttackPower = 1;
+      player.attackType = "charged";
+    }
   }, 120); // Reduced animation duration for smoother rapid hits
 }
 
@@ -2554,6 +3051,15 @@ io.on("connection", (socket) => {
 
 // Add this new function near the other helper functions
 function executeChargedAttack(player, chargePercentage) {
+  console.log(`Player ${player.id} executing charged attack with ${chargePercentage}% charge`);
+  
+  // Check if mouse2 is held when the attack starts
+  const mouse2HeldOnStart = player.keys.mouse2;
+  if (mouse2HeldOnStart) {
+    console.log(`Player ${player.id} mouse2 is held when charged attack starts`);
+    player.mouse2HeldDuringAttack = true;
+  }
+  
   // Don't execute charged attack if player is in a throw state
   if (player.isThrowing || player.isBeingThrown) {
     return;
@@ -2643,6 +3149,9 @@ function executeChargedAttack(player, chargePercentage) {
     player.chargeAttackPower = 0;
     player.chargedAttackHit = false; // Reset hit tracking
 
+    // Clear the flag - restart logic now happens immediately when recovery ends
+    player.mouse2HeldDuringAttack = false;
+
     // Check for buffered actions after attack ends
     if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
       const action = player.bufferedAction;
@@ -2668,13 +3177,13 @@ function calculateEffectiveHitboxSize(player) {
   const baseSize = HITBOX_DISTANCE_VALUE * (player.sizeMultiplier || 1);
 
   // Only apply asymmetric adjustments if player has size power-up
-  if (player.activePowerUp === POWER_UP_TYPES.SIZE) {
-    // Return asymmetric hitbox for size power-up
-    return {
-      left: baseSize * SIZE_POWERUP_LEFT_MULTIPLIER,
-      right: baseSize * SIZE_POWERUP_RIGHT_MULTIPLIER,
-    };
-  }
+  // if (player.activePowerUp === POWER_UP_TYPES.SIZE) {
+  //   // Return asymmetric hitbox for size power-up
+  //   return {
+  //     left: baseSize * SIZE_POWERUP_LEFT_MULTIPLIER,
+  //     right: baseSize * SIZE_POWERUP_RIGHT_MULTIPLIER,
+  //   };
+  // }
 
   // For normal size, return symmetric hitbox
   return {
@@ -2684,10 +3193,10 @@ function calculateEffectiveHitboxSize(player) {
 }
 
 function handleReadyPositions(room, player1, player2) {
+
   if (room.gameStart === false && room.hakkiyoiCount === 0) {
     // Only adjust player 1's ready position based on size power-up
-    const player1ReadyX =
-      player1.activePowerUp === POWER_UP_TYPES.SIZE ? 325 : 355;
+    const player1ReadyX = 355; // Removed SIZE power-up condition
     const player2ReadyX = 690;
 
     // Only move players if they're allowed to move (after salt throw)
@@ -2729,6 +3238,11 @@ function handleReadyPositions(room, player1, player2) {
 
       const currentTime = Date.now();
       if (currentTime - room.readyStartTime >= 1000) {
+        // Clear the power-up auto-selection timer if players ready up normally
+        if (room.roundStartTimer) {
+          clearTimeout(room.roundStartTimer);
+          room.roundStartTimer = null;
+        }
         room.gameStart = true;
         room.hakkiyoiCount = 1;
         // Reset canMoveToReady for both players when game starts
@@ -2909,5 +3423,56 @@ function adjustPlayerPositions(player1, player2, delta) {
     if (newPlayer2X >= leftBoundary && newPlayer2X <= rightBoundary) {
       player2.x = newPlayer2X;
     }
+  }
+}
+
+// Add helper function for clearing charge with auto-restart
+function clearChargeState(player) {
+  // Clear charge state only - no auto-restart
+  // Auto-restart is now handled by specific action completion callbacks
+  player.isChargingAttack = false;
+  player.chargeStartTime = 0;
+  player.chargeAttackPower = 0;
+  player.chargingFacingDirection = null;
+  player.pendingChargeAttack = null;
+  player.spacebarReleasedDuringDodge = false;
+  player.mouse2HeldDuringAttack = false; // Clear the flag when clearing charge state
+}
+
+// Add helper function to safely end charged attacks with recovery check
+function safelyEndChargedAttack(player) {
+  // Only handle charged attacks, let slap attacks end normally
+  if (player.attackType === "charged" && !player.chargedAttackHit) {
+    console.log(`Safely ending charged attack for player ${player.id}, checking for recovery`);
+    
+    // Find the current room and opponent to check if recovery is needed
+    const currentRoom = rooms.find((room) =>
+      room.players.some((p) => p.id === player.id)
+    );
+
+    if (currentRoom) {
+      const opponent = currentRoom.players.find((p) => p.id !== player.id);
+      
+      // Set recovery for missed charged attacks (same logic as executeChargedAttack)
+      if (opponent && !opponent.isHit && !player.isChargingAttack && 
+          !player.isThrowing && !player.isBeingThrown) {
+        console.log(`Setting recovery state for player ${player.id} after missed charged attack`);
+        player.isRecovering = true;
+        player.recoveryStartTime = Date.now();
+        player.recoveryDuration = 250;
+        player.recoveryDirection = player.facing;
+        // Use movement velocity for natural sliding
+        player.movementVelocity = player.facing * -3;
+        player.knockbackVelocity = { x: 0, y: 0 };
+      }
+    }
+  }
+  
+  // Clear attack states (for both charged and slap attacks)
+  if (!player.isChargingAttack) {
+    player.isAttacking = false;
+    player.isSlapAttack = false;
+    player.chargingFacingDirection = null;
+    player.attackType = null;
   }
 }
