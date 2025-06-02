@@ -10,7 +10,6 @@ const PlayerStaminaUi = ({
   dodgeChargeCooldowns,
   activePowerUp,
   snowballCooldown,
-  lastSnowballTime,
 }) => {
   const staminaValue = typeof stamina === "object" ? stamina.stamina : stamina;
 
@@ -20,7 +19,6 @@ const PlayerStaminaUi = ({
         {activePowerUp === "snowball" && (
           <SnowballChargeUI
             snowballCooldown={snowballCooldown}
-            lastSnowballTime={lastSnowballTime}
             index={index}
           />
         )}
@@ -85,7 +83,6 @@ PlayerStaminaUi.propTypes = {
   dodgeChargeCooldowns: PropTypes.arrayOf(PropTypes.number),
   activePowerUp: PropTypes.string,
   snowballCooldown: PropTypes.bool,
-  lastSnowballTime: PropTypes.number,
 };
 
 export default PlayerStaminaUi;

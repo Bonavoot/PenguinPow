@@ -258,6 +258,12 @@ function cleanupRoom(room) {
 function executeChargedAttack(player, chargePercentage, rooms) {
   console.log(`Player ${player.id} executing charged attack with ${chargePercentage}% charge`);
   
+  // Prevent double execution - if player is already attacking, don't start another attack
+  if (player.isAttacking && player.attackType === "charged") {
+    console.log(`Player ${player.id} already executing charged attack, skipping duplicate execution`);
+    return;
+  }
+  
   // Check if mouse2 is held when the attack starts
   const mouse2HeldOnStart = player.keys.mouse2;
   if (mouse2HeldOnStart) {
@@ -265,12 +271,28 @@ function executeChargedAttack(player, chargePercentage, rooms) {
     player.mouse2HeldDuringAttack = true;
   }
   
+  // Clear any pending charge attack to prevent double execution
+  if (player.pendingChargeAttack) {
+    console.log(`Player ${player.id} clearing pending charge attack`);
+    player.pendingChargeAttack = null;
+    player.spacebarReleasedDuringDodge = false;
+  }
+  
   // Don't execute charged attack if player is in a throw state
   if (player.isThrowing || player.isBeingThrown) {
+    console.log(`Player ${player.id} cannot execute charged attack - in throw state`);
     return;
   }
 
-  // Clear any existing recovery state when starting a new attack
+  // Store previous recovery state in case we need to restore it
+  const previousRecoveryState = {
+    isRecovering: player.isRecovering,
+    recoveryStartTime: player.recoveryStartTime,
+    recoveryDuration: player.recoveryDuration,
+    recoveryDirection: player.recoveryDirection
+  };
+
+  // Only clear recovery state after we're certain the attack will execute
   player.isRecovering = false;
   player.recoveryStartTime = 0;
   player.recoveryDuration = 0;
@@ -310,71 +332,8 @@ function executeChargedAttack(player, chargePercentage, rooms) {
   player.isChargingAttack = false;
   player.chargeStartTime = 0;
 
-  // Store the attack start time for recovery timing
-  const attackStartTime = Date.now();
-
-  setTimeout(() => {
-    // Only set recovery if:
-    // 1. We're still in a charged attack state
-    // 2. Not in a throw state
-    // 3. The attack was actually released (not cancelled)
-    // 4. The attack duration has completed
-    // 5. No hit occurred during the attack
-    if (
-      player.attackType === "charged" &&
-      !player.isThrowing &&
-      !player.isBeingThrown &&
-      Date.now() - attackStartTime >= attackDuration &&
-      !player.chargedAttackHit
-    ) {
-      const currentRoom = rooms.find((room) =>
-        room.players.some((p) => p.id === player.id)
-      );
-
-      if (currentRoom) {
-        const opponent = currentRoom.players.find((p) => p.id !== player.id);
-        // Only set recovery for missed charged attacks
-        if (opponent && !opponent.isHit && !player.isChargingAttack) {
-          player.isRecovering = true;
-          player.recoveryStartTime = Date.now();
-          player.recoveryDuration = 250;
-          player.recoveryDirection = player.facing;
-          // Use movement velocity instead of knockback for more natural sliding
-          player.movementVelocity = player.facing * -3; // Increased from -2 for more momentum
-          player.knockbackVelocity = { x: 0, y: 0 }; // Clear knockback velocity
-        }
-      }
-    }
-
-    // Clear attack states
-    player.isAttacking = false;
-    player.isSlapAttack = false;
-    player.chargingFacingDirection = null;
-    player.attackType = null;
-    player.chargeAttackPower = 0;
-    player.chargedAttackHit = false; // Reset hit tracking
-
-    // Clear the flag - restart logic now happens immediately when recovery ends
-    player.mouse2HeldDuringAttack = false;
-
-    // Check for buffered actions after attack ends
-    if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
-      const action = player.bufferedAction;
-      player.bufferedAction = null;
-      player.bufferExpiryTime = 0;
-
-      // Execute the buffered action
-      if (action.type === "dodge") {
-        player.isDodging = true;
-        player.dodgeStartTime = Date.now();
-        player.dodgeEndTime = Date.now() + 400;
-        player.stamina -= 50;
-        player.dodgeDirection = action.direction;
-        player.dodgeStartX = player.x;
-        player.dodgeStartY = player.y;
-      }
-    }
-  }, attackDuration);
+  // Note: Recovery and state cleanup is now handled by safelyEndChargedAttack 
+  // in the main tick function when attackEndTime is reached
 }
 
 // Add new function to calculate effective hitbox size based on facing direction
@@ -635,6 +594,8 @@ function adjustPlayerPositions(player1, player2, delta) {
 
 // Add helper function to safely end charged attacks with recovery check
 function safelyEndChargedAttack(player, rooms) {
+  console.log(`safelyEndChargedAttack called for player ${player.id}, attackType: ${player.attackType}, chargedAttackHit: ${player.chargedAttackHit}`);
+  
   // Only handle charged attacks, let slap attacks end normally
   if (player.attackType === "charged" && !player.chargedAttackHit) {
     console.log(`Safely ending charged attack for player ${player.id}, checking for recovery`);
@@ -648,9 +609,8 @@ function safelyEndChargedAttack(player, rooms) {
       const opponent = currentRoom.players.find((p) => p.id !== player.id);
       
       // Set recovery for missed charged attacks (same logic as executeChargedAttack)
-      if (opponent && !opponent.isHit && !player.isChargingAttack && 
-          !player.isThrowing && !player.isBeingThrown) {
-        console.log(`Setting recovery state for player ${player.id} after missed charged attack`);
+      if (opponent && !opponent.isHit && !player.isChargingAttack) {
+        console.log(`Setting recovery state for player ${player.id} after missed charged attack (from safelyEndChargedAttack)`);
         player.isRecovering = true;
         player.recoveryStartTime = Date.now();
         player.recoveryDuration = 250;
@@ -658,16 +618,44 @@ function safelyEndChargedAttack(player, rooms) {
         // Use movement velocity for natural sliding
         player.movementVelocity = player.facing * -3;
         player.knockbackVelocity = { x: 0, y: 0 };
+      } else {
+        console.log(`Not setting recovery for player ${player.id} - opponent.isHit: ${opponent?.isHit}, isChargingAttack: ${player.isChargingAttack}`);
       }
     }
   }
   
   // Clear attack states (for both charged and slap attacks)
   if (!player.isChargingAttack) {
+    console.log(`Clearing attack states for player ${player.id} (from safelyEndChargedAttack)`);
     player.isAttacking = false;
     player.isSlapAttack = false;
     player.chargingFacingDirection = null;
     player.attackType = null;
+    player.chargeAttackPower = 0;
+    player.chargedAttackHit = false; // Reset hit tracking
+
+    // Clear the mouse2 flag - restart logic now happens immediately when recovery ends
+    player.mouse2HeldDuringAttack = false;
+
+    // Check for buffered actions after attack ends
+    if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
+      const action = player.bufferedAction;
+      player.bufferedAction = null;
+      player.bufferExpiryTime = 0;
+
+      // Execute the buffered action
+      if (action.type === "dodge") {
+        player.isDodging = true;
+        player.dodgeStartTime = Date.now();
+        player.dodgeEndTime = Date.now() + 400;
+        player.stamina -= 50;
+        player.dodgeDirection = action.direction;
+        player.dodgeStartX = player.x;
+        player.dodgeStartY = player.y;
+      }
+    }
+  } else {
+    console.log(`Not clearing attack states for player ${player.id} - player is charging`);
   }
 }
 

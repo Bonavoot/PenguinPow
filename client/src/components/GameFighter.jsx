@@ -640,7 +640,7 @@ const YouLabel = styled.div`
 
 const SnowballProjectile = styled.img`
   position: absolute;
-  width: 3%;
+  width: 4.5%;
   height: auto;
   left: ${props => (props.$x / 1280) * 100 + 5}%;
   bottom: ${props => (props.$y / 720) * 100 + 10}%;
@@ -1106,7 +1106,6 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         dodgeChargeCooldowns={penguin.dodgeChargeCooldowns}
         activePowerUp={penguin.activePowerUp}
         snowballCooldown={penguin.snowballCooldown}
-        lastSnowballTime={penguin.lastSnowballTime}
       />
       <SaltBasket
         src={
