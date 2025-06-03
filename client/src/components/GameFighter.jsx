@@ -1,4 +1,10 @@
-import { useContext, useEffect, useState, useRef } from "react";
+import React, {
+  useContext,
+  useEffect,
+  useState,
+  useRef,
+  useCallback,
+} from "react";
 import { SocketContext } from "../SocketContext";
 import PropTypes from "prop-types";
 import styled from "styled-components";
@@ -71,16 +77,65 @@ import SnowEffect from "./SnowEffect";
 
 const GROUND_LEVEL = 145; // Ground level constant
 
+// Audio pool for better performance
+const audioPool = new Map();
+const createAudioPool = (src, poolSize = 3) => {
+  if (!audioPool.has(src)) {
+    const pool = [];
+    for (let i = 0; i < poolSize; i++) {
+      const audio = new Audio(src);
+      audio.preload = "auto";
+      pool.push(audio);
+    }
+    audioPool.set(src, { pool, currentIndex: 0 });
+  }
+};
+
+// Initialize audio pools
+const initializeAudioPools = () => {
+  createAudioPool(attackSound, 2);
+  createAudioPool(hitSound, 2);
+  createAudioPool(dodgeSound, 2);
+  createAudioPool(throwSound, 2);
+  createAudioPool(grabSound, 2);
+  createAudioPool(slapParrySound, 2);
+  createAudioPool(saltSound, 2);
+  createAudioPool(hakkiyoiSound, 1);
+  createAudioPool(bellSound, 1);
+  createAudioPool(winnerSound, 1);
+};
+
+// Initialize pools immediately
+initializeAudioPools();
+
 const playSound = (audioFile, volume = 1.0) => {
   try {
-    const sound = new Audio(audioFile);
-    sound.volume = volume * getGlobalVolume();
-    sound.play().catch((error) => {
-      // Ignore AbortError as it's expected when sounds overlap
-      if (error.name !== "AbortError") {
-        console.error("Error playing sound:", error);
-      }
-    });
+    const poolData = audioPool.get(audioFile);
+    if (poolData) {
+      const { pool, currentIndex } = poolData;
+      const sound = pool[currentIndex];
+      sound.volume = volume * getGlobalVolume();
+      sound.currentTime = 0; // Reset to start
+      sound.play().catch((error) => {
+        if (error.name !== "AbortError") {
+          console.error("Error playing sound:", error);
+        }
+      });
+      // Cycle to next audio instance
+      audioPool.set(audioFile, {
+        pool,
+        currentIndex: (currentIndex + 1) % pool.length,
+      });
+    } else {
+      // Fallback to old method
+      const sound = new Audio(audioFile);
+      sound.volume = volume * getGlobalVolume();
+      sound.play().catch((error) => {
+        if (error.name !== "AbortError") {
+          console.error("Error playing sound:", error);
+        }
+      });
+    }
   } catch (error) {
     console.error("Error creating audio:", error);
   }
@@ -372,25 +427,23 @@ const FloatingPowerUpText = styled.div`
         return "#FFD700";
     }
   }};
-  text-shadow: 
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
+  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
     1px 1px 0 #000,
-    0 0 8px ${(props) => {
-      switch (props.$powerUpType) {
-        case "speed":
-          return "rgba(0, 191, 255, 0.6)";
-        case "power":
-          return "rgba(255, 68, 68, 0.6)";
-        case "snowball":
-          return "rgba(255, 255, 255, 0.6)";
-        default:
-          return "rgba(255, 215, 0, 0.6)";
-      }
-    }};
+    0 0 8px
+      ${(props) => {
+        switch (props.$powerUpType) {
+          case "speed":
+            return "rgba(0, 191, 255, 0.6)";
+          case "power":
+            return "rgba(255, 68, 68, 0.6)";
+          case "snowball":
+            return "rgba(255, 255, 255, 0.6)";
+          default:
+            return "rgba(255, 215, 0, 0.6)";
+        }
+      }};
   pointer-events: none;
-  animation: simpleFloatUp 2.0s ease-out forwards;
+  animation: simpleFloatUp 2s ease-out forwards;
   bottom: 55%;
   left: ${(props) => (props.$index === 0 ? "20%" : "auto")};
   right: ${(props) => (props.$index === 1 ? "20%" : "auto")};
@@ -404,81 +457,17 @@ const FloatingPowerUpText = styled.div`
 
   @keyframes simpleFloatUp {
     0% {
-      transform: translateY(0px) scale(1.0);
+      transform: translateY(0px) scale(1);
       opacity: 0;
     }
     20% {
       opacity: 1;
     }
     100% {
-      transform: translateY(-60px) scale(1.0);
+      transform: translateY(-60px) scale(1);
       opacity: 0;
     }
   }
-`;
-
-const KeyContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: clamp(0.25rem, 0.5vw, 0.5rem);
-`;
-
-const Key = styled.div`
-  width: clamp(1.5rem, 3vw, 2.5rem);
-  height: clamp(1.5rem, 3vw, 2.5rem);
-  background: linear-gradient(145deg, #2a2a2a, #1a1a1a);
-  border-radius: 0.3rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: "Bungee";
-  font-size: clamp(0.8rem, 1.5vw, 1.2rem);
-  color: #ffd700;
-  box-shadow: 0 0.2rem 0.4rem rgba(0, 0, 0, 0.3),
-    inset 0 0.1rem 0.2rem rgba(255, 255, 255, 0.1);
-  position: relative;
-  animation: keyPress 1.5s infinite;
-
-  @keyframes keyPress {
-    0% {
-      transform: translateY(0) scale(1);
-      box-shadow: 0 0.2rem 0.4rem rgba(0, 0, 0, 0.3),
-        inset 0 0.1rem 0.2rem rgba(255, 255, 255, 0.1);
-    }
-    10% {
-      transform: translateY(-0.3rem) scale(0.95);
-      box-shadow: 0 0.1rem 0.2rem rgba(0, 0, 0, 0.2),
-        inset 0 0.05rem 0.1rem rgba(255, 255, 255, 0.05);
-    }
-    20% {
-      transform: translateY(0) scale(1);
-      box-shadow: 0 0.2rem 0.4rem rgba(0, 0, 0, 0.3),
-        inset 0 0.1rem 0.2rem rgba(255, 255, 255, 0.1);
-    }
-    30% {
-      transform: translateY(-0.2rem) scale(0.98);
-      box-shadow: 0 0.15rem 0.3rem rgba(0, 0, 0, 0.25),
-        inset 0 0.08rem 0.15rem rgba(255, 255, 255, 0.08);
-    }
-    40% {
-      transform: translateY(0) scale(1);
-      box-shadow: 0 0.2rem 0.4rem rgba(0, 0, 0, 0.3),
-        inset 0 0.1rem 0.2rem rgba(255, 255, 255, 0.1);
-    }
-    100% {
-      transform: translateY(0) scale(1);
-      box-shadow: 0 0.2rem 0.4rem rgba(0, 0, 0, 0.3),
-        inset 0 0.1rem 0.2rem rgba(255, 255, 255, 0.1);
-    }
-  }
-`;
-
-const KeyLabel = styled.div`
-  font-size: clamp(0.6rem, 1vw, 0.8rem);
-  color: #ffd700;
-  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
-    1px 1px 0 #000;
 `;
 
 const CountdownTimer = styled.div`
@@ -517,13 +506,14 @@ const SaltBasket = styled.img
 
 const YouLabel = styled.div`
   position: absolute;
-  bottom: ${props => (props.y / 720) * 100 + 33}%;
-  left: ${props => (props.x / 1280) * 100 + 9}%;
+  bottom: ${(props) => (props.y / 720) * 100 + 33}%;
+  left: ${(props) => (props.x / 1280) * 100 + 9}%;
   transform: translateX(-50%);
   color: #ffd700;
   font-family: "Bungee";
   font-size: clamp(18px, 1.5vw, 24px);
-  text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000;
+  text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000,
+    2px 2px 0 #000;
   z-index: 1000;
   pointer-events: none;
   display: flex;
@@ -541,11 +531,12 @@ const SnowballProjectile = styled.img`
   position: absolute;
   width: 4.5%;
   height: auto;
-  left: ${props => (props.$x / 1280) * 100 + 5}%;
-  bottom: ${props => (props.$y / 720) * 100 + 10}%;
+  left: ${(props) => (props.$x / 1280) * 100 + 5}%;
+  bottom: ${(props) => (props.$y / 720) * 100 + 10}%;
   z-index: 95;
   pointer-events: none;
-  filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000);
+  filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000)
+    drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000);
 `;
 
 const GameFighter = ({ player, index, roomName, localId }) => {
@@ -621,8 +612,38 @@ const GameFighter = ({ player, index, roomName, localId }) => {
   const lastWinnerState = useRef(gameOver);
   const lastWinnerSoundPlay = useRef(0);
 
+  // Add performance optimizations
+  const frameRate = useRef(60);
+  const lastFrameTime = useRef(performance.now());
+  const frameCount = useRef(0);
+  const lastFpsUpdate = useRef(performance.now());
+
+  // Optimize animation frame with actual usage
+  const animate = useCallback((timestamp) => {
+    // Request next frame first to ensure consistent timing
+    requestAnimationFrame(animate);
+
+    // Calculate delta time for smooth animations
+    lastFrameTime.current = timestamp;
+
+    // Update FPS counter every second
+    frameCount.current++;
+    if (timestamp - lastFpsUpdate.current >= 1000) {
+      frameRate.current = frameCount.current;
+      frameCount.current = 0;
+      lastFpsUpdate.current = timestamp;
+    }
+  }, []);
+
   useEffect(() => {
-    socket.on("fighter_action", (data) => {
+    // Start animation loop
+    const animationId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationId);
+  }, [animate]);
+
+  // Memoize frequently accessed socket listeners to prevent recreation
+  const handleFighterAction = useCallback(
+    (data) => {
       if (index === 0) {
         setPenguin({
           ...data.player1,
@@ -648,14 +669,19 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         });
         setStamina(data.player2.stamina);
       }
-      
+
       // Update all snowballs from both players
       const combinedSnowballs = [
         ...(data.player1.snowballs || []),
-        ...(data.player2.snowballs || [])
+        ...(data.player2.snowballs || []),
       ];
       setAllSnowballs(combinedSnowballs);
-    });
+    },
+    [index]
+  );
+
+  useEffect(() => {
+    socket.on("fighter_action", handleFighterAction);
 
     socket.on("slap_parry", (position) => {
       if (
@@ -683,7 +709,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         if (data.attackingPlayerId === player.id) {
           console.log("Showing star stun effect for player:", player.id);
           setShowStarStunEffect(true);
-          
+
           // Don't set a timeout here - let the effect disappear when stun ends
         }
       }
@@ -694,12 +720,12 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         // Show floating text for this specific player
         setShowFloatingPowerUp(true);
         setFloatingPowerUpType(data.powerUpType);
-        
+
         // Hide the floating text after animation
         setTimeout(() => {
           setShowFloatingPowerUp(false);
         }, 2000);
-        
+
         // Only update penguin state and play sound for local player
         if (data.playerId === localId) {
           setPenguin((prev) => ({
@@ -791,7 +817,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         clearInterval(countdownRef.current);
       }
     };
-  }, [index, socket]);
+  }, [index, socket, handleFighterAction]);
 
   useEffect(() => {
     gameMusicRef.current = new Audio(gameMusic);
@@ -895,13 +921,25 @@ const GameFighter = ({ player, index, roomName, localId }) => {
   // Hide star stun effect when stun ends
   useEffect(() => {
     if (!penguin.isRawParryStun && showStarStunEffect) {
-      console.log("Hiding star stun effect - isRawParryStun:", penguin.isRawParryStun, "showStarStunEffect:", showStarStunEffect);
+      console.log(
+        "Hiding star stun effect - isRawParryStun:",
+        penguin.isRawParryStun,
+        "showStarStunEffect:",
+        showStarStunEffect
+      );
       setShowStarStunEffect(false);
     }
     // Also show the effect if the player becomes stunned but the effect isn't showing
     // This handles cases where the perfect_parry event might arrive after the fighter_action update
-    if (penguin.isRawParryStun && !showStarStunEffect && penguin.id === player.id) {
-      console.log("Player is stunned but no star effect - showing stars for player:", player.id);
+    if (
+      penguin.isRawParryStun &&
+      !showStarStunEffect &&
+      penguin.id === player.id
+    ) {
+      console.log(
+        "Player is stunned but no star effect - showing stars for player:",
+        player.id
+      );
       setShowStarStunEffect(true);
     }
   }, [penguin.isRawParryStun, showStarStunEffect, penguin.id, player.id]);
@@ -985,9 +1023,14 @@ const GameFighter = ({ player, index, roomName, localId }) => {
       {matchOver && (
         <MatchOver winner={winner} localId={localId} roomName={roomName} />
       )}
-      {penguin.id === localId && !hakkiyoi && gyojiState === "idle" && countdown > 0 && (
-        <YouLabel x={penguin.x} y={penguin.y}>YOU</YouLabel>
-      )}
+      {penguin.id === localId &&
+        !hakkiyoi &&
+        gyojiState === "idle" &&
+        countdown > 0 && (
+          <YouLabel x={penguin.x} y={penguin.y}>
+            YOU
+          </YouLabel>
+        )}
       <PowerMeter
         isCharging={penguin.isChargingAttack}
         chargePower={penguin.chargeAttackPower}
@@ -1017,10 +1060,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         $isVisible={true}
       />
       {showFloatingPowerUp && (
-        <FloatingPowerUpText 
-          $powerUpType={floatingPowerUpType} 
-          $index={index}
-        >
+        <FloatingPowerUpText $powerUpType={floatingPowerUpType} $index={index}>
           {floatingPowerUpType.toUpperCase()}++
         </FloatingPowerUpText>
       )}
@@ -1115,11 +1155,11 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         playerY={penguin.y + 100}
       />
       <SlapParryEffect position={parryEffectPosition} />
-      <StarStunEffect 
+      <StarStunEffect
         x={penguin.x}
         y={penguin.y}
         facing={penguin.facing}
-        isActive={showStarStunEffect} 
+        isActive={showStarStunEffect}
       />
       <ThrowTechEffect />
       {countdown > 0 &&
@@ -1148,4 +1188,13 @@ GameFighter.propTypes = {
   localId: PropTypes.string.isRequired,
 };
 
-export default GameFighter;
+// Optimize the component with React.memo
+export default React.memo(GameFighter, (prevProps, nextProps) => {
+  // Add custom comparison logic if needed
+  return (
+    prevProps.player === nextProps.player &&
+    prevProps.index === nextProps.index &&
+    prevProps.roomName === nextProps.roomName &&
+    prevProps.localId === nextProps.localId
+  );
+});

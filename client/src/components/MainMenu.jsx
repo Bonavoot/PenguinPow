@@ -12,7 +12,12 @@ import pumo2 from "../assets/pumo2.png";
 import mainMenuBackground from "../assets/main-menu-bkg.png";
 import mainMenuBackground2 from "../assets/main-menu-bkg-2.png";
 import mainMenuBackground3 from "../assets/main-menu-bkg-3.png";
-import { playButtonHoverSound, playButtonPressSound2, playBackgroundMusic, stopBackgroundMusic } from "../utils/soundUtils";
+import {
+  playButtonHoverSound,
+  playButtonPressSound2,
+  playBackgroundMusic,
+  stopBackgroundMusic,
+} from "../utils/soundUtils";
 
 const fadeIn = keyframes`
   from {
@@ -88,7 +93,7 @@ const BackgroundImage = styled.img`
   height: 100%;
   object-fit: cover;
   z-index: 0;
-  opacity: ${props => props.$isVisible ? 1 : 0};
+  opacity: ${(props) => (props.$isVisible ? 1 : 0)};
   transition: opacity 1s ease-in-out;
   pointer-events: none;
 `;
@@ -102,7 +107,7 @@ const YellowOverlay = styled.div`
   background: linear-gradient(
     135deg,
     rgba(220, 180, 140, 0.8),
-    rgba(180, 140, 100, .8)
+    rgba(180, 140, 100, 0.8)
   );
   z-index: 1;
   pointer-events: none;
@@ -323,7 +328,14 @@ const preloadAssets = (sources) => {
   });
 };
 
-const preGameImages = [lobbyBackground, pumo, pumo2, mainMenuBackground, mainMenuBackground2, mainMenuBackground3];
+const preGameImages = [
+  lobbyBackground,
+  pumo,
+  pumo2,
+  mainMenuBackground,
+  mainMenuBackground2,
+  mainMenuBackground3,
+];
 preloadAssets(preGameImages);
 
 const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
@@ -331,7 +343,11 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
   const [showSettings, setShowSettings] = useState(false);
   const [currentBgIndex, setCurrentBgIndex] = useState(0);
 
-  const backgroundImages = [mainMenuBackground, mainMenuBackground2, mainMenuBackground3];
+  const backgroundImages = [
+    mainMenuBackground,
+    mainMenuBackground2,
+    mainMenuBackground3,
+  ];
 
   useEffect(() => {
     // Start playing background music when MainMenu mounts
@@ -414,14 +430,43 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
         </Logo>
         {/* <SumoImage src={sumo} alt="sumo" /> */}
         <ButtonContainer>
-          <MenuButton $isActive onClick={() => { handleDisplayRooms(); playButtonPressSound2(); }} onMouseEnter={playButtonHoverSound}>
+          <MenuButton
+            $isActive
+            onClick={() => {
+              handleDisplayRooms();
+              playButtonPressSound2();
+            }}
+            onMouseEnter={playButtonHoverSound}
+          >
             PLAY
           </MenuButton>
-          <MenuButton onClick={() => playButtonPressSound()} onMouseEnter={playButtonHoverSound}>BASHO</MenuButton>
-          <MenuButton onClick={() => playButtonPressSound()} onMouseEnter={playButtonHoverSound}>CUSTOMIZE</MenuButton>
-          <MenuButton onClick={() => playButtonPressSound()} onMouseEnter={playButtonHoverSound}>STATS</MenuButton>
+          <MenuButton
+            onClick={() => playButtonPressSound()}
+            onMouseEnter={playButtonHoverSound}
+          >
+            BASHO
+          </MenuButton>
+          <MenuButton
+            onClick={() => playButtonPressSound()}
+            onMouseEnter={playButtonHoverSound}
+          >
+            CUSTOMIZE
+          </MenuButton>
+          <MenuButton
+            onClick={() => playButtonPressSound()}
+            onMouseEnter={playButtonHoverSound}
+          >
+            STATS
+          </MenuButton>
         </ButtonContainer>
-        <SettingsButton className="settings-button" onClick={() => { handleSettings(); playButtonPressSound(); }} onMouseEnter={playButtonHoverSound}>
+        <SettingsButton
+          className="settings-button"
+          onClick={() => {
+            handleSettings();
+            playButtonPressSound();
+          }}
+          onMouseEnter={playButtonHoverSound}
+        >
           <span className="material-symbols-outlined">settings</span>
         </SettingsButton>
         {showSettings && <Settings onClose={() => setShowSettings(false)} />}
@@ -448,10 +493,10 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
     case "lobby":
       return (
         <div className="current-page">
-          <Lobby 
-            rooms={rooms} 
-            roomName={roomName} 
-            handleGame={handleGame} 
+          <Lobby
+            rooms={rooms}
+            roomName={roomName}
+            handleGame={handleGame}
             setCurrentPage={setCurrentPage}
           />
         </div>
