@@ -30,10 +30,10 @@ const {
   shouldRestartCharging,
   startCharging,
   canPlayerSlap,
-  clearChargeState
+  clearChargeState,
 } = require("./gameUtils");
 
-// Import game functions  
+// Import game functions
 const {
   cleanupGrabStates,
   handleWinCondition,
@@ -44,7 +44,7 @@ const {
   handleReadyPositions,
   arePlayersColliding,
   adjustPlayerPositions,
-  safelyEndChargedAttack
+  safelyEndChargedAttack,
 } = require("./gameFunctions");
 
 const app = express();
@@ -170,17 +170,16 @@ const PERFECT_PARRY_WINDOW = 100; // 100ms window for perfect parries
 const DODGE_COOLDOWN = 2000; // 2 second cooldown between dodges
 const MAX_DODGE_CHARGES = 2; // Maximum number of dodge charges
 
-
 function handlePowerUpSelection(room) {
   // Reset power-up selection state for the room
   room.powerUpSelectionPhase = true;
   room.playersSelectedPowerUps = {};
-  
+
   console.log(`Starting power-up selection for room ${room.id}`);
-  
+
   // Emit power-up selection event to all players in the room
   io.in(room.id).emit("power_up_selection_start", {
-    availablePowerUps: Object.values(POWER_UP_TYPES)
+    availablePowerUps: Object.values(POWER_UP_TYPES),
   });
 }
 
@@ -203,13 +202,17 @@ function handleSaltThrowAndPowerUp(player, room) {
   }
 
   // Reset salt throwing state after animation
-  setPlayerTimeout(player.id, () => {
-    player.isThrowingSalt = false;
-    player.saltCooldown = false;
-    
-    // Allow movement after salt throw is complete
-    player.canMoveToReady = true;
-  }, 500);
+  setPlayerTimeout(
+    player.id,
+    () => {
+      player.isThrowingSalt = false;
+      player.saltCooldown = false;
+
+      // Allow movement after salt throw is complete
+      player.canMoveToReady = true;
+    },
+    500
+  );
 }
 
 function resetRoomAndPlayers(room) {
@@ -228,12 +231,14 @@ function resetRoomAndPlayers(room) {
   room.roundStartTimer = setTimeout(() => {
     // Check if we're still in power-up selection phase
     if (room.powerUpSelectionPhase && room.players.length === 2) {
-      console.log(`Timer expired, auto-selecting power-ups for room ${room.id}`);
-      
+      console.log(
+        `Timer expired, auto-selecting power-ups for room ${room.id}`
+      );
+
       // Auto-select the first power-up (SPEED) for any players who haven't selected
       const availablePowerUps = Object.values(POWER_UP_TYPES);
       const firstPowerUp = availablePowerUps[0]; // This will be "speed"
-      
+
       room.players.forEach((player) => {
         if (!player.selectedPowerUp) {
           console.log(`Auto-selecting ${firstPowerUp} for player ${player.id}`);
@@ -241,19 +246,21 @@ function resetRoomAndPlayers(room) {
           room.playersSelectedPowerUps[player.id] = firstPowerUp;
         }
       });
-      
+
       // Check if all players now have selections (they should after auto-selection)
       const selectedCount = Object.keys(room.playersSelectedPowerUps).length;
-      
+
       if (selectedCount === room.players.length) {
         // All players have selections, proceed with normal flow
         room.powerUpSelectionPhase = false;
-        
-        console.log(`Auto-selection complete, starting salt throwing in room ${room.id}`);
-        
+
+        console.log(
+          `Auto-selection complete, starting salt throwing in room ${room.id}`
+        );
+
         // Emit that selection is complete
         io.in(room.id).emit("power_up_selection_complete");
-        
+
         // Start salt throwing for both players
         room.players.forEach((player) => {
           handleSaltThrowAndPowerUp(player, room);
@@ -456,16 +463,24 @@ io.on("connection", (socket) => {
     opponent.throwTechCooldown = true;
 
     // Reset throw tech animation after duration
-    setPlayerTimeout(player.id, () => {
-      player.isThrowTeching = false;
-      opponent.isThrowTeching = false;
-    }, THROW_TECH_DURATION);
+    setPlayerTimeout(
+      player.id,
+      () => {
+        player.isThrowTeching = false;
+        opponent.isThrowTeching = false;
+      },
+      THROW_TECH_DURATION
+    );
 
     // Reset cooldown after longer duration
-    setPlayerTimeout(player.id, () => {
-      player.throwTechCooldown = false;
-      opponent.throwTechCooldown = false;
-    }, THROW_TECH_COOLDOWN);
+    setPlayerTimeout(
+      player.id,
+      () => {
+        player.throwTechCooldown = false;
+        opponent.throwTechCooldown = false;
+      },
+      THROW_TECH_COOLDOWN
+    );
   }
 
   function tick(delta) {
@@ -637,10 +652,12 @@ io.on("connection", (socket) => {
               player.isRecovering = false;
               player.movementVelocity = 0;
               player.recoveryDirection = null;
-              
+
               // Check if we should restart charging immediately after recovery ends
               if (player.mouse2HeldDuringAttack && player.keys.mouse2) {
-                console.log(`Player ${player.id} restarting charge immediately after recovery ends (mouse2 was held during attack)`);
+                console.log(
+                  `Player ${player.id} restarting charge immediately after recovery ends (mouse2 was held during attack)`
+                );
                 // Restart charging immediately since player was holding mouse2 during attack
                 player.isChargingAttack = true;
                 player.chargeStartTime = Date.now();
@@ -649,19 +666,23 @@ io.on("connection", (socket) => {
                 player.mouse2HeldDuringAttack = false; // Clear the flag
               }
               // Otherwise check normal conditions for restart
-              else if (player.keys.mouse2 && 
-                  !player.isAttacking &&
-                  !player.isJumping &&
-                  !player.isDodging &&
-                  !player.isThrowing &&
-                  !player.isBeingThrown &&
-                  !player.isGrabbing &&
-                  !player.isBeingGrabbed &&
-                  !player.isHit &&
-                  !player.isRawParryStun &&
-                  !player.isThrowingSnowball &&
-                  !player.canMoveToReady) {
-                console.log(`Player ${player.id} restarting charge after recovery ends (normal conditions)`);
+              else if (
+                player.keys.mouse2 &&
+                !player.isAttacking &&
+                !player.isJumping &&
+                !player.isDodging &&
+                !player.isThrowing &&
+                !player.isBeingThrown &&
+                !player.isGrabbing &&
+                !player.isBeingGrabbed &&
+                !player.isHit &&
+                !player.isRawParryStun &&
+                !player.isThrowingSnowball &&
+                !player.canMoveToReady
+              ) {
+                console.log(
+                  `Player ${player.id} restarting charge after recovery ends (normal conditions)`
+                );
                 // Restart charging immediately
                 player.isChargingAttack = true;
                 player.chargeStartTime = Date.now();
@@ -676,42 +697,51 @@ io.on("connection", (socket) => {
         [player1, player2].forEach((player) => {
           // Store initial snowball count to detect removals
           const initialSnowballCount = player.snowballs.length;
-          
+
           // Update snowball positions and check for collisions
           player.snowballs = player.snowballs.filter((snowball) => {
             // Move snowball
             snowball.x += snowball.velocityX * delta * speedFactor;
-            
+
             // Check if snowball is off-screen
             if (snowball.x < -50 || snowball.x > 1330) {
               return false; // Remove snowball
             }
-            
+
             // Check collision with opponent
-            const opponent = room.players.find(p => p.id !== player.id);
-            if (opponent && !opponent.isDodging && !opponent.isRawParrying && !snowball.hasHit) {
+            const opponent = room.players.find((p) => p.id !== player.id);
+            if (
+              opponent &&
+              !opponent.isDodging &&
+              !opponent.isRawParrying &&
+              !snowball.hasHit
+            ) {
               const distance = Math.abs(snowball.x - opponent.x);
               if (distance < 50 && Math.abs(snowball.y - opponent.y) < 30) {
                 // Hit opponent
                 snowball.hasHit = true;
                 opponent.isHit = true;
                 opponent.isAlreadyHit = true;
-                
+
                 // Apply knockback
                 const knockbackDirection = snowball.velocityX > 0 ? 1 : -1;
                 opponent.knockbackVelocity.x = knockbackDirection * 3;
                 opponent.movementVelocity = knockbackDirection * 2;
-                
+
                 // Reset hit state after duration
-                setPlayerTimeout(opponent.id, () => {
-                  opponent.isHit = false;
-                  opponent.isAlreadyHit = false;
-                }, 300);
-                
+                setPlayerTimeout(
+                  opponent.id,
+                  () => {
+                    opponent.isHit = false;
+                    opponent.isAlreadyHit = false;
+                  },
+                  300
+                );
+
                 return false; // Remove snowball after hit
               }
             }
-            
+
             // Check collision with raw parrying opponent (snowball is blocked but destroyed)
             if (opponent && opponent.isRawParrying && !snowball.hasHit) {
               const distance = Math.abs(snowball.x - opponent.x);
@@ -721,14 +751,19 @@ io.on("connection", (socket) => {
                 return false; // Remove snowball after being blocked
               }
             }
-            
+
             return true; // Keep snowball
           });
-          
+
           // Check if snowballs were removed and reset cooldown if no snowballs remain
-          if (initialSnowballCount > player.snowballs.length && player.snowballs.length === 0) {
+          if (
+            initialSnowballCount > player.snowballs.length &&
+            player.snowballs.length === 0
+          ) {
             player.snowballCooldown = false;
-            console.log(`Player ${player.id} snowball cooldown reset - no snowballs remaining`);
+            console.log(
+              `Player ${player.id} snowball cooldown reset - no snowballs remaining`
+            );
           }
         });
       }
@@ -829,8 +864,21 @@ io.on("connection", (socket) => {
             player.facing === 1) ||
           (player.isBeingThrown &&
             !room.gameOver &&
-            ((player.x <= MAP_LEFT_BOUNDARY && player.throwerX < 540) ||
-              (player.x >= MAP_RIGHT_BOUNDARY && player.throwerX > 540))) ||
+            // Find the thrower to check their throwing direction
+            (() => {
+              const thrower = room.players.find(
+                (p) => p.throwOpponent === player.id
+              );
+              if (!thrower) return false;
+
+              // Only ring out if being thrown TOWARD the boundary
+              return (
+                (player.x <= MAP_LEFT_BOUNDARY &&
+                  thrower.throwingFacingDirection === -1) ||
+                (player.x >= MAP_RIGHT_BOUNDARY &&
+                  thrower.throwingFacingDirection === 1)
+              );
+            })()) ||
           // Add new condition for charged attack ring out
           (player.isAttacking &&
             !player.isSlapAttack &&
@@ -914,8 +962,10 @@ io.on("connection", (socket) => {
             if (currentTime >= player.throwEndTime) {
               // Check for win condition at the end of throw
               if (
-                (opponent.x >= MAP_RIGHT_BOUNDARY && player.x > 540) ||
-                (opponent.x <= MAP_LEFT_BOUNDARY && player.x < 540)
+                (opponent.x >= MAP_RIGHT_BOUNDARY &&
+                  player.throwingFacingDirection === 1) ||
+                (opponent.x <= MAP_LEFT_BOUNDARY &&
+                  player.throwingFacingDirection === -1)
               ) {
                 handleWinCondition(room, opponent, player, io);
               } else {
@@ -955,7 +1005,7 @@ io.on("connection", (socket) => {
 
           if (currentTime >= player.throwEndTime) {
             player.isThrowing = false;
-            
+
             // Check if we should restart charging after missed throw completes
             if (shouldRestartCharging(player)) {
               // Restart charging immediately
@@ -1182,7 +1232,9 @@ io.on("connection", (socket) => {
                 newX = player.x + delta * speedFactor * player.movementVelocity;
               } else {
                 // Use power-up affected speed factor for normal movement
-                newX = player.x + delta * currentSpeedFactor * player.movementVelocity;
+                newX =
+                  player.x +
+                  delta * currentSpeedFactor * player.movementVelocity;
               }
 
               // Check boundaries and stop sliding if hitting them
@@ -1201,9 +1253,9 @@ io.on("connection", (socket) => {
 
           // Update strafing state
           if (
-            !player.keys.a &&
-            !player.keys.d &&
-            (!player.canMoveToReady || room.gameStart) ||
+            (!player.keys.a &&
+              !player.keys.d &&
+              (!player.canMoveToReady || room.gameStart)) ||
             player.keys.mouse1 // Add condition to prevent strafing while slapping
           ) {
             player.isStrafing = false;
@@ -1226,7 +1278,7 @@ io.on("connection", (socket) => {
               player.movementVelocity *= MOVEMENT_FRICTION;
             }
           }
-          
+
           // Keep player from going below ground level
           if (player.y > GROUND_LEVEL) {
             player.y -= delta * speedFactor + 10;
@@ -1280,12 +1332,12 @@ io.on("connection", (socket) => {
         // Handle raw parry ending logic
         if (player.isRawParrying) {
           const parryDuration = Date.now() - player.rawParryStartTime;
-          
+
           // Check if minimum duration has been met
           if (parryDuration >= 750) {
             player.rawParryMinDurationMet = true;
           }
-          
+
           // Only end parry if s key is released AND minimum duration is met
           if (!player.keys.s && player.rawParryMinDurationMet) {
             player.isRawParrying = false;
@@ -1323,28 +1375,30 @@ io.on("connection", (socket) => {
             if (grabDuration >= GRAB_DURATION) {
               // Release after 1.5 seconds
               cleanupGrabStates(player, opponent);
-              
+
               // Check if we should restart charging after grab completes
-              if (player.keys.mouse2 && 
-                  !player.isAttacking &&
-                  !player.isJumping &&
-                  !player.isDodging &&
-                  !player.isThrowing &&
-                  !player.isBeingThrown &&
-                  !player.isGrabbing &&
-                  !player.isBeingGrabbed &&
-                  !player.isHit &&
-                  !player.isRecovering &&
-                  !player.isRawParryStun &&
-                  !player.isThrowingSnowball &&
-                  !player.canMoveToReady) {
+              if (
+                player.keys.mouse2 &&
+                !player.isAttacking &&
+                !player.isJumping &&
+                !player.isDodging &&
+                !player.isThrowing &&
+                !player.isBeingThrown &&
+                !player.isGrabbing &&
+                !player.isBeingGrabbed &&
+                !player.isHit &&
+                !player.isRecovering &&
+                !player.isRawParryStun &&
+                !player.isThrowingSnowball &&
+                !player.canMoveToReady
+              ) {
                 // Restart charging immediately
                 player.isChargingAttack = true;
                 player.chargeStartTime = Date.now();
                 player.chargeAttackPower = 1;
                 player.attackType = "charged";
               }
-              
+
               return;
             }
 
@@ -1360,21 +1414,23 @@ io.on("connection", (socket) => {
           const grabDuration = Date.now() - player.grabStartTime;
           if (grabDuration >= 500) {
             player.isGrabbing = false;
-            
+
             // Check if we should restart charging after missed grab completes
-            if (player.keys.mouse2 && 
-                !player.isAttacking &&
-                !player.isJumping &&
-                !player.isDodging &&
-                !player.isThrowing &&
-                !player.isBeingThrown &&
-                !player.isGrabbing &&
-                !player.isBeingGrabbed &&
-                !player.isHit &&
-                !player.isRecovering &&
-                !player.isRawParryStun &&
-                !player.isThrowingSnowball &&
-                !player.canMoveToReady) {
+            if (
+              player.keys.mouse2 &&
+              !player.isAttacking &&
+              !player.isJumping &&
+              !player.isDodging &&
+              !player.isThrowing &&
+              !player.isBeingThrown &&
+              !player.isGrabbing &&
+              !player.isBeingGrabbed &&
+              !player.isHit &&
+              !player.isRecovering &&
+              !player.isRawParryStun &&
+              !player.isThrowingSnowball &&
+              !player.canMoveToReady
+            ) {
               // Restart charging immediately
               player.isChargingAttack = true;
               player.chargeStartTime = Date.now();
@@ -1395,7 +1451,7 @@ io.on("connection", (socket) => {
         // if (player.activePowerUp === POWER_UP_TYPES.SIZE) {
         //   player.sizeMultiplier = player.powerUpMultiplier;
         // } else {
-          player.sizeMultiplier = 1;
+        player.sizeMultiplier = 1;
         // }
 
         // Update charge attack power in the game loop
@@ -1585,13 +1641,17 @@ io.on("connection", (socket) => {
       const remainingAttackTime = originalAttackEndTime - currentTime;
 
       if (remainingAttackTime > 0) {
-        setPlayerTimeout(player.id, () => {
-          player.isAttacking = false;
-          player.isSlapAttack = false;
-          player.attackStartTime = 0;
-          player.attackEndTime = 0;
-          player.attackType = null;
-        }, remainingAttackTime);
+        setPlayerTimeout(
+          player.id,
+          () => {
+            player.isAttacking = false;
+            player.isSlapAttack = false;
+            player.attackStartTime = 0;
+            player.attackEndTime = 0;
+            player.attackType = null;
+          },
+          remainingAttackTime
+        );
       }
     }
 
@@ -1599,22 +1659,24 @@ io.on("connection", (socket) => {
     if (otherPlayer.isRawParrying) {
       // Determine if this is a slap attack being parried
       const isSlapBeingParried = player.attackType === "slap" || isSlapAttack;
-      
+
       // Check if this is a perfect parry (within 100ms of parry start)
       const currentTime = Date.now();
       const parryDuration = currentTime - otherPlayer.rawParryStartTime;
       const isPerfectParry = parryDuration <= PERFECT_PARRY_WINDOW;
-      
+
       // Apply appropriate knockback based on attack type
-      const knockbackAmount = isSlapBeingParried ? RAW_PARRY_SLAP_KNOCKBACK : RAW_PARRY_KNOCKBACK;
-      
+      const knockbackAmount = isSlapBeingParried
+        ? RAW_PARRY_SLAP_KNOCKBACK
+        : RAW_PARRY_KNOCKBACK;
+
       // Apply knockback to the attacking player
       // Calculate knockback direction based on relative positions to ensure attacker is always pushed away from defender
       const knockbackDirection = player.x < otherPlayer.x ? -1 : 1;
       player.knockbackVelocity.x = knockbackAmount * knockbackDirection;
       player.knockbackVelocity.y = 0;
       player.isHit = true;
-      
+
       // Clear all movement and action states when parried (like when getting hit)
       player.isStrafing = false;
       player.isJumping = false;
@@ -1639,7 +1701,9 @@ io.on("connection", (socket) => {
 
       // Only apply stun for perfect parries
       if (isPerfectParry) {
-        const stunDuration = isSlapBeingParried ? RAW_PARRY_SLAP_STUN_DURATION : RAW_PARRY_STUN_DURATION;
+        const stunDuration = isSlapBeingParried
+          ? RAW_PARRY_SLAP_STUN_DURATION
+          : RAW_PARRY_STUN_DURATION;
         player.isRawParryStun = true;
 
         // Emit screen shake for perfect parry with higher intensity
@@ -1648,7 +1712,7 @@ io.on("connection", (socket) => {
             intensity: 0.9,
             duration: 400,
           });
-          
+
           // Emit perfect parry event
           io.in(currentRoom.id).emit("perfect_parry", {
             parryingPlayerId: otherPlayer.id,
@@ -1656,17 +1720,20 @@ io.on("connection", (socket) => {
             stunnedPlayerX: player.x,
             stunnedPlayerY: player.y,
             stunnedPlayerFighter: player.fighter, // Add fighter info to help with positioning
-            showStarStunEffect: true // Explicit flag for the star stun effect
+            showStarStunEffect: true, // Explicit flag for the star stun effect
           });
         }
 
         // Reset stun after appropriate duration
-        setPlayerTimeout(player.id, () => {
-          player.isHit = false;
-          player.isRawParryStun = false;
-          
-          // After stun ends, check if we should restart charging
-          if (player.keys.mouse2 && 
+        setPlayerTimeout(
+          player.id,
+          () => {
+            player.isHit = false;
+            player.isRawParryStun = false;
+
+            // After stun ends, check if we should restart charging
+            if (
+              player.keys.mouse2 &&
               !player.isAttacking &&
               !player.isJumping &&
               !player.isDodging &&
@@ -1678,14 +1745,17 @@ io.on("connection", (socket) => {
               !player.isRecovering &&
               !player.isRawParryStun &&
               !player.isThrowingSnowball &&
-              !player.canMoveToReady) {
-            // Restart charging immediately
-            player.isChargingAttack = true;
-            player.chargeStartTime = Date.now();
-            player.chargeAttackPower = 1;
-            player.attackType = "charged";
-          }
-        }, stunDuration);
+              !player.canMoveToReady
+            ) {
+              // Restart charging immediately
+              player.isChargingAttack = true;
+              player.chargeStartTime = Date.now();
+              player.chargeAttackPower = 1;
+              player.attackType = "charged";
+            }
+          },
+          stunDuration
+        );
       } else {
         // Regular parry - no stun, just clear hit state quickly
         // Emit screen shake for regular parry with lower intensity
@@ -1697,11 +1767,14 @@ io.on("connection", (socket) => {
         }
 
         // Clear hit state quickly for regular parries
-        setPlayerTimeout(player.id, () => {
-          player.isHit = false;
-          
-          // After knockback ends, check if we should restart charging
-          if (player.keys.mouse2 && 
+        setPlayerTimeout(
+          player.id,
+          () => {
+            player.isHit = false;
+
+            // After knockback ends, check if we should restart charging
+            if (
+              player.keys.mouse2 &&
               !player.isAttacking &&
               !player.isJumping &&
               !player.isDodging &&
@@ -1713,14 +1786,17 @@ io.on("connection", (socket) => {
               !player.isRecovering &&
               !player.isRawParryStun &&
               !player.isThrowingSnowball &&
-              !player.canMoveToReady) {
-            // Restart charging immediately
-            player.isChargingAttack = true;
-            player.chargeStartTime = Date.now();
-            player.chargeAttackPower = 1;
-            player.attackType = "charged";
-          }
-        }, 300); // Short duration for regular parry recovery
+              !player.canMoveToReady
+            ) {
+              // Restart charging immediately
+              player.isChargingAttack = true;
+              player.chargeStartTime = Date.now();
+              player.chargeAttackPower = 1;
+              player.attackType = "charged";
+            }
+          },
+          300
+        ); // Short duration for regular parry recovery
       }
     } else {
       // Apply the knockback to the defending player
@@ -1746,7 +1822,8 @@ io.on("connection", (socket) => {
 
       // Apply power-up effects
       if (player.activePowerUp === POWER_UP_TYPES.POWER) {
-        finalKnockbackMultiplier = finalKnockbackMultiplier * player.powerUpMultiplier;
+        finalKnockbackMultiplier =
+          finalKnockbackMultiplier * player.powerUpMultiplier;
       }
       // if (otherPlayer.activePowerUp === POWER_UP_TYPES.SIZE) {
       //   finalKnockbackMultiplier = finalKnockbackMultiplier * 0.85;
@@ -1797,19 +1874,23 @@ io.on("connection", (socket) => {
 
       // Set a shorter hit state duration for slap attacks to allow for rapid hits
       const hitStateDuration = isSlapAttack ? 100 : 300;
-      
+
       // Only set isAlreadyHit for charged attacks
       if (!isSlapAttack) {
         otherPlayer.isAlreadyHit = true;
       }
 
       // Clear hit state after duration
-      setPlayerTimeout(otherPlayer.id, () => {
-        otherPlayer.isHit = false;
-        if (!isSlapAttack) {
-          otherPlayer.isAlreadyHit = false;
-        }
-      }, hitStateDuration);
+      setPlayerTimeout(
+        otherPlayer.id,
+        () => {
+          otherPlayer.isHit = false;
+          if (!isSlapAttack) {
+            otherPlayer.isAlreadyHit = false;
+          }
+        },
+        hitStateDuration
+      );
     }
   }
 
@@ -1978,7 +2059,7 @@ io.on("connection", (socket) => {
   socket.on("ready_count", (data) => {
     let index = rooms.findIndex((room) => room.id === data.roomId);
     console.log("ready count activated  ");
-    
+
     // Find the player in the room
     const playerIndex = rooms[index].players.findIndex(
       (player) => player.id === data.playerId
@@ -2015,45 +2096,51 @@ io.on("connection", (socket) => {
   socket.on("power_up_selected", (data) => {
     const { roomId, playerId, powerUpType } = data;
     const roomIndex = rooms.findIndex((room) => room.id === roomId);
-    
-    console.log(`Power-up selected: ${powerUpType} by player ${playerId} in room ${roomId}`);
-    
+
+    console.log(
+      `Power-up selected: ${powerUpType} by player ${playerId} in room ${roomId}`
+    );
+
     if (roomIndex === -1) return;
-    
+
     const room = rooms[roomIndex];
-    const player = room.players.find(p => p.id === playerId);
-    
+    const player = room.players.find((p) => p.id === playerId);
+
     if (!player || !room.powerUpSelectionPhase) return;
-    
+
     // Store the player's power-up selection
     player.selectedPowerUp = powerUpType;
     room.playersSelectedPowerUps[playerId] = powerUpType;
-    
+
     // Check if both players have selected their power-ups
     const selectedCount = Object.keys(room.playersSelectedPowerUps).length;
-    
-    console.log(`${selectedCount} out of ${room.players.length} players have selected power-ups`);
-    
+
+    console.log(
+      `${selectedCount} out of ${room.players.length} players have selected power-ups`
+    );
+
     if (selectedCount === 2) {
       // Both players have selected, proceed with salt throwing
       room.powerUpSelectionPhase = false;
-      
-      console.log(`All players selected, starting salt throwing in room ${roomId}`);
-      
+
+      console.log(
+        `All players selected, starting salt throwing in room ${roomId}`
+      );
+
       // Emit that selection is complete
       io.in(roomId).emit("power_up_selection_complete");
-      
+
       // Start salt throwing for both players
       room.players.forEach((player) => {
         handleSaltThrowAndPowerUp(player, room);
       });
     }
-    
+
     // Emit updated selection status to all players
     io.in(roomId).emit("power_up_selection_status", {
       selectedCount,
       totalPlayers: room.players.length,
-      selections: room.playersSelectedPowerUps
+      selections: room.playersSelectedPowerUps,
     });
   });
 
@@ -2132,7 +2219,10 @@ io.on("connection", (socket) => {
         return true;
       }
       // Block during recovery unless it's a dodge and dodge cancel is allowed
-      if (player.isRecovering && !(allowDodgeCancelRecovery && data.keys && data.keys.shift)) {
+      if (
+        player.isRecovering &&
+        !(allowDodgeCancelRecovery && data.keys && data.keys.shift)
+      ) {
         return true;
       }
       return false;
@@ -2140,10 +2230,12 @@ io.on("connection", (socket) => {
 
     if (data.keys) {
       player.keys = data.keys;
-      
+
       // Debug logging for F key and snowball power-up
       if (data.keys.f) {
-        console.log(`Player ${player.id} pressed F key. PowerUp: ${player.activePowerUp}, Cooldown: ${player.snowballCooldown}, isThrowingSnowball: ${player.isThrowingSnowball}`);
+        console.log(
+          `Player ${player.id} pressed F key. PowerUp: ${player.activePowerUp}, Cooldown: ${player.snowballCooldown}, isThrowingSnowball: ${player.isThrowingSnowball}`
+        );
       }
     }
 
@@ -2156,12 +2248,12 @@ io.on("connection", (socket) => {
       console.log(`Player ${player.id} interrupting charge with slap`);
       // Clear charge state
       clearChargeState(player);
-      
+
       // Execute slap attack immediately
       executeSlapAttack(player, rooms);
       return; // Exit early to prevent other input processing
     }
-    
+
     // Handle clearing charge during charging phase with throw/grab/snowball - MUST BE FIRST
     if (
       (player.keys.w || player.keys.e || player.keys.f) &&
@@ -2170,7 +2262,7 @@ io.on("connection", (socket) => {
       console.log(`Player ${player.id} interrupting charge with W/E/F input`);
       // Clear charge state
       clearChargeState(player);
-      
+
       // The existing input handlers will take over for W/E/F
     }
 
@@ -2227,18 +2319,20 @@ io.on("connection", (socket) => {
       !player.canMoveToReady
     ) {
       console.log(`Player ${player.id} attempting to throw snowball`);
-      
+
       // Clear charge attack state if player was charging
       if (player.isChargingAttack) {
-        console.log(`Player ${player.id} cancelling charge attack to throw snowball`);
+        console.log(
+          `Player ${player.id} cancelling charge attack to throw snowball`
+        );
         clearChargeState(player);
       }
-      
+
       // Set throwing state
       player.isThrowingSnowball = true;
-      
+
       // Determine snowball direction based on current position relative to opponent
-      const opponent = rooms[index].players.find(p => p.id !== player.id);
+      const opponent = rooms[index].players.find((p) => p.id !== player.id);
       let snowballDirection;
       if (opponent) {
         // Throw towards the opponent based on current positions
@@ -2247,7 +2341,7 @@ io.on("connection", (socket) => {
         // Fallback to facing direction if no opponent found
         snowballDirection = player.facing === 1 ? -2 : 2;
       }
-      
+
       // Create snowball projectile
       const snowball = {
         id: Math.random().toString(36).substr(2, 9),
@@ -2255,25 +2349,29 @@ io.on("connection", (socket) => {
         y: player.y + 20, // Slightly above ground
         velocityX: snowballDirection, // Direction determined by position relative to opponent
         hasHit: false,
-        ownerId: player.id
+        ownerId: player.id,
       };
-      
+
       player.snowballs.push(snowball);
       player.snowballCooldown = true;
-      
+
       console.log(`Created snowball:`, snowball);
-      
+
       // Reset throwing state after animation
-      setPlayerTimeout(player.id, () => {
-        player.isThrowingSnowball = false;
-        console.log(`Player ${player.id} finished throwing snowball`);
-        
-        // Check if we should restart charging after snowball throw completes
-        if (shouldRestartCharging(player)) {
-          // Restart charging immediately
-          startCharging(player);
-        }
-      }, 500);
+      setPlayerTimeout(
+        player.id,
+        () => {
+          player.isThrowingSnowball = false;
+          console.log(`Player ${player.id} finished throwing snowball`);
+
+          // Check if we should restart charging after snowball throw completes
+          if (shouldRestartCharging(player)) {
+            // Restart charging immediately
+            startCharging(player);
+          }
+        },
+        500
+      );
     }
 
     // Handle dodge - allow canceling recovery but block during charged attack execution
@@ -2286,24 +2384,28 @@ io.on("connection", (socket) => {
       player.dodgeCharges > 0 // Check if player has dodge charges
     ) {
       console.log("Executing immediate dodge");
-      
+
       // Allow dodge to cancel recovery
       if (player.isRecovering) {
         // Add grace period - don't allow dodge to cancel recovery for 100ms after it starts
         // This prevents immediate dodge from canceling recovery that was just set
         const recoveryAge = Date.now() - player.recoveryStartTime;
-        console.log(`Dodge attempting to cancel recovery - age: ${recoveryAge}ms, grace period: 100ms`);
+        console.log(
+          `Dodge attempting to cancel recovery - age: ${recoveryAge}ms, grace period: 100ms`
+        );
         if (recoveryAge > 100) {
           console.log("Dodge canceling recovery state");
           player.isRecovering = false;
           player.movementVelocity = 0;
           player.recoveryDirection = null;
         } else {
-          console.log(`Dodge blocked - recovery too fresh (${recoveryAge}ms old)`);
+          console.log(
+            `Dodge blocked - recovery too fresh (${recoveryAge}ms old)`
+          );
           return; // Don't execute dodge if recovery is too fresh
         }
       }
-      
+
       player.isDodging = true;
       player.dodgeStartTime = Date.now();
       player.dodgeEndTime = Date.now() + 400;
@@ -2351,10 +2453,7 @@ io.on("connection", (socket) => {
         }
 
         // Handle pending charge attack
-        if (
-          player.pendingChargeAttack &&
-          player.spacebarReleasedDuringDodge
-        ) {
+        if (player.pendingChargeAttack && player.spacebarReleasedDuringDodge) {
           const chargePercentage = player.pendingChargeAttack.power;
 
           // Determine if it's a slap or charged attack
@@ -2405,11 +2504,7 @@ io.on("connection", (socket) => {
     }
 
     // Start charging attack - block during charged attack execution and recovery
-    if (
-      player.keys.mouse2 &&
-      !shouldBlockAction() &&
-      canPlayerCharge(player)
-    ) {
+    if (player.keys.mouse2 && !shouldBlockAction() && canPlayerCharge(player)) {
       // Start charging
       startCharging(player);
       player.spacebarReleasedDuringDodge = false;
@@ -2450,18 +2545,22 @@ io.on("connection", (socket) => {
     ) {
       // Set flag to indicate player wants to restart charging after attack
       if (!player.wantsToRestartCharge) {
-        console.log(`Player ${player.id} holding mouse2 during charged attack - setting restart flag`);
+        console.log(
+          `Player ${player.id} holding mouse2 during charged attack - setting restart flag`
+        );
       }
       player.wantsToRestartCharge = true;
     }
-    
+
     // Also check if mouse2 is being held when we're about to execute a charged attack
     if (
       player.keys.mouse2 &&
       player.pendingChargeAttack &&
       !player.isAttacking
     ) {
-      console.log(`Player ${player.id} holding mouse2 with pending charge attack - setting restart flag`);
+      console.log(
+        `Player ${player.id} holding mouse2 with pending charge attack - setting restart flag`
+      );
       player.wantsToRestartCharge = true;
     }
     // Release charged attack when mouse2 is released - block during charged attack execution and recovery
@@ -2506,9 +2605,8 @@ io.on("connection", (socket) => {
       !player.isJumping // Add explicit check for jumping
     ) {
       // Check if we should resume charging after a state transition
-      const timeSinceLastCharge =
-        Date.now() - (player.lastChargeEndTime || 0);
-      
+      const timeSinceLastCharge = Date.now() - (player.lastChargeEndTime || 0);
+
       // Only auto-resume if it's been less than 500ms since last charge ended
       // This prevents the weird reset behavior
       if (timeSinceLastCharge < 500 && timeSinceLastCharge > 0) {
@@ -2558,7 +2656,7 @@ io.on("connection", (socket) => {
       const grabRange = GRAB_RANGE * (player.sizeMultiplier || 1);
       return Math.abs(player.x - opponent.x) < grabRange;
     }
-    
+
     // Handle throw attacks - block during charged attack execution and recovery
     if (
       player.keys.w &&
@@ -2578,45 +2676,57 @@ io.on("connection", (socket) => {
 
       player.lastThrowAttemptTime = Date.now();
 
-      setPlayerTimeout(player.id, () => {
-        const opponent = rooms[index].players.find((p) => p.id !== player.id);
+      setPlayerTimeout(
+        player.id,
+        () => {
+          const opponent = rooms[index].players.find((p) => p.id !== player.id);
 
-        if (
-          isOpponentCloseEnoughForThrow(player, opponent) &&
-          !opponent.isBeingThrown &&
-          !opponent.isAttacking &&
-          !opponent.isDodging
-        ) {
-          if (checkForThrowTech(player, opponent)) {
-            applyThrowTech(player, opponent);
-          } else if (!player.throwTechCooldown) {
+          if (
+            isOpponentCloseEnoughForThrow(player, opponent) &&
+            !opponent.isBeingThrown &&
+            !opponent.isAttacking &&
+            !opponent.isDodging
+          ) {
+            if (checkForThrowTech(player, opponent)) {
+              applyThrowTech(player, opponent);
+            } else if (!player.throwTechCooldown) {
+              clearChargeState(player);
+
+              player.isThrowing = true;
+              player.throwStartTime = Date.now();
+              player.throwEndTime = Date.now() + 400;
+              player.throwOpponent = opponent.id;
+              opponent.isBeingThrown = true;
+              opponent.isHit = true;
+
+              player.throwCooldown = true;
+              setPlayerTimeout(
+                player.id,
+                () => {
+                  player.throwCooldown = false;
+                },
+                250
+              );
+            }
+          } else {
             clearChargeState(player);
 
             player.isThrowing = true;
             player.throwStartTime = Date.now();
             player.throwEndTime = Date.now() + 400;
-            player.throwOpponent = opponent.id;
-            opponent.isBeingThrown = true;
-            opponent.isHit = true;
 
             player.throwCooldown = true;
-            setPlayerTimeout(player.id, () => {
-              player.throwCooldown = false;
-            }, 250);
+            setPlayerTimeout(
+              player.id,
+              () => {
+                player.throwCooldown = false;
+              },
+              250
+            );
           }
-        } else {
-          clearChargeState(player);
-
-          player.isThrowing = true;
-          player.throwStartTime = Date.now();
-          player.throwEndTime = Date.now() + 400;
-
-          player.throwCooldown = true;
-          setPlayerTimeout(player.id, () => {
-            player.throwCooldown = false;
-          }, 250);
-        }
-      }, 64);
+        },
+        64
+      );
     }
 
     // Handle grab attacks - block during charged attack execution and recovery
@@ -2633,53 +2743,65 @@ io.on("connection", (socket) => {
     ) {
       player.lastGrabAttemptTime = Date.now();
 
-      setPlayerTimeout(player.id, () => {
-        const opponent = rooms[index].players.find((p) => p.id !== player.id);
-        // Clear charging attack state regardless of grab success
-        clearChargeState(player);
+      setPlayerTimeout(
+        player.id,
+        () => {
+          const opponent = rooms[index].players.find((p) => p.id !== player.id);
+          // Clear charging attack state regardless of grab success
+          clearChargeState(player);
 
-        if (
-          isOpponentCloseEnoughForGrab(player, opponent) &&
-          !opponent.isBeingThrown &&
-          !opponent.isAttacking &&
-          !opponent.isBeingGrabbed &&
-          !player.isBeingGrabbed
-        ) {
-          if (checkForThrowTech(player, opponent)) {
-            applyThrowTech(player, opponent);
-          } else if (!player.throwTechCooldown) {
-            clearChargeState(player);
+          if (
+            isOpponentCloseEnoughForGrab(player, opponent) &&
+            !opponent.isBeingThrown &&
+            !opponent.isAttacking &&
+            !opponent.isBeingGrabbed &&
+            !player.isBeingGrabbed
+          ) {
+            if (checkForThrowTech(player, opponent)) {
+              applyThrowTech(player, opponent);
+            } else if (!player.throwTechCooldown) {
+              clearChargeState(player);
 
+              player.isGrabbing = true;
+              player.grabStartTime = Date.now();
+              player.grabbedOpponent = opponent.id;
+              opponent.isBeingGrabbed = true;
+              opponent.isHit = false; // Ensure isHit is false for initial grab
+
+              if (player.isChargingAttack) {
+                player.grabFacingDirection = player.chargingFacingDirection;
+              } else {
+                player.grabFacingDirection = player.facing;
+              }
+
+              player.grabCooldown = true;
+              setPlayerTimeout(
+                player.id,
+                () => {
+                  player.grabCooldown = false;
+                },
+                1100
+              );
+            }
+          } else {
             player.isGrabbing = true;
             player.grabStartTime = Date.now();
-            player.grabbedOpponent = opponent.id;
-            opponent.isBeingGrabbed = true;
-            opponent.isHit = false; // Ensure isHit is false for initial grab
 
-            if (player.isChargingAttack) {
-              player.grabFacingDirection = player.chargingFacingDirection;
-            } else {
-              player.grabFacingDirection = player.facing;
+            // Only set cooldown if the grab was actually attempted
+            if (isOpponentCloseEnoughForGrab(player, opponent)) {
+              player.grabCooldown = true;
+              setPlayerTimeout(
+                player.id,
+                () => {
+                  player.grabCooldown = false;
+                },
+                1100
+              );
             }
-
-            player.grabCooldown = true;
-            setPlayerTimeout(player.id, () => {
-              player.grabCooldown = false;
-            }, 1100);
           }
-        } else {
-          player.isGrabbing = true;
-          player.grabStartTime = Date.now();
-
-          // Only set cooldown if the grab was actually attempted
-          if (isOpponentCloseEnoughForGrab(player, opponent)) {
-            player.grabCooldown = true;
-            setPlayerTimeout(player.id, () => {
-              player.grabCooldown = false;
-            }, 1100);
-          }
-        }
-      }, 64);
+        },
+        64
+      );
     }
   });
 
@@ -2698,7 +2820,7 @@ io.on("connection", (socket) => {
 
       // Reset ready count and player ready states
       rooms[roomIndex].readyCount = 0;
-      rooms[roomIndex].players.forEach(player => {
+      rooms[roomIndex].players.forEach((player) => {
         player.isReady = false;
       });
 

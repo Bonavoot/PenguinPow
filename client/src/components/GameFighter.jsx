@@ -24,8 +24,8 @@ import pumo from "../assets/pumo.png";
 import pumo2 from "../assets/pumo2.png";
 import pumoWaddle from "../assets/pumo-waddle.png";
 import pumoWaddle2 from "../assets/pumo-waddle2.png";
-import crouching from "../assets/crouching.png";
-import crouching2 from "../assets/blocking.gif";
+import crouching from "../assets/blocking2.png";
+import crouching2 from "../assets/blocking.png";
 import grabbing from "../assets/grabbing.png";
 import grabbing2 from "../assets/grabbing2.png";
 import beingGrabbed from "../assets/is-being-grabbed.gif";
@@ -472,6 +472,7 @@ const FloatingPowerUpText = styled.div`
 
 const CountdownTimer = styled.div`
   position: absolute;
+  opacity: 0;
   font-family: "Bungee";
   font-size: clamp(1rem, 3vw, 2.5rem);
   color: rgb(255, 0, 0);
