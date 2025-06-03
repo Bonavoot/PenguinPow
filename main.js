@@ -21,8 +21,13 @@ function createWindow() {
     mainWindow.loadURL("http://localhost:5173");
     mainWindow.webContents.openDevTools();
   } else {
-    // In production, load from built files
-    mainWindow.loadFile(path.join(__dirname, "dist", "index.html"));
+    // In production, load from built client files
+    // Use absolute path to ensure it works regardless of working directory
+    const indexPath = path.join(__dirname, "client", "dist", "index.html");
+    console.log("Loading from:", indexPath);
+    console.log("Process cwd:", process.cwd());
+    console.log("__dirname:", __dirname);
+    mainWindow.loadFile(indexPath);
   }
 }
 

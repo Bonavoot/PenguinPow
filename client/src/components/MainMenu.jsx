@@ -75,60 +75,37 @@ const MainMenuContainer = styled.div`
   height: 100vh;
   position: relative;
   overflow: hidden;
-  background: linear-gradient(
-      135deg,
-      rgba(220, 180, 140, 0.95),
-      rgba(180, 140, 100, 0.85)
-    ),
-    url(${mainMenuBackground});
-  background-repeat: no-repeat;
-  background-size: cover;
-  background-position: center;
   box-shadow: 0 0 30px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(5px);
   border: 2px solid #8b4513;
+`;
 
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(
-        135deg,
-        rgba(220, 180, 140, 0.95),
-        rgba(180, 140, 100, 0.85)
-      ),
-      url(${mainMenuBackground2});
-    background-repeat: no-repeat;
-    background-size: cover;
-    background-position: center;
-    opacity: 0;
-    animation: ${backgroundSlide} 30s infinite;
-    pointer-events: none;
-  }
+const BackgroundImage = styled.img`
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  opacity: ${props => props.$isVisible ? 1 : 0};
+  transition: opacity 1s ease-in-out;
+  pointer-events: none;
+`;
 
-  &::after {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(
-        135deg,
-        rgba(220, 180, 140, 0.95),
-        rgba(180, 140, 100, 0.85)
-      ),
-      url(${mainMenuBackground3});
-    background-repeat: no-repeat;
-    background-size: cover;
-    background-position: center;
-    opacity: 0;
-    animation: ${backgroundSlide} 30s infinite 10s;
-    pointer-events: none;
-  }
+const YellowOverlay = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    135deg,
+    rgba(220, 180, 140, 0.8),
+    rgba(180, 140, 100, .8)
+  );
+  z-index: 1;
+  pointer-events: none;
 `;
 
 const Logo = styled.h1`
@@ -145,7 +122,7 @@ const Logo = styled.h1`
   gap: 0.3em;
   color: #fff;
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
-  z-index: 2;
+  z-index: 10;
   padding: 0.3em 0.6em;
   border: 4px solid #8b4513;
   background: linear-gradient(45deg, #a0522d, #cd853f, #a0522d, #8b4513);
@@ -212,21 +189,21 @@ const PowText = styled.span`
   }
 `;
 
-const SumoImage = styled.img`
-  position: absolute;
-  right: -15%;
-  bottom: -25%;
-  width: clamp(500px, 80vw, 1200px);
-  height: auto;
-  filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.3));
-  animation: ${float} 4s ease-in-out infinite;
-  z-index: 1;
-  object-position: top;
-  object-fit: contain;
-  transform-origin: bottom right;
-  max-width: 95%;
-  max-height: 95vh;
-`;
+// const SumoImage = styled.img`
+//   position: absolute;
+//   right: -15%;
+//   bottom: -25%;
+//   width: clamp(500px, 80vw, 1200px);
+//   height: auto;
+//   filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.3));
+//   animation: ${float} 4s ease-in-out infinite;
+//   z-index: 1;
+//   object-position: top;
+//   object-fit: contain;
+//   transform-origin: bottom right;
+//   max-width: 95%;
+//   max-height: 95vh;
+// `;
 
 const ButtonContainer = styled.div`
   position: absolute;
@@ -236,7 +213,7 @@ const ButtonContainer = styled.div`
   display: flex;
   flex-direction: column;
   gap: clamp(1.6rem, 4vh, 2.4rem);
-  z-index: 2;
+  z-index: 10;
   animation: ${fadeIn} 1s ease-out 0.5s both;
   width: clamp(180px, 22vw, 250px);
 `;
@@ -315,7 +292,7 @@ const SettingsButton = styled.button`
   border-radius: 50%;
   color: #8b4513;
   cursor: pointer;
-  z-index: 2;
+  z-index: 10;
   padding: 0.8rem;
   transition: all 0.3s ease;
   display: flex;
@@ -352,6 +329,9 @@ preloadAssets(preGameImages);
 const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
   const [roomName, setRoomName] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+  const [currentBgIndex, setCurrentBgIndex] = useState(0);
+
+  const backgroundImages = [mainMenuBackground, mainMenuBackground2, mainMenuBackground3];
 
   useEffect(() => {
     // Start playing background music when MainMenu mounts
@@ -362,6 +342,15 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
       stopBackgroundMusic();
     };
   }, []);
+
+  // Background cycling effect
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentBgIndex((prev) => (prev + 1) % backgroundImages.length);
+    }, 10000); // Change every 10 seconds
+
+    return () => clearInterval(interval);
+  }, [backgroundImages.length]);
 
   // Add new effect to handle game start
   useEffect(() => {
@@ -407,26 +396,38 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
     };
   }, [showSettings]);
 
-  const renderMainMenu = () => (
-    <MainMenuContainer>
-      <Logo>
-        Pumo Pumo <PowText>!</PowText>
-      </Logo>
-      {/* <SumoImage src={sumo} alt="sumo" /> */}
-      <ButtonContainer>
-        <MenuButton $isActive onClick={() => { handleDisplayRooms(); playButtonPressSound2(); }} onMouseEnter={playButtonHoverSound}>
-          PLAY
-        </MenuButton>
-        <MenuButton onClick={() => playButtonPressSound()} onMouseEnter={playButtonHoverSound}>BASHO</MenuButton>
-        <MenuButton onClick={() => playButtonPressSound()} onMouseEnter={playButtonHoverSound}>CUSTOMIZE</MenuButton>
-        <MenuButton onClick={() => playButtonPressSound()} onMouseEnter={playButtonHoverSound}>STATS</MenuButton>
-      </ButtonContainer>
-      <SettingsButton className="settings-button" onClick={() => { handleSettings(); playButtonPressSound(); }} onMouseEnter={playButtonHoverSound}>
-        <span className="material-symbols-outlined">settings</span>
-      </SettingsButton>
-      {showSettings && <Settings onClose={() => setShowSettings(false)} />}
-    </MainMenuContainer>
-  );
+  const renderMainMenu = () => {
+    return (
+      <MainMenuContainer>
+        {/* Cycling background images */}
+        {backgroundImages.map((bgImage, index) => (
+          <BackgroundImage
+            key={index}
+            src={bgImage}
+            alt={`Background ${index + 1}`}
+            $isVisible={index === currentBgIndex}
+          />
+        ))}
+        <YellowOverlay />
+        <Logo>
+          Pumo Pumo <PowText>!</PowText>
+        </Logo>
+        {/* <SumoImage src={sumo} alt="sumo" /> */}
+        <ButtonContainer>
+          <MenuButton $isActive onClick={() => { handleDisplayRooms(); playButtonPressSound2(); }} onMouseEnter={playButtonHoverSound}>
+            PLAY
+          </MenuButton>
+          <MenuButton onClick={() => playButtonPressSound()} onMouseEnter={playButtonHoverSound}>BASHO</MenuButton>
+          <MenuButton onClick={() => playButtonPressSound()} onMouseEnter={playButtonHoverSound}>CUSTOMIZE</MenuButton>
+          <MenuButton onClick={() => playButtonPressSound()} onMouseEnter={playButtonHoverSound}>STATS</MenuButton>
+        </ButtonContainer>
+        <SettingsButton className="settings-button" onClick={() => { handleSettings(); playButtonPressSound(); }} onMouseEnter={playButtonHoverSound}>
+          <span className="material-symbols-outlined">settings</span>
+        </SettingsButton>
+        {showSettings && <Settings onClose={() => setShowSettings(false)} />}
+      </MainMenuContainer>
+    );
+  };
 
   // Render different pages based on currentPage
   switch (currentPage) {
