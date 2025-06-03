@@ -7,7 +7,7 @@ const SnowballChargeUI = ({ snowballCooldown, index }) => {
       <div
         className={`snowball-icon ${snowballCooldown ? "cooldown" : "ready"}`}
       >
-        ❄️
+        <span className="icon-content">❄️</span>
       </div>
     </div>
   );

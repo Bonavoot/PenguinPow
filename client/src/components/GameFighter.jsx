@@ -357,162 +357,61 @@ const StyledImage = styled("img")
 
 const FloatingPowerUpText = styled.div`
   position: absolute;
-  font-family: "Bungee";
-  font-size: clamp(0.6rem, 1.8vw, 1.4rem);
+  font-family: "Arial", sans-serif;
+  font-size: clamp(0.85rem, 1.6vw, 1.3rem);
   font-weight: 700;
-  background: ${(props) => {
+  color: ${(props) => {
     switch (props.$powerUpType) {
       case "speed":
-        return "linear-gradient(45deg, #00ffff 0%, #0066ff 50%, #003399 100%)";
+        return "#00BFFF";
       case "power":
-        return "linear-gradient(45deg, #ff6b6b 0%, #ff4444 50%, #cc0000 100%)";
+        return "#FF4444";
+      case "snowball":
+        return "#FFFFFF";
       default:
-        return "linear-gradient(45deg, #ffffff 0%, #ffd700 50%, #ffaa00 100%)";
+        return "#FFD700";
     }
   }};
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  text-shadow: none;
+  text-shadow: 
+    -1px -1px 0 #000,
+    1px -1px 0 #000,
+    -1px 1px 0 #000,
+    1px 1px 0 #000,
+    0 0 8px ${(props) => {
+      switch (props.$powerUpType) {
+        case "speed":
+          return "rgba(0, 191, 255, 0.6)";
+        case "power":
+          return "rgba(255, 68, 68, 0.6)";
+        case "snowball":
+          return "rgba(255, 255, 255, 0.6)";
+        default:
+          return "rgba(255, 215, 0, 0.6)";
+      }
+    }};
   pointer-events: none;
-  animation: powerUpFloat 2s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+  animation: simpleFloatUp 2.0s ease-out forwards;
   bottom: 55%;
-  left: ${(props) => (props.$index === 0 ? "19%" : "auto")};
-  right: ${(props) => (props.$index === 1 ? "19%" : "auto")};
+  left: ${(props) => (props.$index === 0 ? "20%" : "auto")};
+  right: ${(props) => (props.$index === 1 ? "20%" : "auto")};
   text-align: center;
   transform-origin: center;
   z-index: 101;
   opacity: 0;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   white-space: nowrap;
-  
-  /* Backup text color for browsers that don't support background-clip */
-  color: ${(props) => {
-    switch (props.$powerUpType) {
-      case "speed":
-        return "#00ffff";
-      case "power":
-        return "#ff4444";
-      default:
-        return "#ffd700";
-    }
-  }};
+  text-transform: uppercase;
 
-  /* Enhanced glow effect */
-  filter: drop-shadow(0 0 2px #000) 
-          drop-shadow(0 0 3px ${(props) => {
-            switch (props.$powerUpType) {
-              case "speed":
-                return "rgba(0, 255, 255, 0.4)";
-              case "power":
-                return "rgba(255, 68, 68, 0.4)";
-              default:
-                return "rgba(255, 215, 0, 0.4)";
-            }
-          }})
-          drop-shadow(0 0 6px ${(props) => {
-            switch (props.$powerUpType) {
-              case "speed":
-                return "rgba(0, 255, 255, 0.2)";
-              case "power":
-                return "rgba(255, 68, 68, 0.2)";
-              default:
-                return "rgba(255, 215, 0, 0.2)";
-            }
-          }});
-
-  /* Add a pseudo-element for additional effects */
-  &::before {
-    content: attr(data-text);
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: -1;
-    background: linear-gradient(45deg, transparent 0%, rgba(255, 255, 255, 0.3) 50%, transparent 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    animation: shimmer 0.8s ease-in-out 0.3s;
-  }
-
-  &::after {
-    content: "";
-    position: absolute;
-    top: -5px;
-    left: -5px;
-    right: -5px;
-    bottom: -5px;
-    background: radial-gradient(circle, ${(props) => {
-      switch (props.$powerUpType) {
-        case "speed":
-          return "rgba(0, 255, 255, 0.1)";
-        case "power":
-          return "rgba(255, 68, 68, 0.1)";
-        default:
-          return "rgba(255, 215, 0, 0.1)";
-      }
-    }} 0%, transparent 70%);
-    border-radius: 50%;
-    z-index: -2;
-    animation: pulseGlow 2s ease-in-out;
-  }
-
-  @keyframes powerUpFloat {
+  @keyframes simpleFloatUp {
     0% {
-      transform: translateY(20px) scale(0.5) rotateX(90deg);
+      transform: translateY(0px) scale(1.0);
       opacity: 0;
     }
-    15% {
-      transform: translateY(0px) scale(1.3) rotateX(10deg);
+    20% {
       opacity: 1;
     }
-    30% {
-      transform: translateY(-15px) scale(1.1) rotateX(-5deg);
-      opacity: 1;
-    }
-    50% {
-      transform: translateY(-25px) scale(1.15) rotateX(0deg);
-      opacity: 1;
-    }
-    80% {
-      transform: translateY(-60px) scale(1.0) rotateX(0deg);
-      opacity: 0.8;
-    }
     100% {
-      transform: translateY(-120px) scale(0.8) rotateX(0deg);
-      opacity: 0;
-    }
-  }
-
-  @keyframes shimmer {
-    0% {
-      background-position: -200% 0;
-    }
-    100% {
-      background-position: 200% 0;
-    }
-  }
-
-  @keyframes pulseGlow {
-    0% {
-      transform: scale(0.8);
-      opacity: 0.6;
-    }
-    25% {
-      transform: scale(1.2);
-      opacity: 0.8;
-    }
-    50% {
-      transform: scale(1.4);
-      opacity: 0.4;
-    }
-    75% {
-      transform: scale(1.6);
-      opacity: 0.2;
-    }
-    100% {
-      transform: scale(2.0);
+      transform: translateY(-60px) scale(1.0);
       opacity: 0;
     }
   }
@@ -1121,7 +1020,6 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         <FloatingPowerUpText 
           $powerUpType={floatingPowerUpType} 
           $index={index}
-          data-text={`${floatingPowerUpType.toUpperCase()}++`}
         >
           {floatingPowerUpType.toUpperCase()}++
         </FloatingPowerUpText>
