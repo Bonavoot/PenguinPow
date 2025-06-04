@@ -20,6 +20,7 @@ import ChargedAttackSmokeEffect from "./ChargedAttackSmokeEffect";
 import DodgeChargeUI from "./DodgeChargeUI";
 import StarStunEffect from "./StarStunEffect";
 
+import snowballThrow2 from "../assets/snowball-throw2.png";
 import pumo from "../assets/pumo.png";
 import pumo2 from "../assets/pumo2.png";
 import pumoWaddle from "../assets/pumo-waddle.png";
@@ -67,6 +68,7 @@ import gameMusic from "../sounds/game-music.mp3";
 import eeshiMusic from "../sounds/eeshi.mp3";
 import slapParrySound from "../sounds/slap-parry-sound.mp3";
 import saltSound from "../sounds/salt-sound.mp3";
+import snowballThrowSound from "../sounds/snowball-throw-sound.mp3";
 
 import UiPlayerInfo from "./UiPlayerInfo";
 import SaltEffect from "./SaltEffect";
@@ -100,6 +102,7 @@ const initializeAudioPools = () => {
   createAudioPool(grabSound, 2);
   createAudioPool(slapParrySound, 2);
   createAudioPool(saltSound, 2);
+  createAudioPool(snowballThrowSound, 2);
   createAudioPool(hakkiyoiSound, 1);
   createAudioPool(bellSound, 1);
   createAudioPool(winnerSound, 1);
@@ -201,7 +204,7 @@ const getImageSrc = (
     if (isBowing) return bow2;
     if (isThrowTeching) return throwTech2;
     if (isRecovering) return recovering2;
-    if (isThrowingSnowball) return pumo2;
+    if (isThrowingSnowball) return snowballThrow2;
     if (isSlapAttack) {
       return slapAnimation === 1 ? slapAttack1Blue : slapAttack2Blue;
     }
@@ -533,7 +536,7 @@ const SnowballProjectile = styled.img`
   width: 4.5%;
   height: auto;
   left: ${(props) => (props.$x / 1280) * 100 + 5}%;
-  bottom: ${(props) => (props.$y / 720) * 100 + 10}%;
+  bottom: ${(props) => (props.$y / 720) * 100 + 17}%;
   z-index: 95;
   pointer-events: none;
   filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000)
@@ -608,6 +611,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
   const lastDodgeState = useRef(player.isDodging);
   const lastGrabState = useRef(player.isGrabbing);
   const lastThrowingSaltState = useRef(player.isThrowingSalt);
+  const lastThrowingSnowballState = useRef(player.isThrowingSnowball);
   const gameMusicRef = useRef(null);
   const eeshiMusicRef = useRef(null);
   const lastWinnerState = useRef(gameOver);
@@ -898,6 +902,13 @@ const GameFighter = ({ player, index, roomName, localId }) => {
     }
     lastGrabState.current = penguin.isGrabbing;
   }, [penguin.isGrabbing]);
+
+  useEffect(() => {
+    if (penguin.isThrowingSnowball && !lastThrowingSnowballState.current) {
+      playSound(snowballThrowSound, 0.02);
+    }
+    lastThrowingSnowballState.current = penguin.isThrowingSnowball;
+  }, [penguin.isThrowingSnowball]);
 
   useEffect(() => {
     if (hakkiyoi) {

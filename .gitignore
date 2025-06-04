@@ -10,6 +10,7 @@ lerna-debug.log*
 dist/
 dist-ssr/
 build/
+build_windows/
 *.local
 
 # Environment variables

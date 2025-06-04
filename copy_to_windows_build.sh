@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Script to copy fixed files to Windows build directory
-# Run this after rebuilding the client
+# Script to copy the complete Windows build to Windows build directory
+# Run this after updating the build_windows directory with latest changes
 
 WINDOWS_BUILD_DIR="/mnt/c/temp_penguinpow_build_windows"
 
-echo "Copying fixed files to Windows build directory..."
+echo "Copying updated Windows build to Wine directory..."
 
 # Check if Windows build directory exists
 if [ ! -d "$WINDOWS_BUILD_DIR" ]; then
@@ -14,37 +14,39 @@ if [ ! -d "$WINDOWS_BUILD_DIR" ]; then
     exit 1
 fi
 
-# Copy main.js with the path fix
-echo "Copying main.js..."
-cp main.js "$WINDOWS_BUILD_DIR/"
-
-# Copy package.json with asar: false setting
-echo "Copying package.json..."
-cp package.json "$WINDOWS_BUILD_DIR/"
-
-# Copy the entire client/dist directory
-echo "Copying client/dist directory..."
-if [ -d "client/dist" ]; then
-    cp -r client/dist "$WINDOWS_BUILD_DIR/client/"
-else
-    echo "Error: client/dist directory not found. Please run 'npm run build:client' first"
+# Check if the Windows build exists
+if [ ! -d "build_windows/win-unpacked" ]; then
+    echo "Error: Windows build not found at build_windows/win-unpacked"
+    echo "Please make sure the build_windows directory exists with the win-unpacked folder"
     exit 1
 fi
 
-# Copy other important files
-echo "Copying other files..."
-cp preload.js "$WINDOWS_BUILD_DIR/" 2>/dev/null || echo "preload.js not found (might not be needed)"
-cp steam_appid.txt "$WINDOWS_BUILD_DIR/" 2>/dev/null || echo "steam_appid.txt not found"
+# Clear the existing build directory (optional - remove if you want to keep existing files)
+echo "Clearing existing Wine build directory..."
+rm -rf "$WINDOWS_BUILD_DIR"/*
 
-echo "✅ Files copied successfully!"
-echo "Next steps:"
-echo "1. Go to your Windows build directory: $WINDOWS_BUILD_DIR"
-echo "2. Test the PenguinPow.exe to see if main menu images now work"
-echo "3. If they work, re-upload to Steam using SteamPipe"
+# Copy the entire Windows build
+echo "Copying complete Windows build with updated fullscreen functionality..."
+cp -r build_windows/win-unpacked/* "$WINDOWS_BUILD_DIR/"
+
+echo "✅ Complete Windows build copied successfully to Wine directory!"
+echo "Updated files include:"
+echo "- PenguinPow.exe (the main executable)"
+echo "- Updated main.js with fullscreen support"
+echo "- Updated preload.js with settings API"
+echo "- Updated client with new Settings component"
+echo "- All Electron runtime files and dependencies"
 
 echo ""
-echo "Files copied:"
-echo "- main.js (with corrected path)"
-echo "- client/dist/ (with new image implementation)"
-echo "- preload.js (if exists)"
-echo "- steam_appid.txt (if exists)" 
+echo "🎮 New Features Added:"
+echo "- Game launches in fullscreen by default"
+echo "- Settings menu includes Display Mode options"
+echo "- Windowed mode with custom resolution selection"
+echo "- All settings are saved and restored between sessions"
+
+echo ""
+echo "Next steps:"
+echo "1. Go to your Windows build directory: $WINDOWS_BUILD_DIR"
+echo "2. Test the PenguinPow.exe to verify fullscreen functionality"
+echo "3. Check Settings menu for new display options"
+echo "4. If everything works correctly, re-upload to Steam using SteamPipe" 

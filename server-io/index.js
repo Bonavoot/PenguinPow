@@ -2515,8 +2515,8 @@ io.on("connection", (socket) => {
       !shouldBlockAction() &&
       (player.isChargingAttack || player.isDodging) &&
       !player.isHit &&
-      !player.isRawParryStun &&
-      !player.isThrowingSnowball
+      !player.isRawParryStun
+      // Removed !player.isThrowingSnowball to allow smooth charging during snowball animation
     ) {
       // If we're dodging and not already charging, start charging
       if (player.isDodging && !player.isChargingAttack) {
