@@ -220,6 +220,7 @@ const Player = ({
 
 Player.propTypes = {
   fighter: PropTypes.string.isRequired,
+  isDiving: PropTypes.bool,
   isJumping: PropTypes.bool,
   isAttacking: PropTypes.bool,
   isDodging: PropTypes.bool,
@@ -245,6 +246,7 @@ Player.propTypes = {
 };
 
 Player.defaultProps = {
+  isDiving: false,
   isJumping: false,
   isAttacking: false,
   isDodging: false,
