@@ -6,8 +6,8 @@ import attack from "../assets/attack.png";
 import attack2 from "../assets/attack2.png";
 import dodging from "../assets/dodging.gif";
 import dodging2 from "../assets/dodging2.png";
-import crouching from "../assets/crouching.png";
-import crouching2 from "../assets/blocking.gif";
+import crouching from "../assets/blocking2.png";
+import crouching2 from "../assets/blocking.png";
 import ready from "../assets/ready.png";
 import ready2 from "../assets/ready2.png";
 import hit from "../assets/hit-clean.png";
@@ -130,7 +130,6 @@ preloadAssets(audioSources, "audio");
 
 const Player = ({
   fighter,
-  isDiving,
   isJumping,
   isAttacking,
   isDodging,
@@ -221,7 +220,6 @@ const Player = ({
 
 Player.propTypes = {
   fighter: PropTypes.string.isRequired,
-  isDiving: PropTypes.bool,
   isJumping: PropTypes.bool,
   isAttacking: PropTypes.bool,
   isDodging: PropTypes.bool,
@@ -247,7 +245,6 @@ Player.propTypes = {
 };
 
 Player.defaultProps = {
-  isDiving: false,
   isJumping: false,
   isAttacking: false,
   isDodging: false,

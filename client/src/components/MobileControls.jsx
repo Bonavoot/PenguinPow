@@ -37,7 +37,7 @@ const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
   const handleJoystickStart = (e) => {
     // Block inputs during power-up selection or when throwing snowball
     if (isInputBlocked || currentPlayer?.isThrowingSnowball) return;
-    
+
     e.preventDefault();
     const touch = e.touches[0];
     const joystick = e.target.getBoundingClientRect();
@@ -53,7 +53,7 @@ const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
   const handleJoystickMove = (e) => {
     // Block inputs during power-up selection or when throwing snowball
     if (isInputBlocked || currentPlayer?.isThrowingSnowball) return;
-    
+
     e.preventDefault();
     if (!isTouchingJoystick) return;
 
@@ -73,7 +73,7 @@ const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
   const handleJoystickEnd = (e) => {
     // Block inputs during power-up selection or when throwing snowball
     if (isInputBlocked || currentPlayer?.isThrowingSnowball) return;
-    
+
     e.preventDefault();
     setIsTouchingJoystick(false);
     setJoystickPos({ x: 0, y: 0 });
@@ -117,7 +117,7 @@ const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
   const handleButtonPress = (e, action) => {
     // Block inputs during power-up selection or when throwing snowball
     if (isInputBlocked || currentPlayer?.isThrowingSnowball) return;
-    
+
     e.preventDefault();
     setKeyState((prev) => {
       const newState = { ...prev };
@@ -144,7 +144,7 @@ const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
   const handleButtonRelease = (e, action) => {
     // Block inputs during power-up selection or when throwing snowball
     if (isInputBlocked || currentPlayer?.isThrowingSnowball) return;
-    
+
     e.preventDefault();
     setKeyState((prev) => {
       const newState = { ...prev };

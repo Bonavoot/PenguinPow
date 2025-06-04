@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import { SocketContext } from "./SocketContext";
 import MainMenu from "./components/MainMenu";
+import { preloadSpritesheets } from "./utils/spritesheetManager";
 import "./App.css";
 
 const SOCKET_URL = import.meta.env.PROD
@@ -20,6 +21,7 @@ function App() {
   const [currentPage, setCurrentPage] = useState("mainMenu");
   const [localId, setLocalId] = useState("");
   const [connectionError, setConnectionError] = useState(false);
+  const [spritesheetsLoaded, setSpritesheetsLoaded] = useState(false);
 
   const handleLogoClick = () => {
     window.location.reload(false);
@@ -59,6 +61,40 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    // Preload spritesheets for optimal performance
+    preloadSpritesheets()
+      .then(() => {
+        console.log("All spritesheets preloaded successfully");
+        setSpritesheetsLoaded(true);
+      })
+      .catch((error) => {
+        console.error("Failed to preload some spritesheets:", error);
+        // Continue anyway to avoid blocking the game
+        setSpritesheetsLoaded(true);
+      });
+  }, []);
+
+  if (!spritesheetsLoaded) {
+    return (
+      <div className="App">
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            height: "100vh",
+            color: "white",
+            fontSize: "24px",
+            fontFamily: "Bungee",
+          }}
+        >
+          Loading assets...
+        </div>
+      </div>
+    );
+  }
+
   return (
     <SocketContext.Provider value={{ socket, getRooms }}>
       <h1 onClick={handleLogoClick} className="logo">
@@ -69,6 +105,7 @@ function App() {
           Connection error. Attempting to reconnect...
         </div>
       )}
+
       <MainMenu
         rooms={rooms}
         currentPage={currentPage}

@@ -19,12 +19,11 @@ import DodgeSmokeEffect from "./DodgeDustEffect";
 import ChargedAttackSmokeEffect from "./ChargedAttackSmokeEffect";
 import DodgeChargeUI from "./DodgeChargeUI";
 import StarStunEffect from "./StarStunEffect";
+import SpriteSheet from "./SpriteSheet";
 
 import snowballThrow2 from "../assets/snowball-throw2.png";
 import pumo from "../assets/pumo.png";
 import pumo2 from "../assets/pumo2.png";
-import pumoWaddle from "../assets/pumo-waddle.png";
-import pumoWaddle2 from "../assets/pumo-waddle2.png";
 import crouching from "../assets/blocking2.png";
 import crouching2 from "../assets/blocking.png";
 import grabbing from "../assets/grabbing.png";
@@ -192,7 +191,7 @@ const getImageSrc = (
     if (isRawParrying) return crouching;
     if (isRawParryStun) return bow;
     if (isReady) return ready;
-    if (isStrafing && !isThrowing) return pumoWaddle;
+    if (isStrafing && !isThrowing) return "SPRITESHEET_pumoWaddle";
     if (isHit) return hit;
     if (isDead) return pumo;
     if (isThrowing) return throwing;
@@ -218,7 +217,8 @@ const getImageSrc = (
     if (isRawParrying) return crouching2;
     if (isRawParryStun) return bow2;
     if (isReady) return ready2;
-    if (isStrafing && !isThrowing) return pumoWaddle2;
+    // Return special identifier for pumoWaddle2 spritesheet
+    if (isStrafing && !isThrowing) return "SPRITESHEET_pumoWaddle2";
     if (isHit) return hit2;
     if (isDead) return pumo;
     if (isThrowing) return throwing2;
@@ -226,6 +226,37 @@ const getImageSrc = (
     if (isBeingGrabbed || isBeingPulled || isBeingPushed) return beingGrabbed2;
     return pumo2;
   }
+};
+
+// Helper function to determine if current state should use spritesheet
+const shouldUseSpritesheet = (fighter, penguin) => {
+  // Check all higher-priority animations first (matching getImageSrc priority order)
+  if (penguin.isBowing) return null;
+  if (penguin.isThrowTeching) return null;
+  if (penguin.isRecovering) return null;
+  if (penguin.isThrowingSnowball) return null;
+  if (penguin.isSlapAttack) return null;
+  if (penguin.isJumping) return null;
+  if (penguin.isAttacking && !penguin.isSlapAttack) return null;
+  if (penguin.isGrabbing) return null;
+  if (penguin.isDodging) return null;
+  if (penguin.isRawParrying) return null;
+  if (penguin.isRawParryStun) return null;
+  if (penguin.isReady) return null;
+  if (penguin.isHit) return null;
+  if (penguin.isDead) return null;
+  if (penguin.isThrowing) return null;
+  if (penguin.isThrowingSalt) return null;
+  if (penguin.isBeingGrabbed || penguin.isBeingPulled || penguin.isBeingPushed)
+    return null;
+
+  // Only show spritesheet for strafing if no other animations are active
+  if (penguin.isStrafing) {
+    if (fighter === "player 1") return "pumoWaddle2";
+    if (fighter === "player 2") return "pumoWaddle";
+  }
+
+  return null;
 };
 
 const validProps = [
@@ -1108,6 +1139,75 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         y={penguin.y}
         facing={penguin.facing}
       />
+      {/* Always render both to prevent mounting/unmounting performance issues */}
+      <SpriteSheet
+        spritesheetKey="pumoWaddle2"
+        isPlaying={
+          shouldUseSpritesheet(penguin.fighter, penguin) === "pumoWaddle2"
+        }
+        x={penguin.x}
+        y={penguin.y}
+        facing={penguin.facing}
+        zIndex={
+          penguin.isThrowing || penguin.isDodging || penguin.isGrabbing
+            ? 98
+            : 99
+        }
+        filter={
+          penguin.isDodging
+            ? "drop-shadow(0 0 6px rgba(255, 255, 255, 0.6)) brightness(1.5) drop-shadow(0 0 2px #000)"
+            : penguin.isRawParrying
+            ? "drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3) drop-shadow(0 0 3px #000)"
+            : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000)"
+        }
+        animation={
+          penguin.isDodging
+            ? "dodgeFlash 0.3s ease-in-out"
+            : penguin.isRawParrying
+            ? "rawParryFlash 1.2s ease-in-out infinite"
+            : "none"
+        }
+        style={{
+          display:
+            shouldUseSpritesheet(penguin.fighter, penguin) === "pumoWaddle2"
+              ? "block"
+              : "none",
+        }}
+      />
+      <SpriteSheet
+        spritesheetKey="pumoWaddle"
+        isPlaying={
+          shouldUseSpritesheet(penguin.fighter, penguin) === "pumoWaddle"
+        }
+        x={penguin.x}
+        y={penguin.y}
+        facing={penguin.facing}
+        zIndex={
+          penguin.isThrowing || penguin.isDodging || penguin.isGrabbing
+            ? 98
+            : 99
+        }
+        filter={
+          penguin.isDodging
+            ? "drop-shadow(0 0 6px rgba(255, 255, 255, 0.6)) brightness(1.5) drop-shadow(0 0 2px #000)"
+            : penguin.isRawParrying
+            ? "drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3) drop-shadow(0 0 3px #000)"
+            : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000)"
+        }
+        animation={
+          penguin.isDodging
+            ? "dodgeFlash 0.3s ease-in-out"
+            : penguin.isRawParrying
+            ? "rawParryFlash 1.2s ease-in-out infinite"
+            : "none"
+        }
+        style={{
+          display:
+            shouldUseSpritesheet(penguin.fighter, penguin) === "pumoWaddle"
+              ? "block"
+              : "none",
+        }}
+      />
       <StyledImage
         $fighter={penguin.fighter}
         $isDiving={penguin.isDiving}
@@ -1158,6 +1258,9 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         style={{
           transform: `scaleX(${penguin.facing})`,
           width: "18.4%",
+          display: shouldUseSpritesheet(penguin.fighter, penguin)
+            ? "none"
+            : "block",
         }}
       />
       <SaltEffect
