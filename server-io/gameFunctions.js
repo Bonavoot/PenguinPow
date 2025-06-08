@@ -4,8 +4,8 @@ const {
   resetPlayerAttackStates,
   clearChargeState,
   MAP_LEFT_BOUNDARY,
-  MAP_RIGHT_BOUNDARY
-} = require('./gameUtils');
+  MAP_RIGHT_BOUNDARY,
+} = require("./gameUtils");
 
 // Game constants that are used by these functions
 const GROUND_LEVEL = 200;
@@ -145,10 +145,10 @@ function executeSlapAttack(player, rooms) {
       // Add forward slide during slap attack with fixed values regardless of power-ups
       const FIXED_SLAP_SLIDE_VELOCITY = 2.5; // Decreased from 3.5 to 2.5 for shorter slide
       const slideDirection = player.facing === 1 ? -1 : 1; // Slide in the direction player is facing
-      
+
       // Store the current movement velocity to restore after slap
       const currentMovementVelocity = player.movementVelocity;
-      
+
       // Apply fixed slide velocity and mark that we're in a slap slide
       player.movementVelocity = slideDirection * FIXED_SLAP_SLIDE_VELOCITY;
       player.isSlapSliding = true; // New flag to track slap slide state
@@ -162,7 +162,7 @@ function executeSlapAttack(player, rooms) {
       slapCooldown: 120, // Reduced cooldown for smoother rapid hits
       pendingSlaps: 0,
       bufferWindow: 100,
-      hasBufferedSlap: false
+      hasBufferedSlap: false,
     };
   }
 
@@ -172,20 +172,33 @@ function executeSlapAttack(player, rooms) {
   // If we're still in cooldown, buffer the input
   if (timeSinceLastSlap < player.slapBuffer.slapCooldown) {
     // Only buffer if we don't already have a buffered slap
-    if (timeSinceLastSlap < player.slapBuffer.bufferWindow && !player.slapBuffer.hasBufferedSlap) {
+    if (
+      timeSinceLastSlap < player.slapBuffer.bufferWindow &&
+      !player.slapBuffer.hasBufferedSlap
+    ) {
       player.slapBuffer.hasBufferedSlap = true;
       // Schedule the next slap to execute as soon as cooldown ends
-      setPlayerTimeout(player.id, () => {
-        if (player.slapBuffer.hasBufferedSlap) {
-          player.slapBuffer.hasBufferedSlap = false;
-          // Only execute if player is still in a valid state
-          if (!player.isDodging && !player.isThrowing && !player.isBeingThrown && 
-              !player.isGrabbing && !player.isBeingGrabbed && !player.isRawParryStun && 
-              !player.canMoveToReady) {
-            executeSlapAttack(player, rooms);
+      setPlayerTimeout(
+        player.id,
+        () => {
+          if (player.slapBuffer.hasBufferedSlap) {
+            player.slapBuffer.hasBufferedSlap = false;
+            // Only execute if player is still in a valid state
+            if (
+              !player.isDodging &&
+              !player.isThrowing &&
+              !player.isBeingThrown &&
+              !player.isGrabbing &&
+              !player.isBeingGrabbed &&
+              !player.isRawParryStun &&
+              !player.canMoveToReady
+            ) {
+              executeSlapAttack(player, rooms);
+            }
           }
-        }
-      }, player.slapBuffer.slapCooldown - timeSinceLastSlap);
+        },
+        player.slapBuffer.slapCooldown - timeSinceLastSlap
+      );
     }
     return;
   }
@@ -204,16 +217,19 @@ function executeSlapAttack(player, rooms) {
   player.slapBuffer.lastSlapTime = Date.now();
 
   // Set a timeout to reset the attack state and gradually reduce the slide
-  setPlayerTimeout(player.id, () => {
-    player.isAttacking = false;
-    player.isSlapAttack = false;
-    player.attackType = null;
-    player.isSlapSliding = false; // Clear the slap slide flag
-    // Gradually reduce the slide velocity
-    player.movementVelocity *= 0.5;
-    
-    // After slap attack ends, check if we should restart charging
-    if (player.keys.mouse2 && 
+  setPlayerTimeout(
+    player.id,
+    () => {
+      player.isAttacking = false;
+      player.isSlapAttack = false;
+      player.attackType = null;
+      player.isSlapSliding = false; // Clear the slap slide flag
+      // Gradually reduce the slide velocity
+      player.movementVelocity *= 0.5;
+
+      // After slap attack ends, check if we should restart charging
+      if (
+        player.keys.mouse2 &&
         !player.isAttacking &&
         !player.isJumping &&
         !player.isDodging &&
@@ -225,14 +241,17 @@ function executeSlapAttack(player, rooms) {
         !player.isRecovering &&
         !player.isRawParryStun &&
         !player.isThrowingSnowball &&
-        !player.canMoveToReady) {
-      // Restart charging immediately
-      player.isChargingAttack = true;
-      player.chargeStartTime = Date.now();
-      player.chargeAttackPower = 1;
-      player.attackType = "charged";
-    }
-  }, 120); // Reduced animation duration for smoother rapid hits
+        !player.canMoveToReady
+      ) {
+        // Restart charging immediately
+        player.isChargingAttack = true;
+        player.chargeStartTime = Date.now();
+        player.chargeAttackPower = 1;
+        player.attackType = "charged";
+      }
+    },
+    120
+  ); // Reduced animation duration for smoother rapid hits
 }
 
 function cleanupRoom(room) {
@@ -256,31 +275,39 @@ function cleanupRoom(room) {
 
 // Add this new function near the other helper functions
 function executeChargedAttack(player, chargePercentage, rooms) {
-  console.log(`Player ${player.id} executing charged attack with ${chargePercentage}% charge`);
-  
+  console.log(
+    `Player ${player.id} executing charged attack with ${chargePercentage}% charge`
+  );
+
   // Prevent double execution - if player is already attacking, don't start another attack
   if (player.isAttacking && player.attackType === "charged") {
-    console.log(`Player ${player.id} already executing charged attack, skipping duplicate execution`);
+    console.log(
+      `Player ${player.id} already executing charged attack, skipping duplicate execution`
+    );
     return;
   }
-  
+
   // Check if mouse2 is held when the attack starts
   const mouse2HeldOnStart = player.keys.mouse2;
   if (mouse2HeldOnStart) {
-    console.log(`Player ${player.id} mouse2 is held when charged attack starts`);
+    console.log(
+      `Player ${player.id} mouse2 is held when charged attack starts`
+    );
     player.mouse2HeldDuringAttack = true;
   }
-  
+
   // Clear any pending charge attack to prevent double execution
   if (player.pendingChargeAttack) {
     console.log(`Player ${player.id} clearing pending charge attack`);
     player.pendingChargeAttack = null;
     player.spacebarReleasedDuringDodge = false;
   }
-  
+
   // Don't execute charged attack if player is in a throw state
   if (player.isThrowing || player.isBeingThrown) {
-    console.log(`Player ${player.id} cannot execute charged attack - in throw state`);
+    console.log(
+      `Player ${player.id} cannot execute charged attack - in throw state`
+    );
     return;
   }
 
@@ -289,7 +316,7 @@ function executeChargedAttack(player, chargePercentage, rooms) {
     isRecovering: player.isRecovering,
     recoveryStartTime: player.recoveryStartTime,
     recoveryDuration: player.recoveryDuration,
-    recoveryDirection: player.recoveryDirection
+    recoveryDirection: player.recoveryDirection,
   };
 
   // Only clear recovery state after we're certain the attack will execute
@@ -332,7 +359,7 @@ function executeChargedAttack(player, chargePercentage, rooms) {
   player.isChargingAttack = false;
   player.chargeStartTime = 0;
 
-  // Note: Recovery and state cleanup is now handled by safelyEndChargedAttack 
+  // Note: Recovery and state cleanup is now handled by safelyEndChargedAttack
   // in the main tick function when attackEndTime is reached
 }
 
@@ -357,14 +384,17 @@ function calculateEffectiveHitboxSize(player) {
 }
 
 function handleReadyPositions(room, player1, player2, io) {
-
   if (room.gameStart === false && room.hakkiyoiCount === 0) {
     // Only adjust player 1's ready position based on size power-up
     const player1ReadyX = 355; // Removed SIZE power-up condition
     const player2ReadyX = 690;
 
     // Only move players if they're allowed to move (after salt throw) AND they're not attacking
-    if (player1.canMoveToReady && !player1.isAttacking && !player1.isChargingAttack) {
+    if (
+      player1.canMoveToReady &&
+      !player1.isAttacking &&
+      !player1.isChargingAttack
+    ) {
       if (player1.x < player1ReadyX) {
         player1.x += 2; // Adjust speed as needed
         player1.isStrafing = true;
@@ -377,7 +407,11 @@ function handleReadyPositions(room, player1, player2, io) {
       }
     }
 
-    if (player2.canMoveToReady && !player2.isAttacking && !player2.isChargingAttack) {
+    if (
+      player2.canMoveToReady &&
+      !player2.isAttacking &&
+      !player2.isChargingAttack
+    ) {
       if (player2.x > player2ReadyX) {
         player2.x -= 2; // Adjust speed as needed
         player2.isStrafing = true;
@@ -391,9 +425,14 @@ function handleReadyPositions(room, player1, player2, io) {
     }
 
     // Set ready state when players reach their positions (but not if they're attacking)
-    if (player1.x === player1ReadyX && player2.x === player2ReadyX && 
-        !player1.isAttacking && !player1.isChargingAttack && 
-        !player2.isAttacking && !player2.isChargingAttack) {
+    if (
+      player1.x === player1ReadyX &&
+      player2.x === player2ReadyX &&
+      !player1.isAttacking &&
+      !player1.isChargingAttack &&
+      !player2.isAttacking &&
+      !player2.isChargingAttack
+    ) {
       player1.isReady = true;
       player2.isReady = true;
 
@@ -467,7 +506,8 @@ function arePlayersColliding(player1, player2) {
     player1.isThrowing ||
     player2.isThrowing ||
     player1.isBeingThrown ||
-    player2.isBeingThrown
+    player2.isBeingThrown ||
+    (player1.isHit && player2.isHit) // Only disable if BOTH are hit
   ) {
     return false;
   }
@@ -510,7 +550,8 @@ function adjustPlayerPositions(player1, player2, delta) {
     player1.isThrowing ||
     player2.isThrowing ||
     player1.isBeingThrown ||
-    player2.isBeingThrown
+    player2.isBeingThrown ||
+    (player1.isHit && player2.isHit) // Only skip entirely if BOTH are hit
   ) {
     return;
   }
@@ -531,9 +572,11 @@ function adjustPlayerPositions(player1, player2, delta) {
 
   // Add extra distance for slap attacks to prevent collision during rapid attacks
   const extraSlapDistance = 20; // Fixed extra distance for slap attacks
-  const finalMinDistance = (player1.isAttacking && player1.isSlapAttack) || 
-                          (player2.isAttacking && player2.isSlapAttack) ? 
-                          minDistance + extraSlapDistance : minDistance;
+  const finalMinDistance =
+    (player1.isAttacking && player1.isSlapAttack) ||
+    (player2.isAttacking && player2.isSlapAttack)
+      ? minDistance + extraSlapDistance
+      : minDistance;
 
   // If players are overlapping
   if (distanceBetweenCenters < finalMinDistance) {
@@ -549,13 +592,25 @@ function adjustPlayerPositions(player1, player2, delta) {
     let newPlayer1X = player1.x;
     let newPlayer2X = player2.x;
 
-    // Move players apart based on their relative positions
-    if (player1.x < player2.x) {
-      newPlayer1X -= adjustment * smoothFactor;
-      newPlayer2X += adjustment * smoothFactor;
-    } else {
-      newPlayer1X += adjustment * smoothFactor;
-      newPlayer2X -= adjustment * smoothFactor;
+    // Only apply position adjustments to non-isHit players
+    // If player1 is hit, they can pass through - don't adjust their position
+    if (!player1.isHit) {
+      // Move player1 away from player2 based on relative positions
+      if (player1.x < player2.x) {
+        newPlayer1X -= adjustment * smoothFactor;
+      } else {
+        newPlayer1X += adjustment * smoothFactor;
+      }
+    }
+
+    // If player2 is hit, they can pass through - don't adjust their position
+    if (!player2.isHit) {
+      // Move player2 away from player1 based on relative positions
+      if (player1.x < player2.x) {
+        newPlayer2X += adjustment * smoothFactor;
+      } else {
+        newPlayer2X -= adjustment * smoothFactor;
+      }
     }
 
     // Only apply movement resistance when players are moving towards each other
@@ -578,15 +633,23 @@ function adjustPlayerPositions(player1, player2, delta) {
       }
     }
 
-    // Enforce map boundaries for both players
+    // Enforce map boundaries for both players (but only apply position changes to non-isHit players)
     const leftBoundary = MAP_LEFT_BOUNDARY;
     const rightBoundary = MAP_RIGHT_BOUNDARY;
 
-    // Only update positions if they stay within boundaries
-    if (newPlayer1X >= leftBoundary && newPlayer1X <= rightBoundary) {
+    // Only update positions if they stay within boundaries AND the player is not isHit
+    if (
+      !player1.isHit &&
+      newPlayer1X >= leftBoundary &&
+      newPlayer1X <= rightBoundary
+    ) {
       player1.x = newPlayer1X;
     }
-    if (newPlayer2X >= leftBoundary && newPlayer2X <= rightBoundary) {
+    if (
+      !player2.isHit &&
+      newPlayer2X >= leftBoundary &&
+      newPlayer2X <= rightBoundary
+    ) {
       player2.x = newPlayer2X;
     }
   }
@@ -594,12 +657,16 @@ function adjustPlayerPositions(player1, player2, delta) {
 
 // Add helper function to safely end charged attacks with recovery check
 function safelyEndChargedAttack(player, rooms) {
-  console.log(`safelyEndChargedAttack called for player ${player.id}, attackType: ${player.attackType}, chargedAttackHit: ${player.chargedAttackHit}`);
-  
+  console.log(
+    `safelyEndChargedAttack called for player ${player.id}, attackType: ${player.attackType}, chargedAttackHit: ${player.chargedAttackHit}`
+  );
+
   // Only handle charged attacks, let slap attacks end normally
   if (player.attackType === "charged" && !player.chargedAttackHit) {
-    console.log(`Safely ending charged attack for player ${player.id}, checking for recovery`);
-    
+    console.log(
+      `Safely ending charged attack for player ${player.id}, checking for recovery`
+    );
+
     // Find the current room and opponent to check if recovery is needed
     const currentRoom = rooms.find((room) =>
       room.players.some((p) => p.id === player.id)
@@ -607,10 +674,12 @@ function safelyEndChargedAttack(player, rooms) {
 
     if (currentRoom) {
       const opponent = currentRoom.players.find((p) => p.id !== player.id);
-      
+
       // Set recovery for missed charged attacks (same logic as executeChargedAttack)
       if (opponent && !opponent.isHit && !player.isChargingAttack) {
-        console.log(`Setting recovery state for player ${player.id} after missed charged attack (from safelyEndChargedAttack)`);
+        console.log(
+          `Setting recovery state for player ${player.id} after missed charged attack (from safelyEndChargedAttack)`
+        );
         player.isRecovering = true;
         player.recoveryStartTime = Date.now();
         player.recoveryDuration = 250;
@@ -619,14 +688,18 @@ function safelyEndChargedAttack(player, rooms) {
         player.movementVelocity = player.facing * -3;
         player.knockbackVelocity = { x: 0, y: 0 };
       } else {
-        console.log(`Not setting recovery for player ${player.id} - opponent.isHit: ${opponent?.isHit}, isChargingAttack: ${player.isChargingAttack}`);
+        console.log(
+          `Not setting recovery for player ${player.id} - opponent.isHit: ${opponent?.isHit}, isChargingAttack: ${player.isChargingAttack}`
+        );
       }
     }
   }
-  
+
   // Clear attack states (for both charged and slap attacks)
   if (!player.isChargingAttack) {
-    console.log(`Clearing attack states for player ${player.id} (from safelyEndChargedAttack)`);
+    console.log(
+      `Clearing attack states for player ${player.id} (from safelyEndChargedAttack)`
+    );
     player.isAttacking = false;
     player.isSlapAttack = false;
     player.chargingFacingDirection = null;
@@ -655,7 +728,9 @@ function safelyEndChargedAttack(player, rooms) {
       }
     }
   } else {
-    console.log(`Not clearing attack states for player ${player.id} - player is charging`);
+    console.log(
+      `Not clearing attack states for player ${player.id} - player is charging`
+    );
   }
 }
 
@@ -669,5 +744,5 @@ module.exports = {
   handleReadyPositions,
   arePlayersColliding,
   adjustPlayerPositions,
-  safelyEndChargedAttack
-}; 
+  safelyEndChargedAttack,
+};

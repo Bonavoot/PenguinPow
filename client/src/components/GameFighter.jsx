@@ -21,10 +21,12 @@ import DodgeChargeUI from "./DodgeChargeUI";
 import StarStunEffect from "./StarStunEffect";
 
 import snowballThrow2 from "../assets/snowball-throw2.png";
+import snowballThrow from "../assets/snowball-throw.png";
 import pumo from "../assets/pumo.png";
 import pumo2 from "../assets/pumo2.png";
 import pumoWaddle from "../assets/pumo-waddle.png";
 import pumoWaddle2 from "../assets/pumo-waddle2.png";
+import pumoArmy2 from "../assets/pumo-army2.png";
 import crouching from "../assets/blocking2.png";
 import crouching2 from "../assets/blocking.png";
 import grabbing from "../assets/grabbing.png";
@@ -178,7 +180,7 @@ const getImageSrc = (
     if (isBowing) return bow;
     if (isThrowTeching) return throwTech;
     if (isRecovering) return recovering;
-    if (isThrowingSnowball) return pumo;
+    if (isThrowingSnowball) return snowballThrow;
     if (isSpawningPumoArmy) return salt;
     if (isSlapAttack) {
       return slapAnimation === 1 ? slapAttack1Red : slapAttack2Red;
@@ -209,7 +211,7 @@ const getImageSrc = (
     if (isThrowTeching) return throwTech2;
     if (isRecovering) return recovering2;
     if (isThrowingSnowball) return snowballThrow2;
-    if (isSpawningPumoArmy) return salt2;
+    if (isSpawningPumoArmy) return pumoArmy2;
     if (isSlapAttack) {
       return slapAnimation === 1 ? slapAttack1Blue : slapAttack2Blue;
     }

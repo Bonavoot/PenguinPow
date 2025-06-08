@@ -555,12 +555,12 @@ io.on("connection", (socket) => {
         // Handle ready positions separately from movement
         handleReadyPositions(room, player1, player2, io);
 
-        if (player1.isGrabbing && player1.grabbedOpponent) {
+        if (player1.isGrabbing && player1.grabbedOpponent && !player1.isHit) {
           // Only handle grab state if not pushing
           const opponent = room.players.find(
             (p) => p.id === player1.grabbedOpponent
           );
-          if (opponent) {
+          if (opponent && !opponent.isHit) {
             // Keep opponent at fixed distance during grab
             const fixedDistance = 72 * (opponent.sizeMultiplier || 1); // Reduced from 90 by 20%
             opponent.x =
@@ -572,6 +572,8 @@ io.on("connection", (socket) => {
         }
 
         // Check for collision and adjust positions
+        // Only disable collision detection if BOTH players are in states that should bypass collision
+        // (like both dodging, or both hit, etc.) - otherwise maintain collision for the non-hit player
         if (
           arePlayersColliding(player1, player2) &&
           !player1.isAttacking &&
@@ -579,7 +581,8 @@ io.on("connection", (socket) => {
           !player1.isGrabbing &&
           !player2.isGrabbing &&
           !player1.isBeingGrabbed &&
-          !player2.isBeingGrabbed
+          !player2.isBeingGrabbed &&
+          !(player1.isHit && player2.isHit) // Only disable if BOTH are hit, not if just one is hit
         ) {
           adjustPlayerPositions(player1, player2, delta);
         }
@@ -590,7 +593,8 @@ io.on("connection", (socket) => {
           !player2.isGrabbing &&
           !player2.isBeingGrabbed &&
           !player1.isThrowing &&
-          !player2.isThrowing
+          !player2.isThrowing &&
+          !(player1.isHit && player2.isHit) // Only disable if BOTH are hit
         ) {
           // Preserve facing direction during attacks and throws
           if (
@@ -599,13 +603,32 @@ io.on("connection", (socket) => {
             !player1.isDodging &&
             !player2.isDodging
           ) {
-            if (player1.x < player2.x) {
-              player1.facing = -1; // Player 1 faces right
-              player2.facing = 1; // Player 2 faces left
-            } else {
-              player1.facing = 1; // Player 1 faces left
-              player2.facing = -1; // Player 2 faces right
+            // Only update facing for non-isHit players
+            if (!player1.isHit && !player2.isHit) {
+              // Normal facing logic when both players are not hit
+              if (player1.x < player2.x) {
+                player1.facing = -1; // Player 1 faces right
+                player2.facing = 1; // Player 2 faces left
+              } else {
+                player1.facing = 1; // Player 1 faces left
+                player2.facing = -1; // Player 2 faces right
+              }
+            } else if (!player1.isHit && player2.isHit) {
+              // Only update player1's facing when player2 is hit
+              if (player1.x < player2.x) {
+                player1.facing = -1; // Player 1 faces right
+              } else {
+                player1.facing = 1; // Player 1 faces left
+              }
+            } else if (player1.isHit && !player2.isHit) {
+              // Only update player2's facing when player1 is hit
+              if (player1.x < player2.x) {
+                player2.facing = 1; // Player 2 faces left
+              } else {
+                player2.facing = -1; // Player 2 faces right
+              }
             }
+            // If both are hit, don't update facing at all (handled by outer condition)
           }
         }
 
@@ -1239,6 +1262,7 @@ io.on("connection", (socket) => {
             !player.isBeingGrabbed &&
             !player.isRecovering &&
             !player.isThrowingSnowball &&
+            !player.isSpawningPumoArmy &&
             !player.isRawParrying &&
             !player.isHit) ||
           (!player.keys.s &&
@@ -1249,6 +1273,7 @@ io.on("connection", (socket) => {
             !player.isBeingGrabbed &&
             !player.isRecovering &&
             !player.isThrowingSnowball &&
+            !player.isSpawningPumoArmy &&
             !player.isRawParrying &&
             !player.isHit)
         ) {
@@ -1285,6 +1310,7 @@ io.on("connection", (socket) => {
             !player.isRawParryStun &&
             !player.isRawParrying &&
             !player.isThrowingSnowball &&
+            !player.isSpawningPumoArmy &&
             !player.keys.mouse1 // Add condition to prevent strafing while slapping
           ) {
             // Apply ice drift when changing directions
@@ -1322,6 +1348,7 @@ io.on("connection", (socket) => {
             !player.isRawParryStun &&
             !player.isRawParrying &&
             !player.isThrowingSnowball &&
+            !player.isSpawningPumoArmy &&
             !player.keys.mouse1 // Add condition to prevent strafing while slapping
           ) {
             // Apply ice drift when changing directions
@@ -2354,6 +2381,11 @@ io.on("connection", (socket) => {
       return;
     }
 
+    // Block all inputs during pumo army spawning animation
+    if (player.isSpawningPumoArmy) {
+      return;
+    }
+
     // Helper function to check if player is in a charged attack execution state
     const isInChargedAttackExecution = () => {
       return player.isAttacking && player.attackType === "charged";
@@ -2528,6 +2560,10 @@ io.on("connection", (socket) => {
 
         // Set spawning state
         player.isSpawningPumoArmy = true;
+
+        // Clear any existing movement momentum to prevent sliding during animation
+        player.movementVelocity = 0;
+        player.isStrafing = false;
 
         // Determine army direction (same as player facing)
         const armyDirection = player.facing === 1 ? -1 : 1; // Army moves in direction player is facing
