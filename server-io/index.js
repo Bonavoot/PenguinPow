@@ -2503,7 +2503,7 @@ io.on("connection", (socket) => {
               const clone = {
                 id: Math.random().toString(36).substr(2, 9),
                 x: startX,
-                y: GROUND_LEVEL,
+                y: GROUND_LEVEL + 5,
                 velocityX: armyDirection * 1.5, // Speed of movement
                 facing: armyDirection, // Face the direction they're moving (1 = right, -1 = left)
                 isStrafing: true, // Use strafing animation
