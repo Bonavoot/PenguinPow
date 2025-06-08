@@ -146,7 +146,7 @@ const PowerUpIcon = styled.div`
       case "snowball":
         return "linear-gradient(135deg, #74b9ff, #0984e3)";
       case "pumo_army":
-        return "linear-gradient(135deg, #ff6b6b, #ee5a52)";
+        return "linear-gradient(135deg, #fff4e6 0%, #ffcc80 30%, #ff8c00 100%)";
       default:
         return "linear-gradient(135deg, #6c757d, #495057)";
     }

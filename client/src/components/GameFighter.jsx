@@ -69,6 +69,7 @@ import eeshiMusic from "../sounds/eeshi.mp3";
 import slapParrySound from "../sounds/slap-parry-sound.mp3";
 import saltSound from "../sounds/salt-sound.mp3";
 import snowballThrowSound from "../sounds/snowball-throw-sound.mp3";
+import pumoArmySound from "../sounds/pumo-army-sound.mp3";
 
 import UiPlayerInfo from "./UiPlayerInfo";
 import SaltEffect from "./SaltEffect";
@@ -103,6 +104,7 @@ const initializeAudioPools = () => {
   createAudioPool(slapParrySound, 2);
   createAudioPool(saltSound, 2);
   createAudioPool(snowballThrowSound, 2);
+  createAudioPool(pumoArmySound, 2);
   createAudioPool(hakkiyoiSound, 1);
   createAudioPool(bellSound, 1);
   createAudioPool(winnerSound, 1);
@@ -646,6 +648,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
   const lastGrabState = useRef(player.isGrabbing);
   const lastThrowingSaltState = useRef(player.isThrowingSalt);
   const lastThrowingSnowballState = useRef(player.isThrowingSnowball);
+  const lastSpawningPumoArmyState = useRef(player.isSpawningPumoArmy);
   const gameMusicRef = useRef(null);
   const eeshiMusicRef = useRef(null);
   const lastWinnerState = useRef(gameOver);
@@ -950,6 +953,13 @@ const GameFighter = ({ player, index, roomName, localId }) => {
     }
     lastThrowingSnowballState.current = penguin.isThrowingSnowball;
   }, [penguin.isThrowingSnowball]);
+
+  useEffect(() => {
+    if (penguin.isSpawningPumoArmy && !lastSpawningPumoArmyState.current) {
+      playSound(pumoArmySound, 0.02);
+    }
+    lastSpawningPumoArmyState.current = penguin.isSpawningPumoArmy;
+  }, [penguin.isSpawningPumoArmy]);
 
   useEffect(() => {
     if (hakkiyoi) {

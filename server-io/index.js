@@ -172,6 +172,19 @@ const PERFECT_PARRY_WINDOW = 100; // 100ms window for perfect parries
 const DODGE_COOLDOWN = 2000; // 2 second cooldown between dodges
 const MAX_DODGE_CHARGES = 2; // Maximum number of dodge charges
 
+// Knockback immunity system constants
+const KNOCKBACK_IMMUNITY_DURATION = 150; // 150ms immunity window
+
+// Knockback immunity helper functions
+function canApplyKnockback(player) {
+  return !player.knockbackImmune || Date.now() >= player.knockbackImmuneEndTime;
+}
+
+function setKnockbackImmunity(player) {
+  player.knockbackImmune = true;
+  player.knockbackImmuneEndTime = Date.now() + KNOCKBACK_IMMUNITY_DURATION;
+}
+
 function handlePowerUpSelection(room) {
   // Reset power-up selection state for the room
   room.powerUpSelectionPhase = true;
@@ -752,10 +765,15 @@ io.on("connection", (socket) => {
                 opponent.isHit = true;
                 opponent.isAlreadyHit = true;
 
-                // Apply knockback
-                const knockbackDirection = snowball.velocityX > 0 ? 1 : -1;
-                opponent.knockbackVelocity.x = knockbackDirection * 3;
-                opponent.movementVelocity = knockbackDirection * 2;
+                // Apply knockback only if not immune
+                if (canApplyKnockback(opponent)) {
+                  const knockbackDirection = snowball.velocityX > 0 ? 1 : -1;
+                  opponent.knockbackVelocity.x = knockbackDirection * 3;
+                  opponent.movementVelocity = knockbackDirection * 2;
+
+                  // Set knockback immunity
+                  setKnockbackImmunity(opponent);
+                }
 
                 // Reset hit state after duration
                 setPlayerTimeout(
@@ -830,10 +848,15 @@ io.on("connection", (socket) => {
                 opponent.isHit = true;
                 opponent.isAlreadyHit = true;
 
-                // Apply knockback (lighter than normal slap)
-                const knockbackDirection = clone.velocityX > 0 ? 1 : -1;
-                opponent.knockbackVelocity.x = knockbackDirection * 2;
-                opponent.movementVelocity = knockbackDirection * 1.5;
+                // Apply knockback only if not immune (lighter than normal slap)
+                if (canApplyKnockback(opponent)) {
+                  const knockbackDirection = clone.velocityX > 0 ? 1 : -1;
+                  opponent.knockbackVelocity.x = knockbackDirection * 2;
+                  opponent.movementVelocity = knockbackDirection * 1.5;
+
+                  // Set knockback immunity
+                  setKnockbackImmunity(opponent);
+                }
 
                 // Reset hit state after duration
                 setPlayerTimeout(
@@ -871,6 +894,14 @@ io.on("connection", (socket) => {
       room.players.forEach((player) => {
         if (room.gameOver && player.id === room.loserId && !player.isHit) {
           return;
+        }
+
+        // Clear knockback immunity when timer expires
+        if (
+          player.knockbackImmune &&
+          Date.now() >= player.knockbackImmuneEndTime
+        ) {
+          player.knockbackImmune = false;
         }
 
         // Handle knockback movement with NO boundary restrictions
@@ -1928,46 +1959,53 @@ io.on("connection", (socket) => {
       //   finalKnockbackMultiplier = finalKnockbackMultiplier * 0.85;
       // }
 
-      if (isSlapAttack) {
-        // Convert knockback to movement velocity for ice-like sliding
-        otherPlayer.movementVelocity =
-          3.85 * knockbackDirection * finalKnockbackMultiplier; // Increased from 3.5 to 3.85
-        otherPlayer.knockbackVelocity.x = 0; // Clear knockback velocity since we're using movement
+      // Apply knockback only if not immune
+      if (canApplyKnockback(otherPlayer)) {
+        if (isSlapAttack) {
+          // Convert knockback to movement velocity for ice-like sliding
+          otherPlayer.movementVelocity =
+            3.85 * knockbackDirection * finalKnockbackMultiplier; // Increased from 3.5 to 3.85
+          otherPlayer.knockbackVelocity.x = 0; // Clear knockback velocity since we're using movement
 
-        // Add immediate position adjustment to prevent overlap
-        const minDistance = SLAP_HITBOX_DISTANCE_VALUE * 0.8; // 80% of hitbox distance
-        const currentDistance = Math.abs(player.x - otherPlayer.x);
-        if (currentDistance < minDistance) {
-          const adjustment =
-            (minDistance - currentDistance) * knockbackDirection;
-          otherPlayer.x += adjustment;
+          // Add immediate position adjustment to prevent overlap
+          const minDistance = SLAP_HITBOX_DISTANCE_VALUE * 0.8; // 80% of hitbox distance
+          const currentDistance = Math.abs(player.x - otherPlayer.x);
+          if (currentDistance < minDistance) {
+            const adjustment =
+              (minDistance - currentDistance) * knockbackDirection;
+            otherPlayer.x += adjustment;
+          }
+
+          // Remove screen shake for slap attacks
+        } else {
+          // For charged attacks, use a combination of immediate knockback and sliding
+          const immediateKnockback =
+            2 * knockbackDirection * finalKnockbackMultiplier;
+          otherPlayer.movementVelocity =
+            1.5 * knockbackDirection * finalKnockbackMultiplier;
+          otherPlayer.knockbackVelocity.x = immediateKnockback;
+
+          // Calculate attacker bounce-off based on charge percentage
+          const attackerBounceDirection = -knockbackDirection;
+          const attackerBounceMultiplier = 0.3 + (chargePercentage / 100) * 0.5;
+
+          // Set movement velocity for the attacker to create bounce-off effect
+          player.movementVelocity =
+            2 * attackerBounceDirection * attackerBounceMultiplier;
+          player.knockbackVelocity = { x: 0, y: 0 }; // Clear knockback velocity since we're using movement
+
+          if (currentRoom) {
+            io.in(currentRoom.id).emit("screen_shake", {
+              intensity: 0.7 + (chargePercentage / 100) * 0.2,
+              duration: 250 + (chargePercentage / 100) * 100,
+            });
+          }
         }
 
-        // Remove screen shake for slap attacks
-      } else {
-        // For charged attacks, use a combination of immediate knockback and sliding
-        const immediateKnockback =
-          2 * knockbackDirection * finalKnockbackMultiplier;
-        otherPlayer.movementVelocity =
-          1.5 * knockbackDirection * finalKnockbackMultiplier;
-        otherPlayer.knockbackVelocity.x = immediateKnockback;
-
-        // Calculate attacker bounce-off based on charge percentage
-        const attackerBounceDirection = -knockbackDirection;
-        const attackerBounceMultiplier = 0.3 + (chargePercentage / 100) * 0.5;
-
-        // Set movement velocity for the attacker to create bounce-off effect
-        player.movementVelocity =
-          2 * attackerBounceDirection * attackerBounceMultiplier;
-        player.knockbackVelocity = { x: 0, y: 0 }; // Clear knockback velocity since we're using movement
-
-        if (currentRoom) {
-          io.in(currentRoom.id).emit("screen_shake", {
-            intensity: 0.7 + (chargePercentage / 100) * 0.2,
-            duration: 250 + (chargePercentage / 100) * 100,
-          });
-        }
+        // Set knockback immunity
+        setKnockbackImmunity(otherPlayer);
       }
+
       otherPlayer.knockbackVelocity.y = 0;
       otherPlayer.y = GROUND_LEVEL;
 
@@ -2076,6 +2114,8 @@ io.on("connection", (socket) => {
         bufferExpiryTime: 0, // Add expiry time for buffered actions
         wantsToRestartCharge: false, // Add flag for charge restart detection
         mouse2HeldDuringAttack: false, // Add flag for simpler charge restart detection
+        knockbackImmune: false, // Add knockback immunity flag
+        knockbackImmuneEndTime: 0, // Add knockback immunity timer
       });
     } else if (rooms[index].players.length === 1) {
       rooms[index].players.push({
@@ -2152,6 +2192,8 @@ io.on("connection", (socket) => {
         bufferExpiryTime: 0, // Add expiry time for buffered actions
         wantsToRestartCharge: false, // Add flag for charge restart detection
         mouse2HeldDuringAttack: false, // Add flag for simpler charge restart detection
+        knockbackImmune: false, // Add knockback immunity flag
+        knockbackImmuneEndTime: 0, // Add knockback immunity timer
       });
     }
 
@@ -2493,7 +2535,7 @@ io.on("connection", (socket) => {
         // Spawn multiple mini clones sequentially
         const numClones = 5;
         const spawnDelay = 1000; // 1 second between spawns
-        const startX = armyDirection === 1 ? 50 : 1230; // Start from opposite side of map
+        const startX = armyDirection === 1 ? 0 : 1150; // Start from opposite side of map
 
         // Spawn clones one at a time with delays
         for (let i = 0; i < numClones; i++) {
