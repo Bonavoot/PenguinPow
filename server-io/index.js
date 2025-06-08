@@ -573,11 +573,11 @@ io.on("connection", (socket) => {
 
         // Check for collision and adjust positions
         // Only disable collision detection if BOTH players are in states that should bypass collision
-        // (like both dodging, or both hit, etc.) - otherwise maintain collision for the non-hit player
+        // Allow collision detection during slap attacks to prevent phase-through
         if (
           arePlayersColliding(player1, player2) &&
-          !player1.isAttacking &&
-          !player2.isAttacking &&
+          !(player1.isAttacking && player1.attackType === "charged") &&
+          !(player2.isAttacking && player2.attackType === "charged") &&
           !player1.isGrabbing &&
           !player2.isGrabbing &&
           !player1.isBeingGrabbed &&
