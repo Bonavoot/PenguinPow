@@ -50,8 +50,12 @@ const SaltEffect = ({
   const containerRef = useRef(null);
 
   const updateParticle = useCallback((particle, deltaTime) => {
+    // Apply gravity to velocityY (negative Y makes particles fall down since we use bottom positioning)
+    const gravity = -0.5; // Negative gravity since bottom-referenced positioning
+    const newVelocityY = particle.velocityY + gravity * (deltaTime / 16);
+
     const newX = particle.x + particle.velocityX * (deltaTime / 16);
-    const newY = particle.y + particle.velocityY * (deltaTime / 16);
+    const newY = particle.y + newVelocityY * (deltaTime / 16);
     const newOpacity = particle.opacity - deltaTime / particle.life;
     const newScale = particle.scale * 0.99;
     const newBlur = particle.blur + 0.1;
@@ -60,6 +64,7 @@ const SaltEffect = ({
       ...particle,
       x: newX,
       y: newY,
+      velocityY: newVelocityY, // Store the updated velocity for next frame
       opacity: newOpacity,
       scale: newScale,
       blur: newBlur,
