@@ -3,6 +3,8 @@ import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
 import { SocketContext } from "../SocketContext";
 import powerWaterIcon from "../assets/power-water.png";
+import snowballImage from "../assets/snowball.png";
+import pumoArmyIcon from "./pumo-army-icon.png";
 
 // Animation for entrance
 const slideIn = keyframes`
@@ -143,6 +145,8 @@ const PowerUpIcon = styled.div`
         return "linear-gradient(135deg, #ff6b6b, #ee5a52)";
       case "snowball":
         return "linear-gradient(135deg, #74b9ff, #0984e3)";
+      case "pumo_army":
+        return "linear-gradient(135deg, #ff6b6b, #ee5a52)";
       default:
         return "linear-gradient(135deg, #6c757d, #495057)";
     }
@@ -241,6 +245,7 @@ const PowerUpSelection = ({
   });
   const [isVisible, setIsVisible] = useState(false);
   const [timeLeft, setTimeLeft] = useState(15);
+  const [availablePowerUps, setAvailablePowerUps] = useState([]);
 
   const powerUpInfo = {
     speed: {
@@ -256,18 +261,24 @@ const PowerUpSelection = ({
     snowball: {
       name: "Snowball",
       description: "Throw snowball with F key",
-      icon: "❄️",
+      icon: snowballImage,
+    },
+    pumo_army: {
+      name: "Pumo Army",
+      description: "Spawn mini clones with F key",
+      icon: pumoArmyIcon,
     },
   };
 
   useEffect(() => {
     let countdownInterval;
 
-    const handlePowerUpSelectionStart = () => {
+    const handlePowerUpSelectionStart = (data) => {
       setIsVisible(true);
       setSelectedPowerUp(null);
       setSelectionStatus({ selectedCount: 0, totalPlayers: 2 });
       setTimeLeft(15);
+      setAvailablePowerUps(data.availablePowerUps || []);
 
       // Start countdown timer
       countdownInterval = setInterval(() => {
@@ -293,6 +304,7 @@ const PowerUpSelection = ({
     const handlePowerUpSelectionComplete = () => {
       setIsVisible(false);
       setTimeLeft(15);
+      setAvailablePowerUps([]);
 
       // Clear countdown timer
       if (countdownInterval) {
@@ -344,28 +356,35 @@ const PowerUpSelection = ({
         <Subtitle>Choose your enhancement for this round</Subtitle>
 
         <PowerUpGrid>
-          {Object.entries(powerUpInfo).map(([type, info]) => (
-            <PowerUpCard
-              key={type}
-              $selected={selectedPowerUp === type}
-              onClick={() => handlePowerUpSelect(type)}
-              disabled={selectedPowerUp && selectedPowerUp !== type}
-            >
-              <PowerUpIcon $type={type}>
-                {type === "power" ? (
-                  <img src={info.icon} alt={info.name} />
-                ) : (
-                  info.icon
-                )}
-              </PowerUpIcon>
-              <PowerUpName $selected={selectedPowerUp === type}>
-                {info.name}
-              </PowerUpName>
-              <PowerUpDescription $selected={selectedPowerUp === type}>
-                {info.description}
-              </PowerUpDescription>
-            </PowerUpCard>
-          ))}
+          {availablePowerUps.map((type) => {
+            const info = powerUpInfo[type];
+            if (!info) return null;
+
+            return (
+              <PowerUpCard
+                key={type}
+                $selected={selectedPowerUp === type}
+                onClick={() => handlePowerUpSelect(type)}
+                disabled={selectedPowerUp && selectedPowerUp !== type}
+              >
+                <PowerUpIcon $type={type}>
+                  {type === "power" ||
+                  type === "snowball" ||
+                  type === "pumo_army" ? (
+                    <img src={info.icon} alt={info.name} />
+                  ) : (
+                    info.icon
+                  )}
+                </PowerUpIcon>
+                <PowerUpName $selected={selectedPowerUp === type}>
+                  {info.name}
+                </PowerUpName>
+                <PowerUpDescription $selected={selectedPowerUp === type}>
+                  {info.description}
+                </PowerUpDescription>
+              </PowerUpCard>
+            );
+          })}
         </PowerUpGrid>
 
         <StatusContainer>

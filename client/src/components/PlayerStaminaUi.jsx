@@ -2,6 +2,7 @@ import PropTypes from "prop-types";
 import "./PlayerStaminaUi.css";
 import DodgeChargeUI from "./DodgeChargeUI";
 import SnowballChargeUI from "./SnowballChargeUI";
+import PumoArmyChargeUI from "./PumoArmyChargeUI";
 
 const PlayerStaminaUi = ({
   stamina,
@@ -10,6 +11,7 @@ const PlayerStaminaUi = ({
   dodgeChargeCooldowns,
   activePowerUp,
   snowballCooldown,
+  pumoArmyCooldown,
 }) => {
   const staminaValue = typeof stamina === "object" ? stamina.stamina : stamina;
 
@@ -17,10 +19,10 @@ const PlayerStaminaUi = ({
     <div>
       <div className="ui-player-container" id={`ui-container-${index + 1}`}>
         {activePowerUp === "snowball" && (
-          <SnowballChargeUI
-            snowballCooldown={snowballCooldown}
-            index={index}
-          />
+          <SnowballChargeUI snowballCooldown={snowballCooldown} index={index} />
+        )}
+        {activePowerUp === "pumo_army" && (
+          <PumoArmyChargeUI pumoArmyCooldown={pumoArmyCooldown} index={index} />
         )}
         <DodgeChargeUI
           dodgeCharges={dodgeCharges}
@@ -83,6 +85,7 @@ PlayerStaminaUi.propTypes = {
   dodgeChargeCooldowns: PropTypes.arrayOf(PropTypes.number),
   activePowerUp: PropTypes.string,
   snowballCooldown: PropTypes.bool,
+  pumoArmyCooldown: PropTypes.bool,
 };
 
 export default PlayerStaminaUi;

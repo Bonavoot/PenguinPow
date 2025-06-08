@@ -169,13 +169,15 @@ const getImageSrc = (
   grabAttemptType,
   isRecovering,
   isRawParryStun,
-  isThrowingSnowball
+  isThrowingSnowball,
+  isSpawningPumoArmy
 ) => {
   if (fighter === "player 2") {
     if (isBowing) return bow;
     if (isThrowTeching) return throwTech;
     if (isRecovering) return recovering;
     if (isThrowingSnowball) return pumo;
+    if (isSpawningPumoArmy) return salt;
     if (isSlapAttack) {
       return slapAnimation === 1 ? slapAttack1Red : slapAttack2Red;
     }
@@ -205,6 +207,7 @@ const getImageSrc = (
     if (isThrowTeching) return throwTech2;
     if (isRecovering) return recovering2;
     if (isThrowingSnowball) return snowballThrow2;
+    if (isSpawningPumoArmy) return salt2;
     if (isSlapAttack) {
       return slapAnimation === 1 ? slapAttack1Blue : slapAttack2Blue;
     }
@@ -294,6 +297,7 @@ const StyledImage = styled("img")
         "chargingFacingDirection",
         "isThrowingSalt",
         "isThrowingSnowball",
+        "isSpawningPumoArmy",
         "saltCooldown",
         "grabStartTime",
         "grabbedOpponent",
@@ -335,7 +339,8 @@ const StyledImage = styled("img")
       props.$grabAttemptType,
       props.$isRecovering,
       props.$isRawParryStun,
-      props.$isThrowingSnowball
+      props.$isThrowingSnowball,
+      props.$isSpawningPumoArmy
     ),
     style: {
       position: "absolute",
@@ -348,7 +353,7 @@ const StyledImage = styled("img")
         ? "drop-shadow(0 0 6px rgba(255, 255, 255, 0.6)) brightness(1.5) drop-shadow(0 0 2px #000)"
         : props.$isRawParrying
         ? "drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3) drop-shadow(0 0 3px #000)"
-        : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000)",
+        : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.3)",
       animation: props.$isDodging
         ? "dodgeFlash 0.3s ease-in-out"
         : props.$isRawParrying
@@ -357,7 +362,8 @@ const StyledImage = styled("img")
     },
   }))`
   position: absolute;
-  width: 18.4%;
+  /* Limit maximum size to prevent over-scaling beyond source resolution */
+  width: min(18.4%, 480px);
   height: auto;
   will-change: transform, bottom, left, filter, opacity;
   pointer-events: none;
@@ -426,6 +432,8 @@ const FloatingPowerUpText = styled.div`
         return "#FF4444";
       case "snowball":
         return "#FFFFFF";
+      case "pumo_army":
+        return "#FF8C00";
       default:
         return "#FFD700";
     }
@@ -441,6 +449,8 @@ const FloatingPowerUpText = styled.div`
             return "rgba(255, 68, 68, 0.6)";
           case "snowball":
             return "rgba(255, 255, 255, 0.6)";
+          case "pumo_army":
+            return "rgba(255, 140, 0, 0.6)";
           default:
             return "rgba(255, 215, 0, 0.6)";
         }
@@ -543,6 +553,26 @@ const SnowballProjectile = styled.img`
     drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000);
 `;
 
+const PumoClone = styled.img
+  .withConfig({
+    shouldForwardProp: (prop) =>
+      !["$x", "$y", "$facing", "$size"].includes(prop),
+  })
+  .attrs((props) => ({
+    style: {
+      position: "absolute",
+      width: `${(props.$size || 0.6) * 18.4}%`,
+      height: "auto",
+      left: `${(props.$x / 1280) * 100}%`,
+      bottom: `${(props.$y / 720) * 100}%`,
+      transform: `scaleX(${props.$facing * -1})`,
+      zIndex: 97,
+      pointerEvents: "none",
+      filter:
+        "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.3)",
+    },
+  }))``;
+
 const GameFighter = ({ player, index, roomName, localId }) => {
   const { socket } = useContext(SocketContext);
   const [penguin, setPenguin] = useState({
@@ -581,6 +611,9 @@ const GameFighter = ({ player, index, roomName, localId }) => {
     snowballs: [],
     snowballCooldown: false,
     lastSnowballTime: 0,
+    pumoArmy: [],
+    pumoArmyCooldown: false,
+    isSpawningPumoArmy: false,
     activePowerUp: null,
   });
   const [stamina, setStamina] = useState(player);
@@ -604,6 +637,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
     startTime: 0,
   });
   const [allSnowballs, setAllSnowballs] = useState([]);
+  const [allPumoArmies, setAllPumoArmies] = useState([]);
 
   const lastAttackState = useRef(player.isAttacking);
   const lastHitState = useRef(player.isHit);
@@ -681,6 +715,13 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         ...(data.player2.snowballs || []),
       ];
       setAllSnowballs(combinedSnowballs);
+
+      // Update all pumo armies from both players
+      const combinedPumoArmies = [
+        ...(data.player1.pumoArmy || []),
+        ...(data.player2.pumoArmy || []),
+      ];
+      setAllPumoArmies(combinedPumoArmies);
     },
     [index]
   );
@@ -1060,6 +1101,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         dodgeChargeCooldowns={penguin.dodgeChargeCooldowns}
         activePowerUp={penguin.activePowerUp}
         snowballCooldown={penguin.snowballCooldown}
+        pumoArmyCooldown={penguin.pumoArmyCooldown}
       />
       <SaltBasket
         src={
@@ -1155,6 +1197,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         $isRecovering={penguin.isRecovering}
         $isRawParryStun={penguin.isRawParryStun}
         $isThrowingSnowball={penguin.isThrowingSnowball}
+        $isSpawningPumoArmy={penguin.isSpawningPumoArmy}
         style={{
           transform: `scaleX(${penguin.facing})`,
           width: "18.4%",
@@ -1189,6 +1232,30 @@ const GameFighter = ({ player, index, roomName, localId }) => {
           $y={projectile.y}
         />
       ))}
+      {allPumoArmies.map((clone) => {
+        // Determine the correct sprite based on the owner's fighter type and state
+        let cloneSprite;
+        if (clone.isStrafing) {
+          // Use waddle sprites for strafing animation
+          cloneSprite =
+            clone.ownerFighter === "player 1" ? pumoWaddle2 : pumoWaddle;
+        } else {
+          // Use default sprites
+          cloneSprite = clone.ownerFighter === "player 1" ? pumo2 : pumo;
+        }
+
+        return (
+          <PumoClone
+            key={clone.id}
+            src={cloneSprite}
+            alt="Pumo Clone"
+            $x={clone.x}
+            $y={clone.y}
+            $facing={clone.facing}
+            $size={clone.size}
+          />
+        );
+      })}
     </div>
   );
 };

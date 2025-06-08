@@ -137,6 +137,7 @@ const POWER_UP_TYPES = {
   SPEED: "speed",
   POWER: "power",
   SNOWBALL: "snowball",
+  PUMO_ARMY: "pumo_army",
 };
 
 // Add power-up effects
@@ -144,6 +145,7 @@ const POWER_UP_EFFECTS = {
   [POWER_UP_TYPES.SPEED]: 1.4, // 20% speed increase
   [POWER_UP_TYPES.POWER]: 1.3, // 30% knockback increase
   [POWER_UP_TYPES.SNOWBALL]: 1.0, // No stat multiplier, just projectile ability
+  [POWER_UP_TYPES.PUMO_ARMY]: 1.0, // No stat multiplier, just spawns army
 };
 
 const GRAB_DURATION = 1500; // 1.5 seconds total grab duration
@@ -174,12 +176,30 @@ function handlePowerUpSelection(room) {
   // Reset power-up selection state for the room
   room.powerUpSelectionPhase = true;
   room.playersSelectedPowerUps = {};
+  room.playerAvailablePowerUps = {};
 
   console.log(`Starting power-up selection for room ${room.id}`);
 
-  // Emit power-up selection event to all players in the room
-  io.in(room.id).emit("power_up_selection_start", {
-    availablePowerUps: Object.values(POWER_UP_TYPES),
+  const allPowerUps = Object.values(POWER_UP_TYPES);
+
+  // Generate individual randomized lists for each player
+  room.players.forEach((player) => {
+    // Randomly select 3 out of 4 power-ups for this player
+    const shuffled = [...allPowerUps].sort(() => Math.random() - 0.5);
+    const availablePowerUps = shuffled.slice(0, 3); // Take first 3 from shuffled array
+
+    // Store available power-ups for this player
+    room.playerAvailablePowerUps[player.id] = availablePowerUps;
+
+    console.log(
+      `Available power-ups for player ${player.id}:`,
+      availablePowerUps
+    );
+
+    // Send individual power-up list to each player
+    io.to(player.id).emit("power_up_selection_start", {
+      availablePowerUps: availablePowerUps,
+    });
   });
 }
 
@@ -235,12 +255,14 @@ function resetRoomAndPlayers(room) {
         `Timer expired, auto-selecting power-ups for room ${room.id}`
       );
 
-      // Auto-select the first power-up (SPEED) for any players who haven't selected
-      const availablePowerUps = Object.values(POWER_UP_TYPES);
-      const firstPowerUp = availablePowerUps[0]; // This will be "speed"
-
+      // Auto-select the first available power-up for any players who haven't selected
       room.players.forEach((player) => {
         if (!player.selectedPowerUp) {
+          const availablePowerUps =
+            room.playerAvailablePowerUps[player.id] ||
+            Object.values(POWER_UP_TYPES);
+          const firstPowerUp = availablePowerUps[0];
+
           console.log(`Auto-selecting ${firstPowerUp} for player ${player.id}`);
           player.selectedPowerUp = firstPowerUp;
           room.playersSelectedPowerUps[player.id] = firstPowerUp;
@@ -300,7 +322,14 @@ function resetRoomAndPlayers(room) {
     player.snowballCooldown = false;
     player.lastSnowballTime = 0;
     player.isThrowingSnowball = false;
+    // Reset pumo army state
+    player.pumoArmy = [];
+    player.pumoArmyCooldown = false;
+    player.isSpawningPumoArmy = false;
   });
+
+  // Clear player-specific power-up data
+  room.playerAvailablePowerUps = {};
 
   // Start power-up selection phase instead of automatic salt throwing
   handlePowerUpSelection(room);
@@ -765,6 +794,76 @@ io.on("connection", (socket) => {
               `Player ${player.id} snowball cooldown reset - no snowballs remaining`
             );
           }
+        });
+
+        // Handle pumo army updates
+        [player1, player2].forEach((player) => {
+          const currentTime = Date.now();
+
+          // Update pumo army positions and check for collisions
+          player.pumoArmy = player.pumoArmy.filter((clone) => {
+            // Check if clone has expired
+            if (currentTime - clone.spawnTime >= clone.lifespan) {
+              return false; // Remove expired clone
+            }
+
+            // Move clone
+            clone.x += clone.velocityX * delta * speedFactor;
+
+            // Check if clone is off-screen
+            if (clone.x < -50 || clone.x > 1330) {
+              return false; // Remove off-screen clone
+            }
+
+            // Check collision with opponent
+            const opponent = room.players.find((p) => p.id !== player.id);
+            if (
+              opponent &&
+              !opponent.isDodging &&
+              !opponent.isRawParrying &&
+              !clone.hasHit
+            ) {
+              const distance = Math.abs(clone.x - opponent.x);
+              if (distance < 60 && Math.abs(clone.y - opponent.y) < 40) {
+                // Hit opponent
+                clone.hasHit = true;
+                opponent.isHit = true;
+                opponent.isAlreadyHit = true;
+
+                // Apply knockback (lighter than normal slap)
+                const knockbackDirection = clone.velocityX > 0 ? 1 : -1;
+                opponent.knockbackVelocity.x = knockbackDirection * 2;
+                opponent.movementVelocity = knockbackDirection * 1.5;
+
+                // Reset hit state after duration
+                setPlayerTimeout(
+                  opponent.id,
+                  () => {
+                    opponent.isHit = false;
+                    opponent.isAlreadyHit = false;
+                  },
+                  200
+                );
+
+                return false; // Remove clone after hit
+              }
+            }
+
+            // Check collision with raw parrying opponent (clone is blocked but destroyed)
+            if (opponent && opponent.isRawParrying && !clone.hasHit) {
+              const distance = Math.abs(clone.x - opponent.x);
+              if (distance < 60 && Math.abs(clone.y - opponent.y) < 40) {
+                // Clone is blocked - destroy it but don't apply knockback
+                clone.hasHit = true;
+                return false; // Remove clone after being blocked
+              }
+            }
+
+            return true; // Keep clone
+          });
+
+          // Note: pumoArmyCooldown is now only reset between rounds, not when clones are destroyed
+          // This ensures the pumo army can only be used once per round
         });
       }
 
@@ -1925,6 +2024,9 @@ io.on("connection", (socket) => {
         lastSnowballTime: 0,
         snowballs: [],
         isThrowingSnowball: false,
+        pumoArmyCooldown: false,
+        pumoArmy: [],
+        isSpawningPumoArmy: false,
         throwStartTime: 0,
         throwEndTime: 0,
         throwOpponent: null,
@@ -1998,6 +2100,9 @@ io.on("connection", (socket) => {
         lastSnowballTime: 0,
         snowballs: [],
         isThrowingSnowball: false,
+        pumoArmyCooldown: false,
+        pumoArmy: [],
+        isSpawningPumoArmy: false,
         throwStartTime: 0,
         throwEndTime: 0,
         throwOpponent: null,
@@ -2300,13 +2405,16 @@ io.on("connection", (socket) => {
       }, 750);
     }
 
-    // Handle snowball throwing - block during charged attack execution and recovery
+    // Handle F key power-ups (snowball and pumo army) - block during charged attack execution and recovery
     if (
       player.keys.f &&
       !shouldBlockAction() &&
-      player.activePowerUp === POWER_UP_TYPES.SNOWBALL &&
+      (player.activePowerUp === POWER_UP_TYPES.SNOWBALL ||
+        player.activePowerUp === POWER_UP_TYPES.PUMO_ARMY) &&
       !player.snowballCooldown &&
+      !player.pumoArmyCooldown &&
       !player.isThrowingSnowball &&
+      !player.isSpawningPumoArmy &&
       !player.isAttacking &&
       !player.isDodging &&
       !player.isThrowing &&
@@ -2318,60 +2426,129 @@ io.on("connection", (socket) => {
       !player.isRawParrying &&
       !player.canMoveToReady
     ) {
-      console.log(`Player ${player.id} attempting to throw snowball`);
-
       // Clear charge attack state if player was charging
       if (player.isChargingAttack) {
         console.log(
-          `Player ${player.id} cancelling charge attack to throw snowball`
+          `Player ${player.id} cancelling charge attack for F key power-up`
         );
         clearChargeState(player);
       }
 
-      // Set throwing state
-      player.isThrowingSnowball = true;
+      if (player.activePowerUp === POWER_UP_TYPES.SNOWBALL) {
+        console.log(`Player ${player.id} attempting to throw snowball`);
 
-      // Determine snowball direction based on current position relative to opponent
-      const opponent = rooms[index].players.find((p) => p.id !== player.id);
-      let snowballDirection;
-      if (opponent) {
-        // Throw towards the opponent based on current positions
-        snowballDirection = player.x < opponent.x ? 2 : -2;
-      } else {
-        // Fallback to facing direction if no opponent found
-        snowballDirection = player.facing === 1 ? -2 : 2;
+        // Set throwing state
+        player.isThrowingSnowball = true;
+
+        // Determine snowball direction based on current position relative to opponent
+        const opponent = rooms[index].players.find((p) => p.id !== player.id);
+        let snowballDirection;
+        if (opponent) {
+          // Throw towards the opponent based on current positions
+          snowballDirection = player.x < opponent.x ? 2 : -2;
+        } else {
+          // Fallback to facing direction if no opponent found
+          snowballDirection = player.facing === 1 ? -2 : 2;
+        }
+
+        // Create snowball projectile
+        const snowball = {
+          id: Math.random().toString(36).substr(2, 9),
+          x: player.x,
+          y: player.y + 20, // Slightly above ground
+          velocityX: snowballDirection, // Direction determined by position relative to opponent
+          hasHit: false,
+          ownerId: player.id,
+        };
+
+        player.snowballs.push(snowball);
+        player.snowballCooldown = true;
+
+        console.log(`Created snowball:`, snowball);
+
+        // Reset throwing state after animation
+        setPlayerTimeout(
+          player.id,
+          () => {
+            player.isThrowingSnowball = false;
+            console.log(`Player ${player.id} finished throwing snowball`);
+
+            // Check if we should restart charging after snowball throw completes
+            if (shouldRestartCharging(player)) {
+              // Restart charging immediately
+              startCharging(player);
+            }
+          },
+          500
+        );
+      } else if (player.activePowerUp === POWER_UP_TYPES.PUMO_ARMY) {
+        console.log(`Player ${player.id} attempting to spawn pumo army`);
+
+        // Set spawning state
+        player.isSpawningPumoArmy = true;
+
+        // Determine army direction (same as player facing)
+        const armyDirection = player.facing === 1 ? -1 : 1; // Army moves in direction player is facing
+
+        // Spawn multiple mini clones sequentially
+        const numClones = 5;
+        const spawnDelay = 1000; // 1 second between spawns
+        const startX = armyDirection === 1 ? 50 : 1230; // Start from opposite side of map
+
+        // Spawn clones one at a time with delays
+        for (let i = 0; i < numClones; i++) {
+          setPlayerTimeout(
+            player.id,
+            () => {
+              const clone = {
+                id: Math.random().toString(36).substr(2, 9),
+                x: startX,
+                y: GROUND_LEVEL,
+                velocityX: armyDirection * 1.5, // Speed of movement
+                facing: armyDirection, // Face the direction they're moving (1 = right, -1 = left)
+                isStrafing: true, // Use strafing animation
+                isSlapAttacking: true, // Keep for combat functionality
+                slapCooldown: 0,
+                lastSlapTime: 0,
+                spawnTime: Date.now(),
+                lifespan: 3000, // 3 seconds lifespan
+                ownerId: player.id,
+                ownerFighter: player.fighter, // Add fighter type for image selection
+                hasHit: false,
+                size: 0.6, // Smaller than normal players
+              };
+              player.pumoArmy.push(clone);
+
+              console.log(
+                `Spawned clone ${i + 1}/${numClones} for player ${player.id}`
+              );
+            },
+            i * spawnDelay
+          );
+        }
+
+        player.pumoArmyCooldown = true;
+
+        console.log(
+          `Created pumo army with ${numClones} clones for player ${player.id}`
+        );
+
+        // Reset spawning state after animation
+        setPlayerTimeout(
+          player.id,
+          () => {
+            player.isSpawningPumoArmy = false;
+            console.log(`Player ${player.id} finished spawning pumo army`);
+
+            // Check if we should restart charging after pumo army spawn completes
+            if (shouldRestartCharging(player)) {
+              // Restart charging immediately
+              startCharging(player);
+            }
+          },
+          800
+        );
       }
-
-      // Create snowball projectile
-      const snowball = {
-        id: Math.random().toString(36).substr(2, 9),
-        x: player.x,
-        y: player.y + 20, // Slightly above ground
-        velocityX: snowballDirection, // Direction determined by position relative to opponent
-        hasHit: false,
-        ownerId: player.id,
-      };
-
-      player.snowballs.push(snowball);
-      player.snowballCooldown = true;
-
-      console.log(`Created snowball:`, snowball);
-
-      // Reset throwing state after animation
-      setPlayerTimeout(
-        player.id,
-        () => {
-          player.isThrowingSnowball = false;
-          console.log(`Player ${player.id} finished throwing snowball`);
-
-          // Check if we should restart charging after snowball throw completes
-          if (shouldRestartCharging(player)) {
-            // Restart charging immediately
-            startCharging(player);
-          }
-        },
-        500
-      );
     }
 
     // Handle dodge - allow canceling recovery but block during charged attack execution
