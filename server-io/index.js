@@ -2947,6 +2947,10 @@ io.on("connection", (socket) => {
             } else if (!player.throwTechCooldown) {
               clearChargeState(player);
 
+              // Clear momentum when successfully throwing an opponent
+              player.movementVelocity = 0;
+              player.isStrafing = false;
+
               player.isThrowing = true;
               player.throwStartTime = Date.now();
               player.throwEndTime = Date.now() + 400;

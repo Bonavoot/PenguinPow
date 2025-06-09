@@ -26,6 +26,7 @@ import pumo from "../assets/pumo.png";
 import pumo2 from "../assets/pumo2.png";
 import pumoWaddle from "../assets/pumo-waddle.png";
 import pumoWaddle2 from "../assets/pumo-waddle2.png";
+import pumoArmy from "../assets/pumo-army.png";
 import pumoArmy2 from "../assets/pumo-army2.png";
 import crouching from "../assets/blocking2.png";
 import crouching2 from "../assets/blocking.png";
@@ -181,7 +182,7 @@ const getImageSrc = (
     if (isThrowTeching) return throwTech;
     if (isRecovering) return recovering;
     if (isThrowingSnowball) return snowballThrow;
-    if (isSpawningPumoArmy) return salt;
+    if (isSpawningPumoArmy) return pumoArmy;
     if (isSlapAttack) {
       return slapAnimation === 1 ? slapAttack1Red : slapAttack2Red;
     }
