@@ -147,6 +147,8 @@ const PowerUpIcon = styled.div`
         return "linear-gradient(135deg, #74b9ff, #0984e3)";
       case "pumo_army":
         return "linear-gradient(135deg, #fff4e6 0%, #ffcc80 30%, #ff8c00 100%)";
+      case "thick_blubber":
+        return "linear-gradient(135deg, #9c88ff, #7c4dff)";
       default:
         return "linear-gradient(135deg, #6c757d, #495057)";
     }
@@ -267,6 +269,11 @@ const PowerUpSelection = ({
       name: "Pumo Army",
       description: "Spawn mini clones with F key",
       icon: pumoArmyIcon,
+    },
+    thick_blubber: {
+      name: "Thick Blubber",
+      description: "Absorb 1 hit during charged attack",
+      icon: "🛡️",
     },
   };
 

@@ -6,18 +6,24 @@ import chargedAttackSmokeGif from "../assets/charged-attack-smoke.gif";
 const GIF_DURATION = 850; // ms
 
 const SmokeContainer = styled.div.attrs((props) => {
-  // Offset: adjust based on facing direction
-  const offset = props.$facing === 1 ? 15 : 3;
+  // Offset: adjust based on facing direction (matching DodgeDustEffect approach)
+  let offset = 0;
+  if (props.$facing === 1) {
+    offset = 20; // Keep existing offset values that work for this effect
+  } else {
+    offset = 3;
+  }
+
   return {
     style: {
       position: "absolute",
       left: `calc(${(props.$x / 1280) * 100}% + ${offset}%)`,
-      bottom: `calc(${(props.$y / 720) * 100}% - 6%) `,
+      bottom: `calc(${(props.$y / 720) * 100}% - 4.5%)`, // Lower the effect while maintaining scaling
       pointerEvents: "none",
       width: "clamp(192px, 33vw, 426px)",
       height: "auto",
       transform: `translateX(-50%) scaleX(${props.$facing === 1 ? 1 : -1})`,
-      opacity: 0.2,
+      opacity: 0.8,
       zIndex: 1000,
       filter: "brightness(0) invert(1)",
     },
@@ -43,18 +49,24 @@ const ChargedAttackSmokeEffect = ({
       !isSlapAttack &&
       !isThrowing
     ) {
-      setSmokeInstances([{ x, y, facing, key: Date.now() + Math.random() }]);
+      // Add new smoke instance to existing array instead of replacing it
+      const newSmokeInstance = {
+        x,
+        y,
+        facing,
+        key: Date.now() + Math.random(),
+      };
+      setSmokeInstances((prev) => [...prev, newSmokeInstance]);
+
+      // Set up individual cleanup timer for this specific instance
+      setTimeout(() => {
+        setSmokeInstances((prev) =>
+          prev.filter((smoke) => smoke.key !== newSmokeInstance.key)
+        );
+      }, GIF_DURATION);
     }
     lastChargingState.current = isChargingAttack;
   }, [isChargingAttack, isSlapAttack, isThrowing, x, y, facing]);
-
-  useEffect(() => {
-    if (smokeInstances.length === 0) return;
-    const timeout = setTimeout(() => {
-      setSmokeInstances((prev) => prev.slice(1));
-    }, GIF_DURATION);
-    return () => clearTimeout(timeout);
-  }, [smokeInstances]);
 
   if (smokeInstances.length === 0) return null;
   return (

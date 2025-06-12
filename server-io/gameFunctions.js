@@ -349,6 +349,21 @@ function executeChargedAttack(player, chargePercentage, rooms) {
   // Add hit tracking
   player.chargedAttackHit = false;
 
+  // Reset hit absorption for thick blubber power-up when executing charged attack
+  if (player.activePowerUp === "thick_blubber") {
+    player.hitAbsorptionUsed = false;
+
+    // Find the current room to emit thick blubber activation
+    const currentRoom = rooms.find((room) =>
+      room.players.some((p) => p.id === player.id)
+    );
+
+    if (currentRoom) {
+      // Import io from the main file - we'll need to pass it as a parameter
+      // For now, we'll add this logic to the main file instead
+    }
+  }
+
   // Lock facing direction during attack
   player.chargingFacingDirection = player.facing;
   if (player.chargingFacingDirection !== null) {
@@ -506,8 +521,7 @@ function arePlayersColliding(player1, player2) {
     player1.isThrowing ||
     player2.isThrowing ||
     player1.isBeingThrown ||
-    player2.isBeingThrown ||
-    (player1.isHit && player2.isHit) // Only disable if BOTH are hit
+    player2.isBeingThrown
   ) {
     return false;
   }
@@ -550,8 +564,7 @@ function adjustPlayerPositions(player1, player2, delta) {
     player1.isThrowing ||
     player2.isThrowing ||
     player1.isBeingThrown ||
-    player2.isBeingThrown ||
-    (player1.isHit && player2.isHit) // Only skip entirely if BOTH are hit
+    player2.isBeingThrown
   ) {
     return;
   }
@@ -592,25 +605,13 @@ function adjustPlayerPositions(player1, player2, delta) {
     let newPlayer1X = player1.x;
     let newPlayer2X = player2.x;
 
-    // Only apply position adjustments to non-isHit players
-    // If player1 is hit, they can pass through - don't adjust their position
-    if (!player1.isHit) {
-      // Move player1 away from player2 based on relative positions
-      if (player1.x < player2.x) {
-        newPlayer1X -= adjustment * smoothFactor;
-      } else {
-        newPlayer1X += adjustment * smoothFactor;
-      }
-    }
-
-    // If player2 is hit, they can pass through - don't adjust their position
-    if (!player2.isHit) {
-      // Move player2 away from player1 based on relative positions
-      if (player1.x < player2.x) {
-        newPlayer2X += adjustment * smoothFactor;
-      } else {
-        newPlayer2X -= adjustment * smoothFactor;
-      }
+    // Move players apart based on their relative positions
+    if (player1.x < player2.x) {
+      newPlayer1X -= adjustment * smoothFactor;
+      newPlayer2X += adjustment * smoothFactor;
+    } else {
+      newPlayer1X += adjustment * smoothFactor;
+      newPlayer2X -= adjustment * smoothFactor;
     }
 
     // Only apply movement resistance when players are moving towards each other
@@ -633,23 +634,15 @@ function adjustPlayerPositions(player1, player2, delta) {
       }
     }
 
-    // Enforce map boundaries for both players (but only apply position changes to non-isHit players)
+    // Enforce map boundaries for both players
     const leftBoundary = MAP_LEFT_BOUNDARY;
     const rightBoundary = MAP_RIGHT_BOUNDARY;
 
-    // Only update positions if they stay within boundaries AND the player is not isHit
-    if (
-      !player1.isHit &&
-      newPlayer1X >= leftBoundary &&
-      newPlayer1X <= rightBoundary
-    ) {
+    // Only update positions if they stay within boundaries
+    if (newPlayer1X >= leftBoundary && newPlayer1X <= rightBoundary) {
       player1.x = newPlayer1X;
     }
-    if (
-      !player2.isHit &&
-      newPlayer2X >= leftBoundary &&
-      newPlayer2X <= rightBoundary
-    ) {
+    if (newPlayer2X >= leftBoundary && newPlayer2X <= rightBoundary) {
       player2.x = newPlayer2X;
     }
   }

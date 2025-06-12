@@ -138,6 +138,7 @@ const POWER_UP_TYPES = {
   POWER: "power",
   SNOWBALL: "snowball",
   PUMO_ARMY: "pumo_army",
+  THICK_BLUBBER: "thick_blubber",
 };
 
 // Add power-up effects
@@ -146,6 +147,7 @@ const POWER_UP_EFFECTS = {
   [POWER_UP_TYPES.POWER]: 1.3, // 30% knockback increase
   [POWER_UP_TYPES.SNOWBALL]: 1.0, // No stat multiplier, just projectile ability
   [POWER_UP_TYPES.PUMO_ARMY]: 1.0, // No stat multiplier, just spawns army
+  [POWER_UP_TYPES.THICK_BLUBBER]: 1.0, // No stat multiplier, just hit absorption
 };
 
 const GRAB_DURATION = 1500; // 1.5 seconds total grab duration
@@ -339,6 +341,8 @@ function resetRoomAndPlayers(room) {
     player.pumoArmy = [];
     player.pumoArmyCooldown = false;
     player.isSpawningPumoArmy = false;
+    // Reset thick blubber state
+    player.hitAbsorptionUsed = false;
   });
 
   // Clear player-specific power-up data
@@ -783,10 +787,46 @@ io.on("connection", (socket) => {
             ) {
               const distance = Math.abs(snowball.x - opponent.x);
               if (distance < 50 && Math.abs(snowball.y - opponent.y) < 30) {
-                // Hit opponent
+                // Check for thick blubber hit absorption
+                if (
+                  opponent.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
+                  opponent.isAttacking &&
+                  opponent.attackType === "charged" &&
+                  !opponent.hitAbsorptionUsed
+                ) {
+                  console.log(
+                    `Player ${opponent.id} absorbed snowball with Thick Blubber during charged attack`
+                  );
+
+                  // Mark absorption as used for this charge session
+                  opponent.hitAbsorptionUsed = true;
+
+                  // Remove snowball but don't hit the player
+                  snowball.hasHit = true;
+
+                  // Emit absorption effect
+                  io.in(room.id).emit("thick_blubber_absorption", {
+                    playerId: opponent.id,
+                    x: opponent.x,
+                    y: opponent.y,
+                  });
+
+                  return false; // Remove snowball after absorption
+                }
+
+                // Hit opponent normally
                 snowball.hasHit = true;
                 opponent.isHit = true;
                 opponent.isAlreadyHit = true;
+
+                // If opponent is executing a charged attack, end it
+                if (opponent.isAttacking && opponent.attackType === "charged") {
+                  console.log(
+                    `Player ${opponent.id} charged attack interrupted by snowball`
+                  );
+                  // Use helper function to safely end charged attacks
+                  safelyEndChargedAttack(opponent, rooms);
+                }
 
                 // Apply knockback only if not immune
                 if (canApplyKnockback(opponent)) {
@@ -866,10 +906,46 @@ io.on("connection", (socket) => {
             ) {
               const distance = Math.abs(clone.x - opponent.x);
               if (distance < 60 && Math.abs(clone.y - opponent.y) < 40) {
-                // Hit opponent
+                // Check for thick blubber hit absorption
+                if (
+                  opponent.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
+                  opponent.isAttacking &&
+                  opponent.attackType === "charged" &&
+                  !opponent.hitAbsorptionUsed
+                ) {
+                  console.log(
+                    `Player ${opponent.id} absorbed pumo clone with Thick Blubber during charged attack`
+                  );
+
+                  // Mark absorption as used for this charge session
+                  opponent.hitAbsorptionUsed = true;
+
+                  // Remove clone but don't hit the player
+                  clone.hasHit = true;
+
+                  // Emit absorption effect
+                  io.in(room.id).emit("thick_blubber_absorption", {
+                    playerId: opponent.id,
+                    x: opponent.x,
+                    y: opponent.y,
+                  });
+
+                  return false; // Remove clone after absorption
+                }
+
+                // Hit opponent normally
                 clone.hasHit = true;
                 opponent.isHit = true;
                 opponent.isAlreadyHit = true;
+
+                // If opponent is executing a charged attack, end it
+                if (opponent.isAttacking && opponent.attackType === "charged") {
+                  console.log(
+                    `Player ${opponent.id} charged attack interrupted by pumo clone`
+                  );
+                  // Use helper function to safely end charged attacks
+                  safelyEndChargedAttack(opponent, rooms);
+                }
 
                 // Apply knockback only if not immune (lighter than normal slap)
                 if (canApplyKnockback(opponent)) {
@@ -1702,10 +1778,31 @@ io.on("connection", (socket) => {
 
     if (isCollision) {
       if (player.isAttacking && otherPlayer.isAttacking) {
-        // Handle charge attack collisions with random winner selection
-        const winner = Math.random() < 0.5 ? player : otherPlayer;
-        const loser = winner === player ? otherPlayer : player;
-        processHit(winner, loser);
+        // Check for thick blubber absorption in charge vs charge scenarios
+        const playerHasThickBlubber =
+          player.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
+          player.isAttacking &&
+          player.attackType === "charged" &&
+          !player.hitAbsorptionUsed;
+
+        const otherPlayerHasThickBlubber =
+          otherPlayer.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
+          otherPlayer.isAttacking &&
+          otherPlayer.attackType === "charged" &&
+          !otherPlayer.hitAbsorptionUsed;
+
+        if (playerHasThickBlubber && !otherPlayerHasThickBlubber) {
+          // Player has thick blubber, they win
+          processHit(player, otherPlayer);
+        } else if (otherPlayerHasThickBlubber && !playerHasThickBlubber) {
+          // Other player has thick blubber, they win
+          processHit(otherPlayer, player);
+        } else {
+          // Either both have thick blubber or neither do - use random selection
+          const winner = Math.random() < 0.5 ? player : otherPlayer;
+          const loser = winner === player ? otherPlayer : player;
+          processHit(winner, loser);
+        }
       } else {
         processHit(player, otherPlayer);
       }
@@ -1766,6 +1863,39 @@ io.on("connection", (socket) => {
 
     // Store the charge power before resetting states
     const chargePercentage = player.chargeAttackPower;
+
+    // Check for thick blubber hit absorption (only if defender is executing charged attack and hasn't used absorption)
+    if (
+      otherPlayer.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
+      otherPlayer.isAttacking &&
+      otherPlayer.attackType === "charged" &&
+      !otherPlayer.hitAbsorptionUsed &&
+      !otherPlayer.isRawParrying
+    ) {
+      // Raw parry should still work normally
+
+      console.log(
+        `Player ${otherPlayer.id} absorbed hit with Thick Blubber during charged attack`
+      );
+
+      // Mark absorption as used for this charge session
+      otherPlayer.hitAbsorptionUsed = true;
+
+      // Don't apply any knockback or hit effects to the defender
+      // The attacker's attack still continues normally (they don't get knocked back either)
+
+      // Emit a special effect or sound for absorption if needed
+      if (currentRoom) {
+        io.in(currentRoom.id).emit("thick_blubber_absorption", {
+          playerId: otherPlayer.id,
+          x: otherPlayer.x,
+          y: otherPlayer.y,
+        });
+      }
+
+      // Early return - no further hit processing
+      return;
+    }
 
     // For charged attacks, end the attack immediately on hit
     if (!isSlapAttack) {
@@ -2143,6 +2273,7 @@ io.on("connection", (socket) => {
         mouse2HeldDuringAttack: false, // Add flag for simpler charge restart detection
         knockbackImmune: false, // Add knockback immunity flag
         knockbackImmuneEndTime: 0, // Add knockback immunity timer
+        hitAbsorptionUsed: false, // Add thick blubber hit absorption tracking
       });
     } else if (rooms[index].players.length === 1) {
       rooms[index].players.push({
@@ -2221,6 +2352,7 @@ io.on("connection", (socket) => {
         mouse2HeldDuringAttack: false, // Add flag for simpler charge restart detection
         knockbackImmune: false, // Add knockback immunity flag
         knockbackImmuneEndTime: 0, // Add knockback immunity timer
+        hitAbsorptionUsed: false, // Add thick blubber hit absorption tracking
       });
     }
 

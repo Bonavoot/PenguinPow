@@ -4,6 +4,7 @@ import React, {
   useState,
   useRef,
   useCallback,
+  useMemo,
 } from "react";
 import { SocketContext } from "../SocketContext";
 import PropTypes from "prop-types";
@@ -19,6 +20,7 @@ import DodgeSmokeEffect from "./DodgeDustEffect";
 import ChargedAttackSmokeEffect from "./ChargedAttackSmokeEffect";
 import DodgeChargeUI from "./DodgeChargeUI";
 import StarStunEffect from "./StarStunEffect";
+import ThickBlubberEffect from "./ThickBlubberEffect";
 
 import snowballThrow2 from "../assets/snowball-throw2.png";
 import snowballThrow from "../assets/snowball-throw.png";
@@ -73,6 +75,7 @@ import slapParrySound from "../sounds/slap-parry-sound.mp3";
 import saltSound from "../sounds/salt-sound.mp3";
 import snowballThrowSound from "../sounds/snowball-throw-sound.mp3";
 import pumoArmySound from "../sounds/pumo-army-sound.mp3";
+import thickBlubberSound from "../sounds/thick-blubber-sound.mp3";
 
 import UiPlayerInfo from "./UiPlayerInfo";
 import SaltEffect from "./SaltEffect";
@@ -111,6 +114,7 @@ const initializeAudioPools = () => {
   createAudioPool(hakkiyoiSound, 1);
   createAudioPool(bellSound, 1);
   createAudioPool(winnerSound, 1);
+  createAudioPool(thickBlubberSound, 2);
 };
 
 // Initialize pools immediately
@@ -248,6 +252,41 @@ const validProps = [
   "pullHopHeight",
   "pullHopSpeed",
 ];
+
+const RedTintOverlay = styled.div`
+  position: absolute;
+  width: 18.4%;
+  height: auto;
+  aspect-ratio: 1;
+  left: ${(props) => (props.$x / 1280) * 100}%;
+  bottom: ${(props) => (props.$y / 720) * 100}%;
+  transform: ${(props) => `scaleX(${props.$facing})`};
+  background: rgba(255, 0, 0, 0.7);
+  z-index: 101;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  animation: thickBlubberPulse 1.5s ease-in-out infinite;
+
+  /* Use the player image as a mask to only show red where the image is opaque */
+  mask-image: url(${(props) => props.$imageSrc});
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  -webkit-mask-image: url(${(props) => props.$imageSrc});
+  -webkit-mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+
+  @keyframes thickBlubberPulse {
+    0%,
+    100% {
+      opacity: 0.6;
+    }
+    50% {
+      opacity: 0.9;
+    }
+  }
+`;
 
 const StyledImage = styled("img")
   .withConfig({
@@ -439,6 +478,8 @@ const FloatingPowerUpText = styled.div`
         return "#FFFFFF";
       case "pumo_army":
         return "#FF8C00";
+      case "thick_blubber":
+        return "#9C88FF";
       default:
         return "#FFD700";
     }
@@ -456,6 +497,8 @@ const FloatingPowerUpText = styled.div`
             return "rgba(255, 255, 255, 0.6)";
           case "pumo_army":
             return "rgba(255, 140, 0, 0.6)";
+          case "thick_blubber":
+            return "rgba(156, 136, 255, 0.6)";
           default:
             return "rgba(255, 215, 0, 0.6)";
         }
@@ -620,6 +663,8 @@ const GameFighter = ({ player, index, roomName, localId }) => {
     pumoArmyCooldown: false,
     isSpawningPumoArmy: false,
     activePowerUp: null,
+    hitAbsorptionUsed: false,
+    attackType: null,
   });
   const [stamina, setStamina] = useState(player);
   const [hakkiyoi, setHakkiyoi] = useState(false);
@@ -643,6 +688,12 @@ const GameFighter = ({ player, index, roomName, localId }) => {
   });
   const [allSnowballs, setAllSnowballs] = useState([]);
   const [allPumoArmies, setAllPumoArmies] = useState([]);
+  const [thickBlubberEffect, setThickBlubberEffect] = useState({
+    isActive: false,
+    x: 0,
+    y: 0,
+  });
+  const [thickBlubberIndicator, setThickBlubberIndicator] = useState(false);
 
   const lastAttackState = useRef(player.isAttacking);
   const lastHitState = useRef(player.isHit);
@@ -952,7 +1003,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
 
   useEffect(() => {
     if (penguin.isThrowingSnowball && !lastThrowingSnowballState.current) {
-      playSound(snowballThrowSound, 0.02);
+      playSound(snowballThrowSound, 0.05);
     }
     lastThrowingSnowballState.current = penguin.isThrowingSnowball;
   }, [penguin.isThrowingSnowball]);
@@ -1047,7 +1098,26 @@ const GameFighter = ({ player, index, roomName, localId }) => {
     }
   }, [screenShake]);
 
-  // Add screen shake event listener
+  // Update thick blubber indicator based on actual game state
+  const shouldShowThickBlubberIndicator = useMemo(() => {
+    return (
+      penguin.activePowerUp === "thick_blubber" &&
+      penguin.isAttacking &&
+      penguin.attackType === "charged" &&
+      !penguin.hitAbsorptionUsed
+    );
+  }, [
+    penguin.activePowerUp,
+    penguin.isAttacking,
+    penguin.attackType,
+    penguin.hitAbsorptionUsed,
+  ]);
+
+  useEffect(() => {
+    setThickBlubberIndicator(shouldShowThickBlubberIndicator);
+  }, [shouldShowThickBlubberIndicator]);
+
+  // Add screen shake and thick blubber absorption event listeners
   useEffect(() => {
     socket.on("screen_shake", (data) => {
       setScreenShake({
@@ -1057,10 +1127,33 @@ const GameFighter = ({ player, index, roomName, localId }) => {
       });
     });
 
+    socket.on("thick_blubber_absorption", (data) => {
+      if (data.playerId === player.id) {
+        setThickBlubberEffect({
+          isActive: true,
+          x: data.x,
+          y: data.y,
+        });
+
+        // Play thick blubber absorption sound
+        playSound(thickBlubberSound, 0.03);
+
+        // Reset the effect after a brief moment
+        setTimeout(() => {
+          setThickBlubberEffect({
+            isActive: false,
+            x: 0,
+            y: 0,
+          });
+        }, 50);
+      }
+    });
+
     return () => {
       socket.off("screen_shake");
+      socket.off("thick_blubber_absorption");
     };
-  }, [socket]);
+  }, [socket, player.id]);
 
   return (
     <div className="ui-container">
@@ -1216,6 +1309,42 @@ const GameFighter = ({ player, index, roomName, localId }) => {
           width: "18.4%",
         }}
       />
+
+      {thickBlubberIndicator && (
+        <RedTintOverlay
+          $x={penguin.x}
+          $y={penguin.y}
+          $facing={penguin.facing}
+          $imageSrc={getImageSrc(
+            penguin.fighter,
+            penguin.isDiving,
+            penguin.isJumping,
+            penguin.isAttacking,
+            penguin.isDodging,
+            penguin.isStrafing,
+            penguin.isRawParrying,
+            penguin.isReady,
+            penguin.isHit,
+            penguin.isDead,
+            penguin.isSlapAttack,
+            penguin.isThrowing,
+            penguin.isGrabbing,
+            penguin.isBeingGrabbed,
+            penguin.isThrowingSalt,
+            penguin.slapAnimation,
+            penguin.isBowing,
+            penguin.isThrowTeching,
+            penguin.isBeingPulled,
+            penguin.isBeingPushed,
+            penguin.grabState,
+            penguin.grabAttemptType,
+            penguin.isRecovering,
+            penguin.isRawParryStun,
+            penguin.isThrowingSnowball,
+            penguin.isSpawningPumoArmy
+          )}
+        />
+      )}
       <SaltEffect
         isActive={penguin.isThrowingSalt}
         playerFacing={penguin.facing}
@@ -1228,6 +1357,11 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         y={penguin.y}
         facing={penguin.facing}
         isActive={showStarStunEffect}
+      />
+      <ThickBlubberEffect
+        x={thickBlubberEffect.x}
+        y={thickBlubberEffect.y}
+        isActive={thickBlubberEffect.isActive}
       />
       <ThrowTechEffect />
       {countdown > 0 &&
