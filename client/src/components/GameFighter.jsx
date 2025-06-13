@@ -265,7 +265,7 @@ const RedTintOverlay = styled.div`
   z-index: 101;
   pointer-events: none;
   mix-blend-mode: multiply;
-  animation: thickBlubberPulse 1.5s ease-in-out infinite;
+  animation: thickBlubberPulse 0.5s ease-in-out infinite;
 
   /* Use the player image as a mask to only show red where the image is opaque */
   mask-image: url(${(props) => props.$imageSrc});
@@ -280,10 +280,10 @@ const RedTintOverlay = styled.div`
   @keyframes thickBlubberPulse {
     0%,
     100% {
-      opacity: 0.6;
+      opacity: 1;
     }
     50% {
-      opacity: 0.9;
+      opacity: 0.4;
     }
   }
 `;
@@ -1221,7 +1221,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
       />
       {showFloatingPowerUp && (
         <FloatingPowerUpText $powerUpType={floatingPowerUpType} $index={index}>
-          {floatingPowerUpType.toUpperCase()}++
+          {floatingPowerUpType.replace(/_/g, " ").toUpperCase()}
         </FloatingPowerUpText>
       )}
       <PlayerShadow

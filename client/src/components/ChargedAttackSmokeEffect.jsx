@@ -9,22 +9,22 @@ const SmokeContainer = styled.div.attrs((props) => {
   // Offset: adjust based on facing direction (matching DodgeDustEffect approach)
   let offset = 0;
   if (props.$facing === 1) {
-    offset = 20; // Keep existing offset values that work for this effect
+    offset = 23; // Keep existing offset values that work for this effect
   } else {
-    offset = 3;
+    offset = -5;
   }
 
   return {
     style: {
       position: "absolute",
       left: `calc(${(props.$x / 1280) * 100}% + ${offset}%)`,
-      bottom: `calc(${(props.$y / 720) * 100}% - 4.5%)`, // Lower the effect while maintaining scaling
+      bottom: `calc(${(props.$y / 720) * 100}% - 15px)`, // Fixed pixel offset instead of percentage to maintain consistent positioning
       pointerEvents: "none",
-      width: "clamp(192px, 33vw, 426px)",
+      width: "clamp(115px, 20vw, 255px)",
       height: "auto",
       transform: `translateX(-50%) scaleX(${props.$facing === 1 ? 1 : -1})`,
       opacity: 0.8,
-      zIndex: 1000,
+      zIndex: -1,
       filter: "brightness(0) invert(1)",
     },
   };
@@ -82,7 +82,7 @@ const ChargedAttackSmokeEffect = ({
             src={chargedAttackSmokeGif}
             alt="Charged Attack Smoke Effect"
             style={{
-              width: "clamp(192px, 33vw, 426px)",
+              width: "clamp(115px, 20vw, 255px)",
               height: "auto",
               display: "block",
               zIndex: 1000,
