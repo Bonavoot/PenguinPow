@@ -5,6 +5,7 @@ import { SocketContext } from "../SocketContext";
 import powerWaterIcon from "../assets/power-water.png";
 import snowballImage from "../assets/snowball.png";
 import pumoArmyIcon from "./pumo-army-icon.png";
+import happyFeetIcon from "../assets/happy-feet.png";
 
 // Simplified animation for entrance - removed expensive blur
 const slideIn = keyframes`
@@ -48,8 +49,8 @@ const PowerUpContainer = styled.div`
   transform: translate(-50%, -50%);
   background: linear-gradient(
     135deg,
-    rgba(139, 69, 19, 0.98),
-    rgba(101, 67, 33, 0.95)
+    rgba(44, 24, 16, 0.95),
+    rgba(34, 14, 6, 0.95)
   );
   border: 4px solid #d4af37;
   border-radius: clamp(8px, 1.5vw, 16px);
@@ -96,29 +97,59 @@ const PowerUpGrid = styled.div`
   flex-wrap: nowrap;
 `;
 
-// Simplified PowerUpCard - removed expensive backdrop-filter and complex box-shadows
+// Enhanced PowerUpCard with different themes for active vs passive power-ups
 const PowerUpCard = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   background: ${(props) => {
-    if (props.$selected) return "linear-gradient(135deg, #d4af37, #b8941f)";
-    return "linear-gradient(135deg, rgba(44, 24, 16, 0.9), rgba(34, 14, 6, 0.9))";
+    if (props.$selected) {
+      return `
+        linear-gradient(135deg, #e8e8e8, #d0d0d0, #b8b8b8),
+        radial-gradient(circle at center, rgba(255, 255, 255, 0.3), transparent)
+      `;
+    }
+
+    return `
+      linear-gradient(135deg, #cecece, #f8f8f8, #f0f0f0),
+      radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.5), transparent 50%),
+      linear-gradient(45deg, rgba(248, 248, 248, 0.8), rgba(240, 240, 240, 0.8))
+    `;
   }};
-  border: 3px solid ${(props) => (props.$selected ? "#d4af37" : "#8b4513")};
+  border: 3px solid
+    ${(props) => {
+      const isActive =
+        props.$type === "snowball" || props.$type === "pumo_army";
+      if (props.$selected) {
+        return isActive ? "#ffcc02" : "#f4d03f";
+      }
+      return isActive ? "#6b73ff" : "#cd853f";
+    }};
   border-radius: clamp(6px, 1.5vw, 12px);
   padding: clamp(12px, 2vw, 20px);
   cursor: pointer;
-  transition: transform 0.2s ease-out, border-color 0.2s ease-out;
+  transition: all 0.3s ease-out;
   width: clamp(120px, 15vw, 180px);
   height: clamp(120px, 15vw, 180px);
   position: relative;
   flex-shrink: 0;
   will-change: transform;
+  box-shadow: ${(props) => {
+    if (props.$selected) {
+      return "0 8px 25px rgba(0, 0, 0, 0.15), inset 0 1px 3px rgba(255, 255, 255, 0.8)";
+    }
+    return "0 6px 20px rgba(0, 0, 0, 0.1), inset 0 1px 3px rgba(255, 255, 255, 0.6)";
+  }};
 
   &:hover {
-    transform: translateY(-2px);
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: ${(props) => {
+      if (props.$selected) {
+        return "0 12px 35px rgba(0, 0, 0, 0.2), inset 0 1px 3px rgba(255, 255, 255, 0.9)";
+      }
+      return "0 10px 30px rgba(0, 0, 0, 0.15), inset 0 1px 3px rgba(255, 255, 255, 0.7)";
+    }};
   }
 
   &:disabled {
@@ -127,11 +158,20 @@ const PowerUpCard = styled.div`
     transform: none;
   }
 
-  ${(props) =>
-    props.$selected &&
-    `
-    box-shadow: 0 0 15px rgba(212, 175, 55, 0.4);
-  `}
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: clamp(6px, 1.5vw, 12px);
+    background: ${(props) =>
+      props.$selected
+        ? "linear-gradient(45deg, rgba(255, 255, 255, 0.1), transparent)"
+        : "linear-gradient(45deg, rgba(255, 255, 255, 0.05), transparent)"};
+    pointer-events: none;
+  }
 `;
 
 // Simplified PowerUpIcon - reduced complex gradients
@@ -177,11 +217,30 @@ const PowerUpName = styled.h3`
   font-family: "Bungee", cursive;
   font-size: clamp(0.7rem, 1.8vw, 1.1rem);
   margin: 0 0 clamp(4px, 1vw, 8px) 0;
-  color: ${(props) => (props.$selected ? "#000" : "#fff")};
+  color: ${(props) => {
+    if (props.$selected) return "#000";
+
+    switch (props.$type) {
+      case "speed":
+        return "#00d2ff";
+      case "power":
+        return "#ff6b6b";
+      case "snowball":
+        return "#74b9ff";
+      case "pumo_army":
+        return "#ffcc80";
+      case "thick_blubber":
+        return "#9c88ff";
+      default:
+        return "#6c757d";
+    }
+  }};
   text-transform: uppercase;
   letter-spacing: 0.05em;
   text-shadow: ${(props) =>
-    props.$selected ? "1px 1px 0 rgba(0, 0, 0, 0.8)" : "1px 1px 0 #000"};
+    props.$selected
+      ? "none"
+      : "1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 0 1px 0 #000, 1px 0 0 #000, 0 -1px 0 #000, -1px 0 0 #000, 2px 2px 0 #000"};
   line-height: 1;
 `;
 
@@ -189,11 +248,13 @@ const PowerUpDescription = styled.p`
   font-family: "Bungee", cursive;
   font-size: clamp(0.5rem, 1.2vw, 0.8rem);
   margin: 0;
-  color: ${(props) => (props.$selected ? "#000" : "#d4af37")};
+  color: ${(props) => (props.$selected ? "#000" : "#b4b4b4")};
   text-align: center;
   line-height: 1.2;
   text-shadow: ${(props) =>
-    props.$selected ? "1px 1px 0 rgba(0, 0, 0, 0.5)" : "1px 1px 0 #000"};
+    props.$selected
+      ? "none"
+      : "1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 0 1px 0 #000, 1px 0 0 #000, 0 -1px 0 #000, -1px 0 0 #000"};
 `;
 
 const StatusContainer = styled.div`
@@ -254,9 +315,9 @@ const PowerUpSelection = ({
   const powerUpInfo = useMemo(
     () => ({
       speed: {
-        name: "Speed",
+        name: "Happy Feet",
         description: "Enhanced movement & dodge speed",
-        icon: "⚡",
+        icon: happyFeetIcon,
       },
       power: {
         name: "Power Water",
@@ -294,7 +355,7 @@ const PowerUpSelection = ({
   const timerMessage = useMemo(() => {
     return timeLeft > 0
       ? `${timeLeft} seconds remaining`
-      : "Auto-selecting Speed...";
+      : "Auto-selecting Happy Feet...";
   }, [timeLeft]);
 
   useEffect(() => {
@@ -394,12 +455,14 @@ const PowerUpSelection = ({
             return (
               <PowerUpCard
                 key={type}
+                $type={type}
                 $selected={selectedPowerUp === type}
                 onClick={() => handlePowerUpSelect(type)}
                 disabled={selectedPowerUp && selectedPowerUp !== type}
               >
                 <PowerUpIcon $type={type}>
-                  {type === "power" ||
+                  {type === "speed" ||
+                  type === "power" ||
                   type === "snowball" ||
                   type === "pumo_army" ? (
                     <img src={info.icon} alt={info.name} />
@@ -407,7 +470,7 @@ const PowerUpSelection = ({
                     info.icon
                   )}
                 </PowerUpIcon>
-                <PowerUpName $selected={selectedPowerUp === type}>
+                <PowerUpName $type={type} $selected={selectedPowerUp === type}>
                   {info.name}
                 </PowerUpName>
                 <PowerUpDescription $selected={selectedPowerUp === type}>

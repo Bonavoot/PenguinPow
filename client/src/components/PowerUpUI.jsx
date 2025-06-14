@@ -3,6 +3,7 @@ import "./PowerUpUI.css";
 import snowballImage from "../assets/snowball.png";
 import powerWaterIcon from "../assets/power-water.png";
 import pumoArmyIcon from "./pumo-army-icon.png";
+import happyFeetIcon from "../assets/happy-feet.png";
 
 const PowerUpUI = ({
   activePowerUp,
@@ -17,9 +18,9 @@ const PowerUpUI = ({
     switch (powerUpType) {
       case "speed":
         return {
-          icon: "⚡",
-          isImage: false,
-          name: "Speed",
+          icon: happyFeetIcon,
+          isImage: true,
+          name: "Happy Feet",
           colors: {
             ready:
               "linear-gradient(135deg, #00d2ff 0%, #3a7bd5 30%, #0066cc 100%)",

@@ -99,7 +99,7 @@
 .power-up-container.player2 .f-key-indicator {
   transform: scaleX(-1);
   right: auto;
-  left: 1px;
+  left: 0px;
 }
 
 .power-up-icon.ready {

@@ -1260,7 +1260,9 @@ const GameFighter = ({ player, index, roomName, localId }) => {
       />
       {showFloatingPowerUp && (
         <FloatingPowerUpText $powerUpType={floatingPowerUpType} $index={index}>
-          {floatingPowerUpType.replace(/_/g, " ").toUpperCase()}
+          {floatingPowerUpType === "speed"
+            ? "HAPPY FEET"
+            : floatingPowerUpType.replace(/_/g, " ").toUpperCase()}
         </FloatingPowerUpText>
       )}
       <PlayerShadow
