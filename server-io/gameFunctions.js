@@ -146,44 +146,49 @@ function executeSlapAttack(player, rooms) {
       const FIXED_SLAP_SLIDE_VELOCITY = 2.5; // Decreased from 3.5 to 2.5 for shorter slide
       const slideDirection = player.facing === 1 ? -1 : 1; // Slide in the direction player is facing
 
-      // Store the current movement velocity to restore after slap
-      const currentMovementVelocity = player.movementVelocity;
-
       // Apply fixed slide velocity and mark that we're in a slap slide
       player.movementVelocity = slideDirection * FIXED_SLAP_SLIDE_VELOCITY;
       player.isSlapSliding = true; // New flag to track slap slide state
     }
   }
 
-  // Initialize slap buffer if it doesn't exist
-  if (!player.slapBuffer) {
-    player.slapBuffer = {
-      lastSlapTime: 0,
-      slapCooldown: 120, // Reduced cooldown for smoother rapid hits
-      pendingSlaps: 0,
-      bufferWindow: 100,
-      hasBufferedSlap: false,
-    };
+  // If already attacking, queue this slap for when the current one ends
+  if (player.isSlapAttack && player.isAttacking) {
+    player.hasPendingSlapAttack = true;
+    return;
   }
 
-  const currentTime = Date.now();
-  const timeSinceLastSlap = currentTime - player.slapBuffer.lastSlapTime;
+  // Clear charge state
+  clearChargeState(player);
 
-  // If we're still in cooldown, buffer the input
-  if (timeSinceLastSlap < player.slapBuffer.slapCooldown) {
-    // Only buffer if we don't already have a buffered slap
-    if (
-      timeSinceLastSlap < player.slapBuffer.bufferWindow &&
-      !player.slapBuffer.hasBufferedSlap
-    ) {
-      player.slapBuffer.hasBufferedSlap = true;
-      // Schedule the next slap to execute as soon as cooldown ends
-      setPlayerTimeout(
-        player.id,
-        () => {
-          if (player.slapBuffer.hasBufferedSlap) {
-            player.slapBuffer.hasBufferedSlap = false;
-            // Only execute if player is still in a valid state
+  // Ensure slapAnimation alternates consistently for every actual attack execution
+  player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
+
+  player.isSlapAttack = true;
+  player.attackEndTime = Date.now() + 300; // Updated animation duration to match new 9-frame animation at 30 FPS (300ms)
+  player.isAttacking = true;
+  player.attackStartTime = Date.now();
+  player.attackType = "slap";
+
+  // Set a timeout to reset the attack state and handle queued slaps
+  setPlayerTimeout(
+    player.id,
+    () => {
+      player.isAttacking = false;
+      player.isSlapAttack = false;
+      player.attackType = null;
+      player.isSlapSliding = false; // Clear the slap slide flag
+      // Gradually reduce the slide velocity
+      player.movementVelocity *= 0.5;
+
+      // Check if there's a pending slap attack to execute with a small delay
+      if (player.hasPendingSlapAttack) {
+        player.hasPendingSlapAttack = false;
+        // Add a small delay before executing the next slap to allow neutral animation
+        setPlayerTimeout(
+          player.id,
+          () => {
+            // Execute the next slap if player is still valid
             if (
               !player.isDodging &&
               !player.isThrowing &&
@@ -195,37 +200,11 @@ function executeSlapAttack(player, rooms) {
             ) {
               executeSlapAttack(player, rooms);
             }
-          }
-        },
-        player.slapBuffer.slapCooldown - timeSinceLastSlap
-      );
-    }
-    return;
-  }
-
-  // Use the new helper function to clear charge with auto-restart
-  clearChargeState(player);
-
-  player.isSlapAttack = true;
-  player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
-  player.attackEndTime = Date.now() + 120; // Reduced animation duration for smoother rapid hits
-  player.isAttacking = true;
-  player.attackStartTime = Date.now();
-  player.attackType = "slap";
-
-  // Update last slap time
-  player.slapBuffer.lastSlapTime = Date.now();
-
-  // Set a timeout to reset the attack state and gradually reduce the slide
-  setPlayerTimeout(
-    player.id,
-    () => {
-      player.isAttacking = false;
-      player.isSlapAttack = false;
-      player.attackType = null;
-      player.isSlapSliding = false; // Clear the slap slide flag
-      // Gradually reduce the slide velocity
-      player.movementVelocity *= 0.5;
+          },
+          100 // 100ms delay to allow victim to return to neutral between hits
+        );
+        return; // Early return to skip charging restart logic
+      }
 
       // After slap attack ends, check if we should restart charging
       if (
@@ -250,8 +229,8 @@ function executeSlapAttack(player, rooms) {
         player.attackType = "charged";
       }
     },
-    120
-  ); // Reduced animation duration for smoother rapid hits
+    300 // Updated animation duration to match new 9-frame animation at 30 FPS (300ms)
+  );
 }
 
 function cleanupRoom(room) {

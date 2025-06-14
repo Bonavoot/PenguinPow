@@ -125,7 +125,7 @@ const speedFactor = 0.25; // Increased from 0.22 for snappier movement
 const GROUND_LEVEL = 200;
 const HITBOX_DISTANCE_VALUE = 85; // Reduced from 90 by 20%
 const SLAP_HITBOX_DISTANCE_VALUE = 184; // Updated to match GRAB_RANGE
-const SLAP_PARRY_WINDOW = 150; // 150ms window for parry
+const SLAP_PARRY_WINDOW = 200; // Updated to 200ms window for parry to account for longer slap animation
 const SLAP_PARRY_KNOCKBACK_VELOCITY = 1.5; // Reduced knockback for parried attacks
 const THROW_RANGE = 184; // Reduced from 230 by 20%
 const GRAB_RANGE = 184; // Reduced from 230 by 20%
@@ -343,6 +343,10 @@ function resetRoomAndPlayers(room) {
     player.isSpawningPumoArmy = false;
     // Reset thick blubber state
     player.hitAbsorptionUsed = false;
+    // Reset hit counter for reliable hit sound triggering
+    player.hitCounter = 0;
+    // Reset hit timing for dynamic hit duration
+    player.lastHitTime = 0;
   });
 
   // Clear player-specific power-up data
@@ -1922,23 +1926,11 @@ io.on("connection", (socket) => {
         y: 0,
       };
     } else {
-      // For slap attacks, don't clear any states - let the animation complete naturally
+      // For slap attacks, don't create separate timeout - let executeSlapAttack handle cleanup
       // This ensures consistent behavior with whiffed slaps
-      const originalAttackEndTime = player.attackEndTime;
-      const remainingAttackTime = originalAttackEndTime - currentTime;
-
-      if (remainingAttackTime > 0) {
-        setPlayerTimeout(
-          player.id,
-          () => {
-            player.isAttacking = false;
-            player.isSlapAttack = false;
-            player.attackStartTime = 0;
-            player.attackEndTime = 0;
-            player.attackType = null;
-          },
-          remainingAttackTime
-        );
+      if (isSlapAttack) {
+        // Don't interfere with the normal executeSlapAttack timeout
+        // Just let it handle the cleanup naturally
       }
     }
 
@@ -2088,9 +2080,13 @@ io.on("connection", (socket) => {
     } else {
       // Apply the knockback to the defending player
       otherPlayer.isHit = true;
+      otherPlayer.isAlreadyHit = true; // Set immediately to prevent multiple hits per attack
       otherPlayer.isJumping = false;
       otherPlayer.isAttacking = false;
       otherPlayer.isStrafing = false;
+
+      // Increment hit counter for reliable hit sound triggering
+      otherPlayer.hitCounter = (otherPlayer.hitCounter || 0) + 1;
 
       // Update opponent's facing direction based on attacker's position
       otherPlayer.facing = player.x < otherPlayer.x ? 1 : -1;
@@ -2166,12 +2162,25 @@ io.on("connection", (socket) => {
       otherPlayer.knockbackVelocity.y = 0;
       otherPlayer.y = GROUND_LEVEL;
 
-      // Set a shorter hit state duration for slap attacks to allow for rapid hits
-      const hitStateDuration = isSlapAttack ? 100 : 300;
+      // Set dynamic hit state duration for slap attacks based on timing
+      let hitStateDuration;
+      if (isSlapAttack) {
+        // Check if this is a rapid follow-up hit or a standalone hit
+        const timeSinceLastHit = currentTime - (otherPlayer.lastHitTime || 0);
 
-      // Only set isAlreadyHit for charged attacks
-      if (!isSlapAttack) {
-        otherPlayer.isAlreadyHit = true;
+        if (timeSinceLastHit > 500) {
+          // Standalone hit or slow follow-up - use longer duration for better visual feedback
+          hitStateDuration = 200;
+        } else {
+          // Rapid follow-up hit - use longer duration but still prevent combo appearance
+          hitStateDuration = 150; // Increased from 75ms - safe since next slap takes 400ms total
+        }
+
+        // Update the last hit time for future calculations
+        otherPlayer.lastHitTime = currentTime;
+      } else {
+        // Charged attacks always use full duration
+        hitStateDuration = 300;
       }
 
       // Clear hit state after duration
@@ -2179,9 +2188,7 @@ io.on("connection", (socket) => {
         otherPlayer.id,
         () => {
           otherPlayer.isHit = false;
-          if (!isSlapAttack) {
-            otherPlayer.isAlreadyHit = false;
-          }
+          otherPlayer.isAlreadyHit = false; // Clear for all attack types
         },
         hitStateDuration
       );
@@ -2274,6 +2281,9 @@ io.on("connection", (socket) => {
         knockbackImmune: false, // Add knockback immunity flag
         knockbackImmuneEndTime: 0, // Add knockback immunity timer
         hitAbsorptionUsed: false, // Add thick blubber hit absorption tracking
+        hasPendingSlapAttack: false, // Add flag for simplified slap attack queuing
+        hitCounter: 0, // Add counter for reliable hit sound triggering
+        lastHitTime: 0, // Add timing tracking for dynamic hit duration
       });
     } else if (rooms[index].players.length === 1) {
       rooms[index].players.push({
@@ -2353,6 +2363,9 @@ io.on("connection", (socket) => {
         knockbackImmune: false, // Add knockback immunity flag
         knockbackImmuneEndTime: 0, // Add knockback immunity timer
         hitAbsorptionUsed: false, // Add thick blubber hit absorption tracking
+        hasPendingSlapAttack: false, // Add flag for simplified slap attack queuing
+        hitCounter: 0, // Add counter for reliable hit sound triggering
+        lastHitTime: 0, // Add timing tracking for dynamic hit duration
       });
     }
 
@@ -2845,12 +2858,8 @@ io.on("connection", (socket) => {
 
           // Determine if it's a slap or charged attack
           if (player.keys.mouse1) {
-            player.isSlapAttack = true;
-            player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
-            player.attackEndTime = Date.now() + 250;
-            player.isAttacking = true;
-            player.attackStartTime = Date.now();
-            player.attackType = "slap";
+            // Use the simplified slap attack system
+            executeSlapAttack(player, rooms);
           } else {
             executeChargedAttack(player, chargePercentage, rooms);
           }
@@ -3020,18 +3029,7 @@ io.on("connection", (socket) => {
       canPlayerSlap(player) &&
       !player.wasMouse1Pressed // Add check for previous mouse1 state
     ) {
-      // Initialize slap buffer if it doesn't exist
-      if (!player.slapBuffer) {
-        player.slapBuffer = {
-          lastSlapTime: 0,
-          slapCooldown: 180,
-          pendingSlaps: 0,
-          bufferWindow: 200,
-        };
-      }
-
-      // Always try to execute slap attack - the function will handle buffering internally
-      // This allows buffering during strafing and other states
+      // Simply execute slap attack - it will handle queuing internally if already attacking
       executeSlapAttack(player, rooms);
     }
 

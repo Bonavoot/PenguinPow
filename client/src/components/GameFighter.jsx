@@ -665,6 +665,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
     activePowerUp: null,
     hitAbsorptionUsed: false,
     attackType: null,
+    hitCounter: 0,
   });
   const [stamina, setStamina] = useState(player);
   const [hakkiyoi, setHakkiyoi] = useState(false);
@@ -695,18 +696,19 @@ const GameFighter = ({ player, index, roomName, localId }) => {
   });
   const [thickBlubberIndicator, setThickBlubberIndicator] = useState(false);
 
-  const lastAttackState = useRef(player.isAttacking);
-  const lastHitState = useRef(player.isHit);
-  const lastThrowState = useRef(player.isThrowing);
-  const lastDodgeState = useRef(player.isDodging);
-  const lastGrabState = useRef(player.isGrabbing);
-  const lastThrowingSaltState = useRef(player.isThrowingSalt);
-  const lastThrowingSnowballState = useRef(player.isThrowingSnowball);
-  const lastSpawningPumoArmyState = useRef(player.isSpawningPumoArmy);
+  const lastAttackState = useRef(false);
+  const lastHitState = useRef(false);
+  const lastThrowingSaltState = useRef(false);
+  const lastThrowState = useRef(false);
+  const lastDodgeState = useRef(false);
+  const lastGrabState = useRef(false);
+  const lastThrowingSnowballState = useRef(false);
+  const lastSpawningPumoArmyState = useRef(false);
+  const lastWinnerState = useRef(false);
+  const lastWinnerSoundPlay = useRef(0);
+  const lastHitSoundTime = useRef(0);
   const gameMusicRef = useRef(null);
   const eeshiMusicRef = useRef(null);
-  const lastWinnerState = useRef(gameOver);
-  const lastWinnerSoundPlay = useRef(0);
 
   // Add performance optimizations
   const frameRate = useRef(60);
@@ -958,19 +960,56 @@ const GameFighter = ({ player, index, roomName, localId }) => {
   }, [socket]);
 
   useEffect(() => {
-    if (penguin.isAttacking && !lastAttackState.current) {
+    // Trigger sound for charged attacks (non-slap attacks)
+    if (
+      penguin.isAttacking &&
+      !penguin.isSlapAttack &&
+      !lastAttackState.current
+    ) {
       playSound(attackSound, 0.01);
     }
     // Update the last attack state
-    lastAttackState.current = penguin.isAttacking;
-  }, [penguin.isAttacking]);
+    lastAttackState.current = penguin.isAttacking && !penguin.isSlapAttack;
+  }, [penguin.isAttacking, penguin.isSlapAttack]);
+
+  // Separate effect for slap attack sounds based on slapAnimation changes
+  useEffect(() => {
+    // Trigger sound whenever slapAnimation changes and player is slap attacking
+    if (penguin.isSlapAttack && penguin.isAttacking) {
+      playSound(attackSound, 0.01);
+    }
+  }, [penguin.slapAnimation, penguin.isSlapAttack, penguin.isAttacking]);
 
   useEffect(() => {
-    if (penguin.isHit && !lastHitState.current && !penguin.isBeingThrown) {
+    // Play hit sound based on isHit state transitions (false -> true)
+    // This ensures hit sound plays exactly once per hit
+    const currentTime = Date.now();
+
+    // Use a consistent throttle time for all hit sounds
+    // The server already handles preventing multiple hits per attack
+    const throttleTime = 30; // Short throttle just to prevent audio glitches
+
+    // Only play sound if:
+    // 1. isHit is currently true
+    // 2. isHit was false in the previous frame (state transition)
+    // 3. Player is not being thrown
+    // 4. Appropriate time has passed since last hit sound (throttle)
+    if (
+      penguin.isHit &&
+      !lastHitState.current &&
+      !penguin.isBeingThrown &&
+      currentTime - lastHitSoundTime.current > throttleTime
+    ) {
       playSound(hitSound, 0.01);
+      lastHitSoundTime.current = currentTime;
+      console.log(
+        `Hit sound played - isHit transition, hitCounter: ${penguin.hitCounter}, time: ${currentTime}`
+      );
     }
+
+    // Update the previous state for next comparison
     lastHitState.current = penguin.isHit;
-  }, [penguin.isHit, penguin.isBeingThrown]);
+  }, [penguin.isHit, penguin.isBeingThrown, penguin.hitCounter]);
 
   useEffect(() => {
     if (penguin.isThrowingSalt && !lastThrowingSaltState.current) {
