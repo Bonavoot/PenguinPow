@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext } from "react";
+import { useState, useEffect, useContext, useMemo, useCallback } from "react";
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
 import { SocketContext } from "../SocketContext";
@@ -6,31 +6,25 @@ import powerWaterIcon from "../assets/power-water.png";
 import snowballImage from "../assets/snowball.png";
 import pumoArmyIcon from "./pumo-army-icon.png";
 
-// Animation for entrance
+// Simplified animation for entrance - removed expensive blur
 const slideIn = keyframes`
   0% {
     opacity: 0;
-    transform: translate(-50%, -50%) scale(0.8);
-    filter: blur(10px);
+    transform: translate(-50%, -50%) scale(0.9);
   }
   100% {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1);
-    filter: blur(0);
   }
 `;
 
-// Animation for urgent timer
+// Simplified urgent timer animation
 const urgentPulse = keyframes`
   0%, 100% { 
     color: #ff4757;
-    text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000,
-                 0 0 10px rgba(255, 71, 87, 0.8), 0 0 20px rgba(255, 71, 87, 0.5);
   }
   50% { 
     color: #ffffff;
-    text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000,
-                 0 0 10px rgba(255, 255, 255, 0.8), 0 0 20px rgba(255, 255, 255, 0.5);
   }
 `;
 
@@ -61,29 +55,13 @@ const PowerUpContainer = styled.div`
   border-radius: clamp(8px, 1.5vw, 16px);
   padding: clamp(20px, 3vw, 40px);
   text-align: center;
-  box-shadow: 0 0 30px rgba(0, 0, 0, 0.8), 0 0 60px rgba(212, 175, 55, 0.3),
-    inset 0 2px 0 rgba(212, 175, 55, 0.2);
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
   width: clamp(400px, 60vw, 700px);
   max-width: 95%;
-  animation: ${slideIn} 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: ${slideIn} 0.3s ease-out forwards;
   color: #fff;
   overflow: hidden;
-
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(
-      45deg,
-      transparent 0%,
-      rgba(212, 175, 55, 0.05) 50%,
-      transparent 100%
-    );
-    pointer-events: none;
-  }
+  will-change: transform, opacity;
 `;
 
 const Title = styled.h1`
@@ -93,8 +71,7 @@ const Title = styled.h1`
   color: #d4af37;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000,
-    2px 2px 0 #000, 0 0 10px rgba(212, 175, 55, 0.5);
+  text-shadow: 2px 2px 0 #000;
   position: relative;
   z-index: 1;
 `;
@@ -106,8 +83,7 @@ const Subtitle = styled.h2`
   color: #fff;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
-    1px 1px 0 #000;
+  text-shadow: 1px 1px 0 #000;
   position: relative;
   z-index: 1;
 `;
@@ -120,6 +96,7 @@ const PowerUpGrid = styled.div`
   flex-wrap: nowrap;
 `;
 
+// Simplified PowerUpCard - removed expensive backdrop-filter and complex box-shadows
 const PowerUpCard = styled.div`
   display: flex;
   flex-direction: column;
@@ -133,22 +110,15 @@ const PowerUpCard = styled.div`
   border-radius: clamp(6px, 1.5vw, 12px);
   padding: clamp(12px, 2vw, 20px);
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.2s ease-out, border-color 0.2s ease-out;
   width: clamp(120px, 15vw, 180px);
   height: clamp(120px, 15vw, 180px);
   position: relative;
   flex-shrink: 0;
-  backdrop-filter: blur(5px);
+  will-change: transform;
 
   &:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4),
-      0 0 20px
-        ${(props) =>
-          props.$selected
-            ? "rgba(212, 175, 55, 0.4)"
-            : "rgba(139, 69, 19, 0.3)"},
-      0 0 0 2px ${(props) => (props.$selected ? "#d4af37" : "#8b4513")};
+    transform: translateY(-2px);
   }
 
   &:disabled {
@@ -160,14 +130,11 @@ const PowerUpCard = styled.div`
   ${(props) =>
     props.$selected &&
     `
-    box-shadow: 
-      0 8px 25px rgba(0, 0, 0, 0.4),
-      0 0 30px rgba(212, 175, 55, 0.5),
-      0 0 0 3px #d4af37,
-      inset 0 2px 0 rgba(212, 175, 55, 0.3);
+    box-shadow: 0 0 15px rgba(212, 175, 55, 0.4);
   `}
 `;
 
+// Simplified PowerUpIcon - reduced complex gradients
 const PowerUpIcon = styled.div`
   width: clamp(40px, 6vw, 70px);
   height: clamp(40px, 6vw, 70px);
@@ -175,17 +142,17 @@ const PowerUpIcon = styled.div`
   background: ${(props) => {
     switch (props.$type) {
       case "speed":
-        return "linear-gradient(135deg, #00d2ff, #3a7bd5)";
+        return "#00d2ff";
       case "power":
-        return "linear-gradient(135deg, #ff6b6b, #ee5a52)";
+        return "#ff6b6b";
       case "snowball":
-        return "linear-gradient(135deg, #74b9ff, #0984e3)";
+        return "#74b9ff";
       case "pumo_army":
-        return "linear-gradient(135deg, #fff4e6 0%, #ffcc80 30%, #ff8c00 100%)";
+        return "#ffcc80";
       case "thick_blubber":
-        return "linear-gradient(135deg, #9c88ff, #7c4dff)";
+        return "#9c88ff";
       default:
-        return "linear-gradient(135deg, #6c757d, #495057)";
+        return "#6c757d";
     }
   }};
   display: flex;
@@ -193,18 +160,16 @@ const PowerUpIcon = styled.div`
   justify-content: center;
   margin-bottom: clamp(8px, 1.5vw, 15px);
   border: 2px solid #8b4513;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3), 0 0 10px rgba(139, 69, 19, 0.2);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
   font-size: clamp(1.2rem, 3vw, 2rem);
   font-weight: bold;
   color: #fff;
-  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
-    1px 1px 0 #000;
+  text-shadow: 1px 1px 0 #000;
 
   img {
     width: 70%;
     height: 70%;
     object-fit: contain;
-    filter: drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.3));
   }
 `;
 
@@ -216,9 +181,7 @@ const PowerUpName = styled.h3`
   text-transform: uppercase;
   letter-spacing: 0.05em;
   text-shadow: ${(props) =>
-    props.$selected
-      ? "0 0 3px rgba(0, 0, 0, 0.8)"
-      : "-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000"};
+    props.$selected ? "1px 1px 0 rgba(0, 0, 0, 0.8)" : "1px 1px 0 #000"};
   line-height: 1;
 `;
 
@@ -230,9 +193,7 @@ const PowerUpDescription = styled.p`
   text-align: center;
   line-height: 1.2;
   text-shadow: ${(props) =>
-    props.$selected
-      ? "0 0 2px rgba(0, 0, 0, 0.5)"
-      : "-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000"};
+    props.$selected ? "1px 1px 0 rgba(0, 0, 0, 0.5)" : "1px 1px 0 #000"};
 `;
 
 const StatusContainer = styled.div`
@@ -250,10 +211,10 @@ const StatusText = styled.p`
   color: #fff;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
-    1px 1px 0 #000;
+  text-shadow: 1px 1px 0 #000;
 `;
 
+// Simplified timer animation
 const TimerText = styled.p`
   font-family: "Bungee", cursive;
   font-size: clamp(0.8rem, 1.6vw, 1.1rem);
@@ -269,8 +230,7 @@ const TimerText = styled.p`
         `
       : css`
           color: #d4af37;
-          text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
-            1px 1px 0 #000;
+          text-shadow: 1px 1px 0 #000;
         `}
 `;
 
@@ -290,33 +250,52 @@ const PowerUpSelection = ({
   const [timeLeft, setTimeLeft] = useState(15);
   const [availablePowerUps, setAvailablePowerUps] = useState([]);
 
-  const powerUpInfo = {
-    speed: {
-      name: "Speed",
-      description: "Enhanced movement & dodge speed",
-      icon: "⚡",
-    },
-    power: {
-      name: "Power Water",
-      description: "Increase knockback by 30%",
-      icon: powerWaterIcon,
-    },
-    snowball: {
-      name: "Snowball",
-      description: "Throw snowball with F key",
-      icon: snowballImage,
-    },
-    pumo_army: {
-      name: "Pumo Army",
-      description: "Spawn mini clones with F key",
-      icon: pumoArmyIcon,
-    },
-    thick_blubber: {
-      name: "Thick Blubber",
-      description: "Absorb 1 hit during charged attack",
-      icon: "🛡️",
-    },
-  };
+  // Memoize power up info to prevent recreation on every render
+  const powerUpInfo = useMemo(
+    () => ({
+      speed: {
+        name: "Speed",
+        description: "Enhanced movement & dodge speed",
+        icon: "⚡",
+      },
+      power: {
+        name: "Power Water",
+        description: "Increase knockback by 30%",
+        icon: powerWaterIcon,
+      },
+      snowball: {
+        name: "Snowball",
+        description: "Throw snowball with F key",
+        icon: snowballImage,
+      },
+      pumo_army: {
+        name: "Pumo Army",
+        description: "Spawn mini clones with F key",
+        icon: pumoArmyIcon,
+      },
+      thick_blubber: {
+        name: "Thick Blubber",
+        description: "Absorb 1 hit during charged attack",
+        icon: "🛡️",
+      },
+    }),
+    []
+  );
+
+  // Memoize the timer status message to prevent unnecessary re-renders
+  const statusMessage = useMemo(() => {
+    if (selectedPowerUp) {
+      return `${powerUpInfo[selectedPowerUp].name} Selected - Waiting for opponent...`;
+    }
+    return "Select a power-up to continue";
+  }, [selectedPowerUp, powerUpInfo]);
+
+  // Memoize timer text to prevent unnecessary re-renders
+  const timerMessage = useMemo(() => {
+    return timeLeft > 0
+      ? `${timeLeft} seconds remaining`
+      : "Auto-selecting Speed...";
+  }, [timeLeft]);
 
   useEffect(() => {
     let countdownInterval;
@@ -384,16 +363,20 @@ const PowerUpSelection = ({
     };
   }, [onSelectionComplete, onSelectionStateChange]);
 
-  const handlePowerUpSelect = (powerUpType) => {
-    if (selectedPowerUp) return; // Prevent changing selection
+  // Memoize the power up select handler to prevent recreation
+  const handlePowerUpSelect = useCallback(
+    (powerUpType) => {
+      if (selectedPowerUp) return; // Prevent changing selection
 
-    setSelectedPowerUp(powerUpType);
-    socket.emit("power_up_selected", {
-      roomId,
-      playerId,
-      powerUpType,
-    });
-  };
+      setSelectedPowerUp(powerUpType);
+      socket.emit("power_up_selected", {
+        roomId,
+        playerId,
+        powerUpType,
+      });
+    },
+    [selectedPowerUp, socket, roomId, playerId]
+  );
 
   if (!isVisible) return null;
 
@@ -436,20 +419,12 @@ const PowerUpSelection = ({
         </PowerUpGrid>
 
         <StatusContainer>
-          <StatusText>
-            {selectedPowerUp
-              ? `${powerUpInfo[selectedPowerUp].name} Selected - Waiting for opponent...`
-              : "Select a power-up to continue"}
-          </StatusText>
+          <StatusText>{statusMessage}</StatusText>
           <StatusText>
             Players Ready: {selectionStatus.selectedCount}/
             {selectionStatus.totalPlayers}
           </StatusText>
-          <TimerText $urgent={timeLeft <= 5}>
-            {timeLeft > 0
-              ? `${timeLeft} seconds remaining`
-              : "Auto-selecting Speed..."}
-          </TimerText>
+          <TimerText $urgent={timeLeft <= 5}>{timerMessage}</TimerText>
         </StatusContainer>
       </PowerUpContainer>
     </PowerUpSelectionOverlay>
