@@ -117,15 +117,7 @@ const PowerUpCard = styled.div`
       linear-gradient(45deg, rgba(248, 248, 248, 0.8), rgba(240, 240, 240, 0.8))
     `;
   }};
-  border: 3px solid
-    ${(props) => {
-      const isActive =
-        props.$type === "snowball" || props.$type === "pumo_army";
-      if (props.$selected) {
-        return isActive ? "#ffcc02" : "#f4d03f";
-      }
-      return isActive ? "#6b73ff" : "#cd853f";
-    }};
+  border: 3px solid ${(props) => (props.$selected ? "#d4af37" : "#8b4513")};
   border-radius: clamp(6px, 1.5vw, 12px);
   padding: clamp(12px, 2vw, 20px);
   cursor: pointer;
@@ -236,7 +228,7 @@ const PowerUpName = styled.h3`
     }
   }};
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
   text-shadow: ${(props) =>
     props.$selected
       ? "none"
@@ -247,10 +239,35 @@ const PowerUpName = styled.h3`
 const PowerUpDescription = styled.p`
   font-family: "Bungee", cursive;
   font-size: clamp(0.5rem, 1.2vw, 0.8rem);
-  margin: 0;
-  color: ${(props) => (props.$selected ? "#000" : "#b4b4b4")};
+  margin: 0 0 clamp(4px, 1vw, 8px) 0;
+  color: ${(props) => (props.$selected ? "#000" : "#cecece")};
   text-align: center;
   line-height: 1.2;
+  text-shadow: ${(props) =>
+    props.$selected
+      ? "none"
+      : "1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 0 1px 0 #000, 1px 0 0 #000, 0 -1px 0 #000, -1px 0 0 #000"};
+`;
+
+const PowerUpType = styled.p`
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.4rem, 1vw, 0.7rem);
+  margin: 0;
+  color: ${(props) => {
+    if (props.$selected) return "#000";
+
+    // Different colors for active vs passive based on the type text
+    if (props.$isActive) {
+      return "#ff6b6b"; // Red for active power-ups
+    } else {
+      return "#74b9ff"; // Blue for passive power-ups
+    }
+  }};
+  text-align: center;
+  line-height: 1;
+  font-style: italic;
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
   text-shadow: ${(props) =>
     props.$selected
       ? "none"
@@ -476,6 +493,14 @@ const PowerUpSelection = ({
                 <PowerUpDescription $selected={selectedPowerUp === type}>
                   {info.description}
                 </PowerUpDescription>
+                <PowerUpType
+                  $selected={selectedPowerUp === type}
+                  $isActive={type === "snowball" || type === "pumo_army"}
+                >
+                  {type === "snowball" || type === "pumo_army"
+                    ? "(active)"
+                    : "(passive)"}
+                </PowerUpType>
               </PowerUpCard>
             );
           })}

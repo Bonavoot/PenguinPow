@@ -465,9 +465,9 @@ const StyledImage = styled("img")
 
 const FloatingPowerUpText = styled.div`
   position: absolute;
-  font-family: "Arial", sans-serif;
+  font-family: "Bungee", cursive;
   font-size: clamp(0.85rem, 1.6vw, 1.3rem);
-  font-weight: 700;
+  font-weight: 400;
   color: ${(props) => {
     switch (props.$powerUpType) {
       case "speed":
@@ -484,8 +484,8 @@ const FloatingPowerUpText = styled.div`
         return "#FFD700";
     }
   }};
-  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
-    1px 1px 0 #000,
+  text-shadow: -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000,
+    1.5px 1.5px 0 #000, -1px 0 0 #000, 1px 0 0 #000, 0 -1px 0 #000, 0 1px 0 #000,
     0 0 8px
       ${(props) => {
         switch (props.$powerUpType) {
@@ -512,7 +512,7 @@ const FloatingPowerUpText = styled.div`
   transform-origin: center;
   z-index: 101;
   opacity: 0;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.15em;
   white-space: nowrap;
   text-transform: uppercase;
 
