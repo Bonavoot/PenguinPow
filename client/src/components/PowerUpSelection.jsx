@@ -52,36 +52,64 @@ const PowerUpContainer = styled.div`
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background: rgba(255, 255, 255, 0.95);
-  border: 4px solid #000;
+  background: linear-gradient(
+    135deg,
+    rgba(139, 69, 19, 0.98),
+    rgba(101, 67, 33, 0.95)
+  );
+  border: 4px solid #d4af37;
   border-radius: clamp(8px, 1.5vw, 16px);
   padding: clamp(20px, 3vw, 40px);
   text-align: center;
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.8),
-    inset 0 2px 0 rgba(255, 255, 255, 0.3);
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.8), 0 0 60px rgba(212, 175, 55, 0.3),
+    inset 0 2px 0 rgba(212, 175, 55, 0.2);
   width: clamp(400px, 60vw, 700px);
   max-width: 95%;
   animation: ${slideIn} 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-  color: #000;
+  color: #fff;
+  overflow: hidden;
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+      45deg,
+      transparent 0%,
+      rgba(212, 175, 55, 0.05) 50%,
+      transparent 100%
+    );
+    pointer-events: none;
+  }
 `;
 
 const Title = styled.h1`
   font-family: "Bungee", cursive;
   font-size: clamp(1.5rem, 4vw, 2.5rem);
   margin: 0 0 clamp(10px, 2vw, 20px) 0;
-  color: #000;
+  color: #d4af37;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  text-shadow: none;
+  text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000,
+    2px 2px 0 #000, 0 0 10px rgba(212, 175, 55, 0.5);
+  position: relative;
+  z-index: 1;
 `;
 
 const Subtitle = styled.h2`
   font-family: "Bungee", cursive;
   font-size: clamp(0.8rem, 2vw, 1.2rem);
   margin: 0 0 clamp(20px, 3vw, 30px) 0;
-  color: #666;
+  color: #fff;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
+    1px 1px 0 #000;
+  position: relative;
+  z-index: 1;
 `;
 
 const PowerUpGrid = styled.div`
@@ -98,10 +126,10 @@ const PowerUpCard = styled.div`
   align-items: center;
   justify-content: center;
   background: ${(props) => {
-    if (props.$selected) return "linear-gradient(135deg, #ff6b6b, #ee5a52)";
-    return "linear-gradient(135deg, #f8f9fa, #e9ecef)";
+    if (props.$selected) return "linear-gradient(135deg, #d4af37, #b8941f)";
+    return "linear-gradient(135deg, rgba(44, 24, 16, 0.9), rgba(34, 14, 6, 0.9))";
   }};
-  border: 3px solid ${(props) => (props.$selected ? "#c92a2a" : "#000")};
+  border: 3px solid ${(props) => (props.$selected ? "#d4af37" : "#8b4513")};
   border-radius: clamp(6px, 1.5vw, 12px);
   padding: clamp(12px, 2vw, 20px);
   cursor: pointer;
@@ -110,11 +138,17 @@ const PowerUpCard = styled.div`
   height: clamp(120px, 15vw, 180px);
   position: relative;
   flex-shrink: 0;
+  backdrop-filter: blur(5px);
 
   &:hover {
     transform: translateY(-3px);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3),
-      0 0 0 2px ${(props) => (props.$selected ? "#c92a2a" : "#495057")};
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4),
+      0 0 20px
+        ${(props) =>
+          props.$selected
+            ? "rgba(212, 175, 55, 0.4)"
+            : "rgba(139, 69, 19, 0.3)"},
+      0 0 0 2px ${(props) => (props.$selected ? "#d4af37" : "#8b4513")};
   }
 
   &:disabled {
@@ -127,9 +161,10 @@ const PowerUpCard = styled.div`
     props.$selected &&
     `
     box-shadow: 
-      0 8px 25px rgba(201, 42, 42, 0.4),
-      0 0 0 3px #c92a2a,
-      inset 0 2px 0 rgba(255, 255, 255, 0.2);
+      0 8px 25px rgba(0, 0, 0, 0.4),
+      0 0 30px rgba(212, 175, 55, 0.5),
+      0 0 0 3px #d4af37,
+      inset 0 2px 0 rgba(212, 175, 55, 0.3);
   `}
 `;
 
@@ -157,8 +192,8 @@ const PowerUpIcon = styled.div`
   align-items: center;
   justify-content: center;
   margin-bottom: clamp(8px, 1.5vw, 15px);
-  border: 2px solid #000;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  border: 2px solid #8b4513;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3), 0 0 10px rgba(139, 69, 19, 0.2);
   font-size: clamp(1.2rem, 3vw, 2rem);
   font-weight: bold;
   color: #fff;
@@ -169,6 +204,7 @@ const PowerUpIcon = styled.div`
     width: 70%;
     height: 70%;
     object-fit: contain;
+    filter: drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.3));
   }
 `;
 
@@ -176,13 +212,13 @@ const PowerUpName = styled.h3`
   font-family: "Bungee", cursive;
   font-size: clamp(0.7rem, 1.8vw, 1.1rem);
   margin: 0 0 clamp(4px, 1vw, 8px) 0;
-  color: ${(props) => (props.$selected ? "#fff" : "#000")};
+  color: ${(props) => (props.$selected ? "#000" : "#fff")};
   text-transform: uppercase;
   letter-spacing: 0.05em;
   text-shadow: ${(props) =>
     props.$selected
-      ? "-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000"
-      : "none"};
+      ? "0 0 3px rgba(0, 0, 0, 0.8)"
+      : "-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000"};
   line-height: 1;
 `;
 
@@ -190,28 +226,32 @@ const PowerUpDescription = styled.p`
   font-family: "Bungee", cursive;
   font-size: clamp(0.5rem, 1.2vw, 0.8rem);
   margin: 0;
-  color: ${(props) => (props.$selected ? "#fff" : "#666")};
+  color: ${(props) => (props.$selected ? "#000" : "#d4af37")};
   text-align: center;
   line-height: 1.2;
   text-shadow: ${(props) =>
     props.$selected
-      ? "-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000"
-      : "none"};
+      ? "0 0 2px rgba(0, 0, 0, 0.5)"
+      : "-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000"};
 `;
 
 const StatusContainer = styled.div`
-  border-top: 2px solid #dee2e6;
+  border-top: 2px solid rgba(212, 175, 55, 0.4);
   padding-top: clamp(15px, 2.5vw, 25px);
   margin-top: clamp(15px, 2.5vw, 25px);
+  position: relative;
+  z-index: 1;
 `;
 
 const StatusText = styled.p`
   font-family: "Bungee", cursive;
   font-size: clamp(0.7rem, 1.5vw, 1rem);
   margin: clamp(5px, 1vw, 8px) 0;
-  color: #000;
+  color: #fff;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
+    1px 1px 0 #000;
 `;
 
 const TimerText = styled.p`
@@ -228,8 +268,9 @@ const TimerText = styled.p`
           animation: ${urgentPulse} 1s ease-in-out infinite;
         `
       : css`
-          color: #495057;
-          text-shadow: none;
+          color: #d4af37;
+          text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
+            1px 1px 0 #000;
         `}
 `;
 
@@ -360,7 +401,7 @@ const PowerUpSelection = ({
     <PowerUpSelectionOverlay>
       <PowerUpContainer>
         <Title>Power-Up Selection</Title>
-        <Subtitle>Choose your enhancement for this round</Subtitle>
+        <Subtitle>Choose your power up for this round</Subtitle>
 
         <PowerUpGrid>
           {availablePowerUps.map((type) => {

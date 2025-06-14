@@ -152,9 +152,13 @@ function executeSlapAttack(player, rooms) {
     }
   }
 
-  // If already attacking, queue this slap for when the current one ends
+  // If already attacking, only allow ONE buffered attack
   if (player.isSlapAttack && player.isAttacking) {
-    player.hasPendingSlapAttack = true;
+    // Only store one pending attack, ignore additional rapid clicks
+    if (!player.hasPendingSlapAttack) {
+      player.hasPendingSlapAttack = true;
+    }
+    // Ignore additional clicks if there's already a pending attack
     return;
   }
 
@@ -181,7 +185,7 @@ function executeSlapAttack(player, rooms) {
       // Gradually reduce the slide velocity
       player.movementVelocity *= 0.5;
 
-      // Check if there's a pending slap attack to execute with a small delay
+      // Check if there's a pending slap attack to execute
       if (player.hasPendingSlapAttack) {
         player.hasPendingSlapAttack = false;
         // Add a small delay before executing the next slap to allow neutral animation

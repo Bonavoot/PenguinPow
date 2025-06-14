@@ -10,7 +10,7 @@ const RedOverlay = styled.div`
   left: ${(props) => (props.$x / 1280) * 100}%;
   bottom: ${(props) => (props.$y / 720) * 100}%;
   transform: ${(props) => `scaleX(${props.$facing}) translateZ(0)`};
-  background: rgba(255, 0, 0, 0.4);
+  background: rgba(156, 136, 255, 0.4);
   z-index: 99;
   pointer-events: none;
   will-change: opacity;

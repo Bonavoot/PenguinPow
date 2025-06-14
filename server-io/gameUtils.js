@@ -6,28 +6,65 @@ const MAP_RIGHT_BOUNDARY = 980;
 class TimeoutManager {
   constructor() {
     this.timeouts = new Map(); // playerId -> Set of timeout IDs
+    this.namedTimeouts = new Map(); // playerId -> Map(name -> timeoutId)
   }
-  
-  set(playerId, callback, delay) {
+
+  set(playerId, callback, delay, name = null) {
     const timeoutId = setTimeout(() => {
       this.remove(playerId, timeoutId);
+      if (name) {
+        this.removeNamed(playerId, name);
+      }
       callback();
     }, delay);
-    
+
     if (!this.timeouts.has(playerId)) {
       this.timeouts.set(playerId, new Set());
     }
     this.timeouts.get(playerId).add(timeoutId);
-    
+
+    // Handle named timeouts
+    if (name) {
+      if (!this.namedTimeouts.has(playerId)) {
+        this.namedTimeouts.set(playerId, new Map());
+      }
+
+      // Clear existing named timeout if exists
+      const existingId = this.namedTimeouts.get(playerId).get(name);
+      if (existingId) {
+        clearTimeout(existingId);
+        this.timeouts.get(playerId).delete(existingId);
+      }
+
+      this.namedTimeouts.get(playerId).set(name, timeoutId);
+    }
+
     return timeoutId;
   }
-  
+
   remove(playerId, timeoutId) {
     if (this.timeouts.has(playerId)) {
       this.timeouts.get(playerId).delete(timeoutId);
     }
   }
-  
+
+  removeNamed(playerId, name) {
+    if (this.namedTimeouts.has(playerId)) {
+      this.namedTimeouts.get(playerId).delete(name);
+    }
+  }
+
+  clearPlayerSpecific(playerId, name) {
+    if (this.namedTimeouts.has(playerId)) {
+      const timeoutId = this.namedTimeouts.get(playerId).get(name);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        this.timeouts.get(playerId).delete(timeoutId);
+        this.namedTimeouts.get(playerId).delete(name);
+      }
+    }
+  }
+
   clearPlayer(playerId) {
     if (this.timeouts.has(playerId)) {
       for (const timeoutId of this.timeouts.get(playerId)) {
@@ -35,8 +72,11 @@ class TimeoutManager {
       }
       this.timeouts.delete(playerId);
     }
+    if (this.namedTimeouts.has(playerId)) {
+      this.namedTimeouts.delete(playerId);
+    }
   }
-  
+
   clearAll() {
     for (const [playerId, timeoutSet] of this.timeouts) {
       for (const timeoutId of timeoutSet) {
@@ -44,55 +84,61 @@ class TimeoutManager {
       }
     }
     this.timeouts.clear();
+    this.namedTimeouts.clear();
   }
 }
 
 const timeoutManager = new TimeoutManager();
 
 // Helper function to replace setTimeout calls - keeps exact same behavior
-function setPlayerTimeout(playerId, callback, delay) {
-  return timeoutManager.set(playerId, callback, delay);
+function setPlayerTimeout(playerId, callback, delay, name = null) {
+  return timeoutManager.set(playerId, callback, delay, name);
 }
 
 // Helper functions to reduce code duplication
 function isPlayerInActiveState(player) {
-  return !player.isAttacking &&
-         !player.isJumping &&
-         !player.isDodging &&
-         !player.isThrowing &&
-         !player.isBeingThrown &&
-         !player.isGrabbing &&
-         !player.isBeingGrabbed &&
-         !player.isHit &&
-         !player.isRecovering &&
-         !player.isRawParryStun &&
-         !player.isRawParrying &&
-         !player.isThrowingSnowball &&
-         !player.canMoveToReady;
+  return (
+    !player.isAttacking &&
+    !player.isJumping &&
+    !player.isDodging &&
+    !player.isThrowing &&
+    !player.isBeingThrown &&
+    !player.isGrabbing &&
+    !player.isBeingGrabbed &&
+    !player.isHit &&
+    !player.isRecovering &&
+    !player.isRawParryStun &&
+    !player.isRawParrying &&
+    !player.isThrowingSnowball &&
+    !player.canMoveToReady
+  );
 }
 
 function isPlayerInBasicActiveState(player) {
-  return !player.isAttacking &&
-         !player.isDodging &&
-         !player.isThrowing &&
-         !player.isBeingThrown &&
-         !player.isGrabbing &&
-         !player.isBeingGrabbed &&
-         !player.isHit &&
-         !player.isRawParryStun &&
-         !player.isRawParrying &&
-         !player.isThrowingSnowball;
+  return (
+    !player.isAttacking &&
+    !player.isDodging &&
+    !player.isThrowing &&
+    !player.isBeingThrown &&
+    !player.isGrabbing &&
+    !player.isBeingGrabbed &&
+    !player.isHit &&
+    !player.isRawParryStun &&
+    !player.isRawParrying &&
+    !player.isThrowingSnowball
+  );
 }
 
 function canPlayerCharge(player) {
-  return isPlayerInActiveState(player) && 
-         !player.isChargingAttack;
+  return isPlayerInActiveState(player) && !player.isChargingAttack;
 }
 
 function canPlayerUseAction(player) {
-  return isPlayerInBasicActiveState(player) &&
-         !player.isRecovering &&
-         !player.canMoveToReady;
+  return (
+    isPlayerInBasicActiveState(player) &&
+    !player.isRecovering &&
+    !player.canMoveToReady
+  );
 }
 
 function resetPlayerAttackStates(player) {
@@ -109,11 +155,19 @@ function resetPlayerAttackStates(player) {
   player.spacebarReleasedDuringDodge = false;
 }
 
-function isWithinMapBoundaries(x, leftBoundary = MAP_LEFT_BOUNDARY, rightBoundary = MAP_RIGHT_BOUNDARY) {
+function isWithinMapBoundaries(
+  x,
+  leftBoundary = MAP_LEFT_BOUNDARY,
+  rightBoundary = MAP_RIGHT_BOUNDARY
+) {
   return x >= leftBoundary && x <= rightBoundary;
 }
 
-function constrainToMapBoundaries(x, leftBoundary = MAP_LEFT_BOUNDARY, rightBoundary = MAP_RIGHT_BOUNDARY) {
+function constrainToMapBoundaries(
+  x,
+  leftBoundary = MAP_LEFT_BOUNDARY,
+  rightBoundary = MAP_RIGHT_BOUNDARY
+) {
   return Math.max(leftBoundary, Math.min(x, rightBoundary));
 }
 
@@ -129,17 +183,19 @@ function startCharging(player) {
 }
 
 function canPlayerSlap(player) {
-  return !player.isJumping &&
-         !player.isDodging &&
-         !player.isThrowing &&
-         !player.isBeingThrown &&
-         !player.isGrabbing &&
-         !player.isBeingGrabbed &&
-         !player.isHit &&
-         !player.isRawParryStun &&
-         !player.isRawParrying &&
-         !player.isThrowingSnowball &&
-         !player.canMoveToReady;
+  return (
+    !player.isJumping &&
+    !player.isDodging &&
+    !player.isThrowing &&
+    !player.isBeingThrown &&
+    !player.isGrabbing &&
+    !player.isBeingGrabbed &&
+    !player.isHit &&
+    !player.isRawParryStun &&
+    !player.isRawParrying &&
+    !player.isThrowingSnowball &&
+    !player.canMoveToReady
+  );
 }
 
 // Add helper function for clearing charge with auto-restart
@@ -159,11 +215,11 @@ module.exports = {
   // Constants
   MAP_LEFT_BOUNDARY,
   MAP_RIGHT_BOUNDARY,
-  
+
   // Classes and instances
   TimeoutManager,
   timeoutManager,
-  
+
   // Functions
   setPlayerTimeout,
   isPlayerInActiveState,
@@ -176,5 +232,5 @@ module.exports = {
   shouldRestartCharging,
   startCharging,
   canPlayerSlap,
-  clearChargeState
-}; 
+  clearChargeState,
+};

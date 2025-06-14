@@ -261,7 +261,7 @@ const RedTintOverlay = styled.div`
   left: ${(props) => (props.$x / 1280) * 100}%;
   bottom: ${(props) => (props.$y / 720) * 100}%;
   transform: ${(props) => `scaleX(${props.$facing})`};
-  background: rgba(255, 0, 0, 0.7);
+  background: rgba(156, 136, 255, 0.7);
   z-index: 101;
   pointer-events: none;
   mix-blend-mode: multiply;

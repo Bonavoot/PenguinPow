@@ -347,6 +347,8 @@ function resetRoomAndPlayers(room) {
     player.hitCounter = 0;
     // Reset hit timing for dynamic hit duration
     player.lastHitTime = 0;
+    // Reset slap attack buffering
+    player.hasPendingSlapAttack = false;
   });
 
   // Clear player-specific power-up data
@@ -835,8 +837,8 @@ io.on("connection", (socket) => {
                 // Apply knockback only if not immune
                 if (canApplyKnockback(opponent)) {
                   const knockbackDirection = snowball.velocityX > 0 ? 1 : -1;
-                  opponent.knockbackVelocity.x = knockbackDirection * 3;
-                  opponent.movementVelocity = knockbackDirection * 2;
+                  opponent.knockbackVelocity.x = knockbackDirection * 2; // Slightly increased from 1.5 to 2
+                  opponent.movementVelocity = knockbackDirection * 1.3; // Slightly increased from 1 to 1.3
 
                   // Set knockback immunity
                   setKnockbackImmunity(opponent);
@@ -1014,25 +1016,42 @@ io.on("connection", (socket) => {
             player.x + player.knockbackVelocity.x * delta * speedFactor;
 
           // Apply friction to knockback
-          player.knockbackVelocity.x *= 0.875;
+          // Use less friction for slap knockbacks to create better sliding effect
+          if (player.isSlapKnockback) {
+            player.knockbackVelocity.x *= 0.96; // Much less friction for slap attacks (closer to ice physics)
+          } else {
+            player.knockbackVelocity.x *= 0.875; // Normal friction for charged attacks
+          }
 
           // Apply ice-like sliding physics
           if (Math.abs(player.movementVelocity) > MIN_MOVEMENT_THRESHOLD) {
-            // Apply momentum and friction
-            player.movementVelocity *= MOVEMENT_MOMENTUM * MOVEMENT_FRICTION;
+            // Apply different friction based on attack type
+            if (player.isHit && player.isSlapKnockback) {
+              // Much less friction for slap attack hits - longer distance sliding
+              player.movementVelocity *= 0.994; // Reduced friction for satisfying slap slides
+            } else {
+              // Normal friction for charged attacks and regular movement
+              player.movementVelocity *= MOVEMENT_MOMENTUM * MOVEMENT_FRICTION;
+            }
 
             // Calculate new position with sliding
             player.x = player.x + delta * speedFactor * player.movementVelocity;
           }
 
           // Reset hit state when both knockback and sliding are nearly complete
+          // Use different thresholds based on attack type
+          const hitMovementThreshold = player.isSlapKnockback
+            ? MIN_MOVEMENT_THRESHOLD * 0.3 // Much smaller threshold for slap attacks (longer slides)
+            : MIN_MOVEMENT_THRESHOLD; // Normal threshold for charged attacks
+
           if (
             Math.abs(player.knockbackVelocity.x) < 0.1 &&
-            Math.abs(player.movementVelocity) < MIN_MOVEMENT_THRESHOLD
+            Math.abs(player.movementVelocity) < hitMovementThreshold
           ) {
             player.knockbackVelocity.x = 0;
             player.movementVelocity = 0;
             player.isHit = false;
+            player.isSlapKnockback = false; // Reset slap knockback flag
           }
         }
 
@@ -1475,12 +1494,17 @@ io.on("connection", (socket) => {
               }
 
               // Check boundaries and stop sliding if hitting them
+              // EXCEPTION: Allow hit knockback to move players past boundaries temporarily
               if (newX >= leftBoundary && newX <= rightBoundary) {
                 player.x = newX;
-              } else {
-                // Stop at boundary and reset velocity
+              } else if (!player.isHit) {
+                // Only enforce boundaries if player is NOT currently being hit
+                // This allows knockback to work properly at boundaries
                 player.x = newX < leftBoundary ? leftBoundary : rightBoundary;
                 player.movementVelocity = 0;
+              } else {
+                // Player is being hit - allow temporary boundary crossing for knockback
+                player.x = newX;
               }
             } else {
               // Snap to zero when velocity is very small
@@ -1713,6 +1737,19 @@ io.on("connection", (socket) => {
   }
 
   function checkCollision(player, otherPlayer) {
+    // Reset isAlreadyHit only once per attack to allow exactly one hit per attack
+    if (player.isAttacking && player.attackStartTime) {
+      // Only reset if this is a different attack (different start time)
+      if (
+        !player.lastCheckedAttackTime ||
+        player.lastCheckedAttackTime !== player.attackStartTime
+      ) {
+        // Reset the hit blocker for this new attack
+        otherPlayer.isAlreadyHit = false;
+        player.lastCheckedAttackTime = player.attackStartTime;
+      }
+    }
+
     // Existing collision check conditions
     if (
       !player.isAttacking ||
@@ -2078,9 +2115,23 @@ io.on("connection", (socket) => {
         ); // Short duration for regular parry recovery
       }
     } else {
-      // Apply the knockback to the defending player
-      otherPlayer.isHit = true;
-      otherPlayer.isAlreadyHit = true; // Set immediately to prevent multiple hits per attack
+      // === ROCK-SOLID HIT PROCESSING ===
+      // Clear any existing hit state cleanup to prevent conflicts
+      timeoutManager.clearPlayerSpecific(otherPlayer.id, "hitStateReset");
+
+      // Always ensure a clean state transition for reliable client-side detection
+      // This guarantees that each hit triggers proper sound/visual effects
+      otherPlayer.isHit = false;
+
+      // Use immediate callback to ensure proper state transition timing
+      process.nextTick(() => {
+        otherPlayer.isHit = true;
+      });
+
+      // Block multiple hits from this same attack
+      otherPlayer.isAlreadyHit = true;
+
+      // Reset movement states
       otherPlayer.isJumping = false;
       otherPlayer.isAttacking = false;
       otherPlayer.isStrafing = false;
@@ -2097,45 +2148,46 @@ io.on("connection", (socket) => {
       // Calculate knockback multiplier based on charge percentage
       let finalKnockbackMultiplier;
       if (isSlapAttack) {
-        finalKnockbackMultiplier = 0.55; // Increased from 0.5 to 0.55
+        finalKnockbackMultiplier = 0.55;
       } else {
-        // Reduced knockback scaling for charged attacks
-        finalKnockbackMultiplier = 0.5 + (chargePercentage / 100) * 1.2; // Reduced from 2.0 to 1.2
+        finalKnockbackMultiplier = 0.5 + (chargePercentage / 100) * 1.2;
       }
 
       // Apply power-up effects
       if (player.activePowerUp === POWER_UP_TYPES.POWER) {
-        finalKnockbackMultiplier =
-          finalKnockbackMultiplier * player.powerUpMultiplier;
+        finalKnockbackMultiplier *= player.powerUpMultiplier;
       }
-      // if (otherPlayer.activePowerUp === POWER_UP_TYPES.SIZE) {
-      //   finalKnockbackMultiplier = finalKnockbackMultiplier * 0.85;
-      // }
 
       // Apply knockback only if not immune
       if (canApplyKnockback(otherPlayer)) {
         if (isSlapAttack) {
-          // Convert knockback to movement velocity for ice-like sliding
-          otherPlayer.movementVelocity =
-            3.85 * knockbackDirection * finalKnockbackMultiplier; // Increased from 3.5 to 3.85
-          otherPlayer.knockbackVelocity.x = 0; // Clear knockback velocity since we're using movement
+          // Use both knockback velocity and movement velocity for slap attacks like charged attacks do
+          // This ensures slap attacks work properly at boundaries AND have nice sliding
+          const immediateKnockback =
+            2.0 * knockbackDirection * finalKnockbackMultiplier;
+          const slidingVelocity =
+            2.2 * knockbackDirection * finalKnockbackMultiplier;
+
+          otherPlayer.knockbackVelocity.x = immediateKnockback;
+          otherPlayer.movementVelocity = slidingVelocity; // Add sliding component for ice-like effect
+
+          // Mark this as a slap knockback for special friction handling
+          otherPlayer.isSlapKnockback = true;
 
           // Add immediate position adjustment to prevent overlap
-          const minDistance = SLAP_HITBOX_DISTANCE_VALUE * 0.8; // 80% of hitbox distance
+          const minDistance = SLAP_HITBOX_DISTANCE_VALUE * 0.8;
           const currentDistance = Math.abs(player.x - otherPlayer.x);
           if (currentDistance < minDistance) {
             const adjustment =
               (minDistance - currentDistance) * knockbackDirection;
             otherPlayer.x += adjustment;
           }
-
-          // Remove screen shake for slap attacks
         } else {
           // For charged attacks, use a combination of immediate knockback and sliding
           const immediateKnockback =
-            2 * knockbackDirection * finalKnockbackMultiplier;
+            1.7 * knockbackDirection * finalKnockbackMultiplier;
           otherPlayer.movementVelocity =
-            1.5 * knockbackDirection * finalKnockbackMultiplier;
+            1.2 * knockbackDirection * finalKnockbackMultiplier;
           otherPlayer.knockbackVelocity.x = immediateKnockback;
 
           // Calculate attacker bounce-off based on charge percentage
@@ -2145,7 +2197,7 @@ io.on("connection", (socket) => {
           // Set movement velocity for the attacker to create bounce-off effect
           player.movementVelocity =
             2 * attackerBounceDirection * attackerBounceMultiplier;
-          player.knockbackVelocity = { x: 0, y: 0 }; // Clear knockback velocity since we're using movement
+          player.knockbackVelocity = { x: 0, y: 0 };
 
           if (currentRoom) {
             io.in(currentRoom.id).emit("screen_shake", {
@@ -2162,35 +2214,22 @@ io.on("connection", (socket) => {
       otherPlayer.knockbackVelocity.y = 0;
       otherPlayer.y = GROUND_LEVEL;
 
-      // Set dynamic hit state duration for slap attacks based on timing
-      let hitStateDuration;
-      if (isSlapAttack) {
-        // Check if this is a rapid follow-up hit or a standalone hit
-        const timeSinceLastHit = currentTime - (otherPlayer.lastHitTime || 0);
+      // === CONSISTENT HIT DURATION ===
+      // Use fixed duration for all slap attacks to ensure consistency
+      const hitStateDuration = isSlapAttack ? 250 : 300; // Fixed 250ms for slaps, 300ms for charged
 
-        if (timeSinceLastHit > 500) {
-          // Standalone hit or slow follow-up - use longer duration for better visual feedback
-          hitStateDuration = 200;
-        } else {
-          // Rapid follow-up hit - use longer duration but still prevent combo appearance
-          hitStateDuration = 150; // Increased from 75ms - safe since next slap takes 400ms total
-        }
+      // Update the last hit time for tracking
+      otherPlayer.lastHitTime = currentTime;
 
-        // Update the last hit time for future calculations
-        otherPlayer.lastHitTime = currentTime;
-      } else {
-        // Charged attacks always use full duration
-        hitStateDuration = 300;
-      }
-
-      // Clear hit state after duration
+      // Single, deterministic cleanup
       setPlayerTimeout(
         otherPlayer.id,
         () => {
           otherPlayer.isHit = false;
-          otherPlayer.isAlreadyHit = false; // Clear for all attack types
+          // Note: isAlreadyHit is reset by checkCollision for the next attack
         },
-        hitStateDuration
+        hitStateDuration,
+        "hitStateReset" // Named timeout for cleanup
       );
     }
   }
@@ -2281,9 +2320,10 @@ io.on("connection", (socket) => {
         knockbackImmune: false, // Add knockback immunity flag
         knockbackImmuneEndTime: 0, // Add knockback immunity timer
         hitAbsorptionUsed: false, // Add thick blubber hit absorption tracking
-        hasPendingSlapAttack: false, // Add flag for simplified slap attack queuing
         hitCounter: 0, // Add counter for reliable hit sound triggering
         lastHitTime: 0, // Add timing tracking for dynamic hit duration
+        lastCheckedAttackTime: 0, // Add tracking for attack collision checking
+        hasPendingSlapAttack: false, // Add flag for buffering one additional slap attack
       });
     } else if (rooms[index].players.length === 1) {
       rooms[index].players.push({
@@ -2363,9 +2403,10 @@ io.on("connection", (socket) => {
         knockbackImmune: false, // Add knockback immunity flag
         knockbackImmuneEndTime: 0, // Add knockback immunity timer
         hitAbsorptionUsed: false, // Add thick blubber hit absorption tracking
-        hasPendingSlapAttack: false, // Add flag for simplified slap attack queuing
         hitCounter: 0, // Add counter for reliable hit sound triggering
         lastHitTime: 0, // Add timing tracking for dynamic hit duration
+        lastCheckedAttackTime: 0, // Add tracking for attack collision checking
+        hasPendingSlapAttack: false, // Add flag for buffering one additional slap attack
       });
     }
 
@@ -3023,18 +3064,10 @@ io.on("connection", (socket) => {
     }
 
     // Handle slap attacks with mouse1 - block during charged attack execution and recovery
-    if (
-      player.keys.mouse1 &&
-      !shouldBlockAction() &&
-      canPlayerSlap(player) &&
-      !player.wasMouse1Pressed // Add check for previous mouse1 state
-    ) {
+    if (player.keys.mouse1 && !shouldBlockAction() && canPlayerSlap(player)) {
       // Simply execute slap attack - it will handle queuing internally if already attacking
       executeSlapAttack(player, rooms);
     }
-
-    // Store the current mouse1 state for next frame
-    player.wasMouse1Pressed = player.keys.mouse1;
 
     function isOpponentCloseEnoughForGrab(player, opponent) {
       // Calculate grab range based on player size
