@@ -23,6 +23,8 @@ class GamepadHandler {
     this.lastInputTime = 0;
     this.inputCallbacks = [];
     this.steamInputInitialized = false;
+    this.debugMode = false;
+    this.lastButtonStates = [];
 
     this.init();
   }
@@ -30,7 +32,6 @@ class GamepadHandler {
   init() {
     // Listen for gamepad connection events
     window.addEventListener("gamepadconnected", (e) => {
-      console.log(`🎮 Steam Deck Controller connected: ${e.gamepad.id}`);
       this.gamepadIndex = e.gamepad.index;
       this.gamepadConnected = true;
       this.initializeSteamInput();
@@ -48,18 +49,38 @@ class GamepadHandler {
     this.pollGamepad();
   }
 
+  logGamepadInfo(gamepad) {
+    if (this.debugMode) {
+      console.log("🎮 GAMEPAD DEBUG INFO:");
+      console.log(`ID: ${gamepad.id}`);
+      console.log(`Mapping: ${gamepad.mapping}`);
+      console.log(`Buttons: ${gamepad.buttons.length}`);
+      console.log(`Axes: ${gamepad.axes.length}`);
+      console.log(`Timestamp: ${gamepad.timestamp}`);
+
+      // Log all button states
+      gamepad.buttons.forEach((button, index) => {
+        if (button.pressed) {
+          console.log(`🎮 Button ${index} pressed: ${button.value}`);
+        }
+      });
+    }
+  }
+
   initializeSteamInput() {
-    // Check if we're running on Steam Deck or with Steam Input API
+    // Force disable Steam Input to prevent interference
     if (
       typeof window.SteamInput !== "undefined" &&
       !this.steamInputInitialized
     ) {
       try {
-        window.SteamInput.Init();
+        // Try to disable Steam Input remapping
+        if (window.SteamInput.Shutdown) {
+          window.SteamInput.Shutdown();
+        }
         this.steamInputInitialized = true;
-        console.log("🎮 Steam Input API initialized");
       } catch (error) {
-        console.warn("Steam Input API not available:", error);
+        // Ignore errors - we want to bypass Steam Input anyway
       }
     }
   }
@@ -86,34 +107,22 @@ class GamepadHandler {
     newKeyState.d = leftStickX > this.deadzone; // Move right
     newKeyState.s = leftStickY > this.deadzone; // Crouch (down)
 
-    // Right stick for additional movement or camera (if needed)
-    // const rightStickX = gamepad.axes[2];
-    // const rightStickY = gamepad.axes[3];
+    // UNIVERSAL BUTTON MAPPING - Works on both PC and Steam Deck
+    // Try all common button combinations to ensure compatibility
+    newKeyState[" "] = this.getButtonPressed(gamepad, [0, 1, 7]) || false; // Attack - A button (multiple indices)
+    newKeyState.shift = this.getButtonPressed(gamepad, [1, 0, 6]) || false; // Dodge - B button
+    newKeyState.e = this.getButtonPressed(gamepad, [2, 3, 5]) || false; // Grab - X button
+    newKeyState.w = this.getButtonPressed(gamepad, [3, 2, 4]) || false; // Throw - Y button
 
-    // Steam Deck Button Mapping (optimized for handheld)
-    // Face buttons (A, B, X, Y)
-    newKeyState[" "] = gamepad.buttons[0]?.pressed || false; // A button - Attack
-    newKeyState.shift = gamepad.buttons[1]?.pressed || false; // B button - Dodge
-    newKeyState.e = gamepad.buttons[2]?.pressed || false; // X button - Grab
-    newKeyState.w = gamepad.buttons[3]?.pressed || false; // Y button - Throw
+    // Shoulder buttons - try multiple combinations
+    newKeyState.mouse1 = this.getButtonPressed(gamepad, [4, 6, 8, 10]) || false; // L1/L2
+    newKeyState.mouse2 = this.getButtonPressed(gamepad, [5, 7, 9, 11]) || false; // R1/R2
 
-    // Shoulder buttons
-    newKeyState.mouse1 = gamepad.buttons[4]?.pressed || false; // L1 - Left mouse
-    newKeyState.mouse2 = gamepad.buttons[5]?.pressed || false; // R1 - Right mouse
-
-    // Triggers for additional actions (unused for now but available for future features)
-    // const leftTrigger = gamepad.buttons[6]?.value || 0;
-    // const rightTrigger = gamepad.buttons[7]?.value || 0;
-
-    // D-pad for precise movement (alternative to analog stick)
+    // D-pad for precise movement (works the same on both)
     if (gamepad.buttons[12]?.pressed) newKeyState.s = true; // D-pad up -> crouch
     if (gamepad.buttons[13]?.pressed) newKeyState.s = true; // D-pad down -> crouch
     if (gamepad.buttons[14]?.pressed) newKeyState.a = true; // D-pad left
     if (gamepad.buttons[15]?.pressed) newKeyState.d = true; // D-pad right
-
-    // Steam Deck specific buttons
-    // Back/Select button (button 8) - could be used for menu
-    // Start button (button 9) - could be used for pause
 
     // Check if input state changed
     if (this.hasInputChanged(newKeyState)) {
@@ -124,6 +133,16 @@ class GamepadHandler {
       // Steam Deck haptic feedback
       this.triggerHapticFeedback(gamepad, newKeyState);
     }
+  }
+
+  // Helper method to try multiple button indices (for Steam Deck compatibility)
+  getButtonPressed(gamepad, buttonIndices) {
+    for (const index of buttonIndices) {
+      if (gamepad.buttons[index]?.pressed) {
+        return true;
+      }
+    }
+    return false;
   }
 
   triggerHapticFeedback(gamepad, keyState) {
@@ -198,11 +217,20 @@ class GamepadHandler {
   isSteamDeck() {
     // Detect if running on Steam Deck
     const userAgent = navigator.userAgent.toLowerCase();
-    return (
-      userAgent.includes("steamdeck") ||
-      userAgent.includes("steamos") ||
-      typeof window.SteamInput !== "undefined"
-    );
+    const isSteamDeckUA =
+      userAgent.includes("steamdeck") || userAgent.includes("steamos");
+    const isSteamInput = typeof window.SteamInput !== "undefined";
+    const isSteamDeckResolution =
+      window.screen.width === 1280 && window.screen.height === 800;
+
+    console.log(`🎮 Steam Deck Detection:`, {
+      userAgent: isSteamDeckUA,
+      steamInput: isSteamInput,
+      resolution: isSteamDeckResolution,
+      final: isSteamDeckUA || isSteamInput || isSteamDeckResolution,
+    });
+
+    return isSteamDeckUA || isSteamInput || isSteamDeckResolution;
   }
 
   getRecommendedSettings() {
@@ -245,6 +273,19 @@ class GamepadHandler {
       };
     }
     return null;
+  }
+
+  // Debug method to help troubleshoot Steam Deck controls
+  enableDebugMode() {
+    this.debugMode = true;
+    console.log(
+      "🎮 Gamepad debug mode enabled - check console for button press logs"
+    );
+  }
+
+  disableDebugMode() {
+    this.debugMode = false;
+    console.log("🎮 Gamepad debug mode disabled");
   }
 }
 

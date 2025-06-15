@@ -57,6 +57,10 @@
                         }
                         "settings"
                         {
+                            "always_map_to_native" "1"
+                        }
+                        "settings"
+                        {
                             "haptic_intensity"    "2"
                         }
                     }

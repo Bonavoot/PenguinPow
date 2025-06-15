@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import { SocketContext } from "./SocketContext";
 import MainMenu from "./components/MainMenu";
+import StartupScreen from "./components/StartupScreen";
 import gamepadHandler from "./utils/gamepadHandler";
 import "./App.css";
 import "./components/SteamDeck.css";
@@ -24,9 +25,14 @@ function App() {
   const [connectionError, setConnectionError] = useState(false);
   const [steamDeckMode, setSteamDeckMode] = useState(false);
   const [controllerConnected, setControllerConnected] = useState(false);
+  const [showStartupScreen, setShowStartupScreen] = useState(true);
 
   const handleLogoClick = () => {
     window.location.reload(false);
+  };
+
+  const handleContinueFromStartup = () => {
+    setShowStartupScreen(false);
   };
 
   const getRooms = () => {
@@ -87,30 +93,42 @@ function App() {
           controllerConnected ? "controller-connected" : ""
         }`}
       >
-        <h1 onClick={handleLogoClick} className="logo">
-          P u m o <span className="pow"> PUMO !</span>
-        </h1>
-        {connectionError && (
-          <div style={{ color: "red", textAlign: "center", marginTop: "20px" }}>
-            Connection error. Attempting to reconnect...
-          </div>
+        {showStartupScreen ? (
+          <StartupScreen
+            onContinue={handleContinueFromStartup}
+            connectionError={connectionError}
+            steamDeckMode={steamDeckMode}
+          />
+        ) : (
+          <>
+            <h1 onClick={handleLogoClick} className="logo">
+              P u m o <span className="pow"> PUMO !</span>
+            </h1>
+            {connectionError && (
+              <div
+                style={{ color: "red", textAlign: "center", marginTop: "20px" }}
+              >
+                Connection error. Attempting to reconnect...
+              </div>
+            )}
+            {controllerConnected && (
+              <div className="controller-connected-indicator">
+                🎮 Controller Connected
+              </div>
+            )}
+            {steamDeckMode && (
+              <div className="steam-deck-controls-hint">
+                A: Attack | B: Dodge | X: Grab | Y: Throw | Left Stick: Move
+              </div>
+            )}
+            <MainMenu
+              rooms={rooms}
+              currentPage={currentPage}
+              setCurrentPage={setCurrentPage}
+              localId={localId}
+            />
+          </>
         )}
-        {controllerConnected && (
-          <div className="controller-connected-indicator">
-            🎮 Controller Connected
-          </div>
-        )}
-        {steamDeckMode && (
-          <div className="steam-deck-controls-hint">
-            A: Attack | B: Dodge | X: Grab | Y: Throw | Left Stick: Move
-          </div>
-        )}
-        <MainMenu
-          rooms={rooms}
-          currentPage={currentPage}
-          setCurrentPage={setCurrentPage}
-          localId={localId}
-        />
       </div>
     </SocketContext.Provider>
   );

@@ -89,6 +89,8 @@ const GROUND_LEVEL = 145; // Ground level constant
 
 // Audio pool for better performance
 const audioPool = new Map();
+const imagePool = new Map();
+
 const createAudioPool = (src, poolSize = 3) => {
   if (!audioPool.has(src)) {
     const pool = [];
@@ -98,6 +100,15 @@ const createAudioPool = (src, poolSize = 3) => {
       pool.push(audio);
     }
     audioPool.set(src, { pool, currentIndex: 0 });
+  }
+};
+
+// Image preloading function
+const preloadImage = (src) => {
+  if (!imagePool.has(src)) {
+    const img = new Image();
+    img.src = src;
+    imagePool.set(src, img);
   }
 };
 
@@ -117,10 +128,66 @@ const initializeAudioPools = () => {
   createAudioPool(winnerSound, 1);
   createAudioPool(thickBlubberSound, 2);
   createAudioPool(rawParryGruntSound, 2);
+  // Add missing audio files
+  createAudioPool(gameMusic, 1);
+  createAudioPool(eeshiMusic, 1);
 };
 
-// Initialize pools immediately
+// Initialize image preloading
+const initializeImagePreloading = () => {
+  // Character sprites
+  preloadImage(pumo);
+  preloadImage(pumo2);
+  preloadImage(pumoWaddle);
+  preloadImage(pumoWaddle2);
+  preloadImage(pumoArmy);
+  preloadImage(pumoArmy2);
+
+  // Action sprites
+  preloadImage(attack);
+  preloadImage(attack2);
+  preloadImage(throwing);
+  preloadImage(throwing2);
+  preloadImage(grabbing);
+  preloadImage(grabbing2);
+  preloadImage(beingGrabbed);
+  preloadImage(beingGrabbed2);
+
+  // State sprites
+  preloadImage(ready);
+  preloadImage(ready2);
+  preloadImage(hit);
+  preloadImage(hit2);
+  preloadImage(dodging);
+  preloadImage(dodging2);
+  preloadImage(crouching);
+  preloadImage(crouching2);
+
+  // Special moves
+  preloadImage(slapAttack1Blue);
+  preloadImage(slapAttack2Blue);
+  preloadImage(slapAttack1Red);
+  preloadImage(slapAttack2Red);
+  preloadImage(snowballThrow);
+  preloadImage(snowballThrow2);
+
+  // Utility sprites
+  preloadImage(bow);
+  preloadImage(bow2);
+  preloadImage(throwTech);
+  preloadImage(throwTech2);
+  preloadImage(salt);
+  preloadImage(salt2);
+  preloadImage(saltBasket);
+  preloadImage(saltBasketEmpty);
+  preloadImage(recovering);
+  preloadImage(recovering2);
+  preloadImage(snowball);
+};
+
+// Initialize pools and preloading immediately
 initializeAudioPools();
+initializeImagePreloading();
 
 const playSound = (audioFile, volume = 1.0) => {
   try {
