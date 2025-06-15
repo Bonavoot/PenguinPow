@@ -392,7 +392,7 @@ const StyledImage = styled("img")
       position: "absolute",
       left: `${(props.$x / 1280) * 100}%`,
       bottom: `${(props.$y / 720) * 100}%`,
-      transform: `scaleX(${props.$facing})`,
+      transform: props.$facing === 1 ? "scaleX(1)" : "scaleX(-1)",
       zIndex:
         props.$isThrowing || props.$isDodging || props.$isGrabbing ? 98 : 99,
       filter: props.$isDodging
@@ -411,9 +411,11 @@ const StyledImage = styled("img")
   /* Limit maximum size to prevent over-scaling beyond source resolution */
   width: min(18.4%, 480px);
   height: auto;
-  will-change: transform, bottom, left, filter, opacity;
+  will-change: bottom, left, filter, opacity;
   pointer-events: none;
   transform-origin: center;
+  /* Remove any transition on transform to prevent facing direction animation */
+  transition: none;
 
   @keyframes dodgeFlash {
     0% {
@@ -1358,8 +1360,9 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         $isThrowingSnowball={penguin.isThrowingSnowball}
         $isSpawningPumoArmy={penguin.isSpawningPumoArmy}
         style={{
-          transform: `scaleX(${penguin.facing})`,
+          transform: penguin.facing === 1 ? "scaleX(1)" : "scaleX(-1)",
           width: "18.4%",
+          transition: "none", // Remove facing direction animation
         }}
       />
 

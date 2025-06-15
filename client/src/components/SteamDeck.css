@@ -244,19 +244,54 @@
 @media screen and (width: 1280px) and (height: 800px) {
   /* Reduce motion for better performance */
   .cherry-blossom {
-    animation-duration: 15s; /* Slower animation */
+    animation-duration: 20s; /* Much slower animation */
+    will-change: auto; /* Remove will-change for better performance */
   }
 
-  /* Optimize effects */
+  /* Optimize effects - reduce particles and complexity */
   .dust-effect,
   .snow-effect,
   .salt-effect {
-    transform: scale(0.8); /* Smaller effects */
+    transform: scale(0.6); /* Smaller effects for better performance */
   }
 
-  /* Optimize UI transitions */
+  /* Disable expensive animations on Steam Deck */
+  .dust-effect {
+    display: none; /* Disable dust effects on Steam Deck for performance */
+  }
+
+  /* Optimize UI transitions - remove all transitions for better performance */
   * {
-    transition-duration: 0.2s !important; /* Faster transitions */
+    transition: none !important; /* Remove all transitions */
+    animation-duration: 0.1s !important; /* Speed up necessary animations */
+  }
+
+  /* Disable expensive filters on Steam Deck for performance */
+  img,
+  .character-image,
+  .StyledImage {
+    filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000)
+      drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) !important;
+    /* Only basic outline, remove expensive brightness/contrast effects */
+  }
+
+  /* Remove facing direction animation on Steam Deck for performance */
+  .StyledImage {
+    transition: none !important;
+  }
+
+  /* Optimize will-change usage */
+  .StyledImage,
+  .player-image,
+  .character-image {
+    will-change: left, bottom; /* Remove transform from will-change to reduce GPU load */
+  }
+
+  /* Disable expensive particle effects */
+  .salt-effect,
+  .snowball-effect,
+  .pumo-army-effect {
+    display: none !important; /* Disable for performance */
   }
 }
 
