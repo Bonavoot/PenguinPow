@@ -1262,6 +1262,8 @@ const GameFighter = ({ player, index, roomName, localId }) => {
         <FloatingPowerUpText $powerUpType={floatingPowerUpType} $index={index}>
           {floatingPowerUpType === "speed"
             ? "HAPPY FEET"
+            : floatingPowerUpType === "power"
+            ? "POWER WATER"
             : floatingPowerUpType.replace(/_/g, " ").toUpperCase()}
         </FloatingPowerUpText>
       )}

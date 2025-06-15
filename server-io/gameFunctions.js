@@ -168,11 +168,27 @@ function executeSlapAttack(player, rooms) {
   // Ensure slapAnimation alternates consistently for every actual attack execution
   player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
 
+  const attackDuration = 300; // Total attack duration (300ms)
+  const startupDuration = Math.floor(attackDuration * 0.4); // 40% of duration for startup frames (120ms)
+
   player.isSlapAttack = true;
-  player.attackEndTime = Date.now() + 300; // Updated animation duration to match new 9-frame animation at 30 FPS (300ms)
+  player.attackEndTime = Date.now() + attackDuration;
   player.isAttacking = true;
   player.attackStartTime = Date.now();
   player.attackType = "slap";
+
+  // Add startup frame tracking
+  player.isInStartupFrames = true;
+  player.startupEndTime = Date.now() + startupDuration;
+
+  // Set timeout to end startup frames and make attack active
+  setPlayerTimeout(
+    player.id,
+    () => {
+      player.isInStartupFrames = false;
+    },
+    startupDuration
+  );
 
   // Set a timeout to reset the attack state and handle queued slaps
   setPlayerTimeout(
@@ -182,6 +198,7 @@ function executeSlapAttack(player, rooms) {
       player.isSlapAttack = false;
       player.attackType = null;
       player.isSlapSliding = false; // Clear the slap slide flag
+      player.isInStartupFrames = false; // Ensure startup frames are cleared
       // Gradually reduce the slide velocity
       player.movementVelocity *= 0.5;
 
@@ -233,7 +250,7 @@ function executeSlapAttack(player, rooms) {
         player.attackType = "charged";
       }
     },
-    300 // Updated animation duration to match new 9-frame animation at 30 FPS (300ms)
+    attackDuration
   );
 }
 

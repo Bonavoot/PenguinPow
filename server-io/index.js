@@ -349,6 +349,9 @@ function resetRoomAndPlayers(room) {
     player.lastHitTime = 0;
     // Reset slap attack buffering
     player.hasPendingSlapAttack = false;
+    // Reset slap attack startup frames
+    player.isInStartupFrames = false;
+    player.startupEndTime = 0;
   });
 
   // Clear player-specific power-up data
@@ -1763,6 +1766,11 @@ io.on("connection", (socket) => {
       return;
     }
 
+    // Check for startup frames on slap attacks - prevent hits during startup
+    if (player.isSlapAttack && player.isInStartupFrames) {
+      return; // Don't process collision during startup frames
+    }
+
     // Calculate hitbox distance based on attack type and size power-up
     const baseHitboxDistance = player.isSlapAttack
       ? SLAP_HITBOX_DISTANCE_VALUE
@@ -2324,6 +2332,9 @@ io.on("connection", (socket) => {
         lastHitTime: 0, // Add timing tracking for dynamic hit duration
         lastCheckedAttackTime: 0, // Add tracking for attack collision checking
         hasPendingSlapAttack: false, // Add flag for buffering one additional slap attack
+        isInStartupFrames: false, // Add flag for slap attack startup frames
+        startupEndTime: 0, // Add timing for when startup frames end
+        wasMouse1Pressed: false, // Add mouse1 state tracking for double-attack prevention
       });
     } else if (rooms[index].players.length === 1) {
       rooms[index].players.push({
@@ -2407,6 +2418,8 @@ io.on("connection", (socket) => {
         lastHitTime: 0, // Add timing tracking for dynamic hit duration
         lastCheckedAttackTime: 0, // Add tracking for attack collision checking
         hasPendingSlapAttack: false, // Add flag for buffering one additional slap attack
+        isInStartupFrames: false, // Add flag for slap attack startup frames
+        startupEndTime: 0, // Add timing for when startup frames end
       });
     }
 
@@ -2616,6 +2629,7 @@ io.on("connection", (socket) => {
 
       // Execute slap attack immediately
       executeSlapAttack(player, rooms);
+      player.wasMouse1Pressed = true; // Mark as pressed to prevent double execution
       return; // Exit early to prevent other input processing
     }
 
@@ -3064,7 +3078,12 @@ io.on("connection", (socket) => {
     }
 
     // Handle slap attacks with mouse1 - block during charged attack execution and recovery
-    if (player.keys.mouse1 && !shouldBlockAction() && canPlayerSlap(player)) {
+    if (
+      player.keys.mouse1 &&
+      !shouldBlockAction() &&
+      canPlayerSlap(player) &&
+      !player.wasMouse1Pressed
+    ) {
       // Simply execute slap attack - it will handle queuing internally if already attacking
       executeSlapAttack(player, rooms);
     }
@@ -3225,6 +3244,9 @@ io.on("connection", (socket) => {
         64
       );
     }
+
+    // Update mouse1 state tracking for next frame
+    player.wasMouse1Pressed = player.keys.mouse1;
   });
 
   socket.on("leave_room", (data) => {

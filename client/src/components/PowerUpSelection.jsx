@@ -106,14 +106,14 @@ const PowerUpCard = styled.div`
   background: ${(props) => {
     if (props.$selected) {
       return `
-        linear-gradient(135deg, #e8e8e8, #d0d0d0, #b8b8b8),
+        linear-gradient(135deg, #969696, #8b8b8b, #808080),
         radial-gradient(circle at center, rgba(255, 255, 255, 0.3), transparent)
       `;
     }
 
     return `
-      linear-gradient(135deg, #cecece, #f8f8f8, #f0f0f0),
-      radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.5), transparent 50%),
+             linear-gradient(135deg, #e8e8e8, #d0d0d0, #b8b8b8),
+        radial-gradient(circle at center, rgba(255, 255, 255, 0.3), transparent),
       linear-gradient(45deg, rgba(248, 248, 248, 0.8), rgba(240, 240, 240, 0.8))
     `;
   }};
@@ -232,7 +232,7 @@ const PowerUpName = styled.h3`
   text-shadow: ${(props) =>
     props.$selected
       ? "none"
-      : "1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 0 1px 0 #000, 1px 0 0 #000, 0 -1px 0 #000, -1px 0 0 #000, 2px 2px 0 #000"};
+      : "1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 0 1px 0 #000, 1px 0 0 #000, 0 -1px 0 #000"};
   line-height: 1;
 `;
 
@@ -240,13 +240,15 @@ const PowerUpDescription = styled.p`
   font-family: "Bungee", cursive;
   font-size: clamp(0.5rem, 1.2vw, 0.8rem);
   margin: 0 0 clamp(4px, 1vw, 8px) 0;
-  color: ${(props) => (props.$selected ? "#000" : "#cecece")};
+  color: ${(props) => (props.$selected ? "#2a2a2a" : "#4a4a4a")};
   text-align: center;
   line-height: 1.2;
   text-shadow: ${(props) =>
     props.$selected
-      ? "none"
-      : "1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 0 1px 0 #000, 1px 0 0 #000, 0 -1px 0 #000, -1px 0 0 #000"};
+      ? "0 1px 0 rgba(255, 255, 255, 0.9)"
+      : "0 1px 0 rgba(255, 255, 255, 0.7)"};
+  font-weight: 600;
+  letter-spacing: 0.02em;
 `;
 
 const PowerUpType = styled.p`
@@ -258,9 +260,9 @@ const PowerUpType = styled.p`
 
     // Different colors for active vs passive based on the type text
     if (props.$isActive) {
-      return "#ff6b6b"; // Red for active power-ups
+      return "#fb3434"; // Red for active power-ups
     } else {
-      return "#74b9ff"; // Blue for passive power-ups
+      return "#ededed"; // Blue for passive power-ups
     }
   }};
   text-align: center;
