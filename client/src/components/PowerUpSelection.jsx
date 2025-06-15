@@ -2,6 +2,10 @@ import { useState, useEffect, useContext, useMemo, useCallback } from "react";
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
 import { SocketContext } from "../SocketContext";
+import {
+  playPowerUpSelectionHoverSound,
+  playPowerUpSelectionPressSound,
+} from "../utils/soundUtils";
 import powerWaterIcon from "../assets/power-water.png";
 import snowballImage from "../assets/snowball.png";
 import pumoArmyIcon from "./pumo-army-icon.png";
@@ -47,12 +51,8 @@ const PowerUpContainer = styled.div`
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background: linear-gradient(
-    135deg,
-    rgba(44, 24, 16, 0.95),
-    rgba(34, 14, 6, 0.95)
-  );
-  border: 4px solid #d4af37;
+  background: linear-gradient(135deg, #121213, rgba(20, 19, 19, 0.95));
+  border: 2px solid #d4af37;
   border-radius: clamp(8px, 1.5vw, 16px);
   padding: clamp(20px, 3vw, 40px);
   text-align: center;
@@ -112,12 +112,13 @@ const PowerUpCard = styled.div`
     }
 
     return `
-             linear-gradient(135deg, #e8e8e8, #d0d0d0, #b8b8b8),
+             linear-gradient(135deg, #eeeeee, #dddddd, #cccccc),
         radial-gradient(circle at center, rgba(255, 255, 255, 0.3), transparent),
       linear-gradient(45deg, rgba(248, 248, 248, 0.8), rgba(240, 240, 240, 0.8))
     `;
   }};
-  border: 3px solid ${(props) => (props.$selected ? "#d4af37" : "#8b4513")};
+  /* border: 3px solid ${(props) =>
+    props.$selected ? "#d4af370" : "#d4af37"}; */
   border-radius: clamp(6px, 1.5vw, 12px);
   padding: clamp(12px, 2vw, 20px);
   cursor: pointer;
@@ -191,7 +192,7 @@ const PowerUpIcon = styled.div`
   align-items: center;
   justify-content: center;
   margin-bottom: clamp(8px, 1.5vw, 15px);
-  border: 2px solid #8b4513;
+  border: 2px solid #000000;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
   font-size: clamp(1.2rem, 3vw, 2rem);
   font-weight: bold;
@@ -260,7 +261,7 @@ const PowerUpType = styled.p`
 
     // Different colors for active vs passive based on the type text
     if (props.$isActive) {
-      return "#fb3434"; // Red for active power-ups
+      return "#ff4646"; // Red for active power-ups
     } else {
       return "#ededed"; // Blue for passive power-ups
     }
@@ -374,7 +375,7 @@ const PowerUpSelection = ({
   const timerMessage = useMemo(() => {
     return timeLeft > 0
       ? `${timeLeft} seconds remaining`
-      : "Auto-selecting Happy Feet...";
+      : "Auto-selecting power-up...";
   }, [timeLeft]);
 
   useEffect(() => {
@@ -448,6 +449,7 @@ const PowerUpSelection = ({
     (powerUpType) => {
       if (selectedPowerUp) return; // Prevent changing selection
 
+      playPowerUpSelectionPressSound();
       setSelectedPowerUp(powerUpType);
       socket.emit("power_up_selected", {
         roomId,
@@ -464,7 +466,7 @@ const PowerUpSelection = ({
     <PowerUpSelectionOverlay>
       <PowerUpContainer>
         <Title>Power-Up Selection</Title>
-        <Subtitle>Choose your power up for this round</Subtitle>
+        <Subtitle>Choose your power-up for this round</Subtitle>
 
         <PowerUpGrid>
           {availablePowerUps.map((type) => {
@@ -477,6 +479,7 @@ const PowerUpSelection = ({
                 $type={type}
                 $selected={selectedPowerUp === type}
                 onClick={() => handlePowerUpSelect(type)}
+                onMouseEnter={playPowerUpSelectionHoverSound}
                 disabled={selectedPowerUp && selectedPowerUp !== type}
               >
                 <PowerUpIcon $type={type}>

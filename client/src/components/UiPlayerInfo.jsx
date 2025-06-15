@@ -96,11 +96,7 @@ const Rank = styled.div`
   letter-spacing: clamp(0.5px, 0.1vw, 1px);
   font-weight: 600;
   text-transform: uppercase;
-  background: linear-gradient(
-    145deg,
-    rgba(44, 24, 16, 0.9),
-    rgba(34, 14, 6, 0.9)
-  );
+  background: linear-gradient(135deg, #121213, rgba(20, 19, 19, 0.9));
   padding: clamp(2px, 0.3vh, 4px) clamp(8px, 1vw, 12px);
   border-radius: 6px;
   border: 1px solid rgba(212, 175, 55, 0.7);
@@ -112,11 +108,7 @@ const Rank = styled.div`
 
 const PlayerName = styled.div`
   font-size: clamp(16px, 2vw, 22px);
-  background: linear-gradient(
-    145deg,
-    rgba(44, 24, 16, 0.95),
-    rgba(34, 14, 6, 0.95)
-  );
+  background: linear-gradient(135deg, #121213, rgba(20, 19, 19, 0.95));
   padding: clamp(6px, 0.8vh, 10px) clamp(12px, 1.5vw, 20px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.6);
@@ -171,11 +163,7 @@ const ScoreContainer = styled.div`
   align-items: center;
   gap: clamp(10px, 1.2vw, 16px);
   padding: clamp(8px, 1vh, 12px) clamp(12px, 1.5vw, 16px);
-  background: linear-gradient(
-    145deg,
-    rgba(44, 24, 16, 0.98),
-    rgba(34, 14, 6, 0.98)
-  );
+  background: linear-gradient(135deg, #121213, rgba(20, 19, 19, 0.98));
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4),
     inset 0 2px 4px rgba(255, 255, 255, 0.05);
   border: 2px solid rgba(212, 175, 55, 0.8);
@@ -251,11 +239,7 @@ const VSText = styled.div`
   font-weight: 700;
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
   letter-spacing: 2px;
-  background: linear-gradient(
-    145deg,
-    rgba(44, 24, 16, 0.95),
-    rgba(34, 14, 6, 0.95)
-  );
+  background: linear-gradient(135deg, #121213, rgba(20, 19, 19, 0.95));
   padding: clamp(4px, 0.6vh, 8px) clamp(8px, 1vw, 12px);
   border: 2px solid rgba(212, 175, 55, 0.6);
   border-radius: 6px;

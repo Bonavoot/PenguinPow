@@ -41,6 +41,7 @@ import saltBasket from "../assets/salt-basket.png";
 import saltBasketEmpty from "../assets/salt-basket-empty.png";
 import slapParrySound from "../sounds/slap-parry-sound.mp3";
 import saltSound from "../sounds/salt-sound.mp3";
+import rawParryGruntSound from "../sounds/raw-parry-grunt.mp3";
 
 import gyoji from "../assets/gyoji.png";
 import gyojiReady from "../assets/gyoji-ready.png";
@@ -122,6 +123,7 @@ const audioSources = [
   eeshiMusic,
   slapParrySound,
   saltSound,
+  rawParryGruntSound,
 ];
 
 preloadAssets(Object.values(fighterImages), "image");

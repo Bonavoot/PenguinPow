@@ -2,6 +2,8 @@ import buttonHoverSound from "../sounds/button-hover-sound.mp3";
 import buttonPressSound from "../sounds/button-press-sound.mp3";
 import buttonPressSound2 from "../sounds/button-press-sound-2.mp3";
 import menuMusic from "../sounds/menu-music.mp3";
+import powerUpSelectionHoverSound from "../sounds/power-up-selection-button-hover.mp3";
+import powerUpSelectionPressSound from "../sounds/power-up-selection-button-press.mp3";
 import { getGlobalVolume } from "../components/Settings";
 
 let backgroundMusic = null;
@@ -87,4 +89,42 @@ const playButtonPressSound2 = () => {
   }
 };
 
-export { playButtonHoverSound, playButtonPressSound, playButtonPressSound2, playBackgroundMusic, stopBackgroundMusic }; 
+const playPowerUpSelectionHoverSound = () => {
+  try {
+    const sound = new Audio(powerUpSelectionHoverSound);
+    sound.volume = 0.1 * getGlobalVolume();
+    sound.play().catch((error) => {
+      // Ignore AbortError as it's expected when sounds overlap
+      if (error.name !== "AbortError") {
+        console.error("Error playing sound:", error);
+      }
+    });
+  } catch (error) {
+    console.error("Error creating audio:", error);
+  }
+};
+
+const playPowerUpSelectionPressSound = () => {
+  try {
+    const sound = new Audio(powerUpSelectionPressSound);
+    sound.volume = 0.15 * getGlobalVolume();
+    sound.play().catch((error) => {
+      // Ignore AbortError as it's expected when sounds overlap
+      if (error.name !== "AbortError") {
+        console.error("Error playing sound:", error);
+      }
+    });
+  } catch (error) {
+    console.error("Error creating audio:", error);
+  }
+};
+
+export {
+  playButtonHoverSound,
+  playButtonPressSound,
+  playButtonPressSound2,
+  playBackgroundMusic,
+  stopBackgroundMusic,
+  playPowerUpSelectionHoverSound,
+  playPowerUpSelectionPressSound,
+};

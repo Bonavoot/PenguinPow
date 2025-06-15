@@ -1,0 +1,421 @@
+"controller_mappings"
+{
+    "version"        "3"
+    "revision"       "1"
+    "title"          "PenguinPow Steam Deck Configuration"
+    "description"    "Optimized controls for PenguinPow on Steam Deck"
+    "creator"        "76561198000000000"
+    "progenitor"     ""
+    "url"           ""
+    "export_type"    "personal_cloud"
+    "controller_type" "controller_steamdeck"
+    "major_revision" "0"
+    "minor_revision" "1"
+    "Timestamp"      "1735001200"
+    "actions"
+    {
+        "default"
+        {
+            "title"      "Default"
+            "legacy_set" "1"
+        }
+        "MenuControls"
+        {
+            "title"      "Menu Controls"
+            "legacy_set" "1"
+        }
+    }
+    "action_layers"
+    {
+    }
+    "localization"
+    {
+        "english"
+        {
+            "default"        "Game Controls"
+            "MenuControls"   "Menu Navigation"
+        }
+    }
+    "group"
+    {
+        "id"        "0"
+        "mode"      "four_buttons"
+        "name"      ""
+        "description" ""
+        "inputs"
+        {
+            "button_a"
+            {
+                "activators"
+                {
+                    "Full_Press"
+                    {
+                        "bindings"
+                        {
+                            "binding"    "key_press SPACE"
+                            "haptic_intensity" "2"
+                        }
+                        "settings"
+                        {
+                            "haptic_intensity"    "2"
+                        }
+                    }
+                }
+            }
+            "button_b"
+            {
+                "activators"
+                {
+                    "Full_Press"
+                    {
+                        "bindings"
+                        {
+                            "binding"    "key_press LEFT_SHIFT"
+                            "haptic_intensity" "1"
+                        }
+                        "settings"
+                        {
+                            "haptic_intensity"    "1"
+                        }
+                    }
+                }
+            }
+            "button_x"
+            {
+                "activators"
+                {
+                    "Full_Press"
+                    {
+                        "bindings"
+                        {
+                            "binding"    "key_press E"
+                            "haptic_intensity" "2"
+                        }
+                        "settings"
+                        {
+                            "haptic_intensity"    "2"
+                        }
+                    }
+                }
+            }
+            "button_y"
+            {
+                "activators"
+                {
+                    "Full_Press"
+                    {
+                        "bindings"
+                        {
+                            "binding"    "key_press W"
+                            "haptic_intensity" "3"
+                        }
+                        "settings"
+                        {
+                            "haptic_intensity"    "3"
+                        }
+                    }
+                }
+            }
+        }
+        "gameactions"
+        {
+            "default"
+        }
+    }
+    "group"
+    {
+        "id"        "1"
+        "mode"      "joystick_move"
+        "name"      ""
+        "description" ""
+        "inputs"
+        {
+            "click"
+            {
+                "activators"
+                {
+                    "Full_Press"
+                    {
+                        "bindings"
+                        {
+                            "binding"    "key_press S"
+                        }
+                    }
+                }
+            }
+        }
+        "settings"
+        {
+            "deadzone_inner_radius"    "7199"
+            "deadzone_outer_radius"    "32768"
+            "antiDeadzone"             "0"
+            "output_joystick"          "0"
+        }
+        "gameactions"
+        {
+            "default"
+        }
+    }
+    "group"
+    {
+        "id"        "2"
+        "mode"      "joystick_move"
+        "name"      ""
+        "description" ""
+        "settings"
+        {
+            "output_joystick"    "1"
+        }
+        "gameactions"
+        {
+            "default"
+        }
+    }
+    "group"
+    {
+        "id"        "3"
+        "mode"      "trigger"
+        "name"      ""
+        "description" ""
+        "inputs"
+        {
+            "edge"
+            {
+                "activators"
+                {
+                    "Full_Press"
+                    {
+                        "bindings"
+                        {
+                            "binding"    "mouse_button LEFT"
+                        }
+                    }
+                }
+            }
+        }
+        "settings"
+        {
+            "output_trigger"    "1"
+        }
+        "gameactions"
+        {
+            "default"
+        }
+    }
+    "group"
+    {
+        "id"        "4"
+        "mode"      "trigger"
+        "name"      ""
+        "description" ""
+        "inputs"
+        {
+            "edge"
+            {
+                "activators"
+                {
+                    "Full_Press"
+                    {
+                        "bindings"
+                        {
+                            "binding"    "mouse_button RIGHT"
+                        }
+                    }
+                }
+            }
+        }
+        "settings"
+        {
+            "output_trigger"    "2"
+        }
+        "gameactions"
+        {
+            "default"
+        }
+    }
+    "group"
+    {
+        "id"        "5"
+        "mode"      "dpad"
+        "name"      ""
+        "description" ""
+        "inputs"
+        {
+            "dpad_north"
+            {
+                "activators"
+                {
+                    "Full_Press"
+                    {
+                        "bindings"
+                        {
+                            "binding"    "key_press S"
+                        }
+                    }
+                }
+            }
+            "dpad_south"
+            {
+                "activators"
+                {
+                    "Full_Press"
+                    {
+                        "bindings"
+                        {
+                            "binding"    "key_press S"
+                        }
+                    }
+                }
+            }
+            "dpad_east"
+            {
+                "activators"
+                {
+                    "Full_Press"
+                    {
+                        "bindings"
+                        {
+                            "binding"    "key_press D"
+                        }
+                    }
+                }
+            }
+            "dpad_west"
+            {
+                "activators"
+                {
+                    "Full_Press"
+                    {
+                        "bindings"
+                        {
+                            "binding"    "key_press A"
+                        }
+                    }
+                }
+            }
+        }
+        "gameactions"
+        {
+            "default"
+        }
+    }
+    "group"
+    {
+        "id"        "6"
+        "mode"      "single_button"
+        "name"      ""
+        "description" ""
+        "inputs"
+        {
+            "click"
+            {
+                "activators"
+                {
+                    "Full_Press"
+                    {
+                        "bindings"
+                        {
+                            "binding"    "key_press ESCAPE"
+                        }
+                    }
+                }
+            }
+        }
+        "gameactions"
+        {
+            "default"
+            "MenuControls"
+        }
+    }
+    "group"
+    {
+        "id"        "7"
+        "mode"      "single_button"
+        "name"      ""
+        "description" ""
+        "inputs"
+        {
+            "click"
+            {
+                "activators"
+                {
+                    "Full_Press"
+                    {
+                        "bindings"
+                        {
+                            "binding"    "key_press RETURN"
+                        }
+                    }
+                }
+            }
+        }
+        "gameactions"
+        {
+            "default"
+            "MenuControls"
+        }
+    }
+    "group"
+    {
+        "id"        "8"
+        "mode"      "absolute_mouse"
+        "name"      ""
+        "description" ""
+        "settings"
+        {
+            "sensitivity"    "99"
+            "rotation"       "0"
+            "doubetap_max_duration" "324"
+            "mouse_sensitivity" "0"
+        }
+        "gameactions"
+        {
+            "MenuControls"
+        }
+    }
+    "preset"
+    {
+        "id"        "0"
+        "name"      "Default"
+        "group_source_bindings"
+        {
+            "0"    "button_diamond active"
+            "1"    "left_joystick active"
+            "2"    "right_joystick inactive"
+            "3"    "left_trigger active"
+            "4"    "right_trigger active"
+            "5"    "dpad active"
+            "6"    "button_escape active"
+            "7"    "button_menu active"
+            "8"    "right_joystick inactive"
+        }
+        "switch_bindings"
+        {
+            "bindings"
+            {
+                "button_escape"    "switch_action_set MenuControls 0 0"
+                "button_menu"      "switch_action_set MenuControls 0 0"
+            }
+        }
+        "settings"
+        {
+        }
+    }
+    "preset"
+    {
+        "id"        "1"
+        "name"      "Menu"
+        "group_source_bindings"
+        {
+            "0"    "button_diamond active"
+            "1"    "left_joystick inactive"
+            "2"    "right_joystick inactive"
+            "3"    "left_trigger inactive"
+            "4"    "right_trigger inactive"
+            "5"    "dpad active"
+            "6"    "button_escape active"
+            "7"    "button_menu active"
+            "8"    "right_joystick active"
+        }
+    }
+} 

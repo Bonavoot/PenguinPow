@@ -76,6 +76,7 @@ import saltSound from "../sounds/salt-sound.mp3";
 import snowballThrowSound from "../sounds/snowball-throw-sound.mp3";
 import pumoArmySound from "../sounds/pumo-army-sound.mp3";
 import thickBlubberSound from "../sounds/thick-blubber-sound.mp3";
+import rawParryGruntSound from "../sounds/raw-parry-grunt.mp3";
 
 import UiPlayerInfo from "./UiPlayerInfo";
 import SaltEffect from "./SaltEffect";
@@ -115,6 +116,7 @@ const initializeAudioPools = () => {
   createAudioPool(bellSound, 1);
   createAudioPool(winnerSound, 1);
   createAudioPool(thickBlubberSound, 2);
+  createAudioPool(rawParryGruntSound, 2);
 };
 
 // Initialize pools immediately
@@ -704,6 +706,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
   const lastGrabState = useRef(false);
   const lastThrowingSnowballState = useRef(false);
   const lastSpawningPumoArmyState = useRef(false);
+  const lastRawParryState = useRef(false);
   const lastWinnerState = useRef(false);
   const lastWinnerSoundPlay = useRef(0);
   const lastHitSoundTime = useRef(0);
@@ -1053,6 +1056,13 @@ const GameFighter = ({ player, index, roomName, localId }) => {
     }
     lastSpawningPumoArmyState.current = penguin.isSpawningPumoArmy;
   }, [penguin.isSpawningPumoArmy]);
+
+  useEffect(() => {
+    if (penguin.isRawParrying && !lastRawParryState.current) {
+      playSound(rawParryGruntSound, 0.03);
+    }
+    lastRawParryState.current = penguin.isRawParrying;
+  }, [penguin.isRawParrying]);
 
   useEffect(() => {
     if (hakkiyoi) {

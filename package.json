@@ -42,7 +42,8 @@
       "preload.js",
       "client/dist/**/*",
       "node_modules/steamworks.js/dist/**/*",
-      "steam_appid.txt"
+      "steam_appid.txt",
+      "steam_input_config.vdf"
     ],
     "extraResources": [
       {
