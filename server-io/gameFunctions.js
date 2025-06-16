@@ -599,7 +599,7 @@ function adjustPlayerPositions(player1, player2, delta) {
 
     // Significantly reduce the smoothFactor for more resistance during collisions
     const isRecovering = player1.isRecovering || player2.isRecovering;
-    const smoothFactor = isRecovering ? delta * 0.02 : delta * 0.005; // Reduced from 0.05/0.01 to 0.02/0.005
+    const smoothFactor = isRecovering ? delta * 0.04 : delta * 0.015; // Increased from 0.02/0.005 to 0.04/0.015 for more responsive collision
 
     // Calculate new positions
     let newPlayer1X = player1.x;
@@ -644,6 +644,21 @@ function adjustPlayerPositions(player1, player2, delta) {
     }
     if (newPlayer2X >= leftBoundary && newPlayer2X <= rightBoundary) {
       player2.x = newPlayer2X;
+    }
+
+    // Additional minimum separation enforcement for edge cases
+    // This prevents players from getting stuck too close together
+    const currentDistance = Math.abs(player1.x - player2.x);
+    if (currentDistance < finalMinDistance * 0.8) {
+      const emergencyAdjustment =
+        (finalMinDistance * 0.8 - currentDistance) / 2;
+      if (player1.x < player2.x) {
+        player1.x = Math.max(leftBoundary, player1.x - emergencyAdjustment);
+        player2.x = Math.min(rightBoundary, player2.x + emergencyAdjustment);
+      } else {
+        player1.x = Math.min(rightBoundary, player1.x + emergencyAdjustment);
+        player2.x = Math.max(leftBoundary, player2.x - emergencyAdjustment);
+      }
     }
   }
 }

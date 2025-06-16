@@ -584,15 +584,25 @@ io.on("connection", (socket) => {
         // Check for collision and adjust positions
         // Only disable collision detection if BOTH players are in states that should bypass collision
         // Allow collision detection during slap attacks to prevent phase-through
+        // ALWAYS enforce collision detection near boundaries to prevent inconsistent behavior
+        const isNearLeftBoundary =
+          player1.x <= MAP_LEFT_BOUNDARY + 100 ||
+          player2.x <= MAP_LEFT_BOUNDARY + 100;
+        const isNearRightBoundary =
+          player1.x >= MAP_RIGHT_BOUNDARY - 100 ||
+          player2.x >= MAP_RIGHT_BOUNDARY - 100;
+        const isNearAnyBoundary = isNearLeftBoundary || isNearRightBoundary;
+
         if (
           arePlayersColliding(player1, player2) &&
-          !(player1.isAttacking && player1.attackType === "charged") &&
-          !(player2.isAttacking && player2.attackType === "charged") &&
-          !player1.isGrabbing &&
-          !player2.isGrabbing &&
-          !player1.isBeingGrabbed &&
-          !player2.isBeingGrabbed &&
-          !(player1.isHit && player2.isHit) // Only disable if BOTH are hit, not if just one is hit
+          (isNearAnyBoundary || // Force collision detection near boundaries
+            (!(player1.isAttacking && player1.attackType === "charged") &&
+              !(player2.isAttacking && player2.attackType === "charged") &&
+              !player1.isGrabbing &&
+              !player2.isGrabbing &&
+              !player1.isBeingGrabbed &&
+              !player2.isBeingGrabbed &&
+              !(player1.isHit && player2.isHit))) // Only disable if BOTH are hit, not if just one is hit
         ) {
           adjustPlayerPositions(player1, player2, delta);
         }
@@ -1076,13 +1086,9 @@ io.on("connection", (socket) => {
           const leftBoundary = MAP_LEFT_BOUNDARY;
           const rightBoundary = MAP_RIGHT_BOUNDARY;
 
-          // Apply boundary restrictions
-          if (player.keys.a || player.keys.d) {
-            player.x = Math.max(
-              leftBoundary,
-              Math.min(player.x, rightBoundary)
-            );
-          }
+          // Apply boundary restrictions - not just when pressing keys, but always
+          // This prevents players from sliding past boundaries due to ice physics
+          player.x = Math.max(leftBoundary, Math.min(player.x, rightBoundary));
         }
 
         // Add separate boundary check for grabbing state
