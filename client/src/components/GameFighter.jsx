@@ -462,14 +462,10 @@ const StyledImage = styled("img")
       transform: props.$facing === 1 ? "scaleX(1)" : "scaleX(-1)",
       zIndex:
         props.$isThrowing || props.$isDodging || props.$isGrabbing ? 98 : 99,
-      filter: props.$isDodging
-        ? "drop-shadow(0 0 6px rgba(255, 255, 255, 0.6)) brightness(1.5) drop-shadow(0 0 2px #000)"
-        : props.$isRawParrying
+      filter: props.$isRawParrying
         ? "drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3) drop-shadow(0 0 3px #000)"
         : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) ",
-      animation: props.$isDodging
-        ? "dodgeFlash 0.3s ease-in-out"
-        : props.$isRawParrying
+      animation: props.$isRawParrying
         ? "rawParryFlash 1.2s ease-in-out infinite"
         : "none",
     },
@@ -484,36 +480,7 @@ const StyledImage = styled("img")
   /* Remove any transition on transform to prevent facing direction animation */
   transition: none;
 
-  @keyframes dodgeFlash {
-    0% {
-      filter: drop-shadow(0 0 0px rgba(255, 255, 255, 0)) brightness(1);
-      opacity: 1;
-    }
-    15% {
-      filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.6)) brightness(2);
-      opacity: 0.95;
-    }
-    30% {
-      filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.3)) brightness(1.2);
-      opacity: 0.98;
-    }
-    45% {
-      filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.6)) brightness(2);
-      opacity: 0.95;
-    }
-    60% {
-      filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.3)) brightness(1.2);
-      opacity: 0.98;
-    }
-    75% {
-      filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.6)) brightness(2);
-      opacity: 0.95;
-    }
-    100% {
-      filter: drop-shadow(0 0 0px rgba(255, 255, 255, 0)) brightness(1);
-      opacity: 1;
-    }
-  }
+
 
   @keyframes rawParryFlash {
     0% {
@@ -692,7 +659,67 @@ const PumoClone = styled.img
     },
   }))``;
 
-const GameFighter = ({ player, index, roomName, localId }) => {
+const OpponentDisconnectedOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000;
+  backdrop-filter: blur(5px);
+`;
+
+const DisconnectedModal = styled.div`
+  background: linear-gradient(
+    135deg,
+    rgba(28, 28, 28, 0.95),
+    rgba(18, 18, 18, 0.95)
+  );
+  border: 2px solid #8b4513;
+  border-radius: 12px;
+  padding: 2rem;
+  text-align: center;
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+  min-width: 400px;
+`;
+
+const DisconnectedTitle = styled.h2`
+  font-family: "Bungee", cursive;
+  font-size: 1.8rem;
+  color: #d4af37;
+  margin: 0 0 1rem 0;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+`;
+
+const DisconnectedMessage = styled.p`
+  font-family: "Noto Sans JP", sans-serif;
+  font-size: 1.2rem;
+  color: #ffffff;
+  margin: 0 0 2rem 0;
+  font-weight: 600;
+`;
+
+// ExitButton removed - no longer needed with automatic exit
+
+const GameFighter = ({
+  player,
+  index,
+  roomName,
+  localId,
+  setCurrentPage,
+  opponentDisconnected,
+  disconnectedRoomId,
+  onResetDisconnectState,
+}) => {
+  console.log(
+    `🔵 GameFighter mounted for player ${player.id}, isLocal: ${
+      player.id === localId
+    }`
+  );
   const { socket } = useContext(SocketContext);
   const [penguin, setPenguin] = useState({
     id: "",
@@ -766,6 +793,65 @@ const GameFighter = ({ player, index, roomName, localId }) => {
     y: 0,
   });
   const [thickBlubberIndicator, setThickBlubberIndicator] = useState(false);
+  const [disconnectCountdown, setDisconnectCountdown] = useState(3);
+
+  // Function to handle exiting from disconnected game
+  const handleExitDisconnectedGame = useCallback(() => {
+    // Emit exit event to server
+    if (disconnectedRoomId) {
+      socket.emit("exit_disconnected_game", { roomId: disconnectedRoomId });
+    }
+
+    // Stop all music immediately
+    if (eeshiMusicRef.current) {
+      eeshiMusicRef.current.pause();
+      eeshiMusicRef.current.currentTime = 0;
+    }
+    if (gameMusicRef.current) {
+      gameMusicRef.current.pause();
+      gameMusicRef.current.currentTime = 0;
+    }
+
+    // Clear any active timers
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+      countdownRef.current = null;
+    }
+
+    // Reset disconnect state
+    onResetDisconnectState();
+
+    // Navigate to main menu (use correct page name)
+    setCurrentPage("mainMenu");
+  }, [socket, disconnectedRoomId, onResetDisconnectState, setCurrentPage]);
+
+  // Handle automatic exit after opponent disconnection
+  useEffect(() => {
+    if (opponentDisconnected && player.id === localId) {
+      setDisconnectCountdown(3);
+
+      const countdownInterval = setInterval(() => {
+        setDisconnectCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(countdownInterval);
+            handleExitDisconnectedGame();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      return () => clearInterval(countdownInterval);
+    }
+  }, [opponentDisconnected, player.id, localId, handleExitDisconnectedGame]);
+
+  // Stop eeshi music when opponent disconnects
+  useEffect(() => {
+    if (opponentDisconnected && eeshiMusicRef.current) {
+      eeshiMusicRef.current.pause();
+      eeshiMusicRef.current.currentTime = 0;
+    }
+  }, [opponentDisconnected]);
 
   const lastAttackState = useRef(false);
   const lastHitState = useRef(false);
@@ -927,6 +1013,7 @@ const GameFighter = ({ player, index, roomName, localId }) => {
       setMatchOver(false);
       setHasUsedPowerUp(false);
       setCountdown(15);
+      onResetDisconnectState(); // Reset opponent disconnected state for new games
       console.log("game reset gamefighter.jsx");
 
       // Start countdown timer immediately
@@ -1002,12 +1089,24 @@ const GameFighter = ({ player, index, roomName, localId }) => {
     eeshiMusicRef.current = new Audio(eeshiMusic);
     eeshiMusicRef.current.volume = 0.009; // lower volume
     eeshiMusicRef.current.loop = true;
-    eeshiMusicRef.current.play();
+
+    // Only start eeshi music if opponent hasn't disconnected
+    if (!opponentDisconnected) {
+      eeshiMusicRef.current.play();
+    }
 
     return () => {
-      eeshiMusicRef.current.pause();
+      // Clean up both music refs when component unmounts
+      if (eeshiMusicRef.current) {
+        eeshiMusicRef.current.pause();
+        eeshiMusicRef.current.currentTime = 0;
+      }
+      if (gameMusicRef.current) {
+        gameMusicRef.current.pause();
+        gameMusicRef.current.currentTime = 0;
+      }
     };
-  }, []);
+  }, [opponentDisconnected]);
 
   useEffect(() => {
     socket.on("game_start", () => {
@@ -1020,16 +1119,20 @@ const GameFighter = ({ player, index, roomName, localId }) => {
     socket.on("game_over", () => {
       gameMusicRef.current.pause();
       gameMusicRef.current.currentTime = 0;
-      // eeshiMusicRef.current.volume = 0.006;
-      eeshiMusicRef.current.loop = true;
-      eeshiMusicRef.current.play();
+
+      // Only restart eeshi music if opponent hasn't disconnected
+      if (!opponentDisconnected) {
+        // eeshiMusicRef.current.volume = 0.006;
+        eeshiMusicRef.current.loop = true;
+        eeshiMusicRef.current.play();
+      }
     });
 
     return () => {
       socket.off("game_start");
       socket.off("game_over");
     };
-  }, [socket]);
+  }, [socket, opponentDisconnected]); // Add opponentDisconnected as dependency
 
   useEffect(() => {
     // Trigger sound for charged attacks (non-slap attacks)
@@ -1237,6 +1340,12 @@ const GameFighter = ({ player, index, roomName, localId }) => {
 
   // Add screen shake and thick blubber absorption event listeners
   useEffect(() => {
+    console.log(
+      `🔵 Setting up event listeners for player ${player.id}, isLocal: ${
+        player.id === localId
+      }`
+    );
+
     socket.on("screen_shake", (data) => {
       setScreenShake({
         intensity: data.intensity,
@@ -1267,11 +1376,40 @@ const GameFighter = ({ player, index, roomName, localId }) => {
       }
     });
 
+    // Test listener for any event to verify socket is working
+    socket.on("fighter_action", () => {
+      console.log(
+        `🟢 Fighter action received by player ${player.id} component`
+      );
+    });
+
+    // Test if socket is connected and in the right room
+    console.log(
+      `🔵 Socket connected: ${socket.connected}, Socket ID: ${socket.id}, Room: ${roomName}`
+    );
+
     return () => {
+      console.log(`🔵 Cleaning up event listeners for player ${player.id}`);
       socket.off("screen_shake");
       socket.off("thick_blubber_absorption");
+      socket.off("fighter_action");
     };
-  }, [socket, player.id]);
+  }, [socket, player.id, localId, roomName]);
+
+  // Final cleanup effect - ensure all music stops when component unmounts
+  useEffect(() => {
+    return () => {
+      // This cleanup runs when the component unmounts for any reason
+      if (eeshiMusicRef.current) {
+        eeshiMusicRef.current.pause();
+        eeshiMusicRef.current.currentTime = 0;
+      }
+      if (gameMusicRef.current) {
+        gameMusicRef.current.pause();
+        gameMusicRef.current.currentTime = 0;
+      }
+    };
+  }, []); // Empty dependency array means this only runs on mount/unmount
 
   return (
     <div className="ui-container">
@@ -1526,6 +1664,21 @@ const GameFighter = ({ player, index, roomName, localId }) => {
           />
         );
       })}
+
+      {/* Opponent Disconnected Overlay - Only show for local player */}
+      {opponentDisconnected && player.id === localId && (
+        <OpponentDisconnectedOverlay>
+          <DisconnectedModal>
+            <DisconnectedTitle>OPPONENT DISCONNECTED</DisconnectedTitle>
+            <DisconnectedMessage>
+              Your opponent has left the match.
+            </DisconnectedMessage>
+            <DisconnectedMessage>
+              Returning to main menu in {disconnectCountdown} seconds...
+            </DisconnectedMessage>
+          </DisconnectedModal>
+        </OpponentDisconnectedOverlay>
+      )}
     </div>
   );
 };
@@ -1535,6 +1688,10 @@ GameFighter.propTypes = {
   index: PropTypes.number.isRequired,
   roomName: PropTypes.string.isRequired,
   localId: PropTypes.string.isRequired,
+  setCurrentPage: PropTypes.func.isRequired,
+  opponentDisconnected: PropTypes.bool.isRequired,
+  disconnectedRoomId: PropTypes.string,
+  onResetDisconnectState: PropTypes.func.isRequired,
 };
 
 // Optimize the component with React.memo
@@ -1544,6 +1701,10 @@ export default React.memo(GameFighter, (prevProps, nextProps) => {
     prevProps.player === nextProps.player &&
     prevProps.index === nextProps.index &&
     prevProps.roomName === nextProps.roomName &&
-    prevProps.localId === nextProps.localId
+    prevProps.localId === nextProps.localId &&
+    prevProps.setCurrentPage === nextProps.setCurrentPage &&
+    prevProps.opponentDisconnected === nextProps.opponentDisconnected &&
+    prevProps.disconnectedRoomId === nextProps.disconnectedRoomId &&
+    prevProps.onResetDisconnectState === nextProps.onResetDisconnectState
   );
 });

@@ -114,9 +114,11 @@ const rooms = Array.from({ length: 10 }, (_, i) => ({
   readyStartTime: null,
   roundStartTimer: null, // Add timer for automatic round start
   hakkiyoiCount: 0,
+  powerUpSelectionPhase: false, // Track power-up selection phase
+  opponentDisconnected: false, // Track if opponent disconnected during active game
+  disconnectedDuringGame: false, // Track if disconnection happened during active gameplay
 }));
 
-let index;
 let gameLoop = null;
 let staminaRegenCounter = 0;
 const TICK_RATE = 64;
@@ -210,12 +212,31 @@ function handlePowerUpSelection(room) {
       `Available power-ups for player ${player.id}:`,
       availablePowerUps
     );
-
-    // Send individual power-up list to each player
-    io.to(player.id).emit("power_up_selection_start", {
-      availablePowerUps: availablePowerUps,
-    });
   });
+
+  // Add a small delay to ensure clients are ready to receive the event
+  setTimeout(() => {
+    // Double-check that room still exists and is in power-up selection phase
+    if (room && room.powerUpSelectionPhase && room.players.length === 2) {
+      console.log(
+        `Sending power-up selection start events for room ${room.id}`
+      );
+
+      room.players.forEach((player) => {
+        const availablePowerUps = room.playerAvailablePowerUps[player.id];
+
+        console.log(
+          `🟢 SERVER: Emitting power_up_selection_start to player ${player.id} (${player.fighter}) with power-ups:`,
+          availablePowerUps
+        );
+
+        // Send individual power-up list to each player
+        io.to(player.id).emit("power_up_selection_start", {
+          availablePowerUps: availablePowerUps,
+        });
+      });
+    }
+  }, 100); // Small delay to ensure client is ready
 }
 
 function handleSaltThrowAndPowerUp(player, room) {
@@ -349,6 +370,11 @@ function resetRoomAndPlayers(room) {
     player.lastHitTime = 0;
     // Reset slap attack buffering
     player.hasPendingSlapAttack = false;
+    // Reset throw landed state
+    player.isThrowLanded = false;
+    // Reset overlap tracking
+    player.isOverlapping = false;
+    player.overlapStartTime = null;
   });
 
   // Clear player-specific power-up data
@@ -384,7 +410,11 @@ io.on("connection", (socket) => {
   // this is for the initial game start
   socket.on("game_reset", (data) => {
     console.log("game reset index.js" + data);
-    resetRoomAndPlayers(rooms[index]);
+    // Find the room index using the socket's roomId to ensure we're resetting the correct room
+    const roomIndex = rooms.findIndex((room) => room.id === socket.roomId);
+    if (roomIndex !== -1) {
+      resetRoomAndPlayers(rooms[roomIndex]);
+    }
   });
 
   function isOpponentCloseEnoughForThrow(player, opponent) {
@@ -584,25 +614,17 @@ io.on("connection", (socket) => {
         // Check for collision and adjust positions
         // Only disable collision detection if BOTH players are in states that should bypass collision
         // Allow collision detection during slap attacks to prevent phase-through
-        // ALWAYS enforce collision detection near boundaries to prevent inconsistent behavior
-        const isNearLeftBoundary =
-          player1.x <= MAP_LEFT_BOUNDARY + 100 ||
-          player2.x <= MAP_LEFT_BOUNDARY + 100;
-        const isNearRightBoundary =
-          player1.x >= MAP_RIGHT_BOUNDARY - 100 ||
-          player2.x >= MAP_RIGHT_BOUNDARY - 100;
-        const isNearAnyBoundary = isNearLeftBoundary || isNearRightBoundary;
-
         if (
           arePlayersColliding(player1, player2) &&
-          (isNearAnyBoundary || // Force collision detection near boundaries
-            (!(player1.isAttacking && player1.attackType === "charged") &&
-              !(player2.isAttacking && player2.attackType === "charged") &&
-              !player1.isGrabbing &&
-              !player2.isGrabbing &&
-              !player1.isBeingGrabbed &&
-              !player2.isBeingGrabbed &&
-              !(player1.isHit && player2.isHit))) // Only disable if BOTH are hit, not if just one is hit
+          !(player1.isAttacking && player1.attackType === "charged") &&
+          !(player2.isAttacking && player2.attackType === "charged") &&
+          !player1.isGrabbing &&
+          !player2.isGrabbing &&
+          !player1.isBeingGrabbed &&
+          !player2.isBeingGrabbed &&
+          !player1.isThrowLanded &&
+          !player2.isThrowLanded &&
+          !(player1.isHit && player2.isHit) // Only disable if BOTH are hit, not if just one is hit
         ) {
           adjustPlayerPositions(player1, player2, delta);
         }
@@ -1077,7 +1099,8 @@ io.on("connection", (socket) => {
           !player.isGrabbing &&
           !player.isBeingGrabbed &&
           !player.isSlapAttack &&
-          !player.isAttacking // Add this crucial check to exclude all attacks
+          !player.isAttacking && // Add this crucial check to exclude all attacks
+          !player.isThrowLanded // Exclude throw landed players
         ) {
           // Calculate effective boundary based on player size with different multipliers for left and right
           const sizeOffset = 0;
@@ -1086,9 +1109,13 @@ io.on("connection", (socket) => {
           const leftBoundary = MAP_LEFT_BOUNDARY;
           const rightBoundary = MAP_RIGHT_BOUNDARY;
 
-          // Apply boundary restrictions - not just when pressing keys, but always
-          // This prevents players from sliding past boundaries due to ice physics
-          player.x = Math.max(leftBoundary, Math.min(player.x, rightBoundary));
+          // Apply boundary restrictions
+          if (player.keys.a || player.keys.d) {
+            player.x = Math.max(
+              leftBoundary,
+              Math.min(player.x, rightBoundary)
+            );
+          }
         }
 
         // Add separate boundary check for grabbing state
@@ -1208,15 +1235,8 @@ io.on("connection", (socket) => {
                 (armsReachDistance +
                   (throwDistance - armsReachDistance) * throwProgress);
 
-            // Only update position if it's moving in the correct direction
-            const isMovingForward =
-              player.throwingFacingDirection === 1
-                ? newX > opponent.x
-                : newX < opponent.x;
-
-            if (isMovingForward) {
-              opponent.x = newX;
-            }
+            // Always update position during throw - let throws complete their full arc
+            opponent.x = newX;
 
             opponent.y =
               GROUND_LEVEL +
@@ -1253,12 +1273,23 @@ io.on("connection", (socket) => {
                 startCharging(player);
               }
 
+              // Check if player landed outside ring-out boundaries
+              const landedOutsideBoundaries =
+                opponent.x <= MAP_RING_OUT_LEFT ||
+                opponent.x >= MAP_RING_OUT_RIGHT;
+
               opponent.isBeingThrown = false;
               opponent.beingThrownFacingDirection = null;
               opponent.isHit = false;
               opponent.y = GROUND_LEVEL;
               opponent.knockbackVelocity.y = 0;
-              opponent.knockbackVelocity.x = player.throwingFacingDirection * 7;
+              opponent.knockbackVelocity.x = 0;
+              opponent.movementVelocity = 0;
+
+              // Only set isThrowLanded if player landed outside ring-out boundaries
+              if (landedOutsideBoundaries) {
+                opponent.isThrowLanded = true; // Permanent until round reset
+              }
             }
           }
         } else if (player.isThrowing && !player.throwOpponent) {
@@ -1365,7 +1396,8 @@ io.on("connection", (socket) => {
 
         // Strafing
         if (
-          (!player.keys.s &&
+          !player.isThrowLanded && // Block all movement for throw landed players
+          ((!player.keys.s &&
             !(player.isAttacking && player.attackType === "charged") && // Block only during charged attack execution
             player.saltCooldown === false &&
             !player.isThrowTeching &&
@@ -1376,17 +1408,17 @@ io.on("connection", (socket) => {
             !player.isSpawningPumoArmy &&
             !player.isRawParrying &&
             !player.isHit) ||
-          (!player.keys.s &&
-            player.isSlapAttack &&
-            player.saltCooldown === false &&
-            !player.isThrowTeching &&
-            !player.isGrabbing &&
-            !player.isBeingGrabbed &&
-            !player.isRecovering &&
-            !player.isThrowingSnowball &&
-            !player.isSpawningPumoArmy &&
-            !player.isRawParrying &&
-            !player.isHit)
+            (!player.keys.s &&
+              player.isSlapAttack &&
+              player.saltCooldown === false &&
+              !player.isThrowTeching &&
+              !player.isGrabbing &&
+              !player.isBeingGrabbed &&
+              !player.isRecovering &&
+              !player.isThrowingSnowball &&
+              !player.isSpawningPumoArmy &&
+              !player.isRawParrying &&
+              !player.isHit))
         ) {
           let currentSpeedFactor = speedFactor;
 
@@ -1438,7 +1470,7 @@ io.on("connection", (socket) => {
             // Calculate new position and check boundaries
             const newX =
               player.x + delta * currentSpeedFactor * player.movementVelocity;
-            if (newX <= rightBoundary) {
+            if (newX <= rightBoundary || player.isThrowLanded) {
               player.x = newX;
             } else {
               player.x = rightBoundary;
@@ -1476,7 +1508,7 @@ io.on("connection", (socket) => {
             // Calculate new position and check boundaries
             const newX =
               player.x + delta * currentSpeedFactor * player.movementVelocity;
-            if (newX >= leftBoundary) {
+            if (newX >= leftBoundary || player.isThrowLanded) {
               player.x = newX;
             } else {
               player.x = leftBoundary;
@@ -1509,13 +1541,13 @@ io.on("connection", (socket) => {
               // EXCEPTION: Allow hit knockback to move players past boundaries temporarily
               if (newX >= leftBoundary && newX <= rightBoundary) {
                 player.x = newX;
-              } else if (!player.isHit) {
-                // Only enforce boundaries if player is NOT currently being hit
+              } else if (!player.isHit && !player.isThrowLanded) {
+                // Only enforce boundaries if player is NOT currently being hit and NOT throw landed
                 // This allows knockback to work properly at boundaries
                 player.x = newX < leftBoundary ? leftBoundary : rightBoundary;
                 player.movementVelocity = 0;
               } else {
-                // Player is being hit - allow temporary boundary crossing for knockback
+                // Player is being hit or throw landed - allow boundary crossing
                 player.x = newX;
               }
             } else {
@@ -1762,11 +1794,17 @@ io.on("connection", (socket) => {
       }
     }
 
-    // Check for startup frames on charged attacks - disable collision during startup
-    if (player.isAttacking && !player.isSlapAttack && player.attackStartTime) {
-      const CHARGED_ATTACK_STARTUP_DELAY = 120; // 120ms startup frames
+    // Check for startup frames on all attacks - disable collision during startup
+    if (player.isAttacking && player.attackStartTime) {
+      const CHARGED_ATTACK_STARTUP_DELAY = 60; // 60ms startup frames for charged attacks
+      const SLAP_ATTACK_STARTUP_DELAY = 60; // 60ms startup frames for slap attacks
+
+      const startupDelay = player.isSlapAttack
+        ? SLAP_ATTACK_STARTUP_DELAY
+        : CHARGED_ATTACK_STARTUP_DELAY;
       const attackAge = Date.now() - player.attackStartTime;
-      if (attackAge < CHARGED_ATTACK_STARTUP_DELAY) {
+
+      if (attackAge < startupDelay) {
         return; // Skip collision detection during startup frames
       }
     }
@@ -2259,12 +2297,64 @@ io.on("connection", (socket) => {
     socket.emit("rooms", rooms);
   });
 
+  socket.on("lobby", (data) => {
+    const roomIndex = rooms.findIndex((room) => room.id === data.roomId);
+    if (roomIndex !== -1) {
+      // Send current lobby state to the requesting client
+      socket.emit("lobby", rooms[roomIndex].players);
+    }
+  });
+
   socket.on("join_room", (data) => {
     socket.join(data.roomId);
     console.log(`${data.socketId} joined ${data.roomId}`);
-    index = rooms.findIndex((room) => room.id === data.roomId);
-    if (rooms[index].players.length < 1) {
-      rooms[index].players.push({
+    const roomIndex = rooms.findIndex((room) => room.id === data.roomId);
+
+    // Check if room is in opponent disconnected state - prevent joining
+    console.log(
+      `JOIN_ROOM DEBUG: Room ${data.roomId} - opponentDisconnected: ${rooms[roomIndex].opponentDisconnected}, disconnectedDuringGame: ${rooms[roomIndex].disconnectedDuringGame}, players: ${rooms[roomIndex].players.length}`
+    );
+
+    if (
+      rooms[roomIndex].opponentDisconnected ||
+      rooms[roomIndex].disconnectedDuringGame
+    ) {
+      console.log(
+        `JOIN BLOCKED: ${data.socketId} attempted to join ${data.roomId} but room is in disconnected state`
+      );
+      socket.emit("join_room_failed", {
+        reason: "Room is currently unavailable",
+        roomId: data.roomId,
+      });
+      socket.leave(data.roomId);
+      return;
+    }
+
+    // If someone is joining and there's already one player, ensure clean room state
+    if (rooms[roomIndex].players.length === 1) {
+      console.log(
+        `Second player joining room ${data.roomId}, ensuring clean state`
+      );
+      cleanupRoomState(rooms[roomIndex]);
+      // Also clean up the existing player's power-up related state
+      const existingPlayer = rooms[roomIndex].players[0];
+      existingPlayer.activePowerUp = null;
+      existingPlayer.powerUpMultiplier = 1;
+      existingPlayer.selectedPowerUp = null;
+      existingPlayer.isThrowingSalt = false;
+      existingPlayer.saltCooldown = false;
+      existingPlayer.snowballCooldown = false;
+      existingPlayer.pumoArmyCooldown = false;
+      existingPlayer.isThrowingSnowball = false;
+      existingPlayer.isSpawningPumoArmy = false;
+      existingPlayer.hitAbsorptionUsed = false;
+      existingPlayer.snowballs = [];
+      existingPlayer.pumoArmy = [];
+      // Don't set canMoveToReady here - it should only be set during actual salt throwing phase
+    }
+
+    if (rooms[roomIndex].players.length < 1) {
+      rooms[roomIndex].players.push({
         id: data.socketId,
         fighter: "player 1",
         color: "aqua",
@@ -2345,9 +2435,13 @@ io.on("connection", (socket) => {
         lastHitTime: 0, // Add timing tracking for dynamic hit duration
         lastCheckedAttackTime: 0, // Add tracking for attack collision checking
         hasPendingSlapAttack: false, // Add flag for buffering one additional slap attack
+        mouse1JustPressed: false, // Track if mouse1 was just pressed this frame
+        mouse1JustReleased: false, // Track if mouse1 was just released this frame
+        isOverlapping: false, // Track overlap state for smoother separation
+        overlapStartTime: null, // Track when overlap began for progressive separation
       });
-    } else if (rooms[index].players.length === 1) {
-      rooms[index].players.push({
+    } else if (rooms[roomIndex].players.length === 1) {
+      rooms[roomIndex].players.push({
         id: data.socketId,
         fighter: "player 2",
         color: "salmon",
@@ -2428,21 +2522,53 @@ io.on("connection", (socket) => {
         lastHitTime: 0, // Add timing tracking for dynamic hit duration
         lastCheckedAttackTime: 0, // Add tracking for attack collision checking
         hasPendingSlapAttack: false, // Add flag for buffering one additional slap attack
+        mouse1JustPressed: false, // Track if mouse1 was just pressed this frame
+        mouse1JustReleased: false, // Track if mouse1 was just released this frame
+        isOverlapping: false, // Track overlap state for smoother separation
+        overlapStartTime: null, // Track when overlap began for progressive separation
       });
+    }
+
+    // If this is the second player joining and room was in disconnected state, reset it
+    if (
+      rooms[roomIndex].players.length === 2 &&
+      rooms[roomIndex].opponentDisconnected
+    ) {
+      console.log(
+        `🔵 SERVER: Second player joined disconnected room ${data.roomId}, resetting room state`
+      );
+      rooms[roomIndex].opponentDisconnected = false;
+      rooms[roomIndex].disconnectedDuringGame = false;
+
+      // Clear any lingering power-up selection state
+      rooms[roomIndex].powerUpSelectionPhase = false;
+      rooms[roomIndex].playersSelectedPowerUps = {};
+      rooms[roomIndex].playerAvailablePowerUps = {};
+
+      // Clear any remaining round start timer
+      if (rooms[roomIndex].roundStartTimer) {
+        clearTimeout(rooms[roomIndex].roundStartTimer);
+        rooms[roomIndex].roundStartTimer = null;
+      }
+
+      // Clean up the room state
+      cleanupRoomState(rooms[roomIndex]);
     }
 
     socket.roomId = data.roomId;
     io.to(data.roomId).emit("rooms", rooms);
-    io.to(data.roomId).emit("lobby", rooms[index].players);
-    // console.log(rooms[index].players);
+    io.to(data.roomId).emit("lobby", rooms[roomIndex].players);
+    // console.log(rooms[roomIndex].players);
   });
 
   socket.on("ready_count", (data) => {
-    let index = rooms.findIndex((room) => room.id === data.roomId);
+    const roomIndex = rooms.findIndex((room) => room.id === data.roomId);
     console.log("ready count activated  ");
 
+    if (roomIndex === -1) return; // Room not found
+
     // Find the player in the room
-    const playerIndex = rooms[index].players.findIndex(
+    const playerIndex = rooms[roomIndex].players.findIndex(
       (player) => player.id === data.playerId
     );
 
@@ -2450,27 +2576,79 @@ io.on("connection", (socket) => {
 
     if (data.isReady) {
       // Only increment if player wasn't already ready
-      if (!rooms[index].players[playerIndex].isReady) {
-        rooms[index].readyCount++;
-        rooms[index].players[playerIndex].isReady = true;
+      if (!rooms[roomIndex].players[playerIndex].isReady) {
+        rooms[roomIndex].readyCount++;
+        rooms[roomIndex].players[playerIndex].isReady = true;
       }
     } else {
       // Only decrement if player was ready
-      if (rooms[index].players[playerIndex].isReady) {
-        rooms[index].readyCount--;
-        rooms[index].players[playerIndex].isReady = false;
+      if (rooms[roomIndex].players[playerIndex].isReady) {
+        rooms[roomIndex].readyCount--;
+        rooms[roomIndex].players[playerIndex].isReady = false;
       }
     }
 
     // Ensure ready count doesn't go below 0
-    rooms[index].readyCount = Math.max(0, rooms[index].readyCount);
+    rooms[roomIndex].readyCount = Math.max(0, rooms[roomIndex].readyCount);
 
-    io.in(data.roomId).emit("ready_count", rooms[index].readyCount);
-    io.in(data.roomId).emit("lobby", rooms[index].players);
+    io.in(data.roomId).emit("ready_count", rooms[roomIndex].readyCount);
+    io.in(data.roomId).emit("lobby", rooms[roomIndex].players);
 
-    if (rooms[index].readyCount > 1) {
-      io.in(data.roomId).emit("initial_game_start", rooms[index]);
+    if (rooms[roomIndex].readyCount > 1) {
+      io.in(data.roomId).emit("initial_game_start", rooms[roomIndex]);
       console.log("Game started");
+    }
+  });
+
+  socket.on("request_power_up_selection_state", (data) => {
+    const { roomId, playerId } = data;
+    const roomIndex = rooms.findIndex((room) => room.id === roomId);
+
+    console.log(
+      `🔵 SERVER: Power-up selection state requested by player ${playerId} in room ${roomId}`
+    );
+
+    if (roomIndex === -1) {
+      console.log(`🔴 SERVER: Room ${roomId} not found for state request`);
+      return;
+    }
+
+    const room = rooms[roomIndex];
+    const player = room.players.find((p) => p.id === playerId);
+
+    if (!player) {
+      console.log(
+        `🔴 SERVER: Player ${playerId} not found in room ${roomId} for state request`
+      );
+      return;
+    }
+
+    // If we're in power-up selection phase, send the start event
+    if (room.powerUpSelectionPhase && room.playerAvailablePowerUps[playerId]) {
+      const availablePowerUps = room.playerAvailablePowerUps[playerId];
+
+      console.log(
+        `🟢 SERVER: Resending power_up_selection_start to player ${playerId} (${player.fighter}) with power-ups:`,
+        availablePowerUps
+      );
+
+      io.to(playerId).emit("power_up_selection_start", {
+        availablePowerUps: availablePowerUps,
+      });
+
+      // Also send current status
+      const selectedCount = Object.keys(room.playersSelectedPowerUps).length;
+      io.to(playerId).emit("power_up_selection_status", {
+        selectedCount,
+        totalPlayers: room.players.length,
+        selections: room.playersSelectedPowerUps,
+      });
+    } else {
+      console.log(
+        `🔴 SERVER: Room ${roomId} not in power-up selection phase or no available power-ups for player ${playerId}. powerUpSelectionPhase: ${
+          room.powerUpSelectionPhase
+        }, hasAvailablePowerUps: ${!!room.playerAvailablePowerUps[playerId]}`
+      );
     }
   });
 
@@ -2526,53 +2704,64 @@ io.on("connection", (socket) => {
   });
 
   socket.on("rematch_count", (data) => {
-    let index = rooms.findIndex((room) => room.id === data.roomId);
+    const roomIndex = rooms.findIndex((room) => room.id === data.roomId);
+
+    if (roomIndex === -1) return; // Room not found
 
     if (data.acceptedRematch && data.playerId === socket.id) {
-      rooms[index].rematchCount++;
-      io.in(data.roomId).emit("rematch_count", rooms[index].rematchCount);
+      rooms[roomIndex].rematchCount++;
+      io.in(data.roomId).emit("rematch_count", rooms[roomIndex].rematchCount);
     } else if (!data.acceptedRematch && data.playerId === socket.id) {
-      rooms[index].rematchCount--;
-      io.in(data.roomId).emit("rematch_count", rooms[index].rematchCount);
+      rooms[roomIndex].rematchCount--;
+      io.in(data.roomId).emit("rematch_count", rooms[roomIndex].rematchCount);
     }
 
-    if (rooms[index].rematchCount > 1) {
-      rooms[index].matchOver = false;
-      rooms[index].gameOver = true;
-      rooms[index].rematchCount = 0;
-      io.in(data.roomId).emit("rematch_count", rooms[index].rematchCount);
+    if (rooms[roomIndex].rematchCount > 1) {
+      rooms[roomIndex].matchOver = false;
+      rooms[roomIndex].gameOver = true;
+      rooms[roomIndex].rematchCount = 0;
+      io.in(data.roomId).emit("rematch_count", rooms[roomIndex].rematchCount);
     }
   });
 
   socket.on("fighter-select", (data) => {
     let roomId = socket.roomId;
-    let index = rooms.findIndex((room) => room.id === roomId);
+    const roomIndex = rooms.findIndex((room) => room.id === roomId);
 
-    let playerIndex = rooms[index].players.findIndex(
+    if (roomIndex === -1) return; // Room not found
+
+    let playerIndex = rooms[roomIndex].players.findIndex(
       (player) => player.id === socket.id
     );
 
-    rooms[index].players[playerIndex].fighter = data.fighter;
-    // console.log(rooms[index].players[playerIndex]);
+    if (playerIndex === -1) return; // Player not found
 
-    io.in(roomId).emit("lobby", rooms[index].players); // Update all players in the room
+    rooms[roomIndex].players[playerIndex].fighter = data.fighter;
+    // console.log(rooms[roomIndex].players[playerIndex]);
+
+    io.in(roomId).emit("lobby", rooms[roomIndex].players); // Update all players in the room
     io.to(roomId).emit("rooms", rooms);
-    // console.log(rooms[index].players);
+    // console.log(rooms[roomIndex].players);
   });
 
   socket.on("fighter_action", (data) => {
     let roomId = socket.roomId;
-    let index = rooms.findIndex((room) => room.id === roomId);
+    const roomIndex = rooms.findIndex((room) => room.id === roomId);
 
-    let playerIndex = rooms[index].players.findIndex(
+    if (roomIndex === -1) return; // Room not found
+
+    let playerIndex = rooms[roomIndex].players.findIndex(
       (player) => player.id === data.id
     );
-    let player = rooms[index].players[playerIndex];
-    let opponent = rooms[index].players.find((p) => p.id !== player.id);
+
+    if (playerIndex === -1) return; // Player not found
+
+    let player = rooms[roomIndex].players[playerIndex];
+    let opponent = rooms[roomIndex].players.find((p) => p.id !== player.id);
 
     if (
-      (rooms[index].gameOver && !rooms[index].matchOver) ||
-      rooms[index].matchOver
+      (rooms[roomIndex].gameOver && !rooms[roomIndex].matchOver) ||
+      rooms[roomIndex].matchOver
     ) {
       return; // Skip all other actions if the game is over
     }
@@ -2584,7 +2773,7 @@ io.on("connection", (socket) => {
 
     // Block all inputs during salt throwing phase and ready positioning phase
     // This prevents inputs from power-up selection end until game start (hakkiyoi = 1)
-    if (!rooms[index].gameStart || rooms[index].hakkiyoiCount === 0) {
+    if (!rooms[roomIndex].gameStart || rooms[roomIndex].hakkiyoiCount === 0) {
       return;
     }
 
@@ -2615,7 +2804,13 @@ io.on("connection", (socket) => {
     };
 
     if (data.keys) {
+      // Track mouse1 state changes to prevent repeated slap attacks while holding
+      const previousMouse1State = player.keys.mouse1;
       player.keys = data.keys;
+
+      // Set mouse1 press flags
+      player.mouse1JustPressed = !previousMouse1State && data.keys.mouse1;
+      player.mouse1JustReleased = previousMouse1State && !data.keys.mouse1;
 
       // Debug logging for F key and snowball power-up
       if (data.keys.f) {
@@ -2627,9 +2822,8 @@ io.on("connection", (socket) => {
 
     // Handle clearing charge during charging phase with mouse1 - MUST BE FIRST
     if (
-      player.keys.mouse1 &&
-      player.isChargingAttack && // Only interrupt during charging phase, not execution
-      !player.wasMouse1Pressed
+      player.mouse1JustPressed &&
+      player.isChargingAttack // Only interrupt during charging phase, not execution
     ) {
       console.log(`Player ${player.id} interrupting charge with slap`);
       // Clear charge state
@@ -2658,7 +2852,7 @@ io.on("connection", (socket) => {
       !player.saltCooldown &&
       ((player.fighter === "player 1" && player.x <= 280) ||
         (player.fighter === "player 2" && player.x >= 765)) && // Adjusted range for player 2
-      rooms[index].gameStart === false &&
+      rooms[roomIndex].gameStart === false &&
       !player.activePowerUp
     ) {
       player.isThrowingSalt = true;
@@ -2722,7 +2916,9 @@ io.on("connection", (socket) => {
         player.isThrowingSnowball = true;
 
         // Determine snowball direction based on current position relative to opponent
-        const opponent = rooms[index].players.find((p) => p.id !== player.id);
+        const opponent = rooms[roomIndex].players.find(
+          (p) => p.id !== player.id
+        );
         let snowballDirection;
         if (opponent) {
           // Throw towards the opponent based on current positions
@@ -3085,7 +3281,11 @@ io.on("connection", (socket) => {
     }
 
     // Handle slap attacks with mouse1 - block during charged attack execution and recovery
-    if (player.keys.mouse1 && !shouldBlockAction() && canPlayerSlap(player)) {
+    if (
+      player.mouse1JustPressed &&
+      !shouldBlockAction() &&
+      canPlayerSlap(player)
+    ) {
       // Simply execute slap attack - it will handle queuing internally if already attacking
       executeSlapAttack(player, rooms);
     }
@@ -3118,7 +3318,9 @@ io.on("connection", (socket) => {
       setPlayerTimeout(
         player.id,
         () => {
-          const opponent = rooms[index].players.find((p) => p.id !== player.id);
+          const opponent = rooms[roomIndex].players.find(
+            (p) => p.id !== player.id
+          );
 
           if (
             isOpponentCloseEnoughForThrow(player, opponent) &&
@@ -3140,7 +3342,7 @@ io.on("connection", (socket) => {
               player.throwEndTime = Date.now() + 400;
               player.throwOpponent = opponent.id;
               opponent.isBeingThrown = true;
-              opponent.isHit = true;
+              opponent.isHit = false;
 
               player.throwCooldown = true;
               setPlayerTimeout(
@@ -3189,7 +3391,9 @@ io.on("connection", (socket) => {
       setPlayerTimeout(
         player.id,
         () => {
-          const opponent = rooms[index].players.find((p) => p.id !== player.id);
+          const opponent = rooms[roomIndex].players.find(
+            (p) => p.id !== player.id
+          );
           // Clear charging attack state regardless of grab success
           clearChargeState(player);
 
@@ -3248,6 +3452,81 @@ io.on("connection", (socket) => {
     }
   });
 
+  // TEST EVENT - Force opponent disconnection (for debugging)
+  socket.on("test_force_disconnect", (data) => {
+    const roomId = data.roomId;
+    const roomIndex = rooms.findIndex((room) => room.id === roomId);
+
+    if (roomIndex !== -1) {
+      console.log(`TESTING: Force disconnect in room ${roomId}`);
+      rooms[roomIndex].opponentDisconnected = true;
+      rooms[roomIndex].disconnectedDuringGame = true;
+
+      // Emit to all players in room
+      io.in(roomId).emit("opponent_disconnected", {
+        roomId: roomId,
+        message: "Opponent disconnected (TEST)",
+      });
+
+      // Emit updated rooms
+      io.emit("rooms", getCleanedRoomsData(rooms));
+    }
+  });
+
+  socket.on("exit_disconnected_game", (data) => {
+    const roomId = data.roomId;
+    const roomIndex = rooms.findIndex((room) => room.id === roomId);
+
+    if (roomIndex !== -1 && rooms[roomIndex].opponentDisconnected) {
+      console.log(
+        `Player ${socket.id} exiting from disconnected game in room ${roomId}`
+      );
+
+      // Clean up timeouts for the leaving player
+      timeoutManager.clearPlayer(socket.id);
+
+      // Clear any active round start timer to prevent interference
+      if (rooms[roomIndex].roundStartTimer) {
+        clearTimeout(rooms[roomIndex].roundStartTimer);
+        rooms[roomIndex].roundStartTimer = null;
+      }
+
+      // Remove the player from the room
+      rooms[roomIndex].players = rooms[roomIndex].players.filter(
+        (player) => player.id !== socket.id
+      );
+
+      // Reset the room to its initial state since this was the last player
+      rooms[roomIndex].opponentDisconnected = false;
+      rooms[roomIndex].disconnectedDuringGame = false;
+      rooms[roomIndex].gameStart = false;
+      rooms[roomIndex].gameOver = false;
+      rooms[roomIndex].matchOver = false;
+      rooms[roomIndex].hakkiyoiCount = 0;
+      rooms[roomIndex].readyCount = 0;
+      rooms[roomIndex].rematchCount = 0;
+      rooms[roomIndex].readyStartTime = null;
+      rooms[roomIndex].powerUpSelectionPhase = false;
+      delete rooms[roomIndex].winnerId;
+      delete rooms[roomIndex].loserId;
+      delete rooms[roomIndex].gameOverTime;
+      delete rooms[roomIndex].playersSelectedPowerUps;
+      delete rooms[roomIndex].playerAvailablePowerUps;
+
+      // Clean up the room state
+      cleanupRoomState(rooms[roomIndex]);
+
+      // Emit updated room data to all clients
+      io.emit("rooms", getCleanedRoomsData(rooms));
+
+      // Confirm exit to the player
+      socket.emit("exit_game_confirmed", { roomId: roomId });
+
+      // Leave the socket room
+      socket.leave(roomId);
+    }
+  });
+
   socket.on("leave_room", (data) => {
     const roomId = data.roomId;
     const roomIndex = rooms.findIndex((room) => room.id === roomId);
@@ -3256,35 +3535,185 @@ io.on("connection", (socket) => {
       // Clean up timeouts for the leaving player
       timeoutManager.clearPlayer(socket.id);
 
+      // Clear any active round start timer to prevent interference
+      if (rooms[roomIndex].roundStartTimer) {
+        clearTimeout(rooms[roomIndex].roundStartTimer);
+        rooms[roomIndex].roundStartTimer = null;
+      }
+
+      // Check if we're leaving during an active game session (not just lobby)
+      // Active game session includes: power-up selection, salt throwing, ready positioning, actual gameplay, and winner declaration
+      const isInGameSession =
+        rooms[roomIndex].powerUpSelectionPhase ||
+        rooms[roomIndex].gameStart ||
+        rooms[roomIndex].gameOver ||
+        rooms[roomIndex].hakkiyoiCount > 0 ||
+        rooms[roomIndex].players.some(
+          (p) =>
+            p.isThrowingSalt ||
+            (p.canMoveToReady === false &&
+              (rooms[roomIndex].gameStart ||
+                rooms[roomIndex].powerUpSelectionPhase))
+        );
+
+      const hadTwoPlayers = rooms[roomIndex].players.length === 2;
+
+      console.log(
+        `LEAVE_ROOM DEBUG: Room ${roomId} - gameStart: ${rooms[roomIndex].gameStart}, gameOver: ${rooms[roomIndex].gameOver}, powerUpSelectionPhase: ${rooms[roomIndex].powerUpSelectionPhase}, isInGameSession: ${isInGameSession}, hadTwoPlayers: ${hadTwoPlayers}, hakkiyoiCount: ${rooms[roomIndex].hakkiyoiCount}`
+      );
+      console.log(
+        `LEAVE_ROOM PHASE CHECK: powerUpSelectionPhase=${
+          rooms[roomIndex].powerUpSelectionPhase
+        }, gameStart=${
+          rooms[roomIndex].gameStart
+        }, anyPlayerThrowingSalt=${rooms[roomIndex].players.some(
+          (p) => p.isThrowingSalt
+        )}, anyPlayerCannotMoveToReady=${rooms[roomIndex].players.some(
+          (p) => p.canMoveToReady === false
+        )}`
+      );
+      console.log(
+        `LEAVE_ROOM DEBUG: Players salt throwing states:`,
+        rooms[roomIndex].players.map((p) => ({
+          id: p.id,
+          isThrowingSalt: p.isThrowingSalt,
+          canMoveToReady: p.canMoveToReady,
+        }))
+      );
+
       // Remove the player from the room
       rooms[roomIndex].players = rooms[roomIndex].players.filter(
         (player) => player.id !== socket.id
       );
 
-      // Reset ready count and player ready states
-      rooms[roomIndex].readyCount = 0;
-      rooms[roomIndex].players.forEach((player) => {
-        player.isReady = false;
-      });
+      // Handle opponent disconnection during active game session
+      if (
+        isInGameSession &&
+        hadTwoPlayers &&
+        rooms[roomIndex].players.length === 1
+      ) {
+        console.log(
+          `OPPONENT DISCONNECTED: Player left during active game in room ${roomId}, marking as opponent disconnected`
+        );
+        rooms[roomIndex].opponentDisconnected = true;
+        rooms[roomIndex].disconnectedDuringGame = true;
 
-      // Clean up the room state
-      cleanupRoomState(rooms[roomIndex]);
+        // Emit opponent disconnected event to the remaining player
+        const remainingPlayer = rooms[roomIndex].players[0];
+        console.log(
+          `LEAVE_ROOM: EMITTING opponent_disconnected to player ${remainingPlayer.id} (fighter: ${remainingPlayer.fighter}) in room ${roomId}`
+        );
+        console.log(`LEAVE_ROOM: Disconnecting player was: ${socket.id}`);
+        console.log(
+          `LEAVE_ROOM: Room players after disconnect:`,
+          rooms[roomIndex].players.map((p) => ({
+            id: p.id,
+            fighter: p.fighter,
+          }))
+        );
+        io.to(remainingPlayer.id).emit("opponent_disconnected", {
+          roomId: roomId,
+          message: "Opponent disconnected",
+        });
 
-      // Reorder remaining players to ensure they're in the correct slots
-      if (rooms[roomIndex].players.length === 1) {
-        // If there's only one player left, ensure they're player 1
+        // Emit rooms data after a small delay to ensure client processes the disconnection event first
+        setTimeout(() => {
+          console.log(
+            `DELAYED ROOMS EMIT (LEAVE): Room ${roomId} state - opponentDisconnected: ${rooms[roomIndex].opponentDisconnected}, players: ${rooms[roomIndex].players.length}`
+          );
+          io.emit("rooms", getCleanedRoomsData(rooms));
+        }, 100);
+      }
+      // If the remaining player from a disconnected game is leaving, reset the room
+      else if (
+        rooms[roomIndex].opponentDisconnected &&
+        rooms[roomIndex].players.length === 0
+      ) {
+        console.log(
+          `Last player leaving disconnected room ${roomId}, resetting room state`
+        );
+        rooms[roomIndex].opponentDisconnected = false;
+        rooms[roomIndex].disconnectedDuringGame = false;
+        rooms[roomIndex].gameStart = false;
+        rooms[roomIndex].gameOver = false;
+        rooms[roomIndex].matchOver = false;
+        rooms[roomIndex].hakkiyoiCount = 0;
+        rooms[roomIndex].readyCount = 0;
+        rooms[roomIndex].rematchCount = 0;
+        rooms[roomIndex].readyStartTime = null;
+        rooms[roomIndex].powerUpSelectionPhase = false;
+        delete rooms[roomIndex].winnerId;
+        delete rooms[roomIndex].loserId;
+        delete rooms[roomIndex].gameOverTime;
+        delete rooms[roomIndex].playersSelectedPowerUps;
+        delete rooms[roomIndex].playerAvailablePowerUps;
+
+        // Clear any remaining round start timer
+        if (rooms[roomIndex].roundStartTimer) {
+          clearTimeout(rooms[roomIndex].roundStartTimer);
+          rooms[roomIndex].roundStartTimer = null;
+        }
+
+        // Clean up the room state
+        cleanupRoomState(rooms[roomIndex]);
+      }
+      // Normal lobby leave - reset ready states
+      else {
+        // Reset ready count and player ready states
+        rooms[roomIndex].readyCount = 0;
+        rooms[roomIndex].players.forEach((player) => {
+          player.isReady = false;
+        });
+
+        // Clean up the room state (includes power-up selection state)
+        cleanupRoomState(rooms[roomIndex]);
+      }
+
+      // If there's only one player left and not in disconnected state, reset their state completely
+      if (
+        rooms[roomIndex].players.length === 1 &&
+        !rooms[roomIndex].opponentDisconnected
+      ) {
         const p = rooms[roomIndex].players[0];
+        console.log(
+          `LEAVE_ROOM: Resetting remaining player ${p.id} to player 1. Old fighter: ${p.fighter}`
+        );
+        // Reset to player 1 position and appearance
         p.fighter = "player 1";
         p.color = "aqua";
         p.x = 230;
         p.facing = 1;
+        // Clean up any player-specific state
+        cleanupPlayerStates(p);
+        console.log(
+          `LEAVE_ROOM: Player reset complete. New fighter: ${p.fighter}`
+        );
       }
 
-      // Emit updates to all clients
-      io.in(roomId).emit("player_left");
-      io.in(roomId).emit("ready_count", 0);
-      io.to(roomId).emit("lobby", rooms[roomIndex].players);
-      io.emit("rooms", getCleanedRoomsData(rooms));
+      // Emit updates to all clients (only if not in disconnected state)
+      if (!rooms[roomIndex].opponentDisconnected) {
+        console.log(
+          `LEAVE_ROOM: Emitting events to room ${roomId}. Players remaining: ${rooms[roomIndex].players.length}`
+        );
+        console.log(
+          `LEAVE_ROOM: Updated players array:`,
+          rooms[roomIndex].players.map((p) => ({
+            id: p.id,
+            fighter: p.fighter,
+          }))
+        );
+        io.in(roomId).emit("player_left");
+        io.in(roomId).emit("ready_count", rooms[roomIndex].readyCount);
+        io.to(roomId).emit("lobby", rooms[roomIndex].players);
+      }
+
+      // Only emit rooms data immediately if not in disconnected state (delayed emit handles disconnected case)
+      if (!rooms[roomIndex].opponentDisconnected) {
+        console.log(
+          `EMITTING ROOMS DATA: Room ${roomId} state - opponentDisconnected: ${rooms[roomIndex].opponentDisconnected}, players: ${rooms[roomIndex].players.length}`
+        );
+        io.emit("rooms", getCleanedRoomsData(rooms));
+      }
 
       // Leave the socket room
       socket.leave(roomId);
@@ -3299,8 +3728,51 @@ io.on("connection", (socket) => {
     timeoutManager.clearPlayer(socket.id);
 
     if (rooms[roomIndex]) {
-      // Clean up the room state
-      cleanupRoomState(rooms[roomIndex]);
+      // Clear any active round start timer to prevent interference
+      if (rooms[roomIndex].roundStartTimer) {
+        clearTimeout(rooms[roomIndex].roundStartTimer);
+        rooms[roomIndex].roundStartTimer = null;
+      }
+
+      // Check if we're disconnecting during an active game session (not just lobby)
+      // Active game session includes: power-up selection, salt throwing, ready positioning, actual gameplay, and winner declaration
+      const isInGameSession =
+        rooms[roomIndex].powerUpSelectionPhase ||
+        rooms[roomIndex].gameStart ||
+        rooms[roomIndex].gameOver ||
+        rooms[roomIndex].hakkiyoiCount > 0 ||
+        rooms[roomIndex].players.some(
+          (p) =>
+            p.isThrowingSalt ||
+            (p.canMoveToReady === false &&
+              (rooms[roomIndex].gameStart ||
+                rooms[roomIndex].powerUpSelectionPhase))
+        );
+
+      const hadTwoPlayers = rooms[roomIndex].players.length === 2;
+
+      console.log(
+        `DISCONNECT DEBUG: Room ${roomId} - gameStart: ${rooms[roomIndex].gameStart}, gameOver: ${rooms[roomIndex].gameOver}, powerUpSelectionPhase: ${rooms[roomIndex].powerUpSelectionPhase}, isInGameSession: ${isInGameSession}, hadTwoPlayers: ${hadTwoPlayers}, hakkiyoiCount: ${rooms[roomIndex].hakkiyoiCount}`
+      );
+      console.log(
+        `DISCONNECT PHASE CHECK: powerUpSelectionPhase=${
+          rooms[roomIndex].powerUpSelectionPhase
+        }, gameStart=${
+          rooms[roomIndex].gameStart
+        }, anyPlayerThrowingSalt=${rooms[roomIndex].players.some(
+          (p) => p.isThrowingSalt
+        )}, anyPlayerCannotMoveToReady=${rooms[roomIndex].players.some(
+          (p) => p.canMoveToReady === false
+        )}`
+      );
+      console.log(
+        `DISCONNECT DEBUG: Players salt throwing states:`,
+        rooms[roomIndex].players.map((p) => ({
+          id: p.id,
+          isThrowingSalt: p.isThrowingSalt,
+          canMoveToReady: p.canMoveToReady,
+        }))
+      );
 
       // Clean up player references
       const playerIndex = rooms[roomIndex].players.findIndex(
@@ -3324,22 +3796,110 @@ io.on("connection", (socket) => {
         (player) => player.id !== socket.id
       );
 
-      // If there's only one player left, ensure they're player 1
-      if (rooms[roomIndex].players.length === 1) {
+      // Handle opponent disconnection during active game session
+      if (
+        isInGameSession &&
+        hadTwoPlayers &&
+        rooms[roomIndex].players.length === 1
+      ) {
+        console.log(
+          `OPPONENT DISCONNECTED: Player disconnected during active game in room ${roomId}, marking as opponent disconnected`
+        );
+        rooms[roomIndex].opponentDisconnected = true;
+        rooms[roomIndex].disconnectedDuringGame = true;
+
+        // Emit opponent disconnected event to the remaining player
+        const remainingPlayer = rooms[roomIndex].players[0];
+        console.log(
+          `DISCONNECT: EMITTING opponent_disconnected to player ${remainingPlayer.id} (fighter: ${remainingPlayer.fighter}) in room ${roomId}`
+        );
+        console.log(`DISCONNECT: Disconnecting player was: ${socket.id}`);
+        console.log(
+          `DISCONNECT: Room players after disconnect:`,
+          rooms[roomIndex].players.map((p) => ({
+            id: p.id,
+            fighter: p.fighter,
+          }))
+        );
+        io.to(remainingPlayer.id).emit("opponent_disconnected", {
+          roomId: roomId,
+          message: "Opponent disconnected",
+        });
+
+        // Emit rooms data after a small delay to ensure client processes the disconnection event first
+        setTimeout(() => {
+          console.log(
+            `DELAYED ROOMS EMIT: Room ${roomId} state - opponentDisconnected: ${rooms[roomIndex].opponentDisconnected}, players: ${rooms[roomIndex].players.length}`
+          );
+          io.emit("rooms", getCleanedRoomsData(rooms));
+        }, 100);
+      }
+      // If the remaining player from a disconnected game is leaving, reset the room
+      else if (
+        rooms[roomIndex].opponentDisconnected &&
+        rooms[roomIndex].players.length === 0
+      ) {
+        console.log(
+          `Last player leaving disconnected room ${roomId}, resetting room state`
+        );
+        rooms[roomIndex].opponentDisconnected = false;
+        rooms[roomIndex].disconnectedDuringGame = false;
+        rooms[roomIndex].gameStart = false;
+        rooms[roomIndex].gameOver = false;
+        rooms[roomIndex].matchOver = false;
+        rooms[roomIndex].hakkiyoiCount = 0;
+        rooms[roomIndex].readyCount = 0;
+        rooms[roomIndex].rematchCount = 0;
+        rooms[roomIndex].readyStartTime = null;
+        rooms[roomIndex].powerUpSelectionPhase = false;
+        delete rooms[roomIndex].winnerId;
+        delete rooms[roomIndex].loserId;
+        delete rooms[roomIndex].gameOverTime;
+        delete rooms[roomIndex].playersSelectedPowerUps;
+        delete rooms[roomIndex].playerAvailablePowerUps;
+
+        // Clean up the room state
+        cleanupRoomState(rooms[roomIndex]);
+      }
+      // Normal disconnect - clean up room state
+      else {
+        // Clean up the room state (includes power-up selection state)
+        cleanupRoomState(rooms[roomIndex]);
+      }
+
+      // If there's only one player left and not in disconnected state, reset their state completely
+      if (
+        rooms[roomIndex].players.length === 1 &&
+        !rooms[roomIndex].opponentDisconnected
+      ) {
         const p = rooms[roomIndex].players[0];
+        // Reset to player 1 position and appearance
         p.fighter = "player 1";
         p.color = "aqua";
         p.x = 230;
         p.facing = 1;
+        // Clean up any player-specific state
+        cleanupPlayerStates(p);
+        // Reset ready count
+        rooms[roomIndex].readyCount = 0;
+        p.isReady = false;
       }
 
-      // Emit updates with cleaned data
-      const cleanedRoom = getCleanedRoomData(rooms[roomIndex]);
+      // Emit updates with cleaned data (only if not in disconnected state)
+      if (!rooms[roomIndex].opponentDisconnected) {
+        const cleanedRoom = getCleanedRoomData(rooms[roomIndex]);
+        io.in(roomId).emit("player_left");
+        io.in(roomId).emit("ready_count", rooms[roomIndex].readyCount);
+        io.to(roomId).emit("lobby", cleanedRoom.players);
+      }
 
-      io.in(roomId).emit("player_left");
-      io.in(roomId).emit("ready_count", 0);
-      io.to(roomId).emit("lobby", cleanedRoom.players);
-      io.emit("rooms", getCleanedRoomsData(rooms));
+      // Only emit rooms data immediately if not in disconnected state (delayed emit handles disconnected case)
+      if (!rooms[roomIndex].opponentDisconnected) {
+        console.log(
+          `DISCONNECT - EMITTING ROOMS DATA: Room ${roomId} state - opponentDisconnected: ${rooms[roomIndex].opponentDisconnected}, players: ${rooms[roomIndex].players.length}`
+        );
+        io.emit("rooms", getCleanedRoomsData(rooms));
+      }
     }
     console.log(`${reason}: ${socket.id}`);
   });

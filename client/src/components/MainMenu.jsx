@@ -368,10 +368,13 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
     return () => clearInterval(interval);
   }, [backgroundImages.length]);
 
-  // Add new effect to handle game start
+  // Add new effect to handle page changes
   useEffect(() => {
     if (currentPage === "game") {
       stopBackgroundMusic();
+    } else if (currentPage === "mainMenu") {
+      // Restart background music when returning to main menu
+      playBackgroundMusic();
     }
   }, [currentPage]);
 
@@ -504,7 +507,12 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
     case "game":
       return (
         <div className="current-page">
-          <Game localId={localId} rooms={rooms} roomName={roomName} />
+          <Game
+            localId={localId}
+            rooms={rooms}
+            roomName={roomName}
+            setCurrentPage={setCurrentPage}
+          />
         </div>
       );
     default:

@@ -5,7 +5,10 @@ import { SocketContext } from "../SocketContext";
 import Ready from "./Ready";
 import { v4 as uuidv4 } from "uuid";
 import PropTypes from "prop-types";
-import { playButtonHoverSound, playButtonPressSound } from "../utils/soundUtils";
+import {
+  playButtonHoverSound,
+  playButtonPressSound,
+} from "../utils/soundUtils";
 
 const Lobby = ({ rooms, roomName, handleGame, setCurrentPage }) => {
   const [players, setPlayers] = useState([]);
@@ -14,7 +17,14 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage }) => {
   useEffect(() => {
     socket.emit("lobby", { roomId: roomName });
     socket.on("lobby", (playerData) => {
+      console.log("Received lobby data:", playerData);
       setPlayers(playerData);
+    });
+
+    // Handle player left event - just log it since server sends updated lobby data
+    socket.on("player_left", () => {
+      console.log("Player left event received");
+      // Don't re-request - server already sends updated lobby data
     });
 
     return () => {
@@ -28,12 +38,8 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage }) => {
   const handleLeaveDohyo = () => {
     playButtonPressSound();
     socket.emit("leave_room", { roomId: roomName });
-    socket.emit("ready_count", {
-      playerId: socket.id,
-      isReady: false,
-      roomId: roomName,
-    });
-    setPlayers([]);
+    // Don't emit ready_count - server handles ready state cleanup automatically
+    // Navigate immediately since we're leaving the room
     setCurrentPage("mainMenu");
   };
 

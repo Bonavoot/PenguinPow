@@ -1,4 +1,11 @@
-import { useState, useEffect, useContext, useMemo, useCallback } from "react";
+import {
+  useState,
+  useEffect,
+  useContext,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
 import { SocketContext } from "../SocketContext";
@@ -43,7 +50,8 @@ const PowerUpSelectionOverlay = styled.div`
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 1000;
+  z-index: 9999;
+  pointer-events: all;
 `;
 
 const PowerUpContainer = styled.div`
@@ -378,10 +386,40 @@ const PowerUpSelection = ({
       : "Auto-selecting power-up...";
   }, [timeLeft]);
 
-  useEffect(() => {
-    let countdownInterval;
+  // Use ref to store countdown interval to prevent multiple intervals
+  const countdownIntervalRef = useRef(null);
 
+  // Clear any existing countdown interval
+  const clearCountdownInterval = useCallback(() => {
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+  }, []);
+
+  // Start countdown timer
+  const startCountdownTimer = useCallback(() => {
+    // Clear any existing timer first
+    clearCountdownInterval();
+
+    countdownIntervalRef.current = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(countdownIntervalRef.current);
+          countdownIntervalRef.current = null;
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, [clearCountdownInterval]);
+
+  useEffect(() => {
     const handlePowerUpSelectionStart = (data) => {
+      console.log(
+        `🟢 PowerUpSelection: Received power_up_selection_start for player ${playerId} in room ${roomId}`,
+        data
+      );
       setIsVisible(true);
       setSelectedPowerUp(null);
       setSelectionStatus({ selectedCount: 0, totalPlayers: 2 });
@@ -389,15 +427,7 @@ const PowerUpSelection = ({
       setAvailablePowerUps(data.availablePowerUps || []);
 
       // Start countdown timer
-      countdownInterval = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            clearInterval(countdownInterval);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
+      startCountdownTimer();
 
       // Notify parent that selection is now active
       if (onSelectionStateChange) {
@@ -406,18 +436,23 @@ const PowerUpSelection = ({
     };
 
     const handlePowerUpSelectionStatus = (data) => {
+      console.log(
+        `🟡 PowerUpSelection: Received power_up_selection_status for player ${playerId}`,
+        data
+      );
       setSelectionStatus(data);
     };
 
     const handlePowerUpSelectionComplete = () => {
+      console.log(
+        `🔴 PowerUpSelection: Received power_up_selection_complete for player ${playerId}`
+      );
       setIsVisible(false);
       setTimeLeft(15);
       setAvailablePowerUps([]);
 
       // Clear countdown timer
-      if (countdownInterval) {
-        clearInterval(countdownInterval);
-      }
+      clearCountdownInterval();
 
       // Notify parent that selection is no longer active
       if (onSelectionStateChange) {
@@ -428,21 +463,77 @@ const PowerUpSelection = ({
       }
     };
 
+    // Add game_reset handler to ensure clean slate
+    const handleGameReset = () => {
+      console.log(
+        `🔵 PowerUpSelection: Received game_reset for player ${playerId}, clearing state`
+      );
+      setIsVisible(false);
+      setSelectedPowerUp(null);
+      setSelectionStatus({ selectedCount: 0, totalPlayers: 2 });
+      setTimeLeft(15);
+      setAvailablePowerUps([]);
+
+      // Clear countdown timer
+      clearCountdownInterval();
+
+      // Notify parent that selection is no longer active
+      if (onSelectionStateChange) {
+        onSelectionStateChange(false);
+      }
+    };
+
+    // Set up socket listeners with logging
+    console.log(
+      `🔵 PowerUpSelection: Setting up socket listeners for player ${playerId} in room ${roomId}`
+    );
     socket.on("power_up_selection_start", handlePowerUpSelectionStart);
     socket.on("power_up_selection_status", handlePowerUpSelectionStatus);
     socket.on("power_up_selection_complete", handlePowerUpSelectionComplete);
+    socket.on("game_reset", handleGameReset);
 
     return () => {
+      console.log(
+        `🔴 PowerUpSelection: Cleaning up socket listeners for player ${playerId}`
+      );
       socket.off("power_up_selection_start", handlePowerUpSelectionStart);
       socket.off("power_up_selection_status", handlePowerUpSelectionStatus);
       socket.off("power_up_selection_complete", handlePowerUpSelectionComplete);
+      socket.off("game_reset", handleGameReset);
 
-      // Clean up countdown timer
-      if (countdownInterval) {
-        clearInterval(countdownInterval);
-      }
+      // Clear countdown timer
+      clearCountdownInterval();
     };
-  }, [onSelectionComplete, onSelectionStateChange]);
+  }, [
+    startCountdownTimer,
+    clearCountdownInterval,
+    onSelectionComplete,
+    onSelectionStateChange,
+    playerId,
+    roomId,
+  ]);
+
+  // Separate effect for requesting power-up state (to avoid re-running socket listeners)
+  useEffect(() => {
+    // Request current power-up selection state in case we missed the initial event
+    const requestPowerUpState = () => {
+      console.log(
+        `🔵 PowerUpSelection: Requesting power-up selection state for player ${playerId} in room ${roomId}`
+      );
+      socket.emit("request_power_up_selection_state", {
+        roomId,
+        playerId,
+      });
+    };
+
+    // Request state immediately and after a short delay
+    requestPowerUpState();
+    const stateRequestTimeout = setTimeout(requestPowerUpState, 500);
+
+    return () => {
+      clearTimeout(stateRequestTimeout);
+    };
+  }, [socket, playerId, roomId]); // Only depend on what's actually needed for the request
 
   // Memoize the power up select handler to prevent recreation
   const handlePowerUpSelect = useCallback(

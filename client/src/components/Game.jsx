@@ -12,10 +12,12 @@ import PropTypes from "prop-types";
 // gameMusicAudio.loop = true;
 // gameMusicAudio.volume = 0.02;
 
-const Game = ({ rooms, roomName, localId }) => {
+const Game = ({ rooms, roomName, localId, setCurrentPage }) => {
   const { socket } = useContext(SocketContext);
   const [isPowerUpSelectionActive, setIsPowerUpSelectionActive] =
     useState(false);
+  const [opponentDisconnected, setOpponentDisconnected] = useState(false);
+  const [disconnectedRoomId, setDisconnectedRoomId] = useState(null);
   let index = rooms.findIndex((room) => room.id === roomName);
 
   // Find current player for input blocking checks
@@ -152,22 +154,57 @@ const Game = ({ rooms, roomName, localId }) => {
     };
   }, []);
 
+  // Handle opponent disconnection - hide power-up selection UI for ALL game phases
+  useEffect(() => {
+    const handleOpponentDisconnected = (data) => {
+      console.log(
+        "🔴 GAME: Opponent disconnected, hiding power-up selection UI and setting disconnect state"
+      );
+      setIsPowerUpSelectionActive(false);
+      setOpponentDisconnected(true);
+      setDisconnectedRoomId(data.roomId);
+    };
+
+    const handleGameReset = () => {
+      console.log("🔴 GAME: Game reset, clearing disconnect state");
+      setOpponentDisconnected(false);
+      setDisconnectedRoomId(null);
+    };
+
+    socket.on("opponent_disconnected", handleOpponentDisconnected);
+    socket.on("game_reset", handleGameReset);
+
+    return () => {
+      socket.off("opponent_disconnected", handleOpponentDisconnected);
+      socket.off("game_reset", handleGameReset);
+    };
+  }, [socket]);
+
   return (
     <div className="game-wrapper">
       <div className="game-container">
         <SnowEffect />
         <div className="ui">
-          {rooms[index].players.map((player, i) => {
-            return (
-              <GameFighter
-                localId={localId}
-                key={player.id + i}
-                player={player}
-                index={i}
-                roomName={roomName}
-              />
-            );
-          })}
+          {rooms[index].players
+            .filter((player) => player.id !== "disconnected_placeholder")
+            .map((player, i) => {
+              return (
+                <GameFighter
+                  localId={localId}
+                  key={player.id}
+                  player={player}
+                  index={i}
+                  roomName={roomName}
+                  setCurrentPage={setCurrentPage}
+                  opponentDisconnected={opponentDisconnected}
+                  disconnectedRoomId={disconnectedRoomId}
+                  onResetDisconnectState={() => {
+                    setOpponentDisconnected(false);
+                    setDisconnectedRoomId(null);
+                  }}
+                />
+              );
+            })}
         </div>
         <PowerUpSelection
           roomId={roomName}
@@ -196,6 +233,7 @@ Game.propTypes = {
   ).isRequired,
   roomName: PropTypes.string.isRequired,
   localId: PropTypes.string.isRequired,
+  setCurrentPage: PropTypes.func.isRequired,
 };
 
 export default Game;
