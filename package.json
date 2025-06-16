@@ -37,13 +37,15 @@
     "directories": {
       "output": "dist"
     },
+    "icon": "assets/icon.png",
     "files": [
       "main.js",
       "preload.js",
       "client/dist/**/*",
       "node_modules/steamworks.js/dist/**/*",
       "steam_appid.txt",
-      "steam_input_config.vdf"
+      "steam_input_config.vdf",
+      "assets/**/*"
     ],
     "extraResources": [
       {
@@ -58,6 +60,7 @@
       "category": "public.app-category.games"
     },
     "win": {
+      "icon": "assets/icon.png",
       "sign": null,
       "verifyUpdateCodeSignature": false
     },
