@@ -10,7 +10,6 @@ import { SocketContext } from "../SocketContext";
 import PropTypes from "prop-types";
 import styled from "styled-components";
 import "./MatchOver.css";
-import PlayerStaminaUi from "./PlayerStaminaUi";
 import Gyoji from "./Gyoji";
 import PlayerShadow from "./PlayerShadow";
 import ThrowTechEffect from "./ThrowTechEffect";
@@ -18,7 +17,6 @@ import PowerMeter from "./PowerMeter";
 import SlapParryEffect from "./SlapParryEffect";
 import DodgeSmokeEffect from "./DodgeDustEffect";
 import ChargedAttackSmokeEffect from "./ChargedAttackSmokeEffect";
-import DodgeChargeUI from "./DodgeChargeUI";
 import StarStunEffect from "./StarStunEffect";
 import ThickBlubberEffect from "./ThickBlubberEffect";
 
@@ -85,7 +83,7 @@ import HitEffect from "./HitEffect";
 import { getGlobalVolume } from "./Settings";
 import SnowEffect from "./SnowEffect";
 
-const GROUND_LEVEL = 145; // Ground level constant
+const GROUND_LEVEL = 120; // Ground level constant
 
 // Audio pool for better performance
 const audioPool = new Map();
@@ -765,7 +763,12 @@ const GameFighter = ({
     attackType: null,
     hitCounter: 0,
   });
-  const [stamina, setStamina] = useState(player);
+
+  // Store both players' data for UI (only needed for first component)
+  const [allPlayersData, setAllPlayersData] = useState({
+    player1: null,
+    player2: null,
+  });
   const [hakkiyoi, setHakkiyoi] = useState(false);
   const [gyojiState, setGyojiState] = useState("idle");
   const [gameOver, setGameOver] = useState(false);
@@ -900,6 +903,14 @@ const GameFighter = ({
   // Memoize frequently accessed socket listeners to prevent recreation
   const handleFighterAction = useCallback(
     (data) => {
+      // Store both players' data for UI (only for first component)
+      if (index === 0) {
+        setAllPlayersData({
+          player1: data.player1,
+          player2: data.player2,
+        });
+      }
+
       if (index === 0) {
         setPenguin({
           ...data.player1,
@@ -911,7 +922,6 @@ const GameFighter = ({
           dodgeCharges: data.player1.dodgeCharges || 2,
           dodgeChargeCooldowns: data.player1.dodgeChargeCooldowns || [0, 0],
         });
-        setStamina(data.player1.stamina);
       } else if (index === 1) {
         setPenguin({
           ...data.player2,
@@ -923,7 +933,6 @@ const GameFighter = ({
           dodgeCharges: data.player2.dodgeCharges || 2,
           dodgeChargeCooldowns: data.player2.dodgeChargeCooldowns || [0, 0],
         });
-        setStamina(data.player2.stamina);
       }
 
       // Update all snowballs from both players
@@ -1418,10 +1427,36 @@ const GameFighter = ({
         winner={winner}
         playerIndex={index}
       />
-      <UiPlayerInfo
-        playerOneWinCount={playerOneWinCount}
-        playerTwoWinCount={playerTwoWinCount}
-      />
+      {index === 0 && (
+        <UiPlayerInfo
+          playerOneWinCount={playerOneWinCount}
+          playerTwoWinCount={playerTwoWinCount}
+          player1Stamina={allPlayersData.player1?.stamina || 100}
+          player1DodgeCharges={allPlayersData.player1?.dodgeCharges || 2}
+          player1DodgeChargeCooldowns={
+            allPlayersData.player1?.dodgeChargeCooldowns || [0, 0]
+          }
+          player1ActivePowerUp={allPlayersData.player1?.activePowerUp || null}
+          player1SnowballCooldown={
+            allPlayersData.player1?.snowballCooldown || false
+          }
+          player1PumoArmyCooldown={
+            allPlayersData.player1?.pumoArmyCooldown || false
+          }
+          player2Stamina={allPlayersData.player2?.stamina || 100}
+          player2DodgeCharges={allPlayersData.player2?.dodgeCharges || 2}
+          player2DodgeChargeCooldowns={
+            allPlayersData.player2?.dodgeChargeCooldowns || [0, 0]
+          }
+          player2ActivePowerUp={allPlayersData.player2?.activePowerUp || null}
+          player2SnowballCooldown={
+            allPlayersData.player2?.snowballCooldown || false
+          }
+          player2PumoArmyCooldown={
+            allPlayersData.player2?.pumoArmyCooldown || false
+          }
+        />
+      )}
 
       <Gyoji gyojiState={gyojiState} hakkiyoi={hakkiyoi} />
       {hakkiyoi && <div className="hakkiyoi">HAKKI-YOI !</div>}
@@ -1456,15 +1491,7 @@ const GameFighter = ({
         localId={localId}
         activePowerUp={penguin.activePowerUp}
       />
-      <PlayerStaminaUi
-        stamina={stamina}
-        index={index}
-        dodgeCharges={penguin.dodgeCharges}
-        dodgeChargeCooldowns={penguin.dodgeChargeCooldowns}
-        activePowerUp={penguin.activePowerUp}
-        snowballCooldown={penguin.snowballCooldown}
-        pumoArmyCooldown={penguin.pumoArmyCooldown}
-      />
+
       <SaltBasket
         src={
           penguin.isThrowingSalt || hasUsedPowerUp
@@ -1497,11 +1524,7 @@ const GameFighter = ({
         facing={penguin.facing}
         dodgeDirection={penguin.dodgeDirection}
       />
-      <DodgeChargeUI
-        dodgeCharges={penguin.dodgeCharges}
-        dodgeChargeCooldowns={penguin.dodgeChargeCooldowns}
-        index={index}
-      />
+
       <ChargedAttackSmokeEffect
         x={penguin.x}
         y={penguin.y}
@@ -1653,15 +1676,26 @@ const GameFighter = ({
         }
 
         return (
-          <PumoClone
-            key={clone.id}
-            src={cloneSprite}
-            alt="Pumo Clone"
-            $x={clone.x}
-            $y={clone.y}
-            $facing={clone.facing}
-            $size={clone.size}
-          />
+          <React.Fragment key={clone.id}>
+            <PlayerShadow
+              x={clone.x}
+              y={clone.y}
+              facing={clone.facing}
+              isDodging={false}
+              width="8%"
+              height="2.5%"
+              offsetLeft="15%"
+              offsetRight="15%"
+            />
+            <PumoClone
+              src={cloneSprite}
+              alt="Pumo Clone"
+              $x={clone.x}
+              $y={clone.y}
+              $facing={clone.facing}
+              $size={clone.size}
+            />
+          </React.Fragment>
         );
       })}
 

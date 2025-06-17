@@ -8,7 +8,7 @@ const {
 } = require("./gameUtils");
 
 // Game constants that are used by these functions
-const GROUND_LEVEL = 200;
+const GROUND_LEVEL = 165;
 const HITBOX_DISTANCE_VALUE = 85;
 const SLAP_HITBOX_DISTANCE_VALUE = 184;
 
@@ -167,6 +167,7 @@ function executeSlapAttack(player, rooms) {
 
   // Ensure slapAnimation alternates consistently for every actual attack execution
   player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
+  player.stamina -= 10;
 
   const attackDuration = 300; // Total attack duration (300ms)
   const startupDuration = Math.floor(attackDuration * 0.4); // 40% of duration for startup frames (120ms)

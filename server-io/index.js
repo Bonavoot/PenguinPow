@@ -124,7 +124,7 @@ let staminaRegenCounter = 0;
 const TICK_RATE = 64;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.25; // Increased from 0.22 for snappier movement
-const GROUND_LEVEL = 200;
+const GROUND_LEVEL = 165;
 const HITBOX_DISTANCE_VALUE = 85; // Reduced from 90 by 20%
 const SLAP_HITBOX_DISTANCE_VALUE = 184; // Updated to match GRAB_RANGE
 const SLAP_PARRY_WINDOW = 200; // Updated to 200ms window for parry to account for longer slap animation
@@ -3117,6 +3117,7 @@ io.on("connection", (socket) => {
           // Determine if it's a slap or charged attack
           if (player.keys.mouse1) {
             // Use the simplified slap attack system
+            player.stamina -= 20;
             executeSlapAttack(player, rooms);
           } else {
             executeChargedAttack(player, chargePercentage, rooms);
