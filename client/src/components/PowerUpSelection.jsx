@@ -17,6 +17,7 @@ import powerWaterIcon from "../assets/power-water.png";
 import snowballImage from "../assets/snowball.png";
 import pumoArmyIcon from "./pumo-army-icon.png";
 import happyFeetIcon from "../assets/happy-feet.png";
+import thickBlubberIcon from "../assets/thick-blubber-icon.png";
 
 // Simplified animation for entrance - removed expensive blur
 const slideIn = keyframes`
@@ -365,7 +366,7 @@ const PowerUpSelection = ({
       thick_blubber: {
         name: "Thick Blubber",
         description: "Absorb 1 hit during charged attack",
-        icon: "🛡️",
+        icon: thickBlubberIcon,
       },
     }),
     []
@@ -577,7 +578,8 @@ const PowerUpSelection = ({
                   {type === "speed" ||
                   type === "power" ||
                   type === "snowball" ||
-                  type === "pumo_army" ? (
+                  type === "pumo_army" ||
+                  type === "thick_blubber" ? (
                     <img src={info.icon} alt={info.name} />
                   ) : (
                     info.icon

@@ -4,6 +4,7 @@ import happyFeetIcon from "../assets/happy-feet.png";
 import powerWaterIcon from "../assets/power-water.png";
 import snowballImage from "../assets/snowball.png";
 import pumoArmyIcon from "./pumo-army-icon.png";
+import thickBlubberIcon from "../assets/thick-blubber-icon.png";
 
 const pulseWin = keyframes`
   0% { transform: scale(1); }
@@ -52,6 +53,7 @@ const FighterUIContainer = styled.div`
 
 const PlayerSection = styled.div`
   display: flex;
+  margin-top: 1%;
   flex-direction: column;
   width: clamp(280px, 35vw, 450px);
   max-width: 450px;
@@ -77,11 +79,12 @@ const PlayerSection = styled.div`
   }
 `;
 
-const PlayerTopRow = styled.div`
+const StaminaRow = styled.div`
   display: flex;
   align-items: center;
   gap: clamp(8px, 1.2vw, 15px);
-  flex-direction: ${(props) => (props.$isRight ? "row-reverse" : "row")};
+  width: 100%;
+  position: relative;
 `;
 
 const PlayerAvatar = styled.div`
@@ -105,14 +108,31 @@ const PlayerAvatar = styled.div`
   flex-shrink: 0;
 `;
 
-const PlayerInfo = styled.div`
+const PlayerInfoTop = styled.div`
   display: flex;
   flex-direction: column;
-  gap: clamp(2px, 0.4vh, 4px);
-  align-items: ${(props) => (props.$isRight ? "flex-end" : "flex-start")};
-  text-align: ${(props) => (props.$isRight ? "right" : "left")};
-  flex: 1;
+  align-items: flex-start;
+  text-align: left;
   min-width: 0;
+  max-width: 60%;
+  position: absolute;
+  top: -28px;
+  left: clamp(8px, 1.2vw, 12px);
+  z-index: 5;
+  transform: ${(props) => (props.$isRight ? "scaleX(-1)" : "scaleX(1)")};
+`;
+
+const PlayerInfoBottom = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  min-width: 0;
+  position: absolute;
+  top: clamp(28px, 4vh, 35px);
+  left: clamp(8px, 1.2vw, 12px);
+  z-index: 5;
+  transform: ${(props) => (props.$isRight ? "scaleX(-1)" : "scaleX(1)")};
 `;
 
 const PlayerName = styled.div`
@@ -120,7 +140,7 @@ const PlayerName = styled.div`
   font-weight: 900;
   color: #ffffff;
   text-shadow: 2px 2px 0 #000000, -2px -2px 0 #000000, 2px -2px 0 #000000,
-    -2px 2px 0 #000000, 0 0 8px #d4af37;
+    -2px 2px 0 #000000;
   letter-spacing: clamp(0.5px, 0.1vw, 1px);
   text-transform: uppercase;
   line-height: 1;
@@ -151,20 +171,39 @@ const PlayerRank = styled.div`
 
 const WinTracker = styled.div`
   display: flex;
-  gap: clamp(3px, 0.6vw, 6px);
+  gap: clamp(2px, 0.5vw, 4px);
   align-items: center;
   flex-direction: ${(props) => (props.$isRight ? "row-reverse" : "row")};
   flex-shrink: 0;
+  position: absolute;
+  top: clamp(-28px, -3.5vh, -35px);
+  right: clamp(8px, 1.2vw, 12px);
+  max-width: 35%;
+  z-index: 10;
+  transform: ${(props) => (props.$isRight ? "none" : "scaleX(-1)")};
+
+  @media (max-width: 768px) {
+    gap: clamp(1px, 0.3vw, 2px);
+    top: clamp(-24px, -3vh, -28px);
+  }
+
+  @media (max-width: 480px) {
+    gap: 1px;
+    top: clamp(-20px, -2.5vh, -24px);
+  }
 `;
 
 const WinMark = styled.div`
-  width: clamp(12px, 1.6vw, 16px);
-  height: clamp(12px, 1.6vw, 16px);
+  width: clamp(14px, 2.2vw, 20px);
+  height: clamp(14px, 2.2vw, 20px);
+  min-width: 14px;
+  min-height: 14px;
+
   background: ${(props) =>
     props.$isWin
       ? "linear-gradient(45deg, #4caf50, #2e7d32)"
-      : "linear-gradient(145deg, rgba(60, 60, 60, 0.4), rgba(30, 30, 30, 0.2))"};
-  border: 2px solid
+      : "linear-gradient(145deg,rgba(28, 28, 28, 0.95),rgba(18, 18, 18, 0.95))"};
+  border: clamp(1px, 0.2vw, 2px) solid
     ${(props) => (props.$isWin ? "#4caf50" : "rgba(255, 255, 255, 0.3)")};
   border-radius: 50%;
   display: flex;
@@ -176,19 +215,14 @@ const WinMark = styled.div`
       : "0 2px 8px rgba(0, 0, 0, 0.2)"};
   animation: ${(props) => (props.$isWin ? pulseWin : "none")} 2s infinite;
   position: relative;
-`;
-
-const StaminaSection = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: clamp(4px, 0.8vh, 8px);
-  width: 100%;
+  flex-shrink: 0;
+  aspect-ratio: 1;
 `;
 
 const StaminaContainer = styled.div`
   position: relative;
   width: 100%;
-  height: clamp(16px, 2.5vh, 25px);
+  height: 20px;
   background: linear-gradient(
     145deg,
     rgba(40, 40, 40, 0.2),
@@ -197,8 +231,9 @@ const StaminaContainer = styled.div`
   border-radius: clamp(8px, 1.2vw, 12px);
   border: clamp(1px, 0.2vw, 2px) solid #8b4513;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-  overflow: hidden;
+  overflow: visible;
   transform: ${(props) => (props.$isRight ? "scaleX(-1)" : "scaleX(1)")};
+  flex: 1;
 `;
 
 const StaminaFill = styled.div`
@@ -218,8 +253,26 @@ const StaminaFill = styled.div`
 const UIRow = styled.div`
   display: flex;
   align-items: center;
+  justify-content: ${(props) => (props.$isRight ? "flex-end" : "flex-start")};
   gap: clamp(6px, 1.2vw, 12px);
-  flex-direction: ${(props) => (props.$isRight ? "row-reverse" : "row")};
+  margin-top: clamp(28px, 4.5vh, 40px);
+  position: relative;
+`;
+
+const PowerUpWrapper = styled.div`
+  position: absolute;
+  left: ${(props) =>
+    props.$isRight
+      ? "auto"
+      : "calc(clamp(40px, 5vw, 60px) / 2 - clamp(35px, 5vw, 50px) / 2)"};
+  right: ${(props) =>
+    props.$isRight
+      ? "calc(clamp(40px, 5vw, 60px) / 2 - clamp(35px, 5vw, 50px) / 2)"
+      : "auto"};
+  display: flex;
+  align-items: center;
+  gap: clamp(6px, 1.2vw, 12px);
+  transform: ${(props) => (props.$isRight ? "scaleX(-1)" : "scaleX(1)")};
 `;
 
 const PowerUpContainer = styled.div`
@@ -280,6 +333,8 @@ const PowerUpContainer = styled.div`
     object-fit: contain;
     filter: ${(props) =>
       props.$isOnCooldown ? "brightness(0.6) grayscale(0.3)" : "brightness(1)"};
+    position: relative;
+    top: clamp(-6px, -1vw, -10px);
   }
 
   span {
@@ -291,7 +346,8 @@ const PowerUpIndicator = styled.div`
   position: absolute;
   bottom: clamp(-2px, -0.3vw, -3px);
   left: 50%;
-  transform: translateX(-50%);
+  transform: translateX(-50%)
+    ${(props) => (props.$isFlipped ? "scaleX(-1)" : "scaleX(1)")};
   font-size: clamp(6px, 0.9vw, 9px);
   font-family: "Bungee", cursive;
   font-weight: 600;
@@ -426,23 +482,24 @@ const UiPlayerInfo = ({
     <FighterUIContainer>
       {/* Player 1 Section */}
       <PlayerSection $isRight={false}>
-        <PlayerTopRow $isRight={false}>
+        <StaminaRow>
           <PlayerAvatar>力</PlayerAvatar>
-          <PlayerInfo $isRight={false}>
-            <PlayerName>PLAYER 1</PlayerName>
-            <PlayerRank>JONOKUCHI</PlayerRank>
-          </PlayerInfo>
-          <WinTracker $isRight={false}>
-            {renderWinMarks(playerOneWinCount)}
-          </WinTracker>
-        </PlayerTopRow>
-
-        <StaminaSection>
           <StaminaContainer $isRight={false}>
             <StaminaFill $stamina={player1Stamina} />
+            <WinTracker $isRight={false}>
+              {renderWinMarks(playerOneWinCount)}
+            </WinTracker>
+            <PlayerInfoTop $isRight={false}>
+              <PlayerRank>JONOKUCHI</PlayerRank>
+            </PlayerInfoTop>
+            <PlayerInfoBottom $isRight={false}>
+              <PlayerName>PLAYER 1</PlayerName>
+            </PlayerInfoBottom>
           </StaminaContainer>
+        </StaminaRow>
 
-          <UIRow $isRight={false}>
+        <UIRow $isRight={false}>
+          <PowerUpWrapper $isRight={false}>
             <PowerUpContainer
               $activePowerUp={player1ActivePowerUp}
               $isOnCooldown={getPowerUpIsOnCooldown(
@@ -453,25 +510,24 @@ const UiPlayerInfo = ({
             >
               {player1ActivePowerUp && (
                 <>
-                  {player1ActivePowerUp === "thick_blubber" ? (
-                    <span style={{ fontSize: "20px" }}>🛡️</span>
-                  ) : (
-                    <img
-                      src={
-                        player1ActivePowerUp === "speed"
-                          ? happyFeetIcon
-                          : player1ActivePowerUp === "power"
-                          ? powerWaterIcon
-                          : player1ActivePowerUp === "snowball"
-                          ? snowballImage
-                          : player1ActivePowerUp === "pumo_army"
-                          ? pumoArmyIcon
-                          : ""
-                      }
-                      alt={player1ActivePowerUp}
-                    />
-                  )}
-                  <PowerUpIndicator>
+                  <img
+                    src={
+                      player1ActivePowerUp === "speed"
+                        ? happyFeetIcon
+                        : player1ActivePowerUp === "power"
+                        ? powerWaterIcon
+                        : player1ActivePowerUp === "snowball"
+                        ? snowballImage
+                        : player1ActivePowerUp === "pumo_army"
+                        ? pumoArmyIcon
+                        : player1ActivePowerUp === "thick_blubber"
+                        ? thickBlubberIcon
+                        : ""
+                    }
+                    alt={player1ActivePowerUp}
+                    style={{ transform: "scaleX(1)" }}
+                  />
+                  <PowerUpIndicator $isFlipped={false}>
                     {getPowerUpIndicatorText(player1ActivePowerUp)}
                   </PowerUpIndicator>
                 </>
@@ -484,29 +540,30 @@ const UiPlayerInfo = ({
                 player1DodgeChargeCooldowns
               )}
             </DodgeChargesContainer>
-          </UIRow>
-        </StaminaSection>
+          </PowerUpWrapper>
+        </UIRow>
       </PlayerSection>
 
       {/* Player 2 Section */}
       <PlayerSection $isRight={true}>
-        <PlayerTopRow $isRight={true}>
-          <PlayerAvatar>闘</PlayerAvatar>
-          <PlayerInfo $isRight={true}>
-            <PlayerName>PLAYER 2</PlayerName>
-            <PlayerRank>JONOKUCHI</PlayerRank>
-          </PlayerInfo>
-          <WinTracker $isRight={true}>
-            {renderWinMarks(playerTwoWinCount)}
-          </WinTracker>
-        </PlayerTopRow>
-
-        <StaminaSection>
+        <StaminaRow>
           <StaminaContainer $isRight={true}>
             <StaminaFill $stamina={player2Stamina} />
+            <WinTracker $isRight={true}>
+              {renderWinMarks(playerTwoWinCount)}
+            </WinTracker>
+            <PlayerInfoTop $isRight={true}>
+              <PlayerRank>JONOKUCHI</PlayerRank>
+            </PlayerInfoTop>
+            <PlayerInfoBottom $isRight={true}>
+              <PlayerName>PLAYER 2</PlayerName>
+            </PlayerInfoBottom>
           </StaminaContainer>
+          <PlayerAvatar>闘</PlayerAvatar>
+        </StaminaRow>
 
-          <UIRow $isRight={true}>
+        <UIRow $isRight={true}>
+          <PowerUpWrapper $isRight={true}>
             <PowerUpContainer
               $activePowerUp={player2ActivePowerUp}
               $isOnCooldown={getPowerUpIsOnCooldown(
@@ -517,25 +574,24 @@ const UiPlayerInfo = ({
             >
               {player2ActivePowerUp && (
                 <>
-                  {player2ActivePowerUp === "thick_blubber" ? (
-                    <span style={{ fontSize: "20px" }}>🛡️</span>
-                  ) : (
-                    <img
-                      src={
-                        player2ActivePowerUp === "speed"
-                          ? happyFeetIcon
-                          : player2ActivePowerUp === "power"
-                          ? powerWaterIcon
-                          : player2ActivePowerUp === "snowball"
-                          ? snowballImage
-                          : player2ActivePowerUp === "pumo_army"
-                          ? pumoArmyIcon
-                          : ""
-                      }
-                      alt={player2ActivePowerUp}
-                    />
-                  )}
-                  <PowerUpIndicator>
+                  <img
+                    src={
+                      player2ActivePowerUp === "speed"
+                        ? happyFeetIcon
+                        : player2ActivePowerUp === "power"
+                        ? powerWaterIcon
+                        : player2ActivePowerUp === "snowball"
+                        ? snowballImage
+                        : player2ActivePowerUp === "pumo_army"
+                        ? pumoArmyIcon
+                        : player2ActivePowerUp === "thick_blubber"
+                        ? thickBlubberIcon
+                        : ""
+                    }
+                    alt={player2ActivePowerUp}
+                    style={{ transform: "scaleX(-1)" }}
+                  />
+                  <PowerUpIndicator $isFlipped={true}>
                     {getPowerUpIndicatorText(player2ActivePowerUp)}
                   </PowerUpIndicator>
                 </>
@@ -548,8 +604,8 @@ const UiPlayerInfo = ({
                 player2DodgeChargeCooldowns
               )}
             </DodgeChargesContainer>
-          </UIRow>
-        </StaminaSection>
+          </PowerUpWrapper>
+        </UIRow>
       </PlayerSection>
     </FighterUIContainer>
   );
