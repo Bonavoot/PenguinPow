@@ -593,68 +593,29 @@ function adjustPlayerPositions(player1, player2, delta) {
 
   // If players are overlapping
   if (distanceBetweenCenters < finalMinDistance) {
-    // Set overlap state for visual feedback
-    player1.isOverlapping = true;
-    player2.isOverlapping = true;
+    // Calculate how much overlap there is
+    const overlap = finalMinDistance - distanceBetweenCenters;
 
-    // Store overlap start time for each player if not already set
-    const currentTime = Date.now();
-    if (!player1.overlapStartTime) {
-      player1.overlapStartTime = currentTime;
-    }
-    if (!player2.overlapStartTime) {
-      player2.overlapStartTime = currentTime;
-    }
-
-    // Calculate overlap duration for smoother separation
-    const overlapDuration = Math.max(
-      currentTime - (player1.overlapStartTime || currentTime),
-      currentTime - (player2.overlapStartTime || currentTime)
-    );
-
-    // Calculate maximum separation per frame based on overlap duration
-    // This ensures smooth, capped separation regardless of overlap size
-    let maxSeparationPerFrame;
-    if (overlapDuration < 200) {
-      // First 200ms: small but noticeable steps
-      maxSeparationPerFrame = (4 * delta) / 16.67; // ~4 pixels at 60fps
-    } else if (overlapDuration < 400) {
-      // Next 200ms: moderate steps
-      maxSeparationPerFrame = (7 * delta) / 16.67; // ~7 pixels at 60fps
-    } else if (overlapDuration < 700) {
-      // Next 300ms: faster steps
-      maxSeparationPerFrame = (10 * delta) / 16.67; // ~10 pixels at 60fps
-    } else {
-      // After 700ms: quick separation to prevent permanent sticking
-      maxSeparationPerFrame = (15 * delta) / 16.67; // ~15 pixels at 60fps
-    }
-
-    // Apply extra separation for recovery states
-    const isRecovering = player1.isRecovering || player2.isRecovering;
-    if (isRecovering) {
-      maxSeparationPerFrame *= 1.5; // Increase separation during recovery
-    }
+    // Use smooth, consistent separation - each player moves half the needed distance
+    const separationSpeed = Math.min(overlap * 0.5, 8); // Cap at 8 pixels per frame for smoothness
 
     // Calculate separation direction
     const separationDirection = player1.x < player2.x ? -1 : 1;
 
-    // Apply capped separation - each player moves by half the max separation
-    const separationPerPlayer = maxSeparationPerFrame / 2;
+    // Apply smooth separation - each player moves by half
+    const separationPerPlayer = separationSpeed / 2;
 
-    // Calculate new positions with capped smooth separation
+    // Calculate new positions
     let newPlayer1X = player1.x + separationDirection * separationPerPlayer;
     let newPlayer2X = player2.x + -separationDirection * separationPerPlayer;
 
-    // Apply resistance to movement velocity when players are moving towards each other
-    // This helps prevent players from constantly pushing into each other
+    // Apply gentle resistance to movement velocity when players are pushing into each other
     if (!player1.isHit && !player1.isAlreadyHit && player1.movementVelocity) {
       const isMovingTowards =
         (player1.x < player2.x && player1.movementVelocity > 0) ||
         (player1.x > player2.x && player1.movementVelocity < 0);
       if (isMovingTowards) {
-        // Progressive resistance based on overlap duration
-        const resistanceMultiplier = overlapDuration < 200 ? 0.92 : 0.85;
-        player1.movementVelocity *= resistanceMultiplier;
+        player1.movementVelocity *= 0.9; // Gentle resistance
       }
     }
     if (!player2.isHit && !player2.isAlreadyHit && player2.movementVelocity) {
@@ -662,9 +623,7 @@ function adjustPlayerPositions(player1, player2, delta) {
         (player2.x < player1.x && player2.movementVelocity > 0) ||
         (player2.x > player1.x && player2.movementVelocity < 0);
       if (isMovingTowards) {
-        // Progressive resistance based on overlap duration
-        const resistanceMultiplier = overlapDuration < 200 ? 0.92 : 0.85;
-        player2.movementVelocity *= resistanceMultiplier;
+        player2.movementVelocity *= 0.9; // Gentle resistance
       }
     }
 
@@ -678,35 +637,6 @@ function adjustPlayerPositions(player1, player2, delta) {
     }
     if (newPlayer2X >= leftBoundary && newPlayer2X <= rightBoundary) {
       player2.x = newPlayer2X;
-    }
-
-    // Emergency separation for edge cases - only after long overlap time
-    // This should rarely trigger with the faster smooth separation system
-    if (overlapDuration > 1200) {
-      // Reduced from 2000ms to 1200ms for faster system
-      const currentDistance = Math.abs(player1.x - player2.x);
-      if (currentDistance < finalMinDistance * 0.95) {
-        // Reduced threshold
-        // Much smaller emergency adjustment - just a gentle nudge
-        const emergencyNudge = 2; // Fixed small nudge instead of calculated adjustment
-        if (player1.x < player2.x) {
-          player1.x = Math.max(leftBoundary, player1.x - emergencyNudge);
-          player2.x = Math.min(rightBoundary, player2.x + emergencyNudge);
-        } else {
-          player1.x = Math.min(rightBoundary, player1.x + emergencyNudge);
-          player2.x = Math.max(leftBoundary, player2.x - emergencyNudge);
-        }
-      }
-    }
-  } else {
-    // Players are no longer overlapping - clear overlap state
-    if (player1.isOverlapping) {
-      player1.isOverlapping = false;
-      player1.overlapStartTime = null;
-    }
-    if (player2.isOverlapping) {
-      player2.isOverlapping = false;
-      player2.overlapStartTime = null;
     }
   }
 }
