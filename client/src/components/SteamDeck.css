@@ -1,5 +1,6 @@
 /* Steam Deck Specific Optimizations */
 /* Steam Deck native resolution: 1280x800 (16:10 aspect ratio) */
+/* Goal: Maintain 1:1 visual parity with desktop while optimizing performance */
 
 /* Steam Deck Detection Classes */
 .steam-deck-mode {
@@ -12,151 +13,151 @@
 
 /* Steam Deck Media Query - Native Resolution */
 @media screen and (width: 1280px) and (height: 800px) {
-  /* Root scaling for Steam Deck */
+  /* Minimal scaling - keep UI close to desktop experience */
   :root {
-    --steam-deck-scale: 1.15;
-    --ui-scale: 1.2;
-    --font-scale: 1.1;
-    --button-scale: 1.3;
-    --touch-target-size: 48px;
+    --steam-deck-scale: 1; /* No scaling by default */
+    --ui-scale: 1;
+    --font-scale: 1;
+    --button-scale: 1.1; /* Slightly larger buttons for touch/gamepad */
+    --touch-target-size: 44px; /* Standard touch target */
   }
 
-  /* Game Container Adjustments - Don't scale the main container to preserve z-index */
+  /* Game Container - Keep desktop sizing */
   .game-container {
     width: 100vw !important;
     height: 100vh !important;
     max-width: 1280px;
     max-height: 800px;
-    /* Use font-size scaling instead of transform to avoid stacking context issues */
-    font-size: calc(1rem * var(--steam-deck-scale));
+    /* No font-size scaling to maintain desktop appearance */
   }
 
-  /* UI Scaling - Use transform but avoid stacking context issues by scaling individual elements */
+  /* UI Elements - Minimal adjustments */
   .ui-player-info {
-    transform: scale(var(--ui-scale));
+    /* Keep desktop styling, only minor touch improvements */
+    padding: 6px 10px; /* Slightly larger padding for readability */
   }
 
   .ui-player-1-name,
   .ui-player-2-name {
-    transform: scale(var(--ui-scale));
+    /* Keep desktop font sizes */
+    font-size: 1.2rem;
   }
 
+  /* Stamina Bars - Keep desktop appearance */
+  .player-stamina-container {
+    height: 14px; /* Keep close to desktop */
+    border-width: 2px;
+  }
+
+  /* Win Circles - Minimal scaling */
   .win-circle,
   .loss-circle {
-    transform: scale(var(--ui-scale));
+    width: calc(22px * var(--button-scale));
+    height: calc(22px * var(--button-scale));
+    font-size: 0.8rem;
   }
 
-  .player-stamina-container {
-    transform: scale(var(--ui-scale));
-  }
-
-  /* Player UI Information */
-  .ui-player-info {
-    font-size: calc(1rem * var(--font-scale));
-    padding: 8px 12px;
-  }
-
-  .ui-player-1-name,
-  .ui-player-2-name {
-    font-size: calc(1.2rem * var(--font-scale));
-  }
-
-  /* Stamina Bars */
-  .player-stamina-container {
-    height: 16px;
-    border-width: 3px;
-  }
-
-  /* Win Circles */
-  .win-circle,
-  .loss-circle {
-    width: calc(24px * var(--button-scale));
-    height: calc(24px * var(--button-scale));
-    font-size: calc(0.8rem * var(--font-scale));
-  }
-
-  /* Power Meter */
-  .power-meter {
-    transform: scale(var(--ui-scale));
-    transform-origin: center center;
-  }
-
-  /* Mobile Controls - Optimized for Steam Deck thumbsticks */
+  /* Mobile Controls - Hide on Steam Deck */
   .mobile-controls {
-    display: none; /* Hide mobile controls on Steam Deck */
+    display: none;
   }
 
-  /* Power-Up Selection UI */
+  /* Power-Up Selection - Keep desktop experience */
   .power-up-selection {
-    transform: scale(var(--ui-scale));
-    transform-origin: center center;
+    /* No transform scaling */
   }
 
   .power-up-option {
-    padding: calc(12px * var(--button-scale));
-    font-size: calc(1rem * var(--font-scale));
+    padding: calc(10px * var(--button-scale));
+    font-size: 1rem;
     min-height: var(--touch-target-size);
   }
 
-  /* Match Over Screen */
-  .match-over {
-    transform: scale(var(--ui-scale));
-    transform-origin: center center;
-  }
-
-  /* Menu Adjustments */
-  .main-menu {
-    width: 100vw;
-    height: 100vh;
-  }
-
+  /* Menu Buttons - Slightly larger for gamepad navigation */
   .main-menu-btn-container > button {
-    font-size: calc(1.5rem * var(--font-scale));
-    padding: calc(8px * var(--button-scale));
+    font-size: 1.4rem; /* Slightly smaller than before */
+    padding: calc(6px * var(--button-scale));
     min-height: var(--touch-target-size);
   }
 
   /* Room List */
   .room {
-    font-size: calc(0.9rem * var(--font-scale));
+    font-size: 0.9rem;
     min-height: var(--touch-target-size);
   }
 
   .room > button {
-    font-size: calc(1rem * var(--font-scale));
-    padding: calc(8px * var(--button-scale));
+    font-size: 1rem;
+    padding: calc(6px * var(--button-scale));
     min-height: var(--touch-target-size);
   }
+}
 
-  /* Settings Menu */
-  .settings-container {
-    transform: scale(var(--ui-scale));
-    transform-origin: center center;
+/* Performance Optimizations - More conservative approach */
+@media screen and (width: 1280px) and (height: 800px) {
+  /* Reduce particle density instead of completely disabling */
+  .cherry-blossom {
+    animation-duration: 15s; /* Slightly slower, not dramatically different */
   }
 
-  /* Lobby */
-  .lobby {
-    transform: scale(var(--ui-scale));
-    transform-origin: center center;
+  /* Scale down effects but keep them visible */
+  .dust-effect,
+  .snow-effect,
+  .salt-effect {
+    transform: scale(0.8); /* Less aggressive scaling */
+    opacity: 0.7; /* Slightly more transparent for performance */
   }
 
-  /* Ready Screen */
-  .ready {
-    transform: scale(var(--ui-scale));
-    transform-origin: center center;
-    font-size: calc(1.2rem * var(--font-scale));
+  /* Keep dust effects but reduce intensity */
+  .dust-effect {
+    /* Keep enabled but reduce particle count via opacity */
+    opacity: 0.5;
+  }
+
+  /* Reduce transition duration instead of removing completely */
+  * {
+    transition-duration: 0.15s !important; /* Faster but still present */
+  }
+
+  /* Keep image filters but make them less expensive */
+  img,
+  .character-image,
+  .StyledImage {
+    filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000)
+      drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000);
+    /* Keep the same visual effect as desktop */
+  }
+
+  /* Keep facing direction animations but make them snappier */
+  .StyledImage {
+    transition: transform 0.1s ease-out !important;
+  }
+
+  /* Optimize will-change usage without changing visuals */
+  .StyledImage,
+  .player-image,
+  .character-image {
+    will-change: transform, left, bottom;
+  }
+
+  /* Reduce particle effects intensity instead of hiding */
+  .salt-effect,
+  .snowball-effect,
+  .pumo-army-effect {
+    opacity: 0.6; /* Keep visible but less intensive */
+    transform: scale(0.7);
   }
 }
 
 /* General Handheld Optimizations (for devices with small screens) */
 @media screen and (max-width: 1366px) and (max-height: 900px) {
-  /* Improve readability on small screens */
+  /* Minimal improvements for readability */
   .ui-player-info {
-    font-size: 1.1rem;
+    font-size: 1.05rem; /* Very slight increase */
   }
 
   .hakkiyoi {
-    font-size: 2.5rem;
+    font-size: 2.2rem; /* Keep closer to desktop size */
   }
 
   /* Ensure minimum touch targets */
@@ -166,11 +167,11 @@
   }
 
   .power-up-option {
-    min-height: 48px;
+    min-height: 44px; /* Standard touch target */
   }
 }
 
-/* High DPI displays (Steam Deck has high pixel density) */
+/* High DPI displays - Keep desktop quality */
 @media (-webkit-min-device-pixel-ratio: 2) {
   /* Ensure crisp text rendering */
   * {
@@ -178,11 +179,11 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Sharper borders */
+  /* Keep desktop border widths */
   .game-container,
   .ui-container,
   .power-up-selection {
-    border-width: 2px;
+    border-width: 1px; /* Keep desktop appearance */
   }
 }
 
@@ -223,13 +224,13 @@
   display: block;
 }
 
-/* Haptic Feedback Animation */
+/* Haptic Feedback Animation - Keep desktop experience */
 @keyframes haptic-pulse {
   0% {
     transform: scale(1);
   }
   50% {
-    transform: scale(1.05);
+    transform: scale(1.02); /* More subtle pulse */
   }
   100% {
     transform: scale(1);
@@ -240,74 +241,14 @@
   animation: haptic-pulse 0.1s ease-in-out;
 }
 
-/* Performance Optimizations for Steam Deck */
-@media screen and (width: 1280px) and (height: 800px) {
-  /* Reduce motion for better performance */
-  .cherry-blossom {
-    animation-duration: 20s; /* Much slower animation */
-    will-change: auto; /* Remove will-change for better performance */
-  }
-
-  /* Optimize effects - reduce particles and complexity */
-  .dust-effect,
-  .snow-effect,
-  .salt-effect {
-    transform: scale(0.6); /* Smaller effects for better performance */
-  }
-
-  /* Disable expensive animations on Steam Deck */
-  .dust-effect {
-    display: none; /* Disable dust effects on Steam Deck for performance */
-  }
-
-  /* Optimize UI transitions - remove all transitions for better performance */
-  * {
-    transition: none !important; /* Remove all transitions */
-    animation-duration: 0.1s !important; /* Speed up necessary animations */
-  }
-
-  /* Disable expensive filters on Steam Deck for performance */
-  img,
-  .character-image,
-  .StyledImage {
-    filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000)
-      drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) !important;
-    /* Only basic outline, remove expensive brightness/contrast effects */
-  }
-
-  /* Remove facing direction animation on Steam Deck for performance */
-  .StyledImage {
-    transition: none !important;
-  }
-
-  /* Optimize will-change usage */
-  .StyledImage,
-  .player-image,
-  .character-image {
-    will-change: left, bottom; /* Remove transform from will-change to reduce GPU load */
-  }
-
-  /* Disable expensive particle effects */
-  .salt-effect,
-  .snowball-effect,
-  .pumo-army-effect {
-    display: none !important; /* Disable for performance */
-  }
-}
-
-/* Dark mode optimizations for Steam Deck OLED - ONLY when in Steam Deck mode */
+/* Minimal dark mode optimizations */
 @media (prefers-color-scheme: dark) {
   :root {
-    --steam-deck-ui-brightness: 0.9;
-  }
-
-  .steam-deck-mode .game-container,
-  .steam-deck-mode .ui-container {
-    filter: brightness(var(--steam-deck-ui-brightness));
+    --steam-deck-ui-brightness: 1; /* Keep desktop brightness */
   }
 }
 
-/* Landscape orientation lock for Steam Deck */
+/* Landscape orientation hint */
 @media screen and (orientation: portrait) and (max-width: 900px) {
   .steam-deck-orientation-hint {
     position: fixed;
@@ -324,20 +265,14 @@
   }
 }
 
-/* Accessibility improvements for handheld - Apply only to specific elements */
-.steam-deck-mode .game-container {
-  /* Higher contrast for outdoor viewing - only applied to game container */
-  filter: contrast(1.1) brightness(1.05);
-}
-
-/* Loading screen optimizations */
+/* Loading screen - Keep desktop appearance */
 .loading-screen {
   background: #000;
   color: #fff;
-  font-size: calc(1.2rem * var(--font-scale, 1));
+  font-size: 1.2rem; /* No scaling */
 }
 
-/* Notification positioning for Steam Deck */
+/* Steam notifications */
 .achievement-notification,
 .steam-notification {
   position: fixed;
