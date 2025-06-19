@@ -201,7 +201,7 @@ const WinMark = styled.div`
 
   background: ${(props) =>
     props.$isWin
-      ? "linear-gradient(45deg, #4caf50, #2e7d32)"
+      ? "linear-gradient(45deg,rgb(89, 255, 95),rgb(0, 255, 13))"
       : "linear-gradient(145deg,rgba(28, 28, 28, 0.95),rgba(18, 18, 18, 0.95))"};
   border: clamp(1px, 0.2vw, 2px) solid
     ${(props) => (props.$isWin ? "#4caf50" : "rgba(255, 255, 255, 0.3)")};

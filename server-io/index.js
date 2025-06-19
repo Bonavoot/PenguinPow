@@ -176,6 +176,9 @@ const PERFECT_PARRY_WINDOW = 100; // 100ms window for perfect parries
 const DODGE_COOLDOWN = 2000; // 2 second cooldown between dodges
 const MAX_DODGE_CHARGES = 2; // Maximum number of dodge charges
 
+// At the ropes constants
+const AT_THE_ROPES_DURATION = 1000; // 1 second stun duration
+
 // Knockback immunity system constants
 const KNOCKBACK_IMMUNITY_DURATION = 150; // 150ms immunity window
 
@@ -340,6 +343,8 @@ function resetRoomAndPlayers(room) {
     player.rawParryStartTime = 0;
     player.rawParryMinDurationMet = false;
     player.isRawParryStun = false;
+    player.isAtTheRopes = false;
+    player.atTheRopesStartTime = 0;
     player.isDodging = false;
     player.isReady = false;
     player.isHit = false;
@@ -1139,6 +1144,8 @@ io.on("connection", (socket) => {
           );
         }
 
+
+
         // Win Conditions - back to original state
         if (
           (player.isHit &&
@@ -1149,16 +1156,7 @@ io.on("connection", (socket) => {
             player.x >= MAP_RING_OUT_RIGHT &&
             !room.gameOver &&
             !player.isBeingThrown) ||
-          (player.isAttacking &&
-            !player.isSlapAttack &&
-            player.x <= MAP_RING_OUT_LEFT &&
-            !room.gameOver &&
-            player.facing === -1) ||
-          (player.isAttacking &&
-            !player.isSlapAttack &&
-            player.x >= MAP_RING_OUT_RIGHT &&
-            !room.gameOver &&
-            player.facing === 1) ||
+
           (player.isBeingThrown &&
             !room.gameOver &&
             // Find the thrower to check their throwing direction
@@ -1175,13 +1173,7 @@ io.on("connection", (socket) => {
                 (player.x >= MAP_RIGHT_BOUNDARY &&
                   thrower.throwingFacingDirection === 1)
               );
-            })()) ||
-          // Add new condition for charged attack ring out
-          (player.isAttacking &&
-            !player.isSlapAttack &&
-            ((player.x <= MAP_RING_OUT_LEFT && player.facing === 1) ||
-              (player.x >= MAP_RING_OUT_RIGHT && player.facing === -1)) &&
-            !room.gameOver)
+            })())
         ) {
           const winner = room.players.find((p) => p.id !== player.id);
           handleWinCondition(room, player, winner, io);
@@ -1470,7 +1462,8 @@ io.on("connection", (socket) => {
             !player.isRawParrying &&
             !player.isThrowingSnowball &&
             !player.isSpawningPumoArmy &&
-            !player.keys.mouse1 // Add condition to prevent strafing while slapping
+            !player.keys.mouse1 && // Add condition to prevent strafing while slapping
+            !player.isAtTheRopes // Block strafing while at the ropes
           ) {
             // Apply ice drift when changing directions
             if (player.movementVelocity < 0) {
@@ -1508,7 +1501,8 @@ io.on("connection", (socket) => {
             !player.isRawParrying &&
             !player.isThrowingSnowball &&
             !player.isSpawningPumoArmy &&
-            !player.keys.mouse1 // Add condition to prevent strafing while slapping
+            !player.keys.mouse1 && // Add condition to prevent strafing while slapping
+            !player.isAtTheRopes // Block strafing while at the ropes
           ) {
             // Apply ice drift when changing directions
             if (player.movementVelocity > 0) {
@@ -1592,7 +1586,8 @@ io.on("connection", (socket) => {
           (player.keys.a && player.keys.d) ||
           player.keys.mouse1 || // Add condition to prevent strafing while slapping
           player.isHit || // Add isHit to force clear strafing when parried
-          player.isRawParrying // Add isRawParrying to force clear strafing during raw parry
+          player.isRawParrying || // Add isRawParrying to force clear strafing during raw parry
+          player.isAtTheRopes // Block strafing while at the ropes
         ) {
           player.isStrafing = false;
           // Don't immediately stop on ice unless hit
@@ -1614,7 +1609,8 @@ io.on("connection", (socket) => {
           player.isThrowTeching ||
           player.isRecovering ||
           player.isHit || // Add isHit to force clear strafing when parried
-          player.isRawParrying // Add isRawParrying to force clear strafing during raw parry
+          player.isRawParrying || // Add isRawParrying to force clear strafing during raw parry
+          player.isAtTheRopes // Block strafing while at the ropes
         ) {
           // Add isRecovering and isHit checks
           player.isStrafing = false;
@@ -1638,7 +1634,8 @@ io.on("connection", (socket) => {
           !player.isRecovering &&
           !(player.isAttacking && player.attackType === "charged") && // Block only during charged attack execution
           !player.isHit &&
-          !player.isRawParryStun
+          !player.isRawParryStun &&
+          !player.isAtTheRopes
         ) {
           // Start raw parry if not already parrying
           if (!player.isRawParrying) {
@@ -1704,19 +1701,76 @@ io.on("connection", (socket) => {
           }
         }
 
-        if (player.isAttacking && player.attackType === "charged") {
-          // Only move in the direction the player is facing
+        if (player.isAttacking && player.attackType === "charged" && !player.isAtTheRopes) {
+          // Only move in the direction the player is facing, but not if at the ropes
           const attackDirection = player.facing === 1 ? -1 : 1;
           const newX = player.x + attackDirection * delta * speedFactor * 2.5;
+          
 
-          // Only update position if it's moving in the correct direction
+          // Check if this movement would put player at the ropes
+          const leftCheck = newX <= MAP_RING_OUT_LEFT && attackDirection === -1;
+          const rightCheck = newX >= MAP_RING_OUT_RIGHT && attackDirection === 1;
+         
+          
           if (
-            (attackDirection === 1 && newX > player.x) ||
-            (attackDirection === -1 && newX < player.x)
+            !player.isAtTheRopes &&
+            (leftCheck || rightCheck) &&
+            !room.gameOver
           ) {
-            player.x = newX;
+            console.log(`🔴 Player ${player.id} hitting the ropes during charged attack! x: ${player.x}, newX: ${newX}, facing: ${player.facing}, MAP_RING_OUT_LEFT: ${MAP_RING_OUT_LEFT}, MAP_RING_OUT_RIGHT: ${MAP_RING_OUT_RIGHT}`);
+            
+            // Set at the ropes state
+            player.isAtTheRopes = true;
+            player.atTheRopesStartTime = Date.now();
+            
+            // Stop the attack and prevent movement
+            player.isAttacking = false;
+            player.isChargingAttack = false;
+            player.chargeStartTime = 0;
+            player.chargeAttackPower = 0;
+            player.chargingFacingDirection = null;
+            player.attackType = null;
+            player.attackStartTime = 0;
+            player.attackEndTime = 0;
+            
+            // Clear movement and knockback
+            player.movementVelocity = 0;
+            player.knockbackVelocity = { x: 0, y: 0 };
+            
+            // Constrain player position to boundary
+            if (newX <= MAP_RING_OUT_LEFT) {
+              player.x = MAP_RING_OUT_LEFT;
+            } else if (newX >= MAP_RING_OUT_RIGHT) {
+              player.x = MAP_RING_OUT_RIGHT;
+            }
+            
+            // Set timeout to end the at-the-ropes state
+            setPlayerTimeout(
+              player.id,
+              () => {
+                player.isAtTheRopes = false;
+                player.atTheRopesStartTime = 0;
+                console.log(`Player ${player.id} recovered from at the ropes state`);
+              },
+              AT_THE_ROPES_DURATION,
+              "atTheRopesTimeout" // Named timeout for cleanup
+            );
+          } else {
+            // Only update position if it's moving in the correct direction and not hitting boundaries
+            if (
+              (attackDirection === 1 && newX > player.x) ||
+              (attackDirection === -1 && newX < player.x)
+            ) {
+              player.x = newX;
+            }
           }
 
+          if (Date.now() >= player.attackEndTime) {
+            // Use helper function to safely end charged attacks
+            safelyEndChargedAttack(player, rooms);
+          }
+        } else if (player.isAttacking && player.attackType === "charged" && player.isAtTheRopes) {
+          // If at the ropes, still check for attack end time but don't move
           if (Date.now() >= player.attackEndTime) {
             // Use helper function to safely end charged attacks
             safelyEndChargedAttack(player, rooms);
@@ -2018,10 +2072,6 @@ io.on("connection", (socket) => {
     // Store the charge power before resetting states
     const chargePercentage = player.chargeAttackPower;
     
-    // Debug logging for charge power tracking
-    if (player.attackType === "charged") {
-      console.log(`🎯 CHARGED ATTACK HIT: Player ${player.id} chargePercentage: ${chargePercentage}%`);
-    }
 
     // Check for thick blubber hit absorption (only if defender is executing charged attack and hasn't used absorption)
     if (
@@ -2253,6 +2303,14 @@ io.on("connection", (socket) => {
       otherPlayer.isJumping = false;
       otherPlayer.isAttacking = false;
       otherPlayer.isStrafing = false;
+      
+      // Clear isAtTheRopes state if player gets hit during the stun
+      if (otherPlayer.isAtTheRopes) {
+        otherPlayer.isAtTheRopes = false;
+        otherPlayer.atTheRopesStartTime = 0;
+        // Clear any existing timeout for the at-the-ropes state
+        timeoutManager.clearPlayerSpecific(otherPlayer.id, "atTheRopesTimeout");
+      }
 
       // Increment hit counter for reliable hit sound triggering
       otherPlayer.hitCounter = (otherPlayer.hitCounter || 0) + 1;
@@ -2263,7 +2321,6 @@ io.on("connection", (socket) => {
       // Calculate knockback direction based on relative positions
       const knockbackDirection = player.x < otherPlayer.x ? 1 : -1;
       
-      console.log(`🧭 DIRECTION CALC: Player ${player.id} (x: ${player.x}) vs Other ${otherPlayer.id} (x: ${otherPlayer.x}) -> knockbackDirection: ${knockbackDirection}`);
 
       // Calculate knockback multiplier based on charge percentage
       let finalKnockbackMultiplier;
@@ -2276,18 +2333,9 @@ io.on("connection", (socket) => {
 
       // Apply power-up effects
       if (player.activePowerUp === POWER_UP_TYPES.POWER) {
-        console.log(`💥 POWER MULTIPLIER APPLIED: Player ${player.id} using power power-up - multiplier: ${player.powerUpMultiplier}, old knockback: ${finalKnockbackMultiplier}`);
         finalKnockbackMultiplier *= player.powerUpMultiplier;
-        console.log(`💥 POWER MULTIPLIER RESULT: Player ${player.id} new knockback: ${finalKnockbackMultiplier}`);
-      } else if (player.activePowerUp) {
-        console.log(`🔧 OTHER POWER-UP: Player ${player.id} has ${player.activePowerUp} power-up (not power type) - multiplier: ${player.powerUpMultiplier}`);
-      } else {
-        console.log(`❌ NO POWER-UP: Player ${player.id} has no activePowerUp`);
-      }
-
-      // Apply knockback only if not immune
-      console.log(`🛡️ KNOCKBACK IMMUNITY CHECK: Player ${otherPlayer.id} -> knockbackImmune: ${otherPlayer.knockbackImmune}, immuneEndTime: ${otherPlayer.knockbackImmuneEndTime}, currentTime: ${Date.now()}, canApply: ${canApplyKnockback(otherPlayer)}`);
-      console.log(`🎯 VICTIM STATE PRE-KNOCKBACK: Player ${otherPlayer.id} -> isHit: ${otherPlayer.isHit}, movementVelocity: ${otherPlayer.movementVelocity}, knockbackVelocity.x: ${otherPlayer.knockbackVelocity.x}`);
+      } 
+     
       
       if (canApplyKnockback(otherPlayer)) {
         if (isSlapAttack) {
@@ -2356,8 +2404,6 @@ io.on("connection", (socket) => {
 
         // Set knockback immunity
         setKnockbackImmunity(otherPlayer);
-        
-        console.log(`🎯 VICTIM STATE POST-KNOCKBACK: Player ${otherPlayer.id} -> movementVelocity: ${otherPlayer.movementVelocity}, knockbackVelocity.x: ${otherPlayer.knockbackVelocity.x}`);
 
         // Emit hit effect at the hit player's position
         if (currentRoom) {
@@ -2497,6 +2543,8 @@ io.on("connection", (socket) => {
         rawParryStartTime: 0,
         rawParryMinDurationMet: false,
         isRawParryStun: false,
+        isAtTheRopes: false,
+        atTheRopesStartTime: 0,
         dodgeDirection: false,
         dodgeEndTime: 0,
         isReady: false,
@@ -2589,6 +2637,8 @@ io.on("connection", (socket) => {
         rawParryStartTime: 0,
         rawParryMinDurationMet: false,
         isRawParryStun: false,
+        isAtTheRopes: false,
+        atTheRopesStartTime: 0,
         dodgeDirection: null,
         dodgeEndTime: 0,
         isReady: false,
@@ -2908,6 +2958,10 @@ io.on("connection", (socket) => {
         player.isRecovering &&
         !(allowDodgeCancelRecovery && data.keys && data.keys.shift)
       ) {
+        return true;
+      }
+      // Block all actions when at the ropes
+      if (player.isAtTheRopes) {
         return true;
       }
       return false;
@@ -3455,6 +3509,14 @@ io.on("connection", (socket) => {
               player.throwOpponent = opponent.id;
               opponent.isBeingThrown = true;
               opponent.isHit = false;
+              
+              // Clear isAtTheRopes state if player gets thrown during the stun
+              if (opponent.isAtTheRopes) {
+                opponent.isAtTheRopes = false;
+                opponent.atTheRopesStartTime = 0;
+                // Clear any existing timeout for the at-the-ropes state
+                timeoutManager.clearPlayerSpecific(opponent.id, "atTheRopesTimeout");
+              }
 
               player.throwCooldown = true;
               setPlayerTimeout(

@@ -110,7 +110,8 @@ function isPlayerInActiveState(player) {
     !player.isRawParryStun &&
     !player.isRawParrying &&
     !player.isThrowingSnowball &&
-    !player.canMoveToReady
+    !player.canMoveToReady &&
+    !player.isAtTheRopes
   );
 }
 
@@ -125,7 +126,8 @@ function isPlayerInBasicActiveState(player) {
     !player.isHit &&
     !player.isRawParryStun &&
     !player.isRawParrying &&
-    !player.isThrowingSnowball
+    !player.isThrowingSnowball &&
+    !player.isAtTheRopes
   );
 }
 
@@ -194,7 +196,8 @@ function canPlayerSlap(player) {
     !player.isRawParryStun &&
     !player.isRawParrying &&
     !player.isThrowingSnowball &&
-    !player.canMoveToReady
+    !player.canMoveToReady &&
+    !player.isAtTheRopes
   );
 }
 

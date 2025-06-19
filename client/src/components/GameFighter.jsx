@@ -75,6 +75,7 @@ import snowballThrowSound from "../sounds/snowball-throw-sound.mp3";
 import pumoArmySound from "../sounds/pumo-army-sound.mp3";
 import thickBlubberSound from "../sounds/thick-blubber-sound.mp3";
 import rawParryGruntSound from "../sounds/raw-parry-grunt.mp3";
+import hitEffectImage from "../assets/hit-effect.png";
 
 import UiPlayerInfo from "./UiPlayerInfo";
 import SaltEffect from "./SaltEffect";
@@ -181,6 +182,9 @@ const initializeImagePreloading = () => {
   preloadImage(recovering);
   preloadImage(recovering2);
   preloadImage(snowball);
+  
+  // Effect sprites
+  preloadImage(hitEffectImage);
 };
 
 // Initialize pools and preloading immediately
@@ -246,9 +250,11 @@ const getImageSrc = (
   isRecovering,
   isRawParryStun,
   isThrowingSnowball,
-  isSpawningPumoArmy
+  isSpawningPumoArmy,
+  isAtTheRopes
 ) => {
   if (fighter === "player 2") {
+    if (isAtTheRopes) return beingGrabbed;
     if (isBowing) return bow;
     if (isThrowTeching) return throwTech;
     if (isRecovering) return recovering;
@@ -277,6 +283,7 @@ const getImageSrc = (
     if (isThrowingSalt) return salt;
     return pumo;
   } else if (fighter === "player 1") {
+    if (isAtTheRopes) return beingGrabbed2;
     if (isJumping) return throwing2;
     if (isAttacking && !isSlapAttack) return attack2;
     if (isBowing) return bow2;
@@ -422,6 +429,7 @@ const StyledImage = styled("img")
         "sizeMultiplier",
         "isRecovering",
         "isRawParryStun",
+        "isAtTheRopes",
       ].includes(prop),
   })
   .attrs((props) => ({
@@ -451,7 +459,8 @@ const StyledImage = styled("img")
       props.$isRecovering,
       props.$isRawParryStun,
       props.$isThrowingSnowball,
-      props.$isSpawningPumoArmy
+      props.$isSpawningPumoArmy,
+      props.$isAtTheRopes
     ),
     style: {
       position: "absolute",
@@ -713,11 +722,6 @@ const GameFighter = ({
   disconnectedRoomId,
   onResetDisconnectState,
 }) => {
-  console.log(
-    `🔵 GameFighter mounted for player ${player.id}, isLocal: ${
-      player.id === localId
-    }`
-  );
   const { socket } = useContext(SocketContext);
   const [penguin, setPenguin] = useState({
     id: "",
@@ -747,6 +751,7 @@ const GameFighter = ({
     grabAttemptType: null,
     isRecovering: false,
     isRawParryStun: false,
+    isAtTheRopes: false,
     facing: 1,
     x: 0,
     y: 0,
@@ -991,10 +996,10 @@ const GameFighter = ({
         typeof data.stunnedPlayerY === "number" &&
         data.showStarStunEffect
       ) {
-        console.log("Perfect parry event received:", data);
+        
         // Only show the star stun effect for the stunned player (attacking player)
         if (data.attackingPlayerId === player.id) {
-          console.log("Showing star stun effect for player:", player.id);
+          
           setShowStarStunEffect(true);
 
           // Don't set a timeout here - let the effect disappear when stun ends
@@ -1210,9 +1215,6 @@ const GameFighter = ({
     ) {
       playSound(hitSound, 0.01);
       lastHitSoundTime.current = currentTime;
-      console.log(
-        `Hit sound played - isHit transition, hitCounter: ${penguin.hitCounter}, time: ${currentTime}`
-      );
     }
 
     // Update the previous state for next comparison
@@ -1307,10 +1309,7 @@ const GameFighter = ({
       !showStarStunEffect &&
       penguin.id === player.id
     ) {
-      console.log(
-        "Player is stunned but no star effect - showing stars for player:",
-        player.id
-      );
+    
       setShowStarStunEffect(true);
     }
   }, [penguin.isRawParryStun, showStarStunEffect, penguin.id, player.id]);
@@ -1411,9 +1410,6 @@ const GameFighter = ({
 
     // Test listener for any event to verify socket is working
     socket.on("fighter_action", () => {
-      console.log(
-        `🟢 Fighter action received by player ${player.id} component`
-      );
     });
 
     // Test if socket is connected and in the right room
@@ -1612,6 +1608,7 @@ const GameFighter = ({
         $isRawParryStun={penguin.isRawParryStun}
         $isThrowingSnowball={penguin.isThrowingSnowball}
         $isSpawningPumoArmy={penguin.isSpawningPumoArmy}
+        $isAtTheRopes={penguin.isAtTheRopes}
         style={{
           transform: penguin.facing === 1 ? "scaleX(1)" : "scaleX(-1)",
           width: "18.4%",
