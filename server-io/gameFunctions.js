@@ -628,15 +628,41 @@ function adjustPlayerPositions(player1, player2, delta) {
       }
     }
 
-    // Enforce map boundaries for both players
+    // Enforce map boundaries with symmetric correction
     const leftBoundary = MAP_LEFT_BOUNDARY;
     const rightBoundary = MAP_RIGHT_BOUNDARY;
 
-    // Only update positions if they stay within boundaries
-    if (newPlayer1X >= leftBoundary && newPlayer1X <= rightBoundary) {
+    // Check if either player would go out of bounds
+    const player1OutOfBounds = newPlayer1X < leftBoundary || newPlayer1X > rightBoundary;
+    const player2OutOfBounds = newPlayer2X < leftBoundary || newPlayer2X > rightBoundary;
+
+    if (player1OutOfBounds || player2OutOfBounds) {
+      // If one player can't move due to boundary, move the other player by the full separation distance
+      if (player1OutOfBounds && !player2OutOfBounds) {
+        // Player 1 is blocked by boundary, move player 2 by full separation distance
+        player1.x = Math.max(leftBoundary, Math.min(player1.x, rightBoundary)); // Keep player1 at boundary
+        const fullSeparationDirection = player2.x < player1.x ? -1 : 1;
+        const newPlayer2XFull = player2.x + fullSeparationDirection * separationSpeed;
+        if (newPlayer2XFull >= leftBoundary && newPlayer2XFull <= rightBoundary) {
+          player2.x = newPlayer2XFull;
+        }
+      } else if (player2OutOfBounds && !player1OutOfBounds) {
+        // Player 2 is blocked by boundary, move player 1 by full separation distance
+        player2.x = Math.max(leftBoundary, Math.min(player2.x, rightBoundary)); // Keep player2 at boundary
+        const fullSeparationDirection = player1.x < player2.x ? -1 : 1;
+        const newPlayer1XFull = player1.x + fullSeparationDirection * separationSpeed;
+        if (newPlayer1XFull >= leftBoundary && newPlayer1XFull <= rightBoundary) {
+          player1.x = newPlayer1XFull;
+        }
+      } else {
+        // Both players would go out of bounds or both are within bounds
+        // Keep both players at their boundary positions
+        player1.x = Math.max(leftBoundary, Math.min(newPlayer1X, rightBoundary));
+        player2.x = Math.max(leftBoundary, Math.min(newPlayer2X, rightBoundary));
+      }
+    } else {
+      // Both players can move normally
       player1.x = newPlayer1X;
-    }
-    if (newPlayer2X >= leftBoundary && newPlayer2X <= rightBoundary) {
       player2.x = newPlayer2X;
     }
   }

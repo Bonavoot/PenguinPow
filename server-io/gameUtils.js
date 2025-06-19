@@ -199,7 +199,7 @@ function canPlayerSlap(player) {
 }
 
 // Add helper function for clearing charge with auto-restart
-function clearChargeState(player) {
+function clearChargeState(player, isCancelled = false) {
   // Clear charge state only - no auto-restart
   // Auto-restart is now handled by specific action completion callbacks
   player.isChargingAttack = false;
@@ -209,6 +209,17 @@ function clearChargeState(player) {
   player.pendingChargeAttack = null;
   player.spacebarReleasedDuringDodge = false;
   player.mouse2HeldDuringAttack = false; // Clear the flag when clearing charge state
+  
+  // Set flag to indicate charge was cancelled (not executed)
+  if (isCancelled) {
+    player.chargeCancelled = true;
+    // Clear the flag after a short delay to prevent interference with next charge
+    setTimeout(() => {
+      if (player.chargeCancelled) {
+        player.chargeCancelled = false;
+      }
+    }, 100);
+  }
 }
 
 module.exports = {

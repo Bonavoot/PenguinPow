@@ -777,6 +777,7 @@ const GameFighter = ({
   const [playerTwoWinCount, setPlayerTwoWinCount] = useState(0);
   const [matchOver, setMatchOver] = useState(false);
   const [parryEffectPosition, setParryEffectPosition] = useState(null);
+  const [hitEffectPosition, setHitEffectPosition] = useState(null);
   const [showStarStunEffect, setShowStarStunEffect] = useState(false);
   const [hasUsedPowerUp, setHasUsedPowerUp] = useState(false);
   const [showFloatingPowerUp, setShowFloatingPowerUp] = useState(false);
@@ -969,6 +970,20 @@ const GameFighter = ({
       }
     });
 
+    socket.on("player_hit", (data) => {
+      if (
+        data &&
+        typeof data.x === "number" &&
+        typeof data.y === "number"
+      ) {
+        setHitEffectPosition({
+          x: data.x + 150,
+          y: data.y + 110, // Add GROUND_LEVEL to match player height
+          facing: data.facing || 1, // Default to 1 if facing not provided
+        });
+      }
+    });
+
     socket.on("perfect_parry", (data) => {
       if (
         data &&
@@ -1021,18 +1036,22 @@ const GameFighter = ({
       setGyojiState("idle");
       setMatchOver(false);
       setHasUsedPowerUp(false);
-      setCountdown(15);
       onResetDisconnectState(); // Reset opponent disconnected state for new games
       console.log("game reset gamefighter.jsx");
 
-      // Start countdown timer immediately
+      // Clear any existing countdown timer first
       if (countdownRef.current) {
         clearInterval(countdownRef.current);
+        countdownRef.current = null;
       }
+      
+      // Set countdown to 15 and start timer
+      setCountdown(15);
       countdownRef.current = setInterval(() => {
         setCountdown((prev) => {
           if (prev <= 1) {
             clearInterval(countdownRef.current);
+            countdownRef.current = null;
             return 0;
           }
           return prev - 1;
@@ -1043,11 +1062,14 @@ const GameFighter = ({
     socket.on("game_start", () => {
       console.log("game start gamefighter.jsx");
       setHakkiyoi(true);
-      // Clear the countdown timer when game starts
+      // Clear the countdown timer when game starts and immediately reset countdown
       if (countdownRef.current) {
         clearInterval(countdownRef.current);
-        setCountdown(0);
+        countdownRef.current = null;
       }
+      // Immediately set countdown to 0 to hide YOU label during gameplay
+      setCountdown(0);
+      
       // Hide hakkiyoi text after 3 seconds
       setTimeout(() => {
         setHakkiyoi(false);
@@ -1080,6 +1102,7 @@ const GameFighter = ({
     return () => {
       socket.off("fighter_action");
       socket.off("slap_parry");
+      socket.off("player_hit");
       socket.off("perfect_parry");
       socket.off("game_start");
       socket.off("game_reset");
@@ -1088,6 +1111,7 @@ const GameFighter = ({
       socket.off("power_up_activated");
       if (countdownRef.current) {
         clearInterval(countdownRef.current);
+        countdownRef.current = null;
       }
     };
   }, [index, socket, handleFighterAction]);
@@ -1532,6 +1556,7 @@ const GameFighter = ({
         facing={penguin.facing}
         isSlapAttack={penguin.isSlapAttack}
         isThrowing={penguin.isThrowing}
+        chargeCancelled={penguin.chargeCancelled || false}
       />
       <HitEffect
         isActive={penguin.isHit}
@@ -1636,6 +1661,7 @@ const GameFighter = ({
         playerY={penguin.y + 100}
       />
       <SlapParryEffect position={parryEffectPosition} />
+      <HitEffect position={hitEffectPosition} />
       <StarStunEffect
         x={penguin.x}
         y={penguin.y}

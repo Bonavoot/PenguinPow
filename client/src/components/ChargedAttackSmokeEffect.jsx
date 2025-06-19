@@ -37,17 +37,19 @@ const ChargedAttackSmokeEffect = ({
   facing,
   isSlapAttack,
   isThrowing,
+  chargeCancelled,
 }) => {
   const [smokeInstances, setSmokeInstances] = useState([]);
   const lastChargingState = useRef(isChargingAttack);
 
   useEffect(() => {
-    // Only show smoke when charging stops (attack is released), it's not a slap attack, and not throwing
+    // Only show smoke when charging stops (attack is released), it's not a slap attack, not throwing, and NOT cancelled
     if (
       !isChargingAttack &&
       lastChargingState.current &&
       !isSlapAttack &&
-      !isThrowing
+      !isThrowing &&
+      !chargeCancelled // Don't show smoke if charge was cancelled
     ) {
       // Add new smoke instance to existing array instead of replacing it
       const newSmokeInstance = {
@@ -66,7 +68,7 @@ const ChargedAttackSmokeEffect = ({
       }, GIF_DURATION);
     }
     lastChargingState.current = isChargingAttack;
-  }, [isChargingAttack, isSlapAttack, isThrowing, x, y, facing]);
+  }, [isChargingAttack, isSlapAttack, isThrowing, chargeCancelled, x, y, facing]);
 
   if (smokeInstances.length === 0) return null;
   return (
@@ -102,6 +104,7 @@ ChargedAttackSmokeEffect.propTypes = {
   facing: PropTypes.number.isRequired,
   isSlapAttack: PropTypes.bool.isRequired,
   isThrowing: PropTypes.bool.isRequired,
+  chargeCancelled: PropTypes.bool.isRequired,
 };
 
 export default ChargedAttackSmokeEffect;

@@ -1,0 +1,130 @@
+.hit-effect {
+  pointer-events: none;
+}
+
+.hit-ring {
+  position: relative;
+  width: clamp(3rem, 10vw, 5rem);
+  height: clamp(3rem, 10vw, 5rem);
+}
+
+/* Comic book style impact burst */
+.hit-ring::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 80%;
+  height: 80%;
+  background: 
+    radial-gradient(ellipse 100% 80%, 
+      rgba(255, 255, 255, 0.6) 0%, 
+      rgba(255, 255, 255, 0.5) 15%,
+      rgba(255, 99, 71, 0.5) 25%, 
+      rgba(220, 20, 60, 0.4) 45%,
+      rgba(178, 34, 34, 0.3) 65%, 
+      transparent 100%
+    );
+  border-radius: 50% 40% 60% 35%;
+  transform: translate(-50%, -50%) scale(0) rotate(0deg);
+  animation: comicBurst 0.2s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
+}
+
+/* Jagged star burst pattern */
+.hit-ring::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 120%;
+  height: 120%;
+  background: 
+    conic-gradient(from 0deg,
+      transparent 0deg, rgba(255, 255, 255, 0.9) 5deg, transparent 10deg,
+      transparent 15deg, rgba(255, 99, 71, 0.85) 20deg, transparent 25deg,
+      transparent 30deg, rgba(255, 255, 255, 0.9) 35deg, transparent 40deg,
+      transparent 45deg, rgba(220, 20, 60, 0.85) 50deg, transparent 55deg,
+      transparent 60deg, rgba(255, 255, 255, 0.9) 65deg, transparent 70deg,
+      transparent 75deg, rgba(178, 34, 34, 0.85) 80deg, transparent 85deg,
+      transparent 90deg, rgba(255, 255, 255, 0.9) 95deg, transparent 100deg,
+      transparent 105deg, rgba(255, 99, 71, 0.85) 110deg, transparent 115deg,
+      transparent 120deg, rgba(255, 255, 255, 0.9) 125deg, transparent 130deg,
+      transparent 135deg, rgba(220, 20, 60, 0.85) 140deg, transparent 145deg,
+      transparent 150deg, rgba(255, 255, 255, 0.9) 155deg, transparent 160deg,
+      transparent 165deg, rgba(178, 34, 34, 0.85) 170deg, transparent 175deg,
+      transparent 180deg, rgba(255, 255, 255, 0.9) 185deg, transparent 190deg,
+      transparent 195deg, rgba(255, 99, 71, 0.85) 200deg, transparent 205deg,
+      transparent 210deg, rgba(255, 255, 255, 0.9) 215deg, transparent 220deg,
+      transparent 225deg, rgba(220, 20, 60, 0.85) 230deg, transparent 235deg,
+      transparent 240deg, rgba(255, 255, 255, 0.9) 245deg, transparent 250deg,
+      transparent 255deg, rgba(178, 34, 34, 0.85) 260deg, transparent 265deg,
+      transparent 270deg, rgba(255, 255, 255, 0.9) 275deg, transparent 280deg,
+      transparent 285deg, rgba(255, 99, 71, 0.85) 290deg, transparent 295deg,
+      transparent 300deg, rgba(255, 255, 255, 0.9) 305deg, transparent 310deg,
+      transparent 315deg, rgba(220, 20, 60, 0.85) 320deg, transparent 325deg,
+      transparent 330deg, rgba(255, 255, 255, 0.9) 335deg, transparent 340deg,
+      transparent 345deg, rgba(178, 34, 34, 0.85) 350deg, transparent 355deg
+    );
+  clip-path: polygon(
+    50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 
+    50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%
+  );
+  transform: translate(-50%, -50%) scale(0) rotate(0deg);
+  animation: starBurst 0.25s ease-out 0.05s forwards;
+}
+
+/* Cartoony bouncing particles */
+.hit-ring {
+  overflow: visible;
+  position: relative;
+}
+
+/* Add bouncing cartoon elements */
+.hit-ring {
+  position: relative;
+}
+
+@keyframes comicBurst {
+  0% {
+    transform: translate(-50%, -50%) scale(0) rotate(-15deg);
+    opacity: 1;
+  }
+  30% {
+    transform: translate(-50%, -50%) scale(1.3) rotate(5deg);
+    opacity: 0.95;
+  }
+  60% {
+    transform: translate(-50%, -50%) scale(0.9) rotate(-2deg);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.1) rotate(0deg);
+    opacity: 0;
+  }
+}
+
+@keyframes starBurst {
+  0% {
+    transform: translate(-50%, -50%) scale(0) rotate(0deg);
+    opacity: 0.9;
+  }
+  40% {
+    transform: translate(-50%, -50%) scale(1.4) rotate(15deg);
+    opacity: 0.7;
+  }
+  70% {
+    transform: translate(-50%, -50%) scale(1.8) rotate(25deg);
+    opacity: 0.4;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.2) rotate(35deg);
+    opacity: 0;
+  }
+}
+
+/* Wobble effect for extra cartoon feel */
+@keyframes cartoonWobble {
+  0%, 100% { transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+  25% { transform: translate(-50%, -50%) scale(1.05) rotate(1deg); }
+  75% { transform: translate(-50%, -50%) scale(0.95) rotate(-1deg); }
+} 

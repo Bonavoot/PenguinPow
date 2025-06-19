@@ -1,41 +1,49 @@
+import { useEffect, useState } from "react";
 import styled from "styled-components";
 import PropTypes from "prop-types";
-import hitEffect from "../assets/fire-hit-effect.gif";
+import "./HitEffect.css";
 
-const HitEffectImage = styled.img.attrs((props) => ({
+const HitEffectContainer = styled.div.attrs((props) => ({
   style: {
     position: "absolute",
-    width: "6%",
-    height: "auto",
-    pointerEvents: "none",
+    left: `${(props.$x / 1280) * 100}%`,
+    bottom: `${(props.$y / 720) * 100 - 4}%`, // Lower the effect by 4% of screen height
+    transform: "translate(-50%, -50%)",
     zIndex: 100,
-    filter:
-      "brightness(.1) invert(1) drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000)",
-    left: `${(props.$x / 1280) * 100 + (props.$facing === 1 ? 1 : 11)}%`,
-    bottom: `${(props.$y / 720) * 100 + 11}%`,
-    transform: `scaleX(${props.$facing * 1}) rotateZ(-10deg)`,
+    pointerEvents: "none",
   },
 }))``;
 
-const HitEffect = ({ isActive, x, y, facing }) => {
-  if (!isActive) return null;
+const HitEffect = ({ position }) => {
+  const [showEffect, setShowEffect] = useState(false);
+
+  useEffect(() => {
+    if (position) {
+      setShowEffect(true);
+      setTimeout(() => setShowEffect(false), 300);
+    }
+  }, [position]);
+
+  if (!showEffect || !position) return null;
 
   return (
-    <HitEffectImage
-      src={hitEffect}
-      alt="Hit Effect"
-      $x={x}
-      $y={y}
-      $facing={facing}
-    />
+    <HitEffectContainer $x={position.x} $y={position.y}>
+      <div 
+        className="hit-ring" 
+        style={{ 
+          transform: position.facing === 1 ? "scaleX(-1)" : "scaleX(1)" 
+        }}
+      ></div>
+    </HitEffectContainer>
   );
 };
 
 HitEffect.propTypes = {
-  isActive: PropTypes.bool.isRequired,
-  x: PropTypes.number.isRequired,
-  y: PropTypes.number.isRequired,
-  facing: PropTypes.number.isRequired,
+  position: PropTypes.shape({
+    x: PropTypes.number.isRequired,
+    y: PropTypes.number.isRequired,
+    facing: PropTypes.number,
+  }),
 };
 
 export default HitEffect;

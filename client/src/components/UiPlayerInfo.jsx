@@ -176,7 +176,7 @@ const WinTracker = styled.div`
   flex-direction: ${(props) => (props.$isRight ? "row-reverse" : "row")};
   flex-shrink: 0;
   position: absolute;
-  top: clamp(-28px, -3.5vh, -35px);
+  top: clamp(-33px, -4vh, -40px);
   right: clamp(8px, 1.2vw, 12px);
   max-width: 35%;
   z-index: 10;
@@ -184,12 +184,12 @@ const WinTracker = styled.div`
 
   @media (max-width: 768px) {
     gap: clamp(1px, 0.3vw, 2px);
-    top: clamp(-24px, -3vh, -28px);
+    top: clamp(-29px, -3.5vh, -33px);
   }
 
   @media (max-width: 480px) {
     gap: 1px;
-    top: clamp(-20px, -2.5vh, -24px);
+    top: clamp(-25px, -3vh, -29px);
   }
 `;
 
