@@ -83,7 +83,7 @@ function handleWinCondition(room, loser, winner, io) {
   room.players.forEach((p) => {
     const currentX = p.x;
     p.isStrafing = false;
-    
+
     // Clear isAtTheRopes state when game ends
     if (p.isAtTheRopes) {
       p.isAtTheRopes = false;
@@ -148,12 +148,21 @@ function executeSlapAttack(player, rooms) {
       // Update facing direction based on opponent's position
       player.facing = player.x < opponent.x ? -1 : 1;
 
-      // Add forward slide during slap attack with fixed values regardless of power-ups
-      const FIXED_SLAP_SLIDE_VELOCITY = 2.5; // Decreased from 3.5 to 2.5 for shorter slide
+      // Add forward slide during slap attack with power-up consideration
+      let slapSlideVelocity = 2.5; // Base slide velocity (decreased from 3.5 to 2.5 for shorter slide)
+
+      // Apply POWER power-up multiplier to slap slide distance
+      if (player.activePowerUp === "power") {
+        slapSlideVelocity *= player.powerUpMultiplier; // 1.3x multiplier for POWER power-up
+        console.log(
+          `Player ${player.id} slap slide enhanced by POWER power-up: ${slapSlideVelocity}`
+        );
+      }
+
       const slideDirection = player.facing === 1 ? -1 : 1; // Slide in the direction player is facing
 
-      // Apply fixed slide velocity and mark that we're in a slap slide
-      player.movementVelocity = slideDirection * FIXED_SLAP_SLIDE_VELOCITY;
+      // Apply slide velocity and mark that we're in a slap slide
+      player.movementVelocity = slideDirection * slapSlideVelocity;
       player.isSlapSliding = true; // New flag to track slap slide state
     }
   }
@@ -639,28 +648,36 @@ function adjustPlayerPositions(player1, player2, delta) {
     const rightBoundary = MAP_RIGHT_BOUNDARY;
 
     // Check if either player would go out of bounds
-    const player1OutOfBounds = newPlayer1X < leftBoundary || newPlayer1X > rightBoundary;
-    const player2OutOfBounds = newPlayer2X < leftBoundary || newPlayer2X > rightBoundary;
+    const player1OutOfBounds =
+      newPlayer1X < leftBoundary || newPlayer1X > rightBoundary;
+    const player2OutOfBounds =
+      newPlayer2X < leftBoundary || newPlayer2X > rightBoundary;
 
     // Special case: if both players are at the same boundary and overlapping,
     // force one player to switch sides for proper separation (like dodge through behavior)
-    const bothAtSameBoundary = 
+    const bothAtSameBoundary =
       (player1.x <= leftBoundary + 5 && player2.x <= leftBoundary + 5) ||
       (player1.x >= rightBoundary - 5 && player2.x >= rightBoundary - 5);
 
     if (bothAtSameBoundary && distanceBetweenCenters < finalMinDistance) {
       // Smooth separation when both players are at the same boundary
-      
+
       // Determine which player should switch sides based on their recent movement or facing direction
       let playerToMove = null;
       let playerToKeep = null;
-      
+
       // Check if either player has recent movement velocity that suggests they just arrived
-      if (Math.abs(player2.movementVelocity || 0) > Math.abs(player1.movementVelocity || 0)) {
+      if (
+        Math.abs(player2.movementVelocity || 0) >
+        Math.abs(player1.movementVelocity || 0)
+      ) {
         // Player2 has more momentum, they probably just arrived (like from a dodge)
         playerToMove = player2;
         playerToKeep = player1;
-      } else if (Math.abs(player1.movementVelocity || 0) > Math.abs(player2.movementVelocity || 0)) {
+      } else if (
+        Math.abs(player1.movementVelocity || 0) >
+        Math.abs(player2.movementVelocity || 0)
+      ) {
         // Player1 has more momentum
         playerToMove = player1;
         playerToKeep = player2;
@@ -676,16 +693,19 @@ function adjustPlayerPositions(player1, player2, delta) {
           playerToKeep = playerToMove === player1 ? player2 : player1;
         }
       }
-      
+
       // Keep one player at the boundary (minimal adjustment)
-      const keeperTargetX = Math.max(leftBoundary, Math.min(playerToKeep.x, rightBoundary));
+      const keeperTargetX = Math.max(
+        leftBoundary,
+        Math.min(playerToKeep.x, rightBoundary)
+      );
       playerToKeep.x += (keeperTargetX - playerToKeep.x) * 0.2; // Gentle approach to boundary
-      
+
       // Calculate minimal separation needed - just enough to resolve collision
       // We want the distance between centers to equal finalMinDistance (no extra padding)
       const currentDistance = Math.abs(playerToMove.x - playerToKeep.x);
       const neededSeparation = finalMinDistance - currentDistance;
-      
+
       // Only move if we actually need separation
       if (neededSeparation > 0) {
         // Determine direction to move the player (away from the boundary)
@@ -697,15 +717,18 @@ function adjustPlayerPositions(player1, player2, delta) {
           // Keeper is at left boundary, move the other player to the right
           direction = 1;
         }
-        
+
         // Calculate target position with minimal separation
-        const targetX = playerToKeep.x + (direction * finalMinDistance);
-        const clampedTargetX = Math.max(leftBoundary, Math.min(targetX, rightBoundary));
-        
+        const targetX = playerToKeep.x + direction * finalMinDistance;
+        const clampedTargetX = Math.max(
+          leftBoundary,
+          Math.min(targetX, rightBoundary)
+        );
+
         // Direct position-based movement - no velocity momentum
         const distanceToTarget = clampedTargetX - playerToMove.x;
         const maxMovePerFrame = 3; // Maximum pixels to move per frame for smoothness
-        
+
         if (Math.abs(distanceToTarget) <= maxMovePerFrame) {
           // Close enough - move directly to target and stop
           playerToMove.x = clampedTargetX;
@@ -720,29 +743,42 @@ function adjustPlayerPositions(player1, player2, delta) {
         // Already properly separated, clear any velocity
         playerToMove.movementVelocity = 0;
       }
-      
     } else if (player1OutOfBounds || player2OutOfBounds) {
       // Normal boundary handling for non-overlapping cases
       if (player1OutOfBounds && !player2OutOfBounds) {
         // Player 1 is blocked by boundary, move player 2 by full separation distance
         player1.x = Math.max(leftBoundary, Math.min(player1.x, rightBoundary)); // Keep player1 at boundary
         const fullSeparationDirection = player2.x < player1.x ? -1 : 1;
-        const newPlayer2XFull = player2.x + fullSeparationDirection * separationSpeed;
-        if (newPlayer2XFull >= leftBoundary && newPlayer2XFull <= rightBoundary) {
+        const newPlayer2XFull =
+          player2.x + fullSeparationDirection * separationSpeed;
+        if (
+          newPlayer2XFull >= leftBoundary &&
+          newPlayer2XFull <= rightBoundary
+        ) {
           player2.x = newPlayer2XFull;
         }
       } else if (player2OutOfBounds && !player1OutOfBounds) {
         // Player 2 is blocked by boundary, move player 1 by full separation distance
         player2.x = Math.max(leftBoundary, Math.min(player2.x, rightBoundary)); // Keep player2 at boundary
         const fullSeparationDirection = player1.x < player2.x ? -1 : 1;
-        const newPlayer1XFull = player1.x + fullSeparationDirection * separationSpeed;
-        if (newPlayer1XFull >= leftBoundary && newPlayer1XFull <= rightBoundary) {
+        const newPlayer1XFull =
+          player1.x + fullSeparationDirection * separationSpeed;
+        if (
+          newPlayer1XFull >= leftBoundary &&
+          newPlayer1XFull <= rightBoundary
+        ) {
           player1.x = newPlayer1XFull;
         }
       } else {
         // Both players would go out of bounds - clamp both to boundaries
-        player1.x = Math.max(leftBoundary, Math.min(newPlayer1X, rightBoundary));
-        player2.x = Math.max(leftBoundary, Math.min(newPlayer2X, rightBoundary));
+        player1.x = Math.max(
+          leftBoundary,
+          Math.min(newPlayer1X, rightBoundary)
+        );
+        player2.x = Math.max(
+          leftBoundary,
+          Math.min(newPlayer2X, rightBoundary)
+        );
       }
     } else {
       // Both players can move normally
