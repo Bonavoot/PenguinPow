@@ -89,6 +89,12 @@ function handleWinCondition(room, loser, winner, io) {
       p.isAtTheRopes = false;
       p.atTheRopesStartTime = 0;
     }
+
+    // Clear buffered slap attack states to prevent attacks after winner is declared
+    p.hasPendingSlapAttack = false;
+    p.mouse1JustPressed = false;
+    p.mouse1JustReleased = false;
+
     p.keys = {
       w: false,
       a: false,
@@ -98,6 +104,8 @@ function handleWinCondition(room, loser, winner, io) {
       shift: false,
       e: false,
       f: false,
+      mouse1: false,
+      mouse2: false,
     };
     p.x = currentX;
   });
@@ -167,13 +175,26 @@ function executeSlapAttack(player, rooms) {
     }
   }
 
-  // If already attacking, only allow ONE buffered attack
+  // If already attacking, only allow ONE buffered attack and only during the last 50% of the attack
   if (player.isSlapAttack && player.isAttacking) {
-    // Only store one pending attack, ignore additional rapid clicks
-    if (!player.hasPendingSlapAttack) {
-      player.hasPendingSlapAttack = true;
+    // Calculate how far through the attack we are
+    const currentTime = Date.now();
+    const attackElapsed = currentTime - player.attackStartTime;
+    const attackDuration = player.attackEndTime - player.attackStartTime;
+    const attackProgress = attackElapsed / attackDuration;
+    
+    // Only allow buffering during the last 50% of the attack (50% complete or more)
+    if (attackProgress >= 0.50) {
+      // Only store one pending attack, ignore additional rapid clicks
+      if (!player.hasPendingSlapAttack) {
+        player.hasPendingSlapAttack = true;
+        console.log(`Player ${player.id} buffered slap attack at ${Math.round(attackProgress * 100)}% completion`);
+      }
+    } else {
+      console.log(`Player ${player.id} attempted to buffer slap too early (${Math.round(attackProgress * 100)}% complete, need 50%+)`);
     }
-    // Ignore additional clicks if there's already a pending attack
+    
+    // Ignore clicks if there's already a pending attack or if it's too early to buffer
     return;
   }
 
