@@ -161,7 +161,7 @@ function executeSlapAttack(player, rooms) {
 
       // Apply POWER power-up multiplier to slap slide distance
       if (player.activePowerUp === "power") {
-        slapSlideVelocity *= player.powerUpMultiplier; // 1.3x multiplier for POWER power-up
+        slapSlideVelocity *= player.powerUpMultiplier - .1; // 1.3x multiplier for POWER power-up
         console.log(
           `Player ${player.id} slap slide enhanced by POWER power-up: ${slapSlideVelocity}`
         );
@@ -184,7 +184,7 @@ function executeSlapAttack(player, rooms) {
     const attackProgress = attackElapsed / attackDuration;
     
     // Only allow buffering during the last 50% of the attack (50% complete or more)
-    if (attackProgress >= 0.50) {
+    if (attackProgress >= 0.35) {
       // Only store one pending attack, ignore additional rapid clicks
       if (!player.hasPendingSlapAttack) {
         player.hasPendingSlapAttack = true;
@@ -242,6 +242,10 @@ function executeSlapAttack(player, rooms) {
       // Check if there's a pending slap attack to execute
       if (player.hasPendingSlapAttack) {
         player.hasPendingSlapAttack = false;
+        // Set strafing cooldown to prevent movement during the gap between attacks
+        player.slapStrafeCooldown = true;
+        player.slapStrafeCooldownEndTime = Date.now() + 150; // 150ms cooldown after attack ends
+        
         // Add a small delay before executing the next slap to allow neutral animation
         setPlayerTimeout(
           player.id,
@@ -263,6 +267,10 @@ function executeSlapAttack(player, rooms) {
         );
         return; // Early return to skip charging restart logic
       }
+
+      // Set strafing cooldown for non-buffered attacks too
+      player.slapStrafeCooldown = true;
+      player.slapStrafeCooldownEndTime = Date.now() + 150; // 150ms cooldown after attack ends
 
       // After slap attack ends, check if we should restart charging
       if (
@@ -401,7 +409,31 @@ function executeChargedAttack(player, chargePercentage, rooms) {
     }
   }
 
-  // Lock facing direction during attack
+  // Auto-correct facing direction before locking it (similar to slap attacks after throw)
+  // Find the current room and opponent
+  const currentRoom = rooms.find((room) =>
+    room.players.some((p) => p.id === player.id)
+  );
+  
+  if (currentRoom) {
+    const opponent = currentRoom.players.find((p) => p.id !== player.id);
+    
+    // Only auto-correct if opponent exists and is NOT dodging
+    // If opponent is dodging, we want to preserve the original facing direction
+    if (opponent && !opponent.isDodging) {
+      // Auto-correct facing direction to face the opponent
+      const shouldFaceRight = player.x < opponent.x;
+      const correctedFacing = shouldFaceRight ? -1 : 1;
+      
+      console.log(`Player ${player.id} auto-correcting charged attack facing: ${player.facing} -> ${correctedFacing} (opponent at x: ${opponent.x}, player at x: ${player.x}, opponent dodging: ${opponent.isDodging})`);
+      
+      player.facing = correctedFacing;
+    } else if (opponent && opponent.isDodging) {
+      console.log(`Player ${player.id} NOT auto-correcting charged attack facing - opponent is dodging (preserving direction: ${player.facing})`);
+    }
+  }
+
+  // Lock facing direction during attack (after auto-correction)
   player.chargingFacingDirection = player.facing;
   if (player.chargingFacingDirection !== null) {
     player.facing = player.chargingFacingDirection;

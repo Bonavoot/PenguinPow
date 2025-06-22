@@ -1456,13 +1456,15 @@ io.on("connection", (socket) => {
             !player.isDodging &&
             !player.isThrowing &&
             !player.isGrabbing &&
-            !(player.isAttacking && player.attackType === "charged") && // Block during charged attack execution
+            !player.isAttacking && // Block during any attack (slap or charged)
             !player.isRecovering &&
             !player.isRawParryStun &&
             !player.isRawParrying &&
             !player.isThrowingSnowball &&
             !player.isSpawningPumoArmy &&
             !player.keys.mouse1 && // Add condition to prevent strafing while slapping
+            !player.hasPendingSlapAttack && // Block strafing when buffered slap attack is pending
+            !(player.slapStrafeCooldown && Date.now() < player.slapStrafeCooldownEndTime) && // Block strafing during post-slap cooldown
             !player.isAtTheRopes // Block strafing while at the ropes
           ) {
             // Apply ice drift when changing directions
@@ -1495,13 +1497,15 @@ io.on("connection", (socket) => {
             !player.isDodging &&
             !player.isThrowing &&
             !player.isGrabbing &&
-            !(player.isAttacking && player.attackType === "charged") && // Block during charged attack execution
+            !player.isAttacking && // Block during any attack (slap or charged)
             !player.isRecovering &&
             !player.isRawParryStun &&
             !player.isRawParrying &&
             !player.isThrowingSnowball &&
             !player.isSpawningPumoArmy &&
             !player.keys.mouse1 && // Add condition to prevent strafing while slapping
+            !player.hasPendingSlapAttack && // Block strafing when buffered slap attack is pending
+            !(player.slapStrafeCooldown && Date.now() < player.slapStrafeCooldownEndTime) && // Block strafing during post-slap cooldown
             !player.isAtTheRopes // Block strafing while at the ropes
           ) {
             // Apply ice drift when changing directions
@@ -1571,7 +1575,10 @@ io.on("connection", (socket) => {
             (!player.keys.a &&
               !player.keys.d &&
               (!player.canMoveToReady || room.gameStart)) ||
-            player.keys.mouse1 // Add condition to prevent strafing while slapping
+            player.keys.mouse1 || // Add condition to prevent strafing while slapping
+            player.isAttacking || // Clear strafing during any attack
+            player.hasPendingSlapAttack || // Clear strafing when buffered slap attack is pending
+            (player.slapStrafeCooldown && Date.now() < player.slapStrafeCooldownEndTime) // Clear strafing during post-slap cooldown
           ) {
             player.isStrafing = false;
           }
@@ -1585,6 +1592,9 @@ io.on("connection", (socket) => {
           player.isRecovering ||
           (player.keys.a && player.keys.d) ||
           player.keys.mouse1 || // Add condition to prevent strafing while slapping
+          player.isAttacking || // Clear strafing during any attack
+          player.hasPendingSlapAttack || // Clear strafing when buffered slap attack is pending
+          (player.slapStrafeCooldown && Date.now() < player.slapStrafeCooldownEndTime) || // Clear strafing during post-slap cooldown
           player.isHit || // Add isHit to force clear strafing when parried
           player.isRawParrying || // Add isRawParrying to force clear strafing during raw parry
           player.isAtTheRopes // Block strafing while at the ropes
@@ -1608,6 +1618,9 @@ io.on("connection", (socket) => {
             (!player.canMoveToReady || room.gameStart)) ||
           player.isThrowTeching ||
           player.isRecovering ||
+          player.isAttacking || // Clear strafing during any attack
+          player.hasPendingSlapAttack || // Clear strafing when buffered slap attack is pending
+          (player.slapStrafeCooldown && Date.now() < player.slapStrafeCooldownEndTime) || // Clear strafing during post-slap cooldown
           player.isHit || // Add isHit to force clear strafing when parried
           player.isRawParrying || // Add isRawParrying to force clear strafing during raw parry
           player.isAtTheRopes // Block strafing while at the ropes
@@ -1873,6 +1886,12 @@ io.on("connection", (socket) => {
             (chargeDuration / 750) * 100,
             100
           ); // Changed from 1200 to 750 for faster charge
+        }
+
+        // Clear strafing cooldown when it expires
+        if (player.slapStrafeCooldown && Date.now() >= player.slapStrafeCooldownEndTime) {
+          player.slapStrafeCooldown = false;
+          player.slapStrafeCooldownEndTime = 0;
         }
       });
 
