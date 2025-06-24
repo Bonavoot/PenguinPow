@@ -9,11 +9,11 @@ const DEPTH_LEVELS = [
   { level: GROUND_LEVEL, probability: 0.5 }, // Foreground snow
 ];
 
-// Performance settings
-const MAX_SNOWFLAKES = 15; // Reduced from 100
-const MAX_ENVELOPES = 25; // Fewer envelopes than snowflakes for better performance
-const UPDATE_INTERVAL = 16; // Update every 16ms for smoother animation
-const USE_BLUR = false; // Disable blur effect for better performance
+// Performance settings - OPTIMIZED
+const MAX_SNOWFLAKES = 8; // Reduced from 15 for better performance
+const MAX_ENVELOPES = 12; // Reduced from 25 for better performance
+const UPDATE_INTERVAL = 32; // Reduced from 16ms (30fps instead of 60fps)
+const USE_BLUR = false; // Keep disabled for performance
 
 const SnowContainer = styled.div`
   position: absolute;
@@ -28,9 +28,9 @@ const SnowContainer = styled.div`
 
 const Snowflake = styled.div.attrs((props) => ({
   style: {
-    transform: `translate(${props.$x}px, ${props.$y}px) scale(${props.$scale}) rotate(${props.$rotation}deg)`,
+    // Use transform3d for hardware acceleration
+    transform: `translate3d(${props.$x}px, ${props.$y}px, 0) scale(${props.$scale}) rotate(${props.$rotation}deg)`,
     opacity: props.$opacity,
-    ...(USE_BLUR && { filter: `blur(${props.$blur}px)` }),
   },
 }))`
   position: absolute;
@@ -50,10 +50,7 @@ const Snowflake = styled.div.attrs((props) => ({
   will-change: transform, opacity;
   transform-style: preserve-3d;
   backface-visibility: hidden;
-  box-shadow: ${(props) =>
-    props.$isEnvelope
-      ? "0 0 8px rgba(255, 255, 255, 0.0)"
-      : "0 0 4px rgba(255, 255, 255, 0.3)"};
+  /* Removed box-shadow for better performance */
 `;
 
 const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
@@ -69,14 +66,14 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
     ((winner.fighter === "player 1" && playerIndex === 0) ||
       (winner.fighter === "player 2" && playerIndex === 1));
 
-  // Check for low performance
+  // Simplified performance check
   useEffect(() => {
     const checkPerformance = () => {
       const fps = 1000 / (performance.now() - lastUpdateTime.current);
-      isLowPerformance.current = fps < 30;
+      isLowPerformance.current = fps < 20; // Lower threshold
     };
 
-    const performanceCheckInterval = setInterval(checkPerformance, 1000);
+    const performanceCheckInterval = setInterval(checkPerformance, 2000); // Check less frequently
     return () => clearInterval(performanceCheckInterval);
   }, []);
 
@@ -106,14 +103,13 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
           (isEnvelope ? 1.2 : 1) + Math.random() * (isEnvelope ? 1.5 : 2),
         opacity: 0.5 + Math.random() * 0.5,
         scale: isEnvelope ? 0.8 + Math.random() * 0.4 : 0.5 + Math.random() * 1,
-        blur: Math.random() * 0.5,
         rotation: Math.random() * 360,
-        rotationSpeed: (Math.random() - 0.5) * (isEnvelope ? 8 : 2),
+        rotationSpeed: (Math.random() - 0.5) * (isEnvelope ? 4 : 1), // Reduced rotation speed
         depthLevel,
         isEnvelope,
         swayPhase: Math.random() * Math.PI * 2,
-        swayAmplitude: isEnvelope ? 0.5 + Math.random() * 1 : 0,
-        swayFrequency: isEnvelope ? 1.2 + Math.random() * 0.8 : 0,
+        swayAmplitude: isEnvelope ? 0.3 + Math.random() * 0.5 : 0, // Reduced sway
+        swayFrequency: isEnvelope ? 0.8 + Math.random() * 0.4 : 0, // Reduced frequency
       };
     },
     [getRandomDepthLevel, shouldShowEnvelopes]
@@ -121,11 +117,9 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
 
   const updateParticle = useCallback(
     (particle, deltaTime) => {
-      // Add easing to the movement
-      const easing = 0.98;
       const newY = particle.y + particle.velocityY * (deltaTime / 16);
 
-      // Calculate swaying motion for envelopes
+      // Simplified swaying motion
       let swayX = 0;
       if (particle.isEnvelope) {
         const time = performance.now() / 1000;
@@ -144,19 +138,15 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
       if (newX < -10) finalX = window.innerWidth + 10;
       if (newX > window.innerWidth + 10) finalX = -10;
 
-      // Apply easing to rotation with more variation for envelopes
-      const targetRotation =
-        particle.rotation +
-        particle.rotationSpeed * (particle.isEnvelope ? 1.5 : 1);
-      const easedRotation =
-        particle.rotation + (targetRotation - particle.rotation) * (1 - easing);
+      // Simplified rotation update
+      const newRotation = particle.rotation + particle.rotationSpeed;
 
       return {
         ...particle,
         x: finalX,
         y: newY,
-        rotation: easedRotation,
-        velocityX: particle.velocityX * easing,
+        rotation: newRotation,
+        velocityX: particle.velocityX * 0.99, // Simplified easing
         velocityY: particle.velocityY,
       };
     },
@@ -191,7 +181,7 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
 
           // Add new particles if needed, but respect performance mode
           const targetCount = isLowPerformance.current
-            ? maxParticles / 2
+            ? Math.max(1, maxParticles / 3) // More aggressive reduction
             : maxParticles;
           while (updatedParticles.length < targetCount) {
             updatedParticles.push(createParticle());
@@ -224,7 +214,6 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
           $y={particle.y}
           $opacity={particle.opacity}
           $scale={particle.scale}
-          $blur={particle.blur}
           $rotation={particle.rotation}
           $isEnvelope={particle.isEnvelope}
         />

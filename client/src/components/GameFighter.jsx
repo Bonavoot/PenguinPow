@@ -475,20 +475,15 @@ const StyledImage = styled("img")
       animation: props.$isRawParrying
         ? "rawParryFlash 1.2s ease-in-out infinite"
         : "none",
+      width: "min(18.4%, 480px)",
+      height: "auto",
+      willChange: "bottom, left, filter, opacity",
+      pointerEvents: "none",
+      transformOrigin: "center",
+      transition: "none",
     },
   }))`
-  position: absolute;
-  /* Limit maximum size to prevent over-scaling beyond source resolution */
-  width: min(18.4%, 480px);
-  height: auto;
-  will-change: bottom, left, filter, opacity;
-  pointer-events: none;
-  transform-origin: center;
-  /* Remove any transition on transform to prevent facing direction animation */
-  transition: none;
-
-
-
+  /* Static styles only - no dynamic props here */
   @keyframes rawParryFlash {
     0% {
       filter: drop-shadow(0 0 2px rgba(0, 150, 255, 0.4)) brightness(1) drop-shadow(0 0 1px #000);
@@ -769,6 +764,13 @@ const GameFighter = ({
     hitCounter: 0,
   });
 
+  // Add interpolation state
+  const [interpolatedPosition, setInterpolatedPosition] = useState({ x: 0, y: 0 });
+  const previousState = useRef(null);
+  const currentState = useRef(null);
+  const lastUpdateTime = useRef(performance.now());
+  const interpolationStartTime = useRef(performance.now());
+
   // Store both players' data for UI (only needed for first component)
   const [allPlayersData, setAllPlayersData] = useState({
     player1: null,
@@ -803,6 +805,68 @@ const GameFighter = ({
   });
   const [thickBlubberIndicator, setThickBlubberIndicator] = useState(false);
   const [disconnectCountdown, setDisconnectCountdown] = useState(3);
+
+  // Interpolation constants
+  const SERVER_TICK_RATE = 64; // Server runs at 64 FPS
+  const SERVER_UPDATE_INTERVAL = 1000 / SERVER_TICK_RATE; // ~15.625ms
+
+  // Interpolation function for smooth movement
+  const interpolatePosition = useCallback((prevPos, currentPos, factor) => {
+    // Don't interpolate discrete jumps (teleports, throws, hits)
+    const maxInterpolationDistance = 100; // Don't interpolate if positions are too far apart
+    const distance = Math.abs(currentPos.x - prevPos.x) + Math.abs(currentPos.y - prevPos.y);
+    
+    if (distance > maxInterpolationDistance) {
+      return currentPos; // Use current position for teleports/throws
+    }
+
+    // Don't interpolate during certain states where position changes should be instant
+    if (penguin.isBeingThrown || penguin.isThrowing || penguin.isHit || penguin.isDodging) {
+      return currentPos;
+    }
+
+    return {
+      x: prevPos.x + (currentPos.x - prevPos.x) * factor,
+      y: prevPos.y + (currentPos.y - prevPos.y) * factor,
+    };
+  }, [penguin.isBeingThrown, penguin.isThrowing, penguin.isHit, penguin.isDodging]);
+
+  // Animation loop for interpolation
+  const interpolationLoop = useCallback((timestamp) => {
+    if (currentState.current && previousState.current) {
+      const timeSinceUpdate = timestamp - lastUpdateTime.current;
+      const interpolationFactor = Math.min(timeSinceUpdate / SERVER_UPDATE_INTERVAL, 1);
+
+      // Only interpolate position, not discrete states
+      const interpolatedPos = interpolatePosition(
+        { x: previousState.current.x, y: previousState.current.y },
+        { x: currentState.current.x, y: currentState.current.y },
+        interpolationFactor
+      );
+
+      setInterpolatedPosition(interpolatedPos);
+    } else if (currentState.current) {
+      // Fallback to current position if no previous state
+      setInterpolatedPosition({ x: currentState.current.x, y: currentState.current.y });
+    }
+
+    requestAnimationFrame(interpolationLoop);
+  }, [interpolatePosition]);
+
+  // Start interpolation loop
+  useEffect(() => {
+    const animationId = requestAnimationFrame(interpolationLoop);
+    return () => cancelAnimationFrame(animationId);
+  }, [interpolationLoop]);
+
+  // Smooth interpolation with predictive positioning for better feel
+  const getDisplayPosition = useCallback(() => {
+    // If no interpolation data is available yet, fall back to server position
+    if (!interpolatedPosition.x && !interpolatedPosition.y && penguin.x) {
+      return { x: penguin.x, y: penguin.y };
+    }
+    return interpolatedPosition;
+  }, [interpolatedPosition, penguin.x, penguin.y]);
 
   // Function to handle exiting from disconnected game
   const handleExitDisconnectedGame = useCallback(() => {
@@ -909,6 +973,8 @@ const GameFighter = ({
   // Memoize frequently accessed socket listeners to prevent recreation
   const handleFighterAction = useCallback(
     (data) => {
+      const currentTime = performance.now();
+      
       // Store both players' data for UI (only for first component)
       if (index === 0) {
         setAllPlayersData({
@@ -917,29 +983,43 @@ const GameFighter = ({
         });
       }
 
-      if (index === 0) {
-        setPenguin({
-          ...data.player1,
-          isDodging: data.player1.isDodging || false,
-          dodgeDirection:
-            typeof data.player1.dodgeDirection === "number"
-              ? data.player1.dodgeDirection
-              : data.player1.facing || 1,
-          dodgeCharges: data.player1.dodgeCharges || 2,
-          dodgeChargeCooldowns: data.player1.dodgeChargeCooldowns || [0, 0],
-        });
-      } else if (index === 1) {
-        setPenguin({
-          ...data.player2,
-          isDodging: data.player2.isDodging || false,
-          dodgeDirection:
-            typeof data.player2.dodgeDirection === "number"
-              ? data.player2.dodgeDirection
-              : data.player2.facing || 1,
-          dodgeCharges: data.player2.dodgeCharges || 2,
-          dodgeChargeCooldowns: data.player2.dodgeChargeCooldowns || [0, 0],
-        });
+      // Get the relevant player data based on index
+      const playerData = index === 0 ? data.player1 : data.player2;
+      
+      // Store previous state for interpolation
+      if (currentState.current) {
+        previousState.current = { ...currentState.current };
       }
+      
+      // Store current state
+      currentState.current = {
+        x: playerData.x,
+        y: playerData.y,
+        facing: playerData.facing,
+        // Add other continuous properties that might benefit from interpolation
+        knockbackVelocity: playerData.knockbackVelocity,
+      };
+      
+      // Update timing for interpolation
+      lastUpdateTime.current = currentTime;
+      
+      // If this is the first update, set previous state to current
+      if (!previousState.current) {
+        previousState.current = { ...currentState.current };
+        setInterpolatedPosition({ x: playerData.x, y: playerData.y });
+      }
+
+      // Update penguin state with all data (discrete states are not interpolated)
+      setPenguin({
+        ...playerData,
+        isDodging: playerData.isDodging || false,
+        dodgeDirection:
+          typeof playerData.dodgeDirection === "number"
+            ? playerData.dodgeDirection
+            : playerData.facing || 1,
+        dodgeCharges: playerData.dodgeCharges || 2,
+        dodgeChargeCooldowns: playerData.dodgeChargeCooldowns || [0, 0],
+      });
 
       // Update all snowballs from both players
       const combinedSnowballs = [
@@ -1497,15 +1577,15 @@ const GameFighter = ({
         !hakkiyoi &&
         gyojiState === "idle" &&
         countdown > 0 && (
-          <YouLabel x={penguin.x} y={penguin.y}>
+          <YouLabel x={getDisplayPosition().x} y={getDisplayPosition().y}>
             YOU
           </YouLabel>
         )}
       <PowerMeter
         isCharging={penguin.isChargingAttack}
         chargePower={penguin.chargeAttackPower}
-        x={penguin.x}
-        y={penguin.y}
+        x={getDisplayPosition().x}
+        y={getDisplayPosition().y}
         facing={penguin.facing}
         playerId={penguin.id}
         localId={localId}
@@ -1532,22 +1612,22 @@ const GameFighter = ({
         </FloatingPowerUpText>
       )}
       <PlayerShadow
-        x={penguin.x}
-        y={penguin.y}
+        x={getDisplayPosition().x}
+        y={getDisplayPosition().y}
         facing={penguin.facing}
         isDodging={penguin.isDodging}
       />
       <DodgeSmokeEffect
-        x={penguin.dodgeStartX || penguin.x}
-        y={penguin.dodgeStartY || penguin.y}
+        x={penguin.dodgeStartX || getDisplayPosition().x}
+        y={penguin.dodgeStartY || getDisplayPosition().y}
         isDodging={penguin.isDodging}
         facing={penguin.facing}
         dodgeDirection={penguin.dodgeDirection}
       />
 
       <ChargedAttackSmokeEffect
-        x={penguin.x}
-        y={penguin.y}
+        x={getDisplayPosition().x}
+        y={getDisplayPosition().y}
         isChargingAttack={penguin.isChargingAttack}
         facing={penguin.facing}
         isSlapAttack={penguin.isSlapAttack}
@@ -1556,8 +1636,8 @@ const GameFighter = ({
       />
       <HitEffect
         isActive={penguin.isHit}
-        x={penguin.x}
-        y={penguin.y}
+        x={getDisplayPosition().x}
+        y={getDisplayPosition().y}
         facing={penguin.facing}
       />
       <StyledImage
@@ -1583,8 +1663,8 @@ const GameFighter = ({
         $isBeingPushed={penguin.isBeingPushed}
         $grabState={penguin.grabState}
         $grabAttemptType={penguin.grabAttemptType}
-        $x={penguin.x}
-        $y={penguin.y}
+        $x={getDisplayPosition().x}
+        $y={getDisplayPosition().y}
         $facing={penguin.facing}
         $throwCooldown={penguin.throwCooldown}
         $grabCooldown={penguin.grabCooldown}
@@ -1609,17 +1689,12 @@ const GameFighter = ({
         $isThrowingSnowball={penguin.isThrowingSnowball}
         $isSpawningPumoArmy={penguin.isSpawningPumoArmy}
         $isAtTheRopes={penguin.isAtTheRopes}
-        style={{
-          transform: penguin.facing === 1 ? "scaleX(1)" : "scaleX(-1)",
-          width: "18.4%",
-          transition: "none", // Remove facing direction animation
-        }}
       />
 
       {thickBlubberIndicator && (
         <RedTintOverlay
-          $x={penguin.x}
-          $y={penguin.y}
+          $x={getDisplayPosition().x}
+          $y={getDisplayPosition().y}
           $facing={penguin.facing}
           $imageSrc={getImageSrc(
             penguin.fighter,
@@ -1654,14 +1729,14 @@ const GameFighter = ({
       <SaltEffect
         isActive={penguin.isThrowingSalt}
         playerFacing={penguin.facing}
-        playerX={penguin.x}
-        playerY={penguin.y + 100}
+        playerX={getDisplayPosition().x}
+        playerY={getDisplayPosition().y + 100}
       />
       <SlapParryEffect position={parryEffectPosition} />
       <HitEffect position={hitEffectPosition} />
       <StarStunEffect
-        x={penguin.x}
-        y={penguin.y}
+        x={getDisplayPosition().x}
+        y={getDisplayPosition().y}
         facing={penguin.facing}
         isActive={showStarStunEffect}
       />

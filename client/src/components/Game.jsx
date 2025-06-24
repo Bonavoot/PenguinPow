@@ -2,7 +2,6 @@ import { useContext, useEffect, useState } from "react";
 import { SocketContext } from "../SocketContext";
 import GameFighter from "./GameFighter";
 import MobileControls from "./MobileControls";
-import SnowEffect from "./SnowEffect";
 import PowerUpSelection from "./PowerUpSelection";
 import gamepadHandler from "../utils/gamepadHandler";
 // import gameMusic from "../sounds/game-music.mp3";
@@ -183,7 +182,6 @@ const Game = ({ rooms, roomName, localId, setCurrentPage }) => {
   return (
     <div className="game-wrapper">
       <div className="game-container">
-        <SnowEffect />
         <div className="ui">
           {rooms[index].players
             .filter((player) => player.id !== "disconnected_placeholder")

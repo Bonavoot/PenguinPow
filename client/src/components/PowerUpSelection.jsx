@@ -136,7 +136,6 @@ const PowerUpCard = styled.div`
   height: clamp(120px, 15vw, 180px);
   position: relative;
   flex-shrink: 0;
-  will-change: transform;
   box-shadow: ${(props) => {
     if (props.$selected) {
       return "0 8px 25px rgba(0, 0, 0, 0.15), inset 0 1px 3px rgba(255, 255, 255, 0.8)";
@@ -270,20 +269,24 @@ const PowerUpType = styled.p`
 
     // Different colors for active vs passive based on the type text
     if (props.$isActive) {
-      return "#ff4646"; // Red for active power-ups
+      return "rgb(136, 255, 100)"; // Much darker red for active power-ups (better readability)
     } else {
-      return "#ededed"; // Blue for passive power-ups
+      return "#ededed"; // Keep passive white/light gray as it looked good with black stroke
     }
   }};
   text-align: center;
   line-height: 1;
   font-style: italic;
   text-transform: lowercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em; // Increased letter spacing for better readability
   text-shadow: ${(props) =>
     props.$selected
       ? "none"
       : "1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 0 1px 0 #000, 1px 0 0 #000, 0 -1px 0 #000, -1px 0 0 #000"};
+  
+  // Prevent any hover effects on the text itself
+  transition: none;
+  pointer-events: none;
 `;
 
 const StatusContainer = styled.div`

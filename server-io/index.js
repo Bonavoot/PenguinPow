@@ -623,19 +623,27 @@ io.on("connection", (socket) => {
         }
 
         // Check for collision and adjust positions
+        // Prioritize collision detection when one player is hit to prevent pass-through
         // Only disable collision detection if BOTH players are in states that should bypass collision
-        // Allow collision detection during slap attacks to prevent phase-through
         if (
           arePlayersColliding(player1, player2) &&
-          !(player1.isAttacking && player1.attackType === "charged") &&
-          !(player2.isAttacking && player2.attackType === "charged") &&
-          !player1.isGrabbing &&
-          !player2.isGrabbing &&
-          !player1.isBeingGrabbed &&
-          !player2.isBeingGrabbed &&
-          !player1.isThrowLanded &&
-          !player2.isThrowLanded &&
-          !(player1.isHit && player2.isHit) // Only disable if BOTH are hit, not if just one is hit
+          (
+            // Always enable collision if one player is hit (prevents pass-through from knockback)
+            (player1.isHit || player2.isHit) ||
+            (
+              // Original collision bypass conditions (only when neither player is hit)
+              !(player1.isAttacking && player1.attackType === "charged") &&
+              !(player2.isAttacking && player2.attackType === "charged") &&
+              !(player1.isAttacking && player1.attackType === "slap") &&
+              !(player2.isAttacking && player2.attackType === "slap") &&
+              !player1.isGrabbing &&
+              !player2.isGrabbing &&
+              !player1.isBeingGrabbed &&
+              !player2.isBeingGrabbed &&
+              !player1.isThrowLanded &&
+              !player2.isThrowLanded
+            )
+          )
         ) {
           adjustPlayerPositions(player1, player2, delta);
         }
@@ -2344,7 +2352,7 @@ io.on("connection", (socket) => {
       // Calculate knockback multiplier based on charge percentage
       let finalKnockbackMultiplier;
       if (isSlapAttack) {
-        finalKnockbackMultiplier = 0.55;
+        finalKnockbackMultiplier = 0.6325; // Increased by 15% from 0.55 to 0.6325
       } else {
         finalKnockbackMultiplier = 0.55 + (chargePercentage / 100) * 1.32;
         console.log(`💥 KNOCKBACK CALC: Player ${player.id} chargePercentage: ${chargePercentage}%, finalKnockbackMultiplier: ${finalKnockbackMultiplier}`);
@@ -2352,7 +2360,13 @@ io.on("connection", (socket) => {
 
       // Apply power-up effects
       if (player.activePowerUp === POWER_UP_TYPES.POWER) {
-        finalKnockbackMultiplier *= player.powerUpMultiplier;
+        if (isSlapAttack) {
+          // Reduce power power-up effect for slap attacks (85% of normal power-up effect)
+          finalKnockbackMultiplier *= (player.powerUpMultiplier * 0.85);
+        } else {
+          // Full power-up effect for charged attacks
+          finalKnockbackMultiplier *= player.powerUpMultiplier;
+        }
       } 
      
       

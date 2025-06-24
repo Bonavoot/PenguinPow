@@ -666,7 +666,7 @@ function adjustPlayerPositions(player1, player2, delta) {
     const overlap = finalMinDistance - distanceBetweenCenters;
 
     // Use smooth, consistent separation - each player moves half the needed distance
-    const separationSpeed = Math.min(overlap * 0.5, 8); // Cap at 8 pixels per frame for smoothness
+    const separationSpeed = Math.min(overlap * 0.7, 12); // Increased from 0.5 to 0.7 and cap from 8 to 12 pixels per frame
 
     // Calculate separation direction
     const separationDirection = player1.x < player2.x ? -1 : 1;
@@ -684,7 +684,7 @@ function adjustPlayerPositions(player1, player2, delta) {
         (player1.x < player2.x && player1.movementVelocity > 0) ||
         (player1.x > player2.x && player1.movementVelocity < 0);
       if (isMovingTowards) {
-        player1.movementVelocity *= 0.9; // Gentle resistance
+        player1.movementVelocity *= 0.95; // Reduced resistance from 0.9 to 0.95
       }
     }
     if (!player2.isHit && !player2.isAlreadyHit && player2.movementVelocity) {
@@ -692,7 +692,7 @@ function adjustPlayerPositions(player1, player2, delta) {
         (player2.x < player1.x && player2.movementVelocity > 0) ||
         (player2.x > player1.x && player2.movementVelocity < 0);
       if (isMovingTowards) {
-        player2.movementVelocity *= 0.9; // Gentle resistance
+        player2.movementVelocity *= 0.95; // Reduced resistance from 0.9 to 0.95
       }
     }
 
@@ -752,7 +752,7 @@ function adjustPlayerPositions(player1, player2, delta) {
         leftBoundary,
         Math.min(playerToKeep.x, rightBoundary)
       );
-      playerToKeep.x += (keeperTargetX - playerToKeep.x) * 0.2; // Gentle approach to boundary
+      playerToKeep.x += (keeperTargetX - playerToKeep.x) * 0.4; // Increased from 0.2 to 0.4 for faster approach to boundary
 
       // Calculate minimal separation needed - just enough to resolve collision
       // We want the distance between centers to equal finalMinDistance (no extra padding)
@@ -780,7 +780,7 @@ function adjustPlayerPositions(player1, player2, delta) {
 
         // Direct position-based movement - no velocity momentum
         const distanceToTarget = clampedTargetX - playerToMove.x;
-        const maxMovePerFrame = 3; // Maximum pixels to move per frame for smoothness
+        const maxMovePerFrame = 6; // Increased from 3 to 6 pixels per frame for faster movement
 
         if (Math.abs(distanceToTarget) <= maxMovePerFrame) {
           // Close enough - move directly to target and stop

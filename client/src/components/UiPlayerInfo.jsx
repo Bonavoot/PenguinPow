@@ -204,7 +204,7 @@ const WinMark = styled.div`
       ? "linear-gradient(45deg,rgb(89, 255, 95),rgb(0, 255, 13))"
       : "linear-gradient(145deg,rgba(28, 28, 28, 0.95),rgba(18, 18, 18, 0.95))"};
   border: clamp(1px, 0.2vw, 2px) solid
-    ${(props) => (props.$isWin ? "#4caf50" : "rgba(255, 255, 255, 0.3)")};
+    ${(props) => (props.$isWin ? "rgba(28, 28, 28, .5)" : "rgba(255, 255, 255, 0.3)")};
   border-radius: 50%;
   display: flex;
   align-items: center;
