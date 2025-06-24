@@ -6,16 +6,31 @@
   z-index: 100;
   pointer-events: none;
   width: auto;
+  will-change: transform;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
 }
 
 .snowball-container.player1 {
   left: 0.5rem;
-  transform: none;
+  transform: translate3d(0, 0, 0);
 }
 
 .snowball-container.player2 {
   left: 0.5rem;
-  transform: none;
+  transform: translate3d(0, 0, 0);
+}
+
+/* Steam Deck optimization */
+@media screen and (width: 1280px) and (height: 800px) {
+  .snowball-container {
+    gap: 6px;
+  }
+  
+  .snowball-icon {
+    width: 2.2rem;
+    height: 2.2rem;
+  }
 }
 
 .snowball-icon {

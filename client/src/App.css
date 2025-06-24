@@ -423,6 +423,36 @@ body {
   z-index: 0;
 }
 
+/* Steam Deck fix for background overlay issues */
+@media screen and (width: 1280px) and (height: 800px) {
+  .game-container::before {
+    /* Simplify complex filter chain that causes rendering artifacts on Steam Deck */
+    filter: brightness(1.05) saturate(1.1) contrast(1.05);
+    /* Force hardware acceleration */
+    transform: translate3d(0, 0, 0);
+    will-change: auto;
+  }
+  
+  .game-container::after {
+    /* Disable problematic mix-blend-mode that causes black overlay artifacts */
+    mix-blend-mode: normal;
+    /* Use simpler overlay that won't cause rendering issues */
+    background: rgba(255, 255, 255, 0.1);
+    /* Force hardware acceleration */
+    transform: translate3d(0, 0, 0);
+    will-change: auto;
+  }
+  
+  /* Additional Steam Deck container optimizations */
+  .game-container {
+    /* Force proper stacking context to prevent overlay artifacts */
+    isolation: isolate;
+    /* Ensure proper GPU layer creation */
+    transform: translate3d(0, 0, 0);
+    will-change: auto;
+  }
+}
+
 @media (min-aspect-ratio: 16/9) {
   .game-container {
     width: calc(100vh * 16 / 9);

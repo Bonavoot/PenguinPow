@@ -93,59 +93,95 @@
   }
 }
 
-/* Performance Optimizations - More conservative approach */
+/* Performance Optimizations - Enhanced for positioning lag fixes */
 @media screen and (width: 1280px) and (height: 800px) {
+  /* Force hardware acceleration for key performance elements */
+  .player-shadow,
+  .you-label,
+  .pumo-clone,
+  .snowball-container,
+  .pumo-army-container {
+    transform: translate3d(0, 0, 0) !important;
+    will-change: transform !important;
+    transform-style: preserve-3d !important;
+    backface-visibility: hidden !important;
+  }
+
   /* Reduce particle density instead of completely disabling */
   .cherry-blossom {
-    animation-duration: 15s; /* Slightly slower, not dramatically different */
+    animation-duration: 20s; /* Slower for better performance */
   }
 
   /* Scale down effects but keep them visible */
   .dust-effect,
   .snow-effect,
   .salt-effect {
-    transform: scale(0.8); /* Less aggressive scaling */
-    opacity: 0.7; /* Slightly more transparent for performance */
+    transform: scale(0.7) translate3d(0, 0, 0); /* Hardware acceleration + scaling */
+    opacity: 0.6; /* More transparent for performance */
   }
 
   /* Keep dust effects but reduce intensity */
   .dust-effect {
-    /* Keep enabled but reduce particle count via opacity */
-    opacity: 0.5;
+    opacity: 0.4;
   }
 
   /* Reduce transition duration instead of removing completely */
   * {
-    transition-duration: 0.15s !important; /* Faster but still present */
+    transition-duration: 0.1s !important; /* Faster transitions */
   }
 
-  /* Keep image filters but make them less expensive */
+  /* Simplify image filters for better performance */
   img,
   .character-image,
   .StyledImage {
-    filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000)
-      drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000);
-    /* Keep the same visual effect as desktop */
+    filter: drop-shadow(1px 1px 2px #000);
+    /* Simplified shadow for performance */
   }
 
-  /* Keep facing direction animations but make them snappier */
+  /* Optimize facing direction animations */
   .StyledImage {
-    transition: transform 0.1s ease-out !important;
+    transition: transform 0.05s ease-out !important;
   }
 
-  /* Optimize will-change usage without changing visuals */
+  /* Enhanced will-change optimization */
   .StyledImage,
   .player-image,
   .character-image {
-    will-change: transform, left, bottom;
+    will-change: transform !important;
+    transform-style: preserve-3d !important;
+    backface-visibility: hidden !important;
   }
 
-  /* Reduce particle effects intensity instead of hiding */
+  /* Reduce particle effects intensity and force hardware acceleration */
   .salt-effect,
   .snowball-effect,
   .pumo-army-effect {
-    opacity: 0.6; /* Keep visible but less intensive */
-    transform: scale(0.7);
+    opacity: 0.5; /* More transparent for performance */
+    transform: scale(0.6) translate3d(0, 0, 0);
+    will-change: transform;
+    transform-style: preserve-3d;
+    backface-visibility: hidden;
+  }
+
+  /* Optimize pumo army clones specifically */
+  img[alt="Pumo Clone"] {
+    filter: drop-shadow(1px 1px 1px #000) contrast(1.1) !important;
+    will-change: transform !important;
+    transform-style: preserve-3d !important;
+    backface-visibility: hidden !important;
+  }
+
+  /* Optimize player shadows */
+  .player-shadow {
+    background: rgba(0, 0, 0, 0.3) !important;
+    filter: none !important; /* Remove any expensive filters */
+  }
+
+  /* Optimize YOU label positioning */
+  div[style*="color: rgb(255, 215, 0)"] {
+    will-change: transform !important;
+    transform-style: preserve-3d !important;
+    backface-visibility: hidden !important;
   }
 }
 
