@@ -353,7 +353,7 @@ const PowerUpSelection = ({
       },
       power: {
         name: "Power Water",
-        description: "Increase knockback by 30%",
+        description: "Increase knockback by 20%",
         icon: powerWaterIcon,
       },
       snowball: {

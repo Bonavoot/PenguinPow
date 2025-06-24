@@ -157,11 +157,11 @@ function executeSlapAttack(player, rooms) {
       player.facing = player.x < opponent.x ? -1 : 1;
 
       // Add forward slide during slap attack with power-up consideration
-      let slapSlideVelocity = 2.5; // Base slide velocity (decreased from 3.5 to 2.5 for shorter slide)
+      let slapSlideVelocity = 2.72; // Base slide velocity (reduced from 3.2 to 2.72 for lower base slap power)
 
       // Apply POWER power-up multiplier to slap slide distance
       if (player.activePowerUp === "power") {
-        slapSlideVelocity *= player.powerUpMultiplier - .1; // 1.3x multiplier for POWER power-up
+        slapSlideVelocity *= player.powerUpMultiplier - 0.1; // Adjusted to achieve 20% increase (1.3 - 0.1 = 1.2x multiplier)
         console.log(
           `Player ${player.id} slap slide enhanced by POWER power-up: ${slapSlideVelocity}`
         );

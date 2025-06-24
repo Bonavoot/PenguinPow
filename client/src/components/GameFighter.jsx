@@ -1065,6 +1065,8 @@ const GameFighter = ({
           x: data.x + 150,
           y: data.y + 110, // Add GROUND_LEVEL to match player height
           facing: data.facing || 1, // Default to 1 if facing not provided
+          timestamp: data.timestamp, // Pass through unique timestamp
+          hitId: data.hitId, // Pass through unique hit ID
         });
       }
     });

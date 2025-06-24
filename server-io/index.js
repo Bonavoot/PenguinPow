@@ -888,6 +888,10 @@ io.on("connection", (socket) => {
                 // Apply knockback only if not immune
                 if (canApplyKnockback(opponent)) {
                   const knockbackDirection = snowball.velocityX > 0 ? 1 : -1;
+                  
+                  // Clear any existing slap knockback state to ensure consistent snowball knockback
+                  opponent.isSlapKnockback = false;
+                  
                   opponent.knockbackVelocity.x = knockbackDirection * 2; // Slightly increased from 1.5 to 2
                   opponent.movementVelocity = knockbackDirection * 1.3; // Slightly increased from 1 to 1.3
 
@@ -1007,6 +1011,10 @@ io.on("connection", (socket) => {
                 // Apply knockback only if not immune (lighter than normal slap)
                 if (canApplyKnockback(opponent)) {
                   const knockbackDirection = clone.velocityX > 0 ? 1 : -1;
+                  
+                  // Clear any existing slap knockback state to ensure consistent pumo army knockback
+                  opponent.isSlapKnockback = false;
+                  
                   opponent.knockbackVelocity.x = knockbackDirection * 2;
                   opponent.movementVelocity = knockbackDirection * 1.5;
 
@@ -2352,7 +2360,7 @@ io.on("connection", (socket) => {
       // Calculate knockback multiplier based on charge percentage
       let finalKnockbackMultiplier;
       if (isSlapAttack) {
-        finalKnockbackMultiplier = 0.6325; // Increased by 15% from 0.55 to 0.6325
+        finalKnockbackMultiplier = 0.54; // Reduced from 0.6325 to 0.54 for lower base slap power
       } else {
         finalKnockbackMultiplier = 0.55 + (chargePercentage / 100) * 1.32;
         console.log(`💥 KNOCKBACK CALC: Player ${player.id} chargePercentage: ${chargePercentage}%, finalKnockbackMultiplier: ${finalKnockbackMultiplier}`);
@@ -2361,8 +2369,8 @@ io.on("connection", (socket) => {
       // Apply power-up effects
       if (player.activePowerUp === POWER_UP_TYPES.POWER) {
         if (isSlapAttack) {
-          // Reduce power power-up effect for slap attacks (85% of normal power-up effect)
-          finalKnockbackMultiplier *= (player.powerUpMultiplier * 0.85);
+          // Adjusted power power-up effect for slap attacks to achieve 20% increase
+          finalKnockbackMultiplier *= (player.powerUpMultiplier * 0.923);
         } else {
           // Full power-up effect for charged attacks
           finalKnockbackMultiplier *= player.powerUpMultiplier;
@@ -2376,9 +2384,9 @@ io.on("connection", (socket) => {
           // Use both knockback velocity and movement velocity for slap attacks like charged attacks do
           // This ensures slap attacks work properly at boundaries AND have nice sliding
           const immediateKnockback =
-            2.0 * knockbackDirection * finalKnockbackMultiplier;
+            1.85 * knockbackDirection * finalKnockbackMultiplier; // Reduced from 2.0 to 1.85 for better balance with increased attacker forward movement
           const slidingVelocity =
-            2.2 * knockbackDirection * finalKnockbackMultiplier;
+            2.0 * knockbackDirection * finalKnockbackMultiplier; // Reduced from 2.2 to 2.0 for better balance with increased attacker forward movement
 
           // Calculate smooth separation force if players are too close
           const minDistance = SLAP_HITBOX_DISTANCE_VALUE * 0.8;
@@ -2445,6 +2453,8 @@ io.on("connection", (socket) => {
             y: otherPlayer.y,
             facing: otherPlayer.facing,
             attackType: isSlapAttack ? "slap" : "charged",
+            timestamp: Date.now(), // Add unique timestamp to ensure effect triggers every time
+            hitId: Math.random().toString(36).substr(2, 9), // Add unique ID for guaranteed uniqueness
           });
         }
       }
