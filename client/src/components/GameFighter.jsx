@@ -360,15 +360,6 @@ const RedTintOverlay = styled.div`
       opacity: 0.4;
     }
   }
-  
-  /* Steam Deck fix for mix-blend-mode causing overlay artifacts */
-  @media screen and (width: 1280px) and (height: 800px) {
-    mix-blend-mode: normal; /* Disable problematic mix-blend-mode on Steam Deck */
-    background: rgba(156, 136, 255, 0.4); /* Reduce opacity to compensate */
-    /* Ensure proper GPU layer creation */
-    will-change: transform, opacity;
-    transform: ${(props) => `scaleX(${props.$facing}) translate3d(0, 0, 0)`};
-  }
 `;
 
 const StyledImage = styled("img")
@@ -615,16 +606,11 @@ const SaltBasket = styled.img
     },
   }))``;
 
-const YouLabel = styled.div.attrs((props) => ({
-  style: {
-    // Fix positioning: use left percentage instead of vw units
-    left: `${(props.x / 1280) * 100 + 9}%`,
-    bottom: `${(props.y / 720) * 100 + 33}%`,
-    // Use transform for centering and hardware acceleration
-    transform: `translate3d(-50%, 0, 0)`,
-  },
-}))`
+const YouLabel = styled.div`
   position: absolute;
+  bottom: ${(props) => (props.y / 720) * 100 + 33}%;
+  left: ${(props) => (props.x / 1280) * 100 + 9}%;
+  transform: translateX(-50%);
   color: #ffd700;
   font-family: "Bungee";
   font-size: clamp(18px, 1.5vw, 24px);
@@ -636,43 +622,23 @@ const YouLabel = styled.div.attrs((props) => ({
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  will-change: transform;
-  transform-style: preserve-3d;
-  backface-visibility: hidden;
 
   &::after {
     content: "↓";
     font-size: clamp(14px, 1.2vw, 18px);
   }
-
-  /* Steam Deck optimization - simpler rendering */
-  @media screen and (width: 1280px) and (height: 800px) {
-    font-size: clamp(16px, 1.3vw, 20px);
-    text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
-      1px 1px 0 #000;
-    
-    &::after {
-      font-size: clamp(12px, 1vw, 16px);
-    }
-  }
 `;
 
-const SnowballProjectile = styled.img.attrs((props) => ({
-  style: {
-    position: "absolute",
-    width: "4.5%",
-    height: "auto",
-    left: `${(props.$x / 1280) * 100 + 5}%`,
-    bottom: `${(props.$y / 720) * 100 + 17}%`,
-    zIndex: 95,
-    pointerEvents: "none",
-    filter: "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000)",
-    willChange: "transform",
-    transformStyle: "preserve-3d",
-    backfaceVisibility: "hidden",
-  },
-}))`
-  /* All styles moved to attrs - no dynamic CSS */
+const SnowballProjectile = styled.img`
+  position: absolute;
+  width: 4.5%;
+  height: auto;
+  left: ${(props) => (props.$x / 1280) * 100 + 5}%;
+  bottom: ${(props) => (props.$y / 720) * 100 + 17}%;
+  z-index: 95;
+  pointer-events: none;
+  filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000)
+    drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000);
 `;
 
 const PumoClone = styled.img
@@ -685,20 +651,13 @@ const PumoClone = styled.img
       position: "absolute",
       width: `${(props.$size || 0.6) * 18.4}%`,
       height: "auto",
-      // Fix positioning: use left percentage instead of vw units
       left: `${(props.$x / 1280) * 100}%`,
-      // Use transform for flipping and hardware acceleration
-      transform: `translate3d(0, 0, 0) scaleX(${props.$facing * -1})`,
       bottom: `${(props.$y / 720) * 100}%`,
+      transform: `scaleX(${props.$facing * -1})`,
       zIndex: 97,
       pointerEvents: "none",
-      willChange: "transform",
-      transformStyle: "preserve-3d",
-      backfaceVisibility: "hidden",
-      // Conditional filter for Steam Deck performance
-      filter: typeof window !== 'undefined' && window.innerWidth === 1280 && window.innerHeight === 800 
-        ? "drop-shadow(1px 1px 2px #000) contrast(1.1)" 
-        : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.3)",
+      filter:
+        "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.3)",
     },
   }))``;
 
@@ -714,12 +673,6 @@ const OpponentDisconnectedOverlay = styled.div`
   align-items: center;
   z-index: 10000;
   backdrop-filter: blur(5px);
-  
-  /* Steam Deck fix for backdrop-filter causing overlay artifacts */
-  @media screen and (width: 1280px) and (height: 800px) {
-    backdrop-filter: none; /* Disable problematic backdrop-filter on Steam Deck */
-    background: rgba(0, 0, 0, 0.9); /* Slightly more opaque to compensate */
-  }
 `;
 
 const DisconnectedModal = styled.div`

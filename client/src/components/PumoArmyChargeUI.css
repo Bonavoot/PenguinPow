@@ -6,31 +6,16 @@
   z-index: 100;
   pointer-events: none;
   width: auto;
-  will-change: transform;
-  transform-style: preserve-3d;
-  backface-visibility: hidden;
 }
 
 .pumo-army-container.player1 {
   left: 0.5rem;
-  transform: translate3d(0, 0, 0);
+  transform: none;
 }
 
 .pumo-army-container.player2 {
   left: 0.5rem;
-  transform: translate3d(0, 0, 0);
-}
-
-/* Steam Deck optimization */
-@media screen and (width: 1280px) and (height: 800px) {
-  .pumo-army-container {
-    gap: 6px;
-  }
-  
-  .pumo-army-icon {
-    width: 2.2rem;
-    height: 2.2rem;
-  }
+  transform: none;
 }
 
 .pumo-army-icon {

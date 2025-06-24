@@ -1,37 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import PropTypes from "prop-types";
-import styled from "styled-components";
 import "./PowerMeter.css";
-
-const PowerMeterContainer = styled.div.attrs((props) => {
-  // Check if we're on Steam Deck resolution
-  const isSteamDeck = typeof window !== 'undefined' && window.innerWidth === 1280 && window.innerHeight === 800;
-  
-  return {
-    style: {
-      position: "absolute",
-      left: `${(props.$x / 1280) * 100}%`,
-      bottom: `${((props.$y + 235) / 720) * 100}%`,
-      // Use hardware-accelerated transform for positioning and facing offset
-      transform: isSteamDeck 
-        ? `translate3d(${props.$facing === 1 ? "65%" : "55%"}, 0, 0) scale(0.9)` // Slightly smaller on Steam Deck
-        : `translate3d(${props.$facing === 1 ? "65%" : "55%"}, 0, 0)`,
-      width: isSteamDeck ? "clamp(50px, 7vw, 120px)" : "clamp(60px, 8vw, 140px)",
-      pointerEvents: "none",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      gap: isSteamDeck ? "clamp(1px, 0.2vw, 3px)" : "clamp(2px, 0.3vw, 4px)",
-      zIndex: 999,
-      filter: isSteamDeck ? "drop-shadow(0 0 6px rgba(0, 0, 0, 0.3))" : "drop-shadow(0 0 8px rgba(0, 0, 0, 0.4))",
-      willChange: "transform",
-      transformStyle: "preserve-3d",
-      backfaceVisibility: "hidden",
-    },
-  };
-})`
-  /* All styles moved to attrs for performance */
-`;
 
 const PowerMeter = ({
   isCharging,
@@ -106,6 +75,12 @@ const PowerMeter = ({
     return "#ff0000"; // Red
   };
 
+  const meterStyle = {
+    left: `${(x / 1280) * 100}%`,
+    bottom: `${((y + 235) / 720) * 100}%`,
+    transform: `translateX(${facing === 1 ? "65%" : "55%"})`,
+  };
+
   const fillStyle = {
     width: `${smoothPower}%`,
     backgroundColor: getColor(),
@@ -113,17 +88,12 @@ const PowerMeter = ({
   };
 
   return (
-    <PowerMeterContainer 
-      $x={x} 
-      $y={y} 
-      $facing={facing}
-      className="power-meter"
-    >
+    <div className="power-meter" style={meterStyle}>
       <div className="power-meter-bar">
         <div className="power-meter-fill" style={fillStyle} />
       </div>
       {/* <div className="power-meter-text">{Math.round(smoothPower)}%</div> */}
-    </PowerMeterContainer>
+    </div>
   );
 };
 
