@@ -57,7 +57,7 @@ const DustEffect = ({ playerX, playerY, facing }) => {
           id: Date.now(),
           x: playerX + xOffset + (Math.random() * -55 - 10),
           y: playerY + 25 + (Math.random() * 10 - 5),
-          size: Math.random() * 8 + 8,
+          size: Math.random() * 7.5 + 7.5,
           rotation,
           shape: getRandomShape(),
           initialScale,

@@ -124,13 +124,13 @@ let staminaRegenCounter = 0;
 const TICK_RATE = 64;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.25; // Increased from 0.22 for snappier movement
-const GROUND_LEVEL = 165;
+const GROUND_LEVEL = 210;
 const HITBOX_DISTANCE_VALUE = 85; // Reduced from 90 by 20%
 const SLAP_HITBOX_DISTANCE_VALUE = 184; // Updated to match GRAB_RANGE
 const SLAP_PARRY_WINDOW = 200; // Updated to 200ms window for parry to account for longer slap animation
 const SLAP_PARRY_KNOCKBACK_VELOCITY = 1.5; // Reduced knockback for parried attacks
-const THROW_RANGE = 184; // Reduced from 230 by 20%
-const GRAB_RANGE = 184; // Reduced from 230 by 20%
+const THROW_RANGE = 184; 
+const GRAB_RANGE = 184; 
 const GRAB_PUSH_SPEED = 0.3; // Increased from 0.2 for more substantial movement
 const GRAB_PUSH_DURATION = 650;
 
@@ -352,7 +352,7 @@ function resetRoomAndPlayers(room) {
     player.isDead = false;
     player.stamina = 100;
     player.isBowing = false;
-    player.x = player.fighter === "player 1" ? 230 : 815;
+    player.x = player.fighter === "player 1" ? 245 : 815;
     player.y = GROUND_LEVEL;
     player.knockbackVelocity = { x: 0, y: 0 };
     // Reset dodge charges
@@ -2597,7 +2597,7 @@ io.on("connection", (socket) => {
         isBowing: false,
         facing: 1,
         stamina: 100,
-        x: 230,
+        x: 245,
         y: GROUND_LEVEL,
         knockbackVelocity: { x: 0, y: 0 },
         dodgeCharges: MAX_DODGE_CHARGES,
@@ -3898,7 +3898,7 @@ io.on("connection", (socket) => {
         // Reset to player 1 position and appearance
         p.fighter = "player 1";
         p.color = "aqua";
-        p.x = 230;
+        p.x = 245;
         p.facing = 1;
         // Clean up any player-specific state
         cleanupPlayerStates(p);
@@ -4093,7 +4093,7 @@ io.on("connection", (socket) => {
         // Reset to player 1 position and appearance
         p.fighter = "player 1";
         p.color = "aqua";
-        p.x = 230;
+        p.x = 245;
         p.facing = 1;
         // Clean up any player-specific state
         cleanupPlayerStates(p);

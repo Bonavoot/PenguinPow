@@ -4,7 +4,7 @@ import { memo } from "react";
 
 const RedOverlay = styled.div`
   position: absolute;
-  width: 18.4%;
+  width: 16.7%;
   height: auto;
   aspect-ratio: 1;
   left: ${(props) => (props.$x / 1280) * 100}%;

@@ -5,7 +5,7 @@ import PropTypes from "prop-types";
 const SaltContainer = styled.div.attrs((props) => ({
   style: {
     position: "absolute",
-    width: "23%",
+    width: "21%",
     height: "auto",
     pointerEvents: "none",
     zIndex: 999,
@@ -18,8 +18,8 @@ const SaltContainer = styled.div.attrs((props) => ({
 const SaltParticle = styled.div.attrs((props) => ({
   style: {
     position: "absolute",
-    width: "calc(0.4vw * (16 / 9))",
-    height: "calc(0.4vh * (16 / 9))",
+    width: "calc(0.37vw * (16 / 9))",
+    height: "calc(0.37vh * (16 / 9))",
     background:
       "radial-gradient(circle at center, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0) 70%)",
     borderRadius: "50%",

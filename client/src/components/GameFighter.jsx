@@ -329,7 +329,7 @@ const validProps = [
 
 const RedTintOverlay = styled.div`
   position: absolute;
-  width: 18.4%;
+  width: 16.7%;
   height: auto;
   aspect-ratio: 1;
   left: ${(props) => (props.$x / 1280) * 100}%;
@@ -475,7 +475,7 @@ const StyledImage = styled("img")
       animation: props.$isRawParrying
         ? "rawParryFlash 1.2s ease-in-out infinite"
         : "none",
-      width: "min(18.4%, 480px)",
+      width: "min(16.7%, 437px)",
       height: "auto",
       willChange: "bottom, left, filter, opacity",
       pointerEvents: "none",
@@ -593,11 +593,11 @@ const SaltBasket = styled.img
   .attrs((props) => ({
     style: {
       position: "absolute",
-      width: "5%",
+      width: "4.55%",
       height: "auto",
-      bottom: `${((GROUND_LEVEL + 100) / 720) * 118}%`,
-      left: props.$index === 0 ? "16%" : "auto",
-      right: props.$index === 1 ? "15.5%" : "auto",
+      bottom: `${((GROUND_LEVEL + 100) / 720) * 130}%`,
+      left: props.$index === 0 ? "18.5%" : "auto",
+      right: props.$index === 1 ? "18.5%" : "auto",
       transform: props.$index === 1 ? "scaleX(-1)" : "none",
       zIndex: 1,
       pointerEvents: "none",
@@ -608,7 +608,7 @@ const SaltBasket = styled.img
 
 const YouLabel = styled.div`
   position: absolute;
-  bottom: ${(props) => (props.y / 720) * 100 + 33}%;
+  bottom: ${(props) => (props.y / 720) * 100 + 30}%;
   left: ${(props) => (props.x / 1280) * 100 + 9}%;
   transform: translateX(-50%);
   color: #ffd700;
@@ -631,7 +631,7 @@ const YouLabel = styled.div`
 
 const SnowballProjectile = styled.img`
   position: absolute;
-  width: 4.5%;
+  width: 4.1%;
   height: auto;
   left: ${(props) => (props.$x / 1280) * 100 + 5}%;
   bottom: ${(props) => (props.$y / 720) * 100 + 17}%;
@@ -649,7 +649,7 @@ const PumoClone = styled.img
   .attrs((props) => ({
     style: {
       position: "absolute",
-      width: `${(props.$size || 0.6) * 18.4}%`,
+      width: `${(props.$size || 0.6) * 16.7}%`,
       height: "auto",
       left: `${(props.$x / 1280) * 100}%`,
       bottom: `${(props.$y / 720) * 100}%`,
@@ -1782,8 +1782,8 @@ const GameFighter = ({
               y={clone.y}
               facing={clone.facing}
               isDodging={false}
-              width="8%"
-              height="2.5%"
+              width="7.3%"
+              height="2.27%"
               offsetLeft="15%"
               offsetRight="15%"
             />
