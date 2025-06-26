@@ -155,9 +155,7 @@ const POWER_UP_EFFECTS = {
 const GRAB_DURATION = 1500; // 1.5 seconds total grab duration
 const GRAB_ATTEMPT_DURATION = 1000; // 1 second for attempt animation
 
-// Ring out boundary constants (map boundaries imported from gameUtils)
-const MAP_RING_OUT_LEFT = 60;
-const MAP_RING_OUT_RIGHT = 985;
+// Note: Using MAP_LEFT_BOUNDARY and MAP_RIGHT_BOUNDARY from gameUtils.js for ring-out boundaries
 
 // Add movement constants
 const MOVEMENT_ACCELERATION = 0.08; // Reduced from 0.25 for more slippery feel
@@ -623,12 +621,11 @@ io.on("connection", (socket) => {
         }
 
         // Check for collision and adjust positions
-        // Prioritize collision detection when one player is hit to prevent pass-through
-        // Only disable collision detection if BOTH players are in states that should bypass collision
+        // Allow collision detection during slap attacks but handle them gently in adjustPlayerPositions
         if (
           arePlayersColliding(player1, player2) &&
           (
-            // Always enable collision if one player is hit (prevents pass-through from knockback)
+            // Enable collision if one player is hit (prevents pass-through from knockback)
             (player1.isHit || player2.isHit) ||
             (
               // Original collision bypass conditions (only when neither player is hit)
@@ -1151,8 +1148,8 @@ io.on("connection", (socket) => {
           const sizeOffset = 0;
 
           // Apply different multipliers for left and right ring out boundaries
-          const leftRingOutBoundary = MAP_RING_OUT_LEFT + sizeOffset;
-          const rightRingOutBoundary = MAP_RING_OUT_RIGHT - sizeOffset;
+          const leftRingOutBoundary = MAP_LEFT_BOUNDARY + sizeOffset;
+          const rightRingOutBoundary = MAP_RIGHT_BOUNDARY - sizeOffset;
 
           player.x = Math.max(
             leftRingOutBoundary,
@@ -1165,11 +1162,11 @@ io.on("connection", (socket) => {
         // Win Conditions - back to original state
         if (
           (player.isHit &&
-            player.x <= MAP_RING_OUT_LEFT &&
+            player.x <= MAP_LEFT_BOUNDARY &&
             !room.gameOver &&
             !player.isBeingThrown) ||
           (player.isHit &&
-            player.x >= MAP_RING_OUT_RIGHT &&
+            player.x >= MAP_RIGHT_BOUNDARY &&
             !room.gameOver &&
             !player.isBeingThrown) ||
 
@@ -1289,8 +1286,8 @@ io.on("connection", (socket) => {
 
               // Check if player landed outside ring-out boundaries
               const landedOutsideBoundaries =
-                opponent.x <= MAP_RING_OUT_LEFT ||
-                opponent.x >= MAP_RING_OUT_RIGHT;
+                opponent.x <= MAP_LEFT_BOUNDARY ||
+                opponent.x >= MAP_RIGHT_BOUNDARY;
 
               opponent.isBeingThrown = false;
               opponent.beingThrownFacingDirection = null;
@@ -1737,8 +1734,8 @@ io.on("connection", (socket) => {
           
 
           // Check if this movement would put player at the ropes
-          const leftCheck = newX <= MAP_RING_OUT_LEFT && attackDirection === -1;
-          const rightCheck = newX >= MAP_RING_OUT_RIGHT && attackDirection === 1;
+          const leftCheck = newX <= MAP_LEFT_BOUNDARY && attackDirection === -1;
+          const rightCheck = newX >= MAP_RIGHT_BOUNDARY && attackDirection === 1;
          
           
           if (
@@ -1746,7 +1743,7 @@ io.on("connection", (socket) => {
             (leftCheck || rightCheck) &&
             !room.gameOver
           ) {
-            console.log(`🔴 Player ${player.id} hitting the ropes during charged attack! x: ${player.x}, newX: ${newX}, facing: ${player.facing}, MAP_RING_OUT_LEFT: ${MAP_RING_OUT_LEFT}, MAP_RING_OUT_RIGHT: ${MAP_RING_OUT_RIGHT}`);
+            console.log(`🔴 Player ${player.id} hitting the ropes during charged attack! x: ${player.x}, newX: ${newX}, facing: ${player.facing}, MAP_LEFT_BOUNDARY: ${MAP_LEFT_BOUNDARY}, MAP_RIGHT_BOUNDARY: ${MAP_RIGHT_BOUNDARY}`);
             
             // Set at the ropes state
             player.isAtTheRopes = true;
@@ -1767,10 +1764,10 @@ io.on("connection", (socket) => {
             player.knockbackVelocity = { x: 0, y: 0 };
             
             // Constrain player position to boundary
-            if (newX <= MAP_RING_OUT_LEFT) {
-              player.x = MAP_RING_OUT_LEFT;
-            } else if (newX >= MAP_RING_OUT_RIGHT) {
-              player.x = MAP_RING_OUT_RIGHT;
+            if (newX <= MAP_LEFT_BOUNDARY) {
+              player.x = MAP_LEFT_BOUNDARY;
+            } else if (newX >= MAP_RIGHT_BOUNDARY) {
+              player.x = MAP_RIGHT_BOUNDARY;
             }
             
             // Set timeout to end the at-the-ropes state
@@ -2380,34 +2377,21 @@ io.on("connection", (socket) => {
       
       if (canApplyKnockback(otherPlayer)) {
         if (isSlapAttack) {
-          // For slap attacks, preserve momentum accumulation - don't clear existing velocities
-          // Use both knockback velocity and movement velocity for slap attacks like charged attacks do
-          // This ensures slap attacks work properly at boundaries AND have nice sliding
+          // For slap attacks, use consistent knockback regardless of distance
+          // This ensures all slap hits feel the same whether players are touching or at distance
           const immediateKnockback =
-            1.85 * knockbackDirection * finalKnockbackMultiplier; // Reduced from 2.0 to 1.85 for better balance with increased attacker forward movement
+            1.85 * knockbackDirection * finalKnockbackMultiplier;
           const slidingVelocity =
-            2.0 * knockbackDirection * finalKnockbackMultiplier; // Reduced from 2.2 to 2.0 for better balance with increased attacker forward movement
+            2.0 * knockbackDirection * finalKnockbackMultiplier;
 
-          // Calculate smooth separation force if players are too close
-          const minDistance = SLAP_HITBOX_DISTANCE_VALUE * 0.8;
-          const currentDistance = Math.abs(player.x - otherPlayer.x);
-          let separationBoost = 0;
-          
-          if (currentDistance < minDistance) {
-            // Calculate how much extra force we need to add for smooth separation
-            const separationNeeded = minDistance - currentDistance;
-            // Apply separation force over time instead of instant teleport
-            // Scale it based on how close they are (closer = more force)
-            separationBoost = (separationNeeded / minDistance) * 1.5; // Adjust multiplier as needed
-          }
-
-          otherPlayer.knockbackVelocity.x = immediateKnockback + (separationBoost * knockbackDirection);
-          otherPlayer.movementVelocity = slidingVelocity + (separationBoost * knockbackDirection * 0.7); // Add some to sliding too
+          // Apply consistent knockback without any distance-based separation boost
+          otherPlayer.knockbackVelocity.x = immediateKnockback;
+          otherPlayer.movementVelocity = slidingVelocity;
 
           // Mark this as a slap knockback for special friction handling
           otherPlayer.isSlapKnockback = true;
           
-          console.log(`👋 SLAP ATTACK: Player ${player.id} -> Preserving attacker momentum for natural movement flow`);
+          console.log(`👋 SLAP ATTACK: Player ${player.id} -> Consistent knockback applied (no separation boost)`);
         } else {
           // For charged attacks, force clear any existing hit state and velocities for consistent knockback
           otherPlayer.isHit = false;

@@ -650,7 +650,8 @@ function adjustPlayerPositions(player1, player2, delta) {
   const distanceBetweenCenters = Math.abs(player1Center - player2Center);
 
   // Calculate the minimum distance needed between centers to prevent overlap
-  const minDistance = player1Hitbox.left + player2Hitbox.right;
+  // Reduce collision distance slightly to allow players to get closer during normal movement
+  const minDistance = (player1Hitbox.left + player2Hitbox.right) * 0.85;
 
   // Add extra distance for slap attacks to prevent collision during rapid attacks
   const extraSlapDistance = 20; // Fixed extra distance for slap attacks
@@ -665,21 +666,49 @@ function adjustPlayerPositions(player1, player2, delta) {
     // Calculate how much overlap there is
     const overlap = finalMinDistance - distanceBetweenCenters;
 
-    // Use smooth, consistent separation - each player moves half the needed distance
-    const separationSpeed = Math.min(overlap * 0.7, 12); // Increased from 0.5 to 0.7 and cap from 8 to 12 pixels per frame
+    // Check if this is a slap attack scenario (one player attacking with slap, other being hit by slap)
+    const isSlapAttackScenario = 
+      (player1.isAttacking && player1.attackType === "slap" && player2.isSlapKnockback) ||
+      (player2.isAttacking && player2.attackType === "slap" && player1.isSlapKnockback);
 
-    // Calculate separation direction
-    const separationDirection = player1.x < player2.x ? -1 : 1;
+    let separationSpeed, separationPerPlayer, newPlayer1X, newPlayer2X;
 
-    // Apply smooth separation - each player moves by half
-    const separationPerPlayer = separationSpeed / 2;
-
-    // Calculate new positions
-    let newPlayer1X = player1.x + separationDirection * separationPerPlayer;
-    let newPlayer2X = player2.x + -separationDirection * separationPerPlayer;
+    if (isSlapAttackScenario) {
+      // Special handling for slap attacks - gentler separation that doesn't interfere with knockback
+      separationSpeed = Math.min(overlap * 0.3, 4); // Much gentler separation for slap scenarios
+      
+      // Identify attacker and victim
+      const attacker = player1.isAttacking && player1.attackType === "slap" ? player1 : player2;
+      const victim = player1.isSlapKnockback ? player1 : player2;
+      
+      // Prioritize victim's knockback movement - attacker does most of the separating
+      if (attacker === player1) {
+        // Player1 is attacking, player2 is victim - move attacker back more
+        newPlayer1X = player1.x + (player1.x < player2.x ? -1 : 1) * separationSpeed * 0.8;
+        newPlayer2X = player2.x + (player1.x < player2.x ? 1 : -1) * separationSpeed * 0.2;
+      } else {
+        // Player2 is attacking, player1 is victim - move attacker back more  
+        newPlayer1X = player1.x + (player1.x < player2.x ? -1 : 1) * separationSpeed * 0.2;
+        newPlayer2X = player2.x + (player1.x < player2.x ? 1 : -1) * separationSpeed * 0.8;
+      }
+    } else {
+      // Normal separation for non-slap scenarios
+      separationSpeed = Math.min(overlap * 0.7, 12); // Increased from 0.5 to 0.7 and cap from 8 to 12 pixels per frame
+      
+      // Calculate separation direction
+      const separationDirection = player1.x < player2.x ? -1 : 1;
+      
+      // Apply smooth separation - each player moves by half
+      separationPerPlayer = separationSpeed / 2;
+      
+      // Calculate new positions
+      newPlayer1X = player1.x + separationDirection * separationPerPlayer;
+      newPlayer2X = player2.x + -separationDirection * separationPerPlayer;
+    }
 
     // Apply gentle resistance to movement velocity when players are pushing into each other
-    if (!player1.isHit && !player1.isAlreadyHit && player1.movementVelocity) {
+    // Exclude slap knockback to maintain smooth sliding during rapid slap attacks
+    if (!player1.isHit && !player1.isAlreadyHit && !player1.isSlapKnockback && player1.movementVelocity) {
       const isMovingTowards =
         (player1.x < player2.x && player1.movementVelocity > 0) ||
         (player1.x > player2.x && player1.movementVelocity < 0);
@@ -687,7 +716,7 @@ function adjustPlayerPositions(player1, player2, delta) {
         player1.movementVelocity *= 0.95; // Reduced resistance from 0.9 to 0.95
       }
     }
-    if (!player2.isHit && !player2.isAlreadyHit && player2.movementVelocity) {
+    if (!player2.isHit && !player2.isAlreadyHit && !player2.isSlapKnockback && player2.movementVelocity) {
       const isMovingTowards =
         (player2.x < player1.x && player2.movementVelocity > 0) ||
         (player2.x > player1.x && player2.movementVelocity < 0);

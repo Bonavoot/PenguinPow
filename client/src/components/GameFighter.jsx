@@ -1636,12 +1636,6 @@ const GameFighter = ({
         isThrowing={penguin.isThrowing}
         chargeCancelled={penguin.chargeCancelled || false}
       />
-      <HitEffect
-        isActive={penguin.isHit}
-        x={getDisplayPosition().x}
-        y={getDisplayPosition().y}
-        facing={penguin.facing}
-      />
       <StyledImage
         $fighter={penguin.fighter}
         $isDiving={penguin.isDiving}
