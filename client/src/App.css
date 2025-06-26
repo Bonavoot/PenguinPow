@@ -402,7 +402,7 @@ body {
   background-repeat: no-repeat;
   background-size: 118% 125%;
   background-position: 51.5% 40%;
-  filter: brightness(1.1) saturate(1.1) sepia(0.5) hue-rotate(0deg)
+  filter: brightness(1) saturate(1.1) sepia(0.5) hue-rotate(0deg)
     contrast(1.1);
   z-index: -1;
 }

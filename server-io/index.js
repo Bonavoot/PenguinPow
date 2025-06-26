@@ -621,18 +621,19 @@ io.on("connection", (socket) => {
         }
 
         // Check for collision and adjust positions
-        // Allow collision detection during slap attacks but handle them gently in adjustPlayerPositions
+        // Always enable collision detection during slap attacks to prevent pass-through
         if (
           arePlayersColliding(player1, player2) &&
           (
             // Enable collision if one player is hit (prevents pass-through from knockback)
             (player1.isHit || player2.isHit) ||
+            // Enable collision during slap attacks to prevent pass-through
+            (player1.isAttacking && player1.attackType === "slap") ||
+            (player2.isAttacking && player2.attackType === "slap") ||
             (
-              // Original collision bypass conditions (only when neither player is hit)
+              // Original collision bypass conditions (only when neither player is hit and not slapping)
               !(player1.isAttacking && player1.attackType === "charged") &&
               !(player2.isAttacking && player2.attackType === "charged") &&
-              !(player1.isAttacking && player1.attackType === "slap") &&
-              !(player2.isAttacking && player2.attackType === "slap") &&
               !player1.isGrabbing &&
               !player2.isGrabbing &&
               !player1.isBeingGrabbed &&
@@ -661,29 +662,38 @@ io.on("connection", (socket) => {
             !player1.isDodging &&
             !player2.isDodging
           ) {
-            // Only update facing for non-isHit players
+            // Only update facing for non-isHit players and those not locked by slap attacks
             if (!player1.isHit && !player2.isHit) {
               // Normal facing logic when both players are not hit
-              if (player1.x < player2.x) {
+              // Don't update facing if player has locked slap facing direction
+              if (!player1.slapFacingDirection && player1.x < player2.x) {
                 player1.facing = -1; // Player 1 faces right
-                player2.facing = 1; // Player 2 faces left
-              } else {
+              } else if (!player1.slapFacingDirection && player1.x >= player2.x) {
                 player1.facing = 1; // Player 1 faces left
+              }
+              
+              if (!player2.slapFacingDirection && player1.x < player2.x) {
+                player2.facing = 1; // Player 2 faces left
+              } else if (!player2.slapFacingDirection && player1.x >= player2.x) {
                 player2.facing = -1; // Player 2 faces right
               }
             } else if (!player1.isHit && player2.isHit) {
-              // Only update player1's facing when player2 is hit
-              if (player1.x < player2.x) {
-                player1.facing = -1; // Player 1 faces right
-              } else {
-                player1.facing = 1; // Player 1 faces left
+              // Only update player1's facing when player2 is hit and player1 doesn't have locked slap facing
+              if (!player1.slapFacingDirection) {
+                if (player1.x < player2.x) {
+                  player1.facing = -1; // Player 1 faces right
+                } else {
+                  player1.facing = 1; // Player 1 faces left
+                }
               }
             } else if (player1.isHit && !player2.isHit) {
-              // Only update player2's facing when player1 is hit
-              if (player1.x < player2.x) {
-                player2.facing = 1; // Player 2 faces left
-              } else {
-                player2.facing = -1; // Player 2 faces right
+              // Only update player2's facing when player1 is hit and player2 doesn't have locked slap facing
+              if (!player2.slapFacingDirection) {
+                if (player1.x < player2.x) {
+                  player2.facing = 1; // Player 2 faces left
+                } else {
+                  player2.facing = -1; // Player 2 faces right
+                }
               }
             }
             // If both are hit, don't update facing at all (handled by outer condition)
@@ -1555,8 +1565,19 @@ io.on("connection", (socket) => {
               // Calculate new position and check boundaries
               let newX;
               if (player.isSlapSliding) {
-                // Use fixed speed factor for slap slides
-                newX = player.x + delta * speedFactor * player.movementVelocity;
+                // For slap slides, check if we're colliding with opponent and reduce velocity if needed
+                const opponent = room.players.find((p) => p.id !== player.id);
+                let effectiveMovementVelocity = player.movementVelocity;
+                
+                if (opponent && arePlayersColliding(player, opponent)) {
+                  // Reduce slap slide velocity when colliding to prevent pass-through
+                  const velocityReduction = 0.3; // Reduce to 30% of original velocity
+                  effectiveMovementVelocity = player.movementVelocity * velocityReduction;
+                  console.log(`🚫 SLAP SLIDE COLLISION: Player ${player.id} velocity reduced from ${player.movementVelocity.toFixed(2)} to ${effectiveMovementVelocity.toFixed(2)}`);
+                }
+                
+                // Use fixed speed factor for slap slides with potentially reduced velocity
+                newX = player.x + delta * speedFactor * effectiveMovementVelocity;
               } else {
                 // Use power-up affected speed factor for normal movement
                 newX =
@@ -2350,8 +2371,17 @@ io.on("connection", (socket) => {
       // Update opponent's facing direction based on attacker's position
       otherPlayer.facing = player.x < otherPlayer.x ? 1 : -1;
 
-      // Calculate knockback direction based on relative positions
-      const knockbackDirection = player.x < otherPlayer.x ? 1 : -1;
+      // Calculate knockback direction
+      let knockbackDirection;
+      if (isSlapAttack) {
+        // For slap attacks, use the attacker's facing direction to ensure consistent knockback
+        // The opponent should always be knocked back in the direction the attacker is facing
+        knockbackDirection = player.facing === 1 ? -1 : 1;
+        console.log(`👋 SLAP KNOCKBACK: Player ${player.id} facing ${player.facing}, knockback direction: ${knockbackDirection}`);
+      } else {
+        // For charged attacks, use relative positions (existing behavior)
+        knockbackDirection = player.x < otherPlayer.x ? 1 : -1;
+      }
       
 
       // Calculate knockback multiplier based on charge percentage
@@ -2391,7 +2421,7 @@ io.on("connection", (socket) => {
           // Mark this as a slap knockback for special friction handling
           otherPlayer.isSlapKnockback = true;
           
-          console.log(`👋 SLAP ATTACK: Player ${player.id} -> Consistent knockback applied (no separation boost)`);
+          console.log(`👋 SLAP ATTACK: Player ${player.id} -> Consistent knockback applied (no separation boost), attacker facing: ${player.facing}, knockback direction: ${knockbackDirection}`);
         } else {
           // For charged attacks, force clear any existing hit state and velocities for consistent knockback
           otherPlayer.isHit = false;
@@ -2540,6 +2570,7 @@ io.on("connection", (socket) => {
         chargeMaxDuration: 2000,
         chargeAttackPower: 0,
         chargingFacingDirection: null,
+        slapFacingDirection: null,
         isSlapAttack: false,
         slapAnimation: 2,
         isThrowing: false,
@@ -2634,6 +2665,7 @@ io.on("connection", (socket) => {
         chargeMaxDuration: 2000,
         chargeAttackPower: 0,
         chargingFacingDirection: null,
+        slapFacingDirection: null,
         isSlapAttack: false,
         slapAnimation: 2,
         isThrowing: false,

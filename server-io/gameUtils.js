@@ -149,6 +149,7 @@ function resetPlayerAttackStates(player) {
   player.chargeStartTime = 0;
   player.chargeAttackPower = 0;
   player.chargingFacingDirection = null;
+  player.slapFacingDirection = null;
   player.isSlapAttack = false;
   player.attackStartTime = 0;
   player.attackEndTime = 0;

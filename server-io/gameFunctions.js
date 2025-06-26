@@ -153,8 +153,14 @@ function executeSlapAttack(player, rooms) {
   if (currentRoom) {
     const opponent = currentRoom.players.find((p) => p.id !== player.id);
     if (opponent) {
-      // Update facing direction based on opponent's position
-      player.facing = player.x < opponent.x ? -1 : 1;
+      // Lock facing direction at the start of the slap attack to prevent erratic behavior
+      // Only set facing direction if we don't already have a locked slap facing direction
+      if (!player.slapFacingDirection) {
+        player.slapFacingDirection = player.x < opponent.x ? -1 : 1;
+      }
+      
+      // Use the locked facing direction
+      player.facing = player.slapFacingDirection;
 
       // Add forward slide during slap attack with power-up consideration
       let slapSlideVelocity = 2.72; // Base slide velocity (reduced from 3.2 to 2.72 for lower base slap power)
@@ -235,6 +241,7 @@ function executeSlapAttack(player, rooms) {
       player.isSlapAttack = false;
       player.attackType = null;
       player.isSlapSliding = false; // Clear the slap slide flag
+      player.slapFacingDirection = null; // Clear the locked facing direction
       player.isInStartupFrames = false; // Ensure startup frames are cleared
       // Gradually reduce the slide velocity
       player.movementVelocity *= 0.5;
