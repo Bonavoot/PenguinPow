@@ -8,6 +8,14 @@ function cleanupPlayerStates(player) {
   player.grabAttemptType = null;
   player.grabAttemptStartTime = null;
   player.isGrabbing = false;
+  player.isGrabbingMovement = false;
+  player.isWhiffingGrab = false;
+  player.isGrabClashing = false;
+  player.grabClashStartTime = 0;
+  player.grabClashInputCount = 0;
+  player.grabMovementStartTime = 0;
+  player.grabMovementDirection = 0;
+  player.grabMovementVelocity = 0;
   player.isBeingGrabbed = false;
   player.isThrowing = false;
   player.isBeingThrown = false;
@@ -78,6 +86,9 @@ function cleanupRoomState(room) {
   room.playersSelectedPowerUps = {};
   room.playerAvailablePowerUps = {};
 
+  // Clean up grab clash data
+  delete room.grabClashData;
+
   // Don't automatically reset disconnection state here - let the handlers manage it
   // room.opponentDisconnected and room.disconnectedDuringGame should be managed explicitly
 
@@ -107,6 +118,14 @@ function getCleanedRoomData(room) {
       grabAttemptType: null,
       grabAttemptStartTime: null,
       isGrabbing: false,
+      isGrabbingMovement: false,
+      isWhiffingGrab: false,
+      isGrabClashing: false,
+      grabClashStartTime: 0,
+      grabClashInputCount: 0,
+      grabMovementStartTime: 0,
+      grabMovementDirection: 0,
+      grabMovementVelocity: 0,
       isBeingGrabbed: false,
       isThrowing: false,
       isBeingThrown: false,

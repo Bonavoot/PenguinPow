@@ -3,6 +3,7 @@ import { SocketContext } from "../SocketContext";
 import GameFighter from "./GameFighter";
 import MobileControls from "./MobileControls";
 import PowerUpSelection from "./PowerUpSelection";
+import GrabClashUI from "./GrabClashUI";
 import gamepadHandler from "../utils/gamepadHandler";
 // import gameMusic from "../sounds/game-music.mp3";
 import PropTypes from "prop-types";
@@ -208,6 +209,11 @@ const Game = ({ rooms, roomName, localId, setCurrentPage }) => {
           roomId={roomName}
           playerId={localId}
           onSelectionStateChange={setIsPowerUpSelectionActive}
+        />
+        <GrabClashUI
+          socket={socket}
+          player1={rooms[index]?.players?.[0]}
+          player2={rooms[index]?.players?.[1]}
         />
       </div>
       <MobileControls

@@ -130,7 +130,7 @@ const SLAP_HITBOX_DISTANCE_VALUE = 184; // Updated to match GRAB_RANGE
 const SLAP_PARRY_WINDOW = 200; // Updated to 200ms window for parry to account for longer slap animation
 const SLAP_PARRY_KNOCKBACK_VELOCITY = 1.5; // Reduced knockback for parried attacks
 const THROW_RANGE = 184; 
-const GRAB_RANGE = 184; 
+const GRAB_RANGE = 140; // Reduced for even tighter grab detection 
 const GRAB_PUSH_SPEED = 0.3; // Increased from 0.2 for more substantial movement
 const GRAB_PUSH_DURATION = 650;
 
@@ -384,6 +384,15 @@ function resetRoomAndPlayers(room) {
     player.overlapStartTime = null;
     // Reset ready positioning flag
     player.canMoveToReady = false;
+    // Reset grab movement states
+    player.isGrabbingMovement = false;
+    player.isWhiffingGrab = false;
+    player.isGrabClashing = false;
+    player.grabClashStartTime = 0;
+    player.grabClashInputCount = 0;
+    player.grabMovementStartTime = 0;
+    player.grabMovementDirection = 0;
+    player.grabMovementVelocity = 0;
   });
 
   // Clear player-specific power-up data
@@ -455,49 +464,134 @@ io.on("connection", (socket) => {
       return false;
     }
 
-    // Only check for throw tech if both players have recent attempt times
-    if (!opponent.lastThrowAttemptTime && !opponent.lastGrabAttemptTime) {
+    // Only check for throw tech if both players have recent throw attempt times
+    if (!player.lastThrowAttemptTime || !opponent.lastThrowAttemptTime) {
       return false;
     }
 
-    // Clean up old attempts that are outside the tech window
+    // Clean up old throw attempts that are outside the tech window
     if (currentTime - player.lastThrowAttemptTime > THROW_TECH_WINDOW) {
       player.lastThrowAttemptTime = 0;
-    }
-    if (currentTime - player.lastGrabAttemptTime > THROW_TECH_WINDOW) {
-      player.lastGrabAttemptTime = 0;
+      return false;
     }
     if (currentTime - opponent.lastThrowAttemptTime > THROW_TECH_WINDOW) {
       opponent.lastThrowAttemptTime = 0;
-    }
-    if (currentTime - opponent.lastGrabAttemptTime > THROW_TECH_WINDOW) {
-      opponent.lastGrabAttemptTime = 0;
+      return false;
     }
 
-    // Check all possible tech scenarios
+    // Check only for simultaneous throws
     const bothThrew =
       player.lastThrowAttemptTime &&
       opponent.lastThrowAttemptTime &&
       Math.abs(player.lastThrowAttemptTime - opponent.lastThrowAttemptTime) <=
         THROW_TECH_WINDOW;
 
-    const bothGrabbed =
-      player.lastGrabAttemptTime &&
+    return bothThrew;
+  }
+
+  function checkForGrabPriority(player, opponent) {
+    const currentTime = Date.now();
+
+    // Clean up old attempts that are outside the window
+    if (currentTime - player.lastThrowAttemptTime > THROW_TECH_WINDOW) {
+      player.lastThrowAttemptTime = 0;
+    }
+    if (currentTime - opponent.lastGrabAttemptTime > THROW_TECH_WINDOW) {
+      opponent.lastGrabAttemptTime = 0;
+    }
+
+    // Check if opponent grabbed while this player is trying to throw
+    const opponentGrabbedDuringThrow =
+      player.lastThrowAttemptTime &&
       opponent.lastGrabAttemptTime &&
-      Math.abs(player.lastGrabAttemptTime - opponent.lastGrabAttemptTime) <=
+      Math.abs(player.lastThrowAttemptTime - opponent.lastGrabAttemptTime) <=
         THROW_TECH_WINDOW;
 
-    const throwAndGrab =
-      (player.lastThrowAttemptTime &&
-        opponent.lastGrabAttemptTime &&
-        Math.abs(player.lastThrowAttemptTime - opponent.lastGrabAttemptTime) <=
-          THROW_TECH_WINDOW) ||
-      (player.lastGrabAttemptTime &&
-        opponent.lastThrowAttemptTime &&
-        Math.abs(player.lastGrabAttemptTime - opponent.lastThrowAttemptTime) <=
-          THROW_TECH_WINDOW);
+    return opponentGrabbedDuringThrow;
+  }
 
-    return bothThrew || bothGrabbed || throwAndGrab;
+  function resolveGrabClash(room, io) {
+    if (!room.grabClashData) {
+      console.log(`🥊 RESOLVE ERROR: No grab clash data found for room ${room.id}`);
+      return;
+    }
+
+    const player1 = room.players.find(p => p.id === room.grabClashData.player1Id);
+    const player2 = room.players.find(p => p.id === room.grabClashData.player2Id);
+
+    if (!player1 || !player2) {
+      console.log(`🥊 RESOLVE ERROR: Players not found - Player1: ${player1}, Player2: ${player2}`);
+      return;
+    }
+
+    console.log(`🥊 RESOLVING GRAB CLASH: Player1 (${player1.id}) inputs: ${room.grabClashData.player1Inputs}, Player2 (${player2.id}) inputs: ${room.grabClashData.player2Inputs}`);
+
+    let winner, loser;
+    if (room.grabClashData.player1Inputs > room.grabClashData.player2Inputs) {
+      winner = player1;
+      loser = player2;
+    } else if (room.grabClashData.player2Inputs > room.grabClashData.player1Inputs) {
+      winner = player2;
+      loser = player1;
+    } else {
+      // Tie - random winner
+      const randomWinner = Math.random() < 0.5;
+      winner = randomWinner ? player1 : player2;
+      loser = randomWinner ? player2 : player1;
+      console.log(`Grab clash tie, random winner: ${winner.id}`);
+    }
+
+    // Clear clash states
+    player1.isGrabClashing = false;
+    player1.grabClashStartTime = 0;
+    player1.grabClashInputCount = 0;
+    player2.isGrabClashing = false;
+    player2.grabClashStartTime = 0;
+    player2.grabClashInputCount = 0;
+
+    // Set up grab for winner
+    winner.isGrabbing = true;
+    winner.grabStartTime = Date.now();
+    winner.grabbedOpponent = loser.id;
+    loser.isBeingGrabbed = true;
+    loser.isHit = false;
+
+    // Clear isAtTheRopes state if loser gets grabbed during the stun
+    if (loser.isAtTheRopes) {
+      loser.isAtTheRopes = false;
+      loser.atTheRopesStartTime = 0;
+      timeoutManager.clearPlayerSpecific(loser.id, "atTheRopesTimeout");
+    }
+
+    // Set grab facing direction for winner
+    if (winner.isChargingAttack) {
+      winner.grabFacingDirection = winner.chargingFacingDirection;
+    } else {
+      winner.grabFacingDirection = winner.facing;
+    }
+
+    // Set grab cooldown for winner
+    winner.grabCooldown = true;
+    setPlayerTimeout(
+      winner.id,
+      () => {
+        winner.grabCooldown = false;
+      },
+      1100
+    );
+
+    // Emit clash result before clearing data
+    io.in(room.id).emit("grab_clash_end", {
+      winnerId: winner.id,
+      loserId: loser.id,
+      winnerInputs: winner.id === room.grabClashData.player1Id ? room.grabClashData.player1Inputs : room.grabClashData.player2Inputs,
+      loserInputs: loser.id === room.grabClashData.player1Id ? room.grabClashData.player1Inputs : room.grabClashData.player2Inputs
+    });
+
+    // Clear room clash data
+    delete room.grabClashData;
+
+    console.log(`Grab clash resolved: Winner ${winner.id}, Loser ${loser.id}`);
   }
 
   // Update applyThrowTech to clear all relevant states:
@@ -1424,16 +1518,172 @@ io.on("connection", (socket) => {
           }
         }
 
+        // Grab Movement
+        if (player.isGrabbingMovement) {
+          const currentTime = Date.now();
+          const opponent = room.players.find((p) => p.id !== player.id);
+          
+          // Check for grab clash - both players grabbing towards each other
+          if (
+            opponent &&
+            opponent.isGrabbingMovement &&
+            !player.isGrabClashing &&
+            !opponent.isGrabClashing &&
+            !player.isBeingGrabbed &&
+            !opponent.isBeingGrabbed &&
+            !player.isThrowing &&
+            !opponent.isThrowing &&
+            !player.isBeingThrown &&
+            !opponent.isBeingThrown &&
+            isOpponentCloseEnoughForGrab(player, opponent)
+          ) {
+            console.log(`🥊 GRAB CLASH DETECTED between players ${player.id} and ${opponent.id}`);
+            
+            // Clear any existing grab movement timers
+            timeoutManager.clearPlayerSpecific(player.id, "grabMovementTimeout");
+            timeoutManager.clearPlayerSpecific(opponent.id, "grabMovementTimeout");
+            
+            // Start grab clash for both players
+            player.isGrabbingMovement = false;
+            player.isGrabClashing = true;
+            player.grabClashStartTime = currentTime;
+            player.grabClashInputCount = 0;
+            player.grabMovementVelocity = 0;
+            player.movementVelocity = 0;
+            player.isStrafing = false;
+            
+            opponent.isGrabbingMovement = false;
+            opponent.isGrabClashing = true;
+            opponent.grabClashStartTime = currentTime;
+            opponent.grabClashInputCount = 0;
+            opponent.grabMovementVelocity = 0;
+            opponent.movementVelocity = 0;
+            opponent.isStrafing = false;
+            
+            // Initialize clash data for the room
+            room.grabClashData = {
+              player1Id: player.id,
+              player2Id: opponent.id,
+              startTime: currentTime,
+              duration: 2000, // 2 seconds
+              player1Inputs: 0,
+              player2Inputs: 0
+            };
+            
+            console.log(`🥊 ROOM CLASH DATA INITIALIZED:`, room.grabClashData);
+            
+            // Emit grab clash start event
+            console.log(`🥊 EMITTING GRAB CLASH START to room ${room.id}`);
+            io.in(room.id).emit("grab_clash_start", {
+              player1Id: player.id,
+              player2Id: opponent.id,
+              duration: 2000,
+              player1Position: { x: player.x, facing: player.facing },
+              player2Position: { x: opponent.x, facing: opponent.facing }
+            });
+            
+            // Set clash resolution timer
+            setPlayerTimeout(
+              player.id,
+              () => {
+                resolveGrabClash(room, io);
+              },
+              2000,
+              "grabClashResolution"
+            );
+            
+            return; // Skip normal grab movement processing
+          }
+          
+          // Move forward during grab movement
+          let currentSpeedFactor = speedFactor;
+          if (player.activePowerUp === POWER_UP_TYPES.SPEED) {
+            currentSpeedFactor *= player.powerUpMultiplier;
+          }
+          
+          // Calculate new position with grab movement
+          const newX = player.x + player.grabMovementDirection * delta * currentSpeedFactor * player.grabMovementVelocity;
+          
+          // Calculate boundaries
+          const sizeOffset = 0;
+          const leftBoundary = MAP_LEFT_BOUNDARY + sizeOffset;
+          const rightBoundary = MAP_RIGHT_BOUNDARY - sizeOffset;
+          
+          // Update position within boundaries
+          if (newX >= leftBoundary && newX <= rightBoundary) {
+            player.x = newX;
+          } else {
+            // Stop at boundary
+            player.x = newX < leftBoundary ? leftBoundary : rightBoundary;
+          }
+          
+          // Continuously check for grab opportunity during movement (only if opponent is not also grabbing)
+          if (
+            opponent &&
+            !opponent.isGrabbingMovement &&
+            isOpponentCloseEnoughForGrab(player, opponent) &&
+            !opponent.isBeingThrown &&
+            !opponent.isAttacking &&
+            !opponent.isBeingGrabbed &&
+            !player.isBeingGrabbed &&
+            !player.throwTechCooldown
+          ) {
+            console.log(`Player ${player.id} successfully grabbed opponent during movement`);
+            
+            // Successful grab - stop all movement and initiate grab
+            player.isGrabbingMovement = false;
+            player.grabMovementVelocity = 0;
+            player.movementVelocity = 0;
+            player.isStrafing = false;
+            
+            // Start the actual grab
+            player.isGrabbing = true;
+            player.grabStartTime = Date.now();
+            player.grabbedOpponent = opponent.id;
+            opponent.isBeingGrabbed = true;
+            opponent.isHit = false;
+            
+            // Clear isAtTheRopes state if opponent gets grabbed during the stun
+            if (opponent.isAtTheRopes) {
+              opponent.isAtTheRopes = false;
+              opponent.atTheRopesStartTime = 0;
+              timeoutManager.clearPlayerSpecific(opponent.id, "atTheRopesTimeout");
+            }
+            
+            // Set grab facing direction
+            if (player.isChargingAttack) {
+              player.grabFacingDirection = player.chargingFacingDirection;
+            } else {
+              player.grabFacingDirection = player.facing;
+            }
+            
+            // Set grab cooldown
+            player.grabCooldown = true;
+            setPlayerTimeout(
+              player.id,
+              () => {
+                player.grabCooldown = false;
+              },
+              1100
+            );
+          }
+        }
+
         // Strafing
         if (
           !player.isThrowLanded && // Block all movement for throw landed players
           !player.isRawParrying && // Block all movement during raw parry
+          !player.isGrabbingMovement && // Block normal movement during grab movement
+          !player.isWhiffingGrab && // Block movement during grab whiff recovery
+          !player.isGrabClashing && // Block movement during grab clashing
           ((!player.keys.s &&
             !(player.isAttacking && player.attackType === "charged") && // Block only during charged attack execution
             player.saltCooldown === false &&
             !player.isThrowTeching &&
             !player.isGrabbing &&
             !player.isBeingGrabbed &&
+            !player.isGrabbingMovement &&
+            !player.isWhiffingGrab &&
             !player.isRecovering &&
             !player.isThrowingSnowball &&
             !player.isSpawningPumoArmy &&
@@ -1479,6 +1729,8 @@ io.on("connection", (socket) => {
             !player.isDodging &&
             !player.isThrowing &&
             !player.isGrabbing &&
+            !player.isGrabbingMovement &&
+            !player.isWhiffingGrab &&
             !player.isAttacking && // Block during any attack (slap or charged)
             !player.isRecovering &&
             !player.isRawParryStun &&
@@ -1520,6 +1772,8 @@ io.on("connection", (socket) => {
             !player.isDodging &&
             !player.isThrowing &&
             !player.isGrabbing &&
+            !player.isGrabbingMovement &&
+            !player.isWhiffingGrab &&
             !player.isAttacking && // Block during any attack (slap or charged)
             !player.isRecovering &&
             !player.isRawParryStun &&
@@ -1676,6 +1930,9 @@ io.on("connection", (socket) => {
           !player.isDodging && // Block raw parry during dodge - don't interrupt dodge hop
           !player.isGrabbing &&
           !player.isBeingGrabbed &&
+          !player.isGrabbingMovement && // Block raw parry during grab movement
+          !player.isWhiffingGrab && // Block raw parry during grab whiff recovery
+          !player.isGrabClashing && // Block raw parry during grab clashing
           !player.isThrowing &&
           !player.isBeingThrown &&
           !player.isRecovering &&
@@ -2357,6 +2614,47 @@ io.on("connection", (socket) => {
       otherPlayer.isAttacking = false;
       otherPlayer.isStrafing = false;
       
+      // Clear grab movement states if player was attempting to grab
+      if (otherPlayer.isGrabbingMovement) {
+        console.log(`Player ${otherPlayer.id} grab movement interrupted by hit from ${player.id}`);
+        otherPlayer.isGrabbingMovement = false;
+        otherPlayer.grabMovementStartTime = 0;
+        otherPlayer.grabMovementDirection = 0;
+        otherPlayer.grabMovementVelocity = 0;
+        // Clear any grab movement timeouts
+        timeoutManager.clearPlayerSpecific(otherPlayer.id, "grabMovementTimeout");
+      }
+      
+      // Clear grab whiffing state if player was whiffing
+      if (otherPlayer.isWhiffingGrab) {
+        console.log(`Player ${otherPlayer.id} grab whiff interrupted by hit from ${player.id}`);
+        otherPlayer.isWhiffingGrab = false;
+      }
+      
+      // Clear grab clashing state if player was clashing
+      if (otherPlayer.isGrabClashing) {
+        console.log(`Player ${otherPlayer.id} grab clash interrupted by hit from ${player.id}`);
+        otherPlayer.isGrabClashing = false;
+        otherPlayer.grabClashStartTime = 0;
+        otherPlayer.grabClashInputCount = 0;
+        // Clear any grab clash timeouts
+        timeoutManager.clearPlayerSpecific(otherPlayer.id, "grabClashResolution");
+        
+        // If there was room clash data involving this player, clean it up
+        if (currentRoom && currentRoom.grabClashData) {
+          if (currentRoom.grabClashData.player1Id === otherPlayer.id || 
+              currentRoom.grabClashData.player2Id === otherPlayer.id) {
+            console.log(`Clearing room grab clash data due to player ${otherPlayer.id} being hit`);
+            delete currentRoom.grabClashData;
+            // Emit clash cancellation to room
+            io.in(currentRoom.id).emit("grab_clash_cancelled", {
+              reason: "player_hit",
+              hitPlayerId: otherPlayer.id
+            });
+          }
+        }
+      }
+      
       // Clear isAtTheRopes state if player gets hit during the stun
       if (otherPlayer.isAtTheRopes) {
         otherPlayer.isAtTheRopes = false;
@@ -2589,6 +2887,14 @@ io.on("connection", (socket) => {
         throwingFacingDirection: null,
         beingThrownFacingDirection: null,
         isGrabbing: false,
+        isGrabbingMovement: false,
+        isWhiffingGrab: false,
+        isGrabClashing: false,
+        grabClashStartTime: 0,
+        grabClashInputCount: 0,
+        grabMovementStartTime: 0,
+        grabMovementDirection: 0,
+        grabMovementVelocity: 0,
         grabStartTime: 0,
         grabbedOpponent: null,
         isThrowTeching: false,
@@ -2684,6 +2990,14 @@ io.on("connection", (socket) => {
         throwingFacingDirection: null,
         beingThrownFacingDirection: null,
         isGrabbing: false,
+        isGrabbingMovement: false,
+        isWhiffingGrab: false,
+        isGrabClashing: false,
+        grabClashStartTime: 0,
+        grabClashInputCount: 0,
+        grabMovementStartTime: 0,
+        grabMovementDirection: 0,
+        grabMovementVelocity: 0,
         grabStartTime: 0,
         grabbedOpponent: null,
         isThrowTeching: false,
@@ -3001,6 +3315,85 @@ io.on("connection", (socket) => {
       return;
     }
 
+    // Block ALL inputs while grab movement is active
+    if (player.isGrabbingMovement) {
+      // Only allow key state updates for grab movement, but block all other actions
+      if (data.keys) {
+        player.keys = data.keys;
+      }
+      return;
+    }
+
+    // Debug data.keys during grab clashing
+    if (player.isGrabClashing) {
+      console.log(`🥊 FIGHTER_ACTION DEBUG: Player ${player.id} isGrabClashing=${player.isGrabClashing}, data.keys=`, data.keys);
+    }
+
+    // Count inputs during grab clash - HAPPENS BEFORE BLOCKING
+    if (player.isGrabClashing && rooms[roomIndex].grabClashData && data.keys) {
+      // Track previous keys for input detection - get from player state
+      const previousKeys = { ...player.keys };
+      
+      console.log(`🥊 GRAB CLASH DEBUG: Player ${player.id} is clashing, checking inputs...`);
+      console.log(`🥊 CURRENT KEYS:`, data.keys);
+      console.log(`🥊 PREVIOUS KEYS:`, previousKeys);
+      
+      // Update player keys FIRST so next event can detect changes
+      player.keys = data.keys;
+      
+      // Count any key press (not key holds) as mashing input
+      const mashKeys = ['w', 'a', 's', 'd', 'mouse1', 'mouse2', 'e', 'f', 'shift'];
+      let inputDetected = false;
+      let detectedKey = null;
+      
+      for (const key of mashKeys) {
+        if (data.keys[key] && !previousKeys[key]) {
+          inputDetected = true;
+          detectedKey = key;
+          break;
+        }
+      }
+      
+      console.log(`🥊 INPUT DETECTED: ${inputDetected}, KEY: ${detectedKey}`);
+      
+      if (inputDetected) {
+        player.grabClashInputCount++;
+        
+        // Update room clash data
+        if (player.id === rooms[roomIndex].grabClashData.player1Id) {
+          rooms[roomIndex].grabClashData.player1Inputs++;
+          console.log(`🥊 PLAYER 1 (${player.id}) INPUT COUNT: ${rooms[roomIndex].grabClashData.player1Inputs}`);
+        } else if (player.id === rooms[roomIndex].grabClashData.player2Id) {
+          rooms[roomIndex].grabClashData.player2Inputs++;
+          console.log(`🥊 PLAYER 2 (${player.id}) INPUT COUNT: ${rooms[roomIndex].grabClashData.player2Inputs}`);
+        }
+        
+        console.log(`🥊 EMITTING PROGRESS UPDATE TO ROOM: ${roomId}`);
+        console.log(`🥊 PROGRESS DATA:`, {
+          player1Inputs: rooms[roomIndex].grabClashData.player1Inputs,
+          player2Inputs: rooms[roomIndex].grabClashData.player2Inputs,
+          player1Id: rooms[roomIndex].grabClashData.player1Id,
+          player2Id: rooms[roomIndex].grabClashData.player2Id
+        });
+        
+        // Emit progress update to all players in the room
+        io.in(roomId).emit("grab_clash_progress", {
+          player1Inputs: rooms[roomIndex].grabClashData.player1Inputs,
+          player2Inputs: rooms[roomIndex].grabClashData.player2Inputs,
+          player1Id: rooms[roomIndex].grabClashData.player1Id,
+          player2Id: rooms[roomIndex].grabClashData.player2Id
+        });
+        
+        console.log(`Player ${player.id} mashed input during grab clash. Total inputs: ${player.grabClashInputCount}`);
+      }
+    }
+
+    // Block all actions (except input counting) during grab clashing
+    if (player.isGrabClashing) {
+      console.log(`🥊 BLOCKING OTHER ACTIONS: Player ${player.id} is grab clashing, blocking non-input actions`);
+      return;
+    }
+
     // Helper function to check if player is in a charged attack execution state
     const isInChargedAttackExecution = () => {
       return player.isAttacking && player.attackType === "charged";
@@ -3029,6 +3422,7 @@ io.on("connection", (socket) => {
     if (data.keys) {
       // Track mouse1 state changes to prevent repeated slap attacks while holding
       const previousMouse1State = player.keys.mouse1;
+      const previousKeys = { ...player.keys };
       player.keys = data.keys;
 
       // Set mouse1 press flags
@@ -3553,7 +3947,11 @@ io.on("connection", (socket) => {
             !opponent.isAttacking &&
             !opponent.isDodging
           ) {
-            if (checkForThrowTech(player, opponent)) {
+            if (checkForGrabPriority(player, opponent)) {
+              // Opponent grabbed at the same time, grab wins - cancel this throw
+              console.log(`Throw cancelled: Opponent grabbed at the same time`);
+              return;
+            } else if (checkForThrowTech(player, opponent)) {
               applyThrowTech(player, opponent);
             } else if (!player.throwTechCooldown) {
               clearChargeState(player, true); // true = cancelled by throw
@@ -3587,6 +3985,12 @@ io.on("connection", (socket) => {
               );
             }
           } else {
+            if (checkForGrabPriority(player, opponent)) {
+              // Opponent grabbed at the same time, grab wins - cancel this throw
+              console.log(`Missed throw cancelled: Opponent grabbed at the same time`);
+              return;
+            }
+
             clearChargeState(player, true); // true = cancelled by throw
 
             player.isThrowing = true;
@@ -3617,70 +4021,67 @@ io.on("connection", (socket) => {
       !player.isBeingPushed &&
       !player.grabbedOpponent &&
       !player.isRawParrying &&
-      !player.isJumping
+      !player.isJumping &&
+      !player.isGrabbingMovement &&
+      !player.isWhiffingGrab
     ) {
       player.lastGrabAttemptTime = Date.now();
-
+      
+      // Clear charging attack state when starting grab
+      clearChargeState(player, true); // true = cancelled by grab
+      
+      // Start grab movement immediately
+      player.isGrabbingMovement = true;
+      player.grabMovementStartTime = Date.now();
+      player.grabMovementDirection = player.facing === 1 ? -1 : 1; // Move in facing direction
+      player.grabMovementVelocity = 1.4; // Slightly faster movement speed
+      
+      // Clear any existing movement momentum
+      player.movementVelocity = 0;
+      player.isStrafing = false;
+      
+      console.log(`Player ${player.id} starting grab movement, facing: ${player.facing}, direction: ${player.grabMovementDirection}`);
+      
+      // Set up the grab duration timer (750ms)
       setPlayerTimeout(
         player.id,
         () => {
-          const opponent = rooms[roomIndex].players.find(
-            (p) => p.id !== player.id
-          );
-          // Clear charging attack state regardless of grab success
-          clearChargeState(player, true); // true = cancelled by grab
-
-          if (
-            isOpponentCloseEnoughForGrab(player, opponent) &&
-            !opponent.isBeingThrown &&
-            !opponent.isAttacking &&
-            !opponent.isBeingGrabbed &&
-            !player.isBeingGrabbed
-          ) {
-            if (checkForThrowTech(player, opponent)) {
-              applyThrowTech(player, opponent);
-            } else if (!player.throwTechCooldown) {
-              clearChargeState(player, true); // true = cancelled by grab
-
-              player.isGrabbing = true;
-              player.grabStartTime = Date.now();
-              player.grabbedOpponent = opponent.id;
-              opponent.isBeingGrabbed = true;
-              opponent.isHit = false; // Ensure isHit is false for initial grab
-
-              if (player.isChargingAttack) {
-                player.grabFacingDirection = player.chargingFacingDirection;
-              } else {
-                player.grabFacingDirection = player.facing;
-              }
-
-              player.grabCooldown = true;
-              setPlayerTimeout(
-                player.id,
-                () => {
-                  player.grabCooldown = false;
-                },
-                1100
-              );
-            }
-          } else {
-            player.isGrabbing = true;
-            player.grabStartTime = Date.now();
-
-            // Only set cooldown if the grab was actually attempted
-            if (isOpponentCloseEnoughForGrab(player, opponent)) {
-              player.grabCooldown = true;
-              setPlayerTimeout(
-                player.id,
-                () => {
-                  player.grabCooldown = false;
-                },
-                1100
-              );
-            }
+          // If still in grab movement after 750ms, it's a whiff
+          if (player.isGrabbingMovement && !player.grabbedOpponent) {
+            console.log(`Player ${player.id} grab whiffed after 750ms`);
+            
+            player.isGrabbingMovement = false;
+            player.isWhiffingGrab = true;
+            player.grabMovementVelocity = 0;
+            
+            // Set grab cooldown for whiffed grab
+            player.grabCooldown = true;
+            setPlayerTimeout(
+              player.id,
+              () => {
+                player.grabCooldown = false;
+              },
+              1100
+            );
+            
+            // End whiff state after 200ms
+            setPlayerTimeout(
+              player.id,
+              () => {
+                player.isWhiffingGrab = false;
+                console.log(`Player ${player.id} recovered from grab whiff`);
+                
+                // Check if we should restart charging after grab whiff completes
+                if (shouldRestartCharging(player)) {
+                  startCharging(player);
+                }
+              },
+              200
+            );
           }
         },
-        64
+        750,
+        "grabMovementTimeout"
       );
     }
   });
