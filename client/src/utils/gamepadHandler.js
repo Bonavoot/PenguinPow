@@ -105,7 +105,7 @@ class GamepadHandler {
 
     newKeyState.a = leftStickX < -this.deadzone; // Move left
     newKeyState.d = leftStickX > this.deadzone; // Move right
-    newKeyState.s = leftStickY > this.deadzone; // Crouch (down)
+    newKeyState[" "] = leftStickY > this.deadzone; // Raw parry (down)
 
     // UNIVERSAL BUTTON MAPPING - Works on both PC and Steam Deck
     // Try all common button combinations to ensure compatibility
@@ -119,8 +119,8 @@ class GamepadHandler {
     newKeyState.mouse2 = this.getButtonPressed(gamepad, [5, 7, 9, 11]) || false; // R1/R2
 
     // D-pad for precise movement (works the same on both)
-    if (gamepad.buttons[12]?.pressed) newKeyState.s = true; // D-pad up -> crouch
-    if (gamepad.buttons[13]?.pressed) newKeyState.s = true; // D-pad down -> crouch
+    if (gamepad.buttons[12]?.pressed) newKeyState[" "] = true; // D-pad up -> raw parry
+    if (gamepad.buttons[13]?.pressed) newKeyState[" "] = true; // D-pad down -> raw parry
     if (gamepad.buttons[14]?.pressed) newKeyState.a = true; // D-pad left
     if (gamepad.buttons[15]?.pressed) newKeyState.d = true; // D-pad right
 

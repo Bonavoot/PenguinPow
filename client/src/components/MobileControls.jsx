@@ -81,7 +81,7 @@ const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
 
     // Reset movement keys
     setKeyState((prev) => {
-      const newState = { ...prev, a: false, d: false, s: false };
+      const newState = { ...prev, a: false, d: false, " ": false };
       emitKeyState(newState);
       return newState;
     });
@@ -106,7 +106,7 @@ const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
         ...prev,
         a: normalizedX < -20,
         d: normalizedX > 20,
-        s: normalizedY > 20, // Crouch when joystick is pulled down
+        " ": normalizedY > 20, // Raw parry when joystick is pulled down
       };
       emitKeyState(newState);
       return newState;

@@ -81,6 +81,7 @@ import UiPlayerInfo from "./UiPlayerInfo";
 import SaltEffect from "./SaltEffect";
 import MatchOver from "./MatchOver";
 import HitEffect from "./HitEffect";
+import RawParryEffect from "./RawParryEffect";
 import { getGlobalVolume } from "./Settings";
 import SnowEffect from "./SnowEffect";
 
@@ -249,11 +250,15 @@ const getImageSrc = (
   grabAttemptType,
   isRecovering,
   isRawParryStun,
+  isRawParrySuccess,
+  isPerfectRawParrySuccess,
   isThrowingSnowball,
   isSpawningPumoArmy,
   isAtTheRopes
 ) => {
   if (fighter === "player 2") {
+    if (isPerfectRawParrySuccess) return snowballThrow;
+    if (isRawParrySuccess) return recovering;
     if (isAtTheRopes) return beingGrabbed;
     if (isBowing) return bow;
     if (isThrowTeching) return throwTech;
@@ -283,6 +288,8 @@ const getImageSrc = (
     if (isThrowingSalt) return salt;
     return pumo;
   } else if (fighter === "player 1") {
+    if (isPerfectRawParrySuccess) return snowballThrow2;
+    if (isRawParrySuccess) return recovering2;
     if (isAtTheRopes) return beingGrabbed2;
     if (isJumping) return throwing2;
     if (isAttacking && !isSlapAttack) return attack2;
@@ -429,6 +436,8 @@ const StyledImage = styled("img")
         "sizeMultiplier",
         "isRecovering",
         "isRawParryStun",
+        "isRawParrySuccess",
+        "isPerfectRawParrySuccess",
         "isAtTheRopes",
       ].includes(prop),
   })
@@ -458,6 +467,8 @@ const StyledImage = styled("img")
       props.$grabAttemptType,
       props.$isRecovering,
       props.$isRawParryStun,
+      props.$isRawParrySuccess,
+      props.$isPerfectRawParrySuccess,
       props.$isThrowingSnowball,
       props.$isSpawningPumoArmy,
       props.$isAtTheRopes
@@ -470,7 +481,7 @@ const StyledImage = styled("img")
       zIndex:
         props.$isThrowing || props.$isDodging || props.$isGrabbing ? 98 : 99,
       filter: props.$isRawParrying
-        ? "drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3) drop-shadow(0 0 3px #000)"
+        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3) drop-shadow(0 0 3px #000)"
         : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) ",
       animation: props.$isRawParrying
         ? "rawParryFlash 1.2s ease-in-out infinite"
@@ -486,19 +497,19 @@ const StyledImage = styled("img")
   /* Static styles only - no dynamic props here */
   @keyframes rawParryFlash {
     0% {
-      filter: drop-shadow(0 0 2px rgba(0, 150, 255, 0.4)) brightness(1) drop-shadow(0 0 1px #000);
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 2px rgba(0, 150, 255, 0.4)) brightness(1) drop-shadow(0 0 1px #000);
     }
     25% {
-      filter: drop-shadow(0 0 12px rgba(0, 150, 255, 0.9)) brightness(1.6) drop-shadow(0 0 4px #000);
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 12px rgba(0, 150, 255, 0.9)) brightness(1.6) drop-shadow(0 0 4px #000);
     }
     50% {
-      filter: drop-shadow(0 0 8px rgba(0, 150, 255, 0.7)) brightness(1.3) drop-shadow(0 0 3px #000);
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.7)) brightness(1.3) drop-shadow(0 0 3px #000);
     }
     75% {
-      filter: drop-shadow(0 0 12px rgba(0, 150, 255, 0.9)) brightness(1.6) drop-shadow(0 0 4px #000);
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 12px rgba(0, 150, 255, 0.9)) brightness(1.6) drop-shadow(0 0 4px #000);
     }
     100% {
-      filter: drop-shadow(0 0 2px rgba(0, 150, 255, 0.4)) brightness(1) drop-shadow(0 0 1px #000);
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 2px rgba(0, 150, 255, 0.4)) brightness(1) drop-shadow(0 0 1px #000);
     }
   }
 `;
@@ -785,6 +796,7 @@ const GameFighter = ({
   const [matchOver, setMatchOver] = useState(false);
   const [parryEffectPosition, setParryEffectPosition] = useState(null);
   const [hitEffectPosition, setHitEffectPosition] = useState(null);
+  const [rawParryEffectPosition, setRawParryEffectPosition] = useState(null);
   const [showStarStunEffect, setShowStarStunEffect] = useState(false);
   const [hasUsedPowerUp, setHasUsedPowerUp] = useState(false);
   const [showFloatingPowerUp, setShowFloatingPowerUp] = useState(false);
@@ -1071,6 +1083,28 @@ const GameFighter = ({
       }
     });
 
+    socket.on("raw_parry_success", (data) => {
+      console.log("Received raw_parry_success event:", data);
+      if (
+        data &&
+        typeof data.x === "number" &&
+        typeof data.y === "number"
+      ) {
+        const effectData = {
+          x: data.x + 150,
+          y: data.y + 110, // Add GROUND_LEVEL to match player height
+          facing: data.facing || 1, // Default to 1 if facing not provided
+          timestamp: data.timestamp, // Pass through unique timestamp
+          parryId: data.parryId, // Pass through unique parry ID
+          isPerfect: data.isPerfect || false, // Pass through perfect parry flag
+        };
+        console.log("Setting rawParryEffectPosition:", effectData);
+        setRawParryEffectPosition(effectData);
+      } else {
+        console.warn("Invalid raw_parry_success data:", data);
+      }
+    });
+
     socket.on("perfect_parry", (data) => {
       if (
         data &&
@@ -1123,6 +1157,7 @@ const GameFighter = ({
       setGyojiState("idle");
       setMatchOver(false);
       setHasUsedPowerUp(false);
+      setRawParryEffectPosition(null); // Clear any active parry effects
       onResetDisconnectState(); // Reset opponent disconnected state for new games
       console.log("game reset gamefighter.jsx");
 
@@ -1149,6 +1184,7 @@ const GameFighter = ({
     socket.on("game_start", () => {
       console.log("game start gamefighter.jsx");
       setHakkiyoi(true);
+      setRawParryEffectPosition(null); // Clear any leftover parry effects
       // Clear the countdown timer when game starts and immediately reset countdown
       if (countdownRef.current) {
         clearInterval(countdownRef.current);
@@ -1190,6 +1226,7 @@ const GameFighter = ({
       socket.off("fighter_action");
       socket.off("slap_parry");
       socket.off("player_hit");
+      socket.off("raw_parry_success");
       socket.off("perfect_parry");
       socket.off("game_start");
       socket.off("game_reset");
@@ -1682,6 +1719,8 @@ const GameFighter = ({
         $sizeMultiplier={penguin.sizeMultiplier}
         $isRecovering={penguin.isRecovering}
         $isRawParryStun={penguin.isRawParryStun}
+        $isRawParrySuccess={penguin.isRawParrySuccess}
+        $isPerfectRawParrySuccess={penguin.isPerfectRawParrySuccess}
         $isThrowingSnowball={penguin.isThrowingSnowball}
         $isSpawningPumoArmy={penguin.isSpawningPumoArmy}
         $isAtTheRopes={penguin.isAtTheRopes}
@@ -1717,8 +1756,11 @@ const GameFighter = ({
             penguin.grabAttemptType,
             penguin.isRecovering,
             penguin.isRawParryStun,
+            penguin.isRawParrySuccess,
+            penguin.isPerfectRawParrySuccess,
             penguin.isThrowingSnowball,
-            penguin.isSpawningPumoArmy
+            penguin.isSpawningPumoArmy,
+            penguin.isAtTheRopes
           )}
         />
       )}
@@ -1730,6 +1772,7 @@ const GameFighter = ({
       />
       <SlapParryEffect position={parryEffectPosition} />
       <HitEffect position={hitEffectPosition} />
+      <RawParryEffect position={rawParryEffectPosition} />
       <StarStunEffect
         x={getDisplayPosition().x}
         y={getDisplayPosition().y}

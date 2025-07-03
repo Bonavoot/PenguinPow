@@ -166,9 +166,9 @@ const MOVEMENT_FRICTION = 0.985; // Increased from 0.95 for more ice-like feel
 const ICE_DRIFT_FACTOR = 0.92; // New constant for directional drift
 const MIN_MOVEMENT_THRESHOLD = 0.01; // New constant for movement cutoff
 
-const RAW_PARRY_KNOCKBACK = 4; // Fixed knockback distance for raw parries
+const RAW_PARRY_KNOCKBACK = 1.5; // Fixed knockback distance for raw parries (reduced by 50%)
 const RAW_PARRY_STUN_DURATION = 1000; // 1 second stun duration
-const RAW_PARRY_SLAP_KNOCKBACK = 2; // Reduced knockback for slap attack parries
+const RAW_PARRY_SLAP_KNOCKBACK = 1.5; // Reduced knockback for slap attack parries (reduced by 50%)
 const RAW_PARRY_SLAP_STUN_DURATION = 500; // Reduced stun duration for slap attack parries
 const PERFECT_PARRY_WINDOW = 100; // 100ms window for perfect parries
 const DODGE_COOLDOWN = 2000; // 2 second cooldown between dodges
@@ -341,6 +341,8 @@ function resetRoomAndPlayers(room) {
     player.rawParryStartTime = 0;
     player.rawParryMinDurationMet = false;
     player.isRawParryStun = false;
+    player.isRawParrySuccess = false;
+    player.isPerfectRawParrySuccess = false;
     player.isAtTheRopes = false;
     player.atTheRopesStartTime = 0;
     player.isDodging = false;
@@ -1495,7 +1497,7 @@ io.on("connection", (socket) => {
 
           if (Date.now() >= player.dodgeEndTime) {
             // Check if player is trying to raw parry - if so, skip momentum transfer
-            if (player.keys.s) {
+            if (player.keys[" "]) {
               // Player wants to raw parry after dodge - clear all momentum and states
               player.movementVelocity = 0;
               player.isStrafing = false;
@@ -1676,7 +1678,7 @@ io.on("connection", (socket) => {
           !player.isGrabbingMovement && // Block normal movement during grab movement
           !player.isWhiffingGrab && // Block movement during grab whiff recovery
           !player.isGrabClashing && // Block movement during grab clashing
-          ((!player.keys.s &&
+          ((!player.keys[" "] &&
             !(player.isAttacking && player.attackType === "charged") && // Block only during charged attack execution
             player.saltCooldown === false &&
             !player.isThrowTeching &&
@@ -1689,7 +1691,7 @@ io.on("connection", (socket) => {
             !player.isSpawningPumoArmy &&
             !player.isRawParrying &&
             !player.isHit) ||
-            (!player.keys.s &&
+            (!player.keys[" "] &&
               player.isSlapAttack &&
               player.saltCooldown === false &&
               !player.isThrowTeching &&
@@ -1926,7 +1928,7 @@ io.on("connection", (socket) => {
 
         // raw parry
         if (
-          player.keys.s &&
+          player.keys[" "] &&
           !player.isDodging && // Block raw parry during dodge - don't interrupt dodge hop
           !player.isGrabbing &&
           !player.isBeingGrabbed &&
@@ -1974,8 +1976,8 @@ io.on("connection", (socket) => {
             player.rawParryMinDurationMet = true;
           }
 
-          // Only end parry if s key is released AND minimum duration is met
-          if (!player.keys.s && player.rawParryMinDurationMet) {
+          // Only end parry if spacebar is released AND minimum duration is met
+          if (!player.keys[" "] && player.rawParryMinDurationMet) {
             player.isRawParrying = false;
             player.rawParryStartTime = 0;
             player.rawParryMinDurationMet = false;
@@ -2493,7 +2495,102 @@ io.on("connection", (socket) => {
       player.pendingChargeAttack = null;
       player.spacebarReleasedDuringDodge = false;
 
-      // Only apply stun for perfect parries
+      // Set parry success states for the defending player
+      if (isPerfectParry) {
+        // Perfect parry success state
+        otherPlayer.isPerfectRawParrySuccess = true;
+        console.log(`Perfect parry success set for player ${otherPlayer.id}`);
+        
+        // Emit raw parry success event for visual effect
+        const parryData = {
+          x: otherPlayer.x,
+          y: otherPlayer.y,
+          facing: otherPlayer.facing,
+          isPerfect: true,
+          timestamp: Date.now(),
+          parryId: `${otherPlayer.id}_parry_${Date.now()}`,
+        };
+        console.log(`Emitting perfect raw_parry_success:`, parryData);
+        if (currentRoom) {
+          io.to(currentRoom.id).emit("raw_parry_success", parryData);
+        }
+        
+        // Clear perfect parry success state after duration
+        setPlayerTimeout(
+          otherPlayer.id,
+          () => {
+            console.log(`Clearing perfect parry success for player ${otherPlayer.id}`);
+            otherPlayer.isPerfectRawParrySuccess = false;
+          },
+          400, // Duration for perfect parry success animation
+          "perfectParrySuccess" // Named timeout for easier debugging
+        );
+      } else {
+        // Regular parry success state
+        otherPlayer.isRawParrySuccess = true;
+        console.log(`Regular parry success set for player ${otherPlayer.id}`);
+        
+        // Emit raw parry success event for visual effect
+        const parryData = {
+          x: otherPlayer.x,
+          y: otherPlayer.y,
+          facing: otherPlayer.facing,
+          isPerfect: false,
+          timestamp: Date.now(),
+          parryId: `${otherPlayer.id}_parry_${Date.now()}`,
+        };
+        console.log(`Emitting regular raw_parry_success:`, parryData);
+        if (currentRoom) {
+          io.to(currentRoom.id).emit("raw_parry_success", parryData);
+        }
+        
+        // Clear regular parry success state after duration
+        setPlayerTimeout(
+          otherPlayer.id,
+          () => {
+            console.log(`Clearing regular parry success for player ${otherPlayer.id}`);
+            otherPlayer.isRawParrySuccess = false;
+          },
+          300, // Duration for regular parry success animation
+          "regularParrySuccess" // Named timeout for easier debugging
+        );
+      }
+
+      // FIXED: Standardized knockback duration for all parries (300ms)
+      // Clear hit state quickly for consistent knockback distance
+      setPlayerTimeout(
+        player.id,
+        () => {
+          player.isHit = false;
+
+          // After knockback ends, check if we should restart charging
+          if (
+            player.keys.mouse2 &&
+            !player.isAttacking &&
+            !player.isJumping &&
+            !player.isDodging &&
+            !player.isThrowing &&
+            !player.isBeingThrown &&
+            !player.isGrabbing &&
+            !player.isBeingGrabbed &&
+            !player.isHit &&
+            !player.isRecovering &&
+            !player.isRawParryStun &&
+            !player.isThrowingSnowball &&
+            !player.canMoveToReady
+          ) {
+            // Restart charging immediately
+            player.isChargingAttack = true;
+            player.chargeStartTime = Date.now();
+            player.chargeAttackPower = 1;
+            player.attackType = "charged";
+          }
+        },
+        300, // Consistent 300ms knockback duration for all parries
+        "parryKnockbackReset" // Named timeout for easier debugging
+      );
+
+      // Apply stun for perfect parries (separate from knockback)
       if (isPerfectParry) {
         const stunDuration = isSlapBeingParried
           ? RAW_PARRY_SLAP_STUN_DURATION
@@ -2518,11 +2615,10 @@ io.on("connection", (socket) => {
           });
         }
 
-        // Reset stun after appropriate duration
+        // Reset stun after appropriate duration (separate from knockback)
         setPlayerTimeout(
           player.id,
           () => {
-            player.isHit = false;
             player.isRawParryStun = false;
 
             // After stun ends, check if we should restart charging
@@ -2548,49 +2644,17 @@ io.on("connection", (socket) => {
               player.attackType = "charged";
             }
           },
-          stunDuration
+          stunDuration,
+          "perfectParryStunReset" // Named timeout for easier debugging
         );
       } else {
-        // Regular parry - no stun, just clear hit state quickly
-        // Emit screen shake for regular parry with lower intensity
+        // Regular parry - emit screen shake with lower intensity
         if (currentRoom) {
           io.in(currentRoom.id).emit("screen_shake", {
             intensity: 0.5,
             duration: 200,
           });
         }
-
-        // Clear hit state quickly for regular parries
-        setPlayerTimeout(
-          player.id,
-          () => {
-            player.isHit = false;
-
-            // After knockback ends, check if we should restart charging
-            if (
-              player.keys.mouse2 &&
-              !player.isAttacking &&
-              !player.isJumping &&
-              !player.isDodging &&
-              !player.isThrowing &&
-              !player.isBeingThrown &&
-              !player.isGrabbing &&
-              !player.isBeingGrabbed &&
-              !player.isHit &&
-              !player.isRecovering &&
-              !player.isRawParryStun &&
-              !player.isThrowingSnowball &&
-              !player.canMoveToReady
-            ) {
-              // Restart charging immediately
-              player.isChargingAttack = true;
-              player.chargeStartTime = Date.now();
-              player.chargeAttackPower = 1;
-              player.attackType = "charged";
-            }
-          },
-          300
-        ); // Short duration for regular parry recovery
       }
     } else {
       // === ROCK-SOLID HIT PROCESSING ===
@@ -2613,6 +2677,10 @@ io.on("connection", (socket) => {
       otherPlayer.isJumping = false;
       otherPlayer.isAttacking = false;
       otherPlayer.isStrafing = false;
+      
+      // Clear parry success states when hit
+      otherPlayer.isRawParrySuccess = false;
+      otherPlayer.isPerfectRawParrySuccess = false;
       
       // Clear grab movement states if player was attempting to grab
       if (otherPlayer.isGrabbingMovement) {
@@ -2907,6 +2975,8 @@ io.on("connection", (socket) => {
         rawParryStartTime: 0,
         rawParryMinDurationMet: false,
         isRawParryStun: false,
+        isRawParrySuccess: false,
+        isPerfectRawParrySuccess: false,
         isAtTheRopes: false,
         atTheRopesStartTime: 0,
         dodgeDirection: false,
@@ -3010,6 +3080,8 @@ io.on("connection", (socket) => {
         rawParryStartTime: 0,
         rawParryMinDurationMet: false,
         isRawParryStun: false,
+        isRawParrySuccess: false,
+        isPerfectRawParrySuccess: false,
         isAtTheRopes: false,
         atTheRopesStartTime: 0,
         dodgeDirection: null,

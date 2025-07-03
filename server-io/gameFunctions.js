@@ -755,40 +755,55 @@ function adjustPlayerPositions(player1, player2, delta) {
       let playerToMove = null;
       let playerToKeep = null;
 
-      // Check if either player has recent movement velocity that suggests they just arrived
-      if (
-        Math.abs(player2.movementVelocity || 0) >
-        Math.abs(player1.movementVelocity || 0)
-      ) {
-        // Player2 has more momentum, they probably just arrived (like from a dodge)
-        playerToMove = player2;
+      // First check if either player is raw parrying - they should stay put
+      if (player1.isRawParrying && !player2.isRawParrying) {
         playerToKeep = player1;
-      } else if (
-        Math.abs(player1.movementVelocity || 0) >
-        Math.abs(player2.movementVelocity || 0)
-      ) {
-        // Player1 has more momentum
-        playerToMove = player1;
+        playerToMove = player2;
+      } else if (player2.isRawParrying && !player1.isRawParrying) {
         playerToKeep = player2;
+        playerToMove = player1;
+      } else if (player1.isRawParrying && player2.isRawParrying) {
+        // Both are raw parrying - neither should move, just return
+        return;
       } else {
-        // Equal or no momentum, use position preference
-        // If both are at right boundary, move the rightmost player to the left
-        // If both are at left boundary, move the leftmost player to the right
-        if (player1.x >= rightBoundary - 5 && player2.x >= rightBoundary - 5) {
-          playerToMove = player1.x > player2.x ? player1 : player2;
-          playerToKeep = playerToMove === player1 ? player2 : player1;
+        // Neither is raw parrying, use normal logic
+        // Check if either player has recent movement velocity that suggests they just arrived
+        if (
+          Math.abs(player2.movementVelocity || 0) >
+          Math.abs(player1.movementVelocity || 0)
+        ) {
+          // Player2 has more momentum, they probably just arrived (like from a dodge)
+          playerToMove = player2;
+          playerToKeep = player1;
+        } else if (
+          Math.abs(player1.movementVelocity || 0) >
+          Math.abs(player2.movementVelocity || 0)
+        ) {
+          // Player1 has more momentum
+          playerToMove = player1;
+          playerToKeep = player2;
         } else {
-          playerToMove = player1.x < player2.x ? player1 : player2;
-          playerToKeep = playerToMove === player1 ? player2 : player1;
+          // Equal or no momentum, use position preference
+          // If both are at right boundary, move the rightmost player to the left
+          // If both are at left boundary, move the leftmost player to the right
+          if (player1.x >= rightBoundary - 5 && player2.x >= rightBoundary - 5) {
+            playerToMove = player1.x > player2.x ? player1 : player2;
+            playerToKeep = playerToMove === player1 ? player2 : player1;
+          } else {
+            playerToMove = player1.x < player2.x ? player1 : player2;
+            playerToKeep = playerToMove === player1 ? player2 : player1;
+          }
         }
       }
 
       // Keep one player at the boundary (minimal adjustment)
-      const keeperTargetX = Math.max(
-        leftBoundary,
-        Math.min(playerToKeep.x, rightBoundary)
-      );
-      playerToKeep.x += (keeperTargetX - playerToKeep.x) * 0.4; // Increased from 0.2 to 0.4 for faster approach to boundary
+      if (!playerToKeep.isRawParrying) {
+        const keeperTargetX = Math.max(
+          leftBoundary,
+          Math.min(playerToKeep.x, rightBoundary)
+        );
+        playerToKeep.x += (keeperTargetX - playerToKeep.x) * 0.4; // Increased from 0.2 to 0.4 for faster approach to boundary
+      }
 
       // Calculate minimal separation needed - just enough to resolve collision
       // We want the distance between centers to equal finalMinDistance (no extra padding)
@@ -815,64 +830,82 @@ function adjustPlayerPositions(player1, player2, delta) {
         );
 
         // Direct position-based movement - no velocity momentum
-        const distanceToTarget = clampedTargetX - playerToMove.x;
-        const maxMovePerFrame = 6; // Increased from 3 to 6 pixels per frame for faster movement
+        if (!playerToMove.isRawParrying) {
+          const distanceToTarget = clampedTargetX - playerToMove.x;
+          const maxMovePerFrame = 6; // Increased from 3 to 6 pixels per frame for faster movement
 
-        if (Math.abs(distanceToTarget) <= maxMovePerFrame) {
-          // Close enough - move directly to target and stop
-          playerToMove.x = clampedTargetX;
-          playerToMove.movementVelocity = 0; // Clear any existing velocity
-        } else {
-          // Move incrementally toward target without velocity
-          const moveDirection = distanceToTarget > 0 ? 1 : -1;
-          playerToMove.x += moveDirection * maxMovePerFrame;
-          playerToMove.movementVelocity = 0; // Clear velocity to prevent momentum
+          if (Math.abs(distanceToTarget) <= maxMovePerFrame) {
+            // Close enough - move directly to target and stop
+            playerToMove.x = clampedTargetX;
+            playerToMove.movementVelocity = 0; // Clear any existing velocity
+          } else {
+            // Move incrementally toward target without velocity
+            const moveDirection = distanceToTarget > 0 ? 1 : -1;
+            playerToMove.x += moveDirection * maxMovePerFrame;
+            playerToMove.movementVelocity = 0; // Clear velocity to prevent momentum
+          }
         }
       } else {
-        // Already properly separated, clear any velocity
-        playerToMove.movementVelocity = 0;
+        // Already properly separated, clear any velocity (but only if not raw parrying)
+        if (!playerToMove.isRawParrying) {
+          playerToMove.movementVelocity = 0;
+        }
       }
     } else if (player1OutOfBounds || player2OutOfBounds) {
       // Normal boundary handling for non-overlapping cases
       if (player1OutOfBounds && !player2OutOfBounds) {
         // Player 1 is blocked by boundary, move player 2 by full separation distance
-        player1.x = Math.max(leftBoundary, Math.min(player1.x, rightBoundary)); // Keep player1 at boundary
+        if (!player1.isRawParrying) {
+          player1.x = Math.max(leftBoundary, Math.min(player1.x, rightBoundary)); // Keep player1 at boundary
+        }
         const fullSeparationDirection = player2.x < player1.x ? -1 : 1;
         const newPlayer2XFull =
           player2.x + fullSeparationDirection * separationSpeed;
         if (
           newPlayer2XFull >= leftBoundary &&
-          newPlayer2XFull <= rightBoundary
+          newPlayer2XFull <= rightBoundary &&
+          !player2.isRawParrying
         ) {
           player2.x = newPlayer2XFull;
         }
       } else if (player2OutOfBounds && !player1OutOfBounds) {
         // Player 2 is blocked by boundary, move player 1 by full separation distance
-        player2.x = Math.max(leftBoundary, Math.min(player2.x, rightBoundary)); // Keep player2 at boundary
+        if (!player2.isRawParrying) {
+          player2.x = Math.max(leftBoundary, Math.min(player2.x, rightBoundary)); // Keep player2 at boundary
+        }
         const fullSeparationDirection = player1.x < player2.x ? -1 : 1;
         const newPlayer1XFull =
           player1.x + fullSeparationDirection * separationSpeed;
         if (
           newPlayer1XFull >= leftBoundary &&
-          newPlayer1XFull <= rightBoundary
+          newPlayer1XFull <= rightBoundary &&
+          !player1.isRawParrying
         ) {
           player1.x = newPlayer1XFull;
         }
       } else {
         // Both players would go out of bounds - clamp both to boundaries
-        player1.x = Math.max(
-          leftBoundary,
-          Math.min(newPlayer1X, rightBoundary)
-        );
-        player2.x = Math.max(
-          leftBoundary,
-          Math.min(newPlayer2X, rightBoundary)
-        );
+        if (!player1.isRawParrying) {
+          player1.x = Math.max(
+            leftBoundary,
+            Math.min(newPlayer1X, rightBoundary)
+          );
+        }
+        if (!player2.isRawParrying) {
+          player2.x = Math.max(
+            leftBoundary,
+            Math.min(newPlayer2X, rightBoundary)
+          );
+        }
       }
     } else {
-      // Both players can move normally
-      player1.x = newPlayer1X;
-      player2.x = newPlayer2X;
+      // Both players can move normally, but check if they're raw parrying
+      if (!player1.isRawParrying) {
+        player1.x = newPlayer1X;
+      }
+      if (!player2.isRawParrying) {
+        player2.x = newPlayer2X;
+      }
     }
   }
 }

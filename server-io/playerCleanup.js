@@ -25,6 +25,8 @@ function cleanupPlayerStates(player) {
   player.isDodging = false;
   player.isRawParrying = false;
   player.isRawParryStun = false;
+  player.isRawParrySuccess = false;
+  player.isPerfectRawParrySuccess = false;
   player.isStrafing = false;
   player.isJumping = false;
   player.isReady = false;
@@ -135,6 +137,8 @@ function getCleanedRoomData(room) {
       isDodging: false,
       isRawParrying: false,
       isRawParryStun: false,
+      isRawParrySuccess: false,
+      isPerfectRawParrySuccess: false,
       isStrafing: false,
       isJumping: false,
       isReady: false,

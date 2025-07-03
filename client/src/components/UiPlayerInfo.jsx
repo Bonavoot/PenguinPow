@@ -14,15 +14,14 @@ const pulseWin = keyframes`
 
 const FighterUIContainer = styled.div`
   position: absolute;
-  top: 0;
+  top: -1rem;
   left: 0;
   right: 0;
-  height: clamp(100px, 12vh, 140px);
+  height: clamp(110px, 14vh, 150px);
   display: flex;
   align-items: stretch;
   justify-content: space-between;
-  padding: clamp(10px, 2vw, 20px);
-  gap: clamp(20px, 4vw, 60px);
+  padding: 0;
   z-index: 1000;
   font-family: "Bungee", cursive;
   background: linear-gradient(
@@ -33,49 +32,37 @@ const FighterUIContainer = styled.div`
   );
 
   @media (max-width: 1200px) {
-    height: clamp(90px, 10vh, 120px);
-    padding: clamp(8px, 1.5vw, 16px);
-    gap: clamp(15px, 3vw, 40px);
+    height: clamp(100px, 12vh, 130px);
   }
 
   @media (max-width: 768px) {
-    height: clamp(80px, 8vh, 100px);
-    padding: clamp(6px, 1vw, 12px);
-    gap: clamp(10px, 2vw, 20px);
+    height: clamp(90px, 10vh, 110px);
   }
 
   @media (max-width: 480px) {
-    height: clamp(70px, 7vh, 90px);
-    padding: clamp(4px, 0.8vw, 8px);
-    gap: clamp(8px, 1.5vw, 15px);
+    height: clamp(80px, 9vh, 100px);
   }
 `;
 
 const PlayerSection = styled.div`
   display: flex;
-  margin-top: 1%;
+  margin-top: clamp(35px, 5vh, 45px);
   flex-direction: column;
-  width: clamp(280px, 35vw, 450px);
-  max-width: 450px;
-  min-width: 280px;
+  width: 40%;
   gap: clamp(6px, 1vh, 12px);
   align-items: ${(props) => (props.$isRight ? "flex-end" : "flex-start")};
-
-  @media (max-width: 1200px) {
-    width: clamp(250px, 32vw, 380px);
-    min-width: 250px;
-  }
+  padding: ${(props) => (props.$isRight ? "0 clamp(10px, 2vw, 20px) 0 0" : "0 0 0 clamp(10px, 2vw, 20px)")};
 
   @media (max-width: 768px) {
-    width: clamp(200px, 28vw, 320px);
-    min-width: 200px;
+    margin-top: clamp(30px, 4vh, 38px);
     gap: clamp(4px, 0.8vh, 8px);
+    padding: ${(props) => (props.$isRight ? "0 clamp(6px, 1vw, 12px) 0 0" : "0 0 0 clamp(6px, 1vw, 12px)")};
   }
 
   @media (max-width: 480px) {
-    width: clamp(160px, 25vw, 240px);
-    min-width: 160px;
+    margin-top: clamp(25px, 3vh, 30px);
     gap: clamp(3px, 0.6vh, 6px);
+    padding: ${(props) => (props.$isRight ? "0 clamp(4px, 0.8vw, 8px) 0 0" : "0 0 0 clamp(4px, 0.8vw, 8px)")};
   }
 `;
 
@@ -116,7 +103,7 @@ const PlayerInfoTop = styled.div`
   min-width: 0;
   max-width: 60%;
   position: absolute;
-  top: -28px;
+  top: clamp(2px, 0.5vh, 4px);
   left: clamp(8px, 1.2vw, 12px);
   z-index: 5;
   transform: ${(props) => (props.$isRight ? "scaleX(-1)" : "scaleX(1)")};
@@ -129,7 +116,7 @@ const PlayerInfoBottom = styled.div`
   text-align: center;
   min-width: 0;
   position: absolute;
-  top: clamp(28px, 4vh, 35px);
+  top: clamp(32px, 5vh, 40px);
   left: clamp(8px, 1.2vw, 12px);
   z-index: 5;
   transform: ${(props) => (props.$isRight ? "scaleX(-1)" : "scaleX(1)")};
@@ -147,10 +134,11 @@ const PlayerName = styled.div`
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  margin-top: -30%
 `;
 
 const PlayerRank = styled.div`
-  font-size: clamp(7px, 1vw, 10px);
+  font-size: clamp(10px, 1.6vw, 16px);
   font-weight: 600;
   color: #d4af37;
   text-shadow: 1px 1px 2px #000000;
@@ -167,6 +155,7 @@ const PlayerRank = styled.div`
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   line-height: 1;
   white-space: nowrap;
+  margin-top: -.5rem
 `;
 
 const WinTracker = styled.div`
@@ -176,7 +165,7 @@ const WinTracker = styled.div`
   flex-direction: ${(props) => (props.$isRight ? "row-reverse" : "row")};
   flex-shrink: 0;
   position: absolute;
-  top: clamp(-33px, -4vh, -40px);
+  top: clamp(2px, 0.5vh, 4px);
   right: clamp(8px, 1.2vw, 12px);
   max-width: 35%;
   z-index: 10;
@@ -184,12 +173,12 @@ const WinTracker = styled.div`
 
   @media (max-width: 768px) {
     gap: clamp(1px, 0.3vw, 2px);
-    top: clamp(-29px, -3.5vh, -33px);
+    top: clamp(2px, 0.4vh, 3px);
   }
 
   @media (max-width: 480px) {
     gap: 1px;
-    top: clamp(-25px, -3vh, -29px);
+    top: clamp(1px, 0.3vh, 2px);
   }
 `;
 
@@ -209,6 +198,7 @@ const WinMark = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-top: -45%;
   box-shadow: ${(props) =>
     props.$isWin
       ? "0 0 8px rgba(76, 175, 80, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3)"
@@ -490,10 +480,10 @@ const UiPlayerInfo = ({
               {renderWinMarks(playerOneWinCount)}
             </WinTracker>
             <PlayerInfoTop $isRight={false}>
-              <PlayerRank>JONOKUCHI</PlayerRank>
+              <PlayerName>PLAYER 1</PlayerName>
             </PlayerInfoTop>
             <PlayerInfoBottom $isRight={false}>
-              <PlayerName>PLAYER 1</PlayerName>
+              <PlayerRank>JONOKUCHI</PlayerRank>
             </PlayerInfoBottom>
           </StaminaContainer>
         </StaminaRow>
@@ -553,10 +543,10 @@ const UiPlayerInfo = ({
               {renderWinMarks(playerTwoWinCount)}
             </WinTracker>
             <PlayerInfoTop $isRight={true}>
-              <PlayerRank>JONOKUCHI</PlayerRank>
+              <PlayerName>PLAYER 2</PlayerName>
             </PlayerInfoTop>
             <PlayerInfoBottom $isRight={true}>
-              <PlayerName>PLAYER 2</PlayerName>
+              <PlayerRank>JONOKUCHI</PlayerRank>
             </PlayerInfoBottom>
           </StaminaContainer>
           <PlayerAvatar>闘</PlayerAvatar>
