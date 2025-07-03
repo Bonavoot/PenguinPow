@@ -8,9 +8,9 @@ const {
 } = require("./gameUtils");
 
 // Game constants that are used by these functions
-const GROUND_LEVEL = 210;
-const HITBOX_DISTANCE_VALUE = 85;
-const SLAP_HITBOX_DISTANCE_VALUE = 184;
+const GROUND_LEVEL = 240;
+const HITBOX_DISTANCE_VALUE = 77; // Reduced by 10% to match smaller player images
+const SLAP_HITBOX_DISTANCE_VALUE = 155; // Reduced range by 15% from 166 to 141 for shorter slap attack reach
 
 // Add new function for grab state cleanup
 function cleanupGrabStates(player, opponent) {
@@ -163,7 +163,7 @@ function executeSlapAttack(player, rooms) {
       player.facing = player.slapFacingDirection;
 
       // Add forward slide during slap attack with power-up consideration
-      let slapSlideVelocity = 2.72; // Base slide velocity (reduced from 3.2 to 2.72 for lower base slap power)
+      let slapSlideVelocity = 1.7; // Base slide velocity (reduced by 30% from 2.0808 to 1.45656 for less aggressive forward movement)
 
       // Apply POWER power-up multiplier to slap slide distance
       if (player.activePowerUp === "power") {
@@ -477,8 +477,8 @@ function calculateEffectiveHitboxSize(player) {
 function handleReadyPositions(room, player1, player2, io) {
   if (room.gameStart === false && room.hakkiyoiCount === 0) {
     // Only adjust player 1's ready position based on size power-up
-    const player1ReadyX = 385; // Removed SIZE power-up condition
-    const player2ReadyX = 680;
+    const player1ReadyX = 415; // Removed SIZE power-up condition
+    const player2ReadyX = 665;
 
     // Only move players if they're allowed to move (after salt throw) AND they're not attacking
     if (
@@ -661,7 +661,7 @@ function adjustPlayerPositions(player1, player2, delta) {
   const minDistance = (player1Hitbox.left + player2Hitbox.right) * 0.85;
 
   // Add extra distance for slap attacks to prevent collision during rapid attacks
-  const extraSlapDistance = 20; // Fixed extra distance for slap attacks
+  const extraSlapDistance = 12; // Reduced from 20 to 12 for less forced separation during slap attacks
   const finalMinDistance =
     (player1.isAttacking && player1.isSlapAttack) ||
     (player2.isAttacking && player2.isSlapAttack)
@@ -682,7 +682,7 @@ function adjustPlayerPositions(player1, player2, delta) {
 
     if (isSlapAttackScenario) {
       // Special handling for slap attacks - gentler separation that doesn't interfere with knockback
-      separationSpeed = Math.min(overlap * 0.3, 4); // Much gentler separation for slap scenarios
+      separationSpeed = Math.min(overlap * 0.3, 2.5); // Reduced from 4 to 2.5 for even gentler separation during slap scenarios
       
       // Identify attacker and victim
       const attacker = player1.isAttacking && player1.attackType === "slap" ? player1 : player2;

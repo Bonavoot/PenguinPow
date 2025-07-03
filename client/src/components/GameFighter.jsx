@@ -329,7 +329,7 @@ const validProps = [
 
 const RedTintOverlay = styled.div`
   position: absolute;
-  width: 16.7%;
+  width: 15.03%;
   height: auto;
   aspect-ratio: 1;
   left: ${(props) => (props.$x / 1280) * 100}%;
@@ -475,7 +475,7 @@ const StyledImage = styled("img")
       animation: props.$isRawParrying
         ? "rawParryFlash 1.2s ease-in-out infinite"
         : "none",
-      width: "min(16.7%, 437px)",
+      width: "min(15.03%, 393px)",
       height: "auto",
       willChange: "bottom, left, filter, opacity",
       pointerEvents: "none",
@@ -595,9 +595,9 @@ const SaltBasket = styled.img
       position: "absolute",
       width: "4.55%",
       height: "auto",
-      bottom: `${((GROUND_LEVEL + 100) / 720) * 130}%`,
-      left: props.$index === 0 ? "18.5%" : "auto",
-      right: props.$index === 1 ? "18.5%" : "auto",
+      bottom: `${((GROUND_LEVEL + 100) / 720) * 143}%`,
+      left: props.$index === 0 ? "22%" : "auto",
+      right: props.$index === 1 ? "23%" : "auto",
       transform: props.$index === 1 ? "scaleX(-1)" : "none",
       zIndex: 1,
       pointerEvents: "none",
@@ -608,8 +608,8 @@ const SaltBasket = styled.img
 
 const YouLabel = styled.div`
   position: absolute;
-  bottom: ${(props) => (props.y / 720) * 100 + 30}%;
-  left: ${(props) => (props.x / 1280) * 100 + 9}%;
+  bottom: ${(props) => (props.y / 720) * 100 + 27}%;
+  left: ${(props) => (props.x / 1280) * 100 + 7}%;
   transform: translateX(-50%);
   color: #ffd700;
   font-family: "Bungee";
@@ -631,10 +631,10 @@ const YouLabel = styled.div`
 
 const SnowballProjectile = styled.img`
   position: absolute;
-  width: 4.1%;
+  width: 3.5%;
   height: auto;
   left: ${(props) => (props.$x / 1280) * 100 + 5}%;
-  bottom: ${(props) => (props.$y / 720) * 100 + 17}%;
+  bottom: ${(props) => (props.$y / 720) * 100 + 14}%;
   z-index: 95;
   pointer-events: none;
   filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000)
@@ -649,7 +649,7 @@ const PumoClone = styled.img
   .attrs((props) => ({
     style: {
       position: "absolute",
-      width: `${(props.$size || 0.6) * 16.7}%`,
+      width: `${(props.$size || 0.6) * 15.03}%`,
       height: "auto",
       left: `${(props.$x / 1280) * 100}%`,
       bottom: `${(props.$y / 720) * 100}%`,
@@ -1776,8 +1776,8 @@ const GameFighter = ({
               y={clone.y}
               facing={clone.facing}
               isDodging={false}
-              width="7.3%"
-              height="2.27%"
+              width="6.57%"
+              height="2.04%"
               offsetLeft="15%"
               offsetRight="15%"
             />

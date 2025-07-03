@@ -124,13 +124,13 @@ let staminaRegenCounter = 0;
 const TICK_RATE = 64;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.25; // Increased from 0.22 for snappier movement
-const GROUND_LEVEL = 210;
-const HITBOX_DISTANCE_VALUE = 85; // Reduced from 90 by 20%
-const SLAP_HITBOX_DISTANCE_VALUE = 184; // Updated to match GRAB_RANGE
+const GROUND_LEVEL = 240;
+const HITBOX_DISTANCE_VALUE = 77; // Reduced by 10% to match smaller player images (85 * 0.9 = 76.5)
+const SLAP_HITBOX_DISTANCE_VALUE = 155; 
 const SLAP_PARRY_WINDOW = 200; // Updated to 200ms window for parry to account for longer slap animation
 const SLAP_PARRY_KNOCKBACK_VELOCITY = 1.5; // Reduced knockback for parried attacks
-const THROW_RANGE = 184; 
-const GRAB_RANGE = 140; // Reduced for even tighter grab detection 
+const THROW_RANGE = 166; // Reduced by 10% to match smaller player images (184 * 0.9 = 165.6)
+const GRAB_RANGE = 126; // Reduced by 10% to match smaller player images (140 * 0.9 = 126) 
 const GRAB_PUSH_SPEED = 0.3; // Increased from 0.2 for more substantial movement
 const GRAB_PUSH_DURATION = 650;
 
@@ -350,7 +350,7 @@ function resetRoomAndPlayers(room) {
     player.isDead = false;
     player.stamina = 100;
     player.isBowing = false;
-    player.x = player.fighter === "player 1" ? 245 : 815;
+    player.x = player.fighter === "player 1" ? 300 : 775;
     player.y = GROUND_LEVEL;
     player.knockbackVelocity = { x: 0, y: 0 };
     // Reset dodge charges
@@ -705,7 +705,7 @@ io.on("connection", (socket) => {
           );
           if (opponent && !opponent.isHit) {
             // Keep opponent at fixed distance during grab
-            const fixedDistance = 72 * (opponent.sizeMultiplier || 1); // Reduced from 90 by 20%
+            const fixedDistance = 81 * (opponent.sizeMultiplier || 1); // Reduced from 90 by 10% to match smaller player images
             opponent.x =
               player1.facing === 1
                 ? player1.x - fixedDistance
@@ -944,7 +944,7 @@ io.on("connection", (socket) => {
               !snowball.hasHit
             ) {
               const distance = Math.abs(snowball.x - opponent.x);
-              if (distance < 50 && Math.abs(snowball.y - opponent.y) < 30) {
+              if (distance < 45 && Math.abs(snowball.y - opponent.y) < 27) {
                 // Check for thick blubber hit absorption
                 if (
                   opponent.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
@@ -1017,7 +1017,7 @@ io.on("connection", (socket) => {
             // Check collision with raw parrying opponent (snowball is blocked but destroyed)
             if (opponent && opponent.isRawParrying && !snowball.hasHit) {
               const distance = Math.abs(snowball.x - opponent.x);
-              if (distance < 50 && Math.abs(snowball.y - opponent.y) < 30) {
+              if (distance < 45 && Math.abs(snowball.y - opponent.y) < 27) {
                 // Snowball is blocked - destroy it but don't apply knockback
                 snowball.hasHit = true;
                 return false; // Remove snowball after being blocked
@@ -1067,7 +1067,7 @@ io.on("connection", (socket) => {
               !clone.hasHit
             ) {
               const distance = Math.abs(clone.x - opponent.x);
-              if (distance < 60 && Math.abs(clone.y - opponent.y) < 40) {
+              if (distance < 54 && Math.abs(clone.y - opponent.y) < 36) {
                 // Check for thick blubber hit absorption
                 if (
                   opponent.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
@@ -1140,7 +1140,7 @@ io.on("connection", (socket) => {
             // Check collision with raw parrying opponent (clone is blocked but destroyed)
             if (opponent && opponent.isRawParrying && !clone.hasHit) {
               const distance = Math.abs(clone.x - opponent.x);
-              if (distance < 60 && Math.abs(clone.y - opponent.y) < 40) {
+              if (distance < 54 && Math.abs(clone.y - opponent.y) < 36) {
                 // Clone is blocked - destroy it but don't apply knockback
                 clone.hasHit = true;
                 return false; // Remove clone after being blocked
@@ -2119,7 +2119,7 @@ io.on("connection", (socket) => {
             }
 
             // Keep opponent at fixed distance during grab
-            const fixedDistance = 72 * (opponent.sizeMultiplier || 1); // Reduced from 90 by 20%
+            const fixedDistance = 81 * (opponent.sizeMultiplier || 1); // Reduced from 90 by 10% to match smaller player images
             opponent.x =
               player.facing === 1
                 ? player.x - fixedDistance
@@ -2685,9 +2685,9 @@ io.on("connection", (socket) => {
       // Calculate knockback multiplier based on charge percentage
       let finalKnockbackMultiplier;
       if (isSlapAttack) {
-        finalKnockbackMultiplier = 0.54; // Reduced from 0.6325 to 0.54 for lower base slap power
+        finalKnockbackMultiplier = 0.4131; // Reduced by additional 10% from 0.459 to 0.4131 (total 23.5% reduction from original 0.54)
       } else {
-        finalKnockbackMultiplier = 0.55 + (chargePercentage / 100) * 1.32;
+        finalKnockbackMultiplier = 0.4675 + (chargePercentage / 100) * 1.122; // Reduced base power by 15% (0.55 -> 0.4675) and scaling by 15% (1.32 -> 1.122)
         console.log(`💥 KNOCKBACK CALC: Player ${player.id} chargePercentage: ${chargePercentage}%, finalKnockbackMultiplier: ${finalKnockbackMultiplier}`);
       }
 

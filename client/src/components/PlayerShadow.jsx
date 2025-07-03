@@ -1,7 +1,7 @@
 import styled from "styled-components";
 import PropTypes from "prop-types";
 
-const GROUND_LEVEL = 210; // Match the server's GROUND_LEVEL
+const GROUND_LEVEL = 240; // Match the server's GROUND_LEVEL
 
 const ShadowElement = styled.div.attrs((props) => {
   // Calculate the bottom position
@@ -10,8 +10,8 @@ const ShadowElement = styled.div.attrs((props) => {
   // Use custom offsets if provided, otherwise use defaults
   const offsetLeft =
     props.$facing === -1
-      ? props.$offsetLeft || "12%"
-      : props.$offsetRight || "15%";
+      ? props.$offsetLeft || "20%"
+      : props.$offsetRight || "20%";
 
   return {
     style: {
@@ -22,7 +22,7 @@ const ShadowElement = styled.div.attrs((props) => {
     },
   };
 })`
-  width: ${(props) => props.$width || "13.6%"};
+  width: ${(props) => props.$width || "10.6%"};
   height: ${(props) => props.$height || "3.65%"};
   background: radial-gradient(
     ellipse at center,

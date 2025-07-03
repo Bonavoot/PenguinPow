@@ -400,10 +400,9 @@ body {
   bottom: 0;
   background-image: url(./assets/game-map-1.png);
   background-repeat: no-repeat;
-  background-size: 118% 125%;
-  background-position: 51.5% 40%;
-  filter: brightness(1) saturate(1.1) sepia(0.5) hue-rotate(0deg)
-    contrast(1.1);
+  background-size: 105% 115%;
+  background-position: 62% 40%;
+  filter: brightness(1.1) saturate(1.1) sepia(0.2);
   z-index: -1;
 }
 
@@ -814,9 +813,9 @@ body {
 
 .gyoji {
   position: absolute;
-  left: 39.5%;
-  bottom: 38%;
-  width: 20%;
+  left: 40.5%;
+  bottom: 41%;
+  width: 18%;
   height: auto;
   z-index: -1;
   pointer-events: none;
