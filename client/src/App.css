@@ -400,9 +400,9 @@ body {
   bottom: 0;
   background-image: url(./assets/game-map-1.png);
   background-repeat: no-repeat;
-  background-size: 110% 115%;
-  background-position: 52% 0%;
-  filter: brightness(1.1) saturate(1.1) sepia(0.2);
+  background-size: 105% 110%;
+  background-position: 55% 25%;
+  filter: contrast(1.1) brightness(1.1) saturate(1.1) sepia(0.3) ;
   z-index: -1;
 }
 
