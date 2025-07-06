@@ -7,7 +7,7 @@ import hitEffectImage from "../assets/hit-effect.png";
 const HitEffectContainer = styled.div.attrs((props) => ({
   style: {
     position: "absolute",
-    left: `${(props.$x / 1280) * 100 + (props.$facing === 1 ? -2: -6)}%`,
+    left: `${(props.$x / 1280) * 100 + (props.$facing === 1 ? -2: -7)}%`,
     bottom: `${(props.$y / 720) * 100 - 5}%`,
     transform: "translate(-50%, -50%)",
     zIndex: 100,
@@ -28,8 +28,8 @@ const ParticleContainer = styled.div`
 
 const Particle = styled.div`
   position: absolute;
-  width: 3px;
-  height: 3px;
+  width: 0.23vw;
+  height: 0.23vw;
   background: radial-gradient(circle, #FFFF99, #FFD700);
   border-radius: 50%;
   opacity: 0;
@@ -62,19 +62,24 @@ const HitEffect = ({ position }) => {
     const sparkCount = 16; // Increase count for better firework effect
     const sparks = [];
     
+    // Get viewport dimensions to calculate responsive speeds (further reduced scale)
+    const viewportWidth = window.innerWidth;
+    const baseSpeedMultiplier = (viewportWidth / 1280) * 0.6; // Further reduced from 0.8 to 0.6
+    
     for (let i = 0; i < sparkCount; i++) {
       // Create full 360-degree explosion pattern like a firework
       const baseAngle = (i / sparkCount) * 360; // Distribute evenly around circle
-      const angleVariation = (Math.random() - 0.5) * 40; // Add some randomness
+      const angleVariation = (Math.random() - 0.5) * 15; // Reduced randomness from 40 to 15 degrees
       const angle = (baseAngle + angleVariation) * (Math.PI / 180);
       
-      // Much more varied speeds for dramatic explosion effect
-      const minSpeed = 60;
-      const maxSpeed = 120;
-      const speed = minSpeed + Math.random() * (maxSpeed - minSpeed);
+      // Use more consistent speeds for even circle pattern
+      const baseSpeed = 6.5 * baseSpeedMultiplier; // ~85px at 1280px width
+      const speedVariation = baseSpeed * 0.2; // Only 20% speed variation
+      const speed = baseSpeed + (Math.random() - 0.5) * speedVariation;
       
-      // More varied sizes for better visual impact
-      const size = Math.random() * 6 + 2; // 2-8px range (reduced from 3-15px)
+      // More varied sizes for better visual impact - scale with viewport
+      const baseSize = 2 * baseSpeedMultiplier; // Scale particle size with viewport
+      const size = Math.random() * (6 * baseSpeedMultiplier) + baseSize; // 2-8px range scaled
       const life = 600 + Math.random() * 400; // 600-1000ms lifespan
       
       // Mixed white and yellow spark colors to match hit effect
@@ -94,8 +99,6 @@ const HitEffect = ({ position }) => {
         speed,
         life,
         maxLife: life,
-        x: 50, // Start at exact center
-        y: 50, // Start at exact center
         velocityX: Math.cos(angle) * speed,
         velocityY: Math.sin(angle) * speed,
         color: colors[Math.floor(Math.random() * colors.length)],
@@ -185,15 +188,15 @@ const HitEffect = ({ position }) => {
             key={spark.id}
             className="spark"
             style={{
-              top: `${spark.y}%`,
-              left: `${spark.x}%`,
+              top: '50%',
+              left: '50%',
               width: `${spark.size}px`,
               height: `${spark.size}px`, // Make it a perfect circle
               background: spark.color,
               borderRadius: '50%', // Perfect circle
               boxShadow: spark.glow ? `0 0 ${spark.size * 2}px ${spark.color.includes('FFD700') ? '#FFD700' : '#FFFFFF'}` : 'none',
               filter: spark.glow ? 'brightness(1.2)' : 'none',
-              transform: `rotate(${spark.rotation}deg)`,
+              transform: `translate(-50%, -50%) rotate(${spark.rotation}deg)`,
               animationDelay: `${index * 10}ms`, // Stagger spark animations
             }}
           />

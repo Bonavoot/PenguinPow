@@ -401,8 +401,8 @@ body {
   background-image: url(./assets/game-map-1.png);
   background-repeat: no-repeat;
   background-size: 105% 110%;
-  background-position: 55% 25%;
-  filter: contrast(1.1) brightness(1.1) saturate(1.1) sepia(0.3) ;
+  background-position: 52% 25%;
+  filter: brightness(1.1) saturate(1.5) sepia(0.4);
   z-index: -1;
 }
 

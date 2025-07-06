@@ -163,7 +163,7 @@ function executeSlapAttack(player, rooms) {
       player.facing = player.slapFacingDirection;
 
       // Add forward slide during slap attack with power-up consideration
-      let slapSlideVelocity = 1.7; // Base slide velocity (reduced by 30% from 2.0808 to 1.45656 for less aggressive forward movement)
+      let slapSlideVelocity = 1.377; // Base slide velocity (reduced by another 10% from 1.53 to 1.377 for less aggressive forward movement)
 
       // Apply POWER power-up multiplier to slap slide distance
       if (player.activePowerUp === "power") {
@@ -733,6 +733,7 @@ function adjustPlayerPositions(player1, player2, delta) {
     }
 
     // Enforce map boundaries with symmetric correction
+    // BUT: Don't enforce boundaries if players are being knocked back from hits
     const leftBoundary = MAP_LEFT_BOUNDARY;
     const rightBoundary = MAP_RIGHT_BOUNDARY;
 
@@ -741,6 +742,10 @@ function adjustPlayerPositions(player1, player2, delta) {
       newPlayer1X < leftBoundary || newPlayer1X > rightBoundary;
     const player2OutOfBounds =
       newPlayer2X < leftBoundary || newPlayer2X > rightBoundary;
+    
+    // Don't enforce boundaries if either player is being knocked back from a hit
+    const player1IsBeingKnockedBack = player1.isHit;
+    const player2IsBeingKnockedBack = player2.isHit;
 
     // Special case: if both players are at the same boundary and overlapping,
     // force one player to switch sides for proper separation (like dodge through behavior)
@@ -749,6 +754,18 @@ function adjustPlayerPositions(player1, player2, delta) {
       (player1.x >= rightBoundary - 5 && player2.x >= rightBoundary - 5);
 
     if (bothAtSameBoundary && distanceBetweenCenters < finalMinDistance) {
+      // Skip boundary enforcement if either player is being knocked back from a hit
+      if (player1IsBeingKnockedBack || player2IsBeingKnockedBack) {
+        // Allow knockback to proceed without boundary constraints
+        if (!player1IsBeingKnockedBack && !player1.isRawParrying) {
+          player1.x = newPlayer1X;
+        }
+        if (!player2IsBeingKnockedBack && !player2.isRawParrying) {
+          player2.x = newPlayer2X;
+        }
+        return;
+      }
+
       // Smooth separation when both players are at the same boundary
 
       // Determine which player should switch sides based on their recent movement or facing direction
@@ -852,6 +869,18 @@ function adjustPlayerPositions(player1, player2, delta) {
         }
       }
     } else if (player1OutOfBounds || player2OutOfBounds) {
+      // Skip boundary enforcement if either player is being knocked back from a hit
+      if (player1IsBeingKnockedBack || player2IsBeingKnockedBack) {
+        // Allow knockback to proceed without boundary constraints
+        if (!player1IsBeingKnockedBack && !player1.isRawParrying) {
+          player1.x = newPlayer1X;
+        }
+        if (!player2IsBeingKnockedBack && !player2.isRawParrying) {
+          player2.x = newPlayer2X;
+        }
+        return;
+      }
+
       // Normal boundary handling for non-overlapping cases
       if (player1OutOfBounds && !player2OutOfBounds) {
         // Player 1 is blocked by boundary, move player 2 by full separation distance

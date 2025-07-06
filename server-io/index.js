@@ -2753,7 +2753,7 @@ io.on("connection", (socket) => {
       // Calculate knockback multiplier based on charge percentage
       let finalKnockbackMultiplier;
       if (isSlapAttack) {
-        finalKnockbackMultiplier = 0.4131; // Reduced by additional 10% from 0.459 to 0.4131 (total 23.5% reduction from original 0.54)
+        finalKnockbackMultiplier = 0.334611; // Reduced by another 10% from 0.37179 to 0.334611 (total 38% reduction from original 0.54)
       } else {
         finalKnockbackMultiplier = 0.4675 + (chargePercentage / 100) * 1.122; // Reduced base power by 15% (0.55 -> 0.4675) and scaling by 15% (1.32 -> 1.122)
         console.log(`💥 KNOCKBACK CALC: Player ${player.id} chargePercentage: ${chargePercentage}%, finalKnockbackMultiplier: ${finalKnockbackMultiplier}`);
