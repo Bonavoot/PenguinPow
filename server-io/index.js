@@ -1726,8 +1726,92 @@ io.on("connection", (socket) => {
           const leftBoundary = MAP_LEFT_BOUNDARY + sizeOffset;
           const rightBoundary = MAP_RIGHT_BOUNDARY - sizeOffset;
 
+          // Handle crouch strafing (when holding s + a or d) - higher priority than normal strafing
           if (
+            player.isCrouchStance &&
             player.keys.d &&
+            !player.keys.a &&
+            !player.isDodging &&
+            !player.isThrowing &&
+            !player.isGrabbing &&
+            !player.isGrabbingMovement &&
+            !player.isWhiffingGrab &&
+            !player.isAttacking &&
+            !player.isRecovering &&
+            !player.isRawParryStun &&
+            !player.isRawParrying &&
+            !player.isThrowingSnowball &&
+            !player.isSpawningPumoArmy &&
+            !player.isAtTheRopes
+          ) {
+            // Apply ice drift when changing directions
+            if (player.movementVelocity < 0) {
+              player.movementVelocity *= ICE_DRIFT_FACTOR;
+            }
+
+            // Gradual acceleration on ice at half speed
+            player.movementVelocity = Math.min(
+              player.movementVelocity + MOVEMENT_ACCELERATION * 0.5,
+              MAX_MOVEMENT_SPEED * 0.5
+            );
+
+            // Calculate new position and check boundaries (half speed for crouch)
+            const crouchSpeedFactor = currentSpeedFactor * 0.5;
+            const newX = player.x + delta * crouchSpeedFactor * player.movementVelocity;
+            if (newX <= rightBoundary || player.isThrowLanded) {
+              player.x = newX;
+            } else {
+              player.x = rightBoundary;
+              player.movementVelocity = 0;
+            }
+            player.isCrouchStrafing = true;
+            if (!player.isAttacking && !player.isChargingAttack) {
+              player.isReady = false;
+            }
+          } else if (
+            player.isCrouchStance &&
+            player.keys.a &&
+            !player.keys.d &&
+            !player.isDodging &&
+            !player.isThrowing &&
+            !player.isGrabbing &&
+            !player.isGrabbingMovement &&
+            !player.isWhiffingGrab &&
+            !player.isAttacking &&
+            !player.isRecovering &&
+            !player.isRawParryStun &&
+            !player.isRawParrying &&
+            !player.isThrowingSnowball &&
+            !player.isSpawningPumoArmy &&
+            !player.isAtTheRopes
+          ) {
+            // Apply ice drift when changing directions
+            if (player.movementVelocity > 0) {
+              player.movementVelocity *= ICE_DRIFT_FACTOR;
+            }
+
+            // Gradual acceleration on ice at half speed
+            player.movementVelocity = Math.max(
+              player.movementVelocity - MOVEMENT_ACCELERATION * 0.5,
+              -MAX_MOVEMENT_SPEED * 0.5
+            );
+
+            // Calculate new position and check boundaries (half speed for crouch)
+            const crouchSpeedFactor = currentSpeedFactor * 0.5;
+            const newX = player.x + delta * crouchSpeedFactor * player.movementVelocity;
+            if (newX >= leftBoundary || player.isThrowLanded) {
+              player.x = newX;
+            } else {
+              player.x = leftBoundary;
+              player.movementVelocity = 0;
+            }
+            player.isCrouchStrafing = true;
+            if (!player.isAttacking && !player.isChargingAttack) {
+              player.isReady = false;
+            }
+          } else if (
+            player.keys.d &&
+            !player.isCrouchStance &&
             !player.isDodging &&
             !player.isThrowing &&
             !player.isGrabbing &&
@@ -1771,6 +1855,7 @@ io.on("connection", (socket) => {
             }
           } else if (
             player.keys.a &&
+            !player.isCrouchStance &&
             !player.isDodging &&
             !player.isThrowing &&
             !player.isGrabbing &&
@@ -1873,6 +1958,21 @@ io.on("connection", (socket) => {
             player.isStrafing = false;
           }
 
+          // Update crouch strafing state
+          if (
+            !player.isCrouchStance ||
+            (!player.keys.a && !player.keys.d) ||
+            player.keys.mouse1 ||
+            player.isAttacking ||
+            player.hasPendingSlapAttack ||
+            (player.slapStrafeCooldown && Date.now() < player.slapStrafeCooldownEndTime) ||
+            player.isHit ||
+            player.isRawParrying ||
+            player.isAtTheRopes
+          ) {
+            player.isCrouchStrafing = false;
+          }
+
                   // Force stop strafing in certain states and add missing ground level check
         if (
           (!player.keys.a &&
@@ -1925,6 +2025,49 @@ io.on("connection", (socket) => {
         if (player.isHit) {
           player.isStrafing = false;
         }
+
+        // Crouch stance
+        if (
+          player.keys.s &&
+          !player.isDodging &&
+          !player.isGrabbing &&
+          !player.isBeingGrabbed &&
+          !player.isGrabbingMovement &&
+          !player.isWhiffingGrab &&
+          !player.isGrabClashing &&
+          !player.isThrowing &&
+          !player.isBeingThrown &&
+          !player.isRecovering &&
+          !(player.isAttacking && player.attackType === "charged") &&
+          !player.isHit &&
+          !player.isRawParryStun &&
+          !player.isRawParrying &&
+          !player.isAtTheRopes
+        ) {
+          // Start crouch stance if not already crouching
+          if (!player.isCrouchStance) {
+            player.isCrouchStance = true;
+            player.isCrouchStrafing = false;
+            // Clear movement momentum when starting crouch stance
+            player.movementVelocity = 0;
+            player.isStrafing = false;
+          }
+          // Only set isReady to false if we're not in an attack state
+          if (!player.isAttacking && !player.isChargingAttack) {
+            player.isReady = false;
+          }
+        }
+
+        // Handle crouch stance ending logic
+        if (player.isCrouchStance) {
+          // End crouch stance when s key is released
+          if (!player.keys.s) {
+            player.isCrouchStance = false;
+            player.isCrouchStrafing = false;
+          }
+        }
+
+
 
         // raw parry
         if (
@@ -2759,6 +2902,19 @@ io.on("connection", (socket) => {
         console.log(`💥 KNOCKBACK CALC: Player ${player.id} chargePercentage: ${chargePercentage}%, finalKnockbackMultiplier: ${finalKnockbackMultiplier}`);
       }
 
+      // Apply crouch stance damage reduction
+      if (otherPlayer.isCrouchStance) {
+        if (isSlapAttack) {
+          // Reduce slap attack power by 40% when hitting crouched target
+          finalKnockbackMultiplier *= 0.6; // 60% of original power (40% reduction)
+          console.log(`🛡️ CROUCH DEFENSE: Slap attack damage reduced by 40% against crouched player ${otherPlayer.id}`);
+        } else {
+          // Reduce charged attack power by 20% when hitting crouched target
+          finalKnockbackMultiplier *= 0.8; // 80% of original power (20% reduction)
+          console.log(`🛡️ CROUCH DEFENSE: Charged attack damage reduced by 20% against crouched player ${otherPlayer.id}`);
+        }
+      }
+
       // Apply power-up effects
       if (player.activePowerUp === POWER_UP_TYPES.POWER) {
         if (isSlapAttack) {
@@ -2971,6 +3127,8 @@ io.on("connection", (socket) => {
         lastThrowAttemptTime: 0,
         lastGrabAttemptTime: 0,
         isStrafing: false,
+        isCrouchStance: false,
+        isCrouchStrafing: false,
         isRawParrying: false,
         rawParryStartTime: 0,
         rawParryMinDurationMet: false,
@@ -3076,6 +3234,8 @@ io.on("connection", (socket) => {
         lastThrowAttemptTime: 0,
         lastGrabAttemptTime: 0,
         isStrafing: false,
+        isCrouchStance: false,
+        isCrouchStrafing: false,
         isRawParrying: false,
         rawParryStartTime: 0,
         rawParryMinDurationMet: false,

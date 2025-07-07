@@ -133,7 +133,7 @@ const PlayerInfoBottom = styled.div`
 
 const DodgeChargesPosition = styled.div`
   position: absolute;
-  top: clamp(32px, 5vh, 40px);
+  top: clamp(24px, 4vh, 32px);
   right: clamp(8px, 1.2vw, 12px);
   z-index: 5;
   transform: ${(props) => (props.$isRight ? "scaleX(-1)" : "scaleX(1)")};

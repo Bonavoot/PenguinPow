@@ -76,6 +76,7 @@ import pumoArmySound from "../sounds/pumo-army-sound.mp3";
 import thickBlubberSound from "../sounds/thick-blubber-sound.mp3";
 import rawParryGruntSound from "../sounds/raw-parry-grunt.mp3";
 import hitEffectImage from "../assets/hit-effect.png";
+import crouchStance from "../assets/crouch-stance.png";
 
 import UiPlayerInfo from "./UiPlayerInfo";
 import SaltEffect from "./SaltEffect";
@@ -183,7 +184,7 @@ const initializeImagePreloading = () => {
   preloadImage(recovering);
   preloadImage(recovering2);
   preloadImage(snowball);
-
+  
   // Effect sprites
   preloadImage(hitEffectImage);
 };
@@ -254,7 +255,9 @@ const getImageSrc = (
   isPerfectRawParrySuccess,
   isThrowingSnowball,
   isSpawningPumoArmy,
-  isAtTheRopes
+  isAtTheRopes,
+  isCrouchStance,
+  isCrouchStrafing
 ) => {
   if (fighter === "player 2") {
     if (isPerfectRawParrySuccess) return snowballThrow;
@@ -265,6 +268,7 @@ const getImageSrc = (
     if (isRecovering) return recovering;
     if (isThrowingSnowball) return snowballThrow;
     if (isSpawningPumoArmy) return pumoArmy;
+    if (isCrouchStance) return crouchStance;
     if (isSlapAttack) {
       return slapAnimation === 1 ? slapAttack1Red : slapAttack2Red;
     }
@@ -282,6 +286,7 @@ const getImageSrc = (
     if (isRawParryStun) return bow;
     if (isReady) return ready;
     if (isStrafing && !isThrowing) return pumoWaddle;
+    if (isCrouchStrafing) return crouchStance;
     if (isHit) return hit;
     if (isDead) return pumo;
     if (isThrowing) return throwing;
@@ -298,6 +303,7 @@ const getImageSrc = (
     if (isRecovering) return recovering2;
     if (isThrowingSnowball) return snowballThrow2;
     if (isSpawningPumoArmy) return pumoArmy2;
+    if (isCrouchStance) return crouchStance;
     if (isSlapAttack) {
       return slapAnimation === 1 ? slapAttack1Blue : slapAttack2Blue;
     }
@@ -312,6 +318,7 @@ const getImageSrc = (
     if (isRawParryStun) return bow2;
     if (isReady) return ready2;
     if (isStrafing && !isThrowing) return pumoWaddle2;
+    if (isCrouchStrafing) return crouchStance;
     if (isHit) return hit2;
     if (isDead) return pumo;
     if (isThrowing) return throwing2;
@@ -439,6 +446,8 @@ const StyledImage = styled("img")
         "isRawParrySuccess",
         "isPerfectRawParrySuccess",
         "isAtTheRopes",
+        "isCrouchStance",
+        "isCrouchStrafing",
       ].includes(prop),
   })
   .attrs((props) => ({
@@ -471,7 +480,9 @@ const StyledImage = styled("img")
       props.$isPerfectRawParrySuccess,
       props.$isThrowingSnowball,
       props.$isSpawningPumoArmy,
-      props.$isAtTheRopes
+      props.$isAtTheRopes,
+      props.$isCrouchStance,
+      props.$isCrouchStrafing
     ),
     style: {
       position: "absolute",
@@ -773,13 +784,12 @@ const GameFighter = ({
     hitAbsorptionUsed: false,
     attackType: null,
     hitCounter: 0,
+    isCrouchStance: false,
+    isCrouchStrafing: false,
   });
 
   // Add interpolation state
-  const [interpolatedPosition, setInterpolatedPosition] = useState({
-    x: 0,
-    y: 0,
-  });
+  const [interpolatedPosition, setInterpolatedPosition] = useState({ x: 0, y: 0 });
   const previousState = useRef(null);
   const currentState = useRef(null);
   const lastUpdateTime = useRef(performance.now());
@@ -826,70 +836,47 @@ const GameFighter = ({
   const SERVER_UPDATE_INTERVAL = 1000 / SERVER_TICK_RATE; // ~15.625ms
 
   // Interpolation function for smooth movement
-  const interpolatePosition = useCallback(
-    (prevPos, currentPos, factor) => {
-      // Don't interpolate discrete jumps (teleports, throws, hits)
-      const maxInterpolationDistance = 100; // Don't interpolate if positions are too far apart
-      const distance =
-        Math.abs(currentPos.x - prevPos.x) + Math.abs(currentPos.y - prevPos.y);
+  const interpolatePosition = useCallback((prevPos, currentPos, factor) => {
+    // Don't interpolate discrete jumps (teleports, throws, hits)
+    const maxInterpolationDistance = 100; // Don't interpolate if positions are too far apart
+    const distance = Math.abs(currentPos.x - prevPos.x) + Math.abs(currentPos.y - prevPos.y);
+    
+    if (distance > maxInterpolationDistance) {
+      return currentPos; // Use current position for teleports/throws
+    }
 
-      if (distance > maxInterpolationDistance) {
-        return currentPos; // Use current position for teleports/throws
-      }
+    // Don't interpolate during certain states where position changes should be instant
+    if (penguin.isBeingThrown || penguin.isThrowing || penguin.isHit || penguin.isDodging) {
+      return currentPos;
+    }
 
-      // Don't interpolate during certain states where position changes should be instant
-      if (
-        penguin.isBeingThrown ||
-        penguin.isThrowing ||
-        penguin.isHit ||
-        penguin.isDodging
-      ) {
-        return currentPos;
-      }
-
-      return {
-        x: prevPos.x + (currentPos.x - prevPos.x) * factor,
-        y: prevPos.y + (currentPos.y - prevPos.y) * factor,
-      };
-    },
-    [
-      penguin.isBeingThrown,
-      penguin.isThrowing,
-      penguin.isHit,
-      penguin.isDodging,
-    ]
-  );
+    return {
+      x: prevPos.x + (currentPos.x - prevPos.x) * factor,
+      y: prevPos.y + (currentPos.y - prevPos.y) * factor,
+    };
+  }, [penguin.isBeingThrown, penguin.isThrowing, penguin.isHit, penguin.isDodging]);
 
   // Animation loop for interpolation
-  const interpolationLoop = useCallback(
-    (timestamp) => {
-      if (currentState.current && previousState.current) {
-        const timeSinceUpdate = timestamp - lastUpdateTime.current;
-        const interpolationFactor = Math.min(
-          timeSinceUpdate / SERVER_UPDATE_INTERVAL,
-          1
-        );
+  const interpolationLoop = useCallback((timestamp) => {
+    if (currentState.current && previousState.current) {
+      const timeSinceUpdate = timestamp - lastUpdateTime.current;
+      const interpolationFactor = Math.min(timeSinceUpdate / SERVER_UPDATE_INTERVAL, 1);
 
-        // Only interpolate position, not discrete states
-        const interpolatedPos = interpolatePosition(
-          { x: previousState.current.x, y: previousState.current.y },
-          { x: currentState.current.x, y: currentState.current.y },
-          interpolationFactor
-        );
+      // Only interpolate position, not discrete states
+      const interpolatedPos = interpolatePosition(
+        { x: previousState.current.x, y: previousState.current.y },
+        { x: currentState.current.x, y: currentState.current.y },
+        interpolationFactor
+      );
 
-        setInterpolatedPosition(interpolatedPos);
-      } else if (currentState.current) {
-        // Fallback to current position if no previous state
-        setInterpolatedPosition({
-          x: currentState.current.x,
-          y: currentState.current.y,
-        });
-      }
+      setInterpolatedPosition(interpolatedPos);
+    } else if (currentState.current) {
+      // Fallback to current position if no previous state
+      setInterpolatedPosition({ x: currentState.current.x, y: currentState.current.y });
+    }
 
-      requestAnimationFrame(interpolationLoop);
-    },
-    [interpolatePosition]
-  );
+    requestAnimationFrame(interpolationLoop);
+  }, [interpolatePosition]);
 
   // Start interpolation loop
   useEffect(() => {
@@ -1012,7 +999,7 @@ const GameFighter = ({
   const handleFighterAction = useCallback(
     (data) => {
       const currentTime = performance.now();
-
+      
       // Store both players' data for UI (only for first component)
       if (index === 0) {
         setAllPlayersData({
@@ -1023,12 +1010,12 @@ const GameFighter = ({
 
       // Get the relevant player data based on index
       const playerData = index === 0 ? data.player1 : data.player2;
-
+      
       // Store previous state for interpolation
       if (currentState.current) {
         previousState.current = { ...currentState.current };
       }
-
+      
       // Store current state
       currentState.current = {
         x: playerData.x,
@@ -1037,10 +1024,10 @@ const GameFighter = ({
         // Add other continuous properties that might benefit from interpolation
         knockbackVelocity: playerData.knockbackVelocity,
       };
-
+      
       // Update timing for interpolation
       lastUpdateTime.current = currentTime;
-
+      
       // If this is the first update, set previous state to current
       if (!previousState.current) {
         previousState.current = { ...currentState.current };
@@ -1094,7 +1081,11 @@ const GameFighter = ({
     });
 
     socket.on("player_hit", (data) => {
-      if (data && typeof data.x === "number" && typeof data.y === "number") {
+      if (
+        data &&
+        typeof data.x === "number" &&
+        typeof data.y === "number"
+      ) {
         setHitEffectPosition({
           x: data.x + 150,
           y: data.y + 110, // Add GROUND_LEVEL to match player height
@@ -1107,7 +1098,11 @@ const GameFighter = ({
 
     socket.on("raw_parry_success", (data) => {
       console.log("Received raw_parry_success event:", data);
-      if (data && typeof data.x === "number" && typeof data.y === "number") {
+      if (
+        data &&
+        typeof data.x === "number" &&
+        typeof data.y === "number"
+      ) {
         const effectData = {
           x: data.x + 150,
           y: data.y + 110, // Add GROUND_LEVEL to match player height
@@ -1130,8 +1125,10 @@ const GameFighter = ({
         typeof data.stunnedPlayerY === "number" &&
         data.showStarStunEffect
       ) {
+        
         // Only show the star stun effect for the stunned player (attacking player)
         if (data.attackingPlayerId === player.id) {
+          
           setShowStarStunEffect(true);
 
           // Don't set a timeout here - let the effect disappear when stun ends
@@ -1182,7 +1179,7 @@ const GameFighter = ({
         clearInterval(countdownRef.current);
         countdownRef.current = null;
       }
-
+      
       // Set countdown to 15 and start timer
       setCountdown(15);
       countdownRef.current = setInterval(() => {
@@ -1208,7 +1205,7 @@ const GameFighter = ({
       }
       // Immediately set countdown to 0 to hide YOU label during gameplay
       setCountdown(0);
-
+      
       // Hide hakkiyoi text after 3 seconds
       setTimeout(() => {
         setHakkiyoi(false);
@@ -1444,6 +1441,7 @@ const GameFighter = ({
       !showStarStunEffect &&
       penguin.id === player.id
     ) {
+    
       setShowStarStunEffect(true);
     }
   }, [penguin.isRawParryStun, showStarStunEffect, penguin.id, player.id]);
@@ -1543,7 +1541,8 @@ const GameFighter = ({
     });
 
     // Test listener for any event to verify socket is working
-    socket.on("fighter_action", () => {});
+    socket.on("fighter_action", () => {
+    });
 
     // Test if socket is connected and in the right room
     console.log(
@@ -1738,6 +1737,8 @@ const GameFighter = ({
         $isThrowingSnowball={penguin.isThrowingSnowball}
         $isSpawningPumoArmy={penguin.isSpawningPumoArmy}
         $isAtTheRopes={penguin.isAtTheRopes}
+        $isCrouchStance={penguin.isCrouchStance}
+        $isCrouchStrafing={penguin.isCrouchStrafing}
       />
 
       {thickBlubberIndicator && (
@@ -1774,7 +1775,9 @@ const GameFighter = ({
             penguin.isPerfectRawParrySuccess,
             penguin.isThrowingSnowball,
             penguin.isSpawningPumoArmy,
-            penguin.isAtTheRopes
+            penguin.isAtTheRopes,
+            penguin.isCrouchStance,
+            penguin.isCrouchStrafing
           )}
         />
       )}
