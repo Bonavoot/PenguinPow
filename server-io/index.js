@@ -1742,17 +1742,19 @@ io.on("connection", (socket) => {
             !player.isRawParrying &&
             !player.isThrowingSnowball &&
             !player.isSpawningPumoArmy &&
-            !player.isAtTheRopes
+            !player.isAtTheRopes &&
+            !player.isHit
           ) {
-            // Apply ice drift when changing directions
+            // Velocity-based movement for crouch strafing (with minimal sliding)
+            // Apply very high friction when changing directions to minimize sliding
             if (player.movementVelocity < 0) {
-              player.movementVelocity *= ICE_DRIFT_FACTOR;
+              player.movementVelocity *= 0.3; // Much higher friction than normal strafing
             }
 
-            // Gradual acceleration on ice at half speed
+            // Very slow acceleration for crouch strafing
             player.movementVelocity = Math.min(
-              player.movementVelocity + MOVEMENT_ACCELERATION * 0.5,
-              MAX_MOVEMENT_SPEED * 0.5
+              player.movementVelocity + MOVEMENT_ACCELERATION * 0.2, // Much slower acceleration
+              MAX_MOVEMENT_SPEED * 0.3 // Much lower max speed
             );
 
             // Calculate new position and check boundaries (half speed for crouch)
@@ -1783,17 +1785,19 @@ io.on("connection", (socket) => {
             !player.isRawParrying &&
             !player.isThrowingSnowball &&
             !player.isSpawningPumoArmy &&
-            !player.isAtTheRopes
+            !player.isAtTheRopes &&
+            !player.isHit
           ) {
-            // Apply ice drift when changing directions
+            // Velocity-based movement for crouch strafing (with minimal sliding)
+            // Apply very high friction when changing directions to minimize sliding
             if (player.movementVelocity > 0) {
-              player.movementVelocity *= ICE_DRIFT_FACTOR;
+              player.movementVelocity *= 0.3; // Much higher friction than normal strafing
             }
 
-            // Gradual acceleration on ice at half speed
+            // Very slow acceleration for crouch strafing
             player.movementVelocity = Math.max(
-              player.movementVelocity - MOVEMENT_ACCELERATION * 0.5,
-              -MAX_MOVEMENT_SPEED * 0.5
+              player.movementVelocity - MOVEMENT_ACCELERATION * 0.2, // Much slower acceleration
+              -MAX_MOVEMENT_SPEED * 0.3 // Much lower max speed
             );
 
             // Calculate new position and check boundaries (half speed for crouch)
@@ -1970,6 +1974,10 @@ io.on("connection", (socket) => {
             player.isRawParrying ||
             player.isAtTheRopes
           ) {
+            // Only apply extra friction if player WAS crouch strafing
+            if (player.isCrouchStrafing && !player.isHit && Math.abs(player.movementVelocity) > 0) {
+              player.movementVelocity *= 0.5; // Extra friction to stop quickly
+            }
             player.isCrouchStrafing = false;
           }
 
@@ -2038,7 +2046,7 @@ io.on("connection", (socket) => {
           !player.isThrowing &&
           !player.isBeingThrown &&
           !player.isRecovering &&
-          !(player.isAttacking && player.attackType === "charged") &&
+          !player.isAttacking &&
           !player.isHit &&
           !player.isRawParryStun &&
           !player.isRawParrying &&
@@ -2081,7 +2089,7 @@ io.on("connection", (socket) => {
           !player.isThrowing &&
           !player.isBeingThrown &&
           !player.isRecovering &&
-          !(player.isAttacking && player.attackType === "charged") && // Block only during charged attack execution
+          !player.isAttacking && // Block during any attack (slap or charged)
           !player.isHit &&
           !player.isRawParryStun &&
           !player.isAtTheRopes
@@ -2096,6 +2104,11 @@ io.on("connection", (socket) => {
             // Clear movement momentum when starting raw parry to prevent dodge momentum interference
             player.movementVelocity = 0;
             player.isStrafing = false;
+            // Clear crouch states when starting raw parry
+            player.isCrouchStance = false;
+            player.isCrouchStrafing = false;
+            // Clear buffered slap attack when starting raw parry
+            player.hasPendingSlapAttack = false;
           }
           // Only set isReady to false if we're not in an attack state
           if (!player.isAttacking && !player.isChargingAttack) {
@@ -2111,6 +2124,9 @@ io.on("connection", (socket) => {
           player.isDodging = false;
           player.isAttacking = false;
           player.isJumping = false;
+          // Force clear crouch states during raw parry to prevent concurrent use
+          player.isCrouchStance = false;
+          player.isCrouchStrafing = false;
           
           const parryDuration = Date.now() - player.rawParryStartTime;
 
@@ -2905,13 +2921,13 @@ io.on("connection", (socket) => {
       // Apply crouch stance damage reduction
       if (otherPlayer.isCrouchStance) {
         if (isSlapAttack) {
-          // Reduce slap attack power by 40% when hitting crouched target
-          finalKnockbackMultiplier *= 0.6; // 60% of original power (40% reduction)
-          console.log(`🛡️ CROUCH DEFENSE: Slap attack damage reduced by 40% against crouched player ${otherPlayer.id}`);
+          // Reduce slap attack power by 10% when hitting crouched target
+          finalKnockbackMultiplier *= 0.9; // 90% of original power (10% reduction)
+          console.log(`🛡️ CROUCH DEFENSE: Slap attack damage reduced by 10% against crouched player ${otherPlayer.id}`);
         } else {
-          // Reduce charged attack power by 20% when hitting crouched target
-          finalKnockbackMultiplier *= 0.8; // 80% of original power (20% reduction)
-          console.log(`🛡️ CROUCH DEFENSE: Charged attack damage reduced by 20% against crouched player ${otherPlayer.id}`);
+          // Reduce charged attack power by 10% when hitting crouched target
+          finalKnockbackMultiplier *= 0.9; // 90% of original power (10% reduction)
+          console.log(`🛡️ CROUCH DEFENSE: Charged attack damage reduced by 10% against crouched player ${otherPlayer.id}`);
         }
       }
 

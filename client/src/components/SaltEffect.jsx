@@ -18,15 +18,17 @@ const SaltContainer = styled.div.attrs((props) => ({
 const SaltParticle = styled.div.attrs((props) => ({
   style: {
     position: "absolute",
-    width: "calc(0.37vw * (16 / 9))",
-    height: "calc(0.37vh * (16 / 9))",
-    background:
-      "radial-gradient(circle at center, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0) 70%)",
+    width: "calc(0.3vw * (16 / 9))", // Smaller than original for realistic salt size
+    height: "calc(0.3vh * (16 / 9))", 
+    background: `radial-gradient(circle at center, 
+      rgba(255, 255, 255, 0.95) 0%, 
+      rgba(250, 250, 250, 0.8) 40%, 
+      rgba(245, 245, 245, 0.6) 70%, 
+      rgba(255, 255, 255, 0) 100%)`,
     borderRadius: "50%",
     willChange: "transform, opacity",
     transformStyle: "preserve-3d",
     backfaceVisibility: "hidden",
-    boxShadow: "0 0 4px rgba(255, 255, 255, 0.3)",
     transform: `translate(${props.$x}px, ${-props.$y}px) scale(${
       props.$scale
     })`,
@@ -80,11 +82,11 @@ const SaltEffect = ({
       const maxWidth = 1280;
       const velocityScale = Math.min(windowWidth / maxWidth, 1);
 
-      const newParticles = Array.from({ length: 15 }, () => {
+      const newParticles = Array.from({ length: 20 }, () => { // Increased count to compensate for smaller size
         const angle = (baseAngle + (Math.random() * 80 - 40)) * (Math.PI / 180);
         const baseSpeed = 8 + Math.random() * 7;
         const speed = baseSpeed * velocityScale;
-        const scale = 0.8 + Math.random() * 0.4;
+        const scale = 0.7 + Math.random() * 0.6; // Varied scale for realistic salt grain sizes
 
         return {
           id: Math.random(),
@@ -94,10 +96,10 @@ const SaltEffect = ({
           y: ((playerY + yOffset) / 720) * 100,
           velocityX: Math.cos(angle) * speed * (playerFacing === 1 ? 1 : -1),
           velocityY: Math.sin(angle) * speed,
-          opacity: 0.8 + Math.random() * 0.2,
+          opacity: 0.85 + Math.random() * 0.15, // Slightly more opaque
           life: 1200 + Math.random() * 400,
           scale,
-          blur: Math.random() * 0.5,
+          blur: Math.random() * 0.2, // Minimal blur for crisp salt look
           rotation: Math.random() * 360,
           rotationSpeed: (Math.random() - 0.5) * 2,
         };

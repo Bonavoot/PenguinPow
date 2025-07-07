@@ -265,6 +265,7 @@ function executeSlapAttack(player, rooms) {
               !player.isGrabbing &&
               !player.isBeingGrabbed &&
               !player.isRawParryStun &&
+              !player.isRawParrying &&
               !player.canMoveToReady
             ) {
               executeSlapAttack(player, rooms);
@@ -713,14 +714,14 @@ function adjustPlayerPositions(player1, player2, delta) {
       newPlayer2X = player2.x + -separationDirection * separationPerPlayer;
     }
 
-    // Apply gentle resistance to movement velocity when players are pushing into each other
+    // Apply strong resistance to movement velocity when players are pushing into each other
     // Exclude slap knockback to maintain smooth sliding during rapid slap attacks
     if (!player1.isHit && !player1.isAlreadyHit && !player1.isSlapKnockback && player1.movementVelocity) {
       const isMovingTowards =
         (player1.x < player2.x && player1.movementVelocity > 0) ||
         (player1.x > player2.x && player1.movementVelocity < 0);
       if (isMovingTowards) {
-        player1.movementVelocity *= 0.95; // Reduced resistance from 0.9 to 0.95
+        player1.movementVelocity *= 0.7; // Increased resistance for slower strafing into collision
       }
     }
     if (!player2.isHit && !player2.isAlreadyHit && !player2.isSlapKnockback && player2.movementVelocity) {
@@ -728,7 +729,7 @@ function adjustPlayerPositions(player1, player2, delta) {
         (player2.x < player1.x && player2.movementVelocity > 0) ||
         (player2.x > player1.x && player2.movementVelocity < 0);
       if (isMovingTowards) {
-        player2.movementVelocity *= 0.95; // Reduced resistance from 0.9 to 0.95
+        player2.movementVelocity *= 0.7; // Increased resistance for slower strafing into collision
       }
     }
 

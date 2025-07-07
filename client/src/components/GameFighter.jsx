@@ -76,7 +76,8 @@ import pumoArmySound from "../sounds/pumo-army-sound.mp3";
 import thickBlubberSound from "../sounds/thick-blubber-sound.mp3";
 import rawParryGruntSound from "../sounds/raw-parry-grunt.mp3";
 import hitEffectImage from "../assets/hit-effect.png";
-import crouchStance from "../assets/crouch-stance.png";
+import crouchStance2 from "../assets/crouch-stance2.png";
+import crouchStrafing2 from "../assets/crouch-strafing2.png";
 
 import UiPlayerInfo from "./UiPlayerInfo";
 import SaltEffect from "./SaltEffect";
@@ -268,7 +269,9 @@ const getImageSrc = (
     if (isRecovering) return recovering;
     if (isThrowingSnowball) return snowballThrow;
     if (isSpawningPumoArmy) return pumoArmy;
-    if (isCrouchStance) return crouchStance;
+    if (isDodging) return dodging;
+    if (isCrouchStrafing) return crouchStrafing2;
+    if (isCrouchStance) return crouchStance2;
     if (isSlapAttack) {
       return slapAnimation === 1 ? slapAttack1Red : slapAttack2Red;
     }
@@ -281,12 +284,10 @@ const getImageSrc = (
       return grabbing;
     }
     if (isBeingGrabbed || isBeingPulled || isBeingPushed) return beingGrabbed;
-    if (isDodging) return dodging;
     if (isRawParrying) return crouching;
     if (isRawParryStun) return bow;
     if (isReady) return ready;
     if (isStrafing && !isThrowing) return pumoWaddle;
-    if (isCrouchStrafing) return crouchStance;
     if (isHit) return hit;
     if (isDead) return pumo;
     if (isThrowing) return throwing;
@@ -303,7 +304,9 @@ const getImageSrc = (
     if (isRecovering) return recovering2;
     if (isThrowingSnowball) return snowballThrow2;
     if (isSpawningPumoArmy) return pumoArmy2;
-    if (isCrouchStance) return crouchStance;
+    if (isDodging) return dodging2;
+    if (isCrouchStrafing) return crouchStrafing2;
+    if (isCrouchStance) return crouchStance2;
     if (isSlapAttack) {
       return slapAnimation === 1 ? slapAttack1Blue : slapAttack2Blue;
     }
@@ -313,12 +316,10 @@ const getImageSrc = (
       }
       return grabbing2;
     }
-    if (isDodging) return dodging2;
     if (isRawParrying) return crouching2;
     if (isRawParryStun) return bow2;
     if (isReady) return ready2;
     if (isStrafing && !isThrowing) return pumoWaddle2;
-    if (isCrouchStrafing) return crouchStance;
     if (isHit) return hit2;
     if (isDead) return pumo;
     if (isThrowing) return throwing2;

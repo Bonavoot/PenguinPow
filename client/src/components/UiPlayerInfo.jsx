@@ -342,7 +342,6 @@ const PowerUpContainer = styled.div`
       props.$isOnCooldown ? "brightness(0.6) grayscale(0.3)" : "brightness(1)"};
     position: relative;
     top: clamp(-6px, -1vw, -10px);
-    transform: ${(props) => (props.$isPlayer2 ? "scaleX(-1)" : "scaleX(1)")};
   }
 
   span {
