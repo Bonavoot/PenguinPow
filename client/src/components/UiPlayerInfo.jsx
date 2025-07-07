@@ -51,18 +51,27 @@ const PlayerSection = styled.div`
   width: 40%;
   gap: clamp(6px, 1vh, 12px);
   align-items: ${(props) => (props.$isRight ? "flex-end" : "flex-start")};
-  padding: ${(props) => (props.$isRight ? "0 clamp(10px, 2vw, 20px) 0 0" : "0 0 0 clamp(10px, 2vw, 20px)")};
+  padding: ${(props) =>
+    props.$isRight
+      ? "0 clamp(10px, 2vw, 20px) 0 0"
+      : "0 0 0 clamp(10px, 2vw, 20px)"};
 
   @media (max-width: 768px) {
     margin-top: clamp(30px, 4vh, 38px);
     gap: clamp(4px, 0.8vh, 8px);
-    padding: ${(props) => (props.$isRight ? "0 clamp(6px, 1vw, 12px) 0 0" : "0 0 0 clamp(6px, 1vw, 12px)")};
+    padding: ${(props) =>
+      props.$isRight
+        ? "0 clamp(6px, 1vw, 12px) 0 0"
+        : "0 0 0 clamp(6px, 1vw, 12px)"};
   }
 
   @media (max-width: 480px) {
     margin-top: clamp(25px, 3vh, 30px);
     gap: clamp(3px, 0.6vh, 6px);
-    padding: ${(props) => (props.$isRight ? "0 clamp(4px, 0.8vw, 8px) 0 0" : "0 0 0 clamp(4px, 0.8vw, 8px)")};
+    padding: ${(props) =>
+      props.$isRight
+        ? "0 clamp(4px, 0.8vw, 8px) 0 0"
+        : "0 0 0 clamp(4px, 0.8vw, 8px)"};
   }
 `;
 
@@ -122,6 +131,14 @@ const PlayerInfoBottom = styled.div`
   transform: ${(props) => (props.$isRight ? "scaleX(-1)" : "scaleX(1)")};
 `;
 
+const DodgeChargesPosition = styled.div`
+  position: absolute;
+  top: clamp(32px, 5vh, 40px);
+  right: clamp(8px, 1.2vw, 12px);
+  z-index: 5;
+  transform: ${(props) => (props.$isRight ? "scaleX(-1)" : "scaleX(1)")};
+`;
+
 const PlayerName = styled.div`
   font-size: clamp(12px, 2vw, 20px);
   font-weight: 900;
@@ -134,7 +151,7 @@ const PlayerName = styled.div`
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin-top: -30%
+  margin-top: -30%;
 `;
 
 const PlayerRank = styled.div`
@@ -155,7 +172,7 @@ const PlayerRank = styled.div`
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   line-height: 1;
   white-space: nowrap;
-  margin-top: -.5rem
+  margin-top: -0.5rem;
 `;
 
 const WinTracker = styled.div`
@@ -193,7 +210,8 @@ const WinMark = styled.div`
       ? "linear-gradient(45deg,rgb(89, 255, 95),rgb(0, 255, 13))"
       : "linear-gradient(145deg,rgba(28, 28, 28, 0.95),rgba(18, 18, 18, 0.95))"};
   border: clamp(1px, 0.2vw, 2px) solid
-    ${(props) => (props.$isWin ? "rgba(28, 28, 28, .5)" : "rgba(255, 255, 255, 0.3)")};
+    ${(props) =>
+      props.$isWin ? "rgba(28, 28, 28, .5)" : "rgba(255, 255, 255, 0.3)"};
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -240,29 +258,27 @@ const StaminaFill = styled.div`
     props.$stamina <= 25 ? "0 0 8px #ff4d4d" : "0 0 8px #ffeb3b"};
 `;
 
-const UIRow = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: ${(props) => (props.$isRight ? "flex-end" : "flex-start")};
-  gap: clamp(6px, 1.2vw, 12px);
-  margin-top: clamp(28px, 4.5vh, 40px);
-  position: relative;
-`;
-
-const PowerUpWrapper = styled.div`
+const CentralPowerUpSection = styled.div`
   position: absolute;
-  left: ${(props) =>
-    props.$isRight
-      ? "auto"
-      : "calc(clamp(40px, 5vw, 60px) / 2 - clamp(35px, 5vw, 50px) / 2)"};
-  right: ${(props) =>
-    props.$isRight
-      ? "calc(clamp(40px, 5vw, 60px) / 2 - clamp(35px, 5vw, 50px) / 2)"
-      : "auto"};
+  top: calc(clamp(35px, 5vh, 45px) + 15px);
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: clamp(6px, 1.2vw, 12px);
-  transform: ${(props) => (props.$isRight ? "scaleX(-1)" : "scaleX(1)")};
+  justify-content: center;
+  gap: clamp(20px, 3vw, 40px);
+  z-index: 1000;
+  width: 20%;
+  height: 20px;
+  pointer-events: none;
+
+  @media (max-width: 768px) {
+    top: calc(clamp(30px, 4vh, 38px) + 15px);
+  }
+
+  @media (max-width: 480px) {
+    top: calc(clamp(25px, 3vh, 30px) + 15px);
+  }
 `;
 
 const PowerUpContainer = styled.div`
@@ -316,6 +332,7 @@ const PowerUpContainer = styled.div`
   position: relative;
   opacity: ${(props) => (props.$activePowerUp ? 1 : 0.3)};
   flex-shrink: 0;
+  pointer-events: auto;
 
   img {
     width: 70%;
@@ -325,6 +342,7 @@ const PowerUpContainer = styled.div`
       props.$isOnCooldown ? "brightness(0.6) grayscale(0.3)" : "brightness(1)"};
     position: relative;
     top: clamp(-6px, -1vw, -10px);
+    transform: ${(props) => (props.$isPlayer2 ? "scaleX(-1)" : "scaleX(1)")};
   }
 
   span {
@@ -336,8 +354,7 @@ const PowerUpIndicator = styled.div`
   position: absolute;
   bottom: clamp(-2px, -0.3vw, -3px);
   left: 50%;
-  transform: translateX(-50%)
-    ${(props) => (props.$isFlipped ? "scaleX(-1)" : "scaleX(1)")};
+  transform: translateX(-50%);
   font-size: clamp(6px, 0.9vw, 9px);
   font-family: "Bungee", cursive;
   font-weight: 600;
@@ -364,17 +381,17 @@ const DodgeCharge = styled.div`
   border-radius: 50%;
   border: clamp(1px, 0.2vw, 2px) solid
     ${(props) =>
-      props.$isActive
-        ? props.$isOnCooldown
-          ? "rgba(212, 175, 55, 0.4)"
-          : "#d4af37"
-        : "rgba(255, 255, 255, 0.2)"};
+      props.$isOnCooldown
+        ? "rgba(212, 175, 55, 0.4)" // On cooldown (takes precedence)
+        : props.$isActive
+        ? "#d4af37" // Active and ready
+        : "rgba(0, 0, 0, 0.6)"}; // Inactive (dark black border)
   background: ${(props) =>
-    props.$isActive
-      ? props.$isOnCooldown
-        ? "rgba(139, 69, 19, 0.3)"
-        : "rgba(139, 69, 19, 0.8)"
-      : "rgba(40, 40, 40, 0.6)"};
+    props.$isOnCooldown
+      ? "rgba(0, 0, 0, 0.7)" // On cooldown (takes precedence)
+      : props.$isActive
+      ? "rgba(139, 69, 19, 0.8)" // Active and ready
+      : "rgba(0, 0, 0, 0.7)"}; // Inactive (dark black background)
   position: relative;
   display: flex;
   align-items: center;
@@ -391,11 +408,11 @@ const DodgeCharge = styled.div`
     height: clamp(4px, 0.6vw, 6px);
     border-radius: 50%;
     background: ${(props) =>
-      props.$isActive
-        ? props.$isOnCooldown
-          ? "rgba(212, 175, 55, 0.5)"
-          : "#d4af37"
-        : "rgba(255, 255, 255, 0.3)"};
+      props.$isOnCooldown
+        ? "rgba(212, 175, 55, 0.5)" // On cooldown (takes precedence)
+        : props.$isActive
+        ? "#d4af37" // Active and ready
+        : "rgba(0, 0, 0, 0.8)"}; // Inactive (dark black dot)
     box-shadow: ${(props) =>
       props.$isActive && !props.$isOnCooldown
         ? "0 0 4px rgba(212, 175, 55, 0.6)"
@@ -436,7 +453,16 @@ const UiPlayerInfo = ({
     return [0, 1].map((chargeIndex) => {
       const cooldownEndTime = cooldowns[chargeIndex];
       const isOnCooldown = cooldownEndTime > currentTime;
-      const isActive = chargeIndex < charges;
+
+      // Get all charges that are not on cooldown
+      const availableChargeIndices = [0, 1].filter(
+        (i) => cooldowns[i] <= currentTime
+      );
+
+      // Mark the first N available charges as active (where N = number of available charges)
+      const isActive =
+        !isOnCooldown &&
+        availableChargeIndices.slice(0, charges).includes(chargeIndex);
 
       return (
         <DodgeCharge
@@ -485,54 +511,88 @@ const UiPlayerInfo = ({
             <PlayerInfoBottom $isRight={false}>
               <PlayerRank>JONOKUCHI</PlayerRank>
             </PlayerInfoBottom>
+            <DodgeChargesPosition $isRight={false}>
+              <DodgeChargesContainer>
+                {renderDodgeCharges(
+                  player1DodgeCharges,
+                  player1DodgeChargeCooldowns
+                )}
+              </DodgeChargesContainer>
+            </DodgeChargesPosition>
           </StaminaContainer>
         </StaminaRow>
-
-        <UIRow $isRight={false}>
-          <PowerUpWrapper $isRight={false}>
-            <PowerUpContainer
-              $activePowerUp={player1ActivePowerUp}
-              $isOnCooldown={getPowerUpIsOnCooldown(
-                player1ActivePowerUp,
-                player1SnowballCooldown,
-                player1PumoArmyCooldown
-              )}
-            >
-              {player1ActivePowerUp && (
-                <>
-                  <img
-                    src={
-                      player1ActivePowerUp === "speed"
-                        ? happyFeetIcon
-                        : player1ActivePowerUp === "power"
-                        ? powerWaterIcon
-                        : player1ActivePowerUp === "snowball"
-                        ? snowballImage
-                        : player1ActivePowerUp === "pumo_army"
-                        ? pumoArmyIcon
-                        : player1ActivePowerUp === "thick_blubber"
-                        ? thickBlubberIcon
-                        : ""
-                    }
-                    alt={player1ActivePowerUp}
-                    style={{ transform: "scaleX(1)" }}
-                  />
-                  <PowerUpIndicator $isFlipped={false}>
-                    {getPowerUpIndicatorText(player1ActivePowerUp)}
-                  </PowerUpIndicator>
-                </>
-              )}
-            </PowerUpContainer>
-
-            <DodgeChargesContainer>
-              {renderDodgeCharges(
-                player1DodgeCharges,
-                player1DodgeChargeCooldowns
-              )}
-            </DodgeChargesContainer>
-          </PowerUpWrapper>
-        </UIRow>
       </PlayerSection>
+
+      {/* Central Power-Up Section */}
+      <CentralPowerUpSection>
+        <PowerUpContainer
+          $activePowerUp={player1ActivePowerUp}
+          $isOnCooldown={getPowerUpIsOnCooldown(
+            player1ActivePowerUp,
+            player1SnowballCooldown,
+            player1PumoArmyCooldown
+          )}
+          $isPlayer2={false}
+        >
+          {player1ActivePowerUp && (
+            <>
+              <img
+                src={
+                  player1ActivePowerUp === "speed"
+                    ? happyFeetIcon
+                    : player1ActivePowerUp === "power"
+                    ? powerWaterIcon
+                    : player1ActivePowerUp === "snowball"
+                    ? snowballImage
+                    : player1ActivePowerUp === "pumo_army"
+                    ? pumoArmyIcon
+                    : player1ActivePowerUp === "thick_blubber"
+                    ? thickBlubberIcon
+                    : ""
+                }
+                alt={player1ActivePowerUp}
+              />
+              <PowerUpIndicator>
+                {getPowerUpIndicatorText(player1ActivePowerUp)}
+              </PowerUpIndicator>
+            </>
+          )}
+        </PowerUpContainer>
+
+        <PowerUpContainer
+          $activePowerUp={player2ActivePowerUp}
+          $isOnCooldown={getPowerUpIsOnCooldown(
+            player2ActivePowerUp,
+            player2SnowballCooldown,
+            player2PumoArmyCooldown
+          )}
+          $isPlayer2={true}
+        >
+          {player2ActivePowerUp && (
+            <>
+              <img
+                src={
+                  player2ActivePowerUp === "speed"
+                    ? happyFeetIcon
+                    : player2ActivePowerUp === "power"
+                    ? powerWaterIcon
+                    : player2ActivePowerUp === "snowball"
+                    ? snowballImage
+                    : player2ActivePowerUp === "pumo_army"
+                    ? pumoArmyIcon
+                    : player2ActivePowerUp === "thick_blubber"
+                    ? thickBlubberIcon
+                    : ""
+                }
+                alt={player2ActivePowerUp}
+              />
+              <PowerUpIndicator>
+                {getPowerUpIndicatorText(player2ActivePowerUp)}
+              </PowerUpIndicator>
+            </>
+          )}
+        </PowerUpContainer>
+      </CentralPowerUpSection>
 
       {/* Player 2 Section */}
       <PlayerSection $isRight={true}>
@@ -548,54 +608,17 @@ const UiPlayerInfo = ({
             <PlayerInfoBottom $isRight={true}>
               <PlayerRank>JONOKUCHI</PlayerRank>
             </PlayerInfoBottom>
+            <DodgeChargesPosition $isRight={true}>
+              <DodgeChargesContainer>
+                {renderDodgeCharges(
+                  player2DodgeCharges,
+                  player2DodgeChargeCooldowns
+                )}
+              </DodgeChargesContainer>
+            </DodgeChargesPosition>
           </StaminaContainer>
           <PlayerAvatar>闘</PlayerAvatar>
         </StaminaRow>
-
-        <UIRow $isRight={true}>
-          <PowerUpWrapper $isRight={true}>
-            <PowerUpContainer
-              $activePowerUp={player2ActivePowerUp}
-              $isOnCooldown={getPowerUpIsOnCooldown(
-                player2ActivePowerUp,
-                player2SnowballCooldown,
-                player2PumoArmyCooldown
-              )}
-            >
-              {player2ActivePowerUp && (
-                <>
-                  <img
-                    src={
-                      player2ActivePowerUp === "speed"
-                        ? happyFeetIcon
-                        : player2ActivePowerUp === "power"
-                        ? powerWaterIcon
-                        : player2ActivePowerUp === "snowball"
-                        ? snowballImage
-                        : player2ActivePowerUp === "pumo_army"
-                        ? pumoArmyIcon
-                        : player2ActivePowerUp === "thick_blubber"
-                        ? thickBlubberIcon
-                        : ""
-                    }
-                    alt={player2ActivePowerUp}
-                    style={{ transform: "scaleX(-1)" }}
-                  />
-                  <PowerUpIndicator $isFlipped={true}>
-                    {getPowerUpIndicatorText(player2ActivePowerUp)}
-                  </PowerUpIndicator>
-                </>
-              )}
-            </PowerUpContainer>
-
-            <DodgeChargesContainer>
-              {renderDodgeCharges(
-                player2DodgeCharges,
-                player2DodgeChargeCooldowns
-              )}
-            </DodgeChargesContainer>
-          </PowerUpWrapper>
-        </UIRow>
       </PlayerSection>
     </FighterUIContainer>
   );

@@ -6,7 +6,7 @@ import "./RawParryEffect.css";
 const RawParryEffectContainer = styled.div.attrs((props) => ({
   style: {
     position: "absolute",
-    left: `${(props.$x / 1280) * 100 + (props.$facing === 1 ? -7: -2)}%`,
+    left: `${(props.$x / 1280) * 100 + (props.$facing === 1 ? -7 : -2)}%`,
     bottom: `${(props.$y / 720) * 100 - 8}%`,
     transform: "translate(-50%, -50%)",
     zIndex: 100,
@@ -29,9 +29,10 @@ const Particle = styled.div`
   position: absolute;
   width: 0.23vw;
   height: 0.23vw;
-  background: ${props => props.$isPerfect 
-    ? 'radial-gradient(circle, #87CEEB, #4169E1)' // Light blue to royal blue for perfect
-    : 'radial-gradient(circle, #E6F3FF, #4169E1)'}; // Very light blue to royal blue for regular
+  background: ${(props) =>
+    props.$isPerfect
+      ? "radial-gradient(circle, #87CEEB, #4169E1)" // Light blue to royal blue for perfect
+      : "radial-gradient(circle, #E6F3FF, #4169E1)"}; // Very light blue to royal blue for regular
   border-radius: 50%;
   opacity: 0;
 `;
@@ -62,46 +63,46 @@ const RawParryEffect = ({ position }) => {
   const generateSparks = (effectId, facing, isPerfect) => {
     const sparkCount = 16; // Same as hit effect
     const sparks = [];
-    
+
     // Get viewport dimensions to calculate responsive speeds (further reduced scale)
     const viewportWidth = window.innerWidth;
     const baseSpeedMultiplier = (viewportWidth / 1280) * 0.6; // Further reduced from 0.8 to 0.6
-    
+
     for (let i = 0; i < sparkCount; i++) {
       // Create full 360-degree explosion pattern like a firework
       const baseAngle = (i / sparkCount) * 360; // Distribute evenly around circle
       const angleVariation = (Math.random() - 0.5) * 15; // Reduced randomness from 40 to 15 degrees
       const angle = (baseAngle + angleVariation) * (Math.PI / 180);
-      
+
       // Use more consistent speeds for even circle pattern
       const baseSpeed = 6.5 * baseSpeedMultiplier; // ~85px at 1280px width
       const speedVariation = baseSpeed * 0.2; // Only 20% speed variation
       const speed = baseSpeed + (Math.random() - 0.5) * speedVariation;
-      
+
       // More varied sizes for better visual impact - scale with viewport
       const baseSize = 2 * baseSpeedMultiplier; // Scale particle size with viewport
       const size = Math.random() * (6 * baseSpeedMultiplier) + baseSize; // 2-8px range scaled
       const life = 600 + Math.random() * 400; // 600-1000ms lifespan
-      
+
       // Color schemes based on parry type
-      const colors = isPerfect 
+      const colors = isPerfect
         ? [
-            'linear-gradient(45deg, #4169E1, #FFD700)', // Royal blue to gold
-            'linear-gradient(45deg, #87CEEB, #FFD700)', // Sky blue to gold
-            'linear-gradient(45deg, #4169E1, #FFA500)', // Royal blue to orange
-            'linear-gradient(45deg, #00BFFF, #FFD700)', // Deep sky blue to gold
-            'linear-gradient(45deg, #1E90FF, #F0E68C)', // Dodger blue to khaki
-            'linear-gradient(45deg, #4682B4, #FFD700)', // Steel blue to gold
+            "linear-gradient(45deg, #4169E1, #FFD700)", // Royal blue to gold
+            "linear-gradient(45deg, #87CEEB, #FFD700)", // Sky blue to gold
+            "linear-gradient(45deg, #4169E1, #FFA500)", // Royal blue to orange
+            "linear-gradient(45deg, #00BFFF, #FFD700)", // Deep sky blue to gold
+            "linear-gradient(45deg, #1E90FF, #F0E68C)", // Dodger blue to khaki
+            "linear-gradient(45deg, #4682B4, #FFD700)", // Steel blue to gold
           ]
         : [
-            'linear-gradient(45deg, #FFFFFF, #4169E1)', // White to royal blue
-            'linear-gradient(45deg, #E6F3FF, #1E90FF)', // Very light blue to dodger blue
-            'linear-gradient(45deg, #FFFFFF, #87CEEB)', // White to sky blue
-            'linear-gradient(45deg, #F0F8FF, #4169E1)', // Alice blue to royal blue
-            'linear-gradient(45deg, #FFFFFF, #00BFFF)', // White to deep sky blue
-            'linear-gradient(45deg, #E0F6FF, #4682B4)', // Very light blue to steel blue
+            "linear-gradient(45deg, #FFFFFF, #4169E1)", // White to royal blue
+            "linear-gradient(45deg, #E6F3FF, #1E90FF)", // Very light blue to dodger blue
+            "linear-gradient(45deg, #FFFFFF, #87CEEB)", // White to sky blue
+            "linear-gradient(45deg, #F0F8FF, #4169E1)", // Alice blue to royal blue
+            "linear-gradient(45deg, #FFFFFF, #00BFFF)", // White to deep sky blue
+            "linear-gradient(45deg, #E0F6FF, #4682B4)", // Very light blue to steel blue
           ];
-      
+
       const spark = {
         id: `${effectId}-spark-${i}`,
         size,
@@ -119,33 +120,41 @@ const RawParryEffect = ({ position }) => {
         sparkIndex: i, // For CSS targeting
         isPerfect, // Pass perfect status to spark
       };
-      
+
       sparks.push(spark);
     }
-    
+
     return sparks;
   };
 
   useEffect(() => {
-    console.log('RawParryEffect useEffect triggered with position:', position);
-    console.log('RawParryEffect parryIdentifier:', parryIdentifier);
-    
+    console.log("RawParryEffect useEffect triggered with position:", position);
+    console.log("RawParryEffect parryIdentifier:", parryIdentifier);
+
     if (!position || !parryIdentifier) {
       if (position && !parryIdentifier) {
-        console.warn('RawParryEffect: No unique identifier provided for parry', position);
+        console.warn(
+          "RawParryEffect: No unique identifier provided for parry",
+          position
+        );
       }
       return;
     }
-    
+
     // Prevent duplicate processing of the same parry
     if (processedParriesRef.current.has(parryIdentifier)) {
-      console.log('RawParryEffect: Duplicate parry prevented', parryIdentifier);
+      console.log("RawParryEffect: Duplicate parry prevented", parryIdentifier);
       return;
     }
-    
+
     // Mark this parry as processed
     processedParriesRef.current.add(parryIdentifier);
-    console.log('RawParryEffect: Creating new effect', parryIdentifier, 'isPerfect:', position.isPerfect);
+    console.log(
+      "RawParryEffect: Creating new effect",
+      parryIdentifier,
+      "isPerfect:",
+      position.isPerfect
+    );
 
     // Create unique effect ID
     const effectId = ++effectIdCounter.current;
@@ -160,19 +169,30 @@ const RawParryEffect = ({ position }) => {
       isPerfect: position.isPerfect || false,
       startTime: currentTime,
       parryId: parryIdentifier,
-      sparks: generateSparks(effectId, position.facing || 1, position.isPerfect || false),
+      sparks: generateSparks(
+        effectId,
+        position.facing || 1,
+        position.isPerfect || false
+      ),
     };
 
     // Add the new effect to active effects
-    setActiveEffects(prev => [...prev, newEffect]);
+    setActiveEffects((prev) => [...prev, newEffect]);
 
     // Remove this effect after duration and clean up tracking
     setTimeout(() => {
-      setActiveEffects(prev => prev.filter(effect => effect.id !== effectId));
+      setActiveEffects((prev) =>
+        prev.filter((effect) => effect.id !== effectId)
+      );
       processedParriesRef.current.delete(parryIdentifier);
     }, EFFECT_DURATION);
-
-  }, [parryIdentifier, position?.x, position?.y, position?.facing, position?.isPerfect]); // Depend on stable identifier and position values
+  }, [
+    parryIdentifier,
+    position?.x,
+    position?.y,
+    position?.facing,
+    position?.isPerfect,
+  ]); // Depend on stable identifier and position values
 
   // Cleanup effects on unmount
   useEffect(() => {
@@ -187,7 +207,7 @@ const RawParryEffect = ({ position }) => {
       {activeEffects.map((effect) => {
         // Generate basic particles for this effect (existing system)
         const particles = Array.from({ length: 4 }, (_, i) => (
-          <Particle 
+          <Particle
             key={`${effect.id}-particle-${i}`}
             className="particle"
             $isPerfect={effect.isPerfect}
@@ -202,16 +222,22 @@ const RawParryEffect = ({ position }) => {
         const sparkElements = effect.sparks.map((spark, index) => (
           <Spark
             key={spark.id}
-            className={`spark ${spark.isPerfect ? 'spark-perfect' : 'spark-regular'}`}
+            className={`spark ${
+              spark.isPerfect ? "spark-perfect" : "spark-regular"
+            }`}
             style={{
-              top: '50%',
-              left: '50%',
+              top: "50%",
+              left: "50%",
               width: `${spark.size}px`,
               height: `${spark.size}px`, // Make it a perfect circle
               background: spark.color,
-              borderRadius: '50%', // Perfect circle
-              boxShadow: spark.glow ? `0 0 ${spark.size * 2}px ${spark.isPerfect ? '#4169E1' : '#4169E1'}` : 'none',
-              filter: spark.glow ? 'brightness(1.2)' : 'none',
+              borderRadius: "50%", // Perfect circle
+              boxShadow: spark.glow
+                ? `0 0 ${spark.size * 2}px ${
+                    spark.isPerfect ? "#4169E1" : "#4169E1"
+                  }`
+                : "none",
+              filter: spark.glow ? "brightness(1.2)" : "none",
               transform: `translate(-50%, -50%) rotate(${spark.rotation}deg)`,
               animationDelay: `${index * 10}ms`, // Stagger spark animations
             }}
@@ -219,17 +245,23 @@ const RawParryEffect = ({ position }) => {
         ));
 
         return (
-          <RawParryEffectContainer 
+          <RawParryEffectContainer
             key={effect.id}
-            $x={effect.x} 
-            $y={effect.y} 
+            $x={effect.x}
+            $y={effect.y}
             $facing={effect.facing}
           >
-            <div className={`raw-parry-ring-wrapper ${effect.isPerfect ? 'perfect' : 'regular'}`}>
-              <div 
-                className={`raw-parry-ring ${effect.isPerfect ? 'perfect' : 'regular'}`}
-                style={{ 
-                  transform: effect.facing === 1 ? "scaleX(-1)" : "scaleX(1)" 
+            <div
+              className={`raw-parry-ring-wrapper ${
+                effect.isPerfect ? "perfect" : "regular"
+              }`}
+            >
+              <div
+                className={`raw-parry-ring ${
+                  effect.isPerfect ? "perfect" : "regular"
+                }`}
+                style={{
+                  transform: effect.facing === 1 ? "scaleX(-1)" : "scaleX(1)",
                 }}
               />
               <ParticleContainer className="raw-parry-particles">
@@ -258,4 +290,4 @@ RawParryEffect.propTypes = {
   }),
 };
 
-export default RawParryEffect; 
+export default RawParryEffect;

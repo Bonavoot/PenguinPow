@@ -7,7 +7,7 @@ import hitEffectImage from "../assets/hit-effect.png";
 const HitEffectContainer = styled.div.attrs((props) => ({
   style: {
     position: "absolute",
-    left: `${(props.$x / 1280) * 100 + (props.$facing === 1 ? -2: -7)}%`,
+    left: `${(props.$x / 1280) * 100 + (props.$facing === 1 ? -2 : -7)}%`,
     bottom: `${(props.$y / 720) * 100 - 5}%`,
     transform: "translate(-50%, -50%)",
     zIndex: 100,
@@ -30,7 +30,7 @@ const Particle = styled.div`
   position: absolute;
   width: 0.23vw;
   height: 0.23vw;
-  background: radial-gradient(circle, #FFFF99, #FFD700);
+  background: radial-gradient(circle, #ffff99, #ffd700);
   border-radius: 50%;
   opacity: 0;
 `;
@@ -61,37 +61,37 @@ const HitEffect = ({ position }) => {
   const generateSparks = (effectId, facing) => {
     const sparkCount = 16; // Increase count for better firework effect
     const sparks = [];
-    
+
     // Get viewport dimensions to calculate responsive speeds (further reduced scale)
     const viewportWidth = window.innerWidth;
     const baseSpeedMultiplier = (viewportWidth / 1280) * 0.6; // Further reduced from 0.8 to 0.6
-    
+
     for (let i = 0; i < sparkCount; i++) {
       // Create full 360-degree explosion pattern like a firework
       const baseAngle = (i / sparkCount) * 360; // Distribute evenly around circle
       const angleVariation = (Math.random() - 0.5) * 15; // Reduced randomness from 40 to 15 degrees
       const angle = (baseAngle + angleVariation) * (Math.PI / 180);
-      
+
       // Use more consistent speeds for even circle pattern
       const baseSpeed = 6.5 * baseSpeedMultiplier; // ~85px at 1280px width
       const speedVariation = baseSpeed * 0.2; // Only 20% speed variation
       const speed = baseSpeed + (Math.random() - 0.5) * speedVariation;
-      
+
       // More varied sizes for better visual impact - scale with viewport
       const baseSize = 2 * baseSpeedMultiplier; // Scale particle size with viewport
       const size = Math.random() * (6 * baseSpeedMultiplier) + baseSize; // 2-8px range scaled
       const life = 600 + Math.random() * 400; // 600-1000ms lifespan
-      
+
       // Mixed white and yellow spark colors to match hit effect
       const colors = [
-        'linear-gradient(45deg, #FFFFFF, #FFD700)', // White to gold
-        'linear-gradient(45deg, #FFFFFF, #FFFF99)', // White to light yellow
-        'linear-gradient(45deg, #FFFFFF, #F0F0F0)', // Pure white
-        'linear-gradient(45deg, #FFFF99, #FFD700)', // Light yellow to gold
-        'linear-gradient(45deg, #FFFFFF, #E0E0E0)', // White to light gray
-        'linear-gradient(45deg, #FFD700, #CC9900)', // Gold to darker gold
+        "linear-gradient(45deg, #FFFFFF, #FFD700)", // White to gold
+        "linear-gradient(45deg, #FFFFFF, #FFFF99)", // White to light yellow
+        "linear-gradient(45deg, #FFFFFF, #F0F0F0)", // Pure white
+        "linear-gradient(45deg, #FFFF99, #FFD700)", // Light yellow to gold
+        "linear-gradient(45deg, #FFFFFF, #E0E0E0)", // White to light gray
+        "linear-gradient(45deg, #FFD700, #CC9900)", // Gold to darker gold
       ];
-      
+
       const spark = {
         id: `${effectId}-spark-${i}`,
         size,
@@ -108,30 +108,33 @@ const HitEffect = ({ position }) => {
         glow: Math.random() > 0.2, // Almost all sparks have glow
         sparkIndex: i, // For CSS targeting
       };
-      
+
       sparks.push(spark);
     }
-    
+
     return sparks;
   };
 
   useEffect(() => {
     if (!position || !hitIdentifier) {
       if (position && !hitIdentifier) {
-        console.warn('HitEffect: No unique identifier provided for hit', position);
+        console.warn(
+          "HitEffect: No unique identifier provided for hit",
+          position
+        );
       }
       return;
     }
-    
+
     // Prevent duplicate processing of the same hit
     if (processedHitsRef.current.has(hitIdentifier)) {
-      console.log('HitEffect: Duplicate hit prevented', hitIdentifier);
+      console.log("HitEffect: Duplicate hit prevented", hitIdentifier);
       return;
     }
-    
+
     // Mark this hit as processed
     processedHitsRef.current.add(hitIdentifier);
-    console.log('HitEffect: Creating new effect', hitIdentifier);
+    console.log("HitEffect: Creating new effect", hitIdentifier);
 
     // Create unique effect ID
     const effectId = ++effectIdCounter.current;
@@ -149,14 +152,15 @@ const HitEffect = ({ position }) => {
     };
 
     // Add the new effect to active effects
-    setActiveEffects(prev => [...prev, newEffect]);
+    setActiveEffects((prev) => [...prev, newEffect]);
 
     // Remove this effect after duration and clean up tracking
     setTimeout(() => {
-      setActiveEffects(prev => prev.filter(effect => effect.id !== effectId));
+      setActiveEffects((prev) =>
+        prev.filter((effect) => effect.id !== effectId)
+      );
       processedHitsRef.current.delete(hitIdentifier);
     }, EFFECT_DURATION);
-
   }, [hitIdentifier, position?.x, position?.y, position?.facing]); // Depend on stable identifier and position values
 
   // Cleanup effects on unmount
@@ -172,7 +176,7 @@ const HitEffect = ({ position }) => {
       {activeEffects.map((effect) => {
         // Generate basic particles for this effect (existing system)
         const particles = Array.from({ length: 4 }, (_, i) => (
-          <Particle 
+          <Particle
             key={`${effect.id}-particle-${i}`}
             className="particle"
             style={{
@@ -188,14 +192,18 @@ const HitEffect = ({ position }) => {
             key={spark.id}
             className="spark"
             style={{
-              top: '50%',
-              left: '50%',
+              top: "50%",
+              left: "50%",
               width: `${spark.size}px`,
               height: `${spark.size}px`, // Make it a perfect circle
               background: spark.color,
-              borderRadius: '50%', // Perfect circle
-              boxShadow: spark.glow ? `0 0 ${spark.size * 2}px ${spark.color.includes('FFD700') ? '#FFD700' : '#FFFFFF'}` : 'none',
-              filter: spark.glow ? 'brightness(1.2)' : 'none',
+              borderRadius: "50%", // Perfect circle
+              boxShadow: spark.glow
+                ? `0 0 ${spark.size * 2}px ${
+                    spark.color.includes("FFD700") ? "#FFD700" : "#FFFFFF"
+                  }`
+                : "none",
+              filter: spark.glow ? "brightness(1.2)" : "none",
               transform: `translate(-50%, -50%) rotate(${spark.rotation}deg)`,
               animationDelay: `${index * 10}ms`, // Stagger spark animations
             }}
@@ -203,17 +211,17 @@ const HitEffect = ({ position }) => {
         ));
 
         return (
-          <HitEffectContainer 
+          <HitEffectContainer
             key={effect.id}
-            $x={effect.x} 
-            $y={effect.y} 
+            $x={effect.x}
+            $y={effect.y}
             $facing={effect.facing}
           >
             <div className="hit-ring-wrapper">
-              <div 
-                className="hit-ring" 
-                style={{ 
-                  transform: effect.facing === 1 ? "scaleX(-1)" : "scaleX(1)" 
+              <div
+                className="hit-ring"
+                style={{
+                  transform: effect.facing === 1 ? "scaleX(-1)" : "scaleX(1)",
                 }}
               />
               <ParticleContainer className="hit-particles">
