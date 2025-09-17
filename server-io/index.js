@@ -995,7 +995,7 @@ io.on("connection", (socket) => {
                   // Clear any existing slap knockback state to ensure consistent snowball knockback
                   opponent.isSlapKnockback = false;
                   
-                  opponent.knockbackVelocity.x = knockbackDirection * 2; // Slightly increased from 1.5 to 2
+                  opponent.knockbackVelocity.x = knockbackDirection * 1.5; // Reduced from 2 to 1.5 (25% reduction)
                   opponent.movementVelocity = knockbackDirection * 1.3; // Slightly increased from 1 to 1.3
 
                   // Set knockback immunity
@@ -1118,7 +1118,7 @@ io.on("connection", (socket) => {
                   // Clear any existing slap knockback state to ensure consistent pumo army knockback
                   opponent.isSlapKnockback = false;
                   
-                  opponent.knockbackVelocity.x = knockbackDirection * 2;
+                  opponent.knockbackVelocity.x = knockbackDirection * 1.5; // Reduced from 2 to 1.5 (25% reduction)
                   opponent.movementVelocity = knockbackDirection * 1.5;
 
                   // Set knockback immunity
