@@ -42,7 +42,7 @@ function handleWinCondition(room, loser, winner, io) {
   loser.y = GROUND_LEVEL;
   winner.wins.push("w");
 
-  if (winner.wins.length > 3) {
+  if (winner.wins.length > 2) {
     io.in(room.id).emit("match_over", {
       isMatchOver: true,
       winner: winner.fighter,

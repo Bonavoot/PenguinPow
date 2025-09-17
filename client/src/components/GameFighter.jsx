@@ -235,6 +235,7 @@ const getImageSrc = (
   isDodging,
   isStrafing,
   isRawParrying,
+  isGrabBreaking,
   isReady,
   isHit,
   isDead,
@@ -258,9 +259,12 @@ const getImageSrc = (
   isSpawningPumoArmy,
   isAtTheRopes,
   isCrouchStance,
-  isCrouchStrafing
+  isCrouchStrafing,
+  isGrabBreakCountered
 ) => {
   if (fighter === "player 2") {
+    if (isGrabBreaking) return crouching;
+    if (isGrabBreakCountered) return hit;
     if (isPerfectRawParrySuccess) return snowballThrow;
     if (isRawParrySuccess) return recovering;
     if (isAtTheRopes) return beingGrabbed;
@@ -294,6 +298,8 @@ const getImageSrc = (
     if (isThrowingSalt) return salt;
     return pumo;
   } else if (fighter === "player 1") {
+    if (isGrabBreaking) return crouching2;
+    if (isGrabBreakCountered) return hit2;
     if (isPerfectRawParrySuccess) return snowballThrow2;
     if (isRawParrySuccess) return recovering2;
     if (isAtTheRopes) return beingGrabbed2;
@@ -390,6 +396,7 @@ const StyledImage = styled("img")
         "isDodging",
         "isStrafing",
         "isRawParrying",
+        "isGrabBreaking",
         "isReady",
         "isHit",
         "isDead",
@@ -449,6 +456,7 @@ const StyledImage = styled("img")
         "isAtTheRopes",
         "isCrouchStance",
         "isCrouchStrafing",
+        "isGrabBreakCountered",
       ].includes(prop),
   })
   .attrs((props) => ({
@@ -460,6 +468,7 @@ const StyledImage = styled("img")
       props.$isDodging,
       props.$isStrafing,
       props.$isRawParrying,
+      props.$isGrabBreaking,
       props.$isReady,
       props.$isHit,
       props.$isDead,
@@ -483,7 +492,8 @@ const StyledImage = styled("img")
       props.$isSpawningPumoArmy,
       props.$isAtTheRopes,
       props.$isCrouchStance,
-      props.$isCrouchStrafing
+      props.$isCrouchStrafing,
+      props.$isGrabBreakCountered
     ),
     style: {
       position: "absolute",
@@ -492,10 +502,14 @@ const StyledImage = styled("img")
       transform: props.$facing === 1 ? "scaleX(1)" : "scaleX(-1)",
       zIndex:
         props.$isThrowing || props.$isDodging || props.$isGrabbing ? 98 : 99,
-      filter: props.$isRawParrying
+      filter: props.$isGrabBreaking
+        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.85)) brightness(1.35) drop-shadow(0 0 3px #000)"
+        : props.$isRawParrying
         ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3) drop-shadow(0 0 3px #000)"
         : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) ",
-      animation: props.$isRawParrying
+      animation: props.$isGrabBreaking
+        ? "grabBreakFlash 1.2s ease-in-out infinite"
+        : props.$isRawParrying
         ? "rawParryFlash 1.2s ease-in-out infinite"
         : "none",
       width: "min(15.03%, 393px)",
@@ -522,6 +536,23 @@ const StyledImage = styled("img")
     }
     100% {
       filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 2px rgba(0, 150, 255, 0.4)) brightness(1) drop-shadow(0 0 1px #000);
+    }
+  }
+  @keyframes grabBreakFlash {
+    0% {
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 2px rgba(0, 255, 128, 0.45)) brightness(1) drop-shadow(0 0 1px #000);
+    }
+    25% {
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 12px rgba(0, 255, 128, 0.95)) brightness(1.7) drop-shadow(0 0 4px #000);
+    }
+    50% {
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.75)) brightness(1.4) drop-shadow(0 0 3px #000);
+    }
+    75% {
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 12px rgba(0, 255, 128, 0.95)) brightness(1.7) drop-shadow(0 0 4px #000);
+    }
+    100% {
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 2px rgba(0, 255, 128, 0.45)) brightness(1) drop-shadow(0 0 1px #000);
     }
   }
 `;
@@ -758,6 +789,8 @@ const GameFighter = ({
     isThrowing: false,
     isGrabbing: false,
     isBeingGrabbed: false,
+    isGrabBreaking: false,
+    isGrabBreakCountered: false,
     isThrowingSalt: false,
     isThrowingSnowball: false,
     slapAnimation: 2,
@@ -1045,6 +1078,8 @@ const GameFighter = ({
             : playerData.facing || 1,
         dodgeCharges: playerData.dodgeCharges || 2,
         dodgeChargeCooldowns: playerData.dodgeChargeCooldowns || [0, 0],
+        isGrabBreaking: playerData.isGrabBreaking || false,
+        isGrabBreakCountered: playerData.isGrabBreakCountered || false,
       });
 
       // Update all snowballs from both players
@@ -1695,6 +1730,7 @@ const GameFighter = ({
         $isDodging={penguin.isDodging}
         $isStrafing={penguin.isStrafing}
         $isRawParrying={penguin.isRawParrying}
+        $isGrabBreaking={penguin.isGrabBreaking}
         $isReady={penguin.isReady}
         $isHit={penguin.isHit}
         $isDead={penguin.isDead}
@@ -1740,6 +1776,7 @@ const GameFighter = ({
         $isAtTheRopes={penguin.isAtTheRopes}
         $isCrouchStance={penguin.isCrouchStance}
         $isCrouchStrafing={penguin.isCrouchStrafing}
+        $isGrabBreakCountered={penguin.isGrabBreakCountered}
       />
 
       {thickBlubberIndicator && (
@@ -1755,6 +1792,7 @@ const GameFighter = ({
             penguin.isDodging,
             penguin.isStrafing,
             penguin.isRawParrying,
+            penguin.isGrabBreaking,
             penguin.isReady,
             penguin.isHit,
             penguin.isDead,
@@ -1778,7 +1816,8 @@ const GameFighter = ({
             penguin.isSpawningPumoArmy,
             penguin.isAtTheRopes,
             penguin.isCrouchStance,
-            penguin.isCrouchStrafing
+            penguin.isCrouchStrafing,
+            penguin.isGrabBreakCountered
           )}
         />
       )}

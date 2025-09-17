@@ -133,7 +133,7 @@ const PlayerInfoBottom = styled.div`
 
 const DodgeChargesPosition = styled.div`
   position: absolute;
-  top: clamp(24px, 4vh, 32px);
+  top: clamp(32px, 5vh, 42px);
   right: clamp(8px, 1.2vw, 12px);
   z-index: 5;
   transform: ${(props) => (props.$isRight ? "scaleX(-1)" : "scaleX(1)")};
@@ -172,7 +172,7 @@ const PlayerRank = styled.div`
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   line-height: 1;
   white-space: nowrap;
-  margin-top: -0.5rem;
+ 
 `;
 
 const WinTracker = styled.div`
@@ -216,7 +216,7 @@ const WinMark = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-top: -45%;
+  margin-top: -60%;
   box-shadow: ${(props) =>
     props.$isWin
       ? "0 0 8px rgba(76, 175, 80, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3)"
@@ -230,13 +230,13 @@ const WinMark = styled.div`
 const StaminaContainer = styled.div`
   position: relative;
   width: 100%;
-  height: 20px;
+  height: 30px;
   background: linear-gradient(
     145deg,
     rgba(40, 40, 40, 0.2),
     rgba(20, 20, 20, 0.1)
   );
-  border-radius: clamp(8px, 1.2vw, 12px);
+  // border-radius: clamp(8px, 1.2vw, 12px);
   border: clamp(1px, 0.2vw, 2px) solid #8b4513;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
   overflow: visible;
@@ -252,7 +252,7 @@ const StaminaFill = styled.div`
     props.$stamina <= 25
       ? "linear-gradient(90deg, #ff4d4d 0%, #ff8080 100%)"
       : "linear-gradient(90deg, #ffeb3b 0%, #ffc107 100%)"};
-  border-radius: clamp(6px, 1vw, 10px);
+  // border-radius: clamp(6px, 1vw, 10px);
   transition: width 0.3s ease;
   box-shadow: ${(props) =>
     props.$stamina <= 25 ? "0 0 8px #ff4d4d" : "0 0 8px #ffeb3b"};
@@ -442,7 +442,7 @@ const UiPlayerInfo = ({
 
   const renderWinMarks = (winCount) => {
     const marks = [];
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 3; i++) {
       marks.push(<WinMark key={i} $isWin={i < winCount} />);
     }
     return marks;

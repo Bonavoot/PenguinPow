@@ -190,6 +190,13 @@ function setKnockbackImmunity(player) {
   player.knockbackImmuneEndTime = Date.now() + KNOCKBACK_IMMUNITY_DURATION;
 }
 
+// Grab break constants
+const GRAB_BREAK_STAMINA_COST = 50; // Stamina cost to break a grab
+const GRAB_BREAK_PUSH_VELOCITY = 1.2; // Reduced push velocity (~55%) for shorter shove
+const GRAB_BREAK_ANIMATION_DURATION = 300; // Duration for grab break animation state
+const GRAB_BREAK_SEPARATION_DURATION = 220; // Smooth separation tween duration
+const GRAB_BREAK_SEPARATION_MULTIPLIER = 96; // Separation distance scale (tripled)
+
 function handlePowerUpSelection(room) {
   // Reset power-up selection state for the room
   room.powerUpSelectionPhase = true;
@@ -386,6 +393,12 @@ function resetRoomAndPlayers(room) {
     player.overlapStartTime = null;
     // Reset ready positioning flag
     player.canMoveToReady = false;
+    // Reset grab break flags
+    player.isGrabBreaking = false;
+    player.isGrabBreakCountered = false;
+    player.grabBreakSpaceConsumed = false;
+    // Reset grab break state
+    player.isGrabBreaking = false;
     // Reset grab movement states
     player.isGrabbingMovement = false;
     player.isWhiffingGrab = false;
@@ -1169,6 +1182,41 @@ io.on("connection", (socket) => {
           Date.now() >= player.knockbackImmuneEndTime
         ) {
           player.knockbackImmune = false;
+        }
+
+        // Smooth grab-break separation tween overrides other movement for its duration
+        if (player.isGrabBreakSeparating) {
+          const now = Date.now();
+          const elapsed = now - (player.grabBreakSepStartTime || now);
+          const duration = player.grabBreakSepDuration || 0;
+          const startX = player.grabBreakStartX ?? player.x;
+          const targetX = player.grabBreakTargetX ?? player.x;
+          const t = duration > 0 ? Math.min(1, elapsed / duration) : 1;
+          // Ease-out cubic for smooth finish
+          const eased = 1 - Math.pow(1 - t, 3);
+          const newX = startX + (targetX - startX) * eased;
+
+          // Clamp to boundaries
+          const clampedX = Math.max(MAP_LEFT_BOUNDARY, Math.min(newX, MAP_RIGHT_BOUNDARY));
+          player.x = clampedX;
+          // Lock to ground and clear velocities during tween
+          player.y = GROUND_LEVEL;
+          player.movementVelocity = 0;
+          player.knockbackVelocity.x = 0;
+          player.knockbackVelocity.y = 0;
+          player.isStrafing = false;
+
+          if (t >= 1) {
+            // End tween
+            player.isGrabBreakSeparating = false;
+            player.grabBreakSepStartTime = 0;
+            player.grabBreakSepDuration = 0;
+            player.grabBreakStartX = undefined;
+            player.grabBreakTargetX = undefined;
+          }
+
+          // Skip remaining movement/logic this tick to avoid interference
+          return;
         }
 
         // Handle knockback movement with NO boundary restrictions
@@ -2080,6 +2128,8 @@ io.on("connection", (socket) => {
         // raw parry
         if (
           player.keys[" "] &&
+          !player.isGrabBreaking && // Block raw parry while grab break is active
+          !player.grabBreakSpaceConsumed && // Block until the triggering space press is released
           !player.isDodging && // Block raw parry during dodge - don't interrupt dodge hop
           !player.isGrabbing &&
           !player.isBeingGrabbed &&
@@ -2140,6 +2190,8 @@ io.on("connection", (socket) => {
             player.isRawParrying = false;
             player.rawParryStartTime = 0;
             player.rawParryMinDurationMet = false;
+            // Space released - clear grab-break consumption so future parries can occur
+            player.grabBreakSpaceConsumed = false;
 
             // Check if we should restart charging after raw parry ends
             if (
@@ -3200,6 +3252,9 @@ io.on("connection", (socket) => {
         isOverlapping: false, // Track overlap state for smoother separation
         overlapStartTime: null, // Track when overlap began for progressive separation
         chargeCancelled: false, // Track if charge was cancelled (vs executed)
+        isGrabBreaking: false,
+        isGrabBreakCountered: false,
+        grabBreakSpaceConsumed: false,
       });
     } else if (rooms[roomIndex].players.length === 1) {
       rooms[roomIndex].players.push({
@@ -3307,6 +3362,9 @@ io.on("connection", (socket) => {
         isOverlapping: false, // Track overlap state for smoother separation
         overlapStartTime: null, // Track when overlap began for progressive separation
         chargeCancelled: false, // Track if charge was cancelled (vs executed)
+        isGrabBreaking: false,
+        isGrabBreakCountered: false,
+        grabBreakSpaceConsumed: false,
       });
     }
 
@@ -3653,6 +3711,10 @@ io.on("connection", (socket) => {
       if (isInChargedAttackExecution()) {
         return true;
       }
+      // Block during grab break animation
+      if (player.isGrabBreaking) {
+        return true;
+      }
       // Block during recovery unless it's a dodge and dodge cancel is allowed
       if (
         player.isRecovering &&
@@ -3682,6 +3744,126 @@ io.on("connection", (socket) => {
         console.log(
           `Player ${player.id} pressed F key. PowerUp: ${player.activePowerUp}, Cooldown: ${player.snowballCooldown}, isThrowingSnowball: ${player.isThrowingSnowball}`
         );
+      }
+
+        // If spacebar was released after a grab break, allow raw parry again
+        if (
+          !player.keys[" "] &&
+          previousKeys[" "] &&
+          player.grabBreakSpaceConsumed
+        ) {
+          player.grabBreakSpaceConsumed = false;
+          // Also ensure grab-break animation is not lingering
+          if (!player.isGrabBreaking) {
+            // no-op; flag reset is enough
+          }
+        }
+
+      // Grab Break: break out when being grabbed with spacebar, at stamina cost
+      if (
+        player.isBeingGrabbed &&
+        player.keys[" "] &&
+        !previousKeys[" "] &&
+        !player.isGrabBreaking &&
+        player.stamina >= GRAB_BREAK_STAMINA_COST
+      ) {
+        const room = rooms[roomIndex];
+        const grabber = room.players.find(
+          (p) => p.id !== player.id && p.isGrabbing && p.grabbedOpponent === player.id
+        );
+
+        if (grabber) {
+          console.log(`🛡️ GRAB BREAK: Player ${player.id} breaking grab from ${grabber.id}`);
+
+          // Deduct stamina
+          player.stamina = Math.max(0, player.stamina - GRAB_BREAK_STAMINA_COST);
+
+          // Clear grab states for both
+          cleanupGrabStates(grabber, player);
+
+          // Animation state - only the breaker shows grab break
+          player.isGrabBreaking = true;
+          // Consume this space press so raw parry cannot start until release
+          player.grabBreakSpaceConsumed = true;
+
+          // The grabber shows a countered placeholder animation (not true hit state)
+          grabber.isGrabBreaking = false;
+          grabber.isGrabBreakCountered = true;
+          // Auto-clear countered flag after a short duration
+          setPlayerTimeout(
+            grabber.id,
+            () => {
+              grabber.isGrabBreakCountered = false;
+            },
+            GRAB_BREAK_ANIMATION_DURATION,
+            "grabBreakHitReset"
+          );
+          setPlayerTimeout(
+            player.id,
+            () => {
+              player.isGrabBreaking = false;
+            },
+            GRAB_BREAK_ANIMATION_DURATION,
+            "grabBreakAnim"
+          );
+
+          // Determine directions and push apart without crossing boundaries
+          const leftBoundary = MAP_LEFT_BOUNDARY;
+          const rightBoundary = MAP_RIGHT_BOUNDARY;
+          const dir = player.x < grabber.x ? -1 : 1; // player pushes outward
+          const pushDistance = GRAB_BREAK_PUSH_VELOCITY * GRAB_BREAK_SEPARATION_MULTIPLIER;
+
+          const playerTargetX = Math.max(
+            leftBoundary,
+            Math.min(player.x + dir * pushDistance, rightBoundary)
+          );
+          const grabberTargetX = Math.max(
+            leftBoundary,
+            Math.min(grabber.x - dir * pushDistance, rightBoundary)
+          );
+
+          // Initialize smooth separation tween for both players
+          const now = Date.now();
+          // Breaker tween
+          player.isGrabBreakSeparating = true;
+          player.grabBreakSepStartTime = now;
+          player.grabBreakSepDuration = GRAB_BREAK_SEPARATION_DURATION;
+          player.grabBreakStartX = player.x;
+          player.grabBreakTargetX = playerTargetX;
+          // Grabber tween
+          grabber.isGrabBreakSeparating = true;
+          grabber.grabBreakSepStartTime = now;
+          grabber.grabBreakSepDuration = GRAB_BREAK_SEPARATION_DURATION;
+          grabber.grabBreakStartX = grabber.x;
+          grabber.grabBreakTargetX = grabberTargetX;
+
+          // Zero out velocities during tween to prevent sliding interference
+          player.movementVelocity = 0;
+          grabber.movementVelocity = 0;
+
+          // Do not set isHit or knockbackVelocity, to avoid bypassing boundary checks
+          player.isStrafing = false;
+          grabber.isStrafing = false;
+
+          // Short cooldown to prevent immediate re-grab
+          grabber.grabCooldown = true;
+          setPlayerTimeout(
+            grabber.id,
+            () => {
+              grabber.grabCooldown = false;
+            },
+            600,
+            "grabBreakCooldown"
+          );
+
+          // Emit for client VFX/SFX
+          io.in(room.id).emit("grab_break", {
+            breakerId: player.id,
+            grabberId: grabber.id,
+            breakerX: player.x,
+            grabberX: grabber.x,
+          });
+        }
       }
     }
 
