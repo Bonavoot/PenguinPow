@@ -1,4 +1,5 @@
 import PropTypes from "prop-types";
+import { useEffect, useRef, useState } from "react";
 import styled, { keyframes } from "styled-components";
 import happyFeetIcon from "../assets/happy-feet.png";
 import powerWaterIcon from "../assets/power-water.png";
@@ -256,6 +257,43 @@ const StaminaFill = styled.div`
   transition: width 0.3s ease;
   box-shadow: ${(props) =>
     props.$stamina <= 25 ? "0 0 8px #ff4d4d" : "0 0 8px #ffeb3b"};
+  z-index: 2;
+`;
+
+const StaminaLoss = styled.div`
+  position: absolute;
+  top: 0;
+  height: 100%;
+  left: ${(props) => props.$left}%;
+  width: ${(props) => props.$width}%;
+  background: linear-gradient(90deg, #ff4d4d 0%, #ff8080 100%);
+  opacity: ${(props) => (props.$visible ? 1 : 0)};
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+  z-index: 1;
+`;
+
+const GassedOverlay = styled.div`
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  opacity: ${(props) => (props.$isGassed ? 1 : 0)};
+  transition: opacity 0.2s ease;
+  background-size: 20px 20px;
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(255, 235, 59, 0.95) 0px,
+    rgba(255, 235, 59, 0.95) 10px,
+    rgba(0, 0, 0, 0.8) 10px,
+    rgba(0, 0, 0, 0.8) 20px
+  );
+  animation: ${(props) => (props.$isGassed ? "cautionMove 450ms linear infinite" : "none")};
+
+  @keyframes cautionMove {
+    0% { background-position: 0 0; }
+    100% { background-position: 20px 0; }
+  }
 `;
 
 const CentralPowerUpSection = styled.div`
@@ -423,6 +461,7 @@ const DodgeCharge = styled.div`
 const UiPlayerInfo = ({
   playerOneWinCount,
   playerTwoWinCount,
+  roundId = 0,
   // Player 1 data
   player1Stamina,
   player1DodgeCharges = 2,
@@ -430,6 +469,7 @@ const UiPlayerInfo = ({
   player1ActivePowerUp = null,
   player1SnowballCooldown = false,
   player1PumoArmyCooldown = false,
+  player1IsGassed = false,
   // Player 2 data
   player2Stamina,
   player2DodgeCharges = 2,
@@ -437,8 +477,117 @@ const UiPlayerInfo = ({
   player2ActivePowerUp = null,
   player2SnowballCooldown = false,
   player2PumoArmyCooldown = false,
+  player2IsGassed = false,
 }) => {
   const currentTime = Date.now();
+
+  // Track previous stamina values and transient loss bars
+  const clampStamina = (value) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.min(100, n));
+  };
+
+  const s1 = clampStamina(player1Stamina);
+  const s2 = clampStamina(player2Stamina);
+
+  // Displayed stamina with glitch guards
+  const [p1DisplayStamina, setP1DisplayStamina] = useState(s1);
+  const [p2DisplayStamina, setP2DisplayStamina] = useState(s2);
+  const [p1LastDecreaseAt, setP1LastDecreaseAt] = useState(0);
+  const [p2LastDecreaseAt, setP2LastDecreaseAt] = useState(0);
+  const MAX_INCREASE_PER_UPDATE = 15; // Prevent sudden large spikes visually
+
+  const [p1Loss, setP1Loss] = useState({ left: 0, width: 0, visible: false });
+  const [p2Loss, setP2Loss] = useState({ left: 0, width: 0, visible: false });
+
+  const p1LossTimeoutRef = useRef(null);
+  const p2LossTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    // On round change, hard reset displayed stamina to current sanitized values
+    setP1DisplayStamina(s1);
+    setP2DisplayStamina(s2);
+    setP1Loss({ left: 0, width: 0, visible: false });
+    setP2Loss({ left: 0, width: 0, visible: false });
+    setP1LastDecreaseAt(0);
+    setP2LastDecreaseAt(0);
+  }, [roundId]);
+
+  useEffect(() => {
+    let next = s1;
+    // Detect decrease
+    if (next < p1DisplayStamina) {
+      setP1LastDecreaseAt(Date.now());
+      const lost = Math.max(0, Math.min(100, p1DisplayStamina - next));
+      const width = Math.max(0, Math.min(lost, 100 - next));
+      setP1Loss({ left: next, width, visible: true });
+      if (p1LossTimeoutRef.current) clearTimeout(p1LossTimeoutRef.current);
+      p1LossTimeoutRef.current = setTimeout(() => {
+        setP1Loss((cur) => ({ ...cur, visible: false }));
+      }, 500);
+    } else {
+      // Hide loss on stamina increase or no change
+      setP1Loss((cur) => (cur.visible ? { ...cur, visible: false } : cur));
+    }
+
+    // Glitch guard: prevent sudden huge spikes (e.g., 0 -> 100) right after a decrease
+    const justDecreased = Date.now() - p1LastDecreaseAt < 600 || p1DisplayStamina === 0;
+    if (next - p1DisplayStamina > 25 && justDecreased) {
+      // Ignore this spike; keep previous display
+      next = p1DisplayStamina;
+    }
+
+    // Always cap per-update increase to a reasonable step
+    if (next > p1DisplayStamina) {
+      next = Math.min(next, p1DisplayStamina + MAX_INCREASE_PER_UPDATE);
+    }
+    setP1DisplayStamina(next);
+
+    return () => {
+      if (p1LossTimeoutRef.current) {
+        clearTimeout(p1LossTimeoutRef.current);
+        p1LossTimeoutRef.current = null;
+      }
+    };
+  }, [s1]);
+
+  useEffect(() => {
+    let next = s2;
+    // Detect decrease
+    if (next < p2DisplayStamina) {
+      setP2LastDecreaseAt(Date.now());
+      const lost = Math.max(0, Math.min(100, p2DisplayStamina - next));
+      const width = Math.max(0, Math.min(lost, 100 - next));
+      setP2Loss({ left: next, width, visible: true });
+      if (p2LossTimeoutRef.current) clearTimeout(p2LossTimeoutRef.current);
+      p2LossTimeoutRef.current = setTimeout(() => {
+        setP2Loss((cur) => ({ ...cur, visible: false }));
+      }, 500);
+    } else {
+      // Hide loss on stamina increase or no change
+      setP2Loss((cur) => (cur.visible ? { ...cur, visible: false } : cur));
+    }
+
+    // Glitch guard: prevent sudden huge spikes (e.g., 0 -> 100) right after a decrease
+    const justDecreased = Date.now() - p2LastDecreaseAt < 600 || p2DisplayStamina === 0;
+    if (next - p2DisplayStamina > 25 && justDecreased) {
+      next = p2DisplayStamina;
+    }
+
+    // Always cap per-update increase to a reasonable step
+    if (next > p2DisplayStamina) {
+      next = Math.min(next, p2DisplayStamina + MAX_INCREASE_PER_UPDATE);
+    }
+    setP2DisplayStamina(next);
+
+    return () => {
+      if (p2LossTimeoutRef.current) {
+        clearTimeout(p2LossTimeoutRef.current);
+        p2LossTimeoutRef.current = null;
+      }
+    };
+  }, [s2]);
 
   const renderWinMarks = (winCount) => {
     const marks = [];
@@ -500,7 +649,13 @@ const UiPlayerInfo = ({
         <StaminaRow>
           <PlayerAvatar>力</PlayerAvatar>
           <StaminaContainer $isRight={false}>
-            <StaminaFill $stamina={player1Stamina} />
+            <StaminaFill $stamina={p1DisplayStamina} />
+            <StaminaLoss
+              $left={p1Loss.left}
+              $width={p1Loss.width}
+              $visible={p1Loss.visible}
+            />
+            <GassedOverlay $isGassed={player1IsGassed} />
             <WinTracker $isRight={false}>
               {renderWinMarks(playerOneWinCount)}
             </WinTracker>
@@ -597,7 +752,13 @@ const UiPlayerInfo = ({
       <PlayerSection $isRight={true}>
         <StaminaRow>
           <StaminaContainer $isRight={true}>
-            <StaminaFill $stamina={player2Stamina} />
+            <StaminaFill $stamina={p2DisplayStamina} />
+            <StaminaLoss
+              $left={p2Loss.left}
+              $width={p2Loss.width}
+              $visible={p2Loss.visible}
+            />
+            <GassedOverlay $isGassed={player2IsGassed} />
             <WinTracker $isRight={true}>
               {renderWinMarks(playerTwoWinCount)}
             </WinTracker>
@@ -626,18 +787,21 @@ const UiPlayerInfo = ({
 UiPlayerInfo.propTypes = {
   playerOneWinCount: PropTypes.number.isRequired,
   playerTwoWinCount: PropTypes.number.isRequired,
+  roundId: PropTypes.number,
   player1Stamina: PropTypes.number,
   player1DodgeCharges: PropTypes.number,
   player1DodgeChargeCooldowns: PropTypes.arrayOf(PropTypes.number),
   player1ActivePowerUp: PropTypes.string,
   player1SnowballCooldown: PropTypes.bool,
   player1PumoArmyCooldown: PropTypes.bool,
+  player1IsGassed: PropTypes.bool,
   player2Stamina: PropTypes.number,
   player2DodgeCharges: PropTypes.number,
   player2DodgeChargeCooldowns: PropTypes.arrayOf(PropTypes.number),
   player2ActivePowerUp: PropTypes.string,
   player2SnowballCooldown: PropTypes.bool,
   player2PumoArmyCooldown: PropTypes.bool,
+  player2IsGassed: PropTypes.bool,
 };
 
 export default UiPlayerInfo;

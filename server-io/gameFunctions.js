@@ -42,6 +42,13 @@ function handleWinCondition(room, loser, winner, io) {
   loser.y = GROUND_LEVEL;
   winner.wins.push("w");
 
+  // Immediately normalize stamina and gassed state for next round display
+  room.players.forEach((p) => {
+    p.stamina = 100;
+    p.isGassed = false;
+    p.gassedEndTime = 0;
+  });
+
   if (winner.wins.length > 2) {
     io.in(room.id).emit("match_over", {
       isMatchOver: true,
@@ -209,7 +216,16 @@ function executeSlapAttack(player, rooms) {
 
   // Ensure slapAnimation alternates consistently for every actual attack execution
   player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
-  player.stamina -= 10;
+  // Drain stamina for slap unless already gassed (keep at 0 while gassed)
+  if (player.isGassed) {
+    player.stamina = 0;
+  } else {
+    player.stamina = Math.max(0, player.stamina - 10);
+    if (player.stamina === 0 && !player.isGassed) {
+      player.isGassed = true;
+      player.gassedEndTime = Date.now() + 5000;
+    }
+  }
 
   const attackDuration = 300; // Total attack duration (300ms)
   const startupDuration = Math.floor(attackDuration * 0.4); // 40% of duration for startup frames (120ms)
@@ -1007,7 +1023,7 @@ function safelyEndChargedAttack(player, rooms) {
         player.isDodging = true;
         player.dodgeStartTime = Date.now();
         player.dodgeEndTime = Date.now() + 400;
-        player.stamina -= 50;
+        player.stamina = Math.max(0, player.stamina - 50);
         player.dodgeDirection = action.direction;
         player.dodgeStartX = player.x;
         player.dodgeStartY = player.y;

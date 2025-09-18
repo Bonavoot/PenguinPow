@@ -88,6 +88,15 @@ const io = new Server(server, {
   },
 });
 
+// Sanitize helper to keep stamina values stable and within [0, 100]
+function clampStaminaValue(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  if (n < 0) return 0;
+  if (n > 100) return 100;
+  return Math.round(n);
+}
+
 const expressSession = session({
   secret: "my-secret",
   resave: true,
@@ -179,6 +188,10 @@ const AT_THE_ROPES_DURATION = 1000; // 1 second stun duration
 
 // Knockback immunity system constants
 const KNOCKBACK_IMMUNITY_DURATION = 150; // 150ms immunity window
+
+// Stamina regeneration tuning
+const STAMINA_REGEN_INTERVAL_MS = 2000; // was 1000ms
+const STAMINA_REGEN_AMOUNT = 10; // was 25 per tick
 
 // Knockback immunity helper functions
 function canApplyKnockback(player) {
@@ -358,6 +371,8 @@ function resetRoomAndPlayers(room) {
     player.isAlreadyHit = false;
     player.isDead = false;
     player.stamina = 100;
+    player.isGassed = false;
+    player.gassedEndTime = 0;
     player.isBowing = false;
     player.x = player.fighter === "player 1" ? 300 : 775;
     player.y = GROUND_LEVEL;
@@ -1357,9 +1372,18 @@ io.on("connection", (socket) => {
           resetRoomAndPlayers(room);
         }
 
-        if (player.stamina < 100) {
-          if (staminaRegenCounter >= 1000) {
-            player.stamina += 25;
+        // Handle gassed state timing
+        if (player.isGassed) {
+          if (Date.now() >= player.gassedEndTime) {
+            player.isGassed = false;
+            player.gassedEndTime = 0;
+          }
+        }
+
+        // Regen only if not gassed
+        if (!player.isGassed && player.stamina < 100) {
+          if (staminaRegenCounter >= STAMINA_REGEN_INTERVAL_MS) {
+            player.stamina += STAMINA_REGEN_AMOUNT;
             player.stamina = Math.min(player.stamina, 100);
           }
         }
@@ -2397,6 +2421,9 @@ io.on("connection", (socket) => {
           player.slapStrafeCooldown = false;
           player.slapStrafeCooldownEndTime = 0;
         }
+
+        // FINAL GUARD: sanitize stamina once per tick per player before emit
+        player.stamina = clampStaminaValue(player.stamina);
       });
 
       io.in(room.id).emit("fighter_action", {
@@ -2405,8 +2432,8 @@ io.on("connection", (socket) => {
       });
     });
 
-    if (staminaRegenCounter >= 1000) {
-      staminaRegenCounter = 0; // Reset the counter after a second has passed
+    if (staminaRegenCounter >= STAMINA_REGEN_INTERVAL_MS) {
+      staminaRegenCounter = 0; // Reset the counter after interval
     }
   }
 
@@ -2656,7 +2683,7 @@ io.on("connection", (socket) => {
     } else {
       // For slap attacks, don't create separate timeout - let executeSlapAttack handle cleanup
       // This ensures consistent behavior with whiffed slaps
-      if (isSlapAttack) {
+    if (isSlapAttack) {
         // Don't interfere with the normal executeSlapAttack timeout
         // Just let it handle the cleanup naturally
       }
@@ -3083,6 +3110,13 @@ io.on("connection", (socket) => {
         hitStateDuration,
         "hitStateReset" // Named timeout for cleanup
       );
+
+      // Trigger gassed state if stamina is 0 after hit processing
+      if (otherPlayer.stamina <= 0 && !otherPlayer.isGassed) {
+        otherPlayer.stamina = 0;
+        otherPlayer.isGassed = true;
+        otherPlayer.gassedEndTime = Date.now() + 5000; // 5 seconds
+      }
     }
   }
 
@@ -3214,6 +3248,8 @@ io.on("connection", (socket) => {
         isBowing: false,
         facing: 1,
         stamina: 100,
+        isGassed: false,
+        gassedEndTime: 0,
         x: 245,
         y: GROUND_LEVEL,
         knockbackVelocity: { x: 0, y: 0 },
@@ -3324,6 +3360,8 @@ io.on("connection", (socket) => {
         isBowing: false,
         facing: -1,
         stamina: 100,
+        isGassed: false,
+        gassedEndTime: 0,
         x: 815,
         y: GROUND_LEVEL,
         knockbackVelocity: { x: 0, y: 0 },
@@ -4085,7 +4123,7 @@ io.on("connection", (socket) => {
       !player.keys.e &&
       !player.keys.w &&
       !isInChargedAttackExecution() && // Block during charged attack execution
-      canPlayerUseAction(player) &&
+        canPlayerUseAction(player) &&
       player.dodgeCharges > 0 // Check if player has dodge charges
     ) {
       console.log("Executing immediate dodge");
@@ -4346,12 +4384,12 @@ io.on("connection", (socket) => {
     }
 
     // Handle throw attacks - block during charged attack execution and recovery
-    if (
+      if (
       player.keys.w &&
       !player.keys.e &&
       !shouldBlockAction() &&
       !player.isThrowingSalt &&
-      canPlayerUseAction(player) &&
+        canPlayerUseAction(player) &&
       !player.throwCooldown &&
       !player.isRawParrying &&
       !player.isJumping

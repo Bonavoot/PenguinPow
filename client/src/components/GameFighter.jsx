@@ -864,6 +864,7 @@ const GameFighter = ({
   });
   const [thickBlubberIndicator, setThickBlubberIndicator] = useState(false);
   const [disconnectCountdown, setDisconnectCountdown] = useState(3);
+  const [uiRoundId, setUiRoundId] = useState(0);
 
   // Interpolation constants
   const SERVER_TICK_RATE = 64; // Server runs at 64 FPS
@@ -1071,6 +1072,7 @@ const GameFighter = ({
       // Update penguin state with all data (discrete states are not interpolated)
       setPenguin({
         ...playerData,
+        isGassed: !!playerData.isGassed,
         isDodging: playerData.isDodging || false,
         dodgeDirection:
           typeof playerData.dodgeDirection === "number"
@@ -1210,6 +1212,9 @@ const GameFighter = ({
       onResetDisconnectState(); // Reset opponent disconnected state for new games
       console.log("game reset gamefighter.jsx");
 
+      // Bump round ID so UI can hard reset stamina visuals
+      setUiRoundId((id) => id + 1);
+
       // Clear any existing countdown timer first
       if (countdownRef.current) {
         clearInterval(countdownRef.current);
@@ -1234,6 +1239,8 @@ const GameFighter = ({
       console.log("game start gamefighter.jsx");
       setHakkiyoi(true);
       setRawParryEffectPosition(null); // Clear any leftover parry effects
+      // Bump round ID on start in case clients skipped reset event
+      setUiRoundId((id) => id + 1);
       // Clear the countdown timer when game starts and immediately reset countdown
       if (countdownRef.current) {
         clearInterval(countdownRef.current);
@@ -1259,12 +1266,16 @@ const GameFighter = ({
         setPlayerTwoWinCount(data.wins);
         setGyojiState("player2Win");
       }
+      // Bump round ID immediately on winner declaration to reset UI stamina to server value
+      setUiRoundId((id) => id + 1);
     });
 
     socket.on("match_over", (data) => {
       setMatchOver(data.isMatchOver);
       setPlayerOneWinCount(0);
       setPlayerTwoWinCount(0);
+      // Also bump round id at match end to reset UI
+      setUiRoundId((id) => id + 1);
     });
 
     socket.on("rematch", () => {
@@ -1619,30 +1630,33 @@ const GameFighter = ({
         <UiPlayerInfo
           playerOneWinCount={playerOneWinCount}
           playerTwoWinCount={playerTwoWinCount}
-          player1Stamina={allPlayersData.player1?.stamina || 100}
-          player1DodgeCharges={allPlayersData.player1?.dodgeCharges || 2}
+          roundId={uiRoundId}
+          player1Stamina={allPlayersData.player1?.stamina ?? 100}
+          player1DodgeCharges={allPlayersData.player1?.dodgeCharges ?? 2}
           player1DodgeChargeCooldowns={
-            allPlayersData.player1?.dodgeChargeCooldowns || [0, 0]
+            allPlayersData.player1?.dodgeChargeCooldowns ?? [0, 0]
           }
-          player1ActivePowerUp={allPlayersData.player1?.activePowerUp || null}
+          player1ActivePowerUp={allPlayersData.player1?.activePowerUp ?? null}
           player1SnowballCooldown={
-            allPlayersData.player1?.snowballCooldown || false
+            allPlayersData.player1?.snowballCooldown ?? false
           }
           player1PumoArmyCooldown={
-            allPlayersData.player1?.pumoArmyCooldown || false
+            allPlayersData.player1?.pumoArmyCooldown ?? false
           }
-          player2Stamina={allPlayersData.player2?.stamina || 100}
-          player2DodgeCharges={allPlayersData.player2?.dodgeCharges || 2}
+          player1IsGassed={allPlayersData.player1?.isGassed ?? false}
+          player2Stamina={allPlayersData.player2?.stamina ?? 100}
+          player2DodgeCharges={allPlayersData.player2?.dodgeCharges ?? 2}
           player2DodgeChargeCooldowns={
-            allPlayersData.player2?.dodgeChargeCooldowns || [0, 0]
+            allPlayersData.player2?.dodgeChargeCooldowns ?? [0, 0]
           }
-          player2ActivePowerUp={allPlayersData.player2?.activePowerUp || null}
+          player2ActivePowerUp={allPlayersData.player2?.activePowerUp ?? null}
           player2SnowballCooldown={
-            allPlayersData.player2?.snowballCooldown || false
+            allPlayersData.player2?.snowballCooldown ?? false
           }
           player2PumoArmyCooldown={
-            allPlayersData.player2?.pumoArmyCooldown || false
+            allPlayersData.player2?.pumoArmyCooldown ?? false
           }
+          player2IsGassed={allPlayersData.player2?.isGassed ?? false}
         />
       )}
 
