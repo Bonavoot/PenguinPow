@@ -499,7 +499,11 @@ const StyledImage = styled("img")
       position: "absolute",
       left: `${(props.$x / 1280) * 100}%`,
       bottom: `${(props.$y / 720) * 100}%`,
-      transform: props.$facing === 1 ? "scaleX(1)" : "scaleX(-1)",
+      transform: (
+        ((props.$isRingOutThrowCutscene && props.$isThrowing) ? -props.$facing : props.$facing) === 1
+      )
+        ? "scaleX(1)"
+        : "scaleX(-1)",
       zIndex:
         props.$isThrowing || props.$isDodging || props.$isGrabbing ? 98 : 99,
       filter: props.$isGrabBreaking
@@ -649,9 +653,9 @@ const SaltBasket = styled.img
       position: "absolute",
       width: "4.55%",
       height: "auto",
-      bottom: `${((GROUND_LEVEL + 100) / 720) * 143}%`,
-      left: props.$index === 0 ? "22%" : "auto",
-      right: props.$index === 1 ? "23%" : "auto",
+      bottom: `${((GROUND_LEVEL + 100) / 720) * 153}%`,
+      left: props.$index === 0 ? "21%" : "auto",
+      right: props.$index === 1 ? "21.5%" : "auto",
       transform: props.$index === 1 ? "scaleX(-1)" : "none",
       zIndex: 1,
       pointerEvents: "none",
@@ -1750,6 +1754,7 @@ const GameFighter = ({
         $isDead={penguin.isDead}
         $isSlapAttack={penguin.isSlapAttack}
         $isThrowing={penguin.isThrowing}
+        $isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
         $isGrabbing={penguin.isGrabbing}
         $isBeingGrabbed={penguin.isBeingGrabbed}
         $isThrowingSalt={penguin.isThrowingSalt}

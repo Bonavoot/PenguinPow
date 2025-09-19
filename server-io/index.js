@@ -175,6 +175,13 @@ const MOVEMENT_FRICTION = 0.985; // Increased from 0.95 for more ice-like feel
 const ICE_DRIFT_FACTOR = 0.92; // New constant for directional drift
 const MIN_MOVEMENT_THRESHOLD = 0.01; // New constant for movement cutoff
 
+// Grab walking tuning
+const GRAB_WALK_SPEED_MULTIPLIER = 0.8; // Slightly slower than normal strafing
+const GRAB_WALK_ACCEL_MULTIPLIER = 0.7; // Slightly lower acceleration than normal strafing
+
+// Ring-out cutscene tuning
+const RINGOUT_THROW_DURATION_MS = 1600; // Slow, cinematic throw duration after ring-out
+
 const RAW_PARRY_KNOCKBACK = 1.5; // Fixed knockback distance for raw parries (reduced by 50%)
 const RAW_PARRY_STUN_DURATION = 1000; // 1 second stun duration
 const RAW_PARRY_SLAP_KNOCKBACK = 1.5; // Reduced knockback for slap attack parries (reduced by 50%)
@@ -415,6 +422,7 @@ function resetRoomAndPlayers(room) {
     // Reset grab break state
     player.isGrabBreaking = false;
     // Reset grab movement states
+    player.isGrabWalking = false;
     player.isGrabbingMovement = false;
     player.isWhiffingGrab = false;
     player.isGrabClashing = false;
@@ -423,6 +431,13 @@ function resetRoomAndPlayers(room) {
     player.grabMovementStartTime = 0;
     player.grabMovementDirection = 0;
     player.grabMovementVelocity = 0;
+    // Reset ring-out throw cutscene flags
+    player.isRingOutThrowCutscene = false;
+    player.ringOutThrowDistance = 0;
+    // Reset ring-out freeze flags
+    player.isRingOutFreezeActive = false;
+    player.ringOutFreezeEndTime = 0;
+    player.ringOutThrowDirection = null;
   });
 
   // Clear player-specific power-up data
@@ -1235,7 +1250,13 @@ io.on("connection", (socket) => {
         }
 
         // Handle knockback movement with NO boundary restrictions
-        if (player.isHit) {
+        if (player.isRingOutFreezeActive) {
+          // Freeze player entirely during ring-out freeze
+          player.movementVelocity = 0;
+          player.knockbackVelocity.x = 0;
+          player.knockbackVelocity.y = 0;
+          // Keep facing and position; do nothing else until freeze ends
+        } else if (player.isHit) {
           // Apply immediate knockback without boundary check
           player.x =
             player.x + player.knockbackVelocity.x * delta * speedFactor;
@@ -1285,6 +1306,7 @@ io.on("connection", (socket) => {
         if (
           !player.isHit &&
           !room.gameOver &&
+          !player.isRingOutFreezeActive &&
           !player.isBeingGrabbed &&
           !player.isThrowing &&
           !player.isBeingThrown &&
@@ -1390,7 +1412,7 @@ io.on("connection", (socket) => {
 
         // if (player.isHit) return;
 
-        if (player.isThrowing && player.throwOpponent) {
+        if (!player.isRingOutFreezeActive && player.isThrowing && player.throwOpponent) {
           const currentTime = Date.now();
           const throwDuration = currentTime - player.throwStartTime;
           const throwProgress =
@@ -1400,15 +1422,20 @@ io.on("connection", (socket) => {
             (p) => p.id === player.throwOpponent
           );
           if (opponent) {
-            const throwArcHeight = 450;
-            const throwDistance = 120;
-            const armsReachDistance = -100;
+            const throwArcHeight = player.isRingOutThrowCutscene ? 180 : 450;
+            const throwDistance = player.isRingOutThrowCutscene
+              ? player.ringOutThrowDistance || 900
+              : 120;
+            let armsReachDistance = -100;
 
             if (!player.throwingFacingDirection) {
               player.throwingFacingDirection = player.facing;
               opponent.beingThrownFacingDirection = opponent.facing;
-              opponent.x =
-                player.x + player.throwingFacingDirection * armsReachDistance;
+              // For ring-out cutscene, keep the current separation; otherwise, snap to arms reach
+              if (!player.isRingOutThrowCutscene) {
+                opponent.x =
+                  player.x + player.throwingFacingDirection * armsReachDistance;
+              }
               opponent.y = GROUND_LEVEL;
             }
 
@@ -1417,6 +1444,13 @@ io.on("connection", (socket) => {
 
             // Calculate new position with size power-up consideration
             const sizeOffset = 0;
+
+            // Preserve grab separation at the start of a ring-out cutscene throw
+            if (player.isRingOutThrowCutscene) {
+              const throwingDir = player.throwingFacingDirection || 1;
+              const currentSeparation = opponent.x - player.x;
+              armsReachDistance = currentSeparation * throwingDir;
+            }
 
             const newX =
               player.x +
@@ -1434,19 +1468,21 @@ io.on("connection", (socket) => {
             // Check if throw is complete
             if (currentTime >= player.throwEndTime) {
               // Check for win condition at the end of throw
-              if (
-                (opponent.x >= MAP_RIGHT_BOUNDARY &&
-                  player.throwingFacingDirection === 1) ||
-                (opponent.x <= MAP_LEFT_BOUNDARY &&
-                  player.throwingFacingDirection === -1)
-              ) {
-                handleWinCondition(room, opponent, player, io);
-              } else {
-                // Emit screen shake for landing after throw
-                io.in(room.id).emit("screen_shake", {
-                  intensity: 0.6,
-                  duration: 200,
-                });
+              if (!player.isRingOutThrowCutscene) {
+                if (
+                  (opponent.x >= MAP_RIGHT_BOUNDARY &&
+                    player.throwingFacingDirection === 1) ||
+                  (opponent.x <= MAP_LEFT_BOUNDARY &&
+                    player.throwingFacingDirection === -1)
+                ) {
+                  handleWinCondition(room, opponent, player, io);
+                } else {
+                  // Emit screen shake for landing after throw
+                  io.in(room.id).emit("screen_shake", {
+                    intensity: 0.6,
+                    duration: 200,
+                  });
+                }
               }
 
               // Reset all throw-related states for both players
@@ -1455,6 +1491,9 @@ io.on("connection", (socket) => {
               player.throwingFacingDirection = null;
               player.throwStartTime = 0;
               player.throwEndTime = 0;
+              // Clear ring-out cutscene flags
+              player.isRingOutThrowCutscene = false;
+              player.ringOutThrowDistance = 0;
 
               // Check if we should restart charging after throw completes
               if (shouldRestartCharging(player)) {
@@ -2074,6 +2113,10 @@ io.on("connection", (socket) => {
           if (!player.isHit) {
             player.movementVelocity *= MOVEMENT_FRICTION;
           }
+          // Also clear grab walking if no movement conditions are met
+          if (!player.keys.a && !player.keys.d) {
+            player.isGrabWalking = false;
+          }
         }
 
           // Keep player from going below ground level
@@ -2097,6 +2140,9 @@ io.on("connection", (socket) => {
         ) {
           // Add isRecovering and isHit checks
           player.isStrafing = false;
+          if (!player.keys.a && !player.keys.d) {
+            player.isGrabWalking = false;
+          }
         }
         if (player.keys.a && player.keys.d) {
           player.isStrafing = false;
@@ -2317,7 +2363,7 @@ io.on("connection", (socket) => {
             safelyEndChargedAttack(player, rooms);
           }
         }
-        if (player.isGrabbing && player.grabbedOpponent) {
+        if (player.isGrabbing && player.grabbedOpponent && !player.isThrowing && !player.isBeingThrown) {
           const opponent = room.players.find(
             (p) => p.id === player.grabbedOpponent
           );
@@ -2355,13 +2401,136 @@ io.on("connection", (socket) => {
               return;
             }
 
-            // Keep opponent at fixed distance during grab
-            const fixedDistance = 81 * (opponent.sizeMultiplier || 1); // Reduced from 90 by 10% to match smaller player images
+            // Handle grab walking: allow slight left/right strafe while grabbing when A or D is held
+            let currentSpeedFactor = speedFactor * GRAB_WALK_SPEED_MULTIPLIER;
+            if (player.activePowerUp === POWER_UP_TYPES.SPEED) {
+              currentSpeedFactor *= player.powerUpMultiplier;
+            }
+
+            // Initialize movementVelocity if needed
+            if (!player.movementVelocity) {
+              player.movementVelocity = 0;
+            }
+
+            // Boundaries for grab walking
+            const leftBoundary = MAP_LEFT_BOUNDARY;
+            const rightBoundary = MAP_RIGHT_BOUNDARY;
+
+            // Determine if grab walking is active
+            const canGrabWalk = (player.keys.a || player.keys.d);
+            player.isGrabWalking = !!canGrabWalk;
+
+            if (player.isGrabWalking) {
+              // Adjust acceleration a bit lower for grab walking
+              const accel = MOVEMENT_ACCELERATION * GRAB_WALK_ACCEL_MULTIPLIER;
+
+              if (player.keys.d && !player.keys.a) {
+                if (player.movementVelocity < 0) {
+                  player.movementVelocity *= ICE_DRIFT_FACTOR;
+                }
+                player.movementVelocity = Math.min(
+                  player.movementVelocity + accel,
+                  MAX_MOVEMENT_SPEED * GRAB_WALK_SPEED_MULTIPLIER
+                );
+              } else if (player.keys.a && !player.keys.d) {
+                if (player.movementVelocity > 0) {
+                  player.movementVelocity *= ICE_DRIFT_FACTOR;
+                }
+                player.movementVelocity = Math.max(
+                  player.movementVelocity - accel,
+                  -MAX_MOVEMENT_SPEED * GRAB_WALK_SPEED_MULTIPLIER
+                );
+              } else {
+                // both or none - decelerate
+                if (Math.abs(player.movementVelocity) > MIN_MOVEMENT_THRESHOLD) {
+                  player.movementVelocity *= MOVEMENT_MOMENTUM * MOVEMENT_FRICTION;
+                } else {
+                  player.movementVelocity = 0;
+                }
+              }
+
+              // Apply movement within boundaries
+              const newX = player.x + delta * currentSpeedFactor * player.movementVelocity;
+              if (newX >= leftBoundary && newX <= rightBoundary) {
+                player.x = newX;
+              } else {
+                player.x = newX < leftBoundary ? leftBoundary : rightBoundary;
+                player.movementVelocity = 0;
+              }
+            } else {
+              // If not actively grab walking, lightly decay any residual velocity
+              if (Math.abs(player.movementVelocity) > MIN_MOVEMENT_THRESHOLD) {
+                player.movementVelocity *= MOVEMENT_MOMENTUM * MOVEMENT_FRICTION;
+              } else {
+                player.movementVelocity = 0;
+              }
+            }
+
+            // Keep opponent attached at fixed distance during grab
+            const fixedDistance = 81 * (opponent.sizeMultiplier || 1);
             opponent.x =
               player.facing === 1
                 ? player.x - fixedDistance
                 : player.x + fixedDistance;
             opponent.facing = -player.facing;
+
+            // Ring-out check during grab walking or stationary grab hold
+            if (!room.gameOver) {
+              if (
+                opponent.x <= MAP_LEFT_BOUNDARY ||
+                opponent.x >= MAP_RIGHT_BOUNDARY
+              ) {
+                // Start brief freeze, then trigger a simple throw cutscene: grabber throws outward
+                player.isRingOutFreezeActive = true;
+                player.ringOutFreezeEndTime = Date.now() + 200; // 0.2s freeze
+                player.ringOutThrowDirection = opponent.x <= MAP_LEFT_BOUNDARY ? -1 : 1;
+                player.pendingRingOutThrowTarget = opponent.id;
+
+                setPlayerTimeout(
+                  player.id,
+                  () => {
+                    // Ensure room and players still valid
+                    const currentRoom = rooms.find((r) => r.id === room.id);
+                    if (!currentRoom) return;
+                    const grabber = currentRoom.players.find((p) => p.id === player.id);
+                    const grabbed = currentRoom.players.find((p) => p.id === opponent.id);
+                    if (!grabber || !grabbed) return;
+
+                    grabber.isRingOutFreezeActive = false;
+
+                    // Clear grab states now that freeze is over and throw begins
+                    grabber.isGrabbing = false;
+                    grabber.grabbedOpponent = null;
+                    grabbed.isBeingGrabbed = false;
+
+                    grabber.isThrowing = true;
+                    grabber.throwStartTime = Date.now();
+                    grabber.throwEndTime = Date.now() + RINGOUT_THROW_DURATION_MS; // Slow, cinematic
+                    grabber.throwOpponent = grabbed.id;
+                    grabbed.isBeingThrown = true;
+                    grabbed.isHit = false;
+
+                    // Face outward based on stored direction
+                    grabber.throwingFacingDirection = grabber.ringOutThrowDirection || 1;
+                    grabbed.beingThrownFacingDirection = grabbed.facing;
+
+                    // Mark as ring-out throw cutscene and set big distance so opponent flies off-screen
+                    grabber.isRingOutThrowCutscene = true;
+                    grabber.ringOutThrowDistance = 900; // Big distance to go well past screen
+                    grabber.ringOutThrowDirection = null;
+                    grabber.pendingRingOutThrowTarget = null;
+                  },
+                  200,
+                  "ringOutFreezeDelay"
+                );
+
+                const winner = player; // grabber wins
+                const loser = opponent; // grabbed player loses
+                handleWinCondition(room, loser, winner, io);
+                // Preserve knockback velocity state for loser (mirroring other win handling)
+                loser.knockbackVelocity = { ...loser.knockbackVelocity };
+              }
+            }
           }
         } else if (player.isGrabbing && !player.grabbedOpponent) {
           const grabDuration = Date.now() - player.grabStartTime;
@@ -3213,6 +3382,7 @@ io.on("connection", (socket) => {
         throwingFacingDirection: null,
         beingThrownFacingDirection: null,
         isGrabbing: false,
+        isGrabWalking: false,
         isGrabbingMovement: false,
         isWhiffingGrab: false,
         isGrabClashing: false,
@@ -3291,6 +3461,12 @@ io.on("connection", (socket) => {
         isGrabBreaking: false,
         isGrabBreakCountered: false,
         grabBreakSpaceConsumed: false,
+        // Ring-out throw cutscene flags
+        isRingOutThrowCutscene: false,
+        ringOutThrowDistance: 0,
+        isRingOutFreezeActive: false,
+        ringOutFreezeEndTime: 0,
+        ringOutThrowDirection: null,
       });
     } else if (rooms[roomIndex].players.length === 1) {
       rooms[roomIndex].players.push({
@@ -3325,6 +3501,7 @@ io.on("connection", (socket) => {
         throwingFacingDirection: null,
         beingThrownFacingDirection: null,
         isGrabbing: false,
+        isGrabWalking: false,
         isGrabbingMovement: false,
         isWhiffingGrab: false,
         isGrabClashing: false,
@@ -3403,6 +3580,12 @@ io.on("connection", (socket) => {
         isGrabBreaking: false,
         isGrabBreakCountered: false,
         grabBreakSpaceConsumed: false,
+        // Ring-out throw cutscene flags
+        isRingOutThrowCutscene: false,
+        ringOutThrowDistance: 0,
+        isRingOutFreezeActive: false,
+        ringOutFreezeEndTime: 0,
+        ringOutThrowDirection: null,
       });
     }
 
@@ -3921,7 +4104,7 @@ io.on("connection", (socket) => {
 
     // Handle clearing charge during charging phase with throw/grab/snowball - MUST BE FIRST
     if (
-      (player.keys.w || player.keys.e || player.keys.f) &&
+      ((player.keys.w && player.isGrabbing && !player.isBeingGrabbed) || player.keys.e || player.keys.f) &&
       player.isChargingAttack // Only interrupt during charging phase, not execution
     ) {
       console.log(`Player ${player.id} interrupting charge with W/E/F input`);
@@ -4121,7 +4304,7 @@ io.on("connection", (socket) => {
     if (
       player.keys["shift"] &&
       !player.keys.e &&
-      !player.keys.w &&
+      !(player.keys.w && player.isGrabbing && !player.isBeingGrabbed) &&
       !isInChargedAttackExecution() && // Block during charged attack execution
         canPlayerUseAction(player) &&
       player.dodgeCharges > 0 // Check if player has dodge charges
@@ -4383,13 +4566,15 @@ io.on("connection", (socket) => {
       return Math.abs(player.x - opponent.x) < grabRange;
     }
 
-    // Handle throw attacks - block during charged attack execution and recovery
+    // Handle throw attacks - only when currently grabbing opponent
       if (
       player.keys.w &&
+      player.isGrabbing &&
+      !player.isBeingGrabbed &&
       !player.keys.e &&
       !shouldBlockAction() &&
       !player.isThrowingSalt &&
-        canPlayerUseAction(player) &&
+      !player.canMoveToReady &&
       !player.throwCooldown &&
       !player.isRawParrying &&
       !player.isJumping
@@ -4434,6 +4619,15 @@ io.on("connection", (socket) => {
               player.throwOpponent = opponent.id;
               opponent.isBeingThrown = true;
               opponent.isHit = false;
+
+              // Clear grab states immediately when transitioning into throw
+              if (player.isGrabbing) {
+                player.isGrabbing = false;
+                player.grabbedOpponent = null;
+              }
+              if (opponent.isBeingGrabbed) {
+                opponent.isBeingGrabbed = false;
+              }
               
               // Clear isAtTheRopes state if player gets thrown during the stun
               if (opponent.isAtTheRopes) {
