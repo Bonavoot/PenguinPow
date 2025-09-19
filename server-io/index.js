@@ -135,11 +135,11 @@ const delta = 1000 / TICK_RATE;
 const speedFactor = 0.25; // Increased from 0.22 for snappier movement
 const GROUND_LEVEL = 240;
 const HITBOX_DISTANCE_VALUE = 77; // Reduced by 10% to match smaller player images (85 * 0.9 = 76.5)
-const SLAP_HITBOX_DISTANCE_VALUE = 155; 
+const SLAP_HITBOX_DISTANCE_VALUE = 155;
 const SLAP_PARRY_WINDOW = 200; // Updated to 200ms window for parry to account for longer slap animation
 const SLAP_PARRY_KNOCKBACK_VELOCITY = 1.5; // Reduced knockback for parried attacks
 const THROW_RANGE = 166; // Reduced by 10% to match smaller player images (184 * 0.9 = 165.6)
-const GRAB_RANGE = 126; // Reduced by 10% to match smaller player images (140 * 0.9 = 126) 
+const GRAB_RANGE = 126; // Reduced by 10% to match smaller player images (140 * 0.9 = 126)
 const GRAB_PUSH_SPEED = 0.3; // Increased from 0.2 for more substantial movement
 const GRAB_PUSH_DURATION = 650;
 
@@ -180,7 +180,7 @@ const GRAB_WALK_SPEED_MULTIPLIER = 0.8; // Slightly slower than normal strafing
 const GRAB_WALK_ACCEL_MULTIPLIER = 0.7; // Slightly lower acceleration than normal strafing
 
 // Ring-out cutscene tuning
-const RINGOUT_THROW_DURATION_MS = 1600; // Slow, cinematic throw duration after ring-out
+const RINGOUT_THROW_DURATION_MS = 2400; // Slower, more cinematic throw duration after ring-out
 
 const RAW_PARRY_KNOCKBACK = 1.5; // Fixed knockback distance for raw parries (reduced by 50%)
 const RAW_PARRY_STUN_DURATION = 1000; // 1 second stun duration
@@ -278,7 +278,9 @@ function handleSaltThrowAndPowerUp(player, room) {
     player.activePowerUp = player.selectedPowerUp;
     player.powerUpMultiplier = POWER_UP_EFFECTS[player.selectedPowerUp];
 
-    console.log(`🔥 POWER-UP ACTIVATED: Player ${player.id} activated ${player.selectedPowerUp} with multiplier ${player.powerUpMultiplier}`);
+    console.log(
+      `🔥 POWER-UP ACTIVATED: Player ${player.id} activated ${player.selectedPowerUp} with multiplier ${player.powerUpMultiplier}`
+    );
 
     // Emit power-up event to clients
     io.in(room.id).emit("power_up_activated", {
@@ -286,7 +288,9 @@ function handleSaltThrowAndPowerUp(player, room) {
       powerUpType: player.selectedPowerUp,
     });
   } else {
-    console.log(`⚠️ POWER-UP WARNING: Player ${player.id} has no selectedPowerUp`);
+    console.log(
+      `⚠️ POWER-UP WARNING: Player ${player.id} has no selectedPowerUp`
+    );
   }
 
   // Reset salt throwing state after animation
@@ -557,25 +561,37 @@ io.on("connection", (socket) => {
 
   function resolveGrabClash(room, io) {
     if (!room.grabClashData) {
-      console.log(`🥊 RESOLVE ERROR: No grab clash data found for room ${room.id}`);
+      console.log(
+        `🥊 RESOLVE ERROR: No grab clash data found for room ${room.id}`
+      );
       return;
     }
 
-    const player1 = room.players.find(p => p.id === room.grabClashData.player1Id);
-    const player2 = room.players.find(p => p.id === room.grabClashData.player2Id);
+    const player1 = room.players.find(
+      (p) => p.id === room.grabClashData.player1Id
+    );
+    const player2 = room.players.find(
+      (p) => p.id === room.grabClashData.player2Id
+    );
 
     if (!player1 || !player2) {
-      console.log(`🥊 RESOLVE ERROR: Players not found - Player1: ${player1}, Player2: ${player2}`);
+      console.log(
+        `🥊 RESOLVE ERROR: Players not found - Player1: ${player1}, Player2: ${player2}`
+      );
       return;
     }
 
-    console.log(`🥊 RESOLVING GRAB CLASH: Player1 (${player1.id}) inputs: ${room.grabClashData.player1Inputs}, Player2 (${player2.id}) inputs: ${room.grabClashData.player2Inputs}`);
+    console.log(
+      `🥊 RESOLVING GRAB CLASH: Player1 (${player1.id}) inputs: ${room.grabClashData.player1Inputs}, Player2 (${player2.id}) inputs: ${room.grabClashData.player2Inputs}`
+    );
 
     let winner, loser;
     if (room.grabClashData.player1Inputs > room.grabClashData.player2Inputs) {
       winner = player1;
       loser = player2;
-    } else if (room.grabClashData.player2Inputs > room.grabClashData.player1Inputs) {
+    } else if (
+      room.grabClashData.player2Inputs > room.grabClashData.player1Inputs
+    ) {
       winner = player2;
       loser = player1;
     } else {
@@ -629,8 +645,14 @@ io.on("connection", (socket) => {
     io.in(room.id).emit("grab_clash_end", {
       winnerId: winner.id,
       loserId: loser.id,
-      winnerInputs: winner.id === room.grabClashData.player1Id ? room.grabClashData.player1Inputs : room.grabClashData.player2Inputs,
-      loserInputs: loser.id === room.grabClashData.player1Id ? room.grabClashData.player1Inputs : room.grabClashData.player2Inputs
+      winnerInputs:
+        winner.id === room.grabClashData.player1Id
+          ? room.grabClashData.player1Inputs
+          : room.grabClashData.player2Inputs,
+      loserInputs:
+        loser.id === room.grabClashData.player1Id
+          ? room.grabClashData.player1Inputs
+          : room.grabClashData.player2Inputs,
     });
 
     // Clear room clash data
@@ -763,24 +785,21 @@ io.on("connection", (socket) => {
         // Always enable collision detection during slap attacks to prevent pass-through
         if (
           arePlayersColliding(player1, player2) &&
-          (
-            // Enable collision if one player is hit (prevents pass-through from knockback)
-            (player1.isHit || player2.isHit) ||
+          // Enable collision if one player is hit (prevents pass-through from knockback)
+          (player1.isHit ||
+            player2.isHit ||
             // Enable collision during slap attacks to prevent pass-through
             (player1.isAttacking && player1.attackType === "slap") ||
             (player2.isAttacking && player2.attackType === "slap") ||
-            (
-              // Original collision bypass conditions (only when neither player is hit and not slapping)
-              !(player1.isAttacking && player1.attackType === "charged") &&
+            // Original collision bypass conditions (only when neither player is hit and not slapping)
+            (!(player1.isAttacking && player1.attackType === "charged") &&
               !(player2.isAttacking && player2.attackType === "charged") &&
               !player1.isGrabbing &&
               !player2.isGrabbing &&
               !player1.isBeingGrabbed &&
               !player2.isBeingGrabbed &&
               !player1.isThrowLanded &&
-              !player2.isThrowLanded
-            )
-          )
+              !player2.isThrowLanded))
         ) {
           adjustPlayerPositions(player1, player2, delta);
         }
@@ -807,13 +826,19 @@ io.on("connection", (socket) => {
               // Don't update facing if player has locked slap facing direction
               if (!player1.slapFacingDirection && player1.x < player2.x) {
                 player1.facing = -1; // Player 1 faces right
-              } else if (!player1.slapFacingDirection && player1.x >= player2.x) {
+              } else if (
+                !player1.slapFacingDirection &&
+                player1.x >= player2.x
+              ) {
                 player1.facing = 1; // Player 1 faces left
               }
-              
+
               if (!player2.slapFacingDirection && player1.x < player2.x) {
                 player2.facing = 1; // Player 2 faces left
-              } else if (!player2.slapFacingDirection && player1.x >= player2.x) {
+              } else if (
+                !player2.slapFacingDirection &&
+                player1.x >= player2.x
+              ) {
                 player2.facing = -1; // Player 2 faces right
               }
             } else if (!player1.isHit && player2.isHit) {
@@ -1034,10 +1059,10 @@ io.on("connection", (socket) => {
                 // Apply knockback only if not immune
                 if (canApplyKnockback(opponent)) {
                   const knockbackDirection = snowball.velocityX > 0 ? 1 : -1;
-                  
+
                   // Clear any existing slap knockback state to ensure consistent snowball knockback
                   opponent.isSlapKnockback = false;
-                  
+
                   opponent.knockbackVelocity.x = knockbackDirection * 1.5; // Reduced from 2 to 1.5 (25% reduction)
                   opponent.movementVelocity = knockbackDirection * 1.3; // Slightly increased from 1 to 1.3
 
@@ -1157,10 +1182,10 @@ io.on("connection", (socket) => {
                 // Apply knockback only if not immune (lighter than normal slap)
                 if (canApplyKnockback(opponent)) {
                   const knockbackDirection = clone.velocityX > 0 ? 1 : -1;
-                  
+
                   // Clear any existing slap knockback state to ensure consistent pumo army knockback
                   opponent.isSlapKnockback = false;
-                  
+
                   opponent.knockbackVelocity.x = knockbackDirection * 1.5; // Reduced from 2 to 1.5 (25% reduction)
                   opponent.movementVelocity = knockbackDirection * 1.5;
 
@@ -1227,7 +1252,10 @@ io.on("connection", (socket) => {
           const newX = startX + (targetX - startX) * eased;
 
           // Clamp to boundaries
-          const clampedX = Math.max(MAP_LEFT_BOUNDARY, Math.min(newX, MAP_RIGHT_BOUNDARY));
+          const clampedX = Math.max(
+            MAP_LEFT_BOUNDARY,
+            Math.min(newX, MAP_RIGHT_BOUNDARY)
+          );
           player.x = clampedX;
           // Lock to ground and clear velocities during tween
           player.y = GROUND_LEVEL;
@@ -1348,8 +1376,6 @@ io.on("connection", (socket) => {
           );
         }
 
-
-
         // Win Conditions - back to original state
         if (
           (player.isHit &&
@@ -1360,7 +1386,6 @@ io.on("connection", (socket) => {
             player.x >= MAP_RIGHT_BOUNDARY &&
             !room.gameOver &&
             !player.isBeingThrown) ||
-
           (player.isBeingThrown &&
             !room.gameOver &&
             // Find the thrower to check their throwing direction
@@ -1412,7 +1437,11 @@ io.on("connection", (socket) => {
 
         // if (player.isHit) return;
 
-        if (!player.isRingOutFreezeActive && player.isThrowing && player.throwOpponent) {
+        if (
+          !player.isRingOutFreezeActive &&
+          player.isThrowing &&
+          player.throwOpponent
+        ) {
           const currentTime = Date.now();
           const throwDuration = currentTime - player.throwStartTime;
           const throwProgress =
@@ -1422,7 +1451,7 @@ io.on("connection", (socket) => {
             (p) => p.id === player.throwOpponent
           );
           if (opponent) {
-            const throwArcHeight = player.isRingOutThrowCutscene ? 180 : 450;
+            const throwArcHeight = player.isRingOutThrowCutscene ? 300 : 450; // Higher arc for ring-out cutscene
             const throwDistance = player.isRingOutThrowCutscene
               ? player.ringOutThrowDistance || 900
               : 120;
@@ -1582,7 +1611,7 @@ io.on("connection", (socket) => {
           const hopHeight = arcProgress * 75; // Increased height for better visibility
 
           // Add slight deceleration over time for weightier feel
-          const speedMultiplier = 1.0 - (dodgeProgress * 0.2); // Slow down by 20% over time
+          const speedMultiplier = 1.0 - dodgeProgress * 0.2; // Slow down by 20% over time
           const adjustedSpeed = currentDodgeSpeed * speedMultiplier;
 
           // Calculate new position
@@ -1621,7 +1650,8 @@ io.on("connection", (socket) => {
                 player.movementVelocity = dodgeMomentum * 0.8; // Add decay for weighty landing
               } else {
                 // If movement keys are pressed, blend more conservatively
-                player.movementVelocity = (player.movementVelocity + dodgeMomentum) * 0.6;
+                player.movementVelocity =
+                  (player.movementVelocity + dodgeMomentum) * 0.6;
               }
             }
 
@@ -1635,7 +1665,7 @@ io.on("connection", (socket) => {
         if (player.isGrabbingMovement) {
           const currentTime = Date.now();
           const opponent = room.players.find((p) => p.id !== player.id);
-          
+
           // Check for grab clash - both players grabbing towards each other
           if (
             opponent &&
@@ -1650,12 +1680,20 @@ io.on("connection", (socket) => {
             !opponent.isBeingThrown &&
             isOpponentCloseEnoughForGrab(player, opponent)
           ) {
-            console.log(`🥊 GRAB CLASH DETECTED between players ${player.id} and ${opponent.id}`);
-            
+            console.log(
+              `🥊 GRAB CLASH DETECTED between players ${player.id} and ${opponent.id}`
+            );
+
             // Clear any existing grab movement timers
-            timeoutManager.clearPlayerSpecific(player.id, "grabMovementTimeout");
-            timeoutManager.clearPlayerSpecific(opponent.id, "grabMovementTimeout");
-            
+            timeoutManager.clearPlayerSpecific(
+              player.id,
+              "grabMovementTimeout"
+            );
+            timeoutManager.clearPlayerSpecific(
+              opponent.id,
+              "grabMovementTimeout"
+            );
+
             // Start grab clash for both players
             player.isGrabbingMovement = false;
             player.isGrabClashing = true;
@@ -1664,7 +1702,7 @@ io.on("connection", (socket) => {
             player.grabMovementVelocity = 0;
             player.movementVelocity = 0;
             player.isStrafing = false;
-            
+
             opponent.isGrabbingMovement = false;
             opponent.isGrabClashing = true;
             opponent.grabClashStartTime = currentTime;
@@ -1672,7 +1710,7 @@ io.on("connection", (socket) => {
             opponent.grabMovementVelocity = 0;
             opponent.movementVelocity = 0;
             opponent.isStrafing = false;
-            
+
             // Initialize clash data for the room
             room.grabClashData = {
               player1Id: player.id,
@@ -1680,11 +1718,11 @@ io.on("connection", (socket) => {
               startTime: currentTime,
               duration: 2000, // 2 seconds
               player1Inputs: 0,
-              player2Inputs: 0
+              player2Inputs: 0,
             };
-            
+
             console.log(`🥊 ROOM CLASH DATA INITIALIZED:`, room.grabClashData);
-            
+
             // Emit grab clash start event
             console.log(`🥊 EMITTING GRAB CLASH START to room ${room.id}`);
             io.in(room.id).emit("grab_clash_start", {
@@ -1692,9 +1730,9 @@ io.on("connection", (socket) => {
               player2Id: opponent.id,
               duration: 2000,
               player1Position: { x: player.x, facing: player.facing },
-              player2Position: { x: opponent.x, facing: opponent.facing }
+              player2Position: { x: opponent.x, facing: opponent.facing },
             });
-            
+
             // Set clash resolution timer
             setPlayerTimeout(
               player.id,
@@ -1704,24 +1742,29 @@ io.on("connection", (socket) => {
               2000,
               "grabClashResolution"
             );
-            
+
             return; // Skip normal grab movement processing
           }
-          
+
           // Move forward during grab movement
           let currentSpeedFactor = speedFactor;
           if (player.activePowerUp === POWER_UP_TYPES.SPEED) {
             currentSpeedFactor *= player.powerUpMultiplier;
           }
-          
+
           // Calculate new position with grab movement
-          const newX = player.x + player.grabMovementDirection * delta * currentSpeedFactor * player.grabMovementVelocity;
-          
+          const newX =
+            player.x +
+            player.grabMovementDirection *
+              delta *
+              currentSpeedFactor *
+              player.grabMovementVelocity;
+
           // Calculate boundaries
           const sizeOffset = 0;
           const leftBoundary = MAP_LEFT_BOUNDARY + sizeOffset;
           const rightBoundary = MAP_RIGHT_BOUNDARY - sizeOffset;
-          
+
           // Update position within boundaries
           if (newX >= leftBoundary && newX <= rightBoundary) {
             player.x = newX;
@@ -1729,7 +1772,7 @@ io.on("connection", (socket) => {
             // Stop at boundary
             player.x = newX < leftBoundary ? leftBoundary : rightBoundary;
           }
-          
+
           // Continuously check for grab opportunity during movement (only if opponent is not also grabbing)
           if (
             opponent &&
@@ -1741,35 +1784,40 @@ io.on("connection", (socket) => {
             !player.isBeingGrabbed &&
             !player.throwTechCooldown
           ) {
-            console.log(`Player ${player.id} successfully grabbed opponent during movement`);
-            
+            console.log(
+              `Player ${player.id} successfully grabbed opponent during movement`
+            );
+
             // Successful grab - stop all movement and initiate grab
             player.isGrabbingMovement = false;
             player.grabMovementVelocity = 0;
             player.movementVelocity = 0;
             player.isStrafing = false;
-            
+
             // Start the actual grab
             player.isGrabbing = true;
             player.grabStartTime = Date.now();
             player.grabbedOpponent = opponent.id;
             opponent.isBeingGrabbed = true;
             opponent.isHit = false;
-            
+
             // Clear isAtTheRopes state if opponent gets grabbed during the stun
             if (opponent.isAtTheRopes) {
               opponent.isAtTheRopes = false;
               opponent.atTheRopesStartTime = 0;
-              timeoutManager.clearPlayerSpecific(opponent.id, "atTheRopesTimeout");
+              timeoutManager.clearPlayerSpecific(
+                opponent.id,
+                "atTheRopesTimeout"
+              );
             }
-            
+
             // Set grab facing direction
             if (player.isChargingAttack) {
               player.grabFacingDirection = player.chargingFacingDirection;
             } else {
               player.grabFacingDirection = player.facing;
             }
-            
+
             // Set grab cooldown
             player.grabCooldown = true;
             setPlayerTimeout(
@@ -1870,7 +1918,8 @@ io.on("connection", (socket) => {
 
             // Calculate new position and check boundaries (half speed for crouch)
             const crouchSpeedFactor = currentSpeedFactor * 0.5;
-            const newX = player.x + delta * crouchSpeedFactor * player.movementVelocity;
+            const newX =
+              player.x + delta * crouchSpeedFactor * player.movementVelocity;
             if (newX <= rightBoundary || player.isThrowLanded) {
               player.x = newX;
             } else {
@@ -1913,7 +1962,8 @@ io.on("connection", (socket) => {
 
             // Calculate new position and check boundaries (half speed for crouch)
             const crouchSpeedFactor = currentSpeedFactor * 0.5;
-            const newX = player.x + delta * crouchSpeedFactor * player.movementVelocity;
+            const newX =
+              player.x + delta * crouchSpeedFactor * player.movementVelocity;
             if (newX >= leftBoundary || player.isThrowLanded) {
               player.x = newX;
             } else {
@@ -1940,7 +1990,10 @@ io.on("connection", (socket) => {
             !player.isSpawningPumoArmy &&
             !player.keys.mouse1 && // Add condition to prevent strafing while slapping
             !player.hasPendingSlapAttack && // Block strafing when buffered slap attack is pending
-            !(player.slapStrafeCooldown && Date.now() < player.slapStrafeCooldownEndTime) && // Block strafing during post-slap cooldown
+            !(
+              player.slapStrafeCooldown &&
+              Date.now() < player.slapStrafeCooldownEndTime
+            ) && // Block strafing during post-slap cooldown
             !player.isAtTheRopes // Block strafing while at the ropes
           ) {
             // Apply ice drift when changing directions
@@ -1984,7 +2037,10 @@ io.on("connection", (socket) => {
             !player.isSpawningPumoArmy &&
             !player.keys.mouse1 && // Add condition to prevent strafing while slapping
             !player.hasPendingSlapAttack && // Block strafing when buffered slap attack is pending
-            !(player.slapStrafeCooldown && Date.now() < player.slapStrafeCooldownEndTime) && // Block strafing during post-slap cooldown
+            !(
+              player.slapStrafeCooldown &&
+              Date.now() < player.slapStrafeCooldownEndTime
+            ) && // Block strafing during post-slap cooldown
             !player.isAtTheRopes // Block strafing while at the ropes
           ) {
             // Apply ice drift when changing directions
@@ -2024,16 +2080,24 @@ io.on("connection", (socket) => {
                 // For slap slides, check if we're colliding with opponent and reduce velocity if needed
                 const opponent = room.players.find((p) => p.id !== player.id);
                 let effectiveMovementVelocity = player.movementVelocity;
-                
+
                 if (opponent && arePlayersColliding(player, opponent)) {
                   // Reduce slap slide velocity when colliding to prevent pass-through
                   const velocityReduction = 0.3; // Reduce to 30% of original velocity
-                  effectiveMovementVelocity = player.movementVelocity * velocityReduction;
-                  console.log(`🚫 SLAP SLIDE COLLISION: Player ${player.id} velocity reduced from ${player.movementVelocity.toFixed(2)} to ${effectiveMovementVelocity.toFixed(2)}`);
+                  effectiveMovementVelocity =
+                    player.movementVelocity * velocityReduction;
+                  console.log(
+                    `🚫 SLAP SLIDE COLLISION: Player ${
+                      player.id
+                    } velocity reduced from ${player.movementVelocity.toFixed(
+                      2
+                    )} to ${effectiveMovementVelocity.toFixed(2)}`
+                  );
                 }
-                
+
                 // Use fixed speed factor for slap slides with potentially reduced velocity
-                newX = player.x + delta * speedFactor * effectiveMovementVelocity;
+                newX =
+                  player.x + delta * speedFactor * effectiveMovementVelocity;
               } else {
                 // Use power-up affected speed factor for normal movement
                 newX =
@@ -2068,7 +2132,8 @@ io.on("connection", (socket) => {
             player.keys.mouse1 || // Add condition to prevent strafing while slapping
             player.isAttacking || // Clear strafing during any attack
             player.hasPendingSlapAttack || // Clear strafing when buffered slap attack is pending
-            (player.slapStrafeCooldown && Date.now() < player.slapStrafeCooldownEndTime) // Clear strafing during post-slap cooldown
+            (player.slapStrafeCooldown &&
+              Date.now() < player.slapStrafeCooldownEndTime) // Clear strafing during post-slap cooldown
           ) {
             player.isStrafing = false;
           }
@@ -2080,44 +2145,50 @@ io.on("connection", (socket) => {
             player.keys.mouse1 ||
             player.isAttacking ||
             player.hasPendingSlapAttack ||
-            (player.slapStrafeCooldown && Date.now() < player.slapStrafeCooldownEndTime) ||
+            (player.slapStrafeCooldown &&
+              Date.now() < player.slapStrafeCooldownEndTime) ||
             player.isHit ||
             player.isRawParrying ||
             player.isAtTheRopes
           ) {
             // Only apply extra friction if player WAS crouch strafing
-            if (player.isCrouchStrafing && !player.isHit && Math.abs(player.movementVelocity) > 0) {
+            if (
+              player.isCrouchStrafing &&
+              !player.isHit &&
+              Math.abs(player.movementVelocity) > 0
+            ) {
               player.movementVelocity *= 0.5; // Extra friction to stop quickly
             }
             player.isCrouchStrafing = false;
           }
 
-                  // Force stop strafing in certain states and add missing ground level check
-        if (
-          (!player.keys.a &&
-            !player.keys.d &&
-            (!player.canMoveToReady || room.gameStart)) ||
-          player.isThrowTeching ||
-          player.isRecovering ||
-          (player.keys.a && player.keys.d) ||
-          player.keys.mouse1 || // Add condition to prevent strafing while slapping
-          player.isAttacking || // Clear strafing during any attack
-          player.hasPendingSlapAttack || // Clear strafing when buffered slap attack is pending
-          (player.slapStrafeCooldown && Date.now() < player.slapStrafeCooldownEndTime) || // Clear strafing during post-slap cooldown
-          player.isHit || // Add isHit to force clear strafing when parried
-          player.isRawParrying || // Add isRawParrying to force clear strafing during raw parry
-          player.isAtTheRopes // Block strafing while at the ropes
-        ) {
-          player.isStrafing = false;
-          // Don't immediately stop on ice unless hit
-          if (!player.isHit) {
-            player.movementVelocity *= MOVEMENT_FRICTION;
+          // Force stop strafing in certain states and add missing ground level check
+          if (
+            (!player.keys.a &&
+              !player.keys.d &&
+              (!player.canMoveToReady || room.gameStart)) ||
+            player.isThrowTeching ||
+            player.isRecovering ||
+            (player.keys.a && player.keys.d) ||
+            player.keys.mouse1 || // Add condition to prevent strafing while slapping
+            player.isAttacking || // Clear strafing during any attack
+            player.hasPendingSlapAttack || // Clear strafing when buffered slap attack is pending
+            (player.slapStrafeCooldown &&
+              Date.now() < player.slapStrafeCooldownEndTime) || // Clear strafing during post-slap cooldown
+            player.isHit || // Add isHit to force clear strafing when parried
+            player.isRawParrying || // Add isRawParrying to force clear strafing during raw parry
+            player.isAtTheRopes // Block strafing while at the ropes
+          ) {
+            player.isStrafing = false;
+            // Don't immediately stop on ice unless hit
+            if (!player.isHit) {
+              player.movementVelocity *= MOVEMENT_FRICTION;
+            }
+            // Also clear grab walking if no movement conditions are met
+            if (!player.keys.a && !player.keys.d) {
+              player.isGrabWalking = false;
+            }
           }
-          // Also clear grab walking if no movement conditions are met
-          if (!player.keys.a && !player.keys.d) {
-            player.isGrabWalking = false;
-          }
-        }
 
           // Keep player from going below ground level
           if (player.y > GROUND_LEVEL) {
@@ -2133,7 +2204,8 @@ io.on("connection", (socket) => {
           player.isRecovering ||
           player.isAttacking || // Clear strafing during any attack
           player.hasPendingSlapAttack || // Clear strafing when buffered slap attack is pending
-          (player.slapStrafeCooldown && Date.now() < player.slapStrafeCooldownEndTime) || // Clear strafing during post-slap cooldown
+          (player.slapStrafeCooldown &&
+            Date.now() < player.slapStrafeCooldownEndTime) || // Clear strafing during post-slap cooldown
           player.isHit || // Add isHit to force clear strafing when parried
           player.isRawParrying || // Add isRawParrying to force clear strafing during raw parry
           player.isAtTheRopes // Block strafing while at the ropes
@@ -2193,8 +2265,6 @@ io.on("connection", (socket) => {
           }
         }
 
-
-
         // raw parry
         if (
           player.keys[" "] &&
@@ -2247,7 +2317,7 @@ io.on("connection", (socket) => {
           // Force clear crouch states during raw parry to prevent concurrent use
           player.isCrouchStance = false;
           player.isCrouchStrafing = false;
-          
+
           const parryDuration = Date.now() - player.rawParryStartTime;
 
           // Check if minimum duration has been met
@@ -2288,28 +2358,33 @@ io.on("connection", (socket) => {
           }
         }
 
-        if (player.isAttacking && player.attackType === "charged" && !player.isAtTheRopes) {
+        if (
+          player.isAttacking &&
+          player.attackType === "charged" &&
+          !player.isAtTheRopes
+        ) {
           // Only move in the direction the player is facing, but not if at the ropes
           const attackDirection = player.facing === 1 ? -1 : 1;
           const newX = player.x + attackDirection * delta * speedFactor * 2.5;
-          
 
           // Check if this movement would put player at the ropes
           const leftCheck = newX <= MAP_LEFT_BOUNDARY && attackDirection === -1;
-          const rightCheck = newX >= MAP_RIGHT_BOUNDARY && attackDirection === 1;
-         
-          
+          const rightCheck =
+            newX >= MAP_RIGHT_BOUNDARY && attackDirection === 1;
+
           if (
             !player.isAtTheRopes &&
             (leftCheck || rightCheck) &&
             !room.gameOver
           ) {
-            console.log(`🔴 Player ${player.id} hitting the ropes during charged attack! x: ${player.x}, newX: ${newX}, facing: ${player.facing}, MAP_LEFT_BOUNDARY: ${MAP_LEFT_BOUNDARY}, MAP_RIGHT_BOUNDARY: ${MAP_RIGHT_BOUNDARY}`);
-            
+            console.log(
+              `🔴 Player ${player.id} hitting the ropes during charged attack! x: ${player.x}, newX: ${newX}, facing: ${player.facing}, MAP_LEFT_BOUNDARY: ${MAP_LEFT_BOUNDARY}, MAP_RIGHT_BOUNDARY: ${MAP_RIGHT_BOUNDARY}`
+            );
+
             // Set at the ropes state
             player.isAtTheRopes = true;
             player.atTheRopesStartTime = Date.now();
-            
+
             // Stop the attack and prevent movement
             player.isAttacking = false;
             player.isChargingAttack = false;
@@ -2319,25 +2394,27 @@ io.on("connection", (socket) => {
             player.attackType = null;
             player.attackStartTime = 0;
             player.attackEndTime = 0;
-            
+
             // Clear movement and knockback
             player.movementVelocity = 0;
             player.knockbackVelocity = { x: 0, y: 0 };
-            
+
             // Constrain player position to boundary
             if (newX <= MAP_LEFT_BOUNDARY) {
               player.x = MAP_LEFT_BOUNDARY;
             } else if (newX >= MAP_RIGHT_BOUNDARY) {
               player.x = MAP_RIGHT_BOUNDARY;
             }
-            
+
             // Set timeout to end the at-the-ropes state
             setPlayerTimeout(
               player.id,
               () => {
                 player.isAtTheRopes = false;
                 player.atTheRopesStartTime = 0;
-                console.log(`Player ${player.id} recovered from at the ropes state`);
+                console.log(
+                  `Player ${player.id} recovered from at the ropes state`
+                );
               },
               AT_THE_ROPES_DURATION,
               "atTheRopesTimeout" // Named timeout for cleanup
@@ -2356,14 +2433,23 @@ io.on("connection", (socket) => {
             // Use helper function to safely end charged attacks
             safelyEndChargedAttack(player, rooms);
           }
-        } else if (player.isAttacking && player.attackType === "charged" && player.isAtTheRopes) {
+        } else if (
+          player.isAttacking &&
+          player.attackType === "charged" &&
+          player.isAtTheRopes
+        ) {
           // If at the ropes, still check for attack end time but don't move
           if (Date.now() >= player.attackEndTime) {
             // Use helper function to safely end charged attacks
             safelyEndChargedAttack(player, rooms);
           }
         }
-        if (player.isGrabbing && player.grabbedOpponent && !player.isThrowing && !player.isBeingThrown) {
+        if (
+          player.isGrabbing &&
+          player.grabbedOpponent &&
+          !player.isThrowing &&
+          !player.isBeingThrown
+        ) {
           const opponent = room.players.find(
             (p) => p.id === player.grabbedOpponent
           );
@@ -2417,7 +2503,7 @@ io.on("connection", (socket) => {
             const rightBoundary = MAP_RIGHT_BOUNDARY;
 
             // Determine if grab walking is active
-            const canGrabWalk = (player.keys.a || player.keys.d);
+            const canGrabWalk = player.keys.a || player.keys.d;
             player.isGrabWalking = !!canGrabWalk;
 
             if (player.isGrabWalking) {
@@ -2442,15 +2528,19 @@ io.on("connection", (socket) => {
                 );
               } else {
                 // both or none - decelerate
-                if (Math.abs(player.movementVelocity) > MIN_MOVEMENT_THRESHOLD) {
-                  player.movementVelocity *= MOVEMENT_MOMENTUM * MOVEMENT_FRICTION;
+                if (
+                  Math.abs(player.movementVelocity) > MIN_MOVEMENT_THRESHOLD
+                ) {
+                  player.movementVelocity *=
+                    MOVEMENT_MOMENTUM * MOVEMENT_FRICTION;
                 } else {
                   player.movementVelocity = 0;
                 }
               }
 
               // Apply movement within boundaries
-              const newX = player.x + delta * currentSpeedFactor * player.movementVelocity;
+              const newX =
+                player.x + delta * currentSpeedFactor * player.movementVelocity;
               if (newX >= leftBoundary && newX <= rightBoundary) {
                 player.x = newX;
               } else {
@@ -2460,7 +2550,8 @@ io.on("connection", (socket) => {
             } else {
               // If not actively grab walking, lightly decay any residual velocity
               if (Math.abs(player.movementVelocity) > MIN_MOVEMENT_THRESHOLD) {
-                player.movementVelocity *= MOVEMENT_MOMENTUM * MOVEMENT_FRICTION;
+                player.movementVelocity *=
+                  MOVEMENT_MOMENTUM * MOVEMENT_FRICTION;
               } else {
                 player.movementVelocity = 0;
               }
@@ -2483,7 +2574,8 @@ io.on("connection", (socket) => {
                 // Start brief freeze, then trigger a simple throw cutscene: grabber throws outward
                 player.isRingOutFreezeActive = true;
                 player.ringOutFreezeEndTime = Date.now() + 200; // 0.2s freeze
-                player.ringOutThrowDirection = opponent.x <= MAP_LEFT_BOUNDARY ? -1 : 1;
+                player.ringOutThrowDirection =
+                  opponent.x <= MAP_LEFT_BOUNDARY ? -1 : 1;
                 player.pendingRingOutThrowTarget = opponent.id;
 
                 setPlayerTimeout(
@@ -2492,8 +2584,12 @@ io.on("connection", (socket) => {
                     // Ensure room and players still valid
                     const currentRoom = rooms.find((r) => r.id === room.id);
                     if (!currentRoom) return;
-                    const grabber = currentRoom.players.find((p) => p.id === player.id);
-                    const grabbed = currentRoom.players.find((p) => p.id === opponent.id);
+                    const grabber = currentRoom.players.find(
+                      (p) => p.id === player.id
+                    );
+                    const grabbed = currentRoom.players.find(
+                      (p) => p.id === opponent.id
+                    );
                     if (!grabber || !grabbed) return;
 
                     grabber.isRingOutFreezeActive = false;
@@ -2505,13 +2601,15 @@ io.on("connection", (socket) => {
 
                     grabber.isThrowing = true;
                     grabber.throwStartTime = Date.now();
-                    grabber.throwEndTime = Date.now() + RINGOUT_THROW_DURATION_MS; // Slow, cinematic
+                    grabber.throwEndTime =
+                      Date.now() + RINGOUT_THROW_DURATION_MS; // Slow, cinematic
                     grabber.throwOpponent = grabbed.id;
                     grabbed.isBeingThrown = true;
                     grabbed.isHit = false;
 
                     // Face outward based on stored direction
-                    grabber.throwingFacingDirection = grabber.ringOutThrowDirection || 1;
+                    grabber.throwingFacingDirection =
+                      grabber.ringOutThrowDirection || 1;
                     grabbed.beingThrownFacingDirection = grabbed.facing;
 
                     // Mark as ring-out throw cutscene and set big distance so opponent flies off-screen
@@ -2586,7 +2684,10 @@ io.on("connection", (socket) => {
         }
 
         // Clear strafing cooldown when it expires
-        if (player.slapStrafeCooldown && Date.now() >= player.slapStrafeCooldownEndTime) {
+        if (
+          player.slapStrafeCooldown &&
+          Date.now() >= player.slapStrafeCooldownEndTime
+        ) {
           player.slapStrafeCooldown = false;
           player.slapStrafeCooldownEndTime = 0;
         }
@@ -2625,9 +2726,10 @@ io.on("connection", (socket) => {
       const CHARGED_ATTACK_STARTUP_DELAY = 60; // 60ms startup frames for charged attacks
       const SLAP_ATTACK_STARTUP_DELAY = 60; // 60ms startup frames for slap attacks
 
-      const startupDelay = player.attackType === "slap"
-        ? SLAP_ATTACK_STARTUP_DELAY
-        : CHARGED_ATTACK_STARTUP_DELAY;
+      const startupDelay =
+        player.attackType === "slap"
+          ? SLAP_ATTACK_STARTUP_DELAY
+          : CHARGED_ATTACK_STARTUP_DELAY;
       const attackAge = Date.now() - player.attackStartTime;
 
       if (attackAge < startupDelay) {
@@ -2649,9 +2751,10 @@ io.on("connection", (socket) => {
     }
 
     // Calculate hitbox distance based on attack type and size power-up
-    const baseHitboxDistance = player.attackType === "slap"
-      ? SLAP_HITBOX_DISTANCE_VALUE
-      : HITBOX_DISTANCE_VALUE;
+    const baseHitboxDistance =
+      player.attackType === "slap"
+        ? SLAP_HITBOX_DISTANCE_VALUE
+        : HITBOX_DISTANCE_VALUE;
 
     const hitboxDistance = baseHitboxDistance * (player.sizeMultiplier || 1);
 
@@ -2790,7 +2893,6 @@ io.on("connection", (socket) => {
 
     // Store the charge power before resetting states
     const chargePercentage = player.chargeAttackPower;
-    
 
     // Check for thick blubber hit absorption (only if defender is executing charged attack and hasn't used absorption)
     if (
@@ -2852,7 +2954,7 @@ io.on("connection", (socket) => {
     } else {
       // For slap attacks, don't create separate timeout - let executeSlapAttack handle cleanup
       // This ensures consistent behavior with whiffed slaps
-    if (isSlapAttack) {
+      if (isSlapAttack) {
         // Don't interfere with the normal executeSlapAttack timeout
         // Just let it handle the cleanup naturally
       }
@@ -2907,7 +3009,7 @@ io.on("connection", (socket) => {
         // Perfect parry success state
         otherPlayer.isPerfectRawParrySuccess = true;
         console.log(`Perfect parry success set for player ${otherPlayer.id}`);
-        
+
         // Emit raw parry success event for visual effect
         const parryData = {
           x: otherPlayer.x,
@@ -2921,12 +3023,14 @@ io.on("connection", (socket) => {
         if (currentRoom) {
           io.to(currentRoom.id).emit("raw_parry_success", parryData);
         }
-        
+
         // Clear perfect parry success state after duration
         setPlayerTimeout(
           otherPlayer.id,
           () => {
-            console.log(`Clearing perfect parry success for player ${otherPlayer.id}`);
+            console.log(
+              `Clearing perfect parry success for player ${otherPlayer.id}`
+            );
             otherPlayer.isPerfectRawParrySuccess = false;
           },
           400, // Duration for perfect parry success animation
@@ -2936,7 +3040,7 @@ io.on("connection", (socket) => {
         // Regular parry success state
         otherPlayer.isRawParrySuccess = true;
         console.log(`Regular parry success set for player ${otherPlayer.id}`);
-        
+
         // Emit raw parry success event for visual effect
         const parryData = {
           x: otherPlayer.x,
@@ -2950,12 +3054,14 @@ io.on("connection", (socket) => {
         if (currentRoom) {
           io.to(currentRoom.id).emit("raw_parry_success", parryData);
         }
-        
+
         // Clear regular parry success state after duration
         setPlayerTimeout(
           otherPlayer.id,
           () => {
-            console.log(`Clearing regular parry success for player ${otherPlayer.id}`);
+            console.log(
+              `Clearing regular parry success for player ${otherPlayer.id}`
+            );
             otherPlayer.isRawParrySuccess = false;
           },
           300, // Duration for regular parry success animation
@@ -3084,52 +3190,68 @@ io.on("connection", (socket) => {
       otherPlayer.isJumping = false;
       otherPlayer.isAttacking = false;
       otherPlayer.isStrafing = false;
-      
+
       // Clear parry success states when hit
       otherPlayer.isRawParrySuccess = false;
       otherPlayer.isPerfectRawParrySuccess = false;
-      
+
       // Clear grab movement states if player was attempting to grab
       if (otherPlayer.isGrabbingMovement) {
-        console.log(`Player ${otherPlayer.id} grab movement interrupted by hit from ${player.id}`);
+        console.log(
+          `Player ${otherPlayer.id} grab movement interrupted by hit from ${player.id}`
+        );
         otherPlayer.isGrabbingMovement = false;
         otherPlayer.grabMovementStartTime = 0;
         otherPlayer.grabMovementDirection = 0;
         otherPlayer.grabMovementVelocity = 0;
         // Clear any grab movement timeouts
-        timeoutManager.clearPlayerSpecific(otherPlayer.id, "grabMovementTimeout");
+        timeoutManager.clearPlayerSpecific(
+          otherPlayer.id,
+          "grabMovementTimeout"
+        );
       }
-      
+
       // Clear grab whiffing state if player was whiffing
       if (otherPlayer.isWhiffingGrab) {
-        console.log(`Player ${otherPlayer.id} grab whiff interrupted by hit from ${player.id}`);
+        console.log(
+          `Player ${otherPlayer.id} grab whiff interrupted by hit from ${player.id}`
+        );
         otherPlayer.isWhiffingGrab = false;
       }
-      
+
       // Clear grab clashing state if player was clashing
       if (otherPlayer.isGrabClashing) {
-        console.log(`Player ${otherPlayer.id} grab clash interrupted by hit from ${player.id}`);
+        console.log(
+          `Player ${otherPlayer.id} grab clash interrupted by hit from ${player.id}`
+        );
         otherPlayer.isGrabClashing = false;
         otherPlayer.grabClashStartTime = 0;
         otherPlayer.grabClashInputCount = 0;
         // Clear any grab clash timeouts
-        timeoutManager.clearPlayerSpecific(otherPlayer.id, "grabClashResolution");
-        
+        timeoutManager.clearPlayerSpecific(
+          otherPlayer.id,
+          "grabClashResolution"
+        );
+
         // If there was room clash data involving this player, clean it up
         if (currentRoom && currentRoom.grabClashData) {
-          if (currentRoom.grabClashData.player1Id === otherPlayer.id || 
-              currentRoom.grabClashData.player2Id === otherPlayer.id) {
-            console.log(`Clearing room grab clash data due to player ${otherPlayer.id} being hit`);
+          if (
+            currentRoom.grabClashData.player1Id === otherPlayer.id ||
+            currentRoom.grabClashData.player2Id === otherPlayer.id
+          ) {
+            console.log(
+              `Clearing room grab clash data due to player ${otherPlayer.id} being hit`
+            );
             delete currentRoom.grabClashData;
             // Emit clash cancellation to room
             io.in(currentRoom.id).emit("grab_clash_cancelled", {
               reason: "player_hit",
-              hitPlayerId: otherPlayer.id
+              hitPlayerId: otherPlayer.id,
             });
           }
         }
       }
-      
+
       // Clear isAtTheRopes state if player gets hit during the stun
       if (otherPlayer.isAtTheRopes) {
         otherPlayer.isAtTheRopes = false;
@@ -3150,12 +3272,13 @@ io.on("connection", (socket) => {
         // For slap attacks, use the attacker's facing direction to ensure consistent knockback
         // The opponent should always be knocked back in the direction the attacker is facing
         knockbackDirection = player.facing === 1 ? -1 : 1;
-        console.log(`👋 SLAP KNOCKBACK: Player ${player.id} facing ${player.facing}, knockback direction: ${knockbackDirection}`);
+        console.log(
+          `👋 SLAP KNOCKBACK: Player ${player.id} facing ${player.facing}, knockback direction: ${knockbackDirection}`
+        );
       } else {
         // For charged attacks, use relative positions (existing behavior)
         knockbackDirection = player.x < otherPlayer.x ? 1 : -1;
       }
-      
 
       // Calculate knockback multiplier based on charge percentage
       let finalKnockbackMultiplier;
@@ -3163,7 +3286,9 @@ io.on("connection", (socket) => {
         finalKnockbackMultiplier = 0.334611; // Reduced by another 10% from 0.37179 to 0.334611 (total 38% reduction from original 0.54)
       } else {
         finalKnockbackMultiplier = 0.4675 + (chargePercentage / 100) * 1.122; // Reduced base power by 15% (0.55 -> 0.4675) and scaling by 15% (1.32 -> 1.122)
-        console.log(`💥 KNOCKBACK CALC: Player ${player.id} chargePercentage: ${chargePercentage}%, finalKnockbackMultiplier: ${finalKnockbackMultiplier}`);
+        console.log(
+          `💥 KNOCKBACK CALC: Player ${player.id} chargePercentage: ${chargePercentage}%, finalKnockbackMultiplier: ${finalKnockbackMultiplier}`
+        );
       }
 
       // Apply crouch stance damage reduction
@@ -3171,11 +3296,15 @@ io.on("connection", (socket) => {
         if (isSlapAttack) {
           // Reduce slap attack power by 10% when hitting crouched target
           finalKnockbackMultiplier *= 0.9; // 90% of original power (10% reduction)
-          console.log(`🛡️ CROUCH DEFENSE: Slap attack damage reduced by 10% against crouched player ${otherPlayer.id}`);
+          console.log(
+            `🛡️ CROUCH DEFENSE: Slap attack damage reduced by 10% against crouched player ${otherPlayer.id}`
+          );
         } else {
           // Reduce charged attack power by 10% when hitting crouched target
           finalKnockbackMultiplier *= 0.9; // 90% of original power (10% reduction)
-          console.log(`🛡️ CROUCH DEFENSE: Charged attack damage reduced by 10% against crouched player ${otherPlayer.id}`);
+          console.log(
+            `🛡️ CROUCH DEFENSE: Charged attack damage reduced by 10% against crouched player ${otherPlayer.id}`
+          );
         }
       }
 
@@ -3183,14 +3312,13 @@ io.on("connection", (socket) => {
       if (player.activePowerUp === POWER_UP_TYPES.POWER) {
         if (isSlapAttack) {
           // Adjusted power power-up effect for slap attacks to achieve 20% increase
-          finalKnockbackMultiplier *= (player.powerUpMultiplier * 0.923);
+          finalKnockbackMultiplier *= player.powerUpMultiplier * 0.923;
         } else {
           // Full power-up effect for charged attacks
           finalKnockbackMultiplier *= player.powerUpMultiplier;
         }
-      } 
-     
-      
+      }
+
       if (canApplyKnockback(otherPlayer)) {
         if (isSlapAttack) {
           // For slap attacks, use consistent knockback regardless of distance
@@ -3206,23 +3334,27 @@ io.on("connection", (socket) => {
 
           // Mark this as a slap knockback for special friction handling
           otherPlayer.isSlapKnockback = true;
-          
-          console.log(`👋 SLAP ATTACK: Player ${player.id} -> Consistent knockback applied (no separation boost), attacker facing: ${player.facing}, knockback direction: ${knockbackDirection}`);
+
+          console.log(
+            `👋 SLAP ATTACK: Player ${player.id} -> Consistent knockback applied (no separation boost), attacker facing: ${player.facing}, knockback direction: ${knockbackDirection}`
+          );
         } else {
           // For charged attacks, force clear any existing hit state and velocities for consistent knockback
           otherPlayer.isHit = false;
           otherPlayer.isSlapKnockback = false;
           otherPlayer.knockbackVelocity.x = 0;
           otherPlayer.movementVelocity = 0;
-          
+
           // For charged attacks, use a combination of immediate knockback and sliding
           const immediateKnockback =
             1.7 * knockbackDirection * finalKnockbackMultiplier;
           otherPlayer.movementVelocity =
             1.2 * knockbackDirection * finalKnockbackMultiplier;
           otherPlayer.knockbackVelocity.x = immediateKnockback;
-          
-          console.log(`🎯 FINAL KNOCKBACK VALUES: Player ${player.id} -> immediateKnockback: ${immediateKnockback}, movementVelocity: ${otherPlayer.movementVelocity}, activePowerUp: ${player.activePowerUp}`);
+
+          console.log(
+            `🎯 FINAL KNOCKBACK VALUES: Player ${player.id} -> immediateKnockback: ${immediateKnockback}, movementVelocity: ${otherPlayer.movementVelocity}, activePowerUp: ${player.activePowerUp}`
+          );
 
           // Calculate attacker bounce-off based on charge percentage
           const attackerBounceDirection = -knockbackDirection;
@@ -3232,8 +3364,10 @@ io.on("connection", (socket) => {
           player.movementVelocity =
             2 * attackerBounceDirection * attackerBounceMultiplier;
           player.knockbackVelocity = { x: 0, y: 0 };
-          
-          console.log(`🔄 ATTACKER BOUNCE-OFF: Player ${player.id} -> attackerBounceMultiplier: ${attackerBounceMultiplier}, movementVelocity: ${player.movementVelocity}`);
+
+          console.log(
+            `🔄 ATTACKER BOUNCE-OFF: Player ${player.id} -> attackerBounceMultiplier: ${attackerBounceMultiplier}, movementVelocity: ${player.movementVelocity}`
+          );
 
           if (currentRoom) {
             io.in(currentRoom.id).emit("screen_shake", {
@@ -3853,26 +3987,41 @@ io.on("connection", (socket) => {
 
     // Debug data.keys during grab clashing
     if (player.isGrabClashing) {
-      console.log(`🥊 FIGHTER_ACTION DEBUG: Player ${player.id} isGrabClashing=${player.isGrabClashing}, data.keys=`, data.keys);
+      console.log(
+        `🥊 FIGHTER_ACTION DEBUG: Player ${player.id} isGrabClashing=${player.isGrabClashing}, data.keys=`,
+        data.keys
+      );
     }
 
     // Count inputs during grab clash - HAPPENS BEFORE BLOCKING
     if (player.isGrabClashing && rooms[roomIndex].grabClashData && data.keys) {
       // Track previous keys for input detection - get from player state
       const previousKeys = { ...player.keys };
-      
-      console.log(`🥊 GRAB CLASH DEBUG: Player ${player.id} is clashing, checking inputs...`);
+
+      console.log(
+        `🥊 GRAB CLASH DEBUG: Player ${player.id} is clashing, checking inputs...`
+      );
       console.log(`🥊 CURRENT KEYS:`, data.keys);
       console.log(`🥊 PREVIOUS KEYS:`, previousKeys);
-      
+
       // Update player keys FIRST so next event can detect changes
       player.keys = data.keys;
-      
+
       // Count any key press (not key holds) as mashing input
-      const mashKeys = ['w', 'a', 's', 'd', 'mouse1', 'mouse2', 'e', 'f', 'shift'];
+      const mashKeys = [
+        "w",
+        "a",
+        "s",
+        "d",
+        "mouse1",
+        "mouse2",
+        "e",
+        "f",
+        "shift",
+      ];
       let inputDetected = false;
       let detectedKey = null;
-      
+
       for (const key of mashKeys) {
         if (data.keys[key] && !previousKeys[key]) {
           inputDetected = true;
@@ -3880,44 +4029,52 @@ io.on("connection", (socket) => {
           break;
         }
       }
-      
+
       console.log(`🥊 INPUT DETECTED: ${inputDetected}, KEY: ${detectedKey}`);
-      
+
       if (inputDetected) {
         player.grabClashInputCount++;
-        
+
         // Update room clash data
         if (player.id === rooms[roomIndex].grabClashData.player1Id) {
           rooms[roomIndex].grabClashData.player1Inputs++;
-          console.log(`🥊 PLAYER 1 (${player.id}) INPUT COUNT: ${rooms[roomIndex].grabClashData.player1Inputs}`);
+          console.log(
+            `🥊 PLAYER 1 (${player.id}) INPUT COUNT: ${rooms[roomIndex].grabClashData.player1Inputs}`
+          );
         } else if (player.id === rooms[roomIndex].grabClashData.player2Id) {
           rooms[roomIndex].grabClashData.player2Inputs++;
-          console.log(`🥊 PLAYER 2 (${player.id}) INPUT COUNT: ${rooms[roomIndex].grabClashData.player2Inputs}`);
+          console.log(
+            `🥊 PLAYER 2 (${player.id}) INPUT COUNT: ${rooms[roomIndex].grabClashData.player2Inputs}`
+          );
         }
-        
+
         console.log(`🥊 EMITTING PROGRESS UPDATE TO ROOM: ${roomId}`);
         console.log(`🥊 PROGRESS DATA:`, {
           player1Inputs: rooms[roomIndex].grabClashData.player1Inputs,
           player2Inputs: rooms[roomIndex].grabClashData.player2Inputs,
           player1Id: rooms[roomIndex].grabClashData.player1Id,
-          player2Id: rooms[roomIndex].grabClashData.player2Id
+          player2Id: rooms[roomIndex].grabClashData.player2Id,
         });
-        
+
         // Emit progress update to all players in the room
         io.in(roomId).emit("grab_clash_progress", {
           player1Inputs: rooms[roomIndex].grabClashData.player1Inputs,
           player2Inputs: rooms[roomIndex].grabClashData.player2Inputs,
           player1Id: rooms[roomIndex].grabClashData.player1Id,
-          player2Id: rooms[roomIndex].grabClashData.player2Id
+          player2Id: rooms[roomIndex].grabClashData.player2Id,
         });
-        
-        console.log(`Player ${player.id} mashed input during grab clash. Total inputs: ${player.grabClashInputCount}`);
+
+        console.log(
+          `Player ${player.id} mashed input during grab clash. Total inputs: ${player.grabClashInputCount}`
+        );
       }
     }
 
     // Block all actions (except input counting) during grab clashing
     if (player.isGrabClashing) {
-      console.log(`🥊 BLOCKING OTHER ACTIONS: Player ${player.id} is grab clashing, blocking non-input actions`);
+      console.log(
+        `🥊 BLOCKING OTHER ACTIONS: Player ${player.id} is grab clashing, blocking non-input actions`
+      );
       return;
     }
 
@@ -3967,18 +4124,18 @@ io.on("connection", (socket) => {
         );
       }
 
-        // If spacebar was released after a grab break, allow raw parry again
-        if (
-          !player.keys[" "] &&
-          previousKeys[" "] &&
-          player.grabBreakSpaceConsumed
-        ) {
-          player.grabBreakSpaceConsumed = false;
-          // Also ensure grab-break animation is not lingering
-          if (!player.isGrabBreaking) {
-            // no-op; flag reset is enough
-          }
+      // If spacebar was released after a grab break, allow raw parry again
+      if (
+        !player.keys[" "] &&
+        previousKeys[" "] &&
+        player.grabBreakSpaceConsumed
+      ) {
+        player.grabBreakSpaceConsumed = false;
+        // Also ensure grab-break animation is not lingering
+        if (!player.isGrabBreaking) {
+          // no-op; flag reset is enough
         }
+      }
 
       // Grab Break: break out when being grabbed with spacebar, at stamina cost
       if (
@@ -3990,14 +4147,22 @@ io.on("connection", (socket) => {
       ) {
         const room = rooms[roomIndex];
         const grabber = room.players.find(
-          (p) => p.id !== player.id && p.isGrabbing && p.grabbedOpponent === player.id
+          (p) =>
+            p.id !== player.id &&
+            p.isGrabbing &&
+            p.grabbedOpponent === player.id
         );
 
         if (grabber) {
-          console.log(`🛡️ GRAB BREAK: Player ${player.id} breaking grab from ${grabber.id}`);
+          console.log(
+            `🛡️ GRAB BREAK: Player ${player.id} breaking grab from ${grabber.id}`
+          );
 
           // Deduct stamina
-          player.stamina = Math.max(0, player.stamina - GRAB_BREAK_STAMINA_COST);
+          player.stamina = Math.max(
+            0,
+            player.stamina - GRAB_BREAK_STAMINA_COST
+          );
 
           // Clear grab states for both
           cleanupGrabStates(grabber, player);
@@ -4032,7 +4197,8 @@ io.on("connection", (socket) => {
           const leftBoundary = MAP_LEFT_BOUNDARY;
           const rightBoundary = MAP_RIGHT_BOUNDARY;
           const dir = player.x < grabber.x ? -1 : 1; // player pushes outward
-          const pushDistance = GRAB_BREAK_PUSH_VELOCITY * GRAB_BREAK_SEPARATION_MULTIPLIER;
+          const pushDistance =
+            GRAB_BREAK_PUSH_VELOCITY * GRAB_BREAK_SEPARATION_MULTIPLIER;
 
           const playerTargetX = Math.max(
             leftBoundary,
@@ -4104,7 +4270,9 @@ io.on("connection", (socket) => {
 
     // Handle clearing charge during charging phase with throw/grab/snowball - MUST BE FIRST
     if (
-      ((player.keys.w && player.isGrabbing && !player.isBeingGrabbed) || player.keys.e || player.keys.f) &&
+      ((player.keys.w && player.isGrabbing && !player.isBeingGrabbed) ||
+        player.keys.e ||
+        player.keys.f) &&
       player.isChargingAttack // Only interrupt during charging phase, not execution
     ) {
       console.log(`Player ${player.id} interrupting charge with W/E/F input`);
@@ -4306,7 +4474,7 @@ io.on("connection", (socket) => {
       !player.keys.e &&
       !(player.keys.w && player.isGrabbing && !player.isBeingGrabbed) &&
       !isInChargedAttackExecution() && // Block during charged attack execution
-        canPlayerUseAction(player) &&
+      canPlayerUseAction(player) &&
       player.dodgeCharges > 0 // Check if player has dodge charges
     ) {
       console.log("Executing immediate dodge");
@@ -4356,47 +4524,47 @@ io.on("connection", (socket) => {
         player.dodgeDirection = player.facing === -1 ? 1 : -1;
       }
 
-              setTimeout(() => {
-          player.isDodging = false;
-          player.dodgeDirection = null;
+      setTimeout(() => {
+        player.isDodging = false;
+        player.dodgeDirection = null;
 
-          // Check for buffered actions after dodge ends
-          if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
-            console.log("Executing buffered action after dodge");
-            const action = player.bufferedAction;
-            player.bufferedAction = null;
-            player.bufferExpiryTime = 0;
+        // Check for buffered actions after dodge ends
+        if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
+          console.log("Executing buffered action after dodge");
+          const action = player.bufferedAction;
+          player.bufferedAction = null;
+          player.bufferExpiryTime = 0;
 
-            // Execute the buffered action
-            if (action.type === "dodge") {
-              player.isDodging = true;
-              player.dodgeStartTime = Date.now();
-              player.dodgeEndTime = Date.now() + 450; // Updated to match new dodge duration
-              player.dodgeDirection = action.direction;
-              player.dodgeStartX = player.x;
-              player.dodgeStartY = player.y;
-            }
+          // Execute the buffered action
+          if (action.type === "dodge") {
+            player.isDodging = true;
+            player.dodgeStartTime = Date.now();
+            player.dodgeEndTime = Date.now() + 450; // Updated to match new dodge duration
+            player.dodgeDirection = action.direction;
+            player.dodgeStartX = player.x;
+            player.dodgeStartY = player.y;
+          }
+        }
+
+        // Handle pending charge attack
+        if (player.pendingChargeAttack && player.spacebarReleasedDuringDodge) {
+          const chargePercentage = player.pendingChargeAttack.power;
+
+          // Determine if it's a slap or charged attack
+          if (player.keys.mouse1) {
+            // Use the simplified slap attack system
+
+            executeSlapAttack(player, rooms);
+          } else {
+            executeChargedAttack(player, chargePercentage, rooms);
           }
 
-          // Handle pending charge attack
-          if (player.pendingChargeAttack && player.spacebarReleasedDuringDodge) {
-            const chargePercentage = player.pendingChargeAttack.power;
-
-            // Determine if it's a slap or charged attack
-            if (player.keys.mouse1) {
-              // Use the simplified slap attack system
-              
-              executeSlapAttack(player, rooms);
-            } else {
-              executeChargedAttack(player, chargePercentage, rooms);
-            }
-
-            // Reset charging state
-            player.isChargingAttack = false;
-            player.pendingChargeAttack = null;
-            player.spacebarReleasedDuringDodge = false;
-          }
-        }, 450); // Updated to match new dodge duration
+          // Reset charging state
+          player.isChargingAttack = false;
+          player.pendingChargeAttack = null;
+          player.spacebarReleasedDuringDodge = false;
+        }
+      }, 450); // Updated to match new dodge duration
     } else if (
       player.keys["shift"] &&
       (player.isAttacking ||
@@ -4567,7 +4735,7 @@ io.on("connection", (socket) => {
     }
 
     // Handle throw attacks - only when currently grabbing opponent
-      if (
+    if (
       player.keys.w &&
       player.isGrabbing &&
       !player.isBeingGrabbed &&
@@ -4628,13 +4796,16 @@ io.on("connection", (socket) => {
               if (opponent.isBeingGrabbed) {
                 opponent.isBeingGrabbed = false;
               }
-              
+
               // Clear isAtTheRopes state if player gets thrown during the stun
               if (opponent.isAtTheRopes) {
                 opponent.isAtTheRopes = false;
                 opponent.atTheRopesStartTime = 0;
                 // Clear any existing timeout for the at-the-ropes state
-                timeoutManager.clearPlayerSpecific(opponent.id, "atTheRopesTimeout");
+                timeoutManager.clearPlayerSpecific(
+                  opponent.id,
+                  "atTheRopesTimeout"
+                );
               }
 
               player.throwCooldown = true;
@@ -4649,7 +4820,9 @@ io.on("connection", (socket) => {
           } else {
             if (checkForGrabPriority(player, opponent)) {
               // Opponent grabbed at the same time, grab wins - cancel this throw
-              console.log(`Missed throw cancelled: Opponent grabbed at the same time`);
+              console.log(
+                `Missed throw cancelled: Opponent grabbed at the same time`
+              );
               return;
             }
 
@@ -4688,22 +4861,24 @@ io.on("connection", (socket) => {
       !player.isWhiffingGrab
     ) {
       player.lastGrabAttemptTime = Date.now();
-      
+
       // Clear charging attack state when starting grab
       clearChargeState(player, true); // true = cancelled by grab
-      
+
       // Start grab movement immediately
       player.isGrabbingMovement = true;
       player.grabMovementStartTime = Date.now();
       player.grabMovementDirection = player.facing === 1 ? -1 : 1; // Move in facing direction
       player.grabMovementVelocity = 1.4; // Slightly faster movement speed
-      
+
       // Clear any existing movement momentum
       player.movementVelocity = 0;
       player.isStrafing = false;
-      
-      console.log(`Player ${player.id} starting grab movement, facing: ${player.facing}, direction: ${player.grabMovementDirection}`);
-      
+
+      console.log(
+        `Player ${player.id} starting grab movement, facing: ${player.facing}, direction: ${player.grabMovementDirection}`
+      );
+
       // Set up the grab duration timer (750ms)
       setPlayerTimeout(
         player.id,
@@ -4711,11 +4886,11 @@ io.on("connection", (socket) => {
           // If still in grab movement after 750ms, it's a whiff
           if (player.isGrabbingMovement && !player.grabbedOpponent) {
             console.log(`Player ${player.id} grab whiffed after 750ms`);
-            
+
             player.isGrabbingMovement = false;
             player.isWhiffingGrab = true;
             player.grabMovementVelocity = 0;
-            
+
             // Set grab cooldown for whiffed grab
             player.grabCooldown = true;
             setPlayerTimeout(
@@ -4725,14 +4900,14 @@ io.on("connection", (socket) => {
               },
               1100
             );
-            
+
             // End whiff state after 200ms
             setPlayerTimeout(
               player.id,
               () => {
                 player.isWhiffingGrab = false;
                 console.log(`Player ${player.id} recovered from grab whiff`);
-                
+
                 // Check if we should restart charging after grab whiff completes
                 if (shouldRestartCharging(player)) {
                   startCharging(player);

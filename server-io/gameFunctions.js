@@ -165,7 +165,7 @@ function executeSlapAttack(player, rooms) {
       if (!player.slapFacingDirection) {
         player.slapFacingDirection = player.x < opponent.x ? -1 : 1;
       }
-      
+
       // Use the locked facing direction
       player.facing = player.slapFacingDirection;
 
@@ -195,18 +195,26 @@ function executeSlapAttack(player, rooms) {
     const attackElapsed = currentTime - player.attackStartTime;
     const attackDuration = player.attackEndTime - player.attackStartTime;
     const attackProgress = attackElapsed / attackDuration;
-    
+
     // Only allow buffering during the last 50% of the attack (50% complete or more)
     if (attackProgress >= 0.35) {
       // Only store one pending attack, ignore additional rapid clicks
       if (!player.hasPendingSlapAttack) {
         player.hasPendingSlapAttack = true;
-        console.log(`Player ${player.id} buffered slap attack at ${Math.round(attackProgress * 100)}% completion`);
+        console.log(
+          `Player ${player.id} buffered slap attack at ${Math.round(
+            attackProgress * 100
+          )}% completion`
+        );
       }
     } else {
-      console.log(`Player ${player.id} attempted to buffer slap too early (${Math.round(attackProgress * 100)}% complete, need 50%+)`);
+      console.log(
+        `Player ${player.id} attempted to buffer slap too early (${Math.round(
+          attackProgress * 100
+        )}% complete, need 50%+)`
+      );
     }
-    
+
     // Ignore clicks if there's already a pending attack or if it's too early to buffer
     return;
   }
@@ -268,7 +276,7 @@ function executeSlapAttack(player, rooms) {
         // Set strafing cooldown to prevent movement during the gap between attacks
         player.slapStrafeCooldown = true;
         player.slapStrafeCooldownEndTime = Date.now() + 150; // 150ms cooldown after attack ends
-        
+
         // Add a small delay before executing the next slap to allow neutral animation
         setPlayerTimeout(
           player.id,
@@ -438,22 +446,26 @@ function executeChargedAttack(player, chargePercentage, rooms) {
   const currentRoom = rooms.find((room) =>
     room.players.some((p) => p.id === player.id)
   );
-  
+
   if (currentRoom) {
     const opponent = currentRoom.players.find((p) => p.id !== player.id);
-    
+
     // Only auto-correct if opponent exists and is NOT dodging
     // If opponent is dodging, we want to preserve the original facing direction
     if (opponent && !opponent.isDodging) {
       // Auto-correct facing direction to face the opponent
       const shouldFaceRight = player.x < opponent.x;
       const correctedFacing = shouldFaceRight ? -1 : 1;
-      
-      console.log(`Player ${player.id} auto-correcting charged attack facing: ${player.facing} -> ${correctedFacing} (opponent at x: ${opponent.x}, player at x: ${player.x}, opponent dodging: ${opponent.isDodging})`);
-      
+
+      console.log(
+        `Player ${player.id} auto-correcting charged attack facing: ${player.facing} -> ${correctedFacing} (opponent at x: ${opponent.x}, player at x: ${player.x}, opponent dodging: ${opponent.isDodging})`
+      );
+
       player.facing = correctedFacing;
     } else if (opponent && opponent.isDodging) {
-      console.log(`Player ${player.id} NOT auto-correcting charged attack facing - opponent is dodging (preserving direction: ${player.facing})`);
+      console.log(
+        `Player ${player.id} NOT auto-correcting charged attack facing - opponent is dodging (preserving direction: ${player.facing})`
+      );
     }
   }
 
@@ -691,7 +703,7 @@ function adjustPlayerPositions(player1, player2, delta) {
     const overlap = finalMinDistance - distanceBetweenCenters;
 
     // Check if this is a slap attack scenario for gentler separation
-    const isSlapAttackScenario = 
+    const isSlapAttackScenario =
       (player1.isAttacking && player1.attackType === "slap") ||
       (player2.isAttacking && player2.attackType === "slap");
 
@@ -700,26 +712,26 @@ function adjustPlayerPositions(player1, player2, delta) {
     if (isSlapAttackScenario) {
       // Gentler separation during slap attacks to maintain close-quarters feel
       separationSpeed = Math.min(overlap * 0.4, 6); // Reduced separation speed for slap attacks
-      
+
       // Calculate separation direction
       const separationDirection = player1.x < player2.x ? -1 : 1;
-      
+
       // Apply smooth separation - each player moves by half
       const separationPerPlayer = separationSpeed / 2;
-      
+
       // Calculate new positions
       newPlayer1X = player1.x + separationDirection * separationPerPlayer;
       newPlayer2X = player2.x + -separationDirection * separationPerPlayer;
     } else {
       // Normal separation for non-slap scenarios
       separationSpeed = Math.min(overlap * 0.7, 12); // Increased from 0.5 to 0.7 and cap from 8 to 12 pixels per frame
-      
+
       // Calculate separation direction
       const separationDirection = player1.x < player2.x ? -1 : 1;
-      
+
       // Apply smooth separation - each player moves by half
       const separationPerPlayer = separationSpeed / 2;
-      
+
       // Calculate new positions
       newPlayer1X = player1.x + separationDirection * separationPerPlayer;
       newPlayer2X = player2.x + -separationDirection * separationPerPlayer;
@@ -727,7 +739,12 @@ function adjustPlayerPositions(player1, player2, delta) {
 
     // Apply strong resistance to movement velocity when players are pushing into each other
     // Reduce resistance during slap attacks to allow smooth close-quarters movement
-    if (!player1.isHit && !player1.isAlreadyHit && !player1.isSlapKnockback && player1.movementVelocity) {
+    if (
+      !player1.isHit &&
+      !player1.isAlreadyHit &&
+      !player1.isSlapKnockback &&
+      player1.movementVelocity
+    ) {
       const isMovingTowards =
         (player1.x < player2.x && player1.movementVelocity > 0) ||
         (player1.x > player2.x && player1.movementVelocity < 0);
@@ -737,7 +754,12 @@ function adjustPlayerPositions(player1, player2, delta) {
         player1.movementVelocity *= resistance;
       }
     }
-    if (!player2.isHit && !player2.isAlreadyHit && !player2.isSlapKnockback && player2.movementVelocity) {
+    if (
+      !player2.isHit &&
+      !player2.isAlreadyHit &&
+      !player2.isSlapKnockback &&
+      player2.movementVelocity
+    ) {
       const isMovingTowards =
         (player2.x < player1.x && player2.movementVelocity > 0) ||
         (player2.x > player1.x && player2.movementVelocity < 0);
@@ -758,7 +780,7 @@ function adjustPlayerPositions(player1, player2, delta) {
       newPlayer1X < leftBoundary || newPlayer1X > rightBoundary;
     const player2OutOfBounds =
       newPlayer2X < leftBoundary || newPlayer2X > rightBoundary;
-    
+
     // Don't enforce boundaries if either player is being knocked back from a hit
     const player1IsBeingKnockedBack = player1.isHit;
     const player2IsBeingKnockedBack = player2.isHit;
@@ -774,12 +796,20 @@ function adjustPlayerPositions(player1, player2, delta) {
       if (player1IsBeingKnockedBack || player2IsBeingKnockedBack) {
         // Apply separation but enforce boundaries to prevent players from going outside map
         if (!player1IsBeingKnockedBack && !player1.isRawParrying) {
-          player1.x = Math.max(leftBoundary, Math.min(newPlayer1X, rightBoundary));
+          player1.x = Math.max(
+            leftBoundary,
+            Math.min(newPlayer1X, rightBoundary)
+          );
         }
         if (!player2IsBeingKnockedBack && !player2.isRawParrying) {
-          player2.x = Math.max(leftBoundary, Math.min(newPlayer2X, rightBoundary));
+          player2.x = Math.max(
+            leftBoundary,
+            Math.min(newPlayer2X, rightBoundary)
+          );
         }
-        console.log(`🛡️ COLLISION BOUNDARY PROTECTION: Prevented players from going outside boundaries during knockback separation`);
+        console.log(
+          `🛡️ COLLISION BOUNDARY PROTECTION: Prevented players from going outside boundaries during knockback separation`
+        );
         return;
       }
 
@@ -820,7 +850,10 @@ function adjustPlayerPositions(player1, player2, delta) {
           // Equal or no momentum, use position preference
           // If both are at right boundary, move the rightmost player to the left
           // If both are at left boundary, move the leftmost player to the right
-          if (player1.x >= rightBoundary - 5 && player2.x >= rightBoundary - 5) {
+          if (
+            player1.x >= rightBoundary - 5 &&
+            player2.x >= rightBoundary - 5
+          ) {
             playerToMove = player1.x > player2.x ? player1 : player2;
             playerToKeep = playerToMove === player1 ? player2 : player1;
           } else {
@@ -890,12 +923,20 @@ function adjustPlayerPositions(player1, player2, delta) {
       if (player1IsBeingKnockedBack || player2IsBeingKnockedBack) {
         // Apply separation but enforce boundaries to prevent players from going outside map
         if (!player1IsBeingKnockedBack && !player1.isRawParrying) {
-          player1.x = Math.max(leftBoundary, Math.min(newPlayer1X, rightBoundary));
+          player1.x = Math.max(
+            leftBoundary,
+            Math.min(newPlayer1X, rightBoundary)
+          );
         }
         if (!player2IsBeingKnockedBack && !player2.isRawParrying) {
-          player2.x = Math.max(leftBoundary, Math.min(newPlayer2X, rightBoundary));
+          player2.x = Math.max(
+            leftBoundary,
+            Math.min(newPlayer2X, rightBoundary)
+          );
         }
-        console.log(`🛡️ COLLISION BOUNDARY PROTECTION: Prevented players from going outside boundaries during knockback separation`);
+        console.log(
+          `🛡️ COLLISION BOUNDARY PROTECTION: Prevented players from going outside boundaries during knockback separation`
+        );
         return;
       }
 
@@ -903,7 +944,10 @@ function adjustPlayerPositions(player1, player2, delta) {
       if (player1OutOfBounds && !player2OutOfBounds) {
         // Player 1 is blocked by boundary, move player 2 by full separation distance
         if (!player1.isRawParrying) {
-          player1.x = Math.max(leftBoundary, Math.min(player1.x, rightBoundary)); // Keep player1 at boundary
+          player1.x = Math.max(
+            leftBoundary,
+            Math.min(player1.x, rightBoundary)
+          ); // Keep player1 at boundary
         }
         const fullSeparationDirection = player2.x < player1.x ? -1 : 1;
         const newPlayer2XFull =
@@ -918,7 +962,10 @@ function adjustPlayerPositions(player1, player2, delta) {
       } else if (player2OutOfBounds && !player1OutOfBounds) {
         // Player 2 is blocked by boundary, move player 1 by full separation distance
         if (!player2.isRawParrying) {
-          player2.x = Math.max(leftBoundary, Math.min(player2.x, rightBoundary)); // Keep player2 at boundary
+          player2.x = Math.max(
+            leftBoundary,
+            Math.min(player2.x, rightBoundary)
+          ); // Keep player2 at boundary
         }
         const fullSeparationDirection = player1.x < player2.x ? -1 : 1;
         const newPlayer1XFull =
