@@ -1451,7 +1451,7 @@ io.on("connection", (socket) => {
             (p) => p.id === player.throwOpponent
           );
           if (opponent) {
-            const throwArcHeight = player.isRingOutThrowCutscene ? 300 : 450; // Higher arc for ring-out cutscene
+            const throwArcHeight = player.isRingOutThrowCutscene ? 900 : 450; // Extra high arc for ring-out cutscene
             const throwDistance = player.isRingOutThrowCutscene
               ? player.ringOutThrowDistance || 900
               : 120;
@@ -1608,7 +1608,7 @@ io.on("connection", (socket) => {
           // Simple parabolic arc - starts slow, peaks in middle, lands with weight
           // Using a quadratic function for more realistic arc shape
           const arcProgress = 4 * dodgeProgress * (1 - dodgeProgress); // Parabola that peaks at 0.5
-          const hopHeight = arcProgress * 75; // Increased height for better visibility
+          const hopHeight = arcProgress * 50; // Reduced height for a lower hop
 
           // Add slight deceleration over time for weightier feel
           const speedMultiplier = 1.0 - dodgeProgress * 0.2; // Slow down by 20% over time

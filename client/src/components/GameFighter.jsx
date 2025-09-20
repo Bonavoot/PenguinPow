@@ -32,6 +32,7 @@ import crouching from "../assets/blocking2.png";
 import crouching2 from "../assets/blocking.png";
 import grabbing from "../assets/grabbing.png";
 import grabbing2 from "../assets/grabbing2.png";
+import grabAttempt2 from "../assets/grab-attempt2.png";
 import beingGrabbed from "../assets/is-being-grabbed.gif";
 import beingGrabbed2 from "../assets/is-being-grabbed2.gif";
 import grabSound from "../sounds/grab-sound.mp3";
@@ -152,6 +153,7 @@ const initializeImagePreloading = () => {
   preloadImage(throwing2);
   preloadImage(grabbing);
   preloadImage(grabbing2);
+  preloadImage(grabAttempt2);
   preloadImage(beingGrabbed);
   preloadImage(beingGrabbed2);
 
@@ -242,6 +244,7 @@ const getImageSrc = (
   isSlapAttack,
   isThrowing,
   isGrabbing,
+  isGrabbingMovement,
   isBeingGrabbed,
   isThrowingSalt,
   slapAnimation,
@@ -260,8 +263,15 @@ const getImageSrc = (
   isAtTheRopes,
   isCrouchStance,
   isCrouchStrafing,
-  isGrabBreakCountered
+  isGrabBreakCountered,
+  // new optional trailing param(s)
+  isGrabbingMovementTrailing
 ) => {
+  // Backward-compat: allow passing as trailing param or main param
+  const attemptingGrabMovement =
+    typeof isGrabbingMovementTrailing === "boolean"
+      ? isGrabbingMovementTrailing
+      : !!isGrabbingMovement;
   if (fighter === "player 2") {
     if (isGrabBreaking) return crouching;
     if (isGrabBreakCountered) return hit;
@@ -276,6 +286,14 @@ const getImageSrc = (
     if (isDodging) return dodging;
     if (isCrouchStrafing) return crouchStrafing2;
     if (isCrouchStance) return crouchStance2;
+    // Show attempt placeholder during grab movement attempt
+    if (attemptingGrabMovement) {
+      return pumo;
+    }
+    // Show attempt animation even if isGrabbing is false
+    if (grabState === "attempting") {
+      return grabAttemptType === "throw" ? throwing : pumo;
+    }
     if (isSlapAttack) {
       return slapAnimation === 1 ? slapAttack1Red : slapAttack2Red;
     }
@@ -283,7 +301,7 @@ const getImageSrc = (
     if (isAttacking && !isSlapAttack) return attack;
     if (isGrabbing) {
       if (grabState === "attempting") {
-        return grabAttemptType === "throw" ? throwing : grabbing;
+        return grabAttemptType === "throw" ? throwing : pumo;
       }
       return grabbing;
     }
@@ -313,12 +331,20 @@ const getImageSrc = (
     if (isDodging) return dodging2;
     if (isCrouchStrafing) return crouchStrafing2;
     if (isCrouchStance) return crouchStance2;
+    // Show attempt animation during grab movement attempt
+    if (attemptingGrabMovement) {
+      return grabAttemptType === "throw" ? throwing2 : grabAttempt2;
+    }
+    // Show attempt animation even if isGrabbing is false
+    if (grabState === "attempting") {
+      return grabAttemptType === "throw" ? throwing2 : grabAttempt2;
+    }
     if (isSlapAttack) {
       return slapAnimation === 1 ? slapAttack1Blue : slapAttack2Blue;
     }
     if (isGrabbing) {
       if (grabState === "attempting") {
-        return grabAttemptType === "throw" ? throwing2 : grabbing2;
+        return grabAttemptType === "throw" ? throwing2 : grabAttempt2;
       }
       return grabbing2;
     }
@@ -475,6 +501,7 @@ const StyledImage = styled("img")
       props.$isSlapAttack,
       props.$isThrowing,
       props.$isGrabbing,
+      props.$isGrabbingMovement,
       props.$isBeingGrabbed,
       props.$isThrowingSalt,
       props.$slapAnimation,
@@ -493,7 +520,8 @@ const StyledImage = styled("img")
       props.$isAtTheRopes,
       props.$isCrouchStance,
       props.$isCrouchStrafing,
-      props.$isGrabBreakCountered
+      props.$isGrabBreakCountered,
+      props.$isGrabbingMovement
     ),
     style: {
       position: "absolute",
@@ -1756,6 +1784,7 @@ const GameFighter = ({
         $isThrowing={penguin.isThrowing}
         $isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
         $isGrabbing={penguin.isGrabbing}
+        $isGrabbingMovement={penguin.isGrabbingMovement}
         $isBeingGrabbed={penguin.isBeingGrabbed}
         $isThrowingSalt={penguin.isThrowingSalt}
         $slapAnimation={penguin.slapAnimation}
