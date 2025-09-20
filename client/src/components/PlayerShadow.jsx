@@ -5,7 +5,7 @@ const GROUND_LEVEL = 240; // Match the server's GROUND_LEVEL
 
 const ShadowElement = styled.div.attrs((props) => {
   // Calculate the bottom position
-  const bottomPos = props.$isDodging ? GROUND_LEVEL : props.$y;
+  const bottomPos = props.$isDodging || props.$isGrabStartup ? GROUND_LEVEL : props.$y;
 
   // Use custom offsets if provided, otherwise use defaults
   const offsetLeft =
@@ -40,6 +40,7 @@ const PlayerShadow = ({
   y,
   facing,
   isDodging,
+  isGrabStartup,
   width,
   height,
   offsetLeft,
@@ -51,6 +52,7 @@ const PlayerShadow = ({
       $y={y}
       $facing={facing}
       $isDodging={isDodging}
+      $isGrabStartup={isGrabStartup}
       $width={width}
       $height={height}
       $offsetLeft={offsetLeft}
@@ -64,6 +66,7 @@ PlayerShadow.propTypes = {
   y: PropTypes.number.isRequired,
   facing: PropTypes.number.isRequired,
   isDodging: PropTypes.bool,
+  isGrabStartup: PropTypes.bool,
   width: PropTypes.string,
   height: PropTypes.string,
   offsetLeft: PropTypes.string,

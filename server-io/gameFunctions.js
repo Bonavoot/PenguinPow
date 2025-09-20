@@ -235,8 +235,9 @@ function executeSlapAttack(player, rooms) {
     }
   }
 
-  const attackDuration = 300; // Total attack duration (300ms)
-  const startupDuration = Math.floor(attackDuration * 0.4); // 40% of duration for startup frames (120ms)
+  // Slightly increase startup for clearer anticipation, add a touch more recovery
+  const attackDuration = 340;
+  const startupDuration = Math.floor(attackDuration * 0.5); // 50% startup for clearer read
 
   player.isSlapAttack = true;
   player.attackEndTime = Date.now() + attackDuration;
@@ -247,6 +248,9 @@ function executeSlapAttack(player, rooms) {
   // Add startup frame tracking
   player.isInStartupFrames = true;
   player.startupEndTime = Date.now() + startupDuration;
+  // Brief action lock at the start to serialize with other inputs
+  player.currentAction = "slap";
+  player.actionLockUntil = Date.now() + Math.min(120, startupDuration);
 
   // Set timeout to end startup frames and make attack active
   setPlayerTimeout(
@@ -267,8 +271,12 @@ function executeSlapAttack(player, rooms) {
       player.isSlapSliding = false; // Clear the slap slide flag
       player.slapFacingDirection = null; // Clear the locked facing direction
       player.isInStartupFrames = false; // Ensure startup frames are cleared
-      // Gradually reduce the slide velocity
-      player.movementVelocity *= 0.5;
+      // Reduce slide a bit more to limit chaotic overlap
+      player.movementVelocity *= 0.35;
+      // Clear any remaining action lock for slap
+      if (player.currentAction === "slap") {
+        player.actionLockUntil = 0;
+      }
 
       // Check if there's a pending slap attack to execute
       if (player.hasPendingSlapAttack) {
@@ -302,11 +310,12 @@ function executeSlapAttack(player, rooms) {
 
       // Set strafing cooldown for non-buffered attacks too
       player.slapStrafeCooldown = true;
-      player.slapStrafeCooldownEndTime = Date.now() + 150; // 150ms cooldown after attack ends
+      player.slapStrafeCooldownEndTime = Date.now() + 180; // slightly longer window
 
       // After slap attack ends, check if we should restart charging
       if (
         player.keys.mouse2 &&
+        player.wantsToRestartCharge &&
         !player.isAttacking &&
         !player.isJumping &&
         !player.isDodging &&
@@ -325,6 +334,7 @@ function executeSlapAttack(player, rooms) {
         player.chargeStartTime = Date.now();
         player.chargeAttackPower = 1;
         player.attackType = "charged";
+        player.wantsToRestartCharge = false;
       }
     },
     attackDuration
@@ -422,6 +432,9 @@ function executeChargedAttack(player, chargePercentage, rooms) {
   // Set attack state
   player.isAttacking = true;
   player.attackStartTime = Date.now();
+  // Action lock through early portion of the swing for visual clarity
+  player.currentAction = "charged";
+  player.actionLockUntil = Date.now() + Math.min(180, attackDuration);
 
   // Add hit tracking
   player.chargedAttackHit = false;
@@ -1055,6 +1068,9 @@ function safelyEndChargedAttack(player, rooms) {
     player.attackType = null;
     player.chargeAttackPower = 0;
     player.chargedAttackHit = false; // Reset hit tracking
+    if (player.currentAction === "charged") {
+      player.actionLockUntil = 0;
+    }
 
     // Clear the mouse2 flag - restart logic now happens immediately when recovery ends
     player.mouse2HeldDuringAttack = false;

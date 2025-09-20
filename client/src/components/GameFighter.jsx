@@ -381,12 +381,16 @@ const RedTintOverlay = styled.div`
   aspect-ratio: 1;
   left: ${(props) => (props.$x / 1280) * 100}%;
   bottom: ${(props) => (props.$y / 720) * 100}%;
-  transform: ${(props) => `scaleX(${props.$facing})`};
-  background: rgba(156, 136, 255, 0.7);
+  transform: ${(props) =>
+    ((props.$isRingOutThrowCutscene && props.$isThrowing)
+      ? -props.$facing
+      : props.$facing) === 1
+      ? "scaleX(1)"
+      : "scaleX(-1)"};
+  background: rgba(156, 136, 255, 0.6);
   z-index: 101;
   pointer-events: none;
   mix-blend-mode: multiply;
-  animation: thickBlubberPulse 0.5s ease-in-out infinite;
 
   /* Use the player image as a mask to only show red where the image is opaque */
   mask-image: url(${(props) => props.$imageSrc});
@@ -397,17 +401,76 @@ const RedTintOverlay = styled.div`
   -webkit-mask-size: contain;
   -webkit-mask-repeat: no-repeat;
   -webkit-mask-position: center;
-
-  @keyframes thickBlubberPulse {
-    0%,
-    100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.4;
-    }
-  }
 `;
+
+const HurtTintOverlay = styled.div`
+  position: absolute;
+  width: 15.03%;
+  height: auto;
+  aspect-ratio: 1;
+  left: ${(props) => (props.$x / 1280) * 100}%;
+  bottom: ${(props) => (props.$y / 720) * 100}%;
+  transform: ${(props) =>
+    ((props.$isRingOutThrowCutscene && props.$isThrowing)
+      ? -props.$facing
+      : props.$facing) === 1
+      ? "scaleX(1)"
+      : "scaleX(-1)"};
+  background: rgba(255, 64, 64, 0.55);
+  z-index: 101;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+
+  mask-image: url(${(props) => props.$imageSrc});
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  -webkit-mask-image: url(${(props) => props.$imageSrc});
+  -webkit-mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+`;
+
+// Lightweight tinted clone image (no masks) for performance and perfect alignment
+const TintedImage = styled.img
+  .withConfig({
+    shouldForwardProp: (prop) =>
+      ![
+        "$x",
+        "$y",
+        "$facing",
+        "$isThrowing",
+        "$isRingOutThrowCutscene",
+        "$variant",
+      ].includes(prop),
+  })
+  .attrs((props) => ({
+    decoding: "async",
+    style: {
+      position: "absolute",
+      left: `${(props.$x / 1280) * 100}%`,
+      bottom: `${(props.$y / 720) * 100}%`,
+      transform:
+        (((props.$isRingOutThrowCutscene && props.$isThrowing)
+          ? -props.$facing
+          : props.$facing) === 1)
+          ? "scaleX(1)"
+          : "scaleX(-1)",
+      zIndex: 101,
+      pointerEvents: "none",
+      width: "min(15.03%, 393px)",
+      height: "auto",
+      willChange: "opacity, transform",
+      // Force strong hue for consistent red/purple regardless of base colors
+      filter:
+        props.$variant === "hurt"
+          ? "sepia(1) saturate(9000%) hue-rotate(0deg) brightness(.65)"
+          : "sepia(1) saturate(9000%) hue-rotate(265deg) brightness(.65)",
+      opacity: props.$variant === "hurt" ? 1 : 1,
+      // Use color blend so the red hue overlays predictably on aqua/salmon bases
+      mixBlendMode: "color",
+    },
+  }))``;
 
 const StyledImage = styled("img")
   .withConfig({
@@ -897,6 +960,83 @@ const GameFighter = ({
   const [thickBlubberIndicator, setThickBlubberIndicator] = useState(false);
   const [disconnectCountdown, setDisconnectCountdown] = useState(3);
   const [uiRoundId, setUiRoundId] = useState(0);
+
+  // Exact sprite source used for the main fighter image so masks always match
+  const currentSpriteSrc = useMemo(() => {
+    return getImageSrc(
+      penguin.fighter,
+      penguin.isDiving,
+      penguin.isJumping,
+      penguin.isAttacking,
+      penguin.isDodging,
+      penguin.isStrafing,
+      penguin.isRawParrying,
+      penguin.isGrabBreaking,
+      penguin.isReady,
+      penguin.isHit,
+      penguin.isDead,
+      penguin.isSlapAttack,
+      penguin.isThrowing,
+      penguin.isGrabbing,
+      penguin.isGrabbingMovement,
+      penguin.isBeingGrabbed,
+      penguin.isThrowingSalt,
+      penguin.slapAnimation,
+      penguin.isBowing,
+      penguin.isThrowTeching,
+      penguin.isBeingPulled,
+      penguin.isBeingPushed,
+      penguin.grabState,
+      penguin.grabAttemptType,
+      penguin.isRecovering,
+      penguin.isRawParryStun,
+      penguin.isRawParrySuccess,
+      penguin.isPerfectRawParrySuccess,
+      penguin.isThrowingSnowball,
+      penguin.isSpawningPumoArmy,
+      penguin.isAtTheRopes,
+      penguin.isCrouchStance,
+      penguin.isCrouchStrafing,
+      penguin.isGrabBreakCountered,
+      penguin.isGrabbingMovement
+    );
+  }, [
+    penguin.fighter,
+    penguin.isDiving,
+    penguin.isJumping,
+    penguin.isAttacking,
+    penguin.isDodging,
+    penguin.isStrafing,
+    penguin.isRawParrying,
+    penguin.isGrabBreaking,
+    penguin.isReady,
+    penguin.isHit,
+    penguin.isDead,
+    penguin.isSlapAttack,
+    penguin.isThrowing,
+    penguin.isGrabbing,
+    penguin.isGrabbingMovement,
+    penguin.isBeingGrabbed,
+    penguin.isThrowingSalt,
+    penguin.slapAnimation,
+    penguin.isBowing,
+    penguin.isThrowTeching,
+    penguin.isBeingPulled,
+    penguin.isBeingPushed,
+    penguin.grabState,
+    penguin.grabAttemptType,
+    penguin.isRecovering,
+    penguin.isRawParryStun,
+    penguin.isRawParrySuccess,
+    penguin.isPerfectRawParrySuccess,
+    penguin.isThrowingSnowball,
+    penguin.isSpawningPumoArmy,
+    penguin.isAtTheRopes,
+    penguin.isCrouchStance,
+    penguin.isCrouchStrafing,
+    penguin.isGrabBreakCountered,
+    penguin.isGrabbingMovement,
+  ]);
 
   // Interpolation constants
   const SERVER_TICK_RATE = 64; // Server runs at 64 FPS
@@ -1750,6 +1890,7 @@ const GameFighter = ({
         y={getDisplayPosition().y}
         facing={penguin.facing}
         isDodging={penguin.isDodging}
+        isGrabStartup={penguin.isGrabStartup}
       />
       <DodgeSmokeEffect
         x={penguin.dodgeStartX || getDisplayPosition().x}
@@ -1827,46 +1968,29 @@ const GameFighter = ({
         $isGrabBreakCountered={penguin.isGrabBreakCountered}
       />
 
-      {thickBlubberIndicator && (
-        <RedTintOverlay
+      {(penguin.isHit || penguin.isBeingThrown || penguin.isBeingGrabbed) && (
+        <TintedImage
           $x={getDisplayPosition().x}
           $y={getDisplayPosition().y}
           $facing={penguin.facing}
-          $imageSrc={getImageSrc(
-            penguin.fighter,
-            penguin.isDiving,
-            penguin.isJumping,
-            penguin.isAttacking,
-            penguin.isDodging,
-            penguin.isStrafing,
-            penguin.isRawParrying,
-            penguin.isGrabBreaking,
-            penguin.isReady,
-            penguin.isHit,
-            penguin.isDead,
-            penguin.isSlapAttack,
-            penguin.isThrowing,
-            penguin.isGrabbing,
-            penguin.isBeingGrabbed,
-            penguin.isThrowingSalt,
-            penguin.slapAnimation,
-            penguin.isBowing,
-            penguin.isThrowTeching,
-            penguin.isBeingPulled,
-            penguin.isBeingPushed,
-            penguin.grabState,
-            penguin.grabAttemptType,
-            penguin.isRecovering,
-            penguin.isRawParryStun,
-            penguin.isRawParrySuccess,
-            penguin.isPerfectRawParrySuccess,
-            penguin.isThrowingSnowball,
-            penguin.isSpawningPumoArmy,
-            penguin.isAtTheRopes,
-            penguin.isCrouchStance,
-            penguin.isCrouchStrafing,
-            penguin.isGrabBreakCountered
-          )}
+          $isThrowing={penguin.isThrowing}
+          $isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
+          src={currentSpriteSrc}
+          alt="hurt-tint"
+          $variant="hurt"
+        />
+      )}
+
+      {thickBlubberIndicator && (
+        <TintedImage
+          $x={getDisplayPosition().x}
+          $y={getDisplayPosition().y}
+          $facing={penguin.facing}
+          $isThrowing={penguin.isThrowing}
+          $isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
+          src={currentSpriteSrc}
+          alt="blubber-tint"
+          $variant="blubber"
         />
       )}
       <SaltEffect

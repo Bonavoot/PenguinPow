@@ -175,7 +175,12 @@ function constrainToMapBoundaries(
 }
 
 function shouldRestartCharging(player) {
-  return player.keys.mouse2 && isPlayerInActiveState(player);
+  // Require explicit intent from the player to restart charging to reduce accidental restarts
+  return (
+    player.keys.mouse2 &&
+    player.wantsToRestartCharge &&
+    isPlayerInActiveState(player)
+  );
 }
 
 function startCharging(player) {
@@ -183,6 +188,8 @@ function startCharging(player) {
   player.chargeStartTime = Date.now();
   player.chargeAttackPower = 1;
   player.attackType = "charged";
+  // Consuming the intent once we begin charging prevents perpetual auto-restarts
+  player.wantsToRestartCharge = false;
 }
 
 function canPlayerSlap(player) {
@@ -223,6 +230,22 @@ function clearChargeState(player, isCancelled = false) {
         player.chargeCancelled = false;
       }
     }, 100);
+  }
+}
+
+// Centralized action lock helpers to prevent simultaneous actions during input mashing
+function isActionLocked(player) {
+  return !!player.actionLockUntil && Date.now() < player.actionLockUntil;
+}
+
+function beginAction(player, actionName, lockDurationMs) {
+  // Guard against invalid durations
+  const duration = Math.max(0, Number(lockDurationMs || 0));
+  player.currentAction = actionName || null;
+  if (duration > 0) {
+    player.actionLockUntil = Date.now() + duration;
+  } else {
+    player.actionLockUntil = 0;
   }
 }
 

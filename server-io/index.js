@@ -126,6 +126,8 @@ const rooms = Array.from({ length: 10 }, (_, i) => ({
   powerUpSelectionPhase: false, // Track power-up selection phase
   opponentDisconnected: false, // Track if opponent disconnected during active game
   disconnectedDuringGame: false, // Track if disconnection happened during active gameplay
+  // Brief freeze for clarity on impactful moments
+  hitstopUntil: 0,
 }));
 
 let gameLoop = null;
@@ -144,6 +146,7 @@ const GRAB_PUSH_SPEED = 0.3; // Increased from 0.2 for more substantial movement
 const GRAB_PUSH_DURATION = 650;
 
 // Add power-up types
+const { GRAB_STATES } = require("./constants");
 const POWER_UP_TYPES = {
   SPEED: "speed",
   POWER: "power",
@@ -178,6 +181,10 @@ const MIN_MOVEMENT_THRESHOLD = 0.01; // New constant for movement cutoff
 // Grab walking tuning
 const GRAB_WALK_SPEED_MULTIPLIER = 0.8; // Slightly slower than normal strafing
 const GRAB_WALK_ACCEL_MULTIPLIER = 0.7; // Slightly lower acceleration than normal strafing
+
+// Grab startup (anticipation) tuning
+const GRAB_STARTUP_DURATION_MS = 220; // slight pause before grab movement
+const GRAB_STARTUP_HOP_HEIGHT = 22; // small vertical hop during startup
 
 // Ring-out cutscene tuning
 const RINGOUT_THROW_DURATION_MS = 2400; // Slower, more cinematic throw duration after ring-out
@@ -216,6 +223,21 @@ const GRAB_BREAK_PUSH_VELOCITY = 1.2; // Reduced push velocity (~55%) for shorte
 const GRAB_BREAK_ANIMATION_DURATION = 300; // Duration for grab break animation state
 const GRAB_BREAK_SEPARATION_DURATION = 220; // Smooth separation tween duration
 const GRAB_BREAK_SEPARATION_MULTIPLIER = 96; // Separation distance scale (tripled)
+
+// Hitstop tuning
+const HITSTOP_SLAP_MS = 60;
+const HITSTOP_CHARGED_MS = 90;
+const HITSTOP_PARRY_MS = 60;
+
+function triggerHitstop(room, durationMs) {
+  const now = Date.now();
+  const target = now + durationMs;
+  room.hitstopUntil = Math.max(room.hitstopUntil || 0, target);
+}
+
+function isRoomInHitstop(room) {
+  return room.hitstopUntil && Date.now() < room.hitstopUntil;
+}
 
 function handlePowerUpSelection(room) {
   // Reset power-up selection state for the room
@@ -428,6 +450,7 @@ function resetRoomAndPlayers(room) {
     // Reset grab movement states
     player.isGrabWalking = false;
     player.isGrabbingMovement = false;
+    player.isGrabStartup = false;
     player.isWhiffingGrab = false;
     player.isGrabClashing = false;
     player.grabClashStartTime = 0;
@@ -435,6 +458,8 @@ function resetRoomAndPlayers(room) {
     player.grabMovementStartTime = 0;
     player.grabMovementDirection = 0;
     player.grabMovementVelocity = 0;
+    player.grabStartupStartTime = 0;
+    player.grabStartupDuration = 0;
     // Reset ring-out throw cutscene flags
     player.isRingOutThrowCutscene = false;
     player.ringOutThrowDistance = 0;
@@ -442,6 +467,8 @@ function resetRoomAndPlayers(room) {
     player.isRingOutFreezeActive = false;
     player.ringOutFreezeEndTime = 0;
     player.ringOutThrowDirection = null;
+    // Reset input lockouts
+    player.inputLockUntil = 0;
   });
 
   // Clear player-specific power-up data
@@ -497,8 +524,8 @@ io.on("connection", (socket) => {
   }
 
   const THROW_TECH_COOLDOWN = 500; // 500ms cooldown on throw techs
-  const THROW_TECH_DURATION = 300; // 300ms duration of throw tech animation
-  const THROW_TECH_WINDOW = 300; // 300ms window for throw techs to occur
+  const THROW_TECH_DURATION = 260; // slightly shorter animation
+  const THROW_TECH_WINDOW = 200; // narrower window reduces frequent techs
 
   function checkForThrowTech(player, opponent) {
     const currentTime = Date.now();
@@ -1227,6 +1254,10 @@ io.on("connection", (socket) => {
 
       // Players Loop
       room.players.forEach((player) => {
+        // Skip most simulation while hitstop is active to create brief, readable freezes
+        if (isRoomInHitstop(room)) {
+          return;
+        }
         if (room.gameOver && player.id === room.loserId && !player.isHit) {
           return;
         }
@@ -1326,6 +1357,32 @@ io.on("connection", (socket) => {
             player.movementVelocity = 0;
             player.isHit = false;
             player.isSlapKnockback = false; // Reset slap knockback flag
+          }
+        }
+
+        // Handle grab startup hop animation (anticipation before grab movement)
+        if (player.isGrabStartup) {
+          const t = Math.min(1,
+            (Date.now() - player.grabStartupStartTime) /
+              (player.grabStartupDuration || GRAB_STARTUP_DURATION_MS)
+          );
+          // Simple parabola hop: peak at t=0.5
+          const arc = 4 * t * (1 - t);
+          player.y = GROUND_LEVEL + arc * GRAB_STARTUP_HOP_HEIGHT;
+          if (t >= 1) {
+            // End startup, land and begin grab movement immediately
+            player.isGrabStartup = false;
+            player.y = GROUND_LEVEL;
+            player.isGrabbingMovement = true;
+          // Keep telegraphing as attempting during lunge movement
+          player.grabState = GRAB_STATES.ATTEMPTING;
+          player.grabAttemptType = "grab";
+            player.grabMovementStartTime = Date.now();
+            player.grabMovementDirection = player.facing === 1 ? -1 : 1;
+            player.grabMovementVelocity = 1.4;
+          } else {
+            // During startup we pause other movements
+            return;
           }
         }
 
@@ -1746,7 +1803,7 @@ io.on("connection", (socket) => {
             return; // Skip normal grab movement processing
           }
 
-          // Move forward during grab movement
+          // Move forward during grab movement (after startup hop)
           let currentSpeedFactor = speedFactor;
           if (player.activePowerUp === POWER_UP_TYPES.SPEED) {
             currentSpeedFactor *= player.powerUpMultiplier;
@@ -1793,6 +1850,9 @@ io.on("connection", (socket) => {
             player.grabMovementVelocity = 0;
             player.movementVelocity = 0;
             player.isStrafing = false;
+          // Transition state out of attempting
+          player.grabState = GRAB_STATES.INITIAL;
+          player.grabAttemptType = null;
 
             // Start the actual grab
             player.isGrabbing = true;
@@ -2855,6 +2915,15 @@ io.on("connection", (socket) => {
 
     // Emit the parry event with just the necessary data
     io.in(roomId).emit("slap_parry", { x: midpointX, y: midpointY });
+
+    // Apply brief hitstop and input lock for clarity
+    const room = rooms.find((r) => r.id === roomId);
+    if (room) {
+      triggerHitstop(room, HITSTOP_PARRY_MS);
+    }
+    const lockUntil = Date.now() + 60;
+    player1.inputLockUntil = Math.max(player1.inputLockUntil || 0, lockUntil);
+    player2.inputLockUntil = Math.max(player2.inputLockUntil || 0, lockUntil);
   }
 
   function applyParryEffect(player, knockbackDirection) {
@@ -3167,6 +3236,13 @@ io.on("connection", (socket) => {
             intensity: 0.5,
             duration: 200,
           });
+          // Hitstop on parry
+          triggerHitstop(currentRoom, HITSTOP_PARRY_MS);
+        }
+        // If movement ended or was interrupted without grabbing, clear telegraph
+        if (!player.isGrabbingMovement && !player.isGrabbing && !player.isGrabClashing) {
+          player.grabState = GRAB_STATES.INITIAL;
+          player.grabAttemptType = null;
         }
       }
     } else {
@@ -3390,6 +3466,8 @@ io.on("connection", (socket) => {
             timestamp: Date.now(), // Add unique timestamp to ensure effect triggers every time
             hitId: Math.random().toString(36).substr(2, 9), // Add unique ID for guaranteed uniqueness
           });
+        // Trigger brief hitstop based on attack type
+        triggerHitstop(currentRoom, isSlapAttack ? HITSTOP_SLAP_MS : HITSTOP_CHARGED_MS);
         }
       }
 
@@ -3413,6 +3491,17 @@ io.on("connection", (socket) => {
         hitStateDuration,
         "hitStateReset" // Named timeout for cleanup
       );
+
+      // Short input lockouts to reduce action spam right after hits
+      const lockMs = isSlapAttack ? 60 : 80;
+      const now = Date.now();
+      otherPlayer.inputLockUntil = Math.max(otherPlayer.inputLockUntil || 0, now + lockMs);
+      player.inputLockUntil = Math.max(player.inputLockUntil || 0, now + lockMs);
+
+      // Encourage clearer turn-taking: set wantsToRestartCharge only on intentional hold
+      if (player.keys && player.keys.mouse2) {
+        player.wantsToRestartCharge = true;
+      }
 
       // Trigger gassed state if stamina is 0 after hit processing
       if (otherPlayer.stamina <= 0 && !otherPlayer.isGassed) {
@@ -3518,6 +3607,7 @@ io.on("connection", (socket) => {
         isGrabbing: false,
         isGrabWalking: false,
         isGrabbingMovement: false,
+        isGrabStartup: false,
         isWhiffingGrab: false,
         isGrabClashing: false,
         grabClashStartTime: 0,
@@ -3525,6 +3615,8 @@ io.on("connection", (socket) => {
         grabMovementStartTime: 0,
         grabMovementDirection: 0,
         grabMovementVelocity: 0,
+        grabStartupStartTime: 0,
+        grabStartupDuration: 0,
         grabStartTime: 0,
         grabbedOpponent: null,
         isThrowTeching: false,
@@ -3601,6 +3693,7 @@ io.on("connection", (socket) => {
         isRingOutFreezeActive: false,
         ringOutFreezeEndTime: 0,
         ringOutThrowDirection: null,
+        inputLockUntil: 0,
       });
     } else if (rooms[roomIndex].players.length === 1) {
       rooms[roomIndex].players.push({
@@ -3637,6 +3730,7 @@ io.on("connection", (socket) => {
         isGrabbing: false,
         isGrabWalking: false,
         isGrabbingMovement: false,
+        isGrabStartup: false,
         isWhiffingGrab: false,
         isGrabClashing: false,
         grabClashStartTime: 0,
@@ -3644,6 +3738,8 @@ io.on("connection", (socket) => {
         grabMovementStartTime: 0,
         grabMovementDirection: 0,
         grabMovementVelocity: 0,
+        grabStartupStartTime: 0,
+        grabStartupDuration: 0,
         grabStartTime: 0,
         grabbedOpponent: null,
         isThrowTeching: false,
@@ -3720,6 +3816,7 @@ io.on("connection", (socket) => {
         isRingOutFreezeActive: false,
         ringOutFreezeEndTime: 0,
         ringOutThrowDirection: null,
+        inputLockUntil: 0,
       });
     }
 
@@ -3976,6 +4073,14 @@ io.on("connection", (socket) => {
       return;
     }
 
+    // Input lockout window: allow key state refresh but block actions
+    if (player.inputLockUntil && Date.now() < player.inputLockUntil) {
+      if (data.keys) {
+        player.keys = data.keys;
+      }
+      return;
+    }
+
     // Block ALL inputs while grab movement is active
     if (player.isGrabbingMovement) {
       // Only allow key state updates for grab movement, but block all other actions
@@ -4078,6 +4183,14 @@ io.on("connection", (socket) => {
       return;
     }
 
+    // If room is in hitstop, buffer key states but block actions for both players
+    if (isRoomInHitstop(rooms[roomIndex])) {
+      if (data.keys) {
+        player.keys = data.keys;
+      }
+      return;
+    }
+
     // Helper function to check if player is in a charged attack execution state
     const isInChargedAttackExecution = () => {
       return player.isAttacking && player.attackType === "charged";
@@ -4085,6 +4198,10 @@ io.on("connection", (socket) => {
 
     // Helper function to check if an action should be blocked
     const shouldBlockAction = (allowDodgeCancelRecovery = false) => {
+      // Global action lock gate to serialize actions visually/feel-wise
+      if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
+        return true;
+      }
       // Always block during charged attack execution
       if (isInChargedAttackExecution()) {
         return true;
@@ -4350,6 +4467,9 @@ io.on("connection", (socket) => {
 
         // Set throwing state
         player.isThrowingSnowball = true;
+        // Lock actions during throw windup/animation window for visual clarity
+        player.currentAction = "snowball";
+        player.actionLockUntil = Date.now() + 250;
 
         // Determine snowball direction based on current position relative to opponent
         const opponent = rooms[roomIndex].players.find(
@@ -4385,6 +4505,10 @@ io.on("connection", (socket) => {
           () => {
             player.isThrowingSnowball = false;
             console.log(`Player ${player.id} finished throwing snowball`);
+            // Clear lock if it’s still set
+            if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
+              player.actionLockUntil = 0;
+            }
 
             // Check if we should restart charging after snowball throw completes
             if (shouldRestartCharging(player)) {
@@ -4399,6 +4523,8 @@ io.on("connection", (socket) => {
 
         // Set spawning state
         player.isSpawningPumoArmy = true;
+        player.currentAction = "pumo_army";
+        player.actionLockUntil = Date.now() + 400;
 
         // Clear any existing movement momentum to prevent sliding during animation
         player.movementVelocity = 0;
@@ -4456,6 +4582,9 @@ io.on("connection", (socket) => {
           () => {
             player.isSpawningPumoArmy = false;
             console.log(`Player ${player.id} finished spawning pumo army`);
+            if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
+              player.actionLockUntil = 0;
+            }
 
             // Check if we should restart charging after pumo army spawn completes
             if (shouldRestartCharging(player)) {
@@ -4505,6 +4634,8 @@ io.on("connection", (socket) => {
       player.dodgeEndTime = Date.now() + 450; // Increased from 400ms for more weighty feel
       player.dodgeStartX = player.x;
       player.dodgeStartY = player.y;
+      player.currentAction = "dodge";
+      player.actionLockUntil = Date.now() + 120; // brief lock to avoid overlap jitters
 
       // Find the first available charge (from right to left)
       for (let i = player.dodgeChargeCooldowns.length - 1; i >= 0; i--) {
@@ -4527,6 +4658,9 @@ io.on("connection", (socket) => {
       setTimeout(() => {
         player.isDodging = false;
         player.dodgeDirection = null;
+        if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
+          player.actionLockUntil = 0;
+        }
 
         // Check for buffered actions after dodge ends
         if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
@@ -4726,6 +4860,9 @@ io.on("connection", (socket) => {
     ) {
       // Simply execute slap attack - it will handle queuing internally if already attacking
       executeSlapAttack(player, rooms);
+      // Short lock to prevent other actions from starting on the same frame burst
+      player.currentAction = "slap";
+      player.actionLockUntil = Date.now() + 80; // ~5 frames at 60fps
     }
 
     function isOpponentCloseEnoughForGrab(player, opponent) {
@@ -4785,6 +4922,8 @@ io.on("connection", (socket) => {
               player.throwStartTime = Date.now();
               player.throwEndTime = Date.now() + 400;
               player.throwOpponent = opponent.id;
+              player.currentAction = "throw";
+              player.actionLockUntil = Date.now() + 200;
               opponent.isBeingThrown = true;
               opponent.isHit = false;
 
@@ -4813,6 +4952,9 @@ io.on("connection", (socket) => {
                 player.id,
                 () => {
                   player.throwCooldown = false;
+                  if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
+                    player.actionLockUntil = 0;
+                  }
                 },
                 250
               );
@@ -4831,12 +4973,17 @@ io.on("connection", (socket) => {
             player.isThrowing = true;
             player.throwStartTime = Date.now();
             player.throwEndTime = Date.now() + 400;
+            player.currentAction = "throw";
+            player.actionLockUntil = Date.now() + 200;
 
             player.throwCooldown = true;
             setPlayerTimeout(
               player.id,
               () => {
                 player.throwCooldown = false;
+                if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
+                  player.actionLockUntil = 0;
+                }
               },
               250
             );
@@ -4858,28 +5005,33 @@ io.on("connection", (socket) => {
       !player.isRawParrying &&
       !player.isJumping &&
       !player.isGrabbingMovement &&
-      !player.isWhiffingGrab
+      !player.isWhiffingGrab &&
+      !player.isGrabStartup
     ) {
       player.lastGrabAttemptTime = Date.now();
 
       // Clear charging attack state when starting grab
       clearChargeState(player, true); // true = cancelled by grab
 
-      // Start grab movement immediately
-      player.isGrabbingMovement = true;
-      player.grabMovementStartTime = Date.now();
-      player.grabMovementDirection = player.facing === 1 ? -1 : 1; // Move in facing direction
-      player.grabMovementVelocity = 1.4; // Slightly faster movement speed
+      // Begin startup pause with small hop
+      player.isGrabStartup = true;
+      player.grabStartupStartTime = Date.now();
+      player.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
+      player.currentAction = "grab_startup";
+      player.actionLockUntil = Date.now() + Math.min(120, GRAB_STARTUP_DURATION_MS);
+      // Immediately telegraph the grab attempt to the client sprites
+      player.grabState = GRAB_STATES.ATTEMPTING;
+      player.grabAttemptType = "grab";
 
       // Clear any existing movement momentum
       player.movementVelocity = 0;
       player.isStrafing = false;
 
       console.log(
-        `Player ${player.id} starting grab movement, facing: ${player.facing}, direction: ${player.grabMovementDirection}`
+        `Player ${player.id} starting grab startup (hop), facing: ${player.facing}`
       );
 
-      // Set up the grab duration timer (750ms)
+      // Set up the grab duration timer (750ms) relative to movement start; schedule once movement begins in tick
       setPlayerTimeout(
         player.id,
         () => {
@@ -4890,6 +5042,9 @@ io.on("connection", (socket) => {
             player.isGrabbingMovement = false;
             player.isWhiffingGrab = true;
             player.grabMovementVelocity = 0;
+            // Clear grab telegraph state on whiff
+            player.grabState = GRAB_STATES.INITIAL;
+            player.grabAttemptType = null;
 
             // Set grab cooldown for whiffed grab
             player.grabCooldown = true;
