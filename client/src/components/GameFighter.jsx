@@ -464,9 +464,9 @@ const TintedImage = styled.img
       // Force strong hue for consistent red/purple regardless of base colors
       filter:
         props.$variant === "hurt"
-          ? "sepia(1) saturate(9000%) hue-rotate(0deg) brightness(.65)"
-          : "sepia(1) saturate(9000%) hue-rotate(265deg) brightness(.65)",
-      opacity: props.$variant === "hurt" ? 1 : 1,
+          ? "sepia(1) saturate(10000%) hue-rotate(0deg) brightness(.75)"
+          : "sepia(1) saturate(10000%) hue-rotate(265deg) brightness(.75)",
+      opacity: props.$variant === "hurt" ? .4 : .4,
       // Use color blend so the red hue overlays predictably on aqua/salmon bases
       mixBlendMode: "color",
     },
@@ -1968,7 +1968,7 @@ const GameFighter = ({
         $isGrabBreakCountered={penguin.isGrabBreakCountered}
       />
 
-      {(penguin.isHit || penguin.isBeingThrown || penguin.isBeingGrabbed) && (
+      {(penguin.isHit || penguin.isBeingThrown) && (
         <TintedImage
           $x={getDisplayPosition().x}
           $y={getDisplayPosition().y}

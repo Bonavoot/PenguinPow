@@ -8,7 +8,7 @@ const {
 } = require("./gameUtils");
 
 // Game constants that are used by these functions
-const GROUND_LEVEL = 240;
+const GROUND_LEVEL = 210;
 const HITBOX_DISTANCE_VALUE = 77; // Reduced by 10% to match smaller player images
 const SLAP_HITBOX_DISTANCE_VALUE = 155; // Reduced range by 15% from 166 to 141 for shorter slap attack reach
 

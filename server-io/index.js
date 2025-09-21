@@ -135,7 +135,7 @@ let staminaRegenCounter = 0;
 const TICK_RATE = 64;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.25; // Increased from 0.22 for snappier movement
-const GROUND_LEVEL = 240;
+const GROUND_LEVEL = 210;
 const HITBOX_DISTANCE_VALUE = 77; // Reduced by 10% to match smaller player images (85 * 0.9 = 76.5)
 const SLAP_HITBOX_DISTANCE_VALUE = 155;
 const SLAP_PARRY_WINDOW = 200; // Updated to 200ms window for parry to account for longer slap animation
@@ -187,7 +187,7 @@ const GRAB_STARTUP_DURATION_MS = 220; // slight pause before grab movement
 const GRAB_STARTUP_HOP_HEIGHT = 22; // small vertical hop during startup
 
 // Ring-out cutscene tuning
-const RINGOUT_THROW_DURATION_MS = 2400; // Slower, more cinematic throw duration after ring-out
+const RINGOUT_THROW_DURATION_MS = 400; // Match normal throw timing for consistent physics
 
 const RAW_PARRY_KNOCKBACK = 1.5; // Fixed knockback distance for raw parries (reduced by 50%)
 const RAW_PARRY_STUN_DURATION = 1000; // 1 second stun duration
@@ -1508,10 +1508,8 @@ io.on("connection", (socket) => {
             (p) => p.id === player.throwOpponent
           );
           if (opponent) {
-            const throwArcHeight = player.isRingOutThrowCutscene ? 900 : 450; // Extra high arc for ring-out cutscene
-            const throwDistance = player.isRingOutThrowCutscene
-              ? player.ringOutThrowDistance || 900
-              : 120;
+            // Match dodge-style arc for cutscene: peak ~75 with same parabola scale used in dodge (3.2 * height * t * (1-t))
+            const throwArcHeight = player.isRingOutThrowCutscene ? 75 : 450;
             let armsReachDistance = -100;
 
             if (!player.throwingFacingDirection) {
@@ -1538,6 +1536,16 @@ io.on("connection", (socket) => {
               armsReachDistance = currentSeparation * throwingDir;
             }
 
+            // For cutscene: travel a small extra distance OUTWARD from current separation
+            // This avoids pulling the opponent back into the player when the separation is already larger than the small target
+            let throwDistance;
+            if (player.isRingOutThrowCutscene) {
+              const extraOutward = player.ringOutThrowDistance || 4; // treat as extra outward distance
+              throwDistance = armsReachDistance + Math.max(extraOutward, 0);
+            } else {
+              throwDistance = 120;
+            }
+
             const newX =
               player.x +
               player.throwingFacingDirection *
@@ -1547,9 +1555,16 @@ io.on("connection", (socket) => {
             // Always update position during throw - let throws complete their full arc
             opponent.x = newX;
 
-            opponent.y =
-              GROUND_LEVEL +
-              3.2 * throwArcHeight * throwProgress * (1 - throwProgress);
+            // Use a consistent inverted-U arc for cutscene
+            if (player.isRingOutThrowCutscene) {
+              const arcProgress = 4 * throwProgress * (1 - throwProgress); // perfect inverted-U from 0..1..0
+              const hopHeight = arcProgress * 60; // modest peak
+              opponent.y = GROUND_LEVEL + hopHeight;
+            } else {
+              opponent.y =
+                GROUND_LEVEL +
+                3.2 * throwArcHeight * throwProgress * (1 - throwProgress);
+            }
 
             // Check if throw is complete
             if (currentTime >= player.throwEndTime) {
@@ -1571,7 +1586,7 @@ io.on("connection", (socket) => {
                 }
               }
 
-              // Reset all throw-related states for both players
+              // Ensure landing at ground level, then reset throw-related states for both players
               player.isThrowing = false;
               player.throwOpponent = null;
               player.throwingFacingDirection = null;
@@ -1595,7 +1610,7 @@ io.on("connection", (socket) => {
               opponent.isBeingThrown = false;
               opponent.beingThrownFacingDirection = null;
               opponent.isHit = false;
-              opponent.y = GROUND_LEVEL;
+              opponent.y = GROUND_LEVEL; // force final Y to ground level
               opponent.knockbackVelocity.y = 0;
               opponent.knockbackVelocity.x = 0;
               opponent.movementVelocity = 0;
@@ -1650,7 +1665,7 @@ io.on("connection", (socket) => {
         }
         // Dodging
         if (player.isDodging) {
-          let currentDodgeSpeed = speedFactor * 2.4; // Increased for more distance
+          let currentDodgeSpeed = speedFactor * 1.8; // Reduced by 25% for shorter distance
 
           // Apply speed power-up to dodge with moderate multiplier
           if (player.activePowerUp === POWER_UP_TYPES.SPEED) {
@@ -1665,7 +1680,7 @@ io.on("connection", (socket) => {
           // Simple parabolic arc - starts slow, peaks in middle, lands with weight
           // Using a quadratic function for more realistic arc shape
           const arcProgress = 4 * dodgeProgress * (1 - dodgeProgress); // Parabola that peaks at 0.5
-          const hopHeight = arcProgress * 50; // Reduced height for a lower hop
+          const hopHeight = arcProgress * 75; // Reverted to original hop height
 
           // Add slight deceleration over time for weightier feel
           const speedMultiplier = 1.0 - dodgeProgress * 0.2; // Slow down by 20% over time
@@ -2672,9 +2687,9 @@ io.on("connection", (socket) => {
                       grabber.ringOutThrowDirection || 1;
                     grabbed.beingThrownFacingDirection = grabbed.facing;
 
-                    // Mark as ring-out throw cutscene and set big distance so opponent flies off-screen
+                    // Mark as ring-out throw cutscene and set a minimal distance so opponent lands just in front
                     grabber.isRingOutThrowCutscene = true;
-                    grabber.ringOutThrowDistance = 900; // Big distance to go well past screen
+                    grabber.ringOutThrowDistance = 4; // Extremely short distance so they land right in front
                     grabber.ringOutThrowDirection = null;
                     grabber.pendingRingOutThrowTarget = null;
                   },

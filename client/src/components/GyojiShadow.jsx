@@ -4,13 +4,13 @@ import PropTypes from "prop-types";
 const GyojiShadowElement = styled.div`
   position: absolute;
   left: ${(props) => (props.$gyojiState === "idle" ? "43.5%" : "44.5%")};
-  bottom: ${(props) => (props.$gyojiState === "idle" ? "41.5%" : "41.5%")};
+  bottom: ${(props) => (props.$gyojiState === "idle" ? "38.5%" : "38.5%")};
   width: ${(props) => (props.$gyojiState === "idle" ? "12.4%" : "9.8%")};
   height: 6%;
   background: radial-gradient(
     ellipse at center,
-    rgba(0, 0, 0, 0.6) 0%,
-    rgba(0, 0, 0, 0) 70%
+    rgba(0, 0, 0, 0.7) 0%,
+    rgba(0, 0, 0, 0) 75%
   );
   border-radius: 50%;
   pointer-events: none;
