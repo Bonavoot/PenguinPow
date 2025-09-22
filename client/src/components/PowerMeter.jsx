@@ -77,8 +77,8 @@ const PowerMeter = ({
 
   const meterStyle = {
     left: `${(x / 1280) * 100}%`,
-    bottom: `${((y + 235) / 720) * 93}%`,
-    transform: `translateX(${facing === 1 ? "55%" : "45%"})`,
+    bottom: `${((y + 235) / 720) * 103}%`,
+    transform: `translateX(${facing === 1 ? "75%" : "70%"})`,
   };
 
   const fillStyle = {

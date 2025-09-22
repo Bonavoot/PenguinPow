@@ -745,9 +745,9 @@ const SaltBasket = styled.img
       position: "absolute",
       width: "4.55%",
       height: "auto",
-      bottom: `${((GROUND_LEVEL + 100) / 720) * 153}%`,
-      left: props.$index === 0 ? "21%" : "auto",
-      right: props.$index === 1 ? "21.5%" : "auto",
+      bottom: `${((GROUND_LEVEL + 100) / 720) * 140}%`,
+      left: props.$index === 0 ? "17%" : "auto",
+      right: props.$index === 1 ? "17.7%" : "auto",
       transform: props.$index === 1 ? "scaleX(-1)" : "none",
       zIndex: 1,
       pointerEvents: "none",
@@ -758,8 +758,8 @@ const SaltBasket = styled.img
 
 const YouLabel = styled.div`
   position: absolute;
-  bottom: ${(props) => (props.y / 720) * 100 + 27}%;
-  left: ${(props) => (props.x / 1280) * 100 + 7}%;
+  bottom: ${(props) => (props.y / 720) * 100 + 33}%;
+  left: ${(props) => (props.x / 1280) * 100 + 10}%;
   transform: translateX(-50%);
   color: #ffd700;
   font-family: "Bungee";

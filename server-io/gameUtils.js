@@ -1,6 +1,6 @@
 // Game constants
-const MAP_LEFT_BOUNDARY = 160;
-const MAP_RIGHT_BOUNDARY = 925;
+const MAP_LEFT_BOUNDARY = 150;
+const MAP_RIGHT_BOUNDARY = 880;
 
 // Timeout manager for memory leak prevention
 class TimeoutManager {

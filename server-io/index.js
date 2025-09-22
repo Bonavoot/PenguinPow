@@ -407,7 +407,7 @@ function resetRoomAndPlayers(room) {
     player.isGassed = false;
     player.gassedEndTime = 0;
     player.isBowing = false;
-    player.x = player.fighter === "player 1" ? 300 : 775;
+    player.x = player.fighter === "player 1" ? 245 : 775;
     player.y = GROUND_LEVEL;
     player.knockbackVelocity = { x: 0, y: 0 };
     // Reset dodge charges

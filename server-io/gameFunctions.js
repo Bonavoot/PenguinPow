@@ -519,7 +519,7 @@ function calculateEffectiveHitboxSize(player) {
 function handleReadyPositions(room, player1, player2, io) {
   if (room.gameStart === false && room.hakkiyoiCount === 0) {
     // Only adjust player 1's ready position based on size power-up
-    const player1ReadyX = 415; // Removed SIZE power-up condition
+    const player1ReadyX = 360; // Removed SIZE power-up condition
     const player2ReadyX = 665;
 
     // Only move players if they're allowed to move (after salt throw) AND they're not attacking
