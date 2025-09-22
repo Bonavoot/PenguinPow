@@ -9,8 +9,8 @@ const {
 
 // Game constants that are used by these functions
 const GROUND_LEVEL = 210;
-const HITBOX_DISTANCE_VALUE = 77; // Reduced by 10% to match smaller player images
-const SLAP_HITBOX_DISTANCE_VALUE = 155; // Reduced range by 15% from 166 to 141 for shorter slap attack reach
+const HITBOX_DISTANCE_VALUE = Math.round(77 * 1.3);
+const SLAP_HITBOX_DISTANCE_VALUE = Math.round(155 * 1.3);
 
 // Add new function for grab state cleanup
 function cleanupGrabStates(player, opponent) {

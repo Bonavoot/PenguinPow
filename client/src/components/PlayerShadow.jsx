@@ -5,7 +5,13 @@ const GROUND_LEVEL = 210; // Match the server's GROUND_LEVEL
 
 const ShadowElement = styled.div.attrs((props) => {
   // Calculate the bottom position
-  const bottomPos = props.$isDodging || props.$isGrabStartup ? GROUND_LEVEL : props.$y;
+  const forceGround =
+    props.$isDodging ||
+    props.$isGrabStartup ||
+    props.$isThrowing ||
+    props.$isBeingThrown ||
+    props.$isRingOutThrowCutscene;
+  const bottomPos = forceGround ? GROUND_LEVEL : props.$y;
 
   // Use custom offsets if provided, otherwise use defaults
   const offsetLeft =
@@ -22,8 +28,8 @@ const ShadowElement = styled.div.attrs((props) => {
     },
   };
 })`
-  width: ${(props) => props.$width || "10.6%"};
-  height: ${(props) => props.$height || "3.65%"};
+  width: ${(props) => props.$width || "13.78%"};
+  height: ${(props) => props.$height || "4.75%"};
   background: radial-gradient(
     ellipse at center,
     rgba(0, 0, 0, 0.6) 0%,
@@ -41,6 +47,9 @@ const PlayerShadow = ({
   facing,
   isDodging,
   isGrabStartup,
+  isThrowing,
+  isBeingThrown,
+  isRingOutThrowCutscene,
   width,
   height,
   offsetLeft,
@@ -53,6 +62,9 @@ const PlayerShadow = ({
       $facing={facing}
       $isDodging={isDodging}
       $isGrabStartup={isGrabStartup}
+      $isThrowing={isThrowing}
+      $isBeingThrown={isBeingThrown}
+      $isRingOutThrowCutscene={isRingOutThrowCutscene}
       $width={width}
       $height={height}
       $offsetLeft={offsetLeft}
@@ -67,6 +79,9 @@ PlayerShadow.propTypes = {
   facing: PropTypes.number.isRequired,
   isDodging: PropTypes.bool,
   isGrabStartup: PropTypes.bool,
+  isThrowing: PropTypes.bool,
+  isBeingThrown: PropTypes.bool,
+  isRingOutThrowCutscene: PropTypes.bool,
   width: PropTypes.string,
   height: PropTypes.string,
   offsetLeft: PropTypes.string,

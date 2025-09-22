@@ -136,12 +136,12 @@ const TICK_RATE = 64;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.25; // Increased from 0.22 for snappier movement
 const GROUND_LEVEL = 210;
-const HITBOX_DISTANCE_VALUE = 77; // Reduced by 10% to match smaller player images (85 * 0.9 = 76.5)
-const SLAP_HITBOX_DISTANCE_VALUE = 155;
+const HITBOX_DISTANCE_VALUE = Math.round(77 * 1.3); // 100 (scaled +30%)
+const SLAP_HITBOX_DISTANCE_VALUE = Math.round(155 * 1.3); // 202 (scaled +30%)
 const SLAP_PARRY_WINDOW = 200; // Updated to 200ms window for parry to account for longer slap animation
 const SLAP_PARRY_KNOCKBACK_VELOCITY = 1.5; // Reduced knockback for parried attacks
-const THROW_RANGE = 166; // Reduced by 10% to match smaller player images (184 * 0.9 = 165.6)
-const GRAB_RANGE = 126; // Reduced by 10% to match smaller player images (140 * 0.9 = 126)
+const THROW_RANGE = Math.round(166 * 1.3); // 216 (scaled +30%)
+const GRAB_RANGE = Math.round(126 * 1.3); // 164 (scaled +30%)
 const GRAB_PUSH_SPEED = 0.3; // Increased from 0.2 for more substantial movement
 const GRAB_PUSH_DURATION = 650;
 
@@ -799,7 +799,8 @@ io.on("connection", (socket) => {
           );
           if (opponent && !opponent.isHit) {
             // Keep opponent at fixed distance during grab
-            const fixedDistance = 81 * (opponent.sizeMultiplier || 1); // Reduced from 90 by 10% to match smaller player images
+            const fixedDistance =
+              Math.round(81 * 1.3) * (opponent.sizeMultiplier || 1); // Scaled +30%
             opponent.x =
               player1.facing === 1
                 ? player1.x - fixedDistance
@@ -1041,7 +1042,10 @@ io.on("connection", (socket) => {
               !snowball.hasHit
             ) {
               const distance = Math.abs(snowball.x - opponent.x);
-              if (distance < 45 && Math.abs(snowball.y - opponent.y) < 27) {
+              if (
+                distance < Math.round(45 * 1.3) &&
+                Math.abs(snowball.y - opponent.y) < Math.round(27 * 1.3)
+              ) {
                 // Check for thick blubber hit absorption
                 if (
                   opponent.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
@@ -1114,7 +1118,10 @@ io.on("connection", (socket) => {
             // Check collision with raw parrying opponent (snowball is blocked but destroyed)
             if (opponent && opponent.isRawParrying && !snowball.hasHit) {
               const distance = Math.abs(snowball.x - opponent.x);
-              if (distance < 45 && Math.abs(snowball.y - opponent.y) < 27) {
+              if (
+                distance < Math.round(45 * 1.3) &&
+                Math.abs(snowball.y - opponent.y) < Math.round(27 * 1.3)
+              ) {
                 // Snowball is blocked - destroy it but don't apply knockback
                 snowball.hasHit = true;
                 return false; // Remove snowball after being blocked
@@ -1164,7 +1171,10 @@ io.on("connection", (socket) => {
               !clone.hasHit
             ) {
               const distance = Math.abs(clone.x - opponent.x);
-              if (distance < 54 && Math.abs(clone.y - opponent.y) < 36) {
+              if (
+                distance < Math.round(54 * 1.3) &&
+                Math.abs(clone.y - opponent.y) < Math.round(36 * 1.3)
+              ) {
                 // Check for thick blubber hit absorption
                 if (
                   opponent.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
@@ -1237,7 +1247,10 @@ io.on("connection", (socket) => {
             // Check collision with raw parrying opponent (clone is blocked but destroyed)
             if (opponent && opponent.isRawParrying && !clone.hasHit) {
               const distance = Math.abs(clone.x - opponent.x);
-              if (distance < 54 && Math.abs(clone.y - opponent.y) < 36) {
+              if (
+                distance < Math.round(54 * 1.3) &&
+                Math.abs(clone.y - opponent.y) < Math.round(36 * 1.3)
+              ) {
                 // Clone is blocked - destroy it but don't apply knockback
                 clone.hasHit = true;
                 return false; // Remove clone after being blocked
@@ -1362,7 +1375,8 @@ io.on("connection", (socket) => {
 
         // Handle grab startup hop animation (anticipation before grab movement)
         if (player.isGrabStartup) {
-          const t = Math.min(1,
+          const t = Math.min(
+            1,
             (Date.now() - player.grabStartupStartTime) /
               (player.grabStartupDuration || GRAB_STARTUP_DURATION_MS)
           );
@@ -1374,9 +1388,9 @@ io.on("connection", (socket) => {
             player.isGrabStartup = false;
             player.y = GROUND_LEVEL;
             player.isGrabbingMovement = true;
-          // Keep telegraphing as attempting during lunge movement
-          player.grabState = GRAB_STATES.ATTEMPTING;
-          player.grabAttemptType = "grab";
+            // Keep telegraphing as attempting during lunge movement
+            player.grabState = GRAB_STATES.ATTEMPTING;
+            player.grabAttemptType = "grab";
             player.grabMovementStartTime = Date.now();
             player.grabMovementDirection = player.facing === 1 ? -1 : 1;
             player.grabMovementVelocity = 1.4;
@@ -1865,9 +1879,9 @@ io.on("connection", (socket) => {
             player.grabMovementVelocity = 0;
             player.movementVelocity = 0;
             player.isStrafing = false;
-          // Transition state out of attempting
-          player.grabState = GRAB_STATES.INITIAL;
-          player.grabAttemptType = null;
+            // Transition state out of attempting
+            player.grabState = GRAB_STATES.INITIAL;
+            player.grabAttemptType = null;
 
             // Start the actual grab
             player.isGrabbing = true;
@@ -2633,7 +2647,8 @@ io.on("connection", (socket) => {
             }
 
             // Keep opponent attached at fixed distance during grab
-            const fixedDistance = 81 * (opponent.sizeMultiplier || 1);
+            const fixedDistance =
+              Math.round(81 * 1.3) * (opponent.sizeMultiplier || 1);
             opponent.x =
               player.facing === 1
                 ? player.x - fixedDistance
@@ -3255,7 +3270,11 @@ io.on("connection", (socket) => {
           triggerHitstop(currentRoom, HITSTOP_PARRY_MS);
         }
         // If movement ended or was interrupted without grabbing, clear telegraph
-        if (!player.isGrabbingMovement && !player.isGrabbing && !player.isGrabClashing) {
+        if (
+          !player.isGrabbingMovement &&
+          !player.isGrabbing &&
+          !player.isGrabClashing
+        ) {
           player.grabState = GRAB_STATES.INITIAL;
           player.grabAttemptType = null;
         }
@@ -3481,8 +3500,11 @@ io.on("connection", (socket) => {
             timestamp: Date.now(), // Add unique timestamp to ensure effect triggers every time
             hitId: Math.random().toString(36).substr(2, 9), // Add unique ID for guaranteed uniqueness
           });
-        // Trigger brief hitstop based on attack type
-        triggerHitstop(currentRoom, isSlapAttack ? HITSTOP_SLAP_MS : HITSTOP_CHARGED_MS);
+          // Trigger brief hitstop based on attack type
+          triggerHitstop(
+            currentRoom,
+            isSlapAttack ? HITSTOP_SLAP_MS : HITSTOP_CHARGED_MS
+          );
         }
       }
 
@@ -3510,8 +3532,14 @@ io.on("connection", (socket) => {
       // Short input lockouts to reduce action spam right after hits
       const lockMs = isSlapAttack ? 60 : 80;
       const now = Date.now();
-      otherPlayer.inputLockUntil = Math.max(otherPlayer.inputLockUntil || 0, now + lockMs);
-      player.inputLockUntil = Math.max(player.inputLockUntil || 0, now + lockMs);
+      otherPlayer.inputLockUntil = Math.max(
+        otherPlayer.inputLockUntil || 0,
+        now + lockMs
+      );
+      player.inputLockUntil = Math.max(
+        player.inputLockUntil || 0,
+        now + lockMs
+      );
 
       // Encourage clearer turn-taking: set wantsToRestartCharge only on intentional hold
       if (player.keys && player.keys.mouse2) {
@@ -4967,7 +4995,10 @@ io.on("connection", (socket) => {
                 player.id,
                 () => {
                   player.throwCooldown = false;
-                  if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
+                  if (
+                    player.actionLockUntil &&
+                    Date.now() < player.actionLockUntil
+                  ) {
                     player.actionLockUntil = 0;
                   }
                 },
@@ -4996,7 +5027,10 @@ io.on("connection", (socket) => {
               player.id,
               () => {
                 player.throwCooldown = false;
-                if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
+                if (
+                  player.actionLockUntil &&
+                  Date.now() < player.actionLockUntil
+                ) {
                   player.actionLockUntil = 0;
                 }
               },
@@ -5033,7 +5067,8 @@ io.on("connection", (socket) => {
       player.grabStartupStartTime = Date.now();
       player.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
       player.currentAction = "grab_startup";
-      player.actionLockUntil = Date.now() + Math.min(120, GRAB_STARTUP_DURATION_MS);
+      player.actionLockUntil =
+        Date.now() + Math.min(120, GRAB_STARTUP_DURATION_MS);
       // Immediately telegraph the grab attempt to the client sprites
       player.grabState = GRAB_STATES.ATTEMPTING;
       player.grabAttemptType = "grab";

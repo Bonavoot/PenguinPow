@@ -5,8 +5,8 @@ const GyojiShadowElement = styled.div`
   position: absolute;
   left: ${(props) => (props.$gyojiState === "idle" ? "43.5%" : "44.5%")};
   bottom: ${(props) => (props.$gyojiState === "idle" ? "38.5%" : "38.5%")};
-  width: ${(props) => (props.$gyojiState === "idle" ? "12.4%" : "9.8%")};
-  height: 6%;
+  width: ${(props) => (props.$gyojiState === "idle" ? "16.12%" : "12.74%")};
+  height: 7.8%;
   background: radial-gradient(
     ellipse at center,
     rgba(0, 0, 0, 0.7) 0%,
