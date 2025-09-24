@@ -408,7 +408,7 @@ function resetRoomAndPlayers(room) {
     player.isGassed = false;
     player.gassedEndTime = 0;
     player.isBowing = false;
-    player.x = player.fighter === "player 1" ? 245 : 775;
+    player.x = player.fighter === "player 1" ? 285 : 775;
     player.y = GROUND_LEVEL;
     player.knockbackVelocity = { x: 0, y: 0 };
     // Reset dodge charges
@@ -1048,7 +1048,10 @@ io.on("connection", (socket) => {
               const sizeMul = opponent.sizeMultiplier || 1;
               const horizThresh = Math.round(45 * 1.3) * sizeMul;
               const vertThresh = Math.round(27 * 1.3) * sizeMul;
-              if (distance < horizThresh && Math.abs(snowball.y - opponent.y) < vertThresh) {
+              if (
+                distance < horizThresh &&
+                Math.abs(snowball.y - opponent.y) < vertThresh
+              ) {
                 // Check for thick blubber hit absorption
                 if (
                   opponent.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
@@ -1124,7 +1127,10 @@ io.on("connection", (socket) => {
               const sizeMul = opponent.sizeMultiplier || 1;
               const horizThresh = Math.round(45 * 1.3) * sizeMul;
               const vertThresh = Math.round(27 * 1.3) * sizeMul;
-              if (distance < horizThresh && Math.abs(snowball.y - opponent.y) < vertThresh) {
+              if (
+                distance < horizThresh &&
+                Math.abs(snowball.y - opponent.y) < vertThresh
+              ) {
                 // Snowball is blocked - destroy it but don't apply knockback
                 snowball.hasHit = true;
                 return false; // Remove snowball after being blocked
@@ -1177,7 +1183,10 @@ io.on("connection", (socket) => {
               const sizeMul = opponent.sizeMultiplier || 1;
               const horizThresh = Math.round(54 * 1.3) * sizeMul;
               const vertThresh = Math.round(36 * 1.3) * sizeMul;
-              if (distance < horizThresh && Math.abs(clone.y - opponent.y) < vertThresh) {
+              if (
+                distance < horizThresh &&
+                Math.abs(clone.y - opponent.y) < vertThresh
+              ) {
                 // Check for thick blubber hit absorption
                 if (
                   opponent.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
@@ -1253,7 +1262,10 @@ io.on("connection", (socket) => {
               const sizeMul = opponent.sizeMultiplier || 1;
               const horizThresh = Math.round(54 * 1.3) * sizeMul;
               const vertThresh = Math.round(36 * 1.3) * sizeMul;
-              if (distance < horizThresh && Math.abs(clone.y - opponent.y) < vertThresh) {
+              if (
+                distance < horizThresh &&
+                Math.abs(clone.y - opponent.y) < vertThresh
+              ) {
                 // Clone is blocked - destroy it but don't apply knockback
                 clone.hasHit = true;
                 return false; // Remove clone after being blocked

@@ -461,7 +461,7 @@ const TintedImage = styled.img
       zIndex: 101,
       pointerEvents: "none",
       width: "min(16.609%, 511px)",
-      
+
       height: "auto",
       willChange: "opacity, transform",
       // Force strong hue for consistent red/purple regardless of base colors
@@ -612,7 +612,7 @@ const StyledImage = styled("img")
         ? "rawParryFlash 1.2s ease-in-out infinite"
         : "none",
       width: "min(16.609%, 511px)",
-      
+
       height: "auto",
       willChange: "bottom, left, filter, opacity",
       pointerEvents: "none",

@@ -1,6 +1,6 @@
 // Game constants
-const MAP_LEFT_BOUNDARY = 150;
-const MAP_RIGHT_BOUNDARY = 880;
+const MAP_LEFT_BOUNDARY = 165;
+const MAP_RIGHT_BOUNDARY = 900;
 const DEFAULT_PLAYER_SIZE_MULTIPLIER = 0.85; // 15% smaller default size
 
 // Timeout manager for memory leak prevention
@@ -221,7 +221,7 @@ function clearChargeState(player, isCancelled = false) {
   player.pendingChargeAttack = null;
   player.spacebarReleasedDuringDodge = false;
   player.mouse2HeldDuringAttack = false; // Clear the flag when clearing charge state
-  
+
   // Set flag to indicate charge was cancelled (not executed)
   if (isCancelled) {
     player.chargeCancelled = true;
