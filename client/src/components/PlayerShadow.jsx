@@ -28,8 +28,8 @@ const ShadowElement = styled.div.attrs((props) => {
     },
   };
 })`
-  width: ${(props) => props.$width || "13.78%"};
-  height: ${(props) => props.$height || "4.75%"};
+  width: ${(props) => props.$width || "11.713%"};
+  height: ${(props) => props.$height || "4.04%"};
   background: radial-gradient(
     ellipse at center,
     rgba(0, 0, 0, 0.6) 0%,

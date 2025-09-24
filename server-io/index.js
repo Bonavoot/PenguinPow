@@ -31,6 +31,7 @@ const {
   startCharging,
   canPlayerSlap,
   clearChargeState,
+  DEFAULT_PLAYER_SIZE_MULTIPLIER,
 } = require("./gameUtils");
 
 // Import game functions
@@ -417,6 +418,8 @@ function resetRoomAndPlayers(room) {
     player.activePowerUp = null;
     player.powerUpMultiplier = 1;
     player.selectedPowerUp = null;
+    // Apply default size
+    player.sizeMultiplier = DEFAULT_PLAYER_SIZE_MULTIPLIER;
     // Reset snowball state
     player.snowballs = [];
     player.snowballCooldown = false;
@@ -1042,10 +1045,10 @@ io.on("connection", (socket) => {
               !snowball.hasHit
             ) {
               const distance = Math.abs(snowball.x - opponent.x);
-              if (
-                distance < Math.round(45 * 1.3) &&
-                Math.abs(snowball.y - opponent.y) < Math.round(27 * 1.3)
-              ) {
+              const sizeMul = opponent.sizeMultiplier || 1;
+              const horizThresh = Math.round(45 * 1.3) * sizeMul;
+              const vertThresh = Math.round(27 * 1.3) * sizeMul;
+              if (distance < horizThresh && Math.abs(snowball.y - opponent.y) < vertThresh) {
                 // Check for thick blubber hit absorption
                 if (
                   opponent.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
@@ -1118,10 +1121,10 @@ io.on("connection", (socket) => {
             // Check collision with raw parrying opponent (snowball is blocked but destroyed)
             if (opponent && opponent.isRawParrying && !snowball.hasHit) {
               const distance = Math.abs(snowball.x - opponent.x);
-              if (
-                distance < Math.round(45 * 1.3) &&
-                Math.abs(snowball.y - opponent.y) < Math.round(27 * 1.3)
-              ) {
+              const sizeMul = opponent.sizeMultiplier || 1;
+              const horizThresh = Math.round(45 * 1.3) * sizeMul;
+              const vertThresh = Math.round(27 * 1.3) * sizeMul;
+              if (distance < horizThresh && Math.abs(snowball.y - opponent.y) < vertThresh) {
                 // Snowball is blocked - destroy it but don't apply knockback
                 snowball.hasHit = true;
                 return false; // Remove snowball after being blocked
@@ -1171,10 +1174,10 @@ io.on("connection", (socket) => {
               !clone.hasHit
             ) {
               const distance = Math.abs(clone.x - opponent.x);
-              if (
-                distance < Math.round(54 * 1.3) &&
-                Math.abs(clone.y - opponent.y) < Math.round(36 * 1.3)
-              ) {
+              const sizeMul = opponent.sizeMultiplier || 1;
+              const horizThresh = Math.round(54 * 1.3) * sizeMul;
+              const vertThresh = Math.round(36 * 1.3) * sizeMul;
+              if (distance < horizThresh && Math.abs(clone.y - opponent.y) < vertThresh) {
                 // Check for thick blubber hit absorption
                 if (
                   opponent.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
@@ -1247,10 +1250,10 @@ io.on("connection", (socket) => {
             // Check collision with raw parrying opponent (clone is blocked but destroyed)
             if (opponent && opponent.isRawParrying && !clone.hasHit) {
               const distance = Math.abs(clone.x - opponent.x);
-              if (
-                distance < Math.round(54 * 1.3) &&
-                Math.abs(clone.y - opponent.y) < Math.round(36 * 1.3)
-              ) {
+              const sizeMul = opponent.sizeMultiplier || 1;
+              const horizThresh = Math.round(54 * 1.3) * sizeMul;
+              const vertThresh = Math.round(36 * 1.3) * sizeMul;
+              if (distance < horizThresh && Math.abs(clone.y - opponent.y) < vertThresh) {
                 // Clone is blocked - destroy it but don't apply knockback
                 clone.hasHit = true;
                 return false; // Remove clone after being blocked
@@ -2761,7 +2764,7 @@ io.on("connection", (socket) => {
         // if (player.activePowerUp === POWER_UP_TYPES.SIZE) {
         //   player.sizeMultiplier = player.powerUpMultiplier;
         // } else {
-        player.sizeMultiplier = 1;
+        player.sizeMultiplier = DEFAULT_PLAYER_SIZE_MULTIPLIER;
         // }
 
         // Update charge attack power in the game loop
@@ -3612,6 +3615,8 @@ io.on("connection", (socket) => {
       existingPlayer.hitAbsorptionUsed = false;
       existingPlayer.snowballs = [];
       existingPlayer.pumoArmy = [];
+      // Ensure default size is applied
+      existingPlayer.sizeMultiplier = DEFAULT_PLAYER_SIZE_MULTIPLIER;
       // Don't set canMoveToReady here - it should only be set during actual salt throwing phase
     }
 
@@ -3717,6 +3722,7 @@ io.on("connection", (socket) => {
         activePowerUp: null,
         powerUpMultiplier: 1,
         selectedPowerUp: null,
+        sizeMultiplier: DEFAULT_PLAYER_SIZE_MULTIPLIER,
         hitAbsorptionUsed: false, // Add thick blubber hit absorption tracking
         hitCounter: 0, // Add counter for reliable hit sound triggering
         lastHitTime: 0, // Add timing tracking for dynamic hit duration
@@ -3840,6 +3846,7 @@ io.on("connection", (socket) => {
         activePowerUp: null,
         powerUpMultiplier: 1,
         selectedPowerUp: null,
+        sizeMultiplier: DEFAULT_PLAYER_SIZE_MULTIPLIER,
         hitAbsorptionUsed: false, // Add thick blubber hit absorption tracking
         hitCounter: 0, // Add counter for reliable hit sound triggering
         lastHitTime: 0, // Add timing tracking for dynamic hit duration

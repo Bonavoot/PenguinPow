@@ -27,10 +27,12 @@ const FighterUIContainer = styled.div`
   font-family: "Bungee", cursive;
   background: linear-gradient(
     180deg,
-    rgba(28, 28, 28, 0.8) 0%,
-    rgba(18, 18, 18, 0.5) 70%,
+    rgba(16, 16, 22, 0.75) 0%,
+    rgba(12, 12, 18, 0.45) 70%,
     rgba(0, 0, 0, 0) 100%
   );
+  border-top: 2px solid rgba(212, 175, 55, 0.25);
+  
 
   @media (max-width: 1200px) {
     height: clamp(100px, 12vh, 130px);
@@ -87,20 +89,17 @@ const StaminaRow = styled.div`
 const PlayerAvatar = styled.div`
   width: clamp(40px, 5vw, 60px);
   height: clamp(40px, 5vw, 60px);
-  background: linear-gradient(
-    145deg,
-    rgba(28, 28, 28, 0.95),
-    rgba(18, 18, 18, 0.95)
-  );
-  border: clamp(2px, 0.3vw, 3px) solid #8b4513;
+  background: radial-gradient(120% 100% at 50% 35%, rgba(20, 20, 28, 0.95) 0%, rgba(14, 14, 20, 0.95) 100%);
+  border: clamp(2px, 0.3vw, 3px) solid rgba(212, 175, 55, 0.8);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: clamp(12px, 1.8vw, 18px);
   font-weight: bold;
-  color: #d4af37;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+  color: var(--edo-gold);
+  text-shadow: 0 0 6px rgba(212, 175, 55, 0.35), 0 2px 0 rgba(0,0,0,0.6);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35), inset 0 0 8px rgba(255, 255, 255, 0.05);
   position: relative;
   flex-shrink: 0;
 `;
@@ -205,14 +204,13 @@ const WinMark = styled.div`
   height: clamp(14px, 2.2vw, 20px);
   min-width: 14px;
   min-height: 14px;
-
   background: ${(props) =>
     props.$isWin
-      ? "linear-gradient(45deg,rgb(89, 255, 95),rgb(0, 255, 13))"
+      ? "radial-gradient(60% 60% at 40% 35%, rgba(255, 249, 219, 0.9) 0%, rgba(212, 175, 55, 0.95) 60%, rgba(160, 120, 30, 0.95) 100%)"
       : "linear-gradient(145deg,rgba(28, 28, 28, 0.95),rgba(18, 18, 18, 0.95))"};
   border: clamp(1px, 0.2vw, 2px) solid
     ${(props) =>
-      props.$isWin ? "rgba(28, 28, 28, .5)" : "rgba(255, 255, 255, 0.3)"};
+      props.$isWin ? "rgba(212, 175, 55, 0.95)" : "rgba(255, 255, 255, 0.25)"};
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -220,7 +218,7 @@ const WinMark = styled.div`
   margin-top: -60%;
   box-shadow: ${(props) =>
     props.$isWin
-      ? "0 0 8px rgba(76, 175, 80, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3)"
+      ? "0 0 8px rgba(212, 175, 55, 0.5), 0 2px 8px rgba(0, 0, 0, 0.35)"
       : "0 2px 8px rgba(0, 0, 0, 0.2)"};
   animation: ${(props) => (props.$isWin ? pulseWin : "none")} 2s infinite;
   position: relative;
@@ -232,17 +230,22 @@ const StaminaContainer = styled.div`
   position: relative;
   width: 100%;
   height: 30px;
-  background: linear-gradient(
-    145deg,
-    rgba(40, 40, 40, 0.2),
-    rgba(20, 20, 20, 0.1)
-  );
+  /* Match the non-win score circle dark background */
+  background: linear-gradient(145deg, rgba(28, 28, 28, 0.95), rgba(18, 18, 18, 0.95));
   // border-radius: clamp(8px, 1.2vw, 12px);
-  border: clamp(1px, 0.2vw, 2px) solid #8b4513;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+  border: clamp(1px, 0.2vw, 2px) solid rgba(212, 175, 55, 0.55);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255,255,255,0.05);
   overflow: visible;
   transform: ${(props) => (props.$isRight ? "scaleX(-1)" : "scaleX(1)")};
   flex: 1;
+  
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 1px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    pointer-events: none;
+  }
 `;
 
 const StaminaFill = styled.div`
@@ -251,13 +254,21 @@ const StaminaFill = styled.div`
   width: ${(props) => props.$stamina}%;
   background: ${(props) =>
     props.$stamina <= 25
-      ? "linear-gradient(90deg, #ff4d4d 0%, #ff8080 100%)"
-      : "linear-gradient(90deg, #ffeb3b 0%, #ffc107 100%)"};
+      ? "linear-gradient(90deg, #ff6b6b 0%, #ff9e9e 100%)"
+      : "linear-gradient(90deg, #fff4d6 0%, #d4af37 100%)"};
   // border-radius: clamp(6px, 1vw, 10px);
   transition: width 0.3s ease;
   box-shadow: ${(props) =>
-    props.$stamina <= 25 ? "0 0 8px #ff4d4d" : "0 0 8px #ffeb3b"};
+    props.$stamina <= 25 ? "0 0 8px rgba(255, 107, 107, 0.6)" : "0 0 8px rgba(212, 175, 55, 0.65)"};
   z-index: 2;
+  
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to bottom, rgba(255,255,255,0.2), rgba(255,255,255,0));
+    pointer-events: none;
+  }
 `;
 
 const StaminaLoss = styled.div`
@@ -266,7 +277,7 @@ const StaminaLoss = styled.div`
   height: 100%;
   left: ${(props) => props.$left}%;
   width: ${(props) => props.$width}%;
-  background: linear-gradient(90deg, #ff4d4d 0%, #ff8080 100%);
+  background: linear-gradient(90deg, #ff6b6b 0%, #ff9e9e 100%);
   opacity: ${(props) => (props.$visible ? 1 : 0)};
   transition: opacity 0.15s ease;
   pointer-events: none;
@@ -283,8 +294,8 @@ const GassedOverlay = styled.div`
   background-size: 20px 20px;
   background-image: repeating-linear-gradient(
     45deg,
-    rgba(255, 235, 59, 0.95) 0px,
-    rgba(255, 235, 59, 0.95) 10px,
+    rgba(212, 175, 55, 0.95) 0px,
+    rgba(212, 175, 55, 0.95) 10px,
     rgba(0, 0, 0, 0.8) 10px,
     rgba(0, 0, 0, 0.8) 20px
   );
@@ -349,7 +360,7 @@ const PowerUpContainer = styled.div`
     }
   }};
   border-color: ${(props) => {
-    if (!props.$activePowerUp || props.$isOnCooldown) return "#8b4513";
+    if (!props.$activePowerUp || props.$isOnCooldown) return "rgba(212, 175, 55, 0.6)";
 
     switch (props.$activePowerUp) {
       case "speed":
@@ -363,7 +374,7 @@ const PowerUpContainer = styled.div`
       case "thick_blubber":
         return "#5e35b1";
       default:
-        return "#343a40";
+        return "var(--edo-gold)";
     }
   }};
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -421,13 +432,13 @@ const DodgeCharge = styled.div`
       props.$isOnCooldown
         ? "rgba(212, 175, 55, 0.4)" // On cooldown (takes precedence)
         : props.$isActive
-        ? "#d4af37" // Active and ready
+        ? "var(--edo-gold)" // Active and ready
         : "rgba(0, 0, 0, 0.6)"}; // Inactive (dark black border)
   background: ${(props) =>
     props.$isOnCooldown
       ? "rgba(0, 0, 0, 0.7)" // On cooldown (takes precedence)
       : props.$isActive
-      ? "rgba(139, 69, 19, 0.8)" // Active and ready
+      ? "rgba(139, 69, 19, 0.85)" // Active and ready (lacquered brown hint)
       : "rgba(0, 0, 0, 0.7)"}; // Inactive (dark black background)
   position: relative;
   display: flex;
@@ -436,7 +447,7 @@ const DodgeCharge = styled.div`
   transition: all 0.2s ease;
   box-shadow: ${(props) =>
     props.$isActive && !props.$isOnCooldown
-      ? "0 0 8px rgba(212, 175, 55, 0.4), inset 0 0 4px rgba(212, 175, 55, 0.2)"
+      ? "0 0 8px rgba(212, 175, 55, 0.45), inset 0 0 4px rgba(212, 175, 55, 0.25)"
       : "inset 0 1px 2px rgba(0, 0, 0, 0.3)"};
 
   &::before {
@@ -448,11 +459,11 @@ const DodgeCharge = styled.div`
       props.$isOnCooldown
         ? "rgba(212, 175, 55, 0.5)" // On cooldown (takes precedence)
         : props.$isActive
-        ? "#d4af37" // Active and ready
+        ? "var(--edo-gold)" // Active and ready
         : "rgba(0, 0, 0, 0.8)"}; // Inactive (dark black dot)
     box-shadow: ${(props) =>
       props.$isActive && !props.$isOnCooldown
-        ? "0 0 4px rgba(212, 175, 55, 0.6)"
+        ? "0 0 4px rgba(212, 175, 55, 0.65)"
         : "none"};
     transition: all 0.2s ease;
   }

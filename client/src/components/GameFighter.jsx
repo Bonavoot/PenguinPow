@@ -87,6 +87,8 @@ import HitEffect from "./HitEffect";
 import RawParryEffect from "./RawParryEffect";
 import { getGlobalVolume } from "./Settings";
 import SnowEffect from "./SnowEffect";
+import ThemeOverlay from "./ThemeOverlay";
+import "./theme.css";
 
 const GROUND_LEVEL = 120; // Ground level constant
 
@@ -376,7 +378,7 @@ const validProps = [
 
 const RedTintOverlay = styled.div`
   position: absolute;
-  width: 19.54%;
+  width: 16.609%;
   height: auto;
   aspect-ratio: 1;
   left: ${(props) => (props.$x / 1280) * 100}%;
@@ -405,7 +407,7 @@ const RedTintOverlay = styled.div`
 
 const HurtTintOverlay = styled.div`
   position: absolute;
-  width: 19.54%;
+  width: 16.609%;
   height: auto;
   aspect-ratio: 1;
   left: ${(props) => (props.$x / 1280) * 100}%;
@@ -458,7 +460,8 @@ const TintedImage = styled.img
           : "scaleX(-1)",
       zIndex: 101,
       pointerEvents: "none",
-      width: "min(19.54%, 511px)",
+      width: "min(16.609%, 511px)",
+      
       height: "auto",
       willChange: "opacity, transform",
       // Force strong hue for consistent red/purple regardless of base colors
@@ -608,7 +611,8 @@ const StyledImage = styled("img")
         : props.$isRawParrying
         ? "rawParryFlash 1.2s ease-in-out infinite"
         : "none",
-      width: "min(19.54%, 511px)",
+      width: "min(16.609%, 511px)",
+      
       height: "auto",
       willChange: "bottom, left, filter, opacity",
       pointerEvents: "none",
@@ -758,8 +762,8 @@ const SaltBasket = styled.img
 
 const YouLabel = styled.div`
   position: absolute;
-  bottom: ${(props) => (props.y / 720) * 100 + 33}%;
-  left: ${(props) => (props.x / 1280) * 100 + 10}%;
+  bottom: ${(props) => (props.y / 720) * 100 + 31}%;
+  left: ${(props) => (props.x / 1280) * 100 + 8}%;
   transform: translateX(-50%);
   color: #ffd700;
   font-family: "Bungee";
@@ -1808,6 +1812,17 @@ const GameFighter = ({
 
   return (
     <div className="ui-container">
+      {/* Global visual theme overlay (light, under-sprite grading only) */}
+      <ThemeOverlay
+        theme="edo-nightfall"
+        intensity={0.16}
+        vignette={0.16}
+        scanlines={0.035}
+        grain={0.06}
+        bloom={0.16}
+        lanterns={0.1}
+        zIndex={0}
+      />
       <SnowEffect
         mode={matchOver ? "envelope" : "snow"}
         winner={winner}

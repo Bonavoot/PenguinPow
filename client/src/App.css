@@ -389,6 +389,7 @@ body {
   border: 2px solid black;
   overflow: hidden;
   z-index: 99;
+  /* Slight lift so an overlay with low zIndex remains behind sprites */
 }
 
 .game-container::before {
@@ -402,7 +403,7 @@ body {
   background-repeat: no-repeat;
   background-size: 120% 120%;
   background-position: 52% 5%;
-  /* filter: brightness(1.1) saturate(1.2) sepia(0.2); */
+  filter: brightness(1.08) saturate(1.15);
   z-index: -1;
 }
 

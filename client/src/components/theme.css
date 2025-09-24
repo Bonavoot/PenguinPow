@@ -1,0 +1,18 @@
+:root {
+  /* Edo Nightfall palette */
+  --edo-ink: #0b1020;
+  --edo-indigo: #433d67;
+  --edo-sakura: #ff6b6b;
+  --edo-aqua: #00ffff;
+  --edo-gold: #d4af37;
+  --edo-shadow: rgba(0, 0, 0, 0.5);
+}
+
+/* Optional theme hooks for future use */
+[data-theme="edo-nightfall"] {
+  /* Place global adjustments here if needed */
+}
+
+
+
+

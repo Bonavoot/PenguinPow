@@ -1,6 +1,7 @@
 // Game constants
 const MAP_LEFT_BOUNDARY = 150;
 const MAP_RIGHT_BOUNDARY = 880;
+const DEFAULT_PLAYER_SIZE_MULTIPLIER = 0.85; // 15% smaller default size
 
 // Timeout manager for memory leak prevention
 class TimeoutManager {
@@ -253,6 +254,7 @@ module.exports = {
   // Constants
   MAP_LEFT_BOUNDARY,
   MAP_RIGHT_BOUNDARY,
+  DEFAULT_PLAYER_SIZE_MULTIPLIER,
 
   // Classes and instances
   TimeoutManager,
