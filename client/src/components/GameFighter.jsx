@@ -593,6 +593,11 @@ const StyledImage = styled("img")
       position: "absolute",
       left: `${(props.$x / 1280) * 100}%`,
       bottom: `${(props.$y / 720) * 100}%`,
+      "--facing": (props.$isRingOutThrowCutscene && props.$isThrowing
+          ? -props.$facing
+          : props.$facing) === 1
+          ? "1"
+          : "-1",
       transform:
         (props.$isRingOutThrowCutscene && props.$isThrowing
           ? -props.$facing
@@ -605,18 +610,44 @@ const StyledImage = styled("img")
         ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.85)) brightness(1.35) drop-shadow(0 0 3px #000)"
         : props.$isRawParrying
         ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3) drop-shadow(0 0 3px #000)"
+        : props.$isHit
+        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) brightness(1.15)"
+        : props.$isChargingAttack
+        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 12px rgba(255, 200, 50, 0.85)) contrast(1.25)"
         : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) ",
       animation: props.$isGrabBreaking
         ? "grabBreakFlash 1.2s ease-in-out infinite"
         : props.$isRawParrying
         ? "rawParryFlash 1.2s ease-in-out infinite"
+        : props.$isHit
+        ? "hitSquash 0.18s ease-out"
+        : props.$isChargingAttack
+        ? "chargePulse 0.6s ease-in-out infinite"
+        : props.$isAttacking && !props.$isSlapAttack
+        ? "attackPunch 0.2s ease-out"
+        : // Breathing animation for idle states
+        !props.$isAttacking &&
+          !props.$isDodging &&
+          !props.$isJumping &&
+          !props.$isThrowing &&
+          !props.$isGrabbing &&
+          !props.$isBeingGrabbed &&
+          !props.$isBeingPulled &&
+          !props.$isBeingPushed &&
+          !props.$isThrowTeching &&
+          !props.$isRecovering &&
+          !props.$isThrowingSalt &&
+          !props.$isThrowingSnowball &&
+          !props.$isSpawningPumoArmy &&
+          !props.$isBowing
+        ? "breathe 1.5s ease-in-out infinite"
         : "none",
       width: "min(16.609%, 511px)",
 
       height: "auto",
-      willChange: "bottom, left, filter, opacity",
+      willChange: "bottom, left, filter, opacity, transform",
       pointerEvents: "none",
-      transformOrigin: "center",
+      transformOrigin: "center bottom",
       transition: "none",
     },
   }))`
@@ -653,6 +684,73 @@ const StyledImage = styled("img")
     }
     100% {
       filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 2px rgba(0, 255, 128, 0.45)) brightness(1) drop-shadow(0 0 1px #000);
+    }
+  }
+  
+  /* Hit squash/stretch animation - uses CSS var for facing direction */
+  @keyframes hitSquash {
+    0% {
+      transform: scaleX(var(--facing, 1)) scaleY(1);
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) brightness(1.4);
+    }
+    20% {
+      transform: scaleX(calc(var(--facing, 1) * 1.18)) scaleY(0.82);
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.3) brightness(1.5);
+    }
+    50% {
+      transform: scaleX(calc(var(--facing, 1) * 0.88)) scaleY(1.12);
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.25) brightness(1.3);
+    }
+    75% {
+      transform: scaleX(calc(var(--facing, 1) * 1.06)) scaleY(0.94);
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) brightness(1.2);
+    }
+    100% {
+      transform: scaleX(var(--facing, 1)) scaleY(1);
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) brightness(1.15);
+    }
+  }
+  
+  /* Attack punch animation - wind up and release with facing direction */
+  @keyframes attackPunch {
+    0% {
+      transform: scaleX(var(--facing, 1)) scaleY(1);
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2);
+    }
+    25% {
+      transform: scaleX(calc(var(--facing, 1) * 0.9)) scaleY(1.1);
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.3) brightness(1.15);
+    }
+    55% {
+      transform: scaleX(calc(var(--facing, 1) * 1.12)) scaleY(0.92);
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.25) brightness(1.1) drop-shadow(0 0 8px rgba(255, 200, 50, 0.6));
+    }
+    100% {
+      transform: scaleX(var(--facing, 1)) scaleY(1);
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2);
+    }
+  }
+  
+  /* Charge pulse animation - builds anticipation for charged attack */
+  @keyframes chargePulse {
+    0% {
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(255, 200, 50, 0.5)) contrast(1.2);
+    }
+    50% {
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 18px rgba(255, 150, 0, 0.9)) contrast(1.35) brightness(1.1);
+    }
+    100% {
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(255, 200, 50, 0.5)) contrast(1.2);
+    }
+  }
+  
+  /* Lively idle animation - smooth rhythmic stretch from feet */
+  @keyframes breathe {
+    0%, 100% {
+      transform: scaleX(var(--facing, 1)) scaleY(1);
+    }
+    50% {
+      transform: scaleX(var(--facing, 1)) scaleY(1.03);
     }
   }
 `;
@@ -698,7 +796,7 @@ const FloatingPowerUpText = styled.div`
         }
       }};
   pointer-events: none;
-  animation: simpleFloatUp 2s ease-out forwards;
+  animation: powerUpBurst 2s ease-out forwards;
   bottom: 55%;
   left: ${(props) => (props.$index === 0 ? "20%" : "auto")};
   right: ${(props) => (props.$index === 1 ? "20%" : "auto")};
@@ -706,6 +804,33 @@ const FloatingPowerUpText = styled.div`
   transform-origin: center;
   z-index: 101;
   opacity: 0;
+
+  @keyframes powerUpBurst {
+    0% {
+      transform: translateY(0px) scale(0.3);
+      opacity: 0;
+    }
+    10% {
+      transform: translateY(5px) scale(1.3);
+      opacity: 1;
+    }
+    20% {
+      transform: translateY(-5px) scale(1.0);
+      opacity: 1;
+    }
+    30% {
+      transform: translateY(0px) scale(1.1);
+      opacity: 1;
+    }
+    70% {
+      transform: translateY(-40px) scale(1.0);
+      opacity: 1;
+    }
+    100% {
+      transform: translateY(-70px) scale(0.9);
+      opacity: 0;
+    }
+  }
   letter-spacing: 0.15em;
   white-space: nowrap;
   text-transform: uppercase;
@@ -1392,6 +1517,13 @@ const GameFighter = ({
           }));
           setHasUsedPowerUp(true);
           playSound(saltSound, 0.01);
+          
+          // Add a satisfying screen shake for power-up activation
+          setScreenShake({
+            intensity: 0.35,
+            duration: 150,
+            startTime: Date.now(),
+          });
         }
       }
     });
@@ -1441,6 +1573,13 @@ const GameFighter = ({
       }
       // Immediately set countdown to 0 to hide YOU label during gameplay
       setCountdown(0);
+
+      // Add dramatic screen shake for round start
+      setScreenShake({
+        intensity: 0.6,
+        duration: 300,
+        startTime: Date.now(),
+      });
 
       // Hide hakkiyoi text after 3 seconds
       setTimeout(() => {
@@ -1741,7 +1880,11 @@ const GameFighter = ({
     setThickBlubberIndicator(shouldShowThickBlubberIndicator);
   }, [shouldShowThickBlubberIndicator]);
 
-  // Add screen shake and thick blubber absorption event listeners
+  // Add state for danger zone effect
+  const [dangerZoneActive, setDangerZoneActive] = useState(false);
+  const [slowMoActive, setSlowMoActive] = useState(false);
+
+  // Add screen shake, thick blubber absorption, and danger zone event listeners
   useEffect(() => {
     console.log(
       `🔵 Setting up event listeners for player ${player.id}, isLocal: ${
@@ -1779,6 +1922,30 @@ const GameFighter = ({
       }
     });
 
+    // Danger zone event - dramatic moment when player is near ring-out
+    socket.on("danger_zone", (data) => {
+      console.log("🔴 DANGER ZONE triggered!", data);
+      setDangerZoneActive(true);
+      setSlowMoActive(true);
+      
+      // Reset after brief dramatic moment (no filter changes - dohyo must stay consistent)
+      setTimeout(() => {
+        setDangerZoneActive(false);
+        setSlowMoActive(false);
+      }, 400);
+    });
+
+    // Ring-out event - player knocked out of ring
+    socket.on("ring_out", (data) => {
+      console.log("🎯 RING OUT!", data);
+      // Extra dramatic screen shake for ring-out
+      setScreenShake({
+        intensity: 1.2,
+        duration: 600,
+        startTime: Date.now(),
+      });
+    });
+
     // Test listener for any event to verify socket is working
     socket.on("fighter_action", () => {});
 
@@ -1791,6 +1958,8 @@ const GameFighter = ({
       console.log(`🔵 Cleaning up event listeners for player ${player.id}`);
       socket.off("screen_shake");
       socket.off("thick_blubber_absorption");
+      socket.off("danger_zone");
+      socket.off("ring_out");
       socket.off("fighter_action");
     };
   }, [socket, player.id, localId, roomName]);

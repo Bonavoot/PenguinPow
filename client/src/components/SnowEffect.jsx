@@ -11,8 +11,8 @@ const DEPTH_LEVELS = [
 
 // Performance settings - OPTIMIZED
 const MAX_SNOWFLAKES = 8; // Reduced from 15 for better performance
-const MAX_ENVELOPES = 12; // Reduced from 25 for better performance
-const UPDATE_INTERVAL = 32; // Reduced from 16ms (30fps instead of 60fps)
+const MAX_ENVELOPES = 15; // Slightly more envelopes for a fuller effect
+const UPDATE_INTERVAL = 24; // Smoother updates (40fps) for paper-like motion
 const USE_BLUR = false; // Keep disabled for performance
 
 const SnowContainer = styled.div`
@@ -24,12 +24,19 @@ const SnowContainer = styled.div`
   pointer-events: none;
   z-index: 50;
   overflow: hidden;
+  perspective: 1000px;
 `;
 
 const Snowflake = styled.div.attrs((props) => ({
   style: {
-    // Use transform3d for hardware acceleration
-    transform: `translate3d(${props.$x}px, ${props.$y}px, 0) scale(${props.$scale}) rotate(${props.$rotation}deg)`,
+    // Use transform3d with 3D rotations for paper-like tumbling effect
+    transform: props.$isEnvelope
+      ? `translate3d(${props.$x}px, ${props.$y}px, 0) 
+         scale(${props.$scale}) 
+         rotateZ(${props.$rotation}deg) 
+         rotateX(${props.$tiltX || 0}deg) 
+         rotateY(${props.$tiltY || 0}deg)`
+      : `translate3d(${props.$x}px, ${props.$y}px, 0) scale(${props.$scale}) rotate(${props.$rotation}deg)`,
     opacity: props.$opacity,
   },
 }))`
@@ -94,22 +101,35 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
     (initialY = -10) => {
       const depthLevel = getRandomDepthLevel();
       const isEnvelope = shouldShowEnvelopes;
+
+      // For envelopes: create more natural paper-like motion parameters
+      const baseSpeed = isEnvelope ? 0.8 + Math.random() * 0.6 : 1 + Math.random() * 2;
+
       return {
         id: Math.random(),
         x: Math.random() * window.innerWidth,
         y: initialY,
-        velocityX: (Math.random() - 0.5) * (isEnvelope ? 2 : 0.5),
-        velocityY:
-          (isEnvelope ? 1.2 : 1) + Math.random() * (isEnvelope ? 1.5 : 2),
-        opacity: 0.5 + Math.random() * 0.5,
-        scale: isEnvelope ? 0.8 + Math.random() * 0.4 : 0.5 + Math.random() * 1,
+        velocityX: (Math.random() - 0.5) * (isEnvelope ? 1.5 : 0.5),
+        velocityY: baseSpeed,
+        baseVelocityY: baseSpeed, // Store base speed for flutter variation
+        opacity: isEnvelope ? 0.85 + Math.random() * 0.15 : 0.5 + Math.random() * 0.5,
+        scale: isEnvelope ? 0.85 + Math.random() * 0.3 : 0.5 + Math.random() * 1,
         rotation: Math.random() * 360,
-        rotationSpeed: (Math.random() - 0.5) * (isEnvelope ? 4 : 1), // Reduced rotation speed
+        rotationSpeed: (Math.random() - 0.5) * (isEnvelope ? 1.5 : 1), // Gentler rotation
         depthLevel,
         isEnvelope,
+        // Paper flutter physics - compound waves for organic movement
         swayPhase: Math.random() * Math.PI * 2,
-        swayAmplitude: isEnvelope ? 0.3 + Math.random() * 0.5 : 0, // Reduced sway
-        swayFrequency: isEnvelope ? 0.8 + Math.random() * 0.4 : 0, // Reduced frequency
+        swayPhase2: Math.random() * Math.PI * 2, // Secondary wave for complexity
+        swayAmplitude: isEnvelope ? 0.8 + Math.random() * 0.6 : 0,
+        swayFrequency: isEnvelope ? 1.2 + Math.random() * 0.5 : 0,
+        // 3D tilt for paper tumbling effect
+        tiltX: isEnvelope ? (Math.random() - 0.5) * 30 : 0,
+        tiltY: isEnvelope ? (Math.random() - 0.5) * 20 : 0,
+        tiltPhase: Math.random() * Math.PI * 2,
+        tiltSpeed: isEnvelope ? 0.3 + Math.random() * 0.4 : 0,
+        // Direction of drift (-1 or 1) for consistent side movement
+        driftDirection: Math.random() > 0.5 ? 1 : -1,
       };
     },
     [getRandomDepthLevel, shouldShowEnvelopes]
@@ -117,37 +137,69 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
 
   const updateParticle = useCallback(
     (particle, deltaTime) => {
-      const newY = particle.y + particle.velocityY * (deltaTime / 16);
+      const timeFactor = deltaTime / 16;
+      const time = performance.now() / 1000;
 
-      // Simplified swaying motion
+      let newVelocityY = particle.velocityY;
       let swayX = 0;
+      let newTiltX = particle.tiltX;
+      let newTiltY = particle.tiltY;
+
       if (particle.isEnvelope) {
-        const time = performance.now() / 1000;
-        swayX =
+        // Compound sine waves create organic paper-like sway
+        // Primary wave - main side-to-side motion
+        const primarySway =
           Math.sin(time * particle.swayFrequency + particle.swayPhase) *
           particle.swayAmplitude;
+        // Secondary wave - adds irregularity (different frequency)
+        const secondarySway =
+          Math.sin(time * particle.swayFrequency * 0.7 + particle.swayPhase2) *
+          particle.swayAmplitude *
+          0.3;
+        swayX = primarySway + secondarySway;
+
+        // Variable fall speed - paper catches air and slows/speeds up
+        // Speed varies based on tilt angle (more horizontal = more air resistance)
+        const tiltFactor = Math.cos(time * particle.tiltSpeed + particle.tiltPhase);
+        const airResistance = 0.85 + tiltFactor * 0.15; // 0.7 to 1.0
+        newVelocityY = particle.baseVelocityY * airResistance;
+
+        // 3D tumbling effect - smooth oscillating tilt
+        newTiltX = Math.sin(time * particle.tiltSpeed + particle.tiltPhase) * 25;
+        newTiltY =
+          Math.cos(time * particle.tiltSpeed * 0.8 + particle.tiltPhase) * 15 +
+          swayX * 8; // Tilt correlates with sway direction
       }
 
-      const newX = particle.x + particle.velocityX * (deltaTime / 16) + swayX;
+      const newY = particle.y + newVelocityY * timeFactor;
+      const newX =
+        particle.x +
+        particle.velocityX * timeFactor +
+        swayX +
+        (particle.isEnvelope ? particle.driftDirection * 0.15 : 0); // Gentle consistent drift
 
       if (newY >= particle.depthLevel) {
         return createParticle();
       }
 
       let finalX = newX;
-      if (newX < -10) finalX = window.innerWidth + 10;
-      if (newX > window.innerWidth + 10) finalX = -10;
+      if (newX < -30) finalX = window.innerWidth + 30;
+      if (newX > window.innerWidth + 30) finalX = -30;
 
-      // Simplified rotation update
-      const newRotation = particle.rotation + particle.rotationSpeed;
+      // Smooth rotation - correlate with horizontal movement for realism
+      const rotationInfluence = particle.isEnvelope ? swayX * 0.5 : 0;
+      const newRotation =
+        particle.rotation + particle.rotationSpeed + rotationInfluence;
 
       return {
         ...particle,
         x: finalX,
         y: newY,
         rotation: newRotation,
-        velocityX: particle.velocityX * 0.99, // Simplified easing
-        velocityY: particle.velocityY,
+        velocityX: particle.velocityX * 0.995, // Very gentle decay
+        velocityY: newVelocityY,
+        tiltX: newTiltX,
+        tiltY: newTiltY,
       };
     },
     [createParticle]
@@ -215,6 +267,8 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
           $opacity={particle.opacity}
           $scale={particle.scale}
           $rotation={particle.rotation}
+          $tiltX={particle.tiltX}
+          $tiltY={particle.tiltY}
           $isEnvelope={particle.isEnvelope}
         />
       ))}

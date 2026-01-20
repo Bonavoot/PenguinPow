@@ -9,16 +9,16 @@ import thickBlubberIcon from "../assets/thick-blubber-icon.png";
 
 const pulseWin = keyframes`
   0% { transform: scale(1); }
-  50% { transform: scale(1.05); }
+  50% { transform: scale(1.08); }
   100% { transform: scale(1); }
 `;
 
 const FighterUIContainer = styled.div`
   position: absolute;
-  top: -1rem;
+  top: 0;
   left: 0;
   right: 0;
-  height: clamp(110px, 14vh, 150px);
+  height: clamp(100px, 13vh, 130px);
   display: flex;
   align-items: stretch;
   justify-content: space-between;
@@ -27,279 +27,197 @@ const FighterUIContainer = styled.div`
   font-family: "Bungee", cursive;
   background: linear-gradient(
     180deg,
-    rgba(16, 16, 22, 0.75) 0%,
-    rgba(12, 12, 18, 0.45) 70%,
+    rgba(11, 16, 32, 0.85) 0%,
+    rgba(11, 16, 32, 0.5) 70%,
     rgba(0, 0, 0, 0) 100%
   );
-  border-top: 2px solid rgba(212, 175, 55, 0.25);
-  
-
-  @media (max-width: 1200px) {
-    height: clamp(100px, 12vh, 130px);
-  }
+  border-bottom: 2px solid rgba(212, 175, 55, 0.3);
 
   @media (max-width: 768px) {
-    height: clamp(90px, 10vh, 110px);
-  }
-
-  @media (max-width: 480px) {
-    height: clamp(80px, 9vh, 100px);
+    height: clamp(90px, 11vh, 110px);
   }
 `;
 
 const PlayerSection = styled.div`
   display: flex;
-  margin-top: clamp(35px, 5vh, 45px);
   flex-direction: column;
-  width: 40%;
-  gap: clamp(6px, 1vh, 12px);
+  width: 42%;
+  padding: clamp(8px, 1.2vh, 12px) clamp(12px, 2vw, 20px);
+  gap: clamp(6px, 0.8vh, 10px);
   align-items: ${(props) => (props.$isRight ? "flex-end" : "flex-start")};
-  padding: ${(props) =>
-    props.$isRight
-      ? "0 clamp(10px, 2vw, 20px) 0 0"
-      : "0 0 0 clamp(10px, 2vw, 20px)"};
+`;
 
-  @media (max-width: 768px) {
-    margin-top: clamp(30px, 4vh, 38px);
-    gap: clamp(4px, 0.8vh, 8px);
-    padding: ${(props) =>
-      props.$isRight
-        ? "0 clamp(6px, 1vw, 12px) 0 0"
-        : "0 0 0 clamp(6px, 1vw, 12px)"};
-  }
+const PlayerHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: clamp(8px, 1vw, 12px);
+  flex-direction: ${(props) => (props.$isRight ? "row-reverse" : "row")};
+  width: 100%;
+`;
 
-  @media (max-width: 480px) {
-    margin-top: clamp(25px, 3vh, 30px);
-    gap: clamp(3px, 0.6vh, 6px);
-    padding: ${(props) =>
-      props.$isRight
-        ? "0 clamp(4px, 0.8vw, 8px) 0 0"
-        : "0 0 0 clamp(4px, 0.8vw, 8px)"};
-  }
+const PlayerAvatar = styled.div`
+  width: clamp(36px, 4.5vw, 48px);
+  height: clamp(36px, 4.5vw, 48px);
+  background: linear-gradient(145deg, rgba(67, 61, 103, 0.9), rgba(11, 16, 32, 0.95));
+  border: 2px solid var(--edo-gold);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(14px, 1.8vw, 20px);
+  font-weight: bold;
+  color: var(--edo-gold);
+  text-shadow: 0 0 8px rgba(212, 175, 55, 0.4), 0 2px 0 rgba(0, 0, 0, 0.7);
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.4),
+    inset 0 0 12px rgba(212, 175, 55, 0.15);
+  flex-shrink: 0;
+`;
+
+const PlayerInfo = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: ${(props) => (props.$isRight ? "flex-end" : "flex-start")};
+  min-width: 0;
+  flex: 1;
+`;
+
+const PlayerName = styled.div`
+  font-size: clamp(14px, 2vw, 20px);
+  font-weight: 900;
+  color: #ffffff;
+  text-shadow: 
+    2px 2px 0 #000, -2px -2px 0 #000, 
+    2px -2px 0 #000, -2px 2px 0 #000,
+    0 0 10px rgba(255, 255, 255, 0.2);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+const PlayerRank = styled.div`
+  font-size: clamp(9px, 1.2vw, 12px);
+  font-weight: 600;
+  color: var(--edo-gold);
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: linear-gradient(145deg, rgba(67, 61, 103, 0.8), rgba(11, 16, 32, 0.9));
+  padding: 2px 8px;
+  border-radius: 3px;
+  border: 1px solid rgba(212, 175, 55, 0.4);
+`;
+
+const WinTracker = styled.div`
+  display: flex;
+  gap: clamp(4px, 0.6vw, 6px);
+  flex-direction: ${(props) => (props.$isRight ? "row-reverse" : "row")};
+  margin-left: ${(props) => (props.$isRight ? "0" : "auto")};
+  margin-right: ${(props) => (props.$isRight ? "auto" : "0")};
+`;
+
+const WinMark = styled.div`
+  width: clamp(16px, 2vw, 22px);
+  height: clamp(16px, 2vw, 22px);
+  background: ${(props) =>
+    props.$isWin
+      ? "radial-gradient(60% 60% at 35% 35%, rgba(255, 249, 219, 0.95) 0%, var(--edo-gold) 60%, #8b6914 100%)"
+      : "linear-gradient(145deg, rgba(67, 61, 103, 0.6), rgba(11, 16, 32, 0.8))"};
+  border: 2px solid ${(props) => (props.$isWin ? "var(--edo-gold)" : "rgba(212, 175, 55, 0.3)")};
+  border-radius: 50%;
+  box-shadow: ${(props) =>
+    props.$isWin
+      ? "0 0 12px rgba(212, 175, 55, 0.6), inset 0 -2px 4px rgba(0, 0, 0, 0.3)"
+      : "inset 0 2px 4px rgba(0, 0, 0, 0.4)"};
+  animation: ${(props) => (props.$isWin ? pulseWin : "none")} 2s infinite;
 `;
 
 const StaminaRow = styled.div`
   display: flex;
   align-items: center;
-  gap: clamp(8px, 1.2vw, 15px);
+  gap: clamp(8px, 1vw, 12px);
   width: 100%;
-  position: relative;
-`;
-
-const PlayerAvatar = styled.div`
-  width: clamp(40px, 5vw, 60px);
-  height: clamp(40px, 5vw, 60px);
-  background: radial-gradient(120% 100% at 50% 35%, rgba(20, 20, 28, 0.95) 0%, rgba(14, 14, 20, 0.95) 100%);
-  border: clamp(2px, 0.3vw, 3px) solid rgba(212, 175, 55, 0.8);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: clamp(12px, 1.8vw, 18px);
-  font-weight: bold;
-  color: var(--edo-gold);
-  text-shadow: 0 0 6px rgba(212, 175, 55, 0.35), 0 2px 0 rgba(0,0,0,0.6);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35), inset 0 0 8px rgba(255, 255, 255, 0.05);
-  position: relative;
-  flex-shrink: 0;
-`;
-
-const PlayerInfoTop = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  text-align: left;
-  min-width: 0;
-  max-width: 60%;
-  position: absolute;
-  top: clamp(2px, 0.5vh, 4px);
-  left: clamp(8px, 1.2vw, 12px);
-  z-index: 5;
-  transform: ${(props) => (props.$isRight ? "scaleX(-1)" : "scaleX(1)")};
-`;
-
-const PlayerInfoBottom = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  min-width: 0;
-  position: absolute;
-  top: clamp(32px, 5vh, 40px);
-  left: clamp(8px, 1.2vw, 12px);
-  z-index: 5;
-  transform: ${(props) => (props.$isRight ? "scaleX(-1)" : "scaleX(1)")};
-`;
-
-const DodgeChargesPosition = styled.div`
-  position: absolute;
-  top: clamp(32px, 5vh, 42px);
-  right: clamp(8px, 1.2vw, 12px);
-  z-index: 5;
-  transform: ${(props) => (props.$isRight ? "scaleX(-1)" : "scaleX(1)")};
-`;
-
-const PlayerName = styled.div`
-  font-size: clamp(12px, 2vw, 20px);
-  font-weight: 900;
-  color: #ffffff;
-  text-shadow: 2px 2px 0 #000000, -2px -2px 0 #000000, 2px -2px 0 #000000,
-    -2px 2px 0 #000000;
-  letter-spacing: clamp(0.5px, 0.1vw, 1px);
-  text-transform: uppercase;
-  line-height: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin-top: -30%;
-`;
-
-const PlayerRank = styled.div`
-  font-size: clamp(10px, 1.6vw, 16px);
-  font-weight: 600;
-  color: #d4af37;
-  text-shadow: 1px 1px 2px #000000;
-  text-transform: uppercase;
-  letter-spacing: clamp(0.2px, 0.05vw, 0.5px);
-  background: linear-gradient(
-    145deg,
-    rgba(28, 28, 28, 0.95),
-    rgba(18, 18, 18, 0.95)
-  );
-  padding: clamp(2px, 0.3vw, 3px) clamp(3px, 0.6vw, 6px);
-  border-radius: 3px;
-  border: 1px solid #8b4513;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  line-height: 1;
-  white-space: nowrap;
- 
-`;
-
-const WinTracker = styled.div`
-  display: flex;
-  gap: clamp(2px, 0.5vw, 4px);
-  align-items: center;
   flex-direction: ${(props) => (props.$isRight ? "row-reverse" : "row")};
-  flex-shrink: 0;
-  position: absolute;
-  top: clamp(2px, 0.5vh, 4px);
-  right: clamp(8px, 1.2vw, 12px);
-  max-width: 35%;
-  z-index: 10;
-  transform: ${(props) => (props.$isRight ? "none" : "scaleX(-1)")};
-
-  @media (max-width: 768px) {
-    gap: clamp(1px, 0.3vw, 2px);
-    top: clamp(2px, 0.4vh, 3px);
-  }
-
-  @media (max-width: 480px) {
-    gap: 1px;
-    top: clamp(1px, 0.3vh, 2px);
-  }
-`;
-
-const WinMark = styled.div`
-  width: clamp(14px, 2.2vw, 20px);
-  height: clamp(14px, 2.2vw, 20px);
-  min-width: 14px;
-  min-height: 14px;
-  background: ${(props) =>
-    props.$isWin
-      ? "radial-gradient(60% 60% at 40% 35%, rgba(255, 249, 219, 0.9) 0%, rgba(212, 175, 55, 0.95) 60%, rgba(160, 120, 30, 0.95) 100%)"
-      : "linear-gradient(145deg,rgba(28, 28, 28, 0.95),rgba(18, 18, 18, 0.95))"};
-  border: clamp(1px, 0.2vw, 2px) solid
-    ${(props) =>
-      props.$isWin ? "rgba(212, 175, 55, 0.95)" : "rgba(255, 255, 255, 0.25)"};
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: -60%;
-  box-shadow: ${(props) =>
-    props.$isWin
-      ? "0 0 8px rgba(212, 175, 55, 0.5), 0 2px 8px rgba(0, 0, 0, 0.35)"
-      : "0 2px 8px rgba(0, 0, 0, 0.2)"};
-  animation: ${(props) => (props.$isWin ? pulseWin : "none")} 2s infinite;
-  position: relative;
-  flex-shrink: 0;
-  aspect-ratio: 1;
 `;
 
 const StaminaContainer = styled.div`
   position: relative;
-  width: 100%;
-  height: 30px;
-  /* Match the non-win score circle dark background */
-  background: linear-gradient(145deg, rgba(28, 28, 28, 0.95), rgba(18, 18, 18, 0.95));
-  // border-radius: clamp(8px, 1.2vw, 12px);
-  border: clamp(1px, 0.2vw, 2px) solid rgba(212, 175, 55, 0.55);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255,255,255,0.05);
-  overflow: visible;
-  transform: ${(props) => (props.$isRight ? "scaleX(-1)" : "scaleX(1)")};
   flex: 1;
-  
-  &::before {
-    content: "";
-    position: absolute;
-    inset: 1px;
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    pointer-events: none;
-  }
+  height: clamp(22px, 3vh, 30px);
+  background: linear-gradient(145deg, rgba(11, 16, 32, 0.95), rgba(67, 61, 103, 0.4));
+  border: 2px solid rgba(212, 175, 55, 0.5);
+  border-radius: 4px;
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.4),
+    inset 0 2px 8px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
 `;
 
 const StaminaFill = styled.div`
   position: absolute;
-  height: 100%;
-  width: ${(props) => props.$stamina}%;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc(${(props) => props.$stamina}% - 4px);
+  border-radius: 2px;
   background: ${(props) =>
     props.$stamina <= 25
-      ? "linear-gradient(90deg, #ff6b6b 0%, #ff9e9e 100%)"
-      : "linear-gradient(90deg, #fff4d6 0%, #d4af37 100%)"};
-  // border-radius: clamp(6px, 1vw, 10px);
+      ? "linear-gradient(90deg, var(--edo-sakura) 0%, #ff9e9e 100%)"
+      : "linear-gradient(90deg, #fff4d6 0%, var(--edo-gold) 100%)"};
   transition: width 0.3s ease;
   box-shadow: ${(props) =>
-    props.$stamina <= 25 ? "0 0 8px rgba(255, 107, 107, 0.6)" : "0 0 8px rgba(212, 175, 55, 0.65)"};
+    props.$stamina <= 25
+      ? "0 0 12px rgba(255, 107, 107, 0.7)"
+      : "0 0 12px rgba(212, 175, 55, 0.6)"};
   z-index: 2;
-  
+
   &::after {
     content: "";
     position: absolute;
-    inset: 0;
-    background: linear-gradient(to bottom, rgba(255,255,255,0.2), rgba(255,255,255,0));
-    pointer-events: none;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 40%;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.3) 0%, transparent 100%);
+    border-radius: 2px 2px 0 0;
   }
 `;
 
 const StaminaLoss = styled.div`
   position: absolute;
-  top: 0;
-  height: 100%;
-  left: ${(props) => props.$left}%;
+  top: 2px;
+  bottom: 2px;
+  left: calc(2px + ${(props) => props.$left}%);
   width: ${(props) => props.$width}%;
-  background: linear-gradient(90deg, #ff6b6b 0%, #ff9e9e 100%);
+  background: linear-gradient(90deg, var(--edo-sakura) 0%, #ff9e9e 100%);
   opacity: ${(props) => (props.$visible ? 1 : 0)};
   transition: opacity 0.15s ease;
   pointer-events: none;
   z-index: 1;
+  border-radius: 2px;
 `;
 
 const GassedOverlay = styled.div`
   position: absolute;
-  inset: 0;
+  inset: 2px;
   z-index: 3;
   pointer-events: none;
   opacity: ${(props) => (props.$isGassed ? 1 : 0)};
   transition: opacity 0.2s ease;
+  border-radius: 2px;
   background-size: 20px 20px;
   background-image: repeating-linear-gradient(
     45deg,
-    rgba(212, 175, 55, 0.95) 0px,
-    rgba(212, 175, 55, 0.95) 10px,
-    rgba(0, 0, 0, 0.8) 10px,
-    rgba(0, 0, 0, 0.8) 20px
+    var(--edo-gold) 0px,
+    var(--edo-gold) 10px,
+    rgba(0, 0, 0, 0.85) 10px,
+    rgba(0, 0, 0, 0.85) 20px
   );
-  animation: ${(props) => (props.$isGassed ? "cautionMove 450ms linear infinite" : "none")};
+  animation: ${(props) => (props.$isGassed ? "cautionMove 400ms linear infinite" : "none")};
 
   @keyframes cautionMove {
     0% { background-position: 0 0; }
@@ -307,173 +225,122 @@ const GassedOverlay = styled.div`
   }
 `;
 
-const CentralPowerUpSection = styled.div`
-  position: absolute;
-  top: calc(clamp(35px, 5vh, 45px) + 15px);
-  left: 50%;
-  transform: translateX(-50%);
+const BottomRow = styled.div`
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: clamp(20px, 3vw, 40px);
-  z-index: 1000;
-  width: 20%;
-  height: 20px;
-  pointer-events: none;
+  gap: clamp(10px, 1.5vw, 16px);
+  width: 100%;
+  flex-direction: ${(props) => (props.$isRight ? "row-reverse" : "row")};
+`;
 
-  @media (max-width: 768px) {
-    top: calc(clamp(30px, 4vh, 38px) + 15px);
-  }
+const DodgeChargesContainer = styled.div`
+  display: flex;
+  gap: clamp(4px, 0.6vw, 6px);
+`;
 
-  @media (max-width: 480px) {
-    top: calc(clamp(25px, 3vh, 30px) + 15px);
-  }
+const DodgeCharge = styled.div`
+  width: clamp(10px, 1.3vw, 14px);
+  height: clamp(10px, 1.3vw, 14px);
+  border-radius: 50%;
+  border: 2px solid ${(props) =>
+    props.$isOnCooldown
+      ? "rgba(80, 80, 80, 0.6)"
+      : props.$isActive
+      ? "var(--edo-aqua)"
+      : "rgba(60, 60, 60, 0.7)"};
+  background: ${(props) =>
+    props.$isOnCooldown
+      ? "rgba(30, 30, 30, 0.9)"
+      : props.$isActive
+      ? "radial-gradient(circle at 35% 35%, #b3ffff 0%, var(--edo-aqua) 50%, #008b8b 100%)"
+      : "rgba(20, 20, 20, 0.8)"};
+  box-shadow: ${(props) =>
+    props.$isActive && !props.$isOnCooldown
+      ? "0 0 8px rgba(0, 255, 255, 0.7), inset 0 1px 2px rgba(255, 255, 255, 0.4)"
+      : "inset 0 1px 3px rgba(0, 0, 0, 0.5)"};
+  transition: all 0.2s ease;
 `;
 
 const PowerUpContainer = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  width: clamp(35px, 5vw, 50px);
-  height: clamp(35px, 5vw, 50px);
-  border-radius: clamp(6px, 0.8vw, 8px);
-  border: clamp(1px, 0.2vw, 2px) solid;
-  background: ${(props) => {
-    if (!props.$activePowerUp)
-      return "linear-gradient(145deg, rgba(40, 40, 40, 0.2), rgba(20, 20, 20, 0.1))";
-    if (props.$isOnCooldown)
-      return "linear-gradient(135deg, #9ca3af 0%, #6b7280 30%, #4a5568 100%)";
-
-    switch (props.$activePowerUp) {
-      case "speed":
-        return "linear-gradient(135deg, #00d2ff 0%, #3a7bd5 30%, #0066cc 100%)";
-      case "power":
-        return "linear-gradient(135deg, #ff6b6b 0%, #ee5a52 30%, #dc2626 100%)";
-      case "snowball":
-        return "linear-gradient(135deg, #e0f6ff 0%, #87ceeb 30%, #4682b4 100%)";
-      case "pumo_army":
-        return "linear-gradient(135deg, #fff4e6 0%, #ffcc80 30%, #ff8c00 100%)";
-      case "thick_blubber":
-        return "linear-gradient(135deg, #9c88ff 0%, #7c4dff 30%, #5e35b1 100%)";
-      default:
-        return "linear-gradient(135deg, #6c757d 0%, #495057 30%, #343a40 100%)";
-    }
-  }};
-  border-color: ${(props) => {
-    if (!props.$activePowerUp || props.$isOnCooldown) return "rgba(212, 175, 55, 0.6)";
-
-    switch (props.$activePowerUp) {
-      case "speed":
-        return "#0066cc";
-      case "power":
-        return "#dc2626";
-      case "snowball":
-        return "#1e3a8a";
-      case "pumo_army":
-        return "#cc6600";
-      case "thick_blubber":
-        return "#5e35b1";
-      default:
-        return "var(--edo-gold)";
-    }
-  }};
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  width: clamp(32px, 4vw, 44px);
+  height: clamp(32px, 4vw, 44px);
+  border-radius: 6px;
+  border: 2px solid;
   position: relative;
-  opacity: ${(props) => (props.$activePowerUp ? 1 : 0.3)};
-  flex-shrink: 0;
-  pointer-events: auto;
+  transition: all 0.2s ease;
+  
+  background: ${(props) => {
+    if (!props.$activePowerUp) return "linear-gradient(145deg, rgba(67, 61, 103, 0.3), rgba(11, 16, 32, 0.4))";
+    if (props.$isOnCooldown) return "linear-gradient(135deg, #6b7280 0%, #4a5568 100%)";
+    switch (props.$activePowerUp) {
+      case "speed": return "linear-gradient(135deg, #00d2ff 0%, #0066cc 100%)";
+      case "power": return "linear-gradient(135deg, var(--edo-sakura) 0%, #dc2626 100%)";
+      case "snowball": return "linear-gradient(135deg, #e0f6ff 0%, #87ceeb 100%)";
+      case "pumo_army": return "linear-gradient(135deg, #ffcc80 0%, #ff8c00 100%)";
+      case "thick_blubber": return "linear-gradient(135deg, #9c88ff 0%, #7c4dff 100%)";
+      default: return "linear-gradient(135deg, #6c757d 0%, #343a40 100%)";
+    }
+  }};
+  
+  border-color: ${(props) => {
+    if (!props.$activePowerUp || props.$isOnCooldown) return "rgba(212, 175, 55, 0.4)";
+    switch (props.$activePowerUp) {
+      case "speed": return "#0066cc";
+      case "power": return "#dc2626";
+      case "snowball": return "#4682b4";
+      case "pumo_army": return "#cc6600";
+      case "thick_blubber": return "#5e35b1";
+      default: return "var(--edo-gold)";
+    }
+  }};
+  
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  opacity: ${(props) => (props.$activePowerUp ? 1 : 0.35)};
 
   img {
     width: 70%;
     height: 70%;
     object-fit: contain;
-    filter: ${(props) =>
-      props.$isOnCooldown ? "brightness(0.6) grayscale(0.3)" : "brightness(1)"};
-    position: relative;
-    top: clamp(-6px, -1vw, -10px);
-  }
-
-  span {
-    font-size: clamp(14px, 2vw, 20px);
+    filter: ${(props) => (props.$isOnCooldown ? "brightness(0.5) grayscale(0.3)" : "brightness(1)")};
   }
 `;
 
 const PowerUpIndicator = styled.div`
   position: absolute;
-  bottom: clamp(-2px, -0.3vw, -3px);
+  bottom: -3px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: clamp(6px, 0.9vw, 9px);
+  font-size: clamp(7px, 0.9vw, 9px);
   font-family: "Bungee", cursive;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.95);
   text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.9);
-  background: rgba(0, 0, 0, 0.8);
-  padding: clamp(1px, 0.2vw, 2px) clamp(2px, 0.4vw, 4px);
+  background: rgba(0, 0, 0, 0.85);
+  padding: 1px 4px;
   border-radius: 3px;
-  letter-spacing: clamp(0.1px, 0.03vw, 0.3px);
+  letter-spacing: 0.3px;
   white-space: nowrap;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.15);
 `;
 
-const DodgeChargesContainer = styled.div`
-  display: flex;
-  gap: clamp(2px, 0.4vw, 4px);
-  align-items: center;
-  flex-shrink: 0;
-`;
-
-const DodgeCharge = styled.div`
-  width: clamp(14px, 1.8vw, 18px);
-  height: clamp(14px, 1.8vw, 18px);
-  border-radius: 50%;
-  border: clamp(1px, 0.2vw, 2px) solid
-    ${(props) =>
-      props.$isOnCooldown
-        ? "rgba(212, 175, 55, 0.4)" // On cooldown (takes precedence)
-        : props.$isActive
-        ? "var(--edo-gold)" // Active and ready
-        : "rgba(0, 0, 0, 0.6)"}; // Inactive (dark black border)
-  background: ${(props) =>
-    props.$isOnCooldown
-      ? "rgba(0, 0, 0, 0.7)" // On cooldown (takes precedence)
-      : props.$isActive
-      ? "rgba(139, 69, 19, 0.85)" // Active and ready (lacquered brown hint)
-      : "rgba(0, 0, 0, 0.7)"}; // Inactive (dark black background)
-  position: relative;
+const CenterSection = styled.div`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-  box-shadow: ${(props) =>
-    props.$isActive && !props.$isOnCooldown
-      ? "0 0 8px rgba(212, 175, 55, 0.45), inset 0 0 4px rgba(212, 175, 55, 0.25)"
-      : "inset 0 1px 2px rgba(0, 0, 0, 0.3)"};
-
-  &::before {
-    content: "";
-    width: clamp(4px, 0.6vw, 6px);
-    height: clamp(4px, 0.6vw, 6px);
-    border-radius: 50%;
-    background: ${(props) =>
-      props.$isOnCooldown
-        ? "rgba(212, 175, 55, 0.5)" // On cooldown (takes precedence)
-        : props.$isActive
-        ? "var(--edo-gold)" // Active and ready
-        : "rgba(0, 0, 0, 0.8)"}; // Inactive (dark black dot)
-    box-shadow: ${(props) =>
-      props.$isActive && !props.$isOnCooldown
-        ? "0 0 4px rgba(212, 175, 55, 0.65)"
-        : "none"};
-    transition: all 0.2s ease;
-  }
+  gap: clamp(16px, 2.5vw, 28px);
+  z-index: 1000;
 `;
 
 const UiPlayerInfo = ({
   playerOneWinCount,
   playerTwoWinCount,
   roundId = 0,
-  // Player 1 data
   player1Stamina,
   player1DodgeCharges = 2,
   player1DodgeChargeCooldowns = [0, 0],
@@ -481,7 +348,6 @@ const UiPlayerInfo = ({
   player1SnowballCooldown = false,
   player1PumoArmyCooldown = false,
   player1IsGassed = false,
-  // Player 2 data
   player2Stamina,
   player2DodgeCharges = 2,
   player2DodgeChargeCooldowns = [0, 0],
@@ -492,7 +358,7 @@ const UiPlayerInfo = ({
 }) => {
   const currentTime = Date.now();
 
-  // Track previous stamina values and transient loss bars
+  // Clamp stamina values
   const clampStamina = (value) => {
     const n = Number(value);
     if (!Number.isFinite(n)) return 0;
@@ -507,7 +373,7 @@ const UiPlayerInfo = ({
   const [p2DisplayStamina, setP2DisplayStamina] = useState(s2);
   const [p1LastDecreaseAt, setP1LastDecreaseAt] = useState(0);
   const [p2LastDecreaseAt, setP2LastDecreaseAt] = useState(0);
-  const MAX_INCREASE_PER_UPDATE = 15; // Prevent sudden large spikes visually
+  const MAX_INCREASE_PER_UPDATE = 15;
 
   const [p1Loss, setP1Loss] = useState({ left: 0, width: 0, visible: false });
   const [p2Loss, setP2Loss] = useState({ left: 0, width: 0, visible: false });
@@ -538,18 +404,15 @@ const UiPlayerInfo = ({
         setP1Loss((cur) => ({ ...cur, visible: false }));
       }, 500);
     } else {
-      // Hide loss on stamina increase or no change
       setP1Loss((cur) => (cur.visible ? { ...cur, visible: false } : cur));
     }
 
-    // Glitch guard: prevent sudden huge spikes (e.g., 0 -> 100) right after a decrease
+    // Glitch guard
     const justDecreased = Date.now() - p1LastDecreaseAt < 600 || p1DisplayStamina === 0;
     if (next - p1DisplayStamina > 25 && justDecreased) {
-      // Ignore this spike; keep previous display
       next = p1DisplayStamina;
     }
 
-    // Always cap per-update increase to a reasonable step
     if (next > p1DisplayStamina) {
       next = Math.min(next, p1DisplayStamina + MAX_INCREASE_PER_UPDATE);
     }
@@ -576,17 +439,14 @@ const UiPlayerInfo = ({
         setP2Loss((cur) => ({ ...cur, visible: false }));
       }, 500);
     } else {
-      // Hide loss on stamina increase or no change
       setP2Loss((cur) => (cur.visible ? { ...cur, visible: false } : cur));
     }
 
-    // Glitch guard: prevent sudden huge spikes (e.g., 0 -> 100) right after a decrease
     const justDecreased = Date.now() - p2LastDecreaseAt < 600 || p2DisplayStamina === 0;
     if (next - p2DisplayStamina > 25 && justDecreased) {
       next = p2DisplayStamina;
     }
 
-    // Always cap per-update increase to a reasonable step
     if (next > p2DisplayStamina) {
       next = Math.min(next, p2DisplayStamina + MAX_INCREASE_PER_UPDATE);
     }
@@ -612,16 +472,8 @@ const UiPlayerInfo = ({
     return [0, 1].map((chargeIndex) => {
       const cooldownEndTime = cooldowns[chargeIndex];
       const isOnCooldown = cooldownEndTime > currentTime;
-
-      // Get all charges that are not on cooldown
-      const availableChargeIndices = [0, 1].filter(
-        (i) => cooldowns[i] <= currentTime
-      );
-
-      // Mark the first N available charges as active (where N = number of available charges)
-      const isActive =
-        !isOnCooldown &&
-        availableChargeIndices.slice(0, charges).includes(chargeIndex);
+      const availableChargeIndices = [0, 1].filter((i) => cooldowns[i] <= currentTime);
+      const isActive = !isOnCooldown && availableChargeIndices.slice(0, charges).includes(chargeIndex);
 
       return (
         <DodgeCharge
@@ -633,18 +485,11 @@ const UiPlayerInfo = ({
     });
   };
 
-  const getPowerUpIsOnCooldown = (
-    powerUpType,
-    snowballCooldown,
-    pumoArmyCooldown
-  ) => {
+  const getPowerUpIsOnCooldown = (powerUpType, snowballCooldown, pumoArmyCooldown) => {
     switch (powerUpType) {
-      case "snowball":
-        return snowballCooldown;
-      case "pumo_army":
-        return pumoArmyCooldown;
-      default:
-        return false;
+      case "snowball": return snowballCooldown;
+      case "pumo_army": return pumoArmyCooldown;
+      default: return false;
     }
   };
 
@@ -653,143 +498,98 @@ const UiPlayerInfo = ({
     return isUsable ? "F" : "PASSIVE";
   };
 
+  const getPowerUpIcon = (powerUpType) => {
+    switch (powerUpType) {
+      case "speed": return happyFeetIcon;
+      case "power": return powerWaterIcon;
+      case "snowball": return snowballImage;
+      case "pumo_army": return pumoArmyIcon;
+      case "thick_blubber": return thickBlubberIcon;
+      default: return "";
+    }
+  };
+
   return (
     <FighterUIContainer>
       {/* Player 1 Section */}
       <PlayerSection $isRight={false}>
-        <StaminaRow>
+        <PlayerHeader $isRight={false}>
           <PlayerAvatar>力</PlayerAvatar>
-          <StaminaContainer $isRight={false}>
+          <PlayerInfo $isRight={false}>
+            <PlayerName>PLAYER 1</PlayerName>
+            <PlayerRank>JONOKUCHI</PlayerRank>
+          </PlayerInfo>
+          <WinTracker $isRight={false}>
+            {renderWinMarks(playerOneWinCount)}
+          </WinTracker>
+        </PlayerHeader>
+
+        <StaminaRow $isRight={false}>
+          <StaminaContainer>
             <StaminaFill $stamina={p1DisplayStamina} />
-            <StaminaLoss
-              $left={p1Loss.left}
-              $width={p1Loss.width}
-              $visible={p1Loss.visible}
-            />
+            <StaminaLoss $left={p1Loss.left} $width={p1Loss.width} $visible={p1Loss.visible} />
             <GassedOverlay $isGassed={player1IsGassed} />
-            <WinTracker $isRight={false}>
-              {renderWinMarks(playerOneWinCount)}
-            </WinTracker>
-            <PlayerInfoTop $isRight={false}>
-              <PlayerName>PLAYER 1</PlayerName>
-            </PlayerInfoTop>
-            <PlayerInfoBottom $isRight={false}>
-              <PlayerRank>JONOKUCHI</PlayerRank>
-            </PlayerInfoBottom>
-            <DodgeChargesPosition $isRight={false}>
-              <DodgeChargesContainer>
-                {renderDodgeCharges(
-                  player1DodgeCharges,
-                  player1DodgeChargeCooldowns
-                )}
-              </DodgeChargesContainer>
-            </DodgeChargesPosition>
           </StaminaContainer>
         </StaminaRow>
+
+        <BottomRow $isRight={false}>
+          <DodgeChargesContainer>
+            {renderDodgeCharges(player1DodgeCharges, player1DodgeChargeCooldowns)}
+          </DodgeChargesContainer>
+          <PowerUpContainer
+            $activePowerUp={player1ActivePowerUp}
+            $isOnCooldown={getPowerUpIsOnCooldown(player1ActivePowerUp, player1SnowballCooldown, player1PumoArmyCooldown)}
+          >
+            {player1ActivePowerUp && (
+              <>
+                <img src={getPowerUpIcon(player1ActivePowerUp)} alt={player1ActivePowerUp} />
+                <PowerUpIndicator>{getPowerUpIndicatorText(player1ActivePowerUp)}</PowerUpIndicator>
+              </>
+            )}
+          </PowerUpContainer>
+        </BottomRow>
       </PlayerSection>
 
-      {/* Central Power-Up Section */}
-      <CentralPowerUpSection>
-        <PowerUpContainer
-          $activePowerUp={player1ActivePowerUp}
-          $isOnCooldown={getPowerUpIsOnCooldown(
-            player1ActivePowerUp,
-            player1SnowballCooldown,
-            player1PumoArmyCooldown
-          )}
-          $isPlayer2={false}
-        >
-          {player1ActivePowerUp && (
-            <>
-              <img
-                src={
-                  player1ActivePowerUp === "speed"
-                    ? happyFeetIcon
-                    : player1ActivePowerUp === "power"
-                    ? powerWaterIcon
-                    : player1ActivePowerUp === "snowball"
-                    ? snowballImage
-                    : player1ActivePowerUp === "pumo_army"
-                    ? pumoArmyIcon
-                    : player1ActivePowerUp === "thick_blubber"
-                    ? thickBlubberIcon
-                    : ""
-                }
-                alt={player1ActivePowerUp}
-              />
-              <PowerUpIndicator>
-                {getPowerUpIndicatorText(player1ActivePowerUp)}
-              </PowerUpIndicator>
-            </>
-          )}
-        </PowerUpContainer>
-
-        <PowerUpContainer
-          $activePowerUp={player2ActivePowerUp}
-          $isOnCooldown={getPowerUpIsOnCooldown(
-            player2ActivePowerUp,
-            player2SnowballCooldown,
-            player2PumoArmyCooldown
-          )}
-          $isPlayer2={true}
-        >
-          {player2ActivePowerUp && (
-            <>
-              <img
-                src={
-                  player2ActivePowerUp === "speed"
-                    ? happyFeetIcon
-                    : player2ActivePowerUp === "power"
-                    ? powerWaterIcon
-                    : player2ActivePowerUp === "snowball"
-                    ? snowballImage
-                    : player2ActivePowerUp === "pumo_army"
-                    ? pumoArmyIcon
-                    : player2ActivePowerUp === "thick_blubber"
-                    ? thickBlubberIcon
-                    : ""
-                }
-                alt={player2ActivePowerUp}
-              />
-              <PowerUpIndicator>
-                {getPowerUpIndicatorText(player2ActivePowerUp)}
-              </PowerUpIndicator>
-            </>
-          )}
-        </PowerUpContainer>
-      </CentralPowerUpSection>
+      {/* Center Power-Up Section - kept for reference but elements moved to player sections */}
+      <CenterSection />
 
       {/* Player 2 Section */}
       <PlayerSection $isRight={true}>
-        <StaminaRow>
-          <StaminaContainer $isRight={true}>
-            <StaminaFill $stamina={p2DisplayStamina} />
-            <StaminaLoss
-              $left={p2Loss.left}
-              $width={p2Loss.width}
-              $visible={p2Loss.visible}
-            />
-            <GassedOverlay $isGassed={player2IsGassed} />
-            <WinTracker $isRight={true}>
-              {renderWinMarks(playerTwoWinCount)}
-            </WinTracker>
-            <PlayerInfoTop $isRight={true}>
-              <PlayerName>PLAYER 2</PlayerName>
-            </PlayerInfoTop>
-            <PlayerInfoBottom $isRight={true}>
-              <PlayerRank>JONOKUCHI</PlayerRank>
-            </PlayerInfoBottom>
-            <DodgeChargesPosition $isRight={true}>
-              <DodgeChargesContainer>
-                {renderDodgeCharges(
-                  player2DodgeCharges,
-                  player2DodgeChargeCooldowns
-                )}
-              </DodgeChargesContainer>
-            </DodgeChargesPosition>
-          </StaminaContainer>
+        <PlayerHeader $isRight={true}>
           <PlayerAvatar>闘</PlayerAvatar>
+          <PlayerInfo $isRight={true}>
+            <PlayerName>PLAYER 2</PlayerName>
+            <PlayerRank>JONOKUCHI</PlayerRank>
+          </PlayerInfo>
+          <WinTracker $isRight={true}>
+            {renderWinMarks(playerTwoWinCount)}
+          </WinTracker>
+        </PlayerHeader>
+
+        <StaminaRow $isRight={true}>
+          <StaminaContainer>
+            <StaminaFill $stamina={p2DisplayStamina} />
+            <StaminaLoss $left={p2Loss.left} $width={p2Loss.width} $visible={p2Loss.visible} />
+            <GassedOverlay $isGassed={player2IsGassed} />
+          </StaminaContainer>
         </StaminaRow>
+
+        <BottomRow $isRight={true}>
+          <DodgeChargesContainer>
+            {renderDodgeCharges(player2DodgeCharges, player2DodgeChargeCooldowns)}
+          </DodgeChargesContainer>
+          <PowerUpContainer
+            $activePowerUp={player2ActivePowerUp}
+            $isOnCooldown={getPowerUpIsOnCooldown(player2ActivePowerUp, player2SnowballCooldown, player2PumoArmyCooldown)}
+          >
+            {player2ActivePowerUp && (
+              <>
+                <img src={getPowerUpIcon(player2ActivePowerUp)} alt={player2ActivePowerUp} />
+                <PowerUpIndicator>{getPowerUpIndicatorText(player2ActivePowerUp)}</PowerUpIndicator>
+              </>
+            )}
+          </PowerUpContainer>
+        </BottomRow>
       </PlayerSection>
     </FighterUIContainer>
   );

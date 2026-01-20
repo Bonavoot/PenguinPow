@@ -32,10 +32,18 @@ const Gyoji = ({ gyojiState, hakkiyoi }) => {
     imgSrc = gyojiPlayer2wins;
   }
 
+  // Determine if gyoji should breathe (idle state, not declaring winner or hakkiyoi)
+  const shouldBreathe =
+    gyojiState === "idle" && !showHakkiyoiAnimation;
+
   return (
     <>
       <GyojiShadow gyojiState={gyojiState} />
-      <img src={imgSrc} alt="gyoji" className="gyoji"></img>
+      <img
+        src={imgSrc}
+        alt="gyoji"
+        className={`gyoji${shouldBreathe ? " gyoji-breathing" : ""}`}
+      />
     </>
   );
 };

@@ -1462,6 +1462,36 @@ io.on("connection", (socket) => {
           );
         }
 
+        // === DANGER ZONE DETECTION - Dramatic moments near ring-out ===
+        const DANGER_ZONE_THRESHOLD = 50; // pixels from boundary
+        const isInDangerZone =
+          player.isHit &&
+          !room.gameOver &&
+          !player.isBeingThrown &&
+          (player.x <= MAP_LEFT_BOUNDARY + DANGER_ZONE_THRESHOLD ||
+            player.x >= MAP_RIGHT_BOUNDARY - DANGER_ZONE_THRESHOLD);
+
+        // Emit danger zone event for dramatic slow-mo effect (only once per knockback)
+        if (isInDangerZone && !player.dangerZoneTriggered) {
+          player.dangerZoneTriggered = true;
+          io.in(room.id).emit("danger_zone", {
+            playerId: player.id,
+            x: player.x,
+            y: player.y,
+            direction: player.x < (MAP_LEFT_BOUNDARY + MAP_RIGHT_BOUNDARY) / 2 ? "left" : "right",
+          });
+          // Emit extra screen shake for dramatic near-ring-out
+          io.in(room.id).emit("screen_shake", {
+            intensity: 1.0,
+            duration: 400,
+          });
+        }
+
+        // Reset danger zone flag when player is no longer hit
+        if (!player.isHit && player.dangerZoneTriggered) {
+          player.dangerZoneTriggered = false;
+        }
+
         // Win Conditions - back to original state
         if (
           (player.isHit &&
@@ -1494,6 +1524,13 @@ io.on("connection", (socket) => {
           handleWinCondition(room, player, winner, io);
           // Don't reset knockback velocity for the loser
           player.knockbackVelocity = { ...player.knockbackVelocity };
+          
+          // Emit ring-out event for dramatic effect
+          io.in(room.id).emit("ring_out", {
+            loserId: player.id,
+            winnerId: winner.id,
+            direction: player.x <= MAP_LEFT_BOUNDARY ? "left" : "right",
+          });
         }
 
         if (
@@ -3457,13 +3494,21 @@ io.on("connection", (socket) => {
           otherPlayer.knockbackVelocity.x = immediateKnockback;
           otherPlayer.movementVelocity = slidingVelocity;
 
-          // Mark this as a slap knockback for special friction handling
-          otherPlayer.isSlapKnockback = true;
+        // Mark this as a slap knockback for special friction handling
+                  otherPlayer.isSlapKnockback = true;
 
-          console.log(
-            `👋 SLAP ATTACK: Player ${player.id} -> Consistent knockback applied (no separation boost), attacker facing: ${player.facing}, knockback direction: ${knockbackDirection}`
-          );
-        } else {
+                  console.log(
+                    `👋 SLAP ATTACK: Player ${player.id} -> Consistent knockback applied (no separation boost), attacker facing: ${player.facing}, knockback direction: ${knockbackDirection}`
+                  );
+
+                  // Add screen shake for slap attacks - smaller but still impactful
+                  if (currentRoom) {
+                    io.in(currentRoom.id).emit("screen_shake", {
+                      intensity: 0.4,
+                      duration: 120,
+                    });
+                  }
+                } else {
           // For charged attacks, force clear any existing hit state and velocities for consistent knockback
           otherPlayer.isHit = false;
           otherPlayer.isSlapKnockback = false;
