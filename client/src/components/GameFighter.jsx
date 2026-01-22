@@ -277,8 +277,8 @@ const getImageSrc = (
   if (fighter === "player 2") {
     if (isGrabBreaking) return crouching;
     if (isGrabBreakCountered) return hit;
-    if (isPerfectRawParrySuccess) return snowballThrow;
-    if (isRawParrySuccess) return recovering;
+    // Both perfect and regular parry use the same success animation
+    if (isRawParrySuccess || isPerfectRawParrySuccess) return recovering;
     if (isAtTheRopes) return beingGrabbed;
     if (isBowing) return bow;
     if (isThrowTeching) return throwTech;
@@ -320,8 +320,8 @@ const getImageSrc = (
   } else if (fighter === "player 1") {
     if (isGrabBreaking) return crouching2;
     if (isGrabBreakCountered) return hit2;
-    if (isPerfectRawParrySuccess) return snowballThrow2;
-    if (isRawParrySuccess) return recovering2;
+    // Both perfect and regular parry use the same success animation
+    if (isRawParrySuccess || isPerfectRawParrySuccess) return recovering2;
     if (isAtTheRopes) return beingGrabbed2;
     if (isJumping) return throwing2;
     if (isAttacking && !isSlapAttack) return attack2;

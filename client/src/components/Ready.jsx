@@ -7,7 +7,7 @@ import {
   playButtonPressSound2,
 } from "../utils/soundUtils";
 
-const Ready = ({ rooms, roomName, handleGame }) => {
+const Ready = ({ rooms, roomName, handleGame, isCPUMatch = false }) => {
   const [ready, setReady] = useState(false);
   const [count, setCount] = useState(0);
   const { socket } = useContext(SocketContext);
@@ -15,6 +15,9 @@ const Ready = ({ rooms, roomName, handleGame }) => {
   // Find room and safely get player count
   const currentRoom = rooms.find((room) => room.id === roomName);
   const playerCount = currentRoom ? currentRoom.players.length : 0;
+
+  // In CPU matches, we always have 2 players (human + CPU)
+  const canShowReadyButton = isCPUMatch || playerCount > 1;
 
   useEffect(() => {
     socket.on("ready_count", (readyCount) => {
@@ -76,7 +79,7 @@ const Ready = ({ rooms, roomName, handleGame }) => {
         </>
       ) : (
         <>
-          {playerCount > 1 ? (
+          {canShowReadyButton ? (
             <>
               <button
                 onClick={(e) => {
@@ -101,6 +104,7 @@ Ready.propTypes = {
   rooms: PropTypes.array.isRequired,
   roomName: PropTypes.string.isRequired,
   handleGame: PropTypes.func.isRequired,
+  isCPUMatch: PropTypes.bool,
 };
 
 export default Ready;

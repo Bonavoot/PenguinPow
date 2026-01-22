@@ -235,22 +235,26 @@ function executeSlapAttack(player, rooms) {
     }
   }
 
-  // Slightly increase startup for clearer anticipation, add a touch more recovery
-  const attackDuration = 340;
-  const startupDuration = Math.floor(attackDuration * 0.5); // 50% startup for clearer read
+  // === SLAP ATTACK TIMING - FAST spammable close-range attack ===
+  const attackDuration = 260;  // Very quick attack
+  const startupDuration = 50;  // Minimal startup - slaps are fast
+  const endlagDuration = 60;   // Very short recovery - spammable
 
   player.isSlapAttack = true;
   player.attackEndTime = Date.now() + attackDuration;
   player.isAttacking = true;
   player.attackStartTime = Date.now();
   player.attackType = "slap";
+  
+  // Set attack cooldown - short for spammable slaps
+  player.attackCooldownUntil = Date.now() + attackDuration + endlagDuration + 50;
 
   // Add startup frame tracking
   player.isInStartupFrames = true;
   player.startupEndTime = Date.now() + startupDuration;
   // Brief action lock at the start to serialize with other inputs
   player.currentAction = "slap";
-  player.actionLockUntil = Date.now() + Math.min(120, startupDuration);
+  player.actionLockUntil = Date.now() + startupDuration; // Lock until startup ends
 
   // Set timeout to end startup frames and make attack active
   setPlayerTimeout(
@@ -273,22 +277,29 @@ function executeSlapAttack(player, rooms) {
       player.isInStartupFrames = false; // Ensure startup frames are cleared
       // Reduce slide a bit more to limit chaotic overlap
       player.movementVelocity *= 0.35;
-      // Clear any remaining action lock for slap
-      if (player.currentAction === "slap") {
-        player.actionLockUntil = 0;
-      }
+      
+      // === ENDLAG - Recovery period after attack ===
+      // Player is in recovery and cannot perform most actions
+      player.isInEndlag = true;
+      player.endlagEndTime = Date.now() + endlagDuration;
+      player.actionLockUntil = Date.now() + endlagDuration;
+      player.currentAction = "endlag";
 
       // Check if there's a pending slap attack to execute
       if (player.hasPendingSlapAttack) {
         player.hasPendingSlapAttack = false;
         // Set strafing cooldown to prevent movement during the gap between attacks
         player.slapStrafeCooldown = true;
-        player.slapStrafeCooldownEndTime = Date.now() + 150; // 150ms cooldown after attack ends
+        player.slapStrafeCooldownEndTime = Date.now() + endlagDuration + 100;
 
-        // Add a small delay before executing the next slap to allow neutral animation
+        // Short gap for fast chained slaps
         setPlayerTimeout(
           player.id,
           () => {
+            // Clear endlag before next attack
+            player.isInEndlag = false;
+            player.endlagEndTime = 0;
+            
             // Execute the next slap if player is still valid
             if (
               !player.isDodging &&
@@ -303,39 +314,54 @@ function executeSlapAttack(player, rooms) {
               executeSlapAttack(player, rooms);
             }
           },
-          100 // 100ms delay to allow victim to return to neutral between hits
+          80 // Fast chaining for spammable slaps
         );
         return; // Early return to skip charging restart logic
       }
 
       // Set strafing cooldown for non-buffered attacks too
       player.slapStrafeCooldown = true;
-      player.slapStrafeCooldownEndTime = Date.now() + 180; // slightly longer window
+      player.slapStrafeCooldownEndTime = Date.now() + endlagDuration;
 
-      // After slap attack ends, check if we should restart charging
-      if (
-        player.keys.mouse2 &&
-        player.wantsToRestartCharge &&
-        !player.isAttacking &&
-        !player.isJumping &&
-        !player.isDodging &&
-        !player.isThrowing &&
-        !player.isBeingThrown &&
-        !player.isGrabbing &&
-        !player.isBeingGrabbed &&
-        !player.isHit &&
-        !player.isRecovering &&
-        !player.isRawParryStun &&
-        !player.isThrowingSnowball &&
-        !player.canMoveToReady
-      ) {
-        // Restart charging immediately
-        player.isChargingAttack = true;
-        player.chargeStartTime = Date.now();
-        player.chargeAttackPower = 1;
-        player.attackType = "charged";
-        player.wantsToRestartCharge = false;
-      }
+      // Clear endlag after duration
+      setPlayerTimeout(
+        player.id,
+        () => {
+          player.isInEndlag = false;
+          player.endlagEndTime = 0;
+          if (player.currentAction === "endlag" || player.currentAction === "slap") {
+            player.actionLockUntil = 0;
+            player.currentAction = null;
+          }
+          
+          // After endlag ends, check if we should restart charging
+          if (
+            player.keys.mouse2 &&
+            player.wantsToRestartCharge &&
+            !player.isAttacking &&
+            !player.isJumping &&
+            !player.isDodging &&
+            !player.isThrowing &&
+            !player.isBeingThrown &&
+            !player.isGrabbing &&
+            !player.isBeingGrabbed &&
+            !player.isHit &&
+            !player.isRecovering &&
+            !player.isRawParryStun &&
+            !player.isThrowingSnowball &&
+            !player.canMoveToReady
+          ) {
+            // Restart charging immediately
+            player.isChargingAttack = true;
+            player.chargeStartTime = Date.now();
+            player.chargeAttackPower = 1;
+            player.attackType = "charged";
+            player.wantsToRestartCharge = false;
+          }
+        },
+        endlagDuration,
+        "slapEndlagReset"
+      );
     },
     attackDuration
   );
@@ -432,9 +458,25 @@ function executeChargedAttack(player, chargePercentage, rooms) {
   // Set attack state
   player.isAttacking = true;
   player.attackStartTime = Date.now();
-  // Action lock through early portion of the swing for visual clarity
+  
+  // === STARTUP FRAMES - Telegraph before attack becomes active ===
+  const CHARGED_STARTUP_MS = 150; // Clear windup before hit is active
+  player.isInStartupFrames = true;
+  player.startupEndTime = Date.now() + CHARGED_STARTUP_MS;
+  
+  // Set timeout to end startup frames
+  setPlayerTimeout(
+    player.id,
+    () => {
+      player.isInStartupFrames = false;
+    },
+    CHARGED_STARTUP_MS,
+    "chargedStartupEnd"
+  );
+  
+  // Action lock through startup for visual clarity
   player.currentAction = "charged";
-  player.actionLockUntil = Date.now() + Math.min(180, attackDuration);
+  player.actionLockUntil = Date.now() + CHARGED_STARTUP_MS;
 
   // Add hit tracking
   player.chargedAttackHit = false;
@@ -1023,6 +1065,9 @@ function safelyEndChargedAttack(player, rooms) {
     `safelyEndChargedAttack called for player ${player.id}, attackType: ${player.attackType}, chargedAttackHit: ${player.chargedAttackHit}`
   );
 
+  // === ENDLAG DURATION FOR CHARGED ATTACKS ===
+  const CHARGED_ENDLAG_DURATION = 300; // Recovery after charged attack ends
+
   // Only handle charged attacks, let slap attacks end normally
   if (player.attackType === "charged" && !player.chargedAttackHit) {
     console.log(
@@ -1037,14 +1082,14 @@ function safelyEndChargedAttack(player, rooms) {
     if (currentRoom) {
       const opponent = currentRoom.players.find((p) => p.id !== player.id);
 
-      // Set recovery for missed charged attacks (same logic as executeChargedAttack)
+      // Set recovery for missed charged attacks - INCREASED duration for visual clarity
       if (opponent && !opponent.isHit && !player.isChargingAttack) {
         console.log(
           `Setting recovery state for player ${player.id} after missed charged attack (from safelyEndChargedAttack)`
         );
         player.isRecovering = true;
         player.recoveryStartTime = Date.now();
-        player.recoveryDuration = 250;
+        player.recoveryDuration = 400; // Was 250ms - now longer for clearer punishment
         player.recoveryDirection = player.facing;
         // Use movement velocity for natural sliding
         player.movementVelocity = player.facing * -3;
@@ -1068,30 +1113,51 @@ function safelyEndChargedAttack(player, rooms) {
     player.attackType = null;
     player.chargeAttackPower = 0;
     player.chargedAttackHit = false; // Reset hit tracking
-    if (player.currentAction === "charged") {
-      player.actionLockUntil = 0;
-    }
+    
+    // === ENDLAG - Visual recovery period ===
+    player.isInEndlag = true;
+    player.endlagEndTime = Date.now() + CHARGED_ENDLAG_DURATION;
+    player.currentAction = "endlag";
+    player.actionLockUntil = Date.now() + CHARGED_ENDLAG_DURATION;
+    
+    // Set attack cooldown to prevent immediate spam
+    player.attackCooldownUntil = Date.now() + CHARGED_ENDLAG_DURATION + 150;
 
     // Clear the mouse2 flag - restart logic now happens immediately when recovery ends
     player.mouse2HeldDuringAttack = false;
 
-    // Check for buffered actions after attack ends
-    if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
-      const action = player.bufferedAction;
-      player.bufferedAction = null;
-      player.bufferExpiryTime = 0;
+    // Clear endlag after duration via timeout
+    setPlayerTimeout(
+      player.id,
+      () => {
+        player.isInEndlag = false;
+        player.endlagEndTime = 0;
+        if (player.currentAction === "endlag" || player.currentAction === "charged") {
+          player.actionLockUntil = 0;
+          player.currentAction = null;
+        }
+        
+        // Check for buffered actions after endlag ends
+        if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
+          const action = player.bufferedAction;
+          player.bufferedAction = null;
+          player.bufferExpiryTime = 0;
 
-      // Execute the buffered action
-      if (action.type === "dodge") {
-        player.isDodging = true;
-        player.dodgeStartTime = Date.now();
-        player.dodgeEndTime = Date.now() + 400;
-        player.stamina = Math.max(0, player.stamina - 50);
-        player.dodgeDirection = action.direction;
-        player.dodgeStartX = player.x;
-        player.dodgeStartY = player.y;
-      }
-    }
+          // Execute the buffered action
+          if (action.type === "dodge") {
+            player.isDodging = true;
+            player.dodgeStartTime = Date.now();
+            player.dodgeEndTime = Date.now() + 450;
+            player.stamina = Math.max(0, player.stamina - 50);
+            player.dodgeDirection = action.direction;
+            player.dodgeStartX = player.x;
+            player.dodgeStartY = player.y;
+          }
+        }
+      },
+      CHARGED_ENDLAG_DURATION,
+      "chargedEndlagReset"
+    );
   } else {
     console.log(
       `Not clearing attack states for player ${player.id} - player is charging`

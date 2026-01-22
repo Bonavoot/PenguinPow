@@ -2,9 +2,10 @@ import Lobby from "./Lobby";
 import Rooms from "./Rooms";
 import Game from "./Game";
 import Settings from "./Settings";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useContext } from "react";
 import PropTypes from "prop-types";
 import styled, { keyframes } from "styled-components";
+import { SocketContext } from "../SocketContext";
 import sumo from "../assets/pumo-bkg.png";
 import lobbyBackground from "../assets/lobby-bkg.webp";
 import pumo from "../assets/pumo.png";
@@ -342,6 +343,8 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
   const [roomName, setRoomName] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [currentBgIndex, setCurrentBgIndex] = useState(0);
+  const [isCPUMatch, setIsCPUMatch] = useState(false);
+  const { socket } = useContext(SocketContext);
 
   const backgroundImages = [
     mainMenuBackground,
@@ -353,11 +356,29 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
     // Start playing background music when MainMenu mounts
     playBackgroundMusic();
 
+    // Listen for CPU match creation success
+    const handleCPUMatchCreated = (data) => {
+      console.log("CPU match created:", data);
+      setRoomName(data.roomId);
+      setIsCPUMatch(true);
+      setCurrentPage("lobby");
+    };
+
+    const handleCPUMatchFailed = (data) => {
+      console.error("CPU match failed:", data.reason);
+      alert("Failed to create CPU match: " + data.reason);
+    };
+
+    socket.on("cpu_match_created", handleCPUMatchCreated);
+    socket.on("cpu_match_failed", handleCPUMatchFailed);
+
     // Cleanup function to stop music when component unmounts
     return () => {
       stopBackgroundMusic();
+      socket.off("cpu_match_created", handleCPUMatchCreated);
+      socket.off("cpu_match_failed", handleCPUMatchFailed);
     };
-  }, []);
+  }, [socket, setCurrentPage]);
 
   // Background cycling effect
   useEffect(() => {
@@ -379,6 +400,7 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
   }, [currentPage]);
 
   const handleMainMenuPage = () => {
+    setIsCPUMatch(false);
     setCurrentPage("mainMenu");
   };
 
@@ -396,6 +418,12 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
 
   const handleSettings = () => {
     setShowSettings((prev) => !prev);
+  };
+
+  const handleVsCPU = () => {
+    playButtonPressSound2();
+    console.log("Starting VS CPU match...");
+    socket.emit("create_cpu_match", { socketId: socket.id });
   };
 
   const handleClickOutside = (e) => {
@@ -442,6 +470,13 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
             onMouseEnter={playButtonHoverSound}
           >
             PLAY
+          </MenuButton>
+          <MenuButton
+            $isActive
+            onClick={handleVsCPU}
+            onMouseEnter={playButtonHoverSound}
+          >
+            VS CPU
           </MenuButton>
           <MenuButton
             onClick={() => playButtonPressSound()}
@@ -501,6 +536,7 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId }) => {
             roomName={roomName}
             handleGame={handleGame}
             setCurrentPage={setCurrentPage}
+            isCPUMatch={isCPUMatch}
           />
         </div>
       );

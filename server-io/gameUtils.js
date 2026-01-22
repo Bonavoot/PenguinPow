@@ -157,6 +157,104 @@ function resetPlayerAttackStates(player) {
   player.attackType = null;
   player.pendingChargeAttack = null;
   player.spacebarReleasedDuringDodge = false;
+  // Reset visual clarity timing states
+  player.isInStartupFrames = false;
+  player.startupEndTime = 0;
+  player.isInEndlag = false;
+  player.endlagEndTime = 0;
+  player.attackCooldownUntil = 0;
+}
+
+// === CRITICAL: Clear ALL action states when player loses control ===
+// This ensures only ONE state/animation can be active at a time
+// Called when: isHit, isBeingGrabbed, isBeingThrown, isRawParryStun, isAtTheRopes
+function clearAllActionStates(player) {
+  // Clear attack states
+  player.isAttacking = false;
+  player.isChargingAttack = false;
+  player.chargeStartTime = 0;
+  player.chargeAttackPower = 0;
+  player.chargingFacingDirection = null;
+  player.slapFacingDirection = null;
+  player.isSlapAttack = false;
+  player.attackStartTime = 0;
+  player.attackEndTime = 0;
+  player.attackType = null;
+  player.pendingChargeAttack = null;
+  player.spacebarReleasedDuringDodge = false;
+  player.hasPendingSlapAttack = false;
+  player.isSlapSliding = false;
+  player.mouse2HeldDuringAttack = false;
+  player.wantsToRestartCharge = false;
+  player.chargedAttackHit = false;
+  
+  // Clear startup/endlag states
+  player.isInStartupFrames = false;
+  player.startupEndTime = 0;
+  player.isInEndlag = false;
+  player.endlagEndTime = 0;
+  
+  // Clear dodge states
+  player.isDodging = false;
+  player.dodgeStartTime = 0;
+  player.dodgeEndTime = 0;
+  player.dodgeDirection = null;
+  player.dodgeStartX = 0;
+  player.dodgeStartY = 0;
+  
+  // Clear grab states (as grabber - not being grabbed)
+  player.isGrabbing = false;
+  player.isGrabWalking = false;
+  player.isGrabbingMovement = false;
+  player.isGrabStartup = false;
+  player.isWhiffingGrab = false;
+  player.grabbedOpponent = null;
+  player.grabMovementStartTime = 0;
+  player.grabMovementDirection = 0;
+  player.grabMovementVelocity = 0;
+  player.grabStartupStartTime = 0;
+  player.grabStartupDuration = 0;
+  player.grabStartTime = 0;
+  player.grabState = "initial";
+  player.grabAttemptType = null;
+  
+  // Clear throw states (as thrower)
+  player.isThrowing = false;
+  player.throwStartTime = 0;
+  player.throwEndTime = 0;
+  player.throwOpponent = null;
+  player.throwingFacingDirection = null;
+  
+  // Clear parry states (as parrier)
+  player.isRawParrying = false;
+  player.rawParryStartTime = 0;
+  player.rawParryMinDurationMet = false;
+  player.isSlapParrying = false;
+  
+  // Clear movement states
+  player.isStrafing = false;
+  player.isCrouchStance = false;
+  player.isCrouchStrafing = false;
+  player.movementVelocity = 0;
+  
+  // Clear recovery states
+  player.isRecovering = false;
+  player.recoveryStartTime = 0;
+  player.recoveryDuration = 0;
+  player.recoveryDirection = null;
+  
+  // Clear action lock
+  player.currentAction = null;
+  player.actionLockUntil = 0;
+  
+  // Clear buffered actions
+  player.bufferedAction = null;
+  player.bufferExpiryTime = 0;
+  
+  // Clear power-up action states
+  player.isThrowingSnowball = false;
+  player.isSpawningPumoArmy = false;
+  player.isThrowingSalt = false;
 }
 
 function isWithinMapBoundaries(
@@ -194,6 +292,9 @@ function startCharging(player) {
 }
 
 function canPlayerSlap(player) {
+  // Check if player is on attack cooldown
+  const isOnCooldown = player.attackCooldownUntil && Date.now() < player.attackCooldownUntil;
+  
   return (
     !player.isJumping &&
     !player.isDodging &&
@@ -206,7 +307,9 @@ function canPlayerSlap(player) {
     !player.isRawParrying &&
     !player.isThrowingSnowball &&
     !player.canMoveToReady &&
-    !player.isAtTheRopes
+    !player.isAtTheRopes &&
+    !player.isInEndlag &&      // Cannot attack during endlag
+    !isOnCooldown              // Cannot spam attacks
   );
 }
 
@@ -267,6 +370,7 @@ module.exports = {
   canPlayerCharge,
   canPlayerUseAction,
   resetPlayerAttackStates,
+  clearAllActionStates,  // Critical: clears ALL states when player loses control
   isWithinMapBoundaries,
   constrainToMapBoundaries,
   shouldRestartCharging,

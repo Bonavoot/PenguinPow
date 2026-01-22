@@ -10,7 +10,7 @@ import {
   playButtonPressSound,
 } from "../utils/soundUtils";
 
-const Lobby = ({ rooms, roomName, handleGame, setCurrentPage }) => {
+const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false }) => {
   const [players, setPlayers] = useState([]);
   const { socket } = useContext(SocketContext);
 
@@ -83,7 +83,7 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage }) => {
                       )}
                     </div>
                     <span className="player-name">
-                      {players[i]?.fighter || "OPPONENT"}
+                      {players[i]?.isCPU ? "CPU" : (players[i]?.fighter || "OPPONENT")}
                     </span>
                   </div>
                   <div className="player-avatar">
@@ -117,7 +117,7 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage }) => {
           <span className="btn-icon">←</span>
           Leave Dohyo
         </button>
-        <Ready rooms={rooms} roomName={roomName} handleGame={handleGame} />
+        <Ready rooms={rooms} roomName={roomName} handleGame={handleGame} isCPUMatch={isCPUMatch} />
       </div>
     </div>
   );
@@ -128,6 +128,7 @@ Lobby.propTypes = {
   roomName: PropTypes.string.isRequired,
   handleGame: PropTypes.func.isRequired,
   setCurrentPage: PropTypes.func.isRequired,
+  isCPUMatch: PropTypes.bool,
 };
 
 export default Lobby;

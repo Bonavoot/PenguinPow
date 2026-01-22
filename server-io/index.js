@@ -25,6 +25,7 @@ const {
   canPlayerCharge,
   canPlayerUseAction,
   resetPlayerAttackStates,
+  clearAllActionStates,  // Critical: clears ALL states when player loses control
   isWithinMapBoundaries,
   constrainToMapBoundaries,
   shouldRestartCharging,
@@ -47,6 +48,9 @@ const {
   adjustPlayerPositions,
   safelyEndChargedAttack,
 } = require("./gameFunctions");
+
+// Import CPU AI
+const { updateCPUAI, processCPUInputs, clearAIState } = require("./cpuAI");
 
 const app = express();
 app.use(cors());
@@ -225,10 +229,19 @@ const GRAB_BREAK_ANIMATION_DURATION = 300; // Duration for grab break animation 
 const GRAB_BREAK_SEPARATION_DURATION = 220; // Smooth separation tween duration
 const GRAB_BREAK_SEPARATION_MULTIPLIER = 96; // Separation distance scale (tripled)
 
-// Hitstop tuning
-const HITSTOP_SLAP_MS = 60;
-const HITSTOP_CHARGED_MS = 90;
-const HITSTOP_PARRY_MS = 60;
+// Hitstop tuning - brief pause on impact for visual feedback
+const HITSTOP_SLAP_MS = 80;       // Brief hitstop for fast slaps
+const HITSTOP_CHARGED_MS = 150;   // Longer hitstop for heavy charged attacks
+const HITSTOP_PARRY_MS = 200;     // Longer hitstop for parries - Street Fighter style freeze frame
+
+// Parry visual timing
+const PARRY_SUCCESS_DURATION = 500; // How long the parry success pose is held
+
+// Global attack timing constants
+const ATTACK_ENDLAG_SLAP_MS = 60;       // Very short recovery for spammable slaps
+const ATTACK_ENDLAG_CHARGED_MS = 280;   // Longer recovery for charged attacks
+const ATTACK_COOLDOWN_MS = 50;          // Minimal cooldown for fast gameplay
+const BUFFERED_ATTACK_GAP_MS = 80;      // Fast chaining
 
 function triggerHitstop(room, durationMs) {
   const now = Date.now();
@@ -238,6 +251,139 @@ function triggerHitstop(room, durationMs) {
 
 function isRoomInHitstop(room) {
   return room.hitstopUntil && Date.now() < room.hitstopUntil;
+}
+
+// CPU Player creation helper
+function createCPUPlayer() {
+  return {
+    id: "CPU_PLAYER",
+    isCPU: true,
+    fighter: "player 2",
+    color: "salmon",
+    isJumping: false,
+    isAttacking: false,
+    throwCooldown: false,
+    grabCooldown: false,
+    isChargingAttack: false,
+    chargeStartTime: 0,
+    chargeMaxDuration: 2000,
+    chargeAttackPower: 0,
+    chargingFacingDirection: null,
+    slapFacingDirection: null,
+    isSlapAttack: false,
+    slapAnimation: 2,
+    isThrowing: false,
+    isThrowingSalt: false,
+    saltCooldown: false,
+    snowballCooldown: false,
+    lastSnowballTime: 0,
+    snowballs: [],
+    isThrowingSnowball: false,
+    pumoArmyCooldown: false,
+    pumoArmy: [],
+    isSpawningPumoArmy: false,
+    throwStartTime: 0,
+    throwEndTime: 0,
+    throwOpponent: null,
+    throwingFacingDirection: null,
+    beingThrownFacingDirection: null,
+    isGrabbing: false,
+    isGrabWalking: false,
+    isGrabbingMovement: false,
+    isGrabStartup: false,
+    isWhiffingGrab: false,
+    isGrabClashing: false,
+    grabClashStartTime: 0,
+    grabClashInputCount: 0,
+    grabMovementStartTime: 0,
+    grabMovementDirection: 0,
+    grabMovementVelocity: 0,
+    grabStartupStartTime: 0,
+    grabStartupDuration: 0,
+    grabStartTime: 0,
+    grabbedOpponent: null,
+    isThrowTeching: false,
+    throwTechCooldown: false,
+    isSlapParrying: false,
+    lastThrowAttemptTime: 0,
+    lastGrabAttemptTime: 0,
+    isStrafing: false,
+    isCrouchStance: false,
+    isCrouchStrafing: false,
+    isRawParrying: false,
+    rawParryStartTime: 0,
+    rawParryMinDurationMet: false,
+    isRawParryStun: false,
+    isRawParrySuccess: false,
+    isPerfectRawParrySuccess: false,
+    isAtTheRopes: false,
+    atTheRopesStartTime: 0,
+    dodgeDirection: null,
+    dodgeEndTime: 0,
+    isReady: false,
+    isHit: false,
+    isAlreadyHit: false,
+    isDead: false,
+    isBowing: false,
+    facing: -1,
+    stamina: 100,
+    isGassed: false,
+    gassedEndTime: 0,
+    x: 815,
+    y: GROUND_LEVEL,
+    knockbackVelocity: { x: 0, y: 0 },
+    movementVelocity: 0,
+    dodgeCharges: MAX_DODGE_CHARGES,
+    dodgeChargeCooldowns: [0, 0],
+    // Visual clarity timing states
+    isInStartupFrames: false,
+    startupEndTime: 0,
+    isInEndlag: false,
+    endlagEndTime: 0,
+    attackCooldownUntil: 0,
+    keys: {
+      w: false,
+      a: false,
+      s: false,
+      d: false,
+      " ": false,
+      shift: false,
+      e: false,
+      f: false,
+      mouse1: false,
+      mouse2: false,
+    },
+    wins: [],
+    bufferedAction: null,
+    bufferExpiryTime: 0,
+    wantsToRestartCharge: false,
+    mouse2HeldDuringAttack: false,
+    knockbackImmune: false,
+    knockbackImmuneEndTime: 0,
+    activePowerUp: null,
+    powerUpMultiplier: 1,
+    selectedPowerUp: null,
+    sizeMultiplier: DEFAULT_PLAYER_SIZE_MULTIPLIER,
+    hitAbsorptionUsed: false,
+    hitCounter: 0,
+    lastHitTime: 0,
+    lastCheckedAttackTime: 0,
+    hasPendingSlapAttack: false,
+    mouse1JustPressed: false,
+    mouse1JustReleased: false,
+    isOverlapping: false,
+    overlapStartTime: null,
+    chargeCancelled: false,
+    isGrabBreaking: false,
+    isGrabBreakCountered: false,
+    grabBreakSpaceConsumed: false,
+    isRingOutThrowCutscene: false,
+    ringOutThrowDistance: 0,
+    isRingOutFreezeActive: false,
+    ringOutFreezeEndTime: 0,
+    ringOutThrowDirection: null,
+    inputLockUntil: 0,
+  };
 }
 
 function handlePowerUpSelection(room) {
@@ -263,6 +409,17 @@ function handlePowerUpSelection(room) {
       `Available power-ups for player ${player.id}:`,
       availablePowerUps
     );
+
+    // Auto-select power-up for CPU player immediately
+    if (player.isCPU) {
+      const randomPowerUp =
+        availablePowerUps[Math.floor(Math.random() * availablePowerUps.length)];
+      player.selectedPowerUp = randomPowerUp;
+      room.playersSelectedPowerUps[player.id] = randomPowerUp;
+      console.log(
+        `🤖 CPU MATCH: CPU auto-selected power-up: ${randomPowerUp}`
+      );
+    }
   });
 
   // Add a small delay to ensure clients are ready to receive the event
@@ -274,6 +431,9 @@ function handlePowerUpSelection(room) {
       );
 
       room.players.forEach((player) => {
+        // Skip sending to CPU players (they don't have real sockets)
+        if (player.isCPU) return;
+
         const availablePowerUps = room.playerAvailablePowerUps[player.id];
 
         console.log(
@@ -286,6 +446,20 @@ function handlePowerUpSelection(room) {
           availablePowerUps: availablePowerUps,
         });
       });
+
+      // For CPU rooms, send selection status showing CPU already selected
+      if (room.isCPURoom) {
+        const selectedCount = Object.keys(room.playersSelectedPowerUps).length;
+        room.players.forEach((player) => {
+          if (!player.isCPU) {
+            io.to(player.id).emit("power_up_selection_status", {
+              selectedCount,
+              totalPlayers: room.players.length,
+              selections: room.playersSelectedPowerUps,
+            });
+          }
+        });
+      }
     }
   }, 100); // Small delay to ensure client is ready
 }
@@ -644,15 +818,10 @@ io.on("connection", (socket) => {
     winner.isGrabbing = true;
     winner.grabStartTime = Date.now();
     winner.grabbedOpponent = loser.id;
+    
+    // CRITICAL: Clear ALL action states when being grabbed
+    clearAllActionStates(loser);
     loser.isBeingGrabbed = true;
-    loser.isHit = false;
-
-    // Clear isAtTheRopes state if loser gets grabbed during the stun
-    if (loser.isAtTheRopes) {
-      loser.isAtTheRopes = false;
-      loser.atTheRopesStartTime = 0;
-      timeoutManager.clearPlayerSpecific(loser.id, "atTheRopesTimeout");
-    }
 
     // Set grab facing direction for winner
     if (winner.isChargingAttack) {
@@ -773,6 +942,55 @@ io.on("connection", (socket) => {
 
       if (room.players.length === 2) {
         const [player1, player2] = room.players;
+        
+        // === CRITICAL: Fix orphaned grab states ===
+        // If a player is isBeingGrabbed but no one is grabbing them, clear the state
+        [player1, player2].forEach((player) => {
+          if (player.isBeingGrabbed) {
+            const otherPlayer = player === player1 ? player2 : player1;
+            // Check if the other player is actually grabbing this player
+            if (!otherPlayer.isGrabbing || otherPlayer.grabbedOpponent !== player.id) {
+              console.log(`🔧 Fixing orphaned isBeingGrabbed state for player ${player.id}`);
+              player.isBeingGrabbed = false;
+            }
+          }
+          // Also fix orphaned isGrabbing states
+          if (player.isGrabbing && player.grabbedOpponent) {
+            const otherPlayer = player === player1 ? player2 : player1;
+            // Check if the grabbed player is actually in the grabbed state
+            if (!otherPlayer.isBeingGrabbed) {
+              console.log(`🔧 Fixing orphaned isGrabbing state for player ${player.id}`);
+              player.isGrabbing = false;
+              player.grabbedOpponent = null;
+            }
+          }
+        });
+        
+        // Update CPU AI for CPU rooms
+        if (room.isCPURoom) {
+          const currentTime = Date.now();
+          const cpuPlayer = room.players.find(p => p.isCPU);
+          const humanPlayer = room.players.find(p => !p.isCPU);
+          if (cpuPlayer && humanPlayer) {
+            // Update AI decision making (sets keys)
+            updateCPUAI(cpuPlayer, humanPlayer, room, currentTime);
+            
+            // Process the CPU's inputs (converts keys to actions)
+            const gameHelpers = {
+              executeSlapAttack,
+              executeChargedAttack,
+              canPlayerCharge,
+              canPlayerSlap,
+              canPlayerUseAction,
+              startCharging,
+              clearChargeState,
+              isPlayerInActiveState,
+              setPlayerTimeout,
+              rooms,
+            };
+            processCPUInputs(cpuPlayer, humanPlayer, room, gameHelpers);
+          }
+        }
 
         // Handle dodge charge regeneration
         [player1, player2].forEach((player) => {
@@ -1081,17 +1299,19 @@ io.on("connection", (socket) => {
 
                 // Hit opponent normally
                 snowball.hasHit = true;
+                
+                // If opponent was grabbing someone, clear the grabbed player's state first
+                if (opponent.isGrabbing && opponent.grabbedOpponent) {
+                  const grabbedPlayer = room.players.find(p => p.id === opponent.grabbedOpponent);
+                  if (grabbedPlayer) {
+                    grabbedPlayer.isBeingGrabbed = false;
+                  }
+                }
+                
+                // CRITICAL: Clear ALL action states before setting isHit
+                clearAllActionStates(opponent);
                 opponent.isHit = true;
                 opponent.isAlreadyHit = true;
-
-                // If opponent is executing a charged attack, end it
-                if (opponent.isAttacking && opponent.attackType === "charged") {
-                  console.log(
-                    `Player ${opponent.id} charged attack interrupted by snowball`
-                  );
-                  // Use helper function to safely end charged attacks
-                  safelyEndChargedAttack(opponent, rooms);
-                }
 
                 // Apply knockback only if not immune
                 if (canApplyKnockback(opponent)) {
@@ -1216,17 +1436,19 @@ io.on("connection", (socket) => {
 
                 // Hit opponent normally
                 clone.hasHit = true;
+                
+                // If opponent was grabbing someone, clear the grabbed player's state first
+                if (opponent.isGrabbing && opponent.grabbedOpponent) {
+                  const grabbedPlayer = room.players.find(p => p.id === opponent.grabbedOpponent);
+                  if (grabbedPlayer) {
+                    grabbedPlayer.isBeingGrabbed = false;
+                  }
+                }
+                
+                // CRITICAL: Clear ALL action states before setting isHit
+                clearAllActionStates(opponent);
                 opponent.isHit = true;
                 opponent.isAlreadyHit = true;
-
-                // If opponent is executing a charged attack, end it
-                if (opponent.isAttacking && opponent.attackType === "charged") {
-                  console.log(
-                    `Player ${opponent.id} charged attack interrupted by pumo clone`
-                  );
-                  // Use helper function to safely end charged attacks
-                  safelyEndChargedAttack(opponent, rooms);
-                }
 
                 // Apply knockback only if not immune (lighter than normal slap)
                 if (canApplyKnockback(opponent)) {
@@ -1939,18 +2161,10 @@ io.on("connection", (socket) => {
             player.isGrabbing = true;
             player.grabStartTime = Date.now();
             player.grabbedOpponent = opponent.id;
+            
+            // CRITICAL: Clear ALL action states when being grabbed
+            clearAllActionStates(opponent);
             opponent.isBeingGrabbed = true;
-            opponent.isHit = false;
-
-            // Clear isAtTheRopes state if opponent gets grabbed during the stun
-            if (opponent.isAtTheRopes) {
-              opponent.isAtTheRopes = false;
-              opponent.atTheRopesStartTime = 0;
-              timeoutManager.clearPlayerSpecific(
-                opponent.id,
-                "atTheRopesTimeout"
-              );
-            }
 
             // Set grab facing direction
             if (player.isChargingAttack) {
@@ -2522,22 +2736,14 @@ io.on("connection", (socket) => {
               `🔴 Player ${player.id} hitting the ropes during charged attack! x: ${player.x}, newX: ${newX}, facing: ${player.facing}, MAP_LEFT_BOUNDARY: ${MAP_LEFT_BOUNDARY}, MAP_RIGHT_BOUNDARY: ${MAP_RIGHT_BOUNDARY}`
             );
 
+            // CRITICAL: Clear ALL action states when hitting the ropes
+            clearAllActionStates(player);
+            
             // Set at the ropes state
             player.isAtTheRopes = true;
             player.atTheRopesStartTime = Date.now();
 
-            // Stop the attack and prevent movement
-            player.isAttacking = false;
-            player.isChargingAttack = false;
-            player.chargeStartTime = 0;
-            player.chargeAttackPower = 0;
-            player.chargingFacingDirection = null;
-            player.attackType = null;
-            player.attackStartTime = 0;
-            player.attackEndTime = 0;
-
-            // Clear movement and knockback
-            player.movementVelocity = 0;
+            // Clear knockback (clearAllActionStates doesn't clear this)
             player.knockbackVelocity = { x: 0, y: 0 };
 
             // Constrain player position to boundary
@@ -2746,8 +2952,10 @@ io.on("connection", (socket) => {
                     grabber.throwEndTime =
                       Date.now() + RINGOUT_THROW_DURATION_MS; // Slow, cinematic
                     grabber.throwOpponent = grabbed.id;
+                    
+                    // CRITICAL: Clear ALL action states when being thrown
+                    clearAllActionStates(grabbed);
                     grabbed.isBeingThrown = true;
-                    grabbed.isHit = false;
 
                     // Face outward based on stored direction
                     grabber.throwingFacingDirection =
@@ -2864,9 +3072,15 @@ io.on("connection", (socket) => {
     }
 
     // Check for startup frames on all attacks - disable collision during startup
-    if (player.isAttacking && player.attackStartTime) {
-      const CHARGED_ATTACK_STARTUP_DELAY = 60; // 60ms startup frames for charged attacks
-      const SLAP_ATTACK_STARTUP_DELAY = 60; // 60ms startup frames for slap attacks
+    // Use isInStartupFrames flag for accurate timing (set by executeSlapAttack/executeChargedAttack)
+    if (player.isAttacking && player.isInStartupFrames) {
+      return; // Skip collision detection during startup frames - attack not active yet
+    }
+    
+    // Fallback: Check startup timing if flag not set (for backward compatibility)
+    if (player.isAttacking && player.attackStartTime && !player.startupEndTime) {
+      const CHARGED_ATTACK_STARTUP_DELAY = 150; // Was 60ms - now clearer telegraph
+      const SLAP_ATTACK_STARTUP_DELAY = 180;    // Was 60ms - matches executeSlapAttack
 
       const startupDelay =
         player.attackType === "slap"
@@ -3009,10 +3223,9 @@ io.on("connection", (socket) => {
   }
 
   function applyParryEffect(player, knockbackDirection) {
-    // Reset attack states
-    player.isAttacking = false;
-    player.isSlapAttack = false;
-    player.attackType = null;
+    // CRITICAL: Clear ALL action states before setting isHit
+    clearAllActionStates(player);
+    
     player.isHit = true;
     player.isSlapParrying = true;
 
@@ -3129,99 +3342,52 @@ io.on("connection", (socket) => {
       // Apply knockback to the attacking player
       // Calculate knockback direction based on relative positions to ensure attacker is always pushed away from defender
       const knockbackDirection = player.x < otherPlayer.x ? -1 : 1;
+      
+      // CRITICAL: Clear ALL action states before setting isHit
+      clearAllActionStates(player);
+      
       player.knockbackVelocity.x = knockbackAmount * knockbackDirection;
       player.knockbackVelocity.y = 0;
       player.isHit = true;
 
-      // Clear all movement and action states when parried (like when getting hit)
-      player.isStrafing = false;
-      player.isJumping = false;
-      player.isAttacking = false;
+      // Set parry success state for the defending player
+      // Both perfect and regular parries use the same visual state for consistency
+      otherPlayer.isRawParrySuccess = true;
+      // Also set perfect flag for any additional effects (but same animation)
+      otherPlayer.isPerfectRawParrySuccess = isPerfectParry;
+      console.log(`Parry success set for player ${otherPlayer.id} (perfect: ${isPerfectParry})`);
 
-      // Clear movement velocity to ensure fixed knockback distance
-      player.movementVelocity = 0;
-
-      // Clear all attack and recovery states
-      player.isAttacking = false;
-      player.isChargingAttack = false;
-      player.chargeStartTime = 0;
-      player.chargeAttackPower = 0;
-      player.chargingFacingDirection = null;
-      player.isRecovering = false;
-      player.recoveryStartTime = 0;
-      player.recoveryDuration = 0;
-      player.recoveryDirection = null;
-      player.attackType = null;
-      player.pendingChargeAttack = null;
-      player.spacebarReleasedDuringDodge = false;
-
-      // Set parry success states for the defending player
-      if (isPerfectParry) {
-        // Perfect parry success state
-        otherPlayer.isPerfectRawParrySuccess = true;
-        console.log(`Perfect parry success set for player ${otherPlayer.id}`);
-
-        // Emit raw parry success event for visual effect
-        const parryData = {
-          x: otherPlayer.x,
-          y: otherPlayer.y,
-          facing: otherPlayer.facing,
-          isPerfect: true,
-          timestamp: Date.now(),
-          parryId: `${otherPlayer.id}_parry_${Date.now()}`,
-        };
-        console.log(`Emitting perfect raw_parry_success:`, parryData);
-        if (currentRoom) {
-          io.to(currentRoom.id).emit("raw_parry_success", parryData);
-        }
-
-        // Clear perfect parry success state after duration
-        setPlayerTimeout(
-          otherPlayer.id,
-          () => {
-            console.log(
-              `Clearing perfect parry success for player ${otherPlayer.id}`
-            );
-            otherPlayer.isPerfectRawParrySuccess = false;
-          },
-          400, // Duration for perfect parry success animation
-          "perfectParrySuccess" // Named timeout for easier debugging
-        );
-      } else {
-        // Regular parry success state
-        otherPlayer.isRawParrySuccess = true;
-        console.log(`Regular parry success set for player ${otherPlayer.id}`);
-
-        // Emit raw parry success event for visual effect
-        const parryData = {
-          x: otherPlayer.x,
-          y: otherPlayer.y,
-          facing: otherPlayer.facing,
-          isPerfect: false,
-          timestamp: Date.now(),
-          parryId: `${otherPlayer.id}_parry_${Date.now()}`,
-        };
-        console.log(`Emitting regular raw_parry_success:`, parryData);
-        if (currentRoom) {
-          io.to(currentRoom.id).emit("raw_parry_success", parryData);
-        }
-
-        // Clear regular parry success state after duration
-        setPlayerTimeout(
-          otherPlayer.id,
-          () => {
-            console.log(
-              `Clearing regular parry success for player ${otherPlayer.id}`
-            );
-            otherPlayer.isRawParrySuccess = false;
-          },
-          300, // Duration for regular parry success animation
-          "regularParrySuccess" // Named timeout for easier debugging
-        );
+      // Emit raw parry success event for visual effect
+      const parryData = {
+        x: otherPlayer.x,
+        y: otherPlayer.y,
+        facing: otherPlayer.facing,
+        isPerfect: isPerfectParry,
+        timestamp: Date.now(),
+        parryId: `${otherPlayer.id}_parry_${Date.now()}`,
+      };
+      console.log(`Emitting raw_parry_success:`, parryData);
+      if (currentRoom) {
+        io.to(currentRoom.id).emit("raw_parry_success", parryData);
       }
 
-      // FIXED: Standardized knockback duration for all parries (300ms)
-      // Clear hit state quickly for consistent knockback distance
+      // Clear parry success state after duration - longer duration for clear visual
+      setPlayerTimeout(
+        otherPlayer.id,
+        () => {
+          console.log(
+            `Clearing parry success for player ${otherPlayer.id}`
+          );
+          otherPlayer.isRawParrySuccess = false;
+          otherPlayer.isPerfectRawParrySuccess = false;
+        },
+        PARRY_SUCCESS_DURATION, // Longer duration for clear parry pose
+        "parrySuccess" // Named timeout for easier debugging
+      );
+
+      // Longer knockback duration for clear visual - attacker stays in hit state
+      // This syncs with the parrier's success pose for Street Fighter-like clarity
+      const parryKnockbackDuration = 400; // Longer duration so the parry is clearly visible
       setPlayerTimeout(
         player.id,
         () => {
@@ -3250,9 +3416,12 @@ io.on("connection", (socket) => {
             player.attackType = "charged";
           }
         },
-        300, // Consistent 300ms knockback duration for all parries
+        parryKnockbackDuration,
         "parryKnockbackReset" // Named timeout for easier debugging
       );
+      
+      // Lock attacker's inputs briefly during parry impact for visual clarity
+      player.inputLockUntil = Math.max(player.inputLockUntil || 0, Date.now() + HITSTOP_PARRY_MS + 100);
 
       // Apply stun for perfect parries (separate from knockback)
       if (isPerfectParry) {
@@ -3335,6 +3504,50 @@ io.on("connection", (socket) => {
       // === ROCK-SOLID HIT PROCESSING ===
       // Clear any existing hit state cleanup to prevent conflicts
       timeoutManager.clearPlayerSpecific(otherPlayer.id, "hitStateReset");
+      timeoutManager.clearPlayerSpecific(otherPlayer.id, "grabMovementTimeout");
+      timeoutManager.clearPlayerSpecific(otherPlayer.id, "grabClashResolution");
+      timeoutManager.clearPlayerSpecific(otherPlayer.id, "atTheRopesTimeout");
+      timeoutManager.clearPlayerSpecific(otherPlayer.id, "slapEndlagReset");
+      timeoutManager.clearPlayerSpecific(otherPlayer.id, "chargedEndlagReset");
+
+      // If there was room clash data involving this player, clean it up
+      if (currentRoom && currentRoom.grabClashData) {
+        if (
+          currentRoom.grabClashData.player1Id === otherPlayer.id ||
+          currentRoom.grabClashData.player2Id === otherPlayer.id
+        ) {
+          console.log(
+            `Clearing room grab clash data due to player ${otherPlayer.id} being hit`
+          );
+          delete currentRoom.grabClashData;
+          // Emit clash cancellation to room
+          io.in(currentRoom.id).emit("grab_clash_cancelled", {
+            reason: "player_hit",
+            hitPlayerId: otherPlayer.id,
+          });
+        }
+      }
+
+      // If otherPlayer was grabbing someone, clear the grabbed player's state first
+      if (otherPlayer.isGrabbing && otherPlayer.grabbedOpponent) {
+        const grabbedPlayer = currentRoom.players.find(p => p.id === otherPlayer.grabbedOpponent);
+        if (grabbedPlayer) {
+          console.log(`🔧 Clearing isBeingGrabbed on ${grabbedPlayer.id} because grabber ${otherPlayer.id} was hit`);
+          grabbedPlayer.isBeingGrabbed = false;
+        }
+      }
+      
+      // CRITICAL: Clear ALL action states - ensures only ONE state at a time
+      clearAllActionStates(otherPlayer);
+      
+      // Clear parry success states when hit
+      otherPlayer.isRawParrySuccess = false;
+      otherPlayer.isPerfectRawParrySuccess = false;
+      
+      // Clear grab clash state
+      otherPlayer.isGrabClashing = false;
+      otherPlayer.grabClashStartTime = 0;
+      otherPlayer.grabClashInputCount = 0;
 
       // Always ensure a clean state transition for reliable client-side detection
       // This guarantees that each hit triggers proper sound/visual effects
@@ -3347,80 +3560,6 @@ io.on("connection", (socket) => {
 
       // Block multiple hits from this same attack
       otherPlayer.isAlreadyHit = true;
-
-      // Reset movement states
-      otherPlayer.isJumping = false;
-      otherPlayer.isAttacking = false;
-      otherPlayer.isStrafing = false;
-
-      // Clear parry success states when hit
-      otherPlayer.isRawParrySuccess = false;
-      otherPlayer.isPerfectRawParrySuccess = false;
-
-      // Clear grab movement states if player was attempting to grab
-      if (otherPlayer.isGrabbingMovement) {
-        console.log(
-          `Player ${otherPlayer.id} grab movement interrupted by hit from ${player.id}`
-        );
-        otherPlayer.isGrabbingMovement = false;
-        otherPlayer.grabMovementStartTime = 0;
-        otherPlayer.grabMovementDirection = 0;
-        otherPlayer.grabMovementVelocity = 0;
-        // Clear any grab movement timeouts
-        timeoutManager.clearPlayerSpecific(
-          otherPlayer.id,
-          "grabMovementTimeout"
-        );
-      }
-
-      // Clear grab whiffing state if player was whiffing
-      if (otherPlayer.isWhiffingGrab) {
-        console.log(
-          `Player ${otherPlayer.id} grab whiff interrupted by hit from ${player.id}`
-        );
-        otherPlayer.isWhiffingGrab = false;
-      }
-
-      // Clear grab clashing state if player was clashing
-      if (otherPlayer.isGrabClashing) {
-        console.log(
-          `Player ${otherPlayer.id} grab clash interrupted by hit from ${player.id}`
-        );
-        otherPlayer.isGrabClashing = false;
-        otherPlayer.grabClashStartTime = 0;
-        otherPlayer.grabClashInputCount = 0;
-        // Clear any grab clash timeouts
-        timeoutManager.clearPlayerSpecific(
-          otherPlayer.id,
-          "grabClashResolution"
-        );
-
-        // If there was room clash data involving this player, clean it up
-        if (currentRoom && currentRoom.grabClashData) {
-          if (
-            currentRoom.grabClashData.player1Id === otherPlayer.id ||
-            currentRoom.grabClashData.player2Id === otherPlayer.id
-          ) {
-            console.log(
-              `Clearing room grab clash data due to player ${otherPlayer.id} being hit`
-            );
-            delete currentRoom.grabClashData;
-            // Emit clash cancellation to room
-            io.in(currentRoom.id).emit("grab_clash_cancelled", {
-              reason: "player_hit",
-              hitPlayerId: otherPlayer.id,
-            });
-          }
-        }
-      }
-
-      // Clear isAtTheRopes state if player gets hit during the stun
-      if (otherPlayer.isAtTheRopes) {
-        otherPlayer.isAtTheRopes = false;
-        otherPlayer.atTheRopesStartTime = 0;
-        // Clear any existing timeout for the at-the-ropes state
-        timeoutManager.clearPlayerSpecific(otherPlayer.id, "atTheRopesTimeout");
-      }
 
       // Increment hit counter for reliable hit sound triggering
       otherPlayer.hitCounter = (otherPlayer.hitCounter || 0) + 1;
@@ -3571,9 +3710,9 @@ io.on("connection", (socket) => {
       otherPlayer.knockbackVelocity.y = 0;
       otherPlayer.y = GROUND_LEVEL;
 
-      // === CONSISTENT HIT DURATION ===
-      // Use fixed duration for all slap attacks to ensure consistency
-      const hitStateDuration = isSlapAttack ? 250 : 300; // Fixed 250ms for slaps, 300ms for charged
+      // === HIT STUN DURATION ===
+      // Clear visual feedback but fast enough for responsive gameplay
+      const hitStateDuration = isSlapAttack ? 280 : 380; // Slaps are quick, charged hits longer
 
       // Update the last hit time for tracking
       otherPlayer.lastHitTime = currentTime;
@@ -3589,16 +3728,19 @@ io.on("connection", (socket) => {
         "hitStateReset" // Named timeout for cleanup
       );
 
-      // Short input lockouts to reduce action spam right after hits
-      const lockMs = isSlapAttack ? 60 : 80;
+      // Input lockout matches hit stun for clear visual feedback
+      // Victim cannot act until hit stun ends
+      const victimLockMs = hitStateDuration;
+      // Attacker has brief lock to prevent instant follow-up spam
+      const attackerLockMs = isSlapAttack ? 150 : 200;
       const now = Date.now();
       otherPlayer.inputLockUntil = Math.max(
         otherPlayer.inputLockUntil || 0,
-        now + lockMs
+        now + victimLockMs
       );
       player.inputLockUntil = Math.max(
         player.inputLockUntil || 0,
-        now + lockMs
+        now + attackerLockMs
       );
 
       // Encourage clearer turn-taking: set wantsToRestartCharge only on intentional hold
@@ -3756,6 +3898,12 @@ io.on("connection", (socket) => {
         knockbackVelocity: { x: 0, y: 0 },
         dodgeCharges: MAX_DODGE_CHARGES,
         dodgeChargeCooldowns: [0, 0],
+        // Visual clarity timing states
+        isInStartupFrames: false,
+        startupEndTime: 0,
+        isInEndlag: false,
+        endlagEndTime: 0,
+        attackCooldownUntil: 0,
         keys: {
           w: false,
           a: false,
@@ -3880,6 +4028,12 @@ io.on("connection", (socket) => {
         knockbackVelocity: { x: 0, y: 0 },
         dodgeCharges: MAX_DODGE_CHARGES,
         dodgeChargeCooldowns: [0, 0],
+        // Visual clarity timing states
+        isInStartupFrames: false,
+        startupEndTime: 0,
+        isInEndlag: false,
+        endlagEndTime: 0,
+        attackCooldownUntil: 0,
         keys: {
           w: false,
           a: false,
@@ -3959,14 +4113,189 @@ io.on("connection", (socket) => {
     // console.log(rooms[roomIndex].players);
   });
 
+  // CPU Match creation handler
+  socket.on("create_cpu_match", (data) => {
+    console.log(`🤖 CPU MATCH: Player ${data.socketId} requesting CPU match`);
+
+    // Find an empty room for the CPU match
+    const roomIndex = rooms.findIndex(
+      (room) => room.players.length === 0 && !room.isCPURoom
+    );
+
+    if (roomIndex === -1) {
+      console.log("🔴 CPU MATCH: No empty rooms available");
+      socket.emit("cpu_match_failed", { reason: "No rooms available" });
+      return;
+    }
+
+    const room = rooms[roomIndex];
+    room.isCPURoom = true;
+
+    // Clean up room state
+    cleanupRoomState(room);
+
+    // Add human player as player 1
+    socket.join(room.id);
+    socket.roomId = room.id;
+
+    room.players.push({
+      id: data.socketId,
+      fighter: "player 1",
+      color: "aqua",
+      isJumping: false,
+      isAttacking: false,
+      throwCooldown: false,
+      grabCooldown: false,
+      isChargingAttack: false,
+      chargeStartTime: 0,
+      chargeMaxDuration: 2000,
+      chargeAttackPower: 0,
+      chargingFacingDirection: null,
+      slapFacingDirection: null,
+      isSlapAttack: false,
+      slapAnimation: 2,
+      isThrowing: false,
+      isThrowingSalt: false,
+      saltCooldown: false,
+      snowballCooldown: false,
+      lastSnowballTime: 0,
+      snowballs: [],
+      isThrowingSnowball: false,
+      pumoArmyCooldown: false,
+      pumoArmy: [],
+      isSpawningPumoArmy: false,
+      throwStartTime: 0,
+      throwEndTime: 0,
+      throwOpponent: null,
+      throwingFacingDirection: null,
+      beingThrownFacingDirection: null,
+      isGrabbing: false,
+      isGrabWalking: false,
+      isGrabbingMovement: false,
+      isGrabStartup: false,
+      isWhiffingGrab: false,
+      isGrabClashing: false,
+      grabClashStartTime: 0,
+      grabClashInputCount: 0,
+      grabMovementStartTime: 0,
+      grabMovementDirection: 0,
+      grabMovementVelocity: 0,
+      grabStartupStartTime: 0,
+      grabStartupDuration: 0,
+      grabStartTime: 0,
+      grabbedOpponent: null,
+      isThrowTeching: false,
+      throwTechCooldown: false,
+      isSlapParrying: false,
+      lastThrowAttemptTime: 0,
+      lastGrabAttemptTime: 0,
+      isStrafing: false,
+      isCrouchStance: false,
+      isCrouchStrafing: false,
+      isRawParrying: false,
+      rawParryStartTime: 0,
+      rawParryMinDurationMet: false,
+      isRawParryStun: false,
+      isRawParrySuccess: false,
+      isPerfectRawParrySuccess: false,
+      isAtTheRopes: false,
+      atTheRopesStartTime: 0,
+      dodgeDirection: false,
+      dodgeEndTime: 0,
+      isReady: false,
+      isHit: false,
+      isAlreadyHit: false,
+      isDead: false,
+      isBowing: false,
+      facing: 1,
+      stamina: 100,
+      isGassed: false,
+      gassedEndTime: 0,
+      x: 245,
+      y: GROUND_LEVEL,
+      knockbackVelocity: { x: 0, y: 0 },
+      movementVelocity: 0,
+      dodgeCharges: MAX_DODGE_CHARGES,
+      dodgeChargeCooldowns: [0, 0],
+      // Visual clarity timing states
+      isInStartupFrames: false,
+      startupEndTime: 0,
+      isInEndlag: false,
+      endlagEndTime: 0,
+      attackCooldownUntil: 0,
+      keys: {
+        w: false,
+        a: false,
+        s: false,
+        d: false,
+        " ": false,
+        shift: false,
+        e: false,
+        f: false,
+        mouse1: false,
+        mouse2: false,
+      },
+      wins: [],
+      bufferedAction: null,
+      bufferExpiryTime: 0,
+      wantsToRestartCharge: false,
+      mouse2HeldDuringAttack: false,
+      knockbackImmune: false,
+      knockbackImmuneEndTime: 0,
+      activePowerUp: null,
+      powerUpMultiplier: 1,
+      selectedPowerUp: null,
+      sizeMultiplier: DEFAULT_PLAYER_SIZE_MULTIPLIER,
+      hitAbsorptionUsed: false,
+      hitCounter: 0,
+      lastHitTime: 0,
+      lastCheckedAttackTime: 0,
+      hasPendingSlapAttack: false,
+      mouse1JustPressed: false,
+      mouse1JustReleased: false,
+      isOverlapping: false,
+      overlapStartTime: null,
+      chargeCancelled: false,
+      isGrabBreaking: false,
+      isGrabBreakCountered: false,
+      grabBreakSpaceConsumed: false,
+      isRingOutThrowCutscene: false,
+      ringOutThrowDistance: 0,
+      isRingOutFreezeActive: false,
+      ringOutFreezeEndTime: 0,
+      ringOutThrowDirection: null,
+      inputLockUntil: 0,
+    });
+
+    // Add CPU player as player 2
+    const cpuPlayer = createCPUPlayer();
+    room.players.push(cpuPlayer);
+
+    console.log(
+      `🤖 CPU MATCH: Created in ${room.id} with human ${data.socketId} vs CPU`
+    );
+
+    // Emit success to the client
+    socket.emit("cpu_match_created", {
+      roomId: room.id,
+      players: room.players,
+    });
+
+    // Update lobby
+    io.in(room.id).emit("lobby", room.players);
+    io.emit("rooms", getCleanedRoomsData(rooms));
+  });
+
   socket.on("ready_count", (data) => {
     const roomIndex = rooms.findIndex((room) => room.id === data.roomId);
     console.log("ready count activated  ");
 
     if (roomIndex === -1) return; // Room not found
 
+    const room = rooms[roomIndex];
+
     // Find the player in the room
-    const playerIndex = rooms[roomIndex].players.findIndex(
+    const playerIndex = room.players.findIndex(
       (player) => player.id === data.playerId
     );
 
@@ -3974,26 +4303,46 @@ io.on("connection", (socket) => {
 
     if (data.isReady) {
       // Only increment if player wasn't already ready
-      if (!rooms[roomIndex].players[playerIndex].isReady) {
-        rooms[roomIndex].readyCount++;
-        rooms[roomIndex].players[playerIndex].isReady = true;
+      if (!room.players[playerIndex].isReady) {
+        room.readyCount++;
+        room.players[playerIndex].isReady = true;
+      }
+
+      // If this is a CPU room and human player just readied, auto-ready the CPU
+      if (room.isCPURoom) {
+        const cpuPlayer = room.players.find((p) => p.isCPU);
+        if (cpuPlayer && !cpuPlayer.isReady) {
+          cpuPlayer.isReady = true;
+          room.readyCount++;
+          console.log("🤖 CPU MATCH: CPU auto-readied");
+        }
       }
     } else {
       // Only decrement if player was ready
-      if (rooms[roomIndex].players[playerIndex].isReady) {
-        rooms[roomIndex].readyCount--;
-        rooms[roomIndex].players[playerIndex].isReady = false;
+      if (room.players[playerIndex].isReady) {
+        room.readyCount--;
+        room.players[playerIndex].isReady = false;
+      }
+
+      // If this is a CPU room and human player unreadied, also unready the CPU
+      if (room.isCPURoom) {
+        const cpuPlayer = room.players.find((p) => p.isCPU);
+        if (cpuPlayer && cpuPlayer.isReady) {
+          cpuPlayer.isReady = false;
+          room.readyCount--;
+          console.log("🤖 CPU MATCH: CPU auto-unreadied");
+        }
       }
     }
 
     // Ensure ready count doesn't go below 0
-    rooms[roomIndex].readyCount = Math.max(0, rooms[roomIndex].readyCount);
+    room.readyCount = Math.max(0, room.readyCount);
 
-    io.in(data.roomId).emit("ready_count", rooms[roomIndex].readyCount);
-    io.in(data.roomId).emit("lobby", rooms[roomIndex].players);
+    io.in(data.roomId).emit("ready_count", room.readyCount);
+    io.in(data.roomId).emit("lobby", room.players);
 
-    if (rooms[roomIndex].readyCount > 1) {
-      io.in(data.roomId).emit("initial_game_start", rooms[roomIndex]);
+    if (room.readyCount > 1) {
+      io.in(data.roomId).emit("initial_game_start", room);
       console.log("Game started");
     }
   });
@@ -4106,19 +4455,34 @@ io.on("connection", (socket) => {
 
     if (roomIndex === -1) return; // Room not found
 
+    const room = rooms[roomIndex];
+
     if (data.acceptedRematch && data.playerId === socket.id) {
-      rooms[roomIndex].rematchCount++;
-      io.in(data.roomId).emit("rematch_count", rooms[roomIndex].rematchCount);
+      room.rematchCount++;
+      io.in(data.roomId).emit("rematch_count", room.rematchCount);
+
+      // If this is a CPU room and human accepted rematch, auto-accept for CPU
+      if (room.isCPURoom) {
+        room.rematchCount++;
+        console.log("🤖 CPU MATCH: CPU auto-accepted rematch");
+        io.in(data.roomId).emit("rematch_count", room.rematchCount);
+      }
     } else if (!data.acceptedRematch && data.playerId === socket.id) {
-      rooms[roomIndex].rematchCount--;
-      io.in(data.roomId).emit("rematch_count", rooms[roomIndex].rematchCount);
+      room.rematchCount--;
+      io.in(data.roomId).emit("rematch_count", room.rematchCount);
+
+      // If this is a CPU room and human declined, also decrement for CPU
+      if (room.isCPURoom && room.rematchCount > 0) {
+        room.rematchCount--;
+        io.in(data.roomId).emit("rematch_count", room.rematchCount);
+      }
     }
 
-    if (rooms[roomIndex].rematchCount > 1) {
-      rooms[roomIndex].matchOver = false;
-      rooms[roomIndex].gameOver = true;
-      rooms[roomIndex].rematchCount = 0;
-      io.in(data.roomId).emit("rematch_count", rooms[roomIndex].rematchCount);
+    if (room.rematchCount > 1) {
+      room.matchOver = false;
+      room.gameOver = true;
+      room.rematchCount = 0;
+      io.in(data.roomId).emit("rematch_count", room.rematchCount);
     }
   });
 
@@ -5031,27 +5395,15 @@ io.on("connection", (socket) => {
               player.throwOpponent = opponent.id;
               player.currentAction = "throw";
               player.actionLockUntil = Date.now() + 200;
+              
+              // CRITICAL: Clear ALL action states when being thrown
+              clearAllActionStates(opponent);
               opponent.isBeingThrown = true;
-              opponent.isHit = false;
 
               // Clear grab states immediately when transitioning into throw
               if (player.isGrabbing) {
                 player.isGrabbing = false;
                 player.grabbedOpponent = null;
-              }
-              if (opponent.isBeingGrabbed) {
-                opponent.isBeingGrabbed = false;
-              }
-
-              // Clear isAtTheRopes state if player gets thrown during the stun
-              if (opponent.isAtTheRopes) {
-                opponent.isAtTheRopes = false;
-                opponent.atTheRopesStartTime = 0;
-                // Clear any existing timeout for the at-the-ropes state
-                timeoutManager.clearPlayerSpecific(
-                  opponent.id,
-                  "atTheRopesTimeout"
-                );
               }
 
               player.throwCooldown = true;
@@ -5272,13 +5624,50 @@ io.on("connection", (socket) => {
     const roomIndex = rooms.findIndex((room) => room.id === roomId);
 
     if (roomIndex !== -1) {
+      const room = rooms[roomIndex];
+
       // Clean up timeouts for the leaving player
       timeoutManager.clearPlayer(socket.id);
 
       // Clear any active round start timer to prevent interference
-      if (rooms[roomIndex].roundStartTimer) {
-        clearTimeout(rooms[roomIndex].roundStartTimer);
-        rooms[roomIndex].roundStartTimer = null;
+      if (room.roundStartTimer) {
+        clearTimeout(room.roundStartTimer);
+        room.roundStartTimer = null;
+      }
+
+      // Handle CPU room cleanup - fully reset the room when human leaves
+      if (room.isCPURoom) {
+        console.log(`🤖 CPU MATCH: Human player leaving CPU room ${roomId}, fully resetting room`);
+
+        // Also clear CPU player timeouts and AI state
+        timeoutManager.clearPlayer("CPU_PLAYER");
+        clearAIState("CPU_PLAYER");
+
+        // Fully reset the room
+        room.players = [];
+        room.isCPURoom = false;
+        room.readyCount = 0;
+        room.rematchCount = 0;
+        room.gameStart = false;
+        room.gameOver = false;
+        room.matchOver = false;
+        room.hakkiyoiCount = 0;
+        room.readyStartTime = null;
+        room.powerUpSelectionPhase = false;
+        room.opponentDisconnected = false;
+        room.disconnectedDuringGame = false;
+        delete room.winnerId;
+        delete room.loserId;
+        delete room.gameOverTime;
+        delete room.playersSelectedPowerUps;
+        delete room.playerAvailablePowerUps;
+
+        socket.leave(roomId);
+        delete socket.roomId;
+
+        // Emit updated room list
+        io.emit("rooms", getCleanedRoomsData(rooms));
+        return;
       }
 
       // Check if we're leaving during an active game session (not just lobby)
@@ -5468,10 +5857,44 @@ io.on("connection", (socket) => {
     timeoutManager.clearPlayer(socket.id);
 
     if (rooms[roomIndex]) {
+      const room = rooms[roomIndex];
+
       // Clear any active round start timer to prevent interference
-      if (rooms[roomIndex].roundStartTimer) {
-        clearTimeout(rooms[roomIndex].roundStartTimer);
-        rooms[roomIndex].roundStartTimer = null;
+      if (room.roundStartTimer) {
+        clearTimeout(room.roundStartTimer);
+        room.roundStartTimer = null;
+      }
+
+      // Handle CPU room cleanup - fully reset the room when human disconnects
+      if (room.isCPURoom) {
+        console.log(`🤖 CPU MATCH: Human player disconnected from CPU room ${roomId}, fully resetting room`);
+
+        // Also clear CPU player timeouts and AI state
+        timeoutManager.clearPlayer("CPU_PLAYER");
+        clearAIState("CPU_PLAYER");
+
+        // Fully reset the room
+        room.players = [];
+        room.isCPURoom = false;
+        room.readyCount = 0;
+        room.rematchCount = 0;
+        room.gameStart = false;
+        room.gameOver = false;
+        room.matchOver = false;
+        room.hakkiyoiCount = 0;
+        room.readyStartTime = null;
+        room.powerUpSelectionPhase = false;
+        room.opponentDisconnected = false;
+        room.disconnectedDuringGame = false;
+        delete room.winnerId;
+        delete room.loserId;
+        delete room.gameOverTime;
+        delete room.playersSelectedPowerUps;
+        delete room.playerAvailablePowerUps;
+
+        // Emit updated room list
+        io.emit("rooms", getCleanedRoomsData(rooms));
+        return;
       }
 
       // Check if we're disconnecting during an active game session (not just lobby)
