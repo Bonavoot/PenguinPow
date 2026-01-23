@@ -174,7 +174,10 @@ function getCleanedRoomData(room) {
 }
 
 function getCleanedRoomsData(rooms) {
+  // Note: CPU rooms are included but marked with isCPURoom flag
+  // The client should filter them out when displaying the room browser
   const cleanedRooms = rooms.map((r) => ({
+    isCPURoom: r.isCPURoom || false, // Pass this flag so client can filter
     id: r.id,
     readyCount: r.readyCount || 0,
     rematchCount: r.rematchCount || 0,

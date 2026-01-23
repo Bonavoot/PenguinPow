@@ -202,8 +202,7 @@ const PERFECT_PARRY_WINDOW = 100; // 100ms window for perfect parries
 const PERFECT_PARRY_SUCCESS_DURATION = 2000; // 2 seconds - parrier holds success pose
 const PERFECT_PARRY_ATTACKER_STUN_DURATION = 5000; // 5 seconds - attacker is stunned (gives parrier 3s advantage)
 const PERFECT_PARRY_ANIMATION_LOCK = 600; // 600ms - parrier is locked in parry pose after perfect parry
-const DODGE_COOLDOWN = 2000; // 2 second cooldown between dodges
-const MAX_DODGE_CHARGES = 2; // Maximum number of dodge charges
+// Dodge is now stamina-based, no more charge system
 
 // At the ropes constants
 const AT_THE_ROPES_DURATION = 1000; // 1 second stun duration
@@ -226,7 +225,15 @@ function setKnockbackImmunity(player) {
 }
 
 // Grab break constants
-const GRAB_BREAK_STAMINA_COST = 50; // Stamina cost to break a grab
+const GRAB_BREAK_STAMINA_COST = 33; // 33% of max stamina to break a grab
+
+// Stamina drain constants
+const SLAP_ATTACK_STAMINA_COST = 3; // Small cost to not deter spamming
+const CHARGED_ATTACK_STAMINA_COST = 9; // 3x slap attack cost
+const DODGE_STAMINA_COST = 15; // 15% of max stamina per dodge
+// Grab stamina drain: 10 stamina over full 1.5s duration
+// Drain 1 stamina every 150ms (1500ms / 10 = 150ms per stamina point)
+const GRAB_STAMINA_DRAIN_INTERVAL = 150;
 const GRAB_BREAK_PUSH_VELOCITY = 1.2; // Reduced push velocity (~55%) for shorter shove
 const GRAB_BREAK_ANIMATION_DURATION = 380; // Duration for grab break animation state
 const GRAB_BREAK_SEPARATION_DURATION = 220; // Smooth separation tween duration
@@ -257,10 +264,11 @@ function isRoomInHitstop(room) {
   return room.hitstopUntil && Date.now() < room.hitstopUntil;
 }
 
-// CPU Player creation helper
-function createCPUPlayer() {
+// CPU Player creation helper - accepts unique ID for concurrent game support
+function createCPUPlayer(uniqueId) {
+  const cpuPlayerId = uniqueId || `CPU_PLAYER_${Date.now()}`;
   return {
-    id: "CPU_PLAYER",
+    id: cpuPlayerId,
     isCPU: true,
     fighter: "player 2",
     color: "salmon",
@@ -331,14 +339,10 @@ function createCPUPlayer() {
     isBowing: false,
     facing: -1,
     stamina: 100,
-    isGassed: false,
-    gassedEndTime: 0,
     x: 815,
     y: GROUND_LEVEL,
     knockbackVelocity: { x: 0, y: 0 },
     movementVelocity: 0,
-    dodgeCharges: MAX_DODGE_CHARGES,
-    dodgeChargeCooldowns: [0, 0],
     // Visual clarity timing states
     isInStartupFrames: false,
     startupEndTime: 0,
@@ -583,15 +587,10 @@ function resetRoomAndPlayers(room) {
     player.isAlreadyHit = false;
     player.isDead = false;
     player.stamina = 100;
-    player.isGassed = false;
-    player.gassedEndTime = 0;
     player.isBowing = false;
     player.x = player.fighter === "player 1" ? 285 : 775;
     player.y = GROUND_LEVEL;
     player.knockbackVelocity = { x: 0, y: 0 };
-    // Reset dodge charges
-    player.dodgeCharges = MAX_DODGE_CHARGES;
-    player.dodgeChargeCooldowns = [0, 0];
     // Reset power-up state
     player.activePowerUp = null;
     player.powerUpMultiplier = 1;
@@ -996,24 +995,6 @@ io.on("connection", (socket) => {
             processCPUInputs(cpuPlayer, humanPlayer, room, gameHelpers);
           }
         }
-
-        // Handle dodge charge regeneration
-        [player1, player2].forEach((player) => {
-          const currentTime = Date.now();
-
-          // Check each charge's cooldown independently
-          player.dodgeChargeCooldowns.forEach((cooldownEndTime, index) => {
-            if (cooldownEndTime > 0 && currentTime >= cooldownEndTime) {
-              // Reset this charge's cooldown
-              player.dodgeChargeCooldowns[index] = 0;
-            }
-          });
-
-          // Count available charges based on cooldowns
-          player.dodgeCharges = player.dodgeChargeCooldowns.filter(
-            (cooldown) => cooldown === 0
-          ).length;
-        });
 
         // Handle ready positions separately from movement
         handleReadyPositions(room, player1, player2, io);
@@ -1776,16 +1757,8 @@ io.on("connection", (socket) => {
           resetRoomAndPlayers(room);
         }
 
-        // Handle gassed state timing
-        if (player.isGassed) {
-          if (Date.now() >= player.gassedEndTime) {
-            player.isGassed = false;
-            player.gassedEndTime = 0;
-          }
-        }
-
-        // Regen only if not gassed
-        if (!player.isGassed && player.stamina < 100) {
+        // Stamina regen
+        if (player.stamina < 100) {
           if (staminaRegenCounter >= STAMINA_REGEN_INTERVAL_MS) {
             player.stamina += STAMINA_REGEN_AMOUNT;
             player.stamina = Math.min(player.stamina, 100);
@@ -2879,6 +2852,17 @@ io.on("connection", (socket) => {
               return;
             }
 
+            // Continuous stamina drain while grabbing (10 stamina over full 1.5s duration)
+            // Drain 1 stamina every 150ms interval
+            if (!player.lastGrabStaminaDrainTime) {
+              player.lastGrabStaminaDrainTime = player.grabStartTime;
+            }
+            const timeSinceLastDrain = Date.now() - player.lastGrabStaminaDrainTime;
+            if (timeSinceLastDrain >= GRAB_STAMINA_DRAIN_INTERVAL) {
+              player.stamina = Math.max(0, player.stamina - 1);
+              player.lastGrabStaminaDrainTime = Date.now();
+            }
+
             // Handle grab walking: allow slight left/right strafe while grabbing when A or D is held
             let currentSpeedFactor = speedFactor * GRAB_WALK_SPEED_MULTIPLIER;
             if (player.activePowerUp === POWER_UP_TYPES.SPEED) {
@@ -3839,13 +3823,6 @@ io.on("connection", (socket) => {
       if (player.keys && player.keys.mouse2) {
         player.wantsToRestartCharge = true;
       }
-
-      // Trigger gassed state if stamina is 0 after hit processing
-      if (otherPlayer.stamina <= 0 && !otherPlayer.isGassed) {
-        otherPlayer.stamina = 0;
-        otherPlayer.isGassed = true;
-        otherPlayer.gassedEndTime = Date.now() + 5000; // 5 seconds
-      }
     }
   }
 
@@ -3983,13 +3960,9 @@ io.on("connection", (socket) => {
         isBowing: false,
         facing: 1,
         stamina: 100,
-        isGassed: false,
-        gassedEndTime: 0,
         x: 245,
         y: GROUND_LEVEL,
         knockbackVelocity: { x: 0, y: 0 },
-        dodgeCharges: MAX_DODGE_CHARGES,
-        dodgeChargeCooldowns: [0, 0],
         // Visual clarity timing states
         isInStartupFrames: false,
         startupEndTime: 0,
@@ -4113,13 +4086,9 @@ io.on("connection", (socket) => {
         isBowing: false,
         facing: -1,
         stamina: 100,
-        isGassed: false,
-        gassedEndTime: 0,
         x: 815,
         y: GROUND_LEVEL,
         knockbackVelocity: { x: 0, y: 0 },
-        dodgeCharges: MAX_DODGE_CHARGES,
-        dodgeChargeCooldowns: [0, 0],
         // Visual clarity timing states
         isInStartupFrames: false,
         startupEndTime: 0,
@@ -4209,22 +4178,29 @@ io.on("connection", (socket) => {
   socket.on("create_cpu_match", (data) => {
     console.log(`🤖 CPU MATCH: Player ${data.socketId} requesting CPU match`);
 
-    // Find an empty room for the CPU match
-    const roomIndex = rooms.findIndex(
-      (room) => room.players.length === 0 && !room.isCPURoom
-    );
-
-    if (roomIndex === -1) {
-      console.log("🔴 CPU MATCH: No empty rooms available");
-      socket.emit("cpu_match_failed", { reason: "No rooms available" });
-      return;
-    }
-
-    const room = rooms[roomIndex];
-    room.isCPURoom = true;
-
-    // Clean up room state
-    cleanupRoomState(room);
+    // Generate a unique room ID for this CPU match
+    const cpuRoomId = `cpu-${data.socketId}-${Date.now()}`;
+    
+    // Create a new room specifically for this CPU match
+    const room = {
+      id: cpuRoomId,
+      players: [],
+      readyCount: 0,
+      rematchCount: 0,
+      gameStart: false,
+      gameOver: false,
+      matchOver: false,
+      readyStartTime: null,
+      roundStartTimer: null,
+      hakkiyoiCount: 0,
+      isCPURoom: true, // Mark as CPU room
+      playerAvailablePowerUps: {},
+      playersSelectedPowerUps: {},
+    };
+    
+    // Add the CPU room to the rooms array
+    rooms.push(room);
+    console.log(`🤖 CPU MATCH: Created new room ${cpuRoomId} (total rooms: ${rooms.length})`);
 
     // Add human player as player 1
     socket.join(room.id);
@@ -4301,14 +4277,10 @@ io.on("connection", (socket) => {
       isBowing: false,
       facing: 1,
       stamina: 100,
-      isGassed: false,
-      gassedEndTime: 0,
       x: 245,
       y: GROUND_LEVEL,
       knockbackVelocity: { x: 0, y: 0 },
       movementVelocity: 0,
-      dodgeCharges: MAX_DODGE_CHARGES,
-      dodgeChargeCooldowns: [0, 0],
       // Visual clarity timing states
       isInStartupFrames: false,
       startupEndTime: 0,
@@ -4359,12 +4331,14 @@ io.on("connection", (socket) => {
       inputLockUntil: 0,
     });
 
-    // Add CPU player as player 2
-    const cpuPlayer = createCPUPlayer();
+    // Add CPU player as player 2 with unique ID tied to the room
+    const cpuPlayerId = `CPU_${cpuRoomId}`;
+    const cpuPlayer = createCPUPlayer(cpuPlayerId);
     room.players.push(cpuPlayer);
+    room.cpuPlayerId = cpuPlayerId; // Store for cleanup
 
     console.log(
-      `🤖 CPU MATCH: Created in ${room.id} with human ${data.socketId} vs CPU`
+      `🤖 CPU MATCH: Created in ${room.id} with human ${data.socketId} vs CPU (${cpuPlayerId})`
     );
 
     // Emit success to the client
@@ -4574,7 +4548,14 @@ io.on("connection", (socket) => {
       room.matchOver = false;
       room.gameOver = true;
       room.rematchCount = 0;
+      
+      // Reset player wins for the new match
+      room.players.forEach((player) => {
+        player.wins = [];
+      });
+      
       io.in(data.roomId).emit("rematch_count", room.rematchCount);
+      io.in(data.roomId).emit("rematch"); // Signal clients to reset win counts
     }
   });
 
@@ -4939,6 +4920,18 @@ io.on("connection", (socket) => {
           });
         }
       }
+      // Emit "No Stamina" feedback when player tries to break grab but doesn't have enough stamina
+      else if (
+        player.isBeingGrabbed &&
+        player.keys[" "] &&
+        !previousKeys[" "] &&
+        !player.isGrabBreaking &&
+        player.stamina < GRAB_BREAK_STAMINA_COST && // Not enough stamina
+        (!player.lastStaminaBlockedTime || Date.now() - player.lastStaminaBlockedTime > 500) // Rate limit
+      ) {
+        player.lastStaminaBlockedTime = Date.now();
+        socket.emit("stamina_blocked", { playerId: player.id, action: "grab_break" });
+      }
     }
 
     // Handle clearing charge during charging phase with mouse1 - MUST BE FIRST
@@ -5168,13 +5161,14 @@ io.on("connection", (socket) => {
     }
 
     // Handle dodge - allow canceling recovery but block during charged attack execution
+    // Dodging now costs stamina (15% of max) instead of using charges
     if (
       player.keys["shift"] &&
       !player.keys.e &&
       !(player.keys.w && player.isGrabbing && !player.isBeingGrabbed) &&
       !isInChargedAttackExecution() && // Block during charged attack execution
       canPlayerUseAction(player) &&
-      player.dodgeCharges > 0 // Check if player has dodge charges
+      player.stamina >= DODGE_STAMINA_COST // Check if player has enough stamina to dodge
     ) {
       console.log("Executing immediate dodge");
 
@@ -5211,15 +5205,8 @@ io.on("connection", (socket) => {
       player.currentAction = "dodge";
       player.actionLockUntil = Date.now() + 120; // brief lock to avoid overlap jitters
 
-      // Find the first available charge (from right to left)
-      for (let i = player.dodgeChargeCooldowns.length - 1; i >= 0; i--) {
-        if (player.dodgeChargeCooldowns[i] === 0) {
-          // Use this charge
-          player.dodgeCharges--;
-          player.dodgeChargeCooldowns[i] = Date.now() + DODGE_COOLDOWN;
-          break;
-        }
-      }
+      // Drain stamina for dodge (15% of max stamina)
+      player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
 
       if (player.keys.a) {
         player.dodgeDirection = -1;
@@ -5244,7 +5231,7 @@ io.on("connection", (socket) => {
           player.bufferExpiryTime = 0;
 
           // Execute the buffered action
-          if (action.type === "dodge") {
+          if (action.type === "dodge" && player.stamina >= DODGE_STAMINA_COST) {
             // Clear parry success state when starting a dodge
             player.isRawParrySuccess = false;
             player.isPerfectRawParrySuccess = false;
@@ -5255,6 +5242,9 @@ io.on("connection", (socket) => {
             player.dodgeDirection = action.direction;
             player.dodgeStartX = player.x;
             player.dodgeStartY = player.y;
+            
+            // Drain stamina for buffered dodge
+            player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
           }
         }
 
@@ -5288,7 +5278,7 @@ io.on("connection", (socket) => {
       !player.isThrowingSnowball &&
       !player.isRawParrying &&
       !isInChargedAttackExecution() && // Block buffering during charged attack execution
-      player.dodgeCharges > 0 // Check if player has dodge charges
+      player.stamina >= DODGE_STAMINA_COST // Check if player has enough stamina to dodge
     ) {
       // Buffer the dodge action
       console.log("Buffering dodge action");
@@ -5304,6 +5294,18 @@ io.on("connection", (socket) => {
         direction: dodgeDirection,
       };
       player.bufferExpiryTime = Date.now() + 500; // Buffer expires after 500ms
+    }
+    // Emit "No Stamina" feedback when player tries to dodge but doesn't have enough stamina
+    else if (
+      player.keys["shift"] &&
+      !player.keys.e &&
+      !(player.keys.w && player.isGrabbing && !player.isBeingGrabbed) &&
+      canPlayerUseAction(player) &&
+      player.stamina < DODGE_STAMINA_COST && // Not enough stamina
+      (!player.lastStaminaBlockedTime || Date.now() - player.lastStaminaBlockedTime > 500) // Rate limit to prevent spam
+    ) {
+      player.lastStaminaBlockedTime = Date.now();
+      socket.emit("stamina_blocked", { playerId: player.id, action: "dodge" });
     }
 
     // Start charging attack - block during charged attack execution and recovery
@@ -5768,35 +5770,22 @@ io.on("connection", (socket) => {
         room.roundStartTimer = null;
       }
 
-      // Handle CPU room cleanup - fully reset the room when human leaves
+      // Handle CPU room cleanup - REMOVE the room entirely when human leaves
       if (room.isCPURoom) {
-        console.log(`🤖 CPU MATCH: Human player leaving CPU room ${roomId}, fully resetting room`);
+        console.log(`🤖 CPU MATCH: Human player leaving CPU room ${roomId}, removing room from array`);
 
-        // Also clear CPU player timeouts and AI state
-        timeoutManager.clearPlayer("CPU_PLAYER");
-        clearAIState("CPU_PLAYER");
+        // Clear CPU player timeouts and AI state using the stored unique ID
+        const cpuPlayerId = room.cpuPlayerId || "CPU_PLAYER";
+        timeoutManager.clearPlayer(cpuPlayerId);
+        clearAIState(cpuPlayerId);
 
-        // Fully reset the room
-        room.players = [];
-        room.isCPURoom = false;
-        room.readyCount = 0;
-        room.rematchCount = 0;
-        room.gameStart = false;
-        room.gameOver = false;
-        room.matchOver = false;
-        room.hakkiyoiCount = 0;
-        room.readyStartTime = null;
-        room.powerUpSelectionPhase = false;
-        room.opponentDisconnected = false;
-        room.disconnectedDuringGame = false;
-        delete room.winnerId;
-        delete room.loserId;
-        delete room.gameOverTime;
-        delete room.playersSelectedPowerUps;
-        delete room.playerAvailablePowerUps;
-
+        // Leave the socket room
         socket.leave(roomId);
         delete socket.roomId;
+
+        // Remove the CPU room from the rooms array entirely
+        rooms.splice(roomIndex, 1);
+        console.log(`🤖 CPU MATCH: Room ${roomId} removed (total rooms now: ${rooms.length})`);
 
         // Emit updated room list
         io.emit("rooms", getCleanedRoomsData(rooms));
@@ -5998,32 +5987,18 @@ io.on("connection", (socket) => {
         room.roundStartTimer = null;
       }
 
-      // Handle CPU room cleanup - fully reset the room when human disconnects
+      // Handle CPU room cleanup - REMOVE the room entirely when human disconnects
       if (room.isCPURoom) {
-        console.log(`🤖 CPU MATCH: Human player disconnected from CPU room ${roomId}, fully resetting room`);
+        console.log(`🤖 CPU MATCH: Human player disconnected from CPU room ${roomId}, removing room from array`);
 
-        // Also clear CPU player timeouts and AI state
-        timeoutManager.clearPlayer("CPU_PLAYER");
-        clearAIState("CPU_PLAYER");
+        // Clear CPU player timeouts and AI state using the stored unique ID
+        const cpuPlayerId = room.cpuPlayerId || "CPU_PLAYER";
+        timeoutManager.clearPlayer(cpuPlayerId);
+        clearAIState(cpuPlayerId);
 
-        // Fully reset the room
-        room.players = [];
-        room.isCPURoom = false;
-        room.readyCount = 0;
-        room.rematchCount = 0;
-        room.gameStart = false;
-        room.gameOver = false;
-        room.matchOver = false;
-        room.hakkiyoiCount = 0;
-        room.readyStartTime = null;
-        room.powerUpSelectionPhase = false;
-        room.opponentDisconnected = false;
-        room.disconnectedDuringGame = false;
-        delete room.winnerId;
-        delete room.loserId;
-        delete room.gameOverTime;
-        delete room.playersSelectedPowerUps;
-        delete room.playerAvailablePowerUps;
+        // Remove the CPU room from the rooms array entirely
+        rooms.splice(roomIndex, 1);
+        console.log(`🤖 CPU MATCH: Room ${roomId} removed (total rooms now: ${rooms.length})`);
 
         // Emit updated room list
         io.emit("rooms", getCleanedRoomsData(rooms));

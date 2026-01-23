@@ -21,7 +21,7 @@ import StarStunEffect from "./StarStunEffect";
 import ThickBlubberEffect from "./ThickBlubberEffect";
 import GrabBreakEffect from "./GrabBreakEffect";
 import EdgeDangerEffect from "./EdgeDangerEffect";
-import GassedEffect from "./GassedEffect";
+import NoStaminaEffect from "./GassedEffect";
 import SnowballImpactEffect from "./SnowballImpactEffect";
 import PumoCloneSpawnEffect from "./PumoCloneSpawnEffect";
 import SlapAttackHandsEffect from "./SlapAttackHandsEffect";
@@ -1055,8 +1055,6 @@ const GameFighter = ({
     facing: 1,
     x: 0,
     y: 0,
-    dodgeCharges: 2,
-    dodgeChargeCooldowns: [0, 0],
     snowballs: [],
     snowballCooldown: false,
     lastSnowballTime: 0,
@@ -1121,6 +1119,9 @@ const GameFighter = ({
   // New enhanced effects state
   const [grabBreakEffectPosition, setGrabBreakEffectPosition] = useState(null);
   const [snowballImpactPosition, setSnowballImpactPosition] = useState(null);
+  
+  // "No Stamina" effect - shows when player tries to use action without enough stamina
+  const [noStaminaEffectKey, setNoStaminaEffectKey] = useState(0);
 
   // Exact sprite source used for the main fighter image so masks always match
   const currentSpriteSrc = useMemo(() => {
@@ -1428,14 +1429,11 @@ const GameFighter = ({
       // Update penguin state with all data (discrete states are not interpolated)
       setPenguin({
         ...playerData,
-        isGassed: !!playerData.isGassed,
         isDodging: playerData.isDodging || false,
         dodgeDirection:
           typeof playerData.dodgeDirection === "number"
             ? playerData.dodgeDirection
             : playerData.facing || 1,
-        dodgeCharges: playerData.dodgeCharges || 2,
-        dodgeChargeCooldowns: playerData.dodgeChargeCooldowns || [0, 0],
         isGrabBreaking: playerData.isGrabBreaking || false,
         isGrabBreakCountered: playerData.isGrabBreakCountered || false,
       });
@@ -1548,6 +1546,19 @@ const GameFighter = ({
           });
         }
       });
+      
+      // "No Stamina" effect - only visible to local player when they try an action they can't afford
+      socket.on("stamina_blocked", (data) => {
+        if (data.playerId === localId) {
+          // Use timestamp as key to trigger new animation each time
+          const newKey = Date.now();
+          setNoStaminaEffectKey(newKey);
+          // Auto-clear after animation completes (0.8 second)
+          setTimeout(() => {
+            setNoStaminaEffectKey((current) => (current === newKey ? 0 : current));
+          }, 900);
+        }
+      });
     }
 
     socket.on("power_up_activated", (data) => {
@@ -1592,6 +1603,7 @@ const GameFighter = ({
       setMatchOver(false);
       setHasUsedPowerUp(false);
       setRawParryEffectPosition(null); // Clear any active parry effects
+      setNoStaminaEffectKey(0); // Clear "No Stamina" effect on round reset
       onResetDisconnectState(); // Reset opponent disconnected state for new games
       console.log("game reset gamefighter.jsx");
 
@@ -1662,13 +1674,15 @@ const GameFighter = ({
 
     socket.on("match_over", (data) => {
       setMatchOver(data.isMatchOver);
-      setPlayerOneWinCount(0);
-      setPlayerTwoWinCount(0);
+      // Keep win counts displayed until rematch - don't reset here!
       // Also bump round id at match end to reset UI
       setUiRoundId((id) => id + 1);
     });
 
     socket.on("rematch", () => {
+      // Reset win counts when rematch starts
+      setPlayerOneWinCount(0);
+      setPlayerTwoWinCount(0);
       setMatchOver(false);
     });
 
@@ -1681,6 +1695,7 @@ const GameFighter = ({
       if (index === 0) {
         socket.off("grab_break");
         socket.off("snowball_hit");
+        socket.off("stamina_blocked");
       }
       socket.off("game_start");
       socket.off("game_reset");
@@ -2068,10 +2083,6 @@ const GameFighter = ({
           playerTwoWinCount={playerTwoWinCount}
           roundId={uiRoundId}
           player1Stamina={allPlayersData.player1?.stamina ?? 100}
-          player1DodgeCharges={allPlayersData.player1?.dodgeCharges ?? 2}
-          player1DodgeChargeCooldowns={
-            allPlayersData.player1?.dodgeChargeCooldowns ?? [0, 0]
-          }
           player1ActivePowerUp={allPlayersData.player1?.activePowerUp ?? null}
           player1SnowballCooldown={
             allPlayersData.player1?.snowballCooldown ?? false
@@ -2079,12 +2090,7 @@ const GameFighter = ({
           player1PumoArmyCooldown={
             allPlayersData.player1?.pumoArmyCooldown ?? false
           }
-          player1IsGassed={allPlayersData.player1?.isGassed ?? false}
           player2Stamina={allPlayersData.player2?.stamina ?? 100}
-          player2DodgeCharges={allPlayersData.player2?.dodgeCharges ?? 2}
-          player2DodgeChargeCooldowns={
-            allPlayersData.player2?.dodgeChargeCooldowns ?? [0, 0]
-          }
           player2ActivePowerUp={allPlayersData.player2?.activePowerUp ?? null}
           player2SnowballCooldown={
             allPlayersData.player2?.snowballCooldown ?? false
@@ -2092,7 +2098,6 @@ const GameFighter = ({
           player2PumoArmyCooldown={
             allPlayersData.player2?.pumoArmyCooldown ?? false
           }
-          player2IsGassed={allPlayersData.player2?.isGassed ?? false}
         />
       )}
 
@@ -2290,12 +2295,10 @@ const GameFighter = ({
         facing={penguin.facing}
         isActive={penguin.isAtTheRopes}
       />
-      <GassedEffect
-        x={getDisplayPosition().x}
-        y={getDisplayPosition().y}
-        facing={penguin.facing}
-        isActive={penguin.isGassed}
-      />
+      {/* NoStaminaEffect - centered on screen, only render once (index 0) and only for local player */}
+      {index === 0 && noStaminaEffectKey > 0 && (
+        <NoStaminaEffect showEffect={noStaminaEffectKey} />
+      )}
       <ThickBlubberEffect
         x={thickBlubberEffect.x}
         y={thickBlubberEffect.y}

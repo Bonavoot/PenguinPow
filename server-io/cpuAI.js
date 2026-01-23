@@ -1,9 +1,9 @@
 // CPU AI Module for Pumo Pumo - SUMO EXPERT
 // Goal: Knock the opponent out of the dohyo (ring)
 
-// Map boundaries - must match server constants
-const MAP_LEFT_BOUNDARY = 165;
-const MAP_RIGHT_BOUNDARY = 900;
+// Map boundaries - must match server constants in gameUtils.js
+const MAP_LEFT_BOUNDARY = 135;
+const MAP_RIGHT_BOUNDARY = 930;
 const MAP_CENTER = (MAP_LEFT_BOUNDARY + MAP_RIGHT_BOUNDARY) / 2;
 
 // AI Configuration - Tuned for expert sumo gameplay
@@ -17,16 +17,18 @@ const AI_CONFIG = {
   // Edge/corner awareness
   EDGE_DANGER_ZONE: 120,   // Distance from edge considered dangerous
   CORNER_CRITICAL_ZONE: 80, // Very close to edge - escape priority!
+  BACK_TO_BOUNDARY_THROW_ZONE: 200, // When back is this close to boundary, use throw for ring-out
   
   // Reaction chances (0-1)
   PARRY_CHANCE: 0.28,      // Chance to parry incoming attacks
   DODGE_CHANCE: 0.20,      // Chance to dodge instead of parry
   
   // Timing (ms)
-  DECISION_COOLDOWN: 180,  // Minimum time between major decisions
+  DECISION_COOLDOWN: 140,  // Minimum time between major decisions (faster = more aggressive)
   
   // Stamina thresholds
-  GRAB_BREAK_STAMINA: 50,  // Minimum stamina to attempt grab break
+  GRAB_BREAK_STAMINA: 33,  // 33% of max stamina to attempt grab break
+  DODGE_STAMINA_COST: 15,   // 15% of max stamina per dodge
   
   // Movement
   STRAFE_CHANGE_INTERVAL: 400, // How often to change strafe direction
@@ -62,6 +64,9 @@ function getAIState(playerId) {
       lastPowerUpTime: 0,
       // Grab break timing
       grabStartedTime: 0,
+      // Grab decision tracking - prevents stuttering
+      grabDecisionMade: false,
+      grabStrategy: null, // 'forward_push' or 'backward_throw'
     });
   }
   return aiStates.get(playerId);
@@ -186,7 +191,7 @@ function canDodge(cpu) {
          !cpu.isAttacking &&
          !cpu.isGrabbing &&
          !cpu.isBeingGrabbed &&
-         cpu.dodgeCharges > 0 &&
+         cpu.stamina >= AI_CONFIG.DODGE_STAMINA_COST &&
          !cpu.isChargingAttack;
 }
 
@@ -280,6 +285,10 @@ function updateCPUAI(cpu, human, room, currentTime) {
     aiState.grabStartedTime = 0;
     handleGrabDecision(cpu, human, aiState, currentTime);
     return; // Don't do anything else while grabbing - just walk!
+  } else {
+    // Not grabbing - reset grab decision state for next grab
+    aiState.grabDecisionMade = false;
+    aiState.grabStrategy = null;
   }
   
   // Priority 1: Handle being grabbed - try to break free
@@ -410,7 +419,7 @@ function handleGrabBreak(cpu, aiState, currentTime) {
   
   // Mash spacebar to break! (if we have stamina)
   // We need to alternate between pressed and not pressed for keyJustPressed to work
-  const GRAB_BREAK_STAMINA_COST = 50;
+  const GRAB_BREAK_STAMINA_COST = 33; // 33% of max stamina
   if (cpu.stamina >= GRAB_BREAK_STAMINA_COST) {
     // Alternate every ~80ms to create distinct key presses
     // This creates a "press-release-press-release" pattern
@@ -492,17 +501,38 @@ function handlePowerUpUsage(cpu, human, aiState, currentTime, distance) {
 }
 
 // CRITICAL: Handle escaping from corner - sumo survival!
+// NEW STRATEGY: When back is against boundary, GRAB + THROW is a strong option!
+// The throw sends opponent PAST us toward the boundary behind us = ring out!
 function handleCornerEscape(cpu, human, aiState, currentTime, distance, corneredSide) {
   resetAllKeys(cpu);
   
   const escapeDirection = -corneredSide; // Move away from the edge
   
-  // If opponent is very close, we need to create space
+  // Check how close to the back boundary we are
+  // corneredSide: -1 = cornered on LEFT, 1 = cornered on RIGHT
+  const distToBackBoundary = corneredSide === -1 ? distanceToLeftEdge(cpu) : distanceToRightEdge(cpu);
+  const veryCloseToBackBoundary = distToBackBoundary < 100; // Very close = throw is almost guaranteed ring out
+  
+  // If opponent is very close, we need to act
   if (distance < AI_CONFIG.SLAP_RANGE) {
     const roll = Math.random();
     
-    // Option 1: Dodge toward center (40% chance)
-    if (roll < 0.40 && canDodge(cpu)) {
+    // PRIORITY: If back is VERY close to boundary, heavily favor grab for the throw ring-out!
+    // This is our best move when cornered - the throw sends them toward our back boundary
+    if (veryCloseToBackBoundary && canGrab(cpu)) {
+      // 65% chance to grab when back is very close to boundary (was 35%)
+      if (roll < 0.65) {
+        cpu.keys.e = true;
+        aiState.eReleaseTime = currentTime + 50;
+        aiState.lastDecisionTime = currentTime;
+        aiState.lastActionType = "grab_corner_throw";
+        console.log(`CPU CORNER: Grabbing for throw ring-out! Back only ${Math.round(distToBackBoundary)} from boundary!`);
+        return true;
+      }
+    }
+    
+    // Option 1: Dodge toward center (30% chance - reduced since grab is better when cornered)
+    if (roll < 0.30 && canDodge(cpu)) {
       cpu.keys.shift = true;
       if (escapeDirection === 1) {
         cpu.keys.d = true;
@@ -514,15 +544,16 @@ function handleCornerEscape(cpu, human, aiState, currentTime, distance, cornered
       aiState.lastActionType = "dodge_escape";
       return true;
     }
-    // Option 2: Grab and throw toward edge (35% chance)
-    else if (roll < 0.75 && canGrab(cpu)) {
+    // Option 2: Grab (40% chance) - throw will send opponent toward our back boundary
+    else if (roll < 0.70 && canGrab(cpu)) {
       cpu.keys.e = true;
       aiState.eReleaseTime = currentTime + 50;
       aiState.lastDecisionTime = currentTime;
       aiState.lastActionType = "grab";
+      console.log(`CPU CORNER: Grabbing! Will throw toward back boundary for ring-out!`);
       return true;
     }
-    // Option 3: Slap attack to push them back (25% chance)
+    // Option 3: Slap attack to push them back (30% chance)
     else if (canAttack(cpu)) {
       cpu.keys.mouse1 = true;
       aiState.mouse1ReleaseTime = currentTime + 40;
@@ -606,31 +637,27 @@ function handleDefensiveReaction(cpu, human, aiState, currentTime, distance) {
     resetAllKeys(cpu);
     cpu.keys.shift = true;
     
-    // SMART DODGE: Never dodge toward an edge!
+    // SMART DODGE: ALWAYS prioritize dodging AWAY from the nearest boundary!
+    // This prevents the CPU from backing itself into a corner
     const cpuLeftDist = distanceToLeftEdge(cpu);
     const cpuRightDist = distanceToRightEdge(cpu);
-    const cpuCornered = getCorneredSide(cpu);
     
-    // Calculate intended dodge direction (away from opponent)
-    const intendedDir = cpu.x < human.x ? -1 : 1; // -1 = left, 1 = right
+    // Determine which edge is closer - ALWAYS dodge away from it
+    const nearestEdge = cpuLeftDist < cpuRightDist ? 'left' : 'right';
+    const distToNearestEdge = Math.min(cpuLeftDist, cpuRightDist);
     
-    // Check if dodging in that direction would put us too close to edge
-    const wouldDodgeTowardLeftEdge = intendedDir === -1 && cpuLeftDist < AI_CONFIG.EDGE_DANGER_ZONE;
-    const wouldDodgeTowardRightEdge = intendedDir === 1 && cpuRightDist < AI_CONFIG.EDGE_DANGER_ZONE;
-    
-    if (cpuCornered !== 0) {
-      // If cornered, ALWAYS dodge toward center
-      const escapeDir = -cpuCornered;
-      if (escapeDir === 1) cpu.keys.d = true;
-      else cpu.keys.a = true;
-    } else if (wouldDodgeTowardLeftEdge || wouldDodgeTowardRightEdge) {
-      // Intended dodge would go toward edge - dodge OTHER direction instead (toward opponent)
-      // This is risky but better than falling off!
-      if (intendedDir === -1) cpu.keys.d = true; // Dodge right instead
-      else cpu.keys.a = true; // Dodge left instead
-      console.log("CPU: Avoiding dodge toward edge, dodging other way!");
+    // If we're anywhere near an edge (within 250 pixels), prioritize dodging toward center
+    if (distToNearestEdge < 250) {
+      // Dodge AWAY from the nearest edge (toward center)
+      if (nearestEdge === 'left') {
+        cpu.keys.d = true; // Dodge right (away from left edge)
+      } else {
+        cpu.keys.a = true; // Dodge left (away from right edge)
+      }
+      console.log(`CPU: Smart dodge AWAY from ${nearestEdge} edge (dist: ${Math.round(distToNearestEdge)})`);
     } else {
-      // Safe to dodge away from opponent
+      // Safe to dodge in any direction - prefer dodging away from opponent
+      const intendedDir = cpu.x < human.x ? -1 : 1; // -1 = left, 1 = right
       if (intendedDir === -1) cpu.keys.a = true;
       else cpu.keys.d = true;
     }
@@ -649,16 +676,18 @@ function handleDefensiveReaction(cpu, human, aiState, currentTime, distance) {
 // - Opponent is ATTACHED in the FACING direction at fixed distance (~105 units)
 // - facing = 1 (LEFT): opponent is to the LEFT of CPU (lower x)
 // - facing = -1 (RIGHT): opponent is to the RIGHT of CPU (higher x)
-// - Walking moves BOTH players together (opponent stays attached)
-// - When opponent.x crosses boundary = AUTOMATIC RING-OUT WIN!
-// ==== STRATEGY ====
-// WALK WALK WALK! Push them off the edge! Don't stop until you win!
+// - Walking FORWARD moves both toward the FRONT boundary (opponent's side)
+// - Walking BACKWARD moves both toward the BACK boundary (CPU's back side)
+// - THROW (W key): Launches opponent ~220 units total, ending ~120 units BEHIND the CPU
+//   - Throw distance means: if CPU's back is within 120 of boundary, throw = guaranteed ring-out
+// ==== SMART STRATEGY ====
+// Compare two paths to ring-out:
+// 1. WALK FORWARD: Push opponent to front boundary
+// 2. WALK BACKWARD + THROW: Pull opponent toward back boundary, throw when in range
+// Choose whichever path is shorter!
 function handleGrabDecision(cpu, human, aiState, currentTime) {
   const cpuFacingLeft = cpu.facing === 1;
-  const humanLeftDist = distanceToLeftEdge(human);
-  const humanRightDist = distanceToRightEdge(human);
   
-  // ALWAYS WALK! Never stop! The game will detect the ring-out automatically!
   // Clear all keys first
   cpu.keys.a = false;
   cpu.keys.d = false;
@@ -668,31 +697,81 @@ function handleGrabDecision(cpu, human, aiState, currentTime) {
   cpu.keys.mouse1 = false;
   cpu.keys.mouse2 = false;
   
-  // Walk in the direction that pushes opponent toward the NEAREST edge
-  // Since opponent is in front of us, we need to walk TOWARD THEM to push them
+  // === THROW MECHANICS ===
+  // Throw moves opponent from ~100 units in front to ~120 units behind CPU
+  // For guaranteed ring-out via throw: CPU's back must be within THROW_RING_OUT_DISTANCE of boundary
+  const THROW_RING_OUT_DISTANCE = 120; // Distance from back boundary where throw guarantees ring-out
+  
+  // === CALCULATE DISTANCES ===
+  let distToFrontBoundary;  // Opponent's distance to the boundary in front of CPU
+  let distToBackBoundary;   // CPU's back distance to the boundary behind
+  let walkForwardKey;       // Key to press to walk forward (toward opponent)
+  let walkBackwardKey;      // Key to press to walk backward (away from opponent)
   
   if (cpuFacingLeft) {
-    // Facing LEFT = opponent is to our LEFT (lower x, toward left boundary)
-    // WALK LEFT to push them off the left edge!
-    cpu.keys.a = true;
-    console.log(`CPU GRAB WALK: A KEY (LEFT)! Opponent left dist: ${Math.round(humanLeftDist)}, CPU x: ${Math.round(cpu.x)}`);
+    // Facing LEFT: opponent is on LEFT, back is toward RIGHT
+    distToFrontBoundary = human.x - MAP_LEFT_BOUNDARY;  // How far opponent is from left edge
+    distToBackBoundary = MAP_RIGHT_BOUNDARY - cpu.x;    // How far CPU's back is from right edge
+    walkForwardKey = 'a';   // Walk left to push opponent toward left boundary
+    walkBackwardKey = 'd';  // Walk right to pull opponent toward right boundary
   } else {
-    // Facing RIGHT = opponent is to our RIGHT (higher x, toward right boundary)
-    // WALK RIGHT to push them off the right edge!
-    cpu.keys.d = true;
-    console.log(`CPU GRAB WALK: D KEY (RIGHT)! Opponent right dist: ${Math.round(humanRightDist)}, CPU x: ${Math.round(cpu.x)}`);
+    // Facing RIGHT: opponent is on RIGHT, back is toward LEFT
+    distToFrontBoundary = MAP_RIGHT_BOUNDARY - human.x; // How far opponent is from right edge
+    distToBackBoundary = cpu.x - MAP_LEFT_BOUNDARY;     // How far CPU's back is from left edge
+    walkForwardKey = 'd';   // Walk right to push opponent toward right boundary
+    walkBackwardKey = 'a';  // Walk left to pull opponent toward left boundary
   }
   
-  // DON'T throw early - just keep walking! The ring-out will trigger automatically
-  // when opponent crosses the boundary. Only throw if grab is about to expire.
+  // === CALCULATE DISTANCE TO EACH RING-OUT METHOD ===
+  // Method 1: Walk forward until opponent crosses boundary
+  const distToWalkForwardRingOut = distToFrontBoundary;
   
+  // Method 2: Walk backward until in throw range, then throw
+  // We need to walk backward until: distToBackBoundary <= THROW_RING_OUT_DISTANCE
+  const distToWalkBackwardForThrow = Math.max(0, distToBackBoundary - THROW_RING_OUT_DISTANCE);
+  
+  // === MAKE DECISION AT START OF GRAB ===
+  if (!aiState.grabDecisionMade) {
+    aiState.grabDecisionMade = true;
+    
+    // Compare the two methods - which is shorter?
+    if (distToWalkBackwardForThrow < distToWalkForwardRingOut) {
+      // Walking backward + throw is shorter!
+      aiState.grabStrategy = 'backward_throw';
+      console.log(`CPU GRAB STRATEGY: BACKWARD + THROW! Need to walk ${Math.round(distToWalkBackwardForThrow)} backward vs ${Math.round(distToWalkForwardRingOut)} forward`);
+    } else {
+      // Walking forward is shorter or equal
+      aiState.grabStrategy = 'forward_push';
+      console.log(`CPU GRAB STRATEGY: FORWARD PUSH! Need to walk ${Math.round(distToWalkForwardRingOut)} forward vs ${Math.round(distToWalkBackwardForThrow)} backward + throw`);
+    }
+  }
+  
+  // === EXECUTE THE STRATEGY ===
+  
+  if (aiState.grabStrategy === 'backward_throw') {
+    // Strategy: Walk backward until in throw range, then throw
+    
+    // Check if we're now in throw range (back is close enough to boundary)
+    if (distToBackBoundary <= THROW_RING_OUT_DISTANCE) {
+      // IN THROW RANGE! Execute the throw for guaranteed ring-out!
+      cpu.keys.w = true;
+      console.log(`CPU GRAB: IN THROW RANGE! Back is ${Math.round(distToBackBoundary)} from boundary - THROWING!`);
+      return;
+    }
+    
+    // Not yet in throw range - keep walking backward
+    cpu.keys[walkBackwardKey] = true;
+  } else {
+    // Strategy: Walk forward to push opponent off the front boundary
+    cpu.keys[walkForwardKey] = true;
+  }
+  
+  // === EMERGENCY THROW if grab is about to expire ===
   if (cpu.grabStartTime) {
     const grabElapsed = currentTime - cpu.grabStartTime;
     const GRAB_DURATION = 1500;
-    // Only throw in the last 200ms if we haven't won yet
     if (grabElapsed > GRAB_DURATION - 200) {
       cpu.keys.w = true;
-      // Keep walking direction too in case throw doesn't trigger
       console.log(`CPU GRAB: EMERGENCY THROW! Grab ending soon!`);
     }
   }
@@ -717,7 +796,7 @@ function handleChargeAttack(cpu, human, aiState, currentTime, distance) {
   }
 }
 
-// Close range combat - GRABS ARE POWERFUL! Use them often!
+// Close range combat - AGGRESSIVE SLAPS with strategic grabs!
 function handleCloseRange(cpu, human, aiState, currentTime, distance) {
   resetAllKeys(cpu);
   aiState.consecutiveChargedAttacks = 0; // Reset charged attack counter
@@ -727,8 +806,8 @@ function handleCloseRange(cpu, human, aiState, currentTime, distance) {
   // GRABS ARE THE BEST WAY TO WIN! Prioritize them!
   // Especially if opponent is near edge - almost guaranteed ring-out!
   if (isOpponentNearEdge(human) && canGrab(cpu)) {
-    // 80% chance to grab when opponent is near edge
-    if (roll < 0.80) {
+    // 70% chance to grab when opponent is near edge
+    if (roll < 0.70) {
       cpu.keys.e = true;
       aiState.eReleaseTime = currentTime + 50;
       aiState.lastDecisionTime = currentTime;
@@ -738,48 +817,57 @@ function handleCloseRange(cpu, human, aiState, currentTime, distance) {
     }
   }
   
-  // Even when not near edge, grabs are great for setting up ring-outs
-  // 45% grab, 45% slap, 10% back off
-  if (roll < 0.45 && canGrab(cpu)) {
+  // Aggressive close range: 30% grab, 65% slap, 5% back off
+  // Slaps are spammable and keep pressure on!
+  if (roll < 0.30 && canGrab(cpu)) {
     // Grab attempt - walk them to the edge!
     cpu.keys.e = true;
     aiState.eReleaseTime = currentTime + 50;
     aiState.lastDecisionTime = currentTime;
     aiState.lastActionType = "grab";
-    console.log("CPU: Grabbing for ring-out setup!");
-  } else if (roll < 0.90 && canAttack(cpu)) {
-    // Slap attack - fast and aggressive
+  } else if (roll < 0.95 && canAttack(cpu)) {
+    // SLAP SPAM! Fast and aggressive - keep the pressure on!
     cpu.keys.mouse1 = true;
     aiState.mouse1ReleaseTime = currentTime + 40;
     aiState.lastDecisionTime = currentTime;
     aiState.lastActionType = "slap";
   } else {
-    // Small chance to back off and reset
+    // Very small chance to back off (only 5%)
     const dirAway = cpu.x < human.x ? -1 : 1;
     if (dirAway === 1) cpu.keys.d = true;
     else cpu.keys.a = true;
   }
 }
 
-// Mid range - approach with occasional grab attempts
+// Mid range - aggressive approach with slaps when in range
 function handleMidRange(cpu, human, aiState, currentTime, distance) {
   resetAllKeys(cpu);
   
   const roll = Math.random();
   
-  // Mostly approach (60%)
-  if (roll < 0.60) {
+  // If on the closer end of mid-range, throw slaps! (within 200 units)
+  if (distance < 200 && canAttack(cpu) && roll < 0.40) {
+    // Aggressive slap to close the gap and apply pressure
+    cpu.keys.mouse1 = true;
+    aiState.mouse1ReleaseTime = currentTime + 40;
+    aiState.lastDecisionTime = currentTime;
+    aiState.lastActionType = "slap";
+    return;
+  }
+  
+  // Mostly approach aggressively (55%)
+  if (roll < 0.55) {
     const dirToOpponent = getDirectionToOpponent(cpu, human);
     if (dirToOpponent === 1) cpu.keys.d = true;
     else cpu.keys.a = true;
     aiState.lastActionType = "approach";
   }
-  // Sometimes strafe randomly (20%)
-  else if (roll < 0.80) {
+  // Sometimes strafe (15%)
+  else if (roll < 0.70) {
     handleMovement(cpu, human, aiState, currentTime, distance);
   }
-  // Occasionally start charged attack (20%) - but only if haven't spammed it
-  else if (canAttack(cpu) && aiState.consecutiveChargedAttacks < AI_CONFIG.MAX_CONSECUTIVE_CHARGED) {
+  // Occasionally start charged attack (15%) - but only if haven't spammed it
+  else if (roll < 0.85 && canAttack(cpu) && aiState.consecutiveChargedAttacks < AI_CONFIG.MAX_CONSECUTIVE_CHARGED) {
     cpu.keys.mouse2 = true;
     aiState.isChargingIntentional = true;
     aiState.chargeStartTime = currentTime;
@@ -787,10 +875,11 @@ function handleMidRange(cpu, human, aiState, currentTime, distance) {
     aiState.lastDecisionTime = currentTime;
     aiState.lastActionType = "charge";
   } else {
-    // Approach instead
+    // Approach instead (remaining 15%)
     const dirToOpponent = getDirectionToOpponent(cpu, human);
     if (dirToOpponent === 1) cpu.keys.d = true;
     else cpu.keys.a = true;
+    aiState.lastActionType = "approach";
   }
   
   aiState.lastDecisionTime = currentTime;
@@ -955,7 +1044,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
   
   // === GRAB BREAK - Process BEFORE shouldBlockAction check! ===
   // This is special because it needs to work WHILE being grabbed
-  const GRAB_BREAK_STAMINA_COST = 50; // Match server constant
+  const GRAB_BREAK_STAMINA_COST = 33; // 33% of max stamina (match server constant)
   if (cpu.isBeingGrabbed && 
       keyJustPressed(" ") && 
       !cpu.isGrabBreaking &&
@@ -1037,6 +1126,60 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     }
   }
   
+  // === THROW PROCESSING - Must happen BEFORE general shouldBlockAction check ===
+  // Throws need to work while grabbing, but shouldBlockAction() blocks when isGrabbing
+  if (cpu.keys.w && 
+      cpu.isGrabbing && 
+      !cpu.isBeingGrabbed &&
+      !cpu.keys.e &&
+      !shouldBlockAction(true) && // Allow throw from grab
+      !cpu.isThrowingSalt &&
+      !cpu.canMoveToReady &&
+      !cpu.throwCooldown &&
+      !cpu.isRawParrying &&
+      !cpu.isThrowing) {
+    
+    cpu.lastThrowAttemptTime = currentTime;
+    
+    const THROW_RANGE = Math.round(166 * 1.3);
+    const throwRange = THROW_RANGE * (cpu.sizeMultiplier || 1);
+    
+    if (Math.abs(cpu.x - opponent.x) < throwRange && 
+        !opponent.isBeingThrown && 
+        !opponent.isDodging) {
+      
+      console.log(`CPU THROW EXECUTING! isGrabbing: ${cpu.isGrabbing}, facing: ${cpu.facing}`);
+      
+      clearChargeState(cpu, true);
+      cpu.movementVelocity = 0;
+      cpu.isStrafing = false;
+      
+      cpu.isThrowing = true;
+      cpu.throwStartTime = currentTime;
+      cpu.throwEndTime = currentTime + 400;
+      cpu.throwOpponent = opponent.id;
+      cpu.currentAction = "throw";
+      cpu.actionLockUntil = currentTime + 200;
+      
+      opponent.isBeingThrown = true;
+      opponent.isHit = false;
+      
+      if (cpu.isGrabbing) {
+        cpu.isGrabbing = false;
+        cpu.grabbedOpponent = null;
+      }
+      if (opponent.isBeingGrabbed) {
+        opponent.isBeingGrabbed = false;
+      }
+      
+      cpu.throwingFacingDirection = cpu.facing;
+      opponent.beingThrownFacingDirection = -cpu.facing;
+      
+      cpu._prevKeys = { ...cpu.keys };
+      return; // Only one action per tick
+    }
+  }
+  
   // CRITICAL: If we're in any blocking state, don't process any inputs
   if (shouldBlockAction()) {
     cpu._prevKeys = { ...cpu.keys };
@@ -1101,63 +1244,12 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     return; // Only one action per tick
   }
   
-  // Process throw - ONLY allowed when grabbing (use allowThrowFromGrab = true)
-  if (cpu.keys.w && 
-      cpu.isGrabbing && 
-      !cpu.isBeingGrabbed &&
-      !cpu.keys.e &&
-      !shouldBlockAction(true) && // Allow throw from grab
-      !cpu.isThrowingSalt &&
-      !cpu.canMoveToReady &&
-      !cpu.throwCooldown &&
-      !cpu.isRawParrying &&
-      !cpu.isThrowing) {
-    
-    cpu.lastThrowAttemptTime = currentTime;
-    
-    const THROW_RANGE = Math.round(166 * 1.3);
-    const throwRange = THROW_RANGE * (cpu.sizeMultiplier || 1);
-    
-    if (Math.abs(cpu.x - opponent.x) < throwRange && 
-        !opponent.isBeingThrown && 
-        !opponent.isDodging) {
-      
-      clearChargeState(cpu, true);
-      cpu.movementVelocity = 0;
-      cpu.isStrafing = false;
-      
-      cpu.isThrowing = true;
-      cpu.throwStartTime = currentTime;
-      cpu.throwEndTime = currentTime + 400;
-      cpu.throwOpponent = opponent.id;
-      cpu.currentAction = "throw";
-      cpu.actionLockUntil = currentTime + 200;
-      
-      opponent.isBeingThrown = true;
-      opponent.isHit = false;
-      
-      if (cpu.isGrabbing) {
-        cpu.isGrabbing = false;
-        cpu.grabbedOpponent = null;
-      }
-      if (opponent.isBeingGrabbed) {
-        opponent.isBeingGrabbed = false;
-      }
-      
-      cpu.throwingFacingDirection = cpu.facing;
-      opponent.beingThrownFacingDirection = -cpu.facing;
-      
-      cpu._prevKeys = { ...cpu.keys };
-      return; // Only one action per tick
-    }
-  }
-  
-  // Process dodge
+  // Process dodge - now uses stamina instead of charges
   if (keyJustPressed("shift") && 
       !cpu.keys.e &&
       !shouldBlockAction() &&
       canPlayerUseAction(cpu) &&
-      cpu.dodgeCharges > 0 &&
+      cpu.stamina >= AI_CONFIG.DODGE_STAMINA_COST &&
       !cpu.isDodging) {
     
     cpu.isDodging = true;
@@ -1166,13 +1258,8 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     cpu.dodgeStartX = cpu.x;
     cpu.dodgeStartY = cpu.y;
     
-    for (let i = cpu.dodgeChargeCooldowns.length - 1; i >= 0; i--) {
-      if (cpu.dodgeChargeCooldowns[i] === 0) {
-        cpu.dodgeCharges--;
-        cpu.dodgeChargeCooldowns[i] = currentTime + 2000;
-        break;
-      }
-    }
+    // Drain stamina for dodge (15% of max stamina)
+    cpu.stamina = Math.max(0, cpu.stamina - AI_CONFIG.DODGE_STAMINA_COST);
     
     if (cpu.keys.a) {
       cpu.dodgeDirection = -1;

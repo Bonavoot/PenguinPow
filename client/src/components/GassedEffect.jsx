@@ -1,71 +1,73 @@
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 
-// Simple pulsing animation
-const breathePulse = keyframes`
-  0%, 100% {
-    opacity: 0.8;
+// Pop-in and fade animation with slight shake
+const popInFade = keyframes`
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.7);
   }
-  50% {
+  10% {
     opacity: 1;
+    transform: translate(-50%, -50%) scale(1.05);
+  }
+  15% {
+    transform: translate(-52%, -50%) scale(1);
+  }
+  20% {
+    transform: translate(-48%, -50%) scale(1);
+  }
+  25% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.98);
   }
 `;
 
-const EffectContainer = styled.div.attrs((props) => ({
-  style: {
-    position: "absolute",
-    // Match YouLabel positioning for proper centering above player
-    left: `${(props.$x / 1280) * 100 + 8}%`,
-    bottom: `${(props.$y / 720) * 100 + 31}%`,
-    transform: "translateX(-50%)",
-    zIndex: 1001,
-    pointerEvents: "none",
-    opacity: props.$isActive ? 1 : 0,
-    transition: "opacity 0.15s ease-out",
-  },
-}))``;
+const EffectContainer = styled.div`
+  position: absolute;
+  top: 22%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1001;
+  pointer-events: none;
+  animation: ${popInFade} 0.9s ease-out forwards;
+`;
 
-const GassedText = styled.div`
+const NoStaminaText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(12px, 1.2vw, 16px);
-  color: #ff6b6b;
+  font-size: clamp(0.9rem, 2.2vw, 1.5rem);
+  color: #ff2222;
   text-shadow: 
     -2px -2px 0 #000, 2px -2px 0 #000, 
     -2px 2px 0 #000, 2px 2px 0 #000,
-    0 0 8px rgba(255, 107, 107, 0.6);
+    0 0 12px rgba(255, 34, 34, 0.8),
+    0 0 24px rgba(255, 34, 34, 0.5);
   white-space: nowrap;
-  letter-spacing: 0.1em;
-  animation: ${breathePulse} 0.5s ease-in-out infinite;
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  letter-spacing: 0.06em;
 `;
 
-const SweatIcon = styled.span`
-  font-size: clamp(10px, 1vw, 14px);
-`;
-
-const GassedEffect = ({ x, y, facing, isActive }) => {
-  if (!isActive || typeof x !== "number" || typeof y !== "number") {
+// NoStaminaEffect - shows "NOT ENOUGH STAMINA" text centered on screen
+// Only visible to the local player, not their opponent
+const NoStaminaEffect = ({ showEffect }) => {
+  if (!showEffect) {
     return null;
   }
 
   return (
-    <EffectContainer $x={x} $y={y} $facing={facing} $isActive={isActive}>
-      <GassedText>
-        <SweatIcon>💦</SweatIcon>
-        GASSED
-        <SweatIcon>💦</SweatIcon>
-      </GassedText>
+    <EffectContainer key={showEffect}>
+      <NoStaminaText>NOT ENOUGH STAMINA</NoStaminaText>
     </EffectContainer>
   );
 };
 
-GassedEffect.propTypes = {
-  x: PropTypes.number.isRequired,
-  y: PropTypes.number.isRequired,
-  facing: PropTypes.number.isRequired,
-  isActive: PropTypes.bool.isRequired,
+NoStaminaEffect.propTypes = {
+  showEffect: PropTypes.oneOfType([PropTypes.bool, PropTypes.number]),
 };
 
-export default GassedEffect;
+export default NoStaminaEffect;

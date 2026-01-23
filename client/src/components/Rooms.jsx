@@ -228,22 +228,25 @@ const Rooms = ({ rooms, setRoomName, handleJoinRoom, handleMainMenuPage }) => {
           </ButtonContainer>
         </Header>
         <RoomList>
-          {rooms.length === 0 ? (
+          {/* Filter out CPU rooms - they should not appear in the public room list */}
+          {rooms.filter((room) => !room.isCPURoom).length === 0 ? (
             <EmptyState>
               No rooms available
               <br />
               Create a new room to start playing!
             </EmptyState>
           ) : (
-            rooms.map((room) => (
-              <Room
-                key={room.id}
-                room={room}
-                setRoomName={setRoomName}
-                handleJoinRoom={handleJoinRoom}
-                onMouseEnter={playButtonHoverSound}
-              />
-            ))
+            rooms
+              .filter((room) => !room.isCPURoom)
+              .map((room) => (
+                <Room
+                  key={room.id}
+                  room={room}
+                  setRoomName={setRoomName}
+                  handleJoinRoom={handleJoinRoom}
+                  onMouseEnter={playButtonHoverSound}
+                />
+              ))
           )}
         </RoomList>
       </RoomsContainer>

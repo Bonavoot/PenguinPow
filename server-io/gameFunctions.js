@@ -12,6 +12,11 @@ const GROUND_LEVEL = 210;
 const HITBOX_DISTANCE_VALUE = Math.round(77 * 1.3);
 const SLAP_HITBOX_DISTANCE_VALUE = Math.round(155 * 1.3);
 
+// Stamina drain constants
+const SLAP_ATTACK_STAMINA_COST = 3; // Small cost to not deter spamming
+const CHARGED_ATTACK_STAMINA_COST = 9; // 3x slap attack cost
+const DODGE_STAMINA_COST = 15; // 15% of max stamina per dodge
+
 // Add new function for grab state cleanup
 function cleanupGrabStates(player, opponent) {
   // Clean up grabber states
@@ -24,6 +29,7 @@ function cleanupGrabStates(player, opponent) {
   player.grabCooldown = false; // Add this to ensure cooldown is reset
   player.isBeingGrabbed = false; // Add this to ensure being grabbed state is reset
   player.isBeingPushed = false; // Add this to ensure being pushed state is reset
+  player.lastGrabStaminaDrainTime = 0; // Reset grab stamina drain tracking
 
   // Clean up grabbed player states
   opponent.isBeingGrabbed = false;
@@ -42,23 +48,25 @@ function handleWinCondition(room, loser, winner, io) {
   loser.y = GROUND_LEVEL;
   winner.wins.push("w");
 
-  // Immediately normalize stamina and gassed state for next round display
+  // Store the win count BEFORE potentially clearing it
+  const winCount = winner.wins.length;
+
+  // Immediately normalize stamina for next round display
   room.players.forEach((p) => {
     p.stamina = 100;
-    p.isGassed = false;
-    p.gassedEndTime = 0;
   });
 
-  if (winner.wins.length > 2) {
+  if (winCount > 2) {
     io.in(room.id).emit("match_over", {
       isMatchOver: true,
       winner: winner.fighter,
     });
     room.matchOver = true;
+    // Clear wins AFTER we've stored the count (will be used in game_over event below)
     winner.wins = [];
     loser.wins = [];
   } else {
-    console.log(winner.wins.length);
+    console.log(winCount);
     setTimeout(() => {
       winner.isBowing = true;
       loser.isBowing = false;
@@ -129,7 +137,7 @@ function handleWinCondition(room, loser, winner, io) {
       id: winner.id,
       fighter: winner.fighter,
     },
-    wins: winner.wins.length,
+    wins: winCount, // Use stored winCount since winner.wins may have been cleared for match_over
   });
   room.winnerId = winner.id;
   room.loserId = loser.id;
@@ -202,7 +210,9 @@ function executeSlapAttack(player, rooms) {
 
   // Ensure slapAnimation alternates consistently for every actual attack execution
   player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
-  // Slap attacks don't cost stamina - spam freely!
+  
+  // Slap attacks drain a small amount of stamina
+  player.stamina = Math.max(0, player.stamina - SLAP_ATTACK_STAMINA_COST);
 
   // === SLAP ATTACK TIMING - Smooth chainable attack ===
   // NO gap between slaps - next slap starts immediately when this one ends
@@ -330,6 +340,9 @@ function executeChargedAttack(player, chargePercentage, rooms) {
     );
     return;
   }
+
+  // Charged attacks drain stamina (3x slap attack cost)
+  player.stamina = Math.max(0, player.stamina - CHARGED_ATTACK_STAMINA_COST);
 
   // Check if mouse2 is held when the attack starts
   const mouse2HeldOnStart = player.keys.mouse2;
@@ -1075,11 +1088,11 @@ function safelyEndChargedAttack(player, rooms) {
           player.bufferExpiryTime = 0;
 
           // Execute the buffered action
-          if (action.type === "dodge") {
+          if (action.type === "dodge" && player.stamina >= DODGE_STAMINA_COST) {
             player.isDodging = true;
             player.dodgeStartTime = Date.now();
             player.dodgeEndTime = Date.now() + 450;
-            player.stamina = Math.max(0, player.stamina - 50);
+            player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
             player.dodgeDirection = action.direction;
             player.dodgeStartX = player.x;
             player.dodgeStartY = player.y;

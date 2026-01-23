@@ -1,6 +1,6 @@
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
-import styled, { keyframes } from "styled-components";
+import styled, { keyframes, css } from "styled-components";
 import happyFeetIcon from "../assets/happy-feet.png";
 import powerWaterIcon from "../assets/power-water.png";
 import snowballImage from "../assets/snowball.png";
@@ -11,6 +11,12 @@ const pulseWin = keyframes`
   0% { transform: scale(1); }
   50% { transform: scale(1.08); }
   100% { transform: scale(1); }
+`;
+
+// Simpler flash - just opacity pulse for performance
+const flashRedPulse = keyframes`
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 `;
 
 const FighterUIContainer = styled.div`
@@ -125,13 +131,13 @@ const WinMark = styled.div`
   height: clamp(16px, 2vw, 22px);
   background: ${(props) =>
     props.$isWin
-      ? "radial-gradient(60% 60% at 35% 35%, rgba(255, 249, 219, 0.95) 0%, var(--edo-gold) 60%, #8b6914 100%)"
+      ? "radial-gradient(60% 60% at 35% 35%, rgba(200, 255, 200, 0.95) 0%, #22c55e 60%, #15803d 100%)"
       : "linear-gradient(145deg, rgba(67, 61, 103, 0.6), rgba(11, 16, 32, 0.8))"};
-  border: 2px solid ${(props) => (props.$isWin ? "var(--edo-gold)" : "rgba(212, 175, 55, 0.3)")};
+  border: 2px solid ${(props) => (props.$isWin ? "#22c55e" : "rgba(212, 175, 55, 0.3)")};
   border-radius: 50%;
   box-shadow: ${(props) =>
     props.$isWin
-      ? "0 0 12px rgba(212, 175, 55, 0.6), inset 0 -2px 4px rgba(0, 0, 0, 0.3)"
+      ? "0 0 12px rgba(34, 197, 94, 0.7), inset 0 -2px 4px rgba(0, 0, 0, 0.3)"
       : "inset 0 2px 4px rgba(0, 0, 0, 0.4)"};
   animation: ${(props) => (props.$isWin ? pulseWin : "none")} 2s infinite;
 `;
@@ -157,23 +163,25 @@ const StaminaContainer = styled.div`
   overflow: hidden;
 `;
 
-const StaminaFill = styled.div`
+const StaminaFill = styled.div.attrs((props) => ({
+  style: {
+    width: `calc(${props.$stamina}% - 4px)`,
+  },
+}))`
   position: absolute;
   top: 2px;
   bottom: 2px;
   left: 2px;
-  width: calc(${(props) => props.$stamina}% - 4px);
   border-radius: 2px;
-  background: ${(props) =>
-    props.$stamina <= 25
-      ? "linear-gradient(90deg, var(--edo-sakura) 0%, #ff9e9e 100%)"
-      : "linear-gradient(90deg, #fff4d6 0%, var(--edo-gold) 100%)"};
   transition: width 0.3s ease;
-  box-shadow: ${(props) =>
-    props.$stamina <= 25
-      ? "0 0 12px rgba(255, 107, 107, 0.7)"
-      : "0 0 12px rgba(212, 175, 55, 0.6)"};
   z-index: 2;
+  background: ${(props) => props.$lowStaminaWarning 
+    ? "linear-gradient(90deg, #ff6b6b 0%, #ff4444 100%)"
+    : "linear-gradient(90deg, #fff4d6 0%, var(--edo-gold) 100%)"};
+  box-shadow: ${(props) => props.$lowStaminaWarning
+    ? "0 0 12px rgba(255, 68, 68, 0.7)"
+    : "0 0 12px rgba(212, 175, 55, 0.6)"};
+  animation: ${(props) => props.$lowStaminaWarning ? css`${flashRedPulse} 0.6s ease-in-out infinite` : 'none'};
 
   &::after {
     content: "";
@@ -187,43 +195,23 @@ const StaminaFill = styled.div`
   }
 `;
 
-const StaminaLoss = styled.div`
+const StaminaLoss = styled.div.attrs((props) => ({
+  style: {
+    left: `calc(2px + ${props.$left}%)`,
+    width: `${props.$width}%`,
+    opacity: props.$visible ? 1 : 0,
+  },
+}))`
   position: absolute;
   top: 2px;
   bottom: 2px;
-  left: calc(2px + ${(props) => props.$left}%);
-  width: ${(props) => props.$width}%;
   background: linear-gradient(90deg, var(--edo-sakura) 0%, #ff9e9e 100%);
-  opacity: ${(props) => (props.$visible ? 1 : 0)};
   transition: opacity 0.15s ease;
   pointer-events: none;
   z-index: 1;
   border-radius: 2px;
 `;
 
-const GassedOverlay = styled.div`
-  position: absolute;
-  inset: 2px;
-  z-index: 3;
-  pointer-events: none;
-  opacity: ${(props) => (props.$isGassed ? 1 : 0)};
-  transition: opacity 0.2s ease;
-  border-radius: 2px;
-  background-size: 20px 20px;
-  background-image: repeating-linear-gradient(
-    45deg,
-    var(--edo-gold) 0px,
-    var(--edo-gold) 10px,
-    rgba(0, 0, 0, 0.85) 10px,
-    rgba(0, 0, 0, 0.85) 20px
-  );
-  animation: ${(props) => (props.$isGassed ? "cautionMove 400ms linear infinite" : "none")};
-
-  @keyframes cautionMove {
-    0% { background-position: 0 0; }
-    100% { background-position: 20px 0; }
-  }
-`;
 
 const BottomRow = styled.div`
   display: flex;
@@ -231,34 +219,6 @@ const BottomRow = styled.div`
   gap: clamp(10px, 1.5vw, 16px);
   width: 100%;
   flex-direction: ${(props) => (props.$isRight ? "row-reverse" : "row")};
-`;
-
-const DodgeChargesContainer = styled.div`
-  display: flex;
-  gap: clamp(4px, 0.6vw, 6px);
-`;
-
-const DodgeCharge = styled.div`
-  width: clamp(10px, 1.3vw, 14px);
-  height: clamp(10px, 1.3vw, 14px);
-  border-radius: 50%;
-  border: 2px solid ${(props) =>
-    props.$isOnCooldown
-      ? "rgba(80, 80, 80, 0.6)"
-      : props.$isActive
-      ? "var(--edo-aqua)"
-      : "rgba(60, 60, 60, 0.7)"};
-  background: ${(props) =>
-    props.$isOnCooldown
-      ? "rgba(30, 30, 30, 0.9)"
-      : props.$isActive
-      ? "radial-gradient(circle at 35% 35%, #b3ffff 0%, var(--edo-aqua) 50%, #008b8b 100%)"
-      : "rgba(20, 20, 20, 0.8)"};
-  box-shadow: ${(props) =>
-    props.$isActive && !props.$isOnCooldown
-      ? "0 0 8px rgba(0, 255, 255, 0.7), inset 0 1px 2px rgba(255, 255, 255, 0.4)"
-      : "inset 0 1px 3px rgba(0, 0, 0, 0.5)"};
-  transition: all 0.2s ease;
 `;
 
 const PowerUpContainer = styled.div`
@@ -337,26 +297,22 @@ const CenterSection = styled.div`
   z-index: 1000;
 `;
 
+// Throw break stamina threshold (33% of max)
+const THROW_BREAK_STAMINA_THRESHOLD = 33;
+
 const UiPlayerInfo = ({
   playerOneWinCount,
   playerTwoWinCount,
   roundId = 0,
   player1Stamina,
-  player1DodgeCharges = 2,
-  player1DodgeChargeCooldowns = [0, 0],
   player1ActivePowerUp = null,
   player1SnowballCooldown = false,
   player1PumoArmyCooldown = false,
-  player1IsGassed = false,
   player2Stamina,
-  player2DodgeCharges = 2,
-  player2DodgeChargeCooldowns = [0, 0],
   player2ActivePowerUp = null,
   player2SnowballCooldown = false,
   player2PumoArmyCooldown = false,
-  player2IsGassed = false,
 }) => {
-  const currentTime = Date.now();
 
   // Clamp stamina values
   const clampStamina = (value) => {
@@ -468,21 +424,9 @@ const UiPlayerInfo = ({
     return marks;
   };
 
-  const renderDodgeCharges = (charges, cooldowns) => {
-    return [0, 1].map((chargeIndex) => {
-      const cooldownEndTime = cooldowns[chargeIndex];
-      const isOnCooldown = cooldownEndTime > currentTime;
-      const availableChargeIndices = [0, 1].filter((i) => cooldowns[i] <= currentTime);
-      const isActive = !isOnCooldown && availableChargeIndices.slice(0, charges).includes(chargeIndex);
-
-      return (
-        <DodgeCharge
-          key={chargeIndex}
-          $isActive={isActive}
-          $isOnCooldown={isOnCooldown}
-        />
-      );
-    });
+  // Check if player has low stamina warning (below 33% - can't afford dodge or throw break)
+  const shouldShowLowStaminaWarning = (stamina) => {
+    return stamina < THROW_BREAK_STAMINA_THRESHOLD;
   };
 
   const getPowerUpIsOnCooldown = (powerUpType, snowballCooldown, pumoArmyCooldown) => {
@@ -526,16 +470,15 @@ const UiPlayerInfo = ({
 
         <StaminaRow $isRight={false}>
           <StaminaContainer>
-            <StaminaFill $stamina={p1DisplayStamina} />
+            <StaminaFill 
+              $stamina={p1DisplayStamina} 
+              $lowStaminaWarning={shouldShowLowStaminaWarning(p1DisplayStamina)}
+            />
             <StaminaLoss $left={p1Loss.left} $width={p1Loss.width} $visible={p1Loss.visible} />
-            <GassedOverlay $isGassed={player1IsGassed} />
           </StaminaContainer>
         </StaminaRow>
 
         <BottomRow $isRight={false}>
-          <DodgeChargesContainer>
-            {renderDodgeCharges(player1DodgeCharges, player1DodgeChargeCooldowns)}
-          </DodgeChargesContainer>
           <PowerUpContainer
             $activePowerUp={player1ActivePowerUp}
             $isOnCooldown={getPowerUpIsOnCooldown(player1ActivePowerUp, player1SnowballCooldown, player1PumoArmyCooldown)}
@@ -568,16 +511,15 @@ const UiPlayerInfo = ({
 
         <StaminaRow $isRight={true}>
           <StaminaContainer>
-            <StaminaFill $stamina={p2DisplayStamina} />
+            <StaminaFill 
+              $stamina={p2DisplayStamina} 
+              $lowStaminaWarning={shouldShowLowStaminaWarning(p2DisplayStamina)}
+            />
             <StaminaLoss $left={p2Loss.left} $width={p2Loss.width} $visible={p2Loss.visible} />
-            <GassedOverlay $isGassed={player2IsGassed} />
           </StaminaContainer>
         </StaminaRow>
 
         <BottomRow $isRight={true}>
-          <DodgeChargesContainer>
-            {renderDodgeCharges(player2DodgeCharges, player2DodgeChargeCooldowns)}
-          </DodgeChargesContainer>
           <PowerUpContainer
             $activePowerUp={player2ActivePowerUp}
             $isOnCooldown={getPowerUpIsOnCooldown(player2ActivePowerUp, player2SnowballCooldown, player2PumoArmyCooldown)}
@@ -600,19 +542,13 @@ UiPlayerInfo.propTypes = {
   playerTwoWinCount: PropTypes.number.isRequired,
   roundId: PropTypes.number,
   player1Stamina: PropTypes.number,
-  player1DodgeCharges: PropTypes.number,
-  player1DodgeChargeCooldowns: PropTypes.arrayOf(PropTypes.number),
   player1ActivePowerUp: PropTypes.string,
   player1SnowballCooldown: PropTypes.bool,
   player1PumoArmyCooldown: PropTypes.bool,
-  player1IsGassed: PropTypes.bool,
   player2Stamina: PropTypes.number,
-  player2DodgeCharges: PropTypes.number,
-  player2DodgeChargeCooldowns: PropTypes.arrayOf(PropTypes.number),
   player2ActivePowerUp: PropTypes.string,
   player2SnowballCooldown: PropTypes.bool,
   player2PumoArmyCooldown: PropTypes.bool,
-  player2IsGassed: PropTypes.bool,
 };
 
 export default UiPlayerInfo;
