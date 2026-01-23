@@ -199,6 +199,9 @@ const RAW_PARRY_STUN_DURATION = 1000; // 1 second stun duration
 const RAW_PARRY_SLAP_KNOCKBACK = 1.5; // Reduced knockback for slap attack parries (reduced by 50%)
 const RAW_PARRY_SLAP_STUN_DURATION = 500; // Reduced stun duration for slap attack parries
 const PERFECT_PARRY_WINDOW = 100; // 100ms window for perfect parries
+const PERFECT_PARRY_SUCCESS_DURATION = 2000; // 2 seconds - parrier holds success pose
+const PERFECT_PARRY_ATTACKER_STUN_DURATION = 5000; // 5 seconds - attacker is stunned (gives parrier 3s advantage)
+const PERFECT_PARRY_ANIMATION_LOCK = 600; // 600ms - parrier is locked in parry pose after perfect parry
 const DODGE_COOLDOWN = 2000; // 2 second cooldown between dodges
 const MAX_DODGE_CHARGES = 2; // Maximum number of dodge charges
 
@@ -225,12 +228,13 @@ function setKnockbackImmunity(player) {
 // Grab break constants
 const GRAB_BREAK_STAMINA_COST = 50; // Stamina cost to break a grab
 const GRAB_BREAK_PUSH_VELOCITY = 1.2; // Reduced push velocity (~55%) for shorter shove
-const GRAB_BREAK_ANIMATION_DURATION = 300; // Duration for grab break animation state
+const GRAB_BREAK_ANIMATION_DURATION = 380; // Duration for grab break animation state
 const GRAB_BREAK_SEPARATION_DURATION = 220; // Smooth separation tween duration
 const GRAB_BREAK_SEPARATION_MULTIPLIER = 96; // Separation distance scale (tripled)
+const GRAB_BREAK_INPUT_LOCK_DURATION = 420; // Total input lock duration after grab break starts
 
 // Hitstop tuning - brief pause on impact for visual feedback
-const HITSTOP_SLAP_MS = 80;       // Brief hitstop for fast slaps
+const HITSTOP_SLAP_MS = 0;        // No hitstop for slaps - same speed whether hitting or not
 const HITSTOP_CHARGED_MS = 150;   // Longer hitstop for heavy charged attacks
 const HITSTOP_PARRY_MS = 200;     // Longer hitstop for parries - Street Fighter style freeze frame
 
@@ -238,7 +242,7 @@ const HITSTOP_PARRY_MS = 200;     // Longer hitstop for parries - Street Fighter
 const PARRY_SUCCESS_DURATION = 500; // How long the parry success pose is held
 
 // Global attack timing constants
-const ATTACK_ENDLAG_SLAP_MS = 60;       // Very short recovery for spammable slaps
+const ATTACK_ENDLAG_SLAP_MS = 30;       // Minimal recovery for ultra-spammable slaps
 const ATTACK_ENDLAG_CHARGED_MS = 280;   // Longer recovery for charged attacks
 const ATTACK_COOLDOWN_MS = 50;          // Minimal cooldown for fast gameplay
 const BUFFERED_ATTACK_GAP_MS = 80;      // Fast chaining
@@ -987,6 +991,7 @@ io.on("connection", (socket) => {
               isPlayerInActiveState,
               setPlayerTimeout,
               rooms,
+              io, // Add io for emitting events
             };
             processCPUInputs(cpuPlayer, humanPlayer, room, gameHelpers);
           }
@@ -1271,14 +1276,14 @@ io.on("connection", (socket) => {
                 Math.abs(snowball.y - opponent.y) < vertThresh
               ) {
                 // Check for thick blubber hit absorption
+                const isOpponentGrabbing = opponent.isGrabStartup || opponent.isGrabbingMovement || opponent.isGrabbing;
                 if (
                   opponent.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
-                  opponent.isAttacking &&
-                  opponent.attackType === "charged" &&
+                  ((opponent.isAttacking && opponent.attackType === "charged") || isOpponentGrabbing) &&
                   !opponent.hitAbsorptionUsed
                 ) {
                   console.log(
-                    `Player ${opponent.id} absorbed snowball with Thick Blubber during charged attack`
+                    `Player ${opponent.id} absorbed snowball with Thick Blubber during ${isOpponentGrabbing ? 'grab' : 'charged attack'}`
                   );
 
                   // Mark absorption as used for this charge session
@@ -1299,6 +1304,13 @@ io.on("connection", (socket) => {
 
                 // Hit opponent normally
                 snowball.hasHit = true;
+                
+                // Emit snowball hit effect for visual clarity
+                io.in(room.id).emit("snowball_hit", {
+                  x: opponent.x,
+                  y: opponent.y,
+                  hitId: `snowball-hit-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                });
                 
                 // If opponent was grabbing someone, clear the grabbed player's state first
                 if (opponent.isGrabbing && opponent.grabbedOpponent) {
@@ -1408,14 +1420,14 @@ io.on("connection", (socket) => {
                 Math.abs(clone.y - opponent.y) < vertThresh
               ) {
                 // Check for thick blubber hit absorption
+                const isOpponentGrabbingClone = opponent.isGrabStartup || opponent.isGrabbingMovement || opponent.isGrabbing;
                 if (
                   opponent.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
-                  opponent.isAttacking &&
-                  opponent.attackType === "charged" &&
+                  ((opponent.isAttacking && opponent.attackType === "charged") || isOpponentGrabbingClone) &&
                   !opponent.hitAbsorptionUsed
                 ) {
                   console.log(
-                    `Player ${opponent.id} absorbed pumo clone with Thick Blubber during charged attack`
+                    `Player ${opponent.id} absorbed pumo clone with Thick Blubber during ${isOpponentGrabbingClone ? 'grab' : 'charged attack'}`
                   );
 
                   // Mark absorption as used for this charge session
@@ -2162,6 +2174,10 @@ io.on("connection", (socket) => {
             player.grabStartTime = Date.now();
             player.grabbedOpponent = opponent.id;
             
+            // Clear parry success state when starting a grab
+            player.isRawParrySuccess = false;
+            player.isPerfectRawParrySuccess = false;
+            
             // CRITICAL: Clear ALL action states when being grabbed
             clearAllActionStates(opponent);
             opponent.isBeingGrabbed = true;
@@ -2254,6 +2270,10 @@ io.on("connection", (socket) => {
             !player.isRecovering &&
             !player.isRawParryStun &&
             !player.isRawParrying &&
+            !player.isPerfectRawParrySuccess && // Block during perfect parry animation
+            !player.isGrabBreaking && // Block during grab break animation
+            !player.isGrabBreakCountered && // Block during grab break countered state
+            !player.isGrabBreakSeparating && // Block during grab break separation
             !player.isThrowingSnowball &&
             !player.isSpawningPumoArmy &&
             !player.isAtTheRopes &&
@@ -2298,6 +2318,10 @@ io.on("connection", (socket) => {
             !player.isRecovering &&
             !player.isRawParryStun &&
             !player.isRawParrying &&
+            !player.isPerfectRawParrySuccess && // Block during perfect parry animation
+            !player.isGrabBreaking && // Block during grab break animation
+            !player.isGrabBreakCountered && // Block during grab break countered state
+            !player.isGrabBreakSeparating && // Block during grab break separation
             !player.isThrowingSnowball &&
             !player.isSpawningPumoArmy &&
             !player.isAtTheRopes &&
@@ -2341,6 +2365,10 @@ io.on("connection", (socket) => {
             !player.isRecovering &&
             !player.isRawParryStun &&
             !player.isRawParrying &&
+            !player.isPerfectRawParrySuccess && // Block during perfect parry animation
+            !player.isGrabBreaking && // Block during grab break animation
+            !player.isGrabBreakCountered && // Block during grab break countered state
+            !player.isGrabBreakSeparating && // Block during grab break separation
             !player.isThrowingSnowball &&
             !player.isSpawningPumoArmy &&
             !player.keys.mouse1 && // Add condition to prevent strafing while slapping
@@ -2388,6 +2416,10 @@ io.on("connection", (socket) => {
             !player.isRecovering &&
             !player.isRawParryStun &&
             !player.isRawParrying &&
+            !player.isPerfectRawParrySuccess && // Block during perfect parry animation
+            !player.isGrabBreaking && // Block during grab break animation
+            !player.isGrabBreakCountered && // Block during grab break countered state
+            !player.isGrabBreakSeparating && // Block during grab break separation
             !player.isThrowingSnowball &&
             !player.isSpawningPumoArmy &&
             !player.keys.mouse1 && // Add condition to prevent strafing while slapping
@@ -2424,8 +2456,14 @@ io.on("connection", (socket) => {
               player.isReady = false;
             }
           } else {
+            // Freeze movement completely during perfect parry success or grab break
+            if (player.isPerfectRawParrySuccess || player.isGrabBreaking || player.isGrabBreakCountered || player.isGrabBreakSeparating) {
+              player.movementVelocity = 0;
+              player.isStrafing = false;
+              player.isCrouchStrafing = false;
+            }
             // Apply ice-like deceleration
-            if (Math.abs(player.movementVelocity) > MIN_MOVEMENT_THRESHOLD) {
+            else if (Math.abs(player.movementVelocity) > MIN_MOVEMENT_THRESHOLD) {
               // Apply momentum and friction
               player.movementVelocity *= MOVEMENT_MOMENTUM * MOVEMENT_FRICTION;
 
@@ -2624,6 +2662,8 @@ io.on("connection", (socket) => {
         if (
           player.keys[" "] &&
           !player.isGrabBreaking && // Block raw parry while grab break is active
+          !player.isGrabBreakCountered && // Block while countered by grab break
+          !player.isGrabBreakSeparating && // Block during grab break separation
           !player.grabBreakSpaceConsumed && // Block until the triggering space press is released
           !player.isDodging && // Block raw parry during dodge - don't interrupt dodge hop
           !player.isGrabbing &&
@@ -2641,6 +2681,10 @@ io.on("connection", (socket) => {
         ) {
           // Start raw parry if not already parrying
           if (!player.isRawParrying) {
+            // Clear parry success state when starting a new parry
+            player.isRawParrySuccess = false;
+            player.isPerfectRawParrySuccess = false;
+            
             player.isRawParrying = true;
             player.rawParryStartTime = Date.now();
             player.rawParryMinDurationMet = false;
@@ -2681,7 +2725,8 @@ io.on("connection", (socket) => {
           }
 
           // Only end parry if spacebar is released AND minimum duration is met
-          if (!player.keys[" "] && player.rawParryMinDurationMet) {
+          // Don't end parry if in perfect parry animation lock
+          if (!player.keys[" "] && player.rawParryMinDurationMet && !player.isPerfectRawParrySuccess) {
             player.isRawParrying = false;
             player.rawParryStartTime = 0;
             player.rawParryMinDurationMet = false;
@@ -3258,25 +3303,51 @@ io.on("connection", (socket) => {
     // Store the charge power before resetting states
     const chargePercentage = player.chargeAttackPower;
 
-    // Check for thick blubber hit absorption (only if defender is executing charged attack and hasn't used absorption)
+    // Check for thick blubber hit absorption (only if defender is executing charged attack or grab and hasn't used absorption)
+    const isDefenderGrabbing = otherPlayer.isGrabStartup || otherPlayer.isGrabbingMovement || otherPlayer.isGrabbing;
     if (
       otherPlayer.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
-      otherPlayer.isAttacking &&
-      otherPlayer.attackType === "charged" &&
+      ((otherPlayer.isAttacking && otherPlayer.attackType === "charged") || isDefenderGrabbing) &&
       !otherPlayer.hitAbsorptionUsed &&
       !otherPlayer.isRawParrying
     ) {
       // Raw parry should still work normally
 
       console.log(
-        `Player ${otherPlayer.id} absorbed hit with Thick Blubber during charged attack`
+        `Player ${otherPlayer.id} absorbed hit with Thick Blubber during ${isDefenderGrabbing ? 'grab' : 'charged attack'}`
       );
 
       // Mark absorption as used for this charge session
       otherPlayer.hitAbsorptionUsed = true;
 
-      // Don't apply any knockback or hit effects to the defender
-      // The attacker's attack still continues normally (they don't get knocked back either)
+      // CRITICAL: End the attacker's attack to prevent multiple collisions on subsequent ticks
+      // For charged attacks, put attacker in recovery state
+      if (!isSlapAttack) {
+        player.chargedAttackHit = true;
+        player.isAttacking = false;
+        player.attackStartTime = 0;
+        player.attackEndTime = 0;
+        player.chargingFacingDirection = null;
+        player.isChargingAttack = false;
+        player.chargeStartTime = 0;
+        player.chargeAttackPower = 0;
+        
+        // Set recovery state for the attacker
+        player.isRecovering = true;
+        player.recoveryStartTime = Date.now();
+        player.recoveryDuration = 400;
+        player.recoveryDirection = player.facing;
+        player.knockbackVelocity = {
+          x: player.facing * -2,
+          y: 0,
+        };
+      }
+      // For slap attacks, end the attack to prevent further collisions
+      else {
+        player.isAttacking = false;
+        player.attackStartTime = 0;
+        player.attackEndTime = 0;
+      }
 
       // Emit a special effect or sound for absorption if needed
       if (currentRoom) {
@@ -3287,7 +3358,7 @@ io.on("connection", (socket) => {
         });
       }
 
-      // Early return - no further hit processing
+      // Early return - no further hit processing for the defender
       return;
     }
 
@@ -3315,14 +3386,8 @@ io.on("connection", (socket) => {
         x: player.facing * -2, // Static knockback amount
         y: 0,
       };
-    } else {
-      // For slap attacks, don't create separate timeout - let executeSlapAttack handle cleanup
-      // This ensures consistent behavior with whiffed slaps
-      if (isSlapAttack) {
-        // Don't interfere with the normal executeSlapAttack timeout
-        // Just let it handle the cleanup naturally
-      }
     }
+    // For slap attacks: no special handling - executeSlapAttack timeout handles everything
 
     // Check if the other player is blocking (crouching)
     if (otherPlayer.isRawParrying) {
@@ -3351,39 +3416,66 @@ io.on("connection", (socket) => {
       player.isHit = true;
 
       // Set parry success state for the defending player
-      // Both perfect and regular parries use the same visual state for consistency
-      otherPlayer.isRawParrySuccess = true;
-      // Also set perfect flag for any additional effects (but same animation)
-      otherPlayer.isPerfectRawParrySuccess = isPerfectParry;
-      console.log(`Parry success set for player ${otherPlayer.id} (perfect: ${isPerfectParry})`);
+      if (isPerfectParry) {
+        // Perfect parry: keep isRawParrying active and lock movement
+        otherPlayer.isRawParrying = true;
+        otherPlayer.isPerfectRawParrySuccess = true;
+        otherPlayer.inputLockUntil = Math.max(otherPlayer.inputLockUntil || 0, Date.now() + PERFECT_PARRY_ANIMATION_LOCK);
+        console.log(`Perfect parry - keeping parry pose for player ${otherPlayer.id}, locked for ${PERFECT_PARRY_ANIMATION_LOCK}ms`);
+      } else {
+        // Regular parry: use parry success animation
+        otherPlayer.isRawParrySuccess = true;
+        console.log(`Parry success set for player ${otherPlayer.id} (regular parry)`);
+      }
 
       // Emit raw parry success event for visual effect
+      // Use the ATTACKER's position (player who got parried) to match hit effect positioning
+      // Determine which player number (1 or 2) performed the parry
+      const parryingPlayerNumber = currentRoom ? 
+        (currentRoom.players.findIndex(p => p.id === otherPlayer.id) + 1) : 1;
       const parryData = {
-        x: otherPlayer.x,
-        y: otherPlayer.y,
-        facing: otherPlayer.facing,
+        x: player.x,
+        y: player.y,
+        facing: player.facing,
         isPerfect: isPerfectParry,
         timestamp: Date.now(),
         parryId: `${otherPlayer.id}_parry_${Date.now()}`,
+        playerNumber: parryingPlayerNumber, // 1 or 2
       };
       console.log(`Emitting raw_parry_success:`, parryData);
       if (currentRoom) {
         io.to(currentRoom.id).emit("raw_parry_success", parryData);
       }
 
-      // Clear parry success state after duration - longer duration for clear visual
-      setPlayerTimeout(
-        otherPlayer.id,
-        () => {
-          console.log(
-            `Clearing parry success for player ${otherPlayer.id}`
-          );
-          otherPlayer.isRawParrySuccess = false;
-          otherPlayer.isPerfectRawParrySuccess = false;
-        },
-        PARRY_SUCCESS_DURATION, // Longer duration for clear parry pose
-        "parrySuccess" // Named timeout for easier debugging
-      );
+      // Clear parry success state after duration
+      if (isPerfectParry) {
+        // For perfect parry: clear the parry pose after animation lock duration
+        setPlayerTimeout(
+          otherPlayer.id,
+          () => {
+            console.log(
+              `Clearing perfect parry pose for player ${otherPlayer.id}`
+            );
+            otherPlayer.isRawParrying = false;
+            otherPlayer.isPerfectRawParrySuccess = false;
+          },
+          PERFECT_PARRY_ANIMATION_LOCK,
+          "perfectParryAnimationEnd"
+        );
+      } else {
+        // For regular parry: clear success state after normal duration
+        setPlayerTimeout(
+          otherPlayer.id,
+          () => {
+            console.log(
+              `Clearing parry success for player ${otherPlayer.id}`
+            );
+            otherPlayer.isRawParrySuccess = false;
+          },
+          PARRY_SUCCESS_DURATION,
+          "parrySuccess"
+        );
+      }
 
       // Longer knockback duration for clear visual - attacker stays in hit state
       // This syncs with the parrier's success pose for Street Fighter-like clarity
@@ -3425,9 +3517,8 @@ io.on("connection", (socket) => {
 
       // Apply stun for perfect parries (separate from knockback)
       if (isPerfectParry) {
-        const stunDuration = isSlapBeingParried
-          ? RAW_PARRY_SLAP_STUN_DURATION
-          : RAW_PARRY_STUN_DURATION;
+        // Perfect parries have much longer stun - 5 seconds to give parrier a huge advantage
+        const stunDuration = PERFECT_PARRY_ATTACKER_STUN_DURATION;
         player.isRawParryStun = true;
 
         // Emit screen shake for perfect parry with higher intensity
@@ -3584,7 +3675,7 @@ io.on("connection", (socket) => {
       // Calculate knockback multiplier based on charge percentage
       let finalKnockbackMultiplier;
       if (isSlapAttack) {
-        finalKnockbackMultiplier = 0.334611; // Reduced by another 10% from 0.37179 to 0.334611 (total 38% reduction from original 0.54)
+        finalKnockbackMultiplier = 0.38; // Tuned knockback - consecutive slaps stay in range
       } else {
         finalKnockbackMultiplier = 0.4675 + (chargePercentage / 100) * 1.122; // Reduced base power by 15% (0.55 -> 0.4675) and scaling by 15% (1.32 -> 1.122)
         console.log(
@@ -3640,11 +3731,11 @@ io.on("connection", (socket) => {
                     `👋 SLAP ATTACK: Player ${player.id} -> Consistent knockback applied (no separation boost), attacker facing: ${player.facing}, knockback direction: ${knockbackDirection}`
                   );
 
-                  // Add screen shake for slap attacks - smaller but still impactful
+                  // Moderate screen shake for slap attacks - noticeable but not heavy
                   if (currentRoom) {
                     io.in(currentRoom.id).emit("screen_shake", {
-                      intensity: 0.4,
-                      duration: 120,
+                      intensity: 0.25,
+                      duration: 80,
                     });
                   }
                 } else {
@@ -3699,11 +3790,10 @@ io.on("connection", (socket) => {
             timestamp: Date.now(), // Add unique timestamp to ensure effect triggers every time
             hitId: Math.random().toString(36).substr(2, 9), // Add unique ID for guaranteed uniqueness
           });
-          // Trigger brief hitstop based on attack type
-          triggerHitstop(
-            currentRoom,
-            isSlapAttack ? HITSTOP_SLAP_MS : HITSTOP_CHARGED_MS
-          );
+          // Trigger hitstop only for charged attacks - slaps have none for smooth spamming
+          if (!isSlapAttack) {
+            triggerHitstop(currentRoom, HITSTOP_CHARGED_MS);
+          }
         }
       }
 
@@ -3711,8 +3801,9 @@ io.on("connection", (socket) => {
       otherPlayer.y = GROUND_LEVEL;
 
       // === HIT STUN DURATION ===
-      // Clear visual feedback but fast enough for responsive gameplay
-      const hitStateDuration = isSlapAttack ? 280 : 380; // Slaps are quick, charged hits longer
+      // Slaps: visible hit reaction - enough time to see the animation
+      // Charged: longer stun for more impactful hits
+      const hitStateDuration = isSlapAttack ? 200 : 380;
 
       // Update the last hit time for tracking
       otherPlayer.lastHitTime = currentTime;
@@ -3728,20 +3819,21 @@ io.on("connection", (socket) => {
         "hitStateReset" // Named timeout for cleanup
       );
 
-      // Input lockout matches hit stun for clear visual feedback
-      // Victim cannot act until hit stun ends
-      const victimLockMs = hitStateDuration;
-      // Attacker has brief lock to prevent instant follow-up spam
-      const attackerLockMs = isSlapAttack ? 150 : 200;
+      // Input lockout - slaps have moderate lock so hit animation is visible
+      const victimLockMs = isSlapAttack ? 150 : hitStateDuration;
+      // Attacker: NO lock for slaps (consistent speed hit or miss), brief lock for charged
+      const attackerLockMs = isSlapAttack ? 0 : 200;
       const now = Date.now();
       otherPlayer.inputLockUntil = Math.max(
         otherPlayer.inputLockUntil || 0,
         now + victimLockMs
       );
-      player.inputLockUntil = Math.max(
-        player.inputLockUntil || 0,
-        now + attackerLockMs
-      );
+      if (attackerLockMs > 0) {
+        player.inputLockUntil = Math.max(
+          player.inputLockUntil || 0,
+          now + attackerLockMs
+        );
+      }
 
       // Encourage clearer turn-taking: set wantsToRestartCharge only on intentional hold
       if (player.keys && player.keys.mouse2) {
@@ -4677,8 +4769,8 @@ io.on("connection", (socket) => {
       if (isInChargedAttackExecution()) {
         return true;
       }
-      // Block during grab break animation
-      if (player.isGrabBreaking) {
+      // Block during grab break animation and separation
+      if (player.isGrabBreaking || player.isGrabBreakCountered || player.isGrabBreakSeparating) {
         return true;
       }
       // Block during recovery unless it's a dodge and dodge cancel is allowed
@@ -4785,16 +4877,17 @@ io.on("connection", (socket) => {
           const leftBoundary = MAP_LEFT_BOUNDARY;
           const rightBoundary = MAP_RIGHT_BOUNDARY;
           const dir = player.x < grabber.x ? -1 : 1; // player pushes outward
-          const pushDistance =
-            GRAB_BREAK_PUSH_VELOCITY * GRAB_BREAK_SEPARATION_MULTIPLIER;
+          // Use same separation as CPU grab break - shorter knockback
+          const breakerDistance = GRAB_BREAK_SEPARATION_MULTIPLIER; // 96
+          const grabberDistance = GRAB_BREAK_SEPARATION_MULTIPLIER * 0.5; // 48
 
           const playerTargetX = Math.max(
             leftBoundary,
-            Math.min(player.x + dir * pushDistance, rightBoundary)
+            Math.min(player.x + dir * breakerDistance, rightBoundary)
           );
           const grabberTargetX = Math.max(
             leftBoundary,
-            Math.min(grabber.x - dir * pushDistance, rightBoundary)
+            Math.min(grabber.x - dir * grabberDistance, rightBoundary)
           );
 
           // Initialize smooth separation tween for both players
@@ -4820,6 +4913,11 @@ io.on("connection", (socket) => {
           player.isStrafing = false;
           grabber.isStrafing = false;
 
+          // Lock both players' inputs for the full grab break animation duration
+          const inputLockUntil = Date.now() + GRAB_BREAK_INPUT_LOCK_DURATION;
+          player.inputLockUntil = Math.max(player.inputLockUntil || 0, inputLockUntil);
+          grabber.inputLockUntil = Math.max(grabber.inputLockUntil || 0, inputLockUntil);
+
           // Short cooldown to prevent immediate re-grab
           grabber.grabCooldown = true;
           setPlayerTimeout(
@@ -4837,6 +4935,7 @@ io.on("connection", (socket) => {
             grabberId: grabber.id,
             breakerX: player.x,
             grabberX: grabber.x,
+            breakId: `grab-break-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           });
         }
       }
@@ -5100,6 +5199,10 @@ io.on("connection", (socket) => {
         }
       }
 
+      // Clear parry success state when starting a dodge
+      player.isRawParrySuccess = false;
+      player.isPerfectRawParrySuccess = false;
+
       player.isDodging = true;
       player.dodgeStartTime = Date.now();
       player.dodgeEndTime = Date.now() + 450; // Increased from 400ms for more weighty feel
@@ -5142,6 +5245,10 @@ io.on("connection", (socket) => {
 
           // Execute the buffered action
           if (action.type === "dodge") {
+            // Clear parry success state when starting a dodge
+            player.isRawParrySuccess = false;
+            player.isPerfectRawParrySuccess = false;
+            
             player.isDodging = true;
             player.dodgeStartTime = Date.now();
             player.dodgeEndTime = Date.now() + 450; // Updated to match new dodge duration
@@ -5324,16 +5431,21 @@ io.on("connection", (socket) => {
     }
 
     // Handle slap attacks with mouse1 - block during charged attack execution and recovery
-    if (
-      player.mouse1JustPressed &&
-      !shouldBlockAction() &&
-      canPlayerSlap(player)
-    ) {
-      // Simply execute slap attack - it will handle queuing internally if already attacking
-      executeSlapAttack(player, rooms);
-      // Short lock to prevent other actions from starting on the same frame burst
-      player.currentAction = "slap";
-      player.actionLockUntil = Date.now() + 80; // ~5 frames at 60fps
+    if (player.mouse1JustPressed && !shouldBlockAction()) {
+      if (canPlayerSlap(player)) {
+        // Start a fresh slap attack
+        executeSlapAttack(player, rooms);
+      } else if (player.isAttacking && player.attackType === "slap") {
+        // Already slapping - buffer the next attack if we're far enough into the current one
+        const attackElapsed = Date.now() - player.attackStartTime;
+        const attackDuration = player.attackEndTime - player.attackStartTime;
+        const attackProgress = attackElapsed / attackDuration;
+        
+        // Allow buffering after 20% of the attack animation
+        if (attackProgress >= 0.20 && !player.hasPendingSlapAttack) {
+          player.hasPendingSlapAttack = true;
+        }
+      }
     }
 
     function isOpponentCloseEnoughForGrab(player, opponent) {
@@ -5369,6 +5481,18 @@ io.on("connection", (socket) => {
           const opponent = rooms[roomIndex].players.find(
             (p) => p.id !== player.id
           );
+
+          // CRITICAL: Check if grab break has already occurred - grab break always takes priority
+          if (player.isGrabBreakCountered || opponent.isGrabBreaking || opponent.isGrabBreakSeparating) {
+            console.log(`Throw cancelled: Grab break takes priority`);
+            return;
+          }
+
+          // Also check if we're no longer in a valid grab state
+          if (!player.isGrabbing && !player.isThrowing) {
+            console.log(`Throw cancelled: No longer grabbing (likely grab break occurred)`);
+            return;
+          }
 
           if (
             isOpponentCloseEnoughForThrow(player, opponent) &&
@@ -5475,8 +5599,17 @@ io.on("connection", (socket) => {
     ) {
       player.lastGrabAttemptTime = Date.now();
 
+      // Clear parry success state when starting a grab
+      player.isRawParrySuccess = false;
+      player.isPerfectRawParrySuccess = false;
+
       // Clear charging attack state when starting grab
       clearChargeState(player, true); // true = cancelled by grab
+
+      // Reset hit absorption for thick blubber power-up when starting grab (like charged attack)
+      if (player.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER) {
+        player.hitAbsorptionUsed = false;
+      }
 
       // Begin startup pause with small hop
       player.isGrabStartup = true;

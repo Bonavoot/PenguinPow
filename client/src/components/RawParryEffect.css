@@ -4,36 +4,71 @@
 
 .raw-parry-ring {
   position: relative;
-  width: clamp(2rem, 6vmin, 8rem);
-  height: clamp(2rem, 6vmin, 8rem);
+  width: clamp(3rem, 8vmin, 10rem);
+  height: clamp(3rem, 8vmin, 10rem);
 }
 
-/* Main impact ring - outer shockwave for regular parry (blue/white) - DISABLED */
+/* Main impact ring - outer shockwave for regular parry (cyan/blue) */
 .raw-parry-ring.regular::before {
-  display: none;
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  border: 4px solid rgba(0, 200, 255, 0.9);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0.5);
+  animation: rawParryMainRing 0.5s ease-out forwards;
+  box-shadow: 
+    0 0 25px rgba(0, 200, 255, 0.8),
+    inset 0 0 15px rgba(0, 150, 255, 0.4);
 }
 
-/* Main impact ring - outer shockwave for perfect parry (blue/gold) - DISABLED */
+/* Main impact ring - outer shockwave for perfect parry (bright cyan/white) */
 .raw-parry-ring.perfect::before {
-  display: none;
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 120%;
+  height: 120%;
+  border: 5px solid rgba(0, 255, 255, 0.95);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0.5);
+  animation: rawParryMainRing 0.6s ease-out forwards;
+  box-shadow: 
+    0 0 35px rgba(0, 255, 255, 0.9),
+    0 0 60px rgba(0, 150, 255, 0.6),
+    inset 0 0 20px rgba(100, 255, 255, 0.5);
 }
 
-/* Star-shaped explosion burst - regular parry (blue/white) - DISABLED */
+/* Inner flash burst - regular parry */
 .raw-parry-ring.regular::after {
-  display: none;
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 60%;
+  height: 60%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0%, rgba(0, 200, 255, 0.7) 40%, transparent 70%);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  animation: rawParryInnerBurst 0.35s ease-out forwards;
 }
 
-/* Star-shaped explosion burst - perfect parry (blue/gold) - DISABLED */
+/* Inner flash burst - perfect parry (bright cyan flash) */
 .raw-parry-ring.perfect::after {
-  display: none;
-}
-
-/* Additional animated elements for more impact */
-.raw-parry-ring {
-  /* Inner flash ring */
-  &::before {
-    animation: rawParryShockwaveRing 0.4s ease-out forwards;
-  }
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 80%;
+  height: 80%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 1) 0%, rgba(0, 255, 255, 0.9) 30%, rgba(0, 150, 255, 0.6) 60%, transparent 80%);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  animation: rawParryInnerBurstPerfect 0.45s ease-out forwards;
 }
 
 /* Create additional pseudo-elements using a wrapper approach */
@@ -41,22 +76,162 @@
   position: relative;
 }
 
-/* Inner flash - regular parry (white) - DISABLED */
+/* Second shockwave ring - regular */
 .raw-parry-ring-wrapper.regular::before {
-  display: none;
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: clamp(4rem, 10vmin, 12rem);
+  height: clamp(4rem, 10vmin, 12rem);
+  border: 2px solid rgba(100, 220, 255, 0.7);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0.3);
+  animation: rawParryOuterRing 0.55s ease-out 0.05s forwards;
+  pointer-events: none;
 }
 
-/* Inner flash - perfect parry (gold) - DISABLED */
+/* Second shockwave ring - perfect (larger, more dramatic) */
 .raw-parry-ring-wrapper.perfect::before {
-  display: none;
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: clamp(5rem, 12vmin, 15rem);
+  height: clamp(5rem, 12vmin, 15rem);
+  border: 3px solid rgba(0, 255, 255, 0.8);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0.3);
+  animation: rawParryOuterRingPerfect 0.65s ease-out 0.05s forwards;
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+  pointer-events: none;
 }
 
-/* Outer shockwave - both parry types (blue) - DISABLED */
-.raw-parry-ring-wrapper::after {
-  display: none;
+/* Cross flash effect for perfect parry */
+.raw-parry-ring-wrapper.perfect::after {
+  content: '✦';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  font-size: clamp(2rem, 4vmin, 4rem);
+  color: #FFD700;
+  text-shadow: 
+    0 0 20px rgba(255, 215, 0, 0.9),
+    0 0 40px rgba(255, 200, 0, 0.6);
+  transform: translate(-50%, -50%) scale(0) rotate(0deg);
+  animation: rawParryStarBurstPerfect 0.5s ease-out forwards;
+  pointer-events: none;
 }
 
 /* Enhanced Keyframe Animations */
+
+/* Main ring expansion */
+@keyframes rawParryMainRing {
+  0% {
+    transform: translate(-50%, -50%) scale(0.3);
+    opacity: 1;
+    border-width: 6px;
+  }
+  30% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+    border-width: 4px;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.2);
+    opacity: 0;
+    border-width: 1px;
+  }
+}
+
+/* Inner burst flash */
+@keyframes rawParryInnerBurst {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 1;
+  }
+  40% {
+    transform: translate(-50%, -50%) scale(1.5);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2);
+    opacity: 0;
+  }
+}
+
+/* Perfect parry inner burst - more dramatic */
+@keyframes rawParryInnerBurstPerfect {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 1;
+  }
+  30% {
+    transform: translate(-50%, -50%) scale(1.8);
+    opacity: 1;
+  }
+  60% {
+    transform: translate(-50%, -50%) scale(2.2);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.8);
+    opacity: 0;
+  }
+}
+
+/* Outer ring for regular parry */
+@keyframes rawParryOuterRing {
+  0% {
+    transform: translate(-50%, -50%) scale(0.3);
+    opacity: 0.8;
+    border-width: 3px;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.5);
+    opacity: 0;
+    border-width: 1px;
+  }
+}
+
+/* Outer ring for perfect parry - bigger and flashier */
+@keyframes rawParryOuterRingPerfect {
+  0% {
+    transform: translate(-50%, -50%) scale(0.3);
+    opacity: 1;
+    border-width: 4px;
+  }
+  50% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(3);
+    opacity: 0;
+    border-width: 1px;
+  }
+}
+
+/* Star burst for perfect parry */
+@keyframes rawParryStarBurstPerfect {
+  0% {
+    transform: translate(-50%, -50%) scale(0) rotate(0deg);
+    opacity: 1;
+  }
+  30% {
+    transform: translate(-50%, -50%) scale(1.5) rotate(45deg);
+    opacity: 1;
+  }
+  60% {
+    transform: translate(-50%, -50%) scale(1.8) rotate(90deg);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.2) rotate(180deg);
+    opacity: 0;
+  }
+}
+
+/* Legacy animations for compatibility */
 @keyframes rawParryShockwaveRing {
   0% {
     transform: translate(-50%, -50%) scale(0.4);
@@ -195,7 +370,7 @@
   opacity: 0;
   transform-origin: center;
   will-change: transform, opacity;
-  animation: rawParrySparkExplode 0.4s ease-out forwards;
+  animation: rawParrySparkExplode 0.5s ease-out forwards;
 }
 
 /* Simple circular explosion - each spark gets its own unique direction */
@@ -249,106 +424,10 @@
   }
 }
 
-/* Enhanced spark glow effects - blue for regular, gold for perfect */
-.spark-regular::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 150%;
-  height: 150%;
-  background: radial-gradient(circle, rgba(65, 105, 225, 0.3) 0%, rgba(65, 105, 225, 0.1) 50%, transparent 100%);
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-  opacity: 0;
-  animation: rawParrySparkGlow 0.4s ease-out forwards;
-  z-index: -1;
-}
-
-.spark-perfect::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 150%;
-  height: 150%;
-  background: radial-gradient(circle, rgba(255, 215, 0, 0.3) 0%, rgba(255, 215, 0, 0.1) 50%, transparent 100%);
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-  opacity: 0;
-  animation: rawParrySparkGlow 0.4s ease-out forwards;
-  z-index: -1;
-}
-
-@keyframes rawParrySparkGlow {
-  0% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.5);
-  }
-  30% {
-    opacity: 0.6;
-    transform: translate(-50%, -50%) scale(1.2);
-  }
-  60% {
-    opacity: 0.3;
-    transform: translate(-50%, -50%) scale(1.5);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(2);
-  }
-}
-
-/* Enhanced spark trails for dramatic effect - blue/white for regular, blue/gold for perfect */
-.spark-regular:nth-child(odd)::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 120%;
-  height: 60%;
-  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.9) 40%, rgba(65, 105, 225, 0.5) 60%, transparent 100%);
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-  opacity: 0;
-  animation: rawParrySparkTrail 0.4s ease-out forwards;
-  z-index: -1;
-}
-
-.spark-perfect:nth-child(odd)::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 120%;
-  height: 60%;
-  background: linear-gradient(90deg, transparent 0%, rgba(65, 105, 225, 0.9) 40%, rgba(255, 215, 0, 0.5) 60%, transparent 100%);
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-  opacity: 0;
-  animation: rawParrySparkTrail 0.4s ease-out forwards;
-  z-index: -1;
-}
-
-@keyframes rawParrySparkTrail {
-  0% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scaleX(0.3) scaleY(1);
-  }
-  25% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scaleX(1) scaleY(1.2);
-  }
-  50% {
-    opacity: 0.8;
-    transform: translate(-50%, -50%) scaleX(1.8) scaleY(1);
-  }
-  75% {
-    opacity: 0.4;
-    transform: translate(-50%, -50%) scaleX(2.5) scaleY(0.8);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scaleX(3.5) scaleY(0.4);
-  }
+/* Spark glow and trail effects - disabled for performance */
+.spark-regular::before,
+.spark-perfect::before,
+.spark-regular::after,
+.spark-perfect::after {
+  display: none;
 } 

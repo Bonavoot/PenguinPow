@@ -230,6 +230,9 @@ function clearAllActionStates(player) {
   player.rawParryStartTime = 0;
   player.rawParryMinDurationMet = false;
   player.isSlapParrying = false;
+  player.isRawParryStun = false; // Clear stun state when hit
+  player.isRawParrySuccess = false; // Clear parry success animation
+  player.isPerfectRawParrySuccess = false;
   
   // Clear movement states
   player.isStrafing = false;
@@ -292,7 +295,7 @@ function startCharging(player) {
 }
 
 function canPlayerSlap(player) {
-  // Check if player is on attack cooldown
+  // Check if player is on attack cooldown - this is the single source of truth for timing
   const isOnCooldown = player.attackCooldownUntil && Date.now() < player.attackCooldownUntil;
   
   return (
@@ -308,8 +311,7 @@ function canPlayerSlap(player) {
     !player.isThrowingSnowball &&
     !player.canMoveToReady &&
     !player.isAtTheRopes &&
-    !player.isInEndlag &&      // Cannot attack during endlag
-    !isOnCooldown              // Cannot spam attacks
+    !isOnCooldown              // Simple cooldown check - controls all timing
   );
 }
 

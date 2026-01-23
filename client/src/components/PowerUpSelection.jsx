@@ -368,7 +368,7 @@ const PowerUpSelection = ({
       },
       thick_blubber: {
         name: "Thick Blubber",
-        description: "Absorb 1 hit during charged attack",
+        description: "Charged attack and grab absorbs 1 hit",
         icon: thickBlubberIcon,
       },
     }),

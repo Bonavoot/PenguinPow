@@ -152,6 +152,9 @@ function canAct(cpu) {
          !cpu.isWhiffingGrab &&
          !cpu.isGrabbingMovement &&
          !cpu.isBeingGrabbed &&
+         !cpu.isGrabBreaking &&
+         !cpu.isGrabBreakCountered &&
+         !cpu.isGrabBreakSeparating &&
          !isOnCooldown &&
          !isInputLocked &&
          !isActionLocked;
@@ -248,6 +251,13 @@ function updateCPUAI(cpu, human, room, currentTime) {
   
   // Don't process AI during game over or before game starts
   if (room.gameOver || room.matchOver || !room.gameStart || room.hakkiyoiCount === 0) {
+    resetAllKeys(cpu);
+    return;
+  }
+  
+  // Don't process AI during grab break - both players are locked
+  if (cpu.isGrabBreaking || cpu.isGrabBreakCountered || cpu.isGrabBreakSeparating ||
+      human.isGrabBreaking || human.isGrabBreakCountered || human.isGrabBreakSeparating) {
     resetAllKeys(cpu);
     return;
   }
@@ -882,6 +892,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     clearChargeState,
     setPlayerTimeout,
     rooms,
+    io, // For emitting events
   } = gameHelpers;
   
   if (!room.gameStart || room.hakkiyoiCount === 0 || room.gameOver || room.matchOver) {
@@ -929,6 +940,8 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     if (cpu.isAtTheRopes) return true;
     // Block during endlag
     if (cpu.isInEndlag) return true;
+    // Block during grab break animation and separation - BOTH players are locked
+    if (cpu.isGrabBreaking || cpu.isGrabBreakCountered || cpu.isGrabBreakSeparating) return true;
     
     return false;
   };
@@ -985,14 +998,14 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       const GRAB_BREAK_SEPARATION_MULTIPLIER = 96;
       const separationDir = cpu.x < grabber.x ? -1 : 1;
       
-      // Apply separation movement
-      cpu.grabBreakSeparating = true;
+      // Apply separation movement - use isGrabBreakSeparating to match index.js game loop
+      cpu.isGrabBreakSeparating = true;
       cpu.grabBreakSepStartTime = currentTime;
       cpu.grabBreakSepDuration = 220;
       cpu.grabBreakStartX = cpu.x;
       cpu.grabBreakTargetX = cpu.x + separationDir * GRAB_BREAK_SEPARATION_MULTIPLIER;
       
-      grabber.grabBreakSeparating = true;
+      grabber.isGrabBreakSeparating = true;
       grabber.grabBreakSepStartTime = currentTime;
       grabber.grabBreakSepDuration = 220;
       grabber.grabBreakStartX = grabber.x;
@@ -1007,6 +1020,17 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       setPlayerTimeout(grabber.id, () => {
         grabber.isGrabBreakCountered = false;
       }, 300);
+      
+      // Emit grab_break event for visual effect (same as player grab break)
+      if (io && room) {
+        io.in(room.id).emit("grab_break", {
+          breakerId: cpu.id,
+          grabberId: grabber.id,
+          breakerX: cpu.x,
+          grabberX: grabber.x,
+          breakId: `grab-break-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        });
+      }
       
       cpu._prevKeys = { ...cpu.keys };
       return;

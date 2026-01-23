@@ -49,7 +49,7 @@ const HitEffect = ({ position }) => {
   const [activeEffects, setActiveEffects] = useState([]);
   const processedHitsRef = useRef(new Set()); // Track processed hit IDs to prevent duplicates
   const effectIdCounter = useRef(0);
-  const EFFECT_DURATION = 400; // Match normal hit effect duration
+  const EFFECT_DURATION = 480; // Slightly longer for better visibility
 
   // Memoize the unique identifier to prevent unnecessary re-processing
   const hitIdentifier = useMemo(() => {
@@ -57,39 +57,30 @@ const HitEffect = ({ position }) => {
     return position.hitId || position.timestamp;
   }, [position?.hitId, position?.timestamp]);
 
-  // Generate spark particles with realistic physics
+  // Generate spark particles with realistic physics - optimized for performance
   const generateSparks = (effectId, facing) => {
-    const sparkCount = 16; // Increase count for better firework effect
+    const sparkCount = 8; // Reduced from 16 for better performance
     const sparks = [];
 
-    // Get viewport dimensions to calculate responsive speeds (further reduced scale)
+    // Get viewport dimensions to calculate responsive speeds
     const viewportWidth = window.innerWidth;
-    const baseSpeedMultiplier = (viewportWidth / 1280) * 0.6; // Further reduced from 0.8 to 0.6
+    const baseSpeedMultiplier = (viewportWidth / 1280) * 0.6;
 
     for (let i = 0; i < sparkCount; i++) {
-      // Create full 360-degree explosion pattern like a firework
-      const baseAngle = (i / sparkCount) * 360; // Distribute evenly around circle
-      const angleVariation = (Math.random() - 0.5) * 15; // Reduced randomness from 40 to 15 degrees
-      const angle = (baseAngle + angleVariation) * (Math.PI / 180);
+      // Create full 360-degree explosion pattern
+      const baseAngle = (i / sparkCount) * 360;
+      const angle = baseAngle * (Math.PI / 180);
 
-      // Use more consistent speeds for even circle pattern
-      const baseSpeed = 6.5 * baseSpeedMultiplier; // ~85px at 1280px width
-      const speedVariation = baseSpeed * 0.2; // Only 20% speed variation
-      const speed = baseSpeed + (Math.random() - 0.5) * speedVariation;
+      const baseSpeed = 6.5 * baseSpeedMultiplier;
+      const speed = baseSpeed + (Math.random() - 0.5) * baseSpeed * 0.2;
 
-      // More varied sizes for better visual impact - scale with viewport
-      const baseSize = 2 * baseSpeedMultiplier; // Scale particle size with viewport
-      const size = Math.random() * (6 * baseSpeedMultiplier) + baseSize; // 2-8px range scaled
-      const life = 600 + Math.random() * 400; // 600-1000ms lifespan
+      const baseSize = 2 * baseSpeedMultiplier;
+      const size = Math.random() * (6 * baseSpeedMultiplier) + baseSize;
 
-      // Mixed white and yellow spark colors to match hit effect
+      // Simplified color palette
       const colors = [
-        "linear-gradient(45deg, #FFFFFF, #FFD700)", // White to gold
-        "linear-gradient(45deg, #FFFFFF, #FFFF99)", // White to light yellow
-        "linear-gradient(45deg, #FFFFFF, #F0F0F0)", // Pure white
-        "linear-gradient(45deg, #FFFF99, #FFD700)", // Light yellow to gold
-        "linear-gradient(45deg, #FFFFFF, #E0E0E0)", // White to light gray
-        "linear-gradient(45deg, #FFD700, #CC9900)", // Gold to darker gold
+        "linear-gradient(45deg, #FFFFFF, #FFD700)",
+        "linear-gradient(45deg, #FFFF99, #FFD700)",
       ];
 
       const spark = {
@@ -97,16 +88,8 @@ const HitEffect = ({ position }) => {
         size,
         angle,
         speed,
-        life,
-        maxLife: life,
-        velocityX: Math.cos(angle) * speed,
-        velocityY: Math.sin(angle) * speed,
-        color: colors[Math.floor(Math.random() * colors.length)],
-        rotation: Math.random() * 360,
-        rotationSpeed: (Math.random() - 0.5) * 15, // More dramatic rotation
-        trail: Math.random() > 0.3, // More sparks have trails
-        glow: Math.random() > 0.2, // Almost all sparks have glow
-        sparkIndex: i, // For CSS targeting
+        color: colors[i % colors.length],
+        sparkIndex: i,
       };
 
       sparks.push(spark);

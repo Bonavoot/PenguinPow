@@ -20,7 +20,7 @@ const SlapParryEffect = ({ position }) => {
   useEffect(() => {
     if (position) {
       setShowEffect(true);
-      setTimeout(() => setShowEffect(false), 300);
+      setTimeout(() => setShowEffect(false), 400); // Increased duration for better visibility
     }
   }, [position]);
 

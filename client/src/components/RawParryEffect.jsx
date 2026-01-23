@@ -1,7 +1,61 @@
 import { useEffect, useState, useRef, useMemo } from "react";
-import styled from "styled-components";
+import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 import "./RawParryEffect.css";
+
+// Animation for text appearing on the side of the screen (fighting game style)
+const textSlideIn = keyframes`
+  0% {
+    transform: translateX(var(--slide-dir)) scale(0.5);
+    opacity: 0;
+  }
+  10% {
+    transform: translateX(0) scale(1.2);
+    opacity: 1;
+  }
+  18% {
+    transform: translateX(0) scale(0.95);
+    opacity: 1;
+  }
+  25% {
+    transform: translateX(0) scale(1.05);
+    opacity: 1;
+  }
+  32% {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+  65% {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0) scale(1);
+    opacity: 0;
+  }
+`;
+
+// Text positioned on player's side of the screen (like combo counter)
+const ParryTextSide = styled.div`
+  position: fixed;
+  top: 30%;
+  ${props => props.$isLeftSide ? 'left: 3%;' : 'right: 3%;'}
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.9rem, 1.8vw, 1.4rem);
+  line-height: 1.1;
+  color: ${props => props.$isPerfect ? '#FFD700' : '#00BFFF'};
+  text-shadow: 
+    -2px -2px 0 #000, 2px -2px 0 #000, 
+    -2px 2px 0 #000, 2px 2px 0 #000,
+    0 0 15px ${props => props.$isPerfect ? 'rgba(255, 215, 0, 0.9)' : 'rgba(0, 191, 255, 0.9)'};
+  letter-spacing: 0.1em;
+  white-space: pre-line;
+  --slide-dir: ${props => props.$isLeftSide ? '-50px' : '50px'};
+  animation: ${textSlideIn} 1.5s ease-out forwards;
+  z-index: 200;
+  pointer-events: none;
+  text-align: center;
+`;
 
 const RawParryEffectContainer = styled.div.attrs((props) => ({
   style: {
@@ -31,8 +85,8 @@ const Particle = styled.div`
   height: 0.23vw;
   background: ${(props) =>
     props.$isPerfect
-      ? "radial-gradient(circle, #87CEEB, #4169E1)" // Light blue to royal blue for perfect
-      : "radial-gradient(circle, #E6F3FF, #4169E1)"}; // Very light blue to royal blue for regular
+      ? "radial-gradient(circle, #00FFFF, #00BFFF)" // Bright cyan for perfect
+      : "radial-gradient(circle, #E0FFFF, #00CED1)"}; // Light cyan to dark cyan for regular
   border-radius: 50%;
   opacity: 0;
 `;
@@ -51,7 +105,7 @@ const RawParryEffect = ({ position }) => {
   const [activeEffects, setActiveEffects] = useState([]);
   const processedParriesRef = useRef(new Set()); // Track processed parry IDs to prevent duplicates
   const effectIdCounter = useRef(0);
-  const EFFECT_DURATION = 400; // Match normal hit effect duration
+  const EFFECT_DURATION = 1600; // Must be longer than the text animation (1.5s)
 
   // Memoize the unique identifier to prevent unnecessary re-processing
   const parryIdentifier = useMemo(() => {
@@ -59,48 +113,35 @@ const RawParryEffect = ({ position }) => {
     return position.parryId || position.timestamp;
   }, [position?.parryId, position?.timestamp]);
 
-  // Generate spark particles with realistic physics
+  // Generate spark particles - optimized for performance
   const generateSparks = (effectId, facing, isPerfect) => {
-    const sparkCount = 16; // Same as hit effect
+    const sparkCount = 8; // Reduced from 16 for better performance
     const sparks = [];
 
-    // Get viewport dimensions to calculate responsive speeds (further reduced scale)
+    // Get viewport dimensions to calculate responsive speeds
     const viewportWidth = window.innerWidth;
-    const baseSpeedMultiplier = (viewportWidth / 1280) * 0.6; // Further reduced from 0.8 to 0.6
+    const baseSpeedMultiplier = (viewportWidth / 1280) * 0.6;
 
     for (let i = 0; i < sparkCount; i++) {
-      // Create full 360-degree explosion pattern like a firework
-      const baseAngle = (i / sparkCount) * 360; // Distribute evenly around circle
-      const angleVariation = (Math.random() - 0.5) * 15; // Reduced randomness from 40 to 15 degrees
-      const angle = (baseAngle + angleVariation) * (Math.PI / 180);
+      // Create full 360-degree explosion pattern
+      const baseAngle = (i / sparkCount) * 360;
+      const angle = baseAngle * (Math.PI / 180);
 
-      // Use more consistent speeds for even circle pattern
-      const baseSpeed = 6.5 * baseSpeedMultiplier; // ~85px at 1280px width
-      const speedVariation = baseSpeed * 0.2; // Only 20% speed variation
-      const speed = baseSpeed + (Math.random() - 0.5) * speedVariation;
+      const baseSpeed = 6.5 * baseSpeedMultiplier;
+      const speed = baseSpeed + (Math.random() - 0.5) * baseSpeed * 0.2;
 
-      // More varied sizes for better visual impact - scale with viewport
-      const baseSize = 2 * baseSpeedMultiplier; // Scale particle size with viewport
-      const size = Math.random() * (6 * baseSpeedMultiplier) + baseSize; // 2-8px range scaled
-      const life = 600 + Math.random() * 400; // 600-1000ms lifespan
+      const baseSize = 2 * baseSpeedMultiplier;
+      const size = Math.random() * (6 * baseSpeedMultiplier) + baseSize;
 
-      // Color schemes based on parry type
+      // Blue/cyan color schemes - distinct from hit effect gold
       const colors = isPerfect
         ? [
-            "linear-gradient(45deg, #4169E1, #FFD700)", // Royal blue to gold
-            "linear-gradient(45deg, #87CEEB, #FFD700)", // Sky blue to gold
-            "linear-gradient(45deg, #4169E1, #FFA500)", // Royal blue to orange
-            "linear-gradient(45deg, #00BFFF, #FFD700)", // Deep sky blue to gold
-            "linear-gradient(45deg, #1E90FF, #F0E68C)", // Dodger blue to khaki
-            "linear-gradient(45deg, #4682B4, #FFD700)", // Steel blue to gold
+            "linear-gradient(45deg, #00FFFF, #FFFFFF)",
+            "linear-gradient(45deg, #00BFFF, #00FFFF)",
           ]
         : [
-            "linear-gradient(45deg, #FFFFFF, #4169E1)", // White to royal blue
-            "linear-gradient(45deg, #E6F3FF, #1E90FF)", // Very light blue to dodger blue
-            "linear-gradient(45deg, #FFFFFF, #87CEEB)", // White to sky blue
-            "linear-gradient(45deg, #F0F8FF, #4169E1)", // Alice blue to royal blue
-            "linear-gradient(45deg, #FFFFFF, #00BFFF)", // White to deep sky blue
-            "linear-gradient(45deg, #E0F6FF, #4682B4)", // Very light blue to steel blue
+            "linear-gradient(45deg, #FFFFFF, #00BFFF)",
+            "linear-gradient(45deg, #87CEEB, #00CED1)",
           ];
 
       const spark = {
@@ -108,17 +149,9 @@ const RawParryEffect = ({ position }) => {
         size,
         angle,
         speed,
-        life,
-        maxLife: life,
-        velocityX: Math.cos(angle) * speed,
-        velocityY: Math.sin(angle) * speed,
-        color: colors[Math.floor(Math.random() * colors.length)],
-        rotation: Math.random() * 360,
-        rotationSpeed: (Math.random() - 0.5) * 15, // More dramatic rotation
-        trail: Math.random() > 0.3, // More sparks have trails
-        glow: Math.random() > 0.2, // Almost all sparks have glow
-        sparkIndex: i, // For CSS targeting
-        isPerfect, // Pass perfect status to spark
+        color: colors[i % colors.length],
+        sparkIndex: i,
+        isPerfect,
       };
 
       sparks.push(spark);
@@ -167,6 +200,7 @@ const RawParryEffect = ({ position }) => {
       y: position.y,
       facing: position.facing || 1,
       isPerfect: position.isPerfect || false,
+      playerNumber: position.playerNumber || 1,
       startTime: currentTime,
       parryId: parryIdentifier,
       sparks: generateSparks(
@@ -192,6 +226,7 @@ const RawParryEffect = ({ position }) => {
     position?.y,
     position?.facing,
     position?.isPerfect,
+    position?.playerNumber,
   ]); // Depend on stable identifier and position values
 
   // Cleanup effects on unmount
@@ -234,7 +269,7 @@ const RawParryEffect = ({ position }) => {
               borderRadius: "50%", // Perfect circle
               boxShadow: spark.glow
                 ? `0 0 ${spark.size * 2}px ${
-                    spark.isPerfect ? "#4169E1" : "#4169E1"
+                    spark.isPerfect ? "#00FFFF" : "#00BFFF"
                   }`
                 : "none",
               filter: spark.glow ? "brightness(1.2)" : "none",
@@ -244,35 +279,43 @@ const RawParryEffect = ({ position }) => {
           />
         ));
 
+        // Player 1's text appears on the LEFT, Player 2's text appears on the RIGHT
+        const isLeftSide = effect.playerNumber === 1;
+
         return (
-          <RawParryEffectContainer
-            key={effect.id}
-            $x={effect.x}
-            $y={effect.y}
-            $facing={effect.facing}
-          >
-            <div
-              className={`raw-parry-ring-wrapper ${
-                effect.isPerfect ? "perfect" : "regular"
-              }`}
+          <div key={effect.id}>
+            <RawParryEffectContainer
+              $x={effect.x}
+              $y={effect.y}
+              $facing={effect.facing}
             >
               <div
-                className={`raw-parry-ring ${
+                className={`raw-parry-ring-wrapper ${
                   effect.isPerfect ? "perfect" : "regular"
                 }`}
-                style={{
-                  transform: effect.facing === 1 ? "scaleX(-1)" : "scaleX(1)",
-                }}
-              />
-              <ParticleContainer className="raw-parry-particles">
-                {particles}
-              </ParticleContainer>
-              {/* Spark container */}
-              <ParticleContainer className="spark-particles">
-                {sparkElements}
-              </ParticleContainer>
-            </div>
-          </RawParryEffectContainer>
+              >
+                <div
+                  className={`raw-parry-ring ${
+                    effect.isPerfect ? "perfect" : "regular"
+                  }`}
+                  style={{
+                    transform: effect.facing === 1 ? "scaleX(-1)" : "scaleX(1)",
+                  }}
+                />
+                <ParticleContainer className="raw-parry-particles">
+                  {particles}
+                </ParticleContainer>
+                {/* Spark container */}
+                <ParticleContainer className="spark-particles">
+                  {sparkElements}
+                </ParticleContainer>
+              </div>
+            </RawParryEffectContainer>
+            {/* Parry text on player's side of screen */}
+            <ParryTextSide $isPerfect={effect.isPerfect} $isLeftSide={isLeftSide}>
+              {effect.isPerfect ? "PERFECT\nPARRY" : "PARRY"}
+            </ParryTextSide>
+          </div>
         );
       })}
     </>
@@ -287,6 +330,7 @@ RawParryEffect.propTypes = {
     isPerfect: PropTypes.bool,
     parryId: PropTypes.string,
     timestamp: PropTypes.number,
+    playerNumber: PropTypes.number,
   }),
 };
 

@@ -16,40 +16,50 @@ const starTwinkle = keyframes`
 const StarStunContainer = styled.div.attrs((props) => ({
   style: {
     position: "absolute",
-    // Use same positioning as YouLabel for exact alignment
-    bottom: `${(props.$y / 720) * 100 + 33}%`,
-    left: `${(props.$x / 1280) * 100 + (props.$facing === 1 ? 8 : 10)}%`,
+    // Match YouLabel positioning for proper centering
+    bottom: `${(props.$y / 720) * 100 + 31}%`,
+    left: `${(props.$x / 1280) * 100 + 8}%`,
     transform: "translateX(-50%)",
-    zIndex: 1001, // Above YouLabel (1000)
+    zIndex: 1001,
     pointerEvents: "none",
     display: "flex",
-    gap: "8px",
+    flexDirection: "column",
     alignItems: "center",
+    gap: "4px",
   },
 }))``;
 
+const StarsRow = styled.div`
+  display: flex;
+  gap: 6px;
+  align-items: center;
+`;
+
 const Star = styled.div`
-  font-size: clamp(20px, 1.8vw, 28px);
+  font-size: clamp(16px, 1.4vw, 22px);
   color: #ffd700;
   text-shadow: 
     -1px -1px 0 #000,
     1px -1px 0 #000,
     -1px 1px 0 #000,
     1px 1px 0 #000,
-    0 0 10px #ffd700;
-  animation: ${starTwinkle} 0.8s ease-in-out infinite;
+    0 0 10px rgba(255, 215, 0, 0.8);
+  animation: ${starTwinkle} 0.6s ease-in-out infinite;
   
-  &:nth-child(1) {
-    animation-delay: 0s;
-  }
-  
-  &:nth-child(2) {
-    animation-delay: 0.2s;
-  }
-  
-  &:nth-child(3) {
-    animation-delay: 0.4s;
-  }
+  &:nth-child(1) { animation-delay: 0s; }
+  &:nth-child(2) { animation-delay: 0.2s; }
+  &:nth-child(3) { animation-delay: 0.4s; }
+`;
+
+const StunnedText = styled.div`
+  font-family: "Bungee", cursive;
+  font-size: clamp(10px, 1vw, 14px);
+  color: #ffd700;
+  text-shadow: 
+    -1px -1px 0 #000, 1px -1px 0 #000, 
+    -1px 1px 0 #000, 1px 1px 0 #000;
+  white-space: nowrap;
+  letter-spacing: 0.1em;
 `;
 
 const StarStunEffect = ({ x, y, isActive, facing }) => {
@@ -68,9 +78,12 @@ const StarStunEffect = ({ x, y, isActive, facing }) => {
 
   return (
     <StarStunContainer $x={x} $y={y} $facing={facing}>
-      <Star>★</Star>
-      <Star>★</Star>
-      <Star>★</Star>
+      <StunnedText>STUNNED</StunnedText>
+      <StarsRow>
+        <Star>★</Star>
+        <Star>★</Star>
+        <Star>★</Star>
+      </StarsRow>
     </StarStunContainer>
   );
 };

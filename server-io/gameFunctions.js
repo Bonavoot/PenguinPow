@@ -152,6 +152,10 @@ function handleWinCondition(room, loser, winner, io) {
 
 // Add this new function near the other helper functions
 function executeSlapAttack(player, rooms) {
+  // Clear parry success state when starting an attack
+  player.isRawParrySuccess = false;
+  player.isPerfectRawParrySuccess = false;
+  
   // Find the current room and opponent
   const currentRoom = rooms.find((room) =>
     room.players.some((p) => p.id === player.id)
@@ -170,7 +174,7 @@ function executeSlapAttack(player, rooms) {
       player.facing = player.slapFacingDirection;
 
       // Add forward slide during slap attack with power-up consideration
-      let slapSlideVelocity = 1.377; // Base slide velocity (reduced by another 10% from 1.53 to 1.377 for less aggressive forward movement)
+      let slapSlideVelocity = 1.45; // Forward movement slightly exceeds knockback - chains reliably
 
       // Apply POWER power-up multiplier to slap slide distance
       if (player.activePowerUp === "power") {
@@ -188,34 +192,8 @@ function executeSlapAttack(player, rooms) {
     }
   }
 
-  // If already attacking, only allow ONE buffered attack and only during the last 50% of the attack
+  // If already attacking, don't start a new attack - buffering is handled by index.js
   if (player.isSlapAttack && player.isAttacking) {
-    // Calculate how far through the attack we are
-    const currentTime = Date.now();
-    const attackElapsed = currentTime - player.attackStartTime;
-    const attackDuration = player.attackEndTime - player.attackStartTime;
-    const attackProgress = attackElapsed / attackDuration;
-
-    // Only allow buffering during the last 50% of the attack (50% complete or more)
-    if (attackProgress >= 0.35) {
-      // Only store one pending attack, ignore additional rapid clicks
-      if (!player.hasPendingSlapAttack) {
-        player.hasPendingSlapAttack = true;
-        console.log(
-          `Player ${player.id} buffered slap attack at ${Math.round(
-            attackProgress * 100
-          )}% completion`
-        );
-      }
-    } else {
-      console.log(
-        `Player ${player.id} attempted to buffer slap too early (${Math.round(
-          attackProgress * 100
-        )}% complete, need 50%+)`
-      );
-    }
-
-    // Ignore clicks if there's already a pending attack or if it's too early to buffer
     return;
   }
 
@@ -224,39 +202,29 @@ function executeSlapAttack(player, rooms) {
 
   // Ensure slapAnimation alternates consistently for every actual attack execution
   player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
-  // Drain stamina for slap unless already gassed (keep at 0 while gassed)
-  if (player.isGassed) {
-    player.stamina = 0;
-  } else {
-    player.stamina = Math.max(0, player.stamina - 10);
-    if (player.stamina === 0 && !player.isGassed) {
-      player.isGassed = true;
-      player.gassedEndTime = Date.now() + 5000;
-    }
-  }
+  // Slap attacks don't cost stamina - spam freely!
 
-  // === SLAP ATTACK TIMING - FAST spammable close-range attack ===
-  const attackDuration = 260;  // Very quick attack
-  const startupDuration = 50;  // Minimal startup - slaps are fast
-  const endlagDuration = 60;   // Very short recovery - spammable
+  // === SLAP ATTACK TIMING - Smooth chainable attack ===
+  // NO gap between slaps - next slap starts immediately when this one ends
+  const attackDuration = 260;  // Slightly slower for better readability
+  const startupDuration = 40;  // Slightly longer startup
+  const totalCycleDuration = attackDuration; // NO extra cooldown - chains immediately
 
   player.isSlapAttack = true;
   player.attackEndTime = Date.now() + attackDuration;
   player.isAttacking = true;
   player.attackStartTime = Date.now();
   player.attackType = "slap";
+  player.currentAction = "slap";
   
-  // Set attack cooldown - short for spammable slaps
-  player.attackCooldownUntil = Date.now() + attackDuration + endlagDuration + 50;
+  // Single cooldown controls everything - simple and consistent
+  player.attackCooldownUntil = Date.now() + totalCycleDuration;
 
   // Add startup frame tracking
   player.isInStartupFrames = true;
   player.startupEndTime = Date.now() + startupDuration;
-  // Brief action lock at the start to serialize with other inputs
-  player.currentAction = "slap";
-  player.actionLockUntil = Date.now() + startupDuration; // Lock until startup ends
 
-  // Set timeout to end startup frames and make attack active
+  // Set timeout to end startup frames
   setPlayerTimeout(
     player.id,
     () => {
@@ -265,103 +233,62 @@ function executeSlapAttack(player, rooms) {
     startupDuration
   );
 
-  // Set a timeout to reset the attack state and handle queued slaps
+  // Set a timeout to reset the attack state
   setPlayerTimeout(
     player.id,
     () => {
       player.isAttacking = false;
       player.isSlapAttack = false;
       player.attackType = null;
-      player.isSlapSliding = false; // Clear the slap slide flag
-      player.slapFacingDirection = null; // Clear the locked facing direction
-      player.isInStartupFrames = false; // Ensure startup frames are cleared
-      // Reduce slide a bit more to limit chaotic overlap
-      player.movementVelocity *= 0.35;
-      
-      // === ENDLAG - Recovery period after attack ===
-      // Player is in recovery and cannot perform most actions
-      player.isInEndlag = true;
-      player.endlagEndTime = Date.now() + endlagDuration;
-      player.actionLockUntil = Date.now() + endlagDuration;
-      player.currentAction = "endlag";
+      player.isSlapSliding = false;
+      player.slapFacingDirection = null;
+      player.isInStartupFrames = false;
+      // Keep momentum flowing smoothly into next slap
+      player.movementVelocity *= 0.7;
+      player.currentAction = null;
 
-      // Check if there's a pending slap attack to execute
+      // Check if there's a pending slap attack to execute immediately
       if (player.hasPendingSlapAttack) {
         player.hasPendingSlapAttack = false;
-        // Set strafing cooldown to prevent movement during the gap between attacks
-        player.slapStrafeCooldown = true;
-        player.slapStrafeCooldownEndTime = Date.now() + endlagDuration + 100;
-
-        // Short gap for fast chained slaps
-        setPlayerTimeout(
-          player.id,
-          () => {
-            // Clear endlag before next attack
-            player.isInEndlag = false;
-            player.endlagEndTime = 0;
-            
-            // Execute the next slap if player is still valid
-            if (
-              !player.isDodging &&
-              !player.isThrowing &&
-              !player.isBeingThrown &&
-              !player.isGrabbing &&
-              !player.isBeingGrabbed &&
-              !player.isRawParryStun &&
-              !player.isRawParrying &&
-              !player.canMoveToReady
-            ) {
-              executeSlapAttack(player, rooms);
-            }
-          },
-          80 // Fast chaining for spammable slaps
-        );
-        return; // Early return to skip charging restart logic
+        
+        // Execute the next slap immediately if player is still valid
+        if (
+          !player.isDodging &&
+          !player.isThrowing &&
+          !player.isBeingThrown &&
+          !player.isGrabbing &&
+          !player.isBeingGrabbed &&
+          !player.isRawParryStun &&
+          !player.isRawParrying &&
+          !player.isHit &&
+          !player.canMoveToReady
+        ) {
+          // Execute next slap IMMEDIATELY - no delay
+          executeSlapAttack(player, rooms);
+        }
+        return;
       }
-
-      // Set strafing cooldown for non-buffered attacks too
-      player.slapStrafeCooldown = true;
-      player.slapStrafeCooldownEndTime = Date.now() + endlagDuration;
-
-      // Clear endlag after duration
-      setPlayerTimeout(
-        player.id,
-        () => {
-          player.isInEndlag = false;
-          player.endlagEndTime = 0;
-          if (player.currentAction === "endlag" || player.currentAction === "slap") {
-            player.actionLockUntil = 0;
-            player.currentAction = null;
-          }
-          
-          // After endlag ends, check if we should restart charging
-          if (
-            player.keys.mouse2 &&
-            player.wantsToRestartCharge &&
-            !player.isAttacking &&
-            !player.isJumping &&
-            !player.isDodging &&
-            !player.isThrowing &&
-            !player.isBeingThrown &&
-            !player.isGrabbing &&
-            !player.isBeingGrabbed &&
-            !player.isHit &&
-            !player.isRecovering &&
-            !player.isRawParryStun &&
-            !player.isThrowingSnowball &&
-            !player.canMoveToReady
-          ) {
-            // Restart charging immediately
-            player.isChargingAttack = true;
-            player.chargeStartTime = Date.now();
-            player.chargeAttackPower = 1;
-            player.attackType = "charged";
-            player.wantsToRestartCharge = false;
-          }
-        },
-        endlagDuration,
-        "slapEndlagReset"
-      );
+      
+      // After attack ends, check if we should restart charging
+      if (
+        player.keys.mouse2 &&
+        player.wantsToRestartCharge &&
+        !player.isAttacking &&
+        !player.isDodging &&
+        !player.isThrowing &&
+        !player.isBeingThrown &&
+        !player.isGrabbing &&
+        !player.isBeingGrabbed &&
+        !player.isHit &&
+        !player.isRawParryStun &&
+        !player.canMoveToReady
+      ) {
+        player.isChargingAttack = true;
+        player.chargeStartTime = Date.now();
+        player.chargeAttackPower = 1;
+        player.attackType = "charged";
+        player.wantsToRestartCharge = false;
+      }
     },
     attackDuration
   );
@@ -388,6 +315,10 @@ function cleanupRoom(room) {
 
 // Add this new function near the other helper functions
 function executeChargedAttack(player, chargePercentage, rooms) {
+  // Clear parry success state when starting an attack
+  player.isRawParrySuccess = false;
+  player.isPerfectRawParrySuccess = false;
+  
   console.log(
     `Player ${player.id} executing charged attack with ${chargePercentage}% charge`
   );

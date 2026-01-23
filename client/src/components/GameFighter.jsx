@@ -19,6 +19,12 @@ import DodgeSmokeEffect from "./DodgeDustEffect";
 import ChargedAttackSmokeEffect from "./ChargedAttackSmokeEffect";
 import StarStunEffect from "./StarStunEffect";
 import ThickBlubberEffect from "./ThickBlubberEffect";
+import GrabBreakEffect from "./GrabBreakEffect";
+import EdgeDangerEffect from "./EdgeDangerEffect";
+import GassedEffect from "./GassedEffect";
+import SnowballImpactEffect from "./SnowballImpactEffect";
+import PumoCloneSpawnEffect from "./PumoCloneSpawnEffect";
+import SlapAttackHandsEffect from "./SlapAttackHandsEffect";
 
 import snowballThrow2 from "../assets/snowball-throw2.png";
 import snowballThrow from "../assets/snowball-throw.png";
@@ -76,6 +82,8 @@ import snowballThrowSound from "../sounds/snowball-throw-sound.mp3";
 import pumoArmySound from "../sounds/pumo-army-sound.mp3";
 import thickBlubberSound from "../sounds/thick-blubber-sound.mp3";
 import rawParryGruntSound from "../sounds/raw-parry-grunt.mp3";
+import rawParrySuccessSound from "../sounds/raw-parry-success-sound.wav";
+import grabBreakSound from "../sounds/grab-break-sound.wav";
 import hitEffectImage from "../assets/hit-effect.png";
 import crouchStance2 from "../assets/crouch-stance2.png";
 import crouchStrafing2 from "../assets/crouch-strafing2.png";
@@ -133,6 +141,8 @@ const initializeAudioPools = () => {
   createAudioPool(winnerSound, 1);
   createAudioPool(thickBlubberSound, 2);
   createAudioPool(rawParryGruntSound, 2);
+  createAudioPool(rawParrySuccessSound, 2);
+  createAudioPool(grabBreakSound, 2);
   // Add missing audio files
   createAudioPool(gameMusic, 1);
   createAudioPool(eeshiMusic, 1);
@@ -198,7 +208,7 @@ const initializeImagePreloading = () => {
 initializeAudioPools();
 initializeImagePreloading();
 
-const playSound = (audioFile, volume = 1.0) => {
+const playSound = (audioFile, volume = 1.0, duration = null) => {
   try {
     const poolData = audioPool.get(audioFile);
     if (poolData) {
@@ -211,6 +221,13 @@ const playSound = (audioFile, volume = 1.0) => {
           console.error("Error playing sound:", error);
         }
       });
+      // Stop sound early if duration is specified (in milliseconds)
+      if (duration) {
+        setTimeout(() => {
+          sound.pause();
+          sound.currentTime = 0;
+        }, duration);
+      }
       // Cycle to next audio instance
       audioPool.set(audioFile, {
         pool,
@@ -225,6 +242,13 @@ const playSound = (audioFile, volume = 1.0) => {
           console.error("Error playing sound:", error);
         }
       });
+      // Stop sound early if duration is specified (in milliseconds)
+      if (duration) {
+        setTimeout(() => {
+          sound.pause();
+          sound.currentTime = 0;
+        }, duration);
+      }
     }
   } catch (error) {
     console.error("Error creating audio:", error);
@@ -1093,6 +1117,10 @@ const GameFighter = ({
   const [thickBlubberIndicator, setThickBlubberIndicator] = useState(false);
   const [disconnectCountdown, setDisconnectCountdown] = useState(3);
   const [uiRoundId, setUiRoundId] = useState(0);
+  
+  // New enhanced effects state
+  const [grabBreakEffectPosition, setGrabBreakEffectPosition] = useState(null);
+  const [snowballImpactPosition, setSnowballImpactPosition] = useState(null);
 
   // Exact sprite source used for the main fighter image so masks always match
   const currentSpriteSrc = useMemo(() => {
@@ -1468,9 +1496,11 @@ const GameFighter = ({
           timestamp: data.timestamp, // Pass through unique timestamp
           parryId: data.parryId, // Pass through unique parry ID
           isPerfect: data.isPerfect || false, // Pass through perfect parry flag
+          playerNumber: data.playerNumber || 1, // Which player performed the parry (1 or 2)
         };
         console.log("Setting rawParryEffectPosition:", effectData);
         setRawParryEffectPosition(effectData);
+        playSound(rawParrySuccessSound, 0.01, 1350); // Cut sound short at 350ms (~80% duration)
       } else {
         console.warn("Invalid raw_parry_success data:", data);
       }
@@ -1491,6 +1521,34 @@ const GameFighter = ({
         }
       }
     });
+
+    // Grab break effect - dramatic feedback when escaping a grab
+    // Only listen on index 0 to prevent duplicate effects
+    if (index === 0) {
+      socket.on("grab_break", (data) => {
+        if (data && typeof data.breakerX === "number" && typeof data.grabberX === "number") {
+          // Calculate center position between breaker and grabber
+          const centerX = (data.breakerX + data.grabberX) / 2;
+          setGrabBreakEffectPosition({
+            x: centerX + 150,
+            y: GROUND_LEVEL + 110,
+            breakId: data.breakId || `break-${Date.now()}`,
+          });
+          playSound(grabBreakSound, 0.01);
+        }
+      });
+
+      // Snowball impact effect
+      socket.on("snowball_hit", (data) => {
+        if (data && typeof data.x === "number" && typeof data.y === "number") {
+          setSnowballImpactPosition({
+            x: data.x + 150,
+            y: data.y + 50,
+            hitId: data.hitId || `snowball-${Date.now()}`,
+          });
+        }
+      });
+    }
 
     socket.on("power_up_activated", (data) => {
       if (data.playerId === player.id) {
@@ -1620,6 +1678,10 @@ const GameFighter = ({
       socket.off("player_hit");
       socket.off("raw_parry_success");
       socket.off("perfect_parry");
+      if (index === 0) {
+        socket.off("grab_break");
+        socket.off("snowball_hit");
+      }
       socket.off("game_start");
       socket.off("game_reset");
       socket.off("game_over");
@@ -1863,10 +1925,10 @@ const GameFighter = ({
 
   // Update thick blubber indicator based on actual game state
   const shouldShowThickBlubberIndicator = useMemo(() => {
+    const isGrabbing = penguin.isGrabStartup || penguin.isGrabbingMovement || penguin.isGrabbing;
     return (
       penguin.activePowerUp === "thick_blubber" &&
-      penguin.isAttacking &&
-      penguin.attackType === "charged" &&
+      ((penguin.isAttacking && penguin.attackType === "charged") || isGrabbing) &&
       !penguin.hitAbsorptionUsed
     );
   }, [
@@ -1874,6 +1936,9 @@ const GameFighter = ({
     penguin.isAttacking,
     penguin.attackType,
     penguin.hitAbsorptionUsed,
+    penguin.isGrabStartup,
+    penguin.isGrabbingMovement,
+    penguin.isGrabbing,
   ]);
 
   useEffect(() => {
@@ -1909,7 +1974,7 @@ const GameFighter = ({
         });
 
         // Play thick blubber absorption sound
-        playSound(thickBlubberSound, 0.03);
+        playSound(thickBlubberSound, 0.01);
 
         // Reset the effect after a brief moment
         setTimeout(() => {
@@ -2201,14 +2266,35 @@ const GameFighter = ({
         playerX={getDisplayPosition().x}
         playerY={getDisplayPosition().y + 100}
       />
+      <SlapAttackHandsEffect
+        x={getDisplayPosition().x}
+        y={getDisplayPosition().y}
+        facing={penguin.facing}
+        isActive={penguin.isSlapAttack}
+        slapAnimation={penguin.slapAnimation}
+      />
       <SlapParryEffect position={parryEffectPosition} />
       <HitEffect position={hitEffectPosition} />
       <RawParryEffect position={rawParryEffectPosition} />
+      <GrabBreakEffect position={grabBreakEffectPosition} />
+      <SnowballImpactEffect position={snowballImpactPosition} />
       <StarStunEffect
         x={getDisplayPosition().x}
         y={getDisplayPosition().y}
         facing={penguin.facing}
         isActive={showStarStunEffect}
+      />
+      <EdgeDangerEffect
+        x={getDisplayPosition().x}
+        y={getDisplayPosition().y}
+        facing={penguin.facing}
+        isActive={penguin.isAtTheRopes}
+      />
+      <GassedEffect
+        x={getDisplayPosition().x}
+        y={getDisplayPosition().y}
+        facing={penguin.facing}
+        isActive={penguin.isGassed}
       />
       <ThickBlubberEffect
         x={thickBlubberEffect.x}
@@ -2231,6 +2317,7 @@ const GameFighter = ({
           $y={projectile.y}
         />
       ))}
+      <PumoCloneSpawnEffect clones={allPumoArmies} />
       {allPumoArmies.map((clone) => {
         // Determine the correct sprite based on the owner's fighter type and state
         let cloneSprite;

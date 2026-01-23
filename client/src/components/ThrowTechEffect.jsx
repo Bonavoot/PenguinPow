@@ -8,8 +8,17 @@ const TechEffectContainer = styled.div.attrs((props) => ({
     position: "absolute",
     left: `${(props.$x / 1280) * 100}%`,
     bottom: `${(props.$y / 720) * 100}%`,
+    transform: "translate(-50%, -50%)",
+    zIndex: 150,
+    pointerEvents: "none",
   },
 }))``;
+
+const EffectWrapper = styled.div`
+  position: relative;
+  width: 100%;
+  height: 100%;
+`;
 
 const ThrowTechEffect = () => {
   const { socket } = useContext(SocketContext);
@@ -44,9 +53,10 @@ const ThrowTechEffect = () => {
 
         lastTechTime.current = currentTime;
 
+        // Increased duration for better visibility
         setTimeout(() => {
           setEffectState((prev) => ({ ...prev, isVisible: false }));
-        }, 100);
+        }, 400);
       }
 
       wasTeching.current = isTeching;
@@ -62,20 +72,24 @@ const ThrowTechEffect = () => {
   if (!effectState.isVisible) return null;
 
   return (
-    <TechEffectContainer $x={effectState.x} $y={effectState.y}>
-      <svg
-        viewBox="0 0 100 100"
-        xmlns="http://www.w3.org/2000/svg"
-        style={{ background: "none" }}
-      >
-        <defs>
-          <path
-            id="star-path"
-            d="M50 0 L61 35 L98 35 L68 57 L79 91 L50 70 L21 91 L32 57 L2 35 L39 35 Z"
-          />
-        </defs>
-        <use href="#star-path" className="tech-star" />
-      </svg>
+    <TechEffectContainer $x={effectState.x} $y={effectState.y} className="throw-tech-effect">
+      <EffectWrapper>
+        <div className="throw-tech-ring" />
+        <div className="tech-text">TECH!</div>
+        <svg
+          viewBox="0 0 100 100"
+          xmlns="http://www.w3.org/2000/svg"
+          style={{ background: "none", position: "relative", zIndex: 2 }}
+        >
+          <defs>
+            <path
+              id="star-path"
+              d="M50 0 L61 35 L98 35 L68 57 L79 91 L50 70 L21 91 L32 57 L2 35 L39 35 Z"
+            />
+          </defs>
+          <use href="#star-path" className="tech-star" />
+        </svg>
+      </EffectWrapper>
     </TechEffectContainer>
   );
 };
