@@ -1494,15 +1494,17 @@ const GameFighter = ({
 
     socket.on("raw_parry_success", (data) => {
       console.log("Received raw_parry_success event:", data);
-      if (data && typeof data.x === "number" && typeof data.y === "number") {
+      if (data && typeof data.attackerX === "number" && typeof data.parrierX === "number") {
+        // Calculate center position between attacker and parrier (same as grab break)
+        const centerX = (data.attackerX + data.parrierX) / 2;
         const effectData = {
-          x: data.x + 150,
-          y: data.y + 110, // Add GROUND_LEVEL to match player height
-          facing: data.facing || 1, // Default to 1 if facing not provided
-          timestamp: data.timestamp, // Pass through unique timestamp
-          parryId: data.parryId, // Pass through unique parry ID
-          isPerfect: data.isPerfect || false, // Pass through perfect parry flag
-          playerNumber: data.playerNumber || 1, // Which player performed the parry (1 or 2)
+          x: centerX + 150,
+          y: GROUND_LEVEL + 110, // Same Y as grab break effect
+          facing: data.facing || 1,
+          timestamp: data.timestamp,
+          parryId: data.parryId,
+          isPerfect: data.isPerfect || false,
+          playerNumber: data.playerNumber || 1,
         };
         console.log("Setting rawParryEffectPosition:", effectData);
         setRawParryEffectPosition(effectData);

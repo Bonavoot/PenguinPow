@@ -281,8 +281,8 @@
   object-fit: contain;
   margin-top: 4rem;
   transform-origin: bottom center;
-  transition: transform 0.3s ease;
   filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
+  animation: lobbyBreathe 1.5s ease-in-out infinite;
 }
 
 .versus-badge {
@@ -449,6 +449,16 @@
   50% {
     transform: scale(1.05);
     opacity: 0.15;
+  }
+}
+
+@keyframes lobbyBreathe {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(1.03);
   }
 }
 

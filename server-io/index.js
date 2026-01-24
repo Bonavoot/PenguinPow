@@ -1364,10 +1364,12 @@ io.on("connection", (socket) => {
                 console.log(`Snowball parry success for player ${opponent.id}`);
                 
                 // Emit raw parry success event for visual effect and sound
+                // Send both positions so client can calculate center
                 const parryingPlayerNumber = room.players.findIndex(p => p.id === opponent.id) + 1;
+                const thrower = room.players.find(p => p.id === player.id);
                 io.in(room.id).emit("raw_parry_success", {
-                  x: snowball.x,
-                  y: snowball.y,
+                  attackerX: thrower ? thrower.x : snowball.x,
+                  parrierX: opponent.x,
                   facing: opponent.facing,
                   isPerfect: false,
                   timestamp: Date.now(),
@@ -1528,10 +1530,12 @@ io.on("connection", (socket) => {
                 console.log(`Pumo army clone parry success for player ${opponent.id}`);
                 
                 // Emit raw parry success event for visual effect and sound
+                // Send both positions so client can calculate center
                 const parryingPlayerNumber = room.players.findIndex(p => p.id === opponent.id) + 1;
+                const spawner = room.players.find(p => p.id === player.id);
                 io.in(room.id).emit("raw_parry_success", {
-                  x: clone.x,
-                  y: clone.y,
+                  attackerX: spawner ? spawner.x : clone.x,
+                  parrierX: opponent.x,
                   facing: opponent.facing,
                   isPerfect: false,
                   timestamp: Date.now(),
@@ -3479,13 +3483,13 @@ io.on("connection", (socket) => {
       }
 
       // Emit raw parry success event for visual effect
-      // Use the ATTACKER's position (player who got parried) to match hit effect positioning
+      // Send both players' positions so client can calculate center (like grab break)
       // Determine which player number (1 or 2) performed the parry
       const parryingPlayerNumber = currentRoom ? 
         (currentRoom.players.findIndex(p => p.id === otherPlayer.id) + 1) : 1;
       const parryData = {
-        x: player.x,
-        y: player.y,
+        attackerX: player.x,
+        parrierX: otherPlayer.x,
         facing: player.facing,
         isPerfect: isPerfectParry,
         timestamp: Date.now(),

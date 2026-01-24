@@ -4,8 +4,8 @@
 
 .raw-parry-ring {
   position: relative;
-  width: clamp(3rem, 8vmin, 10rem);
-  height: clamp(3rem, 8vmin, 10rem);
+  width: clamp(2rem, 5.5vmin, 7rem);
+  height: clamp(2rem, 5.5vmin, 7rem);
 }
 
 /* Main impact ring - outer shockwave for regular parry (cyan/blue) */
@@ -16,13 +16,14 @@
   left: 50%;
   width: 100%;
   height: 100%;
-  border: 4px solid rgba(0, 200, 255, 0.9);
+  border: 3px solid rgba(0, 200, 255, 0.95);
   border-radius: 50%;
   transform: translate(-50%, -50%) scale(0.5);
-  animation: rawParryMainRing 0.5s ease-out forwards;
+  animation: rawParryMainRing 0.4s ease-out forwards;
   box-shadow: 
-    0 0 25px rgba(0, 200, 255, 0.8),
-    inset 0 0 15px rgba(0, 150, 255, 0.4);
+    0 0 20px rgba(0, 200, 255, 0.9),
+    0 0 40px rgba(0, 150, 255, 0.5),
+    inset 0 0 12px rgba(0, 150, 255, 0.4);
 }
 
 /* Main impact ring - outer shockwave for perfect parry (bright cyan/white) */
@@ -31,16 +32,16 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 120%;
-  height: 120%;
-  border: 5px solid rgba(0, 255, 255, 0.95);
+  width: 110%;
+  height: 110%;
+  border: 4px solid rgba(0, 255, 255, 0.95);
   border-radius: 50%;
   transform: translate(-50%, -50%) scale(0.5);
-  animation: rawParryMainRing 0.6s ease-out forwards;
+  animation: rawParryMainRing 0.5s ease-out forwards;
   box-shadow: 
-    0 0 35px rgba(0, 255, 255, 0.9),
-    0 0 60px rgba(0, 150, 255, 0.6),
-    inset 0 0 20px rgba(100, 255, 255, 0.5);
+    0 0 30px rgba(0, 255, 255, 0.95),
+    0 0 50px rgba(0, 150, 255, 0.7),
+    inset 0 0 15px rgba(100, 255, 255, 0.5);
 }
 
 /* Inner flash burst - regular parry */
@@ -49,12 +50,12 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 60%;
-  height: 60%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0%, rgba(0, 200, 255, 0.7) 40%, transparent 70%);
+  width: 50%;
+  height: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 1) 0%, rgba(0, 220, 255, 0.8) 40%, transparent 70%);
   border-radius: 50%;
   transform: translate(-50%, -50%) scale(0);
-  animation: rawParryInnerBurst 0.35s ease-out forwards;
+  animation: rawParryInnerBurst 0.25s ease-out forwards;
 }
 
 /* Inner flash burst - perfect parry (bright cyan flash) */
@@ -63,17 +64,20 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 80%;
-  height: 80%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 1) 0%, rgba(0, 255, 255, 0.9) 30%, rgba(0, 150, 255, 0.6) 60%, transparent 80%);
+  width: 65%;
+  height: 65%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 1) 0%, rgba(0, 255, 255, 0.95) 30%, rgba(0, 150, 255, 0.6) 60%, transparent 80%);
   border-radius: 50%;
   transform: translate(-50%, -50%) scale(0);
-  animation: rawParryInnerBurstPerfect 0.45s ease-out forwards;
+  animation: rawParryInnerBurstPerfect 0.35s ease-out forwards;
 }
 
 /* Create additional pseudo-elements using a wrapper approach */
 .raw-parry-ring-wrapper {
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Second shockwave ring - regular */
@@ -82,12 +86,12 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(4rem, 10vmin, 12rem);
-  height: clamp(4rem, 10vmin, 12rem);
-  border: 2px solid rgba(100, 220, 255, 0.7);
+  width: clamp(2.5rem, 7vmin, 8rem);
+  height: clamp(2.5rem, 7vmin, 8rem);
+  border: 2px solid rgba(100, 220, 255, 0.8);
   border-radius: 50%;
   transform: translate(-50%, -50%) scale(0.3);
-  animation: rawParryOuterRing 0.55s ease-out 0.05s forwards;
+  animation: rawParryOuterRing 0.45s ease-out 0.03s forwards;
   pointer-events: none;
 }
 
@@ -97,13 +101,31 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(5rem, 12vmin, 15rem);
-  height: clamp(5rem, 12vmin, 15rem);
-  border: 3px solid rgba(0, 255, 255, 0.8);
+  width: clamp(3.5rem, 9vmin, 10rem);
+  height: clamp(3.5rem, 9vmin, 10rem);
+  border: 3px solid rgba(0, 255, 255, 0.85);
   border-radius: 50%;
   transform: translate(-50%, -50%) scale(0.3);
-  animation: rawParryOuterRingPerfect 0.65s ease-out 0.05s forwards;
-  box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+  animation: rawParryOuterRingPerfect 0.55s ease-out 0.03s forwards;
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.6);
+  pointer-events: none;
+}
+
+/* Impact lines for regular parry - adds visual punch */
+.raw-parry-ring-wrapper.regular::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: clamp(3rem, 8vmin, 10rem);
+  height: clamp(3rem, 8vmin, 10rem);
+  background: 
+    linear-gradient(0deg, transparent 46%, rgba(0, 200, 255, 0.7) 48%, rgba(0, 200, 255, 0.7) 52%, transparent 54%),
+    linear-gradient(90deg, transparent 46%, rgba(0, 200, 255, 0.7) 48%, rgba(0, 200, 255, 0.7) 52%, transparent 54%),
+    linear-gradient(45deg, transparent 46%, rgba(0, 200, 255, 0.5) 49%, rgba(0, 200, 255, 0.5) 51%, transparent 54%),
+    linear-gradient(-45deg, transparent 46%, rgba(0, 200, 255, 0.5) 49%, rgba(0, 200, 255, 0.5) 51%, transparent 54%);
+  transform: translate(-50%, -50%) scale(0) rotate(0deg);
+  animation: rawParryImpactLines 0.35s ease-out forwards;
   pointer-events: none;
 }
 
@@ -113,49 +135,65 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  font-size: clamp(2rem, 4vmin, 4rem);
+  font-size: clamp(1.5rem, 3vmin, 3rem);
   color: #FFD700;
   text-shadow: 
-    0 0 20px rgba(255, 215, 0, 0.9),
-    0 0 40px rgba(255, 200, 0, 0.6);
+    0 0 15px rgba(255, 215, 0, 0.95),
+    0 0 30px rgba(255, 200, 0, 0.7);
   transform: translate(-50%, -50%) scale(0) rotate(0deg);
-  animation: rawParryStarBurstPerfect 0.5s ease-out forwards;
+  animation: rawParryStarBurstPerfect 0.4s ease-out forwards;
   pointer-events: none;
+}
+
+/* Impact lines animation */
+@keyframes rawParryImpactLines {
+  0% {
+    transform: translate(-50%, -50%) scale(0.3) rotate(0deg);
+    opacity: 1;
+  }
+  30% {
+    transform: translate(-50%, -50%) scale(1) rotate(15deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.8) rotate(22deg);
+    opacity: 0;
+  }
 }
 
 /* Enhanced Keyframe Animations */
 
-/* Main ring expansion */
+/* Main ring expansion - faster and snappier */
 @keyframes rawParryMainRing {
   0% {
-    transform: translate(-50%, -50%) scale(0.3);
+    transform: translate(-50%, -50%) scale(0.2);
     opacity: 1;
-    border-width: 6px;
+    border-width: 5px;
   }
-  30% {
-    transform: translate(-50%, -50%) scale(1);
+  25% {
+    transform: translate(-50%, -50%) scale(1.1);
     opacity: 1;
     border-width: 4px;
   }
   100% {
-    transform: translate(-50%, -50%) scale(2.2);
+    transform: translate(-50%, -50%) scale(1.8);
     opacity: 0;
     border-width: 1px;
   }
 }
 
-/* Inner burst flash */
+/* Inner burst flash - quicker punch */
 @keyframes rawParryInnerBurst {
   0% {
     transform: translate(-50%, -50%) scale(0);
     opacity: 1;
   }
-  40% {
-    transform: translate(-50%, -50%) scale(1.5);
+  35% {
+    transform: translate(-50%, -50%) scale(1.4);
     opacity: 1;
   }
   100% {
-    transform: translate(-50%, -50%) scale(2);
+    transform: translate(-50%, -50%) scale(1.8);
     opacity: 0;
   }
 }
@@ -166,16 +204,16 @@
     transform: translate(-50%, -50%) scale(0);
     opacity: 1;
   }
-  30% {
-    transform: translate(-50%, -50%) scale(1.8);
+  25% {
+    transform: translate(-50%, -50%) scale(1.6);
     opacity: 1;
   }
-  60% {
-    transform: translate(-50%, -50%) scale(2.2);
-    opacity: 0.8;
+  50% {
+    transform: translate(-50%, -50%) scale(1.9);
+    opacity: 0.9;
   }
   100% {
-    transform: translate(-50%, -50%) scale(2.8);
+    transform: translate(-50%, -50%) scale(2.3);
     opacity: 0;
   }
 }
@@ -184,11 +222,11 @@
 @keyframes rawParryOuterRing {
   0% {
     transform: translate(-50%, -50%) scale(0.3);
-    opacity: 0.8;
+    opacity: 0.9;
     border-width: 3px;
   }
   100% {
-    transform: translate(-50%, -50%) scale(2.5);
+    transform: translate(-50%, -50%) scale(2);
     opacity: 0;
     border-width: 1px;
   }
@@ -201,32 +239,32 @@
     opacity: 1;
     border-width: 4px;
   }
-  50% {
-    opacity: 0.9;
+  40% {
+    opacity: 0.95;
   }
   100% {
-    transform: translate(-50%, -50%) scale(3);
+    transform: translate(-50%, -50%) scale(2.4);
     opacity: 0;
     border-width: 1px;
   }
 }
 
-/* Star burst for perfect parry */
+/* Star burst for perfect parry - smaller, snappier */
 @keyframes rawParryStarBurstPerfect {
   0% {
     transform: translate(-50%, -50%) scale(0) rotate(0deg);
     opacity: 1;
   }
-  30% {
-    transform: translate(-50%, -50%) scale(1.5) rotate(45deg);
+  25% {
+    transform: translate(-50%, -50%) scale(1.3) rotate(30deg);
     opacity: 1;
   }
-  60% {
-    transform: translate(-50%, -50%) scale(1.8) rotate(90deg);
-    opacity: 0.8;
+  50% {
+    transform: translate(-50%, -50%) scale(1.5) rotate(60deg);
+    opacity: 0.9;
   }
   100% {
-    transform: translate(-50%, -50%) scale(2.2) rotate(180deg);
+    transform: translate(-50%, -50%) scale(1.8) rotate(120deg);
     opacity: 0;
   }
 }
@@ -304,8 +342,8 @@
 
 .particle {
   position: absolute;
-  width: 0.23vw;
-  height: 0.23vw;
+  width: 0.2vw;
+  height: 0.2vw;
   border-radius: 50%;
   opacity: 0;
 }
@@ -313,33 +351,33 @@
 .particle:nth-child(1) {
   top: 20%;
   left: 50%;
-  animation: rawParryParticleScatter 0.25s ease-out 0.05s forwards;
-  --dx: -0.9vw;
-  --dy: -1.1vw;
+  animation: rawParryParticleScatter 0.2s ease-out 0.03s forwards;
+  --dx: -0.7vw;
+  --dy: -0.9vw;
 }
 
 .particle:nth-child(2) {
   top: 40%;
   left: 70%;
-  animation: rawParryParticleScatter 0.25s ease-out 0.08s forwards;
-  --dx: 1.1vw;
-  --dy: -0.7vw;
+  animation: rawParryParticleScatter 0.2s ease-out 0.05s forwards;
+  --dx: 0.9vw;
+  --dy: -0.6vw;
 }
 
 .particle:nth-child(3) {
   top: 60%;
   left: 30%;
-  animation: rawParryParticleScatter 0.25s ease-out 0.04s forwards;
-  --dx: -0.7vw;
-  --dy: 0.9vw;
+  animation: rawParryParticleScatter 0.2s ease-out 0.02s forwards;
+  --dx: -0.6vw;
+  --dy: 0.7vw;
 }
 
 .particle:nth-child(4) {
   top: 80%;
   left: 60%;
-  animation: rawParryParticleScatter 0.25s ease-out 0.06s forwards;
-  --dx: 0.7vw;
-  --dy: 1.1vw;
+  animation: rawParryParticleScatter 0.2s ease-out 0.04s forwards;
+  --dx: 0.6vw;
+  --dy: 0.9vw;
 }
 
 @keyframes rawParryParticleScatter {
@@ -353,7 +391,7 @@
   }
 }
 
-/* Enhanced Spark Particle Effects */
+/* Enhanced Spark Particle Effects - reduced spread */
 .spark-particles {
   position: absolute;
   top: 50%;
@@ -370,57 +408,44 @@
   opacity: 0;
   transform-origin: center;
   will-change: transform, opacity;
-  animation: rawParrySparkExplode 0.5s ease-out forwards;
+  animation: rawParrySparkExplode 0.4s ease-out forwards;
 }
 
-/* Simple circular explosion - each spark gets its own unique direction */
-.spark:nth-child(1) { animation-delay: 0.00s; --dx: 3.6vw; --dy: -0.9vw; --rotation: 45deg; }
-.spark:nth-child(2) { animation-delay: 0.02s; --dx: 2.7vw; --dy: -2.7vw; --rotation: 90deg; }
-.spark:nth-child(3) { animation-delay: 0.01s; --dx: 0.9vw; --dy: -3.6vw; --rotation: 135deg; }
-.spark:nth-child(4) { animation-delay: 0.03s; --dx: -0.9vw; --dy: -3.6vw; --rotation: 180deg; }
-.spark:nth-child(5) { animation-delay: 0.00s; --dx: -2.7vw; --dy: -2.7vw; --rotation: 225deg; }
-.spark:nth-child(6) { animation-delay: 0.02s; --dx: -3.6vw; --dy: -0.9vw; --rotation: 270deg; }
-.spark:nth-child(7) { animation-delay: 0.01s; --dx: -3.6vw; --dy: 0.9vw; --rotation: 315deg; }
-.spark:nth-child(8) { animation-delay: 0.03s; --dx: -2.7vw; --dy: 2.7vw; --rotation: 360deg; }
-.spark:nth-child(9) { animation-delay: 0.00s; --dx: -0.9vw; --dy: 3.6vw; --rotation: 405deg; }
-.spark:nth-child(10) { animation-delay: 0.02s; --dx: 0.9vw; --dy: 3.6vw; --rotation: 450deg; }
-.spark:nth-child(11) { animation-delay: 0.01s; --dx: 2.7vw; --dy: 2.7vw; --rotation: 495deg; }
-.spark:nth-child(12) { animation-delay: 0.03s; --dx: 3.6vw; --dy: 0.9vw; --rotation: 540deg; }
-.spark:nth-child(13) { animation-delay: 0.00s; --dx: 4.05vw; --dy: -0.45vw; --rotation: 585deg; }
-.spark:nth-child(14) { animation-delay: 0.02s; --dx: -4.05vw; --dy: -0.45vw; --rotation: 630deg; }
-.spark:nth-child(15) { animation-delay: 0.01s; --dx: 0.45vw; --dy: -4.05vw; --rotation: 675deg; }
-.spark:nth-child(16) { animation-delay: 0.03s; --dx: -0.45vw; --dy: 4.05vw; --rotation: 720deg; }
+/* Reduced spark distances for smaller effect */
+.spark:nth-child(1) { animation-delay: 0.00s; --dx: 2.5vw; --dy: -0.6vw; --rotation: 45deg; }
+.spark:nth-child(2) { animation-delay: 0.02s; --dx: 1.8vw; --dy: -1.8vw; --rotation: 90deg; }
+.spark:nth-child(3) { animation-delay: 0.01s; --dx: 0.6vw; --dy: -2.5vw; --rotation: 135deg; }
+.spark:nth-child(4) { animation-delay: 0.03s; --dx: -0.6vw; --dy: -2.5vw; --rotation: 180deg; }
+.spark:nth-child(5) { animation-delay: 0.00s; --dx: -1.8vw; --dy: -1.8vw; --rotation: 225deg; }
+.spark:nth-child(6) { animation-delay: 0.02s; --dx: -2.5vw; --dy: -0.6vw; --rotation: 270deg; }
+.spark:nth-child(7) { animation-delay: 0.01s; --dx: -2.5vw; --dy: 0.6vw; --rotation: 315deg; }
+.spark:nth-child(8) { animation-delay: 0.03s; --dx: -1.8vw; --dy: 1.8vw; --rotation: 360deg; }
 
 @keyframes rawParrySparkExplode {
   0% {
     opacity: 1;
     transform: translate(-50%, -50%) rotate(0deg) scale(1);
-    filter: brightness(1.5) drop-shadow(0 0 4px currentColor);
+    filter: brightness(1.6) drop-shadow(0 0 4px currentColor);
   }
-  20% {
+  15% {
     opacity: 1;
-    transform: translate(calc(-50% + var(--dx) * 0.3), calc(-50% + var(--dy) * 0.3)) rotate(calc(var(--rotation) * 0.2)) scale(1.1);
-    filter: brightness(1.3) drop-shadow(0 0 6px currentColor);
+    transform: translate(calc(-50% + var(--dx) * 0.4), calc(-50% + var(--dy) * 0.4)) rotate(calc(var(--rotation) * 0.15)) scale(1.15);
+    filter: brightness(1.4) drop-shadow(0 0 5px currentColor);
   }
   40% {
     opacity: 1;
-    transform: translate(calc(-50% + var(--dx) * 0.6), calc(-50% + var(--dy) * 0.6)) rotate(calc(var(--rotation) * 0.4)) scale(1.05);
+    transform: translate(calc(-50% + var(--dx) * 0.7), calc(-50% + var(--dy) * 0.7)) rotate(calc(var(--rotation) * 0.4)) scale(1);
     filter: brightness(1.2) drop-shadow(0 0 4px currentColor);
   }
-  60% {
-    opacity: 0.8;
-    transform: translate(calc(-50% + var(--dx) * 0.8), calc(-50% + var(--dy) * 0.8)) rotate(calc(var(--rotation) * 0.6)) scale(0.9);
-    filter: brightness(1.1) drop-shadow(0 0 3px currentColor);
-  }
-  80% {
-    opacity: 0.5;
-    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(calc(var(--rotation) * 0.8)) scale(0.7);
-    filter: brightness(1.0) drop-shadow(0 0 2px currentColor);
+  70% {
+    opacity: 0.6;
+    transform: translate(calc(-50% + var(--dx) * 0.9), calc(-50% + var(--dy) * 0.9)) rotate(calc(var(--rotation) * 0.7)) scale(0.7);
+    filter: brightness(1.1) drop-shadow(0 0 2px currentColor);
   }
   100% {
     opacity: 0;
-    transform: translate(calc(-50% + var(--dx) * 1.2), calc(-50% + var(--dy) * 1.2)) rotate(var(--rotation)) scale(0.3);
-    filter: brightness(0.8) drop-shadow(0 0 1px currentColor);
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--rotation)) scale(0.3);
+    filter: brightness(0.9) drop-shadow(0 0 1px currentColor);
   }
 }
 
@@ -430,4 +455,4 @@
 .spark-regular::after,
 .spark-perfect::after {
   display: none;
-} 
+}

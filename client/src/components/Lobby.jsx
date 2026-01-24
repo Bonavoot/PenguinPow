@@ -55,7 +55,7 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false
         <div className="room-info">
           <div className="room-badge">
             <span className="room-label">Dohyo Code</span>
-            <span className="room-name">{roomName}</span>
+            <span className="room-name">{isCPUMatch ? "VS CPU" : roomName}</span>
           </div>
         </div>
       </div>

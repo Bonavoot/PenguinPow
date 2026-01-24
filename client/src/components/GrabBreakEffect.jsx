@@ -79,7 +79,7 @@ const EffectContainer = styled.div.attrs((props) => ({
     // Shifted left by 4% to better center between players
     left: `${(props.$x / 1280) * 100 - 4}%`,
     // Raised higher to be at chest/center level of players
-    bottom: `${(props.$y / 720) * 100 + 18}%`,
+    bottom: `${(props.$y / 720) * 100 + 14}%`,
     transform: "translate(-50%, -50%)",
     zIndex: 150,
     pointerEvents: "none",
