@@ -24,6 +24,7 @@ const {
   isPlayerInBasicActiveState,
   canPlayerCharge,
   canPlayerUseAction,
+  canPlayerDodge,
   resetPlayerAttackStates,
   clearAllActionStates,  // Critical: clears ALL states when player loses control
   isWithinMapBoundaries,
@@ -379,6 +380,11 @@ function createCPUPlayer(uniqueId) {
     hasPendingSlapAttack: false,
     mouse1JustPressed: false,
     mouse1JustReleased: false,
+    shiftJustPressed: false,
+    eJustPressed: false,
+    wJustPressed: false,
+    fJustPressed: false,
+    spaceJustPressed: false,
     isOverlapping: false,
     overlapStartTime: null,
     chargeCancelled: false,
@@ -2224,6 +2230,17 @@ io.on("connection", (socket) => {
             // CRITICAL: Clear ALL action states when being grabbed
             clearAllActionStates(opponent);
             opponent.isBeingGrabbed = true;
+            
+            // Clear all input keys except spacebar (for grab break)
+            opponent.keys.shift = false;
+            opponent.keys.w = false;
+            opponent.keys.a = false;
+            opponent.keys.s = false;
+            opponent.keys.d = false;
+            opponent.keys.e = false;
+            opponent.keys.f = false;
+            opponent.keys.mouse1 = false;
+            opponent.keys.mouse2 = false;
 
             // Set grab facing direction
             if (player.isChargingAttack) {
@@ -4070,6 +4087,11 @@ io.on("connection", (socket) => {
         hasPendingSlapAttack: false, // Add flag for buffering one additional slap attack
         mouse1JustPressed: false, // Track if mouse1 was just pressed this frame
         mouse1JustReleased: false, // Track if mouse1 was just released this frame
+        shiftJustPressed: false, // Track if shift was just pressed this frame
+        eJustPressed: false, // Track if E was just pressed this frame
+        wJustPressed: false, // Track if W was just pressed this frame
+        fJustPressed: false, // Track if F was just pressed this frame
+        spaceJustPressed: false, // Track if spacebar was just pressed this frame
         isOverlapping: false, // Track overlap state for smoother separation
         overlapStartTime: null, // Track when overlap began for progressive separation
         chargeCancelled: false, // Track if charge was cancelled (vs executed)
@@ -4196,6 +4218,11 @@ io.on("connection", (socket) => {
         hasPendingSlapAttack: false, // Add flag for buffering one additional slap attack
         mouse1JustPressed: false, // Track if mouse1 was just pressed this frame
         mouse1JustReleased: false, // Track if mouse1 was just released this frame
+        shiftJustPressed: false, // Track if shift was just pressed this frame
+        eJustPressed: false, // Track if E was just pressed this frame
+        wJustPressed: false, // Track if W was just pressed this frame
+        fJustPressed: false, // Track if F was just pressed this frame
+        spaceJustPressed: false, // Track if spacebar was just pressed this frame
         isOverlapping: false, // Track overlap state for smoother separation
         overlapStartTime: null, // Track when overlap began for progressive separation
         chargeCancelled: false, // Track if charge was cancelled (vs executed)
@@ -4387,6 +4414,11 @@ io.on("connection", (socket) => {
       hasPendingSlapAttack: false,
       mouse1JustPressed: false,
       mouse1JustReleased: false,
+      shiftJustPressed: false,
+      eJustPressed: false,
+      wJustPressed: false,
+      fJustPressed: false,
+      spaceJustPressed: false,
       isOverlapping: false,
       overlapStartTime: null,
       chargeCancelled: false,
@@ -4820,6 +4852,10 @@ io.on("connection", (socket) => {
       if (isInChargedAttackExecution()) {
         return true;
       }
+      // Block during dodge - only charging can continue, no other actions
+      if (player.isDodging) {
+        return true;
+      }
       // Block during grab break animation and separation
       if (player.isGrabBreaking || player.isGrabBreakCountered || player.isGrabBreakSeparating) {
         return true;
@@ -4847,6 +4883,14 @@ io.on("connection", (socket) => {
       // Set mouse1 press flags
       player.mouse1JustPressed = !previousMouse1State && data.keys.mouse1;
       player.mouse1JustReleased = previousMouse1State && !data.keys.mouse1;
+      
+      // Track "just pressed" state for all action keys to prevent actions from triggering
+      // when keys are held through other actions (e.g., holding E during dodge then grabbing after)
+      player.shiftJustPressed = !previousKeys.shift && data.keys.shift;
+      player.eJustPressed = !previousKeys.e && data.keys.e;
+      player.wJustPressed = !previousKeys.w && data.keys.w;
+      player.fJustPressed = !previousKeys.f && data.keys.f;
+      player.spaceJustPressed = !previousKeys[" "] && data.keys[" "];
 
       // Debug logging for F key and snowball power-up
       if (data.keys.f) {
@@ -5005,9 +5049,11 @@ io.on("connection", (socket) => {
     }
 
     // Handle clearing charge during charging phase with mouse1 - MUST BE FIRST
+    // Block during dodge - only charging should continue during dodge, no other actions
     if (
       player.mouse1JustPressed &&
-      player.isChargingAttack // Only interrupt during charging phase, not execution
+      player.isChargingAttack && // Only interrupt during charging phase, not execution
+      !player.isDodging // Block slap during dodge - charging can continue but no actions allowed
     ) {
       console.log(`Player ${player.id} interrupting charge with slap`);
       // Clear charge state
@@ -5019,11 +5065,14 @@ io.on("connection", (socket) => {
     }
 
     // Handle clearing charge during charging phase with throw/grab/snowball - MUST BE FIRST
+    // Use "just pressed" to prevent charge cancellation when keys are held through other states
+    // Block during dodge - only charging should continue during dodge, no other actions
     if (
-      ((player.keys.w && player.isGrabbing && !player.isBeingGrabbed) ||
-        player.keys.e ||
-        player.keys.f) &&
-      player.isChargingAttack // Only interrupt during charging phase, not execution
+      ((player.wJustPressed && player.isGrabbing && !player.isBeingGrabbed) ||
+        player.eJustPressed ||
+        player.fJustPressed) &&
+      player.isChargingAttack && // Only interrupt during charging phase, not execution
+      !player.isDodging // Block during dodge - charging continues but no actions can interrupt
     ) {
       console.log(`Player ${player.id} interrupting charge with W/E/F input`);
       // Clear charge state
@@ -5067,8 +5116,9 @@ io.on("connection", (socket) => {
     }
 
     // Handle F key power-ups (snowball and pumo army) - block during charged attack execution and recovery
+    // Use fJustPressed to prevent power-ups from triggering when key is held through other actions
     if (
-      player.keys.f &&
+      player.fJustPressed &&
       !shouldBlockAction() &&
       (player.activePowerUp === POWER_UP_TYPES.SNOWBALL ||
         player.activePowerUp === POWER_UP_TYPES.PUMO_ARMY) &&
@@ -5232,12 +5282,15 @@ io.on("connection", (socket) => {
 
     // Handle dodge - allow canceling recovery but block during charged attack execution
     // Dodging now costs stamina (15% of max) instead of using charges
+    // Use shiftJustPressed to prevent dodge from triggering when key is held through other actions
+    // NOTE: canPlayerDodge allows dodging DURING charging - this is intentional game mechanic
     if (
-      player.keys["shift"] &&
+      player.shiftJustPressed &&
       !player.keys.e &&
       !(player.keys.w && player.isGrabbing && !player.isBeingGrabbed) &&
+      !player.isBeingGrabbed && // Block dodge when being grabbed
       !isInChargedAttackExecution() && // Block during charged attack execution
-      canPlayerUseAction(player) &&
+      canPlayerDodge(player) &&
       player.stamina >= DODGE_STAMINA_COST // Check if player has enough stamina to dodge
     ) {
       console.log("Executing immediate dodge");
@@ -5338,7 +5391,7 @@ io.on("connection", (socket) => {
         }
       }, 450); // Updated to match new dodge duration
     } else if (
-      player.keys["shift"] &&
+      player.shiftJustPressed && // Use just pressed to prevent buffering when holding shift through actions
       (player.isAttacking ||
         player.isThrowing ||
         player.isBeingThrown ||
@@ -5367,10 +5420,10 @@ io.on("connection", (socket) => {
     }
     // Emit "No Stamina" feedback when player tries to dodge but doesn't have enough stamina
     else if (
-      player.keys["shift"] &&
+      player.shiftJustPressed && // Use just pressed to match dodge behavior
       !player.keys.e &&
       !(player.keys.w && player.isGrabbing && !player.isBeingGrabbed) &&
-      canPlayerUseAction(player) &&
+      canPlayerDodge(player) && // Use canPlayerDodge for consistency with dodge handler
       player.stamina < DODGE_STAMINA_COST && // Not enough stamina
       (!player.lastStaminaBlockedTime || Date.now() - player.lastStaminaBlockedTime > 500) // Rate limit to prevent spam
     ) {
@@ -5379,19 +5432,22 @@ io.on("connection", (socket) => {
     }
 
     // Start charging attack - block during charged attack execution and recovery
-    if (player.keys.mouse2 && !shouldBlockAction() && canPlayerCharge(player)) {
+    // Also block if E was just pressed (grab cancels charge and should execute, not restart charge)
+    if (player.keys.mouse2 && !shouldBlockAction() && canPlayerCharge(player) && !player.eJustPressed) {
       // Start charging
       startCharging(player);
       player.spacebarReleasedDuringDodge = false;
     }
     // For continuing a charge - block during charged attack execution and recovery
+    // Also block if E was just pressed (grab should execute, not restart/continue charge)
     else if (
       player.keys.mouse2 &&
       !shouldBlockAction() &&
       (player.isChargingAttack || player.isDodging) &&
       !player.isHit &&
       !player.isRawParryStun &&
-      !player.isRawParrying // Block continuing charge during raw parry
+      !player.isRawParrying && // Block continuing charge during raw parry
+      !player.eJustPressed // Block if grab was just pressed (grab cancels charge)
       // Removed !player.isThrowingSnowball to allow smooth charging during snowball animation
     ) {
       // If we're dodging and not already charging, start charging
@@ -5440,17 +5496,18 @@ io.on("connection", (socket) => {
       player.wantsToRestartCharge = true;
     }
     // Release charged attack when mouse2 is released - block during charged attack execution and recovery
+    // Special case: during dodge, we ALLOW storing the charge for later execution (but not immediate execution)
     else if (
       !player.keys.mouse2 &&
       player.isChargingAttack &&
-      !shouldBlockAction() &&
       !player.isGrabbing &&
       !player.isBeingGrabbed &&
       !player.isThrowing &&
       !player.isBeingThrown &&
       !player.isThrowingSnowball
     ) {
-      // If dodging, store the charge for later
+      // If dodging, store the charge for later execution after dodge ends
+      // This is intentionally allowed even though shouldBlockAction blocks other actions during dodge
       if (player.isDodging) {
         player.pendingChargeAttack = {
           power: player.chargeAttackPower,
@@ -5458,7 +5515,8 @@ io.on("connection", (socket) => {
           type: "charged",
         };
         player.spacebarReleasedDuringDodge = true;
-      } else {
+      } else if (!shouldBlockAction()) {
+        // Only execute immediately if not blocked by other states (and not dodging)
         executeChargedAttack(player, player.chargeAttackPower, rooms);
       }
     }
@@ -5655,8 +5713,9 @@ io.on("connection", (socket) => {
     }
 
     // Handle grab attacks - block during charged attack execution and recovery
+    // Use eJustPressed to prevent grab from triggering when key is held through other actions
     if (
-      player.keys.e &&
+      player.eJustPressed &&
       !shouldBlockAction() &&
       canPlayerUseAction(player) &&
       !player.grabCooldown &&

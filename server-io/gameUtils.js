@@ -97,6 +97,8 @@ function setPlayerTimeout(playerId, callback, delay, name = null) {
 }
 
 // Helper functions to reduce code duplication
+// CRITICAL: This is the SINGLE SOURCE OF TRUTH for blocking new actions
+// Any state where the player is "doing something" must be included here
 function isPlayerInActiveState(player) {
   return (
     !player.isAttacking &&
@@ -112,12 +114,29 @@ function isPlayerInActiveState(player) {
     !player.isRawParrying &&
     !player.isThrowingSnowball &&
     !player.canMoveToReady &&
-    !player.isAtTheRopes
+    !player.isAtTheRopes &&
+    // Additional blocking states that were missing:
+    !player.isGrabStartup &&
+    !player.isGrabbingMovement &&
+    !player.isWhiffingGrab &&
+    !player.isGrabBreaking &&
+    !player.isGrabBreakCountered &&
+    !player.isGrabBreakSeparating &&
+    !player.isThrowingSalt &&
+    !player.isThrowTeching &&
+    !player.isSpawningPumoArmy &&
+    !player.isInStartupFrames &&
+    !player.isInEndlag &&
+    !player.isChargingAttack &&
+    !player.isGrabClashing
   );
 }
 
+// CRITICAL: This checks ALL states where a player cannot start a NEW action
+// Used by canPlayerUseAction, dodge checks, grab checks, etc.
 function isPlayerInBasicActiveState(player) {
   return (
+    // Core action states
     !player.isAttacking &&
     !player.isDodging &&
     !player.isThrowing &&
@@ -128,7 +147,24 @@ function isPlayerInBasicActiveState(player) {
     !player.isRawParryStun &&
     !player.isRawParrying &&
     !player.isThrowingSnowball &&
-    !player.isAtTheRopes
+    !player.isAtTheRopes &&
+    // Grab-related intermediate states
+    !player.isGrabStartup &&
+    !player.isGrabbingMovement &&
+    !player.isWhiffingGrab &&
+    !player.isGrabBreaking &&
+    !player.isGrabBreakCountered &&
+    !player.isGrabBreakSeparating &&
+    !player.isGrabClashing &&
+    // Other action states
+    !player.isThrowingSalt &&
+    !player.isThrowTeching &&
+    !player.isSpawningPumoArmy &&
+    // Attack timing states (startup/endlag)
+    !player.isInStartupFrames &&
+    !player.isInEndlag &&
+    // Charging state
+    !player.isChargingAttack
   );
 }
 
@@ -137,8 +173,57 @@ function canPlayerCharge(player) {
 }
 
 function canPlayerUseAction(player) {
+  // Check action lock timer - this is a global gate to prevent action overlaps
+  if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
+    return false;
+  }
+  
   return (
     isPlayerInBasicActiveState(player) &&
+    !player.isRecovering &&
+    !player.canMoveToReady
+  );
+}
+
+// Special function for dodge - allows dodging DURING charging without clearing the charge
+// This is an intentional game mechanic: you can dodge out of a charge to avoid attacks
+function canPlayerDodge(player) {
+  // Check action lock timer
+  if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
+    return false;
+  }
+  
+  // Check all blocking states EXCEPT isChargingAttack (dodge is allowed during charging)
+  return (
+    // Core action states
+    !player.isAttacking &&
+    !player.isDodging &&
+    !player.isThrowing &&
+    !player.isBeingThrown &&
+    !player.isGrabbing &&
+    !player.isBeingGrabbed &&
+    !player.isHit &&
+    !player.isRawParryStun &&
+    !player.isRawParrying &&
+    !player.isThrowingSnowball &&
+    !player.isAtTheRopes &&
+    // Grab-related intermediate states
+    !player.isGrabStartup &&
+    !player.isGrabbingMovement &&
+    !player.isWhiffingGrab &&
+    !player.isGrabBreaking &&
+    !player.isGrabBreakCountered &&
+    !player.isGrabBreakSeparating &&
+    !player.isGrabClashing &&
+    // Other action states
+    !player.isThrowingSalt &&
+    !player.isThrowTeching &&
+    !player.isSpawningPumoArmy &&
+    // Attack timing states (startup/endlag)
+    !player.isInStartupFrames &&
+    !player.isInEndlag &&
+    // NOTE: isChargingAttack is intentionally NOT checked here - dodge is allowed during charging!
+    // Recovery and ready states
     !player.isRecovering &&
     !player.canMoveToReady
   );
@@ -298,20 +383,17 @@ function canPlayerSlap(player) {
   // Check if player is on attack cooldown - this is the single source of truth for timing
   const isOnCooldown = player.attackCooldownUntil && Date.now() < player.attackCooldownUntil;
   
+  // Check action lock timer
+  const isActionLocked = player.actionLockUntil && Date.now() < player.actionLockUntil;
+  
   return (
+    // Use the comprehensive blocking state check
+    isPlayerInBasicActiveState(player) &&
     !player.isJumping &&
-    !player.isDodging &&
-    !player.isThrowing &&
-    !player.isBeingThrown &&
-    !player.isGrabbing &&
-    !player.isBeingGrabbed &&
-    !player.isHit &&
-    !player.isRawParryStun &&
-    !player.isRawParrying &&
-    !player.isThrowingSnowball &&
     !player.canMoveToReady &&
-    !player.isAtTheRopes &&
-    !isOnCooldown              // Simple cooldown check - controls all timing
+    !player.isRecovering &&
+    !isOnCooldown &&
+    !isActionLocked
   );
 }
 
@@ -371,6 +453,7 @@ module.exports = {
   isPlayerInBasicActiveState,
   canPlayerCharge,
   canPlayerUseAction,
+  canPlayerDodge,
   resetPlayerAttackStates,
   clearAllActionStates,  // Critical: clears ALL states when player loses control
   isWithinMapBoundaries,

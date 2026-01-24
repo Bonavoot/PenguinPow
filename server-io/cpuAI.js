@@ -135,6 +135,7 @@ function randomInRange(min, max) {
 }
 
 // Check if CPU can act (not in a state that blocks actions)
+// MUST match the states checked in isPlayerInBasicActiveState for consistency!
 function canAct(cpu) {
   const isOnCooldown = cpu.attackCooldownUntil && Date.now() < cpu.attackCooldownUntil;
   const isInputLocked = cpu.inputLockUntil && Date.now() < cpu.inputLockUntil;
@@ -153,6 +154,7 @@ function canAct(cpu) {
          !cpu.isThrowingSnowball &&
          !cpu.isAtTheRopes &&
          !cpu.isInEndlag &&
+         !cpu.isInStartupFrames &&
          !cpu.isGrabStartup &&
          !cpu.isWhiffingGrab &&
          !cpu.isGrabbingMovement &&
@@ -160,6 +162,11 @@ function canAct(cpu) {
          !cpu.isGrabBreaking &&
          !cpu.isGrabBreakCountered &&
          !cpu.isGrabBreakSeparating &&
+         !cpu.isGrabClashing &&
+         !cpu.isAttacking &&
+         !cpu.isGrabbing &&
+         !cpu.isChargingAttack &&
+         !cpu.isRawParrying &&
          !isOnCooldown &&
          !isInputLocked &&
          !isActionLocked;
@@ -186,13 +193,43 @@ function canGrab(cpu) {
 }
 
 // Check if CPU can dodge
+// NOTE: Dodge is intentionally allowed DURING charging (doesn't clear the charge)
+// So we check all blocking states EXCEPT isChargingAttack
 function canDodge(cpu) {
-  return canAct(cpu) && 
+  const isOnCooldown = cpu.attackCooldownUntil && Date.now() < cpu.attackCooldownUntil;
+  const isInputLocked = cpu.inputLockUntil && Date.now() < cpu.inputLockUntil;
+  const isActionLocked = cpu.actionLockUntil && Date.now() < cpu.actionLockUntil;
+  
+  return !cpu.isHit && 
+         !cpu.isBeingThrown && 
+         !cpu.isThrowing && 
+         !cpu.isDodging && 
+         !cpu.isRecovering && 
+         !cpu.isRawParryStun && 
+         !cpu.isThrowTeching &&
+         !cpu.canMoveToReady &&
+         !cpu.isThrowingSalt &&
+         !cpu.isSpawningPumoArmy &&
+         !cpu.isThrowingSnowball &&
+         !cpu.isAtTheRopes &&
+         !cpu.isInEndlag &&
+         !cpu.isInStartupFrames &&
+         !cpu.isGrabStartup &&
+         !cpu.isWhiffingGrab &&
+         !cpu.isGrabbingMovement &&
+         !cpu.isBeingGrabbed &&
+         !cpu.isGrabBreaking &&
+         !cpu.isGrabBreakCountered &&
+         !cpu.isGrabBreakSeparating &&
+         !cpu.isGrabClashing &&
          !cpu.isAttacking &&
          !cpu.isGrabbing &&
-         !cpu.isBeingGrabbed &&
-         cpu.stamina >= AI_CONFIG.DODGE_STAMINA_COST &&
-         !cpu.isChargingAttack;
+         !cpu.isRawParrying &&
+         // NOTE: isChargingAttack intentionally NOT checked - dodge allowed during charging!
+         !isOnCooldown &&
+         !isInputLocked &&
+         !isActionLocked &&
+         cpu.stamina >= AI_CONFIG.DODGE_STAMINA_COST;
 }
 
 // Check if CPU can parry
@@ -1042,9 +1079,12 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
   const currentTime = Date.now();
   
   // STRICT action blocking - prevents multiple moves at once
+  // MUST match the states checked in isPlayerInBasicActiveState for consistency!
   const shouldBlockAction = (allowThrowFromGrab = false) => {
     // Block during any active attack execution
     if (cpu.isAttacking) return true;
+    // Block during attack startup frames
+    if (cpu.isInStartupFrames) return true;
     // Block during throw animation
     if (cpu.isThrowing) return true;
     // Block while being thrown
@@ -1062,13 +1102,21 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     // Block during recovery
     if (cpu.isRecovering) return true;
     // Block during power-up animations
-    if (cpu.isThrowingSnowball || cpu.isSpawningPumoArmy) return true;
+    if (cpu.isThrowingSnowball || cpu.isSpawningPumoArmy || cpu.isThrowingSalt) return true;
     // Block at the ropes
     if (cpu.isAtTheRopes) return true;
     // Block during endlag
     if (cpu.isInEndlag) return true;
     // Block during grab break animation and separation - BOTH players are locked
     if (cpu.isGrabBreaking || cpu.isGrabBreakCountered || cpu.isGrabBreakSeparating) return true;
+    // Block during grab clashing
+    if (cpu.isGrabClashing) return true;
+    // NOTE: isChargingAttack intentionally NOT checked here - charge release logic needs to run while charging!
+    // Individual action checks (canPlayerSlap, canPlayerUseAction, etc.) handle blocking during charging.
+    // Block during throw teching
+    if (cpu.isThrowTeching) return true;
+    // Block during raw parrying
+    if (cpu.isRawParrying) return true;
     
     return false;
   };
@@ -1277,6 +1325,12 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     return; // Only one action per tick
   }
   
+  // Process grab - if E is pressed during charging, clear charge first (like player)
+  // This allows grab to cancel/interrupt charging
+  if (keyJustPressed("e") && cpu.isChargingAttack) {
+    clearChargeState(cpu, true);
+  }
+  
   // Process grab
   if (keyJustPressed("e") && 
       !cpu.isAttacking && 
@@ -1293,7 +1347,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       canPlayerUseAction(cpu)) {
     
     cpu.lastGrabAttemptTime = currentTime;
-    clearChargeState(cpu, true);
+    clearChargeState(cpu, true); // Also clear here for safety
     
     cpu.isGrabStartup = true;
     cpu.grabStartupStartTime = currentTime;
@@ -1385,7 +1439,8 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
   }
   
   // Process charge attack - only if not blocked
-  if (cpu.keys.mouse2 && !shouldBlockAction() && canPlayerCharge(cpu)) {
+  // Also block if E was just pressed (grab cancels charge and should execute, not restart charge)
+  if (cpu.keys.mouse2 && !shouldBlockAction() && canPlayerCharge(cpu) && !keyJustPressed("e")) {
     if (!cpu.isChargingAttack) {
       startCharging(cpu);
     }

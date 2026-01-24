@@ -55,6 +55,25 @@ const Game = ({ rooms, roomName, localId, setCurrentPage }) => {
       // Block inputs during power-up selection or when throwing snowball
       if (isPowerUpSelectionActive || currentPlayer?.isThrowingSnowball) return;
 
+      // Block all inputs except spacebar when being grabbed
+      if (currentPlayer?.isBeingGrabbed) {
+        // Only allow spacebar (grab break)
+        const grabBreakOnly = {
+          w: false,
+          a: false,
+          s: false,
+          d: false,
+          " ": gamepadKeyState[" "] || false,
+          shift: false,
+          e: false,
+          f: false,
+          mouse1: false,
+          mouse2: false,
+        };
+        socket.emit("fighter_action", { id: socket.id, keys: grabBreakOnly });
+        return;
+      }
+
       socket.emit("fighter_action", { id: socket.id, keys: gamepadKeyState });
     };
 
@@ -67,6 +86,11 @@ const Game = ({ rooms, roomName, localId, setCurrentPage }) => {
 
       // Block inputs when current player is throwing snowball
       if (currentPlayer?.isThrowingSnowball) return;
+
+      // Block all inputs except spacebar when being grabbed
+      if (currentPlayer?.isBeingGrabbed && e.key !== " ") {
+        return;
+      }
 
       if (Object.prototype.hasOwnProperty.call(keyState, e.key.toLowerCase())) {
         keyState[e.key.toLowerCase()] = true;
@@ -81,6 +105,11 @@ const Game = ({ rooms, roomName, localId, setCurrentPage }) => {
       // Block inputs when current player is throwing snowball
       if (currentPlayer?.isThrowingSnowball) return;
 
+      // Block all inputs except spacebar when being grabbed
+      if (currentPlayer?.isBeingGrabbed && e.key !== " ") {
+        return;
+      }
+
       if (Object.prototype.hasOwnProperty.call(keyState, e.key.toLowerCase())) {
         keyState[e.key.toLowerCase()] = false;
         socket.emit("fighter_action", { id: socket.id, keys: keyState });
@@ -93,6 +122,9 @@ const Game = ({ rooms, roomName, localId, setCurrentPage }) => {
 
       // Block inputs when current player is throwing snowball
       if (currentPlayer?.isThrowingSnowball) return;
+
+      // Block all mouse inputs when being grabbed
+      if (currentPlayer?.isBeingGrabbed) return;
 
       if (e.button === 0) {
         e.preventDefault();
@@ -111,6 +143,9 @@ const Game = ({ rooms, roomName, localId, setCurrentPage }) => {
 
       // Block inputs when current player is throwing snowball
       if (currentPlayer?.isThrowingSnowball) return;
+
+      // Block all mouse inputs when being grabbed
+      if (currentPlayer?.isBeingGrabbed) return;
 
       if (e.button === 0) {
         e.preventDefault();
