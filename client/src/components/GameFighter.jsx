@@ -84,6 +84,10 @@ import thickBlubberSound from "../sounds/thick-blubber-sound.mp3";
 import rawParryGruntSound from "../sounds/raw-parry-grunt.mp3";
 import rawParrySuccessSound from "../sounds/raw-parry-success-sound.wav";
 import grabBreakSound from "../sounds/grab-break-sound.wav";
+import notEnoughStaminaSound from "../sounds/not-enough-stamina-sound.wav";
+import grabClashSound from "../sounds/grab-clash-sound.wav";
+import clashVictorySound from "../sounds/clash-victory-sound.wav";
+import clashDefeatSound from "../sounds/clash-defeat-sound.wav";
 import hitEffectImage from "../assets/hit-effect.png";
 import crouchStance2 from "../assets/crouch-stance2.png";
 import crouchStrafing2 from "../assets/crouch-strafing2.png";
@@ -143,6 +147,10 @@ const initializeAudioPools = () => {
   createAudioPool(rawParryGruntSound, 2);
   createAudioPool(rawParrySuccessSound, 2);
   createAudioPool(grabBreakSound, 2);
+  createAudioPool(notEnoughStaminaSound, 2);
+  createAudioPool(grabClashSound, 2);
+  createAudioPool(clashVictorySound, 2);
+  createAudioPool(clashDefeatSound, 2);
   // Add missing audio files
   createAudioPool(gameMusic, 1);
   createAudioPool(eeshiMusic, 1);
@@ -1498,7 +1506,7 @@ const GameFighter = ({
         };
         console.log("Setting rawParryEffectPosition:", effectData);
         setRawParryEffectPosition(effectData);
-        playSound(rawParrySuccessSound, 0.01, 1350); // Cut sound short at 350ms (~80% duration)
+        playSound(rawParrySuccessSound, 0.01);
       } else {
         console.warn("Invalid raw_parry_success data:", data);
       }
@@ -1550,6 +1558,8 @@ const GameFighter = ({
       // "No Stamina" effect - only visible to local player when they try an action they can't afford
       socket.on("stamina_blocked", (data) => {
         if (data.playerId === localId) {
+          // Play the not enough stamina sound at low volume
+          playSound(notEnoughStaminaSound, 0.08);
           // Use timestamp as key to trigger new animation each time
           const newKey = Date.now();
           setNoStaminaEffectKey(newKey);
@@ -1557,6 +1567,20 @@ const GameFighter = ({
           setTimeout(() => {
             setNoStaminaEffectKey((current) => (current === newKey ? 0 : current));
           }, 900);
+        }
+      });
+      
+      // Grab clash sound
+      socket.on("grab_clash_start", () => {
+        playSound(grabClashSound, 0.04);
+      });
+      
+      // Grab clash end - play victory or defeat sound based on local player result
+      socket.on("grab_clash_end", (data) => {
+        if (data.winnerId === localId) {
+          playSound(clashVictorySound, 0.03);
+        } else if (data.loserId === localId) {
+          playSound(clashDefeatSound, 0.08);
         }
       });
     }
@@ -1696,6 +1720,8 @@ const GameFighter = ({
         socket.off("grab_break");
         socket.off("snowball_hit");
         socket.off("stamina_blocked");
+        socket.off("grab_clash_start");
+        socket.off("grab_clash_end");
       }
       socket.off("game_start");
       socket.off("game_reset");

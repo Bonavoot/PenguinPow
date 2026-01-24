@@ -809,13 +809,25 @@ io.on("connection", (socket) => {
       console.log(`Grab clash tie, random winner: ${winner.id}`);
     }
 
-    // Clear clash states
+    // Clear clash states for both players
     player1.isGrabClashing = false;
     player1.grabClashStartTime = 0;
     player1.grabClashInputCount = 0;
     player2.isGrabClashing = false;
     player2.grabClashStartTime = 0;
     player2.grabClashInputCount = 0;
+
+    // Clear grab attempt states for winner (transition out of "attempting" animation)
+    winner.isGrabbingMovement = false;
+    winner.isGrabStartup = false;
+    winner.isWhiffingGrab = false;
+    winner.grabMovementVelocity = 0;
+    winner.movementVelocity = 0;
+    winner.isStrafing = false;
+    winner.grabState = GRAB_STATES.INITIAL;
+    winner.grabAttemptType = null;
+    winner.isRawParrySuccess = false;
+    winner.isPerfectRawParrySuccess = false;
 
     // Set up grab for winner
     winner.isGrabbing = true;
@@ -1346,6 +1358,33 @@ io.on("connection", (socket) => {
               ) {
                 // Snowball is blocked - destroy it but don't apply knockback
                 snowball.hasHit = true;
+                
+                // Trigger parry success animation and sound
+                opponent.isRawParrySuccess = true;
+                console.log(`Snowball parry success for player ${opponent.id}`);
+                
+                // Emit raw parry success event for visual effect and sound
+                const parryingPlayerNumber = room.players.findIndex(p => p.id === opponent.id) + 1;
+                io.in(room.id).emit("raw_parry_success", {
+                  x: snowball.x,
+                  y: snowball.y,
+                  facing: opponent.facing,
+                  isPerfect: false,
+                  timestamp: Date.now(),
+                  parryId: `${opponent.id}_snowball_parry_${Date.now()}`,
+                  playerNumber: parryingPlayerNumber,
+                });
+                
+                // Clear parry success state after duration
+                setPlayerTimeout(
+                  opponent.id,
+                  () => {
+                    opponent.isRawParrySuccess = false;
+                  },
+                  PARRY_SUCCESS_DURATION,
+                  "parrySuccess"
+                );
+                
                 return false; // Remove snowball after being blocked
               }
             }
@@ -1483,6 +1522,33 @@ io.on("connection", (socket) => {
               ) {
                 // Clone is blocked - destroy it but don't apply knockback
                 clone.hasHit = true;
+                
+                // Trigger parry success animation and sound
+                opponent.isRawParrySuccess = true;
+                console.log(`Pumo army clone parry success for player ${opponent.id}`);
+                
+                // Emit raw parry success event for visual effect and sound
+                const parryingPlayerNumber = room.players.findIndex(p => p.id === opponent.id) + 1;
+                io.in(room.id).emit("raw_parry_success", {
+                  x: clone.x,
+                  y: clone.y,
+                  facing: opponent.facing,
+                  isPerfect: false,
+                  timestamp: Date.now(),
+                  parryId: `${opponent.id}_pumo_parry_${Date.now()}`,
+                  playerNumber: parryingPlayerNumber,
+                });
+                
+                // Clear parry success state after duration
+                setPlayerTimeout(
+                  opponent.id,
+                  () => {
+                    opponent.isRawParrySuccess = false;
+                  },
+                  PARRY_SUCCESS_DURATION,
+                  "parrySuccess"
+                );
+                
                 return false; // Remove clone after being blocked
               }
             }

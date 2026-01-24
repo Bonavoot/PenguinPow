@@ -268,6 +268,12 @@ function updateCPUAI(cpu, human, room, currentTime) {
   }
   
   const aiState = getAIState(cpu.id);
+  
+  // GRAB CLASH HANDLING - CPU needs to mash inputs to win!
+  if (cpu.isGrabClashing) {
+    handleGrabClashMashing(cpu, aiState, currentTime);
+    return; // Don't do anything else during grab clash - just mash!
+  }
   const distance = getDistance(cpu, human);
   
   // Initialize keys object if needed
@@ -373,6 +379,38 @@ function updateCPUAI(cpu, human, room, currentTime) {
     }
   } else {
     handleMovement(cpu, human, aiState, currentTime, distance);
+  }
+}
+
+// Handle grab clash mashing - CPU rapidly presses keys to win the clash
+function handleGrabClashMashing(cpu, aiState, currentTime) {
+  // Initialize grab clash mash state if needed
+  if (!aiState.grabClashLastMashTime) {
+    aiState.grabClashLastMashTime = 0;
+    aiState.grabClashCurrentKey = null;
+  }
+  
+  // Mash interval - how fast CPU mashes (in ms)
+  // Lower = faster mashing. 60-80ms is about as fast as a skilled human can mash
+  const MASH_INTERVAL = 70;
+  
+  // Keys to cycle through for mashing
+  const mashKeys = ['w', 'a', 's', 'd', 'mouse1', 'e'];
+  
+  // Check if it's time to toggle a key
+  if (currentTime - aiState.grabClashLastMashTime >= MASH_INTERVAL) {
+    // Reset all keys first
+    resetAllKeys(cpu);
+    
+    // Pick a random key to press
+    const keyIndex = Math.floor(Math.random() * mashKeys.length);
+    const key = mashKeys[keyIndex];
+    cpu.keys[key] = true;
+    
+    aiState.grabClashCurrentKey = key;
+    aiState.grabClashLastMashTime = currentTime;
+    
+    console.log(`🥊 CPU MASHING: Pressed ${key} during grab clash`);
   }
 }
 
@@ -1041,6 +1079,52 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
   
   const prevKeys = cpu._prevKeys;
   const keyJustPressed = (key) => cpu.keys[key] && !prevKeys[key];
+  
+  // COUNT INPUTS DURING GRAB CLASH - must happen before blocking!
+  if (cpu.isGrabClashing && room.grabClashData) {
+    const mashKeys = ['w', 'a', 's', 'd', 'mouse1', 'mouse2', 'e', 'f', 'shift'];
+    let inputDetected = false;
+    let detectedKey = null;
+    
+    for (const key of mashKeys) {
+      if (cpu.keys[key] && !prevKeys[key]) {
+        inputDetected = true;
+        detectedKey = key;
+        break;
+      }
+    }
+    
+    if (inputDetected) {
+      cpu.grabClashInputCount++;
+      
+      // Update room clash data
+      if (cpu.id === room.grabClashData.player1Id) {
+        room.grabClashData.player1Inputs++;
+        console.log(`🥊 CPU PLAYER 1 (${cpu.id}) INPUT COUNT: ${room.grabClashData.player1Inputs}`);
+      } else if (cpu.id === room.grabClashData.player2Id) {
+        room.grabClashData.player2Inputs++;
+        console.log(`🥊 CPU PLAYER 2 (${cpu.id}) INPUT COUNT: ${room.grabClashData.player2Inputs}`);
+      }
+      
+      // Emit progress update if io is available
+      if (io) {
+        io.in(room.id).emit("grab_clash_progress", {
+          player1Inputs: room.grabClashData.player1Inputs,
+          player2Inputs: room.grabClashData.player2Inputs,
+          player1Id: room.grabClashData.player1Id,
+          player2Id: room.grabClashData.player2Id,
+        });
+      }
+      
+      console.log(`🥊 CPU ${cpu.id} mashed ${detectedKey} during grab clash. Total inputs: ${cpu.grabClashInputCount}`);
+    }
+    
+    // Update prev keys for next comparison
+    cpu._prevKeys = { ...cpu.keys };
+    
+    // Block all other actions during grab clash - only mashing counts!
+    return;
+  }
   
   // === GRAB BREAK - Process BEFORE shouldBlockAction check! ===
   // This is special because it needs to work WHILE being grabbed

@@ -1,98 +1,262 @@
 import React, { useState, useEffect, useRef } from 'react';
 import styled, { keyframes, css } from 'styled-components';
 
+// Animations
+const pulseGlow = keyframes`
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(255, 200, 0, 0.6), 0 0 40px rgba(255, 150, 0, 0.4), inset 0 0 20px rgba(255, 200, 0, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(255, 200, 0, 0.9), 0 0 60px rgba(255, 150, 0, 0.6), inset 0 0 30px rgba(255, 200, 0, 0.3);
+  }
+`;
+
+const shakeIntense = keyframes`
+  0%, 100% { transform: translateX(-50%) rotate(0deg); }
+  10% { transform: translateX(-50%) rotate(-1deg) translateY(-2px); }
+  20% { transform: translateX(-50%) rotate(1deg) translateY(1px); }
+  30% { transform: translateX(-50%) rotate(-1deg) translateY(-1px); }
+  40% { transform: translateX(-50%) rotate(1deg) translateY(2px); }
+  50% { transform: translateX(-50%) rotate(-1deg) translateY(-2px); }
+  60% { transform: translateX(-50%) rotate(1deg) translateY(1px); }
+  70% { transform: translateX(-50%) rotate(-1deg) translateY(-1px); }
+  80% { transform: translateX(-50%) rotate(1deg) translateY(2px); }
+  90% { transform: translateX(-50%) rotate(-1deg) translateY(-1px); }
+`;
+
+const flashMash = keyframes`
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.1); }
+`;
+
+const winnerExplosion = keyframes`
+  0% {
+    background: linear-gradient(90deg, #00ff00, #00cc00);
+    box-shadow: 0 0 30px rgba(0, 255, 0, 0.8);
+  }
+  50% {
+    background: linear-gradient(90deg, #88ff88, #00ff00);
+    box-shadow: 0 0 60px rgba(0, 255, 0, 1);
+  }
+  100% {
+    background: linear-gradient(90deg, #00ff00, #00cc00);
+    box-shadow: 0 0 30px rgba(0, 255, 0, 0.8);
+  }
+`;
+
+const loserDim = keyframes`
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.2; }
+`;
+
+const arrowBounce = keyframes`
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(5px); }
+`;
+
+const arrowBounceLeft = keyframes`
+  0%, 100% { transform: translateX(0) scaleX(-1); }
+  50% { transform: translateX(-5px) scaleX(-1); }
+`;
+
 const GrabClashContainer = styled.div`
   position: absolute;
-  top: 50px; /* Same height as PowerMeter */
+  top: 32%;
   left: 50%;
   transform: translateX(-50%);
   z-index: 1000;
-  display: ${props => props.isVisible ? 'block' : 'none'};
+  display: ${props => props.$isVisible ? 'flex' : 'none'};
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  animation: ${shakeIntense} 0.15s infinite linear;
+`;
+
+const MashTitle = styled.div`
+  font-family: "Bungee", cursive;
+  font-size: clamp(1.2rem, 3vw, 2rem);
+  color: #ffcc00;
+  text-shadow: 
+    -3px -3px 0 #000, 3px -3px 0 #000, 
+    -3px 3px 0 #000, 3px 3px 0 #000,
+    0 0 20px rgba(255, 200, 0, 0.9),
+    0 0 40px rgba(255, 150, 0, 0.6);
+  letter-spacing: 0.15em;
+  animation: ${flashMash} 0.3s infinite;
+  white-space: nowrap;
+`;
+
+const ClashMeterContainer = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+`;
+
+const PlayerArrow = styled.div`
+  font-size: 24px;
+  color: ${props => props.$side === 'left' ? '#3498db' : '#e74c3c'};
+  text-shadow: 0 0 10px ${props => props.$side === 'left' ? 'rgba(52, 152, 219, 0.8)' : 'rgba(231, 76, 60, 0.8)'};
+  animation: ${props => props.$side === 'left' ? arrowBounceLeft : arrowBounce} 0.4s infinite;
+  
+  ${props => props.$isWinner && css`
+    color: #00ff00;
+    text-shadow: 0 0 20px rgba(0, 255, 0, 1);
+    font-size: 28px;
+  `}
+  
+  ${props => props.$isLoser && css`
+    opacity: 0.3;
+    animation: none;
+  `}
 `;
 
 const ClashMeter = styled.div`
-  width: 300px;
-  height: 40px;
-  background: #121213;
-  border: 3px solid #ecf0f1;
-  border-radius: 8px;
+  width: clamp(250px, 35vw, 400px);
+  height: 35px;
+  background: linear-gradient(180deg, #1a1a2e, #0f0f1a);
+  border: 3px solid #ffcc00;
+  border-radius: 20px;
   position: relative;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  animation: ${pulseGlow} 0.5s infinite;
 `;
 
-const ClashLine = styled.div`
-  position: absolute;
-  top: 50%;
-  left: ${props => props.position}%;
-  transform: translate(-50%, -50%);
-  width: 6px;
-  height: 32px;
-  background: linear-gradient(to bottom, #f1c40f, #f39c12);
-  border-radius: 3px;
-  box-shadow: 0 0 10px rgba(241, 196, 15, 0.6);
-  transition: left 0.1s ease-out;
-`;
-
-const winnerFlash = keyframes`
-  0%, 100% {
-    background: #00ff00;
-    opacity: 1;
-  }
-  50% {
-    background: #00cc00;
-    opacity: 0.7;
-  }
-`;
-
-const Player1Zone = styled.div`
+const Player1Fill = styled.div`
   position: absolute;
   left: 0;
   top: 0;
-  width: 50%;
+  width: ${props => props.$fillPercent}%;
   height: 100%;
-  background: transparent;
-  border-radius: 5px 0 0 5px;
+  background: linear-gradient(90deg, #2980b9, #3498db, #5dade2);
+  border-radius: 17px 0 0 17px;
+  transition: width 0.1s ease-out;
+  box-shadow: inset 0 2px 10px rgba(255, 255, 255, 0.3);
   
-  ${props => props.isWinner && css`
-    animation: ${winnerFlash} 0.2s infinite;
+  ${props => props.$isWinner && css`
+    animation: ${winnerExplosion} 0.2s infinite;
+  `}
+  
+  ${props => props.$isLoser && css`
+    animation: ${loserDim} 0.3s infinite;
+    opacity: 0.4;
   `}
 `;
 
-const Player2Zone = styled.div`
+const Player2Fill = styled.div`
   position: absolute;
   right: 0;
   top: 0;
-  width: 50%;
+  width: ${props => props.$fillPercent}%;
   height: 100%;
-  background: transparent;
-  border-radius: 0 5px 5px 0;
+  background: linear-gradient(270deg, #c0392b, #e74c3c, #ec7063);
+  border-radius: 0 17px 17px 0;
+  transition: width 0.1s ease-out;
+  box-shadow: inset 0 2px 10px rgba(255, 255, 255, 0.3);
   
-  ${props => props.isWinner && css`
-    animation: ${winnerFlash} 0.2s infinite;
+  ${props => props.$isWinner && css`
+    animation: ${winnerExplosion} 0.2s infinite;
+  `}
+  
+  ${props => props.$isLoser && css`
+    animation: ${loserDim} 0.3s infinite;
+    opacity: 0.4;
   `}
 `;
-
-
 
 const CenterLine = styled.div`
   position: absolute;
   left: 50%;
-  top: 0;
+  top: -5px;
   transform: translateX(-50%);
-  width: 2px;
-  height: 100%;
-  background: rgba(236, 240, 241, 0.5);
+  width: 4px;
+  height: calc(100% + 10px);
+  background: linear-gradient(180deg, #fff, #ffcc00, #fff);
+  border-radius: 2px;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
+  z-index: 5;
 `;
 
-const Timer = styled.div`
+const ClashIndicator = styled.div`
   position: absolute;
-  top: -50px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 16px;
-  font-weight: bold;
-  color: #e74c3c;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+  top: 50%;
+  left: ${props => props.$position}%;
+  transform: translate(-50%, -50%);
+  width: 12px;
+  height: 45px;
+  background: linear-gradient(180deg, #fff, #ffcc00, #ffa500);
+  border-radius: 6px;
+  box-shadow: 0 0 15px rgba(255, 200, 0, 0.9), 0 0 30px rgba(255, 150, 0, 0.6);
+  transition: left 0.08s ease-out;
+  z-index: 10;
+  
+  &::before {
+    content: '';
+    position: absolute;
+    top: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-bottom: 8px solid #ffcc00;
+  }
+  
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-top: 8px solid #ffcc00;
+  }
+`;
+
+const InputCounters = styled.div`
+  display: flex;
+  justify-content: space-between;
+  width: clamp(250px, 35vw, 400px);
+  margin-top: 4px;
+`;
+
+const InputCount = styled.div`
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.9rem, 1.5vw, 1.2rem);
+  color: ${props => props.$side === 'left' ? '#3498db' : '#e74c3c'};
+  text-shadow: 
+    -2px -2px 0 #000, 2px -2px 0 #000, 
+    -2px 2px 0 #000, 2px 2px 0 #000,
+    0 0 10px ${props => props.$side === 'left' ? 'rgba(52, 152, 219, 0.6)' : 'rgba(231, 76, 60, 0.6)'};
+  
+  ${props => props.$isWinner && css`
+    color: #00ff00;
+    text-shadow: 
+      -2px -2px 0 #000, 2px -2px 0 #000, 
+      -2px 2px 0 #000, 2px 2px 0 #000,
+      0 0 15px rgba(0, 255, 0, 0.9);
+  `}
+`;
+
+const TimerBar = styled.div`
+  width: clamp(250px, 35vw, 400px);
+  height: 6px;
+  background: #1a1a2e;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 4px;
+`;
+
+const TimerFill = styled.div`
+  width: ${props => props.$percent}%;
+  height: 100%;
+  background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f);
+  border-radius: 3px;
+  transition: width 0.05s linear;
+  box-shadow: 0 0 10px rgba(241, 196, 15, 0.6);
 `;
 
 const GrabClashUI = ({ socket, player1, player2 }) => {
@@ -100,12 +264,13 @@ const GrabClashUI = ({ socket, player1, player2 }) => {
   const [player1Inputs, setPlayer1Inputs] = useState(0);
   const [player2Inputs, setPlayer2Inputs] = useState(0);
   const [timeLeft, setTimeLeft] = useState(2000);
+  const [duration, setDuration] = useState(2000);
   const [player1Id, setPlayer1Id] = useState(null);
   const [player2Id, setPlayer2Id] = useState(null);
   const [leftPlayerId, setLeftPlayerId] = useState(null);
   const [rightPlayerId, setRightPlayerId] = useState(null);
-  const [winnerSide, setWinnerSide] = useState(null); // 'left' or 'right'
-  const spatialLayoutRef = useRef({ leftPlayerId: null, rightPlayerId: null }); // Persistent storage
+  const [winnerSide, setWinnerSide] = useState(null);
+  const spatialLayoutRef = useRef({ leftPlayerId: null, rightPlayerId: null });
 
   useEffect(() => {
     if (!socket) return;
@@ -116,20 +281,19 @@ const GrabClashUI = ({ socket, player1, player2 }) => {
       setPlayer1Inputs(0);
       setPlayer2Inputs(0);
       setTimeLeft(data.duration);
+      setDuration(data.duration);
       setPlayer1Id(data.player1Id);
       setPlayer2Id(data.player2Id);
+      setWinnerSide(null);
       
-      // Determine left and right players based on their positions
       const player1Pos = data.player1Position;
       const player2Pos = data.player2Position;
       
       let newLeftPlayerId, newRightPlayerId;
       if (player1Pos.x < player2Pos.x) {
-        // Player 1 is on the left, Player 2 is on the right
         newLeftPlayerId = data.player1Id;
         newRightPlayerId = data.player2Id;
       } else {
-        // Player 2 is on the left, Player 1 is on the right
         newLeftPlayerId = data.player2Id;
         newRightPlayerId = data.player1Id;
       }
@@ -137,18 +301,11 @@ const GrabClashUI = ({ socket, player1, player2 }) => {
       setLeftPlayerId(newLeftPlayerId);
       setRightPlayerId(newRightPlayerId);
       
-      // Store in persistent ref so it doesn't get cleared
       spatialLayoutRef.current = {
         leftPlayerId: newLeftPlayerId,
         rightPlayerId: newRightPlayerId
       };
       
-      console.log('🥊 CLIENT: UI state updated - visible:', true, 'player1Id:', data.player1Id, 'player2Id:', data.player2Id);
-      console.log('🥊 CLIENT: Positions - player1:', player1Pos, 'player2:', player2Pos);
-      console.log('🥊 CLIENT: Layout - leftPlayerId:', newLeftPlayerId, 'rightPlayerId:', newRightPlayerId);
-      console.log('🥊 CLIENT: Stored in ref - leftPlayerId:', spatialLayoutRef.current.leftPlayerId, 'rightPlayerId:', spatialLayoutRef.current.rightPlayerId);
-      
-      // Start countdown timer
       const startTime = Date.now();
       const timer = setInterval(() => {
         const elapsed = Date.now() - startTime;
@@ -162,30 +319,19 @@ const GrabClashUI = ({ socket, player1, player2 }) => {
     };
 
     const handleGrabClashProgress = (data) => {
-      console.log('🥊 CLIENT: Received grab clash progress:', data);
       setPlayer1Inputs(data.player1Inputs);
       setPlayer2Inputs(data.player2Inputs);
     };
 
     const handleGrabClashEnd = (data) => {
       console.log('🥊 CLIENT: Grab clash ended:', data);
-      console.log('🥊 CLIENT: Final inputs - Winner:', data.winnerId, 'WinnerInputs:', data.winnerInputs, 'LoserInputs:', data.loserInputs);
-      console.log('🥊 CLIENT: Current layout state - leftPlayerId:', leftPlayerId, 'rightPlayerId:', rightPlayerId);
-      console.log('🥊 CLIENT: Persistent layout ref - leftPlayerId:', spatialLayoutRef.current.leftPlayerId, 'rightPlayerId:', spatialLayoutRef.current.rightPlayerId);
       
-      // Use the persistent ref instead of state that might be cleared
       const refLeftPlayerId = spatialLayoutRef.current.leftPlayerId;
-      const refRightPlayerId = spatialLayoutRef.current.rightPlayerId;
-      
-      // Determine which side won using the ref values
       const winnerIsLeft = data.winnerId === refLeftPlayerId;
       const winnerSideValue = winnerIsLeft ? 'left' : 'right';
       
-      console.log('🥊 CLIENT: Winner determination - winnerId:', data.winnerId, 'refLeftPlayerId:', refLeftPlayerId, 'winnerIsLeft:', winnerIsLeft, 'winnerSide:', winnerSideValue);
-      
       setWinnerSide(winnerSideValue);
       
-      // Flash green for 0.5 seconds, then hide
       setTimeout(() => {
         setIsVisible(false);
         setPlayer1Inputs(0);
@@ -196,59 +342,109 @@ const GrabClashUI = ({ socket, player1, player2 }) => {
         setLeftPlayerId(null);
         setRightPlayerId(null);
         setWinnerSide(null);
-        // Clear the ref as well
         spatialLayoutRef.current = { leftPlayerId: null, rightPlayerId: null };
-        console.log('🥊 CLIENT: UI hidden after grab clash');
-      }, 500);
+      }, 600);
+    };
+
+    const handleGrabClashCancelled = () => {
+      setIsVisible(false);
+      setPlayer1Inputs(0);
+      setPlayer2Inputs(0);
+      setTimeLeft(2000);
+      setPlayer1Id(null);
+      setPlayer2Id(null);
+      setLeftPlayerId(null);
+      setRightPlayerId(null);
+      setWinnerSide(null);
+      spatialLayoutRef.current = { leftPlayerId: null, rightPlayerId: null };
     };
 
     socket.on('grab_clash_start', handleGrabClashStart);
     socket.on('grab_clash_progress', handleGrabClashProgress);
     socket.on('grab_clash_end', handleGrabClashEnd);
+    socket.on('grab_clash_cancelled', handleGrabClashCancelled);
 
     return () => {
       socket.off('grab_clash_start', handleGrabClashStart);
       socket.off('grab_clash_progress', handleGrabClashProgress);
       socket.off('grab_clash_end', handleGrabClashEnd);
+      socket.off('grab_clash_cancelled', handleGrabClashCancelled);
     };
   }, [socket]);
 
-  // Calculate line position based on spatial layout (0-100%)
+  // Calculate fill percentages for the tug-of-war bar
   const totalInputs = player1Inputs + player2Inputs;
-  let linePosition = 50; // Start in center
+  let leftFillPercent = 50;
+  let rightFillPercent = 50;
+  let indicatorPosition = 50;
   
   if (totalInputs > 0 && leftPlayerId && rightPlayerId) {
-    // Get inputs for left and right players based on spatial positions
     const leftPlayerInputs = leftPlayerId === player1Id ? player1Inputs : player2Inputs;
     const rightPlayerInputs = rightPlayerId === player1Id ? player1Inputs : player2Inputs;
     
-    // Calculate ratio based on left player inputs
-    const leftPlayerRatio = leftPlayerInputs / totalInputs;
-    // Map from 0-1 to 85-15 (left player having more inputs moves line left)
-    // Reversed: 0 = line at 85% (right), 1 = line at 15% (left)
-    linePosition = 85 - (leftPlayerRatio * 70);
+    // Calculate percentages - each side fills from their edge toward center
+    const leftRatio = leftPlayerInputs / totalInputs;
+    const rightRatio = rightPlayerInputs / totalInputs;
+    
+    // Fill percentages (0-50% each, meeting in the middle)
+    leftFillPercent = leftRatio * 50;
+    rightFillPercent = rightRatio * 50;
+    
+    // Indicator moves based on who's winning (15% to 85%)
+    indicatorPosition = 50 + ((rightRatio - leftRatio) * 35);
   }
 
-  const formatTime = (ms) => {
-    return (ms / 1000).toFixed(1);
-  };
+  const leftInputs = leftPlayerId === player1Id ? player1Inputs : player2Inputs;
+  const rightInputs = rightPlayerId === player1Id ? player1Inputs : player2Inputs;
 
-  // Debug logging for winner side
-  if (winnerSide) {
-    console.log('🥊 CLIENT: Rendering with winnerSide:', winnerSide, 'Player1Zone isWinner:', winnerSide === 'left', 'Player2Zone isWinner:', winnerSide === 'right');
-  }
+  const timerPercent = (timeLeft / duration) * 100;
 
   return (
-    <GrabClashContainer isVisible={isVisible}>
-      <Timer>{formatTime(timeLeft)}s</Timer>
-      <ClashMeter>
-        <Player1Zone isWinner={winnerSide === 'left'} />
-        <Player2Zone isWinner={winnerSide === 'right'} />
-        <CenterLine />
-        <ClashLine position={linePosition} />
-      </ClashMeter>
+    <GrabClashContainer $isVisible={isVisible}>
+      <MashTitle>⚡ MASH TO WIN! ⚡</MashTitle>
+      <ClashMeterContainer>
+        <PlayerArrow 
+          $side="left" 
+          $isWinner={winnerSide === 'left'}
+          $isLoser={winnerSide === 'right'}
+        >
+          ➤
+        </PlayerArrow>
+        <ClashMeter>
+          <Player1Fill 
+            $fillPercent={leftFillPercent * 2} 
+            $isWinner={winnerSide === 'left'}
+            $isLoser={winnerSide === 'right'}
+          />
+          <Player2Fill 
+            $fillPercent={rightFillPercent * 2} 
+            $isWinner={winnerSide === 'right'}
+            $isLoser={winnerSide === 'left'}
+          />
+          <CenterLine />
+          <ClashIndicator $position={indicatorPosition} />
+        </ClashMeter>
+        <PlayerArrow 
+          $side="right"
+          $isWinner={winnerSide === 'right'}
+          $isLoser={winnerSide === 'left'}
+        >
+          ➤
+        </PlayerArrow>
+      </ClashMeterContainer>
+      <InputCounters>
+        <InputCount $side="left" $isWinner={winnerSide === 'left'}>
+          {leftInputs}
+        </InputCount>
+        <InputCount $side="right" $isWinner={winnerSide === 'right'}>
+          {rightInputs}
+        </InputCount>
+      </InputCounters>
+      <TimerBar>
+        <TimerFill $percent={timerPercent} />
+      </TimerBar>
     </GrabClashContainer>
   );
 };
 
-export default GrabClashUI; 
+export default GrabClashUI;
