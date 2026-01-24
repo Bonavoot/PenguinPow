@@ -1370,7 +1370,7 @@ io.on("connection", (socket) => {
                 io.in(room.id).emit("raw_parry_success", {
                   attackerX: thrower ? thrower.x : snowball.x,
                   parrierX: opponent.x,
-                  facing: opponent.facing,
+                  facing: thrower ? thrower.facing : -opponent.facing, // Use attacker's facing for consistency with melee
                   isPerfect: false,
                   timestamp: Date.now(),
                   parryId: `${opponent.id}_snowball_parry_${Date.now()}`,
@@ -1536,7 +1536,7 @@ io.on("connection", (socket) => {
                 io.in(room.id).emit("raw_parry_success", {
                   attackerX: spawner ? spawner.x : clone.x,
                   parrierX: opponent.x,
-                  facing: opponent.facing,
+                  facing: spawner ? spawner.facing : -opponent.facing, // Use attacker's facing for consistency with melee
                   isPerfect: false,
                   timestamp: Date.now(),
                   parryId: `${opponent.id}_pumo_parry_${Date.now()}`,

@@ -37,7 +37,7 @@ const FighterUIContainer = styled.div`
     rgba(11, 16, 32, 0.5) 70%,
     rgba(0, 0, 0, 0) 100%
   );
-  border-bottom: 2px solid rgba(212, 175, 55, 0.3);
+  
 
   @media (max-width: 768px) {
     height: clamp(90px, 11vh, 110px);

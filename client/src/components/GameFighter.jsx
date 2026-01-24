@@ -83,6 +83,7 @@ import pumoArmySound from "../sounds/pumo-army-sound.mp3";
 import thickBlubberSound from "../sounds/thick-blubber-sound.mp3";
 import rawParryGruntSound from "../sounds/raw-parry-grunt.mp3";
 import rawParrySuccessSound from "../sounds/raw-parry-success-sound.wav";
+import regularRawParrySound from "../sounds/regular-raw-parry-sound.wav";
 import grabBreakSound from "../sounds/grab-break-sound.wav";
 import notEnoughStaminaSound from "../sounds/not-enough-stamina-sound.wav";
 import grabClashSound from "../sounds/grab-clash-sound.wav";
@@ -146,6 +147,7 @@ const initializeAudioPools = () => {
   createAudioPool(thickBlubberSound, 2);
   createAudioPool(rawParryGruntSound, 2);
   createAudioPool(rawParrySuccessSound, 2);
+  createAudioPool(regularRawParrySound, 2);
   createAudioPool(grabBreakSound, 2);
   createAudioPool(notEnoughStaminaSound, 2);
   createAudioPool(grabClashSound, 2);
@@ -1494,13 +1496,15 @@ const GameFighter = ({
 
     socket.on("raw_parry_success", (data) => {
       console.log("Received raw_parry_success event:", data);
-      if (data && typeof data.attackerX === "number" && typeof data.parrierX === "number") {
-        // Calculate center position between attacker and parrier (same as grab break)
-        const centerX = (data.attackerX + data.parrierX) / 2;
+      if (data && typeof data.parrierX === "number") {
+        // Position effect in front of the parrying player (where a hit effect would appear)
+        const facing = data.facing || 1;
+        // Offset in front of the parrier based on facing direction
+        const frontOffset = facing === 1 ? 80 : -80;
         const effectData = {
-          x: centerX + 150,
-          y: GROUND_LEVEL + 110, // Same Y as grab break effect
-          facing: data.facing || 1,
+          x: data.parrierX + 150 + frontOffset,
+          y: GROUND_LEVEL + 110,
+          facing: facing,
           timestamp: data.timestamp,
           parryId: data.parryId,
           isPerfect: data.isPerfect || false,
@@ -1508,7 +1512,12 @@ const GameFighter = ({
         };
         console.log("Setting rawParryEffectPosition:", effectData);
         setRawParryEffectPosition(effectData);
-        playSound(rawParrySuccessSound, 0.01);
+        // Play different sounds for regular vs perfect parry
+        if (data.isPerfect) {
+          playSound(rawParrySuccessSound, 0.01);
+        } else {
+          playSound(regularRawParrySound, 0.03);
+        }
       } else {
         console.warn("Invalid raw_parry_success data:", data);
       }

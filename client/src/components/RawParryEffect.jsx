@@ -60,8 +60,8 @@ const ParryTextSide = styled.div`
 const RawParryEffectContainer = styled.div.attrs((props) => ({
   style: {
     position: "absolute",
-    // Same positioning as GrabBreakEffect for consistency
-    left: `${(props.$x / 1280) * 100 - 4}%`,
+    // Position in front of the parrying player (same as hit effect positioning)
+    left: `${(props.$x / 1280) * 100 + (props.$facing === 1 ? -2 : -4)}%`,
     bottom: `${(props.$y / 720) * 100 + 5}%`,
     transform: "translate(-50%, -50%)",
     zIndex: 100,

@@ -1,262 +1,296 @@
 import React, { useState, useEffect, useRef } from 'react';
 import styled, { keyframes, css } from 'styled-components';
 
-// Animations
-const pulseGlow = keyframes`
+// Subtle tension animation
+const tensionPulse = keyframes`
   0%, 100% {
-    box-shadow: 0 0 20px rgba(255, 200, 0, 0.6), 0 0 40px rgba(255, 150, 0, 0.4), inset 0 0 20px rgba(255, 200, 0, 0.2);
+    transform: translateX(-50%) scale(1);
   }
   50% {
-    box-shadow: 0 0 30px rgba(255, 200, 0, 0.9), 0 0 60px rgba(255, 150, 0, 0.6), inset 0 0 30px rgba(255, 200, 0, 0.3);
+    transform: translateX(-50%) scale(1.01);
   }
 `;
 
-const shakeIntense = keyframes`
-  0%, 100% { transform: translateX(-50%) rotate(0deg); }
-  10% { transform: translateX(-50%) rotate(-1deg) translateY(-2px); }
-  20% { transform: translateX(-50%) rotate(1deg) translateY(1px); }
-  30% { transform: translateX(-50%) rotate(-1deg) translateY(-1px); }
-  40% { transform: translateX(-50%) rotate(1deg) translateY(2px); }
-  50% { transform: translateX(-50%) rotate(-1deg) translateY(-2px); }
-  60% { transform: translateX(-50%) rotate(1deg) translateY(1px); }
-  70% { transform: translateX(-50%) rotate(-1deg) translateY(-1px); }
-  80% { transform: translateX(-50%) rotate(1deg) translateY(2px); }
-  90% { transform: translateX(-50%) rotate(-1deg) translateY(-1px); }
+// Indicator glow pulse
+const indicatorPulse = keyframes`
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 14px rgba(255, 255, 255, 0.9);
+  }
 `;
 
-const flashMash = keyframes`
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.7; transform: scale(1.1); }
+// Winner flash
+const winnerFlash = keyframes`
+  0% { opacity: 1; }
+  50% { opacity: 0.7; }
+  100% { opacity: 1; }
 `;
 
-const winnerExplosion = keyframes`
+// Title entrance
+const titleEnter = keyframes`
   0% {
-    background: linear-gradient(90deg, #00ff00, #00cc00);
-    box-shadow: 0 0 30px rgba(0, 255, 0, 0.8);
-  }
-  50% {
-    background: linear-gradient(90deg, #88ff88, #00ff00);
-    box-shadow: 0 0 60px rgba(0, 255, 0, 1);
+    opacity: 0;
+    transform: translateY(-10px);
   }
   100% {
-    background: linear-gradient(90deg, #00ff00, #00cc00);
-    box-shadow: 0 0 30px rgba(0, 255, 0, 0.8);
+    opacity: 1;
+    transform: translateY(0);
   }
 `;
 
-const loserDim = keyframes`
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 0.2; }
-`;
-
-const arrowBounce = keyframes`
-  0%, 100% { transform: translateX(0); }
-  50% { transform: translateX(5px); }
-`;
-
-const arrowBounceLeft = keyframes`
-  0%, 100% { transform: translateX(0) scaleX(-1); }
-  50% { transform: translateX(-5px) scaleX(-1); }
+// Mash text pulse animation
+const mashPulse = keyframes`
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
 `;
 
 const GrabClashContainer = styled.div`
   position: absolute;
-  top: 32%;
+  top: 30%;
   left: 50%;
   transform: translateX(-50%);
   z-index: 1000;
   display: ${props => props.$isVisible ? 'flex' : 'none'};
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  animation: ${shakeIntense} 0.15s infinite linear;
+  gap: 6px;
+  animation: ${tensionPulse} 0.3s infinite ease-in-out;
 `;
 
-const MashTitle = styled.div`
+// Header container for title and instruction
+const ClashHeader = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  animation: ${titleEnter} 0.2s ease-out;
+`;
+
+// Clean, bold title with Japanese-inspired styling
+const ClashTitle = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(1.2rem, 3vw, 2rem);
-  color: #ffcc00;
-  text-shadow: 
-    -3px -3px 0 #000, 3px -3px 0 #000, 
-    -3px 3px 0 #000, 3px 3px 0 #000,
-    0 0 20px rgba(255, 200, 0, 0.9),
-    0 0 40px rgba(255, 150, 0, 0.6);
+  font-size: clamp(0.75rem, 1.8vw, 1.1rem);
+  color: #999;
+  text-transform: uppercase;
   letter-spacing: 0.15em;
-  animation: ${flashMash} 0.3s infinite;
-  white-space: nowrap;
+`;
+
+// Mash instruction - prominent and animated
+const MashInstruction = styled.div`
+  font-family: "Bungee", cursive;
+  font-size: clamp(1.1rem, 2.8vw, 1.8rem);
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 8px 24px;
+  background: linear-gradient(180deg, #2a2a2a 0%, #1a1a1a 100%);
+  border: 2px solid #d4af37;
+  border-bottom: 3px solid #b8960c;
+  position: relative;
+  animation: ${mashPulse} 0.25s infinite ease-in-out;
+  
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(212, 175, 55, 0.5), transparent);
+  }
 `;
 
 const ClashMeterContainer = styled.div`
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 0;
 `;
 
-const PlayerArrow = styled.div`
-  font-size: 24px;
-  color: ${props => props.$side === 'left' ? '#3498db' : '#e74c3c'};
-  text-shadow: 0 0 10px ${props => props.$side === 'left' ? 'rgba(52, 152, 219, 0.8)' : 'rgba(231, 76, 60, 0.8)'};
-  animation: ${props => props.$side === 'left' ? arrowBounceLeft : arrowBounce} 0.4s infinite;
+// Player side indicators - clean triangular markers
+const PlayerMarker = styled.div`
+  width: 0;
+  height: 0;
+  border-top: 12px solid transparent;
+  border-bottom: 12px solid transparent;
+  ${props => props.$side === 'left' 
+    ? 'border-left: 14px solid;' 
+    : 'border-right: 14px solid;'}
+  border-${props => props.$side}-color: ${props => props.$side === 'left' ? '#4a90d9' : '#d94a4a'};
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.4));
+  transition: all 0.2s ease;
   
   ${props => props.$isWinner && css`
-    color: #00ff00;
-    text-shadow: 0 0 20px rgba(0, 255, 0, 1);
-    font-size: 28px;
+    border-${props.$side}-color: #d4af37;
+    filter: drop-shadow(0 0 8px rgba(212, 175, 55, 0.8));
+    animation: ${winnerFlash} 0.15s infinite;
   `}
   
   ${props => props.$isLoser && css`
     opacity: 0.3;
-    animation: none;
   `}
 `;
 
-const ClashMeter = styled.div`
-  width: clamp(250px, 35vw, 400px);
-  height: 35px;
-  background: linear-gradient(180deg, #1a1a2e, #0f0f1a);
-  border: 3px solid #ffcc00;
-  border-radius: 20px;
+// Main meter frame with traditional-inspired styling
+const ClashMeterFrame = styled.div`
+  width: clamp(240px, 32vw, 380px);
+  height: 32px;
+  background: #0d0d0d;
+  border: 3px solid #3a3a3a;
+  border-top-color: #4a4a4a;
+  border-bottom-color: #2a2a2a;
   position: relative;
   overflow: hidden;
-  animation: ${pulseGlow} 0.5s infinite;
-`;
-
-const Player1Fill = styled.div`
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: ${props => props.$fillPercent}%;
-  height: 100%;
-  background: linear-gradient(90deg, #2980b9, #3498db, #5dade2);
-  border-radius: 17px 0 0 17px;
-  transition: width 0.1s ease-out;
-  box-shadow: inset 0 2px 10px rgba(255, 255, 255, 0.3);
   
-  ${props => props.$isWinner && css`
-    animation: ${winnerExplosion} 0.2s infinite;
-  `}
-  
-  ${props => props.$isLoser && css`
-    animation: ${loserDim} 0.3s infinite;
-    opacity: 0.4;
-  `}
-`;
-
-const Player2Fill = styled.div`
-  position: absolute;
-  right: 0;
-  top: 0;
-  width: ${props => props.$fillPercent}%;
-  height: 100%;
-  background: linear-gradient(270deg, #c0392b, #e74c3c, #ec7063);
-  border-radius: 0 17px 17px 0;
-  transition: width 0.1s ease-out;
-  box-shadow: inset 0 2px 10px rgba(255, 255, 255, 0.3);
-  
-  ${props => props.$isWinner && css`
-    animation: ${winnerExplosion} 0.2s infinite;
-  `}
-  
-  ${props => props.$isLoser && css`
-    animation: ${loserDim} 0.3s infinite;
-    opacity: 0.4;
-  `}
-`;
-
-const CenterLine = styled.div`
-  position: absolute;
-  left: 50%;
-  top: -5px;
-  transform: translateX(-50%);
-  width: 4px;
-  height: calc(100% + 10px);
-  background: linear-gradient(180deg, #fff, #ffcc00, #fff);
-  border-radius: 2px;
-  box-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
-  z-index: 5;
-`;
-
-const ClashIndicator = styled.div`
-  position: absolute;
-  top: 50%;
-  left: ${props => props.$position}%;
-  transform: translate(-50%, -50%);
-  width: 12px;
-  height: 45px;
-  background: linear-gradient(180deg, #fff, #ffcc00, #ffa500);
-  border-radius: 6px;
-  box-shadow: 0 0 15px rgba(255, 200, 0, 0.9), 0 0 30px rgba(255, 150, 0, 0.6);
-  transition: left 0.08s ease-out;
-  z-index: 10;
-  
+  /* Inner shadow for depth */
   &::before {
     content: '';
     position: absolute;
-    top: -8px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 0;
-    height: 0;
-    border-left: 8px solid transparent;
-    border-right: 8px solid transparent;
-    border-bottom: 8px solid #ffcc00;
+    inset: 0;
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.6);
+    pointer-events: none;
+    z-index: 3;
   }
   
+  /* Gold accent line at top */
   &::after {
     content: '';
     position: absolute;
-    bottom: -8px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 0;
-    height: 0;
-    border-left: 8px solid transparent;
-    border-right: 8px solid transparent;
-    border-top: 8px solid #ffcc00;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, #d4af37 0%, #f4d03f 50%, #d4af37 100%);
+    z-index: 4;
   }
 `;
 
-const InputCounters = styled.div`
-  display: flex;
-  justify-content: space-between;
-  width: clamp(250px, 35vw, 400px);
-  margin-top: 4px;
-`;
-
-const InputCount = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.9rem, 1.5vw, 1.2rem);
-  color: ${props => props.$side === 'left' ? '#3498db' : '#e74c3c'};
-  text-shadow: 
-    -2px -2px 0 #000, 2px -2px 0 #000, 
-    -2px 2px 0 #000, 2px 2px 0 #000,
-    0 0 10px ${props => props.$side === 'left' ? 'rgba(52, 152, 219, 0.6)' : 'rgba(231, 76, 60, 0.6)'};
+const PlayerFill = styled.div`
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  ${props => props.$side === 'left' ? 'left: 2px;' : 'right: 2px;'}
+  width: calc(${props => props.$fillPercent}% - 2px);
+  background: ${props => props.$side === 'left' 
+    ? 'linear-gradient(180deg, #5a9fd4 0%, #3a7fb4 50%, #2a6f9f 100%)'
+    : 'linear-gradient(180deg, #d45a5a 0%, #b43a3a 50%, #9f2a2a 100%)'};
+  ${props => props.$side === 'left' 
+    ? 'border-radius: 2px 0 0 2px;' 
+    : 'border-radius: 0 2px 2px 0;'}
+  transition: width 0.1s ease-out;
+  
+  /* Highlight stripe */
+  &::before {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 4px;
+    right: 4px;
+    height: 6px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.25) 0%, transparent 100%);
+    border-radius: 2px;
+  }
   
   ${props => props.$isWinner && css`
-    color: #00ff00;
-    text-shadow: 
-      -2px -2px 0 #000, 2px -2px 0 #000, 
-      -2px 2px 0 #000, 2px 2px 0 #000,
-      0 0 15px rgba(0, 255, 0, 0.9);
+    background: ${props.$side === 'left'
+      ? 'linear-gradient(180deg, #d4af37 0%, #b8960c 50%, #9a7b0a 100%)'
+      : 'linear-gradient(180deg, #d4af37 0%, #b8960c 50%, #9a7b0a 100%)'};
+  `}
+  
+  ${props => props.$isLoser && css`
+    opacity: 0.35;
   `}
 `;
 
-const TimerBar = styled.div`
-  width: clamp(250px, 35vw, 400px);
-  height: 6px;
-  background: #1a1a2e;
-  border-radius: 3px;
-  overflow: hidden;
-  margin-top: 4px;
+// Center divider line
+const CenterDivider = styled.div`
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+  width: 2px;
+  height: 100%;
+  background: #555;
+  z-index: 2;
+  
+  &::before, &::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 8px;
+    height: 2px;
+    background: #666;
+  }
+  
+  &::before { top: 0; }
+  &::after { bottom: 0; }
 `;
 
-const TimerFill = styled.div`
+// Position indicator - clean vertical bar
+const PositionIndicator = styled.div`
+  position: absolute;
+  top: -4px;
+  left: ${props => props.$position}%;
+  transform: translateX(-50%);
+  width: 6px;
+  height: calc(100% + 8px);
+  background: linear-gradient(180deg, #fff 0%, #e0e0e0 50%, #fff 100%);
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  transition: left 0.08s ease-out;
+  z-index: 10;
+  animation: ${indicatorPulse} 0.4s infinite ease-in-out;
+`;
+
+// Stats row below meter
+const StatsRow = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: clamp(240px, 32vw, 380px);
+  padding: 0 4px;
+`;
+
+const InputDisplay = styled.div`
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.85rem, 1.4vw, 1.1rem);
+  color: ${props => props.$side === 'left' ? '#5a9fd4' : '#d45a5a'};
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+  min-width: 40px;
+  text-align: ${props => props.$side === 'left' ? 'left' : 'right'};
+  transition: all 0.15s ease;
+  
+  ${props => props.$isWinner && css`
+    color: #d4af37;
+    text-shadow: 0 0 8px rgba(212, 175, 55, 0.6), 1px 1px 2px rgba(0, 0, 0, 0.8);
+  `}
+`;
+
+// Compact timer bar
+const TimerContainer = styled.div`
+  width: clamp(240px, 32vw, 380px);
+  height: 4px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 2px;
+  overflow: hidden;
+`;
+
+const TimerProgress = styled.div`
   width: ${props => props.$percent}%;
   height: 100%;
-  background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f);
-  border-radius: 3px;
+  background: ${props => props.$percent > 30 
+    ? 'linear-gradient(90deg, #d4af37, #f4d03f)' 
+    : 'linear-gradient(90deg, #d94a4a, #ff6b6b)'};
   transition: width 0.05s linear;
-  box-shadow: 0 0 10px rgba(241, 196, 15, 0.6);
 `;
 
 const GrabClashUI = ({ socket, player1, player2 }) => {
@@ -276,7 +310,7 @@ const GrabClashUI = ({ socket, player1, player2 }) => {
     if (!socket) return;
 
     const handleGrabClashStart = (data) => {
-      console.log('🥊 CLIENT: Grab clash started:', data);
+      console.log('Grab clash started:', data);
       setIsVisible(true);
       setPlayer1Inputs(0);
       setPlayer2Inputs(0);
@@ -324,7 +358,7 @@ const GrabClashUI = ({ socket, player1, player2 }) => {
     };
 
     const handleGrabClashEnd = (data) => {
-      console.log('🥊 CLIENT: Grab clash ended:', data);
+      console.log('Grab clash ended:', data);
       
       const refLeftPlayerId = spatialLayoutRef.current.leftPlayerId;
       const winnerIsLeft = data.winnerId === refLeftPlayerId;
@@ -382,67 +416,65 @@ const GrabClashUI = ({ socket, player1, player2 }) => {
     const leftPlayerInputs = leftPlayerId === player1Id ? player1Inputs : player2Inputs;
     const rightPlayerInputs = rightPlayerId === player1Id ? player1Inputs : player2Inputs;
     
-    // Calculate percentages - each side fills from their edge toward center
     const leftRatio = leftPlayerInputs / totalInputs;
     const rightRatio = rightPlayerInputs / totalInputs;
     
-    // Fill percentages (0-50% each, meeting in the middle)
     leftFillPercent = leftRatio * 50;
     rightFillPercent = rightRatio * 50;
     
-    // Indicator moves based on who's winning (15% to 85%)
-    indicatorPosition = 50 + ((rightRatio - leftRatio) * 35);
+    // Indicator moves based on who's winning (20% to 80%)
+    indicatorPosition = 50 + ((rightRatio - leftRatio) * 30);
   }
 
   const leftInputs = leftPlayerId === player1Id ? player1Inputs : player2Inputs;
   const rightInputs = rightPlayerId === player1Id ? player1Inputs : player2Inputs;
-
   const timerPercent = (timeLeft / duration) * 100;
 
   return (
     <GrabClashContainer $isVisible={isVisible}>
-      <MashTitle>⚡ MASH TO WIN! ⚡</MashTitle>
+      <ClashHeader>
+        <ClashTitle>CLASH</ClashTitle>
+        <MashInstruction>MASH!</MashInstruction>
+      </ClashHeader>
       <ClashMeterContainer>
-        <PlayerArrow 
+        <PlayerMarker 
           $side="left" 
           $isWinner={winnerSide === 'left'}
           $isLoser={winnerSide === 'right'}
-        >
-          ➤
-        </PlayerArrow>
-        <ClashMeter>
-          <Player1Fill 
+        />
+        <ClashMeterFrame>
+          <PlayerFill 
+            $side="left"
             $fillPercent={leftFillPercent * 2} 
             $isWinner={winnerSide === 'left'}
             $isLoser={winnerSide === 'right'}
           />
-          <Player2Fill 
+          <PlayerFill 
+            $side="right"
             $fillPercent={rightFillPercent * 2} 
             $isWinner={winnerSide === 'right'}
             $isLoser={winnerSide === 'left'}
           />
-          <CenterLine />
-          <ClashIndicator $position={indicatorPosition} />
-        </ClashMeter>
-        <PlayerArrow 
+          <CenterDivider />
+          <PositionIndicator $position={indicatorPosition} />
+        </ClashMeterFrame>
+        <PlayerMarker 
           $side="right"
           $isWinner={winnerSide === 'right'}
           $isLoser={winnerSide === 'left'}
-        >
-          ➤
-        </PlayerArrow>
+        />
       </ClashMeterContainer>
-      <InputCounters>
-        <InputCount $side="left" $isWinner={winnerSide === 'left'}>
+      <StatsRow>
+        <InputDisplay $side="left" $isWinner={winnerSide === 'left'}>
           {leftInputs}
-        </InputCount>
-        <InputCount $side="right" $isWinner={winnerSide === 'right'}>
+        </InputDisplay>
+        <InputDisplay $side="right" $isWinner={winnerSide === 'right'}>
           {rightInputs}
-        </InputCount>
-      </InputCounters>
-      <TimerBar>
-        <TimerFill $percent={timerPercent} />
-      </TimerBar>
+        </InputDisplay>
+      </StatsRow>
+      <TimerContainer>
+        <TimerProgress $percent={timerPercent} />
+      </TimerContainer>
     </GrabClashContainer>
   );
 };
