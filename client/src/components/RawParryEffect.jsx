@@ -35,6 +35,34 @@ const textSlideIn = keyframes`
   }
 `;
 
+// Animation for centered text - matches GrabBreakEffect textPop
+const textPop = keyframes`
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0;
+  }
+  20% {
+    transform: translate(-50%, -50%) scale(1.3);
+    opacity: 1;
+  }
+  40% {
+    transform: translate(-50%, -50%) scale(0.9);
+    opacity: 1;
+  }
+  60% {
+    transform: translate(-50%, -50%) scale(1.1);
+    opacity: 1;
+  }
+  80% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0;
+  }
+`;
+
 // Text positioned on player's side of the screen (like combo counter)
 const ParryTextSide = styled.div`
   position: fixed;
@@ -55,6 +83,26 @@ const ParryTextSide = styled.div`
   z-index: 200;
   pointer-events: none;
   text-align: center;
+`;
+
+// Centered text that appears at the parry location - matches GrabBreakEffect positioning and animation
+const ParryTextCenter = styled.div`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  font-family: "Bungee", cursive;
+  font-size: clamp(1rem, 2vw, 1.6rem);
+  color: ${props => props.$isPerfect ? '#FFD700' : '#00BFFF'};
+  text-shadow: 
+    -2px -2px 0 #000, 2px -2px 0 #000, 
+    -2px 2px 0 #000, 2px 2px 0 #000,
+    0 0 15px ${props => props.$isPerfect ? 'rgba(255, 215, 0, 0.9)' : 'rgba(0, 191, 255, 0.9)'};
+  letter-spacing: 0.15em;
+  white-space: nowrap;
+  transform: translate(-50%, -50%) scale(0);
+  animation: ${textPop} 0.6s ease-out forwards;
+  animation-delay: 0.05s;
+  pointer-events: none;
 `;
 
 const RawParryEffectContainer = styled.div.attrs((props) => ({
@@ -99,6 +147,58 @@ const Spark = styled.div`
   opacity: 0;
   transform-origin: center;
   will-change: transform, opacity;
+`;
+
+// Centered text that appears at the parry location
+const CenteredParryText = styled.div`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: "Bungee", cursive;
+  font-size: clamp(1.2rem, 2.4vw, 2rem);
+  font-weight: 400;
+  color: ${props => props.$isPerfect ? '#FFD700' : '#00BFFF'};
+  text-shadow: 
+    -2px -2px 0 #000, 2px -2px 0 #000, 
+    -2px 2px 0 #000, 2px 2px 0 #000,
+    0 0 15px ${props => props.$isPerfect ? 'rgba(255, 215, 0, 0.9)' : 'rgba(0, 191, 255, 0.9)'};
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+  z-index: 101;
+  pointer-events: none;
+  animation: parryTextPop 1.5s ease-out forwards;
+  
+  @keyframes parryTextPop {
+    0% {
+      transform: translate(-50%, -50%) scale(0.3);
+      opacity: 0;
+    }
+    10% {
+      transform: translate(-50%, -50%) scale(1.3);
+      opacity: 1;
+    }
+    18% {
+      transform: translate(-50%, -50%) scale(0.95);
+      opacity: 1;
+    }
+    25% {
+      transform: translate(-50%, -50%) scale(1.05);
+      opacity: 1;
+    }
+    32% {
+      transform: translate(-50%, -50%) scale(1);
+      opacity: 1;
+    }
+    65% {
+      transform: translate(-50%, -50%) scale(1);
+      opacity: 1;
+    }
+    100% {
+      transform: translate(-50%, -50%) scale(1);
+      opacity: 0;
+    }
+  }
 `;
 
 const RawParryEffect = ({ position }) => {
@@ -311,6 +411,10 @@ const RawParryEffect = ({ position }) => {
                   {sparkElements}
                 </ParticleContainer>
               </div>
+              {/* Centered text at the parry location - positioned like GrabBreakEffect */}
+              <ParryTextCenter $isPerfect={effect.isPerfect}>
+                {effect.isPerfect ? "PERFECT" : "PARRY"}
+              </ParryTextCenter>
             </RawParryEffectContainer>
             {/* Parry text on player's side of screen */}
             <ParryTextSide $isPerfect={effect.isPerfect} $isLeftSide={isLeftSide}>
