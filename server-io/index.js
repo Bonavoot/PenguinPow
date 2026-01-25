@@ -203,7 +203,19 @@ const PERFECT_PARRY_WINDOW = 100; // 100ms window for perfect parries
 const PERFECT_PARRY_SUCCESS_DURATION = 2000; // 2 seconds - parrier holds success pose
 const PERFECT_PARRY_ATTACKER_STUN_DURATION = 5000; // 5 seconds - attacker is stunned (gives parrier 3s advantage)
 const PERFECT_PARRY_ANIMATION_LOCK = 600; // 600ms - parrier is locked in parry pose after perfect parry
+const PERFECT_PARRY_MAX_MASH_REDUCTION = 3000; // Max 3 seconds can be reduced through mashing
 // Dodge is now stamina-based, no more charge system
+
+// Calculate stun reduction based on mash count (using square root for diminishing returns)
+// Formula: reduction = min(3000, sqrt(mashCount) * 300)
+// 10 mashes ≈ 948ms, 25 mashes ≈ 1500ms, 50 mashes ≈ 2121ms, 100 mashes = 3000ms (cap)
+function calculatePerfectParryStunReduction(mashCount) {
+  const reduction = Math.min(
+    PERFECT_PARRY_MAX_MASH_REDUCTION,
+    Math.sqrt(mashCount) * 300
+  );
+  return Math.floor(reduction);
+}
 
 // At the ropes constants
 const AT_THE_ROPES_DURATION = 1000; // 1 second stun duration
@@ -327,6 +339,9 @@ function createCPUPlayer(uniqueId) {
     rawParryStartTime: 0,
     rawParryMinDurationMet: false,
     isRawParryStun: false,
+    perfectParryStunStartTime: 0,
+    perfectParryStunMashCount: 0,
+    perfectParryStunBaseTimeout: null,
     isRawParrySuccess: false,
     isPerfectRawParrySuccess: false,
     isAtTheRopes: false,
@@ -583,6 +598,9 @@ function resetRoomAndPlayers(room) {
     player.rawParryStartTime = 0;
     player.rawParryMinDurationMet = false;
     player.isRawParryStun = false;
+    player.perfectParryStunStartTime = 0;
+    player.perfectParryStunMashCount = 0;
+    player.perfectParryStunBaseTimeout = null;
     player.isRawParrySuccess = false;
     player.isPerfectRawParrySuccess = false;
     player.isAtTheRopes = false;
@@ -3589,8 +3607,18 @@ io.on("connection", (socket) => {
       // Apply stun for perfect parries (separate from knockback)
       if (isPerfectParry) {
         // Perfect parries have much longer stun - 5 seconds to give parrier a huge advantage
-        const stunDuration = PERFECT_PARRY_ATTACKER_STUN_DURATION;
+        // But player can mash to reduce it (max 3s reduction)
+        const baseStunDuration = PERFECT_PARRY_ATTACKER_STUN_DURATION;
         player.isRawParryStun = true;
+        
+        // Initialize mashing tracking
+        player.perfectParryStunStartTime = Date.now();
+        player.perfectParryStunMashCount = 0;
+        
+        // Clear any previous perfect parry stun timeout
+        if (player.perfectParryStunBaseTimeout) {
+          timeoutManager.clearPlayerSpecific(player.id, "perfectParryStunReset");
+        }
 
         // Emit screen shake for perfect parry with higher intensity
         if (currentRoom) {
@@ -3611,10 +3639,14 @@ io.on("connection", (socket) => {
         }
 
         // Reset stun after appropriate duration (separate from knockback)
+        // This will be dynamically updated as player mashes
         setPlayerTimeout(
           player.id,
           () => {
             player.isRawParryStun = false;
+            player.perfectParryStunStartTime = 0;
+            player.perfectParryStunMashCount = 0;
+            player.perfectParryStunBaseTimeout = null;
 
             // After stun ends, check if we should restart charging
             if (
@@ -3639,9 +3671,12 @@ io.on("connection", (socket) => {
               player.attackType = "charged";
             }
           },
-          stunDuration,
+          baseStunDuration,
           "perfectParryStunReset" // Named timeout for easier debugging
         );
+        
+        // Store that we have an active stun timeout
+        player.perfectParryStunBaseTimeout = true;
       } else {
         // Regular parry - emit screen shake with lower intensity
         if (currentRoom) {
@@ -4034,6 +4069,9 @@ io.on("connection", (socket) => {
         rawParryStartTime: 0,
         rawParryMinDurationMet: false,
         isRawParryStun: false,
+        perfectParryStunStartTime: 0,
+        perfectParryStunMashCount: 0,
+        perfectParryStunBaseTimeout: null,
         isRawParrySuccess: false,
         isPerfectRawParrySuccess: false,
         isAtTheRopes: false,
@@ -4165,6 +4203,9 @@ io.on("connection", (socket) => {
         rawParryStartTime: 0,
         rawParryMinDurationMet: false,
         isRawParryStun: false,
+        perfectParryStunStartTime: 0,
+        perfectParryStunMashCount: 0,
+        perfectParryStunBaseTimeout: null,
         isRawParrySuccess: false,
         isPerfectRawParrySuccess: false,
         isAtTheRopes: false,
@@ -4361,6 +4402,9 @@ io.on("connection", (socket) => {
       rawParryStartTime: 0,
       rawParryMinDurationMet: false,
       isRawParryStun: false,
+      perfectParryStunStartTime: 0,
+      perfectParryStunMashCount: 0,
+      perfectParryStunBaseTimeout: null,
       isRawParrySuccess: false,
       isPerfectRawParrySuccess: false,
       isAtTheRopes: false,
@@ -4818,6 +4862,108 @@ io.on("connection", (socket) => {
         console.log(
           `Player ${player.id} mashed input during grab clash. Total inputs: ${player.grabClashInputCount}`
         );
+      }
+    }
+
+    // Count inputs during perfect parry stun - HAPPENS BEFORE BLOCKING
+    if (player.isRawParryStun && player.perfectParryStunStartTime > 0 && data.keys) {
+      // Track previous keys for input detection
+      const previousKeys = { ...player.keys };
+      
+      // Update player keys FIRST so next event can detect changes
+      player.keys = data.keys;
+      
+      // Count any key press (not key holds) as mashing input
+      const mashKeys = [
+        "w",
+        "a",
+        "s",
+        "d",
+        "mouse1",
+        "mouse2",
+        "e",
+        "f",
+        "shift",
+      ];
+      let inputDetected = false;
+      
+      for (const key of mashKeys) {
+        if (data.keys[key] && !previousKeys[key]) {
+          inputDetected = true;
+          break;
+        }
+      }
+      
+      if (inputDetected) {
+        player.perfectParryStunMashCount++;
+        
+        // Calculate the new reduced stun duration
+        const reduction = calculatePerfectParryStunReduction(player.perfectParryStunMashCount);
+        const newStunDuration = Math.max(
+          PERFECT_PARRY_ATTACKER_STUN_DURATION - reduction,
+          PERFECT_PARRY_ATTACKER_STUN_DURATION - PERFECT_PARRY_MAX_MASH_REDUCTION
+        );
+        
+        // Calculate how much time has elapsed since stun started
+        const elapsedTime = Date.now() - player.perfectParryStunStartTime;
+        const remainingTime = newStunDuration - elapsedTime;
+        
+        // Only update if there's still time remaining and we haven't finished
+        if (remainingTime > 0) {
+          // Clear the old timeout
+          timeoutManager.clearPlayerSpecific(player.id, "perfectParryStunReset");
+          
+          // Set new timeout with reduced duration
+          setPlayerTimeout(
+            player.id,
+            () => {
+              player.isRawParryStun = false;
+              player.perfectParryStunStartTime = 0;
+              player.perfectParryStunMashCount = 0;
+              player.perfectParryStunBaseTimeout = null;
+
+              // After stun ends, check if we should restart charging
+              if (
+                player.keys.mouse2 &&
+                !player.isAttacking &&
+                !player.isJumping &&
+                !player.isDodging &&
+                !player.isThrowing &&
+                !player.isBeingThrown &&
+                !player.isGrabbing &&
+                !player.isBeingGrabbed &&
+                !player.isHit &&
+                !player.isRecovering &&
+                !player.isRawParryStun &&
+                !player.isThrowingSnowball &&
+                !player.canMoveToReady
+              ) {
+                // Restart charging immediately
+                player.isChargingAttack = true;
+                player.chargeStartTime = Date.now();
+                player.chargeAttackPower = 1;
+                player.attackType = "charged";
+              }
+            },
+            remainingTime,
+            "perfectParryStunReset"
+          );
+          
+          console.log(
+            `Player ${player.id} mashed during perfect parry stun. Mashes: ${player.perfectParryStunMashCount}, Reduction: ${reduction}ms, Remaining: ${remainingTime}ms`
+          );
+        } else {
+          // Time's up, end the stun immediately
+          player.isRawParryStun = false;
+          player.perfectParryStunStartTime = 0;
+          player.perfectParryStunMashCount = 0;
+          player.perfectParryStunBaseTimeout = null;
+          timeoutManager.clearPlayerSpecific(player.id, "perfectParryStunReset");
+          
+          console.log(
+            `Player ${player.id} mashed out of perfect parry stun completely! Total mashes: ${player.perfectParryStunMashCount}`
+          );
+        }
       }
     }
 
