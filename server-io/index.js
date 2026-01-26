@@ -1383,33 +1383,143 @@ io.on("connection", (socket) => {
                 // Snowball is blocked - destroy it but don't apply knockback
                 snowball.hasHit = true;
                 
-                // Trigger parry success animation and sound
-                opponent.isRawParrySuccess = true;
-                console.log(`Snowball parry success for player ${opponent.id}`);
+                // Check if this is a perfect parry (within 100ms of parry start)
+                const currentTime = Date.now();
+                const parryDuration = currentTime - opponent.rawParryStartTime;
+                const isPerfectParry = parryDuration <= PERFECT_PARRY_WINDOW;
+                
+                // Find the snowball thrower
+                const thrower = room.players.find(p => p.id === player.id);
+                
+                // Set parry success state for the defending player
+                if (isPerfectParry) {
+                  // Perfect parry: keep isRawParrying active and lock movement
+                  opponent.isRawParrying = true;
+                  opponent.isPerfectRawParrySuccess = true;
+                  opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, Date.now() + PERFECT_PARRY_ANIMATION_LOCK);
+                  console.log(`Perfect snowball parry - keeping parry pose for player ${opponent.id}, locked for ${PERFECT_PARRY_ANIMATION_LOCK}ms`);
+                } else {
+                  // Regular parry: use parry success animation
+                  opponent.isRawParrySuccess = true;
+                  console.log(`Snowball parry success for player ${opponent.id} (regular parry)`);
+                }
                 
                 // Emit raw parry success event for visual effect and sound
                 // Send both positions so client can calculate center
                 const parryingPlayerNumber = room.players.findIndex(p => p.id === opponent.id) + 1;
-                const thrower = room.players.find(p => p.id === player.id);
                 io.in(room.id).emit("raw_parry_success", {
                   attackerX: thrower ? thrower.x : snowball.x,
                   parrierX: opponent.x,
                   facing: thrower ? thrower.facing : -opponent.facing, // Use attacker's facing for consistency with melee
-                  isPerfect: false,
+                  isPerfect: isPerfectParry,
                   timestamp: Date.now(),
                   parryId: `${opponent.id}_snowball_parry_${Date.now()}`,
                   playerNumber: parryingPlayerNumber,
                 });
                 
                 // Clear parry success state after duration
-                setPlayerTimeout(
-                  opponent.id,
-                  () => {
-                    opponent.isRawParrySuccess = false;
-                  },
-                  PARRY_SUCCESS_DURATION,
-                  "parrySuccess"
-                );
+                if (isPerfectParry) {
+                  // For perfect parry: clear the parry pose after animation lock duration
+                  setPlayerTimeout(
+                    opponent.id,
+                    () => {
+                      console.log(
+                        `Clearing perfect parry pose for player ${opponent.id} (snowball)`
+                      );
+                      opponent.isRawParrying = false;
+                      opponent.isPerfectRawParrySuccess = false;
+                    },
+                    PERFECT_PARRY_ANIMATION_LOCK,
+                    "perfectParryAnimationEnd"
+                  );
+                  
+                  // Apply stun to the snowball thrower
+                  if (thrower) {
+                    const baseStunDuration = PERFECT_PARRY_ATTACKER_STUN_DURATION;
+                    thrower.isRawParryStun = true;
+                    
+                    // Clear ALL action states for the thrower
+                    clearAllActionStates(thrower);
+                    thrower.isRawParryStun = true; // Re-set after clearing
+                    
+                    // Initialize mashing tracking
+                    thrower.perfectParryStunStartTime = Date.now();
+                    thrower.perfectParryStunMashCount = 0;
+                    
+                    // Clear any previous perfect parry stun timeout
+                    if (thrower.perfectParryStunBaseTimeout) {
+                      timeoutManager.clearPlayerSpecific(thrower.id, "perfectParryStunReset");
+                    }
+                    
+                    // Emit screen shake for perfect parry with higher intensity
+                    io.in(room.id).emit("screen_shake", {
+                      intensity: 0.9,
+                      duration: 400,
+                    });
+                    
+                    // Emit perfect parry event
+                    io.in(room.id).emit("perfect_parry", {
+                      parryingPlayerId: opponent.id,
+                      attackingPlayerId: thrower.id,
+                      stunnedPlayerX: thrower.x,
+                      stunnedPlayerY: thrower.y,
+                      stunnedPlayerFighter: thrower.fighter, // Add fighter info to help with positioning
+                      showStarStunEffect: true, // Explicit flag for the star stun effect
+                    });
+                    
+                    console.log(`Perfect snowball parry stun applied to thrower ${thrower.id}`);
+                    
+                    // Reset stun after appropriate duration (separate from knockback)
+                    // This will be dynamically updated as player mashes
+                    setPlayerTimeout(
+                      thrower.id,
+                      () => {
+                        thrower.isRawParryStun = false;
+                        thrower.perfectParryStunStartTime = 0;
+                        thrower.perfectParryStunMashCount = 0;
+                        thrower.perfectParryStunBaseTimeout = null;
+                        
+                        // After stun ends, check if we should restart charging
+                        if (
+                          thrower.keys.mouse2 &&
+                          !thrower.isAttacking &&
+                          !thrower.isJumping &&
+                          !thrower.isDodging &&
+                          !thrower.isThrowing &&
+                          !thrower.isBeingThrown &&
+                          !thrower.isGrabbing &&
+                          !thrower.isBeingGrabbed &&
+                          !thrower.isHit &&
+                          !thrower.isRecovering &&
+                          !thrower.isRawParryStun &&
+                          !thrower.isThrowingSnowball &&
+                          !thrower.canMoveToReady
+                        ) {
+                          // Restart charging immediately
+                          thrower.isChargingAttack = true;
+                          thrower.chargeStartTime = Date.now();
+                          thrower.chargeAttackPower = 1;
+                          thrower.attackType = "charged";
+                        }
+                      },
+                      baseStunDuration,
+                      "perfectParryStunReset" // Named timeout for easier debugging
+                    );
+                    
+                    // Store that we have an active stun timeout
+                    thrower.perfectParryStunBaseTimeout = true;
+                  }
+                } else {
+                  // For regular parry: clear success state after normal duration
+                  setPlayerTimeout(
+                    opponent.id,
+                    () => {
+                      opponent.isRawParrySuccess = false;
+                    },
+                    PARRY_SUCCESS_DURATION,
+                    "parrySuccess"
+                  );
+                }
                 
                 return false; // Remove snowball after being blocked
               }
