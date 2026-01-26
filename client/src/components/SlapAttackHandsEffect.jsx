@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
-import penguinHand from "../assets/penguin-hand.png";
+import penguinHand from "../assets/slap-attack-hand.png";
 
 // Animation for hand shooting out - facing RIGHT
 const shootOutRight = keyframes`
@@ -35,6 +35,38 @@ const shootOutLeft = keyframes`
   }
 `;
 
+// Streak animation for RIGHT facing
+const streakRight = keyframes`
+  0% {
+    opacity: 1;
+    transform: translate(var(--start-x), var(--offset-y)) scaleX(1.5) scaleY(0.6);
+  }
+  40% {
+    opacity: 0.95;
+    transform: translate(calc(var(--start-x) + 2vw), var(--offset-y)) scaleX(2.5) scaleY(0.7);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(var(--start-x) + 4vw), var(--offset-y)) scaleX(3) scaleY(0.5);
+  }
+`;
+
+// Streak animation for LEFT facing
+const streakLeft = keyframes`
+  0% {
+    opacity: 1;
+    transform: translate(var(--start-x), var(--offset-y)) scaleX(1.5) scaleY(0.6);
+  }
+  40% {
+    opacity: 0.95;
+    transform: translate(calc(var(--start-x) - 2vw), var(--offset-y)) scaleX(2.5) scaleY(0.7);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(var(--start-x) - 4vw), var(--offset-y)) scaleX(3) scaleY(0.5);
+  }
+`;
+
 // Container anchored to player position
 const HandsContainer = styled.div.attrs((props) => ({
   style: {
@@ -48,7 +80,7 @@ const HandsContainer = styled.div.attrs((props) => ({
 
 const Hand = styled.img`
   position: absolute;
-  width: clamp(70px, 7vw, 100px); // BIGGER
+  width: clamp(65px, 6vw, 85px); // BIGGER
   height: auto;
   opacity: 0;
   --offset-y: ${(props) => props.$offsetY}vh;
@@ -66,10 +98,33 @@ const Hand = styled.img`
     drop-shadow(0 0 15px rgba(255, 255, 255, 0.5)); // White with black outline and glow
 `;
 
+const Streak = styled.div`
+  position: absolute;
+  width: clamp(65px, 6vw, 85px);
+  height: clamp(35px, 3vw, 45px);
+  opacity: 0;
+  --offset-y: ${(props) => props.$offsetY}vh;
+  --start-x: ${(props) => props.$startX}vw;
+  background: linear-gradient(
+    ${(props) => (props.$facing === -1 ? '90deg' : '-90deg')},
+    rgba(255, 255, 255, 1) 0%,
+    rgba(255, 255, 255, 0.95) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  border-radius: 50%;
+  animation: ${(props) => (props.$facing === -1 ? streakLeft : streakRight)} 
+    180ms ease-out forwards;
+  transform-origin: ${(props) => (props.$facing === -1 ? 'right' : 'left')} center;
+  will-change: transform, opacity;
+  filter: blur(3px) drop-shadow(0 0 10px rgba(255, 255, 255, 0.8));
+  z-index: -1; // Behind the hand
+`;
+
 const SlapAttackHandsEffect = ({ x, y, facing, isActive, slapAnimation }) => {
   const [hand, setHand] = useState(null);
   const lastSlapRef = useRef(null);
   const handIdCounter = useRef(0);
+  const positionCycleRef = useRef(0);
 
   useEffect(() => {
     // Trigger ONE hand when slap animation changes (new slap attack)
@@ -78,10 +133,15 @@ const SlapAttackHandsEffect = ({ x, y, facing, isActive, slapAnimation }) => {
 
       const id = ++handIdCounter.current;
       
-      // ONE hand at a random position
+      // Cycle through Y positions: high, middle, low, middle-high, middle-low
+      const yPositions = [-8, 0, 8, -4, 4];
+      const offsetY = yPositions[positionCycleRef.current % yPositions.length];
+      positionCycleRef.current++;
+      
+      // ONE hand at a cycled position
       const newHand = {
         id,
-        offsetY: (Math.random() - 0.5) * 10, // Random Y: -5 to +5
+        offsetY,
         startX: Math.random() * 1.5, // Random starting X
       };
 
@@ -106,6 +166,12 @@ const SlapAttackHandsEffect = ({ x, y, facing, isActive, slapAnimation }) => {
 
   return (
     <HandsContainer $x={x} $y={y} $facing={facing}>
+      <Streak
+        key={`streak-${hand.id}`}
+        $facing={facing}
+        $offsetY={hand.offsetY}
+        $startX={hand.startX}
+      />
       <Hand
         key={hand.id}
         src={penguinHand}

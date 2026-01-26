@@ -1,6 +1,6 @@
 // Game constants
-const MAP_LEFT_BOUNDARY = 135;
-const MAP_RIGHT_BOUNDARY = 930;
+const MAP_LEFT_BOUNDARY = 120;
+const MAP_RIGHT_BOUNDARY = 945;
 const DEFAULT_PLAYER_SIZE_MULTIPLIER = 0.85; // 15% smaller default size
 
 // Timeout manager for memory leak prevention
@@ -254,6 +254,11 @@ function resetPlayerAttackStates(player) {
 // This ensures only ONE state/animation can be active at a time
 // Called when: isHit, isBeingGrabbed, isBeingThrown, isRawParryStun, isAtTheRopes
 function clearAllActionStates(player) {
+  // Clear hit states - prevents conflicting states (e.g., isHit + isBeingGrabbed)
+  player.isHit = false;
+  player.isAlreadyHit = false;
+  player.isSlapKnockback = false;
+  
   // Clear attack states
   player.isAttacking = false;
   player.isChargingAttack = false;
@@ -281,6 +286,9 @@ function clearAllActionStates(player) {
   
   // Clear dodge states
   player.isDodging = false;
+  player.isDodgeCancelling = false;
+  player.dodgeCancelStartTime = 0;
+  player.dodgeCancelStartY = 0;
   player.dodgeStartTime = 0;
   player.dodgeEndTime = 0;
   player.dodgeDirection = null;

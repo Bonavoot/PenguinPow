@@ -348,6 +348,9 @@ function createCPUPlayer(uniqueId) {
     atTheRopesStartTime: 0,
     dodgeDirection: null,
     dodgeEndTime: 0,
+    isDodgeCancelling: false,
+    dodgeCancelStartTime: 0,
+    dodgeCancelStartY: 0,
     isReady: false,
     isHit: false,
     isAlreadyHit: false,
@@ -406,6 +409,7 @@ function createCPUPlayer(uniqueId) {
     isGrabBreaking: false,
     isGrabBreakCountered: false,
     grabBreakSpaceConsumed: false,
+    isCounterGrabbed: false, // Set when grabbed while raw parrying - cannot grab break
     isRingOutThrowCutscene: false,
     ringOutThrowDistance: 0,
     isRingOutFreezeActive: false,
@@ -912,6 +916,8 @@ io.on("connection", (socket) => {
     player.isBeingThrown = false;
     player.isBeingGrabbed = false;
     player.grabbedOpponent = null;
+    player.isHit = false;
+    player.isAlreadyHit = false;
 
     opponent.isThrowing = false;
     opponent.isGrabbing = false;
@@ -921,6 +927,8 @@ io.on("connection", (socket) => {
     opponent.isPushing = false;
     opponent.isBeingPushed = false;
     opponent.isBeingPulled = false;
+    opponent.isHit = false;
+    opponent.isAlreadyHit = false;
 
     // Clear charge attack states
     clearChargeState(player);
@@ -1341,6 +1349,7 @@ io.on("connection", (socket) => {
                 clearAllActionStates(opponent);
                 opponent.isHit = true;
                 opponent.isAlreadyHit = true;
+                opponent.lastHitTime = Date.now(); // Track hit time for safety mechanism
 
                 // Apply knockback only if not immune
                 if (canApplyKnockback(opponent)) {
@@ -1617,6 +1626,7 @@ io.on("connection", (socket) => {
                 clearAllActionStates(opponent);
                 opponent.isHit = true;
                 opponent.isAlreadyHit = true;
+                opponent.lastHitTime = Date.now(); // Track hit time for safety mechanism
 
                 // Apply knockback only if not immune (lighter than normal slap)
                 if (canApplyKnockback(opponent)) {
@@ -1763,47 +1773,61 @@ io.on("connection", (socket) => {
           player.knockbackVelocity.y = 0;
           // Keep facing and position; do nothing else until freeze ends
         } else if (player.isHit) {
-          // Apply immediate knockback without boundary check
-          player.x =
-            player.x + player.knockbackVelocity.x * delta * speedFactor;
-
-          // Apply friction to knockback
-          // Use less friction for slap knockbacks to create better sliding effect
-          if (player.isSlapKnockback) {
-            player.knockbackVelocity.x *= 0.96; // Much less friction for slap attacks (closer to ice physics)
-          } else {
-            player.knockbackVelocity.x *= 0.875; // Normal friction for charged attacks
-          }
-
-          // Apply ice-like sliding physics
-          if (Math.abs(player.movementVelocity) > MIN_MOVEMENT_THRESHOLD) {
-            // Apply different friction based on attack type
-            if (player.isHit && player.isSlapKnockback) {
-              // Much less friction for slap attack hits - longer distance sliding
-              player.movementVelocity *= 0.994; // Reduced friction for satisfying slap slides
-            } else {
-              // Normal friction for charged attacks and regular movement
-              player.movementVelocity *= MOVEMENT_MOMENTUM * MOVEMENT_FRICTION;
-            }
-
-            // Calculate new position with sliding
-            player.x = player.x + delta * speedFactor * player.movementVelocity;
-          }
-
-          // Reset hit state when both knockback and sliding are nearly complete
-          // Use different thresholds based on attack type
-          const hitMovementThreshold = player.isSlapKnockback
-            ? MIN_MOVEMENT_THRESHOLD * 0.3 // Much smaller threshold for slap attacks (longer slides)
-            : MIN_MOVEMENT_THRESHOLD; // Normal threshold for charged attacks
-
-          if (
-            Math.abs(player.knockbackVelocity.x) < 0.1 &&
-            Math.abs(player.movementVelocity) < hitMovementThreshold
-          ) {
+          // SAFETY: Maximum isHit duration to prevent stuck states (1 second max)
+          const MAX_HIT_DURATION = 1000;
+          const hitDuration = player.lastHitTime ? Date.now() - player.lastHitTime : 0;
+          if (hitDuration > MAX_HIT_DURATION) {
+            console.log(`⚠️ SAFETY: Clearing stuck isHit state for player ${player.id} after ${hitDuration}ms`);
+            player.isHit = false;
+            player.isAlreadyHit = false;
+            player.isSlapKnockback = false;
             player.knockbackVelocity.x = 0;
             player.movementVelocity = 0;
-            player.isHit = false;
-            player.isSlapKnockback = false; // Reset slap knockback flag
+            // Don't return - continue normal processing
+          } else {
+            // Apply immediate knockback without boundary check
+            player.x =
+              player.x + player.knockbackVelocity.x * delta * speedFactor;
+
+            // Apply friction to knockback
+            // Use less friction for slap knockbacks to create better sliding effect
+            if (player.isSlapKnockback) {
+              player.knockbackVelocity.x *= 0.96; // Much less friction for slap attacks (closer to ice physics)
+            } else {
+              player.knockbackVelocity.x *= 0.875; // Normal friction for charged attacks
+            }
+
+            // Apply ice-like sliding physics
+            if (Math.abs(player.movementVelocity) > MIN_MOVEMENT_THRESHOLD) {
+              // Apply different friction based on attack type
+              if (player.isHit && player.isSlapKnockback) {
+                // Much less friction for slap attack hits - longer distance sliding
+                player.movementVelocity *= 0.994; // Reduced friction for satisfying slap slides
+              } else {
+                // Normal friction for charged attacks and regular movement
+                player.movementVelocity *= MOVEMENT_MOMENTUM * MOVEMENT_FRICTION;
+              }
+
+              // Calculate new position with sliding
+              player.x = player.x + delta * speedFactor * player.movementVelocity;
+            }
+
+            // Reset hit state when both knockback and sliding are nearly complete
+            // Use different thresholds based on attack type
+            const hitMovementThreshold = player.isSlapKnockback
+              ? MIN_MOVEMENT_THRESHOLD * 0.3 // Much smaller threshold for slap attacks (longer slides)
+              : MIN_MOVEMENT_THRESHOLD; // Normal threshold for charged attacks
+
+            if (
+              Math.abs(player.knockbackVelocity.x) < 0.1 &&
+              Math.abs(player.movementVelocity) < hitMovementThreshold
+            ) {
+              player.knockbackVelocity.x = 0;
+              player.movementVelocity = 0;
+              player.isHit = false;
+              player.isAlreadyHit = false; // Also clear isAlreadyHit to ensure player can be hit again
+              player.isSlapKnockback = false; // Reset slap knockback flag
+            }
           }
         }
 
@@ -2087,6 +2111,8 @@ io.on("connection", (socket) => {
               opponent.isBeingThrown = false;
               opponent.beingThrownFacingDirection = null;
               opponent.isHit = false;
+              opponent.isAlreadyHit = false; // Ensure player can be hit again after landing
+              opponent.isSlapKnockback = false;
               opponent.y = GROUND_LEVEL; // force final Y to ground level
               opponent.knockbackVelocity.y = 0;
               opponent.knockbackVelocity.x = 0;
@@ -2142,71 +2168,105 @@ io.on("connection", (socket) => {
         }
         // Dodging
         if (player.isDodging) {
-          let currentDodgeSpeed = speedFactor * 1.8; // Reduced by 25% for shorter distance
+          // Use fixed dodge speed - no momentum-based variations
+          const FIXED_DODGE_SPEED = speedFactor * 2.5; // Increased from 1.8 for more distance/speed
+          let currentDodgeSpeed = FIXED_DODGE_SPEED;
 
           // Apply speed power-up to dodge with moderate multiplier
           if (player.activePowerUp === POWER_UP_TYPES.SPEED) {
             currentDodgeSpeed *= Math.min(player.powerUpMultiplier * 0.85, 1.5);
           }
 
-          // Calculate dodge progress (0 to 1)
-          const dodgeProgress =
-            (Date.now() - player.dodgeStartTime) /
-            (player.dodgeEndTime - player.dodgeStartTime);
-
-          // Simple parabolic arc - starts slow, peaks in middle, lands with weight
-          // Using a quadratic function for more realistic arc shape
-          const arcProgress = 4 * dodgeProgress * (1 - dodgeProgress); // Parabola that peaks at 0.5
-          const hopHeight = arcProgress * 75; // Reverted to original hop height
-
-          // Add slight deceleration over time for weightier feel
-          const speedMultiplier = 1.0 - dodgeProgress * 0.2; // Slow down by 20% over time
-          const adjustedSpeed = currentDodgeSpeed * speedMultiplier;
-
-          // Calculate new position
-          const newX = player.x + player.dodgeDirection * delta * adjustedSpeed;
-          const newY = GROUND_LEVEL + hopHeight;
-
-          // Store previous Y position to detect landing
-          const previousY = player.y;
-
-          // Calculate effective boundary based on player size
-          const sizeOffset = 0;
-          const leftBoundary = MAP_LEFT_BOUNDARY + sizeOffset;
-          const rightBoundary = MAP_RIGHT_BOUNDARY - sizeOffset;
-
-          // Only update position if within boundaries
-          if (newX >= leftBoundary && newX <= rightBoundary) {
-            player.x = newX;
-            player.y = newY;
-          } else {
-            // Still update Y position even if hitting boundary
-            player.y = newY;
+          // Check for dodge cancel (holding 's' key)
+          if (player.keys.s && !player.isDodgeCancelling && player.y > GROUND_LEVEL) {
+            player.isDodgeCancelling = true;
+            player.dodgeCancelStartTime = Date.now();
+            player.dodgeCancelStartY = player.y;
           }
 
-          if (Date.now() >= player.dodgeEndTime) {
-            // Check if player is trying to raw parry - if so, skip momentum transfer
-            if (player.keys[" "]) {
-              // Player wants to raw parry after dodge - clear all momentum and states
-              player.movementVelocity = 0;
-              player.isStrafing = false;
-            } else {
-              // Transfer dodge momentum to movement velocity with more weight
-              const dodgeMomentum = adjustedSpeed * player.dodgeDirection * 0.9; // Reduced from 1.2
+          // Handle dodge cancel - smooth drop down
+          if (player.isDodgeCancelling) {
+            const DODGE_CANCEL_DURATION = 120; // Quick but smooth drop (120ms)
+            const cancelProgress = Math.min(
+              (Date.now() - player.dodgeCancelStartTime) / DODGE_CANCEL_DURATION,
+              1
+            );
+            
+            // Use easeOutQuad for smooth landing: t * (2 - t)
+            const easedProgress = cancelProgress * (2 - cancelProgress);
+            
+            // Interpolate from cancel start Y to ground level
+            player.y = player.dodgeCancelStartY - (player.dodgeCancelStartY - GROUND_LEVEL) * easedProgress;
+            
+            // Still move horizontally but at reduced speed during cancel
+            const cancelSpeedMultiplier = 0.3; // Reduce horizontal speed during cancel
+            const newX = player.x + player.dodgeDirection * delta * currentDodgeSpeed * cancelSpeedMultiplier;
+            
+            // Calculate effective boundary based on player size
+            const sizeOffset = 0;
+            const leftBoundary = MAP_LEFT_BOUNDARY + sizeOffset;
+            const rightBoundary = MAP_RIGHT_BOUNDARY - sizeOffset;
+            
+            if (newX >= leftBoundary && newX <= rightBoundary) {
+              player.x = newX;
+            }
+            
+            // End dodge when cancel animation completes
+            if (cancelProgress >= 1) {
+              player.isDodging = false;
+              player.isDodgeCancelling = false;
+              player.dodgeDirection = null;
+              player.y = GROUND_LEVEL;
+              player.movementVelocity = 0; // Clear momentum on cancel landing
+            }
+          } else {
+            // Normal dodge movement (not cancelling)
+            
+            // Calculate dodge progress (0 to 1)
+            const dodgeProgress =
+              (Date.now() - player.dodgeStartTime) /
+              (player.dodgeEndTime - player.dodgeStartTime);
 
-              // If no movement keys are pressed, apply momentum with slight decay
-              if (!player.keys.a && !player.keys.d) {
-                player.movementVelocity = dodgeMomentum * 0.8; // Add decay for weighty landing
-              } else {
-                // If movement keys are pressed, blend more conservatively
-                player.movementVelocity =
-                  (player.movementVelocity + dodgeMomentum) * 0.6;
-              }
+            // Simple parabolic arc - starts slow, peaks in middle, lands with weight
+            // Using a quadratic function for more realistic arc shape
+            const arcProgress = 4 * dodgeProgress * (1 - dodgeProgress); // Parabola that peaks at 0.5
+            const hopHeight = arcProgress * 75; // Reverted to original hop height
+
+            // Add slight deceleration over time for weightier feel
+            const speedMultiplier = 1.0 - dodgeProgress * 0.2; // Slow down by 20% over time
+            const adjustedSpeed = currentDodgeSpeed * speedMultiplier;
+
+            // Calculate new position - uses fixed speed, not affected by prior momentum
+            const newX = player.x + player.dodgeDirection * delta * adjustedSpeed;
+            const newY = GROUND_LEVEL + hopHeight;
+
+            // Store previous Y position to detect landing
+            const previousY = player.y;
+
+            // Calculate effective boundary based on player size
+            const sizeOffset = 0;
+            const leftBoundary = MAP_LEFT_BOUNDARY + sizeOffset;
+            const rightBoundary = MAP_RIGHT_BOUNDARY - sizeOffset;
+
+            // Only update position if within boundaries
+            if (newX >= leftBoundary && newX <= rightBoundary) {
+              player.x = newX;
+              player.y = newY;
+            } else {
+              // Still update Y position even if hitting boundary
+              player.y = newY;
             }
 
-            player.isDodging = false;
-            player.dodgeDirection = null;
-            player.y = GROUND_LEVEL; // Reset to ground level when dodge ends
+            if (Date.now() >= player.dodgeEndTime) {
+              // Clear all momentum on landing - no momentum transfer
+              player.movementVelocity = 0;
+              player.isStrafing = false;
+
+              player.isDodging = false;
+              player.isDodgeCancelling = false;
+              player.dodgeDirection = null;
+              player.y = GROUND_LEVEL; // Reset to ground level when dodge ends
+            }
           }
         }
 
@@ -2351,6 +2411,29 @@ io.on("connection", (socket) => {
             player.grabStartTime = Date.now();
             player.grabbedOpponent = opponent.id;
             
+            // COUNTER GRAB: Check if opponent was raw parrying when grabbed
+            // Counter grabs cannot be broken!
+            const wasOpponentRawParrying = opponent.isRawParrying;
+            if (wasOpponentRawParrying) {
+              console.log(`⚡ COUNTER GRAB: Player ${player.id} grabbed ${opponent.id} during raw parry!`);
+              opponent.isCounterGrabbed = true;
+              
+              // Determine player numbers for side text display
+              const grabberPlayerNumber = room.players.indexOf(player) === 0 ? 1 : 2;
+              
+              // Emit counter grab effect
+              io.in(room.id).emit("counter_grab", {
+                grabberId: player.id,
+                grabbedId: opponent.id,
+                grabberX: player.x,
+                grabbedX: opponent.x,
+                grabberPlayerNumber: grabberPlayerNumber,
+                counterId: `counter-grab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              });
+            } else {
+              opponent.isCounterGrabbed = false;
+            }
+            
             // Clear parry success state when starting a grab
             player.isRawParrySuccess = false;
             player.isPerfectRawParrySuccess = false;
@@ -2359,7 +2442,7 @@ io.on("connection", (socket) => {
             clearAllActionStates(opponent);
             opponent.isBeingGrabbed = true;
             
-            // Clear all input keys except spacebar (for grab break)
+            // Clear all input keys except spacebar (for grab break - unless counter grabbed)
             opponent.keys.shift = false;
             opponent.keys.w = false;
             opponent.keys.a = false;
@@ -2667,13 +2750,8 @@ io.on("connection", (socket) => {
                   const velocityReduction = 0.3; // Reduce to 30% of original velocity
                   effectiveMovementVelocity =
                     player.movementVelocity * velocityReduction;
-                  console.log(
-                    `🚫 SLAP SLIDE COLLISION: Player ${
-                      player.id
-                    } velocity reduced from ${player.movementVelocity.toFixed(
-                      2
-                    )} to ${effectiveMovementVelocity.toFixed(2)}`
-                  );
+                  // DEBUG: Uncomment to debug slap collision issues (can cause lag when called frequently)
+                  // console.log(`🚫 SLAP SLIDE COLLISION: Player ${player.id} velocity reduced`);
                 }
 
                 // Use fixed speed factor for slap slides with potentially reduced velocity
@@ -2908,7 +2986,7 @@ io.on("connection", (socket) => {
           const parryDuration = Date.now() - player.rawParryStartTime;
 
           // Check if minimum duration has been met
-          if (parryDuration >= 750) {
+          if (parryDuration >= 375) {
             player.rawParryMinDurationMet = true;
           }
 
@@ -3005,7 +3083,30 @@ io.on("connection", (socket) => {
               (attackDirection === 1 && newX > player.x) ||
               (attackDirection === -1 && newX < player.x)
             ) {
-              player.x = newX;
+              // Prevent attacker from passing through opponent during charged attack
+              // This ensures the attack direction and facing remain consistent
+              const opponent = room.players.find(p => p.id !== player.id && !p.isDead);
+              if (opponent && !opponent.isDodging) {
+                const minDistance = 40; // Minimum distance to maintain during attack
+                const playerToLeft = player.x < opponent.x;
+                const playerToRight = player.x > opponent.x;
+                
+                // If player is to the left of opponent and moving right, don't pass through
+                if (playerToLeft && attackDirection === 1) {
+                  const maxX = opponent.x - minDistance;
+                  player.x = Math.min(newX, maxX);
+                }
+                // If player is to the right of opponent and moving left, don't pass through
+                else if (playerToRight && attackDirection === -1) {
+                  const minX = opponent.x + minDistance;
+                  player.x = Math.max(newX, minX);
+                }
+                else {
+                  player.x = newX;
+                }
+              } else {
+                player.x = newX;
+              }
             }
           }
 
@@ -3472,18 +3573,24 @@ io.on("connection", (socket) => {
     
     player.isHit = true;
     player.isSlapParrying = true;
+    player.lastHitTime = Date.now(); // Track hit time for safety mechanism
 
     // Apply reduced knockback
     player.knockbackVelocity.x =
       SLAP_PARRY_KNOCKBACK_VELOCITY * knockbackDirection;
     player.knockbackVelocity.y = 0;
 
-    // Set a brief recovery period
-    setTimeout(() => {
-      player.isHit = false;
-      player.isAlreadyHit = false;
-      player.isSlapParrying = false;
-    }, 200);
+    // Set a brief recovery period using setPlayerTimeout for proper cleanup on disconnect
+    setPlayerTimeout(
+      player.id,
+      () => {
+        player.isHit = false;
+        player.isAlreadyHit = false;
+        player.isSlapParrying = false;
+      },
+      200,
+      "slapParryReset"
+    );
   }
 
   function processHit(player, otherPlayer) {
@@ -3613,6 +3720,7 @@ io.on("connection", (socket) => {
       player.knockbackVelocity.x = knockbackAmount * knockbackDirection;
       player.knockbackVelocity.y = 0;
       player.isHit = true;
+      player.lastHitTime = currentTime; // Track hit time for safety mechanism
 
       // Set parry success state for the defending player
       if (isPerfectParry) {
@@ -3683,6 +3791,7 @@ io.on("connection", (socket) => {
         player.id,
         () => {
           player.isHit = false;
+          player.isAlreadyHit = false; // Also clear to ensure player can be hit again
 
           // After knockback ends, check if we should restart charging
           if (
@@ -3875,17 +3984,19 @@ io.on("connection", (socket) => {
       otherPlayer.facing = player.x < otherPlayer.x ? 1 : -1;
 
       // Calculate knockback direction
-      let knockbackDirection;
+      // For both slap and charged attacks, use the attacker's facing direction to ensure consistent knockback
+      // The opponent should always be knocked back in the direction the attacker is facing
+      // This prevents visual confusion when a player dodges through the opponent and releases a charged attack,
+      // where they might pass back through the opponent during the attack movement
+      const knockbackDirection = player.facing === 1 ? -1 : 1;
       if (isSlapAttack) {
-        // For slap attacks, use the attacker's facing direction to ensure consistent knockback
-        // The opponent should always be knocked back in the direction the attacker is facing
-        knockbackDirection = player.facing === 1 ? -1 : 1;
         console.log(
           `👋 SLAP KNOCKBACK: Player ${player.id} facing ${player.facing}, knockback direction: ${knockbackDirection}`
         );
       } else {
-        // For charged attacks, use relative positions (existing behavior)
-        knockbackDirection = player.x < otherPlayer.x ? 1 : -1;
+        console.log(
+          `💥 CHARGED KNOCKBACK: Player ${player.id} facing ${player.facing}, knockback direction: ${knockbackDirection}`
+        );
       }
 
       // Calculate knockback multiplier based on charge percentage
@@ -4029,7 +4140,7 @@ io.on("connection", (socket) => {
         otherPlayer.id,
         () => {
           otherPlayer.isHit = false;
-          // Note: isAlreadyHit is reset by checkCollision for the next attack
+          otherPlayer.isAlreadyHit = false; // Also clear to ensure player can be hit again
         },
         hitStateDuration,
         "hitStateReset" // Named timeout for cleanup
@@ -4188,6 +4299,9 @@ io.on("connection", (socket) => {
         atTheRopesStartTime: 0,
         dodgeDirection: false,
         dodgeEndTime: 0,
+        isDodgeCancelling: false,
+        dodgeCancelStartTime: 0,
+        dodgeCancelStartY: 0,
         isReady: false,
         isHit: false,
         isAlreadyHit: false,
@@ -4246,6 +4360,7 @@ io.on("connection", (socket) => {
         isGrabBreaking: false,
         isGrabBreakCountered: false,
         grabBreakSpaceConsumed: false,
+        isCounterGrabbed: false, // Set when grabbed while raw parrying - cannot grab break
         // Ring-out throw cutscene flags
         isRingOutThrowCutscene: false,
         ringOutThrowDistance: 0,
@@ -4322,6 +4437,9 @@ io.on("connection", (socket) => {
         atTheRopesStartTime: 0,
         dodgeDirection: null,
         dodgeEndTime: 0,
+        isDodgeCancelling: false,
+        dodgeCancelStartTime: 0,
+        dodgeCancelStartY: 0,
         isReady: false,
         isHit: false,
         isAlreadyHit: false,
@@ -4380,6 +4498,7 @@ io.on("connection", (socket) => {
         isGrabBreaking: false,
         isGrabBreakCountered: false,
         grabBreakSpaceConsumed: false,
+        isCounterGrabbed: false, // Set when grabbed while raw parrying - cannot grab break
         // Ring-out throw cutscene flags
         isRingOutThrowCutscene: false,
         ringOutThrowDistance: 0,
@@ -4521,6 +4640,9 @@ io.on("connection", (socket) => {
       atTheRopesStartTime: 0,
       dodgeDirection: false,
       dodgeEndTime: 0,
+      isDodgeCancelling: false,
+      dodgeCancelStartTime: 0,
+      dodgeCancelStartY: 0,
       isReady: false,
       isHit: false,
       isAlreadyHit: false,
@@ -4579,6 +4701,7 @@ io.on("connection", (socket) => {
       isGrabBreaking: false,
       isGrabBreakCountered: false,
       grabBreakSpaceConsumed: false,
+      isCounterGrabbed: false, // Set when grabbed while raw parrying - cannot grab break
       isRingOutThrowCutscene: false,
       ringOutThrowDistance: 0,
       isRingOutFreezeActive: false,
@@ -5169,11 +5292,13 @@ io.on("connection", (socket) => {
       }
 
       // Grab Break: break out when being grabbed with spacebar, at stamina cost
+      // CANNOT break out of a counter grab (grabbed while raw parrying)
       if (
         player.isBeingGrabbed &&
         player.keys[" "] &&
         !previousKeys[" "] &&
         !player.isGrabBreaking &&
+        !player.isCounterGrabbed && // Cannot break counter grabs!
         player.stamina >= GRAB_BREAK_STAMINA_COST
       ) {
         const room = rooms[roomIndex];
@@ -5362,13 +5487,23 @@ io.on("connection", (socket) => {
         powerUpType: randomPowerUp,
       });
 
-      setTimeout(() => {
-        player.isThrowingSalt = false;
-      }, 500);
+      setPlayerTimeout(
+        player.id,
+        () => {
+          player.isThrowingSalt = false;
+        },
+        500,
+        "throwingSaltReset"
+      );
 
-      setTimeout(() => {
-        player.saltCooldown = false;
-      }, 750);
+      setPlayerTimeout(
+        player.id,
+        () => {
+          player.saltCooldown = false;
+        },
+        750,
+        "saltCooldownReset"
+      );
     }
 
     // Handle F key power-ups (snowball and pumo army) - block during charged attack execution and recovery
@@ -5576,7 +5711,14 @@ io.on("connection", (socket) => {
       player.isRawParrySuccess = false;
       player.isPerfectRawParrySuccess = false;
 
+      // Clear movement momentum for static dodge distance
+      player.movementVelocity = 0;
+      player.isStrafing = false;
+
       player.isDodging = true;
+      player.isDodgeCancelling = false;
+      player.dodgeCancelStartTime = 0;
+      player.dodgeCancelStartY = 0;
       player.dodgeStartTime = Date.now();
       player.dodgeEndTime = Date.now() + 450; // Increased from 400ms for more weighty feel
       player.dodgeStartX = player.x;
@@ -5595,57 +5737,73 @@ io.on("connection", (socket) => {
         player.dodgeDirection = player.facing === -1 ? 1 : -1;
       }
 
-      setTimeout(() => {
-        player.isDodging = false;
-        player.dodgeDirection = null;
-        if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
-          player.actionLockUntil = 0;
-        }
-
-        // Check for buffered actions after dodge ends
-        if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
-          console.log("Executing buffered action after dodge");
-          const action = player.bufferedAction;
-          player.bufferedAction = null;
-          player.bufferExpiryTime = 0;
-
-          // Execute the buffered action
-          if (action.type === "dodge" && player.stamina >= DODGE_STAMINA_COST) {
-            // Clear parry success state when starting a dodge
-            player.isRawParrySuccess = false;
-            player.isPerfectRawParrySuccess = false;
-            
-            player.isDodging = true;
-            player.dodgeStartTime = Date.now();
-            player.dodgeEndTime = Date.now() + 450; // Updated to match new dodge duration
-            player.dodgeDirection = action.direction;
-            player.dodgeStartX = player.x;
-            player.dodgeStartY = player.y;
-            
-            // Drain stamina for buffered dodge
-            player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
+      setPlayerTimeout(
+        player.id,
+        () => {
+          // Only clear dodge state if not already cancelled (dodge cancel handles its own cleanup)
+          if (player.isDodging && !player.isDodgeCancelling) {
+            player.isDodging = false;
+            player.isDodgeCancelling = false;
+            player.dodgeDirection = null;
           }
-        }
-
-        // Handle pending charge attack
-        if (player.pendingChargeAttack && player.spacebarReleasedDuringDodge) {
-          const chargePercentage = player.pendingChargeAttack.power;
-
-          // Determine if it's a slap or charged attack
-          if (player.keys.mouse1) {
-            // Use the simplified slap attack system
-
-            executeSlapAttack(player, rooms);
-          } else {
-            executeChargedAttack(player, chargePercentage, rooms);
+          if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
+            player.actionLockUntil = 0;
           }
 
-          // Reset charging state
-          player.isChargingAttack = false;
-          player.pendingChargeAttack = null;
-          player.spacebarReleasedDuringDodge = false;
-        }
-      }, 450); // Updated to match new dodge duration
+          // Check for buffered actions after dodge ends
+          if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
+            console.log("Executing buffered action after dodge");
+            const action = player.bufferedAction;
+            player.bufferedAction = null;
+            player.bufferExpiryTime = 0;
+
+            // Execute the buffered action
+            if (action.type === "dodge" && player.stamina >= DODGE_STAMINA_COST) {
+              // Clear parry success state when starting a dodge
+              player.isRawParrySuccess = false;
+              player.isPerfectRawParrySuccess = false;
+              
+              // Clear movement momentum for static dodge distance
+              player.movementVelocity = 0;
+              player.isStrafing = false;
+              
+              player.isDodging = true;
+              player.isDodgeCancelling = false;
+              player.dodgeCancelStartTime = 0;
+              player.dodgeCancelStartY = 0;
+              player.dodgeStartTime = Date.now();
+              player.dodgeEndTime = Date.now() + 450; // Updated to match new dodge duration
+              player.dodgeDirection = action.direction;
+              player.dodgeStartX = player.x;
+              player.dodgeStartY = player.y;
+              
+              // Drain stamina for buffered dodge
+              player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
+            }
+          }
+
+          // Handle pending charge attack
+          if (player.pendingChargeAttack && player.spacebarReleasedDuringDodge) {
+            const chargePercentage = player.pendingChargeAttack.power;
+
+            // Determine if it's a slap or charged attack
+            if (player.keys.mouse1) {
+              // Use the simplified slap attack system
+
+              executeSlapAttack(player, rooms);
+            } else {
+              executeChargedAttack(player, chargePercentage, rooms);
+            }
+
+            // Reset charging state
+            player.isChargingAttack = false;
+            player.pendingChargeAttack = null;
+            player.spacebarReleasedDuringDodge = false;
+          }
+        },
+        450, // Updated to match new dodge duration
+        "dodgeReset"
+      );
     } else if (
       player.shiftJustPressed && // Use just pressed to prevent buffering when holding shift through actions
       (player.isAttacking ||

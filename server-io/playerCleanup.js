@@ -18,6 +18,7 @@ function cleanupPlayerStates(player) {
   player.grabMovementDirection = 0;
   player.grabMovementVelocity = 0;
   player.isBeingGrabbed = false;
+  player.isCounterGrabbed = false;
   player.isThrowing = false;
   player.isBeingThrown = false;
   player.isAttacking = false;
@@ -64,6 +65,7 @@ function cleanupPlayerStates(player) {
 function cleanupOpponentStates(opponent) {
   if (opponent) {
     opponent.isBeingGrabbed = false;
+    opponent.isCounterGrabbed = false;
     opponent.isBeingPushed = false;
     opponent.isBeingPulled = false;
     opponent.isBeingThrown = false;
@@ -130,6 +132,7 @@ function getCleanedRoomData(room) {
       grabMovementDirection: 0,
       grabMovementVelocity: 0,
       isBeingGrabbed: false,
+      isCounterGrabbed: false,
       isThrowing: false,
       isBeingThrown: false,
       isAttacking: false,
@@ -248,6 +251,7 @@ function getCleanedRoomsData(rooms) {
         isDodging: false,
         isGrabbing: false,
         isBeingGrabbed: false,
+        isCounterGrabbed: false,
         isThrowing: false,
         isBeingThrown: false,
         isHit: false,

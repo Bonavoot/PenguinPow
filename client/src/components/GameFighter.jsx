@@ -20,6 +20,7 @@ import ChargedAttackSmokeEffect from "./ChargedAttackSmokeEffect";
 import StarStunEffect from "./StarStunEffect";
 import ThickBlubberEffect from "./ThickBlubberEffect";
 import GrabBreakEffect from "./GrabBreakEffect";
+import CounterGrabEffect from "./CounterGrabEffect";
 import EdgeDangerEffect from "./EdgeDangerEffect";
 import NoStaminaEffect from "./GassedEffect";
 import SnowballImpactEffect from "./SnowballImpactEffect";
@@ -410,62 +411,73 @@ const validProps = [
   "pullHopSpeed",
 ];
 
-const RedTintOverlay = styled.div`
-  position: absolute;
-  width: 16.609%;
-  height: auto;
-  aspect-ratio: 1;
-  left: ${(props) => (props.$x / 1280) * 100}%;
-  bottom: ${(props) => (props.$y / 720) * 100}%;
-  transform: ${(props) =>
-    (props.$isRingOutThrowCutscene && props.$isThrowing
-      ? -props.$facing
-      : props.$facing) === 1
-      ? "scaleX(1)"
-      : "scaleX(-1)"};
-  background: rgba(156, 136, 255, 0.6);
-  z-index: 101;
-  pointer-events: none;
-  mix-blend-mode: multiply;
+const RedTintOverlay = styled.div
+  .withConfig({
+    shouldForwardProp: (prop) =>
+      !["$x", "$y", "$facing", "$isThrowing", "$isRingOutThrowCutscene", "$imageSrc"].includes(prop),
+  })
+  .attrs((props) => ({
+    style: {
+      position: "absolute",
+      width: "16.609%",
+      height: "auto",
+      aspectRatio: 1,
+      left: `${(props.$x / 1280) * 100}%`,
+      bottom: `${(props.$y / 720) * 100}%`,
+      transform:
+        (props.$isRingOutThrowCutscene && props.$isThrowing
+          ? -props.$facing
+          : props.$facing) === 1
+          ? "scaleX(1)"
+          : "scaleX(-1)",
+      background: "rgba(156, 136, 255, 0.6)",
+      zIndex: 101,
+      pointerEvents: "none",
+      mixBlendMode: "multiply",
+      maskImage: `url(${props.$imageSrc})`,
+      maskSize: "contain",
+      maskRepeat: "no-repeat",
+      maskPosition: "center",
+      WebkitMaskImage: `url(${props.$imageSrc})`,
+      WebkitMaskSize: "contain",
+      WebkitMaskRepeat: "no-repeat",
+      WebkitMaskPosition: "center",
+    },
+  }))``;
 
-  /* Use the player image as a mask to only show red where the image is opaque */
-  mask-image: url(${(props) => props.$imageSrc});
-  mask-size: contain;
-  mask-repeat: no-repeat;
-  mask-position: center;
-  -webkit-mask-image: url(${(props) => props.$imageSrc});
-  -webkit-mask-size: contain;
-  -webkit-mask-repeat: no-repeat;
-  -webkit-mask-position: center;
-`;
-
-const HurtTintOverlay = styled.div`
-  position: absolute;
-  width: 16.609%;
-  height: auto;
-  aspect-ratio: 1;
-  left: ${(props) => (props.$x / 1280) * 100}%;
-  bottom: ${(props) => (props.$y / 720) * 100}%;
-  transform: ${(props) =>
-    (props.$isRingOutThrowCutscene && props.$isThrowing
-      ? -props.$facing
-      : props.$facing) === 1
-      ? "scaleX(1)"
-      : "scaleX(-1)"};
-  background: rgba(255, 64, 64, 0.55);
-  z-index: 101;
-  pointer-events: none;
-  mix-blend-mode: multiply;
-
-  mask-image: url(${(props) => props.$imageSrc});
-  mask-size: contain;
-  mask-repeat: no-repeat;
-  mask-position: center;
-  -webkit-mask-image: url(${(props) => props.$imageSrc});
-  -webkit-mask-size: contain;
-  -webkit-mask-repeat: no-repeat;
-  -webkit-mask-position: center;
-`;
+const HurtTintOverlay = styled.div
+  .withConfig({
+    shouldForwardProp: (prop) =>
+      !["$x", "$y", "$facing", "$isThrowing", "$isRingOutThrowCutscene", "$imageSrc"].includes(prop),
+  })
+  .attrs((props) => ({
+    style: {
+      position: "absolute",
+      width: "16.609%",
+      height: "auto",
+      aspectRatio: 1,
+      left: `${(props.$x / 1280) * 100}%`,
+      bottom: `${(props.$y / 720) * 100}%`,
+      transform:
+        (props.$isRingOutThrowCutscene && props.$isThrowing
+          ? -props.$facing
+          : props.$facing) === 1
+          ? "scaleX(1)"
+          : "scaleX(-1)",
+      background: "rgba(255, 64, 64, 0.55)",
+      zIndex: 101,
+      pointerEvents: "none",
+      mixBlendMode: "multiply",
+      maskImage: `url(${props.$imageSrc})`,
+      maskSize: "contain",
+      maskRepeat: "no-repeat",
+      maskPosition: "center",
+      WebkitMaskImage: `url(${props.$imageSrc})`,
+      WebkitMaskSize: "contain",
+      WebkitMaskRepeat: "no-repeat",
+      WebkitMaskPosition: "center",
+    },
+  }))``;
 
 // Lightweight tinted clone image (no masks) for performance and perfect alignment
 const TintedImage = styled.img
@@ -909,8 +921,8 @@ const SaltBasket = styled.img
       width: "4.55%",
       height: "auto",
       bottom: `${((GROUND_LEVEL + 100) / 720) * 140}%`,
-      left: props.$index === 0 ? "17%" : "auto",
-      right: props.$index === 1 ? "17.7%" : "auto",
+      left: props.$index === 0 ? "15.5%" : "auto",
+      right: props.$index === 1 ? "16.5%" : "auto",
       transform: props.$index === 1 ? "scaleX(-1)" : "none",
       zIndex: 1,
       pointerEvents: "none",
@@ -919,11 +931,18 @@ const SaltBasket = styled.img
     },
   }))``;
 
-const YouLabel = styled.div`
-  position: absolute;
-  bottom: ${(props) => (props.y / 720) * 100 + 31}%;
-  left: ${(props) => (props.x / 1280) * 100 + 8}%;
-  transform: translateX(-50%);
+const YouLabel = styled.div
+  .withConfig({
+    shouldForwardProp: (prop) => !["x", "y"].includes(prop),
+  })
+  .attrs((props) => ({
+    style: {
+      position: "absolute",
+      bottom: `${(props.y / 720) * 100 + 31}%`,
+      left: `${(props.x / 1280) * 100 + 8}%`,
+      transform: "translateX(-50%)",
+    },
+  }))`
   color: #ffd700;
   font-family: "Bungee";
   font-size: clamp(18px, 1.5vw, 24px);
@@ -942,17 +961,23 @@ const YouLabel = styled.div`
   }
 `;
 
-const SnowballProjectile = styled.img`
-  position: absolute;
-  width: 4.55%;
-  height: auto;
-  left: ${(props) => (props.$x / 1280) * 100 + 5}%;
-  bottom: ${(props) => (props.$y / 720) * 100 + 14}%;
-  z-index: 95;
-  pointer-events: none;
-  filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000)
-    drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000);
-`;
+const SnowballProjectile = styled.img
+  .withConfig({
+    shouldForwardProp: (prop) => !["$x", "$y"].includes(prop),
+  })
+  .attrs((props) => ({
+    style: {
+      position: "absolute",
+      width: "4.55%",
+      height: "auto",
+      left: `${(props.$x / 1280) * 100 + 5}%`,
+      bottom: `${(props.$y / 720) * 100 + 14}%`,
+      zIndex: 95,
+      pointerEvents: "none",
+      filter:
+        "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000)",
+    },
+  }))``;
 
 const PumoClone = styled.img
   .withConfig({
@@ -1128,6 +1153,7 @@ const GameFighter = ({
   
   // New enhanced effects state
   const [grabBreakEffectPosition, setGrabBreakEffectPosition] = useState(null);
+  const [counterGrabEffectPosition, setCounterGrabEffectPosition] = useState(null);
   const [snowballImpactPosition, setSnowballImpactPosition] = useState(null);
   
   // "No Stamina" effect - shows when player tries to use action without enough stamina
@@ -1555,6 +1581,22 @@ const GameFighter = ({
         }
       });
 
+      // Counter grab effect - when grabbing someone doing a raw parry
+      socket.on("counter_grab", (data) => {
+        if (data && typeof data.grabberX === "number" && typeof data.grabbedX === "number") {
+          // Calculate center position between grabber and grabbed player
+          const centerX = (data.grabberX + data.grabbedX) / 2;
+          setCounterGrabEffectPosition({
+            x: centerX + 150,
+            y: GROUND_LEVEL + 110,
+            counterId: data.counterId || `counter-${Date.now()}`,
+            grabberPlayerNumber: data.grabberPlayerNumber || 1,
+          });
+          // Use grab break sound for now (can be changed later)
+          playSound(grabBreakSound, 0.01);
+        }
+      });
+
       // Snowball impact effect
       socket.on("snowball_hit", (data) => {
         if (data && typeof data.x === "number" && typeof data.y === "number") {
@@ -1729,6 +1771,7 @@ const GameFighter = ({
       socket.off("perfect_parry");
       if (index === 0) {
         socket.off("grab_break");
+        socket.off("counter_grab");
         socket.off("snowball_hit");
         socket.off("stamina_blocked");
         socket.off("grab_clash_start");
@@ -2319,6 +2362,7 @@ const GameFighter = ({
       <HitEffect position={hitEffectPosition} />
       <RawParryEffect position={rawParryEffectPosition} />
       <GrabBreakEffect position={grabBreakEffectPosition} />
+      <CounterGrabEffect position={counterGrabEffectPosition} />
       <SnowballImpactEffect position={snowballImpactPosition} />
       <StarStunEffect
         x={getDisplayPosition().x}

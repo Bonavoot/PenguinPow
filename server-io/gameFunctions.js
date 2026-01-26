@@ -39,6 +39,7 @@ function cleanupGrabStates(player, opponent) {
   opponent.isHit = false;
   opponent.grabCooldown = false; // Add this to ensure cooldown is reset
   opponent.isGrabbing = false; // Add this to ensure grabbing state is reset
+  opponent.isCounterGrabbed = false; // Reset counter grab flag
 }
 
 function handleWinCondition(room, loser, winner, io) {
@@ -706,9 +707,36 @@ function adjustPlayerPositions(player1, player2, delta) {
       (player1.isAttacking && player1.attackType === "slap") ||
       (player2.isAttacking && player2.attackType === "slap");
 
+    // SPECIAL CASE: Perfect parry stun - stunned player is "anchored" and cannot be pushed
+    // The pushing player takes ALL separation and their velocity is killed
+    const player1IsStunned = player1.isRawParryStun;
+    const player2IsStunned = player2.isRawParryStun;
+
     let separationSpeed, newPlayer1X, newPlayer2X;
 
-    if (isSlapAttackScenario) {
+    if (player1IsStunned || player2IsStunned) {
+      // One player is stunned - they are anchored in place
+      separationSpeed = Math.min(overlap * 0.7, 12);
+      const separationDirection = player1.x < player2.x ? -1 : 1;
+
+      if (player1IsStunned && !player2IsStunned) {
+        // Player 1 is stunned - player 1 stays in place, player 2 takes all separation
+        newPlayer1X = player1.x; // Stunned player doesn't move
+        newPlayer2X = player2.x + -separationDirection * separationSpeed; // Pusher takes full separation
+        // Kill the pusher's velocity completely
+        player2.movementVelocity = 0;
+      } else if (player2IsStunned && !player1IsStunned) {
+        // Player 2 is stunned - player 2 stays in place, player 1 takes all separation
+        newPlayer1X = player1.x + separationDirection * separationSpeed; // Pusher takes full separation
+        newPlayer2X = player2.x; // Stunned player doesn't move
+        // Kill the pusher's velocity completely
+        player1.movementVelocity = 0;
+      } else {
+        // Both stunned (shouldn't happen normally) - neither moves
+        newPlayer1X = player1.x;
+        newPlayer2X = player2.x;
+      }
+    } else if (isSlapAttackScenario) {
       // Gentler separation during slap attacks to maintain close-quarters feel
       separationSpeed = Math.min(overlap * 0.4, 6); // Reduced separation speed for slap attacks
 
@@ -738,32 +766,35 @@ function adjustPlayerPositions(player1, player2, delta) {
 
     // Apply strong resistance to movement velocity when players are pushing into each other
     // Reduce resistance during slap attacks to allow smooth close-quarters movement
+    // Note: Stunned players already handled above with full anchor behavior
     if (
       !player1.isHit &&
-      !player1.isAlreadyHit &&
       !player1.isSlapKnockback &&
+      !player1IsStunned && // Don't double-process stunned players
       player1.movementVelocity
     ) {
       const isMovingTowards =
         (player1.x < player2.x && player1.movementVelocity > 0) ||
         (player1.x > player2.x && player1.movementVelocity < 0);
       if (isMovingTowards) {
-        // Reduced resistance during slap attacks for smoother movement
+        // If opponent is stunned, apply maximum resistance (already handled above)
+        // Otherwise use normal resistance
         const resistance = isSlapAttackScenario ? 0.85 : 0.5;
         player1.movementVelocity *= resistance;
       }
     }
     if (
       !player2.isHit &&
-      !player2.isAlreadyHit &&
       !player2.isSlapKnockback &&
+      !player2IsStunned && // Don't double-process stunned players
       player2.movementVelocity
     ) {
       const isMovingTowards =
         (player2.x < player1.x && player2.movementVelocity > 0) ||
         (player2.x > player1.x && player2.movementVelocity < 0);
       if (isMovingTowards) {
-        // Reduced resistance during slap attacks for smoother movement
+        // If opponent is stunned, apply maximum resistance (already handled above)
+        // Otherwise use normal resistance
         const resistance = isSlapAttackScenario ? 0.85 : 0.5;
         player2.movementVelocity *= resistance;
       }
@@ -794,13 +825,14 @@ function adjustPlayerPositions(player1, player2, delta) {
       // Handle boundary-respecting separation ONLY during knockback scenarios
       if (player1IsBeingKnockedBack || player2IsBeingKnockedBack) {
         // Apply separation but enforce boundaries to prevent players from going outside map
-        if (!player1IsBeingKnockedBack && !player1.isRawParrying) {
+        // Note: Stunned players (isRawParryStun) should never be moved by collision
+        if (!player1IsBeingKnockedBack && !player1.isRawParrying && !player1.isRawParryStun) {
           player1.x = Math.max(
             leftBoundary,
             Math.min(newPlayer1X, rightBoundary)
           );
         }
-        if (!player2IsBeingKnockedBack && !player2.isRawParrying) {
+        if (!player2IsBeingKnockedBack && !player2.isRawParrying && !player2.isRawParryStun) {
           player2.x = Math.max(
             leftBoundary,
             Math.min(newPlayer2X, rightBoundary)
@@ -921,13 +953,14 @@ function adjustPlayerPositions(player1, player2, delta) {
       // Handle boundary-respecting separation ONLY during knockback scenarios
       if (player1IsBeingKnockedBack || player2IsBeingKnockedBack) {
         // Apply separation but enforce boundaries to prevent players from going outside map
-        if (!player1IsBeingKnockedBack && !player1.isRawParrying) {
+        // Note: Stunned players (isRawParryStun) should never be moved by collision
+        if (!player1IsBeingKnockedBack && !player1.isRawParrying && !player1.isRawParryStun) {
           player1.x = Math.max(
             leftBoundary,
             Math.min(newPlayer1X, rightBoundary)
           );
         }
-        if (!player2IsBeingKnockedBack && !player2.isRawParrying) {
+        if (!player2IsBeingKnockedBack && !player2.isRawParrying && !player2.isRawParryStun) {
           player2.x = Math.max(
             leftBoundary,
             Math.min(newPlayer2X, rightBoundary)
@@ -940,9 +973,10 @@ function adjustPlayerPositions(player1, player2, delta) {
       }
 
       // Normal boundary handling for non-overlapping cases
+      // Note: Stunned players (isRawParryStun) should never be moved by collision
       if (player1OutOfBounds && !player2OutOfBounds) {
         // Player 1 is blocked by boundary, move player 2 by full separation distance
-        if (!player1.isRawParrying) {
+        if (!player1.isRawParrying && !player1.isRawParryStun) {
           player1.x = Math.max(
             leftBoundary,
             Math.min(player1.x, rightBoundary)
@@ -954,13 +988,14 @@ function adjustPlayerPositions(player1, player2, delta) {
         if (
           newPlayer2XFull >= leftBoundary &&
           newPlayer2XFull <= rightBoundary &&
-          !player2.isRawParrying
+          !player2.isRawParrying &&
+          !player2.isRawParryStun
         ) {
           player2.x = newPlayer2XFull;
         }
       } else if (player2OutOfBounds && !player1OutOfBounds) {
         // Player 2 is blocked by boundary, move player 1 by full separation distance
-        if (!player2.isRawParrying) {
+        if (!player2.isRawParrying && !player2.isRawParryStun) {
           player2.x = Math.max(
             leftBoundary,
             Math.min(player2.x, rightBoundary)
@@ -972,19 +1007,20 @@ function adjustPlayerPositions(player1, player2, delta) {
         if (
           newPlayer1XFull >= leftBoundary &&
           newPlayer1XFull <= rightBoundary &&
-          !player1.isRawParrying
+          !player1.isRawParrying &&
+          !player1.isRawParryStun
         ) {
           player1.x = newPlayer1XFull;
         }
       } else {
         // Both players would go out of bounds - clamp both to boundaries
-        if (!player1.isRawParrying) {
+        if (!player1.isRawParrying && !player1.isRawParryStun) {
           player1.x = Math.max(
             leftBoundary,
             Math.min(newPlayer1X, rightBoundary)
           );
         }
-        if (!player2.isRawParrying) {
+        if (!player2.isRawParrying && !player2.isRawParryStun) {
           player2.x = Math.max(
             leftBoundary,
             Math.min(newPlayer2X, rightBoundary)
@@ -992,11 +1028,12 @@ function adjustPlayerPositions(player1, player2, delta) {
         }
       }
     } else {
-      // Both players can move normally, but check if they're raw parrying
-      if (!player1.isRawParrying) {
+      // Both players can move normally, but check if they're raw parrying or stunned
+      // Stunned players (isRawParryStun) should be anchored and not moved by collision
+      if (!player1.isRawParrying && !player1.isRawParryStun) {
         player1.x = newPlayer1X;
       }
-      if (!player2.isRawParrying) {
+      if (!player2.isRawParrying && !player2.isRawParryStun) {
         player2.x = newPlayer2X;
       }
     }
@@ -1089,7 +1126,14 @@ function safelyEndChargedAttack(player, rooms) {
 
           // Execute the buffered action
           if (action.type === "dodge" && player.stamina >= DODGE_STAMINA_COST) {
+            // Clear movement momentum for static dodge distance
+            player.movementVelocity = 0;
+            player.isStrafing = false;
+            
             player.isDodging = true;
+            player.isDodgeCancelling = false;
+            player.dodgeCancelStartTime = 0;
+            player.dodgeCancelStartY = 0;
             player.dodgeStartTime = Date.now();
             player.dodgeEndTime = Date.now() + 450;
             player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);

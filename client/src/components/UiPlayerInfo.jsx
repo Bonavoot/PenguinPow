@@ -171,13 +171,17 @@ const StaminaFill = styled.div.attrs((props) => ({
   position: absolute;
   top: 2px;
   bottom: 2px;
-  left: 2px;
+  ${(props) => props.$isRight ? 'right: 2px;' : 'left: 2px;'}
   border-radius: 2px;
   transition: width 0.3s ease;
   z-index: 2;
   background: ${(props) => props.$lowStaminaWarning 
-    ? "linear-gradient(90deg, #ff6b6b 0%, #ff4444 100%)"
-    : "linear-gradient(90deg, #fff4d6 0%, var(--edo-gold) 100%)"};
+    ? props.$isRight 
+      ? "linear-gradient(270deg, #ff6b6b 0%, #ff4444 100%)"
+      : "linear-gradient(90deg, #ff6b6b 0%, #ff4444 100%)"
+    : props.$isRight
+      ? "linear-gradient(270deg, #fff4d6 0%, var(--edo-gold) 100%)"
+      : "linear-gradient(90deg, #fff4d6 0%, var(--edo-gold) 100%)"};
   box-shadow: ${(props) => props.$lowStaminaWarning
     ? "0 0 12px rgba(255, 68, 68, 0.7)"
     : "0 0 12px rgba(212, 175, 55, 0.6)"};
@@ -197,7 +201,10 @@ const StaminaFill = styled.div.attrs((props) => ({
 
 const StaminaLoss = styled.div.attrs((props) => ({
   style: {
-    left: `calc(2px + ${props.$left}%)`,
+    ...(props.$isRight 
+      ? { right: `calc(2px + ${props.$left}%)` }
+      : { left: `calc(2px + ${props.$left}%)` }
+    ),
     width: `${props.$width}%`,
     opacity: props.$visible ? 1 : 0,
   },
@@ -205,7 +212,9 @@ const StaminaLoss = styled.div.attrs((props) => ({
   position: absolute;
   top: 2px;
   bottom: 2px;
-  background: linear-gradient(90deg, var(--edo-sakura) 0%, #ff9e9e 100%);
+  background: ${(props) => props.$isRight
+    ? "linear-gradient(270deg, var(--edo-sakura) 0%, #ff9e9e 100%)"
+    : "linear-gradient(90deg, var(--edo-sakura) 0%, #ff9e9e 100%)"};
   transition: opacity 0.15s ease;
   pointer-events: none;
   z-index: 1;
@@ -473,8 +482,9 @@ const UiPlayerInfo = ({
             <StaminaFill 
               $stamina={p1DisplayStamina} 
               $lowStaminaWarning={shouldShowLowStaminaWarning(p1DisplayStamina)}
+              $isRight={false}
             />
-            <StaminaLoss $left={p1Loss.left} $width={p1Loss.width} $visible={p1Loss.visible} />
+            <StaminaLoss $left={p1Loss.left} $width={p1Loss.width} $visible={p1Loss.visible} $isRight={false} />
           </StaminaContainer>
         </StaminaRow>
 
@@ -514,8 +524,9 @@ const UiPlayerInfo = ({
             <StaminaFill 
               $stamina={p2DisplayStamina} 
               $lowStaminaWarning={shouldShowLowStaminaWarning(p2DisplayStamina)}
+              $isRight={true}
             />
-            <StaminaLoss $left={p2Loss.left} $width={p2Loss.width} $visible={p2Loss.visible} />
+            <StaminaLoss $left={p2Loss.left} $width={p2Loss.width} $visible={p2Loss.visible} $isRight={true} />
           </StaminaContainer>
         </StaminaRow>
 

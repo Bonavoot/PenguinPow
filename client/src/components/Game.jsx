@@ -18,10 +18,13 @@ const Game = ({ rooms, roomName, localId, setCurrentPage }) => {
     useState(false);
   const [opponentDisconnected, setOpponentDisconnected] = useState(false);
   const [disconnectedRoomId, setDisconnectedRoomId] = useState(null);
-  let index = rooms.findIndex((room) => room.id === roomName);
+  const index = rooms.findIndex((room) => room.id === roomName);
+
+  // Get the current room with null safety
+  const currentRoom = index !== -1 ? rooms[index] : null;
 
   // Find current player for input blocking checks
-  const currentPlayer = rooms[index]?.players?.find(
+  const currentPlayer = currentRoom?.players?.find(
     (player) => player.id === localId
   );
 
@@ -215,11 +218,19 @@ const Game = ({ rooms, roomName, localId, setCurrentPage }) => {
     };
   }, [socket]);
 
+  // Early return if room doesn't exist (e.g., after disconnect/reconnect for CPU games)
+  if (!currentRoom) {
+    console.log("⚠️ Game: Room not found, returning to main menu");
+    // Redirect to main menu if room doesn't exist
+    setCurrentPage("main-menu");
+    return null;
+  }
+
   return (
     <div className="game-wrapper">
       <div className="game-container">
         <div className="ui">
-          {rooms[index].players
+          {currentRoom.players
             .filter((player) => player.id !== "disconnected_placeholder")
             .map((player, i) => {
               return (
@@ -247,8 +258,8 @@ const Game = ({ rooms, roomName, localId, setCurrentPage }) => {
         />
         <GrabClashUI
           socket={socket}
-          player1={rooms[index]?.players?.[0]}
-          player2={rooms[index]?.players?.[1]}
+          player1={currentRoom.players?.[0]}
+          player2={currentRoom.players?.[1]}
         />
       </div>
       <MobileControls

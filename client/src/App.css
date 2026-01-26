@@ -404,7 +404,7 @@ body {
   background-size: 120% 120%;
   background-position: 52% 5%;
   /* Boosted saturation and contrast to compensate for removed blend mode */
-  filter: brightness(1.12) saturate(1.35) contrast(1.08);
+  filter: brightness(1.05) saturate(1.15);
   z-index: -1;
   /* Isolation prevents blend modes from other elements affecting the dohyo */
   isolation: isolate;

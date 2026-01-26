@@ -453,8 +453,16 @@ function handleGrabClashMashing(cpu, aiState, currentTime) {
 
 // Handle grab break attempts (spacebar mashing)
 // CPU should break grabs MOST of the time, especially when near edge!
+// CANNOT break counter grabs (grabbed while raw parrying)
 function handleGrabBreak(cpu, aiState, currentTime) {
   // DON'T reset all keys - we need _prevKeys to track the previous state for keyJustPressed
+  
+  // Cannot break out of a counter grab!
+  if (cpu.isCounterGrabbed) {
+    cpu.keys[" "] = false;
+    console.log(`CPU GRAB BREAK: Cannot break - counter grabbed!`);
+    return;
+  }
   
   // Track when we started being grabbed for delay purposes
   if (!aiState.grabStartedTime) {
@@ -528,7 +536,8 @@ function handlePowerUpUsage(cpu, human, aiState, currentTime, distance) {
   const hasSnowball = cpu.activePowerUp === "snowball" && !cpu.snowballCooldown && !cpu.isThrowingSnowball;
   const hasPumoArmy = cpu.activePowerUp === "pumo_army" && !cpu.pumoArmyCooldown && !cpu.isSpawningPumoArmy;
   
-  console.log(`CPU Power-up check: activePowerUp=${cpu.activePowerUp}, hasSnowball=${hasSnowball}, hasPumoArmy=${hasPumoArmy}`);
+  // DEBUG: Uncomment to debug power-up issues (causes lag when enabled every frame)
+  // console.log(`CPU Power-up check: activePowerUp=${cpu.activePowerUp}, hasSnowball=${hasSnowball}, hasPumoArmy=${hasPumoArmy}`);
   
   if (!hasSnowball && !hasPumoArmy) {
     return false;
@@ -1176,10 +1185,12 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
   
   // === GRAB BREAK - Process BEFORE shouldBlockAction check! ===
   // This is special because it needs to work WHILE being grabbed
+  // CANNOT break out of counter grabs (grabbed while raw parrying)
   const GRAB_BREAK_STAMINA_COST = 33; // 33% of max stamina (match server constant)
   if (cpu.isBeingGrabbed && 
       keyJustPressed(" ") && 
       !cpu.isGrabBreaking &&
+      !cpu.isCounterGrabbed && // Cannot break counter grabs!
       cpu.stamina >= GRAB_BREAK_STAMINA_COST) {
     
     // Find the grabber
@@ -1205,6 +1216,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       cpu.throwOpponent = null;
       cpu.isHit = false;
       cpu.grabCooldown = false;
+      cpu.isCounterGrabbed = false; // Reset counter grab flag
       
       // Animation state - breaker shows grab break
       cpu.isGrabBreaking = true;
@@ -1390,7 +1402,14 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       cpu.stamina >= AI_CONFIG.DODGE_STAMINA_COST &&
       !cpu.isDodging) {
     
+    // Clear movement momentum for static dodge distance
+    cpu.movementVelocity = 0;
+    cpu.isStrafing = false;
+    
     cpu.isDodging = true;
+    cpu.isDodgeCancelling = false;
+    cpu.dodgeCancelStartTime = 0;
+    cpu.dodgeCancelStartY = 0;
     cpu.dodgeStartTime = currentTime;
     cpu.dodgeEndTime = currentTime + 450;
     cpu.dodgeStartX = cpu.x;
@@ -1409,6 +1428,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     
     setPlayerTimeout(cpu.id, () => {
       cpu.isDodging = false;
+      cpu.isDodgeCancelling = false;
       cpu.dodgeDirection = null;
     }, 450);
     
