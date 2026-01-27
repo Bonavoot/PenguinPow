@@ -873,16 +873,6 @@ io.on("connection", (socket) => {
       winner.grabFacingDirection = winner.facing;
     }
 
-    // Set grab cooldown for winner
-    winner.grabCooldown = true;
-    setPlayerTimeout(
-      winner.id,
-      () => {
-        winner.grabCooldown = false;
-      },
-      1100
-    );
-
     // Emit clash result before clearing data
     io.in(room.id).emit("grab_clash_end", {
       winnerId: winner.id,
@@ -2459,16 +2449,6 @@ io.on("connection", (socket) => {
             } else {
               player.grabFacingDirection = player.facing;
             }
-
-            // Set grab cooldown
-            player.grabCooldown = true;
-            setPlayerTimeout(
-              player.id,
-              () => {
-                player.grabCooldown = false;
-              },
-              1100
-            );
           }
         }
 

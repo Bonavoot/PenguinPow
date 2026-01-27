@@ -39,6 +39,7 @@ import crouching from "../assets/blocking2.png";
 import crouching2 from "../assets/blocking.png";
 import grabbing from "../assets/grabbing.png";
 import grabbing2 from "../assets/grabbing2.png";
+import grabAttempt from "../assets/grab-attempt.png";
 import grabAttempt2 from "../assets/grab-attempt2.png";
 import beingGrabbed from "../assets/is-being-grabbed.gif";
 import beingGrabbed2 from "../assets/is-being-grabbed2.gif";
@@ -67,6 +68,8 @@ import saltBasket from "../assets/salt-basket.png";
 import saltBasketEmpty from "../assets/salt-basket-empty.png";
 import recovering2 from "../assets/recovering2.png";
 import recovering from "../assets/recovering.png";
+import rawParrySuccess2 from "../assets/raw-parry-success2.png";
+import rawParrySuccess from "../assets/raw-parry-success.png";
 import snowball from "../assets/snowball.png";
 import attackSound from "../sounds/attack-sound.mp3";
 import hitSound from "../sounds/hit-sound.mp3";
@@ -86,6 +89,7 @@ import rawParryGruntSound from "../sounds/raw-parry-grunt.mp3";
 import rawParrySuccessSound from "../sounds/raw-parry-success-sound.wav";
 import regularRawParrySound from "../sounds/regular-raw-parry-sound.wav";
 import grabBreakSound from "../sounds/grab-break-sound.wav";
+import counterGrabSound from "../sounds/counter-grab-sound.wav";
 import notEnoughStaminaSound from "../sounds/not-enough-stamina-sound.wav";
 import grabClashSound from "../sounds/grab-clash-sound.wav";
 import clashVictorySound from "../sounds/clash-victory-sound.wav";
@@ -150,6 +154,7 @@ const initializeAudioPools = () => {
   createAudioPool(rawParrySuccessSound, 2);
   createAudioPool(regularRawParrySound, 2);
   createAudioPool(grabBreakSound, 2);
+  createAudioPool(counterGrabSound, 2);
   createAudioPool(notEnoughStaminaSound, 2);
   createAudioPool(grabClashSound, 2);
   createAudioPool(clashVictorySound, 2);
@@ -176,6 +181,7 @@ const initializeImagePreloading = () => {
   preloadImage(throwing2);
   preloadImage(grabbing);
   preloadImage(grabbing2);
+  preloadImage(grabAttempt);
   preloadImage(grabAttempt2);
   preloadImage(beingGrabbed);
   preloadImage(beingGrabbed2);
@@ -209,6 +215,8 @@ const initializeImagePreloading = () => {
   preloadImage(saltBasketEmpty);
   preloadImage(recovering);
   preloadImage(recovering2);
+  preloadImage(rawParrySuccess);
+  preloadImage(rawParrySuccess2);
   preloadImage(snowball);
 
   // Effect sprites
@@ -302,7 +310,8 @@ const getImageSrc = (
   isCrouchStrafing,
   isGrabBreakCountered,
   // new optional trailing param(s)
-  isGrabbingMovementTrailing
+  isGrabbingMovementTrailing,
+  isGrabClashActive
 ) => {
   // Backward-compat: allow passing as trailing param or main param
   const attemptingGrabMovement =
@@ -313,7 +322,7 @@ const getImageSrc = (
     if (isGrabBreaking) return crouching;
     if (isGrabBreakCountered) return hit;
     // Both perfect and regular parry use the same success animation
-    if (isRawParrySuccess || isPerfectRawParrySuccess) return recovering;
+    if (isRawParrySuccess || isPerfectRawParrySuccess) return rawParrySuccess;
     if (isAtTheRopes) return beingGrabbed;
     if (isBowing) return bow;
     if (isThrowTeching) return throwTech;
@@ -327,9 +336,13 @@ const getImageSrc = (
     if (attemptingGrabMovement) {
       return pumo;
     }
-    // Show attempt animation even if isGrabbing is false
+    // Show attempt animation even if isGrabbing is false, UNLESS in grab clash
     if (grabState === "attempting") {
-      return grabAttemptType === "throw" ? throwing : pumo;
+      // During grab clash, show grabbing animation instead of grab attempt
+      if (isGrabClashActive) {
+        return grabbing;
+      }
+      return grabAttemptType === "throw" ? throwing : grabAttempt;
     }
     if (isSlapAttack) {
       return slapAnimation === 1 ? slapAttack1Red : slapAttack2Red;
@@ -338,7 +351,11 @@ const getImageSrc = (
     if (isAttacking && !isSlapAttack) return attack;
     if (isGrabbing) {
       if (grabState === "attempting") {
-        return grabAttemptType === "throw" ? throwing : pumo;
+        // During grab clash, show grabbing animation instead of grab attempt
+        if (isGrabClashActive) {
+          return grabbing;
+        }
+        return grabAttemptType === "throw" ? throwing : grabAttempt;
       }
       return grabbing;
     }
@@ -356,7 +373,7 @@ const getImageSrc = (
     if (isGrabBreaking) return crouching2;
     if (isGrabBreakCountered) return hit2;
     // Both perfect and regular parry use the same success animation
-    if (isRawParrySuccess || isPerfectRawParrySuccess) return recovering2;
+    if (isRawParrySuccess || isPerfectRawParrySuccess) return rawParrySuccess2;
     if (isAtTheRopes) return beingGrabbed2;
     if (isJumping) return throwing2;
     if (isAttacking && !isSlapAttack) return attack2;
@@ -372,8 +389,12 @@ const getImageSrc = (
     if (attemptingGrabMovement) {
       return grabAttemptType === "throw" ? throwing2 : grabAttempt2;
     }
-    // Show attempt animation even if isGrabbing is false
+    // Show attempt animation even if isGrabbing is false, UNLESS in grab clash
     if (grabState === "attempting") {
+      // During grab clash, show grabbing animation instead of grab attempt
+      if (isGrabClashActive) {
+        return grabbing2;
+      }
       return grabAttemptType === "throw" ? throwing2 : grabAttempt2;
     }
     if (isSlapAttack) {
@@ -381,6 +402,10 @@ const getImageSrc = (
     }
     if (isGrabbing) {
       if (grabState === "attempting") {
+        // During grab clash, show grabbing animation instead of grab attempt
+        if (isGrabClashActive) {
+          return grabbing2;
+        }
         return grabAttemptType === "throw" ? throwing2 : grabAttempt2;
       }
       return grabbing2;
@@ -595,6 +620,7 @@ const StyledImage = styled("img")
         "isCrouchStance",
         "isCrouchStrafing",
         "isGrabBreakCountered",
+        "isGrabClashActive",
       ].includes(prop),
   })
   .attrs((props) => ({
@@ -633,7 +659,8 @@ const StyledImage = styled("img")
       props.$isCrouchStance,
       props.$isCrouchStrafing,
       props.$isGrabBreakCountered,
-      props.$isGrabbingMovement
+      props.$isGrabbingMovement,
+      props.$isGrabClashActive
     ),
     style: {
       position: "absolute",
@@ -660,11 +687,15 @@ const StyledImage = styled("img")
         ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) brightness(1.15)"
         : props.$isChargingAttack
         ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 12px rgba(255, 200, 50, 0.85)) contrast(1.25)"
+        : props.$isGrabClashActive
+        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.25) brightness(1.1)"
         : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) ",
       animation: props.$isGrabBreaking
         ? "grabBreakFlash 1.2s ease-in-out infinite"
         : props.$isRawParrying
         ? "rawParryFlash 1.2s ease-in-out infinite"
+        : props.$isGrabClashActive
+        ? "grabClashStruggle 0.15s ease-in-out infinite"
         : props.$isHit
         ? "hitSquash 0.18s ease-out"
         : props.$isChargingAttack
@@ -797,6 +828,25 @@ const StyledImage = styled("img")
     }
     50% {
       transform: scaleX(var(--facing, 1)) scaleY(1.03);
+    }
+  }
+  
+  /* Grab clash struggling animation - rapid horizontal shake */
+  @keyframes grabClashStruggle {
+    0% {
+      transform: scaleX(var(--facing, 1)) translateX(0px);
+    }
+    25% {
+      transform: scaleX(var(--facing, 1)) translateX(-3px);
+    }
+    50% {
+      transform: scaleX(var(--facing, 1)) translateX(0px);
+    }
+    75% {
+      transform: scaleX(var(--facing, 1)) translateX(3px);
+    }
+    100% {
+      transform: scaleX(var(--facing, 1)) translateX(0px);
     }
   }
 `;
@@ -1156,6 +1206,9 @@ const GameFighter = ({
   const [counterGrabEffectPosition, setCounterGrabEffectPosition] = useState(null);
   const [snowballImpactPosition, setSnowballImpactPosition] = useState(null);
   
+  // Grab clash state - track when both players are in a grab clash
+  const [isGrabClashActive, setIsGrabClashActive] = useState(false);
+  
   // "No Stamina" effect - shows when player tries to use action without enough stamina
   const [noStaminaEffectKey, setNoStaminaEffectKey] = useState(0);
 
@@ -1196,7 +1249,8 @@ const GameFighter = ({
       penguin.isCrouchStance,
       penguin.isCrouchStrafing,
       penguin.isGrabBreakCountered,
-      penguin.isGrabbingMovement
+      penguin.isGrabbingMovement,
+      isGrabClashActive
     );
   }, [
     penguin.fighter,
@@ -1234,6 +1288,7 @@ const GameFighter = ({
     penguin.isCrouchStrafing,
     penguin.isGrabBreakCountered,
     penguin.isGrabbingMovement,
+    isGrabClashActive,
   ]);
 
   // Interpolation constants
@@ -1315,11 +1370,28 @@ const GameFighter = ({
   // Smooth interpolation with predictive positioning for better feel
   const getDisplayPosition = useCallback(() => {
     // If no interpolation data is available yet, fall back to server position
+    let position;
     if (!interpolatedPosition.x && !interpolatedPosition.y && penguin.x) {
-      return { x: penguin.x, y: penguin.y };
+      position = { x: penguin.x, y: penguin.y };
+    } else {
+      position = interpolatedPosition;
     }
-    return interpolatedPosition;
-  }, [interpolatedPosition, penguin.x, penguin.y]);
+    
+    // During grab clash, move players closer together for more intense overlap
+    if (isGrabClashActive) {
+      const CLASH_PULL_DISTANCE = 20; // pixels to move toward opponent
+      // Move OPPOSITE to facing direction to get closer to opponent
+      // If facing right (1), move left (negative) toward opponent on left
+      // If facing left (-1), move right (positive) toward opponent on right
+      const pullOffset = -penguin.facing * CLASH_PULL_DISTANCE;
+      return { 
+        x: position.x + pullOffset, 
+        y: position.y 
+      };
+    }
+    
+    return position;
+  }, [interpolatedPosition, penguin.x, penguin.y, isGrabClashActive, penguin.facing]);
 
   // Function to handle exiting from disconnected game
   const handleExitDisconnectedGame = useCallback(() => {
@@ -1592,8 +1664,8 @@ const GameFighter = ({
             counterId: data.counterId || `counter-${Date.now()}`,
             grabberPlayerNumber: data.grabberPlayerNumber || 1,
           });
-          // Use grab break sound for now (can be changed later)
-          playSound(grabBreakSound, 0.01);
+          // Play counter grab sound at similar volume to other grab-related sounds
+          playSound(counterGrabSound, 0.035);
         }
       });
 
@@ -1622,21 +1694,28 @@ const GameFighter = ({
           }, 900);
         }
       });
-      
-      // Grab clash sound
-      socket.on("grab_clash_start", () => {
+    }
+    
+    // Grab clash events - listen on ALL components so both players get the animation
+    socket.on("grab_clash_start", () => {
+      // Only play sound once (on index 0)
+      if (index === 0) {
         playSound(grabClashSound, 0.04);
-      });
-      
-      // Grab clash end - play victory or defeat sound based on local player result
-      socket.on("grab_clash_end", (data) => {
+      }
+      setIsGrabClashActive(true);
+    });
+    
+    // Grab clash end - play victory or defeat sound based on local player result
+    socket.on("grab_clash_end", (data) => {
+      if (index === 0) {
         if (data.winnerId === localId) {
           playSound(clashVictorySound, 0.03);
         } else if (data.loserId === localId) {
           playSound(clashDefeatSound, 0.08);
         }
-      });
-    }
+      }
+      setIsGrabClashActive(false);
+    });
 
     socket.on("power_up_activated", (data) => {
       if (data.playerId === player.id) {
@@ -1681,6 +1760,7 @@ const GameFighter = ({
       setHasUsedPowerUp(false);
       setRawParryEffectPosition(null); // Clear any active parry effects
       setNoStaminaEffectKey(0); // Clear "No Stamina" effect on round reset
+      setIsGrabClashActive(false); // Reset grab clash state
       onResetDisconnectState(); // Reset opponent disconnected state for new games
       console.log("game reset gamefighter.jsx");
 
@@ -1774,9 +1854,9 @@ const GameFighter = ({
         socket.off("counter_grab");
         socket.off("snowball_hit");
         socket.off("stamina_blocked");
-        socket.off("grab_clash_start");
-        socket.off("grab_clash_end");
       }
+      socket.off("grab_clash_start");
+      socket.off("grab_clash_end");
       socket.off("game_start");
       socket.off("game_reset");
       socket.off("game_over");
@@ -2318,6 +2398,7 @@ const GameFighter = ({
         $isCrouchStance={penguin.isCrouchStance}
         $isCrouchStrafing={penguin.isCrouchStrafing}
         $isGrabBreakCountered={penguin.isGrabBreakCountered}
+        $isGrabClashActive={isGrabClashActive}
       />
 
       {(penguin.isHit || penguin.isBeingThrown) && (
