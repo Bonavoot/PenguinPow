@@ -332,9 +332,9 @@ const getImageSrc = (
     if (isDodging) return dodging;
     if (isCrouchStrafing) return crouchStrafing2;
     if (isCrouchStance) return crouchStance2;
-    // Show attempt placeholder during grab movement attempt
+    // Show attempt animation during grab movement attempt
     if (attemptingGrabMovement) {
-      return pumo;
+      return grabAttemptType === "throw" ? throwing : grabAttempt;
     }
     // Show attempt animation even if isGrabbing is false, UNLESS in grab clash
     if (grabState === "attempting") {
