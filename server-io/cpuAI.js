@@ -1281,47 +1281,72 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       !cpu.canMoveToReady &&
       !cpu.throwCooldown &&
       !cpu.isRawParrying &&
-      !cpu.isThrowing) {
+      !cpu.isThrowing &&
+      !cpu.isAttemptingGrabThrow) { // Don't allow multiple throw attempts
     
     cpu.lastThrowAttemptTime = currentTime;
     
-    const THROW_RANGE = Math.round(166 * 1.3);
-    const throwRange = THROW_RANGE * (cpu.sizeMultiplier || 1);
+    // Set attempting grab throw state - this triggers the animation
+    cpu.isAttemptingGrabThrow = true;
+    cpu.grabThrowAttemptStartTime = currentTime;
     
-    if (Math.abs(cpu.x - opponent.x) < throwRange && 
-        !opponent.isBeingThrown && 
-        !opponent.isDodging) {
+    // Block all CPU inputs during the attempt
+    cpu.actionLockUntil = currentTime + 500;
+    
+    setPlayerTimeout(cpu.id, () => {
+      // Clear attempting state after the animation
+      cpu.isAttemptingGrabThrow = false;
       
-      console.log(`CPU THROW EXECUTING! isGrabbing: ${cpu.isGrabbing}, facing: ${cpu.facing}`);
-      
-      clearChargeState(cpu, true);
-      cpu.movementVelocity = 0;
-      cpu.isStrafing = false;
-      
-      cpu.isThrowing = true;
-      cpu.throwStartTime = currentTime;
-      cpu.throwEndTime = currentTime + 400;
-      cpu.throwOpponent = opponent.id;
-      cpu.currentAction = "throw";
-      cpu.actionLockUntil = currentTime + 200;
-      
-      opponent.isBeingThrown = true;
-      opponent.isHit = false;
-      
-      if (cpu.isGrabbing) {
-        cpu.isGrabbing = false;
-        cpu.grabbedOpponent = null;
-      }
-      if (opponent.isBeingGrabbed) {
-        opponent.isBeingGrabbed = false;
+      // Check if grab break has already occurred - grab break always takes priority
+      if (cpu.isGrabBreakCountered || opponent.isGrabBreaking || opponent.isGrabBreakSeparating) {
+        console.log(`CPU throw cancelled: Grab break takes priority`);
+        return;
       }
       
-      cpu.throwingFacingDirection = cpu.facing;
-      opponent.beingThrownFacingDirection = -cpu.facing;
+      // Also check if we're no longer in a valid grab state
+      if (!cpu.isGrabbing && !cpu.isThrowing) {
+        console.log(`CPU throw cancelled: No longer grabbing (likely grab break occurred)`);
+        return;
+      }
       
-      cpu._prevKeys = { ...cpu.keys };
-      return; // Only one action per tick
-    }
+      const THROW_RANGE = Math.round(166 * 1.3);
+      const throwRange = THROW_RANGE * (cpu.sizeMultiplier || 1);
+      
+      if (Math.abs(cpu.x - opponent.x) < throwRange && 
+          !opponent.isBeingThrown && 
+          !opponent.isDodging) {
+        
+        console.log(`CPU THROW EXECUTING! isGrabbing: ${cpu.isGrabbing}, facing: ${cpu.facing}`);
+        
+        clearChargeState(cpu, true);
+        cpu.movementVelocity = 0;
+        cpu.isStrafing = false;
+        
+        cpu.isThrowing = true;
+        cpu.throwStartTime = Date.now();
+        cpu.throwEndTime = Date.now() + 400;
+        cpu.throwOpponent = opponent.id;
+        cpu.currentAction = "throw";
+        cpu.actionLockUntil = Date.now() + 200;
+        
+        opponent.isBeingThrown = true;
+        opponent.isHit = false;
+        
+        if (cpu.isGrabbing) {
+          cpu.isGrabbing = false;
+          cpu.grabbedOpponent = null;
+        }
+        if (opponent.isBeingGrabbed) {
+          opponent.isBeingGrabbed = false;
+        }
+        
+        cpu.throwingFacingDirection = cpu.facing;
+        opponent.beingThrownFacingDirection = -cpu.facing;
+      }
+    }, 500); // Changed from immediate to 500ms for reaction window
+    
+    cpu._prevKeys = { ...cpu.keys };
+    return; // Only one action per tick
   }
   
   // CRITICAL: If we're in any blocking state, don't process any inputs

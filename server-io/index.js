@@ -1274,93 +1274,98 @@ io.on("connection", (socket) => {
               return false; // Remove snowball
             }
 
-            // Check collision with opponent
+            // Check collision with target player
+            // For reflected snowballs, target is the original thrower; otherwise target is opponent
             const opponent = room.players.find((p) => p.id !== player.id);
+            const targetPlayer = snowball.reflectedByPerfectParry 
+              ? player  // Hit the thrower (reflected back)
+              : opponent; // Hit the opponent (normal)
+            
             if (
-              opponent &&
-              !opponent.isDodging &&
-              !opponent.isRawParrying &&
+              targetPlayer &&
+              !targetPlayer.isDodging &&
+              !targetPlayer.isRawParrying &&
               !snowball.hasHit
             ) {
-              const distance = Math.abs(snowball.x - opponent.x);
-              const sizeMul = opponent.sizeMultiplier || 1;
+              const distance = Math.abs(snowball.x - targetPlayer.x);
+              const sizeMul = targetPlayer.sizeMultiplier || 1;
               const horizThresh = Math.round(45 * 1.3) * sizeMul;
               const vertThresh = Math.round(27 * 1.3) * sizeMul;
               if (
                 distance < horizThresh &&
-                Math.abs(snowball.y - opponent.y) < vertThresh
+                Math.abs(snowball.y - targetPlayer.y) < vertThresh
               ) {
                 // Check for thick blubber hit absorption
-                const isOpponentGrabbing = opponent.isGrabStartup || opponent.isGrabbingMovement || opponent.isGrabbing;
+                const isTargetGrabbing = targetPlayer.isGrabStartup || targetPlayer.isGrabbingMovement || targetPlayer.isGrabbing;
                 if (
-                  opponent.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
-                  ((opponent.isAttacking && opponent.attackType === "charged") || isOpponentGrabbing) &&
-                  !opponent.hitAbsorptionUsed
+                  targetPlayer.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
+                  ((targetPlayer.isAttacking && targetPlayer.attackType === "charged") || isTargetGrabbing) &&
+                  !targetPlayer.hitAbsorptionUsed
                 ) {
                   console.log(
-                    `Player ${opponent.id} absorbed snowball with Thick Blubber during ${isOpponentGrabbing ? 'grab' : 'charged attack'}`
+                    `Player ${targetPlayer.id} absorbed snowball with Thick Blubber during ${isTargetGrabbing ? 'grab' : 'charged attack'}`
                   );
 
                   // Mark absorption as used for this charge session
-                  opponent.hitAbsorptionUsed = true;
+                  targetPlayer.hitAbsorptionUsed = true;
 
                   // Remove snowball but don't hit the player
                   snowball.hasHit = true;
 
                   // Emit absorption effect
                   io.in(room.id).emit("thick_blubber_absorption", {
-                    playerId: opponent.id,
-                    x: opponent.x,
-                    y: opponent.y,
+                    playerId: targetPlayer.id,
+                    x: targetPlayer.x,
+                    y: targetPlayer.y,
                   });
 
                   return false; // Remove snowball after absorption
                 }
 
-                // Hit opponent normally
+                // Hit target player normally
                 snowball.hasHit = true;
                 
                 // Emit snowball hit effect for visual clarity
                 io.in(room.id).emit("snowball_hit", {
-                  x: opponent.x,
-                  y: opponent.y,
+                  x: targetPlayer.x,
+                  y: targetPlayer.y,
                   hitId: `snowball-hit-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 });
                 
-                // If opponent was grabbing someone, clear the grabbed player's state first
-                if (opponent.isGrabbing && opponent.grabbedOpponent) {
-                  const grabbedPlayer = room.players.find(p => p.id === opponent.grabbedOpponent);
+                // If target was grabbing someone, clear the grabbed player's state first
+                if (targetPlayer.isGrabbing && targetPlayer.grabbedOpponent) {
+                  const grabbedPlayer = room.players.find(p => p.id === targetPlayer.grabbedOpponent);
                   if (grabbedPlayer) {
                     grabbedPlayer.isBeingGrabbed = false;
                   }
                 }
                 
                 // CRITICAL: Clear ALL action states before setting isHit
-                clearAllActionStates(opponent);
-                opponent.isHit = true;
-                opponent.isAlreadyHit = true;
-                opponent.lastHitTime = Date.now(); // Track hit time for safety mechanism
+                clearAllActionStates(targetPlayer);
+                targetPlayer.isHit = true;
+                targetPlayer.isAlreadyHit = true;
+                targetPlayer.lastHitTime = Date.now(); // Track hit time for safety mechanism
 
                 // Apply knockback only if not immune
-                if (canApplyKnockback(opponent)) {
+                if (canApplyKnockback(targetPlayer)) {
                   const knockbackDirection = snowball.velocityX > 0 ? 1 : -1;
 
                   // Clear any existing slap knockback state to ensure consistent snowball knockback
-                  opponent.isSlapKnockback = false;
+                  targetPlayer.isSlapKnockback = false;
 
-                  opponent.knockbackVelocity.x = knockbackDirection * 1.5; // Reduced from 2 to 1.5 (25% reduction)
-                  opponent.movementVelocity = knockbackDirection * 1.3; // Slightly increased from 1 to 1.3
+                  targetPlayer.knockbackVelocity.x = knockbackDirection * 1.5; // Reduced from 2 to 1.5 (25% reduction)
+                  targetPlayer.movementVelocity = knockbackDirection * 1.3; // Slightly increased from 1 to 1.3
 
                   // Set knockback immunity
-                  setKnockbackImmunity(opponent);
+                  setKnockbackImmunity(targetPlayer);
                 }
 
                 // Reset hit state after duration
                 setPlayerTimeout(
-                  opponent.id,
+                  targetPlayer.id,
                   () => {
-                    opponent.isHit = false;
-                    opponent.isAlreadyHit = false;
+                    targetPlayer.isHit = false;
+                    targetPlayer.isAlreadyHit = false;
                   },
                   300
                 );
@@ -1369,7 +1374,7 @@ io.on("connection", (socket) => {
               }
             }
 
-            // Check collision with raw parrying opponent (snowball is blocked but destroyed)
+            // Check collision with raw parrying opponent (snowball is blocked or reflected)
             if (opponent && opponent.isRawParrying && !snowball.hasHit) {
               const distance = Math.abs(snowball.x - opponent.x);
               const sizeMul = opponent.sizeMultiplier || 1;
@@ -1379,9 +1384,6 @@ io.on("connection", (socket) => {
                 distance < horizThresh &&
                 Math.abs(snowball.y - opponent.y) < vertThresh
               ) {
-                // Snowball is blocked - destroy it but don't apply knockback
-                snowball.hasHit = true;
-                
                 // Check if this is a perfect parry (within 100ms of parry start)
                 const currentTime = Date.now();
                 const parryDuration = currentTime - opponent.rawParryStartTime;
@@ -1390,26 +1392,48 @@ io.on("connection", (socket) => {
                 // Find the snowball thrower
                 const thrower = room.players.find(p => p.id === player.id);
                 
+                // Check if snowball was already reflected - if so, block it instead of reflecting again
+                const canReflect = isPerfectParry && !snowball.reflectedByPerfectParry;
+                
                 // Set parry success state for the defending player
-                if (isPerfectParry) {
-                  // Perfect parry: keep isRawParrying active and lock movement
+                if (canReflect) {
+                  // Perfect parry on non-reflected snowball: reflect it back!
                   opponent.isRawParrying = true;
                   opponent.isPerfectRawParrySuccess = true;
                   opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, Date.now() + PERFECT_PARRY_ANIMATION_LOCK);
-                  console.log(`Perfect snowball parry - keeping parry pose for player ${opponent.id}, locked for ${PERFECT_PARRY_ANIMATION_LOCK}ms`);
+                  console.log(`Perfect snowball parry - reflecting snowball back to sender! Player ${opponent.id} locked for ${PERFECT_PARRY_ANIMATION_LOCK}ms`);
+                  
+                  // REFLECT THE SNOWBALL BACK - faster than original
+                  snowball.hasHit = false; // Reset hit flag so it can hit the thrower
+                  snowball.velocityX = -snowball.velocityX * 1.3; // Reverse direction and make it 30% faster
+                  snowball.reflectedByPerfectParry = true; // Mark as reflected to prevent infinite reflection
+                  console.log(`Snowball reflected! New velocity: ${snowball.velocityX}`);
+                  
+                  // Emit screen shake for perfect parry
+                  io.in(room.id).emit("screen_shake", {
+                    intensity: 0.7,
+                    duration: 300,
+                  });
                 } else {
-                  // Regular parry: use parry success animation
-                  opponent.isRawParrySuccess = true;
-                  console.log(`Snowball parry success for player ${opponent.id} (regular parry)`);
+                  // Regular parry OR already-reflected snowball: block and destroy it
+                  snowball.hasHit = true;
+                  if (isPerfectParry) {
+                    opponent.isPerfectRawParrySuccess = true;
+                    opponent.isRawParrying = true;
+                    opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, Date.now() + PERFECT_PARRY_ANIMATION_LOCK);
+                    console.log(`Perfect parry on already-reflected snowball - blocked! Player ${opponent.id}`);
+                  } else {
+                    opponent.isRawParrySuccess = true;
+                    console.log(`Snowball parry success for player ${opponent.id} (regular parry) - snowball blocked`);
+                  }
                 }
                 
                 // Emit raw parry success event for visual effect and sound
-                // Send both positions so client can calculate center
                 const parryingPlayerNumber = room.players.findIndex(p => p.id === opponent.id) + 1;
                 io.in(room.id).emit("raw_parry_success", {
                   attackerX: thrower ? thrower.x : snowball.x,
                   parrierX: opponent.x,
-                  facing: thrower ? thrower.facing : -opponent.facing, // Use attacker's facing for consistency with melee
+                  facing: thrower ? thrower.facing : -opponent.facing,
                   isPerfect: isPerfectParry,
                   timestamp: Date.now(),
                   parryId: `${opponent.id}_snowball_parry_${Date.now()}`,
@@ -1417,13 +1441,13 @@ io.on("connection", (socket) => {
                 });
                 
                 // Clear parry success state after duration
-                if (isPerfectParry) {
-                  // For perfect parry: clear the parry pose after animation lock duration
+                if (canReflect) {
+                  // For perfect parry with reflection: clear the parry pose after animation lock duration
                   setPlayerTimeout(
                     opponent.id,
                     () => {
                       console.log(
-                        `Clearing perfect parry pose for player ${opponent.id} (snowball)`
+                        `Clearing perfect parry pose for player ${opponent.id} (snowball reflected)`
                       );
                       opponent.isRawParrying = false;
                       opponent.isPerfectRawParrySuccess = false;
@@ -1432,82 +1456,25 @@ io.on("connection", (socket) => {
                     "perfectParryAnimationEnd"
                   );
                   
-                  // Apply stun to the snowball thrower
-                  if (thrower) {
-                    const baseStunDuration = PERFECT_PARRY_ATTACKER_STUN_DURATION;
-                    thrower.isRawParryStun = true;
-                    
-                    // Clear ALL action states for the thrower
-                    clearAllActionStates(thrower);
-                    thrower.isRawParryStun = true; // Re-set after clearing
-                    
-                    // Initialize mashing tracking
-                    thrower.perfectParryStunStartTime = Date.now();
-                    thrower.perfectParryStunMashCount = 0;
-                    
-                    // Clear any previous perfect parry stun timeout
-                    if (thrower.perfectParryStunBaseTimeout) {
-                      timeoutManager.clearPlayerSpecific(thrower.id, "perfectParryStunReset");
-                    }
-                    
-                    // Emit screen shake for perfect parry with higher intensity
-                    io.in(room.id).emit("screen_shake", {
-                      intensity: 0.9,
-                      duration: 400,
-                    });
-                    
-                    // Emit perfect parry event
-                    io.in(room.id).emit("perfect_parry", {
-                      parryingPlayerId: opponent.id,
-                      attackingPlayerId: thrower.id,
-                      stunnedPlayerX: thrower.x,
-                      stunnedPlayerY: thrower.y,
-                      stunnedPlayerFighter: thrower.fighter, // Add fighter info to help with positioning
-                      showStarStunEffect: true, // Explicit flag for the star stun effect
-                    });
-                    
-                    console.log(`Perfect snowball parry stun applied to thrower ${thrower.id}`);
-                    
-                    // Reset stun after appropriate duration (separate from knockback)
-                    // This will be dynamically updated as player mashes
-                    setPlayerTimeout(
-                      thrower.id,
-                      () => {
-                        thrower.isRawParryStun = false;
-                        thrower.perfectParryStunStartTime = 0;
-                        thrower.perfectParryStunMashCount = 0;
-                        thrower.perfectParryStunBaseTimeout = null;
-                        
-                        // After stun ends, check if we should restart charging
-                        if (
-                          thrower.keys.mouse2 &&
-                          !thrower.isAttacking &&
-                          !thrower.isJumping &&
-                          !thrower.isDodging &&
-                          !thrower.isThrowing &&
-                          !thrower.isBeingThrown &&
-                          !thrower.isGrabbing &&
-                          !thrower.isBeingGrabbed &&
-                          !thrower.isHit &&
-                          !thrower.isRecovering &&
-                          !thrower.isRawParryStun &&
-                          !thrower.isThrowingSnowball &&
-                          !thrower.canMoveToReady
-                        ) {
-                          // Restart charging immediately
-                          thrower.isChargingAttack = true;
-                          thrower.chargeStartTime = Date.now();
-                          thrower.chargeAttackPower = 1;
-                          thrower.attackType = "charged";
-                        }
-                      },
-                      baseStunDuration,
-                      "perfectParryStunReset" // Named timeout for easier debugging
-                    );
-                    
-                    // Store that we have an active stun timeout
-                    thrower.perfectParryStunBaseTimeout = true;
-                  }
+                  // Return true to KEEP the snowball (it's been reflected)
+                  return true;
+                } else if (isPerfectParry) {
+                  // Perfect parry but already reflected: treat like perfect parry block
+                  setPlayerTimeout(
+                    opponent.id,
+                    () => {
+                      console.log(
+                        `Clearing perfect parry pose for player ${opponent.id} (already-reflected snowball blocked)`
+                      );
+                      opponent.isRawParrying = false;
+                      opponent.isPerfectRawParrySuccess = false;
+                    },
+                    PERFECT_PARRY_ANIMATION_LOCK,
+                    "perfectParryAnimationEnd"
+                  );
+                  
+                  // Return false to REMOVE the snowball (it was blocked)
+                  return false;
                 } else {
                   // For regular parry: clear success state after normal duration
                   setPlayerTimeout(
@@ -1518,9 +1485,10 @@ io.on("connection", (socket) => {
                     PARRY_SUCCESS_DURATION,
                     "parrySuccess"
                   );
+                  
+                  // Return false to REMOVE the snowball (it was blocked)
+                  return false;
                 }
-                
-                return false; // Remove snowball after being blocked
               }
             }
 
@@ -3109,7 +3077,8 @@ io.on("connection", (socket) => {
           player.isGrabbing &&
           player.grabbedOpponent &&
           !player.isThrowing &&
-          !player.isBeingThrown
+          !player.isBeingThrown &&
+          !player.isAttemptingGrabThrow  // Block grab walking during throw attempt
         ) {
           const opponent = room.players.find(
             (p) => p.id === player.grabbedOpponent
@@ -3230,8 +3199,10 @@ io.on("connection", (socket) => {
             }
 
             // Keep opponent attached at fixed distance during grab
-            const fixedDistance =
-              Math.round(81 * 1.3) * (opponent.sizeMultiplier || 1);
+            // Slightly increase separation during throw attempt for better visual clarity
+            const baseDistance = Math.round(81 * 1.3);
+            const distanceMultiplier = player.isAttemptingGrabThrow ? 1.15 : 1;
+            const fixedDistance = baseDistance * distanceMultiplier * (opponent.sizeMultiplier || 1);
             opponent.x =
               player.facing === 1
                 ? player.x - fixedDistance
@@ -3304,6 +3275,25 @@ io.on("connection", (socket) => {
                 loser.knockbackVelocity = { ...loser.knockbackVelocity };
               }
             }
+          }
+        } else if (
+          player.isAttemptingGrabThrow &&
+          player.isGrabbing &&
+          player.grabbedOpponent
+        ) {
+          // Handle throw attempt state - maintain opponent position with slightly increased separation
+          const opponent = room.players.find(
+            (p) => p.id === player.grabbedOpponent
+          );
+          if (opponent) {
+            // Slightly increased separation during throw attempt for better visual clarity
+            const baseDistance = Math.round(81 * 1.3);
+            const fixedDistance = baseDistance * 1.15 * (opponent.sizeMultiplier || 1);
+            opponent.x =
+              player.facing === 1
+                ? player.x - fixedDistance
+                : player.x + fixedDistance;
+            opponent.facing = -player.facing;
           }
         } else if (player.isGrabbing && !player.grabbedOpponent) {
           const grabDuration = Date.now() - player.grabStartTime;
@@ -5989,7 +5979,8 @@ io.on("connection", (socket) => {
       !player.canMoveToReady &&
       !player.throwCooldown &&
       !player.isRawParrying &&
-      !player.isJumping
+      !player.isJumping &&
+      !player.isAttemptingGrabThrow  // Don't allow multiple throw attempts
     ) {
       // Reset any lingering throw states before starting a new throw
       player.throwingFacingDirection = null;
@@ -5998,6 +5989,13 @@ io.on("connection", (socket) => {
       player.throwOpponent = null;
 
       player.lastThrowAttemptTime = Date.now();
+      
+      // Set attempting grab throw state - this triggers the animation
+      player.isAttemptingGrabThrow = true;
+      player.grabThrowAttemptStartTime = Date.now();
+      
+      // Block all player inputs during the attempt (except for internal state checks)
+      player.actionLockUntil = Date.now() + 500;
 
       setPlayerTimeout(
         player.id,
@@ -6005,6 +6003,9 @@ io.on("connection", (socket) => {
           const opponent = rooms[roomIndex].players.find(
             (p) => p.id !== player.id
           );
+          
+          // Clear attempting state after the animation
+          player.isAttemptingGrabThrow = false;
 
           // CRITICAL: Check if grab break has already occurred - grab break always takes priority
           if (player.isGrabBreakCountered || opponent.isGrabBreaking || opponent.isGrabBreakSeparating) {
@@ -6102,7 +6103,7 @@ io.on("connection", (socket) => {
             );
           }
         },
-        64
+        500  // Changed from 64ms to 500ms for reaction window
       );
     }
 

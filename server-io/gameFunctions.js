@@ -30,6 +30,8 @@ function cleanupGrabStates(player, opponent) {
   player.isBeingGrabbed = false; // Add this to ensure being grabbed state is reset
   player.isBeingPushed = false; // Add this to ensure being pushed state is reset
   player.lastGrabStaminaDrainTime = 0; // Reset grab stamina drain tracking
+  player.isAttemptingGrabThrow = false; // Clear grab throw attempt state
+  player.grabThrowAttemptStartTime = 0;
 
   // Clean up grabbed player states
   opponent.isBeingGrabbed = false;
@@ -40,6 +42,8 @@ function cleanupGrabStates(player, opponent) {
   opponent.grabCooldown = false; // Add this to ensure cooldown is reset
   opponent.isGrabbing = false; // Add this to ensure grabbing state is reset
   opponent.isCounterGrabbed = false; // Reset counter grab flag
+  opponent.isAttemptingGrabThrow = false; // Clear grab throw attempt state for opponent too
+  opponent.grabThrowAttemptStartTime = 0;
 }
 
 function handleWinCondition(room, loser, winner, io) {

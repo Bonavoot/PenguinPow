@@ -41,6 +41,8 @@ import grabbing from "../assets/grabbing.png";
 import grabbing2 from "../assets/grabbing2.png";
 import grabAttempt from "../assets/grab-attempt.png";
 import grabAttempt2 from "../assets/grab-attempt2.png";
+import attemptingGrabThrow from "../assets/attempting-grab-throw.png";
+import attemptingGrabThrow2 from "../assets/attempting-grab-throw2.png";
 import beingGrabbed from "../assets/is-being-grabbed.gif";
 import beingGrabbed2 from "../assets/is-being-grabbed2.gif";
 import grabSound from "../sounds/grab-sound.mp3";
@@ -311,7 +313,8 @@ const getImageSrc = (
   isGrabBreakCountered,
   // new optional trailing param(s)
   isGrabbingMovementTrailing,
-  isGrabClashActive
+  isGrabClashActive,
+  isAttemptingGrabThrow
 ) => {
   // Backward-compat: allow passing as trailing param or main param
   const attemptingGrabMovement =
@@ -332,6 +335,8 @@ const getImageSrc = (
     if (isDodging) return dodging;
     if (isCrouchStrafing) return crouchStrafing2;
     if (isCrouchStance) return crouchStance2;
+    // Show attempting grab throw animation for player 2
+    if (isAttemptingGrabThrow) return attemptingGrabThrow;
     // Show attempt animation during grab movement attempt
     if (attemptingGrabMovement) {
       return grabAttemptType === "throw" ? throwing : grabAttempt;
@@ -385,6 +390,8 @@ const getImageSrc = (
     if (isDodging) return dodging2;
     if (isCrouchStrafing) return crouchStrafing2;
     if (isCrouchStance) return crouchStance2;
+    // Show attempting grab throw animation for player 1
+    if (isAttemptingGrabThrow) return attemptingGrabThrow2;
     // Show attempt animation during grab movement attempt
     if (attemptingGrabMovement) {
       return grabAttemptType === "throw" ? throwing2 : grabAttempt2;
@@ -621,6 +628,7 @@ const StyledImage = styled("img")
         "isCrouchStrafing",
         "isGrabBreakCountered",
         "isGrabClashActive",
+        "isAttemptingGrabThrow",
       ].includes(prop),
   })
   .attrs((props) => ({
@@ -660,7 +668,8 @@ const StyledImage = styled("img")
       props.$isCrouchStrafing,
       props.$isGrabBreakCountered,
       props.$isGrabbingMovement,
-      props.$isGrabClashActive
+      props.$isGrabClashActive,
+      props.$isAttemptingGrabThrow
     ),
     style: {
       position: "absolute",
@@ -690,7 +699,11 @@ const StyledImage = styled("img")
         : props.$isGrabClashActive
         ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.25) brightness(1.1)"
         : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) ",
-      animation: props.$isGrabBreaking
+      animation: props.$isAttemptingGrabThrow
+        ? "attemptingGrabThrowPull 0.5s cubic-bezier(0.4, 0.0, 0.6, 1.0)"
+        : props.$isRawParrySuccess || props.$isPerfectRawParrySuccess
+        ? "rawParryRecoil 0.5s ease-out"
+        : props.$isGrabBreaking
         ? "grabBreakFlash 1.2s ease-in-out infinite"
         : props.$isRawParrying
         ? "rawParryFlash 1.2s ease-in-out infinite"
@@ -847,6 +860,62 @@ const StyledImage = styled("img")
     }
     100% {
       transform: scaleX(var(--facing, 1)) translateX(0px);
+    }
+  }
+  
+  /* Attempting grab throw animation - slower, more deliberate pulling motion */
+  @keyframes attemptingGrabThrowPull {
+    0% {
+      transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
+      transform-origin: center bottom;
+    }
+    25% {
+      transform: scaleX(calc(var(--facing, 1) * 0.95)) scaleY(1.08) translateY(-3px);
+      transform-origin: center bottom;
+    }
+    50% {
+      transform: scaleX(calc(var(--facing, 1) * 0.97)) scaleY(1.06) translateY(-4px);
+      transform-origin: center bottom;
+    }
+    75% {
+      transform: scaleX(calc(var(--facing, 1) * 0.98)) scaleY(1.04) translateY(-2px);
+      transform-origin: center bottom;
+    }
+    100% {
+      transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
+      transform-origin: center bottom;
+    }
+  }
+  
+  /* Raw parry success animation - defensive recoil and recovery */
+  @keyframes rawParryRecoil {
+    0% {
+      transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0);
+      transform-origin: center bottom;
+    }
+    10% {
+      transform: scaleX(calc(var(--facing, 1) * 1.05)) scaleY(0.95) translateX(calc(var(--facing, 1) * -8px));
+      transform-origin: center bottom;
+    }
+    25% {
+      transform: scaleX(calc(var(--facing, 1) * 0.92)) scaleY(1.08) translateX(calc(var(--facing, 1) * -5px));
+      transform-origin: center bottom;
+    }
+    45% {
+      transform: scaleX(calc(var(--facing, 1) * 1.03)) scaleY(0.97) translateX(calc(var(--facing, 1) * 3px));
+      transform-origin: center bottom;
+    }
+    65% {
+      transform: scaleX(calc(var(--facing, 1) * 0.98)) scaleY(1.02) translateX(calc(var(--facing, 1) * -2px));
+      transform-origin: center bottom;
+    }
+    85% {
+      transform: scaleX(calc(var(--facing, 1) * 1.01)) scaleY(0.99) translateX(calc(var(--facing, 1) * 1px));
+      transform-origin: center bottom;
+    }
+    100% {
+      transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0);
+      transform-origin: center bottom;
     }
   }
 `;
@@ -2399,6 +2468,7 @@ const GameFighter = ({
         $isCrouchStrafing={penguin.isCrouchStrafing}
         $isGrabBreakCountered={penguin.isGrabBreakCountered}
         $isGrabClashActive={isGrabClashActive}
+        $isAttemptingGrabThrow={penguin.isAttemptingGrabThrow}
       />
 
       {(penguin.isHit || penguin.isBeingThrown) && (
