@@ -4,8 +4,9 @@
 
 .hit-ring {
   position: relative;
-  width: clamp(3rem, 8vmin, 10rem);
-  height: clamp(3rem, 8vmin, 10rem);
+  /* Smaller minimum for better scaling on small screens */
+  width: clamp(1.5rem, 5vw, 6rem);
+  height: clamp(1.5rem, 5vw, 6rem);
 }
 
 /* Main impact ring - outer shockwave */
@@ -50,8 +51,9 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(4rem, 10vmin, 12rem);
-  height: clamp(4rem, 10vmin, 12rem);
+  /* Smaller minimum for better scaling on small screens */
+  width: clamp(2rem, 6vw, 8rem);
+  height: clamp(2rem, 6vw, 8rem);
   border: 2px solid rgba(255, 255, 153, 0.7);
   border-radius: 50%;
   transform: translate(-50%, -50%) scale(0.3);
@@ -65,7 +67,8 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  font-size: clamp(1.5rem, 3vmin, 3rem);
+  /* Smaller minimum for better scaling on small screens */
+  font-size: clamp(0.8rem, 2vw, 2rem);
   color: #ffd700;
   text-shadow: 
     0 0 15px rgba(255, 215, 0, 0.9),
@@ -306,22 +309,23 @@
 }
 
 /* Simple circular explosion - each spark gets its own unique direction */
-.spark:nth-child(1) { animation-delay: 0.00s; --dx: 3.6vw; --dy: -0.9vw; --rotation: 45deg; }
-.spark:nth-child(2) { animation-delay: 0.02s; --dx: 2.7vw; --dy: -2.7vw; --rotation: 90deg; }
-.spark:nth-child(3) { animation-delay: 0.01s; --dx: 0.9vw; --dy: -3.6vw; --rotation: 135deg; }
-.spark:nth-child(4) { animation-delay: 0.03s; --dx: -0.9vw; --dy: -3.6vw; --rotation: 180deg; }
-.spark:nth-child(5) { animation-delay: 0.00s; --dx: -2.7vw; --dy: -2.7vw; --rotation: 225deg; }
-.spark:nth-child(6) { animation-delay: 0.02s; --dx: -3.6vw; --dy: -0.9vw; --rotation: 270deg; }
-.spark:nth-child(7) { animation-delay: 0.01s; --dx: -3.6vw; --dy: 0.9vw; --rotation: 315deg; }
-.spark:nth-child(8) { animation-delay: 0.03s; --dx: -2.7vw; --dy: 2.7vw; --rotation: 360deg; }
-.spark:nth-child(9) { animation-delay: 0.00s; --dx: -0.9vw; --dy: 3.6vw; --rotation: 405deg; }
-.spark:nth-child(10) { animation-delay: 0.02s; --dx: 0.9vw; --dy: 3.6vw; --rotation: 450deg; }
-.spark:nth-child(11) { animation-delay: 0.01s; --dx: 2.7vw; --dy: 2.7vw; --rotation: 495deg; }
-.spark:nth-child(12) { animation-delay: 0.03s; --dx: 3.6vw; --dy: 0.9vw; --rotation: 540deg; }
-.spark:nth-child(13) { animation-delay: 0.00s; --dx: 4.05vw; --dy: -0.45vw; --rotation: 585deg; }
-.spark:nth-child(14) { animation-delay: 0.02s; --dx: -4.05vw; --dy: -0.45vw; --rotation: 630deg; }
-.spark:nth-child(15) { animation-delay: 0.01s; --dx: 0.45vw; --dy: -4.05vw; --rotation: 675deg; }
-.spark:nth-child(16) { animation-delay: 0.03s; --dx: -0.45vw; --dy: 4.05vw; --rotation: 720deg; }
+/* Reduced distances for better scaling on small screens */
+.spark:nth-child(1) { animation-delay: 0.00s; --dx: 2.4vw; --dy: -0.6vw; --rotation: 45deg; }
+.spark:nth-child(2) { animation-delay: 0.02s; --dx: 1.8vw; --dy: -1.8vw; --rotation: 90deg; }
+.spark:nth-child(3) { animation-delay: 0.01s; --dx: 0.6vw; --dy: -2.4vw; --rotation: 135deg; }
+.spark:nth-child(4) { animation-delay: 0.03s; --dx: -0.6vw; --dy: -2.4vw; --rotation: 180deg; }
+.spark:nth-child(5) { animation-delay: 0.00s; --dx: -1.8vw; --dy: -1.8vw; --rotation: 225deg; }
+.spark:nth-child(6) { animation-delay: 0.02s; --dx: -2.4vw; --dy: -0.6vw; --rotation: 270deg; }
+.spark:nth-child(7) { animation-delay: 0.01s; --dx: -2.4vw; --dy: 0.6vw; --rotation: 315deg; }
+.spark:nth-child(8) { animation-delay: 0.03s; --dx: -1.8vw; --dy: 1.8vw; --rotation: 360deg; }
+.spark:nth-child(9) { animation-delay: 0.00s; --dx: -0.6vw; --dy: 2.4vw; --rotation: 405deg; }
+.spark:nth-child(10) { animation-delay: 0.02s; --dx: 0.6vw; --dy: 2.4vw; --rotation: 450deg; }
+.spark:nth-child(11) { animation-delay: 0.01s; --dx: 1.8vw; --dy: 1.8vw; --rotation: 495deg; }
+.spark:nth-child(12) { animation-delay: 0.03s; --dx: 2.4vw; --dy: 0.6vw; --rotation: 540deg; }
+.spark:nth-child(13) { animation-delay: 0.00s; --dx: 2.7vw; --dy: -0.3vw; --rotation: 585deg; }
+.spark:nth-child(14) { animation-delay: 0.02s; --dx: -2.7vw; --dy: -0.3vw; --rotation: 630deg; }
+.spark:nth-child(15) { animation-delay: 0.01s; --dx: 0.3vw; --dy: -2.7vw; --rotation: 675deg; }
+.spark:nth-child(16) { animation-delay: 0.03s; --dx: -0.3vw; --dy: 2.7vw; --rotation: 720deg; }
 
 @keyframes sparkExplode {
   0% {

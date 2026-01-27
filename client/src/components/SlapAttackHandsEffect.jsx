@@ -80,7 +80,8 @@ const HandsContainer = styled.div.attrs((props) => ({
 
 const Hand = styled.img`
   position: absolute;
-  width: clamp(65px, 6vw, 85px); // BIGGER
+  /* Smaller minimum for small screens, larger maximum for big screens */
+  width: clamp(40px, 6vw, 90px);
   height: auto;
   opacity: 0;
   --offset-y: ${(props) => props.$offsetY}vh;
@@ -100,8 +101,9 @@ const Hand = styled.img`
 
 const Streak = styled.div`
   position: absolute;
-  width: clamp(65px, 6vw, 85px);
-  height: clamp(35px, 3vw, 45px);
+  /* Smaller minimum for small screens, larger maximum for big screens */
+  width: clamp(40px, 6vw, 90px);
+  height: clamp(22px, 3vw, 48px);
   opacity: 0;
   --offset-y: ${(props) => props.$offsetY}vh;
   --start-x: ${(props) => props.$startX}vw;

@@ -66,10 +66,12 @@ const textPop = keyframes`
 // Text positioned on player's side of the screen (like combo counter)
 const ParryTextSide = styled.div`
   position: fixed;
-  top: 30%;
+  /* Position near vertical center of screen */
+  top: clamp(180px, 45%, 320px);
   ${props => props.$isLeftSide ? 'left: 3%;' : 'right: 3%;'}
   font-family: "Bungee", cursive;
-  font-size: clamp(0.9rem, 1.8vw, 1.4rem);
+  /* Smaller font on small screens */
+  font-size: clamp(0.6rem, 1.5vw, 1.2rem);
   line-height: 1.1;
   color: ${props => props.$isPerfect ? '#FFD700' : '#00BFFF'};
   text-shadow: 
@@ -91,7 +93,8 @@ const ParryTextCenter = styled.div`
   top: 50%;
   left: 50%;
   font-family: "Bungee", cursive;
-  font-size: clamp(1rem, 2vw, 1.6rem);
+  /* Smaller font on small screens */
+  font-size: clamp(0.7rem, 1.6vw, 1.4rem);
   color: ${props => props.$isPerfect ? '#FFD700' : '#00BFFF'};
   text-shadow: 
     -2px -2px 0 #000, 2px -2px 0 #000, 
@@ -156,7 +159,8 @@ const CenteredParryText = styled.div`
   left: 50%;
   transform: translate(-50%, -50%);
   font-family: "Bungee", cursive;
-  font-size: clamp(1.2rem, 2.4vw, 2rem);
+  /* Smaller font on small screens */
+  font-size: clamp(0.8rem, 2vw, 1.6rem);
   font-weight: 400;
   color: ${props => props.$isPerfect ? '#FFD700' : '#00BFFF'};
   text-shadow: 

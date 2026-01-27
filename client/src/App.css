@@ -712,14 +712,16 @@ body {
 
 .hakkiyoi {
   position: absolute;
-  top: 20%;
+  /* Push text below stamina UI - adjusted for smaller UI on small screens */
+  top: clamp(100px, 25%, 180px);
   left: 50%;
   width: 100%;
   margin: 0 auto;
   transform: translate(-50%, -50%);
   white-space: nowrap;
   max-width: 100%;
-  font-size: clamp(1.5rem, 5vw, 4rem);
+  /* Smaller minimum font size for small screens */
+  font-size: clamp(1rem, 4vw, 3.5rem);
   color: #fff;
   text-align: center;
   opacity: 0;
@@ -795,7 +797,8 @@ body {
 /* Win announcement styles - optimized for performance */
 .hakkiyoi[style*="color: aqua"],
 .hakkiyoi[style*="color: salmon"] {
-  font-size: clamp(1.2rem, 4vw, 3.5rem);
+  /* Smaller font for winner text on small screens */
+  font-size: clamp(0.9rem, 3.5vw, 3rem);
   animation: winAnnounce 3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
   color: var(--win-color);
   -webkit-text-fill-color: var(--win-color);

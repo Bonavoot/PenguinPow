@@ -24,7 +24,8 @@ const FighterUIContainer = styled.div`
   top: 0;
   left: 0;
   right: 0;
-  height: clamp(100px, 13vh, 130px);
+  /* Better scaling for small screens */
+  height: clamp(70px, 12vh, 130px);
   display: flex;
   align-items: stretch;
   justify-content: space-between;
@@ -37,40 +38,38 @@ const FighterUIContainer = styled.div`
     rgba(11, 16, 32, 0.5) 70%,
     rgba(0, 0, 0, 0) 100%
   );
-  
-
-  @media (max-width: 768px) {
-    height: clamp(90px, 11vh, 110px);
-  }
 `;
 
 const PlayerSection = styled.div`
   display: flex;
   flex-direction: column;
   width: 42%;
-  padding: clamp(8px, 1.2vh, 12px) clamp(12px, 2vw, 20px);
-  gap: clamp(6px, 0.8vh, 10px);
+  /* Smaller padding on small screens */
+  padding: clamp(4px, 1vh, 10px) clamp(8px, 1.5vw, 18px);
+  gap: clamp(3px, 0.6vh, 8px);
   align-items: ${(props) => (props.$isRight ? "flex-end" : "flex-start")};
 `;
 
 const PlayerHeader = styled.div`
   display: flex;
   align-items: center;
-  gap: clamp(8px, 1vw, 12px);
+  /* Smaller gap on small screens */
+  gap: clamp(4px, 0.8vw, 10px);
   flex-direction: ${(props) => (props.$isRight ? "row-reverse" : "row")};
   width: 100%;
 `;
 
 const PlayerAvatar = styled.div`
-  width: clamp(36px, 4.5vw, 48px);
-  height: clamp(36px, 4.5vw, 48px);
+  /* Smaller minimum for small screens */
+  width: clamp(24px, 4vw, 44px);
+  height: clamp(24px, 4vw, 44px);
   background: linear-gradient(145deg, rgba(67, 61, 103, 0.9), rgba(11, 16, 32, 0.95));
   border: 2px solid var(--edo-gold);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: clamp(14px, 1.8vw, 20px);
+  font-size: clamp(10px, 1.5vw, 18px);
   font-weight: bold;
   color: var(--edo-gold);
   text-shadow: 0 0 8px rgba(212, 175, 55, 0.4), 0 2px 0 rgba(0, 0, 0, 0.7);
@@ -90,7 +89,8 @@ const PlayerInfo = styled.div`
 `;
 
 const PlayerName = styled.div`
-  font-size: clamp(14px, 2vw, 20px);
+  /* Smaller font on small screens */
+  font-size: clamp(9px, 1.6vw, 18px);
   font-weight: 900;
   color: #ffffff;
   text-shadow: 
@@ -106,29 +106,32 @@ const PlayerName = styled.div`
 `;
 
 const PlayerRank = styled.div`
-  font-size: clamp(9px, 1.2vw, 12px);
+  /* Smaller font on small screens */
+  font-size: clamp(6px, 1vw, 11px);
   font-weight: 600;
   color: var(--edo-gold);
   text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   background: linear-gradient(145deg, rgba(67, 61, 103, 0.8), rgba(11, 16, 32, 0.9));
-  padding: 2px 8px;
+  padding: clamp(1px, 0.3vh, 2px) clamp(4px, 0.6vw, 8px);
   border-radius: 3px;
   border: 1px solid rgba(212, 175, 55, 0.4);
 `;
 
 const WinTracker = styled.div`
   display: flex;
-  gap: clamp(4px, 0.6vw, 6px);
+  /* Smaller gap on small screens */
+  gap: clamp(2px, 0.4vw, 5px);
   flex-direction: ${(props) => (props.$isRight ? "row-reverse" : "row")};
   margin-left: ${(props) => (props.$isRight ? "0" : "auto")};
   margin-right: ${(props) => (props.$isRight ? "auto" : "0")};
 `;
 
 const WinMark = styled.div`
-  width: clamp(16px, 2vw, 22px);
-  height: clamp(16px, 2vw, 22px);
+  /* Smaller minimum for small screens */
+  width: clamp(10px, 1.6vw, 20px);
+  height: clamp(10px, 1.6vw, 20px);
   background: ${(props) =>
     props.$isWin
       ? "radial-gradient(60% 60% at 35% 35%, rgba(200, 255, 200, 0.95) 0%, #22c55e 60%, #15803d 100%)"
@@ -145,7 +148,8 @@ const WinMark = styled.div`
 const StaminaRow = styled.div`
   display: flex;
   align-items: center;
-  gap: clamp(8px, 1vw, 12px);
+  /* Smaller gap on small screens */
+  gap: clamp(4px, 0.8vw, 10px);
   width: 100%;
   flex-direction: ${(props) => (props.$isRight ? "row-reverse" : "row")};
 `;
@@ -153,7 +157,8 @@ const StaminaRow = styled.div`
 const StaminaContainer = styled.div`
   position: relative;
   flex: 1;
-  height: clamp(22px, 3vh, 30px);
+  /* Smaller minimum height for small screens */
+  height: clamp(14px, 2.5vh, 28px);
   background: linear-gradient(145deg, rgba(11, 16, 32, 0.95), rgba(67, 61, 103, 0.4));
   border: 2px solid rgba(212, 175, 55, 0.5);
   border-radius: 4px;
@@ -225,7 +230,8 @@ const StaminaLoss = styled.div.attrs((props) => ({
 const BottomRow = styled.div`
   display: flex;
   align-items: center;
-  gap: clamp(10px, 1.5vw, 16px);
+  /* Smaller gap on small screens */
+  gap: clamp(6px, 1.2vw, 14px);
   width: 100%;
   flex-direction: ${(props) => (props.$isRight ? "row-reverse" : "row")};
 `;
@@ -234,8 +240,9 @@ const PowerUpContainer = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  width: clamp(32px, 4vw, 44px);
-  height: clamp(32px, 4vw, 44px);
+  /* Smaller minimum for small screens */
+  width: clamp(20px, 3.5vw, 40px);
+  height: clamp(20px, 3.5vw, 40px);
   border-radius: 6px;
   border: 2px solid;
   position: relative;
@@ -282,13 +289,14 @@ const PowerUpIndicator = styled.div`
   bottom: -3px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: clamp(7px, 0.9vw, 9px);
+  /* Smaller font on small screens */
+  font-size: clamp(5px, 0.7vw, 8px);
   font-family: "Bungee", cursive;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.95);
   text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.9);
   background: rgba(0, 0, 0, 0.85);
-  padding: 1px 4px;
+  padding: 1px clamp(2px, 0.4vw, 4px);
   border-radius: 3px;
   letter-spacing: 0.3px;
   white-space: nowrap;
@@ -302,7 +310,8 @@ const CenterSection = styled.div`
   transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
-  gap: clamp(16px, 2.5vw, 28px);
+  /* Smaller gap on small screens */
+  gap: clamp(10px, 2vw, 24px);
   z-index: 1000;
 `;
 

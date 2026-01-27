@@ -90,8 +90,9 @@ const ShockwaveRing = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(60px, 8vw, 100px);
-  height: clamp(60px, 8vw, 100px);
+  /* Smaller minimum for better scaling on small screens */
+  width: clamp(35px, 5vw, 70px);
+  height: clamp(35px, 5vw, 70px);
   border-radius: 50%;
   border: 6px solid #00ff88;
   transform: translate(-50%, -50%) scale(0);
@@ -105,8 +106,9 @@ const InnerFlash = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(30px, 4vw, 50px);
-  height: clamp(30px, 4vw, 50px);
+  /* Smaller minimum for better scaling on small screens */
+  width: clamp(18px, 2.5vw, 35px);
+  height: clamp(18px, 2.5vw, 35px);
   border-radius: 50%;
   background: radial-gradient(circle, rgba(255, 255, 255, 1) 0%, rgba(0, 255, 136, 0.8) 50%, transparent 100%);
   transform: translate(-50%, -50%) scale(0);
@@ -134,7 +136,8 @@ const BreakText = styled.div`
   top: 50%;
   left: 50%;
   font-family: "Bungee", cursive;
-  font-size: clamp(1rem, 2vw, 1.6rem);
+  /* Smaller font on small screens */
+  font-size: clamp(0.7rem, 1.6vw, 1.4rem);
   color: #00ff88;
   text-shadow: 
     -2px -2px 0 #000, 2px -2px 0 #000, 

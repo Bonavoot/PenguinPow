@@ -12,6 +12,7 @@
   font-family: "Bungee", cursive;
   color: #2c1810;
   overflow: hidden;
+  min-height: 0;
 }
 
 .lobby-background {
@@ -27,7 +28,7 @@
 }
 
 .lobby-header {
-  padding: 1rem 2rem;
+  padding: clamp(0.5rem, 2vh, 1rem) clamp(0.75rem, 3vw, 2rem);
   background: #121213;
   opacity: 0.9;
   border-bottom: 2px solid #8b4513;
@@ -36,6 +37,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .game-logo {
@@ -43,59 +45,66 @@
 }
 
 .lobby-title {
-  font-size: 2.5rem;
+  font-size: clamp(1.25rem, 4vw, 2.5rem);
   color: #fff;
   margin: 0;
   font-weight: 700;
-  letter-spacing: 2px;
+  letter-spacing: clamp(1px, 0.3vw, 2px);
   text-transform: uppercase;
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
   font-family: "Noto Serif JP", serif;
+  line-height: 1.2;
 }
 
 .game-subtitle {
-  font-size: 1rem;
+  font-size: clamp(0.6rem, 1.5vw, 1rem);
   color: #d4af37;
   margin-top: 0.25rem;
-  letter-spacing: 1px;
+  letter-spacing: clamp(0.5px, 0.2vw, 1px);
   font-weight: 500;
+  line-height: 1.2;
 }
 
 .room-badge {
   background: rgba(139, 69, 19, 0.2);
-  padding: 0.75rem 1.5rem;
+  padding: clamp(0.4rem, 1.5vh, 0.75rem) clamp(0.75rem, 2vw, 1.5rem);
   border-radius: 4px;
   border: 2px solid #8b4513;
 }
 
 .room-label {
   color: #d4af37;
-  font-size: 0.8rem;
+  font-size: clamp(0.5rem, 1.2vw, 0.8rem);
   font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: clamp(0.5px, 0.2vw, 1px);
   display: block;
   margin-bottom: 0.25rem;
+  line-height: 1.2;
 }
 
 .room-name {
   color: #fff;
-  font-size: 1.2rem;
+  font-size: clamp(0.75rem, 1.8vw, 1.2rem);
   font-weight: 600;
-  letter-spacing: 2px;
+  letter-spacing: clamp(1px, 0.3vw, 2px);
+  line-height: 1.2;
 }
 
 .lobby-content {
   flex: 1;
-  padding: 2rem;
+  padding: clamp(0.5rem, 2vh, 2rem) clamp(0.75rem, 2vw, 2rem);
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  justify-content: center;
+  gap: clamp(0.5rem, 2vh, 2rem);
   position: relative;
   z-index: 1;
   max-width: 1200px;
   margin: 0 auto;
   width: 100%;
+  min-height: 0;
+  overflow: auto;
 }
 
 .arena-container {
@@ -103,8 +112,9 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 60vh;
-  margin: 1rem 0;
+  height: clamp(300px, 45vh, 60vh);
+  margin: auto 0;
+  flex-shrink: 1;
 }
 
 .arena-background {
@@ -135,17 +145,17 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 8rem;
+  gap: clamp(2rem, 10vw, 8rem);
   width: 100%;
   max-width: 1000px;
-  padding: 1rem;
+  padding: clamp(0.5rem, 1.5vh, 1rem);
   position: relative;
 }
 
 .player-slot {
   background: rgba(220, 220, 240, 0.1);
   border-radius: 8px;
-  padding: 2rem;
+  padding: clamp(1rem, 2.5vh, 2rem);
   border: 3px solid #8b4513;
   display: flex;
   flex-direction: column;
@@ -153,8 +163,8 @@
   align-items: center;
   position: relative;
   overflow: hidden;
-  height: 300px;
-  width: 300px;
+  height: clamp(180px, 35vh, 300px);
+  width: clamp(180px, 35vh, 300px);
   backdrop-filter: blur(5px);
 }
 
@@ -183,9 +193,9 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.75rem;
+  gap: clamp(0.4rem, 1vh, 0.75rem);
   width: 100%;
-  padding: 1rem 0rem 1rem 0rem;
+  padding: clamp(0.5rem, 1.5vh, 1rem) 0;
   background: #121213;
   opacity: 0.9;
   border-radius: 4px;
@@ -221,16 +231,16 @@
 }
 
 .player-name {
-  font-size: 1.2rem;
+  font-size: clamp(0.75rem, 1.8vw, 1.2rem);
   color: #ffffff;
   font-weight: 600;
-  letter-spacing: 1px;
+  letter-spacing: clamp(0.5px, 0.2vw, 1px);
   text-transform: uppercase;
   width: 100%;
   text-align: center;
   margin: 0 auto;
   padding: 0;
-  line-height: 1;
+  line-height: 1.2;
 }
 
 .player-avatar {
@@ -254,11 +264,12 @@
 }
 
 .player-avatar .waiting-message h2 {
-  font-size: 1.25rem;
-  margin-bottom: 0.75rem;
+  font-size: clamp(0.85rem, 1.8vw, 1.25rem);
+  margin-bottom: clamp(0.4rem, 1vh, 0.75rem);
   font-weight: 500;
-  letter-spacing: 0.5px;
+  letter-spacing: clamp(0.3px, 0.1vw, 0.5px);
   color: rgba(255, 255, 255, 0.7);
+  line-height: 1.2;
 }
 
 .player-avatar .loading-ellipsis {
@@ -276,10 +287,10 @@
 }
 
 .player-avatar img {
-  height: 260px;
+  height: clamp(140px, 30vh, 260px);
   width: auto;
   object-fit: contain;
-  margin-top: 4rem;
+  margin-top: clamp(2rem, 6vh, 4rem);
   transform-origin: bottom center;
   filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
   animation: lobbyBreathe 1.5s ease-in-out infinite;
@@ -287,12 +298,13 @@
 
 .versus-badge {
   position: absolute;
-  font-size: 3.5rem;
+  font-size: clamp(2rem, 5vw, 3.5rem);
   font-weight: 700;
   color: #8b4513;
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
   z-index: 2;
   font-family: "Noto Serif JP", serif;
+  line-height: 1;
 }
 
 .waiting-container {
@@ -333,7 +345,7 @@
 }
 
 .lobby-controls {
-  padding: 1rem 2rem;
+  padding: clamp(0.5rem, 2vh, 1rem) clamp(0.75rem, 3vw, 2rem);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -342,6 +354,8 @@
   border-top: 2px solid #8b4513;
   position: relative;
   z-index: 1;
+  flex-shrink: 0;
+  min-height: clamp(60px, 10vh, 80px);
 }
 
 .exit-btn {
@@ -352,15 +366,16 @@
   );
   border: 2px solid #8b4513;
   color: #d4af37;
-  padding: 0.75rem 1.5rem;
+  padding: clamp(0.5rem, 1.5vh, 0.75rem) clamp(0.75rem, 2vw, 1.5rem);
   border-radius: 4px;
-  font-size: 1rem;
+  font-size: clamp(0.75rem, 1.5vw, 1rem);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: clamp(0.25rem, 0.8vw, 0.5rem);
+  white-space: nowrap;
 }
 
 .exit-btn:hover {
@@ -374,20 +389,23 @@
 }
 
 .btn-icon {
-  font-size: 1rem;
+  font-size: clamp(0.75rem, 1.5vw, 1rem);
+  line-height: 1;
 }
 
 .ready {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: clamp(0.35rem, 1vh, 0.5rem);
   align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .ready-btn {
-  font-size: 0.9rem;
+  font-size: clamp(0.7rem, 1.4vw, 0.9rem);
   background: linear-gradient(45deg, #8b4513, #6b3410);
-  padding: 0.75rem 1.5rem;
+  padding: clamp(0.5rem, 1.5vh, 0.75rem) clamp(0.75rem, 2vw, 1.5rem);
   border-radius: 4px;
   border: 2px solid #d4af37;
   color: #d4af37;
@@ -395,8 +413,9 @@
   font-weight: 600;
   transition: all 0.2s ease;
   text-transform: uppercase;
-  letter-spacing: 1px;
-  min-width: 120px;
+  letter-spacing: clamp(0.5px, 0.2vw, 1px);
+  min-width: clamp(80px, 15vw, 120px);
+  white-space: nowrap;
 }
 
 .ready-btn:hover {
@@ -407,9 +426,9 @@
 }
 
 #cancel-btn {
-  font-size: 0.9rem;
+  font-size: clamp(0.7rem, 1.4vw, 0.9rem);
   background: linear-gradient(45deg, #6b3410, #4a2410);
-  padding: 0.75rem 1.5rem;
+  padding: clamp(0.5rem, 1.5vh, 0.75rem) clamp(0.75rem, 2vw, 1.5rem);
   border-radius: 4px;
   border: 2px solid #d4af37;
   color: #d4af37;
@@ -417,8 +436,9 @@
   font-weight: 600;
   transition: all 0.2s ease;
   text-transform: uppercase;
-  letter-spacing: 1px;
-  min-width: 120px;
+  letter-spacing: clamp(0.5px, 0.2vw, 1px);
+  min-width: clamp(80px, 15vw, 120px);
+  white-space: nowrap;
 }
 
 #cancel-btn:hover {
@@ -431,13 +451,15 @@
 .ready-count {
   color: #ffffff;
   text-align: center;
-  font-size: 0.8rem;
-  padding: 0.5rem;
+  font-size: clamp(0.6rem, 1.2vw, 0.8rem);
+  padding: clamp(0.35rem, 1vh, 0.5rem) clamp(0.5rem, 1.5vw, 0.75rem);
   background: rgba(44, 24, 16, 0.9);
   border-radius: 4px;
   font-weight: 500;
-  letter-spacing: 1px;
+  letter-spacing: clamp(0.5px, 0.2vw, 1px);
   border: 1px solid #8b4513;
+  white-space: nowrap;
+  min-width: clamp(50px, 10vw, 70px);
 }
 
 @keyframes pulse {
@@ -505,47 +527,54 @@
   }
 }
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
+/* Responsive adjustments for very small screens */
+@media (max-height: 600px) {
   .lobby-header {
-    padding: 0.75rem 1rem;
-  }
-
-  .lobby-title {
-    font-size: 1.5rem;
+    padding: 0.4rem 0.75rem;
   }
 
   .lobby-content {
-    padding: 1rem;
+    padding: 0.4rem 0.75rem;
+    gap: 0.4rem;
   }
 
-  .players-arena {
-    gap: 2rem;
-    padding: 0.5rem;
+  .arena-container {
+    height: clamp(250px, 40vh, 300px);
+    margin: 0.3rem 0;
   }
 
   .player-slot {
-    height: 220px;
-    width: 220px;
-    padding: 1rem;
+    height: clamp(150px, 30vh, 180px);
+    width: clamp(150px, 30vh, 180px);
+    padding: 0.75rem;
   }
 
   .player-avatar img {
-    height: 200px;
-  }
-
-  .versus-badge {
-    font-size: 2rem;
+    height: clamp(120px, 25vh, 140px);
+    margin-top: 1.5rem;
   }
 
   .lobby-controls {
-    padding: 0.75rem 1rem;
+    padding: 0.4rem 0.75rem;
+    min-height: 50px;
+  }
+}
+
+@media (max-width: 600px) {
+  .lobby-title {
+    font-size: clamp(1rem, 5vw, 1.5rem);
   }
 
-  .exit-btn,
-  .ready-btn,
-  #cancel-btn {
-    padding: 0.5rem 0.75rem;
-    font-size: 0.8rem;
+  .game-subtitle {
+    font-size: clamp(0.5rem, 2vw, 0.7rem);
+  }
+
+  .players-arena {
+    gap: clamp(1.5rem, 8vw, 3rem);
+  }
+
+  .player-slot {
+    height: clamp(140px, 32vh, 200px);
+    width: clamp(140px, 32vh, 200px);
   }
 }

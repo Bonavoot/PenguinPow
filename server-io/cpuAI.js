@@ -35,6 +35,13 @@ const AI_CONFIG = {
   
   // Charged attack limits
   MAX_CONSECUTIVE_CHARGED: 2,  // Max charged attacks before forcing other moves
+  
+  // Snowball defense
+  SNOWBALL_THREAT_DISTANCE: 400, // Distance at which snowballs are considered threatening
+  SNOWBALL_CLOSE_RANGE: 180,   // Distance at which to relax snowball defense
+  SNOWBALL_PARRY_CHANCE: 0.50,  // 50% chance to parry snowballs (rest dodge)
+  SNOWBALL_PERFECT_PARRY_CHANCE: 0.35, // 35% chance to attempt perfect parry instead of regular parry
+  SNOWBALL_REACTION_DISTANCE: 250, // Distance from snowball to react
 };
 
 // AI State tracking per CPU player
@@ -67,6 +74,8 @@ function getAIState(playerId) {
       // Grab decision tracking - prevents stuttering
       grabDecisionMade: false,
       grabStrategy: null, // 'forward_push' or 'backward_throw'
+      // Snowball defense tracking
+      lastSnowballReactionTime: 0,
     });
   }
   return aiStates.get(playerId);
@@ -242,6 +251,56 @@ function canParry(cpu) {
          !cpu.isChargingAttack;
 }
 
+// Detect incoming snowballs that threaten the CPU
+function getThreateningSnowballs(cpu, human) {
+  if (!human.snowballs || human.snowballs.length === 0) {
+    return [];
+  }
+  
+  return human.snowballs.filter(snowball => {
+    // Only consider snowballs that haven't hit yet
+    if (snowball.hasHit) return false;
+    
+    // Check if snowball is moving toward CPU
+    const isMovingTowardCPU = (snowball.velocityX > 0 && snowball.x < cpu.x) || 
+                               (snowball.velocityX < 0 && snowball.x > cpu.x);
+    
+    if (!isMovingTowardCPU) return false;
+    
+    // Check if snowball is within threatening distance
+    const distance = Math.abs(snowball.x - cpu.x);
+    return distance < AI_CONFIG.SNOWBALL_THREAT_DISTANCE;
+  });
+}
+
+// Get the closest threatening snowball
+function getClosestSnowball(cpu, human) {
+  const threats = getThreateningSnowballs(cpu, human);
+  if (threats.length === 0) return null;
+  
+  // Sort by distance and return closest
+  threats.sort((a, b) => {
+    const distA = Math.abs(a.x - cpu.x);
+    const distB = Math.abs(b.x - cpu.x);
+    return distA - distB;
+  });
+  
+  return threats[0];
+}
+
+// Calculate how much time until snowball reaches CPU
+function getSnowballTimeToImpact(cpu, snowball) {
+  if (!snowball) return Infinity;
+  
+  const distance = Math.abs(snowball.x - cpu.x);
+  const speed = Math.abs(snowball.velocityX);
+  
+  if (speed === 0) return Infinity;
+  
+  // Approximate time in milliseconds (assuming ~60 FPS and delta ~16ms)
+  return (distance / speed) * 16;
+}
+
 function createEmptyKeys() {
   return {
     w: false,
@@ -363,6 +422,15 @@ function updateCPUAI(cpu, human, room, currentTime) {
   const corneredSide = getCorneredSide(cpu);
   if (corneredSide !== 0 && canAct(cpu)) {
     if (handleCornerEscape(cpu, human, aiState, currentTime, distance, corneredSide)) {
+      return;
+    }
+  }
+  
+  // Priority 2.5: SNOWBALL DEFENSE - Dodge through or parry incoming snowballs
+  // This is checked before regular attack reactions because snowballs require proactive defense
+  // The AI needs to close the gap when being spammed by snowballs from range
+  if (canAct(cpu) && (canDodge(cpu) || canParry(cpu))) {
+    if (handleSnowballDefense(cpu, human, aiState, currentTime, distance)) {
       return;
     }
   }
@@ -749,6 +817,133 @@ function handleDefensiveReaction(cpu, human, aiState, currentTime, distance) {
     aiState.lastAttackReactionTime = currentTime;
     aiState.lastDecisionTime = currentTime;
     aiState.shiftReleaseTime = currentTime + 80;
+    return true;
+  }
+  
+  return false;
+}
+
+// Handle snowball defense - dodge through or parry incoming snowballs
+// CRITICAL: When far from opponent, aggressively close the gap using dodges and parries
+function handleSnowballDefense(cpu, human, aiState, currentTime, distance) {
+  const closestSnowball = getClosestSnowball(cpu, human);
+  
+  if (!closestSnowball) {
+    return false;
+  }
+  
+  const snowballDistance = Math.abs(closestSnowball.x - cpu.x);
+  
+  // If snowball is very close, we MUST react NOW
+  const isUrgent = snowballDistance < AI_CONFIG.SNOWBALL_REACTION_DISTANCE;
+  
+  if (!isUrgent) {
+    return false;
+  }
+  
+  // Relax snowball defense when close to opponent (they can't spam as effectively)
+  if (distance < AI_CONFIG.SNOWBALL_CLOSE_RANGE) {
+    // Only react to very close snowballs when near opponent
+    if (snowballDistance > 150) {
+      return false;
+    }
+  }
+  
+  // Check cooldown between snowball reactions (don't spam too much)
+  if (aiState.lastSnowballReactionTime && currentTime - aiState.lastSnowballReactionTime < 300) {
+    return false;
+  }
+  
+  const roll = Math.random();
+  
+  // Decide: Parry or Dodge?
+  // When far from opponent, slightly favor dodging forward to close gap
+  const parryChance = distance > AI_CONFIG.MID_RANGE ? 
+    AI_CONFIG.SNOWBALL_PARRY_CHANCE * 0.85 : // 42.5% parry when far
+    AI_CONFIG.SNOWBALL_PARRY_CHANCE;         // 50% parry when mid/close
+  
+  if (roll < parryChance && canParry(cpu)) {
+    // PARRY THE SNOWBALL!
+    resetAllKeys(cpu);
+    
+    // Decide between perfect parry attempt or regular parry
+    const perfectParryRoll = Math.random();
+    
+    if (perfectParryRoll < AI_CONFIG.SNOWBALL_PERFECT_PARRY_CHANCE) {
+      // ATTEMPT PERFECT PARRY - very short timing window for maximum reward
+      // Perfect parry reflects the snowball back!
+      const timeToImpact = getSnowballTimeToImpact(cpu, closestSnowball);
+      const perfectParryWindow = 120; // Must release within 120ms of impact for perfect
+      
+      cpu.keys.s = true;
+      aiState.pendingParry = true;
+      aiState.parryStartTime = currentTime;
+      // Release just before impact for perfect parry timing
+      aiState.parryReleaseTime = currentTime + Math.max(timeToImpact - perfectParryWindow, 50);
+      
+      console.log(`CPU: Attempting PERFECT PARRY on snowball! Distance: ${Math.round(snowballDistance)}, timeToImpact: ${Math.round(timeToImpact)}ms`);
+    } else {
+      // REGULAR RAW PARRY - hold longer for reliable block
+      cpu.keys.s = true;
+      aiState.pendingParry = true;
+      aiState.parryStartTime = currentTime;
+      aiState.parryReleaseTime = currentTime + randomInRange(250, 400);
+      
+      console.log(`CPU: Raw parrying snowball! Distance: ${Math.round(snowballDistance)}`);
+    }
+    
+    aiState.lastSnowballReactionTime = currentTime;
+    aiState.lastDecisionTime = currentTime;
+    aiState.lastActionType = "snowball_parry";
+    return true;
+    
+  } else if (canDodge(cpu)) {
+    // DODGE THROUGH THE SNOWBALL!
+    resetAllKeys(cpu);
+    cpu.keys.shift = true;
+    
+    // CRITICAL: When far from opponent, ALWAYS dodge TOWARD them to close the gap
+    // When close, prioritize dodging away from boundaries
+    const directionToOpponent = getDirectionToOpponent(cpu, human);
+    
+    if (distance > AI_CONFIG.MID_RANGE) {
+      // Far from opponent - ALWAYS dodge toward them to close gap
+      if (directionToOpponent === 1) {
+        cpu.keys.d = true;
+      } else {
+        cpu.keys.a = true;
+      }
+      console.log(`CPU: Dodging FORWARD through snowball to close gap! Distance to opponent: ${Math.round(distance)}`);
+    } else {
+      // Mid/close range - smart dodge that considers boundaries
+      const cpuLeftDist = distanceToLeftEdge(cpu);
+      const cpuRightDist = distanceToRightEdge(cpu);
+      const nearestEdge = cpuLeftDist < cpuRightDist ? 'left' : 'right';
+      const distToNearestEdge = Math.min(cpuLeftDist, cpuRightDist);
+      
+      if (distToNearestEdge < 250) {
+        // Near edge - dodge away from edge (toward center)
+        if (nearestEdge === 'left') {
+          cpu.keys.d = true;
+        } else {
+          cpu.keys.a = true;
+        }
+        console.log(`CPU: Dodging through snowball away from ${nearestEdge} edge`);
+      } else {
+        // Safe - prefer dodging toward opponent to maintain pressure
+        if (directionToOpponent === 1) {
+          cpu.keys.d = true;
+        } else {
+          cpu.keys.a = true;
+        }
+        console.log(`CPU: Dodging through snowball toward opponent`);
+      }
+    }
+    
+    aiState.shiftReleaseTime = currentTime + 80;
+    aiState.lastSnowballReactionTime = currentTime;
+    aiState.lastDecisionTime = currentTime;
+    aiState.lastActionType = "snowball_dodge";
     return true;
   }
   

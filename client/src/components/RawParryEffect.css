@@ -4,8 +4,9 @@
 
 .raw-parry-ring {
   position: relative;
-  width: clamp(2rem, 5.5vmin, 7rem);
-  height: clamp(2rem, 5.5vmin, 7rem);
+  /* Smaller minimum for better scaling on small screens */
+  width: clamp(1.2rem, 4vw, 5rem);
+  height: clamp(1.2rem, 4vw, 5rem);
 }
 
 /* Main impact ring - outer shockwave for regular parry (cyan/blue) */
@@ -86,8 +87,9 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(2.5rem, 7vmin, 8rem);
-  height: clamp(2.5rem, 7vmin, 8rem);
+  /* Smaller minimum for better scaling on small screens */
+  width: clamp(1.5rem, 5vw, 6rem);
+  height: clamp(1.5rem, 5vw, 6rem);
   border: 2px solid rgba(100, 220, 255, 0.8);
   border-radius: 50%;
   transform: translate(-50%, -50%) scale(0.3);
@@ -101,8 +103,9 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(3.5rem, 9vmin, 10rem);
-  height: clamp(3.5rem, 9vmin, 10rem);
+  /* Smaller minimum for better scaling on small screens */
+  width: clamp(2rem, 6vw, 7rem);
+  height: clamp(2rem, 6vw, 7rem);
   border: 3px solid rgba(0, 255, 255, 0.85);
   border-radius: 50%;
   transform: translate(-50%, -50%) scale(0.3);
@@ -117,8 +120,9 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(3rem, 8vmin, 10rem);
-  height: clamp(3rem, 8vmin, 10rem);
+  /* Smaller minimum for better scaling on small screens */
+  width: clamp(1.8rem, 5vw, 7rem);
+  height: clamp(1.8rem, 5vw, 7rem);
   background: 
     linear-gradient(0deg, transparent 46%, rgba(0, 200, 255, 0.7) 48%, rgba(0, 200, 255, 0.7) 52%, transparent 54%),
     linear-gradient(90deg, transparent 46%, rgba(0, 200, 255, 0.7) 48%, rgba(0, 200, 255, 0.7) 52%, transparent 54%),
@@ -135,7 +139,8 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  font-size: clamp(1.5rem, 3vmin, 3rem);
+  /* Smaller minimum for better scaling on small screens */
+  font-size: clamp(0.8rem, 2vw, 2rem);
   color: #FFD700;
   text-shadow: 
     0 0 15px rgba(255, 215, 0, 0.95),
@@ -411,15 +416,15 @@
   animation: rawParrySparkExplode 0.4s ease-out forwards;
 }
 
-/* Reduced spark distances for smaller effect */
-.spark:nth-child(1) { animation-delay: 0.00s; --dx: 2.5vw; --dy: -0.6vw; --rotation: 45deg; }
-.spark:nth-child(2) { animation-delay: 0.02s; --dx: 1.8vw; --dy: -1.8vw; --rotation: 90deg; }
-.spark:nth-child(3) { animation-delay: 0.01s; --dx: 0.6vw; --dy: -2.5vw; --rotation: 135deg; }
-.spark:nth-child(4) { animation-delay: 0.03s; --dx: -0.6vw; --dy: -2.5vw; --rotation: 180deg; }
-.spark:nth-child(5) { animation-delay: 0.00s; --dx: -1.8vw; --dy: -1.8vw; --rotation: 225deg; }
-.spark:nth-child(6) { animation-delay: 0.02s; --dx: -2.5vw; --dy: -0.6vw; --rotation: 270deg; }
-.spark:nth-child(7) { animation-delay: 0.01s; --dx: -2.5vw; --dy: 0.6vw; --rotation: 315deg; }
-.spark:nth-child(8) { animation-delay: 0.03s; --dx: -1.8vw; --dy: 1.8vw; --rotation: 360deg; }
+/* Further reduced spark distances for better small screen scaling */
+.spark:nth-child(1) { animation-delay: 0.00s; --dx: 1.8vw; --dy: -0.45vw; --rotation: 45deg; }
+.spark:nth-child(2) { animation-delay: 0.02s; --dx: 1.35vw; --dy: -1.35vw; --rotation: 90deg; }
+.spark:nth-child(3) { animation-delay: 0.01s; --dx: 0.45vw; --dy: -1.8vw; --rotation: 135deg; }
+.spark:nth-child(4) { animation-delay: 0.03s; --dx: -0.45vw; --dy: -1.8vw; --rotation: 180deg; }
+.spark:nth-child(5) { animation-delay: 0.00s; --dx: -1.35vw; --dy: -1.35vw; --rotation: 225deg; }
+.spark:nth-child(6) { animation-delay: 0.02s; --dx: -1.8vw; --dy: -0.45vw; --rotation: 270deg; }
+.spark:nth-child(7) { animation-delay: 0.01s; --dx: -1.8vw; --dy: 0.45vw; --rotation: 315deg; }
+.spark:nth-child(8) { animation-delay: 0.03s; --dx: -1.35vw; --dy: 1.35vw; --rotation: 360deg; }
 
 @keyframes rawParrySparkExplode {
   0% {

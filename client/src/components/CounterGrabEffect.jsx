@@ -123,8 +123,9 @@ const ShockwaveRing = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(60px, 8vw, 100px);
-  height: clamp(60px, 8vw, 100px);
+  /* Smaller minimum for better scaling on small screens */
+  width: clamp(35px, 5vw, 70px);
+  height: clamp(35px, 5vw, 70px);
   border-radius: 50%;
   border: 6px solid #ff3366;
   transform: translate(-50%, -50%) scale(0);
@@ -140,8 +141,9 @@ const ShockwaveRingPurple = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(50px, 7vw, 85px);
-  height: clamp(50px, 7vw, 85px);
+  /* Smaller minimum for better scaling on small screens */
+  width: clamp(28px, 4.5vw, 60px);
+  height: clamp(28px, 4.5vw, 60px);
   border-radius: 50%;
   border: 4px solid #9933ff;
   transform: translate(-50%, -50%) scale(0);
@@ -155,8 +157,9 @@ const InnerFlash = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(30px, 4vw, 50px);
-  height: clamp(30px, 4vw, 50px);
+  /* Smaller minimum for better scaling on small screens */
+  width: clamp(18px, 2.5vw, 35px);
+  height: clamp(18px, 2.5vw, 35px);
   border-radius: 50%;
   background: radial-gradient(circle, rgba(255, 255, 255, 1) 0%, rgba(255, 51, 102, 0.8) 40%, rgba(153, 51, 255, 0.6) 70%, transparent 100%);
   transform: translate(-50%, -50%) scale(0);
@@ -188,7 +191,8 @@ const CounterText = styled.div`
   top: 50%;
   left: 50%;
   font-family: "Bungee", cursive;
-  font-size: clamp(1rem, 2vw, 1.6rem);
+  /* Smaller font on small screens */
+  font-size: clamp(0.7rem, 1.6vw, 1.4rem);
   color: #ff3366;
   text-shadow: 
     -2px -2px 0 #000, 2px -2px 0 #000, 
@@ -205,10 +209,12 @@ const CounterText = styled.div`
 // Text positioned on grabber's side of the screen (like parry text)
 const CounterGrabTextSide = styled.div`
   position: fixed;
-  top: 30%;
+  /* Position near vertical center of screen */
+  top: clamp(180px, 45%, 320px);
   ${props => props.$isLeftSide ? 'left: 3%;' : 'right: 3%;'}
   font-family: "Bungee", cursive;
-  font-size: clamp(0.9rem, 1.8vw, 1.4rem);
+  /* Smaller font on small screens */
+  font-size: clamp(0.6rem, 1.5vw, 1.2rem);
   line-height: 1.1;
   color: #ff3366;
   text-shadow: 

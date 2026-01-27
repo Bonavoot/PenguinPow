@@ -63,10 +63,12 @@ const PowerUpContainer = styled.div`
   background: linear-gradient(135deg, #121213, rgba(20, 19, 19, 0.95));
   border: 2px solid #d4af37;
   border-radius: clamp(8px, 1.5vw, 16px);
-  padding: clamp(20px, 3vw, 40px);
+  /* Smaller padding on small screens */
+  padding: clamp(12px, 2.5vw, 35px);
   text-align: center;
   box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
-  width: clamp(400px, 60vw, 700px);
+  /* Smaller minimum width for small screens */
+  width: clamp(280px, 55vw, 650px);
   max-width: 95%;
   animation: ${slideIn} 0.3s ease-out forwards;
   color: #fff;
@@ -76,8 +78,9 @@ const PowerUpContainer = styled.div`
 
 const Title = styled.h1`
   font-family: "Bungee", cursive;
-  font-size: clamp(1.5rem, 4vw, 2.5rem);
-  margin: 0 0 clamp(10px, 2vw, 20px) 0;
+  /* Smaller font on small screens */
+  font-size: clamp(1rem, 3.5vw, 2.2rem);
+  margin: 0 0 clamp(8px, 1.5vw, 18px) 0;
   color: #d4af37;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -88,8 +91,9 @@ const Title = styled.h1`
 
 const Subtitle = styled.h2`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.8rem, 2vw, 1.2rem);
-  margin: 0 0 clamp(20px, 3vw, 30px) 0;
+  /* Smaller font on small screens */
+  font-size: clamp(0.6rem, 1.6vw, 1rem);
+  margin: 0 0 clamp(12px, 2.5vw, 25px) 0;
   color: #fff;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -129,11 +133,13 @@ const PowerUpCard = styled.div`
   /* border: 3px solid ${(props) =>
     props.$selected ? "#d4af370" : "#d4af37"}; */
   border-radius: clamp(6px, 1.5vw, 12px);
-  padding: clamp(12px, 2vw, 20px);
+  /* Smaller padding on small screens */
+  padding: clamp(8px, 1.5vw, 18px);
   cursor: pointer;
   transition: all 0.3s ease-out;
-  width: clamp(120px, 15vw, 180px);
-  height: clamp(120px, 15vw, 180px);
+  /* Smaller minimum size for small screens */
+  width: clamp(80px, 12vw, 160px);
+  height: clamp(80px, 12vw, 160px);
   position: relative;
   flex-shrink: 0;
   box-shadow: ${(props) => {
@@ -177,8 +183,9 @@ const PowerUpCard = styled.div`
 
 // Simplified PowerUpIcon - reduced complex gradients
 const PowerUpIcon = styled.div`
-  width: clamp(40px, 6vw, 70px);
-  height: clamp(40px, 6vw, 70px);
+  /* Smaller minimum for small screens */
+  width: clamp(28px, 5vw, 60px);
+  height: clamp(28px, 5vw, 60px);
   border-radius: 50%;
   background: ${(props) => {
     switch (props.$type) {
@@ -199,10 +206,10 @@ const PowerUpIcon = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: clamp(8px, 1.5vw, 15px);
+  margin-bottom: clamp(5px, 1vw, 12px);
   border: 2px solid #000000;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-  font-size: clamp(1.2rem, 3vw, 2rem);
+  font-size: clamp(0.9rem, 2.5vw, 1.8rem);
   font-weight: bold;
   color: #fff;
   text-shadow: 1px 1px 0 #000;
@@ -216,8 +223,9 @@ const PowerUpIcon = styled.div`
 
 const PowerUpName = styled.h3`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.7rem, 1.8vw, 1.1rem);
-  margin: 0 0 clamp(4px, 1vw, 8px) 0;
+  /* Smaller font on small screens */
+  font-size: clamp(0.5rem, 1.4vw, 0.95rem);
+  margin: 0 0 clamp(2px, 0.8vw, 6px) 0;
   color: ${(props) => {
     if (props.$selected) return "#000";
 
@@ -247,8 +255,9 @@ const PowerUpName = styled.h3`
 
 const PowerUpDescription = styled.p`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.5rem, 1.2vw, 0.8rem);
-  margin: 0 0 clamp(4px, 1vw, 8px) 0;
+  /* Smaller font on small screens */
+  font-size: clamp(0.35rem, 1vw, 0.7rem);
+  margin: 0 0 clamp(2px, 0.8vw, 6px) 0;
   color: ${(props) => (props.$selected ? "#2a2a2a" : "#4a4a4a")};
   text-align: center;
   line-height: 1.2;
@@ -262,7 +271,8 @@ const PowerUpDescription = styled.p`
 
 const PowerUpType = styled.p`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.4rem, 1vw, 0.7rem);
+  /* Smaller font on small screens */
+  font-size: clamp(0.3rem, 0.8vw, 0.6rem);
   margin: 0;
   color: ${(props) => {
     if (props.$selected) return "#000";
@@ -291,16 +301,18 @@ const PowerUpType = styled.p`
 
 const StatusContainer = styled.div`
   border-top: 2px solid rgba(212, 175, 55, 0.4);
-  padding-top: clamp(15px, 2.5vw, 25px);
-  margin-top: clamp(15px, 2.5vw, 25px);
+  /* Smaller padding/margin on small screens */
+  padding-top: clamp(10px, 2vw, 20px);
+  margin-top: clamp(10px, 2vw, 20px);
   position: relative;
   z-index: 1;
 `;
 
 const StatusText = styled.p`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.7rem, 1.5vw, 1rem);
-  margin: clamp(5px, 1vw, 8px) 0;
+  /* Smaller font on small screens */
+  font-size: clamp(0.5rem, 1.2vw, 0.85rem);
+  margin: clamp(3px, 0.8vw, 6px) 0;
   color: #fff;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -310,8 +322,9 @@ const StatusText = styled.p`
 // Simplified timer animation
 const TimerText = styled.p`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.8rem, 1.6vw, 1.1rem);
-  margin: clamp(8px, 1.5vw, 12px) 0 0 0;
+  /* Smaller font on small screens */
+  font-size: clamp(0.55rem, 1.3vw, 0.95rem);
+  margin: clamp(5px, 1.2vw, 10px) 0 0 0;
   font-weight: bold;
   text-transform: uppercase;
   letter-spacing: 0.05em;

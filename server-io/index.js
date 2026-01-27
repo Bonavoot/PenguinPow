@@ -5192,7 +5192,9 @@ io.on("connection", (socket) => {
     };
 
     // Helper function to check if an action should be blocked
-    const shouldBlockAction = (allowDodgeCancelRecovery = false) => {
+    // allowDodgeCancelRecovery: allows dodge to cancel recovery state
+    // allowChargingDuringDodge: allows starting/continuing charged attack during dodge
+    const shouldBlockAction = (allowDodgeCancelRecovery = false, allowChargingDuringDodge = false) => {
       // Global action lock gate to serialize actions visually/feel-wise
       if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
         return true;
@@ -5201,8 +5203,8 @@ io.on("connection", (socket) => {
       if (isInChargedAttackExecution()) {
         return true;
       }
-      // Block during dodge - only charging can continue, no other actions
-      if (player.isDodging) {
+      // Block during dodge - unless allowChargingDuringDodge is true (charging can happen during dodge)
+      if (player.isDodging && !allowChargingDuringDodge) {
         return true;
       }
       // Block during grab break animation and separation
@@ -5770,6 +5772,26 @@ io.on("connection", (socket) => {
             player.pendingChargeAttack = null;
             player.spacebarReleasedDuringDodge = false;
           }
+          // Start charging immediately after dodge ends if mouse2 is held
+          // This ensures no delay between dodge ending and charge starting
+          else if (
+            player.keys.mouse2 &&
+            !player.isChargingAttack &&
+            !player.isAttacking &&
+            !player.isHit &&
+            !player.isRawParryStun &&
+            !player.isRawParrying &&
+            !player.isGrabbing &&
+            !player.isBeingGrabbed &&
+            !player.isThrowing &&
+            !player.isBeingThrown &&
+            !player.isGrabBreaking &&
+            !player.isGrabBreakCountered &&
+            !player.isRecovering &&
+            !player.canMoveToReady
+          ) {
+            startCharging(player);
+          }
         },
         450, // Updated to match new dodge duration
         "dodgeReset"
@@ -5822,11 +5844,12 @@ io.on("connection", (socket) => {
       startCharging(player);
       player.spacebarReleasedDuringDodge = false;
     }
-    // For continuing a charge - block during charged attack execution and recovery
+    // For continuing a charge OR starting a charge during dodge
+    // Use shouldBlockAction(false, true) to allow charging during dodge
     // Also block if E was just pressed (grab should execute, not restart/continue charge)
     else if (
       player.keys.mouse2 &&
-      !shouldBlockAction() &&
+      !shouldBlockAction(false, true) && // Allow charging during dodge
       (player.isChargingAttack || player.isDodging) &&
       !player.isHit &&
       !player.isRawParryStun &&
