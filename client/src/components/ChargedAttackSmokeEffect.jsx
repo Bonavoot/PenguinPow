@@ -25,7 +25,7 @@ const SmokeContainer = styled.div.attrs((props) => {
       transform: `translateX(-50%) scaleX(${props.$facing === 1 ? 1 : -1})`,
       opacity: 0.8,
       zIndex: -1,
-      filter: "brightness(0) invert(1)",
+      filter: "grayscale(100%) brightness(200%)", // Reliable white appearance across all monitors
     },
   };
 })``;

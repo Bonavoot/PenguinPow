@@ -90,13 +90,13 @@ const Hand = styled.img`
     180ms ease-out forwards;
   transform-origin: center;
   will-change: transform, opacity;
-  filter: brightness(0) invert(1) 
+  filter: grayscale(100%) brightness(200%)
     drop-shadow(1px 0 0 black) 
     drop-shadow(-1px 0 0 black) 
     drop-shadow(0 1px 0 black) 
     drop-shadow(0 -1px 0 black)
     drop-shadow(0 0 8px rgba(255, 255, 255, 0.8))
-    drop-shadow(0 0 15px rgba(255, 255, 255, 0.5)); // White with black outline and glow
+    drop-shadow(0 0 15px rgba(255, 255, 255, 0.5)); // White with black outline and glow - reliable across all monitors
 `;
 
 const Streak = styled.div`
