@@ -42,16 +42,15 @@ const frostRing = keyframes`
   }
 `;
 
-const EffectContainer = styled.div.attrs((props) => ({
-  style: {
-    position: "absolute",
-    left: `${(props.$x / 1280) * 100}%`,
-    bottom: `${(props.$y / 720) * 100 + 15}%`,
-    transform: "translate(-50%, -50%)",
-    zIndex: 120,
-    pointerEvents: "none",
-  },
-}))``;
+const EffectContainer = styled.div`
+  position: absolute;
+  left: ${props => (props.$x / 1280) * 100}%;
+  bottom: ${props => (props.$y / 720) * 100 + 15}%;
+  transform: translate(-50%, -50%);
+  z-index: 120;
+  pointer-events: none;
+  contain: layout style;
+`;
 
 const SnowBurst = styled.div`
   position: absolute;
@@ -75,9 +74,6 @@ const FrostRing = styled.div`
   border-radius: 50%;
   transform: translate(-50%, -50%) scale(0.3);
   animation: ${frostRing} 0.4s ease-out forwards;
-  box-shadow: 
-    0 0 15px rgba(135, 206, 250, 0.7),
-    inset 0 0 10px rgba(200, 230, 255, 0.4);
 `;
 
 const Snowflake = styled.div`
@@ -88,7 +84,6 @@ const Snowflake = styled.div`
   height: ${props => props.$size}px;
   background: radial-gradient(circle, rgba(255, 255, 255, 1) 30%, rgba(200, 230, 255, 0.8) 100%);
   border-radius: 50%;
-  box-shadow: 0 0 ${props => props.$size}px rgba(200, 230, 255, 0.8);
   opacity: 0;
   animation: ${snowflakeScatter} 0.4s ease-out forwards;
   animation-delay: ${props => props.$delay}s;

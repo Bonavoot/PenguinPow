@@ -1231,7 +1231,6 @@ const GameFighter = ({
   const previousState = useRef(null);
   const currentState = useRef(null);
   const lastUpdateTime = useRef(performance.now());
-  const interpolationStartTime = useRef(performance.now());
 
   // Store both players' data for UI (only needed for first component)
   const [allPlayersData, setAllPlayersData] = useState({
@@ -1399,7 +1398,7 @@ const GameFighter = ({
     ]
   );
 
-  // Animation loop for interpolation
+  // Animation loop for interpolation - smooth updates at full framerate
   const interpolationLoop = useCallback(
     (timestamp) => {
       if (currentState.current && previousState.current) {
@@ -1409,7 +1408,7 @@ const GameFighter = ({
           1
         );
 
-        // Only interpolate position, not discrete states
+        // Calculate and set interpolated position
         const interpolatedPos = interpolatePosition(
           { x: previousState.current.x, y: previousState.current.y },
           { x: currentState.current.x, y: currentState.current.y },
@@ -1418,7 +1417,6 @@ const GameFighter = ({
 
         setInterpolatedPosition(interpolatedPos);
       } else if (currentState.current) {
-        // Fallback to current position if no previous state
         setInterpolatedPosition({
           x: currentState.current.x,
           y: currentState.current.y,
@@ -1717,6 +1715,7 @@ const GameFighter = ({
             x: centerX + 150,
             y: GROUND_LEVEL + 110,
             breakId: data.breakId || `break-${Date.now()}`,
+            breakerPlayerNumber: data.breakerPlayerNumber || 1,
           });
           playSound(grabBreakSound, 0.01);
         }
@@ -2130,14 +2129,19 @@ const GameFighter = ({
     }
   }, [penguin.isRawParryStun, showStarStunEffect, penguin.id, player.id]);
 
-  // Add screen shake effect
+  // Add screen shake effect - OPTIMIZED using requestAnimationFrame
   useEffect(() => {
     if (screenShake.intensity > 0) {
-      const shakeInterval = setInterval(() => {
+      let animationId;
+      const gameContainer = document.querySelector(".game-container");
+      
+      const shakeFrame = () => {
         const elapsed = Date.now() - screenShake.startTime;
         if (elapsed >= screenShake.duration) {
           setScreenShake({ intensity: 0, duration: 0, startTime: 0 });
-          clearInterval(shakeInterval);
+          if (gameContainer) {
+            gameContainer.style.transform = "translate(0px, 0px)";
+          }
           return;
         }
 
@@ -2149,17 +2153,17 @@ const GameFighter = ({
         const offsetX = (Math.random() - 0.5) * remainingIntensity * 10;
         const offsetY = (Math.random() - 0.5) * remainingIntensity * 10;
 
-        // Apply the shake effect to the game container
-        const gameContainer = document.querySelector(".game-container");
         if (gameContainer) {
           gameContainer.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
         }
-      }, 16); // 60fps
+        
+        animationId = requestAnimationFrame(shakeFrame);
+      };
+      
+      animationId = requestAnimationFrame(shakeFrame);
 
       return () => {
-        clearInterval(shakeInterval);
-        // Reset transform when effect ends
-        const gameContainer = document.querySelector(".game-container");
+        cancelAnimationFrame(animationId);
         if (gameContainer) {
           gameContainer.style.transform = "translate(0px, 0px)";
         }
@@ -2290,14 +2294,10 @@ const GameFighter = ({
 
   return (
     <div className="ui-container">
-      {/* Global visual theme overlay (light, under-sprite grading only) */}
+      {/* Global visual theme overlay - optimized for performance */}
       <ThemeOverlay
         theme="edo-nightfall"
         intensity={0.16}
-        vignette={0.16}
-        scanlines={0.035}
-        grain={0.06}
-        bloom={0.16}
         lanterns={0.1}
         zIndex={0}
       />

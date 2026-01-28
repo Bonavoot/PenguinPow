@@ -17,13 +17,10 @@
   left: 50%;
   width: 100%;
   height: 100%;
-  border: 4px solid rgba(255, 215, 0, 0.9);
+  border: 3px solid rgba(255, 215, 0, 0.9);
   border-radius: 50%;
   transform: translate(-50%, -50%) scale(0.5);
-  animation: hitMainRing 0.45s ease-out forwards;
-  box-shadow: 
-    0 0 25px rgba(255, 215, 0, 0.8),
-    inset 0 0 15px rgba(255, 255, 255, 0.4);
+  animation: hitMainRing 0.4s ease-out forwards;
 }
 
 /* Inner flash burst */
@@ -34,10 +31,10 @@
   left: 50%;
   width: 60%;
   height: 60%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 1) 0%, rgba(255, 215, 0, 0.8) 40%, transparent 70%);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0%, rgba(255, 215, 0, 0.75) 45%, transparent 75%);
   border-radius: 50%;
   transform: translate(-50%, -50%) scale(0);
-  animation: hitInnerBurst 0.35s ease-out forwards;
+  animation: hitInnerBurst 0.32s ease-out forwards;
 }
 
 /* Create additional pseudo-elements using a wrapper approach */
@@ -51,30 +48,25 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  /* Smaller minimum for better scaling on small screens */
   width: clamp(2rem, 6vw, 8rem);
   height: clamp(2rem, 6vw, 8rem);
   border: 2px solid rgba(255, 255, 153, 0.7);
   border-radius: 50%;
   transform: translate(-50%, -50%) scale(0.3);
-  animation: hitOuterRing 0.5s ease-out 0.05s forwards;
+  animation: hitOuterRing 0.45s ease-out 0.04s forwards;
   pointer-events: none;
 }
 
-/* Impact lines radiating outward */
+/* Impact star */
 .hit-ring-wrapper::after {
   content: '✦';
   position: absolute;
   top: 50%;
   left: 50%;
-  /* Smaller minimum for better scaling on small screens */
   font-size: clamp(0.8rem, 2vw, 2rem);
   color: #ffd700;
-  text-shadow: 
-    0 0 15px rgba(255, 215, 0, 0.9),
-    0 0 30px rgba(255, 215, 0, 0.6);
   transform: translate(-50%, -50%) scale(0) rotate(0deg);
-  animation: hitStarBurst 0.4s ease-out forwards;
+  animation: hitStarBurst 0.38s ease-out forwards;
   pointer-events: none;
 }
 
@@ -288,7 +280,7 @@
   }
 }
 
-/* Enhanced Spark Particle Effects */
+/* Enhanced Spark Particle Effects - OPTIMIZED */
 .spark-particles {
   position: absolute;
   top: 50%;
@@ -298,87 +290,56 @@
   transform: translate(-50%, -50%);
   pointer-events: none;
   z-index: 10;
+  contain: layout style;
 }
 
 .spark {
   position: absolute;
   opacity: 0;
   transform-origin: center;
-  will-change: transform, opacity;
-  animation: sparkExplode 0.45s ease-out forwards;
+  animation: sparkExplode 0.4s ease-out forwards;
 }
 
-/* Simple circular explosion - each spark gets its own unique direction */
-/* Reduced distances for better scaling on small screens */
-.spark:nth-child(1) { animation-delay: 0.00s; --dx: 2.4vw; --dy: -0.6vw; --rotation: 45deg; }
-.spark:nth-child(2) { animation-delay: 0.02s; --dx: 1.8vw; --dy: -1.8vw; --rotation: 90deg; }
-.spark:nth-child(3) { animation-delay: 0.01s; --dx: 0.6vw; --dy: -2.4vw; --rotation: 135deg; }
-.spark:nth-child(4) { animation-delay: 0.03s; --dx: -0.6vw; --dy: -2.4vw; --rotation: 180deg; }
-.spark:nth-child(5) { animation-delay: 0.00s; --dx: -1.8vw; --dy: -1.8vw; --rotation: 225deg; }
-.spark:nth-child(6) { animation-delay: 0.02s; --dx: -2.4vw; --dy: -0.6vw; --rotation: 270deg; }
-.spark:nth-child(7) { animation-delay: 0.01s; --dx: -2.4vw; --dy: 0.6vw; --rotation: 315deg; }
-.spark:nth-child(8) { animation-delay: 0.03s; --dx: -1.8vw; --dy: 1.8vw; --rotation: 360deg; }
-.spark:nth-child(9) { animation-delay: 0.00s; --dx: -0.6vw; --dy: 2.4vw; --rotation: 405deg; }
-.spark:nth-child(10) { animation-delay: 0.02s; --dx: 0.6vw; --dy: 2.4vw; --rotation: 450deg; }
-.spark:nth-child(11) { animation-delay: 0.01s; --dx: 1.8vw; --dy: 1.8vw; --rotation: 495deg; }
-.spark:nth-child(12) { animation-delay: 0.03s; --dx: 2.4vw; --dy: 0.6vw; --rotation: 540deg; }
-.spark:nth-child(13) { animation-delay: 0.00s; --dx: 2.7vw; --dy: -0.3vw; --rotation: 585deg; }
-.spark:nth-child(14) { animation-delay: 0.02s; --dx: -2.7vw; --dy: -0.3vw; --rotation: 630deg; }
-.spark:nth-child(15) { animation-delay: 0.01s; --dx: 0.3vw; --dy: -2.7vw; --rotation: 675deg; }
-.spark:nth-child(16) { animation-delay: 0.03s; --dx: -0.3vw; --dy: 2.7vw; --rotation: 720deg; }
+/* Simple circular explosion - 8 sparks */
+.spark:nth-child(1) { --dx: 2.2vw; --dy: -0.5vw; }
+.spark:nth-child(2) { animation-delay: 0.015s; --dx: 1.5vw; --dy: -1.5vw; }
+.spark:nth-child(3) { animation-delay: 0.01s; --dx: 0.5vw; --dy: -2.2vw; }
+.spark:nth-child(4) { animation-delay: 0.02s; --dx: -0.5vw; --dy: -2.2vw; }
+.spark:nth-child(5) { --dx: -1.5vw; --dy: -1.5vw; }
+.spark:nth-child(6) { animation-delay: 0.015s; --dx: -2.2vw; --dy: 0.5vw; }
+.spark:nth-child(7) { animation-delay: 0.01s; --dx: 0.5vw; --dy: 2.2vw; }
+.spark:nth-child(8) { animation-delay: 0.02s; --dx: 1.5vw; --dy: 1.5vw; }
 
+/* Smooth keyframes - no expensive filters */
 @keyframes sparkExplode {
   0% {
     opacity: 1;
-    transform: translate(-50%, -50%) rotate(0deg) scale(1);
-    filter: brightness(1.5) drop-shadow(0 0 4px currentColor);
+    transform: translate(-50%, -50%) scale(1);
   }
   20% {
     opacity: 1;
-    transform: translate(calc(-50% + var(--dx) * 0.3), calc(-50% + var(--dy) * 0.3)) rotate(calc(var(--rotation) * 0.2)) scale(1.1);
-    filter: brightness(1.3) drop-shadow(0 0 6px currentColor);
+    transform: translate(calc(-50% + var(--dx) * 0.3), calc(-50% + var(--dy) * 0.3)) scale(1.1);
   }
-  40% {
-    opacity: 1;
-    transform: translate(calc(-50% + var(--dx) * 0.6), calc(-50% + var(--dy) * 0.6)) rotate(calc(var(--rotation) * 0.4)) scale(1.05);
-    filter: brightness(1.2) drop-shadow(0 0 4px currentColor);
-  }
-  60% {
-    opacity: 0.8;
-    transform: translate(calc(-50% + var(--dx) * 0.8), calc(-50% + var(--dy) * 0.8)) rotate(calc(var(--rotation) * 0.6)) scale(0.9);
-    filter: brightness(1.1) drop-shadow(0 0 3px currentColor);
-  }
-  80% {
-    opacity: 0.5;
-    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(calc(var(--rotation) * 0.8)) scale(0.7);
-    filter: brightness(1.0) drop-shadow(0 0 2px currentColor);
+  50% {
+    opacity: 0.9;
+    transform: translate(calc(-50% + var(--dx) * 0.6), calc(-50% + var(--dy) * 0.6)) scale(0.9);
   }
   100% {
     opacity: 0;
-    transform: translate(calc(-50% + var(--dx) * 1.2), calc(-50% + var(--dy) * 1.2)) rotate(var(--rotation)) scale(0.3);
-    filter: brightness(0.8) drop-shadow(0 0 1px currentColor);
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.3);
   }
 }
 
-/* Spark glow effects - simplified for performance */
-.spark::before {
-  display: none; /* Disabled for performance */
-}
-
+/* Spark glow effects - disabled for performance */
+.spark::before,
 .spark::after {
-  display: none; /* Disabled for performance */
+  display: none;
 }
 
-/* Screen shake effect helper - enhanced */
+/* Screen shake effect helper - simplified */
 @keyframes screenShake {
   0%, 100% { transform: translate(0, 0); }
-  10% { transform: translate(-2px, -1px) rotate(0.3deg); }
-  20% { transform: translate(2px, 1px) rotate(-0.3deg); }
-  30% { transform: translate(-1px, 2px) rotate(0.2deg); }
-  40% { transform: translate(1px, -1px) rotate(-0.2deg); }
-  50% { transform: translate(-2px, 1px) rotate(0.2deg); }
-  60% { transform: translate(2px, -2px) rotate(-0.2deg); }
-  70% { transform: translate(-1px, -1px) rotate(0.1deg); }
-  80% { transform: translate(1px, 2px) rotate(-0.1deg); }
-  90% { transform: translate(-2px, -1px) rotate(0.1deg); }
+  25% { transform: translate(-2px, -1px); }
+  50% { transform: translate(2px, 1px); }
+  75% { transform: translate(-1px, 1px); }
 } 

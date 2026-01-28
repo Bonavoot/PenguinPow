@@ -21,10 +21,6 @@
   border-radius: 50%;
   transform: translate(-50%, -50%) scale(0.5);
   animation: rawParryMainRing 0.4s ease-out forwards;
-  box-shadow: 
-    0 0 20px rgba(0, 200, 255, 0.9),
-    0 0 40px rgba(0, 150, 255, 0.5),
-    inset 0 0 12px rgba(0, 150, 255, 0.4);
 }
 
 /* Main impact ring - outer shockwave for perfect parry (bright cyan/white) */
@@ -38,11 +34,7 @@
   border: 4px solid rgba(0, 255, 255, 0.95);
   border-radius: 50%;
   transform: translate(-50%, -50%) scale(0.5);
-  animation: rawParryMainRing 0.5s ease-out forwards;
-  box-shadow: 
-    0 0 30px rgba(0, 255, 255, 0.95),
-    0 0 50px rgba(0, 150, 255, 0.7),
-    inset 0 0 15px rgba(100, 255, 255, 0.5);
+  animation: rawParryMainRing 0.45s ease-out forwards;
 }
 
 /* Inner flash burst - regular parry */
@@ -97,20 +89,19 @@
   pointer-events: none;
 }
 
-/* Second shockwave ring - perfect (larger, more dramatic) */
+/* Second shockwave ring - perfect (larger, more dramatic) - OPTIMIZED */
 .raw-parry-ring-wrapper.perfect::before {
   content: '';
   position: absolute;
   top: 50%;
   left: 50%;
-  /* Smaller minimum for better scaling on small screens */
   width: clamp(2rem, 6vw, 7rem);
   height: clamp(2rem, 6vw, 7rem);
-  border: 3px solid rgba(0, 255, 255, 0.85);
+  border: 2px solid rgba(0, 255, 255, 0.8);
   border-radius: 50%;
   transform: translate(-50%, -50%) scale(0.3);
-  animation: rawParryOuterRingPerfect 0.55s ease-out 0.03s forwards;
-  box-shadow: 0 0 15px rgba(0, 255, 255, 0.6);
+  animation: rawParryOuterRingPerfect 0.45s ease-out 0.03s forwards;
+  /* Removed expensive box-shadow */
   pointer-events: none;
 }
 
@@ -133,20 +124,16 @@
   pointer-events: none;
 }
 
-/* Cross flash effect for perfect parry */
+/* Cross flash effect for perfect parry - OPTIMIZED */
 .raw-parry-ring-wrapper.perfect::after {
   content: '✦';
   position: absolute;
   top: 50%;
   left: 50%;
-  /* Smaller minimum for better scaling on small screens */
   font-size: clamp(0.8rem, 2vw, 2rem);
   color: #FFD700;
-  text-shadow: 
-    0 0 15px rgba(255, 215, 0, 0.95),
-    0 0 30px rgba(255, 200, 0, 0.7);
   transform: translate(-50%, -50%) scale(0) rotate(0deg);
-  animation: rawParryStarBurstPerfect 0.4s ease-out forwards;
+  animation: rawParryStarBurstPerfect 0.32s ease-out forwards;
   pointer-events: none;
 }
 
@@ -396,7 +383,7 @@
   }
 }
 
-/* Enhanced Spark Particle Effects - reduced spread */
+/* Enhanced Spark Particle Effects */
 .spark-particles {
   position: absolute;
   top: 50%;
@@ -406,51 +393,43 @@
   transform: translate(-50%, -50%);
   pointer-events: none;
   z-index: 10;
+  contain: layout style;
 }
 
 .spark {
   position: absolute;
   opacity: 0;
   transform-origin: center;
-  will-change: transform, opacity;
-  animation: rawParrySparkExplode 0.4s ease-out forwards;
+  animation: rawParrySparkExplode 0.38s ease-out forwards;
 }
 
-/* Further reduced spark distances for better small screen scaling */
-.spark:nth-child(1) { animation-delay: 0.00s; --dx: 1.8vw; --dy: -0.45vw; --rotation: 45deg; }
-.spark:nth-child(2) { animation-delay: 0.02s; --dx: 1.35vw; --dy: -1.35vw; --rotation: 90deg; }
-.spark:nth-child(3) { animation-delay: 0.01s; --dx: 0.45vw; --dy: -1.8vw; --rotation: 135deg; }
-.spark:nth-child(4) { animation-delay: 0.03s; --dx: -0.45vw; --dy: -1.8vw; --rotation: 180deg; }
-.spark:nth-child(5) { animation-delay: 0.00s; --dx: -1.35vw; --dy: -1.35vw; --rotation: 225deg; }
-.spark:nth-child(6) { animation-delay: 0.02s; --dx: -1.8vw; --dy: -0.45vw; --rotation: 270deg; }
-.spark:nth-child(7) { animation-delay: 0.01s; --dx: -1.8vw; --dy: 0.45vw; --rotation: 315deg; }
-.spark:nth-child(8) { animation-delay: 0.03s; --dx: -1.35vw; --dy: 1.35vw; --rotation: 360deg; }
+/* 8 sparks for good coverage */
+.spark:nth-child(1) { --dx: 1.8vw; --dy: -0.45vw; }
+.spark:nth-child(2) { animation-delay: 0.015s; --dx: 1.35vw; --dy: -1.35vw; }
+.spark:nth-child(3) { animation-delay: 0.01s; --dx: 0.45vw; --dy: -1.8vw; }
+.spark:nth-child(4) { animation-delay: 0.02s; --dx: -0.45vw; --dy: -1.8vw; }
+.spark:nth-child(5) { --dx: -1.35vw; --dy: -1.35vw; }
+.spark:nth-child(6) { animation-delay: 0.015s; --dx: -1.8vw; --dy: 0.45vw; }
+.spark:nth-child(7) { animation-delay: 0.01s; --dx: 1.35vw; --dy: 1.35vw; }
+.spark:nth-child(8) { animation-delay: 0.02s; --dx: -1.35vw; --dy: 1.35vw; }
 
+/* Smooth keyframes - no expensive filters */
 @keyframes rawParrySparkExplode {
   0% {
     opacity: 1;
-    transform: translate(-50%, -50%) rotate(0deg) scale(1);
-    filter: brightness(1.6) drop-shadow(0 0 4px currentColor);
+    transform: translate(-50%, -50%) scale(1);
   }
-  15% {
+  20% {
     opacity: 1;
-    transform: translate(calc(-50% + var(--dx) * 0.4), calc(-50% + var(--dy) * 0.4)) rotate(calc(var(--rotation) * 0.15)) scale(1.15);
-    filter: brightness(1.4) drop-shadow(0 0 5px currentColor);
+    transform: translate(calc(-50% + var(--dx) * 0.3), calc(-50% + var(--dy) * 0.3)) scale(1.1);
   }
-  40% {
-    opacity: 1;
-    transform: translate(calc(-50% + var(--dx) * 0.7), calc(-50% + var(--dy) * 0.7)) rotate(calc(var(--rotation) * 0.4)) scale(1);
-    filter: brightness(1.2) drop-shadow(0 0 4px currentColor);
-  }
-  70% {
-    opacity: 0.6;
-    transform: translate(calc(-50% + var(--dx) * 0.9), calc(-50% + var(--dy) * 0.9)) rotate(calc(var(--rotation) * 0.7)) scale(0.7);
-    filter: brightness(1.1) drop-shadow(0 0 2px currentColor);
+  50% {
+    opacity: 0.85;
+    transform: translate(calc(-50% + var(--dx) * 0.65), calc(-50% + var(--dy) * 0.65)) scale(0.85);
   }
   100% {
     opacity: 0;
-    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--rotation)) scale(0.3);
-    filter: brightness(0.9) drop-shadow(0 0 1px currentColor);
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.3);
   }
 }
 

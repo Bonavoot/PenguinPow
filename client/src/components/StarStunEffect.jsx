@@ -34,21 +34,19 @@ const counterRotate = keyframes`
   }
 `;
 
-const StarStunContainer = styled.div.attrs((props) => ({
-  style: {
-    position: "absolute",
-    bottom: `${(props.$y / 720) * 100 + 29}%`,
-    left: `${(props.$x / 1280) * 100 + 8}%`,
-    transform: "translateX(-50%)",
-    zIndex: 1001,
-    pointerEvents: "none",
-  },
-}))`
+const StarStunContainer = styled.div`
+  position: absolute;
+  bottom: ${props => (props.$y / 720) * 100 + 29}%;
+  left: ${props => (props.$x / 1280) * 100 + 8}%;
+  transform: translateX(-50%);
+  z-index: 1001;
+  pointer-events: none;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
   perspective: 200px;
+  contain: layout style;
 `;
 
 const OrbitContainer = styled.div`

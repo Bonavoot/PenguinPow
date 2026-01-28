@@ -2,18 +2,16 @@ import { useEffect, useState, useRef, useMemo } from "react";
 import styled from "styled-components";
 import PropTypes from "prop-types";
 import "./HitEffect.css";
-import hitEffectImage from "../assets/hit-effect.png";
 
-const HitEffectContainer = styled.div.attrs((props) => ({
-  style: {
-    position: "absolute",
-    left: `${(props.$x / 1280) * 100 + (props.$facing === 1 ? -2 : -4)}%`,
-    bottom: `${(props.$y / 720) * 100 - 5}%`,
-    transform: "translate(-50%, -50%)",
-    zIndex: 100,
-    pointerEvents: "none",
-  },
-}))``;
+const HitEffectContainer = styled.div`
+  position: absolute;
+  left: ${props => (props.$x / 1280) * 100 + (props.$facing === 1 ? -2 : -4)}%;
+  bottom: ${props => (props.$y / 720) * 100 - 5}%;
+  transform: translate(-50%, -50%);
+  z-index: 100;
+  pointer-events: none;
+  contain: layout style;
+`;
 
 const ParticleContainer = styled.div`
   position: absolute;
@@ -57,42 +55,18 @@ const HitEffect = ({ position }) => {
     return position.hitId || position.timestamp;
   }, [position?.hitId, position?.timestamp]);
 
-  // Generate spark particles with realistic physics - optimized for performance
-  const generateSparks = (effectId, facing) => {
-    const sparkCount = 8; // Reduced from 16 for better performance
+  // Generate spark particles - balanced for visuals and performance
+  const generateSparks = (effectId) => {
+    const sparkCount = 8;
     const sparks = [];
-
-    // Get viewport dimensions to calculate responsive speeds
-    const viewportWidth = window.innerWidth;
-    const baseSpeedMultiplier = (viewportWidth / 1280) * 0.6;
+    const baseSize = Math.min(window.innerWidth / 180, 5);
 
     for (let i = 0; i < sparkCount; i++) {
-      // Create full 360-degree explosion pattern
-      const baseAngle = (i / sparkCount) * 360;
-      const angle = baseAngle * (Math.PI / 180);
-
-      const baseSpeed = 6.5 * baseSpeedMultiplier;
-      const speed = baseSpeed + (Math.random() - 0.5) * baseSpeed * 0.2;
-
-      const baseSize = 2 * baseSpeedMultiplier;
-      const size = Math.random() * (6 * baseSpeedMultiplier) + baseSize;
-
-      // Simplified color palette
-      const colors = [
-        "linear-gradient(45deg, #FFFFFF, #FFD700)",
-        "linear-gradient(45deg, #FFFF99, #FFD700)",
-      ];
-
-      const spark = {
+      sparks.push({
         id: `${effectId}-spark-${i}`,
-        size,
-        angle,
-        speed,
-        color: colors[i % colors.length],
+        size: baseSize + Math.random() * 2,
         sparkIndex: i,
-      };
-
-      sparks.push(spark);
+      });
     }
 
     return sparks;
@@ -131,7 +105,7 @@ const HitEffect = ({ position }) => {
       facing: position.facing || 1,
       startTime: currentTime,
       hitId: hitIdentifier,
-      sparks: generateSparks(effectId, position.facing || 1),
+      sparks: generateSparks(effectId),
     };
 
     // Add the new effect to active effects
@@ -157,20 +131,18 @@ const HitEffect = ({ position }) => {
   return (
     <>
       {activeEffects.map((effect) => {
-        // Generate basic particles for this effect (existing system)
-        const particles = Array.from({ length: 4 }, (_, i) => (
+        // Generate basic particles - fixed positions for performance
+        const particlePositions = [[30, 40], [50, 30], [70, 50], [40, 70]];
+        const particles = particlePositions.map(([top, left], i) => (
           <Particle
             key={`${effect.id}-particle-${i}`}
             className="particle"
-            style={{
-              top: `${20 + Math.random() * 60}%`,
-              left: `${20 + Math.random() * 60}%`,
-            }}
+            style={{ top: `${top}%`, left: `${left}%` }}
           />
         ));
 
-        // Generate spark particles
-        const sparkElements = effect.sparks.map((spark, index) => (
+        // Generate spark particles - simplified for performance
+        const sparkElements = effect.sparks.map((spark) => (
           <Spark
             key={spark.id}
             className="spark"
@@ -178,17 +150,9 @@ const HitEffect = ({ position }) => {
               top: "50%",
               left: "50%",
               width: `${spark.size}px`,
-              height: `${spark.size}px`, // Make it a perfect circle
-              background: spark.color,
-              borderRadius: "50%", // Perfect circle
-              boxShadow: spark.glow
-                ? `0 0 ${spark.size * 2}px ${
-                    spark.color.includes("FFD700") ? "#FFD700" : "#FFFFFF"
-                  }`
-                : "none",
-              filter: spark.glow ? "brightness(1.2)" : "none",
-              transform: `translate(-50%, -50%) rotate(${spark.rotation}deg)`,
-              animationDelay: `${index * 10}ms`, // Stagger spark animations
+              height: `${spark.size}px`,
+              background: "linear-gradient(45deg, #FFFFFF, #FFD700)",
+              borderRadius: "50%",
             }}
           />
         ));
@@ -201,16 +165,10 @@ const HitEffect = ({ position }) => {
             $facing={effect.facing}
           >
             <div className="hit-ring-wrapper">
-              <div
-                className="hit-ring"
-                style={{
-                  transform: effect.facing === 1 ? "scaleX(-1)" : "scaleX(1)",
-                }}
-              />
+              <div className="hit-ring" />
               <ParticleContainer className="hit-particles">
                 {particles}
               </ParticleContainer>
-              {/* Spark container */}
               <ParticleContainer className="spark-particles">
                 {sparkElements}
               </ParticleContainer>

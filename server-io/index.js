@@ -2296,8 +2296,8 @@ io.on("connection", (socket) => {
               player1Id: player.id,
               player2Id: opponent.id,
               duration: 2000,
-              player1Position: { x: player.x, facing: player.facing },
-              player2Position: { x: opponent.x, facing: opponent.facing },
+              player1Position: { x: player.x, y: player.y, facing: player.facing },
+              player2Position: { x: opponent.x, y: opponent.y, facing: opponent.facing },
             });
 
             // Set clash resolution timer
@@ -5299,10 +5299,14 @@ io.on("connection", (socket) => {
           player.isGrabBreaking = true;
           // Consume this space press so raw parry cannot start until release
           player.grabBreakSpaceConsumed = true;
+          // CRITICAL: Clear throw attempt state for breaker
+          player.isAttemptingGrabThrow = false;
 
           // The grabber shows a countered placeholder animation (not true hit state)
           grabber.isGrabBreaking = false;
           grabber.isGrabBreakCountered = true;
+          // CRITICAL: Clear throw attempt state - prevents throw attempt animation from showing after grab break
+          grabber.isAttemptingGrabThrow = false;
           // Auto-clear countered flag after a short duration
           setPlayerTimeout(
             grabber.id,
@@ -5384,6 +5388,7 @@ io.on("connection", (socket) => {
             breakerX: player.x,
             grabberX: grabber.x,
             breakId: `grab-break-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            breakerPlayerNumber: player.fighter === "player 1" ? 1 : 2,
           });
         }
       }

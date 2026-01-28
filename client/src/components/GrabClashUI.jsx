@@ -54,9 +54,10 @@ const mashPulse = keyframes`
 
 const GrabClashContainer = styled.div`
   position: absolute;
-  top: 30%;
-  left: 50%;
-  transform: translateX(-50%);
+  left: ${props => props.$x ? `${(props.$x / 1280) * 100}%` : '50%'};
+  /* ADJUST THE +18 VALUE to move UI up/down (higher number = higher on screen) */
+  bottom: ${props => props.$y ? `${(props.$y / 720) * 100 + 30}%` : '50%'};
+  transform: translate(-50%, -50%);
   z-index: 1000;
   display: ${props => props.$isVisible ? 'flex' : 'none'};
   flex-direction: column;
@@ -123,7 +124,12 @@ const PlayerMarker = styled.div`
   ${props => props.$side === 'left' 
     ? 'border-left: 14px solid;' 
     : 'border-right: 14px solid;'}
-  border-${props => props.$side}-color: ${props => props.$side === 'left' ? '#4a90d9' : '#d94a4a'};
+  border-${props => props.$side}-color: ${props => {
+    // Determine color based on which player is on which side
+    const isPlayer1Side = (props.$side === 'left' && !props.$isPlayer1OnLeft) || 
+                          (props.$side === 'right' && props.$isPlayer1OnLeft);
+    return isPlayer1Side ? '#00BFFF' : '#FF6B6B'; /* Cyan for P1, Red for P2 */
+  }};
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.4));
   transition: all 0.2s ease;
   
@@ -177,14 +183,19 @@ const PlayerFill = styled.div`
   top: 2px;
   bottom: 2px;
   ${props => props.$side === 'left' ? 'left: 2px;' : 'right: 2px;'}
-  width: calc(${props => props.$fillPercent}% - 2px);
-  background: ${props => props.$side === 'left' 
-    ? 'linear-gradient(180deg, #5a9fd4 0%, #3a7fb4 50%, #2a6f9f 100%)'
-    : 'linear-gradient(180deg, #d45a5a 0%, #b43a3a 50%, #9f2a2a 100%)'};
+  /* Always stay at 50% width */
+  width: calc(50% - 2px);
+  background: ${props => {
+    // Determine color based on which player is on which side
+    const isPlayer1Side = (props.$side === 'left' && !props.$isPlayer1OnLeft) || 
+                          (props.$side === 'right' && props.$isPlayer1OnLeft);
+    return isPlayer1Side
+      ? 'linear-gradient(180deg, #00BFFF 0%, #0099CC 50%, #007799 100%)' /* Cyan for Player 1 */
+      : 'linear-gradient(180deg, #FF6B6B 0%, #EE5555 50%, #CC4444 100%)'; /* Red for Player 2 */
+  }};
   ${props => props.$side === 'left' 
     ? 'border-radius: 2px 0 0 2px;' 
     : 'border-radius: 0 2px 2px 0;'}
-  transition: width 0.1s ease-out;
   
   /* Highlight stripe */
   &::before {
@@ -199,9 +210,7 @@ const PlayerFill = styled.div`
   }
   
   ${props => props.$isWinner && css`
-    background: ${props.$side === 'left'
-      ? 'linear-gradient(180deg, #d4af37 0%, #b8960c 50%, #9a7b0a 100%)'
-      : 'linear-gradient(180deg, #d4af37 0%, #b8960c 50%, #9a7b0a 100%)'};
+    background: linear-gradient(180deg, #d4af37 0%, #b8960c 50%, #9a7b0a 100%);
   `}
   
   ${props => props.$isLoser && css`
@@ -262,7 +271,12 @@ const StatsRow = styled.div`
 const InputDisplay = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(0.85rem, 1.4vw, 1.1rem);
-  color: ${props => props.$side === 'left' ? '#5a9fd4' : '#d45a5a'};
+  color: ${props => {
+    // Determine color based on which player is on which side
+    const isPlayer1Side = (props.$side === 'left' && !props.$isPlayer1OnLeft) || 
+                          (props.$side === 'right' && props.$isPlayer1OnLeft);
+    return isPlayer1Side ? '#00BFFF' : '#FF6B6B'; /* Cyan for P1, Red for P2 */
+  }};
   text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
   min-width: 40px;
   text-align: ${props => props.$side === 'left' ? 'left' : 'right'};
@@ -304,6 +318,8 @@ const GrabClashUI = ({ socket, player1, player2 }) => {
   const [leftPlayerId, setLeftPlayerId] = useState(null);
   const [rightPlayerId, setRightPlayerId] = useState(null);
   const [winnerSide, setWinnerSide] = useState(null);
+  const [uiPosition, setUiPosition] = useState({ x: null, y: null });
+  const [isPlayer1OnLeft, setIsPlayer1OnLeft] = useState(true); // Track if player1 is on left side
   const spatialLayoutRef = useRef({ leftPlayerId: null, rightPlayerId: null });
 
   useEffect(() => {
@@ -323,13 +339,43 @@ const GrabClashUI = ({ socket, player1, player2 }) => {
       const player1Pos = data.player1Position;
       const player2Pos = data.player2Position;
       
+      // ===== ADJUST THESE VALUES TO POSITION THE CLASH UI =====
+      // Horizontal offset when Player 1 is on the LEFT side
+      // (positive = right toward player2, negative = left away from player2)
+      const X_OFFSET_PLAYER1_LEFT = 165;
+      
+      // Horizontal offset when Player 1 is on the RIGHT side
+      // (positive = right away from player2, negative = left toward player2)
+      const X_OFFSET_PLAYER1_RIGHT = 35;
+      
+      // Vertical offset from player1 (positive = up, negative = down)
+      // Typical value: 0 for same height as players
+      const Y_OFFSET = 0;
+      // ========================================================
+      
+      // Determine which offset to use based on player positions
+      const player1IsOnLeft = player1Pos.x < player2Pos.x;
+      const xOffset = player1IsOnLeft ? X_OFFSET_PLAYER1_LEFT : X_OFFSET_PLAYER1_RIGHT;
+      
+      // Position UI relative to player1
+      const uiX = player1Pos.x + xOffset;
+      const uiY = player1Pos.y + Y_OFFSET;
+      
+      // Store the game coordinates directly (like RawParryEffect does)
+      setUiPosition({
+        x: uiX,
+        y: uiY
+      });
+      
       let newLeftPlayerId, newRightPlayerId;
       if (player1Pos.x < player2Pos.x) {
         newLeftPlayerId = data.player1Id;
         newRightPlayerId = data.player2Id;
+        setIsPlayer1OnLeft(true); // Player 1 is on the left side
       } else {
         newLeftPlayerId = data.player2Id;
         newRightPlayerId = data.player1Id;
+        setIsPlayer1OnLeft(false); // Player 1 is on the right side
       }
       
       setLeftPlayerId(newLeftPlayerId);
@@ -376,6 +422,8 @@ const GrabClashUI = ({ socket, player1, player2 }) => {
         setLeftPlayerId(null);
         setRightPlayerId(null);
         setWinnerSide(null);
+        setUiPosition({ x: null, y: null });
+        setIsPlayer1OnLeft(true);
         spatialLayoutRef.current = { leftPlayerId: null, rightPlayerId: null };
       }, 600);
     };
@@ -390,6 +438,8 @@ const GrabClashUI = ({ socket, player1, player2 }) => {
       setLeftPlayerId(null);
       setRightPlayerId(null);
       setWinnerSide(null);
+      setUiPosition({ x: null, y: null });
+      setIsPlayer1OnLeft(true);
       spatialLayoutRef.current = { leftPlayerId: null, rightPlayerId: null };
     };
 
@@ -406,11 +456,9 @@ const GrabClashUI = ({ socket, player1, player2 }) => {
     };
   }, [socket]);
 
-  // Calculate fill percentages for the tug-of-war bar
+  // Calculate position for the moving indicator line
   const totalInputs = player1Inputs + player2Inputs;
-  let leftFillPercent = 50;
-  let rightFillPercent = 50;
-  let indicatorPosition = 50;
+  let indicatorPosition = 50; // Start at center
   
   if (totalInputs > 0 && leftPlayerId && rightPlayerId) {
     const leftPlayerInputs = leftPlayerId === player1Id ? player1Inputs : player2Inputs;
@@ -418,9 +466,6 @@ const GrabClashUI = ({ socket, player1, player2 }) => {
     
     const leftRatio = leftPlayerInputs / totalInputs;
     const rightRatio = rightPlayerInputs / totalInputs;
-    
-    leftFillPercent = leftRatio * 50;
-    rightFillPercent = rightRatio * 50;
     
     // Indicator moves based on who's winning (20% to 80%)
     indicatorPosition = 50 + ((rightRatio - leftRatio) * 30);
@@ -431,7 +476,11 @@ const GrabClashUI = ({ socket, player1, player2 }) => {
   const timerPercent = (timeLeft / duration) * 100;
 
   return (
-    <GrabClashContainer $isVisible={isVisible}>
+    <GrabClashContainer 
+      $isVisible={isVisible}
+      $x={uiPosition.x}
+      $y={uiPosition.y}
+    >
       <ClashHeader>
         <ClashTitle>CLASH</ClashTitle>
         <MashInstruction>MASH!</MashInstruction>
@@ -439,19 +488,20 @@ const GrabClashUI = ({ socket, player1, player2 }) => {
       <ClashMeterContainer>
         <PlayerMarker 
           $side="left" 
+          $isPlayer1OnLeft={isPlayer1OnLeft}
           $isWinner={winnerSide === 'left'}
           $isLoser={winnerSide === 'right'}
         />
         <ClashMeterFrame>
           <PlayerFill 
             $side="left"
-            $fillPercent={leftFillPercent * 2} 
+            $isPlayer1OnLeft={isPlayer1OnLeft}
             $isWinner={winnerSide === 'left'}
             $isLoser={winnerSide === 'right'}
           />
           <PlayerFill 
             $side="right"
-            $fillPercent={rightFillPercent * 2} 
+            $isPlayer1OnLeft={isPlayer1OnLeft}
             $isWinner={winnerSide === 'right'}
             $isLoser={winnerSide === 'left'}
           />
@@ -460,15 +510,16 @@ const GrabClashUI = ({ socket, player1, player2 }) => {
         </ClashMeterFrame>
         <PlayerMarker 
           $side="right"
+          $isPlayer1OnLeft={isPlayer1OnLeft}
           $isWinner={winnerSide === 'right'}
           $isLoser={winnerSide === 'left'}
         />
       </ClashMeterContainer>
       <StatsRow>
-        <InputDisplay $side="left" $isWinner={winnerSide === 'left'}>
+        <InputDisplay $side="left" $isPlayer1OnLeft={isPlayer1OnLeft} $isWinner={winnerSide === 'left'}>
           {leftInputs}
         </InputDisplay>
-        <InputDisplay $side="right" $isWinner={winnerSide === 'right'}>
+        <InputDisplay $side="right" $isPlayer1OnLeft={isPlayer1OnLeft} $isWinner={winnerSide === 'right'}>
           {rightInputs}
         </InputDisplay>
       </StatsRow>

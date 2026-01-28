@@ -105,35 +105,27 @@ const textSlideIn = keyframes`
   }
 `;
 
-const EffectContainer = styled.div.attrs((props) => ({
-  style: {
-    position: "absolute",
-    // Shifted left by 4% to better center between players
-    left: `${(props.$x / 1280) * 100 - 4}%`,
-    // Raised higher to be at chest/center level of players
-    bottom: `${(props.$y / 720) * 100 + 14}%`,
-    transform: "translate(-50%, -50%)",
-    zIndex: 150,
-    pointerEvents: "none",
-  },
-}))``;
+const EffectContainer = styled.div`
+  position: absolute;
+  left: ${props => (props.$x / 1280) * 100 - 4}%;
+  bottom: ${props => (props.$y / 720) * 100 + 14}%;
+  transform: translate(-50%, -50%);
+  z-index: 150;
+  pointer-events: none;
+  contain: layout style;
+`;
 
 // Red and purple shockwave ring for counter grab
 const ShockwaveRing = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  /* Smaller minimum for better scaling on small screens */
   width: clamp(35px, 5vw, 70px);
   height: clamp(35px, 5vw, 70px);
   border-radius: 50%;
-  border: 6px solid #ff3366;
+  border: 5px solid #ff3366;
   transform: translate(-50%, -50%) scale(0);
   animation: ${shockwaveExpand} 0.4s ease-out forwards;
-  box-shadow: 
-    0 0 20px rgba(255, 51, 102, 0.8),
-    0 0 40px rgba(153, 51, 255, 0.6),
-    inset 0 0 20px rgba(255, 51, 102, 0.4);
 `;
 
 // Secondary purple ring for layered effect
@@ -141,16 +133,12 @@ const ShockwaveRingPurple = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  /* Smaller minimum for better scaling on small screens */
   width: clamp(28px, 4.5vw, 60px);
   height: clamp(28px, 4.5vw, 60px);
   border-radius: 50%;
   border: 4px solid #9933ff;
   transform: translate(-50%, -50%) scale(0);
-  animation: ${shockwaveExpand} 0.5s ease-out 0.05s forwards;
-  box-shadow: 
-    0 0 15px rgba(153, 51, 255, 0.8),
-    inset 0 0 15px rgba(153, 51, 255, 0.4);
+  animation: ${shockwaveExpand} 0.45s ease-out 0.04s forwards;
 `;
 
 const InnerFlash = styled.div`
@@ -176,9 +164,6 @@ const Spark = styled.div`
     ? 'linear-gradient(45deg, #ffffff, #9933ff)' 
     : 'linear-gradient(45deg, #ffffff, #ff3366)'};
   border-radius: 50%;
-  box-shadow: 0 0 ${props => props.$size * 2}px ${props => props.$isPurple 
-    ? 'rgba(153, 51, 255, 0.8)' 
-    : 'rgba(255, 51, 102, 0.8)'};
   opacity: 0;
   animation: ${sparkBurst} 0.4s ease-out forwards;
   animation-delay: ${props => props.$delay}s;

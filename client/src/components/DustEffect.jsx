@@ -1,39 +1,34 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, memo } from "react";
 import styled from "styled-components";
 import PropTypes from "prop-types";
 
-const getRandomShape = () => {
-  const shapes = [
-    "clip-path: polygon(50% 0%, 80% 40%, 100% 50%, 80% 60%, 50% 100%, 20% 60%, 0% 50%, 20% 40%)",
-    "clip-path: polygon(20% 0%, 80% 0%, 100% 20%, 100% 80%, 80% 100%, 20% 100%, 0% 80%, 0% 20%)",
-    "clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
-    "clip-path: none",
-  ];
-  return shapes[Math.floor(Math.random() * shapes.length)];
-};
+// OPTIMIZED: Simplified dust particle - removed complex computed styles
+const DustParticle = styled.div`
+  position: absolute;
+  left: ${props => (props.$x / 1280) * 100}%;
+  bottom: ${props => (props.$y / 720) * 100}%;
+  width: ${props => (props.$size / 1280) * 100}%;
+  height: ${props => (props.$size / 720) * 100}%;
+  background-color: rgba(151, 127, 17, 0.7);
+  border-radius: 50%;
+  animation: dust-rise 0.6s ease-out forwards;
+  z-index: 100;
+  pointer-events: none;
+  contain: layout style;
+  
+  @keyframes dust-rise {
+    0% {
+      opacity: 0.8;
+      transform: translateY(0) scale(1);
+    }
+    100% {
+      opacity: 0;
+      transform: translateY(-20px) scale(0.5);
+    }
+  }
+`;
 
-const DustParticle = styled.div.attrs((props) => ({
-  style: {
-    position: "absolute",
-    left: `${(props.$x / 1280) * 100}%`,
-    bottom: `${(props.$y / 720) * 100}%`,
-    width: `${(props.$size / 1280) * 100}%`,
-    height: `${(props.$size / 720) * 100}%`,
-    backgroundColor: "rgba(151, 127, 17, 0.8)",
-    animation: `dust-rise-${props.$id % 2 ? "a" : "b"} 1s ease-out forwards`,
-    zIndex: 100,
-    pointerEvents: "none",
-    transform: `
-      translateX(${props.$facing === 1 ? "0%" : "-100%"})
-      rotate(${props.$rotation}deg)
-      scale(${props.$initialScale})
-    `,
-    willChange: "transform, opacity",
-    [props.$shape.split(":")[0]]: props.$shape.split(":")[1],
-  },
-}))``;
-
-const DustEffect = ({ playerX, playerY, facing }) => {
+const DustEffect = memo(({ playerX, playerY, facing }) => {
   const [particles, setParticles] = useState([]);
   const lastX = useRef(playerX);
   const lastUpdateTime = useRef(Date.now());
@@ -42,26 +37,19 @@ const DustEffect = ({ playerX, playerY, facing }) => {
     const currentTime = Date.now();
     const timeDiff = currentTime - lastUpdateTime.current;
 
-    if (timeDiff > 50 && lastX.current !== playerX) {
+    // Balanced threshold for responsive dust without spam
+    if (timeDiff > 60 && Math.abs(lastX.current - playerX) > 3) {
       setParticles((current) => {
-        const newParticles = [...current];
-        if (newParticles.length > 7) {
-          newParticles.shift();
-        }
+        // Keep max 5 particles for smooth effect
+        const newParticles = current.length > 5 ? current.slice(1) : [...current];
 
         const xOffset = facing === 1 ? 160 : 147;
-        const rotation = Math.random() * 360;
-        const initialScale = 0.8 + Math.random() * 0.4;
 
         newParticles.push({
-          id: Date.now(),
-          x: playerX + xOffset + (Math.random() * -55 - 10),
-          y: playerY + 25 + (Math.random() * 10 - 5),
-          size: Math.random() * 7.5 + 7.5,
-          rotation,
-          shape: getRandomShape(),
-          initialScale,
-          moveDirection: Math.random() * 60 - 30,
+          id: currentTime,
+          x: playerX + xOffset + (Math.random() * -40 - 10),
+          y: playerY + 25,
+          size: 8 + Math.random() * 4,
         });
 
         return newParticles;
@@ -73,13 +61,16 @@ const DustEffect = ({ playerX, playerY, facing }) => {
     lastX.current = playerX;
   }, [playerX, playerY, facing]);
 
+  // OPTIMIZED: Single cleanup effect instead of per-particle
   useEffect(() => {
+    if (particles.length === 0) return;
+    
     const cleanup = setTimeout(() => {
-      setParticles((current) => current.filter((p) => Date.now() - p.id < 800));
-    }, 800);
+      setParticles((current) => current.filter((p) => Date.now() - p.id < 600));
+    }, 600);
 
     return () => clearTimeout(cleanup);
-  }, [particles]);
+  }, [particles.length]);
 
   return (
     <>
@@ -89,16 +80,13 @@ const DustEffect = ({ playerX, playerY, facing }) => {
           $x={particle.x}
           $y={particle.y}
           $size={particle.size}
-          $rotation={particle.rotation}
-          $shape={particle.shape}
-          $initialScale={particle.initialScale}
-          $facing={facing}
-          $id={particle.id}
         />
       ))}
     </>
   );
-};
+});
+
+DustEffect.displayName = 'DustEffect';
 
 DustEffect.propTypes = {
   playerX: PropTypes.number.isRequired,

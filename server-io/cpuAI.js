@@ -1416,10 +1416,14 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       // Animation state - breaker shows grab break
       cpu.isGrabBreaking = true;
       cpu.grabBreakSpaceConsumed = true;
+      // CRITICAL: Clear throw attempt state for breaker
+      cpu.isAttemptingGrabThrow = false;
       
       // Grabber shows countered animation
       grabber.isGrabBreaking = false;
       grabber.isGrabBreakCountered = true;
+      // CRITICAL: Clear throw attempt state - prevents throw attempt animation from showing after grab break
+      grabber.isAttemptingGrabThrow = false;
       
       // Calculate separation
       const GRAB_BREAK_PUSH_VELOCITY = 1.2;
@@ -1457,6 +1461,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
           breakerX: cpu.x,
           grabberX: grabber.x,
           breakId: `grab-break-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          breakerPlayerNumber: cpu.fighter === "player 1" ? 1 : 2,
         });
       }
       
