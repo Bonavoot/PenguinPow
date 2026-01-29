@@ -26,6 +26,7 @@ import NoStaminaEffect from "./GassedEffect";
 import SnowballImpactEffect from "./SnowballImpactEffect";
 import PumoCloneSpawnEffect from "./PumoCloneSpawnEffect";
 import SlapAttackHandsEffect from "./SlapAttackHandsEffect";
+import PerfectParryPowerEffect from "./PerfectParryPowerEffect";
 
 import snowballThrow2 from "../assets/snowball-throw2.png";
 import snowballThrow from "../assets/snowball-throw.png";
@@ -45,6 +46,7 @@ import attemptingGrabThrow from "../assets/attempting-grab-throw.png";
 import attemptingGrabThrow2 from "../assets/attempting-grab-throw2.png";
 import beingGrabbed from "../assets/is-being-grabbed.gif";
 import beingGrabbed2 from "../assets/is-being-grabbed2.gif";
+import atTheRopes2 from "../assets/at-the-ropes2.png";
 import grabSound from "../sounds/grab-sound.mp3";
 import ready from "../assets/ready.png";
 import ready2 from "../assets/ready2.png";
@@ -109,6 +111,7 @@ import { getGlobalVolume } from "./Settings";
 import SnowEffect from "./SnowEffect";
 import ThemeOverlay from "./ThemeOverlay";
 import "./theme.css";
+import { isOutsideDohyo, DOHYO_FALL_DEPTH } from "../constants";
 
 const GROUND_LEVEL = 120; // Ground level constant
 
@@ -219,6 +222,7 @@ const initializeImagePreloading = () => {
   preloadImage(recovering2);
   preloadImage(rawParrySuccess);
   preloadImage(rawParrySuccess2);
+  preloadImage(atTheRopes2);
   preloadImage(snowball);
 
   // Effect sprites
@@ -326,6 +330,8 @@ const getImageSrc = (
     if (isGrabBreakCountered) return hit;
     // Both perfect and regular parry use the same success animation
     if (isRawParrySuccess || isPerfectRawParrySuccess) return rawParrySuccess;
+    // Check isHit before isAtTheRopes to prevent red silhouette issue
+    if (isHit) return hit;
     if (isAtTheRopes) return beingGrabbed;
     if (isBowing) return bow;
     if (isThrowTeching) return throwTech;
@@ -369,7 +375,6 @@ const getImageSrc = (
     if (isRawParryStun) return bow;
     if (isReady) return ready;
     if (isStrafing && !isThrowing) return pumoWaddle;
-    if (isHit) return hit;
     if (isDead) return pumo;
     if (isThrowing) return throwing;
     if (isThrowingSalt) return salt;
@@ -379,7 +384,9 @@ const getImageSrc = (
     if (isGrabBreakCountered) return hit2;
     // Both perfect and regular parry use the same success animation
     if (isRawParrySuccess || isPerfectRawParrySuccess) return rawParrySuccess2;
-    if (isAtTheRopes) return beingGrabbed2;
+    // Check isHit before isAtTheRopes to prevent red silhouette issue
+    if (isHit) return hit2;
+    if (isAtTheRopes) return atTheRopes2;
     if (isJumping) return throwing2;
     if (isAttacking && !isSlapAttack) return attack2;
     if (isBowing) return bow2;
@@ -421,7 +428,6 @@ const getImageSrc = (
     if (isRawParryStun) return bow2;
     if (isReady) return ready2;
     if (isStrafing && !isThrowing) return pumoWaddle2;
-    if (isHit) return hit2;
     if (isDead) return pumo;
     if (isThrowing) return throwing2;
     if (isThrowingSalt) return salt2;
@@ -455,7 +461,7 @@ const RedTintOverlay = styled.div
       height: "auto",
       aspectRatio: 1,
       left: `${(props.$x / 1280) * 100}%`,
-      bottom: `${(props.$y / 720) * 100}%`,
+      bottom: `${((props.$y - (isOutsideDohyo(props.$x, props.$y) ? DOHYO_FALL_DEPTH : 0)) / 720) * 100}%`,
       transform:
         (props.$isRingOutThrowCutscene && props.$isThrowing
           ? -props.$facing
@@ -463,7 +469,7 @@ const RedTintOverlay = styled.div
           ? "scaleX(1)"
           : "scaleX(-1)",
       background: "rgba(156, 136, 255, 0.6)",
-      zIndex: 101,
+      zIndex: isOutsideDohyo(props.$x, props.$y) ? 0 : 101,
       pointerEvents: "none",
       mixBlendMode: "multiply",
       maskImage: `url(${props.$imageSrc})`,
@@ -489,7 +495,7 @@ const HurtTintOverlay = styled.div
       height: "auto",
       aspectRatio: 1,
       left: `${(props.$x / 1280) * 100}%`,
-      bottom: `${(props.$y / 720) * 100}%`,
+      bottom: `${((props.$y - (isOutsideDohyo(props.$x, props.$y) ? DOHYO_FALL_DEPTH : 0)) / 720) * 100}%`,
       transform:
         (props.$isRingOutThrowCutscene && props.$isThrowing
           ? -props.$facing
@@ -497,7 +503,7 @@ const HurtTintOverlay = styled.div
           ? "scaleX(1)"
           : "scaleX(-1)",
       background: "rgba(255, 64, 64, 0.55)",
-      zIndex: 101,
+      zIndex: isOutsideDohyo(props.$x, props.$y) ? 0 : 101,
       pointerEvents: "none",
       mixBlendMode: "multiply",
       maskImage: `url(${props.$imageSrc})`,
@@ -529,14 +535,14 @@ const TintedImage = styled.img
     style: {
       position: "absolute",
       left: `${(props.$x / 1280) * 100}%`,
-      bottom: `${(props.$y / 720) * 100}%`,
+      bottom: `${((props.$y - (isOutsideDohyo(props.$x, props.$y) ? DOHYO_FALL_DEPTH : 0)) / 720) * 100}%`,
       transform:
         (props.$isRingOutThrowCutscene && props.$isThrowing
           ? -props.$facing
           : props.$facing) === 1
           ? "scaleX(1)"
           : "scaleX(-1)",
-      zIndex: 101,
+      zIndex: isOutsideDohyo(props.$x, props.$y) ? 0 : 101,
       pointerEvents: "none",
       width: "min(16.609%, 511px)",
 
@@ -673,22 +679,32 @@ const StyledImage = styled("img")
     ),
     style: {
       position: "absolute",
-      left: `${(props.$x / 1280) * 100}%`,
-      bottom: `${(props.$y / 720) * 100}%`,
+      left: props.$isAtTheRopes && props.$fighter === "player 1"
+        ? `${((props.$x + (props.$x < 640 ? -5 : 5)) / 1280) * 100}%`  // Move 5px closer to ropes
+        : `${(props.$x / 1280) * 100}%`,
+      bottom: `${((props.$y - (isOutsideDohyo(props.$x, props.$y) ? DOHYO_FALL_DEPTH : 0)) / 720) * 100}%`,
       "--facing": (props.$isRingOutThrowCutscene && props.$isThrowing
-          ? -props.$facing
-          : props.$facing) === 1
+            ? -props.$facing
+            : props.$facing) === 1
           ? "1"
           : "-1",
-      transform:
-        (props.$isRingOutThrowCutscene && props.$isThrowing
-          ? -props.$facing
-          : props.$facing) === 1
-          ? "scaleX(1)"
-          : "scaleX(-1)",
+      transform: props.$isAtTheRopes && props.$fighter === "player 1"
+        ? ((props.$isRingOutThrowCutscene && props.$isThrowing
+            ? -props.$facing
+            : props.$facing) === 1
+            ? "scaleX(1) scaleY(0.95)"
+            : "scaleX(-1) scaleY(0.95)")
+        : ((props.$isRingOutThrowCutscene && props.$isThrowing
+            ? -props.$facing
+            : props.$facing) === 1
+            ? "scaleX(1)"
+            : "scaleX(-1)"),
       zIndex:
+        isOutsideDohyo(props.$x, props.$y) ? 0 : // Behind dohyo overlay when outside
         props.$isThrowing || props.$isDodging || props.$isGrabbing ? 98 : 99,
-      filter: props.$isGrabBreaking
+      filter: props.$isAtTheRopes
+        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(255, 50, 50, 0.7)) brightness(1.15) contrast(1.25)"
+        : props.$isGrabBreaking
         ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.85)) brightness(1.35) drop-shadow(0 0 3px #000)"
         : props.$isRawParrying
         ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3) drop-shadow(0 0 3px #000)"
@@ -699,7 +715,9 @@ const StyledImage = styled("img")
         : props.$isGrabClashActive
         ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.25) brightness(1.1)"
         : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) ",
-      animation: props.$isAttemptingGrabThrow
+      animation: props.$isAtTheRopes
+        ? "atTheRopesWobble 0.3s ease-in-out infinite"
+        : props.$isAttemptingGrabThrow
         ? "attemptingGrabThrowPull 0.5s cubic-bezier(0.4, 0.0, 0.6, 1.0)"
         : props.$isRawParrySuccess || props.$isPerfectRawParrySuccess
         ? "rawParryRecoil 0.5s ease-out"
@@ -732,8 +750,9 @@ const StyledImage = styled("img")
           !props.$isBowing
         ? "breathe 1.5s ease-in-out infinite"
         : "none",
-      width: "min(16.609%, 511px)",
-
+      width: props.$isAtTheRopes && props.$fighter === "player 1"
+        ? "min(15.612%, 480px)"  // 6% smaller: 16.609 * 0.94
+        : "min(16.609%, 511px)",
       height: "auto",
       willChange: "bottom, left, filter, opacity, transform",
       pointerEvents: "none",
@@ -841,6 +860,22 @@ const StyledImage = styled("img")
     }
     50% {
       transform: scaleX(var(--facing, 1)) scaleY(1.03);
+    }
+  }
+  
+  /* At the ropes wobble - showing off-balance fear and panic */
+  @keyframes atTheRopesWobble {
+    0%, 100% {
+      transform: scaleX(var(--facing, 1)) scaleY(0.95) rotate(0deg) translateX(0);
+    }
+    25% {
+      transform: scaleX(var(--facing, 1)) scaleY(0.95) rotate(-4deg) translateX(-2px) translateY(1px);
+    }
+    50% {
+      transform: scaleX(var(--facing, 1)) scaleY(0.95) rotate(2deg) translateX(1px) translateY(-1px);
+    }
+    75% {
+      transform: scaleX(var(--facing, 1)) scaleY(0.95) rotate(-2deg) translateX(-1px) translateY(1px);
     }
   }
   
@@ -2526,6 +2561,11 @@ const GameFighter = ({
         y={getDisplayPosition().y}
         facing={penguin.facing}
         isActive={penguin.isAtTheRopes}
+      />
+      <PerfectParryPowerEffect
+        x={getDisplayPosition().x}
+        y={getDisplayPosition().y}
+        isPerfectParrySuccess={penguin.isPerfectRawParrySuccess}
       />
       {/* NoStaminaEffect - centered on screen, only render once (index 0) and only for local player */}
       {index === 0 && noStaminaEffectKey > 0 && (

@@ -15,7 +15,7 @@ const GyojiShadowElement = styled.div`
   border-radius: 50%;
   pointer-events: none;
   will-change: transform;
-  z-index: -1;
+  z-index: 1;
 `;
 
 const GyojiShadow = ({ gyojiState }) => {

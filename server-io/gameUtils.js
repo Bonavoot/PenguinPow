@@ -1,7 +1,12 @@
 // Game constants
 const MAP_LEFT_BOUNDARY = 120;
 const MAP_RIGHT_BOUNDARY = 945;
+
 const DEFAULT_PLAYER_SIZE_MULTIPLIER = 0.85; // 15% smaller default size
+
+// Dohyo (ring) boundaries - players fall when outside these (horizontal only)
+const DOHYO_LEFT_BOUNDARY = 0;
+const DOHYO_RIGHT_BOUNDARY = 1055;
 
 // Timeout manager for memory leak prevention
 class TimeoutManager {
@@ -445,11 +450,21 @@ function beginAction(player, actionName, lockDurationMs) {
   }
 }
 
+// Check if player is outside the dohyo boundaries (horizontal only)
+function isOutsideDohyo(x, y) {
+  return (
+    x < DOHYO_LEFT_BOUNDARY ||
+    x > DOHYO_RIGHT_BOUNDARY
+  );
+}
+
 module.exports = {
   // Constants
   MAP_LEFT_BOUNDARY,
   MAP_RIGHT_BOUNDARY,
   DEFAULT_PLAYER_SIZE_MULTIPLIER,
+  DOHYO_LEFT_BOUNDARY,
+  DOHYO_RIGHT_BOUNDARY,
 
   // Classes and instances
   TimeoutManager,
@@ -470,4 +485,5 @@ module.exports = {
   startCharging,
   canPlayerSlap,
   clearChargeState,
+  isOutsideDohyo,
 };

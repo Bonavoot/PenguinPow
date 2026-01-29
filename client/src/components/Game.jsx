@@ -229,6 +229,7 @@ const Game = ({ rooms, roomName, localId, setCurrentPage }) => {
   return (
     <div className="game-wrapper">
       <div className="game-container">
+        <div className="dohyo-overlay"></div>
         <div className="ui">
           {currentRoom.players
             .filter((player) => player.id !== "disconnected_placeholder")

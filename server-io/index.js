@@ -346,6 +346,7 @@ function createCPUPlayer(uniqueId) {
     isPerfectRawParrySuccess: false,
     isAtTheRopes: false,
     atTheRopesStartTime: 0,
+    atTheRopesFacingDirection: null,
     dodgeDirection: null,
     dodgeEndTime: 0,
     isDodgeCancelling: false,
@@ -609,6 +610,7 @@ function resetRoomAndPlayers(room) {
     player.isPerfectRawParrySuccess = false;
     player.isAtTheRopes = false;
     player.atTheRopesStartTime = 0;
+    player.atTheRopesFacingDirection = null;
     player.isDodging = false;
     player.isReady = false;
     player.isHit = false;
@@ -865,6 +867,15 @@ io.on("connection", (socket) => {
     // CRITICAL: Clear ALL action states when being grabbed
     clearAllActionStates(loser);
     loser.isBeingGrabbed = true;
+    
+    // If loser was at the ropes, clear that state but keep the facing direction locked
+    if (loser.isAtTheRopes) {
+      timeoutManager.clearPlayerSpecific(loser.id, "atTheRopesTimeout");
+      loser.isAtTheRopes = false;
+      loser.atTheRopesStartTime = 0;
+      // Keep atTheRopesFacingDirection - this will lock their facing during the grab
+      console.log(`Player ${loser.id} was grabbed while at the ropes - keeping facing direction locked to ${loser.atTheRopesFacingDirection}`);
+    }
 
     // Set grab facing direction for winner
     if (winner.isChargingAttack) {
@@ -1046,7 +1057,10 @@ io.on("connection", (socket) => {
               player1.facing === 1
                 ? player1.x - fixedDistance
                 : player1.x + fixedDistance;
-            opponent.facing = -player1.facing;
+            // Only update facing if opponent doesn't have locked atTheRopes facing direction
+            if (!opponent.atTheRopesFacingDirection) {
+              opponent.facing = -player1.facing;
+            }
           }
         }
 
@@ -1083,36 +1097,42 @@ io.on("connection", (socket) => {
           !(player1.isHit && player2.isHit) // Only disable if BOTH are hit
         ) {
           // Preserve facing direction during attacks and throws
+          // Special case: allow dodging player to update facing even when opponent is attacking
+          // This allows dodge-through to work correctly during charged attacks
           if (
-            !player1.isAttacking &&
-            !player2.isAttacking &&
-            !player1.isDodging &&
-            !player2.isDodging
+            (!player1.isAttacking && !player2.isAttacking && !player1.isDodging && !player2.isDodging) ||
+            (player1.isDodging && player2.isAttacking) ||
+            (player2.isDodging && player1.isAttacking)
           ) {
             // Only update facing for non-isHit players and those not locked by slap attacks
+            // IMPORTANT: Players with atTheRopesFacingDirection set keep their locked facing direction
             if (!player1.isHit && !player2.isHit) {
               // Normal facing logic when both players are not hit
-              // Don't update facing if player has locked slap facing direction
-              if (!player1.slapFacingDirection && player1.x < player2.x) {
+              // Don't update facing if player has locked slap facing direction OR is attacking OR has atTheRopes facing locked
+              if (!player1.slapFacingDirection && !player1.isAttacking && !player1.atTheRopesFacingDirection && player1.x < player2.x) {
                 player1.facing = -1; // Player 1 faces right
               } else if (
                 !player1.slapFacingDirection &&
+                !player1.isAttacking &&
+                !player1.atTheRopesFacingDirection &&
                 player1.x >= player2.x
               ) {
                 player1.facing = 1; // Player 1 faces left
               }
 
-              if (!player2.slapFacingDirection && player1.x < player2.x) {
+              if (!player2.slapFacingDirection && !player2.isAttacking && !player2.atTheRopesFacingDirection && player1.x < player2.x) {
                 player2.facing = 1; // Player 2 faces left
               } else if (
                 !player2.slapFacingDirection &&
+                !player2.isAttacking &&
+                !player2.atTheRopesFacingDirection &&
                 player1.x >= player2.x
               ) {
                 player2.facing = -1; // Player 2 faces right
               }
             } else if (!player1.isHit && player2.isHit) {
               // Only update player1's facing when player2 is hit and player1 doesn't have locked slap facing
-              if (!player1.slapFacingDirection) {
+              if (!player1.slapFacingDirection && !player1.isAttacking && !player1.atTheRopesFacingDirection) {
                 if (player1.x < player2.x) {
                   player1.facing = -1; // Player 1 faces right
                 } else {
@@ -1121,7 +1141,7 @@ io.on("connection", (socket) => {
               }
             } else if (player1.isHit && !player2.isHit) {
               // Only update player2's facing when player1 is hit and player2 doesn't have locked slap facing
-              if (!player2.slapFacingDirection) {
+              if (!player2.slapFacingDirection && !player2.isAttacking && !player2.atTheRopesFacingDirection) {
                 if (player1.x < player2.x) {
                   player2.facing = 1; // Player 2 faces left
                 } else {
@@ -1785,6 +1805,19 @@ io.on("connection", (socket) => {
               player.isHit = false;
               player.isAlreadyHit = false; // Also clear isAlreadyHit to ensure player can be hit again
               player.isSlapKnockback = false; // Reset slap knockback flag
+              
+              // If player was at the ropes and is now back within ring boundaries,
+              // clear the locked facing direction so they can face normally again
+              if (player.atTheRopesFacingDirection !== null) {
+                const isWithinBoundaries = player.x > MAP_LEFT_BOUNDARY && player.x < MAP_RIGHT_BOUNDARY;
+                if (isWithinBoundaries) {
+                  console.log(`Player ${player.id} returned to ring - clearing atTheRopes facing lock`);
+                  player.atTheRopesFacingDirection = null;
+                  player.isAtTheRopes = false;
+                  player.atTheRopesStartTime = 0;
+                }
+                // If still outside boundaries, keep the facing locked until round reset
+              }
             }
           }
         }
@@ -2079,6 +2112,13 @@ io.on("connection", (socket) => {
               // Only set isThrowLanded if player landed outside ring-out boundaries
               if (landedOutsideBoundaries) {
                 opponent.isThrowLanded = true; // Permanent until round reset
+                // Keep atTheRopesFacingDirection - player is out of ring and keeps facing locked until round reset
+              } else {
+                // Landed inside boundaries - clear the locked facing direction
+                if (opponent.atTheRopesFacingDirection !== null) {
+                  console.log(`Player ${opponent.id} thrown back inside ring - clearing atTheRopes facing lock`);
+                  opponent.atTheRopesFacingDirection = null;
+                }
               }
             }
           }
@@ -2399,6 +2439,15 @@ io.on("connection", (socket) => {
             // CRITICAL: Clear ALL action states when being grabbed
             clearAllActionStates(opponent);
             opponent.isBeingGrabbed = true;
+            
+            // If opponent was at the ropes, clear that state but keep the facing direction locked
+            if (opponent.isAtTheRopes) {
+              timeoutManager.clearPlayerSpecific(opponent.id, "atTheRopesTimeout");
+              opponent.isAtTheRopes = false;
+              opponent.atTheRopesStartTime = 0;
+              // Keep atTheRopesFacingDirection - this will lock their facing during the grab
+              console.log(`Player ${opponent.id} was grabbed while at the ropes - keeping facing direction locked to ${opponent.atTheRopesFacingDirection}`);
+            }
             
             // Clear all input keys except spacebar (for grab break - unless counter grabbed)
             opponent.keys.shift = false;
@@ -2995,12 +3044,20 @@ io.on("connection", (socket) => {
               `🔴 Player ${player.id} hitting the ropes during charged attack! x: ${player.x}, newX: ${newX}, facing: ${player.facing}, MAP_LEFT_BOUNDARY: ${MAP_LEFT_BOUNDARY}, MAP_RIGHT_BOUNDARY: ${MAP_RIGHT_BOUNDARY}`
             );
 
+            // Save the facing direction from the charged attack BEFORE clearing states
+            const savedFacing = player.facing;
+
             // CRITICAL: Clear ALL action states when hitting the ropes
             clearAllActionStates(player);
             
             // Set at the ropes state
             player.isAtTheRopes = true;
             player.atTheRopesStartTime = Date.now();
+            
+            // Store the facing direction from the charged attack
+            // This direction should persist through hits and ring-out until round reset
+            player.atTheRopesFacingDirection = savedFacing;
+            player.facing = savedFacing;
 
             // Clear knockback (clearAllActionStates doesn't clear this)
             player.knockbackVelocity = { x: 0, y: 0 };
@@ -3018,6 +3075,7 @@ io.on("connection", (socket) => {
               () => {
                 player.isAtTheRopes = false;
                 player.atTheRopesStartTime = 0;
+                player.atTheRopesFacingDirection = null;
                 console.log(
                   `Player ${player.id} recovered from at the ropes state`
                 );
@@ -3207,7 +3265,10 @@ io.on("connection", (socket) => {
               player.facing === 1
                 ? player.x - fixedDistance
                 : player.x + fixedDistance;
-            opponent.facing = -player.facing;
+            // Only update facing if opponent doesn't have locked atTheRopes facing direction
+            if (!opponent.atTheRopesFacingDirection) {
+              opponent.facing = -player.facing;
+            }
 
             // Ring-out check during grab walking or stationary grab hold
             if (!room.gameOver) {
@@ -3293,7 +3354,10 @@ io.on("connection", (socket) => {
               player.facing === 1
                 ? player.x - fixedDistance
                 : player.x + fixedDistance;
-            opponent.facing = -player.facing;
+            // Only update facing if opponent doesn't have locked atTheRopes facing direction
+            if (!opponent.atTheRopesFacingDirection) {
+              opponent.facing = -player.facing;
+            }
           }
         } else if (player.isGrabbing && !player.grabbedOpponent) {
           const grabDuration = Date.now() - player.grabStartTime;
@@ -3951,7 +4015,13 @@ io.on("connection", (socket) => {
       otherPlayer.hitCounter = (otherPlayer.hitCounter || 0) + 1;
 
       // Update opponent's facing direction based on attacker's position
-      otherPlayer.facing = player.x < otherPlayer.x ? 1 : -1;
+      // UNLESS they're at the ropes OR have locked atTheRopes facing direction
+      // The atTheRopesFacingDirection should persist through hits until:
+      // - They're brought back into the ring (cleared below)
+      // - Or until round reset
+      if (!otherPlayer.isAtTheRopes && !otherPlayer.atTheRopesFacingDirection) {
+        otherPlayer.facing = player.x < otherPlayer.x ? 1 : -1;
+      }
 
       // Calculate knockback direction
       // For both slap and charged attacks, use the attacker's facing direction to ensure consistent knockback
@@ -4267,6 +4337,7 @@ io.on("connection", (socket) => {
         isPerfectRawParrySuccess: false,
         isAtTheRopes: false,
         atTheRopesStartTime: 0,
+        atTheRopesFacingDirection: null,
         dodgeDirection: false,
         dodgeEndTime: 0,
         isDodgeCancelling: false,
@@ -4405,6 +4476,7 @@ io.on("connection", (socket) => {
         isPerfectRawParrySuccess: false,
         isAtTheRopes: false,
         atTheRopesStartTime: 0,
+        atTheRopesFacingDirection: null,
         dodgeDirection: null,
         dodgeEndTime: 0,
         isDodgeCancelling: false,
@@ -4608,6 +4680,7 @@ io.on("connection", (socket) => {
       isPerfectRawParrySuccess: false,
       isAtTheRopes: false,
       atTheRopesStartTime: 0,
+      atTheRopesFacingDirection: null,
       dodgeDirection: false,
       dodgeEndTime: 0,
       isDodgeCancelling: false,
