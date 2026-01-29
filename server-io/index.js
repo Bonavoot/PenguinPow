@@ -359,7 +359,7 @@ function createCPUPlayer(uniqueId) {
     isBowing: false,
     facing: -1,
     stamina: 100,
-    x: 815,
+    x: 845,
     y: GROUND_LEVEL,
     knockbackVelocity: { x: 0, y: 0 },
     movementVelocity: 0,
@@ -618,7 +618,7 @@ function resetRoomAndPlayers(room) {
     player.isDead = false;
     player.stamina = 100;
     player.isBowing = false;
-    player.x = player.fighter === "player 1" ? 285 : 775;
+    player.x = player.fighter === "player 1" ? 220 : 845;
     player.y = GROUND_LEVEL;
     player.knockbackVelocity = { x: 0, y: 0 };
     // Reset power-up state
@@ -4350,7 +4350,7 @@ io.on("connection", (socket) => {
         isBowing: false,
         facing: 1,
         stamina: 100,
-        x: 245,
+        x: 220,
         y: GROUND_LEVEL,
         knockbackVelocity: { x: 0, y: 0 },
         // Visual clarity timing states
@@ -4489,7 +4489,7 @@ io.on("connection", (socket) => {
         isBowing: false,
         facing: -1,
         stamina: 100,
-        x: 815,
+        x: 845,
         y: GROUND_LEVEL,
         knockbackVelocity: { x: 0, y: 0 },
         // Visual clarity timing states
@@ -4693,7 +4693,7 @@ io.on("connection", (socket) => {
       isBowing: false,
       facing: 1,
       stamina: 100,
-      x: 245,
+      x: 220,
       y: GROUND_LEVEL,
       knockbackVelocity: { x: 0, y: 0 },
       movementVelocity: 0,

@@ -23,11 +23,11 @@ import thickBlubberIcon from "../assets/thick-blubber-icon.png";
 const slideIn = keyframes`
   0% {
     opacity: 0;
-    transform: translate(-50%, -50%) scale(0.9);
+    transform: translate(-50%, 0) scale(0.9);
   }
   100% {
     opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
+    transform: translate(-50%, 0) scale(1);
   }
 `;
 
@@ -47,7 +47,7 @@ const PowerUpSelectionOverlay = styled.div`
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(18, 18, 19, 0.95);
+  background: transparent;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -57,22 +57,17 @@ const PowerUpSelectionOverlay = styled.div`
 
 const PowerUpContainer = styled.div`
   position: absolute;
-  top: 50%;
+  top: 10%;
   left: 50%;
-  transform: translate(-50%, -50%);
-  background: linear-gradient(135deg, #121213, rgba(20, 19, 19, 0.95));
-  border: 2px solid #d4af37;
-  border-radius: clamp(8px, 1.5vw, 16px);
-  /* Smaller padding on small screens */
+  transform: translate(-50%, 0);
+  background: transparent;
+  border: none;
   padding: clamp(12px, 2.5vw, 35px);
   text-align: center;
-  box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
-  /* Smaller minimum width for small screens */
   width: clamp(280px, 55vw, 650px);
   max-width: 95%;
   animation: ${slideIn} 0.3s ease-out forwards;
   color: #fff;
-  overflow: hidden;
   will-change: transform, opacity;
 `;
 
@@ -81,10 +76,10 @@ const Title = styled.h1`
   /* Smaller font on small screens */
   font-size: clamp(1rem, 3.5vw, 2.2rem);
   margin: 0 0 clamp(8px, 1.5vw, 18px) 0;
-  color: #d4af37;
+  color: #ffffff;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  text-shadow: 2px 2px 0 #000;
+  text-shadow: 3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 2px 2px 0 #000;
   position: relative;
   z-index: 1;
 `;
@@ -104,13 +99,13 @@ const Subtitle = styled.h2`
 
 const PowerUpGrid = styled.div`
   display: flex;
-  gap: clamp(10px, 2vw, 20px);
+  gap: clamp(15px, 2.5vw, 30px);
   justify-content: center;
   margin-bottom: clamp(20px, 3vw, 30px);
   flex-wrap: nowrap;
 `;
 
-// Enhanced PowerUpCard with different themes for active vs passive power-ups
+// Enhanced PowerUpCard with glow effects based on power-up type
 const PowerUpCard = styled.div`
   display: flex;
   flex-direction: column;
@@ -118,44 +113,98 @@ const PowerUpCard = styled.div`
   justify-content: center;
   background: ${(props) => {
     if (props.$selected) {
-      return `
-        linear-gradient(135deg, #969696, #8b8b8b, #808080),
-        radial-gradient(circle at center, rgba(255, 255, 255, 0.3), transparent)
-      `;
+      return `linear-gradient(135deg, #2a2d3a, #1f222e)`;
     }
-
-    return `
-             linear-gradient(135deg, #eeeeee, #dddddd, #cccccc),
-        radial-gradient(circle at center, rgba(255, 255, 255, 0.3), transparent),
-      linear-gradient(45deg, rgba(248, 248, 248, 0.8), rgba(240, 240, 240, 0.8))
-    `;
+    return `linear-gradient(135deg, #1a1d28, #13151f)`;
   }};
-  /* border: 3px solid ${(props) =>
-    props.$selected ? "#d4af370" : "#d4af37"}; */
+  border: 2px solid ${(props) => {
+    let borderColor;
+    switch (props.$type) {
+      case "speed":
+        borderColor = "#66ebff"; // Brighter cyan
+        break;
+      case "power":
+        borderColor = "#ff9999"; // Brighter red
+        break;
+      case "snowball":
+        borderColor = "#aaddff"; // Brighter blue
+        break;
+      case "pumo_army":
+        borderColor = "#ffd999"; // Brighter orange
+        break;
+      case "thick_blubber":
+        borderColor = "#ccbbff"; // Brighter purple
+        break;
+      default:
+        borderColor = "#9ca5ad";
+    }
+    return props.$selected ? borderColor : `${borderColor}cc`;
+  }};
   border-radius: clamp(6px, 1.5vw, 12px);
-  /* Smaller padding on small screens */
   padding: clamp(8px, 1.5vw, 18px);
   cursor: pointer;
   transition: all 0.3s ease-out;
-  /* Smaller minimum size for small screens */
   width: clamp(80px, 12vw, 160px);
   height: clamp(80px, 12vw, 160px);
   position: relative;
   flex-shrink: 0;
   box-shadow: ${(props) => {
-    if (props.$selected) {
-      return "0 8px 25px rgba(0, 0, 0, 0.15), inset 0 1px 3px rgba(255, 255, 255, 0.8)";
+    // Glow color based on power-up type
+    let glowColor;
+    switch (props.$type) {
+      case "speed":
+        glowColor = "0, 210, 255"; // #00d2ff
+        break;
+      case "power":
+        glowColor = "255, 107, 107"; // #ff6b6b
+        break;
+      case "snowball":
+        glowColor = "116, 185, 255"; // #74b9ff
+        break;
+      case "pumo_army":
+        glowColor = "255, 204, 128"; // #ffcc80
+        break;
+      case "thick_blubber":
+        glowColor = "156, 136, 255"; // #9c88ff
+        break;
+      default:
+        glowColor = "108, 117, 125"; // #6c757d
     }
-    return "0 6px 20px rgba(0, 0, 0, 0.1), inset 0 1px 3px rgba(255, 255, 255, 0.6)";
+
+    if (props.$selected) {
+      return `0 8px 25px rgba(0, 0, 0, 0.15), inset 0 1px 3px rgba(255, 255, 255, 0.8), 0 0 60px rgba(${glowColor}, 1), 0 0 30px rgba(${glowColor}, 0.8)`;
+    }
+    return `0 6px 20px rgba(0, 0, 0, 0.1), inset 0 1px 3px rgba(255, 255, 255, 0.6), 0 0 50px rgba(${glowColor}, 0.9), 0 0 25px rgba(${glowColor}, 0.7)`;
   }};
 
   &:hover {
     transform: translateY(-4px) scale(1.02);
     box-shadow: ${(props) => {
-      if (props.$selected) {
-        return "0 12px 35px rgba(0, 0, 0, 0.2), inset 0 1px 3px rgba(255, 255, 255, 0.9)";
+      let glowColor;
+      switch (props.$type) {
+        case "speed":
+          glowColor = "0, 210, 255";
+          break;
+        case "power":
+          glowColor = "255, 107, 107";
+          break;
+        case "snowball":
+          glowColor = "116, 185, 255";
+          break;
+        case "pumo_army":
+          glowColor = "255, 204, 128";
+          break;
+        case "thick_blubber":
+          glowColor = "156, 136, 255";
+          break;
+        default:
+          glowColor = "108, 117, 125";
       }
-      return "0 10px 30px rgba(0, 0, 0, 0.15), inset 0 1px 3px rgba(255, 255, 255, 0.7)";
+
+      if (props.$selected) {
+        return `0 12px 35px rgba(0, 0, 0, 0.2), inset 0 1px 3px rgba(255, 255, 255, 0.9), 0 0 80px rgba(${glowColor}, 1), 0 0 40px rgba(${glowColor}, 1)`;
+      }
+      return `0 10px 30px rgba(0, 0, 0, 0.15), inset 0 1px 3px rgba(255, 255, 255, 0.7), 0 0 65px rgba(${glowColor}, 1), 0 0 35px rgba(${glowColor}, 0.9)`;
     }};
   }
 
@@ -175,8 +224,8 @@ const PowerUpCard = styled.div`
     border-radius: clamp(6px, 1.5vw, 12px);
     background: ${(props) =>
       props.$selected
-        ? "linear-gradient(45deg, rgba(255, 255, 255, 0.1), transparent)"
-        : "linear-gradient(45deg, rgba(255, 255, 255, 0.05), transparent)"};
+        ? "linear-gradient(135deg, rgba(212, 175, 55, 0.15), transparent)"
+        : "linear-gradient(135deg, rgba(255, 255, 255, 0.05), transparent)"};
     pointer-events: none;
   }
 `;
@@ -227,7 +276,7 @@ const PowerUpName = styled.h3`
   font-size: clamp(0.5rem, 1.4vw, 0.95rem);
   margin: 0 0 clamp(2px, 0.8vw, 6px) 0;
   color: ${(props) => {
-    if (props.$selected) return "#000";
+    if (props.$selected) return "#d4af37";
 
     switch (props.$type) {
       case "speed":
@@ -248,8 +297,8 @@ const PowerUpName = styled.h3`
   letter-spacing: 0.08em;
   text-shadow: ${(props) =>
     props.$selected
-      ? "none"
-      : "1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 0 1px 0 #000, 1px 0 0 #000, 0 -1px 0 #000"};
+      ? "0 2px 8px rgba(0, 0, 0, 0.8)"
+      : "0 2px 8px rgba(0, 0, 0, 0.8)"};
   line-height: 1;
 `;
 
@@ -258,15 +307,15 @@ const PowerUpDescription = styled.p`
   /* Smaller font on small screens */
   font-size: clamp(0.35rem, 1vw, 0.7rem);
   margin: 0 0 clamp(2px, 0.8vw, 6px) 0;
-  color: ${(props) => (props.$selected ? "#2a2a2a" : "#4a4a4a")};
+  color: ${(props) => (props.$selected ? "#ffffff" : "#f0f0f0")};
   text-align: center;
   line-height: 1.2;
   text-shadow: ${(props) =>
     props.$selected
-      ? "0 1px 0 rgba(255, 255, 255, 0.9)"
-      : "0 1px 0 rgba(255, 255, 255, 0.7)"};
+      ? "0 1px 4px rgba(0, 0, 0, 0.8)"
+      : "0 1px 4px rgba(0, 0, 0, 0.8)"};
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.08em;
 `;
 
 const PowerUpType = styled.p`
@@ -275,24 +324,24 @@ const PowerUpType = styled.p`
   font-size: clamp(0.3rem, 0.8vw, 0.6rem);
   margin: 0;
   color: ${(props) => {
-    if (props.$selected) return "#000";
+    if (props.$selected) return "#d4af37";
 
     // Different colors for active vs passive based on the type text
     if (props.$isActive) {
-      return "rgb(136, 255, 100)"; // Much darker red for active power-ups (better readability)
+      return "rgb(136, 255, 100)"; // Green for active power-ups
     } else {
-      return "#ededed"; // Keep passive white/light gray as it looked good with black stroke
+      return "#88ccff"; // Light blue for passive
     }
   }};
   text-align: center;
   line-height: 1;
   font-style: italic;
   text-transform: lowercase;
-  letter-spacing: 0.08em; // Increased letter spacing for better readability
+  letter-spacing: 0.08em;
   text-shadow: ${(props) =>
     props.$selected
-      ? "none"
-      : "1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 0 1px 0 #000, 1px 0 0 #000, 0 -1px 0 #000, -1px 0 0 #000"};
+      ? "0 1px 4px rgba(0, 0, 0, 0.8)"
+      : "0 1px 4px rgba(0, 0, 0, 0.8)"};
   
   // Prevent any hover effects on the text itself
   transition: none;
@@ -300,10 +349,8 @@ const PowerUpType = styled.p`
 `;
 
 const StatusContainer = styled.div`
-  border-top: 2px solid rgba(212, 175, 55, 0.4);
-  /* Smaller padding/margin on small screens */
-  padding-top: clamp(10px, 2vw, 20px);
-  margin-top: clamp(10px, 2vw, 20px);
+  padding-top: clamp(5px, 1vw, 10px);
+  margin-top: clamp(5px, 1vw, 10px);
   position: relative;
   z-index: 1;
 `;
@@ -333,10 +380,11 @@ const TimerText = styled.p`
     props.$urgent
       ? css`
           animation: ${urgentPulse} 1s ease-in-out infinite;
+          text-shadow: 2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
         `
       : css`
-          color: #d4af37;
-          text-shadow: 1px 1px 0 #000;
+          color: #ffffff;
+          text-shadow: 2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
         `}
 `;
 
@@ -573,8 +621,7 @@ const PowerUpSelection = ({
   return (
     <PowerUpSelectionOverlay>
       <PowerUpContainer>
-        <Title>Power-Up Selection</Title>
-        <Subtitle>Choose your power-up for this round</Subtitle>
+        <Title>CHOOSE A POWER UP</Title>
 
         <PowerUpGrid>
           {availablePowerUps.map((type) => {
@@ -621,11 +668,6 @@ const PowerUpSelection = ({
         </PowerUpGrid>
 
         <StatusContainer>
-          <StatusText>{statusMessage}</StatusText>
-          <StatusText>
-            Players Ready: {selectionStatus.selectedCount}/
-            {selectionStatus.totalPlayers}
-          </StatusText>
           <TimerText $urgent={timeLeft <= 5}>{timerMessage}</TimerText>
         </StatusContainer>
       </PowerUpContainer>
