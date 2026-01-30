@@ -541,25 +541,31 @@ function handleReadyPositions(room, player1, player2, io) {
         player2.isStrafing = true;
       } else {
         player2.x = player2ReadyX;
-        // Only set isStrafing to false when we're setting isReady to true
-        if (player1.x === player1ReadyX) {
-          player2.isStrafing = false;
-        }
+        player2.isStrafing = false;
       }
     }
 
-    // Set ready state when players reach their positions (but not if they're attacking)
+    // Set ready state INDEPENDENTLY for each player when they reach their position
     if (
       player1.x === player1ReadyX &&
-      player2.x === player2ReadyX &&
       !player1.isAttacking &&
       !player1.isChargingAttack &&
-      !player2.isAttacking &&
-      !player2.isChargingAttack
+      !player1.isReady
     ) {
       player1.isReady = true;
+    }
+    
+    if (
+      player2.x === player2ReadyX &&
+      !player2.isAttacking &&
+      !player2.isChargingAttack &&
+      !player2.isReady
+    ) {
       player2.isReady = true;
+    }
 
+    // Only start the game countdown when BOTH players are ready
+    if (player1.isReady && player2.isReady) {
       // Start a timer to trigger hakkiyoi after 1 second of being ready
       if (!room.readyStartTime) {
         room.readyStartTime = Date.now();
@@ -577,6 +583,9 @@ function handleReadyPositions(room, player1, player2, io) {
         // Reset canMoveToReady for both players when game starts
         player1.canMoveToReady = false;
         player2.canMoveToReady = false;
+        // Ensure ritual phase is ended for both players
+        player1.isInRitualPhase = false;
+        player2.isInRitualPhase = false;
         io.in(room.id).emit("game_start", true);
         player1.isReady = false;
         player2.isReady = false;

@@ -248,6 +248,7 @@ const Game = ({ rooms, roomName, localId, setCurrentPage }) => {
                     setOpponentDisconnected(false);
                     setDisconnectedRoomId(null);
                   }}
+                  isPowerUpSelectionActive={isPowerUpSelectionActive}
                 />
               );
             })}

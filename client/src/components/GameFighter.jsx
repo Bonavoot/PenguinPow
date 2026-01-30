@@ -102,6 +102,18 @@ import hitEffectImage from "../assets/hit-effect.png";
 import crouchStance2 from "../assets/crouch-stance2.png";
 import crouchStrafing2 from "../assets/crouch-strafing2.png";
 
+// Ritual animation sprite sheet imports (Player 1 - Blue)
+import ritualPart1Spritesheet from "../assets/ritual_part1_spritesheet.png";
+import ritualPart2Spritesheet from "../assets/ritual_part2_spritesheet.png";
+import ritualPart3Spritesheet from "../assets/ritual_part3_spritesheet.png";
+import ritualPart4Spritesheet from "../assets/ritual_part4_spritesheet.png";
+
+// Ritual clap sounds
+import clap1Sound from "../sounds/clap1-sound.wav";
+import clap2Sound from "../sounds/clap2-sound.mp3";
+import clap3Sound from "../sounds/clap3-sound.wav";
+import clap4Sound from "../sounds/clap4-sound.wav";
+
 import UiPlayerInfo from "./UiPlayerInfo";
 import SaltEffect from "./SaltEffect";
 import MatchOver from "./MatchOver";
@@ -114,6 +126,47 @@ import "./theme.css";
 import { isOutsideDohyo, DOHYO_FALL_DEPTH } from "../constants";
 
 const GROUND_LEVEL = 120; // Ground level constant
+
+// ============================================
+// RITUAL ANIMATION CONFIGURATION (Sprite Sheets)
+// Each part has: spritesheet image, frame count, frame width, fps
+// ============================================
+const RITUAL_SPRITE_CONFIG = [
+  { spritesheet: ritualPart1Spritesheet, frameCount: 28, frameWidth: 480, fps: 14 },
+  { spritesheet: ritualPart2Spritesheet, frameCount: 24, frameWidth: 480, fps: 14 },
+  { spritesheet: ritualPart3Spritesheet, frameCount: 39, frameWidth: 480, fps: 14 },
+  { spritesheet: ritualPart4Spritesheet, frameCount: 38, frameWidth: 480, fps: 14 },
+];
+
+// Calculate durations from frame count and fps
+const RITUAL_ANIMATION_DURATIONS = RITUAL_SPRITE_CONFIG.map(
+  (config) => Math.round((config.frameCount / config.fps) * 1000)
+);
+
+// How many ms BEFORE the animation ends should the clap sound play?
+const CLAP_SOUND_OFFSET = 100; // ms before animation end
+
+// Player 1 (Blue) ritual spritesheets
+const ritualSpritesheetsPlayer1 = RITUAL_SPRITE_CONFIG;
+
+// Player 2 ritual spritesheets (placeholder - same as player 1 for now)
+// TODO: Replace with actual player 2 spritesheets when available
+const ritualSpritesheetsPlayer2 = RITUAL_SPRITE_CONFIG;
+
+// Clap sounds for each ritual part
+const ritualClapSounds = [clap1Sound, clap2Sound, clap3Sound, clap4Sound];
+
+// Preload ritual sprite sheets to prevent loading delays
+const ritualImagesLoaded = { count: 0, total: RITUAL_SPRITE_CONFIG.length };
+const preloadRitualSpritesheets = () => {
+  RITUAL_SPRITE_CONFIG.forEach((config) => {
+    const img = new Image();
+    img.onload = () => { ritualImagesLoaded.count++; };
+    img.src = config.spritesheet;
+  });
+};
+// Call preload on module load
+preloadRitualSpritesheets();
 
 // Audio pool for better performance
 const audioPool = new Map();
@@ -318,8 +371,15 @@ const getImageSrc = (
   // new optional trailing param(s)
   isGrabbingMovementTrailing,
   isGrabClashActive,
-  isAttemptingGrabThrow
+  isAttemptingGrabThrow,
+  // Ritual animation source - if provided, use it instead of state-based selection
+  ritualAnimationSrc
 ) => {
+  // If ritual animation is active, return that directly
+  if (ritualAnimationSrc) {
+    return ritualAnimationSrc;
+  }
+  
   // Backward-compat: allow passing as trailing param or main param
   const attemptingGrabMovement =
     typeof isGrabbingMovementTrailing === "boolean"
@@ -635,6 +695,7 @@ const StyledImage = styled("img")
         "isGrabBreakCountered",
         "isGrabClashActive",
         "isAttemptingGrabThrow",
+        "ritualAnimationSrc",
       ].includes(prop),
   })
   .attrs((props) => ({
@@ -675,7 +736,8 @@ const StyledImage = styled("img")
       props.$isGrabBreakCountered,
       props.$isGrabbingMovement,
       props.$isGrabClashActive,
-      props.$isAttemptingGrabThrow
+      props.$isAttemptingGrabThrow,
+      props.$ritualAnimationSrc
     ),
     style: {
       position: "absolute",
@@ -955,6 +1017,44 @@ const StyledImage = styled("img")
   }
 `;
 
+// Ritual Sprite Sheet Container - clips to show one frame with extra clipping to prevent bleed
+const RitualSpriteContainer = styled.div.attrs((props) => ({
+  style: {
+    position: "absolute",
+    width: "min(16.609%, 511px)",
+    aspectRatio: "1",
+    left: `${(props.$x / 1280) * 100}%`,
+    bottom: `${(props.$y / 720) * 100}%`,
+    transform: props.$facing === 1 ? "scaleX(1)" : "scaleX(-1)",
+    overflow: "hidden",
+    zIndex: 99,
+    pointerEvents: "none",
+    // Clip 1.5% from left/right edges to prevent sub-pixel bleed from adjacent frames
+    clipPath: "inset(0 1.5% 0 1.5%)",
+  },
+}))``;
+
+// Sprite sheet image - positioned to show current frame
+const RitualSpriteImage = styled.img.attrs((props) => {
+  // Clamp frame to valid range to prevent showing invalid frames
+  const safeFrame = Math.max(0, Math.min(props.$frame, props.$frameCount - 1));
+  // Each frame is 1/frameCount of the total image width
+  const offsetPercent = (safeFrame / props.$frameCount) * 100;
+  return {
+    style: {
+      position: "relative",
+      display: "block",
+      height: "100%",
+      width: "auto",
+      // Use translate3d for GPU acceleration and more precise rendering
+      transform: `translate3d(-${offsetPercent}%, 0, 0)`,
+      willChange: "transform",
+      backfaceVisibility: "hidden",
+      filter: "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2)",
+    },
+  };
+})``;
+
 const FloatingPowerUpText = styled.div`
   position: absolute;
   font-family: "Bungee", cursive;
@@ -1208,6 +1308,7 @@ const GameFighter = ({
   opponentDisconnected,
   disconnectedRoomId,
   onResetDisconnectState,
+  isPowerUpSelectionActive,
 }) => {
   const { socket } = useContext(SocketContext);
   const [penguin, setPenguin] = useState({
@@ -1315,6 +1416,25 @@ const GameFighter = ({
   // "No Stamina" effect - shows when player tries to use action without enough stamina
   const [noStaminaEffectKey, setNoStaminaEffectKey] = useState(0);
 
+  // Ritual animation state - sprite sheet based animation
+  const [ritualPart, setRitualPart] = useState(0);
+  const [ritualFrame, setRitualFrame] = useState(0);
+  const ritualIntervalRef = useRef(null);
+
+  // Get current ritual sprite config based on current part
+  // Use server state (isInRitualPhase) to determine if config should be returned
+  const ritualSpriteConfig = useMemo(() => {
+    if (!penguin.isInRitualPhase) return null;
+    const configs = index === 0 ? ritualSpritesheetsPlayer1 : ritualSpritesheetsPlayer2;
+    return configs[ritualPart];
+  }, [penguin.isInRitualPhase, index, ritualPart]);
+
+  // For backward compatibility with existing code that checks ritualAnimationSrc
+  // Use server state to determine if this specific player is in ritual phase
+  // This allows each player to independently show/hide ritual based on their own state
+  const shouldShowRitualForPlayer = penguin.isInRitualPhase === true;
+  const ritualAnimationSrc = shouldShowRitualForPlayer ? "sprite" : null;
+
   // Exact sprite source used for the main fighter image so masks always match
   const currentSpriteSrc = useMemo(() => {
     return getImageSrc(
@@ -1353,7 +1473,9 @@ const GameFighter = ({
       penguin.isCrouchStrafing,
       penguin.isGrabBreakCountered,
       penguin.isGrabbingMovement,
-      isGrabClashActive
+      isGrabClashActive,
+      penguin.isAttemptingGrabThrow,
+      ritualAnimationSrc // Pass ritual animation if active
     );
   }, [
     penguin.fighter,
@@ -1392,7 +1514,88 @@ const GameFighter = ({
     penguin.isGrabBreakCountered,
     penguin.isGrabbingMovement,
     isGrabClashActive,
+    penguin.isAttemptingGrabThrow,
+    ritualAnimationSrc,
   ]);
+
+  // Ritual sprite sheet animation - runs entirely on interval, no effect restarts
+  // Use server state (isInRitualPhase) to determine if this player should show ritual
+  useEffect(() => {
+    if (!penguin.isInRitualPhase) {
+      setRitualPart(0);
+      setRitualFrame(0);
+      if (ritualIntervalRef.current) {
+        clearInterval(ritualIntervalRef.current);
+        ritualIntervalRef.current = null;
+      }
+      return;
+    }
+
+    const configs = index === 0 ? ritualSpritesheetsPlayer1 : ritualSpritesheetsPlayer2;
+    const shouldPlaySound = index === 0;
+    
+    // Local state that persists across interval calls
+    let currentPart = 0;
+    let currentFrame = 0;
+    let soundPlayedThisPart = false;
+    let holdFrames = 0; // Extra frames to hold on last frame before transitioning
+    
+    // Initialize
+    setRitualPart(0);
+    setRitualFrame(0);
+
+    ritualIntervalRef.current = setInterval(() => {
+      const config = configs[currentPart];
+      
+      // If we're holding on last frame, count down
+      if (holdFrames > 0) {
+        holdFrames--;
+        if (holdFrames === 0) {
+          // Now actually transition
+          currentFrame = 0;
+          currentPart = (currentPart + 1) % 4;
+          soundPlayedThisPart = false;
+          setRitualPart(currentPart);
+          setRitualFrame(0);
+        }
+        return; // Don't advance frame while holding
+      }
+      
+      // Play clap sound near the end of each part
+      const framesRemaining = config.frameCount - currentFrame - 1;
+      const frameDuration = 1000 / config.fps;
+      const timeRemaining = framesRemaining * frameDuration;
+      if (shouldPlaySound && !soundPlayedThisPart && timeRemaining <= CLAP_SOUND_OFFSET) {
+        soundPlayedThisPart = true;
+        try {
+          const randomIndex = Math.floor(Math.random() * ritualClapSounds.length);
+          const clapAudio = new Audio(ritualClapSounds[randomIndex]);
+          clapAudio.volume = 0.03 * getGlobalVolume();
+          clapAudio.play().catch(() => {});
+        } catch (e) {}
+      }
+      
+      // Advance frame
+      currentFrame++;
+      
+      // Check if we've reached the last frame
+      if (currentFrame >= config.frameCount - 1) {
+        // Show the last frame and hold for 2 extra ticks before transitioning
+        setRitualFrame(config.frameCount - 1);
+        holdFrames = 2; // Hold for 2 interval ticks (~140ms buffer)
+        return;
+      }
+      
+      setRitualFrame(currentFrame);
+    }, 1000 / 14); // Run at 14fps (71ms interval)
+
+    return () => {
+      if (ritualIntervalRef.current) {
+        clearInterval(ritualIntervalRef.current);
+        ritualIntervalRef.current = null;
+      }
+    };
+  }, [penguin.isInRitualPhase, index]);
 
   // Interpolation constants
   const SERVER_TICK_RATE = 64; // Server runs at 64 FPS
@@ -1820,33 +2023,37 @@ const GameFighter = ({
       setIsGrabClashActive(false);
     });
 
-    socket.on("power_up_activated", (data) => {
-      if (data.playerId === player.id) {
+    // Power-ups revealed simultaneously after both players have picked
+    // This prevents counter-picking by hiding choices until both are locked in
+    socket.on("power_ups_revealed", (data) => {
+      // Find this player's power-up from the reveal data
+      const thisPlayerData = data.player1.playerId === player.id ? data.player1 : data.player2;
+      
+      if (thisPlayerData.playerId === player.id) {
         // Show floating text for this specific player
         setShowFloatingPowerUp(true);
-        setFloatingPowerUpType(data.powerUpType);
+        setFloatingPowerUpType(thisPlayerData.powerUpType);
 
         // Hide the floating text after animation
         setTimeout(() => {
           setShowFloatingPowerUp(false);
         }, 2000);
 
-        // Only update penguin state and play sound for local player
-        if (data.playerId === localId) {
+        // Only update penguin state for local player
+        // Note: salt sound already plays during isThrowingSalt, and hasUsedPowerUp is set there too
+        if (thisPlayerData.playerId === localId) {
           setPenguin((prev) => ({
             ...prev,
-            activePowerUp: data.powerUpType,
+            activePowerUp: thisPlayerData.powerUpType,
             powerUpMultiplier:
-              data.powerUpType === "speed"
+              thisPlayerData.powerUpType === "speed"
                 ? 1.4
-                : data.powerUpType === "power"
+                : thisPlayerData.powerUpType === "power"
                 ? 1.3
                 : 1,
           }));
-          setHasUsedPowerUp(true);
-          playSound(saltSound, 0.01);
           
-          // Add a satisfying screen shake for power-up activation
+          // Add a satisfying screen shake for power-up reveal
           setScreenShake({
             intensity: 0.35,
             duration: 150,
@@ -1964,7 +2171,7 @@ const GameFighter = ({
       socket.off("game_reset");
       socket.off("game_over");
       socket.off("match_over");
-      socket.off("power_up_activated");
+      socket.off("power_ups_revealed");
       if (countdownRef.current) {
         clearInterval(countdownRef.current);
         countdownRef.current = null;
@@ -2504,7 +2711,32 @@ const GameFighter = ({
         $isGrabBreakCountered={penguin.isGrabBreakCountered}
         $isGrabClashActive={isGrabClashActive}
         $isAttemptingGrabThrow={penguin.isAttemptingGrabThrow}
+        $ritualAnimationSrc={null}
+        style={{ display: shouldShowRitualForPlayer && ritualSpriteConfig ? 'none' : 'block' }}
       />
+
+      {/* Ritual Sprite Sheet Animation - all 4 parts pre-rendered, only current one visible */}
+      {/* Each player's ritual stops independently when they select their power-up and start salt throwing */}
+      {shouldShowRitualForPlayer && (index === 0 ? ritualSpritesheetsPlayer1 : ritualSpritesheetsPlayer2).map((config, partIndex) => (
+        <RitualSpriteContainer
+          key={partIndex}
+          $x={getDisplayPosition().x}
+          $y={getDisplayPosition().y}
+          $facing={penguin.facing}
+          style={{ 
+            visibility: partIndex === ritualPart ? 'visible' : 'hidden',
+            pointerEvents: 'none'
+          }}
+        >
+          <RitualSpriteImage
+            src={config.spritesheet}
+            alt={`Ritual Part ${partIndex + 1}`}
+            $frame={partIndex === ritualPart ? ritualFrame : 0}
+            $frameCount={config.frameCount}
+            draggable={false}
+          />
+        </RitualSpriteContainer>
+      ))}
 
       {(penguin.isHit || penguin.isBeingThrown) && (
         <TintedImage
@@ -2656,6 +2888,7 @@ GameFighter.propTypes = {
   opponentDisconnected: PropTypes.bool.isRequired,
   disconnectedRoomId: PropTypes.string,
   onResetDisconnectState: PropTypes.func.isRequired,
+  isPowerUpSelectionActive: PropTypes.bool,
 };
 
 // Optimize the component with React.memo
@@ -2669,6 +2902,7 @@ export default React.memo(GameFighter, (prevProps, nextProps) => {
     prevProps.setCurrentPage === nextProps.setCurrentPage &&
     prevProps.opponentDisconnected === nextProps.opponentDisconnected &&
     prevProps.disconnectedRoomId === nextProps.disconnectedRoomId &&
-    prevProps.onResetDisconnectState === nextProps.onResetDisconnectState
+    prevProps.onResetDisconnectState === nextProps.onResetDisconnectState &&
+    prevProps.isPowerUpSelectionActive === nextProps.isPowerUpSelectionActive
   );
 });

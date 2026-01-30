@@ -432,6 +432,9 @@ function handlePowerUpSelection(room) {
 
   // Generate individual randomized lists for each player
   room.players.forEach((player) => {
+    // Mark player as in ritual phase (showing ritual animation)
+    player.isInRitualPhase = true;
+    
     // Randomly select 3 out of 4 power-ups for this player
     const shuffled = [...allPowerUps].sort(() => Math.random() - 0.5);
     const availablePowerUps = shuffled.slice(0, 3); // Take first 3 from shuffled array
@@ -453,6 +456,9 @@ function handlePowerUpSelection(room) {
       console.log(
         `🤖 CPU MATCH: CPU auto-selected power-up: ${randomPowerUp}`
       );
+      
+      // CPU should also throw salt and transition after selection
+      handleSaltThrowAndPowerUp(player, room);
     }
   });
 
@@ -499,30 +505,32 @@ function handlePowerUpSelection(room) {
 }
 
 function handleSaltThrowAndPowerUp(player, room) {
+  // Player is no longer in ritual phase - they've picked and are transitioning
+  player.isInRitualPhase = false;
+  
   // Set initial states for automatic salt throwing
   player.isThrowingSalt = true;
   player.saltCooldown = true;
   player.canMoveToReady = false; // New flag to control movement
 
-  // Use selected power-up instead of random
+  // Store the power-up but DON'T reveal it yet - wait until both players have picked
+  // This prevents counter-picking
   if (player.selectedPowerUp) {
-    player.activePowerUp = player.selectedPowerUp;
-    player.powerUpMultiplier = POWER_UP_EFFECTS[player.selectedPowerUp];
-
+    // Store the power-up internally but mark it as not yet revealed
+    player.pendingPowerUp = player.selectedPowerUp;
+    player.powerUpRevealed = false;
+    
     console.log(
-      `🔥 POWER-UP ACTIVATED: Player ${player.id} activated ${player.selectedPowerUp} with multiplier ${player.powerUpMultiplier}`
+      `🔒 POWER-UP PENDING: Player ${player.id} selected ${player.selectedPowerUp} (hidden until both players pick)`
     );
-
-    // Emit power-up event to clients
-    io.in(room.id).emit("power_up_activated", {
-      playerId: player.id,
-      powerUpType: player.selectedPowerUp,
-    });
   } else {
     console.log(
       `⚠️ POWER-UP WARNING: Player ${player.id} has no selectedPowerUp`
     );
   }
+  
+  // Check if both players have now selected - if so, reveal both power-ups
+  checkAndRevealPowerUps(room);
 
   // Reset salt throwing state after animation
   setPlayerTimeout(
@@ -536,6 +544,39 @@ function handleSaltThrowAndPowerUp(player, room) {
     },
     500
   );
+}
+
+// Check if both players have selected power-ups and reveal them simultaneously
+function checkAndRevealPowerUps(room) {
+  // Check if all players have pending power-ups (selected but not revealed)
+  const allPlayersSelected = room.players.every(p => p.pendingPowerUp && !p.powerUpRevealed);
+  
+  if (allPlayersSelected) {
+    console.log(`🎉 POWER-UP REVEAL: Both players have selected, revealing power-ups in room ${room.id}`);
+    
+    // Activate power-ups for all players
+    room.players.forEach(player => {
+      player.activePowerUp = player.pendingPowerUp;
+      player.powerUpMultiplier = POWER_UP_EFFECTS[player.pendingPowerUp];
+      player.powerUpRevealed = true;
+      
+      console.log(
+        `🔥 POWER-UP ACTIVATED: Player ${player.id} activated ${player.pendingPowerUp} with multiplier ${player.powerUpMultiplier}`
+      );
+    });
+    
+    // Emit simultaneous reveal event with both players' power-ups
+    io.in(room.id).emit("power_ups_revealed", {
+      player1: {
+        playerId: room.players[0].id,
+        powerUpType: room.players[0].activePowerUp,
+      },
+      player2: {
+        playerId: room.players[1].id,
+        powerUpType: room.players[1].activePowerUp,
+      },
+    });
+  }
 }
 
 function resetRoomAndPlayers(room) {
@@ -558,6 +599,9 @@ function resetRoomAndPlayers(room) {
         `Timer expired, auto-selecting power-ups for room ${room.id}`
       );
 
+      // Track which players need auto-selection (didn't select manually)
+      const playersNeedingAutoSelect = [];
+
       // Auto-select the first available power-up for any players who haven't selected
       room.players.forEach((player) => {
         if (!player.selectedPowerUp) {
@@ -569,6 +613,7 @@ function resetRoomAndPlayers(room) {
           console.log(`Auto-selecting ${firstPowerUp} for player ${player.id}`);
           player.selectedPowerUp = firstPowerUp;
           room.playersSelectedPowerUps[player.id] = firstPowerUp;
+          playersNeedingAutoSelect.push(player);
         }
       });
 
@@ -576,18 +621,19 @@ function resetRoomAndPlayers(room) {
       const selectedCount = Object.keys(room.playersSelectedPowerUps).length;
 
       if (selectedCount === room.players.length) {
-        // All players have selections, proceed with normal flow
+        // All players have selections, end selection phase
         room.powerUpSelectionPhase = false;
 
         console.log(
-          `Auto-selection complete, starting salt throwing in room ${room.id}`
+          `Auto-selection complete, starting salt throwing for auto-selected players in room ${room.id}`
         );
 
-        // Emit that selection is complete
-        io.in(room.id).emit("power_up_selection_complete");
-
-        // Start salt throwing for both players
-        room.players.forEach((player) => {
+        // Only emit selection complete and start salt throwing for players who were auto-selected
+        // Players who manually selected already received these events
+        playersNeedingAutoSelect.forEach((player) => {
+          // Emit that selection is complete for this player
+          io.to(player.id).emit("power_up_selection_complete");
+          // Start salt throwing for this player
           handleSaltThrowAndPowerUp(player, room);
         });
       }
@@ -625,6 +671,8 @@ function resetRoomAndPlayers(room) {
     player.activePowerUp = null;
     player.powerUpMultiplier = 1;
     player.selectedPowerUp = null;
+    player.pendingPowerUp = null;
+    player.powerUpRevealed = false;
     // Apply default size
     player.sizeMultiplier = DEFAULT_PLAYER_SIZE_MULTIPLIER;
     // Reset snowball state
@@ -4906,7 +4954,19 @@ io.on("connection", (socket) => {
     player.selectedPowerUp = powerUpType;
     room.playersSelectedPowerUps[playerId] = powerUpType;
 
-    // Check if both players have selected their power-ups
+    // IMMEDIATELY emit selection complete to THIS player only and start their transition
+    // This allows each player to independently move to the next phase
+    console.log(
+      `Player ${playerId} selected ${powerUpType}, starting their transition immediately`
+    );
+    
+    // Emit that selection is complete for THIS player only
+    io.to(playerId).emit("power_up_selection_complete");
+    
+    // Start salt throwing for THIS player immediately
+    handleSaltThrowAndPowerUp(player, room);
+
+    // Check if both players have now selected
     const selectedCount = Object.keys(room.playersSelectedPowerUps).length;
 
     console.log(
@@ -4914,20 +4974,18 @@ io.on("connection", (socket) => {
     );
 
     if (selectedCount === 2) {
-      // Both players have selected, proceed with salt throwing
+      // Both players have selected, end selection phase and clear timer
       room.powerUpSelectionPhase = false;
+      
+      // Clear the auto-selection timer since both players have selected
+      if (room.roundStartTimer) {
+        clearTimeout(room.roundStartTimer);
+        room.roundStartTimer = null;
+      }
 
       console.log(
-        `All players selected, starting salt throwing in room ${roomId}`
+        `All players selected in room ${roomId}, power-up selection phase complete`
       );
-
-      // Emit that selection is complete
-      io.in(roomId).emit("power_up_selection_complete");
-
-      // Start salt throwing for both players
-      room.players.forEach((player) => {
-        handleSaltThrowAndPowerUp(player, room);
-      });
     }
 
     // Emit updated selection status to all players
