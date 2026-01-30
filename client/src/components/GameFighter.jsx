@@ -36,6 +36,11 @@ import pumoWaddle from "../assets/pumo-waddle.png";
 import pumoWaddle2 from "../assets/pumo-waddle2.png";
 import pumoArmy from "../assets/pumo-army.png";
 import pumoArmy2 from "../assets/pumo-army2.png";
+import powerWaterIcon from "../assets/power-water.png";
+import snowballImage from "../assets/snowball.png";
+import pumoArmyIcon from "./pumo-army-icon.png";
+import happyFeetIcon from "../assets/happy-feet.png";
+import thickBlubberIcon from "../assets/thick-blubber-icon.png";
 import crouching from "../assets/blocking2.png";
 import crouching2 from "../assets/blocking.png";
 import grabbing from "../assets/grabbing.png";
@@ -98,6 +103,8 @@ import notEnoughStaminaSound from "../sounds/not-enough-stamina-sound.wav";
 import grabClashSound from "../sounds/grab-clash-sound.wav";
 import clashVictorySound from "../sounds/clash-victory-sound.wav";
 import clashDefeatSound from "../sounds/clash-defeat-sound.wav";
+import roundVictorySound from "../sounds/round-victory-sound.mp3";
+import roundDefeatSound from "../sounds/round-defeat-sound.mp3";
 import hitEffectImage from "../assets/hit-effect.png";
 import crouchStance2 from "../assets/crouch-stance2.png";
 import crouchStrafing2 from "../assets/crouch-strafing2.png";
@@ -117,6 +124,7 @@ import clap4Sound from "../sounds/clap4-sound.wav";
 import UiPlayerInfo from "./UiPlayerInfo";
 import SaltEffect from "./SaltEffect";
 import MatchOver from "./MatchOver";
+import RoundResult from "./RoundResult";
 import HitEffect from "./HitEffect";
 import RawParryEffect from "./RawParryEffect";
 import { getGlobalVolume } from "./Settings";
@@ -217,6 +225,8 @@ const initializeAudioPools = () => {
   createAudioPool(grabClashSound, 2);
   createAudioPool(clashVictorySound, 2);
   createAudioPool(clashDefeatSound, 2);
+  createAudioPool(roundVictorySound, 2);
+  createAudioPool(roundDefeatSound, 2);
   // Add missing audio files
   createAudioPool(gameMusic, 1);
   createAudioPool(eeshiMusic, 1);
@@ -1055,10 +1065,107 @@ const RitualSpriteImage = styled.img.attrs((props) => {
   };
 })``;
 
+// Slide in animation for power-up text (matching side texts)
+const powerUpSlideIn = `
+  @keyframes powerUpSlideIn {
+    0% {
+      transform: translateX(var(--slide-dir));
+      opacity: 0;
+    }
+    30% {
+      transform: translateX(0);
+      opacity: 1;
+    }
+    70% {
+      transform: translateX(0);
+      opacity: 1;
+    }
+    100% {
+      transform: translateX(var(--slide-dir));
+      opacity: 0;
+    }
+  }
+`;
+
+// Container for power-up announcement with icon and text
+const FloatingPowerUpContainer = styled.div`
+  position: fixed;
+  top: clamp(120px, 35%, 280px);
+  ${props => props.$index === 0 ? 'left: 2%;' : 'right: 2%;'}
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(4px, 1vw, 10px);
+  --slide-dir: ${props => props.$index === 0 ? '-50px' : '50px'};
+  animation: powerUpSlideIn 2s ease-out forwards;
+  z-index: 200;
+  pointer-events: none;
+  
+  ${powerUpSlideIn}
+  
+  @media (max-width: 1200px) {
+    top: clamp(100px, 30%, 220px);
+    gap: clamp(3px, 0.8vw, 8px);
+  }
+  
+  @media (max-width: 900px) {
+    top: clamp(80px, 25%, 180px);
+    gap: clamp(2px, 0.6vw, 6px);
+    ${props => props.$index === 0 ? 'left: 1%;' : 'right: 1%;'}
+  }
+`;
+
+// Square icon with background color
+const PowerUpIconSquare = styled.div`
+  width: clamp(32px, 6vw, 60px);
+  height: clamp(32px, 6vw, 60px);
+  background: ${(props) => {
+    switch (props.$powerUpType) {
+      case "speed":
+        return "linear-gradient(135deg, #00d2ff, #00a0cc)";
+      case "power":
+        return "linear-gradient(135deg, #ff6b6b, #cc4444)";
+      case "snowball":
+        return "linear-gradient(135deg, #74b9ff, #5599dd)";
+      case "pumo_army":
+        return "linear-gradient(135deg, #ffcc80, #ddaa66)";
+      case "thick_blubber":
+        return "linear-gradient(135deg, #9c88ff, #7766dd)";
+      default:
+        return "linear-gradient(135deg, #FFD700, #FFA500)";
+    }
+  }};
+  border: 2px solid #000;
+  border-radius: clamp(4px, 0.8vw, 8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4);
+
+  img {
+    width: 70%;
+    height: 70%;
+    object-fit: contain;
+    filter: drop-shadow(2px 2px 3px rgba(0, 0, 0, 0.5));
+  }
+  
+  @media (max-width: 1200px) {
+    width: clamp(28px, 5vw, 50px);
+    height: clamp(28px, 5vw, 50px);
+  }
+  
+  @media (max-width: 900px) {
+    width: clamp(24px, 5.5vw, 42px);
+    height: clamp(24px, 5.5vw, 42px);
+    border-width: 2px;
+  }
+`;
+
+// Text below the icon
 const FloatingPowerUpText = styled.div`
-  position: absolute;
   font-family: "Bungee", cursive;
-  font-size: clamp(0.85rem, 1.6vw, 1.3rem);
+  font-size: clamp(0.5rem, 1.2vw, 1rem);
+  line-height: 1.1;
   font-weight: 400;
   color: ${(props) => {
     switch (props.$powerUpType) {
@@ -1076,77 +1183,54 @@ const FloatingPowerUpText = styled.div`
         return "#FFD700";
     }
   }};
-  text-shadow: -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000,
-    1.5px 1.5px 0 #000, -1px 0 0 #000, 1px 0 0 #000, 0 -1px 0 #000, 0 1px 0 #000,
-    0 0 8px
+  text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000,
+    0 0 15px
       ${(props) => {
         switch (props.$powerUpType) {
           case "speed":
-            return "rgba(0, 191, 255, 0.6)";
+            return "rgba(0, 191, 255, 0.9)";
           case "power":
-            return "rgba(255, 68, 68, 0.6)";
+            return "rgba(255, 68, 68, 0.9)";
           case "snowball":
-            return "rgba(255, 255, 255, 0.6)";
+            return "rgba(255, 255, 255, 0.9)";
           case "pumo_army":
-            return "rgba(255, 140, 0, 0.6)";
+            return "rgba(255, 140, 0, 0.9)";
           case "thick_blubber":
-            return "rgba(156, 136, 255, 0.6)";
+            return "rgba(156, 136, 255, 0.9)";
           default:
-            return "rgba(255, 215, 0, 0.6)";
+            return "rgba(255, 215, 0, 0.9)";
         }
       }};
-  pointer-events: none;
-  animation: powerUpBurst 2s ease-out forwards;
-  bottom: 55%;
-  left: ${(props) => (props.$index === 0 ? "20%" : "auto")};
-  right: ${(props) => (props.$index === 1 ? "20%" : "auto")};
+  letter-spacing: 0.08em;
+  white-space: pre-line;
   text-align: center;
-  transform-origin: center;
-  z-index: 101;
-  opacity: 0;
-
-  @keyframes powerUpBurst {
-    0% {
-      transform: translateY(0px) scale(0.3);
-      opacity: 0;
-    }
-    10% {
-      transform: translateY(5px) scale(1.3);
-      opacity: 1;
-    }
-    20% {
-      transform: translateY(-5px) scale(1.0);
-      opacity: 1;
-    }
-    30% {
-      transform: translateY(0px) scale(1.1);
-      opacity: 1;
-    }
-    70% {
-      transform: translateY(-40px) scale(1.0);
-      opacity: 1;
-    }
-    100% {
-      transform: translateY(-70px) scale(0.9);
-      opacity: 0;
-    }
-  }
-  letter-spacing: 0.15em;
-  white-space: nowrap;
   text-transform: uppercase;
-
-  @keyframes simpleFloatUp {
-    0% {
-      transform: translateY(0px) scale(1);
-      opacity: 0;
-    }
-    20% {
-      opacity: 1;
-    }
-    100% {
-      transform: translateY(-60px) scale(1);
-      opacity: 0;
-    }
+  
+  @media (max-width: 1200px) {
+    font-size: clamp(0.45rem, 1vw, 0.85rem);
+  }
+  
+  @media (max-width: 900px) {
+    font-size: clamp(0.38rem, 1.1vw, 0.7rem);
+    letter-spacing: 0.06em;
+    text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000,
+      0 0 10px
+        ${(props) => {
+          switch (props.$powerUpType) {
+            case "speed":
+              return "rgba(0, 191, 255, 0.9)";
+            case "power":
+              return "rgba(255, 68, 68, 0.9)";
+            case "snowball":
+              return "rgba(255, 255, 255, 0.9)";
+            case "pumo_army":
+              return "rgba(255, 140, 0, 0.9)";
+            case "thick_blubber":
+              return "rgba(156, 136, 255, 0.9)";
+            default:
+              return "rgba(255, 215, 0, 0.9)";
+          }
+        }};
   }
 `;
 
@@ -2135,12 +2219,23 @@ const GameFighter = ({
         setPlayerTwoWinCount(data.wins);
         setGyojiState("player2Win");
       }
+      // Play round victory or defeat sound based on local player result
+      if (index === 0) {
+        if (data.winner.id === localId) {
+          playSound(roundVictorySound, 0.03);
+        } else {
+          playSound(roundDefeatSound, 0.03);
+        }
+      }
       // Bump round ID immediately on winner declaration to reset UI stamina to server value
       setUiRoundId((id) => id + 1);
     });
 
     socket.on("match_over", (data) => {
-      setMatchOver(data.isMatchOver);
+      // Delay showing match over screen so round result animation can play (3 seconds)
+      setTimeout(() => {
+        setMatchOver(data.isMatchOver);
+      }, 3000);
       // Keep win counts displayed until rematch - don't reset here!
       // Also bump round id at match end to reset UI
       setUiRoundId((id) => id + 1);
@@ -2574,15 +2669,8 @@ const GameFighter = ({
 
       <Gyoji gyojiState={gyojiState} hakkiyoi={hakkiyoi} />
       {hakkiyoi && <div className="hakkiyoi">HAKKI-YOI !</div>}
-      {gameOver && (
-        <div
-          className="hakkiyoi"
-          style={{
-            color: `${winner.fighter === "player 1" ? "aqua" : "salmon"}`,
-          }}
-        >
-          {winner.fighter} wins !
-        </div>
+      {gameOver && !matchOver && (
+        <RoundResult isVictory={winner.id === localId} />
       )}
       {matchOver && (
         <MatchOver winner={winner} localId={localId} roomName={roomName} />
@@ -2617,13 +2705,32 @@ const GameFighter = ({
         $isVisible={true}
       />
       {showFloatingPowerUp && (
-        <FloatingPowerUpText $powerUpType={floatingPowerUpType} $index={index}>
-          {floatingPowerUpType === "speed"
-            ? "HAPPY FEET"
-            : floatingPowerUpType === "power"
-            ? "POWER WATER"
-            : floatingPowerUpType.replace(/_/g, " ").toUpperCase()}
-        </FloatingPowerUpText>
+        <FloatingPowerUpContainer $index={index} $powerUpType={floatingPowerUpType}>
+          <PowerUpIconSquare $powerUpType={floatingPowerUpType}>
+            <img 
+              src={
+                floatingPowerUpType === "speed" ? happyFeetIcon :
+                floatingPowerUpType === "power" ? powerWaterIcon :
+                floatingPowerUpType === "snowball" ? snowballImage :
+                floatingPowerUpType === "pumo_army" ? pumoArmyIcon :
+                floatingPowerUpType === "thick_blubber" ? thickBlubberIcon :
+                null
+              }
+              alt={floatingPowerUpType}
+            />
+          </PowerUpIconSquare>
+          <FloatingPowerUpText $powerUpType={floatingPowerUpType}>
+            {floatingPowerUpType === "speed"
+              ? "HAPPY\nFEET"
+              : floatingPowerUpType === "power"
+              ? "POWER\nWATER"
+              : floatingPowerUpType === "pumo_army"
+              ? "PUMO\nARMY"
+              : floatingPowerUpType === "thick_blubber"
+              ? "THICK\nBLUBBER"
+              : floatingPowerUpType.replace(/_/g, "\n").toUpperCase()}
+          </FloatingPowerUpText>
+        </FloatingPowerUpContainer>
       )}
       <PlayerShadow
         x={getDisplayPosition().x}

@@ -131,7 +131,8 @@
   top: 50%;
   left: 50%;
   font-size: clamp(0.8rem, 2vw, 2rem);
-  color: #FFD700;
+  color: #FFFF00;
+  text-shadow: 0 0 8px #FFFF00, 0 0 15px #FFD700;
   transform: translate(-50%, -50%) scale(0) rotate(0deg);
   animation: rawParryStarBurstPerfect 0.32s ease-out forwards;
   pointer-events: none;

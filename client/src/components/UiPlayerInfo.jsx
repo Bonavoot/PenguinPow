@@ -310,9 +310,26 @@ const CenterSection = styled.div`
   transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
-  /* Smaller gap on small screens */
-  gap: clamp(10px, 2vw, 24px);
+  justify-content: center;
   z-index: 1000;
+`;
+
+// Infinity symbol to represent unlimited time
+const InfinitySymbol = styled.div`
+  font-family: "Bungee", cursive;
+  font-size: clamp(42px, 8vw, 85px);
+  color: #ffffff;
+  text-shadow: 
+    -2px -2px 0 #000,
+    2px -2px 0 #000,
+    -2px 2px 0 #000,
+    2px 2px 0 #000;
+  line-height: 1;
+  user-select: none;
+  
+  @media (max-width: 900px) {
+    font-size: clamp(32px, 6.5vw, 64px);
+  }
 `;
 
 // Throw break stamina threshold (33% of max)
@@ -512,8 +529,10 @@ const UiPlayerInfo = ({
         </BottomRow>
       </PlayerSection>
 
-      {/* Center Power-Up Section - kept for reference but elements moved to player sections */}
-      <CenterSection />
+      {/* Center Section with infinity symbol for unlimited time */}
+      <CenterSection>
+        <InfinitySymbol>∞</InfinitySymbol>
+      </CenterSection>
 
       {/* Player 2 Section */}
       <PlayerSection $isRight={true}>
