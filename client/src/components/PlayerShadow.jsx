@@ -35,14 +35,43 @@ const ShadowElement = styled.div.attrs((props) => {
 })`
   width: ${(props) => props.$width || "11.713%"};
   height: ${(props) => props.$height || "4.04%"};
-  background: radial-gradient(
-    ellipse at center,
-    rgba(0, 0, 0, 0.6) 0%,
-    rgba(0, 0, 0, 0) 70%
-  );
+  background: ${(props) =>
+    props.$isLocalPlayer
+      ? `radial-gradient(
+          ellipse at center,
+          rgba(0, 0, 0, 0.6) 0%,
+          rgba(50, 50, 50, 0.5) 25%,
+          rgba(150, 150, 170, 0.45) 45%,
+          rgba(220, 220, 240, 0.4) 60%,
+          rgba(255, 255, 255, 0.5) 70%,
+          rgba(255, 255, 255, 0.3) 75%,
+          rgba(0, 0, 0, 0) 80%
+        )`
+      : `radial-gradient(
+          ellipse at center,
+          rgba(0, 0, 0, 0.6) 0%,
+          rgba(0, 0, 0, 0) 70%
+        )`};
   border-radius: 50%;
   pointer-events: none;
   will-change: transform, bottom, left;
+  box-shadow: ${(props) =>
+    props.$isLocalPlayer
+      ? "0 0 20px rgba(255, 255, 255, 0.7), inset 0 0 8px rgba(255, 255, 255, 0.3), 0 0 0 2px rgba(255, 255, 255, 0.6)"
+      : "none"};
+  animation: ${(props) =>
+    props.$isLocalPlayer ? "localPlayerShadowPulse 2s ease-in-out infinite" : "none"};
+
+  @keyframes localPlayerShadowPulse {
+    0%, 100% {
+      opacity: 1;
+      filter: brightness(1);
+    }
+    50% {
+      opacity: 0.85;
+      filter: brightness(1.2);
+    }
+  }
 `;
 
 const PlayerShadow = ({
@@ -58,6 +87,7 @@ const PlayerShadow = ({
   height,
   offsetLeft,
   offsetRight,
+  isLocalPlayer,
 }) => {
   return (
     <ShadowElement
@@ -73,6 +103,7 @@ const PlayerShadow = ({
       $height={height}
       $offsetLeft={offsetLeft}
       $offsetRight={offsetRight}
+      $isLocalPlayer={isLocalPlayer}
     />
   );
 };
@@ -90,6 +121,7 @@ PlayerShadow.propTypes = {
   height: PropTypes.string,
   offsetLeft: PropTypes.string,
   offsetRight: PropTypes.string,
+  isLocalPlayer: PropTypes.bool,
 };
 
 export default PlayerShadow;

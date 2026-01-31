@@ -1,24 +1,77 @@
 import { useEffect, useRef, useState } from "react";
-import styled from "styled-components";
+import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 import dodgeSmokeGif from "../assets/dodge-effect.gif";
 
-const GIF_DURATION = 450; // ms
+const GIF_DURATION = 450; // Match bigger dodge arc duration
+
+// Speed line animation - shoots in dodge direction
+const speedLineShoot = keyframes`
+  0% {
+    transform: scaleX(0.3) translateX(0);
+    opacity: 1;
+  }
+  40% {
+    transform: scaleX(1.2) translateX(var(--shoot-dir, 30px));
+    opacity: 0.8;
+  }
+  100% {
+    transform: scaleX(0.5) translateX(calc(var(--shoot-dir, 30px) * 2.5));
+    opacity: 0;
+  }
+`;
+
+// Afterimage fade
+const afterimageFade = keyframes`
+  0% {
+    opacity: 0.6;
+    transform: translateX(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(var(--trail-dir, -20px)) scale(0.95);
+  }
+`;
+
+// Burst particles at start
+const burstParticle = keyframes`
+  0% {
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--burst-x, 0), var(--burst-y, -30px)) scale(0.1);
+    opacity: 0;
+  }
+`;
+
+// Ground dust kick-up
+const groundDust = keyframes`
+  0% {
+    transform: translateX(-50%) scaleY(0.3) scaleX(0.5);
+    opacity: 0.9;
+  }
+  30% {
+    transform: translateX(-50%) scaleY(1) scaleX(1.2);
+    opacity: 0.7;
+  }
+  100% {
+    transform: translateX(-50%) scaleY(0.5) scaleX(2) translateY(-20px);
+    opacity: 0;
+  }
+`;
 
 const SmokeContainer = styled.div.attrs((props) => {
-  // Dash is forward if dodgeDirection === facing
   const isBackward =
     props.$dodgeDirection !== undefined &&
     props.$facing !== undefined &&
     props.$dodgeDirection !== props.$facing;
-  // Offset: adjust based on facing and dash direction
   let offset = 0;
   if (isBackward) {
     offset = props.$facing === 1 ? 10 : 8;
   } else {
     offset = props.$facing === 1 ? 5 : 10;
   }
-  // Flip based on facing direction and backward dash
   const scaleX = (props.$facing === 1 ? 1 : -1) * (isBackward ? 1 : -1);
   return {
     style: {
@@ -28,13 +81,104 @@ const SmokeContainer = styled.div.attrs((props) => {
       pointerEvents: "none",
       width: "clamp(101px, 15vw, 269px)",
       height: "auto",
-      transform: `translateX(-50%) scaleX(${scaleX}) `,
-      opacity: 0.8,
+      transform: `translateX(-50%) scaleX(${scaleX})`,
+      opacity: 0.85,
       zIndex: 1000,
-      filter: "grayscale(100%) brightness(200%)", // Reliable white appearance across all monitors
+      filter: "grayscale(100%) brightness(200%)",
     },
   };
 })``;
+
+// Speed lines container - shoots in dodge direction
+const SpeedLinesContainer = styled.div`
+  position: absolute;
+  left: ${(props) => `calc(${(props.$x / 1280) * 100}%)`};
+  bottom: ${(props) => `calc(${((props.$y + 35) / 720) * 100}%)`};
+  pointer-events: none;
+  z-index: 999;
+`;
+
+const SpeedLine = styled.div`
+  position: absolute;
+  width: clamp(40px, 6vw, 90px);
+  height: 3px;
+  background: linear-gradient(
+    ${(props) => props.$direction > 0 ? '90deg' : '270deg'},
+    rgba(255, 255, 255, 0.95) 0%,
+    rgba(200, 230, 255, 0.6) 50%,
+    transparent 100%
+  );
+  border-radius: 2px;
+  --shoot-dir: ${(props) => props.$direction * 60}px;
+  animation: ${speedLineShoot} ${GIF_DURATION * 0.6}ms ease-out forwards;
+  animation-delay: ${(props) => props.$delay || 0}ms;
+  top: ${(props) => props.$offset || 0}px;
+  filter: blur(0.5px);
+`;
+
+// Afterimage effect - ghost trail
+const AfterimageContainer = styled.div`
+  position: absolute;
+  left: ${(props) => `calc(${(props.$x / 1280) * 100}%)`};
+  bottom: ${(props) => `calc(${(props.$y / 720) * 100}%)`};
+  pointer-events: none;
+  z-index: 97;
+  --trail-dir: ${(props) => props.$direction * -25}px;
+  animation: ${afterimageFade} ${GIF_DURATION * 0.5}ms ease-out forwards;
+  animation-delay: ${(props) => props.$delay || 0}ms;
+  opacity: 0;
+`;
+
+const AfterimageGhost = styled.div`
+  width: clamp(80px, 10vw, 150px);
+  height: clamp(80px, 10vw, 150px);
+  background: radial-gradient(ellipse at center, 
+    rgba(200, 230, 255, 0.4) 0%, 
+    rgba(150, 200, 255, 0.2) 40%, 
+    transparent 70%
+  );
+  border-radius: 40% 40% 45% 45%;
+  filter: blur(8px);
+  transform: translateX(-50%);
+`;
+
+// Burst particles at dodge start
+const BurstParticle = styled.div`
+  position: absolute;
+  width: clamp(6px, 0.8vw, 12px);
+  height: clamp(6px, 0.8vw, 12px);
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  --burst-x: ${(props) => props.$bx}px;
+  --burst-y: ${(props) => props.$by}px;
+  animation: ${burstParticle} ${GIF_DURATION * 0.5}ms ease-out forwards;
+  filter: blur(1px);
+`;
+
+// Ground dust cloud
+const GroundDust = styled.div`
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: clamp(50px, 7vw, 100px);
+  height: clamp(20px, 2.5vw, 40px);
+  background: radial-gradient(ellipse at center bottom, 
+    rgba(255, 255, 255, 0.6) 0%, 
+    rgba(200, 220, 255, 0.3) 50%, 
+    transparent 80%
+  );
+  border-radius: 50%;
+  filter: blur(4px);
+  animation: ${groundDust} ${GIF_DURATION * 0.7}ms ease-out forwards;
+`;
+
+const BurstContainer = styled.div`
+  position: absolute;
+  left: ${(props) => `calc(${(props.$x / 1280) * 100}%)`};
+  bottom: ${(props) => `calc(${((props.$y + 30) / 720) * 100}%)`};
+  pointer-events: none;
+  z-index: 998;
+`;
 
 const DodgeSmokeEffect = ({ x, y, isDodging, facing, dodgeDirection }) => {
   const [smokeInstances, setSmokeInstances] = useState([]);
@@ -64,28 +208,56 @@ const DodgeSmokeEffect = ({ x, y, isDodging, facing, dodgeDirection }) => {
   }, [smokeInstances]);
 
   if (smokeInstances.length === 0) return null;
+
   return (
     <>
       {smokeInstances.map((smoke) => (
-        <SmokeContainer
-          $x={smoke.x}
-          $y={smoke.y}
-          $facing={smoke.facing}
-          $dodgeDirection={smoke.dodgeDirection}
-          key={smoke.key}
-        >
-          <img
-            src={dodgeSmokeGif}
-            alt="Dodge Smoke Effect"
-            style={{
-              width: "clamp(101px, 15vw, 269px)",
-              height: "auto",
-              display: "block",
-              zIndex: 1000,
-            }}
-            draggable={false}
-          />
-        </SmokeContainer>
+        <div key={smoke.key}>
+          {/* Original smoke GIF */}
+          <SmokeContainer
+            $x={smoke.x}
+            $y={smoke.y}
+            $facing={smoke.facing}
+            $dodgeDirection={smoke.dodgeDirection}
+          >
+      
+          </SmokeContainer>
+
+          {/* Speed lines shooting in dodge direction */}
+          <SpeedLinesContainer $x={smoke.x} $y={smoke.y}>
+            <SpeedLine $direction={smoke.dodgeDirection} $offset={-5} $delay={0} />
+            <SpeedLine $direction={smoke.dodgeDirection} $offset={5} $delay={30} />
+            <SpeedLine $direction={smoke.dodgeDirection} $offset={15} $delay={60} />
+            <SpeedLine $direction={smoke.dodgeDirection} $offset={-15} $delay={20} />
+          </SpeedLinesContainer>
+
+          {/* Afterimage ghosts trailing behind */}
+          <AfterimageContainer 
+            $x={smoke.x} 
+            $y={smoke.y} 
+            $direction={smoke.dodgeDirection}
+            $delay={0}
+          >
+            <AfterimageGhost />
+          </AfterimageContainer>
+          <AfterimageContainer 
+            $x={smoke.x} 
+            $y={smoke.y} 
+            $direction={smoke.dodgeDirection}
+            $delay={50}
+          >
+            <AfterimageGhost />
+          </AfterimageContainer>
+
+          {/* Burst particles */}
+          <BurstContainer $x={smoke.x} $y={smoke.y}>
+            <BurstParticle $bx={smoke.dodgeDirection * 20} $by={-25} />
+            <BurstParticle $bx={smoke.dodgeDirection * 35} $by={-15} />
+            <BurstParticle $bx={smoke.dodgeDirection * 15} $by={-35} />
+            <BurstParticle $bx={smoke.dodgeDirection * 40} $by={-5} />
+            <GroundDust />
+          </BurstContainer>
+        </div>
       ))}
     </>
   );

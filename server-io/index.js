@@ -175,14 +175,24 @@ const GRAB_ATTEMPT_DURATION = 1000; // 1 second for attempt animation
 
 // Note: Using MAP_LEFT_BOUNDARY and MAP_RIGHT_BOUNDARY from gameUtils.js for ring-out boundaries
 
-// Add movement constants
-const MOVEMENT_ACCELERATION = 0.08; // Reduced from 0.25 for more slippery feel
-const MOVEMENT_DECELERATION = 0.12; // Reduced from 0.35 for longer slides
-const MAX_MOVEMENT_SPEED = 1.2; // Slightly increased for better momentum
-const MOVEMENT_MOMENTUM = 0.98; // Increased from 0.85 for longer slides
-const MOVEMENT_FRICTION = 0.985; // Increased from 0.95 for more ice-like feel
-const ICE_DRIFT_FACTOR = 0.92; // New constant for directional drift
-const MIN_MOVEMENT_THRESHOLD = 0.01; // New constant for movement cutoff
+// Add movement constants - tuned for "heavy but agile" penguin feel
+// Initial response is snappy, but momentum builds gradually for ice physics
+const MOVEMENT_ACCELERATION = 0.12; // Increased for snappier initial response
+const MOVEMENT_DECELERATION = 0.08; // Reduced for longer, more satisfying slides
+const MAX_MOVEMENT_SPEED = 1.35; // Slightly faster top speed for better momentum play
+const MOVEMENT_MOMENTUM = 0.975; // Tuned for slippery but controllable feel
+const MOVEMENT_FRICTION = 0.988; // Ice-like sliding without feeling stuck
+const ICE_DRIFT_FACTOR = 0.88; // Stronger drift when changing directions - commitment matters
+const MIN_MOVEMENT_THRESHOLD = 0.015; // Slightly higher threshold for cleaner stops
+const INITIAL_MOVEMENT_BURST = 0.25; // Instant velocity burst when starting to move (removes "stuck in mud")
+
+// Dodge physics constants - smooth graceful arc with weight
+const DODGE_DURATION = 450; // Longer for bigger, more dramatic arc
+const DODGE_BASE_SPEED = 2.7; // Good horizontal distance
+const DODGE_HOP_HEIGHT = 95; // Higher for a bigger, more impressive arc
+const DODGE_LANDING_MOMENTUM = 0.35; // Momentum burst on landing for chaining moves
+const DODGE_CANCEL_DURATION = 100; // Smooth but quick slam-down
+const DODGE_CANCEL_SPEED_MULT = 0.2; // Some horizontal movement during cancel
 
 // Grab walking tuning
 const GRAB_WALK_SPEED_MULTIPLIER = 0.8; // Slightly slower than normal strafing
@@ -2212,41 +2222,49 @@ io.on("connection", (socket) => {
             player.knockbackVelocity.x = 0;
           }
         }
-        // Dodging
+        // Dodging - Revolutionary physics: "snap up, hang, slam down" like Celeste/Hollow Knight
         if (player.isDodging) {
           // Use fixed dodge speed - no momentum-based variations
-          const FIXED_DODGE_SPEED = speedFactor * 2.5; // Increased from 1.8 for more distance/speed
-          let currentDodgeSpeed = FIXED_DODGE_SPEED;
+          let currentDodgeSpeed = speedFactor * DODGE_BASE_SPEED;
 
           // Apply speed power-up to dodge with moderate multiplier
           if (player.activePowerUp === POWER_UP_TYPES.SPEED) {
             currentDodgeSpeed *= Math.min(player.powerUpMultiplier * 0.85, 1.5);
           }
 
-          // Check for dodge cancel (holding 's' key)
+          // Check for dodge cancel (holding 's' key) - FAST SLAM DOWN
           if (player.keys.s && !player.isDodgeCancelling && player.y > GROUND_LEVEL) {
             player.isDodgeCancelling = true;
             player.dodgeCancelStartTime = Date.now();
             player.dodgeCancelStartY = player.y;
+            player.dodgeCancelVelocity = 0; // For accelerating fall
           }
 
-          // Handle dodge cancel - smooth drop down
+          // Handle dodge cancel - PUNCHY slam down with acceleration
           if (player.isDodgeCancelling) {
-            const DODGE_CANCEL_DURATION = 120; // Quick but smooth drop (120ms)
             const cancelProgress = Math.min(
               (Date.now() - player.dodgeCancelStartTime) / DODGE_CANCEL_DURATION,
               1
             );
             
-            // Use easeOutQuad for smooth landing: t * (2 - t)
-            const easedProgress = cancelProgress * (2 - cancelProgress);
+            // Use easeInQuad for accelerating slam: t^2 (starts slow, accelerates into ground)
+            // Then easeOutBack for slight bounce feel at the end
+            let easedProgress;
+            if (cancelProgress < 0.7) {
+              // Accelerating fall (easeInQuad)
+              const t = cancelProgress / 0.7;
+              easedProgress = t * t * 0.85;
+            } else {
+              // Quick settle with slight overshoot (easeOutBack feel)
+              const t = (cancelProgress - 0.7) / 0.3;
+              easedProgress = 0.85 + t * 0.15 * (1 + 0.3 * (1 - t));
+            }
             
             // Interpolate from cancel start Y to ground level
-            player.y = player.dodgeCancelStartY - (player.dodgeCancelStartY - GROUND_LEVEL) * easedProgress;
+            player.y = player.dodgeCancelStartY - (player.dodgeCancelStartY - GROUND_LEVEL) * Math.min(easedProgress, 1);
             
-            // Still move horizontally but at reduced speed during cancel
-            const cancelSpeedMultiplier = 0.3; // Reduce horizontal speed during cancel
-            const newX = player.x + player.dodgeDirection * delta * currentDodgeSpeed * cancelSpeedMultiplier;
+            // Minimal horizontal movement during cancel - commitment to the slam
+            const newX = player.x + player.dodgeDirection * delta * currentDodgeSpeed * DODGE_CANCEL_SPEED_MULT;
             
             // Calculate effective boundary based on player size
             const sizeOffset = 0;
@@ -2263,31 +2281,58 @@ io.on("connection", (socket) => {
               player.isDodgeCancelling = false;
               player.dodgeDirection = null;
               player.y = GROUND_LEVEL;
-              player.movementVelocity = 0; // Clear momentum on cancel landing
+              // Give small momentum in dodge direction for responsive chaining
+              if (player.keys.a) {
+                player.movementVelocity = -DODGE_LANDING_MOMENTUM;
+              } else if (player.keys.d) {
+                player.movementVelocity = DODGE_LANDING_MOMENTUM;
+              } else {
+                player.movementVelocity = 0;
+              }
+              // Mark landing for visual effects
+              player.justLandedFromDodge = true;
+              player.dodgeLandTime = Date.now();
             }
           } else {
             // Normal dodge movement (not cancelling)
+            // Smooth sine-based arc for natural, graceful motion
             
-            // Calculate dodge progress (0 to 1)
-            const dodgeProgress =
-              (Date.now() - player.dodgeStartTime) /
-              (player.dodgeEndTime - player.dodgeStartTime);
+            const elapsed = Date.now() - player.dodgeStartTime;
+            const totalDuration = player.dodgeEndTime - player.dodgeStartTime;
+            const dodgeProgress = Math.min(elapsed / totalDuration, 1);
 
-            // Simple parabolic arc - starts slow, peaks in middle, lands with weight
-            // Using a quadratic function for more realistic arc shape
-            const arcProgress = 4 * dodgeProgress * (1 - dodgeProgress); // Parabola that peaks at 0.5
-            const hopHeight = arcProgress * 75; // Reverted to original hop height
+            // Smooth sine arc - natural parabolic feel
+            // sin(0 to PI) creates perfect 0 -> 1 -> 0 curve
+            const arcProgress = Math.sin(dodgeProgress * Math.PI);
+            
+            // Add slight ease-out on the rise and ease-in on the fall for weight
+            // This makes the penguin feel heavy at the top of the arc
+            let weightedArc;
+            if (dodgeProgress < 0.5) {
+              // Rising: ease-out cubic for snappy start
+              const riseT = dodgeProgress * 2; // 0 to 1 for first half
+              const easeOut = 1 - Math.pow(1 - riseT, 2.5);
+              weightedArc = easeOut * arcProgress / Math.sin(riseT * Math.PI / 2 + 0.001);
+              weightedArc = Math.min(weightedArc, 1) * arcProgress;
+            } else {
+              // Falling: ease-in for weighted drop
+              const fallT = (dodgeProgress - 0.5) * 2; // 0 to 1 for second half
+              const easeIn = Math.pow(fallT, 1.8);
+              weightedArc = arcProgress * (1 - easeIn * 0.15);
+            }
+            
+            // Blend between pure sine and weighted version for smoothness
+            const blendedArc = arcProgress * 0.7 + weightedArc * 0.3;
+            const hopHeight = blendedArc * DODGE_HOP_HEIGHT;
 
-            // Add slight deceleration over time for weightier feel
-            const speedMultiplier = 1.0 - dodgeProgress * 0.2; // Slow down by 20% over time
+            // Smooth speed curve - slightly faster at start and end, slower at apex
+            const speedMultiplier = 0.92 + Math.cos(dodgeProgress * Math.PI) * 0.08;
+
             const adjustedSpeed = currentDodgeSpeed * speedMultiplier;
 
             // Calculate new position - uses fixed speed, not affected by prior momentum
             const newX = player.x + player.dodgeDirection * delta * adjustedSpeed;
             const newY = GROUND_LEVEL + hopHeight;
-
-            // Store previous Y position to detect landing
-            const previousY = player.y;
 
             // Calculate effective boundary based on player size
             const sizeOffset = 0;
@@ -2304,15 +2349,32 @@ io.on("connection", (socket) => {
             }
 
             if (Date.now() >= player.dodgeEndTime) {
-              // Clear all momentum on landing - no momentum transfer
-              player.movementVelocity = 0;
+              // Landing momentum burst for responsive chaining
+              if (player.keys.a) {
+                player.movementVelocity = -DODGE_LANDING_MOMENTUM;
+              } else if (player.keys.d) {
+                player.movementVelocity = DODGE_LANDING_MOMENTUM;
+              } else {
+                player.movementVelocity = player.dodgeDirection * DODGE_LANDING_MOMENTUM * 0.5;
+              }
               player.isStrafing = false;
 
               player.isDodging = false;
               player.isDodgeCancelling = false;
               player.dodgeDirection = null;
-              player.y = GROUND_LEVEL; // Reset to ground level when dodge ends
+              player.y = GROUND_LEVEL;
+              
+              // Mark landing for visual effects
+              player.justLandedFromDodge = true;
+              player.dodgeLandTime = Date.now();
             }
+          }
+        }
+
+        // Clear dodge landing flag after animation duration (200ms)
+        if (player.justLandedFromDodge && player.dodgeLandTime) {
+          if (Date.now() - player.dodgeLandTime > 200) {
+            player.justLandedFromDodge = false;
           }
         }
 
@@ -2695,16 +2757,20 @@ io.on("connection", (socket) => {
             ) && // Block strafing during post-slap cooldown
             !player.isAtTheRopes // Block strafing while at the ropes
           ) {
-            // Apply ice drift when changing directions
-            if (player.movementVelocity < 0) {
-              player.movementVelocity *= ICE_DRIFT_FACTOR;
+            // INSTANT INITIAL BURST - removes "stuck in mud" feeling
+            // If starting from standstill or opposite direction, give immediate velocity
+            if (player.movementVelocity <= 0 && !player.wasStrafingRight) {
+              // Starting fresh or changing direction - instant burst
+              player.movementVelocity = Math.max(player.movementVelocity * ICE_DRIFT_FACTOR, 0) + INITIAL_MOVEMENT_BURST;
+              player.wasStrafingRight = true;
+              player.wasStrafingLeft = false;
+            } else {
+              // Already moving right - gradual ice acceleration
+              player.movementVelocity = Math.min(
+                player.movementVelocity + MOVEMENT_ACCELERATION,
+                MAX_MOVEMENT_SPEED
+              );
             }
-
-            // Gradual acceleration on ice
-            player.movementVelocity = Math.min(
-              player.movementVelocity + MOVEMENT_ACCELERATION,
-              MAX_MOVEMENT_SPEED
-            );
 
             // Calculate new position and check boundaries
             const newX =
@@ -2746,16 +2812,20 @@ io.on("connection", (socket) => {
             ) && // Block strafing during post-slap cooldown
             !player.isAtTheRopes // Block strafing while at the ropes
           ) {
-            // Apply ice drift when changing directions
-            if (player.movementVelocity > 0) {
-              player.movementVelocity *= ICE_DRIFT_FACTOR;
+            // INSTANT INITIAL BURST - removes "stuck in mud" feeling
+            // If starting from standstill or opposite direction, give immediate velocity
+            if (player.movementVelocity >= 0 && !player.wasStrafingLeft) {
+              // Starting fresh or changing direction - instant burst
+              player.movementVelocity = Math.min(player.movementVelocity * ICE_DRIFT_FACTOR, 0) - INITIAL_MOVEMENT_BURST;
+              player.wasStrafingLeft = true;
+              player.wasStrafingRight = false;
+            } else {
+              // Already moving left - gradual ice acceleration
+              player.movementVelocity = Math.max(
+                player.movementVelocity - MOVEMENT_ACCELERATION,
+                -MAX_MOVEMENT_SPEED
+              );
             }
-
-            // Gradual acceleration on ice
-            player.movementVelocity = Math.max(
-              player.movementVelocity - MOVEMENT_ACCELERATION,
-              -MAX_MOVEMENT_SPEED
-            );
 
             // Calculate new position and check boundaries
             const newX =
@@ -2777,6 +2847,8 @@ io.on("connection", (socket) => {
               player.movementVelocity = 0;
               player.isStrafing = false;
               player.isCrouchStrafing = false;
+              player.wasStrafingLeft = false;
+              player.wasStrafingRight = false;
             }
             // Apply ice-like deceleration
             else if (Math.abs(player.movementVelocity) > MIN_MOVEMENT_THRESHOLD) {
@@ -2825,6 +2897,9 @@ io.on("connection", (socket) => {
             } else {
               // Snap to zero when velocity is very small
               player.movementVelocity = 0;
+              // Reset strafe direction flags when fully stopped
+              player.wasStrafingLeft = false;
+              player.wasStrafingRight = false;
             }
           }
 
@@ -5828,11 +5903,12 @@ io.on("connection", (socket) => {
       player.dodgeCancelStartTime = 0;
       player.dodgeCancelStartY = 0;
       player.dodgeStartTime = Date.now();
-      player.dodgeEndTime = Date.now() + 450; // Increased from 400ms for more weighty feel
+      player.dodgeEndTime = Date.now() + DODGE_DURATION; // Snappy dodge duration
       player.dodgeStartX = player.x;
       player.dodgeStartY = player.y;
       player.currentAction = "dodge";
-      player.actionLockUntil = Date.now() + 120; // brief lock to avoid overlap jitters
+      player.actionLockUntil = Date.now() + 100; // Slightly shorter lock for responsiveness
+      player.justLandedFromDodge = false; // Reset landing flag
 
       // Drain stamina for dodge (15% of max stamina)
       player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
@@ -5880,10 +5956,11 @@ io.on("connection", (socket) => {
               player.dodgeCancelStartTime = 0;
               player.dodgeCancelStartY = 0;
               player.dodgeStartTime = Date.now();
-              player.dodgeEndTime = Date.now() + 450; // Updated to match new dodge duration
+              player.dodgeEndTime = Date.now() + DODGE_DURATION;
               player.dodgeDirection = action.direction;
               player.dodgeStartX = player.x;
               player.dodgeStartY = player.y;
+              player.justLandedFromDodge = false;
               
               // Drain stamina for buffered dodge
               player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
@@ -5929,7 +6006,7 @@ io.on("connection", (socket) => {
             startCharging(player);
           }
         },
-        450, // Updated to match new dodge duration
+        DODGE_DURATION,
         "dodgeReset"
       );
     } else if (

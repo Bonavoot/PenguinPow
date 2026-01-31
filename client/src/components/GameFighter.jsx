@@ -16,7 +16,8 @@ import ThrowTechEffect from "./ThrowTechEffect";
 import PowerMeter from "./PowerMeter";
 import SlapParryEffect from "./SlapParryEffect";
 import DodgeSmokeEffect from "./DodgeDustEffect";
-import ChargedAttackSmokeEffect from "./ChargedAttackSmokeEffect";
+// import DodgeLandingEffect from "./DodgeLandingEffect";
+// import ChargedAttackSmokeEffect from "./ChargedAttackSmokeEffect";
 import StarStunEffect from "./StarStunEffect";
 import ThickBlubberEffect from "./ThickBlubberEffect";
 import GrabBreakEffect from "./GrabBreakEffect";
@@ -709,6 +710,8 @@ const StyledImage = styled("img")
         "lastThrowAttemptTime",
         "lastGrabAttemptTime",
         "dodgeDirection",
+        "isDodgeCancelling",
+        "justLandedFromDodge",
         "speedFactor",
         "sizeMultiplier",
         "isRecovering",
@@ -722,6 +725,7 @@ const StyledImage = styled("img")
         "isGrabClashActive",
         "isAttemptingGrabThrow",
         "ritualAnimationSrc",
+        "isLocalPlayer",
       ].includes(prop),
   })
   .attrs((props) => ({
@@ -791,17 +795,19 @@ const StyledImage = styled("img")
         isOutsideDohyo(props.$x, props.$y) ? 0 : // Behind dohyo overlay when outside
         props.$isThrowing || props.$isDodging || props.$isGrabbing ? 98 : 99,
       filter: props.$isAtTheRopes
-        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(255, 50, 50, 0.7)) brightness(1.15) contrast(1.25)"
+        ? `drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(255, 50, 50, 0.7)) brightness(1.15) contrast(1.25)${props.$isLocalPlayer ? ' drop-shadow(0 0 3px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 1.5px rgba(255, 255, 255, 1))' : ''}`
         : props.$isGrabBreaking
-        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.85)) brightness(1.35) drop-shadow(0 0 3px #000)"
+        ? `drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.85)) brightness(1.35) drop-shadow(0 0 3px #000)${props.$isLocalPlayer ? ' drop-shadow(0 0 3px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 1.5px rgba(255, 255, 255, 1))' : ''}`
         : props.$isRawParrying
-        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3) drop-shadow(0 0 3px #000)"
+        ? `drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3) drop-shadow(0 0 3px #000)${props.$isLocalPlayer ? ' drop-shadow(0 0 3px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 1.5px rgba(255, 255, 255, 1))' : ''}`
         : props.$isHit
-        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) brightness(1.15)"
+        ? `drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) brightness(1.15)${props.$isLocalPlayer ? ' drop-shadow(0 0 3px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 1.5px rgba(255, 255, 255, 1))' : ''}`
         : props.$isChargingAttack
-        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 12px rgba(255, 200, 50, 0.85)) contrast(1.25)"
+        ? `drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 12px rgba(255, 200, 50, 0.85)) contrast(1.25)${props.$isLocalPlayer ? ' drop-shadow(0 0 3px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 1.5px rgba(255, 255, 255, 1))' : ''}`
         : props.$isGrabClashActive
-        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.25) brightness(1.1)"
+        ? `drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.25) brightness(1.1)${props.$isLocalPlayer ? ' drop-shadow(0 0 3px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 1.5px rgba(255, 255, 255, 1))' : ''}`
+        : props.$isLocalPlayer
+        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 3px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 1.5px rgba(255, 255, 255, 1)) contrast(1.2)"
         : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) ",
       animation: props.$isAtTheRopes
         ? "atTheRopesWobble 0.3s ease-in-out infinite"
@@ -817,6 +823,12 @@ const StyledImage = styled("img")
         ? "grabClashStruggle 0.15s ease-in-out infinite"
         : props.$isHit
         ? "hitSquash 0.18s ease-out"
+        : props.$justLandedFromDodge
+        ? "dodgeLanding 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards"
+        // : props.$isDodgeCancelling
+        // ? "dodgeCancelSlam 0.12s cubic-bezier(0.25, 0.1, 0.25, 1) forwards"
+        : props.$isDodging
+        ? "dodgeTakeoff 0.2s cubic-bezier(0.25, 0.1, 0.25, 1) forwards"
         : props.$isChargingAttack
         ? "chargePulse 0.6s ease-in-out infinite"
         : props.$isAttacking && !props.$isSlapAttack
@@ -1010,6 +1022,85 @@ const StyledImage = styled("img")
     }
   }
   
+  /* DODGE ANIMATIONS - Smooth graceful arc with subtle squash/stretch */
+  
+  /* Dodge takeoff - gentle squash then smooth stretch */
+  @keyframes dodgeTakeoff {
+    0% {
+      transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2);
+    }
+    20% {
+      transform: scaleX(calc(var(--facing, 1) * 1.08)) scaleY(0.88) translateY(0);
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.25) brightness(1.05);
+    }
+    50% {
+      transform: scaleX(calc(var(--facing, 1) * 0.94)) scaleY(1.08) translateY(-2px);
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.22) brightness(1.08) drop-shadow(0 0 5px rgba(255, 255, 255, 0.25));
+    }
+    80% {
+      transform: scaleX(calc(var(--facing, 1) * 0.97)) scaleY(1.04) translateY(-1px);
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) brightness(1.03);
+    }
+    100% {
+      transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2);
+    }
+  }
+  
+  /* Dodge cancel slam - smooth drop with impact squash */
+  @keyframes dodgeCancelSlam {
+    0% {
+      transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2);
+    }
+    40% {
+      transform: scaleX(calc(var(--facing, 1) * 0.94)) scaleY(1.08) translateY(1px);
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.22) brightness(1.05);
+    }
+    70% {
+      transform: scaleX(calc(var(--facing, 1) * 1.12)) scaleY(0.82) translateY(0);
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.28) brightness(1.1) drop-shadow(0 0 4px rgba(255, 255, 255, 0.35));
+    }
+    90% {
+      transform: scaleX(calc(var(--facing, 1) * 0.98)) scaleY(1.03) translateY(0);
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.22);
+    }
+    100% {
+      transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2);
+    }
+  }
+  
+  /* Dodge landing - gentle impact squash with smooth recovery */
+  @keyframes dodgeLanding {
+    0% {
+      transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
+      transform-origin: center bottom;
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2);
+    }
+    25% {
+      transform: scaleX(calc(var(--facing, 1) * 1.06)) scaleY(0.88) translateY(0);
+      transform-origin: center bottom;
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.24) brightness(1.05) drop-shadow(0 0 3px rgba(255, 255, 255, 0.2));
+    }
+    55% {
+      transform: scaleX(calc(var(--facing, 1) * 0.98)) scaleY(1.04) translateY(0);
+      transform-origin: center bottom;
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.21) brightness(1.02);
+    }
+    80% {
+      transform: scaleX(calc(var(--facing, 1) * 1.02)) scaleY(0.99) translateY(0);
+      transform-origin: center bottom;
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2);
+    }
+    100% {
+      transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
+      transform-origin: center bottom;
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2);
+    }
+  }
+  
   /* Raw parry success animation - defensive recoil and recovery */
   @keyframes rawParryRecoil {
     0% {
@@ -1076,7 +1167,9 @@ const RitualSpriteImage = styled.img.attrs((props) => {
       transform: `translate3d(-${offsetPercent}%, 0, 0)`,
       willChange: "transform",
       backfaceVisibility: "hidden",
-      filter: "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2)",
+      filter: props.$isLocalPlayer
+        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 3px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 1.5px rgba(255, 255, 255, 1)) contrast(1.2)"
+        : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2)",
     },
   };
 })``;
@@ -1862,6 +1955,7 @@ const GameFighter = ({
   const lastThrowingSaltState = useRef(false);
   const lastThrowState = useRef(false);
   const lastDodgeState = useRef(false);
+  const lastDodgeLandState = useRef(false);
   const lastGrabState = useRef(false);
   const lastThrowingSnowballState = useRef(false);
   const lastSpawningPumoArmyState = useRef(false);
@@ -2414,10 +2508,23 @@ const GameFighter = ({
 
   useEffect(() => {
     if (penguin.isDodging && !lastDodgeState.current) {
-      playSound(dodgeSound, 0.01);
+      playSound(dodgeSound, 0.02); // Louder for satisfying feedback
     }
     lastDodgeState.current = penguin.isDodging;
   }, [penguin.isDodging]);
+
+  // Screen shake on dodge landing for satisfying impact feel
+  useEffect(() => {
+    if (penguin.justLandedFromDodge && !lastDodgeLandState.current) {
+      // Subtle shake for landing impact - gentler for smoother feel
+      setScreenShake({
+        intensity: penguin.isDodgeCancelling ? 2.5 : 1.5, // Gentler shake
+        duration: penguin.isDodgeCancelling ? 100 : 60,
+        startTime: Date.now(),
+      });
+    }
+    lastDodgeLandState.current = penguin.justLandedFromDodge;
+  }, [penguin.justLandedFromDodge, penguin.isDodgeCancelling]);
 
   useEffect(() => {
     if (penguin.isGrabbing && !lastGrabState.current) {
@@ -2765,15 +2872,22 @@ const GameFighter = ({
         isThrowing={penguin.isThrowing}
         isBeingThrown={penguin.isBeingThrown}
         isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
+        isLocalPlayer={penguin.id === localId}
       />
-      <DodgeSmokeEffect
+      {/* <DodgeSmokeEffect
         x={penguin.dodgeStartX || getDisplayPosition().x}
         y={penguin.dodgeStartY || getDisplayPosition().y}
         isDodging={penguin.isDodging}
         facing={penguin.facing}
         dodgeDirection={penguin.dodgeDirection}
-      />
-
+      /> */}
+      {/* <DodgeLandingEffect
+        x={getDisplayPosition().x}
+        y={GROUND_LEVEL}
+        justLanded={penguin.justLandedFromDodge}
+        isCancelled={penguin.isDodgeCancelling}
+      /> */}
+{/* 
       <ChargedAttackSmokeEffect
         x={getDisplayPosition().x}
         y={getDisplayPosition().y}
@@ -2782,7 +2896,7 @@ const GameFighter = ({
         isSlapAttack={penguin.isSlapAttack}
         isThrowing={penguin.isThrowing}
         chargeCancelled={penguin.chargeCancelled || false}
-      />
+      /> */}
       <StyledImage
         $fighter={penguin.fighter}
         $isDiving={penguin.isDiving}
@@ -2828,6 +2942,8 @@ const GameFighter = ({
         $lastThrowAttemptTime={penguin.lastThrowAttemptTime}
         $lastGrabAttemptTime={penguin.lastGrabAttemptTime}
         $dodgeDirection={penguin.dodgeDirection}
+        $isDodgeCancelling={penguin.isDodgeCancelling}
+        $justLandedFromDodge={penguin.justLandedFromDodge}
         $speedFactor={penguin.speedFactor}
         $sizeMultiplier={penguin.sizeMultiplier}
         $isRecovering={penguin.isRecovering}
@@ -2843,6 +2959,7 @@ const GameFighter = ({
         $isGrabClashActive={isGrabClashActive}
         $isAttemptingGrabThrow={penguin.isAttemptingGrabThrow}
         $ritualAnimationSrc={null}
+        $isLocalPlayer={penguin.id === localId}
         style={{ display: shouldShowRitualForPlayer && ritualSpriteConfig ? 'none' : 'block' }}
       />
 
@@ -2864,6 +2981,7 @@ const GameFighter = ({
             alt={`Ritual Part ${partIndex + 1}`}
             $frame={partIndex === ritualPart ? ritualFrame : 0}
             $frameCount={config.frameCount}
+            $isLocalPlayer={penguin.id === localId}
             draggable={false}
           />
         </RitualSpriteContainer>
