@@ -123,26 +123,86 @@ const WinTracker = styled.div`
   display: flex;
   /* Smaller gap on small screens */
   gap: clamp(2px, 0.4vw, 5px);
+  /* Mirror layout: Player 1 left-to-right, Player 2 right-to-left */
   flex-direction: ${(props) => (props.$isRight ? "row-reverse" : "row")};
   margin-left: ${(props) => (props.$isRight ? "0" : "auto")};
   margin-right: ${(props) => (props.$isRight ? "auto" : "0")};
+  
+  /* Traditional Japanese parchment/scroll background */
+  background: linear-gradient(
+    135deg,
+    rgba(245, 235, 215, 0.95) 0%,
+    rgba(235, 220, 195, 0.95) 50%,
+    rgba(230, 215, 185, 0.95) 100%
+  );
+  padding: clamp(4px, 0.6vw, 8px) clamp(6px, 0.8vw, 10px);
+  border-radius: 6px;
+  
+  /* Wooden frame effect with traditional Japanese red accent */
+  border: 2px solid rgba(139, 90, 43, 0.8);
+  box-shadow: 
+    0 2px 8px rgba(0, 0, 0, 0.3),
+    inset 0 0 0 1px rgba(180, 120, 60, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  
+  /* Subtle texture overlay for authenticity */
+  position: relative;
+  
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: 
+      repeating-linear-gradient(
+        90deg,
+        transparent 0px,
+        rgba(139, 90, 43, 0.03) 1px,
+        transparent 2px,
+        transparent 4px
+      ),
+      repeating-linear-gradient(
+        0deg,
+        transparent 0px,
+        rgba(139, 90, 43, 0.03) 1px,
+        transparent 2px,
+        transparent 4px
+      );
+    pointer-events: none;
+    border-radius: 4px;
+  }
 `;
 
 const WinMark = styled.div`
   /* Smaller minimum for small screens */
   width: clamp(10px, 1.6vw, 20px);
   height: clamp(10px, 1.6vw, 20px);
-  background: ${(props) =>
-    props.$isWin
-      ? "radial-gradient(60% 60% at 35% 35%, rgba(200, 255, 200, 0.95) 0%, #22c55e 60%, #15803d 100%)"
-      : "linear-gradient(145deg, rgba(67, 61, 103, 0.6), rgba(11, 16, 32, 0.8))"};
-  border: 2px solid ${(props) => (props.$isWin ? "#22c55e" : "rgba(212, 175, 55, 0.3)")};
+  background: ${(props) => {
+    if (props.$isEmpty) {
+      return "linear-gradient(145deg, rgba(200, 180, 160, 0.3), rgba(180, 160, 140, 0.2))";
+    }
+    return props.$isWin
+      ? "radial-gradient(60% 60% at 35% 35%, rgba(255, 255, 255, 1) 0%, #f5f5f5 60%, #e8e8e8 100%)"
+      : "radial-gradient(60% 60% at 35% 35%, rgba(30, 30, 30, 1) 0%, #1a1a1a 60%, #0a0a0a 100%)";
+  }};
+  border: 2px solid ${(props) => {
+    if (props.$isEmpty) return "rgba(139, 90, 43, 0.4)";
+    return props.$isWin ? "#ffffff" : "#000000";
+  }};
   border-radius: 50%;
-  box-shadow: ${(props) =>
-    props.$isWin
-      ? "0 0 12px rgba(34, 197, 94, 0.7), inset 0 -2px 4px rgba(0, 0, 0, 0.3)"
-      : "inset 0 2px 4px rgba(0, 0, 0, 0.4)"};
-  animation: ${(props) => (props.$isWin ? pulseWin : "none")} 2s infinite;
+  box-shadow: ${(props) => {
+    if (props.$isEmpty) {
+      return "inset 0 1px 3px rgba(0, 0, 0, 0.2)";
+    }
+    return props.$isWin
+      ? "0 0 8px rgba(255, 255, 255, 0.9), 0 2px 4px rgba(0, 0, 0, 0.3), inset 0 -2px 4px rgba(0, 0, 0, 0.2)"
+      : "0 0 4px rgba(0, 0, 0, 1), 0 2px 6px rgba(0, 0, 0, 0.8), inset 0 2px 4px rgba(0, 0, 0, 0.7)";
+  }};
+  animation: ${(props) => (props.$isWin && !props.$isEmpty ? pulseWin : "none")} 2s infinite;
+  position: relative;
+  z-index: 1;
 `;
 
 const StaminaRow = styled.div`
@@ -338,6 +398,7 @@ const THROW_BREAK_STAMINA_THRESHOLD = 33;
 const UiPlayerInfo = ({
   playerOneWinCount,
   playerTwoWinCount,
+  roundHistory = [],
   roundId = 0,
   player1Stamina,
   player1ActivePowerUp = null,
@@ -451,11 +512,22 @@ const UiPlayerInfo = ({
     };
   }, [s2]);
 
-  const renderWinMarks = (winCount) => {
+  const renderWinMarks = (playerName) => {
     const marks = [];
-    for (let i = 0; i < 3; i++) {
-      marks.push(<WinMark key={i} $isWin={i < winCount} />);
+    const maxRounds = 5; // Best of 5
+    
+    // Show circles in chronological order based on round history (oldest to newest)
+    for (let i = 0; i < maxRounds; i++) {
+      if (i < roundHistory.length) {
+        // Show actual result
+        const isWin = roundHistory[i] === playerName;
+        marks.push(<WinMark key={`round-${i}`} $isWin={isWin} $isEmpty={false} />);
+      } else {
+        // Show empty placeholder
+        marks.push(<WinMark key={`empty-${i}`} $isWin={false} $isEmpty={true} />);
+      }
     }
+    
     return marks;
   };
 
@@ -499,7 +571,7 @@ const UiPlayerInfo = ({
             <PlayerRank>JONOKUCHI</PlayerRank>
           </PlayerInfo>
           <WinTracker $isRight={false}>
-            {renderWinMarks(playerOneWinCount)}
+            {renderWinMarks("player1")}
           </WinTracker>
         </PlayerHeader>
 
@@ -543,7 +615,7 @@ const UiPlayerInfo = ({
             <PlayerRank>JONOKUCHI</PlayerRank>
           </PlayerInfo>
           <WinTracker $isRight={true}>
-            {renderWinMarks(playerTwoWinCount)}
+            {renderWinMarks("player2")}
           </WinTracker>
         </PlayerHeader>
 
@@ -579,6 +651,7 @@ const UiPlayerInfo = ({
 UiPlayerInfo.propTypes = {
   playerOneWinCount: PropTypes.number.isRequired,
   playerTwoWinCount: PropTypes.number.isRequired,
+  roundHistory: PropTypes.array,
   roundId: PropTypes.number,
   player1Stamina: PropTypes.number,
   player1ActivePowerUp: PropTypes.string,

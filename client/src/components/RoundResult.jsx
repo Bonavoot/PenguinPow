@@ -474,7 +474,7 @@ const SecondaryInkSplatter = styled(InkSplatter)`
 const SubtitleText = styled.div`
   font-family: "Bungee", cursive;
   font-size: 2.6rem;
-  color: ${props => props.$isVictory ? '#FFFFFF' : '#CCCCCC'};
+  color: ${props => props.$isVictory ? '#FFFFFF' : '#FFFFFF'};
   text-transform: uppercase;
   letter-spacing: 0.3em;
   margin-top: -22px;

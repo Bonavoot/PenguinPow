@@ -1479,6 +1479,7 @@ const GameFighter = ({
   const [winner, setWinner] = useState("");
   const [playerOneWinCount, setPlayerOneWinCount] = useState(0);
   const [playerTwoWinCount, setPlayerTwoWinCount] = useState(0);
+  const [roundHistory, setRoundHistory] = useState([]); // Track order of wins: ["player1", "player2", "player1", ...]
   const [matchOver, setMatchOver] = useState(false);
   const [parryEffectPosition, setParryEffectPosition] = useState(null);
   const [hitEffectPosition, setHitEffectPosition] = useState(null);
@@ -1632,7 +1633,7 @@ const GameFighter = ({
     }
 
     const configs = index === 0 ? ritualSpritesheetsPlayer1 : ritualSpritesheetsPlayer2;
-    const shouldPlaySound = index === 0;
+    const shouldPlaySound = true; // Both players play claps during ritual
     
     // Local state that persists across interval calls
     let currentPart = 0;
@@ -2228,6 +2229,11 @@ const GameFighter = ({
       setGameOver(data.isGameOver);
       setWinner(data.winner);
       console.log(data.winner);
+      
+      // Add winner to round history
+      const winnerName = data.winner.fighter === "player 1" ? "player1" : "player2";
+      setRoundHistory(prev => [...prev, winnerName]);
+      
       if (data.winner.fighter === "player 1") {
         setPlayerOneWinCount(data.wins);
         setGyojiState("player1Win");
@@ -2258,9 +2264,10 @@ const GameFighter = ({
     });
 
     socket.on("rematch", () => {
-      // Reset win counts when rematch starts
+      // Reset win counts and round history when rematch starts
       setPlayerOneWinCount(0);
       setPlayerTwoWinCount(0);
+      setRoundHistory([]);
       setMatchOver(false);
     });
 
@@ -2663,6 +2670,7 @@ const GameFighter = ({
         <UiPlayerInfo
           playerOneWinCount={playerOneWinCount}
           playerTwoWinCount={playerTwoWinCount}
+          roundHistory={roundHistory}
           roundId={uiRoundId}
           player1Stamina={allPlayersData.player1?.stamina ?? 100}
           player1ActivePowerUp={allPlayersData.player1?.activePowerUp ?? null}
