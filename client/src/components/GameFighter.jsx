@@ -115,6 +115,12 @@ import ritualPart2Spritesheet from "../assets/ritual_part2_spritesheet.png";
 import ritualPart3Spritesheet from "../assets/ritual_part3_spritesheet.png";
 import ritualPart4Spritesheet from "../assets/ritual_part4_spritesheet.png";
 
+// Ritual animation sprite sheet imports (Player 2 - Red)
+import ritualPart1SpritesheetRed from "../assets/ritual_part1_spritesheet_red.png";
+import ritualPart2SpritesheetRed from "../assets/ritual_part2_spritesheet_red.png";
+import ritualPart3SpritesheetRed from "../assets/ritual_part3_spritesheet_red.png";
+import ritualPart4SpritesheetRed from "../assets/ritual_part4_spritesheet_red.png";
+
 // Ritual clap sounds
 import clap1Sound from "../sounds/clap1-sound.wav";
 import clap2Sound from "../sounds/clap2-sound.mp3";
@@ -157,17 +163,27 @@ const CLAP_SOUND_OFFSET = 100; // ms before animation end
 // Player 1 (Blue) ritual spritesheets
 const ritualSpritesheetsPlayer1 = RITUAL_SPRITE_CONFIG;
 
-// Player 2 ritual spritesheets (placeholder - same as player 1 for now)
-// TODO: Replace with actual player 2 spritesheets when available
-const ritualSpritesheetsPlayer2 = RITUAL_SPRITE_CONFIG;
+// Player 2 (Red) ritual spritesheets
+const RITUAL_SPRITE_CONFIG_PLAYER2 = [
+  { spritesheet: ritualPart1SpritesheetRed, frameCount: 28, frameWidth: 480, fps: 14 },
+  { spritesheet: ritualPart2SpritesheetRed, frameCount: 24, frameWidth: 480, fps: 14 },
+  { spritesheet: ritualPart3SpritesheetRed, frameCount: 39, frameWidth: 480, fps: 14 },
+  { spritesheet: ritualPart4SpritesheetRed, frameCount: 38, frameWidth: 480, fps: 14 },
+];
+const ritualSpritesheetsPlayer2 = RITUAL_SPRITE_CONFIG_PLAYER2;
 
 // Clap sounds for each ritual part
 const ritualClapSounds = [clap1Sound, clap2Sound, clap3Sound, clap4Sound];
 
 // Preload ritual sprite sheets to prevent loading delays
-const ritualImagesLoaded = { count: 0, total: RITUAL_SPRITE_CONFIG.length };
+const ritualImagesLoaded = { count: 0, total: RITUAL_SPRITE_CONFIG.length + RITUAL_SPRITE_CONFIG_PLAYER2.length };
 const preloadRitualSpritesheets = () => {
   RITUAL_SPRITE_CONFIG.forEach((config) => {
+    const img = new Image();
+    img.onload = () => { ritualImagesLoaded.count++; };
+    img.src = config.spritesheet;
+  });
+  RITUAL_SPRITE_CONFIG_PLAYER2.forEach((config) => {
     const img = new Image();
     img.onload = () => { ritualImagesLoaded.count++; };
     img.src = config.spritesheet;
@@ -2222,9 +2238,9 @@ const GameFighter = ({
       // Play round victory or defeat sound based on local player result
       if (index === 0) {
         if (data.winner.id === localId) {
-          playSound(roundVictorySound, 0.03);
+          playSound(roundVictorySound, 0.02);
         } else {
-          playSound(roundDefeatSound, 0.03);
+          playSound(roundDefeatSound, 0.01);
         }
       }
       // Bump round ID immediately on winner declaration to reset UI stamina to server value

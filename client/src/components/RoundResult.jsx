@@ -199,7 +199,7 @@ const victoryShake = keyframes`
   50% { transform: translate(-50%, -50%); }
 `;
 
-// Screen flash overlay
+// Screen flash overlay - behind players but above gyoji/map
 const ScreenFlash = styled.div`
   position: fixed;
   top: 0;
@@ -212,7 +212,7 @@ const ScreenFlash = styled.div`
   };
   animation: ${screenFlash} 0.6s ease-out forwards;
   pointer-events: none;
-  z-index: 1400;
+  z-index: 50;
 `;
 
 const ResultContainer = styled.div`
@@ -220,13 +220,55 @@ const ResultContainer = styled.div`
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  z-index: 1500;
+  z-index: 50;
   pointer-events: none;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   animation: ${props => props.$isVictory ? css`${victoryShake} 0.4s ease-out` : 'none'};
+`;
+
+const SubtitleContainer = styled.div`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 110;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin-top: 10.5rem;
+  
+  @media (max-width: 1400px) {
+    margin-top: 9rem;
+  }
+  
+  @media (max-width: 1200px) {
+    margin-top: 7.5rem;
+  }
+  
+  @media (max-width: 900px) {
+    margin-top: 6rem;
+  }
+  
+  @media (max-width: 600px) {
+    margin-top: 4rem;
+  }
+  
+  @media (max-height: 800px) {
+    margin-top: 7rem;
+  }
+  
+  @media (max-height: 650px) {
+    margin-top: 5.5rem;
+  }
+  
+  @media (max-height: 500px) {
+    margin-top: 3.5rem;
+  }
 `;
 
 const KanjiContainer = styled.div`
@@ -238,7 +280,7 @@ const KanjiContainer = styled.div`
 
 const MainKanji = styled.div`
   font-family: "Noto Serif JP", "Yu Mincho", "Hiragino Mincho Pro", serif;
-  font-size: clamp(6rem, 25vw, 18rem);
+  font-size: 22rem;
   font-weight: 900;
   line-height: 1;
   position: relative;
@@ -252,18 +294,18 @@ const MainKanji = styled.div`
       0 0 20px rgba(255, 215, 0, 0.8),
       0 0 40px rgba(255, 215, 0, 0.6),
       0 0 60px rgba(255, 215, 0, 0.4),
-      6px 6px 0 #8B4513,
-      -2px -2px 0 #8B4513,
-      6px -2px 0 #8B4513,
-      -2px 6px 0 #8B4513
+      8px 8px 0 #8B4513,
+      -3px -3px 0 #8B4513,
+      8px -3px 0 #8B4513,
+      -3px 8px 0 #8B4513
     `
     : `
       0 0 15px rgba(139, 0, 0, 0.6),
       0 0 30px rgba(139, 0, 0, 0.4),
-      6px 6px 0 #1a1a1a,
-      -2px -2px 0 #1a1a1a,
-      6px -2px 0 #1a1a1a,
-      -2px 6px 0 #1a1a1a
+      8px 8px 0 #1a1a1a,
+      -3px -3px 0 #1a1a1a,
+      8px -3px 0 #1a1a1a,
+      -3px 8px 0 #1a1a1a
     `
   };
   /* Brush stroke texture effect */
@@ -274,28 +316,84 @@ const MainKanji = styled.div`
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  filter: ${props => props.$isVictory ? 'drop-shadow(0 0 30px rgba(255, 215, 0, 0.8))' : 'drop-shadow(0 0 20px rgba(139, 0, 0, 0.6))'};
+  filter: ${props => props.$isVictory ? 'drop-shadow(0 0 40px rgba(255, 215, 0, 0.8))' : 'drop-shadow(0 0 30px rgba(139, 0, 0, 0.6))'};
+  
+  @media (max-width: 1400px) {
+    font-size: 19rem;
+  }
+  
+  @media (max-width: 1200px) {
+    font-size: 16rem;
+  }
+  
+  @media (max-width: 900px) {
+    font-size: 13rem;
+  }
+  
+  @media (max-width: 600px) {
+    font-size: 9rem;
+  }
+  
+  @media (max-height: 800px) {
+    font-size: 15rem;
+  }
+  
+  @media (max-height: 650px) {
+    font-size: 12rem;
+  }
+  
+  @media (max-height: 500px) {
+    font-size: 8rem;
+  }
 `;
 
 // Shadow layer behind the kanji for depth
 const KanjiShadow = styled.div`
   position: absolute;
   font-family: "Noto Serif JP", "Yu Mincho", "Hiragino Mincho Pro", serif;
-  font-size: clamp(6rem, 25vw, 18rem);
+  font-size: 22rem;
   font-weight: 900;
   line-height: 1;
-  top: 4px;
-  left: 4px;
+  top: 5px;
+  left: 5px;
   color: ${props => props.$isVictory ? '#8B4513' : '#1a1a1a'};
   z-index: -1;
   filter: blur(2px);
   opacity: 0.7;
+  
+  @media (max-width: 1400px) {
+    font-size: 19rem;
+  }
+  
+  @media (max-width: 1200px) {
+    font-size: 16rem;
+  }
+  
+  @media (max-width: 900px) {
+    font-size: 13rem;
+  }
+  
+  @media (max-width: 600px) {
+    font-size: 9rem;
+  }
+  
+  @media (max-height: 800px) {
+    font-size: 15rem;
+  }
+  
+  @media (max-height: 650px) {
+    font-size: 12rem;
+  }
+  
+  @media (max-height: 500px) {
+    font-size: 8rem;
+  }
 `;
 
 const InkSplatter = styled.div`
   position: absolute;
-  width: clamp(150px, 40vw, 400px);
-  height: clamp(150px, 40vw, 400px);
+  width: 450px;
+  height: 450px;
   border-radius: 50%;
   background: ${props => props.$isVictory 
     ? 'radial-gradient(ellipse at center, rgba(255, 215, 0, 0.3) 0%, rgba(255, 165, 0, 0.2) 40%, transparent 70%)'
@@ -313,41 +411,164 @@ const InkSplatter = styled.div`
     15% 85%, 10% 70%, 0% 60%, 5% 45%, 0% 30%, 
     10% 20%, 20% 10%, 35% 5%
   );
+  
+  @media (max-width: 1200px) {
+    width: 380px;
+    height: 380px;
+  }
+  
+  @media (max-width: 900px) {
+    width: 300px;
+    height: 300px;
+  }
+  
+  @media (max-width: 600px) {
+    width: 220px;
+    height: 220px;
+  }
+  
+  @media (max-height: 650px) {
+    width: 260px;
+    height: 260px;
+  }
+  
+  @media (max-height: 500px) {
+    width: 190px;
+    height: 190px;
+  }
 `;
 
 const SecondaryInkSplatter = styled(InkSplatter)`
-  width: clamp(100px, 30vw, 300px);
-  height: clamp(100px, 30vw, 300px);
+  width: 330px;
+  height: 330px;
   animation-delay: 0.1s;
   transform: rotate(45deg);
   opacity: 0.7;
+  
+  @media (max-width: 1200px) {
+    width: 280px;
+    height: 280px;
+  }
+  
+  @media (max-width: 900px) {
+    width: 220px;
+    height: 220px;
+  }
+  
+  @media (max-width: 600px) {
+    width: 160px;
+    height: 160px;
+  }
+  
+  @media (max-height: 650px) {
+    width: 190px;
+    height: 190px;
+  }
+  
+  @media (max-height: 500px) {
+    width: 140px;
+    height: 140px;
+  }
 `;
 
 const SubtitleText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(1rem, 4vw, 2.5rem);
+  font-size: 2.6rem;
   color: ${props => props.$isVictory ? '#FFFFFF' : '#CCCCCC'};
   text-transform: uppercase;
   letter-spacing: 0.3em;
-  margin-top: clamp(-10px, -2vw, -20px);
+  margin-top: -22px;
   animation: ${subtitleSlide} 3s ease-out forwards;
   text-shadow: 
-    2px 2px 4px rgba(0, 0, 0, 0.8),
-    0 0 10px ${props => props.$isVictory ? 'rgba(255, 215, 0, 0.5)' : 'rgba(139, 0, 0, 0.5)'};
+    3px 3px 6px rgba(0, 0, 0, 0.9),
+    0 0 15px ${props => props.$isVictory ? 'rgba(255, 215, 0, 0.6)' : 'rgba(139, 0, 0, 0.5)'};
+  
+  @media (max-width: 1400px) {
+    font-size: 2.2rem;
+    margin-top: -18px;
+  }
+  
+  @media (max-width: 1200px) {
+    font-size: 1.9rem;
+    margin-top: -15px;
+  }
+  
+  @media (max-width: 900px) {
+    font-size: 1.5rem;
+    margin-top: -12px;
+    letter-spacing: 0.25em;
+  }
+  
+  @media (max-width: 600px) {
+    font-size: 1.1rem;
+    margin-top: -8px;
+    letter-spacing: 0.18em;
+  }
+  
+  @media (max-height: 800px) {
+    font-size: 1.7rem;
+    margin-top: -14px;
+  }
+  
+  @media (max-height: 650px) {
+    font-size: 1.3rem;
+    margin-top: -10px;
+  }
+  
+  @media (max-height: 500px) {
+    font-size: 1rem;
+    margin-top: -6px;
+  }
 `;
 
 const BrushStroke = styled.div`
   position: absolute;
-  width: clamp(200px, 60vw, 600px);
-  height: clamp(20px, 4vw, 50px);
+  width: 620px;
+  height: 50px;
   background: ${props => props.$isVictory 
     ? 'linear-gradient(90deg, transparent 0%, rgba(255, 215, 0, 0.4) 20%, rgba(255, 215, 0, 0.6) 50%, rgba(255, 215, 0, 0.4) 80%, transparent 100%)'
     : 'linear-gradient(90deg, transparent 0%, rgba(139, 0, 0, 0.3) 20%, rgba(139, 0, 0, 0.5) 50%, rgba(139, 0, 0, 0.3) 80%, transparent 100%)'
   };
-  bottom: clamp(-30px, -5vw, -50px);
+  bottom: -50px;
   animation: ${brushReveal} 3s ease-out forwards;
   border-radius: 50%;
   filter: blur(2px);
+  
+  @media (max-width: 1400px) {
+    width: 540px;
+    height: 42px;
+    bottom: -42px;
+  }
+  
+  @media (max-width: 1200px) {
+    width: 460px;
+    height: 36px;
+    bottom: -36px;
+  }
+  
+  @media (max-width: 900px) {
+    width: 360px;
+    height: 30px;
+    bottom: -30px;
+  }
+  
+  @media (max-width: 600px) {
+    width: 260px;
+    height: 22px;
+    bottom: -22px;
+  }
+  
+  @media (max-height: 650px) {
+    width: 320px;
+    height: 26px;
+    bottom: -26px;
+  }
+  
+  @media (max-height: 500px) {
+    width: 240px;
+    height: 18px;
+    bottom: -18px;
+  }
 `;
 
 const RoundResult = ({ isVictory }) => {
@@ -363,11 +584,13 @@ const RoundResult = ({ isVictory }) => {
           <KanjiShadow $isVictory={isVictory}>{kanji}</KanjiShadow>
           <MainKanji $isVictory={isVictory}>{kanji}</MainKanji>
         </KanjiContainer>
+        <BrushStroke $isVictory={isVictory} />
+      </ResultContainer>
+      <SubtitleContainer>
         <SubtitleText $isVictory={isVictory}>
           {isVictory ? 'SHIROBOSHI' : 'KUROBOSHI'}
         </SubtitleText>
-        <BrushStroke $isVictory={isVictory} />
-      </ResultContainer>
+      </SubtitleContainer>
     </>
   );
 };

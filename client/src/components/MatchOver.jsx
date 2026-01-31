@@ -2,79 +2,165 @@ import Rematch from "./Rematch";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 
-const slideIn = keyframes`
-  from {
+const bannerDrop = keyframes`
+  0% {
     opacity: 0;
-    transform: translate(-50%, -50%) scale(0.9);
+    transform: translate(-50%, -60%) scale(0.8);
   }
-  to {
+  60% {
+    transform: translate(-50%, -48%) scale(1.02);
+  }
+  100% {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1);
   }
 `;
 
-const winPulse = keyframes`
-  0%, 100% {
+const bannerSway = keyframes`
+  0%, 100% { transform: translate(-50%, -50%) rotate(-0.5deg); }
+  50% { transform: translate(-50%, -50%) rotate(0.5deg); }
+`;
+
+const victoryGlow = keyframes`
+  0%, 100% { 
     text-shadow: 
-      -2px -2px 0 #000,
-      2px -2px 0 #000,
-      -2px 2px 0 #000,
-      2px 2px 0 #000,
-      0 0 20px rgba(84, 212, 55, 0.8);
+      0 0 10px #4ade80,
+      0 0 30px #22c55e,
+      0 0 50px #16a34a,
+      3px 3px 0 #000;
   }
-  50% {
+  50% { 
     text-shadow: 
-      -2px -2px 0 #000,
-      2px -2px 0 #000,
-      -2px 2px 0 #000,
-      2px 2px 0 #000,
-      0 0 35px rgba(84, 212, 55, 1);
+      0 0 20px #4ade80,
+      0 0 40px #22c55e,
+      0 0 70px #16a34a,
+      3px 3px 0 #000;
   }
 `;
 
-const losePulse = keyframes`
-  0%, 100% {
+const defeatPulse = keyframes`
+  0%, 100% { 
     text-shadow: 
-      -2px -2px 0 #000,
-      2px -2px 0 #000,
-      -2px 2px 0 #000,
-      2px 2px 0 #000,
-      0 0 15px rgba(255, 68, 68, 0.6);
+      0 0 8px #f87171,
+      3px 3px 0 #000;
   }
-  50% {
+  50% { 
     text-shadow: 
-      -2px -2px 0 #000,
-      2px -2px 0 #000,
-      -2px 2px 0 #000,
-      2px 2px 0 #000,
-      0 0 25px rgba(255, 68, 68, 0.9);
+      0 0 15px #f87171,
+      0 0 25px #ef4444,
+      3px 3px 0 #000;
   }
 `;
 
-// Main container with parchment-style background
+const tasselSway = keyframes`
+  0%, 100% { transform: rotate(-3deg); }
+  50% { transform: rotate(3deg); }
+`;
+
+// Nobori-style banner container
 const MatchOverContainer = styled.div`
   position: absolute;
-  top: 45%;
+  top: 48%;
   left: 50%;
-  width: clamp(260px, 28vw, 380px);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: clamp(12px, 2vw, 24px);
-  /* Parchment paper background */
-  background: linear-gradient(135deg, #f9f3e8 0%, #ebe0cf 50%, #ddd2bd 100%);
-  /* Red sumo border */
-  border: clamp(2px, 0.3vw, 4px) solid #c41e3a;
-  border-radius: clamp(8px, 1.2vw, 14px);
-  box-shadow: 
-    0 6px 24px rgba(0, 0, 0, 0.5),
-    inset 0 2px 4px rgba(255, 255, 255, 0.4),
-    0 0 0 clamp(2px, 0.25vw, 3px) #000;
-  animation: ${slideIn} 0.4s ease-out forwards;
-  z-index: 200;
   transform: translate(-50%, -50%);
+  width: clamp(220px, 25vw, 320px);
+  z-index: 200;
+  animation: ${bannerDrop} 0.5s ease-out forwards, ${bannerSway} 8s ease-in-out 0.5s infinite;
   
-  /* Paper texture overlay */
+  @media (max-width: 1200px) {
+    width: clamp(190px, 30vw, 280px);
+  }
+  
+  @media (max-width: 900px) {
+    width: clamp(170px, 38vw, 250px);
+  }
+`;
+
+// Top hanging bar
+const HangingBar = styled.div`
+  width: 110%;
+  height: clamp(14px, 2vh, 22px);
+  background: linear-gradient(180deg,
+    #5c4033 0%,
+    #3d2817 50%,
+    #2a1d14 100%
+  );
+  border-radius: 4px 4px 0 0;
+  margin-left: -5%;
+  position: relative;
+  border: 2px solid #8b7355;
+  border-bottom: none;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  
+  /* Hanging rings */
+  &::before, &::after {
+    content: "";
+    position: absolute;
+    top: -8px;
+    width: clamp(10px, 1.5vw, 16px);
+    height: clamp(10px, 1.5vw, 16px);
+    background: radial-gradient(circle at 30% 30%, #d4af37, #8b7355);
+    border-radius: 50%;
+    border: 2px solid #5c4033;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+  }
+  &::before { left: 15%; }
+  &::after { right: 15%; }
+`;
+
+// Tassels
+const TasselContainer = styled.div`
+  position: absolute;
+  bottom: -25px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  padding: 0 8%;
+  pointer-events: none;
+`;
+
+const Tassel = styled.div`
+  width: clamp(6px, 1vw, 10px);
+  height: clamp(20px, 3vh, 35px);
+  background: linear-gradient(180deg, #d4af37 0%, #8b7355 100%);
+  border-radius: 0 0 3px 3px;
+  animation: ${tasselSway} ${props => 2 + props.$delay * 0.3}s ease-in-out infinite;
+  animation-delay: ${props => props.$delay * 0.15}s;
+  transform-origin: top center;
+  
+  &::after {
+    content: "";
+    position: absolute;
+    bottom: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 8px;
+    background: linear-gradient(180deg, #8b7355 0%, #5c4033 100%);
+    border-radius: 0 0 2px 2px;
+  }
+`;
+
+// Main banner body
+const BannerBody = styled.div`
+  background: linear-gradient(180deg,
+    #1a0a08 0%,
+    #2d1510 30%,
+    #1f0f0a 70%,
+    #150805 100%
+  );
+  border: 3px solid #8b7355;
+  border-top: none;
+  border-radius: 0 0 clamp(8px, 1.2vw, 14px) clamp(8px, 1.2vw, 14px);
+  padding: clamp(18px, 3vh, 30px) clamp(14px, 2vw, 24px) clamp(16px, 2.5vh, 26px);
+  box-shadow: 
+    0 15px 50px rgba(0,0,0,0.7),
+    inset 0 0 40px rgba(0,0,0,0.6),
+    inset 0 2px 0 rgba(139, 115, 85, 0.1);
+  position: relative;
+  
+  /* Fabric texture */
   &::before {
     content: "";
     position: absolute;
@@ -82,137 +168,92 @@ const MatchOverContainer = styled.div`
     left: 0;
     right: 0;
     bottom: 0;
-    border-radius: clamp(6px, 1vw, 12px);
-    background-image: 
+    background: 
       repeating-linear-gradient(
         0deg,
-        transparent,
-        transparent 2px,
-        rgba(139, 119, 101, 0.03) 2px,
-        rgba(139, 119, 101, 0.03) 4px
+        transparent 0px,
+        rgba(255,255,255,0.015) 1px,
+        transparent 2px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        transparent 0px,
+        rgba(255,255,255,0.01) 1px,
+        transparent 2px
       );
     pointer-events: none;
-    opacity: 0.6;
+    border-radius: 0 0 clamp(8px, 1.2vw, 14px) clamp(8px, 1.2vw, 14px);
   }
   
-  /* Inner decorative border */
+  /* Gold corner decorations */
   &::after {
     content: "";
     position: absolute;
-    top: clamp(4px, 0.6vw, 8px);
-    left: clamp(4px, 0.6vw, 8px);
-    right: clamp(4px, 0.6vw, 8px);
-    bottom: clamp(4px, 0.6vw, 8px);
-    border: 1px solid rgba(196, 30, 58, 0.3);
-    border-radius: clamp(5px, 0.8vw, 9px);
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    border: 1px solid rgba(212, 175, 55, 0.15);
+    border-radius: clamp(4px, 0.8vw, 10px);
     pointer-events: none;
   }
   
-  @media (max-width: 1200px) {
-    width: clamp(220px, 32vw, 340px);
-    padding: clamp(10px, 1.8vw, 20px);
-  }
-  
   @media (max-width: 900px) {
-    width: clamp(180px, 38vw, 280px);
-    padding: clamp(8px, 1.5vw, 16px);
-  }
-  
-  @media (max-height: 700px) {
-    top: 42%;
+    padding: clamp(14px, 2.5vh, 22px) clamp(10px, 1.8vw, 18px) clamp(12px, 2vh, 18px);
+    border-width: 2px;
   }
 `;
 
-// Top banner with sumo colors
-const ResultBanner = styled.div`
-  width: calc(100% + clamp(24px, 4vw, 48px));
-  margin: clamp(-12px, -2vw, -24px) 0 clamp(8px, 1.5vw, 16px) 0;
-  padding: clamp(8px, 1.2vw, 14px) clamp(12px, 1.5vw, 20px);
-  background: ${props => props.$isWinner 
-    ? 'linear-gradient(135deg, #2d5a27 0%, #1e3d1a 50%, #2d5a27 100%)'
-    : 'linear-gradient(135deg, #8b1e3a 0%, #5c1428 50%, #8b1e3a 100%)'
-  };
-  border-bottom: 2px solid ${props => props.$isWinner ? '#54d437' : '#ff4444'};
-  border-radius: clamp(6px, 1vw, 12px) clamp(6px, 1vw, 12px) 0 0;
+// Result section
+const ResultSection = styled.div`
   text-align: center;
+  margin-bottom: clamp(14px, 2vh, 22px);
+  padding-bottom: clamp(12px, 1.8vh, 18px);
+  border-bottom: 2px solid ${props => props.$isWinner ? 'rgba(74, 222, 128, 0.3)' : 'rgba(248, 113, 113, 0.3)'};
   position: relative;
-  z-index: 2;
   
-  @media (max-width: 1200px) {
-    width: calc(100% + clamp(20px, 3.6vw, 40px));
-    margin: clamp(-10px, -1.8vw, -20px) 0 clamp(6px, 1.2vw, 12px) 0;
-    padding: clamp(6px, 1vw, 10px) clamp(10px, 1.2vw, 16px);
+  /* Decorative end caps on border */
+  &::before, &::after {
+    content: "◆";
+    position: absolute;
+    bottom: -8px;
+    font-size: clamp(8px, 1vw, 12px);
+    color: ${props => props.$isWinner ? '#4ade80' : '#f87171'};
   }
-  
-  @media (max-width: 900px) {
-    width: calc(100% + clamp(16px, 3vw, 32px));
-    margin: clamp(-8px, -1.5vw, -16px) 0 clamp(5px, 1vw, 10px) 0;
-    padding: clamp(5px, 0.8vw, 8px) clamp(8px, 1vw, 12px);
-  }
+  &::before { left: 20%; }
+  &::after { right: 20%; }
 `;
 
 const ResultText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.9rem, 2.2vw, 1.5rem);
-  color: ${props => props.$isWinner ? '#54d437' : '#ff4444'};
+  font-size: clamp(1rem, 2.8vw, 1.6rem);
+  color: ${props => props.$isWinner ? '#4ade80' : '#f87171'};
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  animation: ${props => props.$isWinner ? winPulse : losePulse} 2s ease-in-out infinite;
-  
-  @media (max-width: 1200px) {
-    font-size: clamp(0.8rem, 2vw, 1.3rem);
-  }
+  letter-spacing: 0.15em;
+  animation: ${props => props.$isWinner ? victoryGlow : defeatPulse} 2s ease-in-out infinite;
   
   @media (max-width: 900px) {
-    font-size: clamp(0.65rem, 2.2vw, 1rem);
-    letter-spacing: 0.08em;
+    font-size: clamp(0.85rem, 3.5vw, 1.3rem);
   }
 `;
 
 const SubText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.5rem, 1.1vw, 0.75rem);
-  color: #ffffff;
-  text-shadow: 
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000;
-  margin-top: clamp(2px, 0.4vw, 6px);
-  letter-spacing: 0.08em;
-  
-  @media (max-width: 1200px) {
-    font-size: clamp(0.45rem, 1vw, 0.65rem);
-  }
+  font-size: clamp(0.5rem, 1.2vw, 0.75rem);
+  color: #e8dcc8;
+  margin-top: clamp(6px, 1vh, 10px);
+  letter-spacing: 0.12em;
+  text-shadow: 2px 2px 0 #000;
   
   @media (max-width: 900px) {
-    font-size: clamp(0.38rem, 1.1vw, 0.55rem);
-    margin-top: clamp(1px, 0.3vw, 4px);
+    font-size: clamp(0.42rem, 1.8vw, 0.65rem);
   }
 `;
 
-// Divider with sumo rope style
-const Divider = styled.div`
-  width: 80%;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, #c41e3a, #d4af37, #c41e3a, transparent);
-  margin: clamp(5px, 0.8vw, 10px) 0;
+// Rematch section wrapper
+const RematchSection = styled.div`
   position: relative;
-  z-index: 2;
-  
-  @media (max-width: 900px) {
-    height: 1px;
-    margin: clamp(3px, 0.6vw, 7px) 0;
-  }
-`;
-
-const RematchContainer = styled.div`
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  position: relative;
-  z-index: 2;
+  z-index: 1;
 `;
 
 const MatchOver = ({ winner, roomName, localId }) => {
@@ -220,16 +261,23 @@ const MatchOver = ({ winner, roomName, localId }) => {
 
   return (
     <MatchOverContainer>
-      <ResultBanner $isWinner={isWinner}>
-        <ResultText $isWinner={isWinner}>
-          {isWinner ? "KACHI-KOSHI" : "MAKE-KOSHI"}
-        </ResultText>
-        <SubText>{isWinner ? "VICTORY!" : "DEFEAT!"}</SubText>
-      </ResultBanner>
-      <Divider />
-      <RematchContainer>
-        <Rematch roomName={roomName} />
-      </RematchContainer>
+      <HangingBar />
+      <BannerBody>
+        <ResultSection $isWinner={isWinner}>
+          <ResultText $isWinner={isWinner}>
+            {isWinner ? "KACHI-KOSHI" : "MAKE-KOSHI"}
+          </ResultText>
+          <SubText>{isWinner ? "Victory!" : "Defeat"}</SubText>
+        </ResultSection>
+        <RematchSection>
+          <Rematch roomName={roomName} />
+        </RematchSection>
+        <TasselContainer>
+          <Tassel $delay={0} />
+          <Tassel $delay={1} />
+          <Tassel $delay={2} />
+        </TasselContainer>
+      </BannerBody>
     </MatchOverContainer>
   );
 };
