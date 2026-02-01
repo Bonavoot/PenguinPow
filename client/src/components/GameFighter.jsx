@@ -425,6 +425,8 @@ const getImageSrc = (
     if (isRecovering) return recovering;
     if (isThrowingSnowball) return snowballThrow;
     if (isSpawningPumoArmy) return pumoArmy;
+    // CRITICAL: Check isBeingGrabbed BEFORE isDodging to prevent dodge animation during grab
+    if (isBeingGrabbed || isBeingPulled || isBeingPushed) return beingGrabbed;
     if (isDodging) return dodging;
     if (isCrouchStrafing) return crouchStrafing2;
     if (isCrouchStance) return crouchStance2;
@@ -457,7 +459,6 @@ const getImageSrc = (
       }
       return grabbing;
     }
-    if (isBeingGrabbed || isBeingPulled || isBeingPushed) return beingGrabbed;
     if (isRawParrying) return crouching;
     if (isRawParryStun) return bow;
     if (isReady) return ready;
@@ -481,6 +482,8 @@ const getImageSrc = (
     if (isRecovering) return recovering2;
     if (isThrowingSnowball) return snowballThrow2;
     if (isSpawningPumoArmy) return pumoArmy2;
+    // CRITICAL: Check isBeingGrabbed BEFORE isDodging to prevent dodge animation during grab
+    if (isBeingGrabbed || isBeingPulled || isBeingPushed) return beingGrabbed2;
     if (isDodging) return dodging2;
     if (isCrouchStrafing) return crouchStrafing2;
     if (isCrouchStance) return crouchStance2;
@@ -518,7 +521,6 @@ const getImageSrc = (
     if (isDead) return pumo;
     if (isThrowing) return throwing2;
     if (isThrowingSalt) return salt2;
-    if (isBeingGrabbed || isBeingPulled || isBeingPushed) return beingGrabbed2;
     return pumo2;
   }
 };
@@ -833,6 +835,8 @@ const StyledImage = styled("img")
         ? "chargePulse 0.6s ease-in-out infinite"
         : props.$isAttacking && !props.$isSlapAttack
         ? "attackPunch 0.2s ease-out"
+        : props.$isSlapAttack
+        ? "slapRush 0.12s ease-in-out infinite"
         : // Breathing animation for idle states
         !props.$isAttacking &&
           !props.$isDodging &&
@@ -995,6 +999,18 @@ const StyledImage = styled("img")
     }
     100% {
       transform: scaleX(var(--facing, 1)) translateX(0px);
+    }
+  }
+
+  /* Slap attack animation - subtle motion blur */
+  @keyframes slapRush {
+    0%, 100% {
+      transform: scaleX(var(--facing, 1));
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) blur(0.3px);
+    }
+    50% {
+      transform: scaleX(var(--facing, 1));
+      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) blur(0.6px);
     }
   }
   
@@ -1593,8 +1609,11 @@ const GameFighter = ({
         soundPlayedThisPart = true;
         try {
           const randomIndex = Math.floor(Math.random() * ritualClapSounds.length);
-          const clapAudio = new Audio(ritualClapSounds[randomIndex]);
-          clapAudio.volume = 0.03 * getGlobalVolume();
+          const selectedSound = ritualClapSounds[randomIndex];
+          const clapAudio = new Audio(selectedSound);
+          // clap2Sound is louder, so reduce its volume more
+          const volumeMultiplier = selectedSound === clap2Sound ? 0.01 : 0.02;
+          clapAudio.volume = volumeMultiplier * getGlobalVolume();
           clapAudio.play().catch(() => {});
         } catch (e) {}
       }
@@ -2040,7 +2059,7 @@ const GameFighter = ({
     socket.on("grab_clash_end", (data) => {
       if (index === 0) {
         if (data.winnerId === localId) {
-          playSound(clashVictorySound, 0.03);
+          playSound(clashVictorySound, 0.01);
         } else if (data.loserId === localId) {
           playSound(clashDefeatSound, 0.08);
         }

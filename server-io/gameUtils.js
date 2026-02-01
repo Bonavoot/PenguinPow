@@ -300,6 +300,10 @@ function clearAllActionStates(player) {
   player.dodgeStartX = 0;
   player.dodgeStartY = 0;
   
+  // CRITICAL: Clear any buffered actions - prevents buffered dodge from executing while grabbed
+  player.bufferedAction = null;
+  player.bufferExpiryTime = 0;
+  
   // Clear grab states (as grabber - not being grabbed)
   player.isGrabbing = false;
   player.isGrabWalking = false;

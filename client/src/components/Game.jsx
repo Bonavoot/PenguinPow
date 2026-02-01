@@ -278,6 +278,7 @@ const Game = ({ rooms, roomName, localId, setCurrentPage }) => {
           socket={socket}
           player1={currentRoom.players?.[0]}
           player2={currentRoom.players?.[1]}
+          localId={localId}
         />
       </div>
       <MobileControls

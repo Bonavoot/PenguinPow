@@ -1,50 +1,65 @@
 import { useContext } from "react";
 import PropTypes from "prop-types";
-import styled, { keyframes } from "styled-components";
+import styled, { keyframes, css } from "styled-components";
 import { SocketContext } from "../SocketContext";
 import { playButtonHoverSound, playButtonPressSound2 } from "../utils/soundUtils";
 
-const fadeIn = keyframes`
-  from {
+// ============================================
+// ANIMATIONS
+// ============================================
+
+const slideIn = keyframes`
+  0% {
     opacity: 0;
     transform: translateX(-20px);
   }
-  to {
+  100% {
     opacity: 1;
     transform: translateX(0);
   }
 `;
 
-const snowFall = keyframes`
-  0% {
-    background-position: 0px 0px;
+const pulseAvailable = keyframes`
+  0%, 100% {
+    box-shadow: 
+      0 4px 15px rgba(0,0,0,0.4),
+      0 0 0 rgba(74, 222, 128, 0),
+      inset 0 0 20px rgba(0,0,0,0.4);
   }
-  100% {
-    background-position: 500px 1000px, 400px 400px, 300px 300px;
+  50% {
+    box-shadow: 
+      0 4px 15px rgba(0,0,0,0.4),
+      0 0 15px rgba(74, 222, 128, 0.15),
+      inset 0 0 20px rgba(0,0,0,0.4);
   }
 `;
 
-const RoomContainer = styled.div`
+// ============================================
+// ROOM CARD
+// ============================================
+
+const RoomCard = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: linear-gradient(
-    145deg,
-    rgba(28, 28, 28, 0.95),
-    rgba(18, 18, 18, 0.95)
+  background: linear-gradient(180deg,
+    #1a0a08 0%,
+    #241210 50%,
+    #1a0a08 100%
   );
-  border-radius: 8px;
-  padding: 1.2rem 2.5rem;
-  border: 2px solid #8b4513;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-  will-change: transform;
-  transform: translateZ(0);
-  transition: transform 0.2s ease;
-  animation: ${fadeIn} 0.3s ease-out;
+  border: 2px solid ${props => props.$isFull ? '#4a3a2a' : '#8b7355'};
+  border-radius: clamp(6px, 0.8vw, 10px);
+  padding: clamp(14px, 2vh, 22px) clamp(18px, 2.5vw, 28px);
   position: relative;
-  overflow: hidden;
-  min-height: 60px;
-
+  transition: all 0.25s ease;
+  animation: ${slideIn} 0.4s ease-out;
+  
+  ${props => !props.$isFull && css`
+    animation: ${slideIn} 0.4s ease-out, ${pulseAvailable} 3s ease-in-out infinite;
+    animation-delay: 0s, 0.4s;
+  `}
+  
+  /* Fabric texture */
   &::before {
     content: "";
     position: absolute;
@@ -52,130 +67,175 @@ const RoomContainer = styled.div`
     left: 0;
     right: 0;
     bottom: 0;
-    background-image: radial-gradient(
-        2px 2px at 20px 30px,
-        rgba(212, 175, 55, 0.2) 50%,
-        rgba(0, 0, 0, 0)
-      ),
-      radial-gradient(
-        2px 2px at 40px 70px,
-        rgba(212, 175, 55, 0.2) 50%,
-        rgba(0, 0, 0, 0)
-      ),
-      radial-gradient(
-        2px 2px at 50px 160px,
-        rgba(212, 175, 55, 0.2) 50%,
-        rgba(0, 0, 0, 0)
+    background: 
+      repeating-linear-gradient(
+        0deg,
+        transparent 0px,
+        rgba(255,255,255,0.01) 1px,
+        transparent 2px
       );
-    background-size: 200px 200px;
-    animation: ${snowFall} 8s linear infinite;
-    opacity: 0.2;
     pointer-events: none;
+    border-radius: clamp(6px, 0.8vw, 10px);
   }
 
   &:hover {
-    transform: translateX(5px) translateZ(0);
-    background: linear-gradient(
-      145deg,
-      rgba(35, 35, 35, 0.95),
-      rgba(25, 25, 25, 0.95)
+    transform: translateX(6px);
+    background: linear-gradient(180deg,
+      #241210 0%,
+      #2d1815 50%,
+      #241210 100%
     );
+    border-color: ${props => props.$isFull ? '#5c4a3a' : '#d4af37'};
   }
 `;
 
 const RoomInfo = styled.div`
   display: flex;
   align-items: center;
-  gap: 2.5rem;
+  gap: clamp(16px, 2.5vw, 32px);
 `;
 
-const RoomId = styled.h1`
+const RoomIdSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: clamp(2px, 0.3vh, 4px);
+`;
+
+const RoomLabel = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(1.2rem, 1.5vw, 1.6rem);
-  color: #ffffff;
-  margin: 0;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
-  font-weight: 700;
-  letter-spacing: 1px;
+  font-size: clamp(0.4rem, 0.7vw, 0.5rem);
+  color: #5c4033;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+`;
+
+const RoomId = styled.div`
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.85rem, 1.4vw, 1.15rem);
+  color: #e8dcc8;
+  text-shadow: 2px 2px 0 #000;
+  letter-spacing: 0.05em;
 `;
 
 const PlayerCount = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  font-family: "Bungee", cursive;
-  font-size: clamp(1rem, 1.2vw, 1.3rem);
-  color: #ffffff;
-  font-weight: 600;
+  gap: clamp(6px, 0.8vw, 10px);
 `;
 
-const PlayerCountCircle = styled.div`
-  width: 28px;
-  height: 28px;
+const PlayerDot = styled.div`
+  width: clamp(10px, 1.2vw, 14px);
+  height: clamp(10px, 1.2vw, 14px);
   border-radius: 50%;
-  background: ${(props) =>
-    props.$isFull ? "rgba(40, 40, 40, 0.2)" : "rgba(30, 30, 30, 0.2)"};
-  border: 2px solid ${(props) => (props.$isFull ? "#8b4513" : "#d4af37")};
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.9rem;
-  color: ${(props) => (props.$isFull ? "#8b4513" : "#ffffff")};
-  box-shadow: 0 0 10px
-    ${(props) =>
-      props.$isFull ? "rgba(40, 40, 40, 0.3)" : "rgba(30, 30, 30, 0.3)"};
-  font-weight: 600;
+  background: ${props => props.$filled ? '#4ade80' : 'rgba(92, 64, 51, 0.5)'};
+  border: 2px solid ${props => props.$filled ? '#4ade80' : '#5c4033'};
+  ${props => props.$filled && css`
+    box-shadow: 0 0 8px rgba(74, 222, 128, 0.5);
+  `}
 `;
+
+const PlayerCountText = styled.div`
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.6rem, 1vw, 0.8rem);
+  color: ${props => props.$isFull ? '#5c4033' : '#8b7355'};
+  text-shadow: 1px 1px 0 #000;
+`;
+
+const StatusBadge = styled.div`
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.4rem, 0.7vw, 0.55rem);
+  color: ${props => props.$isFull ? '#5c4033' : '#4ade80'};
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: clamp(4px, 0.6vh, 7px) clamp(10px, 1.5vw, 16px);
+  background: ${props => props.$isFull 
+    ? 'rgba(92, 64, 51, 0.2)' 
+    : 'rgba(74, 222, 128, 0.1)'};
+  border: 1px solid ${props => props.$isFull ? '#4a3a2a' : 'rgba(74, 222, 128, 0.3)'};
+  border-radius: clamp(3px, 0.4vw, 5px);
+  ${props => !props.$isFull && css`
+    box-shadow: 0 0 10px rgba(74, 222, 128, 0.1);
+  `}
+`;
+
+// ============================================
+// JOIN BUTTON
+// ============================================
 
 const JoinButton = styled.button`
-  background: ${(props) =>
-    props.$isFull
-      ? "linear-gradient(145deg, rgba(40, 40, 40, 0.2), rgba(20, 20, 20, 0.1))"
-      : "linear-gradient(45deg,rgb(3, 150, 3),rgb(0, 150, 0))"};
-  border: 2px solid ${(props) => (props.$isFull ? "#8b4513" : "rgb(3, 150, 3)")};
-  border-radius: 4px;
-  padding: 0.75rem 2rem;
-  font-size: clamp(0.9rem, 1.2vw, 1.2rem);
-  color: ${(props) => (props.$isFull ? "rgba(255, 255, 255, 0.5)" : "#ffffff")};
-  font-family: "Noto Sans JP", sans-serif;
-  cursor: ${(props) => (props.$isFull ? "default" : "pointer")};
-  will-change: transform;
-  transform: translateZ(0);
-  transition: all 0.3s ease;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
-  box-shadow: ${(props) =>
-    props.$isFull
-      ? "0 4px 15px rgba(0, 0, 0, 0.2)"
-      : "0 0 5px rgba(0, 255, 0, 0.3)"};
-  min-width: 120px;
-  font-weight: 600;
-  letter-spacing: 1px;
-  height: fit-content;
-
-  &:hover {
-    transform: ${(props) =>
-      props.$isFull ? "none" : "translateY(-2px) translateZ(0)"};
-    background: ${(props) =>
-      props.$isFull
-        ? "linear-gradient(145deg, rgba(40, 40, 40, 0.2), rgba(20, 20, 20, 0.1))"
-        : "linear-gradient(45deg, #00cc00, #009900)"};
-    color: ${(props) =>
-      props.$isFull ? "rgba(255, 255, 255, 0.5)" : "#ffffff"};
-    box-shadow: ${(props) =>
-      props.$isFull
-        ? "0 4px 15px rgba(0, 0, 0, 0.2)"
-        : "0 0 8px rgba(0, 255, 0, 0.4)"};
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.6rem, 1vw, 0.8rem);
+  background: ${props => props.$isFull ? css`
+    linear-gradient(180deg,
+      #2a2a2a 0%,
+      #1f1f1f 50%,
+      #151515 100%
+    )
+  ` : css`
+    linear-gradient(180deg,
+      #2d5a2d 0%,
+      #1f4a1f 50%,
+      #153815 100%
+    )
+  `};
+  color: ${props => props.$isFull ? '#555' : '#4ade80'};
+  border: 2px solid ${props => props.$isFull ? '#3a3a3a' : '#4ade80'};
+  border-radius: clamp(4px, 0.6vw, 8px);
+  padding: clamp(10px, 1.4vh, 16px) clamp(20px, 2.8vw, 32px);
+  cursor: ${props => props.$isFull ? 'not-allowed' : 'pointer'};
+  transition: all 0.25s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  box-shadow: ${props => props.$isFull 
+    ? '0 4px 12px rgba(0,0,0,0.3)' 
+    : '0 4px 12px rgba(0,0,0,0.4), 0 0 15px rgba(74, 222, 128, 0.15)'};
+  text-shadow: ${props => props.$isFull 
+    ? 'none' 
+    : '0 0 10px rgba(74, 222, 128, 0.3), 1px 1px 0 #000'};
+  position: relative;
+  
+  /* Wood grain */
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: repeating-linear-gradient(
+      90deg,
+      transparent 0px,
+      rgba(255,255,255,0.02) 1px,
+      transparent 3px
+    );
+    border-radius: clamp(4px, 0.6vw, 8px);
+    pointer-events: none;
   }
 
-  &:active {
-    transform: ${(props) =>
-      props.$isFull ? "none" : "translateY(0) translateZ(0)"};
-    box-shadow: ${(props) =>
-      props.$isFull
-        ? "0 4px 15px rgba(0, 0, 0, 0.2)"
-        : "0 0 3px rgba(0, 255, 0, 0.2)"};
-  }
+  ${props => !props.$isFull && css`
+    &:hover {
+      background: linear-gradient(180deg,
+        #3d6a3d 0%,
+        #2d5a2d 50%,
+        #1f4a1f 100%
+      );
+      border-color: #6ade90;
+      transform: translateY(-3px);
+      box-shadow: 
+        0 8px 20px rgba(0,0,0,0.5),
+        0 0 25px rgba(74, 222, 128, 0.25);
+      color: #8afe9f;
+    }
+
+    &:active {
+      transform: translateY(-1px);
+    }
+  `}
 `;
+
+// ============================================
+// COMPONENT
+// ============================================
 
 const Room = ({ room, setRoomName, handleJoinRoom }) => {
   const { socket } = useContext(SocketContext);
@@ -190,24 +250,37 @@ const Room = ({ room, setRoomName, handleJoinRoom }) => {
   };
 
   return (
-    <RoomContainer>
+    <RoomCard $isFull={isFull}>
       <RoomInfo>
-        <RoomId>{room.id}</RoomId>
+        <RoomIdSection>
+          <RoomLabel>Dohyo</RoomLabel>
+          <RoomId>{room.id}</RoomId>
+        </RoomIdSection>
         <PlayerCount>
-          <PlayerCountCircle $isFull={isFull}>
-            {room.players.length}
-          </PlayerCountCircle>
-          / 2
+          <PlayerDot $filled={room.players.length >= 1} />
+          <PlayerDot $filled={room.players.length >= 2} />
+          <PlayerCountText $isFull={isFull}>
+            {room.players.length}/2
+          </PlayerCountText>
         </PlayerCount>
+        <StatusBadge $isFull={isFull}>
+          {isFull ? "Full" : "Open"}
+        </StatusBadge>
       </RoomInfo>
       <JoinButton
         $isFull={isFull}
-        onClick={() => { handleJoin(); playButtonPressSound2(); }}
-        onMouseEnter={playButtonHoverSound}
+        onClick={() => { 
+          if (!isFull) {
+            handleJoin(); 
+            playButtonPressSound2(); 
+          }
+        }}
+        onMouseEnter={() => !isFull && playButtonHoverSound()}
+        disabled={isFull}
       >
-        {isFull ? "FULL" : "JOIN"}
+        {isFull ? "Full" : "Join"}
       </JoinButton>
-    </RoomContainer>
+    </RoomCard>
   );
 };
 

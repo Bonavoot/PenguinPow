@@ -134,8 +134,14 @@ const PlayerMarker = styled.div`
   transition: all 0.2s ease;
   
   ${props => props.$isWinner && css`
-    border-${props.$side}-color: #d4af37;
-    filter: drop-shadow(0 0 8px rgba(212, 175, 55, 0.8));
+    border-${props.$side}-color: ${props.$isLocalPlayerWinner 
+      ? '#00ff00' /* Bright green for local player win */
+      : '#ff0000' /* Red for opponent win */
+    };
+    filter: drop-shadow(0 0 8px ${props.$isLocalPlayerWinner 
+      ? 'rgba(0, 255, 0, 0.8)' 
+      : 'rgba(255, 0, 0, 0.8)'
+    });
     animation: ${winnerFlash} 0.15s infinite;
   `}
   
@@ -210,7 +216,10 @@ const PlayerFill = styled.div`
   }
   
   ${props => props.$isWinner && css`
-    background: linear-gradient(180deg, #d4af37 0%, #b8960c 50%, #9a7b0a 100%);
+    background: ${props.$isLocalPlayerWinner 
+      ? 'linear-gradient(180deg, #00ff00 0%, #00dd00 50%, #00bb00 100%)' /* Bright green for local player win */
+      : 'linear-gradient(180deg, #ff0000 0%, #dd0000 50%, #bb0000 100%)' /* Red for opponent win */
+    };
   `}
   
   ${props => props.$isLoser && css`
@@ -283,8 +292,14 @@ const InputDisplay = styled.div`
   transition: all 0.15s ease;
   
   ${props => props.$isWinner && css`
-    color: #d4af37;
-    text-shadow: 0 0 8px rgba(212, 175, 55, 0.6), 1px 1px 2px rgba(0, 0, 0, 0.8);
+    color: ${props.$isLocalPlayerWinner 
+      ? '#00ff00' /* Bright green for local player win */
+      : '#ff0000' /* Red for opponent win */
+    };
+    text-shadow: 0 0 8px ${props.$isLocalPlayerWinner 
+      ? 'rgba(0, 255, 0, 0.6)' 
+      : 'rgba(255, 0, 0, 0.6)'
+    }, 1px 1px 2px rgba(0, 0, 0, 0.8);
   `}
 `;
 
@@ -307,7 +322,7 @@ const TimerProgress = styled.div`
   transition: width 0.05s linear;
 `;
 
-const GrabClashUI = ({ socket, player1, player2 }) => {
+const GrabClashUI = ({ socket, player1, player2, localId }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [player1Inputs, setPlayer1Inputs] = useState(0);
   const [player2Inputs, setPlayer2Inputs] = useState(0);
@@ -318,6 +333,7 @@ const GrabClashUI = ({ socket, player1, player2 }) => {
   const [leftPlayerId, setLeftPlayerId] = useState(null);
   const [rightPlayerId, setRightPlayerId] = useState(null);
   const [winnerSide, setWinnerSide] = useState(null);
+  const [winnerId, setWinnerId] = useState(null);
   const [uiPosition, setUiPosition] = useState({ x: null, y: null });
   const [isPlayer1OnLeft, setIsPlayer1OnLeft] = useState(true); // Track if player1 is on left side
   const spatialLayoutRef = useRef({ leftPlayerId: null, rightPlayerId: null });
@@ -411,6 +427,7 @@ const GrabClashUI = ({ socket, player1, player2 }) => {
       const winnerSideValue = winnerIsLeft ? 'left' : 'right';
       
       setWinnerSide(winnerSideValue);
+      setWinnerId(data.winnerId);
       
       setTimeout(() => {
         setIsVisible(false);
@@ -422,6 +439,7 @@ const GrabClashUI = ({ socket, player1, player2 }) => {
         setLeftPlayerId(null);
         setRightPlayerId(null);
         setWinnerSide(null);
+        setWinnerId(null);
         setUiPosition({ x: null, y: null });
         setIsPlayer1OnLeft(true);
         spatialLayoutRef.current = { leftPlayerId: null, rightPlayerId: null };
@@ -438,6 +456,7 @@ const GrabClashUI = ({ socket, player1, player2 }) => {
       setLeftPlayerId(null);
       setRightPlayerId(null);
       setWinnerSide(null);
+      setWinnerId(null);
       setUiPosition({ x: null, y: null });
       setIsPlayer1OnLeft(true);
       spatialLayoutRef.current = { leftPlayerId: null, rightPlayerId: null };
@@ -491,6 +510,7 @@ const GrabClashUI = ({ socket, player1, player2 }) => {
           $isPlayer1OnLeft={isPlayer1OnLeft}
           $isWinner={winnerSide === 'left'}
           $isLoser={winnerSide === 'right'}
+          $isLocalPlayerWinner={winnerId === localId}
         />
         <ClashMeterFrame>
           <PlayerFill 
@@ -498,12 +518,14 @@ const GrabClashUI = ({ socket, player1, player2 }) => {
             $isPlayer1OnLeft={isPlayer1OnLeft}
             $isWinner={winnerSide === 'left'}
             $isLoser={winnerSide === 'right'}
+            $isLocalPlayerWinner={winnerId === localId}
           />
           <PlayerFill 
             $side="right"
             $isPlayer1OnLeft={isPlayer1OnLeft}
             $isWinner={winnerSide === 'right'}
             $isLoser={winnerSide === 'left'}
+            $isLocalPlayerWinner={winnerId === localId}
           />
           <CenterDivider />
           <PositionIndicator $position={indicatorPosition} />
@@ -513,13 +535,14 @@ const GrabClashUI = ({ socket, player1, player2 }) => {
           $isPlayer1OnLeft={isPlayer1OnLeft}
           $isWinner={winnerSide === 'right'}
           $isLoser={winnerSide === 'left'}
+          $isLocalPlayerWinner={winnerId === localId}
         />
       </ClashMeterContainer>
       <StatsRow>
-        <InputDisplay $side="left" $isPlayer1OnLeft={isPlayer1OnLeft} $isWinner={winnerSide === 'left'}>
+        <InputDisplay $side="left" $isPlayer1OnLeft={isPlayer1OnLeft} $isWinner={winnerSide === 'left'} $isLocalPlayerWinner={winnerId === localId}>
           {leftInputs}
         </InputDisplay>
-        <InputDisplay $side="right" $isPlayer1OnLeft={isPlayer1OnLeft} $isWinner={winnerSide === 'right'}>
+        <InputDisplay $side="right" $isPlayer1OnLeft={isPlayer1OnLeft} $isWinner={winnerSide === 'right'} $isLocalPlayerWinner={winnerId === localId}>
           {rightInputs}
         </InputDisplay>
       </StatsRow>

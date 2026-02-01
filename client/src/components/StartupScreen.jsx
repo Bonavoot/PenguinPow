@@ -1,11 +1,360 @@
 import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
+import styled, { keyframes, css } from "styled-components";
 import gamepadHandler from "../utils/gamepadHandler";
+
+// ============================================
+// ANIMATIONS
+// ============================================
+
+const fadeIn = keyframes`
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+`;
+
+const logoGlow = keyframes`
+  0%, 100% {
+    text-shadow: 
+      3px 3px 0 #000,
+      0 0 20px rgba(212, 175, 55, 0.3),
+      0 0 40px rgba(212, 175, 55, 0.15);
+  }
+  50% {
+    text-shadow: 
+      3px 3px 0 #000,
+      0 0 35px rgba(212, 175, 55, 0.5),
+      0 0 60px rgba(212, 175, 55, 0.25);
+  }
+`;
+
+const subtlePulse = keyframes`
+  0%, 100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+`;
+
+const dotBounce = keyframes`
+  0%, 80%, 100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-6px);
+  }
+`;
+
+const pressKeyFade = keyframes`
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+`;
+
+const connectedPulse = keyframes`
+  0% {
+    text-shadow: 
+      0 0 8px rgba(74, 222, 128, 0.5),
+      1px 1px 0 #000;
+  }
+  50% {
+    text-shadow: 
+      0 0 15px rgba(74, 222, 128, 0.7),
+      0 0 25px rgba(74, 222, 128, 0.3),
+      1px 1px 0 #000;
+  }
+  100% {
+    text-shadow: 
+      0 0 8px rgba(74, 222, 128, 0.5),
+      1px 1px 0 #000;
+  }
+`;
+
+const floatParticle = keyframes`
+  0% {
+    transform: translateY(100vh) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.6;
+  }
+  90% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateY(-20px) rotate(360deg);
+    opacity: 0;
+  }
+`;
+
+// ============================================
+// CONTAINER
+// ============================================
+
+const ScreenContainer = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: linear-gradient(180deg,
+    #0a0505 0%,
+    #120a08 30%,
+    #150c0a 50%,
+    #120a08 70%,
+    #0a0505 100%
+  );
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: ${fadeIn} 0.5s ease-out;
+  overflow: hidden;
+`;
+
+// Subtle vignette
+const Vignette = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 40%,
+    rgba(0, 0, 0, 0.6) 100%
+  );
+  pointer-events: none;
+`;
+
+// Floating particles
+const ParticleContainer = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+`;
+
+const Particle = styled.div`
+  position: absolute;
+  width: ${props => props.$size}px;
+  height: ${props => props.$size}px;
+  background: radial-gradient(circle, rgba(212, 175, 55, 0.6) 0%, transparent 70%);
+  border-radius: 50%;
+  left: ${props => props.$left}%;
+  animation: ${floatParticle} ${props => props.$duration}s linear infinite;
+  animation-delay: ${props => props.$delay}s;
+`;
+
+// ============================================
+// CONTENT
+// ============================================
+
+const Content = styled.div`
+  text-align: center;
+  max-width: 700px;
+  padding: 2rem;
+  position: relative;
+  z-index: 1;
+`;
+
+// ============================================
+// LOGO
+// ============================================
+
+const LogoSection = styled.div`
+  margin-bottom: clamp(60px, 12vh, 120px);
+  animation: ${fadeIn} 0.8s ease-out 0.2s both;
+`;
+
+const Logo = styled.h1`
+  font-family: "Bungee", cursive;
+  font-size: clamp(2rem, 7vw, 4rem);
+  color: #d4af37;
+  margin: 0;
+  letter-spacing: 0.06em;
+  animation: ${logoGlow} 4s ease-in-out infinite;
+  
+  @media (max-width: 600px) {
+    font-size: clamp(1.5rem, 8vw, 2.5rem);
+  }
+`;
+
+const LogoAccent = styled.span`
+  font-family: "Bungee Shade", cursive;
+  color: #d4af37;
+  font-size: 1.1em;
+`;
+
+// ============================================
+// STATUS SECTION
+// ============================================
+
+const StatusSection = styled.div`
+  min-height: 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  animation: ${fadeIn} 0.6s ease-out 0.5s both;
+`;
+
+const ConnectingContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(12px, 2vh, 20px);
+`;
+
+const ConnectingText = styled.p`
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.6rem, 1.5vw, 0.9rem);
+  color: #8b7355;
+  margin: 0;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-shadow: 1px 1px 0 #000;
+`;
+
+const DotsContainer = styled.div`
+  display: flex;
+  gap: clamp(6px, 1vw, 10px);
+`;
+
+const Dot = styled.div`
+  width: clamp(8px, 1.2vw, 12px);
+  height: clamp(8px, 1.2vw, 12px);
+  background: #d4af37;
+  border-radius: 50%;
+  animation: ${dotBounce} 1.2s ease-in-out infinite;
+  animation-delay: ${props => props.$delay * 0.15}s;
+  box-shadow: 0 0 8px rgba(212, 175, 55, 0.4);
+`;
+
+const ConnectionError = styled.div`
+  display: flex;
+  align-items: center;
+  gap: clamp(8px, 1.2vw, 12px);
+`;
+
+const ErrorIcon = styled.span`
+  font-size: clamp(1rem, 2vw, 1.4rem);
+`;
+
+const ErrorText = styled.p`
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.55rem, 1.3vw, 0.8rem);
+  color: #f87171;
+  margin: 0;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-shadow: 
+    0 0 10px rgba(248, 113, 113, 0.3),
+    1px 1px 0 #000;
+`;
+
+const ConnectedContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(16px, 2.5vh, 28px);
+`;
+
+const ConnectedText = styled.p`
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.6rem, 1.4vw, 0.85rem);
+  color: #4ade80;
+  margin: 0;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  animation: ${connectedPulse} 2s ease-in-out infinite;
+  display: flex;
+  align-items: center;
+  gap: clamp(8px, 1vw, 12px);
+  
+  &::before {
+    content: "";
+    width: clamp(8px, 1vw, 10px);
+    height: clamp(8px, 1vw, 10px);
+    background: #4ade80;
+    border-radius: 50%;
+    box-shadow: 0 0 10px rgba(74, 222, 128, 0.6);
+  }
+`;
+
+const PressKeyText = styled.p`
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.55rem, 1.2vw, 0.75rem);
+  color: #8b7355;
+  margin: 0;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  animation: ${pressKeyFade} 2.5s ease-in-out infinite;
+  text-shadow: 1px 1px 0 #000;
+`;
+
+// ============================================
+// FOOTER
+// ============================================
+
+const Footer = styled.div`
+  position: absolute;
+  bottom: clamp(16px, 3vh, 32px);
+  width: 100%;
+  text-align: center;
+  animation: ${fadeIn} 0.6s ease-out 0.8s both;
+`;
+
+const VersionText = styled.p`
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.45rem, 0.8vw, 0.6rem);
+  color: rgba(92, 64, 51, 0.5);
+  margin: 0;
+  letter-spacing: 0.1em;
+`;
+
+// ============================================
+// DECORATIVE ELEMENTS
+// ============================================
+
+const DecoLine = styled.div`
+  width: clamp(60px, 12vw, 120px);
+  height: 2px;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    rgba(139, 115, 85, 0.4) 50%, 
+    transparent 100%
+  );
+  margin: clamp(20px, 4vh, 40px) auto;
+  animation: ${subtlePulse} 3s ease-in-out infinite;
+`;
+
+// ============================================
+// COMPONENT
+// ============================================
 
 const StartupScreen = ({ onContinue, connectionError, steamDeckMode }) => {
   const [showPressKey, setShowPressKey] = useState(false);
   const [isConnecting, setIsConnecting] = useState(true);
-  const [dots, setDots] = useState("");
+
+  // Generate particles once on mount
+  const particles = Array.from({ length: 12 }, (_, i) => ({
+    id: i,
+    size: 3 + Math.random() * 4,
+    left: Math.random() * 100,
+    duration: 15 + Math.random() * 20,
+    delay: Math.random() * 15,
+  }));
 
   useEffect(() => {
     // Simulate initial loading/connecting phase
@@ -14,17 +363,8 @@ const StartupScreen = ({ onContinue, connectionError, steamDeckMode }) => {
       setShowPressKey(true);
     }, 2000);
 
-    // Animate dots for connecting message
-    const dotsInterval = setInterval(() => {
-      setDots((prev) => {
-        if (prev === "...") return "";
-        return prev + ".";
-      });
-    }, 500);
-
     return () => {
       clearTimeout(connectingTimer);
-      clearInterval(dotsInterval);
     };
   }, []);
 
@@ -32,23 +372,19 @@ const StartupScreen = ({ onContinue, connectionError, steamDeckMode }) => {
     if (!showPressKey) return;
 
     const handleKeyPress = () => {
-      // Any key press continues
       onContinue();
     };
 
     const handleMouseClick = (event) => {
-      // Left click (button 0) or right click (button 2)
       if (event.button === 0 || event.button === 2) {
         onContinue();
       }
     };
 
     const handleGamepadInput = () => {
-      // Check for any gamepad button press
       if (gamepadHandler.isConnected()) {
         const gamepad = gamepadHandler.getGamepad();
         if (gamepad) {
-          // Check if any button is pressed
           const anyButtonPressed = gamepad.buttons.some(
             (button) => button.pressed
           );
@@ -59,14 +395,10 @@ const StartupScreen = ({ onContinue, connectionError, steamDeckMode }) => {
       }
     };
 
-    // Set up keyboard listener
     document.addEventListener("keydown", handleKeyPress);
-
-    // Set up mouse listeners
     document.addEventListener("mousedown", handleMouseClick);
-    document.addEventListener("contextmenu", (e) => e.preventDefault()); // Prevent right-click menu
+    document.addEventListener("contextmenu", (e) => e.preventDefault());
 
-    // Set up gamepad polling
     const gamepadInterval = setInterval(handleGamepadInput, 100);
 
     return () => {
@@ -78,46 +410,67 @@ const StartupScreen = ({ onContinue, connectionError, steamDeckMode }) => {
   }, [showPressKey, onContinue]);
 
   return (
-    <div className="startup-screen">
-      <div className="startup-content">
-        {/* Game Title */}
-        <div className="startup-title">
-          <h1 className="startup-logo">
-            P u m o <span className="startup-pow">PUMO !</span>
-          </h1>
-        </div>
+    <ScreenContainer>
+      <Vignette />
+      
+      {/* Subtle floating particles */}
+      <ParticleContainer>
+        {particles.map((p) => (
+          <Particle
+            key={p.id}
+            $size={p.size}
+            $left={p.left}
+            $duration={p.duration}
+            $delay={p.delay}
+          />
+        ))}
+      </ParticleContainer>
+      
+      <Content>
+        <LogoSection>
+          <Logo>
+            Pumo Pumo <LogoAccent>!</LogoAccent>
+          </Logo>
+        </LogoSection>
 
-        {/* Loading/Connection Status */}
-        <div className="startup-status">
+        <DecoLine />
+
+        <StatusSection>
           {isConnecting && !connectionError && (
-            <div className="connecting-message">
-              <p>Connecting to server{dots}</p>
-            </div>
+            <ConnectingContainer>
+              <ConnectingText>Connecting to server</ConnectingText>
+              <DotsContainer>
+                <Dot $delay={0} />
+                <Dot $delay={1} />
+                <Dot $delay={2} />
+              </DotsContainer>
+            </ConnectingContainer>
           )}
 
           {connectionError && (
-            <div className="connection-error">
-              <p>⚠️ Connection failed - Playing offline</p>
-            </div>
+            <ConnectionError>
+              <ErrorIcon>⚠️</ErrorIcon>
+              <ErrorText>Connection failed - Playing offline</ErrorText>
+            </ConnectionError>
           )}
 
-          {showPressKey && (
-            <div className="press-key-message">
-              <p className="press-key-text">
+          {showPressKey && !connectionError && (
+            <ConnectedContainer>
+              <ConnectedText>Connected</ConnectedText>
+              <PressKeyText>
                 {steamDeckMode
                   ? "Press any button to continue"
                   : "Press any key to continue"}
-              </p>
-            </div>
+              </PressKeyText>
+            </ConnectedContainer>
           )}
-        </div>
+        </StatusSection>
+      </Content>
 
-        {/* Optional: Version or additional info */}
-        <div className="startup-footer">
-          <p className="version-text">v1.0.0</p>
-        </div>
-      </div>
-    </div>
+      <Footer>
+        <VersionText>v1.0.0 Early Access</VersionText>
+      </Footer>
+    </ScreenContainer>
   );
 };
 

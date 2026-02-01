@@ -27,10 +27,6 @@ function App() {
   const [controllerConnected, setControllerConnected] = useState(false);
   const [showStartupScreen, setShowStartupScreen] = useState(true);
 
-  const handleLogoClick = () => {
-    window.location.reload(false);
-  };
-
   const handleContinueFromStartup = () => {
     setShowStartupScreen(false);
   };
@@ -101,16 +97,6 @@ function App() {
           />
         ) : (
           <>
-            <h1 onClick={handleLogoClick} className="logo">
-              P u m o <span className="pow"> PUMO !</span>
-            </h1>
-            {connectionError && (
-              <div
-                style={{ color: "red", textAlign: "center", marginTop: "20px" }}
-              >
-                Connection error. Attempting to reconnect...
-              </div>
-            )}
             {controllerConnected && (
               <div className="controller-connected-indicator">
                 🎮 Controller Connected
@@ -126,6 +112,7 @@ function App() {
               currentPage={currentPage}
               setCurrentPage={setCurrentPage}
               localId={localId}
+              connectionError={connectionError}
             />
           </>
         )}

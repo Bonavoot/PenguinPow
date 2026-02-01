@@ -98,7 +98,7 @@ const getThemeColors = (type) => {
 
 const BannerWrapper = styled.div`
   position: fixed;
-  top: clamp(110px, 28%, 180px);
+  top: clamp(160px, 38%, 250px);
   ${props => props.$isLeftSide ? 'left: 1.5%;' : 'right: 1.5%;'}
   z-index: 200;
   pointer-events: none;
@@ -108,7 +108,7 @@ const BannerWrapper = styled.div`
   transform-origin: top center;
   
   @media (max-width: 900px) {
-    top: clamp(90px, 22%, 140px);
+    top: clamp(130px, 30%, 190px);
   }
 `;
 

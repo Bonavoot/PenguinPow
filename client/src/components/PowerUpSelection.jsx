@@ -396,8 +396,8 @@ const PowerCard = styled.div`
 
 // Square icon with type color
 const IconSquare = styled.div`
-  width: clamp(42px, 6.5vw, 70px);
-  height: clamp(42px, 6.5vw, 70px);
+  width: clamp(35px, 5.5vw, 58px);
+  height: clamp(35px, 5.5vw, 58px);
   background: linear-gradient(135deg,
     ${props => getTypeColor(props.$type).main} 0%,
     ${props => getTypeColor(props.$type).dark} 100%
@@ -429,7 +429,7 @@ const IconSquare = styled.div`
 
 const PowerName = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.55rem, 1.1vw, 0.85rem);
+  font-size: clamp(0.65rem, 1.25vw, 0.95rem);
   color: ${props => props.$selected ? getTypeColor(props.$type).light : '#e8dcc8'};
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -439,34 +439,34 @@ const PowerName = styled.div`
   text-shadow: 1px 1px 2px rgba(0,0,0,0.9);
   
   @media (max-width: 600px) {
-    font-size: clamp(0.45rem, 2vw, 0.7rem);
+    font-size: clamp(0.5rem, 2.2vw, 0.75rem);
   }
 `;
 
 const PowerDesc = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.4rem, 0.85vw, 0.62rem);
+  font-size: clamp(0.48rem, 0.95vw, 0.7rem);
   color: rgba(232, 220, 200, 0.6);
   text-align: center;
   line-height: 1.15;
   text-shadow: 1px 1px 1px rgba(0,0,0,0.7);
   
   @media (max-width: 600px) {
-    font-size: clamp(0.35rem, 1.5vw, 0.52rem);
+    font-size: clamp(0.4rem, 1.65vw, 0.58rem);
   }
 `;
 
 const PowerType = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.38rem, 0.75vw, 0.55rem);
-  color: ${props => props.$isActive ? '#44ff88' : 'rgba(232, 220, 200, 0.45)'};
+  font-size: clamp(0.44rem, 0.85vw, 0.62rem);
+  color: ${props => props.$isActive ? '#44ff88' : 'white'};
   text-transform: uppercase;
   margin-top: clamp(4px, 0.6vh, 8px);
   letter-spacing: 0.05em;
   text-shadow: ${props => props.$isActive ? '0 0 6px rgba(68, 255, 136, 0.4), 1px 1px 1px rgba(0,0,0,0.8)' : '1px 1px 1px rgba(0,0,0,0.7)'};
   
   @media (max-width: 600px) {
-    font-size: clamp(0.32rem, 1.2vw, 0.48rem);
+    font-size: clamp(0.38rem, 1.35vw, 0.54rem);
   }
 `;
 

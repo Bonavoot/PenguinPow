@@ -748,6 +748,9 @@ function resetRoomAndPlayers(room) {
     player.inputLockUntil = 0;
     // Reset dohyo fall state
     player.isFallingOffDohyo = false;
+    // Reset knockback immunity
+    player.knockbackImmune = false;
+    player.knockbackImmuneEndTime = 0;
   });
 
   // Clear player-specific power-up data
@@ -1081,6 +1084,33 @@ io.on("connection", (socket) => {
               player.grabbedOpponent = null;
             }
           }
+          // === CRITICAL: Fix orphaned isBeingThrown states ===
+          // If a player is isBeingThrown but no one is throwing them, clear the state
+          // This can happen if a pumo army clone or other attack hits the thrower mid-throw
+          if (player.isBeingThrown) {
+            const otherPlayer = player === player1 ? player2 : player1;
+            // Check if the other player is actually throwing this player
+            if (!otherPlayer.isThrowing || otherPlayer.throwOpponent !== player.id) {
+              console.log(`🔧 Fixing orphaned isBeingThrown state for player ${player.id}`);
+              player.isBeingThrown = false;
+              player.beingThrownFacingDirection = null;
+              player.y = GROUND_LEVEL; // Reset to ground level
+              player.knockbackVelocity = { x: 0, y: 0 };
+            }
+          }
+          // Also fix orphaned isThrowing states
+          if (player.isThrowing && player.throwOpponent) {
+            const otherPlayer = player === player1 ? player2 : player1;
+            // Check if the thrown player is actually in the thrown state
+            if (!otherPlayer.isBeingThrown) {
+              console.log(`🔧 Fixing orphaned isThrowing state for player ${player.id}`);
+              player.isThrowing = false;
+              player.throwOpponent = null;
+              player.throwStartTime = 0;
+              player.throwEndTime = 0;
+              player.throwingFacingDirection = null;
+            }
+          }
         });
         
         // Update CPU AI for CPU rooms
@@ -1253,15 +1283,15 @@ io.on("connection", (socket) => {
           
           // Authentic sumo timing:
           // 0-1500ms: Wait for power-up reveal to finish
-          // 1500ms: Gyoji says "TE WO TSUITE!" (Put your hands down!)
-          // 4000ms: HAKKIYOI (game_start)
+          // 1000ms: Gyoji says "TE WO TSUITE!" (Put your hands down!)
+          // 3000ms: HAKKIYOI (game_start)
           
           if (elapsedTime >= 1000 && !room.teWoTsuiteSent) {
             room.teWoTsuiteSent = true;
             io.in(room.id).emit("gyoji_call", "TE WO TSUITE!");
           }
           
-          if (elapsedTime >= 3500) {
+          if (elapsedTime >= 3000) {
             // Clear the power-up auto-selection timer if players ready up normally
             if (room.roundStartTimer) {
               clearTimeout(room.roundStartTimer);
@@ -1389,7 +1419,12 @@ io.on("connection", (socket) => {
               !targetPlayer.isRawParrying &&
               !snowball.hasHit
             ) {
-              const distance = Math.abs(snowball.x - targetPlayer.x);
+              // Adjust collision point based on facing direction to account for sprite asymmetry
+              // Only adjust for player 2 side (facing = 1), player 1 side (facing = -1) is correct
+              const faceOffset = targetPlayer.facing === 1 ? 12 : 0;
+              const adjustedPlayerX = targetPlayer.x + faceOffset;
+              
+              const distance = Math.abs(snowball.x - adjustedPlayerX);
               const sizeMul = targetPlayer.sizeMultiplier || 1;
               const horizThresh = Math.round(45 * 1.3) * sizeMul;
               const vertThresh = Math.round(27 * 1.3) * sizeMul;
@@ -1442,6 +1477,19 @@ io.on("connection", (socket) => {
                   }
                 }
                 
+                // CRITICAL: If target was throwing someone, clear the thrown player's state
+                // This prevents isBeingThrown from getting stuck when thrower is interrupted
+                if (targetPlayer.isThrowing && targetPlayer.throwOpponent) {
+                  const thrownPlayer = room.players.find(p => p.id === targetPlayer.throwOpponent);
+                  if (thrownPlayer) {
+                    console.log(`🔧 Clearing isBeingThrown on ${thrownPlayer.id} because thrower ${targetPlayer.id} was hit by snowball`);
+                    thrownPlayer.isBeingThrown = false;
+                    thrownPlayer.beingThrownFacingDirection = null;
+                    thrownPlayer.y = GROUND_LEVEL; // Reset to ground level
+                    thrownPlayer.knockbackVelocity = { x: 0, y: 0 };
+                  }
+                }
+                
                 // CRITICAL: Clear ALL action states before setting isHit
                 clearAllActionStates(targetPlayer);
                 targetPlayer.isHit = true;
@@ -1478,7 +1526,12 @@ io.on("connection", (socket) => {
 
             // Check collision with raw parrying opponent (snowball is blocked or reflected)
             if (opponent && opponent.isRawParrying && !snowball.hasHit) {
-              const distance = Math.abs(snowball.x - opponent.x);
+              // Adjust collision point based on facing direction to account for sprite asymmetry
+              // Only adjust for player 2 side (facing = 1), player 1 side (facing = -1) is correct
+              const faceOffset = opponent.facing === 1 ? 12 : 0;
+              const adjustedOpponentX = opponent.x + faceOffset;
+              
+              const distance = Math.abs(snowball.x - adjustedOpponentX);
               const sizeMul = opponent.sizeMultiplier || 1;
               const horizThresh = Math.round(45 * 1.3) * sizeMul;
               const vertThresh = Math.round(27 * 1.3) * sizeMul;
@@ -1679,6 +1732,19 @@ io.on("connection", (socket) => {
                   const grabbedPlayer = room.players.find(p => p.id === opponent.grabbedOpponent);
                   if (grabbedPlayer) {
                     grabbedPlayer.isBeingGrabbed = false;
+                  }
+                }
+                
+                // CRITICAL: If opponent was throwing someone, clear the thrown player's state
+                // This prevents isBeingThrown from getting stuck when thrower is interrupted
+                if (opponent.isThrowing && opponent.throwOpponent) {
+                  const thrownPlayer = room.players.find(p => p.id === opponent.throwOpponent);
+                  if (thrownPlayer) {
+                    console.log(`🔧 Clearing isBeingThrown on ${thrownPlayer.id} because thrower ${opponent.id} was hit by pumo army clone`);
+                    thrownPlayer.isBeingThrown = false;
+                    thrownPlayer.beingThrownFacingDirection = null;
+                    thrownPlayer.y = GROUND_LEVEL; // Reset to ground level
+                    thrownPlayer.knockbackVelocity = { x: 0, y: 0 };
                   }
                 }
                 
@@ -2270,7 +2336,15 @@ io.on("connection", (socket) => {
           }
         }
         // Dodging - Revolutionary physics: "snap up, hang, slam down" like Celeste/Hollow Knight
-        if (player.isDodging) {
+        // CRITICAL: Never process dodge movement if player is being grabbed
+        if (player.isDodging && player.isBeingGrabbed) {
+          // Safety clear - if somehow both states are true, force clear dodge
+          player.isDodging = false;
+          player.isDodgeCancelling = false;
+          player.dodgeDirection = null;
+          player.y = GROUND_LEVEL;
+        }
+        if (player.isDodging && !player.isBeingGrabbed) {
           // Use fixed dodge speed - no momentum-based variations
           let currentDodgeSpeed = speedFactor * DODGE_BASE_SPEED;
 
@@ -4157,6 +4231,19 @@ io.on("connection", (socket) => {
         }
       }
       
+      // CRITICAL: If otherPlayer was throwing someone, clear the thrown player's state
+      // This prevents isBeingThrown from getting stuck when thrower is interrupted
+      if (otherPlayer.isThrowing && otherPlayer.throwOpponent) {
+        const thrownPlayer = currentRoom.players.find(p => p.id === otherPlayer.throwOpponent);
+        if (thrownPlayer) {
+          console.log(`🔧 Clearing isBeingThrown on ${thrownPlayer.id} because thrower ${otherPlayer.id} was hit`);
+          thrownPlayer.isBeingThrown = false;
+          thrownPlayer.beingThrownFacingDirection = null;
+          thrownPlayer.y = GROUND_LEVEL; // Reset to ground level
+          thrownPlayer.knockbackVelocity = { x: 0, y: 0 };
+        }
+      }
+      
       // CRITICAL: Clear ALL action states - ensures only ONE state at a time
       clearAllActionStates(otherPlayer);
       
@@ -5994,7 +6081,8 @@ io.on("connection", (socket) => {
             player.bufferExpiryTime = 0;
 
             // Execute the buffered action
-            if (action.type === "dodge" && player.stamina >= DODGE_STAMINA_COST) {
+            // CRITICAL: Block buffered dodge if player is being grabbed
+            if (action.type === "dodge" && player.stamina >= DODGE_STAMINA_COST && !player.isBeingGrabbed) {
               // Clear parry success state when starting a dodge
               player.isRawParrySuccess = false;
               player.isPerfectRawParrySuccess = false;
@@ -6066,8 +6154,8 @@ io.on("connection", (socket) => {
       (player.isAttacking ||
         player.isThrowing ||
         player.isBeingThrown ||
-        player.isGrabbing ||
-        player.isBeingGrabbed) && // Removed isDodging from this condition
+        player.isGrabbing) && // CRITICAL: Removed isBeingGrabbed - NEVER buffer dodge while being grabbed!
+      !player.isBeingGrabbed && // Explicitly block buffering when being grabbed
       !player.isDodging && // Add explicit check to prevent dodge buffering during dodge
       !player.isThrowingSnowball &&
       !player.isRawParrying &&

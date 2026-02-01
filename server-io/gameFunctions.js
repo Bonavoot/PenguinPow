@@ -1155,7 +1155,8 @@ function safelyEndChargedAttack(player, rooms) {
           player.bufferExpiryTime = 0;
 
           // Execute the buffered action
-          if (action.type === "dodge" && player.stamina >= DODGE_STAMINA_COST) {
+          // CRITICAL: Block buffered dodge if player is being grabbed
+          if (action.type === "dodge" && player.stamina >= DODGE_STAMINA_COST && !player.isBeingGrabbed) {
             // Clear movement momentum for static dodge distance
             player.movementVelocity = 0;
             player.isStrafing = false;
