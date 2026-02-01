@@ -2,38 +2,8 @@ import { useEffect, useState, useRef, useMemo } from "react";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 import "./RawParryEffect.css";
+import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
 
-// Animation for text appearing on the side of the screen (fighting game style)
-const textSlideIn = keyframes`
-  0% {
-    transform: translateX(var(--slide-dir)) scale(0.5);
-    opacity: 0;
-  }
-  10% {
-    transform: translateX(0) scale(1.2);
-    opacity: 1;
-  }
-  18% {
-    transform: translateX(0) scale(0.95);
-    opacity: 1;
-  }
-  25% {
-    transform: translateX(0) scale(1.05);
-    opacity: 1;
-  }
-  32% {
-    transform: translateX(0) scale(1);
-    opacity: 1;
-  }
-  65% {
-    transform: translateX(0) scale(1);
-    opacity: 1;
-  }
-  100% {
-    transform: translateX(0) scale(1);
-    opacity: 0;
-  }
-`;
 
 // Animation for centered text - matches GrabBreakEffect textPop
 const textPop = keyframes`
@@ -63,29 +33,6 @@ const textPop = keyframes`
   }
 `;
 
-// Text positioned on player's side of the screen (like combo counter)
-const ParryTextSide = styled.div`
-  position: fixed;
-  /* Position near vertical center of screen */
-  top: clamp(180px, 45%, 320px);
-  ${props => props.$isLeftSide ? 'left: 3%;' : 'right: 3%;'}
-  font-family: "Bungee", cursive;
-  /* Smaller font on small screens */
-  font-size: clamp(0.6rem, 1.5vw, 1.2rem);
-  line-height: 1.1;
-  color: ${props => props.$isPerfect ? '#FFD700' : '#00BFFF'};
-  text-shadow: 
-    -2px -2px 0 #000, 2px -2px 0 #000, 
-    -2px 2px 0 #000, 2px 2px 0 #000,
-    0 0 15px ${props => props.$isPerfect ? 'rgba(255, 215, 0, 0.9)' : 'rgba(0, 191, 255, 0.9)'};
-  letter-spacing: 0.1em;
-  white-space: pre-line;
-  --slide-dir: ${props => props.$isLeftSide ? '-50px' : '50px'};
-  animation: ${textSlideIn} 1.5s ease-out forwards;
-  z-index: 200;
-  pointer-events: none;
-  text-align: center;
-`;
 
 // Centered text that appears at the parry location - matches GrabBreakEffect positioning and animation
 const ParryTextCenter = styled.div`
@@ -375,10 +322,14 @@ const RawParryEffect = ({ position }) => {
                 {effect.isPerfect ? "PERFECT" : "PARRY"}
               </ParryTextCenter>
             </RawParryEffectContainer>
-            {/* Parry text on player's side of screen */}
-            <ParryTextSide $isPerfect={effect.isPerfect} $isLeftSide={isLeftSide}>
-              {effect.isPerfect ? "PERFECT\nPARRY" : "PARRY"}
-            </ParryTextSide>
+            {/* Sumo-themed parry announcement banner - only for perfect parry */}
+            {effect.isPerfect && (
+              <SumoAnnouncementBanner
+                text={"PERFECT\nPARRY"}
+                type="perfect"
+                isLeftSide={isLeftSide}
+              />
+            )}
           </div>
         );
       })}

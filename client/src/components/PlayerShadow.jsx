@@ -1,6 +1,6 @@
 import styled from "styled-components";
 import PropTypes from "prop-types";
-import { isOutsideDohyo, DOHYO_FALL_DEPTH } from "../constants";
+import { isOutsideDohyo } from "../constants";
 
 const GROUND_LEVEL = 210; // Match the server's GROUND_LEVEL
 
@@ -14,8 +14,8 @@ const ShadowElement = styled.div.attrs((props) => {
     props.$isRingOutThrowCutscene;
   const bottomPos = forceGround ? GROUND_LEVEL : props.$y;
   
-  // Apply dohyo fall depth if outside boundaries
-  const adjustedBottomPos = bottomPos - (isOutsideDohyo(props.$x, props.$y) ? DOHYO_FALL_DEPTH : 0);
+  // Server now handles dohyo fall physics, so we use the Y position directly
+  const adjustedBottomPos = bottomPos;
 
   // Use custom offsets if provided, otherwise use defaults
   const offsetLeft =

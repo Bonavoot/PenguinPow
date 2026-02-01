@@ -3,7 +3,9 @@ import { SocketContext } from "../SocketContext";
 import GameFighter from "./GameFighter";
 import MobileControls from "./MobileControls";
 import PowerUpSelection from "./PowerUpSelection";
+import PowerUpReveal from "./PowerUpReveal";
 import GrabClashUI from "./GrabClashUI";
+import CrowdLayer from "./CrowdLayer";
 import gamepadHandler from "../utils/gamepadHandler";
 // import gameMusic from "../sounds/game-music.mp3";
 import PropTypes from "prop-types";
@@ -18,6 +20,7 @@ const Game = ({ rooms, roomName, localId, setCurrentPage }) => {
     useState(false);
   const [opponentDisconnected, setOpponentDisconnected] = useState(false);
   const [disconnectedRoomId, setDisconnectedRoomId] = useState(null);
+  const [isCrowdCheering, setIsCrowdCheering] = useState(false);
   const index = rooms.findIndex((room) => room.id === roomName);
 
   // Get the current room with null safety
@@ -207,14 +210,22 @@ const Game = ({ rooms, roomName, localId, setCurrentPage }) => {
       console.log("🔴 GAME: Game reset, clearing disconnect state");
       setOpponentDisconnected(false);
       setDisconnectedRoomId(null);
+      setIsCrowdCheering(false); // Crowd goes back to idle when game resets
+    };
+
+    const handleGameOver = () => {
+      console.log("🎉 GAME: Game over, crowd starts cheering!");
+      setIsCrowdCheering(true); // Crowd cheers when someone wins
     };
 
     socket.on("opponent_disconnected", handleOpponentDisconnected);
     socket.on("game_reset", handleGameReset);
+    socket.on("game_over", handleGameOver);
 
     return () => {
       socket.off("opponent_disconnected", handleOpponentDisconnected);
       socket.off("game_reset", handleGameReset);
+      socket.off("game_over", handleGameOver);
     };
   }, [socket]);
 
@@ -229,6 +240,7 @@ const Game = ({ rooms, roomName, localId, setCurrentPage }) => {
   return (
     <div className="game-wrapper">
       <div className="game-container">
+        <CrowdLayer isCheering={isCrowdCheering} />
         <div className="dohyo-overlay"></div>
         <div className="ui">
           {currentRoom.players
@@ -257,6 +269,10 @@ const Game = ({ rooms, roomName, localId, setCurrentPage }) => {
           roomId={roomName}
           playerId={localId}
           onSelectionStateChange={setIsPowerUpSelectionActive}
+        />
+        <PowerUpReveal
+          roomId={roomName}
+          localId={localId}
         />
         <GrabClashUI
           socket={socket}

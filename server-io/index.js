@@ -17,6 +17,8 @@ const {
 const {
   MAP_LEFT_BOUNDARY,
   MAP_RIGHT_BOUNDARY,
+  DOHYO_LEFT_BOUNDARY,
+  DOHYO_RIGHT_BOUNDARY,
   TimeoutManager,
   timeoutManager,
   setPlayerTimeout,
@@ -129,6 +131,7 @@ const rooms = Array.from({ length: 10 }, (_, i) => ({
   readyStartTime: null,
   roundStartTimer: null, // Add timer for automatic round start
   hakkiyoiCount: 0,
+  teWoTsuiteSent: false, // Track if gyoji call was sent before HAKKIYOI
   powerUpSelectionPhase: false, // Track power-up selection phase
   opponentDisconnected: false, // Track if opponent disconnected during active game
   disconnectedDuringGame: false, // Track if disconnection happened during active gameplay
@@ -150,6 +153,11 @@ const THROW_RANGE = Math.round(166 * 1.3); // 216 (scaled +30%)
 const GRAB_RANGE = Math.round(126 * 1.3); // 164 (scaled +30%)
 const GRAB_PUSH_SPEED = 0.3; // Increased from 0.2 for more substantial movement
 const GRAB_PUSH_DURATION = 650;
+
+// Dohyo edge fall physics - fast heavy drop with maintained horizontal momentum
+const DOHYO_FALL_SPEED = 8; // Fast downward fall speed (2 feet drop)
+const DOHYO_FALL_DEPTH = 50; // How far down they fall (2 feet)
+const DOHYO_FALL_HORIZONTAL_RETENTION = 0.98; // Maintain horizontal momentum while falling
 
 // Add power-up types
 const { GRAB_STATES } = require("./constants");
@@ -427,6 +435,7 @@ function createCPUPlayer(uniqueId) {
     ringOutFreezeEndTime: 0,
     ringOutThrowDirection: null,
     inputLockUntil: 0,
+    isFallingOffDohyo: false,
   };
 }
 
@@ -737,6 +746,8 @@ function resetRoomAndPlayers(room) {
     player.ringOutThrowDirection = null;
     // Reset input lockouts
     player.inputLockUntil = 0;
+    // Reset dohyo fall state
+    player.isFallingOffDohyo = false;
   });
 
   // Clear player-specific power-up data
@@ -1238,8 +1249,19 @@ io.on("connection", (socket) => {
             room.readyStartTime = currentTime;
           }
 
-          console.log(player1.isReady);
-          if (currentTime - room.readyStartTime >= 1000) {
+          const elapsedTime = currentTime - room.readyStartTime;
+          
+          // Authentic sumo timing:
+          // 0-1500ms: Wait for power-up reveal to finish
+          // 1500ms: Gyoji says "TE WO TSUITE!" (Put your hands down!)
+          // 4000ms: HAKKIYOI (game_start)
+          
+          if (elapsedTime >= 1000 && !room.teWoTsuiteSent) {
+            room.teWoTsuiteSent = true;
+            io.in(room.id).emit("gyoji_call", "TE WO TSUITE!");
+          }
+          
+          if (elapsedTime >= 3500) {
             // Clear the power-up auto-selection timer if players ready up normally
             if (room.roundStartTimer) {
               clearTimeout(room.roundStartTimer);
@@ -1251,9 +1273,11 @@ io.on("connection", (socket) => {
             player2.isReady = false;
             room.hakkiyoiCount = 1;
             room.readyStartTime = null;
+            room.teWoTsuiteSent = false;
           }
         } else {
           room.readyStartTime = null;
+          room.teWoTsuiteSent = false;
         }
 
         // Handle recovery state for charged attacks
@@ -1825,12 +1849,35 @@ io.on("connection", (socket) => {
             player.x =
               player.x + player.knockbackVelocity.x * delta * speedFactor;
 
-            // Apply friction to knockback
-            // Use less friction for slap knockbacks to create better sliding effect
-            if (player.isSlapKnockback) {
-              player.knockbackVelocity.x *= 0.96; // Much less friction for slap attacks (closer to ice physics)
+            // Check if player crossed the dohyo boundary - trigger fast heavy fall
+            const isOutsideDohyo = player.x < DOHYO_LEFT_BOUNDARY || player.x > DOHYO_RIGHT_BOUNDARY;
+            
+            // Fast heavy drop when outside dohyo
+            if (isOutsideDohyo && !player.isFallingOffDohyo) {
+              player.isFallingOffDohyo = true;
+              console.log(`💥 Player ${player.id} fell off dohyo edge!`);
+            }
+
+            // Fast, heavy fall physics - straight down while maintaining horizontal speed
+            if (player.isFallingOffDohyo) {
+              // Fast downward movement (no arc, just straight down)
+              const targetY = GROUND_LEVEL - DOHYO_FALL_DEPTH;
+              if (player.y > targetY) {
+                player.y = Math.max(targetY, player.y - DOHYO_FALL_SPEED);
+              }
+              
+              // Maintain horizontal momentum with slight friction
+              player.knockbackVelocity.x *= DOHYO_FALL_HORIZONTAL_RETENTION;
+              player.movementVelocity *= DOHYO_FALL_HORIZONTAL_RETENTION;
             } else {
-              player.knockbackVelocity.x *= 0.875; // Normal friction for charged attacks
+              // Normal knockback physics when not falling off dohyo
+              // Apply friction to knockback
+              // Use less friction for slap knockbacks to create better sliding effect
+              if (player.isSlapKnockback) {
+                player.knockbackVelocity.x *= 0.96; // Much less friction for slap attacks (closer to ice physics)
+              } else {
+                player.knockbackVelocity.x *= 0.875; // Normal friction for charged attacks
+              }
             }
 
             // Apply ice-like sliding physics
@@ -4671,6 +4718,8 @@ io.on("connection", (socket) => {
         ringOutFreezeEndTime: 0,
         ringOutThrowDirection: null,
         inputLockUntil: 0,
+        // Dohyo fall physics
+        isFallingOffDohyo: false,
       });
     }
 
@@ -4725,6 +4774,7 @@ io.on("connection", (socket) => {
       readyStartTime: null,
       roundStartTimer: null,
       hakkiyoiCount: 0,
+      teWoTsuiteSent: false, // Track if gyoji call was sent before HAKKIYOI
       isCPURoom: true, // Mark as CPU room
       playerAvailablePowerUps: {},
       playersSelectedPowerUps: {},
@@ -4874,6 +4924,8 @@ io.on("connection", (socket) => {
       ringOutFreezeEndTime: 0,
       ringOutThrowDirection: null,
       inputLockUntil: 0,
+      // Dohyo fall physics
+      isFallingOffDohyo: false,
     });
 
     // Add CPU player as player 2 with unique ID tied to the room

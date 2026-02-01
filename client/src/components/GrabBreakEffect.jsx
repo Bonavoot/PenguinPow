@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
+import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
 
 // Dramatic shockwave burst animation
 const shockwaveExpand = keyframes`
@@ -73,37 +74,6 @@ const textPop = keyframes`
   }
 `;
 
-// Animation for side text appearing (fighting game style)
-const textSlideIn = keyframes`
-  0% {
-    transform: translateX(var(--slide-dir)) scale(0.5);
-    opacity: 0;
-  }
-  10% {
-    transform: translateX(0) scale(1.2);
-    opacity: 1;
-  }
-  18% {
-    transform: translateX(0) scale(0.95);
-    opacity: 1;
-  }
-  25% {
-    transform: translateX(0) scale(1.05);
-    opacity: 1;
-  }
-  32% {
-    transform: translateX(0) scale(1);
-    opacity: 1;
-  }
-  65% {
-    transform: translateX(0) scale(1);
-    opacity: 1;
-  }
-  100% {
-    transform: translateX(0) scale(1);
-    opacity: 0;
-  }
-`;
 
 const EffectContainer = styled.div`
   position: absolute;
@@ -175,29 +145,6 @@ const BreakText = styled.div`
   animation-delay: 0.05s;
 `;
 
-// Text positioned on breaker's side of the screen (like parry/counter grab text)
-const GrabBreakTextSide = styled.div`
-  position: fixed;
-  /* Position near vertical center of screen */
-  top: clamp(180px, 45%, 320px);
-  ${props => props.$isLeftSide ? 'left: 3%;' : 'right: 3%;'}
-  font-family: "Bungee", cursive;
-  /* Smaller font on small screens */
-  font-size: clamp(0.6rem, 1.5vw, 1.2rem);
-  line-height: 1.1;
-  color: #00ff88;
-  text-shadow: 
-    -2px -2px 0 #000, 2px -2px 0 #000, 
-    -2px 2px 0 #000, 2px 2px 0 #000,
-    0 0 15px rgba(0, 255, 136, 0.9);
-  letter-spacing: 0.1em;
-  white-space: pre-line;
-  --slide-dir: ${props => props.$isLeftSide ? '-50px' : '50px'};
-  animation: ${textSlideIn} 1.5s ease-out forwards;
-  z-index: 200;
-  pointer-events: none;
-  text-align: center;
-`;
 
 const GrabBreakEffect = ({ position }) => {
   const [activeEffects, setActiveEffects] = useState([]);
@@ -281,10 +228,12 @@ const GrabBreakEffect = ({ position }) => {
               ))}
               <BreakText>BREAK!</BreakText>
             </EffectContainer>
-            {/* Grab break text on breaker's side of screen */}
-            <GrabBreakTextSide $isLeftSide={isLeftSide}>
-              {"GRAB\nBREAK"}
-            </GrabBreakTextSide>
+            {/* Sumo-themed grab break announcement banner */}
+            <SumoAnnouncementBanner
+              text={"GRAB\nBREAK"}
+              type="break"
+              isLeftSide={isLeftSide}
+            />
           </div>
         );
       })}

@@ -724,6 +724,55 @@ body {
   z-index: 99;
 }
 
+/* Gyoji's call before HAKKIYOI (authentic sumo) */
+.gyoji-call {
+  position: absolute;
+  top: clamp(100px, 25%, 180px);
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: "Bungee", cursive;
+  font-size: clamp(1.2rem, 4vw, 2.8rem);
+  color: #fff;
+  text-align: center;
+  pointer-events: none;
+  z-index: 1001;
+  letter-spacing: 0.15em;
+  white-space: nowrap;
+  animation: gyojiCallAnnounce 2s ease-out forwards;
+  text-shadow: 
+    -2px -2px 0 #000, 
+    2px -2px 0 #000, 
+    -2px 2px 0 #000, 
+    2px 2px 0 #000,
+    0 0 15px rgba(255, 200, 50, 0.6);
+  will-change: transform, opacity;
+}
+
+@keyframes gyojiCallAnnounce {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.5);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.15);
+  }
+  25% {
+    transform: translate(-50%, -50%) scale(0.95);
+  }
+  35% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  75% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
 .hakkiyoi {
   position: absolute;
   /* Push text below stamina UI - adjusted for smaller UI on small screens */

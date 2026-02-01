@@ -566,13 +566,25 @@ function handleReadyPositions(room, player1, player2, io) {
 
     // Only start the game countdown when BOTH players are ready
     if (player1.isReady && player2.isReady) {
-      // Start a timer to trigger hakkiyoi after 1 second of being ready
+      // Start a timer to trigger hakkiyoi after players are ready
       if (!room.readyStartTime) {
         room.readyStartTime = Date.now();
       }
 
       const currentTime = Date.now();
-      if (currentTime - room.readyStartTime >= 1000) {
+      const elapsedTime = currentTime - room.readyStartTime;
+      
+      // Authentic sumo timing:
+      // 0-1500ms: Wait for power-up reveal to finish
+      // 1500ms: Gyoji says "TE WO TSUITE!" (Put your hands down!)
+      // 4000ms: HAKKIYOI (game_start)
+      
+      if (elapsedTime >= 1000 && !room.teWoTsuiteSent) {
+        room.teWoTsuiteSent = true;
+        io.in(room.id).emit("gyoji_call", "TE WO TSUITE!");
+      }
+      
+      if (elapsedTime >= 3500) {
         // Clear the power-up auto-selection timer if players ready up normally
         if (room.roundStartTimer) {
           clearTimeout(room.roundStartTimer);
@@ -590,7 +602,12 @@ function handleReadyPositions(room, player1, player2, io) {
         player1.isReady = false;
         player2.isReady = false;
         room.readyStartTime = null;
+        room.teWoTsuiteSent = false;
       }
+    } else {
+      // Reset if players leave ready state
+      room.readyStartTime = null;
+      room.teWoTsuiteSent = false;
     }
   } else {
     // Clear ready states when game starts

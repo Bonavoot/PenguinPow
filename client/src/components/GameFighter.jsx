@@ -548,7 +548,7 @@ const RedTintOverlay = styled.div
       height: "auto",
       aspectRatio: 1,
       left: `${(props.$x / 1280) * 100}%`,
-      bottom: `${((props.$y - (isOutsideDohyo(props.$x, props.$y) ? DOHYO_FALL_DEPTH : 0)) / 720) * 100}%`,
+      bottom: `${(props.$y / 720) * 100}%`,
       transform:
         (props.$isRingOutThrowCutscene && props.$isThrowing
           ? -props.$facing
@@ -582,7 +582,7 @@ const HurtTintOverlay = styled.div
       height: "auto",
       aspectRatio: 1,
       left: `${(props.$x / 1280) * 100}%`,
-      bottom: `${((props.$y - (isOutsideDohyo(props.$x, props.$y) ? DOHYO_FALL_DEPTH : 0)) / 720) * 100}%`,
+      bottom: `${(props.$y / 720) * 100}%`,
       transform:
         (props.$isRingOutThrowCutscene && props.$isThrowing
           ? -props.$facing
@@ -622,7 +622,7 @@ const TintedImage = styled.img
     style: {
       position: "absolute",
       left: `${(props.$x / 1280) * 100}%`,
-      bottom: `${((props.$y - (isOutsideDohyo(props.$x, props.$y) ? DOHYO_FALL_DEPTH : 0)) / 720) * 100}%`,
+      bottom: `${(props.$y / 720) * 100}%`,
       transform:
         (props.$isRingOutThrowCutscene && props.$isThrowing
           ? -props.$facing
@@ -774,7 +774,7 @@ const StyledImage = styled("img")
       left: props.$isAtTheRopes && props.$fighter === "player 1"
         ? `${((props.$x + (props.$x < 640 ? -5 : 5)) / 1280) * 100}%`  // Move 5px closer to ropes
         : `${(props.$x / 1280) * 100}%`,
-      bottom: `${((props.$y - (isOutsideDohyo(props.$x, props.$y) ? DOHYO_FALL_DEPTH : 0)) / 720) * 100}%`,
+      bottom: `${(props.$y / 720) * 100}%`,
       "--facing": (props.$isRingOutThrowCutscene && props.$isThrowing
             ? -props.$facing
             : props.$facing) === 1
@@ -1174,175 +1174,6 @@ const RitualSpriteImage = styled.img.attrs((props) => {
   };
 })``;
 
-// Slide in animation for power-up text (matching side texts)
-const powerUpSlideIn = `
-  @keyframes powerUpSlideIn {
-    0% {
-      transform: translateX(var(--slide-dir));
-      opacity: 0;
-    }
-    30% {
-      transform: translateX(0);
-      opacity: 1;
-    }
-    70% {
-      transform: translateX(0);
-      opacity: 1;
-    }
-    100% {
-      transform: translateX(var(--slide-dir));
-      opacity: 0;
-    }
-  }
-`;
-
-// Container for power-up announcement with icon and text
-const FloatingPowerUpContainer = styled.div`
-  position: fixed;
-  top: clamp(120px, 35%, 280px);
-  ${props => props.$index === 0 ? 'left: 2%;' : 'right: 2%;'}
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: clamp(4px, 1vw, 10px);
-  --slide-dir: ${props => props.$index === 0 ? '-50px' : '50px'};
-  animation: powerUpSlideIn 2s ease-out forwards;
-  z-index: 200;
-  pointer-events: none;
-  
-  ${powerUpSlideIn}
-  
-  @media (max-width: 1200px) {
-    top: clamp(100px, 30%, 220px);
-    gap: clamp(3px, 0.8vw, 8px);
-  }
-  
-  @media (max-width: 900px) {
-    top: clamp(80px, 25%, 180px);
-    gap: clamp(2px, 0.6vw, 6px);
-    ${props => props.$index === 0 ? 'left: 1%;' : 'right: 1%;'}
-  }
-`;
-
-// Square icon with background color
-const PowerUpIconSquare = styled.div`
-  width: clamp(32px, 6vw, 60px);
-  height: clamp(32px, 6vw, 60px);
-  background: ${(props) => {
-    switch (props.$powerUpType) {
-      case "speed":
-        return "linear-gradient(135deg, #00d2ff, #00a0cc)";
-      case "power":
-        return "linear-gradient(135deg, #ff6b6b, #cc4444)";
-      case "snowball":
-        return "linear-gradient(135deg, #74b9ff, #5599dd)";
-      case "pumo_army":
-        return "linear-gradient(135deg, #ffcc80, #ddaa66)";
-      case "thick_blubber":
-        return "linear-gradient(135deg, #9c88ff, #7766dd)";
-      default:
-        return "linear-gradient(135deg, #FFD700, #FFA500)";
-    }
-  }};
-  border: 2px solid #000;
-  border-radius: clamp(4px, 0.8vw, 8px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4);
-
-  img {
-    width: 70%;
-    height: 70%;
-    object-fit: contain;
-    filter: drop-shadow(2px 2px 3px rgba(0, 0, 0, 0.5));
-  }
-  
-  @media (max-width: 1200px) {
-    width: clamp(28px, 5vw, 50px);
-    height: clamp(28px, 5vw, 50px);
-  }
-  
-  @media (max-width: 900px) {
-    width: clamp(24px, 5.5vw, 42px);
-    height: clamp(24px, 5.5vw, 42px);
-    border-width: 2px;
-  }
-`;
-
-// Text below the icon
-const FloatingPowerUpText = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.5rem, 1.2vw, 1rem);
-  line-height: 1.1;
-  font-weight: 400;
-  color: ${(props) => {
-    switch (props.$powerUpType) {
-      case "speed":
-        return "#00BFFF";
-      case "power":
-        return "#FF4444";
-      case "snowball":
-        return "#FFFFFF";
-      case "pumo_army":
-        return "#FF8C00";
-      case "thick_blubber":
-        return "#9C88FF";
-      default:
-        return "#FFD700";
-    }
-  }};
-  text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000,
-    0 0 15px
-      ${(props) => {
-        switch (props.$powerUpType) {
-          case "speed":
-            return "rgba(0, 191, 255, 0.9)";
-          case "power":
-            return "rgba(255, 68, 68, 0.9)";
-          case "snowball":
-            return "rgba(255, 255, 255, 0.9)";
-          case "pumo_army":
-            return "rgba(255, 140, 0, 0.9)";
-          case "thick_blubber":
-            return "rgba(156, 136, 255, 0.9)";
-          default:
-            return "rgba(255, 215, 0, 0.9)";
-        }
-      }};
-  letter-spacing: 0.08em;
-  white-space: pre-line;
-  text-align: center;
-  text-transform: uppercase;
-  
-  @media (max-width: 1200px) {
-    font-size: clamp(0.45rem, 1vw, 0.85rem);
-  }
-  
-  @media (max-width: 900px) {
-    font-size: clamp(0.38rem, 1.1vw, 0.7rem);
-    letter-spacing: 0.06em;
-    text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000,
-      0 0 10px
-        ${(props) => {
-          switch (props.$powerUpType) {
-            case "speed":
-              return "rgba(0, 191, 255, 0.9)";
-            case "power":
-              return "rgba(255, 68, 68, 0.9)";
-            case "snowball":
-              return "rgba(255, 255, 255, 0.9)";
-            case "pumo_army":
-              return "rgba(255, 140, 0, 0.9)";
-            case "thick_blubber":
-              return "rgba(156, 136, 255, 0.9)";
-            default:
-              return "rgba(255, 215, 0, 0.9)";
-          }
-        }};
-  }
-`;
-
 const CountdownTimer = styled.div`
   position: absolute;
   opacity: 0;
@@ -1567,6 +1398,7 @@ const GameFighter = ({
     player2: null,
   });
   const [hakkiyoi, setHakkiyoi] = useState(false);
+  const [gyojiCall, setGyojiCall] = useState(null); // Gyoji's call before HAKKIYOI (e.g., "TE WO TSUITE!")
   const [gyojiState, setGyojiState] = useState("idle");
   const [gameOver, setGameOver] = useState(false);
   const [winner, setWinner] = useState("");
@@ -1579,8 +1411,6 @@ const GameFighter = ({
   const [rawParryEffectPosition, setRawParryEffectPosition] = useState(null);
   const [showStarStunEffect, setShowStarStunEffect] = useState(false);
   const [hasUsedPowerUp, setHasUsedPowerUp] = useState(false);
-  const [showFloatingPowerUp, setShowFloatingPowerUp] = useState(false);
-  const [floatingPowerUpType, setFloatingPowerUpType] = useState(null);
   const [countdown, setCountdown] = useState(15);
   const countdownRef = useRef(null);
   const [screenShake, setScreenShake] = useState({
@@ -2220,41 +2050,31 @@ const GameFighter = ({
 
     // Power-ups revealed simultaneously after both players have picked
     // This prevents counter-picking by hiding choices until both are locked in
+    // The visual reveal is now handled by the PowerUpReveal component in Game.jsx
     socket.on("power_ups_revealed", (data) => {
       // Find this player's power-up from the reveal data
       const thisPlayerData = data.player1.playerId === player.id ? data.player1 : data.player2;
       
-      if (thisPlayerData.playerId === player.id) {
-        // Show floating text for this specific player
-        setShowFloatingPowerUp(true);
-        setFloatingPowerUpType(thisPlayerData.powerUpType);
-
-        // Hide the floating text after animation
-        setTimeout(() => {
-          setShowFloatingPowerUp(false);
-        }, 2000);
-
-        // Only update penguin state for local player
-        // Note: salt sound already plays during isThrowingSalt, and hasUsedPowerUp is set there too
-        if (thisPlayerData.playerId === localId) {
-          setPenguin((prev) => ({
-            ...prev,
-            activePowerUp: thisPlayerData.powerUpType,
-            powerUpMultiplier:
-              thisPlayerData.powerUpType === "speed"
-                ? 1.4
-                : thisPlayerData.powerUpType === "power"
-                ? 1.3
-                : 1,
-          }));
-          
-          // Add a satisfying screen shake for power-up reveal
-          setScreenShake({
-            intensity: 0.35,
-            duration: 150,
-            startTime: Date.now(),
-          });
-        }
+      // Only update penguin state for local player
+      // Note: salt sound already plays during isThrowingSalt, and hasUsedPowerUp is set there too
+      if (thisPlayerData.playerId === localId) {
+        setPenguin((prev) => ({
+          ...prev,
+          activePowerUp: thisPlayerData.powerUpType,
+          powerUpMultiplier:
+            thisPlayerData.powerUpType === "speed"
+              ? 1.4
+              : thisPlayerData.powerUpType === "power"
+              ? 1.3
+              : 1,
+        }));
+        
+        // Add a satisfying screen shake for power-up reveal
+        setScreenShake({
+          intensity: 0.35,
+          duration: 150,
+          startTime: Date.now(),
+        });
       }
     });
 
@@ -2263,6 +2083,7 @@ const GameFighter = ({
       setGyojiState("idle");
       setMatchOver(false);
       setHasUsedPowerUp(false);
+      setGyojiCall(null); // Clear gyoji call
       setRawParryEffectPosition(null); // Clear any active parry effects
       setNoStaminaEffectKey(0); // Clear "No Stamina" effect on round reset
       setIsGrabClashActive(false); // Reset grab clash state
@@ -2292,8 +2113,20 @@ const GameFighter = ({
       }, 1000);
     });
 
+    // Gyoji's call before HAKKIYOI (authentic sumo)
+    socket.on("gyoji_call", (call) => {
+      console.log("gyoji_call:", call);
+      setGyojiCall(call);
+      
+      // Clear the call after animation completes
+      setTimeout(() => {
+        setGyojiCall(null);
+      }, 2000);
+    });
+
     socket.on("game_start", () => {
       console.log("game start gamefighter.jsx");
+      setGyojiCall(null); // Clear any lingering gyoji call
       setHakkiyoi(true);
       setRawParryEffectPosition(null); // Clear any leftover parry effects
       // Bump round ID on start in case clients skipped reset event
@@ -2379,6 +2212,7 @@ const GameFighter = ({
       }
       socket.off("grab_clash_start");
       socket.off("grab_clash_end");
+      socket.off("gyoji_call");
       socket.off("game_start");
       socket.off("game_reset");
       socket.off("game_over");
@@ -2799,6 +2633,9 @@ const GameFighter = ({
       )}
 
       <Gyoji gyojiState={gyojiState} hakkiyoi={hakkiyoi} />
+      {gyojiCall && (
+        <div className="gyoji-call">{gyojiCall}</div>
+      )}
       {hakkiyoi && <div className="hakkiyoi">HAKKI-YOI !</div>}
       {gameOver && !matchOver && (
         <RoundResult isVictory={winner.id === localId} />
@@ -2835,34 +2672,6 @@ const GameFighter = ({
         $index={index}
         $isVisible={true}
       />
-      {showFloatingPowerUp && (
-        <FloatingPowerUpContainer $index={index} $powerUpType={floatingPowerUpType}>
-          <PowerUpIconSquare $powerUpType={floatingPowerUpType}>
-            <img 
-              src={
-                floatingPowerUpType === "speed" ? happyFeetIcon :
-                floatingPowerUpType === "power" ? powerWaterIcon :
-                floatingPowerUpType === "snowball" ? snowballImage :
-                floatingPowerUpType === "pumo_army" ? pumoArmyIcon :
-                floatingPowerUpType === "thick_blubber" ? thickBlubberIcon :
-                null
-              }
-              alt={floatingPowerUpType}
-            />
-          </PowerUpIconSquare>
-          <FloatingPowerUpText $powerUpType={floatingPowerUpType}>
-            {floatingPowerUpType === "speed"
-              ? "HAPPY\nFEET"
-              : floatingPowerUpType === "power"
-              ? "POWER\nWATER"
-              : floatingPowerUpType === "pumo_army"
-              ? "PUMO\nARMY"
-              : floatingPowerUpType === "thick_blubber"
-              ? "THICK\nBLUBBER"
-              : floatingPowerUpType.replace(/_/g, "\n").toUpperCase()}
-          </FloatingPowerUpText>
-        </FloatingPowerUpContainer>
-      )}
       <PlayerShadow
         x={getDisplayPosition().x}
         y={getDisplayPosition().y}
