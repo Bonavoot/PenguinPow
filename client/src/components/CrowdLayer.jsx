@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import styled from "styled-components";
 import crowdBoyIdle1 from "../assets/crowd-boy-idle-1.png";
 import crowdBoyIdle2 from "../assets/crowd-boy-idle-2.png";
@@ -14,6 +14,8 @@ import crowdSalarymanIdle1 from "../assets/crowd-salaryman-idle-1.png";
 import crowdSalarymanCheering1 from "../assets/crowd-salaryman-cheering-1.png";
 import crowdSalarymanIdle2 from "../assets/crowd-salaryman-idle-2.png";
 import crowdSalarymanCheering2 from "../assets/crow-salaryman-cheering-2.png";
+import crowdOldmanIdle1 from "../assets/crowd-oldman-idle-1.png";
+import crowdOldmanCheering1 from "../assets/crowd-oldman-cheering-1.png";
 
 // Preload crowd images to prevent jank during first render
 const preloadImage = (src) => {
@@ -31,6 +33,7 @@ const preloadCrowdImages = () => {
   preloadImage(crowdGeishaIdle1);
   preloadImage(crowdSalarymanIdle1);
   preloadImage(crowdSalarymanIdle2);
+  preloadImage(crowdOldmanIdle1);
   
   // Cheering sprites
   preloadImage(crowdBoyCheering1);
@@ -40,6 +43,7 @@ const preloadCrowdImages = () => {
   preloadImage(crowdGeishaCheering1);
   preloadImage(crowdSalarymanCheering1);
   preloadImage(crowdSalarymanCheering2);
+  preloadImage(crowdOldmanCheering1);
 };
 
 // Execute preload immediately when module loads
@@ -142,13 +146,14 @@ const CrowdMember = styled.img`
 // yOffsetRatio adjusts vertical position as a ratio of size (scales with distance)
 // weight controls how frequently this type appears (higher = more common)
 const CROWD_TYPES = [
-  { idle: crowdBoyIdle1, cheering: crowdBoyCheering1, sizeMultiplier: 1.0, yOffsetRatio: 0, weight: 3 },
-  { idle: crowdBoyIdle2, cheering: crowdBoyCheering2, sizeMultiplier: 1.1, yOffsetRatio: -0.2, weight: 3 },
-  { idle: crowdBoyIdle3, cheering: crowdBoyCheering3, sizeMultiplier: 1.0, yOffsetRatio: 0, weight: 3 },
+  { idle: crowdBoyIdle1, cheering: crowdBoyCheering1, sizeMultiplier: 1.15, yOffsetRatio: -.2, weight: 3 },
+  { idle: crowdBoyIdle2, cheering: crowdBoyCheering2, sizeMultiplier: 1.1, yOffsetRatio: -0.2, weight: 1 },
+  { idle: crowdBoyIdle3, cheering: crowdBoyCheering3, sizeMultiplier: 1.0, yOffsetRatio: 0, weight: 2 },
   { idle: crowdGirlIdle1, cheering: crowdGirlCheering1, sizeMultiplier: 1.0, yOffsetRatio: 0, weight: 3 },
-  { idle: crowdGeishaIdle1, cheering: crowdGeishaCheering1, sizeMultiplier: 1.0, yOffsetRatio: 0, weight: 1 },
-  { idle: crowdSalarymanIdle1, cheering: crowdSalarymanCheering1, sizeMultiplier: 1.0, yOffsetRatio: 0, weight: 3 },
-  { idle: crowdSalarymanIdle2, cheering: crowdSalarymanCheering2, sizeMultiplier: 1.0, yOffsetRatio: 0, weight: 3 },
+  { idle: crowdGeishaIdle1, cheering: crowdGeishaCheering1, sizeMultiplier: .9, yOffsetRatio: 0.15, weight: 1 },
+  { idle: crowdSalarymanIdle1, cheering: crowdSalarymanCheering1, sizeMultiplier: 1.05, yOffsetRatio: 0, weight: 3 },
+  { idle: crowdSalarymanIdle2, cheering: crowdSalarymanCheering2, sizeMultiplier: 1.05, yOffsetRatio: 0, weight: 3 },
+  { idle: crowdOldmanIdle1, cheering: crowdOldmanCheering1, sizeMultiplier: 1.1, yOffsetRatio: 0, weight: 1.5 },  // Old man
   // Add more crowd types here later
 ];
 
@@ -653,13 +658,66 @@ const generateCrowdPositions = () => {
 const CrowdLayer = ({ isCheering = false }) => {
   // Memoize crowd positions so they don't regenerate on every render
   const crowdPositions = useMemo(() => generateCrowdPositions(), []);
+  
+  // Track which crowd types are currently in "cheering" pose vs "idle" pose
+  // This creates a bouncing effect where each type animates together
+  const [cheeringTypes, setCheeringTypes] = useState(new Set());
+
+  useEffect(() => {
+    if (!isCheering) {
+      // Clear all cheering states when not cheering
+      setCheeringTypes(new Set());
+      return;
+    }
+
+    // Immediately start all types in cheering pose for instant feedback
+    setCheeringTypes(new Set([0, 1, 2, 3, 4, 5, 6, 7]));
+
+    // Different intervals for each crowd type (in milliseconds)
+    // Each type bounces at a different rate for visual variety
+    const intervals = [
+      300,  // crowdBoyIdle1 - fastest, most energetic
+      450,  // crowdBoyIdle2
+      350,  // crowdBoyIdle3
+      500,  // crowdGirlIdle1
+      550,  // crowdGeishaIdle1 - slower, more elegant
+      400,  // crowdSalarymanIdle1
+      475,  // crowdSalarymanIdle2
+      525,  // crowdOldmanIdle1 - slower, older person
+    ];
+
+    const timers = intervals.map((interval, typeIndex) => {
+      return setInterval(() => {
+        setCheeringTypes((prev) => {
+          const next = new Set(prev);
+          if (next.has(typeIndex)) {
+            next.delete(typeIndex); // Switch to idle
+          } else {
+            next.add(typeIndex); // Switch to cheering
+          }
+          return next;
+        });
+      }, interval);
+    });
+
+    // Cleanup all intervals when component unmounts or isCheering changes
+    return () => {
+      timers.forEach((timer) => clearInterval(timer));
+    };
+  }, [isCheering]);
 
   return (
     <CrowdContainer>
       <StyleInjector />
       {crowdPositions.map((member) => {
         const crowdType = CROWD_TYPES[member.typeIndex];
-        const src = isCheering ? crowdType.cheering : crowdType.idle;
+        
+        // Determine image source based on:
+        // 1. If not in cheering mode at all, always use idle
+        // 2. If in cheering mode, check if this type is currently in "cheering" pose
+        const isTypeCurrentlyCheering = cheeringTypes.has(member.typeIndex);
+        const src = isCheering && isTypeCurrentlyCheering ? crowdType.cheering : crowdType.idle;
+        
         // Generate a pseudo-random offset based on member id for animation staggering
         const animOffset = ((member.id * 7) % 10) / 10; // 0.0 to 0.9
 

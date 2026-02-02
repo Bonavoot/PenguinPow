@@ -9,9 +9,9 @@ import { SocketContext } from "../SocketContext";
 import lobbyBackground from "../assets/lobby-bkg.webp";
 import pumo from "../assets/pumo.png";
 import pumo2 from "../assets/pumo2.png";
-import mainMenuBackground from "../assets/main-menu-bkg.png";
+import mainMenuBackground3 from "../assets/main-menu-bkg.png";
 import mainMenuBackground2 from "../assets/main-menu-bkg-2.png";
-import mainMenuBackground3 from "../assets/main-menu-bkg-3.png";
+import mainMenuBackground from "../assets/main-menu-bkg-3.png";
 import {
   playButtonHoverSound,
   playButtonPressSound2,

@@ -348,6 +348,8 @@ function createCPUPlayer(uniqueId) {
     isThrowTeching: false,
     throwTechCooldown: false,
     isSlapParrying: false,
+    slapParryKnockbackVelocity: 0,
+    slapParryImmunityUntil: 0,
     lastThrowAttemptTime: 0,
     lastGrabAttemptTime: 0,
     isStrafing: false,
@@ -1283,15 +1285,15 @@ io.on("connection", (socket) => {
           
           // Authentic sumo timing:
           // 0-1500ms: Wait for power-up reveal to finish
-          // 1000ms: Gyoji says "TE WO TSUITE!" (Put your hands down!)
-          // 3000ms: HAKKIYOI (game_start)
+          // 700ms: Gyoji says "TE WO TSUITE!" (Put your hands down!)
+          // 2700ms: HAKKIYOI (game_start)
           
-          if (elapsedTime >= 1000 && !room.teWoTsuiteSent) {
+          if (elapsedTime >= 700 && !room.teWoTsuiteSent) {
             room.teWoTsuiteSent = true;
             io.in(room.id).emit("gyoji_call", "TE WO TSUITE!");
           }
           
-          if (elapsedTime >= 3000) {
+          if (elapsedTime >= 2700) {
             // Clear the power-up auto-selection timer if players ready up normally
             if (room.roundStartTimer) {
               clearTimeout(room.roundStartTimer);
@@ -1990,6 +1992,27 @@ io.on("connection", (socket) => {
                 // If still outside boundaries, keep the facing locked until round reset
               }
             }
+          }
+        }
+
+        // Handle slap parry knockback (smooth sliding that doesn't interrupt attack state)
+        if (Math.abs(player.slapParryKnockbackVelocity) > 0.01) {
+          // Apply knockback movement
+          const newX = player.x + player.slapParryKnockbackVelocity * delta * speedFactor;
+          
+          // Constrain to map boundaries with buffer (prevents triggering win condition)
+          const BOUNDARY_BUFFER = 10;
+          player.x = Math.max(
+            MAP_LEFT_BOUNDARY + BOUNDARY_BUFFER,
+            Math.min(newX, MAP_RIGHT_BOUNDARY - BOUNDARY_BUFFER)
+          );
+          
+          // Apply friction for smooth deceleration
+          player.slapParryKnockbackVelocity *= 0.92;
+          
+          // Clear when velocity is negligible
+          if (Math.abs(player.slapParryKnockbackVelocity) < 0.01) {
+            player.slapParryKnockbackVelocity = 0;
           }
         }
 
@@ -3724,7 +3747,10 @@ io.on("connection", (socket) => {
       otherPlayer.isDodging ||
       player.isDodging ||
       player.isBeingThrown ||
-      otherPlayer.isBeingThrown
+      otherPlayer.isBeingThrown ||
+      // Skip if either player has slap parry immunity (just had a slap parry)
+      (player.slapParryImmunityUntil && Date.now() < player.slapParryImmunityUntil) ||
+      (otherPlayer.slapParryImmunityUntil && Date.now() < otherPlayer.slapParryImmunityUntil)
     ) {
       return;
     }
@@ -3832,43 +3858,22 @@ io.on("connection", (socket) => {
     const midpointX = (player1.x + player2.x) / 2;
     const midpointY = (player1.y + player2.y) / 2;
 
-    // Emit the parry event with just the necessary data
+    // Emit the parry event with just the necessary data (visual/audio effect)
     io.in(roomId).emit("slap_parry", { x: midpointX, y: midpointY });
-
-    // Apply brief hitstop and input lock for clarity
-    const room = rooms.find((r) => r.id === roomId);
-    if (room) {
-      triggerHitstop(room, HITSTOP_PARRY_MS);
-    }
-    const lockUntil = Date.now() + 60;
-    player1.inputLockUntil = Math.max(player1.inputLockUntil || 0, lockUntil);
-    player2.inputLockUntil = Math.max(player2.inputLockUntil || 0, lockUntil);
   }
 
   function applyParryEffect(player, knockbackDirection) {
-    // CRITICAL: Clear ALL action states before setting isHit
-    clearAllActionStates(player);
+    // Don't change any player states - players continue their slap attacks as normal,
+    // giving the illusion that they are slapping at the same time and stopping each other
     
-    player.isHit = true;
-    player.isSlapParrying = true;
-    player.lastHitTime = Date.now(); // Track hit time for safety mechanism
-
-    // Apply reduced knockback
-    player.knockbackVelocity.x =
-      SLAP_PARRY_KNOCKBACK_VELOCITY * knockbackDirection;
-    player.knockbackVelocity.y = 0;
-
-    // Set a brief recovery period using setPlayerTimeout for proper cleanup on disconnect
-    setPlayerTimeout(
-      player.id,
-      () => {
-        player.isHit = false;
-        player.isAlreadyHit = false;
-        player.isSlapParrying = false;
-      },
-      200,
-      "slapParryReset"
-    );
+    // Use smooth knockback velocity that gets processed in the game loop
+    // More dramatic knockback so players visibly bounce off each other
+    const SLAP_PARRY_KNOCKBACK_STRENGTH = 2.0; // Stronger bounce effect
+    player.slapParryKnockbackVelocity = SLAP_PARRY_KNOCKBACK_STRENGTH * knockbackDirection;
+    
+    // Give brief immunity to prevent hits right after parry
+    // This lasts until the current slap attack would end
+    player.slapParryImmunityUntil = Date.now() + 300;
   }
 
   function processHit(player, otherPlayer) {
@@ -4578,6 +4583,7 @@ io.on("connection", (socket) => {
         isThrowTeching: false,
         throwTechCooldown: false,
         isSlapParrying: false,
+        slapParryKnockbackVelocity: 0,
         lastThrowAttemptTime: 0,
         lastGrabAttemptTime: 0,
         isStrafing: false,
@@ -4717,6 +4723,7 @@ io.on("connection", (socket) => {
         isThrowTeching: false,
         throwTechCooldown: false,
         isSlapParrying: false,
+        slapParryKnockbackVelocity: 0,
         lastThrowAttemptTime: 0,
         lastGrabAttemptTime: 0,
         isStrafing: false,

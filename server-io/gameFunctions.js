@@ -70,12 +70,16 @@ function handleWinCondition(room, loser, winner, io) {
     // Clear wins AFTER we've stored the count (will be used in game_over event below)
     winner.wins = [];
     loser.wins = [];
+    setTimeout(() => {
+      winner.isBowing = true;
+      loser.isBowing = true;
+    }, 1050);
   } else {
     console.log(winCount);
     setTimeout(() => {
       winner.isBowing = true;
-      loser.isBowing = false;
-    }, 600);
+      loser.isBowing = true;
+    }, 1050);
   }
 
   // Store the current states that we want to preserve
@@ -576,15 +580,15 @@ function handleReadyPositions(room, player1, player2, io) {
       
       // Authentic sumo timing:
       // 0-1500ms: Wait for power-up reveal to finish
-      // 1500ms: Gyoji says "TE WO TSUITE!" (Put your hands down!)
-      // 4000ms: HAKKIYOI (game_start)
+      // 700ms: Gyoji says "TE WO TSUITE!" (Put your hands down!)
+      // 3200ms: HAKKIYOI (game_start)
       
-      if (elapsedTime >= 1000 && !room.teWoTsuiteSent) {
+      if (elapsedTime >= 700 && !room.teWoTsuiteSent) {
         room.teWoTsuiteSent = true;
         io.in(room.id).emit("gyoji_call", "TE WO TSUITE!");
       }
       
-      if (elapsedTime >= 3500) {
+      if (elapsedTime >= 3200) {
         // Clear the power-up auto-selection timer if players ready up normally
         if (room.roundStartTimer) {
           clearTimeout(room.roundStartTimer);

@@ -8,7 +8,7 @@ import React, {
 } from "react";
 import { SocketContext } from "../SocketContext";
 import PropTypes from "prop-types";
-import styled from "styled-components";
+import styled, { keyframes } from "styled-components";
 import "./MatchOver.css";
 import Gyoji from "./Gyoji";
 import PlayerShadow from "./PlayerShadow";
@@ -87,6 +87,7 @@ import dodgeSound from "../sounds/dodge-sound.mp3";
 import throwSound from "../sounds/throw-sound.mp3";
 import winnerSound from "../sounds/winner-sound.wav";
 import hakkiyoiSound from "../sounds/hakkiyoi-sound.mp3";
+import teWoTsuiteSound from "../sounds/tewotsuite.wav";
 import bellSound from "../sounds/bell-sound.mp3";
 import gameMusic from "../sounds/game-music.mp3";
 import eeshiMusic from "../sounds/eeshi.mp3";
@@ -230,6 +231,7 @@ const initializeAudioPools = () => {
   createAudioPool(snowballThrowSound, 2);
   createAudioPool(pumoArmySound, 2);
   createAudioPool(hakkiyoiSound, 1);
+  createAudioPool(teWoTsuiteSound, 1);
   createAudioPool(bellSound, 1);
   createAudioPool(winnerSound, 1);
   createAudioPool(thickBlubberSound, 2);
@@ -1225,6 +1227,22 @@ const SaltBasket = styled.img
     },
   }))``;
 
+const youLabelPulse = keyframes`
+  0%, 100% { 
+    transform: translateX(-50%) scale(1);
+    filter: drop-shadow(0 0 8px rgba(212, 175, 55, 0.6));
+  }
+  50% { 
+    transform: translateX(-50%) scale(1.05);
+    filter: drop-shadow(0 0 14px rgba(212, 175, 55, 0.9));
+  }
+`;
+
+const youArrowBounce = keyframes`
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(3px); }
+`;
+
 const YouLabel = styled.div
   .withConfig({
     shouldForwardProp: (prop) => !["x", "y"].includes(prop),
@@ -1232,26 +1250,50 @@ const YouLabel = styled.div
   .attrs((props) => ({
     style: {
       position: "absolute",
-      bottom: `${(props.y / 720) * 100 + 31}%`,
-      left: `${(props.x / 1280) * 100 + 8}%`,
-      transform: "translateX(-50%)",
+      bottom: `${(props.y / 720) * 100 + 27}%`,
+      left: `${(props.x / 1280) * 100 + 8.2}%`,
     },
   }))`
-  color: #ffd700;
-  font-family: "Bungee";
-  font-size: clamp(18px, 1.5vw, 24px);
-  text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000,
-    2px 2px 0 #000;
   z-index: 1000;
   pointer-events: none;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-
+  gap: 0;
+  transform: translateX(-50%);
+  animation: ${youLabelPulse} 1.5s ease-in-out infinite;
+  
+  /* Main banner */
+  &::before {
+    content: "YOU";
+    font-family: "Bungee", cursive;
+    font-size: clamp(12px, 1.1vw, 16px);
+    letter-spacing: 0.1em;
+    color: #d4af37;
+    background: linear-gradient(
+      180deg,
+      rgba(11, 16, 32, 0.95) 0%,
+      rgba(67, 61, 103, 0.9) 100%
+    );
+    padding: clamp(4px, 0.4vw, 6px) clamp(10px, 1vw, 14px);
+    border: 2px solid rgba(212, 175, 55, 0.8);
+    border-radius: 4px;
+    text-shadow: 0 0 8px rgba(212, 175, 55, 0.5);
+    box-shadow: 
+      0 4px 12px rgba(0, 0, 0, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  }
+  
+  /* Arrow pointer */
   &::after {
-    content: "↓";
-    font-size: clamp(14px, 1.2vw, 18px);
+    content: "";
+    width: 0;
+    height: 0;
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-top: 10px solid rgba(212, 175, 55, 0.9);
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+    animation: ${youArrowBounce} 0.8s ease-in-out infinite;
   }
 `;
 
@@ -2415,6 +2457,12 @@ const GameFighter = ({
   }, [hakkiyoi]);
 
   useEffect(() => {
+    if (gyojiCall === "TE WO TSUITE!") {
+      playSound(teWoTsuiteSound, 0.2);
+    }
+  }, [gyojiCall]);
+
+  useEffect(() => {
     const currentTime = Date.now();
     if (
       gameOver &&
@@ -2666,9 +2714,7 @@ const GameFighter = ({
         !hakkiyoi &&
         gyojiState === "idle" &&
         countdown > 0 && (
-          <YouLabel x={getDisplayPosition().x} y={getDisplayPosition().y}>
-            YOU
-          </YouLabel>
+          <YouLabel x={getDisplayPosition().x} y={getDisplayPosition().y} />
         )}
       <PowerMeter
         isCharging={penguin.isChargingAttack}

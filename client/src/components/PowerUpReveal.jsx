@@ -122,13 +122,13 @@ const playerLabelAppear = keyframes`
 // ============================================
 
 const RevealOverlay = styled.div`
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   z-index: 10000;
   pointer-events: none;
@@ -150,11 +150,12 @@ const FlashOverlay = styled.div`
 `;
 
 const RevealContainer = styled.div`
+  margin-top: 110px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: clamp(20px, 4vw, 60px);
-  padding: clamp(15px, 3vw, 30px);
+  gap: clamp(16px, 3vw, 40px);
+  padding: clamp(15px, 2.5vw, 28px);
   background: linear-gradient(180deg,
     rgba(20, 10, 5, 0.95) 0%,
     rgba(45, 21, 16, 0.95) 50%,
@@ -181,10 +182,30 @@ const RevealContainer = styled.div`
     pointer-events: none;
   }
   
+  @media (max-width: 1200px) {
+    margin-top: 100px;
+  }
+  
+  @media (max-width: 900px) {
+    margin-top: 85px;
+  }
+  
   @media (max-width: 700px) {
-    gap: clamp(12px, 3vw, 30px);
-    padding: clamp(10px, 2.5vw, 20px);
+    gap: clamp(12px, 2.5vw, 24px);
+    padding: clamp(10px, 2vw, 18px);
     border-width: 3px;
+  }
+  
+  @media (max-width: 600px) {
+    margin-top: 70px;
+  }
+  
+  @media (max-height: 700px) {
+    margin-top: 65px;
+  }
+  
+  @media (max-height: 550px) {
+    margin-top: 50px;
   }
 `;
 
@@ -213,11 +234,11 @@ const PlayerCard = styled.div`
 
 const PlayerLabel = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.6rem, 1.3vw, 1rem);
+  font-size: clamp(0.55rem, 1.1vw, 0.85rem);
   color: ${props => props.$isPlayer1 ? '#00d2ff' : '#ff6b6b'};
   text-transform: uppercase;
   letter-spacing: 0.15em;
-  margin-bottom: clamp(6px, 1vh, 12px);
+  margin-bottom: clamp(6px, 1vh, 10px);
   text-shadow: 
     2px 2px 0 #000,
     0 0 10px ${props => props.$isPlayer1 ? 'rgba(0, 210, 255, 0.5)' : 'rgba(255, 107, 107, 0.5)'};
@@ -225,26 +246,25 @@ const PlayerLabel = styled.div`
   animation-delay: ${props => props.$isPlayer1 ? '0.5s' : '0.6s'};
   opacity: 0;
   
-  @media (max-width: 700px) {
-    font-size: clamp(0.5rem, 2vw, 0.8rem);
+  @media (max-width: 600px) {
+    font-size: clamp(0.45rem, 1.8vw, 0.7rem);
     margin-bottom: clamp(4px, 0.8vh, 8px);
   }
 `;
 
 const PowerUpCard = styled.div`
-  width: clamp(100px, 18vw, 180px);
+  width: clamp(80px, 12vw, 145px);
   background: linear-gradient(180deg,
     #4a3525 0%,
     #3d2817 50%,
     #2a1d14 100%
   );
   border: 3px solid ${props => getTypeColor(props.$powerUpType).main};
-  border-radius: clamp(8px, 1.2vw, 14px);
-  padding: clamp(12px, 2vh, 24px) clamp(10px, 1.5vw, 18px);
+  border-radius: clamp(4px, 0.6vw, 8px);
+  padding: clamp(12px, 1.6vh, 20px) clamp(8px, 1.2vw, 14px);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(8px, 1.2vh, 16px);
   box-shadow: 
     0 8px 25px rgba(0, 0, 0, 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.1),
@@ -270,26 +290,26 @@ const PowerUpCard = styled.div`
     pointer-events: none;
   }
   
-  @media (max-width: 700px) {
-    width: clamp(75px, 22vw, 140px);
-    padding: clamp(8px, 1.5vh, 16px) clamp(6px, 1vw, 12px);
-    gap: clamp(5px, 1vh, 10px);
+  @media (max-width: 600px) {
+    width: clamp(65px, 17vw, 110px);
+    padding: clamp(10px, 1.4vh, 16px) clamp(6px, 1vw, 10px);
     border-width: 2px;
   }
 `;
 
 const IconContainer = styled.div`
-  width: clamp(50px, 9vw, 90px);
-  height: clamp(50px, 9vw, 90px);
+  width: clamp(35px, 5.5vw, 58px);
+  height: clamp(35px, 5.5vw, 58px);
   background: linear-gradient(135deg,
     ${props => getTypeColor(props.$powerUpType).main} 0%,
     ${props => getTypeColor(props.$powerUpType).dark} 100%
   );
   border: 3px solid #000;
-  border-radius: clamp(8px, 1vw, 12px);
+  border-radius: clamp(4px, 0.6vw, 8px);
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-bottom: clamp(8px, 1vh, 12px);
   box-shadow: 
     inset 0 3px 6px rgba(255, 255, 255, 0.3),
     inset 0 -3px 6px rgba(0, 0, 0, 0.4),
@@ -327,40 +347,44 @@ const IconContainer = styled.div`
     100% { transform: translateX(100%) rotate(45deg); }
   }
   
-  @media (max-width: 700px) {
-    width: clamp(38px, 11vw, 70px);
-    height: clamp(38px, 11vw, 70px);
+  @media (max-width: 600px) {
+    width: clamp(34px, 8vw, 55px);
+    height: clamp(34px, 8vw, 55px);
+    margin-bottom: clamp(6px, 0.8vh, 10px);
     border-width: 2px;
   }
 `;
 
 const PowerUpName = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.6rem, 1.4vw, 1.1rem);
+  font-size: clamp(0.65rem, 1.25vw, 0.95rem);
   color: ${props => getTypeColor(props.$powerUpType).main};
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   text-align: center;
+  line-height: 1.1;
+  margin-bottom: clamp(3px, 0.4vh, 6px);
   text-shadow: 
     2px 2px 0 #000,
     0 0 10px ${props => getTypeColor(props.$powerUpType).glow};
   white-space: nowrap;
   
-  @media (max-width: 700px) {
-    font-size: clamp(0.45rem, 2vw, 0.85rem);
+  @media (max-width: 600px) {
+    font-size: clamp(0.5rem, 2.2vw, 0.75rem);
   }
 `;
 
 const PowerUpType = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.4rem, 0.9vw, 0.7rem);
-  color: ${props => props.$isActive ? '#44ff88' : 'rgba(232, 220, 200, 0.6)'};
+  font-size: clamp(0.44rem, 0.85vw, 0.62rem);
+  color: ${props => props.$isActive ? '#44ff88' : 'white'};
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+  margin-top: clamp(4px, 0.6vh, 8px);
+  letter-spacing: 0.05em;
+  text-shadow: ${props => props.$isActive ? '0 0 6px rgba(68, 255, 136, 0.4), 1px 1px 1px rgba(0,0,0,0.8)' : '1px 1px 1px rgba(0,0,0,0.7)'};
   
-  @media (max-width: 700px) {
-    font-size: clamp(0.35rem, 1.3vw, 0.55rem);
+  @media (max-width: 600px) {
+    font-size: clamp(0.38rem, 1.35vw, 0.54rem);
   }
 `;
 
@@ -375,18 +399,18 @@ const VSContainer = styled.div`
 
 const VSText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(1.5rem, 4vw, 3rem);
+  font-size: clamp(1.2rem, 3vw, 2rem);
   color: #d4af37;
   text-shadow: 
-    4px 4px 0 #000,
+    3px 3px 0 #000,
     -2px -2px 0 #000,
     2px -2px 0 #000,
     -2px 2px 0 #000,
-    0 0 30px rgba(212, 175, 55, 0.6);
+    0 0 20px rgba(212, 175, 55, 0.6);
   letter-spacing: 0.1em;
   
-  @media (max-width: 700px) {
-    font-size: clamp(1.1rem, 5vw, 2rem);
+  @media (max-width: 600px) {
+    font-size: clamp(0.9rem, 4vw, 1.5rem);
   }
 `;
 
