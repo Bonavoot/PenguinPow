@@ -405,7 +405,7 @@ body {
   bottom: 0;
   background-image: url(./assets/dohyo.png);
   background-repeat: no-repeat;
-  background-size: 120% 120%;
+  background-size: 130% 120%;
   background-position: 52% 5%;
   pointer-events: none;
   z-index: 1;

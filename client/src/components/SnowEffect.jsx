@@ -1,19 +1,34 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import styled from "styled-components";
 import envelope from "../assets/envelope.png";
 
-const GROUND_LEVEL = 650; // Main ground level constant
-const DEPTH_LEVELS = [
-  { level: GROUND_LEVEL - 300, probability: 0.2 }, // Far background snow
-  { level: GROUND_LEVEL - 150, probability: 0.3 }, // Mid background snow
-  { level: GROUND_LEVEL, probability: 0.5 }, // Foreground snow
+// 3D depth layers - MORE dramatic depth differences
+// depth: 0 = very far (back of stadium seats), 1 = very close (front of camera)
+const DEPTH_LAYERS = [
+  { depth: 0.1, probability: 0.12 },  // Way back in crowd - tiny, very slow
+  { depth: 0.25, probability: 0.15 }, // Back of crowd
+  { depth: 0.4, probability: 0.18 },  // Middle crowd
+  { depth: 0.55, probability: 0.2 },  // Front of crowd / back of dohyo
+  { depth: 0.7, probability: 0.15 },  // On the dohyo
+  { depth: 0.85, probability: 0.12 }, // Front of dohyo
+  { depth: 1.0, probability: 0.08 },  // Very close to camera
 ];
 
-// Performance settings - balanced for smoothness and performance
-const MAX_SNOWFLAKES = 6; // Reduced but not too aggressive
-const MAX_ENVELOPES = 12; // Reduced but visible
-const UPDATE_INTERVAL = 32; // 30fps is smooth enough for ambient snow
-const USE_BLUR = false; // Keep disabled for performance
+// Ground level - INVERTED for stadium perspective
+// Far seats are HIGH on screen (low Y), dohyo/close is LOW on screen (high Y)
+const getGroundLevel = (depth, screenHeight) => {
+  // depth 0.1 (far back seats) = lands around Y ~150-200 (top of crowd)
+  // depth 0.5 (middle) = lands around Y ~400-450 (middle area)
+  // depth 1.0 (very close) = falls off screen Y ~900+
+  const minGround = screenHeight * 0.15; // Far back - top of visible crowd
+  const maxGround = screenHeight * 1.1;  // Close - below screen
+  return minGround + depth * (maxGround - minGround);
+};
+
+// Performance settings
+const MAX_SNOWFLAKES = 15;
+const MAX_ENVELOPES = 25; // More for better coverage
+const UPDATE_INTERVAL = 33; // ~30fps
 
 const SnowContainer = styled.div`
   position: absolute;
@@ -24,27 +39,27 @@ const SnowContainer = styled.div`
   pointer-events: none;
   z-index: 50;
   overflow: hidden;
-  contain: layout style;
+  contain: layout style paint;
 `;
 
+// Use a base size that we scale with depth
 const Snowflake = styled.div.attrs((props) => ({
   style: {
-    // Simplified transform - removed 3D rotations for performance
-    transform: props.$isEnvelope
-      ? `translate(${props.$x}px, ${props.$y}px) scale(${props.$scale}) rotate(${props.$rotation}deg)`
-      : `translate(${props.$x}px, ${props.$y}px) scale(${props.$scale})`,
+    transform: `translate3d(${props.$x}px, ${props.$y}px, 0) scale(${props.$scale}) rotate(${props.$rotation}deg)`,
     opacity: props.$opacity,
   },
 }))`
   position: absolute;
-  width: ${(props) => (props.$isEnvelope ? "clamp(1.5rem, 3vw, 3rem)" : "5px")};
-  height: ${(props) => (props.$isEnvelope ? "clamp(2.25rem, 4.5vw, 4.5rem)" : "5px")};
+  will-change: transform, opacity;
+  width: ${(props) => (props.$isEnvelope ? "40px" : "5px")};
+  height: ${(props) => (props.$isEnvelope ? "60px" : "5px")};
   background: ${(props) =>
     props.$isEnvelope
       ? `url(${envelope}) no-repeat center center`
-      : `rgba(255, 255, 255, 0.7)`};
+      : `rgba(255, 255, 255, 0.9)`};
   background-size: contain;
   border-radius: ${(props) => (props.$isEnvelope ? "0" : "50%")};
+  box-shadow: ${(props) => (props.$isEnvelope ? "none" : "0 0 2px 1px rgba(255, 255, 255, 0.25)")};
 `;
 
 const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
@@ -71,45 +86,84 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
     return () => clearInterval(performanceCheckInterval);
   }, []);
 
-  const getRandomDepthLevel = useCallback(() => {
+  const getRandomDepth = useCallback(() => {
     const random = Math.random();
     let cumulativeProbability = 0;
 
-    for (const { level, probability } of DEPTH_LEVELS) {
+    for (const { depth, probability } of DEPTH_LAYERS) {
       cumulativeProbability += probability;
       if (random <= cumulativeProbability) {
-        return level;
+        return depth;
       }
     }
-    return GROUND_LEVEL;
+    return 0.5;
   }, []);
 
   const createParticle = useCallback(
     (initialY = -10) => {
-      const depthLevel = getRandomDepthLevel();
+      const depth = getRandomDepth();
       const isEnvelope = shouldShowEnvelopes;
 
-      // Simplified particle creation
-      const baseSpeed = isEnvelope ? 0.8 + Math.random() * 0.5 : 1 + Math.random() * 1.5;
+      // MUCH more dramatic scale difference based on depth
+      // depth 0.1 (very far) -> scale 0.15 (tiny!)
+      // depth 1.0 (very close) -> scale 2.0 (huge!)
+      const depthScale = isEnvelope
+        ? 0.15 + depth * depth * 1.85  // Quadratic for more dramatic close-up
+        : 0.3 + depth * 1.0;
+      
+      // Speed based on depth - MUCH faster for close particles
+      // Far particles drift slowly, close ones zoom past
+      const baseSpeed = isEnvelope 
+        ? (0.3 + depth * depth * 2.5) * (0.85 + Math.random() * 0.3)
+        : (0.4 + depth * 2.5) * (0.8 + Math.random() * 0.4);
+      
+      // Opacity - far particles faded, close ones solid
+      // depth 0.1 -> opacity ~0.25, depth 1.0 -> opacity ~1.0
+      const depthOpacity = isEnvelope 
+        ? 0.2 + depth * 0.75 
+        : 0.5 + depth * 0.5; // Snow more visible now
+      
+      // Horizontal drift - close particles can drift more
+      const horizontalDrift = (Math.random() - 0.5) * (0.1 + depth * 0.8);
+
+      // X position distribution
+      // Far particles: tighter to center (in the stadium)
+      // Close particles: full screen width + overflow
+      const screenW = window.innerWidth;
+      let xPos;
+      if (depth > 0.8) {
+        // Very close - can be anywhere, even off edges
+        xPos = Math.random() * (screenW + 200) - 100;
+      } else if (depth > 0.5) {
+        // Medium - mostly full width
+        xPos = Math.random() * (screenW + 60) - 30;
+      } else {
+        // Far - more centered, as if falling in the crowd/stadium
+        const center = screenW / 2;
+        const spread = screenW * (0.3 + depth * 0.5);
+        xPos = center + (Math.random() - 0.5) * spread;
+      }
 
       return {
         id: Math.random(),
-        x: Math.random() * window.innerWidth,
+        x: xPos,
         y: initialY,
-        velocityX: (Math.random() - 0.5) * 0.5,
+        velocityX: horizontalDrift,
         velocityY: baseSpeed,
-        opacity: isEnvelope ? 0.85 : 0.6,
-        scale: isEnvelope ? 0.9 : 0.7,
+        opacity: depthOpacity,
+        scale: depthScale,
         rotation: Math.random() * 360,
-        rotationSpeed: (Math.random() - 0.5) * (isEnvelope ? 1 : 0.5),
-        depthLevel,
+        rotationSpeed: (Math.random() - 0.5) * (isEnvelope ? 3 : 0.5) * (0.3 + depth),
+        depth,
+        groundLevel: getGroundLevel(depth, window.innerHeight),
         isEnvelope,
         swayPhase: Math.random() * Math.PI * 2,
-        swayAmplitude: isEnvelope ? 0.8 : 0,
-        swayFrequency: isEnvelope ? 1.2 : 0,
+        // Closer envelopes sway more dramatically
+        swayAmplitude: isEnvelope ? 0.3 + depth * 1.5 : 0,
+        swayFrequency: isEnvelope ? 0.6 + Math.random() * 1.0 : 0,
       };
     },
-    [getRandomDepthLevel, shouldShowEnvelopes]
+    [getRandomDepth, shouldShowEnvelopes]
   );
 
   const updateParticle = useCallback(
@@ -120,22 +174,27 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
       let swayX = 0;
 
       if (particle.isEnvelope) {
-        // Simplified sway - single sine wave
-        swayX = Math.sin(time * particle.swayFrequency + particle.swayPhase) * particle.swayAmplitude;
+        // More complex sway for envelopes - flutter effect
+        const primarySway = Math.sin(time * particle.swayFrequency + particle.swayPhase) * particle.swayAmplitude;
+        const secondarySway = Math.sin(time * particle.swayFrequency * 2.3 + particle.swayPhase) * particle.swayAmplitude * 0.3;
+        swayX = primarySway + secondarySway;
       }
 
       const newY = particle.y + particle.velocityY * timeFactor;
       const newX = particle.x + particle.velocityX * timeFactor + swayX;
 
-      if (newY >= particle.depthLevel) {
+      // Check against depth-specific ground level
+      if (newY >= particle.groundLevel) {
         return createParticle();
       }
 
+      // Allow particles to wrap around for continuous effect
       let finalX = newX;
-      if (newX < -30) finalX = window.innerWidth + 30;
-      if (newX > window.innerWidth + 30) finalX = -30;
+      const buffer = 50 + particle.depth * 50; // Larger buffer for close particles
+      if (newX < -buffer) finalX = window.innerWidth + buffer;
+      if (newX > window.innerWidth + buffer) finalX = -buffer;
 
-      const newRotation = particle.rotation + particle.rotationSpeed;
+      const newRotation = particle.rotation + particle.rotationSpeed * timeFactor;
 
       return {
         ...particle,
@@ -148,13 +207,13 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
   );
 
   useEffect(() => {
-    // Create initial particles with distributed y-positions
+    // Create initial particles with distributed y-positions across different depths
     const maxParticles = shouldShowEnvelopes ? MAX_ENVELOPES : MAX_SNOWFLAKES;
     const initialParticles = Array.from(
       { length: maxParticles },
       (_, index) => {
-        // Distribute particles across the top portion of the screen
-        const initialY = -10 - index * (window.innerHeight / maxParticles);
+        // Distribute particles vertically - stagger them so they don't all start at once
+        const initialY = -10 - Math.random() * window.innerHeight * 0.8;
         return createParticle(initialY);
       }
     );
@@ -171,7 +230,7 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
         setParticles((prevParticles) => {
           const updatedParticles = prevParticles
             .map((particle) => updateParticle(particle, deltaTime))
-            .filter((particle) => particle.y < particle.depthLevel);
+            .filter((particle) => particle.y < particle.groundLevel);
 
           // Add new particles if needed, but respect performance mode
           const targetCount = isLowPerformance.current
@@ -199,9 +258,15 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
     };
   }, [createParticle, updateParticle, shouldShowEnvelopes]);
 
+  // Memoize sorted particles to avoid re-sorting on every render
+  const sortedParticles = useMemo(() => 
+    [...particles].sort((a, b) => a.depth - b.depth),
+    [particles]
+  );
+
   return (
     <SnowContainer>
-      {particles.map((particle) => (
+      {sortedParticles.map((particle) => (
         <Snowflake
           key={particle.id}
           $x={particle.x}
@@ -209,8 +274,6 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
           $opacity={particle.opacity}
           $scale={particle.scale}
           $rotation={particle.rotation}
-          $tiltX={particle.tiltX}
-          $tiltY={particle.tiltY}
           $isEnvelope={particle.isEnvelope}
         />
       ))}

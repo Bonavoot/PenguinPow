@@ -662,7 +662,7 @@ const AvatarWrapper = styled.div`
   animation: ${breathe} 2s ease-in-out infinite;
   
   img {
-    height: clamp(120px, 20vh, 200px);
+    height: clamp(120px, 24vh, 240px);
     width: auto;
     filter: drop-shadow(0 8px 20px rgba(0,0,0,0.6));
   }
@@ -714,7 +714,7 @@ const ControlsFooter = styled.footer`
   align-items: center;
   padding: clamp(16px, 2.5vh, 28px) clamp(24px, 4vw, 50px);
   background: linear-gradient(180deg,
-    rgba(21, 8, 5, 0.95) 0%,
+    rgba(0, 0, 0, 0.95) 0%,
     rgba(26, 10, 8, 0.98) 100%
   );
   border-top: 3px solid #8b7355;
@@ -789,7 +789,7 @@ const ReadyButton = styled.button`
   color: #e8f0e0;
   border: 3px solid #6aa040;
   border-radius: clamp(8px, 1.2vw, 12px);
-  padding: clamp(14px, 2vh, 22px) clamp(36px, 5.5vw, 60px);
+  padding: clamp(14px, 2vh, 22px) 0;
   cursor: pointer;
   transition: all 0.25s ease;
   text-transform: uppercase;
@@ -800,6 +800,9 @@ const ReadyButton = styled.button`
     inset 0 -3px 6px rgba(0,0,0,0.2);
   text-shadow: 2px 2px 0 rgba(0,0,0,0.4);
   position: relative;
+  width: clamp(160px, 24vw, 220px);
+  box-sizing: border-box;
+  text-align: center;
 
   &:hover {
     background: linear-gradient(180deg,
@@ -851,12 +854,14 @@ const ReadyCount = styled.div`
     #1a0a08 0%,
     #0f0505 100%
   );
-  padding: clamp(10px, 1.4vh, 16px) clamp(22px, 3.5vw, 40px);
+  padding: clamp(10px, 1.4vh, 16px) 0;
   border: 2px solid ${props => props.$ready ? '#4ade80' : '#5c4033'};
   border-radius: clamp(6px, 1vw, 10px);
   text-align: center;
   letter-spacing: 0.12em;
   text-shadow: 1px 1px 0 #000;
+  width: clamp(160px, 24vw, 220px);
+  box-sizing: border-box;
   ${props => props.$ready && css`
     animation: ${readyGlow} 1.5s ease-in-out infinite;
   `}

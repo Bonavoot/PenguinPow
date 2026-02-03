@@ -182,33 +182,13 @@ const RawParryEffect = ({ position }) => {
   };
 
   useEffect(() => {
-    console.log("RawParryEffect useEffect triggered with position:", position);
-    console.log("RawParryEffect parryIdentifier:", parryIdentifier);
-
-    if (!position || !parryIdentifier) {
-      if (position && !parryIdentifier) {
-        console.warn(
-          "RawParryEffect: No unique identifier provided for parry",
-          position
-        );
-      }
-      return;
-    }
+    if (!position || !parryIdentifier) return;
 
     // Prevent duplicate processing of the same parry
-    if (processedParriesRef.current.has(parryIdentifier)) {
-      console.log("RawParryEffect: Duplicate parry prevented", parryIdentifier);
-      return;
-    }
+    if (processedParriesRef.current.has(parryIdentifier)) return;
 
     // Mark this parry as processed
     processedParriesRef.current.add(parryIdentifier);
-    console.log(
-      "RawParryEffect: Creating new effect",
-      parryIdentifier,
-      "isPerfect:",
-      position.isPerfect
-    );
 
     // Create unique effect ID
     const effectId = ++effectIdCounter.current;

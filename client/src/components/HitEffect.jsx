@@ -5,156 +5,112 @@ import "./HitEffect.css";
 
 const HitEffectContainer = styled.div`
   position: absolute;
-  left: ${props => (props.$x / 1280) * 100 + (props.$facing === 1 ? -2 : -4)}%;
+  left: ${props => (props.$x / 1280) * 100 + (props.$facing === 1 ? -4 : -4)}%;
   bottom: ${props => (props.$y / 720) * 100 - 5}%;
   transform: translate(-50%, -50%);
   z-index: 100;
   pointer-events: none;
-  contain: layout style;
 `;
 
-const ParticleContainer = styled.div`
+// Spark element
+const Spark = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 100%;
-  height: 100%;
-  transform: translate(-50%, -50%);
   pointer-events: none;
-  z-index: 8;
+  border-radius: 50%;
 `;
 
+// Particle element
 const Particle = styled.div`
   position: absolute;
-  width: 0.23vw;
-  height: 0.23vw;
-  background: radial-gradient(circle, #ffff99, #ffd700);
-  border-radius: 50%;
-  opacity: 0;
-`;
-
-// Enhanced spark particles with realistic physics and visuals
-const Spark = styled.div`
-  position: absolute;
-  pointer-events: none;
-  opacity: 0;
-  transform-origin: center;
-  will-change: transform, opacity;
+  top: 50%;
+  left: 50%;
 `;
 
 const HitEffect = ({ position }) => {
-  // Track multiple active effects with unique IDs
   const [activeEffects, setActiveEffects] = useState([]);
-  const processedHitsRef = useRef(new Set()); // Track processed hit IDs to prevent duplicates
+  const processedHitsRef = useRef(new Set());
   const effectIdCounter = useRef(0);
-  const EFFECT_DURATION = 480; // Slightly longer for better visibility
+  
+  const EFFECT_DURATION_SLAP = 350;
+  const EFFECT_DURATION_CHARGED = 550;
 
-  // Memoize the unique identifier to prevent unnecessary re-processing
   const hitIdentifier = useMemo(() => {
     if (!position) return null;
     return position.hitId || position.timestamp;
   }, [position?.hitId, position?.timestamp]);
 
-  // Generate spark particles - balanced for visuals and performance
+  // Generate sparks
   const generateSparks = (effectId) => {
-    const sparkCount = 8;
+    const sparkCount = 6;
     const sparks = [];
-    const baseSize = Math.min(window.innerWidth / 180, 5);
+    const baseSize = 10;
 
     for (let i = 0; i < sparkCount; i++) {
       sparks.push({
         id: `${effectId}-spark-${i}`,
-        size: baseSize + Math.random() * 2,
-        sparkIndex: i,
+        size: baseSize + Math.random() * 5,
       });
     }
-
     return sparks;
   };
 
   useEffect(() => {
-    if (!position || !hitIdentifier) {
-      if (position && !hitIdentifier) {
-        console.warn(
-          "HitEffect: No unique identifier provided for hit",
-          position
-        );
-      }
-      return;
-    }
+    if (!position || !hitIdentifier) return;
+    if (processedHitsRef.current.has(hitIdentifier)) return;
 
-    // Prevent duplicate processing of the same hit
-    if (processedHitsRef.current.has(hitIdentifier)) {
-      console.log("HitEffect: Duplicate hit prevented", hitIdentifier);
-      return;
-    }
-
-    // Mark this hit as processed
     processedHitsRef.current.add(hitIdentifier);
-    console.log("HitEffect: Creating new effect", hitIdentifier);
 
-    // Create unique effect ID
     const effectId = ++effectIdCounter.current;
-    const currentTime = Date.now();
+    const attackType = position.attackType || 'slap';
 
-    // Create new effect with sparks
+    // Create local effect
     const newEffect = {
       id: effectId,
       x: position.x,
       y: position.y,
       facing: position.facing || 1,
-      startTime: currentTime,
-      hitId: hitIdentifier,
+      attackType: attackType,
       sparks: generateSparks(effectId),
     };
 
-    // Add the new effect to active effects
     setActiveEffects((prev) => [...prev, newEffect]);
 
-    // Remove this effect after duration and clean up tracking
+    const duration = attackType === 'charged' ? EFFECT_DURATION_CHARGED : EFFECT_DURATION_SLAP;
     setTimeout(() => {
-      setActiveEffects((prev) =>
-        prev.filter((effect) => effect.id !== effectId)
-      );
+      setActiveEffects((prev) => prev.filter((e) => e.id !== effectId));
       processedHitsRef.current.delete(hitIdentifier);
-    }, EFFECT_DURATION);
-  }, [hitIdentifier, position?.x, position?.y, position?.facing]); // Depend on stable identifier and position values
+    }, duration);
+  }, [hitIdentifier, position?.x, position?.y, position?.facing, position?.attackType]);
 
-  // Cleanup effects on unmount
   useEffect(() => {
-    return () => {
-      setActiveEffects([]);
-    };
+    return () => setActiveEffects([]);
   }, []);
 
-  // Render all active effects
   return (
     <>
+      {/* Local impact effects */}
       {activeEffects.map((effect) => {
-        // Generate basic particles - fixed positions for performance
-        const particlePositions = [[30, 40], [50, 30], [70, 50], [40, 70]];
-        const particles = particlePositions.map(([top, left], i) => (
-          <Particle
-            key={`${effect.id}-particle-${i}`}
-            className="particle"
-            style={{ top: `${top}%`, left: `${left}%` }}
-          />
-        ));
+        const hitTypeClass = effect.attackType === 'charged' ? 'charged-hit' : 'slap-hit';
+        
+        // Spark color - white, clean and minimal
+        const sparkColor = 'radial-gradient(circle, #fff 50%, #fff 100%)';
 
-        // Generate spark particles - simplified for performance
         const sparkElements = effect.sparks.map((spark) => (
           <Spark
             key={spark.id}
             className="spark"
             style={{
-              top: "50%",
-              left: "50%",
               width: `${spark.size}px`,
               height: `${spark.size}px`,
-              background: "linear-gradient(45deg, #FFFFFF, #FFD700)",
-              borderRadius: "50%",
+              background: sparkColor,
             }}
           />
+        ));
+
+        const particles = [0, 1, 2, 3].map((i) => (
+          <Particle key={`${effect.id}-p-${i}`} className="particle" />
         ));
 
         return (
@@ -164,14 +120,14 @@ const HitEffect = ({ position }) => {
             $y={effect.y}
             $facing={effect.facing}
           >
-            <div className="hit-ring-wrapper">
+            <div className={`hit-ring-wrapper ${hitTypeClass}`}>
               <div className="hit-ring" />
-              <ParticleContainer className="hit-particles">
-                {particles}
-              </ParticleContainer>
-              <ParticleContainer className="spark-particles">
+              <div className="spark-particles">
                 {sparkElements}
-              </ParticleContainer>
+              </div>
+              <div className="hit-particles">
+                {particles}
+              </div>
             </div>
           </HitEffectContainer>
         );
@@ -185,6 +141,9 @@ HitEffect.propTypes = {
     x: PropTypes.number.isRequired,
     y: PropTypes.number.isRequired,
     facing: PropTypes.number,
+    attackType: PropTypes.string,
+    hitId: PropTypes.string,
+    timestamp: PropTypes.number,
   }),
 };
 

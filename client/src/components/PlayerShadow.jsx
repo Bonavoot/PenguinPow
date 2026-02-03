@@ -20,32 +20,31 @@ const ShadowElement = styled.div.attrs((props) => {
   // Use custom offsets if provided, otherwise use defaults
   const offsetLeft =
     props.$facing === -1
-      ? props.$offsetLeft || "20%"
-      : props.$offsetRight || "20%";
+      ? props.$offsetLeft || "23%"
+      : props.$offsetRight || "23%";
 
   return {
     style: {
       position: "absolute",
       left: `${(props.$x / 1280) * 100}%`,
-      bottom: `${(adjustedBottomPos / 720) * 100}%`,
+      bottom: `${(adjustedBottomPos / 720) * 100 - 0.3}%`,
       transform: `translateX(${offsetLeft})`,
       zIndex: isOutsideDohyo(props.$x, props.$y) ? 0 : 1,
     },
   };
 })`
-  width: ${(props) => props.$width || "11.713%"};
-  height: ${(props) => props.$height || "4.04%"};
+  width: ${(props) => props.$width || "11.36%"};
+  height: ${(props) => props.$height || "3.92%"};
   background: ${(props) =>
     props.$isLocalPlayer
       ? `radial-gradient(
           ellipse at center,
-          rgba(0, 0, 0, 0.6) 0%,
-          rgba(50, 50, 50, 0.5) 25%,
-          rgba(150, 150, 170, 0.45) 45%,
-          rgba(220, 220, 240, 0.4) 60%,
-          rgba(255, 255, 255, 0.5) 70%,
-          rgba(255, 255, 255, 0.3) 75%,
-          rgba(0, 0, 0, 0) 80%
+          rgba(255, 255, 255, 0) 0%,
+          rgba(255, 255, 255, 0) 60%,
+          rgba(255, 255, 255, 0.9) 68%,
+          rgba(255, 255, 255, 1) 72%,
+          rgba(255, 255, 255, 0.9) 76%,
+          rgba(0, 0, 0, 0) 82%
         )`
       : `radial-gradient(
           ellipse at center,
@@ -57,7 +56,7 @@ const ShadowElement = styled.div.attrs((props) => {
   will-change: transform, bottom, left;
   box-shadow: ${(props) =>
     props.$isLocalPlayer
-      ? "0 0 20px rgba(255, 255, 255, 0.7), inset 0 0 8px rgba(255, 255, 255, 0.3), 0 0 0 2px rgba(255, 255, 255, 0.6)"
+      ? "0 0 20px rgba(255, 255, 255, 0.8), 0 0 30px rgba(255, 255, 255, 0.4), inset 0 -2px 8px rgba(255, 255, 255, 0.6)"
       : "none"};
   animation: ${(props) =>
     props.$isLocalPlayer ? "localPlayerShadowPulse 2s ease-in-out infinite" : "none"};
@@ -69,7 +68,7 @@ const ShadowElement = styled.div.attrs((props) => {
     }
     50% {
       opacity: 0.85;
-      filter: brightness(1.2);
+      filter: brightness(1.3);
     }
   }
 `;

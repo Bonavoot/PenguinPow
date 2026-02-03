@@ -4,9 +4,9 @@
 
 .slap-parry-ring {
   position: relative;
-  /* Smaller minimum for better scaling on small screens */
-  width: clamp(1.2rem, 4vw, 3rem);
-  height: clamp(1.2rem, 4vw, 3rem);
+  /* Match snowball effect size */
+  width: clamp(40px, 5vw, 60px);
+  height: clamp(40px, 5vw, 60px);
 }
 
 /* Main bright white ring */
@@ -75,7 +75,7 @@
     /* Brief moment of full brightness */
   }
   100% {
-    transform: translate(-50%, -50%) scale(3);
+    transform: translate(-50%, -50%) scale(2);
     opacity: 0;
     border-width: 1px;
   }
@@ -88,7 +88,7 @@
     border-width: clamp(2px, 0.3vw, 4px);
   }
   100% {
-    transform: translate(-50%, -50%) scale(3.5);
+    transform: translate(-50%, -50%) scale(2.5);
     opacity: 0;
     border-width: 1px;
   }

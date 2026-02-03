@@ -75,7 +75,6 @@ function handleWinCondition(room, loser, winner, io) {
       loser.isBowing = true;
     }, 1050);
   } else {
-    console.log(winCount);
     setTimeout(() => {
       winner.isBowing = true;
       loser.isBowing = true;
@@ -169,6 +168,11 @@ function handleWinCondition(room, loser, winner, io) {
 
 // Add this new function near the other helper functions
 function executeSlapAttack(player, rooms) {
+  // Cancel power slide when attacking
+  if (player.isPowerSliding) {
+    player.isPowerSliding = false;
+  }
+  
   // Clear parry success state when starting an attack
   player.isRawParrySuccess = false;
   player.isPerfectRawParrySuccess = false;
@@ -191,14 +195,11 @@ function executeSlapAttack(player, rooms) {
       player.facing = player.slapFacingDirection;
 
       // Add forward slide during slap attack with power-up consideration
-      let slapSlideVelocity = 1.45; // Forward movement slightly exceeds knockback - chains reliably
+      let slapSlideVelocity = 1.2; // Forward movement during slap attack
 
       // Apply POWER power-up multiplier to slap slide distance
       if (player.activePowerUp === "power") {
         slapSlideVelocity *= player.powerUpMultiplier - 0.1; // Adjusted to achieve 20% increase (1.3 - 0.1 = 1.2x multiplier)
-        console.log(
-          `Player ${player.id} slap slide enhanced by POWER power-up: ${slapSlideVelocity}`
-        );
       }
 
       const slideDirection = player.facing === 1 ? -1 : 1; // Slide in the direction player is facing
@@ -262,8 +263,9 @@ function executeSlapAttack(player, rooms) {
       player.isSlapSliding = false;
       player.slapFacingDirection = null;
       player.isInStartupFrames = false;
-      // Keep momentum flowing smoothly into next slap
-      player.movementVelocity *= 0.7;
+      // ICE PHYSICS: Slap attack ends - momentum carries into sliding!
+      // Don't reduce momentum, let ice physics handle the slide
+      // Player keeps sliding in the direction they were moving
       player.currentAction = null;
 
       // Check if there's a pending slap attack to execute immediately
@@ -334,19 +336,17 @@ function cleanupRoom(room) {
 
 // Add this new function near the other helper functions
 function executeChargedAttack(player, chargePercentage, rooms) {
+  // Cancel power slide when attacking
+  if (player.isPowerSliding) {
+    player.isPowerSliding = false;
+  }
+  
   // Clear parry success state when starting an attack
   player.isRawParrySuccess = false;
   player.isPerfectRawParrySuccess = false;
   
-  console.log(
-    `Player ${player.id} executing charged attack with ${chargePercentage}% charge`
-  );
-
   // Prevent double execution - if player is already attacking, don't start another attack
   if (player.isAttacking && player.attackType === "charged") {
-    console.log(
-      `Player ${player.id} already executing charged attack, skipping duplicate execution`
-    );
     return;
   }
 
@@ -356,24 +356,17 @@ function executeChargedAttack(player, chargePercentage, rooms) {
   // Check if mouse2 is held when the attack starts
   const mouse2HeldOnStart = player.keys.mouse2;
   if (mouse2HeldOnStart) {
-    console.log(
-      `Player ${player.id} mouse2 is held when charged attack starts`
-    );
     player.mouse2HeldDuringAttack = true;
   }
 
   // Clear any pending charge attack to prevent double execution
   if (player.pendingChargeAttack) {
-    console.log(`Player ${player.id} clearing pending charge attack`);
     player.pendingChargeAttack = null;
     player.spacebarReleasedDuringDodge = false;
   }
 
   // Don't execute charged attack if player is in a throw state
   if (player.isThrowing || player.isBeingThrown) {
-    console.log(
-      `Player ${player.id} cannot execute charged attack - in throw state`
-    );
     return;
   }
 
@@ -465,15 +458,8 @@ function executeChargedAttack(player, chargePercentage, rooms) {
       const shouldFaceRight = player.x < opponent.x;
       const correctedFacing = shouldFaceRight ? -1 : 1;
 
-      console.log(
-        `Player ${player.id} auto-correcting charged attack facing: ${player.facing} -> ${correctedFacing} (opponent at x: ${opponent.x}, player at x: ${player.x}, opponent dodging: ${opponent.isDodging})`
-      );
-
       player.facing = correctedFacing;
     } else if (opponent && opponent.isDodging) {
-      console.log(
-        `Player ${player.id} NOT auto-correcting charged attack facing - opponent is dodging (preserving direction: ${player.facing})`
-      );
     }
   }
 
@@ -872,9 +858,6 @@ function adjustPlayerPositions(player1, player2, delta) {
             Math.min(newPlayer2X, rightBoundary)
           );
         }
-        console.log(
-          `🛡️ COLLISION BOUNDARY PROTECTION: Prevented players from going outside boundaries during knockback separation`
-        );
         return;
       }
 
@@ -1000,9 +983,6 @@ function adjustPlayerPositions(player1, player2, delta) {
             Math.min(newPlayer2X, rightBoundary)
           );
         }
-        console.log(
-          `🛡️ COLLISION BOUNDARY PROTECTION: Prevented players from going outside boundaries during knockback separation`
-        );
         return;
       }
 
@@ -1076,19 +1056,11 @@ function adjustPlayerPositions(player1, player2, delta) {
 
 // Add helper function to safely end charged attacks with recovery check
 function safelyEndChargedAttack(player, rooms) {
-  console.log(
-    `safelyEndChargedAttack called for player ${player.id}, attackType: ${player.attackType}, chargedAttackHit: ${player.chargedAttackHit}`
-  );
-
   // === ENDLAG DURATION FOR CHARGED ATTACKS ===
   const CHARGED_ENDLAG_DURATION = 300; // Recovery after charged attack ends
 
   // Only handle charged attacks, let slap attacks end normally
   if (player.attackType === "charged" && !player.chargedAttackHit) {
-    console.log(
-      `Safely ending charged attack for player ${player.id}, checking for recovery`
-    );
-
     // Find the current room and opponent to check if recovery is needed
     const currentRoom = rooms.find((room) =>
       room.players.some((p) => p.id === player.id)
@@ -1099,9 +1071,6 @@ function safelyEndChargedAttack(player, rooms) {
 
       // Set recovery for missed charged attacks - INCREASED duration for visual clarity
       if (opponent && !opponent.isHit && !player.isChargingAttack) {
-        console.log(
-          `Setting recovery state for player ${player.id} after missed charged attack (from safelyEndChargedAttack)`
-        );
         player.isRecovering = true;
         player.recoveryStartTime = Date.now();
         player.recoveryDuration = 400; // Was 250ms - now longer for clearer punishment
@@ -1110,18 +1079,12 @@ function safelyEndChargedAttack(player, rooms) {
         player.movementVelocity = player.facing * -3;
         player.knockbackVelocity = { x: 0, y: 0 };
       } else {
-        console.log(
-          `Not setting recovery for player ${player.id} - opponent.isHit: ${opponent?.isHit}, isChargingAttack: ${player.isChargingAttack}`
-        );
       }
     }
   }
 
   // Clear attack states (for both charged and slap attacks)
   if (!player.isChargingAttack) {
-    console.log(
-      `Clearing attack states for player ${player.id} (from safelyEndChargedAttack)`
-    );
     player.isAttacking = false;
     player.isSlapAttack = false;
     player.chargingFacingDirection = null;
@@ -1182,9 +1145,6 @@ function safelyEndChargedAttack(player, rooms) {
       "chargedEndlagReset"
     );
   } else {
-    console.log(
-      `Not clearing attack states for player ${player.id} - player is charging`
-    );
   }
 }
 

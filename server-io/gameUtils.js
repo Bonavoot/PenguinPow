@@ -1,12 +1,12 @@
 // Game constants
-const MAP_LEFT_BOUNDARY = 120;
-const MAP_RIGHT_BOUNDARY = 945;
+const MAP_LEFT_BOUNDARY = 80;
+const MAP_RIGHT_BOUNDARY = 982;
 
 const DEFAULT_PLAYER_SIZE_MULTIPLIER = 0.85; // 15% smaller default size
 
 // Dohyo (ring) boundaries - players fall when outside these (horizontal only)
-const DOHYO_LEFT_BOUNDARY = 0;
-const DOHYO_RIGHT_BOUNDARY = 1055;
+const DOHYO_LEFT_BOUNDARY = -40;
+const DOHYO_RIGHT_BOUNDARY = 1092;
 
 // Timeout manager for memory leak prevention
 class TimeoutManager {
@@ -170,6 +170,7 @@ function isPlayerInBasicActiveState(player) {
     !player.isInEndlag &&
     // Charging state
     !player.isChargingAttack
+    // NOTE: Power slide no longer blocks actions - attacks cancel the slide
   );
 }
 
@@ -341,6 +342,12 @@ function clearAllActionStates(player) {
   player.isCrouchStance = false;
   player.isCrouchStrafing = false;
   player.movementVelocity = 0;
+  // ICE PHYSICS: Clear sliding states
+  player.isPowerSliding = false;
+  player.isBraking = false;
+  player.strafeStartTime = 0;
+  player.wasStrafingLeft = false;
+  player.wasStrafingRight = false;
   
   // Clear recovery states
   player.isRecovering = false;
@@ -388,6 +395,9 @@ function shouldRestartCharging(player) {
 }
 
 function startCharging(player) {
+  // NOTE: Charging does NOT cancel power slide - only the released attack does
+  // This allows players to charge while sliding for aggressive plays
+  
   player.isChargingAttack = true;
   player.chargeStartTime = Date.now();
   player.chargeAttackPower = 1;

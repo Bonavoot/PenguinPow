@@ -16,6 +16,13 @@ import crowdSalarymanIdle2 from "../assets/crowd-salaryman-idle-2.png";
 import crowdSalarymanCheering2 from "../assets/crow-salaryman-cheering-2.png";
 import crowdOldmanIdle1 from "../assets/crowd-oldman-idle-1.png";
 import crowdOldmanCheering1 from "../assets/crowd-oldman-cheering-1.png";
+import crowdOyakata from "../assets/crowd-oyakata.png";
+import crowdOyakataFront from "../assets/crowd-oyakata-front.png";
+import crowdOyakataBack from "../assets/crowd-oyakata-back.png";
+import crowdSideIdle1 from "../assets/crowd-side-idle-1.png";
+import crowdSideCheering1 from "../assets/crowd-side-cheering-1.png";
+import crowdSideIdle2 from "../assets/crowd-side-idle-2.png";
+import crowdSideCheering2 from "../assets/crowd-side-cheering-2.png";
 
 // Preload crowd images to prevent jank during first render
 const preloadImage = (src) => {
@@ -34,6 +41,11 @@ const preloadCrowdImages = () => {
   preloadImage(crowdSalarymanIdle1);
   preloadImage(crowdSalarymanIdle2);
   preloadImage(crowdOldmanIdle1);
+  preloadImage(crowdOyakata);
+  preloadImage(crowdOyakataFront);
+  preloadImage(crowdOyakataBack);
+  preloadImage(crowdSideIdle1);
+  preloadImage(crowdSideIdle2);
   
   // Cheering sprites
   preloadImage(crowdBoyCheering1);
@@ -44,6 +56,8 @@ const preloadCrowdImages = () => {
   preloadImage(crowdSalarymanCheering1);
   preloadImage(crowdSalarymanCheering2);
   preloadImage(crowdOldmanCheering1);
+  preloadImage(crowdSideCheering1);
+  preloadImage(crowdSideCheering2);
 };
 
 // Execute preload immediately when module loads
@@ -72,6 +86,18 @@ const CrowdContainer = styled.div`
     pointer-events: none;
     z-index: 9999;
   }
+`;
+
+// Container for foreground crowd members that appear above the dohyo
+const ForegroundCrowdContainer = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2; /* Above dohyo overlay (1) */
+  contain: layout style paint;
 `;
 
 // Subtle idle sway + breathing animation - pivots from bottom so upper body moves
@@ -127,8 +153,9 @@ const CrowdMember = styled.img`
   image-rendering: -moz-crisp-edges;
   image-rendering: -webkit-optimize-contrast;
   opacity: ${(props) => props.$opacity || 1};
-  z-index: ${(props) => Math.floor(100 - props.$y)}; /* Higher Y = further back = lower z-index */
+  z-index: ${(props) => props.$customZIndex !== undefined ? props.$customZIndex : Math.floor(100 - props.$y)}; /* Custom z-index or calculated from Y */
   backface-visibility: hidden; /* GPU optimization */
+  filter: ${(props) => props.$applyDarkFilter ? "brightness(0.6)" : "none"}; /* Darkening filter to match crowd overlay */
   
   /* Only animate front rows (y < 55) - back rows are too small to notice */
   ${(props) => props.$shouldAnimate ? `
@@ -154,6 +181,11 @@ const CROWD_TYPES = [
   { idle: crowdSalarymanIdle1, cheering: crowdSalarymanCheering1, sizeMultiplier: 1.05, yOffsetRatio: 0, weight: 3 },
   { idle: crowdSalarymanIdle2, cheering: crowdSalarymanCheering2, sizeMultiplier: 1.05, yOffsetRatio: 0, weight: 3 },
   { idle: crowdOldmanIdle1, cheering: crowdOldmanCheering1, sizeMultiplier: 1.1, yOffsetRatio: 0, weight: 1.5 },  // Old man
+  { idle: crowdOyakata, cheering: crowdOyakata, sizeMultiplier: 1.0, yOffsetRatio: 0, weight: 0 },  // Oyakata (side seats only - weight 0 means won't appear in regular crowd)
+  { idle: crowdOyakataFront, cheering: crowdOyakataFront, sizeMultiplier: 1.0, yOffsetRatio: 0, weight: 0 },  // Oyakata Front (special position only)
+  { idle: crowdOyakataBack, cheering: crowdOyakataBack, sizeMultiplier: 1.0, yOffsetRatio: 0, weight: 0 },  // Oyakata Back (row 0 - closest)
+  { idle: crowdSideIdle1, cheering: crowdSideCheering1, sizeMultiplier: 1.0, yOffsetRatio: 0, weight: 0 },  // Side member 1 (side seats only)
+  { idle: crowdSideIdle2, cheering: crowdSideCheering2, sizeMultiplier: 1.0, yOffsetRatio: 0, weight: 0 },  // Side member 2 (side seats only)
   // Add more crowd types here later
 ];
 
@@ -198,6 +230,28 @@ const generateCrowdPositions = () => {
     });
   };
 
+  // Helper to add a specific crowd type (for special characters like oyakata)
+  // Parameters: x, y, size, opacity, flip, typeIndex (index in CROWD_TYPES array), customZIndex (optional), applyDarkFilter (optional)
+  const addSpecificMember = (x, y, size, opacity = 1, flip = null, typeIndex, customZIndex = undefined, applyDarkFilter = false) => {
+    const shouldFlip = flip !== null ? flip : Math.random() > 0.5;
+    const sizeMultiplier = CROWD_TYPES[typeIndex].sizeMultiplier;
+    const yOffsetRatio = CROWD_TYPES[typeIndex].yOffsetRatio;
+    const finalSize = size * sizeMultiplier;
+    const scaledYOffset = finalSize * yOffsetRatio;
+    
+    crowd.push({
+      id: id++,
+      x,
+      y: y + scaledYOffset,
+      size: finalSize,
+      typeIndex,
+      flip: shouldFlip,
+      opacity,
+      customZIndex,
+      applyDarkFilter,
+    });
+  };
+
  
 
   // Helper to create a row with specified number of members
@@ -233,15 +287,28 @@ const generateCrowdPositions = () => {
   // addMember(15, 50, 2.5, 1.0, true);   // x=15%, y=50%, size=2.5%, opacity=100%, flipped
   
   // ============================================
-  // GROUND FLOOR - 3 ROWS of 10 members each
+  // GROUND FLOOR - 4 ROWS (Row 0 is closest, then 1, 2, 3)
   // ============================================
   
-  // Ground Floor Row 1 (closest) - MANUALLY POSITIONED
+  // Ground Floor Row 0 (closest/lowest) - Oyakata Back
+  const row0Y = 36;      // Lower Y = closer to viewer
+  const row0Size = 11.5;  // Larger size = closer/bigger
+  const row0Opacity = 1.0;
+  const oyakataBackTypeIndex = 10; // Index of oyakata-back in CROWD_TYPES array
+  
+  // CENTER (1 member - mirrored) - Above dohyo layer with dark filter
+  addSpecificMember(49.5, -25, 22, row0Opacity, true, oyakataBackTypeIndex, 2, true); // z-index 2, dark filter applied
+  
+  // Ground Floor Row 1 - MANUALLY POSITIONED
   // Change the Y position (48), size (3.0), and opacity (1.0) for the whole row
   // Change each X value to position each character exactly on a cushion
   const row1Y = 41;      // Adjust this to move entire row up/down
   const row1Size = 10.5;  // Adjust this to make entire row bigger/smaller
   const row1Opacity = 1.0;
+  
+  // OYAKATA FRONT - Next to Row 1 Section 1 (left side)
+  const oyakataFrontTypeIndex = 9; // Index of oyakata-front in CROWD_TYPES array
+  addSpecificMember(49.5, 38, 17, row1Opacity, false, oyakataFrontTypeIndex); // Normal crowd member
   
   // LEFT SECTION (5 members)
   addMember(0, row1Y, row1Size, row1Opacity);   // Character 1
@@ -300,6 +367,38 @@ const generateCrowdPositions = () => {
   addMember(77.5, row3Y, row3Size, row3Opacity);  // Character 8
   addMember(85, row3Y, row3Size, row3Opacity);  // Character 9
   addMember(93, row3Y, row3Size, row3Opacity);  // Character 10
+
+  // ============================================
+  // SIDE ROWS - Special oyakata characters on the sides
+  // ============================================
+  
+  // Side Row 1 (left side) - Oyakata facing right (not flipped)
+  const sideRow1Y = 22;
+  const sideRow1Size = 18;
+  const sideRow1Opacity = 1.0;
+  const oyakataTypeIndex = 8; // Index of oyakata in CROWD_TYPES array
+  
+  addSpecificMember(1, sideRow1Y, sideRow1Size, sideRow1Opacity, false, oyakataTypeIndex);
+  
+  // Side Row 2 (right side) - Oyakata facing left (flipped)
+  const sideRow2Y = 22;
+  const sideRow2Size = 18;
+  const sideRow2Opacity = 1.0;
+  
+  addSpecificMember(99, sideRow2Y, sideRow2Size, sideRow2Opacity, true, oyakataTypeIndex);
+  
+  // Side Members - One on each side
+  const sideMember1TypeIndex = 11; // Index of crowdSideIdle1 in CROWD_TYPES array
+  const sideMember2TypeIndex = 12; // Index of crowdSideIdle2 in CROWD_TYPES array
+  const sideMemberY = 30;
+  const sideMemberSize = 14;
+  const sideMemberOpacity = 1.0;
+  
+  // Left side member (side-1, facing left, flipped)
+  addSpecificMember(7, sideMemberY, sideMemberSize, sideMemberOpacity, true, sideMember1TypeIndex);
+  
+  // Right side member (side-2, facing right)
+  addSpecificMember(93, sideMemberY, sideMemberSize, sideMemberOpacity, false, sideMember2TypeIndex);
 
   // ============================================
   // TOP STADIUM - 9 ROWS of 28 members each (4 sections of 7)
@@ -659,6 +758,10 @@ const CrowdLayer = ({ isCheering = false }) => {
   // Memoize crowd positions so they don't regenerate on every render
   const crowdPositions = useMemo(() => generateCrowdPositions(), []);
   
+  // Split crowd into normal (z-index 0) and foreground (above dohyo) members
+  const normalCrowd = useMemo(() => crowdPositions.filter(m => m.customZIndex === undefined), [crowdPositions]);
+  const foregroundCrowd = useMemo(() => crowdPositions.filter(m => m.customZIndex !== undefined), [crowdPositions]);
+  
   // Track which crowd types are currently in "cheering" pose vs "idle" pose
   // This creates a bouncing effect where each type animates together
   const [cheeringTypes, setCheeringTypes] = useState(new Set());
@@ -671,7 +774,7 @@ const CrowdLayer = ({ isCheering = false }) => {
     }
 
     // Immediately start all types in cheering pose for instant feedback
-    setCheeringTypes(new Set([0, 1, 2, 3, 4, 5, 6, 7]));
+    setCheeringTypes(new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]));
 
     // Different intervals for each crowd type (in milliseconds)
     // Each type bounces at a different rate for visual variety
@@ -684,6 +787,11 @@ const CrowdLayer = ({ isCheering = false }) => {
       400,  // crowdSalarymanIdle1
       475,  // crowdSalarymanIdle2
       525,  // crowdOldmanIdle1 - slower, older person
+      0,    // crowdOyakata - no animation (same idle and cheering sprite)
+      0,    // crowdOyakataFront - no animation (same idle and cheering sprite)
+      0,    // crowdOyakataBack - no animation (same idle and cheering sprite)
+      425,  // crowdSideIdle1 - side member with cheering animation
+      450,  // crowdSideIdle2 - side member with cheering animation
     ];
 
     const timers = intervals.map((interval, typeIndex) => {
@@ -700,47 +808,68 @@ const CrowdLayer = ({ isCheering = false }) => {
       }, interval);
     });
 
-    // Cleanup all intervals when component unmounts or isCheering changes
+    // Stop cheering animation after 3.5 seconds
+    const stopCheeringTimeout = setTimeout(() => {
+      setCheeringTypes(new Set()); // Clear all cheering states
+      timers.forEach((timer) => clearInterval(timer)); // Stop all animation intervals
+    }, 3500);
+
+    // Cleanup all intervals and timeout when component unmounts or isCheering changes
     return () => {
       timers.forEach((timer) => clearInterval(timer));
+      clearTimeout(stopCheeringTimeout);
     };
   }, [isCheering]);
 
+  // Helper function to render crowd members
+  const renderCrowdMembers = (members) => {
+    return members.map((member) => {
+      const crowdType = CROWD_TYPES[member.typeIndex];
+      
+      // Determine image source based on:
+      // 1. If not in cheering mode at all, always use idle
+      // 2. If in cheering mode, check if this type is currently in "cheering" pose
+      const isTypeCurrentlyCheering = cheeringTypes.has(member.typeIndex);
+      const src = isCheering && isTypeCurrentlyCheering ? crowdType.cheering : crowdType.idle;
+      
+      // Generate a pseudo-random offset based on member id for animation staggering
+      const animOffset = ((member.id * 7) % 10) / 10; // 0.0 to 0.9
+
+      // Only animate front rows (y < 55) - back rows are too small to notice
+      const shouldAnimate = member.y < 55;
+
+      return (
+        <CrowdMember
+          key={member.id}
+          src={src}
+          $x={member.x}
+          $y={member.y}
+          $size={member.size}
+          $flip={member.flip}
+          $opacity={member.opacity}
+          $animOffset={animOffset}
+          $shouldAnimate={shouldAnimate}
+          $customZIndex={member.customZIndex}
+          $applyDarkFilter={member.applyDarkFilter}
+          alt=""
+          draggable={false}
+        />
+      );
+    });
+  };
+
   return (
-    <CrowdContainer>
-      <StyleInjector />
-      {crowdPositions.map((member) => {
-        const crowdType = CROWD_TYPES[member.typeIndex];
-        
-        // Determine image source based on:
-        // 1. If not in cheering mode at all, always use idle
-        // 2. If in cheering mode, check if this type is currently in "cheering" pose
-        const isTypeCurrentlyCheering = cheeringTypes.has(member.typeIndex);
-        const src = isCheering && isTypeCurrentlyCheering ? crowdType.cheering : crowdType.idle;
-        
-        // Generate a pseudo-random offset based on member id for animation staggering
-        const animOffset = ((member.id * 7) % 10) / 10; // 0.0 to 0.9
-
-        // Only animate front rows (y < 55) - back rows are too small to notice
-        const shouldAnimate = member.y < 55;
-
-        return (
-          <CrowdMember
-            key={member.id}
-            src={src}
-            $x={member.x}
-            $y={member.y}
-            $size={member.size}
-            $flip={member.flip}
-            $opacity={member.opacity}
-            $animOffset={animOffset}
-            $shouldAnimate={shouldAnimate}
-            alt=""
-            draggable={false}
-          />
-        );
-      })}
-    </CrowdContainer>
+    <>
+      <CrowdContainer>
+        <StyleInjector />
+        {renderCrowdMembers(normalCrowd)}
+      </CrowdContainer>
+      {foregroundCrowd.length > 0 && (
+        <ForegroundCrowdContainer>
+          {renderCrowdMembers(foregroundCrowd)}
+        </ForegroundCrowdContainer>
+      )}
+    </>
   );
 };
 

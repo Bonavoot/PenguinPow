@@ -515,7 +515,6 @@ function handleGrabClashMashing(cpu, aiState, currentTime) {
     aiState.grabClashCurrentKey = key;
     aiState.grabClashLastMashTime = currentTime;
     
-    console.log(`🥊 CPU MASHING: Pressed ${key} during grab clash`);
   }
 }
 
@@ -528,7 +527,6 @@ function handleGrabBreak(cpu, aiState, currentTime) {
   // Cannot break out of a counter grab!
   if (cpu.isCounterGrabbed) {
     cpu.keys[" "] = false;
-    console.log(`CPU GRAB BREAK: Cannot break - counter grabbed!`);
     return;
   }
   
@@ -576,13 +574,8 @@ function handleGrabBreak(cpu, aiState, currentTime) {
     // This creates a "press-release-press-release" pattern
     const pressPhase = Math.floor(currentTime / 80) % 2 === 0;
     cpu.keys[" "] = pressPhase;
-    
-    if (pressPhase) {
-      console.log(`CPU GRAB BREAK: Pressing spacebar! Edge dist: ${Math.round(nearestEdgeDist)}, stamina: ${cpu.stamina}`);
-    }
   } else {
     cpu.keys[" "] = false;
-    console.log(`CPU GRAB BREAK: Not enough stamina (${cpu.stamina}/${GRAB_BREAK_STAMINA_COST})`);
   }
 }
 
@@ -595,7 +588,6 @@ function handlePunishParry(cpu, human, aiState, currentTime) {
   aiState.eReleaseTime = currentTime + 50;
   aiState.lastDecisionTime = currentTime;
   aiState.lastActionType = "punish_grab";
-  console.log("CPU: Punishing opponent's parry with grab!");
 }
 
 // Handle power-up usage (F key) - snowball or pumo army
@@ -616,7 +608,6 @@ function handlePowerUpUsage(cpu, human, aiState, currentTime, distance) {
       cpu.isThrowing || cpu.isBeingThrown || cpu.isDodging ||
       cpu.isHit || cpu.isRawParryStun || cpu.isRecovering ||
       cpu.isThrowingSnowball || cpu.isSpawningPumoArmy) {
-    console.log(`CPU Power-up blocked by state`);
     return false;
   }
   
@@ -628,7 +619,6 @@ function handlePowerUpUsage(cpu, human, aiState, currentTime, distance) {
   
   // USE THE POWER-UP!
   if (hasSnowball) {
-    console.log("CPU: PRESSING F KEY for snowball!");
     resetAllKeys(cpu);
     cpu.keys.f = true;
     aiState.fReleaseTime = currentTime + 150; // Brief press
@@ -639,7 +629,6 @@ function handlePowerUpUsage(cpu, human, aiState, currentTime, distance) {
   }
   
   if (hasPumoArmy) {
-    console.log("CPU: PRESSING F KEY for pumo army!");
     resetAllKeys(cpu);
     cpu.keys.f = true;
     aiState.fReleaseTime = currentTime + 150; // Brief press
@@ -678,7 +667,6 @@ function handleCornerEscape(cpu, human, aiState, currentTime, distance, cornered
         aiState.eReleaseTime = currentTime + 50;
         aiState.lastDecisionTime = currentTime;
         aiState.lastActionType = "grab_corner_throw";
-        console.log(`CPU CORNER: Grabbing for throw ring-out! Back only ${Math.round(distToBackBoundary)} from boundary!`);
         return true;
       }
     }
@@ -702,7 +690,6 @@ function handleCornerEscape(cpu, human, aiState, currentTime, distance, cornered
       aiState.eReleaseTime = currentTime + 50;
       aiState.lastDecisionTime = currentTime;
       aiState.lastActionType = "grab";
-      console.log(`CPU CORNER: Grabbing! Will throw toward back boundary for ring-out!`);
       return true;
     }
     // Option 3: Slap attack to push them back (30% chance)
@@ -740,7 +727,6 @@ function handleRingOutOpportunity(cpu, human, aiState, currentTime, distance) {
     aiState.eReleaseTime = currentTime + 50;
     aiState.lastDecisionTime = currentTime;
     aiState.lastActionType = "grab";
-    console.log("CPU: GRAB for ring-out! Opponent near edge!");
     return;
   }
   
@@ -760,7 +746,6 @@ function handleRingOutOpportunity(cpu, human, aiState, currentTime, distance) {
   } else {
     cpu.keys.a = true;
   }
-  console.log("CPU: Approaching opponent near edge for grab!");
 }
 
 // Handle defensive reactions (parry or dodge)
@@ -806,7 +791,6 @@ function handleDefensiveReaction(cpu, human, aiState, currentTime, distance) {
       } else {
         cpu.keys.a = true; // Dodge left (away from right edge)
       }
-      console.log(`CPU: Smart dodge AWAY from ${nearestEdge} edge (dist: ${Math.round(distToNearestEdge)})`);
     } else {
       // Safe to dodge in any direction - prefer dodging away from opponent
       const intendedDir = cpu.x < human.x ? -1 : 1; // -1 = left, 1 = right
@@ -880,16 +864,12 @@ function handleSnowballDefense(cpu, human, aiState, currentTime, distance) {
       aiState.parryStartTime = currentTime;
       // Release just before impact for perfect parry timing
       aiState.parryReleaseTime = currentTime + Math.max(timeToImpact - perfectParryWindow, 50);
-      
-      console.log(`CPU: Attempting PERFECT PARRY on snowball! Distance: ${Math.round(snowballDistance)}, timeToImpact: ${Math.round(timeToImpact)}ms`);
     } else {
       // REGULAR RAW PARRY - hold longer for reliable block
       cpu.keys.s = true;
       aiState.pendingParry = true;
       aiState.parryStartTime = currentTime;
       aiState.parryReleaseTime = currentTime + randomInRange(250, 400);
-      
-      console.log(`CPU: Raw parrying snowball! Distance: ${Math.round(snowballDistance)}`);
     }
     
     aiState.lastSnowballReactionTime = currentTime;
@@ -913,7 +893,6 @@ function handleSnowballDefense(cpu, human, aiState, currentTime, distance) {
       } else {
         cpu.keys.a = true;
       }
-      console.log(`CPU: Dodging FORWARD through snowball to close gap! Distance to opponent: ${Math.round(distance)}`);
     } else {
       // Mid/close range - smart dodge that considers boundaries
       const cpuLeftDist = distanceToLeftEdge(cpu);
@@ -928,7 +907,6 @@ function handleSnowballDefense(cpu, human, aiState, currentTime, distance) {
         } else {
           cpu.keys.a = true;
         }
-        console.log(`CPU: Dodging through snowball away from ${nearestEdge} edge`);
       } else {
         // Safe - prefer dodging toward opponent to maintain pressure
         if (directionToOpponent === 1) {
@@ -936,7 +914,6 @@ function handleSnowballDefense(cpu, human, aiState, currentTime, distance) {
         } else {
           cpu.keys.a = true;
         }
-        console.log(`CPU: Dodging through snowball toward opponent`);
       }
     }
     
@@ -1017,11 +994,9 @@ function handleGrabDecision(cpu, human, aiState, currentTime) {
     if (distToWalkBackwardForThrow < distToWalkForwardRingOut) {
       // Walking backward + throw is shorter!
       aiState.grabStrategy = 'backward_throw';
-      console.log(`CPU GRAB STRATEGY: BACKWARD + THROW! Need to walk ${Math.round(distToWalkBackwardForThrow)} backward vs ${Math.round(distToWalkForwardRingOut)} forward`);
     } else {
       // Walking forward is shorter or equal
       aiState.grabStrategy = 'forward_push';
-      console.log(`CPU GRAB STRATEGY: FORWARD PUSH! Need to walk ${Math.round(distToWalkForwardRingOut)} forward vs ${Math.round(distToWalkBackwardForThrow)} backward + throw`);
     }
   }
   
@@ -1034,7 +1009,6 @@ function handleGrabDecision(cpu, human, aiState, currentTime) {
     if (distToBackBoundary <= THROW_RING_OUT_DISTANCE) {
       // IN THROW RANGE! Execute the throw for guaranteed ring-out!
       cpu.keys.w = true;
-      console.log(`CPU GRAB: IN THROW RANGE! Back is ${Math.round(distToBackBoundary)} from boundary - THROWING!`);
       return;
     }
     
@@ -1051,7 +1025,6 @@ function handleGrabDecision(cpu, human, aiState, currentTime) {
     const GRAB_DURATION = 1500;
     if (grabElapsed > GRAB_DURATION - 200) {
       cpu.keys.w = true;
-      console.log(`CPU GRAB: EMERGENCY THROW! Grab ending soon!`);
     }
   }
 }
@@ -1091,7 +1064,6 @@ function handleCloseRange(cpu, human, aiState, currentTime, distance) {
       aiState.eReleaseTime = currentTime + 50;
       aiState.lastDecisionTime = currentTime;
       aiState.lastActionType = "grab";
-      console.log("CPU: Grabbing! Opponent near edge - easy ring-out!");
       return;
     }
   }
@@ -1352,10 +1324,8 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       // Update room clash data
       if (cpu.id === room.grabClashData.player1Id) {
         room.grabClashData.player1Inputs++;
-        console.log(`🥊 CPU PLAYER 1 (${cpu.id}) INPUT COUNT: ${room.grabClashData.player1Inputs}`);
       } else if (cpu.id === room.grabClashData.player2Id) {
         room.grabClashData.player2Inputs++;
-        console.log(`🥊 CPU PLAYER 2 (${cpu.id}) INPUT COUNT: ${room.grabClashData.player2Inputs}`);
       }
       
       // Emit progress update if io is available
@@ -1368,7 +1338,6 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
         });
       }
       
-      console.log(`🥊 CPU ${cpu.id} mashed ${detectedKey} during grab clash. Total inputs: ${cpu.grabClashInputCount}`);
     }
     
     // Update prev keys for next comparison
@@ -1391,8 +1360,6 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     // Find the grabber
     const grabber = opponent;
     if (grabber && grabber.isGrabbing && grabber.grabbedOpponent === cpu.id) {
-      console.log(`🛡️ CPU GRAB BREAK! Stamina: ${cpu.stamina}, breaking from ${grabber.id}`);
-      
       // Deduct stamina
       cpu.stamina = Math.max(0, cpu.stamina - GRAB_BREAK_STAMINA_COST);
       
@@ -1499,13 +1466,11 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       
       // Check if grab break has already occurred - grab break always takes priority
       if (cpu.isGrabBreakCountered || opponent.isGrabBreaking || opponent.isGrabBreakSeparating) {
-        console.log(`CPU throw cancelled: Grab break takes priority`);
         return;
       }
       
       // Also check if we're no longer in a valid grab state
       if (!cpu.isGrabbing && !cpu.isThrowing) {
-        console.log(`CPU throw cancelled: No longer grabbing (likely grab break occurred)`);
         return;
       }
       
@@ -1515,8 +1480,6 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       if (Math.abs(cpu.x - opponent.x) < throwRange && 
           !opponent.isBeingThrown && 
           !opponent.isDodging) {
-        
-        console.log(`CPU THROW EXECUTING! isGrabbing: ${cpu.isGrabbing}, facing: ${cpu.facing}`);
         
         clearChargeState(cpu, true);
         cpu.movementVelocity = 0;
@@ -1725,11 +1688,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       !cpu.canMoveToReady &&
       !cpu.isChargingAttack) {
     
-    console.log(`🎯 CPU F KEY PRESSED! Power-up: ${cpu.activePowerUp}`);
-    
     if (cpu.activePowerUp === "snowball") {
-      console.log(`🎯 CPU throwing snowball!`);
-      
       // Set throwing state
       cpu.isThrowingSnowball = true;
       cpu.currentAction = "snowball";
@@ -1767,8 +1726,6 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       cpu._prevKeys = { ...cpu.keys };
       return;
     } else if (cpu.activePowerUp === "pumo_army") {
-      console.log(`🎯 CPU spawning pumo army!`);
-      
       // Set spawning state
       cpu.isSpawningPumoArmy = true;
       cpu.currentAction = "pumo_army";

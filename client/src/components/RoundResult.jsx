@@ -1,17 +1,15 @@
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
 
-// Victory animation - explosive, triumphant entrance
+// Victory animation - explosive, triumphant entrance (NO blur - causes freeze)
 const victorySlam = keyframes`
   0% {
     opacity: 0;
     transform: translate(-50%, -50%) scale(3) rotate(-8deg);
-    filter: blur(20px);
   }
   15% {
     opacity: 1;
     transform: translate(-50%, -50%) scale(0.85) rotate(3deg);
-    filter: blur(0px);
   }
   25% {
     transform: translate(-50%, -50%) scale(1.1) rotate(-1deg);
@@ -121,51 +119,11 @@ const subtitleSlide = keyframes`
   }
 `;
 
-// Victory glow pulse
-const victoryGlow = keyframes`
-  0%, 100% {
-    text-shadow: 
-      0 0 20px rgba(255, 215, 0, 0.8),
-      0 0 40px rgba(255, 215, 0, 0.6),
-      0 0 60px rgba(255, 215, 0, 0.4),
-      4px 4px 0 #8B4513,
-      -4px -4px 0 #8B4513,
-      4px -4px 0 #8B4513,
-      -4px 4px 0 #8B4513;
-  }
-  50% {
-    text-shadow: 
-      0 0 30px rgba(255, 215, 0, 1),
-      0 0 60px rgba(255, 215, 0, 0.8),
-      0 0 90px rgba(255, 215, 0, 0.6),
-      4px 4px 0 #8B4513,
-      -4px -4px 0 #8B4513,
-      4px -4px 0 #8B4513,
-      -4px 4px 0 #8B4513;
-  }
-`;
+// Victory glow pulse - DISABLED (causes performance issues on large text)
+// Using static text-shadow instead
 
-// Defeat dim pulse
-const defeatPulse = keyframes`
-  0%, 100% {
-    text-shadow: 
-      0 0 15px rgba(139, 0, 0, 0.6),
-      0 0 30px rgba(139, 0, 0, 0.4),
-      4px 4px 0 #1a1a1a,
-      -4px -4px 0 #1a1a1a,
-      4px -4px 0 #1a1a1a,
-      -4px 4px 0 #1a1a1a;
-  }
-  50% {
-    text-shadow: 
-      0 0 20px rgba(139, 0, 0, 0.8),
-      0 0 40px rgba(139, 0, 0, 0.5),
-      4px 4px 0 #1a1a1a,
-      -4px -4px 0 #1a1a1a,
-      4px -4px 0 #1a1a1a,
-      -4px 4px 0 #1a1a1a;
-  }
-`;
+// Defeat dim pulse - DISABLED (causes performance issues on large text)
+// Using static text-shadow instead
 
 // Screen flash effect
 const screenFlash = keyframes`
@@ -207,8 +165,8 @@ const ScreenFlash = styled.div`
   width: 100vw;
   height: 100vh;
   background: ${props => props.$isVictory 
-    ? 'radial-gradient(circle at center, rgba(255, 215, 0, 0.9) 0%, rgba(255, 165, 0, 0.6) 40%, transparent 80%)'
-    : 'radial-gradient(circle at center, rgba(139, 0, 0, 0.7) 0%, rgba(74, 0, 0, 0.4) 40%, transparent 80%)'
+    ? 'radial-gradient(circle at center, rgba(255, 230, 100, 0.95) 0%, rgba(255, 180, 0, 0.7) 30%, rgba(255, 140, 0, 0.4) 55%, transparent 80%)'
+    : 'radial-gradient(circle at center, rgba(180, 20, 20, 0.8) 0%, rgba(120, 0, 0, 0.5) 35%, rgba(60, 0, 0, 0.25) 55%, transparent 80%)'
   };
   animation: ${screenFlash} 0.6s ease-out forwards;
   pointer-events: none;
@@ -285,38 +243,39 @@ const MainKanji = styled.div`
   line-height: 1;
   position: relative;
   color: ${props => props.$isVictory ? '#FFD700' : '#8B0000'};
+  /* Single animation only - no infinite glow pulse (causes freeze on large text) */
   animation: ${props => props.$isVictory 
-    ? css`${victorySlam} 3s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards, ${victoryGlow} 0.5s ease-in-out 0.3s infinite`
-    : css`${defeatDrop} 3s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards, ${defeatPulse} 0.8s ease-in-out 0.4s infinite`
+    ? css`${victorySlam} 3s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards`
+    : css`${defeatDrop} 3s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards`
   };
+  /* Enhanced text-shadow for depth and pop */
   text-shadow: ${props => props.$isVictory
     ? `
-      0 0 20px rgba(255, 215, 0, 0.8),
-      0 0 40px rgba(255, 215, 0, 0.6),
-      0 0 60px rgba(255, 215, 0, 0.4),
-      8px 8px 0 #8B4513,
-      -3px -3px 0 #8B4513,
-      8px -3px 0 #8B4513,
-      -3px 8px 0 #8B4513
+      4px 4px 0 #E6A800,
+      8px 8px 0 #CC8800,
+      12px 12px 0 #AA7700,
+      16px 16px 0 rgba(136, 85, 0, 0.8),
+      20px 20px 0 rgba(80, 50, 0, 0.5),
+      0 0 40px rgba(255, 215, 0, 0.3)
     `
     : `
-      0 0 15px rgba(139, 0, 0, 0.6),
-      0 0 30px rgba(139, 0, 0, 0.4),
-      8px 8px 0 #1a1a1a,
-      -3px -3px 0 #1a1a1a,
-      8px -3px 0 #1a1a1a,
-      -3px 8px 0 #1a1a1a
+      4px 4px 0 #4a0000,
+      8px 8px 0 #2a0000,
+      12px 12px 0 #1a0000,
+      16px 16px 0 #0a0a0a,
+      20px 20px 0 rgba(0, 0, 0, 0.7),
+      0 0 40px rgba(139, 0, 0, 0.4)
     `
   };
-  /* Brush stroke texture effect */
+  /* Rich gradient with more color stops for depth */
   background: ${props => props.$isVictory 
-    ? 'linear-gradient(135deg, #FFD700 0%, #FFA500 30%, #FFD700 50%, #FFEC8B 70%, #FFD700 100%)'
-    : 'linear-gradient(135deg, #8B0000 0%, #4a0000 30%, #8B0000 50%, #a52a2a 70%, #8B0000 100%)'
+    ? 'linear-gradient(145deg, #FFFFFF 0%, #FFFF88 8%, #FFFF33 18%, #FFEE00 30%, #FFD700 50%, #FFCC00 65%, #FFA500 82%, #FF8C00 100%)'
+    : 'linear-gradient(145deg, #FF4444 0%, #DD2222 10%, #BB1111 20%, #8B0000 35%, #6B0000 50%, #4a0000 65%, #2a0000 80%, #000000 100%)'
   };
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  filter: ${props => props.$isVictory ? 'drop-shadow(0 0 40px rgba(255, 215, 0, 0.8))' : 'drop-shadow(0 0 30px rgba(139, 0, 0, 0.6))'};
+  /* REMOVED filter: drop-shadow - extremely expensive on 22rem text! */
   
   @media (max-width: 1400px) {
     font-size: 19rem;
@@ -348,18 +307,18 @@ const MainKanji = styled.div`
 `;
 
 // Shadow layer behind the kanji for depth
+// REMOVED filter: blur(2px) - extremely expensive on 22rem text!
 const KanjiShadow = styled.div`
   position: absolute;
   font-family: "Noto Serif JP", "Yu Mincho", "Hiragino Mincho Pro", serif;
   font-size: 22rem;
   font-weight: 900;
   line-height: 1;
-  top: 5px;
-  left: 5px;
-  color: ${props => props.$isVictory ? '#8B4513' : '#1a1a1a'};
+  top: 8px;
+  left: 8px;
+  color: ${props => props.$isVictory ? '#2a1a00' : '#000000'};
   z-index: -1;
-  filter: blur(2px);
-  opacity: 0.7;
+  opacity: ${props => props.$isVictory ? '0.8' : '0.7'};
   
   @media (max-width: 1400px) {
     font-size: 19rem;
@@ -396,8 +355,8 @@ const InkSplatter = styled.div`
   height: 450px;
   border-radius: 50%;
   background: ${props => props.$isVictory 
-    ? 'radial-gradient(ellipse at center, rgba(255, 215, 0, 0.3) 0%, rgba(255, 165, 0, 0.2) 40%, transparent 70%)'
-    : 'radial-gradient(ellipse at center, rgba(139, 0, 0, 0.25) 0%, rgba(74, 0, 0, 0.15) 40%, transparent 70%)'
+    ? 'radial-gradient(ellipse at center, rgba(255, 215, 0, 0.45) 0%, rgba(255, 180, 0, 0.35) 25%, rgba(255, 140, 0, 0.2) 50%, transparent 70%)'
+    : 'radial-gradient(ellipse at center, rgba(180, 0, 0, 0.4) 0%, rgba(120, 0, 0, 0.25) 30%, rgba(60, 0, 0, 0.12) 50%, transparent 70%)'
   };
   animation: ${inkSplatter} 3s ease-out forwards;
   z-index: -1;
@@ -474,14 +433,27 @@ const SecondaryInkSplatter = styled(InkSplatter)`
 const SubtitleText = styled.div`
   font-family: "Bungee", cursive;
   font-size: 2.6rem;
-  color: ${props => props.$isVictory ? '#FFFFFF' : '#FFFFFF'};
+  color: ${props => props.$isVictory ? '#FFF8E7' : '#E8E8E8'};
   text-transform: uppercase;
   letter-spacing: 0.3em;
   margin-top: -22px;
   animation: ${subtitleSlide} 3s ease-out forwards;
-  text-shadow: 
-    3px 3px 6px rgba(0, 0, 0, 0.9),
-    0 0 15px ${props => props.$isVictory ? 'rgba(255, 215, 0, 0.6)' : 'rgba(139, 0, 0, 0.5)'};
+  text-shadow: ${props => props.$isVictory 
+    ? `
+      2px 2px 0 #CC8800,
+      4px 4px 0 #AA7700,
+      6px 6px 12px rgba(0, 0, 0, 0.8),
+      0 0 25px rgba(255, 215, 0, 0.6),
+      0 0 50px rgba(255, 180, 0, 0.4)
+    `
+    : `
+      2px 2px 0 #6a0000,
+      4px 4px 0 #4a0000,
+      6px 6px 12px rgba(0, 0, 0, 0.9),
+      0 0 25px rgba(139, 0, 0, 0.5),
+      0 0 50px rgba(80, 0, 0, 0.3)
+    `
+  };
   
   @media (max-width: 1400px) {
     font-size: 2.2rem;
@@ -526,8 +498,8 @@ const BrushStroke = styled.div`
   width: 620px;
   height: 50px;
   background: ${props => props.$isVictory 
-    ? 'linear-gradient(90deg, transparent 0%, rgba(255, 215, 0, 0.4) 20%, rgba(255, 215, 0, 0.6) 50%, rgba(255, 215, 0, 0.4) 80%, transparent 100%)'
-    : 'linear-gradient(90deg, transparent 0%, rgba(139, 0, 0, 0.3) 20%, rgba(139, 0, 0, 0.5) 50%, rgba(139, 0, 0, 0.3) 80%, transparent 100%)'
+    ? 'linear-gradient(90deg, transparent 0%, rgba(218, 165, 32, 0.3) 15%, rgba(255, 200, 0, 0.6) 35%, rgba(255, 215, 0, 0.75) 50%, rgba(255, 200, 0, 0.6) 65%, rgba(218, 165, 32, 0.3) 85%, transparent 100%)'
+    : 'linear-gradient(90deg, transparent 0%, rgba(60, 0, 0, 0.25) 15%, rgba(120, 0, 0, 0.45) 35%, rgba(139, 0, 0, 0.55) 50%, rgba(120, 0, 0, 0.45) 65%, rgba(60, 0, 0, 0.25) 85%, transparent 100%)'
   };
   bottom: -50px;
   animation: ${brushReveal} 3s ease-out forwards;

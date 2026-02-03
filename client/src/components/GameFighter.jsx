@@ -111,6 +111,21 @@ import hitEffectImage from "../assets/hit-effect.png";
 import crouchStance2 from "../assets/crouch-stance2.png";
 import crouchStrafing2 from "../assets/crouch-strafing2.png";
 
+// CSS background images (preload to prevent flash on game start)
+import gameMapBackground from "../assets/game-map-1.png";
+import dohyoOverlay from "../assets/dohyo.png";
+
+// Gyoji images (referee appears at game start and during announcements)
+import gyojiImage from "../assets/gyoji.png";
+import gyojiReady from "../assets/gyoji-ready.png";
+import gyojiPlayer1wins from "../assets/gyoji-player1-wins.png";
+import gyojiPlayer2wins from "../assets/gyoji-player2-wins.png";
+import gyojiHakkiyoi from "../assets/gyoji-hakkiyoi.gif";
+
+// Effect images (used during gameplay)
+import dodgeEffectGif from "../assets/dodge-effect.gif";
+import slapAttackHand from "../assets/slap-attack-hand.png";
+
 // Ritual animation sprite sheet imports (Player 1 - Blue)
 import ritualPart1Spritesheet from "../assets/ritual_part1_spritesheet.png";
 import ritualPart2Spritesheet from "../assets/ritual_part2_spritesheet.png";
@@ -249,6 +264,11 @@ const initializeAudioPools = () => {
   // Add missing audio files
   createAudioPool(gameMusic, 1);
   createAudioPool(eeshiMusic, 1);
+  // Ritual clap sounds
+  createAudioPool(clap1Sound, 2);
+  createAudioPool(clap2Sound, 2);
+  createAudioPool(clap3Sound, 2);
+  createAudioPool(clap4Sound, 2);
 };
 
 // Initialize image preloading
@@ -270,6 +290,8 @@ const initializeImagePreloading = () => {
   preloadImage(grabbing2);
   preloadImage(grabAttempt);
   preloadImage(grabAttempt2);
+  preloadImage(attemptingGrabThrow);
+  preloadImage(attemptingGrabThrow2);
   preloadImage(beingGrabbed);
   preloadImage(beingGrabbed2);
 
@@ -282,6 +304,8 @@ const initializeImagePreloading = () => {
   preloadImage(dodging2);
   preloadImage(crouching);
   preloadImage(crouching2);
+  preloadImage(crouchStance2);
+  preloadImage(crouchStrafing2);
 
   // Special moves
   preloadImage(slapAttack1Blue);
@@ -309,6 +333,27 @@ const initializeImagePreloading = () => {
 
   // Effect sprites
   preloadImage(hitEffectImage);
+
+  // CSS background images (critical for smooth game start)
+  preloadImage(gameMapBackground);
+  preloadImage(dohyoOverlay);
+
+  // Power-up icons
+  preloadImage(powerWaterIcon);
+  preloadImage(pumoArmyIcon);
+  preloadImage(happyFeetIcon);
+  preloadImage(thickBlubberIcon);
+
+  // Gyoji images (referee)
+  preloadImage(gyojiImage);
+  preloadImage(gyojiReady);
+  preloadImage(gyojiPlayer1wins);
+  preloadImage(gyojiPlayer2wins);
+  preloadImage(gyojiHakkiyoi);
+
+  // Effect images
+  preloadImage(dodgeEffectGif);
+  preloadImage(slapAttackHand);
 };
 
 // Initialize pools and preloading immediately
@@ -799,19 +844,19 @@ const StyledImage = styled("img")
         isOutsideDohyo(props.$x, props.$y) ? 0 : // Behind dohyo overlay when outside
         props.$isThrowing || props.$isDodging || props.$isGrabbing ? 98 : 99,
       filter: props.$isAtTheRopes
-        ? `drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(255, 50, 50, 0.7)) brightness(1.15) contrast(1.25)${props.$isLocalPlayer ? ' drop-shadow(0 0 3px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 1.5px rgba(255, 255, 255, 1))' : ''}`
+        ? `drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(255, 50, 50, 0.7)) brightness(1.15) contrast(1.25)`
         : props.$isGrabBreaking
-        ? `drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.85)) brightness(1.35) drop-shadow(0 0 3px #000)${props.$isLocalPlayer ? ' drop-shadow(0 0 3px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 1.5px rgba(255, 255, 255, 1))' : ''}`
+        ? `drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.85)) brightness(1.35) drop-shadow(0 0 3px #000)`
         : props.$isRawParrying
-        ? `drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3) drop-shadow(0 0 3px #000)${props.$isLocalPlayer ? ' drop-shadow(0 0 3px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 1.5px rgba(255, 255, 255, 1))' : ''}`
+        ? `drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3) drop-shadow(0 0 3px #000)`
         : props.$isHit
-        ? `drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) brightness(1.15)${props.$isLocalPlayer ? ' drop-shadow(0 0 3px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 1.5px rgba(255, 255, 255, 1))' : ''}`
+        ? `drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) brightness(1.15)`
         : props.$isChargingAttack
-        ? `drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 12px rgba(255, 200, 50, 0.85)) contrast(1.25)${props.$isLocalPlayer ? ' drop-shadow(0 0 3px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 1.5px rgba(255, 255, 255, 1))' : ''}`
+        ? `drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 12px rgba(255, 200, 50, 0.85)) contrast(1.25)`
         : props.$isGrabClashActive
-        ? `drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.25) brightness(1.1)${props.$isLocalPlayer ? ' drop-shadow(0 0 3px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 1.5px rgba(255, 255, 255, 1))' : ''}`
+        ? `drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.25) brightness(1.1)`
         : props.$isLocalPlayer
-        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 3px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 1.5px rgba(255, 255, 255, 1)) contrast(1.2)"
+        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2)"
         : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) ",
       animation: props.$isAtTheRopes
         ? "atTheRopesWobble 0.3s ease-in-out infinite"
@@ -827,12 +872,32 @@ const StyledImage = styled("img")
         ? "grabClashStruggle 0.15s ease-in-out infinite"
         : props.$isHit
         ? "hitSquash 0.18s ease-out"
-        : props.$justLandedFromDodge
+        : props.$justLandedFromDodge && !props.$isPowerSliding
         ? "dodgeLanding 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards"
         // : props.$isDodgeCancelling
         // ? "dodgeCancelSlam 0.12s cubic-bezier(0.25, 0.1, 0.25, 1) forwards"
         : props.$isDodging
         ? "dodgeTakeoff 0.2s cubic-bezier(0.25, 0.1, 0.25, 1) forwards"
+        : // ICE PHYSICS: Movement animations take priority over charging
+        // Power slide animation - blocked during victim/special states
+        props.$isPowerSliding && 
+          !props.$isBeingGrabbed && 
+          !props.$isBeingThrown && 
+          !props.$isThrowing &&
+          !props.$isGrabbing &&
+          !props.$isRecovering &&
+          !props.$isDead
+        ? "powerSlide 0.15s ease-in-out infinite"
+        : // ICE PHYSICS: Braking animation when digging in to stop - shows during charging
+        // Also blocked during victim/special states
+        props.$isBraking && 
+          !props.$isBeingGrabbed && 
+          !props.$isBeingThrown && 
+          !props.$isThrowing &&
+          !props.$isGrabbing &&
+          !props.$isRecovering &&
+          !props.$isDead
+        ? "iceBrake 0.2s ease-in-out infinite"
         : props.$isChargingAttack
         ? "chargePulse 0.6s ease-in-out infinite"
         : props.$isAttacking && !props.$isSlapAttack
@@ -966,6 +1031,26 @@ const StyledImage = styled("img")
     }
     50% {
       transform: scaleX(var(--facing, 1)) scaleY(1.03);
+    }
+  }
+  
+  /* ICE PHYSICS: Braking animation - penguin digs in to stop sliding */
+  @keyframes iceBrake {
+    0%, 100% {
+      transform: scaleX(var(--facing, 1)) scaleY(0.96) rotate(calc(var(--facing, 1) * 3deg));
+    }
+    50% {
+      transform: scaleX(var(--facing, 1)) scaleY(0.94) rotate(calc(var(--facing, 1) * 5deg));
+    }
+  }
+  
+  /* Power slide - more squished down with bounce */
+  @keyframes powerSlide {
+    0%, 100% {
+      transform: scaleX(calc(var(--facing, 1) * 1.08)) scaleY(0.88) translateY(6px);
+    }
+    50% {
+      transform: scaleX(calc(var(--facing, 1) * 1.10)) scaleY(0.85) translateY(8px);
     }
   }
   
@@ -1186,7 +1271,7 @@ const RitualSpriteImage = styled.img.attrs((props) => {
       willChange: "transform",
       backfaceVisibility: "hidden",
       filter: props.$isLocalPlayer
-        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 3px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 1.5px rgba(255, 255, 255, 1)) contrast(1.2)"
+        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2)"
         : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2)",
     },
   };
@@ -1217,8 +1302,8 @@ const SaltBasket = styled.img
       width: "4.55%",
       height: "auto",
       bottom: `${((GROUND_LEVEL + 100) / 720) * 140}%`,
-      left: props.$index === 0 ? "15.5%" : "auto",
-      right: props.$index === 1 ? "16.5%" : "auto",
+      left: props.$index === 0 ? "12.5%" : "auto",
+      right: props.$index === 1 ? "13.8%" : "auto",
       transform: props.$index === 1 ? "scaleX(-1)" : "none",
       zIndex: 1,
       pointerEvents: "none",
@@ -1269,7 +1354,7 @@ const YouLabel = styled.div
     font-family: "Bungee", cursive;
     font-size: clamp(12px, 1.1vw, 16px);
     letter-spacing: 0.1em;
-    color: #d4af37;
+    color:rgb(255, 223, 120);
     background: linear-gradient(
       180deg,
       rgba(11, 16, 32, 0.95) 0%,
@@ -1328,7 +1413,7 @@ const PumoClone = styled.img
       left: `${(props.$x / 1280) * 100}%`,
       bottom: `${(props.$y / 720) * 100}%`,
       transform: `scaleX(${props.$facing * -1})`,
-      zIndex: 97,
+      zIndex: (props.$x < -20 || props.$x > 1075) || props.$y < (GROUND_LEVEL - 35) ? 0 : 98,
       pointerEvents: "none",
       filter:
         "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.3)",
@@ -1391,6 +1476,7 @@ const GameFighter = ({
   disconnectedRoomId,
   onResetDisconnectState,
   isPowerUpSelectionActive,
+  predictionRef, // Ref for client-side prediction (only used for local player)
 }) => {
   const { socket } = useContext(SocketContext);
   const [penguin, setPenguin] = useState({
@@ -1402,6 +1488,8 @@ const GameFighter = ({
     isDodging: false,
     dodgeDirection: null,
     isStrafing: false,
+    isBraking: false, // ICE PHYSICS: True when actively braking (digging in)
+    isPowerSliding: false, // ICE PHYSICS: True when power sliding (C key held)
     isRawParrying: false,
     isReady: false,
     isHit: false,
@@ -1449,6 +1537,474 @@ const GameFighter = ({
   const previousState = useRef(null);
   const currentState = useRef(null);
   const lastUpdateTime = useRef(performance.now());
+
+  // ============================================
+  // CLIENT-SIDE PREDICTION SYSTEM
+  // For the local player only, we predict certain actions immediately
+  // to eliminate perceived input lag. Server remains authoritative.
+  // ============================================
+  const predictedState = useRef({
+    isSlapAttack: false,
+    slapAnimation: 1,
+    isAttacking: false,
+    isDodging: false,
+    dodgeDirection: null,
+    isChargingAttack: false,
+    isRawParrying: false,
+    isGrabbing: false,
+    // ICE PHYSICS: Movement predictions for responsive feel
+    isPowerSliding: false,
+    isBraking: false,
+    timestamp: 0,
+  });
+  
+  // Force re-render when predictions change (refs don't trigger re-renders)
+  const [predictionTrigger, setPredictionTrigger] = useState(0);
+  
+  // Prediction timeout - clear predictions if server doesn't confirm within this time
+  // Shorter timeout to prevent predictions from staying visible too long
+  const PREDICTION_TIMEOUT_MS = 150; // 150ms max prediction window (about 2-3 server ticks)
+  
+  // Track if this is the local player
+  const isLocalPlayer = player.id === localId;
+  
+  // ============================================
+  // HELPER: Check if player can perform ANY action
+  // This must match the server's canPlayerUseAction logic exactly
+  // to prevent showing predictions for actions the server will reject
+  // ============================================
+  const canPredictAction = useCallback((gameStarted) => {
+    // CRITICAL: No actions allowed before game starts (hakkiyoi)
+    if (!gameStarted) return false;
+    
+    // Check all blocking states that prevent ANY action
+    return (
+      // Core action states
+      !penguin.isAttacking &&
+      !penguin.isDodging &&
+      !penguin.isThrowing &&
+      !penguin.isBeingThrown &&
+      !penguin.isGrabbing &&
+      !penguin.isBeingGrabbed &&
+      !penguin.isHit &&
+      !penguin.isRawParryStun &&
+      !penguin.isRawParrying &&
+      !penguin.isThrowingSnowball &&
+      !penguin.isAtTheRopes &&
+      // Grab-related intermediate states
+      !penguin.isGrabStartup &&
+      !penguin.isGrabbingMovement &&
+      !penguin.isWhiffingGrab &&
+      !penguin.isGrabBreaking &&
+      !penguin.isGrabBreakCountered &&
+      !penguin.isGrabBreakSeparating &&
+      !penguin.isGrabClashing &&
+      // Other action states
+      !penguin.isThrowingSalt &&
+      !penguin.isThrowTeching &&
+      !penguin.isSpawningPumoArmy &&
+      // Attack timing states
+      !penguin.isInStartupFrames &&
+      !penguin.isInEndlag &&
+      // Recovery and ready states
+      !penguin.isRecovering &&
+      !penguin.canMoveToReady &&
+      // Pre-game states
+      !penguin.isReady &&
+      !penguin.isBowing
+      // NOTE: Power sliding no longer blocks actions - attacks cancel the slide
+    );
+  }, [penguin]);
+
+  // Helper: Check if player can dodge (more permissive - allows during charging)
+  const canPredictDodge = useCallback((gameStarted) => {
+    if (!gameStarted) return false;
+    
+    return (
+      !penguin.isAttacking &&
+      !penguin.isDodging &&
+      !penguin.isThrowing &&
+      !penguin.isBeingThrown &&
+      !penguin.isGrabbing &&
+      !penguin.isBeingGrabbed &&
+      !penguin.isHit &&
+      !penguin.isRawParryStun &&
+      !penguin.isRawParrying &&
+      !penguin.isThrowingSnowball &&
+      !penguin.isAtTheRopes &&
+      !penguin.isGrabStartup &&
+      !penguin.isGrabbingMovement &&
+      !penguin.isWhiffingGrab &&
+      !penguin.isGrabBreaking &&
+      !penguin.isGrabBreakCountered &&
+      !penguin.isGrabBreakSeparating &&
+      !penguin.isGrabClashing &&
+      !penguin.isThrowingSalt &&
+      !penguin.isThrowTeching &&
+      !penguin.isSpawningPumoArmy &&
+      !penguin.isInStartupFrames &&
+      !penguin.isInEndlag &&
+      !penguin.isRecovering &&
+      !penguin.canMoveToReady &&
+      !penguin.isReady &&
+      !penguin.isBowing
+      // NOTE: isChargingAttack NOT checked - dodge is allowed during charge
+    );
+  }, [penguin]);
+
+  // Function to apply a prediction (called from Game.jsx via callback)
+  const applyPrediction = useCallback((action) => {
+    if (!isLocalPlayer) return;
+    
+    // Get game started state from action (passed from Game.jsx)
+    const gameStarted = action.gameStarted;
+    
+    const now = performance.now();
+    
+    // OPTIMIZATION: Track if prediction actually changed to avoid unnecessary re-renders
+    let predictionChanged = false;
+    
+    switch (action.type) {
+      case 'slap':
+        // Only predict if we can perform actions AND not already charging
+        if (canPredictAction(gameStarted) && !penguin.isChargingAttack) {
+          predictedState.current = {
+            ...predictedState.current,
+            isSlapAttack: true,
+            isAttacking: true,
+            slapAnimation: (predictedState.current.slapAnimation === 1) ? 2 : 1,
+            // CRITICAL: Clear other action predictions to prevent visual flicker
+            isChargingAttack: false,
+            isDodging: false,
+            isRawParrying: false,
+            isGrabbing: false,
+            timestamp: now,
+          };
+          predictionChanged = true;
+        }
+        break;
+      case 'charge_start':
+        if (canPredictAction(gameStarted)) {
+          predictedState.current = {
+            ...predictedState.current,
+            isChargingAttack: true,
+            // CRITICAL: Clear other action predictions to prevent visual flicker
+            isSlapAttack: false,
+            isAttacking: false,
+            isDodging: false,
+            isRawParrying: false,
+            isGrabbing: false,
+            timestamp: now,
+          };
+          predictionChanged = true;
+        }
+        break;
+      case 'charge_release':
+        // Only predict release if we were charging
+        if (penguin.isChargingAttack || predictedState.current.isChargingAttack) {
+          predictedState.current = {
+            ...predictedState.current,
+            isChargingAttack: false,
+            isAttacking: true,
+            // CRITICAL: Clear other action predictions to prevent visual flicker
+            isSlapAttack: false,
+            isDodging: false,
+            isRawParrying: false,
+            isGrabbing: false,
+            timestamp: now,
+          };
+          predictionChanged = true;
+        }
+        break;
+      case 'dodge':
+        // Dodge has special rules - allowed during charging
+        if (canPredictDodge(gameStarted)) {
+          predictedState.current = {
+            ...predictedState.current,
+            isDodging: true,
+            dodgeDirection: action.direction || penguin.facing,
+            // CRITICAL: Dodge cancels charging - clear it to prevent visual flicker
+            isChargingAttack: false,
+            isAttacking: false,
+            isSlapAttack: false,
+            isRawParrying: false,
+            isGrabbing: false,
+            timestamp: now,
+          };
+          predictionChanged = true;
+        }
+        break;
+      case 'parry_start':
+        if (canPredictAction(gameStarted) && !penguin.isChargingAttack) {
+          predictedState.current = {
+            ...predictedState.current,
+            isRawParrying: true,
+            // CRITICAL: Clear other action predictions to prevent visual flicker
+            isChargingAttack: false,
+            isAttacking: false,
+            isSlapAttack: false,
+            isDodging: false,
+            isGrabbing: false,
+            timestamp: now,
+          };
+          predictionChanged = true;
+        }
+        break;
+      case 'parry_release':
+        // Only clear parry if we were parrying
+        if (penguin.isRawParrying || predictedState.current.isRawParrying) {
+          predictedState.current = {
+            ...predictedState.current,
+            isRawParrying: false,
+            timestamp: now,
+          };
+          predictionChanged = true;
+        }
+        break;
+      case 'grab':
+        if (canPredictAction(gameStarted) && !penguin.isChargingAttack) {
+          predictedState.current = {
+            ...predictedState.current,
+            isGrabbing: true,
+            // CRITICAL: Clear other action predictions to prevent visual flicker
+            isChargingAttack: false,
+            isAttacking: false,
+            isSlapAttack: false,
+            isDodging: false,
+            isRawParrying: false,
+            timestamp: now,
+          };
+          predictionChanged = true;
+        }
+        break;
+      case 'power_slide_start':
+        // Predict power sliding when C/CTRL pressed
+        // Must match server's canPowerSlide conditions (server-io/index.js line 2943)
+        // NOTE: isChargingAttack is NOT blocked - can power slide while charging!
+        if (!penguin.isDodging && 
+            !penguin.isThrowing &&
+            !penguin.isGrabbing && 
+            !penguin.isWhiffingGrab &&
+            !penguin.isAttacking &&
+            // isChargingAttack is allowed - can slide while charging
+            !penguin.isRecovering &&
+            !penguin.isRawParrying &&
+            !penguin.isHit &&
+            !penguin.isBeingGrabbed &&
+            !penguin.isBeingThrown &&
+            !penguin.isAtTheRopes &&
+            !penguin.isGrabClashing &&
+            !penguin.isGrabBreaking &&
+            !penguin.isGrabBreakSeparating &&
+            // Check we're not already predicting power slide
+            !predictedState.current.isPowerSliding) {
+          predictedState.current = {
+            ...predictedState.current,
+            isPowerSliding: true,
+            isBraking: false,
+            timestamp: now,
+          };
+          predictionChanged = true;
+        }
+        break;
+      case 'power_slide_end':
+        // Clear power sliding prediction when C/CTRL released (only if was predicting)
+        if (predictedState.current.isPowerSliding) {
+          predictedState.current = {
+            ...predictedState.current,
+            isPowerSliding: false,
+            timestamp: now,
+          };
+          predictionChanged = true;
+        }
+        break;
+      case 'brake_start':
+        // Predict braking when holding opposite direction while sliding
+        if (!penguin.isAttacking && !penguin.isDodging && !penguin.isGrabbing &&
+            !penguin.isBeingGrabbed && !penguin.isRawParrying && !penguin.isHit &&
+            !penguin.isPowerSliding && !predictedState.current.isPowerSliding &&
+            !predictedState.current.isBraking) {
+          predictedState.current = {
+            ...predictedState.current,
+            isBraking: true,
+            timestamp: now,
+          };
+          predictionChanged = true;
+        }
+        break;
+      case 'brake_end':
+        // Clear braking prediction (only if was predicting)
+        if (predictedState.current.isBraking) {
+          predictedState.current = {
+            ...predictedState.current,
+            isBraking: false,
+            timestamp: now,
+          };
+          predictionChanged = true;
+        }
+        break;
+      case 'clear':
+        // Clear all predictions
+        predictedState.current = {
+          isSlapAttack: false,
+          slapAnimation: predictedState.current.slapAnimation,
+          isAttacking: false,
+          isDodging: false,
+          dodgeDirection: null,
+          isChargingAttack: false,
+          isRawParrying: false,
+          isGrabbing: false,
+          isPowerSliding: false,
+          isBraking: false,
+          timestamp: 0,
+        };
+        predictionChanged = true;
+        break;
+      default:
+        break;
+    }
+    
+    // OPTIMIZATION: Only force re-render if prediction actually changed
+    if (predictionChanged) {
+      setPredictionTrigger(prev => prev + 1);
+    }
+  }, [isLocalPlayer, canPredictAction, canPredictDodge, penguin.isChargingAttack, 
+      penguin.isRawParrying, penguin.facing, penguin.isAttacking, penguin.isDodging,
+      penguin.isGrabbing, penguin.isBeingGrabbed, penguin.isHit, penguin.isRecovering,
+      penguin.isAtTheRopes, penguin.isPowerSliding, penguin.isThrowing, penguin.isWhiffingGrab,
+      penguin.isBeingThrown, penguin.isGrabClashing, penguin.isGrabBreaking, 
+      penguin.isGrabBreakSeparating]);
+  
+  // Get the display state (merges server state with predictions for local player)
+  const getDisplayState = useCallback(() => {
+    const now = performance.now();
+    const prediction = predictedState.current;
+    
+    // For non-local players, just return server state
+    if (!isLocalPlayer) {
+      return penguin;
+    }
+    
+    // Check if prediction has expired
+    const predictionAge = now - prediction.timestamp;
+    if (prediction.timestamp === 0 || predictionAge > PREDICTION_TIMEOUT_MS) {
+      return penguin;
+    }
+    
+    // Server state takes priority if it shows a conflicting state
+    // (e.g., server says we got hit, trust that over our attack prediction)
+    if (penguin.isHit || penguin.isBeingGrabbed || penguin.isBeingThrown || 
+        penguin.isRawParryStun || penguin.isAtTheRopes || penguin.isRecovering ||
+        penguin.isGrabBreaking || penguin.isGrabBreakCountered || penguin.isThrowTeching ||
+        penguin.isDead || penguin.isThrowing || penguin.isGrabbing) {
+      // Clear ALL predictions when server shows we're in a "victim" or conflicting state
+      predictedState.current = {
+        isSlapAttack: false,
+        slapAnimation: predictedState.current.slapAnimation,
+        isAttacking: false,
+        isDodging: false,
+        dodgeDirection: null,
+        isChargingAttack: false,
+        isRawParrying: false,
+        isGrabbing: false,
+        isPowerSliding: false,
+        isBraking: false,
+        timestamp: 0,
+      };
+      return penguin;
+    }
+    
+    // CRITICAL: If server shows action has ENDED but we predicted it's active,
+    // the server is authoritative - clear the prediction
+    // This prevents "stuck" visual states
+    
+    // If we predicted slap but server says no slap AND no attacking, server wins
+    if (prediction.isSlapAttack && !penguin.isSlapAttack && !penguin.isAttacking) {
+      predictedState.current.isSlapAttack = false;
+      predictedState.current.isAttacking = false;
+    }
+    // If server CONFIRMS the action, also clear prediction (server has correct timing)
+    else if (prediction.isSlapAttack && penguin.isSlapAttack) {
+      predictedState.current.isSlapAttack = false;
+      predictedState.current.isAttacking = false;
+    }
+    
+    // Dodge: If server says no dodge, trust server
+    if (prediction.isDodging && !penguin.isDodging) {
+      predictedState.current.isDodging = false;
+    }
+    
+    // Charging: If server says no charging, trust server
+    if (prediction.isChargingAttack && !penguin.isChargingAttack) {
+      predictedState.current.isChargingAttack = false;
+    }
+    
+    // Parrying: If server says no parrying, trust server
+    if (prediction.isRawParrying && !penguin.isRawParrying) {
+      predictedState.current.isRawParrying = false;
+    }
+    
+    // Grabbing: If server says no grabbing, trust server
+    if (prediction.isGrabbing && !penguin.isGrabbing) {
+      predictedState.current.isGrabbing = false;
+    }
+    
+    // ICE PHYSICS: Power sliding reconciliation
+    // If server says sliding, clear our prediction (server confirmed)
+    // If server says no sliding but we predicted it, trust server (might not have enough velocity)
+    if (prediction.isPowerSliding && penguin.isPowerSliding) {
+      predictedState.current.isPowerSliding = false; // Server confirmed, clear prediction
+    } else if (prediction.isPowerSliding && !penguin.isPowerSliding) {
+      // Server says no sliding - could be velocity too low or state blocked
+      // Give server authority after a short time
+      if (predictionAge > 50) {
+        predictedState.current.isPowerSliding = false;
+      }
+    }
+    
+    // Braking reconciliation
+    if (prediction.isBraking && penguin.isBraking) {
+      predictedState.current.isBraking = false; // Server confirmed
+    } else if (prediction.isBraking && !penguin.isBraking) {
+      if (predictionAge > 50) {
+        predictedState.current.isBraking = false;
+      }
+    }
+    
+    // Re-check if all predictions are cleared
+    const p = predictedState.current;
+    if (!p.isSlapAttack && !p.isAttacking && !p.isDodging && 
+        !p.isChargingAttack && !p.isRawParrying && !p.isGrabbing &&
+        !p.isPowerSliding && !p.isBraking) {
+      // All predictions cleared, just return server state
+      return penguin;
+    }
+    
+    // Merge remaining predicted state with server state
+    // Predictions override server state for visual display only
+    return {
+      ...penguin,
+      isSlapAttack: p.isSlapAttack || penguin.isSlapAttack,
+      slapAnimation: p.isSlapAttack ? p.slapAnimation : penguin.slapAnimation,
+      isAttacking: p.isAttacking || penguin.isAttacking,
+      isDodging: p.isDodging || penguin.isDodging,
+      dodgeDirection: p.isDodging ? p.dodgeDirection : penguin.dodgeDirection,
+      isChargingAttack: p.isChargingAttack || penguin.isChargingAttack,
+      isRawParrying: p.isRawParrying || penguin.isRawParrying,
+      isGrabbing: p.isGrabbing || penguin.isGrabbing,
+      // ICE PHYSICS: Movement predictions
+      isPowerSliding: p.isPowerSliding || penguin.isPowerSliding,
+      isBraking: p.isBraking || penguin.isBraking,
+    };
+  }, [isLocalPlayer, penguin]);
+  
+  // Expose the prediction function via the prop ref that Game.jsx can access
+  // This allows Game.jsx to call applyPrediction() directly when input occurs
+  useEffect(() => {
+    if (predictionRef && isLocalPlayer) {
+      predictionRef.current = { applyPrediction };
+    }
+  }, [predictionRef, isLocalPlayer, applyPrediction]);
 
   // Store both players' data for UI (only needed for first component)
   const [allPlayersData, setAllPlayersData] = useState({
@@ -1649,15 +2205,12 @@ const GameFighter = ({
       const timeRemaining = framesRemaining * frameDuration;
       if (shouldPlaySound && !soundPlayedThisPart && timeRemaining <= CLAP_SOUND_OFFSET) {
         soundPlayedThisPart = true;
-        try {
-          const randomIndex = Math.floor(Math.random() * ritualClapSounds.length);
-          const selectedSound = ritualClapSounds[randomIndex];
-          const clapAudio = new Audio(selectedSound);
-          // clap2Sound is louder, so reduce its volume more
-          const volumeMultiplier = selectedSound === clap2Sound ? 0.01 : 0.02;
-          clapAudio.volume = volumeMultiplier * getGlobalVolume();
-          clapAudio.play().catch(() => {});
-        } catch (e) {}
+        const randomIndex = Math.floor(Math.random() * ritualClapSounds.length);
+        const selectedSound = ritualClapSounds[randomIndex];
+        // clap2Sound is louder, so reduce its volume more
+        const volumeMultiplier = selectedSound === clap2Sound ? 0.01 : 0.02;
+        // Use audio pool via playSound instead of creating new Audio objects
+        playSound(selectedSound, volumeMultiplier);
       }
       
       // Advance frame
@@ -1979,12 +2532,12 @@ const GameFighter = ({
           facing: data.facing || 1, // Default to 1 if facing not provided
           timestamp: data.timestamp, // Pass through unique timestamp
           hitId: data.hitId, // Pass through unique hit ID
+          attackType: data.attackType || 'slap', // Pass attack type for distinct effects
         });
       }
     });
 
     socket.on("raw_parry_success", (data) => {
-      console.log("Received raw_parry_success event:", data);
       if (data && typeof data.parrierX === "number") {
         // Position effect in front of the parrying player (where a hit effect would appear)
         const facing = data.facing || 1;
@@ -1999,7 +2552,6 @@ const GameFighter = ({
           isPerfect: data.isPerfect || false,
           playerNumber: data.playerNumber || 1,
         };
-        console.log("Setting rawParryEffectPosition:", effectData);
         setRawParryEffectPosition(effectData);
         // Play different sounds for regular vs perfect parry
         if (data.isPerfect) {
@@ -2007,8 +2559,6 @@ const GameFighter = ({
         } else {
           playSound(regularRawParrySound, 0.03);
         }
-      } else {
-        console.warn("Invalid raw_parry_success data:", data);
       }
     });
 
@@ -2149,7 +2699,6 @@ const GameFighter = ({
       setNoStaminaEffectKey(0); // Clear "No Stamina" effect on round reset
       setIsGrabClashActive(false); // Reset grab clash state
       onResetDisconnectState(); // Reset opponent disconnected state for new games
-      console.log("game reset gamefighter.jsx");
 
       // Bump round ID so UI can hard reset stamina visuals
       setUiRoundId((id) => id + 1);
@@ -2176,7 +2725,6 @@ const GameFighter = ({
 
     // Gyoji's call before HAKKIYOI (authentic sumo)
     socket.on("gyoji_call", (call) => {
-      console.log("gyoji_call:", call);
       setGyojiCall(call);
       
       // Clear the call after animation completes
@@ -2186,7 +2734,6 @@ const GameFighter = ({
     });
 
     socket.on("game_start", () => {
-      console.log("game start gamefighter.jsx");
       setGyojiCall(null); // Clear any lingering gyoji call
       setHakkiyoi(true);
       setRawParryEffectPosition(null); // Clear any leftover parry effects
@@ -2207,6 +2754,16 @@ const GameFighter = ({
         startTime: Date.now(),
       });
 
+      // Handle music transition: eeshi -> game music
+      if (eeshiMusicRef.current) {
+        eeshiMusicRef.current.pause();
+        eeshiMusicRef.current.currentTime = 0;
+      }
+      if (gameMusicRef.current) {
+        gameMusicRef.current.loop = true;
+        gameMusicRef.current.play();
+      }
+
       // Hide hakkiyoi text after 3 seconds
       setTimeout(() => {
         setHakkiyoi(false);
@@ -2216,7 +2773,6 @@ const GameFighter = ({
     socket.on("game_over", (data) => {
       setGameOver(data.isGameOver);
       setWinner(data.winner);
-      console.log(data.winner);
       
       // Add winner to round history
       const winnerName = data.winner.fighter === "player 1" ? "player1" : "player2";
@@ -2239,6 +2795,17 @@ const GameFighter = ({
       }
       // Bump round ID immediately on winner declaration to reset UI stamina to server value
       setUiRoundId((id) => id + 1);
+      
+      // Handle music transition: game music -> eeshi music
+      if (gameMusicRef.current) {
+        gameMusicRef.current.pause();
+        gameMusicRef.current.currentTime = 0;
+      }
+      // Only restart eeshi music if opponent hasn't disconnected
+      if (!opponentDisconnected && eeshiMusicRef.current) {
+        eeshiMusicRef.current.loop = true;
+        eeshiMusicRef.current.play();
+      }
     });
 
     socket.on("match_over", (data) => {
@@ -2284,7 +2851,7 @@ const GameFighter = ({
         countdownRef.current = null;
       }
     };
-  }, [index, socket, handleFighterAction]);
+  }, [index, socket, handleFighterAction, opponentDisconnected, localId]);
 
   useEffect(() => {
     gameMusicRef.current = new Audio(gameMusic);
@@ -2311,31 +2878,8 @@ const GameFighter = ({
     };
   }, [opponentDisconnected]);
 
-  useEffect(() => {
-    socket.on("game_start", () => {
-      eeshiMusicRef.current.pause();
-      eeshiMusicRef.current.currentTime = 0;
-      gameMusicRef.current.loop = true;
-      gameMusicRef.current.play();
-    });
-
-    socket.on("game_over", () => {
-      gameMusicRef.current.pause();
-      gameMusicRef.current.currentTime = 0;
-
-      // Only restart eeshi music if opponent hasn't disconnected
-      if (!opponentDisconnected) {
-        // eeshiMusicRef.current.volume = 0.006;
-        eeshiMusicRef.current.loop = true;
-        eeshiMusicRef.current.play();
-      }
-    });
-
-    return () => {
-      socket.off("game_start");
-      socket.off("game_over");
-    };
-  }, [socket, opponentDisconnected]); // Add opponentDisconnected as dependency
+  // NOTE: game_start and game_over music handling is now consolidated into the main socket useEffect
+  // to prevent duplicate listeners and cleanup race conditions
 
   useEffect(() => {
     // Trigger sound for charged attacks (non-slap attacks)
@@ -2478,12 +3022,6 @@ const GameFighter = ({
   // Hide star stun effect when stun ends
   useEffect(() => {
     if (!penguin.isRawParryStun && showStarStunEffect) {
-      console.log(
-        "Hiding star stun effect - isRawParryStun:",
-        penguin.isRawParryStun,
-        "showStarStunEffect:",
-        showStarStunEffect
-      );
       setShowStarStunEffect(false);
     }
     // Also show the effect if the player becomes stunned but the effect isn't showing
@@ -2498,6 +3036,7 @@ const GameFighter = ({
   }, [penguin.isRawParryStun, showStarStunEffect, penguin.id, player.id]);
 
   // Add screen shake effect - OPTIMIZED using requestAnimationFrame
+  // Enhanced with punchy initial shake and smooth decay
   useEffect(() => {
     if (screenShake.intensity > 0) {
       let animationId;
@@ -2513,12 +3052,15 @@ const GameFighter = ({
           return;
         }
 
-        // Calculate shake intensity based on elapsed time (fade out)
-        const remainingIntensity =
-          screenShake.intensity * (1 - elapsed / screenShake.duration);
+        // Use exponential decay for punchier initial shake
+        // The shake is strongest at the start and quickly tapers off
+        const progress = elapsed / screenShake.duration;
+        const decayFactor = Math.pow(1 - progress, 1.5); // Exponential decay
+        const remainingIntensity = screenShake.intensity * decayFactor;
 
-        // Apply random offset based on intensity
-        const offsetX = (Math.random() - 0.5) * remainingIntensity * 10;
+        // Increased shake multiplier (12px instead of 10px) for more visible impact
+        // Slight bias towards horizontal shake since hits push sideways
+        const offsetX = (Math.random() - 0.5) * remainingIntensity * 14;
         const offsetY = (Math.random() - 0.5) * remainingIntensity * 10;
 
         if (gameContainer) {
@@ -2567,11 +3109,6 @@ const GameFighter = ({
 
   // Add screen shake, thick blubber absorption, and danger zone event listeners
   useEffect(() => {
-    console.log(
-      `🔵 Setting up event listeners for player ${player.id}, isLocal: ${
-        player.id === localId
-      }`
-    );
 
     socket.on("screen_shake", (data) => {
       setScreenShake({
@@ -2605,7 +3142,6 @@ const GameFighter = ({
 
     // Danger zone event - dramatic moment when player is near ring-out
     socket.on("danger_zone", (data) => {
-      console.log("🔴 DANGER ZONE triggered!", data);
       setDangerZoneActive(true);
       setSlowMoActive(true);
       
@@ -2618,7 +3154,6 @@ const GameFighter = ({
 
     // Ring-out event - player knocked out of ring
     socket.on("ring_out", (data) => {
-      console.log("🎯 RING OUT!", data);
       // Extra dramatic screen shake for ring-out
       setScreenShake({
         intensity: 1.2,
@@ -2630,13 +3165,7 @@ const GameFighter = ({
     // Test listener for any event to verify socket is working
     socket.on("fighter_action", () => {});
 
-    // Test if socket is connected and in the right room
-    console.log(
-      `🔵 Socket connected: ${socket.connected}, Socket ID: ${socket.id}, Room: ${roomName}`
-    );
-
     return () => {
-      console.log(`🔵 Cleaning up event listeners for player ${player.id}`);
       socket.off("screen_shake");
       socket.off("thick_blubber_absorption");
       socket.off("danger_zone");
@@ -2659,6 +3188,16 @@ const GameFighter = ({
       }
     };
   }, []); // Empty dependency array means this only runs on mount/unmount
+
+  // ============================================
+  // DISPLAY STATE - Merges predicted state with server state
+  // This is what we actually render - gives instant visual feedback
+  // Called directly in render to always reflect latest predictions
+  // ============================================
+  const displayPenguin = getDisplayState();
+  
+  // PERFORMANCE: Calculate position ONCE per render instead of calling getDisplayPosition() multiple times
+  const displayPosition = getDisplayPosition();
 
   return (
     <div className="ui-container">
@@ -2714,13 +3253,13 @@ const GameFighter = ({
         !hakkiyoi &&
         gyojiState === "idle" &&
         countdown > 0 && (
-          <YouLabel x={getDisplayPosition().x} y={getDisplayPosition().y} />
+          <YouLabel x={displayPosition.x} y={displayPosition.y} />
         )}
       <PowerMeter
         isCharging={penguin.isChargingAttack}
         chargePower={penguin.chargeAttackPower}
-        x={getDisplayPosition().x}
-        y={getDisplayPosition().y}
+        x={displayPosition.x}
+        y={displayPosition.y}
         facing={penguin.facing}
         playerId={penguin.id}
         localId={localId}
@@ -2738,8 +3277,8 @@ const GameFighter = ({
         $isVisible={true}
       />
       <PlayerShadow
-        x={getDisplayPosition().x}
-        y={getDisplayPosition().y}
+        x={displayPosition.x}
+        y={displayPosition.y}
         facing={penguin.facing}
         isDodging={penguin.isDodging}
         isGrabStartup={penguin.isGrabStartup}
@@ -2749,22 +3288,22 @@ const GameFighter = ({
         isLocalPlayer={penguin.id === localId}
       />
       {/* <DodgeSmokeEffect
-        x={penguin.dodgeStartX || getDisplayPosition().x}
-        y={penguin.dodgeStartY || getDisplayPosition().y}
+        x={penguin.dodgeStartX || displayPosition.x}
+        y={penguin.dodgeStartY || displayPosition.y}
         isDodging={penguin.isDodging}
         facing={penguin.facing}
         dodgeDirection={penguin.dodgeDirection}
       /> */}
       {/* <DodgeLandingEffect
-        x={getDisplayPosition().x}
+        x={displayPosition.x}
         y={GROUND_LEVEL}
         justLanded={penguin.justLandedFromDodge}
         isCancelled={penguin.isDodgeCancelling}
       /> */}
 {/* 
       <ChargedAttackSmokeEffect
-        x={getDisplayPosition().x}
-        y={getDisplayPosition().y}
+        x={displayPosition.x}
+        y={displayPosition.y}
         isChargingAttack={penguin.isChargingAttack}
         facing={penguin.facing}
         isSlapAttack={penguin.isSlapAttack}
@@ -2775,34 +3314,36 @@ const GameFighter = ({
         $fighter={penguin.fighter}
         $isDiving={penguin.isDiving}
         $isJumping={penguin.isJumping}
-        $isAttacking={penguin.isAttacking}
-        $isDodging={penguin.isDodging}
+        $isAttacking={displayPenguin.isAttacking}
+        $isDodging={displayPenguin.isDodging}
         $isStrafing={penguin.isStrafing}
-        $isRawParrying={penguin.isRawParrying}
+        $isBraking={displayPenguin.isBraking}
+        $isPowerSliding={displayPenguin.isPowerSliding}
+        $isRawParrying={displayPenguin.isRawParrying}
         $isGrabBreaking={penguin.isGrabBreaking}
         $isReady={penguin.isReady}
         $isHit={penguin.isHit}
         $isDead={penguin.isDead}
-        $isSlapAttack={penguin.isSlapAttack}
+        $isSlapAttack={displayPenguin.isSlapAttack}
         $isThrowing={penguin.isThrowing}
         $isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
-        $isGrabbing={penguin.isGrabbing}
+        $isGrabbing={displayPenguin.isGrabbing}
         $isGrabbingMovement={penguin.isGrabbingMovement}
         $isBeingGrabbed={penguin.isBeingGrabbed}
         $isThrowingSalt={penguin.isThrowingSalt}
-        $slapAnimation={penguin.slapAnimation}
+        $slapAnimation={displayPenguin.slapAnimation}
         $isBowing={penguin.isBowing}
         $isThrowTeching={penguin.isThrowTeching}
         $isBeingPulled={penguin.isBeingPulled}
         $isBeingPushed={penguin.isBeingPushed}
         $grabState={penguin.grabState}
         $grabAttemptType={penguin.grabAttemptType}
-        $x={getDisplayPosition().x}
-        $y={getDisplayPosition().y}
+        $x={displayPosition.x}
+        $y={displayPosition.y}
         $facing={penguin.facing}
         $throwCooldown={penguin.throwCooldown}
         $grabCooldown={penguin.grabCooldown}
-        $isChargingAttack={penguin.isChargingAttack}
+        $isChargingAttack={displayPenguin.isChargingAttack}
         $chargeStartTime={penguin.chargeStartTime}
         $chargeMaxDuration={penguin.chargeMaxDuration}
         $chargeAttackPower={penguin.chargeAttackPower}
@@ -2815,7 +3356,7 @@ const GameFighter = ({
         $isSlapParrying={penguin.isSlapParrying}
         $lastThrowAttemptTime={penguin.lastThrowAttemptTime}
         $lastGrabAttemptTime={penguin.lastGrabAttemptTime}
-        $dodgeDirection={penguin.dodgeDirection}
+        $dodgeDirection={displayPenguin.dodgeDirection}
         $isDodgeCancelling={penguin.isDodgeCancelling}
         $justLandedFromDodge={penguin.justLandedFromDodge}
         $speedFactor={penguin.speedFactor}
@@ -2842,8 +3383,8 @@ const GameFighter = ({
       {shouldShowRitualForPlayer && (index === 0 ? ritualSpritesheetsPlayer1 : ritualSpritesheetsPlayer2).map((config, partIndex) => (
         <RitualSpriteContainer
           key={partIndex}
-          $x={getDisplayPosition().x}
-          $y={getDisplayPosition().y}
+          $x={displayPosition.x}
+          $y={displayPosition.y}
           $facing={penguin.facing}
           style={{ 
             visibility: partIndex === ritualPart ? 'visible' : 'hidden',
@@ -2863,8 +3404,8 @@ const GameFighter = ({
 
       {(penguin.isHit || penguin.isBeingThrown) && (
         <TintedImage
-          $x={getDisplayPosition().x}
-          $y={getDisplayPosition().y}
+          $x={displayPosition.x}
+          $y={displayPosition.y}
           $facing={penguin.facing}
           $isThrowing={penguin.isThrowing}
           $isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
@@ -2876,8 +3417,8 @@ const GameFighter = ({
 
       {thickBlubberIndicator && (
         <TintedImage
-          $x={getDisplayPosition().x}
-          $y={getDisplayPosition().y}
+          $x={displayPosition.x}
+          $y={displayPosition.y}
           $facing={penguin.facing}
           $isThrowing={penguin.isThrowing}
           $isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
@@ -2889,12 +3430,12 @@ const GameFighter = ({
       <SaltEffect
         isActive={penguin.isThrowingSalt}
         playerFacing={penguin.facing}
-        playerX={getDisplayPosition().x}
-        playerY={getDisplayPosition().y + 100}
+        playerX={displayPosition.x}
+        playerY={displayPosition.y + 100}
       />
       <SlapAttackHandsEffect
-        x={getDisplayPosition().x}
-        y={getDisplayPosition().y}
+        x={displayPosition.x}
+        y={displayPosition.y}
         facing={penguin.facing}
         isActive={penguin.isSlapAttack}
         slapAnimation={penguin.slapAnimation}
@@ -2906,20 +3447,20 @@ const GameFighter = ({
       <CounterGrabEffect position={counterGrabEffectPosition} />
       <SnowballImpactEffect position={snowballImpactPosition} />
       <StarStunEffect
-        x={getDisplayPosition().x}
-        y={getDisplayPosition().y}
+        x={displayPosition.x}
+        y={displayPosition.y}
         facing={penguin.facing}
         isActive={showStarStunEffect}
       />
       <EdgeDangerEffect
-        x={getDisplayPosition().x}
-        y={getDisplayPosition().y}
+        x={displayPosition.x}
+        y={displayPosition.y}
         facing={penguin.facing}
         isActive={penguin.isAtTheRopes}
       />
       <PerfectParryPowerEffect
-        x={getDisplayPosition().x}
-        y={getDisplayPosition().y}
+        x={displayPosition.x}
+        y={displayPosition.y}
         isPerfectParrySuccess={penguin.isPerfectRawParrySuccess}
       />
       {/* NoStaminaEffect - centered on screen, only render once (index 0) and only for local player */}
@@ -3012,11 +3553,13 @@ GameFighter.propTypes = {
   disconnectedRoomId: PropTypes.string,
   onResetDisconnectState: PropTypes.func.isRequired,
   isPowerUpSelectionActive: PropTypes.bool,
+  predictionRef: PropTypes.object, // Ref object for client-side prediction
 };
 
 // Optimize the component with React.memo
 export default React.memo(GameFighter, (prevProps, nextProps) => {
   // Add custom comparison logic if needed
+  // Note: predictionRef is intentionally not compared since it's a stable ref
   return (
     prevProps.player === nextProps.player &&
     prevProps.index === nextProps.index &&
