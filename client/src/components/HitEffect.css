@@ -234,6 +234,46 @@
 }
 
 /* ============================================
+   COUNTER HIT - Red variant (classic fighting game color)
+   Rewards catching opponent in startup frames
+   ============================================ */
+
+/* Counter hit slap - red burst */
+.hit-ring-wrapper.slap-hit.counter-hit .hit-ring::before {
+  background: #FF2222;
+}
+
+.hit-ring-wrapper.slap-hit.counter-hit .hit-ring::after {
+  background: 
+    /* Main cross */
+    linear-gradient(0deg, transparent 40%, #FF2222 45%, #FF2222 55%, transparent 60%),
+    linear-gradient(90deg, transparent 40%, #FF2222 45%, #FF2222 55%, transparent 60%),
+    /* Diagonal lines */
+    linear-gradient(45deg, transparent 42%, #FF4444 47%, #FF4444 53%, transparent 58%),
+    linear-gradient(-45deg, transparent 42%, #FF4444 47%, #FF4444 53%, transparent 58%);
+}
+
+/* Counter hit charged - red burst */
+.hit-ring-wrapper.charged-hit.counter-hit .hit-ring::before {
+  background: radial-gradient(circle, #FF2222 0%, rgba(255, 34, 34, 0.8) 40%, transparent 100%);
+}
+
+.hit-ring-wrapper.charged-hit.counter-hit .hit-ring::after {
+  background: 
+    linear-gradient(0deg, transparent 42%, rgba(255, 34, 34, 0.9) 47%, rgba(255, 34, 34, 0.9) 53%, transparent 58%),
+    linear-gradient(90deg, transparent 42%, rgba(255, 34, 34, 0.9) 47%, rgba(255, 34, 34, 0.9) 53%, transparent 58%);
+}
+
+.hit-ring-wrapper.charged-hit.counter-hit::before {
+  border-color: rgba(255, 34, 34, 0.9);
+}
+
+/* Counter hit particles - red */
+.counter-hit .particle {
+  background: #FF2222;
+}
+
+/* ============================================
    SPARK PARTICLES - Simple bright dots
    ============================================ */
 .spark-particles {

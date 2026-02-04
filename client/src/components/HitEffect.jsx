@@ -1,7 +1,35 @@
 import { useEffect, useState, useRef, useMemo } from "react";
-import styled from "styled-components";
+import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 import "./HitEffect.css";
+
+// Text pop animation for counter hit text
+const textPop = keyframes`
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0;
+  }
+  20% {
+    transform: translate(-50%, -50%) scale(1.3);
+    opacity: 1;
+  }
+  40% {
+    transform: translate(-50%, -50%) scale(0.9);
+    opacity: 1;
+  }
+  60% {
+    transform: translate(-50%, -50%) scale(1.1);
+    opacity: 1;
+  }
+  80% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0;
+  }
+`;
 
 const HitEffectContainer = styled.div`
   position: absolute;
@@ -28,6 +56,28 @@ const Particle = styled.div`
   left: 50%;
 `;
 
+// Counter hit centered text
+const CounterText = styled.div`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.7rem, 1.6vw, 1.4rem);
+  color: #FF2222;
+  text-shadow: 
+    -2px -2px 0 #000, 2px -2px 0 #000, 
+    -2px 2px 0 #000, 2px 2px 0 #000,
+    0 0 15px rgba(255, 34, 34, 0.9),
+    0 0 30px rgba(255, 0, 0, 0.7);
+  letter-spacing: 0.15em;
+  white-space: nowrap;
+  transform: translate(-50%, -50%) scale(0);
+  animation: ${textPop} 0.6s ease-out forwards;
+  animation-delay: 0.05s;
+  pointer-events: none;
+  z-index: 101;
+`;
+
 const HitEffect = ({ position }) => {
   const [activeEffects, setActiveEffects] = useState([]);
   const processedHitsRef = useRef(new Set());
@@ -40,6 +90,9 @@ const HitEffect = ({ position }) => {
     if (!position) return null;
     return position.hitId || position.timestamp;
   }, [position?.hitId, position?.timestamp]);
+
+  // Counter hit color - red (classic fighting game counter hit color)
+  const COUNTER_HIT_COLOR = '#FF2222';
 
   // Generate sparks
   const generateSparks = (effectId) => {
@@ -64,6 +117,7 @@ const HitEffect = ({ position }) => {
 
     const effectId = ++effectIdCounter.current;
     const attackType = position.attackType || 'slap';
+    const isCounterHit = position.isCounterHit || false;
 
     // Create local effect
     const newEffect = {
@@ -72,6 +126,7 @@ const HitEffect = ({ position }) => {
       y: position.y,
       facing: position.facing || 1,
       attackType: attackType,
+      isCounterHit: isCounterHit,
       sparks: generateSparks(effectId),
     };
 
@@ -82,7 +137,7 @@ const HitEffect = ({ position }) => {
       setActiveEffects((prev) => prev.filter((e) => e.id !== effectId));
       processedHitsRef.current.delete(hitIdentifier);
     }, duration);
-  }, [hitIdentifier, position?.x, position?.y, position?.facing, position?.attackType]);
+  }, [hitIdentifier, position?.x, position?.y, position?.facing, position?.attackType, position?.isCounterHit]);
 
   useEffect(() => {
     return () => setActiveEffects([]);
@@ -93,9 +148,12 @@ const HitEffect = ({ position }) => {
       {/* Local impact effects */}
       {activeEffects.map((effect) => {
         const hitTypeClass = effect.attackType === 'charged' ? 'charged-hit' : 'slap-hit';
+        const counterHitClass = effect.isCounterHit ? 'counter-hit' : '';
         
-        // Spark color - white, clean and minimal
-        const sparkColor = 'radial-gradient(circle, #fff 50%, #fff 100%)';
+        // Spark color - white normally, orange for counter hits
+        const sparkColor = effect.isCounterHit 
+          ? `radial-gradient(circle, ${COUNTER_HIT_COLOR} 50%, ${COUNTER_HIT_COLOR} 100%)`
+          : 'radial-gradient(circle, #fff 50%, #fff 100%)';
 
         const sparkElements = effect.sparks.map((spark) => (
           <Spark
@@ -120,7 +178,7 @@ const HitEffect = ({ position }) => {
             $y={effect.y}
             $facing={effect.facing}
           >
-            <div className={`hit-ring-wrapper ${hitTypeClass}`}>
+            <div className={`hit-ring-wrapper ${hitTypeClass} ${counterHitClass}`}>
               <div className="hit-ring" />
               <div className="spark-particles">
                 {sparkElements}
@@ -128,6 +186,8 @@ const HitEffect = ({ position }) => {
               <div className="hit-particles">
                 {particles}
               </div>
+              {/* Counter hit centered text */}
+              {effect.isCounterHit && <CounterText>COUNTER</CounterText>}
             </div>
           </HitEffectContainer>
         );
@@ -144,6 +204,7 @@ HitEffect.propTypes = {
     attackType: PropTypes.string,
     hitId: PropTypes.string,
     timestamp: PropTypes.number,
+    isCounterHit: PropTypes.bool,
   }),
 };
 

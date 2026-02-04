@@ -237,6 +237,11 @@ function executeSlapAttack(player, rooms) {
   player.attackType = "slap";
   player.currentAction = "slap";
   
+  // Track when attack was attempted for counter hit detection
+  // This is set immediately so even if hit detection happens in the same tick,
+  // we can detect if the player was trying to attack
+  player.attackAttemptTime = Date.now();
+  
   // Single cooldown controls everything - simple and consistent
   player.attackCooldownUntil = Date.now() + totalCycleDuration;
 
@@ -404,6 +409,9 @@ function executeChargedAttack(player, chargePercentage, rooms) {
   // Set attack state
   player.isAttacking = true;
   player.attackStartTime = Date.now();
+  
+  // Track when attack was attempted for counter hit detection
+  player.attackAttemptTime = Date.now();
   
   // === STARTUP FRAMES - Telegraph before attack becomes active ===
   const CHARGED_STARTUP_MS = 150; // Clear windup before hit is active

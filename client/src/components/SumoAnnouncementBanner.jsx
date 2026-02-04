@@ -79,6 +79,20 @@ const getThemeColors = (type) => {
         glow: "rgba(255, 51, 102, 0.8)",
         accent: "#FF99AA",
       };
+    case "counterhit":
+      return {
+        primary: "#FF2222",
+        secondary: "#FF4444",
+        glow: "rgba(255, 34, 34, 0.8)",
+        accent: "#FF6666",
+      };
+    case "punish":
+      return {
+        primary: "#9933FF",
+        secondary: "#CC44FF",
+        glow: "rgba(153, 51, 255, 0.8)",
+        accent: "#DD77FF",
+      };
     case "break":
       return {
         primary: "#00FF88",
@@ -311,7 +325,7 @@ const SumoAnnouncementBanner = ({
 
 SumoAnnouncementBanner.propTypes = {
   text: PropTypes.string.isRequired,
-  type: PropTypes.oneOf(["parry", "perfect", "counter", "break", "default"]),
+  type: PropTypes.oneOf(["parry", "perfect", "counter", "counterhit", "punish", "break", "default"]),
   isLeftSide: PropTypes.bool,
   duration: PropTypes.number,
   subText: PropTypes.string,

@@ -22,6 +22,7 @@ import StarStunEffect from "./StarStunEffect";
 import ThickBlubberEffect from "./ThickBlubberEffect";
 import GrabBreakEffect from "./GrabBreakEffect";
 import CounterGrabEffect from "./CounterGrabEffect";
+import CounterHitEffect from "./CounterHitEffect";
 import EdgeDangerEffect from "./EdgeDangerEffect";
 import NoStaminaEffect from "./GassedEffect";
 import SnowballImpactEffect from "./SnowballImpactEffect";
@@ -2047,6 +2048,7 @@ const GameFighter = ({
   const [grabBreakEffectPosition, setGrabBreakEffectPosition] = useState(null);
   const [counterGrabEffectPosition, setCounterGrabEffectPosition] = useState(null);
   const [snowballImpactPosition, setSnowballImpactPosition] = useState(null);
+  const [counterHitEffectPosition, setCounterHitEffectPosition] = useState(null);
   
   // Grab clash state - track when both players are in a grab clash
   const [isGrabClashActive, setIsGrabClashActive] = useState(false);
@@ -2533,6 +2535,7 @@ const GameFighter = ({
           timestamp: data.timestamp, // Pass through unique timestamp
           hitId: data.hitId, // Pass through unique hit ID
           attackType: data.attackType || 'slap', // Pass attack type for distinct effects
+          isCounterHit: data.isCounterHit || false, // Counter hit for orange effect
         });
       }
     });
@@ -2618,6 +2621,19 @@ const GameFighter = ({
             x: data.x + 150,
             y: data.y + 50,
             hitId: data.hitId || `snowball-${Date.now()}`,
+          });
+        }
+      });
+
+      // Counter hit effect - when active frames hit opponent's startup frames
+      socket.on("counter_hit", (data) => {
+        if (data && typeof data.x === "number" && typeof data.y === "number") {
+          setCounterHitEffectPosition({
+            x: data.x + 150,
+            y: GROUND_LEVEL + 110,
+            counterId: data.counterId || `counter-hit-${Date.now()}`,
+            playerNumber: data.playerNumber || 1,
+            timestamp: data.timestamp,
           });
         }
       });
@@ -3445,6 +3461,7 @@ const GameFighter = ({
       <RawParryEffect position={rawParryEffectPosition} />
       <GrabBreakEffect position={grabBreakEffectPosition} />
       <CounterGrabEffect position={counterGrabEffectPosition} />
+      <CounterHitEffect position={counterHitEffectPosition} />
       <SnowballImpactEffect position={snowballImpactPosition} />
       <StarStunEffect
         x={displayPosition.x}

@@ -85,7 +85,7 @@ const EffectContainer = styled.div`
   contain: layout style;
 `;
 
-// Red and purple shockwave ring for counter grab
+// Purple shockwave ring for punish (primary)
 const ShockwaveRing = styled.div`
   position: absolute;
   top: 50%;
@@ -93,12 +93,12 @@ const ShockwaveRing = styled.div`
   width: clamp(35px, 5vw, 70px);
   height: clamp(35px, 5vw, 70px);
   border-radius: 50%;
-  border: 5px solid #ff3366;
+  border: 5px solid #9933ff;
   transform: translate(-50%, -50%) scale(0);
   animation: ${shockwaveExpand} 0.4s ease-out forwards;
 `;
 
-// Secondary purple ring for layered effect
+// Secondary magenta-purple ring for layered effect (accent)
 const ShockwaveRingPurple = styled.div`
   position: absolute;
   top: 50%;
@@ -106,7 +106,7 @@ const ShockwaveRingPurple = styled.div`
   width: clamp(28px, 4.5vw, 60px);
   height: clamp(28px, 4.5vw, 60px);
   border-radius: 50%;
-  border: 4px solid #9933ff;
+  border: 4px solid #cc44ff;
   transform: translate(-50%, -50%) scale(0);
   animation: ${shockwaveExpand} 0.45s ease-out 0.04s forwards;
 `;
@@ -119,7 +119,7 @@ const InnerFlash = styled.div`
   width: clamp(18px, 2.5vw, 35px);
   height: clamp(18px, 2.5vw, 35px);
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 1) 0%, rgba(255, 51, 102, 0.8) 40%, rgba(153, 51, 255, 0.6) 70%, transparent 100%);
+  background: radial-gradient(circle, rgba(255, 255, 255, 1) 0%, rgba(153, 51, 255, 0.8) 40%, rgba(204, 68, 255, 0.6) 70%, transparent 100%);
   transform: translate(-50%, -50%) scale(0);
   animation: ${innerFlash} 0.35s ease-out forwards;
 `;
@@ -132,7 +132,7 @@ const Spark = styled.div`
   height: ${props => props.$size}px;
   background: ${props => props.$isPurple 
     ? 'linear-gradient(45deg, #ffffff, #9933ff)' 
-    : 'linear-gradient(45deg, #ffffff, #ff3366)'};
+    : 'linear-gradient(45deg, #ffffff, #cc44ff)'};
   border-radius: 50%;
   opacity: 0;
   animation: ${sparkBurst} 0.4s ease-out forwards;
@@ -141,19 +141,19 @@ const Spark = styled.div`
   --dy: ${props => props.$dy}vw;
 `;
 
-const CounterText = styled.div`
+const PunishText = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
   font-family: "Bungee", cursive;
   /* Smaller font on small screens */
   font-size: clamp(0.7rem, 1.6vw, 1.4rem);
-  color: #ff3366;
+  color: #9933ff;
   text-shadow: 
     -2px -2px 0 #000, 2px -2px 0 #000, 
     -2px 2px 0 #000, 2px 2px 0 #000,
-    0 0 15px rgba(255, 51, 102, 0.9),
-    0 0 30px rgba(153, 51, 255, 0.7);
+    0 0 15px rgba(153, 51, 255, 0.9),
+    0 0 30px rgba(204, 68, 255, 0.7);
   letter-spacing: 0.15em;
   white-space: nowrap;
   transform: translate(-50%, -50%) scale(0);
@@ -245,12 +245,12 @@ const CounterGrabEffect = ({ position }) => {
                   $isPurple={spark.isPurple}
                 />
               ))}
-              <CounterText>COUNTER</CounterText>
+              <PunishText>PUNISH</PunishText>
             </EffectContainer>
-            {/* Sumo-themed counter grab announcement banner */}
+            {/* Sumo-themed punish announcement banner */}
             <SumoAnnouncementBanner
-              text={"COUNTER\nGRAB"}
-              type="counter"
+              text={"PUNISH"}
+              type="punish"
               isLeftSide={isLeftSide}
             />
           </div>

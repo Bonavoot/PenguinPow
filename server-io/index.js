@@ -533,6 +533,8 @@ function createCPUPlayer(uniqueId) {
     wJustPressed: false,
     fJustPressed: false,
     spaceJustPressed: false,
+    attackIntentTime: 0, // When mouse1 was pressed (for counter hit detection)
+    attackAttemptTime: 0, // When attack execution started (for counter hit detection)
     isOverlapping: false,
     overlapStartTime: null,
     chargeCancelled: false,
@@ -2717,23 +2719,27 @@ io.on("connection", (socket) => {
             player.grabStartTime = Date.now();
             player.grabbedOpponent = opponent.id;
             
-            // COUNTER GRAB: Check if opponent was raw parrying when grabbed
-            // Counter grabs cannot be broken!
+            // PUNISH GRAB: Check if opponent was in a punishable state when grabbed
+            // Punishable states: raw parrying, recovering from whiffed attack, or whiffing a grab
+            // Punish grabs cannot be broken!
             const wasOpponentRawParrying = opponent.isRawParrying;
-            if (wasOpponentRawParrying) {
+            const wasOpponentInRecovery = opponent.isRecovering || opponent.isWhiffingGrab;
+            const isPunishGrab = wasOpponentRawParrying || wasOpponentInRecovery;
+            
+            if (isPunishGrab) {
               opponent.isCounterGrabbed = true;
               
               // Determine player numbers for side text display
               const grabberPlayerNumber = room.players.indexOf(player) === 0 ? 1 : 2;
               
-              // Emit counter grab effect
+              // Emit punish grab effect (shows PUNISH banner)
               io.in(room.id).emit("counter_grab", {
                 grabberId: player.id,
                 grabbedId: opponent.id,
                 grabberX: player.x,
                 grabbedX: opponent.x,
                 grabberPlayerNumber: grabberPlayerNumber,
-                counterId: `counter-grab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                counterId: `punish-grab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
               });
             } else {
               opponent.isCounterGrabbed = false;
@@ -4120,6 +4126,44 @@ io.on("connection", (socket) => {
     // Use the stored attack type instead of checking isSlapAttack
     const isSlapAttack = player.attackType === "slap";
 
+    // ============================================
+    // COUNTER HIT DETECTION
+    // Counter hit occurs when attacker's active frames hit opponent's startup frames
+    // This rewards players for timing attacks to catch opponents during their attack startup
+    // Note: This is separate from slap parry (active vs active) - that's handled in checkCollision
+    // ============================================
+    // Use a time-based window for more forgiving detection:
+    // - The actual startup frames are short (40ms slap, 150ms charged)
+    // - But we want to catch cases where the player was trying to attack
+    // - This includes: startup frames + input timing buffer
+    // - Also catches cases where player pressed mouse1 but got hit before attack started
+    const COUNTER_HIT_WINDOW_MS = 150; // Window from attack attempt/intent where counter hit applies
+    
+    // Check if opponent recently started an attack (either in startup or just started)
+    const timeSinceAttackAttempt = otherPlayer.attackAttemptTime 
+      ? (currentTime - otherPlayer.attackAttemptTime) 
+      : Infinity;
+    
+    // Also check if opponent just pressed mouse1 but attack hasn't started yet
+    // This catches the case where you get hit right as you click to attack
+    const timeSinceAttackIntent = otherPlayer.attackIntentTime
+      ? (currentTime - otherPlayer.attackIntentTime)
+      : Infinity;
+    
+    // Counter hit if:
+    // 1. Opponent is attacking AND within the counter hit window, OR
+    // 2. Opponent just pressed attack but hasn't started yet (hit them as they clicked)
+    const counterHitFromAttacking = otherPlayer.isAttacking && timeSinceAttackAttempt <= COUNTER_HIT_WINDOW_MS;
+    const counterHitFromIntent = timeSinceAttackIntent <= COUNTER_HIT_WINDOW_MS;
+    const isCounterHit = counterHitFromAttacking || counterHitFromIntent;
+
+    // ============================================
+    // PUNISH DETECTION
+    // Punish occurs when hitting an opponent during their recovery frames
+    // This rewards players for punishing whiffed attacks and grabs
+    // ============================================
+    const isPunish = otherPlayer.isRecovering || otherPlayer.isWhiffingGrab;
+
     // Store the charge power before resetting states
     const chargePercentage = player.chargeAttackPower;
 
@@ -4521,6 +4565,16 @@ io.on("connection", (socket) => {
         finalKnockbackMultiplier = 0.4675 + (chargePercentage / 100) * 1.122; // Reduced base power by 15% (0.55 -> 0.4675) and scaling by 15% (1.32 -> 1.122)
       }
 
+      // Counter hit bonus: 25% extra knockback for catching opponent in startup
+      if (isCounterHit) {
+        finalKnockbackMultiplier *= 1.25;
+      }
+
+      // Punish bonus: 30% extra knockback for hitting opponent during recovery
+      if (isPunish) {
+        finalKnockbackMultiplier *= 1.30;
+      }
+
       // Apply crouch stance damage reduction
       if (otherPlayer.isCrouchStance) {
         if (isSlapAttack) {
@@ -4597,7 +4651,35 @@ io.on("connection", (socket) => {
             attackType: isSlapAttack ? "slap" : "charged",
             timestamp: Date.now(), // Add unique timestamp to ensure effect triggers every time
             hitId: Math.random().toString(36).substr(2, 9), // Add unique ID for guaranteed uniqueness
+            isCounterHit: isCounterHit, // Counter hit for orange effect
           });
+
+          // Emit counter hit banner event (separate from hit effect for side banner display)
+          if (isCounterHit) {
+            // Determine which player number hit the counter (for side banner positioning)
+            const attackerPlayerNumber = currentRoom.players.findIndex(p => p.id === player.id) + 1;
+            io.in(currentRoom.id).emit("counter_hit", {
+              x: otherPlayer.x,
+              y: otherPlayer.y,
+              playerNumber: attackerPlayerNumber,
+              counterId: Math.random().toString(36).substr(2, 9),
+              timestamp: Date.now(),
+            });
+          }
+
+          // Emit punish banner event when hitting opponent during recovery
+          // Uses counter_grab event to show PUNISH banner (same visual effect)
+          if (isPunish) {
+            const attackerPlayerNumber = currentRoom.players.findIndex(p => p.id === player.id) + 1;
+            io.in(currentRoom.id).emit("counter_grab", {
+              grabberId: player.id,
+              grabbedId: otherPlayer.id,
+              grabberX: player.x,
+              grabbedX: otherPlayer.x,
+              grabberPlayerNumber: attackerPlayerNumber,
+              counterId: `punish-hit-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            });
+          }
           
           // ============================================
           // SMASH-STYLE HITSTOP & SCREEN SHAKE
@@ -4632,7 +4714,15 @@ io.on("connection", (socket) => {
       // === HIT STUN DURATION ===
       // Slaps: visible hit reaction - enough time to see the animation
       // Charged: longer stun for more impactful hits
-      const hitStateDuration = isSlapAttack ? 200 : 380;
+      // Counter hits: 40% longer stun for catching opponent in startup frames
+      // Punish: 50% longer stun for hitting opponent during recovery
+      let hitStateDuration = isSlapAttack ? 200 : 380;
+      if (isCounterHit) {
+        hitStateDuration = Math.round(hitStateDuration * 1.4);
+      }
+      if (isPunish) {
+        hitStateDuration = Math.round(hitStateDuration * 1.5);
+      }
 
       // Update the last hit time for tracking
       otherPlayer.lastHitTime = currentTime;
@@ -4851,6 +4941,8 @@ io.on("connection", (socket) => {
         wJustPressed: false, // Track if W was just pressed this frame
         fJustPressed: false, // Track if F was just pressed this frame
         spaceJustPressed: false, // Track if spacebar was just pressed this frame
+        attackIntentTime: 0, // When mouse1 was pressed (for counter hit detection)
+        attackAttemptTime: 0, // When attack execution started (for counter hit detection)
         isOverlapping: false, // Track overlap state for smoother separation
         overlapStartTime: null, // Track when overlap began for progressive separation
         chargeCancelled: false, // Track if charge was cancelled (vs executed)
@@ -4995,6 +5087,8 @@ io.on("connection", (socket) => {
         wJustPressed: false, // Track if W was just pressed this frame
         fJustPressed: false, // Track if F was just pressed this frame
         spaceJustPressed: false, // Track if spacebar was just pressed this frame
+        attackIntentTime: 0, // When mouse1 was pressed (for counter hit detection)
+        attackAttemptTime: 0, // When attack execution started (for counter hit detection)
         isOverlapping: false, // Track overlap state for smoother separation
         overlapStartTime: null, // Track when overlap began for progressive separation
         chargeCancelled: false, // Track if charge was cancelled (vs executed)
@@ -5198,6 +5292,8 @@ io.on("connection", (socket) => {
       wJustPressed: false,
       fJustPressed: false,
       spaceJustPressed: false,
+      attackIntentTime: 0, // When mouse1 was pressed (for counter hit detection)
+      attackAttemptTime: 0, // When attack execution started (for counter hit detection)
       isOverlapping: false,
       overlapStartTime: null,
       chargeCancelled: false,
@@ -5698,6 +5794,12 @@ io.on("connection", (socket) => {
       // Set mouse1 press flags
       player.mouse1JustPressed = !previousMouse1State && data.keys.mouse1;
       player.mouse1JustReleased = previousMouse1State && !data.keys.mouse1;
+      
+      // Track attack intent time when mouse1 is pressed (for counter hit detection)
+      // This captures the moment the player tries to attack, even before the attack executes
+      if (player.mouse1JustPressed) {
+        player.attackIntentTime = Date.now();
+      }
       
       // Track "just pressed" state for all action keys to prevent actions from triggering
       // when keys are held through other actions (e.g., holding E during dodge then grabbing after)

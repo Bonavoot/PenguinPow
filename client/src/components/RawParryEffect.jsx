@@ -2,8 +2,6 @@ import { useEffect, useState, useRef, useMemo } from "react";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 import "./RawParryEffect.css";
-import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
-
 
 // Animation for centered text - matches GrabBreakEffect textPop
 const textPop = keyframes`
@@ -33,14 +31,12 @@ const textPop = keyframes`
   }
 `;
 
-
-// Centered text that appears at the parry location - matches GrabBreakEffect positioning and animation
+// Centered text that appears at the parry location
 const ParryTextCenter = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
   font-family: "Bungee", cursive;
-  /* Smaller font on small screens */
   font-size: clamp(0.7rem, 1.6vw, 1.4rem);
   color: ${props => props.$isPerfect ? '#FFD700' : '#00BFFF'};
   text-shadow: 
@@ -95,59 +91,6 @@ const Spark = styled.div`
   opacity: 0;
   transform-origin: center;
   will-change: transform, opacity;
-`;
-
-// Centered text that appears at the parry location
-const CenteredParryText = styled.div`
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-family: "Bungee", cursive;
-  /* Smaller font on small screens */
-  font-size: clamp(0.8rem, 2vw, 1.6rem);
-  font-weight: 400;
-  color: ${props => props.$isPerfect ? '#FFD700' : '#00BFFF'};
-  text-shadow: 
-    -2px -2px 0 #000, 2px -2px 0 #000, 
-    -2px 2px 0 #000, 2px 2px 0 #000,
-    0 0 15px ${props => props.$isPerfect ? 'rgba(255, 215, 0, 0.9)' : 'rgba(0, 191, 255, 0.9)'};
-  letter-spacing: 0.1em;
-  white-space: nowrap;
-  z-index: 101;
-  pointer-events: none;
-  animation: parryTextPop 1.5s ease-out forwards;
-  
-  @keyframes parryTextPop {
-    0% {
-      transform: translate(-50%, -50%) scale(0.3);
-      opacity: 0;
-    }
-    10% {
-      transform: translate(-50%, -50%) scale(1.3);
-      opacity: 1;
-    }
-    18% {
-      transform: translate(-50%, -50%) scale(0.95);
-      opacity: 1;
-    }
-    25% {
-      transform: translate(-50%, -50%) scale(1.05);
-      opacity: 1;
-    }
-    32% {
-      transform: translate(-50%, -50%) scale(1);
-      opacity: 1;
-    }
-    65% {
-      transform: translate(-50%, -50%) scale(1);
-      opacity: 1;
-    }
-    100% {
-      transform: translate(-50%, -50%) scale(1);
-      opacity: 0;
-    }
-  }
 `;
 
 const RawParryEffect = ({ position }) => {
@@ -266,51 +209,39 @@ const RawParryEffect = ({ position }) => {
           />
         ));
 
-        // Player 1's text appears on the LEFT, Player 2's text appears on the RIGHT
-        const isLeftSide = effect.playerNumber === 1;
-
         return (
-          <div key={effect.id}>
-            <RawParryEffectContainer
-              $x={effect.x}
-              $y={effect.y}
-              $facing={effect.facing}
+          <RawParryEffectContainer
+            key={effect.id}
+            $x={effect.x}
+            $y={effect.y}
+            $facing={effect.facing}
+          >
+            <div
+              className={`raw-parry-ring-wrapper ${
+                effect.isPerfect ? "perfect" : "regular"
+              }`}
             >
               <div
-                className={`raw-parry-ring-wrapper ${
+                className={`raw-parry-ring ${
                   effect.isPerfect ? "perfect" : "regular"
                 }`}
-              >
-                <div
-                  className={`raw-parry-ring ${
-                    effect.isPerfect ? "perfect" : "regular"
-                  }`}
-                  style={{
-                    transform: effect.facing === 1 ? "scaleX(-1)" : "scaleX(1)",
-                  }}
-                />
-                <ParticleContainer className="raw-parry-particles">
-                  {particles}
-                </ParticleContainer>
-                {/* Spark container */}
-                <ParticleContainer className="spark-particles">
-                  {sparkElements}
-                </ParticleContainer>
-              </div>
-              {/* Centered text at the parry location - positioned like GrabBreakEffect */}
-              <ParryTextCenter $isPerfect={effect.isPerfect}>
-                {effect.isPerfect ? "PERFECT" : "PARRY"}
-              </ParryTextCenter>
-            </RawParryEffectContainer>
-            {/* Sumo-themed parry announcement banner - only for perfect parry */}
-            {effect.isPerfect && (
-              <SumoAnnouncementBanner
-                text={"PERFECT\nPARRY"}
-                type="perfect"
-                isLeftSide={isLeftSide}
+                style={{
+                  transform: effect.facing === 1 ? "scaleX(-1)" : "scaleX(1)",
+                }}
               />
-            )}
-          </div>
+              <ParticleContainer className="raw-parry-particles">
+                {particles}
+              </ParticleContainer>
+              {/* Spark container */}
+              <ParticleContainer className="spark-particles">
+                {sparkElements}
+              </ParticleContainer>
+            </div>
+            {/* Centered text at the parry location */}
+            <ParryTextCenter $isPerfect={effect.isPerfect}>
+              {effect.isPerfect ? "PERFECT" : "PARRY"}
+            </ParryTextCenter>
+          </RawParryEffectContainer>
         );
       })}
     </>
