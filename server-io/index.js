@@ -2456,7 +2456,10 @@ io.on("connection", (socket) => {
               opponent.y = GROUND_LEVEL;
             }
 
-            player.facing = player.throwingFacingDirection;
+            // Don't overwrite facing during ring-out cutscene (it's already set correctly for animation)
+            if (!player.isRingOutThrowCutscene) {
+              player.facing = player.throwingFacingDirection;
+            }
             opponent.facing = opponent.beingThrownFacingDirection;
 
             // Calculate new position with size power-up consideration
@@ -4037,9 +4040,10 @@ io.on("connection", (socket) => {
                     clearAllActionStates(grabbed);
                     grabbed.isBeingThrown = true;
 
-                    // Face outward based on stored direction
-                    grabber.throwingFacingDirection =
-                      grabber.ringOutThrowDirection || 1;
+                    // For ring-out throws:
+                    // - grabber.facing stays as is (visual - faces toward opponent)
+                    // - throwingFacingDirection uses ringOutThrowDirection (physics - throw direction)
+                    grabber.throwingFacingDirection = grabber.ringOutThrowDirection || 1;
                     grabbed.beingThrownFacingDirection = grabbed.facing;
 
                     // Mark as ring-out throw cutscene and set throw distance

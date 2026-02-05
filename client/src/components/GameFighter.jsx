@@ -540,12 +540,7 @@ const RedTintOverlay = styled.div
       aspectRatio: 1,
       left: `${(props.$x / 1280) * 100}%`,
       bottom: `${(props.$y / 720) * 100}%`,
-      transform:
-        (props.$isRingOutThrowCutscene && props.$isThrowing
-          ? -props.$facing
-          : props.$facing) === 1
-          ? "scaleX(1)"
-          : "scaleX(-1)",
+      transform: props.$facing === 1 ? "scaleX(1)" : "scaleX(-1)",
       background: "rgba(156, 136, 255, 0.6)",
       zIndex: isOutsideDohyo(props.$x, props.$y) ? 0 : 101,
       pointerEvents: "none",
@@ -574,12 +569,7 @@ const HurtTintOverlay = styled.div
       aspectRatio: 1,
       left: `${(props.$x / 1280) * 100}%`,
       bottom: `${(props.$y / 720) * 100}%`,
-      transform:
-        (props.$isRingOutThrowCutscene && props.$isThrowing
-          ? -props.$facing
-          : props.$facing) === 1
-          ? "scaleX(1)"
-          : "scaleX(-1)",
+      transform: props.$facing === 1 ? "scaleX(1)" : "scaleX(-1)",
       background: "rgba(255, 64, 64, 0.55)",
       zIndex: isOutsideDohyo(props.$x, props.$y) ? 0 : 101,
       pointerEvents: "none",
@@ -614,12 +604,7 @@ const TintedImage = styled.img
       position: "absolute",
       left: `${(props.$x / 1280) * 100}%`,
       bottom: `${(props.$y / 720) * 100}%`,
-      transform:
-        (props.$isRingOutThrowCutscene && props.$isThrowing
-          ? -props.$facing
-          : props.$facing) === 1
-          ? "scaleX(1)"
-          : "scaleX(-1)",
+      transform: props.$facing === 1 ? "scaleX(1)" : "scaleX(-1)",
       zIndex: isOutsideDohyo(props.$x, props.$y) ? 0 : 101,
       pointerEvents: "none",
       width: "min(16.609%, 511px)",
@@ -768,20 +753,12 @@ const StyledImage = styled("img")
         ? `${((props.$x + (props.$x < 640 ? -5 : 5)) / 1280) * 100}%`  // Move 5px closer to ropes
         : `${(props.$x / 1280) * 100}%`,
       bottom: `${(props.$y / 720) * 100}%`,
-      "--facing": (props.$isRingOutThrowCutscene && props.$isThrowing
-            ? -props.$facing
-            : props.$facing) === 1
-          ? "1"
-          : "-1",
+      "--facing": props.$facing === 1 ? "1" : "-1",
       transform: props.$isAtTheRopes && props.$fighter === "player 1"
-        ? ((props.$isRingOutThrowCutscene && props.$isThrowing
-            ? -props.$facing
-            : props.$facing) === 1
+        ? (props.$facing === 1
             ? "scaleX(1) scaleY(0.95)"
             : "scaleX(-1) scaleY(0.95)")
-        : ((props.$isRingOutThrowCutscene && props.$isThrowing
-            ? -props.$facing
-            : props.$facing) === 1
+        : (props.$facing === 1
             ? "scaleX(1)"
             : "scaleX(-1)"),
       zIndex:
@@ -1237,9 +1214,7 @@ const AnimatedFighterContainer = styled.div
         ? `${((props.$x + (props.$x < 640 ? -5 : 5)) / 1280) * 100}%`
         : `${(props.$x / 1280) * 100}%`,
       bottom: `${(props.$y / 720) * 100}%`,
-      transform: (props.$isRingOutThrowCutscene && props.$isThrowing
-        ? -props.$facing
-        : props.$facing) === 1
+      transform: props.$facing === 1
         ? "scaleX(1)"
         : "scaleX(-1)",
       overflow: "hidden",
