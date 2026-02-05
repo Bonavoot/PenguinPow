@@ -8,10 +8,170 @@
  * - Hue determines the "color family" (blue, red, yellow, etc.)
  * - Saturation filters out grays/whites/blacks
  * - This prevents accidentally changing the yellow beak or black outlines
+ * 
+ * PERFORMANCE OPTIMIZATIONS (Phase 3):
+ * - Web Worker for heavy pixel processing (off main thread)
+ * - LRU cache with size limits to prevent memory bloat
+ * - Canvas pooling to reduce GC pressure
  */
 
-// Cache for recolored images to avoid redundant processing
+// ============================================
+// LRU CACHE with size limit
+// ============================================
+const MAX_CACHE_SIZE = 150; // Enough for all player sprites (static + animated + APNGs) + buffer
+const cacheOrder = []; // Track access order for LRU eviction
+
 const recoloredImageCache = new Map();
+
+function addToCache(key, value) {
+  // If already in cache, move to end of order (most recently used)
+  const existingIndex = cacheOrder.indexOf(key);
+  if (existingIndex !== -1) {
+    cacheOrder.splice(existingIndex, 1);
+  }
+  cacheOrder.push(key);
+  
+  // Evict oldest if over limit
+  while (cacheOrder.length > MAX_CACHE_SIZE) {
+    const oldestKey = cacheOrder.shift();
+    recoloredImageCache.delete(oldestKey);
+  }
+  
+  recoloredImageCache.set(key, value);
+}
+
+function getFromCache(key) {
+  if (recoloredImageCache.has(key)) {
+    // Move to end (most recently used)
+    const index = cacheOrder.indexOf(key);
+    if (index !== -1) {
+      cacheOrder.splice(index, 1);
+      cacheOrder.push(key);
+    }
+    return recoloredImageCache.get(key);
+  }
+  return null;
+}
+
+// ============================================
+// CANVAS POOLING - Reuse canvas elements
+// ============================================
+const canvasPool = [];
+const MAX_POOL_SIZE = 5;
+
+function getPooledCanvas(width, height) {
+  // Try to find a canvas of the right size
+  for (let i = 0; i < canvasPool.length; i++) {
+    const canvas = canvasPool[i];
+    if (canvas.width === width && canvas.height === height) {
+      canvasPool.splice(i, 1);
+      return canvas;
+    }
+  }
+  
+  // Create new canvas if pool is empty or no match
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  return canvas;
+}
+
+function returnCanvasToPool(canvas) {
+  if (canvasPool.length < MAX_POOL_SIZE) {
+    // Clear the canvas before returning to pool
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    canvasPool.push(canvas);
+  }
+  // If pool is full, canvas will be garbage collected
+}
+
+// ============================================
+// WEB WORKER MANAGEMENT
+// ============================================
+let recolorWorker = null;
+let workerReady = false;
+let pendingRequests = new Map();
+let requestIdCounter = 0;
+
+function initWorker() {
+  if (recolorWorker) return;
+  
+  try {
+    // Create worker from the worker file
+    recolorWorker = new Worker(new URL('./recolorWorker.js', import.meta.url));
+    
+    recolorWorker.onmessage = (e) => {
+      const { type, id, payload } = e.data;
+      
+      if (type === 'recolor_complete') {
+        const pending = pendingRequests.get(id);
+        if (pending) {
+          pending.resolve(payload);
+          pendingRequests.delete(id);
+        }
+      } else if (type === 'recolor_error') {
+        const pending = pendingRequests.get(id);
+        if (pending) {
+          pending.reject(new Error(payload.error));
+          pendingRequests.delete(id);
+        }
+      }
+    };
+    
+    recolorWorker.onerror = (e) => {
+      console.error('Worker error:', e);
+      // Reject all pending requests
+      pendingRequests.forEach((pending) => {
+        pending.reject(new Error('Worker error'));
+      });
+      pendingRequests.clear();
+    };
+    
+    workerReady = true;
+  } catch (error) {
+    console.warn('Web Worker not supported, falling back to main thread:', error);
+    workerReady = false;
+  }
+}
+
+// Initialize worker immediately
+if (typeof window !== 'undefined') {
+  initWorker();
+}
+
+/**
+ * Process image data using Web Worker (off main thread)
+ */
+function processInWorker(imageData, width, height, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness) {
+  return new Promise((resolve, reject) => {
+    if (!workerReady || !recolorWorker) {
+      reject(new Error('Worker not ready'));
+      return;
+    }
+    
+    const id = ++requestIdCounter;
+    pendingRequests.set(id, { resolve, reject });
+    
+    // Transfer the buffer to worker (zero-copy)
+    const buffer = imageData.data.buffer.slice(0); // Clone buffer for transfer
+    
+    recolorWorker.postMessage({
+      type: 'recolor',
+      id,
+      payload: {
+        imageData: buffer,
+        width,
+        height,
+        sourceColorRange,
+        targetHue,
+        targetSat,
+        targetLight,
+        referenceLightness,
+      }
+    }, [buffer]);
+  });
+}
 
 /**
  * HSL-based color range definitions for the mawashi (belt) and headband
@@ -147,13 +307,44 @@ function hslToRgb(h, s, l) {
 }
 
 /**
- * Recolor a pixel from source color to target color while preserving luminosity
- * This maintains the shading/highlights of the original sprite
+ * Recolor a pixel from source color to target color while preserving relative luminosity
+ * This maintains the shading/highlights of the original sprite while shifting toward target lightness
+ * 
+ * @param {number} r - Red channel (0-255)
+ * @param {number} g - Green channel (0-255)
+ * @param {number} b - Blue channel (0-255)
+ * @param {number} targetHue - Target hue (0-360)
+ * @param {number} targetSaturation - Target saturation (0-100)
+ * @param {number} targetLightness - Target lightness (0-100)
+ * @param {number} referenceLightness - Reference lightness of the source color range midpoint (0-100)
  */
-function recolorPixel(r, g, b, targetHue, targetSaturation) {
+function recolorPixel(r, g, b, targetHue, targetSaturation, targetLightness, referenceLightness) {
   const hsl = rgbToHsl(r, g, b);
-  // Keep original luminosity, change hue and saturation
-  return hslToRgb(targetHue, targetSaturation, hsl.l);
+  
+  // Calculate how far the original pixel's lightness is from the reference (source midpoint)
+  // This preserves relative shading - darker areas stay darker, lighter areas stay lighter
+  const lightnessOffset = hsl.l - referenceLightness;
+  
+  // Apply this offset to the target lightness, with some compression for extreme targets
+  // For very dark targets (black), we compress the range to keep things dark
+  // For very light targets (light pink), we compress the range to keep things light
+  let newLightness;
+  
+  if (targetLightness < 20) {
+    // Very dark target (like black): compress lightness range, bias toward dark
+    newLightness = targetLightness + (lightnessOffset * 0.3);
+  } else if (targetLightness > 80) {
+    // Very light target (like light pink): compress lightness range, bias toward light
+    newLightness = targetLightness + (lightnessOffset * 0.3);
+  } else {
+    // Normal target: preserve more of the original shading
+    newLightness = targetLightness + (lightnessOffset * 0.7);
+  }
+  
+  // Clamp to valid range
+  newLightness = Math.max(0, Math.min(100, newLightness));
+  
+  return hslToRgb(targetHue, targetSaturation, newLightness);
 }
 
 /**
@@ -171,17 +362,23 @@ export function hexToRgb(hex) {
 }
 
 /**
- * Get the hue and saturation from a hex color
+ * Get the hue, saturation, and lightness from a hex color
  */
-export function getHueSatFromHex(hex) {
+export function getHslFromHex(hex) {
   const rgb = hexToRgb(hex);
-  if (!rgb) return { h: 0, s: 100 };
+  if (!rgb) return { h: 0, s: 100, l: 50 };
   const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
-  return { h: hsl.h, s: hsl.s };
+  return { h: hsl.h, s: hsl.s, l: hsl.l };
 }
+
+// Alias for backwards compatibility
+export const getHueSatFromHex = getHslFromHex;
 
 /**
  * Recolor an image by replacing specific color ranges with a target color
+ * 
+ * PERFORMANCE: Uses Web Worker to process pixels off main thread
+ * Falls back to main thread processing if worker is unavailable
  * 
  * @param {string} imageSrc - Source image URL
  * @param {Object} sourceColorRange - HSL color range to replace (e.g., BLUE_COLOR_RANGES)
@@ -192,21 +389,21 @@ export async function recolorImage(imageSrc, sourceColorRange, targetColorHex) {
   // Generate cache key
   const cacheKey = `${imageSrc}_${sourceColorRange.minHue}-${sourceColorRange.maxHue}_${targetColorHex}`;
   
-  // Check cache first
-  if (recoloredImageCache.has(cacheKey)) {
-    return recoloredImageCache.get(cacheKey);
+  // Check LRU cache first
+  const cached = getFromCache(cacheKey);
+  if (cached) {
+    return cached;
   }
 
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
 
-    img.onload = () => {
+    img.onload = async () => {
+      let canvas = null;
       try {
-        // Create canvas
-        const canvas = document.createElement("canvas");
-        canvas.width = img.width;
-        canvas.height = img.height;
+        // Get pooled canvas
+        canvas = getPooledCanvas(img.width, img.height);
         const ctx = canvas.getContext("2d");
 
         // Draw image to canvas
@@ -214,46 +411,74 @@ export async function recolorImage(imageSrc, sourceColorRange, targetColorHex) {
 
         // Get image data
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const data = imageData.data;
 
-        // Get target hue and saturation
-        const { h: targetHue, s: targetSat } = getHueSatFromHex(targetColorHex);
+        // Get target hue, saturation, and lightness
+        const { h: targetHue, s: targetSat, l: targetLight } = getHslFromHex(targetColorHex);
+        
+        // Calculate reference lightness from source color range midpoint
+        const referenceLightness = (sourceColorRange.minLightness + sourceColorRange.maxLightness) / 2;
 
-        // Process each pixel
-        for (let i = 0; i < data.length; i += 4) {
-          const r = data[i];
-          const g = data[i + 1];
-          const b = data[i + 2];
-          const a = data[i + 3];
-
-          // Skip fully transparent pixels
-          if (a === 0) continue;
-
-          // Convert pixel to HSL
-          const pixelHsl = rgbToHsl(r, g, b);
-
-          // Check if this pixel is in our target color range (HSL-based)
-          if (isColorInHslRange(pixelHsl.h, pixelHsl.s, pixelHsl.l, sourceColorRange)) {
-            // Recolor this pixel - change hue and saturation, keep luminosity
-            const newColor = recolorPixel(r, g, b, targetHue, targetSat);
-            data[i] = newColor.r;
-            data[i + 1] = newColor.g;
-            data[i + 2] = newColor.b;
-            // Alpha stays the same
+        let processedData;
+        
+        // Try to use Web Worker for processing (off main thread)
+        if (workerReady && recolorWorker) {
+          try {
+            const result = await processInWorker(
+              imageData,
+              canvas.width,
+              canvas.height,
+              sourceColorRange,
+              targetHue,
+              targetSat,
+              targetLight,
+              referenceLightness
+            );
+            
+            // Create ImageData from returned buffer
+            processedData = new ImageData(
+              new Uint8ClampedArray(result.imageData),
+              result.width,
+              result.height
+            );
+          } catch (workerError) {
+            console.warn('Worker processing failed, falling back to main thread:', workerError);
+            // Fall back to main thread processing
+            processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness);
           }
+        } else {
+          // No worker available, process on main thread
+          processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness);
         }
 
         // Put the modified data back
-        ctx.putImageData(imageData, 0, 0);
+        ctx.putImageData(processedData, 0, 0);
 
         // Convert to data URL
         const dataUrl = canvas.toDataURL("image/png");
         
-        // Cache the result
-        recoloredImageCache.set(cacheKey, dataUrl);
+        // Return canvas to pool
+        returnCanvasToPool(canvas);
+        canvas = null;
         
-        resolve(dataUrl);
+        // Add to LRU cache
+        addToCache(cacheKey, dataUrl);
+        
+        // Pre-decode the image to prevent invisible frames on first display
+        const decodedImg = new Image();
+        decodedImg.src = dataUrl;
+        if (decodedImg.decode) {
+          decodedImg.decode()
+            .then(() => resolve(dataUrl))
+            .catch(() => resolve(dataUrl));
+        } else {
+          decodedImg.onload = () => resolve(dataUrl);
+          decodedImg.onerror = () => resolve(dataUrl);
+        }
       } catch (error) {
+        // Return canvas to pool on error
+        if (canvas) {
+          returnCanvasToPool(canvas);
+        }
         reject(error);
       }
     };
@@ -264,6 +489,34 @@ export async function recolorImage(imageSrc, sourceColorRange, targetColorHex) {
 
     img.src = imageSrc;
   });
+}
+
+/**
+ * Fallback: Process pixels on main thread (when worker unavailable)
+ * This is the same algorithm as the worker, but runs synchronously
+ */
+function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness) {
+  const data = imageData.data;
+  
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const a = data[i + 3];
+
+    if (a === 0) continue;
+
+    const pixelHsl = rgbToHsl(r, g, b);
+
+    if (isColorInHslRange(pixelHsl.h, pixelHsl.s, pixelHsl.l, sourceColorRange)) {
+      const newColor = recolorPixel(r, g, b, targetHue, targetSat, targetLight, referenceLightness);
+      data[i] = newColor.r;
+      data[i + 1] = newColor.g;
+      data[i + 2] = newColor.b;
+    }
+  }
+  
+  return imageData;
 }
 
 /**
@@ -297,6 +550,123 @@ export async function recolorImages(imageSrcs, sourceColorRange, targetColorHex)
  */
 export function clearRecolorCache() {
   recoloredImageCache.clear();
+  cacheOrder.length = 0;
+}
+
+// ============================================
+// PERSISTENT IMAGE CACHE with LRU eviction
+// Keep decoded images in memory to prevent GC and re-decode
+// ============================================
+const MAX_DECODED_CACHE_SIZE = 50; // Limit to prevent OOM - only cache the most important sprites
+const decodedImageCache = new Map();
+const decodedCacheOrder = []; // LRU tracking
+let hiddenImageContainer = null;
+
+function getHiddenContainer() {
+  if (!hiddenImageContainer && typeof document !== 'undefined') {
+    hiddenImageContainer = document.createElement('div');
+    hiddenImageContainer.id = 'sprite-preload-cache';
+    hiddenImageContainer.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;left:-9999px;';
+    document.body.appendChild(hiddenImageContainer);
+  }
+  return hiddenImageContainer;
+}
+
+function addToDecodedCache(key, img) {
+  // If already in cache, move to end (most recently used)
+  const existingIndex = decodedCacheOrder.indexOf(key);
+  if (existingIndex !== -1) {
+    decodedCacheOrder.splice(existingIndex, 1);
+  }
+  decodedCacheOrder.push(key);
+  
+  // Evict oldest if over limit
+  while (decodedCacheOrder.length > MAX_DECODED_CACHE_SIZE) {
+    const oldestKey = decodedCacheOrder.shift();
+    const oldImg = decodedImageCache.get(oldestKey);
+    if (oldImg && oldImg.parentNode) {
+      oldImg.parentNode.removeChild(oldImg);
+    }
+    decodedImageCache.delete(oldestKey);
+  }
+  
+  decodedImageCache.set(key, img);
+}
+
+/**
+ * Pre-decode an image and KEEP IT IN DOM to prevent invisible frames
+ * The image is added to a hidden container so the browser keeps it decoded
+ * 
+ * MEMORY OPTIMIZATION: Skip data URLs (they're already in memory from recoloring)
+ * Only pre-decode file URLs that need browser decoding
+ * 
+ * @param {string} imageSrc - Image source (URL or data URL)
+ * @returns {Promise<void>} - Resolves when image is fully decoded
+ */
+export async function preDecodeImage(imageSrc) {
+  // Skip if already decoded and cached
+  if (decodedImageCache.has(imageSrc)) {
+    return;
+  }
+  
+  // MEMORY FIX: Skip data URLs - they're already in memory from the recoloring process
+  // Only pre-decode actual file URLs that need browser decoding
+  if (imageSrc && imageSrc.startsWith('data:')) {
+    return;
+  }
+  
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.src = imageSrc;
+    
+    const onComplete = () => {
+      // Add to hidden container to keep in DOM (with LRU eviction)
+      const container = getHiddenContainer();
+      if (container && !decodedImageCache.has(imageSrc)) {
+        container.appendChild(img);
+        addToDecodedCache(imageSrc, img);
+      }
+      resolve();
+    };
+    
+    // Use decode() if available (modern browsers), fallback to onload
+    if (img.decode) {
+      img.decode()
+        .then(onComplete)
+        .catch((err) => {
+          console.warn('Image decode warning:', err);
+          onComplete(); // Still add to cache on failure
+        });
+    } else {
+      img.onload = onComplete;
+      img.onerror = () => {
+        console.warn('Image load warning:', imageSrc);
+        onComplete();
+      };
+    }
+  });
+}
+
+/**
+ * Pre-decode multiple images in parallel
+ * @param {string[]} imageSrcs - Array of image sources to decode
+ * @returns {Promise<void>} - Resolves when all images are decoded
+ */
+export async function preDecodeImages(imageSrcs) {
+  // Filter out already cached images
+  const uncached = imageSrcs.filter(src => src && !decodedImageCache.has(src));
+  await Promise.all(uncached.map(src => preDecodeImage(src)));
+}
+
+/**
+ * Clear the decoded image cache (for memory management)
+ */
+export function clearDecodedImageCache() {
+  if (hiddenImageContainer) {
+    hiddenImageContainer.innerHTML = '';
+  }
+  decodedImageCache.clear();
+  decodedCacheOrder.length = 0;
 }
 
 /**
@@ -310,49 +680,60 @@ export function clearRecolorCache() {
  */
 export function getCachedRecoloredImage(imageSrc, sourceColorRange, targetColorHex) {
   const cacheKey = `${imageSrc}_${sourceColorRange.minHue}-${sourceColorRange.maxHue}_${targetColorHex}`;
-  return recoloredImageCache.get(cacheKey) || null;
+  return getFromCache(cacheKey);
 }
+
+/**
+ * Get cache statistics for debugging
+ */
+export function getCacheStats() {
+  return {
+    size: recoloredImageCache.size,
+    maxSize: MAX_CACHE_SIZE,
+    decodedSize: decodedImageCache.size,
+    maxDecodedSize: MAX_DECODED_CACHE_SIZE,
+    workerReady,
+    canvasPoolSize: canvasPool.length,
+  };
+}
+
+/**
+ * The base color of the sprite assets (used for recoloring logic)
+ * Sprites are blue - if target color matches this, no recoloring needed
+ */
+export const SPRITE_BASE_COLOR = "#4169E1";
 
 /**
  * Predefined color options for player customization
  */
 export const COLOR_PRESETS = {
+  // Neutrals
+  black: "#252525",
+  silver: "#A8A8A8",
+  
   // Blues
-  blue: "#4169E1",      // Royal Blue (default Player 1)
-  skyBlue: "#87CEEB",
   navy: "#000080",
-  cyan: "#00CED1",
+  lightBlue: "#5BC0DE",
   
   // Reds
   red: "#DC143C",       // Crimson (default Player 2)
-  darkRed: "#8B0000",
-  coral: "#FF6347",
+  maroon: "#800000",
   
   // Pinks
-  pink: "#FF69B4",      // Hot Pink
-  lightPink: "#FFB6C1",
-  magenta: "#FF00FF",
+  pink: "#FFB6C1",      // Light Pink
   
   // Greens
   green: "#32CD32",     // Lime Green
-  emerald: "#50C878",
-  forest: "#228B22",
-  teal: "#008080",
   
   // Purples
   purple: "#9932CC",    // Dark Orchid
-  violet: "#EE82EE",
-  indigo: "#4B0082",
   
   // Oranges/Yellows
   orange: "#FF8C00",    // Dark Orange
   gold: "#FFD700",
-  yellow: "#FFFF00",
   
-  // Others
-  white: "#FFFFFF",
-  silver: "#C0C0C0",
-  black: "#1A1A1A",     // Near-black (pure black might not look good)
+  // Browns
+  brown: "#5D3A1A",
 };
 
 export default {
@@ -360,6 +741,10 @@ export default {
   recolorImages,
   clearRecolorCache,
   getCachedRecoloredImage,
+  getCacheStats,
+  preDecodeImage,
+  preDecodeImages,
+  clearDecodedImageCache,
   hexToRgb,
   getHueSatFromHex,
   BLUE_COLOR_RANGES,

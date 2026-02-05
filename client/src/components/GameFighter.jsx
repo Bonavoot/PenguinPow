@@ -40,6 +40,7 @@ import {
   recolorImage,
   getCachedRecoloredImage,
   BLUE_COLOR_RANGES,
+  SPRITE_BASE_COLOR,
   COLOR_PRESETS,
 } from "../utils/SpriteRecolorizer";
 
@@ -77,7 +78,7 @@ import crouchStance2 from "../assets/crouch-stance2.png";
 // ============================================
 import pumoWaddle2 from "../assets/pumo-waddle2.png";  // APNG
 import pumoArmy2 from "../assets/pumo-army2.png";      // APNG
-import crouching2 from "../assets/blocking.png";       // APNG (blue)
+import crouching2 from "../assets/blocking2.png";       // APNG (blue)
 import bow2 from "../assets/bow2.png";                 // APNG
 import grabAttempt2 from "../assets/grab-attempt2.png"; // APNG
 import hit2 from "../assets/hit2.png";                 // APNG
@@ -137,17 +138,15 @@ import gyojiHakkiyoi from "../assets/gyoji-hakkiyoi.gif";
 import dodgeEffectGif from "../assets/dodge-effect.gif";
 import slapAttackHand from "../assets/slap-attack-hand.png";
 
-// Ritual animation sprite sheet imports (Player 1 - Blue)
-import ritualPart1Spritesheet from "../assets/ritual_part1_spritesheet.png";
-import ritualPart2Spritesheet from "../assets/ritual_part2_spritesheet.png";
-import ritualPart3Spritesheet from "../assets/ritual_part3_spritesheet.png";
-import ritualPart4Spritesheet from "../assets/ritual_part4_spritesheet.png";
+// Get ritual sprites from ANIMATED_SPRITES to share cache with preloading system
+// This ensures preloaded sprites are found in cache when GameFighter looks them up
+import { ANIMATED_SPRITES } from "../config/spriteConfig";
 
-// Ritual animation sprite sheet imports (Player 2 - Red)
-import ritualPart1SpritesheetRed from "../assets/ritual_part1_spritesheet_red.png";
-import ritualPart2SpritesheetRed from "../assets/ritual_part2_spritesheet_red.png";
-import ritualPart3SpritesheetRed from "../assets/ritual_part3_spritesheet_red.png";
-import ritualPart4SpritesheetRed from "../assets/ritual_part4_spritesheet_red.png";
+// Extract ritual spritesheets from the same source as preloading uses
+const ritualPart1Spritesheet = ANIMATED_SPRITES.player1.ritualPart1.src;
+const ritualPart2Spritesheet = ANIMATED_SPRITES.player1.ritualPart2.src;
+const ritualPart3Spritesheet = ANIMATED_SPRITES.player1.ritualPart3.src;
+const ritualPart4Spritesheet = ANIMATED_SPRITES.player1.ritualPart4.src;
 
 // Ritual clap sounds
 import clap1Sound from "../sounds/clap1-sound.wav";
@@ -200,13 +199,20 @@ const ritualSpritesheetsPlayer2 = RITUAL_SPRITE_CONFIG;
 const ritualClapSounds = [clap1Sound, clap2Sound, clap3Sound, clap4Sound];
 
 // Preload ritual sprite sheets to prevent loading delays
-// Player 2 now uses the same blue sprites with CSS hue-rotate, so only preload once
+// Uses decode() to force browser to decode images immediately, preventing invisible frames
 const ritualImagesLoaded = { count: 0, total: RITUAL_SPRITE_CONFIG.length };
 const preloadRitualSpritesheets = () => {
   RITUAL_SPRITE_CONFIG.forEach((config) => {
     const img = new Image();
-    img.onload = () => { ritualImagesLoaded.count++; };
     img.src = config.spritesheet;
+    // Use decode() if available to force immediate decoding
+    if (img.decode) {
+      img.decode()
+        .then(() => { ritualImagesLoaded.count++; })
+        .catch(() => { ritualImagesLoaded.count++; }); // Still count on error
+    } else {
+      img.onload = () => { ritualImagesLoaded.count++; };
+    }
   });
 };
 // Call preload on module load
@@ -781,21 +787,21 @@ const StyledImage = styled("img")
       zIndex:
         isOutsideDohyo(props.$x, props.$y) ? 0 : // Behind dohyo overlay when outside
         props.$isThrowing || props.$isDodging || props.$isGrabbing ? 98 : 99,
+      // PERFORMANCE: Reduced drop-shadows from 4+ to 1 outline + effects
+      // Original had 4 separate drop-shadows for outline which is very expensive
       filter: props.$isAtTheRopes
-        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(255, 50, 50, 0.7)) brightness(1.15) contrast(1.25)"
+        ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(255, 50, 50, 0.7)) brightness(1.15) contrast(1.25)"
         : props.$isGrabBreaking
-        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.85)) brightness(1.35) drop-shadow(0 0 3px #000)"
+        ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.85)) brightness(1.35)"
         : props.$isRawParrying
-        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3) drop-shadow(0 0 3px #000)"
+        ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3)"
         : props.$isHit
-        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) brightness(1.15)"
+        ? "drop-shadow(0 0 1px #000) contrast(1.2) brightness(1.15)"
         : props.$isChargingAttack
-        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 12px rgba(255, 200, 50, 0.85)) contrast(1.25)"
+        ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 12px rgba(255, 200, 50, 0.85)) contrast(1.25)"
         : props.$isGrabClashActive
-        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.25) brightness(1.1)"
-        : props.$isLocalPlayer
-        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2)"
-        : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2)",
+        ? "drop-shadow(0 0 1px #000) contrast(1.25) brightness(1.1)"
+        : "drop-shadow(0 0 1px #000) contrast(1.2)",
       animation: props.$isAtTheRopes
         ? "atTheRopesWobble 0.3s ease-in-out infinite"
         : props.$isAttemptingGrabThrow
@@ -863,45 +869,46 @@ const StyledImage = styled("img")
         ? "min(15.612%, 480px)"  // 6% smaller: 16.609 * 0.94
         : "min(16.609%, 511px)",
       height: "auto",
-      willChange: "bottom, left, filter, opacity, transform",
+      // PERFORMANCE: Reduced willChange - only specify transform (most frequent)
+      willChange: "transform",
       pointerEvents: "none",
       transformOrigin: "center bottom",
       transition: "none",
     },
   }))`
-  /* Static styles only - no dynamic props here */
+  /* PERFORMANCE: Optimized keyframes - reduced drop-shadows from 4+ to 1-2 */
   @keyframes rawParryFlash {
     0% {
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 2px rgba(0, 150, 255, 0.4)) brightness(1) drop-shadow(0 0 1px #000);
+      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 2px rgba(0, 150, 255, 0.4)) brightness(1);
     }
     25% {
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 12px rgba(0, 150, 255, 0.9)) brightness(1.6) drop-shadow(0 0 4px #000);
+      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 12px rgba(0, 150, 255, 0.9)) brightness(1.6);
     }
     50% {
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.7)) brightness(1.3) drop-shadow(0 0 3px #000);
+      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.7)) brightness(1.3);
     }
     75% {
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 12px rgba(0, 150, 255, 0.9)) brightness(1.6) drop-shadow(0 0 4px #000);
+      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 12px rgba(0, 150, 255, 0.9)) brightness(1.6);
     }
     100% {
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 2px rgba(0, 150, 255, 0.4)) brightness(1) drop-shadow(0 0 1px #000);
+      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 2px rgba(0, 150, 255, 0.4)) brightness(1);
     }
   }
   @keyframes grabBreakFlash {
     0% {
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 2px rgba(0, 255, 128, 0.45)) brightness(1) drop-shadow(0 0 1px #000);
+      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 2px rgba(0, 255, 128, 0.45)) brightness(1);
     }
     25% {
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 12px rgba(0, 255, 128, 0.95)) brightness(1.7) drop-shadow(0 0 4px #000);
+      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 12px rgba(0, 255, 128, 0.95)) brightness(1.7);
     }
     50% {
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.75)) brightness(1.4) drop-shadow(0 0 3px #000);
+      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.75)) brightness(1.4);
     }
     75% {
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 12px rgba(0, 255, 128, 0.95)) brightness(1.7) drop-shadow(0 0 4px #000);
+      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 12px rgba(0, 255, 128, 0.95)) brightness(1.7);
     }
     100% {
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 2px rgba(0, 255, 128, 0.45)) brightness(1) drop-shadow(0 0 1px #000);
+      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 2px rgba(0, 255, 128, 0.45)) brightness(1);
     }
   }
   
@@ -909,23 +916,23 @@ const StyledImage = styled("img")
   @keyframes hitSquash {
     0% {
       transform: scaleX(var(--facing, 1)) scaleY(1);
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) brightness(1.4);
+      filter: drop-shadow(0 0 1px #000) contrast(1.2) brightness(1.4);
     }
     20% {
       transform: scaleX(calc(var(--facing, 1) * 1.18)) scaleY(0.82);
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.3) brightness(1.5);
+      filter: drop-shadow(0 0 1px #000) contrast(1.3) brightness(1.5);
     }
     50% {
       transform: scaleX(calc(var(--facing, 1) * 0.88)) scaleY(1.12);
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.25) brightness(1.3);
+      filter: drop-shadow(0 0 1px #000) contrast(1.25) brightness(1.3);
     }
     75% {
       transform: scaleX(calc(var(--facing, 1) * 1.06)) scaleY(0.94);
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) brightness(1.2);
+      filter: drop-shadow(0 0 1px #000) contrast(1.2) brightness(1.2);
     }
     100% {
       transform: scaleX(var(--facing, 1)) scaleY(1);
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) brightness(1.15);
+      filter: drop-shadow(0 0 1px #000) contrast(1.2) brightness(1.15);
     }
   }
   
@@ -933,32 +940,32 @@ const StyledImage = styled("img")
   @keyframes attackPunch {
     0% {
       transform: scaleX(var(--facing, 1)) scaleY(1);
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2);
+      filter: drop-shadow(0 0 1px #000) contrast(1.2);
     }
     25% {
       transform: scaleX(calc(var(--facing, 1) * 0.9)) scaleY(1.1);
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.3) brightness(1.15);
+      filter: drop-shadow(0 0 1px #000) contrast(1.3) brightness(1.15);
     }
     55% {
       transform: scaleX(calc(var(--facing, 1) * 1.12)) scaleY(0.92);
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.25) brightness(1.1) drop-shadow(0 0 8px rgba(255, 200, 50, 0.6));
+      filter: drop-shadow(0 0 1px #000) contrast(1.25) brightness(1.1) drop-shadow(0 0 8px rgba(255, 200, 50, 0.6));
     }
     100% {
       transform: scaleX(var(--facing, 1)) scaleY(1);
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2);
+      filter: drop-shadow(0 0 1px #000) contrast(1.2);
     }
   }
   
   /* Charge pulse animation - builds anticipation for charged attack */
   @keyframes chargePulse {
     0% {
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(255, 200, 50, 0.5)) contrast(1.2);
+      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(255, 200, 50, 0.5)) contrast(1.2);
     }
     50% {
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 18px rgba(255, 150, 0, 0.9)) contrast(1.35) brightness(1.1);
+      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 18px rgba(255, 150, 0, 0.9)) contrast(1.35) brightness(1.1);
     }
     100% {
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(255, 200, 50, 0.5)) contrast(1.2);
+      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(255, 200, 50, 0.5)) contrast(1.2);
     }
   }
   
@@ -1031,11 +1038,11 @@ const StyledImage = styled("img")
   @keyframes slapRush {
     0%, 100% {
       transform: scaleX(var(--facing, 1));
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) blur(0.3px);
+      filter: drop-shadow(0 0 1px #000) contrast(1.2) blur(0.3px);
     }
     50% {
       transform: scaleX(var(--facing, 1));
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) blur(0.6px);
+      filter: drop-shadow(0 0 1px #000) contrast(1.2) blur(0.6px);
     }
   }
   
@@ -1069,23 +1076,23 @@ const StyledImage = styled("img")
   @keyframes dodgeTakeoff {
     0% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2);
+      filter: drop-shadow(0 0 1px #000) contrast(1.2);
     }
     20% {
       transform: scaleX(calc(var(--facing, 1) * 1.08)) scaleY(0.88) translateY(0);
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.25) brightness(1.05);
+      filter: drop-shadow(0 0 1px #000) contrast(1.25) brightness(1.05);
     }
     50% {
       transform: scaleX(calc(var(--facing, 1) * 0.94)) scaleY(1.08) translateY(-2px);
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.22) brightness(1.08) drop-shadow(0 0 5px rgba(255, 255, 255, 0.25));
+      filter: drop-shadow(0 0 1px #000) contrast(1.22) brightness(1.08);
     }
     80% {
       transform: scaleX(calc(var(--facing, 1) * 0.97)) scaleY(1.04) translateY(-1px);
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) brightness(1.03);
+      filter: drop-shadow(0 0 1px #000) contrast(1.2) brightness(1.03);
     }
     100% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2);
+      filter: drop-shadow(0 0 1px #000) contrast(1.2);
     }
   }
   
@@ -1093,23 +1100,23 @@ const StyledImage = styled("img")
   @keyframes dodgeCancelSlam {
     0% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2);
+      filter: drop-shadow(0 0 1px #000) contrast(1.2);
     }
     40% {
       transform: scaleX(calc(var(--facing, 1) * 0.94)) scaleY(1.08) translateY(1px);
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.22) brightness(1.05);
+      filter: drop-shadow(0 0 1px #000) contrast(1.22) brightness(1.05);
     }
     70% {
       transform: scaleX(calc(var(--facing, 1) * 1.12)) scaleY(0.82) translateY(0);
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.28) brightness(1.1) drop-shadow(0 0 4px rgba(255, 255, 255, 0.35));
+      filter: drop-shadow(0 0 1px #000) contrast(1.28) brightness(1.1);
     }
     90% {
       transform: scaleX(calc(var(--facing, 1) * 0.98)) scaleY(1.03) translateY(0);
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.22);
+      filter: drop-shadow(0 0 1px #000) contrast(1.22);
     }
     100% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2);
+      filter: drop-shadow(0 0 1px #000) contrast(1.2);
     }
   }
   
@@ -1118,27 +1125,27 @@ const StyledImage = styled("img")
     0% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
       transform-origin: center bottom;
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2);
+      filter: drop-shadow(0 0 1px #000) contrast(1.2);
     }
     25% {
       transform: scaleX(calc(var(--facing, 1) * 1.06)) scaleY(0.88) translateY(0);
       transform-origin: center bottom;
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.24) brightness(1.05) drop-shadow(0 0 3px rgba(255, 255, 255, 0.2));
+      filter: drop-shadow(0 0 1px #000) contrast(1.24) brightness(1.05);
     }
     55% {
       transform: scaleX(calc(var(--facing, 1) * 0.98)) scaleY(1.04) translateY(0);
       transform-origin: center bottom;
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.21) brightness(1.02);
+      filter: drop-shadow(0 0 1px #000) contrast(1.21) brightness(1.02);
     }
     80% {
       transform: scaleX(calc(var(--facing, 1) * 1.02)) scaleY(0.99) translateY(0);
       transform-origin: center bottom;
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2);
+      filter: drop-shadow(0 0 1px #000) contrast(1.2);
     }
     100% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
       transform-origin: center bottom;
-      filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2);
+      filter: drop-shadow(0 0 1px #000) contrast(1.2);
     }
   }
   
@@ -1208,9 +1215,8 @@ const RitualSpriteImage = styled.img.attrs((props) => {
       transform: `translate3d(-${offsetPercent}%, 0, 0)`,
       willChange: "transform",
       backfaceVisibility: "hidden",
-      filter: props.$isLocalPlayer
-        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2)"
-        : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2)",
+        // PERFORMANCE: Reduced drop-shadows
+        filter: "drop-shadow(0 0 1px #000) contrast(1.2)",
     },
   };
 })``;
@@ -1237,52 +1243,161 @@ const AnimatedFighterContainer = styled.div
         ? "scaleX(1)"
         : "scaleX(-1)",
       overflow: "hidden",
-      zIndex: props.$isThrowing || props.$isDodging || props.$isGrabbing ? 98 : 99,
+      zIndex: isOutsideDohyo(props.$x, props.$y) ? 0 : // Behind dohyo overlay when outside
+        props.$isThrowing || props.$isDodging || props.$isGrabbing ? 98 : 99,
       pointerEvents: "none",
       // Clip edges to prevent sub-pixel bleed from adjacent frames
       clipPath: "inset(0 0.5% 0 0.5%)",
     },
   }))``;
 
-// Animated Fighter Sprite Image - positioned to show current frame
+// Animated Fighter Sprite Image - CSS-based animation for PERFORMANCE
+// Uses CSS animation with steps() instead of React state updates
+// This moves animation to GPU and avoids 30-40 React re-renders per second
 const AnimatedFighterImage = styled.img
   .withConfig({
     shouldForwardProp: (prop) =>
-      !["frame", "frameCount", "isLocalPlayer", "isAtTheRopes", "isGrabBreaking",
-        "isRawParrying", "isHit", "isChargingAttack", "isGrabClashActive"].includes(prop),
+      !["frameCount", "fps", "loop", "isLocalPlayer", "isAtTheRopes", "isGrabBreaking",
+        "isRawParrying", "isHit", "isChargingAttack", "isGrabClashActive", "animationKey"].includes(prop),
   })
   .attrs((props) => {
-    // Clamp frame to valid range
-    const safeFrame = Math.max(0, Math.min(props.$frame, props.$frameCount - 1));
-    // Each frame is 1/frameCount of the total image width
-    const offsetPercent = (safeFrame / props.$frameCount) * 100;
+    // Calculate animation duration based on fps and frame count
+    const frameCount = props.$frameCount || 1;
+    const fps = props.$fps || 30;
+    const duration = frameCount / fps; // seconds for full animation cycle
+    
+    // Calculate total width percentage for the full animation offset
+    // The image moves from 0% to -(100% - 100%/frameCount) 
+    const totalOffset = ((frameCount - 1) / frameCount) * 100;
+    
     return {
       style: {
         position: "relative",
         display: "block",
         height: "100%",
         width: "auto",
-        transform: `translate3d(-${offsetPercent}%, 0, 0)`,
-        willChange: "transform",
         backfaceVisibility: "hidden",
+        // PERFORMANCE: Reduced drop-shadows from 4+ to 1 outline + effects
         filter: props.$isAtTheRopes
-          ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(255, 50, 50, 0.7)) brightness(1.15) contrast(1.25)"
+          ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(255, 50, 50, 0.7)) brightness(1.15) contrast(1.25)"
           : props.$isGrabBreaking
-          ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.85)) brightness(1.35) drop-shadow(0 0 3px #000)"
+          ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.85)) brightness(1.35)"
           : props.$isRawParrying
-          ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3) drop-shadow(0 0 3px #000)"
+          ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3)"
           : props.$isHit
-          ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) brightness(1.15)"
+          ? "drop-shadow(0 0 1px #000) contrast(1.2) brightness(1.15)"
           : props.$isChargingAttack
-          ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 12px rgba(255, 200, 50, 0.85)) contrast(1.25)"
+          ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 12px rgba(255, 200, 50, 0.85)) contrast(1.25)"
           : props.$isGrabClashActive
-          ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.25) brightness(1.1)"
-          : props.$isLocalPlayer
-          ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2)"
-          : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2)",
+          ? "drop-shadow(0 0 1px #000) contrast(1.25) brightness(1.1)"
+          : "drop-shadow(0 0 1px #000) contrast(1.2)",
+        // CSS-based spritesheet animation - no React state updates needed!
+        animation: frameCount > 1 
+          ? `spritesheet-${frameCount} ${duration}s steps(${frameCount - 1}) ${props.$loop !== false ? 'infinite' : 'forwards'}`
+          : 'none',
+        // Use animationKey to force restart animation when sprite changes
+        animationName: frameCount > 1 ? `spritesheet-${frameCount}` : 'none',
       },
     };
-  })``;
+  })`
+  /* Generate keyframes for common frame counts (2-25) */
+  @keyframes spritesheet-2 {
+    from { transform: translate3d(0%, 0, 0); }
+    to { transform: translate3d(-50%, 0, 0); }
+  }
+  @keyframes spritesheet-3 {
+    from { transform: translate3d(0%, 0, 0); }
+    to { transform: translate3d(-66.667%, 0, 0); }
+  }
+  @keyframes spritesheet-4 {
+    from { transform: translate3d(0%, 0, 0); }
+    to { transform: translate3d(-75%, 0, 0); }
+  }
+  @keyframes spritesheet-5 {
+    from { transform: translate3d(0%, 0, 0); }
+    to { transform: translate3d(-80%, 0, 0); }
+  }
+  @keyframes spritesheet-6 {
+    from { transform: translate3d(0%, 0, 0); }
+    to { transform: translate3d(-83.333%, 0, 0); }
+  }
+  @keyframes spritesheet-7 {
+    from { transform: translate3d(0%, 0, 0); }
+    to { transform: translate3d(-85.714%, 0, 0); }
+  }
+  @keyframes spritesheet-8 {
+    from { transform: translate3d(0%, 0, 0); }
+    to { transform: translate3d(-87.5%, 0, 0); }
+  }
+  @keyframes spritesheet-9 {
+    from { transform: translate3d(0%, 0, 0); }
+    to { transform: translate3d(-88.889%, 0, 0); }
+  }
+  @keyframes spritesheet-10 {
+    from { transform: translate3d(0%, 0, 0); }
+    to { transform: translate3d(-90%, 0, 0); }
+  }
+  @keyframes spritesheet-11 {
+    from { transform: translate3d(0%, 0, 0); }
+    to { transform: translate3d(-90.909%, 0, 0); }
+  }
+  @keyframes spritesheet-12 {
+    from { transform: translate3d(0%, 0, 0); }
+    to { transform: translate3d(-91.667%, 0, 0); }
+  }
+  @keyframes spritesheet-13 {
+    from { transform: translate3d(0%, 0, 0); }
+    to { transform: translate3d(-92.308%, 0, 0); }
+  }
+  @keyframes spritesheet-14 {
+    from { transform: translate3d(0%, 0, 0); }
+    to { transform: translate3d(-92.857%, 0, 0); }
+  }
+  @keyframes spritesheet-15 {
+    from { transform: translate3d(0%, 0, 0); }
+    to { transform: translate3d(-93.333%, 0, 0); }
+  }
+  @keyframes spritesheet-16 {
+    from { transform: translate3d(0%, 0, 0); }
+    to { transform: translate3d(-93.75%, 0, 0); }
+  }
+  @keyframes spritesheet-17 {
+    from { transform: translate3d(0%, 0, 0); }
+    to { transform: translate3d(-94.118%, 0, 0); }
+  }
+  @keyframes spritesheet-18 {
+    from { transform: translate3d(0%, 0, 0); }
+    to { transform: translate3d(-94.444%, 0, 0); }
+  }
+  @keyframes spritesheet-19 {
+    from { transform: translate3d(0%, 0, 0); }
+    to { transform: translate3d(-94.737%, 0, 0); }
+  }
+  @keyframes spritesheet-20 {
+    from { transform: translate3d(0%, 0, 0); }
+    to { transform: translate3d(-95%, 0, 0); }
+  }
+  @keyframes spritesheet-21 {
+    from { transform: translate3d(0%, 0, 0); }
+    to { transform: translate3d(-95.238%, 0, 0); }
+  }
+  @keyframes spritesheet-22 {
+    from { transform: translate3d(0%, 0, 0); }
+    to { transform: translate3d(-95.455%, 0, 0); }
+  }
+  @keyframes spritesheet-23 {
+    from { transform: translate3d(0%, 0, 0); }
+    to { transform: translate3d(-95.652%, 0, 0); }
+  }
+  @keyframes spritesheet-24 {
+    from { transform: translate3d(0%, 0, 0); }
+    to { transform: translate3d(-95.833%, 0, 0); }
+  }
+  @keyframes spritesheet-25 {
+    from { transform: translate3d(0%, 0, 0); }
+    to { transform: translate3d(-96%, 0, 0); }
+  }
+`;
 
 const CountdownTimer = styled.div`
   position: absolute;
@@ -1402,8 +1517,7 @@ const SnowballProjectile = styled.img
       bottom: `${(props.$y / 720) * 100 + 14}%`,
       zIndex: 95,
       pointerEvents: "none",
-      filter:
-        "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000)",
+      filter: "drop-shadow(0 0 1px #000)",
     },
   }))``;
 
@@ -1422,8 +1536,7 @@ const PumoClone = styled.img
       transform: `scaleX(${props.$facing * -1})`,
       zIndex: (props.$x < -20 || props.$x > 1075) || props.$y < (GROUND_LEVEL - 35) ? 0 : 98,
       pointerEvents: "none",
-      filter:
-        "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.3)",
+      filter: "drop-shadow(0 0 1px #000) contrast(1.3)",
     },
   }))``;
 
@@ -1499,9 +1612,9 @@ const GameFighter = ({
   // UNIFIED: All sprites are BLUE - only skip recoloring if target color is blue
   // Player 2's default is red, so they ALWAYS need recoloring (blue -> red/custom)
   const playerNumber = index === 0 ? 1 : 2;
-  const targetColor = playerColor || (playerNumber === 1 ? COLOR_PRESETS.blue : COLOR_PRESETS.red);
+  const targetColor = playerColor || (playerNumber === 1 ? SPRITE_BASE_COLOR : COLOR_PRESETS.red);
   // Only skip recoloring if target color is blue (sprites are already blue)
-  const needsRecoloring = targetColor !== COLOR_PRESETS.blue;
+  const needsRecoloring = targetColor !== SPRITE_BASE_COLOR;
   // Both players use BLUE_COLOR_RANGES since all sprites are blue
   const colorRanges = BLUE_COLOR_RANGES;
   
@@ -1586,10 +1699,8 @@ const GameFighter = ({
 
   // ============================================
   // SPRITESHEET ANIMATION STATE
-  // Tracks current frame for animated fighter sprites
+  // PERFORMANCE: Sprite animation now handled by CSS (no React state needed)
   // ============================================
-  const [fighterSpriteFrame, setFighterSpriteFrame] = useState(0);
-  const fighterSpriteIntervalRef = useRef(null);
   const lastSpriteSrcRef = useRef(null);
   
   const [penguin, setPenguin] = useState({
@@ -1642,7 +1753,9 @@ const GameFighter = ({
     isCrouchStrafing: false,
   });
 
-  // Add interpolation state
+  // PERFORMANCE: Use ref for interpolated position to avoid constant re-renders
+  // Only update React state when position changes significantly
+  const interpolatedPositionRef = useRef({ x: 0, y: 0 });
   const [interpolatedPosition, setInterpolatedPosition] = useState({
     x: 0,
     y: 0,
@@ -1650,6 +1763,10 @@ const GameFighter = ({
   const previousState = useRef(null);
   const currentState = useRef(null);
   const lastUpdateTime = useRef(performance.now());
+  const lastRenderUpdateTime = useRef(0);
+  // PERFORMANCE: Only skip updates when position change is imperceptible
+  // This gives smooth 60fps visuals while skipping redundant micro-updates
+  const MIN_POSITION_CHANGE = 0.3; // pixels - skip if position changed less than this
 
   // ============================================
   // CLIENT-SIDE PREDICTION SYSTEM
@@ -2363,59 +2480,13 @@ const GameFighter = ({
 
   // ============================================
   // FIGHTER SPRITE ANIMATION
-  // Track which sprite is currently shown and animate it
+  // PERFORMANCE: Now using CSS-based animation instead of setInterval
+  // This avoids 30-40 React re-renders per second per animated sprite
   // ============================================
-  const currentAnimatedSpriteRef = useRef(null);
   
-  // This function is called during render to update animation state
+  // Simply returns the config - CSS animation handles the frame cycling
   const updateSpriteAnimation = useCallback((spriteSrc) => {
-    const config = getSpritesheetConfig(spriteSrc);
-    
-    // If sprite changed, reset frame and start new animation
-    if (spriteSrc !== currentAnimatedSpriteRef.current) {
-      currentAnimatedSpriteRef.current = spriteSrc;
-      setFighterSpriteFrame(0);
-      
-      // Clear existing interval
-      if (fighterSpriteIntervalRef.current) {
-        clearInterval(fighterSpriteIntervalRef.current);
-        fighterSpriteIntervalRef.current = null;
-      }
-      
-      // Start new animation if this is an animated sprite
-      if (config) {
-        const { frameCount, fps, loop = true } = config;
-        const frameDuration = 1000 / fps;
-        let frameRef = 0;
-        
-        fighterSpriteIntervalRef.current = setInterval(() => {
-          frameRef++;
-          
-          if (frameRef >= frameCount) {
-            if (loop) {
-              frameRef = 0;
-            } else {
-              frameRef = frameCount - 1;
-              clearInterval(fighterSpriteIntervalRef.current);
-              fighterSpriteIntervalRef.current = null;
-            }
-          }
-          
-          setFighterSpriteFrame(frameRef);
-        }, frameDuration);
-      }
-    }
-    
-    return config;
-  }, []);
-  
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (fighterSpriteIntervalRef.current) {
-        clearInterval(fighterSpriteIntervalRef.current);
-      }
-    };
+    return getSpritesheetConfig(spriteSrc);
   }, []);
 
   // Interpolation constants
@@ -2457,9 +2528,12 @@ const GameFighter = ({
     ]
   );
 
-  // Animation loop for interpolation - smooth updates at full framerate
+  // Animation loop for interpolation - PERFORMANCE OPTIMIZED
+  // Calculates position every frame but only updates React state at throttled rate
   const interpolationLoop = useCallback(
     (timestamp) => {
+      let newPos = null;
+      
       if (currentState.current && previousState.current) {
         const timeSinceUpdate = timestamp - lastUpdateTime.current;
         const interpolationFactor = Math.min(
@@ -2467,24 +2541,35 @@ const GameFighter = ({
           1
         );
 
-        // Calculate and set interpolated position
-        const interpolatedPos = interpolatePosition(
+        // Calculate interpolated position (stored in ref, no re-render)
+        newPos = interpolatePosition(
           { x: previousState.current.x, y: previousState.current.y },
           { x: currentState.current.x, y: currentState.current.y },
           interpolationFactor
         );
-
-        setInterpolatedPosition(interpolatedPos);
       } else if (currentState.current) {
-        setInterpolatedPosition({
+        newPos = {
           x: currentState.current.x,
           y: currentState.current.y,
-        });
+        };
+      }
+      
+      if (newPos) {
+        // Always update ref (no re-render)
+        const prevPos = interpolatedPositionRef.current;
+        interpolatedPositionRef.current = newPos;
+        
+        // PERFORMANCE: Only update React state if position changed noticeably
+        // This gives 60fps smoothness while skipping imperceptible micro-updates
+        const positionDelta = Math.abs(newPos.x - prevPos.x) + Math.abs(newPos.y - prevPos.y);
+        if (positionDelta >= MIN_POSITION_CHANGE) {
+          setInterpolatedPosition(newPos);
+        }
       }
 
       requestAnimationFrame(interpolationLoop);
     },
-    [interpolatePosition]
+    [interpolatePosition, MIN_POSITION_CHANGE]
   );
 
   // Start interpolation loop
@@ -2622,21 +2707,44 @@ const GameFighter = ({
     return () => cancelAnimationFrame(animationId);
   }, [animate]);
 
+  // PERFORMANCE: Refs to store accumulated player state for delta merging
+  const accumulatedPlayer1State = useRef(null);
+  const accumulatedPlayer2State = useRef(null);
+  
   // Memoize frequently accessed socket listeners to prevent recreation
   const handleFighterAction = useCallback(
     (data) => {
       const currentTime = performance.now();
 
+      // PERFORMANCE: Handle delta updates by merging with existing state
+      // Server sends isDelta: true when only changed properties are included
+      let player1Data, player2Data;
+      
+      if (data.isDelta && accumulatedPlayer1State.current && accumulatedPlayer2State.current) {
+        // Merge delta with accumulated state (only if we have previous state)
+        player1Data = { ...accumulatedPlayer1State.current, ...data.player1 };
+        player2Data = { ...accumulatedPlayer2State.current, ...data.player2 };
+      } else {
+        // First update or full update - use as-is
+        // Delta updates contain all essential properties on first send
+        player1Data = data.player1;
+        player2Data = data.player2;
+      }
+      
+      // Store accumulated state for next delta merge
+      accumulatedPlayer1State.current = player1Data;
+      accumulatedPlayer2State.current = player2Data;
+
       // Store both players' data for UI (only for first component)
       if (index === 0) {
         setAllPlayersData({
-          player1: data.player1,
-          player2: data.player2,
+          player1: player1Data,
+          player2: player2Data,
         });
       }
 
       // Get the relevant player data based on index
-      const playerData = index === 0 ? data.player1 : data.player2;
+      const playerData = index === 0 ? player1Data : player2Data;
 
       // Store previous state for interpolation
       if (currentState.current) {
@@ -2662,30 +2770,97 @@ const GameFighter = ({
       }
 
       // Update penguin state with all data (discrete states are not interpolated)
-      setPenguin({
-        ...playerData,
-        isDodging: playerData.isDodging || false,
-        dodgeDirection:
-          typeof playerData.dodgeDirection === "number"
-            ? playerData.dodgeDirection
-            : playerData.facing || 1,
-        isGrabBreaking: playerData.isGrabBreaking || false,
-        isGrabBreakCountered: playerData.isGrabBreakCountered || false,
+      // PERFORMANCE FIX: Use functional update to merge delta with previous state
+      // This prevents state loss when server sends partial delta updates
+      setPenguin((prev) => {
+        // PERFORMANCE: Create new state object
+        const newState = {
+          ...prev,
+          ...playerData,
+          isDodging: playerData.isDodging ?? prev.isDodging ?? false,
+          dodgeDirection:
+            typeof playerData.dodgeDirection === "number"
+              ? playerData.dodgeDirection
+              : playerData.facing ?? prev.dodgeDirection ?? 1,
+          isGrabBreaking: playerData.isGrabBreaking ?? prev.isGrabBreaking ?? false,
+          isGrabBreakCountered: playerData.isGrabBreakCountered ?? prev.isGrabBreakCountered ?? false,
+        };
+        
+        // PERFORMANCE: Check if any key discrete game states changed
+        // Position changes are handled by interpolation refs, so we skip x/y comparison
+        // This avoids re-renders when only position/velocity changes (which is every frame)
+        // IMPORTANT: Include ALL states that affect sprite selection (see getImageSrc)
+        const discreteStateChanged = 
+          // Core action states
+          prev.isAttacking !== newState.isAttacking ||
+          prev.isDodging !== newState.isDodging ||
+          prev.isHit !== newState.isHit ||
+          prev.isGrabbing !== newState.isGrabbing ||
+          prev.isBeingGrabbed !== newState.isBeingGrabbed ||
+          prev.isThrowing !== newState.isThrowing ||
+          prev.isBeingThrown !== newState.isBeingThrown ||
+          prev.isRawParrying !== newState.isRawParrying ||
+          prev.isChargingAttack !== newState.isChargingAttack ||
+          prev.isBraking !== newState.isBraking ||
+          prev.isPowerSliding !== newState.isPowerSliding ||
+          prev.facing !== newState.facing ||
+          prev.isJumping !== newState.isJumping ||
+          prev.isDead !== newState.isDead ||
+          prev.isReady !== newState.isReady ||
+          prev.health !== newState.health ||
+          prev.stamina !== newState.stamina ||
+          prev.activePowerUp !== newState.activePowerUp ||
+          prev.isAtTheRopes !== newState.isAtTheRopes ||
+          prev.isRawParryStun !== newState.isRawParryStun ||
+          prev.grabState !== newState.grabState ||
+          prev.isSlapAttack !== newState.isSlapAttack ||
+          prev.chargeAttackPower !== newState.chargeAttackPower ||
+          // CRITICAL: Movement/animation states (affects sprite selection)
+          prev.isStrafing !== newState.isStrafing ||  // Controls waddle animation!
+          prev.isCrouchStance !== newState.isCrouchStance ||
+          prev.isCrouchStrafing !== newState.isCrouchStrafing ||
+          prev.isRecovering !== newState.isRecovering ||
+          prev.isRawParrySuccess !== newState.isRawParrySuccess ||
+          prev.isPerfectRawParrySuccess !== newState.isPerfectRawParrySuccess ||
+          prev.isThrowingSnowball !== newState.isThrowingSnowball ||
+          prev.isSpawningPumoArmy !== newState.isSpawningPumoArmy ||
+          prev.isBeingPulled !== newState.isBeingPulled ||
+          prev.isBeingPushed !== newState.isBeingPushed ||
+          prev.isThrowTeching !== newState.isThrowTeching ||
+          prev.isBowing !== newState.isBowing ||
+          prev.isGrabBreaking !== newState.isGrabBreaking ||
+          prev.isGrabBreakCountered !== newState.isGrabBreakCountered ||
+          prev.isAttemptingGrabThrow !== newState.isAttemptingGrabThrow ||
+          prev.grabAttemptType !== newState.grabAttemptType ||
+          prev.slapAnimation !== newState.slapAnimation ||
+          prev.isThrowingSalt !== newState.isThrowingSalt ||
+          prev.isGrabbingMovement !== newState.isGrabbingMovement ||
+          prev.isInRitualPhase !== newState.isInRitualPhase;
+        
+        if (!discreteStateChanged) {
+          return prev; // No discrete state change, skip re-render
+        }
+        
+        return newState;
       });
 
-      // Update all snowballs from both players
-      const combinedSnowballs = [
-        ...(data.player1.snowballs || []),
-        ...(data.player2.snowballs || []),
-      ];
-      setAllSnowballs(combinedSnowballs);
+      // Update all snowballs from both players (only if present in update)
+      if (player1Data.snowballs !== undefined || player2Data.snowballs !== undefined) {
+        const combinedSnowballs = [
+          ...(player1Data.snowballs || []),
+          ...(player2Data.snowballs || []),
+        ];
+        setAllSnowballs(combinedSnowballs);
+      }
 
-      // Update all pumo armies from both players
-      const combinedPumoArmies = [
-        ...(data.player1.pumoArmy || []),
-        ...(data.player2.pumoArmy || []),
-      ];
-      setAllPumoArmies(combinedPumoArmies);
+      // Update all pumo armies from both players (only if present in update)
+      if (player1Data.pumoArmy !== undefined || player2Data.pumoArmy !== undefined) {
+        const combinedPumoArmies = [
+          ...(player1Data.pumoArmy || []),
+          ...(player2Data.pumoArmy || []),
+        ];
+        setAllPumoArmies(combinedPumoArmies);
+      }
     },
     [index]
   );
@@ -3034,6 +3209,7 @@ const GameFighter = ({
         socket.off("counter_grab");
         socket.off("snowball_hit");
         socket.off("stamina_blocked");
+        socket.off("counter_hit"); // Fix: was missing cleanup
       }
       socket.off("grab_clash_start");
       socket.off("grab_clash_end");
@@ -3043,6 +3219,7 @@ const GameFighter = ({
       socket.off("game_over");
       socket.off("match_over");
       socket.off("power_ups_revealed");
+      socket.off("rematch"); // Fix: was missing cleanup
       if (countdownRef.current) {
         clearInterval(countdownRef.current);
         countdownRef.current = null;
@@ -3359,15 +3536,11 @@ const GameFighter = ({
       });
     });
 
-    // Test listener for any event to verify socket is working
-    socket.on("fighter_action", () => {});
-
     return () => {
       socket.off("screen_shake");
       socket.off("thick_blubber_absorption");
       socket.off("danger_zone");
       socket.off("ring_out");
-      socket.off("fighter_action");
     };
   }, [socket, player.id, localId, roomName]);
 
@@ -3389,12 +3562,17 @@ const GameFighter = ({
   // ============================================
   // DISPLAY STATE - Merges predicted state with server state
   // This is what we actually render - gives instant visual feedback
-  // Called directly in render to always reflect latest predictions
+  // PERFORMANCE: Memoized to avoid recalculating on every render
   // ============================================
-  const displayPenguin = getDisplayState();
+  const displayPenguin = useMemo(() => {
+    return getDisplayState();
+  }, [getDisplayState]);
   
   // PERFORMANCE: Calculate position ONCE per render instead of calling getDisplayPosition() multiple times
-  const displayPosition = getDisplayPosition();
+  // Memoized to avoid recalculating on every render
+  const displayPosition = useMemo(() => {
+    return getDisplayPosition();
+  }, [getDisplayPosition]);
 
   // ============================================
   // SPRITE RECOLORING
@@ -3576,10 +3754,12 @@ const GameFighter = ({
           $isAtTheRopes={penguin.isAtTheRopes}
         >
           <AnimatedFighterImage
+            key={recoloredSpriteSrc} // Force animation restart when sprite changes
             src={recoloredSpriteSrc}
             alt="fighter"
-            $frame={fighterSpriteFrame}
             $frameCount={spriteConfig?.frameCount || 1}
+            $fps={spriteConfig?.fps || 30}
+            $loop={spriteConfig?.loop !== false}
             $isLocalPlayer={penguin.id === localId}
             $isAtTheRopes={penguin.isAtTheRopes}
             $isGrabBreaking={penguin.isGrabBreaking}
@@ -3689,19 +3869,6 @@ const GameFighter = ({
           />
         </RitualSpriteContainer>
       ))}
-
-      {(penguin.isHit || penguin.isBeingThrown) && (
-        <TintedImage
-          $x={displayPosition.x}
-          $y={displayPosition.y}
-          $facing={penguin.facing}
-          $isThrowing={penguin.isThrowing}
-          $isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
-          src={currentSpriteSrc}
-          alt="hurt-tint"
-          $variant="hurt"
-        />
-      )}
 
       {thickBlubberIndicator && (
         <TintedImage

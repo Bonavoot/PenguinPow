@@ -6,6 +6,7 @@ import PowerUpSelection from "./PowerUpSelection";
 import PowerUpReveal from "./PowerUpReveal";
 import GrabClashUI from "./GrabClashUI";
 import CrowdLayer from "./CrowdLayer";
+import PreMatchScreen from "./PreMatchScreen";
 import gamepadHandler from "../utils/gamepadHandler";
 import { usePlayerColors } from "../context/PlayerColorContext";
 // import gameMusic from "../sounds/game-music.mp3";
@@ -15,17 +16,24 @@ import PropTypes from "prop-types";
 // gameMusicAudio.loop = true;
 // gameMusicAudio.volume = 0.02;
 
-const Game = ({ rooms, roomName, localId, setCurrentPage }) => {
+const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) => {
   const { socket } = useContext(SocketContext);
   const [isPowerUpSelectionActive, setIsPowerUpSelectionActive] =
     useState(false);
   const [opponentDisconnected, setOpponentDisconnected] = useState(false);
   const [disconnectedRoomId, setDisconnectedRoomId] = useState(null);
   const [isCrowdCheering, setIsCrowdCheering] = useState(false);
+  
+  // Pre-match screen state
+  const [showPreMatchScreen, setShowPreMatchScreen] = useState(true); // Start with overlay visible
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [isPreloading, setIsPreloading] = useState(true);
+  const preMatchShownRef = useRef(false); // Track if we've already shown/hidden the pre-match
+  
   const index = rooms.findIndex((room) => room.id === roomName);
   
   // Get player colors for sprite recoloring
-  const { player1Color, player2Color } = usePlayerColors();
+  const { player1Color, player2Color, preloadSprites } = usePlayerColors();
 
   // Get the current room with null safety
   const currentRoom = index !== -1 ? rooms[index] : null;
@@ -333,6 +341,56 @@ const Game = ({ rooms, roomName, localId, setCurrentPage }) => {
     };
   }, []);
 
+  // Pre-match screen: Show overlay while preloading sprites
+  // This shows the actual game scene (crowd, gyoji, players) behind a semi-transparent overlay
+  useEffect(() => {
+    // Only run once when game first loads
+    if (preMatchShownRef.current) return;
+    preMatchShownRef.current = true;
+    
+    const runPreload = async () => {
+      console.log("Game: Starting pre-match screen and sprite preload...");
+      
+      // Simulate loading progress while actual preloading happens
+      const progressInterval = setInterval(() => {
+        setLoadingProgress(prev => {
+          if (prev >= 90) return 90;
+          return prev + Math.random() * 15;
+        });
+      }, 200);
+      
+      try {
+        // Preload all recolored sprites
+        await preloadSprites(player1Color, player2Color);
+        console.log("Game: Sprites preloaded successfully");
+        
+        // Complete the progress bar
+        clearInterval(progressInterval);
+        setLoadingProgress(100);
+        
+        // Brief pause at 100% to let players see the matchup
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+      } catch (error) {
+        console.error("Game: Failed to preload sprites:", error);
+        clearInterval(progressInterval);
+        setLoadingProgress(100);
+        // Wait anyway so players can see the matchup
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      
+      // Hide pre-match screen
+      setIsPreloading(false);
+      setShowPreMatchScreen(false);
+      
+      // Signal server that pre-match is complete - NOW start power-up selection
+      console.log("Game: Pre-match complete, signaling server to start power-up selection");
+      socket.emit("pre_match_complete", { roomId: roomName });
+    };
+    
+    runPreload();
+  }, [preloadSprites, player1Color, player2Color, socket, roomName]);
+
   // Handle opponent disconnection - hide power-up selection UI for ALL game phases
   useEffect(() => {
     const handleOpponentDisconnected = (data) => {
@@ -424,6 +482,21 @@ const Game = ({ rooms, roomName, localId, setCurrentPage }) => {
           player2={currentRoom.players?.[1]}
           localId={localId}
         />
+        
+        {/* Pre-match screen overlay - INSIDE game-container so it scales with 16:9 aspect ratio */}
+        {showPreMatchScreen && currentRoom && (
+          <PreMatchScreen
+            player1Name={currentRoom.players[0]?.fighter || "Player 1"}
+            player2Name={currentRoom.players[1]?.isCPU ? "CPU" : (currentRoom.players[1]?.fighter || "Player 2")}
+            player1Color={currentRoom.players[0]?.mawashiColor || player1Color}
+            player2Color={currentRoom.players[1]?.mawashiColor || player2Color}
+            player1Record={{ wins: 0, losses: 0 }}
+            player2Record={{ wins: 0, losses: 0 }}
+            loadingProgress={loadingProgress}
+            isLoading={isPreloading}
+            isCPUMatch={isCPUMatch}
+          />
+        )}
       </div>
       <MobileControls
         isInputBlocked={isPowerUpSelectionActive}
@@ -447,6 +520,7 @@ Game.propTypes = {
   roomName: PropTypes.string.isRequired,
   localId: PropTypes.string.isRequired,
   setCurrentPage: PropTypes.func.isRequired,
+  isCPUMatch: PropTypes.bool,
 };
 
 export default Game;

@@ -1,7 +1,10 @@
-import { useEffect, useState, useRef, useMemo } from "react";
+import React, { useEffect, useState, useRef, useMemo, memo } from "react";
 import styled from "styled-components";
 import PropTypes from "prop-types";
 import "./HitEffect.css";
+
+// Pre-create particle indices to avoid array recreation on every render
+const PARTICLE_INDICES = [0, 1, 2, 3];
 
 const HitEffectContainer = styled.div`
   position: absolute;
@@ -117,7 +120,7 @@ const HitEffect = ({ position }) => {
           />
         ));
 
-        const particles = [0, 1, 2, 3].map((i) => (
+        const particles = PARTICLE_INDICES.map((i) => (
           <Particle key={`${effect.id}-p-${i}`} className="particle" />
         ));
 
@@ -156,4 +159,15 @@ HitEffect.propTypes = {
   }),
 };
 
-export default HitEffect;
+// Memoize to prevent re-renders when parent updates but position hasn't changed
+export default memo(HitEffect, (prevProps, nextProps) => {
+  // Only re-render if the position reference or its identifying properties change
+  if (!prevProps.position && !nextProps.position) return true;
+  if (!prevProps.position || !nextProps.position) return false;
+  
+  // Compare by hitId/timestamp to detect new hits
+  return (
+    prevProps.position.hitId === nextProps.position.hitId &&
+    prevProps.position.timestamp === nextProps.position.timestamp
+  );
+});

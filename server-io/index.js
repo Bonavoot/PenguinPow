@@ -137,11 +137,157 @@ const rooms = Array.from({ length: 10 }, (_, i) => ({
   disconnectedDuringGame: false, // Track if disconnection happened during active gameplay
   // Brief freeze for clarity on impactful moments
   hitstopUntil: 0,
+  // PERFORMANCE: Track previous state for delta updates
+  previousPlayerStates: [null, null],
+  // PERFORMANCE: Throttle screen shake events
+  lastScreenShakeTime: 0,
 }));
+
+// ============================================
+// PERFORMANCE OPTIMIZATION: Lookup Maps
+// O(1) lookups instead of O(n) array.find()
+// ============================================
+const roomsByPlayerId = new Map(); // playerId -> room
+const playerById = new Map(); // playerId -> player object
+
+// Helper to register player in lookup maps
+function registerPlayerInMaps(player, room) {
+  roomsByPlayerId.set(player.id, room);
+  playerById.set(player.id, player);
+}
+
+// Helper to unregister player from lookup maps
+function unregisterPlayerFromMaps(playerId) {
+  roomsByPlayerId.delete(playerId);
+  playerById.delete(playerId);
+}
+
+// Fast room lookup by player ID - O(1) instead of O(n)
+function getRoomByPlayerId(playerId) {
+  return roomsByPlayerId.get(playerId);
+}
+
+// Fast player lookup by ID - O(1) instead of O(n)
+function getPlayerById(playerId) {
+  return playerById.get(playerId);
+}
+
+// ============================================
+// PERFORMANCE: Delta State Updates
+// Only send properties that changed since last tick
+// ============================================
+const ALWAYS_SEND_PROPS = ['x', 'y', 'facing', 'stamina', 'id', 'fighter', 'color', 'mawashiColor']; // Always include position and identity data
+
+// Properties that change frequently during gameplay
+const DELTA_TRACKED_PROPS = [
+  'isAttacking', 'isSlapAttack', 'slapAnimation', 'attackType',
+  'isChargingAttack', 'chargeAttackPower', 'chargeStartTime',
+  'isGrabbing', 'isBeingGrabbed', 'grabbedOpponent', 'grabState', 'grabAttemptType',
+  'isGrabbingMovement', 'isWhiffingGrab', 'isGrabClashing', 'isGrabStartup',
+  'isHit', 'isDead', 'isRecovering', 'isDodging', 'dodgeDirection',
+  'isRawParrying', 'isRawParryStun', 'isRawParrySuccess', 'isPerfectRawParrySuccess',
+  'isThrowing', 'isBeingThrown', 'isThrowTeching', 'isBeingPulled', 'isBeingPushed',
+  'isThrowingSalt', 'isReady', 'isBowing', 'isAtTheRopes',
+  'isThrowingSnowball', 'isSpawningPumoArmy',
+  'isCrouchStance', 'isCrouchStrafing', 'isGrabBreaking', 'isGrabBreakCountered',
+  'isAttemptingGrabThrow', 'isInRitualPhase',
+  'knockbackVelocity', 'activePowerUp', 'powerUpMultiplier',
+  'snowballs', 'pumoArmy', 'snowballCooldown', 'pumoArmyCooldown',
+  'isPowerSliding', 'isBraking', 'movementVelocity', 'isStrafing',
+  'isJumping', 'isDiving', 'sizeMultiplier'
+];
+
+function computePlayerDelta(currentState, previousState) {
+  if (!previousState) {
+    // First update - send everything relevant
+    const delta = {};
+    for (const prop of [...ALWAYS_SEND_PROPS, ...DELTA_TRACKED_PROPS]) {
+      if (currentState[prop] !== undefined) {
+        delta[prop] = currentState[prop];
+      }
+    }
+    return delta;
+  }
+  
+  const delta = {};
+  
+  // Always include essential positioning
+  for (const prop of ALWAYS_SEND_PROPS) {
+    delta[prop] = currentState[prop];
+  }
+  
+  // Only include changed properties
+  for (const prop of DELTA_TRACKED_PROPS) {
+    const current = currentState[prop];
+    const previous = previousState[prop];
+    
+    // Deep compare for objects (knockbackVelocity, snowballs, pumoArmy)
+    if (typeof current === 'object' && current !== null) {
+      if (Array.isArray(current)) {
+        // For arrays, compare length and stringify for simple diff
+        if (!Array.isArray(previous) || current.length !== previous.length || 
+            JSON.stringify(current) !== JSON.stringify(previous)) {
+          delta[prop] = current;
+        }
+      } else {
+        // For objects like knockbackVelocity
+        if (!previous || current.x !== previous.x || current.y !== previous.y) {
+          delta[prop] = current;
+        }
+      }
+    } else if (current !== previous) {
+      delta[prop] = current;
+    }
+  }
+  
+  return delta;
+}
+
+// Store deep copy of player state for comparison
+function clonePlayerState(player) {
+  const clone = {};
+  for (const prop of [...ALWAYS_SEND_PROPS, ...DELTA_TRACKED_PROPS]) {
+    const value = player[prop];
+    if (value !== undefined) {
+      if (typeof value === 'object' && value !== null) {
+        clone[prop] = JSON.parse(JSON.stringify(value));
+      } else {
+        clone[prop] = value;
+      }
+    }
+  }
+  return clone;
+}
+
+// ============================================
+// PERFORMANCE: Screen Shake Throttling
+// Prevent multiple screen shakes from stacking
+// ============================================
+const SCREEN_SHAKE_MIN_INTERVAL = 100; // Minimum ms between screen shakes
+
+function emitThrottledScreenShake(room, io, shakeData) {
+  const now = Date.now();
+  // Initialize lastScreenShakeTime if it doesn't exist
+  if (room.lastScreenShakeTime === undefined) {
+    room.lastScreenShakeTime = 0;
+  }
+  if (now - room.lastScreenShakeTime < SCREEN_SHAKE_MIN_INTERVAL) {
+    // Skip this shake, too soon after the last one
+    return;
+  }
+  room.lastScreenShakeTime = now;
+  io.in(room.id).emit("screen_shake", shakeData);
+}
 
 let gameLoop = null;
 let staminaRegenCounter = 0;
 const TICK_RATE = 64;
+// Server broadcasts at 64Hz for maximum responsiveness
+// Client-side optimizations prevent re-render storms:
+// - Interpolation state updates throttled to 30fps
+// - setPenguin only re-renders on discrete state changes (not position)
+const BROADCAST_EVERY_N_TICKS = 1;
+let broadcastTickCounter = 0;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.25; // Increased from 0.22 for snappier movement
 const GROUND_LEVEL = 210;
@@ -574,14 +720,19 @@ function handlePowerUpSelection(room) {
     // Store available power-ups for this player
     room.playerAvailablePowerUps[player.id] = availablePowerUps;
 
-    // Auto-select power-up for CPU player immediately
+    // Auto-select power-up for CPU player after short delay (gives human time to see options)
     if (player.isCPU) {
-      const randomPowerUp =
-        availablePowerUps[Math.floor(Math.random() * availablePowerUps.length)];
-      player.selectedPowerUp = randomPowerUp;
-      room.playersSelectedPowerUps[player.id] = randomPowerUp;
-      // CPU should also throw salt and transition after selection
-      handleSaltThrowAndPowerUp(player, room);
+      setTimeout(() => {
+        // Make sure room and player still exist
+        if (!room || !room.players || !room.players.includes(player)) return;
+        
+        const randomPowerUp =
+          availablePowerUps[Math.floor(Math.random() * availablePowerUps.length)];
+        player.selectedPowerUp = randomPowerUp;
+        room.playersSelectedPowerUps[player.id] = randomPowerUp;
+        // CPU should also throw salt and transition after selection
+        handleSaltThrowAndPowerUp(player, room);
+      }, 2500); // 2.5 seconds after power-up selection starts
     }
   });
 
@@ -831,8 +982,12 @@ function resetRoomAndPlayers(room) {
   // Clear player-specific power-up data
   room.playerAvailablePowerUps = {};
 
-  // Start power-up selection phase instead of automatic salt throwing
-  handlePowerUpSelection(room);
+  // Don't start power-up selection immediately - wait for client to signal pre-match is complete
+  // For subsequent rounds (not initial), start power-up selection immediately
+  if (!room.isInitialRound) {
+    handlePowerUpSelection(room);
+  }
+  // If it's the initial round, power-up selection will be triggered by 'pre_match_complete' event
 
   // Emit an event to inform clients that the game has been reset
   io.in(room.id).emit("game_reset", false);
@@ -1607,8 +1762,8 @@ io.on("connection", (socket) => {
                   snowball.hasHit = false; // Reset hit flag so it can hit the thrower
                   snowball.velocityX = -snowball.velocityX * 1.3; // Reverse direction and make it 30% faster
                   snowball.reflectedByPerfectParry = true; // Mark as reflected to prevent infinite reflection
-                  // Emit screen shake for perfect parry
-                  io.in(room.id).emit("screen_shake", {
+                  // Emit screen shake for perfect parry (throttled)
+                  emitThrottledScreenShake(room, io, {
                     intensity: 0.7,
                     duration: 300,
                   });
@@ -2200,8 +2355,8 @@ io.on("connection", (socket) => {
             y: player.y,
             direction: player.x < (MAP_LEFT_BOUNDARY + MAP_RIGHT_BOUNDARY) / 2 ? "left" : "right",
           });
-          // Emit extra screen shake for dramatic near-ring-out
-          io.in(room.id).emit("screen_shake", {
+          // Emit extra screen shake for dramatic near-ring-out (throttled)
+          emitThrottledScreenShake(room, io, {
             intensity: 1.0,
             duration: 400,
           });
@@ -2356,8 +2511,8 @@ io.on("connection", (socket) => {
                 ) {
                   handleWinCondition(room, opponent, player, io);
                 } else {
-                  // Emit screen shake for landing after throw
-                  io.in(room.id).emit("screen_shake", {
+                  // Emit screen shake for landing after throw (throttled)
+                  emitThrottledScreenShake(room, io, {
                     intensity: 0.6,
                     duration: 200,
                   });
@@ -3991,11 +4146,34 @@ io.on("connection", (socket) => {
         player.stamina = clampStaminaValue(player.stamina);
       });
 
-      io.in(room.id).emit("fighter_action", {
-        player1: room.players[0],
-        player2: room.players[1],
-      });
+      // PERFORMANCE: Only broadcast every N ticks to reduce network load
+      // Game logic runs at 64Hz, but broadcasts at ~32Hz
+      if (broadcastTickCounter % BROADCAST_EVERY_N_TICKS === 0) {
+        // Initialize previousPlayerStates if it doesn't exist (for rooms created before optimization)
+        if (!room.previousPlayerStates) {
+          room.previousPlayerStates = [null, null];
+        }
+        
+        // PERFORMANCE: Use delta updates - only send changed properties
+        // This significantly reduces network bandwidth and client-side processing
+        const player1Delta = computePlayerDelta(room.players[0], room.previousPlayerStates[0]);
+        const player2Delta = computePlayerDelta(room.players[1], room.previousPlayerStates[1]);
+        
+        // Store current state for next comparison
+        room.previousPlayerStates[0] = clonePlayerState(room.players[0]);
+        room.previousPlayerStates[1] = clonePlayerState(room.players[1]);
+        
+        io.in(room.id).emit("fighter_action", {
+          player1: player1Delta,
+          player2: player2Delta,
+          // Include flag so client knows this is a delta update
+          isDelta: true,
+        });
+      }
     });
+    
+    // Increment broadcast counter
+    broadcastTickCounter++;
 
     if (staminaRegenCounter >= STAMINA_REGEN_INTERVAL_MS) {
       staminaRegenCounter = 0; // Reset the counter after interval
@@ -4451,9 +4629,9 @@ io.on("connection", (socket) => {
           timeoutManager.clearPlayerSpecific(player.id, "perfectParryStunReset");
         }
 
-        // Emit screen shake for perfect parry with higher intensity
+        // Emit screen shake for perfect parry with higher intensity (throttled)
         if (currentRoom) {
-          io.in(currentRoom.id).emit("screen_shake", {
+          emitThrottledScreenShake(currentRoom, io, {
             intensity: 0.9,
             duration: 400,
           });
@@ -4509,9 +4687,9 @@ io.on("connection", (socket) => {
         // Store that we have an active stun timeout
         player.perfectParryStunBaseTimeout = true;
       } else {
-        // Regular parry - emit screen shake with lower intensity
+        // Regular parry - emit screen shake with lower intensity (throttled)
         if (currentRoom) {
-          io.in(currentRoom.id).emit("screen_shake", {
+          emitThrottledScreenShake(currentRoom, io, {
             intensity: 0.5,
             duration: 200,
           });
@@ -4755,8 +4933,8 @@ io.on("connection", (socket) => {
           if (isSlapAttack) {
             // Slaps get brief hitstop for satisfying impact
             triggerHitstop(currentRoom, HITSTOP_SLAP_MS);
-            // Punchy screen shake for slaps
-            io.in(currentRoom.id).emit("screen_shake", {
+            // Punchy screen shake for slaps (throttled)
+            emitThrottledScreenShake(currentRoom, io, {
               intensity: 0.6,
               duration: 120,
             });
@@ -4764,8 +4942,8 @@ io.on("connection", (socket) => {
             // Charged attacks scale hitstop with charge power
             const hitstopDuration = getChargedHitstop(chargePercentage / 100);
             triggerHitstop(currentRoom, hitstopDuration);
-            // Heavy screen shake for charged attacks - scales with power
-            io.in(currentRoom.id).emit("screen_shake", {
+            // Heavy screen shake for charged attacks - scales with power (throttled)
+            emitThrottledScreenShake(currentRoom, io, {
               intensity: 0.9 + (chargePercentage / 100) * 0.4,
               duration: 220 + (chargePercentage / 100) * 180,
             });
@@ -4908,7 +5086,7 @@ io.on("connection", (socket) => {
         id: data.socketId,
         fighter: "player 1",
         color: "aqua",
-        mawashiColor: "#4169E1", // Default blue for Player 1
+        mawashiColor: "#000080", // Default navy for Player 1
         isJumping: false,
         isAttacking: false,
         throwCooldown: false,
@@ -5051,6 +5229,8 @@ io.on("connection", (socket) => {
         ringOutThrowDirection: null,
         inputLockUntil: 0,
       });
+      // PERFORMANCE: Register player 1 in lookup maps
+      registerPlayerInMaps(rooms[roomIndex].players[0], rooms[roomIndex]);
     } else if (rooms[roomIndex].players.length === 1) {
       rooms[roomIndex].players.push({
         id: data.socketId,
@@ -5201,6 +5381,8 @@ io.on("connection", (socket) => {
         // Dohyo fall physics
         isFallingOffDohyo: false,
       });
+      // PERFORMANCE: Register player 2 in lookup maps
+      registerPlayerInMaps(rooms[roomIndex].players[1], rooms[roomIndex]);
     }
 
     // If this is the second player joining and room was in disconnected state, reset it
@@ -5412,6 +5594,10 @@ io.on("connection", (socket) => {
     const cpuPlayer = createCPUPlayer(cpuPlayerId);
     room.players.push(cpuPlayer);
     room.cpuPlayerId = cpuPlayerId; // Store for cleanup
+    
+    // PERFORMANCE: Register both players in lookup maps
+    registerPlayerInMaps(room.players[0], room);
+    registerPlayerInMaps(cpuPlayer, room);
 
     // Emit success to the client
     socket.emit("cpu_match_created", {
@@ -5476,7 +5662,23 @@ io.on("connection", (socket) => {
     io.in(data.roomId).emit("lobby", room.players);
 
     if (room.readyCount > 1) {
+      // Mark this as the initial round - power-up selection will wait for pre_match_complete
+      room.isInitialRound = true;
       io.in(data.roomId).emit("initial_game_start", room);
+    }
+  });
+
+  // Client signals that pre-match screen is done - now start power-up selection
+  socket.on("pre_match_complete", (data) => {
+    const { roomId } = data;
+    const room = rooms.find((r) => r.id === roomId);
+    
+    if (!room) return;
+    
+    // Only proceed if this is still the initial round
+    if (room.isInitialRound) {
+      room.isInitialRound = false; // No longer initial round
+      handlePowerUpSelection(room);
     }
   });
 
@@ -6684,6 +6886,11 @@ io.on("connection", (socket) => {
               player.movementVelocity = 0;
               player.isStrafing = false;
 
+              // Auto-correct facing direction to face opponent before throw
+              const shouldFaceRight = player.x < opponent.x;
+              player.facing = shouldFaceRight ? -1 : 1;
+              player.throwingFacingDirection = player.facing;
+
               player.isThrowing = true;
               player.throwStartTime = Date.now();
               player.throwEndTime = Date.now() + 400;
@@ -6726,6 +6933,11 @@ io.on("connection", (socket) => {
             }
 
             clearChargeState(player, true); // true = cancelled by throw
+
+            // Auto-correct facing direction to face opponent before throw (whiffed throw)
+            const shouldFaceRight = player.x < opponent.x;
+            player.facing = shouldFaceRight ? -1 : 1;
+            player.throwingFacingDirection = player.facing;
 
             player.isThrowing = true;
             player.throwStartTime = Date.now();
@@ -6877,6 +7089,9 @@ io.on("connection", (socket) => {
         rooms[roomIndex].roundStartTimer = null;
       }
 
+      // PERFORMANCE: Unregister from lookup maps before removal
+      unregisterPlayerFromMaps(socket.id);
+      
       // Remove the player from the room
       rooms[roomIndex].players = rooms[roomIndex].players.filter(
         (player) => player.id !== socket.id
@@ -6965,6 +7180,9 @@ io.on("connection", (socket) => {
 
       const hadTwoPlayers = rooms[roomIndex].players.length === 2;
 
+      // PERFORMANCE: Unregister from lookup maps before removal
+      unregisterPlayerFromMaps(socket.id);
+      
       // Remove the player from the room
       rooms[roomIndex].players = rooms[roomIndex].players.filter(
         (player) => player.id !== socket.id
@@ -7130,6 +7348,9 @@ io.on("connection", (socket) => {
         cleanupOpponentStates(opponent);
       }
 
+      // PERFORMANCE: Unregister from lookup maps before removal
+      unregisterPlayerFromMaps(socket.id);
+      
       // Remove the player
       rooms[roomIndex].players = rooms[roomIndex].players.filter(
         (player) => player.id !== socket.id

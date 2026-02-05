@@ -10,6 +10,7 @@ import styled from "styled-components";
 import {
   recolorImage,
   BLUE_COLOR_RANGES,
+  SPRITE_BASE_COLOR,
   COLOR_PRESETS,
 } from "../utils/SpriteRecolorizer";
 
@@ -114,7 +115,7 @@ function ColorPicker({
   const [isLoading, setIsLoading] = useState(false);
   const mountedRef = useRef(true);
 
-  const defaultColor = playerNumber === 1 ? COLOR_PRESETS.blue : COLOR_PRESETS.red;
+  const defaultColor = playerNumber === 1 ? SPRITE_BASE_COLOR : COLOR_PRESETS.red;
   // All sprites are now blue - always use BLUE_COLOR_RANGES
   const colorRanges = BLUE_COLOR_RANGES;
   const baseSprite = pumo2;
@@ -129,8 +130,8 @@ function ColorPicker({
   // Update preview when color changes
   // UNIFIED: Base sprite is blue, so we need to recolor if color is NOT blue
   useEffect(() => {
-    // If no color selected or color is blue, show the base blue sprite
-    if (!currentColor || currentColor === COLOR_PRESETS.blue) {
+    // If no color selected or color is sprite base color (blue), show the base sprite
+    if (!currentColor || currentColor === SPRITE_BASE_COLOR) {
       setPreviewSrc(baseSprite);
       return;
     }
@@ -161,16 +162,18 @@ function ColorPicker({
 
   // Color options to display
   const colorOptions = [
-    { name: "Blue", hex: COLOR_PRESETS.blue },
-    { name: "Red", hex: COLOR_PRESETS.red },
-    { name: "Pink", hex: COLOR_PRESETS.pink },
-    { name: "Green", hex: COLOR_PRESETS.green },
+    { name: "Black", hex: COLOR_PRESETS.black },
+    { name: "Navy", hex: COLOR_PRESETS.navy },
     { name: "Purple", hex: COLOR_PRESETS.purple },
+    { name: "Green", hex: COLOR_PRESETS.green },
+    { name: "Red", hex: COLOR_PRESETS.red },
     { name: "Orange", hex: COLOR_PRESETS.orange },
-    { name: "Cyan", hex: COLOR_PRESETS.cyan },
+    { name: "Pink", hex: COLOR_PRESETS.pink },
     { name: "Gold", hex: COLOR_PRESETS.gold },
-    { name: "Teal", hex: COLOR_PRESETS.teal },
-    { name: "Violet", hex: COLOR_PRESETS.violet },
+    { name: "Brown", hex: COLOR_PRESETS.brown },
+    { name: "Silver", hex: COLOR_PRESETS.silver },
+    { name: "Light Blue", hex: COLOR_PRESETS.lightBlue },
+    { name: "Maroon", hex: COLOR_PRESETS.maroon },
   ];
 
   return (

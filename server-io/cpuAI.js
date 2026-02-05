@@ -1538,6 +1538,12 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
         cpu.movementVelocity = 0;
         cpu.isStrafing = false;
         
+        // Auto-correct facing direction to face opponent before throw
+        const shouldFaceRight = cpu.x < opponent.x;
+        cpu.facing = shouldFaceRight ? -1 : 1;
+        cpu.throwingFacingDirection = cpu.facing;
+        opponent.beingThrownFacingDirection = -cpu.facing;
+        
         cpu.isThrowing = true;
         cpu.throwStartTime = Date.now();
         cpu.throwEndTime = Date.now() + 400;
@@ -1555,9 +1561,6 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
         if (opponent.isBeingGrabbed) {
           opponent.isBeingGrabbed = false;
         }
-        
-        cpu.throwingFacingDirection = cpu.facing;
-        opponent.beingThrownFacingDirection = -cpu.facing;
       }
     }, 500); // Changed from immediate to 500ms for reaction window
     

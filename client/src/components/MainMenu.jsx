@@ -912,6 +912,7 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId, connectionError
             rooms={rooms}
             roomName={roomName}
             setCurrentPage={setCurrentPage}
+            isCPUMatch={isCPUMatch}
           />
         </div>
       );

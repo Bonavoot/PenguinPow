@@ -1,6 +1,6 @@
+import React, { memo, useMemo } from "react";
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
-import { useMemo } from "react";
 
 // Victory animation - explosive, triumphant entrance (NO blur - causes freeze)
 const victorySlam = keyframes`
@@ -864,4 +864,5 @@ RoundResult.propTypes = {
   isVictory: PropTypes.bool.isRequired,
 };
 
-export default RoundResult;
+// Memoize to prevent unnecessary re-renders - this component has heavy animations
+export default memo(RoundResult);

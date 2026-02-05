@@ -17,6 +17,7 @@
 // ============================================
 import pumoWaddle2Sheet from "../assets/spritesheets/pumo-waddle2_spritesheet.png";
 import pumoArmy2Sheet from "../assets/spritesheets/pumo-army2_spritesheet.png";
+// NOTE: blocking_spritesheet.png is actually BLUE (files were mislabeled)
 import blocking2Sheet from "../assets/spritesheets/blocking_spritesheet.png";
 import bow2Sheet from "../assets/spritesheets/bow2_spritesheet.png";
 import grabAttempt2Sheet from "../assets/spritesheets/grab-attempt2_spritesheet.png";
@@ -71,8 +72,8 @@ const BLUE_ANIMATED_SPRITES = {
   waddle: {
     src: pumoWaddle2Sheet,
     frameCount: 21,
-    frameWidth: 1024,
-    frameHeight: 1024,
+    frameWidth: 480,
+    frameHeight: 480,
     fps: 12,
   },
   army: {
@@ -84,7 +85,7 @@ const BLUE_ANIMATED_SPRITES = {
   },
   crouching: {
     src: blocking2Sheet,
-    frameCount: 6,
+    frameCount: 6,  // blocking_spritesheet (blue) is 2880x480 = 6 frames
     frameWidth: 480,
     frameHeight: 480,
     fps: 8,
@@ -134,8 +135,8 @@ const BLUE_ANIMATED_SPRITES = {
   beingGrabbed: {
     src: beingGrabbed2Sheet,
     frameCount: 2,
-    frameWidth: 1024,
-    frameHeight: 1024,
+    frameWidth: 480,
+    frameHeight: 480,
     fps: 8,
   },
   // Ritual animation spritesheets (need to be preloaded with player colors)
@@ -208,48 +209,46 @@ export const STATIC_SPRITES = {
  * Color preset options for customization
  */
 export const COLOR_PRESETS = {
+  // Neutrals
+  black: { hex: "#252525", name: "Black" },
+  silver: { hex: "#A8A8A8", name: "Silver" },
+  
   // Blues
-  blue: { hex: "#4169E1", name: "Royal Blue" },
-  skyBlue: { hex: "#87CEEB", name: "Sky Blue" },
   navy: { hex: "#000080", name: "Navy" },
-  cyan: { hex: "#00CED1", name: "Cyan" },
+  lightBlue: { hex: "#5BC0DE", name: "Light Blue" },
   
   // Reds
   red: { hex: "#DC143C", name: "Crimson" },
-  darkRed: { hex: "#8B0000", name: "Dark Red" },
-  coral: { hex: "#FF6347", name: "Coral" },
+  maroon: { hex: "#800000", name: "Maroon" },
   
   // Pinks
-  pink: { hex: "#FF69B4", name: "Hot Pink" },
-  lightPink: { hex: "#FFB6C1", name: "Light Pink" },
-  magenta: { hex: "#FF00FF", name: "Magenta" },
+  pink: { hex: "#FFB6C1", name: "Light Pink" },
   
   // Greens
   green: { hex: "#32CD32", name: "Lime Green" },
-  emerald: { hex: "#50C878", name: "Emerald" },
-  forest: { hex: "#228B22", name: "Forest" },
-  teal: { hex: "#008080", name: "Teal" },
   
   // Purples
   purple: { hex: "#9932CC", name: "Purple" },
-  violet: { hex: "#EE82EE", name: "Violet" },
-  indigo: { hex: "#4B0082", name: "Indigo" },
   
   // Oranges/Yellows
   orange: { hex: "#FF8C00", name: "Orange" },
   gold: { hex: "#FFD700", name: "Gold" },
   
-  // Neutrals
-  white: { hex: "#FFFFFF", name: "White" },
-  silver: { hex: "#C0C0C0", name: "Silver" },
-  charcoal: { hex: "#36454F", name: "Charcoal" },
+  // Browns
+  brown: { hex: "#5D3A1A", name: "Brown" },
 };
+
+/**
+ * The base color of the sprite assets (used for recoloring logic)
+ * Sprites are blue - if target color matches this, no recoloring needed
+ */
+export const SPRITE_BASE_COLOR = "#4169E1";
 
 /**
  * Default colors for each player
  */
 export const DEFAULT_COLORS = {
-  player1: COLOR_PRESETS.blue.hex,
+  player1: COLOR_PRESETS.navy.hex,
   player2: COLOR_PRESETS.red.hex,
 };
 
@@ -279,6 +278,7 @@ export default {
   ANIMATED_SPRITES,
   STATIC_SPRITES,
   COLOR_PRESETS,
+  SPRITE_BASE_COLOR,
   DEFAULT_COLORS,
   getPlayerSprites,
   getSpriteConfig,

@@ -13,6 +13,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   recolorImage,
   BLUE_COLOR_RANGES,
+  SPRITE_BASE_COLOR,
   COLOR_PRESETS,
   clearRecolorCache,
 } from "../utils/SpriteRecolorizer";
@@ -29,7 +30,7 @@ import attemptingGrabThrow2 from "../assets/attempting-grab-throw2.png";
 import ready2 from "../assets/ready2.png";
 import hit2 from "../assets/hit2.png";
 import dodging2 from "../assets/dodging2.png";
-import crouching2 from "../assets/blocking.png";
+import crouching2 from "../assets/blocking2.png";
 import crouchStance2 from "../assets/crouch-stance2.png";
 import crouchStrafing2 from "../assets/crouch-strafing2.png";
 import bow2 from "../assets/bow2.png";
@@ -106,9 +107,8 @@ export function useRecoloredSprites(playerNumber, colorHex) {
       // All sprites are blue - always use BLUE_COLOR_RANGES
       const colorRanges = BLUE_COLOR_RANGES;
 
-      // If using default color, just return original sprites
-      const defaultColor = playerNumber === "player1" ? COLOR_PRESETS.blue : COLOR_PRESETS.red;
-      if (colorHex === defaultColor) {
+      // If using sprite base color (blue), just return original sprites without recoloring
+      if (colorHex === SPRITE_BASE_COLOR) {
         setSprites(sourceSprites);
         previousColorRef.current = colorHex;
         setIsLoading(false);
@@ -168,8 +168,8 @@ export async function preloadRecoloredSprites(player1Color, player2Color) {
     player2Sprites: { ...BLUE_SPRITES },
   };
 
-  // Recolor Player 1 if not using default blue
-  if (player1Color && player1Color !== COLOR_PRESETS.blue) {
+  // Recolor Player 1 if not using sprite base color (blue)
+  if (player1Color && player1Color !== SPRITE_BASE_COLOR) {
     const spriteEntries = Object.entries(BLUE_SPRITES);
     await Promise.all(
       spriteEntries.map(async ([key, src]) => {

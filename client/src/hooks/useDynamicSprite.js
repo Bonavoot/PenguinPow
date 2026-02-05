@@ -14,8 +14,27 @@ import {
   BLUE_COLOR_RANGES,
 } from "../utils/SpriteRecolorizer";
 
-// Global cache for recolored images
+// Global cache for recolored images with LRU eviction
+const MAX_SPRITE_CACHE_SIZE = 40; // Limit to prevent memory bloat
 const spriteCache = new Map();
+const spriteCacheOrder = []; // LRU tracking
+
+function addToSpriteCache(key, value) {
+  // Move to end if already exists
+  const existingIndex = spriteCacheOrder.indexOf(key);
+  if (existingIndex !== -1) {
+    spriteCacheOrder.splice(existingIndex, 1);
+  }
+  spriteCacheOrder.push(key);
+  
+  // Evict oldest if over limit
+  while (spriteCacheOrder.length > MAX_SPRITE_CACHE_SIZE) {
+    const oldestKey = spriteCacheOrder.shift();
+    spriteCache.delete(oldestKey);
+  }
+  
+  spriteCache.set(key, value);
+}
 
 /**
  * Generate a cache key for a sprite + color combination
@@ -71,7 +90,7 @@ export function useDynamicSprite(originalSrc, playerNumber, colorHex, enabled = 
     recolorImage(originalSrc, colorRanges, colorHex)
       .then((recolored) => {
         if (mountedRef.current) {
-          spriteCache.set(cacheKey, recolored);
+          addToSpriteCache(cacheKey, recolored);
           setSpriteSrc(recolored);
         }
       })
@@ -118,7 +137,7 @@ export async function preloadRecoloredSprites(sprites, colorHex) {
 
       try {
         const recolored = await recolorImage(src, colorRanges, colorHex);
-        spriteCache.set(cacheKey, recolored);
+        addToSpriteCache(cacheKey, recolored);
         results.set(src, recolored);
       } catch (error) {
         console.error(`Failed to recolor ${src}:`, error);
@@ -135,6 +154,7 @@ export async function preloadRecoloredSprites(sprites, colorHex) {
  */
 export function clearSpriteCache() {
   spriteCache.clear();
+  spriteCacheOrder.length = 0;
 }
 
 /**

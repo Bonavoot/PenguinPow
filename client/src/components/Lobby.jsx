@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState, useRef } from "react";
+import { useContext, useEffect, useState, useRef, useCallback } from "react";
 import { SocketContext } from "../SocketContext";
 import { v4 as uuidv4 } from "uuid";
 import PropTypes from "prop-types";
@@ -13,9 +13,8 @@ import { usePlayerColors } from "../context/PlayerColorContext";
 import {
   recolorImage,
   BLUE_COLOR_RANGES,
-  COLOR_PRESETS,
+  SPRITE_BASE_COLOR,
 } from "../utils/SpriteRecolorizer";
-
 // Base sprite for recoloring preview (UNIFIED: all sprites are blue)
 import pumo2 from "../assets/pumo2.png";
 
@@ -152,6 +151,7 @@ const LobbyContainer = styled.div`
   flex-direction: column;
   width: 100vw;
   height: 100vh;
+  min-height: 500px;
   background: linear-gradient(180deg,
     #0a0505 0%,
     #150a08 30%,
@@ -302,9 +302,10 @@ const Header = styled.header`
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: clamp(80px, 12vh, 120px) clamp(20px, 3vw, 40px) clamp(12px, 2vh, 20px);
+  padding: clamp(70px, 10vh, 110px) clamp(20px, 3vw, 40px) clamp(4px, 1vh, 10px);
   position: relative;
   z-index: 10;
+  flex-shrink: 0;
 `;
 
 const TournamentBanner = styled.div`
@@ -353,7 +354,7 @@ const BannerBody = styled.div`
   border: 3px solid #8b7355;
   border-top: none;
   border-radius: 0 0 clamp(6px, 1vw, 12px) clamp(6px, 1vw, 12px);
-  padding: clamp(12px, 2vh, 20px) clamp(24px, 4vw, 50px);
+  padding: clamp(8px, 1.5vh, 16px) clamp(18px, 3vw, 40px);
   box-shadow: 
     0 10px 40px rgba(0,0,0,0.6),
     inset 0 0 30px rgba(0,0,0,0.4);
@@ -437,15 +438,29 @@ const ArenaSection = styled.main`
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: clamp(8px, 1.5vh, 16px);
+  padding: clamp(4px, 1vh, 12px) clamp(8px, 1vw, 16px);
   position: relative;
   z-index: 2;
+  min-height: 0;
+  overflow: hidden;
+`;
+
+const ArenaLayout = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(8px, 1.5vw, 20px);
+  width: 100%;
+  max-width: 1400px;
+  height: 100%;
 `;
 
 const DohyoContainer = styled.div`
   position: relative;
-  width: clamp(500px, 75vw, 900px);
-  height: clamp(280px, 45vh, 450px);
+  flex: 1;
+  max-width: 1000px;
+  height: 100%;
+  min-height: clamp(200px, 35vh, 400px);
 `;
 
 // The circular dohyo ring
@@ -454,8 +469,8 @@ const DohyoRing = styled.div`
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: clamp(200px, 28vw, 340px);
-  height: clamp(200px, 28vw, 340px);
+  width: clamp(140px, 22vw, 280px);
+  height: clamp(140px, 22vw, 280px);
   border-radius: 50%;
   background: radial-gradient(
     circle at center,
@@ -464,19 +479,19 @@ const DohyoRing = styled.div`
     #0f0503 80%,
     #0a0505 100%
   );
-  border: clamp(6px, 1vw, 12px) solid transparent;
+  border: clamp(4px, 0.8vw, 10px) solid transparent;
   background-clip: padding-box;
   animation: ${dohyoPulse} 4s ease-in-out infinite;
   
   /* Ring border effect */
   &::before {
     position: absolute;
-    top: -clamp(8px, 1.2vw, 14px);
-    left: -clamp(8px, 1.2vw, 14px);
-    right: -clamp(8px, 1.2vw, 14px);
-    bottom: -clamp(8px, 1.2vw, 14px);
+    top: -clamp(6px, 1vw, 12px);
+    left: -clamp(6px, 1vw, 12px);
+    right: -clamp(6px, 1vw, 12px);
+    bottom: -clamp(6px, 1vw, 12px);
     border-radius: 50%;
-    border: clamp(4px, 0.7vw, 8px) solid;
+    border: clamp(3px, 0.6vw, 7px) solid;
     border-color: #8b7355;
     box-shadow: 
       inset 0 0 20px rgba(139, 115, 85, 0.3),
@@ -503,7 +518,7 @@ const VersusBadge = styled.div`
   top: 50%;
   transform: translate(-50%, -50%);
   font-family: "Bungee", cursive;
-  font-size: clamp(2.5rem, 6vw, 4.5rem);
+  font-size: clamp(1.8rem, 4.5vw, 3.5rem);
   color: #d4af37;
   z-index: 5;
   animation: ${versusGlow} 3s ease-in-out infinite;
@@ -533,7 +548,7 @@ const PlayerBannerWrapper = styled.div`
 `;
 
 const PlayerBanner = styled.div`
-  width: clamp(170px, 24vw, 280px);
+  width: clamp(160px, 22vw, 280px);
   background: linear-gradient(180deg,
     #1a0a08 0%,
     #2d1510 20%,
@@ -593,7 +608,7 @@ const PlayerHeader = styled.div`
     rgba(45, 21, 16, 0.98) 0%,
     rgba(26, 10, 8, 0.95) 100%
   );
-  padding: clamp(14px, 2vh, 22px) clamp(16px, 2.2vw, 28px);
+  padding: clamp(10px, 1.5vh, 18px) clamp(12px, 1.8vw, 22px);
   border-bottom: 2px solid rgba(139, 115, 85, 0.3);
   position: relative;
   z-index: 3;
@@ -603,7 +618,7 @@ const PlayerHeaderTop = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: clamp(6px, 1vh, 12px);
+  margin-bottom: clamp(4px, 0.7vh, 8px);
 `;
 
 const PlayerStatus = styled.div`
@@ -654,13 +669,13 @@ const PlayerName = styled.div`
 `;
 
 const PlayerAvatarArea = styled.div`
-  height: clamp(150px, 24vh, 240px);
+  height: clamp(140px, 28vh, 280px);
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
   overflow: hidden;
-  padding: clamp(10px, 1.5vh, 18px);
+  padding: clamp(8px, 1.2vh, 16px);
   
   /* Flip for left player */
   ${props => props.$side === 'left' && css`
@@ -670,12 +685,9 @@ const PlayerAvatarArea = styled.div`
 
 const AvatarWrapper = styled.div`
   animation: ${breathe} 2s ease-in-out infinite;
-  
-  img {
-    height: clamp(120px, 24vh, 240px);
-    width: auto;
-    filter: drop-shadow(0 8px 20px rgba(0,0,0,0.6));
-  }
+  display: flex;
+  align-items: center;
+  justify-content: center;
 `;
 
 const WaitingState = styled.div`
@@ -723,7 +735,7 @@ const ControlsFooter = styled.footer`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: clamp(16px, 2.5vh, 28px) clamp(24px, 4vw, 50px);
+  padding: clamp(10px, 1.8vh, 20px) clamp(16px, 3vw, 40px);
   background: linear-gradient(180deg,
     rgba(0, 0, 0, 0.95) 0%,
     rgba(26, 10, 8, 0.98) 100%
@@ -732,11 +744,12 @@ const ControlsFooter = styled.footer`
   position: relative;
   z-index: 10;
   box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+  flex-shrink: 0;
 `;
 
 const ExitButton = styled.button`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.65rem, 1.1vw, 0.85rem);
+  font-size: clamp(0.55rem, 0.95vw, 0.8rem);
   background: linear-gradient(180deg,
     #4a3525 0%,
     #3d2817 50%,
@@ -745,18 +758,19 @@ const ExitButton = styled.button`
   color: #e8dcc8;
   border: 2px solid #8b7355;
   border-radius: clamp(6px, 1vw, 10px);
-  padding: clamp(12px, 1.8vh, 18px) clamp(20px, 3vw, 32px);
+  padding: clamp(8px, 1.4vh, 14px) clamp(14px, 2.2vw, 24px);
   cursor: pointer;
   transition: all 0.25s ease;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   display: flex;
   align-items: center;
-  gap: clamp(10px, 1.2vw, 16px);
+  gap: clamp(6px, 1vw, 12px);
   box-shadow: 
     0 4px 15px rgba(0,0,0,0.4),
     inset 0 1px 0 rgba(255,255,255,0.05);
   text-shadow: 1px 1px 0 #000;
+  white-space: nowrap;
 
   &:hover {
     background: linear-gradient(180deg,
@@ -784,15 +798,15 @@ const ExitIcon = styled.span`
 
 const ReadySection = styled.div`
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: clamp(10px, 1.5vh, 18px);
+  gap: clamp(12px, 2vw, 24px);
 `;
 
 const ReadyButton = styled.button`
   font-family: "Outfit", sans-serif;
   font-weight: 700;
-  font-size: clamp(0.85rem, 1.5vw, 1.2rem);
+  font-size: clamp(0.75rem, 1.3vw, 1.1rem);
   background: linear-gradient(180deg,
     #5a8a3a 0%,
     #4a7a2a 50%,
@@ -800,21 +814,21 @@ const ReadyButton = styled.button`
   );
   color: #e8f0e0;
   border: 3px solid #6aa040;
-  border-radius: clamp(8px, 1.2vw, 12px);
-  padding: clamp(14px, 2vh, 22px) 0;
+  border-radius: clamp(6px, 1vw, 10px);
+  padding: clamp(10px, 1.5vh, 18px) clamp(24px, 3vw, 40px);
   cursor: pointer;
   transition: all 0.25s ease;
   text-transform: uppercase;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.15em;
   box-shadow: 
     0 6px 20px rgba(0,0,0,0.5),
     inset 0 1px 0 rgba(255,255,255,0.15),
     inset 0 -3px 6px rgba(0,0,0,0.2);
   text-shadow: 2px 2px 0 rgba(0,0,0,0.4);
   position: relative;
-  width: clamp(160px, 24vw, 220px);
   box-sizing: border-box;
   text-align: center;
+  white-space: nowrap;
 
   &:hover {
     background: linear-gradient(180deg,
@@ -823,7 +837,7 @@ const ReadyButton = styled.button`
       #4a7a2a 100%
     );
     border-color: #8ac060;
-    transform: translateY(-4px);
+    transform: translateY(-3px);
     box-shadow: 
       0 10px 30px rgba(0,0,0,0.6),
       0 0 25px rgba(106, 160, 64, 0.3),
@@ -832,7 +846,7 @@ const ReadyButton = styled.button`
   }
 
   &:active {
-    transform: translateY(-2px);
+    transform: translateY(-1px);
   }
 `;
 
@@ -861,66 +875,75 @@ const CancelButton = styled(ReadyButton)`
 
 const ReadyCount = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.7rem, 1.3vw, 1rem);
+  font-size: clamp(0.65rem, 1.1vw, 0.9rem);
   color: ${props => props.$ready ? '#4ade80' : '#8b7355'};
   background: linear-gradient(180deg,
     #1a0a08 0%,
     #0f0505 100%
   );
-  padding: clamp(10px, 1.4vh, 16px) 0;
+  padding: clamp(8px, 1.2vh, 14px) clamp(16px, 2vw, 24px);
   border: 2px solid ${props => props.$ready ? '#4ade80' : '#5c4033'};
   border-radius: clamp(6px, 1vw, 10px);
   text-align: center;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   text-shadow: 1px 1px 0 #000;
-  width: clamp(160px, 24vw, 220px);
   box-sizing: border-box;
+  white-space: nowrap;
   ${props => props.$ready && css`
     animation: ${readyGlow} 1.5s ease-in-out infinite;
   `}
 `;
 
 const ReadyLabel = styled.span`
-  font-size: 0.6em;
+  font-size: 0.55em;
   color: rgba(212, 175, 55, 0.6);
   display: block;
-  margin-bottom: clamp(4px, 0.6vh, 8px);
-  letter-spacing: 0.18em;
+  margin-bottom: clamp(2px, 0.4vh, 4px);
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 `;
 
-// Inline Color Picker for player banners
-const InlineColorPicker = styled.div`
+// Side Color Picker - positioned on the sides of the arena
+const SideColorPicker = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(4px, 0.5vh, 8px);
-  padding: clamp(6px, 0.8vh, 10px);
-  background: rgba(0, 0, 0, 0.6);
-  border-radius: 8px;
-  margin-top: clamp(4px, 0.5vh, 8px);
-  opacity: ${props => props.$isOwn ? 1 : 0.7};
+  gap: clamp(6px, 1vh, 10px);
+  padding: clamp(8px, 1.2vh, 14px) clamp(6px, 0.8vw, 12px);
+  background: linear-gradient(180deg,
+    rgba(26, 10, 8, 0.95) 0%,
+    rgba(45, 21, 16, 0.9) 50%,
+    rgba(26, 10, 8, 0.95) 100%
+  );
+  border: 2px solid ${props => props.$isOwn ? '#8b7355' : '#5c4033'};
+  border-radius: clamp(8px, 1vw, 12px);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  opacity: ${props => props.$isOwn ? 1 : 0.6};
   pointer-events: ${props => props.$isOwn ? 'auto' : 'none'};
+  flex-shrink: 0;
+  min-width: clamp(50px, 6vw, 80px);
 `;
 
 const ColorPickerTitle = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.5rem, 0.8vw, 0.7rem);
-  color: ${props => props.$isOwn ? '#d4af37' : '#888'};
+  font-size: clamp(0.4rem, 0.65vw, 0.55rem);
+  color: ${props => props.$isOwn ? '#d4af37' : '#666'};
   text-shadow: 1px 1px 0 #000;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.03em;
+  text-align: center;
+  line-height: 1.3;
 `;
 
 const ColorSwatchGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: clamp(3px, 0.4vw, 5px);
+  grid-template-columns: repeat(2, 1fr);
+  gap: clamp(4px, 0.5vw, 6px);
 `;
 
 const ColorSwatch = styled.button`
-  width: clamp(20px, 2.5vw, 28px);
-  height: clamp(20px, 2.5vw, 28px);
+  width: clamp(22px, 2.8vw, 32px);
+  height: clamp(22px, 2.8vw, 32px);
   border-radius: 4px;
   border: 2px solid ${props => props.$selected ? '#fff' : 'transparent'};
   background-color: ${props => props.$color};
@@ -930,7 +953,7 @@ const ColorSwatch = styled.button`
   opacity: ${props => props.$disabled ? 0.5 : 1};
 
   &:hover {
-    transform: ${props => props.$disabled ? 'none' : 'scale(1.1)'};
+    transform: ${props => props.$disabled ? 'none' : 'scale(1.15)'};
     border-color: ${props => props.$disabled ? 'transparent' : 'rgba(255, 255, 255, 0.5)'};
   }
 
@@ -941,11 +964,11 @@ const ColorSwatch = styled.button`
 
 const YourColorLabel = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.45rem, 0.7vw, 0.6rem);
+  font-size: clamp(0.4rem, 0.6vw, 0.5rem);
   color: #4ade80;
   text-shadow: 1px 1px 0 #000;
   text-transform: uppercase;
-  margin-bottom: 2px;
+  text-align: center;
 `;
 
 // Loading Overlay for sprite preloading
@@ -997,11 +1020,10 @@ const LoadingSpinner = styled.div`
 // ============================================
 
 const PreviewImage = styled.img`
-  width: 100%;
-  height: 100%;
+  height: clamp(130px, 26vh, 260px);
+  width: auto;
   object-fit: contain;
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
+  filter: drop-shadow(0 8px 20px rgba(0,0,0,0.6));
 `;
 
 /**
@@ -1017,8 +1039,8 @@ function ColoredPlayerPreview({ color }) {
   }, []);
   
   useEffect(() => {
-    // If color is blue (default), no recoloring needed
-    if (!color || color === COLOR_PRESETS.blue) {
+    // If color is the sprite base color (blue), no recoloring needed
+    if (!color || color === SPRITE_BASE_COLOR) {
       setImageSrc(pumo2);
       return;
     }
@@ -1049,11 +1071,10 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false
   const [players, setPlayers] = useState([]);
   const [ready, setReady] = useState(false);
   const [readyCount, setReadyCount] = useState(0);
-  const [isPreloadingSprites, setIsPreloadingSprites] = useState(false);
   const { socket } = useContext(SocketContext);
   
   // Color customization - using global context so colors persist to game
-  const { player1Color, player2Color, setPlayer1Color, setPlayer2Color, preloadSprites } = usePlayerColors();
+  const { player1Color, player2Color, setPlayer1Color, setPlayer2Color } = usePlayerColors();
   
   // Determine which player slot the current user is in (0 = East/Player1, 1 = West/Player2)
   const myPlayerIndex = players.findIndex(p => p.id === socket.id);
@@ -1061,21 +1082,23 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false
   const isPlayer2 = myPlayerIndex === 1;
   
   // Get colors from server player data (synced across all clients)
-  const serverPlayer1Color = players[0]?.mawashiColor || "#4169E1";
+  const serverPlayer1Color = players[0]?.mawashiColor || SPRITE_BASE_COLOR;
   const serverPlayer2Color = players[1]?.mawashiColor || "#DC143C";
   
   // Color options
   const colorOptions = [
-    { name: "Blue", hex: "#4169E1" },
-    { name: "Red", hex: "#DC143C" },
-    { name: "Pink", hex: "#FF69B4" },
-    { name: "Green", hex: "#32CD32" },
+    { name: "Black", hex: "#252525" },
+    { name: "Navy", hex: "#000080" },
     { name: "Purple", hex: "#9932CC" },
+    { name: "Green", hex: "#32CD32" },
+    { name: "Red", hex: "#DC143C" },
     { name: "Orange", hex: "#FF8C00" },
-    { name: "Cyan", hex: "#00CED1" },
+    { name: "Pink", hex: "#FFB6C1" },
     { name: "Gold", hex: "#FFD700" },
-    { name: "Teal", hex: "#008080" },
-    { name: "Violet", hex: "#EE82EE" },
+    { name: "Brown", hex: "#5D3A1A" },
+    { name: "Silver", hex: "#A8A8A8" },
+    { name: "Light Blue", hex: "#5BC0DE" },
+    { name: "Maroon", hex: "#800000" },
   ];
   
   // Handle color selection - emits to server
@@ -1094,6 +1117,31 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false
     if (serverPlayer1Color) setPlayer1Color(serverPlayer1Color);
     if (serverPlayer2Color) setPlayer2Color(serverPlayer2Color);
   }, [serverPlayer1Color, serverPlayer2Color, setPlayer1Color, setPlayer2Color]);
+  
+  // Recolor preview sprites for PreMatchScreen
+  useEffect(() => {
+    const updatePreviewSprites = async () => {
+      try {
+        // Player 1 sprite (only recolor if not sprite base color)
+        if (serverPlayer1Color && serverPlayer1Color !== SPRITE_BASE_COLOR) {
+          const recolored = await recolorImage(pumo2, BLUE_COLOR_RANGES, serverPlayer1Color);
+          setPlayer1PreviewSprite(recolored);
+        } else {
+          setPlayer1PreviewSprite(pumo2);
+        }
+        
+        // Player 2 sprite (always needs recoloring since base is blue)
+        if (serverPlayer2Color) {
+          const recolored = await recolorImage(pumo2, BLUE_COLOR_RANGES, serverPlayer2Color);
+          setPlayer2PreviewSprite(recolored);
+        }
+      } catch (error) {
+        console.warn("Failed to recolor preview sprites:", error);
+      }
+    };
+    
+    updatePreviewSprites();
+  }, [serverPlayer1Color, serverPlayer2Color]);
 
   const currentRoom = rooms.find((room) => room.id === roomName);
   const playerCount = currentRoom ? currentRoom.players.length : 0;
@@ -1117,21 +1165,10 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false
       setReadyCount(count);
     });
 
-    socket.on("initial_game_start", async () => {
-      console.log("game start - preloading sprites...");
-      setIsPreloadingSprites(true);
+    socket.on("initial_game_start", () => {
+      console.log("game start - navigating to game (preloading handled in Game.jsx)...");
       
-      try {
-        // Preload all recolored sprites before starting the game
-        // This ensures no visual glitches from on-demand recoloring
-        await preloadSprites();
-        console.log("Sprites preloaded successfully");
-      } catch (error) {
-        console.error("Failed to preload sprites:", error);
-        // Continue anyway - the game will still work, just might have brief color flash
-      }
-      
-      setIsPreloadingSprites(false);
+      // Navigate to game page - Game.jsx will handle preloading and pre-match screen
       socket.emit("game_reset", true);
       handleGame();
     });
@@ -1142,7 +1179,7 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false
       socket.off("player_left");
       socket.off("initial_game_start");
     };
-  }, [roomName, socket, handleGame, preloadSprites]);
+  }, [roomName, socket, handleGame]);
 
   const handleLeaveDohyo = () => {
     playButtonPressSound();
@@ -1162,14 +1199,6 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false
 
   return (
     <LobbyContainer>
-      {/* Loading overlay shown while preloading sprites for game */}
-      {isPreloadingSprites && (
-        <LoadingOverlay>
-          <LoadingText>Preparing Match...</LoadingText>
-          <LoadingSpinner />
-        </LoadingOverlay>
-      )}
-      
       <BackgroundImage />
       <Vignette />
       
@@ -1200,124 +1229,128 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false
 
       {/* Arena Section with Dohyo Ring */}
       <ArenaSection>
-        <DohyoContainer>
-          <DohyoRing />
-          <VersusBadge>VS</VersusBadge>
+        <ArenaLayout>
+          {/* Left Side Color Picker (Player 1) */}
+          {players[0]?.fighter && (
+            <SideColorPicker $isOwn={isPlayer1}>
+              {isPlayer1 && <YourColorLabel>Your Color</YourColorLabel>}
+              <ColorPickerTitle $isOwn={isPlayer1}>
+                {isPlayer1 ? "Mawashi" : "P1 Color"}
+              </ColorPickerTitle>
+              <ColorSwatchGrid>
+                {colorOptions.map((color) => (
+                  <ColorSwatch
+                    key={color.name}
+                    $color={color.hex}
+                    $selected={serverPlayer1Color === color.hex}
+                    $disabled={!isPlayer1}
+                    onClick={() => isPlayer1 && handleColorSelect(color.hex)}
+                    title={color.name}
+                  />
+                ))}
+              </ColorSwatchGrid>
+            </SideColorPicker>
+          )}
           
-          <PlayersContainer>
-            {/* Player 1 (Left/East) */}
-            <PlayerBannerWrapper $side="left">
-              <PlayerBanner $hasPlayer={!!players[0]?.fighter} $side="left">
-                <PlayerHeader>
-                  <PlayerHeaderTop>
-                    <PlayerStatus $connected={!!players[0]?.fighter}>
-                      {players[0]?.fighter ? "Connected" : "Waiting"}
-                    </PlayerStatus>
-                    <PlayerRankBadge>East</PlayerRankBadge>
-                  </PlayerHeaderTop>
-                  <PlayerName $hasPlayer={!!players[0]?.fighter}>
-                    {players[0]?.isCPU ? "CPU" : (players[0]?.fighter || "Awaiting...")}
-                  </PlayerName>
-                </PlayerHeader>
-                <PlayerAvatarArea $side="left">
-                  {players[0]?.fighter ? (
-                    <AvatarWrapper>
-                      <ColoredPlayerPreview 
-                        color={serverPlayer1Color}
-                      />
-                    </AvatarWrapper>
-                  ) : (
-                    <WaitingState $side="left">
-                      <WaitingText>Waiting For Pumo</WaitingText>
-                      <LoadingDots>
-                        <Dot $delay={0} />
-                        <Dot $delay={1} />
-                        <Dot $delay={2} />
-                      </LoadingDots>
-                    </WaitingState>
-                  )}
-                </PlayerAvatarArea>
-                {/* Inline Color Picker for Player 1 */}
-                {players[0]?.fighter && (
-                  <InlineColorPicker $isOwn={isPlayer1}>
-                    {isPlayer1 && <YourColorLabel>Your Color</YourColorLabel>}
-                    <ColorPickerTitle $isOwn={isPlayer1}>
-                      {isPlayer1 ? "Pick Your Mawashi" : "Opponent's Color"}
-                    </ColorPickerTitle>
-                    <ColorSwatchGrid>
-                      {colorOptions.map((color) => (
-                        <ColorSwatch
-                          key={color.name}
-                          $color={color.hex}
-                          $selected={serverPlayer1Color === color.hex}
-                          $disabled={!isPlayer1}
-                          onClick={() => isPlayer1 && handleColorSelect(color.hex)}
-                          title={color.name}
+          <DohyoContainer>
+            <DohyoRing />
+            <VersusBadge>VS</VersusBadge>
+            
+            <PlayersContainer>
+              {/* Player 1 (Left/East) */}
+              <PlayerBannerWrapper $side="left">
+                <PlayerBanner $hasPlayer={!!players[0]?.fighter} $side="left">
+                  <PlayerHeader>
+                    <PlayerHeaderTop>
+                      <PlayerStatus $connected={!!players[0]?.fighter}>
+                        {players[0]?.fighter ? "Connected" : "Waiting"}
+                      </PlayerStatus>
+                      <PlayerRankBadge>East</PlayerRankBadge>
+                    </PlayerHeaderTop>
+                    <PlayerName $hasPlayer={!!players[0]?.fighter}>
+                      {players[0]?.isCPU ? "CPU" : (players[0]?.fighter || "Awaiting...")}
+                    </PlayerName>
+                  </PlayerHeader>
+                  <PlayerAvatarArea $side="left">
+                    {players[0]?.fighter ? (
+                      <AvatarWrapper>
+                        <ColoredPlayerPreview 
+                          color={serverPlayer1Color}
                         />
-                      ))}
-                    </ColorSwatchGrid>
-                  </InlineColorPicker>
-                )}
-              </PlayerBanner>
-            </PlayerBannerWrapper>
+                      </AvatarWrapper>
+                    ) : (
+                      <WaitingState $side="left">
+                        <WaitingText>Waiting For Pumo</WaitingText>
+                        <LoadingDots>
+                          <Dot $delay={0} />
+                          <Dot $delay={1} />
+                          <Dot $delay={2} />
+                        </LoadingDots>
+                      </WaitingState>
+                    )}
+                  </PlayerAvatarArea>
+                </PlayerBanner>
+              </PlayerBannerWrapper>
 
-            {/* Player 2 (Right/West) */}
-            <PlayerBannerWrapper $side="right">
-              <PlayerBanner $hasPlayer={!!players[1]?.fighter} $side="right">
-                <PlayerHeader>
-                  <PlayerHeaderTop>
-                    <PlayerStatus $connected={!!players[1]?.fighter}>
-                      {players[1]?.fighter ? "Connected" : "Waiting"}
-                    </PlayerStatus>
-                    <PlayerRankBadge>West</PlayerRankBadge>
-                  </PlayerHeaderTop>
-                  <PlayerName $hasPlayer={!!players[1]?.fighter}>
-                    {players[1]?.isCPU ? "CPU" : (players[1]?.fighter || "Opponent")}
-                  </PlayerName>
-                </PlayerHeader>
-                <PlayerAvatarArea $side="right">
-                  {players[1]?.fighter ? (
-                    <AvatarWrapper>
-                      <ColoredPlayerPreview 
-                        color={serverPlayer2Color}
-                      />
-                    </AvatarWrapper>
-                  ) : (
-                    <WaitingState $side="right">
-                      <WaitingText>Waiting For Pumo</WaitingText>
-                      <LoadingDots>
-                        <Dot $delay={0} />
-                        <Dot $delay={1} />
-                        <Dot $delay={2} />
-                      </LoadingDots>
-                    </WaitingState>
-                  )}
-                </PlayerAvatarArea>
-                {/* Inline Color Picker for Player 2 */}
-                {players[1]?.fighter && (
-                  <InlineColorPicker $isOwn={isPlayer2}>
-                    {isPlayer2 && <YourColorLabel>Your Color</YourColorLabel>}
-                    <ColorPickerTitle $isOwn={isPlayer2}>
-                      {isPlayer2 ? "Pick Your Mawashi" : "Opponent's Color"}
-                    </ColorPickerTitle>
-                    <ColorSwatchGrid>
-                      {colorOptions.map((color) => (
-                        <ColorSwatch
-                          key={color.name}
-                          $color={color.hex}
-                          $selected={serverPlayer2Color === color.hex}
-                          $disabled={!isPlayer2}
-                          onClick={() => isPlayer2 && handleColorSelect(color.hex)}
-                          title={color.name}
+              {/* Player 2 (Right/West) */}
+              <PlayerBannerWrapper $side="right">
+                <PlayerBanner $hasPlayer={!!players[1]?.fighter} $side="right">
+                  <PlayerHeader>
+                    <PlayerHeaderTop>
+                      <PlayerStatus $connected={!!players[1]?.fighter}>
+                        {players[1]?.fighter ? "Connected" : "Waiting"}
+                      </PlayerStatus>
+                      <PlayerRankBadge>West</PlayerRankBadge>
+                    </PlayerHeaderTop>
+                    <PlayerName $hasPlayer={!!players[1]?.fighter}>
+                      {players[1]?.isCPU ? "CPU" : (players[1]?.fighter || "Opponent")}
+                    </PlayerName>
+                  </PlayerHeader>
+                  <PlayerAvatarArea $side="right">
+                    {players[1]?.fighter ? (
+                      <AvatarWrapper>
+                        <ColoredPlayerPreview 
+                          color={serverPlayer2Color}
                         />
-                      ))}
-                    </ColorSwatchGrid>
-                  </InlineColorPicker>
-                )}
-              </PlayerBanner>
-            </PlayerBannerWrapper>
-          </PlayersContainer>
-        </DohyoContainer>
+                      </AvatarWrapper>
+                    ) : (
+                      <WaitingState $side="right">
+                        <WaitingText>Waiting For Pumo</WaitingText>
+                        <LoadingDots>
+                          <Dot $delay={0} />
+                          <Dot $delay={1} />
+                          <Dot $delay={2} />
+                        </LoadingDots>
+                      </WaitingState>
+                    )}
+                  </PlayerAvatarArea>
+                </PlayerBanner>
+              </PlayerBannerWrapper>
+            </PlayersContainer>
+          </DohyoContainer>
+          
+          {/* Right Side Color Picker (Player 2) */}
+          {players[1]?.fighter && (
+            <SideColorPicker $isOwn={isPlayer2}>
+              {isPlayer2 && <YourColorLabel>Your Color</YourColorLabel>}
+              <ColorPickerTitle $isOwn={isPlayer2}>
+                {isPlayer2 ? "Mawashi" : "P2 Color"}
+              </ColorPickerTitle>
+              <ColorSwatchGrid>
+                {colorOptions.map((color) => (
+                  <ColorSwatch
+                    key={color.name}
+                    $color={color.hex}
+                    $selected={serverPlayer2Color === color.hex}
+                    $disabled={!isPlayer2}
+                    onClick={() => isPlayer2 && handleColorSelect(color.hex)}
+                    title={color.name}
+                  />
+                ))}
+              </ColorSwatchGrid>
+            </SideColorPicker>
+          )}
+        </ArenaLayout>
       </ArenaSection>
 
       {/* Controls Footer */}

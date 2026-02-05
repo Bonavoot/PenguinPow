@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState, memo } from "react";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 
@@ -170,4 +170,12 @@ StarStunEffect.propTypes = {
   facing: PropTypes.number.isRequired,
 };
 
-export default StarStunEffect; 
+// Memoize to prevent re-renders when parent updates but props haven't changed
+export default memo(StarStunEffect, (prevProps, nextProps) => {
+  return (
+    prevProps.isActive === nextProps.isActive &&
+    prevProps.x === nextProps.x &&
+    prevProps.y === nextProps.y &&
+    prevProps.facing === nextProps.facing
+  );
+}); 
