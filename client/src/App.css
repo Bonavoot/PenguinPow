@@ -44,7 +44,7 @@ body {
 .startup-pow {
   font-size: clamp(2rem, 8vw, 4.5rem);
   color: red;
-  font-family: "Bungee Shade", cursive;
+  font-family: "Bungee", cursive;
 }
 
 .startup-status {

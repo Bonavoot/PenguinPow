@@ -1,5 +1,4 @@
-import { useContext, useEffect, useState } from "react";
-import Player from "./Player";
+import { useContext, useEffect, useState, useRef } from "react";
 import { SocketContext } from "../SocketContext";
 import { v4 as uuidv4 } from "uuid";
 import PropTypes from "prop-types";
@@ -10,6 +9,15 @@ import {
   playButtonPressSound2,
 } from "../utils/soundUtils";
 import lobbyBackground from "../assets/lobby-bkg.webp";
+import { usePlayerColors } from "../context/PlayerColorContext";
+import {
+  recolorImage,
+  BLUE_COLOR_RANGES,
+  COLOR_PRESETS,
+} from "../utils/SpriteRecolorizer";
+
+// Base sprite for recoloring preview (UNIFIED: all sprites are blue)
+import pumo2 from "../assets/pumo2.png";
 
 // ============================================
 // ANIMATIONS
@@ -401,11 +409,12 @@ const RoomCodeSection = styled.div`
 `;
 
 const RoomLabel = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.45rem, 0.8vw, 0.55rem);
+  font-family: "Outfit", sans-serif;
+  font-weight: 500;
+  font-size: clamp(0.5rem, 0.85vw, 0.6rem);
   color: #8b7355;
   text-transform: uppercase;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.25em;
   text-shadow: 1px 1px 0 #000;
 `;
 
@@ -413,7 +422,7 @@ const RoomCode = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(1.1rem, 2.2vw, 1.6rem);
   color: #d4af37;
-  letter-spacing: 0.15em;
+  letter-spacing: 0.18em;
   text-shadow: 
     2px 2px 0 #000,
     0 0 20px rgba(212, 175, 55, 0.3);
@@ -598,11 +607,12 @@ const PlayerHeaderTop = styled.div`
 `;
 
 const PlayerStatus = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.45rem, 0.8vw, 0.55rem);
+  font-family: "Outfit", sans-serif;
+  font-weight: 500;
+  font-size: clamp(0.5rem, 0.85vw, 0.6rem);
   color: ${props => props.$connected ? '#4ade80' : '#5c4033'};
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.15em;
   display: flex;
   align-items: center;
   gap: clamp(5px, 0.7vw, 8px);
@@ -637,7 +647,7 @@ const PlayerName = styled.div`
   font-size: clamp(1rem, 1.8vw, 1.4rem);
   color: ${props => props.$hasPlayer ? '#f0ebe5' : '#5c4033'};
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.1em;
   text-shadow: 
     2px 2px 0 #000,
     0 0 10px rgba(0,0,0,0.5);
@@ -681,11 +691,12 @@ const WaitingState = styled.div`
 `;
 
 const WaitingText = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.55rem, 1vw, 0.8rem);
+  font-family: "Outfit", sans-serif;
+  font-weight: 500;
+  font-size: clamp(0.6rem, 1.1vw, 0.85rem);
   color: #5c4033;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.18em;
   text-shadow: 1px 1px 0 #000;
 `;
 
@@ -779,8 +790,9 @@ const ReadySection = styled.div`
 `;
 
 const ReadyButton = styled.button`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.75rem, 1.4vw, 1.1rem);
+  font-family: "Outfit", sans-serif;
+  font-weight: 700;
+  font-size: clamp(0.85rem, 1.5vw, 1.2rem);
   background: linear-gradient(180deg,
     #5a8a3a 0%,
     #4a7a2a 50%,
@@ -793,7 +805,7 @@ const ReadyButton = styled.button`
   cursor: pointer;
   transition: all 0.25s ease;
   text-transform: uppercase;
-  letter-spacing: 0.15em;
+  letter-spacing: 0.2em;
   box-shadow: 
     0 6px 20px rgba(0,0,0,0.5),
     inset 0 1px 0 rgba(255,255,255,0.15),
@@ -826,22 +838,23 @@ const ReadyButton = styled.button`
 
 const CancelButton = styled(ReadyButton)`
   background: linear-gradient(180deg,
-    #6a4a4a 0%,
-    #5a3a3a 50%,
-    #4a2a2a 100%
+    #8a3a3a 0%,
+    #6a2a2a 50%,
+    #4a1a1a 100%
   );
-  color: #f0e0e0;
-  border-color: #8a5a5a;
+  color: #f5e0e0;
+  border-color: #a04040;
   
   &:hover {
     background: linear-gradient(180deg,
-      #7a5a5a 0%,
-      #6a4a4a 50%,
-      #5a3a3a 100%
+      #9a4a4a 0%,
+      #7a3a3a 50%,
+      #5a2a2a 100%
     );
-    border-color: #aa7a7a;
+    border-color: #c05050;
     box-shadow: 
       0 10px 30px rgba(0,0,0,0.6),
+      0 0 20px rgba(160, 64, 64, 0.25),
       inset 0 1px 0 rgba(255,255,255,0.1);
   }
 `;
@@ -876,15 +889,211 @@ const ReadyLabel = styled.span`
   text-transform: uppercase;
 `;
 
+// Inline Color Picker for player banners
+const InlineColorPicker = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(4px, 0.5vh, 8px);
+  padding: clamp(6px, 0.8vh, 10px);
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 8px;
+  margin-top: clamp(4px, 0.5vh, 8px);
+  opacity: ${props => props.$isOwn ? 1 : 0.7};
+  pointer-events: ${props => props.$isOwn ? 'auto' : 'none'};
+`;
+
+const ColorPickerTitle = styled.div`
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.5rem, 0.8vw, 0.7rem);
+  color: ${props => props.$isOwn ? '#d4af37' : '#888'};
+  text-shadow: 1px 1px 0 #000;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+`;
+
+const ColorSwatchGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: clamp(3px, 0.4vw, 5px);
+`;
+
+const ColorSwatch = styled.button`
+  width: clamp(20px, 2.5vw, 28px);
+  height: clamp(20px, 2.5vw, 28px);
+  border-radius: 4px;
+  border: 2px solid ${props => props.$selected ? '#fff' : 'transparent'};
+  background-color: ${props => props.$color};
+  cursor: ${props => props.$disabled ? 'not-allowed' : 'pointer'};
+  transition: transform 0.1s, border-color 0.1s;
+  box-shadow: ${props => props.$selected ? '0 0 8px rgba(255, 255, 255, 0.8)' : '0 2px 4px rgba(0,0,0,0.3)'};
+  opacity: ${props => props.$disabled ? 0.5 : 1};
+
+  &:hover {
+    transform: ${props => props.$disabled ? 'none' : 'scale(1.1)'};
+    border-color: ${props => props.$disabled ? 'transparent' : 'rgba(255, 255, 255, 0.5)'};
+  }
+
+  &:active {
+    transform: ${props => props.$disabled ? 'none' : 'scale(0.95)'};
+  }
+`;
+
+const YourColorLabel = styled.div`
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.45rem, 0.7vw, 0.6rem);
+  color: #4ade80;
+  text-shadow: 1px 1px 0 #000;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+`;
+
+// Loading Overlay for sprite preloading
+const LoadingOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+`;
+
+const LoadingText = styled.div`
+  font-family: "Bungee", cursive;
+  font-size: clamp(1.5rem, 3vw, 2.5rem);
+  color: #d4af37;
+  text-shadow: 2px 2px 0 #000, 0 0 20px rgba(212, 175, 55, 0.5);
+  margin-bottom: 20px;
+  animation: ${css`
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+  `};
+  animation: pulse 1.5s ease-in-out infinite;
+`;
+
+const LoadingSpinner = styled.div`
+  width: 60px;
+  height: 60px;
+  border: 4px solid rgba(212, 175, 55, 0.2);
+  border-top: 4px solid #d4af37;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+`;
+
 // ============================================
-// COMPONENT
+// COLORED PLAYER PREVIEW COMPONENT
+// ============================================
+
+const PreviewImage = styled.img`
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+`;
+
+/**
+ * ColoredPlayerPreview - Shows a recolored penguin sprite based on selected color
+ */
+function ColoredPlayerPreview({ color }) {
+  const [imageSrc, setImageSrc] = useState(pumo2);
+  const mountedRef = useRef(true);
+  
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+  
+  useEffect(() => {
+    // If color is blue (default), no recoloring needed
+    if (!color || color === COLOR_PRESETS.blue) {
+      setImageSrc(pumo2);
+      return;
+    }
+    
+    // Recolor the blue sprite to the selected color
+    recolorImage(pumo2, BLUE_COLOR_RANGES, color)
+      .then((recolored) => {
+        if (mountedRef.current) {
+          setImageSrc(recolored);
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to recolor preview:", error);
+        if (mountedRef.current) {
+          setImageSrc(pumo2);
+        }
+      });
+  }, [color]);
+  
+  return <PreviewImage src={imageSrc} alt="Player Preview" />;
+}
+
+// ============================================
+// LOBBY COMPONENT
 // ============================================
 
 const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false }) => {
   const [players, setPlayers] = useState([]);
   const [ready, setReady] = useState(false);
   const [readyCount, setReadyCount] = useState(0);
+  const [isPreloadingSprites, setIsPreloadingSprites] = useState(false);
   const { socket } = useContext(SocketContext);
+  
+  // Color customization - using global context so colors persist to game
+  const { player1Color, player2Color, setPlayer1Color, setPlayer2Color, preloadSprites } = usePlayerColors();
+  
+  // Determine which player slot the current user is in (0 = East/Player1, 1 = West/Player2)
+  const myPlayerIndex = players.findIndex(p => p.id === socket.id);
+  const isPlayer1 = myPlayerIndex === 0;
+  const isPlayer2 = myPlayerIndex === 1;
+  
+  // Get colors from server player data (synced across all clients)
+  const serverPlayer1Color = players[0]?.mawashiColor || "#4169E1";
+  const serverPlayer2Color = players[1]?.mawashiColor || "#DC143C";
+  
+  // Color options
+  const colorOptions = [
+    { name: "Blue", hex: "#4169E1" },
+    { name: "Red", hex: "#DC143C" },
+    { name: "Pink", hex: "#FF69B4" },
+    { name: "Green", hex: "#32CD32" },
+    { name: "Purple", hex: "#9932CC" },
+    { name: "Orange", hex: "#FF8C00" },
+    { name: "Cyan", hex: "#00CED1" },
+    { name: "Gold", hex: "#FFD700" },
+    { name: "Teal", hex: "#008080" },
+    { name: "Violet", hex: "#EE82EE" },
+  ];
+  
+  // Handle color selection - emits to server
+  const handleColorSelect = (color) => {
+    if (myPlayerIndex === -1) return; // Not in room yet
+    
+    socket.emit("update_mawashi_color", {
+      roomId: roomName,
+      playerId: socket.id,
+      color,
+    });
+  };
+  
+  // Sync server colors to global context (for use in game)
+  useEffect(() => {
+    if (serverPlayer1Color) setPlayer1Color(serverPlayer1Color);
+    if (serverPlayer2Color) setPlayer2Color(serverPlayer2Color);
+  }, [serverPlayer1Color, serverPlayer2Color, setPlayer1Color, setPlayer2Color]);
 
   const currentRoom = rooms.find((room) => room.id === roomName);
   const playerCount = currentRoom ? currentRoom.players.length : 0;
@@ -908,8 +1117,21 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false
       setReadyCount(count);
     });
 
-    socket.on("initial_game_start", () => {
-      console.log("game start");
+    socket.on("initial_game_start", async () => {
+      console.log("game start - preloading sprites...");
+      setIsPreloadingSprites(true);
+      
+      try {
+        // Preload all recolored sprites before starting the game
+        // This ensures no visual glitches from on-demand recoloring
+        await preloadSprites();
+        console.log("Sprites preloaded successfully");
+      } catch (error) {
+        console.error("Failed to preload sprites:", error);
+        // Continue anyway - the game will still work, just might have brief color flash
+      }
+      
+      setIsPreloadingSprites(false);
       socket.emit("game_reset", true);
       handleGame();
     });
@@ -920,7 +1142,7 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false
       socket.off("player_left");
       socket.off("initial_game_start");
     };
-  }, [roomName, socket, handleGame]);
+  }, [roomName, socket, handleGame, preloadSprites]);
 
   const handleLeaveDohyo = () => {
     playButtonPressSound();
@@ -940,6 +1162,14 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false
 
   return (
     <LobbyContainer>
+      {/* Loading overlay shown while preloading sprites for game */}
+      {isPreloadingSprites && (
+        <LoadingOverlay>
+          <LoadingText>Preparing Match...</LoadingText>
+          <LoadingSpinner />
+        </LoadingOverlay>
+      )}
+      
       <BackgroundImage />
       <Vignette />
       
@@ -992,7 +1222,9 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false
                 <PlayerAvatarArea $side="left">
                   {players[0]?.fighter ? (
                     <AvatarWrapper>
-                      <Player index={0} fighter={players[0].fighter} />
+                      <ColoredPlayerPreview 
+                        color={serverPlayer1Color}
+                      />
                     </AvatarWrapper>
                   ) : (
                     <WaitingState $side="left">
@@ -1005,6 +1237,27 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false
                     </WaitingState>
                   )}
                 </PlayerAvatarArea>
+                {/* Inline Color Picker for Player 1 */}
+                {players[0]?.fighter && (
+                  <InlineColorPicker $isOwn={isPlayer1}>
+                    {isPlayer1 && <YourColorLabel>Your Color</YourColorLabel>}
+                    <ColorPickerTitle $isOwn={isPlayer1}>
+                      {isPlayer1 ? "Pick Your Mawashi" : "Opponent's Color"}
+                    </ColorPickerTitle>
+                    <ColorSwatchGrid>
+                      {colorOptions.map((color) => (
+                        <ColorSwatch
+                          key={color.name}
+                          $color={color.hex}
+                          $selected={serverPlayer1Color === color.hex}
+                          $disabled={!isPlayer1}
+                          onClick={() => isPlayer1 && handleColorSelect(color.hex)}
+                          title={color.name}
+                        />
+                      ))}
+                    </ColorSwatchGrid>
+                  </InlineColorPicker>
+                )}
               </PlayerBanner>
             </PlayerBannerWrapper>
 
@@ -1025,7 +1278,9 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false
                 <PlayerAvatarArea $side="right">
                   {players[1]?.fighter ? (
                     <AvatarWrapper>
-                      <Player index={1} fighter={players[1].fighter} />
+                      <ColoredPlayerPreview 
+                        color={serverPlayer2Color}
+                      />
                     </AvatarWrapper>
                   ) : (
                     <WaitingState $side="right">
@@ -1038,6 +1293,27 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false
                     </WaitingState>
                   )}
                 </PlayerAvatarArea>
+                {/* Inline Color Picker for Player 2 */}
+                {players[1]?.fighter && (
+                  <InlineColorPicker $isOwn={isPlayer2}>
+                    {isPlayer2 && <YourColorLabel>Your Color</YourColorLabel>}
+                    <ColorPickerTitle $isOwn={isPlayer2}>
+                      {isPlayer2 ? "Pick Your Mawashi" : "Opponent's Color"}
+                    </ColorPickerTitle>
+                    <ColorSwatchGrid>
+                      {colorOptions.map((color) => (
+                        <ColorSwatch
+                          key={color.name}
+                          $color={color.hex}
+                          $selected={serverPlayer2Color === color.hex}
+                          $disabled={!isPlayer2}
+                          onClick={() => isPlayer2 && handleColorSelect(color.hex)}
+                          title={color.name}
+                        />
+                      ))}
+                    </ColorSwatchGrid>
+                  </InlineColorPicker>
+                )}
               </PlayerBanner>
             </PlayerBannerWrapper>
           </PlayersContainer>

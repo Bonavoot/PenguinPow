@@ -407,6 +407,7 @@ function createCPUPlayer(uniqueId) {
     isCPU: true,
     fighter: "player 2",
     color: "salmon",
+    mawashiColor: "#DC143C", // Default red for CPU (Player 2)
     isJumping: false,
     isAttacking: false,
     throwCooldown: false,
@@ -515,6 +516,7 @@ function createCPUPlayer(uniqueId) {
     bufferExpiryTime: 0,
     wantsToRestartCharge: false,
     mouse2HeldDuringAttack: false,
+    mouse2BufferedBeforeStart: false, // Buffer for mouse2 held before round start
     knockbackImmune: false,
     knockbackImmuneEndTime: 0,
     activePowerUp: null,
@@ -1527,7 +1529,10 @@ io.on("connection", (socket) => {
                   if (thrownPlayer) {
                     thrownPlayer.isBeingThrown = false;
                     thrownPlayer.beingThrownFacingDirection = null;
-                    thrownPlayer.y = GROUND_LEVEL; // Reset to ground level
+                    // Set Y based on whether they're outside the dohyo
+                    const outsideDohyo = thrownPlayer.x <= DOHYO_LEFT_BOUNDARY || thrownPlayer.x >= DOHYO_RIGHT_BOUNDARY;
+                    thrownPlayer.y = outsideDohyo ? (GROUND_LEVEL - DOHYO_FALL_DEPTH) : GROUND_LEVEL;
+                    if (outsideDohyo) thrownPlayer.isFallingOffDohyo = true;
                     thrownPlayer.knockbackVelocity = { x: 0, y: 0 };
                   }
                 }
@@ -1792,7 +1797,10 @@ io.on("connection", (socket) => {
                   if (thrownPlayer) {
                     thrownPlayer.isBeingThrown = false;
                     thrownPlayer.beingThrownFacingDirection = null;
-                    thrownPlayer.y = GROUND_LEVEL; // Reset to ground level
+                    // Set Y based on whether they're outside the dohyo
+                    const outsideDohyo = thrownPlayer.x <= DOHYO_LEFT_BOUNDARY || thrownPlayer.x >= DOHYO_RIGHT_BOUNDARY;
+                    thrownPlayer.y = outsideDohyo ? (GROUND_LEVEL - DOHYO_FALL_DEPTH) : GROUND_LEVEL;
+                    if (outsideDohyo) thrownPlayer.isFallingOffDohyo = true;
                     thrownPlayer.knockbackVelocity = { x: 0, y: 0 };
                   }
                 }
@@ -1964,30 +1972,62 @@ io.on("connection", (socket) => {
             // Check if player crossed the dohyo boundary - trigger fast heavy fall
             const isOutsideDohyo = player.x < DOHYO_LEFT_BOUNDARY || player.x > DOHYO_RIGHT_BOUNDARY;
             
+            // Check if player is past map boundaries (for reduced friction after ring-out)
+            const isPastMapBoundaries = player.x < MAP_LEFT_BOUNDARY || player.x > MAP_RIGHT_BOUNDARY;
+            
             // Fast heavy drop when outside dohyo
             if (isOutsideDohyo && !player.isFallingOffDohyo) {
               player.isFallingOffDohyo = true;
             }
 
+            // Check if this is the loser after game over (for special handling)
+            const isLoserAfterGameOver = room.gameOver && player.id === room.loserId;
+            
             // Fast, heavy fall physics - straight down while maintaining horizontal speed
             if (player.isFallingOffDohyo) {
               // Fast downward movement (no arc, just straight down)
               const targetY = GROUND_LEVEL - DOHYO_FALL_DEPTH;
-              if (player.y > targetY) {
+              // If game is over, snap immediately to target Y (no gradual fall)
+              if (isLoserAfterGameOver) {
+                if (player.y !== targetY) {
+                  player.y = targetY; // Only set if different to avoid unnecessary updates
+                }
+              } else if (player.y > targetY) {
                 player.y = Math.max(targetY, player.y - DOHYO_FALL_SPEED);
               }
               
-              // Maintain horizontal momentum with slight friction
+              // Maintain horizontal momentum with very slight friction (0.98 = minimal resistance)
+              player.knockbackVelocity.x *= DOHYO_FALL_HORIZONTAL_RETENTION;
+              player.movementVelocity *= DOHYO_FALL_HORIZONTAL_RETENTION;
+            } else if (isLoserAfterGameOver && isPastMapBoundaries) {
+              // LOSER PAST MAP BOUNDARIES BUT NOT YET PAST DOHYO:
+              // Apply same minimal friction as dohyo fall (0.98) - feels smooth, not jarring
               player.knockbackVelocity.x *= DOHYO_FALL_HORIZONTAL_RETENTION;
               player.movementVelocity *= DOHYO_FALL_HORIZONTAL_RETENTION;
             } else {
               // ICE PHYSICS: Getting hit on ice = SLIDING, not resistance!
               // The ice makes knockback LONGER, not shorter
               // Use very low friction - players slide when hit
+              
+              // DI (Directional Influence): Holding the opposite direction reduces knockback!
+              // This rewards skilled players who react quickly to hits
+              const knockbackDirection = player.knockbackVelocity.x > 0 ? 1 : -1; // 1 = right, -1 = left
+              const isHoldingOpposite = (knockbackDirection > 0 && player.keys.a && !player.keys.d) || 
+                                        (knockbackDirection < 0 && player.keys.d && !player.keys.a);
+              
+              // DI friction multiplier - holding opposite direction adds significant friction
+              const DI_FRICTION_BONUS = 0.96; // Extra friction when holding opposite direction
+              
               if (player.isSlapKnockback) {
                 player.knockbackVelocity.x *= 0.992; // Slap hits slide far on ice
+                if (isHoldingOpposite) {
+                  player.knockbackVelocity.x *= DI_FRICTION_BONUS; // DI reduces slap knockback
+                }
               } else {
                 player.knockbackVelocity.x *= 0.985; // Charged hits slide even further
+                if (isHoldingOpposite) {
+                  player.knockbackVelocity.x *= DI_FRICTION_BONUS; // DI reduces charged knockback
+                }
               }
               
               // Transfer knockback into movement velocity for continued sliding
@@ -2000,14 +2040,19 @@ io.on("connection", (socket) => {
             // Apply ice sliding physics to movement velocity
             if (Math.abs(player.movementVelocity) > MIN_MOVEMENT_THRESHOLD) {
               // ICE PHYSICS: Very low friction when hit - they're sliding on ice!
-              player.movementVelocity *= 0.996;
+              // For loser after game over, use same minimal friction as dohyo fall
+              if (isLoserAfterGameOver && isPastMapBoundaries) {
+                player.movementVelocity *= DOHYO_FALL_HORIZONTAL_RETENTION;
+              } else {
+                player.movementVelocity *= 0.996;
+              }
 
               // Calculate new position with sliding
               player.x = player.x + delta * speedFactor * player.movementVelocity;
             }
 
             // Reset hit state when both knockback and sliding are nearly complete
-            // Use different thresholds based on attack type
+            // But KEEP isHit true if game is over and player is the loser (so knockback continues)
             const hitMovementThreshold = player.isSlapKnockback
               ? MIN_MOVEMENT_THRESHOLD * 0.3 // Much smaller threshold for slap attacks (longer slides)
               : MIN_MOVEMENT_THRESHOLD; // Normal threshold for charged attacks
@@ -2018,9 +2063,14 @@ io.on("connection", (socket) => {
             ) {
               player.knockbackVelocity.x = 0;
               player.movementVelocity = 0;
-              player.isHit = false;
-              player.isAlreadyHit = false; // Also clear isAlreadyHit to ensure player can be hit again
-              player.isSlapKnockback = false; // Reset slap knockback flag
+              
+              // Only clear isHit if game is NOT over, or if player is NOT the loser
+              // This keeps the loser sliding after ring-out instead of freezing
+              if (!(room.gameOver && player.id === room.loserId)) {
+                player.isHit = false;
+                player.isAlreadyHit = false; // Also clear isAlreadyHit to ensure player can be hit again
+                player.isSlapKnockback = false; // Reset slap knockback flag
+              }
               
               // If player was at the ropes and is now back within ring boundaries,
               // clear the locked facing direction so they can face normally again
@@ -2342,7 +2392,16 @@ io.on("connection", (socket) => {
               opponent.isHit = false;
               opponent.isAlreadyHit = false; // Ensure player can be hit again after landing
               opponent.isSlapKnockback = false;
-              opponent.y = GROUND_LEVEL; // force final Y to ground level
+              
+              // Set Y to correct ground level based on whether they landed outside the dohyo
+              const landedOutsideDohyo = opponent.x <= DOHYO_LEFT_BOUNDARY || opponent.x >= DOHYO_RIGHT_BOUNDARY;
+              if (landedOutsideDohyo) {
+                opponent.y = GROUND_LEVEL - DOHYO_FALL_DEPTH; // Fallen ground level
+                opponent.isFallingOffDohyo = true; // Mark as having fallen off
+              } else {
+                opponent.y = GROUND_LEVEL; // Normal ground level
+              }
+              
               opponent.knockbackVelocity.y = 0;
               opponent.knockbackVelocity.x = 0;
               opponent.movementVelocity = 0;
@@ -2471,7 +2530,7 @@ io.on("connection", (socket) => {
               player.y = GROUND_LEVEL;
               
               // ICE PHYSICS: Dodge landing = sliding on ice!
-              if (player.keys.c || player.keys.control) {
+              if ((player.keys.c || player.keys.control) && room.gameStart && !room.gameOver && !room.matchOver) {
                 // Holding C = STRONG power slide from dodge
                 player.movementVelocity = landingDirection * DODGE_SLIDE_MOMENTUM * DODGE_POWERSLIDE_BOOST;
                 player.isPowerSliding = true;
@@ -2553,7 +2612,7 @@ io.on("connection", (socket) => {
               player.isStrafing = false;
               player.isBraking = false;
               
-              if (player.keys.c || player.keys.control) {
+              if ((player.keys.c || player.keys.control) && room.gameStart && !room.gameOver && !room.matchOver) {
                 // Holding C/CTRL = STRONG power slide from dodge
                 player.movementVelocity = landingDirection * DODGE_SLIDE_MOMENTUM * DODGE_POWERSLIDE_BOOST;
                 player.isPowerSliding = true;
@@ -2585,7 +2644,7 @@ io.on("connection", (socket) => {
         
         // POWER SLIDE FROM DODGE: If just landed and holding C/CTRL, ensure power slide is active
         // This handles the immediate frame after dodge landing
-        if (player.justLandedFromDodge && (player.keys.c || player.keys.control) && Math.abs(player.movementVelocity) > SLIDE_MAINTAIN_VELOCITY) {
+        if (player.justLandedFromDodge && (player.keys.c || player.keys.control) && Math.abs(player.movementVelocity) > SLIDE_MAINTAIN_VELOCITY && room.gameStart && !room.gameOver && !room.matchOver) {
           player.isPowerSliding = true;
         }
 
@@ -2837,6 +2896,9 @@ io.on("connection", (socket) => {
           // Can only slide if moving fast enough, can cancel with dodge
           // ============================================
           const canPowerSlide = 
+            room.gameStart && // Only during active gameplay (not during walk-up)
+            !room.gameOver && // Not after round ends
+            !room.matchOver && // Not after match ends
             !player.isDodging &&
             !player.isThrowing &&
             !player.isGrabbing &&
@@ -3869,29 +3931,7 @@ io.on("connection", (socket) => {
           const grabDuration = Date.now() - player.grabStartTime;
           if (grabDuration >= 500) {
             player.isGrabbing = false;
-
-            // Check if we should restart charging after missed grab completes
-            if (
-              player.keys.mouse2 &&
-              !player.isAttacking &&
-              !player.isJumping &&
-              !player.isDodging &&
-              !player.isThrowing &&
-              !player.isBeingThrown &&
-              !player.isGrabbing &&
-              !player.isBeingGrabbed &&
-              !player.isHit &&
-              !player.isRecovering &&
-              !player.isRawParryStun &&
-              !player.isThrowingSnowball &&
-              !player.canMoveToReady
-            ) {
-              // Restart charging immediately
-              player.isChargingAttack = true;
-              player.chargeStartTime = Date.now();
-              player.chargeAttackPower = 1;
-              player.attackType = "charged";
-            }
+            // NOTE: Charging restart is handled by continuous mouse2 check below
           }
         }
 
@@ -3916,6 +3956,26 @@ io.on("connection", (socket) => {
             (chargeDuration / 750) * 100,
             100
           ); // Changed from 1200 to 750 for faster charge
+        }
+
+        // INPUT BUFFERING: Apply buffered key states when game starts
+        // This allows players to hold buttons before hakkiyoi and have them register immediately
+        if (room.gameStart && player.mouse2BufferedBeforeStart) {
+          player.keys.mouse2 = true;
+          player.mouse2BufferedBeforeStart = false; // Clear the buffer after applying
+        }
+
+        // CONTINUOUS MOUSE2 CHECK: Auto-start charging when mouse2 is held and player can charge
+        // This ensures charging resumes immediately after any interruption (hit, grab, etc.)
+        // without requiring the player to release and re-press mouse2
+        // canPlayerCharge() checks: !isChargingAttack AND isPlayerInActiveState() which includes
+        // !isAttacking, !isRecovering, !isHit, !isGrabbing, !isDodging, etc.
+        if (
+          room.gameStart && // Only during active gameplay
+          player.keys.mouse2 && // Mouse2 is being held
+          canPlayerCharge(player) // All blocking states are cleared (includes !isChargingAttack)
+        ) {
+          startCharging(player);
         }
 
         // Clear strafing cooldown when it expires
@@ -4152,10 +4212,12 @@ io.on("connection", (socket) => {
     
     // Counter hit if:
     // 1. Opponent is attacking AND within the counter hit window, OR
-    // 2. Opponent just pressed attack but hasn't started yet (hit them as they clicked)
+    // 2. Opponent just pressed attack but hasn't started yet (hit them as they clicked), OR
+    // 3. Opponent is attempting a grab (startup hop or lunge movement, but NOT whiffing/recovery)
     const counterHitFromAttacking = otherPlayer.isAttacking && timeSinceAttackAttempt <= COUNTER_HIT_WINDOW_MS;
     const counterHitFromIntent = timeSinceAttackIntent <= COUNTER_HIT_WINDOW_MS;
-    const isCounterHit = counterHitFromAttacking || counterHitFromIntent;
+    const counterHitFromGrabAttempt = otherPlayer.isGrabStartup === true || otherPlayer.isGrabbingMovement === true;
+    const isCounterHit = counterHitFromAttacking || counterHitFromIntent || counterHitFromGrabAttempt;
 
     // ============================================
     // PUNISH DETECTION
@@ -4506,7 +4568,10 @@ io.on("connection", (socket) => {
         if (thrownPlayer) {
           thrownPlayer.isBeingThrown = false;
           thrownPlayer.beingThrownFacingDirection = null;
-          thrownPlayer.y = GROUND_LEVEL; // Reset to ground level
+          // Set Y based on whether they're outside the dohyo
+          const outsideDohyo = thrownPlayer.x <= DOHYO_LEFT_BOUNDARY || thrownPlayer.x >= DOHYO_RIGHT_BOUNDARY;
+          thrownPlayer.y = outsideDohyo ? (GROUND_LEVEL - DOHYO_FALL_DEPTH) : GROUND_LEVEL;
+          if (outsideDohyo) thrownPlayer.isFallingOffDohyo = true;
           thrownPlayer.knockbackVelocity = { x: 0, y: 0 };
         }
       }
@@ -4773,6 +4838,32 @@ io.on("connection", (socket) => {
     }
   });
 
+  // Handle mawashi color updates - broadcast to all players in room
+  socket.on("update_mawashi_color", (data) => {
+    const { roomId, playerId, color } = data;
+    const roomIndex = rooms.findIndex((room) => room.id === roomId);
+    
+    if (roomIndex === -1) return;
+    
+    const room = rooms[roomIndex];
+    const playerIndex = room.players.findIndex((p) => p.id === playerId);
+    
+    if (playerIndex === -1) return;
+    
+    // Update the player's mawashi color
+    room.players[playerIndex].mawashiColor = color;
+    
+    // Broadcast updated player data to all players in the room
+    io.in(roomId).emit("lobby", room.players);
+    
+    // Also emit a specific color update event for immediate UI updates
+    io.in(roomId).emit("mawashi_color_updated", {
+      playerId,
+      playerIndex,
+      color,
+    });
+  });
+
   socket.on("join_room", (data) => {
     socket.join(data.roomId);
     const roomIndex = rooms.findIndex((room) => room.id === data.roomId);
@@ -4817,6 +4908,7 @@ io.on("connection", (socket) => {
         id: data.socketId,
         fighter: "player 1",
         color: "aqua",
+        mawashiColor: "#4169E1", // Default blue for Player 1
         isJumping: false,
         isAttacking: false,
         throwCooldown: false,
@@ -4922,6 +5014,7 @@ io.on("connection", (socket) => {
         bufferExpiryTime: 0, // Add expiry time for buffered actions
         wantsToRestartCharge: false, // Add flag for charge restart detection
         mouse2HeldDuringAttack: false, // Add flag for simpler charge restart detection
+        mouse2BufferedBeforeStart: false, // Buffer for mouse2 held before round start
         knockbackImmune: false, // Add knockback immunity flag
         knockbackImmuneEndTime: 0, // Add knockback immunity timer
         // Add missing power-up initialization
@@ -4963,6 +5056,7 @@ io.on("connection", (socket) => {
         id: data.socketId,
         fighter: "player 2",
         color: "salmon",
+        mawashiColor: "#DC143C", // Default red for Player 2
         isJumping: false,
         isAttacking: false,
         throwCooldown: false,
@@ -5068,6 +5162,7 @@ io.on("connection", (socket) => {
         bufferExpiryTime: 0, // Add expiry time for buffered actions
         wantsToRestartCharge: false, // Add flag for charge restart detection
         mouse2HeldDuringAttack: false, // Add flag for simpler charge restart detection
+        mouse2BufferedBeforeStart: false, // Buffer for mouse2 held before round start
         knockbackImmune: false, // Add knockback immunity flag
         knockbackImmuneEndTime: 0, // Add knockback immunity timer
         // Add missing power-up initialization
@@ -5274,6 +5369,7 @@ io.on("connection", (socket) => {
       bufferExpiryTime: 0,
       wantsToRestartCharge: false,
       mouse2HeldDuringAttack: false,
+      mouse2BufferedBeforeStart: false, // Buffer for mouse2 held before round start
       knockbackImmune: false,
       knockbackImmuneEndTime: 0,
       activePowerUp: null,
@@ -5556,6 +5652,12 @@ io.on("connection", (socket) => {
     // Block all inputs during salt throwing phase and ready positioning phase
     // This prevents inputs from power-up selection end until game start (hakkiyoi = 1)
     if (!rooms[roomIndex].gameStart || rooms[roomIndex].hakkiyoiCount === 0) {
+      // INPUT BUFFERING: Buffer mouse2 state for charged attack
+      // This allows players to hold mouse2 before round start and have charging
+      // begin immediately when the round starts, without affecting other inputs
+      if (data.keys) {
+        player.mouse2BufferedBeforeStart = data.keys.mouse2 || false;
+      }
       return;
     }
 
@@ -6488,35 +6590,8 @@ io.on("connection", (socket) => {
       player.mouse2HeldDuringAttack = false; // Clear flag when mouse2 is released
     }
 
-    // Add new section to handle state transitions while holding mouse2 - block during charged attack execution and recovery
-    if (
-      player.keys.mouse2 &&
-      !shouldBlockAction() &&
-      canPlayerCharge(player) &&
-      !player.isSlapAttack && // Add explicit check for slap attacks
-      !player.isJumping // Add explicit check for jumping
-    ) {
-      // Check if we should resume charging after a state transition
-      const timeSinceLastCharge = Date.now() - (player.lastChargeEndTime || 0);
-
-      // Only auto-resume if it's been less than 500ms since last charge ended
-      // This prevents the weird reset behavior
-      if (timeSinceLastCharge < 500 && timeSinceLastCharge > 0) {
-        // Resume charging if very recent charge history
-        player.isChargingAttack = true;
-        player.chargeStartTime = Date.now();
-        player.chargeAttackPower = Math.min(player.lastChargePower || 0, 100);
-        player.attackType = "charged";
-      }
-      // Remove the "else" clause that was auto-starting fresh charges
-      // This was causing the unwanted charge resets
-    }
-
-    // Store charge state when clearing it
-    if (player.isChargingAttack && !player.keys.mouse2) {
-      player.lastChargeEndTime = Date.now();
-      player.lastChargePower = player.chargeAttackPower;
-    }
+    // NOTE: Continuous mouse2 check for auto-starting charge is now handled in the game loop
+    // This ensures immediate charging resume after ANY interruption without requiring re-press
 
     // Handle slap attacks with mouse1 - block during charged attack execution and recovery
     if (player.mouse1JustPressed && !shouldBlockAction()) {

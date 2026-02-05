@@ -317,7 +317,7 @@ const GameTitle = styled.h1`
   margin: 0 0 clamp(3px, 0.4vh, 6px) 0;
   color: #d4af37;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   animation: ${titleGlow} 3s ease-in-out infinite;
   
   @media (max-width: 600px) {
@@ -326,13 +326,14 @@ const GameTitle = styled.h1`
 `;
 
 const GameSubtitle = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.45rem, 0.9vw, 0.65rem);
+  font-family: "Outfit", sans-serif;
+  font-weight: 500;
+  font-size: clamp(0.5rem, 1vw, 0.7rem);
   color: #e8dcc8;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.25em;
   text-transform: uppercase;
   text-shadow: 1px 1px 0 #000;
-  opacity: 0.7;
+  opacity: 0.8;
 `;
 
 // ============================================
@@ -363,7 +364,7 @@ const MenuButton = styled.button`
   cursor: ${props => props.$isActive ? 'pointer' : 'default'};
   transition: all 0.25s ease;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   box-shadow: 
     0 4px 12px rgba(0,0,0,0.4),
     inset 0 1px 0 rgba(255,255,255,0.08),
@@ -424,11 +425,13 @@ const MenuButton = styled.button`
 `;
 
 const ComingSoonBadge = styled.span`
-  font-size: 0.6em;
-  color: #555;
+  font-family: "Outfit", sans-serif;
+  font-weight: 500;
+  font-size: 0.65em;
+  color: #666;
   margin-left: auto;
   padding-left: 1em;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
 `;
 
 // ============================================
@@ -509,15 +512,16 @@ const AnnouncementTitle = styled.h3`
   color: #d4af37;
   margin: 0;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.14em;
   text-shadow: 1px 1px 0 #000;
 `;
 
 const AnnouncementContent = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.5rem, 0.9vw, 0.7rem);
+  font-family: "Outfit", sans-serif;
+  font-weight: 400;
+  font-size: clamp(0.55rem, 1vw, 0.75rem);
   color: #c8bca8;
-  line-height: 1.6;
+  line-height: 1.7;
   text-shadow: 1px 1px 0 #000;
   
   p {
@@ -530,6 +534,7 @@ const AnnouncementContent = styled.div`
   
   strong {
     color: #e8dcc8;
+    font-weight: 600;
   }
 `;
 
@@ -584,10 +589,11 @@ const VersionInfo = styled.div`
   position: absolute;
   bottom: clamp(8px, 1.5vh, 14px);
   left: clamp(12px, 2vw, 20px);
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.45rem, 0.7vw, 0.6rem);
+  font-family: "Outfit", sans-serif;
+  font-weight: 400;
+  font-size: clamp(0.5rem, 0.75vw, 0.65rem);
   color: rgba(255, 255, 255, 0.6);
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   z-index: 10;
 `;
 

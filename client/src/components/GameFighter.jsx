@@ -11,6 +11,9 @@ import PropTypes from "prop-types";
 import styled, { keyframes } from "styled-components";
 import "./MatchOver.css";
 import Gyoji from "./Gyoji";
+import {
+  getSpritesheetConfig,
+} from "../config/animatedSpriteConfig";
 import PlayerShadow from "./PlayerShadow";
 import ThrowTechEffect from "./ThrowTechEffect";
 import PowerMeter from "./PowerMeter";
@@ -29,59 +32,67 @@ import SnowballImpactEffect from "./SnowballImpactEffect";
 import PumoCloneSpawnEffect from "./PumoCloneSpawnEffect";
 import SlapAttackHandsEffect from "./SlapAttackHandsEffect";
 import PerfectParryPowerEffect from "./PerfectParryPowerEffect";
+import SumoGameAnnouncement from "./SumoGameAnnouncement";
 
-import snowballThrow2 from "../assets/snowball-throw2.png";
-import snowballThrow from "../assets/snowball-throw.png";
-import pumo from "../assets/pumo.png";
+// Dynamic sprite recoloring system
+import { useDynamicSprite } from "../hooks/useDynamicSprite";
+import {
+  recolorImage,
+  getCachedRecoloredImage,
+  BLUE_COLOR_RANGES,
+  COLOR_PRESETS,
+} from "../utils/SpriteRecolorizer";
+
+// ============================================
+// STATIC SPRITE IMPORTS (Single frame images)
+// UNIFIED: All players use BLUE sprites - recoloring handles Player 2
+// ============================================
 import pumo2 from "../assets/pumo2.png";
-import pumoWaddle from "../assets/pumo-waddle.png";
-import pumoWaddle2 from "../assets/pumo-waddle2.png";
-import pumoArmy from "../assets/pumo-army.png";
-import pumoArmy2 from "../assets/pumo-army2.png";
 import powerWaterIcon from "../assets/power-water.png";
 import snowballImage from "../assets/snowball.png";
 import pumoArmyIcon from "./pumo-army-icon.png";
 import happyFeetIcon from "../assets/happy-feet.png";
 import thickBlubberIcon from "../assets/thick-blubber-icon.png";
-import crouching from "../assets/blocking2.png";
-import crouching2 from "../assets/blocking.png";
-import grabbing from "../assets/grabbing.png";
 import grabbing2 from "../assets/grabbing2.png";
-import grabAttempt from "../assets/grab-attempt.png";
-import grabAttempt2 from "../assets/grab-attempt2.png";
-import attemptingGrabThrow from "../assets/attempting-grab-throw.png";
 import attemptingGrabThrow2 from "../assets/attempting-grab-throw2.png";
-import beingGrabbed from "../assets/is-being-grabbed.gif";
-import beingGrabbed2 from "../assets/is-being-grabbed2.gif";
-import atTheRopes2 from "../assets/at-the-ropes2.png";
 import grabSound from "../sounds/grab-sound.mp3";
-import ready from "../assets/ready.png";
 import ready2 from "../assets/ready2.png";
-import attack from "../assets/attack.png";
 import attack2 from "../assets/attack2.png";
 import slapAttack1Blue from "../assets/slapAttack1blue.png";
 import slapAttack2Blue from "../assets/slapAttack2blue.png";
-import slapAttack1Red from "../assets/slapAttack1Red.png";
-import slapAttack2Red from "../assets/slapAttack2Red.png";
-import dodging from "../assets/dodging.gif";
 import dodging2 from "../assets/dodging2.png";
-import throwing from "../assets/throwing.png";
 import throwing2 from "../assets/throwing2.png";
-import hit from "../assets/hit-clean.png";
-import hit2 from "../assets/hit2.png";
 import salt2 from "../assets/salt2.png";
-import salt from "../assets/salt.png";
-import bow from "../assets/bow.png";
-import bow2 from "../assets/bow2.png";
-import throwTech from "../assets/throw-tech.png";
 import throwTech2 from "../assets/throw-tech2.png";
 import saltBasket from "../assets/salt-basket.png";
 import saltBasketEmpty from "../assets/salt-basket-empty.png";
 import recovering2 from "../assets/recovering2.png";
-import recovering from "../assets/recovering.png";
 import rawParrySuccess2 from "../assets/raw-parry-success2.png";
-import rawParrySuccess from "../assets/raw-parry-success.png";
 import snowball from "../assets/snowball.png";
+import crouchStance2 from "../assets/crouch-stance2.png";
+
+// ============================================
+// ANIMATED SPRITE IMPORTS (APNGs/GIFs)
+// UNIFIED: All players use BLUE sprites - recoloring handles Player 2
+// ============================================
+import pumoWaddle2 from "../assets/pumo-waddle2.png";  // APNG
+import pumoArmy2 from "../assets/pumo-army2.png";      // APNG
+import crouching2 from "../assets/blocking.png";       // APNG (blue)
+import bow2 from "../assets/bow2.png";                 // APNG
+import grabAttempt2 from "../assets/grab-attempt2.png"; // APNG
+import hit2 from "../assets/hit2.png";                 // APNG
+import snowballThrow2 from "../assets/snowball-throw2.png"; // APNG
+import beingGrabbed2 from "../assets/is-being-grabbed2.gif";
+import atTheRopes2 from "../assets/at-the-ropes2.png"; // APNG
+import crouchStrafing2Apng from "../assets/crouch-strafing2.png"; // APNG
+
+// Spritesheets created for future canvas-based recoloring (kept for reference)
+// import crouchingSpritesheet from "../assets/spritesheets/blocking2_spritesheet.png";
+// import bowSpritesheet from "../assets/spritesheets/bow_spritesheet.png";
+// import grabAttemptSpritesheet from "../assets/spritesheets/grab-attempt_spritesheet.png";
+// import hitSpritesheet from "../assets/spritesheets/hit2_spritesheet.png";
+// Spritesheets kept for future canvas-based recoloring
+// (Currently using CSS hue-rotate which is simpler and preserves APNG animations)
 import attackSound from "../sounds/attack-sound.mp3";
 import hitSound from "../sounds/hit-sound.mp3";
 import dodgeSound from "../sounds/dodge-sound.mp3";
@@ -109,8 +120,7 @@ import clashDefeatSound from "../sounds/clash-defeat-sound.wav";
 import roundVictorySound from "../sounds/round-victory-sound.mp3";
 import roundDefeatSound from "../sounds/round-defeat-sound.mp3";
 import hitEffectImage from "../assets/hit-effect.png";
-import crouchStance2 from "../assets/crouch-stance2.png";
-import crouchStrafing2 from "../assets/crouch-strafing2.png";
+// crouchStance2 and crouchStrafing2 already imported above
 
 // CSS background images (preload to prevent flash on game start)
 import gameMapBackground from "../assets/game-map-1.png";
@@ -181,27 +191,19 @@ const CLAP_SOUND_OFFSET = 100; // ms before animation end
 // Player 1 (Blue) ritual spritesheets
 const ritualSpritesheetsPlayer1 = RITUAL_SPRITE_CONFIG;
 
-// Player 2 (Red) ritual spritesheets
-const RITUAL_SPRITE_CONFIG_PLAYER2 = [
-  { spritesheet: ritualPart1SpritesheetRed, frameCount: 28, frameWidth: 480, fps: 14 },
-  { spritesheet: ritualPart2SpritesheetRed, frameCount: 24, frameWidth: 480, fps: 14 },
-  { spritesheet: ritualPart3SpritesheetRed, frameCount: 39, frameWidth: 480, fps: 14 },
-  { spritesheet: ritualPart4SpritesheetRed, frameCount: 38, frameWidth: 480, fps: 14 },
-];
-const ritualSpritesheetsPlayer2 = RITUAL_SPRITE_CONFIG_PLAYER2;
+// Player 2 - NOW USES BLUE spritesheets (same as player 1)
+// CSS hue-rotate filter in RitualSpriteImage will shift blue -> pink
+// This allows both players to use the same sprites with different colors
+const ritualSpritesheetsPlayer2 = RITUAL_SPRITE_CONFIG;
 
 // Clap sounds for each ritual part
 const ritualClapSounds = [clap1Sound, clap2Sound, clap3Sound, clap4Sound];
 
 // Preload ritual sprite sheets to prevent loading delays
-const ritualImagesLoaded = { count: 0, total: RITUAL_SPRITE_CONFIG.length + RITUAL_SPRITE_CONFIG_PLAYER2.length };
+// Player 2 now uses the same blue sprites with CSS hue-rotate, so only preload once
+const ritualImagesLoaded = { count: 0, total: RITUAL_SPRITE_CONFIG.length };
 const preloadRitualSpritesheets = () => {
   RITUAL_SPRITE_CONFIG.forEach((config) => {
-    const img = new Image();
-    img.onload = () => { ritualImagesLoaded.count++; };
-    img.src = config.spritesheet;
-  });
-  RITUAL_SPRITE_CONFIG_PLAYER2.forEach((config) => {
     const img = new Image();
     img.onload = () => { ritualImagesLoaded.count++; };
     img.src = config.spritesheet;
@@ -273,61 +275,41 @@ const initializeAudioPools = () => {
 };
 
 // Initialize image preloading
+// UNIFIED SPRITES: Only preload blue sprites - recoloring handles Player 2
 const initializeImagePreloading = () => {
-  // Character sprites
-  preloadImage(pumo);
+  // Character sprites (blue only)
   preloadImage(pumo2);
-  preloadImage(pumoWaddle);
   preloadImage(pumoWaddle2);
-  preloadImage(pumoArmy);
   preloadImage(pumoArmy2);
 
-  // Action sprites
-  preloadImage(attack);
+  // Action sprites (blue only)
   preloadImage(attack2);
-  preloadImage(throwing);
   preloadImage(throwing2);
-  preloadImage(grabbing);
   preloadImage(grabbing2);
-  preloadImage(grabAttempt);
   preloadImage(grabAttempt2);
-  preloadImage(attemptingGrabThrow);
   preloadImage(attemptingGrabThrow2);
-  preloadImage(beingGrabbed);
   preloadImage(beingGrabbed2);
 
-  // State sprites
-  preloadImage(ready);
+  // State sprites (blue only)
   preloadImage(ready2);
-  preloadImage(hit);
   preloadImage(hit2);
-  preloadImage(dodging);
   preloadImage(dodging2);
-  preloadImage(crouching);
   preloadImage(crouching2);
   preloadImage(crouchStance2);
-  preloadImage(crouchStrafing2);
+  preloadImage(crouchStrafing2Apng);
 
-  // Special moves
+  // Special moves (blue only)
   preloadImage(slapAttack1Blue);
   preloadImage(slapAttack2Blue);
-  preloadImage(slapAttack1Red);
-  preloadImage(slapAttack2Red);
-  preloadImage(snowballThrow);
   preloadImage(snowballThrow2);
 
-  // Utility sprites
-  preloadImage(bow);
+  // Utility sprites (blue only)
   preloadImage(bow2);
-  preloadImage(throwTech);
   preloadImage(throwTech2);
-  preloadImage(salt);
   preloadImage(salt2);
   preloadImage(saltBasket);
   preloadImage(saltBasketEmpty);
-  preloadImage(recovering);
   preloadImage(recovering2);
-  preloadImage(rawParrySuccess);
   preloadImage(rawParrySuccess2);
   preloadImage(atTheRopes2);
   preloadImage(snowball);
@@ -360,6 +342,9 @@ const initializeImagePreloading = () => {
 // Initialize pools and preloading immediately
 initializeAudioPools();
 initializeImagePreloading();
+
+// UNIFIED SPRITES: Both players use blue sprites as base
+// Player 2's color is handled via canvas-based recoloring (defaults to red)
 
 const playSound = (audioFile, volume = 1.0, duration = null) => {
   try {
@@ -460,88 +445,50 @@ const getImageSrc = (
     typeof isGrabbingMovementTrailing === "boolean"
       ? isGrabbingMovementTrailing
       : !!isGrabbingMovement;
-  if (fighter === "player 2") {
-    if (isGrabBreaking) return crouching;
-    if (isGrabBreakCountered) return hit;
-    // Both perfect and regular parry use the same success animation
-    if (isRawParrySuccess || isPerfectRawParrySuccess) return rawParrySuccess;
-    // Check isHit before isAtTheRopes to prevent red silhouette issue
-    if (isHit) return hit;
-    if (isAtTheRopes) return beingGrabbed;
-    if (isBowing) return bow;
-    if (isThrowTeching) return throwTech;
-    if (isRecovering) return recovering;
-    if (isThrowingSnowball) return snowballThrow;
-    if (isSpawningPumoArmy) return pumoArmy;
-    // CRITICAL: Check isBeingGrabbed BEFORE isDodging to prevent dodge animation during grab
-    if (isBeingGrabbed || isBeingPulled || isBeingPushed) return beingGrabbed;
-    if (isDodging) return dodging;
-    if (isCrouchStrafing) return crouchStrafing2;
-    if (isCrouchStance) return crouchStance2;
-    // Show attempting grab throw animation for player 2
-    if (isAttemptingGrabThrow) return attemptingGrabThrow;
-    // Show attempt animation during grab movement attempt
-    if (attemptingGrabMovement) {
-      return grabAttemptType === "throw" ? throwing : grabAttempt;
+  // ============================================
+  // UNIFIED SPRITES - Both players use BLUE sprites
+  // Color differentiation is handled by the recoloring system
+  // Player 1 stays blue, Player 2 gets recolored to red (or custom color)
+  // ============================================
+  
+  if (isGrabBreaking) return crouching2;
+  if (isGrabBreakCountered) return hit2;
+  // Both perfect and regular parry use the same success animation
+  if (isRawParrySuccess || isPerfectRawParrySuccess) return rawParrySuccess2;
+  // Check isHit before isAtTheRopes to prevent red silhouette issue
+  if (isHit) return hit2;
+  if (isAtTheRopes) return atTheRopes2;
+  if (isBowing) return bow2;
+  if (isThrowTeching) return throwTech2;
+  if (isRecovering) return recovering2;
+  if (isThrowingSnowball) return snowballThrow2;
+  if (isSpawningPumoArmy) return pumoArmy2;
+  // CRITICAL: Check isBeingGrabbed BEFORE isDodging to prevent dodge animation during grab
+  if (isBeingGrabbed || isBeingPulled || isBeingPushed) return beingGrabbed2;
+  // CRITICAL: Check isDodging BEFORE isAttacking to prevent attack animation during dodge
+  if (isDodging) return dodging2;
+  if (isJumping) return throwing2;
+  if (isAttacking && !isSlapAttack) return attack2;
+  if (isCrouchStrafing) return crouchStrafing2Apng;
+  if (isCrouchStance) return crouchStance2;
+  // Show attempting grab throw animation
+  if (isAttemptingGrabThrow) return attemptingGrabThrow2;
+  // Show attempt animation during grab movement attempt
+  if (attemptingGrabMovement) {
+    return grabAttemptType === "throw" ? throwing2 : grabAttempt2;
+  }
+  // Show attempt animation even if isGrabbing is false, UNLESS in grab clash
+  if (grabState === "attempting") {
+    // During grab clash, show grabbing animation instead of grab attempt
+    if (isGrabClashActive) {
+      return grabbing2;
     }
-    // Show attempt animation even if isGrabbing is false, UNLESS in grab clash
-    if (grabState === "attempting") {
-      // During grab clash, show grabbing animation instead of grab attempt
-      if (isGrabClashActive) {
-        return grabbing;
-      }
-      return grabAttemptType === "throw" ? throwing : grabAttempt;
-    }
-    if (isSlapAttack) {
-      return slapAnimation === 1 ? slapAttack1Red : slapAttack2Red;
-    }
-    if (isJumping) return throwing;
-    if (isAttacking && !isSlapAttack) return attack;
-    if (isGrabbing) {
-      if (grabState === "attempting") {
-        // During grab clash, show grabbing animation instead of grab attempt
-        if (isGrabClashActive) {
-          return grabbing;
-        }
-        return grabAttemptType === "throw" ? throwing : grabAttempt;
-      }
-      return grabbing;
-    }
-    if (isRawParrying) return crouching;
-    if (isRawParryStun) return bow;
-    if (isReady) return ready;
-    if (isStrafing && !isThrowing) return pumoWaddle;
-    if (isDead) return pumo;
-    if (isThrowing) return throwing;
-    if (isThrowingSalt) return salt;
-    return pumo;
-  } else if (fighter === "player 1") {
-    if (isGrabBreaking) return crouching2;
-    if (isGrabBreakCountered) return hit2;
-    // Both perfect and regular parry use the same success animation
-    if (isRawParrySuccess || isPerfectRawParrySuccess) return rawParrySuccess2;
-    // Check isHit before isAtTheRopes to prevent red silhouette issue
-    if (isHit) return hit2;
-    if (isAtTheRopes) return atTheRopes2;
-    if (isJumping) return throwing2;
-    if (isAttacking && !isSlapAttack) return attack2;
-    if (isBowing) return bow2;
-    if (isThrowTeching) return throwTech2;
-    if (isRecovering) return recovering2;
-    if (isThrowingSnowball) return snowballThrow2;
-    if (isSpawningPumoArmy) return pumoArmy2;
-    // CRITICAL: Check isBeingGrabbed BEFORE isDodging to prevent dodge animation during grab
-    if (isBeingGrabbed || isBeingPulled || isBeingPushed) return beingGrabbed2;
-    if (isDodging) return dodging2;
-    if (isCrouchStrafing) return crouchStrafing2;
-    if (isCrouchStance) return crouchStance2;
-    // Show attempting grab throw animation for player 1
-    if (isAttemptingGrabThrow) return attemptingGrabThrow2;
-    // Show attempt animation during grab movement attempt
-    if (attemptingGrabMovement) {
-      return grabAttemptType === "throw" ? throwing2 : grabAttempt2;
-    }
-    // Show attempt animation even if isGrabbing is false, UNLESS in grab clash
+    return grabAttemptType === "throw" ? throwing2 : grabAttempt2;
+  }
+  if (isSlapAttack) {
+    return slapAnimation === 1 ? slapAttack1Blue : slapAttack2Blue;
+  }
+  if (isGrabbing) {
     if (grabState === "attempting") {
       // During grab clash, show grabbing animation instead of grab attempt
       if (isGrabClashActive) {
@@ -549,28 +496,16 @@ const getImageSrc = (
       }
       return grabAttemptType === "throw" ? throwing2 : grabAttempt2;
     }
-    if (isSlapAttack) {
-      return slapAnimation === 1 ? slapAttack1Blue : slapAttack2Blue;
-    }
-    if (isGrabbing) {
-      if (grabState === "attempting") {
-        // During grab clash, show grabbing animation instead of grab attempt
-        if (isGrabClashActive) {
-          return grabbing2;
-        }
-        return grabAttemptType === "throw" ? throwing2 : grabAttempt2;
-      }
-      return grabbing2;
-    }
-    if (isRawParrying) return crouching2;
-    if (isRawParryStun) return bow2;
-    if (isReady) return ready2;
-    if (isStrafing && !isThrowing) return pumoWaddle2;
-    if (isDead) return pumo;
-    if (isThrowing) return throwing2;
-    if (isThrowingSalt) return salt2;
-    return pumo2;
+    return grabbing2;
   }
+  if (isRawParrying) return crouching2;
+  if (isRawParryStun) return bow2;
+  if (isReady) return ready2;
+  if (isStrafing && !isThrowing) return pumoWaddle2;
+  if (isDead) return pumo2;
+  if (isThrowing) return throwing2;
+  if (isThrowingSalt) return salt2;
+  return pumo2;
 };
 
 const validProps = [
@@ -776,10 +711,12 @@ const StyledImage = styled("img")
         "isAttemptingGrabThrow",
         "ritualAnimationSrc",
         "isLocalPlayer",
+        "overrideSrc",
       ].includes(prop),
   })
   .attrs((props) => ({
-    src: getImageSrc(
+    // Use override src if provided (for recolored sprites), otherwise compute from state
+    src: props.$overrideSrc || getImageSrc(
       props.$fighter,
       props.$isDiving,
       props.$isJumping,
@@ -845,20 +782,20 @@ const StyledImage = styled("img")
         isOutsideDohyo(props.$x, props.$y) ? 0 : // Behind dohyo overlay when outside
         props.$isThrowing || props.$isDodging || props.$isGrabbing ? 98 : 99,
       filter: props.$isAtTheRopes
-        ? `drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(255, 50, 50, 0.7)) brightness(1.15) contrast(1.25)`
+        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(255, 50, 50, 0.7)) brightness(1.15) contrast(1.25)"
         : props.$isGrabBreaking
-        ? `drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.85)) brightness(1.35) drop-shadow(0 0 3px #000)`
+        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.85)) brightness(1.35) drop-shadow(0 0 3px #000)"
         : props.$isRawParrying
-        ? `drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3) drop-shadow(0 0 3px #000)`
+        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3) drop-shadow(0 0 3px #000)"
         : props.$isHit
-        ? `drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) brightness(1.15)`
+        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) brightness(1.15)"
         : props.$isChargingAttack
-        ? `drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 12px rgba(255, 200, 50, 0.85)) contrast(1.25)`
+        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 12px rgba(255, 200, 50, 0.85)) contrast(1.25)"
         : props.$isGrabClashActive
-        ? `drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.25) brightness(1.1)`
+        ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.25) brightness(1.1)"
         : props.$isLocalPlayer
         ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2)"
-        : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) ",
+        : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2)",
       animation: props.$isAtTheRopes
         ? "atTheRopesWobble 0.3s ease-in-out infinite"
         : props.$isAttemptingGrabThrow
@@ -1250,7 +1187,7 @@ const RitualSpriteContainer = styled.div.attrs((props) => ({
     overflow: "hidden",
     zIndex: 99,
     pointerEvents: "none",
-    // Clip 1.5% from left/right edges to prevent sub-pixel bleed from adjacent frames
+    // Clip from left/right edges to prevent sub-pixel bleed from adjacent frames
     clipPath: "inset(0 1.5% 0 1.5%)",
   },
 }))``;
@@ -1277,6 +1214,75 @@ const RitualSpriteImage = styled.img.attrs((props) => {
     },
   };
 })``;
+
+// Animated Fighter Sprite Container - for spritesheet animations (like waddle, hit, bow)
+const AnimatedFighterContainer = styled.div
+  .withConfig({
+    shouldForwardProp: (prop) =>
+      !["x", "y", "facing", "fighter", "isThrowing", "isDodging", "isGrabbing", 
+        "isRingOutThrowCutscene", "isAtTheRopes"].includes(prop),
+  })
+  .attrs((props) => ({
+    style: {
+      position: "absolute",
+      width: "min(16.609%, 511px)",
+      aspectRatio: "1",
+      left: props.$isAtTheRopes && props.$fighter === "player 1"
+        ? `${((props.$x + (props.$x < 640 ? -5 : 5)) / 1280) * 100}%`
+        : `${(props.$x / 1280) * 100}%`,
+      bottom: `${(props.$y / 720) * 100}%`,
+      transform: (props.$isRingOutThrowCutscene && props.$isThrowing
+        ? -props.$facing
+        : props.$facing) === 1
+        ? "scaleX(1)"
+        : "scaleX(-1)",
+      overflow: "hidden",
+      zIndex: props.$isThrowing || props.$isDodging || props.$isGrabbing ? 98 : 99,
+      pointerEvents: "none",
+      // Clip edges to prevent sub-pixel bleed from adjacent frames
+      clipPath: "inset(0 0.5% 0 0.5%)",
+    },
+  }))``;
+
+// Animated Fighter Sprite Image - positioned to show current frame
+const AnimatedFighterImage = styled.img
+  .withConfig({
+    shouldForwardProp: (prop) =>
+      !["frame", "frameCount", "isLocalPlayer", "isAtTheRopes", "isGrabBreaking",
+        "isRawParrying", "isHit", "isChargingAttack", "isGrabClashActive"].includes(prop),
+  })
+  .attrs((props) => {
+    // Clamp frame to valid range
+    const safeFrame = Math.max(0, Math.min(props.$frame, props.$frameCount - 1));
+    // Each frame is 1/frameCount of the total image width
+    const offsetPercent = (safeFrame / props.$frameCount) * 100;
+    return {
+      style: {
+        position: "relative",
+        display: "block",
+        height: "100%",
+        width: "auto",
+        transform: `translate3d(-${offsetPercent}%, 0, 0)`,
+        willChange: "transform",
+        backfaceVisibility: "hidden",
+        filter: props.$isAtTheRopes
+          ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(255, 50, 50, 0.7)) brightness(1.15) contrast(1.25)"
+          : props.$isGrabBreaking
+          ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.85)) brightness(1.35) drop-shadow(0 0 3px #000)"
+          : props.$isRawParrying
+          ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3) drop-shadow(0 0 3px #000)"
+          : props.$isHit
+          ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2) brightness(1.15)"
+          : props.$isChargingAttack
+          ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) drop-shadow(0 0 12px rgba(255, 200, 50, 0.85)) contrast(1.25)"
+          : props.$isGrabClashActive
+          ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.25) brightness(1.1)"
+          : props.$isLocalPlayer
+          ? "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2)"
+          : "drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000) contrast(1.2)",
+      },
+    };
+  })``;
 
 const CountdownTimer = styled.div`
   position: absolute;
@@ -1478,8 +1484,114 @@ const GameFighter = ({
   onResetDisconnectState,
   isPowerUpSelectionActive,
   predictionRef, // Ref for client-side prediction (only used for local player)
+  playerColor, // Custom color for mawashi/headband recoloring
 }) => {
   const { socket } = useContext(SocketContext);
+  
+  // ============================================
+  // SPRITE RECOLORING STATE
+  // Cache recolored sprites to avoid re-processing each render
+  // ============================================
+  const [recoloredSprites, setRecoloredSprites] = useState({});
+  const recoloringInProgress = useRef(new Set());
+  
+  // Determine if we need to recolor
+  // UNIFIED: All sprites are BLUE - only skip recoloring if target color is blue
+  // Player 2's default is red, so they ALWAYS need recoloring (blue -> red/custom)
+  const playerNumber = index === 0 ? 1 : 2;
+  const targetColor = playerColor || (playerNumber === 1 ? COLOR_PRESETS.blue : COLOR_PRESETS.red);
+  // Only skip recoloring if target color is blue (sprites are already blue)
+  const needsRecoloring = targetColor !== COLOR_PRESETS.blue;
+  // Both players use BLUE_COLOR_RANGES since all sprites are blue
+  const colorRanges = BLUE_COLOR_RANGES;
+  
+  // Function to get sprite render info (handles both static and animated sprites)
+  // Returns: { src, isAnimated, config } where config contains spritesheet animation data
+  const getSpriteRenderInfo = useCallback((originalSrc) => {
+    if (!originalSrc) {
+      return { src: originalSrc, isAnimated: false, config: null };
+    }
+    
+    // Check if this is an animated spritesheet
+    const spritesheetConfig = getSpritesheetConfig(originalSrc);
+    const isAnimated = !!spritesheetConfig;
+    
+    // Determine the source to recolor (spritesheet for animated, original for static)
+    const sourceToRecolor = isAnimated ? spritesheetConfig.spritesheet : originalSrc;
+    
+    if (!needsRecoloring) {
+      return {
+        src: sourceToRecolor,
+        isAnimated,
+        config: spritesheetConfig,
+      };
+    }
+    
+    // FIRST: Check global cache (populated by preloadSprites in Lobby)
+    // This is synchronous and avoids any flash of wrong color
+    const globalCached = getCachedRecoloredImage(sourceToRecolor, colorRanges, targetColor);
+    if (globalCached) {
+      return {
+        src: globalCached,
+        isAnimated,
+        config: spritesheetConfig,
+      };
+    }
+    
+    // Check local cache as fallback
+    const cacheKey = `${sourceToRecolor}_${targetColor}`;
+    if (recoloredSprites[cacheKey]) {
+      return {
+        src: recoloredSprites[cacheKey],
+        isAnimated,
+        config: spritesheetConfig,
+      };
+    }
+    
+    // Skip GIFs (they can't be recolored with canvas) - but use spritesheet if available
+    if (typeof originalSrc === 'string' && originalSrc.includes('.gif') && !isAnimated) {
+      return { src: originalSrc, isAnimated: false, config: null };
+    }
+    
+    // Start async recoloring if not already in progress (fallback for uncached sprites)
+    if (!recoloringInProgress.current.has(cacheKey)) {
+      recoloringInProgress.current.add(cacheKey);
+      recolorImage(sourceToRecolor, colorRanges, targetColor)
+        .then((recolored) => {
+          setRecoloredSprites(prev => ({
+            ...prev,
+            [cacheKey]: recolored
+          }));
+        })
+        .catch((err) => {
+          console.error('Failed to recolor sprite:', err);
+        })
+        .finally(() => {
+          recoloringInProgress.current.delete(cacheKey);
+        });
+    }
+    
+    // Return original/spritesheet while recoloring is in progress
+    return {
+      src: sourceToRecolor,
+      isAnimated,
+      config: spritesheetConfig,
+    };
+  }, [needsRecoloring, targetColor, colorRanges, recoloredSprites]);
+  
+  // Backwards compatible wrapper for simple recoloring (ritual spritesheets, etc.)
+  const getRecoloredSrc = useCallback((originalSrc) => {
+    return getSpriteRenderInfo(originalSrc).src;
+  }, [getSpriteRenderInfo]);
+
+  // ============================================
+  // SPRITESHEET ANIMATION STATE
+  // Tracks current frame for animated fighter sprites
+  // ============================================
+  const [fighterSpriteFrame, setFighterSpriteFrame] = useState(0);
+  const fighterSpriteIntervalRef = useRef(null);
+  const lastSpriteSrcRef = useRef(null);
+  
   const [penguin, setPenguin] = useState({
     id: "",
     fighter: "",
@@ -1703,13 +1815,19 @@ const GameFighter = ({
       case 'charge_release':
         // Only predict release if we were charging
         if (penguin.isChargingAttack || predictedState.current.isChargingAttack) {
+          // CRITICAL: If dodging, don't predict isAttacking - server stores it as pending
+          // and executes AFTER dodge ends. Setting isAttacking during dodge causes
+          // attack animation to show during dodge.
+          const isDodging = penguin.isDodging || predictedState.current.isDodging;
           predictedState.current = {
             ...predictedState.current,
             isChargingAttack: false,
-            isAttacking: true,
+            // Only predict attack if NOT dodging - during dodge, server stores as pending
+            isAttacking: !isDodging,
             // CRITICAL: Clear other action predictions to prevent visual flicker
             isSlapAttack: false,
-            isDodging: false,
+            // Don't clear dodge state - let dodge continue visually
+            isDodging: predictedState.current.isDodging,
             isRawParrying: false,
             isGrabbing: false,
             timestamp: now,
@@ -1780,9 +1898,15 @@ const GameFighter = ({
         break;
       case 'power_slide_start':
         // Predict power sliding when C/CTRL pressed
-        // Must match server's canPowerSlide conditions (server-io/index.js line 2943)
+        // Must match server's canPowerSlide conditions (server-io/index.js line 2898)
         // NOTE: isChargingAttack is NOT blocked - can power slide while charging!
-        if (!penguin.isDodging && 
+        // CRITICAL: gameStarted check prevents visual squish before hakkiyoi and after match ends
+        // CRITICAL: velocity check prevents visual squish when standing still or moving too slow
+        const SLIDE_MIN_VELOCITY = 0.5; // Must match server (server-io/index.js line 209)
+        const hasEnoughVelocity = Math.abs(penguin.movementVelocity || 0) >= SLIDE_MIN_VELOCITY;
+        if (gameStarted &&
+            hasEnoughVelocity &&
+            !penguin.isDodging && 
             !penguin.isThrowing &&
             !penguin.isGrabbing && 
             !penguin.isWhiffingGrab &&
@@ -2236,6 +2360,63 @@ const GameFighter = ({
       }
     };
   }, [penguin.isInRitualPhase, index]);
+
+  // ============================================
+  // FIGHTER SPRITE ANIMATION
+  // Track which sprite is currently shown and animate it
+  // ============================================
+  const currentAnimatedSpriteRef = useRef(null);
+  
+  // This function is called during render to update animation state
+  const updateSpriteAnimation = useCallback((spriteSrc) => {
+    const config = getSpritesheetConfig(spriteSrc);
+    
+    // If sprite changed, reset frame and start new animation
+    if (spriteSrc !== currentAnimatedSpriteRef.current) {
+      currentAnimatedSpriteRef.current = spriteSrc;
+      setFighterSpriteFrame(0);
+      
+      // Clear existing interval
+      if (fighterSpriteIntervalRef.current) {
+        clearInterval(fighterSpriteIntervalRef.current);
+        fighterSpriteIntervalRef.current = null;
+      }
+      
+      // Start new animation if this is an animated sprite
+      if (config) {
+        const { frameCount, fps, loop = true } = config;
+        const frameDuration = 1000 / fps;
+        let frameRef = 0;
+        
+        fighterSpriteIntervalRef.current = setInterval(() => {
+          frameRef++;
+          
+          if (frameRef >= frameCount) {
+            if (loop) {
+              frameRef = 0;
+            } else {
+              frameRef = frameCount - 1;
+              clearInterval(fighterSpriteIntervalRef.current);
+              fighterSpriteIntervalRef.current = null;
+            }
+          }
+          
+          setFighterSpriteFrame(frameRef);
+        }, frameDuration);
+      }
+    }
+    
+    return config;
+  }, []);
+  
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (fighterSpriteIntervalRef.current) {
+        clearInterval(fighterSpriteIntervalRef.current);
+      }
+    };
+  }, []);
 
   // Interpolation constants
   const SERVER_TICK_RATE = 64; // Server runs at 64 FPS
@@ -3215,6 +3396,61 @@ const GameFighter = ({
   // PERFORMANCE: Calculate position ONCE per render instead of calling getDisplayPosition() multiple times
   const displayPosition = getDisplayPosition();
 
+  // ============================================
+  // SPRITE RECOLORING
+  // Compute the current sprite and apply recoloring if needed
+  // ============================================
+  const displaySpriteSrc = getImageSrc(
+    penguin.fighter,
+    penguin.isDiving,
+    penguin.isJumping,
+    displayPenguin.isAttacking,
+    displayPenguin.isDodging,
+    penguin.isStrafing,
+    displayPenguin.isRawParrying,
+    penguin.isGrabBreaking,
+    penguin.isReady,
+    penguin.isHit,
+    penguin.isDead,
+    displayPenguin.isSlapAttack,
+    penguin.isThrowing,
+    displayPenguin.isGrabbing,
+    penguin.isGrabbingMovement,
+    penguin.isBeingGrabbed,
+    penguin.isThrowingSalt,
+    displayPenguin.slapAnimation,
+    penguin.isBowing,
+    penguin.isThrowTeching,
+    penguin.isBeingPulled,
+    penguin.isBeingPushed,
+    penguin.grabState,
+    penguin.grabAttemptType,
+    penguin.isRecovering,
+    penguin.isRawParryStun,
+    penguin.isRawParrySuccess,
+    penguin.isPerfectRawParrySuccess,
+    penguin.isThrowingSnowball,
+    penguin.isSpawningPumoArmy,
+    penguin.isAtTheRopes,
+    penguin.isCrouchStance,
+    penguin.isCrouchStrafing,
+    penguin.isGrabBreakCountered,
+    penguin.isGrabbingMovement,
+    isGrabClashActive,
+    penguin.isAttemptingGrabThrow,
+    null // ritualAnimationSrc - handled separately
+  );
+  
+  // Get sprite render info (handles animated spritesheets and recoloring)
+  const spriteRenderInfo = getSpriteRenderInfo(displaySpriteSrc);
+  const { src: recoloredSpriteSrc, isAnimated: isAnimatedSprite, config: spriteConfig } = spriteRenderInfo;
+  
+  // Update animation state (will start/stop intervals as needed)
+  updateSpriteAnimation(displaySpriteSrc);
+  
+  // Determine if we should show ritual or fighter sprite
+  const showRitualSprite = shouldShowRitualForPlayer && ritualSpriteConfig;
+
   return (
     <div className="ui-container">
       {/* Global visual theme overlay - optimized for performance */}
@@ -3256,9 +3492,9 @@ const GameFighter = ({
 
       <Gyoji gyojiState={gyojiState} hakkiyoi={hakkiyoi} />
       {gyojiCall && (
-        <div className="gyoji-call">{gyojiCall}</div>
+        <SumoGameAnnouncement type="tewotsuite" duration={2} />
       )}
-      {hakkiyoi && <div className="hakkiyoi">HAKKI-YOI !</div>}
+      {hakkiyoi && <SumoGameAnnouncement type="hakkiyoi" duration={1.8} />}
       {gameOver && !matchOver && (
         <RoundResult isVictory={winner.id === localId} />
       )}
@@ -3326,73 +3562,107 @@ const GameFighter = ({
         isThrowing={penguin.isThrowing}
         chargeCancelled={penguin.chargeCancelled || false}
       /> */}
-      <StyledImage
-        $fighter={penguin.fighter}
-        $isDiving={penguin.isDiving}
-        $isJumping={penguin.isJumping}
-        $isAttacking={displayPenguin.isAttacking}
-        $isDodging={displayPenguin.isDodging}
-        $isStrafing={penguin.isStrafing}
-        $isBraking={displayPenguin.isBraking}
-        $isPowerSliding={displayPenguin.isPowerSliding}
-        $isRawParrying={displayPenguin.isRawParrying}
-        $isGrabBreaking={penguin.isGrabBreaking}
-        $isReady={penguin.isReady}
-        $isHit={penguin.isHit}
-        $isDead={penguin.isDead}
-        $isSlapAttack={displayPenguin.isSlapAttack}
-        $isThrowing={penguin.isThrowing}
-        $isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
-        $isGrabbing={displayPenguin.isGrabbing}
-        $isGrabbingMovement={penguin.isGrabbingMovement}
-        $isBeingGrabbed={penguin.isBeingGrabbed}
-        $isThrowingSalt={penguin.isThrowingSalt}
-        $slapAnimation={displayPenguin.slapAnimation}
-        $isBowing={penguin.isBowing}
-        $isThrowTeching={penguin.isThrowTeching}
-        $isBeingPulled={penguin.isBeingPulled}
-        $isBeingPushed={penguin.isBeingPushed}
-        $grabState={penguin.grabState}
-        $grabAttemptType={penguin.grabAttemptType}
-        $x={displayPosition.x}
-        $y={displayPosition.y}
-        $facing={penguin.facing}
-        $throwCooldown={penguin.throwCooldown}
-        $grabCooldown={penguin.grabCooldown}
-        $isChargingAttack={displayPenguin.isChargingAttack}
-        $chargeStartTime={penguin.chargeStartTime}
-        $chargeMaxDuration={penguin.chargeMaxDuration}
-        $chargeAttackPower={penguin.chargeAttackPower}
-        $chargingFacingDirection={penguin.chargingFacingDirection}
-        $saltCooldown={penguin.saltCooldown}
-        $grabStartTime={penguin.grabStartTime}
-        $grabbedOpponent={penguin.grabbedOpponent}
-        $grabAttemptStartTime={penguin.grabAttemptStartTime}
-        $throwTechCooldown={penguin.throwTechCooldown}
-        $isSlapParrying={penguin.isSlapParrying}
-        $lastThrowAttemptTime={penguin.lastThrowAttemptTime}
-        $lastGrabAttemptTime={penguin.lastGrabAttemptTime}
-        $dodgeDirection={displayPenguin.dodgeDirection}
-        $isDodgeCancelling={penguin.isDodgeCancelling}
-        $justLandedFromDodge={penguin.justLandedFromDodge}
-        $speedFactor={penguin.speedFactor}
-        $sizeMultiplier={penguin.sizeMultiplier}
-        $isRecovering={penguin.isRecovering}
-        $isRawParryStun={penguin.isRawParryStun}
-        $isRawParrySuccess={penguin.isRawParrySuccess}
-        $isPerfectRawParrySuccess={penguin.isPerfectRawParrySuccess}
-        $isThrowingSnowball={penguin.isThrowingSnowball}
-        $isSpawningPumoArmy={penguin.isSpawningPumoArmy}
-        $isAtTheRopes={penguin.isAtTheRopes}
-        $isCrouchStance={penguin.isCrouchStance}
-        $isCrouchStrafing={penguin.isCrouchStrafing}
-        $isGrabBreakCountered={penguin.isGrabBreakCountered}
-        $isGrabClashActive={isGrabClashActive}
-        $isAttemptingGrabThrow={penguin.isAttemptingGrabThrow}
-        $ritualAnimationSrc={null}
-        $isLocalPlayer={penguin.id === localId}
-        style={{ display: shouldShowRitualForPlayer && ritualSpriteConfig ? 'none' : 'block' }}
-      />
+      {/* Animated Sprite Sheet (when sprite is a spritesheet animation) */}
+      {isAnimatedSprite && !showRitualSprite && (
+        <AnimatedFighterContainer
+          $x={displayPosition.x}
+          $y={displayPosition.y}
+          $facing={penguin.facing}
+          $fighter={penguin.fighter}
+          $isThrowing={penguin.isThrowing}
+          $isDodging={displayPenguin.isDodging}
+          $isGrabbing={displayPenguin.isGrabbing}
+          $isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
+          $isAtTheRopes={penguin.isAtTheRopes}
+        >
+          <AnimatedFighterImage
+            src={recoloredSpriteSrc}
+            alt="fighter"
+            $frame={fighterSpriteFrame}
+            $frameCount={spriteConfig?.frameCount || 1}
+            $isLocalPlayer={penguin.id === localId}
+            $isAtTheRopes={penguin.isAtTheRopes}
+            $isGrabBreaking={penguin.isGrabBreaking}
+            $isRawParrying={displayPenguin.isRawParrying}
+            $isHit={penguin.isHit}
+            $isChargingAttack={displayPenguin.isChargingAttack}
+            $isGrabClashActive={isGrabClashActive}
+            draggable={false}
+          />
+        </AnimatedFighterContainer>
+      )}
+      
+      {/* Static Sprite (when sprite is not an animated spritesheet) */}
+      {!isAnimatedSprite && (
+        <StyledImage
+          $overrideSrc={recoloredSpriteSrc}
+          $fighter={penguin.fighter}
+          $isDiving={penguin.isDiving}
+          $isJumping={penguin.isJumping}
+          $isAttacking={displayPenguin.isAttacking}
+          $isDodging={displayPenguin.isDodging}
+          $isStrafing={penguin.isStrafing}
+          $isBraking={displayPenguin.isBraking}
+          $isPowerSliding={displayPenguin.isPowerSliding}
+          $isRawParrying={displayPenguin.isRawParrying}
+          $isGrabBreaking={penguin.isGrabBreaking}
+          $isReady={penguin.isReady}
+          $isHit={penguin.isHit}
+          $isDead={penguin.isDead}
+          $isSlapAttack={displayPenguin.isSlapAttack}
+          $isThrowing={penguin.isThrowing}
+          $isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
+          $isGrabbing={displayPenguin.isGrabbing}
+          $isGrabbingMovement={penguin.isGrabbingMovement}
+          $isBeingGrabbed={penguin.isBeingGrabbed}
+          $isThrowingSalt={penguin.isThrowingSalt}
+          $slapAnimation={displayPenguin.slapAnimation}
+          $isBowing={penguin.isBowing}
+          $isThrowTeching={penguin.isThrowTeching}
+          $isBeingPulled={penguin.isBeingPulled}
+          $isBeingPushed={penguin.isBeingPushed}
+          $grabState={penguin.grabState}
+          $grabAttemptType={penguin.grabAttemptType}
+          $x={displayPosition.x}
+          $y={displayPosition.y}
+          $facing={penguin.facing}
+          $throwCooldown={penguin.throwCooldown}
+          $grabCooldown={penguin.grabCooldown}
+          $isChargingAttack={displayPenguin.isChargingAttack}
+          $chargeStartTime={penguin.chargeStartTime}
+          $chargeMaxDuration={penguin.chargeMaxDuration}
+          $chargeAttackPower={penguin.chargeAttackPower}
+          $chargingFacingDirection={penguin.chargingFacingDirection}
+          $saltCooldown={penguin.saltCooldown}
+          $grabStartTime={penguin.grabStartTime}
+          $grabbedOpponent={penguin.grabbedOpponent}
+          $grabAttemptStartTime={penguin.grabAttemptStartTime}
+          $throwTechCooldown={penguin.throwTechCooldown}
+          $isSlapParrying={penguin.isSlapParrying}
+          $lastThrowAttemptTime={penguin.lastThrowAttemptTime}
+          $lastGrabAttemptTime={penguin.lastGrabAttemptTime}
+          $dodgeDirection={displayPenguin.dodgeDirection}
+          $isDodgeCancelling={penguin.isDodgeCancelling}
+          $justLandedFromDodge={penguin.justLandedFromDodge}
+          $speedFactor={penguin.speedFactor}
+          $sizeMultiplier={penguin.sizeMultiplier}
+          $isRecovering={penguin.isRecovering}
+          $isRawParryStun={penguin.isRawParryStun}
+          $isRawParrySuccess={penguin.isRawParrySuccess}
+          $isPerfectRawParrySuccess={penguin.isPerfectRawParrySuccess}
+          $isThrowingSnowball={penguin.isThrowingSnowball}
+          $isSpawningPumoArmy={penguin.isSpawningPumoArmy}
+          $isAtTheRopes={penguin.isAtTheRopes}
+          $isCrouchStance={penguin.isCrouchStance}
+          $isCrouchStrafing={penguin.isCrouchStrafing}
+          $isGrabBreakCountered={penguin.isGrabBreakCountered}
+          $isGrabClashActive={isGrabClashActive}
+          $isAttemptingGrabThrow={penguin.isAttemptingGrabThrow}
+          $ritualAnimationSrc={null}
+          $isLocalPlayer={penguin.id === localId}
+          style={{ display: showRitualSprite ? 'none' : 'block' }}
+        />
+      )}
 
       {/* Ritual Sprite Sheet Animation - all 4 parts pre-rendered, only current one visible */}
       {/* Each player's ritual stops independently when they select their power-up and start salt throwing */}
@@ -3402,17 +3672,19 @@ const GameFighter = ({
           $x={displayPosition.x}
           $y={displayPosition.y}
           $facing={penguin.facing}
+          $partIndex={partIndex}
           style={{ 
             visibility: partIndex === ritualPart ? 'visible' : 'hidden',
             pointerEvents: 'none'
           }}
         >
           <RitualSpriteImage
-            src={config.spritesheet}
+            src={getRecoloredSrc(config.spritesheet)}
             alt={`Ritual Part ${partIndex + 1}`}
             $frame={partIndex === ritualPart ? ritualFrame : 0}
             $frameCount={config.frameCount}
             $isLocalPlayer={penguin.id === localId}
+            $playerIndex={index}
             draggable={false}
           />
         </RitualSpriteContainer>
@@ -3510,12 +3782,11 @@ const GameFighter = ({
         // Determine the correct sprite based on the owner's fighter type and state
         let cloneSprite;
         if (clone.isStrafing) {
-          // Use waddle sprites for strafing animation
-          cloneSprite =
-            clone.ownerFighter === "player 1" ? pumoWaddle2 : pumoWaddle;
+          // Use waddle sprites for strafing animation (unified blue sprites)
+          cloneSprite = pumoWaddle2;
         } else {
-          // Use default sprites
-          cloneSprite = clone.ownerFighter === "player 1" ? pumo2 : pumo;
+          // Use default sprites (unified blue sprites)
+          cloneSprite = pumo2;
         }
 
         return (

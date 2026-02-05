@@ -42,16 +42,16 @@
 }
 
 /* ============================================
-   SLAP ATTACK - Quick sharp starburst
-   Like a manga impact - clean white burst
+   SLAP ATTACK - Cartoon smack effect
+   Playful poof burst with stars for penguin sumo
    ============================================ */
 .hit-ring-wrapper.slap-hit {
   position: relative;
-  width: clamp(50px, 6vw, 75px);
-  height: clamp(50px, 6vw, 75px);
+  width: clamp(55px, 7vw, 85px);
+  height: clamp(55px, 7vw, 85px);
 }
 
-/* Central white burst */
+/* Central poof burst - soft and round */
 .slap-hit .hit-ring {
   position: absolute;
   top: 50%;
@@ -61,20 +61,25 @@
   transform: translate(-50%, -50%);
 }
 
+/* Inner soft glow */
 .slap-hit .hit-ring::before {
   content: '';
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 60%;
-  height: 60%;
-  background: white;
+  width: 70%;
+  height: 70%;
+  background: radial-gradient(circle, 
+    rgba(255, 255, 255, 1) 0%, 
+    rgba(255, 255, 255, 0.8) 30%,
+    rgba(200, 230, 255, 0.6) 60%,
+    transparent 100%);
   border-radius: 50%;
   transform: translate(-50%, -50%) scale(0);
-  animation: slapCorePop 0.15s ease-out forwards;
+  animation: slapPoofPop 0.2s ease-out forwards;
 }
 
-/* Sharp starburst lines - the classic manga impact */
+/* Outer ring burst */
 .slap-hit .hit-ring::after {
   content: '';
   position: absolute;
@@ -82,55 +87,109 @@
   left: 50%;
   width: 100%;
   height: 100%;
-  transform: translate(-50%, -50%) scale(0);
-  background: 
-    /* Main cross */
-    linear-gradient(0deg, transparent 40%, white 45%, white 55%, transparent 60%),
-    linear-gradient(90deg, transparent 40%, white 45%, white 55%, transparent 60%),
-    /* Diagonal lines */
-    linear-gradient(45deg, transparent 42%, white 47%, white 53%, transparent 58%),
-    linear-gradient(-45deg, transparent 42%, white 47%, white 53%, transparent 58%);
-  animation: slapBurstLines 0.18s ease-out forwards;
+  border: 3px solid rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0.3);
+  animation: slapRingExpand 0.25s ease-out forwards;
 }
 
-@keyframes slapCorePop {
+/* Cartoon stars container - uses pseudo element on wrapper */
+.slap-hit::before {
+  content: '✦';
+  position: absolute;
+  top: 15%;
+  left: 50%;
+  font-size: clamp(10px, 1.2vw, 16px);
+  color: #FFE066;
+  text-shadow: 0 0 4px rgba(255, 224, 102, 0.8);
+  transform: translate(-50%, -50%) scale(0) rotate(0deg);
+  animation: starPop1 0.3s ease-out 0.05s forwards;
+  pointer-events: none;
+}
+
+.slap-hit::after {
+  content: '✦';
+  position: absolute;
+  top: 75%;
+  left: 25%;
+  font-size: clamp(8px, 1vw, 12px);
+  color: #FFE066;
+  text-shadow: 0 0 4px rgba(255, 224, 102, 0.8);
+  transform: translate(-50%, -50%) scale(0) rotate(0deg);
+  animation: starPop2 0.3s ease-out 0.08s forwards;
+  pointer-events: none;
+}
+
+@keyframes slapPoofPop {
   0% {
     transform: translate(-50%, -50%) scale(0);
     opacity: 1;
   }
-  40% {
-    transform: translate(-50%, -50%) scale(1.5);
+  50% {
+    transform: translate(-50%, -50%) scale(1.3);
     opacity: 1;
   }
   100% {
-    transform: translate(-50%, -50%) scale(0.5);
+    transform: translate(-50%, -50%) scale(0.8);
     opacity: 0;
   }
 }
 
-@keyframes slapBurstLines {
+@keyframes slapRingExpand {
   0% {
     transform: translate(-50%, -50%) scale(0.3);
     opacity: 1;
+    border-width: 4px;
   }
-  50% {
-    transform: translate(-50%, -50%) scale(1.2);
-    opacity: 0.9;
+  60% {
+    opacity: 0.8;
+    border-width: 2px;
   }
   100% {
-    transform: translate(-50%, -50%) scale(1.6);
+    transform: translate(-50%, -50%) scale(1.8);
+    opacity: 0;
+    border-width: 1px;
+  }
+}
+
+@keyframes starPop1 {
+  0% {
+    transform: translate(-50%, -50%) scale(0) rotate(0deg);
+    opacity: 1;
+  }
+  40% {
+    transform: translate(-80%, -120%) scale(1.2) rotate(20deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-100%, -180%) scale(0.6) rotate(45deg);
+    opacity: 0;
+  }
+}
+
+@keyframes starPop2 {
+  0% {
+    transform: translate(-50%, -50%) scale(0) rotate(0deg);
+    opacity: 1;
+  }
+  40% {
+    transform: translate(-20%, 30%) scale(1) rotate(-15deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(20%, 80%) scale(0.5) rotate(-30deg);
     opacity: 0;
   }
 }
 
 /* ============================================
-   CHARGED ATTACK - Balanced impact
-   Core burst + ring + impact cross
+   CHARGED ATTACK - Larger poof impact
+   Same style as slap but bigger and more dramatic
    ============================================ */
 .hit-ring-wrapper.charged-hit {
   position: relative;
-  width: clamp(55px, 6.5vw, 80px);
-  height: clamp(55px, 6.5vw, 80px);
+  width: clamp(65px, 8vw, 100px);
+  height: clamp(65px, 8vw, 100px);
 }
 
 .charged-hit .hit-ring {
@@ -142,47 +201,62 @@
   transform: translate(-50%, -50%);
 }
 
-/* Bright central burst */
+/* Central poof burst - soft with icy blue tones */
 .charged-hit .hit-ring::before {
   content: '';
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 60%;
-  height: 60%;
-  background: radial-gradient(circle, white 0%, rgba(255, 255, 255, 0.8) 40%, transparent 100%);
+  width: 70%;
+  height: 70%;
+  background: radial-gradient(circle, 
+    rgba(255, 255, 255, 1) 0%, 
+    rgba(255, 255, 255, 0.8) 30%,
+    rgba(200, 230, 255, 0.6) 60%,
+    transparent 100%);
   border-radius: 50%;
   transform: translate(-50%, -50%) scale(0);
   animation: chargedCorePop 0.22s ease-out forwards;
 }
 
-/* Impact cross lines */
+/* Outer ring burst */
 .charged-hit .hit-ring::after {
   content: '';
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 130%;
-  height: 130%;
-  background: 
-    linear-gradient(0deg, transparent 42%, rgba(255, 255, 255, 0.9) 47%, rgba(255, 255, 255, 0.9) 53%, transparent 58%),
-    linear-gradient(90deg, transparent 42%, rgba(255, 255, 255, 0.9) 47%, rgba(255, 255, 255, 0.9) 53%, transparent 58%);
+  width: 100%;
+  height: 100%;
+  border: 4px solid rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
   transform: translate(-50%, -50%) scale(0.3);
-  animation: chargedCrossExpand 0.25s ease-out forwards;
+  animation: chargedRingExpand 0.35s ease-out forwards;
 }
 
-/* Expanding ring */
+/* Cartoon stars for charged attack */
 .charged-hit::before {
-  content: '';
+  content: '✦';
   position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 90%;
-  height: 90%;
-  border: 3px solid rgba(255, 255, 255, 0.9);
-  border-radius: 50%;
-  transform: translate(-50%, -50%) scale(0.4);
-  animation: chargedRingExpand 0.35s ease-out forwards;
+  top: 10%;
+  left: 55%;
+  font-size: clamp(12px, 1.5vw, 20px);
+  color: #FFE066;
+  text-shadow: 0 0 5px rgba(255, 224, 102, 0.8);
+  transform: translate(-50%, -50%) scale(0) rotate(0deg);
+  animation: starPop1 0.35s ease-out 0.05s forwards;
+  pointer-events: none;
+}
+
+.charged-hit::after {
+  content: '✦';
+  position: absolute;
+  top: 80%;
+  left: 20%;
+  font-size: clamp(10px, 1.2vw, 16px);
+  color: #FFE066;
+  text-shadow: 0 0 5px rgba(255, 224, 102, 0.8);
+  transform: translate(-50%, -50%) scale(0) rotate(0deg);
+  animation: starPop2 0.35s ease-out 0.1s forwards;
   pointer-events: none;
 }
 
@@ -197,21 +271,6 @@
   }
   100% {
     transform: translate(-50%, -50%) scale(1.3);
-    opacity: 0;
-  }
-}
-
-@keyframes chargedCrossExpand {
-  0% {
-    transform: translate(-50%, -50%) scale(0.3);
-    opacity: 1;
-  }
-  50% {
-    transform: translate(-50%, -50%) scale(1.2);
-    opacity: 0.9;
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(1.6);
     opacity: 0;
   }
 }
@@ -234,38 +293,64 @@
 }
 
 /* ============================================
-   COUNTER HIT - Red variant (classic fighting game color)
-   Rewards catching opponent in startup frames
+   COUNTER HIT - Golden "seeing stars" effect
+   More intense impact for catching opponent
    ============================================ */
 
-/* Counter hit slap - red burst */
+/* Counter hit slap - golden/yellow poof burst */
 .hit-ring-wrapper.slap-hit.counter-hit .hit-ring::before {
-  background: #FF2222;
+  background: radial-gradient(circle, 
+    rgba(255, 240, 150, 1) 0%, 
+    rgba(255, 220, 100, 0.9) 30%,
+    rgba(255, 200, 50, 0.6) 60%,
+    transparent 100%);
 }
 
 .hit-ring-wrapper.slap-hit.counter-hit .hit-ring::after {
-  background: 
-    /* Main cross */
-    linear-gradient(0deg, transparent 40%, #FF2222 45%, #FF2222 55%, transparent 60%),
-    linear-gradient(90deg, transparent 40%, #FF2222 45%, #FF2222 55%, transparent 60%),
-    /* Diagonal lines */
-    linear-gradient(45deg, transparent 42%, #FF4444 47%, #FF4444 53%, transparent 58%),
-    linear-gradient(-45deg, transparent 42%, #FF4444 47%, #FF4444 53%, transparent 58%);
+  border-color: rgba(255, 220, 100, 0.95);
 }
 
-/* Counter hit charged - red burst */
+/* Counter hit stars are brighter gold */
+.hit-ring-wrapper.slap-hit.counter-hit::before {
+  content: '★';
+  color: #FFD700;
+  font-size: clamp(12px, 1.5vw, 20px);
+  text-shadow: 0 0 8px rgba(255, 215, 0, 1), 0 0 15px rgba(255, 180, 0, 0.8);
+}
+
+.hit-ring-wrapper.slap-hit.counter-hit::after {
+  content: '★';
+  color: #FFD700;
+  font-size: clamp(10px, 1.2vw, 16px);
+  text-shadow: 0 0 8px rgba(255, 215, 0, 1), 0 0 15px rgba(255, 180, 0, 0.8);
+}
+
+/* Counter hit charged - golden burst */
 .hit-ring-wrapper.charged-hit.counter-hit .hit-ring::before {
-  background: radial-gradient(circle, #FF2222 0%, rgba(255, 34, 34, 0.8) 40%, transparent 100%);
+  background: radial-gradient(circle, 
+    rgba(255, 240, 150, 1) 0%, 
+    rgba(255, 220, 100, 0.9) 30%,
+    rgba(255, 200, 50, 0.6) 60%,
+    transparent 100%);
 }
 
 .hit-ring-wrapper.charged-hit.counter-hit .hit-ring::after {
-  background: 
-    linear-gradient(0deg, transparent 42%, rgba(255, 34, 34, 0.9) 47%, rgba(255, 34, 34, 0.9) 53%, transparent 58%),
-    linear-gradient(90deg, transparent 42%, rgba(255, 34, 34, 0.9) 47%, rgba(255, 34, 34, 0.9) 53%, transparent 58%);
+  border-color: rgba(255, 220, 100, 0.95);
 }
 
+/* Counter hit stars are brighter gold for charged */
 .hit-ring-wrapper.charged-hit.counter-hit::before {
-  border-color: rgba(255, 34, 34, 0.9);
+  content: '★';
+  color: #FFD700;
+  font-size: clamp(14px, 1.8vw, 24px);
+  text-shadow: 0 0 8px rgba(255, 215, 0, 1), 0 0 15px rgba(255, 180, 0, 0.8);
+}
+
+.hit-ring-wrapper.charged-hit.counter-hit::after {
+  content: '★';
+  color: #FFD700;
+  font-size: clamp(12px, 1.5vw, 18px);
+  text-shadow: 0 0 8px rgba(255, 215, 0, 1), 0 0 15px rgba(255, 180, 0, 0.8);
 }
 
 /* Counter hit particles - red */
@@ -274,7 +359,7 @@
 }
 
 /* ============================================
-   SPARK PARTICLES - Simple bright dots
+   SPARK PARTICLES - Soft poof dots
    ============================================ */
 .spark-particles {
   position: absolute;
@@ -291,39 +376,50 @@
   position: absolute;
   border-radius: 50%;
   opacity: 0;
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
 }
 
-/* Slap sparks - fast white */
-.slap-hit .spark { animation: sparkOut 0.2s ease-out forwards; }
-.slap-hit .spark:nth-child(1) { --tx: 2vw; --ty: -1.5vw; }
-.slap-hit .spark:nth-child(2) { --tx: -2vw; --ty: -1vw; animation-delay: 0.02s; }
-.slap-hit .spark:nth-child(3) { --tx: 1.5vw; --ty: 2vw; animation-delay: 0.01s; }
-.slap-hit .spark:nth-child(4) { --tx: -1.5vw; --ty: 1.5vw; animation-delay: 0.03s; }
-.slap-hit .spark:nth-child(5) { --tx: 2.5vw; --ty: 0.5vw; }
-.slap-hit .spark:nth-child(6) { --tx: -2.5vw; --ty: -0.5vw; animation-delay: 0.02s; }
+/* Slap sparks - soft poof outward */
+.slap-hit .spark { animation: sparkPoof 0.25s ease-out forwards; }
+.slap-hit .spark:nth-child(1) { --tx: 2.5vw; --ty: -2vw; }
+.slap-hit .spark:nth-child(2) { --tx: -2.5vw; --ty: -1.5vw; animation-delay: 0.03s; }
+.slap-hit .spark:nth-child(3) { --tx: 2vw; --ty: 2.5vw; animation-delay: 0.02s; }
+.slap-hit .spark:nth-child(4) { --tx: -2vw; --ty: 2vw; animation-delay: 0.04s; }
+.slap-hit .spark:nth-child(5) { --tx: 3vw; --ty: 0.3vw; animation-delay: 0.01s; }
+.slap-hit .spark:nth-child(6) { --tx: -3vw; --ty: -0.3vw; animation-delay: 0.03s; }
+
+/* Counter hit sparks - golden glow */
+.slap-hit.counter-hit .spark,
+.charged-hit.counter-hit .spark {
+  box-shadow: 0 0 6px rgba(255, 215, 0, 0.8);
+}
 
 /* Charged sparks - similar to slap but slightly larger travel */
-.charged-hit .spark { animation: sparkOut 0.25s ease-out forwards; }
-.charged-hit .spark:nth-child(1) { --tx: 2.2vw; --ty: -1.8vw; }
-.charged-hit .spark:nth-child(2) { --tx: -2.2vw; --ty: -1.2vw; animation-delay: 0.02s; }
-.charged-hit .spark:nth-child(3) { --tx: 1.8vw; --ty: 2vw; animation-delay: 0.01s; }
-.charged-hit .spark:nth-child(4) { --tx: -1.8vw; --ty: 1.8vw; animation-delay: 0.03s; }
-.charged-hit .spark:nth-child(5) { --tx: 2.5vw; --ty: 0.5vw; }
-.charged-hit .spark:nth-child(6) { --tx: -2.5vw; --ty: -0.5vw; animation-delay: 0.02s; }
+.charged-hit .spark { animation: sparkPoof 0.3s ease-out forwards; }
+.charged-hit .spark:nth-child(1) { --tx: 2.5vw; --ty: -2vw; }
+.charged-hit .spark:nth-child(2) { --tx: -2.5vw; --ty: -1.5vw; animation-delay: 0.02s; }
+.charged-hit .spark:nth-child(3) { --tx: 2vw; --ty: 2.5vw; animation-delay: 0.01s; }
+.charged-hit .spark:nth-child(4) { --tx: -2vw; --ty: 2vw; animation-delay: 0.03s; }
+.charged-hit .spark:nth-child(5) { --tx: 3vw; --ty: 0.5vw; }
+.charged-hit .spark:nth-child(6) { --tx: -3vw; --ty: -0.5vw; animation-delay: 0.02s; }
 
-@keyframes sparkOut {
+@keyframes sparkPoof {
   0% {
+    opacity: 0.9;
+    transform: translate(-50%, -50%) scale(0.8);
+  }
+  30% {
     opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
+    transform: translate(calc(-50% + var(--tx) * 0.3), calc(-50% + var(--ty) * 0.3)) scale(1.1);
   }
   100% {
     opacity: 0;
-    transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(0.3);
+    transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(0.4);
   }
 }
 
 /* ============================================
-   HIT PARTICLES - Small debris
+   HIT PARTICLES - Soft puffs
    ============================================ */
 .hit-particles {
   position: absolute;
@@ -337,25 +433,42 @@
 
 .particle {
   position: absolute;
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: white;
+  background: radial-gradient(circle, white 40%, rgba(200, 230, 255, 0.6) 100%);
   opacity: 0;
+  box-shadow: 0 0 3px rgba(255, 255, 255, 0.5);
 }
 
-.particle:nth-child(1) { animation: particleFly 0.22s ease-out forwards; --px: -1.5vw; --py: -1.8vw; }
-.particle:nth-child(2) { animation: particleFly 0.22s ease-out 0.02s forwards; --px: 1.8vw; --py: -1.2vw; }
-.particle:nth-child(3) { animation: particleFly 0.22s ease-out 0.01s forwards; --px: -1vw; --py: 1.5vw; }
-.particle:nth-child(4) { animation: particleFly 0.22s ease-out 0.03s forwards; --px: 1.2vw; --py: 1.8vw; }
+.slap-hit .particle:nth-child(1) { animation: particlePuff 0.28s ease-out forwards; --px: -2vw; --py: -2.2vw; }
+.slap-hit .particle:nth-child(2) { animation: particlePuff 0.28s ease-out 0.03s forwards; --px: 2.2vw; --py: -1.5vw; }
+.slap-hit .particle:nth-child(3) { animation: particlePuff 0.28s ease-out 0.02s forwards; --px: -1.5vw; --py: 2vw; }
+.slap-hit .particle:nth-child(4) { animation: particlePuff 0.28s ease-out 0.04s forwards; --px: 1.8vw; --py: 2.2vw; }
 
-@keyframes particleFly {
+/* Counter hit particles - golden */
+.slap-hit.counter-hit .particle,
+.charged-hit.counter-hit .particle {
+  background: radial-gradient(circle, #FFE066 40%, rgba(255, 200, 50, 0.6) 100%);
+  box-shadow: 0 0 5px rgba(255, 215, 0, 0.6);
+}
+
+.charged-hit .particle:nth-child(1) { animation: particlePuff 0.3s ease-out forwards; --px: -2vw; --py: -2.2vw; }
+.charged-hit .particle:nth-child(2) { animation: particlePuff 0.3s ease-out 0.02s forwards; --px: 2.2vw; --py: -1.5vw; }
+.charged-hit .particle:nth-child(3) { animation: particlePuff 0.3s ease-out 0.01s forwards; --px: -1.5vw; --py: 2vw; }
+.charged-hit .particle:nth-child(4) { animation: particlePuff 0.3s ease-out 0.03s forwards; --px: 1.8vw; --py: 2.2vw; }
+
+@keyframes particlePuff {
   0% {
+    opacity: 0.8;
+    transform: translate(-50%, -50%) scale(0.6);
+  }
+  40% {
     opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
+    transform: translate(calc(-50% + var(--px) * 0.4), calc(-50% + var(--py) * 0.4)) scale(1);
   }
   100% {
     opacity: 0;
-    transform: translate(calc(-50% + var(--px)), calc(-50% + var(--py))) scale(0.2);
+    transform: translate(calc(-50% + var(--px)), calc(-50% + var(--py))) scale(0.3);
   }
 }

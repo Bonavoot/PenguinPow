@@ -365,6 +365,13 @@ function updateCPUAI(cpu, human, room, currentTime) {
   
   const aiState = getAIState(cpu.id);
   
+  // HIGHEST PRIORITY: DI (Directional Influence) - Reduce knockback by holding opposite direction!
+  // This should run even during isHit state to utilize the knockback reduction mechanic
+  if (cpu.isHit && cpu.knockbackVelocity && Math.abs(cpu.knockbackVelocity.x) > 0.1) {
+    handleKnockbackDI(cpu, aiState, currentTime);
+    // Don't return - let other state checks run, but movement keys are now set for DI
+  }
+  
   // GRAB CLASH HANDLING - CPU needs to mash inputs to win!
   if (cpu.isGrabClashing) {
     handleGrabClashMashing(cpu, aiState, currentTime);
@@ -579,6 +586,30 @@ function handleGrabBreak(cpu, aiState, currentTime) {
   }
 }
 
+// DI (Directional Influence): Hold opposite direction during knockback to reduce sliding distance
+// This is a crucial defensive technique - skilled players always DI!
+function handleKnockbackDI(cpu, aiState, currentTime) {
+  // Don't reset all keys - we want to preserve our DI input during the entire knockback
+  // Only manage the A and D keys for movement
+  
+  // Determine knockback direction
+  const knockbackDirection = cpu.knockbackVelocity.x > 0 ? 1 : -1; // 1 = being knocked right, -1 = being knocked left
+  
+  // Hold the OPPOSITE direction to reduce knockback (DI mechanic)
+  if (knockbackDirection > 0) {
+    // Being knocked to the RIGHT - hold LEFT (A key) to resist
+    cpu.keys.a = true;
+    cpu.keys.d = false;
+  } else {
+    // Being knocked to the LEFT - hold RIGHT (D key) to resist
+    cpu.keys.a = false;
+    cpu.keys.d = true;
+  }
+  
+  // Track that we're actively performing DI
+  aiState.lastActionType = "knockback_di";
+}
+
 // PUNISH: Grab opponent while they're stuck in parry animation
 function handlePunishParry(cpu, human, aiState, currentTime) {
   resetAllKeys(cpu);
@@ -671,8 +702,8 @@ function handleCornerEscape(cpu, human, aiState, currentTime, distance, cornered
       }
     }
     
-    // Option 1: Dodge toward center (30% chance - reduced since grab is better when cornered)
-    if (roll < 0.30 && canDodge(cpu)) {
+    // Option 1: Dodge toward center (35% chance - increased for variety)
+    if (roll < 0.35 && canDodge(cpu)) {
       cpu.keys.shift = true;
       if (escapeDirection === 1) {
         cpu.keys.d = true;
@@ -684,8 +715,8 @@ function handleCornerEscape(cpu, human, aiState, currentTime, distance, cornered
       aiState.lastActionType = "dodge_escape";
       return true;
     }
-    // Option 2: Grab (40% chance) - throw will send opponent toward our back boundary
-    else if (roll < 0.70 && canGrab(cpu)) {
+    // Option 2: Grab (30% chance) - throw will send opponent toward our back boundary
+    else if (roll < 0.65 && canGrab(cpu)) {
       cpu.keys.e = true;
       aiState.eReleaseTime = currentTime + 50;
       aiState.lastDecisionTime = currentTime;
@@ -716,30 +747,51 @@ function handleCornerEscape(cpu, human, aiState, currentTime, distance, cornered
 }
 
 // Handle ring-out opportunity when opponent is near edge
-// GRABS ARE THE BEST! They let you walk opponent off the edge!
+// GRABS ARE STRONG but mix it up for variety!
 function handleRingOutOpportunity(cpu, human, aiState, currentTime, distance) {
   resetAllKeys(cpu);
   
-  // PRIORITY 1: GRAB! It's the most reliable ring-out method!
-  // You can walk them off the edge after grabbing!
-  if (distance < AI_CONFIG.GRAB_RANGE + 30 && canGrab(cpu)) {
-    cpu.keys.e = true;
-    aiState.eReleaseTime = currentTime + 50;
-    aiState.lastDecisionTime = currentTime;
-    aiState.lastActionType = "grab";
-    return;
-  }
+  const roll = Math.random();
   
-  // PRIORITY 2: If too far for grab but close enough for slap, slap them
+  // In range for direct attacks - MIX IT UP!
   if (distance < AI_CONFIG.SLAP_RANGE && canAttack(cpu)) {
-    cpu.keys.mouse1 = true;
-    aiState.mouse1ReleaseTime = currentTime + 40;
-    aiState.lastDecisionTime = currentTime;
-    aiState.lastActionType = "slap";
-    return;
+    // 45% grab - still prioritized but not overwhelming
+    if (roll < 0.45 && distance < AI_CONFIG.GRAB_RANGE + 30 && canGrab(cpu)) {
+      cpu.keys.e = true;
+      aiState.eReleaseTime = currentTime + 50;
+      aiState.lastDecisionTime = currentTime;
+      aiState.lastActionType = "grab";
+      return;
+    }
+    // 40% slap attack - aggressive and pushes them toward edge
+    else if (roll < 0.85) {
+      cpu.keys.mouse1 = true;
+      aiState.mouse1ReleaseTime = currentTime + 40;
+      aiState.lastDecisionTime = currentTime;
+      aiState.lastActionType = "slap";
+      return;
+    }
+    // 15% charged attack - powerful finisher when they're cornered
+    else if (aiState.consecutiveChargedAttacks < AI_CONFIG.MAX_CONSECUTIVE_CHARGED) {
+      cpu.keys.mouse2 = true;
+      aiState.isChargingIntentional = true;
+      aiState.chargeStartTime = currentTime;
+      aiState.targetChargeTime = randomInRange(300, 500); // Quick charge for pressure
+      aiState.lastDecisionTime = currentTime;
+      aiState.lastActionType = "charge";
+      return;
+    }
+    // Fallback to slap if charged attack limit reached
+    else {
+      cpu.keys.mouse1 = true;
+      aiState.mouse1ReleaseTime = currentTime + 40;
+      aiState.lastDecisionTime = currentTime;
+      aiState.lastActionType = "slap";
+      return;
+    }
   }
   
-  // PRIORITY 3: Approach aggressively to get in grab range!
+  // Too far for attacks - approach aggressively to get in range!
   const dirToOpponent = getDirectionToOpponent(cpu, human);
   if (dirToOpponent === 1) {
     cpu.keys.d = true;
@@ -1058,8 +1110,8 @@ function handleCloseRange(cpu, human, aiState, currentTime, distance) {
   // GRABS ARE THE BEST WAY TO WIN! Prioritize them!
   // Especially if opponent is near edge - almost guaranteed ring-out!
   if (isOpponentNearEdge(human) && canGrab(cpu)) {
-    // 70% chance to grab when opponent is near edge
-    if (roll < 0.70) {
+    // 50% chance to grab when opponent is near edge (reduced from 70%)
+    if (roll < 0.50) {
       cpu.keys.e = true;
       aiState.eReleaseTime = currentTime + 50;
       aiState.lastDecisionTime = currentTime;
@@ -1068,22 +1120,23 @@ function handleCloseRange(cpu, human, aiState, currentTime, distance) {
     }
   }
   
-  // Aggressive close range: 30% grab, 65% slap, 5% back off
+  // Aggressive close range: 18% grab, 72% slap, 10% back off
+  // Reduced grab frequency to make CPU less predictable
   // Slaps are spammable and keep pressure on!
-  if (roll < 0.30 && canGrab(cpu)) {
+  if (roll < 0.18 && canGrab(cpu)) {
     // Grab attempt - walk them to the edge!
     cpu.keys.e = true;
     aiState.eReleaseTime = currentTime + 50;
     aiState.lastDecisionTime = currentTime;
     aiState.lastActionType = "grab";
-  } else if (roll < 0.95 && canAttack(cpu)) {
+  } else if (roll < 0.90 && canAttack(cpu)) {
     // SLAP SPAM! Fast and aggressive - keep the pressure on!
     cpu.keys.mouse1 = true;
     aiState.mouse1ReleaseTime = currentTime + 40;
     aiState.lastDecisionTime = currentTime;
     aiState.lastActionType = "slap";
   } else {
-    // Very small chance to back off (only 5%)
+    // Slightly higher chance to back off (10%)
     const dirAway = cpu.x < human.x ? -1 : 1;
     if (dirAway === 1) cpu.keys.d = true;
     else cpu.keys.a = true;

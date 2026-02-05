@@ -182,7 +182,8 @@ const Logo = styled.h1`
   font-size: clamp(2rem, 7vw, 4rem);
   color: #d4af37;
   margin: 0;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   animation: ${logoGlow} 4s ease-in-out infinite;
   
   @media (max-width: 600px) {
@@ -191,7 +192,7 @@ const Logo = styled.h1`
 `;
 
 const LogoAccent = styled.span`
-  font-family: "Bungee Shade", cursive;
+  font-family: "Bungee", cursive;
   color: #d4af37;
   font-size: 1.1em;
 `;
@@ -217,11 +218,12 @@ const ConnectingContainer = styled.div`
 `;
 
 const ConnectingText = styled.p`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.6rem, 1.5vw, 0.9rem);
+  font-family: "Outfit", sans-serif;
+  font-weight: 500;
+  font-size: clamp(0.7rem, 1.6vw, 1rem);
   color: #8b7355;
   margin: 0;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.15em;
   text-transform: uppercase;
   text-shadow: 1px 1px 0 #000;
 `;
@@ -275,7 +277,7 @@ const ConnectedText = styled.p`
   font-size: clamp(0.6rem, 1.4vw, 0.85rem);
   color: #4ade80;
   margin: 0;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.15em;
   text-transform: uppercase;
   animation: ${connectedPulse} 2s ease-in-out infinite;
   display: flex;
@@ -293,11 +295,12 @@ const ConnectedText = styled.p`
 `;
 
 const PressKeyText = styled.p`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.55rem, 1.2vw, 0.75rem);
+  font-family: "Outfit", sans-serif;
+  font-weight: 400;
+  font-size: clamp(0.65rem, 1.3vw, 0.85rem);
   color: #8b7355;
   margin: 0;
-  letter-spacing: 0.15em;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   animation: ${pressKeyFade} 2.5s ease-in-out infinite;
   text-shadow: 1px 1px 0 #000;
@@ -316,11 +319,12 @@ const Footer = styled.div`
 `;
 
 const VersionText = styled.p`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.45rem, 0.8vw, 0.6rem);
-  color: rgba(92, 64, 51, 0.5);
+  font-family: "Outfit", sans-serif;
+  font-weight: 400;
+  font-size: clamp(0.5rem, 0.85vw, 0.65rem);
+  color: rgba(92, 64, 51, 0.6);
   margin: 0;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
 `;
 
 // ============================================

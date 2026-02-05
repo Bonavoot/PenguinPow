@@ -31,7 +31,6 @@ const FighterUIContainer = styled.div`
   justify-content: space-between;
   padding: 0;
   z-index: 1000;
-  font-family: "Bungee", cursive;
   background: linear-gradient(
     180deg,
     rgba(11, 16, 32, 0.85) 0%,
@@ -90,14 +89,15 @@ const PlayerInfo = styled.div`
 
 const PlayerName = styled.div`
   /* Smaller font on small screens */
-  font-size: clamp(9px, 1.6vw, 18px);
-  font-weight: 900;
+  font-family: "Outfit", sans-serif;
+  font-size: clamp(10px, 1.7vw, 18px);
+  font-weight: 700;
   color: #ffffff;
   text-shadow: 
     2px 2px 0 #000, -2px -2px 0 #000, 
     2px -2px 0 #000, -2px 2px 0 #000,
     0 0 10px rgba(255, 255, 255, 0.2);
-  letter-spacing: 1px;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   line-height: 1.1;
   white-space: nowrap;
@@ -514,7 +514,7 @@ const UiPlayerInfo = ({
 
   const renderWinMarks = (playerName) => {
     const marks = [];
-    const maxRounds = 5; // Best of 5
+    const maxRounds = 3; // Best of 3
     
     // Show circles in chronological order based on round history (oldest to newest)
     for (let i = 0; i < maxRounds; i++) {

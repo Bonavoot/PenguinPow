@@ -5,6 +5,10 @@ const {
   clearChargeState,
   MAP_LEFT_BOUNDARY,
   MAP_RIGHT_BOUNDARY,
+  DOHYO_LEFT_BOUNDARY,
+  DOHYO_RIGHT_BOUNDARY,
+  DOHYO_FALL_DEPTH,
+  isOutsideDohyo,
 } = require("./gameUtils");
 
 // Game constants that are used by these functions
@@ -50,7 +54,21 @@ function handleWinCondition(room, loser, winner, io) {
   if (room.gameOver) return; // Prevent multiple win declarations
 
   room.gameOver = true;
-  loser.y = GROUND_LEVEL;
+  
+  // Determine correct Y position for the loser based on whether they fell off the dohyo
+  // Check multiple conditions to catch all fall scenarios:
+  // 1. isFallingOffDohyo flag is set (fall was triggered)
+  // 2. X position is outside dohyo boundaries
+  // 3. Y is already below normal ground level (they're mid-fall)
+  const fallenGroundLevel = GROUND_LEVEL - DOHYO_FALL_DEPTH;
+  const loserShouldBeAtFallenLevel = 
+    loser.isFallingOffDohyo || 
+    isOutsideDohyo(loser.x, loser.y) || 
+    loser.y < GROUND_LEVEL; // Already below normal ground = mid-fall
+  
+  // Force the loser to the correct ground level immediately
+  loser.y = loserShouldBeAtFallenLevel ? fallenGroundLevel : GROUND_LEVEL;
+  
   winner.wins.push("w");
 
   // Store the win count BEFORE potentially clearing it
@@ -61,7 +79,7 @@ function handleWinCondition(room, loser, winner, io) {
     p.stamina = 100;
   });
 
-  if (winCount > 2) {
+  if (winCount > 1) {
     io.in(room.id).emit("match_over", {
       isMatchOver: true,
       winner: winner.fighter,
@@ -71,11 +89,39 @@ function handleWinCondition(room, loser, winner, io) {
     winner.wins = [];
     loser.wins = [];
     setTimeout(() => {
+      // CRITICAL: Force loser to correct ground level before bowing starts
+      // Check all fall conditions to ensure correct positioning
+      const loserFellOffDohyo = 
+        loser.isFallingOffDohyo || 
+        isOutsideDohyo(loser.x, loser.y) || 
+        loser.y < GROUND_LEVEL;
+      const correctGroundLevel = loserFellOffDohyo ? (GROUND_LEVEL - DOHYO_FALL_DEPTH) : GROUND_LEVEL;
+      
+      // Force to correct ground level (handles both above and mid-fall cases)
+      loser.y = correctGroundLevel;
+      
       winner.isBowing = true;
       loser.isBowing = true;
+      
+      // Reset bowing after animation completes so players return to idle/breathing animation
+      setTimeout(() => {
+        winner.isBowing = false;
+        loser.isBowing = false;
+      }, 1500);
     }, 1050);
   } else {
     setTimeout(() => {
+      // CRITICAL: Force loser to correct ground level before bowing starts
+      // Check all fall conditions to ensure correct positioning
+      const loserFellOffDohyo = 
+        loser.isFallingOffDohyo || 
+        isOutsideDohyo(loser.x, loser.y) || 
+        loser.y < GROUND_LEVEL;
+      const correctGroundLevel = loserFellOffDohyo ? (GROUND_LEVEL - DOHYO_FALL_DEPTH) : GROUND_LEVEL;
+      
+      // Force to correct ground level (handles both above and mid-fall cases)
+      loser.y = correctGroundLevel;
+      
       winner.isBowing = true;
       loser.isBowing = true;
     }, 1050);
@@ -133,11 +179,19 @@ function handleWinCondition(room, loser, winner, io) {
     p.x = currentX;
   });
 
-  // Keep the loser's knockback and movement velocity
+  // Keep the loser's knockback and movement velocity for sliding effect
   loser.knockbackVelocity = loserKnockbackVelocity;
   loser.movementVelocity = loserMovementVelocity;
   winner.knockbackVelocity = { x: 0, y: 0 };
   winner.movementVelocity = 0;
+  
+  // CRITICAL: Force loser Y position AGAIN after all state changes
+  // This ensures no intermediate code has modified Y
+  const loserFellOff = loser.isFallingOffDohyo || isOutsideDohyo(loser.x, loser.y) || loser.y < GROUND_LEVEL;
+  loser.y = loserFellOff ? (GROUND_LEVEL - DOHYO_FALL_DEPTH) : GROUND_LEVEL;
+  
+  // NOTE: Do NOT clear isHit here - the knockback physics need to continue running
+  // so the player can slide past the map boundaries naturally
 
   io.in(room.id).emit("game_over", {
     isGameOver: true,

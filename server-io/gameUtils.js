@@ -8,6 +8,9 @@ const DEFAULT_PLAYER_SIZE_MULTIPLIER = 0.85; // 15% smaller default size
 const DOHYO_LEFT_BOUNDARY = -40;
 const DOHYO_RIGHT_BOUNDARY = 1092;
 
+// Dohyo fall physics
+const DOHYO_FALL_DEPTH = 50; // How far down they fall off the dohyo (in pixels)
+
 // Timeout manager for memory leak prevention
 class TimeoutManager {
   constructor() {
@@ -281,6 +284,7 @@ function clearAllActionStates(player) {
   player.hasPendingSlapAttack = false;
   player.isSlapSliding = false;
   player.mouse2HeldDuringAttack = false;
+  player.mouse2BufferedBeforeStart = false; // Clear pre-game buffer
   player.wantsToRestartCharge = false;
   player.chargedAttackHit = false;
   
@@ -479,6 +483,7 @@ module.exports = {
   DEFAULT_PLAYER_SIZE_MULTIPLIER,
   DOHYO_LEFT_BOUNDARY,
   DOHYO_RIGHT_BOUNDARY,
+  DOHYO_FALL_DEPTH,
 
   // Classes and instances
   TimeoutManager,

@@ -4,6 +4,7 @@ import { SocketContext } from "./SocketContext";
 import MainMenu from "./components/MainMenu";
 import StartupScreen from "./components/StartupScreen";
 import gamepadHandler from "./utils/gamepadHandler";
+import { PlayerColorProvider } from "./context/PlayerColorContext";
 import "./App.css";
 import "./components/SteamDeck.css";
 
@@ -84,39 +85,41 @@ function App() {
 
   return (
     <SocketContext.Provider value={{ socket, getRooms }}>
-      <div
-        className={`app-container ${steamDeckMode ? "steam-deck-mode" : ""} ${
-          controllerConnected ? "controller-connected" : ""
-        }`}
-      >
-        {showStartupScreen ? (
-          <StartupScreen
-            onContinue={handleContinueFromStartup}
-            connectionError={connectionError}
-            steamDeckMode={steamDeckMode}
-          />
-        ) : (
-          <>
-            {controllerConnected && (
-              <div className="controller-connected-indicator">
-                🎮 Controller Connected
-              </div>
-            )}
-            {steamDeckMode && (
-              <div className="steam-deck-controls-hint">
-                A: Attack | B: Dodge | X: Grab | Y: Throw | Left Stick: Move
-              </div>
-            )}
-            <MainMenu
-              rooms={rooms}
-              currentPage={currentPage}
-              setCurrentPage={setCurrentPage}
-              localId={localId}
+      <PlayerColorProvider>
+        <div
+          className={`app-container ${steamDeckMode ? "steam-deck-mode" : ""} ${
+            controllerConnected ? "controller-connected" : ""
+          }`}
+        >
+          {showStartupScreen ? (
+            <StartupScreen
+              onContinue={handleContinueFromStartup}
               connectionError={connectionError}
+              steamDeckMode={steamDeckMode}
             />
-          </>
-        )}
-      </div>
+          ) : (
+            <>
+              {controllerConnected && (
+                <div className="controller-connected-indicator">
+                  🎮 Controller Connected
+                </div>
+              )}
+              {steamDeckMode && (
+                <div className="steam-deck-controls-hint">
+                  A: Attack | B: Dodge | X: Grab | Y: Throw | Left Stick: Move
+                </div>
+              )}
+              <MainMenu
+                rooms={rooms}
+                currentPage={currentPage}
+                setCurrentPage={setCurrentPage}
+                localId={localId}
+                connectionError={connectionError}
+              />
+            </>
+          )}
+        </div>
+      </PlayerColorProvider>
     </SocketContext.Provider>
   );
 }

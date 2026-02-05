@@ -1,0 +1,178 @@
+{
+  "Ritual_Part_1_Red": {
+    "originalFile": "Ritual_Part_1_Red.png",
+    "frameCount": 28,
+    "frameWidth": 480,
+    "frameHeight": 480,
+    "fps": 14,
+    "totalDuration": 1988
+  },
+  "Ritual_Part_2_Red": {
+    "originalFile": "Ritual_Part_2_Red.png",
+    "frameCount": 24,
+    "frameWidth": 480,
+    "frameHeight": 480,
+    "fps": 14,
+    "totalDuration": 1704
+  },
+  "Ritual_Part_3_Red": {
+    "originalFile": "Ritual_Part_3_Red.png",
+    "frameCount": 39,
+    "frameWidth": 480,
+    "frameHeight": 480,
+    "fps": 14,
+    "totalDuration": 2769
+  },
+  "Ritual_Part_4_Red": {
+    "originalFile": "Ritual_Part_4_Red.png",
+    "frameCount": 38,
+    "frameWidth": 480,
+    "frameHeight": 480,
+    "fps": 14,
+    "totalDuration": 2698
+  },
+  "at_the_ropes2": {
+    "originalFile": "at-the-ropes2.png",
+    "frameCount": 6,
+    "frameWidth": 480,
+    "frameHeight": 480,
+    "fps": 32,
+    "totalDuration": 186
+  },
+  "blocking": {
+    "originalFile": "blocking.png",
+    "frameCount": 6,
+    "frameWidth": 480,
+    "frameHeight": 480,
+    "fps": 12,
+    "totalDuration": 498
+  },
+  "blocking2": {
+    "originalFile": "blocking2.png",
+    "frameCount": 8,
+    "frameWidth": 480,
+    "frameHeight": 480,
+    "fps": 12,
+    "totalDuration": 664
+  },
+  "bow": {
+    "originalFile": "bow.png",
+    "frameCount": 9,
+    "frameWidth": 480,
+    "frameHeight": 480,
+    "fps": 12,
+    "totalDuration": 747
+  },
+  "bow2": {
+    "originalFile": "bow2.png",
+    "frameCount": 9,
+    "frameWidth": 480,
+    "frameHeight": 480,
+    "fps": 12,
+    "totalDuration": 747
+  },
+  "crouch_strafing2": {
+    "originalFile": "crouch-strafing2.png",
+    "frameCount": 14,
+    "frameWidth": 480,
+    "frameHeight": 480,
+    "fps": 24,
+    "totalDuration": 574
+  },
+  "grab_attempt": {
+    "originalFile": "grab-attempt.png",
+    "frameCount": 20,
+    "frameWidth": 480,
+    "frameHeight": 480,
+    "fps": 40,
+    "totalDuration": 500
+  },
+  "grab_attempt2": {
+    "originalFile": "grab-attempt2.png",
+    "frameCount": 20,
+    "frameWidth": 480,
+    "frameHeight": 480,
+    "fps": 40,
+    "totalDuration": 500
+  },
+  "hit2": {
+    "originalFile": "hit2.png",
+    "frameCount": 3,
+    "frameWidth": 480,
+    "frameHeight": 480,
+    "fps": 16,
+    "totalDuration": 186
+  },
+  "pumo_army": {
+    "originalFile": "pumo-army.png",
+    "frameCount": 10,
+    "frameWidth": 480,
+    "frameHeight": 480,
+    "fps": 40,
+    "totalDuration": 250
+  },
+  "pumo_army2": {
+    "originalFile": "pumo-army2.png",
+    "frameCount": 10,
+    "frameWidth": 480,
+    "frameHeight": 480,
+    "fps": 43,
+    "totalDuration": 230
+  },
+  "pumo_waddle": {
+    "originalFile": "pumo-waddle.png",
+    "frameCount": 21,
+    "frameWidth": 1024,
+    "frameHeight": 1024,
+    "fps": 40,
+    "totalDuration": 525
+  },
+  "pumo_waddle2_no_blink": {
+    "originalFile": "pumo-waddle2-no-blink.png",
+    "frameCount": 15,
+    "frameWidth": 1024,
+    "frameHeight": 1024,
+    "fps": 30,
+    "totalDuration": 495
+  },
+  "pumo_waddle2": {
+    "originalFile": "pumo-waddle2.png",
+    "frameCount": 21,
+    "frameWidth": 1024,
+    "frameHeight": 1024,
+    "fps": 40,
+    "totalDuration": 525
+  },
+  "slapAttack1blue_animation": {
+    "originalFile": "slapAttack1blue-animation.png",
+    "frameCount": 9,
+    "frameWidth": 480,
+    "frameHeight": 480,
+    "fps": 30,
+    "totalDuration": 297
+  },
+  "snowball_throw": {
+    "originalFile": "snowball-throw.png",
+    "frameCount": 9,
+    "frameWidth": 480,
+    "frameHeight": 480,
+    "fps": 32,
+    "totalDuration": 279
+  },
+  "snowball_throw2_slow": {
+    "originalFile": "snowball-throw2-slow.png",
+    "frameCount": 10,
+    "frameWidth": 480,
+    "frameHeight": 480,
+    "fps": 24,
+    "totalDuration": 410
+  },
+  "snowball_throw2": {
+    "originalFile": "snowball-throw2.png",
+    "frameCount": 9,
+    "frameWidth": 480,
+    "frameHeight": 480,
+    "fps": 34,
+    "totalDuration": 261
+  }
+}

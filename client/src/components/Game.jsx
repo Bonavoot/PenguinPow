@@ -7,6 +7,7 @@ import PowerUpReveal from "./PowerUpReveal";
 import GrabClashUI from "./GrabClashUI";
 import CrowdLayer from "./CrowdLayer";
 import gamepadHandler from "../utils/gamepadHandler";
+import { usePlayerColors } from "../context/PlayerColorContext";
 // import gameMusic from "../sounds/game-music.mp3";
 import PropTypes from "prop-types";
 
@@ -22,6 +23,9 @@ const Game = ({ rooms, roomName, localId, setCurrentPage }) => {
   const [disconnectedRoomId, setDisconnectedRoomId] = useState(null);
   const [isCrowdCheering, setIsCrowdCheering] = useState(false);
   const index = rooms.findIndex((room) => room.id === roomName);
+  
+  // Get player colors for sprite recoloring
+  const { player1Color, player2Color } = usePlayerColors();
 
   // Get the current room with null safety
   const currentRoom = index !== -1 ? rooms[index] : null;
@@ -400,6 +404,7 @@ const Game = ({ rooms, roomName, localId, setCurrentPage }) => {
                   }}
                   isPowerUpSelectionActive={isPowerUpSelectionActive}
                   predictionRef={isLocalPlayerFighter ? predictionRef : null}
+                  playerColor={i === 0 ? player1Color : player2Color}
                 />
               );
             })}

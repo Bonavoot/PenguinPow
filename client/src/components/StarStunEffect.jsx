@@ -34,6 +34,28 @@ const counterRotate = keyframes`
   }
 `;
 
+// Text pulse animation for emphasis
+const textPulse = keyframes`
+  0%, 100% {
+    transform: scale(1);
+    text-shadow: 
+      -2px -2px 0 #000, 2px -2px 0 #000, 
+      -2px 2px 0 #000, 2px 2px 0 #000,
+      0 0 10px rgba(255, 215, 0, 0.8),
+      0 0 20px rgba(255, 215, 0, 0.5),
+      0 0 30px rgba(255, 215, 0, 0.3);
+  }
+  50% {
+    transform: scale(1.05);
+    text-shadow: 
+      -2px -2px 0 #000, 2px -2px 0 #000, 
+      -2px 2px 0 #000, 2px 2px 0 #000,
+      0 0 15px rgba(255, 215, 0, 1),
+      0 0 25px rgba(255, 215, 0, 0.7),
+      0 0 40px rgba(255, 215, 0, 0.4);
+  }
+`;
+
 const StarStunContainer = styled.div`
   position: absolute;
   bottom: ${props => (props.$y / 720) * 100 + 29}%;
@@ -71,39 +93,48 @@ const Star = styled.div`
   animation: ${starTwinkle} 0.5s ease-in-out infinite, ${counterRotate} 1.2s linear infinite;
   transform-style: preserve-3d;
   
-  /* 3 stars evenly spaced at 120° intervals around the circle */
-  /* Star 1: top (0°) */
+  /* 4 stars evenly spaced - adjusted for 3D tilt perspective */
+  /* Star 1: top */
   &:nth-child(1) {
-    top: 0;
-    left: 50%;
-    transform: translateX(-50%);
+    top: -8%;
+    left: calc(50% - 0.5em);
     animation-delay: 0s, 0s;
   }
-  /* Star 2: bottom-left (120°) */
+  /* Star 2: right (pulled inward to compensate for 3D tilt) */
   &:nth-child(2) {
-    bottom: 13%;
-    left: 7%;
-    animation-delay: 0.17s, 0s;
+    top: calc(50% - 0.5em);
+    right: 5%;
+    animation-delay: 0.125s, 0s;
   }
-  /* Star 3: bottom-right (240°) */
+  /* Star 3: bottom */
   &:nth-child(3) {
-    bottom: 13%;
-    right: 7%;
-    animation-delay: 0.33s, 0s;
+    bottom: -8%;
+    left: calc(50% - 0.5em);
+    animation-delay: 0.25s, 0s;
+  }
+  /* Star 4: left (pulled inward to compensate for 3D tilt) */
+  &:nth-child(4) {
+    top: calc(50% - 0.5em);
+    left: 5%;
+    animation-delay: 0.375s, 0s;
   }
 `;
 
 const StunnedText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(12px, 1.2vw, 16px);
+  font-size: clamp(14px, 1.5vw, 20px);
+  font-weight: bold;
   color: #ffd700;
   text-shadow: 
-    -1px -1px 0 #000, 1px -1px 0 #000, 
-    -1px 1px 0 #000, 1px 1px 0 #000,
-    0 0 8px rgba(255, 215, 0, 0.6);
+    -2px -2px 0 #000, 2px -2px 0 #000, 
+    -2px 2px 0 #000, 2px 2px 0 #000,
+    0 0 10px rgba(255, 215, 0, 0.8),
+    0 0 20px rgba(255, 215, 0, 0.5),
+    0 0 30px rgba(255, 215, 0, 0.3);
   white-space: nowrap;
-  letter-spacing: 0.1em;
-  margin-bottom: 2px;
+  letter-spacing: 0.12em;
+  margin-bottom: 4px;
+  animation: ${textPulse} 0.8s ease-in-out infinite;
 `;
 
 const StarStunEffect = ({ x, y, isActive, facing }) => {
@@ -123,6 +154,7 @@ const StarStunEffect = ({ x, y, isActive, facing }) => {
     <StarStunContainer $x={x} $y={y} $facing={facing}>
       <StunnedText>STUNNED</StunnedText>
       <OrbitContainer>
+        <Star>★</Star>
         <Star>★</Star>
         <Star>★</Star>
         <Star>★</Star>

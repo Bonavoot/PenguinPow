@@ -81,10 +81,10 @@ const getThemeColors = (type) => {
       };
     case "counterhit":
       return {
-        primary: "#FF2222",
-        secondary: "#FF4444",
-        glow: "rgba(255, 34, 34, 0.8)",
-        accent: "#FF6666",
+        primary: "#FFD700",
+        secondary: "#FFA500",
+        glow: "rgba(255, 215, 0, 0.8)",
+        accent: "#FFE066",
       };
     case "punish":
       return {

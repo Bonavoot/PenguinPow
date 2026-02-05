@@ -1,5 +1,6 @@
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
+import { useMemo } from "react";
 
 // Victory animation - explosive, triumphant entrance (NO blur - causes freeze)
 const victorySlam = keyframes`
@@ -134,16 +135,93 @@ const screenFlash = keyframes`
     opacity: 0.7;
   }
   15% {
-    opacity: 0.3;
+    opacity: 0.35;
   }
-  25% {
-    opacity: 0.5;
+  30% {
+    opacity: 0.45;
   }
-  40% {
+  50% {
     opacity: 0.15;
   }
   100% {
     opacity: 0;
+  }
+`;
+
+// Shockwave ring expanding outward
+const shockwaveExpand = keyframes`
+  0% {
+    transform: translate(-50%, -50%) scale(0.1);
+    opacity: 0.9;
+    border-width: 8px;
+  }
+  50% {
+    opacity: 0.5;
+    border-width: 4px;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.5);
+    opacity: 0;
+    border-width: 1px;
+  }
+`;
+
+// Impact lines burst
+const impactLineBurst = keyframes`
+  0% {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+  15% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  60% {
+    transform: scaleX(1);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scaleX(1.2);
+    opacity: 0;
+  }
+`;
+
+// Floating ember/spark animation
+const floatUp = keyframes`
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateY(-120px) scale(0.3);
+    opacity: 0;
+  }
+`;
+
+// Corner decoration fade in
+const cornerFadeIn = keyframes`
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  20% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  80% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.1);
   }
 `;
 
@@ -165,12 +243,185 @@ const ScreenFlash = styled.div`
   width: 100vw;
   height: 100vh;
   background: ${props => props.$isVictory 
-    ? 'radial-gradient(circle at center, rgba(255, 230, 100, 0.95) 0%, rgba(255, 180, 0, 0.7) 30%, rgba(255, 140, 0, 0.4) 55%, transparent 80%)'
+    ? 'radial-gradient(circle at center, rgba(255, 255, 200, 0.95) 0%, rgba(255, 215, 0, 0.65) 30%, rgba(255, 180, 0, 0.4) 55%, transparent 80%)'
     : 'radial-gradient(circle at center, rgba(180, 20, 20, 0.8) 0%, rgba(120, 0, 0, 0.5) 35%, rgba(60, 0, 0, 0.25) 55%, transparent 80%)'
   };
-  animation: ${screenFlash} 0.6s ease-out forwards;
+  animation: ${screenFlash} 0.8s ease-out forwards;
   pointer-events: none;
   z-index: 50;
+`;
+
+// Shockwave ring effect
+const ShockwaveRing = styled.div`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  border: 8px solid ${props => props.$isVictory 
+    ? 'rgba(255, 215, 0, 0.85)' 
+    : 'rgba(180, 0, 0, 0.7)'
+  };
+  background: transparent;
+  animation: ${shockwaveExpand} 0.6s ease-out forwards;
+  animation-delay: ${props => props.$delay || '0s'};
+  pointer-events: none;
+  z-index: 45;
+  
+  @media (max-width: 900px) {
+    width: 200px;
+    height: 200px;
+  }
+`;
+
+// Impact line (single)
+const ImpactLine = styled.div`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 400px;
+  height: 4px;
+  background: ${props => props.$isVictory 
+    ? 'linear-gradient(90deg, transparent 0%, rgba(255, 215, 0, 0.9) 30%, rgba(255, 255, 200, 1) 50%, rgba(255, 215, 0, 0.9) 70%, transparent 100%)'
+    : 'linear-gradient(90deg, transparent 0%, rgba(180, 0, 0, 0.8) 30%, rgba(255, 100, 100, 0.9) 50%, rgba(180, 0, 0, 0.8) 70%, transparent 100%)'
+  };
+  transform-origin: center center;
+  animation: ${impactLineBurst} 0.5s ease-out forwards;
+  animation-delay: ${props => props.$delay || '0.05s'};
+  opacity: 0;
+  z-index: 44;
+  
+  @media (max-width: 900px) {
+    width: 280px;
+    height: 3px;
+  }
+  
+  @media (max-width: 600px) {
+    width: 200px;
+    height: 2px;
+  }
+`;
+
+// Container for impact lines
+const ImpactLinesContainer = styled.div`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 1px;
+  height: 1px;
+  z-index: 44;
+`;
+
+// Single ember particle
+const Ember = styled.div`
+  position: absolute;
+  width: ${props => props.$size || '8px'};
+  height: ${props => props.$size || '8px'};
+  background: ${props => props.$isVictory 
+    ? 'radial-gradient(circle, rgba(255, 255, 220, 1) 0%, rgba(255, 215, 0, 0.9) 40%, rgba(255, 180, 0, 0.6) 70%, transparent 100%)'
+    : 'radial-gradient(circle, rgba(255, 150, 150, 1) 0%, rgba(200, 50, 50, 0.9) 40%, rgba(150, 0, 0, 0.6) 70%, transparent 100%)'
+  };
+  border-radius: 50%;
+  animation: ${floatUp} ${props => props.$duration || '1.5s'} ease-out forwards;
+  animation-delay: ${props => props.$delay || '0.1s'};
+  left: ${props => props.$left || '50%'};
+  bottom: ${props => props.$bottom || '40%'};
+  z-index: 46;
+  pointer-events: none;
+`;
+
+// Japanese corner decoration
+const CornerDecoration = styled.div`
+  position: absolute;
+  width: 80px;
+  height: 80px;
+  border: 4px solid ${props => props.$isVictory 
+    ? 'rgba(255, 215, 0, 0.75)' 
+    : 'rgba(180, 0, 0, 0.6)'
+  };
+  animation: ${cornerFadeIn} 3s ease-out forwards;
+  z-index: 47;
+  
+  /* Position based on corner */
+  ${props => props.$position === 'topLeft' && `
+    top: -60px;
+    left: -60px;
+    border-right: none;
+    border-bottom: none;
+  `}
+  ${props => props.$position === 'topRight' && `
+    top: -60px;
+    right: -60px;
+    border-left: none;
+    border-bottom: none;
+  `}
+  ${props => props.$position === 'bottomLeft' && `
+    bottom: -60px;
+    left: -60px;
+    border-right: none;
+    border-top: none;
+  `}
+  ${props => props.$position === 'bottomRight' && `
+    bottom: -60px;
+    right: -60px;
+    border-left: none;
+    border-top: none;
+  `}
+  
+  @media (max-width: 900px) {
+    width: 50px;
+    height: 50px;
+    border-width: 3px;
+    
+    ${props => props.$position === 'topLeft' && `top: -40px; left: -40px;`}
+    ${props => props.$position === 'topRight' && `top: -40px; right: -40px;`}
+    ${props => props.$position === 'bottomLeft' && `bottom: -40px; left: -40px;`}
+    ${props => props.$position === 'bottomRight' && `bottom: -40px; right: -40px;`}
+  }
+  
+  @media (max-width: 600px) {
+    width: 35px;
+    height: 35px;
+    border-width: 2px;
+    
+    ${props => props.$position === 'topLeft' && `top: -25px; left: -25px;`}
+    ${props => props.$position === 'topRight' && `top: -25px; right: -25px;`}
+    ${props => props.$position === 'bottomLeft' && `bottom: -25px; left: -25px;`}
+    ${props => props.$position === 'bottomRight' && `bottom: -25px; right: -25px;`}
+  }
+`;
+
+// Decorative diamond accent
+const DiamondAccent = styled.div`
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background: ${props => props.$isVictory 
+    ? 'rgba(255, 215, 0, 0.9)' 
+    : 'rgba(180, 0, 0, 0.8)'
+  };
+  transform: rotate(45deg);
+  animation: ${cornerFadeIn} 3s ease-out forwards;
+  z-index: 48;
+  
+  ${props => props.$position === 'top' && `top: -90px; left: 50%; margin-left: -8px;`}
+  ${props => props.$position === 'bottom' && `bottom: -90px; left: 50%; margin-left: -8px;`}
+  
+  @media (max-width: 900px) {
+    width: 12px;
+    height: 12px;
+    ${props => props.$position === 'top' && `top: -60px; margin-left: -6px;`}
+    ${props => props.$position === 'bottom' && `bottom: -60px; margin-left: -6px;`}
+  }
+  
+  @media (max-width: 600px) {
+    width: 8px;
+    height: 8px;
+    ${props => props.$position === 'top' && `top: -40px; margin-left: -4px;`}
+    ${props => props.$position === 'bottom' && `bottom: -40px; margin-left: -4px;`}
+  }
 `;
 
 const ResultContainer = styled.div`
@@ -251,12 +502,12 @@ const MainKanji = styled.div`
   /* Enhanced text-shadow for depth and pop */
   text-shadow: ${props => props.$isVictory
     ? `
-      4px 4px 0 #E6A800,
-      8px 8px 0 #CC8800,
-      12px 12px 0 #AA7700,
-      16px 16px 0 rgba(136, 85, 0, 0.8),
-      20px 20px 0 rgba(80, 50, 0, 0.5),
-      0 0 40px rgba(255, 215, 0, 0.3)
+      4px 4px 0 #E6B800,
+      8px 8px 0 #CC9900,
+      12px 12px 0 #B38600,
+      16px 16px 0 rgba(153, 115, 0, 0.85),
+      20px 20px 0 rgba(120, 90, 0, 0.6),
+      0 0 40px rgba(255, 215, 0, 0.35)
     `
     : `
       4px 4px 0 #4a0000,
@@ -267,9 +518,9 @@ const MainKanji = styled.div`
       0 0 40px rgba(139, 0, 0, 0.4)
     `
   };
-  /* Rich gradient with more color stops for depth */
+  /* Bright gradient - white to golden yellow to orange */
   background: ${props => props.$isVictory 
-    ? 'linear-gradient(145deg, #FFFFFF 0%, #FFFF88 8%, #FFFF33 18%, #FFEE00 30%, #FFD700 50%, #FFCC00 65%, #FFA500 82%, #FF8C00 100%)'
+    ? 'linear-gradient(145deg, #FFFFFF 0%, #FFFFA0 10%, #FFEE44 22%, #FFD700 40%, #FFC500 55%, #FFB000 70%, #FF9500 85%, #FF8000 100%)'
     : 'linear-gradient(145deg, #FF4444 0%, #DD2222 10%, #BB1111 20%, #8B0000 35%, #6B0000 50%, #4a0000 65%, #2a0000 80%, #000000 100%)'
   };
   -webkit-background-clip: text;
@@ -316,9 +567,9 @@ const KanjiShadow = styled.div`
   line-height: 1;
   top: 8px;
   left: 8px;
-  color: ${props => props.$isVictory ? '#2a1a00' : '#000000'};
+  color: ${props => props.$isVictory ? '#FFFFFF' : '#000000'};
   z-index: -1;
-  opacity: ${props => props.$isVictory ? '0.8' : '0.7'};
+  opacity: ${props => props.$isVictory ? '0.7' : '0.7'};
   
   @media (max-width: 1400px) {
     font-size: 19rem;
@@ -355,7 +606,7 @@ const InkSplatter = styled.div`
   height: 450px;
   border-radius: 50%;
   background: ${props => props.$isVictory 
-    ? 'radial-gradient(ellipse at center, rgba(255, 215, 0, 0.45) 0%, rgba(255, 180, 0, 0.35) 25%, rgba(255, 140, 0, 0.2) 50%, transparent 70%)'
+    ? 'radial-gradient(ellipse at center, rgba(255, 215, 0, 0.45) 0%, rgba(255, 190, 0, 0.35) 25%, rgba(255, 160, 0, 0.2) 50%, transparent 70%)'
     : 'radial-gradient(ellipse at center, rgba(180, 0, 0, 0.4) 0%, rgba(120, 0, 0, 0.25) 30%, rgba(60, 0, 0, 0.12) 50%, transparent 70%)'
   };
   animation: ${inkSplatter} 3s ease-out forwards;
@@ -438,13 +689,14 @@ const SubtitleText = styled.div`
   letter-spacing: 0.3em;
   margin-top: -22px;
   animation: ${subtitleSlide} 3s ease-out forwards;
+  /* Victory: deep gold stroke, Defeat: dark red stroke */
+  -webkit-text-stroke: ${props => props.$isVictory ? '2px #996600' : '1px #2a0000'};
   text-shadow: ${props => props.$isVictory 
     ? `
       2px 2px 0 #CC8800,
-      4px 4px 0 #AA7700,
-      6px 6px 12px rgba(0, 0, 0, 0.8),
-      0 0 25px rgba(255, 215, 0, 0.6),
-      0 0 50px rgba(255, 180, 0, 0.4)
+      4px 4px 0 #AA6600,
+      5px 5px 10px rgba(0, 0, 0, 0.7),
+      0 0 20px rgba(255, 215, 0, 0.5)
     `
     : `
       2px 2px 0 #6a0000,
@@ -498,7 +750,7 @@ const BrushStroke = styled.div`
   width: 620px;
   height: 50px;
   background: ${props => props.$isVictory 
-    ? 'linear-gradient(90deg, transparent 0%, rgba(218, 165, 32, 0.3) 15%, rgba(255, 200, 0, 0.6) 35%, rgba(255, 215, 0, 0.75) 50%, rgba(255, 200, 0, 0.6) 65%, rgba(218, 165, 32, 0.3) 85%, transparent 100%)'
+    ? 'linear-gradient(90deg, transparent 0%, rgba(255, 180, 0, 0.3) 15%, rgba(255, 200, 0, 0.55) 35%, rgba(255, 215, 0, 0.7) 50%, rgba(255, 200, 0, 0.55) 65%, rgba(255, 180, 0, 0.3) 85%, transparent 100%)'
     : 'linear-gradient(90deg, transparent 0%, rgba(60, 0, 0, 0.25) 15%, rgba(120, 0, 0, 0.45) 35%, rgba(139, 0, 0, 0.55) 50%, rgba(120, 0, 0, 0.45) 65%, rgba(60, 0, 0, 0.25) 85%, transparent 100%)'
   };
   bottom: -50px;
@@ -546,17 +798,58 @@ const BrushStroke = styled.div`
 const RoundResult = ({ isVictory }) => {
   const kanji = isVictory ? '勝' : '敗';
   
+  // Generate stable ember positions using useMemo - reduced count
+  const embers = useMemo(() => {
+    const positions = [];
+    const emberCount = 6;
+    for (let i = 0; i < emberCount; i++) {
+      positions.push({
+        id: i,
+        left: `${38 + (i * 4)}%`,
+        bottom: `${38 + (i % 2) * 10}%`,
+        size: `${6 + (i % 3) * 2}px`,
+        delay: `${0.15 + (i * 0.1)}s`,
+        duration: `${1.3 + (i % 2) * 0.4}s`
+      });
+    }
+    return positions;
+  }, []);
+  
   return (
     <>
       <ScreenFlash $isVictory={isVictory} />
+      
+      {/* Single shockwave ring */}
+      <ShockwaveRing $isVictory={isVictory} $delay="0s" />
+      
       <ResultContainer $isVictory={isVictory}>
         <InkSplatter $isVictory={isVictory} />
         <SecondaryInkSplatter $isVictory={isVictory} />
+        
+        {/* Corner decorations */}
+        <CornerDecoration $isVictory={isVictory} $position="topLeft" />
+        <CornerDecoration $isVictory={isVictory} $position="topRight" />
+        <CornerDecoration $isVictory={isVictory} $position="bottomLeft" />
+        <CornerDecoration $isVictory={isVictory} $position="bottomRight" />
+        
         <KanjiContainer>
           <KanjiShadow $isVictory={isVictory}>{kanji}</KanjiShadow>
           <MainKanji $isVictory={isVictory}>{kanji}</MainKanji>
         </KanjiContainer>
         <BrushStroke $isVictory={isVictory} />
+        
+        {/* Floating embers - fewer, subtler */}
+        {embers.map(ember => (
+          <Ember
+            key={ember.id}
+            $isVictory={isVictory}
+            $left={ember.left}
+            $bottom={ember.bottom}
+            $size={ember.size}
+            $delay={ember.delay}
+            $duration={ember.duration}
+          />
+        ))}
       </ResultContainer>
       <SubtitleContainer>
         <SubtitleText $isVictory={isVictory}>
