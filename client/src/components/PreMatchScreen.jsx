@@ -82,8 +82,7 @@ const MatchCard = styled.div`
   display: flex;
   width: 90%;
   height: 80%;
-  background: 
-    linear-gradient(180deg, rgba(248, 244, 235, 0.95) 0%, rgba(232, 224, 208, 0.95) 100%);
+  background: transparent;
   border: 4px solid #8b5a2b;
   box-shadow: 
     0 0 0 2px #d4af37,
@@ -102,12 +101,12 @@ const MatchCard = styled.div`
     right: 0;
     bottom: 0;
     background-image: 
-      radial-gradient(ellipse 80px 40px at 10% 15%, rgba(255, 255, 255, 0.4) 0%, transparent 70%),
-      radial-gradient(ellipse 60px 30px at 5% 25%, rgba(255, 255, 255, 0.3) 0%, transparent 70%),
-      radial-gradient(ellipse 70px 35px at 90% 15%, rgba(255, 255, 255, 0.4) 0%, transparent 70%),
-      radial-gradient(ellipse 50px 25px at 95% 25%, rgba(255, 255, 255, 0.3) 0%, transparent 70%),
-      radial-gradient(ellipse 90px 45px at 8% 85%, rgba(255, 255, 255, 0.35) 0%, transparent 70%),
-      radial-gradient(ellipse 70px 35px at 92% 85%, rgba(255, 255, 255, 0.35) 0%, transparent 70%);
+      radial-gradient(ellipse 80px 40px at 10% 15%, rgba(255, 255, 255, 0.25) 0%, transparent 70%),
+      radial-gradient(ellipse 60px 30px at 5% 25%, rgba(255, 255, 255, 0.2) 0%, transparent 70%),
+      radial-gradient(ellipse 70px 35px at 90% 15%, rgba(255, 255, 255, 0.25) 0%, transparent 70%),
+      radial-gradient(ellipse 50px 25px at 95% 25%, rgba(255, 255, 255, 0.2) 0%, transparent 70%),
+      radial-gradient(ellipse 90px 45px at 8% 85%, rgba(255, 255, 255, 0.2) 0%, transparent 70%),
+      radial-gradient(ellipse 70px 35px at 92% 85%, rgba(255, 255, 255, 0.2) 0%, transparent 70%);
     pointer-events: none;
     z-index: 0;
   }
@@ -198,6 +197,7 @@ const PlayerPanel = styled.div`
   position: relative;
   overflow: visible;
   z-index: 1;
+  background: transparent;
   animation: ${props => props.$side === 'left' ? slideInLeft : slideInRight} 0.6s ease-out 0.3s both;
 `;
 
@@ -244,19 +244,20 @@ const CharacterArea = styled.div`
   align-items: flex-end;
   justify-content: center;
   position: relative;
-  overflow: visible;
+  overflow: hidden;
   padding-top: 60px;
+  background: linear-gradient(180deg, rgba(248, 244, 235, 0.85) 0%, rgba(232, 224, 208, 0.85) 100%);
+  border: 2px solid #8b5a2b;
 `;
 
 // Character image container - positioned to extend below info section
 const CharacterImageContainer = styled.div`
   position: absolute;
-  bottom: -15%;
+  bottom: -20%;
   left: 0;
   right: 0;
   display: flex;
   justify-content: center;
-  overflow: visible;
   z-index: 1;
 `;
 
@@ -268,6 +269,13 @@ const CharacterImage = styled.img`
   filter: drop-shadow(4px 4px 8px rgba(0, 0, 0, 0.4));
 `;
 
+// Horizontal gap between player image and info section
+const HorizontalDivider = styled.div`
+  width: 100%;
+  height: 12px;
+  background: linear-gradient(180deg, rgba(248, 244, 235, 0.6) 0%, rgba(232, 224, 208, 0.6) 100%);
+`;
+
 // Info section at bottom of player panel - styled like Abema
 const PlayerInfoSection = styled.div`
   background: linear-gradient(180deg, #f8f4eb 0%, #e8e0d0 100%);
@@ -275,19 +283,9 @@ const PlayerInfoSection = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  border-top: 4px solid #8b5a2b;
   position: relative;
   z-index: 5;
-  
-  &::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: #d4af37;
-  }
+  border: 2px solid #8b5a2b;
 `;
 
 // Player name area - larger and more prominent
@@ -299,13 +297,13 @@ const PlayerNameArea = styled.div`
   width: 100%;
 `;
 
-const PlayerTitle = styled.div`
-  font-size: clamp(9px, 1.1vw, 11px);
-  color: #666;
-  text-transform: uppercase;
-  letter-spacing: 3px;
+// Stable name - displayed above player name like in sumo broadcasts
+const StableName = styled.div`
+  font-size: clamp(10px, 1.3vw, 14px);
+  color: #8b5a2b;
+  letter-spacing: 1px;
   margin-bottom: 4px;
-  font-weight: 500;
+  font-weight: 600;
 `;
 
 const PlayerName = styled.div`
@@ -400,21 +398,11 @@ const InfoValue = styled.span`
   letter-spacing: 0.5px;
 `;
 
-// Dojo/Stable name - like the Japanese stable names
-const DojoName = styled.div`
-  position: absolute;
-  bottom: 8px;
-  ${props => props.$side === 'left' ? 'left: 10px;' : 'right: 10px;'}
-  font-size: clamp(9px, 1.1vw, 12px);
-  color: #666;
-  letter-spacing: 1px;
-  font-weight: 500;
-`;
 
 // Center divider - styled like Abema's center section
 const CenterDivider = styled.div`
   width: clamp(100px, 14vw, 160px);
-  background: linear-gradient(180deg, #1a1a1a 0%, #0d0d0d 50%, #1a1a1a 100%);
+  background: linear-gradient(180deg, rgba(248, 244, 235, 0.6) 0%, rgba(232, 224, 208, 0.6) 100%);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -422,8 +410,6 @@ const CenterDivider = styled.div`
   padding: 20px 10px;
   position: relative;
   z-index: 5;
-  border-left: 2px solid #d4af37;
-  border-right: 2px solid #d4af37;
 `;
 
 // Top branding area
@@ -431,64 +417,40 @@ const BrandingArea = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 2px;
 `;
 
 const GameLogo = styled.div`
   font-size: clamp(14px, 2vw, 20px);
   font-weight: 900;
-  color: #d4af37;
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+  color: #1a1a1a;
+  text-shadow: 
+    -1px -1px 0 #fff,
+    1px -1px 0 #fff,
+    -1px 1px 0 #fff,
+    1px 1px 0 #fff,
+    0 0 4px rgba(255, 255, 255, 0.8);
   font-family: 'Arial Black', sans-serif;
   letter-spacing: 2px;
   text-align: center;
   animation: ${float} 3s ease-in-out infinite;
-`;
-
-const SubBrand = styled.div`
-  font-size: clamp(8px, 1vw, 10px);
-  color: #888;
-  text-transform: uppercase;
-  letter-spacing: 2px;
+  
+  &:nth-child(2) {
+    animation-delay: 0.5s;
+  }
 `;
 
 const VsText = styled.div`
   font-size: clamp(36px, 6vw, 60px);
   font-weight: 900;
-  color: #d4af37;
+  color: #1a1a1a;
   text-shadow: 
-    3px 3px 6px rgba(0, 0, 0, 0.5),
-    0 0 20px rgba(212, 175, 55, 0.3);
+    -2px -2px 0 #fff,
+    2px -2px 0 #fff,
+    -2px 2px 0 #fff,
+    2px 2px 0 #fff,
+    0 0 8px rgba(255, 255, 255, 0.9);
   font-family: 'Arial Black', sans-serif;
-`;
-
-// Center info labels container
-const CenterInfoContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-`;
-
-const CenterLabel = styled.div`
-  background: linear-gradient(180deg, #c41e3a 0%, #9d1a2d 100%);
-  color: white;
-  padding: 6px 12px;
-  font-size: clamp(9px, 1.2vw, 12px);
-  font-weight: bold;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  border: 1px solid #d4af37;
-  border-radius: 2px;
-  width: 85%;
-  text-align: center;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-`;
-
-const CenterLabelAlt = styled(CenterLabel)`
-  background: linear-gradient(180deg, #2d2d2d 0%, #1a1a1a 100%);
-  border-color: #666;
 `;
 
 // Bottom area with game title
@@ -500,20 +462,33 @@ const BottomArea = styled.div`
 `;
 
 const GameTitle = styled.div`
-  font-size: clamp(10px, 1.3vw, 14px);
-  color: #d4af37;
+  font-size: clamp(12px, 1.5vw, 16px);
+  color: #1a1a1a;
   text-transform: uppercase;
   letter-spacing: 1px;
   text-align: center;
-  font-weight: bold;
-  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
+  font-weight: 900;
+  font-family: 'Arial Black', sans-serif;
+  text-shadow: 
+    -1px -1px 0 #fff,
+    1px -1px 0 #fff,
+    -1px 1px 0 #fff,
+    1px 1px 0 #fff,
+    0 0 4px rgba(255, 255, 255, 0.8);
 `;
 
 const MatchType = styled.div`
-  font-size: clamp(8px, 1vw, 10px);
-  color: #666;
+  font-size: clamp(10px, 1.2vw, 13px);
+  color: #1a1a1a;
   text-transform: uppercase;
   letter-spacing: 2px;
+  font-weight: 700;
+  text-shadow: 
+    -1px -1px 0 #fff,
+    1px -1px 0 #fff,
+    -1px 1px 0 #fff,
+    1px 1px 0 #fff,
+    0 0 3px rgba(255, 255, 255, 0.8);
 `;
 
 // Loading indicator - at bottom center of screen
@@ -628,7 +603,8 @@ const getRank = (wins, losses) => {
   if (wins >= 20 && winRate >= 0.55) return { title: "SEKIWAKE", number: "" };
   if (wins >= 10) return { title: "KOMUSUBI", number: `#${Math.max(1, 10 - Math.floor(wins / 5))}` };
   if (wins >= 5) return { title: "MAEGASHIRA", number: `#${Math.max(1, 15 - wins)}` };
-  return { title: "JONIDAN", number: `#${Math.max(1, 20 - total)}` };
+  if (wins >= 2) return { title: "JONIDAN", number: `#${Math.max(1, 50 - (wins * 10))}` };
+  return { title: "JONOKUCHI", number: `#${Math.max(1, 80 - total)}` };
 };
 
 // ============================================
@@ -733,11 +709,11 @@ const PreMatchScreen = ({
             </CharacterImageContainer>
           </CharacterArea>
 
+          <HorizontalDivider />
+
           <PlayerInfoSection>
-            <DojoName $side="left">{player1Dojo}</DojoName>
-            
             <PlayerNameArea>
-              <PlayerTitle>Fighter</PlayerTitle>
+              <StableName>{player1Dojo}</StableName>
               <PlayerName>{player1Name}</PlayerName>
             </PlayerNameArea>
             
@@ -765,15 +741,10 @@ const PreMatchScreen = ({
         <CenterDivider>
           <BrandingArea>
             <GameLogo>PUMO</GameLogo>
-            <SubBrand>PENGUIN POW</SubBrand>
+            <GameLogo>PUMO</GameLogo>
           </BrandingArea>
           
           <VsText>VS</VsText>
-          
-          <CenterInfoContainer>
-            <CenterLabel>RECORD</CenterLabel>
-            <CenterLabelAlt>STYLE</CenterLabelAlt>
-          </CenterInfoContainer>
           
           <BottomArea>
             <GameTitle>MATCH</GameTitle>
@@ -792,11 +763,11 @@ const PreMatchScreen = ({
             </CharacterImageContainer>
           </CharacterArea>
 
+          <HorizontalDivider />
+
           <PlayerInfoSection>
-            <DojoName $side="right">{player2Dojo}</DojoName>
-            
             <PlayerNameArea>
-              <PlayerTitle>{isCPUMatch ? "CPU" : "Fighter"}</PlayerTitle>
+              <StableName>{player2Dojo}</StableName>
               <PlayerName>{player2Name}</PlayerName>
             </PlayerNameArea>
             
