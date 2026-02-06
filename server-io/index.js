@@ -2408,6 +2408,30 @@ io.on("connection", (socket) => {
           });
         }
 
+        // FALLBACK WIN CONDITION: Catch edge cases where player fell off dohyo
+        // but primary win conditions didn't trigger (e.g., isHit cleared during slide)
+        // This prevents the game from freezing if a player crosses boundaries
+        // without being in the expected state
+        if (
+          !room.gameOver &&
+          player.isFallingOffDohyo &&
+          player.y <= GROUND_LEVEL - DOHYO_FALL_DEPTH &&
+          (player.x <= MAP_LEFT_BOUNDARY || player.x >= MAP_RIGHT_BOUNDARY)
+        ) {
+          const winner = room.players.find((p) => p.id !== player.id);
+          if (winner) {
+            console.log(`[FALLBACK WIN] Player ${player.id} fell off dohyo at x=${player.x}, y=${player.y}`);
+            handleWinCondition(room, player, winner, io);
+            player.knockbackVelocity = { ...player.knockbackVelocity };
+            
+            io.in(room.id).emit("ring_out", {
+              loserId: player.id,
+              winnerId: winner.id,
+              direction: player.x <= MAP_LEFT_BOUNDARY ? "left" : "right",
+            });
+          }
+        }
+
         if (
           room.gameOver &&
           Date.now() - room.gameOverTime >= 3000 &&
@@ -4149,6 +4173,18 @@ io.on("connection", (socket) => {
         // FINAL GUARD: sanitize stamina once per tick per player before emit
         player.stamina = clampStaminaValue(player.stamina);
       });
+
+      // ROOM-LEVEL SAFETY: Check game reset outside player loop
+      // This ensures reset is checked even if all players return early
+      // (e.g., during hitstop, or if loser has isHit=false)
+      if (
+        room.gameOver &&
+        room.gameOverTime &&
+        Date.now() - room.gameOverTime >= 3000 &&
+        !room.matchOver
+      ) {
+        resetRoomAndPlayers(room);
+      }
 
       // PERFORMANCE: Only broadcast every N ticks to reduce network load
       // Game logic runs at 64Hz, but broadcasts at ~32Hz

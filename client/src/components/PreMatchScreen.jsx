@@ -210,15 +210,19 @@ const RankBanner = styled.div`
   color: white;
   padding: 10px 20px;
   font-size: clamp(14px, 2vw, 20px);
-  font-weight: bold;
-  letter-spacing: 2px;
+  font-family: "Bungee", cursive;
+  letter-spacing: 0.1em;
   border: 2px solid #ffd700;
   border-radius: 4px;
   box-shadow: 
     0 3px 10px rgba(0, 0, 0, 0.4),
     inset 0 1px 0 rgba(255, 255, 255, 0.2);
   z-index: 10;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+  text-shadow: 
+    -2px -2px 0 #000, 
+    2px -2px 0 #000, 
+    -2px 2px 0 #000, 
+    2px 2px 0 #000;
 `;
 
 // Rank number badge - smaller secondary badge
@@ -227,14 +231,19 @@ const RankNumber = styled.div`
   top: 50px;
   ${props => props.$side === 'left' ? 'left: 12px;' : 'right: 12px;'}
   background: linear-gradient(180deg, #2d2d2d 0%, #1a1a1a 100%);
-  color: #d4af37;
+  color: #ffd700;
   padding: 6px 14px;
   font-size: clamp(11px, 1.4vw, 14px);
-  font-weight: bold;
-  letter-spacing: 1px;
+  font-family: "Bungee", cursive;
+  letter-spacing: 0.05em;
   border: 1px solid #d4af37;
   border-radius: 3px;
   z-index: 10;
+  text-shadow: 
+    -1px -1px 0 #000, 
+    1px -1px 0 #000, 
+    -1px 1px 0 #000, 
+    1px 1px 0 #000;
 `;
 
 // Character display area - takes up most of the panel
@@ -300,20 +309,24 @@ const PlayerNameArea = styled.div`
 // Stable name - displayed above player name like in sumo broadcasts
 const StableName = styled.div`
   font-size: clamp(10px, 1.3vw, 14px);
-  color: #8b5a2b;
-  letter-spacing: 1px;
+  color: #6b4423;
+  letter-spacing: 0.15em;
   margin-bottom: 4px;
-  font-weight: 600;
+  font-family: "Bungee", cursive;
+  text-transform: uppercase;
 `;
 
 const PlayerName = styled.div`
   font-size: clamp(22px, 3.5vw, 36px);
-  font-weight: 900;
+  font-family: "Bungee", cursive;
   color: #1a1a1a;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
-  font-family: 'Arial Black', sans-serif;
+  text-shadow: 
+    -2px -2px 0 #fff, 
+    2px -2px 0 #fff, 
+    -2px 2px 0 #fff, 
+    2px 2px 0 #fff;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.05em;
   text-align: center;
   line-height: 1.1;
 `;
@@ -364,20 +377,26 @@ const RecordItem = styled.div`
 
 const RecordNum = styled.span`
   font-size: clamp(26px, 4vw, 42px);
-  font-weight: 900;
+  font-family: "Bungee", cursive;
   color: #1a1a1a;
-  font-family: 'Arial Black', sans-serif;
   line-height: 1;
+  text-shadow: 
+    -2px -2px 0 #fff, 
+    2px -2px 0 #fff, 
+    -2px 2px 0 #fff, 
+    2px 2px 0 #fff;
 `;
 
 const RecordLabel = styled.span`
   font-size: clamp(12px, 1.6vw, 18px);
-  font-weight: 700;
-  color: #333;
+  font-family: "Bungee", cursive;
+  color: #c41e3a;
+  text-transform: uppercase;
 `;
 
 const RecordSeparator = styled.span`
   font-size: clamp(16px, 2vw, 24px);
+  font-family: "Bungee", cursive;
   color: #666;
   margin: 0 4px;
 `;
@@ -394,8 +413,9 @@ const InfoRow = styled.div`
 const InfoValue = styled.span`
   font-size: clamp(11px, 1.4vw, 15px);
   color: #444;
-  font-weight: 600;
-  letter-spacing: 0.5px;
+  font-family: "Bungee", cursive;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 `;
 
 
@@ -422,16 +442,14 @@ const BrandingArea = styled.div`
 
 const GameLogo = styled.div`
   font-size: clamp(14px, 2vw, 20px);
-  font-weight: 900;
+  font-family: "Bungee", cursive;
   color: #1a1a1a;
   text-shadow: 
     -1px -1px 0 #fff,
     1px -1px 0 #fff,
     -1px 1px 0 #fff,
-    1px 1px 0 #fff,
-    0 0 4px rgba(255, 255, 255, 0.8);
-  font-family: 'Arial Black', sans-serif;
-  letter-spacing: 2px;
+    1px 1px 0 #fff;
+  letter-spacing: 0.15em;
   text-align: center;
   animation: ${float} 3s ease-in-out infinite;
   
@@ -442,15 +460,18 @@ const GameLogo = styled.div`
 
 const VsText = styled.div`
   font-size: clamp(36px, 6vw, 60px);
-  font-weight: 900;
-  color: #1a1a1a;
+  font-family: "Bungee", cursive;
+  color: #c41e3a;
   text-shadow: 
-    -2px -2px 0 #fff,
-    2px -2px 0 #fff,
-    -2px 2px 0 #fff,
-    2px 2px 0 #fff,
-    0 0 8px rgba(255, 255, 255, 0.9);
-  font-family: 'Arial Black', sans-serif;
+    -3px -3px 0 #fff,
+    3px -3px 0 #fff,
+    -3px 3px 0 #fff,
+    3px 3px 0 #fff,
+    -3px 0 0 #fff,
+    3px 0 0 #fff,
+    0 -3px 0 #fff,
+    0 3px 0 #fff;
+  letter-spacing: 0.1em;
 `;
 
 // Bottom area with game title
@@ -465,30 +486,27 @@ const GameTitle = styled.div`
   font-size: clamp(12px, 1.5vw, 16px);
   color: #1a1a1a;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.15em;
   text-align: center;
-  font-weight: 900;
-  font-family: 'Arial Black', sans-serif;
+  font-family: "Bungee", cursive;
   text-shadow: 
     -1px -1px 0 #fff,
     1px -1px 0 #fff,
     -1px 1px 0 #fff,
-    1px 1px 0 #fff,
-    0 0 4px rgba(255, 255, 255, 0.8);
+    1px 1px 0 #fff;
 `;
 
 const MatchType = styled.div`
   font-size: clamp(10px, 1.2vw, 13px);
-  color: #1a1a1a;
+  color: #8b5a2b;
   text-transform: uppercase;
-  letter-spacing: 2px;
-  font-weight: 700;
+  letter-spacing: 0.1em;
+  font-family: "Bungee", cursive;
   text-shadow: 
     -1px -1px 0 #fff,
     1px -1px 0 #fff,
     -1px 1px 0 #fff,
-    1px 1px 0 #fff,
-    0 0 3px rgba(255, 255, 255, 0.8);
+    1px 1px 0 #fff;
 `;
 
 // Loading indicator - at bottom center of screen
@@ -523,12 +541,17 @@ const LoadingProgress = styled.div`
 `;
 
 const LoadingText = styled.div`
-  color: #d4af37;
+  color: #ffd700;
   font-size: 14px;
   text-transform: uppercase;
-  letter-spacing: 3px;
+  letter-spacing: 0.15em;
+  font-family: "Bungee", cursive;
   animation: ${pulse} 1.5s ease-in-out infinite;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  text-shadow: 
+    -2px -2px 0 #000, 
+    2px -2px 0 #000, 
+    -2px 2px 0 #000, 
+    2px 2px 0 #000;
 `;
 
 // Live indicator
@@ -543,12 +566,17 @@ const LiveIndicator = styled.div`
   color: white;
   padding: 8px 18px;
   font-size: 14px;
-  font-weight: bold;
-  letter-spacing: 2px;
+  font-family: "Bungee", cursive;
+  letter-spacing: 0.1em;
   border-radius: 4px;
   z-index: 100;
   animation: ${pulse} 2s ease-in-out infinite;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+  text-shadow: 
+    -2px -2px 0 #000, 
+    2px -2px 0 #000, 
+    -2px 2px 0 #000, 
+    2px 2px 0 #000;
 `;
 
 const LiveDot = styled.div`

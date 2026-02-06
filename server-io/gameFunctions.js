@@ -66,8 +66,9 @@ function handleWinCondition(room, loser, winner, io) {
     isOutsideDohyo(loser.x, loser.y) || 
     loser.y < GROUND_LEVEL; // Already below normal ground = mid-fall
   
-  // Force the loser to the correct ground level immediately
+  // Force both players to correct ground level immediately
   loser.y = loserShouldBeAtFallenLevel ? fallenGroundLevel : GROUND_LEVEL;
+  winner.y = GROUND_LEVEL; // Winner should always be at normal ground level
   
   winner.wins.push("w");
 
@@ -89,16 +90,18 @@ function handleWinCondition(room, loser, winner, io) {
     winner.wins = [];
     loser.wins = [];
     setTimeout(() => {
-      // CRITICAL: Force loser to correct ground level before bowing starts
-      // Check all fall conditions to ensure correct positioning
+      // CRITICAL: Force both players to correct ground level before bowing starts
+      // Check all fall conditions to ensure correct positioning for loser
       const loserFellOffDohyo = 
         loser.isFallingOffDohyo || 
         isOutsideDohyo(loser.x, loser.y) || 
         loser.y < GROUND_LEVEL;
-      const correctGroundLevel = loserFellOffDohyo ? (GROUND_LEVEL - DOHYO_FALL_DEPTH) : GROUND_LEVEL;
+      const loserGroundLevel = loserFellOffDohyo ? (GROUND_LEVEL - DOHYO_FALL_DEPTH) : GROUND_LEVEL;
       
       // Force to correct ground level (handles both above and mid-fall cases)
-      loser.y = correctGroundLevel;
+      loser.y = loserGroundLevel;
+      // Winner should always be at normal ground level for bowing
+      winner.y = GROUND_LEVEL;
       
       winner.isBowing = true;
       loser.isBowing = true;
@@ -111,16 +114,18 @@ function handleWinCondition(room, loser, winner, io) {
     }, 1050);
   } else {
     setTimeout(() => {
-      // CRITICAL: Force loser to correct ground level before bowing starts
-      // Check all fall conditions to ensure correct positioning
+      // CRITICAL: Force both players to correct ground level before bowing starts
+      // Check all fall conditions to ensure correct positioning for loser
       const loserFellOffDohyo = 
         loser.isFallingOffDohyo || 
         isOutsideDohyo(loser.x, loser.y) || 
         loser.y < GROUND_LEVEL;
-      const correctGroundLevel = loserFellOffDohyo ? (GROUND_LEVEL - DOHYO_FALL_DEPTH) : GROUND_LEVEL;
+      const loserGroundLevel = loserFellOffDohyo ? (GROUND_LEVEL - DOHYO_FALL_DEPTH) : GROUND_LEVEL;
       
       // Force to correct ground level (handles both above and mid-fall cases)
-      loser.y = correctGroundLevel;
+      loser.y = loserGroundLevel;
+      // Winner should always be at normal ground level for bowing
+      winner.y = GROUND_LEVEL;
       
       winner.isBowing = true;
       loser.isBowing = true;

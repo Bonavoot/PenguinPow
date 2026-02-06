@@ -792,7 +792,7 @@ const StyledImage = styled("img")
         : props.$isGrabClashActive
         ? "grabClashStruggle 0.15s ease-in-out infinite"
         : props.$isHit
-        ? "hitSquash 0.18s ease-out"
+        ? "hitSquash 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)"
         : props.$justLandedFromDodge && !props.$isPowerSliding
         ? "dodgeLanding 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards"
         // : props.$isDodgeCancelling
@@ -889,26 +889,35 @@ const StyledImage = styled("img")
     }
   }
   
-  /* Hit squash/stretch animation - uses CSS var for facing direction */
+  /* Hit impact animation - heavy sumo palm/headbutt impact with recoil */
   @keyframes hitSquash {
     0% {
-      transform: scaleX(var(--facing, 1)) scaleY(1);
-      filter: drop-shadow(0 0 1px #000) contrast(1.2) brightness(1.4);
+      transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg);
+      filter: drop-shadow(0 0 1px #000) contrast(1.2) brightness(1);
     }
-    20% {
-      transform: scaleX(calc(var(--facing, 1) * 1.18)) scaleY(0.82);
-      filter: drop-shadow(0 0 1px #000) contrast(1.3) brightness(1.5);
+    /* IMPACT - hard compression, bright flash */
+    6% {
+      transform: scaleX(calc(var(--facing, 1) * 1.25)) scaleY(0.75) translateX(calc(var(--facing, 1) * -3%)) rotate(calc(var(--facing, 1) * 2deg));
+      filter: drop-shadow(0 0 1px #000) contrast(1.5) brightness(1.8);
     }
-    50% {
-      transform: scaleX(calc(var(--facing, 1) * 0.88)) scaleY(1.12);
-      filter: drop-shadow(0 0 1px #000) contrast(1.25) brightness(1.3);
+    /* Recoil - shoved back hard, body whips */
+    18% {
+      transform: scaleX(calc(var(--facing, 1) * 0.88)) scaleY(1.12) translateX(calc(var(--facing, 1) * -5%)) rotate(calc(var(--facing, 1) * -4deg));
+      filter: drop-shadow(0 0 1px #000) contrast(1.35) brightness(1.4);
     }
-    75% {
-      transform: scaleX(calc(var(--facing, 1) * 1.06)) scaleY(0.94);
-      filter: drop-shadow(0 0 1px #000) contrast(1.2) brightness(1.2);
+    /* Secondary bounce - body weight shifts */
+    35% {
+      transform: scaleX(calc(var(--facing, 1) * 1.08)) scaleY(0.92) translateX(calc(var(--facing, 1) * -2%)) rotate(calc(var(--facing, 1) * 1.5deg));
+      filter: drop-shadow(0 0 1px #000) contrast(1.25) brightness(1.2);
     }
+    /* Settling */
+    55% {
+      transform: scaleX(calc(var(--facing, 1) * 0.96)) scaleY(1.04) translateX(calc(var(--facing, 1) * -0.5%)) rotate(calc(var(--facing, 1) * -0.5deg));
+      filter: drop-shadow(0 0 1px #000) contrast(1.2) brightness(1.15);
+    }
+    /* Back to normal */
     100% {
-      transform: scaleX(var(--facing, 1)) scaleY(1);
+      transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg);
       filter: drop-shadow(0 0 1px #000) contrast(1.2) brightness(1.15);
     }
   }
@@ -1203,7 +1212,7 @@ const AnimatedFighterContainer = styled.div
   .withConfig({
     shouldForwardProp: (prop) =>
       !["x", "y", "facing", "fighter", "isThrowing", "isDodging", "isGrabbing", 
-        "isRingOutThrowCutscene", "isAtTheRopes"].includes(prop),
+        "isRingOutThrowCutscene", "isAtTheRopes", "isHit"].includes(prop),
   })
   .attrs((props) => ({
     style: {
@@ -1214,6 +1223,7 @@ const AnimatedFighterContainer = styled.div
         ? `${((props.$x + (props.$x < 640 ? -5 : 5)) / 1280) * 100}%`
         : `${(props.$x / 1280) * 100}%`,
       bottom: `${(props.$y / 720) * 100}%`,
+      "--facing": props.$facing === 1 ? "1" : "-1",
       transform: props.$facing === 1
         ? "scaleX(1)"
         : "scaleX(-1)",
@@ -1223,8 +1233,37 @@ const AnimatedFighterContainer = styled.div
       pointerEvents: "none",
       // Clip edges to prevent sub-pixel bleed from adjacent frames
       clipPath: "inset(0 0.5% 0 0.5%)",
+      transformOrigin: "center bottom",
+      animation: props.$isHit ? "hitSquashContainer 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)" : "none",
     },
-  }))``;
+  }))`
+  /* Hit impact animation for animated sprite container - sumo palm/headbutt */
+  @keyframes hitSquashContainer {
+    0% {
+      transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg);
+    }
+    /* IMPACT - hard compression */
+    6% {
+      transform: scaleX(calc(var(--facing, 1) * 1.25)) scaleY(0.75) translateX(calc(var(--facing, 1) * -3%)) rotate(calc(var(--facing, 1) * 2deg));
+    }
+    /* Recoil - shoved back hard, body whips */
+    18% {
+      transform: scaleX(calc(var(--facing, 1) * 0.88)) scaleY(1.12) translateX(calc(var(--facing, 1) * -5%)) rotate(calc(var(--facing, 1) * -4deg));
+    }
+    /* Secondary bounce - body weight shifts */
+    35% {
+      transform: scaleX(calc(var(--facing, 1) * 1.08)) scaleY(0.92) translateX(calc(var(--facing, 1) * -2%)) rotate(calc(var(--facing, 1) * 1.5deg));
+    }
+    /* Settling */
+    55% {
+      transform: scaleX(calc(var(--facing, 1) * 0.96)) scaleY(1.04) translateX(calc(var(--facing, 1) * -0.5%)) rotate(calc(var(--facing, 1) * -0.5deg));
+    }
+    /* Back to normal */
+    100% {
+      transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg);
+    }
+  }
+`;
 
 // Animated Fighter Sprite Image - CSS-based animation for PERFORMANCE
 // Uses CSS animation with steps() instead of React state updates
@@ -3727,6 +3766,7 @@ const GameFighter = ({
           $isGrabbing={displayPenguin.isGrabbing}
           $isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
           $isAtTheRopes={penguin.isAtTheRopes}
+          $isHit={penguin.isHit}
         >
           <AnimatedFighterImage
             key={recoloredSpriteSrc} // Force animation restart when sprite changes
