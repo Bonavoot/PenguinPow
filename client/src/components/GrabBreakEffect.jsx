@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
+import { HIT_EFFECT_TEXT_DURATION, HIT_EFFECT_TEXT_DELAY } from "../config/hitEffectText";
 
 // Dramatic shockwave burst animation
 const shockwaveExpand = keyframes`
@@ -26,12 +27,12 @@ const innerFlash = keyframes`
     transform: translate(-50%, -50%) scale(0);
     opacity: 1;
   }
-  30% {
-    transform: translate(-50%, -50%) scale(1.5);
+  25% {
+    transform: translate(-50%, -50%) scale(1.65);
     opacity: 1;
   }
   100% {
-    transform: translate(-50%, -50%) scale(2.5);
+    transform: translate(-50%, -50%) scale(2.8);
     opacity: 0;
   }
 `;
@@ -77,7 +78,7 @@ const textPop = keyframes`
 
 const EffectContainer = styled.div`
   position: absolute;
-  left: ${props => (props.$x / 1280) * 100 - 4}%;
+  left: ${props => (props.$x / 1280) * 100 - 2.5}%;
   bottom: ${props => (props.$y / 720) * 100 + 14}%;
   transform: translate(-50%, -50%);
   z-index: 150;
@@ -85,14 +86,18 @@ const EffectContainer = styled.div`
   contain: layout style;
 `;
 
+/* Hit effect radius tier 1 (LARGE): punish, perfect parry, grab break, charged attack */
+const HIT_RADIUS_LARGE = "clamp(2rem, 5vw, 4rem)";
+
 const ShockwaveRing = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(35px, 5vw, 70px);
-  height: clamp(35px, 5vw, 70px);
+  width: ${HIT_RADIUS_LARGE};
+  height: ${HIT_RADIUS_LARGE};
   border-radius: 50%;
   border: 5px solid #00ff88;
+  box-shadow: 0 0 14px rgba(0, 255, 136, 0.5), 0 0 28px rgba(0, 255, 136, 0.25);
   transform: translate(-50%, -50%) scale(0);
   animation: ${shockwaveExpand} 0.4s ease-out forwards;
 `;
@@ -101,9 +106,8 @@ const InnerFlash = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  /* Smaller minimum for better scaling on small screens */
-  width: clamp(18px, 2.5vw, 35px);
-  height: clamp(18px, 2.5vw, 35px);
+  width: clamp(1.35rem, 3.2vw, 2.75rem);
+  height: clamp(1.35rem, 3.2vw, 2.75rem);
   border-radius: 50%;
   background: radial-gradient(circle, rgba(255, 255, 255, 1) 0%, rgba(0, 255, 136, 0.8) 50%, transparent 100%);
   transform: translate(-50%, -50%) scale(0);
@@ -141,8 +145,8 @@ const BreakText = styled.div`
   letter-spacing: 0.15em;
   white-space: nowrap;
   transform: translate(-50%, -50%) scale(0);
-  animation: ${textPop} 0.6s ease-out forwards;
-  animation-delay: 0.05s;
+  animation: ${textPop} ${HIT_EFFECT_TEXT_DURATION}s ease-out forwards;
+  animation-delay: ${HIT_EFFECT_TEXT_DELAY}s;
 `;
 
 
@@ -152,10 +156,10 @@ const GrabBreakEffect = ({ position }) => {
   const effectIdCounter = useRef(0);
   const EFFECT_DURATION = 1600; // Longer to match side text animation
 
-  // Generate spark particles - reduced count for performance
+  // Generate spark particles - same count as punish for matching animation
   const generateSparks = () => {
     const sparks = [];
-    const sparkCount = 6; // Reduced from 12
+    const sparkCount = 8;
     
     for (let i = 0; i < sparkCount; i++) {
       const angle = (i / sparkCount) * 360;

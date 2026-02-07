@@ -8,6 +8,7 @@ import {
   playButtonPressSound,
   playButtonPressSound2,
 } from "../utils/soundUtils";
+import Snowfall, { SnowCap, IcicleRow, Icicle } from "./Snowfall";
 import lobbyBackground from "../assets/lobby-bkg.webp";
 import { usePlayerColors } from "../context/PlayerColorContext";
 import {
@@ -291,6 +292,74 @@ const CenterLantern = styled(Lantern)`
   &::after {
     content: "力";
     font-size: clamp(14px, 2vw, 22px);
+  }
+`;
+
+// Small snow cap for lantern tops
+const LanternSnowCap = styled.div`
+  position: absolute;
+  top: -9px;
+  left: -20%;
+  right: -20%;
+  height: 8px;
+  z-index: 10;
+  pointer-events: none;
+  
+  &::before {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 10%;
+    right: 10%;
+    height: 4px;
+    background: linear-gradient(180deg,
+      rgba(255, 255, 255, 0.9) 0%,
+      rgba(225, 238, 255, 0.8) 100%
+    );
+    border-radius: 3px 3px 1px 1px;
+  }
+  
+  &::after {
+    content: "";
+    position: absolute;
+    bottom: 2px;
+    left: 0;
+    right: 0;
+    height: 8px;
+    background:
+      radial-gradient(ellipse 10px 6px at 20% bottom, rgba(255,255,255,0.95) 50%, transparent 51%),
+      radial-gradient(ellipse 14px 7px at 55% bottom, rgba(240,248,255,0.9) 50%, transparent 51%),
+      radial-gradient(ellipse 10px 5px at 85% bottom, rgba(255,255,255,0.9) 50%, transparent 51%);
+  }
+`;
+
+// Snow on the hanging rope
+const RopeSnowCap = styled.div`
+  position: absolute;
+  top: -5px;
+  left: 5%;
+  right: 5%;
+  height: 6px;
+  z-index: 2;
+  pointer-events: none;
+  
+  &::before {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.5) 15%,
+      rgba(255, 255, 255, 0.7) 30%,
+      rgba(240, 248, 255, 0.6) 50%,
+      rgba(255, 255, 255, 0.7) 70%,
+      rgba(255, 255, 255, 0.5) 85%,
+      transparent 100%
+    );
+    border-radius: 2px;
   }
 `;
 
@@ -1067,7 +1136,7 @@ function ColoredPlayerPreview({ color }) {
 // LOBBY COMPONENT
 // ============================================
 
-const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false }) => {
+const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, isCPUMatch = false }) => {
   const [players, setPlayers] = useState([]);
   const [ready, setReady] = useState(false);
   const [readyCount, setReadyCount] = useState(0);
@@ -1081,9 +1150,14 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false
   const isPlayer1 = myPlayerIndex === 0;
   const isPlayer2 = myPlayerIndex === 1;
   
-  // Get colors from server player data (synced across all clients)
-  const serverPlayer1Color = players[0]?.mawashiColor || SPRITE_BASE_COLOR;
+  // Get colors from server player data (synced across all clients) — P1 light blue, P2 red defaults
+  const serverPlayer1Color = players[0]?.mawashiColor || "#5BC0DE";
   const serverPlayer2Color = players[1]?.mawashiColor || "#DC143C";
+  
+  // PvP: other player's color is not selectable (only when both players present and not CPU match)
+  const isPvP = !isCPUMatch && players[0]?.fighter && players[1]?.fighter && !players[1]?.isCPU;
+  const otherPlayerColor = isPlayer1 ? serverPlayer2Color : serverPlayer1Color;
+  const isColorTakenByOther = (hex) => isPvP && otherPlayerColor && hex?.toLowerCase() === otherPlayerColor.toLowerCase();
   
   // Color options
   const colorOptions = [
@@ -1101,9 +1175,10 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false
     { name: "Maroon", hex: "#800000" },
   ];
   
-  // Handle color selection - emits to server
+  // Handle color selection - emits to server (no-op if color is other player's in PvP)
   const handleColorSelect = (color) => {
     if (myPlayerIndex === -1) return; // Not in room yet
+    if (isColorTakenByOther(color)) return; // PvP: can't pick opponent's color
     
     socket.emit("update_mawashi_color", {
       roomId: roomName,
@@ -1117,31 +1192,6 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false
     if (serverPlayer1Color) setPlayer1Color(serverPlayer1Color);
     if (serverPlayer2Color) setPlayer2Color(serverPlayer2Color);
   }, [serverPlayer1Color, serverPlayer2Color, setPlayer1Color, setPlayer2Color]);
-  
-  // Recolor preview sprites for PreMatchScreen
-  useEffect(() => {
-    const updatePreviewSprites = async () => {
-      try {
-        // Player 1 sprite (only recolor if not sprite base color)
-        if (serverPlayer1Color && serverPlayer1Color !== SPRITE_BASE_COLOR) {
-          const recolored = await recolorImage(pumo2, BLUE_COLOR_RANGES, serverPlayer1Color);
-          setPlayer1PreviewSprite(recolored);
-        } else {
-          setPlayer1PreviewSprite(pumo2);
-        }
-        
-        // Player 2 sprite (always needs recoloring since base is blue)
-        if (serverPlayer2Color) {
-          const recolored = await recolorImage(pumo2, BLUE_COLOR_RANGES, serverPlayer2Color);
-          setPlayer2PreviewSprite(recolored);
-        }
-      } catch (error) {
-        console.warn("Failed to recolor preview sprites:", error);
-      }
-    };
-    
-    updatePreviewSprites();
-  }, [serverPlayer1Color, serverPlayer2Color]);
 
   const currentRoom = rooms.find((room) => room.id === roomName);
   const playerCount = currentRoom ? currentRoom.players.length : 0;
@@ -1165,10 +1215,28 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false
       setReadyCount(count);
     });
 
-    socket.on("initial_game_start", () => {
+    socket.on("initial_game_start", (payload) => {
       console.log("game start - navigating to game (preloading handled in Game.jsx)...");
-      
-      // Navigate to game page - Game.jsx will handle preloading and pre-match screen
+      // Apply server player data (including mawashiColor) before navigating so PreMatchScreen always shows correct colors
+      if (payload?.players && Array.isArray(payload.players) && setRooms) {
+        const roomId = payload.roomId || roomName;
+        if (payload.players[0]?.mawashiColor) setPlayer1Color(payload.players[0].mawashiColor);
+        if (payload.players[1]?.mawashiColor) setPlayer2Color(payload.players[1].mawashiColor);
+        setRooms((prev) =>
+          prev.map((r) =>
+            r.id === roomId
+              ? {
+                  ...r,
+                  players: r.players.map((rp, i) => ({
+                    ...rp,
+                    ...(payload.players[i] || {}),
+                    mawashiColor: payload.players[i]?.mawashiColor ?? rp.mawashiColor,
+                  })),
+                }
+              : r
+          )
+        );
+      }
       socket.emit("game_reset", true);
       handleGame();
     });
@@ -1179,7 +1247,7 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false
       socket.off("player_left");
       socket.off("initial_game_start");
     };
-  }, [roomName, socket, handleGame]);
+  }, [roomName, socket, handleGame, setRooms, setPlayer1Color, setPlayer2Color]);
 
   const handleLeaveDohyo = () => {
     playButtonPressSound();
@@ -1201,19 +1269,37 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false
     <LobbyContainer>
       <BackgroundImage />
       <Vignette />
+      <Snowfall intensity={20} showFrost={true} zIndex={2} />
       
       {/* Decorative top elements */}
       <TopDecoration>
-        <HangingRope />
-        <LeftLantern $delay={0} />
-        <CenterLantern $delay={0.5} />
-        <RightLantern $delay={1} />
+        <HangingRope>
+          <RopeSnowCap />
+        </HangingRope>
+        <LeftLantern $delay={0}>
+          <LanternSnowCap />
+        </LeftLantern>
+        <CenterLantern $delay={0.5}>
+          <LanternSnowCap />
+        </CenterLantern>
+        <RightLantern $delay={1}>
+          <LanternSnowCap />
+        </RightLantern>
       </TopDecoration>
       
       {/* Tournament Banner Header */}
       <Header>
         <TournamentBanner>
-          <BannerHangingBar />
+          <BannerHangingBar>
+            <SnowCap />
+            <IcicleRow $bottom="-8px">
+              <Icicle $w={2} $h={6} />
+              <Icicle $w={3} $h={10} />
+              <Icicle $w={2} $h={7} />
+              <Icicle $w={3} $h={12} />
+              <Icicle $w={2} $h={8} />
+            </IcicleRow>
+          </BannerHangingBar>
           <BannerBody>
             <RoomCodeSection>
               <RoomLabel>Dohyo Code</RoomLabel>
@@ -1238,16 +1324,19 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false
                 {isPlayer1 ? "Mawashi" : "P1 Color"}
               </ColorPickerTitle>
               <ColorSwatchGrid>
-                {colorOptions.map((color) => (
-                  <ColorSwatch
-                    key={color.name}
-                    $color={color.hex}
-                    $selected={serverPlayer1Color === color.hex}
-                    $disabled={!isPlayer1}
-                    onClick={() => isPlayer1 && handleColorSelect(color.hex)}
-                    title={color.name}
-                  />
-                ))}
+                {colorOptions.map((color) => {
+                  const takenByOther = isColorTakenByOther(color.hex);
+                  return (
+                    <ColorSwatch
+                      key={color.name}
+                      $color={color.hex}
+                      $selected={serverPlayer1Color === color.hex}
+                      $disabled={!isPlayer1 || takenByOther}
+                      onClick={() => isPlayer1 && !takenByOther && handleColorSelect(color.hex)}
+                      title={takenByOther ? "Opponent's color" : color.name}
+                    />
+                  );
+                })}
               </ColorSwatchGrid>
             </SideColorPicker>
           )}
@@ -1337,16 +1426,19 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false
                 {isPlayer2 ? "Mawashi" : "P2 Color"}
               </ColorPickerTitle>
               <ColorSwatchGrid>
-                {colorOptions.map((color) => (
-                  <ColorSwatch
-                    key={color.name}
-                    $color={color.hex}
-                    $selected={serverPlayer2Color === color.hex}
-                    $disabled={!isPlayer2}
-                    onClick={() => isPlayer2 && handleColorSelect(color.hex)}
-                    title={color.name}
-                  />
-                ))}
+                {colorOptions.map((color) => {
+                  const takenByOther = isColorTakenByOther(color.hex);
+                  return (
+                    <ColorSwatch
+                      key={color.name}
+                      $color={color.hex}
+                      $selected={serverPlayer2Color === color.hex}
+                      $disabled={!isPlayer2 || takenByOther}
+                      onClick={() => isPlayer2 && !takenByOther && handleColorSelect(color.hex)}
+                      title={takenByOther ? "Opponent's color" : color.name}
+                    />
+                  );
+                })}
               </ColorSwatchGrid>
             </SideColorPicker>
           )}
@@ -1401,6 +1493,7 @@ const Lobby = ({ rooms, roomName, handleGame, setCurrentPage, isCPUMatch = false
 
 Lobby.propTypes = {
   rooms: PropTypes.array.isRequired,
+  setRooms: PropTypes.func,
   roomName: PropTypes.string.isRequired,
   handleGame: PropTypes.func.isRequired,
   setCurrentPage: PropTypes.func.isRequired,

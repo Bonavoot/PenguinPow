@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import styled, { keyframes, css } from "styled-components";
 import gamepadHandler from "../utils/gamepadHandler";
+import Snowfall from "./Snowfall";
 
 // ============================================
 // ANIMATIONS
@@ -94,6 +95,26 @@ const floatParticle = keyframes`
   }
 `;
 
+const snowParticle = keyframes`
+  0% {
+    transform: translate(0, -20px) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.8;
+  }
+  50% {
+    transform: translate(15px, 50vh) rotate(180deg);
+  }
+  90% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: translate(-5px, 100vh) rotate(360deg);
+    opacity: 0;
+  }
+`;
+
 // ============================================
 // CONTAINER
 // ============================================
@@ -149,11 +170,15 @@ const Particle = styled.div`
   position: absolute;
   width: ${props => props.$size}px;
   height: ${props => props.$size}px;
-  background: radial-gradient(circle, rgba(212, 175, 55, 0.6) 0%, transparent 70%);
+  background: ${props => props.$isSnow
+    ? `radial-gradient(circle, rgba(255, 255, 255, 0.7) 0%, rgba(210, 230, 255, 0.3) 50%, transparent 70%)`
+    : `radial-gradient(circle, rgba(212, 175, 55, 0.6) 0%, transparent 70%)`
+  };
   border-radius: 50%;
   left: ${props => props.$left}%;
-  animation: ${floatParticle} ${props => props.$duration}s linear infinite;
+  animation: ${props => props.$isSnow ? snowParticle : floatParticle} ${props => props.$duration}s linear infinite;
   animation-delay: ${props => props.$delay}s;
+  filter: ${props => props.$isSnow ? 'blur(0.5px)' : 'none'};
 `;
 
 // ============================================
@@ -351,13 +376,14 @@ const StartupScreen = ({ onContinue, connectionError, steamDeckMode }) => {
   const [showPressKey, setShowPressKey] = useState(false);
   const [isConnecting, setIsConnecting] = useState(true);
 
-  // Generate particles once on mount
-  const particles = Array.from({ length: 12 }, (_, i) => ({
+  // Generate particles once on mount (mix of gold + snow)
+  const particles = Array.from({ length: 18 }, (_, i) => ({
     id: i,
-    size: 3 + Math.random() * 4,
+    size: i < 10 ? 3 + Math.random() * 4 : 2 + Math.random() * 4,
     left: Math.random() * 100,
-    duration: 15 + Math.random() * 20,
+    duration: i < 10 ? 15 + Math.random() * 20 : 12 + Math.random() * 16,
     delay: Math.random() * 15,
+    isSnow: i >= 10, // Last 8 particles are snow
   }));
 
   useEffect(() => {
@@ -416,8 +442,9 @@ const StartupScreen = ({ onContinue, connectionError, steamDeckMode }) => {
   return (
     <ScreenContainer>
       <Vignette />
+      <Snowfall intensity={25} showFrost={true} zIndex={1} />
       
-      {/* Subtle floating particles */}
+      {/* Subtle floating particles (gold + snow mix) */}
       <ParticleContainer>
         {particles.map((p) => (
           <Particle
@@ -426,6 +453,7 @@ const StartupScreen = ({ onContinue, connectionError, steamDeckMode }) => {
             $left={p.left}
             $duration={p.duration}
             $delay={p.delay}
+            $isSnow={p.isSnow}
           />
         ))}
       </ParticleContainer>

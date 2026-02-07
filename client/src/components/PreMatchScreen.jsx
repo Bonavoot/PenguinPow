@@ -276,6 +276,8 @@ const CharacterImage = styled.img`
   object-fit: contain;
   transform: ${props => props.$flip ? 'scaleX(1)' : 'scaleX(-1)'};
   filter: drop-shadow(4px 4px 8px rgba(0, 0, 0, 0.4));
+  opacity: ${props => props.$ready ? 1 : 0};
+  transition: opacity 0.25s ease-out;
 `;
 
 // Horizontal gap between player image and info section
@@ -652,6 +654,7 @@ const PreMatchScreen = ({
   const [displayProgress, setDisplayProgress] = useState(0);
   const [player1Sprite, setPlayer1Sprite] = useState(pumo2);
   const [player2Sprite, setPlayer2Sprite] = useState(pumo2);
+  const [spritesReady, setSpritesReady] = useState(false);
   
   // Derive additional info from player names
   const player1Dojo = getSeededValue(player1Name, DOJO_NAMES);
@@ -661,37 +664,37 @@ const PreMatchScreen = ({
   const player1Rank = getRank(player1Record.wins, player1Record.losses);
   const player2Rank = getRank(player2Record.wins, player2Record.losses);
 
-  // Recolor sprites based on player colors
+  // Recolor sprites based on player colors; only reveal images when both are ready (avoids flash of wrong color)
   useEffect(() => {
+    let cancelled = false;
+    setSpritesReady(false);
+
     const recolorSprites = async () => {
-      // Player 1 sprite - recolor if not base color (blue)
-      if (player1Color && player1Color !== SPRITE_BASE_COLOR) {
-        try {
-          const recolored = await recolorImage(pumo2, BLUE_COLOR_RANGES, player1Color);
-          setPlayer1Sprite(recolored);
-        } catch (err) {
-          console.error("Failed to recolor player 1 sprite:", err);
-          setPlayer1Sprite(pumo2);
-        }
-      } else {
-        setPlayer1Sprite(pumo2);
-      }
-      
-      // Player 2 sprite - always recolor (default is red, sprites are blue)
-      if (player2Color && player2Color !== SPRITE_BASE_COLOR) {
-        try {
-          const recolored = await recolorImage(pumo2, BLUE_COLOR_RANGES, player2Color);
-          setPlayer2Sprite(recolored);
-        } catch (err) {
-          console.error("Failed to recolor player 2 sprite:", err);
-          setPlayer2Sprite(pumo2);
-        }
-      } else {
-        setPlayer2Sprite(pumo2);
-      }
+      const p1Promise =
+        player1Color && player1Color !== SPRITE_BASE_COLOR
+          ? recolorImage(pumo2, BLUE_COLOR_RANGES, player1Color).catch((err) => {
+              console.error("Failed to recolor player 1 sprite:", err);
+              return pumo2;
+            })
+          : Promise.resolve(pumo2);
+
+      const p2Promise =
+        player2Color && player2Color !== SPRITE_BASE_COLOR
+          ? recolorImage(pumo2, BLUE_COLOR_RANGES, player2Color).catch((err) => {
+              console.error("Failed to recolor player 2 sprite:", err);
+              return pumo2;
+            })
+          : Promise.resolve(pumo2);
+
+      const [p1, p2] = await Promise.all([p1Promise, p2Promise]);
+      if (cancelled) return;
+      setPlayer1Sprite(p1);
+      setPlayer2Sprite(p2);
+      setSpritesReady(true);
     };
-    
+
     recolorSprites();
+    return () => { cancelled = true; };
   }, [player1Color, player2Color]);
 
   // Smooth progress animation
@@ -733,7 +736,7 @@ const PreMatchScreen = ({
           
           <CharacterArea>
             <CharacterImageContainer>
-              <CharacterImage src={player1Sprite} alt={player1Name} $flip={false} />
+              <CharacterImage src={player1Sprite} alt={player1Name} $flip={false} $ready={spritesReady} />
             </CharacterImageContainer>
           </CharacterArea>
 
@@ -787,7 +790,7 @@ const PreMatchScreen = ({
           
           <CharacterArea>
             <CharacterImageContainer>
-              <CharacterImage src={player2Sprite} alt={player2Name} $flip={true} />
+              <CharacterImage src={player2Sprite} alt={player2Name} $flip={true} $ready={spritesReady} />
             </CharacterImageContainer>
           </CharacterArea>
 

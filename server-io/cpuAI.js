@@ -527,15 +527,9 @@ function handleGrabClashMashing(cpu, aiState, currentTime) {
 
 // Handle grab break attempts (spacebar mashing)
 // CPU should break grabs MOST of the time, especially when near edge!
-// CANNOT break counter grabs (grabbed while raw parrying)
+// All grabs (including counter grab) can be broken
 function handleGrabBreak(cpu, aiState, currentTime) {
   // DON'T reset all keys - we need _prevKeys to track the previous state for keyJustPressed
-  
-  // Cannot break out of a counter grab!
-  if (cpu.isCounterGrabbed) {
-    cpu.keys[" "] = false;
-    return;
-  }
   
   // Track when we started being grabbed for delay purposes
   if (!aiState.grabStartedTime) {
@@ -1401,13 +1395,12 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
   }
   
   // === GRAB BREAK - Process BEFORE shouldBlockAction check! ===
-  // This is special because it needs to work WHILE being grabbed
-  // CANNOT break out of counter grabs (grabbed while raw parrying)
+  // This is special because it needs to work WHILE being grabbed. Counter grab (LOCKED) cannot be broken.
   const GRAB_BREAK_STAMINA_COST = 33; // 33% of max stamina (match server constant)
   if (cpu.isBeingGrabbed && 
+      !cpu.isCounterGrabbed &&
       keyJustPressed(" ") && 
       !cpu.isGrabBreaking &&
-      !cpu.isCounterGrabbed && // Cannot break counter grabs!
       cpu.stamina >= GRAB_BREAK_STAMINA_COST) {
     
     // Find the grabber
@@ -1431,8 +1424,6 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       cpu.throwOpponent = null;
       cpu.isHit = false;
       cpu.grabCooldown = false;
-      cpu.isCounterGrabbed = false; // Reset counter grab flag
-      
       // Animation state - breaker shows grab break
       cpu.isGrabBreaking = true;
       cpu.grabBreakSpaceConsumed = true;

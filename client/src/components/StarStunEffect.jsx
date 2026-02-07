@@ -58,7 +58,7 @@ const textPulse = keyframes`
 
 const StarStunContainer = styled.div`
   position: absolute;
-  bottom: ${props => (props.$y / 720) * 100 + 29}%;
+  bottom: ${props => (props.$y / 720) * 100 + 26}%;
   left: ${props => (props.$x / 1280) * 100 + 8}%;
   transform: translateX(-50%);
   z-index: 1001;
@@ -132,7 +132,7 @@ const StunnedText = styled.div`
     0 0 20px rgba(255, 215, 0, 0.5),
     0 0 30px rgba(255, 215, 0, 0.3);
   white-space: nowrap;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.15em;
   margin-bottom: 4px;
   animation: ${textPulse} 0.8s ease-in-out infinite;
 `;

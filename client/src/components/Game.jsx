@@ -9,12 +9,56 @@ import CrowdLayer from "./CrowdLayer";
 import PreMatchScreen from "./PreMatchScreen";
 import gamepadHandler from "../utils/gamepadHandler";
 import { usePlayerColors } from "../context/PlayerColorContext";
+import {
+  startMemoryMonitor,
+  stopMemoryMonitor,
+  setupMemoryMonitorShortcut,
+} from "../utils/memoryMonitor";
+import { clearDecodedImageCache } from "../utils/SpriteRecolorizer";
 // import gameMusic from "../sounds/game-music.mp3";
 import PropTypes from "prop-types";
 
 // const gameMusicAudio = new Audio(gameMusic);
 // gameMusicAudio.loop = true;
 // gameMusicAudio.volume = 0.02;
+
+// PERFORMANCE: Hidden element that forces the browser to download, parse, and rasterize
+// the "Noto Serif JP" font at the exact size/weight used by RoundResult (22rem, weight 900).
+// Without this, the first win triggers a freeze while the browser downloads the CJK font file
+// (potentially several hundred KB) and rasterizes the 勝/敗 kanji at 350px+.
+// This renders invisibly on mount so the font is warm before it's ever needed.
+// The text-shadow matches RoundResult's MainKanji so the shadow rasterization is also cached.
+const FontWarmup = () => (
+  <div
+    aria-hidden="true"
+    style={{
+      position: 'absolute',
+      left: '-9999px',
+      top: '-9999px',
+      visibility: 'hidden',
+      pointerEvents: 'none',
+      overflow: 'hidden',
+      width: '1px',
+      height: '1px',
+    }}
+  >
+    <span
+      style={{
+        fontFamily: '"Noto Serif JP", serif',
+        fontSize: '22rem',
+        fontWeight: 900,
+        lineHeight: 1,
+        textShadow: '4px 4px 0 #E6B800, 8px 8px 0 #CC9900, 12px 12px 0 #B38600, 0 0 40px rgba(255, 215, 0, 0.35)',
+        background: 'linear-gradient(145deg, #FFFFFF 0%, #FFD700 40%, #FF8000 100%)',
+        WebkitBackgroundClip: 'text',
+        WebkitTextFillColor: 'transparent',
+        backgroundClip: 'text',
+      }}
+    >
+      勝敗
+    </span>
+  </div>
+);
 
 const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) => {
   const { socket } = useContext(SocketContext);
@@ -78,16 +122,22 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
     e: false,
   });
 
-  // useEffect(() => {
-  //   gameMusicAudio
-  //     .play()
-  //     .catch((error) => console.error("Error while playing game music", error));
+  // Memory monitor - logs to console every 30s, Ctrl+Shift+M for overlay
+  useEffect(() => {
+    const cleanupMonitor = startMemoryMonitor();
+    const cleanupShortcut = setupMemoryMonitorShortcut();
+    return () => {
+      cleanupMonitor?.();
+      cleanupShortcut?.();
+    };
+  }, []);
 
-  //   return () => {
-  //     gameMusicAudio.pause();
-  //     gameMusicAudio.currentTime = 0;
-  //   };
-  // }, []);
+  // Free decoded sprite cache when leaving game (reduces memory when in menu/lobby)
+  useEffect(() => {
+    return () => {
+      clearDecodedImageCache();
+    };
+  }, []);
 
   useEffect(() => {
     const keyState = {
@@ -407,7 +457,13 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
     };
 
     const handleGameOver = () => {
-      setIsCrowdCheering(true); // Crowd cheers when someone wins
+      // PERFORMANCE: Defer crowd cheering to the next animation frame.
+      // The game_over event triggers heavy work (state updates, gyoji change, sound).
+      // Deferring the crowd sprite swap (~200 img.src changes) prevents it from
+      // piling onto the same frame and causing a freeze.
+      requestAnimationFrame(() => {
+        setIsCrowdCheering(true);
+      });
       isGameActiveRef.current = false; // Game is no longer active after win
     };
 
@@ -437,6 +493,7 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
 
   return (
     <div className="game-wrapper">
+      <FontWarmup />
       <div className="game-container">
         <CrowdLayer isCheering={isCrowdCheering} />
         <div className="dohyo-overlay"></div>

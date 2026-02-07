@@ -3,8 +3,13 @@ import styled from "styled-components";
 import PropTypes from "prop-types";
 import "./HitEffect.css";
 
-// Pre-create particle indices to avoid array recreation on every render
-const PARTICLE_INDICES = [0, 1, 2, 3];
+// Pre-create indices to avoid array recreation on every render
+const SLAP_LINE_INDICES = [0, 1, 2, 3, 4];
+const CHARGED_LINE_INDICES = [0, 1, 2, 3, 4, 5, 6, 7];
+const SLAP_SPARK_INDICES = [0, 1, 2, 3, 4, 5];
+const CHARGED_SPARK_INDICES = [0, 1, 2, 3, 4, 5, 6, 7];
+const SLAP_PARTICLE_INDICES = [0, 1, 2, 3];
+const CHARGED_PARTICLE_INDICES = [0, 1, 2, 3, 4, 5];
 
 const HitEffectContainer = styled.div`
   position: absolute;
@@ -15,52 +20,18 @@ const HitEffectContainer = styled.div`
   pointer-events: none;
 `;
 
-// Spark element
-const Spark = styled.div`
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  pointer-events: none;
-  border-radius: 50%;
-`;
-
-// Particle element
-const Particle = styled.div`
-  position: absolute;
-  top: 50%;
-  left: 50%;
-`;
-
 const HitEffect = ({ position }) => {
   const [activeEffects, setActiveEffects] = useState([]);
   const processedHitsRef = useRef(new Set());
   const effectIdCounter = useRef(0);
   
-  const EFFECT_DURATION_SLAP = 350;
-  const EFFECT_DURATION_CHARGED = 550;
+  const EFFECT_DURATION_SLAP = 400;
+  const EFFECT_DURATION_CHARGED = 600;
 
   const hitIdentifier = useMemo(() => {
     if (!position) return null;
     return position.hitId || position.timestamp;
   }, [position?.hitId, position?.timestamp]);
-
-  // Counter hit color - golden yellow for "seeing stars" effect
-  const COUNTER_HIT_COLOR = '#FFD700';
-
-  // Generate sparks
-  const generateSparks = (effectId) => {
-    const sparkCount = 6;
-    const sparks = [];
-    const baseSize = 10;
-
-    for (let i = 0; i < sparkCount; i++) {
-      sparks.push({
-        id: `${effectId}-spark-${i}`,
-        size: baseSize + Math.random() * 5,
-      });
-    }
-    return sparks;
-  };
 
   useEffect(() => {
     if (!position || !hitIdentifier) return;
@@ -72,15 +43,13 @@ const HitEffect = ({ position }) => {
     const attackType = position.attackType || 'slap';
     const isCounterHit = position.isCounterHit || false;
 
-    // Create local effect
     const newEffect = {
       id: effectId,
       x: position.x,
       y: position.y,
       facing: position.facing || 1,
-      attackType: attackType,
-      isCounterHit: isCounterHit,
-      sparks: generateSparks(effectId),
+      attackType,
+      isCounterHit,
     };
 
     setActiveEffects((prev) => [...prev, newEffect]);
@@ -98,31 +67,14 @@ const HitEffect = ({ position }) => {
 
   return (
     <>
-      {/* Local impact effects */}
       {activeEffects.map((effect) => {
-        const hitTypeClass = effect.attackType === 'charged' ? 'charged-hit' : 'slap-hit';
+        const isCharged = effect.attackType === 'charged';
+        const hitTypeClass = isCharged ? 'charged-hit' : 'slap-hit';
         const counterHitClass = effect.isCounterHit ? 'counter-hit' : '';
         
-        // Spark color - white normally, orange for counter hits
-        const sparkColor = effect.isCounterHit 
-          ? `radial-gradient(circle, ${COUNTER_HIT_COLOR} 50%, ${COUNTER_HIT_COLOR} 100%)`
-          : 'radial-gradient(circle, #fff 50%, #fff 100%)';
-
-        const sparkElements = effect.sparks.map((spark) => (
-          <Spark
-            key={spark.id}
-            className="spark"
-            style={{
-              width: `${spark.size}px`,
-              height: `${spark.size}px`,
-              background: sparkColor,
-            }}
-          />
-        ));
-
-        const particles = PARTICLE_INDICES.map((i) => (
-          <Particle key={`${effect.id}-p-${i}`} className="particle" />
-        ));
+        const lineIndices = isCharged ? CHARGED_LINE_INDICES : SLAP_LINE_INDICES;
+        const sparkIndices = isCharged ? CHARGED_SPARK_INDICES : SLAP_SPARK_INDICES;
+        const particleIndices = isCharged ? CHARGED_PARTICLE_INDICES : SLAP_PARTICLE_INDICES;
 
         return (
           <HitEffectContainer
@@ -132,12 +84,27 @@ const HitEffect = ({ position }) => {
             $facing={effect.facing}
           >
             <div className={`hit-ring-wrapper ${hitTypeClass} ${counterHitClass}`}>
+              {/* Core flash + expanding ring */}
               <div className="hit-ring" />
-              <div className="spark-particles">
-                {sparkElements}
+              {/* Secondary shockwave (visible for charged, hidden for slap via CSS) */}
+              <div className="hit-shockwave-secondary" />
+              {/* Manga-style radial speed lines */}
+              <div className="hit-speed-lines">
+                {lineIndices.map((i) => (
+                  <div key={i} className="hit-speed-line" />
+                ))}
               </div>
+              {/* Energy sparks */}
+              <div className="spark-particles">
+                {sparkIndices.map((i) => (
+                  <div key={i} className="spark" />
+                ))}
+              </div>
+              {/* Debris particles */}
               <div className="hit-particles">
-                {particles}
+                {particleIndices.map((i) => (
+                  <div key={i} className="particle" />
+                ))}
               </div>
             </div>
           </HitEffectContainer>

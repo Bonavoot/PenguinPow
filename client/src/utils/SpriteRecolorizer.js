@@ -18,10 +18,18 @@
 // ============================================
 // LRU CACHE with size limit
 // ============================================
-const MAX_CACHE_SIZE = 150; // Enough for all player sprites (static + animated + APNGs) + buffer
+const MAX_CACHE_SIZE = 150; // Must hold all preloaded sprites (~122) + buffer to prevent invisible frames on animation switch
 const cacheOrder = []; // Track access order for LRU eviction
 
 const recoloredImageCache = new Map();
+
+// RACE CONDITION FIX: Deduplicate concurrent recolorImage() calls with the same cache key.
+// Without this, preloadSprites() and applyPlayerColor() can race on the same sprites,
+// creating DIFFERENT blob URLs for the same cache key. The loser's blob URL gets overwritten
+// in the cache, but the winner's blob URL was pre-decoded. GameFighter then gets the
+// non-pre-decoded blob URL from the cache → ghost frames on every animation transition.
+// With deduplication, concurrent calls share the same Promise and get the same blob URL.
+const inFlightRecolors = new Map();
 
 function addToCache(key, value) {
   // If already in cache, move to end of order (most recently used)
@@ -34,7 +42,12 @@ function addToCache(key, value) {
   // Evict oldest if over limit
   while (cacheOrder.length > MAX_CACHE_SIZE) {
     const oldestKey = cacheOrder.shift();
+    const evictedUrl = recoloredImageCache.get(oldestKey);
     recoloredImageCache.delete(oldestKey);
+    // Revoke blob URL to free browser-held blob data (only if not in decoded cache)
+    if (evictedUrl && evictedUrl.startsWith('blob:') && !decodedImageCache.has(evictedUrl)) {
+      URL.revokeObjectURL(evictedUrl);
+    }
   }
   
   recoloredImageCache.set(key, value);
@@ -395,7 +408,14 @@ export async function recolorImage(imageSrc, sourceColorRange, targetColorHex) {
     return cached;
   }
 
-  return new Promise((resolve, reject) => {
+  // RACE CONDITION FIX: If this exact recoloring is already in flight, return the same
+  // Promise instead of starting a duplicate. This ensures preloadSprites() and
+  // applyPlayerColor() get the SAME blob URL, so the pre-decoded URL matches the cache.
+  if (inFlightRecolors.has(cacheKey)) {
+    return inFlightRecolors.get(cacheKey);
+  }
+
+  const promise = new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
 
@@ -404,7 +424,7 @@ export async function recolorImage(imageSrc, sourceColorRange, targetColorHex) {
       try {
         // Get pooled canvas
         canvas = getPooledCanvas(img.width, img.height);
-        const ctx = canvas.getContext("2d");
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
         // Draw image to canvas
         ctx.drawImage(img, 0, 0);
@@ -453,27 +473,23 @@ export async function recolorImage(imageSrc, sourceColorRange, targetColorHex) {
         // Put the modified data back
         ctx.putImageData(processedData, 0, 0);
 
-        // Convert to data URL
-        const dataUrl = canvas.toDataURL("image/png");
+        // MEMORY OPTIMIZATION: Use blob URL instead of data URL
+        // Data URLs store the entire PNG as a base64 string in the JS heap (~33% larger than binary)
+        // Blob URLs are tiny strings (~50 bytes) - the blob data is managed by the browser outside JS heap
+        // This saves 50-200MB+ of JS heap for the sprite cache
+        const blob = await new Promise((resolveBlob) => {
+          canvas.toBlob(resolveBlob, "image/png");
+        });
+        const blobUrl = URL.createObjectURL(blob);
         
         // Return canvas to pool
         returnCanvasToPool(canvas);
         canvas = null;
         
         // Add to LRU cache
-        addToCache(cacheKey, dataUrl);
+        addToCache(cacheKey, blobUrl);
         
-        // Pre-decode the image to prevent invisible frames on first display
-        const decodedImg = new Image();
-        decodedImg.src = dataUrl;
-        if (decodedImg.decode) {
-          decodedImg.decode()
-            .then(() => resolve(dataUrl))
-            .catch(() => resolve(dataUrl));
-        } else {
-          decodedImg.onload = () => resolve(dataUrl);
-          decodedImg.onerror = () => resolve(dataUrl);
-        }
+        resolve(blobUrl);
       } catch (error) {
         // Return canvas to pool on error
         if (canvas) {
@@ -489,6 +505,15 @@ export async function recolorImage(imageSrc, sourceColorRange, targetColorHex) {
 
     img.src = imageSrc;
   });
+
+  // Register the in-flight Promise; clean up when settled (success or failure)
+  inFlightRecolors.set(cacheKey, promise);
+  promise.then(
+    () => inFlightRecolors.delete(cacheKey),
+    () => inFlightRecolors.delete(cacheKey)
+  );
+
+  return promise;
 }
 
 /**
@@ -549,15 +574,28 @@ export async function recolorImages(imageSrcs, sourceColorRange, targetColorHex)
  * Clear the recolored image cache
  */
 export function clearRecolorCache() {
+  // Revoke all blob URLs to free browser-held blob data
+  for (const url of recoloredImageCache.values()) {
+    if (url && url.startsWith('blob:')) {
+      URL.revokeObjectURL(url);
+    }
+  }
   recoloredImageCache.clear();
   cacheOrder.length = 0;
+  inFlightRecolors.clear();
 }
 
 // ============================================
 // PERSISTENT IMAGE CACHE with LRU eviction
 // Keep decoded images in memory to prevent GC and re-decode
 // ============================================
-const MAX_DECODED_CACHE_SIZE = 50; // Limit to prevent OOM - only cache the most important sprites
+// GHOST FRAME FIX: Increased from 100 to 200.
+// When both players use non-blue colors, there are ~120-140 sprites to pre-decode
+// (originals + recolored for P1 + recolored for P2). At 100, the first ~40 sprites
+// get LRU-evicted before gameplay starts, causing ghost frames on first use.
+// At 200, all gameplay sprites fit without eviction. Memory cost is ~50-70MB of decoded
+// bitmaps, which is acceptable since we already save ~240MB by excluding ritual sprites.
+const MAX_DECODED_CACHE_SIZE = 200;
 const decodedImageCache = new Map();
 const decodedCacheOrder = []; // LRU tracking
 let hiddenImageContainer = null;
@@ -609,12 +647,6 @@ export async function preDecodeImage(imageSrc) {
     return;
   }
   
-  // MEMORY FIX: Skip data URLs - they're already in memory from the recoloring process
-  // Only pre-decode actual file URLs that need browser decoding
-  if (imageSrc && imageSrc.startsWith('data:')) {
-    return;
-  }
-  
   return new Promise((resolve) => {
     const img = new Image();
     img.src = imageSrc;
@@ -648,6 +680,15 @@ export async function preDecodeImage(imageSrc) {
 }
 
 /**
+ * Pre-decode a data URL or blob URL and cache it - used during preload for recolored sprites.
+ * Keeps decoded Images in DOM so they're ready for instant display (prevents invisible frames).
+ */
+export async function preDecodeDataUrl(url) {
+  if (!url || (!url.startsWith('data:') && !url.startsWith('blob:'))) return;
+  return preDecodeImage(url);
+}
+
+/**
  * Pre-decode multiple images in parallel
  * @param {string[]} imageSrcs - Array of image sources to decode
  * @returns {Promise<void>} - Resolves when all images are decoded
@@ -662,6 +703,12 @@ export async function preDecodeImages(imageSrcs) {
  * Clear the decoded image cache (for memory management)
  */
 export function clearDecodedImageCache() {
+  // Revoke blob URLs from cached images to free browser-held blob data
+  for (const img of decodedImageCache.values()) {
+    if (img && img.src && img.src.startsWith('blob:')) {
+      URL.revokeObjectURL(img.src);
+    }
+  }
   if (hiddenImageContainer) {
     hiddenImageContainer.innerHTML = '';
   }
@@ -743,6 +790,7 @@ export default {
   getCachedRecoloredImage,
   getCacheStats,
   preDecodeImage,
+  preDecodeDataUrl,
   preDecodeImages,
   clearDecodedImageCache,
   hexToRgb,

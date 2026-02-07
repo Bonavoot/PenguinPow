@@ -584,10 +584,6 @@ const PowerUpSelection = ({
 
   useEffect(() => {
     const handlePowerUpSelectionStart = (data) => {
-      console.log(
-        `🟢 PowerUpSelection: Received power_up_selection_start for player ${playerId} in room ${roomId}`,
-        data
-      );
       setIsVisible(true);
       setSelectedPowerUp(null);
       setSelectionStatus({ selectedCount: 0, totalPlayers: 2 });
@@ -600,17 +596,10 @@ const PowerUpSelection = ({
     };
 
     const handlePowerUpSelectionStatus = (data) => {
-      console.log(
-        `🟡 PowerUpSelection: Received power_up_selection_status for player ${playerId}`,
-        data
-      );
       setSelectionStatus(data);
     };
 
     const handlePowerUpSelectionComplete = () => {
-      console.log(
-        `🔴 PowerUpSelection: Received power_up_selection_complete for player ${playerId}`
-      );
       setIsVisible(false);
       setTimeLeft(15);
       setAvailablePowerUps([]);
@@ -624,9 +613,6 @@ const PowerUpSelection = ({
     };
 
     const handleGameReset = () => {
-      console.log(
-        `🔵 PowerUpSelection: Received game_reset for player ${playerId}, clearing state`
-      );
       setIsVisible(false);
       setSelectedPowerUp(null);
       setSelectionStatus({ selectedCount: 0, totalPlayers: 2 });
@@ -638,18 +624,12 @@ const PowerUpSelection = ({
       }
     };
 
-    console.log(
-      `🔵 PowerUpSelection: Setting up socket listeners for player ${playerId} in room ${roomId}`
-    );
     socket.on("power_up_selection_start", handlePowerUpSelectionStart);
     socket.on("power_up_selection_status", handlePowerUpSelectionStatus);
     socket.on("power_up_selection_complete", handlePowerUpSelectionComplete);
     socket.on("game_reset", handleGameReset);
 
     return () => {
-      console.log(
-        `🔴 PowerUpSelection: Cleaning up socket listeners for player ${playerId}`
-      );
       socket.off("power_up_selection_start", handlePowerUpSelectionStart);
       socket.off("power_up_selection_status", handlePowerUpSelectionStatus);
       socket.off("power_up_selection_complete", handlePowerUpSelectionComplete);
@@ -668,9 +648,6 @@ const PowerUpSelection = ({
 
   useEffect(() => {
     const requestPowerUpState = () => {
-      console.log(
-        `🔵 PowerUpSelection: Requesting power-up selection state for player ${playerId} in room ${roomId}`
-      );
       socket.emit("request_power_up_selection_state", {
         roomId,
         playerId,

@@ -12,6 +12,7 @@ const {
   getCleanedRoomData,
   getCleanedRoomsData,
 } = require("./playerCleanup");
+const { GRAB_STATES, TICK_RATE, BROADCAST_EVERY_N_TICKS } = require("./constants");
 
 // Import game utilities
 const {
@@ -197,11 +198,36 @@ const DELTA_TRACKED_PROPS = [
   'isJumping', 'isDiving', 'sizeMultiplier'
 ];
 
+// PERFORMANCE: Pre-compute the combined props list once (avoids spread on every call)
+const ALL_TRACKED_PROPS = [...ALWAYS_SEND_PROPS, ...DELTA_TRACKED_PROPS];
+
+// PERFORMANCE: Shallow-compare two arrays of flat objects without JSON.stringify.
+// Used for snowballs/pumoArmy which are small arrays (~0-5 elements) of flat objects.
+// ~10-50x faster than JSON.stringify comparison for typical game state.
+function shallowArrayEquals(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b)) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const itemA = a[i];
+    const itemB = b[i];
+    // Fast path: same reference means same object
+    if (itemA === itemB) continue;
+    // Compare all own enumerable properties
+    const keys = Object.keys(itemA);
+    if (keys.length !== Object.keys(itemB).length) return false;
+    for (let k = 0; k < keys.length; k++) {
+      if (itemA[keys[k]] !== itemB[keys[k]]) return false;
+    }
+  }
+  return true;
+}
+
 function computePlayerDelta(currentState, previousState) {
   if (!previousState) {
     // First update - send everything relevant
     const delta = {};
-    for (const prop of [...ALWAYS_SEND_PROPS, ...DELTA_TRACKED_PROPS]) {
+    for (let i = 0; i < ALL_TRACKED_PROPS.length; i++) {
+      const prop = ALL_TRACKED_PROPS[i];
       if (currentState[prop] !== undefined) {
         delta[prop] = currentState[prop];
       }
@@ -212,21 +238,21 @@ function computePlayerDelta(currentState, previousState) {
   const delta = {};
   
   // Always include essential positioning
-  for (const prop of ALWAYS_SEND_PROPS) {
-    delta[prop] = currentState[prop];
+  for (let i = 0; i < ALWAYS_SEND_PROPS.length; i++) {
+    delta[ALWAYS_SEND_PROPS[i]] = currentState[ALWAYS_SEND_PROPS[i]];
   }
   
   // Only include changed properties
-  for (const prop of DELTA_TRACKED_PROPS) {
+  for (let i = 0; i < DELTA_TRACKED_PROPS.length; i++) {
+    const prop = DELTA_TRACKED_PROPS[i];
     const current = currentState[prop];
     const previous = previousState[prop];
     
     // Deep compare for objects (knockbackVelocity, snowballs, pumoArmy)
     if (typeof current === 'object' && current !== null) {
       if (Array.isArray(current)) {
-        // For arrays, compare length and stringify for simple diff
-        if (!Array.isArray(previous) || current.length !== previous.length || 
-            JSON.stringify(current) !== JSON.stringify(previous)) {
+        // PERFORMANCE: Shallow array comparison instead of JSON.stringify
+        if (!shallowArrayEquals(current, previous)) {
           delta[prop] = current;
         }
       } else {
@@ -243,14 +269,21 @@ function computePlayerDelta(currentState, previousState) {
   return delta;
 }
 
-// Store deep copy of player state for comparison
+// PERFORMANCE: Store shallow copy of player state for comparison.
+// Replaces JSON.parse(JSON.stringify()) which was the most expensive per-tick operation.
+// Safe because snowballs/pumoArmy elements and knockbackVelocity are flat objects (no nesting).
 function clonePlayerState(player) {
   const clone = {};
-  for (const prop of [...ALWAYS_SEND_PROPS, ...DELTA_TRACKED_PROPS]) {
+  for (let i = 0; i < ALL_TRACKED_PROPS.length; i++) {
+    const prop = ALL_TRACKED_PROPS[i];
     const value = player[prop];
     if (value !== undefined) {
-      if (typeof value === 'object' && value !== null) {
-        clone[prop] = JSON.parse(JSON.stringify(value));
+      if (Array.isArray(value)) {
+        // Shallow clone each element (flat objects like snowballs/pumoArmy)
+        clone[prop] = value.map(item => ({...item}));
+      } else if (typeof value === 'object' && value !== null) {
+        // Shallow clone flat objects (knockbackVelocity: {x, y})
+        clone[prop] = {...value};
       } else {
         clone[prop] = value;
       }
@@ -281,12 +314,7 @@ function emitThrottledScreenShake(room, io, shakeData) {
 
 let gameLoop = null;
 let staminaRegenCounter = 0;
-const TICK_RATE = 64;
-// Server broadcasts at 64Hz for maximum responsiveness
-// Client-side optimizations prevent re-render storms:
-// - Interpolation state updates throttled to 30fps
-// - setPenguin only re-renders on discrete state changes (not position)
-const BROADCAST_EVERY_N_TICKS = 1;
+// TICK_RATE and BROADCAST_EVERY_N_TICKS from constants.js (32 Hz broadcast = balanced CPU/network)
 let broadcastTickCounter = 0;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.25; // Increased from 0.22 for snappier movement
@@ -306,7 +334,6 @@ const DOHYO_FALL_DEPTH = 50; // How far down they fall (2 feet)
 const DOHYO_FALL_HORIZONTAL_RETENTION = 0.98; // Maintain horizontal momentum while falling
 
 // Add power-up types
-const { GRAB_STATES } = require("./constants");
 const POWER_UP_TYPES = {
   SPEED: "speed",
   POWER: "power",
@@ -545,7 +572,14 @@ function isRoomInHitstop(room) {
   return room.hitstopUntil && Date.now() < room.hitstopUntil;
 }
 
+// Lobby color options - CPU picks randomly from these (excluding player's color)
+const LOBBY_COLORS = [
+  "#252525", "#000080", "#9932CC", "#32CD32", "#DC143C", "#FF8C00",
+  "#FFB6C1", "#FFD700", "#5D3A1A", "#A8A8A8", "#5BC0DE", "#800000",
+];
+
 // CPU Player creation helper - accepts unique ID for concurrent game support
+// CPU's mawashiColor is set when human readies (see ready_count handler)
 function createCPUPlayer(uniqueId) {
   const cpuPlayerId = uniqueId || `CPU_PLAYER_${Date.now()}`;
   return {
@@ -553,7 +587,7 @@ function createCPUPlayer(uniqueId) {
     isCPU: true,
     fighter: "player 2",
     color: "salmon",
-    mawashiColor: "#DC143C", // Default red for CPU (Player 2)
+    mawashiColor: "#DC143C", // Placeholder until human readies; then random color
     isJumping: false,
     isAttacking: false,
     throwCooldown: false,
@@ -841,6 +875,8 @@ function resetRoomAndPlayers(room) {
   room.gameOverTime = null;
   delete room.winnerId;
   delete room.loserId;
+  // PERFORMANCE: Reset delta state tracking so next broadcast sends full state
+  room.previousPlayerStates = [null, null];
 
   // Start the 15-second timer for automatic power-up selection
   if (room.roundStartTimer) {
@@ -1030,6 +1066,17 @@ io.on("connection", (socket) => {
     // Calculate grab range based on player size
     const grabRange = GRAB_RANGE * (player.sizeMultiplier || 1);
     return Math.abs(player.x - opponent.x) < grabRange;
+  }
+
+  function isOpponentInFrontOfGrabber(player, opponent) {
+    // Grab should only connect with opponents who are in front of the grabber,
+    // not behind them. This prevents grabs from catching dodging players who
+    // have passed through and are now behind the grabbing player.
+    // grabMovementDirection: 1 = lunging right, -1 = lunging left
+    const BEHIND_TOLERANCE = 20; // Small tolerance (pixels) for near-overlap edge cases
+    // Positive = opponent is in front, negative = opponent is behind
+    const relativePos = (opponent.x - player.x) * player.grabMovementDirection;
+    return relativePos >= -BEHIND_TOLERANCE;
   }
 
   const THROW_TECH_COOLDOWN = 500; // 500ms cooldown on throw techs
@@ -1269,8 +1316,11 @@ io.on("connection", (socket) => {
   }
 
   function tick(delta) {
-    rooms.forEach((room) => {
-      if (room.players.length < 2) return;
+    // PERFORMANCE: Use for-loop instead of forEach to avoid closure overhead at 64Hz.
+    // Also skip rooms with < 2 players via continue (no function call overhead).
+    for (let _roomIdx = 0; _roomIdx < rooms.length; _roomIdx++) {
+      const room = rooms[_roomIdx];
+      if (room.players.length < 2) continue;
 
       staminaRegenCounter += delta;
 
@@ -2936,10 +2986,13 @@ io.on("connection", (socket) => {
           }
 
           // Continuously check for grab opportunity during movement (only if opponent is not also grabbing)
+          // Also require opponent to be in front of the grabber - prevents grabbing players
+          // who have dodged through and are now behind the grabbing player
           if (
             opponent &&
             !opponent.isGrabbingMovement &&
             isOpponentCloseEnoughForGrab(player, opponent) &&
+            isOpponentInFrontOfGrabber(player, opponent) &&
             !opponent.isBeingThrown &&
             !opponent.isAttacking &&
             !opponent.isBeingGrabbed &&
@@ -2960,30 +3013,27 @@ io.on("connection", (socket) => {
             player.grabStartTime = Date.now();
             player.grabbedOpponent = opponent.id;
             
-            // PUNISH GRAB: Check if opponent was in a punishable state when grabbed
-            // Punishable states: raw parrying, recovering from whiffed attack, or whiffing a grab
-            // Punish grabs cannot be broken!
+            // COUNTER GRAB: Only when grabbing opponent during their raw parry. Cannot grab break (LOCKED).
+            // Grabbing during recovery does NOT count as punish - normal grab only.
             const wasOpponentRawParrying = opponent.isRawParrying;
-            const wasOpponentInRecovery = opponent.isRecovering || opponent.isWhiffingGrab;
-            const isPunishGrab = wasOpponentRawParrying || wasOpponentInRecovery;
-            
-            if (isPunishGrab) {
-              opponent.isCounterGrabbed = true;
-              
-              // Determine player numbers for side text display
+            opponent.isCounterGrabbed = wasOpponentRawParrying; // Counter grabbed = cannot grab break
+
+            if (wasOpponentRawParrying) {
+              // Counter Grab: grabbed their raw parry - show LOCKED! effect + "Counter Grab" banner
               const grabberPlayerNumber = room.players.indexOf(player) === 0 ? 1 : 2;
-              
-              // Emit punish grab effect (shows PUNISH banner)
+              const centerX = (player.x + opponent.x) / 2;
+              const centerY = (player.y + opponent.y) / 2;
               io.in(room.id).emit("counter_grab", {
+                type: "counter_grab",
                 grabberId: player.id,
                 grabbedId: opponent.id,
                 grabberX: player.x,
                 grabbedX: opponent.x,
-                grabberPlayerNumber: grabberPlayerNumber,
-                counterId: `punish-grab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                x: centerX,
+                y: centerY,
+                grabberPlayerNumber,
+                counterId: `counter-grab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
               });
-            } else {
-              opponent.isCounterGrabbed = false;
             }
             
             // Clear parry success state when starting a grab
@@ -4210,7 +4260,7 @@ io.on("connection", (socket) => {
           isDelta: true,
         });
       }
-    });
+    }
     
     // Increment broadcast counter
     broadcastTickCounter++;
@@ -4950,15 +5000,10 @@ io.on("connection", (socket) => {
             });
           }
 
-          // Emit punish banner event when hitting opponent during recovery
-          // Uses counter_grab event to show PUNISH banner (same visual effect)
+          // Punish: only side text (no hit effect) when hitting opponent during recovery
           if (isPunish) {
             const attackerPlayerNumber = currentRoom.players.findIndex(p => p.id === player.id) + 1;
-            io.in(currentRoom.id).emit("counter_grab", {
-              grabberId: player.id,
-              grabbedId: otherPlayer.id,
-              grabberX: player.x,
-              grabbedX: otherPlayer.x,
+            io.in(currentRoom.id).emit("punish_banner", {
               grabberPlayerNumber: attackerPlayerNumber,
               counterId: `punish-hit-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             });
@@ -5068,12 +5113,23 @@ io.on("connection", (socket) => {
     
     if (playerIndex === -1) return;
     
+    // PvP: reject if color is already taken by the other player (normalize for comparison)
+    const otherPlayer = room.players[1 - playerIndex];
+    if (otherPlayer && !otherPlayer.isCPU) {
+      const otherHex = (otherPlayer.mawashiColor || "").toString().toLowerCase();
+      const newHex = (color || "").toString().toLowerCase();
+      if (otherHex && newHex && otherHex === newHex) {
+        return; // Don't apply duplicate color
+      }
+    }
+    
     // Update the player's mawashi color
     room.players[playerIndex].mawashiColor = color;
-    
+
     // Broadcast updated player data to all players in the room
     io.in(roomId).emit("lobby", room.players);
-    
+    io.emit("rooms", getCleanedRoomsData(rooms));
+
     // Also emit a specific color update event for immediate UI updates
     io.in(roomId).emit("mawashi_color_updated", {
       playerId,
@@ -5126,7 +5182,7 @@ io.on("connection", (socket) => {
         id: data.socketId,
         fighter: "player 1",
         color: "aqua",
-        mawashiColor: "#000080", // Default navy for Player 1
+        mawashiColor: "#5BC0DE", // Default light blue for Player 1
         isJumping: false,
         isAttacking: false,
         throwCooldown: false,
@@ -5276,7 +5332,7 @@ io.on("connection", (socket) => {
         id: data.socketId,
         fighter: "player 2",
         color: "salmon",
-        mawashiColor: "#DC143C", // Default red for Player 2
+        mawashiColor: "#DC143C", // Default crimson red for Player 2
         isJumping: false,
         isAttacking: false,
         throwCooldown: false,
@@ -5488,6 +5544,7 @@ io.on("connection", (socket) => {
       id: data.socketId,
       fighter: "player 1",
       color: "aqua",
+      mawashiColor: "#5BC0DE", // Default light blue for Player 1
       isJumping: false,
       isAttacking: false,
       throwCooldown: false,
@@ -5666,16 +5723,26 @@ io.on("connection", (socket) => {
     if (data.isReady) {
       // Only increment if player wasn't already ready
       if (!room.players[playerIndex].isReady) {
-        room.readyCount++;
         room.players[playerIndex].isReady = true;
-      }
+        room.readyCount++;
 
-      // If this is a CPU room and human player just readied, auto-ready the CPU
-      if (room.isCPURoom) {
-        const cpuPlayer = room.players.find((p) => p.isCPU);
-        if (cpuPlayer && !cpuPlayer.isReady) {
-          cpuPlayer.isReady = true;
-          room.readyCount++;
+        // If this is a CPU room and human player just readied: assign CPU a random color (not the player's), then auto-ready CPU
+        if (room.isCPURoom) {
+          const cpuPlayer = room.players.find((p) => p.isCPU);
+          const humanPlayer = room.players[playerIndex];
+          if (cpuPlayer && !cpuPlayer.isReady) {
+            const playerColor = humanPlayer.mawashiColor
+              || (humanPlayer.color === "aqua" ? "#00FFFF" : humanPlayer.color);
+            const availableColors = LOBBY_COLORS.filter(
+              (c) => c.toLowerCase() !== (playerColor || "").toLowerCase()
+            );
+            const chosen = availableColors.length > 0
+              ? availableColors[Math.floor(Math.random() * availableColors.length)]
+              : "#DC143C";
+            cpuPlayer.mawashiColor = chosen;
+            cpuPlayer.isReady = true;
+            room.readyCount++;
+          }
         }
       }
     } else {
@@ -5704,7 +5771,18 @@ io.on("connection", (socket) => {
     if (room.readyCount > 1) {
       // Mark this as the initial round - power-up selection will wait for pre_match_complete
       room.isInitialRound = true;
-      io.in(data.roomId).emit("initial_game_start", room);
+      // Send players with mawashiColor so client shows correct colors on PreMatchScreen (avoids race)
+      const payload = {
+        roomId: data.roomId,
+        players: room.players.map((p) => ({
+          id: p.id,
+          fighter: p.fighter,
+          mawashiColor: p.mawashiColor,
+          isCPU: p.isCPU,
+          wins: p.wins || [],
+        })),
+      };
+      io.in(data.roomId).emit("initial_game_start", payload);
     }
   });
 
@@ -5911,6 +5989,11 @@ io.on("connection", (socket) => {
     // Input lockout window: allow key state refresh but block actions
     if (player.inputLockUntil && Date.now() < player.inputLockUntil) {
       if (data.keys) {
+        // Clear grabBreakSpaceConsumed if spacebar was released during input lock,
+        // so raw parry isn't blocked after the lock expires
+        if (!data.keys[" "] && player.keys[" "] && player.grabBreakSpaceConsumed) {
+          player.grabBreakSpaceConsumed = false;
+        }
         player.keys = data.keys;
       }
       return;
@@ -6171,13 +6254,13 @@ io.on("connection", (socket) => {
       }
 
       // Grab Break: break out when being grabbed with spacebar, at stamina cost
-      // CANNOT break out of a counter grab (grabbed while raw parrying)
+      // Counter grab (LOCKED) cannot be broken
       if (
         player.isBeingGrabbed &&
+        !player.isCounterGrabbed &&
         player.keys[" "] &&
         !previousKeys[" "] &&
         !player.isGrabBreaking &&
-        !player.isCounterGrabbed && // Cannot break counter grabs!
         player.stamina >= GRAB_BREAK_STAMINA_COST
       ) {
         const room = rooms[roomIndex];
@@ -7156,6 +7239,8 @@ io.on("connection", (socket) => {
 
       // Clean up the room state
       cleanupRoomState(rooms[roomIndex]);
+      // PERFORMANCE: Free cloned player state objects to prevent memory leak
+      rooms[roomIndex].previousPlayerStates = [null, null];
 
       // Emit updated room data to all clients
       io.emit("rooms", getCleanedRoomsData(rooms));
@@ -7227,6 +7312,8 @@ io.on("connection", (socket) => {
       rooms[roomIndex].players = rooms[roomIndex].players.filter(
         (player) => player.id !== socket.id
       );
+      // PERFORMANCE: Free cloned player state objects to prevent memory leak
+      rooms[roomIndex].previousPlayerStates = [null, null];
 
       // Handle opponent disconnection during active game session
       if (
@@ -7395,6 +7482,8 @@ io.on("connection", (socket) => {
       rooms[roomIndex].players = rooms[roomIndex].players.filter(
         (player) => player.id !== socket.id
       );
+      // PERFORMANCE: Free cloned player state objects to prevent memory leak
+      rooms[roomIndex].previousPlayerStates = [null, null];
 
       // Handle opponent disconnection during active game session
       if (

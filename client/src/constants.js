@@ -1,6 +1,10 @@
 // Game constants shared between client and server
 // These should match the values in server-io/gameUtils.js
 
+// Match server broadcast rate (server-io/constants.js BROADCAST_EVERY_N_TICKS)
+// Used for interpolation: time between state updates from server
+export const SERVER_BROADCAST_HZ = 64;
+
 export const MAP_LEFT_BOUNDARY = 80;
 export const MAP_RIGHT_BOUNDARY = 982;
 

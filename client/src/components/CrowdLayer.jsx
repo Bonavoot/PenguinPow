@@ -139,33 +139,31 @@ const StyleInjector = styled.div`
   ${idleSway}
 `;
 
-// Individual crowd member sprite
-const CrowdMember = styled.img`
+// Individual crowd member sprite - uses attrs for dynamic styles to avoid 200+ generated classes
+const CrowdMember = styled.img.attrs((props) => ({
+  style: {
+    width: `${props.$size}%`,
+    left: `${props.$x}%`,
+    bottom: `${props.$y}%`,
+    transform: `translateX(-50%) ${props.$flip ? "scaleX(-1)" : ""}`,
+    opacity: props.$opacity ?? 1,
+    zIndex: props.$customZIndex !== undefined ? props.$customZIndex : Math.floor(100 - props.$y),
+    filter: props.$applyDarkFilter ? "brightness(0.6)" : "none",
+    animation: props.$shouldAnimate
+      ? `${props.$flip ? "crowdSwayFlipped" : "crowdSway"} ${2.5 + (props.$animOffset * 0.8)}s ease-in-out infinite`
+      : "none",
+    animationDelay: props.$shouldAnimate ? `${props.$animOffset * -2}s` : undefined,
+  },
+}))`
   position: absolute;
-  width: ${(props) => props.$size}%;
   height: auto;
-  left: ${(props) => props.$x}%;
-  bottom: ${(props) => props.$y}%;
-  transform: translateX(-50%) ${(props) => (props.$flip ? "scaleX(-1)" : "")};
-  transform-origin: center 80%; /* Pivot from hips/waist area - legs stay nearly still, upper body moves */
+  transform-origin: center 80%;
   pointer-events: none;
   image-rendering: crisp-edges;
   image-rendering: -moz-crisp-edges;
   image-rendering: -webkit-optimize-contrast;
-  opacity: ${(props) => props.$opacity || 1};
-  z-index: ${(props) => props.$customZIndex !== undefined ? props.$customZIndex : Math.floor(100 - props.$y)}; /* Custom z-index or calculated from Y */
-  backface-visibility: hidden; /* GPU optimization */
-  filter: ${(props) => props.$applyDarkFilter ? "brightness(0.6)" : "none"}; /* Darkening filter to match crowd overlay */
-  
-  /* Only animate front rows (y < 55) - back rows are too small to notice */
-  ${(props) => props.$shouldAnimate ? `
-    will-change: transform;
-    animation: ${props.$flip ? "crowdSwayFlipped" : "crowdSway"} 
-               ${2.5 + (props.$animOffset * 0.8)}s 
-               ease-in-out 
-               infinite;
-    animation-delay: ${props.$animOffset * -2}s;
-  ` : ''}
+  backface-visibility: hidden;
+  ${(props) => props.$shouldAnimate ? "will-change: transform;" : ""}
 `;
 
 // Crowd member types - easily expandable for future additions

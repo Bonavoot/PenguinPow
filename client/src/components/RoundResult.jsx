@@ -236,6 +236,8 @@ const victoryShake = keyframes`
 `;
 
 // Screen flash overlay - behind players but above gyoji/map
+// contain: strict isolates this full-viewport layer from the rest of the document,
+// preventing its radial gradient paint from affecting other elements' compositing.
 const ScreenFlash = styled.div`
   position: fixed;
   top: 0;
@@ -249,6 +251,7 @@ const ScreenFlash = styled.div`
   animation: ${screenFlash} 0.8s ease-out forwards;
   pointer-events: none;
   z-index: 50;
+  contain: strict;
 `;
 
 // Shockwave ring effect
@@ -436,6 +439,8 @@ const ResultContainer = styled.div`
   align-items: center;
   justify-content: center;
   animation: ${props => props.$isVictory ? css`${victoryShake} 0.4s ease-out` : 'none'};
+  will-change: transform;
+  contain: layout style;
 `;
 
 const SubtitleContainer = styled.div`
@@ -527,6 +532,12 @@ const MainKanji = styled.div`
   -webkit-text-fill-color: transparent;
   background-clip: text;
   /* REMOVED filter: drop-shadow - extremely expensive on 22rem text! */
+  /* PERF: will-change promotes this to its own composited GPU layer immediately,
+     so the browser doesn't have to create it mid-animation (which causes a frame drop).
+     contain: layout style prevents this massive text element from triggering
+     layout recalculations on siblings during animation. */
+  will-change: transform, opacity;
+  contain: layout style;
   
   @media (max-width: 1400px) {
     font-size: 19rem;
@@ -570,6 +581,8 @@ const KanjiShadow = styled.div`
   color: ${props => props.$isVictory ? '#FFFFFF' : '#000000'};
   z-index: -1;
   opacity: ${props => props.$isVictory ? '0.7' : '0.7'};
+  will-change: transform, opacity;
+  contain: layout style;
   
   @media (max-width: 1400px) {
     font-size: 19rem;

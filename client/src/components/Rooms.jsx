@@ -4,6 +4,7 @@ import styled, { keyframes, css } from "styled-components";
 import Room from "./Room";
 import { SocketContext } from "../SocketContext";
 import { playButtonHoverSound, playButtonPressSound } from "../utils/soundUtils";
+import { SnowCap, IcicleRow, Icicle } from "./Snowfall";
 
 // ============================================
 // ANIMATIONS
@@ -455,7 +456,19 @@ const Rooms = ({ rooms, setRoomName, handleJoinRoom, handleMainMenuPage }) => {
   return (
     <ModalOverlay>
       <BannerContainer>
-        <HangingBar />
+        <HangingBar>
+          <SnowCap />
+          <IcicleRow $bottom="-8px">
+            <Icicle $w={2} $h={6} />
+            <Icicle $w={3} $h={10} />
+            <Icicle $w={2} $h={8} />
+            <Icicle $w={3} $h={12} />
+            <Icicle $w={2} $h={7} />
+            <Icicle $w={3} $h={9} />
+            <Icicle $w={2} $h={11} />
+            <Icicle $w={3} $h={6} />
+          </IcicleRow>
+        </HangingBar>
         <BannerBody>
           <Header>
             <Title>Server Browser</Title>

@@ -106,11 +106,12 @@ function handleWinCondition(room, loser, winner, io) {
       winner.isBowing = true;
       loser.isBowing = true;
       
-      // Reset bowing after animation completes so players return to idle/breathing animation
-      setTimeout(() => {
-        winner.isBowing = false;
-        loser.isBowing = false;
-      }, 1500);
+      // NOTE: Do NOT reset isBowing here for match over.
+      // For regular rounds, isBowing stays true until resetRoomAndPlayers() clears it
+      // along with the position reset. For match over, we keep bowing until the
+      // match-over screen covers the view and the rematch flow resets everything.
+      // Resetting it early caused players to visually "pop up" from bow to idle
+      // in the gap before the match-over UI appeared.
     }, 1050);
   } else {
     setTimeout(() => {

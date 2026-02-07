@@ -15,7 +15,7 @@ import {
 } from "../utils/SpriteRecolorizer";
 
 // Global cache for recolored images with LRU eviction
-const MAX_SPRITE_CACHE_SIZE = 40; // Limit to prevent memory bloat
+const MAX_SPRITE_CACHE_SIZE = 25; // MEMORY: Reduced from 40 - data URLs can be large
 const spriteCache = new Map();
 const spriteCacheOrder = []; // LRU tracking
 

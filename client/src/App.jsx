@@ -111,6 +111,7 @@ function App() {
               )}
               <MainMenu
                 rooms={rooms}
+                setRooms={setRooms}
                 currentPage={currentPage}
                 setCurrentPage={setCurrentPage}
                 localId={localId}

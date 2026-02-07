@@ -2,6 +2,10 @@ import { useEffect, useState, useRef, useMemo } from "react";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 import "./RawParryEffect.css";
+import { HIT_EFFECT_TEXT_DURATION, HIT_EFFECT_TEXT_DELAY } from "../config/hitEffectText";
+
+// Pre-create indices for perfect parry speed lines
+const PERFECT_LINE_INDICES = [0, 1, 2, 3, 4, 5, 6, 7];
 
 // Animation for centered text - matches GrabBreakEffect textPop
 const textPop = keyframes`
@@ -37,23 +41,24 @@ const ParryTextCenter = styled.div`
   top: 50%;
   left: 50%;
   font-family: "Bungee", cursive;
-  font-size: clamp(0.7rem, 1.6vw, 1.4rem);
+  font-size: ${props => props.$isPerfect ? 'clamp(0.85rem, 1.9vw, 1.7rem)' : 'clamp(0.7rem, 1.6vw, 1.4rem)'};
   color: ${props => props.$isPerfect ? '#FFD700' : '#00BFFF'};
   text-shadow: 
     -2px -2px 0 #000, 2px -2px 0 #000, 
     -2px 2px 0 #000, 2px 2px 0 #000,
-    0 0 15px ${props => props.$isPerfect ? 'rgba(255, 215, 0, 0.9)' : 'rgba(0, 191, 255, 0.9)'};
+    0 0 ${props => props.$isPerfect ? '20px' : '15px'} ${props => props.$isPerfect ? 'rgba(255, 215, 0, 0.9)' : 'rgba(0, 191, 255, 0.9)'}${props => props.$isPerfect ? ', 0 0 35px rgba(255, 215, 0, 0.4)' : ''};
   letter-spacing: 0.15em;
   white-space: nowrap;
   transform: translate(-50%, -50%) scale(0);
-  animation: ${textPop} 0.6s ease-out forwards;
-  animation-delay: 0.05s;
+  animation: ${textPop} ${HIT_EFFECT_TEXT_DURATION}s ease-out forwards;
+  animation-delay: ${HIT_EFFECT_TEXT_DELAY}s;
   pointer-events: none;
+  z-index: 20;
 `;
 
 const RawParryEffectContainer = styled.div`
   position: absolute;
-  left: ${props => (props.$x / 1280) * 100 + (props.$facing === 1 ? -2 : -4)}%;
+  left: ${props => (props.$x / 1280) * 100 + (props.$facing === 1 ? -6 : -1)}%;
   bottom: ${props => (props.$y / 720) * 100 + 5}%;
   transform: translate(-50%, -50%);
   z-index: 100;
@@ -115,7 +120,7 @@ const RawParryEffect = ({ position }) => {
     for (let i = 0; i < sparkCount; i++) {
       sparks.push({
         id: `${effectId}-spark-${i}`,
-        size: baseSize + Math.random() * 2,
+        size: isPerfect ? baseSize + Math.random() * 3 : baseSize + Math.random() * 2,
         sparkIndex: i,
         isPerfect,
       });
@@ -229,6 +234,14 @@ const RawParryEffect = ({ position }) => {
                   transform: effect.facing === 1 ? "scaleX(-1)" : "scaleX(1)",
                 }}
               />
+              {/* Perfect parry speed lines - manga-style radial streaks */}
+              {effect.isPerfect && (
+                <div className="perfect-speed-lines">
+                  {PERFECT_LINE_INDICES.map((i) => (
+                    <div key={i} className="perfect-speed-line" />
+                  ))}
+                </div>
+              )}
               <ParticleContainer className="raw-parry-particles">
                 {particles}
               </ParticleContainer>

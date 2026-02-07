@@ -18,6 +18,7 @@ import {
   playBackgroundMusic,
   stopBackgroundMusic,
 } from "../utils/soundUtils";
+import Snowfall, { SnowCap, IcicleRow, Icicle } from "./Snowfall";
 
 // ============================================
 // ANIMATIONS
@@ -660,7 +661,7 @@ preloadAssets(preGameImages);
 // MAIN COMPONENT
 // ============================================
 
-const MainMenu = ({ rooms, currentPage, setCurrentPage, localId, connectionError }) => {
+const MainMenu = ({ rooms, setRooms, currentPage, setCurrentPage, localId, connectionError }) => {
   const [roomName, setRoomName] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [currentBgIndex, setCurrentBgIndex] = useState(0);
@@ -777,6 +778,7 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId, connectionError
           />
         ))}
         <DarkOverlay />
+        <Snowfall intensity={20} showFrost={true} zIndex={2} />
         
         {/* Connection Error Banner */}
         {connectionError && (
@@ -788,7 +790,18 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId, connectionError
         {/* Left Menu Panel */}
         <LeftPanel>
           <MenuBanner>
-            <HangingBar />
+            <HangingBar>
+              <SnowCap />
+              <IcicleRow $bottom="-8px">
+                <Icicle $w={3} $h={7} />
+                <Icicle $w={2} $h={11} />
+                <Icicle $w={3} $h={6} />
+                <Icicle $w={2} $h={9} />
+                <Icicle $w={3} $h={13} />
+                <Icicle $w={2} $h={7} />
+                <Icicle $w={3} $h={10} />
+              </IcicleRow>
+            </HangingBar>
             <BannerBody>
               <TitleSection>
                 <GameTitle>Pumo Pumo !</GameTitle>
@@ -897,6 +910,7 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId, connectionError
         <div className="current-page">
           <Lobby
             rooms={rooms}
+            setRooms={setRooms}
             roomName={roomName}
             handleGame={handleGame}
             setCurrentPage={setCurrentPage}
@@ -935,6 +949,7 @@ const MainMenu = ({ rooms, currentPage, setCurrentPage, localId, connectionError
 
 MainMenu.propTypes = {
   rooms: PropTypes.array.isRequired,
+  setRooms: PropTypes.func,
   currentPage: PropTypes.string.isRequired,
   setCurrentPage: PropTypes.func.isRequired,
   localId: PropTypes.string.isRequired,

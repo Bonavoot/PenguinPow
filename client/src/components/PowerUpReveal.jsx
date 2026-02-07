@@ -477,8 +477,6 @@ const PowerUpReveal = ({ roomId, localId }) => {
 
   useEffect(() => {
     const handlePowerUpsRevealed = (data) => {
-      console.log("🎉 PowerUpReveal: Received power_ups_revealed", data);
-      
       setRevealData({
         player1: data.player1,
         player2: data.player2,

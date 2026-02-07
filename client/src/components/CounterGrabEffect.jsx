@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
+import { HIT_EFFECT_TEXT_DURATION, HIT_EFFECT_TEXT_DELAY } from "../config/hitEffectText";
 
 // Dramatic shockwave burst animation
 const shockwaveExpand = keyframes`
@@ -26,12 +27,12 @@ const innerFlash = keyframes`
     transform: translate(-50%, -50%) scale(0);
     opacity: 1;
   }
-  30% {
-    transform: translate(-50%, -50%) scale(1.5);
+  25% {
+    transform: translate(-50%, -50%) scale(1.65);
     opacity: 1;
   }
   100% {
-    transform: translate(-50%, -50%) scale(2.5);
+    transform: translate(-50%, -50%) scale(2.8);
     opacity: 0;
   }
 `;
@@ -85,41 +86,32 @@ const EffectContainer = styled.div`
   contain: layout style;
 `;
 
-// Purple shockwave ring for punish (primary)
+/* Hit effect radius tier 1 (LARGE): counter grab, perfect parry, grab break, charged attack */
+const HIT_RADIUS_LARGE = "clamp(2rem, 5vw, 4rem)";
+
+/* Same structure as grab break: ring + glow both in one color so the ring reads clearly (green there, purple here) */
 const ShockwaveRing = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(35px, 5vw, 70px);
-  height: clamp(35px, 5vw, 70px);
+  width: ${HIT_RADIUS_LARGE};
+  height: ${HIT_RADIUS_LARGE};
   border-radius: 50%;
-  border: 5px solid #9933ff;
+  border: 5px solid #bb55ff;
+  box-shadow: 0 0 14px rgba(187, 85, 255, 0.5), 0 0 28px rgba(187, 85, 255, 0.25);
   transform: translate(-50%, -50%) scale(0);
   animation: ${shockwaveExpand} 0.4s ease-out forwards;
 `;
 
-// Secondary magenta-purple ring for layered effect (accent)
-const ShockwaveRingPurple = styled.div`
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: clamp(28px, 4.5vw, 60px);
-  height: clamp(28px, 4.5vw, 60px);
-  border-radius: 50%;
-  border: 4px solid #cc44ff;
-  transform: translate(-50%, -50%) scale(0);
-  animation: ${shockwaveExpand} 0.45s ease-out 0.04s forwards;
-`;
-
+/* Same gradient shape as grab break: white → color at 50% → transparent (red + purple) */
 const InnerFlash = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  /* Smaller minimum for better scaling on small screens */
-  width: clamp(18px, 2.5vw, 35px);
-  height: clamp(18px, 2.5vw, 35px);
+  width: clamp(1.35rem, 3.2vw, 2.75rem);
+  height: clamp(1.35rem, 3.2vw, 2.75rem);
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 1) 0%, rgba(153, 51, 255, 0.8) 40%, rgba(204, 68, 255, 0.6) 70%, transparent 100%);
+  background: radial-gradient(circle, rgba(255, 255, 255, 1) 0%, rgba(204, 34, 68, 0.8) 40%, rgba(153, 51, 255, 0.6) 70%, transparent 100%);
   transform: translate(-50%, -50%) scale(0);
   animation: ${innerFlash} 0.35s ease-out forwards;
 `;
@@ -130,10 +122,11 @@ const Spark = styled.div`
   left: 50%;
   width: ${props => props.$size}px;
   height: ${props => props.$size}px;
-  background: ${props => props.$isPurple 
-    ? 'linear-gradient(45deg, #ffffff, #9933ff)' 
-    : 'linear-gradient(45deg, #ffffff, #cc44ff)'};
+  background: ${props => props.$isRed 
+    ? 'linear-gradient(45deg, #ffffff, #cc2244)' 
+    : 'linear-gradient(45deg, #ffffff, #9933ff)'};
   border-radius: 50%;
+  box-shadow: 0 0 ${props => props.$size * 2}px ${props => props.$isRed ? 'rgba(204, 34, 68, 0.8)' : 'rgba(153, 51, 255, 0.8)'};
   opacity: 0;
   animation: ${sparkBurst} 0.4s ease-out forwards;
   animation-delay: ${props => props.$delay}s;
@@ -141,24 +134,24 @@ const Spark = styled.div`
   --dy: ${props => props.$dy}vw;
 `;
 
-const PunishText = styled.div`
+/* Same as BreakText structure - one color + one glow (here: red/purple) */
+const LockedText = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
   font-family: "Bungee", cursive;
-  /* Smaller font on small screens */
   font-size: clamp(0.7rem, 1.6vw, 1.4rem);
-  color: #9933ff;
+  color: #bb2255;
   text-shadow: 
     -2px -2px 0 #000, 2px -2px 0 #000, 
     -2px 2px 0 #000, 2px 2px 0 #000,
-    0 0 15px rgba(153, 51, 255, 0.9),
-    0 0 30px rgba(204, 68, 255, 0.7);
+    0 0 15px rgba(204, 34, 68, 0.9),
+    0 0 30px rgba(153, 51, 255, 0.7);
   letter-spacing: 0.15em;
   white-space: nowrap;
   transform: translate(-50%, -50%) scale(0);
-  animation: ${textPop} 0.6s ease-out forwards;
-  animation-delay: 0.05s;
+  animation: ${textPop} ${HIT_EFFECT_TEXT_DURATION}s ease-out forwards;
+  animation-delay: ${HIT_EFFECT_TEXT_DELAY}s;
 `;
 
 
@@ -168,7 +161,7 @@ const CounterGrabEffect = ({ position }) => {
   const effectIdCounter = useRef(0);
   const EFFECT_DURATION = 1600; // Longer to match side text animation
 
-  // Generate spark particles - alternating red and purple
+  // Generate spark particles - alternating red and purple for counter grab
   const generateSparks = () => {
     const sparks = [];
     const sparkCount = 8;
@@ -184,7 +177,7 @@ const CounterGrabEffect = ({ position }) => {
         dx: Math.cos(radians) * distance,
         dy: Math.sin(radians) * distance,
         delay: i * 0.02,
-        isPurple: i % 2 === 0, // Alternate colors
+        isRed: i % 2 === 0,
       });
     }
     
@@ -233,7 +226,6 @@ const CounterGrabEffect = ({ position }) => {
           <div key={effect.id}>
             <EffectContainer $x={effect.x} $y={effect.y}>
               <ShockwaveRing />
-              <ShockwaveRingPurple />
               <InnerFlash />
               {effect.sparks.map((spark) => (
                 <Spark
@@ -242,15 +234,14 @@ const CounterGrabEffect = ({ position }) => {
                   $dx={spark.dx}
                   $dy={spark.dy}
                   $delay={spark.delay}
-                  $isPurple={spark.isPurple}
+                  $isRed={spark.isRed}
                 />
               ))}
-              <PunishText>PUNISH</PunishText>
+              <LockedText>LOCKED!</LockedText>
             </EffectContainer>
-            {/* Sumo-themed punish announcement banner */}
             <SumoAnnouncementBanner
-              text={"PUNISH"}
-              type="punish"
+              text={"COUNTER\nGRAB"}
+              type="countergrab"
               isLeftSide={isLeftSide}
             />
           </div>
@@ -262,8 +253,9 @@ const CounterGrabEffect = ({ position }) => {
 
 CounterGrabEffect.propTypes = {
   position: PropTypes.shape({
-    x: PropTypes.number.isRequired,
-    y: PropTypes.number.isRequired,
+    type: PropTypes.string,
+    x: PropTypes.number,
+    y: PropTypes.number,
     counterId: PropTypes.string,
     grabberPlayerNumber: PropTypes.number,
   }),

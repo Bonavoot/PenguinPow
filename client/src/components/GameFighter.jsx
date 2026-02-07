@@ -25,6 +25,7 @@ import StarStunEffect from "./StarStunEffect";
 import ThickBlubberEffect from "./ThickBlubberEffect";
 import GrabBreakEffect from "./GrabBreakEffect";
 import CounterGrabEffect from "./CounterGrabEffect";
+import PunishBannerEffect from "./PunishBannerEffect";
 import CounterHitEffect from "./CounterHitEffect";
 import EdgeDangerEffect from "./EdgeDangerEffect";
 import NoStaminaEffect from "./GassedEffect";
@@ -164,7 +165,7 @@ import { getGlobalVolume } from "./Settings";
 import SnowEffect from "./SnowEffect";
 import ThemeOverlay from "./ThemeOverlay";
 import "./theme.css";
-import { isOutsideDohyo, DOHYO_FALL_DEPTH } from "../constants";
+import { isOutsideDohyo, DOHYO_FALL_DEPTH, SERVER_BROADCAST_HZ } from "../constants";
 
 const GROUND_LEVEL = 120; // Ground level constant
 
@@ -198,25 +199,11 @@ const ritualSpritesheetsPlayer2 = RITUAL_SPRITE_CONFIG;
 // Clap sounds for each ritual part
 const ritualClapSounds = [clap1Sound, clap2Sound, clap3Sound, clap4Sound];
 
-// Preload ritual sprite sheets to prevent loading delays
-// Uses decode() to force browser to decode images immediately, preventing invisible frames
-const ritualImagesLoaded = { count: 0, total: RITUAL_SPRITE_CONFIG.length };
-const preloadRitualSpritesheets = () => {
-  RITUAL_SPRITE_CONFIG.forEach((config) => {
-    const img = new Image();
-    img.src = config.spritesheet;
-    // Use decode() if available to force immediate decoding
-    if (img.decode) {
-      img.decode()
-        .then(() => { ritualImagesLoaded.count++; })
-        .catch(() => { ritualImagesLoaded.count++; }); // Still count on error
-    } else {
-      img.onload = () => { ritualImagesLoaded.count++; };
-    }
-  });
-};
-// Call preload on module load
-preloadRitualSpritesheets();
+// MEMORY OPTIMIZATION: Ritual spritesheet preloading removed
+// Ritual spritesheets are enormous (up to 18720x480 px, ~35MB decoded bitmap each).
+// Pre-decoding all 4 parts at module load wastes ~120MB per player of decoded bitmap memory
+// for images that are never displayed directly (recolored versions are used instead).
+// The recoloring system caches them as blob URLs - the browser decodes on-demand when rendered.
 
 // Audio pool for better performance
 const audioPool = new Map();
@@ -2271,6 +2258,13 @@ const GameFighter = ({
   const [gyojiCall, setGyojiCall] = useState(null); // Gyoji's call before HAKKIYOI (e.g., "TE WO TSUITE!")
   const [gyojiState, setGyojiState] = useState("idle");
   const [gameOver, setGameOver] = useState(false);
+  const [showRoundResult, setShowRoundResult] = useState(false); // Deferred from gameOver to prevent freeze
+  const showRoundResultRafRef = useRef(null); // Track rAF so we can cancel on reset
+  // PERFORMANCE: Pre-warm RoundResult styled-components CSS on mount.
+  // Rendering both variants (victory/defeat) for 1 frame forces styled-components to
+  // generate and inject all ~15 CSS classes into the <style> tag. These persist even
+  // after the components unmount, so the real RoundResult mounts instantly on win.
+  const [warmupRoundResult, setWarmupRoundResult] = useState(index === 0);
   const [winner, setWinner] = useState("");
   const [playerOneWinCount, setPlayerOneWinCount] = useState(0);
   const [playerTwoWinCount, setPlayerTwoWinCount] = useState(0);
@@ -2302,6 +2296,7 @@ const GameFighter = ({
   // New enhanced effects state
   const [grabBreakEffectPosition, setGrabBreakEffectPosition] = useState(null);
   const [counterGrabEffectPosition, setCounterGrabEffectPosition] = useState(null);
+  const [punishBannerPosition, setPunishBannerPosition] = useState(null);
   const [snowballImpactPosition, setSnowballImpactPosition] = useState(null);
   const [counterHitEffectPosition, setCounterHitEffectPosition] = useState(null);
   
@@ -2413,6 +2408,19 @@ const GameFighter = ({
     ritualAnimationSrc,
   ]);
 
+  // PERFORMANCE: Remove RoundResult warmup after styled-components CSS is generated.
+  // Rendering both victory/defeat variants for 2 frames generates all CSS classes.
+  // After that, the hidden warmup is removed to avoid wasting animation CPU.
+  useEffect(() => {
+    if (!warmupRoundResult) return;
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setWarmupRoundResult(false);
+      });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [warmupRoundResult]);
+
   // Ritual sprite sheet animation - runs entirely on interval, no effect restarts
   // Use server state (isInRitualPhase) to determine if this player should show ritual
   useEffect(() => {
@@ -2503,9 +2511,8 @@ const GameFighter = ({
     return getSpritesheetConfig(spriteSrc);
   }, []);
 
-  // Interpolation constants
-  const SERVER_TICK_RATE = 64; // Server runs at 64 FPS
-  const SERVER_UPDATE_INTERVAL = 1000 / SERVER_TICK_RATE; // ~15.625ms
+  // Interpolation: match server broadcast rate (server sends every N ticks)
+  const SERVER_UPDATE_INTERVAL = 1000 / SERVER_BROADCAST_HZ;
 
   // Interpolation function for smooth movement
   const interpolatePosition = useCallback(
@@ -2541,6 +2548,9 @@ const GameFighter = ({
       penguin.isDodging,
     ]
   );
+
+  // MEMORY FIX: Ref for interpolation loop cleanup on unmount
+  const interpolationIdRef = useRef(null);
 
   // Animation loop for interpolation - PERFORMANCE OPTIMIZED
   // Calculates position every frame but only updates React state at throttled rate
@@ -2581,15 +2591,20 @@ const GameFighter = ({
         }
       }
 
-      requestAnimationFrame(interpolationLoop);
+      interpolationIdRef.current = requestAnimationFrame(interpolationLoop);
     },
     [interpolatePosition, MIN_POSITION_CHANGE]
   );
 
   // Start interpolation loop
   useEffect(() => {
-    const animationId = requestAnimationFrame(interpolationLoop);
-    return () => cancelAnimationFrame(animationId);
+    interpolationIdRef.current = requestAnimationFrame(interpolationLoop);
+    return () => {
+      if (interpolationIdRef.current) {
+        cancelAnimationFrame(interpolationIdRef.current);
+        interpolationIdRef.current = null;
+      }
+    };
   }, [interpolationLoop]);
 
   // Smooth interpolation with predictive positioning for better feel
@@ -2697,11 +2712,12 @@ const GameFighter = ({
   const lastFrameTime = useRef(performance.now());
   const frameCount = useRef(0);
   const lastFpsUpdate = useRef(performance.now());
+  const animateIdRef = useRef(null);
 
   // Optimize animation frame with actual usage
+  // MEMORY FIX: Store animation ID in ref so cleanup can cancel the actual pending frame
   const animate = useCallback((timestamp) => {
-    // Request next frame first to ensure consistent timing
-    requestAnimationFrame(animate);
+    animateIdRef.current = requestAnimationFrame(animate);
 
     // Calculate delta time for smooth animations
     lastFrameTime.current = timestamp;
@@ -2716,9 +2732,13 @@ const GameFighter = ({
   }, []);
 
   useEffect(() => {
-    // Start animation loop
-    const animationId = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(animationId);
+    animateIdRef.current = requestAnimationFrame(animate);
+    return () => {
+      if (animateIdRef.current) {
+        cancelAnimationFrame(animateIdRef.current);
+        animateIdRef.current = null;
+      }
+    };
   }, [animate]);
 
   // PERFORMANCE: Refs to store accumulated player state for delta merging
@@ -2968,19 +2988,28 @@ const GameFighter = ({
         }
       });
 
-      // Counter grab effect - when grabbing someone doing a raw parry
+      // Counter grab effect - only when grabbing opponent during their raw parry (LOCKED! + Counter Grab banner)
       socket.on("counter_grab", (data) => {
-        if (data && typeof data.grabberX === "number" && typeof data.grabbedX === "number") {
-          // Calculate center position between grabber and grabbed player
-          const centerX = (data.grabberX + data.grabbedX) / 2;
-          setCounterGrabEffectPosition({
-            x: centerX + 150,
-            y: GROUND_LEVEL + 110,
-            counterId: data.counterId || `counter-${Date.now()}`,
-            grabberPlayerNumber: data.grabberPlayerNumber || 1,
+        if (data?.type !== "counter_grab") return;
+        const x = typeof data.x === "number" ? data.x + 150 : (data.grabberX + data.grabbedX) / 2 + 150;
+        const y = typeof data.y === "number" ? data.y : GROUND_LEVEL + 110;
+        setCounterGrabEffectPosition({
+          type: "counter_grab",
+          x,
+          y,
+          counterId: data.counterId || `counter-grab-${Date.now()}`,
+          grabberPlayerNumber: data.grabberPlayerNumber || 1,
+        });
+        playSound(counterGrabSound, 0.035);
+      });
+
+      // Punish banner only (no hit effect) - when hitting opponent during recovery
+      socket.on("punish_banner", (data) => {
+        if (data?.counterId) {
+          setPunishBannerPosition({
+            counterId: data.counterId,
+            grabberPlayerNumber: data.grabberPlayerNumber ?? 1,
           });
-          // Play counter grab sound at similar volume to other grab-related sounds
-          playSound(counterGrabSound, 0.035);
         }
       });
 
@@ -3077,6 +3106,11 @@ const GameFighter = ({
 
     socket.on("game_reset", (data) => {
       setGameOver(data);
+      setShowRoundResult(false); // Clear deferred round result
+      if (showRoundResultRafRef.current) {
+        cancelAnimationFrame(showRoundResultRafRef.current);
+        showRoundResultRafRef.current = null;
+      }
       setGyojiState("idle");
       setMatchOver(false);
       setHasUsedPowerUp(false);
@@ -3147,7 +3181,9 @@ const GameFighter = ({
       }
       if (gameMusicRef.current) {
         gameMusicRef.current.loop = true;
-        gameMusicRef.current.play();
+        gameMusicRef.current.play().catch((e) => {
+          if (e.name !== "AbortError") console.error("Game music play error:", e);
+        });
       }
 
       // Hide hakkiyoi text after 3 seconds
@@ -3160,9 +3196,9 @@ const GameFighter = ({
       setGameOver(data.isGameOver);
       setWinner(data.winner);
       
-      // Add winner to round history
+      // Add winner to round history (MEMORY FIX: cap at 250 for best-of-127 support)
       const winnerName = data.winner.fighter === "player 1" ? "player1" : "player2";
-      setRoundHistory(prev => [...prev, winnerName]);
+      setRoundHistory(prev => [...prev.slice(-249), winnerName]);
       
       if (data.winner.fighter === "player 1") {
         setPlayerOneWinCount(data.wins);
@@ -3182,6 +3218,26 @@ const GameFighter = ({
       // Bump round ID immediately on winner declaration to reset UI stamina to server value
       setUiRoundId((id) => id + 1);
       
+      // PERFORMANCE: Defer RoundResult mount by 2 animation frames.
+      // Without this, the browser has to do ALL of this in a single 16ms frame:
+      // - Re-render the 4000+ line GameFighter component
+      // - Generate ~15 new styled-components CSS classes for RoundResult
+      // - Rasterize a 22rem (350px) kanji character with gradient + 6 text-shadows
+      // - Start ~20 CSS animations simultaneously
+      // - Swap ~200 crowd member sprites (from Game.jsx's crowd cheering)
+      // By using double-rAF, the work is distributed across 3 frames:
+      //   Frame 0: game state updates (setGameOver, setWinner, etc.)
+      //   Frame 1: crowd cheering sprite swap (~200 img.src changes from Game.jsx)
+      //   Frame 2: RoundResult mount (styled-components CSS + kanji rasterization)
+      // Total delay is ~32ms at 60fps - imperceptible, but prevents the freeze.
+      if (showRoundResultRafRef.current) cancelAnimationFrame(showRoundResultRafRef.current);
+      showRoundResultRafRef.current = requestAnimationFrame(() => {
+        showRoundResultRafRef.current = requestAnimationFrame(() => {
+          setShowRoundResult(true);
+          showRoundResultRafRef.current = null;
+        });
+      });
+      
       // Handle music transition: game music -> eeshi music
       if (gameMusicRef.current) {
         gameMusicRef.current.pause();
@@ -3190,7 +3246,9 @@ const GameFighter = ({
       // Only restart eeshi music if opponent hasn't disconnected
       if (!opponentDisconnected && eeshiMusicRef.current) {
         eeshiMusicRef.current.loop = true;
-        eeshiMusicRef.current.play();
+        eeshiMusicRef.current.play().catch((e) => {
+          if (e.name !== "AbortError") console.error("Eeshi music play error:", e);
+        });
       }
     });
 
@@ -3221,6 +3279,7 @@ const GameFighter = ({
       if (index === 0) {
         socket.off("grab_break");
         socket.off("counter_grab");
+        socket.off("punish_banner");
         socket.off("snowball_hit");
         socket.off("stamina_blocked");
         socket.off("counter_hit"); // Fix: was missing cleanup
@@ -3238,23 +3297,33 @@ const GameFighter = ({
         clearInterval(countdownRef.current);
         countdownRef.current = null;
       }
+      // Clean up deferred RoundResult rAF
+      if (showRoundResultRafRef.current) {
+        cancelAnimationFrame(showRoundResultRafRef.current);
+        showRoundResultRafRef.current = null;
+      }
     };
   }, [index, socket, handleFighterAction, opponentDisconnected, localId]);
 
+  // MEMORY FIX: Create music Audio objects only once on mount, reuse on opponentDisconnected changes
   useEffect(() => {
-    gameMusicRef.current = new Audio(gameMusic);
-    gameMusicRef.current.volume = 0.009; // lower volume
-    eeshiMusicRef.current = new Audio(eeshiMusic);
-    eeshiMusicRef.current.volume = 0.009; // lower volume
-    eeshiMusicRef.current.loop = true;
+    if (!gameMusicRef.current) {
+      gameMusicRef.current = new Audio(gameMusic);
+      gameMusicRef.current.volume = 0.009;
+    }
+    if (!eeshiMusicRef.current) {
+      eeshiMusicRef.current = new Audio(eeshiMusic);
+      eeshiMusicRef.current.volume = 0.009;
+      eeshiMusicRef.current.loop = true;
+    }
 
-    // Only start eeshi music if opponent hasn't disconnected
     if (!opponentDisconnected) {
-      eeshiMusicRef.current.play();
+      eeshiMusicRef.current.play().catch((e) => {
+        if (e.name !== "AbortError") console.error("Eeshi music play error:", e);
+      });
     }
 
     return () => {
-      // Clean up both music refs when component unmounts
       if (eeshiMusicRef.current) {
         eeshiMusicRef.current.pause();
         eeshiMusicRef.current.currentTime = 0;
@@ -3496,7 +3565,9 @@ const GameFighter = ({
   const [slowMoActive, setSlowMoActive] = useState(false);
 
   // Add screen shake, thick blubber absorption, and danger zone event listeners
+  // MEMORY FIX: Track timeouts so we can clear them on unmount (prevents setState after unmount)
   useEffect(() => {
+    const pendingTimeouts = [];
 
     socket.on("screen_shake", (data) => {
       setScreenShake({
@@ -3514,35 +3585,31 @@ const GameFighter = ({
           y: data.y,
         });
 
-        // Play thick blubber absorption sound
         playSound(thickBlubberSound, 0.01);
 
-        // Reset the effect after a brief moment
-        setTimeout(() => {
+        const id = setTimeout(() => {
           setThickBlubberEffect({
             isActive: false,
             x: 0,
             y: 0,
           });
         }, 50);
+        pendingTimeouts.push(id);
       }
     });
 
-    // Danger zone event - dramatic moment when player is near ring-out
     socket.on("danger_zone", (data) => {
       setDangerZoneActive(true);
       setSlowMoActive(true);
-      
-      // Reset after brief dramatic moment (no filter changes - dohyo must stay consistent)
-      setTimeout(() => {
+
+      const id = setTimeout(() => {
         setDangerZoneActive(false);
         setSlowMoActive(false);
       }, 400);
+      pendingTimeouts.push(id);
     });
 
-    // Ring-out event - player knocked out of ring
     socket.on("ring_out", (data) => {
-      // Extra dramatic screen shake for ring-out
       setScreenShake({
         intensity: 1.2,
         duration: 600,
@@ -3551,6 +3618,7 @@ const GameFighter = ({
     });
 
     return () => {
+      pendingTimeouts.forEach(clearTimeout);
       socket.off("screen_shake");
       socket.off("thick_blubber_absorption");
       socket.off("danger_zone");
@@ -3687,8 +3755,16 @@ const GameFighter = ({
         <SumoGameAnnouncement type="tewotsuite" duration={2} />
       )}
       {hakkiyoi && <SumoGameAnnouncement type="hakkiyoi" duration={1.8} />}
-      {gameOver && !matchOver && (
+      {showRoundResult && !matchOver && (
         <RoundResult isVictory={winner.id === localId} />
+      )}
+      {/* PERFORMANCE: Hidden warmup renders both RoundResult variants to pre-generate
+          styled-components CSS classes. Removed after 2 frames via useEffect above. */}
+      {warmupRoundResult && (
+        <div aria-hidden="true" style={{ position: 'absolute', left: '-9999px', top: '-9999px', visibility: 'hidden', pointerEvents: 'none', overflow: 'hidden', width: '1px', height: '1px' }}>
+          <RoundResult isVictory={true} />
+          <RoundResult isVictory={false} />
+        </div>
       )}
       {matchOver && (
         <MatchOver winner={winner} localId={localId} roomName={roomName} />
@@ -3700,8 +3776,8 @@ const GameFighter = ({
           <YouLabel x={displayPosition.x} y={displayPosition.y} />
         )}
       <PowerMeter
-        isCharging={penguin.isChargingAttack}
-        chargePower={penguin.chargeAttackPower}
+        isCharging={penguin.isChargingAttack ?? false}
+        chargePower={penguin.chargeAttackPower ?? 0}
         x={displayPosition.x}
         y={displayPosition.y}
         facing={penguin.facing}
@@ -3915,6 +3991,7 @@ const GameFighter = ({
       <RawParryEffect position={rawParryEffectPosition} />
       <GrabBreakEffect position={grabBreakEffectPosition} />
       <CounterGrabEffect position={counterGrabEffectPosition} />
+      <PunishBannerEffect position={punishBannerPosition} />
       <CounterHitEffect position={counterHitEffectPosition} />
       <SnowballImpactEffect position={snowballImpactPosition} />
       <StarStunEffect
@@ -3932,7 +4009,7 @@ const GameFighter = ({
       <PerfectParryPowerEffect
         x={displayPosition.x}
         y={displayPosition.y}
-        isPerfectParrySuccess={penguin.isPerfectRawParrySuccess}
+        isPerfectParrySuccess={penguin.isPerfectRawParrySuccess ?? false}
       />
       {/* NoStaminaEffect - centered on screen, only render once (index 0) and only for local player */}
       {index === 0 && noStaminaEffectKey > 0 && (

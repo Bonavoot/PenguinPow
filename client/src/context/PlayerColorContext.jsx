@@ -14,9 +14,10 @@ import {
   BLUE_COLOR_RANGES,
   clearRecolorCache,
   preDecodeImages,
+  preDecodeDataUrl,
   getCacheStats,
 } from "../utils/SpriteRecolorizer";
-import { ANIMATED_SPRITES, STATIC_SPRITES, DEFAULT_COLORS, COLOR_PRESETS } from "../config/spriteConfig";
+import { ANIMATED_SPRITES, STATIC_SPRITES, DEFAULT_COLORS, COLOR_PRESETS, SPRITE_BASE_COLOR } from "../config/spriteConfig";
 import { SPRITESHEET_CONFIG, SPRITESHEET_CONFIG_BY_NAME } from "../config/animatedSpriteConfig";
 
 // Import spritesheets directly from animatedSpriteConfig to ensure EXACT URL match
@@ -94,12 +95,19 @@ const GAME_FIGHTER_APNG_SPRITES = [
 
 const PlayerColorContext = createContext(null);
 
+// Ritual sprite names - these are huge spritesheets (up to 18720x480 px, ~35MB decoded each)
+// They only play once before gameplay, so we recolor them (cached) but DON'T pre-decode into
+// the hidden DOM container. This saves ~120MB of decoded bitmap memory PER PLAYER (~240MB total).
+const RITUAL_SPRITE_NAMES = new Set(['ritualPart1', 'ritualPart2', 'ritualPart3', 'ritualPart4']);
+
 /**
  * Recolor all sprites for a player and return all source URLs for preloading
  * UNIFIED: All sprites are blue, so always use BLUE_COLOR_RANGES
  * Only skip recoloring if the target color IS blue (since sprites are already blue)
  * 
  * Returns: { sprites, allSources } where allSources is an array of all image URLs for pre-decoding
+ * NOTE: Ritual sprite sources are intentionally excluded from allSources to save ~240MB of memory.
+ * Rituals are still recolored (cached as blob URLs) but decoded on-demand when first rendered.
  */
 async function recolorPlayerSprites(playerKey, colorHex, skipRecoloring) {
   // All sprites are now blue - use BLUE_COLOR_RANGES for both players
@@ -110,9 +118,9 @@ async function recolorPlayerSprites(playerKey, colorHex, skipRecoloring) {
   
   // If target color is blue (same as sprites), return original sprites
   if (skipRecoloring) {
-    // Still collect original sources for pre-decoding
-    Object.values(ANIMATED_SPRITES[playerKey] || {}).forEach(config => {
-      if (config?.src) allSources.push(config.src);
+    // Still collect original sources for pre-decoding (but skip rituals - they're huge)
+    Object.entries(ANIMATED_SPRITES[playerKey] || {}).forEach(([name, config]) => {
+      if (config?.src && !RITUAL_SPRITE_NAMES.has(name)) allSources.push(config.src);
     });
     Object.values(STATIC_SPRITES[playerKey] || {}).forEach(src => {
       if (src && typeof src === 'string') allSources.push(src);
@@ -142,17 +150,22 @@ async function recolorPlayerSprites(playerKey, colorHex, skipRecoloring) {
   const recoloredStatic = {};
 
   // Recolor animated spritesheets from spriteConfig.js
+  // Rituals are still recolored (so they're cached as blob URLs) but NOT added to allSources
+  // for pre-decoding - this saves ~240MB of decoded bitmap memory
   const animatedEntries = Object.entries(ANIMATED_SPRITES[playerKey] || {});
   await Promise.all(
     animatedEntries.map(async ([name, config]) => {
       try {
         const recoloredSrc = await recolorImage(config.src, colorRanges, colorHex);
         recoloredAnimated[name] = { ...config, src: recoloredSrc };
-        allSources.push(recoloredSrc);
+        // Skip ritual sources from pre-decode list (they're huge and only play once)
+        if (!RITUAL_SPRITE_NAMES.has(name)) {
+          allSources.push(recoloredSrc);
+        }
       } catch (error) {
         console.error(`Failed to recolor animated sprite ${name}:`, error);
         recoloredAnimated[name] = config;
-        if (config?.src) allSources.push(config.src);
+        if (config?.src && !RITUAL_SPRITE_NAMES.has(name)) allSources.push(config.src);
       }
     })
   );
@@ -263,8 +276,9 @@ export function PlayerColorProvider({ children }) {
     if (appliedColorsRef.current.player1 === colorHex) return;
     
     setLoadingProgress(prev => ({ ...prev, player1: true }));
-    // UNIFIED: Only skip recoloring if color is BLUE (sprites are blue)
-    const skipRecoloring = colorHex === DEFAULT_COLORS.player1; // player1 default is blue
+    // Only skip recoloring if color matches the ACTUAL sprite base color (Royal Blue #4169E1)
+    // Must match GameFighter's check (targetColor !== SPRITE_BASE_COLOR) to avoid ghost frames
+    const skipRecoloring = colorHex === SPRITE_BASE_COLOR;
     
     try {
       const { sprites, allSources } = await recolorPlayerSprites("player1", colorHex, skipRecoloring);
@@ -283,9 +297,9 @@ export function PlayerColorProvider({ children }) {
     if (appliedColorsRef.current.player2 === colorHex) return;
     
     setLoadingProgress(prev => ({ ...prev, player2: true }));
-    // UNIFIED: Only skip recoloring if color is BLUE (sprites are blue)
-    // Player 2's default is RED, so we ALWAYS recolor (blue sprites need to become red/custom)
-    const skipRecoloring = colorHex === DEFAULT_COLORS.player1; // Check against BLUE, not player2's red
+    // Only skip recoloring if color matches the ACTUAL sprite base color (Royal Blue #4169E1)
+    // Must match GameFighter's check (targetColor !== SPRITE_BASE_COLOR) to avoid ghost frames
+    const skipRecoloring = colorHex === SPRITE_BASE_COLOR;
     
     try {
       const { sprites, allSources } = await recolorPlayerSprites("player2", colorHex, skipRecoloring);
@@ -328,8 +342,9 @@ export function PlayerColorProvider({ children }) {
     // Step 1: FORCE full recoloring by calling recolorPlayerSprites directly
     // This bypasses the early-return check in applyPlayer*Color which can skip recoloring
     // if colors were "already applied" (even if caching was incomplete)
-    const skipP1Recolor = p1Color === DEFAULT_COLORS.player1; // Only skip if blue
-    const skipP2Recolor = p2Color === DEFAULT_COLORS.player1; // Only skip if blue (not red!)
+    // Only skip if color matches SPRITE_BASE_COLOR (#4169E1) - the actual color of the sprites
+    const skipP1Recolor = p1Color === SPRITE_BASE_COLOR;
+    const skipP2Recolor = p2Color === SPRITE_BASE_COLOR;
     
     const [p1Result, p2Result] = await Promise.all([
       recolorPlayerSprites("player1", p1Color, skipP1Recolor),
@@ -344,11 +359,12 @@ export function PlayerColorProvider({ children }) {
     appliedColorsRef.current = { player1: p1Color, player2: p2Color };
     
     // Step 2: Collect ALL sprite sources for pre-decoding (both original and recolored)
+    // MEMORY: Ritual spritesheets are excluded - they're huge (~35MB decoded each) and only play once
     const allSourcesToPreload = new Set();
     
-    // From spriteConfig.js - animated sprites (spritesheets)
-    Object.values(ANIMATED_SPRITES.player1 || {}).forEach(config => {
-      if (config?.src && typeof config.src === 'string') {
+    // From spriteConfig.js - animated sprites (spritesheets) - SKIP RITUALS
+    Object.entries(ANIMATED_SPRITES.player1 || {}).forEach(([name, config]) => {
+      if (config?.src && typeof config.src === 'string' && !RITUAL_SPRITE_NAMES.has(name)) {
         allSourcesToPreload.add(config.src);
       }
     });
@@ -382,16 +398,16 @@ export function PlayerColorProvider({ children }) {
       if (src) allSourcesToPreload.add(src);
     });
     
-    // Step 3: Also collect the RECOLORED sprites from refs (these are data URLs)
+    // Step 3: Also collect the RECOLORED sprites from refs (these are blob URLs after optimization)
     // Use refs because state might not be updated yet after applyColor calls
     // These need to be decoded to prevent invisible frames on first render
-    const recoloredDataUrls = [
-      ...player1SourcesRef.current.filter(s => s && s.startsWith('data:')),
-      ...player2SourcesRef.current.filter(s => s && s.startsWith('data:')),
+    const recoloredUrls = [
+      ...player1SourcesRef.current.filter(s => s && (s.startsWith('data:') || s.startsWith('blob:'))),
+      ...player2SourcesRef.current.filter(s => s && (s.startsWith('data:') || s.startsWith('blob:'))),
     ];
     
-    const uniqueSources = [...allSourcesToPreload].filter(s => !s.startsWith('data:'));
-    console.log(`[Preload] Pre-decoding ${uniqueSources.length} original sprites + ${recoloredDataUrls.length} recolored sprites...`);
+    const uniqueSources = [...allSourcesToPreload].filter(s => !s.startsWith('data:') && !s.startsWith('blob:'));
+    console.log(`[Preload] Pre-decoding ${uniqueSources.length} original sprites + ${recoloredUrls.length} recolored sprites...`);
     
     // Step 4: Pre-decode original images in batches
     const DECODE_BATCH_SIZE = 8;
@@ -400,27 +416,11 @@ export function PlayerColorProvider({ children }) {
       await preDecodeImages(batch);
     }
     
-    // Step 5: Pre-decode recolored data URLs to ensure they're ready for immediate display
-    // This prevents "invisible frames" at game start
-    const decodeDataUrl = (dataUrl) => {
-      return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = () => {
-          if (img.decode) {
-            img.decode().then(resolve).catch(resolve);
-          } else {
-            resolve();
-          }
-        };
-        img.onerror = resolve;
-        img.src = dataUrl;
-      });
-    };
-    
-    // Decode recolored sprites in smaller batches to avoid overwhelming the browser
-    for (let i = 0; i < recoloredDataUrls.length; i += 4) {
-      const batch = recoloredDataUrls.slice(i, i + 4);
-      await Promise.all(batch.map(decodeDataUrl));
+    // Step 5: Pre-decode recolored blob/data URLs and KEEP them in decoded cache
+    // This prevents "invisible frames" - Images stay in DOM so they're ready for instant display
+    for (let i = 0; i < recoloredUrls.length; i += 4) {
+      const batch = recoloredUrls.slice(i, i + 4);
+      await Promise.all(batch.map(preDecodeDataUrl));
     }
     
     // Step 6: Wait for browser to fully process all decoded images
