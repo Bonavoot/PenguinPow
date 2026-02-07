@@ -3,16 +3,16 @@ import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 
 // Simple spawn ring animation
-const spawnRing = keyframes`
-  0% {
-    transform: translate(-50%, -50%) scale(0.3);
-    opacity: 1;
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(1.8);
-    opacity: 0;
-  }
-`;
+// const spawnRing = keyframes`
+//   0% {
+//     transform: translate(-50%, -50%) scale(0.3);
+//     opacity: 1;
+//   }
+//   100% {
+//     transform: translate(-50%, -50%) scale(1.8);
+//     opacity: 0;
+//   }
+// `;
 
 const EffectContainer = styled.div.attrs((props) => ({
   style: {
@@ -25,20 +25,24 @@ const EffectContainer = styled.div.attrs((props) => ({
   },
 }))``;
 
-const SpawnRing = styled.div`
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: clamp(35px, 4vw, 50px);
-  height: clamp(35px, 4vw, 50px);
-  border: 3px solid rgba(255, 140, 0, 0.8);
-  border-radius: 50%;
-  transform: translate(-50%, -50%) scale(0.3);
-  animation: ${spawnRing} 0.35s ease-out forwards;
-  box-shadow: 0 0 10px rgba(255, 140, 0, 0.5);
-`;
+// const SpawnRing = styled.div.attrs((props) => ({
+//   style: {
+//     borderColor: props.$color ? `${props.$color}cc` : "rgba(255, 140, 0, 0.8)",
+//     boxShadow: props.$color ? `0 0 10px ${props.$color}80` : "0 0 10px rgba(255, 140, 0, 0.5)",
+//   },
+// }))`
+//   position: absolute;
+//   top: 50%;
+//   left: 50%;
+//   width: clamp(35px, 4vw, 50px);
+//   height: clamp(35px, 4vw, 50px);
+//   border: 3px solid;
+//   border-radius: 50%;
+//   transform: translate(-50%, -50%) scale(0.3);
+//   animation: ${spawnRing} 0.35s ease-out forwards;
+// `;
 
-const PumoCloneSpawnEffect = ({ clones, lastCloneCount }) => {
+const PumoCloneSpawnEffect = ({ clones, lastCloneCount, player1Color, player2Color }) => {
   const [activeEffects, setActiveEffects] = useState([]);
   const processedClonesRef = useRef(new Set());
   const effectIdCounter = useRef(0);
@@ -60,6 +64,7 @@ const PumoCloneSpawnEffect = ({ clones, lastCloneCount }) => {
           id: effectId,
           x: clone.x,
           y: clone.y,
+          ownerPlayerNumber: clone.ownerPlayerNumber,
         };
 
         setActiveEffects((prev) => [...prev, newEffect]);
@@ -79,11 +84,14 @@ const PumoCloneSpawnEffect = ({ clones, lastCloneCount }) => {
 
   return (
     <>
-      {activeEffects.map((effect) => (
-        <EffectContainer key={effect.id} $x={effect.x} $y={effect.y}>
-          <SpawnRing />
-        </EffectContainer>
-      ))}
+      {activeEffects.map((effect) => {
+        const color = effect.ownerPlayerNumber === 1 ? player1Color : player2Color;
+        return (
+          <EffectContainer key={effect.id} $x={effect.x} $y={effect.y}>
+            {/* <SpawnRing $color={color} /> */}
+          </EffectContainer>
+        );
+      })}
     </>
   );
 };
@@ -94,9 +102,12 @@ PumoCloneSpawnEffect.propTypes = {
       id: PropTypes.string.isRequired,
       x: PropTypes.number.isRequired,
       y: PropTypes.number.isRequired,
+      ownerPlayerNumber: PropTypes.number,
     })
   ),
   lastCloneCount: PropTypes.number,
+  player1Color: PropTypes.string,
+  player2Color: PropTypes.string,
 };
 
 export default PumoCloneSpawnEffect;

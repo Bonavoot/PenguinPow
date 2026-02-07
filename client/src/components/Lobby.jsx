@@ -371,7 +371,8 @@ const Header = styled.header`
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: clamp(70px, 10vh, 110px) clamp(20px, 3vw, 40px) clamp(4px, 1vh, 10px);
+  padding: clamp(90px, 14vh, 140px) clamp(20px, 3vw, 40px) clamp(4px, 1vh, 10px);
+  margin-bottom: clamp(-20px, -3vh, -30px);
   position: relative;
   z-index: 10;
   flex-shrink: 0;
@@ -618,6 +619,8 @@ const PlayerBannerWrapper = styled.div`
 
 const PlayerBanner = styled.div`
   width: clamp(160px, 22vw, 280px);
+  display: flex;
+  flex-direction: column;
   background: linear-gradient(180deg,
     #1a0a08 0%,
     #2d1510 20%,
@@ -653,12 +656,13 @@ const PlayerBanner = styled.div`
     z-index: 1;
   }
   
-  /* Gold accent line on the side */
+  /* Gold accent line on the side (human/left only; no accent on CPU/right) */
   &::after {
+    display: ${props => props.$side === 'right' ? 'none' : 'block'};
     content: "";
     position: absolute;
     top: 12px;
-    ${props => props.$side === 'left' ? 'left: 10px;' : 'right: 10px;'}
+    left: 10px;
     width: 3px;
     bottom: 12px;
     background: linear-gradient(180deg,
@@ -738,6 +742,7 @@ const PlayerName = styled.div`
 `;
 
 const PlayerAvatarArea = styled.div`
+  box-sizing: border-box;
   height: clamp(140px, 28vh, 280px);
   display: flex;
   align-items: center;
@@ -987,8 +992,9 @@ const SideColorPicker = styled.div`
   border: 2px solid ${props => props.$isOwn ? '#8b7355' : '#5c4033'};
   border-radius: clamp(8px, 1vw, 12px);
   box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-  opacity: ${props => props.$isOwn ? 1 : 0.6};
-  pointer-events: ${props => props.$isOwn ? 'auto' : 'none'};
+  opacity: ${props => props.$hidden ? 0 : (props.$isOwn ? 1 : 0.6)};
+  visibility: ${props => props.$hidden ? 'hidden' : 'visible'};
+  pointer-events: ${props => props.$hidden ? 'none' : (props.$isOwn ? 'auto' : 'none')};
   flex-shrink: 0;
   min-width: clamp(50px, 6vw, 80px);
 `;
@@ -1038,6 +1044,54 @@ const YourColorLabel = styled.div`
   text-shadow: 1px 1px 0 #000;
   text-transform: uppercase;
   text-align: center;
+`;
+
+// CPU difficulty selector (VS CPU lobby) — same total height as PlayerAvatarArea so cards match
+const DifficultyListContainer = styled.div`
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: clamp(8px, 1.4vh, 14px);
+  padding: clamp(6px, 1vh, 12px) clamp(8px, 1vw, 12px);
+  height: clamp(140px, 28vh, 280px);
+  min-height: 0;
+`;
+
+const DifficultyOptionRow = styled.div`
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 clamp(10px, 1.2vw, 14px);
+  min-height: 0;
+  background: ${props => props.$selected
+    ? 'linear-gradient(180deg, rgba(139, 115, 85, 0.4) 0%, rgba(92, 64, 51, 0.35) 100%)'
+    : 'linear-gradient(180deg, rgba(26, 10, 8, 0.6) 0%, rgba(15, 5, 3, 0.5) 100%)'};
+  border: 2px solid ${props => props.$selected ? '#8b7355' : '#5c4033'};
+  border-radius: clamp(5px, 0.7vw, 8px);
+  cursor: ${props => props.$available ? 'pointer' : 'default'};
+  opacity: ${props => props.$available ? 1 : 0.7};
+  transition: border-color 0.2s ease, background 0.2s ease;
+`;
+
+const DifficultyLabel = styled.span`
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.6rem, 1.1vw, 0.9rem);
+  color: ${props => props.$selected ? '#d4af37' : '#8b7355'};
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  text-shadow: 1px 1px 0 #000;
+`;
+
+const SoonBadge = styled.span`
+  font-family: "Outfit", sans-serif;
+  font-weight: 500;
+  font-size: 0.65em;
+  color: #666;
+  margin-left: auto;
+  padding-left: 1em;
+  letter-spacing: 0.08em;
 `;
 
 // Loading Overlay for sprite preloading
@@ -1136,7 +1190,11 @@ function ColoredPlayerPreview({ color }) {
 // LOBBY COMPONENT
 // ============================================
 
-const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, isCPUMatch = false }) => {
+// Only HARD is implemented for VS CPU; others show "Soon"
+const CPU_DIFFICULTIES = ["EASY", "NORMAL", "HARD", "IMPOSSIBLE"];
+const AVAILABLE_CPU_DIFFICULTY = "HARD";
+
+const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, onLeaveDohyo, isCPUMatch = false }) => {
   const [players, setPlayers] = useState([]);
   const [ready, setReady] = useState(false);
   const [readyCount, setReadyCount] = useState(0);
@@ -1252,7 +1310,11 @@ const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, isCPUMat
   const handleLeaveDohyo = () => {
     playButtonPressSound();
     socket.emit("leave_room", { roomId: roomName });
-    setCurrentPage("mainMenu");
+    if (onLeaveDohyo) {
+      onLeaveDohyo();
+    } else {
+      setCurrentPage("mainMenu");
+    }
   };
 
   const handleReady = (e) => {
@@ -1381,7 +1443,7 @@ const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, isCPUMat
                 </PlayerBanner>
               </PlayerBannerWrapper>
 
-              {/* Player 2 (Right/West) */}
+              {/* Player 2 (Right/West) — VS CPU: difficulty selector; online: avatar + colors */}
               <PlayerBannerWrapper $side="right">
                 <PlayerBanner $hasPlayer={!!players[1]?.fighter} $side="right">
                   <PlayerHeader>
@@ -1395,32 +1457,51 @@ const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, isCPUMat
                       {players[1]?.isCPU ? "CPU" : (players[1]?.fighter || "Opponent")}
                     </PlayerName>
                   </PlayerHeader>
-                  <PlayerAvatarArea $side="right">
-                    {players[1]?.fighter ? (
-                      <AvatarWrapper>
-                        <ColoredPlayerPreview 
-                          color={serverPlayer2Color}
-                        />
-                      </AvatarWrapper>
-                    ) : (
-                      <WaitingState $side="right">
-                        <WaitingText>Waiting For Pumo</WaitingText>
-                        <LoadingDots>
-                          <Dot $delay={0} />
-                          <Dot $delay={1} />
-                          <Dot $delay={2} />
-                        </LoadingDots>
-                      </WaitingState>
-                    )}
-                  </PlayerAvatarArea>
+                  {isCPUMatch ? (
+                    <DifficultyListContainer>
+                      {CPU_DIFFICULTIES.map((diff) => {
+                        const available = diff === AVAILABLE_CPU_DIFFICULTY;
+                        const selected = diff === AVAILABLE_CPU_DIFFICULTY;
+                        return (
+                          <DifficultyOptionRow
+                            key={diff}
+                            $available={available}
+                            $selected={selected}
+                          >
+                            <DifficultyLabel $selected={selected}>{diff}</DifficultyLabel>
+                            {!available && <SoonBadge>Soon</SoonBadge>}
+                          </DifficultyOptionRow>
+                        );
+                      })}
+                    </DifficultyListContainer>
+                  ) : (
+                    <PlayerAvatarArea $side="right">
+                      {players[1]?.fighter ? (
+                        <AvatarWrapper>
+                          <ColoredPlayerPreview 
+                            color={serverPlayer2Color}
+                          />
+                        </AvatarWrapper>
+                      ) : (
+                        <WaitingState $side="right">
+                          <WaitingText>Waiting For Pumo</WaitingText>
+                          <LoadingDots>
+                            <Dot $delay={0} />
+                            <Dot $delay={1} />
+                            <Dot $delay={2} />
+                          </LoadingDots>
+                        </WaitingState>
+                      )}
+                    </PlayerAvatarArea>
+                  )}
                 </PlayerBanner>
               </PlayerBannerWrapper>
             </PlayersContainer>
           </DohyoContainer>
           
-          {/* Right Side Color Picker (Player 2) */}
-          {players[1]?.fighter && (
-            <SideColorPicker $isOwn={isPlayer2}>
+          {/* Right Side Color Picker (Player 2) — always in layout for alignment; hidden in VS CPU or until opponent joins (online) */}
+          {(players[1]?.fighter || !isCPUMatch) && (
+            <SideColorPicker $isOwn={isPlayer2} $hidden={isCPUMatch || !players[1]?.fighter}>
               {isPlayer2 && <YourColorLabel>Your Color</YourColorLabel>}
               <ColorPickerTitle $isOwn={isPlayer2}>
                 {isPlayer2 ? "Mawashi" : "P2 Color"}
@@ -1479,10 +1560,12 @@ const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, isCPUMat
                   READY
                 </ReadyButton>
               )}
-              <ReadyCount $ready={readyCount > 0}>
-                <ReadyLabel>Fighters Ready</ReadyLabel>
-                {readyCount} / 2
-              </ReadyCount>
+              {!isCPUMatch && (
+                <ReadyCount $ready={readyCount > 0}>
+                  <ReadyLabel>Fighters Ready</ReadyLabel>
+                  {readyCount} / 2
+                </ReadyCount>
+              )}
             </>
           )}
         </ReadySection>
@@ -1497,6 +1580,7 @@ Lobby.propTypes = {
   roomName: PropTypes.string.isRequired,
   handleGame: PropTypes.func.isRequired,
   setCurrentPage: PropTypes.func.isRequired,
+  onLeaveDohyo: PropTypes.func,
   isCPUMatch: PropTypes.bool,
 };
 

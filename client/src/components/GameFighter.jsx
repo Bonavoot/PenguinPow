@@ -13,6 +13,7 @@ import "./MatchOver.css";
 import Gyoji from "./Gyoji";
 import {
   getSpritesheetConfig,
+  SPRITESHEET_CONFIG_BY_NAME,
 } from "../config/animatedSpriteConfig";
 import PlayerShadow from "./PlayerShadow";
 import ThrowTechEffect from "./ThrowTechEffect";
@@ -44,6 +45,7 @@ import {
   SPRITE_BASE_COLOR,
   COLOR_PRESETS,
 } from "../utils/SpriteRecolorizer";
+import { usePlayerColors } from "../context/PlayerColorContext";
 
 // ============================================
 // STATIC SPRITE IMPORTS (Single frame images)
@@ -1541,6 +1543,52 @@ const PumoClone = styled.img
     },
   }))``;
 
+// Animated Pumo Clone Container - clips to one frame of the spritesheet
+const AnimatedPumoCloneContainer = styled.div
+  .withConfig({
+    shouldForwardProp: (prop) =>
+      !["$x", "$y", "$facing", "$size"].includes(prop),
+  })
+  .attrs((props) => ({
+    style: {
+      position: "absolute",
+      width: `${(props.$size || 0.6) * 19.54}%`,
+      aspectRatio: "1",
+      left: `${(props.$x / 1280) * 100}%`,
+      bottom: `${(props.$y / 720) * 100}%`,
+      transform: `scaleX(${props.$facing * -1})`,
+      zIndex: (props.$x < -20 || props.$x > 1075) || props.$y < (GROUND_LEVEL - 35) ? 0 : 98,
+      pointerEvents: "none",
+      overflow: "hidden",
+      clipPath: "inset(0 0.5% 0 0.5%)",
+    },
+  }))``;
+
+// Animated Pumo Clone Image - CSS spritesheet animation (same approach as AnimatedFighterImage)
+const AnimatedPumoCloneImage = styled.img
+  .withConfig({
+    shouldForwardProp: (prop) =>
+      !["$frameCount", "$fps"].includes(prop),
+  })
+  .attrs((props) => {
+    const frameCount = props.$frameCount || 1;
+    const fps = props.$fps || 30;
+    const duration = frameCount / fps;
+    return {
+      style: {
+        position: "relative",
+        display: "block",
+        height: "100%",
+        width: "auto",
+        backfaceVisibility: "hidden",
+        filter: "drop-shadow(0 0 1px #000) contrast(1.3)",
+        animation: frameCount > 1
+          ? `spritesheet-${frameCount} ${duration}s steps(${frameCount - 1}) infinite`
+          : "none",
+      },
+    };
+  })``;
+
 const OpponentDisconnectedOverlay = styled.div`
   position: fixed;
   top: 0;
@@ -1618,6 +1666,9 @@ const GameFighter = ({
   const needsRecoloring = targetColor !== SPRITE_BASE_COLOR;
   // Both players use BLUE_COLOR_RANGES since all sprites are blue
   const colorRanges = BLUE_COLOR_RANGES;
+  
+  // Get both player colors for pumo clone coloring
+  const { player1Color: p1Color, player2Color: p2Color } = usePlayerColors();
   
   // Function to get sprite render info (handles both static and animated sprites)
   // Returns: { src, isAnimated, config } where config contains spritesheet animation data
@@ -2888,10 +2939,11 @@ const GameFighter = ({
       }
 
       // Update all pumo armies from both players (only if present in update)
+      // Tag each clone with ownerPlayerNumber so we can color them correctly
       if (player1Data.pumoArmy !== undefined || player2Data.pumoArmy !== undefined) {
         const combinedPumoArmies = [
-          ...(player1Data.pumoArmy || []),
-          ...(player2Data.pumoArmy || []),
+          ...(player1Data.pumoArmy || []).map(clone => ({ ...clone, ownerPlayerNumber: 1 })),
+          ...(player2Data.pumoArmy || []).map(clone => ({ ...clone, ownerPlayerNumber: 2 })),
         ];
         setAllPumoArmies(combinedPumoArmies);
       }
@@ -4036,16 +4088,32 @@ const GameFighter = ({
           $y={projectile.y}
         />
       ))}
-      <PumoCloneSpawnEffect clones={allPumoArmies} />
+      <PumoCloneSpawnEffect clones={allPumoArmies} player1Color={p1Color} player2Color={p2Color} />
       {allPumoArmies.map((clone) => {
-        // Determine the correct sprite based on the owner's fighter type and state
+        // Color the clone to match its owner's color
+        // Uses the pre-cached recolored sprites (synchronous lookup, no perf cost)
+        const ownerColor = clone.ownerPlayerNumber === 1 ? p1Color : p2Color;
+        const needsCloneRecolor = ownerColor && ownerColor !== SPRITE_BASE_COLOR;
+
+        // For strafing clones, use spritesheet animation (APNG recoloring loses animation frames)
+        const waddleConfig = SPRITESHEET_CONFIG_BY_NAME.pumoWaddle;
+        const isAnimatedClone = clone.isStrafing && waddleConfig;
+
         let cloneSprite;
-        if (clone.isStrafing) {
-          // Use waddle sprites for strafing animation (unified blue sprites)
-          cloneSprite = pumoWaddle2;
+        if (isAnimatedClone) {
+          // Use the spritesheet (not the APNG) for animation
+          cloneSprite = waddleConfig.spritesheet;
+          if (needsCloneRecolor) {
+            const cached = getCachedRecoloredImage(waddleConfig.spritesheet, BLUE_COLOR_RANGES, ownerColor);
+            if (cached) cloneSprite = cached;
+          }
         } else {
-          // Use default sprites (unified blue sprites)
+          // Static idle sprite
           cloneSprite = pumo2;
+          if (needsCloneRecolor) {
+            const cached = getCachedRecoloredImage(pumo2, BLUE_COLOR_RANGES, ownerColor);
+            if (cached) cloneSprite = cached;
+          }
         }
 
         return (
@@ -4055,19 +4123,36 @@ const GameFighter = ({
               y={clone.y}
               facing={clone.facing}
               isDodging={false}
-              width="6.57%"
+              width="9%"
               height="2.04%"
               offsetLeft="15%"
-              offsetRight="15%"
+              offsetRight="18%"
             />
-            <PumoClone
-              src={cloneSprite}
-              alt="Pumo Clone"
-              $x={clone.x}
-              $y={clone.y}
-              $facing={clone.facing}
-              $size={clone.size}
-            />
+            {isAnimatedClone ? (
+              <AnimatedPumoCloneContainer
+                $x={clone.x}
+                $y={clone.y}
+                $facing={clone.facing}
+                $size={clone.size}
+              >
+                <AnimatedPumoCloneImage
+                  src={cloneSprite}
+                  alt="Pumo Clone"
+                  $frameCount={waddleConfig.frameCount}
+                  $fps={waddleConfig.fps}
+                  draggable={false}
+                />
+              </AnimatedPumoCloneContainer>
+            ) : (
+              <PumoClone
+                src={cloneSprite}
+                alt="Pumo Clone"
+                $x={clone.x}
+                $y={clone.y}
+                $facing={clone.facing}
+                $size={clone.size}
+              />
+            )}
           </React.Fragment>
         );
       })}

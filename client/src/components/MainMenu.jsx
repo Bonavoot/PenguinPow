@@ -735,6 +735,7 @@ const MainMenu = ({ rooms, setRooms, currentPage, setCurrentPage, localId, conne
   };
 
   const handleJoinRoom = () => {
+    setIsCPUMatch(false);
     setCurrentPage("lobby");
   };
 
@@ -914,6 +915,10 @@ const MainMenu = ({ rooms, setRooms, currentPage, setCurrentPage, localId, conne
             roomName={roomName}
             handleGame={handleGame}
             setCurrentPage={setCurrentPage}
+            onLeaveDohyo={() => {
+              setIsCPUMatch(false);
+              setCurrentPage("mainMenu");
+            }}
             isCPUMatch={isCPUMatch}
           />
         </div>
