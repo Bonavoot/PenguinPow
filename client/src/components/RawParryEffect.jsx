@@ -41,7 +41,7 @@ const ParryTextCenter = styled.div`
   top: 50%;
   left: 50%;
   font-family: "Bungee", cursive;
-  font-size: ${props => props.$isPerfect ? 'clamp(0.85rem, 1.9vw, 1.7rem)' : 'clamp(0.7rem, 1.6vw, 1.4rem)'};
+  font-size: clamp(0.7rem, 1.6vw, 1.4rem);
   color: ${props => props.$isPerfect ? '#FFD700' : '#00BFFF'};
   text-shadow: 
     -2px -2px 0 #000, 2px -2px 0 #000, 
@@ -103,7 +103,7 @@ const RawParryEffect = ({ position }) => {
   const [activeEffects, setActiveEffects] = useState([]);
   const processedParriesRef = useRef(new Set()); // Track processed parry IDs to prevent duplicates
   const effectIdCounter = useRef(0);
-  const EFFECT_DURATION = 1600; // Must be longer than the text animation (1.5s)
+  const EFFECT_DURATION = 800; // Slightly longer than the longest animation (~650ms)
 
   // Memoize the unique identifier to prevent unnecessary re-processing
   const parryIdentifier = useMemo(() => {

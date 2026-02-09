@@ -13,43 +13,41 @@
  */
 
 // ============================================
-// SPRITESHEET IMPORTS (BLUE sprites only)
+// SPRITESHEET IMPORTS
 // ============================================
-import pumoWaddle2Sheet from "../assets/spritesheets/pumo-waddle2_spritesheet.png";
-import pumoArmy2Sheet from "../assets/spritesheets/pumo-army2_spritesheet.png";
-// NOTE: blocking_spritesheet.png is actually BLUE (files were mislabeled)
-import blocking2Sheet from "../assets/spritesheets/blocking_spritesheet.png";
-import bow2Sheet from "../assets/spritesheets/bow2_spritesheet.png";
-import grabAttempt2Sheet from "../assets/spritesheets/grab-attempt2_spritesheet.png";
-import hit2Sheet from "../assets/spritesheets/hit2_spritesheet.png";
-import snowballThrow2Sheet from "../assets/spritesheets/snowball-throw2_spritesheet.png";
-import atTheRopes2Sheet from "../assets/spritesheets/at-the-ropes2_spritesheet.png";
-import crouchStrafing2Sheet from "../assets/spritesheets/crouch-strafing2_spritesheet.png";
-import beingGrabbed2Sheet from "../assets/spritesheets/is-being-grabbed2_spritesheet.png";
+import pumoWaddleSheet from "../assets/spritesheets/pumo-waddle_spritesheet.png";
+import pumoArmySheet from "../assets/spritesheets/pumo-army_spritesheet.png";
+import blockingSheet from "../assets/spritesheets/blocking_spritesheet.png";
+import bowSheet from "../assets/spritesheets/bow_spritesheet.png";
+import grabAttemptSheet from "../assets/spritesheets/grab-attempt_spritesheet.png";
+import hitSheet from "../assets/spritesheets/hit_spritesheet.png";
+import snowballThrowSheet from "../assets/spritesheets/snowball-throw_spritesheet.png";
+import atTheRopesSheet from "../assets/spritesheets/at-the-ropes_spritesheet.png";
+import crouchStrafingSheet from "../assets/spritesheets/crouch-strafing_spritesheet.png";
+import beingGrabbedSheet from "../assets/spritesheets/is-being-grabbed_spritesheet.png";
 
-// Ritual animation spritesheets (BLUE versions for recoloring)
+// Ritual animation spritesheets
 import ritualPart1Sheet from "../assets/ritual_part1_spritesheet.png";
 import ritualPart2Sheet from "../assets/ritual_part2_spritesheet.png";
 import ritualPart3Sheet from "../assets/ritual_part3_spritesheet.png";
 import ritualPart4Sheet from "../assets/ritual_part4_spritesheet.png";
 
 // ============================================
-// STATIC SPRITE IMPORTS (BLUE sprites only)
+// STATIC SPRITE IMPORTS
 // ============================================
-import pumo2 from "../assets/pumo2.png";
-import attack2 from "../assets/attack2.png";
-import throwing2 from "../assets/throwing2.png";
-import grabbing2 from "../assets/grabbing2.png";
-import attemptingGrabThrow2 from "../assets/attempting-grab-throw2.png";
-import ready2 from "../assets/ready2.png";
-import dodging2 from "../assets/dodging2.png";
-import crouchStance2 from "../assets/crouch-stance2.png";
-import throwTech2 from "../assets/throw-tech2.png";
-import salt2 from "../assets/salt2.png";
-import recovering2 from "../assets/recovering2.png";
-import rawParrySuccess2 from "../assets/raw-parry-success2.png";
-import slapAttack1Blue from "../assets/slapAttack1blue.png";
-import slapAttack2Blue from "../assets/slapAttack2blue.png";
+import pumo from "../assets/pumo.png";
+import attack from "../assets/attack.png";
+import throwing from "../assets/throwing.png";
+import grabbing from "../assets/grabbing.png";
+import attemptingGrabThrow from "../assets/attempting-grab-throw.png";
+import ready from "../assets/ready.png";
+import dodging from "../assets/dodging.png";
+import crouchStance from "../assets/crouch-stance.png";
+import salt from "../assets/salt.png";
+import recovering from "../assets/recovering.png";
+import rawParrySuccess from "../assets/raw-parry-success.png";
+import slapAttack1 from "../assets/slapAttack1.png";
+import slapAttack2 from "../assets/slapAttack2.png";
 
 // ============================================
 // SPRITE CONFIGURATIONS
@@ -66,74 +64,72 @@ import slapAttack2Blue from "../assets/slapAttack2blue.png";
  * - fps: Frames per second (default: 12)
  */
 
-// UNIFIED: Both players use same BLUE sprite configurations
-// Player 2's color is handled via recoloring system
 const BLUE_ANIMATED_SPRITES = {
   waddle: {
-    src: pumoWaddle2Sheet,
+    src: pumoWaddleSheet,
     frameCount: 21,
     frameWidth: 480,
     frameHeight: 480,
     fps: 12,
   },
   army: {
-    src: pumoArmy2Sheet,
+    src: pumoArmySheet,
     frameCount: 10,
     frameWidth: 480,
     frameHeight: 480,
     fps: 10,
   },
   crouching: {
-    src: blocking2Sheet,
-    frameCount: 6,  // blocking_spritesheet (blue) is 2880x480 = 6 frames
+    src: blockingSheet,
+    frameCount: 6,
     frameWidth: 480,
     frameHeight: 480,
     fps: 8,
   },
   bow: {
-    src: bow2Sheet,
+    src: bowSheet,
     frameCount: 9,
     frameWidth: 480,
     frameHeight: 480,
     fps: 8,
   },
   grabAttempt: {
-    src: grabAttempt2Sheet,
+    src: grabAttemptSheet,
     frameCount: 20,
     frameWidth: 480,
     frameHeight: 480,
     fps: 15,
   },
   hit: {
-    src: hit2Sheet,
+    src: hitSheet,
     frameCount: 3,
     frameWidth: 480,
     frameHeight: 480,
     fps: 10,
   },
   snowballThrow: {
-    src: snowballThrow2Sheet,
+    src: snowballThrowSheet,
     frameCount: 9,
     frameWidth: 480,
     frameHeight: 480,
     fps: 10,
   },
   atTheRopes: {
-    src: atTheRopes2Sheet,
+    src: atTheRopesSheet,
     frameCount: 6,
     frameWidth: 480,
     frameHeight: 480,
     fps: 8,
   },
   crouchStrafing: {
-    src: crouchStrafing2Sheet,
+    src: crouchStrafingSheet,
     frameCount: 14,
     frameWidth: 480,
     frameHeight: 480,
     fps: 12,
   },
   beingGrabbed: {
-    src: beingGrabbed2Sheet,
+    src: beingGrabbedSheet,
     frameCount: 2,
     frameWidth: 480,
     frameHeight: 480,
@@ -171,28 +167,24 @@ const BLUE_ANIMATED_SPRITES = {
 };
 
 export const ANIMATED_SPRITES = {
-  // Both players use the same blue sprites - recoloring handles differentiation
   player1: BLUE_ANIMATED_SPRITES,
   player2: BLUE_ANIMATED_SPRITES,
 };
 
-// UNIFIED: Both players use same BLUE static sprites
-// Player 2's color is handled via recoloring system
 const BLUE_STATIC_SPRITES = {
-  idle: pumo2,
-  attack: attack2,
-  throwing: throwing2,
-  grabbing: grabbing2,
-  attemptingGrabThrow: attemptingGrabThrow2,
-  ready: ready2,
-  dodging: dodging2,
-  crouchStance: crouchStance2,
-  throwTech: throwTech2,
-  salt: salt2,
-  recovering: recovering2,
-  rawParrySuccess: rawParrySuccess2,
-  slapAttack1: slapAttack1Blue,
-  slapAttack2: slapAttack2Blue,
+  idle: pumo,
+  attack: attack,
+  throwing: throwing,
+  grabbing: grabbing,
+  attemptingGrabThrow: attemptingGrabThrow,
+  ready: ready,
+  dodging: dodging,
+  crouchStance: crouchStance,
+  salt: salt,
+  recovering: recovering,
+  rawParrySuccess: rawParrySuccess,
+  slapAttack1: slapAttack1,
+  slapAttack2: slapAttack2,
 };
 
 /**
@@ -200,7 +192,6 @@ const BLUE_STATIC_SPRITES = {
  * These are single-frame images that can still be recolored
  */
 export const STATIC_SPRITES = {
-  // Both players use the same blue sprites - recoloring handles differentiation
   player1: BLUE_STATIC_SPRITES,
   player2: BLUE_STATIC_SPRITES,
 };

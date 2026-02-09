@@ -17,7 +17,7 @@ import {
   SPRITE_BASE_COLOR,
 } from "../utils/SpriteRecolorizer";
 // Base sprite for recoloring preview (UNIFIED: all sprites are blue)
-import pumo2 from "../assets/pumo2.png";
+import pumo from "../assets/pumo.png";
 
 // ============================================
 // ANIMATIONS
@@ -1153,7 +1153,7 @@ const PreviewImage = styled.img`
  * ColoredPlayerPreview - Shows a recolored penguin sprite based on selected color
  */
 function ColoredPlayerPreview({ color }) {
-  const [imageSrc, setImageSrc] = useState(pumo2);
+  const [imageSrc, setImageSrc] = useState(pumo);
   const mountedRef = useRef(true);
   
   useEffect(() => {
@@ -1164,12 +1164,12 @@ function ColoredPlayerPreview({ color }) {
   useEffect(() => {
     // If color is the sprite base color (blue), no recoloring needed
     if (!color || color === SPRITE_BASE_COLOR) {
-      setImageSrc(pumo2);
+      setImageSrc(pumo);
       return;
     }
     
     // Recolor the blue sprite to the selected color
-    recolorImage(pumo2, BLUE_COLOR_RANGES, color)
+    recolorImage(pumo, BLUE_COLOR_RANGES, color)
       .then((recolored) => {
         if (mountedRef.current) {
           setImageSrc(recolored);
@@ -1178,7 +1178,7 @@ function ColoredPlayerPreview({ color }) {
       .catch((error) => {
         console.error("Failed to recolor preview:", error);
         if (mountedRef.current) {
-          setImageSrc(pumo2);
+          setImageSrc(pumo);
         }
       });
   }, [color]);

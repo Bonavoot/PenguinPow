@@ -90,17 +90,14 @@
   0% {
     transform: translate(-50%, -50%) scale(0.2);
     opacity: 1;
-    border-width: 5px;
   }
   25% {
     transform: translate(-50%, -50%) scale(1.1);
     opacity: 1;
-    border-width: 4px;
   }
   100% {
     transform: translate(-50%, -50%) scale(1.8);
     opacity: 0;
-    border-width: 1px;
   }
 }
 
@@ -123,12 +120,10 @@
   0% {
     transform: translate(-50%, -50%) scale(0.3);
     opacity: 0.9;
-    border-width: 3px;
   }
   100% {
     transform: translate(-50%, -50%) scale(2);
     opacity: 0;
-    border-width: 1px;
   }
 }
 
@@ -167,9 +162,9 @@
   left: 50%;
   width: 100%;
   height: 100%;
-  border: 4px solid rgba(0, 255, 255, 0.95);
+  border: 1.5px solid rgba(0, 255, 255, 0.95);
   border-radius: 50%;
-  box-shadow: 0 0 10px rgba(0, 255, 255, 0.35);
+  box-shadow: 0 0 6px rgba(0, 255, 255, 0.3);
   transform: translate(-50%, -50%) scale(0);
   animation: perfectShockwavePrimary 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
@@ -201,9 +196,9 @@
   left: 50%;
   width: clamp(2.4rem, 6vw, 4.8rem);
   height: clamp(2.4rem, 6vw, 4.8rem);
-  border: 3px solid rgba(0, 255, 255, 0.7);
+  border: 1px solid rgba(0, 255, 255, 0.7);
   border-radius: 50%;
-  box-shadow: 0 0 8px rgba(0, 255, 255, 0.2);
+  box-shadow: 0 0 5px rgba(0, 255, 255, 0.15);
   transform: translate(-50%, -50%) scale(0);
   animation: perfectShockwaveSecondary 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.07s forwards;
   pointer-events: none;
@@ -287,21 +282,17 @@
   0% {
     transform: translate(-50%, -50%) scale(0);
     opacity: 1;
-    border-width: 5px;
   }
   30% {
     transform: translate(-50%, -50%) scale(1.8);
     opacity: 1;
-    border-width: 3px;
   }
   60% {
     opacity: 0.8;
-    border-width: 2px;
   }
   100% {
     transform: translate(-50%, -50%) scale(3.5);
     opacity: 0;
-    border-width: 1px;
   }
 }
 
@@ -331,16 +322,13 @@
   0% {
     transform: translate(-50%, -50%) scale(0);
     opacity: 0.8;
-    border-width: 4px;
   }
   35% {
     opacity: 0.6;
-    border-width: 2px;
   }
   100% {
     transform: translate(-50%, -50%) scale(3.8);
     opacity: 0;
-    border-width: 0.5px;
   }
 }
 

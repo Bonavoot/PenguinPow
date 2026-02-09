@@ -366,6 +366,7 @@ function clearAllActionStates(player) {
   // Clear buffered actions
   player.bufferedAction = null;
   player.bufferExpiryTime = 0;
+  player.postGrabInputBuffer = false;
   
   // Clear power-up action states
   player.isThrowingSnowball = false;

@@ -18,61 +18,58 @@ import {
   clearRecolorCache,
 } from "../utils/SpriteRecolorizer";
 
-// UNIFIED: Import only BLUE sprites - both players use these
-import pumo2 from "../assets/pumo2.png";
-import pumoWaddle2 from "../assets/pumo-waddle2.png";
-import pumoArmy2 from "../assets/pumo-army2.png";
-import attack2 from "../assets/attack2.png";
-import throwing2 from "../assets/throwing2.png";
-import grabbing2 from "../assets/grabbing2.png";
-import grabAttempt2 from "../assets/grab-attempt2.png";
-import attemptingGrabThrow2 from "../assets/attempting-grab-throw2.png";
-import ready2 from "../assets/ready2.png";
-import hit2 from "../assets/hit2.png";
-import dodging2 from "../assets/dodging2.png";
-import crouching2 from "../assets/blocking2.png";
-import crouchStance2 from "../assets/crouch-stance2.png";
-import crouchStrafing2 from "../assets/crouch-strafing2.png";
-import bow2 from "../assets/bow2.png";
-import throwTech2 from "../assets/throw-tech2.png";
-import salt2 from "../assets/salt2.png";
-import recovering2 from "../assets/recovering2.png";
-import rawParrySuccess2 from "../assets/raw-parry-success2.png";
-import atTheRopes2 from "../assets/at-the-ropes2.png";
-import snowballThrow2 from "../assets/snowball-throw2.png";
-import slapAttack1Blue from "../assets/slapAttack1blue.png";
-import slapAttack2Blue from "../assets/slapAttack2blue.png";
+// Import sprites
+import pumo from "../assets/pumo.png";
+import pumoWaddle from "../assets/pumo-waddle.png";
+import pumoArmy from "../assets/pumo-army.png";
+import attack from "../assets/attack.png";
+import throwing from "../assets/throwing.png";
+import grabbing from "../assets/grabbing.png";
+import grabAttempt from "../assets/grab-attempt.png";
+import attemptingGrabThrow from "../assets/attempting-grab-throw.png";
+import ready from "../assets/ready.png";
+import hit from "../assets/hit.png";
+import dodging from "../assets/dodging.png";
+import crouching from "../assets/blocking.png";
+import crouchStance from "../assets/crouch-stance.png";
+import crouchStrafing from "../assets/crouch-strafing.png";
+import bow from "../assets/bow.png";
+import salt from "../assets/salt.png";
+import recovering from "../assets/recovering.png";
+import rawParrySuccess from "../assets/raw-parry-success.png";
+import atTheRopes from "../assets/at-the-ropes.png";
+import snowballThrow from "../assets/snowball-throw.png";
+import slapAttack1 from "../assets/slapAttack1.png";
+import slapAttack2 from "../assets/slapAttack2.png";
 
-// Spritesheets (blue versions only)
-import beingGrabbed2Sheet from "../assets/spritesheets/is-being-grabbed2_spritesheet.png";
+// Spritesheets
+import beingGrabbedSheet from "../assets/spritesheets/is-being-grabbed_spritesheet.png";
 
-// UNIFIED: All sprites are BLUE - both players use the same sprites
-// Recoloring handles Player 2's default red (or custom) color
+// All sprites use the same base - recoloring handles differentiation
 const BLUE_SPRITES = {
-  pumo: pumo2,
-  pumoWaddle: pumoWaddle2,
-  pumoArmy: pumoArmy2,
-  attack: attack2,
-  throwing: throwing2,
-  grabbing: grabbing2,
-  grabAttempt: grabAttempt2,
-  attemptingGrabThrow: attemptingGrabThrow2,
-  beingGrabbed: beingGrabbed2Sheet,
-  ready: ready2,
-  hit: hit2,
-  dodging: dodging2,
-  crouching: crouching2,
-  crouchStance: crouchStance2,
-  crouchStrafing: crouchStrafing2,
-  bow: bow2,
-  throwTech: throwTech2,
-  salt: salt2,
-  recovering: recovering2,
-  rawParrySuccess: rawParrySuccess2,
-  atTheRopes: atTheRopes2,
-  snowballThrow: snowballThrow2,
-  slapAttack1: slapAttack1Blue,
-  slapAttack2: slapAttack2Blue,
+  pumo: pumo,
+  pumoWaddle: pumoWaddle,
+  pumoArmy: pumoArmy,
+  attack: attack,
+  throwing: throwing,
+  grabbing: grabbing,
+  grabAttempt: grabAttempt,
+  attemptingGrabThrow: attemptingGrabThrow,
+  beingGrabbed: beingGrabbedSheet,
+  ready: ready,
+  hit: hit,
+  dodging: dodging,
+  crouching: crouching,
+  crouchStance: crouchStance,
+  crouchStrafing: crouchStrafing,
+  bow: bow,
+  salt: salt,
+  recovering: recovering,
+  rawParrySuccess: rawParrySuccess,
+  atTheRopes: atTheRopes,
+  snowballThrow: snowballThrow,
+  slapAttack1: slapAttack1,
+  slapAttack2: slapAttack2,
 };
 
 // Both players use the same blue sprites

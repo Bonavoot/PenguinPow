@@ -20,77 +20,73 @@ import {
 import { ANIMATED_SPRITES, STATIC_SPRITES, DEFAULT_COLORS, COLOR_PRESETS, SPRITE_BASE_COLOR } from "../config/spriteConfig";
 import { SPRITESHEET_CONFIG, SPRITESHEET_CONFIG_BY_NAME } from "../config/animatedSpriteConfig";
 
-// Import spritesheets directly from animatedSpriteConfig to ensure EXACT URL match
-// These are the URLs that GameFighter.getSpritesheetConfig() returns
-import pumoWaddle2Spritesheet from "../assets/spritesheets/pumo-waddle2_spritesheet.png";
-import pumoArmy2Spritesheet from "../assets/spritesheets/pumo-army2_spritesheet.png";
-import hit2Spritesheet from "../assets/spritesheets/hit2_spritesheet.png";
-import bow2Spritesheet from "../assets/spritesheets/bow2_spritesheet.png";
+// Import spritesheets directly to ensure EXACT URL match with GameFighter
+import pumoWaddleSpritesheet from "../assets/spritesheets/pumo-waddle_spritesheet.png";
+import pumoArmySpritesheet from "../assets/spritesheets/pumo-army_spritesheet.png";
+import hitSpritesheet from "../assets/spritesheets/hit_spritesheet.png";
+import bowSpritesheet from "../assets/spritesheets/bow_spritesheet.png";
 import blockingSpritesheet from "../assets/spritesheets/blocking_spritesheet.png";
-import grabAttempt2Spritesheet from "../assets/spritesheets/grab-attempt2_spritesheet.png";
-import isBeingGrabbed2Spritesheet from "../assets/spritesheets/is-being-grabbed2_spritesheet.png";
-import snowballThrow2Spritesheet from "../assets/spritesheets/snowball-throw2_spritesheet.png";
-import atTheRopes2Spritesheet from "../assets/spritesheets/at-the-ropes2_spritesheet.png";
-import crouchStrafing2Spritesheet from "../assets/spritesheets/crouch-strafing2_spritesheet.png";
+import grabAttemptSpritesheet from "../assets/spritesheets/grab-attempt_spritesheet.png";
+import isBeingGrabbedSpritesheet from "../assets/spritesheets/is-being-grabbed_spritesheet.png";
+import snowballThrowSpritesheet from "../assets/spritesheets/snowball-throw_spritesheet.png";
+import atTheRopesSpritesheet from "../assets/spritesheets/at-the-ropes_spritesheet.png";
+import crouchStrafingSpritesheet from "../assets/spritesheets/crouch-strafing_spritesheet.png";
 
 // Direct spritesheet imports for explicit recoloring
 const DIRECT_SPRITESHEETS = [
-  pumoWaddle2Spritesheet,
-  pumoArmy2Spritesheet,
-  hit2Spritesheet,
-  bow2Spritesheet,
+  pumoWaddleSpritesheet,
+  pumoArmySpritesheet,
+  hitSpritesheet,
+  bowSpritesheet,
   blockingSpritesheet,
-  grabAttempt2Spritesheet,
-  isBeingGrabbed2Spritesheet,
-  snowballThrow2Spritesheet,
-  atTheRopes2Spritesheet,
-  crouchStrafing2Spritesheet,
+  grabAttemptSpritesheet,
+  isBeingGrabbedSpritesheet,
+  snowballThrowSpritesheet,
+  atTheRopesSpritesheet,
+  crouchStrafingSpritesheet,
 ];
 
 // CRITICAL: Import the EXACT same sprites that GameFighter uses
 // This ensures cache keys match when GameFighter looks up recolored sprites
-// Without this, cache keys mismatch causes "flash of default color" on first use
 
 // Static sprites
-import pumo2 from "../assets/pumo2.png";
-import attack2 from "../assets/attack2.png";
-import throwing2 from "../assets/throwing2.png";
-import grabbing2 from "../assets/grabbing2.png";
-import attemptingGrabThrow2 from "../assets/attempting-grab-throw2.png";
-import ready2 from "../assets/ready2.png";
-import dodging2 from "../assets/dodging2.png";
-import crouchStance2 from "../assets/crouch-stance2.png";
-import throwTech2 from "../assets/throw-tech2.png";
-import salt2 from "../assets/salt2.png";
-import recovering2 from "../assets/recovering2.png";
-import rawParrySuccess2 from "../assets/raw-parry-success2.png";
-import slapAttack1Blue from "../assets/slapAttack1blue.png";
-import slapAttack2Blue from "../assets/slapAttack2blue.png";
+import pumo from "../assets/pumo.png";
+import attack from "../assets/attack.png";
+import throwing from "../assets/throwing.png";
+import grabbing from "../assets/grabbing.png";
+import attemptingGrabThrow from "../assets/attempting-grab-throw.png";
+import ready from "../assets/ready.png";
+import dodging from "../assets/dodging.png";
+import crouchStance from "../assets/crouch-stance.png";
+import salt from "../assets/salt.png";
+import recovering from "../assets/recovering.png";
+import rawParrySuccess from "../assets/raw-parry-success.png";
+import slapAttack1 from "../assets/slapAttack1.png";
+import slapAttack2 from "../assets/slapAttack2.png";
 
 // APNGs (these get mapped to spritesheets, but import them to ensure URL match)
-import crouching2 from "../assets/blocking2.png";
-import bow2 from "../assets/bow2.png";
-import pumoWaddle2 from "../assets/pumo-waddle2.png";
-import pumoArmy2 from "../assets/pumo-army2.png";
-import grabAttempt2 from "../assets/grab-attempt2.png";
-import hit2 from "../assets/hit2.png";
-import snowballThrow2 from "../assets/snowball-throw2.png";
-import atTheRopes2 from "../assets/at-the-ropes2.png";
-import crouchStrafing2 from "../assets/crouch-strafing2.png";
+import crouching from "../assets/blocking.png";
+import bow from "../assets/bow.png";
+import pumoWaddle from "../assets/pumo-waddle.png";
+import pumoArmy from "../assets/pumo-army.png";
+import grabAttempt from "../assets/grab-attempt.png";
+import hit from "../assets/hit.png";
+import snowballThrow from "../assets/snowball-throw.png";
+import atTheRopes from "../assets/at-the-ropes.png";
+import crouchStrafing from "../assets/crouch-strafing.png";
 
 // GameFighter's static sprites - these are the actual URLs it uses
 const GAME_FIGHTER_STATIC_SPRITES = [
-  pumo2, attack2, throwing2, grabbing2, attemptingGrabThrow2,
-  ready2, dodging2, crouchStance2, throwTech2, salt2,
-  recovering2, rawParrySuccess2, slapAttack1Blue, slapAttack2Blue,
-  crouching2, bow2,
+  pumo, attack, throwing, grabbing, attemptingGrabThrow,
+  ready, dodging, crouchStance, salt,
+  recovering, rawParrySuccess, slapAttack1, slapAttack2,
+  crouching, bow,
 ];
 
 // GameFighter's APNG sprites that get mapped to spritesheets
-// Pre-recolor these too in case of any edge cases
 const GAME_FIGHTER_APNG_SPRITES = [
-  pumoWaddle2, pumoArmy2, grabAttempt2, hit2,
-  snowballThrow2, atTheRopes2, crouchStrafing2,
+  pumoWaddle, pumoArmy, grabAttempt, hit,
+  snowballThrow, atTheRopes, crouchStrafing,
 ];
 
 const PlayerColorContext = createContext(null);
@@ -276,9 +272,8 @@ export function PlayerColorProvider({ children }) {
     if (appliedColorsRef.current.player1 === colorHex) return;
     
     setLoadingProgress(prev => ({ ...prev, player1: true }));
-    // Only skip recoloring if color matches the ACTUAL sprite base color (Royal Blue #4169E1)
-    // Must match GameFighter's check (targetColor !== SPRITE_BASE_COLOR) to avoid ghost frames
-    const skipRecoloring = colorHex === SPRITE_BASE_COLOR;
+    // UNIFIED: Only skip recoloring if color is BLUE (sprites are blue)
+    const skipRecoloring = colorHex === DEFAULT_COLORS.player1; // player1 default is blue
     
     try {
       const { sprites, allSources } = await recolorPlayerSprites("player1", colorHex, skipRecoloring);
@@ -297,9 +292,9 @@ export function PlayerColorProvider({ children }) {
     if (appliedColorsRef.current.player2 === colorHex) return;
     
     setLoadingProgress(prev => ({ ...prev, player2: true }));
-    // Only skip recoloring if color matches the ACTUAL sprite base color (Royal Blue #4169E1)
-    // Must match GameFighter's check (targetColor !== SPRITE_BASE_COLOR) to avoid ghost frames
-    const skipRecoloring = colorHex === SPRITE_BASE_COLOR;
+    // UNIFIED: Only skip recoloring if color is BLUE (sprites are blue)
+    // Player 2's default is RED, so we ALWAYS recolor (blue sprites need to become red/custom)
+    const skipRecoloring = colorHex === DEFAULT_COLORS.player1; // Check against BLUE, not player2's red
     
     try {
       const { sprites, allSources } = await recolorPlayerSprites("player2", colorHex, skipRecoloring);
@@ -342,9 +337,8 @@ export function PlayerColorProvider({ children }) {
     // Step 1: FORCE full recoloring by calling recolorPlayerSprites directly
     // This bypasses the early-return check in applyPlayer*Color which can skip recoloring
     // if colors were "already applied" (even if caching was incomplete)
-    // Only skip if color matches SPRITE_BASE_COLOR (#4169E1) - the actual color of the sprites
-    const skipP1Recolor = p1Color === SPRITE_BASE_COLOR;
-    const skipP2Recolor = p2Color === SPRITE_BASE_COLOR;
+    const skipP1Recolor = p1Color === DEFAULT_COLORS.player1; // Only skip if blue
+    const skipP2Recolor = p2Color === DEFAULT_COLORS.player1; // Only skip if blue (not red!)
     
     const [p1Result, p2Result] = await Promise.all([
       recolorPlayerSprites("player1", p1Color, skipP1Recolor),

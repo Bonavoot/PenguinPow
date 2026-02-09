@@ -254,8 +254,14 @@ function executeSlapAttack(player, rooms) {
       // Use the locked facing direction
       player.facing = player.slapFacingDirection;
 
-      // Add forward slide during slap attack with power-up consideration
-      let slapSlideVelocity = 1.2; // Forward movement during slap attack
+      // === TWO-SPEED LUNGE SYSTEM ===
+      // APPROACH (no recent hit): Normal forward slide, controlled distance.
+      // CHAIN (just landed a slap): Strong lunge to close the gap from the stop-on-hit + recoil.
+      // This gives the rekka "lunge back in" feel during chains without rocketing across
+      // the screen on the initial approach.
+      const recentlyLandedSlap = player.lastSlapHitLandedTime && 
+        (Date.now() - player.lastSlapHitLandedTime < 400); // Within one attack cycle
+      let slapSlideVelocity = recentlyLandedSlap ? 2.2 : 1.2; // Chain lunge vs normal approach
 
       // Apply POWER power-up multiplier to slap slide distance
       if (player.activePowerUp === "power") {
@@ -284,10 +290,18 @@ function executeSlapAttack(player, rooms) {
   // Slap attacks drain a small amount of stamina
   player.stamina = Math.max(0, player.stamina - SLAP_ATTACK_STAMINA_COST);
 
-  // === SLAP ATTACK TIMING - Smooth chainable attack ===
-  // NO gap between slaps - next slap starts immediately when this one ends
-  const attackDuration = 260;  // Slightly slower for better readability
-  const startupDuration = 40;  // Slightly longer startup
+  // === SLAP ATTACK TIMING - Rekka-style chainable attack ===
+  // Each slap is deliberate with clear wind-up and impact, not rapid-fire spam.
+  // Combined with 130ms hitstop, creates a "BAM... BAM... BAM" rhythm.
+  const attackDuration = 270;  // Snappy cycle - rapid but deliberate
+
+  // DESPERATION COUNTER-SLAP: If the player just recovered from hit stun,
+  // their next slap has faster startup so it's more likely to create a slap parry.
+  const recentlyRecoveredFromHit = player.lastHitTime && 
+    (Date.now() - player.lastHitTime < 380) && // Within hit stun window + small buffer
+    !player.isHit; // Must have already recovered
+  const startupDuration = recentlyRecoveredFromHit ? 35 : 55; // Quick wind-up per strike
+
   const totalCycleDuration = attackDuration; // NO extra cooldown - chains immediately
 
   player.isSlapAttack = true;
@@ -318,10 +332,9 @@ function executeSlapAttack(player, rooms) {
     startupDuration
   );
 
-  // Set a timeout to reset the attack state
-  setPlayerTimeout(
-    player.id,
-    () => {
+  // Store the cycle-end callback on the player so processHit can re-set it
+  // when extending the cycle for hitstop compensation
+  player.slapCycleEndCallback = () => {
       player.isAttacking = false;
       player.isSlapAttack = false;
       player.attackType = null;
@@ -375,8 +388,15 @@ function executeSlapAttack(player, rooms) {
         player.attackType = "charged";
         player.wantsToRestartCharge = false;
       }
-    },
-    attackDuration
+  };
+
+  // Set the cycle timer with a name so processHit can clear and re-set it
+  // when compensating for hitstop freeze time
+  setPlayerTimeout(
+    player.id,
+    player.slapCycleEndCallback,
+    totalCycleDuration,
+    "slapCycle"
   );
 }
 

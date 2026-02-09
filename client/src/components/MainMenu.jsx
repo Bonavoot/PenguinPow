@@ -7,8 +7,8 @@ import PropTypes from "prop-types";
 import styled, { keyframes, css } from "styled-components";
 import { SocketContext } from "../SocketContext";
 import lobbyBackground from "../assets/lobby-bkg.webp";
+
 import pumo from "../assets/pumo.png";
-import pumo2 from "../assets/pumo2.png";
 import mainMenuBackground3 from "../assets/main-menu-bkg.png";
 import mainMenuBackground2 from "../assets/main-menu-bkg-2.png";
 import mainMenuBackground from "../assets/main-menu-bkg-3.png";
@@ -650,7 +650,6 @@ const preloadAssets = (sources) => {
 const preGameImages = [
   lobbyBackground,
   pumo,
-  pumo2,
   mainMenuBackground,
   mainMenuBackground2,
   mainMenuBackground3,

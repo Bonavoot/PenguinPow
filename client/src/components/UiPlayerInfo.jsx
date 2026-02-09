@@ -394,7 +394,7 @@ const PowerUpIndicator = styled.div`
 
 const CenterScoreboard = styled.div`
   position: absolute;
-  top: clamp(22px, 3.5vh, 42px);
+  top: clamp(18px, 3.8vh, 42px);
   left: 50%;
   transform: translateX(-50%);
   z-index: 1001;

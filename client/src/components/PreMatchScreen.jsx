@@ -3,7 +3,7 @@ import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 
 // Import penguin sprites
-import pumo2 from "../assets/pumo2.png";
+import pumo from "../assets/pumo.png";
 import { SPRITE_BASE_COLOR, recolorImage, BLUE_COLOR_RANGES } from "../utils/SpriteRecolorizer";
 
 // ============================================
@@ -652,8 +652,8 @@ const PreMatchScreen = ({
   isCPUMatch = false,
 }) => {
   const [displayProgress, setDisplayProgress] = useState(0);
-  const [player1Sprite, setPlayer1Sprite] = useState(pumo2);
-  const [player2Sprite, setPlayer2Sprite] = useState(pumo2);
+  const [player1Sprite, setPlayer1Sprite] = useState(pumo);
+  const [player2Sprite, setPlayer2Sprite] = useState(pumo);
   const [spritesReady, setSpritesReady] = useState(false);
   
   // Derive additional info from player names
@@ -672,19 +672,19 @@ const PreMatchScreen = ({
     const recolorSprites = async () => {
       const p1Promise =
         player1Color && player1Color !== SPRITE_BASE_COLOR
-          ? recolorImage(pumo2, BLUE_COLOR_RANGES, player1Color).catch((err) => {
+          ? recolorImage(pumo, BLUE_COLOR_RANGES, player1Color).catch((err) => {
               console.error("Failed to recolor player 1 sprite:", err);
-              return pumo2;
+              return pumo;
             })
-          : Promise.resolve(pumo2);
+          : Promise.resolve(pumo);
 
       const p2Promise =
         player2Color && player2Color !== SPRITE_BASE_COLOR
-          ? recolorImage(pumo2, BLUE_COLOR_RANGES, player2Color).catch((err) => {
+          ? recolorImage(pumo, BLUE_COLOR_RANGES, player2Color).catch((err) => {
               console.error("Failed to recolor player 2 sprite:", err);
-              return pumo2;
+              return pumo;
             })
-          : Promise.resolve(pumo2);
+          : Promise.resolve(pumo);
 
       const [p1, p2] = await Promise.all([p1Promise, p2Promise]);
       if (cancelled) return;

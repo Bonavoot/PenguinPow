@@ -1,31 +1,25 @@
 // Configuration for animated spritesheets
 // Maps animation names to their spritesheet equivalents
 //
-// UNIFIED SPRITES: All players now use BLUE sprites as the base.
-// The recoloring system handles Player 2's color (defaults to red).
-//
 // MEMORY OPTIMIZATION: Using string keys instead of imported APNG URLs
 // to avoid loading large APNG files into memory just for lookup keys.
 
-// Import ONLY spritesheets (not the original APNGs)
-import pumoWaddle2Spritesheet from "../assets/spritesheets/pumo-waddle2_spritesheet.png";
-import pumoArmy2Spritesheet from "../assets/spritesheets/pumo-army2_spritesheet.png";
-import hit2Spritesheet from "../assets/spritesheets/hit2_spritesheet.png";
-import bow2Spritesheet from "../assets/spritesheets/bow2_spritesheet.png";
-// NOTE: blocking_spritesheet.png is actually BLUE (files were mislabeled)
+// Import spritesheets
+import pumoWaddleSpritesheet from "../assets/spritesheets/pumo-waddle_spritesheet.png";
+import pumoArmySpritesheet from "../assets/spritesheets/pumo-army_spritesheet.png";
+import hitSpritesheet from "../assets/spritesheets/hit_spritesheet.png";
+import bowSpritesheet from "../assets/spritesheets/bow_spritesheet.png";
 import blockingSpritesheet from "../assets/spritesheets/blocking_spritesheet.png";
-import grabAttempt2Spritesheet from "../assets/spritesheets/grab-attempt2_spritesheet.png";
-import isBeingGrabbed2Spritesheet from "../assets/spritesheets/is-being-grabbed2_spritesheet.png";
-import snowballThrow2Spritesheet from "../assets/spritesheets/snowball-throw2_spritesheet.png";
-import atTheRopes2Spritesheet from "../assets/spritesheets/at-the-ropes2_spritesheet.png";
-import crouchStrafing2Spritesheet from "../assets/spritesheets/crouch-strafing2_spritesheet.png";
-// NOTE: Dodging is a static image (dodging2.png), not an animated spritesheet
-// The old red dodging_spritesheet.png is not used for the unified blue sprites
+import grabAttemptSpritesheet from "../assets/spritesheets/grab-attempt_spritesheet.png";
+import isBeingGrabbedSpritesheet from "../assets/spritesheets/is-being-grabbed_spritesheet.png";
+import snowballThrowSpritesheet from "../assets/spritesheets/snowball-throw_spritesheet.png";
+import atTheRopesSpritesheet from "../assets/spritesheets/at-the-ropes_spritesheet.png";
+import crouchStrafingSpritesheet from "../assets/spritesheets/crouch-strafing_spritesheet.png";
 
 // Map animation names to spritesheet configs (using string keys to avoid loading APNGs)
 export const SPRITESHEET_CONFIG_BY_NAME = {
   pumoWaddle: {
-    spritesheet: pumoWaddle2Spritesheet,
+    spritesheet: pumoWaddleSpritesheet,
     frameCount: 21,
     frameWidth: 480,
     frameHeight: 480,
@@ -33,7 +27,7 @@ export const SPRITESHEET_CONFIG_BY_NAME = {
     loop: true,
   },
   pumoArmy: {
-    spritesheet: pumoArmy2Spritesheet,
+    spritesheet: pumoArmySpritesheet,
     frameCount: 10,
     frameWidth: 480,
     frameHeight: 480,
@@ -41,7 +35,7 @@ export const SPRITESHEET_CONFIG_BY_NAME = {
     loop: true,
   },
   hit: {
-    spritesheet: hit2Spritesheet,
+    spritesheet: hitSpritesheet,
     frameCount: 3,
     frameWidth: 480,
     frameHeight: 480,
@@ -49,7 +43,7 @@ export const SPRITESHEET_CONFIG_BY_NAME = {
     loop: false,
   },
   bow: {
-    spritesheet: bow2Spritesheet,
+    spritesheet: bowSpritesheet,
     frameCount: 9,
     frameWidth: 480,
     frameHeight: 480,
@@ -58,14 +52,14 @@ export const SPRITESHEET_CONFIG_BY_NAME = {
   },
   blocking: {
     spritesheet: blockingSpritesheet,
-    frameCount: 6,  // blocking_spritesheet (blue) is 2880x480 = 6 frames
+    frameCount: 6,
     frameWidth: 480,
     frameHeight: 480,
     fps: 12,
     loop: true,
   },
   grabAttempt: {
-    spritesheet: grabAttempt2Spritesheet,
+    spritesheet: grabAttemptSpritesheet,
     frameCount: 20,
     frameWidth: 480,
     frameHeight: 480,
@@ -73,7 +67,7 @@ export const SPRITESHEET_CONFIG_BY_NAME = {
     loop: false,
   },
   beingGrabbed: {
-    spritesheet: isBeingGrabbed2Spritesheet,
+    spritesheet: isBeingGrabbedSpritesheet,
     frameCount: 2,
     frameWidth: 480,
     frameHeight: 480,
@@ -81,7 +75,7 @@ export const SPRITESHEET_CONFIG_BY_NAME = {
     loop: true,
   },
   snowballThrow: {
-    spritesheet: snowballThrow2Spritesheet,
+    spritesheet: snowballThrowSpritesheet,
     frameCount: 9,
     frameWidth: 480,
     frameHeight: 480,
@@ -89,7 +83,7 @@ export const SPRITESHEET_CONFIG_BY_NAME = {
     loop: false,
   },
   atTheRopes: {
-    spritesheet: atTheRopes2Spritesheet,
+    spritesheet: atTheRopesSpritesheet,
     frameCount: 6,
     frameWidth: 480,
     frameHeight: 480,
@@ -97,14 +91,13 @@ export const SPRITESHEET_CONFIG_BY_NAME = {
     loop: true,
   },
   crouchStrafing: {
-    spritesheet: crouchStrafing2Spritesheet,
+    spritesheet: crouchStrafingSpritesheet,
     frameCount: 14,
     frameWidth: 480,
     frameHeight: 480,
     fps: 14,
     loop: true,
   },
-  // NOTE: Dodging is a static image for blue sprites (dodging2.png), not an animated spritesheet
 };
 
 // Legacy: Map of source URLs to configs (for backwards compatibility)
@@ -124,7 +117,6 @@ const FILENAME_TO_CONFIG = {
   'snowball-throw': 'snowballThrow',
   'at-the-ropes': 'atTheRopes',
   'crouch-strafing': 'crouchStrafing',
-  // NOTE: 'dodging' removed - blue dodge is a static image, not an animated spritesheet
 };
 
 // Check if a source has a spritesheet animation config

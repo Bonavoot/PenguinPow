@@ -29,6 +29,7 @@ function cleanupPlayerStates(player) {
   player.isRawParryStun = false;
   player.isRawParrySuccess = false;
   player.isPerfectRawParrySuccess = false;
+  player.postGrabInputBuffer = false;
   player.isStrafing = false;
   player.isJumping = false;
   player.isReady = false;

@@ -49,54 +49,43 @@ import { usePlayerColors } from "../context/PlayerColorContext";
 
 // ============================================
 // STATIC SPRITE IMPORTS (Single frame images)
-// UNIFIED: All players use BLUE sprites - recoloring handles Player 2
 // ============================================
-import pumo2 from "../assets/pumo2.png";
+import pumo from "../assets/pumo.png";
 import powerWaterIcon from "../assets/power-water.png";
 import snowballImage from "../assets/snowball.png";
 import pumoArmyIcon from "./pumo-army-icon.png";
 import happyFeetIcon from "../assets/happy-feet.png";
 import thickBlubberIcon from "../assets/thick-blubber-icon.png";
-import grabbing2 from "../assets/grabbing2.png";
-import attemptingGrabThrow2 from "../assets/attempting-grab-throw2.png";
+import grabbing from "../assets/grabbing.png";
+import attemptingGrabThrow from "../assets/attempting-grab-throw.png";
 import grabSound from "../sounds/grab-sound.mp3";
-import ready2 from "../assets/ready2.png";
-import attack2 from "../assets/attack2.png";
-import slapAttack1Blue from "../assets/slapAttack1blue.png";
-import slapAttack2Blue from "../assets/slapAttack2blue.png";
-import dodging2 from "../assets/dodging2.png";
-import throwing2 from "../assets/throwing2.png";
-import salt2 from "../assets/salt2.png";
-import throwTech2 from "../assets/throw-tech2.png";
+import ready from "../assets/ready.png";
+import attack from "../assets/attack.png";
+import slapAttack1 from "../assets/slapAttack1.png";
+import slapAttack2 from "../assets/slapAttack2.png";
+import dodging from "../assets/dodging.png";
+import throwing from "../assets/throwing.png";
+import salt from "../assets/salt.png";
 import saltBasket from "../assets/salt-basket.png";
 import saltBasketEmpty from "../assets/salt-basket-empty.png";
-import recovering2 from "../assets/recovering2.png";
-import rawParrySuccess2 from "../assets/raw-parry-success2.png";
+import recovering from "../assets/recovering.png";
+import rawParrySuccess from "../assets/raw-parry-success.png";
 import snowball from "../assets/snowball.png";
-import crouchStance2 from "../assets/crouch-stance2.png";
+import crouchStance from "../assets/crouch-stance.png";
 
 // ============================================
 // ANIMATED SPRITE IMPORTS (APNGs/GIFs)
-// UNIFIED: All players use BLUE sprites - recoloring handles Player 2
 // ============================================
-import pumoWaddle2 from "../assets/pumo-waddle2.png";  // APNG
-import pumoArmy2 from "../assets/pumo-army2.png";      // APNG
-import crouching2 from "../assets/blocking2.png";       // APNG (blue)
-import bow2 from "../assets/bow2.png";                 // APNG
-import grabAttempt2 from "../assets/grab-attempt2.png"; // APNG
-import hit2 from "../assets/hit2.png";                 // APNG
-import snowballThrow2 from "../assets/snowball-throw2.png"; // APNG
-import beingGrabbed2 from "../assets/is-being-grabbed2.gif";
-import atTheRopes2 from "../assets/at-the-ropes2.png"; // APNG
-import crouchStrafing2Apng from "../assets/crouch-strafing2.png"; // APNG
-
-// Spritesheets created for future canvas-based recoloring (kept for reference)
-// import crouchingSpritesheet from "../assets/spritesheets/blocking2_spritesheet.png";
-// import bowSpritesheet from "../assets/spritesheets/bow_spritesheet.png";
-// import grabAttemptSpritesheet from "../assets/spritesheets/grab-attempt_spritesheet.png";
-// import hitSpritesheet from "../assets/spritesheets/hit2_spritesheet.png";
-// Spritesheets kept for future canvas-based recoloring
-// (Currently using CSS hue-rotate which is simpler and preserves APNG animations)
+import pumoWaddle from "../assets/pumo-waddle.png";  // APNG
+import pumoArmy from "../assets/pumo-army.png";      // APNG
+import crouching from "../assets/blocking.png";       // APNG
+import bow from "../assets/bow.png";                 // APNG
+import grabAttempt from "../assets/grab-attempt.png"; // APNG
+import hit from "../assets/hit.png";                 // APNG
+import snowballThrow from "../assets/snowball-throw.png"; // APNG
+import beingGrabbed from "../assets/is-being-grabbed.gif";
+import atTheRopes from "../assets/at-the-ropes.png"; // APNG
+import crouchStrafingApng from "../assets/crouch-strafing.png"; // APNG
 import attackSound from "../sounds/attack-sound.mp3";
 import hitSound from "../sounds/hit-sound.mp3";
 import dodgeSound from "../sounds/dodge-sound.mp3";
@@ -123,8 +112,8 @@ import clashVictorySound from "../sounds/clash-victory-sound.wav";
 import clashDefeatSound from "../sounds/clash-defeat-sound.wav";
 import roundVictorySound from "../sounds/round-victory-sound.mp3";
 import roundDefeatSound from "../sounds/round-defeat-sound.mp3";
-import hitEffectImage from "../assets/hit-effect.png";
-// crouchStance2 and crouchStrafing2 already imported above
+
+// crouchStance and crouchStrafing already imported above
 
 // CSS background images (preload to prevent flash on game start)
 import gameMapBackground from "../assets/game-map-1.png";
@@ -273,44 +262,41 @@ const initializeAudioPools = () => {
 // UNIFIED SPRITES: Only preload blue sprites - recoloring handles Player 2
 const initializeImagePreloading = () => {
   // Character sprites (blue only)
-  preloadImage(pumo2);
-  preloadImage(pumoWaddle2);
-  preloadImage(pumoArmy2);
+  preloadImage(pumo);
+  preloadImage(pumoWaddle);
+  preloadImage(pumoArmy);
 
   // Action sprites (blue only)
-  preloadImage(attack2);
-  preloadImage(throwing2);
-  preloadImage(grabbing2);
-  preloadImage(grabAttempt2);
-  preloadImage(attemptingGrabThrow2);
-  preloadImage(beingGrabbed2);
+  preloadImage(attack);
+  preloadImage(throwing);
+  preloadImage(grabbing);
+  preloadImage(grabAttempt);
+  preloadImage(attemptingGrabThrow);
+  preloadImage(beingGrabbed);
 
   // State sprites (blue only)
-  preloadImage(ready2);
-  preloadImage(hit2);
-  preloadImage(dodging2);
-  preloadImage(crouching2);
-  preloadImage(crouchStance2);
-  preloadImage(crouchStrafing2Apng);
+  preloadImage(ready);
+  preloadImage(hit);
+  preloadImage(dodging);
+  preloadImage(crouching);
+  preloadImage(crouchStance);
+  preloadImage(crouchStrafingApng);
 
   // Special moves (blue only)
-  preloadImage(slapAttack1Blue);
-  preloadImage(slapAttack2Blue);
-  preloadImage(snowballThrow2);
+  preloadImage(slapAttack1);
+  preloadImage(slapAttack2);
+  preloadImage(snowballThrow);
 
   // Utility sprites (blue only)
-  preloadImage(bow2);
-  preloadImage(throwTech2);
-  preloadImage(salt2);
+  preloadImage(bow);
+  preloadImage(salt);
   preloadImage(saltBasket);
   preloadImage(saltBasketEmpty);
-  preloadImage(recovering2);
-  preloadImage(rawParrySuccess2);
-  preloadImage(atTheRopes2);
+  preloadImage(recovering);
+  preloadImage(rawParrySuccess);
+  preloadImage(atTheRopes);
   preloadImage(snowball);
 
-  // Effect sprites
-  preloadImage(hitEffectImage);
 
   // CSS background images (critical for smooth game start)
   preloadImage(gameMapBackground);
@@ -446,61 +432,60 @@ const getImageSrc = (
   // Player 1 stays blue, Player 2 gets recolored to red (or custom color)
   // ============================================
   
-  if (isGrabBreaking) return crouching2;
-  if (isGrabBreakCountered) return hit2;
+  if (isGrabBreaking) return crouching;
+  if (isGrabBreakCountered) return hit;
   // Both perfect and regular parry use the same success animation
-  if (isRawParrySuccess || isPerfectRawParrySuccess) return rawParrySuccess2;
+  if (isRawParrySuccess || isPerfectRawParrySuccess) return rawParrySuccess;
   // Check isHit before isAtTheRopes to prevent red silhouette issue
-  if (isHit) return hit2;
-  if (isAtTheRopes) return atTheRopes2;
-  if (isBowing) return bow2;
-  if (isThrowTeching) return throwTech2;
-  if (isRecovering) return recovering2;
-  if (isThrowingSnowball) return snowballThrow2;
-  if (isSpawningPumoArmy) return pumoArmy2;
+  if (isHit) return hit;
+  if (isAtTheRopes) return atTheRopes;
+  if (isBowing) return bow;
+  if (isRecovering) return recovering;
+  if (isThrowingSnowball) return snowballThrow;
+  if (isSpawningPumoArmy) return pumoArmy;
   // CRITICAL: Check isBeingGrabbed BEFORE isDodging to prevent dodge animation during grab
-  if (isBeingGrabbed || isBeingPulled || isBeingPushed) return beingGrabbed2;
+  if (isBeingGrabbed || isBeingPulled || isBeingPushed) return beingGrabbed;
   // CRITICAL: Check isDodging BEFORE isAttacking to prevent attack animation during dodge
-  if (isDodging) return dodging2;
-  if (isJumping) return throwing2;
-  if (isAttacking && !isSlapAttack) return attack2;
-  if (isCrouchStrafing) return crouchStrafing2Apng;
-  if (isCrouchStance) return crouchStance2;
+  if (isDodging) return dodging;
+  if (isJumping) return throwing;
+  if (isAttacking && !isSlapAttack) return attack;
+  if (isCrouchStrafing) return crouchStrafingApng;
+  if (isCrouchStance) return crouchStance;
   // Show attempting grab throw animation
-  if (isAttemptingGrabThrow) return attemptingGrabThrow2;
+  if (isAttemptingGrabThrow) return attemptingGrabThrow;
   // Show attempt animation during grab movement attempt
   if (attemptingGrabMovement) {
-    return grabAttemptType === "throw" ? throwing2 : grabAttempt2;
+    return grabAttemptType === "throw" ? throwing : grabAttempt;
   }
   // Show attempt animation even if isGrabbing is false, UNLESS in grab clash
   if (grabState === "attempting") {
     // During grab clash, show grabbing animation instead of grab attempt
     if (isGrabClashActive) {
-      return grabbing2;
+      return grabbing;
     }
-    return grabAttemptType === "throw" ? throwing2 : grabAttempt2;
+    return grabAttemptType === "throw" ? throwing : grabAttempt;
   }
   if (isSlapAttack) {
-    return slapAnimation === 1 ? slapAttack1Blue : slapAttack2Blue;
+    return slapAnimation === 1 ? slapAttack1 : slapAttack2;
   }
   if (isGrabbing) {
     if (grabState === "attempting") {
       // During grab clash, show grabbing animation instead of grab attempt
       if (isGrabClashActive) {
-        return grabbing2;
+        return grabbing;
       }
-      return grabAttemptType === "throw" ? throwing2 : grabAttempt2;
+      return grabAttemptType === "throw" ? throwing : grabAttempt;
     }
-    return grabbing2;
+    return grabbing;
   }
-  if (isRawParrying) return crouching2;
-  if (isRawParryStun) return bow2;
-  if (isReady) return ready2;
-  if (isStrafing && !isThrowing) return pumoWaddle2;
-  if (isDead) return pumo2;
-  if (isThrowing) return throwing2;
-  if (isThrowingSalt) return salt2;
-  return pumo2;
+  if (isRawParrying) return crouching;
+  if (isRawParryStun) return bow;
+  if (isReady) return ready;
+  if (isStrafing && !isThrowing) return pumoWaddle;
+  if (isDead) return pumo;
+  if (isThrowing) return throwing;
+  if (isThrowingSalt) return salt;
+  return pumo;
 };
 
 const validProps = [
@@ -761,6 +746,8 @@ const StyledImage = styled("img")
         ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.85)) brightness(1.35)"
         : props.$isRawParrying
         ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3)"
+        : props.$justRecoveredFromHit
+        ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(0, 220, 255, 0.9)) brightness(1.3) contrast(1.15)"
         : props.$isHit
         ? "drop-shadow(0 0 1px #000) contrast(1.2) brightness(1.15)"
         : props.$isChargingAttack
@@ -780,6 +767,8 @@ const StyledImage = styled("img")
         ? "rawParryFlash 1.2s ease-in-out infinite"
         : props.$isGrabClashActive
         ? "grabClashStruggle 0.15s ease-in-out infinite"
+        : props.$justRecoveredFromHit
+        ? "recoveryFlash 0.1s ease-out"
         : props.$isHit
         ? "hitSquash 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)"
         : props.$justLandedFromDodge && !props.$isPowerSliding
@@ -908,6 +897,16 @@ const StyledImage = styled("img")
     100% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg);
       filter: drop-shadow(0 0 1px #000) contrast(1.2) brightness(1.15);
+    }
+  }
+  
+  /* Recovery flash - brief cyan pulse when exiting hit stun to signal defensive gap */
+  @keyframes recoveryFlash {
+    0% {
+      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 10px rgba(0, 220, 255, 0.95)) brightness(1.4);
+    }
+    100% {
+      filter: drop-shadow(0 0 1px #000) contrast(1.2) brightness(1);
     }
   }
   
@@ -1287,6 +1286,8 @@ const AnimatedFighterImage = styled.img
           ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.85)) brightness(1.35)"
           : props.$isRawParrying
           ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3)"
+          : props.$justRecoveredFromHit
+          ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(0, 220, 255, 0.9)) brightness(1.3) contrast(1.15)"
           : props.$isHit
           ? "drop-shadow(0 0 1px #000) contrast(1.2) brightness(1.15)"
           : props.$isChargingAttack
@@ -2744,6 +2745,8 @@ const GameFighter = ({
 
   const lastAttackState = useRef(false);
   const lastHitState = useRef(false);
+  const [showRecoveryFlash, setShowRecoveryFlash] = useState(false);
+  const recoveryFlashTimerRef = useRef(null);
   const lastThrowingSaltState = useRef(false);
   const lastThrowState = useRef(false);
   const lastDodgeState = useRef(false);
@@ -3435,9 +3438,34 @@ const GameFighter = ({
       lastHitSoundTime.current = currentTime;
     }
 
+    // === RECOVERY FLASH (client-side) ===
+    // Detect isHit going from true -> false and show a brief white flash
+    // to communicate the defensive gap window between slap chain hits.
+    // Done client-side because it needs to react to the ACTUAL state transition
+    // the client sees, not a server timeout that might fire at the wrong time.
+    if (!penguin.isHit && lastHitState.current && !penguin.isBeingThrown && !penguin.isDead) {
+      // Clear any pending flash timer
+      if (recoveryFlashTimerRef.current) {
+        clearTimeout(recoveryFlashTimerRef.current);
+      }
+      setShowRecoveryFlash(true);
+      recoveryFlashTimerRef.current = setTimeout(() => {
+        setShowRecoveryFlash(false);
+        recoveryFlashTimerRef.current = null;
+      }, 100); // Flash lasts 100ms
+    }
+    // If hit again while flashing, cancel the flash immediately
+    if (penguin.isHit && showRecoveryFlash) {
+      if (recoveryFlashTimerRef.current) {
+        clearTimeout(recoveryFlashTimerRef.current);
+        recoveryFlashTimerRef.current = null;
+      }
+      setShowRecoveryFlash(false);
+    }
+
     // Update the previous state for next comparison
     lastHitState.current = penguin.isHit;
-  }, [penguin.isHit, penguin.isBeingThrown, penguin.hitCounter]);
+  }, [penguin.isHit, penguin.isBeingThrown, penguin.hitCounter, penguin.isDead]);
 
   useEffect(() => {
     if (penguin.isThrowingSalt && !lastThrowingSaltState.current) {
@@ -3908,6 +3936,7 @@ const GameFighter = ({
             $isGrabBreaking={penguin.isGrabBreaking}
             $isRawParrying={displayPenguin.isRawParrying}
             $isHit={penguin.isHit}
+            $justRecoveredFromHit={showRecoveryFlash}
             $isChargingAttack={displayPenguin.isChargingAttack}
             $isGrabClashActive={isGrabClashActive}
             draggable={false}
@@ -3931,6 +3960,7 @@ const GameFighter = ({
           $isGrabBreaking={penguin.isGrabBreaking}
           $isReady={penguin.isReady}
           $isHit={penguin.isHit}
+          $justRecoveredFromHit={showRecoveryFlash}
           $isDead={penguin.isDead}
           $isSlapAttack={displayPenguin.isSlapAttack}
           $isThrowing={penguin.isThrowing}
@@ -4109,9 +4139,9 @@ const GameFighter = ({
           }
         } else {
           // Static idle sprite
-          cloneSprite = pumo2;
+          cloneSprite = pumo;
           if (needsCloneRecolor) {
-            const cached = getCachedRecoloredImage(pumo2, BLUE_COLOR_RANGES, ownerColor);
+            const cached = getCachedRecoloredImage(pumo, BLUE_COLOR_RANGES, ownerColor);
             if (cached) cloneSprite = cached;
           }
         }

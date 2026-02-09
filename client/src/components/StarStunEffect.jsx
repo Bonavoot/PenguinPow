@@ -122,15 +122,12 @@ const Star = styled.div`
 
 const StunnedText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(14px, 1.5vw, 20px);
-  font-weight: bold;
+  font-size: clamp(0.7rem, 1.6vw, 1.4rem);
   color: #ffd700;
   text-shadow: 
     -2px -2px 0 #000, 2px -2px 0 #000, 
     -2px 2px 0 #000, 2px 2px 0 #000,
-    0 0 10px rgba(255, 215, 0, 0.8),
-    0 0 20px rgba(255, 215, 0, 0.5),
-    0 0 30px rgba(255, 215, 0, 0.3);
+    0 0 15px rgba(255, 215, 0, 0.9);
   white-space: nowrap;
   letter-spacing: 0.15em;
   margin-bottom: 4px;

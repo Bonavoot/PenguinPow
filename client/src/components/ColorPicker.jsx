@@ -15,7 +15,7 @@ import {
 } from "../utils/SpriteRecolorizer";
 
 // UNIFIED: Both players use BLUE sprite as preview
-import pumo2 from "../assets/pumo2.png";
+import pumo from "../assets/pumo.png";
 
 const PickerContainer = styled.div`
   display: flex;
@@ -111,14 +111,14 @@ function ColorPicker({
   title = null,
 }) {
   // UNIFIED: Both players use blue sprite as base - recoloring handles differentiation
-  const [previewSrc, setPreviewSrc] = useState(pumo2);
+  const [previewSrc, setPreviewSrc] = useState(pumo);
   const [isLoading, setIsLoading] = useState(false);
   const mountedRef = useRef(true);
 
   const defaultColor = playerNumber === 1 ? SPRITE_BASE_COLOR : COLOR_PRESETS.red;
   // All sprites are now blue - always use BLUE_COLOR_RANGES
   const colorRanges = BLUE_COLOR_RANGES;
-  const baseSprite = pumo2;
+  const baseSprite = pumo;
 
   useEffect(() => {
     mountedRef.current = true;

@@ -482,21 +482,9 @@ const PERFECT_PARRY_KNOCKBACK = 0.65; // Slightly stronger than regular parry
 const RAW_PARRY_SLAP_STUN_DURATION = 500; // Reduced stun duration for slap attack parries
 const PERFECT_PARRY_WINDOW = 100; // 100ms window for perfect parries
 const PERFECT_PARRY_SUCCESS_DURATION = 2000; // 2 seconds - parrier holds success pose
-const PERFECT_PARRY_ATTACKER_STUN_DURATION = 5000; // 5 seconds - attacker is stunned (gives parrier 3s advantage)
+const PERFECT_PARRY_ATTACKER_STUN_DURATION = 1500; // 1.5 second stun duration for perfect parry
 const PERFECT_PARRY_ANIMATION_LOCK = 600; // 600ms - parrier is locked in parry pose after perfect parry
-const PERFECT_PARRY_MAX_MASH_REDUCTION = 3000; // Max 3 seconds can be reduced through mashing
 // Dodge is now stamina-based, no more charge system
-
-// Calculate stun reduction based on mash count (using square root for diminishing returns)
-// Formula: reduction = min(3000, sqrt(mashCount) * 300)
-// 10 mashes ≈ 948ms, 25 mashes ≈ 1500ms, 50 mashes ≈ 2121ms, 100 mashes = 3000ms (cap)
-function calculatePerfectParryStunReduction(mashCount) {
-  const reduction = Math.min(
-    PERFECT_PARRY_MAX_MASH_REDUCTION,
-    Math.sqrt(mashCount) * 300
-  );
-  return Math.floor(reduction);
-}
 
 // At the ropes constants
 const AT_THE_ROPES_DURATION = 1000; // 1 second stun duration
@@ -539,7 +527,7 @@ const GRAB_BREAK_INPUT_LOCK_DURATION = 420; // Total input lock duration after g
 // Every hit has hitstop to make impacts feel satisfying
 // Scales with power - stronger hits freeze longer
 // ============================================
-const HITSTOP_SLAP_MS = 50;       // Light slap gets brief hitstop for impact feel (3 frames)
+const HITSTOP_SLAP_MS = 100;      // Rekka-style hitstop - punchy freeze for each slap impact (6 frames)
 const HITSTOP_CHARGED_MIN_MS = 80;  // Minimum charged attack hitstop (5 frames)
 const HITSTOP_CHARGED_MAX_MS = 150; // Maximum charged attack hitstop at full power (9 frames)
 const HITSTOP_PARRY_MS = 120;     // Parry hitstop - impactful but not too long (7 frames)
@@ -570,6 +558,102 @@ function triggerHitstop(room, durationMs) {
 
 function isRoomInHitstop(room) {
   return room.hitstopUntil && Date.now() < room.hitstopUntil;
+}
+
+// === BUFFERED INPUT ACTIVATION AFTER GRAB/THROW ===
+// Enables frame-1 reversals: if a player holds an input during an unactionable grab/throw state,
+// that input activates on the first possible frame (like invincible reversals / EX DP in fighting games).
+// Called for BOTH the grabber and the grabbed player when a grab expires or a throw lands.
+function activateBufferedInputAfterGrab(player, rooms) {
+  // Don't activate if player is in a state that blocks actions
+  if (player.isAtTheRopes || player.isThrowLanded || player.isHit ||
+      player.isGrabBreaking || player.isGrabBreakCountered || player.isGrabBreakSeparating) return;
+
+  // Priority 1: Raw parry (spacebar) - defensive reversal (highest priority)
+  if (player.keys[" "] && !player.grabBreakSpaceConsumed) {
+    player.isRawParrying = true;
+    player.rawParryStartTime = Date.now();
+    player.rawParryMinDurationMet = false;
+    player.isRawParrySuccess = false;
+    player.isPerfectRawParrySuccess = false;
+    player.movementVelocity = 0;
+    player.isStrafing = false;
+    player.isPowerSliding = false;
+    player.isCrouchStance = false;
+    player.isCrouchStrafing = false;
+    player.hasPendingSlapAttack = false;
+    clearChargeState(player, true);
+    return;
+  }
+
+  // Priority 2: Dodge (shift) - evasive option
+  if (player.keys.shift && !player.keys.e && player.stamina >= DODGE_STAMINA_COST) {
+    player.isRawParrySuccess = false;
+    player.isPerfectRawParrySuccess = false;
+    player.movementVelocity = 0;
+    player.isStrafing = false;
+    player.isPowerSliding = false;
+    player.isBraking = false;
+    player.isDodging = true;
+    player.isDodgeCancelling = false;
+    player.dodgeCancelStartTime = 0;
+    player.dodgeCancelStartY = 0;
+    player.dodgeStartTime = Date.now();
+    player.dodgeEndTime = Date.now() + DODGE_DURATION;
+    player.dodgeStartX = player.x;
+    player.dodgeStartY = player.y;
+    player.currentAction = "dodge";
+    player.actionLockUntil = Date.now() + 100;
+    player.justLandedFromDodge = false;
+    player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
+    clearChargeState(player, true);
+
+    // Dodge direction: toward held key, or away from opponent by default
+    if (player.keys.a) {
+      player.dodgeDirection = -1;
+    } else if (player.keys.d) {
+      player.dodgeDirection = 1;
+    } else {
+      player.dodgeDirection = player.facing === -1 ? 1 : -1;
+    }
+
+    // Safety timeout - game loop tick handles dodge physics, this is a fallback
+    setPlayerTimeout(player.id, () => {
+      if (player.isDodging && !player.isDodgeCancelling) {
+        const landingDir = player.dodgeDirection || 0;
+        if (landingDir !== 0 && Math.abs(player.movementVelocity) < 0.1) {
+          if (player.keys.c || player.keys.control) {
+            player.movementVelocity = landingDir * DODGE_SLIDE_MOMENTUM * DODGE_POWERSLIDE_BOOST;
+            player.isPowerSliding = true;
+          } else {
+            player.movementVelocity = landingDir * DODGE_SLIDE_MOMENTUM;
+          }
+          player.justLandedFromDodge = true;
+        }
+        player.isDodging = false;
+      }
+    }, DODGE_DURATION, "bufferedDodge");
+    return;
+  }
+
+  // Priority 3: Slap attack (mouse1) - fast offensive option
+  if (player.keys.mouse1) {
+    executeSlapAttack(player, rooms);
+    return;
+  }
+
+  // Priority 4: Grab (E key) - uses buffer flag since grab initiation has complex
+  // nested timeouts; the input handler will process it on the next cycle
+  if (player.keys.e && !player.grabCooldown) {
+    player.postGrabInputBuffer = true;
+    return;
+  }
+
+  // Priority 5: Charge attack (mouse2) - slower offensive option
+  if (player.keys.mouse2) {
+    startCharging(player);
+    return;
+  }
 }
 
 // Lobby color options - CPU picks randomly from these (excluding player's color)
@@ -648,7 +732,6 @@ function createCPUPlayer(uniqueId) {
     rawParryMinDurationMet: false,
     isRawParryStun: false,
     perfectParryStunStartTime: 0,
-    perfectParryStunMashCount: 0,
     perfectParryStunBaseTimeout: null,
     isRawParrySuccess: false,
     isPerfectRawParrySuccess: false,
@@ -706,6 +789,7 @@ function createCPUPlayer(uniqueId) {
     hitAbsorptionUsed: false,
     hitCounter: 0,
     lastHitTime: 0,
+    lastSlapHitLandedTime: 0,
     lastCheckedAttackTime: 0,
     hasPendingSlapAttack: false,
     mouse1JustPressed: false,
@@ -723,6 +807,7 @@ function createCPUPlayer(uniqueId) {
     isGrabBreaking: false,
     isGrabBreakCountered: false,
     grabBreakSpaceConsumed: false,
+    postGrabInputBuffer: false, // Buffer flag for frame-1 input activation after grab/throw ends
     isCounterGrabbed: false, // Set when grabbed while raw parrying - cannot grab break
     isRingOutThrowCutscene: false,
     ringOutThrowDistance: 0,
@@ -931,7 +1016,6 @@ function resetRoomAndPlayers(room) {
     player.rawParryMinDurationMet = false;
     player.isRawParryStun = false;
     player.perfectParryStunStartTime = 0;
-    player.perfectParryStunMashCount = 0;
     player.perfectParryStunBaseTimeout = null;
     player.isRawParrySuccess = false;
     player.isPerfectRawParrySuccess = false;
@@ -971,6 +1055,7 @@ function resetRoomAndPlayers(room) {
     player.hitCounter = 0;
     // Reset hit timing for dynamic hit duration
     player.lastHitTime = 0;
+    player.lastSlapHitLandedTime = 0;
     // Reset slap attack buffering
     player.hasPendingSlapAttack = false;
     // Reset throw landed state
@@ -984,6 +1069,7 @@ function resetRoomAndPlayers(room) {
     player.isGrabBreaking = false;
     player.isGrabBreakCountered = false;
     player.grabBreakSpaceConsumed = false;
+    player.postGrabInputBuffer = false;
     // Reset grab break state
     player.isGrabBreaking = false;
     // Reset grab movement states
@@ -2608,12 +2694,6 @@ io.on("connection", (socket) => {
               player.isRingOutThrowCutscene = false;
               player.ringOutThrowDistance = 0;
 
-              // Check if we should restart charging after throw completes
-              if (shouldRestartCharging(player)) {
-                // Restart charging immediately
-                startCharging(player);
-              }
-
               // Check if player landed outside ring-out boundaries
               const landedOutsideBoundaries =
                 opponent.x <= MAP_LEFT_BOUNDARY ||
@@ -2648,6 +2728,13 @@ io.on("connection", (socket) => {
                   opponent.atTheRopesFacingDirection = null;
                 }
               }
+
+              // BUFFERED INPUT ACTIVATION: Activate held inputs immediately for both players
+              // on frame 1 after throw lands (like invincible reversals in fighting games).
+              // The function checks isThrowLanded/isAtTheRopes internally, so it safely
+              // skips activation for players that landed out of bounds.
+              activateBufferedInputAfterGrab(player, rooms);
+              activateBufferedInputAfterGrab(opponent, rooms);
             }
           }
         } else if (player.isThrowing && !player.throwOpponent) {
@@ -3949,28 +4036,11 @@ io.on("connection", (socket) => {
               // Release after 1.5 seconds
               cleanupGrabStates(player, opponent);
 
-              // Check if we should restart charging after grab completes
-              if (
-                player.keys.mouse2 &&
-                !player.isAttacking &&
-                !player.isJumping &&
-                !player.isDodging &&
-                !player.isThrowing &&
-                !player.isBeingThrown &&
-                !player.isGrabbing &&
-                !player.isBeingGrabbed &&
-                !player.isHit &&
-                !player.isRecovering &&
-                !player.isRawParryStun &&
-                !player.isThrowingSnowball &&
-                !player.canMoveToReady
-              ) {
-                // Restart charging immediately
-                player.isChargingAttack = true;
-                player.chargeStartTime = Date.now();
-                player.chargeAttackPower = 1;
-                player.attackType = "charged";
-              }
+              // BUFFERED INPUT ACTIVATION: Activate held inputs immediately for both players
+              // on frame 1 after grab release (like invincible reversals in fighting games).
+              // This ensures both the grabber and grabbed player can act the instant the grab ends.
+              activateBufferedInputAfterGrab(player, rooms);
+              activateBufferedInputAfterGrab(opponent, rooms);
 
               return;
             }
@@ -4293,7 +4363,7 @@ io.on("connection", (socket) => {
     // Fallback: Check startup timing if flag not set (for backward compatibility)
     if (player.isAttacking && player.attackStartTime && !player.startupEndTime) {
       const CHARGED_ATTACK_STARTUP_DELAY = 150; // Was 60ms - now clearer telegraph
-      const SLAP_ATTACK_STARTUP_DELAY = 180;    // Was 60ms - matches executeSlapAttack
+      const SLAP_ATTACK_STARTUP_DELAY = 55;     // Matches executeSlapAttack startup
 
       const startupDelay =
         player.attackType === "slap"
@@ -4700,8 +4770,7 @@ io.on("connection", (socket) => {
 
       // Apply stun for perfect parries (separate from knockback)
       if (isPerfectParry) {
-        // Perfect parries have much longer stun - 5 seconds to give parrier a huge advantage
-        // But player can mash to reduce it (max 3s reduction)
+        // Perfect parries stun the attacker for 1 second (fixed duration, no mash reduction)
         const baseStunDuration = PERFECT_PARRY_ATTACKER_STUN_DURATION;
         player.isRawParryStun = true;
         
@@ -4710,9 +4779,8 @@ io.on("connection", (socket) => {
         player.knockbackVelocity.x = PERFECT_PARRY_KNOCKBACK * pushDirection;
         player.knockbackVelocity.y = 0;
         
-        // Initialize mashing tracking
+        // Track stun start time
         player.perfectParryStunStartTime = Date.now();
-        player.perfectParryStunMashCount = 0;
         
         // Clear any previous perfect parry stun timeout
         if (player.perfectParryStunBaseTimeout) {
@@ -4738,13 +4806,12 @@ io.on("connection", (socket) => {
         }
 
         // Reset stun after appropriate duration (separate from knockback)
-        // This will be dynamically updated as player mashes
+        // Fixed duration stun (no mash reduction)
         setPlayerTimeout(
           player.id,
           () => {
             player.isRawParryStun = false;
             player.perfectParryStunStartTime = 0;
-            player.perfectParryStunMashCount = 0;
             player.perfectParryStunBaseTimeout = null;
 
             // After stun ends, check if we should restart charging
@@ -4934,6 +5001,8 @@ io.on("connection", (socket) => {
         if (isSlapAttack) {
           // For slap attacks, use consistent knockback regardless of distance
           // This ensures all slap hits feel the same whether players are touching or at distance
+          // NOTE: Punchier feel comes from the increased hitstop (80ms), not from knockback values.
+          // These values are tuned so slap chains always stay in range when spamming.
           const immediateKnockback =
             1.85 * knockbackDirection * finalKnockbackMultiplier;
           const slidingVelocity =
@@ -4943,11 +5012,30 @@ io.on("connection", (socket) => {
           otherPlayer.knockbackVelocity.x = immediateKnockback;
           otherPlayer.movementVelocity = slidingVelocity;
 
-        // Mark this as a slap knockback for special friction handling
-                  otherPlayer.isSlapKnockback = true;
+          // Mark this as a slap knockback for special friction handling
+          otherPlayer.isSlapKnockback = true;
 
-                  // Screen shake is handled in the hitstop section below
-                } else {
+          // Track that the attacker just landed a slap hit - used by executeSlapAttack
+          // to apply the strong chain lunge velocity on follow-up slaps
+          player.lastSlapHitLandedTime = currentTime;
+
+          // === LUNGE-HIT-SEPARATE: Kill attacker momentum on hit ===
+          // Stop the attacker's forward slide dead when the slap connects.
+          // This creates visible separation: victim slides back, attacker stays put.
+          // The NEXT slap's lunge (1.8 velocity) closes the gap for the next hit.
+          // Visual rhythm: lunge → HIT → separate → lunge → HIT → separate
+          player.movementVelocity = 0;
+          player.isSlapSliding = false;
+
+          // === ATTACKER RECOIL ON SLAP HIT ===
+          // Moderate backward bounce to widen the gap between hits.
+          // Combined with the momentum kill above, this makes the separation clearly visible.
+          // The next slap's lunge (1.8) is strong enough to close this gap.
+          const attackerRecoilDirection = -knockbackDirection;
+          player.slapParryKnockbackVelocity = 0.35 * attackerRecoilDirection;
+
+          // Screen shake is handled in the hitstop section below
+        } else {
           // For charged attacks, force clear any existing hit state and velocities for consistent knockback
           otherPlayer.isHit = false;
           otherPlayer.isSlapKnockback = false;
@@ -5016,12 +5104,28 @@ io.on("connection", (socket) => {
           // Charged: heavy, powerful feel scaling with charge
           // ============================================
           if (isSlapAttack) {
-            // Slaps get brief hitstop for satisfying impact
+            // Rekka-style hitstop - substantial freeze for each slap impact
             triggerHitstop(currentRoom, HITSTOP_SLAP_MS);
-            // Punchy screen shake for slaps (throttled)
+
+            // === HITSTOP CYCLE COMPENSATION ===
+            // The hitstop freezes physics but the attack cycle setTimeout keeps ticking.
+            // Without compensation, the freeze "steals" movement time from the cycle,
+            // causing inconsistent distances and hit timing between chain slaps.
+            // Fix: extend the attack cycle timer by the hitstop duration so the actual
+            // movement/physics time is always the same regardless of when the hit connects.
+            if (player.slapCycleEndCallback) {
+              timeoutManager.clearPlayerSpecific(player.id, "slapCycle");
+              const remaining = Math.max(0, player.attackEndTime - currentTime);
+              const extendedDuration = remaining + HITSTOP_SLAP_MS;
+              player.attackEndTime = currentTime + extendedDuration;
+              player.attackCooldownUntil = currentTime + extendedDuration;
+              setPlayerTimeout(player.id, player.slapCycleEndCallback, extendedDuration, "slapCycle");
+            }
+
+            // Meaty screen shake for slaps (throttled)
             emitThrottledScreenShake(currentRoom, io, {
-              intensity: 0.6,
-              duration: 120,
+              intensity: 0.8,
+              duration: 180,
             });
           } else {
             // Charged attacks scale hitstop with charge power
@@ -5044,7 +5148,9 @@ io.on("connection", (socket) => {
       // Charged: longer stun for more impactful hits
       // Counter hits: 40% longer stun for catching opponent in startup frames
       // Punish: 50% longer stun for hitting opponent during recovery
-      let hitStateDuration = isSlapAttack ? 200 : 380;
+      // Slap stun bumped to 260ms to account for 130ms hitstop eating into the timer.
+      // This ensures ~130ms of VISIBLE stun after the freeze ends.
+      let hitStateDuration = isSlapAttack ? 260 : 380;
       if (isCounterHit) {
         hitStateDuration = Math.round(hitStateDuration * 1.4);
       }
@@ -5067,9 +5173,9 @@ io.on("connection", (socket) => {
       );
 
       // Input lockout - slaps have moderate lock so hit animation is visible
-      const victimLockMs = isSlapAttack ? 150 : hitStateDuration;
-      // Attacker: NO lock for slaps (consistent speed hit or miss), brief lock for charged
-      const attackerLockMs = isSlapAttack ? 0 : 200;
+      const victimLockMs = isSlapAttack ? 180 : hitStateDuration;
+      // Attacker: brief lock for slaps creates commitment to each strike (rekka feel)
+      const attackerLockMs = isSlapAttack ? 50 : 200;
       const now = Date.now();
       otherPlayer.inputLockUntil = Math.max(
         otherPlayer.inputLockUntil || 0,
@@ -5242,7 +5348,6 @@ io.on("connection", (socket) => {
         rawParryMinDurationMet: false,
         isRawParryStun: false,
         perfectParryStunStartTime: 0,
-        perfectParryStunMashCount: 0,
         perfectParryStunBaseTimeout: null,
         isRawParrySuccess: false,
         isPerfectRawParrySuccess: false,
@@ -5299,6 +5404,7 @@ io.on("connection", (socket) => {
         hitAbsorptionUsed: false, // Add thick blubber hit absorption tracking
         hitCounter: 0, // Add counter for reliable hit sound triggering
         lastHitTime: 0, // Add timing tracking for dynamic hit duration
+        lastSlapHitLandedTime: 0, // Track when attacker last landed a slap (for chain lunge)
         lastCheckedAttackTime: 0, // Add tracking for attack collision checking
         hasPendingSlapAttack: false, // Add flag for buffering one additional slap attack
         mouse1JustPressed: false, // Track if mouse1 was just pressed this frame
@@ -5316,6 +5422,7 @@ io.on("connection", (socket) => {
         isGrabBreaking: false,
         isGrabBreakCountered: false,
         grabBreakSpaceConsumed: false,
+        postGrabInputBuffer: false, // Buffer flag for frame-1 input activation after grab/throw ends
         isCounterGrabbed: false, // Set when grabbed while raw parrying - cannot grab break
         // Ring-out throw cutscene flags
         isRingOutThrowCutscene: false,
@@ -5392,7 +5499,6 @@ io.on("connection", (socket) => {
         rawParryMinDurationMet: false,
         isRawParryStun: false,
         perfectParryStunStartTime: 0,
-        perfectParryStunMashCount: 0,
         perfectParryStunBaseTimeout: null,
         isRawParrySuccess: false,
         isPerfectRawParrySuccess: false,
@@ -5449,6 +5555,7 @@ io.on("connection", (socket) => {
         hitAbsorptionUsed: false, // Add thick blubber hit absorption tracking
         hitCounter: 0, // Add counter for reliable hit sound triggering
         lastHitTime: 0, // Add timing tracking for dynamic hit duration
+        lastSlapHitLandedTime: 0, // Track when attacker last landed a slap (for chain lunge)
         lastCheckedAttackTime: 0, // Add tracking for attack collision checking
         hasPendingSlapAttack: false, // Add flag for buffering one additional slap attack
         mouse1JustPressed: false, // Track if mouse1 was just pressed this frame
@@ -5466,6 +5573,7 @@ io.on("connection", (socket) => {
         isGrabBreaking: false,
         isGrabBreakCountered: false,
         grabBreakSpaceConsumed: false,
+        postGrabInputBuffer: false, // Buffer flag for frame-1 input activation after grab/throw ends
         isCounterGrabbed: false, // Set when grabbed while raw parrying - cannot grab break
         // Ring-out throw cutscene flags
         isRingOutThrowCutscene: false,
@@ -5602,7 +5710,6 @@ io.on("connection", (socket) => {
       rawParryMinDurationMet: false,
       isRawParryStun: false,
       perfectParryStunStartTime: 0,
-      perfectParryStunMashCount: 0,
       perfectParryStunBaseTimeout: null,
       isRawParrySuccess: false,
       isPerfectRawParrySuccess: false,
@@ -5658,6 +5765,7 @@ io.on("connection", (socket) => {
       hitAbsorptionUsed: false,
       hitCounter: 0,
       lastHitTime: 0,
+      lastSlapHitLandedTime: 0,
       lastCheckedAttackTime: 0,
       hasPendingSlapAttack: false,
       mouse1JustPressed: false,
@@ -5675,6 +5783,7 @@ io.on("connection", (socket) => {
       isGrabBreaking: false,
       isGrabBreakCountered: false,
       grabBreakSpaceConsumed: false,
+      postGrabInputBuffer: false, // Buffer flag for frame-1 input activation after grab/throw ends
       isCounterGrabbed: false, // Set when grabbed while raw parrying - cannot grab break
       isRingOutThrowCutscene: false,
       ringOutThrowDistance: 0,
@@ -6064,102 +6173,6 @@ io.on("connection", (socket) => {
       }
     }
 
-    // Count inputs during perfect parry stun - HAPPENS BEFORE BLOCKING
-    if (player.isRawParryStun && player.perfectParryStunStartTime > 0 && data.keys) {
-      // Track previous keys for input detection
-      const previousKeys = { ...player.keys };
-      
-      // Update player keys FIRST so next event can detect changes
-      player.keys = data.keys;
-      
-      // Count any key press (not key holds) as mashing input
-      const mashKeys = [
-        "w",
-        "a",
-        "s",
-        "d",
-        "mouse1",
-        "mouse2",
-        "e",
-        "f",
-        "shift",
-      ];
-      let inputDetected = false;
-      
-      for (const key of mashKeys) {
-        if (data.keys[key] && !previousKeys[key]) {
-          inputDetected = true;
-          break;
-        }
-      }
-      
-      if (inputDetected) {
-        player.perfectParryStunMashCount++;
-        
-        // Calculate the new reduced stun duration
-        const reduction = calculatePerfectParryStunReduction(player.perfectParryStunMashCount);
-        const newStunDuration = Math.max(
-          PERFECT_PARRY_ATTACKER_STUN_DURATION - reduction,
-          PERFECT_PARRY_ATTACKER_STUN_DURATION - PERFECT_PARRY_MAX_MASH_REDUCTION
-        );
-        
-        // Calculate how much time has elapsed since stun started
-        const elapsedTime = Date.now() - player.perfectParryStunStartTime;
-        const remainingTime = newStunDuration - elapsedTime;
-        
-        // Only update if there's still time remaining and we haven't finished
-        if (remainingTime > 0) {
-          // Clear the old timeout
-          timeoutManager.clearPlayerSpecific(player.id, "perfectParryStunReset");
-          
-          // Set new timeout with reduced duration
-          setPlayerTimeout(
-            player.id,
-            () => {
-              player.isRawParryStun = false;
-              player.perfectParryStunStartTime = 0;
-              player.perfectParryStunMashCount = 0;
-              player.perfectParryStunBaseTimeout = null;
-
-              // After stun ends, check if we should restart charging
-              if (
-                player.keys.mouse2 &&
-                !player.isAttacking &&
-                !player.isJumping &&
-                !player.isDodging &&
-                !player.isThrowing &&
-                !player.isBeingThrown &&
-                !player.isGrabbing &&
-                !player.isBeingGrabbed &&
-                !player.isHit &&
-                !player.isRecovering &&
-                !player.isRawParryStun &&
-                !player.isThrowingSnowball &&
-                !player.canMoveToReady
-              ) {
-                // Restart charging immediately
-                player.isChargingAttack = true;
-                player.chargeStartTime = Date.now();
-                player.chargeAttackPower = 1;
-                player.attackType = "charged";
-              }
-            },
-            remainingTime,
-            "perfectParryStunReset"
-          );
-          
-        } else {
-          // Time's up, end the stun immediately
-          player.isRawParryStun = false;
-          player.perfectParryStunStartTime = 0;
-          player.perfectParryStunMashCount = 0;
-          player.perfectParryStunBaseTimeout = null;
-          timeoutManager.clearPlayerSpecific(player.id, "perfectParryStunReset");
-          
-        }
-      }
-    }
-
     // Block all actions (except input counting) during grab clashing
     if (player.isGrabClashing) {
       return;
@@ -6235,6 +6248,15 @@ io.on("connection", (socket) => {
       player.wJustPressed = !previousKeys.w && data.keys.w;
       player.fJustPressed = !previousKeys.f && data.keys.f;
       player.spaceJustPressed = !previousKeys[" "] && data.keys[" "];
+
+      // POST-GRAB INPUT BUFFER: After a grab/throw ends, treat held keys as "just pressed"
+      // for one cycle. This enables frame-1 activation of grab (E key) which has complex
+      // initiation code with nested timeouts that must run through the normal input path.
+      // Raw parry, slap, dodge, and charge are handled directly in activateBufferedInputAfterGrab().
+      if (player.postGrabInputBuffer) {
+        if (data.keys.e && !player.eJustPressed) player.eJustPressed = true;
+        player.postGrabInputBuffer = false;
+      }
 
       // Debug logging for F key and snowball power-up
       if (data.keys.f) {
