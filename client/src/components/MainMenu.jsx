@@ -2,6 +2,7 @@ import Lobby from "./Lobby";
 import Rooms from "./Rooms";
 import Game from "./Game";
 import Settings from "./Settings";
+import CustomizePage from "./CustomizePage";
 import { useState, useEffect, useContext } from "react";
 import PropTypes from "prop-types";
 import styled, { keyframes, css } from "styled-components";
@@ -835,10 +836,15 @@ const MainMenu = ({ rooms, setRooms, currentPage, setCurrentPage, localId, conne
                   Basho<ComingSoonBadge>Soon</ComingSoonBadge>
                 </MenuButton>
                 <MenuButton
+                  $isActive
                   $index={3}
+                  onClick={() => {
+                    playButtonPressSound2();
+                    setCurrentPage("customize");
+                  }}
                   onMouseEnter={playButtonHoverSound}
                 >
-                  Customize<ComingSoonBadge>Soon</ComingSoonBadge>
+                  Customize
                 </MenuButton>
                 <MenuButton
                   $index={4}
@@ -932,6 +938,12 @@ const MainMenu = ({ rooms, setRooms, currentPage, setCurrentPage, localId, conne
             setCurrentPage={setCurrentPage}
             isCPUMatch={isCPUMatch}
           />
+        </div>
+      );
+    case "customize":
+      return (
+        <div className="current-page">
+          <CustomizePage onBack={() => setCurrentPage("mainMenu")} />
         </div>
       );
     default:

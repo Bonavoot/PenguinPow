@@ -86,6 +86,7 @@ import snowballThrow from "../assets/snowball-throw.png"; // APNG
 import beingGrabbed from "../assets/is-being-grabbed.gif";
 import atTheRopes from "../assets/at-the-ropes.png"; // APNG
 import crouchStrafingApng from "../assets/crouch-strafing.png"; // APNG
+import isPerfectParried from "../assets/is_perfect_parried.png"; // APNG
 import attackSound from "../sounds/attack-sound.mp3";
 import hitSound from "../sounds/hit-sound.mp3";
 import dodgeSound from "../sounds/dodge-sound.mp3";
@@ -408,6 +409,7 @@ const getImageSrc = (
   isAtTheRopes,
   isCrouchStance,
   isCrouchStrafing,
+  isPowerSliding,
   isGrabBreakCountered,
   // new optional trailing param(s)
   isGrabbingMovementTrailing,
@@ -436,6 +438,8 @@ const getImageSrc = (
   if (isGrabBreakCountered) return hit;
   // Both perfect and regular parry use the same success animation
   if (isRawParrySuccess || isPerfectRawParrySuccess) return rawParrySuccess;
+  // Raw parry stun (being perfect-parried): looping stun animation
+  if (isRawParryStun) return isPerfectParried;
   // Check isHit before isAtTheRopes to prevent red silhouette issue
   if (isHit) return hit;
   if (isAtTheRopes) return atTheRopes;
@@ -449,6 +453,8 @@ const getImageSrc = (
   if (isDodging) return dodging;
   if (isJumping) return throwing;
   if (isAttacking && !isSlapAttack) return attack;
+  // Power sliding (C/CTRL): show crouch-stance image as placeholder animation
+  if (isPowerSliding) return crouchStance;
   if (isCrouchStrafing) return crouchStrafingApng;
   if (isCrouchStance) return crouchStance;
   // Show attempting grab throw animation
@@ -479,7 +485,6 @@ const getImageSrc = (
     return grabbing;
   }
   if (isRawParrying) return crouching;
-  if (isRawParryStun) return bow;
   if (isReady) return ready;
   if (isStrafing && !isThrowing) return pumoWaddle;
   if (isDead) return pumo;
@@ -671,6 +676,7 @@ const StyledImage = styled("img")
         "isAtTheRopes",
         "isCrouchStance",
         "isCrouchStrafing",
+        "isPowerSliding",
         "isGrabBreakCountered",
         "isGrabClashActive",
         "isAttemptingGrabThrow",
@@ -715,6 +721,7 @@ const StyledImage = styled("img")
       props.$isAtTheRopes,
       props.$isCrouchStance,
       props.$isCrouchStrafing,
+      props.$isPowerSliding,
       props.$isGrabBreakCountered,
       props.$isGrabbingMovement,
       props.$isGrabClashActive,
@@ -746,8 +753,6 @@ const StyledImage = styled("img")
         ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.85)) brightness(1.35)"
         : props.$isRawParrying
         ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3)"
-        : props.$justRecoveredFromHit
-        ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(0, 220, 255, 0.9)) brightness(1.3) contrast(1.15)"
         : props.$isHit
         ? "drop-shadow(0 0 1px #000) contrast(1.2) brightness(1.15)"
         : props.$isChargingAttack
@@ -767,8 +772,6 @@ const StyledImage = styled("img")
         ? "rawParryFlash 1.2s ease-in-out infinite"
         : props.$isGrabClashActive
         ? "grabClashStruggle 0.15s ease-in-out infinite"
-        : props.$justRecoveredFromHit
-        ? "recoveryFlash 0.1s ease-out"
         : props.$isHit
         ? "hitSquash 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)"
         : props.$justLandedFromDodge && !props.$isPowerSliding
@@ -778,7 +781,7 @@ const StyledImage = styled("img")
         : props.$isDodging
         ? "dodgeTakeoff 0.2s cubic-bezier(0.25, 0.1, 0.25, 1) forwards"
         : // ICE PHYSICS: Movement animations take priority over charging
-        // Power slide animation - blocked during victim/special states
+        // Power slide animation (C/CTRL) - uses crouch-stance sprite
         props.$isPowerSliding && 
           !props.$isBeingGrabbed && 
           !props.$isBeingThrown && 
@@ -900,16 +903,6 @@ const StyledImage = styled("img")
     }
   }
   
-  /* Recovery flash - brief cyan pulse when exiting hit stun to signal defensive gap */
-  @keyframes recoveryFlash {
-    0% {
-      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 10px rgba(0, 220, 255, 0.95)) brightness(1.4);
-    }
-    100% {
-      filter: drop-shadow(0 0 1px #000) contrast(1.2) brightness(1);
-    }
-  }
-  
   /* Attack punch animation - wind up and release with facing direction */
   @keyframes attackPunch {
     0% {
@@ -966,10 +959,10 @@ const StyledImage = styled("img")
   /* Power slide - more squished down with bounce */
   @keyframes powerSlide {
     0%, 100% {
-      transform: scaleX(calc(var(--facing, 1) * 1.08)) scaleY(0.88) translateY(6px);
+      transform: scaleX(var(--facing, 1)) translateY(6px);
     }
     50% {
-      transform: scaleX(calc(var(--facing, 1) * 1.10)) scaleY(0.85) translateY(8px);
+      transform: scaleX(var(--facing, 1)) translateY(8px);
     }
   }
   
@@ -1286,8 +1279,6 @@ const AnimatedFighterImage = styled.img
           ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.85)) brightness(1.35)"
           : props.$isRawParrying
           ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3)"
-          : props.$justRecoveredFromHit
-          ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(0, 220, 255, 0.9)) brightness(1.3) contrast(1.15)"
           : props.$isHit
           ? "drop-shadow(0 0 1px #000) contrast(1.2) brightness(1.15)"
           : props.$isChargingAttack
@@ -2413,12 +2404,13 @@ const GameFighter = ({
       penguin.isAtTheRopes,
       penguin.isCrouchStance,
       penguin.isCrouchStrafing,
+      penguin.isPowerSliding,
       penguin.isGrabBreakCountered,
       penguin.isGrabbingMovement,
       isGrabClashActive,
-      penguin.isAttemptingGrabThrow,
-      ritualAnimationSrc // Pass ritual animation if active
-    );
+    penguin.isAttemptingGrabThrow,
+    ritualAnimationSrc // Pass ritual animation if active
+  );
   }, [
     penguin.fighter,
     penguin.isDiving,
@@ -2453,6 +2445,7 @@ const GameFighter = ({
     penguin.isAtTheRopes,
     penguin.isCrouchStance,
     penguin.isCrouchStrafing,
+    penguin.isPowerSliding,
     penguin.isGrabBreakCountered,
     penguin.isGrabbingMovement,
     isGrabClashActive,
@@ -2745,8 +2738,6 @@ const GameFighter = ({
 
   const lastAttackState = useRef(false);
   const lastHitState = useRef(false);
-  const [showRecoveryFlash, setShowRecoveryFlash] = useState(false);
-  const recoveryFlashTimerRef = useRef(null);
   const lastThrowingSaltState = useRef(false);
   const lastThrowState = useRef(false);
   const lastDodgeState = useRef(false);
@@ -3438,31 +3429,6 @@ const GameFighter = ({
       lastHitSoundTime.current = currentTime;
     }
 
-    // === RECOVERY FLASH (client-side) ===
-    // Detect isHit going from true -> false and show a brief white flash
-    // to communicate the defensive gap window between slap chain hits.
-    // Done client-side because it needs to react to the ACTUAL state transition
-    // the client sees, not a server timeout that might fire at the wrong time.
-    if (!penguin.isHit && lastHitState.current && !penguin.isBeingThrown && !penguin.isDead) {
-      // Clear any pending flash timer
-      if (recoveryFlashTimerRef.current) {
-        clearTimeout(recoveryFlashTimerRef.current);
-      }
-      setShowRecoveryFlash(true);
-      recoveryFlashTimerRef.current = setTimeout(() => {
-        setShowRecoveryFlash(false);
-        recoveryFlashTimerRef.current = null;
-      }, 100); // Flash lasts 100ms
-    }
-    // If hit again while flashing, cancel the flash immediately
-    if (penguin.isHit && showRecoveryFlash) {
-      if (recoveryFlashTimerRef.current) {
-        clearTimeout(recoveryFlashTimerRef.current);
-        recoveryFlashTimerRef.current = null;
-      }
-      setShowRecoveryFlash(false);
-    }
-
     // Update the previous state for next comparison
     lastHitState.current = penguin.isHit;
   }, [penguin.isHit, penguin.isBeingThrown, penguin.hitCounter, penguin.isDead]);
@@ -3774,6 +3740,7 @@ const GameFighter = ({
     penguin.isAtTheRopes,
     penguin.isCrouchStance,
     penguin.isCrouchStrafing,
+    displayPenguin.isPowerSliding,
     penguin.isGrabBreakCountered,
     penguin.isGrabbingMovement,
     isGrabClashActive,
@@ -3936,7 +3903,6 @@ const GameFighter = ({
             $isGrabBreaking={penguin.isGrabBreaking}
             $isRawParrying={displayPenguin.isRawParrying}
             $isHit={penguin.isHit}
-            $justRecoveredFromHit={showRecoveryFlash}
             $isChargingAttack={displayPenguin.isChargingAttack}
             $isGrabClashActive={isGrabClashActive}
             draggable={false}
@@ -3954,13 +3920,12 @@ const GameFighter = ({
           $isAttacking={displayPenguin.isAttacking}
           $isDodging={displayPenguin.isDodging}
           $isStrafing={penguin.isStrafing}
-          $isBraking={displayPenguin.isBraking}
+          $isBraking={displayPenguin.isBraking && !penguin.isRawParryStun}
           $isPowerSliding={displayPenguin.isPowerSliding}
           $isRawParrying={displayPenguin.isRawParrying}
           $isGrabBreaking={penguin.isGrabBreaking}
           $isReady={penguin.isReady}
           $isHit={penguin.isHit}
-          $justRecoveredFromHit={showRecoveryFlash}
           $isDead={penguin.isDead}
           $isSlapAttack={displayPenguin.isSlapAttack}
           $isThrowing={penguin.isThrowing}

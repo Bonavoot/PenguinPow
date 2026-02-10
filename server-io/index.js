@@ -658,8 +658,9 @@ function activateBufferedInputAfterGrab(player, rooms) {
 
 // Lobby color options - CPU picks randomly from these (excluding player's color)
 const LOBBY_COLORS = [
-  "#252525", "#000080", "#9932CC", "#32CD32", "#DC143C", "#FF8C00",
+  "#252525", "#000080", "#9932CC", "#32CD32", "#FF1493", "#FF8C00",
   "#FFB6C1", "#FFD700", "#5D3A1A", "#A8A8A8", "#5BC0DE", "#800000",
+  "rainbow", "fire", "vaporwave", "camo", "galaxy", "gold",
 ];
 
 // CPU Player creation helper - accepts unique ID for concurrent game support

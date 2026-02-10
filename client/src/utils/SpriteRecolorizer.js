@@ -156,7 +156,7 @@ if (typeof window !== 'undefined') {
 /**
  * Process image data using Web Worker (off main thread)
  */
-function processInWorker(imageData, width, height, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness) {
+function processInWorker(imageData, width, height, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode) {
   return new Promise((resolve, reject) => {
     if (!workerReady || !recolorWorker) {
       reject(new Error('Worker not ready'));
@@ -181,6 +181,7 @@ function processInWorker(imageData, width, height, sourceColorRange, targetHue, 
         targetSat,
         targetLight,
         referenceLightness,
+        specialMode,
       }
     }, [buffer]);
   });
@@ -415,6 +416,9 @@ export async function recolorImage(imageSrc, sourceColorRange, targetColorHex) {
     return inFlightRecolors.get(cacheKey);
   }
 
+  // Detect special color modes (rainbow, fire, etc.) vs normal hex colors
+  const specialMode = SPECIAL_COLORS.has(targetColorHex) ? targetColorHex : null;
+
   const promise = new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
@@ -432,8 +436,19 @@ export async function recolorImage(imageSrc, sourceColorRange, targetColorHex) {
         // Get image data
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-        // Get target hue, saturation, and lightness
-        const { h: targetHue, s: targetSat, l: targetLight } = getHslFromHex(targetColorHex);
+        // For special modes, use default saturation/lightness (overridden per pixel)
+        // For normal mode, get target HSL from hex
+        let targetHue, targetSat, targetLight;
+        if (specialMode) {
+          targetHue = 0;
+          targetSat = 90;
+          targetLight = 50;
+        } else {
+          const hsl = getHslFromHex(targetColorHex);
+          targetHue = hsl.h;
+          targetSat = hsl.s;
+          targetLight = hsl.l;
+        }
         
         // Calculate reference lightness from source color range midpoint
         const referenceLightness = (sourceColorRange.minLightness + sourceColorRange.maxLightness) / 2;
@@ -451,7 +466,8 @@ export async function recolorImage(imageSrc, sourceColorRange, targetColorHex) {
               targetHue,
               targetSat,
               targetLight,
-              referenceLightness
+              referenceLightness,
+              specialMode
             );
             
             // Create ImageData from returned buffer
@@ -463,11 +479,11 @@ export async function recolorImage(imageSrc, sourceColorRange, targetColorHex) {
           } catch (workerError) {
             console.warn('Worker processing failed, falling back to main thread:', workerError);
             // Fall back to main thread processing
-            processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness);
+            processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, canvas.width, canvas.height);
           }
         } else {
           // No worker available, process on main thread
-          processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness);
+          processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, canvas.width, canvas.height);
         }
 
         // Put the modified data back
@@ -517,12 +533,134 @@ export async function recolorImage(imageSrc, sourceColorRange, targetColorHex) {
 }
 
 /**
- * Fallback: Process pixels on main thread (when worker unavailable)
- * This is the same algorithm as the worker, but runs synchronously
+ * Positive-safe modulo (JS % can return negative for negative operands).
  */
-function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness) {
+function posMod(n, m) {
+  return ((n % m) + m) % m;
+}
+
+/**
+ * Compute per-pixel hue, saturation, and lightness for special color modes.
+ * Returns { h, s, l } to use as the target color for this pixel.
+ *
+ * x/y are RELATIVE to the centroid (center of mass) of all matching pixels
+ * in this frame, so they can be negative.  Because the centroid moves with
+ * the character and is very stable across frames, the pattern stays locked
+ * to the body during animation.
+ */
+function getSpecialPixelColor(specialMode, x, y, width, height) {
+  switch (specialMode) {
+    case 'rainbow': {
+      const CYCLE = 50;
+      return { h: (posMod(y, CYCLE) / CYCLE) * 360, s: 90, l: 50 };
+    }
+    case 'fire': {
+      const CYCLE = 70;
+      const t = posMod(y, CYCLE) / CYCLE;
+      const hue = 55 - t * 55;
+      const lightness = 60 - t * 30;
+      return { h: hue, s: 100, l: lightness };
+    }
+    case 'vaporwave': {
+      const CYCLE = 60;
+      const t = posMod(y, CYCLE) / CYCLE;
+      const hue = 300 - t * 120;
+      return { h: hue, s: 80, l: 55 };
+    }
+    case 'camo': {
+      const BLOCK = 5;
+      const bx = Math.floor(x / BLOCK);
+      const by = Math.floor(y / BLOCK);
+      let h = (bx * 374761393 + by * 668265263) | 0;
+      h = ((h ^ (h >>> 13)) * 1274126177) | 0;
+      h = (h ^ (h >>> 16)) >>> 0;
+      const val = h % 100;
+      if (val < 28) return { h: 100, s: 40, l: 32 };  // olive green
+      if (val < 52) return { h: 120, s: 38, l: 18 };  // dark green
+      if (val < 72) return { h: 35, s: 50, l: 28 };   // brown
+      if (val < 88) return { h: 55, s: 25, l: 45 };   // tan/khaki
+      return { h: 0, s: 0, l: 10 };                     // near-black
+    }
+    case 'galaxy': {
+      let hash = (x * 374761393 + y * 668265263) | 0;
+      hash = ((hash ^ (hash >>> 13)) * 1274126177) | 0;
+      hash = (hash ^ (hash >>> 16)) >>> 0;
+      const val = hash % 1000;
+
+      if (val < 3) return { h: 200, s: 10, l: 98 };    // rare brilliant white-blue star
+      if (val < 5) return { h: 45, s: 15, l: 95 };     // rare warm white star
+
+      const CYCLE = 60;
+      const drift = posMod(x + y * 2, CYCLE) / CYCLE;
+
+      if (val < 60) return { h: 310 + drift * 30, s: 70, l: 45 };
+      if (val < 120) return { h: 260 + drift * 20, s: 65, l: 35 };
+
+      const baseHue = 260 + drift * 30;
+      return { h: baseHue, s: 60, l: 15 };
+    }
+    case 'gold': {
+      // Metallic gold with diagonal shine streaks
+      const CYCLE = 100;
+      const shine = posMod(x + y, CYCLE) / CYCLE;
+      // Sharp highlight peaks (narrow bright bands, wider dark gold)
+      const peak = Math.pow(Math.sin(shine * Math.PI), 6);
+      const hue = 43 + peak * 5;              // 43°-48° slight warm shift at highlights
+      const sat = 90 - peak * 35;             // less saturated at bright highlights (more white/metallic)
+      const lightness = 42 + peak * 45;       // 42 (rich gold) → 87 (bright shine)
+      return { h: hue, s: sat, l: lightness };
+    }
+    default:
+      return { h: 0, s: 90, l: 50 };
+  }
+}
+
+/**
+ * Fallback: Process pixels on main thread (when worker unavailable)
+ * This is the same algorithm as the worker, but runs synchronously.
+ *
+ * For special modes we do TWO passes:
+ *   Pass 1 – find the centroid (center of mass) of all matching pixels.
+ *            The centroid is extremely stable across animation frames because
+ *            it's an average of hundreds of pixels — a few edge pixels shifting
+ *            barely changes the result.
+ *   Pass 2 – recolor, using coordinates RELATIVE to the centroid so the
+ *            pattern stays locked to the body during animation.
+ */
+function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, width, height) {
   const data = imageData.data;
-  
+
+  // --- Pass 1: centroid of matching pixels (only needed for special modes) ---
+  let anchorX = 0, anchorY = 0;
+  let spanW = 1, spanH = 1;
+  if (specialMode) {
+    let sumX = 0, sumY = 0, count = 0;
+    let minX = width, minY = height, maxX = 0, maxY = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] === 0) continue;
+      const ph = rgbToHsl(data[i], data[i + 1], data[i + 2]);
+      if (isColorInHslRange(ph.h, ph.s, ph.l, sourceColorRange)) {
+        const idx = i / 4;
+        const px = idx % width;
+        const py = (idx / width) | 0;
+        sumX += px;
+        sumY += py;
+        count++;
+        if (px < minX) minX = px;
+        if (px > maxX) maxX = px;
+        if (py < minY) minY = py;
+        if (py > maxY) maxY = py;
+      }
+    }
+    if (count > 0) {
+      anchorX = Math.round(sumX / count);
+      anchorY = Math.round(sumY / count);
+      spanW = Math.max(1, maxX - minX + 1);
+      spanH = Math.max(1, maxY - minY + 1);
+    }
+  }
+
+  // --- Pass 2: recolor ---
   for (let i = 0; i < data.length; i += 4) {
     const r = data[i];
     const g = data[i + 1];
@@ -534,7 +672,21 @@ function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targe
     const pixelHsl = rgbToHsl(r, g, b);
 
     if (isColorInHslRange(pixelHsl.h, pixelHsl.s, pixelHsl.l, sourceColorRange)) {
-      const newColor = recolorPixel(r, g, b, targetHue, targetSat, targetLight, referenceLightness);
+      let hue = targetHue;
+      let sat = targetSat;
+      let light = targetLight;
+
+      if (specialMode) {
+        const idx = i / 4;
+        const relX = (idx % width) - anchorX;
+        const relY = ((idx / width) | 0) - anchorY;
+        const sc = getSpecialPixelColor(specialMode, relX, relY, spanW, spanH);
+        hue = sc.h;
+        sat = sc.s;
+        light = sc.l;
+      }
+
+      const newColor = recolorPixel(r, g, b, hue, sat, light, referenceLightness);
       data[i] = newColor.r;
       data[i + 1] = newColor.g;
       data[i + 2] = newColor.b;
@@ -751,6 +903,22 @@ export function getCacheStats() {
 export const SPRITE_BASE_COLOR = "#4169E1";
 
 /**
+ * Special color identifiers
+ * When one of these values is passed as targetColorHex, the recoloring system
+ * uses a special per-pixel algorithm instead of a flat color.
+ */
+export const RAINBOW_COLOR = "rainbow";
+export const FIRE_COLOR = "fire";
+export const VAPORWAVE_COLOR = "vaporwave";
+export const CAMO_COLOR = "camo";
+export const GALAXY_COLOR = "galaxy";
+export const GOLD_COLOR = "gold";
+export const SPECIAL_COLORS = new Set([
+  RAINBOW_COLOR, FIRE_COLOR, VAPORWAVE_COLOR,
+  CAMO_COLOR, GALAXY_COLOR, GOLD_COLOR,
+]);
+
+/**
  * Predefined color options for player customization
  */
 export const COLOR_PRESETS = {
@@ -763,7 +931,7 @@ export const COLOR_PRESETS = {
   lightBlue: "#5BC0DE",
   
   // Reds
-  red: "#DC143C",       // Crimson (default Player 2)
+  red: "#FF1493",       // Hot Pink
   maroon: "#800000",
   
   // Pinks
@@ -781,6 +949,13 @@ export const COLOR_PRESETS = {
   
   // Browns
   brown: "#5D3A1A",
+  
+  // Special
+  rainbow: RAINBOW_COLOR,
+  fire: FIRE_COLOR,
+  vaporwave: VAPORWAVE_COLOR,
+  camo: CAMO_COLOR,
+  galaxy: GALAXY_COLOR,
 };
 
 export default {
@@ -798,4 +973,11 @@ export default {
   BLUE_COLOR_RANGES,
   RED_COLOR_RANGES,
   COLOR_PRESETS,
+  SPECIAL_COLORS,
+  RAINBOW_COLOR,
+  FIRE_COLOR,
+  VAPORWAVE_COLOR,
+  CAMO_COLOR,
+  GALAXY_COLOR,
+  GOLD_COLOR,
 };

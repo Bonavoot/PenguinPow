@@ -122,30 +122,153 @@ function recolorPixel(r, g, b, targetHue, targetSaturation, targetLightness, ref
 }
 
 /**
- * Process image data to recolor pixels
- * This is the heavy operation that was blocking the main thread
+ * Positive-safe modulo (JS % can return negative for negative operands).
  */
-function processImageData(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness) {
+function posMod(n, m) {
+  return ((n % m) + m) % m;
+}
+
+/**
+ * Compute per-pixel hue, saturation, and lightness for special color modes.
+ * Mirrors the identical function in SpriteRecolorizer.js.
+ *
+ * x/y are RELATIVE to the centroid of all matching pixels so the pattern
+ * stays locked to the body across animation frames.
+ */
+function getSpecialPixelColor(specialMode, x, y, width, height) {
+  switch (specialMode) {
+    case 'rainbow': {
+      const CYCLE = 50;
+      return { h: (posMod(y, CYCLE) / CYCLE) * 360, s: 90, l: 50 };
+    }
+    case 'fire': {
+      const CYCLE = 70;
+      const t = posMod(y, CYCLE) / CYCLE;
+      const hue = 55 - t * 55;
+      const lightness = 60 - t * 30;
+      return { h: hue, s: 100, l: lightness };
+    }
+    case 'vaporwave': {
+      const CYCLE = 60;
+      const t = posMod(y, CYCLE) / CYCLE;
+      const hue = 300 - t * 120;
+      return { h: hue, s: 80, l: 55 };
+    }
+    case 'camo': {
+      const BLOCK = 5;
+      const bx = Math.floor(x / BLOCK);
+      const by = Math.floor(y / BLOCK);
+      let h = (bx * 374761393 + by * 668265263) | 0;
+      h = ((h ^ (h >>> 13)) * 1274126177) | 0;
+      h = (h ^ (h >>> 16)) >>> 0;
+      const val = h % 100;
+      if (val < 28) return { h: 100, s: 40, l: 32 };
+      if (val < 52) return { h: 120, s: 38, l: 18 };
+      if (val < 72) return { h: 35, s: 50, l: 28 };
+      if (val < 88) return { h: 55, s: 25, l: 45 };
+      return { h: 0, s: 0, l: 10 };
+    }
+    case 'galaxy': {
+      let hash = (x * 374761393 + y * 668265263) | 0;
+      hash = ((hash ^ (hash >>> 13)) * 1274126177) | 0;
+      hash = (hash ^ (hash >>> 16)) >>> 0;
+      const val = hash % 1000;
+
+      if (val < 3) return { h: 200, s: 10, l: 98 };    // rare brilliant white-blue star
+      if (val < 5) return { h: 45, s: 15, l: 95 };     // rare warm white star
+
+      const CYCLE = 60;
+      const drift = posMod(x + y * 2, CYCLE) / CYCLE;
+
+      if (val < 60) return { h: 310 + drift * 30, s: 70, l: 45 };
+      if (val < 120) return { h: 260 + drift * 20, s: 65, l: 35 };
+
+      const baseHue = 260 + drift * 30;
+      return { h: baseHue, s: 60, l: 15 };
+    }
+    case 'gold': {
+      const CYCLE = 100;
+      const shine = posMod(x + y, CYCLE) / CYCLE;
+      const peak = Math.pow(Math.sin(shine * Math.PI), 6);
+      const hue = 43 + peak * 5;
+      const sat = 90 - peak * 35;
+      const lightness = 42 + peak * 45;
+      return { h: hue, s: sat, l: lightness };
+    }
+    default:
+      return { h: 0, s: 90, l: 50 };
+  }
+}
+
+/**
+ * Process image data to recolor pixels.
+ *
+ * For special modes we do TWO passes:
+ *   Pass 1 – find the centroid (center of mass) of all matching pixels.
+ *   Pass 2 – recolor, using coordinates RELATIVE to the centroid so the
+ *            pattern stays locked to the body during animation.
+ */
+function processImageData(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, width, height) {
   const data = imageData.data;
   const length = data.length;
-  
-  // Process pixels in chunks to allow for better optimization
+
+  // --- Pass 1: centroid of matching pixels (only needed for special modes) ---
+  let anchorX = 0, anchorY = 0;
+  let spanW = 1, spanH = 1;
+  if (specialMode) {
+    let sumX = 0, sumY = 0, count = 0;
+    let minX = width, minY = height, maxX = 0, maxY = 0;
+    for (let i = 0; i < length; i += 4) {
+      if (data[i + 3] === 0) continue;
+      const ph = rgbToHsl(data[i], data[i + 1], data[i + 2]);
+      if (isColorInHslRange(ph.h, ph.s, ph.l, sourceColorRange)) {
+        const idx = i / 4;
+        const px = idx % width;
+        const py = (idx / width) | 0;
+        sumX += px;
+        sumY += py;
+        count++;
+        if (px < minX) minX = px;
+        if (px > maxX) maxX = px;
+        if (py < minY) minY = py;
+        if (py > maxY) maxY = py;
+      }
+    }
+    if (count > 0) {
+      anchorX = Math.round(sumX / count);
+      anchorY = Math.round(sumY / count);
+      spanW = Math.max(1, maxX - minX + 1);
+      spanH = Math.max(1, maxY - minY + 1);
+    }
+  }
+
+  // --- Pass 2: recolor ---
   for (let i = 0; i < length; i += 4) {
     const r = data[i];
     const g = data[i + 1];
     const b = data[i + 2];
     const a = data[i + 3];
 
-    // Skip fully transparent pixels
     if (a === 0) continue;
 
-    // Convert pixel to HSL
     const pixelHsl = rgbToHsl(r, g, b);
 
-    // Check if this pixel is in our target color range
     if (isColorInHslRange(pixelHsl.h, pixelHsl.s, pixelHsl.l, sourceColorRange)) {
-      // Recolor this pixel
-      const newColor = recolorPixel(r, g, b, targetHue, targetSat, targetLight, referenceLightness);
+      let hue = targetHue;
+      let sat = targetSat;
+      let light = targetLight;
+
+      if (specialMode) {
+        const idx = i / 4;
+        const relX = (idx % width) - anchorX;
+        const relY = ((idx / width) | 0) - anchorY;
+        const sc = getSpecialPixelColor(specialMode, relX, relY, spanW, spanH);
+        hue = sc.h;
+        sat = sc.s;
+        light = sc.l;
+      }
+
+      const newColor = recolorPixel(r, g, b, hue, sat, light, referenceLightness);
       data[i] = newColor.r;
       data[i + 1] = newColor.g;
       data[i + 2] = newColor.b;
@@ -160,20 +283,17 @@ self.onmessage = function(e) {
   const { type, payload, id } = e.data;
   
   if (type === 'recolor') {
-    const { imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, width, height } = payload;
+    const { imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, width, height, specialMode } = payload;
     
     try {
-      // Create new ImageData from the transferred buffer
       const newImageData = new ImageData(
         new Uint8ClampedArray(imageData),
         width,
         height
       );
       
-      // Process the pixels (the heavy operation)
-      const processedData = processImageData(newImageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness);
+      const processedData = processImageData(newImageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, width, height);
       
-      // Send back the processed data with transfer
       self.postMessage({
         type: 'recolor_complete',
         id,

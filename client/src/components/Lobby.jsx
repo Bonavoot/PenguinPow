@@ -1021,7 +1021,7 @@ const ColorSwatch = styled.button`
   height: clamp(22px, 2.8vw, 32px);
   border-radius: 4px;
   border: 2px solid ${props => props.$selected ? '#fff' : 'transparent'};
-  background-color: ${props => props.$color};
+  background: ${props => props.$gradient || props.$color};
   cursor: ${props => props.$disabled ? 'not-allowed' : 'pointer'};
   transition: transform 0.1s, border-color 0.1s;
   box-shadow: ${props => props.$selected ? '0 0 8px rgba(255, 255, 255, 0.8)' : '0 2px 4px rgba(0,0,0,0.3)'};
@@ -1217,13 +1217,13 @@ const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, onLeaveD
   const otherPlayerColor = isPlayer1 ? serverPlayer2Color : serverPlayer1Color;
   const isColorTakenByOther = (hex) => isPvP && otherPlayerColor && hex?.toLowerCase() === otherPlayerColor.toLowerCase();
   
-  // Color options
+  // Color options (standard + special)
   const colorOptions = [
     { name: "Black", hex: "#252525" },
     { name: "Navy", hex: "#000080" },
     { name: "Purple", hex: "#9932CC" },
     { name: "Green", hex: "#32CD32" },
-    { name: "Red", hex: "#DC143C" },
+    { name: "Hot Pink", hex: "#FF1493" },
     { name: "Orange", hex: "#FF8C00" },
     { name: "Pink", hex: "#FFB6C1" },
     { name: "Gold", hex: "#FFD700" },
@@ -1231,6 +1231,12 @@ const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, onLeaveD
     { name: "Silver", hex: "#A8A8A8" },
     { name: "Light Blue", hex: "#5BC0DE" },
     { name: "Maroon", hex: "#800000" },
+    { name: "Rainbow", hex: "rainbow", gradient: "linear-gradient(to right, red, orange, yellow, green, cyan, blue, violet)" },
+    { name: "Fire", hex: "fire", gradient: "linear-gradient(to bottom, #FFD700, #FF8C00, #DC143C, #8B0000)" },
+    { name: "Vaporwave", hex: "vaporwave", gradient: "linear-gradient(to bottom, #FF69B4, #DA70D6, #9370DB, #00CED1)" },
+    { name: "Camo", hex: "camo", gradient: "repeating-conic-gradient(#556B2F 0% 25%, #2E4E1A 25% 50%, #5D3A1A 50% 75%, #1a1a0a 75% 100%)" },
+    { name: "Galaxy", hex: "galaxy", gradient: "linear-gradient(135deg, #2E0854, #4B0082, #6A0DAD, #9932CC, #4B0082)" },
+    { name: "Shiny Gold", hex: "gold", gradient: "linear-gradient(135deg, #B8860B, #FFD700, #FFF8DC, #FFD700, #B8860B)" },
   ];
   
   // Handle color selection - emits to server (no-op if color is other player's in PvP)
@@ -1392,6 +1398,7 @@ const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, onLeaveD
                     <ColorSwatch
                       key={color.name}
                       $color={color.hex}
+                      $gradient={color.gradient}
                       $selected={serverPlayer1Color === color.hex}
                       $disabled={!isPlayer1 || takenByOther}
                       onClick={() => isPlayer1 && !takenByOther && handleColorSelect(color.hex)}
@@ -1513,6 +1520,7 @@ const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, onLeaveD
                     <ColorSwatch
                       key={color.name}
                       $color={color.hex}
+                      $gradient={color.gradient}
                       $selected={serverPlayer2Color === color.hex}
                       $disabled={!isPlayer2 || takenByOther}
                       onClick={() => isPlayer2 && !takenByOther && handleColorSelect(color.hex)}

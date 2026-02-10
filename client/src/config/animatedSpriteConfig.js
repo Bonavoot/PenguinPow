@@ -15,6 +15,7 @@ import isBeingGrabbedSpritesheet from "../assets/spritesheets/is-being-grabbed_s
 import snowballThrowSpritesheet from "../assets/spritesheets/snowball-throw_spritesheet.png";
 import atTheRopesSpritesheet from "../assets/spritesheets/at-the-ropes_spritesheet.png";
 import crouchStrafingSpritesheet from "../assets/spritesheets/crouch-strafing_spritesheet.png";
+import isPerfectParriedSpritesheet from "../assets/spritesheets/is_perfect_parried_spritesheet.png";
 
 // Map animation names to spritesheet configs (using string keys to avoid loading APNGs)
 export const SPRITESHEET_CONFIG_BY_NAME = {
@@ -98,6 +99,14 @@ export const SPRITESHEET_CONFIG_BY_NAME = {
     fps: 14,
     loop: true,
   },
+  isPerfectParried: {
+    spritesheet: isPerfectParriedSpritesheet,
+    frameCount: 7,
+    frameWidth: 480,
+    frameHeight: 480,
+    fps: 14,
+    loop: true,
+  },
 };
 
 // Legacy: Map of source URLs to configs (for backwards compatibility)
@@ -117,6 +126,7 @@ const FILENAME_TO_CONFIG = {
   'snowball-throw': 'snowballThrow',
   'at-the-ropes': 'atTheRopes',
   'crouch-strafing': 'crouchStrafing',
+  'is_perfect_parried': 'isPerfectParried',
 };
 
 // Check if a source has a spritesheet animation config

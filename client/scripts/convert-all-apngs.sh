@@ -103,6 +103,7 @@ APNG_FILES=(
     "$ASSETS_DIR/snowball-throw.png"
     "$ASSETS_DIR/at-the-ropes.png"
     "$ASSETS_DIR/crouch-strafing.png"
+    "$ASSETS_DIR/is_perfect_parried.png"
 )
 
 for apng in "${APNG_FILES[@]}"; do

@@ -114,7 +114,7 @@ function createWindow() {
   if (isDev) {
     // In development, load from Vite dev server
     mainWindow.loadURL("http://localhost:5173");
-    mainWindow.webContents.openDevTools();
+    // mainWindow.webContents.openDevTools();
   } else {
     // In production, load from built client files
     // Use absolute path to ensure it works regardless of working directory

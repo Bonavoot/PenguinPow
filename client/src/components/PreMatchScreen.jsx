@@ -333,11 +333,21 @@ const PlayerName = styled.div`
   line-height: 1.1;
 `;
 
-// Mawashi color indicator - styled like a belt
+// Special mawashi colors (same gradients as Lobby color picker squares)
+const SPECIAL_MAWASHI_GRADIENTS = {
+  rainbow: "linear-gradient(to right, red, orange, yellow, green, cyan, blue, violet)",
+  fire: "linear-gradient(to bottom, #FFD700, #FF8C00, #DC143C, #8B0000)",
+  vaporwave: "linear-gradient(to bottom, #FF69B4, #DA70D6, #9370DB, #00CED1)",
+  camo: "repeating-conic-gradient(#556B2F 0% 25%, #2E4E1A 25% 50%, #5D3A1A 50% 75%, #1a1a0a 75% 100%)",
+  galaxy: "linear-gradient(135deg, #2E0854, #4B0082, #6A0DAD, #9932CC, #4B0082)",
+  gold: "linear-gradient(135deg, #B8860B, #FFD700, #FFF8DC, #FFD700, #B8860B)",
+};
+
+// Mawashi color indicator - styled like a belt (supports solid hex and special gradients like Lobby swatches)
 const MawashiIndicator = styled.div`
   width: 70%;
   height: 10px;
-  background: ${props => props.$color || '#888'};
+  background: ${props => props.$gradient || props.$color || '#888'};
   margin: 10px 0 14px;
   box-shadow: 
     0 2px 4px rgba(0, 0, 0, 0.3),
@@ -355,7 +365,7 @@ const MawashiIndicator = styled.div`
     transform: translate(-50%, -50%);
     width: 16px;
     height: 16px;
-    background: ${props => props.$color || '#888'};
+    background: ${props => props.$gradient || props.$color || '#888'};
     border: 2px solid rgba(0, 0, 0, 0.3);
     border-radius: 2px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
@@ -748,7 +758,7 @@ const PreMatchScreen = ({
               <PlayerName>{player1Name}</PlayerName>
             </PlayerNameArea>
             
-            <MawashiIndicator $color={player1Color} />
+            <MawashiIndicator $color={player1Color} $gradient={SPECIAL_MAWASHI_GRADIENTS[player1Color]} />
 
             <RecordContainer>
               <RecordItem>
@@ -802,7 +812,7 @@ const PreMatchScreen = ({
               <PlayerName>{player2Name}</PlayerName>
             </PlayerNameArea>
             
-            <MawashiIndicator $color={player2Color} />
+            <MawashiIndicator $color={player2Color} $gradient={SPECIAL_MAWASHI_GRADIENTS[player2Color]} />
 
             <RecordContainer>
               <RecordItem>

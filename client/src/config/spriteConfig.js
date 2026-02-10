@@ -25,6 +25,7 @@ import snowballThrowSheet from "../assets/spritesheets/snowball-throw_spriteshee
 import atTheRopesSheet from "../assets/spritesheets/at-the-ropes_spritesheet.png";
 import crouchStrafingSheet from "../assets/spritesheets/crouch-strafing_spritesheet.png";
 import beingGrabbedSheet from "../assets/spritesheets/is-being-grabbed_spritesheet.png";
+import isPerfectParriedSheet from "../assets/spritesheets/is_perfect_parried_spritesheet.png";
 
 // Ritual animation spritesheets
 import ritualPart1Sheet from "../assets/ritual_part1_spritesheet.png";
@@ -135,6 +136,13 @@ const BLUE_ANIMATED_SPRITES = {
     frameHeight: 480,
     fps: 8,
   },
+  isPerfectParried: {
+    src: isPerfectParriedSheet,
+    frameCount: 7,
+    frameWidth: 480,
+    frameHeight: 480,
+    fps: 14,
+  },
   // Ritual animation spritesheets (need to be preloaded with player colors)
   ritualPart1: {
     src: ritualPart1Sheet,
@@ -209,7 +217,7 @@ export const COLOR_PRESETS = {
   lightBlue: { hex: "#5BC0DE", name: "Light Blue" },
   
   // Reds
-  red: { hex: "#DC143C", name: "Crimson" },
+  red: { hex: "#FF1493", name: "Hot Pink" },
   maroon: { hex: "#800000", name: "Maroon" },
   
   // Pinks
@@ -227,6 +235,13 @@ export const COLOR_PRESETS = {
   
   // Browns
   brown: { hex: "#5D3A1A", name: "Brown" },
+  
+  // Special
+  rainbow: { hex: "rainbow", name: "Rainbow" },
+  fire: { hex: "fire", name: "Fire" },
+  vaporwave: { hex: "vaporwave", name: "Vaporwave" },
+  camo: { hex: "camo", name: "Camo" },
+  galaxy: { hex: "galaxy", name: "Galaxy" },
 };
 
 /**
