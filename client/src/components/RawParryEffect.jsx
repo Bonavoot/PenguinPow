@@ -185,6 +185,7 @@ const RawParryEffect = ({ position }) => {
   return (
     <>
       {activeEffects.map((effect) => {
+        const parryTiltSigned = effect.facing === -1 ? "55deg" : "-55deg";
         // Generate basic particles - fixed positions for performance
         const particlePositions = [[30, 40], [50, 30], [70, 50], [40, 70]];
         const particles = particlePositions.map(([top, left], i) => (
@@ -225,6 +226,7 @@ const RawParryEffect = ({ position }) => {
               className={`raw-parry-ring-wrapper ${
                 effect.isPerfect ? "perfect" : "regular"
               }`}
+              style={{ "--parry-ring-tilt-signed": parryTiltSigned }}
             >
               <div
                 className={`raw-parry-ring ${
