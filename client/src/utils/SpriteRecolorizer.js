@@ -18,7 +18,7 @@
 // ============================================
 // LRU CACHE with size limit
 // ============================================
-const MAX_CACHE_SIZE = 150; // Must hold all preloaded sprites (~122) + buffer to prevent invisible frames on animation switch
+const MAX_CACHE_SIZE = 300; // Normal + hit-tinted variants per player (~122 × 2) to prevent invisible frames on animation switch
 const cacheOrder = []; // Track access order for LRU eviction
 
 const recoloredImageCache = new Map();
@@ -156,7 +156,7 @@ if (typeof window !== 'undefined') {
 /**
  * Process image data using Web Worker (off main thread)
  */
-function processInWorker(imageData, width, height, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode) {
+function processInWorker(imageData, width, height, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed = false) {
   return new Promise((resolve, reject) => {
     if (!workerReady || !recolorWorker) {
       reject(new Error('Worker not ready'));
@@ -182,6 +182,7 @@ function processInWorker(imageData, width, height, sourceColorRange, targetHue, 
         targetLight,
         referenceLightness,
         specialMode,
+        hitTintRed,
       }
     }, [buffer]);
   });
@@ -397,11 +398,13 @@ export const getHueSatFromHex = getHslFromHex;
  * @param {string} imageSrc - Source image URL
  * @param {Object} sourceColorRange - HSL color range to replace (e.g., BLUE_COLOR_RANGES)
  * @param {string} targetColorHex - Target color in hex format (e.g., "#FF69B4" for pink)
+ * @param {Object} options - Optional: { hitTintRed: true } to tint non-mawashi/headband pixels red (for isHit state)
  * @returns {Promise<string>} - Data URL of the recolored image
  */
-export async function recolorImage(imageSrc, sourceColorRange, targetColorHex) {
-  // Generate cache key
-  const cacheKey = `${imageSrc}_${sourceColorRange.minHue}-${sourceColorRange.maxHue}_${targetColorHex}`;
+export async function recolorImage(imageSrc, sourceColorRange, targetColorHex, options = {}) {
+  const hitTintRed = !!options.hitTintRed;
+  // Generate cache key (hit variant cached separately)
+  const cacheKey = `${imageSrc}_${sourceColorRange.minHue}-${sourceColorRange.maxHue}_${targetColorHex}${hitTintRed ? '_hit' : ''}`;
   
   // Check LRU cache first
   const cached = getFromCache(cacheKey);
@@ -467,7 +470,8 @@ export async function recolorImage(imageSrc, sourceColorRange, targetColorHex) {
               targetSat,
               targetLight,
               referenceLightness,
-              specialMode
+              specialMode,
+              hitTintRed
             );
             
             // Create ImageData from returned buffer
@@ -479,11 +483,11 @@ export async function recolorImage(imageSrc, sourceColorRange, targetColorHex) {
           } catch (workerError) {
             console.warn('Worker processing failed, falling back to main thread:', workerError);
             // Fall back to main thread processing
-            processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, canvas.width, canvas.height);
+            processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, canvas.width, canvas.height);
           }
         } else {
           // No worker available, process on main thread
-          processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, canvas.width, canvas.height);
+          processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, canvas.width, canvas.height);
         }
 
         // Put the modified data back
@@ -627,7 +631,7 @@ function getSpecialPixelColor(specialMode, x, y, width, height) {
  *   Pass 2 – recolor, using coordinates RELATIVE to the centroid so the
  *            pattern stays locked to the body during animation.
  */
-function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, width, height) {
+function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, width, height) {
   const data = imageData.data;
 
   // --- Pass 1: centroid of matching pixels (only needed for special modes) ---
@@ -661,6 +665,10 @@ function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targe
   }
 
   // --- Pass 2: recolor ---
+  // Hit tint: blend toward true red, slightly subtle
+  const HIT_RED_RGB = hslToRgb(0, 58, 55);
+  const HIT_BLEND = 0.34;
+
   for (let i = 0; i < data.length; i += 4) {
     const r = data[i];
     const g = data[i + 1];
@@ -690,6 +698,11 @@ function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targe
       data[i] = newColor.r;
       data[i + 1] = newColor.g;
       data[i + 2] = newColor.b;
+    } else if (hitTintRed) {
+      // Blend original with soft red: subtle tint, and white turns same light red as other colors
+      data[i] = Math.round((1 - HIT_BLEND) * r + HIT_BLEND * HIT_RED_RGB.r);
+      data[i + 1] = Math.round((1 - HIT_BLEND) * g + HIT_BLEND * HIT_RED_RGB.g);
+      data[i + 2] = Math.round((1 - HIT_BLEND) * b + HIT_BLEND * HIT_RED_RGB.b);
     }
   }
   
@@ -875,10 +888,12 @@ export function clearDecodedImageCache() {
  * @param {string} imageSrc - Original image source
  * @param {Object} sourceColorRange - HSL color range to detect
  * @param {string} targetColorHex - Target color in hex format
+ * @param {Object} options - Optional: { hitTintRed: true } for hit-state variant
  * @returns {string|null} - Cached recolored image data URL, or null if not cached
  */
-export function getCachedRecoloredImage(imageSrc, sourceColorRange, targetColorHex) {
-  const cacheKey = `${imageSrc}_${sourceColorRange.minHue}-${sourceColorRange.maxHue}_${targetColorHex}`;
+export function getCachedRecoloredImage(imageSrc, sourceColorRange, targetColorHex, options = {}) {
+  const hitTintRed = !!options.hitTintRed;
+  const cacheKey = `${imageSrc}_${sourceColorRange.minHue}-${sourceColorRange.maxHue}_${targetColorHex}${hitTintRed ? '_hit' : ''}`;
   return getFromCache(cacheKey);
 }
 

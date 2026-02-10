@@ -569,6 +569,55 @@ function activateBufferedInputAfterGrab(player, rooms) {
   if (player.isAtTheRopes || player.isThrowLanded || player.isHit ||
       player.isGrabBreaking || player.isGrabBreakCountered || player.isGrabBreakSeparating) return;
 
+  // Priority 0: Buffered dodge (spammed shift while grabbed/thrown) - execute frame 1 when freed
+  if (
+    player.bufferedAction &&
+    player.bufferedAction.type === "dodge" &&
+    player.bufferExpiryTime &&
+    Date.now() < player.bufferExpiryTime &&
+    player.stamina >= DODGE_STAMINA_COST
+  ) {
+    const direction = player.bufferedAction.direction;
+    player.bufferedAction = null;
+    player.bufferExpiryTime = 0;
+    player.isRawParrySuccess = false;
+    player.isPerfectRawParrySuccess = false;
+    player.movementVelocity = 0;
+    player.isStrafing = false;
+    player.isPowerSliding = false;
+    player.isBraking = false;
+    player.isDodging = true;
+    player.isDodgeCancelling = false;
+    player.dodgeCancelStartTime = 0;
+    player.dodgeCancelStartY = 0;
+    player.dodgeStartTime = Date.now();
+    player.dodgeEndTime = Date.now() + DODGE_DURATION;
+    player.dodgeStartX = player.x;
+    player.dodgeStartY = player.y;
+    player.dodgeDirection = direction;
+    player.currentAction = "dodge";
+    player.actionLockUntil = Date.now() + 100;
+    player.justLandedFromDodge = false;
+    player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
+    clearChargeState(player, true);
+    setPlayerTimeout(player.id, () => {
+      if (player.isDodging && !player.isDodgeCancelling) {
+        const landingDir = player.dodgeDirection || 0;
+        if (landingDir !== 0 && Math.abs(player.movementVelocity) < 0.1) {
+          if (player.keys.c || player.keys.control) {
+            player.movementVelocity = landingDir * DODGE_SLIDE_MOMENTUM * DODGE_POWERSLIDE_BOOST;
+            player.isPowerSliding = true;
+          } else {
+            player.movementVelocity = landingDir * DODGE_SLIDE_MOMENTUM;
+          }
+          player.justLandedFromDodge = true;
+        }
+        player.isDodging = false;
+      }
+    }, DODGE_DURATION, "bufferedDodge");
+    return;
+  }
+
   // Priority 1: Raw parry (spacebar) - defensive reversal (highest priority)
   if (player.keys[" "] && !player.grabBreakSpaceConsumed) {
     player.isRawParrying = true;
@@ -1799,10 +1848,11 @@ io.on("connection", (socket) => {
                 // Hit target player normally
                 snowball.hasHit = true;
                 
-                // Emit snowball hit effect for visual clarity
+                // Emit snowball hit effect for visual clarity (facing = hit player's facing for effect offset)
                 io.in(room.id).emit("snowball_hit", {
                   x: targetPlayer.x,
                   y: targetPlayer.y,
+                  facing: targetPlayer.facing,
                   hitId: `snowball-hit-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 });
                 
@@ -6815,17 +6865,17 @@ io.on("connection", (socket) => {
         "dodgeReset"
       );
     } else if (
-      player.shiftJustPressed && // Use just pressed to prevent buffering when holding shift through actions
+      (player.shiftJustPressed || player.keys.shift) && // Buffer on press OR hold (catches spammers who end on held key)
       (player.isAttacking ||
         player.isThrowing ||
         player.isBeingThrown ||
-        player.isGrabbing) && // CRITICAL: Removed isBeingGrabbed - NEVER buffer dodge while being grabbed!
-      !player.isBeingGrabbed && // Explicitly block buffering when being grabbed
-      !player.isDodging && // Add explicit check to prevent dodge buffering during dodge
+        player.isGrabbing ||
+        player.isBeingGrabbed) && // Allow buffering while being grabbed/thrown so spamming shift comes out frame 1 when freed
+      !player.isDodging &&
       !player.isThrowingSnowball &&
       !player.isRawParrying &&
-      !isInChargedAttackExecution() && // Block buffering during charged attack execution
-      player.stamina >= DODGE_STAMINA_COST // Check if player has enough stamina to dodge
+      !isInChargedAttackExecution() &&
+      player.stamina >= DODGE_STAMINA_COST
     ) {
       // Buffer the dodge action
       const dodgeDirection = player.keys.a

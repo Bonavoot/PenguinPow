@@ -7,7 +7,7 @@ import { HIT_EFFECT_TEXT_DURATION, HIT_EFFECT_TEXT_DELAY } from "../config/hitEf
 // Pre-create indices for perfect parry speed lines
 const PERFECT_LINE_INDICES = [0, 1, 2, 3, 4, 5, 6, 7];
 
-// Animation for centered text - matches GrabBreakEffect textPop
+// Text pop: centered in the ring for both regular and perfect
 const textPop = keyframes`
   0% {
     transform: translate(-50%, -50%) scale(0);
@@ -35,7 +35,7 @@ const textPop = keyframes`
   }
 `;
 
-// Centered text that appears at the parry location
+// Text centered in the ring (same for regular and perfect)
 const ParryTextCenter = styled.div`
   position: absolute;
   top: 50%;
@@ -56,11 +56,17 @@ const ParryTextCenter = styled.div`
   z-index: 20;
 `;
 
+/* Container: fixed size (perfect parry size) so both effects share the same center point */
 const RawParryEffectContainer = styled.div`
   position: absolute;
   left: ${props => (props.$x / 1280) * 100 + (props.$facing === 1 ? -6 : -1)}%;
-  bottom: ${props => (props.$y / 720) * 100 + 5}%;
+  bottom: ${props => (props.$y / 720) * 100 - 2}%;
+  width: clamp(4.2rem, 10.5vw, 8.4rem);
+  height: clamp(3.9rem, 9.8vw, 7.8rem);
   transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   z-index: 100;
   pointer-events: none;
   contain: layout style;
@@ -221,6 +227,7 @@ const RawParryEffect = ({ position }) => {
             $x={effect.x}
             $y={effect.y}
             $facing={effect.facing}
+            $isPerfect={effect.isPerfect}
           >
             <div
               className={`raw-parry-ring-wrapper ${

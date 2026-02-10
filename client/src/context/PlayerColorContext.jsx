@@ -123,15 +123,29 @@ async function recolorPlayerSprites(playerKey, colorHex, skipRecoloring) {
     });
     
     // CRITICAL: Also collect direct spritesheet imports for pre-decoding
-    // These are needed even without recoloring to avoid invisible frames
     DIRECT_SPRITESHEETS.forEach(src => {
       if (src) allSources.push(src);
     });
     
-    // Also collect GameFighter's static sprite imports
     GAME_FIGHTER_STATIC_SPRITES.forEach(src => {
       if (src) allSources.push(src);
     });
+    
+    // Hit variants (mawashi/headband stay blue, rest tinted red) so first hit doesn't flash
+    const baseUrlsForHit = [
+      ...DIRECT_SPRITESHEETS,
+      ...GAME_FIGHTER_STATIC_SPRITES,
+      ...GAME_FIGHTER_APNG_SPRITES,
+      ...Object.entries(ANIMATED_SPRITES[playerKey] || {}).filter(([name]) => !RITUAL_SPRITE_NAMES.has(name)).map(([, c]) => c?.src).filter(Boolean),
+      ...Object.values(STATIC_SPRITES[playerKey] || {}).filter(s => typeof s === "string" && !s.endsWith(".gif")),
+    ];
+    const uniqueBaseUrls = [...new Set(baseUrlsForHit)];
+    const hitUrls = await Promise.all(
+      uniqueBaseUrls.map((src) =>
+        recolorImage(src, colorRanges, colorHex, { hitTintRed: true }).catch(() => null)
+      )
+    );
+    hitUrls.filter(Boolean).forEach((url) => allSources.push(url));
     
     return {
       sprites: {
@@ -230,6 +244,23 @@ async function recolorPlayerSprites(playerKey, colorHex, skipRecoloring) {
       }
     })
   );
+
+  // Hit variants: same sprites with non-mawashi/headband tinted red (for isHit state)
+  // Preloading ensures no flash when player first gets hit
+  const baseUrlsForHit = [
+    ...DIRECT_SPRITESHEETS,
+    ...GAME_FIGHTER_STATIC_SPRITES,
+    ...GAME_FIGHTER_APNG_SPRITES,
+    ...Object.entries(ANIMATED_SPRITES[playerKey] || {}).filter(([name]) => !RITUAL_SPRITE_NAMES.has(name)).map(([, c]) => c?.src).filter(Boolean),
+    ...Object.values(STATIC_SPRITES[playerKey] || {}).filter(s => typeof s === "string" && !s.endsWith(".gif")),
+  ];
+  const uniqueBaseUrls = [...new Set(baseUrlsForHit)];
+  const hitUrls = await Promise.all(
+    uniqueBaseUrls.map((src) =>
+      recolorImage(src, colorRanges, colorHex, { hitTintRed: true }).catch(() => null)
+    )
+  );
+  hitUrls.filter(Boolean).forEach((url) => allSources.push(url));
 
   return {
     sprites: {

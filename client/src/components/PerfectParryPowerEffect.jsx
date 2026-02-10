@@ -82,7 +82,7 @@ const EffectContainer = styled.div.attrs((props) => ({
   },
 }))``;
 
-// Central flash - noticeable but not oversized
+// Central flash - noticeable but not oversized (yellow for perfect parry)
 const ImpactFlash = styled.div`
   position: absolute;
   width: clamp(3.5rem, 8.5vw, 8.5rem);
@@ -90,8 +90,8 @@ const ImpactFlash = styled.div`
   background: radial-gradient(
     ellipse 100% 100%,
     rgba(255, 255, 255, 0.95) 0%,
-    rgba(200, 245, 255, 0.6) 35%,
-    rgba(0, 220, 255, 0.35) 60%,
+    rgba(255, 245, 200, 0.6) 35%,
+    rgba(255, 220, 80, 0.35) 60%,
     transparent 80%
   );
   border-radius: 50%;
@@ -101,13 +101,13 @@ const ImpactFlash = styled.div`
   animation: ${impactFlash} 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 `;
 
-// Primary shockwave ring
+// Primary shockwave ring (blue/cyan to match RawParryEffect)
 const ShockwaveRingPrimary = styled.div`
   position: absolute;
   width: clamp(3rem, 7.5vw, 7.5rem);
   height: clamp(1.2rem, 3vw, 3rem);
-  border: 2px solid rgba(0, 255, 255, 0.9);
-  box-shadow: 0 0 5px rgba(0, 255, 255, 0.2);
+  border: 2px solid rgba(0, 200, 255, 0.95);
+  box-shadow: 0 0 5px rgba(0, 220, 255, 0.3);
   border-radius: 50%;
   left: 50%;
   bottom: 0;
@@ -115,12 +115,12 @@ const ShockwaveRingPrimary = styled.div`
   animation: ${ringExpandPrimary} 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 `;
 
-// Secondary shockwave ring - delayed for layered depth
+// Secondary shockwave ring - delayed for layered depth (blue/cyan)
 const ShockwaveRingSecondary = styled.div`
   position: absolute;
   width: clamp(2.75rem, 7vw, 7rem);
   height: clamp(1.1rem, 2.8vw, 2.8rem);
-  border: 1.5px solid rgba(0, 220, 255, 0.6);
+  border: 1.5px solid rgba(100, 220, 255, 0.8);
   border-radius: 50%;
   left: 50%;
   bottom: 0;
@@ -129,16 +129,16 @@ const ShockwaveRingSecondary = styled.div`
   opacity: 0;
 `;
 
-// Ground sparks - small dots that burst outward along the ground plane
+// Ground sparks - small dots that burst outward along the ground plane (yellow)
 const GroundSpark = styled.div`
   position: absolute;
   left: 50%;
   bottom: 3px;
   width: clamp(3px, 0.4vw, 6px);
   height: clamp(3px, 0.4vw, 6px);
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.95), rgba(0, 220, 255, 0.7));
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.95), rgba(255, 220, 80, 0.7));
   border-radius: 50%;
-  box-shadow: 0 0 4px rgba(0, 255, 255, 0.5);
+  box-shadow: 0 0 4px rgba(255, 215, 100, 0.5);
   opacity: 0;
   will-change: transform, opacity;
   animation: ${groundSparkBurst} 0.3s ease-out ${props => props.$delay || 0}s forwards;

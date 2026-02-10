@@ -207,10 +207,16 @@ function getSpecialPixelColor(specialMode, x, y, width, height) {
  *   Pass 1 – find the centroid (center of mass) of all matching pixels.
  *   Pass 2 – recolor, using coordinates RELATIVE to the centroid so the
  *            pattern stays locked to the body during animation.
+ *
+ * When hitTintRed is true: pixels NOT in mawashi/headband range are tinted red
+ * (preserve lightness for shading); mawashi/headband stay target color.
  */
-function processImageData(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, width, height) {
+function processImageData(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, width, height) {
   const data = imageData.data;
   const length = data.length;
+  // Hit tint: blend toward true red, slightly subtle
+  const HIT_RED_RGB = hslToRgb(0, 58, 55); // Pure red, slightly softer
+  const HIT_BLEND = 0.34; // 34% red / 66% original
 
   // --- Pass 1: centroid of matching pixels (only needed for special modes) ---
   let anchorX = 0, anchorY = 0;
@@ -272,6 +278,11 @@ function processImageData(imageData, sourceColorRange, targetHue, targetSat, tar
       data[i] = newColor.r;
       data[i + 1] = newColor.g;
       data[i + 2] = newColor.b;
+    } else if (hitTintRed) {
+      // Blend original with soft red so tint is subtle and white turns same light red as everything else
+      data[i] = Math.round((1 - HIT_BLEND) * r + HIT_BLEND * HIT_RED_RGB.r);
+      data[i + 1] = Math.round((1 - HIT_BLEND) * g + HIT_BLEND * HIT_RED_RGB.g);
+      data[i + 2] = Math.round((1 - HIT_BLEND) * b + HIT_BLEND * HIT_RED_RGB.b);
     }
   }
   
@@ -283,7 +294,7 @@ self.onmessage = function(e) {
   const { type, payload, id } = e.data;
   
   if (type === 'recolor') {
-    const { imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, width, height, specialMode } = payload;
+    const { imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, width, height, specialMode, hitTintRed } = payload;
     
     try {
       const newImageData = new ImageData(
@@ -292,7 +303,7 @@ self.onmessage = function(e) {
         height
       );
       
-      const processedData = processImageData(newImageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, width, height);
+      const processedData = processImageData(newImageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, !!hitTintRed, width, height);
       
       self.postMessage({
         type: 'recolor_complete',

@@ -869,11 +869,11 @@ const StyledImage = styled("img")
     }
   }
   
-  /* Hit impact animation - heavy sumo palm/headbutt impact with recoil */
+  /* Hit impact animation - heavy sumo palm/headbutt impact with recoil; hit tint is applied at sprite level (recolor) */
   @keyframes hitSquash {
     0% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg);
-      filter: drop-shadow(0 0 1px #000) contrast(1.2) brightness(1);
+      filter: drop-shadow(0 0 1px #000) contrast(1.2) brightness(1.15);
     }
     /* IMPACT - hard compression, bright flash */
     6% {
@@ -1663,7 +1663,8 @@ const GameFighter = ({
   
   // Function to get sprite render info (handles both static and animated sprites)
   // Returns: { src, isAnimated, config } where config contains spritesheet animation data
-  const getSpriteRenderInfo = useCallback((originalSrc) => {
+  // When isHit is true and recoloring is needed, uses hit-tinted variant (mawashi/headband unchanged, rest tinted red)
+  const getSpriteRenderInfo = useCallback((originalSrc, isHit = false) => {
     if (!originalSrc) {
       return { src: originalSrc, isAnimated: false, config: null };
     }
@@ -1674,8 +1675,9 @@ const GameFighter = ({
     
     // Determine the source to recolor (spritesheet for animated, original for static)
     const sourceToRecolor = isAnimated ? spritesheetConfig.spritesheet : originalSrc;
+    const useHitTint = isHit; // When hit, use sprite-level red tint (mawashi/headband unchanged, rest red)
     
-    if (!needsRecoloring) {
+    if (!needsRecoloring && !useHitTint) {
       return {
         src: sourceToRecolor,
         isAnimated,
@@ -1684,8 +1686,7 @@ const GameFighter = ({
     }
     
     // FIRST: Check global cache (populated by preloadSprites in Lobby)
-    // This is synchronous and avoids any flash of wrong color
-    const globalCached = getCachedRecoloredImage(sourceToRecolor, colorRanges, targetColor);
+    const globalCached = getCachedRecoloredImage(sourceToRecolor, colorRanges, targetColor, useHitTint ? { hitTintRed: true } : {});
     if (globalCached) {
       return {
         src: globalCached,
@@ -1695,7 +1696,7 @@ const GameFighter = ({
     }
     
     // Check local cache as fallback
-    const cacheKey = `${sourceToRecolor}_${targetColor}`;
+    const cacheKey = `${sourceToRecolor}_${targetColor}${useHitTint ? '_hit' : ''}`;
     if (recoloredSprites[cacheKey]) {
       return {
         src: recoloredSprites[cacheKey],
@@ -1712,7 +1713,7 @@ const GameFighter = ({
     // Start async recoloring if not already in progress (fallback for uncached sprites)
     if (!recoloringInProgress.current.has(cacheKey)) {
       recoloringInProgress.current.add(cacheKey);
-      recolorImage(sourceToRecolor, colorRanges, targetColor)
+      recolorImage(sourceToRecolor, colorRanges, targetColor, useHitTint ? { hitTintRed: true } : {})
         .then((recolored) => {
           setRecoloredSprites(prev => ({
             ...prev,
@@ -1736,8 +1737,8 @@ const GameFighter = ({
   }, [needsRecoloring, targetColor, colorRanges, recoloredSprites]);
   
   // Backwards compatible wrapper for simple recoloring (ritual spritesheets, etc.)
-  const getRecoloredSrc = useCallback((originalSrc) => {
-    return getSpriteRenderInfo(originalSrc).src;
+  const getRecoloredSrc = useCallback((originalSrc, isHit = false) => {
+    return getSpriteRenderInfo(originalSrc, isHit).src;
   }, [getSpriteRenderInfo]);
 
   // ============================================
@@ -2367,6 +2368,30 @@ const GameFighter = ({
   const shouldShowRitualForPlayer = penguin.isInRitualPhase === true;
   const ritualAnimationSrc = shouldShowRitualForPlayer ? "sprite" : null;
 
+  const trackedCounterGrabEffectPosition = useMemo(() => {
+    if (!counterGrabEffectPosition) return null;
+    if (index !== 0) return counterGrabEffectPosition;
+
+    const { grabberId, grabbedId } = counterGrabEffectPosition;
+    if (!grabberId || !grabbedId) return counterGrabEffectPosition;
+
+    const player1 = allPlayersData.player1;
+    const player2 = allPlayersData.player2;
+    if (!player1 || !player2) return counterGrabEffectPosition;
+
+    const grabbed =
+      player1.id === grabbedId ? player1 : player2.id === grabbedId ? player2 : null;
+
+    if (!grabbed) return counterGrabEffectPosition;
+
+    return {
+      ...counterGrabEffectPosition,
+      // Anchor LOCKED! directly to the currently grabbed player so it tracks them.
+      x: grabbed.x + 150,
+      y: grabbed.y,
+    };
+  }, [counterGrabEffectPosition, allPlayersData, index]);
+
   // Exact sprite source used for the main fighter image so masks always match
   const currentSpriteSrc = useMemo(() => {
     return getImageSrc(
@@ -2748,6 +2773,7 @@ const GameFighter = ({
   const lastWinnerState = useRef(false);
   const lastWinnerSoundPlay = useRef(0);
   const lastHitSoundTime = useRef(0);
+  const hitTintFramesRemaining = useRef(0); // Show hit tint for first N frames of isHit so red is visible (1 frame was too short)
   const gameMusicRef = useRef(null);
   const eeshiMusicRef = useRef(null);
 
@@ -3043,6 +3069,8 @@ const GameFighter = ({
           type: "counter_grab",
           x,
           y,
+          grabberId: data.grabberId,
+          grabbedId: data.grabbedId,
           counterId: data.counterId || `counter-grab-${Date.now()}`,
           grabberPlayerNumber: data.grabberPlayerNumber || 1,
         });
@@ -3065,6 +3093,7 @@ const GameFighter = ({
           setSnowballImpactPosition({
             x: data.x + 150,
             y: data.y + 50,
+            facing: data.facing,
             hitId: data.hitId || `snowball-${Date.now()}`,
           });
         }
@@ -3748,8 +3777,19 @@ const GameFighter = ({
     null // ritualAnimationSrc - handled separately
   );
   
-  // Get sprite render info (handles animated spritesheets and recoloring)
-  const spriteRenderInfo = getSpriteRenderInfo(displaySpriteSrc);
+  // Hit tint for first few frames of isHit only (brief red flash on impact, not whole hitstun)
+  if (penguin.isHit && !lastHitState.current) {
+    hitTintFramesRemaining.current = 10; // ~165ms at 60fps - short red flash on impact
+  }
+  if (!penguin.isHit) {
+    hitTintFramesRemaining.current = 0;
+  }
+  const showHitTintThisFrame = penguin.isHit && hitTintFramesRemaining.current > 0;
+  if (showHitTintThisFrame) {
+    hitTintFramesRemaining.current -= 1;
+  }
+  // Get sprite render info (handles animated spritesheets and recoloring; uses hit-tinted sprite when showHitTintThisFrame)
+  const spriteRenderInfo = getSpriteRenderInfo(displaySpriteSrc, showHitTintThisFrame);
   const { src: recoloredSpriteSrc, isAnimated: isAnimatedSprite, config: spriteConfig } = spriteRenderInfo;
   
   // Update animation state (will start/stop intervals as needed)
@@ -4038,7 +4078,7 @@ const GameFighter = ({
       <HitEffect position={hitEffectPosition} />
       <RawParryEffect position={rawParryEffectPosition} />
       <GrabBreakEffect position={grabBreakEffectPosition} />
-      <CounterGrabEffect position={counterGrabEffectPosition} />
+      <CounterGrabEffect position={trackedCounterGrabEffectPosition} />
       <PunishBannerEffect position={punishBannerPosition} />
       <CounterHitEffect position={counterHitEffectPosition} />
       <SnowballImpactEffect position={snowballImpactPosition} />

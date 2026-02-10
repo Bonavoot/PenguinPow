@@ -11,11 +11,17 @@ const CHARGED_SPARK_INDICES = [0, 1, 2, 3, 4, 5, 6, 7];
 const SLAP_PARTICLE_INDICES = [0, 1, 2, 3];
 const CHARGED_PARTICLE_INDICES = [0, 1, 2, 3, 4, 5];
 
+/* Fixed size (charged-hit size) so slap and charged share the same center – slap ring centered inside charged ring */
 const HitEffectContainer = styled.div`
   position: absolute;
   left: ${props => (props.$x / 1280) * 100 + (props.$facing === 1 ? -5 : -3)}%;
   bottom: ${props => (props.$y / 720) * 100 - 6}%;
+  width: clamp(2rem, 5vw, 4rem);
+  height: clamp(2rem, 5vw, 4rem);
   transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   z-index: 100;
   pointer-events: none;
 `;

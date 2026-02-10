@@ -133,6 +133,7 @@
   width: clamp(1.9rem, 4.8vw, 3.75rem);
   height: clamp(1.9rem, 4.8vw, 3.75rem);
   --slap-ring-tilt: 55deg;
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.22)) drop-shadow(0 0 4px rgba(0, 0, 0, 0.12));
 }
 
 /* Squash oval - brief flat-impact shape suggesting a slap */
@@ -182,6 +183,7 @@
     rgba(255, 160, 50, 0.7) 55%,
     transparent 100%);
   border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
   transform: translate(-50%, -50%) rotateY(var(--slap-ring-tilt-signed, var(--slap-ring-tilt))) scale(0);
   animation: slapCoreFlash 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
@@ -194,7 +196,7 @@
   width: 100%;
   height: 100%;
   border: 2.5px solid rgba(255, 165, 65, 0.9);
-  box-shadow: 0 0 6px rgba(255, 150, 55, 0.45), 0 0 12px rgba(255, 95, 40, 0.18);
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.2), 0 0 6px rgba(255, 150, 55, 0.45), 0 0 12px rgba(255, 95, 40, 0.18);
   border-radius: 50%;
   transform: translate(-50%, -50%) rotateY(var(--slap-ring-tilt-signed, var(--slap-ring-tilt))) scale(0.15);
   animation: slapRingExpand 0.24s cubic-bezier(0.22, 1, 0.36, 1) forwards;
@@ -319,6 +321,7 @@
   height: clamp(2rem, 5vw, 4rem);
   /* Faux-3D: recede toward background by compressing width */
   --charged-ring-tilt: 55deg;
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.22)) drop-shadow(0 0 5px rgba(0, 0, 0, 0.12));
 }
 
 /* Impact cross - dramatic cross-shaped energy burst */
@@ -375,6 +378,7 @@
     rgba(255, 100, 40, 0.4) 70%,
     transparent 100%);
   border-radius: 50%;
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.18);
   transform: translate(-50%, -50%) rotateY(var(--charged-ring-tilt-signed, var(--charged-ring-tilt))) scale(0);
   animation: chargedCoreFlash 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
@@ -388,7 +392,7 @@
   width: 100%;
   height: 100%;
   border: 3px solid rgba(255, 160, 50, 0.9);
-  box-shadow: 0 0 8px rgba(255, 140, 50, 0.5), 0 0 16px rgba(255, 90, 30, 0.2);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.2), 0 0 8px rgba(255, 140, 50, 0.5), 0 0 16px rgba(255, 90, 30, 0.2);
   border-radius: 50%;
   transform: translate(-50%, -50%) rotateY(var(--charged-ring-tilt-signed, var(--charged-ring-tilt))) scale(0.15);
   animation: chargedRingExpand 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards;
@@ -400,7 +404,7 @@
   width: clamp(2rem, 5vw, 4rem);
   height: clamp(2rem, 5vw, 4rem);
   border: 2px solid rgba(255, 180, 60, 0.7);
-  box-shadow: 0 0 6px rgba(255, 140, 50, 0.35);
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.18), 0 0 6px rgba(255, 140, 50, 0.35);
   animation: chargedSecondaryRing 0.42s cubic-bezier(0.22, 1, 0.36, 1) 0.06s forwards;
 }
 

@@ -41,7 +41,7 @@
   animation: rawParryInnerBurst 0.25s ease-out forwards;
 }
 
-/* Wrapper for additional pseudo-elements */
+/* Wrapper for additional pseudo-elements; same layout for regular and perfect */
 .raw-parry-ring-wrapper {
   position: relative;
   display: flex;
@@ -150,13 +150,13 @@
    speed lines and impact cross
    ============================================ */
 
-/* Tier 1 (LARGE) - bigger than regular for dramatic weight */
+/* Tier 1 (LARGE) - same design as regular, ~1.8x size */
 .raw-parry-ring.perfect {
-  width: clamp(2.4rem, 6vw, 4.8rem);
-  height: clamp(2.2rem, 5.5vw, 4.4rem);
+  width: clamp(4.2rem, 10.5vw, 8.4rem);
+  height: clamp(3.9rem, 9.8vw, 7.8rem);
 }
 
-/* Primary shockwave ring - snappy expansion */
+/* Main impact ring - blue/cyan for perfect, larger size; fill with transparent blue (same shape, same tilt) */
 .raw-parry-ring.perfect::before {
   content: '';
   position: absolute;
@@ -164,263 +164,90 @@
   left: 50%;
   width: 100%;
   height: 100%;
-  border: 1.5px solid rgba(0, 255, 255, 0.95);
-  background: radial-gradient(circle,
-    rgba(235, 255, 255, 0.92) 0%,
-    rgba(120, 255, 255, 0.62) 38%,
-    rgba(0, 235, 255, 0.42) 65%,
-    rgba(0, 180, 255, 0.1) 100%);
+  background: rgba(0, 220, 255, 0.22);
+  border: 3px solid rgba(0, 200, 255, 0.95);
   border-radius: 50%;
-  box-shadow: 0 0 6px rgba(0, 255, 255, 0.3);
-  transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(0);
-  animation: perfectShockwavePrimary 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(0.5);
+  animation: rawParryMainRing 0.4s ease-out forwards;
 }
 
-/* Core flash - white center to cyan to gold hint, with hitlag hold */
+/* Perfect parry inner flash: white-hot core, sharp cyan ring, decisive "perfect timing" */
 .raw-parry-ring.perfect::after {
   content: '';
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 62%;
-  height: 62%;
+  width: 55%;
+  height: 55%;
   background: radial-gradient(circle,
     rgba(255, 255, 255, 1) 0%,
-    rgba(210, 255, 255, 0.95) 18%,
-    rgba(0, 255, 255, 0.82) 52%,
-    transparent 86%);
+    rgba(255, 255, 255, 0.98) 6%,
+    rgba(200, 245, 255, 0.95) 14%,
+    rgba(0, 230, 255, 0.85) 22%,
+    rgba(0, 210, 255, 0.5) 35%,
+    rgba(0, 200, 255, 0.2) 50%,
+    transparent 68%);
   border-radius: 50%;
   transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(0);
-  animation: perfectCoreFlash 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  animation: rawParryPerfectInnerBurst 0.32s ease-out forwards;
 }
 
-/* Secondary shockwave ring - delayed, expands further for layered depth */
+/* Second shockwave ring - cyan (like regular), larger size */
 .raw-parry-ring-wrapper.perfect::before {
   content: '';
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(2.4rem, 6vw, 4.8rem);
-  height: clamp(2.2rem, 5.5vw, 4.4rem);
-  border: 1px solid rgba(0, 255, 255, 0.7);
+  width: clamp(4.2rem, 10.5vw, 8.4rem);
+  height: clamp(3.9rem, 9.8vw, 7.8rem);
+  border: 2px solid rgba(100, 220, 255, 0.85);
   border-radius: 50%;
-  box-shadow: 0 0 5px rgba(0, 255, 255, 0.15);
-  transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(0);
-  animation: perfectShockwaveSecondary 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.07s forwards;
+  transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(0.3);
+  animation: rawParryOuterRing 0.45s ease-out 0.03s forwards;
   pointer-events: none;
 }
 
-/* Impact cross - cyan cross-shaped energy burst */
+/* Perfect parry impact: unified cyan star burst – 4 lines, white core, no rotation */
 .raw-parry-ring-wrapper.perfect::after {
   content: '';
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(2.4rem, 6vw, 4.8rem);
-  height: clamp(2.2rem, 5.5vw, 4.4rem);
+  width: clamp(4.2rem, 10.5vw, 8.4rem);
+  height: clamp(3.9rem, 9.8vw, 7.8rem);
   background:
-    linear-gradient(0deg,
-      transparent 40%,
-      rgba(0, 255, 255, 0.6) 46%,
-      rgba(255, 255, 255, 0.7) 49%,
-      rgba(255, 255, 255, 0.7) 51%,
-      rgba(0, 255, 255, 0.6) 54%,
-      transparent 60%),
-    linear-gradient(90deg,
-      transparent 40%,
-      rgba(0, 255, 255, 0.6) 46%,
-      rgba(255, 255, 255, 0.7) 49%,
-      rgba(255, 255, 255, 0.7) 51%,
-      rgba(0, 255, 255, 0.6) 54%,
-      transparent 60%);
-  transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(0) rotate(0deg);
-  animation: perfectImpactCross 0.32s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    linear-gradient(0deg, transparent 45%, rgba(0, 235, 255, 0.5) 48%, rgba(255, 255, 255, 0.95) 50%, rgba(0, 235, 255, 0.5) 52%, transparent 55%),
+    linear-gradient(90deg, transparent 45%, rgba(0, 235, 255, 0.5) 48%, rgba(255, 255, 255, 0.95) 50%, rgba(0, 235, 255, 0.5) 52%, transparent 55%),
+    linear-gradient(45deg, transparent 45%, rgba(0, 235, 255, 0.45) 48%, rgba(255, 255, 255, 0.9) 50%, rgba(0, 235, 255, 0.45) 52%, transparent 55%),
+    linear-gradient(-45deg, transparent 45%, rgba(0, 235, 255, 0.45) 48%, rgba(255, 255, 255, 0.9) 50%, rgba(0, 235, 255, 0.45) 52%, transparent 55%);
+  transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(0);
+  animation: rawParryPerfectImpact 0.3s ease-out forwards;
   pointer-events: none;
   z-index: 11;
 }
 
-/* ============================================
-   PERFECT PARRY - Radial Speed Lines
-   Manga-style impact streaks, 8 lines
-   ============================================ */
-
+/* Perfect parry uses same design as regular (no speed lines) */
 .perfect-speed-lines {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 100%;
-  height: 100%;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-  z-index: 12;
+  display: none;
 }
 
-.perfect-speed-line {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: clamp(2px, 0.22vw, 3.5px);
-  height: clamp(10px, 1.5vw, 18px);
-  background: linear-gradient(to top,
-    transparent 0%,
-    rgba(0, 255, 255, 0.9) 30%,
-    rgba(255, 255, 255, 1) 100%);
-  border-radius: 1px;
-  opacity: 0;
-  animation: perfectSpeedLine 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+/* Perfect parry – unified cyan/white sparks and particles (premium, decisive) */
+.raw-parry-ring-wrapper.perfect .spark {
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.6), 0 0 12px rgba(0, 220, 255, 0.5);
 }
-
-.perfect-speed-line:nth-child(1) { --angle: -5deg; animation-delay: 0s; }
-.perfect-speed-line:nth-child(2) { --angle: 40deg; animation-delay: 0.018s; }
-.perfect-speed-line:nth-child(3) { --angle: 85deg; animation-delay: 0.008s; }
-.perfect-speed-line:nth-child(4) { --angle: 130deg; animation-delay: 0.025s; }
-.perfect-speed-line:nth-child(5) { --angle: 175deg; animation-delay: 0.012s; }
-.perfect-speed-line:nth-child(6) { --angle: 220deg; animation-delay: 0.02s; }
-.perfect-speed-line:nth-child(7) { --angle: 265deg; animation-delay: 0.005s; }
-.perfect-speed-line:nth-child(8) { --angle: 310deg; animation-delay: 0.015s; }
-
-/* ============================================
-   PERFECT PARRY KEYFRAMES
-   ============================================ */
-
-/* Primary shockwave - snappy bounce, expands to 3.5x */
-@keyframes perfectShockwavePrimary {
-  0% {
-    transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(0);
-    opacity: 1;
-  }
-  30% {
-    transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(1.8);
-    opacity: 1;
-  }
-  60% {
-    opacity: 0.8;
-  }
-  100% {
-    transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(3.5);
-    opacity: 0;
-  }
+.raw-parry-ring-wrapper.perfect .spark:nth-child(odd) {
+  background: linear-gradient(135deg, #fff 0%, rgba(200, 250, 255, 0.95) 50%, #00D4FF 100%) !important;
 }
-
-/* Core flash - bright with brief hitlag hold at peak */
-@keyframes perfectCoreFlash {
-  0% {
-    transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(0);
-    opacity: 1;
-  }
-  25% {
-    transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(2.2);
-    opacity: 1;
-  }
-  /* Brief hold - simulates hitlag weight */
-  45% {
-    transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(2);
-    opacity: 0.95;
-  }
-  100% {
-    transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(2.8);
-    opacity: 0;
-  }
+.raw-parry-ring-wrapper.perfect .spark:nth-child(even) {
+  background: linear-gradient(135deg, #E0FFFF 0%, #00BFFF 100%) !important;
 }
-
-/* Secondary shockwave - delayed, expands further */
-@keyframes perfectShockwaveSecondary {
-  0% {
-    transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(0);
-    opacity: 0.8;
-  }
-  35% {
-    opacity: 0.6;
-  }
-  100% {
-    transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(3.8);
-    opacity: 0;
-  }
+.raw-parry-ring-wrapper.perfect .particle:nth-child(odd) {
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 20%, rgba(0, 230, 255, 0.8) 100%) !important;
+  box-shadow: 0 0 4px rgba(0, 235, 255, 0.7);
 }
-
-/* Impact cross - scales up with rotation */
-@keyframes perfectImpactCross {
-  0% {
-    transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(0.3) rotate(0deg);
-    opacity: 0.95;
-  }
-  30% {
-    transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(1.3) rotate(10deg);
-    opacity: 0.9;
-  }
-  100% {
-    transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(2.5) rotate(20deg);
-    opacity: 0;
-  }
-}
-
-/* Speed lines - radiate outward from center */
-@keyframes perfectSpeedLine {
-  0% {
-    opacity: 1;
-    transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-0.6vw) scaleY(0.3);
-  }
-  30% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-3.5vw) scaleY(1.2);
-  }
-}
-
-/* ============================================
-   PERFECT PARRY - Spark Overrides
-   Brighter, fly further, cyan glow
-   ============================================ */
-
-.perfect .spark {
-  box-shadow: 0 0 6px rgba(0, 255, 255, 0.8), 0 0 12px rgba(0, 200, 255, 0.3);
-}
-
-/* Perfect sparks fly 50% further */
-.perfect .spark:nth-child(1) { --dx: 2.7vw; --dy: -0.7vw; }
-.perfect .spark:nth-child(2) { --dx: 2vw; --dy: -2vw; animation-delay: 0.015s; }
-.perfect .spark:nth-child(3) { --dx: 0.7vw; --dy: -2.7vw; animation-delay: 0.01s; }
-.perfect .spark:nth-child(4) { --dx: -0.7vw; --dy: -2.7vw; animation-delay: 0.02s; }
-.perfect .spark:nth-child(5) { --dx: -2vw; --dy: -2vw; }
-.perfect .spark:nth-child(6) { --dx: -2.7vw; --dy: 0.7vw; animation-delay: 0.015s; }
-.perfect .spark:nth-child(7) { --dx: 2vw; --dy: 2vw; animation-delay: 0.01s; }
-.perfect .spark:nth-child(8) { --dx: -2vw; --dy: 2vw; animation-delay: 0.02s; }
-
-/* ============================================
-   PERFECT PARRY - Particle Overrides
-   Brighter cyan, slightly larger travel
-   ============================================ */
-
-.perfect .particle {
-  background: radial-gradient(circle, #00FFFF, #00BFFF);
-  width: 0.3vw;
-  height: 0.3vw;
-}
-
-.perfect .particle:nth-child(1) {
-  animation: rawParryParticleScatter 0.25s ease-out 0.03s forwards;
-  --dx: -1vw;
-  --dy: -1.2vw;
-}
-
-.perfect .particle:nth-child(2) {
-  animation: rawParryParticleScatter 0.25s ease-out 0.05s forwards;
-  --dx: 1.2vw;
-  --dy: -0.8vw;
-}
-
-.perfect .particle:nth-child(3) {
-  animation: rawParryParticleScatter 0.25s ease-out 0.02s forwards;
-  --dx: -0.8vw;
-  --dy: 1vw;
-}
-
-.perfect .particle:nth-child(4) {
-  animation: rawParryParticleScatter 0.25s ease-out 0.04s forwards;
-  --dx: 0.8vw;
-  --dy: 1.2vw;
+.raw-parry-ring-wrapper.perfect .particle:nth-child(even) {
+  background: radial-gradient(circle, #B8F0FF 25%, rgba(0, 200, 255, 0.85) 100%) !important;
+  box-shadow: 0 0 4px rgba(0, 220, 255, 0.6);
 }
 
 /* ============================================
@@ -597,6 +424,43 @@
     opacity: 0;
   }
 }
+
+/* Perfect parry: snappier inner flash – quick pop, brief hold, then expand out */
+@keyframes rawParryPerfectInnerBurst {
+  0% {
+    transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(0);
+    opacity: 1;
+  }
+  18% {
+    transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(1.15);
+    opacity: 1;
+  }
+  40% {
+    transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(1.7);
+    opacity: 0;
+  }
+}
+
+/* Perfect parry impact: scale out only, no rotation – clean star burst */
+@keyframes rawParryPerfectImpact {
+  0% {
+    transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(0);
+    opacity: 1;
+  }
+  25% {
+    transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(1.6);
+    opacity: 0;
+  }
+}
+
 
 @keyframes rawParryOuterRingPerfect {
   0% {

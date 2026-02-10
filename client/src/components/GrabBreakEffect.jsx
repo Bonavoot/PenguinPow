@@ -75,12 +75,20 @@ const textPop = keyframes`
   }
 `;
 
+const EFFECT_TEXT_BASELINE_OFFSET_Y = -2;
+const EFFECT_CENTER_OFFSET_X = -2;
+
 
 const EffectContainer = styled.div`
   position: absolute;
-  left: ${props => (props.$x / 1280) * 100 - 2.5}%;
-  bottom: ${props => (props.$y / 720) * 100 + 14}%;
+  left: ${props => (props.$x / 1280) * 100 + EFFECT_CENTER_OFFSET_X}%;
+  bottom: ${props => (props.$y / 720) * 100 + EFFECT_TEXT_BASELINE_OFFSET_Y}%;
+  width: clamp(4.2rem, 10.5vw, 8.4rem);
+  height: clamp(3.9rem, 9.8vw, 7.8rem);
   transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   z-index: 150;
   pointer-events: none;
   contain: layout style;

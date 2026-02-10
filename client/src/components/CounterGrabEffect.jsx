@@ -75,12 +75,20 @@ const textPop = keyframes`
   }
 `;
 
+const EFFECT_TEXT_BASELINE_OFFSET_Y = 0;
+const EFFECT_CENTER_OFFSET_X = -3;
+
 
 const EffectContainer = styled.div`
   position: absolute;
-  left: ${props => (props.$x / 1280) * 100 - 4}%;
-  bottom: ${props => (props.$y / 720) * 100 + 14}%;
+  left: ${props => (props.$x / 1280) * 100 + EFFECT_CENTER_OFFSET_X}%;
+  bottom: ${props => (props.$y / 720) * 100 + EFFECT_TEXT_BASELINE_OFFSET_Y}%;
+  width: clamp(4.2rem, 10.5vw, 8.4rem);
+  height: clamp(3.9rem, 9.8vw, 7.8rem);
   transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   z-index: 150;
   pointer-events: none;
   contain: layout style;
@@ -188,6 +196,20 @@ const CounterGrabEffect = ({ position }) => {
     if (!position || !position.counterId) return;
 
     if (processedCountersRef.current.has(position.counterId)) {
+      // Keep existing effect instance but update its live anchor position.
+      setActiveEffects((prev) =>
+        prev.map((effect) =>
+          effect.counterId === position.counterId
+            ? {
+                ...effect,
+                x: position.x,
+                y: position.y,
+                grabberPlayerNumber:
+                  position.grabberPlayerNumber || effect.grabberPlayerNumber,
+              }
+            : effect
+        )
+      );
       return;
     }
 
@@ -196,6 +218,7 @@ const CounterGrabEffect = ({ position }) => {
 
     const newEffect = {
       id: effectId,
+      counterId: position.counterId,
       x: position.x,
       y: position.y,
       sparks: generateSparks(),
@@ -206,7 +229,8 @@ const CounterGrabEffect = ({ position }) => {
 
     setTimeout(() => {
       setActiveEffects((prev) => prev.filter((e) => e.id !== effectId));
-      processedCountersRef.current.delete(position.counterId);
+      // Keep this counterId marked as processed so ongoing position updates
+      // for the same event cannot re-trigger the effect in a loop.
     }, EFFECT_DURATION);
   }, [position?.counterId, position?.x, position?.y, position?.grabberPlayerNumber]);
 
