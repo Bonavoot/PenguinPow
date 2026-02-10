@@ -444,6 +444,8 @@ const getImageSrc = (
   if (isHit) return hit;
   if (isAtTheRopes) return atTheRopes;
   if (isBowing) return bow;
+  // Power sliding (C/CTRL): check before recovery/attack so slide always shows crouch stance
+  if (isPowerSliding) return crouchStance;
   if (isRecovering) return recovering;
   if (isThrowingSnowball) return snowballThrow;
   if (isSpawningPumoArmy) return pumoArmy;
@@ -453,8 +455,6 @@ const getImageSrc = (
   if (isDodging) return dodging;
   if (isJumping) return throwing;
   if (isAttacking && !isSlapAttack) return attack;
-  // Power sliding (C/CTRL): show crouch-stance image as placeholder animation
-  if (isPowerSliding) return crouchStance;
   if (isCrouchStrafing) return crouchStrafingApng;
   if (isCrouchStance) return crouchStance;
   // Show attempting grab throw animation
@@ -781,13 +781,12 @@ const StyledImage = styled("img")
         : props.$isDodging
         ? "dodgeTakeoff 0.2s cubic-bezier(0.25, 0.1, 0.25, 1) forwards"
         : // ICE PHYSICS: Movement animations take priority over charging
-        // Power slide animation (C/CTRL) - uses crouch-stance sprite
+        // Power slide animation (C/CTRL) - always show when power sliding (even after charged attack/recovery)
         props.$isPowerSliding && 
           !props.$isBeingGrabbed && 
           !props.$isBeingThrown && 
           !props.$isThrowing &&
           !props.$isGrabbing &&
-          !props.$isRecovering &&
           !props.$isDead
         ? "powerSlide 0.15s ease-in-out infinite"
         : // ICE PHYSICS: Braking animation when digging in to stop - shows during charging
@@ -1193,7 +1192,7 @@ const AnimatedFighterContainer = styled.div
   .withConfig({
     shouldForwardProp: (prop) =>
       !["x", "y", "facing", "fighter", "isThrowing", "isDodging", "isGrabbing", 
-        "isRingOutThrowCutscene", "isAtTheRopes", "isHit"].includes(prop),
+        "isRingOutThrowCutscene", "isAtTheRopes", "isHit", "isRawParryStun"].includes(prop),
   })
   .attrs((props) => ({
     style: {
@@ -1206,8 +1205,8 @@ const AnimatedFighterContainer = styled.div
       bottom: `${(props.$y / 720) * 100}%`,
       "--facing": props.$facing === 1 ? "1" : "-1",
       transform: props.$facing === 1
-        ? "scaleX(1)"
-        : "scaleX(-1)",
+        ? `scaleX(${props.$isRawParryStun ? 1.08 : 1})`
+        : `scaleX(${props.$isRawParryStun ? -1.08 : -1})`,
       overflow: "hidden",
       zIndex: isOutsideDohyo(props.$x, props.$y) ? 0 : // Behind dohyo overlay when outside
         props.$isThrowing || props.$isDodging || props.$isGrabbing ? 98 : 99,
@@ -2971,7 +2970,8 @@ const GameFighter = ({
           timestamp: data.timestamp, // Pass through unique timestamp
           hitId: data.hitId, // Pass through unique hit ID
           attackType: data.attackType || 'slap', // Pass attack type for distinct effects
-          isCounterHit: data.isCounterHit || false, // Counter hit for orange effect
+          isCounterHit: data.isCounterHit || false, // Counter hit for yellow effect
+          isPunish: data.isPunish || false, // Punish for purple effect
         });
       }
     });
@@ -3890,6 +3890,7 @@ const GameFighter = ({
           $isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
           $isAtTheRopes={penguin.isAtTheRopes}
           $isHit={penguin.isHit}
+          $isRawParryStun={penguin.isRawParryStun}
         >
           <AnimatedFighterImage
             key={recoloredSpriteSrc} // Force animation restart when sprite changes

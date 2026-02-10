@@ -141,7 +141,7 @@ const BLUE_ANIMATED_SPRITES = {
     frameCount: 7,
     frameWidth: 480,
     frameHeight: 480,
-    fps: 14,
+    fps: 15,
   },
   // Ritual animation spritesheets (need to be preloaded with player colors)
   ritualPart1: {

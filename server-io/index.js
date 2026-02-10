@@ -4677,6 +4677,15 @@ io.on("connection", (socket) => {
       player.isHit = true;
       player.lastHitTime = currentTime; // Track hit time for safety mechanism
 
+      // Side-switch fix: set parried player's facing to face the parrier immediately so is_perfect_parried
+      // (and parry stun) plays the correct direction from frame one. When the parrier dodged through and
+      // is "inside" them, the main loop only updates the non-hit player's facing so the parried player
+      // would otherwise correct later and the animation would flip. Use "face parrier" (not face knockback)
+      // so it's correct both when sides switched and when they didn't.
+      if (!player.isAtTheRopes && !player.atTheRopesFacingDirection) {
+        player.facing = player.x < otherPlayer.x ? -1 : 1; // Face the parrier (right = -1, left = 1)
+      }
+
       // Set parry success state for the defending player
       if (isPerfectParry) {
         // Perfect parry: keep isRawParrying active and lock movement
@@ -5073,7 +5082,8 @@ io.on("connection", (socket) => {
             attackType: isSlapAttack ? "slap" : "charged",
             timestamp: Date.now(), // Add unique timestamp to ensure effect triggers every time
             hitId: Math.random().toString(36).substr(2, 9), // Add unique ID for guaranteed uniqueness
-            isCounterHit: isCounterHit, // Counter hit for orange effect
+            isCounterHit: isCounterHit, // Counter hit for yellow/gold effect
+            isPunish: isPunish, // Punish for purple effect (hit during recovery)
           });
 
           // Emit counter hit banner event (separate from hit effect for side banner display)

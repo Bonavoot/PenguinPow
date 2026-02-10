@@ -13,7 +13,7 @@ const CHARGED_PARTICLE_INDICES = [0, 1, 2, 3, 4, 5];
 
 const HitEffectContainer = styled.div`
   position: absolute;
-  left: ${props => (props.$x / 1280) * 100 + (props.$facing === 1 ? -4 : -4)}%;
+  left: ${props => (props.$x / 1280) * 100 + (props.$facing === 1 ? -6 : -2)}%;
   bottom: ${props => (props.$y / 720) * 100 - 5}%;
   transform: translate(-50%, -50%);
   z-index: 100;
@@ -42,6 +42,7 @@ const HitEffect = ({ position }) => {
     const effectId = ++effectIdCounter.current;
     const attackType = position.attackType || 'slap';
     const isCounterHit = position.isCounterHit || false;
+    const isPunish = position.isPunish || false;
 
     const newEffect = {
       id: effectId,
@@ -50,6 +51,7 @@ const HitEffect = ({ position }) => {
       facing: position.facing || 1,
       attackType,
       isCounterHit,
+      isPunish,
     };
 
     setActiveEffects((prev) => [...prev, newEffect]);
@@ -59,7 +61,7 @@ const HitEffect = ({ position }) => {
       setActiveEffects((prev) => prev.filter((e) => e.id !== effectId));
       processedHitsRef.current.delete(hitIdentifier);
     }, duration);
-  }, [hitIdentifier, position?.x, position?.y, position?.facing, position?.attackType, position?.isCounterHit]);
+  }, [hitIdentifier, position?.x, position?.y, position?.facing, position?.attackType, position?.isCounterHit, position?.isPunish]);
 
   useEffect(() => {
     return () => setActiveEffects([]);
@@ -71,6 +73,7 @@ const HitEffect = ({ position }) => {
         const isCharged = effect.attackType === 'charged';
         const hitTypeClass = isCharged ? 'charged-hit' : 'slap-hit';
         const counterHitClass = effect.isCounterHit ? 'counter-hit' : '';
+        const punishHitClass = effect.isPunish ? 'punish-hit' : '';
         
         const lineIndices = isCharged ? CHARGED_LINE_INDICES : SLAP_LINE_INDICES;
         const sparkIndices = isCharged ? CHARGED_SPARK_INDICES : SLAP_SPARK_INDICES;
@@ -83,7 +86,7 @@ const HitEffect = ({ position }) => {
             $y={effect.y}
             $facing={effect.facing}
           >
-            <div className={`hit-ring-wrapper ${hitTypeClass} ${counterHitClass}`}>
+            <div className={`hit-ring-wrapper ${hitTypeClass} ${counterHitClass} ${punishHitClass}`}>
               {/* Core flash + expanding ring */}
               <div className="hit-ring" />
               {/* Secondary shockwave (visible for charged, hidden for slap via CSS) */}
@@ -123,6 +126,7 @@ HitEffect.propTypes = {
     hitId: PropTypes.string,
     timestamp: PropTypes.number,
     isCounterHit: PropTypes.bool,
+    isPunish: PropTypes.bool,
   }),
 };
 

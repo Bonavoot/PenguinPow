@@ -104,7 +104,7 @@ export const SPRITESHEET_CONFIG_BY_NAME = {
     frameCount: 7,
     frameWidth: 480,
     frameHeight: 480,
-    fps: 14,
+    fps: 15,
     loop: true,
   },
 };

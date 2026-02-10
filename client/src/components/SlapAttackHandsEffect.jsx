@@ -71,7 +71,7 @@ const streakLeft = keyframes`
 const HandsContainer = styled.div.attrs((props) => ({
   style: {
     position: "absolute",
-    left: `${(props.$x / 1280) * 100 + (props.$facing === -1 ? 17 : -8)}%`,
+    left: `${(props.$x / 1280) * 100 + (props.$facing === -1 ? 16 : -7)}%`,
     bottom: `${(props.$y / 720) * 100 + 22}%`,
     pointerEvents: "none",
     zIndex: 150, // Above the player
