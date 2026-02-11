@@ -602,7 +602,7 @@ const TintedImage = styled.img
   }))``;
 
 const getFighterPopFilter = (props) => {
-  const base = "drop-shadow(0 0 1px #000) drop-shadow(0 0 3px rgba(255, 255, 255, 0.18))";
+  const base = "drop-shadow(0 0 1px #000)";
 
   if (props.$isAtTheRopes) {
     return `${base} drop-shadow(0 0 8px rgba(255, 50, 50, 0.7)) brightness(1.15) contrast(1.25)`;
@@ -624,31 +624,6 @@ const getFighterPopFilter = (props) => {
   }
   return `${base} contrast(1.2)`;
 };
-
-const PlayerFocusAura = styled.div
-  .withConfig({
-    shouldForwardProp: (prop) =>
-      !["$x", "$y", "$facing", "$playerIndex", "$isActionState"].includes(prop),
-  })
-  .attrs((props) => ({
-    style: {
-      position: "absolute",
-      left: `${(props.$x / 1280) * 100}%`,
-      bottom: `${(props.$y / 720) * 100 - 2}%`,
-      transform: props.$facing === 1 ? "translateX(-52%)" : "translateX(-48%)",
-      width: "min(20.4%, 620px)",
-      height: "min(10%, 190px)",
-      borderRadius: "50%",
-      background:
-        props.$playerIndex === 0
-          ? "radial-gradient(ellipse at center, rgba(55, 235, 255, 0.2) 0%, rgba(55, 235, 255, 0.1) 42%, rgba(0, 0, 0, 0) 76%)"
-          : "radial-gradient(ellipse at center, rgba(255, 130, 120, 0.2) 0%, rgba(255, 130, 120, 0.1) 42%, rgba(0, 0, 0, 0) 76%)",
-      opacity: props.$isActionState ? 0.58 : 0.42,
-      zIndex: isOutsideDohyo(props.$x, props.$y) ? 0 : 97,
-      pointerEvents: "none",
-      mixBlendMode: "screen",
-    },
-  }))``;
 
 const StyledImage = styled("img")
   .withConfig({
@@ -3906,20 +3881,6 @@ const GameFighter = ({
         alt="Salt Basket"
         $index={index}
         $isVisible={true}
-      />
-      <PlayerFocusAura
-        $x={displayPosition.x}
-        $y={displayPosition.y}
-        $facing={penguin.facing}
-        $playerIndex={index}
-        $isActionState={
-          displayPenguin.isAttacking ||
-          displayPenguin.isSlapAttack ||
-          displayPenguin.isChargingAttack ||
-          displayPenguin.isRawParrying ||
-          penguin.isGrabBreaking ||
-          penguin.isHit
-        }
       />
       <PlayerShadow
         x={displayPosition.x}

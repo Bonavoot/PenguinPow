@@ -5,7 +5,7 @@ body {
   overflow: hidden;
   margin: 0;
   color: white;
-  background-color: #121213;
+  background-color: #060607;
 }
 
 /* Startup Screen Styles */
@@ -345,7 +345,7 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  background: #121213;
+  background: #060607;
   overflow: hidden;
 }
 
@@ -360,19 +360,19 @@ body {
   overflow: hidden;
   z-index: 99;
   /* Slight lift so an overlay with low zIndex remains behind sprites */
-  --arena-map-filter: brightness(1) saturate(1.03) contrast(1.06);
-  --arena-ambient-top: rgba(255, 244, 214, 0.1);
-  --arena-ambient-bottom: rgba(190, 230, 255, 0.07);
-  --arena-tone-center: rgba(255, 236, 160, 0.08);
-  --arena-tone-center-mid: rgba(255, 236, 160, 0.03);
-  --arena-tone-edge: rgba(20, 28, 58, 0.05);
-  --arena-tone-top: rgba(26, 36, 66, 0.07);
-  --arena-tone-mid: rgba(18, 26, 52, 0.03);
-  --arena-tone-bottom: rgba(14, 21, 40, 0.08);
-  --arena-vignette-mid: rgba(0, 0, 0, 0.07);
-  --arena-vignette-edge: rgba(0, 0, 0, 0.18);
-  --arena-grain-light: rgba(255, 255, 255, 0.01);
-  --arena-grain-dark: rgba(0, 0, 0, 0.01);
+  --arena-map-filter: brightness(0.9) saturate(0.96) contrast(1.04);
+  --arena-ambient-top: rgba(0, 0, 0, 0.14);
+  --arena-ambient-bottom: rgba(0, 0, 0, 0.24);
+  --arena-tone-center: rgba(255, 230, 155, 0.045);
+  --arena-tone-center-mid: rgba(255, 230, 155, 0.015);
+  --arena-tone-edge: rgba(0, 0, 0, 0.14);
+  --arena-tone-top: rgba(0, 0, 0, 0.09);
+  --arena-tone-mid: rgba(0, 0, 0, 0.05);
+  --arena-tone-bottom: rgba(0, 0, 0, 0.16);
+  --arena-vignette-mid: rgba(0, 0, 0, 0.12);
+  --arena-vignette-edge: rgba(0, 0, 0, 0.3);
+  --arena-grain-light: rgba(255, 255, 255, 0.007);
+  --arena-grain-dark: rgba(0, 0, 0, 0.014);
 }
 
 .game-container::before {
