@@ -75,7 +75,7 @@ const textPop = keyframes`
   }
 `;
 
-const EFFECT_TEXT_BASELINE_OFFSET_Y = -2;
+const EFFECT_TEXT_BASELINE_OFFSET_Y = 0;
 const EFFECT_CENTER_OFFSET_X = -2;
 
 
@@ -89,13 +89,17 @@ const EffectContainer = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 150;
+  z-index: 170;
   pointer-events: none;
   contain: layout style;
+  filter:
+    saturate(1.12)
+    brightness(1.08)
+    drop-shadow(0 0 4px rgba(0, 255, 136, 0.25));
 `;
 
-/* Hit effect radius tier 1 (LARGE): punish, perfect parry, grab break, charged attack */
-const HIT_RADIUS_LARGE = "clamp(2rem, 5vw, 4rem)";
+/* Slightly larger radius so grab break reads clearer in motion */
+const HIT_RADIUS_LARGE = "clamp(2.25rem, 5.6vw, 4.4rem)";
 
 const ShockwaveRing = styled.div`
   position: absolute;
@@ -104,8 +108,11 @@ const ShockwaveRing = styled.div`
   width: ${HIT_RADIUS_LARGE};
   height: ${HIT_RADIUS_LARGE};
   border-radius: 50%;
-  border: 5px solid #00ff88;
-  box-shadow: 0 0 14px rgba(0, 255, 136, 0.5), 0 0 28px rgba(0, 255, 136, 0.25);
+  border: 5px solid rgba(40, 255, 165, 0.98);
+  box-shadow:
+    0 0 16px rgba(0, 255, 136, 0.65),
+    0 0 30px rgba(0, 255, 136, 0.35),
+    0 0 44px rgba(0, 210, 130, 0.2);
   transform: translate(-50%, -50%) scale(0);
   animation: ${shockwaveExpand} 0.4s ease-out forwards;
 `;
@@ -114,10 +121,16 @@ const InnerFlash = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(1.35rem, 3.2vw, 2.75rem);
-  height: clamp(1.35rem, 3.2vw, 2.75rem);
+  width: clamp(1.55rem, 3.8vw, 3.1rem);
+  height: clamp(1.55rem, 3.8vw, 3.1rem);
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 1) 0%, rgba(0, 255, 136, 0.8) 50%, transparent 100%);
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(185, 255, 225, 0.95) 24%,
+    rgba(0, 255, 136, 0.92) 54%,
+    transparent 100%
+  );
   transform: translate(-50%, -50%) scale(0);
   animation: ${innerFlash} 0.35s ease-out forwards;
 `;
@@ -130,7 +143,9 @@ const Spark = styled.div`
   height: ${props => props.$size}px;
   background: linear-gradient(45deg, #ffffff, #00ff88);
   border-radius: 50%;
-  box-shadow: 0 0 ${props => props.$size * 2}px rgba(0, 255, 136, 0.8);
+  box-shadow:
+    0 0 ${props => props.$size * 2.3}px rgba(0, 255, 136, 0.92),
+    0 0 ${props => props.$size * 3.1}px rgba(0, 220, 120, 0.35);
   opacity: 0;
   animation: ${sparkBurst} 0.4s ease-out forwards;
   animation-delay: ${props => props.$delay}s;

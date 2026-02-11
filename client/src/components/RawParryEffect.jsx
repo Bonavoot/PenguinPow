@@ -56,20 +56,26 @@ const ParryTextCenter = styled.div`
   z-index: 20;
 `;
 
+const EFFECT_TEXT_BASELINE_OFFSET_Y = 0;
+
 /* Container: fixed size (perfect parry size) so both effects share the same center point */
 const RawParryEffectContainer = styled.div`
   position: absolute;
   left: ${props => (props.$x / 1280) * 100 + (props.$facing === 1 ? -6 : -1)}%;
-  bottom: ${props => (props.$y / 720) * 100 - 2}%;
+  bottom: ${props => (props.$y / 720) * 100 + EFFECT_TEXT_BASELINE_OFFSET_Y}%;
   width: clamp(4.2rem, 10.5vw, 8.4rem);
   height: clamp(3.9rem, 9.8vw, 7.8rem);
   transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  z-index: 168;
   pointer-events: none;
   contain: layout style;
+  filter:
+    saturate(1.1)
+    brightness(1.06)
+    drop-shadow(0 0 4px rgba(90, 210, 255, 0.22));
 `;
 
 const ParticleContainer = styled.div`

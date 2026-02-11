@@ -494,9 +494,11 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
   return (
     <div className="game-wrapper">
       <FontWarmup />
-      <div className="game-container">
+      <div className="game-container look-arcade-punchy">
         <CrowdLayer isCheering={isCrowdCheering} />
         <div className="dohyo-overlay"></div>
+        <div className="arena-tone-pass" aria-hidden="true"></div>
+        <div className="arena-vignette-pass" aria-hidden="true"></div>
         <div className="ui">
           {currentRoom.players
             .filter((player) => player.id !== "disconnected_placeholder")

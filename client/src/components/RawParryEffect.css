@@ -49,6 +49,27 @@
   justify-content: center;
   /* Faux-3D perspective for ring planes; signed value comes from facing */
   --parry-ring-tilt: 55deg;
+  isolation: isolate;
+  filter: brightness(1.08) saturate(1.15) contrast(1.05);
+}
+
+/* Visibility boost only: keep same geometry, size, and motion */
+.raw-parry-ring-wrapper.regular {
+  filter:
+    brightness(1.14)
+    saturate(1.28)
+    contrast(1.08)
+    drop-shadow(0 0 8px rgba(0, 220, 255, 0.45))
+    drop-shadow(0 0 14px rgba(0, 180, 255, 0.28));
+}
+
+.raw-parry-ring-wrapper.perfect {
+  filter:
+    brightness(1.18)
+    saturate(1.3)
+    contrast(1.1)
+    drop-shadow(0 0 10px rgba(120, 240, 255, 0.5))
+    drop-shadow(0 0 18px rgba(0, 210, 255, 0.32));
 }
 
 /* Second shockwave ring - regular (tier 2 SMALL) */
@@ -164,7 +185,7 @@
   left: 50%;
   width: 100%;
   height: 100%;
-  background: rgba(0, 220, 255, 0.22);
+  background: rgba(0, 220, 255, 0.28);
   border: 3px solid rgba(0, 200, 255, 0.95);
   border-radius: 50%;
   transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(0.5);
@@ -200,7 +221,7 @@
   left: 50%;
   width: clamp(4.2rem, 10.5vw, 8.4rem);
   height: clamp(3.9rem, 9.8vw, 7.8rem);
-  border: 2px solid rgba(100, 220, 255, 0.85);
+  border: 2px solid rgba(120, 235, 255, 0.92);
   border-radius: 50%;
   transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(0.3);
   animation: rawParryOuterRing 0.45s ease-out 0.03s forwards;

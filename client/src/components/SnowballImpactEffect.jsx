@@ -50,10 +50,14 @@ const EffectContainer = styled.div`
   left: ${props => (props.$x / 1280) * 100 + (props.$facing === 1 ? -1 : -6)}%;
   bottom: ${props => (props.$y / 720) * 100 + 15}%;
   transform: translate(-50%, -50%);
-  z-index: 120;
+  z-index: 165;
   pointer-events: none;
   contain: layout style;
   --snowball-ring-tilt: ${SNOWBALL_TILT};
+  filter:
+    saturate(1.14)
+    brightness(1.1)
+    drop-shadow(0 0 4px rgba(170, 220, 255, 0.28));
 `;
 
 const SnowBurst = styled.div`

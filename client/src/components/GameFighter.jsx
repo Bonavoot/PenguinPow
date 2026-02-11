@@ -601,6 +601,55 @@ const TintedImage = styled.img
     },
   }))``;
 
+const getFighterPopFilter = (props) => {
+  const base = "drop-shadow(0 0 1px #000) drop-shadow(0 0 3px rgba(255, 255, 255, 0.18))";
+
+  if (props.$isAtTheRopes) {
+    return `${base} drop-shadow(0 0 8px rgba(255, 50, 50, 0.7)) brightness(1.15) contrast(1.25)`;
+  }
+  if (props.$isGrabBreaking) {
+    return `${base} drop-shadow(0 0 8px rgba(0, 255, 128, 0.85)) brightness(1.35)`;
+  }
+  if (props.$isRawParrying) {
+    return `${base} drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3)`;
+  }
+  if (props.$isHit) {
+    return `${base} contrast(1.2) brightness(1.15)`;
+  }
+  if (props.$isChargingAttack) {
+    return `${base} drop-shadow(0 0 12px rgba(255, 200, 50, 0.85)) contrast(1.25)`;
+  }
+  if (props.$isGrabClashActive) {
+    return `${base} contrast(1.25) brightness(1.1)`;
+  }
+  return `${base} contrast(1.2)`;
+};
+
+const PlayerFocusAura = styled.div
+  .withConfig({
+    shouldForwardProp: (prop) =>
+      !["$x", "$y", "$facing", "$playerIndex", "$isActionState"].includes(prop),
+  })
+  .attrs((props) => ({
+    style: {
+      position: "absolute",
+      left: `${(props.$x / 1280) * 100}%`,
+      bottom: `${(props.$y / 720) * 100 - 2}%`,
+      transform: props.$facing === 1 ? "translateX(-52%)" : "translateX(-48%)",
+      width: "min(20.4%, 620px)",
+      height: "min(10%, 190px)",
+      borderRadius: "50%",
+      background:
+        props.$playerIndex === 0
+          ? "radial-gradient(ellipse at center, rgba(55, 235, 255, 0.2) 0%, rgba(55, 235, 255, 0.1) 42%, rgba(0, 0, 0, 0) 76%)"
+          : "radial-gradient(ellipse at center, rgba(255, 130, 120, 0.2) 0%, rgba(255, 130, 120, 0.1) 42%, rgba(0, 0, 0, 0) 76%)",
+      opacity: props.$isActionState ? 0.58 : 0.42,
+      zIndex: isOutsideDohyo(props.$x, props.$y) ? 0 : 97,
+      pointerEvents: "none",
+      mixBlendMode: "screen",
+    },
+  }))``;
+
 const StyledImage = styled("img")
   .withConfig({
     shouldForwardProp: (prop) =>
@@ -745,21 +794,8 @@ const StyledImage = styled("img")
       zIndex:
         isOutsideDohyo(props.$x, props.$y) ? 0 : // Behind dohyo overlay when outside
         props.$isThrowing || props.$isDodging || props.$isGrabbing ? 98 : 99,
-      // PERFORMANCE: Reduced drop-shadows from 4+ to 1 outline + effects
-      // Original had 4 separate drop-shadows for outline which is very expensive
-      filter: props.$isAtTheRopes
-        ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(255, 50, 50, 0.7)) brightness(1.15) contrast(1.25)"
-        : props.$isGrabBreaking
-        ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.85)) brightness(1.35)"
-        : props.$isRawParrying
-        ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3)"
-        : props.$isHit
-        ? "drop-shadow(0 0 1px #000) contrast(1.2) brightness(1.15)"
-        : props.$isChargingAttack
-        ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 12px rgba(255, 200, 50, 0.85)) contrast(1.25)"
-        : props.$isGrabClashActive
-        ? "drop-shadow(0 0 1px #000) contrast(1.25) brightness(1.1)"
-        : "drop-shadow(0 0 1px #000) contrast(1.2)",
+      // Keep one cheap black outline and add a subtle bright rim for separation.
+      filter: getFighterPopFilter(props),
       animation: props.$isAtTheRopes
         ? "atTheRopesWobble 0.3s ease-in-out infinite"
         : props.$isAttemptingGrabThrow
@@ -1271,20 +1307,8 @@ const AnimatedFighterImage = styled.img
         height: "100%",
         width: "auto",
         backfaceVisibility: "hidden",
-        // PERFORMANCE: Reduced drop-shadows from 4+ to 1 outline + effects
-        filter: props.$isAtTheRopes
-          ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(255, 50, 50, 0.7)) brightness(1.15) contrast(1.25)"
-          : props.$isGrabBreaking
-          ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.85)) brightness(1.35)"
-          : props.$isRawParrying
-          ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3)"
-          : props.$isHit
-          ? "drop-shadow(0 0 1px #000) contrast(1.2) brightness(1.15)"
-          : props.$isChargingAttack
-          ? "drop-shadow(0 0 1px #000) drop-shadow(0 0 12px rgba(255, 200, 50, 0.85)) contrast(1.25)"
-          : props.$isGrabClashActive
-          ? "drop-shadow(0 0 1px #000) contrast(1.25) brightness(1.1)"
-          : "drop-shadow(0 0 1px #000) contrast(1.2)",
+        // Match static sprite readability treatment.
+        filter: getFighterPopFilter(props),
         // CSS-based spritesheet animation - no React state updates needed!
         animation: frameCount > 1 
           ? `spritesheet-${frameCount} ${duration}s steps(${frameCount - 1}) ${props.$loop !== false ? 'infinite' : 'forwards'}`
@@ -3882,6 +3906,20 @@ const GameFighter = ({
         alt="Salt Basket"
         $index={index}
         $isVisible={true}
+      />
+      <PlayerFocusAura
+        $x={displayPosition.x}
+        $y={displayPosition.y}
+        $facing={penguin.facing}
+        $playerIndex={index}
+        $isActionState={
+          displayPenguin.isAttacking ||
+          displayPenguin.isSlapAttack ||
+          displayPenguin.isChargingAttack ||
+          displayPenguin.isRawParrying ||
+          penguin.isGrabBreaking ||
+          penguin.isHit
+        }
       />
       <PlayerShadow
         x={displayPosition.x}

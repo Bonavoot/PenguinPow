@@ -48,6 +48,22 @@ const sparkBurst = keyframes`
   }
 `;
 
+// Distinct "lock sigil" burst so counter grab reads immediately.
+const lockGlyphBurst = keyframes`
+  0% {
+    transform: translate(-50%, -50%) scale(0.25) rotate(0deg);
+    opacity: 1;
+  }
+  30% {
+    transform: translate(-50%, -50%) scale(1.05) rotate(9deg);
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.55) rotate(16deg);
+    opacity: 0;
+  }
+`;
+
 const textPop = keyframes`
   0% {
     transform: translate(-50%, -50%) scale(0);
@@ -89,9 +105,13 @@ const EffectContainer = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 150;
+  z-index: 170;
   pointer-events: none;
   contain: layout style;
+  filter:
+    saturate(1.12)
+    brightness(1.08)
+    drop-shadow(0 0 4px rgba(183, 76, 255, 0.25));
 `;
 
 /* Hit effect radius tier 1 (LARGE): counter grab, perfect parry, grab break, charged attack */
@@ -105,10 +125,38 @@ const ShockwaveRing = styled.div`
   width: ${HIT_RADIUS_LARGE};
   height: ${HIT_RADIUS_LARGE};
   border-radius: 50%;
-  border: 5px solid #bb55ff;
-  box-shadow: 0 0 14px rgba(187, 85, 255, 0.5), 0 0 28px rgba(187, 85, 255, 0.25);
+  border: 5px solid rgba(205, 115, 255, 0.98);
+  box-shadow:
+    0 0 16px rgba(187, 85, 255, 0.65),
+    0 0 30px rgba(153, 51, 255, 0.38),
+    0 0 44px rgba(120, 40, 220, 0.22);
+  background: radial-gradient(
+    circle,
+    rgba(85, 20, 120, 0.26) 0%,
+    rgba(130, 45, 190, 0.18) 44%,
+    transparent 74%
+  );
   transform: translate(-50%, -50%) scale(0);
   animation: ${shockwaveExpand} 0.4s ease-out forwards;
+`;
+
+// Stylized lock "X" sigil (same radius) to improve readability.
+const LockGlyph = styled.div`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: ${HIT_RADIUS_LARGE};
+  height: ${HIT_RADIUS_LARGE};
+  border-radius: 50%;
+  background:
+    linear-gradient(45deg, transparent 45%, rgba(255, 225, 245, 0.9) 49%, rgba(160, 70, 255, 0.95) 50%, rgba(255, 225, 245, 0.9) 51%, transparent 55%),
+    linear-gradient(-45deg, transparent 45%, rgba(255, 225, 245, 0.9) 49%, rgba(160, 70, 255, 0.95) 50%, rgba(255, 225, 245, 0.9) 51%, transparent 55%);
+  box-shadow:
+    inset 0 0 10px rgba(255, 235, 250, 0.35),
+    0 0 10px rgba(180, 70, 255, 0.55);
+  transform: translate(-50%, -50%) scale(0.25);
+  opacity: 0;
+  animation: ${lockGlyphBurst} 0.35s ease-out forwards;
 `;
 
 /* Same gradient shape as grab break: white → color at 50% → transparent (red + purple) */
@@ -119,7 +167,14 @@ const InnerFlash = styled.div`
   width: clamp(1.35rem, 3.2vw, 2.75rem);
   height: clamp(1.35rem, 3.2vw, 2.75rem);
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 1) 0%, rgba(204, 34, 68, 0.8) 40%, rgba(153, 51, 255, 0.6) 70%, transparent 100%);
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(255, 225, 238, 0.98) 18%,
+    rgba(230, 75, 125, 0.96) 42%,
+    rgba(171, 70, 255, 0.82) 70%,
+    transparent 100%
+  );
   transform: translate(-50%, -50%) scale(0);
   animation: ${innerFlash} 0.35s ease-out forwards;
 `;
@@ -134,7 +189,9 @@ const Spark = styled.div`
     ? 'linear-gradient(45deg, #ffffff, #cc2244)' 
     : 'linear-gradient(45deg, #ffffff, #9933ff)'};
   border-radius: 50%;
-  box-shadow: 0 0 ${props => props.$size * 2}px ${props => props.$isRed ? 'rgba(204, 34, 68, 0.8)' : 'rgba(153, 51, 255, 0.8)'};
+  box-shadow:
+    0 0 ${props => props.$size * 2.2}px ${props => props.$isRed ? 'rgba(204, 34, 68, 0.9)' : 'rgba(153, 51, 255, 0.92)'},
+    0 0 ${props => props.$size * 3}px ${props => props.$isRed ? 'rgba(204, 34, 68, 0.34)' : 'rgba(153, 51, 255, 0.36)'};
   opacity: 0;
   animation: ${sparkBurst} 0.4s ease-out forwards;
   animation-delay: ${props => props.$delay}s;
@@ -250,6 +307,7 @@ const CounterGrabEffect = ({ position }) => {
           <div key={effect.id}>
             <EffectContainer $x={effect.x} $y={effect.y}>
               <ShockwaveRing />
+              <LockGlyph />
               <InnerFlash />
               {effect.sparks.map((spark) => (
                 <Spark

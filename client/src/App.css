@@ -360,6 +360,19 @@ body {
   overflow: hidden;
   z-index: 99;
   /* Slight lift so an overlay with low zIndex remains behind sprites */
+  --arena-map-filter: brightness(1) saturate(1.03) contrast(1.06);
+  --arena-ambient-top: rgba(255, 244, 214, 0.1);
+  --arena-ambient-bottom: rgba(190, 230, 255, 0.07);
+  --arena-tone-center: rgba(255, 236, 160, 0.08);
+  --arena-tone-center-mid: rgba(255, 236, 160, 0.03);
+  --arena-tone-edge: rgba(20, 28, 58, 0.05);
+  --arena-tone-top: rgba(26, 36, 66, 0.07);
+  --arena-tone-mid: rgba(18, 26, 52, 0.03);
+  --arena-tone-bottom: rgba(14, 21, 40, 0.08);
+  --arena-vignette-mid: rgba(0, 0, 0, 0.07);
+  --arena-vignette-edge: rgba(0, 0, 0, 0.18);
+  --arena-grain-light: rgba(255, 255, 255, 0.01);
+  --arena-grain-dark: rgba(0, 0, 0, 0.01);
 }
 
 .game-container::before {
@@ -373,8 +386,8 @@ body {
   background-repeat: no-repeat;
   background-size: 120% 120%;
   background-position: 52% 5%;
-  /* Boosted saturation and contrast to compensate for removed blend mode */
-  filter: brightness(1.05) saturate(1.15);
+  /* Keep arena art readable, but less vivid than gameplay actors/effects */
+  filter: var(--arena-map-filter);
   z-index: -1;
   /* Isolation prevents blend modes from other elements affecting the dohyo */
   isolation: isolate;
@@ -387,11 +400,11 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  /* Subtle warm/cool gradient for depth - no blend mode for stability */
+  /* Ambient wash to keep scene cohesion */
   background: linear-gradient(
     180deg,
-    rgba(255, 248, 240, 0.08) 0%,
-    rgba(200, 220, 255, 0.06) 100%
+    var(--arena-ambient-top) 0%,
+    var(--arena-ambient-bottom) 100%
   );
   pointer-events: none;
   z-index: 0;
@@ -411,6 +424,49 @@ body {
   z-index: 1;
 }
 
+/* Cheap post-processing passes to unify the look without blurs */
+.arena-tone-pass {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6;
+  background:
+    radial-gradient(
+      ellipse at 50% 55%,
+      var(--arena-tone-center) 0%,
+      var(--arena-tone-center-mid) 35%,
+      var(--arena-tone-edge) 100%
+    ),
+    linear-gradient(
+      180deg,
+      var(--arena-tone-top) 0%,
+      var(--arena-tone-mid) 35%,
+      var(--arena-tone-bottom) 100%
+    );
+}
+
+.arena-vignette-pass {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 7;
+  background:
+    radial-gradient(
+      circle at 50% 50%,
+      rgba(0, 0, 0, 0) 48%,
+      var(--arena-vignette-mid) 76%,
+      var(--arena-vignette-edge) 100%
+    ),
+    repeating-linear-gradient(
+      0deg,
+      var(--arena-grain-light) 0px,
+      var(--arena-grain-light) 1px,
+      var(--arena-grain-dark) 2px,
+      var(--arena-grain-dark) 3px
+    );
+}
+
+
 @media (min-aspect-ratio: 16/9) {
   .game-container {
     width: calc(100vh * 16 / 9);
@@ -427,6 +483,7 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
+  z-index: 10;
 }
 
 .ui-container {

@@ -73,8 +73,9 @@ const CrowdContainer = styled.div`
   pointer-events: none;
   z-index: 0; /* Between game map background (-1) and dohyo overlay (1) */
   contain: layout style paint; /* Performance: isolate rendering from rest of page */
+  filter: saturate(0.9) brightness(0.93) contrast(0.98);
   
-  /* Simple shadow overlay - just darkens without color manipulation */
+  /* Simple shadow overlay - keeps background from competing with fighters */
   &::after {
     content: '';
     position: absolute;
@@ -82,7 +83,7 @@ const CrowdContainer = styled.div`
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.3);
+    background: rgba(0, 0, 0, 0.22);
     pointer-events: none;
     z-index: 9999;
   }
@@ -98,6 +99,7 @@ const ForegroundCrowdContainer = styled.div`
   pointer-events: none;
   z-index: 2; /* Above dohyo overlay (1) */
   contain: layout style paint;
+  filter: saturate(0.95) brightness(0.96) contrast(1);
 `;
 
 // Subtle idle sway + breathing animation - pivots from bottom so upper body moves
@@ -148,7 +150,9 @@ const CrowdMember = styled.img.attrs((props) => ({
     transform: `translateX(-50%) ${props.$flip ? "scaleX(-1)" : ""}`,
     opacity: props.$opacity ?? 1,
     zIndex: props.$customZIndex !== undefined ? props.$customZIndex : Math.floor(100 - props.$y),
-    filter: props.$applyDarkFilter ? "brightness(0.6)" : "none",
+    filter: props.$applyDarkFilter
+      ? "brightness(0.58) saturate(0.75) contrast(0.95)"
+      : "saturate(1.02) brightness(0.98)",
     animation: props.$shouldAnimate
       ? `${props.$flip ? "crowdSwayFlipped" : "crowdSway"} ${2.5 + (props.$animOffset * 0.8)}s ease-in-out infinite`
       : "none",

@@ -21,9 +21,9 @@ const SaltParticle = styled.div.attrs((props) => ({
     width: "calc(0.3vw * (16 / 9))", // Smaller than original for realistic salt size
     height: "calc(0.3vh * (16 / 9))", 
     background: `radial-gradient(circle at center, 
-      rgba(255, 255, 255, 0.95) 0%, 
-      rgba(250, 250, 250, 0.8) 40%, 
-      rgba(245, 245, 245, 0.6) 70%, 
+      rgba(255, 255, 255, 1) 0%, 
+      rgba(255, 255, 255, 0.96) 32%, 
+      rgba(248, 252, 255, 0.82) 62%, 
       rgba(255, 255, 255, 0) 100%)`,
     borderRadius: "50%",
     willChange: "transform, opacity",
@@ -33,7 +33,7 @@ const SaltParticle = styled.div.attrs((props) => ({
       props.$scale
     })`,
     opacity: props.$opacity,
-    filter: `blur(${props.$blur}px)`,
+    filter: `brightness(1.18) contrast(1.15) blur(${props.$blur}px)`,
   },
 }))``;
 
@@ -96,10 +96,10 @@ const SaltEffect = ({
           y: ((playerY + yOffset) / 720) * 100,
           velocityX: Math.cos(angle) * speed * (playerFacing === 1 ? 1 : -1),
           velocityY: Math.sin(angle) * speed,
-          opacity: 0.85 + Math.random() * 0.15, // Slightly more opaque
+          opacity: 0.94 + Math.random() * 0.06, // Brighter white salt visibility
           life: 1200 + Math.random() * 400,
           scale,
-          blur: Math.random() * 0.2, // Minimal blur for crisp salt look
+          blur: Math.random() * 0.08, // Keep grains crisp and readable
           rotation: Math.random() * 360,
           rotationSpeed: (Math.random() - 0.5) * 2,
         };
