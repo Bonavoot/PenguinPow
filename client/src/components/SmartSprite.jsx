@@ -83,8 +83,8 @@ const AnimatedSpriteDiv = styled.div.withConfig({
       pointerEvents: 'none',
       imageRendering: 'auto',
       filter: $isLocalPlayer
-        ? 'drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000)'
-        : 'drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000)',
+        ? 'drop-shadow(clamp(1px, 0.08vw, 2.5px) 0 0 #000) drop-shadow(clamp(-2.5px, -0.08vw, -1px) 0 0 #000) drop-shadow(0 clamp(1px, 0.08vw, 2.5px) 0 #000) drop-shadow(0 clamp(-2.5px, -0.08vw, -1px) 0 #000)'
+        : 'drop-shadow(clamp(1px, 0.08vw, 2.5px) 0 0 #000) drop-shadow(clamp(-2.5px, -0.08vw, -1px) 0 0 #000) drop-shadow(0 clamp(1px, 0.08vw, 2.5px) 0 #000) drop-shadow(0 clamp(-2.5px, -0.08vw, -1px) 0 #000)',
       animationName: `spriteAnim_${$frameCount}`,
       animationDuration: `${duration}s`,
       animationTimingFunction: `steps(${$frameCount - 1})`,
@@ -140,8 +140,8 @@ const StaticImage = styled.img.withConfig({
       zIndex: $zIndex,
       pointerEvents: 'none',
       filter: $isLocalPlayer
-        ? 'drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000)'
-        : 'drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000)',
+        ? 'drop-shadow(clamp(1px, 0.08vw, 2.5px) 0 0 #000) drop-shadow(clamp(-2.5px, -0.08vw, -1px) 0 0 #000) drop-shadow(0 clamp(1px, 0.08vw, 2.5px) 0 #000) drop-shadow(0 clamp(-2.5px, -0.08vw, -1px) 0 #000)'
+        : 'drop-shadow(clamp(1px, 0.08vw, 2.5px) 0 0 #000) drop-shadow(clamp(-2.5px, -0.08vw, -1px) 0 0 #000) drop-shadow(0 clamp(1px, 0.08vw, 2.5px) 0 #000) drop-shadow(0 clamp(-2.5px, -0.08vw, -1px) 0 #000)',
     },
   };
 })``;

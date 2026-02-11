@@ -36,12 +36,12 @@ const frostRing = keyframes`
   0% {
     transform: translate(-50%, -50%) rotateY(var(--snowball-ring-tilt, 55deg)) scale(0.3);
     opacity: 1;
-    border-width: 4px;
+    border-width: clamp(4px, 0.32vw, 8px);
   }
   100% {
     transform: translate(-50%, -50%) rotateY(var(--snowball-ring-tilt, 55deg)) scale(2.5);
     opacity: 0;
-    border-width: 1px;
+    border-width: clamp(1px, 0.08vw, 2px);
   }
 `;
 

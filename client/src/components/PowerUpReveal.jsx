@@ -150,7 +150,7 @@ const FlashOverlay = styled.div`
 `;
 
 const RevealContainer = styled.div`
-  margin-top: 110px;
+  margin-top: calc(10.6vh + 22px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -182,30 +182,10 @@ const RevealContainer = styled.div`
     pointer-events: none;
   }
   
-  @media (max-width: 1200px) {
-    margin-top: 100px;
-  }
-  
-  @media (max-width: 900px) {
-    margin-top: 85px;
-  }
-  
   @media (max-width: 700px) {
     gap: clamp(12px, 2.5vw, 24px);
     padding: clamp(10px, 2vw, 18px);
     border-width: 3px;
-  }
-  
-  @media (max-width: 600px) {
-    margin-top: 70px;
-  }
-  
-  @media (max-height: 700px) {
-    margin-top: 65px;
-  }
-  
-  @media (max-height: 550px) {
-    margin-top: 50px;
   }
 `;
 

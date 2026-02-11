@@ -3,820 +3,538 @@ import PropTypes from "prop-types";
 import { useMemo } from "react";
 
 // ============================================
+// SHARED Y-POSITION (both announcements live here — below the HUD)
+// ============================================
+const ANNOUNCE_Y = "clamp(120px, 32%, 220px)";
+
+// ============================================
 // ANIMATIONS
 // ============================================
 
-// Explosive slam for HAKKIYOI - fight is starting!
-const announcementSlam = keyframes`
-  0% {
-    opacity: 0;
-    transform: scale(2.5) rotate(-6deg);
-  }
-  12% {
-    opacity: 1;
-    transform: scale(0.9) rotate(2deg);
-  }
-  20% {
-    transform: scale(1.15) rotate(-1deg);
-  }
-  28% {
-    transform: scale(0.97) rotate(0.5deg);
-  }
-  36% {
-    transform: scale(1.03) rotate(0deg);
-  }
-  45% {
-    transform: scale(1) rotate(0deg);
-  }
-  80% {
-    opacity: 1;
-    transform: scale(1) rotate(0deg);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.15) rotate(0deg);
-  }
+// ── HAKKIYOI: explosive slam entrance ──
+const slamIn = keyframes`
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(2.8) rotate(-5deg); }
+  10%  { opacity: 1; transform: translate(-50%, -50%) scale(0.88) rotate(2deg); }
+  18%  { transform: translate(-50%, -50%) scale(1.14) rotate(-1deg); }
+  26%  { transform: translate(-50%, -50%) scale(0.96) rotate(0.5deg); }
+  34%  { transform: translate(-50%, -50%) scale(1.03) rotate(0deg); }
+  44%  { transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+  78%  { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.1) rotate(0deg); }
 `;
 
-// Preparatory slide for TE WO TSUITE - building tension
-const preparationReveal = keyframes`
-  0% {
-    opacity: 0;
-    transform: scale(0.6) rotate(3deg);
-    clip-path: inset(0 100% 0 0);
-  }
-  25% {
-    opacity: 1;
-    transform: scale(1.08) rotate(-1deg);
-    clip-path: inset(0 0% 0 0);
-  }
-  35% {
-    transform: scale(0.98) rotate(0.5deg);
-  }
-  45% {
-    transform: scale(1.02) rotate(0deg);
-  }
-  55% {
-    transform: scale(1) rotate(0deg);
-  }
-  80% {
-    opacity: 1;
-    transform: scale(1) rotate(0deg);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(0.95) rotate(0deg);
-  }
+// ── TE WO TSUITE: quiet slide-in ──
+const slideIn = keyframes`
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.7); clip-path: inset(0 100% 0 0); }
+  22%  { opacity: 1; transform: translate(-50%, -50%) scale(1.05); clip-path: inset(0 0% 0 0); }
+  32%  { transform: translate(-50%, -50%) scale(0.98); }
+  42%  { transform: translate(-50%, -50%) scale(1); }
+  78%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
 `;
 
-// Screen flash effect
+// ── Screen flash ──
 const screenFlash = keyframes`
-  0% {
-    opacity: 0;
-  }
-  8% {
-    opacity: 0.6;
-  }
-  20% {
-    opacity: 0.3;
-  }
-  35% {
-    opacity: 0.4;
-  }
-  55% {
-    opacity: 0.15;
-  }
-  100% {
-    opacity: 0;
-  }
+  0%   { opacity: 0; }
+  8%   { opacity: 0.55; }
+  22%  { opacity: 0.25; }
+  40%  { opacity: 0.35; }
+  60%  { opacity: 0.12; }
+  100% { opacity: 0; }
 `;
 
-// Shockwave ring expanding outward
+// ── Shockwave ring ──
 const shockwaveExpand = keyframes`
-  0% {
-    transform: translate(-50%, -50%) scale(0.15);
-    opacity: 0.85;
-    border-width: 6px;
-  }
-  50% {
-    transform: translate(-50%, -50%) scale(1.2);
-    opacity: 0.4;
-    border-width: 3px;
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(2.2);
-    opacity: 0;
-    border-width: 1px;
-  }
+  0%   { transform: translate(-50%, -50%) scale(0.12); opacity: 0.8; border-width: 5px; }
+  50%  { transform: translate(-50%, -50%) scale(1.3); opacity: 0.3; border-width: 2px; }
+  100% { transform: translate(-50%, -50%) scale(2.4); opacity: 0; border-width: 1px; }
 `;
 
-// Ink splatter animation
-const inkSplatter = keyframes`
-  0% {
-    transform: scale(0) rotate(0deg);
-    opacity: 0;
-  }
-  18% {
-    transform: scale(1.15) rotate(8deg);
-    opacity: 0.7;
-  }
-  35% {
-    transform: scale(1) rotate(-4deg);
-    opacity: 0.55;
-  }
-  100% {
-    transform: scale(1.08) rotate(0deg);
-    opacity: 0;
-  }
+// ── Impact line burst ──
+const impactBurst = keyframes`
+  0%   { transform: scaleX(0); opacity: 0; }
+  14%  { transform: scaleX(1); opacity: 0.9; }
+  55%  { transform: scaleX(1); opacity: 0.5; }
+  100% { transform: scaleX(1.2); opacity: 0; }
 `;
 
-// Floating ember/spark animation
-const floatUp = keyframes`
-  0% {
-    transform: translateY(0) scale(1);
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.75;
-  }
-  100% {
-    transform: translateY(-100px) scale(0.25);
-    opacity: 0;
-  }
+// ── Gold rule extends from center ──
+const ruleExtend = keyframes`
+  0%   { transform: translateX(-50%) scaleX(0); opacity: 0; }
+  15%  { transform: translateX(-50%) scaleX(1.05); opacity: 1; }
+  22%  { transform: translateX(-50%) scaleX(0.97); }
+  30%  { transform: translateX(-50%) scaleX(1); }
+  78%  { opacity: 1; transform: translateX(-50%) scaleX(1); }
+  100% { opacity: 0; transform: translateX(-50%) scaleX(1); }
 `;
 
-// Corner decoration fade in
-const cornerFadeIn = keyframes`
-  0% {
-    opacity: 0;
-    transform: scale(0.5);
-  }
-  18% {
-    opacity: 0;
-    transform: scale(0.5);
-  }
-  35% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  75% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.08);
-  }
+// ── Fade in then out ──
+const fadeIO = keyframes`
+  0%   { opacity: 0; }
+  16%  { opacity: 0; }
+  28%  { opacity: 1; }
+  75%  { opacity: 1; }
+  100% { opacity: 0; }
 `;
 
-// Brush stroke reveal with fade out
+// ── Ice crystal float ──
+const crystalDrift = keyframes`
+  0%   { transform: translateY(0) rotate(0deg) scale(1); opacity: 0.9; }
+  50%  { opacity: 0.6; }
+  100% { transform: translateY(-70px) rotate(50deg) scale(0.15); opacity: 0; }
+`;
+
+// ── Dark vignette behind HAKKIYOI text for contrast ──
+const vignettePulse = keyframes`
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+  12%  { opacity: 0.85; transform: translate(-50%, -50%) scale(1.05); }
+  20%  { transform: translate(-50%, -50%) scale(0.97); }
+  30%  { transform: translate(-50%, -50%) scale(1); }
+  78%  { opacity: 0.85; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+`;
+
+// ── Subtle brush reveal (TE WO TSUITE) ──
 const brushReveal = keyframes`
-  0% {
-    clip-path: inset(0 100% 0 0);
-    opacity: 0;
-  }
-  20% {
-    clip-path: inset(0 0% 0 0);
-    opacity: 1;
-  }
-  70% {
-    clip-path: inset(0 0% 0 0);
-    opacity: 1;
-  }
-  100% {
-    clip-path: inset(0 0% 0 0);
-    opacity: 0;
-  }
-`;
-
-// Japanese character pulse (subtle)
-const japanesePulse = keyframes`
-  0%, 100% {
-    opacity: 0.6;
-  }
-  50% {
-    opacity: 0.9;
-  }
-`;
-
-// Impact line burst
-const impactLineBurst = keyframes`
-  0% {
-    transform: scaleX(0);
-    opacity: 0;
-  }
-  15% {
-    transform: scaleX(1);
-    opacity: 1;
-  }
-  60% {
-    transform: scaleX(1);
-    opacity: 0.6;
-  }
-  100% {
-    transform: scaleX(1.15);
-    opacity: 0;
-  }
+  0%   { clip-path: inset(0 100% 0 0); opacity: 0; }
+  22%  { clip-path: inset(0 0% 0 0); opacity: 0.7; }
+  70%  { clip-path: inset(0 0% 0 0); opacity: 0.7; }
+  100% { clip-path: inset(0 0% 0 0); opacity: 0; }
 `;
 
 // ============================================
-// THEME COLORS
+// SCREEN FLASH (shared — both types)
 // ============================================
 
-const getThemeColors = (type) => {
-  switch (type) {
-    case "hakkiyoi":
-      // Fiery gold/orange for the fight start
-      return {
-        primary: "#FFD700",
-        secondary: "#FF8C00",
-        tertiary: "#FF4500",
-        glow: "rgba(255, 215, 0, 0.4)",
-        flash: "rgba(255, 200, 50, 0.5)",
-        text: "#FFFAF0",
-        textStroke: "#8B4513",
-        gradient: "linear-gradient(145deg, #FFFFFF 0%, #FFFFA0 12%, #FFD700 30%, #FFA500 55%, #FF6B00 75%, #FF4500 100%)",
-        shadowGradient: "#CC8800",
-      };
-    case "tewotsuite":
-      // Clean white with dark outline - readable and calm
-      return {
-        primary: "#FFFFFF",
-        secondary: "#E0E0E0",
-        tertiary: "#2A2A2A",
-        glow: "rgba(255, 255, 255, 0.3)",
-        flash: "rgba(255, 255, 255, 0.35)",
-        text: "#FFFFFF",
-        textStroke: "#1A1A1A",
-        gradient: "linear-gradient(145deg, #FFFFFF 0%, #F5F5F5 30%, #E8E8E8 60%, #DDDDDD 100%)",
-        shadowGradient: "#333333",
-      };
-    default:
-      return {
-        primary: "#FFD700",
-        secondary: "#FFA500",
-        tertiary: "#FF6B00",
-        glow: "rgba(255, 215, 0, 0.8)",
-        flash: "rgba(255, 200, 50, 0.85)",
-        text: "#FFFAF0",
-        textStroke: "#8B4513",
-        gradient: "linear-gradient(145deg, #FFFFFF 0%, #FFD700 40%, #FFA500 70%, #FF6B00 100%)",
-        shadowGradient: "#CC8800",
-      };
-  }
-};
-
-// ============================================
-// STYLED COMPONENTS
-// ============================================
-
-// Screen flash overlay
 const ScreenFlash = styled.div`
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: ${props => {
-    const colors = getThemeColors(props.$type);
-    return `radial-gradient(circle at 42% 25%, ${colors.flash} 0%, ${colors.glow} 12%, transparent 35%)`;
-  }};
-  animation: ${screenFlash} 0.7s ease-out forwards;
+  top: 0; left: 0;
+  width: 100vw; height: 100vh;
   pointer-events: none;
   z-index: 1000;
+  animation: ${screenFlash} 0.65s ease-out forwards;
+
+  background: ${p => p.$type === "hakkiyoi"
+    ? `radial-gradient(ellipse at 50% 25%, rgba(255,215,0,0.5) 0%, rgba(255,200,50,0.2) 25%, transparent 55%)`
+    : `radial-gradient(ellipse at 50% 25%, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0.1) 20%, transparent 45%)`
+  };
 `;
 
-// Shockwave ring effect
-const ShockwaveRing = styled.div`
+// ============================================
+// HAKKIYOI STYLED COMPONENTS
+// ============================================
+
+/* Dark radial vignette behind the text — gives contrast without a boxy banner */
+const DarkVignette = styled.div`
   position: fixed;
-  top: clamp(100px, 25%, 180px);
+  top: ${ANNOUNCE_Y};
   left: 50%;
-  width: 250px;
-  height: 250px;
+  width: clamp(420px, 55vw, 700px);
+  height: clamp(110px, 16vh, 180px);
   border-radius: 50%;
-  border: 6px solid ${props => getThemeColors(props.$type).primary};
+  pointer-events: none;
+  z-index: 1001;
+
+  background: radial-gradient(
+    ellipse at center,
+    rgba(15, 5, 5, 0.82) 0%,
+    rgba(15, 5, 5, 0.6) 30%,
+    rgba(15, 5, 5, 0.25) 55%,
+    transparent 75%
+  );
+  filter: blur(6px);
+
+  animation: ${vignettePulse} ${p => p.$duration} ease-out forwards;
+
+  @media (max-width: 900px) {
+    width: clamp(320px, 50vw, 520px);
+    height: clamp(80px, 14vh, 140px);
+  }
+  @media (max-width: 600px) {
+    width: clamp(240px, 48vw, 380px);
+    height: clamp(60px, 12vh, 110px);
+  }
+`;
+
+/* Shockwave ring — gold */
+const Shockwave = styled.div`
+  position: fixed;
+  top: ${ANNOUNCE_Y};
+  left: 50%;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  border: 4px solid rgba(255, 215, 0, 0.7);
   background: transparent;
-  animation: ${shockwaveExpand} 0.55s ease-out forwards;
-  animation-delay: ${props => props.$delay || '0s'};
   pointer-events: none;
   z-index: 1002;
-  
-  @media (max-width: 900px) {
-    width: 180px;
-    height: 180px;
-  }
-  
-  @media (max-width: 600px) {
-    width: 130px;
-    height: 130px;
-  }
+  animation: ${shockwaveExpand} 0.5s ease-out forwards;
+
+  @media (max-width: 900px) { width: 150px; height: 150px; }
+  @media (max-width: 600px) { width: 100px; height: 100px; }
 `;
 
-// Impact line (single)
+/* Impact lines — gold, radiating from the text center */
 const ImpactLine = styled.div`
   position: fixed;
-  top: clamp(100px, 25%, 180px);
+  top: ${ANNOUNCE_Y};
   left: 50%;
-  width: 350px;
-  height: 3px;
-  background: ${props => {
-    const colors = getThemeColors(props.$type);
-    return `linear-gradient(90deg, transparent 0%, ${colors.primary}CC 25%, ${colors.text} 50%, ${colors.primary}CC 75%, transparent 100%)`;
-  }};
-  transform-origin: center center;
-  animation: ${impactLineBurst} 0.45s ease-out forwards;
-  animation-delay: ${props => props.$delay || '0.05s'};
-  opacity: 0;
-  z-index: 1001;
-  margin-left: -175px;
-  
-  @media (max-width: 900px) {
-    width: 260px;
-    margin-left: -130px;
-    height: 2px;
-  }
-  
-  @media (max-width: 600px) {
-    width: 180px;
-    margin-left: -90px;
-  }
-`;
-
-// Container for impact lines
-const ImpactLinesContainer = styled.div`
-  position: fixed;
-  top: clamp(100px, 25%, 180px);
-  left: 50%;
-  transform: translate(-50%, 0);
-  width: 1px;
-  height: 1px;
-  z-index: 1001;
-`;
-
-// Main announcement container
-const AnnouncementContainer = styled.div`
-  position: fixed;
-  top: clamp(100px, 25%, 180px);
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 1003;
+  width: 340px;
+  height: 2px;
+  margin-left: -170px;
+  margin-top: -1px;
   pointer-events: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-`;
-
-// Ink splatter background
-const InkSplatter = styled.div`
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  margin-top: -190px;
-  margin-left: -190px;
-  width: 380px;
-  height: 380px;
-  border-radius: 50%;
-  background: ${props => {
-    const colors = getThemeColors(props.$type);
-    return `radial-gradient(ellipse at center, ${colors.glow}70 0%, ${colors.primary}50 25%, ${colors.secondary}30 45%, transparent 65%)`;
-  }};
-  animation: ${inkSplatter} ${props => props.$duration || '2.5s'} ease-out forwards;
-  z-index: -1;
-  transform-origin: center center;
-  
-  /* Irregular splatter shape */
-  clip-path: polygon(
-    50% 0%, 62% 8%, 78% 5%, 83% 18%, 100% 22%, 
-    94% 38%, 100% 48%, 94% 62%, 82% 72%, 88% 84%, 
-    72% 88%, 62% 100%, 50% 94%, 38% 100%, 28% 88%, 
-    12% 82%, 8% 68%, 0% 58%, 5% 42%, 0% 28%, 
-    12% 18%, 22% 8%, 38% 4%
-  );
-  
-  @media (max-width: 900px) {
-    width: 280px;
-    height: 280px;
-    margin-top: -140px;
-    margin-left: -140px;
-  }
-  
-  @media (max-width: 600px) {
-    width: 200px;
-    height: 200px;
-    margin-top: -100px;
-    margin-left: -100px;
-  }
-`;
-
-const SecondaryInkSplatter = styled(InkSplatter)`
-  width: 280px;
-  height: 280px;
-  margin-top: -140px;
-  margin-left: -140px;
-  animation-delay: 0.08s;
-  transform: rotate(40deg);
-  opacity: 0.65;
-  
-  @media (max-width: 900px) {
-    width: 200px;
-    height: 200px;
-    margin-top: -100px;
-    margin-left: -100px;
-  }
-  
-  @media (max-width: 600px) {
-    width: 150px;
-    height: 150px;
-    margin-top: -75px;
-    margin-left: -75px;
-  }
-`;
-
-// Corner decorations
-const CornerDecoration = styled.div`
-  position: absolute;
-  width: 55px;
-  height: 55px;
-  border: 3px solid ${props => getThemeColors(props.$type).primary}C0;
-  animation: ${cornerFadeIn} ${props => props.$duration || '2.5s'} ease-out forwards;
-  z-index: 1;
-  
-  ${props => props.$position === 'topLeft' && `
-    top: -45px;
-    left: -75px;
-    border-right: none;
-    border-bottom: none;
-  `}
-  ${props => props.$position === 'topRight' && `
-    top: -45px;
-    right: -75px;
-    border-left: none;
-    border-bottom: none;
-  `}
-  ${props => props.$position === 'bottomLeft' && `
-    bottom: -45px;
-    left: -75px;
-    border-right: none;
-    border-top: none;
-  `}
-  ${props => props.$position === 'bottomRight' && `
-    bottom: -45px;
-    right: -75px;
-    border-left: none;
-    border-top: none;
-  `}
-  
-  @media (max-width: 900px) {
-    width: 40px;
-    height: 40px;
-    border-width: 2px;
-    
-    ${props => props.$position === 'topLeft' && `top: -32px; left: -52px;`}
-    ${props => props.$position === 'topRight' && `top: -32px; right: -52px;`}
-    ${props => props.$position === 'bottomLeft' && `bottom: -32px; left: -52px;`}
-    ${props => props.$position === 'bottomRight' && `bottom: -32px; right: -52px;`}
-  }
-  
-  @media (max-width: 600px) {
-    width: 28px;
-    height: 28px;
-    
-    ${props => props.$position === 'topLeft' && `top: -22px; left: -38px;`}
-    ${props => props.$position === 'topRight' && `top: -22px; right: -38px;`}
-    ${props => props.$position === 'bottomLeft' && `bottom: -22px; left: -38px;`}
-    ${props => props.$position === 'bottomRight' && `bottom: -22px; right: -38px;`}
-  }
-`;
-
-// Diamond accents
-const DiamondAccent = styled.div`
-  position: absolute;
-  width: 12px;
-  height: 12px;
-  background: ${props => getThemeColors(props.$type).primary};
-  transform: rotate(45deg);
-  animation: ${cornerFadeIn} ${props => props.$duration || '2.5s'} ease-out forwards;
-  z-index: 2;
-  
-  ${props => props.$position === 'left' && `
-    left: -95px;
-    top: 50%;
-    margin-top: -6px;
-  `}
-  ${props => props.$position === 'right' && `
-    right: -95px;
-    top: 50%;
-    margin-top: -6px;
-  `}
-  
-  @media (max-width: 900px) {
-    width: 9px;
-    height: 9px;
-    ${props => props.$position === 'left' && `left: -65px; margin-top: -4px;`}
-    ${props => props.$position === 'right' && `right: -65px; margin-top: -4px;`}
-  }
-  
-  @media (max-width: 600px) {
-    width: 6px;
-    height: 6px;
-    ${props => props.$position === 'left' && `left: -48px; margin-top: -3px;`}
-    ${props => props.$position === 'right' && `right: -48px; margin-top: -3px;`}
-  }
-`;
-
-// Main text container
-const TextContainer = styled.div`
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: fit-content;
-`;
-
-// Main announcement text
-const MainText = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: ${props => props.$type === 'hakkiyoi' 
-    ? 'clamp(2.2rem, 6.5vw, 5.5rem)' 
-    : 'clamp(1.4rem, 4vw, 3.2rem)'};
-  font-weight: 400;
-  line-height: 1;
-  letter-spacing: ${props => props.$type === 'hakkiyoi' ? '0.12em' : '0.18em'};
-  text-transform: uppercase;
-  white-space: nowrap;
-  position: relative;
-  color: ${props => getThemeColors(props.$type).text};
-  animation: ${props => props.$type === 'hakkiyoi' 
-    ? css`${announcementSlam} ${props.$duration || '2.5s'} cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards`
-    : css`${preparationReveal} ${props.$duration || '2s'} cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards`
-  };
-  
-  /* Deep 3D shadow effect - subtler for tewotsuite */
-  text-shadow: ${props => {
-    const colors = getThemeColors(props.$type);
-    if (props.$type === 'hakkiyoi') {
-      return `
-        3px 3px 0 ${colors.shadowGradient},
-        6px 6px 0 ${colors.secondary}CC,
-        9px 9px 0 ${colors.tertiary}AA,
-        12px 12px 0 rgba(0, 0, 0, 0.5),
-        0 0 30px ${colors.glow}
-      `;
-    }
-    // Clean black outline for tewotsuite readability
-    return `
-      -2px -2px 0 #000,
-      2px -2px 0 #000,
-      -2px 2px 0 #000,
-      2px 2px 0 #000,
-      0 0 10px rgba(0, 0, 0, 0.8)
-    `;
-  }};
-  
-  /* Gradient text fill - only for hakkiyoi */
-  ${props => props.$type === 'hakkiyoi' ? `
-    background: ${getThemeColors(props.$type).gradient};
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  ` : `
-    color: #FFFFFF;
-    -webkit-text-fill-color: #FFFFFF;
-  `}
-  
-  @media (max-width: 900px) {
-    font-size: ${props => props.$type === 'hakkiyoi' 
-      ? 'clamp(1.6rem, 5.5vw, 4rem)' 
-      : 'clamp(1.1rem, 3.5vw, 2.4rem)'};
-    letter-spacing: ${props => props.$type === 'hakkiyoi' ? '0.1em' : '0.15em'};
-  }
-  
-  @media (max-width: 600px) {
-    font-size: ${props => props.$type === 'hakkiyoi' 
-      ? 'clamp(1.2rem, 5vw, 2.8rem)' 
-      : 'clamp(0.9rem, 3vw, 1.8rem)'};
-    letter-spacing: ${props => props.$type === 'hakkiyoi' ? '0.08em' : '0.12em'};
-  }
-`;
-
-// Text shadow layer for depth
-const TextShadow = styled.div`
-  position: absolute;
-  font-family: "Bungee", cursive;
-  font-size: ${props => props.$type === 'hakkiyoi' 
-    ? 'clamp(2.2rem, 6.5vw, 5.5rem)' 
-    : 'clamp(1.4rem, 4vw, 3.2rem)'};
-  font-weight: 400;
-  line-height: 1;
-  letter-spacing: ${props => props.$type === 'hakkiyoi' ? '0.12em' : '0.18em'};
-  text-transform: uppercase;
-  white-space: nowrap;
-  top: ${props => props.$type === 'hakkiyoi' ? '5px' : '3px'};
-  left: ${props => props.$type === 'hakkiyoi' ? '5px' : '3px'};
-  color: ${props => getThemeColors(props.$type).tertiary};
-  opacity: ${props => props.$type === 'hakkiyoi' ? '0.5' : '0.35'};
-  z-index: -1;
-  animation: ${props => props.$type === 'hakkiyoi' 
-    ? css`${announcementSlam} ${props.$duration || '2.5s'} cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards`
-    : css`${preparationReveal} ${props.$duration || '2s'} cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards`
-  };
-  
-  @media (max-width: 900px) {
-    font-size: ${props => props.$type === 'hakkiyoi' 
-      ? 'clamp(1.6rem, 5.5vw, 4rem)' 
-      : 'clamp(1.1rem, 3.5vw, 2.4rem)'};
-    letter-spacing: ${props => props.$type === 'hakkiyoi' ? '0.1em' : '0.15em'};
-    top: ${props => props.$type === 'hakkiyoi' ? '4px' : '2px'};
-    left: ${props => props.$type === 'hakkiyoi' ? '4px' : '2px'};
-  }
-  
-  @media (max-width: 600px) {
-    font-size: ${props => props.$type === 'hakkiyoi' 
-      ? 'clamp(1.2rem, 5vw, 2.8rem)' 
-      : 'clamp(0.9rem, 3vw, 1.8rem)'};
-    letter-spacing: ${props => props.$type === 'hakkiyoi' ? '0.08em' : '0.12em'};
-    top: ${props => props.$type === 'hakkiyoi' ? '3px' : '2px'};
-    left: ${props => props.$type === 'hakkiyoi' ? '3px' : '2px'};
-  }
-`;
-
-// Japanese subtitle for authenticity
-const JapaneseSubtext = styled.div`
-  font-family: "Noto Serif JP", "Yu Mincho", serif;
-  font-size: clamp(0.9rem, 2vw, 1.6rem);
-  color: ${props => getThemeColors(props.$type).primary};
-  letter-spacing: 0.3em;
-  margin-top: clamp(6px, 1.2vh, 14px);
+  z-index: 1001;
   opacity: 0;
-  animation: ${cornerFadeIn} ${props => props.$duration || '2.5s'} ease-out forwards;
-  animation-delay: 0.15s;
-  text-shadow: 
-    0 0 10px ${props => getThemeColors(props.$type).glow},
-    2px 2px 4px rgba(0, 0, 0, 0.8);
-  
+
+  background: linear-gradient(
+    90deg,
+    transparent 0%, rgba(255,215,0,0.7) 20%, #FFFAF0 50%, rgba(255,215,0,0.7) 80%, transparent 100%
+  );
+  transform-origin: center center;
+  animation: ${impactBurst} 0.45s ease-out forwards;
+  animation-delay: ${p => p.$delay || "0.04s"};
+
+  @media (max-width: 900px) { width: 250px; margin-left: -125px; }
+  @media (max-width: 600px) { width: 170px; margin-left: -85px; }
+`;
+
+/* Main HAKKIYOI text — solid gold, thick outline, heavy shadows = very readable */
+const HakkiyoiText = styled.div`
+  position: fixed;
+  top: ${ANNOUNCE_Y};
+  left: 50%;
+  z-index: 1004;
+  pointer-events: none;
+
+  font-family: "Bungee", cursive;
+  font-size: clamp(2.4rem, 7vw, 6rem);
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+
+  /* Solid gold — no background-clip tricks, fully readable */
+  color: #FFD700;
+  -webkit-text-stroke: clamp(1.5px, 0.25vw, 3px) #3d0e0e;
+
+  text-shadow:
+    0 0 8px rgba(255, 215, 0, 0.6),
+    0 0 20px rgba(255, 180, 0, 0.3),
+    clamp(3px, 0.24vw, 6px) clamp(3px, 0.24vw, 6px) 0 #200404,
+    5px 5px 0 rgba(20, 4, 4, 0.7),
+    7px 7px 0 rgba(20, 4, 4, 0.4),
+    0 2px 8px rgba(0, 0, 0, 0.8);
+
+  animation: ${css`${slamIn}`} ${p => p.$duration} cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+
+  @media (max-width: 900px) {
+    font-size: clamp(1.8rem, 6vw, 4.2rem);
+    letter-spacing: 0.1em;
+  }
   @media (max-width: 600px) {
-    font-size: clamp(0.7rem, 1.8vw, 1.1rem);
-    letter-spacing: 0.2em;
-    margin-top: 4px;
+    font-size: clamp(1.4rem, 5.5vw, 3rem);
+    letter-spacing: 0.08em;
   }
 `;
 
-// Brush stroke decoration
-const BrushStroke = styled.div`
-  position: absolute;
-  width: clamp(280px, 45vw, 480px);
-  height: clamp(18px, 2.5vh, 32px);
+/* Japanese subtitle 八卦良い — gold, below the main text */
+const HakkiyoiKanji = styled.div`
+  position: fixed;
+  top: calc(${ANNOUNCE_Y} + clamp(28px, 4.5vh, 48px));
   left: 50%;
   transform: translateX(-50%);
-  background: ${props => {
-    const colors = getThemeColors(props.$type);
-    return `linear-gradient(90deg, transparent 0%, ${colors.primary}40 12%, ${colors.secondary}60 35%, ${colors.primary}70 50%, ${colors.secondary}60 65%, ${colors.primary}40 88%, transparent 100%)`;
-  }};
-  bottom: clamp(-30px, -4vh, -45px);
-  animation: ${brushReveal} ${props => props.$duration || '2.5s'} ease-out forwards;
-  border-radius: 50%;
-  filter: blur(1px);
-  
-  @media (max-width: 900px) {
-    width: clamp(200px, 40vw, 350px);
-    height: clamp(14px, 2vh, 24px);
-    bottom: clamp(-22px, -3vh, -32px);
-  }
-  
+  z-index: 1004;
+  pointer-events: none;
+
+  font-family: "Noto Serif JP", "Yu Mincho", serif;
+  font-size: clamp(0.85rem, 1.8vw, 1.5rem);
+  color: #d4af37;
+  letter-spacing: 0.35em;
+  opacity: 0;
+  animation: ${fadeIO} ${p => p.$duration} ease-out forwards;
+  animation-delay: 0.1s;
+
+  text-shadow:
+    0 0 6px rgba(212, 175, 55, 0.3),
+    1px 1px 2px rgba(0, 0, 0, 0.9);
+
   @media (max-width: 600px) {
-    width: clamp(150px, 38vw, 250px);
-    height: clamp(10px, 1.5vh, 18px);
-    bottom: clamp(-16px, -2.5vh, -24px);
+    font-size: clamp(0.65rem, 1.5vw, 1rem);
+    letter-spacing: 0.25em;
+    top: calc(${ANNOUNCE_Y} + clamp(22px, 3.5vh, 38px));
   }
 `;
 
-// Single ember particle
-const Ember = styled.div`
-  position: absolute;
-  width: ${props => props.$size || '7px'};
-  height: ${props => props.$size || '7px'};
-  background: ${props => {
-    const colors = getThemeColors(props.$type);
-    return `radial-gradient(circle, ${colors.text} 0%, ${colors.primary}E0 35%, ${colors.secondary}90 60%, transparent 100%)`;
-  }};
-  border-radius: 50%;
-  animation: ${floatUp} ${props => props.$duration || '1.4s'} ease-out forwards;
-  animation-delay: ${props => props.$delay || '0.1s'};
-  left: ${props => props.$left || '50%'};
-  bottom: ${props => props.$bottom || '0'};
-  z-index: 5;
+/* Gold ornamental rules — extend horizontally from the text */
+const GoldRule = styled.div`
+  position: fixed;
+  top: ${ANNOUNCE_Y};
+  left: 50%;
+  height: 2.5px;
   pointer-events: none;
+  z-index: 1003;
+  transform-origin: center center;
+
+  width: clamp(350px, 50vw, 600px);
+  margin-top: ${p => p.$offset || "0px"};
+
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    #6b4c12 8%,
+    #c9a22e 20%,
+    #ffe87a 50%,
+    #c9a22e 80%,
+    #6b4c12 92%,
+    transparent 100%
+  );
+
+  animation: ${ruleExtend} ${p => p.$duration} ease-out forwards;
+  animation-delay: 0.06s;
+
+  @media (max-width: 900px) { width: clamp(260px, 45vw, 450px); }
+  @media (max-width: 600px) { width: clamp(190px, 42vw, 320px); height: 2px; }
+`;
+
+/* Small gold diamond accent */
+const Diamond = styled.div`
+  position: fixed;
+  top: ${ANNOUNCE_Y};
+  z-index: 1004;
+  pointer-events: none;
+  width: clamp(7px, 0.7vw, 10px);
+  height: clamp(7px, 0.7vw, 10px);
+  background: linear-gradient(135deg, #d4af37, #FFD700, #b8860b);
+  transform: rotate(45deg);
+  margin-top: clamp(-4px, -0.35vw, -5px);
+  opacity: 0;
+  animation: ${fadeIO} ${p => p.$duration} ease-out forwards;
+  animation-delay: 0.12s;
+  box-shadow: 0 0 5px rgba(255, 215, 0, 0.4);
+
+  ${p => p.$side === "left" && `left: calc(50% - clamp(180px, 26vw, 310px));`}
+  ${p => p.$side === "right" && `left: calc(50% + clamp(172px, 25.3vw, 300px));`}
+
+  @media (max-width: 900px) {
+    ${p => p.$side === "left" && `left: calc(50% - clamp(135px, 23vw, 235px));`}
+    ${p => p.$side === "right" && `left: calc(50% + clamp(127px, 22.3vw, 225px));`}
+  }
+  @media (max-width: 600px) {
+    ${p => p.$side === "left" && `left: calc(50% - clamp(100px, 22vw, 170px));`}
+    ${p => p.$side === "right" && `left: calc(50% + clamp(92px, 21vw, 160px));`}
+  }
+`;
+
+/* Ice crystal particle */
+const IceCrystal = styled.div`
+  position: fixed;
+  top: ${ANNOUNCE_Y};
+  pointer-events: none;
+  z-index: 1005;
+  width: ${p => p.$size || "5px"};
+  height: ${p => p.$size || "5px"};
+  border-radius: 2px;
+  transform: rotate(45deg);
+  left: ${p => p.$x || "50%"};
+  margin-top: ${p => p.$yOff || "0px"};
+  opacity: 0;
+
+  background: radial-gradient(circle, #e0f2fe 0%, #38bdf8 50%, #0284c7 100%);
+  box-shadow: 0 0 4px rgba(56, 189, 248, 0.5);
+
+  animation: ${crystalDrift} ${p => p.$dur || "1.2s"} ease-out forwards;
+  animation-delay: ${p => p.$delay || "0.15s"};
+`;
+
+// ============================================
+// TE WO TSUITE STYLED COMPONENTS
+// ============================================
+
+/* TE WO TSUITE text — smaller, clean white, subtle */
+const TeWoTsuiteText = styled.div`
+  position: fixed;
+  top: ${ANNOUNCE_Y};
+  left: 50%;
+  z-index: 1004;
+  pointer-events: none;
+
+  font-family: "Bungee", cursive;
+  font-size: clamp(1.3rem, 3.8vw, 3rem);
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  white-space: nowrap;
+
+  color: #FFFFFF;
+  -webkit-text-stroke: clamp(1px, 0.15vw, 2px) rgba(0, 0, 0, 0.8);
+
+  text-shadow:
+    clamp(-4px, -0.15vw, -2px) clamp(-4px, -0.15vw, -2px) 0 #000,
+    clamp(2px, 0.15vw, 4px) clamp(-4px, -0.15vw, -2px) 0 #000,
+    clamp(-4px, -0.15vw, -2px) clamp(2px, 0.15vw, 4px) 0 #000,
+    clamp(2px, 0.15vw, 4px) clamp(2px, 0.15vw, 4px) 0 #000,
+    0 0 clamp(8px, 0.8vw, 16px) rgba(0, 0, 0, 0.7),
+    0 0 clamp(16px, 1.6vw, 32px) rgba(0, 0, 0, 0.3);
+
+  animation: ${css`${slideIn}`} ${p => p.$duration} cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+
+  @media (max-width: 900px) {
+    font-size: clamp(1rem, 3.2vw, 2.2rem);
+    letter-spacing: 0.14em;
+  }
+  @media (max-width: 600px) {
+    font-size: clamp(0.85rem, 2.8vw, 1.7rem);
+    letter-spacing: 0.1em;
+  }
+`;
+
+/* Subtle brush stroke under TE WO TSUITE */
+const TeWoBrush = styled.div`
+  position: fixed;
+  top: calc(${ANNOUNCE_Y} + clamp(16px, 2.5vh, 28px));
+  left: 50%;
+  transform: translateX(-50%);
+  width: clamp(200px, 32vw, 380px);
+  height: clamp(10px, 1.5vh, 18px);
+  z-index: 1003;
+  pointer-events: none;
+  border-radius: 50%;
+  filter: blur(1px);
+
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255,255,255,0.1) 15%,
+    rgba(255,255,255,0.2) 50%,
+    rgba(255,255,255,0.1) 85%,
+    transparent 100%
+  );
+
+  animation: ${brushReveal} ${p => p.$duration} ease-out forwards;
+
+  @media (max-width: 900px) {
+    width: clamp(160px, 28vw, 290px);
+    top: calc(${ANNOUNCE_Y} + clamp(12px, 2vh, 22px));
+  }
+  @media (max-width: 600px) {
+    width: clamp(120px, 26vw, 210px);
+    top: calc(${ANNOUNCE_Y} + clamp(10px, 1.8vh, 18px));
+  }
+`;
+
+/* Japanese subtitle for TE WO TSUITE — very faint */
+const TeWoKanji = styled.div`
+  position: fixed;
+  top: calc(${ANNOUNCE_Y} + clamp(18px, 3vh, 32px));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1004;
+  pointer-events: none;
+
+  font-family: "Noto Serif JP", "Yu Mincho", serif;
+  font-size: clamp(0.65rem, 1.3vw, 1rem);
+  color: rgba(255, 255, 255, 0.65);
+  letter-spacing: 0.3em;
+  opacity: 0;
+  animation: ${fadeIO} ${p => p.$duration} ease-out forwards;
+  animation-delay: 0.1s;
+
+  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.8);
+
+  @media (max-width: 600px) {
+    font-size: clamp(0.55rem, 1.1vw, 0.8rem);
+    top: calc(${ANNOUNCE_Y} + clamp(14px, 2.5vh, 24px));
+  }
 `;
 
 // ============================================
 // COMPONENT
 // ============================================
 
-const SumoGameAnnouncement = ({ 
-  type = "hakkiyoi", // "hakkiyoi" or "tewotsuite"
-  duration = null // auto-determined based on type if not provided
+const SumoGameAnnouncement = ({
+  type = "hakkiyoi",
+  duration = null,
 }) => {
-  // Determine actual duration
   const actualDuration = duration || (type === "hakkiyoi" ? 1.8 : 2);
   const durationStr = `${actualDuration}s`;
-  
-  // Get display text
-  const displayText = type === "hakkiyoi" ? "HAKKI-YOI !" : "TE WO TSUITE !";
-  const japaneseText = type === "hakkiyoi" ? "八卦良い" : "手を付いて";
-  
-  // Generate stable ember positions using useMemo
-  const embers = useMemo(() => {
-    const positions = [];
-    const emberCount = 5;
-    for (let i = 0; i < emberCount; i++) {
-      positions.push({
-        id: i,
-        left: `${30 + (i * 10)}%`,
-        bottom: `${-5 + (i % 2) * 8}%`,
-        size: `${5 + (i % 3) * 2}px`,
-        delay: `${0.12 + (i * 0.08)}s`,
-        duration: `${1.2 + (i % 2) * 0.3}s`
-      });
-    }
-    return positions;
-  }, []);
-  
-  // Impact line angles
+
+  // Impact line angles (HAKKIYOI)
   const impactLines = useMemo(() => [
-    { rotation: 0, delay: '0.03s' },
-    { rotation: 45, delay: '0.06s' },
-    { rotation: 90, delay: '0.09s' },
-    { rotation: 135, delay: '0.12s' },
+    { rotation: 0, delay: "0.03s" },
+    { rotation: 45, delay: "0.06s" },
+    { rotation: 90, delay: "0.09s" },
+    { rotation: 135, delay: "0.12s" },
   ], []);
-  
-  return (
-    <>
-      {/* Screen flash */}
-      <ScreenFlash $type={type} />
-      
-      {/* Shockwave ring - only for HAKKIYOI */}
-      {type === "hakkiyoi" && (
-        <ShockwaveRing $type={type} $delay="0s" />
-      )}
-      
-      {/* Impact lines - only for HAKKIYOI */}
-      {type === "hakkiyoi" && impactLines.map((line, i) => (
-        <ImpactLine 
-          key={i}
-          $type={type}
-          $delay={line.delay}
-          style={{ transform: `rotate(${line.rotation}deg)` }}
-        />
-      ))}
-      
-      <AnnouncementContainer>
-        {/* Ink splatters - both for hakkiyoi, single subtle one for tewotsuite */}
-        <InkSplatter $type={type} $duration={durationStr} />
-        {type === "hakkiyoi" && (
-          <SecondaryInkSplatter $type={type} $duration={durationStr} />
-        )}
-        
-        {/* Corner decorations - only for hakkiyoi */}
-        {type === "hakkiyoi" && (
-          <>
-            <CornerDecoration $type={type} $position="topLeft" $duration={durationStr} />
-            <CornerDecoration $type={type} $position="topRight" $duration={durationStr} />
-            <CornerDecoration $type={type} $position="bottomLeft" $duration={durationStr} />
-            <CornerDecoration $type={type} $position="bottomRight" $duration={durationStr} />
-          </>
-        )}
-        
-        {/* Diamond accents - only for hakkiyoi */}
-        {type === "hakkiyoi" && (
-          <>
-            <DiamondAccent $type={type} $position="left" $duration={durationStr} />
-            <DiamondAccent $type={type} $position="right" $duration={durationStr} />
-          </>
-        )}
-        
-        <TextContainer>
-          <TextShadow $type={type} $duration={durationStr}>{displayText}</TextShadow>
-          <MainText $type={type} $duration={durationStr}>{displayText}</MainText>
-          {type === "hakkiyoi" && (
-            <JapaneseSubtext $type={type} $duration={durationStr}>{japaneseText}</JapaneseSubtext>
-          )}
-          <BrushStroke $type={type} $duration={durationStr} />
-        </TextContainer>
-        
-        {/* Floating embers - only for hakkiyoi */}
-        {type === "hakkiyoi" && embers.map(ember => (
-          <Ember
-            key={ember.id}
-            $type={type}
-            $left={ember.left}
-            $bottom={ember.bottom}
-            $size={ember.size}
-            $delay={ember.delay}
-            $duration={ember.duration}
+
+  // Ice crystal particles (HAKKIYOI)
+  const crystals = useMemo(() => [
+    { id: 0, x: "calc(50% - 80px)", yOff: "10px",  size: "5px", delay: "0.18s", dur: "1.1s" },
+    { id: 1, x: "calc(50% - 35px)", yOff: "-5px",  size: "6px", delay: "0.24s", dur: "1.3s" },
+    { id: 2, x: "50%",              yOff: "12px",   size: "4px", delay: "0.14s", dur: "1.0s" },
+    { id: 3, x: "calc(50% + 40px)", yOff: "-3px",   size: "6px", delay: "0.28s", dur: "1.2s" },
+    { id: 4, x: "calc(50% + 85px)", yOff: "8px",    size: "5px", delay: "0.20s", dur: "1.35s" },
+  ], []);
+
+  // ─── HAKKIYOI ───
+  if (type === "hakkiyoi") {
+    return (
+      <>
+        <ScreenFlash $type="hakkiyoi" />
+
+        {/* Dark vignette behind text for contrast */}
+        <DarkVignette $duration={durationStr} />
+
+        {/* Shockwave ring */}
+        <Shockwave />
+
+        {/* Impact lines */}
+        {impactLines.map((line, i) => (
+          <ImpactLine
+            key={i}
+            $delay={line.delay}
+            style={{ transform: `rotate(${line.rotation}deg)` }}
           />
         ))}
-      </AnnouncementContainer>
+
+        {/* Gold ornamental rules above & below text */}
+        <GoldRule $duration={durationStr} $offset="clamp(-24px, -3.5vh, -40px)" />
+        <GoldRule $duration={durationStr} $offset="clamp(20px, 3vh, 34px)" />
+
+        {/* Diamond accents at rule ends */}
+        <Diamond $side="left" $duration={durationStr} />
+        <Diamond $side="right" $duration={durationStr} />
+
+        {/* Main text */}
+        <HakkiyoiText $duration={durationStr}>HAKKI-YOI !</HakkiyoiText>
+
+        {/* Japanese subtitle */}
+        <HakkiyoiKanji $duration={durationStr}>八卦良い</HakkiyoiKanji>
+
+        {/* Ice crystals */}
+        {crystals.map((c) => (
+          <IceCrystal
+            key={c.id}
+            $x={c.x}
+            $yOff={c.yOff}
+            $size={c.size}
+            $delay={c.delay}
+            $dur={c.dur}
+          />
+        ))}
+      </>
+    );
+  }
+
+  // ─── TE WO TSUITE ───
+  return (
+    <>
+      <ScreenFlash $type="tewotsuite" />
+      <TeWoTsuiteText $duration={durationStr}>TE WO TSUITE !</TeWoTsuiteText>
+      <TeWoKanji $duration={durationStr}>手を付いて</TeWoKanji>
+      <TeWoBrush $duration={durationStr} />
     </>
   );
 };

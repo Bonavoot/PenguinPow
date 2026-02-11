@@ -5,7 +5,7 @@ body {
   overflow: hidden;
   margin: 0;
   color: white;
-  background-color: #060607;
+  background-color: #0b0c0e;
 }
 
 /* Startup Screen Styles */
@@ -20,7 +20,7 @@ body {
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  border: black 2px solid;
+  border: black clamp(2px, 0.16vw, 4px) solid;
 }
 
 .startup-content {
@@ -137,7 +137,7 @@ body {
   z-index: 100;
   position: relative;
   overflow: hidden;
-  border: black 2px solid;
+  border: black clamp(2px, 0.16vw, 4px) solid;
 }
 
 .main-menu-btn-container {
@@ -149,8 +149,8 @@ body {
 
 .cherry-blossom {
   position: absolute;
-  width: 10px;
-  height: 10px;
+  width: clamp(8px, 0.8vw, 16px);
+  height: clamp(8px, 0.8vw, 16px);
   background-color: #ffc0cb;
   border-radius: 50%;
   opacity: 0.7;
@@ -239,7 +239,7 @@ body {
   height: 100vh;
   aspect-ratio: 16 / 9;
   background-color: rgb(22, 22, 22);
-  box-shadow: 0px 0px 2px 1px black;
+  box-shadow: 0px 0px clamp(2px, 0.16vw, 4px) clamp(1px, 0.08vw, 2px) black;
   border-radius: 1%;
   position: relative;
   font-family: cursive;
@@ -345,7 +345,7 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  background: #060607;
+  background: #0b0c0e;
   overflow: hidden;
 }
 
@@ -356,23 +356,32 @@ body {
   max-width: 100vw;
   max-height: 100vh;
   aspect-ratio: 16 / 9;
-  border: 2px solid black;
+  border: clamp(2px, 0.16vw, 4px) solid black;
   overflow: hidden;
   z-index: 99;
+  /* ── Scaling helpers: visual weight that grows with screen size ── */
+  --text-ol: clamp(2px, 0.15vw, 4px);
+  --neg-text-ol: clamp(-4px, -0.15vw, -2px);
+  --border-w: clamp(2px, 0.16vw, 4px);
+
   /* Slight lift so an overlay with low zIndex remains behind sprites */
-  --arena-map-filter: brightness(0.9) saturate(0.96) contrast(1.04);
-  --arena-ambient-top: rgba(0, 0, 0, 0.14);
-  --arena-ambient-bottom: rgba(0, 0, 0, 0.24);
-  --arena-tone-center: rgba(255, 230, 155, 0.045);
-  --arena-tone-center-mid: rgba(255, 230, 155, 0.015);
-  --arena-tone-edge: rgba(0, 0, 0, 0.14);
-  --arena-tone-top: rgba(0, 0, 0, 0.09);
-  --arena-tone-mid: rgba(0, 0, 0, 0.05);
-  --arena-tone-bottom: rgba(0, 0, 0, 0.16);
-  --arena-vignette-mid: rgba(0, 0, 0, 0.12);
-  --arena-vignette-edge: rgba(0, 0, 0, 0.3);
+  --arena-map-filter: brightness(0.94) saturate(0.98) contrast(1.04);
+  --arena-ambient-top: rgba(0, 0, 0, 0.1);
+  --arena-ambient-bottom: rgba(0, 0, 0, 0.18);
+  --arena-tone-center: rgba(255, 230, 155, 0.06);
+  --arena-tone-center-mid: rgba(255, 230, 155, 0.022);
+  --arena-tone-edge: rgba(0, 0, 0, 0.1);
+  --arena-tone-top: rgba(0, 0, 0, 0.07);
+  --arena-tone-mid: rgba(0, 0, 0, 0.035);
+  --arena-tone-bottom: rgba(0, 0, 0, 0.12);
+  --arena-vignette-mid: rgba(0, 0, 0, 0.09);
+  --arena-vignette-edge: rgba(0, 0, 0, 0.24);
   --arena-grain-light: rgba(255, 255, 255, 0.007);
   --arena-grain-dark: rgba(0, 0, 0, 0.014);
+  /* Dedicated dohyo grade so ring keeps style regardless stacking changes */
+  --dohyo-filter: brightness(0.97) saturate(1) contrast(1.06);
+  --dohyo-opacity: 0.96;
+  --dohyo-cool-tint: rgba(185, 220, 255, 0.1);
 }
 
 .game-container::before {
@@ -420,8 +429,23 @@ body {
   background-repeat: no-repeat;
   background-size: 130% 120%;
   background-position: 52% 5%;
+  filter: var(--dohyo-filter);
+  opacity: var(--dohyo-opacity);
   pointer-events: none;
   z-index: 1;
+}
+
+.dohyo-overlay::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    var(--dohyo-cool-tint) 0%,
+    rgba(185, 220, 255, 0.04) 45%,
+    rgba(190, 220, 255, 0) 100%
+  );
+  pointer-events: none;
 }
 
 /* Cheap post-processing passes to unify the look without blurs */
@@ -483,7 +507,6 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 10;
 }
 
 .ui-container {
@@ -614,7 +637,7 @@ body {
 
 .ui-player-1-name,
 .ui-player-2-name {
-  border: red solid 2px;
+  border: red solid clamp(2px, 0.16vw, 4px);
   height: 80%;
   width: 20%;
   display: flex;
@@ -650,8 +673,8 @@ body {
   font-family: "Bungee";
   font-size: clamp(0.75rem, 4.25vw, 3rem);
   top: 0;
-  text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000,
-    2px 2px 0 #000;
+  text-shadow: var(--neg-text-ol) var(--neg-text-ol) 0 #000, var(--text-ol) var(--neg-text-ol) 0 #000, var(--neg-text-ol) var(--text-ol) 0 #000,
+    var(--text-ol) var(--text-ol) 0 #000;
 }
 
 .player1-win-count {
@@ -665,8 +688,8 @@ body {
   font-family: "Bungee";
   font-size: clamp(0.75rem, 4vw, 2.75rem);
   color: white;
-  text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000,
-    2px 2px 0 #000;
+  text-shadow: var(--neg-text-ol) var(--neg-text-ol) 0 #000, var(--text-ol) var(--neg-text-ol) 0 #000, var(--neg-text-ol) var(--text-ol) 0 #000,
+    var(--text-ol) var(--text-ol) 0 #000;
 }
 
 #ui-name-1 {
@@ -729,7 +752,7 @@ body {
 .ui-player-stamina-container {
   background-color: black;
   height: 100%;
-  border: rgba(71, 71, 71, 0.7) solid 2px;
+  border: rgba(71, 71, 71, 0.7) solid clamp(2px, 0.16vw, 4px);
   border-radius: 3px;
   position: relative;
   z-index: 1;
@@ -767,11 +790,11 @@ body {
   white-space: nowrap;
   animation: gyojiCallAnnounce 2s ease-out forwards;
   text-shadow: 
-    -2px -2px 0 #000, 
-    2px -2px 0 #000, 
-    -2px 2px 0 #000, 
-    2px 2px 0 #000,
-    0 0 15px rgba(255, 200, 50, 0.6);
+    var(--neg-text-ol) var(--neg-text-ol) 0 #000, 
+    var(--text-ol) var(--neg-text-ol) 0 #000, 
+    var(--neg-text-ol) var(--text-ol) 0 #000, 
+    var(--text-ol) var(--text-ol) 0 #000,
+    0 0 clamp(10px, 1.2vw, 20px) rgba(255, 200, 50, 0.6);
   will-change: transform, opacity;
 }
 
@@ -823,8 +846,8 @@ body {
   -webkit-text-fill-color: #ffffff;
   /* Simplified shadows for better performance */
   text-shadow: 
-    -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000,
-    0 0 12px rgba(255, 200, 50, 0.8);
+    var(--neg-text-ol) var(--neg-text-ol) 0 #000, var(--text-ol) var(--neg-text-ol) 0 #000, var(--neg-text-ol) var(--text-ol) 0 #000, var(--text-ol) var(--text-ol) 0 #000,
+    0 0 clamp(8px, 1vw, 16px) rgba(255, 200, 50, 0.8);
   z-index: 1001;
   will-change: transform, opacity;
 }
@@ -894,8 +917,8 @@ body {
   -webkit-text-fill-color: var(--win-color);
   /* Simpler shadows - no animated filters */
   text-shadow: 
-    -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000,
-    0 0 15px var(--win-glow);
+    var(--neg-text-ol) var(--neg-text-ol) 0 #000, var(--text-ol) var(--neg-text-ol) 0 #000, var(--neg-text-ol) var(--text-ol) 0 #000, var(--text-ol) var(--text-ol) 0 #000,
+    0 0 clamp(10px, 1.2vw, 20px) var(--win-glow);
   z-index: 1001;
   letter-spacing: 0.15em;
   will-change: transform, opacity;

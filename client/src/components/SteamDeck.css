@@ -123,8 +123,8 @@
   img,
   .character-image,
   .StyledImage {
-    filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000)
-      drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000);
+    filter: drop-shadow(clamp(1px, 0.08vw, 2.5px) 0 0 #000) drop-shadow(clamp(-2.5px, -0.08vw, -1px) 0 0 #000)
+      drop-shadow(0 clamp(1px, 0.08vw, 2.5px) 0 #000) drop-shadow(0 clamp(-2.5px, -0.08vw, -1px) 0 #000);
     /* Keep the same visual effect as desktop */
   }
 

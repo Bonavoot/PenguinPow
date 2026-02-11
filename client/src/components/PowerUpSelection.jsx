@@ -96,7 +96,7 @@ const PowerUpSelectionOverlay = styled.div`
 
 // Main container - centered horizontally, positioned below header
 const BannerContainer = styled.div`
-  margin-top: 55px;
+  margin-top: calc(10.6vh + 22px);
   width: fit-content;
   max-width: min(90vw, 850px);
   pointer-events: auto;
@@ -104,26 +104,15 @@ const BannerContainer = styled.div`
   transform-origin: top center;
   
   @media (max-width: 1200px) {
-    margin-top: 50px;
     max-width: min(92vw, 750px);
   }
   
   @media (max-width: 900px) {
-    margin-top: 45px;
     max-width: min(94vw, 650px);
   }
   
   @media (max-width: 600px) {
-    margin-top: 40px;
     max-width: min(96vw, 500px);
-  }
-  
-  @media (max-height: 700px) {
-    margin-top: 40px;
-  }
-  
-  @media (max-height: 550px) {
-    margin-top: 35px;
   }
 `;
 

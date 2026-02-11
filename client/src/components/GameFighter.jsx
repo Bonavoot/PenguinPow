@@ -602,7 +602,7 @@ const TintedImage = styled.img
   }))``;
 
 const getFighterPopFilter = (props) => {
-  const base = "drop-shadow(0 0 1px #000)";
+  const base = "drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000)";
 
   if (props.$isAtTheRopes) {
     return `${base} drop-shadow(0 0 8px rgba(255, 50, 50, 0.7)) brightness(1.15) contrast(1.25)`;
@@ -847,36 +847,36 @@ const StyledImage = styled("img")
   /* PERFORMANCE: Optimized keyframes - reduced drop-shadows from 4+ to 1-2 */
   @keyframes rawParryFlash {
     0% {
-      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 2px rgba(0, 150, 255, 0.4)) brightness(1);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 2px rgba(0, 150, 255, 0.4)) brightness(1);
     }
     25% {
-      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 12px rgba(0, 150, 255, 0.9)) brightness(1.6);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 12px rgba(0, 150, 255, 0.9)) brightness(1.6);
     }
     50% {
-      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.7)) brightness(1.3);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.7)) brightness(1.3);
     }
     75% {
-      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 12px rgba(0, 150, 255, 0.9)) brightness(1.6);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 12px rgba(0, 150, 255, 0.9)) brightness(1.6);
     }
     100% {
-      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 2px rgba(0, 150, 255, 0.4)) brightness(1);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 2px rgba(0, 150, 255, 0.4)) brightness(1);
     }
   }
   @keyframes grabBreakFlash {
     0% {
-      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 2px rgba(0, 255, 128, 0.45)) brightness(1);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 2px rgba(0, 255, 128, 0.45)) brightness(1);
     }
     25% {
-      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 12px rgba(0, 255, 128, 0.95)) brightness(1.7);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 12px rgba(0, 255, 128, 0.95)) brightness(1.7);
     }
     50% {
-      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.75)) brightness(1.4);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.75)) brightness(1.4);
     }
     75% {
-      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 12px rgba(0, 255, 128, 0.95)) brightness(1.7);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 12px rgba(0, 255, 128, 0.95)) brightness(1.7);
     }
     100% {
-      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 2px rgba(0, 255, 128, 0.45)) brightness(1);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 2px rgba(0, 255, 128, 0.45)) brightness(1);
     }
   }
   
@@ -884,32 +884,32 @@ const StyledImage = styled("img")
   @keyframes hitSquash {
     0% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg);
-      filter: drop-shadow(0 0 1px #000) contrast(1.2) brightness(1.15);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2) brightness(1.15);
     }
     /* IMPACT - hard compression, bright flash */
     6% {
       transform: scaleX(calc(var(--facing, 1) * 1.25)) scaleY(0.75) translateX(calc(var(--facing, 1) * -3%)) rotate(calc(var(--facing, 1) * 2deg));
-      filter: drop-shadow(0 0 1px #000) contrast(1.5) brightness(1.8);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.5) brightness(1.8);
     }
     /* Recoil - shoved back hard, body whips */
     18% {
       transform: scaleX(calc(var(--facing, 1) * 0.88)) scaleY(1.12) translateX(calc(var(--facing, 1) * -5%)) rotate(calc(var(--facing, 1) * -4deg));
-      filter: drop-shadow(0 0 1px #000) contrast(1.35) brightness(1.4);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.35) brightness(1.4);
     }
     /* Secondary bounce - body weight shifts */
     35% {
       transform: scaleX(calc(var(--facing, 1) * 1.08)) scaleY(0.92) translateX(calc(var(--facing, 1) * -2%)) rotate(calc(var(--facing, 1) * 1.5deg));
-      filter: drop-shadow(0 0 1px #000) contrast(1.25) brightness(1.2);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.25) brightness(1.2);
     }
     /* Settling */
     55% {
       transform: scaleX(calc(var(--facing, 1) * 0.96)) scaleY(1.04) translateX(calc(var(--facing, 1) * -0.5%)) rotate(calc(var(--facing, 1) * -0.5deg));
-      filter: drop-shadow(0 0 1px #000) contrast(1.2) brightness(1.15);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2) brightness(1.15);
     }
     /* Back to normal */
     100% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg);
-      filter: drop-shadow(0 0 1px #000) contrast(1.2) brightness(1.15);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2) brightness(1.15);
     }
   }
   
@@ -917,32 +917,32 @@ const StyledImage = styled("img")
   @keyframes attackPunch {
     0% {
       transform: scaleX(var(--facing, 1)) scaleY(1);
-      filter: drop-shadow(0 0 1px #000) contrast(1.2);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2);
     }
     25% {
       transform: scaleX(calc(var(--facing, 1) * 0.9)) scaleY(1.1);
-      filter: drop-shadow(0 0 1px #000) contrast(1.3) brightness(1.15);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.3) brightness(1.15);
     }
     55% {
       transform: scaleX(calc(var(--facing, 1) * 1.12)) scaleY(0.92);
-      filter: drop-shadow(0 0 1px #000) contrast(1.25) brightness(1.1) drop-shadow(0 0 8px rgba(255, 200, 50, 0.6));
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.25) brightness(1.1) drop-shadow(0 0 8px rgba(255, 200, 50, 0.6));
     }
     100% {
       transform: scaleX(var(--facing, 1)) scaleY(1);
-      filter: drop-shadow(0 0 1px #000) contrast(1.2);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2);
     }
   }
   
   /* Charge pulse animation - builds anticipation for charged attack */
   @keyframes chargePulse {
     0% {
-      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(255, 200, 50, 0.5)) contrast(1.2);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 8px rgba(255, 200, 50, 0.5)) contrast(1.2);
     }
     50% {
-      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 18px rgba(255, 150, 0, 0.9)) contrast(1.35) brightness(1.1);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 18px rgba(255, 150, 0, 0.9)) contrast(1.35) brightness(1.1);
     }
     100% {
-      filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 8px rgba(255, 200, 50, 0.5)) contrast(1.2);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 8px rgba(255, 200, 50, 0.5)) contrast(1.2);
     }
   }
   
@@ -1015,11 +1015,11 @@ const StyledImage = styled("img")
   @keyframes slapRush {
     0%, 100% {
       transform: scaleX(var(--facing, 1));
-      filter: drop-shadow(0 0 1px #000) contrast(1.2) blur(0.3px);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2) blur(0.3px);
     }
     50% {
       transform: scaleX(var(--facing, 1));
-      filter: drop-shadow(0 0 1px #000) contrast(1.2) blur(0.6px);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2) blur(0.6px);
     }
   }
   
@@ -1053,23 +1053,23 @@ const StyledImage = styled("img")
   @keyframes dodgeTakeoff {
     0% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
-      filter: drop-shadow(0 0 1px #000) contrast(1.2);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2);
     }
     20% {
       transform: scaleX(calc(var(--facing, 1) * 1.08)) scaleY(0.88) translateY(0);
-      filter: drop-shadow(0 0 1px #000) contrast(1.25) brightness(1.05);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.25) brightness(1.05);
     }
     50% {
       transform: scaleX(calc(var(--facing, 1) * 0.94)) scaleY(1.08) translateY(-2px);
-      filter: drop-shadow(0 0 1px #000) contrast(1.22) brightness(1.08);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.22) brightness(1.08);
     }
     80% {
       transform: scaleX(calc(var(--facing, 1) * 0.97)) scaleY(1.04) translateY(-1px);
-      filter: drop-shadow(0 0 1px #000) contrast(1.2) brightness(1.03);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2) brightness(1.03);
     }
     100% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
-      filter: drop-shadow(0 0 1px #000) contrast(1.2);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2);
     }
   }
   
@@ -1077,23 +1077,23 @@ const StyledImage = styled("img")
   @keyframes dodgeCancelSlam {
     0% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
-      filter: drop-shadow(0 0 1px #000) contrast(1.2);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2);
     }
     40% {
       transform: scaleX(calc(var(--facing, 1) * 0.94)) scaleY(1.08) translateY(1px);
-      filter: drop-shadow(0 0 1px #000) contrast(1.22) brightness(1.05);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.22) brightness(1.05);
     }
     70% {
       transform: scaleX(calc(var(--facing, 1) * 1.12)) scaleY(0.82) translateY(0);
-      filter: drop-shadow(0 0 1px #000) contrast(1.28) brightness(1.1);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.28) brightness(1.1);
     }
     90% {
       transform: scaleX(calc(var(--facing, 1) * 0.98)) scaleY(1.03) translateY(0);
-      filter: drop-shadow(0 0 1px #000) contrast(1.22);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.22);
     }
     100% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
-      filter: drop-shadow(0 0 1px #000) contrast(1.2);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2);
     }
   }
   
@@ -1102,27 +1102,27 @@ const StyledImage = styled("img")
     0% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
       transform-origin: center bottom;
-      filter: drop-shadow(0 0 1px #000) contrast(1.2);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2);
     }
     25% {
       transform: scaleX(calc(var(--facing, 1) * 1.06)) scaleY(0.88) translateY(0);
       transform-origin: center bottom;
-      filter: drop-shadow(0 0 1px #000) contrast(1.24) brightness(1.05);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.24) brightness(1.05);
     }
     55% {
       transform: scaleX(calc(var(--facing, 1) * 0.98)) scaleY(1.04) translateY(0);
       transform-origin: center bottom;
-      filter: drop-shadow(0 0 1px #000) contrast(1.21) brightness(1.02);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.21) brightness(1.02);
     }
     80% {
       transform: scaleX(calc(var(--facing, 1) * 1.02)) scaleY(0.99) translateY(0);
       transform-origin: center bottom;
-      filter: drop-shadow(0 0 1px #000) contrast(1.2);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2);
     }
     100% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
       transform-origin: center bottom;
-      filter: drop-shadow(0 0 1px #000) contrast(1.2);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2);
     }
   }
   
@@ -1193,7 +1193,7 @@ const RitualSpriteImage = styled.img.attrs((props) => {
       willChange: "transform",
       backfaceVisibility: "hidden",
         // PERFORMANCE: Reduced drop-shadows
-        filter: "drop-shadow(0 0 1px #000) contrast(1.2)",
+        filter: "drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2)",
     },
   };
 })``;
@@ -1510,7 +1510,7 @@ const SnowballProjectile = styled.img
       bottom: `${(props.$y / 720) * 100 + 14}%`,
       zIndex: 95,
       pointerEvents: "none",
-      filter: "drop-shadow(0 0 1px #000)",
+      filter: "drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000)",
     },
   }))``;
 
@@ -1529,7 +1529,7 @@ const PumoClone = styled.img
       transform: `scaleX(${props.$facing * -1})`,
       zIndex: (props.$x < -20 || props.$x > 1075) || props.$y < (GROUND_LEVEL - 35) ? 0 : 98,
       pointerEvents: "none",
-      filter: "drop-shadow(0 0 1px #000) contrast(1.3)",
+      filter: "drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.3)",
     },
   }))``;
 
@@ -1571,7 +1571,7 @@ const AnimatedPumoCloneImage = styled.img
         height: "100%",
         width: "auto",
         backfaceVisibility: "hidden",
-        filter: "drop-shadow(0 0 1px #000) contrast(1.3)",
+        filter: "drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.3)",
         animation: frameCount > 1
           ? `spritesheet-${frameCount} ${duration}s steps(${frameCount - 1}) infinite`
           : "none",

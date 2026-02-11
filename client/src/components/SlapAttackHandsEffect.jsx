@@ -91,12 +91,12 @@ const Hand = styled.img`
   transform-origin: center;
   will-change: transform, opacity;
   filter: grayscale(100%) brightness(200%)
-    drop-shadow(1px 0 0 black) 
-    drop-shadow(-1px 0 0 black) 
-    drop-shadow(0 1px 0 black) 
-    drop-shadow(0 -1px 0 black)
-    drop-shadow(0 0 8px rgba(255, 255, 255, 0.8))
-    drop-shadow(0 0 15px rgba(255, 255, 255, 0.5)); // White with black outline and glow - reliable across all monitors
+    drop-shadow(clamp(1px, 0.08vw, 2.5px) 0 0 black) 
+    drop-shadow(clamp(-2.5px, -0.08vw, -1px) 0 0 black) 
+    drop-shadow(0 clamp(1px, 0.08vw, 2.5px) 0 black) 
+    drop-shadow(0 clamp(-2.5px, -0.08vw, -1px) 0 black)
+    drop-shadow(0 0 clamp(6px, 0.6vw, 12px) rgba(255, 255, 255, 0.8))
+    drop-shadow(0 0 clamp(12px, 1.2vw, 24px) rgba(255, 255, 255, 0.5)); // White with black outline and glow - scales with screen
 `;
 
 const Streak = styled.div`

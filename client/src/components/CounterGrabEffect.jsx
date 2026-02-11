@@ -9,16 +9,16 @@ const shockwaveExpand = keyframes`
   0% {
     transform: translate(-50%, -50%) scale(0);
     opacity: 1;
-    border-width: 8px;
+    border-width: clamp(8px, 0.65vw, 16px);
   }
   40% {
     opacity: 1;
-    border-width: 4px;
+    border-width: clamp(4px, 0.32vw, 8px);
   }
   100% {
     transform: translate(-50%, -50%) scale(3);
     opacity: 0;
-    border-width: 1px;
+    border-width: clamp(1px, 0.08vw, 2px);
   }
 `;
 
@@ -125,7 +125,7 @@ const ShockwaveRing = styled.div`
   width: ${HIT_RADIUS_LARGE};
   height: ${HIT_RADIUS_LARGE};
   border-radius: 50%;
-  border: 5px solid rgba(205, 115, 255, 0.98);
+  border: clamp(5px, 0.4vw, 10px) solid rgba(205, 115, 255, 0.98);
   box-shadow:
     0 0 16px rgba(187, 85, 255, 0.65),
     0 0 30px rgba(153, 51, 255, 0.38),
@@ -183,15 +183,15 @@ const Spark = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: ${props => props.$size}px;
-  height: ${props => props.$size}px;
+  width: clamp(${props => props.$size}px, ${props => (props.$size * 0.08).toFixed(2)}vw, ${props => props.$size * 2}px);
+  height: clamp(${props => props.$size}px, ${props => (props.$size * 0.08).toFixed(2)}vw, ${props => props.$size * 2}px);
   background: ${props => props.$isRed 
     ? 'linear-gradient(45deg, #ffffff, #cc2244)' 
     : 'linear-gradient(45deg, #ffffff, #9933ff)'};
   border-radius: 50%;
   box-shadow:
-    0 0 ${props => props.$size * 2.2}px ${props => props.$isRed ? 'rgba(204, 34, 68, 0.9)' : 'rgba(153, 51, 255, 0.92)'},
-    0 0 ${props => props.$size * 3}px ${props => props.$isRed ? 'rgba(204, 34, 68, 0.34)' : 'rgba(153, 51, 255, 0.36)'};
+    0 0 clamp(${props => props.$size * 2.2}px, ${props => (props.$size * 0.17).toFixed(2)}vw, ${props => props.$size * 4.4}px) ${props => props.$isRed ? 'rgba(204, 34, 68, 0.9)' : 'rgba(153, 51, 255, 0.92)'},
+    0 0 clamp(${props => props.$size * 3}px, ${props => (props.$size * 0.24).toFixed(2)}vw, ${props => props.$size * 6}px) ${props => props.$isRed ? 'rgba(204, 34, 68, 0.34)' : 'rgba(153, 51, 255, 0.36)'};
   opacity: 0;
   animation: ${sparkBurst} 0.4s ease-out forwards;
   animation-delay: ${props => props.$delay}s;

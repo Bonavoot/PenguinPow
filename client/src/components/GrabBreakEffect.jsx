@@ -9,16 +9,16 @@ const shockwaveExpand = keyframes`
   0% {
     transform: translate(-50%, -50%) scale(0);
     opacity: 1;
-    border-width: 8px;
+    border-width: clamp(8px, 0.65vw, 16px);
   }
   40% {
     opacity: 1;
-    border-width: 4px;
+    border-width: clamp(4px, 0.32vw, 8px);
   }
   100% {
     transform: translate(-50%, -50%) scale(3);
     opacity: 0;
-    border-width: 1px;
+    border-width: clamp(1px, 0.08vw, 2px);
   }
 `;
 
@@ -108,7 +108,7 @@ const ShockwaveRing = styled.div`
   width: ${HIT_RADIUS_LARGE};
   height: ${HIT_RADIUS_LARGE};
   border-radius: 50%;
-  border: 5px solid rgba(40, 255, 165, 0.98);
+  border: clamp(5px, 0.4vw, 10px) solid rgba(40, 255, 165, 0.98);
   box-shadow:
     0 0 16px rgba(0, 255, 136, 0.65),
     0 0 30px rgba(0, 255, 136, 0.35),
@@ -139,13 +139,13 @@ const Spark = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: ${props => props.$size}px;
-  height: ${props => props.$size}px;
+  width: clamp(${props => props.$size}px, ${props => (props.$size * 0.08).toFixed(2)}vw, ${props => props.$size * 2}px);
+  height: clamp(${props => props.$size}px, ${props => (props.$size * 0.08).toFixed(2)}vw, ${props => props.$size * 2}px);
   background: linear-gradient(45deg, #ffffff, #00ff88);
   border-radius: 50%;
   box-shadow:
-    0 0 ${props => props.$size * 2.3}px rgba(0, 255, 136, 0.92),
-    0 0 ${props => props.$size * 3.1}px rgba(0, 220, 120, 0.35);
+    0 0 clamp(${props => props.$size * 2.3}px, ${props => (props.$size * 0.18).toFixed(2)}vw, ${props => props.$size * 4.6}px) rgba(0, 255, 136, 0.92),
+    0 0 clamp(${props => props.$size * 3.1}px, ${props => (props.$size * 0.24).toFixed(2)}vw, ${props => props.$size * 6.2}px) rgba(0, 220, 120, 0.35);
   opacity: 0;
   animation: ${sparkBurst} 0.4s ease-out forwards;
   animation-delay: ${props => props.$delay}s;
