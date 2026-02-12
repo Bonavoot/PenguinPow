@@ -35,13 +35,13 @@ const dangerFramePulse = keyframes`
     box-shadow:
       inset 0 0 6px rgba(255, 40, 40, 0.05),
       0 0 4px rgba(255, 40, 40, 0.05),
-      0 0 0 2.5px rgba(180, 130, 30, 0.6);
+      0 0 0 2px rgba(180, 130, 30, 0.6);
   }
   50% {
     box-shadow:
       inset 0 0 14px rgba(255, 40, 40, 0.25),
       0 0 16px rgba(255, 40, 40, 0.35),
-      0 0 0 2.5px rgba(255, 60, 60, 0.7);
+      0 0 0 2px rgba(255, 60, 60, 0.7);
   }
 `;
 
@@ -147,6 +147,7 @@ const PlayerWing = styled.div`
 const NameBanner = styled.div`
   display: flex;
   align-items: center;
+  width: 100%;
   gap: clamp(5px, 0.8vw, 10px);
   flex-direction: ${(p) => (p.$isRight ? "row-reverse" : "row")};
   /* Angled banner edge — fighting game energy */
@@ -169,7 +170,7 @@ const NameBanner = styled.div`
     : "padding-right: clamp(16px, 2.5vw, 30px);"}
   position: relative;
 
-  /* Gold gradient bottom edge via pseudo-element (border-image doesn't clip-path well) */
+  /* Gold gradient bottom edge — renders above the avatar so it continues through it */
   &::after {
     content: "";
     position: absolute;
@@ -180,6 +181,7 @@ const NameBanner = styled.div`
       #d4af37 0%, #b8860b 60%, transparent 100%
     );
     pointer-events: none;
+    z-index: 4;
   }
 
   /* Colored accent edge — east(teal)/west(crimson) sumo tradition */
@@ -197,20 +199,27 @@ const NameBanner = styled.div`
   }
 `;
 
-/* Square seal avatar (hanko stamp feel) — sized to fit the banner */
+/* Square seal avatar (hanko stamp feel) — full banner height, flush to side accent */
 const AvatarSeal = styled.div`
-  width: clamp(18px, 3.5vh, 40px);
-  height: clamp(18px, 3.5vh, 40px);
+  width: clamp(24px, 4.5vh, 50px);
+  align-self: stretch;
+  /* Push flush to the banner edge, covering the side accent */
+  ${(p) => p.$isRight
+    ? "margin-right: calc(-1 * clamp(10px, 1.5vw, 20px));"
+    : "margin-left: calc(-1 * clamp(10px, 1.5vw, 20px));"}
+  /* Bottom aligns with banner's gold bottom edge */
+  margin-bottom: 0;
   background: radial-gradient(
     circle at 35% 35%,
     #5c1a1a, #3d0a0a 70%, #200404
   );
   border: clamp(2px, 0.16vw, 4px) solid #d4af37;
-  border-radius: 4px;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: clamp(9px, 1.4vw, 17px);
+  font-size: clamp(11px, 1.8vw, 20px);
   font-weight: 900;
   color: #ffd700;
   text-shadow:
@@ -222,6 +231,7 @@ const AvatarSeal = styled.div`
     0 3px 10px rgba(0, 0, 0, 0.5);
   flex-shrink: 0;
   position: relative;
+  z-index: 3;
 
   /* Subtle diagonal stamp-mark texture */
   &::after {
@@ -269,12 +279,13 @@ const FighterName = styled.div`
 // RANK PLAQUE — sumo banzuke-style ranking plate
 // ============================================
 
-/* Sits below the stamina bar, like Tekken's "0 dan" position */
+/* Sits below the stamina bar — symmetrical sumo banzuke plate */
 const RankPlaque = styled.div`
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: clamp(4px, 0.5vw, 8px);
-  padding: clamp(3px, 0.4vh, 6px) clamp(8px, 1vw, 16px);
+  padding: clamp(3px, 0.4vh, 6px) clamp(10px, 1.2vw, 18px);
   position: relative;
 
   /* Dark lacquered plaque with subtle grain */
@@ -297,12 +308,12 @@ const RankPlaque = styled.div`
     inset 0 1px 0 rgba(255, 200, 100, 0.06),
     inset 0 -1px 3px rgba(0, 0, 0, 0.3);
 
-  /* Gold ornamental bracket on the outer edge */
+  /* Gold ornamental bracket — LEFT side */
   &::before {
     content: "";
     position: absolute;
     top: 3px; bottom: 3px;
-    ${(p) => (p.$isRight ? "right: -1px;" : "left: -1px;")}
+    left: -1px;
     width: 3px;
     background: linear-gradient(
       180deg,
@@ -315,21 +326,22 @@ const RankPlaque = styled.div`
     border-radius: 2px;
   }
 
-  /* Thin crimson top accent */
+  /* Gold ornamental bracket — RIGHT side */
   &::after {
     content: "";
     position: absolute;
-    top: 0;
-    ${(p) => (p.$isRight ? "right: 10%;" : "left: 10%;")}
-    width: 40%;
-    height: 1px;
+    top: 3px; bottom: 3px;
+    right: -1px;
+    width: 3px;
     background: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgba(180, 40, 40, 0.5) 30%,
-      rgba(139, 26, 26, 0.4) 70%,
-      transparent 100%
+      180deg,
+      rgba(180, 130, 30, 0.2) 0%,
+      #d4af37 20%,
+      #ffd700 50%,
+      #d4af37 80%,
+      rgba(180, 130, 30, 0.2) 100%
     );
+    border-radius: 2px;
   }
 `;
 
@@ -364,14 +376,15 @@ const RankDiamond = styled.span`
 /* Ornamental outer frame — gold ring with danger state */
 const BarFrame = styled.div`
   position: relative;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   border-radius: 4px;
 
-  /* Multi-ring gold frame */
-  border: clamp(2.5px, 0.2vw, 5px) solid transparent;
+  /* Multi-ring gold frame — same thickness as banner bottom border */
+  border: clamp(2px, 0.16vw, 4px) solid transparent;
   box-shadow:
     /* Gold outer ring */
-    0 0 0 clamp(2.5px, 0.2vw, 5px) rgba(180, 130, 30, 0.6),
+    0 0 0 clamp(2px, 0.16vw, 4px) rgba(180, 130, 30, 0.6),
     /* Dark outer gap */
     0 0 0 clamp(4px, 0.32vw, 8px) rgba(0, 0, 0, 0.5),
     /* Depth shadow */
@@ -385,11 +398,11 @@ const BarFrame = styled.div`
     `}
 `;
 
-/* Dark inner track with frost-crack texture */
+/* Dark inner track with frost-crack texture — height tuned so bar total matches power-up slot */
 const BarTrack = styled.div`
   position: relative;
   width: 100%;
-  height: clamp(20px, 4.2vh, 46px);
+  height: calc(clamp(20px, 4.2vh, 46px) - 3px);
   border-radius: 3px;
   overflow: hidden;
 
@@ -564,30 +577,48 @@ const BarLabel = styled.div`
 // POWER-UP — medal / charm style
 // ============================================
 
-/* Row below the stamina bar — power-up + rank side by side */
-const SubBarRow = styled.div`
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: clamp(5px, 0.7vw, 10px);
-  flex-direction: ${(p) => (p.$isRight ? "row-reverse" : "row")};
+/* Invisible spacer to align rank plaque with stamina bar (same width as PowerUpSlot) */
+const BarRowSpacer = styled.div`
+  width: clamp(30px, 3.8vw, 48px);
+  flex-shrink: 0;
+  min-height: 0;
 `;
 
+/* Stack below the stamina bar — rank plaque aligned with stamina bar left/right */
+const SubBarRow = styled.div`
+  display: flex;
+  flex-direction: ${(p) => (p.$isRight ? "row-reverse" : "row")};
+  align-items: center;
+  gap: clamp(4px, 0.5vw, 8px);
+  margin-top: clamp(3px, 0.5vh, 6px);
+  width: 100%;
+`;
+
+/* Row that holds the stamina bar + power-up icon side-by-side */
+const BarRow = styled.div`
+  display: flex;
+  align-items: center;
+  flex-direction: ${(p) => (p.$isRight ? "row" : "row-reverse")};
+  gap: clamp(4px, 0.5vw, 8px);
+  width: 100%;
+`;
+
+/* Same height as stamina bar (BarTrack + BarFrame border only; box-shadow ring is drawn outside) */
 const PowerUpSlot = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  width: clamp(22px, 3.2vw, 40px);
-  height: clamp(22px, 3.2vw, 40px);
-  border-radius: 6px;
-  border: clamp(2px, 0.16vw, 4px) solid;
+  width: clamp(30px, 3.8vw, 48px);
+  height: calc(clamp(20px, 4.2vh, 46px) + clamp(5px, 0.4vw, 10px));
+  border-radius: 4px;
+  border: clamp(1.5px, 0.15vw, 3px) solid;
   position: relative;
   transition: all 0.25s ease;
   flex-shrink: 0;
 
   background: ${(p) => {
     if (!p.$active)
-      return "linear-gradient(145deg, rgba(12, 16, 36, 0.5), rgba(6, 8, 20, 0.6))";
+      return "linear-gradient(145deg, rgba(18, 24, 48, 0.72), rgba(10, 14, 32, 0.78))";
     if (p.$cooldown)
       return "linear-gradient(135deg, #4a5568, #2d3748)";
     switch (p.$active) {
@@ -607,7 +638,9 @@ const PowerUpSlot = styled.div`
   }};
 
   border-color: ${(p) => {
-    if (!p.$active || p.$cooldown)
+    if (!p.$active)
+      return "rgba(212, 175, 55, 0.32)";
+    if (p.$cooldown)
       return "rgba(168, 212, 255, 0.15)";
     switch (p.$active) {
       case "speed": return "#0088dd";
@@ -622,33 +655,17 @@ const PowerUpSlot = styled.div`
   box-shadow: ${(p) =>
     p.$active && !p.$cooldown
       ? "0 3px 12px rgba(0,0,0,0.4), 0 0 6px rgba(255,255,255,0.1)"
-      : "0 2px 6px rgba(0,0,0,0.3)"};
-  opacity: ${(p) => (p.$active ? 1 : 0.25)};
+      : !p.$active
+        ? "0 2px 6px rgba(0,0,0,0.35), inset 0 1px 0 rgba(212, 175, 55, 0.08)"
+        : "0 2px 6px rgba(0,0,0,0.3)"};
+  opacity: ${(p) => (p.$active ? 1 : 0.7)};
 
   img {
-    width: 68%;
-    height: 68%;
+    width: 76%;
+    height: 76%;
     object-fit: contain;
     filter: ${(p) => (p.$cooldown ? "brightness(0.5) grayscale(0.35)" : "brightness(1)")};
   }
-`;
-
-const PowerUpTag = styled.div`
-  position: absolute;
-  bottom: -4px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: clamp(6px, 0.65vw, 8px);
-  font-family: "Bungee", cursive;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.95);
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.95);
-  background: rgba(0, 0, 0, 0.88);
-  padding: 1px clamp(3px, 0.4vw, 5px);
-  border-radius: 3px;
-  letter-spacing: 0.3px;
-  white-space: nowrap;
-  border: 1px solid rgba(255, 255, 255, 0.12);
 `;
 
 // ============================================
@@ -972,11 +989,6 @@ const UiPlayerInfo = ({
     }
   };
 
-  const getPowerUpIndicatorText = (powerUpType) => {
-    const isUsable = powerUpType === "snowball" || powerUpType === "pumo_army";
-    return isUsable ? "F" : "PASSIVE";
-  };
-
   const getPowerUpIcon = (powerUpType) => {
     switch (powerUpType) {
       case "speed": return happyFeetIcon;
@@ -996,32 +1008,31 @@ const UiPlayerInfo = ({
       {/* ═══ PLAYER 1 — East (Higashi) ═══ */}
       <PlayerWing>
         <NameBanner $isRight={false}>
-          <AvatarSeal>力</AvatarSeal>
+          <AvatarSeal $isRight={false}>力</AvatarSeal>
           <NameBlock $isRight={false}>
             <FighterName>PLAYER 1</FighterName>
           </NameBlock>
         </NameBanner>
 
-        <BarFrame $danger={p1Danger}>
-          <BarTrack $isRight={false}>
-            <BarLabel $isRight={false}>STA</BarLabel>
-            <BarFill
-              $stamina={p1DisplayStamina}
-              $danger={p1Danger}
-              $isRight={false}
-            />
-            <BarLoss
-              $left={p1Loss.left}
-              $width={p1Loss.width}
-              $visible={p1Loss.visible}
-              $isRight={false}
-            />
-            <BarTicks />
-            <BarCenterTick />
-          </BarTrack>
-        </BarFrame>
-
-        <SubBarRow $isRight={false}>
+        <BarRow $isRight={false}>
+          <BarFrame $danger={p1Danger} $isRight={false}>
+            <BarTrack $isRight={false}>
+              <BarLabel $isRight={false}>STA</BarLabel>
+              <BarFill
+                $stamina={p1DisplayStamina}
+                $danger={p1Danger}
+                $isRight={false}
+              />
+              <BarLoss
+                $left={p1Loss.left}
+                $width={p1Loss.width}
+                $visible={p1Loss.visible}
+                $isRight={false}
+              />
+              <BarTicks />
+              <BarCenterTick />
+            </BarTrack>
+          </BarFrame>
           <PowerUpSlot
             $active={player1ActivePowerUp}
             $cooldown={getPowerUpIsOnCooldown(
@@ -1031,19 +1042,17 @@ const UiPlayerInfo = ({
             )}
           >
             {player1ActivePowerUp && (
-              <>
-                <img
-                  src={getPowerUpIcon(player1ActivePowerUp)}
-                  alt={player1ActivePowerUp}
-                />
-                <PowerUpTag>
-                  {getPowerUpIndicatorText(player1ActivePowerUp)}
-                </PowerUpTag>
-              </>
+              <img
+                src={getPowerUpIcon(player1ActivePowerUp)}
+                alt={player1ActivePowerUp}
+              />
             )}
           </PowerUpSlot>
+        </BarRow>
+
+        <SubBarRow $isRight={false}>
+          <BarRowSpacer />
           <RankPlaque $isRight={false}>
-            <RankDiamond />
             <RankText>JONOKUCHI</RankText>
           </RankPlaque>
         </SubBarRow>
@@ -1070,32 +1079,31 @@ const UiPlayerInfo = ({
       {/* ═══ PLAYER 2 — West (Nishi) ═══ */}
       <PlayerWing>
         <NameBanner $isRight={true}>
-          <AvatarSeal>闘</AvatarSeal>
+          <AvatarSeal $isRight={true}>闘</AvatarSeal>
           <NameBlock $isRight={true}>
             <FighterName>PLAYER 2</FighterName>
           </NameBlock>
         </NameBanner>
 
-        <BarFrame $danger={p2Danger}>
-          <BarTrack $isRight={true}>
-            <BarLabel $isRight={true}>STA</BarLabel>
-            <BarFill
-              $stamina={p2DisplayStamina}
-              $danger={p2Danger}
-              $isRight={true}
-            />
-            <BarLoss
-              $left={p2Loss.left}
-              $width={p2Loss.width}
-              $visible={p2Loss.visible}
-              $isRight={true}
-            />
-            <BarTicks />
-            <BarCenterTick />
-          </BarTrack>
-        </BarFrame>
-
-        <SubBarRow $isRight={true}>
+        <BarRow $isRight={true}>
+          <BarFrame $danger={p2Danger} $isRight={true}>
+            <BarTrack $isRight={true}>
+              <BarLabel $isRight={true}>STA</BarLabel>
+              <BarFill
+                $stamina={p2DisplayStamina}
+                $danger={p2Danger}
+                $isRight={true}
+              />
+              <BarLoss
+                $left={p2Loss.left}
+                $width={p2Loss.width}
+                $visible={p2Loss.visible}
+                $isRight={true}
+              />
+              <BarTicks />
+              <BarCenterTick />
+            </BarTrack>
+          </BarFrame>
           <PowerUpSlot
             $active={player2ActivePowerUp}
             $cooldown={getPowerUpIsOnCooldown(
@@ -1105,19 +1113,17 @@ const UiPlayerInfo = ({
             )}
           >
             {player2ActivePowerUp && (
-              <>
-                <img
-                  src={getPowerUpIcon(player2ActivePowerUp)}
-                  alt={player2ActivePowerUp}
-                />
-                <PowerUpTag>
-                  {getPowerUpIndicatorText(player2ActivePowerUp)}
-                </PowerUpTag>
-              </>
+              <img
+                src={getPowerUpIcon(player2ActivePowerUp)}
+                alt={player2ActivePowerUp}
+              />
             )}
           </PowerUpSlot>
+        </BarRow>
+
+        <SubBarRow $isRight={true}>
+          <BarRowSpacer />
           <RankPlaque $isRight={true}>
-            <RankDiamond />
             <RankText>JONOKUCHI</RankText>
           </RankPlaque>
         </SubBarRow>

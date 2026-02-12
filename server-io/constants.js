@@ -3,6 +3,9 @@ const GRAB_STATES = {
   ATTEMPTING: "attempting",
   SUCCESS: "success",
   COUNTERED: "countered",
+  PUSHING: "pushing",
+  ATTEMPTING_PULL: "attempting_pull",
+  ATTEMPTING_THROW: "attempting_throw",
 };
 
 // Performance: game logic runs at TICK_RATE; broadcasts every N ticks to reduce network + client work

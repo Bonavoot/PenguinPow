@@ -160,22 +160,21 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
       // Block inputs during power-up selection or when throwing snowball
       if (isPowerUpSelectionActive || currentPlayer?.isThrowingSnowball) return;
 
-      // Block all inputs except spacebar when being grabbed
+      // When being grabbed, only allow directional counter-inputs (A, D, S for grab break system)
       if (currentPlayer?.isBeingGrabbed) {
-        // Only allow spacebar (grab break)
-        const grabBreakOnly = {
+        const grabCounterOnly = {
           w: false,
-          a: false,
-          s: false,
-          d: false,
-          " ": gamepadKeyState[" "] || false,
+          a: gamepadKeyState.a || false,    // Counter pull reversal / resist push
+          s: gamepadKeyState.s || false,    // Counter throw
+          d: gamepadKeyState.d || false,    // Counter pull reversal / resist push
+          " ": false,                        // Spacebar no longer used for grab break
           shift: false,
           e: false,
           f: false,
           mouse1: false,
           mouse2: false,
         };
-        socket.emit("fighter_action", { id: socket.id, keys: grabBreakOnly });
+        socket.emit("fighter_action", { id: socket.id, keys: grabCounterOnly });
         return;
       }
 
@@ -227,8 +226,9 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
       // Block inputs when current player is throwing snowball
       if (currentPlayer?.isThrowingSnowball) return;
 
-      // Block all inputs except spacebar when being grabbed
-      if (currentPlayer?.isBeingGrabbed && e.key !== " ") {
+      // When being grabbed, only allow A, D, S keys for directional counter-inputs
+      const allowedGrabKeys = ['a', 'd', 's'];
+      if (currentPlayer?.isBeingGrabbed && !allowedGrabKeys.includes(e.key.toLowerCase())) {
         return;
       }
 
@@ -241,7 +241,8 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
         keyState[key] = true;
         
         // CLIENT-SIDE PREDICTION: Apply predicted state immediately for certain actions
-        if (!wasPressed) {
+        // Don't apply predictions while being grabbed - only send counter-inputs
+        if (!wasPressed && !currentPlayer?.isBeingGrabbed) {
           // Dodge (shift + direction)
           if (key === "shift") {
             const direction = keyState.a ? -1 : keyState.d ? 1 : null;
@@ -272,8 +273,9 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
       // Block inputs when current player is throwing snowball
       if (currentPlayer?.isThrowingSnowball) return;
 
-      // Block all inputs except spacebar when being grabbed
-      if (currentPlayer?.isBeingGrabbed && e.key !== " ") {
+      // When being grabbed, only allow A, D, S key releases (for directional counter-inputs)
+      const allowedGrabKeysUp = ['a', 'd', 's'];
+      if (currentPlayer?.isBeingGrabbed && !allowedGrabKeysUp.includes(e.key.toLowerCase())) {
         return;
       }
 

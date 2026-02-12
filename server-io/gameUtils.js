@@ -324,6 +324,24 @@ function clearAllActionStates(player) {
   player.grabStartTime = 0;
   player.grabState = "initial";
   player.grabAttemptType = null;
+  // New grab action system states
+  player.isGrabPushing = false;
+  player.isBeingGrabPushed = false;
+  player.isAttemptingPull = false;
+  player.isBeingPullReversaled = false;
+  player.isGrabSeparating = false;
+  player.isGrabBellyFlopping = false;
+  player.isBeingGrabBellyFlopped = false;
+  player.isGrabFrontalForceOut = false;
+  player.isBeingGrabFrontalForceOut = false;
+  player.grabActionStartTime = 0;
+  player.grabActionType = null;
+  player.lastGrabPushStaminaDrainTime = 0;
+  player.isAtBoundaryDuringGrab = false;
+  player.grabDurationPaused = false;
+  player.grabDurationPausedAt = 0;
+  player.grabPushEndTime = 0;
+  player.grabDecisionMade = false;
   
   // Clear throw states (as thrower)
   player.isThrowing = false;

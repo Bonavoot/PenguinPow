@@ -192,6 +192,10 @@ const DELTA_TRACKED_PROPS = [
   'isThrowingSnowball', 'isSpawningPumoArmy',
   'isCrouchStance', 'isCrouchStrafing', 'isGrabBreaking', 'isGrabBreakCountered',
   'isAttemptingGrabThrow', 'isInRitualPhase',
+  // New grab action system states
+  'isGrabPushing', 'isBeingGrabPushed', 'isAttemptingPull', 'isBeingPullReversaled',
+  'isGrabSeparating', 'isGrabBellyFlopping', 'isBeingGrabBellyFlopped',
+  'isGrabFrontalForceOut', 'isBeingGrabFrontalForceOut',
   'knockbackVelocity', 'activePowerUp', 'powerUpMultiplier',
   'snowballs', 'pumoArmy', 'snowballCooldown', 'pumoArmyCooldown',
   'isPowerSliding', 'isBraking', 'movementVelocity', 'isStrafing',
@@ -493,8 +497,8 @@ const AT_THE_ROPES_DURATION = 1000; // 1 second stun duration
 const KNOCKBACK_IMMUNITY_DURATION = 150; // 150ms immunity window
 
 // Stamina regeneration tuning
-const STAMINA_REGEN_INTERVAL_MS = 2000; // was 1000ms
-const STAMINA_REGEN_AMOUNT = 10; // was 25 per tick
+const STAMINA_REGEN_INTERVAL_MS = 3000; // slower regen (was 2000ms)
+const STAMINA_REGEN_AMOUNT = 6; // less per tick (was 10)
 
 // Knockback immunity helper functions
 function canApplyKnockback(player) {
@@ -507,7 +511,7 @@ function setKnockbackImmunity(player) {
 }
 
 // Grab break constants
-const GRAB_BREAK_STAMINA_COST = 33; // 33% of max stamina to break a grab
+const GRAB_BREAK_STAMINA_COST = 33; // 33% of max stamina to break a grab (used for directional counter breaks)
 
 // Stamina drain constants
 const SLAP_ATTACK_STAMINA_COST = 3; // Small cost to not deter spamming
@@ -520,7 +524,24 @@ const GRAB_BREAK_PUSH_VELOCITY = 1.2; // Reduced push velocity (~55%) for shorte
 const GRAB_BREAK_ANIMATION_DURATION = 380; // Duration for grab break animation state
 const GRAB_BREAK_SEPARATION_DURATION = 220; // Smooth separation tween duration
 const GRAB_BREAK_SEPARATION_MULTIPLIER = 96; // Separation distance scale (tripled)
-const GRAB_BREAK_INPUT_LOCK_DURATION = 420; // Total input lock duration after grab break starts
+const GRAB_BREAK_INPUT_LOCK_DURATION = 250; // Total input lock duration after grab break starts
+
+// ============================================
+// NEW GRAB ACTION SYSTEM - Directional grab mechanics
+// Replaces spacebar grab break with directional counter-inputs
+// ============================================
+const GRAB_DECISION_WINDOW = 1000; // 1s hold-still window after grab connects for grabber to choose action
+const GRAB_ACTION_WINDOW = 1000; // 1s window for pull/throw counter attempts
+const GRAB_PUSH_AUTO_DURATION = 1000; // Auto-push lasts 1s once initiated (shorter but faster)
+const GRAB_PUSH_SPEED_MULTIPLIER = 1.2; // Forward push speed (fast and aggressive)
+const GRAB_PUSH_RESISTANCE_FACTOR = 0.6; // 40% speed reduction when opponent resists push
+const GRAB_PUSH_STAMINA_DRAIN_INTERVAL = 40; // Drain 1 stamina per 40ms while opponent resists (~25/sec)
+const GRAB_PUSH_PASSIVE_DRAIN_INTERVAL = 35; // Drain 1 stamina per 35ms on pushed opponent (~28.6/sec)
+const PULL_REVERSAL_DISTANCE = 180; // Pixels opponent is sent past grabber after pull reversal
+const PULL_REVERSAL_TWEEN_DURATION = 400; // ms for the pull knockback tween (longer = more visible travel)
+const PULL_REVERSAL_INPUT_LOCK = 300; // ms input lock after pull reversal completes
+const GRAB_SEPARATION_DURATION = 220; // Smooth separation tween when grab expires (same as break)
+const GRAB_SEPARATION_INPUT_LOCK = 250; // Input lock when grab naturally separates
 
 // ============================================
 // HITSTOP TUNING - Smash Bros style
@@ -558,6 +579,187 @@ function triggerHitstop(room, durationMs) {
 
 function isRoomInHitstop(room) {
   return room.hitstopUntil && Date.now() < room.hitstopUntil;
+}
+
+// Correct both players' facing to match their current positions (they've switched sides after throw/grab).
+// Prevents wonky dodge/attack direction and opponent logic when a player immediately acts after landing.
+function correctFacingAfterGrabOrThrow(player, opponent) {
+  if (!player || !opponent) return;
+  // Face toward the other player (convention: facing -1 = right, 1 = left; player.x < other.x => face right => -1)
+  if (player.atTheRopesFacingDirection == null) {
+    player.facing = player.x < opponent.x ? -1 : 1;
+  }
+  if (opponent.atTheRopesFacingDirection == null) {
+    opponent.facing = opponent.x < player.x ? -1 : 1;
+  }
+}
+
+// === DIRECTIONAL GRAB BREAK HELPER ===
+// Reusable function for executing a grab break when the grabbed player
+// successfully inputs the correct counter-direction during a grab action window.
+// Called from both pull reversal counter and throw counter code paths.
+function executeDirectionalGrabBreak(grabber, breaker, room, io) {
+  // Clear grab states for both
+  cleanupGrabStates(grabber, breaker);
+
+  // Animation state - only the breaker shows grab break
+  breaker.isGrabBreaking = true;
+  breaker.isAttemptingGrabThrow = false;
+
+  // The grabber shows a countered placeholder animation
+  grabber.isGrabBreaking = false;
+  grabber.isGrabBreakCountered = true;
+  grabber.isAttemptingGrabThrow = false;
+
+  // Auto-clear animation flags after duration
+  setPlayerTimeout(
+    grabber.id,
+    () => { grabber.isGrabBreakCountered = false; },
+    GRAB_BREAK_ANIMATION_DURATION,
+    "grabBreakHitReset"
+  );
+  setPlayerTimeout(
+    breaker.id,
+    () => { breaker.isGrabBreaking = false; },
+    GRAB_BREAK_ANIMATION_DURATION,
+    "grabBreakAnim"
+  );
+
+  // Determine directions and push apart without crossing boundaries
+  const leftBoundary = MAP_LEFT_BOUNDARY;
+  const rightBoundary = MAP_RIGHT_BOUNDARY;
+  const dir = breaker.x < grabber.x ? -1 : 1;
+  const breakerDistance = GRAB_BREAK_SEPARATION_MULTIPLIER; // 96
+  const grabberDistance = GRAB_BREAK_SEPARATION_MULTIPLIER * 0.5; // 48
+
+  const breakerTargetX = Math.max(
+    leftBoundary,
+    Math.min(breaker.x + dir * breakerDistance, rightBoundary)
+  );
+  const grabberTargetX = Math.max(
+    leftBoundary,
+    Math.min(grabber.x - dir * grabberDistance, rightBoundary)
+  );
+
+  // Initialize smooth separation tween for both players
+  const now = Date.now();
+  breaker.isGrabBreakSeparating = true;
+  breaker.grabBreakSepStartTime = now;
+  breaker.grabBreakSepDuration = GRAB_BREAK_SEPARATION_DURATION;
+  breaker.grabBreakStartX = breaker.x;
+  breaker.grabBreakTargetX = breakerTargetX;
+
+  grabber.isGrabBreakSeparating = true;
+  grabber.grabBreakSepStartTime = now;
+  grabber.grabBreakSepDuration = GRAB_BREAK_SEPARATION_DURATION;
+  grabber.grabBreakStartX = grabber.x;
+  grabber.grabBreakTargetX = grabberTargetX;
+
+  // Zero out velocities during tween
+  breaker.movementVelocity = 0;
+  grabber.movementVelocity = 0;
+  breaker.isStrafing = false;
+  grabber.isStrafing = false;
+
+  // Lock both players' inputs
+  const inputLockUntil = Date.now() + GRAB_BREAK_INPUT_LOCK_DURATION;
+  breaker.inputLockUntil = Math.max(breaker.inputLockUntil || 0, inputLockUntil);
+  grabber.inputLockUntil = Math.max(grabber.inputLockUntil || 0, inputLockUntil);
+
+  // Short cooldown to prevent immediate re-grab
+  grabber.grabCooldown = true;
+  setPlayerTimeout(
+    grabber.id,
+    () => { grabber.grabCooldown = false; },
+    300,
+    "grabBreakCooldown"
+  );
+
+  // Emit for client VFX/SFX
+  io.in(room.id).emit("grab_break", {
+    breakerId: breaker.id,
+    grabberId: grabber.id,
+    breakerX: breaker.x,
+    grabberX: grabber.x,
+    breakId: `grab-break-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    breakerPlayerNumber: breaker.fighter === "player 1" ? 1 : 2,
+  });
+}
+
+// === GRAB SEPARATION HELPER ===
+// When grab duration expires during a push or at boundary with stamina > 0.
+// Similar to grab break but NO green flash, NO grab_break event.
+// Uses its own state (isGrabSeparating) for distinct animation.
+function executeGrabSeparation(grabber, opponent, room, io) {
+  // Clear grab states for both
+  cleanupGrabStates(grabber, opponent);
+
+  // Set separation state on both players (distinct from grab break)
+  grabber.isGrabSeparating = true;
+  opponent.isGrabSeparating = true;
+
+  // Determine directions and push apart without crossing boundaries
+  const leftBoundary = MAP_LEFT_BOUNDARY;
+  const rightBoundary = MAP_RIGHT_BOUNDARY;
+  const dir = opponent.x < grabber.x ? -1 : 1;
+  const opponentDistance = GRAB_BREAK_SEPARATION_MULTIPLIER; // 96
+  const grabberDistance = GRAB_BREAK_SEPARATION_MULTIPLIER * 0.5; // 48
+
+  const opponentTargetX = Math.max(
+    leftBoundary,
+    Math.min(opponent.x + dir * opponentDistance, rightBoundary)
+  );
+  const grabberTargetX = Math.max(
+    leftBoundary,
+    Math.min(grabber.x - dir * grabberDistance, rightBoundary)
+  );
+
+  // Initialize smooth separation tween for both players
+  const now = Date.now();
+  opponent.isGrabBreakSeparating = true;
+  opponent.grabBreakSepStartTime = now;
+  opponent.grabBreakSepDuration = GRAB_SEPARATION_DURATION;
+  opponent.grabBreakStartX = opponent.x;
+  opponent.grabBreakTargetX = opponentTargetX;
+
+  grabber.isGrabBreakSeparating = true;
+  grabber.grabBreakSepStartTime = now;
+  grabber.grabBreakSepDuration = GRAB_SEPARATION_DURATION;
+  grabber.grabBreakStartX = grabber.x;
+  grabber.grabBreakTargetX = grabberTargetX;
+
+  // Zero out velocities
+  opponent.movementVelocity = 0;
+  grabber.movementVelocity = 0;
+  opponent.isStrafing = false;
+  grabber.isStrafing = false;
+
+  // Lock both players' inputs
+  const inputLockUntil = Date.now() + GRAB_SEPARATION_INPUT_LOCK;
+  opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, inputLockUntil);
+  grabber.inputLockUntil = Math.max(grabber.inputLockUntil || 0, inputLockUntil);
+
+  // Note: isGrabSeparating is auto-cleared when the tween ends (in tick handler)
+
+  // Correct facing
+  correctFacingAfterGrabOrThrow(grabber, opponent);
+
+  // Short cooldown to prevent immediate re-grab
+  grabber.grabCooldown = true;
+  setPlayerTimeout(
+    grabber.id,
+    () => { grabber.grabCooldown = false; },
+    300,
+    "grabSepCooldown"
+  );
+
+  // Emit distinct event for client (no green flash VFX)
+  io.in(room.id).emit("grab_separate", {
+    grabberId: grabber.id,
+    opponentId: opponent.id,
+    grabberX: grabber.x,
+    opponentX: opponent.x,
+  });
 }
 
 // === BUFFERED INPUT ACTIVATION AFTER GRAB/THROW ===
@@ -764,6 +966,24 @@ function createCPUPlayer(uniqueId) {
     grabStartupDuration: 0,
     grabStartTime: 0,
     grabbedOpponent: null,
+    // New grab action system states
+    isGrabPushing: false,
+    isBeingGrabPushed: false,
+    isAttemptingPull: false,
+    isBeingPullReversaled: false,
+    isGrabSeparating: false,
+    isGrabBellyFlopping: false,
+    isBeingGrabBellyFlopped: false,
+    isGrabFrontalForceOut: false,
+    isBeingGrabFrontalForceOut: false,
+    grabActionStartTime: 0,
+    grabActionType: null, // "push", "pull", "throw" (expandable for future "push_down" etc.)
+    lastGrabPushStaminaDrainTime: 0,
+    isAtBoundaryDuringGrab: false,
+    grabDurationPaused: false, // True when an action (pull/throw) extends grab beyond duration
+    grabDurationPausedAt: 0, // Timestamp when duration was paused
+    grabPushEndTime: 0, // When the auto-push will end (grabStartTime-based)
+    grabDecisionMade: false, // Whether the grabber has chosen an action during decision window
     isThrowTeching: false,
     throwTechCooldown: false,
     isSlapParrying: false,
@@ -1135,6 +1355,24 @@ function resetRoomAndPlayers(room) {
     player.grabMovementVelocity = 0;
     player.grabStartupStartTime = 0;
     player.grabStartupDuration = 0;
+    // Reset new grab action system states
+    player.isGrabPushing = false;
+    player.isBeingGrabPushed = false;
+    player.isAttemptingPull = false;
+    player.isBeingPullReversaled = false;
+    player.isGrabSeparating = false;
+    player.isGrabBellyFlopping = false;
+    player.isBeingGrabBellyFlopped = false;
+    player.isGrabFrontalForceOut = false;
+    player.isBeingGrabFrontalForceOut = false;
+    player.grabActionStartTime = 0;
+    player.grabActionType = null;
+    player.lastGrabPushStaminaDrainTime = 0;
+    player.isAtBoundaryDuringGrab = false;
+    player.grabDurationPaused = false;
+    player.grabDurationPausedAt = 0;
+    player.grabPushEndTime = 0;
+    player.grabDecisionMade = false;
     // Reset ring-out throw cutscene flags
     player.isRingOutThrowCutscene = false;
     player.ringOutThrowDistance = 0;
@@ -1334,10 +1572,25 @@ io.on("connection", (socket) => {
     winner.isGrabbing = true;
     winner.grabStartTime = Date.now();
     winner.grabbedOpponent = loser.id;
+    // Reset grab decision/action state from any previous grab
+    winner.grabDecisionMade = false;
+    winner.grabPushEndTime = 0;
+    winner.isGrabPushing = false;
+    winner.isGrabWalking = false;
+    winner.grabActionType = null;
+    winner.grabActionStartTime = 0;
+    winner.grabDurationPaused = false;
+    winner.grabDurationPausedAt = 0;
+    winner.isAtBoundaryDuringGrab = false;
+    winner.lastGrabPushStaminaDrainTime = 0;
+    winner.isAttemptingPull = false;
+    winner.isAttemptingGrabThrow = false;
     
     // CRITICAL: Clear ALL action states when being grabbed
     clearAllActionStates(loser);
     loser.isBeingGrabbed = true;
+    loser.isBeingGrabPushed = false;
+    loser.lastGrabPushStaminaDrainTime = 0;
     
     // If loser was at the ropes, clear that state but keep the facing direction locked
     if (loser.isAtTheRopes) {
@@ -2282,6 +2535,13 @@ io.on("connection", (socket) => {
             player.grabBreakSepDuration = 0;
             player.grabBreakStartX = undefined;
             player.grabBreakTargetX = undefined;
+
+            // Auto-clear associated visual states when tween ends
+            // These are mutually exclusive states that use the same tween mechanism
+            if (player.isGrabSeparating) player.isGrabSeparating = false;
+            if (player.isBeingPullReversaled) player.isBeingPullReversaled = false;
+            if (player.isGrabBreaking) player.isGrabBreaking = false;
+            if (player.isGrabBreakCountered) player.isGrabBreakCountered = false;
           }
 
           // Skip remaining movement/logic this tick to avoid interference
@@ -2780,6 +3040,10 @@ io.on("connection", (socket) => {
                 }
               }
 
+              // Correct facing so both players reflect their new positions (thrown player switched sides).
+              // Prevents immediate dodge/actions from using stale "thrown" facing and opponent logic from breaking.
+              correctFacingAfterGrabOrThrow(player, opponent);
+
               // BUFFERED INPUT ACTIVATION: Activate held inputs immediately for both players
               // on frame 1 after throw lands (like invincible reversals in fighting games).
               // The function checks isThrowLanded/isAtTheRopes internally, so it safely
@@ -3150,6 +3414,19 @@ io.on("connection", (socket) => {
             player.isGrabbing = true;
             player.grabStartTime = Date.now();
             player.grabbedOpponent = opponent.id;
+            // Reset grab decision/action state from any previous grab
+            player.grabDecisionMade = false;
+            player.grabPushEndTime = 0;
+            player.isGrabPushing = false;
+            player.isGrabWalking = false;
+            player.grabActionType = null;
+            player.grabActionStartTime = 0;
+            player.grabDurationPaused = false;
+            player.grabDurationPausedAt = 0;
+            player.isAtBoundaryDuringGrab = false;
+            player.lastGrabPushStaminaDrainTime = 0;
+            player.isAttemptingPull = false;
+            player.isAttemptingGrabThrow = false;
             
             // COUNTER GRAB: Only when grabbing opponent during their raw parry. Cannot grab break (LOCKED).
             // Grabbing during recovery does NOT count as punish - normal grab only.
@@ -3181,7 +3458,9 @@ io.on("connection", (socket) => {
             // CRITICAL: Clear ALL action states when being grabbed
             clearAllActionStates(opponent);
             opponent.isBeingGrabbed = true;
-            
+            opponent.isBeingGrabPushed = false;
+            opponent.lastGrabPushStaminaDrainTime = 0;
+
             // SMASH-STYLE: Brief hitstop when grab connects for impact
             triggerHitstop(room, HITSTOP_GRAB_MS);
             
@@ -4069,35 +4348,26 @@ io.on("connection", (socket) => {
             safelyEndChargedAttack(player, rooms);
           }
         }
+        // ============================================
+        // NEW GRAB ACTION SYSTEM - Decision Window → Auto-Push / Pull / Throw
+        // 1s decision window where both players hold still, then action phase
+        // ============================================
         if (
           player.isGrabbing &&
           player.grabbedOpponent &&
           !player.isThrowing &&
           !player.isBeingThrown &&
-          !player.isAttemptingGrabThrow  // Block grab walking during throw attempt
+          !player.isAttemptingGrabThrow &&  // Block during throw attempt
+          !player.isAttemptingPull           // Block during pull attempt
         ) {
           const opponent = room.players.find(
             (p) => p.id === player.grabbedOpponent
           );
           if (opponent) {
             const grabDuration = Date.now() - player.grabStartTime;
+            const inDecisionWindow = !player.grabDecisionMade && grabDuration < GRAB_DECISION_WINDOW;
 
-            // Check if grab duration exceeded
-            if (grabDuration >= GRAB_DURATION) {
-              // Release after 1.5 seconds
-              cleanupGrabStates(player, opponent);
-
-              // BUFFERED INPUT ACTIVATION: Activate held inputs immediately for both players
-              // on frame 1 after grab release (like invincible reversals in fighting games).
-              // This ensures both the grabber and grabbed player can act the instant the grab ends.
-              activateBufferedInputAfterGrab(player, rooms);
-              activateBufferedInputAfterGrab(opponent, rooms);
-
-              return;
-            }
-
-            // Continuous stamina drain while grabbing (10 stamina over full 1.5s duration)
-            // Drain 1 stamina every 150ms interval
+            // Continuous stamina drain on GRABBER while grabbing
             if (!player.lastGrabStaminaDrainTime) {
               player.lastGrabStaminaDrainTime = player.grabStartTime;
             }
@@ -4107,157 +4377,217 @@ io.on("connection", (socket) => {
               player.lastGrabStaminaDrainTime = Date.now();
             }
 
-            // Handle grab walking: allow slight left/right strafe while grabbing when A or D is held
-            let currentSpeedFactor = speedFactor * GRAB_WALK_SPEED_MULTIPLIER;
-            if (player.activePowerUp === POWER_UP_TYPES.SPEED) {
-              currentSpeedFactor *= player.powerUpMultiplier;
-            }
-
-            // Initialize movementVelocity if needed
-            if (!player.movementVelocity) {
-              player.movementVelocity = 0;
-            }
-
-            // Boundaries for grab walking
+            // Boundaries
             const leftBoundary = MAP_LEFT_BOUNDARY;
             const rightBoundary = MAP_RIGHT_BOUNDARY;
 
-            // Determine if grab walking is active
-            const canGrabWalk = player.keys.a || player.keys.d;
-            player.isGrabWalking = !!canGrabWalk;
-
-            if (player.isGrabWalking) {
-              // Adjust acceleration a bit lower for grab walking
-              const accel = MOVEMENT_ACCELERATION * GRAB_WALK_ACCEL_MULTIPLIER;
-
-              if (player.keys.d && !player.keys.a) {
-                if (player.movementVelocity < 0) {
-                  player.movementVelocity *= ICE_DRIFT_FACTOR;
-                }
-                player.movementVelocity = Math.min(
-                  player.movementVelocity + accel,
-                  MAX_MOVEMENT_SPEED * GRAB_WALK_SPEED_MULTIPLIER
-                );
-              } else if (player.keys.a && !player.keys.d) {
-                if (player.movementVelocity > 0) {
-                  player.movementVelocity *= ICE_DRIFT_FACTOR;
-                }
-                player.movementVelocity = Math.max(
-                  player.movementVelocity - accel,
-                  -MAX_MOVEMENT_SPEED * GRAB_WALK_SPEED_MULTIPLIER
-                );
-              } else {
-                // both or none - decelerate
-                if (
-                  Math.abs(player.movementVelocity) > MIN_MOVEMENT_THRESHOLD
-                ) {
-                  player.movementVelocity *=
-                    MOVEMENT_MOMENTUM * MOVEMENT_FRICTION;
-                } else {
-                  player.movementVelocity = 0;
-                }
-              }
-
-              // Apply movement within boundaries
-              const newX =
-                player.x + delta * currentSpeedFactor * player.movementVelocity;
-              if (newX >= leftBoundary && newX <= rightBoundary) {
-                player.x = newX;
-              } else {
-                player.x = newX < leftBoundary ? leftBoundary : rightBoundary;
-                player.movementVelocity = 0;
-              }
-            } else {
-              // If not actively grab walking, lightly decay any residual velocity
-              if (Math.abs(player.movementVelocity) > MIN_MOVEMENT_THRESHOLD) {
-                player.movementVelocity *=
-                  MOVEMENT_MOMENTUM * MOVEMENT_FRICTION;
-              } else {
-                player.movementVelocity = 0;
-              }
-            }
-
-            // Keep opponent attached at fixed distance during grab
-            // Slightly increase separation during throw attempt for better visual clarity
+            // Keep opponent attached at fixed distance
             const baseDistance = Math.round(81 * 1.3);
             const distanceMultiplier = player.isAttemptingGrabThrow ? 1.15 : 1;
             const fixedDistance = baseDistance * distanceMultiplier * (opponent.sizeMultiplier || 1);
-            opponent.x =
-              player.facing === 1
+
+            // === PHASE 1: DECISION WINDOW (first 1s) ===
+            // Both players hold still. Grabber can input W (throw), backward (pull), or forward (push).
+            // Forward input or window expiry → auto-push starts.
+            if (inDecisionWindow) {
+              // Hold still - just maintain opponent position
+              opponent.x = player.facing === 1
                 ? player.x - fixedDistance
                 : player.x + fixedDistance;
-            // Only update facing if opponent doesn't have locked atTheRopes facing direction
-            if (!opponent.atTheRopesFacingDirection) {
-              opponent.facing = -player.facing;
+              if (!opponent.atTheRopesFacingDirection) {
+                opponent.facing = -player.facing;
+              }
+              player.movementVelocity = 0;
+              player.isGrabWalking = false;
+
+              // Check for forward input during decision window → immediately start auto-push
+              const forwardKey = player.facing === -1 ? 'd' : 'a';
+              const backwardKey = player.facing === -1 ? 'a' : 'd';
+              const isPressingForward = player.keys[forwardKey] && !player.keys[backwardKey];
+
+              if (isPressingForward) {
+                // Forward pressed during window → start auto-push immediately
+                player.grabDecisionMade = true;
+                player.isGrabPushing = true;
+                player.isGrabWalking = true;
+                opponent.isBeingGrabPushed = true;
+                player.grabActionType = "push";
+                player.grabPushEndTime = Date.now() + GRAB_PUSH_AUTO_DURATION;
+              }
+              // Note: W (throw) and backward (pull) are handled in their own input sections below,
+              // which also set grabDecisionMade = true
+            }
+            // === DECISION WINDOW EXPIRED with no input → auto-push ===
+            else if (!player.grabDecisionMade && grabDuration >= GRAB_DECISION_WINDOW) {
+              // No action chosen - default to auto-push
+              player.grabDecisionMade = true;
+              player.isGrabPushing = true;
+              player.isGrabWalking = true;
+              opponent.isBeingGrabPushed = true;
+              player.grabActionType = "push";
+              player.grabPushEndTime = Date.now() + GRAB_PUSH_AUTO_DURATION;
             }
 
-            // Ring-out check during grab walking or stationary grab hold
-            if (!room.gameOver) {
-              if (
-                opponent.x <= MAP_LEFT_BOUNDARY ||
-                opponent.x >= MAP_RIGHT_BOUNDARY
-              ) {
-                // Start brief freeze, then trigger a simple throw cutscene: grabber throws outward
-                player.isRingOutFreezeActive = true;
-                player.ringOutFreezeEndTime = Date.now() + 200; // 0.2s freeze
-                player.ringOutThrowDirection =
-                  opponent.x <= MAP_LEFT_BOUNDARY ? -1 : 1;
-                player.pendingRingOutThrowTarget = opponent.id;
+            // === PHASE 2: AUTO-PUSH (runs for GRAB_PUSH_AUTO_DURATION once initiated) ===
+            if (player.isGrabPushing && player.grabPushEndTime > 0) {
+              // Check if push duration expired
+              if (Date.now() >= player.grabPushEndTime) {
+                // Push expired - separate
+                executeGrabSeparation(player, opponent, room, io);
+                activateBufferedInputAfterGrab(player, rooms);
+                activateBufferedInputAfterGrab(opponent, rooms);
+                return;
+              }
 
-                setPlayerTimeout(
-                  player.id,
-                  () => {
-                    // Ensure room and players still valid
-                    const currentRoom = rooms.find((r) => r.id === room.id);
-                    if (!currentRoom) return;
-                    const grabber = currentRoom.players.find(
-                      (p) => p.id === player.id
-                    );
-                    const grabbed = currentRoom.players.find(
-                      (p) => p.id === opponent.id
-                    );
-                    if (!grabber || !grabbed) return;
+              // Push direction (grabber's forward direction in world space)
+              const pushDirection = player.facing === -1 ? 1 : -1;
 
-                    grabber.isRingOutFreezeActive = false;
+              // Check if opponent is resisting
+              const opponentForwardKey = opponent.facing === -1 ? 'd' : 'a';
+              const isOpponentResisting = opponent.keys[opponentForwardKey];
 
-                    // Clear grab states now that freeze is over and throw begins
-                    grabber.isGrabbing = false;
-                    grabber.grabbedOpponent = null;
-                    grabbed.isBeingGrabbed = false;
+              // Calculate push speed (not affected by speed power-up)
+              let pushSpeed = GRAB_PUSH_SPEED_MULTIPLIER;
 
-                    grabber.isThrowing = true;
-                    grabber.throwStartTime = Date.now();
-                    grabber.throwEndTime =
-                      Date.now() + RINGOUT_THROW_DURATION_MS; // Slow, cinematic
-                    grabber.throwOpponent = grabbed.id;
-                    
-                    // CRITICAL: Clear ALL action states when being thrown
-                    clearAllActionStates(grabbed);
-                    grabbed.isBeingThrown = true;
+              // Passive stamina drain on pushed opponent (always, regardless of resistance)
+              if (!opponent.lastGrabPushStaminaDrainTime) {
+                opponent.lastGrabPushStaminaDrainTime = Date.now();
+              }
+              const timeSinceOpponentDrain = Date.now() - opponent.lastGrabPushStaminaDrainTime;
+              // Drain rate: faster than grabber drain (120ms vs grabber's 150ms)
+              // When resisting, drain is even faster (80ms per point)
+              const opponentDrainInterval = isOpponentResisting
+                ? GRAB_PUSH_STAMINA_DRAIN_INTERVAL   // 100ms when resisting
+                : GRAB_PUSH_PASSIVE_DRAIN_INTERVAL;   // 120ms baseline while being pushed
+              if (timeSinceOpponentDrain >= opponentDrainInterval) {
+                opponent.stamina = Math.max(0, opponent.stamina - 1);
+                opponent.lastGrabPushStaminaDrainTime = Date.now();
+              }
 
-                    // For ring-out throws:
-                    // - grabber.facing stays as is (visual - faces toward opponent)
-                    // - throwingFacingDirection uses ringOutThrowDirection (physics - throw direction)
-                    grabber.throwingFacingDirection = grabber.ringOutThrowDirection || 1;
-                    grabbed.beingThrownFacingDirection = grabbed.facing;
+              // If opponent is resisting, reduce push speed
+              if (isOpponentResisting) {
+                pushSpeed *= GRAB_PUSH_RESISTANCE_FACTOR;
+              }
 
-                    // Mark as ring-out throw cutscene and set throw distance
-                    grabber.isRingOutThrowCutscene = true;
-                    grabber.ringOutThrowDistance = 5; // Short victory throw distance
-                    grabber.ringOutThrowDirection = null;
-                    grabber.pendingRingOutThrowTarget = null;
-                  },
-                  200,
-                  "ringOutFreezeDelay"
-                );
+              // Apply push movement
+              const pushDelta = pushDirection * delta * speedFactor * pushSpeed;
+              let newX = player.x + pushDelta;
 
-                const winner = player; // grabber wins
-                const loser = opponent; // grabbed player loses
-                handleWinCondition(room, loser, winner, io);
-                // Preserve knockback velocity state for loser (mirroring other win handling)
-                loser.knockbackVelocity = { ...loser.knockbackVelocity };
+              // Calculate where opponent would be
+              const pushFixedDistance = baseDistance * (opponent.sizeMultiplier || 1);
+              let newOpponentX = player.facing === 1
+                ? newX - pushFixedDistance
+                : newX + pushFixedDistance;
+
+              // === BOUNDARY STAMINA GATING ===
+              const opponentAtLeftBoundary = newOpponentX <= leftBoundary;
+              const opponentAtRightBoundary = newOpponentX >= rightBoundary;
+
+              if ((opponentAtLeftBoundary || opponentAtRightBoundary) && !room.gameOver) {
+                if (opponent.stamina <= 0) {
+                  // Opponent has no stamina - win condition
+                  if (player.isAtBoundaryDuringGrab) {
+                    player.isGrabBellyFlopping = true;
+                    opponent.isBeingGrabBellyFlopped = true;
+                  } else {
+                    player.isGrabFrontalForceOut = true;
+                    opponent.isBeingGrabFrontalForceOut = true;
+                  }
+
+                  // Trigger ring-out sequence
+                  player.isRingOutFreezeActive = true;
+                  player.ringOutFreezeEndTime = Date.now() + 200;
+                  player.ringOutThrowDirection = opponentAtLeftBoundary ? -1 : 1;
+                  player.pendingRingOutThrowTarget = opponent.id;
+
+                  setPlayerTimeout(
+                    player.id,
+                    () => {
+                      const currentRoom = rooms.find((r) => r.id === room.id);
+                      if (!currentRoom) return;
+                      const grabberRef = currentRoom.players.find((p) => p.id === player.id);
+                      const grabbedRef = currentRoom.players.find((p) => p.id === opponent.id);
+                      if (!grabberRef || !grabbedRef) return;
+
+                      grabberRef.isRingOutFreezeActive = false;
+                      grabberRef.isGrabbing = false;
+                      grabberRef.grabbedOpponent = null;
+                      grabberRef.isGrabFrontalForceOut = false;
+                      grabberRef.isGrabBellyFlopping = false;
+                      grabberRef.isGrabPushing = false;
+                      grabberRef.isGrabWalking = false;
+                      grabbedRef.isBeingGrabbed = false;
+                      grabbedRef.isBeingGrabFrontalForceOut = false;
+                      grabbedRef.isBeingGrabBellyFlopped = false;
+                      grabbedRef.isBeingGrabPushed = false;
+
+                      grabberRef.isThrowing = true;
+                      grabberRef.throwStartTime = Date.now();
+                      grabberRef.throwEndTime = Date.now() + RINGOUT_THROW_DURATION_MS;
+                      grabberRef.throwOpponent = grabbedRef.id;
+
+                      clearAllActionStates(grabbedRef);
+                      grabbedRef.isBeingThrown = true;
+
+                      grabberRef.throwingFacingDirection = grabberRef.ringOutThrowDirection || 1;
+                      grabbedRef.beingThrownFacingDirection = grabbedRef.facing;
+
+                      grabberRef.isRingOutThrowCutscene = true;
+                      grabberRef.ringOutThrowDistance = 5;
+                      grabberRef.ringOutThrowDirection = null;
+                      grabberRef.pendingRingOutThrowTarget = null;
+                    },
+                    200,
+                    "ringOutFreezeDelay"
+                  );
+
+                  handleWinCondition(room, opponent, player, io);
+                  opponent.knockbackVelocity = { ...opponent.knockbackVelocity };
+                } else {
+                  // Opponent has stamina - PIN at boundary
+                  player.isAtBoundaryDuringGrab = true;
+
+                  if (opponentAtLeftBoundary) {
+                    newOpponentX = leftBoundary;
+                  } else {
+                    newOpponentX = rightBoundary;
+                  }
+
+                  newX = player.facing === 1
+                    ? newOpponentX + pushFixedDistance
+                    : newOpponentX - pushFixedDistance;
+
+                  player.x = newX;
+                  opponent.x = newOpponentX;
+                }
+              } else {
+                // Not at boundary - normal push movement
+                player.isAtBoundaryDuringGrab = false;
+                newX = Math.max(leftBoundary, Math.min(newX, rightBoundary));
+                player.x = newX;
+
+                opponent.x = player.facing === 1
+                  ? player.x - pushFixedDistance
+                  : player.x + pushFixedDistance;
+              }
+
+              // Update opponent facing
+              if (!opponent.atTheRopesFacingDirection) {
+                opponent.facing = -player.facing;
               }
             }
+            // === NOT PUSHING (still in decision window or just holding) ===
+            else if (!player.isGrabPushing) {
+              opponent.x = player.facing === 1
+                ? player.x - fixedDistance
+                : player.x + fixedDistance;
+              if (!opponent.atTheRopesFacingDirection) {
+                opponent.facing = -player.facing;
+              }
+            }
+
+            // Zero grabber movement velocity during grab
+            player.movementVelocity = 0;
           }
         } else if (
           player.isAttemptingGrabThrow &&
@@ -4269,16 +4599,47 @@ io.on("connection", (socket) => {
             (p) => p.id === player.grabbedOpponent
           );
           if (opponent) {
-            // Slightly increased separation during throw attempt for better visual clarity
             const baseDistance = Math.round(81 * 1.3);
             const fixedDistance = baseDistance * 1.15 * (opponent.sizeMultiplier || 1);
             opponent.x =
               player.facing === 1
                 ? player.x - fixedDistance
                 : player.x + fixedDistance;
-            // Only update facing if opponent doesn't have locked atTheRopes facing direction
             if (!opponent.atTheRopesFacingDirection) {
               opponent.facing = -player.facing;
+            }
+
+            // Check for S-key counter during throw attempt window
+            if (opponent.keys.s && !opponent.isGrabBreaking) {
+              executeDirectionalGrabBreak(player, opponent, room, io);
+              return;
+            }
+          }
+        } else if (
+          player.isAttemptingPull &&
+          player.isGrabbing &&
+          player.grabbedOpponent
+        ) {
+          // Handle pull attempt state - maintain opponent position
+          const opponent = room.players.find(
+            (p) => p.id === player.grabbedOpponent
+          );
+          if (opponent) {
+            const baseDistance = Math.round(81 * 1.3);
+            const fixedDistance = baseDistance * (opponent.sizeMultiplier || 1);
+            opponent.x =
+              player.facing === 1
+                ? player.x - fixedDistance
+                : player.x + fixedDistance;
+            if (!opponent.atTheRopesFacingDirection) {
+              opponent.facing = -player.facing;
+            }
+
+            // Check for directional counter during pull attempt window
+            const counterKey = player.facing === -1 ? 'd' : 'a';
+            if (opponent.keys[counterKey] && !opponent.isGrabBreaking) {
+              executeDirectionalGrabBreak(player, opponent, room, io);
+              return;
             }
           }
         } else if (player.isGrabbing && !player.grabbedOpponent) {
@@ -5392,6 +5753,24 @@ io.on("connection", (socket) => {
         grabStartupDuration: 0,
         grabStartTime: 0,
         grabbedOpponent: null,
+        // New grab action system states
+        isGrabPushing: false,
+        isBeingGrabPushed: false,
+        isAttemptingPull: false,
+        isBeingPullReversaled: false,
+        isGrabSeparating: false,
+        isGrabBellyFlopping: false,
+        isBeingGrabBellyFlopped: false,
+        isGrabFrontalForceOut: false,
+        isBeingGrabFrontalForceOut: false,
+        grabActionStartTime: 0,
+        grabActionType: null,
+        lastGrabPushStaminaDrainTime: 0,
+        isAtBoundaryDuringGrab: false,
+        grabDurationPaused: false,
+        grabDurationPausedAt: 0,
+        grabPushEndTime: 0,
+        grabDecisionMade: false,
         isThrowTeching: false,
         throwTechCooldown: false,
         isSlapParrying: false,
@@ -5543,6 +5922,24 @@ io.on("connection", (socket) => {
         grabStartupDuration: 0,
         grabStartTime: 0,
         grabbedOpponent: null,
+        // New grab action system states
+        isGrabPushing: false,
+        isBeingGrabPushed: false,
+        isAttemptingPull: false,
+        isBeingPullReversaled: false,
+        isGrabSeparating: false,
+        isGrabBellyFlopping: false,
+        isBeingGrabBellyFlopped: false,
+        isGrabFrontalForceOut: false,
+        isBeingGrabFrontalForceOut: false,
+        grabActionStartTime: 0,
+        grabActionType: null,
+        lastGrabPushStaminaDrainTime: 0,
+        isAtBoundaryDuringGrab: false,
+        grabDurationPaused: false,
+        grabDurationPausedAt: 0,
+        grabPushEndTime: 0,
+        grabDecisionMade: false,
         isThrowTeching: false,
         throwTechCooldown: false,
         isSlapParrying: false,
@@ -5756,6 +6153,24 @@ io.on("connection", (socket) => {
       grabStartupDuration: 0,
       grabStartTime: 0,
       grabbedOpponent: null,
+      // New grab action system states
+      isGrabPushing: false,
+      isBeingGrabPushed: false,
+      isAttemptingPull: false,
+      isBeingPullReversaled: false,
+      isGrabSeparating: false,
+      isGrabBellyFlopping: false,
+      isBeingGrabBellyFlopped: false,
+      isGrabFrontalForceOut: false,
+      isBeingGrabFrontalForceOut: false,
+      grabActionStartTime: 0,
+      grabActionType: null,
+      lastGrabPushStaminaDrainTime: 0,
+      isAtBoundaryDuringGrab: false,
+      grabDurationPaused: false,
+      grabDurationPausedAt: 0,
+      grabPushEndTime: 0,
+      grabDecisionMade: false,
       isThrowTeching: false,
       throwTechCooldown: false,
       isSlapParrying: false,
@@ -6268,8 +6683,11 @@ io.on("connection", (socket) => {
       if (player.isDodging && !allowChargingDuringDodge) {
         return true;
       }
-      // Block during grab break animation and separation
-      if (player.isGrabBreaking || player.isGrabBreakCountered || player.isGrabBreakSeparating) {
+      // Block during grab break animation, separation, and new grab action states
+      if (player.isGrabBreaking || player.isGrabBreakCountered || player.isGrabBreakSeparating ||
+          player.isGrabSeparating || player.isBeingPullReversaled ||
+          player.isGrabBellyFlopping || player.isBeingGrabBellyFlopped ||
+          player.isGrabFrontalForceOut || player.isBeingGrabFrontalForceOut) {
         return true;
       }
       // Block during recovery unless it's a dodge and dodge cancel is allowed
@@ -6323,156 +6741,15 @@ io.on("connection", (socket) => {
       if (data.keys.f) {
       }
 
-      // If spacebar was released after a grab break, allow raw parry again
-      if (
-        !player.keys[" "] &&
-        previousKeys[" "] &&
-        player.grabBreakSpaceConsumed
-      ) {
-        player.grabBreakSpaceConsumed = false;
-        // Also ensure grab-break animation is not lingering
-        if (!player.isGrabBreaking) {
-          // no-op; flag reset is enough
-        }
-      }
-
-      // Grab Break: break out when being grabbed with spacebar, at stamina cost
-      // Counter grab (LOCKED) cannot be broken
-      if (
-        player.isBeingGrabbed &&
-        !player.isCounterGrabbed &&
-        player.keys[" "] &&
-        !previousKeys[" "] &&
-        !player.isGrabBreaking &&
-        player.stamina >= GRAB_BREAK_STAMINA_COST
-      ) {
-        const room = rooms[roomIndex];
-        const grabber = room.players.find(
-          (p) =>
-            p.id !== player.id &&
-            p.isGrabbing &&
-            p.grabbedOpponent === player.id
-        );
-
-        if (grabber) {
-          // Deduct stamina
-          player.stamina = Math.max(
-            0,
-            player.stamina - GRAB_BREAK_STAMINA_COST
-          );
-
-          // Clear grab states for both
-          cleanupGrabStates(grabber, player);
-
-          // Animation state - only the breaker shows grab break
-          player.isGrabBreaking = true;
-          // Consume this space press so raw parry cannot start until release
-          player.grabBreakSpaceConsumed = true;
-          // CRITICAL: Clear throw attempt state for breaker
-          player.isAttemptingGrabThrow = false;
-
-          // The grabber shows a countered placeholder animation (not true hit state)
-          grabber.isGrabBreaking = false;
-          grabber.isGrabBreakCountered = true;
-          // CRITICAL: Clear throw attempt state - prevents throw attempt animation from showing after grab break
-          grabber.isAttemptingGrabThrow = false;
-          // Auto-clear countered flag after a short duration
-          setPlayerTimeout(
-            grabber.id,
-            () => {
-              grabber.isGrabBreakCountered = false;
-            },
-            GRAB_BREAK_ANIMATION_DURATION,
-            "grabBreakHitReset"
-          );
-          setPlayerTimeout(
-            player.id,
-            () => {
-              player.isGrabBreaking = false;
-            },
-            GRAB_BREAK_ANIMATION_DURATION,
-            "grabBreakAnim"
-          );
-
-          // Determine directions and push apart without crossing boundaries
-          const leftBoundary = MAP_LEFT_BOUNDARY;
-          const rightBoundary = MAP_RIGHT_BOUNDARY;
-          const dir = player.x < grabber.x ? -1 : 1; // player pushes outward
-          // Use same separation as CPU grab break - shorter knockback
-          const breakerDistance = GRAB_BREAK_SEPARATION_MULTIPLIER; // 96
-          const grabberDistance = GRAB_BREAK_SEPARATION_MULTIPLIER * 0.5; // 48
-
-          const playerTargetX = Math.max(
-            leftBoundary,
-            Math.min(player.x + dir * breakerDistance, rightBoundary)
-          );
-          const grabberTargetX = Math.max(
-            leftBoundary,
-            Math.min(grabber.x - dir * grabberDistance, rightBoundary)
-          );
-
-          // Initialize smooth separation tween for both players
-          const now = Date.now();
-          // Breaker tween
-          player.isGrabBreakSeparating = true;
-          player.grabBreakSepStartTime = now;
-          player.grabBreakSepDuration = GRAB_BREAK_SEPARATION_DURATION;
-          player.grabBreakStartX = player.x;
-          player.grabBreakTargetX = playerTargetX;
-          // Grabber tween
-          grabber.isGrabBreakSeparating = true;
-          grabber.grabBreakSepStartTime = now;
-          grabber.grabBreakSepDuration = GRAB_BREAK_SEPARATION_DURATION;
-          grabber.grabBreakStartX = grabber.x;
-          grabber.grabBreakTargetX = grabberTargetX;
-
-          // Zero out velocities during tween to prevent sliding interference
-          player.movementVelocity = 0;
-          grabber.movementVelocity = 0;
-
-          // Do not set isHit or knockbackVelocity, to avoid bypassing boundary checks
-          player.isStrafing = false;
-          grabber.isStrafing = false;
-
-          // Lock both players' inputs for the full grab break animation duration
-          const inputLockUntil = Date.now() + GRAB_BREAK_INPUT_LOCK_DURATION;
-          player.inputLockUntil = Math.max(player.inputLockUntil || 0, inputLockUntil);
-          grabber.inputLockUntil = Math.max(grabber.inputLockUntil || 0, inputLockUntil);
-
-          // Short cooldown to prevent immediate re-grab
-          grabber.grabCooldown = true;
-          setPlayerTimeout(
-            grabber.id,
-            () => {
-              grabber.grabCooldown = false;
-            },
-            600,
-            "grabBreakCooldown"
-          );
-
-          // Emit for client VFX/SFX
-          io.in(room.id).emit("grab_break", {
-            breakerId: player.id,
-            grabberId: grabber.id,
-            breakerX: player.x,
-            grabberX: grabber.x,
-            breakId: `grab-break-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            breakerPlayerNumber: player.fighter === "player 1" ? 1 : 2,
-          });
-        }
-      }
-      // Emit "No Stamina" feedback when player tries to break grab but doesn't have enough stamina
-      else if (
-        player.isBeingGrabbed &&
-        player.keys[" "] &&
-        !previousKeys[" "] &&
-        !player.isGrabBreaking &&
-        player.stamina < GRAB_BREAK_STAMINA_COST && // Not enough stamina
-        (!player.lastStaminaBlockedTime || Date.now() - player.lastStaminaBlockedTime > 500) // Rate limit
-      ) {
-        player.lastStaminaBlockedTime = Date.now();
-        socket.emit("stamina_blocked", { playerId: player.id, action: "grab_break" });
-      }
+      // ============================================
+      // DIRECTIONAL GRAB BREAK SYSTEM
+      // Spacebar grab break removed. Grab breaks now happen through
+      // directional counter-inputs during specific grab action windows:
+      // - Pull reversal (backward): counter with opposite direction
+      // - Throw (W): counter with S key
+      // - Forward push: cannot be broken, only slowed
+      // Counter-input checks are handled in the grab action sections below.
+      // ============================================
     }
 
     // Handle clearing charge during charging phase with mouse1 - MUST BE FIRST
@@ -7025,7 +7302,8 @@ io.on("connection", (socket) => {
       return Math.abs(player.x - opponent.x) < grabRange;
     }
 
-    // Handle throw attacks - only when currently grabbing opponent
+    // Handle throw attacks - only during grab decision window (first 1s of grab)
+    // Uses GRAB_ACTION_WINDOW (1s) and S-key counter by opponent
     if (
       player.keys.w &&
       player.isGrabbing &&
@@ -7037,7 +7315,10 @@ io.on("connection", (socket) => {
       !player.throwCooldown &&
       !player.isRawParrying &&
       !player.isJumping &&
-      !player.isAttemptingGrabThrow  // Don't allow multiple throw attempts
+      !player.isAttemptingGrabThrow &&  // Don't allow multiple throw attempts
+      !player.isAttemptingPull &&        // Don't allow throw during pull
+      !player.isGrabPushing &&           // Don't allow throw during push
+      !player.grabDecisionMade           // Only during decision window
     ) {
       // Reset any lingering throw states before starting a new throw
       player.throwingFacingDirection = null;
@@ -7050,9 +7331,24 @@ io.on("connection", (socket) => {
       // Set attempting grab throw state - this triggers the animation
       player.isAttemptingGrabThrow = true;
       player.grabThrowAttemptStartTime = Date.now();
+      player.grabActionType = "throw";
+      player.grabActionStartTime = Date.now();
+      player.grabDecisionMade = true; // Lock in the decision
       
-      // Block all player inputs during the attempt (except for internal state checks)
-      player.actionLockUntil = Date.now() + 500;
+      // Pause grab duration during throw attempt (action extends grab)
+      player.grabDurationPaused = true;
+      player.grabDurationPausedAt = Date.now();
+
+      // Clear push states if transitioning from push
+      player.isGrabPushing = false;
+      const throwOpponent = rooms[roomIndex].players.find((p) => p.id !== player.id);
+      if (throwOpponent) {
+        throwOpponent.isBeingGrabPushed = false;
+        throwOpponent.lastGrabPushStaminaDrainTime = 0;
+      }
+
+      // Block all player inputs during the attempt
+      player.actionLockUntil = Date.now() + GRAB_ACTION_WINDOW;
 
       setPlayerTimeout(
         player.id,
@@ -7061,10 +7357,15 @@ io.on("connection", (socket) => {
             (p) => p.id !== player.id
           );
           
-          // Clear attempting state after the animation
+          // Clear attempting state after the window
           player.isAttemptingGrabThrow = false;
+          player.grabDurationPaused = false;
+          player.grabActionType = null;
+          player.grabActionStartTime = 0;
+          player.grabDecisionMade = false;
+          player.grabPushEndTime = 0;
 
-          // CRITICAL: Check if grab break has already occurred - grab break always takes priority
+          // CRITICAL: Check if grab break has already occurred
           if (player.isGrabBreakCountered || opponent.isGrabBreaking || opponent.isGrabBreakSeparating) {
             return;
           }
@@ -7074,6 +7375,8 @@ io.on("connection", (socket) => {
             return;
           }
 
+          // S-key counter check is done in the tick loop (throw attempt branch above).
+          // If we reach here, opponent did NOT counter - execute the throw.
           if (
             isOpponentCloseEnoughForThrow(player, opponent) &&
             !opponent.isBeingThrown &&
@@ -7081,18 +7384,15 @@ io.on("connection", (socket) => {
             !opponent.isDodging
           ) {
             if (checkForGrabPriority(player, opponent)) {
-              // Opponent grabbed at the same time, grab wins - cancel this throw
               return;
             } else if (checkForThrowTech(player, opponent)) {
               applyThrowTech(player, opponent);
             } else if (!player.throwTechCooldown) {
-              clearChargeState(player, true); // true = cancelled by throw
+              clearChargeState(player, true);
 
-              // Clear momentum when successfully throwing an opponent
               player.movementVelocity = 0;
               player.isStrafing = false;
 
-              // Auto-correct facing direction to face opponent before throw
               const shouldFaceRight = player.x < opponent.x;
               player.facing = shouldFaceRight ? -1 : 1;
               player.throwingFacingDirection = player.facing;
@@ -7104,14 +7404,13 @@ io.on("connection", (socket) => {
               player.currentAction = "throw";
               player.actionLockUntil = Date.now() + 200;
               
-              // CRITICAL: Clear ALL action states when being thrown
               clearAllActionStates(opponent);
+              opponent.isBeingGrabbed = false;
+              opponent.isBeingGrabPushed = false;
               opponent.isBeingThrown = true;
               
-              // SMASH-STYLE: Hitstop at the moment of throw initiation
               triggerHitstop(rooms[roomIndex], HITSTOP_THROW_MS);
 
-              // Clear grab states immediately when transitioning into throw
               if (player.isGrabbing) {
                 player.isGrabbing = false;
                 player.grabbedOpponent = null;
@@ -7122,10 +7421,7 @@ io.on("connection", (socket) => {
                 player.id,
                 () => {
                   player.throwCooldown = false;
-                  if (
-                    player.actionLockUntil &&
-                    Date.now() < player.actionLockUntil
-                  ) {
+                  if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
                     player.actionLockUntil = 0;
                   }
                 },
@@ -7134,13 +7430,11 @@ io.on("connection", (socket) => {
             }
           } else {
             if (checkForGrabPriority(player, opponent)) {
-              // Opponent grabbed at the same time, grab wins - cancel this throw
               return;
             }
 
-            clearChargeState(player, true); // true = cancelled by throw
+            clearChargeState(player, true);
 
-            // Auto-correct facing direction to face opponent before throw (whiffed throw)
             const shouldFaceRight = player.x < opponent.x;
             player.facing = shouldFaceRight ? -1 : 1;
             player.throwingFacingDirection = player.facing;
@@ -7156,10 +7450,7 @@ io.on("connection", (socket) => {
               player.id,
               () => {
                 player.throwCooldown = false;
-                if (
-                  player.actionLockUntil &&
-                  Date.now() < player.actionLockUntil
-                ) {
+                if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
                   player.actionLockUntil = 0;
                 }
               },
@@ -7167,8 +7458,134 @@ io.on("connection", (socket) => {
             );
           }
         },
-        500  // Changed from 64ms to 500ms for reaction window
+        GRAB_ACTION_WINDOW  // 1 second window (was 500ms)
       );
+    }
+
+    // === PULL REVERSAL - Backward input during grab decision window ===
+    // Grabber presses backward key to initiate pull reversal
+    // Opponent has 1s window to counter with opposite direction
+    if (
+      player.isGrabbing &&
+      player.grabbedOpponent &&
+      !player.isBeingGrabbed &&
+      !player.isAttemptingGrabThrow &&
+      !player.isAttemptingPull &&
+      !player.isGrabPushing &&
+      !player.grabDecisionMade &&        // Only during decision window
+      !shouldBlockAction()
+    ) {
+      // Determine backward key based on facing
+      const backwardKey = player.facing === -1 ? 'a' : 'd';
+      const forwardKey = player.facing === -1 ? 'd' : 'a';
+      const isPressingBackward = player.keys[backwardKey] && !player.keys[forwardKey];
+
+      if (isPressingBackward) {
+        player.isAttemptingPull = true;
+        player.grabActionStartTime = Date.now();
+        player.grabActionType = "pull";
+        player.grabDecisionMade = true; // Lock in the decision
+
+        // Pause grab duration during pull attempt (action extends grab)
+        player.grabDurationPaused = true;
+        player.grabDurationPausedAt = Date.now();
+
+        // Clear push states
+        player.isGrabPushing = false;
+        const pullOpponent = rooms[roomIndex].players.find((p) => p.id !== player.id);
+        if (pullOpponent) {
+          pullOpponent.isBeingGrabPushed = false;
+          pullOpponent.lastGrabPushStaminaDrainTime = 0;
+        }
+
+        // Block grabber inputs during pull attempt
+        player.actionLockUntil = Date.now() + GRAB_ACTION_WINDOW;
+
+        setPlayerTimeout(
+          player.id,
+          () => {
+            const opponent = rooms[roomIndex].players.find(
+              (p) => p.id !== player.id
+            );
+
+            // Clear pull attempt state
+            player.isAttemptingPull = false;
+            player.grabDurationPaused = false;
+            player.grabActionType = null;
+            player.grabActionStartTime = 0;
+            player.grabDecisionMade = false;
+            player.grabPushEndTime = 0;
+
+            // Check if grab break already happened
+            if (player.isGrabBreakCountered || !opponent || opponent.isGrabBreaking || opponent.isGrabBreakSeparating) {
+              return;
+            }
+
+            // Check if still in valid grab state
+            if (!player.isGrabbing) {
+              return;
+            }
+
+            // Counter check is done in the tick loop (pull attempt branch).
+            // If we reach here, opponent did NOT counter - execute pull reversal!
+            
+            // Calculate pull reversal destination (other side of grabber)
+            // Pull direction is opposite of current opponent position relative to grabber
+            const pullDirection = opponent.x < player.x ? 1 : -1; // send to other side
+            let targetX = player.x + pullDirection * PULL_REVERSAL_DISTANCE;
+
+            // Clamp to map boundaries - pull CANNOT send opponent out of bounds
+            targetX = Math.max(MAP_LEFT_BOUNDARY, Math.min(targetX, MAP_RIGHT_BOUNDARY));
+
+            // Release the grab (pull reversal ends the grab)
+            cleanupGrabStates(player, opponent);
+
+            // Set pull reversal state for animation
+            opponent.isBeingPullReversaled = true;
+
+            // Move opponent to target position via tween (longer duration for visible knockback)
+            opponent.isGrabBreakSeparating = true;
+            opponent.grabBreakSepStartTime = Date.now();
+            opponent.grabBreakSepDuration = PULL_REVERSAL_TWEEN_DURATION;
+            opponent.grabBreakStartX = opponent.x;
+            opponent.grabBreakTargetX = targetX;
+
+            // Zero out velocities
+            opponent.movementVelocity = 0;
+            player.movementVelocity = 0;
+            opponent.isStrafing = false;
+            player.isStrafing = false;
+
+            // Input lock for both players
+            const inputLockUntil = Date.now() + PULL_REVERSAL_INPUT_LOCK;
+            opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, inputLockUntil);
+            player.inputLockUntil = Math.max(player.inputLockUntil || 0, inputLockUntil);
+
+            // Correct facing after sides switch
+            correctFacingAfterGrabOrThrow(player, opponent);
+
+            // Note: isBeingPullReversaled is auto-cleared when the tween ends (in tick handler)
+
+            // Grab cooldown
+            player.grabCooldown = true;
+            setPlayerTimeout(
+              player.id,
+              () => { player.grabCooldown = false; },
+              300,
+              "pullReversalCooldown"
+            );
+
+            // Emit for client VFX/SFX
+            io.in(rooms[roomIndex].id).emit("pull_reversal", {
+              grabberId: player.id,
+              opponentId: opponent.id,
+              grabberX: player.x,
+              opponentTargetX: targetX,
+            });
+          },
+          GRAB_ACTION_WINDOW  // 1 second window
+        );
+      }
     }
 
     // Handle grab attacks - block during charged attack execution and recovery

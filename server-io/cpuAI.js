@@ -525,9 +525,12 @@ function handleGrabClashMashing(cpu, aiState, currentTime) {
   }
 }
 
-// Handle grab break attempts (spacebar mashing)
-// CPU should break grabs MOST of the time, especially when near edge!
-// All grabs (including counter grab) can be broken
+// Handle grab break attempts using the NEW directional counter system
+// CPU should counter grabs based on the grabber's action:
+// - During isAttemptingPull: press the correct counter direction (grabber's forward key)
+// - During isAttemptingThrow (W throw): press S key
+// - During isGrabPushing: hold forward to resist (slows push, drains own stamina)
+// CPU cannot break forward push, only slow it down
 function handleGrabBreak(cpu, aiState, currentTime) {
   // DON'T reset all keys - we need _prevKeys to track the previous state for keyJustPressed
   
@@ -544,39 +547,66 @@ function handleGrabBreak(cpu, aiState, currentTime) {
   // Time we've been grabbed
   const timeGrabbed = currentTime - aiState.grabStartedTime;
   
-  // ALWAYS try to break if we have stamina, but with timing considerations:
-  // - Minimum wait time so it doesn't seem cheap (300ms base)
-  // - Break FASTER if near edge (danger!)
+  // Minimum reaction time before CPU tries to counter (so it doesn't seem instant)
+  const MIN_WAIT_BASE = 200;
+  const EDGE_DANGER_THRESHOLD = 200;
   
-  const MIN_WAIT_BASE = 300; // Base minimum wait before trying to break
-  const EDGE_DANGER_THRESHOLD = 200; // If closer than this to edge, break faster!
-  
-  // Calculate effective wait time - shorter if near edge!
   let effectiveMinWait = MIN_WAIT_BASE;
   if (nearestEdgeDist < EDGE_DANGER_THRESHOLD) {
-    // Near edge! Reduce wait time proportionally to danger
-    const dangerFactor = nearestEdgeDist / EDGE_DANGER_THRESHOLD; // 0 to 1
-    effectiveMinWait = MIN_WAIT_BASE * dangerFactor; // 0ms to 300ms based on proximity
+    const dangerFactor = nearestEdgeDist / EDGE_DANGER_THRESHOLD;
+    effectiveMinWait = MIN_WAIT_BASE * dangerFactor;
   }
   
-  // Have we waited long enough?
   if (timeGrabbed < effectiveMinWait) {
-    // Not yet - don't try to break yet
-    // Keep spacebar released so the next press counts as a "new" press
-    cpu.keys[" "] = false;
+    return;
+  }
+
+  // Find the grabber to know what action they're doing
+  // We need to check surrounding players - cpu.grabbedOpponent would be set on the grabber
+  // The CPU is being grabbed, so look for who is grabbing them
+  
+  // Check if being push-resisted (forward push - can only slow, not break)
+  if (cpu.isBeingGrabPushed) {
+    // Hold our own forward direction to resist the push
+    // CPU facing is opposite of grabber facing
+    const cpuForwardKey = cpu.facing === -1 ? 'd' : 'a';
+    cpu.keys[cpuForwardKey] = true;
+    // Clear opposite key
+    const cpuBackwardKey = cpu.facing === -1 ? 'a' : 'd';
+    cpu.keys[cpuBackwardKey] = false;
     return;
   }
   
-  // Mash spacebar to break! (if we have stamina)
-  // We need to alternate between pressed and not pressed for keyJustPressed to work
-  const GRAB_BREAK_STAMINA_COST = 33; // 33% of max stamina
-  if (cpu.stamina >= GRAB_BREAK_STAMINA_COST) {
-    // Alternate every ~80ms to create distinct key presses
-    // This creates a "press-release-press-release" pattern
-    const pressPhase = Math.floor(currentTime / 80) % 2 === 0;
-    cpu.keys[" "] = pressPhase;
-  } else {
-    cpu.keys[" "] = false;
+  // Check if grabber is attempting a pull reversal
+  // The counter-input for pull is the grabber's forward direction (absolute)
+  // Since CPU faces opposite of grabber: the counter key is the CPU's backward key
+  if (cpu.isBeingGrabbed) {
+    // We need to figure out what the grabber is doing
+    // The grabber's forward direction in absolute terms: 
+    // grabber.facing === -1 (facing right) => forward = D key direction (+x)
+    // grabber.facing === 1 (facing left) => forward = A key direction (-x)
+    // Since cpu.facing === -grabber.facing, the counter key for pull is:
+    // If cpu faces right (facing=-1), counter pull = D (which is grabber's forward)
+    // If cpu faces left (facing=1), counter pull = A (which is grabber's forward)
+    // This simplifies to: counter key for pull = cpu's backward key
+    const cpuBackwardKey = cpu.facing === -1 ? 'a' : 'd';
+    const cpuForwardKey = cpu.facing === -1 ? 'd' : 'a';
+    
+    // React to different grabber actions by holding counter inputs
+    // The server checks if the key is held, so we just hold the right one
+    // For pull counter: hold the grabber's forward direction = cpu's backward
+    // For throw counter: hold S key
+    // Since we don't know exactly which action the grabber is doing from CPU's perspective,
+    // we hold BOTH counter inputs (S for throw, backward for pull)
+    // This way the CPU will counter whichever action the grabber chooses
+    
+    // ~70% chance to successfully counter (add some randomness for fairness)
+    const shouldCounter = Math.random() < 0.7;
+    if (shouldCounter) {
+      cpu.keys.s = true;              // Counter throw (S key)
+      cpu.keys[cpuBackwardKey] = true; // Counter pull reversal
+      cpu.keys[cpuForwardKey] = true;  // Also resist push if it happens
+    }
   }
 }
 
@@ -985,8 +1015,12 @@ function handleSnowballDefense(cpu, human, aiState, currentTime, distance) {
 // ==== SMART STRATEGY ====
 // Compare two paths to ring-out:
 // 1. WALK FORWARD: Push opponent to front boundary
-// 2. WALK BACKWARD + THROW: Pull opponent toward back boundary, throw when in range
-// Choose whichever path is shorter!
+// NEW GRAB ACTION SYSTEM - CPU grab decision
+// Options for grabber:
+// 1. FORWARD PUSH: Push opponent toward front boundary (opponent can resist but not break)
+// 2. THROW (W): Throw opponent (opponent can counter with S in 1s window)
+// 3. PULL REVERSAL (backward): Tug opponent to other side (opponent can counter with opposite dir)
+// CPU chooses based on positioning and distance to boundaries
 function handleGrabDecision(cpu, human, aiState, currentTime) {
   const cpuFacingLeft = cpu.facing === 1;
   
@@ -994,84 +1028,68 @@ function handleGrabDecision(cpu, human, aiState, currentTime) {
   cpu.keys.a = false;
   cpu.keys.d = false;
   cpu.keys.w = false;
+  cpu.keys.s = false;
   cpu.keys.shift = false;
   cpu.keys.e = false;
   cpu.keys.mouse1 = false;
   cpu.keys.mouse2 = false;
   
-  // === THROW MECHANICS ===
-  // Throw moves opponent from ~100 units in front to ~120 units behind CPU
-  // For guaranteed ring-out via throw: CPU's back must be within THROW_RING_OUT_DISTANCE of boundary
-  const THROW_RING_OUT_DISTANCE = 120; // Distance from back boundary where throw guarantees ring-out
-  
-  // === CALCULATE DISTANCES ===
-  let distToFrontBoundary;  // Opponent's distance to the boundary in front of CPU
-  let distToBackBoundary;   // CPU's back distance to the boundary behind
-  let walkForwardKey;       // Key to press to walk forward (toward opponent)
-  let walkBackwardKey;      // Key to press to walk backward (away from opponent)
-  
-  if (cpuFacingLeft) {
-    // Facing LEFT: opponent is on LEFT, back is toward RIGHT
-    distToFrontBoundary = human.x - MAP_LEFT_BOUNDARY;  // How far opponent is from left edge
-    distToBackBoundary = MAP_RIGHT_BOUNDARY - cpu.x;    // How far CPU's back is from right edge
-    walkForwardKey = 'a';   // Walk left to push opponent toward left boundary
-    walkBackwardKey = 'd';  // Walk right to pull opponent toward right boundary
-  } else {
-    // Facing RIGHT: opponent is on RIGHT, back is toward LEFT
-    distToFrontBoundary = MAP_RIGHT_BOUNDARY - human.x; // How far opponent is from right edge
-    distToBackBoundary = cpu.x - MAP_LEFT_BOUNDARY;     // How far CPU's back is from left edge
-    walkForwardKey = 'd';   // Walk right to push opponent toward right boundary
-    walkBackwardKey = 'a';  // Walk left to pull opponent toward left boundary
+  // Don't make decisions during active actions (push is auto, throw/pull are timeout-based)
+  if (cpu.isAttemptingGrabThrow || cpu.isAttemptingPull || cpu.isGrabPushing) {
+    return;
   }
   
-  // === CALCULATE DISTANCE TO EACH RING-OUT METHOD ===
-  // Method 1: Walk forward until opponent crosses boundary
-  const distToWalkForwardRingOut = distToFrontBoundary;
-  
-  // Method 2: Walk backward until in throw range, then throw
-  // We need to walk backward until: distToBackBoundary <= THROW_RING_OUT_DISTANCE
-  const distToWalkBackwardForThrow = Math.max(0, distToBackBoundary - THROW_RING_OUT_DISTANCE);
-  
-  // === MAKE DECISION AT START OF GRAB ===
-  if (!aiState.grabDecisionMade) {
-    aiState.grabDecisionMade = true;
-    
-    // Compare the two methods - which is shorter?
-    if (distToWalkBackwardForThrow < distToWalkForwardRingOut) {
-      // Walking backward + throw is shorter!
-      aiState.grabStrategy = 'backward_throw';
-    } else {
-      // Walking forward is shorter or equal
-      aiState.grabStrategy = 'forward_push';
-    }
-  }
-  
-  // === EXECUTE THE STRATEGY ===
-  
-  if (aiState.grabStrategy === 'backward_throw') {
-    // Strategy: Walk backward until in throw range, then throw
-    
-    // Check if we're now in throw range (back is close enough to boundary)
-    if (distToBackBoundary <= THROW_RING_OUT_DISTANCE) {
-      // IN THROW RANGE! Execute the throw for guaranteed ring-out!
-      cpu.keys.w = true;
-      return;
-    }
-    
-    // Not yet in throw range - keep walking backward
-    cpu.keys[walkBackwardKey] = true;
-  } else {
-    // Strategy: Walk forward to push opponent off the front boundary
-    cpu.keys[walkForwardKey] = true;
-  }
-  
-  // === EMERGENCY THROW if grab is about to expire ===
+  // === DECISION WINDOW: 1s after grab connects, both players hold still ===
+  // CPU decides what action to take during this window
+  const GRAB_DECISION_WINDOW = 1000; // Match server constant
   if (cpu.grabStartTime) {
     const grabElapsed = currentTime - cpu.grabStartTime;
-    const GRAB_DURATION = 1500;
-    if (grabElapsed > GRAB_DURATION - 200) {
-      cpu.keys.w = true;
+    
+    // During decision window - wait, then make choice
+    if (grabElapsed < GRAB_DECISION_WINDOW && !cpu.grabDecisionMade) {
+      // Pick strategy if not yet decided
+      if (!aiState.grabDecisionMade) {
+        aiState.grabDecisionMade = true;
+        
+        let distToFrontBoundary;
+        let forwardKey;
+        
+        if (cpuFacingLeft) {
+          distToFrontBoundary = human.x - MAP_LEFT_BOUNDARY;
+          forwardKey = 'a';
+        } else {
+          distToFrontBoundary = MAP_RIGHT_BOUNDARY - human.x;
+          forwardKey = 'd';
+        }
+        
+        // Decide strategy:
+        // - Close to boundary or low stamina → push (default, can't be broken)
+        // - Otherwise mix in throws (~30%)
+        if (distToFrontBoundary < 200 || human.stamina < 30) {
+          aiState.grabStrategy = 'forward_push';
+        } else if (Math.random() < 0.3) {
+          aiState.grabStrategy = 'throw';
+        } else {
+          aiState.grabStrategy = 'forward_push';
+        }
+      }
+      
+      // Wait ~500ms into the window before acting (reaction time)
+      if (grabElapsed < 500) {
+        return; // Hold still during early part of decision window
+      }
+      
+      // Execute chosen strategy during the decision window
+      if (aiState.grabStrategy === 'throw') {
+        cpu.keys.w = true; // W key initiates throw (server handles the rest)
+      } else {
+        // Forward push - press forward key to trigger auto-push
+        const forwardKey = cpuFacingLeft ? 'a' : 'd';
+        cpu.keys[forwardKey] = true;
+      }
     }
+    // After decision window, if decision was already made (auto-push running), do nothing
+    // The server handles the auto-push movement
   }
 }
 
@@ -1394,92 +1412,12 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     return;
   }
   
-  // === GRAB BREAK - Process BEFORE shouldBlockAction check! ===
-  // This is special because it needs to work WHILE being grabbed. Counter grab (LOCKED) cannot be broken.
-  const GRAB_BREAK_STAMINA_COST = 33; // 33% of max stamina (match server constant)
-  if (cpu.isBeingGrabbed && 
-      !cpu.isCounterGrabbed &&
-      keyJustPressed(" ") && 
-      !cpu.isGrabBreaking &&
-      cpu.stamina >= GRAB_BREAK_STAMINA_COST) {
-    
-    // Find the grabber
-    const grabber = opponent;
-    if (grabber && grabber.isGrabbing && grabber.grabbedOpponent === cpu.id) {
-      // Deduct stamina
-      cpu.stamina = Math.max(0, cpu.stamina - GRAB_BREAK_STAMINA_COST);
-      
-      // Clear grab states for both - use cleanupGrabStates from gameHelpers if available
-      grabber.isGrabbing = false;
-      grabber.grabbedOpponent = null;
-      grabber.isThrowing = false;
-      grabber.throwStartTime = 0;
-      grabber.throwEndTime = 0;
-      grabber.throwOpponent = null;
-      grabber.grabCooldown = false;
-      
-      cpu.isBeingGrabbed = false;
-      cpu.isBeingThrown = false;
-      cpu.grabbedOpponent = null;
-      cpu.throwOpponent = null;
-      cpu.isHit = false;
-      cpu.grabCooldown = false;
-      // Animation state - breaker shows grab break
-      cpu.isGrabBreaking = true;
-      cpu.grabBreakSpaceConsumed = true;
-      // CRITICAL: Clear throw attempt state for breaker
-      cpu.isAttemptingGrabThrow = false;
-      
-      // Grabber shows countered animation
-      grabber.isGrabBreaking = false;
-      grabber.isGrabBreakCountered = true;
-      // CRITICAL: Clear throw attempt state - prevents throw attempt animation from showing after grab break
-      grabber.isAttemptingGrabThrow = false;
-      
-      // Calculate separation
-      const GRAB_BREAK_PUSH_VELOCITY = 1.2;
-      const GRAB_BREAK_SEPARATION_MULTIPLIER = 96;
-      const separationDir = cpu.x < grabber.x ? -1 : 1;
-      
-      // Apply separation movement - use isGrabBreakSeparating to match index.js game loop
-      cpu.isGrabBreakSeparating = true;
-      cpu.grabBreakSepStartTime = currentTime;
-      cpu.grabBreakSepDuration = 220;
-      cpu.grabBreakStartX = cpu.x;
-      cpu.grabBreakTargetX = cpu.x + separationDir * GRAB_BREAK_SEPARATION_MULTIPLIER;
-      
-      grabber.isGrabBreakSeparating = true;
-      grabber.grabBreakSepStartTime = currentTime;
-      grabber.grabBreakSepDuration = 220;
-      grabber.grabBreakStartX = grabber.x;
-      grabber.grabBreakTargetX = grabber.x - separationDir * GRAB_BREAK_SEPARATION_MULTIPLIER * 0.5;
-      
-      // Clear animation states after duration
-      setPlayerTimeout(cpu.id, () => {
-        cpu.isGrabBreaking = false;
-        cpu.grabBreakSpaceConsumed = false;
-      }, 300);
-      
-      setPlayerTimeout(grabber.id, () => {
-        grabber.isGrabBreakCountered = false;
-      }, 300);
-      
-      // Emit grab_break event for visual effect (same as player grab break)
-      if (io && room) {
-        io.in(room.id).emit("grab_break", {
-          breakerId: cpu.id,
-          grabberId: grabber.id,
-          breakerX: cpu.x,
-          grabberX: grabber.x,
-          breakId: `grab-break-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          breakerPlayerNumber: cpu.fighter === "player 1" ? 1 : 2,
-        });
-      }
-      
-      cpu._prevKeys = { ...cpu.keys };
-      return;
-    }
-  }
+  // === DIRECTIONAL GRAB BREAK (NEW SYSTEM) ===
+  // Grab breaks are now handled by the SERVER through directional counter-inputs.
+  // The CPU AI sets the correct counter keys in handleGrabBreak() above.
+  // The server's tick loop detects the held keys during isAttemptingPull / isAttemptingThrow
+  // windows and executes the grab break via executeDirectionalGrabBreak().
+  // No client-side grab break processing needed anymore.
   
   // === THROW PROCESSING - Must happen BEFORE general shouldBlockAction check ===
   // Throws need to work while grabbing, but shouldBlockAction() blocks when isGrabbing

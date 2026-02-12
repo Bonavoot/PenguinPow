@@ -30,12 +30,33 @@ function cleanupGrabStates(player, opponent) {
   player.throwStartTime = 0;
   player.throwEndTime = 0;
   player.throwOpponent = null;
-  player.grabCooldown = false; // Add this to ensure cooldown is reset
-  player.isBeingGrabbed = false; // Add this to ensure being grabbed state is reset
-  player.isBeingPushed = false; // Add this to ensure being pushed state is reset
-  player.lastGrabStaminaDrainTime = 0; // Reset grab stamina drain tracking
-  player.isAttemptingGrabThrow = false; // Clear grab throw attempt state
+  player.grabCooldown = false;
+  player.isBeingGrabbed = false;
+  player.isBeingPushed = false;
+  player.lastGrabStaminaDrainTime = 0;
+  player.isAttemptingGrabThrow = false;
   player.grabThrowAttemptStartTime = 0;
+  // New grab action system cleanup - grabber
+  player.isGrabPushing = false;
+  player.isBeingGrabPushed = false;
+  player.isAttemptingPull = false;
+  player.isBeingPullReversaled = false;
+  player.isGrabSeparating = false;
+  player.isGrabBellyFlopping = false;
+  player.isBeingGrabBellyFlopped = false;
+  player.isGrabFrontalForceOut = false;
+  player.isBeingGrabFrontalForceOut = false;
+  player.grabActionStartTime = 0;
+  player.grabActionType = null;
+  player.lastGrabPushStaminaDrainTime = 0;
+  player.isAtBoundaryDuringGrab = false;
+  player.grabDurationPaused = false;
+  player.grabDurationPausedAt = 0;
+  player.grabPushEndTime = 0;
+  player.grabDecisionMade = false;
+  player.isGrabWalking = false;
+  // Clear action lock so grab/other actions aren't blocked after grab ends
+  player.actionLockUntil = 0;
 
   // Clean up grabbed player states
   opponent.isBeingGrabbed = false;
@@ -43,11 +64,32 @@ function cleanupGrabStates(player, opponent) {
   opponent.grabbedOpponent = null;
   opponent.throwOpponent = null;
   opponent.isHit = false;
-  opponent.grabCooldown = false; // Add this to ensure cooldown is reset
-  opponent.isGrabbing = false; // Add this to ensure grabbing state is reset
-  opponent.isCounterGrabbed = false; // Reset counter grab flag
-  opponent.isAttemptingGrabThrow = false; // Clear grab throw attempt state for opponent too
+  opponent.grabCooldown = false;
+  opponent.isGrabbing = false;
+  opponent.isCounterGrabbed = false;
+  opponent.isAttemptingGrabThrow = false;
   opponent.grabThrowAttemptStartTime = 0;
+  // New grab action system cleanup - opponent
+  opponent.isGrabPushing = false;
+  opponent.isBeingGrabPushed = false;
+  opponent.isAttemptingPull = false;
+  opponent.isBeingPullReversaled = false;
+  opponent.isGrabSeparating = false;
+  opponent.isGrabBellyFlopping = false;
+  opponent.isBeingGrabBellyFlopped = false;
+  opponent.isGrabFrontalForceOut = false;
+  opponent.isBeingGrabFrontalForceOut = false;
+  opponent.grabActionStartTime = 0;
+  opponent.grabActionType = null;
+  opponent.lastGrabPushStaminaDrainTime = 0;
+  opponent.isAtBoundaryDuringGrab = false;
+  opponent.grabDurationPaused = false;
+  opponent.grabDurationPausedAt = 0;
+  opponent.grabPushEndTime = 0;
+  opponent.grabDecisionMade = false;
+  opponent.isGrabWalking = false;
+  // Clear action lock so grab/other actions aren't blocked after grab ends
+  opponent.actionLockUntil = 0;
 }
 
 function handleWinCondition(room, loser, winner, io) {

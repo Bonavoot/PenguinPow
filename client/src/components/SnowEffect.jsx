@@ -24,31 +24,43 @@ const getGroundLevel = (depth, screenHeight) => {
 const MAX_SNOWFLAKES = 15;
 const MAX_ENVELOPES = 25;
 
-const SnowContainer = styled.div`
+// Depth threshold: bigger (closer) particles in front of player, smaller (farther) behind
+const FRONT_DEPTH_THRESHOLD_SNOW = 0.5;
+const FRONT_DEPTH_THRESHOLD_ENVELOPE = 0.8; // Only really big envelopes in front
+// Player layer in GameFighter is ~95–101; back below, front above
+const Z_BEHIND_PLAYER = 40;
+const Z_IN_FRONT_PLAYER = 105;
+
+const SnowWrapper = styled.div`
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
   pointer-events: none;
-  z-index: 50;
   overflow: hidden;
 `;
 
-// Base snowflake style - no dynamic props, transforms applied via JS
-const SnowflakeElement = styled.div`
+const SnowLayer = styled.div`
   position: absolute;
-  will-change: transform, opacity;
-  backface-visibility: hidden;
-  border-radius: 50%;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  z-index: ${(p) => (p.$front ? Z_IN_FRONT_PLAYER : Z_BEHIND_PLAYER)};
 `;
 
 const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
-  const containerRef = useRef(null);
+  const backContainerRef = useRef(null);
+  const frontContainerRef = useRef(null);
   const particlesRef = useRef([]);
   const elementsRef = useRef([]);
   const animationFrameRef = useRef(null);
   const lastTimeRef = useRef(0);
+
+  const isFrontLayer = (depth, isEnvelope) =>
+    depth > (isEnvelope ? FRONT_DEPTH_THRESHOLD_ENVELOPE : FRONT_DEPTH_THRESHOLD_SNOW);
 
   const shouldShowEnvelopes =
     mode === "envelope" &&
@@ -120,24 +132,29 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
     };
   }, [getRandomDepth, shouldShowEnvelopes]);
 
-  // Create DOM elements once
+  // Create DOM elements once; assign to back or front layer by depth
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+    const backContainer = backContainerRef.current;
+    const frontContainer = frontContainerRef.current;
+    if (!backContainer || !frontContainer) return;
 
-    // Clear existing elements
-    container.innerHTML = '';
+    backContainer.innerHTML = '';
+    frontContainer.innerHTML = '';
     elementsRef.current = [];
     particlesRef.current = [];
 
     const maxParticles = shouldShowEnvelopes ? MAX_ENVELOPES : MAX_SNOWFLAKES;
 
     for (let i = 0; i < maxParticles; i++) {
+      const initialY = -10 - Math.random() * window.innerHeight * 0.8;
+      const particle = createParticleData(initialY);
+      particlesRef.current.push(particle);
+
       const el = document.createElement('div');
       el.style.position = 'absolute';
       el.style.willChange = 'transform, opacity';
       el.style.backfaceVisibility = 'hidden';
-      
+
       if (shouldShowEnvelopes) {
         el.style.width = '40px';
         el.style.height = '60px';
@@ -151,16 +168,14 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
         el.style.boxShadow = '0 0 2px 1px rgba(255, 255, 255, 0.25)';
       }
 
+      const container = isFrontLayer(particle.depth, particle.isEnvelope) ? frontContainer : backContainer;
       container.appendChild(el);
       elementsRef.current.push(el);
-      
-      // Stagger initial Y positions
-      const initialY = -10 - Math.random() * window.innerHeight * 0.8;
-      particlesRef.current.push(createParticleData(initialY));
     }
 
     return () => {
-      container.innerHTML = '';
+      backContainer.innerHTML = '';
+      frontContainer.innerHTML = '';
       elementsRef.current = [];
       particlesRef.current = [];
     };
@@ -202,7 +217,15 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
 
         // Reset if below ground
         if (particle.y >= particle.groundLevel) {
+          const wasFront = isFrontLayer(particle.depth, particle.isEnvelope);
           Object.assign(particle, createParticleData(-10));
+          const nowFront = isFrontLayer(particle.depth, particle.isEnvelope);
+          const backContainer = backContainerRef.current;
+          const frontContainer = frontContainerRef.current;
+          if (backContainer && frontContainer && wasFront !== nowFront) {
+            const targetContainer = nowFront ? frontContainer : backContainer;
+            targetContainer.appendChild(el);
+          }
         }
 
         // Wrap horizontally
@@ -227,7 +250,12 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
     };
   }, [createParticleData]);
 
-  return <SnowContainer ref={containerRef} />;
+  return (
+    <SnowWrapper>
+      <SnowLayer ref={backContainerRef} $front={false} />
+      <SnowLayer ref={frontContainerRef} $front={true} />
+    </SnowWrapper>
+  );
 };
 
 export default SnowEffect;

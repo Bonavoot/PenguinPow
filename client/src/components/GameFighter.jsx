@@ -416,7 +416,17 @@ const getImageSrc = (
   isGrabClashActive,
   isAttemptingGrabThrow,
   // Ritual animation source - if provided, use it instead of state-based selection
-  ritualAnimationSrc
+  ritualAnimationSrc,
+  // New grab action system states
+  isGrabPushing,
+  isBeingGrabPushed,
+  isAttemptingPull,
+  isBeingPullReversaled,
+  isGrabSeparating,
+  isGrabBellyFlopping,
+  isBeingGrabBellyFlopped,
+  isGrabFrontalForceOut,
+  isBeingGrabFrontalForceOut
 ) => {
   // If ritual animation is active, return that directly
   if (ritualAnimationSrc) {
@@ -434,6 +444,13 @@ const getImageSrc = (
   // Player 1 stays blue, Player 2 gets recolored to red (or custom color)
   // ============================================
   
+  // New grab action states - use existing sprites as placeholders until custom spritesheets
+  if (isGrabBellyFlopping) return grabbing; // Placeholder: grabbing sprite (future: belly flop spritesheet)
+  if (isBeingGrabBellyFlopped) return beingGrabbed; // Placeholder: being grabbed sprite (future: belly flop victim spritesheet)
+  if (isGrabFrontalForceOut) return grabbing; // Placeholder: grabbing sprite (future: frontal force out spritesheet)
+  if (isBeingGrabFrontalForceOut) return beingGrabbed; // Placeholder: being grabbed sprite (future: frontal force out victim spritesheet)
+  if (isBeingPullReversaled) return beingGrabbed; // Placeholder: being grabbed sprite (future: pull reversal victim spritesheet)
+  if (isGrabSeparating) return rawParrySuccess; // Placeholder: raw parry success sprite (push-away animation)
   if (isGrabBreaking) return crouching;
   if (isGrabBreakCountered) return hit;
   // Both perfect and regular parry use the same success animation
@@ -622,6 +639,25 @@ const getFighterPopFilter = (props) => {
   if (props.$isGrabClashActive) {
     return `${base} contrast(1.25) brightness(1.1)`;
   }
+  // New grab action visual effects
+  if (props.$isGrabPushing) {
+    return `${base} drop-shadow(0 0 4px rgba(255, 150, 50, 0.5)) contrast(1.15)`;
+  }
+  if (props.$isBeingGrabPushed) {
+    return `${base} drop-shadow(0 0 4px rgba(255, 100, 50, 0.4)) contrast(1.1)`;
+  }
+  if (props.$isAttemptingPull) {
+    return base;
+  }
+  if (props.$isGrabSeparating) {
+    return `${base} brightness(1.1)`;
+  }
+  if (props.$isGrabBellyFlopping || props.$isGrabFrontalForceOut) {
+    return `${base} drop-shadow(0 0 8px rgba(255, 50, 50, 0.7)) brightness(1.2) contrast(1.2)`;
+  }
+  if (props.$isBeingGrabBellyFlopped || props.$isBeingGrabFrontalForceOut) {
+    return `${base} drop-shadow(0 0 6px rgba(255, 50, 50, 0.5)) contrast(1.15)`;
+  }
   return `${base} contrast(1.2)`;
 };
 
@@ -750,7 +786,17 @@ const StyledImage = styled("img")
       props.$isGrabbingMovement,
       props.$isGrabClashActive,
       props.$isAttemptingGrabThrow,
-      props.$ritualAnimationSrc
+      props.$ritualAnimationSrc,
+      // New grab action system states
+      props.$isGrabPushing,
+      props.$isBeingGrabPushed,
+      props.$isAttemptingPull,
+      props.$isBeingPullReversaled,
+      props.$isGrabSeparating,
+      props.$isGrabBellyFlopping,
+      props.$isBeingGrabBellyFlopped,
+      props.$isGrabFrontalForceOut,
+      props.$isBeingGrabFrontalForceOut
     ),
     style: {
       position: "absolute",
@@ -773,8 +819,27 @@ const StyledImage = styled("img")
       filter: getFighterPopFilter(props),
       animation: props.$isAtTheRopes
         ? "atTheRopesWobble 0.3s ease-in-out infinite"
+        // New grab action animations
+        : props.$isGrabBellyFlopping
+        ? "grabBellyFlopLunge 0.4s cubic-bezier(0.25, 0.1, 0.25, 1) forwards"
+        : props.$isBeingGrabBellyFlopped
+        ? "grabBellyFlopVictim 0.4s cubic-bezier(0.25, 0.1, 0.25, 1) forwards"
+        : props.$isGrabFrontalForceOut
+        ? "grabFrontalForceOut 0.3s ease-out forwards"
+        : props.$isBeingGrabFrontalForceOut
+        ? "grabFrontalForceOutVictim 0.3s ease-out forwards"
+        : props.$isBeingPullReversaled
+        ? "pullReversalHop 0.4s cubic-bezier(0.22, 0.6, 0.35, 1)"
+        : props.$isGrabSeparating
+        ? "grabSeparatePush 0.3s ease-out"
+        : props.$isAttemptingPull
+        ? "attemptingPullTug 1.0s cubic-bezier(0.4, 0.0, 0.6, 1.0)"
+        : props.$isGrabPushing
+        ? "grabPushStrain 0.3s ease-in-out infinite"
+        : props.$isBeingGrabPushed
+        ? "grabPushResist 0.3s ease-in-out infinite"
         : props.$isAttemptingGrabThrow
-        ? "attemptingGrabThrowPull 0.5s cubic-bezier(0.4, 0.0, 0.6, 1.0)"
+        ? "attemptingGrabThrowPull 1.0s cubic-bezier(0.4, 0.0, 0.6, 1.0)"
         : props.$isRawParrySuccess || props.$isPerfectRawParrySuccess
         ? "rawParryRecoil 0.5s ease-out"
         : props.$isGrabBreaking
@@ -830,7 +895,16 @@ const StyledImage = styled("img")
           !props.$isThrowingSalt &&
           !props.$isThrowingSnowball &&
           !props.$isSpawningPumoArmy &&
-          !props.$isBowing
+          !props.$isBowing &&
+          !props.$isGrabPushing &&
+          !props.$isBeingGrabPushed &&
+          !props.$isAttemptingPull &&
+          !props.$isBeingPullReversaled &&
+          !props.$isGrabSeparating &&
+          !props.$isGrabBellyFlopping &&
+          !props.$isBeingGrabBellyFlopped &&
+          !props.$isGrabFrontalForceOut &&
+          !props.$isBeingGrabFrontalForceOut
         ? "breathe 1.5s ease-in-out infinite"
         : "none",
       width: props.$isAtTheRopes && props.$fighter === "player 1"
@@ -1023,26 +1097,212 @@ const StyledImage = styled("img")
     }
   }
   
-  /* Attempting grab throw animation - slower, more deliberate pulling motion */
+  /* Attempting grab throw animation - slower, more deliberate pulling motion (1s window) */
   @keyframes attemptingGrabThrowPull {
     0% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
       transform-origin: center bottom;
     }
-    25% {
+    15% {
       transform: scaleX(calc(var(--facing, 1) * 0.95)) scaleY(1.08) translateY(-3px);
       transform-origin: center bottom;
     }
-    50% {
-      transform: scaleX(calc(var(--facing, 1) * 0.97)) scaleY(1.06) translateY(-4px);
+    40% {
+      transform: scaleX(calc(var(--facing, 1) * 0.93)) scaleY(1.10) translateY(-5px);
       transform-origin: center bottom;
     }
-    75% {
-      transform: scaleX(calc(var(--facing, 1) * 0.98)) scaleY(1.04) translateY(-2px);
+    70% {
+      transform: scaleX(calc(var(--facing, 1) * 0.96)) scaleY(1.06) translateY(-3px);
       transform-origin: center bottom;
     }
     100% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
+      transform-origin: center bottom;
+    }
+  }
+
+  /* ============================================ */
+  /* NEW GRAB ACTION SYSTEM ANIMATIONS            */
+  /* Low-cost CSS transforms as placeholders      */
+  /* Replace with spritesheet animations later    */
+  /* ============================================ */
+
+  /* Forward push - grabber straining forward */
+  @keyframes grabPushStrain {
+    0%, 100% {
+      transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1);
+      transform-origin: center bottom;
+    }
+    50% {
+      transform: scaleX(calc(var(--facing, 1) * 1.03)) translateX(calc(var(--facing, 1) * -2px)) scaleY(0.97);
+      transform-origin: center bottom;
+    }
+  }
+
+  /* Being pushed - opponent resisting backward */
+  @keyframes grabPushResist {
+    0%, 100% {
+      transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1);
+      transform-origin: center bottom;
+    }
+    30% {
+      transform: scaleX(calc(var(--facing, 1) * 0.97)) translateX(calc(var(--facing, 1) * 1px)) scaleY(1.02);
+      transform-origin: center bottom;
+    }
+    70% {
+      transform: scaleX(calc(var(--facing, 1) * 0.98)) translateX(calc(var(--facing, 1) * 2px)) scaleY(1.01);
+      transform-origin: center bottom;
+    }
+  }
+
+  /* Attempting pull - backward tugging wind-up motion */
+  @keyframes attemptingPullTug {
+    0% {
+      transform: scaleX(var(--facing, 1)) rotate(0deg) translateX(0) scaleY(1);
+      transform-origin: center bottom;
+    }
+    15% {
+      transform: scaleX(var(--facing, 1)) rotate(3deg) translateX(3px) scaleY(0.97);
+      transform-origin: center bottom;
+    }
+    35% {
+      transform: scaleX(var(--facing, 1)) rotate(5deg) translateX(4px) scaleY(0.96);
+      transform-origin: center bottom;
+    }
+    55% {
+      transform: scaleX(var(--facing, 1)) rotate(4deg) translateX(3px) scaleY(0.97);
+      transform-origin: center bottom;
+    }
+    75% {
+      transform: scaleX(var(--facing, 1)) rotate(6deg) translateX(5px) scaleY(0.95);
+      transform-origin: center bottom;
+    }
+    90% {
+      transform: scaleX(var(--facing, 1)) rotate(5deg) translateX(4px) scaleY(0.96);
+      transform-origin: center bottom;
+    }
+    100% {
+      transform: scaleX(var(--facing, 1)) rotate(5deg) translateX(4px) scaleY(0.96);
+      transform-origin: center bottom;
+    }
+  }
+
+  /* Pull reversal victim - hopping/bouncing knockback */
+  @keyframes pullReversalHop {
+    0% {
+      transform: scaleX(var(--facing, 1)) translateY(0) scaleY(1);
+      transform-origin: center bottom;
+    }
+    15% {
+      transform: scaleX(var(--facing, 1)) translateY(-14px) scaleY(1.08) scaleX(calc(var(--facing, 1) * 0.92));
+      transform-origin: center bottom;
+    }
+    30% {
+      transform: scaleX(var(--facing, 1)) translateY(-2px) scaleY(0.9) scaleX(calc(var(--facing, 1) * 1.06));
+      transform-origin: center bottom;
+    }
+    50% {
+      transform: scaleX(var(--facing, 1)) translateY(-10px) scaleY(1.05) scaleX(calc(var(--facing, 1) * 0.95));
+      transform-origin: center bottom;
+    }
+    70% {
+      transform: scaleX(var(--facing, 1)) translateY(-1px) scaleY(0.93) scaleX(calc(var(--facing, 1) * 1.04));
+      transform-origin: center bottom;
+    }
+    85% {
+      transform: scaleX(var(--facing, 1)) translateY(-5px) scaleY(1.02);
+      transform-origin: center bottom;
+    }
+    100% {
+      transform: scaleX(var(--facing, 1)) translateY(0) scaleY(1);
+      transform-origin: center bottom;
+    }
+  }
+
+  /* Grab separation push-away - gentle push apart */
+  @keyframes grabSeparatePush {
+    0% {
+      transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1);
+      transform-origin: center bottom;
+    }
+    40% {
+      transform: scaleX(calc(var(--facing, 1) * 1.04)) translateX(calc(var(--facing, 1) * 3px)) scaleY(0.97);
+      transform-origin: center bottom;
+    }
+    100% {
+      transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1);
+      transform-origin: center bottom;
+    }
+  }
+
+  /* Belly flop lunge - grabber lunges forward with exaggerated squash */
+  @keyframes grabBellyFlopLunge {
+    0% {
+      transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
+      transform-origin: center bottom;
+    }
+    40% {
+      transform: scaleX(calc(var(--facing, 1) * 1.15)) scaleY(0.85) translateY(0);
+      transform-origin: center bottom;
+    }
+    70% {
+      transform: scaleX(calc(var(--facing, 1) * 1.2)) scaleY(0.75) translateY(2px);
+      transform-origin: center bottom;
+    }
+    100% {
+      transform: scaleX(calc(var(--facing, 1) * 1.25)) scaleY(0.7) translateY(4px);
+      transform-origin: center bottom;
+    }
+  }
+
+  /* Belly flop victim - squashed and flattened */
+  @keyframes grabBellyFlopVictim {
+    0% {
+      transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
+      transform-origin: center bottom;
+    }
+    30% {
+      transform: scaleX(calc(var(--facing, 1) * 0.85)) scaleY(1.1) translateY(-4px);
+      transform-origin: center bottom;
+    }
+    70% {
+      transform: scaleX(calc(var(--facing, 1) * 1.15)) scaleY(0.8) translateY(2px);
+      transform-origin: center bottom;
+    }
+    100% {
+      transform: scaleX(calc(var(--facing, 1) * 1.3)) scaleY(0.65) translateY(5px);
+      transform-origin: center bottom;
+    }
+  }
+
+  /* Frontal force out - simple forward tumble */
+  @keyframes grabFrontalForceOut {
+    0% {
+      transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
+      transform-origin: center bottom;
+    }
+    50% {
+      transform: scaleX(calc(var(--facing, 1) * 1.1)) scaleY(0.92) translateX(calc(var(--facing, 1) * -3px));
+      transform-origin: center bottom;
+    }
+    100% {
+      transform: scaleX(calc(var(--facing, 1) * 1.05)) scaleY(0.95) translateX(calc(var(--facing, 1) * -5px));
+      transform-origin: center bottom;
+    }
+  }
+
+  /* Frontal force out victim - stumbling forward */
+  @keyframes grabFrontalForceOutVictim {
+    0% {
+      transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
+      transform-origin: center bottom;
+    }
+    40% {
+      transform: scaleX(calc(var(--facing, 1) * 0.9)) scaleY(1.05) translateY(-2px);
+      transform-origin: center bottom;
+    }
+    100% {
+      transform: scaleX(calc(var(--facing, 1) * 0.85)) scaleY(0.9) translateY(3px);
       transform-origin: center bottom;
     }
   }
@@ -1430,17 +1690,17 @@ const SaltBasket = styled.img
 const youLabelPulse = keyframes`
   0%, 100% { 
     transform: translateX(-50%) scale(1);
-    filter: drop-shadow(0 0 8px rgba(212, 175, 55, 0.6));
+    filter: drop-shadow(0 0 12px rgba(0, 230, 255, 0.6));
   }
   50% { 
-    transform: translateX(-50%) scale(1.05);
-    filter: drop-shadow(0 0 14px rgba(212, 175, 55, 0.9));
+    transform: translateX(-50%) scale(1.06);
+    filter: drop-shadow(0 0 20px rgba(0, 230, 255, 0.9));
   }
 `;
 
 const youArrowBounce = keyframes`
   0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(3px); }
+  50% { transform: translateY(4px); }
 `;
 
 const YouLabel = styled.div
@@ -1463,25 +1723,26 @@ const YouLabel = styled.div
   transform: translateX(-50%);
   animation: ${youLabelPulse} 1.5s ease-in-out infinite;
   
-  /* Main banner */
+  /* YOU badge — Bungee font, angled plate shape to match game HUD */
   &::before {
     content: "YOU";
     font-family: "Bungee", cursive;
     font-size: clamp(12px, 1.1vw, 16px);
-    letter-spacing: 0.1em;
-    color:rgb(255, 223, 120);
+    letter-spacing: 0.08em;
+    color: #ffffff;
     background: linear-gradient(
-      180deg,
-      rgba(11, 16, 32, 0.95) 0%,
-      rgba(67, 61, 103, 0.9) 100%
+      135deg,
+      #00b8d9 0%,
+      #00e5ff 50%,
+      #00b8d9 100%
     );
-    padding: clamp(4px, 0.4vw, 6px) clamp(10px, 1vw, 14px);
-    border: 2px solid rgba(212, 175, 55, 0.8);
-    border-radius: 4px;
-    text-shadow: 0 0 8px rgba(212, 175, 55, 0.5);
+    padding: clamp(5px, 0.5vw, 7px) clamp(12px, 1.2vw, 18px);
+    clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 100%, 6px 100%);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
     box-shadow: 
-      0 4px 12px rgba(0, 0, 0, 0.5),
-      inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      0 0 0 2px rgba(255, 255, 255, 0.9),
+      0 0 12px rgba(0, 230, 255, 0.5),
+      0 3px 10px rgba(0, 0, 0, 0.4);
   }
   
   /* Arrow pointer */
@@ -1489,9 +1750,9 @@ const YouLabel = styled.div
     content: "";
     width: 0;
     height: 0;
-    border-left: 8px solid transparent;
-    border-right: 8px solid transparent;
-    border-top: 10px solid rgba(212, 175, 55, 0.9);
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 8px solid #00e5ff;
     filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
     animation: ${youArrowBounce} 0.8s ease-in-out infinite;
   }
@@ -2062,17 +2323,17 @@ const GameFighter = ({
         // NOTE: isChargingAttack is NOT blocked - can power slide while charging!
         // CRITICAL: gameStarted check prevents visual squish before hakkiyoi and after match ends
         // CRITICAL: velocity check prevents visual squish when standing still or moving too slow
+        // NOTE: We allow prediction when isRecovering or when charged attack (so charged HIT -> power slide works)
         const SLIDE_MIN_VELOCITY = 0.5; // Must match server (server-io/index.js line 209)
         const hasEnoughVelocity = Math.abs(penguin.movementVelocity || 0) >= SLIDE_MIN_VELOCITY;
+        const blockSlideForAttack = penguin.isAttacking && penguin.isSlapAttack; // Only block for slap, allow for charged
         if (gameStarted &&
             hasEnoughVelocity &&
             !penguin.isDodging && 
             !penguin.isThrowing &&
             !penguin.isGrabbing && 
             !penguin.isWhiffingGrab &&
-            !penguin.isAttacking &&
-            // isChargingAttack is allowed - can slide while charging
-            !penguin.isRecovering &&
+            !blockSlideForAttack &&
             !penguin.isRawParrying &&
             !penguin.isHit &&
             !penguin.isBeingGrabbed &&
@@ -2087,14 +2348,24 @@ const GameFighter = ({
             ...predictedState.current,
             isPowerSliding: true,
             isBraking: false,
+            // CRITICAL: Clear stale attack predictions to prevent chargedAttack animation flash.
+            // charge_release sets isAttacking=true and if the prediction expires without being
+            // cleared (e.g. victim handler never ran), the stale isAttacking persists in the ref.
+            // When isPowerSliding gets cleared by reconciliation (~50ms), the stale isAttacking
+            // would leak through the merge and briefly show the attack animation.
+            isAttacking: false,
+            isSlapAttack: false,
             timestamp: now,
           };
           predictionChanged = true;
         }
         break;
       case 'power_slide_end':
-        // Clear power sliding prediction when C/CTRL released (only if was predicting)
-        if (predictedState.current.isPowerSliding) {
+        // Clear power sliding prediction when C/CTRL released (only if was predicting).
+        // During recovery or while server still has charged attack (e.g. right after charged hit),
+        // don't clear so we keep showing power slide until that state ends.
+        const inChargedAttackOrRecoveryEnd = penguin.isRecovering || (penguin.isAttacking && !penguin.isSlapAttack);
+        if (predictedState.current.isPowerSliding && !inChargedAttackOrRecoveryEnd) {
           predictedState.current = {
             ...predictedState.current,
             isPowerSliding: false,
@@ -2172,17 +2443,31 @@ const GameFighter = ({
     
     // Check if prediction has expired
     const predictionAge = now - prediction.timestamp;
-    if (prediction.timestamp === 0 || predictionAge > PREDICTION_TIMEOUT_MS) {
-      return penguin;
+    const expired = prediction.timestamp === 0 || predictionAge > PREDICTION_TIMEOUT_MS;
+    if (expired) {
+      // Don't expire power slide while charged attack or recovery - otherwise we'd show attack sprite
+      const inChargedAttackOrRecovery = penguin.isRecovering || (penguin.isAttacking && !penguin.isSlapAttack);
+      if (prediction.isPowerSliding && inChargedAttackOrRecovery) {
+        predictedState.current.timestamp = now; // Refresh so we keep merging with isPowerSliding true
+      } else {
+        return penguin;
+      }
     }
-    
+
     // Server state takes priority if it shows a conflicting state
     // (e.g., server says we got hit, trust that over our attack prediction)
-    if (penguin.isHit || penguin.isBeingGrabbed || penguin.isBeingThrown || 
+    const inVictimOrBlockingState = penguin.isHit || penguin.isBeingGrabbed || penguin.isBeingThrown ||
         penguin.isRawParryStun || penguin.isAtTheRopes || penguin.isRecovering ||
         penguin.isGrabBreaking || penguin.isGrabBreakCountered || penguin.isThrowTeching ||
-        penguin.isDead || penguin.isThrowing || penguin.isGrabbing) {
-      // Clear ALL predictions when server shows we're in a "victim" or conflicting state
+        penguin.isDead || penguin.isThrowing || penguin.isGrabbing;
+    if (inVictimOrBlockingState) {
+      // Clear predictions when server shows victim/blocking state - but preserve power slide
+      // during recovery (or while charged attack still in state) so charged-attack -> power slide
+      // doesn't flicker to attack animation. After a charged HIT the server sets isAttacking=false
+      // and isRecovering=true; preserve also when isAttacking (charged) so we don't clear on the
+      // frame where hit was applied but isRecovering hasn't arrived yet.
+      const inChargedAttackOrRecovery = penguin.isRecovering || (penguin.isAttacking && !penguin.isSlapAttack);
+      const keepPowerSlide = inChargedAttackOrRecovery && prediction.isPowerSliding;
       predictedState.current = {
         isSlapAttack: false,
         slapAnimation: predictedState.current.slapAnimation,
@@ -2192,11 +2477,13 @@ const GameFighter = ({
         isChargingAttack: false,
         isRawParrying: false,
         isGrabbing: false,
-        isPowerSliding: false,
-        isBraking: false,
-        timestamp: 0,
+        isPowerSliding: keepPowerSlide ? true : false,
+        isBraking: keepPowerSlide ? predictedState.current.isBraking : false,
+        // Refresh timestamp so prediction doesn't expire (150ms) while we're in recovery
+        timestamp: keepPowerSlide ? now : 0,
       };
-      return penguin;
+      if (!keepPowerSlide) return penguin;
+      // Fall through so we merge and return display state with isPowerSliding true
     }
     
     // CRITICAL: If server shows action has ENDED but we predicted it's active,
@@ -2211,6 +2498,13 @@ const GameFighter = ({
     // If server CONFIRMS the action, also clear prediction (server has correct timing)
     else if (prediction.isSlapAttack && penguin.isSlapAttack) {
       predictedState.current.isSlapAttack = false;
+      predictedState.current.isAttacking = false;
+    }
+    
+    // Charged attack: If we predicted attacking (non-slap) but server says not attacking
+    // AND not charging, the server has moved past the attack - clear stale prediction.
+    // Use predictionAge > 100ms to give the server time to confirm the attack initially.
+    if (prediction.isAttacking && !prediction.isSlapAttack && !penguin.isAttacking && !penguin.isChargingAttack && predictionAge > 100) {
       predictedState.current.isAttacking = false;
     }
     
@@ -2236,13 +2530,14 @@ const GameFighter = ({
     
     // ICE PHYSICS: Power sliding reconciliation
     // If server says sliding, clear our prediction (server confirmed)
-    // If server says no sliding but we predicted it, trust server (might not have enough velocity)
+    // If server says no sliding but we predicted it, trust server after a delay - unless we're
+    // in recovery (charged attack), in which case keep showing power slide until recovery ends
     if (prediction.isPowerSliding && penguin.isPowerSliding) {
       predictedState.current.isPowerSliding = false; // Server confirmed, clear prediction
     } else if (prediction.isPowerSliding && !penguin.isPowerSliding) {
-      // Server says no sliding - could be velocity too low or state blocked
-      // Give server authority after a short time
-      if (predictionAge > 50) {
+      // Don't clear while recovering or while server still has charged attack (e.g. right after hit)
+      const inChargedAttackOrRecovery = penguin.isRecovering || (penguin.isAttacking && !penguin.isSlapAttack);
+      if (!inChargedAttackOrRecovery && predictionAge > 50) {
         predictedState.current.isPowerSliding = false;
       }
     }
@@ -2432,7 +2727,17 @@ const GameFighter = ({
       penguin.isGrabbingMovement,
       isGrabClashActive,
     penguin.isAttemptingGrabThrow,
-    ritualAnimationSrc // Pass ritual animation if active
+    ritualAnimationSrc, // Pass ritual animation if active
+    // New grab action system states
+    penguin.isGrabPushing,
+    penguin.isBeingGrabPushed,
+    penguin.isAttemptingPull,
+    penguin.isBeingPullReversaled,
+    penguin.isGrabSeparating,
+    penguin.isGrabBellyFlopping,
+    penguin.isBeingGrabBellyFlopped,
+    penguin.isGrabFrontalForceOut,
+    penguin.isBeingGrabFrontalForceOut
   );
   }, [
     penguin.fighter,
@@ -2474,6 +2779,16 @@ const GameFighter = ({
     isGrabClashActive,
     penguin.isAttemptingGrabThrow,
     ritualAnimationSrc,
+    // New grab action system states
+    penguin.isGrabPushing,
+    penguin.isBeingGrabPushed,
+    penguin.isAttemptingPull,
+    penguin.isBeingPullReversaled,
+    penguin.isGrabSeparating,
+    penguin.isGrabBellyFlopping,
+    penguin.isBeingGrabBellyFlopped,
+    penguin.isGrabFrontalForceOut,
+    penguin.isBeingGrabFrontalForceOut,
   ]);
 
   // PERFORMANCE: Remove RoundResult warmup after styled-components CSS is generated.
@@ -2938,7 +3253,17 @@ const GameFighter = ({
           prev.slapAnimation !== newState.slapAnimation ||
           prev.isThrowingSalt !== newState.isThrowingSalt ||
           prev.isGrabbingMovement !== newState.isGrabbingMovement ||
-          prev.isInRitualPhase !== newState.isInRitualPhase;
+          prev.isInRitualPhase !== newState.isInRitualPhase ||
+          // New grab action system states
+          prev.isGrabPushing !== newState.isGrabPushing ||
+          prev.isBeingGrabPushed !== newState.isBeingGrabPushed ||
+          prev.isAttemptingPull !== newState.isAttemptingPull ||
+          prev.isBeingPullReversaled !== newState.isBeingPullReversaled ||
+          prev.isGrabSeparating !== newState.isGrabSeparating ||
+          prev.isGrabBellyFlopping !== newState.isGrabBellyFlopping ||
+          prev.isBeingGrabBellyFlopped !== newState.isBeingGrabBellyFlopped ||
+          prev.isGrabFrontalForceOut !== newState.isGrabFrontalForceOut ||
+          prev.isBeingGrabFrontalForceOut !== newState.isBeingGrabFrontalForceOut;
         
         if (!discreteStateChanged) {
           return prev; // No discrete state change, skip re-render
@@ -3773,7 +4098,17 @@ const GameFighter = ({
     penguin.isGrabbingMovement,
     isGrabClashActive,
     penguin.isAttemptingGrabThrow,
-    null // ritualAnimationSrc - handled separately
+    null, // ritualAnimationSrc - handled separately
+    // New grab action system states
+    penguin.isGrabPushing,
+    penguin.isBeingGrabPushed,
+    penguin.isAttemptingPull,
+    penguin.isBeingPullReversaled,
+    penguin.isGrabSeparating,
+    penguin.isGrabBellyFlopping,
+    penguin.isBeingGrabBellyFlopped,
+    penguin.isGrabFrontalForceOut,
+    penguin.isBeingGrabFrontalForceOut
   );
   
   // Hit tint for first few frames of isHit only (brief red flash on impact, not whole hitstun)
@@ -3866,7 +4201,7 @@ const GameFighter = ({
         chargePower={penguin.chargeAttackPower ?? 0}
         x={displayPosition.x}
         y={displayPosition.y}
-        facing={penguin.facing}
+        facing={penguin.facing ?? -1}
         playerId={penguin.id}
         localId={localId}
         activePowerUp={penguin.activePowerUp}
@@ -3885,7 +4220,7 @@ const GameFighter = ({
       <PlayerShadow
         x={displayPosition.x}
         y={displayPosition.y}
-        facing={penguin.facing}
+        facing={penguin.facing ?? -1}
         isDodging={penguin.isDodging}
         isGrabStartup={penguin.isGrabStartup}
         isThrowing={penguin.isThrowing}
@@ -3897,7 +4232,7 @@ const GameFighter = ({
         x={penguin.dodgeStartX || displayPosition.x}
         y={penguin.dodgeStartY || displayPosition.y}
         isDodging={penguin.isDodging}
-        facing={penguin.facing}
+        facing={penguin.facing ?? -1}
         dodgeDirection={penguin.dodgeDirection}
       /> */}
       {/* <DodgeLandingEffect
@@ -3911,7 +4246,7 @@ const GameFighter = ({
         x={displayPosition.x}
         y={displayPosition.y}
         isChargingAttack={penguin.isChargingAttack}
-        facing={penguin.facing}
+        facing={penguin.facing ?? -1}
         isSlapAttack={penguin.isSlapAttack}
         isThrowing={penguin.isThrowing}
         chargeCancelled={penguin.chargeCancelled || false}
@@ -3921,7 +4256,7 @@ const GameFighter = ({
         <AnimatedFighterContainer
           $x={displayPosition.x}
           $y={displayPosition.y}
-          $facing={penguin.facing}
+          $facing={penguin.facing ?? -1}
           $fighter={penguin.fighter}
           $isThrowing={penguin.isThrowing}
           $isDodging={displayPenguin.isDodging}
@@ -3983,7 +4318,7 @@ const GameFighter = ({
           $grabAttemptType={penguin.grabAttemptType}
           $x={displayPosition.x}
           $y={displayPosition.y}
-          $facing={penguin.facing}
+          $facing={penguin.facing ?? -1}
           $throwCooldown={penguin.throwCooldown}
           $grabCooldown={penguin.grabCooldown}
           $isChargingAttack={displayPenguin.isChargingAttack}
@@ -4017,6 +4352,15 @@ const GameFighter = ({
           $isGrabClashActive={isGrabClashActive}
           $isAttemptingGrabThrow={penguin.isAttemptingGrabThrow}
           $ritualAnimationSrc={null}
+          $isGrabPushing={penguin.isGrabPushing}
+          $isBeingGrabPushed={penguin.isBeingGrabPushed}
+          $isAttemptingPull={penguin.isAttemptingPull}
+          $isBeingPullReversaled={penguin.isBeingPullReversaled}
+          $isGrabSeparating={penguin.isGrabSeparating}
+          $isGrabBellyFlopping={penguin.isGrabBellyFlopping}
+          $isBeingGrabBellyFlopped={penguin.isBeingGrabBellyFlopped}
+          $isGrabFrontalForceOut={penguin.isGrabFrontalForceOut}
+          $isBeingGrabFrontalForceOut={penguin.isBeingGrabFrontalForceOut}
           $isLocalPlayer={penguin.id === localId}
           style={{ display: showRitualSprite ? 'none' : 'block' }}
         />
@@ -4029,7 +4373,7 @@ const GameFighter = ({
           key={partIndex}
           $x={displayPosition.x}
           $y={displayPosition.y}
-          $facing={penguin.facing}
+          $facing={penguin.facing ?? -1}
           $partIndex={partIndex}
           style={{ 
             visibility: partIndex === ritualPart ? 'visible' : 'hidden',
@@ -4052,7 +4396,7 @@ const GameFighter = ({
         <TintedImage
           $x={displayPosition.x}
           $y={displayPosition.y}
-          $facing={penguin.facing}
+          $facing={penguin.facing ?? -1}
           $isThrowing={penguin.isThrowing}
           $isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
           src={currentSpriteSrc}
@@ -4062,14 +4406,14 @@ const GameFighter = ({
       )}
       <SaltEffect
         isActive={penguin.isThrowingSalt}
-        playerFacing={penguin.facing}
+        playerFacing={penguin.facing ?? -1}
         playerX={displayPosition.x}
         playerY={displayPosition.y + 100}
       />
       <SlapAttackHandsEffect
         x={displayPosition.x}
         y={displayPosition.y}
-        facing={penguin.facing}
+        facing={penguin.facing ?? -1}
         isActive={penguin.isSlapAttack}
         slapAnimation={penguin.slapAnimation}
       />
@@ -4084,13 +4428,13 @@ const GameFighter = ({
       <StarStunEffect
         x={displayPosition.x}
         y={displayPosition.y}
-        facing={penguin.facing}
+        facing={penguin.facing ?? -1}
         isActive={showStarStunEffect}
       />
       <EdgeDangerEffect
         x={displayPosition.x}
         y={displayPosition.y}
-        facing={penguin.facing}
+        facing={penguin.facing ?? -1}
         isActive={penguin.isAtTheRopes}
       />
       <PerfectParryPowerEffect
