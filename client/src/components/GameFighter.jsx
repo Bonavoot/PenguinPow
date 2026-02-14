@@ -25,6 +25,7 @@ import DodgeSmokeEffect from "./DodgeDustEffect";
 import StarStunEffect from "./StarStunEffect";
 import ThickBlubberEffect from "./ThickBlubberEffect";
 import GrabBreakEffect from "./GrabBreakEffect";
+import GrabTechEffect from "./GrabTechEffect";
 import CounterGrabEffect from "./CounterGrabEffect";
 import PunishBannerEffect from "./PunishBannerEffect";
 import CounterHitEffect from "./CounterHitEffect";
@@ -426,7 +427,10 @@ const getImageSrc = (
   isGrabBellyFlopping,
   isBeingGrabBellyFlopped,
   isGrabFrontalForceOut,
-  isBeingGrabFrontalForceOut
+  isBeingGrabFrontalForceOut,
+  isGrabTeching,
+  grabTechRole,
+  isGrabWhiffRecovery
 ) => {
   // If ritual animation is active, return that directly
   if (ritualAnimationSrc) {
@@ -444,6 +448,16 @@ const getImageSrc = (
   // Player 1 stays blue, Player 2 gets recolored to red (or custom color)
   // ============================================
   
+  // Grab tech state — different sprites based on role:
+  // 'grabber' = the player who shows grabbing sprite (one who completed startup)
+  // 'techer' = the player who shows parry/block sprite (one who was in startup)
+  if (isGrabTeching) {
+    if (grabTechRole === 'grabber') return grabbing;
+    return rawParrySuccess; // 'techer' or default
+  }
+  // Grab whiff recovery — uses grab-attempt sprite as placeholder (future: custom stumble animation)
+  if (isGrabWhiffRecovery) return grabAttempt;
+
   // New grab action states - use existing sprites as placeholders until custom spritesheets
   if (isGrabBellyFlopping) return grabbing; // Placeholder: grabbing sprite (future: belly flop spritesheet)
   if (isBeingGrabBellyFlopped) return beingGrabbed; // Placeholder: being grabbed sprite (future: belly flop victim spritesheet)
@@ -796,7 +810,10 @@ const StyledImage = styled("img")
       props.$isGrabBellyFlopping,
       props.$isBeingGrabBellyFlopped,
       props.$isGrabFrontalForceOut,
-      props.$isBeingGrabFrontalForceOut
+      props.$isBeingGrabFrontalForceOut,
+      props.$isGrabTeching,
+      props.$grabTechRole,
+      props.$isGrabWhiffRecovery
     ),
     style: {
       position: "absolute",
@@ -846,6 +863,8 @@ const StyledImage = styled("img")
         ? "grabBreakFlash 1.2s ease-in-out infinite"
         : props.$isRawParrying
         ? "rawParryFlash 1.2s ease-in-out infinite"
+        : props.$isGrabTeching
+        ? "grabTechShake 0.25s ease-in-out infinite"
         : props.$isGrabClashActive
         ? "grabClashStruggle 0.15s ease-in-out infinite"
         : props.$isHit
@@ -1079,6 +1098,37 @@ const StyledImage = styled("img")
     }
     75% {
       transform: scaleX(var(--facing, 1)) translateX(3px);
+    }
+    100% {
+      transform: scaleX(var(--facing, 1)) translateX(0px);
+    }
+  }
+
+  /* Grab tech shake — X-axis jiggle during the freeze phase */
+  @keyframes grabTechShake {
+    0% {
+      transform: scaleX(var(--facing, 1)) translateX(0px);
+    }
+    12% {
+      transform: scaleX(var(--facing, 1)) translateX(-7px);
+    }
+    25% {
+      transform: scaleX(var(--facing, 1)) translateX(7px);
+    }
+    37% {
+      transform: scaleX(var(--facing, 1)) translateX(-6px);
+    }
+    50% {
+      transform: scaleX(var(--facing, 1)) translateX(6px);
+    }
+    62% {
+      transform: scaleX(var(--facing, 1)) translateX(-4px);
+    }
+    75% {
+      transform: scaleX(var(--facing, 1)) translateX(4px);
+    }
+    87% {
+      transform: scaleX(var(--facing, 1)) translateX(-2px);
     }
     100% {
       transform: scaleX(var(--facing, 1)) translateX(0px);
@@ -2129,6 +2179,8 @@ const GameFighter = ({
       !penguin.isGrabStartup &&
       !penguin.isGrabbingMovement &&
       !penguin.isWhiffingGrab &&
+      !penguin.isGrabWhiffRecovery &&
+      !penguin.isGrabTeching &&
       !penguin.isGrabBreaking &&
       !penguin.isGrabBreakCountered &&
       !penguin.isGrabBreakSeparating &&
@@ -2169,6 +2221,8 @@ const GameFighter = ({
       !penguin.isGrabStartup &&
       !penguin.isGrabbingMovement &&
       !penguin.isWhiffingGrab &&
+      !penguin.isGrabWhiffRecovery &&
+      !penguin.isGrabTeching &&
       !penguin.isGrabBreaking &&
       !penguin.isGrabBreakCountered &&
       !penguin.isGrabBreakSeparating &&
@@ -2632,6 +2686,7 @@ const GameFighter = ({
   
   // New enhanced effects state
   const [grabBreakEffectPosition, setGrabBreakEffectPosition] = useState(null);
+  const [grabTechEffectPosition, setGrabTechEffectPosition] = useState(null);
   const [counterGrabEffectPosition, setCounterGrabEffectPosition] = useState(null);
   const [punishBannerPosition, setPunishBannerPosition] = useState(null);
   const [snowballImpactPosition, setSnowballImpactPosition] = useState(null);
@@ -2737,7 +2792,10 @@ const GameFighter = ({
     penguin.isGrabBellyFlopping,
     penguin.isBeingGrabBellyFlopped,
     penguin.isGrabFrontalForceOut,
-    penguin.isBeingGrabFrontalForceOut
+    penguin.isBeingGrabFrontalForceOut,
+    penguin.isGrabTeching,
+    penguin.grabTechRole,
+    penguin.isGrabWhiffRecovery
   );
   }, [
     penguin.fighter,
@@ -2789,6 +2847,9 @@ const GameFighter = ({
     penguin.isBeingGrabBellyFlopped,
     penguin.isGrabFrontalForceOut,
     penguin.isBeingGrabFrontalForceOut,
+    penguin.isGrabTeching,
+    penguin.grabTechRole,
+    penguin.isGrabWhiffRecovery,
   ]);
 
   // PERFORMANCE: Remove RoundResult warmup after styled-components CSS is generated.
@@ -3263,7 +3324,10 @@ const GameFighter = ({
           prev.isGrabBellyFlopping !== newState.isGrabBellyFlopping ||
           prev.isBeingGrabBellyFlopped !== newState.isBeingGrabBellyFlopped ||
           prev.isGrabFrontalForceOut !== newState.isGrabFrontalForceOut ||
-          prev.isBeingGrabFrontalForceOut !== newState.isBeingGrabFrontalForceOut;
+          prev.isBeingGrabFrontalForceOut !== newState.isBeingGrabFrontalForceOut ||
+          prev.isGrabTeching !== newState.isGrabTeching ||
+          prev.grabTechRole !== newState.grabTechRole ||
+          prev.isGrabWhiffRecovery !== newState.isGrabWhiffRecovery;
         
         if (!discreteStateChanged) {
           return prev; // No discrete state change, skip re-render
@@ -3381,6 +3445,17 @@ const GameFighter = ({
             breakerPlayerNumber: data.breakerPlayerNumber || 1,
           });
           playSound(grabBreakSound, 0.01);
+        }
+      });
+
+      // Grab tech effect — both players grabbed simultaneously, frost/blue burst
+      socket.on("grab_tech", (data) => {
+        if (data && typeof data.x === "number") {
+          setGrabTechEffectPosition({
+            x: data.x + 150,
+            y: GROUND_LEVEL + 110,
+            techId: data.techId || `tech-${Date.now()}`,
+          });
         }
       });
 
@@ -3677,14 +3752,13 @@ const GameFighter = ({
       socket.off("perfect_parry");
       if (index === 0) {
         socket.off("grab_break");
+        socket.off("grab_tech");
         socket.off("counter_grab");
         socket.off("punish_banner");
         socket.off("snowball_hit");
         socket.off("stamina_blocked");
         socket.off("counter_hit"); // Fix: was missing cleanup
       }
-      socket.off("grab_clash_start");
-      socket.off("grab_clash_end");
       socket.off("gyoji_call");
       socket.off("game_start");
       socket.off("game_reset");
@@ -4108,7 +4182,10 @@ const GameFighter = ({
     penguin.isGrabBellyFlopping,
     penguin.isBeingGrabBellyFlopped,
     penguin.isGrabFrontalForceOut,
-    penguin.isBeingGrabFrontalForceOut
+    penguin.isBeingGrabFrontalForceOut,
+    penguin.isGrabTeching,
+    penguin.grabTechRole,
+    penguin.isGrabWhiffRecovery
   );
   
   // Hit tint for first few frames of isHit only (brief red flash on impact, not whole hitstun)
@@ -4280,6 +4357,9 @@ const GameFighter = ({
             $isHit={penguin.isHit}
             $isChargingAttack={displayPenguin.isChargingAttack}
             $isGrabClashActive={isGrabClashActive}
+            $isGrabTeching={penguin.isGrabTeching}
+            $grabTechRole={penguin.grabTechRole}
+            $isGrabWhiffRecovery={penguin.isGrabWhiffRecovery}
             draggable={false}
           />
         </AnimatedFighterContainer>
@@ -4361,6 +4441,9 @@ const GameFighter = ({
           $isBeingGrabBellyFlopped={penguin.isBeingGrabBellyFlopped}
           $isGrabFrontalForceOut={penguin.isGrabFrontalForceOut}
           $isBeingGrabFrontalForceOut={penguin.isBeingGrabFrontalForceOut}
+          $isGrabTeching={penguin.isGrabTeching}
+          $grabTechRole={penguin.grabTechRole}
+          $isGrabWhiffRecovery={penguin.isGrabWhiffRecovery}
           $isLocalPlayer={penguin.id === localId}
           style={{ display: showRitualSprite ? 'none' : 'block' }}
         />
@@ -4421,6 +4504,7 @@ const GameFighter = ({
       <HitEffect position={hitEffectPosition} />
       <RawParryEffect position={rawParryEffectPosition} />
       <GrabBreakEffect position={grabBreakEffectPosition} />
+      <GrabTechEffect position={grabTechEffectPosition} />
       <CounterGrabEffect position={trackedCounterGrabEffectPosition} />
       <PunishBannerEffect position={punishBannerPosition} />
       <CounterHitEffect position={counterHitEffectPosition} />

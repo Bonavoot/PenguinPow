@@ -53,8 +53,16 @@ function cleanupGrabStates(player, opponent) {
   player.grabDurationPaused = false;
   player.grabDurationPausedAt = 0;
   player.grabPushEndTime = 0;
+  player.grabPushStartTime = 0;
+  player.grabApproachSpeed = 0;
   player.grabDecisionMade = false;
   player.isGrabWalking = false;
+  player.isGrabWhiffRecovery = false;
+  player.isGrabTeching = false;
+  player.grabTechRole = null;
+  player.grabTechResidualVel = 0;
+  player.grabCounterAttempted = false;
+  player.grabCounterInput = null;
   // Clear action lock so grab/other actions aren't blocked after grab ends
   player.actionLockUntil = 0;
 
@@ -86,8 +94,16 @@ function cleanupGrabStates(player, opponent) {
   opponent.grabDurationPaused = false;
   opponent.grabDurationPausedAt = 0;
   opponent.grabPushEndTime = 0;
+  opponent.grabPushStartTime = 0;
+  opponent.grabApproachSpeed = 0;
   opponent.grabDecisionMade = false;
   opponent.isGrabWalking = false;
+  opponent.isGrabWhiffRecovery = false;
+  opponent.isGrabTeching = false;
+  opponent.grabTechRole = null;
+  opponent.grabTechResidualVel = 0;
+  opponent.grabCounterAttempted = false;
+  opponent.grabCounterInput = null;
   // Clear action lock so grab/other actions aren't blocked after grab ends
   opponent.actionLockUntil = 0;
 }
@@ -117,10 +133,8 @@ function handleWinCondition(room, loser, winner, io) {
   // Store the win count BEFORE potentially clearing it
   const winCount = winner.wins.length;
 
-  // Immediately normalize stamina for next round display
-  room.players.forEach((p) => {
-    p.stamina = 100;
-  });
+  // Stamina stays frozen at end-of-round values.
+  // It resets to 100 when resetRoomAndPlayers() runs for the next round.
 
   if (winCount > 1) {
     io.in(room.id).emit("match_over", {

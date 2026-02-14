@@ -29,6 +29,12 @@ const iceShimmer = keyframes`
   100% { transform: translateX(220%); }
 `;
 
+/* Pulsing glow overlay during stamina regeneration */
+const regenPulse = keyframes`
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.85; }
+`;
+
 /* Pulsing danger glow for the bar frame when stamina is critical */
 const dangerFramePulse = keyframes`
   0%, 100% {
@@ -530,27 +536,84 @@ const BarFill = styled.div.attrs((p) => ({
   }
 `;
 
-/* Stamina loss flash (pink trailing ghost) */
-const BarLoss = styled.div.attrs((p) => ({
+/* Ghost bar — trailing damage indicator (fighting-game "white health") */
+const BarGhost = styled.div.attrs((p) => ({
   style: {
-    ...(p.$isRight
-      ? { right: `calc(2px + ${p.$left}%)` }
-      : { left: `calc(2px + ${p.$left}%)` }),
-    width: `${p.$width}%`,
-    opacity: p.$visible ? 1 : 0,
+    width: `calc(${p.$stamina}% - 4px)`,
+    transition: p.$catching
+      ? "width 0.55s ease-out"
+      : "width 0.05s linear",
   },
 }))`
   position: absolute;
   top: 2px;
   bottom: 2px;
-  background: ${(p) =>
-    p.$isRight
-      ? "linear-gradient(270deg, var(--edo-sakura, #ff8fa3) 0%, #ff9e9e 100%)"
-      : "linear-gradient(90deg, var(--edo-sakura, #ff8fa3) 0%, #ff9e9e 100%)"};
-  transition: opacity 0.15s ease;
-  pointer-events: none;
-  z-index: 1;
+  ${(p) => (p.$isRight ? "right: 2px;" : "left: 2px;")}
   border-radius: 2px;
+  z-index: 1;
+  pointer-events: none;
+
+  /* Warm amber — immediately reads as "recent damage" against the dark track */
+  background: linear-gradient(
+    180deg,
+    #fcd679 0%,
+    #f5b944 20%,
+    #ef8e19 45%,
+    #dc6803 75%,
+    #b54708 100%
+  );
+
+  opacity: 0.88;
+  box-shadow:
+    0 0 10px rgba(220, 104, 3, 0.45),
+    inset 0 0 4px rgba(252, 214, 121, 0.15);
+
+  /* Top highlight bevel (matches fill style) */
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 40%;
+    background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.22) 0%,
+      rgba(255, 255, 255, 0.06) 60%,
+      transparent 100%
+    );
+    border-radius: 2px 2px 0 0;
+    pointer-events: none;
+  }
+`;
+
+/* Full-bar green overlay that pulses when stamina is regenerating */
+const RegenGlow = styled.div.attrs((p) => ({
+  style: {
+    width: `calc(${p.$stamina}% - 4px)`,
+  },
+}))`
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  ${(p) => (p.$isRight ? "right: 2px;" : "left: 2px;")}
+  border-radius: 2px;
+  z-index: 3;
+  pointer-events: none;
+  transition: width 0.3s ease;
+
+  /* Green gradient — stronger toward the leading (growing) edge */
+  background: linear-gradient(
+    ${(p) => (p.$isRight ? "270deg" : "90deg")},
+    rgba(52, 211, 153, 0.06) 0%,
+    rgba(52, 211, 153, 0.18) 40%,
+    rgba(52, 211, 153, 0.35) 75%,
+    rgba(74, 222, 170, 0.5) 100%
+  );
+
+  box-shadow:
+    inset 0 0 10px rgba(52, 211, 153, 0.25),
+    inset ${(p) => (p.$isRight ? "-6px" : "6px")} 0 14px rgba(52, 211, 153, 0.3);
+
+  animation: ${regenPulse} 0.8s ease-in-out infinite;
 `;
 
 /* STA label inside the bar */
@@ -867,41 +930,101 @@ const UiPlayerInfo = ({
   const s1 = clampStamina(player1Stamina);
   const s2 = clampStamina(player2Stamina);
 
+  // ── Display stamina (throttled regen for smooth bar animation) ──
   const [p1DisplayStamina, setP1DisplayStamina] = useState(s1);
   const [p2DisplayStamina, setP2DisplayStamina] = useState(s2);
   const [p1LastDecreaseAt, setP1LastDecreaseAt] = useState(0);
   const [p2LastDecreaseAt, setP2LastDecreaseAt] = useState(0);
   const MAX_INCREASE_PER_UPDATE = 15;
 
-  const [p1Loss, setP1Loss] = useState({ left: 0, width: 0, visible: false });
-  const [p2Loss, setP2Loss] = useState({ left: 0, width: 0, visible: false });
+  // ── Ghost bar — trailing damage indicator ("white health" system) ──
+  const [p1Ghost, setP1Ghost] = useState(s1);
+  const [p2Ghost, setP2Ghost] = useState(s2);
+  const [p1GhostCatching, setP1GhostCatching] = useState(false);
+  const [p2GhostCatching, setP2GhostCatching] = useState(false);
+  const p1GhostTimer = useRef(null);
+  const p2GhostTimer = useRef(null);
+  const p1PrevStamina = useRef(s1);
+  const p2PrevStamina = useRef(s2);
 
-  const p1LossTimeoutRef = useRef(null);
-  const p2LossTimeoutRef = useRef(null);
+  // ── Regen indicator (green leading-edge glow) ──
+  const [p1Regen, setP1Regen] = useState(false);
+  const [p2Regen, setP2Regen] = useState(false);
+  const p1RegenTimer = useRef(null);
+  const p2RegenTimer = useRef(null);
 
+  // ── Post-reset throttle bypass ──
+  // After a round reset, the first stamina update from the server may arrive
+  // AFTER game_reset (race condition). This flag lets that first update snap
+  // to the new value instead of being throttled by MAX_INCREASE_PER_UPDATE.
+  const p1JustReset = useRef(false);
+  const p2JustReset = useRef(false);
+
+  // ── Round reset ──
   useEffect(() => {
     setP1DisplayStamina(s1);
     setP2DisplayStamina(s2);
-    setP1Loss({ left: 0, width: 0, visible: false });
-    setP2Loss({ left: 0, width: 0, visible: false });
+    setP1Ghost(s1);
+    setP2Ghost(s2);
+    setP1GhostCatching(false);
+    setP2GhostCatching(false);
+    setP1Regen(false);
+    setP2Regen(false);
     setP1LastDecreaseAt(0);
     setP2LastDecreaseAt(0);
+    p1PrevStamina.current = s1;
+    p2PrevStamina.current = s2;
+    p1JustReset.current = true;
+    p2JustReset.current = true;
+    if (p1GhostTimer.current) clearTimeout(p1GhostTimer.current);
+    if (p2GhostTimer.current) clearTimeout(p2GhostTimer.current);
+    if (p1RegenTimer.current) clearTimeout(p1RegenTimer.current);
+    if (p2RegenTimer.current) clearTimeout(p2RegenTimer.current);
   }, [roundId]);
 
+  // ── Player 1 stamina + ghost + regen ──
   useEffect(() => {
+    const prev = p1PrevStamina.current;
+    p1PrevStamina.current = s1;
     let next = s1;
-    if (next < p1DisplayStamina) {
-      setP1LastDecreaseAt(Date.now());
-      const lost = Math.max(0, Math.min(100, p1DisplayStamina - next));
-      const width = Math.max(0, Math.min(lost, 100 - next));
-      setP1Loss({ left: next, width, visible: true });
-      if (p1LossTimeoutRef.current) clearTimeout(p1LossTimeoutRef.current);
-      p1LossTimeoutRef.current = setTimeout(() => {
-        setP1Loss((cur) => ({ ...cur, visible: false }));
-      }, 500);
-    } else {
-      setP1Loss((cur) => (cur.visible ? { ...cur, visible: false } : cur));
+
+    // After a round reset, snap immediately to the server value (bypass throttle)
+    if (p1JustReset.current) {
+      p1JustReset.current = false;
+      setP1DisplayStamina(s1);
+      setP1Ghost(s1);
+      return;
     }
+
+    if (s1 < prev) {
+      // ▼ DAMAGE — stamina decreased
+      setP1LastDecreaseAt(Date.now());
+      // Ghost stays high (captures "where stamina was" before this drain sequence)
+      setP1Ghost((g) => Math.max(g, p1DisplayStamina));
+      setP1GhostCatching(false);
+      // Schedule ghost catch-up after a visible delay
+      if (p1GhostTimer.current) clearTimeout(p1GhostTimer.current);
+      const closureS1 = s1;
+      p1GhostTimer.current = setTimeout(() => {
+        setP1GhostCatching(true);
+        setP1Ghost(closureS1);
+      }, 700);
+      // Clear regen state
+      setP1Regen(false);
+      if (p1RegenTimer.current) clearTimeout(p1RegenTimer.current);
+    } else if (s1 > prev) {
+      // ▲ REGEN — stamina increased
+      // Ghost catches up so it doesn't show false damage ahead of the fill
+      if (p1GhostTimer.current) clearTimeout(p1GhostTimer.current);
+      setP1GhostCatching(false);
+      setP1Ghost(Math.min(s1, p1DisplayStamina));
+      // Show regen glow (stays on for 500ms after last regen tick)
+      setP1Regen(true);
+      if (p1RegenTimer.current) clearTimeout(p1RegenTimer.current);
+      p1RegenTimer.current = setTimeout(() => setP1Regen(false), 500);
+    }
+
+    // Throttle regen display (prevents jarring jumps after recent damage)
     const justDecreased =
       Date.now() - p1LastDecreaseAt < 600 || p1DisplayStamina === 0;
     if (next - p1DisplayStamina > 25 && justDecreased) {
@@ -911,28 +1034,52 @@ const UiPlayerInfo = ({
       next = Math.min(next, p1DisplayStamina + MAX_INCREASE_PER_UPDATE);
     }
     setP1DisplayStamina(next);
+
     return () => {
-      if (p1LossTimeoutRef.current) {
-        clearTimeout(p1LossTimeoutRef.current);
-        p1LossTimeoutRef.current = null;
+      if (p1GhostTimer.current) {
+        clearTimeout(p1GhostTimer.current);
+        p1GhostTimer.current = null;
       }
     };
   }, [s1]);
 
+  // ── Player 2 stamina + ghost + regen ──
   useEffect(() => {
+    const prev = p2PrevStamina.current;
+    p2PrevStamina.current = s2;
     let next = s2;
-    if (next < p2DisplayStamina) {
-      setP2LastDecreaseAt(Date.now());
-      const lost = Math.max(0, Math.min(100, p2DisplayStamina - next));
-      const width = Math.max(0, Math.min(lost, 100 - next));
-      setP2Loss({ left: next, width, visible: true });
-      if (p2LossTimeoutRef.current) clearTimeout(p2LossTimeoutRef.current);
-      p2LossTimeoutRef.current = setTimeout(() => {
-        setP2Loss((cur) => ({ ...cur, visible: false }));
-      }, 500);
-    } else {
-      setP2Loss((cur) => (cur.visible ? { ...cur, visible: false } : cur));
+
+    // After a round reset, snap immediately to the server value (bypass throttle)
+    if (p2JustReset.current) {
+      p2JustReset.current = false;
+      setP2DisplayStamina(s2);
+      setP2Ghost(s2);
+      return;
     }
+
+    if (s2 < prev) {
+      // ▼ DAMAGE
+      setP2LastDecreaseAt(Date.now());
+      setP2Ghost((g) => Math.max(g, p2DisplayStamina));
+      setP2GhostCatching(false);
+      if (p2GhostTimer.current) clearTimeout(p2GhostTimer.current);
+      const closureS2 = s2;
+      p2GhostTimer.current = setTimeout(() => {
+        setP2GhostCatching(true);
+        setP2Ghost(closureS2);
+      }, 700);
+      setP2Regen(false);
+      if (p2RegenTimer.current) clearTimeout(p2RegenTimer.current);
+    } else if (s2 > prev) {
+      // ▲ REGEN
+      if (p2GhostTimer.current) clearTimeout(p2GhostTimer.current);
+      setP2GhostCatching(false);
+      setP2Ghost(Math.min(s2, p2DisplayStamina));
+      setP2Regen(true);
+      if (p2RegenTimer.current) clearTimeout(p2RegenTimer.current);
+      p2RegenTimer.current = setTimeout(() => setP2Regen(false), 500);
+    }
+
     const justDecreased =
       Date.now() - p2LastDecreaseAt < 600 || p2DisplayStamina === 0;
     if (next - p2DisplayStamina > 25 && justDecreased) {
@@ -942,10 +1089,11 @@ const UiPlayerInfo = ({
       next = Math.min(next, p2DisplayStamina + MAX_INCREASE_PER_UPDATE);
     }
     setP2DisplayStamina(next);
+
     return () => {
-      if (p2LossTimeoutRef.current) {
-        clearTimeout(p2LossTimeoutRef.current);
-        p2LossTimeoutRef.current = null;
+      if (p2GhostTimer.current) {
+        clearTimeout(p2GhostTimer.current);
+        p2GhostTimer.current = null;
       }
     };
   }, [s2]);
@@ -1023,12 +1171,17 @@ const UiPlayerInfo = ({
                 $danger={p1Danger}
                 $isRight={false}
               />
-              <BarLoss
-                $left={p1Loss.left}
-                $width={p1Loss.width}
-                $visible={p1Loss.visible}
+              <BarGhost
+                $stamina={p1Ghost}
+                $catching={p1GhostCatching}
                 $isRight={false}
               />
+              {p1Regen && (
+                <RegenGlow
+                  $stamina={p1DisplayStamina}
+                  $isRight={false}
+                />
+              )}
               <BarTicks />
               <BarCenterTick />
             </BarTrack>
@@ -1094,12 +1247,17 @@ const UiPlayerInfo = ({
                 $danger={p2Danger}
                 $isRight={true}
               />
-              <BarLoss
-                $left={p2Loss.left}
-                $width={p2Loss.width}
-                $visible={p2Loss.visible}
+              <BarGhost
+                $stamina={p2Ghost}
+                $catching={p2GhostCatching}
                 $isRight={true}
               />
+              {p2Regen && (
+                <RegenGlow
+                  $stamina={p2DisplayStamina}
+                  $isRight={true}
+                />
+              )}
               <BarTicks />
               <BarCenterTick />
             </BarTrack>

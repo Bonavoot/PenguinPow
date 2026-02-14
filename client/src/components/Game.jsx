@@ -4,7 +4,7 @@ import GameFighter from "./GameFighter";
 import MobileControls from "./MobileControls";
 import PowerUpSelection from "./PowerUpSelection";
 import PowerUpReveal from "./PowerUpReveal";
-import GrabClashUI from "./GrabClashUI";
+// GrabClashUI removed — replaced by GrabTechEffect (rendered in GameFighter.jsx)
 import CrowdLayer from "./CrowdLayer";
 import PreMatchScreen from "./PreMatchScreen";
 import gamepadHandler from "../utils/gamepadHandler";
@@ -537,12 +537,7 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
           roomId={roomName}
           localId={localId}
         />
-        <GrabClashUI
-          socket={socket}
-          player1={currentRoom.players?.[0]}
-          player2={currentRoom.players?.[1]}
-          localId={localId}
-        />
+        {/* GrabTechEffect is rendered inside GameFighter.jsx (index 0 only) */}
         
         {/* Pre-match screen overlay - INSIDE game-container so it scales with 16:9 aspect ratio */}
         {showPreMatchScreen && currentRoom && (

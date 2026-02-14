@@ -1,16 +1,20 @@
 // CPU AI Module for Pumo Pumo - SUMO EXPERT
 // Goal: Knock the opponent out of the dohyo (ring)
+// Design philosophy: Human-like decision making with strategic reads, commitment,
+// and intelligent grab system usage based on positioning and stamina.
 
 // Map boundaries - must match server constants in gameUtils.js
 const MAP_LEFT_BOUNDARY = 135;
 const MAP_RIGHT_BOUNDARY = 930;
 const MAP_CENTER = (MAP_LEFT_BOUNDARY + MAP_RIGHT_BOUNDARY) / 2;
+const MAP_WIDTH = MAP_RIGHT_BOUNDARY - MAP_LEFT_BOUNDARY;
 
 // AI Configuration - Tuned for expert sumo gameplay
 const AI_CONFIG = {
   // Distance thresholds
   SLAP_RANGE: 160,         // Distance for slap attacks (close combat)
-  GRAB_RANGE: 140,         // Distance for grab attempts
+  GRAB_RANGE: 155,         // Point-blank distance for grab attempts (just above collision separation ~144.5px)
+  GRAB_APPROACH_RANGE: 250, // Distance at which AI decides to walk in for a grab (intent range)
   MID_RANGE: 250,          // Medium distance
   CHARGED_ATTACK_RANGE: 350, // Minimum distance to consider charged attack
   
@@ -19,29 +23,42 @@ const AI_CONFIG = {
   CORNER_CRITICAL_ZONE: 80, // Very close to edge - escape priority!
   BACK_TO_BOUNDARY_THROW_ZONE: 200, // When back is this close to boundary, use throw for ring-out
   
-  // Reaction chances (0-1)
-  PARRY_CHANCE: 0.28,      // Chance to parry incoming attacks
-  DODGE_CHANCE: 0.20,      // Chance to dodge instead of parry
+  // Reaction chances (0-1) — intentionally imperfect to feel human
+  PARRY_CHANCE: 0.22,      // Base chance to parry incoming attacks (lowered from 0.28)
+  DODGE_CHANCE: 0.16,      // Base chance to dodge instead of parry (lowered from 0.20)
+  REACTION_MISS_CHANCE: 0.25, // Chance to completely miss reacting to an attack
   
   // Timing (ms)
-  DECISION_COOLDOWN: 140,  // Minimum time between major decisions (faster = more aggressive)
+  DECISION_COOLDOWN: 120,  // Minimum time between major decisions
   
   // Stamina thresholds
   GRAB_BREAK_STAMINA: 33,  // 33% of max stamina to attempt grab break
-  DODGE_STAMINA_COST: 15,   // 15% of max stamina per dodge
+  DODGE_STAMINA_COST: 15,  // 15% of max stamina per dodge
+  LOW_STAMINA_THRESHOLD: 25, // Opponent considered low stamina
   
   // Movement
-  STRAFE_CHANGE_INTERVAL: 400, // How often to change strafe direction
+  STRAFE_CHANGE_INTERVAL: 350, // How often to change strafe direction
   
   // Charged attack limits
   MAX_CONSECUTIVE_CHARGED: 2,  // Max charged attacks before forcing other moves
   
   // Snowball defense
-  SNOWBALL_THREAT_DISTANCE: 400, // Distance at which snowballs are considered threatening
-  SNOWBALL_CLOSE_RANGE: 180,   // Distance at which to relax snowball defense
-  SNOWBALL_PARRY_CHANCE: 0.50,  // 50% chance to parry snowballs (rest dodge)
-  SNOWBALL_PERFECT_PARRY_CHANCE: 0.35, // 35% chance to attempt perfect parry instead of regular parry
-  SNOWBALL_REACTION_DISTANCE: 250, // Distance from snowball to react
+  SNOWBALL_THREAT_DISTANCE: 400,
+  SNOWBALL_CLOSE_RANGE: 180,
+  SNOWBALL_PARRY_CHANCE: 0.50,
+  SNOWBALL_PERFECT_PARRY_CHANCE: 0.35,
+  SNOWBALL_REACTION_DISTANCE: 250,
+
+  // Commitment system — AI commits to action sequences instead of single moves
+  COMMIT_SLAP_BURST_MIN: 2,   // Min slaps in a burst
+  COMMIT_SLAP_BURST_MAX: 5,   // Max slaps in a burst
+  COMMIT_BURST_CHANCE: 0.35,  // Chance to enter slap burst mode at close range
+  
+  // Aggression modes — shift AI personality periodically
+  AGGRESSION_SHIFT_INTERVAL: 3000, // Re-roll aggression every 3s
+  
+  // Grab system intelligence
+  GRAB_MID_SCREEN_CHANCE: 0.25, // Chance to grab at mid range (not just close)
 };
 
 // AI State tracking per CPU player
@@ -60,7 +77,7 @@ function getAIState(playerId) {
       parryStartTime: 0,
       parryReleaseTime: 0,
       lastAttackReactionTime: 0,
-      consecutiveChargedAttacks: 0, // Track charged attack usage
+      consecutiveChargedAttacks: 0,
       lastActionType: null,
       // Key release timestamps
       mouse1ReleaseTime: 0,
@@ -71,11 +88,29 @@ function getAIState(playerId) {
       lastPowerUpTime: 0,
       // Grab break timing
       grabStartedTime: 0,
-      // Grab decision tracking - prevents stuttering
+      // Grab decision tracking
       grabDecisionMade: false,
-      grabStrategy: null, // 'forward_push' or 'backward_throw'
+      grabStrategy: null, // 'push', 'throw', 'pull'
+      grabActionDelay: 0, // Reaction delay before executing pull/throw interrupt
       // Snowball defense tracking
       lastSnowballReactionTime: 0,
+      // === NEW: Commitment system ===
+      commitAction: null,      // 'slap_burst', 'aggressive_push', etc.
+      commitCount: 0,          // How many actions left in commitment
+      commitUntil: 0,          // Timestamp when commitment expires
+      // === NEW: Aggression mode ===
+      aggressionMode: 'balanced', // 'aggressive', 'balanced', 'defensive'
+      aggressionShiftTime: 0,    // When to re-roll aggression
+      // === NEW: Read system (preemptive actions instead of pure reactions) ===
+      lastReadTime: 0,
+      readCooldown: 0,
+      // === NEW: Movement fluidity ===
+      movementIntent: null,      // 'approach', 'retreat', 'feint', 'circle'
+      movementIntentUntil: 0,
+      lastMovementShiftTime: 0,
+      // === Grab approach intent (walk into point-blank range before grabbing) ===
+      grabApproachIntent: false,
+      grabApproachIntentUntil: 0,
     });
   }
   return aiStates.get(playerId);
@@ -98,6 +133,26 @@ function distanceToLeftEdge(player) {
 // Check how close to right edge
 function distanceToRightEdge(player) {
   return MAP_RIGHT_BOUNDARY - player.x;
+}
+
+// Get distance to the boundary BEHIND the player (based on facing)
+function distanceToBehind(player) {
+  // facing === 1 means facing LEFT, so BEHIND is to the RIGHT
+  // facing === -1 means facing RIGHT, so BEHIND is to the LEFT
+  if (player.facing === 1) {
+    return distanceToRightEdge(player);
+  } else {
+    return distanceToLeftEdge(player);
+  }
+}
+
+// Get distance to the boundary IN FRONT of the player (opponent's side)
+function distanceToFront(player) {
+  if (player.facing === 1) {
+    return distanceToLeftEdge(player);
+  } else {
+    return distanceToRightEdge(player);
+  }
 }
 
 // Check if player is near ANY edge
@@ -125,12 +180,40 @@ function isOpponentNearEdge(opponent, threshold = AI_CONFIG.EDGE_DANGER_ZONE) {
 
 // Get direction toward center from current position
 function getDirectionToCenter(player) {
-  return player.x < MAP_CENTER ? 1 : -1; // 1 = move right, -1 = move left
+  return player.x < MAP_CENTER ? 1 : -1;
 }
 
 // Get direction toward opponent
 function getDirectionToOpponent(cpu, human) {
-  return cpu.x < human.x ? 1 : -1; // 1 = move right, -1 = move left
+  return cpu.x < human.x ? 1 : -1;
+}
+
+// Check if CPU is at point-blank grab range (within collision distance)
+function isAtGrabRange(cpu, human) {
+  return Math.abs(cpu.x - human.x) <= AI_CONFIG.GRAB_RANGE;
+}
+
+// Try to grab if at point-blank range, otherwise walk toward opponent to close the gap.
+// Returns true if the AI committed to an action (grab or approach), false if not close enough to even approach.
+function attemptGrabOrApproach(cpu, human, aiState, currentTime, distance) {
+  if (isAtGrabRange(cpu, human) && canGrab(cpu)) {
+    // At point-blank — execute grab immediately
+    cpu.keys.e = true;
+    aiState.eReleaseTime = currentTime + 50;
+    aiState.lastDecisionTime = currentTime;
+    return 'grabbed';
+  } else if (distance < AI_CONFIG.GRAB_APPROACH_RANGE && canGrab(cpu)) {
+    // Within approach range — walk toward opponent to close the gap
+    const dir = getDirectionToOpponent(cpu, human);
+    if (dir === 1) cpu.keys.d = true;
+    else cpu.keys.a = true;
+    // Set intent so AI keeps walking in on subsequent frames
+    aiState.grabApproachIntent = true;
+    aiState.grabApproachIntentUntil = currentTime + 400; // Walk in for up to 400ms
+    aiState.lastDecisionTime = currentTime;
+    return 'approaching';
+  }
+  return false;
 }
 
 // Random chance check
@@ -143,8 +226,32 @@ function randomInRange(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+// === NEW: Roll aggression mode periodically ===
+function updateAggressionMode(aiState, currentTime) {
+  if (currentTime > aiState.aggressionShiftTime) {
+    const roll = Math.random();
+    if (roll < 0.35) {
+      aiState.aggressionMode = 'aggressive';
+    } else if (roll < 0.75) {
+      aiState.aggressionMode = 'balanced';
+    } else {
+      aiState.aggressionMode = 'defensive';
+    }
+    // Vary the re-roll interval so it's not perfectly periodic
+    aiState.aggressionShiftTime = currentTime + AI_CONFIG.AGGRESSION_SHIFT_INTERVAL + randomInRange(-800, 800);
+  }
+}
+
+// === NEW: Get aggression multiplier for action chances ===
+function getAggressionMultiplier(aiState) {
+  switch (aiState.aggressionMode) {
+    case 'aggressive': return { attack: 1.4, defense: 0.6, grab: 1.3 };
+    case 'defensive': return { attack: 0.7, defense: 1.4, grab: 0.8 };
+    default: return { attack: 1.0, defense: 1.0, grab: 1.0 };
+  }
+}
+
 // Check if CPU can act (not in a state that blocks actions)
-// MUST match the states checked in isPlayerInBasicActiveState for consistency!
 function canAct(cpu) {
   const isOnCooldown = cpu.attackCooldownUntil && Date.now() < cpu.attackCooldownUntil;
   const isInputLocked = cpu.inputLockUntil && Date.now() < cpu.inputLockUntil;
@@ -166,6 +273,8 @@ function canAct(cpu) {
          !cpu.isInStartupFrames &&
          !cpu.isGrabStartup &&
          !cpu.isWhiffingGrab &&
+         !cpu.isGrabWhiffRecovery &&
+         !cpu.isGrabTeching &&
          !cpu.isGrabbingMovement &&
          !cpu.isBeingGrabbed &&
          !cpu.isGrabBreaking &&
@@ -198,12 +307,13 @@ function canGrab(cpu) {
          !cpu.isGrabbing && 
          !cpu.isBeingGrabbed &&
          !cpu.isChargingAttack &&
-         !cpu.grabCooldown;
+         !cpu.grabCooldown &&
+         !cpu.isGrabWhiffRecovery &&
+         !cpu.isGrabTeching &&
+         !cpu.isGrabStartup;
 }
 
 // Check if CPU can dodge
-// NOTE: Dodge is intentionally allowed DURING charging (doesn't clear the charge)
-// So we check all blocking states EXCEPT isChargingAttack
 function canDodge(cpu) {
   const isOnCooldown = cpu.attackCooldownUntil && Date.now() < cpu.attackCooldownUntil;
   const isInputLocked = cpu.inputLockUntil && Date.now() < cpu.inputLockUntil;
@@ -234,7 +344,6 @@ function canDodge(cpu) {
          !cpu.isAttacking &&
          !cpu.isGrabbing &&
          !cpu.isRawParrying &&
-         // NOTE: isChargingAttack intentionally NOT checked - dodge allowed during charging!
          !isOnCooldown &&
          !isInputLocked &&
          !isActionLocked &&
@@ -258,46 +367,27 @@ function getThreateningSnowballs(cpu, human) {
   }
   
   return human.snowballs.filter(snowball => {
-    // Only consider snowballs that haven't hit yet
     if (snowball.hasHit) return false;
-    
-    // Check if snowball is moving toward CPU
     const isMovingTowardCPU = (snowball.velocityX > 0 && snowball.x < cpu.x) || 
                                (snowball.velocityX < 0 && snowball.x > cpu.x);
-    
     if (!isMovingTowardCPU) return false;
-    
-    // Check if snowball is within threatening distance
     const distance = Math.abs(snowball.x - cpu.x);
     return distance < AI_CONFIG.SNOWBALL_THREAT_DISTANCE;
   });
 }
 
-// Get the closest threatening snowball
 function getClosestSnowball(cpu, human) {
   const threats = getThreateningSnowballs(cpu, human);
   if (threats.length === 0) return null;
-  
-  // Sort by distance and return closest
-  threats.sort((a, b) => {
-    const distA = Math.abs(a.x - cpu.x);
-    const distB = Math.abs(b.x - cpu.x);
-    return distA - distB;
-  });
-  
+  threats.sort((a, b) => Math.abs(a.x - cpu.x) - Math.abs(b.x - cpu.x));
   return threats[0];
 }
 
-// Calculate how much time until snowball reaches CPU
 function getSnowballTimeToImpact(cpu, snowball) {
   if (!snowball) return Infinity;
-  
   const distance = Math.abs(snowball.x - cpu.x);
   const speed = Math.abs(snowball.velocityX);
-  
   if (speed === 0) return Infinity;
-  
-  // Approximate time in milliseconds (assuming ~60 FPS and delta ~16ms)
   return (distance / speed) * 16;
 }
 
@@ -328,8 +418,6 @@ function handlePendingKeyReleases(cpu, aiState, currentTime) {
   }
   if (aiState.shiftReleaseTime > 0 && currentTime >= aiState.shiftReleaseTime) {
     cpu.keys.shift = false;
-    // DON'T clear A/D here - it interferes with grab walking!
-    // Only clear them if we're NOT grabbing
     if (!cpu.isGrabbing) {
       cpu.keys.a = false;
       cpu.keys.d = false;
@@ -365,17 +453,18 @@ function updateCPUAI(cpu, human, room, currentTime) {
   
   const aiState = getAIState(cpu.id);
   
+  // === UPDATE AGGRESSION MODE ===
+  updateAggressionMode(aiState, currentTime);
+  
   // HIGHEST PRIORITY: DI (Directional Influence) - Reduce knockback by holding opposite direction!
-  // This should run even during isHit state to utilize the knockback reduction mechanic
   if (cpu.isHit && cpu.knockbackVelocity && Math.abs(cpu.knockbackVelocity.x) > 0.1) {
     handleKnockbackDI(cpu, aiState, currentTime);
-    // Don't return - let other state checks run, but movement keys are now set for DI
   }
   
   // GRAB CLASH HANDLING - CPU needs to mash inputs to win!
   if (cpu.isGrabClashing) {
     handleGrabClashMashing(cpu, aiState, currentTime);
-    return; // Don't do anything else during grab clash - just mash!
+    return;
   }
   const distance = getDistance(cpu, human);
   
@@ -387,17 +476,44 @@ function updateCPUAI(cpu, human, room, currentTime) {
   // Handle pending key releases
   handlePendingKeyReleases(cpu, aiState, currentTime);
   
-  // HIGHEST PRIORITY: If currently grabbing, WALK THEM OFF THE EDGE!
-  // This must be checked FIRST to ensure continuous walking!
+  // Cancel grab approach if AI is hit, being grabbed, or opponent starts attacking
+  if (aiState.grabApproachIntent && (cpu.isHit || cpu.isBeingGrabbed || cpu.isBeingThrown || human.isAttacking)) {
+    aiState.grabApproachIntent = false;
+  }
+
+  // GRAB APPROACH: If AI is walking in for a grab, keep going until in range or expired
+  if (aiState.grabApproachIntent && currentTime < aiState.grabApproachIntentUntil && canGrab(cpu)) {
+    if (isAtGrabRange(cpu, human)) {
+      // Reached point-blank — execute grab!
+      resetAllKeys(cpu);
+      cpu.keys.e = true;
+      aiState.eReleaseTime = currentTime + 50;
+      aiState.grabApproachIntent = false;
+      aiState.lastDecisionTime = currentTime;
+      aiState.lastActionType = "grab_approach_execute";
+      return;
+    } else {
+      // Keep walking toward opponent
+      resetAllKeys(cpu);
+      const dir = getDirectionToOpponent(cpu, human);
+      if (dir === 1) cpu.keys.d = true;
+      else cpu.keys.a = true;
+      return;
+    }
+  } else if (aiState.grabApproachIntent) {
+    // Timer expired or can't grab — cancel approach
+    aiState.grabApproachIntent = false;
+  }
+
+  // HIGHEST PRIORITY: If currently grabbing, execute grab strategy
   if (cpu.isGrabbing && cpu.grabbedOpponent) {
-    // Clear grab break timer since we're the grabber
     aiState.grabStartedTime = 0;
     handleGrabDecision(cpu, human, aiState, currentTime);
-    return; // Don't do anything else while grabbing - just walk!
+    return;
   } else {
-    // Not grabbing - reset grab decision state for next grab
     aiState.grabDecisionMade = false;
     aiState.grabStrategy = null;
+    aiState.grabActionDelay = 0;
   }
   
   // Priority 1: Handle being grabbed - try to break free
@@ -405,7 +521,6 @@ function updateCPUAI(cpu, human, room, currentTime) {
     handleGrabBreak(cpu, aiState, currentTime);
     return;
   } else {
-    // Not being grabbed - reset the grab timer
     aiState.grabStartedTime = 0;
   }
   
@@ -420,12 +535,12 @@ function updateCPUAI(cpu, human, room, currentTime) {
     }
   }
   
-  // Priority 1.5: Use power-up EARLY - especially one-time use ones like pumo_army!
+  // Priority 1.5: Use power-up EARLY
   if (handlePowerUpUsage(cpu, human, aiState, currentTime, distance)) {
     return;
   }
   
-  // Priority 2: ESCAPE CORNER - This is critical in sumo!
+  // Priority 2: ESCAPE CORNER
   const corneredSide = getCorneredSide(cpu);
   if (corneredSide !== 0 && canAct(cpu)) {
     if (handleCornerEscape(cpu, human, aiState, currentTime, distance, corneredSide)) {
@@ -433,31 +548,44 @@ function updateCPUAI(cpu, human, room, currentTime) {
     }
   }
   
-  // Priority 2.5: SNOWBALL DEFENSE - Dodge through or parry incoming snowballs
-  // This is checked before regular attack reactions because snowballs require proactive defense
-  // The AI needs to close the gap when being spammed by snowballs from range
+  // Priority 2.5: SNOWBALL DEFENSE
   if (canAct(cpu) && (canDodge(cpu) || canParry(cpu))) {
     if (handleSnowballDefense(cpu, human, aiState, currentTime, distance)) {
       return;
     }
   }
   
-  // Priority 3: React to opponent attacks with parry or dodge
+  // Priority 3: React to opponent attacks — BUT NOT ALWAYS (human-like)
+  // Sometimes the AI just doesn't react, or makes a "read" instead
   if (human.isAttacking && !human.isInStartupFrames && canParry(cpu)) {
-    if (handleDefensiveReaction(cpu, human, aiState, currentTime, distance)) {
+    // Roll a miss chance — sometimes the CPU just doesn't react (feels human)
+    if (!chance(AI_CONFIG.REACTION_MISS_CHANCE)) {
+      if (handleDefensiveReaction(cpu, human, aiState, currentTime, distance)) {
+        return;
+      }
+    }
+    // If we "missed" the reaction, fall through to offensive actions
+    // This means sometimes the CPU gets hit because it was trying to attack instead of defend
+  }
+  
+  // Priority 3.5: PUNISH OPPONENT PARRYING — walk in and grab if needed
+  if (human.isRawParrying && !cpu.isAttacking && distance < AI_CONFIG.GRAB_APPROACH_RANGE && canGrab(cpu)) {
+    resetAllKeys(cpu);
+    const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
+    if (result) {
+      aiState.lastActionType = "punish_grab";
       return;
     }
   }
   
-  // Priority 3.5: PUNISH OPPONENT PARRYING - grab them while they're stuck in parry!
-  if (human.isRawParrying && !cpu.isAttacking && distance < AI_CONFIG.GRAB_RANGE && canGrab(cpu)) {
-    handlePunishParry(cpu, human, aiState, currentTime);
-    return;
+  // Priority 4: COMMITMENT SYSTEM — if in a burst, continue it
+  if (aiState.commitAction && currentTime < aiState.commitUntil && aiState.commitCount > 0) {
+    if (handleCommitment(cpu, human, aiState, currentTime, distance)) {
+      return;
+    }
   }
   
-  // (Grab handling moved to HIGHEST priority at the top)
-  
-  // Priority 5: Handle charging attack (continue or release)
+  // Priority 5: Handle charging attack
   if (cpu.isChargingAttack) {
     handleChargeAttack(cpu, human, aiState, currentTime, distance);
     return;
@@ -477,16 +605,11 @@ function updateCPUAI(cpu, human, room, currentTime) {
   
   // Priority 7: Offensive actions based on distance
   if (canAttack(cpu) || canGrab(cpu)) {
-    // Close range - aggressive slap/grab combat
     if (distance < AI_CONFIG.SLAP_RANGE) {
       handleCloseRange(cpu, human, aiState, currentTime, distance);
-    }
-    // Mid range - approach or grab
-    else if (distance < AI_CONFIG.MID_RANGE) {
+    } else if (distance < AI_CONFIG.MID_RANGE) {
       handleMidRange(cpu, human, aiState, currentTime, distance);
-    }
-    // Far range - mostly approach, sometimes charged attack
-    else {
+    } else {
       handleFarRange(cpu, human, aiState, currentTime, distance);
     }
   } else {
@@ -494,63 +617,40 @@ function updateCPUAI(cpu, human, room, currentTime) {
   }
 }
 
-// Handle grab clash mashing - CPU rapidly presses keys to win the clash
+// Handle grab clash mashing
 function handleGrabClashMashing(cpu, aiState, currentTime) {
-  // Initialize grab clash mash state if needed
   if (!aiState.grabClashLastMashTime) {
     aiState.grabClashLastMashTime = 0;
     aiState.grabClashCurrentKey = null;
   }
   
-  // Mash interval - how fast CPU mashes (in ms)
-  // Lower = faster mashing. 60-80ms is about as fast as a skilled human can mash
   const MASH_INTERVAL = 70;
-  
-  // Keys to cycle through for mashing
   const mashKeys = ['w', 'a', 's', 'd', 'mouse1', 'e'];
   
-  // Check if it's time to toggle a key
   if (currentTime - aiState.grabClashLastMashTime >= MASH_INTERVAL) {
-    // Reset all keys first
     resetAllKeys(cpu);
-    
-    // Pick a random key to press
     const keyIndex = Math.floor(Math.random() * mashKeys.length);
     const key = mashKeys[keyIndex];
     cpu.keys[key] = true;
-    
     aiState.grabClashCurrentKey = key;
     aiState.grabClashLastMashTime = currentTime;
-    
   }
 }
 
-// Handle grab break attempts using the NEW directional counter system
-// CPU should counter grabs based on the grabber's action:
-// - During isAttemptingPull: press the correct counter direction (grabber's forward key)
-// - During isAttemptingThrow (W throw): press S key
-// - During isGrabPushing: hold forward to resist (slows push, drains own stamina)
-// CPU cannot break forward push, only slow it down
+// Handle grab break attempts using the directional counter system
 function handleGrabBreak(cpu, aiState, currentTime) {
-  // DON'T reset all keys - we need _prevKeys to track the previous state for keyJustPressed
-  
-  // Track when we started being grabbed for delay purposes
   if (!aiState.grabStartedTime) {
     aiState.grabStartedTime = currentTime;
   }
   
-  // Check how close to edge (danger level)
   const leftDist = distanceToLeftEdge(cpu);
   const rightDist = distanceToRightEdge(cpu);
   const nearestEdgeDist = Math.min(leftDist, rightDist);
-  
-  // Time we've been grabbed
   const timeGrabbed = currentTime - aiState.grabStartedTime;
   
-  // Minimum reaction time before CPU tries to counter (so it doesn't seem instant)
+  // Reaction delay — faster when near edge (urgency)
   const MIN_WAIT_BASE = 200;
   const EDGE_DANGER_THRESHOLD = 200;
-  
   let effectiveMinWait = MIN_WAIT_BASE;
   if (nearestEdgeDist < EDGE_DANGER_THRESHOLD) {
     const dangerFactor = nearestEdgeDist / EDGE_DANGER_THRESHOLD;
@@ -561,104 +661,73 @@ function handleGrabBreak(cpu, aiState, currentTime) {
     return;
   }
 
-  // Find the grabber to know what action they're doing
-  // We need to check surrounding players - cpu.grabbedOpponent would be set on the grabber
-  // The CPU is being grabbed, so look for who is grabbing them
-  
-  // Check if being push-resisted (forward push - can only slow, not break)
+  // If being push-resisted, hold forward to resist
   if (cpu.isBeingGrabPushed) {
-    // Hold our own forward direction to resist the push
-    // CPU facing is opposite of grabber facing
     const cpuForwardKey = cpu.facing === -1 ? 'd' : 'a';
     cpu.keys[cpuForwardKey] = true;
-    // Clear opposite key
     const cpuBackwardKey = cpu.facing === -1 ? 'a' : 'd';
     cpu.keys[cpuBackwardKey] = false;
     return;
   }
   
-  // Check if grabber is attempting a pull reversal
-  // The counter-input for pull is the grabber's forward direction (absolute)
-  // Since CPU faces opposite of grabber: the counter key is the CPU's backward key
-  if (cpu.isBeingGrabbed) {
-    // We need to figure out what the grabber is doing
-    // The grabber's forward direction in absolute terms: 
-    // grabber.facing === -1 (facing right) => forward = D key direction (+x)
-    // grabber.facing === 1 (facing left) => forward = A key direction (-x)
-    // Since cpu.facing === -grabber.facing, the counter key for pull is:
-    // If cpu faces right (facing=-1), counter pull = D (which is grabber's forward)
-    // If cpu faces left (facing=1), counter pull = A (which is grabber's forward)
-    // This simplifies to: counter key for pull = cpu's backward key
-    const cpuBackwardKey = cpu.facing === -1 ? 'a' : 'd';
+  // Counter grab actions — FIRST-INPUT-COMMITS system
+  // AI must commit to ONE counter input. Wrong guess = locked out.
+  // Only attempt once per grab action (don't re-press if already committed)
+  if (cpu.isBeingGrabbed && !cpu.grabCounterAttempted) {
     const cpuForwardKey = cpu.facing === -1 ? 'd' : 'a';
     
-    // React to different grabber actions by holding counter inputs
-    // The server checks if the key is held, so we just hold the right one
-    // For pull counter: hold the grabber's forward direction = cpu's backward
-    // For throw counter: hold S key
-    // Since we don't know exactly which action the grabber is doing from CPU's perspective,
-    // we hold BOTH counter inputs (S for throw, backward for pull)
-    // This way the CPU will counter whichever action the grabber chooses
-    
-    // ~70% chance to successfully counter (add some randomness for fairness)
-    const shouldCounter = Math.random() < 0.7;
+    // 50% chance to attempt a counter at all (human-like — sometimes just doesn't react)
+    const shouldCounter = Math.random() < 0.50;
     if (shouldCounter) {
-      cpu.keys.s = true;              // Counter throw (S key)
-      cpu.keys[cpuBackwardKey] = true; // Counter pull reversal
-      cpu.keys[cpuForwardKey] = true;  // Also resist push if it happens
+      // AI must GUESS: is the grabber doing a throw (counter = S) or pull (counter = direction)?
+      // Pull counter key is the direction the grabber is pulling toward
+      // (opposite of grabber's backward = our forward... but actually it's:
+      //  pull counter = the key matching the pull direction, which is 'a' or 'd')
+      // For simplicity: 50/50 guess between S (throw counter) and the pull counter direction
+      const pullCounterKey = cpu.facing === -1 ? 'd' : 'a'; // opposite of our backward
+      
+      if (Math.random() < 0.50) {
+        // Guess: throw → press S
+        resetAllKeys(cpu);
+        cpu.keys.s = true;
+      } else {
+        // Guess: pull → press the correct directional counter
+        resetAllKeys(cpu);
+        cpu.keys[pullCounterKey] = true;
+      }
     }
   }
 }
 
-// DI (Directional Influence): Hold opposite direction during knockback to reduce sliding distance
-// This is a crucial defensive technique - skilled players always DI!
+// DI (Directional Influence)
 function handleKnockbackDI(cpu, aiState, currentTime) {
-  // Don't reset all keys - we want to preserve our DI input during the entire knockback
-  // Only manage the A and D keys for movement
-  
-  // Determine knockback direction
-  const knockbackDirection = cpu.knockbackVelocity.x > 0 ? 1 : -1; // 1 = being knocked right, -1 = being knocked left
-  
-  // Hold the OPPOSITE direction to reduce knockback (DI mechanic)
+  const knockbackDirection = cpu.knockbackVelocity.x > 0 ? 1 : -1;
   if (knockbackDirection > 0) {
-    // Being knocked to the RIGHT - hold LEFT (A key) to resist
     cpu.keys.a = true;
     cpu.keys.d = false;
   } else {
-    // Being knocked to the LEFT - hold RIGHT (D key) to resist
     cpu.keys.a = false;
     cpu.keys.d = true;
   }
-  
-  // Track that we're actively performing DI
   aiState.lastActionType = "knockback_di";
 }
 
 // PUNISH: Grab opponent while they're stuck in parry animation
 function handlePunishParry(cpu, human, aiState, currentTime) {
   resetAllKeys(cpu);
-  
-  // High priority grab - opponent is vulnerable while parrying!
   cpu.keys.e = true;
   aiState.eReleaseTime = currentTime + 50;
   aiState.lastDecisionTime = currentTime;
   aiState.lastActionType = "punish_grab";
 }
 
-// Handle power-up usage (F key) - snowball or pumo army
+// Handle power-up usage (F key)
 function handlePowerUpUsage(cpu, human, aiState, currentTime, distance) {
-  // Check if CPU has an active power-up that uses F key
   const hasSnowball = cpu.activePowerUp === "snowball" && !cpu.snowballCooldown && !cpu.isThrowingSnowball;
   const hasPumoArmy = cpu.activePowerUp === "pumo_army" && !cpu.pumoArmyCooldown && !cpu.isSpawningPumoArmy;
   
-  // DEBUG: Uncomment to debug power-up issues (causes lag when enabled every frame)
-  // console.log(`CPU Power-up check: activePowerUp=${cpu.activePowerUp}, hasSnowball=${hasSnowball}, hasPumoArmy=${hasPumoArmy}`);
+  if (!hasSnowball && !hasPumoArmy) return false;
   
-  if (!hasSnowball && !hasPumoArmy) {
-    return false;
-  }
-  
-  // Simple blocking conditions - only block during these specific states
   if (cpu.isAttacking || cpu.isGrabbing || cpu.isBeingGrabbed || 
       cpu.isThrowing || cpu.isBeingThrown || cpu.isDodging ||
       cpu.isHit || cpu.isRawParryStun || cpu.isRecovering ||
@@ -666,17 +735,13 @@ function handlePowerUpUsage(cpu, human, aiState, currentTime, distance) {
     return false;
   }
   
-  // Short cooldown between power-up uses
-  const powerUpCooldown = hasSnowball ? 800 : 300; // Even shorter cooldown
-  if (currentTime - aiState.lastPowerUpTime < powerUpCooldown) {
-    return false;
-  }
+  const powerUpCooldown = hasSnowball ? 800 : 300;
+  if (currentTime - aiState.lastPowerUpTime < powerUpCooldown) return false;
   
-  // USE THE POWER-UP!
   if (hasSnowball) {
     resetAllKeys(cpu);
     cpu.keys.f = true;
-    aiState.fReleaseTime = currentTime + 150; // Brief press
+    aiState.fReleaseTime = currentTime + 150;
     aiState.lastPowerUpTime = currentTime;
     aiState.lastDecisionTime = currentTime;
     aiState.lastActionType = "snowball";
@@ -686,7 +751,7 @@ function handlePowerUpUsage(cpu, human, aiState, currentTime, distance) {
   if (hasPumoArmy) {
     resetAllKeys(cpu);
     cpu.keys.f = true;
-    aiState.fReleaseTime = currentTime + 150; // Brief press
+    aiState.fReleaseTime = currentTime + 150;
     aiState.lastPowerUpTime = currentTime;
     aiState.lastDecisionTime = currentTime;
     aiState.lastActionType = "pumo_army";
@@ -696,73 +761,59 @@ function handlePowerUpUsage(cpu, human, aiState, currentTime, distance) {
   return false;
 }
 
-// CRITICAL: Handle escaping from corner - sumo survival!
-// NEW STRATEGY: When back is against boundary, GRAB + THROW is a strong option!
-// The throw sends opponent PAST us toward the boundary behind us = ring out!
+// CRITICAL: Handle escaping from corner
 function handleCornerEscape(cpu, human, aiState, currentTime, distance, corneredSide) {
   resetAllKeys(cpu);
   
-  const escapeDirection = -corneredSide; // Move away from the edge
-  
-  // Check how close to the back boundary we are
-  // corneredSide: -1 = cornered on LEFT, 1 = cornered on RIGHT
+  const escapeDirection = -corneredSide;
   const distToBackBoundary = corneredSide === -1 ? distanceToLeftEdge(cpu) : distanceToRightEdge(cpu);
-  const veryCloseToBackBoundary = distToBackBoundary < 100; // Very close = throw is almost guaranteed ring out
+  const veryCloseToBackBoundary = distToBackBoundary < 100;
   
-  // If opponent is very close, we need to act
   if (distance < AI_CONFIG.SLAP_RANGE) {
     const roll = Math.random();
+    const aggMult = getAggressionMultiplier(aiState);
     
-    // PRIORITY: If back is VERY close to boundary, heavily favor grab for the throw ring-out!
-    // This is our best move when cornered - the throw sends them toward our back boundary
+    // When back is very close, heavily favor grab (throw sends them behind us = ring-out)
     if (veryCloseToBackBoundary && canGrab(cpu)) {
-      // 65% chance to grab when back is very close to boundary (was 35%)
-      if (roll < 0.65) {
-        cpu.keys.e = true;
-        aiState.eReleaseTime = currentTime + 50;
-        aiState.lastDecisionTime = currentTime;
-        aiState.lastActionType = "grab_corner_throw";
-        return true;
+      if (roll < 0.65 * aggMult.grab) {
+        const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
+        if (result) {
+          aiState.lastActionType = "grab_corner_throw";
+          return true;
+        }
       }
     }
     
-    // Option 1: Dodge toward center (35% chance - increased for variety)
-    if (roll < 0.35 && canDodge(cpu)) {
+    if (roll < 0.30 && canDodge(cpu)) {
       cpu.keys.shift = true;
-      if (escapeDirection === 1) {
-        cpu.keys.d = true;
-      } else {
-        cpu.keys.a = true;
-      }
+      if (escapeDirection === 1) cpu.keys.d = true;
+      else cpu.keys.a = true;
       aiState.shiftReleaseTime = currentTime + 80;
       aiState.lastDecisionTime = currentTime;
       aiState.lastActionType = "dodge_escape";
       return true;
+    } else if (roll < 0.55 && canGrab(cpu)) {
+      const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
+      if (result) {
+        aiState.lastActionType = "grab";
+        return true;
+      }
     }
-    // Option 2: Grab (30% chance) - throw will send opponent toward our back boundary
-    else if (roll < 0.65 && canGrab(cpu)) {
-      cpu.keys.e = true;
-      aiState.eReleaseTime = currentTime + 50;
-      aiState.lastDecisionTime = currentTime;
-      aiState.lastActionType = "grab";
-      return true;
-    }
-    // Option 3: Slap attack to push them back (30% chance)
-    else if (canAttack(cpu)) {
+    if (canAttack(cpu)) {
+      // Sometimes commit to a slap burst to push them back
+      if (chance(0.3)) {
+        startCommitment(aiState, 'slap_burst', randomInRange(2, 4), currentTime);
+      }
       cpu.keys.mouse1 = true;
       aiState.mouse1ReleaseTime = currentTime + 40;
       aiState.lastDecisionTime = currentTime;
       aiState.lastActionType = "slap";
       return true;
     }
-  }
-  // Opponent not too close - just move toward center
-  else {
-    if (escapeDirection === 1) {
-      cpu.keys.d = true;
-    } else {
-      cpu.keys.a = true;
-    }
+  } else {
+    // Move toward center
+    if (escapeDirection === 1) cpu.keys.d = true;
+    else cpu.keys.a = true;
     aiState.lastDecisionTime = currentTime;
     return true;
   }
@@ -771,42 +822,43 @@ function handleCornerEscape(cpu, human, aiState, currentTime, distance, cornered
 }
 
 // Handle ring-out opportunity when opponent is near edge
-// GRABS ARE STRONG but mix it up for variety!
 function handleRingOutOpportunity(cpu, human, aiState, currentTime, distance) {
   resetAllKeys(cpu);
   
   const roll = Math.random();
+  const aggMult = getAggressionMultiplier(aiState);
   
-  // In range for direct attacks - MIX IT UP!
   if (distance < AI_CONFIG.SLAP_RANGE && canAttack(cpu)) {
-    // 45% grab - still prioritized but not overwhelming
-    if (roll < 0.45 && distance < AI_CONFIG.GRAB_RANGE + 30 && canGrab(cpu)) {
-      cpu.keys.e = true;
-      aiState.eReleaseTime = currentTime + 50;
-      aiState.lastDecisionTime = currentTime;
-      aiState.lastActionType = "grab";
-      return;
+    // Smart grab decision: if opponent low stamina, grab is almost guaranteed win via push
+    const opponentLowStamina = human.stamina < AI_CONFIG.LOW_STAMINA_THRESHOLD;
+    const grabChance = opponentLowStamina ? 0.60 : 0.40;
+    
+    if (roll < grabChance * aggMult.grab && canGrab(cpu)) {
+      const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
+      if (result) {
+        aiState.lastActionType = "grab";
+        return;
+      }
     }
-    // 40% slap attack - aggressive and pushes them toward edge
-    else if (roll < 0.85) {
+    if (roll < 0.85 * aggMult.attack) {
+      // Slap burst — commit to pushing them off!
+      if (chance(0.45)) {
+        startCommitment(aiState, 'slap_burst', randomInRange(3, 5), currentTime);
+      }
       cpu.keys.mouse1 = true;
       aiState.mouse1ReleaseTime = currentTime + 40;
       aiState.lastDecisionTime = currentTime;
       aiState.lastActionType = "slap";
       return;
-    }
-    // 15% charged attack - powerful finisher when they're cornered
-    else if (aiState.consecutiveChargedAttacks < AI_CONFIG.MAX_CONSECUTIVE_CHARGED) {
+    } else if (aiState.consecutiveChargedAttacks < AI_CONFIG.MAX_CONSECUTIVE_CHARGED) {
       cpu.keys.mouse2 = true;
       aiState.isChargingIntentional = true;
       aiState.chargeStartTime = currentTime;
-      aiState.targetChargeTime = randomInRange(300, 500); // Quick charge for pressure
+      aiState.targetChargeTime = randomInRange(300, 500);
       aiState.lastDecisionTime = currentTime;
       aiState.lastActionType = "charge";
       return;
-    }
-    // Fallback to slap if charged attack limit reached
-    else {
+    } else {
       cpu.keys.mouse1 = true;
       aiState.mouse1ReleaseTime = currentTime + 40;
       aiState.lastDecisionTime = currentTime;
@@ -815,29 +867,50 @@ function handleRingOutOpportunity(cpu, human, aiState, currentTime, distance) {
     }
   }
   
-  // Too far for attacks - approach aggressively to get in range!
+  // Too far — approach aggressively, sometimes dodge-in
   const dirToOpponent = getDirectionToOpponent(cpu, human);
-  if (dirToOpponent === 1) {
-    cpu.keys.d = true;
+  if (distance < AI_CONFIG.MID_RANGE + 50 && canDodge(cpu) && chance(0.20)) {
+    // Dodge toward opponent to close gap fast
+    cpu.keys.shift = true;
+    if (dirToOpponent === 1) cpu.keys.d = true;
+    else cpu.keys.a = true;
+    aiState.shiftReleaseTime = currentTime + 80;
+    aiState.lastDecisionTime = currentTime;
+    aiState.lastActionType = "dodge_approach";
   } else {
-    cpu.keys.a = true;
+    if (dirToOpponent === 1) cpu.keys.d = true;
+    else cpu.keys.a = true;
   }
 }
 
-// Handle defensive reactions (parry or dodge)
+// Handle defensive reactions — with imperfect human-like response
 function handleDefensiveReaction(cpu, human, aiState, currentTime, distance) {
-  if (currentTime - aiState.lastAttackReactionTime < 200) {
+  // Reaction cooldown
+  if (currentTime - aiState.lastAttackReactionTime < 250) {
     return false;
   }
   
   const attackRange = human.attackType === "slap" ? 180 : 280;
-  if (distance > attackRange) {
-    return false;
-  }
+  if (distance > attackRange) return false;
   
+  const aggMult = getAggressionMultiplier(aiState);
   const roll = Math.random();
   
-  if (roll < AI_CONFIG.PARRY_CHANCE && canParry(cpu)) {
+  // In aggressive mode, sometimes trade hits instead of defending
+  if (aiState.aggressionMode === 'aggressive' && distance < AI_CONFIG.SLAP_RANGE && canAttack(cpu) && roll < 0.30) {
+    // Trade! Attack through the opponent's attack instead of defending
+    resetAllKeys(cpu);
+    cpu.keys.mouse1 = true;
+    aiState.mouse1ReleaseTime = currentTime + 40;
+    aiState.lastDecisionTime = currentTime;
+    aiState.lastActionType = "trade_slap";
+    return true;
+  }
+  
+  const parryChance = AI_CONFIG.PARRY_CHANCE * aggMult.defense;
+  const dodgeChance = AI_CONFIG.DODGE_CHANCE * aggMult.defense;
+  
+  if (roll < parryChance && canParry(cpu)) {
     resetAllKeys(cpu);
     cpu.keys.s = true;
     aiState.lastAttackReactionTime = currentTime;
@@ -846,32 +919,32 @@ function handleDefensiveReaction(cpu, human, aiState, currentTime, distance) {
     aiState.parryStartTime = currentTime;
     aiState.parryReleaseTime = currentTime + randomInRange(180, 350);
     return true;
-  } else if (roll < AI_CONFIG.PARRY_CHANCE + AI_CONFIG.DODGE_CHANCE && canDodge(cpu)) {
+  } else if (roll < parryChance + dodgeChance && canDodge(cpu)) {
     resetAllKeys(cpu);
     cpu.keys.shift = true;
     
-    // SMART DODGE: ALWAYS prioritize dodging AWAY from the nearest boundary!
-    // This prevents the CPU from backing itself into a corner
+    // Smart dodge away from boundaries
     const cpuLeftDist = distanceToLeftEdge(cpu);
     const cpuRightDist = distanceToRightEdge(cpu);
-    
-    // Determine which edge is closer - ALWAYS dodge away from it
     const nearestEdge = cpuLeftDist < cpuRightDist ? 'left' : 'right';
     const distToNearestEdge = Math.min(cpuLeftDist, cpuRightDist);
     
-    // If we're anywhere near an edge (within 250 pixels), prioritize dodging toward center
     if (distToNearestEdge < 250) {
-      // Dodge AWAY from the nearest edge (toward center)
-      if (nearestEdge === 'left') {
-        cpu.keys.d = true; // Dodge right (away from left edge)
-      } else {
-        cpu.keys.a = true; // Dodge left (away from right edge)
-      }
+      if (nearestEdge === 'left') cpu.keys.d = true;
+      else cpu.keys.a = true;
     } else {
-      // Safe to dodge in any direction - prefer dodging away from opponent
-      const intendedDir = cpu.x < human.x ? -1 : 1; // -1 = left, 1 = right
-      if (intendedDir === -1) cpu.keys.a = true;
-      else cpu.keys.d = true;
+      // Mix it up — sometimes dodge toward, sometimes away
+      if (chance(0.6)) {
+        // Dodge away from opponent
+        const intendedDir = cpu.x < human.x ? -1 : 1;
+        if (intendedDir === -1) cpu.keys.a = true;
+        else cpu.keys.d = true;
+      } else {
+        // Dodge THROUGH opponent (aggressive dodge)
+        const dirToOpponent = getDirectionToOpponent(cpu, human);
+        if (dirToOpponent === 1) cpu.keys.d = true;
+        else cpu.keys.a = true;
+      }
     }
     
     aiState.lastAttackReactionTime = currentTime;
@@ -883,65 +956,40 @@ function handleDefensiveReaction(cpu, human, aiState, currentTime, distance) {
   return false;
 }
 
-// Handle snowball defense - dodge through or parry incoming snowballs
-// CRITICAL: When far from opponent, aggressively close the gap using dodges and parries
+// Handle snowball defense
 function handleSnowballDefense(cpu, human, aiState, currentTime, distance) {
   const closestSnowball = getClosestSnowball(cpu, human);
-  
-  if (!closestSnowball) {
-    return false;
-  }
+  if (!closestSnowball) return false;
   
   const snowballDistance = Math.abs(closestSnowball.x - cpu.x);
-  
-  // If snowball is very close, we MUST react NOW
   const isUrgent = snowballDistance < AI_CONFIG.SNOWBALL_REACTION_DISTANCE;
+  if (!isUrgent) return false;
   
-  if (!isUrgent) {
-    return false;
-  }
-  
-  // Relax snowball defense when close to opponent (they can't spam as effectively)
   if (distance < AI_CONFIG.SNOWBALL_CLOSE_RANGE) {
-    // Only react to very close snowballs when near opponent
-    if (snowballDistance > 150) {
-      return false;
-    }
+    if (snowballDistance > 150) return false;
   }
   
-  // Check cooldown between snowball reactions (don't spam too much)
   if (aiState.lastSnowballReactionTime && currentTime - aiState.lastSnowballReactionTime < 300) {
     return false;
   }
   
   const roll = Math.random();
-  
-  // Decide: Parry or Dodge?
-  // When far from opponent, slightly favor dodging forward to close gap
   const parryChance = distance > AI_CONFIG.MID_RANGE ? 
-    AI_CONFIG.SNOWBALL_PARRY_CHANCE * 0.85 : // 42.5% parry when far
-    AI_CONFIG.SNOWBALL_PARRY_CHANCE;         // 50% parry when mid/close
+    AI_CONFIG.SNOWBALL_PARRY_CHANCE * 0.85 :
+    AI_CONFIG.SNOWBALL_PARRY_CHANCE;
   
   if (roll < parryChance && canParry(cpu)) {
-    // PARRY THE SNOWBALL!
     resetAllKeys(cpu);
-    
-    // Decide between perfect parry attempt or regular parry
     const perfectParryRoll = Math.random();
     
     if (perfectParryRoll < AI_CONFIG.SNOWBALL_PERFECT_PARRY_CHANCE) {
-      // ATTEMPT PERFECT PARRY - very short timing window for maximum reward
-      // Perfect parry reflects the snowball back!
       const timeToImpact = getSnowballTimeToImpact(cpu, closestSnowball);
-      const perfectParryWindow = 120; // Must release within 120ms of impact for perfect
-      
+      const perfectParryWindow = 120;
       cpu.keys.s = true;
       aiState.pendingParry = true;
       aiState.parryStartTime = currentTime;
-      // Release just before impact for perfect parry timing
       aiState.parryReleaseTime = currentTime + Math.max(timeToImpact - perfectParryWindow, 50);
     } else {
-      // REGULAR RAW PARRY - hold longer for reliable block
       cpu.keys.s = true;
       aiState.pendingParry = true;
       aiState.parryStartTime = currentTime;
@@ -954,42 +1002,26 @@ function handleSnowballDefense(cpu, human, aiState, currentTime, distance) {
     return true;
     
   } else if (canDodge(cpu)) {
-    // DODGE THROUGH THE SNOWBALL!
     resetAllKeys(cpu);
     cpu.keys.shift = true;
     
-    // CRITICAL: When far from opponent, ALWAYS dodge TOWARD them to close the gap
-    // When close, prioritize dodging away from boundaries
     const directionToOpponent = getDirectionToOpponent(cpu, human);
     
     if (distance > AI_CONFIG.MID_RANGE) {
-      // Far from opponent - ALWAYS dodge toward them to close gap
-      if (directionToOpponent === 1) {
-        cpu.keys.d = true;
-      } else {
-        cpu.keys.a = true;
-      }
+      if (directionToOpponent === 1) cpu.keys.d = true;
+      else cpu.keys.a = true;
     } else {
-      // Mid/close range - smart dodge that considers boundaries
       const cpuLeftDist = distanceToLeftEdge(cpu);
       const cpuRightDist = distanceToRightEdge(cpu);
       const nearestEdge = cpuLeftDist < cpuRightDist ? 'left' : 'right';
       const distToNearestEdge = Math.min(cpuLeftDist, cpuRightDist);
       
       if (distToNearestEdge < 250) {
-        // Near edge - dodge away from edge (toward center)
-        if (nearestEdge === 'left') {
-          cpu.keys.d = true;
-        } else {
-          cpu.keys.a = true;
-        }
+        if (nearestEdge === 'left') cpu.keys.d = true;
+        else cpu.keys.a = true;
       } else {
-        // Safe - prefer dodging toward opponent to maintain pressure
-        if (directionToOpponent === 1) {
-          cpu.keys.d = true;
-        } else {
-          cpu.keys.a = true;
-        }
+        if (directionToOpponent === 1) cpu.keys.d = true;
+        else cpu.keys.a = true;
       }
     }
     
@@ -1003,24 +1035,53 @@ function handleSnowballDefense(cpu, human, aiState, currentTime, distance) {
   return false;
 }
 
-// Handle decision when CPU has grabbed opponent
-// ==== CRITICAL MECHANICS ====
-// - Opponent is ATTACHED in the FACING direction at fixed distance (~105 units)
-// - facing = 1 (LEFT): opponent is to the LEFT of CPU (lower x)
-// - facing = -1 (RIGHT): opponent is to the RIGHT of CPU (higher x)
-// - Walking FORWARD moves both toward the FRONT boundary (opponent's side)
-// - Walking BACKWARD moves both toward the BACK boundary (CPU's back side)
-// - THROW (W key): Launches opponent ~220 units total, ending ~120 units BEHIND the CPU
-//   - Throw distance means: if CPU's back is within 120 of boundary, throw = guaranteed ring-out
-// ==== SMART STRATEGY ====
-// Compare two paths to ring-out:
-// 1. WALK FORWARD: Push opponent to front boundary
-// NEW GRAB ACTION SYSTEM - CPU grab decision
-// Options for grabber:
-// 1. FORWARD PUSH: Push opponent toward front boundary (opponent can resist but not break)
-// 2. THROW (W): Throw opponent (opponent can counter with S in 1s window)
-// 3. PULL REVERSAL (backward): Tug opponent to other side (opponent can counter with opposite dir)
-// CPU chooses based on positioning and distance to boundaries
+// === NEW: Start a commitment (burst of actions) ===
+function startCommitment(aiState, action, count, currentTime) {
+  aiState.commitAction = action;
+  aiState.commitCount = count;
+  aiState.commitUntil = currentTime + count * 250 + 500; // Buffer time
+}
+
+// === NEW: Handle committed action sequences ===
+function handleCommitment(cpu, human, aiState, currentTime, distance) {
+  if (aiState.commitAction === 'slap_burst') {
+    if (distance < AI_CONFIG.SLAP_RANGE + 30 && canAttack(cpu)) {
+      resetAllKeys(cpu);
+      cpu.keys.mouse1 = true;
+      aiState.mouse1ReleaseTime = currentTime + 40;
+      aiState.lastDecisionTime = currentTime;
+      aiState.lastActionType = "committed_slap";
+      aiState.commitCount--;
+      if (aiState.commitCount <= 0) {
+        aiState.commitAction = null;
+      }
+      // Keep approaching while slapping
+      const dirToOpponent = getDirectionToOpponent(cpu, human);
+      if (dirToOpponent === 1) cpu.keys.d = true;
+      else cpu.keys.a = true;
+      return true;
+    } else if (distance < AI_CONFIG.SLAP_RANGE + 80) {
+      // Close enough — approach to get back in range
+      const dirToOpponent = getDirectionToOpponent(cpu, human);
+      if (dirToOpponent === 1) cpu.keys.d = true;
+      else cpu.keys.a = true;
+      return true;
+    } else {
+      // Too far, abandon commitment
+      aiState.commitAction = null;
+      aiState.commitCount = 0;
+      return false;
+    }
+  }
+  
+  return false;
+}
+
+// === OVERHAULED: Handle grab decision with intelligent position/stamina awareness ===
+// Options:
+// 1. PUSH (forward): Can't be broken, just resisted. Good when opponent low stamina or near front boundary.
+// 2. THROW (W): Sends opponent behind CPU. Good when CPU's back is near boundary.
+// 3. PULL (backward): Switches sides, sends opponent other way. Good when back boundary is CLOSER than front.
 function handleGrabDecision(cpu, human, aiState, currentTime) {
   const cpuFacingLeft = cpu.facing === 1;
   
@@ -1034,62 +1095,100 @@ function handleGrabDecision(cpu, human, aiState, currentTime) {
   cpu.keys.mouse1 = false;
   cpu.keys.mouse2 = false;
   
-  // Don't make decisions during active actions (push is auto, throw/pull are timeout-based)
-  if (cpu.isAttemptingGrabThrow || cpu.isAttemptingPull || cpu.isGrabPushing) {
+  // Don't override during active throw/pull attempts (those are committed)
+  if (cpu.isAttemptingGrabThrow || cpu.isAttemptingPull) {
     return;
   }
   
-  // === DECISION WINDOW: 1s after grab connects, both players hold still ===
-  // CPU decides what action to take during this window
-  const GRAB_DECISION_WINDOW = 1000; // Match server constant
-  if (cpu.grabStartTime) {
-    const grabElapsed = currentTime - cpu.grabStartTime;
+  if (!cpu.grabStartTime) return;
+  
+  const grabElapsed = currentTime - cpu.grabStartTime;
+  
+  // Push starts immediately in new system. AI decides whether to interrupt with pull/throw.
+  // Choose strategy once, then execute during push.
+  if (!aiState.grabDecisionMade) {
+    aiState.grabDecisionMade = true;
     
-    // During decision window - wait, then make choice
-    if (grabElapsed < GRAB_DECISION_WINDOW && !cpu.grabDecisionMade) {
-      // Pick strategy if not yet decided
-      if (!aiState.grabDecisionMade) {
-        aiState.grabDecisionMade = true;
-        
-        let distToFrontBoundary;
-        let forwardKey;
-        
-        if (cpuFacingLeft) {
-          distToFrontBoundary = human.x - MAP_LEFT_BOUNDARY;
-          forwardKey = 'a';
-        } else {
-          distToFrontBoundary = MAP_RIGHT_BOUNDARY - human.x;
-          forwardKey = 'd';
-        }
-        
-        // Decide strategy:
-        // - Close to boundary or low stamina → push (default, can't be broken)
-        // - Otherwise mix in throws (~30%)
-        if (distToFrontBoundary < 200 || human.stamina < 30) {
-          aiState.grabStrategy = 'forward_push';
-        } else if (Math.random() < 0.3) {
-          aiState.grabStrategy = 'throw';
-        } else {
-          aiState.grabStrategy = 'forward_push';
-        }
-      }
-      
-      // Wait ~500ms into the window before acting (reaction time)
-      if (grabElapsed < 500) {
-        return; // Hold still during early part of decision window
-      }
-      
-      // Execute chosen strategy during the decision window
-      if (aiState.grabStrategy === 'throw') {
-        cpu.keys.w = true; // W key initiates throw (server handles the rest)
-      } else {
-        // Forward push - press forward key to trigger auto-push
-        const forwardKey = cpuFacingLeft ? 'a' : 'd';
-        cpu.keys[forwardKey] = true;
-      }
+    // === INTELLIGENT GRAB STRATEGY ===
+    const distBehind = distanceToBehind(cpu);
+    const distFront = distanceToFront(cpu);
+    const opponentStamina = human.stamina;
+    const opponentLow = opponentStamina < AI_CONFIG.LOW_STAMINA_THRESHOLD;
+    const opponentNearFrontEdge = distFront < 250;
+    const backIsCloser = distBehind < distFront;
+    const backVeryClose = distBehind < 150;
+    
+    // Score each option — balanced base scores so pull actually gets chosen
+    let pushScore = 25; // Safe default — can't be broken
+    let throwScore = 25; // Sends opponent behind CPU
+    let pullScore = 30; // Switches sides — great for repositioning, use it often!
+    
+    // PUSH bonuses: low stamina or near front boundary
+    if (opponentLow) pushScore += 35;
+    else if (opponentStamina < 50) pushScore += 15;
+    if (opponentNearFrontEdge) pushScore += 20;
+    if (distFront < 150) pushScore += 15;
+    
+    // THROW bonuses: back is close to boundary
+    if (backVeryClose) throwScore += 40;
+    else if (distBehind < 200) throwScore += 20;
+    
+    // PULL bonuses: back boundary is closer than front (switching sides is smart)
+    if (backIsCloser) {
+      pullScore += 25;
+      const ratio = distFront / Math.max(distBehind, 1);
+      if (ratio > 1.5) pullScore += 15;
+      if (ratio > 2.5) pullScore += 10;
     }
-    // After decision window, if decision was already made (auto-push running), do nothing
-    // The server handles the auto-push movement
+    
+    // PULL at mid screen — good for mix-ups and repositioning
+    const nearCenter = Math.abs(cpu.x - MAP_CENTER) < MAP_WIDTH * 0.3;
+    if (nearCenter) pullScore += 15;
+    
+    // PULL is a good surprise move — random bonus
+    pullScore += randomInRange(0, 20);
+    
+    // Add randomness to all scores (±12 points)
+    pushScore += randomInRange(-12, 12);
+    throwScore += randomInRange(-12, 12);
+    pullScore += randomInRange(-12, 12);
+    
+    // Aggression mode influence
+    const aggMult = getAggressionMultiplier(aiState);
+    pushScore *= aggMult.attack;
+    throwScore *= aggMult.grab;
+    pullScore *= aggMult.grab;
+    
+    // Pick highest scoring strategy
+    if (throwScore >= pushScore && throwScore >= pullScore) {
+      aiState.grabStrategy = 'throw';
+    } else if (pullScore >= pushScore && pullScore >= throwScore) {
+      aiState.grabStrategy = 'pull';
+    } else {
+      aiState.grabStrategy = 'push';
+    }
+    
+    // Small reaction delay for throw/pull to feel natural (~200-350ms into push)
+    aiState.grabActionDelay = currentTime + randomInRange(200, 350);
+  }
+  
+  // Execute chosen strategy (with reaction delay for non-push actions)
+  if (aiState.grabStrategy === 'push') {
+    // Push is already happening by default — do nothing
+    return;
+  }
+  
+  // Wait for reaction delay before executing pull/throw interrupt
+  if (currentTime < (aiState.grabActionDelay || 0)) {
+    return;
+  }
+  
+  if (aiState.grabStrategy === 'throw') {
+    cpu.keys.w = true;
+  } else if (aiState.grabStrategy === 'pull') {
+    // Press backward key to interrupt push with pull
+    const backwardKey = cpuFacingLeft ? 'd' : 'a';
+    cpu.keys[backwardKey] = true;
   }
 }
 
@@ -1097,10 +1196,6 @@ function handleGrabDecision(cpu, human, aiState, currentTime) {
 function handleChargeAttack(cpu, human, aiState, currentTime, distance) {
   const chargeElapsed = currentTime - aiState.chargeStartTime;
   
-  // Release if:
-  // 1. Reached target charge time
-  // 2. Opponent got very close (danger!)
-  // 3. Opponent is dodging
   if (chargeElapsed >= aiState.targetChargeTime || 
       distance < AI_CONFIG.SLAP_RANGE - 30 ||
       human.isDodging) {
@@ -1112,78 +1207,135 @@ function handleChargeAttack(cpu, human, aiState, currentTime, distance) {
   }
 }
 
-// Close range combat - AGGRESSIVE SLAPS with strategic grabs!
+// === OVERHAULED: Close range combat — commit to actions, don't always back off ===
 function handleCloseRange(cpu, human, aiState, currentTime, distance) {
   resetAllKeys(cpu);
-  aiState.consecutiveChargedAttacks = 0; // Reset charged attack counter
+  aiState.consecutiveChargedAttacks = 0;
   
   const roll = Math.random();
+  const aggMult = getAggressionMultiplier(aiState);
+  const opponentLow = human.stamina < AI_CONFIG.LOW_STAMINA_THRESHOLD;
   
-  // GRABS ARE THE BEST WAY TO WIN! Prioritize them!
-  // Especially if opponent is near edge - almost guaranteed ring-out!
+  // GRABS when opponent is near edge — especially with low stamina
   if (isOpponentNearEdge(human) && canGrab(cpu)) {
-    // 50% chance to grab when opponent is near edge (reduced from 70%)
-    if (roll < 0.50) {
-      cpu.keys.e = true;
-      aiState.eReleaseTime = currentTime + 50;
-      aiState.lastDecisionTime = currentTime;
+    const grabChance = opponentLow ? 0.55 : 0.40;
+    if (roll < grabChance * aggMult.grab) {
+      const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
+      if (result) {
+        aiState.lastActionType = "grab";
+        return;
+      }
+    }
+  }
+  
+  // MID-SCREEN GRABS — use them more often but not always (must be point-blank)
+  if (roll < 0.22 * aggMult.grab && canGrab(cpu)) {
+    const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
+    if (result) {
       aiState.lastActionType = "grab";
       return;
     }
   }
   
-  // Aggressive close range: 18% grab, 72% slap, 10% back off
-  // Reduced grab frequency to make CPU less predictable
-  // Slaps are spammable and keep pressure on!
-  if (roll < 0.18 && canGrab(cpu)) {
-    // Grab attempt - walk them to the edge!
-    cpu.keys.e = true;
-    aiState.eReleaseTime = currentTime + 50;
+  // SLAP BURST — commit to multiple slaps in a row (aggressive pressure)
+  if (roll < 0.22 + AI_CONFIG.COMMIT_BURST_CHANCE * aggMult.attack && canAttack(cpu)) {
+    const burstCount = randomInRange(AI_CONFIG.COMMIT_SLAP_BURST_MIN, AI_CONFIG.COMMIT_SLAP_BURST_MAX);
+    startCommitment(aiState, 'slap_burst', burstCount, currentTime);
+    cpu.keys.mouse1 = true;
+    aiState.mouse1ReleaseTime = currentTime + 40;
     aiState.lastDecisionTime = currentTime;
-    aiState.lastActionType = "grab";
-  } else if (roll < 0.90 && canAttack(cpu)) {
-    // SLAP SPAM! Fast and aggressive - keep the pressure on!
+    aiState.lastActionType = "slap_burst_start";
+    // Walk forward while slapping
+    const dirToOpponent = getDirectionToOpponent(cpu, human);
+    if (dirToOpponent === 1) cpu.keys.d = true;
+    else cpu.keys.a = true;
+    return;
+  }
+  
+  // SINGLE SLAP — still the bread and butter
+  if (roll < 0.88 * aggMult.attack && canAttack(cpu)) {
     cpu.keys.mouse1 = true;
     aiState.mouse1ReleaseTime = currentTime + 40;
     aiState.lastDecisionTime = currentTime;
     aiState.lastActionType = "slap";
-  } else {
-    // Slightly higher chance to back off (10%)
+    // Sometimes keep approaching while slapping (pressure)
+    if (chance(0.4)) {
+      const dirToOpponent = getDirectionToOpponent(cpu, human);
+      if (dirToOpponent === 1) cpu.keys.d = true;
+      else cpu.keys.a = true;
+    }
+    return;
+  }
+  
+  // Occasionally back off (but less often than before)
+  if (chance(0.5)) {
+    // Back off
     const dirAway = cpu.x < human.x ? -1 : 1;
     if (dirAway === 1) cpu.keys.d = true;
     else cpu.keys.a = true;
+  } else {
+    // Or just stand ground / slight movement
+    handleMovement(cpu, human, aiState, currentTime, distance);
   }
+  aiState.lastDecisionTime = currentTime;
 }
 
-// Mid range - aggressive approach with slaps when in range
+// === OVERHAULED: Mid range — more grabs, more approach aggression ===
 function handleMidRange(cpu, human, aiState, currentTime, distance) {
   resetAllKeys(cpu);
   
   const roll = Math.random();
+  const aggMult = getAggressionMultiplier(aiState);
+  const opponentLow = human.stamina < AI_CONFIG.LOW_STAMINA_THRESHOLD;
   
-  // If on the closer end of mid-range, throw slaps! (within 200 units)
-  if (distance < 200 && canAttack(cpu) && roll < 0.40) {
-    // Aggressive slap to close the gap and apply pressure
+  // MID-SCREEN GRABS — walk into range, then grab
+  if (distance < AI_CONFIG.GRAB_APPROACH_RANGE && canGrab(cpu)) {
+    const grabChance = opponentLow ? 0.35 : AI_CONFIG.GRAB_MID_SCREEN_CHANCE;
+    if (roll < grabChance * aggMult.grab) {
+      const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
+      if (result) {
+        aiState.lastActionType = "grab_mid";
+        return;
+      }
+    }
+  }
+  
+  // If on the closer end of mid-range, throw slaps
+  if (distance < 200 && canAttack(cpu) && roll < 0.45 * aggMult.attack) {
     cpu.keys.mouse1 = true;
     aiState.mouse1ReleaseTime = currentTime + 40;
     aiState.lastDecisionTime = currentTime;
     aiState.lastActionType = "slap";
+    // Keep approaching
+    const dirToOpponent = getDirectionToOpponent(cpu, human);
+    if (dirToOpponent === 1) cpu.keys.d = true;
+    else cpu.keys.a = true;
     return;
   }
   
-  // Mostly approach aggressively (55%)
+  // Aggressive approach (dominant behavior)
   if (roll < 0.55) {
     const dirToOpponent = getDirectionToOpponent(cpu, human);
+    // Sometimes dash in with dodge for fast approach
+    if (canDodge(cpu) && chance(0.15) && aiState.aggressionMode === 'aggressive') {
+      cpu.keys.shift = true;
+      if (dirToOpponent === 1) cpu.keys.d = true;
+      else cpu.keys.a = true;
+      aiState.shiftReleaseTime = currentTime + 80;
+      aiState.lastDecisionTime = currentTime;
+      aiState.lastActionType = "dodge_approach";
+      return;
+    }
     if (dirToOpponent === 1) cpu.keys.d = true;
     else cpu.keys.a = true;
     aiState.lastActionType = "approach";
   }
-  // Sometimes strafe (15%)
-  else if (roll < 0.70) {
+  // Dynamic strafing
+  else if (roll < 0.68) {
     handleMovement(cpu, human, aiState, currentTime, distance);
   }
-  // Occasionally start charged attack (15%) - but only if haven't spammed it
-  else if (roll < 0.85 && canAttack(cpu) && aiState.consecutiveChargedAttacks < AI_CONFIG.MAX_CONSECUTIVE_CHARGED) {
+  // Charged attack (occasionally)
+  else if (roll < 0.82 && canAttack(cpu) && aiState.consecutiveChargedAttacks < AI_CONFIG.MAX_CONSECUTIVE_CHARGED) {
     cpu.keys.mouse2 = true;
     aiState.isChargingIntentional = true;
     aiState.chargeStartTime = currentTime;
@@ -1191,7 +1343,7 @@ function handleMidRange(cpu, human, aiState, currentTime, distance) {
     aiState.lastDecisionTime = currentTime;
     aiState.lastActionType = "charge";
   } else {
-    // Approach instead (remaining 15%)
+    // Approach
     const dirToOpponent = getDirectionToOpponent(cpu, human);
     if (dirToOpponent === 1) cpu.keys.d = true;
     else cpu.keys.a = true;
@@ -1201,7 +1353,7 @@ function handleMidRange(cpu, human, aiState, currentTime, distance) {
   aiState.lastDecisionTime = currentTime;
 }
 
-// Far range - mostly approach, rarely charged attack
+// Far range — approach with occasional charged attacks
 function handleFarRange(cpu, human, aiState, currentTime, distance) {
   resetAllKeys(cpu);
   
@@ -1210,11 +1362,21 @@ function handleFarRange(cpu, human, aiState, currentTime, distance) {
   // Mostly approach (75%)
   if (roll < 0.75) {
     const dirToOpponent = getDirectionToOpponent(cpu, human);
+    // Occasionally dash in
+    if (canDodge(cpu) && chance(0.12)) {
+      cpu.keys.shift = true;
+      if (dirToOpponent === 1) cpu.keys.d = true;
+      else cpu.keys.a = true;
+      aiState.shiftReleaseTime = currentTime + 80;
+      aiState.lastDecisionTime = currentTime;
+      aiState.lastActionType = "dodge_approach";
+      return;
+    }
     if (dirToOpponent === 1) cpu.keys.d = true;
     else cpu.keys.a = true;
     aiState.lastActionType = "approach";
   }
-  // Sometimes charged attack (15%) - only at true range and not spamming
+  // Charged attack (15%)
   else if (roll < 0.90 && 
            distance >= AI_CONFIG.CHARGED_ATTACK_RANGE && 
            canAttack(cpu) && 
@@ -1226,7 +1388,7 @@ function handleFarRange(cpu, human, aiState, currentTime, distance) {
     aiState.lastDecisionTime = currentTime;
     aiState.lastActionType = "charge";
   }
-  // Otherwise just approach
+  // Just approach
   else {
     const dirToOpponent = getDirectionToOpponent(cpu, human);
     if (dirToOpponent === 1) cpu.keys.d = true;
@@ -1237,7 +1399,7 @@ function handleFarRange(cpu, human, aiState, currentTime, distance) {
   aiState.lastDecisionTime = currentTime;
 }
 
-// Smart movement/strafing
+// === OVERHAULED: Smart movement — more fluid, less predictable ===
 function handleMovement(cpu, human, aiState, currentTime, distance) {
   if (cpu.isAttacking || cpu.isGrabbing || cpu.isDodging || cpu.isRawParrying) {
     return;
@@ -1246,29 +1408,49 @@ function handleMovement(cpu, human, aiState, currentTime, distance) {
   cpu.keys.a = false;
   cpu.keys.d = false;
   
-  // Change strafe direction periodically
-  if (currentTime - aiState.lastStrafeChangeTime > AI_CONFIG.STRAFE_CHANGE_INTERVAL) {
+  // Change strafe direction periodically with some variation
+  const strafeInterval = AI_CONFIG.STRAFE_CHANGE_INTERVAL + randomInRange(-100, 100);
+  if (currentTime - aiState.lastStrafeChangeTime > strafeInterval) {
     aiState.lastStrafeChangeTime = currentTime;
     
-    // If far, move toward opponent
+    // Pick a movement intent based on situation
+    const roll = Math.random();
+    
     if (distance > AI_CONFIG.MID_RANGE) {
-      aiState.currentStrafeDirection = getDirectionToOpponent(cpu, human);
-    }
-    // If near edge, move toward center
-    else if (isNearEdge(cpu)) {
-      aiState.currentStrafeDirection = getDirectionToCenter(cpu);
-    }
-    // If very close, sometimes back off
-    else if (distance < AI_CONFIG.SLAP_RANGE * 0.7) {
-      aiState.currentStrafeDirection = chance(0.4) ? 0 : -getDirectionToOpponent(cpu, human);
-    }
-    // Otherwise random strafe with bias toward opponent
-    else {
-      const roll = Math.random();
-      if (roll < 0.45) {
+      // Far — mostly approach, sometimes feint
+      if (roll < 0.65) {
         aiState.currentStrafeDirection = getDirectionToOpponent(cpu, human);
-      } else if (roll < 0.70) {
+      } else if (roll < 0.80) {
+        // Feint: briefly move away then approach
         aiState.currentStrafeDirection = -getDirectionToOpponent(cpu, human);
+        // Short feint duration
+        aiState.lastStrafeChangeTime = currentTime - strafeInterval + 150;
+      } else {
+        aiState.currentStrafeDirection = 0;
+      }
+    } else if (isNearEdge(cpu)) {
+      // Near edge — move toward center
+      aiState.currentStrafeDirection = getDirectionToCenter(cpu);
+    } else if (distance < AI_CONFIG.SLAP_RANGE * 0.7) {
+      // Very close — mix of holding ground, retreating, or circling
+      if (roll < 0.25) {
+        aiState.currentStrafeDirection = 0; // Hold ground
+      } else if (roll < 0.50) {
+        aiState.currentStrafeDirection = -getDirectionToOpponent(cpu, human); // Retreat
+      } else if (roll < 0.75) {
+        aiState.currentStrafeDirection = getDirectionToOpponent(cpu, human); // Pressure
+      } else {
+        // Circle toward center (positional play)
+        aiState.currentStrafeDirection = getDirectionToCenter(cpu);
+      }
+    } else {
+      // General mid-range movement
+      if (roll < 0.40) {
+        aiState.currentStrafeDirection = getDirectionToOpponent(cpu, human);
+      } else if (roll < 0.60) {
+        aiState.currentStrafeDirection = -getDirectionToOpponent(cpu, human);
+      } else if (roll < 0.80) {
+        aiState.currentStrafeDirection = getDirectionToCenter(cpu);
       } else {
         aiState.currentStrafeDirection = 0;
       }
@@ -1297,14 +1479,13 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     clearChargeState,
     setPlayerTimeout,
     rooms,
-    io, // For emitting events
+    io,
   } = gameHelpers;
   
   if (!room.gameStart || room.hakkiyoiCount === 0 || room.gameOver || room.matchOver) {
     return;
   }
   
-  // CRITICAL: Block all inputs during these states
   if (cpu.canMoveToReady || cpu.isSpawningPumoArmy || cpu.isGrabbingMovement) {
     return;
   }
@@ -1319,46 +1500,24 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
   
   const currentTime = Date.now();
   
-  // STRICT action blocking - prevents multiple moves at once
-  // MUST match the states checked in isPlayerInBasicActiveState for consistency!
   const shouldBlockAction = (allowThrowFromGrab = false) => {
-    // Block during any active attack execution
     if (cpu.isAttacking) return true;
-    // Block during attack startup frames
     if (cpu.isInStartupFrames) return true;
-    // Block during throw animation
     if (cpu.isThrowing) return true;
-    // Block while being thrown
     if (cpu.isBeingThrown) return true;
-    // Block during dodge
     if (cpu.isDodging) return true;
-    // Block during grab startup/movement/whiff
     if (cpu.isGrabStartup || cpu.isGrabbingMovement || cpu.isWhiffingGrab) return true;
-    // Block while grabbing (EXCEPT for throwing, which is allowed)
     if (cpu.isGrabbing && !allowThrowFromGrab) return true;
-    // Block while being grabbed
     if (cpu.isBeingGrabbed) return true;
-    // Block during hit stun
     if (cpu.isHit || cpu.isRawParryStun) return true;
-    // Block during recovery
     if (cpu.isRecovering) return true;
-    // Block during power-up animations
     if (cpu.isThrowingSnowball || cpu.isSpawningPumoArmy || cpu.isThrowingSalt) return true;
-    // Block at the ropes
     if (cpu.isAtTheRopes) return true;
-    // Block during endlag
     if (cpu.isInEndlag) return true;
-    // Block during grab break animation and separation - BOTH players are locked
     if (cpu.isGrabBreaking || cpu.isGrabBreakCountered || cpu.isGrabBreakSeparating) return true;
-    // Block during grab clashing
     if (cpu.isGrabClashing) return true;
-    // NOTE: isChargingAttack intentionally NOT checked here - charge release logic needs to run while charging!
-    // Individual action checks (canPlayerSlap, canPlayerUseAction, etc.) handle blocking during charging.
-    // Block during throw teching
     if (cpu.isThrowTeching) return true;
-    // Block during raw parrying
     if (cpu.isRawParrying) return true;
-    
     return false;
   };
   
@@ -1369,16 +1528,14 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
   const prevKeys = cpu._prevKeys;
   const keyJustPressed = (key) => cpu.keys[key] && !prevKeys[key];
   
-  // COUNT INPUTS DURING GRAB CLASH - must happen before blocking!
+  // COUNT INPUTS DURING GRAB CLASH
   if (cpu.isGrabClashing && room.grabClashData) {
     const mashKeys = ['w', 'a', 's', 'd', 'mouse1', 'mouse2', 'e', 'f', 'shift'];
     let inputDetected = false;
-    let detectedKey = null;
     
     for (const key of mashKeys) {
       if (cpu.keys[key] && !prevKeys[key]) {
         inputDetected = true;
-        detectedKey = key;
         break;
       }
     }
@@ -1386,14 +1543,12 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     if (inputDetected) {
       cpu.grabClashInputCount++;
       
-      // Update room clash data
       if (cpu.id === room.grabClashData.player1Id) {
         room.grabClashData.player1Inputs++;
       } else if (cpu.id === room.grabClashData.player2Id) {
         room.grabClashData.player2Inputs++;
       }
       
-      // Emit progress update if io is available
       if (io) {
         io.in(room.id).emit("grab_clash_progress", {
           player1Inputs: room.grabClashData.player1Inputs,
@@ -1402,56 +1557,37 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
           player2Id: room.grabClashData.player2Id,
         });
       }
-      
     }
     
-    // Update prev keys for next comparison
     cpu._prevKeys = { ...cpu.keys };
-    
-    // Block all other actions during grab clash - only mashing counts!
     return;
   }
   
-  // === DIRECTIONAL GRAB BREAK (NEW SYSTEM) ===
-  // Grab breaks are now handled by the SERVER through directional counter-inputs.
-  // The CPU AI sets the correct counter keys in handleGrabBreak() above.
-  // The server's tick loop detects the held keys during isAttemptingPull / isAttemptingThrow
-  // windows and executes the grab break via executeDirectionalGrabBreak().
-  // No client-side grab break processing needed anymore.
-  
-  // === THROW PROCESSING - Must happen BEFORE general shouldBlockAction check ===
-  // Throws need to work while grabbing, but shouldBlockAction() blocks when isGrabbing
+  // === THROW PROCESSING ===
   if (cpu.keys.w && 
       cpu.isGrabbing && 
       !cpu.isBeingGrabbed &&
       !cpu.keys.e &&
-      !shouldBlockAction(true) && // Allow throw from grab
+      !shouldBlockAction(true) &&
       !cpu.isThrowingSalt &&
       !cpu.canMoveToReady &&
       !cpu.throwCooldown &&
       !cpu.isRawParrying &&
       !cpu.isThrowing &&
-      !cpu.isAttemptingGrabThrow) { // Don't allow multiple throw attempts
+      !cpu.isAttemptingGrabThrow) {
     
     cpu.lastThrowAttemptTime = currentTime;
-    
-    // Set attempting grab throw state - this triggers the animation
     cpu.isAttemptingGrabThrow = true;
     cpu.grabThrowAttemptStartTime = currentTime;
-    
-    // Block all CPU inputs during the attempt
     cpu.actionLockUntil = currentTime + 500;
     
     setPlayerTimeout(cpu.id, () => {
-      // Clear attempting state after the animation
       cpu.isAttemptingGrabThrow = false;
       
-      // Check if grab break has already occurred - grab break always takes priority
       if (cpu.isGrabBreakCountered || opponent.isGrabBreaking || opponent.isGrabBreakSeparating) {
         return;
       }
       
-      // Also check if we're no longer in a valid grab state
       if (!cpu.isGrabbing && !cpu.isThrowing) {
         return;
       }
@@ -1467,7 +1603,6 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
         cpu.movementVelocity = 0;
         cpu.isStrafing = false;
         
-        // Auto-correct facing direction to face opponent before throw
         const shouldFaceRight = cpu.x < opponent.x;
         cpu.facing = shouldFaceRight ? -1 : 1;
         cpu.throwingFacingDirection = cpu.facing;
@@ -1491,13 +1626,13 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
           opponent.isBeingGrabbed = false;
         }
       }
-    }, 500); // Changed from immediate to 500ms for reaction window
+    }, 500);
     
     cpu._prevKeys = { ...cpu.keys };
-    return; // Only one action per tick
+    return;
   }
   
-  // CRITICAL: If we're in any blocking state, don't process any inputs
+  // Block if in blocking state
   if (shouldBlockAction()) {
     cpu._prevKeys = { ...cpu.keys };
     return;
@@ -1507,11 +1642,10 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
   if (keyJustPressed("mouse1") && canPlayerSlap(cpu) && !shouldBlockAction()) {
     executeSlapAttack(cpu, rooms);
     cpu._prevKeys = { ...cpu.keys };
-    return; // Only one action per tick
+    return;
   }
   
-  // Process grab - if E is pressed during charging, clear charge first (like player)
-  // This allows grab to cancel/interrupt charging
+  // Process grab - E during charging clears charge
   if (keyJustPressed("e") && cpu.isChargingAttack) {
     clearChargeState(cpu, true);
   }
@@ -1532,7 +1666,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       canPlayerUseAction(cpu)) {
     
     cpu.lastGrabAttemptTime = currentTime;
-    clearChargeState(cpu, true); // Also clear here for safety
+    clearChargeState(cpu, true);
     
     cpu.isGrabStartup = true;
     cpu.grabStartupStartTime = currentTime;
@@ -1564,10 +1698,10 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     }, 750, "grabMovementTimeout");
     
     cpu._prevKeys = { ...cpu.keys };
-    return; // Only one action per tick
+    return;
   }
   
-  // Process dodge - now uses stamina instead of charges
+  // Process dodge
   if (keyJustPressed("shift") && 
       !cpu.keys.e &&
       !shouldBlockAction() &&
@@ -1575,7 +1709,6 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       cpu.stamina >= AI_CONFIG.DODGE_STAMINA_COST &&
       !cpu.isDodging) {
     
-    // Clear movement momentum for static dodge distance
     cpu.movementVelocity = 0;
     cpu.isStrafing = false;
     
@@ -1588,7 +1721,6 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     cpu.dodgeStartX = cpu.x;
     cpu.dodgeStartY = cpu.y;
     
-    // Drain stamina for dodge (15% of max stamina)
     cpu.stamina = Math.max(0, cpu.stamina - AI_CONFIG.DODGE_STAMINA_COST);
     
     if (cpu.keys.a) {
@@ -1606,7 +1738,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     }, 450);
     
     cpu._prevKeys = { ...cpu.keys };
-    return; // Only one action per tick
+    return;
   }
   
   // Process raw parry
@@ -1622,7 +1754,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     cpu.rawParryMinDurationMet = false;
     
     cpu._prevKeys = { ...cpu.keys };
-    return; // Only one action per tick
+    return;
   }
   
   // Release parry
@@ -1631,8 +1763,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     cpu.rawParryStartTime = 0;
   }
   
-  // Process charge attack - only if not blocked
-  // Also block if E was just pressed (grab cancels charge and should execute, not restart charge)
+  // Process charge attack
   if (cpu.keys.mouse2 && !shouldBlockAction() && canPlayerCharge(cpu) && !keyJustPressed("e")) {
     if (!cpu.isChargingAttack) {
       startCharging(cpu);
@@ -1654,7 +1785,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     clearChargeState(cpu);
   }
   
-  // Process F key power-ups (snowball and pumo army)
+  // Process F key power-ups
   if (keyJustPressed("f") && 
       (cpu.activePowerUp === "snowball" || cpu.activePowerUp === "pumo_army") &&
       !cpu.snowballCooldown &&
@@ -1674,12 +1805,10 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       !cpu.isChargingAttack) {
     
     if (cpu.activePowerUp === "snowball") {
-      // Set throwing state
       cpu.isThrowingSnowball = true;
       cpu.currentAction = "snowball";
       cpu.actionLockUntil = currentTime + 250;
       
-      // Determine snowball direction based on position relative to opponent
       let snowballDirection;
       if (opponent) {
         snowballDirection = cpu.x < opponent.x ? 2 : -2;
@@ -1687,7 +1816,6 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
         snowballDirection = cpu.facing === 1 ? -2 : 2;
       }
       
-      // Create snowball projectile
       const snowball = {
         id: Math.random().toString(36).substr(2, 9),
         x: cpu.x,
@@ -1700,7 +1828,6 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       cpu.snowballs.push(snowball);
       cpu.snowballCooldown = true;
       
-      // Reset throwing state after animation
       setPlayerTimeout(cpu.id, () => {
         cpu.isThrowingSnowball = false;
         if (cpu.actionLockUntil && Date.now() < cpu.actionLockUntil) {
@@ -1711,7 +1838,6 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       cpu._prevKeys = { ...cpu.keys };
       return;
     } else if (cpu.activePowerUp === "pumo_army") {
-      // Set spawning state
       cpu.isSpawningPumoArmy = true;
       cpu.currentAction = "pumo_army";
       cpu.actionLockUntil = currentTime + 400;
@@ -1719,14 +1845,11 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       cpu.movementVelocity = 0;
       cpu.isStrafing = false;
       
-      // Determine army direction
       const armyDirection = cpu.facing === 1 ? -1 : 1;
-      
-      // Spawn multiple mini clones sequentially
       const numClones = 5;
       const spawnDelay = 1000;
       const startX = armyDirection === 1 ? 0 : 1150;
-      const GROUND_LEVEL = 210; // Match server constant (was incorrectly 430!)
+      const GROUND_LEVEL = 210;
       
       for (let i = 0; i < numClones; i++) {
         setPlayerTimeout(cpu.id, () => {
@@ -1753,7 +1876,6 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       
       cpu.pumoArmyCooldown = true;
       
-      // Reset spawning state after animation
       setPlayerTimeout(cpu.id, () => {
         cpu.isSpawningPumoArmy = false;
         if (cpu.actionLockUntil && Date.now() < cpu.actionLockUntil) {
