@@ -850,11 +850,11 @@ function adjustPlayerPositions(player1, player2, delta) {
   const distanceBetweenCenters = Math.abs(player1Center - player2Center);
 
   // Calculate the minimum distance needed between centers to prevent overlap
-  // Reduce collision distance slightly to allow players to get closer during normal movement
-  const minDistance = (player1Hitbox.left + player2Hitbox.right) * 0.85;
+  // Slightly reduced to allow natural close-quarters feel without excessive visual overlap
+  const minDistance = (player1Hitbox.left + player2Hitbox.right) * 0.95;
 
-  // Allow closer proximity during slap attacks (opposite of previous behavior)
-  const slapOverlapReduction = 0.75; // Allow 25% more overlap during slap attacks
+  // Allow slightly closer proximity during slap attacks for close-quarters feel
+  const slapOverlapReduction = 0.90; // Allow 10% more overlap during slap attacks (was 25%)
   const finalMinDistance =
     (player1.isAttacking && player1.isSlapAttack) ||
     (player2.isAttacking && player2.isSlapAttack)
@@ -871,6 +871,15 @@ function adjustPlayerPositions(player1, player2, delta) {
       (player1.isAttacking && player1.attackType === "slap") ||
       (player2.isAttacking && player2.attackType === "slap");
 
+    // Check if either player just landed from a dodge (needs fast separation to resolve overlap)
+    const isPostDodgeOverlap =
+      player1.justLandedFromDodge || player2.justLandedFromDodge;
+
+    // Check if either player just finished a charged attack (recovery/endlag)
+    const isPostChargedAttackOverlap =
+      (player1.isRecovering || player1.isInEndlag) ||
+      (player2.isRecovering || player2.isInEndlag);
+
     // SPECIAL CASE: Perfect parry stun - stunned player is "anchored" and cannot be pushed
     // The pushing player takes ALL separation and their velocity is killed
     const player1IsStunned = player1.isRawParryStun;
@@ -880,7 +889,7 @@ function adjustPlayerPositions(player1, player2, delta) {
 
     if (player1IsStunned || player2IsStunned) {
       // One player is stunned - they are anchored in place
-      separationSpeed = Math.min(overlap * 0.7, 12);
+      separationSpeed = Math.min(overlap * 0.7, 16);
       const separationDirection = player1.x < player2.x ? -1 : 1;
 
       if (player1IsStunned && !player2IsStunned) {
@@ -900,9 +909,23 @@ function adjustPlayerPositions(player1, player2, delta) {
         newPlayer1X = player1.x;
         newPlayer2X = player2.x;
       }
+    } else if (isPostDodgeOverlap || isPostChargedAttackOverlap) {
+      // FAST separation after dodge landing or charged attack ends
+      // Resolves overlap in ~4-5 frames instead of lingering — smooth exponential ease-out
+      separationSpeed = Math.min(overlap * 0.85, 16);
+
+      // Calculate separation direction
+      const separationDirection = player1.x < player2.x ? -1 : 1;
+
+      // Apply smooth separation - each player moves by half
+      const separationPerPlayer = separationSpeed / 2;
+
+      // Calculate new positions
+      newPlayer1X = player1.x + separationDirection * separationPerPlayer;
+      newPlayer2X = player2.x + -separationDirection * separationPerPlayer;
     } else if (isSlapAttackScenario) {
-      // Gentler separation during slap attacks to maintain close-quarters feel
-      separationSpeed = Math.min(overlap * 0.4, 6); // Reduced separation speed for slap attacks
+      // Moderate separation during slap attacks — close-quarters but not overlapping
+      separationSpeed = Math.min(overlap * 0.6, 10);
 
       // Calculate separation direction
       const separationDirection = player1.x < player2.x ? -1 : 1;
@@ -914,8 +937,8 @@ function adjustPlayerPositions(player1, player2, delta) {
       newPlayer1X = player1.x + separationDirection * separationPerPlayer;
       newPlayer2X = player2.x + -separationDirection * separationPerPlayer;
     } else {
-      // Normal separation for non-slap scenarios
-      separationSpeed = Math.min(overlap * 0.7, 12); // Increased from 0.5 to 0.7 and cap from 8 to 12 pixels per frame
+      // Normal separation — firm push to maintain solid body feel
+      separationSpeed = Math.min(overlap * 0.7, 16);
 
       // Calculate separation direction
       const separationDirection = player1.x < player2.x ? -1 : 1;

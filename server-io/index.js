@@ -966,6 +966,15 @@ function activateBufferedInputAfterGrab(player, rooms) {
           player.justLandedFromDodge = true;
         }
         player.isDodging = false;
+        
+        // Immediately update facing direction on dodge landing (buffered dodge fallback)
+        const dodgeRoom = rooms.find(r => r.players.some(p => p.id === player.id));
+        if (dodgeRoom) {
+          const dodgeOpponent = dodgeRoom.players.find(p => p.id !== player.id);
+          if (dodgeOpponent && !player.atTheRopesFacingDirection && !player.slapFacingDirection) {
+            player.facing = player.x < dodgeOpponent.x ? -1 : 1;
+          }
+        }
       }
     }, DODGE_DURATION, "bufferedDodge");
     return;
@@ -1033,6 +1042,15 @@ function activateBufferedInputAfterGrab(player, rooms) {
           player.justLandedFromDodge = true;
         }
         player.isDodging = false;
+        
+        // Immediately update facing direction on dodge landing (buffered dodge fallback)
+        const dodgeRoom = rooms.find(r => r.players.some(p => p.id === player.id));
+        if (dodgeRoom) {
+          const dodgeOpponent = dodgeRoom.players.find(p => p.id !== player.id);
+          if (dodgeOpponent && !player.atTheRopesFacingDirection && !player.slapFacingDirection) {
+            player.facing = player.x < dodgeOpponent.x ? -1 : 1;
+          }
+        }
       }
     }, DODGE_DURATION, "bufferedDodge");
     return;
@@ -3431,6 +3449,13 @@ io.on("connection", (socket) => {
               player.dodgeDirection = null;
               player.y = GROUND_LEVEL;
               
+              // Immediately update facing direction on dodge landing
+              // This prevents wrong-way attacks when dodge-through switches sides
+              const dodgeCancelOpponent = room.players.find(p => p.id !== player.id);
+              if (dodgeCancelOpponent && !player.atTheRopesFacingDirection && !player.slapFacingDirection) {
+                player.facing = player.x < dodgeCancelOpponent.x ? -1 : 1;
+              }
+              
               // ICE PHYSICS: Dodge landing = sliding on ice!
               if ((player.keys.c || player.keys.control) && room.gameStart && !room.gameOver && !room.matchOver) {
                 // Holding C = STRONG power slide from dodge
@@ -3513,6 +3538,13 @@ io.on("connection", (socket) => {
               player.y = GROUND_LEVEL;
               player.isStrafing = false;
               player.isBraking = false;
+              
+              // Immediately update facing direction on dodge landing
+              // This prevents wrong-way attacks when dodge-through switches sides
+              const dodgeLandOpponent = room.players.find(p => p.id !== player.id);
+              if (dodgeLandOpponent && !player.atTheRopesFacingDirection && !player.slapFacingDirection) {
+                player.facing = player.x < dodgeLandOpponent.x ? -1 : 1;
+              }
               
               if ((player.keys.c || player.keys.control) && room.gameStart && !room.gameOver && !room.matchOver) {
                 // Holding C/CTRL = STRONG power slide from dodge
@@ -7437,6 +7469,15 @@ io.on("connection", (socket) => {
             player.isDodging = false;
             player.isDodgeCancelling = false;
             player.dodgeDirection = null;
+            
+            // Immediately update facing direction on dodge landing (timeout fallback)
+            const dodgeRoom = rooms.find(r => r.players.some(p => p.id === player.id));
+            if (dodgeRoom) {
+              const dodgeOpponent = dodgeRoom.players.find(p => p.id !== player.id);
+              if (dodgeOpponent && !player.atTheRopesFacingDirection && !player.slapFacingDirection) {
+                player.facing = player.x < dodgeOpponent.x ? -1 : 1;
+              }
+            }
           }
           if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
             player.actionLockUntil = 0;
