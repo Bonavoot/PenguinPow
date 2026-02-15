@@ -1018,7 +1018,7 @@ const StyledImage = styled("img")
     }
     55% {
       transform: scaleX(calc(var(--facing, 1) * 1.12)) scaleY(0.92);
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.25) brightness(1.1) drop-shadow(0 0 8px rgba(255, 200, 50, 0.6));
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.25) brightness(1.1);
     }
     100% {
       transform: scaleX(var(--facing, 1)) scaleY(1);
@@ -1026,16 +1026,13 @@ const StyledImage = styled("img")
     }
   }
   
-  /* Charge pulse animation - builds anticipation for charged attack */
+  /* Charge pulse animation - builds anticipation for charged attack (no gold glow) */
   @keyframes chargePulse {
-    0% {
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 8px rgba(255, 200, 50, 0.5)) contrast(1.2);
+    0%, 100% {
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2);
     }
     50% {
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 18px rgba(255, 150, 0, 0.9)) contrast(1.35) brightness(1.1);
-    }
-    100% {
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 8px rgba(255, 200, 50, 0.5)) contrast(1.2);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.35) brightness(1.1);
     }
   }
   
@@ -4201,16 +4198,16 @@ const GameFighter = ({
     }
     
     // Total cycle = flash ON duration + gap. Gap shrinks as charge power increases.
-    // Low charge (0-33%): ~1800ms cycle (long gap), Medium (33-66%): ~1000ms, High (66-100%): ~600ms, Full: ~350ms
+    // Low charge (0-33%): ~1440ms, Medium (33-66%): ~800ms, High (66-100%): ~480ms, Full: ~280ms
     let totalCycleMs;
     if (chargePower >= 95) {
-      totalCycleMs = 350;
+      totalCycleMs = 280;
     } else if (chargePower >= 66) {
-      totalCycleMs = 600;
+      totalCycleMs = 480;
     } else if (chargePower >= 33) {
-      totalCycleMs = 1000;
+      totalCycleMs = 800;
     } else {
-      totalCycleMs = 1800;
+      totalCycleMs = 1440;
     }
     
     // How far into the current cycle are we (wall-clock based)

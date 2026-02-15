@@ -474,6 +474,7 @@ const GRAB_WALK_ACCEL_MULTIPLIER = 0.7; // Slightly lower acceleration than norm
 // Grab startup (anticipation) tuning — near-instant, no hop, no forward movement
 const GRAB_STARTUP_DURATION_MS = 70; // Near-instant startup (~4 frames) — just enough for visual telegraph
 const GRAB_STARTUP_HOP_HEIGHT = 0; // No hop — grab is a grounded technique
+const SLAP_ATTACK_STARTUP_MS = 55; // Slap becomes active after 55ms (for grab vs slap timing)
 
 // Grab whiff recovery — big vulnerable window if grab misses
 const GRAB_WHIFF_RECOVERY_MS = 450; // Whiff recovery duration (fully vulnerable to punishment)
@@ -1652,6 +1653,16 @@ io.on("connection", (socket) => {
     return relativePos >= -BEHIND_TOLERANCE;
   }
 
+  // First-to-active wins: grab vs slap is deterministic based on when each became active
+  // Returns true if grab wins (grab became active before slap)
+  function grabBeatsSlap(grabber, slapper) {
+    if (!grabber.grabStartupStartTime || !slapper.attackStartTime) return false;
+    const grabStartupMs = grabber.grabStartupDuration || GRAB_STARTUP_DURATION_MS;
+    const grabActiveTime = grabber.grabStartupStartTime + grabStartupMs;
+    const slapActiveTime = slapper.attackStartTime + SLAP_ATTACK_STARTUP_MS;
+    return grabActiveTime < slapActiveTime; // Grab became active first
+  }
+
   const THROW_TECH_COOLDOWN = 500; // 500ms cooldown on throw techs
   const THROW_TECH_DURATION = 260; // slightly shorter animation
   const THROW_TECH_WINDOW = 200; // narrower window reduces frequent techs
@@ -2301,6 +2312,16 @@ io.on("connection", (socket) => {
                 distance < horizThresh &&
                 Math.abs(snowball.y - targetPlayer.y) < vertThresh
               ) {
+                // If either player is actually IN the grab (connected), snowball passes through
+                // Grab startup (attempting) can still be hit; only connected grab states are immune
+                const isTargetInConnectedGrab =
+                  targetPlayer.isGrabbingMovement ||
+                  targetPlayer.isGrabbing ||
+                  targetPlayer.isBeingGrabbed;
+                if (isTargetInConnectedGrab) {
+                  return true; // Keep snowball in flight, don't register hit
+                }
+
                 // Check for thick blubber hit absorption
                 const isTargetGrabbing = targetPlayer.isGrabStartup || targetPlayer.isGrabbingMovement || targetPlayer.isGrabbing;
                 if (
@@ -3004,14 +3025,22 @@ io.on("connection", (socket) => {
               }
 
               // === GRAB CHECK: opponent is in range and grabbable ===
-              if (
+              // First-to-active wins: when opponent is slapping, timing determines winner
+              const opponentGrabbableNeutral =
                 !opponent.isBeingThrown &&
-                !opponent.isAttacking &&
                 !opponent.isBeingGrabbed &&
                 !player.isBeingGrabbed &&
                 !player.throwTechCooldown &&
-                !opponent.isDodging
-              ) {
+                !opponent.isDodging;
+              const grabWinsVsSlap =
+                opponent.isAttacking &&
+                opponent.attackType === "slap" &&
+                grabBeatsSlap(player, opponent);
+              const canConnect =
+                opponentGrabbableNeutral &&
+                (!opponent.isAttacking || grabWinsVsSlap);
+
+              if (canConnect) {
                 // SUCCESSFUL GRAB — same connect logic as before
                 player.isGrabStartup = false;
                 player.y = GROUND_LEVEL;
@@ -3260,7 +3289,8 @@ io.on("connection", (socket) => {
         }
 
         // Stamina regen (freeze stamina once round is over)
-        if (player.stamina < 100 && !room.gameOver) {
+        // Don't regen while being grabbed — victim's stamina is being drained
+        if (player.stamina < 100 && !room.gameOver && !player.isBeingGrabbed) {
           if (staminaRegenCounter >= STAMINA_REGEN_INTERVAL_MS) {
             player.stamina += STAMINA_REGEN_AMOUNT;
             player.stamina = Math.min(player.stamina, 100);
@@ -5314,6 +5344,10 @@ io.on("connection", (socket) => {
             }
             return;
           }
+        }
+        // First-to-active wins: if defender is in grab startup, timing determines winner
+        if (otherPlayer.isGrabStartup && grabBeatsSlap(otherPlayer, player)) {
+          return; // Grab wins — don't process slap hit, grab will connect
         }
         processHit(player, otherPlayer);
       }
@@ -7585,7 +7619,7 @@ io.on("connection", (socket) => {
     // Handle dodge - allow canceling recovery but block during charged attack execution
     // Dodging now costs stamina (15% of max) instead of using charges
     // Use shiftJustPressed to prevent dodge from triggering when key is held through other actions
-    // NOTE: canPlayerDodge allows dodging DURING charging - this is intentional game mechanic
+    // NOTE: Dodge cancels charging - clearing charge state when dodge starts
     if (
       player.shiftJustPressed &&
       !player.keys.mouse2 && // Don't dodge while grabbing
@@ -7612,6 +7646,9 @@ io.on("connection", (socket) => {
       // Clear parry success state when starting a dodge
       player.isRawParrySuccess = false;
       player.isPerfectRawParrySuccess = false;
+
+      // Dodge cancels charging - clear charge state
+      clearChargeState(player, true);
 
       // Clear movement momentum for static dodge distance
       // Also cancels power slide - dodge is an escape option from slide
@@ -7692,6 +7729,9 @@ io.on("connection", (socket) => {
               // Clear parry success state when starting a dodge
               player.isRawParrySuccess = false;
               player.isPerfectRawParrySuccess = false;
+              
+              // Dodge cancels charging
+              clearChargeState(player, true);
               
               // Clear movement momentum for static dodge distance
               // Also cancels power slide - dodge is an escape option from slide

@@ -194,8 +194,7 @@ function canPlayerUseAction(player) {
   );
 }
 
-// Special function for dodge - allows dodging DURING charging without clearing the charge
-// This is an intentional game mechanic: you can dodge out of a charge to avoid attacks
+// Special function for dodge - allows dodging DURING charging (dodge will cancel the charge)
 function canPlayerDodge(player) {
   // Check action lock timer
   if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
@@ -231,7 +230,7 @@ function canPlayerDodge(player) {
     // Attack timing states (startup/endlag)
     !player.isInStartupFrames &&
     !player.isInEndlag &&
-    // NOTE: isChargingAttack is intentionally NOT checked here - dodge is allowed during charging!
+    // NOTE: isChargingAttack is NOT checked - dodge is allowed during charging (but cancels it)
     // Recovery and ready states
     !player.isRecovering &&
     !player.canMoveToReady

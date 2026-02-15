@@ -946,6 +946,8 @@ const UiPlayerInfo = ({
   const p2GhostTimer = useRef(null);
   const p1PrevStamina = useRef(s1);
   const p2PrevStamina = useRef(s2);
+  const p1LastDecreaseAtRef = useRef(0);
+  const p2LastDecreaseAtRef = useRef(0);
 
   // ── Regen indicator (green leading-edge glow) ──
   const [p1Regen, setP1Regen] = useState(false);
@@ -980,6 +982,8 @@ const UiPlayerInfo = ({
     if (p2GhostTimer.current) clearTimeout(p2GhostTimer.current);
     if (p1RegenTimer.current) clearTimeout(p1RegenTimer.current);
     if (p2RegenTimer.current) clearTimeout(p2RegenTimer.current);
+    p1LastDecreaseAtRef.current = 0;
+    p2LastDecreaseAtRef.current = 0;
   }, [roundId]);
 
   // ── Player 1 stamina + ghost + regen ──
@@ -998,17 +1002,28 @@ const UiPlayerInfo = ({
 
     if (s1 < prev) {
       // ▼ DAMAGE — stamina decreased
-      setP1LastDecreaseAt(Date.now());
+      const now = Date.now();
+      setP1LastDecreaseAt(now);
+      p1LastDecreaseAtRef.current = now;
       // Ghost stays high (captures "where stamina was" before this drain sequence)
       setP1Ghost((g) => Math.max(g, p1DisplayStamina));
       setP1GhostCatching(false);
       // Schedule ghost catch-up after a visible delay
       if (p1GhostTimer.current) clearTimeout(p1GhostTimer.current);
       const closureS1 = s1;
-      p1GhostTimer.current = setTimeout(() => {
-        setP1GhostCatching(true);
-        setP1Ghost(closureS1);
-      }, 700);
+      const scheduleGhostCatchUp = (delay = 700) => {
+        p1GhostTimer.current = setTimeout(() => {
+          // During continuous drain (e.g. grab push), don't catch up mid-sequence — reschedule
+          const elapsed = Date.now() - p1LastDecreaseAtRef.current;
+          if (elapsed < 500) {
+            scheduleGhostCatchUp(400);
+            return;
+          }
+          setP1GhostCatching(true);
+          setP1Ghost(closureS1);
+        }, delay);
+      };
+      scheduleGhostCatchUp(700);
       // Clear regen state
       setP1Regen(false);
       if (p1RegenTimer.current) clearTimeout(p1RegenTimer.current);
@@ -1059,15 +1074,26 @@ const UiPlayerInfo = ({
 
     if (s2 < prev) {
       // ▼ DAMAGE
-      setP2LastDecreaseAt(Date.now());
+      const now = Date.now();
+      setP2LastDecreaseAt(now);
+      p2LastDecreaseAtRef.current = now;
       setP2Ghost((g) => Math.max(g, p2DisplayStamina));
       setP2GhostCatching(false);
       if (p2GhostTimer.current) clearTimeout(p2GhostTimer.current);
       const closureS2 = s2;
-      p2GhostTimer.current = setTimeout(() => {
-        setP2GhostCatching(true);
-        setP2Ghost(closureS2);
-      }, 700);
+      const scheduleGhostCatchUp = (delay = 700) => {
+        p2GhostTimer.current = setTimeout(() => {
+          // During continuous drain (e.g. grab push), don't catch up mid-sequence — reschedule
+          const elapsed = Date.now() - p2LastDecreaseAtRef.current;
+          if (elapsed < 500) {
+            scheduleGhostCatchUp(400);
+            return;
+          }
+          setP2GhostCatching(true);
+          setP2Ghost(closureS2);
+        }, delay);
+      };
+      scheduleGhostCatchUp(700);
       setP2Regen(false);
       if (p2RegenTimer.current) clearTimeout(p2RegenTimer.current);
     } else if (s2 > prev) {

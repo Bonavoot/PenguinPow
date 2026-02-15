@@ -629,7 +629,7 @@ function handleGrabClashMashing(cpu, aiState, currentTime) {
   }
   
   const MASH_INTERVAL = 70;
-  const mashKeys = ['w', 'a', 's', 'd', 'mouse1', 'e'];
+  const mashKeys = ['w', 'a', 's', 'd', 'mouse1', 'mouse2'];
   
   if (currentTime - aiState.grabClashLastMashTime >= MASH_INTERVAL) {
     resetAllKeys(cpu);
@@ -1654,13 +1654,13 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     return;
   }
   
-  // Process grab - E during charging clears charge
-  if (keyJustPressed("e") && cpu.isChargingAttack) {
+  // Process grab - mouse2 during charging clears charge
+  if (keyJustPressed("mouse2") && cpu.isChargingAttack) {
     clearChargeState(cpu, true);
   }
   
   // Process grab
-  if (keyJustPressed("e") && 
+  if (keyJustPressed("mouse2") && 
       !cpu.isAttacking && 
       !cpu.isGrabbing && 
       !cpu.isBeingGrabbed && 
@@ -1720,6 +1720,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     
     cpu.movementVelocity = 0;
     cpu.isStrafing = false;
+    clearChargeState(cpu, true); // Dodge cancels charging
     
     cpu.isDodging = true;
     cpu.isDodgeCancelling = false;
