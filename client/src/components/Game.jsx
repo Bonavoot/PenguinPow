@@ -180,14 +180,9 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
 
       // CLIENT-SIDE PREDICTION for gamepad inputs
       // Check for newly pressed buttons by comparing with previous keyState
-      if (gamepadKeyState.mouse1 && !keyState.mouse1) {
-        applyPrediction("slap");
-      }
+      // NOTE: Mouse1 predictions removed — server decides slap vs charge based on hold duration
       if (gamepadKeyState.mouse2 && !keyState.mouse2) {
-        applyPrediction("charge_start");
-      }
-      if (!gamepadKeyState.mouse2 && keyState.mouse2) {
-        applyPrediction("charge_release");
+        applyPrediction("grab");
       }
       if (gamepadKeyState.shift && !keyState.shift) {
         const direction = gamepadKeyState.a ? -1 : gamepadKeyState.d ? 1 : null;
@@ -198,9 +193,6 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
       }
       if (!gamepadKeyState.s && keyState.s) {
         applyPrediction("parry_release");
-      }
-      if (gamepadKeyState.e && !keyState.e) {
-        applyPrediction("grab");
       }
       // ICE PHYSICS: Power slide predictions for gamepad
       if ((gamepadKeyState.c || gamepadKeyState.control) && !(keyState.c || keyState.control)) {
@@ -251,10 +243,6 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
           // Raw parry (s key)
           else if (key === "s") {
             applyPrediction("parry_start");
-          }
-          // Grab (e key)
-          else if (key === "e") {
-            applyPrediction("grab");
           }
           // ICE PHYSICS: Power slide (c or control key)
           else if (key === "c" || key === "control") {
@@ -311,23 +299,17 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
 
       if (e.button === 0) {
         e.preventDefault();
-        const wasPressed = keyState.mouse1;
         keyState.mouse1 = true;
-        
-        // CLIENT-SIDE PREDICTION: Immediately show slap attack
-        if (!wasPressed) {
-          applyPrediction("slap");
-        }
-        
+        // No client prediction — server decides slap vs charge based on hold duration
         socket.emit("fighter_action", { id: socket.id, keys: keyState });
       } else if (e.button === 2) {
         e.preventDefault();
         const wasPressed = keyState.mouse2;
         keyState.mouse2 = true;
         
-        // CLIENT-SIDE PREDICTION: Immediately show charge start
+        // CLIENT-SIDE PREDICTION: Immediately show grab
         if (!wasPressed) {
-          applyPrediction("charge_start");
+          applyPrediction("grab");
         }
         
         socket.emit("fighter_action", { id: socket.id, keys: keyState });
@@ -347,17 +329,11 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
       if (e.button === 0) {
         e.preventDefault();
         keyState.mouse1 = false;
+        // No client prediction — server handles slap (quick release) or charge release (held)
         socket.emit("fighter_action", { id: socket.id, keys: keyState });
       } else if (e.button === 2) {
         e.preventDefault();
-        const wasPressed = keyState.mouse2;
         keyState.mouse2 = false;
-        
-        // CLIENT-SIDE PREDICTION: Immediately show charge release (attack)
-        if (wasPressed) {
-          applyPrediction("charge_release");
-        }
-        
         socket.emit("fighter_action", { id: socket.id, keys: keyState });
       }
     };

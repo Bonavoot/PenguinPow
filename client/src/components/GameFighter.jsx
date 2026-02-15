@@ -648,7 +648,7 @@ const getFighterPopFilter = (props) => {
     return `${base} contrast(1.2) brightness(1.15)`;
   }
   if (props.$isChargingAttack) {
-    return `${base} drop-shadow(0 0 12px rgba(255, 200, 50, 0.85)) contrast(1.25)`;
+    return `${base} contrast(1.15)`;
   }
   if (props.$isGrabClashActive) {
     return `${base} contrast(1.25) brightness(1.1)`;
@@ -846,7 +846,7 @@ const StyledImage = styled("img")
         : props.$isBeingGrabFrontalForceOut
         ? "grabFrontalForceOutVictim 0.3s ease-out forwards"
         : props.$isBeingPullReversaled
-        ? "pullReversalHop 0.4s cubic-bezier(0.22, 0.6, 0.35, 1)"
+        ? "none"  // Hop is server-driven via Y position changes (no CSS animation needed)
         : props.$isGrabSeparating
         ? "grabSeparatePush 0.3s ease-out"
         : props.$isAttemptingPull
@@ -1238,36 +1238,8 @@ const StyledImage = styled("img")
   }
 
   /* Pull reversal victim - hopping/bouncing knockback */
-  @keyframes pullReversalHop {
-    0% {
-      transform: scaleX(var(--facing, 1)) translateY(0) scaleY(1);
-      transform-origin: center bottom;
-    }
-    15% {
-      transform: scaleX(var(--facing, 1)) translateY(-14px) scaleY(1.08) scaleX(calc(var(--facing, 1) * 0.92));
-      transform-origin: center bottom;
-    }
-    30% {
-      transform: scaleX(var(--facing, 1)) translateY(-2px) scaleY(0.9) scaleX(calc(var(--facing, 1) * 1.06));
-      transform-origin: center bottom;
-    }
-    50% {
-      transform: scaleX(var(--facing, 1)) translateY(-10px) scaleY(1.05) scaleX(calc(var(--facing, 1) * 0.95));
-      transform-origin: center bottom;
-    }
-    70% {
-      transform: scaleX(var(--facing, 1)) translateY(-1px) scaleY(0.93) scaleX(calc(var(--facing, 1) * 1.04));
-      transform-origin: center bottom;
-    }
-    85% {
-      transform: scaleX(var(--facing, 1)) translateY(-5px) scaleY(1.02);
-      transform-origin: center bottom;
-    }
-    100% {
-      transform: scaleX(var(--facing, 1)) translateY(0) scaleY(1);
-      transform-origin: center bottom;
-    }
-  }
+  /* Pull reversal hop is server-driven via Y position changes (decaying bounces).
+     No CSS @keyframes needed — the server oscillates player.y during the tween. */
 
   /* Grab separation push-away - gentle push apart */
   @keyframes grabSeparatePush {
@@ -1974,7 +1946,8 @@ const GameFighter = ({
   // Function to get sprite render info (handles both static and animated sprites)
   // Returns: { src, isAnimated, config } where config contains spritesheet animation data
   // When isHit is true and recoloring is needed, uses hit-tinted variant (mawashi/headband unchanged, rest tinted red)
-  const getSpriteRenderInfo = useCallback((originalSrc, isHit = false) => {
+  // When isChargeFlash is true, uses white-tinted variant for charge flash effect
+  const getSpriteRenderInfo = useCallback((originalSrc, isHit = false, isChargeFlash = false) => {
     if (!originalSrc) {
       return { src: originalSrc, isAnimated: false, config: null };
     }
@@ -1986,8 +1959,9 @@ const GameFighter = ({
     // Determine the source to recolor (spritesheet for animated, original for static)
     const sourceToRecolor = isAnimated ? spritesheetConfig.spritesheet : originalSrc;
     const useHitTint = isHit; // When hit, use sprite-level red tint (mawashi/headband unchanged, rest red)
+    const useChargeTint = isChargeFlash; // When charge flashing, use sprite-level white tint
     
-    if (!needsRecoloring && !useHitTint) {
+    if (!needsRecoloring && !useHitTint && !useChargeTint) {
       return {
         src: sourceToRecolor,
         isAnimated,
@@ -1995,8 +1969,13 @@ const GameFighter = ({
       };
     }
     
+    // Build options for cache lookup
+    const tintOptions = {};
+    if (useHitTint) tintOptions.hitTintRed = true;
+    if (useChargeTint) tintOptions.chargeTintWhite = true;
+    
     // FIRST: Check global cache (populated by preloadSprites in Lobby)
-    const globalCached = getCachedRecoloredImage(sourceToRecolor, colorRanges, targetColor, useHitTint ? { hitTintRed: true } : {});
+    const globalCached = getCachedRecoloredImage(sourceToRecolor, colorRanges, targetColor, tintOptions);
     if (globalCached) {
       return {
         src: globalCached,
@@ -2006,7 +1985,7 @@ const GameFighter = ({
     }
     
     // Check local cache as fallback
-    const cacheKey = `${sourceToRecolor}_${targetColor}${useHitTint ? '_hit' : ''}`;
+    const cacheKey = `${sourceToRecolor}_${targetColor}${useHitTint ? '_hit' : ''}${useChargeTint ? '_charge' : ''}`;
     if (recoloredSprites[cacheKey]) {
       return {
         src: recoloredSprites[cacheKey],
@@ -2023,7 +2002,7 @@ const GameFighter = ({
     // Start async recoloring if not already in progress (fallback for uncached sprites)
     if (!recoloringInProgress.current.has(cacheKey)) {
       recoloringInProgress.current.add(cacheKey);
-      recolorImage(sourceToRecolor, colorRanges, targetColor, useHitTint ? { hitTintRed: true } : {})
+      recolorImage(sourceToRecolor, colorRanges, targetColor, tintOptions)
         .then((recolored) => {
           setRecoloredSprites(prev => ({
             ...prev,
@@ -2975,7 +2954,8 @@ const GameFighter = ({
         penguin.isBeingThrown ||
         penguin.isThrowing ||
         penguin.isHit ||
-        penguin.isDodging
+        penguin.isDodging ||
+        penguin.isBeingPullReversaled // Server-driven hops — use exact Y for full bounce fidelity
       ) {
         return currentPos;
       }
@@ -2988,6 +2968,7 @@ const GameFighter = ({
     [
       penguin.isBeingThrown,
       penguin.isThrowing,
+      penguin.isBeingPullReversaled,
       penguin.isHit,
       penguin.isDodging,
     ]
@@ -3149,6 +3130,7 @@ const GameFighter = ({
   const lastWinnerSoundPlay = useRef(0);
   const lastHitSoundTime = useRef(0);
   const hitTintFramesRemaining = useRef(0); // Show hit tint for first N frames of isHit so red is visible (1 frame was too short)
+  const chargeFlashCycleStart = useRef(0); // Wall-clock timestamp (ms) when current flash cycle began
   const gameMusicRef = useRef(null);
   const eeshiMusicRef = useRef(null);
 
@@ -4199,9 +4181,62 @@ const GameFighter = ({
   if (showHitTintThisFrame) {
     hitTintFramesRemaining.current -= 1;
   }
-  // Get sprite render info (handles animated spritesheets and recoloring; uses hit-tinted sprite when showHitTintThisFrame)
-  const spriteRenderInfo = getSpriteRenderInfo(displaySpriteSrc, showHitTintThisFrame);
+
+  // Charge flash: white sprite-level tint that pulses as charge builds
+  // Brief white flash (~120ms) followed by a longer gap. Gap shrinks as charge increases.
+  // Uses wall-clock time (performance.now) so flash speed is independent of sprite animation framerate.
+  // Both players see the flash (not just local player)
+  const isCharging = displayPenguin.isChargingAttack;
+  const chargePower = penguin.chargeAttackPower ?? 0;
+  let showChargeFlashThisFrame = false;
+  
+  const FLASH_DURATION_MS = 120; // How long each white flash stays on (brief pulse)
+  
+  if (isCharging && chargePower > 0) {
+    const now = performance.now();
+    
+    // Initialize cycle start on first frame of charging
+    if (chargeFlashCycleStart.current === 0) {
+      chargeFlashCycleStart.current = now;
+    }
+    
+    // Total cycle = flash ON duration + gap. Gap shrinks as charge power increases.
+    // Low charge (0-33%): ~1800ms cycle (long gap), Medium (33-66%): ~1000ms, High (66-100%): ~600ms, Full: ~350ms
+    let totalCycleMs;
+    if (chargePower >= 95) {
+      totalCycleMs = 350;
+    } else if (chargePower >= 66) {
+      totalCycleMs = 600;
+    } else if (chargePower >= 33) {
+      totalCycleMs = 1000;
+    } else {
+      totalCycleMs = 1800;
+    }
+    
+    // How far into the current cycle are we (wall-clock based)
+    const elapsed = now - chargeFlashCycleStart.current;
+    if (elapsed >= totalCycleMs) {
+      // Start a new cycle
+      chargeFlashCycleStart.current = now;
+    }
+    const cyclePosition = (now - chargeFlashCycleStart.current);
+    // Flash is ON only during the first FLASH_DURATION_MS of each cycle
+    showChargeFlashThisFrame = cyclePosition < FLASH_DURATION_MS;
+  } else {
+    // Reset flash state when not charging
+    chargeFlashCycleStart.current = 0;
+  }
+
+  // Get sprite render info (handles animated spritesheets and recoloring; uses hit-tinted sprite when showHitTintThisFrame, charge-tinted when flashing)
+  const spriteRenderInfo = getSpriteRenderInfo(displaySpriteSrc, showHitTintThisFrame, showChargeFlashThisFrame);
   const { src: recoloredSpriteSrc, isAnimated: isAnimatedSprite, config: spriteConfig } = spriteRenderInfo;
+  
+  // Stable key for animated sprites: use the base (non-charge-flash) sprite so toggling
+  // charge flash on/off doesn't remount the component and restart CSS animations.
+  // Hit tint changes DO restart (different animation state), but charge flash should NOT.
+  const baseSpriteSrc = showChargeFlashThisFrame
+    ? getSpriteRenderInfo(displaySpriteSrc, showHitTintThisFrame, false).src
+    : recoloredSpriteSrc;
   
   // Update animation state (will start/stop intervals as needed)
   updateSpriteAnimation(displaySpriteSrc);
@@ -4273,16 +4308,7 @@ const GameFighter = ({
         countdown > 0 && (
           <YouLabel x={displayPosition.x} y={displayPosition.y} />
         )}
-      <PowerMeter
-        isCharging={penguin.isChargingAttack ?? false}
-        chargePower={penguin.chargeAttackPower ?? 0}
-        x={displayPosition.x}
-        y={displayPosition.y}
-        facing={penguin.facing ?? -1}
-        playerId={penguin.id}
-        localId={localId}
-        activePowerUp={penguin.activePowerUp}
-      />
+      {/* PowerMeter removed - replaced by sprite-level white charge flash */}
 
       <SaltBasket
         src={
@@ -4344,7 +4370,7 @@ const GameFighter = ({
           $isRawParryStun={penguin.isRawParryStun}
         >
           <AnimatedFighterImage
-            key={recoloredSpriteSrc} // Force animation restart when sprite changes
+            key={baseSpriteSrc} // Force animation restart when base sprite changes (but NOT for charge flash toggles)
             src={recoloredSpriteSrc}
             alt="fighter"
             $frameCount={spriteConfig?.frameCount || 1}

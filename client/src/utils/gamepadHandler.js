@@ -111,12 +111,13 @@ class GamepadHandler {
     // Try all common button combinations to ensure compatibility
     newKeyState[" "] = this.getButtonPressed(gamepad, [0, 1, 7]) || false; // Attack - A button (multiple indices)
     newKeyState.shift = this.getButtonPressed(gamepad, [1, 0, 6]) || false; // Dodge - B button
-    newKeyState.e = this.getButtonPressed(gamepad, [2, 3, 5]) || false; // Grab - X button
+    newKeyState.mouse2 = this.getButtonPressed(gamepad, [2, 3, 5]) || false; // Grab - X button (mouse2 = grab)
     newKeyState.w = this.getButtonPressed(gamepad, [3, 2, 4]) || false; // Throw - Y button
 
     // Shoulder buttons - try multiple combinations
-    newKeyState.mouse1 = this.getButtonPressed(gamepad, [4, 6, 8, 10]) || false; // L1/L2
-    newKeyState.mouse2 = this.getButtonPressed(gamepad, [5, 7, 9, 11]) || false; // R1/R2
+    newKeyState.mouse1 = this.getButtonPressed(gamepad, [4, 6, 8, 10]) || false; // L1/L2 - Slap (tap) / Charge (hold)
+    // R1/R2 also mapped to grab (mouse2) for shoulder button grab option
+    if (this.getButtonPressed(gamepad, [5, 7, 9, 11])) newKeyState.mouse2 = true; // R1/R2 - Grab
 
     // D-pad for precise movement (works the same on both)
     if (gamepad.buttons[12]?.pressed) newKeyState[" "] = true; // D-pad up -> raw parry

@@ -328,7 +328,7 @@ const SLAP_HITBOX_DISTANCE_VALUE = Math.round(155 * 1.3); // 202 (scaled +30%)
 const SLAP_PARRY_WINDOW = 200; // Updated to 200ms window for parry to account for longer slap animation
 const SLAP_PARRY_KNOCKBACK_VELOCITY = 1.5; // Reduced knockback for parried attacks
 const THROW_RANGE = Math.round(166 * 1.3); // 216 (scaled +30%)
-const GRAB_RANGE = Math.round(152 * 1.3); // ~198px - generous range for instant grab (no lunge to close gap)
+const GRAB_RANGE = Math.round(172 * 1.3); // ~224px - command grab range (no lunge to close gap)
 const GRAB_PUSH_SPEED = 0.3; // Increased from 0.2 for more substantial movement
 const GRAB_PUSH_DURATION = 650;
 
@@ -554,9 +554,11 @@ const GRAB_PUSH_STAMINA_DRAIN_INTERVAL = 35; // Drain 1 stamina per 35ms on push
 const GRAB_PUSH_SEPARATION_OPPONENT_VEL = 1.2; // Velocity given to opponent when push ends (ice physics handle decel)
 const GRAB_PUSH_SEPARATION_GRABBER_VEL = 0.4;  // Velocity given to grabber when push ends
 const GRAB_PUSH_SEPARATION_INPUT_LOCK = 150;    // Brief input lock after push separation (ms)
-const PULL_REVERSAL_DISTANCE = 180; // Pixels opponent is sent past grabber after pull reversal
-const PULL_REVERSAL_TWEEN_DURATION = 400; // ms for the pull knockback tween (longer = more visible travel)
-const PULL_REVERSAL_INPUT_LOCK = 300; // ms input lock after pull reversal completes
+const PULL_REVERSAL_DISTANCE = 420; // Pixels opponent is sent past grabber after pull reversal (~half map)
+const PULL_REVERSAL_TWEEN_DURATION = 650; // ms for the pull knockback tween (fast but visible travel)
+const PULL_REVERSAL_PULLED_LOCK = 700; // ms input lock for pulled player (exceeds tween, cleared early when tween ends)
+const PULL_REVERSAL_PULLER_LOCK = 500; // ms input lock for puller (ends ~150ms before opponent recovers, or on boundary hit)
+const PULL_BOUNDARY_MARGIN = 15; // px - pulled player stops this far inside the map boundary
 
 // ============================================
 // HITSTOP TUNING - Smash Bros style
@@ -882,6 +884,10 @@ function executeGrabWhiff(player) {
   player.isGrabWhiffRecovery = true;
   player.isWhiffingGrab = true; // Legacy flag for existing client checks
 
+  // Clear attempt timestamps so stale values can't trigger throw techs or grab priority
+  player.lastGrabAttemptTime = 0;
+  player.lastThrowAttemptTime = 0;
+
   // Slight forward stumble (in facing direction)
   const stumbleDir = player.facing === 1 ? -1 : 1; // facing 1 = left, so stumble leftward
   player.movementVelocity = stumbleDir * GRAB_WHIFF_STUMBLE_VEL;
@@ -998,7 +1004,7 @@ function activateBufferedInputAfterGrab(player, rooms) {
   }
 
   // Priority 2: Dodge (shift) - evasive option
-  if (player.keys.shift && !player.keys.e && player.stamina >= DODGE_STAMINA_COST) {
+  if (player.keys.shift && !player.keys.mouse2 && player.stamina >= DODGE_STAMINA_COST) {
     player.isRawParrySuccess = false;
     player.isPerfectRawParrySuccess = false;
     player.movementVelocity = 0;
@@ -1056,22 +1062,25 @@ function activateBufferedInputAfterGrab(player, rooms) {
     return;
   }
 
-  // Priority 3: Slap attack (mouse1) - fast offensive option
+  // Priority 3: Mouse1 held — start fresh hold timer so normal slap/charge logic applies
+  // (charge after 200ms hold, slap only on quick tap release)
+  // Do NOT auto-fire slap — holding mouse1 should lead to charging, not an instant slap
   if (player.keys.mouse1) {
-    executeSlapAttack(player, rooms);
+    player.mouse1PressTime = Date.now();
     return;
   }
 
-  // Priority 4: Grab (E key) - uses buffer flag since grab initiation has complex
+  // Priority 4: Grab (mouse2) - uses buffer flag since grab initiation has complex
   // nested timeouts; the input handler will process it on the next cycle
-  if (player.keys.e && !player.grabCooldown) {
+  if (player.keys.mouse2 && !player.grabCooldown) {
     player.postGrabInputBuffer = true;
     return;
   }
 
-  // Priority 5: Charge attack (mouse2) - slower offensive option
-  if (player.keys.mouse2) {
-    startCharging(player);
+  // Priority 5: Charge attack (mouse1 held) - slower offensive option
+  // Mouse1 hold-to-charge will be handled by the game loop threshold check
+  if (player.keys.mouse1) {
+    player.mouse1PressTime = player.mouse1PressTime || Date.now();
     return;
   }
 }
@@ -1144,6 +1153,7 @@ function createCPUPlayer(uniqueId) {
     isBeingGrabPushed: false,
     isAttemptingPull: false,
     isBeingPullReversaled: false,
+    pullReversalPullerId: null,
     isGrabSeparating: false,
     isGrabBellyFlopping: false,
     isBeingGrabBellyFlopped: false,
@@ -1223,8 +1233,9 @@ function createCPUPlayer(uniqueId) {
     bufferedAction: null,
     bufferExpiryTime: 0,
     wantsToRestartCharge: false,
-    mouse2HeldDuringAttack: false,
-    mouse2BufferedBeforeStart: false, // Buffer for mouse2 held before round start
+    mouse1HeldDuringAttack: false,
+    mouse1BufferedBeforeStart: false, // Buffer for mouse1 held before round start
+    mouse1PressTime: 0, // Track when mouse1 was pressed for slap-vs-charge threshold
     knockbackImmune: false,
     knockbackImmuneEndTime: 0,
     activePowerUp: null,
@@ -1239,6 +1250,8 @@ function createCPUPlayer(uniqueId) {
     hasPendingSlapAttack: false,
     mouse1JustPressed: false,
     mouse1JustReleased: false,
+    mouse2JustPressed: false,
+    mouse2JustReleased: false,
     shiftJustPressed: false,
     eJustPressed: false,
     wJustPressed: false,
@@ -1541,6 +1554,7 @@ function resetRoomAndPlayers(room) {
     player.isBeingGrabPushed = false;
     player.isAttemptingPull = false;
     player.isBeingPullReversaled = false;
+    player.pullReversalPullerId = null;
     player.isGrabSeparating = false;
     player.isGrabBellyFlopping = false;
     player.isBeingGrabBellyFlopped = false;
@@ -1655,6 +1669,12 @@ io.on("connection", (socket) => {
       return false;
     }
 
+    // Players in whiff recovery cannot tech — they are fully vulnerable
+    if (player.isWhiffingGrab || player.isGrabWhiffRecovery ||
+        opponent.isWhiffingGrab || opponent.isGrabWhiffRecovery) {
+      return false;
+    }
+
     // Only check for throw tech if both players have recent throw attempt times
     if (!player.lastThrowAttemptTime || !opponent.lastThrowAttemptTime) {
       return false;
@@ -1682,6 +1702,12 @@ io.on("connection", (socket) => {
 
   function checkForGrabPriority(player, opponent) {
     const currentTime = Date.now();
+
+    // Players in whiff recovery have no grab priority — they are fully vulnerable
+    if (player.isWhiffingGrab || player.isGrabWhiffRecovery ||
+        opponent.isWhiffingGrab || opponent.isGrabWhiffRecovery) {
+      return false;
+    }
 
     // Clean up old attempts that are outside the window
     if (currentTime - player.lastThrowAttemptTime > THROW_TECH_WINDOW) {
@@ -2137,6 +2163,10 @@ io.on("connection", (socket) => {
             io.in(room.id).emit("game_start", true);
             player1.isReady = false;
             player2.isReady = false;
+            // Reset mouse1PressTime so pre-game holds don't instantly trigger charging
+            // Players must hold mouse1 for a fresh 200ms from HAKKIYOI to start charging
+            player1.mouse1PressTime = 0;
+            player2.mouse1PressTime = 0;
             room.hakkiyoiCount = 1;
             room.readyStartTime = null;
             room.teWoTsuiteSent = false;
@@ -2188,17 +2218,19 @@ io.on("connection", (socket) => {
               player.recoveryDirection = null;
 
               // Check if we should restart charging immediately after recovery ends
-              if (player.mouse2HeldDuringAttack && player.keys.mouse2) {
-                // Restart charging immediately since player was holding mouse2 during attack
+              // IMPORTANT: Always enforce 200ms threshold to prevent quick taps from triggering charge
+              if (player.mouse1HeldDuringAttack && player.keys.mouse1 && player.mouse1PressTime > 0 && (Date.now() - player.mouse1PressTime) >= 200) {
+                // Restart charging immediately since player was holding mouse1 during attack
                 player.isChargingAttack = true;
                 player.chargeStartTime = Date.now();
                 player.chargeAttackPower = 1;
                 player.attackType = "charged";
-                player.mouse2HeldDuringAttack = false; // Clear the flag
+                player.mouse1HeldDuringAttack = false; // Clear the flag
               }
               // Otherwise check normal conditions for restart
               else if (
-                player.keys.mouse2 &&
+                player.keys.mouse1 &&
+                player.mouse1PressTime > 0 && (Date.now() - player.mouse1PressTime) >= 200 &&
                 !player.isAttacking &&
                 !player.isJumping &&
                 !player.isDodging &&
@@ -2216,6 +2248,13 @@ io.on("connection", (socket) => {
                 player.chargeStartTime = Date.now();
                 player.chargeAttackPower = 1;
                 player.attackType = "charged";
+              }
+
+              // Clean up stale chargedAttackHit flag after recovery ends
+              // This flag is set by processHit and never cleared by safelyEndChargedAttack
+              // (since safelyEndChargedAttack doesn't run for connected attacks)
+              if (player.chargedAttackHit) {
+                player.chargedAttackHit = false;
               }
             }
           }
@@ -2702,21 +2741,45 @@ io.on("connection", (socket) => {
           const eased = 1 - Math.pow(1 - t, 3);
           const newX = startX + (targetX - startX) * eased;
 
-          // Clamp to boundaries
-          const clampedX = Math.max(
-            MAP_LEFT_BOUNDARY,
-            Math.min(newX, MAP_RIGHT_BOUNDARY)
-          );
+          // For pull reversal, clamp to a margin inside boundaries so they stop before the edge
+          const isPullTween = player.isBeingPullReversaled;
+          const leftBound = isPullTween ? MAP_LEFT_BOUNDARY + PULL_BOUNDARY_MARGIN : MAP_LEFT_BOUNDARY;
+          const rightBound = isPullTween ? MAP_RIGHT_BOUNDARY - PULL_BOUNDARY_MARGIN : MAP_RIGHT_BOUNDARY;
+          const clampedX = Math.max(leftBound, Math.min(newX, rightBound));
           player.x = clampedX;
-          // Lock to ground and clear velocities during tween
-          player.y = GROUND_LEVEL;
+          // During pull reversal, simulate decaying hops (server-driven for reliability)
+          // Hops start after a delay so the player slides a bit before bouncing
+          if (isPullTween && t < 1) {
+            const HOP_DELAY = 0.18; // Don't start hopping until 18% into the tween (~120ms)
+            if (t > HOP_DELAY) {
+              const HOP_COUNT = 4; // Fewer hops over the remaining time = slower per hop
+              const HOP_HEIGHTS = [26, 17, 10, 4]; // Decaying hop heights in pixels
+              const hopT = (t - HOP_DELAY) / (1 - HOP_DELAY); // 0-1 within the hop window
+              const hopProgress = hopT * HOP_COUNT;
+              const hopIndex = Math.min(Math.floor(hopProgress), HOP_COUNT - 1);
+              const hopPhase = hopProgress - Math.floor(hopProgress); // 0-1 within each hop
+              const maxHeight = HOP_HEIGHTS[hopIndex] || 0;
+              // Sine curve for each hop arc (0 → peak → 0)
+              const hopY = maxHeight * Math.sin(hopPhase * Math.PI);
+              player.y = GROUND_LEVEL + hopY;
+            } else {
+              player.y = GROUND_LEVEL; // Still on ground during initial slide
+            }
+          } else {
+            player.y = GROUND_LEVEL;
+          }
           player.movementVelocity = 0;
           player.knockbackVelocity.x = 0;
           player.knockbackVelocity.y = 0;
           player.isStrafing = false;
 
-          if (t >= 1) {
-            // End tween
+          // If pulled player hits boundary margin during pull, end tween early
+          const hitBoundary = isPullTween && t > 0.05 &&
+            Math.abs(newX - clampedX) > 1;
+
+          if (t >= 1 || hitBoundary) {
+            // End tween — ensure player is back on the ground
+            player.y = GROUND_LEVEL;
             player.isGrabBreakSeparating = false;
             player.grabBreakSepStartTime = 0;
             player.grabBreakSepDuration = 0;
@@ -2732,7 +2795,20 @@ io.on("connection", (socket) => {
             // Auto-clear associated visual states when tween ends
             // These are mutually exclusive states that use the same tween mechanism
             if (player.isGrabSeparating) player.isGrabSeparating = false;
-            if (player.isBeingPullReversaled) player.isBeingPullReversaled = false;
+            if (player.isBeingPullReversaled) {
+              player.isBeingPullReversaled = false;
+              // Release both players' input locks when pull tween ends
+              player.inputLockUntil = 0;
+              // Find and release the puller too
+              if (player.pullReversalPullerId) {
+                const allPlayers = room.players || [];
+                const puller = allPlayers.find(p => p.id === player.pullReversalPullerId);
+                if (puller) {
+                  puller.inputLockUntil = 0;
+                }
+                player.pullReversalPullerId = null;
+              }
+            }
             if (player.isGrabBreaking) player.isGrabBreaking = false;
             if (player.isGrabBreakCountered) player.isGrabBreakCountered = false;
           }
@@ -2913,7 +2989,16 @@ io.on("connection", (socket) => {
 
             if (opponent && isOpponentCloseEnoughForGrab(player, opponent) && isOpponentInFrontOfGrabber(player, opponent)) {
               // === TECH CHECK: opponent also in grab startup → both tech ===
-              if (opponent.isGrabStartup || opponent.isGrabTeching) {
+              // Whiffing players CANNOT tech — they are fully vulnerable.
+              // Also check if opponent's startup has already expired AND their grab
+              // would NOT have connected (out of range or facing wrong way).
+              // This prevents tick processing order from causing false techs.
+              const opponentWouldWhiff = opponent.isGrabStartup &&
+                (Date.now() - opponent.grabStartupStartTime) >= (opponent.grabStartupDuration || GRAB_STARTUP_DURATION_MS) &&
+                !(isOpponentCloseEnoughForGrab(opponent, player) && isOpponentInFrontOfGrabber(opponent, player));
+              if ((opponent.isGrabStartup || opponent.isGrabTeching) &&
+                  !opponent.isWhiffingGrab && !opponent.isGrabWhiffRecovery &&
+                  !opponentWouldWhiff) {
                 executeGrabTech(player, opponent, room, io);
                 return;
               }
@@ -4036,14 +4121,14 @@ io.on("connection", (socket) => {
             !player.isGrabBreakSeparating && // Block during grab break separation
             !player.isThrowingSnowball &&
             !player.isSpawningPumoArmy &&
-            !player.keys.mouse1 && // Add condition to prevent strafing while slapping
             !player.hasPendingSlapAttack && // Block strafing when buffered slap attack is pending
             !(
               player.slapStrafeCooldown &&
               Date.now() < player.slapStrafeCooldownEndTime
             ) && // Block strafing during post-slap cooldown
             !player.isAtTheRopes && // Block strafing while at the ropes
-            !player.isPowerSliding // Power sliding uses its own physics - no strafing
+            !player.isPowerSliding && // Power sliding uses its own physics - no strafing
+            !(player.inputLockUntil && Date.now() < player.inputLockUntil) // Block during input freeze (e.g. pull reversal)
           ) {
             // ============================================
             // ICE PHYSICS: Moving RIGHT (D key)
@@ -4118,14 +4203,14 @@ io.on("connection", (socket) => {
             !player.isGrabBreakSeparating &&
             !player.isThrowingSnowball &&
             !player.isSpawningPumoArmy &&
-            !player.keys.mouse1 &&
             !player.hasPendingSlapAttack &&
             !(
               player.slapStrafeCooldown &&
               Date.now() < player.slapStrafeCooldownEndTime
             ) &&
             !player.isAtTheRopes &&
-            !player.isPowerSliding // Power sliding uses its own physics - no strafing
+            !player.isPowerSliding && // Power sliding uses its own physics - no strafing
+            !(player.inputLockUntil && Date.now() < player.inputLockUntil) // Block during input freeze (e.g. pull reversal)
           ) {
             // ============================================
             // ICE PHYSICS: Moving LEFT (A key)
@@ -4317,8 +4402,7 @@ io.on("connection", (socket) => {
             (!player.keys.a &&
               !player.keys.d &&
               (!player.canMoveToReady || room.gameStart)) ||
-            player.keys.mouse1 || // Add condition to prevent strafing while slapping
-            player.isAttacking || // Clear strafing during any attack
+            player.isAttacking || // Clear strafing during any attack (slap or charged)
             player.hasPendingSlapAttack || // Clear strafing when buffered slap attack is pending
             (player.slapStrafeCooldown &&
               Date.now() < player.slapStrafeCooldownEndTime) // Clear strafing during post-slap cooldown
@@ -4358,8 +4442,7 @@ io.on("connection", (socket) => {
             player.isThrowTeching ||
             player.isRecovering ||
             (player.keys.a && player.keys.d) ||
-            player.keys.mouse1 || // Add condition to prevent strafing while slapping
-            player.isAttacking || // Clear strafing during any attack
+            player.isAttacking || // Clear strafing during any attack (slap or charged)
             player.hasPendingSlapAttack || // Clear strafing when buffered slap attack is pending
             (player.slapStrafeCooldown &&
               Date.now() < player.slapStrafeCooldownEndTime) || // Clear strafing during post-slap cooldown
@@ -4531,8 +4614,10 @@ io.on("connection", (socket) => {
             player.grabBreakSpaceConsumed = false;
 
             // Check if we should restart charging after raw parry ends
+            // IMPORTANT: Always enforce 200ms threshold to prevent quick taps from triggering charge
             if (
-              player.keys.mouse2 &&
+              player.keys.mouse1 &&
+              player.mouse1PressTime > 0 && (Date.now() - player.mouse1PressTime) >= 200 &&
               !player.isAttacking &&
               !player.isJumping &&
               !player.isDodging &&
@@ -4770,11 +4855,12 @@ io.on("connection", (socket) => {
 
                       // Opponent did NOT counter — execute pull reversal!
                       const pullDirection = pullOpponent.x < player.x ? 1 : -1;
-                      let targetX = player.x + pullDirection * PULL_REVERSAL_DISTANCE;
-                      targetX = Math.max(MAP_LEFT_BOUNDARY, Math.min(targetX, MAP_RIGHT_BOUNDARY));
+                      // Don't clamp targetX — let it overshoot so the tween handler detects boundary
+                      const targetX = player.x + pullDirection * PULL_REVERSAL_DISTANCE;
 
                       cleanupGrabStates(player, pullOpponent);
                       pullOpponent.isBeingPullReversaled = true;
+                      pullOpponent.pullReversalPullerId = player.id; // Track who pulled us
 
                       pullOpponent.isGrabBreakSeparating = true;
                       pullOpponent.grabBreakSepStartTime = Date.now();
@@ -4787,9 +4873,13 @@ io.on("connection", (socket) => {
                       pullOpponent.isStrafing = false;
                       player.isStrafing = false;
 
-                      const inputLockUntil = Date.now() + PULL_REVERSAL_INPUT_LOCK;
-                      pullOpponent.inputLockUntil = Math.max(pullOpponent.inputLockUntil || 0, inputLockUntil);
-                      player.inputLockUntil = Math.max(player.inputLockUntil || 0, inputLockUntil);
+                      // Lock pulled player for full tween (cleared early when tween ends or boundary hit)
+                      const pulledLockUntil = Date.now() + PULL_REVERSAL_PULLED_LOCK;
+                      pullOpponent.inputLockUntil = Math.max(pullOpponent.inputLockUntil || 0, pulledLockUntil);
+                      // Lock puller for shorter duration — freed a little before opponent recovers
+                      // (also cleared early on boundary hit via tween end handler)
+                      const pullerLockUntil = Date.now() + PULL_REVERSAL_PULLER_LOCK;
+                      player.inputLockUntil = Math.max(player.inputLockUntil || 0, pullerLockUntil);
 
                       correctFacingAfterGrabOrThrow(player, pullOpponent);
 
@@ -5033,7 +5123,7 @@ io.on("connection", (socket) => {
           const grabDuration = Date.now() - player.grabStartTime;
           if (grabDuration >= 500) {
             player.isGrabbing = false;
-            // NOTE: Charging restart is handled by continuous mouse2 check below
+            // NOTE: Charging restart is handled by continuous mouse1 check below
           }
         }
 
@@ -5061,20 +5151,25 @@ io.on("connection", (socket) => {
         }
 
         // INPUT BUFFERING: Apply buffered key states when game starts
-        // This allows players to hold buttons before hakkiyoi and have them register immediately
-        if (room.gameStart && player.mouse2BufferedBeforeStart) {
-          player.keys.mouse2 = true;
-          player.mouse2BufferedBeforeStart = false; // Clear the buffer after applying
+        // This allows players to hold mouse1 before hakkiyoi — but uses a fresh timestamp
+        // so the 200ms charge threshold is measured from game start, not pre-game
+        if (room.gameStart && player.mouse1BufferedBeforeStart) {
+          player.keys.mouse1 = true;
+          if (!player.mouse1PressTime) {
+            player.mouse1PressTime = Date.now(); // Fresh timestamp from game start
+          }
+          player.mouse1BufferedBeforeStart = false; // Clear the buffer after applying
         }
 
-        // CONTINUOUS MOUSE2 CHECK: Auto-start charging when mouse2 is held and player can charge
-        // This ensures charging resumes immediately after any interruption (hit, grab, etc.)
-        // without requiring the player to release and re-press mouse2
+        // CONTINUOUS MOUSE1 CHECK: Auto-start charging when mouse1 is held past threshold
         // canPlayerCharge() checks: !isChargingAttack AND isPlayerInActiveState() which includes
         // !isAttacking, !isRecovering, !isHit, !isGrabbing, !isDodging, etc.
         if (
           room.gameStart && // Only during active gameplay
-          player.keys.mouse2 && // Mouse2 is being held
+          player.keys.mouse1 && // Mouse1 is being held
+          player.mouse1PressTime > 0 && // Press time is tracked
+          (Date.now() - player.mouse1PressTime) >= 200 && // Past slap threshold (200ms)
+          !(player.inputLockUntil && Date.now() < player.inputLockUntil) && // Not during input freeze
           canPlayerCharge(player) // All blocking states are cleared (includes !isChargingAttack)
         ) {
           startCharging(player);
@@ -5391,6 +5486,14 @@ io.on("connection", (socket) => {
         player.chargeStartTime = 0;
         player.chargeAttackPower = 0;
         
+        // Track if mouse1 is held — enables charge resume after recovery without re-press
+        if (player.keys.mouse1) {
+          player.mouse1HeldDuringAttack = true;
+          if (!player.mouse1PressTime) {
+            player.mouse1PressTime = Date.now();
+          }
+        }
+        
         // Set recovery state for the attacker
         player.isRecovering = true;
         player.recoveryStartTime = Date.now();
@@ -5434,6 +5537,15 @@ io.on("connection", (socket) => {
       player.isChargingAttack = false;
       player.chargeStartTime = 0;
       player.chargeAttackPower = 0;
+
+      // Track if mouse1 is held — enables charge resume after recovery without re-press
+      if (player.keys.mouse1) {
+        player.mouse1HeldDuringAttack = true;
+        // Ensure press time is tracked (may already be set from re-press during animation)
+        if (!player.mouse1PressTime) {
+          player.mouse1PressTime = Date.now();
+        }
+      }
 
       // Set recovery state for successful hits
       player.isRecovering = true;
@@ -5547,8 +5659,10 @@ io.on("connection", (socket) => {
           player.isAlreadyHit = false; // Also clear to ensure player can be hit again
 
           // After knockback ends, check if we should restart charging
+          // IMPORTANT: Always enforce 200ms threshold to prevent quick taps from triggering charge
           if (
-            player.keys.mouse2 &&
+            player.keys.mouse1 &&
+            player.mouse1PressTime > 0 && (Date.now() - player.mouse1PressTime) >= 200 &&
             !player.isAttacking &&
             !player.isJumping &&
             !player.isDodging &&
@@ -5623,8 +5737,10 @@ io.on("connection", (socket) => {
             player.perfectParryStunBaseTimeout = null;
 
             // After stun ends, check if we should restart charging
+            // IMPORTANT: Always enforce 200ms threshold to prevent quick taps from triggering charge
             if (
-              player.keys.mouse2 &&
+              player.keys.mouse1 &&
+              player.mouse1PressTime > 0 && (Date.now() - player.mouse1PressTime) >= 200 &&
               !player.isAttacking &&
               !player.isJumping &&
               !player.isDodging &&
@@ -5998,7 +6114,7 @@ io.on("connection", (socket) => {
       }
 
       // Encourage clearer turn-taking: set wantsToRestartCharge only on intentional hold
-      if (player.keys && player.keys.mouse2) {
+      if (player.keys && player.keys.mouse1) {
         player.wantsToRestartCharge = true;
       }
     }
@@ -6149,6 +6265,7 @@ io.on("connection", (socket) => {
         isBeingGrabPushed: false,
         isAttemptingPull: false,
         isBeingPullReversaled: false,
+        pullReversalPullerId: null,
         isGrabSeparating: false,
         isGrabBellyFlopping: false,
         isBeingGrabBellyFlopped: false,
@@ -6225,8 +6342,9 @@ io.on("connection", (socket) => {
         bufferedAction: null, // Add buffer for pending actions
         bufferExpiryTime: 0, // Add expiry time for buffered actions
         wantsToRestartCharge: false, // Add flag for charge restart detection
-        mouse2HeldDuringAttack: false, // Add flag for simpler charge restart detection
-        mouse2BufferedBeforeStart: false, // Buffer for mouse2 held before round start
+        mouse1HeldDuringAttack: false, // Add flag for simpler charge restart detection
+        mouse1BufferedBeforeStart: false, // Buffer for mouse1 held before round start
+        mouse1PressTime: 0, // Track when mouse1 was pressed for slap-vs-charge threshold
         knockbackImmune: false, // Add knockback immunity flag
         knockbackImmuneEndTime: 0, // Add knockback immunity timer
         // Add missing power-up initialization
@@ -6242,6 +6360,8 @@ io.on("connection", (socket) => {
         hasPendingSlapAttack: false, // Add flag for buffering one additional slap attack
         mouse1JustPressed: false, // Track if mouse1 was just pressed this frame
         mouse1JustReleased: false, // Track if mouse1 was just released this frame
+        mouse2JustPressed: false, // Track if mouse2 was just pressed this frame (grab)
+        mouse2JustReleased: false, // Track if mouse2 was just released this frame
         shiftJustPressed: false, // Track if shift was just pressed this frame
         eJustPressed: false, // Track if E was just pressed this frame
         wJustPressed: false, // Track if W was just pressed this frame
@@ -6326,6 +6446,7 @@ io.on("connection", (socket) => {
         isBeingGrabPushed: false,
         isAttemptingPull: false,
         isBeingPullReversaled: false,
+        pullReversalPullerId: null,
         isGrabSeparating: false,
         isGrabBellyFlopping: false,
         isBeingGrabBellyFlopped: false,
@@ -6402,8 +6523,9 @@ io.on("connection", (socket) => {
         bufferedAction: null, // Add buffer for pending actions
         bufferExpiryTime: 0, // Add expiry time for buffered actions
         wantsToRestartCharge: false, // Add flag for charge restart detection
-        mouse2HeldDuringAttack: false, // Add flag for simpler charge restart detection
-        mouse2BufferedBeforeStart: false, // Buffer for mouse2 held before round start
+        mouse1HeldDuringAttack: false, // Add flag for simpler charge restart detection
+        mouse1BufferedBeforeStart: false, // Buffer for mouse1 held before round start
+        mouse1PressTime: 0, // Track when mouse1 was pressed for slap-vs-charge threshold
         knockbackImmune: false, // Add knockback immunity flag
         knockbackImmuneEndTime: 0, // Add knockback immunity timer
         // Add missing power-up initialization
@@ -6419,6 +6541,8 @@ io.on("connection", (socket) => {
         hasPendingSlapAttack: false, // Add flag for buffering one additional slap attack
         mouse1JustPressed: false, // Track if mouse1 was just pressed this frame
         mouse1JustReleased: false, // Track if mouse1 was just released this frame
+        mouse2JustPressed: false, // Track if mouse2 was just pressed this frame (grab)
+        mouse2JustReleased: false, // Track if mouse2 was just released this frame
         shiftJustPressed: false, // Track if shift was just pressed this frame
         eJustPressed: false, // Track if E was just pressed this frame
         wJustPressed: false, // Track if W was just pressed this frame
@@ -6565,6 +6689,7 @@ io.on("connection", (socket) => {
       isBeingGrabPushed: false,
       isAttemptingPull: false,
       isBeingPullReversaled: false,
+      pullReversalPullerId: null,
       isGrabSeparating: false,
       isGrabBellyFlopping: false,
       isBeingGrabBellyFlopped: false,
@@ -6639,8 +6764,9 @@ io.on("connection", (socket) => {
       bufferedAction: null,
       bufferExpiryTime: 0,
       wantsToRestartCharge: false,
-      mouse2HeldDuringAttack: false,
-      mouse2BufferedBeforeStart: false, // Buffer for mouse2 held before round start
+      mouse1HeldDuringAttack: false,
+      mouse1BufferedBeforeStart: false, // Buffer for mouse1 held before round start
+      mouse1PressTime: 0, // Track when mouse1 was pressed for slap-vs-charge threshold
       knockbackImmune: false,
       knockbackImmuneEndTime: 0,
       activePowerUp: null,
@@ -6655,6 +6781,8 @@ io.on("connection", (socket) => {
       hasPendingSlapAttack: false,
       mouse1JustPressed: false,
       mouse1JustReleased: false,
+      mouse2JustPressed: false,
+      mouse2JustReleased: false,
       shiftJustPressed: false,
       eJustPressed: false,
       wJustPressed: false,
@@ -6968,11 +7096,11 @@ io.on("connection", (socket) => {
     // Block all inputs during salt throwing phase and ready positioning phase
     // This prevents inputs from power-up selection end until game start (hakkiyoi = 1)
     if (!rooms[roomIndex].gameStart || rooms[roomIndex].hakkiyoiCount === 0) {
-      // INPUT BUFFERING: Buffer mouse2 state for charged attack
-      // This allows players to hold mouse2 before round start and have charging
+      // INPUT BUFFERING: Buffer mouse1 state for charged attack
+      // This allows players to hold mouse1 before round start and have charging
       // begin immediately when the round starts, without affecting other inputs
       if (data.keys) {
-        player.mouse2BufferedBeforeStart = data.keys.mouse2 || false;
+        player.mouse1BufferedBeforeStart = data.keys.mouse1 || false;
       }
       return;
     }
@@ -6989,6 +7117,16 @@ io.on("connection", (socket) => {
         // so raw parry isn't blocked after the lock expires
         if (!data.keys[" "] && player.keys[" "] && player.grabBreakSpaceConsumed) {
           player.grabBreakSpaceConsumed = false;
+        }
+        // Track mouse1 press/release timing during lock so charging can begin
+        // immediately when the lock expires (inputs are READ, not acted on)
+        const prevMouse1 = player.keys.mouse1;
+        if (!prevMouse1 && data.keys.mouse1) {
+          // mouse1 just pressed during lock — record press time
+          player.mouse1PressTime = Date.now();
+        } else if (prevMouse1 && !data.keys.mouse1) {
+          // mouse1 released during lock — clear press time
+          player.mouse1PressTime = 0;
         }
         player.keys = data.keys;
       }
@@ -7116,8 +7254,9 @@ io.on("connection", (socket) => {
     };
 
     if (data.keys) {
-      // Track mouse1 state changes to prevent repeated slap attacks while holding
+      // Track mouse1 state changes for slap/charge dual-purpose input
       const previousMouse1State = player.keys.mouse1;
+      const previousMouse2State = player.keys.mouse2;
       const previousKeys = { ...player.keys };
       player.keys = data.keys;
 
@@ -7125,10 +7264,16 @@ io.on("connection", (socket) => {
       player.mouse1JustPressed = !previousMouse1State && data.keys.mouse1;
       player.mouse1JustReleased = previousMouse1State && !data.keys.mouse1;
       
+      // Set mouse2 press flags (mouse2 = grab now)
+      player.mouse2JustPressed = !previousMouse2State && data.keys.mouse2;
+      player.mouse2JustReleased = previousMouse2State && !data.keys.mouse2;
+      
       // Track attack intent time when mouse1 is pressed (for counter hit detection)
       // This captures the moment the player tries to attack, even before the attack executes
       if (player.mouse1JustPressed) {
         player.attackIntentTime = Date.now();
+        // Record press time for slap-vs-charge threshold detection
+        player.mouse1PressTime = Date.now();
       }
       
       // Track "just pressed" state for all action keys to prevent actions from triggering
@@ -7140,12 +7285,22 @@ io.on("connection", (socket) => {
       player.spaceJustPressed = !previousKeys[" "] && data.keys[" "];
 
       // POST-GRAB INPUT BUFFER: After a grab/throw ends, treat held keys as "just pressed"
-      // for one cycle. This enables frame-1 activation of grab (E key) which has complex
+      // for one cycle. This enables frame-1 activation of grab (mouse2) which has complex
       // initiation code with nested timeouts that must run through the normal input path.
       // Raw parry, slap, dodge, and charge are handled directly in activateBufferedInputAfterGrab().
       if (player.postGrabInputBuffer) {
-        if (data.keys.e && !player.eJustPressed) player.eJustPressed = true;
+        if (data.keys.mouse2 && !player.mouse2JustPressed) player.mouse2JustPressed = true;
         player.postGrabInputBuffer = false;
+      }
+
+      // Track mouse1 held during recovery from a connected charged attack
+      // This catches the case where player re-presses mouse1 AFTER processHit ran
+      // (e.g., mouse1 re-press event arrived after the hit was processed)
+      if (player.keys.mouse1 && player.isRecovering && player.chargedAttackHit) {
+        player.mouse1HeldDuringAttack = true;
+        if (!player.mouse1PressTime) {
+          player.mouse1PressTime = Date.now();
+        }
       }
 
       // Debug logging for F key and snowball power-up
@@ -7163,19 +7318,61 @@ io.on("connection", (socket) => {
       // ============================================
     }
 
-    // Handle clearing charge during charging phase with mouse1 - MUST BE FIRST
-    // Block during dodge - only charging should continue during dodge, no other actions
-    if (
-      player.mouse1JustPressed &&
-      player.isChargingAttack && // Only interrupt during charging phase, not execution
-      !player.isDodging // Block slap during dodge - charging can continue but no actions allowed
-    ) {
-      // Clear charge state
-      clearChargeState(player);
-
-      // Execute slap attack immediately
-      executeSlapAttack(player, rooms);
-      return; // Exit early to prevent other input processing
+    // MOUSE1 RELEASE: Slap (quick tap) or charge release (held past threshold)
+    // This MUST be processed before other actions since mouse1 release is the primary attack trigger
+    const MOUSE1_CHARGE_THRESHOLD_MS = 200; // Hold mouse1 longer than this to charge instead of slap
+    if (player.mouse1JustReleased) {
+      if (player.isChargingAttack) {
+        // Mouse1 was held past threshold and charging started — release the charged attack
+        if (
+          !player.isGrabbing &&
+          !player.isBeingGrabbed &&
+          !player.isThrowing &&
+          !player.isBeingThrown &&
+          !player.isThrowingSnowball
+        ) {
+          if (player.isDodging) {
+            // Store charge for after dodge ends
+            player.pendingChargeAttack = {
+              power: player.chargeAttackPower,
+              startTime: player.chargeStartTime,
+              type: "charged",
+            };
+            player.spacebarReleasedDuringDodge = true;
+          } else if (!shouldBlockAction()) {
+            executeChargedAttack(player, player.chargeAttackPower, rooms);
+          }
+        }
+        // Clear charging state if mouse1 released and we're not in a valid state to execute
+        if (player.isChargingAttack) {
+          player.isChargingAttack = false;
+          player.chargeStartTime = 0;
+          player.chargeAttackPower = 0;
+          player.chargingFacingDirection = null;
+          player.attackType = null;
+          player.mouse1HeldDuringAttack = false;
+        }
+      } else if (
+        player.mouse1PressTime > 0 &&
+        (Date.now() - player.mouse1PressTime) < MOUSE1_CHARGE_THRESHOLD_MS &&
+        !shouldBlockAction()
+      ) {
+        // Quick tap — execute slap attack
+        if (canPlayerSlap(player)) {
+          executeSlapAttack(player, rooms);
+        } else if (player.isAttacking && player.attackType === "slap") {
+          // Already slapping — buffer the next attack
+          const attackElapsed = Date.now() - player.attackStartTime;
+          const attackDuration = player.attackEndTime - player.attackStartTime;
+          const attackProgress = attackElapsed / attackDuration;
+          if (attackProgress >= 0.20 && !player.hasPendingSlapAttack) {
+            player.hasPendingSlapAttack = true;
+          }
+        }
+      }
+      player.mouse1PressTime = 0; // Reset press time on release
+      player.wantsToRestartCharge = false; // Clear charge restart intent on release
+      player.mouse1HeldDuringAttack = false; // Clear held-during-attack flag on release
     }
 
     // Handle clearing charge during charging phase with throw/grab/snowball - MUST BE FIRST
@@ -7183,7 +7380,7 @@ io.on("connection", (socket) => {
     // Block during dodge - only charging should continue during dodge, no other actions
     if (
       ((player.wJustPressed && player.isGrabbing && !player.isBeingGrabbed) ||
-        player.eJustPressed ||
+        player.mouse2JustPressed ||
         player.fJustPressed) &&
       player.isChargingAttack && // Only interrupt during charging phase, not execution
       !player.isDodging // Block during dodge - charging continues but no actions can interrupt
@@ -7391,7 +7588,7 @@ io.on("connection", (socket) => {
     // NOTE: canPlayerDodge allows dodging DURING charging - this is intentional game mechanic
     if (
       player.shiftJustPressed &&
-      !player.keys.e &&
+      !player.keys.mouse2 && // Don't dodge while grabbing
       !(player.keys.w && player.isGrabbing && !player.isBeingGrabbed) &&
       !player.isBeingGrabbed && // Block dodge when being grabbed
       !isInChargedAttackExecution() && // Block during charged attack execution
@@ -7537,10 +7734,12 @@ io.on("connection", (socket) => {
             player.pendingChargeAttack = null;
             player.spacebarReleasedDuringDodge = false;
           }
-          // Start charging immediately after dodge ends if mouse2 is held
+          // Start charging immediately after dodge ends if mouse1 is held past threshold
           // This ensures no delay between dodge ending and charge starting
+          // IMPORTANT: Always enforce 200ms threshold to prevent quick taps from triggering charge
           else if (
-            player.keys.mouse2 &&
+            player.keys.mouse1 &&
+            player.mouse1PressTime > 0 && (Date.now() - player.mouse1PressTime) >= 200 &&
             !player.isChargingAttack &&
             !player.isAttacking &&
             !player.isHit &&
@@ -7591,7 +7790,7 @@ io.on("connection", (socket) => {
     // Emit "No Stamina" feedback when player tries to dodge but doesn't have enough stamina
     else if (
       player.shiftJustPressed && // Use just pressed to match dodge behavior
-      !player.keys.e &&
+      !player.keys.mouse2 && // Don't dodge while grabbing
       !(player.keys.w && player.isGrabbing && !player.isBeingGrabbed) &&
       canPlayerDodge(player) && // Use canPlayerDodge for consistency with dodge handler
       player.stamina < DODGE_STAMINA_COST && // Not enough stamina
@@ -7601,25 +7800,32 @@ io.on("connection", (socket) => {
       socket.emit("stamina_blocked", { playerId: player.id, action: "dodge" });
     }
 
-    // Start charging attack - block during charged attack execution and recovery
-    // Also block if E was just pressed (grab cancels charge and should execute, not restart charge)
-    if (player.keys.mouse2 && !shouldBlockAction() && canPlayerCharge(player) && !player.eJustPressed) {
-      // Start charging
+    // MOUSE1 HOLD-TO-CHARGE: Start charging when mouse1 held past threshold
+    // Block if grab (mouse2) was just pressed (grab cancels charge)
+    if (
+      player.keys.mouse1 &&
+      !player.isChargingAttack &&
+      player.mouse1PressTime > 0 &&
+      (Date.now() - player.mouse1PressTime) >= MOUSE1_CHARGE_THRESHOLD_MS &&
+      !shouldBlockAction() &&
+      canPlayerCharge(player) &&
+      !player.mouse2JustPressed
+    ) {
       startCharging(player);
       player.spacebarReleasedDuringDodge = false;
     }
     // For continuing a charge OR starting a charge during dodge
     // Use shouldBlockAction(false, true) to allow charging during dodge
-    // Also block if E was just pressed (grab should execute, not restart/continue charge)
     else if (
-      player.keys.mouse2 &&
+      player.keys.mouse1 &&
+      player.mouse1PressTime > 0 &&
+      (Date.now() - player.mouse1PressTime) >= MOUSE1_CHARGE_THRESHOLD_MS &&
       !shouldBlockAction(false, true) && // Allow charging during dodge
       (player.isChargingAttack || player.isDodging) &&
       !player.isHit &&
       !player.isRawParryStun &&
-      !player.isRawParrying && // Block continuing charge during raw parry
-      !player.eJustPressed // Block if grab was just pressed (grab cancels charge)
-      // Removed !player.isThrowingSnowball to allow smooth charging during snowball animation
+      !player.isRawParrying &&
+      !player.mouse2JustPressed
     ) {
       // If we're dodging and not already charging, start charging
       if (player.isDodging && !player.isChargingAttack) {
@@ -7640,81 +7846,39 @@ io.on("connection", (socket) => {
         player.facing = player.chargingFacingDirection;
       }
     }
-    // Handle mouse2 held during active charged attack - check more broadly
+    // Handle mouse1 held during active charged attack - wants to restart charge after
     if (
-      player.keys.mouse2 &&
+      player.keys.mouse1 &&
       player.isAttacking &&
       player.attackType === "charged"
     ) {
-      // Set flag to indicate player wants to restart charging after attack
-      if (!player.wantsToRestartCharge) {
-      }
       player.wantsToRestartCharge = true;
+      // Also track held-during-attack for reliable resume after recovery from connected hits
+      player.mouse1HeldDuringAttack = true;
     }
 
-    // Also check if mouse2 is being held when we're about to execute a charged attack
+    // Also check if mouse1 is being held when we're about to execute a charged attack
     if (
-      player.keys.mouse2 &&
+      player.keys.mouse1 &&
       player.pendingChargeAttack &&
       !player.isAttacking
     ) {
       player.wantsToRestartCharge = true;
     }
-    // Release charged attack when mouse2 is released - block during charged attack execution and recovery
-    // Special case: during dodge, we ALLOW storing the charge for later execution (but not immediate execution)
-    else if (
-      !player.keys.mouse2 &&
-      player.isChargingAttack &&
-      !player.isGrabbing &&
-      !player.isBeingGrabbed &&
-      !player.isThrowing &&
-      !player.isBeingThrown &&
-      !player.isThrowingSnowball
-    ) {
-      // If dodging, store the charge for later execution after dodge ends
-      // This is intentionally allowed even though shouldBlockAction blocks other actions during dodge
-      if (player.isDodging) {
-        player.pendingChargeAttack = {
-          power: player.chargeAttackPower,
-          startTime: player.chargeStartTime,
-          type: "charged",
-        };
-        player.spacebarReleasedDuringDodge = true;
-      } else if (!shouldBlockAction()) {
-        // Only execute immediately if not blocked by other states (and not dodging)
-        executeChargedAttack(player, player.chargeAttackPower, rooms);
-      }
-    }
-    // Clear charging state if mouse2 is released and we're not in a valid state
-    else if (!player.keys.mouse2 && player.isChargingAttack) {
+
+    // Clear charging state if mouse1 is released and charge wasn't executed
+    // (charge release/slap is handled above in the mouse1JustReleased block)
+    if (!player.keys.mouse1 && player.isChargingAttack) {
       player.isChargingAttack = false;
       player.chargeStartTime = 0;
       player.chargeAttackPower = 0;
       player.chargingFacingDirection = null;
       player.attackType = null;
-      player.mouse2HeldDuringAttack = false; // Clear flag when mouse2 is released
+      player.mouse1HeldDuringAttack = false;
     }
 
-    // NOTE: Continuous mouse2 check for auto-starting charge is now handled in the game loop
-    // This ensures immediate charging resume after ANY interruption without requiring re-press
-
-    // Handle slap attacks with mouse1 - block during charged attack execution and recovery
-    if (player.mouse1JustPressed && !shouldBlockAction()) {
-      if (canPlayerSlap(player)) {
-        // Start a fresh slap attack
-        executeSlapAttack(player, rooms);
-      } else if (player.isAttacking && player.attackType === "slap") {
-        // Already slapping - buffer the next attack if we're far enough into the current one
-        const attackElapsed = Date.now() - player.attackStartTime;
-        const attackDuration = player.attackEndTime - player.attackStartTime;
-        const attackProgress = attackElapsed / attackDuration;
-        
-        // Allow buffering after 20% of the attack animation
-        if (attackProgress >= 0.20 && !player.hasPendingSlapAttack) {
-          player.hasPendingSlapAttack = true;
-        }
-      }
-    }
+    // NOTE: Continuous mouse1 charge check is also handled in the game loop
+    // for when player holds mouse1 without sending new fighter_action events
 
     function isOpponentCloseEnoughForGrab(player, opponent) {
       // Calculate grab range based on player size
@@ -7728,7 +7892,7 @@ io.on("connection", (socket) => {
       player.keys.w &&
       player.isGrabbing &&
       !player.isBeingGrabbed &&
-      !player.keys.e &&
+      !player.keys.mouse2 && // Don't throw while grab button held
       !shouldBlockAction() &&
       !player.isThrowingSalt &&
       !player.canMoveToReady &&
@@ -7954,16 +8118,15 @@ io.on("connection", (socket) => {
             // Calculate pull reversal destination (other side of grabber)
             // Pull direction is opposite of current opponent position relative to grabber
             const pullDirection = opponent.x < player.x ? 1 : -1; // send to other side
-            let targetX = player.x + pullDirection * PULL_REVERSAL_DISTANCE;
-
-            // Clamp to map boundaries - pull CANNOT send opponent out of bounds
-            targetX = Math.max(MAP_LEFT_BOUNDARY, Math.min(targetX, MAP_RIGHT_BOUNDARY));
+            // Don't clamp targetX — let it overshoot so the tween handler detects boundary
+            const targetX = player.x + pullDirection * PULL_REVERSAL_DISTANCE;
 
             // Release the grab (pull reversal ends the grab)
             cleanupGrabStates(player, opponent);
 
             // Set pull reversal state for animation
             opponent.isBeingPullReversaled = true;
+            opponent.pullReversalPullerId = player.id; // Track who pulled us
 
             // Move opponent to target position via tween (longer duration for visible knockback)
             opponent.isGrabBreakSeparating = true;
@@ -7978,10 +8141,13 @@ io.on("connection", (socket) => {
             opponent.isStrafing = false;
             player.isStrafing = false;
 
-            // Input lock for both players
-            const inputLockUntil = Date.now() + PULL_REVERSAL_INPUT_LOCK;
-            opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, inputLockUntil);
-            player.inputLockUntil = Math.max(player.inputLockUntil || 0, inputLockUntil);
+            // Lock pulled player for full tween (cleared early when tween ends or boundary hit)
+            const pulledLockUntil = Date.now() + PULL_REVERSAL_PULLED_LOCK;
+            opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, pulledLockUntil);
+            // Lock puller for shorter duration — freed a little before opponent recovers
+            // (also cleared early on boundary hit via tween end handler)
+            const pullerLockUntil = Date.now() + PULL_REVERSAL_PULLER_LOCK;
+            player.inputLockUntil = Math.max(player.inputLockUntil || 0, pullerLockUntil);
 
             // Correct facing after sides switch
             correctFacingAfterGrabOrThrow(player, opponent);
@@ -8011,9 +8177,9 @@ io.on("connection", (socket) => {
     }
 
     // Handle grab attacks — instant grab with no forward movement
-    // Use eJustPressed to prevent grab from triggering when key is held through other actions
+    // Use mouse2JustPressed to prevent grab from triggering when key is held through other actions
     if (
-      player.eJustPressed &&
+      player.mouse2JustPressed &&
       !shouldBlockAction() &&
       canPlayerUseAction(player) &&
       !player.grabCooldown &&

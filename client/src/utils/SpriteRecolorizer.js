@@ -18,7 +18,7 @@
 // ============================================
 // LRU CACHE with size limit
 // ============================================
-const MAX_CACHE_SIZE = 300; // Normal + hit-tinted variants per player (~122 × 2) to prevent invisible frames on animation switch
+const MAX_CACHE_SIZE = 450; // Normal + hit-tinted + charge-tinted variants per player (~122 × 3) to prevent invisible frames on animation switch
 const cacheOrder = []; // Track access order for LRU eviction
 
 const recoloredImageCache = new Map();
@@ -156,7 +156,7 @@ if (typeof window !== 'undefined') {
 /**
  * Process image data using Web Worker (off main thread)
  */
-function processInWorker(imageData, width, height, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed = false) {
+function processInWorker(imageData, width, height, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed = false, chargeTintWhite = false) {
   return new Promise((resolve, reject) => {
     if (!workerReady || !recolorWorker) {
       reject(new Error('Worker not ready'));
@@ -183,6 +183,7 @@ function processInWorker(imageData, width, height, sourceColorRange, targetHue, 
         referenceLightness,
         specialMode,
         hitTintRed,
+        chargeTintWhite,
       }
     }, [buffer]);
   });
@@ -398,13 +399,14 @@ export const getHueSatFromHex = getHslFromHex;
  * @param {string} imageSrc - Source image URL
  * @param {Object} sourceColorRange - HSL color range to replace (e.g., BLUE_COLOR_RANGES)
  * @param {string} targetColorHex - Target color in hex format (e.g., "#FF69B4" for pink)
- * @param {Object} options - Optional: { hitTintRed: true } to tint non-mawashi/headband pixels red (for isHit state)
+ * @param {Object} options - Optional: { hitTintRed: true } to tint non-mawashi/headband pixels red (for isHit state), { chargeTintWhite: true } to tint all pixels white (for charge flash)
  * @returns {Promise<string>} - Data URL of the recolored image
  */
 export async function recolorImage(imageSrc, sourceColorRange, targetColorHex, options = {}) {
   const hitTintRed = !!options.hitTintRed;
-  // Generate cache key (hit variant cached separately)
-  const cacheKey = `${imageSrc}_${sourceColorRange.minHue}-${sourceColorRange.maxHue}_${targetColorHex}${hitTintRed ? '_hit' : ''}`;
+  const chargeTintWhite = !!options.chargeTintWhite;
+  // Generate cache key (hit/charge variants cached separately)
+  const cacheKey = `${imageSrc}_${sourceColorRange.minHue}-${sourceColorRange.maxHue}_${targetColorHex}${hitTintRed ? '_hit' : ''}${chargeTintWhite ? '_charge' : ''}`;
   
   // Check LRU cache first
   const cached = getFromCache(cacheKey);
@@ -471,7 +473,8 @@ export async function recolorImage(imageSrc, sourceColorRange, targetColorHex, o
               targetLight,
               referenceLightness,
               specialMode,
-              hitTintRed
+              hitTintRed,
+              chargeTintWhite
             );
             
             // Create ImageData from returned buffer
@@ -483,11 +486,11 @@ export async function recolorImage(imageSrc, sourceColorRange, targetColorHex, o
           } catch (workerError) {
             console.warn('Worker processing failed, falling back to main thread:', workerError);
             // Fall back to main thread processing
-            processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, canvas.width, canvas.height);
+            processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, canvas.width, canvas.height, chargeTintWhite);
           }
         } else {
           // No worker available, process on main thread
-          processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, canvas.width, canvas.height);
+          processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, canvas.width, canvas.height, chargeTintWhite);
         }
 
         // Put the modified data back
@@ -631,7 +634,7 @@ function getSpecialPixelColor(specialMode, x, y, width, height) {
  *   Pass 2 – recolor, using coordinates RELATIVE to the centroid so the
  *            pattern stays locked to the body during animation.
  */
-function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, width, height) {
+function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, width, height, chargeTintWhite = false) {
   const data = imageData.data;
 
   // --- Pass 1: centroid of matching pixels (only needed for special modes) ---
@@ -669,6 +672,10 @@ function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targe
   const HIT_RED_RGB = hslToRgb(0, 58, 55);
   const HIT_BLEND = 0.34;
 
+  // Charge tint: blend toward bright white for charge flash effect
+  const CHARGE_WHITE_RGB = { r: 255, g: 255, b: 255 };
+  const CHARGE_BLEND = 0.7; // 70% white / 30% original - bold flash that's clearly visible
+
   for (let i = 0; i < data.length; i += 4) {
     const r = data[i];
     const g = data[i + 1];
@@ -698,11 +705,23 @@ function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targe
       data[i] = newColor.r;
       data[i + 1] = newColor.g;
       data[i + 2] = newColor.b;
+
+      // Also tint mawashi/headband white during charge flash (everything goes white)
+      if (chargeTintWhite) {
+        data[i] = Math.round((1 - CHARGE_BLEND) * data[i] + CHARGE_BLEND * CHARGE_WHITE_RGB.r);
+        data[i + 1] = Math.round((1 - CHARGE_BLEND) * data[i + 1] + CHARGE_BLEND * CHARGE_WHITE_RGB.g);
+        data[i + 2] = Math.round((1 - CHARGE_BLEND) * data[i + 2] + CHARGE_BLEND * CHARGE_WHITE_RGB.b);
+      }
     } else if (hitTintRed) {
       // Blend original with soft red: subtle tint, and white turns same light red as other colors
       data[i] = Math.round((1 - HIT_BLEND) * r + HIT_BLEND * HIT_RED_RGB.r);
       data[i + 1] = Math.round((1 - HIT_BLEND) * g + HIT_BLEND * HIT_RED_RGB.g);
       data[i + 2] = Math.round((1 - HIT_BLEND) * b + HIT_BLEND * HIT_RED_RGB.b);
+    } else if (chargeTintWhite) {
+      // Blend original with white for charge flash effect (all non-transparent pixels)
+      data[i] = Math.round((1 - CHARGE_BLEND) * r + CHARGE_BLEND * CHARGE_WHITE_RGB.r);
+      data[i + 1] = Math.round((1 - CHARGE_BLEND) * g + CHARGE_BLEND * CHARGE_WHITE_RGB.g);
+      data[i + 2] = Math.round((1 - CHARGE_BLEND) * b + CHARGE_BLEND * CHARGE_WHITE_RGB.b);
     }
   }
   
@@ -893,7 +912,8 @@ export function clearDecodedImageCache() {
  */
 export function getCachedRecoloredImage(imageSrc, sourceColorRange, targetColorHex, options = {}) {
   const hitTintRed = !!options.hitTintRed;
-  const cacheKey = `${imageSrc}_${sourceColorRange.minHue}-${sourceColorRange.maxHue}_${targetColorHex}${hitTintRed ? '_hit' : ''}`;
+  const chargeTintWhite = !!options.chargeTintWhite;
+  const cacheKey = `${imageSrc}_${sourceColorRange.minHue}-${sourceColorRange.maxHue}_${targetColorHex}${hitTintRed ? '_hit' : ''}${chargeTintWhite ? '_charge' : ''}`;
   return getFromCache(cacheKey);
 }
 

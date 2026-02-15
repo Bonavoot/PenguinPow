@@ -13,7 +13,7 @@ const MAP_WIDTH = MAP_RIGHT_BOUNDARY - MAP_LEFT_BOUNDARY;
 const AI_CONFIG = {
   // Distance thresholds
   SLAP_RANGE: 160,         // Distance for slap attacks (close combat)
-  GRAB_RANGE: 155,         // Point-blank distance for grab attempts (just above collision separation ~144.5px)
+  GRAB_RANGE: 200,         // Distance for grab attempts (slightly under server's ~224 to avoid whiffs)
   GRAB_APPROACH_RANGE: 250, // Distance at which AI decides to walk in for a grab (intent range)
   MID_RANGE: 250,          // Medium distance
   CHARGED_ATTACK_RANGE: 350, // Minimum distance to consider charged attack
@@ -198,8 +198,8 @@ function isAtGrabRange(cpu, human) {
 function attemptGrabOrApproach(cpu, human, aiState, currentTime, distance) {
   if (isAtGrabRange(cpu, human) && canGrab(cpu)) {
     // At point-blank — execute grab immediately
-    cpu.keys.e = true;
-    aiState.eReleaseTime = currentTime + 50;
+    cpu.keys.mouse2 = true;
+    aiState.mouse2ReleaseTime = currentTime + 50;
     aiState.lastDecisionTime = currentTime;
     return 'grabbed';
   } else if (distance < AI_CONFIG.GRAB_APPROACH_RANGE && canGrab(cpu)) {
@@ -428,6 +428,10 @@ function handlePendingKeyReleases(cpu, aiState, currentTime) {
     cpu.keys.e = false;
     aiState.eReleaseTime = 0;
   }
+  if (aiState.mouse2ReleaseTime > 0 && currentTime >= aiState.mouse2ReleaseTime) {
+    cpu.keys.mouse2 = false;
+    aiState.mouse2ReleaseTime = 0;
+  }
   if (aiState.fReleaseTime > 0 && currentTime >= aiState.fReleaseTime) {
     cpu.keys.f = false;
     aiState.fReleaseTime = 0;
@@ -486,8 +490,8 @@ function updateCPUAI(cpu, human, room, currentTime) {
     if (isAtGrabRange(cpu, human)) {
       // Reached point-blank — execute grab!
       resetAllKeys(cpu);
-      cpu.keys.e = true;
-      aiState.eReleaseTime = currentTime + 50;
+      cpu.keys.mouse2 = true;
+      aiState.mouse2ReleaseTime = currentTime + 50;
       aiState.grabApproachIntent = false;
       aiState.lastDecisionTime = currentTime;
       aiState.lastActionType = "grab_approach_execute";
@@ -715,8 +719,8 @@ function handleKnockbackDI(cpu, aiState, currentTime) {
 // PUNISH: Grab opponent while they're stuck in parry animation
 function handlePunishParry(cpu, human, aiState, currentTime) {
   resetAllKeys(cpu);
-  cpu.keys.e = true;
-  aiState.eReleaseTime = currentTime + 50;
+  cpu.keys.mouse2 = true;
+  aiState.mouse2ReleaseTime = currentTime + 50;
   aiState.lastDecisionTime = currentTime;
   aiState.lastActionType = "punish_grab";
 }
@@ -851,7 +855,8 @@ function handleRingOutOpportunity(cpu, human, aiState, currentTime, distance) {
       aiState.lastActionType = "slap";
       return;
     } else if (aiState.consecutiveChargedAttacks < AI_CONFIG.MAX_CONSECUTIVE_CHARGED) {
-      cpu.keys.mouse2 = true;
+      cpu.keys.mouse1 = true;
+      cpu.mouse1PressTime = currentTime; // Set press time for threshold detection
       aiState.isChargingIntentional = true;
       aiState.chargeStartTime = currentTime;
       aiState.targetChargeTime = randomInRange(300, 500);
@@ -1199,11 +1204,13 @@ function handleChargeAttack(cpu, human, aiState, currentTime, distance) {
   if (chargeElapsed >= aiState.targetChargeTime || 
       distance < AI_CONFIG.SLAP_RANGE - 30 ||
       human.isDodging) {
-    cpu.keys.mouse2 = false;
+    cpu.keys.mouse1 = false;
+    cpu.mouse1PressTime = 0;
     aiState.isChargingIntentional = false;
     aiState.consecutiveChargedAttacks++;
   } else {
-    cpu.keys.mouse2 = true;
+    cpu.keys.mouse1 = true;
+    if (!cpu.mouse1PressTime) cpu.mouse1PressTime = currentTime;
   }
 }
 
@@ -1336,7 +1343,8 @@ function handleMidRange(cpu, human, aiState, currentTime, distance) {
   }
   // Charged attack (occasionally)
   else if (roll < 0.82 && canAttack(cpu) && aiState.consecutiveChargedAttacks < AI_CONFIG.MAX_CONSECUTIVE_CHARGED) {
-    cpu.keys.mouse2 = true;
+    cpu.keys.mouse1 = true;
+    cpu.mouse1PressTime = currentTime;
     aiState.isChargingIntentional = true;
     aiState.chargeStartTime = currentTime;
     aiState.targetChargeTime = randomInRange(350, 600);
@@ -1381,7 +1389,8 @@ function handleFarRange(cpu, human, aiState, currentTime, distance) {
            distance >= AI_CONFIG.CHARGED_ATTACK_RANGE && 
            canAttack(cpu) && 
            aiState.consecutiveChargedAttacks < AI_CONFIG.MAX_CONSECUTIVE_CHARGED) {
-    cpu.keys.mouse2 = true;
+    cpu.keys.mouse1 = true;
+    cpu.mouse1PressTime = currentTime;
     aiState.isChargingIntentional = true;
     aiState.chargeStartTime = currentTime;
     aiState.targetChargeTime = randomInRange(500, 900);
@@ -1567,7 +1576,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
   if (cpu.keys.w && 
       cpu.isGrabbing && 
       !cpu.isBeingGrabbed &&
-      !cpu.keys.e &&
+      !cpu.keys.mouse2 &&
       !shouldBlockAction(true) &&
       !cpu.isThrowingSalt &&
       !cpu.canMoveToReady &&
@@ -1703,7 +1712,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
   
   // Process dodge
   if (keyJustPressed("shift") && 
-      !cpu.keys.e &&
+      !cpu.keys.mouse2 &&
       !shouldBlockAction() &&
       canPlayerUseAction(cpu) &&
       cpu.stamina >= AI_CONFIG.DODGE_STAMINA_COST &&
@@ -1763,8 +1772,8 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     cpu.rawParryStartTime = 0;
   }
   
-  // Process charge attack
-  if (cpu.keys.mouse2 && !shouldBlockAction() && canPlayerCharge(cpu) && !keyJustPressed("e")) {
+  // Process charge attack (mouse1 held past threshold)
+  if (cpu.keys.mouse1 && cpu.mouse1PressTime > 0 && (currentTime - cpu.mouse1PressTime) >= 200 && !shouldBlockAction() && canPlayerCharge(cpu) && !keyJustPressed("mouse2")) {
     if (!cpu.isChargingAttack) {
       startCharging(cpu);
     }
@@ -1774,8 +1783,8 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     cpu.chargingFacingDirection = cpu.facing;
   }
   
-  // Release charged attack
-  if (!cpu.keys.mouse2 && cpu.isChargingAttack && !cpu.isDodging) {
+  // Release charged attack (mouse1 released while charging)
+  if (!cpu.keys.mouse1 && cpu.isChargingAttack && !cpu.isDodging) {
     const chargePercentage = cpu.chargeAttackPower;
     
     if (chargePercentage >= 10) {

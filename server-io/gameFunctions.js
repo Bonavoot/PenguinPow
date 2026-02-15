@@ -41,6 +41,7 @@ function cleanupGrabStates(player, opponent) {
   player.isBeingGrabPushed = false;
   player.isAttemptingPull = false;
   player.isBeingPullReversaled = false;
+  player.pullReversalPullerId = null;
   player.isGrabSeparating = false;
   player.isGrabBellyFlopping = false;
   player.isBeingGrabBellyFlopped = false;
@@ -82,6 +83,7 @@ function cleanupGrabStates(player, opponent) {
   opponent.isBeingGrabPushed = false;
   opponent.isAttemptingPull = false;
   opponent.isBeingPullReversaled = false;
+  opponent.pullReversalPullerId = null;
   opponent.isGrabSeparating = false;
   opponent.isGrabBellyFlopping = false;
   opponent.isBeingGrabBellyFlopped = false;
@@ -425,8 +427,10 @@ function executeSlapAttack(player, rooms) {
       }
       
       // After attack ends, check if we should restart charging
+      // IMPORTANT: Always enforce 200ms threshold to prevent quick taps from triggering charge
       if (
-        player.keys.mouse2 &&
+        player.keys.mouse1 &&
+        player.mouse1PressTime > 0 && (Date.now() - player.mouse1PressTime) >= 200 &&
         player.wantsToRestartCharge &&
         !player.isAttacking &&
         !player.isDodging &&
@@ -494,10 +498,10 @@ function executeChargedAttack(player, chargePercentage, rooms) {
   // Charged attacks drain stamina (3x slap attack cost)
   player.stamina = Math.max(0, player.stamina - CHARGED_ATTACK_STAMINA_COST);
 
-  // Check if mouse2 is held when the attack starts
-  const mouse2HeldOnStart = player.keys.mouse2;
-  if (mouse2HeldOnStart) {
-    player.mouse2HeldDuringAttack = true;
+  // Check if mouse1 is held when the attack starts (for charge restart after recovery)
+  const mouse1HeldOnStart = player.keys.mouse1;
+  if (mouse1HeldOnStart) {
+    player.mouse1HeldDuringAttack = true;
   }
 
   // Clear any pending charge attack to prevent double execution
@@ -1252,6 +1256,9 @@ function safelyEndChargedAttack(player, rooms) {
 
   // Clear attack states (for both charged and slap attacks)
   if (!player.isChargingAttack) {
+    // Save whether the attack connected before clearing the flag
+    const attackConnected = player.chargedAttackHit;
+    
     player.isAttacking = false;
     player.isSlapAttack = false;
     player.chargingFacingDirection = null;
@@ -1259,58 +1266,65 @@ function safelyEndChargedAttack(player, rooms) {
     player.chargeAttackPower = 0;
     player.chargedAttackHit = false; // Reset hit tracking
     
-    // === ENDLAG - Visual recovery period ===
-    player.isInEndlag = true;
-    player.endlagEndTime = Date.now() + CHARGED_ENDLAG_DURATION;
-    player.currentAction = "endlag";
-    player.actionLockUntil = Date.now() + CHARGED_ENDLAG_DURATION;
-    
-    // Set attack cooldown to prevent immediate spam
-    player.attackCooldownUntil = Date.now() + CHARGED_ENDLAG_DURATION + 150;
+    // Only apply endlag for attacks that DIDN'T connect (whiffed attacks)
+    // Connected attacks are already handled by processHit's recovery state
+    if (!attackConnected && !player.isRecovering) {
+      // === ENDLAG - Visual recovery period ===
+      player.isInEndlag = true;
+      player.endlagEndTime = Date.now() + CHARGED_ENDLAG_DURATION;
+      player.currentAction = "endlag";
+      player.actionLockUntil = Date.now() + CHARGED_ENDLAG_DURATION;
+      
+      // Set attack cooldown to prevent immediate spam
+      player.attackCooldownUntil = Date.now() + CHARGED_ENDLAG_DURATION + 150;
 
-    // Clear the mouse2 flag - restart logic now happens immediately when recovery ends
-    player.mouse2HeldDuringAttack = false;
+      // Clear the mouse1 flag - restart logic now happens immediately when recovery ends
+      player.mouse1HeldDuringAttack = false;
 
-    // Clear endlag after duration via timeout
-    setPlayerTimeout(
-      player.id,
-      () => {
-        player.isInEndlag = false;
-        player.endlagEndTime = 0;
-        if (player.currentAction === "endlag" || player.currentAction === "charged") {
-          player.actionLockUntil = 0;
-          player.currentAction = null;
-        }
-        
-        // Check for buffered actions after endlag ends
-        if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
-          const action = player.bufferedAction;
-          player.bufferedAction = null;
-          player.bufferExpiryTime = 0;
-
-          // Execute the buffered action
-          // CRITICAL: Block buffered dodge if player is being grabbed
-          if (action.type === "dodge" && player.stamina >= DODGE_STAMINA_COST && !player.isBeingGrabbed) {
-            // Clear movement momentum for static dodge distance
-            player.movementVelocity = 0;
-            player.isStrafing = false;
-            
-            player.isDodging = true;
-            player.isDodgeCancelling = false;
-            player.dodgeCancelStartTime = 0;
-            player.dodgeCancelStartY = 0;
-            player.dodgeStartTime = Date.now();
-            player.dodgeEndTime = Date.now() + 450;
-            player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
-            player.dodgeDirection = action.direction;
-            player.dodgeStartX = player.x;
-            player.dodgeStartY = player.y;
+      // Clear endlag after duration via timeout
+      setPlayerTimeout(
+        player.id,
+        () => {
+          player.isInEndlag = false;
+          player.endlagEndTime = 0;
+          if (player.currentAction === "endlag" || player.currentAction === "charged") {
+            player.actionLockUntil = 0;
+            player.currentAction = null;
           }
-        }
-      },
-      CHARGED_ENDLAG_DURATION,
-      "chargedEndlagReset"
-    );
+          
+          // Check for buffered actions after endlag ends
+          if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
+            const action = player.bufferedAction;
+            player.bufferedAction = null;
+            player.bufferExpiryTime = 0;
+
+            // Execute the buffered action
+            // CRITICAL: Block buffered dodge if player is being grabbed
+            if (action.type === "dodge" && player.stamina >= DODGE_STAMINA_COST && !player.isBeingGrabbed) {
+              // Clear movement momentum for static dodge distance
+              player.movementVelocity = 0;
+              player.isStrafing = false;
+              
+              player.isDodging = true;
+              player.isDodgeCancelling = false;
+              player.dodgeCancelStartTime = 0;
+              player.dodgeCancelStartY = 0;
+              player.dodgeStartTime = Date.now();
+              player.dodgeEndTime = Date.now() + 450;
+              player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
+              player.dodgeDirection = action.direction;
+              player.dodgeStartX = player.x;
+              player.dodgeStartY = player.y;
+            }
+          }
+        },
+        CHARGED_ENDLAG_DURATION,
+        "chargedEndlagReset"
+      );
+    } else {
+      // Attack connected — processHit already handles recovery, just clear stale flags
+      player.mouse1HeldDuringAttack = false;
+    }
   } else {
   }
 }

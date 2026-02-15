@@ -19,6 +19,8 @@ const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
     shift: false,
     e: false,
     f: false,
+    mouse1: false,
+    mouse2: false,
   };
 
   const [keyState, setKeyState] = useState(initialKeyState);
@@ -159,7 +161,7 @@ const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
           newState.w = true;
           break;
         case "grab":
-          newState.e = true;
+          newState.mouse2 = true;
           break;
         case "dodge":
           newState.shift = true;
@@ -189,7 +191,7 @@ const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
           newState.w = false;
           break;
         case "grab":
-          newState.e = false;
+          newState.mouse2 = false;
           break;
         case "dodge":
           newState.shift = false;

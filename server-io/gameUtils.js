@@ -283,8 +283,8 @@ function clearAllActionStates(player) {
   player.spacebarReleasedDuringDodge = false;
   player.hasPendingSlapAttack = false;
   player.isSlapSliding = false;
-  player.mouse2HeldDuringAttack = false;
-  player.mouse2BufferedBeforeStart = false; // Clear pre-game buffer
+  player.mouse1HeldDuringAttack = false;
+  player.mouse1BufferedBeforeStart = false; // Clear pre-game buffer
   player.wantsToRestartCharge = false;
   player.chargedAttackHit = false;
   
@@ -329,6 +329,7 @@ function clearAllActionStates(player) {
   player.isBeingGrabPushed = false;
   player.isAttemptingPull = false;
   player.isBeingPullReversaled = false;
+  player.pullReversalPullerId = null;
   player.isGrabSeparating = false;
   player.isGrabBellyFlopping = false;
   player.isBeingGrabBellyFlopped = false;
@@ -410,8 +411,12 @@ function constrainToMapBoundaries(
 
 function shouldRestartCharging(player) {
   // Require explicit intent from the player to restart charging to reduce accidental restarts
+  // Mouse1 is now the charge button (hold mouse1 past threshold)
+  // IMPORTANT: Always enforce the 200ms threshold to prevent quick taps from triggering charge
   return (
-    player.keys.mouse2 &&
+    player.keys.mouse1 &&
+    player.mouse1PressTime > 0 &&
+    (Date.now() - player.mouse1PressTime) >= 200 &&
     player.wantsToRestartCharge &&
     isPlayerInActiveState(player)
   );
@@ -457,7 +462,7 @@ function clearChargeState(player, isCancelled = false) {
   player.chargingFacingDirection = null;
   player.pendingChargeAttack = null;
   player.spacebarReleasedDuringDodge = false;
-  player.mouse2HeldDuringAttack = false; // Clear the flag when clearing charge state
+  player.mouse1HeldDuringAttack = false; // Clear the flag when clearing charge state
 
   // Set flag to indicate charge was cancelled (not executed)
   if (isCancelled) {

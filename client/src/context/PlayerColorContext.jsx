@@ -146,6 +146,14 @@ async function recolorPlayerSprites(playerKey, colorHex, skipRecoloring) {
       )
     );
     hitUrls.filter(Boolean).forEach((url) => allSources.push(url));
+
+    // Charge flash variants (all pixels tinted white) so first charge doesn't flash-miss
+    const chargeUrls = await Promise.all(
+      uniqueBaseUrls.map((src) =>
+        recolorImage(src, colorRanges, colorHex, { chargeTintWhite: true }).catch(() => null)
+      )
+    );
+    chargeUrls.filter(Boolean).forEach((url) => allSources.push(url));
     
     return {
       sprites: {
@@ -261,6 +269,15 @@ async function recolorPlayerSprites(playerKey, colorHex, skipRecoloring) {
     )
   );
   hitUrls.filter(Boolean).forEach((url) => allSources.push(url));
+
+  // Charge flash variants: same sprites with all pixels tinted white (for charge flash effect)
+  // Preloading ensures no missing frame on first charge
+  const chargeUrls = await Promise.all(
+    uniqueBaseUrls.map((src) =>
+      recolorImage(src, colorRanges, colorHex, { chargeTintWhite: true }).catch(() => null)
+    )
+  );
+  chargeUrls.filter(Boolean).forEach((url) => allSources.push(url));
 
   return {
     sprites: {
