@@ -483,6 +483,7 @@ const GRAB_WHIFF_STUMBLE_VEL = 0.4; // Slight forward stumble velocity during wh
 // Grab tech — both players grab simultaneously, freeze then push apart
 const GRAB_TECH_FREEZE_MS = 350; // Freeze duration before separation (shake/jiggle phase)
 const GRAB_TECH_FORCED_DISTANCE = 60; // Forced separation distance (px) each player is pushed apart
+const GRAB_PULL_ATTEMPT_DISTANCE_MULTIPLIER = 1.4; // Larger gap during pull attempt (vs 1.0 for normal grab)
 const GRAB_TECH_TWEEN_DURATION = 120; // Duration of forced separation tween (ms)
 const GRAB_TECH_RESIDUAL_VEL = 1.2; // Residual velocity fed into ice sliding after forced separation
 const GRAB_TECH_INPUT_LOCK_MS = 600; // Total input lock (freeze + separation slide)
@@ -5113,13 +5114,13 @@ io.on("connection", (socket) => {
           player.isGrabbing &&
           player.grabbedOpponent
         ) {
-          // Handle pull attempt state - maintain opponent position
+          // Handle pull attempt state - maintain opponent position with increased gap
           const opponent = room.players.find(
             (p) => p.id === player.grabbedOpponent
           );
           if (opponent) {
             const baseDistance = Math.round(81 * 1.3);
-            const fixedDistance = baseDistance * (opponent.sizeMultiplier || 1);
+            const fixedDistance = baseDistance * GRAB_PULL_ATTEMPT_DISTANCE_MULTIPLIER * (opponent.sizeMultiplier || 1);
             opponent.x =
               player.facing === 1
                 ? player.x - fixedDistance

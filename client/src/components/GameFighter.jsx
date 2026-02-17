@@ -59,6 +59,7 @@ import happyFeetIcon from "../assets/happy-feet.png";
 import thickBlubberIcon from "../assets/thick-blubber-icon.png";
 import grabbing from "../assets/grabbing.png";
 import attemptingGrabThrow from "../assets/attempting-grab-throw.png";
+import attemptingPull from "../assets/is-attempting-pull.png";
 import grabSound from "../sounds/grab-sound.mp3";
 import ready from "../assets/ready.png";
 import attack from "../assets/attack.png";
@@ -274,6 +275,7 @@ const initializeImagePreloading = () => {
   preloadImage(grabbing);
   preloadImage(grabAttempt);
   preloadImage(attemptingGrabThrow);
+  preloadImage(attemptingPull);
   preloadImage(beingGrabbed);
 
   // State sprites (blue only)
@@ -436,6 +438,9 @@ const getImageSrc = (
   if (ritualAnimationSrc) {
     return ritualAnimationSrc;
   }
+
+  // Pull attempt (static image - same pattern as dodging)
+  if (isAttemptingPull) return attemptingPull;
   
   // Backward-compat: allow passing as trailing param or main param
   const attemptingGrabMovement =
@@ -850,7 +855,7 @@ const StyledImage = styled("img")
         : props.$isGrabSeparating
         ? "grabSeparatePush 0.3s ease-out"
         : props.$isAttemptingPull
-        ? "attemptingPullTug 1.0s cubic-bezier(0.4, 0.0, 0.6, 1.0)"
+        ? "attemptingPullTug 0.6s cubic-bezier(0.4, 0.0, 0.6, 1.0)"
         : props.$isGrabPushing
         ? "grabPushStrain 0.3s ease-in-out infinite"
         : props.$isBeingGrabPushed
@@ -1202,35 +1207,39 @@ const StyledImage = styled("img")
     }
   }
 
-  /* Attempting pull - backward tugging wind-up motion */
+  /* Attempting pull - tug wind-up using only scaleY (origin bottom = feet stay planted); max height 1, deeper dips for more drama */
   @keyframes attemptingPullTug {
     0% {
-      transform: scaleX(var(--facing, 1)) rotate(0deg) translateX(0) scaleY(1);
-      transform-origin: center bottom;
+      transform: scaleX(var(--facing, 1)) scaleY(1);
+      transform-origin: 50% 100%;
     }
-    15% {
-      transform: scaleX(var(--facing, 1)) rotate(3deg) translateX(3px) scaleY(0.97);
-      transform-origin: center bottom;
+    12% {
+      transform: scaleX(var(--facing, 1)) scaleY(0.95);
+      transform-origin: 50% 100%;
     }
-    35% {
-      transform: scaleX(var(--facing, 1)) rotate(5deg) translateX(4px) scaleY(0.96);
-      transform-origin: center bottom;
+    28% {
+      transform: scaleX(var(--facing, 1)) scaleY(0.94);
+      transform-origin: 50% 100%;
     }
-    55% {
-      transform: scaleX(var(--facing, 1)) rotate(4deg) translateX(3px) scaleY(0.97);
-      transform-origin: center bottom;
+    45% {
+      transform: scaleX(var(--facing, 1)) scaleY(1);
+      transform-origin: 50% 100%;
     }
-    75% {
-      transform: scaleX(var(--facing, 1)) rotate(6deg) translateX(5px) scaleY(0.95);
-      transform-origin: center bottom;
+    62% {
+      transform: scaleX(var(--facing, 1)) scaleY(0.94);
+      transform-origin: 50% 100%;
     }
-    90% {
-      transform: scaleX(var(--facing, 1)) rotate(5deg) translateX(4px) scaleY(0.96);
-      transform-origin: center bottom;
+    78% {
+      transform: scaleX(var(--facing, 1)) scaleY(0.96);
+      transform-origin: 50% 100%;
+    }
+    92% {
+      transform: scaleX(var(--facing, 1)) scaleY(1);
+      transform-origin: 50% 100%;
     }
     100% {
-      transform: scaleX(var(--facing, 1)) rotate(5deg) translateX(4px) scaleY(0.96);
-      transform-origin: center bottom;
+      transform: scaleX(var(--facing, 1)) scaleY(0.97);
+      transform-origin: 50% 100%;
     }
   }
 
@@ -1939,7 +1948,7 @@ const GameFighter = ({
   
   // Get both player colors for pumo clone coloring
   const { player1Color: p1Color, player2Color: p2Color } = usePlayerColors();
-  
+
   // Function to get sprite render info (handles both static and animated sprites)
   // Returns: { src, isAnimated, config } where config contains spritesheet animation data
   // When isHit is true and recoloring is needed, uses hit-tinted variant (mawashi/headband unchanged, rest tinted red)
@@ -1948,11 +1957,11 @@ const GameFighter = ({
     if (!originalSrc) {
       return { src: originalSrc, isAnimated: false, config: null };
     }
-    
+
     // Check if this is an animated spritesheet
     const spritesheetConfig = getSpritesheetConfig(originalSrc);
     const isAnimated = !!spritesheetConfig;
-    
+
     // Determine the source to recolor (spritesheet for animated, original for static)
     const sourceToRecolor = isAnimated ? spritesheetConfig.spritesheet : originalSrc;
     const useHitTint = isHit; // When hit, use sprite-level red tint (mawashi/headband unchanged, rest red)

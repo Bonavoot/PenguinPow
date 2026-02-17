@@ -41,6 +41,7 @@ import attack from "../assets/attack.png";
 import throwing from "../assets/throwing.png";
 import grabbing from "../assets/grabbing.png";
 import attemptingGrabThrow from "../assets/attempting-grab-throw.png";
+import isAttemptingPull from "../assets/is-attempting-pull.png";
 import ready from "../assets/ready.png";
 import dodging from "../assets/dodging.png";
 import crouchStance from "../assets/crouch-stance.png";
@@ -185,6 +186,7 @@ const BLUE_STATIC_SPRITES = {
   throwing: throwing,
   grabbing: grabbing,
   attemptingGrabThrow: attemptingGrabThrow,
+  isAttemptingPull: isAttemptingPull,
   ready: ready,
   dodging: dodging,
   crouchStance: crouchStance,

@@ -140,7 +140,7 @@ export const isAnimatedSpritesheet = (src) => {
 
 // Get the spritesheet config for a source URL or name
 export const getSpritesheetConfig = (src) => {
-  if (!src) return null;
+  if (!src || typeof src !== 'string') return null;
   
   // Check legacy config first (for any pre-registered URLs)
   if (SPRITESHEET_CONFIG[src]) {

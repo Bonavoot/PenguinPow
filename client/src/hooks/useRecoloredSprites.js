@@ -27,6 +27,7 @@ import throwing from "../assets/throwing.png";
 import grabbing from "../assets/grabbing.png";
 import grabAttempt from "../assets/grab-attempt.png";
 import attemptingGrabThrow from "../assets/attempting-grab-throw.png";
+import isAttemptingPull from "../assets/is-attempting-pull.png";
 import ready from "../assets/ready.png";
 import hit from "../assets/hit.png";
 import dodging from "../assets/dodging.png";
@@ -55,6 +56,7 @@ const BLUE_SPRITES = {
   grabbing: grabbing,
   grabAttempt: grabAttempt,
   attemptingGrabThrow: attemptingGrabThrow,
+  isAttemptingPull: isAttemptingPull,
   beingGrabbed: beingGrabbedSheet,
   ready: ready,
   hit: hit,
