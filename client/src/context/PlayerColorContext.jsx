@@ -155,6 +155,14 @@ async function recolorPlayerSprites(playerKey, colorHex, skipRecoloring) {
       )
     );
     chargeUrls.filter(Boolean).forEach((url) => allSources.push(url));
+
+    // Thick blubber variants (non-mawashi tinted purple) so first use shows tint immediately
+    const blubberUrls = await Promise.all(
+      uniqueBaseUrls.map((src) =>
+        recolorImage(src, colorRanges, colorHex, { blubberTintPurple: true }).catch(() => null)
+      )
+    );
+    blubberUrls.filter(Boolean).forEach((url) => allSources.push(url));
     
     return {
       sprites: {
@@ -279,6 +287,15 @@ async function recolorPlayerSprites(playerKey, colorHex, skipRecoloring) {
     )
   );
   chargeUrls.filter(Boolean).forEach((url) => allSources.push(url));
+
+  // Thick blubber variants: non-mawashi pixels tinted purple (for thick blubber power-up)
+  // Preloading ensures purple shows immediately when power-up is active
+  const blubberUrls = await Promise.all(
+    uniqueBaseUrls.map((src) =>
+      recolorImage(src, colorRanges, colorHex, { blubberTintPurple: true }).catch(() => null)
+    )
+  );
+  blubberUrls.filter(Boolean).forEach((url) => allSources.push(url));
 
   return {
     sprites: {

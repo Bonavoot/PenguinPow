@@ -4,8 +4,11 @@ import { isOutsideDohyo } from "../constants";
 
 const GROUND_LEVEL = 210; // Match the server's GROUND_LEVEL
 
-const ShadowElement = styled.div.attrs((props) => {
-  // Calculate the bottom position
+// Ring mask so only the ring band is visible (used when background is a gradient)
+const RING_MASK =
+  "radial-gradient(ellipse at center, transparent 0%, transparent 57%, black 65%, black 79%, transparent 85%)";
+
+const sharedAttrs = (props) => {
   const forceGround =
     props.$isDodging ||
     props.$isGrabStartup ||
@@ -13,53 +16,86 @@ const ShadowElement = styled.div.attrs((props) => {
     props.$isBeingThrown ||
     props.$isRingOutThrowCutscene;
   const bottomPos = forceGround ? GROUND_LEVEL : props.$y;
-  
-  // Server now handles dohyo fall physics, so we use the Y position directly
   const adjustedBottomPos = bottomPos;
-
-  // Use custom offsets if provided, otherwise use defaults
   const offsetLeft =
     props.$facing === -1
-      ? props.$offsetLeft || "23%"
-      : props.$offsetRight || "23%";
-
+      ? props.$offsetLeft || "25.5%"
+      : props.$offsetRight || "25.5%";
   return {
     style: {
       position: "absolute",
       left: `${(props.$x / 1280) * 100}%`,
-      bottom: `${(adjustedBottomPos / 720) * 100 - 0.3}%`,
+      bottom: `${(adjustedBottomPos / 720) * 100 - .2}%`,
       transform: `translateX(${offsetLeft})`,
       zIndex: isOutsideDohyo(props.$x, props.$y) ? 0 : 1,
     },
   };
-})`
-  width: ${(props) => props.$width || "11.36%"};
-  height: ${(props) => props.$height || "3.92%"};
-  background: ${(props) =>
-    props.$isLocalPlayer
-      ? `radial-gradient(
-          ellipse at center,
-          rgba(255, 255, 255, 0) 0%,
-          rgba(255, 255, 255, 0) 60%,
-          rgba(255, 255, 255, 0.9) 68%,
-          rgba(255, 255, 255, 1) 72%,
-          rgba(255, 255, 255, 0.9) 76%,
-          rgba(0, 0, 0, 0) 82%
-        )`
-      : `radial-gradient(
-          ellipse at center,
-          rgba(0, 0, 0, 0.6) 0%,
-          rgba(0, 0, 0, 0) 70%
-        )`};
+};
+
+const shadowSize = { w: "11%", h: "5%" };
+const SHADOW_GRADIENT = `radial-gradient(
+  ellipse at center,
+  rgba(0, 0, 0, 0.6) 0%,
+  rgba(0, 0, 0, 0) 70%
+)`;
+
+/* Shadow only – always visible; for non-local this is the only layer */
+const ShadowLayer = styled.div.attrs((props) => sharedAttrs(props))`
+  width: ${(props) => props.$width || shadowSize.w};
+  height: ${(props) => props.$height || shadowSize.h};
+  background: ${SHADOW_GRADIENT};
   border-radius: 50%;
   pointer-events: none;
   will-change: transform, bottom, left;
-  box-shadow: ${(props) =>
-    props.$isLocalPlayer
-      ? "0 0 20px rgba(255, 255, 255, 0.8), 0 0 30px rgba(255, 255, 255, 0.4), inset 0 -2px 8px rgba(255, 255, 255, 0.6)"
-      : "none"};
-  animation: ${(props) =>
-    props.$isLocalPlayer ? "localPlayerShadowPulse 2s ease-in-out infinite" : "none"};
+`;
+
+/* Ring only – on top of shadow for local player; mask applied only to this so shadow stays visible */
+const RingLayer = styled.div.attrs((props) => sharedAttrs(props))`
+  width: ${(props) => props.$width || shadowSize.w};
+  height: ${(props) => props.$height || shadowSize.h};
+  background: ${(props) => {
+    const ring = props.$localPlayerRingStyle;
+    if (ring && props.$isRingGradient) return ring;
+    if (ring) {
+      return `radial-gradient(
+        ellipse at center,
+        rgba(255, 255, 255, 0) 0%,
+        rgba(255, 255, 255, 0) 57%,
+        ${ring} 65%,
+        ${ring} 72%,
+        ${ring} 79%,
+        rgba(0, 0, 0, 0) 85%
+      )`;
+    }
+    return `radial-gradient(
+      ellipse at center,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0) 57%,
+      rgba(255, 255, 255, 0.9) 65%,
+      rgba(255, 255, 255, 1) 72%,
+      rgba(255, 255, 255, 0.9) 79%,
+      rgba(0, 0, 0, 0) 85%
+    )`;
+  }};
+  mask-image: ${(props) =>
+    props.$localPlayerRingStyle && props.$isRingGradient ? RING_MASK : "none"};
+  -webkit-mask-image: ${(props) =>
+    props.$localPlayerRingStyle && props.$isRingGradient ? RING_MASK : "none"};
+  mask-size: 100% 100%;
+  mask-position: center;
+  -webkit-mask-size: 100% 100%;
+  -webkit-mask-position: center;
+  border-radius: 50%;
+  pointer-events: none;
+  will-change: transform, bottom, left;
+  box-shadow: ${(props) => {
+    const ring = props.$localPlayerRingStyle;
+    if (ring && !props.$isRingGradient) {
+      return `0 0 8px ${ring}99, 0 0 14px ${ring}66`;
+    }
+    return "0 0 8px rgba(255, 255, 255, 0.5), 0 0 14px rgba(255, 255, 255, 0.25)";
+  }};
+  animation: localPlayerShadowPulse 2s ease-in-out infinite;
 
   @keyframes localPlayerShadowPulse {
     0%, 100% {
@@ -67,8 +103,8 @@ const ShadowElement = styled.div.attrs((props) => {
       filter: brightness(1);
     }
     50% {
-      opacity: 0.85;
-      filter: brightness(1.3);
+      opacity: 1;
+      filter: brightness(1.4);
     }
   }
 `;
@@ -87,23 +123,35 @@ const PlayerShadow = ({
   offsetLeft,
   offsetRight,
   isLocalPlayer,
+  localPlayerRingStyle,
 }) => {
+  const isRingGradient =
+    localPlayerRingStyle && localPlayerRingStyle.includes("gradient");
+  const common = {
+    $x: x,
+    $y: y,
+    $facing: facing,
+    $isDodging: isDodging,
+    $isGrabStartup: isGrabStartup,
+    $isThrowing: isThrowing,
+    $isBeingThrown: isBeingThrown,
+    $isRingOutThrowCutscene: isRingOutThrowCutscene,
+    $width: width,
+    $height: height,
+    $offsetLeft: offsetLeft,
+    $offsetRight: offsetRight,
+  };
   return (
-    <ShadowElement
-      $x={x}
-      $y={y}
-      $facing={facing}
-      $isDodging={isDodging}
-      $isGrabStartup={isGrabStartup}
-      $isThrowing={isThrowing}
-      $isBeingThrown={isBeingThrown}
-      $isRingOutThrowCutscene={isRingOutThrowCutscene}
-      $width={width}
-      $height={height}
-      $offsetLeft={offsetLeft}
-      $offsetRight={offsetRight}
-      $isLocalPlayer={isLocalPlayer}
-    />
+    <>
+      <ShadowLayer {...common} />
+      {isLocalPlayer && (
+        <RingLayer
+          {...common}
+          $localPlayerRingStyle={localPlayerRingStyle}
+          $isRingGradient={isRingGradient}
+        />
+      )}
+    </>
   );
 };
 
@@ -121,6 +169,7 @@ PlayerShadow.propTypes = {
   offsetLeft: PropTypes.string,
   offsetRight: PropTypes.string,
   isLocalPlayer: PropTypes.bool,
+  localPlayerRingStyle: PropTypes.string,
 };
 
 export default PlayerShadow;

@@ -333,8 +333,8 @@ const PlayerName = styled.div`
   line-height: 1.1;
 `;
 
-// Special mawashi colors (same gradients as Lobby color picker squares)
-const SPECIAL_MAWASHI_GRADIENTS = {
+// Special mawashi colors (same gradients as Lobby color picker squares) — exported for player ring indicator
+export const SPECIAL_MAWASHI_GRADIENTS = {
   rainbow: "linear-gradient(to right, red, orange, yellow, green, cyan, blue, violet)",
   fire: "linear-gradient(to bottom, #FFD700, #FF8C00, #DC143C, #8B0000)",
   vaporwave: "linear-gradient(to bottom, #FF69B4, #DA70D6, #9370DB, #00CED1)",

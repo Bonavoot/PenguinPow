@@ -18,7 +18,7 @@
 // ============================================
 // LRU CACHE with size limit
 // ============================================
-const MAX_CACHE_SIZE = 450; // Normal + hit-tinted + charge-tinted variants per player (~122 × 3) to prevent invisible frames on animation switch
+const MAX_CACHE_SIZE = 600; // Normal + hit + charge + blubber variants per player (~122 × 4 + headroom)
 const cacheOrder = []; // Track access order for LRU eviction
 
 const recoloredImageCache = new Map();
@@ -156,7 +156,7 @@ if (typeof window !== 'undefined') {
 /**
  * Process image data using Web Worker (off main thread)
  */
-function processInWorker(imageData, width, height, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed = false, chargeTintWhite = false) {
+function processInWorker(imageData, width, height, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed = false, chargeTintWhite = false, blubberTintPurple = false) {
   return new Promise((resolve, reject) => {
     if (!workerReady || !recolorWorker) {
       reject(new Error('Worker not ready'));
@@ -184,6 +184,7 @@ function processInWorker(imageData, width, height, sourceColorRange, targetHue, 
         specialMode,
         hitTintRed,
         chargeTintWhite,
+        blubberTintPurple,
       }
     }, [buffer]);
   });
@@ -399,14 +400,15 @@ export const getHueSatFromHex = getHslFromHex;
  * @param {string} imageSrc - Source image URL
  * @param {Object} sourceColorRange - HSL color range to replace (e.g., BLUE_COLOR_RANGES)
  * @param {string} targetColorHex - Target color in hex format (e.g., "#FF69B4" for pink)
- * @param {Object} options - Optional: { hitTintRed: true } to tint non-mawashi/headband pixels red (for isHit state), { chargeTintWhite: true } to tint all pixels white (for charge flash)
+ * @param {Object} options - Optional: { hitTintRed: true } to tint non-mawashi/headband pixels red (for isHit state), { chargeTintWhite: true } to tint all pixels white (for charge flash), { blubberTintPurple: true } to tint all pixels with transparent purple (thick blubber)
  * @returns {Promise<string>} - Data URL of the recolored image
  */
 export async function recolorImage(imageSrc, sourceColorRange, targetColorHex, options = {}) {
   const hitTintRed = !!options.hitTintRed;
   const chargeTintWhite = !!options.chargeTintWhite;
-  // Generate cache key (hit/charge variants cached separately)
-  const cacheKey = `${imageSrc}_${sourceColorRange.minHue}-${sourceColorRange.maxHue}_${targetColorHex}${hitTintRed ? '_hit' : ''}${chargeTintWhite ? '_charge' : ''}`;
+  const blubberTintPurple = !!options.blubberTintPurple;
+  // Generate cache key (hit/charge/blubber variants cached separately)
+  const cacheKey = `${imageSrc}_${sourceColorRange.minHue}-${sourceColorRange.maxHue}_${targetColorHex}${hitTintRed ? '_hit' : ''}${chargeTintWhite ? '_charge' : ''}${blubberTintPurple ? '_blubber' : ''}`;
   
   // Check LRU cache first
   const cached = getFromCache(cacheKey);
@@ -474,7 +476,8 @@ export async function recolorImage(imageSrc, sourceColorRange, targetColorHex, o
               referenceLightness,
               specialMode,
               hitTintRed,
-              chargeTintWhite
+              chargeTintWhite,
+              blubberTintPurple
             );
             
             // Create ImageData from returned buffer
@@ -486,11 +489,11 @@ export async function recolorImage(imageSrc, sourceColorRange, targetColorHex, o
           } catch (workerError) {
             console.warn('Worker processing failed, falling back to main thread:', workerError);
             // Fall back to main thread processing
-            processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, canvas.width, canvas.height, chargeTintWhite);
+            processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, canvas.width, canvas.height, chargeTintWhite, blubberTintPurple);
           }
         } else {
           // No worker available, process on main thread
-          processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, canvas.width, canvas.height, chargeTintWhite);
+          processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, canvas.width, canvas.height, chargeTintWhite, blubberTintPurple);
         }
 
         // Put the modified data back
@@ -634,7 +637,7 @@ function getSpecialPixelColor(specialMode, x, y, width, height) {
  *   Pass 2 – recolor, using coordinates RELATIVE to the centroid so the
  *            pattern stays locked to the body during animation.
  */
-function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, width, height, chargeTintWhite = false) {
+function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, width, height, chargeTintWhite = false, blubberTintPurple = false) {
   const data = imageData.data;
 
   // --- Pass 1: centroid of matching pixels (only needed for special modes) ---
@@ -676,6 +679,10 @@ function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targe
   const CHARGE_WHITE_RGB = { r: 255, g: 255, b: 255 };
   const CHARGE_BLEND = 0.7; // 70% white / 30% original - bold flash that's clearly visible
 
+  // Blubber tint: vibrant purple on non-mawashi pixels (thick blubber power-up), sprite-level like hit/charge
+  const BLUBBER_PURPLE_RGB = hslToRgb(278, 78, 65); // Vivid violet-purple
+  const BLUBBER_BLEND = 0.35; // More transparent so original sprite shows through more
+
   for (let i = 0; i < data.length; i += 4) {
     const r = data[i];
     const g = data[i + 1];
@@ -712,6 +719,7 @@ function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targe
         data[i + 1] = Math.round((1 - CHARGE_BLEND) * data[i + 1] + CHARGE_BLEND * CHARGE_WHITE_RGB.g);
         data[i + 2] = Math.round((1 - CHARGE_BLEND) * data[i + 2] + CHARGE_BLEND * CHARGE_WHITE_RGB.b);
       }
+      // Blubber: leave mawashi/headband as recolored (no purple on them, same as isHit leaves them)
     } else if (hitTintRed) {
       // Blend original with soft red: subtle tint, and white turns same light red as other colors
       data[i] = Math.round((1 - HIT_BLEND) * r + HIT_BLEND * HIT_RED_RGB.r);
@@ -722,6 +730,11 @@ function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targe
       data[i] = Math.round((1 - CHARGE_BLEND) * r + CHARGE_BLEND * CHARGE_WHITE_RGB.r);
       data[i + 1] = Math.round((1 - CHARGE_BLEND) * g + CHARGE_BLEND * CHARGE_WHITE_RGB.g);
       data[i + 2] = Math.round((1 - CHARGE_BLEND) * b + CHARGE_BLEND * CHARGE_WHITE_RGB.b);
+    } else if (blubberTintPurple) {
+      // Blend original with transparent purple for thick blubber (all non-transparent pixels)
+      data[i] = Math.round((1 - BLUBBER_BLEND) * r + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.r);
+      data[i + 1] = Math.round((1 - BLUBBER_BLEND) * g + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.g);
+      data[i + 2] = Math.round((1 - BLUBBER_BLEND) * b + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b);
     }
   }
   
@@ -907,13 +920,14 @@ export function clearDecodedImageCache() {
  * @param {string} imageSrc - Original image source
  * @param {Object} sourceColorRange - HSL color range to detect
  * @param {string} targetColorHex - Target color in hex format
- * @param {Object} options - Optional: { hitTintRed: true } for hit-state variant
+ * @param {Object} options - Optional: { hitTintRed: true }, { chargeTintWhite: true }, { blubberTintPurple: true }
  * @returns {string|null} - Cached recolored image data URL, or null if not cached
  */
 export function getCachedRecoloredImage(imageSrc, sourceColorRange, targetColorHex, options = {}) {
   const hitTintRed = !!options.hitTintRed;
   const chargeTintWhite = !!options.chargeTintWhite;
-  const cacheKey = `${imageSrc}_${sourceColorRange.minHue}-${sourceColorRange.maxHue}_${targetColorHex}${hitTintRed ? '_hit' : ''}${chargeTintWhite ? '_charge' : ''}`;
+  const blubberTintPurple = !!options.blubberTintPurple;
+  const cacheKey = `${imageSrc}_${sourceColorRange.minHue}-${sourceColorRange.maxHue}_${targetColorHex}${hitTintRed ? '_hit' : ''}${chargeTintWhite ? '_charge' : ''}${blubberTintPurple ? '_blubber' : ''}`;
   return getFromCache(cacheKey);
 }
 

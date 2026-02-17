@@ -111,6 +111,10 @@ function getAIState(playerId) {
       // === Grab approach intent (walk into point-blank range before grabbing) ===
       grabApproachIntent: false,
       grabApproachIntentUntil: 0,
+      // === Grab break REACT (not predict): wait for grab action, then 50/50 react ===
+      grabBreakReactionDecided: false,
+      grabBreakReactS: false,       // true = press S when we see throw
+      grabBreakReactDirection: false, // true = press direction when we see pull
     });
   }
   return aiStates.get(playerId);
@@ -522,10 +526,13 @@ function updateCPUAI(cpu, human, room, currentTime) {
   
   // Priority 1: Handle being grabbed - try to break free
   if (cpu.isBeingGrabbed && !cpu.isBeingThrown) {
-    handleGrabBreak(cpu, aiState, currentTime);
+    handleGrabBreak(cpu, human, aiState, currentTime);
     return;
   } else {
     aiState.grabStartedTime = 0;
+    aiState.grabBreakReactionDecided = false;
+    aiState.grabBreakReactS = false;
+    aiState.grabBreakReactDirection = false;
   }
   
   // Handle pending parry release
@@ -641,65 +648,39 @@ function handleGrabClashMashing(cpu, aiState, currentTime) {
   }
 }
 
-// Handle grab break attempts using the directional counter system
-function handleGrabBreak(cpu, aiState, currentTime) {
-  if (!aiState.grabStartedTime) {
-    aiState.grabStartedTime = currentTime;
-  }
-  
-  const leftDist = distanceToLeftEdge(cpu);
-  const rightDist = distanceToRightEdge(cpu);
-  const nearestEdgeDist = Math.min(leftDist, rightDist);
-  const timeGrabbed = currentTime - aiState.grabStartedTime;
-  
-  // Reaction delay — faster when near edge (urgency)
-  const MIN_WAIT_BASE = 200;
-  const EDGE_DANGER_THRESHOLD = 200;
-  let effectiveMinWait = MIN_WAIT_BASE;
-  if (nearestEdgeDist < EDGE_DANGER_THRESHOLD) {
-    const dangerFactor = nearestEdgeDist / EDGE_DANGER_THRESHOLD;
-    effectiveMinWait = MIN_WAIT_BASE * dangerFactor;
-  }
-  
-  if (timeGrabbed < effectiveMinWait) {
+// Handle grab break by REACTING to the grab action (no prediction).
+// While being grabbed, CPU does not press any counter key until it sees the grab action (W throw or A/D pull).
+// 500ms window: when human does W (throw) → 50% CPU presses S; when human does A/D (pull) → 50% CPU presses correct direction.
+function handleGrabBreak(cpu, grabber, aiState, currentTime) {
+  if (!cpu.isBeingGrabbed || cpu.grabCounterAttempted) return;
+
+  // Pull counter key is determined by GRABBER's facing (matches server: counterKey = player.facing === -1 ? 'd' : 'a')
+  const pullCounterKey = grabber.facing === -1 ? 'd' : 'a';
+
+  // No grab action yet (grabber is just pushing) — do not input anything until we see throw or pull
+  if (!grabber.isAttemptingGrabThrow && !grabber.isAttemptingPull) {
+    aiState.grabBreakReactionDecided = false;
+    aiState.grabBreakReactS = false;
+    aiState.grabBreakReactDirection = false;
+    resetAllKeys(cpu);
     return;
   }
 
-  // If being push-resisted, hold forward to resist
-  if (cpu.isBeingGrabPushed) {
-    const cpuForwardKey = cpu.facing === -1 ? 'd' : 'a';
-    cpu.keys[cpuForwardKey] = true;
-    const cpuBackwardKey = cpu.facing === -1 ? 'a' : 'd';
-    cpu.keys[cpuBackwardKey] = false;
-    return;
-  }
-  
-  // Counter grab actions — FIRST-INPUT-COMMITS system
-  // AI must commit to ONE counter input. Wrong guess = locked out.
-  // Only attempt once per grab action (don't re-press if already committed)
-  if (cpu.isBeingGrabbed && !cpu.grabCounterAttempted) {
-    const cpuForwardKey = cpu.facing === -1 ? 'd' : 'a';
-    
-    // 50% chance to attempt a counter at all (human-like — sometimes just doesn't react)
-    const shouldCounter = Math.random() < 0.50;
-    if (shouldCounter) {
-      // AI must GUESS: is the grabber doing a throw (counter = S) or pull (counter = direction)?
-      // Pull counter key is the direction the grabber is pulling toward
-      // (opposite of grabber's backward = our forward... but actually it's:
-      //  pull counter = the key matching the pull direction, which is 'a' or 'd')
-      // For simplicity: 50/50 guess between S (throw counter) and the pull counter direction
-      const pullCounterKey = cpu.facing === -1 ? 'd' : 'a'; // opposite of our backward
-      
-      if (Math.random() < 0.50) {
-        // Guess: throw → press S
-        resetAllKeys(cpu);
-        cpu.keys.s = true;
-      } else {
-        // Guess: pull → press the correct directional counter
-        resetAllKeys(cpu);
-        cpu.keys[pullCounterKey] = true;
-      }
+  // We see a grab action — react once (50/50) with the correct counter
+  resetAllKeys(cpu);
+
+  if (grabber.isAttemptingGrabThrow) {
+    if (!aiState.grabBreakReactionDecided) {
+      aiState.grabBreakReactionDecided = true;
+      aiState.grabBreakReactS = Math.random() < 0.50; // 50% press S
     }
+    if (aiState.grabBreakReactS) cpu.keys.s = true;
+  } else if (grabber.isAttemptingPull) {
+    if (!aiState.grabBreakReactionDecided) {
+      aiState.grabBreakReactionDecided = true;
+      aiState.grabBreakReactDirection = Math.random() < 0.50; // 50% press direction
+    }
+    if (aiState.grabBreakReactDirection) cpu.keys[pullCounterKey] = true;
   }
 }
 
@@ -1123,10 +1104,10 @@ function handleGrabDecision(cpu, human, aiState, currentTime) {
     const backIsCloser = distBehind < distFront;
     const backVeryClose = distBehind < 150;
     
-    // Score each option — balanced base scores so pull actually gets chosen
-    let pushScore = 25; // Safe default — can't be broken
-    let throwScore = 25; // Sends opponent behind CPU
-    let pullScore = 30; // Switches sides — great for repositioning, use it often!
+    // Score each option — favor THROW (W) so CPU uses W grab action more, not just pull (A/D)
+    let pushScore = 22; // Safe default — can't be broken
+    let throwScore = 38; // W throw — higher base so CPU goes for it often
+    let pullScore = 28; // Pull (A/D backward) — still used but less than throw
     
     // PUSH bonuses: low stamina or near front boundary
     if (opponentLow) pushScore += 35;
@@ -1134,29 +1115,31 @@ function handleGrabDecision(cpu, human, aiState, currentTime) {
     if (opponentNearFrontEdge) pushScore += 20;
     if (distFront < 150) pushScore += 15;
     
-    // THROW bonuses: back is close to boundary
-    if (backVeryClose) throwScore += 40;
-    else if (distBehind < 200) throwScore += 20;
+    // THROW (W) bonuses: back is close to boundary — strong incentive
+    if (backVeryClose) throwScore += 45;
+    else if (distBehind < 200) throwScore += 25;
+    else if (distBehind < 350) throwScore += 10;
     
-    // PULL bonuses: back boundary is closer than front (switching sides is smart)
+    // THROW (W) — extra random so CPU uses W often (mix-up)
+    throwScore += randomInRange(0, 28);
+    
+    // PULL bonuses: back boundary closer than front (switching sides)
     if (backIsCloser) {
-      pullScore += 25;
+      pullScore += 18;
       const ratio = distFront / Math.max(distBehind, 1);
-      if (ratio > 1.5) pullScore += 15;
-      if (ratio > 2.5) pullScore += 10;
+      if (ratio > 1.5) pullScore += 10;
+      if (ratio > 2.5) pullScore += 5;
     }
     
-    // PULL at mid screen — good for mix-ups and repositioning
     const nearCenter = Math.abs(cpu.x - MAP_CENTER) < MAP_WIDTH * 0.3;
-    if (nearCenter) pullScore += 15;
+    if (nearCenter) pullScore += 8;
     
-    // PULL is a good surprise move — random bonus
-    pullScore += randomInRange(0, 20);
+    pullScore += randomInRange(0, 14);
     
-    // Add randomness to all scores (±12 points)
-    pushScore += randomInRange(-12, 12);
-    throwScore += randomInRange(-12, 12);
-    pullScore += randomInRange(-12, 12);
+    // Add randomness (±10)
+    pushScore += randomInRange(-10, 10);
+    throwScore += randomInRange(-10, 10);
+    pullScore += randomInRange(-10, 10);
     
     // Aggression mode influence
     const aggMult = getAggressionMultiplier(aiState);

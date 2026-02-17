@@ -47,6 +47,7 @@ import {
   COLOR_PRESETS,
 } from "../utils/SpriteRecolorizer";
 import { usePlayerColors } from "../context/PlayerColorContext";
+import { SPECIAL_MAWASHI_GRADIENTS } from "./PreMatchScreen";
 
 // ============================================
 // STATIC SPRITE IMPORTS (Single frame images)
@@ -1953,7 +1954,8 @@ const GameFighter = ({
   // Returns: { src, isAnimated, config } where config contains spritesheet animation data
   // When isHit is true and recoloring is needed, uses hit-tinted variant (mawashi/headband unchanged, rest tinted red)
   // When isChargeFlash is true, uses white-tinted variant for charge flash effect
-  const getSpriteRenderInfo = useCallback((originalSrc, isHit = false, isChargeFlash = false) => {
+  // When isBlubberTint is true, uses purple-tinted variant for thick blubber power-up (sprite-level like hit/charge)
+  const getSpriteRenderInfo = useCallback((originalSrc, isHit = false, isChargeFlash = false, isBlubberTint = false) => {
     if (!originalSrc) {
       return { src: originalSrc, isAnimated: false, config: null };
     }
@@ -1966,8 +1968,9 @@ const GameFighter = ({
     const sourceToRecolor = isAnimated ? spritesheetConfig.spritesheet : originalSrc;
     const useHitTint = isHit; // When hit, use sprite-level red tint (mawashi/headband unchanged, rest red)
     const useChargeTint = isChargeFlash; // When charge flashing, use sprite-level white tint
+    const useBlubberTint = isBlubberTint; // When thick blubber active, use sprite-level transparent purple tint
     
-    if (!needsRecoloring && !useHitTint && !useChargeTint) {
+    if (!needsRecoloring && !useHitTint && !useChargeTint && !useBlubberTint) {
       return {
         src: sourceToRecolor,
         isAnimated,
@@ -1979,6 +1982,7 @@ const GameFighter = ({
     const tintOptions = {};
     if (useHitTint) tintOptions.hitTintRed = true;
     if (useChargeTint) tintOptions.chargeTintWhite = true;
+    if (useBlubberTint) tintOptions.blubberTintPurple = true;
     
     // FIRST: Check global cache (populated by preloadSprites in Lobby)
     const globalCached = getCachedRecoloredImage(sourceToRecolor, colorRanges, targetColor, tintOptions);
@@ -1991,7 +1995,7 @@ const GameFighter = ({
     }
     
     // Check local cache as fallback
-    const cacheKey = `${sourceToRecolor}_${targetColor}${useHitTint ? '_hit' : ''}${useChargeTint ? '_charge' : ''}`;
+    const cacheKey = `${sourceToRecolor}_${targetColor}${useHitTint ? '_hit' : ''}${useChargeTint ? '_charge' : ''}${useBlubberTint ? '_blubber' : ''}`;
     if (recoloredSprites[cacheKey]) {
       return {
         src: recoloredSprites[cacheKey],
@@ -4233,15 +4237,19 @@ const GameFighter = ({
     chargeFlashCycleStart.current = 0;
   }
 
-  // Get sprite render info (handles animated spritesheets and recoloring; uses hit-tinted sprite when showHitTintThisFrame, charge-tinted when flashing)
-  const spriteRenderInfo = getSpriteRenderInfo(displaySpriteSrc, showHitTintThisFrame, showChargeFlashThisFrame);
+  // Tint priority: hit > thick blubber > charge flash (only one applied at a time for sprite variant)
+  const useBlubberTint = thickBlubberIndicator && !showHitTintThisFrame;
+  const useChargeTint = showChargeFlashThisFrame && !showHitTintThisFrame && !useBlubberTint;
+
+  // Get sprite render info (handles animated spritesheets and recoloring; uses hit-/charge-/blubber-tinted sprite when active)
+  const spriteRenderInfo = getSpriteRenderInfo(displaySpriteSrc, showHitTintThisFrame, useChargeTint, useBlubberTint);
   const { src: recoloredSpriteSrc, isAnimated: isAnimatedSprite, config: spriteConfig } = spriteRenderInfo;
   
   // Stable key for animated sprites: use the base (non-charge-flash) sprite so toggling
   // charge flash on/off doesn't remount the component and restart CSS animations.
   // Hit tint changes DO restart (different animation state), but charge flash should NOT.
   const baseSpriteSrc = showChargeFlashThisFrame
-    ? getSpriteRenderInfo(displaySpriteSrc, showHitTintThisFrame, false).src
+    ? getSpriteRenderInfo(displaySpriteSrc, showHitTintThisFrame, false, useBlubberTint).src
     : recoloredSpriteSrc;
   
   // Update animation state (will start/stop intervals as needed)
@@ -4336,6 +4344,11 @@ const GameFighter = ({
         isBeingThrown={penguin.isBeingThrown}
         isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
         isLocalPlayer={penguin.id === localId}
+        localPlayerRingStyle={
+          penguin.id === localId
+            ? SPECIAL_MAWASHI_GRADIENTS[playerColor] || playerColor
+            : undefined
+        }
       />
       {/* <DodgeSmokeEffect
         x={penguin.dodgeStartX || displayPosition.x}
@@ -4507,18 +4520,6 @@ const GameFighter = ({
         </RitualSpriteContainer>
       ))}
 
-      {thickBlubberIndicator && (
-        <TintedImage
-          $x={displayPosition.x}
-          $y={displayPosition.y}
-          $facing={penguin.facing ?? -1}
-          $isThrowing={penguin.isThrowing}
-          $isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
-          src={currentSpriteSrc}
-          alt="blubber-tint"
-          $variant="blubber"
-        />
-      )}
       <SaltEffect
         isActive={penguin.isThrowingSalt}
         playerFacing={penguin.facing ?? -1}
