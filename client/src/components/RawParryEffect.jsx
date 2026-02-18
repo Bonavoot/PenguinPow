@@ -41,11 +41,12 @@ const ParryTextCenter = styled.div`
   top: 50%;
   left: 50%;
   font-family: "Bungee", cursive;
-  font-size: clamp(0.7rem, 1.6vw, 1.4rem);
+  font-size: clamp(0.52rem, 1.19vw, 1.04rem);
   color: ${props => props.$isPerfect ? '#FFD700' : '#00BFFF'};
-  text-shadow: 
-    -2px -2px 0 #000, 2px -2px 0 #000, 
-    -2px 2px 0 #000, 2px 2px 0 #000,
+  -webkit-text-stroke: 2px #000;
+  paint-order: stroke fill;
+  text-shadow:
+    -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000,
     0 0 ${props => props.$isPerfect ? '20px' : '15px'} ${props => props.$isPerfect ? 'rgba(255, 215, 0, 0.9)' : 'rgba(0, 191, 255, 0.9)'}${props => props.$isPerfect ? ', 0 0 35px rgba(255, 215, 0, 0.4)' : ''};
   letter-spacing: 0.15em;
   white-space: nowrap;
@@ -61,11 +62,11 @@ const EFFECT_TEXT_BASELINE_OFFSET_Y = 0;
 /* Container: fixed size (perfect parry size) so both effects share the same center point */
 const RawParryEffectContainer = styled.div`
   position: absolute;
-  left: ${props => (props.$x / 1280) * 100 + (props.$facing === 1 ? -6 : -1)}%;
+  left: ${props => (props.$x / 1280) * 100 + (props.$facing === 1 ? -8 : -1)}%;
   bottom: ${props => (props.$y / 720) * 100 + EFFECT_TEXT_BASELINE_OFFSET_Y}%;
-  width: clamp(4.2rem, 10.5vw, 8.4rem);
-  height: clamp(3.9rem, 9.8vw, 7.8rem);
-  transform: translate(-50%, -50%);
+  width: clamp(3.11rem, 7.78vw, 6.22rem);
+  height: clamp(2.89rem, 7.26vw, 5.78rem);
+  transform: translate(-50%, 50%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -91,8 +92,8 @@ const ParticleContainer = styled.div`
 
 const Particle = styled.div`
   position: absolute;
-  width: 0.23vw;
-  height: 0.23vw;
+  width: 0.17vw;
+  height: 0.17vw;
   background: ${(props) =>
     props.$isPerfect
       ? "radial-gradient(circle, #00FFFF, #00BFFF)" // Bright cyan for perfect

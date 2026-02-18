@@ -6,6 +6,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
+import { createPortal } from "react-dom";
 import { SocketContext } from "../SocketContext";
 import PropTypes from "prop-types";
 import styled, { keyframes } from "styled-components";
@@ -162,7 +163,9 @@ import ThemeOverlay from "./ThemeOverlay";
 import "./theme.css";
 import { isOutsideDohyo, DOHYO_FALL_DEPTH, SERVER_BROADCAST_HZ } from "../constants";
 
-const GROUND_LEVEL = 120; // Ground level constant
+const GROUND_LEVEL = 140; // Ground level constant (client-side, for fall detection)
+const SPRITE_HALF_W = 80;  // ≈ half sprite width in game-coords (centres effects on penguin body)
+const PLAYER_MID_Y = 355;  // Effect Y at player's visual midpoint when standing
 
 // ============================================
 // RITUAL ANIMATION CONFIGURATION (Sprite Sheets)
@@ -551,7 +554,7 @@ const RedTintOverlay = styled.div
   .attrs((props) => ({
     style: {
       position: "absolute",
-      width: "16.609%",
+      width: "12.30%",
       height: "auto",
       aspectRatio: 1,
       left: `${(props.$x / 1280) * 100}%`,
@@ -580,7 +583,7 @@ const HurtTintOverlay = styled.div
   .attrs((props) => ({
     style: {
       position: "absolute",
-      width: "16.609%",
+      width: "12.30%",
       height: "auto",
       aspectRatio: 1,
       left: `${(props.$x / 1280) * 100}%`,
@@ -623,7 +626,7 @@ const TintedImage = styled.img
       transform: props.$facing === 1 ? "scaleX(1)" : "scaleX(-1)",
       zIndex: isOutsideDohyo(props.$x, props.$y) ? 0 : 101,
       pointerEvents: "none",
-      width: "min(16.609%, 511px)",
+      width: "min(12.30%, 379px)",
 
       height: "auto",
       willChange: "opacity, transform",
@@ -933,8 +936,8 @@ const StyledImage = styled("img")
         ? "breathe 1.5s ease-in-out infinite"
         : "none",
       width: props.$isAtTheRopes && props.$fighter === "player 1"
-        ? "min(15.612%, 480px)"  // 6% smaller: 16.609 * 0.94
-        : "min(16.609%, 511px)",
+        ? "min(11.56%, 356px)"  // 6% smaller: 16.609 * 0.94
+        : "min(12.30%, 379px)",
       height: "auto",
       // PERFORMANCE: Reduced willChange - only specify transform (most frequent)
       willChange: "transform",
@@ -1452,7 +1455,7 @@ const StyledImage = styled("img")
 const RitualSpriteContainer = styled.div.attrs((props) => ({
   style: {
     position: "absolute",
-    width: "min(16.609%, 511px)",
+    width: "min(12.30%, 379px)",
     aspectRatio: "1",
     left: `${(props.$x / 1280) * 100}%`,
     bottom: `${(props.$y / 720) * 100}%`,
@@ -1497,7 +1500,7 @@ const AnimatedFighterContainer = styled.div
   .attrs((props) => ({
     style: {
       position: "absolute",
-      width: "min(16.609%, 511px)",
+      width: "min(12.30%, 379px)",
       aspectRatio: "1",
       left: props.$isAtTheRopes && props.$fighter === "player 1"
         ? `${((props.$x + (props.$x < 640 ? -5 : 5)) / 1280) * 100}%`
@@ -1703,7 +1706,7 @@ const SaltBasket = styled.img
   .attrs((props) => ({
     style: {
       position: "absolute",
-      width: "4.55%",
+      width: "3.37%",
       height: "auto",
       bottom: `${((GROUND_LEVEL + 100) / 720) * 140}%`,
       left: props.$index === 0 ? "12.5%" : "auto",
@@ -1729,7 +1732,7 @@ const youLabelPulse = keyframes`
 
 const youArrowBounce = keyframes`
   0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(4px); }
+  50% { transform: translateY(3px); }
 `;
 
 const YouLabel = styled.div
@@ -1739,8 +1742,8 @@ const YouLabel = styled.div
   .attrs((props) => ({
     style: {
       position: "absolute",
-      bottom: `${(props.y / 720) * 100 + 27}%`,
-      left: `${(props.x / 1280) * 100 + 8.2}%`,
+      bottom: `${(props.y / 720) * 100 + 21}%`,
+      left: `${(props.x / 1280) * 100 + 6.25}%`,
     },
   }))`
   z-index: 1000;
@@ -1752,11 +1755,11 @@ const YouLabel = styled.div
   transform: translateX(-50%);
   animation: ${youLabelPulse} 1.5s ease-in-out infinite;
   
-  /* YOU badge — Bungee font, angled plate shape to match game HUD */
+  /* YOU badge — Bungee font, angled plate shape to match game HUD (~17% smaller) */
   &::before {
     content: "YOU";
     font-family: "Bungee", cursive;
-    font-size: clamp(12px, 1.1vw, 16px);
+    font-size: clamp(10px, 0.92vw, 13px);
     letter-spacing: 0.08em;
     color: #ffffff;
     background: linear-gradient(
@@ -1765,8 +1768,8 @@ const YouLabel = styled.div
       #00e5ff 50%,
       #00b8d9 100%
     );
-    padding: clamp(5px, 0.5vw, 7px) clamp(12px, 1.2vw, 18px);
-    clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 100%, 6px 100%);
+    padding: clamp(4px, 0.42vw, 6px) clamp(10px, 1vw, 15px);
+    clip-path: polygon(0 0, calc(100% - 5px) 0, 100% 100%, 5px 100%);
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
     box-shadow: 
       0 0 0 2px rgba(255, 255, 255, 0.9),
@@ -1779,9 +1782,9 @@ const YouLabel = styled.div
     content: "";
     width: 0;
     height: 0;
-    border-left: 6px solid transparent;
-    border-right: 6px solid transparent;
-    border-top: 8px solid #00e5ff;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6.5px solid #00e5ff;
     filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
     animation: ${youArrowBounce} 0.8s ease-in-out infinite;
   }
@@ -1794,10 +1797,10 @@ const SnowballProjectile = styled.img
   .attrs((props) => ({
     style: {
       position: "absolute",
-      width: "4.55%",
+      width: "3.37%",
       height: "auto",
       left: `${(props.$x / 1280) * 100 + 5}%`,
-      bottom: `${(props.$y / 720) * 100 + 14}%`,
+      bottom: `${(props.$y / 720) * 100 + 11}%`,
       zIndex: 95,
       pointerEvents: "none",
       filter: "drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000)",
@@ -1812,7 +1815,7 @@ const PumoClone = styled.img
   .attrs((props) => ({
     style: {
       position: "absolute",
-      width: `${(props.$size || 0.6) * 19.54}%`,
+      width: `${(props.$size || 0.6) * 14.47}%`,
       height: "auto",
       left: `${(props.$x / 1280) * 100}%`,
       bottom: `${(props.$y / 720) * 100}%`,
@@ -1832,7 +1835,7 @@ const AnimatedPumoCloneContainer = styled.div
   .attrs((props) => ({
     style: {
       position: "absolute",
-      width: `${(props.$size || 0.6) * 19.54}%`,
+      width: `${(props.$size || 0.6) * 14.47}%`,
       aspectRatio: "1",
       left: `${(props.$x / 1280) * 100}%`,
       bottom: `${(props.$y / 720) * 100}%`,
@@ -2724,9 +2727,8 @@ const GameFighter = ({
 
     return {
       ...counterGrabEffectPosition,
-      // Anchor LOCKED! directly to the currently grabbed player so it tracks them.
-      x: grabbed.x + 150,
-      y: grabbed.y,
+      x: grabbed.x + SPRITE_HALF_W,
+      y: PLAYER_MID_Y,
     };
   }, [counterGrabEffectPosition, allPlayersData, index]);
 
@@ -3360,8 +3362,8 @@ const GameFighter = ({
         typeof position.y === "number"
       ) {
         setParryEffectPosition({
-          x: position.x + 150,
-          y: position.y + 110, // Add GROUND_LEVEL to match player height
+          x: position.x + SPRITE_HALF_W,
+          y: PLAYER_MID_Y,
         });
         playSound(slapParrySound, 0.01);
       }
@@ -3371,7 +3373,7 @@ const GameFighter = ({
       if (data && typeof data.x === "number" && typeof data.y === "number") {
         setHitEffectPosition({
           x: data.x + 150,
-          y: data.y + 110, // Add GROUND_LEVEL to match player height
+          y: PLAYER_MID_Y,
           facing: data.facing || 1, // Default to 1 if facing not provided
           timestamp: data.timestamp, // Pass through unique timestamp
           hitId: data.hitId, // Pass through unique hit ID
@@ -3390,7 +3392,7 @@ const GameFighter = ({
         const frontOffset = facing === 1 ? 80 : -80;
         const effectData = {
           x: data.parrierX + 150 + frontOffset,
-          y: GROUND_LEVEL + 110,
+          y: PLAYER_MID_Y,
           facing: facing,
           timestamp: data.timestamp,
           parryId: data.parryId,
@@ -3428,11 +3430,10 @@ const GameFighter = ({
     if (index === 0) {
       socket.on("grab_break", (data) => {
         if (data && typeof data.breakerX === "number" && typeof data.grabberX === "number") {
-          // Calculate center position between breaker and grabber
           const centerX = (data.breakerX + data.grabberX) / 2;
           setGrabBreakEffectPosition({
-            x: centerX + 150,
-            y: GROUND_LEVEL + 110,
+            x: centerX + SPRITE_HALF_W,
+            y: PLAYER_MID_Y,
             breakId: data.breakId || `break-${Date.now()}`,
             breakerPlayerNumber: data.breakerPlayerNumber || 1,
           });
@@ -3444,8 +3445,8 @@ const GameFighter = ({
       socket.on("grab_tech", (data) => {
         if (data && typeof data.x === "number") {
           setGrabTechEffectPosition({
-            x: data.x + 150,
-            y: GROUND_LEVEL + 110,
+            x: data.x + SPRITE_HALF_W,
+            y: PLAYER_MID_Y,
             techId: data.techId || `tech-${Date.now()}`,
           });
         }
@@ -3454,8 +3455,8 @@ const GameFighter = ({
       // Counter grab effect - only when grabbing opponent during their raw parry (LOCKED! + Counter Grab banner)
       socket.on("counter_grab", (data) => {
         if (data?.type !== "counter_grab") return;
-        const x = typeof data.x === "number" ? data.x + 150 : (data.grabberX + data.grabbedX) / 2 + 150;
-        const y = typeof data.y === "number" ? data.y : GROUND_LEVEL + 110;
+        const x = typeof data.grabbedX === "number" ? data.grabbedX + SPRITE_HALF_W : (data.grabberX + data.grabbedX) / 2 + SPRITE_HALF_W;
+        const y = PLAYER_MID_Y;
         setCounterGrabEffectPosition({
           type: "counter_grab",
           x,
@@ -3495,7 +3496,7 @@ const GameFighter = ({
         if (data && typeof data.x === "number" && typeof data.y === "number") {
           setCounterHitEffectPosition({
             x: data.x + 150,
-            y: GROUND_LEVEL + 110,
+            y: PLAYER_MID_Y,
             counterId: data.counterId || `counter-hit-${Date.now()}`,
             playerNumber: data.playerNumber || 1,
             timestamp: data.timestamp,
@@ -4272,49 +4273,54 @@ const GameFighter = ({
         winner={winner}
         playerIndex={index}
       />
-      {index === 0 && (
-        <UiPlayerInfo
-          playerOneWinCount={playerOneWinCount}
-          playerTwoWinCount={playerTwoWinCount}
-          roundHistory={roundHistory}
-          roundId={uiRoundId}
-          player1Stamina={allPlayersData.player1?.stamina ?? 100}
-          player1ActivePowerUp={allPlayersData.player1?.activePowerUp ?? null}
-          player1SnowballCooldown={
-            allPlayersData.player1?.snowballCooldown ?? false
-          }
-          player1PumoArmyCooldown={
-            allPlayersData.player1?.pumoArmyCooldown ?? false
-          }
-          player2Stamina={allPlayersData.player2?.stamina ?? 100}
-          player2ActivePowerUp={allPlayersData.player2?.activePowerUp ?? null}
-          player2SnowballCooldown={
-            allPlayersData.player2?.snowballCooldown ?? false
-          }
-          player2PumoArmyCooldown={
-            allPlayersData.player2?.pumoArmyCooldown ?? false
-          }
-        />
-      )}
-
+      {/* World-space: Gyoji stays in the scene and zooms with camera */}
       <Gyoji gyojiState={gyojiState} hakkiyoi={hakkiyoi} />
-      {gyojiCall && (
-        <SumoGameAnnouncement type="tewotsuite" duration={2} />
+
+      {/* Screen-space HUD: portalled outside the scene so it never zooms */}
+      {document.getElementById('game-hud') && createPortal(
+        <>
+          {index === 0 && (
+            <UiPlayerInfo
+              playerOneWinCount={playerOneWinCount}
+              playerTwoWinCount={playerTwoWinCount}
+              roundHistory={roundHistory}
+              roundId={uiRoundId}
+              player1Stamina={allPlayersData.player1?.stamina ?? 100}
+              player1ActivePowerUp={allPlayersData.player1?.activePowerUp ?? null}
+              player1SnowballCooldown={
+                allPlayersData.player1?.snowballCooldown ?? false
+              }
+              player1PumoArmyCooldown={
+                allPlayersData.player1?.pumoArmyCooldown ?? false
+              }
+              player2Stamina={allPlayersData.player2?.stamina ?? 100}
+              player2ActivePowerUp={allPlayersData.player2?.activePowerUp ?? null}
+              player2SnowballCooldown={
+                allPlayersData.player2?.snowballCooldown ?? false
+              }
+              player2PumoArmyCooldown={
+                allPlayersData.player2?.pumoArmyCooldown ?? false
+              }
+            />
+          )}
+          {gyojiCall && (
+            <SumoGameAnnouncement type="tewotsuite" duration={2} />
+          )}
+          {hakkiyoi && <SumoGameAnnouncement type="hakkiyoi" duration={1.8} />}
+          {matchOver && (
+            <MatchOver winner={winner} localId={localId} roomName={roomName} />
+          )}
+        </>,
+        document.getElementById('game-hud')
       )}
-      {hakkiyoi && <SumoGameAnnouncement type="hakkiyoi" duration={1.8} />}
       {showRoundResult && !matchOver && (
         <RoundResult isVictory={winner.id === localId} />
       )}
-      {/* PERFORMANCE: Hidden warmup renders both RoundResult variants to pre-generate
-          styled-components CSS classes. Removed after 2 frames via useEffect above. */}
       {warmupRoundResult && (
         <div aria-hidden="true" style={{ position: 'absolute', left: '-9999px', top: '-9999px', visibility: 'hidden', pointerEvents: 'none', overflow: 'hidden', width: '1px', height: '1px' }}>
           <RoundResult isVictory={true} />
           <RoundResult isVictory={false} />
         </div>
-      )}
-      {matchOver && (
-        <MatchOver winner={winner} localId={localId} roomName={roomName} />
       )}
       {penguin.id === localId &&
         !hakkiyoi &&

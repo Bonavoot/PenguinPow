@@ -39,8 +39,6 @@ const textPulse = keyframes`
   0%, 100% {
     transform: scale(1);
     text-shadow: 
-      -2px -2px 0 #000, 2px -2px 0 #000, 
-      -2px 2px 0 #000, 2px 2px 0 #000,
       0 0 10px rgba(255, 215, 0, 0.8),
       0 0 20px rgba(255, 215, 0, 0.5),
       0 0 30px rgba(255, 215, 0, 0.3);
@@ -48,8 +46,6 @@ const textPulse = keyframes`
   50% {
     transform: scale(1.05);
     text-shadow: 
-      -2px -2px 0 #000, 2px -2px 0 #000, 
-      -2px 2px 0 #000, 2px 2px 0 #000,
       0 0 15px rgba(255, 215, 0, 1),
       0 0 25px rgba(255, 215, 0, 0.7),
       0 0 40px rgba(255, 215, 0, 0.4);
@@ -58,8 +54,8 @@ const textPulse = keyframes`
 
 const StarStunContainer = styled.div`
   position: absolute;
-  bottom: ${props => (props.$y / 720) * 100 + 26}%;
-  left: ${props => (props.$x / 1280) * 100 + 8}%;
+  bottom: ${props => (props.$y / 720) * 100 + 20}%;
+  left: ${props => (props.$x / 1280) * 100 + 6.25}%;
   transform: translateX(-50%);
   z-index: 1001;
   pointer-events: none;
@@ -73,21 +69,19 @@ const StarStunContainer = styled.div`
 
 const OrbitContainer = styled.div`
   position: relative;
-  width: clamp(75px, 7vw, 105px);
-  height: clamp(75px, 7vw, 105px);
+  width: clamp(56px, 5.19vw, 78px);
+  height: clamp(56px, 5.19vw, 78px);
   transform-style: preserve-3d;
   animation: ${orbit3D} 1.2s linear infinite;
 `;
 
 const Star = styled.div`
   position: absolute;
-  font-size: clamp(18px, 1.8vw, 26px);
+  font-size: clamp(13px, 1.33vw, 19px);
   color: #ffd700;
+  -webkit-text-stroke: 1.5px #000;
+  paint-order: stroke fill;
   text-shadow: 
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000,
     0 0 8px rgba(255, 215, 0, 0.9),
     0 0 16px rgba(255, 215, 0, 0.5);
   animation: ${starTwinkle} 0.5s ease-in-out infinite, ${counterRotate} 1.2s linear infinite;
@@ -122,12 +116,11 @@ const Star = styled.div`
 
 const StunnedText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.7rem, 1.6vw, 1.4rem);
+  font-size: clamp(0.52rem, 1.19vw, 1.04rem);
   color: #ffd700;
-  text-shadow: 
-    -2px -2px 0 #000, 2px -2px 0 #000, 
-    -2px 2px 0 #000, 2px 2px 0 #000,
-    0 0 15px rgba(255, 215, 0, 0.9);
+  -webkit-text-stroke: 2.5px #000;
+  paint-order: stroke fill;
+  text-shadow: 0 0 15px rgba(255, 215, 0, 0.9);
   white-space: nowrap;
   letter-spacing: 0.15em;
   margin-bottom: 4px;

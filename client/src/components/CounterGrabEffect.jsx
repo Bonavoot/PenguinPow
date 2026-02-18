@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
@@ -92,16 +93,16 @@ const textPop = keyframes`
 `;
 
 const EFFECT_TEXT_BASELINE_OFFSET_Y = 0;
-const EFFECT_CENTER_OFFSET_X = -3;
+const EFFECT_CENTER_OFFSET_X = 0;
 
 
 const EffectContainer = styled.div`
   position: absolute;
   left: ${props => (props.$x / 1280) * 100 + EFFECT_CENTER_OFFSET_X}%;
   bottom: ${props => (props.$y / 720) * 100 + EFFECT_TEXT_BASELINE_OFFSET_Y}%;
-  width: clamp(4.2rem, 10.5vw, 8.4rem);
-  height: clamp(3.9rem, 9.8vw, 7.8rem);
-  transform: translate(-50%, -50%);
+  width: clamp(3.11rem, 7.78vw, 6.22rem);
+  height: clamp(2.89rem, 7.26vw, 5.78rem);
+  transform: translate(-50%, 50%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -115,7 +116,7 @@ const EffectContainer = styled.div`
 `;
 
 /* Hit effect radius tier 1 (LARGE): counter grab, perfect parry, grab break, charged attack */
-const HIT_RADIUS_LARGE = "clamp(2rem, 5vw, 4rem)";
+const HIT_RADIUS_LARGE = "clamp(1.48rem, 3.70vw, 2.96rem)";
 
 /* Same structure as grab break: ring + glow both in one color so the ring reads clearly (green there, purple here) */
 const ShockwaveRing = styled.div`
@@ -125,7 +126,7 @@ const ShockwaveRing = styled.div`
   width: ${HIT_RADIUS_LARGE};
   height: ${HIT_RADIUS_LARGE};
   border-radius: 50%;
-  border: clamp(5px, 0.4vw, 10px) solid rgba(205, 115, 255, 0.98);
+  border: clamp(4px, 0.30vw, 7px) solid rgba(205, 115, 255, 0.98);
   box-shadow:
     0 0 16px rgba(187, 85, 255, 0.65),
     0 0 30px rgba(153, 51, 255, 0.38),
@@ -164,8 +165,8 @@ const InnerFlash = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(1.35rem, 3.2vw, 2.75rem);
-  height: clamp(1.35rem, 3.2vw, 2.75rem);
+  width: clamp(1.00rem, 2.37vw, 2.04rem);
+  height: clamp(1.00rem, 2.37vw, 2.04rem);
   border-radius: 50%;
   background: radial-gradient(
     circle,
@@ -205,11 +206,12 @@ const LockedText = styled.div`
   top: 50%;
   left: 50%;
   font-family: "Bungee", cursive;
-  font-size: clamp(0.7rem, 1.6vw, 1.4rem);
+  font-size: clamp(0.52rem, 1.19vw, 1.04rem);
   color: #bb2255;
-  text-shadow: 
-    -2px -2px 0 #000, 2px -2px 0 #000, 
-    -2px 2px 0 #000, 2px 2px 0 #000,
+  -webkit-text-stroke: 2px #000;
+  paint-order: stroke fill;
+  text-shadow:
+    -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000,
     0 0 15px rgba(204, 34, 68, 0.9),
     0 0 30px rgba(153, 51, 255, 0.7);
   letter-spacing: 0.15em;
@@ -321,11 +323,14 @@ const CounterGrabEffect = ({ position }) => {
               ))}
               <LockedText>LOCKED!</LockedText>
             </EffectContainer>
-            <SumoAnnouncementBanner
-              text={"COUNTER\nGRAB"}
-              type="countergrab"
-              isLeftSide={isLeftSide}
-            />
+            {document.getElementById('game-hud') && createPortal(
+              <SumoAnnouncementBanner
+                text={"COUNTER\nGRAB"}
+                type="countergrab"
+                isLeftSide={isLeftSide}
+              />,
+              document.getElementById('game-hud')
+            )}
           </div>
         );
       })}

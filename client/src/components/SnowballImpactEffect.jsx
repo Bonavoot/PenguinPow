@@ -12,11 +12,11 @@ const snowBurst = keyframes`
     opacity: 1;
   }
   40% {
-    transform: translate(-50%, -50%) rotateY(var(--snowball-ring-tilt, 55deg)) scale(1.5);
+    transform: translate(-50%, -50%) rotateY(var(--snowball-ring-tilt, 55deg)) scale(1.2);
     opacity: 1;
   }
   100% {
-    transform: translate(-50%, -50%) rotateY(var(--snowball-ring-tilt, 55deg)) scale(2);
+    transform: translate(-50%, -50%) rotateY(var(--snowball-ring-tilt, 55deg)) scale(1.5);
     opacity: 0;
   }
 `;
@@ -36,10 +36,10 @@ const frostRing = keyframes`
   0% {
     transform: translate(-50%, -50%) rotateY(var(--snowball-ring-tilt, 55deg)) scale(0.3);
     opacity: 1;
-    border-width: clamp(4px, 0.32vw, 8px);
+    border-width: clamp(3px, 0.26vw, 6px);
   }
   100% {
-    transform: translate(-50%, -50%) rotateY(var(--snowball-ring-tilt, 55deg)) scale(2.5);
+    transform: translate(-50%, -50%) rotateY(var(--snowball-ring-tilt, 55deg)) scale(2);
     opacity: 0;
     border-width: clamp(1px, 0.08vw, 2px);
   }
@@ -47,8 +47,8 @@ const frostRing = keyframes`
 
 const EffectContainer = styled.div`
   position: absolute;
-  left: ${props => (props.$x / 1280) * 100 + (props.$facing === 1 ? -1 : -6)}%;
-  bottom: ${props => (props.$y / 720) * 100 + 15}%;
+  left: ${props => (props.$x / 1280) * 100 + (props.$facing === 1 ? -4 : -8)}%;
+  bottom: ${props => (props.$y / 720) * 100 + 9}%;
   transform: translate(-50%, -50%);
   z-index: 165;
   pointer-events: none;
@@ -64,8 +64,8 @@ const SnowBurst = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(40px, 5vw, 60px);
-  height: clamp(40px, 5vw, 60px);
+  width: clamp(24px, 2.9vw, 35px);
+  height: clamp(24px, 2.9vw, 35px);
   background: radial-gradient(circle, rgba(255, 255, 255, 1) 0%, rgba(200, 230, 255, 0.8) 40%, transparent 70%);
   border-radius: 50%;
   transform: translate(-50%, -50%) rotateY(var(--snowball-ring-tilt, 55deg)) scale(0);
@@ -76,9 +76,9 @@ const FrostRing = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(50px, 6vw, 75px);
-  height: clamp(50px, 6vw, 75px);
-  border: 3px solid rgba(135, 206, 250, 0.9);
+  width: clamp(28px, 3.4vw, 42px);
+  height: clamp(28px, 3.4vw, 42px);
+  border: 2px solid rgba(135, 206, 250, 0.9);
   border-radius: 50%;
   transform: translate(-50%, -50%) rotateY(var(--snowball-ring-tilt, 55deg)) scale(0.3);
   animation: ${frostRing} 0.4s ease-out forwards;
@@ -113,11 +113,11 @@ const SnowballImpactEffect = ({ position }) => {
     for (let i = 0; i < count; i++) {
       const angle = (i / count) * 360;
       const radians = angle * (Math.PI / 180);
-      const distance = 2.5 + Math.random() * 1.5;
+      const distance = 2 + Math.random() * 1.2;
       
       flakes.push({
         id: i,
-        size: 4 + Math.random() * 6,
+        size: 3 + Math.random() * 5,
         dx: Math.cos(radians) * distance,
         dy: Math.sin(radians) * distance,
         delay: i * 0.02,

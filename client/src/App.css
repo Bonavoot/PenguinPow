@@ -382,34 +382,52 @@ body {
   --dohyo-filter: brightness(0.97) saturate(1) contrast(1.06);
   --dohyo-opacity: 0.96;
   --dohyo-cool-tint: rgba(185, 220, 255, 0.1);
+
+  /* ── Camera defaults — JS will drive these later for dynamic pan/zoom ── */
+  --cam-scale: 1.35;
+  --cam-x: 0px;
+  --cam-y: 0px;
 }
 
-.game-container::before {
-  content: "";
+/* ── Camera scene: everything that moves with pan/zoom lives here ── */
+.game-scene {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
+  transform-origin: center center;
+  transform:
+    translate3d(var(--cam-x, 0px), var(--cam-y, 0px), 0)
+    scale(var(--cam-scale, 1));
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+/* HUD layer — viewport-fixed, never affected by camera */
+.game-hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 200;
+}
+.game-hud > * {
+  pointer-events: auto;
+}
+
+/* Arena map — fills the scene; overflows naturally when the camera zooms in */
+.game-map {
+  position: absolute;
+  inset: 0;
   background-image: url(./assets/game-map-1.png);
   background-repeat: no-repeat;
-  background-size: 120% 120%;
-  background-position: 52% 5%;
-  /* Keep arena art readable, but less vivid than gameplay actors/effects */
+  background-size: cover;
+  background-position: center -5%;
   filter: var(--arena-map-filter);
   z-index: -1;
-  /* Isolation prevents blend modes from other elements affecting the dohyo */
   isolation: isolate;
 }
 
-.game-container::after {
-  content: "";
+.ambient-overlay {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  /* Ambient wash to keep scene cohesion */
+  inset: 0;
   background: linear-gradient(
     180deg,
     var(--arena-ambient-top) 0%,
@@ -421,32 +439,22 @@ body {
 
 .dohyo-overlay {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   background-image: url(./assets/dohyo.png);
   background-repeat: no-repeat;
-  background-size: 130% 120%;
-  background-position: 52% 5%;
-  filter: var(--dohyo-filter);
-  opacity: var(--dohyo-opacity);
+  background-size: 85% 90%;          /* width height — increase 2nd value to make platform taller */
+  background-position: 50% 25%;
   pointer-events: none;
   z-index: 1;
+  /* ── Perspective tilt — tweak these to flatten / angle the dohyo ── */
+  transform-origin: 50% 10%;      /* pivot near the top — back stays wide, front narrows */
+  transform:
+    perspective(700px)             /* depth — lower = more dramatic, higher = subtler */
+    rotateX(5deg)                 /* tilt — back stays anchored, front swings away (narrows) */
+    scaleY(0.86)                   /* vertical squash — < 1 = flatter, 1 = no change */
+    translateY(10%);               /* raise/lower — negative = up, positive = down */
 }
 
-.dohyo-overlay::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    180deg,
-    var(--dohyo-cool-tint) 0%,
-    rgba(185, 220, 255, 0.04) 45%,
-    rgba(190, 220, 255, 0) 100%
-  );
-  pointer-events: none;
-}
 
 /* Cheap post-processing passes to unify the look without blurs */
 .arena-tone-pass {
@@ -965,9 +973,9 @@ body {
 
 .gyoji {
   position: absolute;
-  left: 38%;
-  bottom: 40%;
-  width: 23.4%;
+  left: 41.4%;
+  bottom: 47%;
+  width: 17.33%;
   height: auto;
   z-index: 2;
   pointer-events: none;

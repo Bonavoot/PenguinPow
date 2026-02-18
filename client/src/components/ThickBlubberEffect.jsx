@@ -23,8 +23,8 @@ const absorptionAnimation = keyframes`
 
 const ShieldEffect = styled.div`
   position: absolute;
-  width: 60px;
-  height: 60px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: radial-gradient(
     circle,
@@ -38,7 +38,7 @@ const ShieldEffect = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 18px;
   color: white;
   text-shadow: 0 0 10px rgba(156, 136, 255, 0.8);
   animation: ${absorptionAnimation} 0.8s ease-out forwards;

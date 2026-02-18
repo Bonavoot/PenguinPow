@@ -12,16 +12,16 @@ const MAP_WIDTH = MAP_RIGHT_BOUNDARY - MAP_LEFT_BOUNDARY;
 // AI Configuration - Tuned for expert sumo gameplay
 const AI_CONFIG = {
   // Distance thresholds
-  SLAP_RANGE: 160,         // Distance for slap attacks (close combat)
-  GRAB_RANGE: 200,         // Distance for grab attempts (slightly under server's ~224 to avoid whiffs)
-  GRAB_APPROACH_RANGE: 250, // Distance at which AI decides to walk in for a grab (intent range)
-  MID_RANGE: 250,          // Medium distance
-  CHARGED_ATTACK_RANGE: 350, // Minimum distance to consider charged attack
+  SLAP_RANGE: 119,         // Scaled for camera zoom (was 160)
+  GRAB_RANGE: 148,         // Scaled for camera zoom (was 200)
+  GRAB_APPROACH_RANGE: 185, // Scaled for camera zoom (was 250)
+  MID_RANGE: 185,          // Scaled for camera zoom (was 250)
+  CHARGED_ATTACK_RANGE: 259, // Scaled for camera zoom (was 350)
   
   // Edge/corner awareness
-  EDGE_DANGER_ZONE: 120,   // Distance from edge considered dangerous
-  CORNER_CRITICAL_ZONE: 80, // Very close to edge - escape priority!
-  BACK_TO_BOUNDARY_THROW_ZONE: 200, // When back is this close to boundary, use throw for ring-out
+  EDGE_DANGER_ZONE: 89,    // Scaled for camera zoom (was 120)
+  CORNER_CRITICAL_ZONE: 59, // Scaled for camera zoom (was 80)
+  BACK_TO_BOUNDARY_THROW_ZONE: 148, // Scaled for camera zoom (was 200)
   
   // Reaction chances (0-1) — intentionally imperfect to feel human
   PARRY_CHANCE: 0.22,      // Base chance to parry incoming attacks (lowered from 0.28)
@@ -1842,7 +1842,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       const numClones = 5;
       const spawnDelay = 1000;
       const startX = armyDirection === 1 ? 0 : 1150;
-      const GROUND_LEVEL = 210;
+      const GROUND_LEVEL = 230;
       
       for (let i = 0; i < numClones; i++) {
         setPlayerTimeout(cpu.id, () => {

@@ -92,8 +92,8 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(5px, 0.55vw, 9px);
-  height: clamp(5px, 0.55vw, 9px);
+  width: clamp(4px, 0.41vw, 7px);
+  height: clamp(4px, 0.41vw, 7px);
   border-radius: 50%;
   background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 20%, rgba(255, 200, 80, 0.9) 100%);
   opacity: 0;
@@ -114,12 +114,12 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(3px, 0.35vw, 6px);
-  height: clamp(3px, 0.35vw, 6px);
+  width: clamp(2px, 0.26vw, 4px);
+  height: clamp(2px, 0.26vw, 4px);
   border-radius: 50%;
   background: radial-gradient(circle, #FFB74D 30%, rgba(255, 120, 50, 0.85) 100%);
   opacity: 0;
-  box-shadow: 0 0 clamp(3px, 0.24vw, 6px) rgba(255, 140, 60, 0.7);
+  box-shadow: 0 0 clamp(2px, 0.18vw, 4px) rgba(255, 140, 60, 0.7);
 }
 
 /* ============================================
@@ -130,8 +130,8 @@
 /* Tier 2 (SMALL) size - same as before */
 .hit-ring-wrapper.slap-hit {
   position: relative;
-  width: clamp(1.9rem, 4.8vw, 3.75rem);
-  height: clamp(1.9rem, 4.8vw, 3.75rem);
+  width: clamp(1.41rem, 3.56vw, 2.78rem);
+  height: clamp(1.41rem, 3.56vw, 2.78rem);
   --slap-ring-tilt: 55deg;
   filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.22)) drop-shadow(0 0 4px rgba(0, 0, 0, 0.12));
 }
@@ -195,8 +195,8 @@
   left: 50%;
   width: 100%;
   height: 100%;
-  border: clamp(2.5px, 0.2vw, 5px) solid rgba(255, 165, 65, 0.9);
-  box-shadow: 0 0 0 clamp(1.5px, 0.12vw, 3px) rgba(0, 0, 0, 0.2), 0 0 clamp(6px, 0.5vw, 12px) rgba(255, 150, 55, 0.45), 0 0 clamp(12px, 1vw, 24px) rgba(255, 95, 40, 0.18);
+  border: clamp(2px, 0.15vw, 4px) solid rgba(255, 165, 65, 0.9);
+  box-shadow: 0 0 0 clamp(1px, 0.09vw, 2px) rgba(0, 0, 0, 0.2), 0 0 clamp(4px, 0.37vw, 9px) rgba(255, 150, 55, 0.45), 0 0 clamp(9px, 0.74vw, 18px) rgba(255, 95, 40, 0.18);
   border-radius: 50%;
   transform: translate(-50%, -50%) rotateY(var(--slap-ring-tilt-signed, var(--slap-ring-tilt))) scale(0.15);
   animation: slapRingExpand 0.24s cubic-bezier(0.22, 1, 0.36, 1) forwards;
@@ -209,8 +209,8 @@
 
 /* --- Slap Speed Lines --- */
 .slap-hit .hit-speed-line {
-  width: clamp(1.5px, 0.15vw, 2.5px);
-  height: clamp(8px, 1.2vw, 14px);
+  width: clamp(1px, 0.11vw, 2px);
+  height: clamp(6px, 0.89vw, 10px);
   background: linear-gradient(to top,
     transparent 0%,
     rgba(255, 180, 60, 0.9) 35%,
@@ -230,18 +230,18 @@
   box-shadow: 0 0 4px rgba(255, 180, 60, 0.8), 0 0 8px rgba(255, 100, 40, 0.5);
 }
 
-.slap-hit .spark:nth-child(1) { --tx: 2.5vw; --ty: -2vw; }
-.slap-hit .spark:nth-child(2) { --tx: -2.5vw; --ty: -1.5vw; animation-delay: 0.025s; }
-.slap-hit .spark:nth-child(3) { --tx: 2vw; --ty: 2.5vw; animation-delay: 0.015s; }
-.slap-hit .spark:nth-child(4) { --tx: -2vw; --ty: 2vw; animation-delay: 0.035s; }
-.slap-hit .spark:nth-child(5) { --tx: 3vw; --ty: 0.3vw; animation-delay: 0.01s; }
-.slap-hit .spark:nth-child(6) { --tx: -3vw; --ty: -0.3vw; animation-delay: 0.025s; }
+.slap-hit .spark:nth-child(1) { --tx: 1.85vw; --ty: -1.48vw; }
+.slap-hit .spark:nth-child(2) { --tx: -1.85vw; --ty: -1.11vw; animation-delay: 0.025s; }
+.slap-hit .spark:nth-child(3) { --tx: 1.48vw; --ty: 1.85vw; animation-delay: 0.015s; }
+.slap-hit .spark:nth-child(4) { --tx: -1.48vw; --ty: 1.48vw; animation-delay: 0.035s; }
+.slap-hit .spark:nth-child(5) { --tx: 2.22vw; --ty: 0.22vw; animation-delay: 0.01s; }
+.slap-hit .spark:nth-child(6) { --tx: -2.22vw; --ty: -0.22vw; animation-delay: 0.025s; }
 
 /* --- Slap Particles --- */
-.slap-hit .particle:nth-child(1) { animation: particleBurst 0.26s ease-out forwards; --px: -2vw; --py: -2.2vw; }
-.slap-hit .particle:nth-child(2) { animation: particleBurst 0.26s ease-out 0.025s forwards; --px: 2.2vw; --py: -1.5vw; }
-.slap-hit .particle:nth-child(3) { animation: particleBurst 0.26s ease-out 0.015s forwards; --px: -1.5vw; --py: 2vw; }
-.slap-hit .particle:nth-child(4) { animation: particleBurst 0.26s ease-out 0.035s forwards; --px: 1.8vw; --py: 2.2vw; }
+.slap-hit .particle:nth-child(1) { animation: particleBurst 0.26s ease-out forwards; --px: -1.48vw; --py: -1.63vw; }
+.slap-hit .particle:nth-child(2) { animation: particleBurst 0.26s ease-out 0.025s forwards; --px: 1.63vw; --py: -1.11vw; }
+.slap-hit .particle:nth-child(3) { animation: particleBurst 0.26s ease-out 0.015s forwards; --px: -1.11vw; --py: 1.48vw; }
+.slap-hit .particle:nth-child(4) { animation: particleBurst 0.26s ease-out 0.035s forwards; --px: 1.33vw; --py: 1.63vw; }
 
 /* ============================================
    SLAP KEYFRAMES
@@ -297,14 +297,14 @@
 @keyframes slapSpeedLine {
   0% {
     opacity: 1;
-    transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-0.5vw) scaleY(0.4);
+    transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-0.37vw) scaleY(0.4);
   }
   35% {
     opacity: 1;
   }
   100% {
     opacity: 0;
-    transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-2.4vw) scaleY(1.1);
+    transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-1.78vw) scaleY(1.1);
   }
 }
 
@@ -317,8 +317,8 @@
 /* Tier 1 (LARGE) size - same as punish/grab break/perfect parry */
 .hit-ring-wrapper.charged-hit {
   position: relative;
-  width: clamp(2rem, 5vw, 4rem);
-  height: clamp(2rem, 5vw, 4rem);
+  width: clamp(1.48rem, 3.70vw, 2.96rem);
+  height: clamp(1.48rem, 3.70vw, 2.96rem);
   /* Faux-3D: recede toward background by compressing width */
   --charged-ring-tilt: 55deg;
   filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.22)) drop-shadow(0 0 5px rgba(0, 0, 0, 0.12));
@@ -391,8 +391,8 @@
   left: 50%;
   width: 100%;
   height: 100%;
-  border: clamp(3px, 0.24vw, 6px) solid rgba(255, 160, 50, 0.9);
-  box-shadow: 0 0 0 clamp(2px, 0.16vw, 4px) rgba(0, 0, 0, 0.2), 0 0 clamp(8px, 0.65vw, 16px) rgba(255, 140, 50, 0.5), 0 0 clamp(16px, 1.3vw, 32px) rgba(255, 90, 30, 0.2);
+  border: clamp(2px, 0.18vw, 4px) solid rgba(255, 160, 50, 0.9);
+  box-shadow: 0 0 0 clamp(1px, 0.12vw, 3px) rgba(0, 0, 0, 0.2), 0 0 clamp(6px, 0.48vw, 12px) rgba(255, 140, 50, 0.5), 0 0 clamp(12px, 0.96vw, 24px) rgba(255, 90, 30, 0.2);
   border-radius: 50%;
   transform: translate(-50%, -50%) rotateY(var(--charged-ring-tilt-signed, var(--charged-ring-tilt))) scale(0.15);
   animation: chargedRingExpand 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards;
@@ -401,17 +401,17 @@
 /* Secondary shockwave ring - delayed for layered depth */
 .charged-hit .hit-shockwave-secondary {
   display: block;
-  width: clamp(2rem, 5vw, 4rem);
-  height: clamp(2rem, 5vw, 4rem);
-  border: clamp(2px, 0.16vw, 4px) solid rgba(255, 180, 60, 0.7);
-  box-shadow: 0 0 0 clamp(1.5px, 0.12vw, 3px) rgba(0, 0, 0, 0.18), 0 0 clamp(6px, 0.5vw, 12px) rgba(255, 140, 50, 0.35);
+  width: clamp(1.48rem, 3.70vw, 2.96rem);
+  height: clamp(1.48rem, 3.70vw, 2.96rem);
+  border: clamp(1px, 0.12vw, 3px) solid rgba(255, 180, 60, 0.7);
+  box-shadow: 0 0 0 clamp(1px, 0.09vw, 2px) rgba(0, 0, 0, 0.18), 0 0 clamp(4px, 0.37vw, 9px) rgba(255, 140, 50, 0.35);
   animation: chargedSecondaryRing 0.42s cubic-bezier(0.22, 1, 0.36, 1) 0.06s forwards;
 }
 
 /* --- Charged Speed Lines - thicker, longer, more dramatic --- */
 .charged-hit .hit-speed-line {
-  width: clamp(2px, 0.2vw, 3.5px);
-  height: clamp(10px, 1.6vw, 18px);
+  width: clamp(1px, 0.15vw, 3px);
+  height: clamp(7px, 1.19vw, 13px);
   background: linear-gradient(to top,
     transparent 0%,
     rgba(255, 180, 60, 0.95) 30%,
@@ -430,33 +430,33 @@
 
 /* --- Charged Sparks - larger, fly further --- */
 .charged-hit .spark {
-  width: clamp(6px, 0.65vw, 10px);
-  height: clamp(6px, 0.65vw, 10px);
+  width: clamp(4px, 0.48vw, 7px);
+  height: clamp(4px, 0.48vw, 7px);
   animation: sparkBurst 0.32s ease-out forwards;
   box-shadow: 0 0 5px rgba(255, 180, 60, 0.85), 0 0 10px rgba(255, 100, 40, 0.5);
 }
 
-.charged-hit .spark:nth-child(1) { --tx: 3vw; --ty: -2.5vw; }
-.charged-hit .spark:nth-child(2) { --tx: -3vw; --ty: -2vw; animation-delay: 0.02s; }
-.charged-hit .spark:nth-child(3) { --tx: 2.5vw; --ty: 3vw; animation-delay: 0.01s; }
-.charged-hit .spark:nth-child(4) { --tx: -2.5vw; --ty: 2.5vw; animation-delay: 0.03s; }
-.charged-hit .spark:nth-child(5) { --tx: 3.5vw; --ty: 0.5vw; animation-delay: 0.005s; }
-.charged-hit .spark:nth-child(6) { --tx: -3.5vw; --ty: -0.5vw; animation-delay: 0.025s; }
-.charged-hit .spark:nth-child(7) { --tx: 1vw; --ty: -3.5vw; animation-delay: 0.015s; }
-.charged-hit .spark:nth-child(8) { --tx: -1vw; --ty: 3.5vw; animation-delay: 0.035s; }
+.charged-hit .spark:nth-child(1) { --tx: 2.22vw; --ty: -1.85vw; }
+.charged-hit .spark:nth-child(2) { --tx: -2.22vw; --ty: -1.48vw; animation-delay: 0.02s; }
+.charged-hit .spark:nth-child(3) { --tx: 1.85vw; --ty: 2.22vw; animation-delay: 0.01s; }
+.charged-hit .spark:nth-child(4) { --tx: -1.85vw; --ty: 1.85vw; animation-delay: 0.03s; }
+.charged-hit .spark:nth-child(5) { --tx: 2.59vw; --ty: 0.37vw; animation-delay: 0.005s; }
+.charged-hit .spark:nth-child(6) { --tx: -2.59vw; --ty: -0.37vw; animation-delay: 0.025s; }
+.charged-hit .spark:nth-child(7) { --tx: 0.74vw; --ty: -2.59vw; animation-delay: 0.015s; }
+.charged-hit .spark:nth-child(8) { --tx: -0.74vw; --ty: 2.59vw; animation-delay: 0.035s; }
 
 /* --- Charged Particles - 6 for heavier debris --- */
 .charged-hit .particle {
-  width: clamp(4px, 0.4vw, 7px);
-  height: clamp(4px, 0.4vw, 7px);
+  width: clamp(3px, 0.30vw, 5px);
+  height: clamp(3px, 0.30vw, 5px);
 }
 
-.charged-hit .particle:nth-child(1) { animation: particleBurst 0.3s ease-out forwards; --px: -2.5vw; --py: -2.5vw; }
-.charged-hit .particle:nth-child(2) { animation: particleBurst 0.3s ease-out 0.02s forwards; --px: 2.5vw; --py: -2vw; }
-.charged-hit .particle:nth-child(3) { animation: particleBurst 0.3s ease-out 0.01s forwards; --px: -2vw; --py: 2.5vw; }
-.charged-hit .particle:nth-child(4) { animation: particleBurst 0.3s ease-out 0.03s forwards; --px: 2.2vw; --py: 2.5vw; }
-.charged-hit .particle:nth-child(5) { animation: particleBurst 0.3s ease-out 0.015s forwards; --px: 3vw; --py: 0vw; }
-.charged-hit .particle:nth-child(6) { animation: particleBurst 0.3s ease-out 0.025s forwards; --px: -3vw; --py: 0vw; }
+.charged-hit .particle:nth-child(1) { animation: particleBurst 0.3s ease-out forwards; --px: -1.85vw; --py: -1.85vw; }
+.charged-hit .particle:nth-child(2) { animation: particleBurst 0.3s ease-out 0.02s forwards; --px: 1.85vw; --py: -1.48vw; }
+.charged-hit .particle:nth-child(3) { animation: particleBurst 0.3s ease-out 0.01s forwards; --px: -1.48vw; --py: 1.85vw; }
+.charged-hit .particle:nth-child(4) { animation: particleBurst 0.3s ease-out 0.03s forwards; --px: 1.63vw; --py: 1.85vw; }
+.charged-hit .particle:nth-child(5) { animation: particleBurst 0.3s ease-out 0.015s forwards; --px: 2.22vw; --py: 0vw; }
+.charged-hit .particle:nth-child(6) { animation: particleBurst 0.3s ease-out 0.025s forwards; --px: -2.22vw; --py: 0vw; }
 
 /* ============================================
    CHARGED KEYFRAMES
@@ -535,14 +535,14 @@
 @keyframes chargedSpeedLine {
   0% {
     opacity: 1;
-    transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-0.6vw) scaleY(0.3);
+    transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-0.44vw) scaleY(0.3);
   }
   30% {
     opacity: 1;
   }
   100% {
     opacity: 0;
-    transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-3.2vw) scaleY(1.2);
+    transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-2.37vw) scaleY(1.2);
   }
 }
 

@@ -1,6 +1,6 @@
 // Game constants
-const MAP_LEFT_BOUNDARY = 80;
-const MAP_RIGHT_BOUNDARY = 982;
+const MAP_LEFT_BOUNDARY = 260;
+const MAP_RIGHT_BOUNDARY = 860;
 
 const DEFAULT_PLAYER_SIZE_MULTIPLIER = 0.85; // 15% smaller default size
 
@@ -9,7 +9,7 @@ const DOHYO_LEFT_BOUNDARY = -40;
 const DOHYO_RIGHT_BOUNDARY = 1092;
 
 // Dohyo fall physics
-const DOHYO_FALL_DEPTH = 50; // How far down they fall off the dohyo (in pixels)
+const DOHYO_FALL_DEPTH = 37; // Scaled for camera zoom (was 50)
 
 // Timeout manager for memory leak prevention
 class TimeoutManager {

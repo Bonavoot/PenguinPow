@@ -321,20 +321,20 @@ let staminaRegenCounter = 0;
 // TICK_RATE and BROADCAST_EVERY_N_TICKS from constants.js (32 Hz broadcast = balanced CPU/network)
 let broadcastTickCounter = 0;
 const delta = 1000 / TICK_RATE;
-const speedFactor = 0.25; // Increased from 0.22 for snappier movement
-const GROUND_LEVEL = 210;
-const HITBOX_DISTANCE_VALUE = Math.round(77 * 1.3); // 100 (scaled +30%)
-const SLAP_HITBOX_DISTANCE_VALUE = Math.round(155 * 1.3); // 202 (scaled +30%)
+const speedFactor = 0.185; // Scaled for camera zoom (was 0.25)
+const GROUND_LEVEL = 278;
+const HITBOX_DISTANCE_VALUE = Math.round(77 * 0.96); // ~74 (scaled for camera zoom)
+const SLAP_HITBOX_DISTANCE_VALUE = Math.round(155 * 0.96); // ~149 (scaled for camera zoom)
 const SLAP_PARRY_WINDOW = 200; // Updated to 200ms window for parry to account for longer slap animation
 const SLAP_PARRY_KNOCKBACK_VELOCITY = 1.5; // Reduced knockback for parried attacks
-const THROW_RANGE = Math.round(166 * 1.3); // 216 (scaled +30%)
-const GRAB_RANGE = Math.round(172 * 1.3); // ~224px - command grab range (no lunge to close gap)
-const GRAB_PUSH_SPEED = 0.3; // Increased from 0.2 for more substantial movement
+const THROW_RANGE = Math.round(166 * 0.96); // ~159 (scaled for camera zoom)
+const GRAB_RANGE = Math.round(172 * 0.96); // ~165px - command grab range (scaled for camera zoom)
+const GRAB_PUSH_SPEED = 0.3; // Push movement speed
 const GRAB_PUSH_DURATION = 650;
 
 // Dohyo edge fall physics - fast heavy drop with maintained horizontal momentum
-const DOHYO_FALL_SPEED = 8; // Fast downward fall speed (2 feet drop)
-const DOHYO_FALL_DEPTH = 50; // How far down they fall (2 feet)
+const DOHYO_FALL_SPEED = 5.93; // Scaled for camera zoom (was 8)
+const DOHYO_FALL_DEPTH = 37; // Scaled for camera zoom (was 50)
 const DOHYO_FALL_HORIZONTAL_RETENTION = 0.98; // Maintain horizontal momentum while falling
 
 // Add power-up types
@@ -381,19 +381,19 @@ const ICE_TURN_BURST = 0.18;            // Burst in new direction after braking
 
 // POWER SLIDE (C key) - commit to momentum for speed boost
 const SLIDE_SPEED_BOOST = 1.42;         // 42% faster while power sliding (minor increase from 35%)
-const SLIDE_MAX_SPEED = 2.1;            // Slightly higher max to allow sprint feel
+const SLIDE_MAX_SPEED = 2.1;            // Max speed during power slide
 const SLIDE_FRICTION = 0.994;           // Very low friction during slide
-const SLIDE_MIN_VELOCITY = 0.5;         // Slightly easier to start power slide
+const SLIDE_MIN_VELOCITY = 0.5;         // Minimum velocity to start power slide
 const SLIDE_MAINTAIN_VELOCITY = 0.35;   // Maintain threshold
 const SLIDE_BRAKE_FRICTION = 0.76;      // Can still brake during slide but slower
 const SLIDE_STRAFE_TIME_REQUIRED = 100; // Must be strafing for 100ms before power slide allowed
 
 // Dodge landing momentum for ice physics
-const DODGE_SLIDE_MOMENTUM = 1.1;       // Slightly more momentum when landing from dodge
-const DODGE_POWERSLIDE_BOOST = 1.95;    // Stronger boost if holding C on landing (dodge-slide feels fast)
+const DODGE_SLIDE_MOMENTUM = 1.1;       // Momentum when landing from dodge
+const DODGE_POWERSLIDE_BOOST = 1.95;    // Boost if holding C on dodge landing
 
 // Edge awareness
-const DOHYO_EDGE_PANIC_ZONE = 120;      // Distance from edge where special physics apply
+const DOHYO_EDGE_PANIC_ZONE = 89;       // Scaled for camera zoom (was 120)
 const ICE_EDGE_BRAKE_BONUS = 0.06;      // EXTRA braking power near edge
 const ICE_EDGE_SLIDE_PENALTY = 0.004;   // MORE slippery near edge when not braking
 
@@ -461,9 +461,9 @@ function getIceFriction(player, isActiveBraking, nearEdge, edgeProximity) {
 
 // Dodge physics constants - smooth graceful arc with weight
 const DODGE_DURATION = 450; // Longer for bigger, more dramatic arc
-const DODGE_BASE_SPEED = 2.2; // Slightly shorter horizontal distance
-const DODGE_HOP_HEIGHT = 95; // Higher for a bigger, more impressive arc
-const DODGE_LANDING_MOMENTUM = 0.35; // Momentum burst on landing for chaining moves
+const DODGE_BASE_SPEED = 2.2; // Base horizontal speed during dodge
+const DODGE_HOP_HEIGHT = 70; // Scaled for camera zoom (was 95)
+const DODGE_LANDING_MOMENTUM = 0.35; // Momentum burst on landing
 const DODGE_CANCEL_DURATION = 100; // Smooth but quick slam-down
 const DODGE_CANCEL_SPEED_MULT = 0.2; // Some horizontal movement during cancel
 
@@ -482,7 +482,7 @@ const GRAB_WHIFF_STUMBLE_VEL = 0.4; // Slight forward stumble velocity during wh
 
 // Grab tech — both players grab simultaneously, freeze then push apart
 const GRAB_TECH_FREEZE_MS = 350; // Freeze duration before separation (shake/jiggle phase)
-const GRAB_TECH_FORCED_DISTANCE = 60; // Forced separation distance (px) each player is pushed apart
+const GRAB_TECH_FORCED_DISTANCE = 44; // Scaled for camera zoom (was 60)
 const GRAB_PULL_ATTEMPT_DISTANCE_MULTIPLIER = 1.4; // Larger gap during pull attempt (vs 1.0 for normal grab)
 const GRAB_TECH_TWEEN_DURATION = 120; // Duration of forced separation tween (ms)
 const GRAB_TECH_RESIDUAL_VEL = 1.2; // Residual velocity fed into ice sliding after forced separation
@@ -493,9 +493,9 @@ const GRAB_TECH_ANIM_DURATION_MS = 700; // Total tech animation duration (freeze
 const RINGOUT_THROW_DURATION_MS = 400; // Match normal throw timing for consistent physics
 
 // Parry knockback - velocity based (causes sliding on ice)
-const RAW_PARRY_KNOCKBACK = 0.49; // Knockback velocity for charged attack parries (reduced by 25%)
+const RAW_PARRY_KNOCKBACK = 0.49; // Knockback velocity for charged attack parries
 const RAW_PARRY_STUN_DURATION = 1000; // 1 second stun duration
-const RAW_PARRY_SLAP_KNOCKBACK = 0.5; // Lighter knockback for slap parries (20% less)
+const RAW_PARRY_SLAP_KNOCKBACK = 0.5; // Lighter knockback for slap parries
 const PERFECT_PARRY_KNOCKBACK = 0.65; // Slightly stronger than regular parry
 const RAW_PARRY_SLAP_STUN_DURATION = 500; // Reduced stun duration for slap attack parries
 const PERFECT_PARRY_WINDOW = 100; // 100ms window for perfect parries
@@ -534,10 +534,10 @@ const DODGE_STAMINA_COST = 7; // ~7% of max stamina per dodge (halved from 15)
 // Grab stamina drain: 10 stamina over full 1.5s duration
 // Drain 1 stamina every 150ms (1500ms / 10 = 150ms per stamina point)
 const GRAB_STAMINA_DRAIN_INTERVAL = 150;
-const GRAB_BREAK_PUSH_VELOCITY = 1.2; // Reduced push velocity (~55%) for shorter shove
+const GRAB_BREAK_PUSH_VELOCITY = 1.2; // Push velocity for grab breaks
 const GRAB_BREAK_ANIMATION_DURATION = 380; // Duration for grab break animation state
 const GRAB_BREAK_SEPARATION_DURATION = 220; // Smooth separation tween duration
-const GRAB_BREAK_SEPARATION_MULTIPLIER = 96; // Separation distance scale (tripled)
+const GRAB_BREAK_SEPARATION_MULTIPLIER = 71; // Scaled for camera zoom (was 96)
 const GRAB_BREAK_INPUT_LOCK_DURATION = 250; // Total input lock duration after grab break starts
 
 // ============================================
@@ -546,21 +546,21 @@ const GRAB_BREAK_INPUT_LOCK_DURATION = 250; // Total input lock duration after g
 // Grabber can interrupt push with pull (backward) or throw (W) during push.
 // ============================================
 const GRAB_ACTION_WINDOW = 500; // 0.5s window for pull/throw counter attempts
-const GRAB_PUSH_BURST_BASE = 2.5;          // Base burst speed when push starts (compare: ICE_MAX_SPEED=1.3, SLIDE_MAX=2.1)
+const GRAB_PUSH_BURST_BASE = 2.5;          // Base burst speed when push starts
 const GRAB_PUSH_MOMENTUM_TRANSFER = 0.6;   // Multiplier on approach speed added to burst (power slide grab = devastating)
 const GRAB_PUSH_DECAY_RATE = 2.2;          // Exponential decay rate — higher = faster slowdown
-const GRAB_PUSH_MIN_VELOCITY = 0.15;       // Push ends when speed decays below this (unless pinned at boundary)
+const GRAB_PUSH_MIN_VELOCITY = 0.15;       // Push ends when speed decays below this
 const GRAB_PUSH_MAX_DURATION = 1500;        // Safety cap: push can never exceed this (ms)
 const GRAB_PUSH_BACKWARD_GRACE = 150;       // ms before backward input triggers pull during push (prevents accidental pull)
 const GRAB_PUSH_STAMINA_DRAIN_INTERVAL = 35; // Drain 1 stamina per 35ms on pushed opponent (~28.6/sec)
-const GRAB_PUSH_SEPARATION_OPPONENT_VEL = 1.2; // Velocity given to opponent when push ends (ice physics handle decel)
+const GRAB_PUSH_SEPARATION_OPPONENT_VEL = 1.2; // Velocity given to opponent when push ends
 const GRAB_PUSH_SEPARATION_GRABBER_VEL = 0.4;  // Velocity given to grabber when push ends
 const GRAB_PUSH_SEPARATION_INPUT_LOCK = 150;    // Brief input lock after push separation (ms)
-const PULL_REVERSAL_DISTANCE = 420; // Pixels opponent is sent past grabber after pull reversal (~half map)
+const PULL_REVERSAL_DISTANCE = 311; // Scaled for camera zoom (was 420)
 const PULL_REVERSAL_TWEEN_DURATION = 650; // ms for the pull knockback tween (fast but visible travel)
 const PULL_REVERSAL_PULLED_LOCK = 700; // ms input lock for pulled player (exceeds tween, cleared early when tween ends)
 const PULL_REVERSAL_PULLER_LOCK = 500; // ms input lock for puller (ends ~150ms before opponent recovers, or on boundary hit)
-const PULL_BOUNDARY_MARGIN = 15; // px - pulled player stops this far inside the map boundary
+const PULL_BOUNDARY_MARGIN = 11; // Scaled for camera zoom (was 15)
 
 // ============================================
 // HITSTOP TUNING - Smash Bros style
@@ -1491,7 +1491,7 @@ function resetRoomAndPlayers(room) {
     player.isDead = false;
     player.stamina = 100;
     player.isBowing = false;
-    player.x = player.fighter === "player 1" ? 220 : 845;
+    player.x = player.fighter === "player 1" ? 325 : 795;
     player.y = GROUND_LEVEL;
     player.knockbackVelocity = { x: 0, y: 0 };
     // Reset power-up state
@@ -2025,7 +2025,7 @@ io.on("connection", (socket) => {
           if (opponent && !opponent.isHit) {
             // Keep opponent at fixed distance during grab
             const fixedDistance =
-              Math.round(81 * 1.3) * (opponent.sizeMultiplier || 1); // Scaled +30%
+              Math.round(81 * 0.96) * (opponent.sizeMultiplier || 1); // Scaled +30%
             opponent.x =
               player1.facing === 1
                 ? player1.x - fixedDistance
@@ -2302,13 +2302,13 @@ io.on("connection", (socket) => {
             ) {
               // Adjust collision point based on facing direction to account for sprite asymmetry
               // Only adjust for player 2 side (facing = 1), player 1 side (facing = -1) is correct
-              const faceOffset = targetPlayer.facing === 1 ? 12 : 0;
+              const faceOffset = targetPlayer.facing === 1 ? 9 : 0;
               const adjustedPlayerX = targetPlayer.x + faceOffset;
               
               const distance = Math.abs(snowball.x - adjustedPlayerX);
               const sizeMul = targetPlayer.sizeMultiplier || 1;
-              const horizThresh = Math.round(45 * 1.3) * sizeMul;
-              const vertThresh = Math.round(27 * 1.3) * sizeMul;
+              const horizThresh = Math.round(45 * 0.96) * sizeMul;
+              const vertThresh = Math.round(27 * 0.96) * sizeMul;
               if (
                 distance < horizThresh &&
                 Math.abs(snowball.y - targetPlayer.y) < vertThresh
@@ -2418,13 +2418,13 @@ io.on("connection", (socket) => {
             if (opponent && opponent.isRawParrying && !snowball.hasHit) {
               // Adjust collision point based on facing direction to account for sprite asymmetry
               // Only adjust for player 2 side (facing = 1), player 1 side (facing = -1) is correct
-              const faceOffset = opponent.facing === 1 ? 12 : 0;
+              const faceOffset = opponent.facing === 1 ? 9 : 0;
               const adjustedOpponentX = opponent.x + faceOffset;
               
               const distance = Math.abs(snowball.x - adjustedOpponentX);
               const sizeMul = opponent.sizeMultiplier || 1;
-              const horizThresh = Math.round(45 * 1.3) * sizeMul;
-              const vertThresh = Math.round(27 * 1.3) * sizeMul;
+              const horizThresh = Math.round(45 * 0.96) * sizeMul;
+              const vertThresh = Math.round(27 * 0.96) * sizeMul;
               if (
                 distance < horizThresh &&
                 Math.abs(snowball.y - opponent.y) < vertThresh
@@ -2593,8 +2593,8 @@ io.on("connection", (socket) => {
             ) {
               const distance = Math.abs(clone.x - opponent.x);
               const sizeMul = opponent.sizeMultiplier || 1;
-              const horizThresh = Math.round(54 * 1.3) * sizeMul;
-              const vertThresh = Math.round(36 * 1.3) * sizeMul;
+              const horizThresh = Math.round(54 * 0.96) * sizeMul;
+              const vertThresh = Math.round(36 * 0.96) * sizeMul;
               if (
                 distance < horizThresh &&
                 Math.abs(clone.y - opponent.y) < vertThresh
@@ -2686,8 +2686,8 @@ io.on("connection", (socket) => {
             if (opponent && opponent.isRawParrying && !clone.hasHit) {
               const distance = Math.abs(clone.x - opponent.x);
               const sizeMul = opponent.sizeMultiplier || 1;
-              const horizThresh = Math.round(54 * 1.3) * sizeMul;
-              const vertThresh = Math.round(36 * 1.3) * sizeMul;
+              const horizThresh = Math.round(54 * 0.96) * sizeMul;
+              const vertThresh = Math.round(36 * 0.96) * sizeMul;
               if (
                 distance < horizThresh &&
                 Math.abs(clone.y - opponent.y) < vertThresh
@@ -3588,6 +3588,11 @@ io.on("connection", (socket) => {
               // Mark landing for visual effects
               player.justLandedFromDodge = true;
               player.dodgeLandTime = Date.now();
+              // Emit screen shake for dodge cancel slam (gentler than before)
+              emitThrottledScreenShake(room, io, {
+                intensity: 1.2,
+                duration: 70,
+              });
             }
           } else {
             // Normal dodge movement (not cancelling)
@@ -4736,7 +4741,7 @@ io.on("connection", (socket) => {
               // This ensures the attack direction and facing remain consistent
               const opponent = room.players.find(p => p.id !== player.id && !p.isDead);
               if (opponent && !opponent.isDodging) {
-                const minDistance = 40; // Minimum distance to maintain during attack
+                const minDistance = 30; // Scaled for camera zoom (was 40)
                 const playerToLeft = player.x < opponent.x;
                 const playerToRight = player.x > opponent.x;
                 
@@ -4805,7 +4810,7 @@ io.on("connection", (socket) => {
             const rightBoundary = MAP_RIGHT_BOUNDARY;
 
             // Keep opponent attached at fixed distance
-            const baseDistance = Math.round(81 * 1.3);
+            const baseDistance = Math.round(81 * 0.96);
             const distanceMultiplier = player.isAttemptingGrabThrow ? 1.15 : 1;
             const fixedDistance = baseDistance * distanceMultiplier * (opponent.sizeMultiplier || 1);
 
@@ -5076,7 +5081,7 @@ io.on("connection", (socket) => {
             (p) => p.id === player.grabbedOpponent
           );
           if (opponent) {
-            const baseDistance = Math.round(81 * 1.3);
+            const baseDistance = Math.round(81 * 0.96);
             const fixedDistance = baseDistance * 1.15 * (opponent.sizeMultiplier || 1);
             opponent.x =
               player.facing === 1
@@ -5119,7 +5124,7 @@ io.on("connection", (socket) => {
             (p) => p.id === player.grabbedOpponent
           );
           if (opponent) {
-            const baseDistance = Math.round(81 * 1.3);
+            const baseDistance = Math.round(81 * 0.96);
             const fixedDistance = baseDistance * GRAB_PULL_ATTEMPT_DISTANCE_MULTIPLIER * (opponent.sizeMultiplier || 1);
             opponent.x =
               player.facing === 1

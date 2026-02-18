@@ -12,9 +12,9 @@ const {
 } = require("./gameUtils");
 
 // Game constants that are used by these functions
-const GROUND_LEVEL = 210;
-const HITBOX_DISTANCE_VALUE = Math.round(77 * 1.3);
-const SLAP_HITBOX_DISTANCE_VALUE = Math.round(155 * 1.3);
+const GROUND_LEVEL = 278;
+const HITBOX_DISTANCE_VALUE = Math.round(77 * 0.96);
+const SLAP_HITBOX_DISTANCE_VALUE = Math.round(155 * 0.96);
 
 // Stamina drain constants
 const SLAP_ATTACK_STAMINA_COST = 3; // Small cost to not deter spamming
@@ -648,8 +648,8 @@ function calculateEffectiveHitboxSize(player) {
 function handleReadyPositions(room, player1, player2, io) {
   if (room.gameStart === false && room.hakkiyoiCount === 0) {
     // Only adjust player 1's ready position based on size power-up
-    const player1ReadyX = 390; // Removed SIZE power-up condition
-    const player2ReadyX = 665;
+    const player1ReadyX = 465; // Removed SIZE power-up condition
+    const player2ReadyX = 657;
 
     // Only move players if they're allowed to move (after salt throw) AND they're not attacking
     if (

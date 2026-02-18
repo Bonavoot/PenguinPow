@@ -59,12 +59,12 @@ const EffectContainer = styled.div.attrs((props) => ({
 // Large exclamation mark
 const ExclamationMark = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(40px, 5vw, 72px);
+  font-size: clamp(30px, 3.70vw, 53px);
   font-weight: 900;
   color: #ff1a1a;
+  -webkit-text-stroke: 3px #000;
+  paint-order: stroke fill;
   text-shadow: 
-    -3px -3px 0 #000, 3px -3px 0 #000, 
-    -3px 3px 0 #000, 3px 3px 0 #000,
     0 0 20px rgba(255, 26, 26, 1),
     0 0 40px rgba(255, 26, 26, 0.5);
   animation: ${panicPulse} 0.5s ease-in-out infinite;

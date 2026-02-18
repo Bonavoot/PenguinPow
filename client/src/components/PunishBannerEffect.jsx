@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
 import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
 
@@ -37,7 +38,10 @@ const PunishBannerEffect = ({ position }) => {
     return () => setActiveEffects([]);
   }, []);
 
-  return (
+  const hudEl = document.getElementById('game-hud');
+  if (!hudEl) return null;
+
+  return createPortal(
     <>
       {activeEffects.map((effect) => {
         const isLeftSide = effect.grabberPlayerNumber === 1;
@@ -50,7 +54,8 @@ const PunishBannerEffect = ({ position }) => {
           />
         );
       })}
-    </>
+    </>,
+    hudEl
   );
 };
 

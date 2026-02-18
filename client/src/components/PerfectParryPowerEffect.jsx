@@ -85,8 +85,8 @@ const EffectContainer = styled.div.attrs((props) => ({
 // Central flash - noticeable but not oversized (yellow for perfect parry)
 const ImpactFlash = styled.div`
   position: absolute;
-  width: clamp(3.5rem, 8.5vw, 8.5rem);
-  height: clamp(1.75rem, 4.3vw, 4.3rem);
+  width: clamp(2.59rem, 6.30vw, 6.30rem);
+  height: clamp(1.30rem, 3.19vw, 3.19rem);
   background: radial-gradient(
     ellipse 100% 100%,
     rgba(255, 255, 255, 0.95) 0%,
@@ -104,8 +104,8 @@ const ImpactFlash = styled.div`
 // Primary shockwave ring (blue/cyan to match RawParryEffect)
 const ShockwaveRingPrimary = styled.div`
   position: absolute;
-  width: clamp(3rem, 7.5vw, 7.5rem);
-  height: clamp(1.2rem, 3vw, 3rem);
+  width: clamp(2.22rem, 5.56vw, 5.56rem);
+  height: clamp(0.89rem, 2.22vw, 2.22rem);
   border: 2px solid rgba(0, 200, 255, 0.95);
   box-shadow: 0 0 5px rgba(0, 220, 255, 0.3);
   border-radius: 50%;
@@ -118,8 +118,8 @@ const ShockwaveRingPrimary = styled.div`
 // Secondary shockwave ring - delayed for layered depth (blue/cyan)
 const ShockwaveRingSecondary = styled.div`
   position: absolute;
-  width: clamp(2.75rem, 7vw, 7rem);
-  height: clamp(1.1rem, 2.8vw, 2.8rem);
+  width: clamp(2.04rem, 5.19vw, 5.19rem);
+  height: clamp(0.81rem, 2.07vw, 2.07rem);
   border: 1.5px solid rgba(100, 220, 255, 0.8);
   border-radius: 50%;
   left: 50%;
@@ -134,8 +134,8 @@ const GroundSpark = styled.div`
   position: absolute;
   left: 50%;
   bottom: 3px;
-  width: clamp(3px, 0.4vw, 6px);
-  height: clamp(3px, 0.4vw, 6px);
+  width: clamp(2px, 0.30vw, 4px);
+  height: clamp(2px, 0.30vw, 4px);
   background: radial-gradient(circle, rgba(255, 255, 255, 0.95), rgba(255, 220, 80, 0.7));
   border-radius: 50%;
   box-shadow: 0 0 4px rgba(255, 215, 100, 0.5);
@@ -182,12 +182,12 @@ const PerfectParryPowerEffect = ({ x, y, isPerfectParrySuccess }) => {
           <ShockwaveRingPrimary />
           <ShockwaveRingSecondary />
           {/* Ground sparks burst outward in different directions */}
-          <GroundSpark $gx="-4vw" $gy="-0.8vw" $delay={0} />
-          <GroundSpark $gx="4vw" $gy="-0.8vw" $delay={0.02} />
-          <GroundSpark $gx="-6vw" $gy="-0.3vw" $delay={0.04} />
-          <GroundSpark $gx="6vw" $gy="-0.3vw" $delay={0.03} />
-          <GroundSpark $gx="-2vw" $gy="-1.5vw" $delay={0.01} />
-          <GroundSpark $gx="2vw" $gy="-1.5vw" $delay={0.025} />
+          <GroundSpark $gx="-2.96vw" $gy="-0.59vw" $delay={0} />
+          <GroundSpark $gx="2.96vw" $gy="-0.59vw" $delay={0.02} />
+          <GroundSpark $gx="-4.44vw" $gy="-0.22vw" $delay={0.04} />
+          <GroundSpark $gx="4.44vw" $gy="-0.22vw" $delay={0.03} />
+          <GroundSpark $gx="-1.48vw" $gy="-1.11vw" $delay={0.01} />
+          <GroundSpark $gx="1.48vw" $gy="-1.11vw" $delay={0.025} />
         </EffectContainer>
       ))}
     </>

@@ -294,23 +294,23 @@ const generateCrowdPositions = () => {
   
   // Ground Floor Row 0 (closest/lowest) - Oyakata Back
   const row0Y = 36;      // Lower Y = closer to viewer
-  const row0Size = 11.5;  // Larger size = closer/bigger
+  const row0Size = 8.52;  // Larger size = closer/bigger
   const row0Opacity = 1.0;
   const oyakataBackTypeIndex = 10; // Index of oyakata-back in CROWD_TYPES array
   
   // CENTER (1 member - mirrored) - Above dohyo layer with dark filter
-  addSpecificMember(49.5, -25, 22, row0Opacity, true, oyakataBackTypeIndex, 2, true); // z-index 2, dark filter applied
+  addSpecificMember(49.5, -25, 16.30, row0Opacity, true, oyakataBackTypeIndex, 2, true); // z-index 2, dark filter applied
   
   // Ground Floor Row 1 - MANUALLY POSITIONED
   // Change the Y position (48), size (3.0), and opacity (1.0) for the whole row
   // Change each X value to position each character exactly on a cushion
   const row1Y = 41;      // Adjust this to move entire row up/down
-  const row1Size = 10.5;  // Adjust this to make entire row bigger/smaller
+  const row1Size = 7.78;  // Adjust this to make entire row bigger/smaller
   const row1Opacity = 1.0;
   
   // OYAKATA FRONT - Next to Row 1 Section 1 (left side)
   const oyakataFrontTypeIndex = 9; // Index of oyakata-front in CROWD_TYPES array
-  addSpecificMember(49.5, 38, 17, row1Opacity, false, oyakataFrontTypeIndex); // Normal crowd member
+  addSpecificMember(49.5, 38, 12.59, row1Opacity, false, oyakataFrontTypeIndex); // Normal crowd member
   
   // LEFT SECTION (5 members)
   addMember(0, row1Y, row1Size, row1Opacity);   // Character 1
@@ -330,7 +330,7 @@ const generateCrowdPositions = () => {
   
   // Ground Floor Row 2 (middle) - MANUALLY POSITIONED (2 sections of 5)
   const row2Y = 47;
-  const row2Size = 10;
+  const row2Size = 7.41;
   const row2Opacity = 0.95;
   
   // LEFT SECTION (5 members)
@@ -351,7 +351,7 @@ const generateCrowdPositions = () => {
   
   // Ground Floor Row 3 (back) - MANUALLY POSITIONED (2 sections of 5)
   const row3Y = 52;
-  const row3Size = 9.5;
+  const row3Size = 7.04;
   const row3Opacity = 0.9;
   
   // LEFT SECTION (5 members)
@@ -376,7 +376,7 @@ const generateCrowdPositions = () => {
   
   // Side Row 1 (left side) - Oyakata facing right (not flipped)
   const sideRow1Y = 22;
-  const sideRow1Size = 18;
+  const sideRow1Size = 13.33;
   const sideRow1Opacity = 1.0;
   const oyakataTypeIndex = 8; // Index of oyakata in CROWD_TYPES array
   
@@ -384,7 +384,7 @@ const generateCrowdPositions = () => {
   
   // Side Row 2 (right side) - Oyakata facing left (flipped)
   const sideRow2Y = 22;
-  const sideRow2Size = 18;
+  const sideRow2Size = 13.33;
   const sideRow2Opacity = 1.0;
   
   addSpecificMember(99, sideRow2Y, sideRow2Size, sideRow2Opacity, true, oyakataTypeIndex);
@@ -393,7 +393,7 @@ const generateCrowdPositions = () => {
   const sideMember1TypeIndex = 11; // Index of crowdSideIdle1 in CROWD_TYPES array
   const sideMember2TypeIndex = 12; // Index of crowdSideIdle2 in CROWD_TYPES array
   const sideMemberY = 30;
-  const sideMemberSize = 14;
+  const sideMemberSize = 10.37;
   const sideMemberOpacity = 1.0;
   
   // Left side member (side-1, facing left, flipped)
@@ -408,7 +408,7 @@ const generateCrowdPositions = () => {
   
   // Top Row 4 - MANUALLY POSITIONED (28 members in 4 sections)
   const topRow4Y = 65;
-  const topRow4Size = 5.5;
+  const topRow4Size = 4.07;
   const topRow4Opacity = 0.9;
   
   //Section 1 (7 members)
@@ -443,7 +443,7 @@ const generateCrowdPositions = () => {
   
   // Top Row 5 - MANUALLY POSITIONED (28 members in 4 sections)
   const topRow5Y = 70;
-  const topRow5Size = 5;
+  const topRow5Size = 3.70;
   const topRow5Opacity = 0.88;
   
   // Section 1 (7 members)
@@ -476,7 +476,7 @@ const generateCrowdPositions = () => {
 
   //Top Row 6 - MANUALLY POSITIONED (28 members in 4 sections)
   const topRow6Y = 73.5;
-  const topRow6Size = 4.5;
+  const topRow6Size = 3.33;
   const topRow6Opacity = 0.86;
   
   // Section 1 (7 members)
@@ -509,7 +509,7 @@ const generateCrowdPositions = () => {
 
   //aTop Row 7 - MANUALLY POSITIONED (28 members in 4 sections)
   const topRow7Y = 77.5;
-  const topRow7Size = 4;
+  const topRow7Size = 2.96;
   const topRow7Opacity = 0.84;
   
   // Section 1 (7 members)
@@ -544,7 +544,7 @@ const generateCrowdPositions = () => {
 
   // Top Row 8 - MANUALLY POSITIONED (28 members in 4 sections)
   const topRow8Y = 81;
-  const topRow8Size = 3.6;
+  const topRow8Size = 2.67;
   const topRow8Opacity = 0.82;
   
   // Section 1 (7 members)
@@ -580,7 +580,7 @@ const generateCrowdPositions = () => {
 
   // Top Row 9 - MANUALLY POSITIONED (28 members in 4 sections)
   const topRow9Y = 85;
-  const topRow9Size = 3;
+  const topRow9Size = 2.22;
   const topRow9Opacity = 0.80;
   
   // Section 1 (7 members)
@@ -620,7 +620,7 @@ const generateCrowdPositions = () => {
 
   // Top Row 10 - MANUALLY POSITIONED (28 members in 4 sections)
   const topRow10Y = 89;
-  const topRow10Size = 2.8;
+  const topRow10Size = 2.07;
   const topRow10Opacity = 0.78;
   
   // Section 1 (7 members)
@@ -663,7 +663,7 @@ const generateCrowdPositions = () => {
 
   // Top Row 11 - MANUALLY POSITIONED (28 members in 4 sections)
   const topRow11Y = 93;
-  const topRow11Size = 2.5;
+  const topRow11Size = 1.85;
   const topRow11Opacity = 0.76;
   
   // Section 1 (7 members)
@@ -708,7 +708,7 @@ const generateCrowdPositions = () => {
 
   // Top Row 12 (highest/furthest) - MANUALLY POSITIONED (28 members in 4 sections)
   const topRow12Y = 97;
-  const topRow12Size = 2.3;
+  const topRow12Size = 1.70;
   const topRow12Opacity = 0.74;
   
   // Section 1 (7 members)

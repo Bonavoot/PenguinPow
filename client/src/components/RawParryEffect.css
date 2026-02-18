@@ -9,8 +9,8 @@
 
 .raw-parry-ring {
   position: relative;
-  width: clamp(2.25rem, 5.65vw, 4.35rem);
-  height: clamp(2.25rem, 5.65vw, 4.35rem);
+  width: clamp(1.67rem, 4.19vw, 3.22rem);
+  height: clamp(1.67rem, 4.19vw, 3.22rem);
 }
 
 /* Main impact ring - outer shockwave for regular parry (cyan/blue) */
@@ -78,8 +78,8 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(2.25rem, 5.65vw, 4.35rem);
-  height: clamp(2.25rem, 5.65vw, 4.35rem);
+  width: clamp(1.67rem, 4.19vw, 3.22rem);
+  height: clamp(1.67rem, 4.19vw, 3.22rem);
   border: 2px solid rgba(100, 220, 255, 0.8);
   border-radius: 50%;
   transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(0.3);
@@ -93,8 +93,8 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(2.25rem, 5.65vw, 4.35rem);
-  height: clamp(2.25rem, 5.65vw, 4.35rem);
+  width: clamp(1.67rem, 4.19vw, 3.22rem);
+  height: clamp(1.67rem, 4.19vw, 3.22rem);
   background: 
     linear-gradient(0deg, transparent 46%, rgba(0, 200, 255, 0.7) 48%, rgba(0, 200, 255, 0.7) 52%, transparent 54%),
     linear-gradient(90deg, transparent 46%, rgba(0, 200, 255, 0.7) 48%, rgba(0, 200, 255, 0.7) 52%, transparent 54%),
@@ -173,8 +173,8 @@
 
 /* Tier 1 (LARGE) - same design as regular, ~1.8x size */
 .raw-parry-ring.perfect {
-  width: clamp(4.2rem, 10.5vw, 8.4rem);
-  height: clamp(3.9rem, 9.8vw, 7.8rem);
+  width: clamp(3.11rem, 7.78vw, 6.22rem);
+  height: clamp(2.89rem, 7.26vw, 5.78rem);
 }
 
 /* Main impact ring - blue/cyan for perfect, larger size; fill with transparent blue (same shape, same tilt) */
@@ -219,8 +219,8 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(4.2rem, 10.5vw, 8.4rem);
-  height: clamp(3.9rem, 9.8vw, 7.8rem);
+  width: clamp(3.11rem, 7.78vw, 6.22rem);
+  height: clamp(2.89rem, 7.26vw, 5.78rem);
   border: 2px solid rgba(120, 235, 255, 0.92);
   border-radius: 50%;
   transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(0.3);
@@ -234,8 +234,8 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(4.2rem, 10.5vw, 8.4rem);
-  height: clamp(3.9rem, 9.8vw, 7.8rem);
+  width: clamp(3.11rem, 7.78vw, 6.22rem);
+  height: clamp(2.89rem, 7.26vw, 5.78rem);
   background:
     linear-gradient(0deg, transparent 45%, rgba(0, 235, 255, 0.5) 48%, rgba(255, 255, 255, 0.95) 50%, rgba(0, 235, 255, 0.5) 52%, transparent 55%),
     linear-gradient(90deg, transparent 45%, rgba(0, 235, 255, 0.5) 48%, rgba(255, 255, 255, 0.95) 50%, rgba(0, 235, 255, 0.5) 52%, transparent 55%),
@@ -288,8 +288,8 @@
 
 .particle {
   position: absolute;
-  width: 0.2vw;
-  height: 0.2vw;
+  width: 0.15vw;
+  height: 0.15vw;
   border-radius: 50%;
   opacity: 0;
 }
@@ -298,32 +298,32 @@
   top: 20%;
   left: 50%;
   animation: rawParryParticleScatter 0.2s ease-out 0.03s forwards;
-  --dx: -0.7vw;
-  --dy: -0.9vw;
+  --dx: -0.52vw;
+  --dy: -0.67vw;
 }
 
 .particle:nth-child(2) {
   top: 40%;
   left: 70%;
   animation: rawParryParticleScatter 0.2s ease-out 0.05s forwards;
-  --dx: 0.9vw;
-  --dy: -0.6vw;
+  --dx: 0.67vw;
+  --dy: -0.44vw;
 }
 
 .particle:nth-child(3) {
   top: 60%;
   left: 30%;
   animation: rawParryParticleScatter 0.2s ease-out 0.02s forwards;
-  --dx: -0.6vw;
-  --dy: 0.7vw;
+  --dx: -0.44vw;
+  --dy: 0.52vw;
 }
 
 .particle:nth-child(4) {
   top: 80%;
   left: 60%;
   animation: rawParryParticleScatter 0.2s ease-out 0.04s forwards;
-  --dx: 0.6vw;
-  --dy: 0.9vw;
+  --dx: 0.44vw;
+  --dy: 0.67vw;
 }
 
 @keyframes rawParryParticleScatter {
@@ -358,14 +358,14 @@
 }
 
 /* 8 sparks for good coverage */
-.spark:nth-child(1) { --dx: 1.8vw; --dy: -0.45vw; }
-.spark:nth-child(2) { animation-delay: 0.015s; --dx: 1.35vw; --dy: -1.35vw; }
-.spark:nth-child(3) { animation-delay: 0.01s; --dx: 0.45vw; --dy: -1.8vw; }
-.spark:nth-child(4) { animation-delay: 0.02s; --dx: -0.45vw; --dy: -1.8vw; }
-.spark:nth-child(5) { --dx: -1.35vw; --dy: -1.35vw; }
-.spark:nth-child(6) { animation-delay: 0.015s; --dx: -1.8vw; --dy: 0.45vw; }
-.spark:nth-child(7) { animation-delay: 0.01s; --dx: 1.35vw; --dy: 1.35vw; }
-.spark:nth-child(8) { animation-delay: 0.02s; --dx: -1.35vw; --dy: 1.35vw; }
+.spark:nth-child(1) { --dx: 1.33vw; --dy: -0.33vw; }
+.spark:nth-child(2) { animation-delay: 0.015s; --dx: 1.00vw; --dy: -1.00vw; }
+.spark:nth-child(3) { animation-delay: 0.01s; --dx: 0.33vw; --dy: -1.33vw; }
+.spark:nth-child(4) { animation-delay: 0.02s; --dx: -0.33vw; --dy: -1.33vw; }
+.spark:nth-child(5) { --dx: -1.00vw; --dy: -1.00vw; }
+.spark:nth-child(6) { animation-delay: 0.015s; --dx: -1.33vw; --dy: 0.33vw; }
+.spark:nth-child(7) { animation-delay: 0.01s; --dx: 1.00vw; --dy: 1.00vw; }
+.spark:nth-child(8) { animation-delay: 0.02s; --dx: -1.00vw; --dy: 1.00vw; }
 
 /* Smooth keyframes - no expensive filters */
 @keyframes rawParrySparkExplode {

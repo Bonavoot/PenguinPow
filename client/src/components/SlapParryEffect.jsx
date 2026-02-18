@@ -6,9 +6,9 @@ import "./SlapParryEffect.css";
 const ParryEffectContainer = styled.div.attrs((props) => ({
   style: {
     position: "absolute",
-    left: `${(props.$x / 1280) * 100 - 3}%`,
-    bottom: `${(props.$y / 720) * 100}%`,
-    transform: "translate(-50%, -50%)",
+    left: `${(props.$x / 1280) * 100}%`,
+    bottom: `${(props.$y / 720) * 100 + 4}%`,
+    transform: "translate(-50%, 50%)",
     zIndex: 100,
     pointerEvents: "none",
   },

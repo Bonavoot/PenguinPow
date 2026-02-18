@@ -5,7 +5,7 @@ import PropTypes from "prop-types";
 const SaltContainer = styled.div.attrs((props) => ({
   style: {
     position: "absolute",
-    width: "21%",
+    width: "15.56%",
     height: "auto",
     pointerEvents: "none",
     zIndex: 999,

@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
 import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
 
@@ -44,10 +45,12 @@ const CounterHitEffect = ({ position }) => {
     };
   }, []);
 
-  return (
+  const hudEl = document.getElementById('game-hud');
+  if (!hudEl) return null;
+
+  return createPortal(
     <>
       {activeEffects.map((effect) => {
-        // Player 1's text appears on the LEFT, Player 2's text appears on the RIGHT
         const isLeftSide = effect.playerNumber === 1;
         
         return (
@@ -59,7 +62,8 @@ const CounterHitEffect = ({ position }) => {
           />
         );
       })}
-    </>
+    </>,
+    hudEl
   );
 };
 

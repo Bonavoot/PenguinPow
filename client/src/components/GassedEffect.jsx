@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 
@@ -31,7 +32,7 @@ const popInFade = keyframes`
 
 const EffectContainer = styled.div`
   position: absolute;
-  top: 27%;
+  top: 21%;
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 1001;
@@ -59,10 +60,14 @@ const NoStaminaEffect = ({ showEffect }) => {
     return null;
   }
 
-  return (
+  const hudEl = document.getElementById('game-hud');
+  if (!hudEl) return null;
+
+  return createPortal(
     <EffectContainer key={showEffect}>
       <NoStaminaText>NOT ENOUGH STAMINA</NoStaminaText>
-    </EffectContainer>
+    </EffectContainer>,
+    hudEl
   );
 };
 

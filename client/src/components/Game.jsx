@@ -8,6 +8,7 @@ import PowerUpReveal from "./PowerUpReveal";
 import CrowdLayer from "./CrowdLayer";
 import PreMatchScreen from "./PreMatchScreen";
 import gamepadHandler from "../utils/gamepadHandler";
+import useCamera from "../hooks/useCamera";
 import { usePlayerColors } from "../context/PlayerColorContext";
 import {
   startMemoryMonitor,
@@ -100,6 +101,9 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
   // We call it to show predicted actions immediately before server confirms
   // ============================================
   const predictionRef = useRef(null);
+  const containerRef = useRef(null);
+
+  useCamera(containerRef, socket);
   
   // Helper function to apply prediction for an action
   const applyPrediction = useCallback((actionType, direction = null) => {
@@ -472,38 +476,44 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
   return (
     <div className="game-wrapper">
       <FontWarmup />
-      <div className="game-container look-arcade-punchy">
-        <CrowdLayer isCheering={isCrowdCheering} />
-        <div className="dohyo-overlay"></div>
-        <div className="arena-tone-pass" aria-hidden="true"></div>
-        <div className="arena-vignette-pass" aria-hidden="true"></div>
-        <div className="ui">
-          {currentRoom.players
-            .filter((player) => player.id !== "disconnected_placeholder")
-            .map((player, i) => {
-              // Only pass predictionRef to the local player's GameFighter
-              const isLocalPlayerFighter = player.id === localId;
-              return (
-                <GameFighter
-                  localId={localId}
-                  key={player.id}
-                  player={player}
-                  index={i}
-                  roomName={roomName}
-                  setCurrentPage={setCurrentPage}
-                  opponentDisconnected={opponentDisconnected}
-                  disconnectedRoomId={disconnectedRoomId}
-                  onResetDisconnectState={() => {
-                    setOpponentDisconnected(false);
-                    setDisconnectedRoomId(null);
-                  }}
-                  isPowerUpSelectionActive={isPowerUpSelectionActive}
-                  predictionRef={isLocalPlayerFighter ? predictionRef : null}
-                  playerColor={i === 0 ? player1Color : player2Color}
-                />
-              );
-            })}
+      <div ref={containerRef} className="game-container look-arcade-punchy">
+        {/* Scene — everything inside moves together when the camera pans/zooms */}
+        <div className="game-scene">
+          <div className="game-map"></div>
+          <div className="ambient-overlay"></div>
+          <CrowdLayer isCheering={isCrowdCheering} />
+          <div className="dohyo-overlay"></div>
+          <div className="ui">
+            {currentRoom.players
+              .filter((player) => player.id !== "disconnected_placeholder")
+              .map((player, i) => {
+                const isLocalPlayerFighter = player.id === localId;
+                return (
+                  <GameFighter
+                    localId={localId}
+                    key={player.id}
+                    player={player}
+                    index={i}
+                    roomName={roomName}
+                    setCurrentPage={setCurrentPage}
+                    opponentDisconnected={opponentDisconnected}
+                    disconnectedRoomId={disconnectedRoomId}
+                    onResetDisconnectState={() => {
+                      setOpponentDisconnected(false);
+                      setDisconnectedRoomId(null);
+                    }}
+                    isPowerUpSelectionActive={isPowerUpSelectionActive}
+                    predictionRef={isLocalPlayerFighter ? predictionRef : null}
+                    playerColor={i === 0 ? player1Color : player2Color}
+                  />
+                );
+              })}
+          </div>
+          <div className="arena-tone-pass" aria-hidden="true"></div>
+          <div className="arena-vignette-pass" aria-hidden="true"></div>
         </div>
+        {/* HUD layer — viewport-fixed, unaffected by camera zoom/pan */}
+        <div id="game-hud" className="game-hud"></div>
         <PowerUpSelection
           roomId={roomName}
           playerId={localId}
@@ -513,9 +523,6 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
           roomId={roomName}
           localId={localId}
         />
-        {/* GrabTechEffect is rendered inside GameFighter.jsx (index 0 only) */}
-        
-        {/* Pre-match screen overlay - INSIDE game-container so it scales with 16:9 aspect ratio */}
         {showPreMatchScreen && currentRoom && (
           <PreMatchScreen
             player1Name={currentRoom.players[0]?.fighter || "Player 1"}

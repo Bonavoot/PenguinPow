@@ -79,7 +79,7 @@ const SmokeContainer = styled.div.attrs((props) => {
       left: `calc(${(props.$x / 1280) * 100}% + ${offset}%)`,
       bottom: `calc(${(props.$y / 720) * 100}%)`,
       pointerEvents: "none",
-      width: "clamp(101px, 15vw, 269px)",
+      width: "clamp(75px, 11.11vw, 199px)",
       height: "auto",
       transform: `translateX(-50%) scaleX(${scaleX})`,
       opacity: 0.85,
@@ -100,8 +100,8 @@ const SpeedLinesContainer = styled.div`
 
 const SpeedLine = styled.div`
   position: absolute;
-  width: clamp(40px, 6vw, 90px);
-  height: 3px;
+  width: clamp(30px, 4.44vw, 67px);
+  height: 2px;
   background: linear-gradient(
     ${(props) => props.$direction > 0 ? '90deg' : '270deg'},
     rgba(255, 255, 255, 0.95) 0%,
@@ -109,7 +109,7 @@ const SpeedLine = styled.div`
     transparent 100%
   );
   border-radius: 2px;
-  --shoot-dir: ${(props) => props.$direction * 60}px;
+  --shoot-dir: ${(props) => props.$direction * 44}px;
   animation: ${speedLineShoot} ${GIF_DURATION * 0.6}ms ease-out forwards;
   animation-delay: ${(props) => props.$delay || 0}ms;
   top: ${(props) => props.$offset || 0}px;
@@ -130,8 +130,8 @@ const AfterimageContainer = styled.div`
 `;
 
 const AfterimageGhost = styled.div`
-  width: clamp(80px, 10vw, 150px);
-  height: clamp(80px, 10vw, 150px);
+  width: clamp(59px, 7.41vw, 111px);
+  height: clamp(59px, 7.41vw, 111px);
   background: radial-gradient(ellipse at center, 
     rgba(200, 230, 255, 0.4) 0%, 
     rgba(150, 200, 255, 0.2) 40%, 
@@ -145,8 +145,8 @@ const AfterimageGhost = styled.div`
 // Burst particles at dodge start
 const BurstParticle = styled.div`
   position: absolute;
-  width: clamp(6px, 0.8vw, 12px);
-  height: clamp(6px, 0.8vw, 12px);
+  width: clamp(4px, 0.59vw, 9px);
+  height: clamp(4px, 0.59vw, 9px);
   background: rgba(255, 255, 255, 0.9);
   border-radius: 50%;
   --burst-x: ${(props) => props.$bx}px;
@@ -160,8 +160,8 @@ const GroundDust = styled.div`
   position: absolute;
   bottom: 0;
   left: 50%;
-  width: clamp(50px, 7vw, 100px);
-  height: clamp(20px, 2.5vw, 40px);
+  width: clamp(37px, 5.19vw, 74px);
+  height: clamp(15px, 1.85vw, 30px);
   background: radial-gradient(ellipse at center bottom, 
     rgba(255, 255, 255, 0.6) 0%, 
     rgba(200, 220, 255, 0.3) 50%, 

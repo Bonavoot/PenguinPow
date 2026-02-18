@@ -11,11 +11,11 @@ const shootOutRight = keyframes`
   }
   40% {
     opacity: 1;
-    transform: translate(calc(var(--start-x) + 3vw), var(--offset-y)) scale(1);
+    transform: translate(calc(var(--start-x) + 2vw), var(--offset-y)) scale(0.95);
   }
   100% {
     opacity: 0;
-    transform: translate(calc(var(--start-x) + 5vw), var(--offset-y)) scale(0.8);
+    transform: translate(calc(var(--start-x) + 3.35vw), var(--offset-y)) scale(0.8);
   }
 `;
 
@@ -27,11 +27,11 @@ const shootOutLeft = keyframes`
   }
   40% {
     opacity: 1;
-    transform: translate(calc(var(--start-x) - 3vw), var(--offset-y)) scaleX(-1) scale(1);
+    transform: translate(calc(var(--start-x) - 2vw), var(--offset-y)) scaleX(-1) scale(0.95);
   }
   100% {
     opacity: 0;
-    transform: translate(calc(var(--start-x) - 5vw), var(--offset-y)) scaleX(-1) scale(0.8);
+    transform: translate(calc(var(--start-x) - 3.35vw), var(--offset-y)) scaleX(-1) scale(0.8);
   }
 `;
 
@@ -39,15 +39,15 @@ const shootOutLeft = keyframes`
 const streakRight = keyframes`
   0% {
     opacity: 1;
-    transform: translate(var(--start-x), var(--offset-y)) scaleX(1.5) scaleY(0.6);
+    transform: translate(var(--start-x), var(--offset-y)) scaleX(1.35) scaleY(0.55);
   }
   40% {
     opacity: 0.95;
-    transform: translate(calc(var(--start-x) + 2vw), var(--offset-y)) scaleX(2.5) scaleY(0.7);
+    transform: translate(calc(var(--start-x) + 1.35vw), var(--offset-y)) scaleX(2.25) scaleY(0.65);
   }
   100% {
     opacity: 0;
-    transform: translate(calc(var(--start-x) + 4vw), var(--offset-y)) scaleX(3) scaleY(0.5);
+    transform: translate(calc(var(--start-x) + 2.7vw), var(--offset-y)) scaleX(2.7) scaleY(0.5);
   }
 `;
 
@@ -55,15 +55,15 @@ const streakRight = keyframes`
 const streakLeft = keyframes`
   0% {
     opacity: 1;
-    transform: translate(var(--start-x), var(--offset-y)) scaleX(1.5) scaleY(0.6);
+    transform: translate(var(--start-x), var(--offset-y)) scaleX(1.35) scaleY(0.55);
   }
   40% {
     opacity: 0.95;
-    transform: translate(calc(var(--start-x) - 2vw), var(--offset-y)) scaleX(2.5) scaleY(0.7);
+    transform: translate(calc(var(--start-x) - 1.35vw), var(--offset-y)) scaleX(2.25) scaleY(0.65);
   }
   100% {
     opacity: 0;
-    transform: translate(calc(var(--start-x) - 4vw), var(--offset-y)) scaleX(3) scaleY(0.5);
+    transform: translate(calc(var(--start-x) - 2.7vw), var(--offset-y)) scaleX(2.7) scaleY(0.5);
   }
 `;
 
@@ -71,8 +71,8 @@ const streakLeft = keyframes`
 const HandsContainer = styled.div.attrs((props) => ({
   style: {
     position: "absolute",
-    left: `${(props.$x / 1280) * 100 + (props.$facing === -1 ? 16 : -7)}%`,
-    bottom: `${(props.$y / 720) * 100 + 22}%`,
+    left: `${(props.$x / 1280) * 100 + (props.$facing === -1 ? 13 : -5.5)}%`,
+    bottom: `${(props.$y / 720) * 100 + 16}%`,
     pointerEvents: "none",
     zIndex: 150, // Above the player
   },
@@ -81,7 +81,7 @@ const HandsContainer = styled.div.attrs((props) => ({
 const Hand = styled.img`
   position: absolute;
   /* Smaller minimum for small screens, larger maximum for big screens */
-  width: clamp(40px, 6vw, 90px);
+  width: clamp(27px, 4vw, 60px);
   height: auto;
   opacity: 0;
   --offset-y: ${(props) => props.$offsetY}vh;
@@ -102,8 +102,8 @@ const Hand = styled.img`
 const Streak = styled.div`
   position: absolute;
   /* Smaller minimum for small screens, larger maximum for big screens */
-  width: clamp(40px, 6vw, 90px);
-  height: clamp(22px, 3vw, 48px);
+  width: clamp(27px, 4vw, 60px);
+  height: clamp(14px, 2vw, 32px);
   opacity: 0;
   --offset-y: ${(props) => props.$offsetY}vh;
   --start-x: ${(props) => props.$startX}vw;
@@ -135,16 +135,16 @@ const SlapAttackHandsEffect = ({ x, y, facing, isActive, slapAnimation }) => {
 
       const id = ++handIdCounter.current;
       
-      // Cycle through Y positions: high, middle, low, middle-high, middle-low
-      const yPositions = [-8, 0, 8, -4, 4];
+      // Cycle through Y positions: tighter spread (less gap between hands)
+      const yPositions = [-4, 0, 4, -2, 2];
       const offsetY = yPositions[positionCycleRef.current % yPositions.length];
       positionCycleRef.current++;
       
-      // ONE hand at a cycled position
+      // ONE hand at a cycled position (smaller startX = less horizontal gap)
       const newHand = {
         id,
         offsetY,
-        startX: Math.random() * 1.5, // Random starting X
+        startX: Math.random() * 0.7, // Tighter: less spread from center
       };
 
       setHand(newHand);

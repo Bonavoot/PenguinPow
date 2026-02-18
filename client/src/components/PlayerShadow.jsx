@@ -2,7 +2,7 @@ import styled from "styled-components";
 import PropTypes from "prop-types";
 import { isOutsideDohyo } from "../constants";
 
-const GROUND_LEVEL = 210; // Match the server's GROUND_LEVEL
+const GROUND_LEVEL = 279; // Match the server's GROUND_LEVEL
 
 // Ring mask so only the ring band is visible (used when background is a gradient)
 const RING_MASK =
@@ -32,7 +32,7 @@ const sharedAttrs = (props) => {
   };
 };
 
-const shadowSize = { w: "11%", h: "5%" };
+const shadowSize = { w: "8.15%", h: "3.70%" };
 const SHADOW_GRADIENT = `radial-gradient(
   ellipse at center,
   rgba(0, 0, 0, 0.6) 0%,

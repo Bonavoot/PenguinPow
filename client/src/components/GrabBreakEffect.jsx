@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
@@ -76,16 +77,16 @@ const textPop = keyframes`
 `;
 
 const EFFECT_TEXT_BASELINE_OFFSET_Y = 0;
-const EFFECT_CENTER_OFFSET_X = -2;
+const EFFECT_CENTER_OFFSET_X = 0;
 
 
 const EffectContainer = styled.div`
   position: absolute;
   left: ${props => (props.$x / 1280) * 100 + EFFECT_CENTER_OFFSET_X}%;
   bottom: ${props => (props.$y / 720) * 100 + EFFECT_TEXT_BASELINE_OFFSET_Y}%;
-  width: clamp(4.2rem, 10.5vw, 8.4rem);
-  height: clamp(3.9rem, 9.8vw, 7.8rem);
-  transform: translate(-50%, -50%);
+  width: clamp(3.11rem, 7.78vw, 6.22rem);
+  height: clamp(2.89rem, 7.26vw, 5.78rem);
+  transform: translate(-50%, 50%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -99,7 +100,7 @@ const EffectContainer = styled.div`
 `;
 
 /* Slightly larger radius so grab break reads clearer in motion */
-const HIT_RADIUS_LARGE = "clamp(2.25rem, 5.6vw, 4.4rem)";
+const HIT_RADIUS_LARGE = "clamp(1.67rem, 4.15vw, 3.26rem)";
 
 const ShockwaveRing = styled.div`
   position: absolute;
@@ -108,7 +109,7 @@ const ShockwaveRing = styled.div`
   width: ${HIT_RADIUS_LARGE};
   height: ${HIT_RADIUS_LARGE};
   border-radius: 50%;
-  border: clamp(5px, 0.4vw, 10px) solid rgba(40, 255, 165, 0.98);
+  border: clamp(4px, 0.30vw, 7px) solid rgba(40, 255, 165, 0.98);
   box-shadow:
     0 0 16px rgba(0, 255, 136, 0.65),
     0 0 30px rgba(0, 255, 136, 0.35),
@@ -121,8 +122,8 @@ const InnerFlash = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(1.55rem, 3.8vw, 3.1rem);
-  height: clamp(1.55rem, 3.8vw, 3.1rem);
+  width: clamp(1.15rem, 2.81vw, 2.30rem);
+  height: clamp(1.15rem, 2.81vw, 2.30rem);
   border-radius: 50%;
   background: radial-gradient(
     circle,
@@ -159,11 +160,12 @@ const BreakText = styled.div`
   left: 50%;
   font-family: "Bungee", cursive;
   /* Smaller font on small screens */
-  font-size: clamp(0.7rem, 1.6vw, 1.4rem);
+  font-size: clamp(0.52rem, 1.19vw, 1.04rem);
   color: #00ff88;
-  text-shadow: 
-    -2px -2px 0 #000, 2px -2px 0 #000, 
-    -2px 2px 0 #000, 2px 2px 0 #000,
+  -webkit-text-stroke: 2px #000;
+  paint-order: stroke fill;
+  text-shadow:
+    -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000,
     0 0 15px rgba(0, 255, 136, 0.9);
   letter-spacing: 0.15em;
   white-space: nowrap;
@@ -255,12 +257,14 @@ const GrabBreakEffect = ({ position }) => {
               ))}
               <BreakText>BREAK!</BreakText>
             </EffectContainer>
-            {/* Sumo-themed grab break announcement banner */}
-            <SumoAnnouncementBanner
-              text={"GRAB\nBREAK"}
-              type="break"
-              isLeftSide={isLeftSide}
-            />
+            {document.getElementById('game-hud') && createPortal(
+              <SumoAnnouncementBanner
+                text={"GRAB\nBREAK"}
+                type="break"
+                isLeftSide={isLeftSide}
+              />,
+              document.getElementById('game-hud')
+            )}
           </div>
         );
       })}
