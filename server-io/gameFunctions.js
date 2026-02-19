@@ -736,6 +736,9 @@ function handleReadyPositions(room, player1, player2, io) {
         // Ensure ritual phase is ended for both players
         player1.isInRitualPhase = false;
         player2.isInRitualPhase = false;
+        // Reset mouse1PressTime so pre-game holds don't instantly trigger charging
+        player1.mouse1PressTime = 0;
+        player2.mouse1PressTime = 0;
         io.in(room.id).emit("game_start", true);
         player1.isReady = false;
         player2.isReady = false;

@@ -113,6 +113,7 @@ import grabBreakSound from "../sounds/grab-break-sound.wav";
 import counterGrabSound from "../sounds/counter-grab-sound.wav";
 import notEnoughStaminaSound from "../sounds/not-enough-stamina-sound.wav";
 import grabClashSound from "../sounds/grab-clash-sound.wav";
+import isTechingSound from "../sounds/is-teching-sound.wav";
 import clashVictorySound from "../sounds/clash-victory-sound.wav";
 import clashDefeatSound from "../sounds/clash-defeat-sound.wav";
 import roundVictorySound from "../sounds/round-victory-sound.mp3";
@@ -251,6 +252,7 @@ const initializeAudioPools = () => {
   createAudioPool(counterGrabSound, 2);
   createAudioPool(notEnoughStaminaSound, 2);
   createAudioPool(grabClashSound, 2);
+  createAudioPool(isTechingSound, 2);
   createAudioPool(clashVictorySound, 2);
   createAudioPool(clashDefeatSound, 2);
   createAudioPool(roundVictorySound, 2);
@@ -2047,7 +2049,9 @@ const GameFighter = ({
   // SPRITESHEET ANIMATION STATE
   // PERFORMANCE: Sprite animation now handled by CSS (no React state needed)
   // ============================================
-  const lastSpriteSrcRef = useRef(null);
+  const lastNonIdleSpriteRef = useRef(null);
+  const idleHoldFramesRef = useRef(0);
+  const IDLE_HOLD_FRAMES = 2;
   
   const [penguin, setPenguin] = useState({
     id: "",
@@ -3449,6 +3453,7 @@ const GameFighter = ({
             y: PLAYER_MID_Y,
             techId: data.techId || `tech-${Date.now()}`,
           });
+          playSound(isTechingSound, 0.04);
         }
       });
 
@@ -3624,6 +3629,20 @@ const GameFighter = ({
       setGyojiCall(null); // Clear any lingering gyoji call
       setHakkiyoi(true);
       setRawParryEffectPosition(null); // Clear any leftover parry effects
+      // Clear stale predictions to prevent phantom charge at round start
+      predictedState.current = {
+        isSlapAttack: false,
+        slapAnimation: predictedState.current.slapAnimation,
+        isAttacking: false,
+        isDodging: false,
+        dodgeDirection: null,
+        isChargingAttack: false,
+        isRawParrying: false,
+        isGrabbing: false,
+        isPowerSliding: false,
+        isBraking: false,
+        timestamp: 0,
+      };
       // Bump round ID on start in case clients skipped reset event
       setUiRoundId((id) => id + 1);
       // Clear the countdown timer when game starts and immediately reset countdown
@@ -4180,6 +4199,22 @@ const GameFighter = ({
     penguin.grabTechRole,
     penguin.isGrabWhiffRecovery
   );
+
+  // Hold previous sprite for a few frames when transitioning to idle to prevent
+  // ghost frames during state transition gaps (e.g. isHit=false before isRecovering=true)
+  let effectiveSpriteSrc = displaySpriteSrc;
+  if (displaySpriteSrc === pumo && lastNonIdleSpriteRef.current) {
+    if (idleHoldFramesRef.current < IDLE_HOLD_FRAMES) {
+      effectiveSpriteSrc = lastNonIdleSpriteRef.current;
+      idleHoldFramesRef.current++;
+    } else {
+      lastNonIdleSpriteRef.current = null;
+      idleHoldFramesRef.current = 0;
+    }
+  } else if (displaySpriteSrc !== pumo) {
+    lastNonIdleSpriteRef.current = displaySpriteSrc;
+    idleHoldFramesRef.current = 0;
+  }
   
   // Hit tint for first few frames of isHit only (brief red flash on impact, not whole hitstun)
   if (penguin.isHit && !lastHitState.current) {
@@ -4243,18 +4278,18 @@ const GameFighter = ({
   const useChargeTint = showChargeFlashThisFrame && !showHitTintThisFrame && !useBlubberTint;
 
   // Get sprite render info (handles animated spritesheets and recoloring; uses hit-/charge-/blubber-tinted sprite when active)
-  const spriteRenderInfo = getSpriteRenderInfo(displaySpriteSrc, showHitTintThisFrame, useChargeTint, useBlubberTint);
+  const spriteRenderInfo = getSpriteRenderInfo(effectiveSpriteSrc, showHitTintThisFrame, useChargeTint, useBlubberTint);
   const { src: recoloredSpriteSrc, isAnimated: isAnimatedSprite, config: spriteConfig } = spriteRenderInfo;
   
   // Stable key for animated sprites: use the base (non-charge-flash) sprite so toggling
   // charge flash on/off doesn't remount the component and restart CSS animations.
   // Hit tint changes DO restart (different animation state), but charge flash should NOT.
   const baseSpriteSrc = showChargeFlashThisFrame
-    ? getSpriteRenderInfo(displaySpriteSrc, showHitTintThisFrame, false, useBlubberTint).src
+    ? getSpriteRenderInfo(effectiveSpriteSrc, showHitTintThisFrame, false, useBlubberTint).src
     : recoloredSpriteSrc;
   
   // Update animation state (will start/stop intervals as needed)
-  updateSpriteAnimation(displaySpriteSrc);
+  updateSpriteAnimation(effectiveSpriteSrc);
   
   // Determine if we should show ritual or fighter sprite
   const showRitualSprite = shouldShowRitualForPlayer && ritualSpriteConfig;
@@ -4395,7 +4430,7 @@ const GameFighter = ({
           $isRawParryStun={penguin.isRawParryStun}
         >
           <AnimatedFighterImage
-            key={baseSpriteSrc} // Force animation restart when base sprite changes (but NOT for charge flash toggles)
+            key={baseSpriteSrc}
             src={recoloredSpriteSrc}
             alt="fighter"
             $frameCount={spriteConfig?.frameCount || 1}

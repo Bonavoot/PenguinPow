@@ -400,15 +400,10 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
         clearInterval(progressInterval);
         setLoadingProgress(100);
         
-        // Brief pause at 100% to let players see the matchup
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
       } catch (error) {
         console.error("Game: Failed to preload sprites:", error);
         clearInterval(progressInterval);
         setLoadingProgress(100);
-        // Wait anyway so players can see the matchup
-        await new Promise(resolve => setTimeout(resolve, 2000));
       }
       
       // Hide pre-match screen

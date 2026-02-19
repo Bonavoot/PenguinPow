@@ -1468,8 +1468,17 @@ function resetRoomAndPlayers(room) {
     }
   }, 15000);
 
+  // Clear all pending timeouts from previous round to prevent stale callbacks
+  room.players.forEach((p) => timeoutManager.clearPlayer(p.id));
+
   // Reset each player in the room
   room.players.forEach((player) => {
+    // Reset all key states to prevent stale inputs from carrying over
+    player.keys = {
+      w: false, a: false, s: false, d: false,
+      " ": false, shift: false, e: false, f: false,
+      c: false, control: false, mouse1: false, mouse2: false,
+    };
     player.isJumping = false;
     player.isAttacking = false;
     player.isStrafing = false;
@@ -1520,6 +1529,36 @@ function resetRoomAndPlayers(room) {
     player.lastSlapHitLandedTime = 0;
     // Reset slap attack buffering
     player.hasPendingSlapAttack = false;
+    // Reset charge and mouse1 state to prevent stale charge at round start
+    player.isChargingAttack = false;
+    player.chargeStartTime = 0;
+    player.chargeAttackPower = 0;
+    player.chargingFacingDirection = null;
+    player.attackType = null;
+    player.pendingChargeAttack = null;
+    player.spacebarReleasedDuringDodge = false;
+    player.mouse1PressTime = 0;
+    player.mouse1BufferedBeforeStart = false;
+    player.mouse1HeldDuringAttack = false;
+    player.wantsToRestartCharge = false;
+    player.mouse1JustPressed = false;
+    player.mouse1JustReleased = false;
+    player.mouse2JustPressed = false;
+    player.mouse2JustReleased = false;
+    player.attackIntentTime = 0;
+    player.attackAttemptTime = 0;
+    player.chargeCancelled = false;
+    player.chargedAttackHit = false;
+    player.slapFacingDirection = null;
+    player.attackStartTime = 0;
+    player.attackEndTime = 0;
+    player.isInStartupFrames = false;
+    player.startupEndTime = 0;
+    player.isInEndlag = false;
+    player.endlagEndTime = 0;
+    player.attackCooldownUntil = 0;
+    player.actionLockUntil = 0;
+    player.currentAction = null;
     // Reset throw landed state
     player.isThrowLanded = false;
     // Reset overlap tracking
@@ -5191,10 +5230,8 @@ io.on("connection", (socket) => {
         // so the 200ms charge threshold is measured from game start, not pre-game
         if (room.gameStart && player.mouse1BufferedBeforeStart) {
           player.keys.mouse1 = true;
-          if (!player.mouse1PressTime) {
-            player.mouse1PressTime = Date.now(); // Fresh timestamp from game start
-          }
-          player.mouse1BufferedBeforeStart = false; // Clear the buffer after applying
+          player.mouse1PressTime = Date.now();
+          player.mouse1BufferedBeforeStart = false;
         }
 
         // CONTINUOUS MOUSE1 CHECK: Auto-start charging when mouse1 is held past threshold
