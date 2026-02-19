@@ -535,12 +535,11 @@ const DODGE_STAMINA_COST = 7; // ~7% of max stamina per dodge (halved from 15)
 // Drain 1 stamina every 150ms (1500ms / 10 = 150ms per stamina point)
 const GRAB_STAMINA_DRAIN_INTERVAL = 150;
 const GRAB_BREAK_PUSH_VELOCITY = 1.2; // Push velocity for grab breaks
-const GRAB_BREAK_FREEZE_MS = 150; // Short freeze before knockback so eyes have a reference point
 const GRAB_BREAK_FORCED_DISTANCE = 55; // Even separation distance for both players
 const GRAB_BREAK_TWEEN_DURATION = 350; // Knockback slide duration
 const GRAB_BREAK_RESIDUAL_VEL = 0; // No residual sliding — players stop cleanly when knockback ends
-const GRAB_BREAK_INPUT_LOCK_MS = 500; // 150ms freeze + 350ms tween — free to act as soon as knockback ends
-const GRAB_BREAK_ACTION_LOCK_MS = 500; // 150ms freeze + 350ms tween — free to act as soon as knockback ends
+const GRAB_BREAK_INPUT_LOCK_MS = 350; // Locked during knockback tween only
+const GRAB_BREAK_ACTION_LOCK_MS = 350; // Locked during knockback tween only
 
 // ============================================
 // NEW GRAB ACTION SYSTEM - Directional grab mechanics
@@ -623,16 +622,15 @@ function executeDirectionalGrabBreak(grabber, breaker, room, io) {
   // Clear grab states for both
   cleanupGrabStates(grabber, breaker);
 
-  // Animation state - only the breaker shows grab break
-  breaker.isGrabBreaking = true;
+  // Animation state
   breaker.isAttemptingGrabThrow = false;
-
-  // The grabber shows a countered placeholder animation
-  grabber.isGrabBreaking = false;
-  grabber.isGrabBreakCountered = true;
   grabber.isAttemptingGrabThrow = false;
 
-  // === PHASE 1: SHORT FREEZE — gives eyes a reference point before knockback ===
+  // Breaker shows parry-success sprite during knockback slide
+  breaker.isRawParrySuccess = true;
+  setPlayerTimeout(breaker.id, () => { breaker.isRawParrySuccess = false; }, GRAB_BREAK_TWEEN_DURATION, "grabBreakParryAnim");
+
+  // Zero velocities and lock inputs/actions during knockback
   breaker.movementVelocity = 0;
   grabber.movementVelocity = 0;
   breaker.isStrafing = false;
@@ -655,36 +653,27 @@ function executeDirectionalGrabBreak(grabber, breaker, room, io) {
 
   triggerHitstop(room, 60);
 
-  // === PHASE 2: FORCED SEPARATION (after short freeze) ===
-  setPlayerTimeout(grabber.id, () => {
-    breaker.isGrabBreaking = false;
-    grabber.isGrabBreakCountered = false;
+  // === IMMEDIATE FORCED SEPARATION ===
+  const dir = breaker.x < grabber.x ? -1 : 1;
+  const now = Date.now();
 
-    // Breaker shows parry-success sprite during knockback slide
-    breaker.isRawParrySuccess = true;
-    setPlayerTimeout(breaker.id, () => { breaker.isRawParrySuccess = false; }, GRAB_BREAK_TWEEN_DURATION, "grabBreakParryAnim");
+  let breakerTarget = breaker.x + dir * GRAB_BREAK_FORCED_DISTANCE;
+  breakerTarget = Math.max(MAP_LEFT_BOUNDARY, Math.min(breakerTarget, MAP_RIGHT_BOUNDARY));
+  breaker.isGrabBreakSeparating = true;
+  breaker.grabBreakSepStartTime = now;
+  breaker.grabBreakSepDuration = GRAB_BREAK_TWEEN_DURATION;
+  breaker.grabBreakStartX = breaker.x;
+  breaker.grabBreakTargetX = breakerTarget;
+  breaker.grabTechResidualVel = dir * GRAB_BREAK_RESIDUAL_VEL;
 
-    const dir = breaker.x < grabber.x ? -1 : 1;
-    const now = Date.now();
-
-    let breakerTarget = breaker.x + dir * GRAB_BREAK_FORCED_DISTANCE;
-    breakerTarget = Math.max(MAP_LEFT_BOUNDARY, Math.min(breakerTarget, MAP_RIGHT_BOUNDARY));
-    breaker.isGrabBreakSeparating = true;
-    breaker.grabBreakSepStartTime = now;
-    breaker.grabBreakSepDuration = GRAB_BREAK_TWEEN_DURATION;
-    breaker.grabBreakStartX = breaker.x;
-    breaker.grabBreakTargetX = breakerTarget;
-    breaker.grabTechResidualVel = dir * GRAB_BREAK_RESIDUAL_VEL;
-
-    let grabberTarget = grabber.x + (-dir) * GRAB_BREAK_FORCED_DISTANCE;
-    grabberTarget = Math.max(MAP_LEFT_BOUNDARY, Math.min(grabberTarget, MAP_RIGHT_BOUNDARY));
-    grabber.isGrabBreakSeparating = true;
-    grabber.grabBreakSepStartTime = now;
-    grabber.grabBreakSepDuration = GRAB_BREAK_TWEEN_DURATION;
-    grabber.grabBreakStartX = grabber.x;
-    grabber.grabBreakTargetX = grabberTarget;
-    grabber.grabTechResidualVel = (-dir) * GRAB_BREAK_RESIDUAL_VEL;
-  }, GRAB_BREAK_FREEZE_MS, "grabBreakSeparation");
+  let grabberTarget = grabber.x + (-dir) * GRAB_BREAK_FORCED_DISTANCE;
+  grabberTarget = Math.max(MAP_LEFT_BOUNDARY, Math.min(grabberTarget, MAP_RIGHT_BOUNDARY));
+  grabber.isGrabBreakSeparating = true;
+  grabber.grabBreakSepStartTime = now;
+  grabber.grabBreakSepDuration = GRAB_BREAK_TWEEN_DURATION;
+  grabber.grabBreakStartX = grabber.x;
+  grabber.grabBreakTargetX = grabberTarget;
+  grabber.grabTechResidualVel = (-dir) * GRAB_BREAK_RESIDUAL_VEL;
 
   // Cooldown to prevent immediate re-grab (both players, matches grab tech)
   grabber.grabCooldown = true;
@@ -879,9 +868,7 @@ function executeGrabWhiff(player) {
   player.lastGrabAttemptTime = 0;
   player.lastThrowAttemptTime = 0;
 
-  // Slight forward stumble (in facing direction)
-  const stumbleDir = player.facing === 1 ? -1 : 1; // facing 1 = left, so stumble leftward
-  player.movementVelocity = stumbleDir * GRAB_WHIFF_STUMBLE_VEL;
+  player.movementVelocity = 0;
   player.isStrafing = false;
 
   // Lock actions during whiff recovery
