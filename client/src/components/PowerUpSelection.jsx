@@ -573,6 +573,13 @@ const PowerUpSelection = ({
 
   useEffect(() => {
     const handlePowerUpSelectionStart = (data) => {
+      // If the countdown is already running (duplicate event from
+      // request_power_up_selection_state), just update power-ups without
+      // restarting the timer — keeps the client in sync with the server.
+      if (countdownIntervalRef.current) {
+        setAvailablePowerUps(data.availablePowerUps || []);
+        return;
+      }
       setIsVisible(true);
       setSelectedPowerUp(null);
       setSelectionStatus({ selectedCount: 0, totalPlayers: 2 });

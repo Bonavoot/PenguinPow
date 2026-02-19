@@ -1263,6 +1263,43 @@ function handlePowerUpSelection(room) {
   room.playersSelectedPowerUps = {};
   room.playerAvailablePowerUps = {};
 
+  // Start the 15-second timer for automatic power-up selection.
+  // This must live here (not in resetRoomAndPlayers) so the countdown begins
+  // when the selection phase actually starts — on the initial round this is
+  // after sprite preloading, giving the human player the full 15 seconds.
+  if (room.roundStartTimer) {
+    clearTimeout(room.roundStartTimer);
+  }
+  room.roundStartTimer = setTimeout(() => {
+    if (room.powerUpSelectionPhase && room.players.length === 2) {
+      const playersNeedingAutoSelect = [];
+
+      room.players.forEach((player) => {
+        if (!player.selectedPowerUp) {
+          const availablePowerUps =
+            room.playerAvailablePowerUps[player.id] ||
+            Object.values(POWER_UP_TYPES);
+          const firstPowerUp = availablePowerUps[0];
+
+          player.selectedPowerUp = firstPowerUp;
+          room.playersSelectedPowerUps[player.id] = firstPowerUp;
+          playersNeedingAutoSelect.push(player);
+        }
+      });
+
+      const selectedCount = Object.keys(room.playersSelectedPowerUps).length;
+
+      if (selectedCount === room.players.length) {
+        room.powerUpSelectionPhase = false;
+
+        playersNeedingAutoSelect.forEach((player) => {
+          io.to(player.id).emit("power_up_selection_complete");
+          handleSaltThrowAndPowerUp(player, room);
+        });
+      }
+    }
+  }, 15000);
+
   const allPowerUps = Object.values(POWER_UP_TYPES);
 
   // Generate individual randomized lists for each player
@@ -1401,48 +1438,11 @@ function resetRoomAndPlayers(room) {
   // PERFORMANCE: Reset delta state tracking so next broadcast sends full state
   room.previousPlayerStates = [null, null];
 
-  // Start the 15-second timer for automatic power-up selection
+  // Clean up any existing round start timer (the actual timer is started in handlePowerUpSelection)
   if (room.roundStartTimer) {
     clearTimeout(room.roundStartTimer);
+    room.roundStartTimer = null;
   }
-  room.roundStartTimer = setTimeout(() => {
-    // Check if we're still in power-up selection phase
-    if (room.powerUpSelectionPhase && room.players.length === 2) {
-      // Track which players need auto-selection (didn't select manually)
-      const playersNeedingAutoSelect = [];
-
-      // Auto-select the first available power-up for any players who haven't selected
-      room.players.forEach((player) => {
-        if (!player.selectedPowerUp) {
-          const availablePowerUps =
-            room.playerAvailablePowerUps[player.id] ||
-            Object.values(POWER_UP_TYPES);
-          const firstPowerUp = availablePowerUps[0];
-
-          player.selectedPowerUp = firstPowerUp;
-          room.playersSelectedPowerUps[player.id] = firstPowerUp;
-          playersNeedingAutoSelect.push(player);
-        }
-      });
-
-      // Check if all players now have selections (they should after auto-selection)
-      const selectedCount = Object.keys(room.playersSelectedPowerUps).length;
-
-      if (selectedCount === room.players.length) {
-        // All players have selections, end selection phase
-        room.powerUpSelectionPhase = false;
-
-        // Only emit selection complete and start salt throwing for players who were auto-selected
-        // Players who manually selected already received these events
-        playersNeedingAutoSelect.forEach((player) => {
-          // Emit that selection is complete for this player
-          io.to(player.id).emit("power_up_selection_complete");
-          // Start salt throwing for this player
-          handleSaltThrowAndPowerUp(player, room);
-        });
-      }
-    }
-  }, 15000);
 
   // Clear all pending timeouts from previous round to prevent stale callbacks
   room.players.forEach((p) => timeoutManager.clearPlayer(p.id));
