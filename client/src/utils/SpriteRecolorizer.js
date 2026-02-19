@@ -17,10 +17,12 @@
 
 // ============================================
 // LRU CACHE with size limit
+// Uses Map insertion order for O(1) LRU tracking (delete + re-insert moves to end)
 // ============================================
-const MAX_CACHE_SIZE = 600; // Normal + hit + charge + blubber variants per player (~122 × 4 + headroom)
-const cacheOrder = []; // Track access order for LRU eviction
+const MAX_CACHE_SIZE = 1000; // 2 players × ~25 sprites × 4 tint variants × 2 + headroom
 
+// Map preserves insertion order: oldest entries are first, newest are last.
+// Accessing an entry deletes and re-inserts it (O(1) move-to-end).
 const recoloredImageCache = new Map();
 
 // RACE CONDITION FIX: Deduplicate concurrent recolorImage() calls with the same cache key.
@@ -32,36 +34,30 @@ const recoloredImageCache = new Map();
 const inFlightRecolors = new Map();
 
 function addToCache(key, value) {
-  // If already in cache, move to end of order (most recently used)
-  const existingIndex = cacheOrder.indexOf(key);
-  if (existingIndex !== -1) {
-    cacheOrder.splice(existingIndex, 1);
+  // Delete first so re-insert moves it to the end (most recently used)
+  if (recoloredImageCache.has(key)) {
+    recoloredImageCache.delete(key);
   }
-  cacheOrder.push(key);
+  recoloredImageCache.set(key, value);
   
-  // Evict oldest if over limit
-  while (cacheOrder.length > MAX_CACHE_SIZE) {
-    const oldestKey = cacheOrder.shift();
+  // Evict oldest entries (at the front of Map iteration order)
+  while (recoloredImageCache.size > MAX_CACHE_SIZE) {
+    const oldestKey = recoloredImageCache.keys().next().value;
     const evictedUrl = recoloredImageCache.get(oldestKey);
     recoloredImageCache.delete(oldestKey);
-    // Revoke blob URL to free browser-held blob data (only if not in decoded cache)
     if (evictedUrl && evictedUrl.startsWith('blob:') && !decodedImageCache.has(evictedUrl)) {
       URL.revokeObjectURL(evictedUrl);
     }
   }
-  
-  recoloredImageCache.set(key, value);
 }
 
 function getFromCache(key) {
   if (recoloredImageCache.has(key)) {
-    // Move to end (most recently used)
-    const index = cacheOrder.indexOf(key);
-    if (index !== -1) {
-      cacheOrder.splice(index, 1);
-      cacheOrder.push(key);
-    }
-    return recoloredImageCache.get(key);
+    const value = recoloredImageCache.get(key);
+    // Move to end (most recently used): delete + re-insert is O(1) on Map
+    recoloredImageCache.delete(key);
+    recoloredImageCache.set(key, value);
+    return value;
   }
   return null;
 }
@@ -778,23 +774,21 @@ export function clearRecolorCache() {
     }
   }
   recoloredImageCache.clear();
-  cacheOrder.length = 0;
   inFlightRecolors.clear();
 }
 
 // ============================================
 // PERSISTENT IMAGE CACHE with LRU eviction
 // Keep decoded images in memory to prevent GC and re-decode
+// Uses Map insertion order for O(1) LRU tracking
 // ============================================
-// GHOST FRAME FIX: Increased from 100 to 200.
-// When both players use non-blue colors, there are ~120-140 sprites to pre-decode
-// (originals + recolored for P1 + recolored for P2). At 100, the first ~40 sprites
-// get LRU-evicted before gameplay starts, causing ghost frames on first use.
-// At 200, all gameplay sprites fit without eviction. Memory cost is ~50-70MB of decoded
-// bitmaps, which is acceptable since we already save ~240MB by excluding ritual sprites.
-const MAX_DECODED_CACHE_SIZE = 200;
+// GHOST FRAME FIX: Increased from 200 to 350.
+// With 2 custom-color players: ~25 sprites × 4 tint variants × 2 players = 200 recolored
+// + ~25 base sprites = 225 total. At 200, tint variants get evicted during gameplay,
+// forcing re-decode on next use = ghost frames. At 350, all variants fit with headroom.
+// Memory cost is ~80-100MB of decoded bitmaps, acceptable since ritual sprites are excluded.
+const MAX_DECODED_CACHE_SIZE = 350;
 const decodedImageCache = new Map();
-const decodedCacheOrder = []; // LRU tracking
 let hiddenImageContainer = null;
 
 function getHiddenContainer() {
@@ -808,24 +802,21 @@ function getHiddenContainer() {
 }
 
 function addToDecodedCache(key, img) {
-  // If already in cache, move to end (most recently used)
-  const existingIndex = decodedCacheOrder.indexOf(key);
-  if (existingIndex !== -1) {
-    decodedCacheOrder.splice(existingIndex, 1);
+  // Delete first so re-insert moves it to the end (most recently used)
+  if (decodedImageCache.has(key)) {
+    decodedImageCache.delete(key);
   }
-  decodedCacheOrder.push(key);
+  decodedImageCache.set(key, img);
   
-  // Evict oldest if over limit
-  while (decodedCacheOrder.length > MAX_DECODED_CACHE_SIZE) {
-    const oldestKey = decodedCacheOrder.shift();
+  // Evict oldest entries (at the front of Map iteration order)
+  while (decodedImageCache.size > MAX_DECODED_CACHE_SIZE) {
+    const oldestKey = decodedImageCache.keys().next().value;
     const oldImg = decodedImageCache.get(oldestKey);
     if (oldImg && oldImg.parentNode) {
       oldImg.parentNode.removeChild(oldImg);
     }
     decodedImageCache.delete(oldestKey);
   }
-  
-  decodedImageCache.set(key, img);
 }
 
 /**
@@ -910,7 +901,6 @@ export function clearDecodedImageCache() {
     hiddenImageContainer.innerHTML = '';
   }
   decodedImageCache.clear();
-  decodedCacheOrder.length = 0;
 }
 
 /**
@@ -942,6 +932,7 @@ export function getCacheStats() {
     maxDecodedSize: MAX_DECODED_CACHE_SIZE,
     workerReady,
     canvasPoolSize: canvasPool.length,
+    inFlightCount: inFlightRecolors.size,
   };
 }
 

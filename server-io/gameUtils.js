@@ -314,6 +314,7 @@ function clearAllActionStates(player) {
   player.isGrabbingMovement = false;
   player.isGrabStartup = false;
   player.isWhiffingGrab = false;
+  player.isGrabWhiffRecovery = false;
   player.grabbedOpponent = null;
   player.grabMovementStartTime = 0;
   player.grabMovementDirection = 0;

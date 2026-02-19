@@ -43,10 +43,10 @@ const ParryTextCenter = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(0.52rem, 1.19vw, 1.04rem);
   color: ${props => props.$isPerfect ? '#FFD700' : '#00BFFF'};
-  -webkit-text-stroke: 2px #000;
+  -webkit-text-stroke: 2.5px #000;
   paint-order: stroke fill;
   text-shadow:
-    -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000,
+    -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000,
     0 0 ${props => props.$isPerfect ? '20px' : '15px'} ${props => props.$isPerfect ? 'rgba(255, 215, 0, 0.9)' : 'rgba(0, 191, 255, 0.9)'}${props => props.$isPerfect ? ', 0 0 35px rgba(255, 215, 0, 0.4)' : ''};
   letter-spacing: 0.15em;
   white-space: nowrap;

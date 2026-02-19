@@ -5,65 +5,79 @@ import PropTypes from "prop-types";
 import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
 import { HIT_EFFECT_TEXT_DURATION, HIT_EFFECT_TEXT_DELAY } from "../config/hitEffectText";
 
-// Dramatic shockwave burst animation
-const shockwaveExpand = keyframes`
+// Sharp central flash — violent and brief, like a point of fracture
+const impactFlash = keyframes`
   0% {
     transform: translate(-50%, -50%) scale(0);
     opacity: 1;
-    border-width: clamp(8px, 0.65vw, 16px);
   }
-  40% {
+  18% {
+    transform: translate(-50%, -50%) scale(1.6);
     opacity: 1;
-    border-width: clamp(4px, 0.32vw, 8px);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(0.7);
+    opacity: 0.6;
   }
   100% {
-    transform: translate(-50%, -50%) scale(3);
+    transform: translate(-50%, -50%) scale(0.2);
     opacity: 0;
-    border-width: clamp(1px, 0.08vw, 2px);
   }
 `;
 
-const innerFlash = keyframes`
+// Crack lines radiate outward from center like fractures propagating
+const crackGrow = keyframes`
   0% {
-    transform: translate(-50%, -50%) scale(0);
+    transform: translate(-50%, -50%) rotate(var(--crack-angle)) scaleX(0);
     opacity: 1;
   }
   25% {
-    transform: translate(-50%, -50%) scale(1.65);
+    transform: translate(-50%, -50%) rotate(var(--crack-angle)) scaleX(1);
     opacity: 1;
   }
+  55% {
+    transform: translate(-50%, -50%) rotate(var(--crack-angle)) scaleX(1.2);
+    opacity: 0.6;
+  }
   100% {
-    transform: translate(-50%, -50%) scale(2.8);
+    transform: translate(-50%, -50%) rotate(var(--crack-angle)) scaleX(1.45);
     opacity: 0;
   }
 `;
 
-const sparkBurst = keyframes`
+// Angular shards explode outward with rotation
+const shardExplode = keyframes`
   0% {
     opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
+    transform: translate(-50%, -50%) scale(1) rotate(0deg);
   }
   100% {
     opacity: 0;
-    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.3);
+    transform: translate(calc(-50% + var(--shard-dx)), calc(-50% + var(--shard-dy))) scale(0.35) rotate(var(--shard-spin));
   }
 `;
 
-const textPop = keyframes`
+// BREAK! text slams in with micro-shake on impact
+const breakTextSlam = keyframes`
   0% {
     transform: translate(-50%, -50%) scale(0);
     opacity: 0;
   }
-  20% {
-    transform: translate(-50%, -50%) scale(1.3);
+  15% {
+    transform: translate(-50%, -50%) scale(1.4);
     opacity: 1;
   }
-  40% {
-    transform: translate(-50%, -50%) scale(0.9);
-    opacity: 1;
+  24% {
+    transform: translate(-51.5%, -48.5%) scale(1.05);
   }
-  60% {
-    transform: translate(-50%, -50%) scale(1.1);
+  33% {
+    transform: translate(-48.5%, -51.5%) scale(1.08);
+  }
+  42% {
+    transform: translate(-50.5%, -49.5%) scale(1.02);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1);
     opacity: 1;
   }
   80% {
@@ -78,7 +92,6 @@ const textPop = keyframes`
 
 const EFFECT_TEXT_BASELINE_OFFSET_Y = 0;
 const EFFECT_CENTER_OFFSET_X = 0;
-
 
 const EffectContainer = styled.div`
   position: absolute;
@@ -96,62 +109,77 @@ const EffectContainer = styled.div`
   filter:
     saturate(1.12)
     brightness(1.08)
-    drop-shadow(0 0 4px rgba(0, 255, 136, 0.25));
+    drop-shadow(0 0 6px rgba(0, 255, 136, 0.35));
 `;
 
-/* Slightly larger radius so grab break reads clearer in motion */
-const HIT_RADIUS_LARGE = "clamp(1.67rem, 4.15vw, 3.26rem)";
-
-const ShockwaveRing = styled.div`
+const ImpactPoint = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: ${HIT_RADIUS_LARGE};
-  height: ${HIT_RADIUS_LARGE};
-  border-radius: 50%;
-  border: clamp(4px, 0.30vw, 7px) solid rgba(40, 255, 165, 0.98);
-  box-shadow:
-    0 0 16px rgba(0, 255, 136, 0.65),
-    0 0 30px rgba(0, 255, 136, 0.35),
-    0 0 44px rgba(0, 210, 130, 0.2);
-  transform: translate(-50%, -50%) scale(0);
-  animation: ${shockwaveExpand} 0.4s ease-out forwards;
-`;
-
-const InnerFlash = styled.div`
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: clamp(1.15rem, 2.81vw, 2.30rem);
-  height: clamp(1.15rem, 2.81vw, 2.30rem);
+  width: clamp(1.1rem, 2.8vw, 2.2rem);
+  height: clamp(1.1rem, 2.8vw, 2.2rem);
   border-radius: 50%;
   background: radial-gradient(
     circle,
     rgba(255, 255, 255, 1) 0%,
-    rgba(185, 255, 225, 0.95) 24%,
-    rgba(0, 255, 136, 0.92) 54%,
+    rgba(200, 255, 225, 0.95) 30%,
+    rgba(0, 255, 136, 0.85) 58%,
     transparent 100%
   );
   transform: translate(-50%, -50%) scale(0);
-  animation: ${innerFlash} 0.35s ease-out forwards;
+  animation: ${impactFlash} 0.32s ease-out forwards;
 `;
 
-const Spark = styled.div`
+const CrackLine = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(${props => props.$size}px, ${props => (props.$size * 0.08).toFixed(2)}vw, ${props => props.$size * 2}px);
-  height: clamp(${props => props.$size}px, ${props => (props.$size * 0.08).toFixed(2)}vw, ${props => props.$size * 2}px);
-  background: linear-gradient(45deg, #ffffff, #00ff88);
-  border-radius: 50%;
-  box-shadow:
-    0 0 clamp(${props => props.$size * 2.3}px, ${props => (props.$size * 0.18).toFixed(2)}vw, ${props => props.$size * 4.6}px) rgba(0, 255, 136, 0.92),
-    0 0 clamp(${props => props.$size * 3.1}px, ${props => (props.$size * 0.24).toFixed(2)}vw, ${props => props.$size * 6.2}px) rgba(0, 220, 120, 0.35);
-  opacity: 0;
-  animation: ${sparkBurst} 0.4s ease-out forwards;
+  width: clamp(3rem, 7.5vw, 6rem);
+  height: clamp(1.5px, 0.16vw, 2.8px);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(0, 255, 136, 0.75) 10%,
+    rgba(255, 255, 255, 0.98) 35%,
+    rgba(255, 255, 255, 0.98) 65%,
+    rgba(0, 255, 136, 0.75) 90%,
+    transparent 100%
+  );
+  transform-origin: center;
+  --crack-angle: ${props => props.$angle}deg;
+  transform: translate(-50%, -50%) rotate(var(--crack-angle)) scaleX(0);
+  animation: ${crackGrow} 0.4s ease-out forwards;
   animation-delay: ${props => props.$delay}s;
-  --dx: ${props => props.$dx}vw;
-  --dy: ${props => props.$dy}vw;
+  box-shadow:
+    0 0 clamp(4px, 0.35vw, 8px) rgba(0, 255, 136, 0.7),
+    0 0 clamp(10px, 0.8vw, 18px) rgba(0, 255, 136, 0.3);
+`;
+
+const SHARD_SHAPES = [
+  "50% 0%, 8% 100%, 92% 85%",
+  "15% 0%, 100% 5%, 85% 100%, 0% 80%",
+  "50% 0%, 100% 55%, 65% 100%, 0% 70%",
+  "25% 0%, 100% 15%, 90% 100%, 5% 85%",
+  "0% 25%, 75% 0%, 100% 65%, 35% 100%",
+  "40% 0%, 100% 30%, 60% 100%, 0% 70%",
+  "10% 0%, 90% 10%, 100% 90%, 0% 100%",
+];
+
+const Shard = styled.div`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: clamp(${props => props.$w}px, ${props => (props.$w * 0.08).toFixed(2)}vw, ${props => props.$w * 2}px);
+  height: clamp(${props => props.$h}px, ${props => (props.$h * 0.08).toFixed(2)}vw, ${props => props.$h * 2}px);
+  background: linear-gradient(${props => props.$gradAngle}deg, #ffffff, #00ff88);
+  clip-path: polygon(${props => props.$shape});
+  filter: drop-shadow(0 0 clamp(3px, 0.3vw, 6px) rgba(0, 255, 136, 0.8));
+  opacity: 0;
+  animation: ${shardExplode} 0.5s ease-out forwards;
+  animation-delay: ${props => props.$delay}s;
+  --shard-dx: ${props => props.$dx}vw;
+  --shard-dy: ${props => props.$dy}vw;
+  --shard-spin: ${props => props.$spin}deg;
 `;
 
 const BreakText = styled.div`
@@ -159,48 +187,59 @@ const BreakText = styled.div`
   top: 50%;
   left: 50%;
   font-family: "Bungee", cursive;
-  /* Smaller font on small screens */
   font-size: clamp(0.52rem, 1.19vw, 1.04rem);
   color: #00ff88;
-  -webkit-text-stroke: 2px #000;
+  -webkit-text-stroke: 2.5px #000;
   paint-order: stroke fill;
   text-shadow:
-    -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000,
+    -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000,
     0 0 15px rgba(0, 255, 136, 0.9);
   letter-spacing: 0.15em;
   white-space: nowrap;
   transform: translate(-50%, -50%) scale(0);
-  animation: ${textPop} ${HIT_EFFECT_TEXT_DURATION}s ease-out forwards;
+  animation: ${breakTextSlam} ${HIT_EFFECT_TEXT_DURATION}s ease-out forwards;
   animation-delay: ${HIT_EFFECT_TEXT_DELAY}s;
 `;
 
+const CRACK_BASE_ANGLES = [5, 62, 118, 155, -28, -75];
 
 const GrabBreakEffect = ({ position }) => {
   const [activeEffects, setActiveEffects] = useState([]);
   const processedBreaksRef = useRef(new Set());
   const effectIdCounter = useRef(0);
-  const EFFECT_DURATION = 1600; // Longer to match side text animation
+  const EFFECT_DURATION = 1600;
 
-  // Generate spark particles - same count as punish for matching animation
-  const generateSparks = () => {
-    const sparks = [];
-    const sparkCount = 8;
-    
-    for (let i = 0; i < sparkCount; i++) {
-      const angle = (i / sparkCount) * 360;
+  const generateShards = () => {
+    const shards = [];
+    const shardCount = 7;
+
+    for (let i = 0; i < shardCount; i++) {
+      const angle = (i / shardCount) * 360 + (Math.random() * 25 - 12.5);
       const radians = angle * (Math.PI / 180);
-      const distance = 3 + Math.random() * 1.5;
-      
-      sparks.push({
+      const distance = 4.5 + Math.random() * 2.5;
+
+      shards.push({
         id: i,
-        size: 4 + Math.random() * 4,
+        w: 6 + Math.random() * 5,
+        h: 5 + Math.random() * 5,
         dx: Math.cos(radians) * distance,
         dy: Math.sin(radians) * distance,
-        delay: i * 0.02,
+        spin: 90 + Math.random() * 270,
+        gradAngle: Math.floor(Math.random() * 360),
+        delay: i * 0.018 + Math.random() * 0.02,
+        shape: SHARD_SHAPES[i % SHARD_SHAPES.length],
       });
     }
-    
-    return sparks;
+
+    return shards;
+  };
+
+  const generateCracks = () => {
+    return CRACK_BASE_ANGLES.map((base, i) => ({
+      id: i,
+      angle: base + (Math.random() * 12 - 6),
+      delay: i * 0.022,
+    }));
   };
 
   useEffect(() => {
@@ -217,7 +256,8 @@ const GrabBreakEffect = ({ position }) => {
       id: effectId,
       x: position.x,
       y: position.y,
-      sparks: generateSparks(),
+      shards: generateShards(),
+      cracks: generateCracks(),
       breakerPlayerNumber: position.breakerPlayerNumber || 1,
     };
 
@@ -238,21 +278,30 @@ const GrabBreakEffect = ({ position }) => {
   return (
     <>
       {activeEffects.map((effect) => {
-        // Player 1's text appears on the LEFT, Player 2's text appears on the RIGHT
         const isLeftSide = effect.breakerPlayerNumber === 1;
-        
+
         return (
           <div key={effect.id}>
             <EffectContainer $x={effect.x} $y={effect.y}>
-              <ShockwaveRing />
-              <InnerFlash />
-              {effect.sparks.map((spark) => (
-                <Spark
-                  key={spark.id}
-                  $size={spark.size}
-                  $dx={spark.dx}
-                  $dy={spark.dy}
-                  $delay={spark.delay}
+              <ImpactPoint />
+              {effect.cracks.map((crack) => (
+                <CrackLine
+                  key={crack.id}
+                  $angle={crack.angle}
+                  $delay={crack.delay}
+                />
+              ))}
+              {effect.shards.map((shard) => (
+                <Shard
+                  key={shard.id}
+                  $w={shard.w}
+                  $h={shard.h}
+                  $dx={shard.dx}
+                  $dy={shard.dy}
+                  $spin={shard.spin}
+                  $gradAngle={shard.gradAngle}
+                  $delay={shard.delay}
+                  $shape={shard.shape}
                 />
               ))}
               <BreakText>BREAK!</BreakText>

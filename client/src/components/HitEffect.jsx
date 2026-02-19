@@ -14,7 +14,7 @@ const CHARGED_PARTICLE_INDICES = [0, 1, 2, 3, 4, 5];
 /* Fixed size (charged-hit size) so slap and charged share the same center – slap ring centered inside charged ring */
 const HitEffectContainer = styled.div`
   position: absolute;
-  left: ${props => (props.$x / 1280) * 100 + (props.$facing === 1 ? -5 : -3)}%;
+  left: ${props => (props.$x / 1280) * 100 + (props.$facing === 1 ? -8 : -3)}%;
   bottom: ${props => (props.$y / 720) * 100}%;
   width: clamp(1.48rem, 3.70vw, 2.96rem);
   height: clamp(1.48rem, 3.70vw, 2.96rem);

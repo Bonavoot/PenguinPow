@@ -318,7 +318,7 @@ function emitThrottledScreenShake(room, io, shakeData) {
 
 let gameLoop = null;
 let staminaRegenCounter = 0;
-// TICK_RATE and BROADCAST_EVERY_N_TICKS from constants.js (32 Hz broadcast = balanced CPU/network)
+// TICK_RATE and BROADCAST_EVERY_N_TICKS from constants.js (32 Hz broadcast, client interpolates to 60fps)
 let broadcastTickCounter = 0;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.185; // Scaled for camera zoom (was 0.25)
@@ -500,7 +500,7 @@ const PERFECT_PARRY_KNOCKBACK = 0.65; // Slightly stronger than regular parry
 const RAW_PARRY_SLAP_STUN_DURATION = 500; // Reduced stun duration for slap attack parries
 const PERFECT_PARRY_WINDOW = 100; // 100ms window for perfect parries
 const PERFECT_PARRY_SUCCESS_DURATION = 2000; // 2 seconds - parrier holds success pose
-const PERFECT_PARRY_ATTACKER_STUN_DURATION = 1500; // 1.5 second stun duration for perfect parry
+const PERFECT_PARRY_ATTACKER_STUN_DURATION = 1100; // 1.1 second stun duration for perfect parry
 const PERFECT_PARRY_ANIMATION_LOCK = 600; // 600ms - parrier is locked in parry pose after perfect parry
 // Dodge is now stamina-based, no more charge system
 
@@ -535,10 +535,12 @@ const DODGE_STAMINA_COST = 7; // ~7% of max stamina per dodge (halved from 15)
 // Drain 1 stamina every 150ms (1500ms / 10 = 150ms per stamina point)
 const GRAB_STAMINA_DRAIN_INTERVAL = 150;
 const GRAB_BREAK_PUSH_VELOCITY = 1.2; // Push velocity for grab breaks
-const GRAB_BREAK_ANIMATION_DURATION = 380; // Duration for grab break animation state
-const GRAB_BREAK_SEPARATION_DURATION = 220; // Smooth separation tween duration
-const GRAB_BREAK_SEPARATION_MULTIPLIER = 71; // Scaled for camera zoom (was 96)
-const GRAB_BREAK_INPUT_LOCK_DURATION = 250; // Total input lock duration after grab break starts
+const GRAB_BREAK_FREEZE_MS = 150; // Short freeze before knockback so eyes have a reference point
+const GRAB_BREAK_FORCED_DISTANCE = 55; // Even separation distance for both players
+const GRAB_BREAK_TWEEN_DURATION = 350; // Knockback slide duration
+const GRAB_BREAK_RESIDUAL_VEL = 0; // No residual sliding — players stop cleanly when knockback ends
+const GRAB_BREAK_INPUT_LOCK_MS = 500; // 150ms freeze + 350ms tween — free to act as soon as knockback ends
+const GRAB_BREAK_ACTION_LOCK_MS = 500; // 150ms freeze + 350ms tween — free to act as soon as knockback ends
 
 // ============================================
 // NEW GRAB ACTION SYSTEM - Directional grab mechanics
@@ -559,7 +561,7 @@ const GRAB_PUSH_SEPARATION_INPUT_LOCK = 150;    // Brief input lock after push s
 const PULL_REVERSAL_DISTANCE = 311; // Scaled for camera zoom (was 420)
 const PULL_REVERSAL_TWEEN_DURATION = 650; // ms for the pull knockback tween (fast but visible travel)
 const PULL_REVERSAL_PULLED_LOCK = 700; // ms input lock for pulled player (exceeds tween, cleared early when tween ends)
-const PULL_REVERSAL_PULLER_LOCK = 500; // ms input lock for puller (ends ~150ms before opponent recovers, or on boundary hit)
+const PULL_REVERSAL_PULLER_LOCK = 700; // ms input lock for puller (same as pulled — 0 frame advantage)
 const PULL_BOUNDARY_MARGIN = 11; // Scaled for camera zoom (was 15)
 
 // ============================================
@@ -630,71 +632,18 @@ function executeDirectionalGrabBreak(grabber, breaker, room, io) {
   grabber.isGrabBreakCountered = true;
   grabber.isAttemptingGrabThrow = false;
 
-  // Auto-clear animation flags after duration
-  setPlayerTimeout(
-    grabber.id,
-    () => { grabber.isGrabBreakCountered = false; },
-    GRAB_BREAK_ANIMATION_DURATION,
-    "grabBreakHitReset"
-  );
-  setPlayerTimeout(
-    breaker.id,
-    () => { breaker.isGrabBreaking = false; },
-    GRAB_BREAK_ANIMATION_DURATION,
-    "grabBreakAnim"
-  );
-
-  // Determine directions and push apart without crossing boundaries
-  const leftBoundary = MAP_LEFT_BOUNDARY;
-  const rightBoundary = MAP_RIGHT_BOUNDARY;
-  const dir = breaker.x < grabber.x ? -1 : 1;
-  const breakerDistance = GRAB_BREAK_SEPARATION_MULTIPLIER; // 96
-  const grabberDistance = GRAB_BREAK_SEPARATION_MULTIPLIER * 0.5; // 48
-
-  const breakerTargetX = Math.max(
-    leftBoundary,
-    Math.min(breaker.x + dir * breakerDistance, rightBoundary)
-  );
-  const grabberTargetX = Math.max(
-    leftBoundary,
-    Math.min(grabber.x - dir * grabberDistance, rightBoundary)
-  );
-
-  // Initialize smooth separation tween for both players
-  const now = Date.now();
-  breaker.isGrabBreakSeparating = true;
-  breaker.grabBreakSepStartTime = now;
-  breaker.grabBreakSepDuration = GRAB_BREAK_SEPARATION_DURATION;
-  breaker.grabBreakStartX = breaker.x;
-  breaker.grabBreakTargetX = breakerTargetX;
-
-  grabber.isGrabBreakSeparating = true;
-  grabber.grabBreakSepStartTime = now;
-  grabber.grabBreakSepDuration = GRAB_BREAK_SEPARATION_DURATION;
-  grabber.grabBreakStartX = grabber.x;
-  grabber.grabBreakTargetX = grabberTargetX;
-
-  // Zero out velocities during tween
+  // === PHASE 1: SHORT FREEZE — gives eyes a reference point before knockback ===
   breaker.movementVelocity = 0;
   grabber.movementVelocity = 0;
   breaker.isStrafing = false;
   grabber.isStrafing = false;
 
-  // Lock both players' inputs
-  const inputLockUntil = Date.now() + GRAB_BREAK_INPUT_LOCK_DURATION;
+  const inputLockUntil = Date.now() + GRAB_BREAK_INPUT_LOCK_MS;
   breaker.inputLockUntil = Math.max(breaker.inputLockUntil || 0, inputLockUntil);
   grabber.inputLockUntil = Math.max(grabber.inputLockUntil || 0, inputLockUntil);
+  breaker.actionLockUntil = Date.now() + GRAB_BREAK_ACTION_LOCK_MS;
+  grabber.actionLockUntil = Date.now() + GRAB_BREAK_ACTION_LOCK_MS;
 
-  // Short cooldown to prevent immediate re-grab
-  grabber.grabCooldown = true;
-  setPlayerTimeout(
-    grabber.id,
-    () => { grabber.grabCooldown = false; },
-    300,
-    "grabBreakCooldown"
-  );
-
-  // Emit for client VFX/SFX
   io.in(room.id).emit("grab_break", {
     breakerId: breaker.id,
     grabberId: grabber.id,
@@ -703,6 +652,45 @@ function executeDirectionalGrabBreak(grabber, breaker, room, io) {
     breakId: `grab-break-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     breakerPlayerNumber: breaker.fighter === "player 1" ? 1 : 2,
   });
+
+  triggerHitstop(room, 60);
+
+  // === PHASE 2: FORCED SEPARATION (after short freeze) ===
+  setPlayerTimeout(grabber.id, () => {
+    breaker.isGrabBreaking = false;
+    grabber.isGrabBreakCountered = false;
+
+    // Breaker shows parry-success sprite during knockback slide
+    breaker.isRawParrySuccess = true;
+    setPlayerTimeout(breaker.id, () => { breaker.isRawParrySuccess = false; }, GRAB_BREAK_TWEEN_DURATION, "grabBreakParryAnim");
+
+    const dir = breaker.x < grabber.x ? -1 : 1;
+    const now = Date.now();
+
+    let breakerTarget = breaker.x + dir * GRAB_BREAK_FORCED_DISTANCE;
+    breakerTarget = Math.max(MAP_LEFT_BOUNDARY, Math.min(breakerTarget, MAP_RIGHT_BOUNDARY));
+    breaker.isGrabBreakSeparating = true;
+    breaker.grabBreakSepStartTime = now;
+    breaker.grabBreakSepDuration = GRAB_BREAK_TWEEN_DURATION;
+    breaker.grabBreakStartX = breaker.x;
+    breaker.grabBreakTargetX = breakerTarget;
+    breaker.grabTechResidualVel = dir * GRAB_BREAK_RESIDUAL_VEL;
+
+    let grabberTarget = grabber.x + (-dir) * GRAB_BREAK_FORCED_DISTANCE;
+    grabberTarget = Math.max(MAP_LEFT_BOUNDARY, Math.min(grabberTarget, MAP_RIGHT_BOUNDARY));
+    grabber.isGrabBreakSeparating = true;
+    grabber.grabBreakSepStartTime = now;
+    grabber.grabBreakSepDuration = GRAB_BREAK_TWEEN_DURATION;
+    grabber.grabBreakStartX = grabber.x;
+    grabber.grabBreakTargetX = grabberTarget;
+    grabber.grabTechResidualVel = (-dir) * GRAB_BREAK_RESIDUAL_VEL;
+  }, GRAB_BREAK_FREEZE_MS, "grabBreakSeparation");
+
+  // Cooldown to prevent immediate re-grab (both players, matches grab tech)
+  grabber.grabCooldown = true;
+  breaker.grabCooldown = true;
+  setPlayerTimeout(grabber.id, () => { grabber.grabCooldown = false; }, 500, "grabBreakCooldown");
+  setPlayerTimeout(breaker.id, () => { breaker.grabCooldown = false; }, 500, "grabBreakCooldown");
 }
 
 // === GRAB SEPARATION HELPER ===
@@ -827,6 +815,7 @@ function executeGrabTech(player1, player2, room, io) {
     x: centerX,
     y: centerY,
     techId: `grab-tech-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    grabberFacing: player1.x < player2.x ? 1 : -1,
   });
 
   // Trigger brief hitstop for impact feel at start of freeze
@@ -2861,21 +2850,29 @@ io.on("connection", (socket) => {
               // Release both players' input locks when pull tween ends
               player.inputLockUntil = 0;
               // Find and release the puller too
+              let pullerRef = null;
               if (player.pullReversalPullerId) {
                 const allPlayers = room.players || [];
-                const puller = allPlayers.find(p => p.id === player.pullReversalPullerId);
-                if (puller) {
-                  puller.inputLockUntil = 0;
+                pullerRef = allPlayers.find(p => p.id === player.pullReversalPullerId);
+                if (pullerRef) {
+                  pullerRef.inputLockUntil = 0;
                 }
                 player.pullReversalPullerId = null;
+              }
+              // Activate buffered inputs for both players (0 frame advantage)
+              activateBufferedInputAfterGrab(player, rooms);
+              if (pullerRef) {
+                activateBufferedInputAfterGrab(pullerRef, rooms);
               }
             }
             if (player.isGrabBreaking) player.isGrabBreaking = false;
             if (player.isGrabBreakCountered) player.isGrabBreakCountered = false;
-          }
 
-          // Skip remaining movement/logic this tick to avoid interference
-          return;
+            // Fall through to normal movement so residual velocity applies this tick
+          } else {
+            // Tween still in progress — skip remaining movement to avoid interference
+            return;
+          }
         }
 
         // Handle knockback movement with NO boundary restrictions
@@ -4948,11 +4945,9 @@ io.on("connection", (socket) => {
                       pullOpponent.isStrafing = false;
                       player.isStrafing = false;
 
-                      // Lock pulled player for full tween (cleared early when tween ends or boundary hit)
+                      // Lock both players equally (cleared early when tween ends or boundary hit)
                       const pulledLockUntil = Date.now() + PULL_REVERSAL_PULLED_LOCK;
                       pullOpponent.inputLockUntil = Math.max(pullOpponent.inputLockUntil || 0, pulledLockUntil);
-                      // Lock puller for shorter duration — freed a little before opponent recovers
-                      // (also cleared early on boundary hit via tween end handler)
                       const pullerLockUntil = Date.now() + PULL_REVERSAL_PULLER_LOCK;
                       player.inputLockUntil = Math.max(player.inputLockUntil || 0, pullerLockUntil);
 
@@ -5274,7 +5269,7 @@ io.on("connection", (socket) => {
       }
 
       // PERFORMANCE: Only broadcast every N ticks to reduce network load
-      // Game logic runs at 64Hz, but broadcasts at ~32Hz
+      // Game logic runs at 64Hz, broadcasts at 32Hz — client interpolation smooths to 60fps
       if (broadcastTickCounter % BROADCAST_EVERY_N_TICKS === 0) {
         // Initialize previousPlayerStates if it doesn't exist (for rooms created before optimization)
         if (!room.previousPlayerStates) {
@@ -5769,7 +5764,7 @@ io.on("connection", (socket) => {
 
       // Apply stun for perfect parries (separate from knockback)
       if (isPerfectParry) {
-        // Perfect parries stun the attacker for 1 second (fixed duration, no mash reduction)
+        // Perfect parries stun the attacker for 1.1s (fixed duration, no mash reduction)
         const baseStunDuration = PERFECT_PARRY_ATTACKER_STUN_DURATION;
         player.isRawParryStun = true;
         
@@ -8224,11 +8219,9 @@ io.on("connection", (socket) => {
             opponent.isStrafing = false;
             player.isStrafing = false;
 
-            // Lock pulled player for full tween (cleared early when tween ends or boundary hit)
+            // Lock both players equally (cleared early when tween ends or boundary hit)
             const pulledLockUntil = Date.now() + PULL_REVERSAL_PULLED_LOCK;
             opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, pulledLockUntil);
-            // Lock puller for shorter duration — freed a little before opponent recovers
-            // (also cleared early on boundary hit via tween end handler)
             const pullerLockUntil = Date.now() + PULL_REVERSAL_PULLER_LOCK;
             player.inputLockUntil = Math.max(player.inputLockUntil || 0, pullerLockUntil);
 

@@ -91,7 +91,7 @@ import beingGrabbed from "../assets/is-being-grabbed.gif";
 import atTheRopes from "../assets/at-the-ropes.png"; // APNG
 import crouchStrafingApng from "../assets/crouch-strafing.png"; // APNG
 import isPerfectParried from "../assets/is_perfect_parried.png"; // APNG
-import attackSound from "../sounds/attack-sound.mp3";
+import attackSound from "../sounds/attack-sound.wav";
 import hitSound from "../sounds/hit-sound.mp3";
 import dodgeSound from "../sounds/dodge-sound.mp3";
 import throwSound from "../sounds/throw-sound.mp3";
@@ -109,6 +109,7 @@ import thickBlubberSound from "../sounds/thick-blubber-sound.mp3";
 import rawParryGruntSound from "../sounds/raw-parry-grunt.mp3";
 import rawParrySuccessSound from "../sounds/raw-parry-success-sound.wav";
 import regularRawParrySound from "../sounds/regular-raw-parry-sound.wav";
+import stunnedSound from "../sounds/stunned-sound.mp3";
 import grabBreakSound from "../sounds/grab-break-sound.wav";
 import counterGrabSound from "../sounds/counter-grab-sound.wav";
 import notEnoughStaminaSound from "../sounds/not-enough-stamina-sound.wav";
@@ -159,6 +160,7 @@ import RoundResult from "./RoundResult";
 import HitEffect from "./HitEffect";
 import RawParryEffect from "./RawParryEffect";
 import { getGlobalVolume } from "./Settings";
+import { preloadSounds, playBuffer } from "../utils/audioEngine";
 import SnowEffect from "./SnowEffect";
 import ThemeOverlay from "./ThemeOverlay";
 import "./theme.css";
@@ -204,21 +206,7 @@ const ritualClapSounds = [clap1Sound, clap2Sound, clap3Sound, clap4Sound];
 // for images that are never displayed directly (recolored versions are used instead).
 // The recoloring system caches them as blob URLs - the browser decodes on-demand when rendered.
 
-// Audio pool for better performance
-const audioPool = new Map();
 const imagePool = new Map();
-
-const createAudioPool = (src, poolSize = 3) => {
-  if (!audioPool.has(src)) {
-    const pool = [];
-    for (let i = 0; i < poolSize; i++) {
-      const audio = new Audio(src);
-      audio.preload = "auto";
-      pool.push(audio);
-    }
-    audioPool.set(src, { pool, currentIndex: 0 });
-  }
-};
 
 // Image preloading function
 const preloadImage = (src) => {
@@ -229,43 +217,19 @@ const preloadImage = (src) => {
   }
 };
 
-// Initialize audio pools
-const initializeAudioPools = () => {
-  createAudioPool(attackSound, 2);
-  createAudioPool(hitSound, 2);
-  createAudioPool(dodgeSound, 2);
-  createAudioPool(throwSound, 2);
-  createAudioPool(grabSound, 2);
-  createAudioPool(slapParrySound, 2);
-  createAudioPool(saltSound, 2);
-  createAudioPool(snowballThrowSound, 2);
-  createAudioPool(pumoArmySound, 2);
-  createAudioPool(hakkiyoiSound, 1);
-  createAudioPool(teWoTsuiteSound, 1);
-  createAudioPool(bellSound, 1);
-  createAudioPool(winnerSound, 1);
-  createAudioPool(thickBlubberSound, 2);
-  createAudioPool(rawParryGruntSound, 2);
-  createAudioPool(rawParrySuccessSound, 2);
-  createAudioPool(regularRawParrySound, 2);
-  createAudioPool(grabBreakSound, 2);
-  createAudioPool(counterGrabSound, 2);
-  createAudioPool(notEnoughStaminaSound, 2);
-  createAudioPool(grabClashSound, 2);
-  createAudioPool(isTechingSound, 2);
-  createAudioPool(clashVictorySound, 2);
-  createAudioPool(clashDefeatSound, 2);
-  createAudioPool(roundVictorySound, 2);
-  createAudioPool(roundDefeatSound, 2);
-  // Add missing audio files
-  createAudioPool(gameMusic, 1);
-  createAudioPool(eeshiMusic, 1);
-  // Ritual clap sounds
-  createAudioPool(clap1Sound, 2);
-  createAudioPool(clap2Sound, 2);
-  createAudioPool(clap3Sound, 2);
-  createAudioPool(clap4Sound, 2);
-};
+// Pre-decode all sound effects into AudioBuffers via the Web Audio API.
+// Unlike HTML5 Audio elements, decoded buffers stay in memory permanently
+// and play back instantly with zero startup latency.
+preloadSounds([
+  attackSound, hitSound, dodgeSound, throwSound, grabSound,
+  slapParrySound, saltSound, snowballThrowSound, pumoArmySound,
+  hakkiyoiSound, teWoTsuiteSound, bellSound, winnerSound,
+  thickBlubberSound, rawParryGruntSound, rawParrySuccessSound,
+  regularRawParrySound, stunnedSound, grabBreakSound, counterGrabSound,
+  notEnoughStaminaSound, grabClashSound, isTechingSound,
+  clashVictorySound, clashDefeatSound, roundVictorySound, roundDefeatSound,
+  clap1Sound, clap2Sound, clap3Sound, clap4Sound,
+]);
 
 // Initialize image preloading
 // UNIFIED SPRITES: Only preload blue sprites - recoloring handles Player 2
@@ -330,58 +294,14 @@ const initializeImagePreloading = () => {
   preloadImage(slapAttackHand);
 };
 
-// Initialize pools and preloading immediately
-initializeAudioPools();
+// Initialize preloading immediately
 initializeImagePreloading();
 
 // UNIFIED SPRITES: Both players use blue sprites as base
 // Player 2's color is handled via canvas-based recoloring (defaults to red)
 
 const playSound = (audioFile, volume = 1.0, duration = null) => {
-  try {
-    const poolData = audioPool.get(audioFile);
-    if (poolData) {
-      const { pool, currentIndex } = poolData;
-      const sound = pool[currentIndex];
-      sound.volume = volume * getGlobalVolume();
-      sound.currentTime = 0; // Reset to start
-      sound.play().catch((error) => {
-        if (error.name !== "AbortError") {
-          console.error("Error playing sound:", error);
-        }
-      });
-      // Stop sound early if duration is specified (in milliseconds)
-      if (duration) {
-        setTimeout(() => {
-          sound.pause();
-          sound.currentTime = 0;
-        }, duration);
-      }
-      // Cycle to next audio instance
-      audioPool.set(audioFile, {
-        pool,
-        currentIndex: (currentIndex + 1) % pool.length,
-      });
-    } else {
-      // Fallback to old method
-      const sound = new Audio(audioFile);
-      sound.volume = volume * getGlobalVolume();
-      sound.play().catch((error) => {
-        if (error.name !== "AbortError") {
-          console.error("Error playing sound:", error);
-        }
-      });
-      // Stop sound early if duration is specified (in milliseconds)
-      if (duration) {
-        setTimeout(() => {
-          sound.pause();
-          sound.currentTime = 0;
-        }, duration);
-      }
-    }
-  } catch (error) {
-    console.error("Error creating audio:", error);
-  }
+  playBuffer(audioFile, volume * getGlobalVolume(), duration);
 };
 
 const getImageSrc = (
@@ -871,7 +791,9 @@ const StyledImage = styled("img")
         : props.$isRawParrySuccess || props.$isPerfectRawParrySuccess
         ? "rawParryRecoil 0.5s ease-out"
         : props.$isGrabBreaking
-        ? "grabBreakFlash 1.2s ease-in-out infinite"
+        ? "grabBreakShake 0.1s ease-in-out infinite"
+        : props.$isGrabBreakCountered
+        ? "grabBreakShake 0.1s ease-in-out infinite"
         : props.$isRawParrying
         ? "rawParryFlash 1.2s ease-in-out infinite"
         : props.$isGrabTeching
@@ -1141,6 +1063,15 @@ const StyledImage = styled("img")
     100% {
       transform: scaleX(var(--facing, 1)) translateX(0px);
     }
+  }
+
+  /* Grab break shake — fast, tight rattle during the short freeze before knockback */
+  @keyframes grabBreakShake {
+    0%   { transform: scaleX(var(--facing, 1)) translateX(0px); }
+    25%  { transform: scaleX(var(--facing, 1)) translateX(-5px); }
+    50%  { transform: scaleX(var(--facing, 1)) translateX(5px); }
+    75%  { transform: scaleX(var(--facing, 1)) translateX(-4px); }
+    100% { transform: scaleX(var(--facing, 1)) translateX(0px); }
   }
 
   /* Slap attack animation - subtle motion blur */
@@ -1806,6 +1737,7 @@ const SnowballProjectile = styled.img
       zIndex: 95,
       pointerEvents: "none",
       filter: "drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000)",
+      transition: "left 33ms linear, bottom 33ms linear",
     },
   }))``;
 
@@ -2113,6 +2045,7 @@ const GameFighter = ({
   const previousState = useRef(null);
   const currentState = useRef(null);
   const lastUpdateTime = useRef(performance.now());
+  const previousUpdateTime = useRef(0); // Tracks when the update before lastUpdateTime arrived
   const lastRenderUpdateTime = useRef(0);
   // PERFORMANCE: Only skip updates when position change is imperceptible
   // This gives smooth 60fps visuals while skipping redundant micro-updates
@@ -2950,29 +2883,21 @@ const GameFighter = ({
     return getSpritesheetConfig(spriteSrc);
   }, []);
 
-  // Interpolation: match server broadcast rate (server sends every N ticks)
+  // Fallback interval if we don't have two update timestamps yet
   const SERVER_UPDATE_INTERVAL = 1000 / SERVER_BROADCAST_HZ;
 
-  // Interpolation function for smooth movement
+  // Interpolation function for smooth movement (supports factor > 1 for extrapolation)
   const interpolatePosition = useCallback(
     (prevPos, currentPos, factor) => {
-      // Don't interpolate discrete jumps (teleports, throws, hits)
-      const maxInterpolationDistance = 100; // Don't interpolate if positions are too far apart
+      // Don't interpolate discrete jumps — if the position jumped more than 100px
+      // in a single update, it's a teleport/reset, not continuous movement.
+      // All rapid-movement states (dodging, knockback, throws, pull hops) move
+      // well under 100px per 32Hz update cycle, so they get smooth interpolation.
+      const maxInterpolationDistance = 100;
       const distance =
         Math.abs(currentPos.x - prevPos.x) + Math.abs(currentPos.y - prevPos.y);
 
       if (distance > maxInterpolationDistance) {
-        return currentPos; // Use current position for teleports/throws
-      }
-
-      // Don't interpolate during certain states where position changes should be instant
-      if (
-        penguin.isBeingThrown ||
-        penguin.isThrowing ||
-        penguin.isHit ||
-        penguin.isDodging ||
-        penguin.isBeingPullReversaled // Server-driven hops — use exact Y for full bounce fidelity
-      ) {
         return currentPos;
       }
 
@@ -2981,32 +2906,36 @@ const GameFighter = ({
         y: prevPos.y + (currentPos.y - prevPos.y) * factor,
       };
     },
-    [
-      penguin.isBeingThrown,
-      penguin.isThrowing,
-      penguin.isBeingPullReversaled,
-      penguin.isHit,
-      penguin.isDodging,
-    ]
+    []
   );
 
   // MEMORY FIX: Ref for interpolation loop cleanup on unmount
   const interpolationIdRef = useRef(null);
 
-  // Animation loop for interpolation - PERFORMANCE OPTIMIZED
-  // Calculates position every frame but only updates React state at throttled rate
+  // Animation loop for interpolation - ADAPTIVE TIMING
+  // Uses actual measured interval between server updates (not a hardcoded constant)
+  // and allows mild extrapolation (factor > 1) so position keeps moving smoothly
+  // between server updates instead of freezing when interpolation factor hits 1.
   const interpolationLoop = useCallback(
     (timestamp) => {
       let newPos = null;
       
       if (currentState.current && previousState.current) {
         const timeSinceUpdate = timestamp - lastUpdateTime.current;
+
+        // Use the actual measured interval between the last two server updates.
+        // This makes interpolation rate-agnostic: works equally well at 32Hz or 64Hz.
+        const actualInterval = lastUpdateTime.current - previousUpdateTime.current;
+        const effectiveInterval = actualInterval > 5 ? actualInterval : SERVER_UPDATE_INTERVAL;
+
+        // Allow mild extrapolation (up to 25% past the target) so position
+        // continues moving smoothly while waiting for the next server update.
+        // Without this, the position freezes at factor=1 and the sprite stutters.
         const interpolationFactor = Math.min(
-          timeSinceUpdate / SERVER_UPDATE_INTERVAL,
-          1
+          timeSinceUpdate / effectiveInterval,
+          1.25
         );
 
-        // Calculate interpolated position (stored in ref, no re-render)
         newPos = interpolatePosition(
           { x: previousState.current.x, y: previousState.current.y },
           { x: currentState.current.x, y: currentState.current.y },
@@ -3020,12 +2949,10 @@ const GameFighter = ({
       }
       
       if (newPos) {
-        // Always update ref (no re-render)
         const prevPos = interpolatedPositionRef.current;
         interpolatedPositionRef.current = newPos;
         
         // PERFORMANCE: Only update React state if position changed noticeably
-        // This gives 60fps smoothness while skipping imperceptible micro-updates
         const positionDelta = Math.abs(newPos.x - prevPos.x) + Math.abs(newPos.y - prevPos.y);
         if (positionDelta >= MIN_POSITION_CHANGE) {
           setInterpolatedPosition(newPos);
@@ -3142,6 +3069,7 @@ const GameFighter = ({
   const lastThrowingSnowballState = useRef(false);
   const lastSpawningPumoArmyState = useRef(false);
   const lastRawParryState = useRef(false);
+  const lastRawParryStunState = useRef(false);
   const lastWinnerState = useRef(false);
   const lastWinnerSoundPlay = useRef(0);
   const lastHitSoundTime = useRef(0);
@@ -3233,11 +3161,11 @@ const GameFighter = ({
         x: playerData.x,
         y: playerData.y,
         facing: playerData.facing,
-        // Add other continuous properties that might benefit from interpolation
         knockbackVelocity: playerData.knockbackVelocity,
       };
 
-      // Update timing for interpolation
+      // Track actual intervals between server updates for adaptive interpolation
+      previousUpdateTime.current = lastUpdateTime.current;
       lastUpdateTime.current = currentTime;
 
       // If this is the first update, set previous state to current
@@ -3452,6 +3380,7 @@ const GameFighter = ({
             x: data.x + SPRITE_HALF_W,
             y: PLAYER_MID_Y,
             techId: data.techId || `tech-${Date.now()}`,
+            facing: data.grabberFacing || 1,
           });
           playSound(isTechingSound, 0.04);
         }
@@ -3830,7 +3759,7 @@ const GameFighter = ({
       !penguin.isSlapAttack &&
       !lastAttackState.current
     ) {
-      playSound(attackSound, 0.01);
+      playSound(attackSound, 0.05);
     }
     // Update the last attack state
     lastAttackState.current = penguin.isAttacking && !penguin.isSlapAttack;
@@ -3840,7 +3769,7 @@ const GameFighter = ({
   useEffect(() => {
     // Trigger sound whenever slapAnimation changes and player is slap attacking
     if (penguin.isSlapAttack && penguin.isAttacking) {
-      playSound(attackSound, 0.01);
+      playSound(attackSound, 0.05);
     }
   }, [penguin.slapAnimation, penguin.isSlapAttack, penguin.isAttacking]);
 
@@ -3864,7 +3793,7 @@ const GameFighter = ({
       !penguin.isBeingThrown &&
       currentTime - lastHitSoundTime.current > throttleTime
     ) {
-      playSound(hitSound, 0.01);
+      playSound(hitSound, 0.02);
       lastHitSoundTime.current = currentTime;
     }
 
@@ -3934,6 +3863,18 @@ const GameFighter = ({
     }
     lastRawParryState.current = penguin.isRawParrying;
   }, [penguin.isRawParrying]);
+
+  // Raw perfect parry stun: play stunned sound when this player becomes stunned
+  useEffect(() => {
+    if (
+      penguin.isRawParryStun &&
+      !lastRawParryStunState.current &&
+      penguin.id === player.id
+    ) {
+      playSound(stunnedSound, 0.04);
+    }
+    lastRawParryStunState.current = penguin.isRawParryStun;
+  }, [penguin.isRawParryStun, penguin.id, player.id]);
 
   useEffect(() => {
     if (hakkiyoi) {

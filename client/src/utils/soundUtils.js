@@ -5,28 +5,17 @@ import menuMusic from "../sounds/menu-music.mp3";
 import powerUpSelectionHoverSound from "../sounds/power-up-selection-button-hover.mp3";
 import powerUpSelectionPressSound from "../sounds/power-up-selection-button-press.mp3";
 import { getGlobalVolume } from "../components/Settings";
+import { preloadSounds, playBuffer } from "./audioEngine";
 
 let backgroundMusic = null;
 
-// MEMORY FIX: Audio pool for UI sounds - prevents creating new Audio() on every click
-// which was causing memory accumulation during long sessions (best-of-100, etc.)
-const uiAudioPool = new Map();
-
-const getOrCreatePooledAudio = (src, poolSize = 2) => {
-  if (!uiAudioPool.has(src)) {
-    const pool = [];
-    for (let i = 0; i < poolSize; i++) {
-      const audio = new Audio(src);
-      audio.preload = "auto";
-      pool.push(audio);
-    }
-    uiAudioPool.set(src, { pool, currentIndex: 0 });
-  }
-  const { pool, currentIndex } = uiAudioPool.get(src);
-  const audio = pool[currentIndex];
-  uiAudioPool.set(src, { pool, currentIndex: (currentIndex + 1) % pool.length });
-  return audio;
-};
+preloadSounds([
+  buttonHoverSound,
+  buttonPressSound,
+  buttonPressSound2,
+  powerUpSelectionHoverSound,
+  powerUpSelectionPressSound,
+]);
 
 const updateBackgroundMusicVolume = () => {
   if (backgroundMusic) {
@@ -83,78 +72,23 @@ function stopVolumeSyncInterval() {
 }
 
 const playButtonHoverSound = () => {
-  try {
-    const sound = getOrCreatePooledAudio(buttonHoverSound);
-    sound.volume = 0.1 * getGlobalVolume();
-    sound.currentTime = 0;
-    sound.play().catch((error) => {
-      if (error.name !== "AbortError") {
-        console.error("Error playing sound:", error);
-      }
-    });
-  } catch (error) {
-    console.error("Error playing sound:", error);
-  }
+  playBuffer(buttonHoverSound, 0.1 * getGlobalVolume());
 };
 
 const playButtonPressSound = () => {
-  try {
-    const sound = getOrCreatePooledAudio(buttonPressSound);
-    sound.volume = 0.1 * getGlobalVolume();
-    sound.currentTime = 0;
-    sound.play().catch((error) => {
-      if (error.name !== "AbortError") {
-        console.error("Error playing sound:", error);
-      }
-    });
-  } catch (error) {
-    console.error("Error playing sound:", error);
-  }
+  playBuffer(buttonPressSound, 0.1 * getGlobalVolume());
 };
 
 const playButtonPressSound2 = () => {
-  try {
-    const sound = getOrCreatePooledAudio(buttonPressSound2);
-    sound.volume = 0.2 * getGlobalVolume();
-    sound.currentTime = 0;
-    sound.play().catch((error) => {
-      if (error.name !== "AbortError") {
-        console.error("Error playing sound:", error);
-      }
-    });
-  } catch (error) {
-    console.error("Error playing sound:", error);
-  }
+  playBuffer(buttonPressSound2, 0.2 * getGlobalVolume());
 };
 
 const playPowerUpSelectionHoverSound = () => {
-  try {
-    const sound = getOrCreatePooledAudio(powerUpSelectionHoverSound);
-    sound.volume = 0.1 * getGlobalVolume();
-    sound.currentTime = 0;
-    sound.play().catch((error) => {
-      if (error.name !== "AbortError") {
-        console.error("Error playing sound:", error);
-      }
-    });
-  } catch (error) {
-    console.error("Error playing sound:", error);
-  }
+  playBuffer(powerUpSelectionHoverSound, 0.1 * getGlobalVolume());
 };
 
 const playPowerUpSelectionPressSound = () => {
-  try {
-    const sound = getOrCreatePooledAudio(powerUpSelectionPressSound);
-    sound.volume = 0.15 * getGlobalVolume();
-    sound.currentTime = 0;
-    sound.play().catch((error) => {
-      if (error.name !== "AbortError") {
-        console.error("Error playing sound:", error);
-      }
-    });
-  } catch (error) {
-    console.error("Error playing sound:", error);
-  }
+  playBuffer(powerUpSelectionPressSound, 0.15 * getGlobalVolume());
 };
 
 export {

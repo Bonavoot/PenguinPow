@@ -5,81 +5,127 @@ import PropTypes from "prop-types";
 import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
 import { HIT_EFFECT_TEXT_DURATION, HIT_EFFECT_TEXT_DELAY } from "../config/hitEffectText";
 
-// Dramatic shockwave burst animation
-const shockwaveExpand = keyframes`
+// Ring contracts inward — starts large, slams to center, overshoots, settles
+const ringContract = keyframes`
   0% {
-    transform: translate(-50%, -50%) scale(0);
+    transform: translate(-50%, -50%) scale(2.8);
+    opacity: 0;
+    border-width: clamp(2px, 0.16vw, 3px);
+  }
+  25% {
+    transform: translate(-50%, -50%) scale(1);
     opacity: 1;
-    border-width: clamp(8px, 0.65vw, 16px);
+    border-width: clamp(4px, 0.35vw, 8px);
   }
   40% {
+    transform: translate(-50%, -50%) scale(0.85);
     opacity: 1;
-    border-width: clamp(4px, 0.32vw, 8px);
+    border-width: clamp(5px, 0.42vw, 10px);
+  }
+  55% {
+    transform: translate(-50%, -50%) scale(1.05);
+    opacity: 0.9;
+    border-width: clamp(3px, 0.25vw, 6px);
   }
   100% {
-    transform: translate(-50%, -50%) scale(3);
+    transform: translate(-50%, -50%) scale(1.3);
     opacity: 0;
     border-width: clamp(1px, 0.08vw, 2px);
   }
 `;
 
-const innerFlash = keyframes`
+// Cage bars contract inward in sync with the ring
+const barContract = keyframes`
   0% {
-    transform: translate(-50%, -50%) scale(0);
-    opacity: 1;
+    transform: translate(-50%, -50%) rotate(var(--bar-angle)) scaleX(2.2);
+    opacity: 0;
   }
   25% {
-    transform: translate(-50%, -50%) scale(1.65);
+    transform: translate(-50%, -50%) rotate(var(--bar-angle)) scaleX(1);
     opacity: 1;
   }
+  40% {
+    transform: translate(-50%, -50%) rotate(var(--bar-angle)) scaleX(0.88);
+    opacity: 1;
+  }
+  55% {
+    transform: translate(-50%, -50%) rotate(var(--bar-angle)) scaleX(1);
+    opacity: 0.8;
+  }
   100% {
-    transform: translate(-50%, -50%) scale(2.8);
+    transform: translate(-50%, -50%) rotate(var(--bar-angle)) scaleX(1);
     opacity: 0;
   }
 `;
 
-const sparkBurst = keyframes`
+// Heavy center flash at the lock-in moment
+const lockFlash = keyframes`
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0;
+  }
+  15% {
+    transform: translate(-50%, -50%) scale(1.5);
+    opacity: 1;
+  }
+  35% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(0.4);
+    opacity: 0;
+  }
+`;
+
+// Compression pulse — outward ripple after the cage shuts
+const compressionPulse = keyframes`
+  0% {
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 0;
+  }
+  25% {
+    transform: translate(-50%, -50%) scale(0.8);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.2);
+    opacity: 0;
+  }
+`;
+
+// Impact sparks scatter after the lock-in shockwave
+const impactSparkBurst = keyframes`
   0% {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1);
   }
   100% {
     opacity: 0;
-    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.3);
+    transform: translate(calc(-50% + var(--spark-dx)), calc(-50% + var(--spark-dy))) scale(0.3);
   }
 `;
 
-// Distinct "lock sigil" burst so counter grab reads immediately.
-const lockGlyphBurst = keyframes`
-  0% {
-    transform: translate(-50%, -50%) scale(0.25) rotate(0deg);
-    opacity: 1;
-  }
-  30% {
-    transform: translate(-50%, -50%) scale(1.05) rotate(9deg);
-    opacity: 0.95;
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(1.55) rotate(16deg);
-    opacity: 0;
-  }
-`;
-
-const textPop = keyframes`
+// LOCKED! text — fast heavy slam with settle
+const lockedTextSlam = keyframes`
   0% {
     transform: translate(-50%, -50%) scale(0);
     opacity: 0;
   }
-  20% {
-    transform: translate(-50%, -50%) scale(1.3);
+  12% {
+    transform: translate(-50%, -50%) scale(1.35);
+    opacity: 1;
+  }
+  22% {
+    transform: translate(-50%, -50%) scale(0.92);
+    opacity: 1;
+  }
+  30% {
+    transform: translate(-50%, -50%) scale(1.05);
     opacity: 1;
   }
   40% {
-    transform: translate(-50%, -50%) scale(0.9);
-    opacity: 1;
-  }
-  60% {
-    transform: translate(-50%, -50%) scale(1.1);
+    transform: translate(-50%, -50%) scale(1);
     opacity: 1;
   }
   80% {
@@ -95,7 +141,6 @@ const textPop = keyframes`
 const EFFECT_TEXT_BASELINE_OFFSET_Y = 0;
 const EFFECT_CENTER_OFFSET_X = 0;
 
-
 const EffectContainer = styled.div`
   position: absolute;
   left: ${props => (props.$x / 1280) * 100 + EFFECT_CENTER_OFFSET_X}%;
@@ -110,144 +155,156 @@ const EffectContainer = styled.div`
   pointer-events: none;
   contain: layout style;
   filter:
-    saturate(1.12)
-    brightness(1.08)
-    drop-shadow(0 0 4px rgba(183, 76, 255, 0.25));
+    saturate(1.15)
+    brightness(1.1)
+    drop-shadow(0 0 5px rgba(255, 50, 120, 0.3));
 `;
 
-/* Hit effect radius tier 1 (LARGE): counter grab, perfect parry, grab break, charged attack */
-const HIT_RADIUS_LARGE = "clamp(1.48rem, 3.70vw, 2.96rem)";
+const CAGE_RADIUS = "clamp(1.5rem, 3.8vw, 3rem)";
 
-/* Same structure as grab break: ring + glow both in one color so the ring reads clearly (green there, purple here) */
-const ShockwaveRing = styled.div`
+const ContractingRing = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: ${HIT_RADIUS_LARGE};
-  height: ${HIT_RADIUS_LARGE};
+  width: ${CAGE_RADIUS};
+  height: ${CAGE_RADIUS};
   border-radius: 50%;
-  border: clamp(4px, 0.30vw, 7px) solid rgba(205, 115, 255, 0.98);
+  border: clamp(3px, 0.24vw, 6px) solid rgba(255, 60, 140, 0.95);
   box-shadow:
-    0 0 16px rgba(187, 85, 255, 0.65),
-    0 0 30px rgba(153, 51, 255, 0.38),
-    0 0 44px rgba(120, 40, 220, 0.22);
-  background: radial-gradient(
-    circle,
-    rgba(85, 20, 120, 0.26) 0%,
-    rgba(130, 45, 190, 0.18) 44%,
-    transparent 74%
-  );
-  transform: translate(-50%, -50%) scale(0);
-  animation: ${shockwaveExpand} 0.4s ease-out forwards;
-`;
-
-// Stylized lock "X" sigil (same radius) to improve readability.
-const LockGlyph = styled.div`
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: ${HIT_RADIUS_LARGE};
-  height: ${HIT_RADIUS_LARGE};
-  border-radius: 50%;
-  background:
-    linear-gradient(45deg, transparent 45%, rgba(255, 225, 245, 0.9) 49%, rgba(160, 70, 255, 0.95) 50%, rgba(255, 225, 245, 0.9) 51%, transparent 55%),
-    linear-gradient(-45deg, transparent 45%, rgba(255, 225, 245, 0.9) 49%, rgba(160, 70, 255, 0.95) 50%, rgba(255, 225, 245, 0.9) 51%, transparent 55%);
-  box-shadow:
-    inset 0 0 10px rgba(255, 235, 250, 0.35),
-    0 0 10px rgba(180, 70, 255, 0.55);
-  transform: translate(-50%, -50%) scale(0.25);
+    0 0 clamp(6px, 0.5vw, 12px) rgba(200, 40, 120, 0.6),
+    0 0 clamp(12px, 1vw, 22px) rgba(150, 40, 220, 0.3);
+  transform: translate(-50%, -50%) scale(2.8);
   opacity: 0;
-  animation: ${lockGlyphBurst} 0.35s ease-out forwards;
+  animation: ${ringContract} 0.45s ease-out forwards;
 `;
 
-/* Same gradient shape as grab break: white → color at 50% → transparent (red + purple) */
-const InnerFlash = styled.div`
+const LockBar = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(1.00rem, 2.37vw, 2.04rem);
-  height: clamp(1.00rem, 2.37vw, 2.04rem);
+  width: clamp(3rem, 7.5vw, 6rem);
+  height: clamp(2.5px, 0.22vw, 4px);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 60, 140, 0.8) 10%,
+    rgba(255, 180, 220, 1) 35%,
+    rgba(255, 255, 255, 1) 50%,
+    rgba(255, 180, 220, 1) 65%,
+    rgba(255, 60, 140, 0.8) 90%,
+    transparent 100%
+  );
+  transform-origin: center;
+  --bar-angle: ${props => props.$angle}deg;
+  transform: translate(-50%, -50%) rotate(var(--bar-angle)) scaleX(2.2);
+  opacity: 0;
+  animation: ${barContract} 0.45s ease-out forwards;
+  box-shadow:
+    0 0 clamp(3px, 0.25vw, 6px) rgba(255, 50, 120, 0.6),
+    0 0 clamp(8px, 0.6vw, 14px) rgba(150, 40, 220, 0.25);
+`;
+
+const LockFlashCore = styled.div`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: clamp(1.2rem, 3vw, 2.4rem);
+  height: clamp(1.2rem, 3vw, 2.4rem);
   border-radius: 50%;
   background: radial-gradient(
     circle,
     rgba(255, 255, 255, 1) 0%,
-    rgba(255, 225, 238, 0.98) 18%,
-    rgba(230, 75, 125, 0.96) 42%,
-    rgba(171, 70, 255, 0.82) 70%,
+    rgba(255, 200, 230, 1) 18%,
+    rgba(255, 70, 140, 0.95) 42%,
+    rgba(170, 50, 240, 0.7) 65%,
     transparent 100%
   );
   transform: translate(-50%, -50%) scale(0);
-  animation: ${innerFlash} 0.35s ease-out forwards;
+  animation: ${lockFlash} 0.35s ease-out 0.08s forwards;
 `;
 
-const Spark = styled.div`
+const CompressionPulseRing = styled.div`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: ${CAGE_RADIUS};
+  height: ${CAGE_RADIUS};
+  border-radius: 50%;
+  border: clamp(2px, 0.16vw, 3.5px) solid rgba(255, 100, 170, 0.85);
+  box-shadow:
+    0 0 clamp(4px, 0.35vw, 8px) rgba(255, 60, 140, 0.45);
+  transform: translate(-50%, -50%) scale(0.5);
+  opacity: 0;
+  animation: ${compressionPulse} 0.4s ease-out 0.12s forwards;
+`;
+
+const ImpactSpark = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
   width: clamp(${props => props.$size}px, ${props => (props.$size * 0.08).toFixed(2)}vw, ${props => props.$size * 2}px);
   height: clamp(${props => props.$size}px, ${props => (props.$size * 0.08).toFixed(2)}vw, ${props => props.$size * 2}px);
-  background: ${props => props.$isRed 
-    ? 'linear-gradient(45deg, #ffffff, #cc2244)' 
+  background: ${props => props.$isRed
+    ? 'linear-gradient(45deg, #ffffff, #cc2244)'
     : 'linear-gradient(45deg, #ffffff, #9933ff)'};
   border-radius: 50%;
   box-shadow:
-    0 0 clamp(${props => props.$size * 2.2}px, ${props => (props.$size * 0.17).toFixed(2)}vw, ${props => props.$size * 4.4}px) ${props => props.$isRed ? 'rgba(204, 34, 68, 0.9)' : 'rgba(153, 51, 255, 0.92)'},
-    0 0 clamp(${props => props.$size * 3}px, ${props => (props.$size * 0.24).toFixed(2)}vw, ${props => props.$size * 6}px) ${props => props.$isRed ? 'rgba(204, 34, 68, 0.34)' : 'rgba(153, 51, 255, 0.36)'};
+    0 0 clamp(${props => props.$size * 2}px, ${props => (props.$size * 0.16).toFixed(2)}vw, ${props => props.$size * 4}px) ${props => props.$isRed ? 'rgba(204, 34, 68, 0.85)' : 'rgba(153, 51, 255, 0.85)'};
   opacity: 0;
-  animation: ${sparkBurst} 0.4s ease-out forwards;
+  animation: ${impactSparkBurst} 0.4s ease-out forwards;
   animation-delay: ${props => props.$delay}s;
-  --dx: ${props => props.$dx}vw;
-  --dy: ${props => props.$dy}vw;
+  --spark-dx: ${props => props.$dx}vw;
+  --spark-dy: ${props => props.$dy}vw;
 `;
 
-/* Same as BreakText structure - one color + one glow (here: red/purple) */
 const LockedText = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
   font-family: "Bungee", cursive;
   font-size: clamp(0.52rem, 1.19vw, 1.04rem);
-  color: #bb2255;
-  -webkit-text-stroke: 2px #000;
+  color: #ff3370;
+  -webkit-text-stroke: 2.5px #000;
   paint-order: stroke fill;
   text-shadow:
-    -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000,
-    0 0 15px rgba(204, 34, 68, 0.9),
-    0 0 30px rgba(153, 51, 255, 0.7);
+    -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000,
+    0 0 14px rgba(255, 50, 110, 0.9),
+    0 0 28px rgba(160, 40, 255, 0.6);
+  z-index: 20;
   letter-spacing: 0.15em;
   white-space: nowrap;
   transform: translate(-50%, -50%) scale(0);
-  animation: ${textPop} ${HIT_EFFECT_TEXT_DURATION}s ease-out forwards;
+  animation: ${lockedTextSlam} ${HIT_EFFECT_TEXT_DURATION}s ease-out forwards;
   animation-delay: ${HIT_EFFECT_TEXT_DELAY}s;
 `;
 
+const BAR_ANGLES = [0, 45, 90, 135];
 
 const CounterGrabEffect = ({ position }) => {
   const [activeEffects, setActiveEffects] = useState([]);
   const processedCountersRef = useRef(new Set());
   const effectIdCounter = useRef(0);
-  const EFFECT_DURATION = 1600; // Longer to match side text animation
+  const EFFECT_DURATION = 1600;
 
-  // Generate spark particles - alternating red and purple for counter grab
   const generateSparks = () => {
     const sparks = [];
-    const sparkCount = 8;
-    
+    const sparkCount = 6;
+
     for (let i = 0; i < sparkCount; i++) {
-      const angle = (i / sparkCount) * 360;
+      const angle = (i / sparkCount) * 360 + (Math.random() * 20 - 10);
       const radians = angle * (Math.PI / 180);
-      const distance = 3 + Math.random() * 1.5;
-      
+      const distance = 3.5 + Math.random() * 2.5;
+
       sparks.push({
         id: i,
         size: 4 + Math.random() * 4,
         dx: Math.cos(radians) * distance,
         dy: Math.sin(radians) * distance,
-        delay: i * 0.02,
+        delay: 0.12 + i * 0.018,
         isRed: i % 2 === 0,
       });
     }
-    
+
     return sparks;
   };
 
@@ -255,7 +312,6 @@ const CounterGrabEffect = ({ position }) => {
     if (!position || !position.counterId) return;
 
     if (processedCountersRef.current.has(position.counterId)) {
-      // Keep existing effect instance but update its live anchor position.
       setActiveEffects((prev) =>
         prev.map((effect) =>
           effect.counterId === position.counterId
@@ -288,8 +344,6 @@ const CounterGrabEffect = ({ position }) => {
 
     setTimeout(() => {
       setActiveEffects((prev) => prev.filter((e) => e.id !== effectId));
-      // Keep this counterId marked as processed so ongoing position updates
-      // for the same event cannot re-trigger the effect in a loop.
     }, EFFECT_DURATION);
   }, [position?.counterId, position?.x, position?.y, position?.grabberPlayerNumber]);
 
@@ -302,17 +356,19 @@ const CounterGrabEffect = ({ position }) => {
   return (
     <>
       {activeEffects.map((effect) => {
-        // Player 1's text appears on the LEFT, Player 2's text appears on the RIGHT
         const isLeftSide = effect.grabberPlayerNumber === 1;
-        
+
         return (
           <div key={effect.id}>
             <EffectContainer $x={effect.x} $y={effect.y}>
-              <ShockwaveRing />
-              <LockGlyph />
-              <InnerFlash />
+              <ContractingRing />
+              {BAR_ANGLES.map((angle) => (
+                <LockBar key={angle} $angle={angle} />
+              ))}
+              <LockFlashCore />
+              <CompressionPulseRing />
               {effect.sparks.map((spark) => (
-                <Spark
+                <ImpactSpark
                   key={spark.id}
                   $size={spark.size}
                   $dx={spark.dx}

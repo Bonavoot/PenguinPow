@@ -1487,6 +1487,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
   }
   
   if (cpu.actionLockUntil && Date.now() < cpu.actionLockUntil) {
+    cpu._prevKeys = { ...cpu.keys };
     return;
   }
   
@@ -1657,37 +1658,20 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       !shouldBlockAction() &&
       canPlayerUseAction(cpu)) {
     
-    cpu.lastGrabAttemptTime = currentTime;
     clearChargeState(cpu, true);
     
+    cpu.lastGrabAttemptTime = currentTime;
     cpu.isGrabStartup = true;
     cpu.grabStartupStartTime = currentTime;
     cpu.grabStartupDuration = 220;
     cpu.currentAction = "grab_startup";
-    cpu.actionLockUntil = currentTime + Math.min(120, 220);
+    cpu.actionLockUntil = currentTime + 220;
     cpu.grabState = "attempting";
     cpu.grabAttemptType = "grab";
+    cpu.grabApproachSpeed = Math.abs(cpu.movementVelocity);
     cpu.movementVelocity = 0;
     cpu.isStrafing = false;
-    
-    setPlayerTimeout(cpu.id, () => {
-      if (cpu.isGrabbingMovement && !cpu.grabbedOpponent) {
-        cpu.isGrabbingMovement = false;
-        cpu.isWhiffingGrab = true;
-        cpu.grabMovementVelocity = 0;
-        cpu.grabState = "initial";
-        cpu.grabAttemptType = null;
-        
-        cpu.grabCooldown = true;
-        setPlayerTimeout(cpu.id, () => {
-          cpu.grabCooldown = false;
-        }, 1100);
-        
-        setPlayerTimeout(cpu.id, () => {
-          cpu.isWhiffingGrab = false;
-        }, 200);
-      }
-    }, 750, "grabMovementTimeout");
+    cpu.isPowerSliding = false;
     
     cpu._prevKeys = { ...cpu.keys };
     return;

@@ -142,7 +142,7 @@ const StarStunEffect = ({ x, y, isActive, facing }) => {
 
   return (
     <StarStunContainer $x={x} $y={y} $facing={facing}>
-      <StunnedText>STUNNED</StunnedText>
+     
       <OrbitContainer>
         <Star>★</Star>
         <Star>★</Star>

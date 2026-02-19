@@ -10,7 +10,7 @@ const GRAB_STATES = {
 
 // Performance: game logic runs at TICK_RATE; broadcasts every N ticks to reduce network + client work
 const TICK_RATE = 64;
-const BROADCAST_EVERY_N_TICKS = 1; // 1 = 64 Hz (smooth), 2 = 32 Hz (lower CPU/network but choppier)
+const BROADCAST_EVERY_N_TICKS = 2; // 2 = 32 Hz broadcast (client interpolation smooths to 60fps)
 
 module.exports = {
   GRAB_STATES,
