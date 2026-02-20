@@ -1,6 +1,6 @@
 // Game constants
-const MAP_LEFT_BOUNDARY = 260;
-const MAP_RIGHT_BOUNDARY = 860;
+const MAP_LEFT_BOUNDARY = 340;
+const MAP_RIGHT_BOUNDARY = 940;
 
 const DEFAULT_PLAYER_SIZE_MULTIPLIER = 0.85; // 15% smaller default size
 

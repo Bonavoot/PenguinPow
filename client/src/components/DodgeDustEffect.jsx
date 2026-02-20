@@ -68,9 +68,9 @@ const SmokeContainer = styled.div.attrs((props) => {
     props.$dodgeDirection !== props.$facing;
   let offset = 0;
   if (isBackward) {
-    offset = props.$facing === 1 ? 10 : 8;
+    offset = props.$facing === 1 ? 4 : 2;
   } else {
-    offset = props.$facing === 1 ? 5 : 10;
+    offset = props.$facing === 1 ? -1 : 4;
   }
   const scaleX = (props.$facing === 1 ? 1 : -1) * (isBackward ? 1 : -1);
   return {
@@ -79,7 +79,7 @@ const SmokeContainer = styled.div.attrs((props) => {
       left: `calc(${(props.$x / 1280) * 100}% + ${offset}%)`,
       bottom: `calc(${(props.$y / 720) * 100}%)`,
       pointerEvents: "none",
-      width: "clamp(75px, 11.11vw, 199px)",
+      width: "10.36cqw",
       height: "auto",
       transform: `translateX(-50%) scaleX(${scaleX})`,
       opacity: 0.85,
@@ -100,7 +100,7 @@ const SpeedLinesContainer = styled.div`
 
 const SpeedLine = styled.div`
   position: absolute;
-  width: clamp(30px, 4.44vw, 67px);
+  width: 3.49cqw;
   height: 2px;
   background: linear-gradient(
     ${(props) => props.$direction > 0 ? '90deg' : '270deg'},
@@ -130,8 +130,8 @@ const AfterimageContainer = styled.div`
 `;
 
 const AfterimageGhost = styled.div`
-  width: clamp(59px, 7.41vw, 111px);
-  height: clamp(59px, 7.41vw, 111px);
+  width: 5.78cqw;
+  height: 5.78cqw;
   background: radial-gradient(ellipse at center, 
     rgba(200, 230, 255, 0.4) 0%, 
     rgba(150, 200, 255, 0.2) 40%, 
@@ -145,8 +145,8 @@ const AfterimageGhost = styled.div`
 // Burst particles at dodge start
 const BurstParticle = styled.div`
   position: absolute;
-  width: clamp(4px, 0.59vw, 9px);
-  height: clamp(4px, 0.59vw, 9px);
+  width: 0.47cqw;
+  height: 0.47cqw;
   background: rgba(255, 255, 255, 0.9);
   border-radius: 50%;
   --burst-x: ${(props) => props.$bx}px;
@@ -160,8 +160,8 @@ const GroundDust = styled.div`
   position: absolute;
   bottom: 0;
   left: 50%;
-  width: clamp(37px, 5.19vw, 74px);
-  height: clamp(15px, 1.85vw, 30px);
+  width: 3.85cqw;
+  height: 1.56cqw;
   background: radial-gradient(ellipse at center bottom, 
     rgba(255, 255, 255, 0.6) 0%, 
     rgba(200, 220, 255, 0.3) 50%, 

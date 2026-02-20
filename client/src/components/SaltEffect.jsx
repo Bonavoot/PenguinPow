@@ -18,7 +18,7 @@ const SaltContainer = styled.div.attrs((props) => ({
 const SaltParticle = styled.div.attrs((props) => ({
   style: {
     position: "absolute",
-    width: "calc(0.3vw * (16 / 9))", // Smaller than original for realistic salt size
+    width: "calc(0.3cqw * (16 / 9))",
     height: "calc(0.3vh * (16 / 9))", 
     background: `radial-gradient(circle at center, 
       rgba(255, 255, 255, 1) 0%, 

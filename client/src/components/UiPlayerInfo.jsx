@@ -140,7 +140,7 @@ const HudShell = styled.div`
 
 const PlayerWing = styled.div`
   flex: 0 1 40%;
-  max-width: 480px;
+  max-width: min(480px, 36%);
   display: flex;
   flex-direction: column;
   gap: clamp(4px, 0.6vh, 8px);

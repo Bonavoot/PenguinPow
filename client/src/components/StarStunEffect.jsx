@@ -55,7 +55,7 @@ const textPulse = keyframes`
 const StarStunContainer = styled.div`
   position: absolute;
   bottom: ${props => (props.$y / 720) * 100 + 20}%;
-  left: ${props => (props.$x / 1280) * 100 + 6.25}%;
+  left: ${props => (props.$x / 1280) * 100}%;
   transform: translateX(-50%);
   z-index: 1001;
   pointer-events: none;
@@ -69,15 +69,15 @@ const StarStunContainer = styled.div`
 
 const OrbitContainer = styled.div`
   position: relative;
-  width: clamp(56px, 5.19vw, 78px);
-  height: clamp(56px, 5.19vw, 78px);
+  width: 4.06cqw;
+  height: 4.06cqw;
   transform-style: preserve-3d;
   animation: ${orbit3D} 1.2s linear infinite;
 `;
 
 const Star = styled.div`
   position: absolute;
-  font-size: clamp(13px, 1.33vw, 19px);
+  font-size: 0.99cqw;
   color: #ffd700;
   -webkit-text-stroke: 1.5px #000;
   paint-order: stroke fill;
@@ -116,7 +116,7 @@ const Star = styled.div`
 
 const StunnedText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.52rem, 1.19vw, 1.04rem);
+  font-size: 0.86cqw;
   color: #ffd700;
   -webkit-text-stroke: 2.5px #000;
   paint-order: stroke fill;

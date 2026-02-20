@@ -11,11 +11,11 @@ const shootOutRight = keyframes`
   }
   40% {
     opacity: 1;
-    transform: translate(calc(var(--start-x) + 2vw), var(--offset-y)) scale(0.95);
+    transform: translate(calc(var(--start-x) + 2cqw), var(--offset-y)) scale(0.95);
   }
   100% {
     opacity: 0;
-    transform: translate(calc(var(--start-x) + 3.35vw), var(--offset-y)) scale(0.8);
+    transform: translate(calc(var(--start-x) + 3.35cqw), var(--offset-y)) scale(0.8);
   }
 `;
 
@@ -27,11 +27,11 @@ const shootOutLeft = keyframes`
   }
   40% {
     opacity: 1;
-    transform: translate(calc(var(--start-x) - 2vw), var(--offset-y)) scaleX(-1) scale(0.95);
+    transform: translate(calc(var(--start-x) - 2cqw), var(--offset-y)) scaleX(-1) scale(0.95);
   }
   100% {
     opacity: 0;
-    transform: translate(calc(var(--start-x) - 3.35vw), var(--offset-y)) scaleX(-1) scale(0.8);
+    transform: translate(calc(var(--start-x) - 3.35cqw), var(--offset-y)) scaleX(-1) scale(0.8);
   }
 `;
 
@@ -43,11 +43,11 @@ const streakRight = keyframes`
   }
   40% {
     opacity: 0.95;
-    transform: translate(calc(var(--start-x) + 1.35vw), var(--offset-y)) scaleX(2.25) scaleY(0.65);
+    transform: translate(calc(var(--start-x) + 1.35cqw), var(--offset-y)) scaleX(2.25) scaleY(0.65);
   }
   100% {
     opacity: 0;
-    transform: translate(calc(var(--start-x) + 2.7vw), var(--offset-y)) scaleX(2.7) scaleY(0.5);
+    transform: translate(calc(var(--start-x) + 2.7cqw), var(--offset-y)) scaleX(2.7) scaleY(0.5);
   }
 `;
 
@@ -59,11 +59,11 @@ const streakLeft = keyframes`
   }
   40% {
     opacity: 0.95;
-    transform: translate(calc(var(--start-x) - 1.35vw), var(--offset-y)) scaleX(2.25) scaleY(0.65);
+    transform: translate(calc(var(--start-x) - 1.35cqw), var(--offset-y)) scaleX(2.25) scaleY(0.65);
   }
   100% {
     opacity: 0;
-    transform: translate(calc(var(--start-x) - 2.7vw), var(--offset-y)) scaleX(2.7) scaleY(0.5);
+    transform: translate(calc(var(--start-x) - 2.7cqw), var(--offset-y)) scaleX(2.7) scaleY(0.5);
   }
 `;
 
@@ -71,7 +71,7 @@ const streakLeft = keyframes`
 const HandsContainer = styled.div.attrs((props) => ({
   style: {
     position: "absolute",
-    left: `${(props.$x / 1280) * 100 + (props.$facing === -1 ? 13 : -5.5)}%`,
+    left: `${(props.$x / 1280) * 100 + (props.$facing === -1 ? 7 : -12)}%`,
     bottom: `${(props.$y / 720) * 100 + 16}%`,
     pointerEvents: "none",
     zIndex: 150, // Above the player
@@ -80,33 +80,31 @@ const HandsContainer = styled.div.attrs((props) => ({
 
 const Hand = styled.img`
   position: absolute;
-  /* Smaller minimum for small screens, larger maximum for big screens */
-  width: clamp(27px, 4vw, 60px);
+  width: 3.13cqw;
   height: auto;
   opacity: 0;
   --offset-y: ${(props) => props.$offsetY}vh;
-  --start-x: ${(props) => props.$startX}vw;
+  --start-x: ${(props) => props.$startX}cqw;
   animation: ${(props) => (props.$facing === -1 ? shootOutLeft : shootOutRight)} 
     180ms ease-out forwards;
   transform-origin: center;
   will-change: transform, opacity;
   filter: grayscale(100%) brightness(200%)
-    drop-shadow(clamp(1px, 0.08vw, 2.5px) 0 0 black) 
-    drop-shadow(clamp(-2.5px, -0.08vw, -1px) 0 0 black) 
-    drop-shadow(0 clamp(1px, 0.08vw, 2.5px) 0 black) 
-    drop-shadow(0 clamp(-2.5px, -0.08vw, -1px) 0 black)
-    drop-shadow(0 0 clamp(6px, 0.6vw, 12px) rgba(255, 255, 255, 0.8))
-    drop-shadow(0 0 clamp(12px, 1.2vw, 24px) rgba(255, 255, 255, 0.5)); // White with black outline and glow - scales with screen
+    drop-shadow(0.08cqw 0 0 black) 
+    drop-shadow(-0.08cqw 0 0 black) 
+    drop-shadow(0 0.08cqw 0 black) 
+    drop-shadow(0 -0.08cqw 0 black)
+    drop-shadow(0 0 0.6cqw rgba(255, 255, 255, 0.8))
+    drop-shadow(0 0 1.2cqw rgba(255, 255, 255, 0.5));
 `;
 
 const Streak = styled.div`
   position: absolute;
-  /* Smaller minimum for small screens, larger maximum for big screens */
-  width: clamp(27px, 4vw, 60px);
-  height: clamp(14px, 2vw, 32px);
+  width: 3.13cqw;
+  height: 1.67cqw;
   opacity: 0;
   --offset-y: ${(props) => props.$offsetY}vh;
-  --start-x: ${(props) => props.$startX}vw;
+  --start-x: ${(props) => props.$startX}cqw;
   background: linear-gradient(
     ${(props) => (props.$facing === -1 ? '90deg' : '-90deg')},
     rgba(255, 255, 255, 1) 0%,

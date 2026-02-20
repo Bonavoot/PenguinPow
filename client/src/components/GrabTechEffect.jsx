@@ -10,17 +10,17 @@ const mainRingExpand = keyframes`
   0% {
     transform: translate(-50%, -50%) rotateY(var(--tech-tilt)) scale(0.2);
     opacity: 1;
-    border-width: clamp(3px, 0.24vw, 6px);
+    border-width: 0.24cqw;
   }
   25% {
     transform: translate(-50%, -50%) rotateY(var(--tech-tilt)) scale(1.1);
     opacity: 1;
-    border-width: clamp(2.5px, 0.2vw, 5px);
+    border-width: 0.20cqw;
   }
   100% {
     transform: translate(-50%, -50%) rotateY(var(--tech-tilt)) scale(2.3);
     opacity: 0;
-    border-width: clamp(0.5px, 0.04vw, 1px);
+    border-width: 0.04cqw;
   }
 `;
 
@@ -127,8 +127,8 @@ const EffectContainer = styled.div`
   position: absolute;
   left: ${props => (props.$x / 1280) * 100 + EFFECT_CENTER_OFFSET_X}%;
   bottom: ${props => (props.$y / 720) * 100 + EFFECT_TEXT_BASELINE_OFFSET_Y}%;
-  width: clamp(3.11rem, 7.78vw, 6.22rem);
-  height: clamp(2.89rem, 7.26vw, 5.78rem);
+  width: 5.18cqw;
+  height: 4.82cqw;
   transform: translate(-50%, 50%);
   display: flex;
   align-items: center;
@@ -140,8 +140,8 @@ const EffectContainer = styled.div`
 
 const RingWrapper = styled.div`
   position: relative;
-  width: clamp(1.67rem, 4.19vw, 3.22rem);
-  height: clamp(1.67rem, 4.19vw, 3.22rem);
+  width: 2.7cqw;
+  height: 2.7cqw;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -160,9 +160,9 @@ const MainRing = styled.div`
   left: 50%;
   width: 100%;
   height: 100%;
-  border: clamp(3.5px, 0.28vw, 7px) solid rgba(120, 215, 255, 0.98);
+  border: 0.28cqw solid rgba(120, 215, 255, 0.98);
   border-radius: 50%;
-  box-shadow: 0 0 clamp(4px, 0.3vw, 8px) rgba(80, 190, 255, 0.5);
+  box-shadow: 0 0 0.3cqw rgba(80, 190, 255, 0.5);
   transform: translate(-50%, -50%) rotateY(var(--tech-tilt)) scale(0.2);
   animation: ${mainRingExpand} 0.4s ease-out forwards;
 `;
@@ -173,7 +173,7 @@ const SecondaryRing = styled.div`
   left: 50%;
   width: 100%;
   height: 100%;
-  border: clamp(2px, 0.16vw, 3.5px) solid rgba(130, 225, 255, 0.85);
+  border: 0.16cqw solid rgba(130, 225, 255, 0.85);
   border-radius: 50%;
   transform: translate(-50%, -50%) rotateY(var(--tech-tilt)) scale(0.3);
   animation: ${outerRingExpand} 0.45s ease-out 0.03s forwards;
@@ -218,18 +218,18 @@ const Spark = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(${props => props.$size}px, ${props => (props.$size * 0.08).toFixed(2)}vw, ${props => props.$size * 2}px);
-  height: clamp(${props => props.$size}px, ${props => (props.$size * 0.08).toFixed(2)}vw, ${props => props.$size * 2}px);
+  width: ${props => (props.$size * 0.08).toFixed(2)}cqw;
+  height: ${props => (props.$size * 0.08).toFixed(2)}cqw;
   background: linear-gradient(45deg, #ffffff, #64c8ff);
   border-radius: 50%;
   box-shadow:
-    0 0 clamp(4px, 0.3vw, 7px) rgba(80, 180, 255, 0.85),
-    0 0 clamp(8px, 0.6vw, 14px) rgba(60, 160, 255, 0.4);
+    0 0 0.3cqw rgba(80, 180, 255, 0.85),
+    0 0 0.6cqw rgba(60, 160, 255, 0.4);
   opacity: 0;
   animation: ${sparkExplode} 0.38s ease-out forwards;
   animation-delay: ${props => props.$delay}s;
-  --spark-dx: ${props => props.$dx}vw;
-  --spark-dy: ${props => props.$dy}vw;
+  --spark-dx: ${props => props.$dx}cqw;
+  --spark-dy: ${props => props.$dy}cqw;
 `;
 
 const TechText = styled.div`
@@ -237,7 +237,7 @@ const TechText = styled.div`
   top: 50%;
   left: 50%;
   font-family: "Bungee", cursive;
-  font-size: clamp(0.52rem, 1.19vw, 1.04rem);
+  font-size: 0.86cqw;
   color: #64c8ff;
   -webkit-text-stroke: 2.5px #000;
   paint-order: stroke fill;

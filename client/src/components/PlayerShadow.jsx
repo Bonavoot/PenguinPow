@@ -19,8 +19,8 @@ const sharedAttrs = (props) => {
   const adjustedBottomPos = bottomPos;
   const offsetLeft =
     props.$facing === -1
-      ? props.$offsetLeft || "25.5%"
-      : props.$offsetRight || "25.5%";
+      ? props.$offsetLeft || "-50%"
+      : props.$offsetRight || "-50%";
   return {
     style: {
       position: "absolute",

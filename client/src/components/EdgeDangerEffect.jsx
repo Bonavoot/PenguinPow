@@ -41,7 +41,7 @@ const wobble = keyframes`
 const EffectContainer = styled.div.attrs((props) => ({
   style: {
     position: "absolute",
-    left: `${(props.$x / 1280) * 100 + 8}%`,
+    left: `${(props.$x / 1280) * 100 + 2}%`,
     bottom: `${(props.$y / 720) * 100 + 25}%`,
     transform: "translateX(-50%)",
     zIndex: 1002,
@@ -59,7 +59,7 @@ const EffectContainer = styled.div.attrs((props) => ({
 // Large exclamation mark
 const ExclamationMark = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(30px, 3.70vw, 53px);
+  font-size: 2.76cqw;
   font-weight: 900;
   color: #ff1a1a;
   -webkit-text-stroke: 3px #000;

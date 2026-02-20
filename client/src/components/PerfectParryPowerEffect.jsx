@@ -75,7 +75,7 @@ const groundSparkBurst = keyframes`
 const EffectContainer = styled.div.attrs((props) => ({
   style: {
     position: "absolute",
-    left: `calc(${(props.$x / 1280) * 100}% + 8%)`,
+    left: `calc(${(props.$x / 1280) * 100}% + 2%)`,
     bottom: `calc(${(props.$y / 720) * 100}% + 0.5%)`,
     pointerEvents: "none",
     zIndex: 90,
@@ -85,8 +85,8 @@ const EffectContainer = styled.div.attrs((props) => ({
 // Central flash - noticeable but not oversized (yellow for perfect parry)
 const ImpactFlash = styled.div`
   position: absolute;
-  width: clamp(2.59rem, 6.30vw, 6.30rem);
-  height: clamp(1.30rem, 3.19vw, 3.19rem);
+  width: 5.25cqw;
+  height: 2.66cqw;
   background: radial-gradient(
     ellipse 100% 100%,
     rgba(255, 255, 255, 0.95) 0%,
@@ -104,8 +104,8 @@ const ImpactFlash = styled.div`
 // Primary shockwave ring (blue/cyan to match RawParryEffect)
 const ShockwaveRingPrimary = styled.div`
   position: absolute;
-  width: clamp(2.22rem, 5.56vw, 5.56rem);
-  height: clamp(0.89rem, 2.22vw, 2.22rem);
+  width: 4.63cqw;
+  height: 1.85cqw;
   border: 2px solid rgba(0, 200, 255, 0.95);
   box-shadow: 0 0 5px rgba(0, 220, 255, 0.3);
   border-radius: 50%;
@@ -118,8 +118,8 @@ const ShockwaveRingPrimary = styled.div`
 // Secondary shockwave ring - delayed for layered depth (blue/cyan)
 const ShockwaveRingSecondary = styled.div`
   position: absolute;
-  width: clamp(2.04rem, 5.19vw, 5.19rem);
-  height: clamp(0.81rem, 2.07vw, 2.07rem);
+  width: 4.32cqw;
+  height: 1.72cqw;
   border: 1.5px solid rgba(100, 220, 255, 0.8);
   border-radius: 50%;
   left: 50%;
@@ -134,8 +134,8 @@ const GroundSpark = styled.div`
   position: absolute;
   left: 50%;
   bottom: 3px;
-  width: clamp(2px, 0.30vw, 4px);
-  height: clamp(2px, 0.30vw, 4px);
+  width: 0.21cqw;
+  height: 0.21cqw;
   background: radial-gradient(circle, rgba(255, 255, 255, 0.95), rgba(255, 220, 80, 0.7));
   border-radius: 50%;
   box-shadow: 0 0 4px rgba(255, 215, 100, 0.5);
@@ -182,12 +182,12 @@ const PerfectParryPowerEffect = ({ x, y, isPerfectParrySuccess }) => {
           <ShockwaveRingPrimary />
           <ShockwaveRingSecondary />
           {/* Ground sparks burst outward in different directions */}
-          <GroundSpark $gx="-2.96vw" $gy="-0.59vw" $delay={0} />
-          <GroundSpark $gx="2.96vw" $gy="-0.59vw" $delay={0.02} />
-          <GroundSpark $gx="-4.44vw" $gy="-0.22vw" $delay={0.04} />
-          <GroundSpark $gx="4.44vw" $gy="-0.22vw" $delay={0.03} />
-          <GroundSpark $gx="-1.48vw" $gy="-1.11vw" $delay={0.01} />
-          <GroundSpark $gx="1.48vw" $gy="-1.11vw" $delay={0.025} />
+          <GroundSpark $gx="-2.96cqw" $gy="-0.59cqw" $delay={0} />
+          <GroundSpark $gx="2.96cqw" $gy="-0.59cqw" $delay={0.02} />
+          <GroundSpark $gx="-4.44cqw" $gy="-0.22cqw" $delay={0.04} />
+          <GroundSpark $gx="4.44cqw" $gy="-0.22cqw" $delay={0.03} />
+          <GroundSpark $gx="-1.48cqw" $gy="-1.11cqw" $delay={0.01} />
+          <GroundSpark $gx="1.48cqw" $gy="-1.11cqw" $delay={0.025} />
         </EffectContainer>
       ))}
     </>

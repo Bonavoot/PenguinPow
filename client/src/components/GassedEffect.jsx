@@ -42,7 +42,7 @@ const EffectContainer = styled.div`
 
 const NoStaminaText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.9rem, 2.2vw, 1.5rem);
+  font-size: 1.25cqw;
   color: #ff2222;
   text-shadow: 
     -2px -2px 0 #000, 2px -2px 0 #000, 

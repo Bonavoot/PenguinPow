@@ -1476,7 +1476,7 @@ function resetRoomAndPlayers(room) {
     player.isDead = false;
     player.stamina = 100;
     player.isBowing = false;
-    player.x = player.fighter === "player 1" ? 325 : 795;
+    player.x = player.fighter === "player 1" ? 440 : 840;
     player.y = GROUND_LEVEL;
     player.knockbackVelocity = { x: 0, y: 0 };
     // Reset power-up state
@@ -2315,12 +2315,7 @@ io.on("connection", (socket) => {
               !targetPlayer.isRawParrying &&
               !snowball.hasHit
             ) {
-              // Adjust collision point based on facing direction to account for sprite asymmetry
-              // Only adjust for player 2 side (facing = 1), player 1 side (facing = -1) is correct
-              const faceOffset = targetPlayer.facing === 1 ? 9 : 0;
-              const adjustedPlayerX = targetPlayer.x + faceOffset;
-              
-              const distance = Math.abs(snowball.x - adjustedPlayerX);
+              const distance = Math.abs(snowball.x - targetPlayer.x);
               const sizeMul = targetPlayer.sizeMultiplier || 1;
               const horizThresh = Math.round(45 * 0.96) * sizeMul;
               const vertThresh = Math.round(27 * 0.96) * sizeMul;
@@ -2431,12 +2426,7 @@ io.on("connection", (socket) => {
 
             // Check collision with raw parrying opponent (snowball is blocked or reflected)
             if (opponent && opponent.isRawParrying && !snowball.hasHit) {
-              // Adjust collision point based on facing direction to account for sprite asymmetry
-              // Only adjust for player 2 side (facing = 1), player 1 side (facing = -1) is correct
-              const faceOffset = opponent.facing === 1 ? 9 : 0;
-              const adjustedOpponentX = opponent.x + faceOffset;
-              
-              const distance = Math.abs(snowball.x - adjustedOpponentX);
+              const distance = Math.abs(snowball.x - opponent.x);
               const sizeMul = opponent.sizeMultiplier || 1;
               const horizThresh = Math.round(45 * 0.96) * sizeMul;
               const vertThresh = Math.round(27 * 0.96) * sizeMul;

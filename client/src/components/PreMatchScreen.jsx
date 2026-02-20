@@ -83,12 +83,12 @@ const MatchCard = styled.div`
   width: 90%;
   height: 80%;
   background: transparent;
-  border: 4px solid #8b5a2b;
+  border: clamp(2px, 0.21cqw, 4px) solid #8b5a2b;
   box-shadow: 
-    0 0 0 2px #d4af37,
-    0 0 0 6px #8b5a2b,
-    0 0 0 8px #d4af37,
-    0 15px 60px rgba(0, 0, 0, 0.6);
+    0 0 0 clamp(1px, 0.1cqw, 2px) #d4af37,
+    0 0 0 clamp(3px, 0.31cqw, 6px) #8b5a2b,
+    0 0 0 clamp(4px, 0.42cqw, 8px) #d4af37,
+    0 clamp(8px, 0.78cqw, 15px) clamp(30px, 3.13cqw, 60px) rgba(0, 0, 0, 0.6);
   animation: ${fadeIn} 0.5s ease-out 0.2s both;
   overflow: visible;
   
@@ -115,76 +115,76 @@ const MatchCard = styled.div`
 // Decorative corner ornaments
 const CornerOrnament = styled.div`
   position: absolute;
-  width: 60px;
-  height: 60px;
+  width: clamp(30px, 3.13cqw, 60px);
+  height: clamp(30px, 3.13cqw, 60px);
   z-index: 10;
   opacity: 0.7;
   
   ${props => props.$position === 'top-left' && `
-    top: 8px;
-    left: 8px;
-    border-top: 3px solid #8b5a2b;
-    border-left: 3px solid #8b5a2b;
+    top: clamp(4px, 0.42cqw, 8px);
+    left: clamp(4px, 0.42cqw, 8px);
+    border-top: clamp(2px, 0.16cqw, 3px) solid #8b5a2b;
+    border-left: clamp(2px, 0.16cqw, 3px) solid #8b5a2b;
     &::after {
       content: '';
       position: absolute;
-      top: 8px;
-      left: 8px;
-      width: 20px;
-      height: 20px;
-      border-top: 2px solid #d4af37;
-      border-left: 2px solid #d4af37;
+      top: clamp(4px, 0.42cqw, 8px);
+      left: clamp(4px, 0.42cqw, 8px);
+      width: clamp(10px, 1.04cqw, 20px);
+      height: clamp(10px, 1.04cqw, 20px);
+      border-top: clamp(1px, 0.1cqw, 2px) solid #d4af37;
+      border-left: clamp(1px, 0.1cqw, 2px) solid #d4af37;
     }
   `}
   
   ${props => props.$position === 'top-right' && `
-    top: 8px;
-    right: 8px;
-    border-top: 3px solid #8b5a2b;
-    border-right: 3px solid #8b5a2b;
+    top: clamp(4px, 0.42cqw, 8px);
+    right: clamp(4px, 0.42cqw, 8px);
+    border-top: clamp(2px, 0.16cqw, 3px) solid #8b5a2b;
+    border-right: clamp(2px, 0.16cqw, 3px) solid #8b5a2b;
     &::after {
       content: '';
       position: absolute;
-      top: 8px;
-      right: 8px;
-      width: 20px;
-      height: 20px;
-      border-top: 2px solid #d4af37;
-      border-right: 2px solid #d4af37;
+      top: clamp(4px, 0.42cqw, 8px);
+      right: clamp(4px, 0.42cqw, 8px);
+      width: clamp(10px, 1.04cqw, 20px);
+      height: clamp(10px, 1.04cqw, 20px);
+      border-top: clamp(1px, 0.1cqw, 2px) solid #d4af37;
+      border-right: clamp(1px, 0.1cqw, 2px) solid #d4af37;
     }
   `}
   
   ${props => props.$position === 'bottom-left' && `
-    bottom: 8px;
-    left: 8px;
-    border-bottom: 3px solid #8b5a2b;
-    border-left: 3px solid #8b5a2b;
+    bottom: clamp(4px, 0.42cqw, 8px);
+    left: clamp(4px, 0.42cqw, 8px);
+    border-bottom: clamp(2px, 0.16cqw, 3px) solid #8b5a2b;
+    border-left: clamp(2px, 0.16cqw, 3px) solid #8b5a2b;
     &::after {
       content: '';
       position: absolute;
-      bottom: 8px;
-      left: 8px;
-      width: 20px;
-      height: 20px;
-      border-bottom: 2px solid #d4af37;
-      border-left: 2px solid #d4af37;
+      bottom: clamp(4px, 0.42cqw, 8px);
+      left: clamp(4px, 0.42cqw, 8px);
+      width: clamp(10px, 1.04cqw, 20px);
+      height: clamp(10px, 1.04cqw, 20px);
+      border-bottom: clamp(1px, 0.1cqw, 2px) solid #d4af37;
+      border-left: clamp(1px, 0.1cqw, 2px) solid #d4af37;
     }
   `}
   
   ${props => props.$position === 'bottom-right' && `
-    bottom: 8px;
-    right: 8px;
-    border-bottom: 3px solid #8b5a2b;
-    border-right: 3px solid #8b5a2b;
+    bottom: clamp(4px, 0.42cqw, 8px);
+    right: clamp(4px, 0.42cqw, 8px);
+    border-bottom: clamp(2px, 0.16cqw, 3px) solid #8b5a2b;
+    border-right: clamp(2px, 0.16cqw, 3px) solid #8b5a2b;
     &::after {
       content: '';
       position: absolute;
-      bottom: 8px;
-      right: 8px;
-      width: 20px;
-      height: 20px;
-      border-bottom: 2px solid #d4af37;
-      border-right: 2px solid #d4af37;
+      bottom: clamp(4px, 0.42cqw, 8px);
+      right: clamp(4px, 0.42cqw, 8px);
+      width: clamp(10px, 1.04cqw, 20px);
+      height: clamp(10px, 1.04cqw, 20px);
+      border-bottom: clamp(1px, 0.1cqw, 2px) solid #d4af37;
+      border-right: clamp(1px, 0.1cqw, 2px) solid #d4af37;
     }
   `}
 `;
@@ -204,40 +204,40 @@ const PlayerPanel = styled.div`
 // Rank banner (East/West) - styled like Abema's rank badges
 const RankBanner = styled.div`
   position: absolute;
-  top: 12px;
-  ${props => props.$side === 'left' ? 'left: 12px;' : 'right: 12px;'}
+  top: clamp(6px, 0.63cqw, 12px);
+  ${props => props.$side === 'left' ? `left: clamp(6px, 0.63cqw, 12px);` : `right: clamp(6px, 0.63cqw, 12px);`}
   background: linear-gradient(180deg, #e63946 0%, #c41e3a 50%, #9d1a2d 100%);
   color: white;
-  padding: 10px 20px;
-  font-size: clamp(14px, 2vw, 20px);
+  padding: clamp(5px, 0.52cqw, 10px) clamp(10px, 1.04cqw, 20px);
+  font-size: clamp(10px, 1.3cqw, 20px);
   font-family: "Bungee", cursive;
   letter-spacing: 0.1em;
-  border: 2px solid #ffd700;
-  border-radius: 4px;
+  border: clamp(1px, 0.1cqw, 2px) solid #ffd700;
+  border-radius: clamp(2px, 0.21cqw, 4px);
   box-shadow: 
-    0 3px 10px rgba(0, 0, 0, 0.4),
+    0 clamp(2px, 0.16cqw, 3px) clamp(5px, 0.52cqw, 10px) rgba(0, 0, 0, 0.4),
     inset 0 1px 0 rgba(255, 255, 255, 0.2);
   z-index: 10;
   text-shadow: 
-    -2px -2px 0 #000, 
-    2px -2px 0 #000, 
-    -2px 2px 0 #000, 
-    2px 2px 0 #000;
+    -1px -1px 0 #000, 
+    1px -1px 0 #000, 
+    -1px 1px 0 #000, 
+    1px 1px 0 #000;
 `;
 
 // Rank number badge - smaller secondary badge
 const RankNumber = styled.div`
   position: absolute;
-  top: 50px;
-  ${props => props.$side === 'left' ? 'left: 12px;' : 'right: 12px;'}
+  top: clamp(28px, 2.86cqw, 55px);
+  ${props => props.$side === 'left' ? `left: clamp(6px, 0.63cqw, 12px);` : `right: clamp(6px, 0.63cqw, 12px);`}
   background: linear-gradient(180deg, #2d2d2d 0%, #1a1a1a 100%);
   color: #ffd700;
-  padding: 6px 14px;
-  font-size: clamp(11px, 1.4vw, 14px);
+  padding: clamp(3px, 0.31cqw, 6px) clamp(7px, 0.73cqw, 14px);
+  font-size: clamp(8px, 1cqw, 14px);
   font-family: "Bungee", cursive;
   letter-spacing: 0.05em;
   border: 1px solid #d4af37;
-  border-radius: 3px;
+  border-radius: clamp(2px, 0.16cqw, 3px);
   z-index: 10;
   text-shadow: 
     -1px -1px 0 #000, 
@@ -254,24 +254,28 @@ const CharacterArea = styled.div`
   justify-content: center;
   position: relative;
   overflow: hidden;
-  padding-top: 60px;
+  padding-top: clamp(30px, 3.13cqw, 60px);
   background: linear-gradient(180deg, rgba(248, 244, 235, 0.85) 0%, rgba(232, 224, 208, 0.85) 100%);
-  border: 2px solid #8b5a2b;
+  border: clamp(1px, 0.1cqw, 2px) solid #8b5a2b;
 `;
 
 // Character image container - positioned to extend below info section
 const CharacterImageContainer = styled.div`
   position: absolute;
+  top: 0;
   bottom: -20%;
   left: 0;
   right: 0;
   display: flex;
+  align-items: flex-end;
   justify-content: center;
   z-index: 1;
 `;
 
 const CharacterImage = styled.img`
-  width: 85%;
+  max-width: 85%;
+  max-height: 100%;
+  width: auto;
   height: auto;
   object-fit: contain;
   transform: ${props => props.$flip ? 'scaleX(1)' : 'scaleX(-1)'};
@@ -283,20 +287,20 @@ const CharacterImage = styled.img`
 // Horizontal gap between player image and info section
 const HorizontalDivider = styled.div`
   width: 100%;
-  height: 12px;
+  height: clamp(4px, 0.63cqw, 12px);
   background: linear-gradient(180deg, rgba(248, 244, 235, 0.6) 0%, rgba(232, 224, 208, 0.6) 100%);
 `;
 
 // Info section at bottom of player panel - styled like Abema
 const PlayerInfoSection = styled.div`
   background: linear-gradient(180deg, #f8f4eb 0%, #e8e0d0 100%);
-  padding: 20px 15px 24px;
+  padding: clamp(8px, 1.04cqw, 20px) clamp(6px, 0.78cqw, 15px) clamp(10px, 1.25cqw, 24px);
   display: flex;
   flex-direction: column;
   align-items: center;
   position: relative;
   z-index: 5;
-  border: 2px solid #8b5a2b;
+  border: clamp(1px, 0.1cqw, 2px) solid #8b5a2b;
 `;
 
 // Player name area - larger and more prominent
@@ -304,29 +308,29 @@ const PlayerNameArea = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: clamp(4px, 0.63cqw, 12px);
   width: 100%;
 `;
 
 // Stable name - displayed above player name like in sumo broadcasts
 const StableName = styled.div`
-  font-size: clamp(10px, 1.3vw, 14px);
+  font-size: clamp(8px, 1cqw, 14px);
   color: #6b4423;
   letter-spacing: 0.15em;
-  margin-bottom: 4px;
+  margin-bottom: clamp(2px, 0.21cqw, 4px);
   font-family: "Bungee", cursive;
   text-transform: uppercase;
 `;
 
 const PlayerName = styled.div`
-  font-size: clamp(22px, 3.5vw, 36px);
+  font-size: clamp(14px, 2.3cqw, 36px);
   font-family: "Bungee", cursive;
   color: #1a1a1a;
   text-shadow: 
-    -2px -2px 0 #fff, 
-    2px -2px 0 #fff, 
-    -2px 2px 0 #fff, 
-    2px 2px 0 #fff;
+    -1px -1px 0 #fff, 
+    1px -1px 0 #fff, 
+    -1px 1px 0 #fff, 
+    1px 1px 0 #fff;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   text-align: center;
@@ -346,9 +350,9 @@ export const SPECIAL_MAWASHI_GRADIENTS = {
 // Mawashi color indicator - styled like a belt (supports solid hex and special gradients like Lobby swatches)
 const MawashiIndicator = styled.div`
   width: 70%;
-  height: 10px;
+  height: clamp(5px, 0.52cqw, 10px);
   background: ${props => props.$gradient || props.$color || '#888'};
-  margin: 10px 0 14px;
+  margin: clamp(4px, 0.52cqw, 10px) 0 clamp(6px, 0.73cqw, 14px);
   box-shadow: 
     0 2px 4px rgba(0, 0, 0, 0.3),
     inset 0 1px 2px rgba(255, 255, 255, 0.3),
@@ -363,10 +367,10 @@ const MawashiIndicator = styled.div`
     left: 50%;
     top: 50%;
     transform: translate(-50%, -50%);
-    width: 16px;
-    height: 16px;
+    width: clamp(8px, 0.83cqw, 16px);
+    height: clamp(8px, 0.83cqw, 16px);
     background: ${props => props.$gradient || props.$color || '#888'};
-    border: 2px solid rgba(0, 0, 0, 0.3);
+    border: clamp(1px, 0.1cqw, 2px) solid rgba(0, 0, 0, 0.3);
     border-radius: 2px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   }
@@ -377,8 +381,8 @@ const RecordContainer = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  margin-bottom: 10px;
+  gap: clamp(4px, 0.42cqw, 8px);
+  margin-bottom: clamp(4px, 0.52cqw, 10px);
 `;
 
 const RecordItem = styled.div`
@@ -388,29 +392,29 @@ const RecordItem = styled.div`
 `;
 
 const RecordNum = styled.span`
-  font-size: clamp(26px, 4vw, 42px);
+  font-size: clamp(16px, 2.6cqw, 42px);
   font-family: "Bungee", cursive;
   color: #1a1a1a;
   line-height: 1;
   text-shadow: 
-    -2px -2px 0 #fff, 
-    2px -2px 0 #fff, 
-    -2px 2px 0 #fff, 
-    2px 2px 0 #fff;
+    -1px -1px 0 #fff, 
+    1px -1px 0 #fff, 
+    -1px 1px 0 #fff, 
+    1px 1px 0 #fff;
 `;
 
 const RecordLabel = styled.span`
-  font-size: clamp(12px, 1.6vw, 18px);
+  font-size: clamp(8px, 1.1cqw, 18px);
   font-family: "Bungee", cursive;
   color: #c41e3a;
   text-transform: uppercase;
 `;
 
 const RecordSeparator = styled.span`
-  font-size: clamp(16px, 2vw, 24px);
+  font-size: clamp(10px, 1.4cqw, 24px);
   font-family: "Bungee", cursive;
   color: #666;
-  margin: 0 4px;
+  margin: 0 clamp(2px, 0.21cqw, 4px);
 `;
 
 // Additional info row (like Birthplace in Abema)
@@ -418,12 +422,12 @@ const InfoRow = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  margin-top: 6px;
+  gap: clamp(4px, 0.42cqw, 8px);
+  margin-top: clamp(3px, 0.31cqw, 6px);
 `;
 
 const InfoValue = styled.span`
-  font-size: clamp(11px, 1.4vw, 15px);
+  font-size: clamp(8px, 1cqw, 15px);
   color: #444;
   font-family: "Bungee", cursive;
   letter-spacing: 0.05em;
@@ -433,13 +437,13 @@ const InfoValue = styled.span`
 
 // Center divider - styled like Abema's center section
 const CenterDivider = styled.div`
-  width: clamp(100px, 14vw, 160px);
+  width: clamp(60px, 10cqw, 160px);
   background: linear-gradient(180deg, rgba(248, 244, 235, 0.6) 0%, rgba(232, 224, 208, 0.6) 100%);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 10px;
+  padding: clamp(8px, 1.04cqw, 20px) clamp(4px, 0.52cqw, 10px);
   position: relative;
   z-index: 5;
 `;
@@ -449,11 +453,11 @@ const BrandingArea = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: clamp(1px, 0.1cqw, 2px);
 `;
 
 const GameLogo = styled.div`
-  font-size: clamp(14px, 2vw, 20px);
+  font-size: clamp(9px, 1.3cqw, 20px);
   font-family: "Bungee", cursive;
   color: #1a1a1a;
   text-shadow: 
@@ -471,18 +475,18 @@ const GameLogo = styled.div`
 `;
 
 const VsText = styled.div`
-  font-size: clamp(36px, 6vw, 60px);
+  font-size: clamp(20px, 3.8cqw, 60px);
   font-family: "Bungee", cursive;
   color: #c41e3a;
   text-shadow: 
-    -3px -3px 0 #fff,
-    3px -3px 0 #fff,
-    -3px 3px 0 #fff,
-    3px 3px 0 #fff,
-    -3px 0 0 #fff,
-    3px 0 0 #fff,
-    0 -3px 0 #fff,
-    0 3px 0 #fff;
+    -2px -2px 0 #fff,
+    2px -2px 0 #fff,
+    -2px 2px 0 #fff,
+    2px 2px 0 #fff,
+    -2px 0 0 #fff,
+    2px 0 0 #fff,
+    0 -2px 0 #fff,
+    0 2px 0 #fff;
   letter-spacing: 0.1em;
 `;
 
@@ -491,11 +495,11 @@ const BottomArea = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: clamp(2px, 0.21cqw, 4px);
 `;
 
 const GameTitle = styled.div`
-  font-size: clamp(12px, 1.5vw, 16px);
+  font-size: clamp(12px, 1.5cqw, 16px);
   color: #1a1a1a;
   text-transform: uppercase;
   letter-spacing: 0.15em;
@@ -509,7 +513,7 @@ const GameTitle = styled.div`
 `;
 
 const MatchType = styled.div`
-  font-size: clamp(10px, 1.2vw, 13px);
+  font-size: clamp(10px, 1.2cqw, 13px);
   color: #8b5a2b;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -530,13 +534,13 @@ const LoadingContainer = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: clamp(5px, 0.52cqw, 10px);
   z-index: 100;
 `;
 
 const LoadingBar = styled.div`
-  width: 250px;
-  height: 8px;
+  width: clamp(140px, 16cqw, 250px);
+  height: clamp(4px, 0.42cqw, 8px);
   background: rgba(255, 255, 255, 0.3);
   border-radius: 4px;
   overflow: hidden;
@@ -554,7 +558,7 @@ const LoadingProgress = styled.div`
 
 const LoadingText = styled.div`
   color: #ffd700;
-  font-size: 14px;
+  font-size: clamp(9px, 1cqw, 14px);
   text-transform: uppercase;
   letter-spacing: 0.15em;
   font-family: "Bungee", cursive;
@@ -569,15 +573,15 @@ const LoadingText = styled.div`
 // Live indicator
 const LiveIndicator = styled.div`
   position: absolute;
-  top: 20px;
-  right: 20px;
+  top: clamp(8px, 1.04cqw, 20px);
+  right: clamp(8px, 1.04cqw, 20px);
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: clamp(5px, 0.52cqw, 10px);
   background: #c41e3a;
   color: white;
-  padding: 8px 18px;
-  font-size: 14px;
+  padding: clamp(4px, 0.42cqw, 8px) clamp(8px, 0.94cqw, 18px);
+  font-size: clamp(9px, 1cqw, 14px);
   font-family: "Bungee", cursive;
   letter-spacing: 0.1em;
   border-radius: 4px;
@@ -592,8 +596,8 @@ const LiveIndicator = styled.div`
 `;
 
 const LiveDot = styled.div`
-  width: 10px;
-  height: 10px;
+  width: clamp(5px, 0.52cqw, 10px);
+  height: clamp(5px, 0.52cqw, 10px);
   background: white;
   border-radius: 50%;
 `;

@@ -16,8 +16,8 @@ const HitEffectContainer = styled.div`
   position: absolute;
   left: ${props => (props.$x / 1280) * 100 + (props.$facing === 1 ? -8 : -3)}%;
   bottom: ${props => (props.$y / 720) * 100}%;
-  width: clamp(1.48rem, 3.70vw, 2.96rem);
-  height: clamp(1.48rem, 3.70vw, 2.96rem);
+  width: 2.47cqw;
+  height: 2.47cqw;
   transform: translate(-50%, 50%);
   display: flex;
   align-items: center;

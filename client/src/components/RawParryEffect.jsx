@@ -41,7 +41,7 @@ const ParryTextCenter = styled.div`
   top: 50%;
   left: 50%;
   font-family: "Bungee", cursive;
-  font-size: clamp(0.52rem, 1.19vw, 1.04rem);
+  font-size: 0.86cqw;
   color: ${props => props.$isPerfect ? '#FFD700' : '#00BFFF'};
   -webkit-text-stroke: 2.5px #000;
   paint-order: stroke fill;
@@ -62,10 +62,10 @@ const EFFECT_TEXT_BASELINE_OFFSET_Y = 0;
 /* Container: fixed size (perfect parry size) so both effects share the same center point */
 const RawParryEffectContainer = styled.div`
   position: absolute;
-  left: ${props => (props.$x / 1280) * 100 + (props.$facing === 1 ? -8 : -1)}%;
+  left: ${props => (props.$x / 1280) * 100 + (props.$facing === 1 ? -15 : -9)}%;
   bottom: ${props => (props.$y / 720) * 100 + EFFECT_TEXT_BASELINE_OFFSET_Y}%;
-  width: clamp(3.11rem, 7.78vw, 6.22rem);
-  height: clamp(2.89rem, 7.26vw, 5.78rem);
+  width: 4.15cqw;
+  height: 3.85cqw;
   transform: translate(-50%, 50%);
   display: flex;
   align-items: center;
@@ -92,12 +92,12 @@ const ParticleContainer = styled.div`
 
 const Particle = styled.div`
   position: absolute;
-  width: 0.17vw;
-  height: 0.17vw;
+  width: 0.17cqw;
+  height: 0.17cqw;
   background: ${(props) =>
     props.$isPerfect
-      ? "radial-gradient(circle, #00FFFF, #00BFFF)" // Bright cyan for perfect
-      : "radial-gradient(circle, #E0FFFF, #00CED1)"}; // Light cyan to dark cyan for regular
+      ? "radial-gradient(circle, #00FFFF, #00BFFF)"
+      : "radial-gradient(circle, #E0FFFF, #00CED1)"};
   border-radius: 50%;
   opacity: 0;
 `;
@@ -128,12 +128,12 @@ const RawParryEffect = ({ position }) => {
   const generateSparks = (effectId, isPerfect) => {
     const sparkCount = 8;
     const sparks = [];
-    const baseSize = Math.min(window.innerWidth / 180, 5);
+    const baseSize = 0.26; // cqw units
 
     for (let i = 0; i < sparkCount; i++) {
       sparks.push({
         id: `${effectId}-spark-${i}`,
-        size: isPerfect ? baseSize + Math.random() * 3 : baseSize + Math.random() * 2,
+        size: isPerfect ? baseSize + Math.random() * 0.16 : baseSize + Math.random() * 0.1,
         sparkIndex: i,
         isPerfect,
       });
@@ -218,8 +218,8 @@ const RawParryEffect = ({ position }) => {
             style={{
               top: "50%",
               left: "50%",
-              width: `${spark.size}px`,
-              height: `${spark.size}px`,
+              width: `${spark.size}cqw`,
+              height: `${spark.size}cqw`,
               background: spark.isPerfect 
                 ? "linear-gradient(45deg, #00FFFF, #FFFFFF)" 
                 : "linear-gradient(45deg, #FFFFFF, #00BFFF)",

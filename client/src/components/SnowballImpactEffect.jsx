@@ -36,12 +36,12 @@ const frostRing = keyframes`
   0% {
     transform: translate(-50%, -50%) rotateY(var(--snowball-ring-tilt, 55deg)) scale(0.3);
     opacity: 1;
-    border-width: clamp(3px, 0.26vw, 6px);
+    border-width: 0.26cqw;
   }
   100% {
     transform: translate(-50%, -50%) rotateY(var(--snowball-ring-tilt, 55deg)) scale(2);
     opacity: 0;
-    border-width: clamp(1px, 0.08vw, 2px);
+    border-width: 0.08cqw;
   }
 `;
 
@@ -64,8 +64,8 @@ const SnowBurst = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(24px, 2.9vw, 35px);
-  height: clamp(24px, 2.9vw, 35px);
+  width: 1.82cqw;
+  height: 1.82cqw;
   background: radial-gradient(circle, rgba(255, 255, 255, 1) 0%, rgba(200, 230, 255, 0.8) 40%, transparent 70%);
   border-radius: 50%;
   transform: translate(-50%, -50%) rotateY(var(--snowball-ring-tilt, 55deg)) scale(0);
@@ -76,8 +76,8 @@ const FrostRing = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(28px, 3.4vw, 42px);
-  height: clamp(28px, 3.4vw, 42px);
+  width: 2.19cqw;
+  height: 2.19cqw;
   border: 2px solid rgba(135, 206, 250, 0.9);
   border-radius: 50%;
   transform: translate(-50%, -50%) rotateY(var(--snowball-ring-tilt, 55deg)) scale(0.3);
@@ -95,8 +95,8 @@ const Snowflake = styled.div`
   opacity: 0;
   animation: ${snowflakeScatter} 0.4s ease-out forwards;
   animation-delay: ${props => props.$delay}s;
-  --dx: ${props => props.$dx}vw;
-  --dy: ${props => props.$dy}vw;
+  --dx: ${props => props.$dx}cqw;
+  --dy: ${props => props.$dy}cqw;
 `;
 
 const SnowballImpactEffect = ({ position }) => {

@@ -10,27 +10,27 @@ const ringContract = keyframes`
   0% {
     transform: translate(-50%, -50%) scale(2.8);
     opacity: 0;
-    border-width: clamp(2px, 0.16vw, 3px);
+    border-width: 0.16cqw;
   }
   25% {
     transform: translate(-50%, -50%) scale(1);
     opacity: 1;
-    border-width: clamp(4px, 0.35vw, 8px);
+    border-width: 0.35cqw;
   }
   40% {
     transform: translate(-50%, -50%) scale(0.85);
     opacity: 1;
-    border-width: clamp(5px, 0.42vw, 10px);
+    border-width: 0.42cqw;
   }
   55% {
     transform: translate(-50%, -50%) scale(1.05);
     opacity: 0.9;
-    border-width: clamp(3px, 0.25vw, 6px);
+    border-width: 0.25cqw;
   }
   100% {
     transform: translate(-50%, -50%) scale(1.3);
     opacity: 0;
-    border-width: clamp(1px, 0.08vw, 2px);
+    border-width: 0.08cqw;
   }
 `;
 
@@ -145,8 +145,8 @@ const EffectContainer = styled.div`
   position: absolute;
   left: ${props => (props.$x / 1280) * 100 + EFFECT_CENTER_OFFSET_X}%;
   bottom: ${props => (props.$y / 720) * 100 + EFFECT_TEXT_BASELINE_OFFSET_Y}%;
-  width: clamp(3.11rem, 7.78vw, 6.22rem);
-  height: clamp(2.89rem, 7.26vw, 5.78rem);
+  width: 5.18cqw;
+  height: 4.82cqw;
   transform: translate(-50%, 50%);
   display: flex;
   align-items: center;
@@ -160,7 +160,7 @@ const EffectContainer = styled.div`
     drop-shadow(0 0 5px rgba(255, 50, 120, 0.3));
 `;
 
-const CAGE_RADIUS = "clamp(1.5rem, 3.8vw, 3rem)";
+const CAGE_RADIUS = "2.5cqw";
 
 const ContractingRing = styled.div`
   position: absolute;
@@ -169,10 +169,10 @@ const ContractingRing = styled.div`
   width: ${CAGE_RADIUS};
   height: ${CAGE_RADIUS};
   border-radius: 50%;
-  border: clamp(3px, 0.24vw, 6px) solid rgba(255, 60, 140, 0.95);
+  border: 0.24cqw solid rgba(255, 60, 140, 0.95);
   box-shadow:
-    0 0 clamp(6px, 0.5vw, 12px) rgba(200, 40, 120, 0.6),
-    0 0 clamp(12px, 1vw, 22px) rgba(150, 40, 220, 0.3);
+    0 0 0.5cqw rgba(200, 40, 120, 0.6),
+    0 0 1cqw rgba(150, 40, 220, 0.3);
   transform: translate(-50%, -50%) scale(2.8);
   opacity: 0;
   animation: ${ringContract} 0.45s ease-out forwards;
@@ -182,8 +182,8 @@ const LockBar = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(3rem, 7.5vw, 6rem);
-  height: clamp(2.5px, 0.22vw, 4px);
+  width: 5.0cqw;
+  height: 0.18cqw;
   background: linear-gradient(
     90deg,
     transparent 0%,
@@ -200,16 +200,16 @@ const LockBar = styled.div`
   opacity: 0;
   animation: ${barContract} 0.45s ease-out forwards;
   box-shadow:
-    0 0 clamp(3px, 0.25vw, 6px) rgba(255, 50, 120, 0.6),
-    0 0 clamp(8px, 0.6vw, 14px) rgba(150, 40, 220, 0.25);
+    0 0 0.25cqw rgba(255, 50, 120, 0.6),
+    0 0 0.6cqw rgba(150, 40, 220, 0.25);
 `;
 
 const LockFlashCore = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(1.2rem, 3vw, 2.4rem);
-  height: clamp(1.2rem, 3vw, 2.4rem);
+  width: 2.0cqw;
+  height: 2.0cqw;
   border-radius: 50%;
   background: radial-gradient(
     circle,
@@ -230,9 +230,9 @@ const CompressionPulseRing = styled.div`
   width: ${CAGE_RADIUS};
   height: ${CAGE_RADIUS};
   border-radius: 50%;
-  border: clamp(2px, 0.16vw, 3.5px) solid rgba(255, 100, 170, 0.85);
+  border: 0.16cqw solid rgba(255, 100, 170, 0.85);
   box-shadow:
-    0 0 clamp(4px, 0.35vw, 8px) rgba(255, 60, 140, 0.45);
+    0 0 0.35cqw rgba(255, 60, 140, 0.45);
   transform: translate(-50%, -50%) scale(0.5);
   opacity: 0;
   animation: ${compressionPulse} 0.4s ease-out 0.12s forwards;
@@ -242,19 +242,19 @@ const ImpactSpark = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(${props => props.$size}px, ${props => (props.$size * 0.08).toFixed(2)}vw, ${props => props.$size * 2}px);
-  height: clamp(${props => props.$size}px, ${props => (props.$size * 0.08).toFixed(2)}vw, ${props => props.$size * 2}px);
+  width: ${props => (props.$size * 0.08).toFixed(2)}cqw;
+  height: ${props => (props.$size * 0.08).toFixed(2)}cqw;
   background: ${props => props.$isRed
     ? 'linear-gradient(45deg, #ffffff, #cc2244)'
     : 'linear-gradient(45deg, #ffffff, #9933ff)'};
   border-radius: 50%;
   box-shadow:
-    0 0 clamp(${props => props.$size * 2}px, ${props => (props.$size * 0.16).toFixed(2)}vw, ${props => props.$size * 4}px) ${props => props.$isRed ? 'rgba(204, 34, 68, 0.85)' : 'rgba(153, 51, 255, 0.85)'};
+    0 0 ${props => (props.$size * 0.16).toFixed(2)}cqw ${props => props.$isRed ? 'rgba(204, 34, 68, 0.85)' : 'rgba(153, 51, 255, 0.85)'};
   opacity: 0;
   animation: ${impactSparkBurst} 0.4s ease-out forwards;
   animation-delay: ${props => props.$delay}s;
-  --spark-dx: ${props => props.$dx}vw;
-  --spark-dy: ${props => props.$dy}vw;
+  --spark-dx: ${props => props.$dx}cqw;
+  --spark-dy: ${props => props.$dy}cqw;
 `;
 
 const LockedText = styled.div`
@@ -262,7 +262,7 @@ const LockedText = styled.div`
   top: 50%;
   left: 50%;
   font-family: "Bungee", cursive;
-  font-size: clamp(0.52rem, 1.19vw, 1.04rem);
+  font-size: 0.86cqw;
   color: #ff3370;
   -webkit-text-stroke: 2.5px #000;
   paint-order: stroke fill;

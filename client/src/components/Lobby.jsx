@@ -982,26 +982,26 @@ const SideColorPicker = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(6px, 1vh, 10px);
-  padding: clamp(8px, 1.2vh, 14px) clamp(6px, 0.8vw, 12px);
+  gap: clamp(3px, 0.6vh, 10px);
+  padding: clamp(4px, 0.8vh, 14px) clamp(3px, 0.5vw, 12px);
   background: linear-gradient(180deg,
     rgba(26, 10, 8, 0.95) 0%,
     rgba(45, 21, 16, 0.9) 50%,
     rgba(26, 10, 8, 0.95) 100%
   );
-  border: 2px solid ${props => props.$isOwn ? '#8b7355' : '#5c4033'};
-  border-radius: clamp(8px, 1vw, 12px);
+  border: clamp(1px, 0.15vw, 2px) solid ${props => props.$isOwn ? '#8b7355' : '#5c4033'};
+  border-radius: clamp(4px, 0.6vw, 12px);
   box-shadow: 0 4px 20px rgba(0,0,0,0.5);
   opacity: ${props => props.$hidden ? 0 : (props.$isOwn ? 1 : 0.6)};
   visibility: ${props => props.$hidden ? 'hidden' : 'visible'};
   pointer-events: ${props => props.$hidden ? 'none' : (props.$isOwn ? 'auto' : 'none')};
-  flex-shrink: 0;
-  min-width: clamp(50px, 6vw, 80px);
+  flex-shrink: 1;
+  min-width: 0;
 `;
 
 const ColorPickerTitle = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.4rem, 0.65vw, 0.55rem);
+  font-size: clamp(0.3rem, 0.55vw, 0.55rem);
   color: ${props => props.$isOwn ? '#d4af37' : '#666'};
   text-shadow: 1px 1px 0 #000;
   text-transform: uppercase;
@@ -1012,15 +1012,16 @@ const ColorPickerTitle = styled.div`
 
 const ColorSwatchGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: clamp(4px, 0.5vw, 6px);
+  grid-template-columns: repeat(2, min(2vw, 30px));
+  gap: min(0.25vw, 5px);
+  justify-content: center;
 `;
 
 const ColorSwatch = styled.button`
-  width: clamp(22px, 2.8vw, 32px);
-  height: clamp(22px, 2.8vw, 32px);
-  border-radius: 4px;
-  border: 2px solid ${props => props.$selected ? '#fff' : 'transparent'};
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: clamp(2px, 0.3vw, 4px);
+  border: clamp(1px, 0.15vw, 2px) solid ${props => props.$selected ? '#fff' : 'transparent'};
   background: ${props => props.$gradient || props.$color};
   cursor: ${props => props.$disabled ? 'not-allowed' : 'pointer'};
   transition: transform 0.1s, border-color 0.1s;
@@ -1039,7 +1040,7 @@ const ColorSwatch = styled.button`
 
 const YourColorLabel = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.4rem, 0.6vw, 0.5rem);
+  font-size: clamp(0.3rem, 0.5vw, 0.5rem);
   color: #4ade80;
   text-shadow: 1px 1px 0 #000;
   text-transform: uppercase;

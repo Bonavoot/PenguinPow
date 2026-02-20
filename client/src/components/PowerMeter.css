@@ -1,11 +1,11 @@
 .power-meter {
   position: absolute;
-  width: clamp(55px, 8vw, 127px);
+  width: 6.61cqw;
   pointer-events: none;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(2px, 0.3vw, 4px);
+  gap: 0.21cqw;
   z-index: 999;
   transform: translateX(-50%);
   filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.4));
@@ -14,7 +14,7 @@
 
 .power-meter-bar {
   width: 100%;
-  height: clamp(10px, 1.2vw, 14px);
+  height: 0.73cqw;
   background: #2c1810;
   border: 2px solid #4a2c1c;
   border-radius: 3px;
@@ -61,7 +61,7 @@
   height: 100%;
   transition: width 0.05s ease-out, background-color 0.15s ease-out;
   border-radius: 2px;
-  min-height: clamp(10px, 1.2vw, 14px);
+  min-height: 0.73cqw;
   display: block;
   position: relative;
   box-shadow: 
@@ -116,7 +116,7 @@
 
 .power-meter-text {
   color: #f4d03f;
-  font-size: clamp(12px, 1.2vw, 18px);
+  font-size: 0.94cqw;
   font-weight: bold;
   text-align: center;
   text-shadow: 

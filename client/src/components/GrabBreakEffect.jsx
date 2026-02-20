@@ -97,8 +97,8 @@ const EffectContainer = styled.div`
   position: absolute;
   left: ${props => (props.$x / 1280) * 100 + EFFECT_CENTER_OFFSET_X}%;
   bottom: ${props => (props.$y / 720) * 100 + EFFECT_TEXT_BASELINE_OFFSET_Y}%;
-  width: clamp(3.11rem, 7.78vw, 6.22rem);
-  height: clamp(2.89rem, 7.26vw, 5.78rem);
+  width: 5.18cqw;
+  height: 4.82cqw;
   transform: translate(-50%, 50%);
   display: flex;
   align-items: center;
@@ -116,8 +116,8 @@ const ImpactPoint = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(1.1rem, 2.8vw, 2.2rem);
-  height: clamp(1.1rem, 2.8vw, 2.2rem);
+  width: 1.83cqw;
+  height: 1.83cqw;
   border-radius: 50%;
   background: radial-gradient(
     circle,
@@ -134,8 +134,8 @@ const CrackLine = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(3rem, 7.5vw, 6rem);
-  height: clamp(1.5px, 0.16vw, 2.8px);
+  width: 5.0cqw;
+  height: 0.15cqw;
   background: linear-gradient(
     90deg,
     transparent 0%,
@@ -151,8 +151,8 @@ const CrackLine = styled.div`
   animation: ${crackGrow} 0.4s ease-out forwards;
   animation-delay: ${props => props.$delay}s;
   box-shadow:
-    0 0 clamp(4px, 0.35vw, 8px) rgba(0, 255, 136, 0.7),
-    0 0 clamp(10px, 0.8vw, 18px) rgba(0, 255, 136, 0.3);
+    0 0 0.35cqw rgba(0, 255, 136, 0.7),
+    0 0 0.8cqw rgba(0, 255, 136, 0.3);
 `;
 
 const SHARD_SHAPES = [
@@ -169,16 +169,16 @@ const Shard = styled.div`
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(${props => props.$w}px, ${props => (props.$w * 0.08).toFixed(2)}vw, ${props => props.$w * 2}px);
-  height: clamp(${props => props.$h}px, ${props => (props.$h * 0.08).toFixed(2)}vw, ${props => props.$h * 2}px);
+  width: ${props => (props.$w * 0.08).toFixed(2)}cqw;
+  height: ${props => (props.$h * 0.08).toFixed(2)}cqw;
   background: linear-gradient(${props => props.$gradAngle}deg, #ffffff, #00ff88);
   clip-path: polygon(${props => props.$shape});
-  filter: drop-shadow(0 0 clamp(3px, 0.3vw, 6px) rgba(0, 255, 136, 0.8));
+  filter: drop-shadow(0 0 0.3cqw rgba(0, 255, 136, 0.8));
   opacity: 0;
   animation: ${shardExplode} 0.5s ease-out forwards;
   animation-delay: ${props => props.$delay}s;
-  --shard-dx: ${props => props.$dx}vw;
-  --shard-dy: ${props => props.$dy}vw;
+  --shard-dx: ${props => props.$dx}cqw;
+  --shard-dy: ${props => props.$dy}cqw;
   --shard-spin: ${props => props.$spin}deg;
 `;
 
@@ -187,7 +187,7 @@ const BreakText = styled.div`
   top: 50%;
   left: 50%;
   font-family: "Bungee", cursive;
-  font-size: clamp(0.52rem, 1.19vw, 1.04rem);
+  font-size: 0.86cqw;
   color: #00ff88;
   -webkit-text-stroke: 2.5px #000;
   paint-order: stroke fill;

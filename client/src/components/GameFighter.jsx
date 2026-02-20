@@ -167,7 +167,7 @@ import "./theme.css";
 import { isOutsideDohyo, DOHYO_FALL_DEPTH, SERVER_BROADCAST_HZ } from "../constants";
 
 const GROUND_LEVEL = 140; // Ground level constant (client-side, for fall detection)
-const SPRITE_HALF_W = 80;  // ≈ half sprite width in game-coords (centres effects on penguin body)
+const SPRITE_HALF_W = 0;  // Sprite is now centred on player.x via CSS translate, so no offset needed
 const PLAYER_MID_Y = 355;  // Effect Y at player's visual midpoint when standing
 
 // ============================================
@@ -481,6 +481,7 @@ const RedTintOverlay = styled.div
       aspectRatio: 1,
       left: `${(props.$x / 1280) * 100}%`,
       bottom: `${(props.$y / 720) * 100}%`,
+      translate: "-50%",
       transform: props.$facing === 1 ? "scaleX(1)" : "scaleX(-1)",
       background: "rgba(156, 136, 255, 0.6)",
       zIndex: isOutsideDohyo(props.$x, props.$y) ? 0 : 101,
@@ -510,6 +511,7 @@ const HurtTintOverlay = styled.div
       aspectRatio: 1,
       left: `${(props.$x / 1280) * 100}%`,
       bottom: `${(props.$y / 720) * 100}%`,
+      translate: "-50%",
       transform: props.$facing === 1 ? "scaleX(1)" : "scaleX(-1)",
       background: "rgba(255, 64, 64, 0.55)",
       zIndex: isOutsideDohyo(props.$x, props.$y) ? 0 : 101,
@@ -545,6 +547,7 @@ const TintedImage = styled.img
       position: "absolute",
       left: `${(props.$x / 1280) * 100}%`,
       bottom: `${(props.$y / 720) * 100}%`,
+      translate: "-50%",
       transform: props.$facing === 1 ? "scaleX(1)" : "scaleX(-1)",
       zIndex: isOutsideDohyo(props.$x, props.$y) ? 0 : 101,
       pointerEvents: "none",
@@ -752,6 +755,7 @@ const StyledImage = styled("img")
         ? `${((props.$x + (props.$x < 640 ? -5 : 5)) / 1280) * 100}%`  // Move 5px closer to ropes
         : `${(props.$x / 1280) * 100}%`,
       bottom: `${(props.$y / 720) * 100}%`,
+      translate: "-50%",
       "--facing": props.$facing === 1 ? "1" : "-1",
       transform: props.$isAtTheRopes && props.$fighter === "player 1"
         ? (props.$facing === 1
@@ -1392,6 +1396,7 @@ const RitualSpriteContainer = styled.div.attrs((props) => ({
     aspectRatio: "1",
     left: `${(props.$x / 1280) * 100}%`,
     bottom: `${(props.$y / 720) * 100}%`,
+    translate: "-50%",
     transform: props.$facing === 1 ? "scaleX(1)" : "scaleX(-1)",
     overflow: "hidden",
     zIndex: 99,
@@ -1439,6 +1444,7 @@ const AnimatedFighterContainer = styled.div
         ? `${((props.$x + (props.$x < 640 ? -5 : 5)) / 1280) * 100}%`
         : `${(props.$x / 1280) * 100}%`,
       bottom: `${(props.$y / 720) * 100}%`,
+      translate: "-50%",
       "--facing": props.$facing === 1 ? "1" : "-1",
       transform: props.$facing === 1
         ? `scaleX(${props.$isRawParryStun ? 1.08 : 1})`
@@ -1676,7 +1682,7 @@ const YouLabel = styled.div
     style: {
       position: "absolute",
       bottom: `${(props.y / 720) * 100 + 21}%`,
-      left: `${(props.x / 1280) * 100 + 6.25}%`,
+      left: `${(props.x / 1280) * 100}%`,
     },
   }))`
   z-index: 1000;
@@ -1732,7 +1738,7 @@ const SnowballProjectile = styled.img
       position: "absolute",
       width: "3.37%",
       height: "auto",
-      left: `${(props.$x / 1280) * 100 + 5}%`,
+      left: `${(props.$x / 1280) * 100 - 1}%`,
       bottom: `${(props.$y / 720) * 100 + 11}%`,
       zIndex: 95,
       pointerEvents: "none",
@@ -1753,6 +1759,7 @@ const PumoClone = styled.img
       height: "auto",
       left: `${(props.$x / 1280) * 100}%`,
       bottom: `${(props.$y / 720) * 100}%`,
+      translate: "-50%",
       transform: `scaleX(${props.$facing * -1})`,
       zIndex: (props.$x < -20 || props.$x > 1075) || props.$y < (GROUND_LEVEL - 35) ? 0 : 98,
       pointerEvents: "none",
@@ -1773,6 +1780,7 @@ const AnimatedPumoCloneContainer = styled.div
       aspectRatio: "1",
       left: `${(props.$x / 1280) * 100}%`,
       bottom: `${(props.$y / 720) * 100}%`,
+      translate: "-50%",
       transform: `scaleX(${props.$facing * -1})`,
       zIndex: (props.$x < -20 || props.$x > 1075) || props.$y < (GROUND_LEVEL - 35) ? 0 : 98,
       pointerEvents: "none",
@@ -3304,7 +3312,7 @@ const GameFighter = ({
     socket.on("player_hit", (data) => {
       if (data && typeof data.x === "number" && typeof data.y === "number") {
         setHitEffectPosition({
-          x: data.x + 150,
+          x: data.x + 70,
           y: PLAYER_MID_Y,
           facing: data.facing || 1, // Default to 1 if facing not provided
           timestamp: data.timestamp, // Pass through unique timestamp
@@ -3417,7 +3425,7 @@ const GameFighter = ({
       socket.on("snowball_hit", (data) => {
         if (data && typeof data.x === "number" && typeof data.y === "number") {
           setSnowballImpactPosition({
-            x: data.x + 150,
+            x: data.x + 70,
             y: data.y + 50,
             facing: data.facing,
             hitId: data.hitId || `snowball-${Date.now()}`,
@@ -3429,7 +3437,7 @@ const GameFighter = ({
       socket.on("counter_hit", (data) => {
         if (data && typeof data.x === "number" && typeof data.y === "number") {
           setCounterHitEffectPosition({
-            x: data.x + 150,
+            x: data.x + 70,
             y: PLAYER_MID_Y,
             counterId: data.counterId || `counter-hit-${Date.now()}`,
             playerNumber: data.playerNumber || 1,
@@ -4603,8 +4611,8 @@ const GameFighter = ({
               isDodging={false}
               width="9%"
               height="2.04%"
-              offsetLeft="15%"
-              offsetRight="18%"
+              offsetLeft="-50%"
+              offsetRight="-50%"
             />
             {isAnimatedClone ? (
               <AnimatedPumoCloneContainer
