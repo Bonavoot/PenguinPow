@@ -700,6 +700,12 @@
     transparent 75%);
 }
 
+/* Punish slap ring - purple */
+.hit-ring-wrapper.slap-hit.punish-hit .hit-ring::after {
+  border-color: rgba(180, 140, 255, 0.9);
+  box-shadow: 0 0 0 clamp(1px, 0.09cqw, 2px) rgba(0, 0, 0, 0.2), 0 0 clamp(4px, 0.37cqw, 9px) rgba(160, 100, 255, 0.45), 0 0 clamp(9px, 0.74cqw, 18px) rgba(140, 80, 220, 0.18);
+}
+
 /* --- Punish Charged --- */
 
 /* Punish charged core flash - deep purple */
