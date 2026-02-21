@@ -1,38 +1,38 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import styled from "styled-components";
-import crowdBoyIdle1 from "../assets/crowd-boy-idle-1.png";
-import crowdBoyIdle2 from "../assets/crowd-boy-idle-2.png";
-import crowdBoyIdle3 from "../assets/crowd-boy-idle-3.png";
-import crowdBoyCheering1 from "../assets/crowd-boy-cheering-1.png";
-import crowdBoyCheering2 from "../assets/crowd-boy-cheering-2.png";
-import crowdBoyCheering3 from "../assets/crowd-boy-cheering-3.png";
-import crowdGirlIdle1 from "../assets/crowd-girl-idle-1.png";
-import crowdGirlCheering1 from "../assets/crowd-girl-cheering-1.png";
-import crowdGeishaIdle1 from "../assets/crowd-geisha-idle-1.png";
-import crowdGeishaCheering1 from "../assets/crowd-geisha-cheering-1.png";
-import crowdSalarymanIdle1 from "../assets/crowd-salaryman-idle-1.png";
-import crowdSalarymanCheering1 from "../assets/crowd-salaryman-cheering-1.png";
-import crowdSalarymanIdle2 from "../assets/crowd-salaryman-idle-2.png";
-import crowdSalarymanCheering2 from "../assets/crow-salaryman-cheering-2.png";
-import crowdOldmanIdle1 from "../assets/crowd-oldman-idle-1.png";
-import crowdOldmanCheering1 from "../assets/crowd-oldman-cheering-1.png";
+import crowdBoyIdle1 from "../assets/crowd-boy-idle-1-graded.png";
+import crowdBoyIdle2 from "../assets/crowd-boy-idle-2-graded.png";
+import crowdBoyIdle3 from "../assets/crowd-boy-idle-3-graded.png";
+import crowdBoyCheering1 from "../assets/crowd-boy-cheering-1-graded.png";
+import crowdBoyCheering2 from "../assets/crowd-boy-cheering-2-graded.png";
+import crowdBoyCheering3 from "../assets/crowd-boy-cheering-3-graded.png";
+import crowdGirlIdle1 from "../assets/crowd-girl-idle-1-graded.png";
+import crowdGirlCheering1 from "../assets/crowd-girl-cheering-1-graded.png";
+import crowdGeishaIdle1 from "../assets/crowd-geisha-idle-1-graded.png";
+import crowdGeishaCheering1 from "../assets/crowd-geisha-cheering-1-graded.png";
+import crowdSalarymanIdle1 from "../assets/crowd-salaryman-idle-1-graded.png";
+import crowdSalarymanCheering1 from "../assets/crowd-salaryman-cheering-1-graded.png";
+import crowdSalarymanIdle2 from "../assets/crowd-salaryman-idle-2-graded.png";
+import crowdSalarymanCheering2 from "../assets/crow-salaryman-cheering-2-graded.png";
+import crowdOldmanIdle1 from "../assets/crowd-oldman-idle-1-graded.png";
+import crowdOldmanCheering1 from "../assets/crowd-oldman-cheering-1-graded.png";
 import crowdOyakata from "../assets/crowd-oyakata.png";
 import crowdOyakataFront from "../assets/crowd-oyakata-front.png";
 import crowdOyakataBack from "../assets/crowd-oyakata-back.png";
-import crowdSideIdle1 from "../assets/crowd-side-idle-1.png";
-import crowdSideCheering1 from "../assets/crowd-side-cheering-1.png";
-import crowdSideIdle2 from "../assets/crowd-side-idle-2.png";
-import crowdSideCheering2 from "../assets/crowd-side-cheering-2.png";
-import crowdBoySideIdle1 from "../assets/crowd-boy-side-idle-1.png";
-import crowdBoySideCheering1 from "../assets/crowd-boy-side-cheering-1.png";
-import crowdGeishaSideIdle1 from "../assets/crowd-geisha-side-idle-1.png";
-import crowdGeishaSideCheering1 from "../assets/crowd-geisha-side-cheering-1.png";
-import crowdGirlSideIdle1 from "../assets/crowd-girl-side-idle-1.png";
-import crowdGirlSideCheering1 from "../assets/crowd-girl-side-cheering-1.png";
-import crowdSalarymanSideIdle1 from "../assets/crowd-salaryman-side-idle-1.png";
-import crowdSalarymanSideCheering1 from "../assets/crowd-salaryman-side-cheering-1.png";
-import crowdSalarymanSideIdle2 from "../assets/crowd-salaryman-side-idle-2.png";
-import crowdSalarymanSideCheering2 from "../assets/crowd-salaryman-side-cheering-2.png";
+import crowdSideIdle1 from "../assets/crowd-side-idle-1-graded.png";
+import crowdSideCheering1 from "../assets/crowd-side-cheering-1-graded.png";
+import crowdSideIdle2 from "../assets/crowd-side-idle-2-graded.png";
+import crowdSideCheering2 from "../assets/crowd-side-cheering-2-graded.png";
+import crowdBoySideIdle1 from "../assets/crowd-boy-side-idle-1-graded.png";
+import crowdBoySideCheering1 from "../assets/crowd-boy-side-cheering-1-graded.png";
+import crowdGeishaSideIdle1 from "../assets/crowd-geisha-side-idle-1-graded.png";
+import crowdGeishaSideCheering1 from "../assets/crowd-geisha-side-cheering-1-graded.png";
+import crowdGirlSideIdle1 from "../assets/crowd-girl-side-idle-1-graded.png";
+import crowdGirlSideCheering1 from "../assets/crowd-girl-side-cheering-1-graded.png";
+import crowdSalarymanSideIdle1 from "../assets/crowd-salaryman-side-idle-1-graded.png";
+import crowdSalarymanSideCheering1 from "../assets/crowd-salaryman-side-cheering-1-graded.png";
+import crowdSalarymanSideIdle2 from "../assets/crowd-salaryman-side-idle-2-graded.png";
+import crowdSalarymanSideCheering2 from "../assets/crowd-salaryman-side-cheering-2-graded.png";
 import CrowdEditor from "./CrowdEditor";
 import CROWD_POSITIONS from "./crowdPositionsData";
 import winnerSound from "../sounds/winner-sound.wav";
@@ -99,8 +99,7 @@ const CrowdContainer = styled.div`
   height: 100%;
   pointer-events: none;
   z-index: 0; /* Between game map background (-1) and dohyo overlay (1) */
-  contain: layout style paint; /* Performance: isolate rendering from rest of page */
-  filter: saturate(0.82) brightness(0.78) contrast(0.95);
+  contain: layout style paint;
   
   /* Simple shadow overlay - keeps background from competing with fighters */
   &::after {
@@ -126,7 +125,6 @@ const ForegroundCrowdContainer = styled.div`
   pointer-events: none;
   z-index: 2; /* Above dohyo overlay (1) */
   contain: layout style paint;
-  filter: saturate(0.88) brightness(0.82) contrast(0.98);
 `;
 
 // Subtle idle sway + breathing animation - pivots from bottom so upper body moves
@@ -178,9 +176,7 @@ const CrowdMember = styled.img.attrs((props) => ({
     transform: `translateX(-50%) ${props.$flip ? "scaleX(-1)" : ""}`,
     opacity: props.$opacity ?? 1,
     zIndex: props.$customZIndex !== undefined ? props.$customZIndex : Math.floor(100 - props.$y),
-    filter: `${props.$applyDarkFilter
-      ? "brightness(0.58) saturate(0.75) contrast(0.95)"
-      : "saturate(1.02) brightness(0.98)"}${props.$blur > 0 ? ` blur(${props.$blur}px)` : ""}`,
+    filter: props.$filter,
     animation: props.$shouldAnimate
       ? `${props.$flip ? "crowdSwayFlipped" : "crowdSway"} ${2.5 + (props.$animOffset * 0.8)}s ease-in-out infinite`
       : "none",
@@ -206,14 +202,9 @@ const computeOpacityFromSize = (size) => {
   return Math.round((OPACITY_MIN + t * (OPACITY_MAX - OPACITY_MIN)) * 100) / 100;
 };
 
-const BLUR_Y_START = 50;
-const BLUR_Y_MAX = 90;
-const BLUR_PX_MAX = 2.2;
-const computeBlurFromY = (y) => {
-  if (y <= BLUR_Y_START) return 0;
-  const t = Math.min(1, (y - BLUR_Y_START) / (BLUR_Y_MAX - BLUR_Y_START));
-  return Math.round(BLUR_PX_MAX * t * t * 100) / 100;
-};
+// Runtime filter only for non-cheering special members (oyakata) whose src never
+// changes, so the compositor-layer cost is a one-time static expense.
+const OYAKATA_FILTER = "brightness(0.45) saturate(0.62) contrast(0.90)";
 
 // Crowd member types - easily expandable for future additions
 // sizeMultiplier adjusts for different image dimensions to keep them uniform
@@ -444,9 +435,6 @@ const CrowdLayer = ({ crowdEvent = null }) => {
     setCrowdPositions(randomizeCrowdTypes(loadCrowdPositions()));
   }, []);
 
-  const [isCheeringActive, setIsCheeringActive] = useState(false);
-  const [, setCheerTick] = useState(0);
-
   const lastCheerTimeRef = useRef(0);
   const cheerStartRef = useRef(0);
   const memberParamsRef = useRef(new Map());
@@ -454,6 +442,29 @@ const CrowdLayer = ({ crowdEvent = null }) => {
   const cheerTimeoutRef = useRef(null);
   const crowdPositionsRef = useRef(crowdPositions);
   crowdPositionsRef.current = crowdPositions;
+  const isCheeringRef = useRef(false);
+  const memberImgRefsMap = useRef(new Map());
+  const memberRefCallbacks = useRef(new Map());
+
+  const getMemberRef = useCallback((memberId) => {
+    if (!memberRefCallbacks.current.has(memberId)) {
+      memberRefCallbacks.current.set(memberId, (el) => {
+        if (el) {
+          memberImgRefsMap.current.set(memberId, el);
+        } else {
+          memberImgRefsMap.current.delete(memberId);
+        }
+      });
+    }
+    return memberRefCallbacks.current.get(memberId);
+  }, []);
+
+  const resetAllSpritesToIdle = () => {
+    memberParamsRef.current.forEach((params, memberId) => {
+      const imgEl = memberImgRefsMap.current.get(memberId);
+      if (imgEl) imgEl.src = params.idleSprite;
+    });
+  };
 
   useEffect(() => {
     return () => {
@@ -466,9 +477,10 @@ const CrowdLayer = ({ crowdEvent = null }) => {
     if (!crowdEvent) return;
 
     if (crowdEvent.type === "reset") {
-      setIsCheeringActive(false);
       clearInterval(cheerTickIntervalRef.current);
       clearTimeout(cheerTimeoutRef.current);
+      if (isCheeringRef.current) resetAllSpritesToIdle();
+      isCheeringRef.current = false;
       return;
     }
 
@@ -493,21 +505,35 @@ const CrowdLayer = ({ crowdEvent = null }) => {
           startDelay: Math.random() * stagger,
           togglePeriod: CHEER_TOGGLE_MIN + Math.random() * (CHEER_TOGGLE_MAX - CHEER_TOGGLE_MIN),
           windDownAt: windDownStart + Math.random() * CHEER_WINDDOWN_MS,
+          idleSprite: crowdType.idle,
+          cheeringSprite: crowdType.cheering,
+          showingCheering: false,
         });
       });
       memberParamsRef.current = params;
       cheerStartRef.current = performance.now();
-
-      setIsCheeringActive(true);
-      setCheerTick(0);
+      isCheeringRef.current = true;
 
       cheerTickIntervalRef.current = setInterval(() => {
-        setCheerTick(t => t + 1);
+        const elapsed = performance.now() - cheerStartRef.current;
+        memberParamsRef.current.forEach((p, memberId) => {
+          let shouldCheer = false;
+          if (elapsed >= p.startDelay && elapsed <= p.windDownAt) {
+            const memberElapsed = elapsed - p.startDelay;
+            const cyclePos = Math.floor(memberElapsed / p.togglePeriod);
+            shouldCheer = (cyclePos % 2 === 0);
+          }
+          if (shouldCheer === p.showingCheering) return;
+          p.showingCheering = shouldCheer;
+          const imgEl = memberImgRefsMap.current.get(memberId);
+          if (imgEl) imgEl.src = shouldCheer ? p.cheeringSprite : p.idleSprite;
+        });
       }, CHEER_TICK_MS);
 
       cheerTimeoutRef.current = setTimeout(() => {
-        setIsCheeringActive(false);
         clearInterval(cheerTickIntervalRef.current);
+        resetAllSpritesToIdle();
+        isCheeringRef.current = false;
       }, CHEER_DURATION_MS);
 
       const pitch = CHEER_PITCH[crowdEvent.intensity] || 1.0;
@@ -515,39 +541,27 @@ const CrowdLayer = ({ crowdEvent = null }) => {
     }
   }, [crowdEvent]);
 
-  const renderCrowdMembers = (members, isForeground = false) => {
-    const elapsed = isCheeringActive ? performance.now() - cheerStartRef.current : 0;
-
+  const renderCrowdMembers = (members) => {
     return members.map((member) => {
       const crowdType = CROWD_TYPES[member.typeIndex];
-
-      let src = crowdType.idle;
-      if (isCheeringActive) {
-        const params = memberParamsRef.current.get(member.id);
-        if (params && elapsed >= params.startDelay && elapsed <= params.windDownAt) {
-          const memberElapsed = elapsed - params.startDelay;
-          const cyclePos = Math.floor(memberElapsed / params.togglePeriod);
-          if (cyclePos % 2 === 0) src = crowdType.cheering;
-        }
-      }
       const animOffset = ((member.id * 7) % 10) / 10;
       const shouldAnimate = member.y < 55;
-      const blur = isForeground ? 0 : computeBlurFromY(member.y);
+      const needsFilter = crowdType.idle === crowdType.cheering && member.applyDarkFilter;
 
       return (
         <CrowdMember
           key={member.id}
-          src={src}
+          ref={getMemberRef(member.id)}
+          src={crowdType.idle}
           $x={member.x}
           $y={member.y}
           $size={member.size}
           $flip={member.flip}
           $opacity={computeOpacityFromSize(member.size)}
-          $blur={blur}
+          $filter={needsFilter ? OYAKATA_FILTER : "none"}
           $animOffset={animOffset}
           $shouldAnimate={shouldAnimate}
           $customZIndex={member.customZIndex}
-          $applyDarkFilter={member.applyDarkFilter}
           alt=""
           draggable={false}
         />
@@ -563,7 +577,7 @@ const CrowdLayer = ({ crowdEvent = null }) => {
       </CrowdContainer>
       {foregroundCrowd.length > 0 && (
         <ForegroundCrowdContainer>
-          {renderCrowdMembers(foregroundCrowd, true)}
+          {renderCrowdMembers(foregroundCrowd)}
         </ForegroundCrowdContainer>
       )}
       {editorMode && (
