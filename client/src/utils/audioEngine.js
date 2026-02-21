@@ -54,27 +54,29 @@ function preloadSounds(sources) {
  * @param {number|null} duration - Optional max duration in milliseconds
  * @returns {{ source: AudioBufferSourceNode, gainNode: GainNode } | null}
  */
-function playBuffer(src, volume = 1.0, duration = null) {
+function playBuffer(src, volume = 1.0, duration = null, playbackRate = 1.0, loop = false) {
   const ctx = getContext();
   ensureContextResumed();
 
   const buffer = audioBuffers.get(src);
   if (!buffer) {
     preloadSound(src).then((buf) => {
-      if (buf) _play(ctx, buf, volume, duration);
+      if (buf) _play(ctx, buf, volume, duration, playbackRate, loop);
     });
     return null;
   }
 
-  return _play(ctx, buffer, volume, duration);
+  return _play(ctx, buffer, volume, duration, playbackRate, loop);
 }
 
-function _play(ctx, buffer, volume, duration) {
+function _play(ctx, buffer, volume, duration, playbackRate = 1.0, loop = false) {
   try {
     const source = ctx.createBufferSource();
     const gainNode = ctx.createGain();
 
     source.buffer = buffer;
+    source.loop = loop;
+    source.playbackRate.value = playbackRate;
     gainNode.gain.value = Math.max(0, Math.min(1, volume));
 
     source.connect(gainNode);
@@ -82,7 +84,7 @@ function _play(ctx, buffer, volume, duration) {
 
     source.start(0);
 
-    if (duration) {
+    if (duration && !loop) {
       source.stop(ctx.currentTime + duration / 1000);
     }
 

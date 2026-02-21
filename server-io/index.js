@@ -185,7 +185,7 @@ const DELTA_TRACKED_PROPS = [
   'isChargingAttack', 'chargeAttackPower', 'chargeStartTime',
   'isGrabbing', 'isBeingGrabbed', 'grabbedOpponent', 'grabState', 'grabAttemptType',
   'isGrabbingMovement', 'isWhiffingGrab', 'isGrabWhiffRecovery', 'isGrabTeching', 'grabTechRole', 'isGrabClashing', 'isGrabStartup',
-  'isHit', 'isDead', 'isRecovering', 'isDodging', 'dodgeDirection',
+  'isHit', 'isDead', 'isRecovering', 'isDodging', 'dodgeDirection', 'justLandedFromDodge',
   'isRawParrying', 'isRawParryStun', 'isRawParrySuccess', 'isPerfectRawParrySuccess',
   'isThrowing', 'isBeingThrown', 'isThrowTeching', 'isBeingPulled', 'isBeingPushed',
   'isThrowingSalt', 'isReady', 'isBowing', 'isAtTheRopes',
@@ -322,7 +322,7 @@ let staminaRegenCounter = 0;
 let broadcastTickCounter = 0;
 const delta = 1000 / TICK_RATE;
 const speedFactor = 0.185; // Scaled for camera zoom (was 0.25)
-const GROUND_LEVEL = 278;
+const GROUND_LEVEL = 290;
 const HITBOX_DISTANCE_VALUE = Math.round(77 * 0.96); // ~74 (scaled for camera zoom)
 const SLAP_HITBOX_DISTANCE_VALUE = Math.round(155 * 0.96); // ~149 (scaled for camera zoom)
 const SLAP_PARRY_WINDOW = 200; // Updated to 200ms window for parry to account for longer slap animation
@@ -466,6 +466,7 @@ const DODGE_HOP_HEIGHT = 70; // Scaled for camera zoom (was 95)
 const DODGE_LANDING_MOMENTUM = 0.35; // Momentum burst on landing
 const DODGE_CANCEL_DURATION = 100; // Smooth but quick slam-down
 const DODGE_CANCEL_SPEED_MULT = 0.2; // Some horizontal movement during cancel
+const DODGE_CROSSED_THROUGH_GRACE = 300; // ms grace period after dodge landing while overlapping
 
 // Grab walking tuning
 const GRAB_WALK_SPEED_MULTIPLIER = 0.8; // Slightly slower than normal strafing
@@ -935,6 +936,8 @@ function activateBufferedInputAfterGrab(player, rooms) {
     player.currentAction = "dodge";
     player.actionLockUntil = Date.now() + 100;
     player.justLandedFromDodge = false;
+    player.justCrossedThrough = false;
+    player.crossedThroughTime = 0;
     player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
     clearChargeState(player, true);
     setPlayerTimeout(player.id, () => {
@@ -957,6 +960,15 @@ function activateBufferedInputAfterGrab(player, rooms) {
           const dodgeOpponent = dodgeRoom.players.find(p => p.id !== player.id);
           if (dodgeOpponent && !player.atTheRopesFacingDirection && !player.slapFacingDirection) {
             player.facing = player.x < dodgeOpponent.x ? -1 : 1;
+          }
+          // Set crossed-through grace period if overlapping with opponent after dodge
+          if (dodgeOpponent) {
+            const overlapDistance = Math.abs(player.x - dodgeOpponent.x);
+            const bodyHitboxSize = HITBOX_DISTANCE_VALUE * 2 * Math.max(player.sizeMultiplier || 1, dodgeOpponent.sizeMultiplier || 1);
+            if (overlapDistance < bodyHitboxSize) {
+              player.justCrossedThrough = true;
+              player.crossedThroughTime = Date.now();
+            }
           }
         }
       }
@@ -1000,6 +1012,8 @@ function activateBufferedInputAfterGrab(player, rooms) {
     player.currentAction = "dodge";
     player.actionLockUntil = Date.now() + 100;
     player.justLandedFromDodge = false;
+    player.justCrossedThrough = false;
+    player.crossedThroughTime = 0;
     player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
     clearChargeState(player, true);
 
@@ -1033,6 +1047,15 @@ function activateBufferedInputAfterGrab(player, rooms) {
           const dodgeOpponent = dodgeRoom.players.find(p => p.id !== player.id);
           if (dodgeOpponent && !player.atTheRopesFacingDirection && !player.slapFacingDirection) {
             player.facing = player.x < dodgeOpponent.x ? -1 : 1;
+          }
+          // Set crossed-through grace period if overlapping with opponent after dodge
+          if (dodgeOpponent) {
+            const overlapDistance = Math.abs(player.x - dodgeOpponent.x);
+            const bodyHitboxSize = HITBOX_DISTANCE_VALUE * 2 * Math.max(player.sizeMultiplier || 1, dodgeOpponent.sizeMultiplier || 1);
+            if (overlapDistance < bodyHitboxSize) {
+              player.justCrossedThrough = true;
+              player.crossedThroughTime = Date.now();
+            }
           }
         }
       }
@@ -1176,6 +1199,8 @@ function createCPUPlayer(uniqueId) {
     isDodgeCancelling: false,
     dodgeCancelStartTime: 0,
     dodgeCancelStartY: 0,
+    justCrossedThrough: false,
+    crossedThroughTime: 0,
     isReady: false,
     isHit: false,
     isAlreadyHit: false,
@@ -2097,30 +2122,33 @@ io.on("connection", (socket) => {
             if (!player1.isHit && !player2.isHit) {
               // Normal facing logic when both players are not hit
               // Don't update facing if player has locked slap facing direction OR is attacking OR has atTheRopes facing locked
-              if (!player1.slapFacingDirection && !player1.isAttacking && !player1.atTheRopesFacingDirection && player1.x < player2.x) {
+              // Also freeze facing for players in the crossed-through grace period (post-dodge overlap)
+              if (!player1.slapFacingDirection && !player1.isAttacking && !player1.atTheRopesFacingDirection && !player1.justCrossedThrough && player1.x < player2.x) {
                 player1.facing = -1; // Player 1 faces right
               } else if (
                 !player1.slapFacingDirection &&
                 !player1.isAttacking &&
                 !player1.atTheRopesFacingDirection &&
+                !player1.justCrossedThrough &&
                 player1.x >= player2.x
               ) {
                 player1.facing = 1; // Player 1 faces left
               }
 
-              if (!player2.slapFacingDirection && !player2.isAttacking && !player2.atTheRopesFacingDirection && player1.x < player2.x) {
+              if (!player2.slapFacingDirection && !player2.isAttacking && !player2.atTheRopesFacingDirection && !player2.justCrossedThrough && player1.x < player2.x) {
                 player2.facing = 1; // Player 2 faces left
               } else if (
                 !player2.slapFacingDirection &&
                 !player2.isAttacking &&
                 !player2.atTheRopesFacingDirection &&
+                !player2.justCrossedThrough &&
                 player1.x >= player2.x
               ) {
                 player2.facing = -1; // Player 2 faces right
               }
             } else if (!player1.isHit && player2.isHit) {
               // Only update player1's facing when player2 is hit and player1 doesn't have locked slap facing
-              if (!player1.slapFacingDirection && !player1.isAttacking && !player1.atTheRopesFacingDirection) {
+              if (!player1.slapFacingDirection && !player1.isAttacking && !player1.atTheRopesFacingDirection && !player1.justCrossedThrough) {
                 if (player1.x < player2.x) {
                   player1.facing = -1; // Player 1 faces right
                 } else {
@@ -2129,7 +2157,7 @@ io.on("connection", (socket) => {
               }
             } else if (player1.isHit && !player2.isHit) {
               // Only update player2's facing when player1 is hit and player2 doesn't have locked slap facing
-              if (!player2.slapFacingDirection && !player2.isAttacking && !player2.atTheRopesFacingDirection) {
+              if (!player2.slapFacingDirection && !player2.isAttacking && !player2.atTheRopesFacingDirection && !player2.justCrossedThrough) {
                 if (player1.x < player2.x) {
                   player2.facing = 1; // Player 2 faces left
                 } else {
@@ -3585,6 +3613,16 @@ io.on("connection", (socket) => {
                 player.facing = player.x < dodgeCancelOpponent.x ? -1 : 1;
               }
               
+              // Set crossed-through grace period if overlapping with opponent after dodge
+              if (dodgeCancelOpponent) {
+                const overlapDistance = Math.abs(player.x - dodgeCancelOpponent.x);
+                const bodyHitboxSize = HITBOX_DISTANCE_VALUE * 2 * Math.max(player.sizeMultiplier || 1, dodgeCancelOpponent.sizeMultiplier || 1);
+                if (overlapDistance < bodyHitboxSize) {
+                  player.justCrossedThrough = true;
+                  player.crossedThroughTime = Date.now();
+                }
+              }
+              
               // ICE PHYSICS: Dodge landing = sliding on ice!
               if ((player.keys.c || player.keys.control) && room.gameStart && !room.gameOver && !room.matchOver) {
                 // Holding C = STRONG power slide from dodge
@@ -3680,6 +3718,16 @@ io.on("connection", (socket) => {
                 player.facing = player.x < dodgeLandOpponent.x ? -1 : 1;
               }
               
+              // Set crossed-through grace period if overlapping with opponent after dodge
+              if (dodgeLandOpponent) {
+                const overlapDistance = Math.abs(player.x - dodgeLandOpponent.x);
+                const bodyHitboxSize = HITBOX_DISTANCE_VALUE * 2 * Math.max(player.sizeMultiplier || 1, dodgeLandOpponent.sizeMultiplier || 1);
+                if (overlapDistance < bodyHitboxSize) {
+                  player.justCrossedThrough = true;
+                  player.crossedThroughTime = Date.now();
+                }
+              }
+              
               if ((player.keys.c || player.keys.control) && room.gameStart && !room.gameOver && !room.matchOver) {
                 // Holding C/CTRL = STRONG power slide from dodge
                 player.movementVelocity = landingDirection * DODGE_SLIDE_MOMENTUM * DODGE_POWERSLIDE_BOOST;
@@ -3700,6 +3748,14 @@ io.on("connection", (socket) => {
               player.justLandedFromDodge = true;
               player.dodgeLandTime = Date.now();
             }
+          }
+        }
+
+        // Clear crossed-through grace period
+        if (player.justCrossedThrough && player.crossedThroughTime) {
+          if (Date.now() - player.crossedThroughTime > DODGE_CROSSED_THROUGH_GRACE) {
+            player.justCrossedThrough = false;
+            player.crossedThroughTime = 0;
           }
         }
 
@@ -5339,10 +5395,13 @@ io.on("connection", (socket) => {
 
     const hitboxDistance = baseHitboxDistance * (player.sizeMultiplier || 1);
 
-    // For slap attacks, only check horizontal distance like grab
+    // For slap attacks, only check horizontal distance and ensure opponent is in front
     if (player.attackType === "slap") {
-      const horizontalDistance = Math.abs(player.x - otherPlayer.x);
-      if (horizontalDistance < hitboxDistance) {
+      const deltaX = otherPlayer.x - player.x;
+      const attackDir = player.facing === 1 ? -1 : 1;
+      const opponentInFront = deltaX * attackDir >= 0;
+      const horizontalDistance = Math.abs(deltaX);
+      if (opponentInFront && horizontalDistance < hitboxDistance) {
         if (otherPlayer.isAttacking && otherPlayer.attackType === "slap") {
           // Check if both slaps occurred within the parry window
           const timeDifference = Math.abs(
@@ -5369,7 +5428,7 @@ io.on("connection", (socket) => {
       return;
     }
 
-    // For charged attacks, use the full circular hitbox
+    // For charged attacks, use the circular hitbox but only hit opponents in front
     const playerHitbox = {
       left: player.x - hitboxDistance,
       right: player.x + hitboxDistance,
@@ -5390,7 +5449,11 @@ io.on("connection", (socket) => {
       playerHitbox.top < opponentHitbox.bottom &&
       playerHitbox.bottom > opponentHitbox.top;
 
-    if (isCollision) {
+    const chargedDeltaX = otherPlayer.x - player.x;
+    const chargedAttackDir = player.facing === 1 ? -1 : 1;
+    const chargedOpponentInFront = chargedDeltaX * chargedAttackDir >= 0;
+
+    if (isCollision && chargedOpponentInFront) {
       if (player.isAttacking && otherPlayer.isAttacking) {
         // Check for thick blubber absorption in charge vs charge scenarios
         const playerHasThickBlubber =
@@ -6358,6 +6421,8 @@ io.on("connection", (socket) => {
         isDodgeCancelling: false,
         dodgeCancelStartTime: 0,
         dodgeCancelStartY: 0,
+        justCrossedThrough: false,
+        crossedThroughTime: 0,
         isReady: false,
         isHit: false,
         isAlreadyHit: false,
@@ -6539,6 +6604,8 @@ io.on("connection", (socket) => {
         isDodgeCancelling: false,
         dodgeCancelStartTime: 0,
         dodgeCancelStartY: 0,
+        justCrossedThrough: false,
+        crossedThroughTime: 0,
         isReady: false,
         isHit: false,
         isAlreadyHit: false,
@@ -6780,6 +6847,8 @@ io.on("connection", (socket) => {
       isDodgeCancelling: false,
       dodgeCancelStartTime: 0,
       dodgeCancelStartY: 0,
+      justCrossedThrough: false,
+      crossedThroughTime: 0,
       isReady: false,
       isHit: false,
       isAlreadyHit: false,
@@ -7682,7 +7751,9 @@ io.on("connection", (socket) => {
       player.dodgeStartY = player.y;
       player.currentAction = "dodge";
       player.actionLockUntil = Date.now() + 100; // Slightly shorter lock for responsiveness
-      player.justLandedFromDodge = false; // Reset landing flag
+      player.justLandedFromDodge = false;
+      player.justCrossedThrough = false;
+      player.crossedThroughTime = 0;
 
       // Drain stamina for dodge (15% of max stamina)
       player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
@@ -7726,6 +7797,15 @@ io.on("connection", (socket) => {
               if (dodgeOpponent && !player.atTheRopesFacingDirection && !player.slapFacingDirection) {
                 player.facing = player.x < dodgeOpponent.x ? -1 : 1;
               }
+              // Set crossed-through grace period if overlapping with opponent after dodge
+              if (dodgeOpponent) {
+                const overlapDistance = Math.abs(player.x - dodgeOpponent.x);
+                const bodyHitboxSize = HITBOX_DISTANCE_VALUE * 2 * Math.max(player.sizeMultiplier || 1, dodgeOpponent.sizeMultiplier || 1);
+                if (overlapDistance < bodyHitboxSize) {
+                  player.justCrossedThrough = true;
+                  player.crossedThroughTime = Date.now();
+                }
+              }
             }
           }
           if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
@@ -7765,6 +7845,8 @@ io.on("connection", (socket) => {
               player.dodgeStartX = player.x;
               player.dodgeStartY = player.y;
               player.justLandedFromDodge = false;
+              player.justCrossedThrough = false;
+              player.crossedThroughTime = 0;
               
               // Drain stamina for buffered dodge
               player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);

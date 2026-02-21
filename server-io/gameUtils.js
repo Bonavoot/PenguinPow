@@ -303,6 +303,8 @@ function clearAllActionStates(player) {
   player.dodgeDirection = null;
   player.dodgeStartX = 0;
   player.dodgeStartY = 0;
+  player.justCrossedThrough = false;
+  player.crossedThroughTime = 0;
   
   // CRITICAL: Clear any buffered actions - prevents buffered dodge from executing while grabbed
   player.bufferedAction = null;

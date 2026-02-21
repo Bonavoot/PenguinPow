@@ -12,7 +12,7 @@ const FAR_DISTANCE = 700;    // player gap (game-coords) for min zoom
 
 const SPRITE_HALF_W = 0;     // Sprites are now centred on player.x via CSS translate
 const SMOOTH_FACTOR = 0.07;  // lerp speed per frame (0–1, higher = snappier)
-const Y_OFFSET = 5;          // fixed vertical bias (%) — positive = show more top
+const Y_OFFSET = 10;         // fixed vertical bias (%) — positive = show more top
 
 // ── Impact shake ─────────────────────────────────────────────────
 const SHAKE_MIN = 2;         // px — lightest hit (slap)

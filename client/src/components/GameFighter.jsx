@@ -20,9 +20,10 @@ import PlayerShadow from "./PlayerShadow";
 import ThrowTechEffect from "./ThrowTechEffect";
 import PowerMeter from "./PowerMeter";
 import SlapParryEffect from "./SlapParryEffect";
-import DodgeSmokeEffect from "./DodgeDustEffect";
+// import DodgeSmokeEffect from "./DodgeDustEffect";
 // import DodgeLandingEffect from "./DodgeLandingEffect";
 // import ChargedAttackSmokeEffect from "./ChargedAttackSmokeEffect";
+import { useParticles } from "../particles/ParticleContext";
 import StarStunEffect from "./StarStunEffect";
 import ThickBlubberEffect from "./ThickBlubberEffect";
 import GrabBreakEffect from "./GrabBreakEffect";
@@ -119,6 +120,7 @@ import clashVictorySound from "../sounds/clash-victory-sound.wav";
 import clashDefeatSound from "../sounds/clash-defeat-sound.wav";
 import roundVictorySound from "../sounds/round-victory-sound.mp3";
 import roundDefeatSound from "../sounds/round-defeat-sound.mp3";
+import strafingSound from "../sounds/strafing-sound.wav";
 
 // crouchStance and crouchStrafing already imported above
 
@@ -168,7 +170,7 @@ import { isOutsideDohyo, DOHYO_FALL_DEPTH, SERVER_BROADCAST_HZ } from "../consta
 
 const GROUND_LEVEL = 140; // Ground level constant (client-side, for fall detection)
 const SPRITE_HALF_W = 0;  // Sprite is now centred on player.x via CSS translate, so no offset needed
-const PLAYER_MID_Y = 355;  // Effect Y at player's visual midpoint when standing
+const PLAYER_MID_Y = 366;  // Effect Y at player's visual midpoint when standing
 
 // ============================================
 // RITUAL ANIMATION CONFIGURATION (Sprite Sheets)
@@ -228,7 +230,7 @@ preloadSounds([
   regularRawParrySound, stunnedSound, grabBreakSound, counterGrabSound,
   notEnoughStaminaSound, grabClashSound, isTechingSound,
   clashVictorySound, clashDefeatSound, roundVictorySound, roundDefeatSound,
-  clap1Sound, clap2Sound, clap3Sound, clap4Sound,
+  clap1Sound, clap2Sound, clap3Sound, clap4Sound, strafingSound,
 ]);
 
 // Initialize image preloading
@@ -595,7 +597,7 @@ const getFighterPopFilter = (props) => {
     return `${base} drop-shadow(0 0 4px rgba(255, 100, 50, 0.4)) contrast(1.1)`;
   }
   if (props.$isAttemptingPull) {
-    return base;
+    return `${base} contrast(1.18) brightness(1.05)`;
   }
   if (props.$isGrabSeparating) {
     return `${base} brightness(1.1)`;
@@ -606,7 +608,7 @@ const getFighterPopFilter = (props) => {
   if (props.$isBeingGrabBellyFlopped || props.$isBeingGrabFrontalForceOut) {
     return `${base} drop-shadow(0 0 6px rgba(255, 50, 50, 0.5)) contrast(1.15)`;
   }
-  return `${base} contrast(1.2)`;
+  return `${base} contrast(1.18) brightness(1.05)`;
 };
 
 const StyledImage = styled("img")
@@ -1738,8 +1740,9 @@ const SnowballProjectile = styled.img
       position: "absolute",
       width: "3.37%",
       height: "auto",
-      left: `${(props.$x / 1280) * 100 - 1}%`,
+      left: `${(props.$x / 1280) * 100}%`,
       bottom: `${(props.$y / 720) * 100 + 11}%`,
+      translate: "-50%",
       zIndex: 95,
       pointerEvents: "none",
       filter: "drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000)",
@@ -1874,6 +1877,7 @@ const GameFighter = ({
   playerColor, // Custom color for mawashi/headband recoloring
 }) => {
   const { socket } = useContext(SocketContext);
+  const emitParticles = useParticles();
   
   // ============================================
   // SPRITE RECOLORING STATE
@@ -3073,6 +3077,7 @@ const GameFighter = ({
   const lastThrowState = useRef(false);
   const lastDodgeState = useRef(false);
   const lastDodgeLandState = useRef(false);
+  const lastDodgeLandParticleState = useRef(false);
   const lastGrabState = useRef(false);
   const lastThrowingSnowballState = useRef(false);
   const lastSpawningPumoArmyState = useRef(false);
@@ -3080,6 +3085,7 @@ const GameFighter = ({
   const lastRawParryStunState = useRef(false);
   const lastWinnerState = useRef(false);
   const lastWinnerSoundPlay = useRef(0);
+  const strafingSoundRef = useRef(null);
   const lastHitSoundTime = useRef(0);
   const hitTintFramesRemaining = useRef(0); // Show hit tint for first N frames of isHit so red is visible (1 frame was too short)
   const chargeFlashCycleStart = useRef(0); // Wall-clock timestamp (ms) when current flash cycle began
@@ -3826,10 +3832,60 @@ const GameFighter = ({
 
   useEffect(() => {
     if (penguin.isDodging && !lastDodgeState.current) {
-      playSound(dodgeSound, 0.02); // Louder for satisfying feedback
+      playSound(dodgeSound, 0.02);
+      emitParticles("dodgeStart", {
+        x: penguin.dodgeStartX ?? penguin.x,
+        y: penguin.dodgeStartY ?? penguin.y,
+        direction: penguin.dodgeDirection ?? penguin.facing ?? 1,
+        facing: penguin.facing ?? 1,
+      });
     }
     lastDodgeState.current = penguin.isDodging;
-  }, [penguin.isDodging]);
+  }, [penguin.isDodging, penguin.dodgeStartX, penguin.dodgeStartY, penguin.dodgeDirection, penguin.facing, penguin.x, penguin.y, emitParticles]);
+
+  useEffect(() => {
+    if (penguin.justLandedFromDodge && !lastDodgeLandParticleState.current) {
+      emitParticles("dodgeLand", {
+        x: interpolatedPosition.x || penguin.x,
+        y: penguin.y,
+      });
+    }
+    lastDodgeLandParticleState.current = penguin.justLandedFromDodge;
+  }, [penguin.justLandedFromDodge, interpolatedPosition.x, penguin.x, penguin.y, emitParticles]);
+
+  useEffect(() => {
+    const STRAFE_VOL = 0.015 * getGlobalVolume();
+    const FADE_MS = 0.08;
+    if (penguin.isStrafing) {
+      if (!strafingSoundRef.current) {
+        const result = playBuffer(strafingSound, 0, null, 1.0, true);
+        if (result) {
+          result.gainNode.gain.setValueAtTime(0, result.gainNode.context.currentTime);
+          result.gainNode.gain.linearRampToValueAtTime(
+            STRAFE_VOL,
+            result.gainNode.context.currentTime + FADE_MS
+          );
+        }
+        strafingSoundRef.current = result;
+      }
+    } else if (strafingSoundRef.current) {
+      const { source, gainNode } = strafingSoundRef.current;
+      const ctx = gainNode.context;
+      gainNode.gain.setValueAtTime(gainNode.gain.value, ctx.currentTime);
+      gainNode.gain.linearRampToValueAtTime(0, ctx.currentTime + FADE_MS);
+      const ref = strafingSoundRef.current;
+      strafingSoundRef.current = null;
+      setTimeout(() => {
+        try { ref.source.stop(); } catch (_) {}
+      }, FADE_MS * 1000 + 20);
+    }
+    return () => {
+      if (strafingSoundRef.current) {
+        try { strafingSoundRef.current.source.stop(); } catch (_) {}
+        strafingSoundRef.current = null;
+      }
+    };
+  }, [penguin.isStrafing]);
 
   // Screen shake on dodge landing for satisfying impact feel
   useEffect(() => {

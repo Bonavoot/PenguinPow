@@ -365,24 +365,22 @@ body {
   --neg-text-ol: clamp(-4px, -0.15vw, -2px);
   --border-w: clamp(2px, 0.16vw, 4px);
 
-  /* Slight lift so an overlay with low zIndex remains behind sprites */
-  --arena-map-filter: brightness(0.94) saturate(0.98) contrast(1.04);
-  --arena-ambient-top: rgba(0, 0, 0, 0.1);
-  --arena-ambient-bottom: rgba(0, 0, 0, 0.18);
-  --arena-tone-center: rgba(255, 230, 155, 0.06);
+  /* ── Visual grading — anime-fighter contrast hierarchy ── */
+  --arena-map-filter: brightness(0.88) saturate(0.92) contrast(1.08);
+  --arena-ambient-top: rgba(0, 0, 0, 0.18);
+  --arena-ambient-bottom: rgba(0, 0, 0, 0.25);
+  --arena-tone-center: rgba(255, 230, 155, 0.09);
   --arena-tone-center-mid: rgba(255, 230, 155, 0.022);
-  --arena-tone-edge: rgba(0, 0, 0, 0.1);
+  --arena-tone-edge: rgba(0, 0, 0, 0.16);
   --arena-tone-top: rgba(0, 0, 0, 0.07);
   --arena-tone-mid: rgba(0, 0, 0, 0.035);
-  --arena-tone-bottom: rgba(0, 0, 0, 0.12);
-  --arena-vignette-mid: rgba(0, 0, 0, 0.09);
-  --arena-vignette-edge: rgba(0, 0, 0, 0.24);
+  --arena-tone-bottom: rgba(0, 0, 0, 0.18);
+  --arena-vignette-mid: rgba(0, 0, 0, 0.13);
+  --arena-vignette-edge: rgba(0, 0, 0, 0.32);
   --arena-grain-light: rgba(255, 255, 255, 0.007);
   --arena-grain-dark: rgba(0, 0, 0, 0.014);
-  /* Dedicated dohyo grade so ring keeps style regardless stacking changes */
-  --dohyo-filter: brightness(0.97) saturate(1) contrast(1.06);
-  --dohyo-opacity: 0.96;
-  --dohyo-cool-tint: rgba(185, 220, 255, 0.1);
+  /* Dohyo grade — desaturated stage so fighters & effects pop against it */
+  --dohyo-filter: brightness(0.95) saturate(0.94) contrast(1.10);
 
   /* ── Camera defaults — JS will drive these later for dynamic pan/zoom ── */
   --cam-scale: 1.35;
@@ -443,10 +441,11 @@ body {
   inset: 0;
   background-image: url(./assets/dohyo.png);
   background-repeat: no-repeat;
-  background-size: 85% 90%;          /* width height — increase 2nd value to make platform taller */
+  background-size: 85% 85%;          /* width height — increase 2nd value to make platform taller */
   background-position: 50% 25%;
   pointer-events: none;
   z-index: 1;
+  filter: var(--dohyo-filter);
   /* ── Perspective tilt — tweak these to flatten / angle the dohyo ── */
   transform-origin: 50% 10%;      /* pivot near the top — back stays wide, front narrows */
   transform:

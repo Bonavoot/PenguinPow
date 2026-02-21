@@ -16,6 +16,7 @@ import {
   setupMemoryMonitorShortcut,
 } from "../utils/memoryMonitor";
 import { clearDecodedImageCache } from "../utils/SpriteRecolorizer";
+import { ParticleProvider } from "../particles/ParticleContext";
 // import gameMusic from "../sounds/game-music.mp3";
 import PropTypes from "prop-types";
 
@@ -67,7 +68,7 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
     useState(false);
   const [opponentDisconnected, setOpponentDisconnected] = useState(false);
   const [disconnectedRoomId, setDisconnectedRoomId] = useState(null);
-  const [isCrowdCheering, setIsCrowdCheering] = useState(false);
+  const [crowdEvent, setCrowdEvent] = useState(null);
   
   // Pre-match screen state
   const [showPreMatchScreen, setShowPreMatchScreen] = useState(true); // Start with overlay visible
@@ -429,35 +430,37 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
     const handleGameReset = () => {
       setOpponentDisconnected(false);
       setDisconnectedRoomId(null);
-      setIsCrowdCheering(false); // Crowd goes back to idle when game resets
-      isGameActiveRef.current = false; // Game is no longer active during reset
+      setCrowdEvent({ type: "reset", timestamp: Date.now() });
+      isGameActiveRef.current = false;
     };
 
     const handleGameOver = () => {
-      // PERFORMANCE: Defer crowd cheering to the next animation frame.
-      // The game_over event triggers heavy work (state updates, gyoji change, sound).
-      // Deferring the crowd sprite swap (~200 img.src changes) prevents it from
-      // piling onto the same frame and causing a freeze.
       requestAnimationFrame(() => {
-        setIsCrowdCheering(true);
+        setCrowdEvent({ type: "cheer", intensity: "heavy", timestamp: Date.now() });
       });
-      isGameActiveRef.current = false; // Game is no longer active after win
+      isGameActiveRef.current = false;
     };
 
     const handleGameStart = () => {
-      isGameActiveRef.current = true; // Game is now active, predictions allowed
+      isGameActiveRef.current = true;
+    };
+
+    const handlePerfectParry = () => {
+      setCrowdEvent({ type: "cheer", intensity: "medium", timestamp: Date.now() });
     };
 
     socket.on("opponent_disconnected", handleOpponentDisconnected);
     socket.on("game_reset", handleGameReset);
     socket.on("game_over", handleGameOver);
     socket.on("game_start", handleGameStart);
+    socket.on("perfect_parry", handlePerfectParry);
 
     return () => {
       socket.off("opponent_disconnected", handleOpponentDisconnected);
       socket.off("game_reset", handleGameReset);
       socket.off("game_over", handleGameOver);
       socket.off("game_start", handleGameStart);
+      socket.off("perfect_parry", handlePerfectParry);
     };
   }, [socket]);
 
@@ -476,34 +479,36 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
         <div className="game-scene">
           <div className="game-map"></div>
           <div className="ambient-overlay"></div>
-          <CrowdLayer isCheering={isCrowdCheering} />
+          <CrowdLayer crowdEvent={crowdEvent} />
           <div className="dohyo-overlay"></div>
-          <div className="ui">
-            {currentRoom.players
-              .filter((player) => player.id !== "disconnected_placeholder")
-              .map((player, i) => {
-                const isLocalPlayerFighter = player.id === localId;
-                return (
-                  <GameFighter
-                    localId={localId}
-                    key={player.id}
-                    player={player}
-                    index={i}
-                    roomName={roomName}
-                    setCurrentPage={setCurrentPage}
-                    opponentDisconnected={opponentDisconnected}
-                    disconnectedRoomId={disconnectedRoomId}
-                    onResetDisconnectState={() => {
-                      setOpponentDisconnected(false);
-                      setDisconnectedRoomId(null);
-                    }}
-                    isPowerUpSelectionActive={isPowerUpSelectionActive}
-                    predictionRef={isLocalPlayerFighter ? predictionRef : null}
-                    playerColor={i === 0 ? player1Color : player2Color}
-                  />
-                );
-              })}
-          </div>
+          <ParticleProvider>
+            <div className="ui">
+              {currentRoom.players
+                .filter((player) => player.id !== "disconnected_placeholder")
+                .map((player, i) => {
+                  const isLocalPlayerFighter = player.id === localId;
+                  return (
+                    <GameFighter
+                      localId={localId}
+                      key={player.id}
+                      player={player}
+                      index={i}
+                      roomName={roomName}
+                      setCurrentPage={setCurrentPage}
+                      opponentDisconnected={opponentDisconnected}
+                      disconnectedRoomId={disconnectedRoomId}
+                      onResetDisconnectState={() => {
+                        setOpponentDisconnected(false);
+                        setDisconnectedRoomId(null);
+                      }}
+                      isPowerUpSelectionActive={isPowerUpSelectionActive}
+                      predictionRef={isLocalPlayerFighter ? predictionRef : null}
+                      playerColor={i === 0 ? player1Color : player2Color}
+                    />
+                  );
+                })}
+            </div>
+          </ParticleProvider>
           <div className="arena-tone-pass" aria-hidden="true"></div>
           <div className="arena-vignette-pass" aria-hidden="true"></div>
         </div>

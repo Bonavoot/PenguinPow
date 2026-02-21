@@ -168,7 +168,7 @@ const NameBanner = styled.div`
     rgba(28, 18, 18, 0.75) 100%
   );
   /* Match the full stamina bar height (BarTrack + BarTrack border + BarFrame border) */
-  height: calc(clamp(20px, 4.2vh, 46px) + 8px);
+  height: calc(clamp(26px, 5.4vh, 56px) + 8px);
   box-sizing: border-box;
   padding: 0 clamp(10px, 1.5vw, 20px);
   ${(p) => p.$isRight
@@ -267,13 +267,16 @@ const NameBlock = styled.div`
 
 const FighterName = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(10px, 1.6vw, 20px);
-  color: #f5f0e8;
+  font-size: clamp(14px, 2.1vw, 26px);
+  color: #ffffff;
   text-shadow:
-    clamp(1.5px, 0.12vw, 3px) clamp(1.5px, 0.12vw, 3px) 0 #000, clamp(-2px, -0.08vw, -1px) clamp(-2px, -0.08vw, -1px) 0 #000,
-    clamp(1px, 0.08vw, 2px) clamp(-2px, -0.08vw, -1px) 0 #000, clamp(-2px, -0.08vw, -1px) clamp(1px, 0.08vw, 2px) 0 #000,
-    0 0 clamp(8px, 0.9vw, 16px) rgba(0, 0, 0, 0.6);
-  letter-spacing: 0.1em;
+    clamp(2px, 0.16vw, 4px) clamp(2px, 0.16vw, 4px) 0 #000,
+    clamp(-2px, -0.16vw, -1px) clamp(-2px, -0.16vw, -1px) 0 #000,
+    clamp(2px, 0.16vw, 4px) clamp(-2px, -0.16vw, -1px) 0 #000,
+    clamp(-2px, -0.16vw, -1px) clamp(2px, 0.16vw, 4px) 0 #000,
+    0 0 clamp(12px, 1.4vw, 24px) rgba(0, 0, 0, 0.8),
+    0 0 clamp(4px, 0.4vw, 8px) rgba(0, 0, 0, 1);
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   line-height: 1.1;
   white-space: nowrap;
@@ -291,7 +294,7 @@ const RankPlaque = styled.div`
   align-items: center;
   justify-content: center;
   gap: clamp(4px, 0.5vw, 8px);
-  padding: clamp(3px, 0.4vh, 6px) clamp(10px, 1.2vw, 18px);
+  padding: clamp(4px, 0.55vh, 8px) clamp(12px, 1.5vw, 22px);
   position: relative;
 
   /* Dark lacquered plaque with subtle grain */
@@ -353,14 +356,15 @@ const RankPlaque = styled.div`
 
 const RankText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(8px, 1.1vw, 14px);
-  color: #d4af37;
+  font-size: clamp(10px, 1.4vw, 17px);
+  color: #ffd700;
   text-transform: uppercase;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.16em;
   line-height: 1;
   text-shadow:
-    0 0 6px rgba(212, 175, 55, 0.25),
-    0 1px 2px rgba(0, 0, 0, 0.8);
+    0 0 10px rgba(255, 215, 0, 0.4),
+    0 0 4px rgba(212, 175, 55, 0.5),
+    0 1px 3px rgba(0, 0, 0, 0.9);
   white-space: nowrap;
 `;
 
@@ -408,7 +412,7 @@ const BarFrame = styled.div`
 const BarTrack = styled.div`
   position: relative;
   width: 100%;
-  height: calc(clamp(20px, 4.2vh, 46px) - 3px);
+  height: calc(clamp(26px, 5.4vh, 56px) - 3px);
   border-radius: 3px;
   overflow: hidden;
 
@@ -672,7 +676,7 @@ const PowerUpSlot = styled.div`
   align-items: center;
   justify-content: center;
   width: clamp(30px, 3.8vw, 48px);
-  height: calc(clamp(20px, 4.2vh, 46px) + clamp(5px, 0.4vw, 10px));
+  height: calc(clamp(26px, 5.4vh, 56px) + clamp(5px, 0.4vw, 10px));
   border-radius: 4px;
   border: clamp(1.5px, 0.15vw, 3px) solid;
   position: relative;

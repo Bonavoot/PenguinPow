@@ -12,7 +12,7 @@ const {
 } = require("./gameUtils");
 
 // Game constants that are used by these functions
-const GROUND_LEVEL = 278;
+const GROUND_LEVEL = 290;
 const HITBOX_DISTANCE_VALUE = Math.round(77 * 0.96);
 const SLAP_HITBOX_DISTANCE_VALUE = Math.round(155 * 0.96);
 
@@ -599,15 +599,14 @@ function executeChargedAttack(player, chargePercentage, rooms) {
   if (currentRoom) {
     const opponent = currentRoom.players.find((p) => p.id !== player.id);
 
-    // Only auto-correct if opponent exists and is NOT dodging
-    // If opponent is dodging, we want to preserve the original facing direction
-    if (opponent && !opponent.isDodging) {
-      // Auto-correct facing direction to face the opponent
+    // Only auto-correct if opponent exists, is NOT dodging, and hasn't just dodged through us
+    // If opponent is dodging or just crossed through, preserve the original facing direction
+    // so the charged attack continues in its committed direction and whiffs naturally
+    if (opponent && !opponent.isDodging && !opponent.justCrossedThrough) {
       const shouldFaceRight = player.x < opponent.x;
       const correctedFacing = shouldFaceRight ? -1 : 1;
 
       player.facing = correctedFacing;
-    } else if (opponent && opponent.isDodging) {
     }
   }
 
@@ -944,18 +943,30 @@ function adjustPlayerPositions(player1, player2, delta) {
       newPlayer1X = player1.x + separationDirection * separationPerPlayer;
       newPlayer2X = player2.x + -separationDirection * separationPerPlayer;
     } else {
-      // Normal separation — firm push to maintain solid body feel
+      // Normal collision — block movement without pushing the other player
       separationSpeed = Math.min(overlap * 0.7, 16);
-
-      // Calculate separation direction
       const separationDirection = player1.x < player2.x ? -1 : 1;
 
-      // Apply smooth separation - each player moves by half
-      const separationPerPlayer = separationSpeed / 2;
+      const p1MovingToward =
+        (player1.x < player2.x && player1.movementVelocity > 0) ||
+        (player1.x > player2.x && player1.movementVelocity < 0);
+      const p2MovingToward =
+        (player2.x < player1.x && player2.movementVelocity > 0) ||
+        (player2.x > player1.x && player2.movementVelocity < 0);
 
-      // Calculate new positions
-      newPlayer1X = player1.x + separationDirection * separationPerPlayer;
-      newPlayer2X = player2.x + -separationDirection * separationPerPlayer;
+      if (p1MovingToward && !p2MovingToward) {
+        newPlayer1X = player1.x + separationDirection * separationSpeed;
+        newPlayer2X = player2.x;
+        player1.movementVelocity = 0;
+      } else if (p2MovingToward && !p1MovingToward) {
+        newPlayer1X = player1.x;
+        newPlayer2X = player2.x + -separationDirection * separationSpeed;
+        player2.movementVelocity = 0;
+      } else {
+        const separationPerPlayer = separationSpeed / 2;
+        newPlayer1X = player1.x + separationDirection * separationPerPlayer;
+        newPlayer2X = player2.x + -separationDirection * separationPerPlayer;
+      }
     }
 
     // Apply strong resistance to movement velocity when players are pushing into each other

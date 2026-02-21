@@ -2,7 +2,7 @@ import styled from "styled-components";
 import PropTypes from "prop-types";
 import { isOutsideDohyo } from "../constants";
 
-const GROUND_LEVEL = 279; // Match the server's GROUND_LEVEL
+const GROUND_LEVEL = 290; // Match the server's GROUND_LEVEL
 
 // Ring mask so only the ring band is visible (used when background is a gradient)
 const RING_MASK =

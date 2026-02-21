@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useCallback } from "react";
+import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import styled from "styled-components";
 import crowdBoyIdle1 from "../assets/crowd-boy-idle-1.png";
 import crowdBoyIdle2 from "../assets/crowd-boy-idle-2.png";
@@ -35,6 +35,11 @@ import crowdSalarymanSideIdle2 from "../assets/crowd-salaryman-side-idle-2.png";
 import crowdSalarymanSideCheering2 from "../assets/crowd-salaryman-side-cheering-2.png";
 import CrowdEditor from "./CrowdEditor";
 import CROWD_POSITIONS from "./crowdPositionsData";
+import winnerSound from "../sounds/winner-sound.wav";
+import { playBuffer, preloadSound } from "../utils/audioEngine";
+import { getGlobalVolume } from "./Settings";
+
+preloadSound(winnerSound);
 
 // Preload crowd images to prevent jank during first render
 const preloadImage = (src) => {
@@ -95,7 +100,7 @@ const CrowdContainer = styled.div`
   pointer-events: none;
   z-index: 0; /* Between game map background (-1) and dohyo overlay (1) */
   contain: layout style paint; /* Performance: isolate rendering from rest of page */
-  filter: saturate(0.9) brightness(0.93) contrast(0.98);
+  filter: saturate(0.82) brightness(0.78) contrast(0.95);
   
   /* Simple shadow overlay - keeps background from competing with fighters */
   &::after {
@@ -121,7 +126,7 @@ const ForegroundCrowdContainer = styled.div`
   pointer-events: none;
   z-index: 2; /* Above dohyo overlay (1) */
   contain: layout style paint;
-  filter: saturate(0.95) brightness(0.96) contrast(1);
+  filter: saturate(0.88) brightness(0.82) contrast(0.98);
 `;
 
 // Subtle idle sway + breathing animation - pivots from bottom so upper body moves
@@ -156,6 +161,7 @@ const idleSway = `
       transform: translateX(-50%) scaleX(-1) scaleY(1.012) rotate(0.4deg);
     }
   }
+
 `;
 
 // Inject keyframes once
@@ -172,9 +178,9 @@ const CrowdMember = styled.img.attrs((props) => ({
     transform: `translateX(-50%) ${props.$flip ? "scaleX(-1)" : ""}`,
     opacity: props.$opacity ?? 1,
     zIndex: props.$customZIndex !== undefined ? props.$customZIndex : Math.floor(100 - props.$y),
-    filter: props.$applyDarkFilter
+    filter: `${props.$applyDarkFilter
       ? "brightness(0.58) saturate(0.75) contrast(0.95)"
-      : "saturate(1.02) brightness(0.98)",
+      : "saturate(1.02) brightness(0.98)"}${props.$blur > 0 ? ` blur(${props.$blur}px)` : ""}`,
     animation: props.$shouldAnimate
       ? `${props.$flip ? "crowdSwayFlipped" : "crowdSway"} ${2.5 + (props.$animOffset * 0.8)}s ease-in-out infinite`
       : "none",
@@ -198,6 +204,15 @@ const SIZE_MAX = 8.0;
 const computeOpacityFromSize = (size) => {
   const t = Math.min(1, Math.max(0, (size - SIZE_MIN) / (SIZE_MAX - SIZE_MIN)));
   return Math.round((OPACITY_MIN + t * (OPACITY_MAX - OPACITY_MIN)) * 100) / 100;
+};
+
+const BLUR_Y_START = 50;
+const BLUR_Y_MAX = 90;
+const BLUR_PX_MAX = 2.2;
+const computeBlurFromY = (y) => {
+  if (y <= BLUR_Y_START) return 0;
+  const t = Math.min(1, (y - BLUR_Y_START) / (BLUR_Y_MAX - BLUR_Y_START));
+  return Math.round(BLUR_PX_MAX * t * t * 100) / 100;
 };
 
 // Crowd member types - easily expandable for future additions
@@ -393,7 +408,17 @@ const randomizeCrowdTypes = (positions) => {
   });
 };
 
-const CrowdLayer = ({ isCheering = false }) => {
+const CHEER_DURATION_MS = 3500;
+const CHEER_VOLUME = { light: 0.003, medium: 0.006, heavy: 0.01 };
+const CHEER_PITCH = { light: 1.0, medium: 1.0, heavy: 1.12 };
+const CHEER_COOLDOWN_MS = 2000;
+const CHEER_STAGGER_MS = { light: 500, medium: 400, heavy: 250 };
+const CHEER_WINDDOWN_MS = 1000;
+const CHEER_TICK_MS = 100;
+const CHEER_TOGGLE_MIN = 200;
+const CHEER_TOGGLE_MAX = 600;
+
+const CrowdLayer = ({ crowdEvent = null }) => {
   const [crowdPositions, setCrowdPositions] = useState(
     () => randomizeCrowdTypes(loadCrowdPositions())
   );
@@ -419,84 +444,95 @@ const CrowdLayer = ({ isCheering = false }) => {
     setCrowdPositions(randomizeCrowdTypes(loadCrowdPositions()));
   }, []);
 
-  const [cheeringTypes, setCheeringTypes] = useState(new Set());
+  const [isCheeringActive, setIsCheeringActive] = useState(false);
+  const [, setCheerTick] = useState(0);
+
+  const lastCheerTimeRef = useRef(0);
+  const cheerStartRef = useRef(0);
+  const memberParamsRef = useRef(new Map());
+  const cheerTickIntervalRef = useRef(null);
+  const cheerTimeoutRef = useRef(null);
+  const crowdPositionsRef = useRef(crowdPositions);
+  crowdPositionsRef.current = crowdPositions;
 
   useEffect(() => {
-    if (!isCheering) {
-      // Clear all cheering states when not cheering
-      setCheeringTypes(new Set());
+    return () => {
+      clearInterval(cheerTickIntervalRef.current);
+      clearTimeout(cheerTimeoutRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!crowdEvent) return;
+
+    if (crowdEvent.type === "reset") {
+      setIsCheeringActive(false);
+      clearInterval(cheerTickIntervalRef.current);
+      clearTimeout(cheerTimeoutRef.current);
       return;
     }
 
-    // Immediately start all types in cheering pose for instant feedback
-    setCheeringTypes(new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]));
+    if (crowdEvent.type === "cheer") {
+      const now = Date.now();
+      if (crowdEvent.intensity !== "heavy" && now - lastCheerTimeRef.current < CHEER_COOLDOWN_MS) return;
+      lastCheerTimeRef.current = now;
 
-    // Different intervals for each crowd type (in milliseconds)
-    // Each type bounces at a different rate for visual variety
-    const intervals = [
-      300,  // crowdBoyIdle1 - fastest, most energetic
-      450,  // crowdBoyIdle2
-      350,  // crowdBoyIdle3
-      500,  // crowdGirlIdle1
-      550,  // crowdGeishaIdle1 - slower, more elegant
-      400,  // crowdSalarymanIdle1
-      475,  // crowdSalarymanIdle2
-      525,  // crowdOldmanIdle1 - slower, older person
-      0,    // crowdOyakata - no animation (same idle and cheering sprite)
-      0,    // crowdOyakataFront - no animation (same idle and cheering sprite)
-      0,    // crowdOyakataBack - no animation (same idle and cheering sprite)
-      425,  // crowdSideIdle1 - side member with cheering animation
-      450,  // crowdSideIdle2 - side member with cheering animation
-      375,  // crowdBoySideIdle1
-      550,  // crowdGeishaSideIdle1
-      475,  // crowdGirlSideIdle1
-      400,  // crowdSalarymanSideIdle1
-      425,  // crowdSalarymanSideIdle2
-    ];
+      const volume = CHEER_VOLUME[crowdEvent.intensity] || 0.003;
 
-    const timers = intervals.map((interval, typeIndex) => {
-      return setInterval(() => {
-        setCheeringTypes((prev) => {
-          const next = new Set(prev);
-          if (next.has(typeIndex)) {
-            next.delete(typeIndex); // Switch to idle
-          } else {
-            next.add(typeIndex); // Switch to cheering
-          }
-          return next;
+      clearInterval(cheerTickIntervalRef.current);
+      clearTimeout(cheerTimeoutRef.current);
+
+      const stagger = CHEER_STAGGER_MS[crowdEvent.intensity] || 500;
+      const windDownStart = CHEER_DURATION_MS - CHEER_WINDDOWN_MS;
+
+      const params = new Map();
+      crowdPositionsRef.current.forEach(member => {
+        const crowdType = CROWD_TYPES[member.typeIndex];
+        if (crowdType.idle === crowdType.cheering) return;
+        params.set(member.id, {
+          startDelay: Math.random() * stagger,
+          togglePeriod: CHEER_TOGGLE_MIN + Math.random() * (CHEER_TOGGLE_MAX - CHEER_TOGGLE_MIN),
+          windDownAt: windDownStart + Math.random() * CHEER_WINDDOWN_MS,
         });
-      }, interval);
-    });
+      });
+      memberParamsRef.current = params;
+      cheerStartRef.current = performance.now();
 
-    // Stop cheering animation after 3.5 seconds
-    const stopCheeringTimeout = setTimeout(() => {
-      setCheeringTypes(new Set()); // Clear all cheering states
-      timers.forEach((timer) => clearInterval(timer)); // Stop all animation intervals
-    }, 3500);
+      setIsCheeringActive(true);
+      setCheerTick(0);
 
-    // Cleanup all intervals and timeout when component unmounts or isCheering changes
-    return () => {
-      timers.forEach((timer) => clearInterval(timer));
-      clearTimeout(stopCheeringTimeout);
-    };
-  }, [isCheering]);
+      cheerTickIntervalRef.current = setInterval(() => {
+        setCheerTick(t => t + 1);
+      }, CHEER_TICK_MS);
 
-  // Helper function to render crowd members
-  const renderCrowdMembers = (members) => {
+      cheerTimeoutRef.current = setTimeout(() => {
+        setIsCheeringActive(false);
+        clearInterval(cheerTickIntervalRef.current);
+      }, CHEER_DURATION_MS);
+
+      const pitch = CHEER_PITCH[crowdEvent.intensity] || 1.0;
+      playBuffer(winnerSound, volume * getGlobalVolume(), CHEER_DURATION_MS, pitch);
+    }
+  }, [crowdEvent]);
+
+  const renderCrowdMembers = (members, isForeground = false) => {
+    const elapsed = isCheeringActive ? performance.now() - cheerStartRef.current : 0;
+
     return members.map((member) => {
       const crowdType = CROWD_TYPES[member.typeIndex];
-      
-      // Determine image source based on:
-      // 1. If not in cheering mode at all, always use idle
-      // 2. If in cheering mode, check if this type is currently in "cheering" pose
-      const isTypeCurrentlyCheering = cheeringTypes.has(member.typeIndex);
-      const src = isCheering && isTypeCurrentlyCheering ? crowdType.cheering : crowdType.idle;
-      
-      // Generate a pseudo-random offset based on member id for animation staggering
-      const animOffset = ((member.id * 7) % 10) / 10; // 0.0 to 0.9
 
-      // Only animate front rows (y < 55) - back rows are too small to notice
+      let src = crowdType.idle;
+      if (isCheeringActive) {
+        const params = memberParamsRef.current.get(member.id);
+        if (params && elapsed >= params.startDelay && elapsed <= params.windDownAt) {
+          const memberElapsed = elapsed - params.startDelay;
+          const cyclePos = Math.floor(memberElapsed / params.togglePeriod);
+          if (cyclePos % 2 === 0) src = crowdType.cheering;
+        }
+      }
+      const animOffset = ((member.id * 7) % 10) / 10;
       const shouldAnimate = member.y < 55;
+      const blur = isForeground ? 0 : computeBlurFromY(member.y);
 
       return (
         <CrowdMember
@@ -507,6 +543,7 @@ const CrowdLayer = ({ isCheering = false }) => {
           $size={member.size}
           $flip={member.flip}
           $opacity={computeOpacityFromSize(member.size)}
+          $blur={blur}
           $animOffset={animOffset}
           $shouldAnimate={shouldAnimate}
           $customZIndex={member.customZIndex}
@@ -526,7 +563,7 @@ const CrowdLayer = ({ isCheering = false }) => {
       </CrowdContainer>
       {foregroundCrowd.length > 0 && (
         <ForegroundCrowdContainer>
-          {renderCrowdMembers(foregroundCrowd)}
+          {renderCrowdMembers(foregroundCrowd, true)}
         </ForegroundCrowdContainer>
       )}
       {editorMode && (
