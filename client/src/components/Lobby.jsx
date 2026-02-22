@@ -1398,7 +1398,7 @@ const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, onLeaveD
   // Body color options (Club Penguin-inspired warm palette, no special patterns)
   const bodyColorOptions = [
     { name: "Default", hex: null, gradient: "linear-gradient(135deg, #888 0%, #aaa 50%, #888 100%)" },
-    { name: "Black", hex: "#333333" },
+    { name: "Black", hex: "#4d4d4d" },
     { name: "Blue", hex: "#2656A8" },
     { name: "Purple", hex: "#9932CC" },
     { name: "Green", hex: "#32CD32" },

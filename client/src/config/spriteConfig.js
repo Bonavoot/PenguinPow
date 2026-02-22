@@ -244,7 +244,7 @@ export const SPRITE_BASE_COLOR = "#4169E1";
  */
 export const BODY_COLOR_PRESETS = {
   default:   { hex: null,      name: "Default" },
-  black:     { hex: "#333333", name: "Black" },
+  black:     { hex: "#4d4d4d", name: "Black" },
   blue:      { hex: "#2656A8", name: "Blue" },
   purple:    { hex: "#9932CC", name: "Purple" },
   green:     { hex: "#32CD32", name: "Green" },

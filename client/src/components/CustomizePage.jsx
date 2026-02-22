@@ -561,7 +561,7 @@ const SPECIAL_COLOR_OPTIONS = [
 
 const BODY_COLOR_OPTIONS = [
   { name: "Default", hex: null },
-  { name: "Black", hex: "#333333" },
+  { name: "Black", hex: "#4d4d4d" },
   { name: "Blue", hex: "#2656A8" },
   { name: "Purple", hex: "#9932CC" },
   { name: "Green", hex: "#32CD32" },

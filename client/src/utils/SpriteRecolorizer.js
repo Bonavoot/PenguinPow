@@ -152,7 +152,7 @@ if (typeof window !== 'undefined') {
 /**
  * Process image data using Web Worker (off main thread)
  */
-function processInWorker(imageData, width, height, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed = false, chargeTintWhite = false, blubberTintPurple = false, bodyColorRange = null, bodyTargetHue = 0, bodyTargetSat = 0, bodyTargetLight = 50, bodyReferenceLightness = 49) {
+function processInWorker(imageData, width, height, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed = false, chargeTintWhite = false, blubberTintPurple = false, bodyColorRange = null, bodyTargetHue = 0, bodyTargetSat = 0, bodyTargetLight = 50, bodyReferenceLightness = 49, skipMawashiRecolor = false) {
   return new Promise((resolve, reject) => {
     if (!workerReady || !recolorWorker) {
       reject(new Error('Worker not ready'));
@@ -186,6 +186,7 @@ function processInWorker(imageData, width, height, sourceColorRange, targetHue, 
         bodyTargetSat,
         bodyTargetLight,
         bodyReferenceLightness,
+        skipMawashiRecolor,
       }
     }, [buffer]);
   });
@@ -233,8 +234,8 @@ export const GREY_BODY_RANGES = {
   maxHue: 360,        // Hue is irrelevant for desaturated greys
   minSaturation: 0,
   maxSaturation: 15,  // Only desaturated pixels — mawashi blues (40+) are safe
-  minLightness: 20,   // Exclude black outlines (~0-15% lightness)
-  maxLightness: 78,   // Exclude white highlights / eyes
+  minLightness: 25,   // Exclude black outlines / dark detail lines
+  maxLightness: 72,   // Exclude white highlights / eyes / bright hair lines
 };
 
 /**
@@ -483,6 +484,10 @@ export async function recolorImage(imageSrc, sourceColorRange, targetColorHex, o
           bodyRefLight = (bodyColorRange.minLightness + bodyColorRange.maxLightness) / 2;
         }
 
+        // When mawashi target matches the sprite base color, skip mawashi recoloring
+        // to avoid HSL round-trip artifacts that shift the belt shade
+        const skipMawashiRecolor = !specialMode && !hitTintRed && targetColorHex === SPRITE_BASE_COLOR;
+
         let processedData;
         
         // Try to use Web Worker for processing (off main thread)
@@ -505,7 +510,8 @@ export async function recolorImage(imageSrc, sourceColorRange, targetColorHex, o
               bodyTargetHue,
               bodyTargetSat,
               bodyTargetLight,
-              bodyRefLight
+              bodyRefLight,
+              skipMawashiRecolor
             );
             
             // Create ImageData from returned buffer
@@ -516,10 +522,10 @@ export async function recolorImage(imageSrc, sourceColorRange, targetColorHex, o
             );
           } catch (workerError) {
             console.warn('Worker processing failed, falling back to main thread:', workerError);
-            processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, canvas.width, canvas.height, chargeTintWhite, blubberTintPurple, bodyColorRange, bodyTargetHue, bodyTargetSat, bodyTargetLight, bodyRefLight);
+            processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, canvas.width, canvas.height, chargeTintWhite, blubberTintPurple, bodyColorRange, bodyTargetHue, bodyTargetSat, bodyTargetLight, bodyRefLight, skipMawashiRecolor);
           }
         } else {
-          processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, canvas.width, canvas.height, chargeTintWhite, blubberTintPurple, bodyColorRange, bodyTargetHue, bodyTargetSat, bodyTargetLight, bodyRefLight);
+          processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, canvas.width, canvas.height, chargeTintWhite, blubberTintPurple, bodyColorRange, bodyTargetHue, bodyTargetSat, bodyTargetLight, bodyRefLight, skipMawashiRecolor);
         }
 
         // Put the modified data back
@@ -663,7 +669,7 @@ function getSpecialPixelColor(specialMode, x, y, width, height) {
  *   Pass 2 – recolor, using coordinates RELATIVE to the centroid so the
  *            pattern stays locked to the body during animation.
  */
-function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, width, height, chargeTintWhite = false, blubberTintPurple = false, bodyColorRange = null, bodyTargetHue = 0, bodyTargetSat = 0, bodyTargetLight = 50, bodyReferenceLightness = 49) {
+function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, width, height, chargeTintWhite = false, blubberTintPurple = false, bodyColorRange = null, bodyTargetHue = 0, bodyTargetSat = 0, bodyTargetLight = 50, bodyReferenceLightness = 49, skipMawashiRecolor = false) {
   const data = imageData.data;
 
   // --- Pass 1: centroid of matching pixels (only needed for special modes) ---
@@ -696,6 +702,19 @@ function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targe
     }
   }
 
+  // --- Pre-compute edge flags for body neighbor filtering (from ORIGINAL data) ---
+  const pixelCount = data.length / 4;
+  let edgeFlags = null;
+  if (bodyColorRange) {
+    edgeFlags = new Uint8Array(pixelCount);
+    for (let p = 0; p < pixelCount; p++) {
+      const pi = p * 4;
+      if (data[pi + 3] === 0) { edgeFlags[p] = 1; continue; }
+      const nl = rgbToHsl(data[pi], data[pi + 1], data[pi + 2]).l;
+      if (nl < 15 || nl > 85) edgeFlags[p] = 1;
+    }
+  }
+
   // --- Pass 2: recolor ---
   const HIT_RED_RGB = hslToRgb(0, 58, 55);
   const HIT_BLEND = 0.34;
@@ -716,24 +735,26 @@ function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targe
 
     if (isColorInHslRange(pixelHsl.h, pixelHsl.s, pixelHsl.l, sourceColorRange)) {
       // --- Mawashi / headband ---
-      let hue = targetHue;
-      let sat = targetSat;
-      let light = targetLight;
+      if (!skipMawashiRecolor) {
+        let hue = targetHue;
+        let sat = targetSat;
+        let light = targetLight;
 
-      if (specialMode) {
-        const idx = i / 4;
-        const relX = (idx % width) - anchorX;
-        const relY = ((idx / width) | 0) - anchorY;
-        const sc = getSpecialPixelColor(specialMode, relX, relY, spanW, spanH);
-        hue = sc.h;
-        sat = sc.s;
-        light = sc.l;
+        if (specialMode) {
+          const idx = i / 4;
+          const relX = (idx % width) - anchorX;
+          const relY = ((idx / width) | 0) - anchorY;
+          const sc = getSpecialPixelColor(specialMode, relX, relY, spanW, spanH);
+          hue = sc.h;
+          sat = sc.s;
+          light = sc.l;
+        }
+
+        const newColor = recolorPixel(r, g, b, hue, sat, light, referenceLightness);
+        data[i] = newColor.r;
+        data[i + 1] = newColor.g;
+        data[i + 2] = newColor.b;
       }
-
-      const newColor = recolorPixel(r, g, b, hue, sat, light, referenceLightness);
-      data[i] = newColor.r;
-      data[i + 1] = newColor.g;
-      data[i + 2] = newColor.b;
 
       if (chargeTintWhite) {
         data[i] = Math.round((1 - CHARGE_BLEND) * data[i] + CHARGE_BLEND * CHARGE_WHITE_RGB.r);
@@ -741,13 +762,38 @@ function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targe
         data[i + 2] = Math.round((1 - CHARGE_BLEND) * data[i + 2] + CHARGE_BLEND * CHARGE_WHITE_RGB.b);
       }
     } else if (bodyColorRange && isColorInHslRange(pixelHsl.h, pixelHsl.s, pixelHsl.l, bodyColorRange)) {
-      // --- Body (grey plumage) ---
+      // --- Body (grey plumage) — skip thin lines (outlines, eyes, hair details) ---
+      const pidx = i / 4;
+      const px = pidx % width;
+      const py = (pidx / width) | 0;
+      let edgeNeighbors = 0;
+      if (px === 0 || edgeFlags[pidx - 1]) edgeNeighbors++;
+      if (px === width - 1 || edgeFlags[pidx + 1]) edgeNeighbors++;
+      if (py === 0 || edgeFlags[pidx - width]) edgeNeighbors++;
+      if (py === height - 1 || edgeFlags[pidx + width]) edgeNeighbors++;
+
+      if (edgeNeighbors >= 2) {
+        if (hitTintRed) {
+          data[i] = Math.round((1 - HIT_BLEND) * r + HIT_BLEND * HIT_RED_RGB.r);
+          data[i + 1] = Math.round((1 - HIT_BLEND) * g + HIT_BLEND * HIT_RED_RGB.g);
+          data[i + 2] = Math.round((1 - HIT_BLEND) * b + HIT_BLEND * HIT_RED_RGB.b);
+        } else if (chargeTintWhite) {
+          data[i] = Math.round((1 - CHARGE_BLEND) * r + CHARGE_BLEND * CHARGE_WHITE_RGB.r);
+          data[i + 1] = Math.round((1 - CHARGE_BLEND) * g + CHARGE_BLEND * CHARGE_WHITE_RGB.g);
+          data[i + 2] = Math.round((1 - CHARGE_BLEND) * b + CHARGE_BLEND * CHARGE_WHITE_RGB.b);
+        } else if (blubberTintPurple) {
+          data[i] = Math.round((1 - BLUBBER_BLEND) * r + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.r);
+          data[i + 1] = Math.round((1 - BLUBBER_BLEND) * g + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.g);
+          data[i + 2] = Math.round((1 - BLUBBER_BLEND) * b + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b);
+        }
+        continue;
+      }
+
       const newColor = recolorPixel(r, g, b, bodyTargetHue, bodyTargetSat, bodyTargetLight, bodyReferenceLightness);
       data[i] = newColor.r;
       data[i + 1] = newColor.g;
       data[i + 2] = newColor.b;
 
-      // Body pixels receive the same tints as other non-mawashi pixels
       if (hitTintRed) {
         data[i] = Math.round((1 - HIT_BLEND) * data[i] + HIT_BLEND * HIT_RED_RGB.r);
         data[i + 1] = Math.round((1 - HIT_BLEND) * data[i + 1] + HIT_BLEND * HIT_RED_RGB.g);
