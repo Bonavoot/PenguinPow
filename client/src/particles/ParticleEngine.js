@@ -527,8 +527,9 @@ const PRESETS = {
   },
 
   // Expanding ring for dodge landing. Biggest ring.
-  dodgeLand(engine, { x, y }) {
-    const footX = x;
+  dodgeLand(engine, { x, y, slideVelocity = 0 }) {
+    const slideOffset = slideVelocity * 28;
+    const footX = x + slideOffset;
     const footY = GAME_H - y - 12;
     const textures = [engine.textures.ring, engine.textures.ringAlt, engine.textures.ringThick];
     for (let i = 0; i < 3; i++) {

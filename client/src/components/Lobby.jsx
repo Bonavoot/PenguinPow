@@ -14,6 +14,7 @@ import { usePlayerColors } from "../context/PlayerColorContext";
 import {
   recolorImage,
   BLUE_COLOR_RANGES,
+  GREY_BODY_RANGES,
   SPRITE_BASE_COLOR,
 } from "../utils/SpriteRecolorizer";
 // Base sprite for recoloring preview (UNIFIED: all sprites are blue)
@@ -152,7 +153,7 @@ const LobbyContainer = styled.div`
   flex-direction: column;
   width: 100vw;
   height: 100vh;
-  min-height: 500px;
+  min-height: 400px;
   background: linear-gradient(180deg,
     #0a0505 0%,
     #150a08 30%,
@@ -238,9 +239,9 @@ const HangingRope = styled.div`
 
 const Lantern = styled.div`
   position: absolute;
-  top: clamp(28px, 4vh, 45px);
-  width: clamp(28px, 4vw, 45px);
-  height: clamp(42px, 6vh, 70px);
+  top: clamp(22px, 3.5vh, 45px);
+  width: clamp(22px, 3.2vw, 45px);
+  height: clamp(32px, 5vh, 70px);
   background: linear-gradient(180deg,
     #cc3300 0%,
     #aa2200 50%,
@@ -371,8 +372,8 @@ const Header = styled.header`
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: clamp(90px, 14vh, 140px) clamp(20px, 3vw, 40px) clamp(4px, 1vh, 10px);
-  margin-bottom: clamp(-20px, -3vh, -30px);
+  padding: clamp(68px, 12vh, 130px) clamp(16px, 2.5vw, 40px) clamp(2px, 0.5vh, 10px);
+  margin-bottom: clamp(-8px, -1vh, -16px);
   position: relative;
   z-index: 10;
   flex-shrink: 0;
@@ -424,7 +425,7 @@ const BannerBody = styled.div`
   border: 3px solid #8b7355;
   border-top: none;
   border-radius: 0 0 clamp(6px, 1vw, 12px) clamp(6px, 1vw, 12px);
-  padding: clamp(8px, 1.5vh, 16px) clamp(18px, 3vw, 40px);
+  padding: clamp(5px, 1vh, 16px) clamp(12px, 2.5vw, 40px);
   box-shadow: 
     0 10px 40px rgba(0,0,0,0.6),
     inset 0 0 30px rgba(0,0,0,0.4);
@@ -508,7 +509,7 @@ const ArenaSection = styled.main`
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: clamp(4px, 1vh, 12px) clamp(8px, 1vw, 16px);
+  padding: clamp(4px, 1.5vh, 24px) clamp(16px, 3vw, 60px);
   position: relative;
   z-index: 2;
   min-height: 0;
@@ -519,7 +520,7 @@ const ArenaLayout = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: clamp(8px, 1.5vw, 20px);
+  gap: clamp(16px, 4vw, 60px);
   width: 100%;
   max-width: 1400px;
   height: 100%;
@@ -528,9 +529,9 @@ const ArenaLayout = styled.div`
 const DohyoContainer = styled.div`
   position: relative;
   flex: 1;
-  max-width: 1000px;
+  max-width: 1100px;
   height: 100%;
-  min-height: clamp(200px, 35vh, 400px);
+  min-height: 0;
 `;
 
 // The circular dohyo ring
@@ -539,8 +540,8 @@ const DohyoRing = styled.div`
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: clamp(140px, 22vw, 280px);
-  height: clamp(140px, 22vw, 280px);
+  width: clamp(60px, 10vw, 180px);
+  height: clamp(60px, 10vw, 180px);
   border-radius: 50%;
   background: radial-gradient(
     circle at center,
@@ -588,7 +589,7 @@ const VersusBadge = styled.div`
   top: 50%;
   transform: translate(-50%, -50%);
   font-family: "Bungee", cursive;
-  font-size: clamp(1.8rem, 4.5vw, 3.5rem);
+  font-size: clamp(0.9rem, 2.2vw, 2.2rem);
   color: #d4af37;
   z-index: 5;
   animation: ${versusGlow} 3s ease-in-out infinite;
@@ -602,8 +603,9 @@ const VersusBadge = styled.div`
 
 const PlayersContainer = styled.div`
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
+  gap: clamp(60px, 20vw, 360px);
   width: 100%;
   height: 100%;
   position: relative;
@@ -618,7 +620,7 @@ const PlayerBannerWrapper = styled.div`
 `;
 
 const PlayerBanner = styled.div`
-  width: clamp(160px, 22vw, 280px);
+  width: clamp(170px, 24vw, 340px);
   display: flex;
   flex-direction: column;
   background: linear-gradient(180deg,
@@ -681,7 +683,7 @@ const PlayerHeader = styled.div`
     rgba(45, 21, 16, 0.98) 0%,
     rgba(26, 10, 8, 0.95) 100%
   );
-  padding: clamp(10px, 1.5vh, 18px) clamp(12px, 1.8vw, 22px);
+  padding: clamp(6px, 1.2vh, 18px) clamp(8px, 1.4vw, 22px);
   border-bottom: 2px solid rgba(139, 115, 85, 0.3);
   position: relative;
   z-index: 3;
@@ -691,7 +693,7 @@ const PlayerHeaderTop = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: clamp(4px, 0.7vh, 8px);
+  margin-bottom: clamp(2px, 0.4vh, 8px);
 `;
 
 const PlayerStatus = styled.div`
@@ -743,13 +745,13 @@ const PlayerName = styled.div`
 
 const PlayerAvatarArea = styled.div`
   box-sizing: border-box;
-  height: clamp(140px, 28vh, 280px);
+  height: clamp(120px, 30vh, 360px);
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
   overflow: hidden;
-  padding: clamp(8px, 1.2vh, 16px);
+  padding: clamp(4px, 0.8vh, 16px);
   
   /* Flip for left player */
   ${props => props.$side === 'left' && css`
@@ -809,7 +811,7 @@ const ControlsFooter = styled.footer`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: clamp(10px, 1.8vh, 20px) clamp(16px, 3vw, 40px);
+  padding: clamp(6px, 1.2vh, 20px) clamp(12px, 2.5vw, 40px);
   background: linear-gradient(180deg,
     rgba(0, 0, 0, 0.95) 0%,
     rgba(26, 10, 8, 0.98) 100%
@@ -823,7 +825,7 @@ const ControlsFooter = styled.footer`
 
 const ExitButton = styled.button`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.55rem, 0.95vw, 0.8rem);
+  font-size: clamp(0.5rem, 0.85vw, 0.8rem);
   background: linear-gradient(180deg,
     #4a3525 0%,
     #3d2817 50%,
@@ -831,15 +833,15 @@ const ExitButton = styled.button`
   );
   color: #e8dcc8;
   border: 2px solid #8b7355;
-  border-radius: clamp(6px, 1vw, 10px);
-  padding: clamp(8px, 1.4vh, 14px) clamp(14px, 2.2vw, 24px);
+  border-radius: clamp(5px, 0.8vw, 10px);
+  padding: clamp(6px, 1vh, 14px) clamp(10px, 1.8vw, 24px);
   cursor: pointer;
   transition: all 0.25s ease;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   display: flex;
   align-items: center;
-  gap: clamp(6px, 1vw, 12px);
+  gap: clamp(4px, 0.8vw, 12px);
   box-shadow: 
     0 4px 15px rgba(0,0,0,0.4),
     inset 0 1px 0 rgba(255,255,255,0.05);
@@ -874,13 +876,13 @@ const ReadySection = styled.div`
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: clamp(12px, 2vw, 24px);
+  gap: clamp(8px, 1.5vw, 24px);
 `;
 
 const ReadyButton = styled.button`
   font-family: "Outfit", sans-serif;
   font-weight: 700;
-  font-size: clamp(0.75rem, 1.3vw, 1.1rem);
+  font-size: clamp(0.65rem, 1.1vw, 1.1rem);
   background: linear-gradient(180deg,
     #5a8a3a 0%,
     #4a7a2a 50%,
@@ -888,8 +890,8 @@ const ReadyButton = styled.button`
   );
   color: #e8f0e0;
   border: 3px solid #6aa040;
-  border-radius: clamp(6px, 1vw, 10px);
-  padding: clamp(10px, 1.5vh, 18px) clamp(24px, 3vw, 40px);
+  border-radius: clamp(5px, 0.8vw, 10px);
+  padding: clamp(7px, 1.2vh, 18px) clamp(16px, 2.5vw, 40px);
   cursor: pointer;
   transition: all 0.25s ease;
   text-transform: uppercase;
@@ -949,13 +951,13 @@ const CancelButton = styled(ReadyButton)`
 
 const ReadyCount = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.65rem, 1.1vw, 0.9rem);
+  font-size: clamp(0.55rem, 0.95vw, 0.9rem);
   color: ${props => props.$ready ? '#4ade80' : '#8b7355'};
   background: linear-gradient(180deg,
     #1a0a08 0%,
     #0f0505 100%
   );
-  padding: clamp(8px, 1.2vh, 14px) clamp(16px, 2vw, 24px);
+  padding: clamp(5px, 1vh, 14px) clamp(10px, 1.5vw, 24px);
   border: 2px solid ${props => props.$ready ? '#4ade80' : '#5c4033'};
   border-radius: clamp(6px, 1vw, 10px);
   text-align: center;
@@ -977,85 +979,219 @@ const ReadyLabel = styled.span`
   text-transform: uppercase;
 `;
 
-// Side Color Picker - positioned on the sides of the arena
-const SideColorPicker = styled.div`
-  display: flex;
+// ============================================
+// COLOR PICKER PANEL
+// ============================================
+
+const PickerPanel = styled.div`
+  display: ${props => props.$hidden ? 'none' : 'flex'};
   flex-direction: column;
   align-items: center;
-  gap: clamp(3px, 0.6vh, 10px);
-  padding: clamp(4px, 0.8vh, 14px) clamp(3px, 0.5vw, 12px);
+  gap: clamp(6px, 1vh, 14px);
+  padding: clamp(10px, 1.4vh, 20px) clamp(16px, 2vw, 32px);
   background: linear-gradient(180deg,
-    rgba(26, 10, 8, 0.95) 0%,
-    rgba(45, 21, 16, 0.9) 50%,
-    rgba(26, 10, 8, 0.95) 100%
+    rgba(26, 10, 8, 0.97) 0%,
+    rgba(35, 16, 12, 0.96) 40%,
+    rgba(26, 10, 8, 0.97) 100%
   );
-  border: clamp(1px, 0.15vw, 2px) solid ${props => props.$isOwn ? '#8b7355' : '#5c4033'};
-  border-radius: clamp(4px, 0.6vw, 12px);
-  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-  opacity: ${props => props.$hidden ? 0 : (props.$isOwn ? 1 : 0.6)};
-  visibility: ${props => props.$hidden ? 'hidden' : 'visible'};
-  pointer-events: ${props => props.$hidden ? 'none' : (props.$isOwn ? 'auto' : 'none')};
-  flex-shrink: 1;
-  min-width: 0;
+  border: 2px solid #8b7355;
+  border-radius: clamp(8px, 1vw, 14px);
+  box-shadow:
+    0 6px 30px rgba(0,0,0,0.7),
+    inset 0 1px 0 rgba(212, 175, 55, 0.08);
+  width: 88%;
+  max-width: 800px;
+  margin: clamp(4px, 1vh, 16px) auto clamp(4px, 0.8vh, 12px);
+  z-index: 10;
+  flex-shrink: 0;
+  position: relative;
+
+  /* Inner gold accent border */
+  &::before {
+    content: "";
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    right: 4px;
+    bottom: 4px;
+    border: 1px solid rgba(212, 175, 55, 0.12);
+    border-radius: clamp(5px, 0.7vw, 10px);
+    pointer-events: none;
+  }
 `;
 
-const ColorPickerTitle = styled.div`
+const PickerTitle = styled.div`
+  display: flex;
+  align-items: center;
+  gap: clamp(8px, 1vw, 16px);
+  width: 100%;
+  justify-content: center;
+
+  &::before, &::after {
+    content: "";
+    flex: 1;
+    max-width: 80px;
+    height: 1px;
+    background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(212, 175, 55, 0.4) 50%,
+      transparent 100%
+    );
+  }
+`;
+
+const PickerTitleText = styled.span`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.3rem, 0.55vw, 0.55rem);
-  color: ${props => props.$isOwn ? '#d4af37' : '#666'};
+  font-size: clamp(0.5rem, 0.8vw, 0.7rem);
+  color: rgba(212, 175, 55, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  text-shadow: 1px 1px 0 #000;
+  white-space: nowrap;
+`;
+
+const PickerControlRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(12px, 2vw, 28px);
+  width: 100%;
+`;
+
+const PickerTabGroup = styled.div`
+  display: flex;
+  align-items: center;
+  gap: clamp(2px, 0.3vw, 4px);
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: clamp(5px, 0.6vw, 8px);
+  padding: 2px;
+  border: 1px solid rgba(92, 64, 51, 0.5);
+`;
+
+const PickerTab = styled.button`
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.5rem, 0.75vw, 0.65rem);
+  padding: clamp(5px, 0.6vh, 8px) clamp(12px, 1.4vw, 20px);
+  border: none;
+  border-radius: clamp(4px, 0.5vw, 7px);
+  background: ${props => props.$active
+    ? 'linear-gradient(180deg, #5c4033 0%, #3d2817 100%)'
+    : 'transparent'};
+  color: ${props => props.$active ? '#d4af37' : '#665544'};
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  text-shadow: 1px 1px 0 #000;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  box-shadow: ${props => props.$active
+    ? '0 2px 8px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05)'
+    : 'none'};
+
+  &:hover {
+    color: ${props => props.$active ? '#d4af37' : '#998877'};
+    background: ${props => props.$active
+      ? 'linear-gradient(180deg, #5c4033 0%, #3d2817 100%)'
+      : 'rgba(92, 64, 51, 0.2)'};
+  }
+`;
+
+const PickerDivider = styled.div`
+  width: 1px;
+  height: clamp(18px, 2.5vh, 28px);
+  background: linear-gradient(180deg,
+    transparent 0%,
+    rgba(139, 115, 85, 0.4) 50%,
+    transparent 100%
+  );
+`;
+
+const SelectedColorInfo = styled.div`
+  display: flex;
+  align-items: center;
+  gap: clamp(6px, 0.8vw, 12px);
+`;
+
+const SelectedColorPreview = styled.div`
+  width: clamp(18px, 2vw, 26px);
+  height: clamp(18px, 2vw, 26px);
+  border-radius: 50%;
+  background: ${props => props.$gradient || props.$color || '#888'};
+  border: 2px solid rgba(212, 175, 55, 0.5);
+  box-shadow:
+    0 0 8px rgba(0,0,0,0.5),
+    inset 0 1px 2px rgba(255,255,255,0.15);
+  flex-shrink: 0;
+`;
+
+const SelectedColorName = styled.div`
+  font-family: "Outfit", sans-serif;
+  font-weight: 600;
+  font-size: clamp(0.55rem, 0.85vw, 0.75rem);
+  color: #e8dcc8;
   text-shadow: 1px 1px 0 #000;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
-  text-align: center;
-  line-height: 1.3;
+  letter-spacing: 0.15em;
 `;
 
-const ColorSwatchGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(2, min(2vw, 30px));
-  gap: min(0.25vw, 5px);
+const SwatchContainer = styled.div`
+  display: flex;
+  flex-wrap: nowrap;
   justify-content: center;
+  gap: clamp(3px, 0.4vw, 7px);
+  width: 100%;
+  padding: clamp(4px, 0.5vh, 8px) 0;
 `;
 
 const ColorSwatch = styled.button`
-  width: 100%;
-  aspect-ratio: 1;
-  border-radius: clamp(2px, 0.3vw, 4px);
-  border: clamp(1px, 0.15vw, 2px) solid ${props => props.$selected ? '#fff' : 'transparent'};
+  width: clamp(22px, 2.5vw, 32px);
+  height: clamp(22px, 2.5vw, 32px);
+  border-radius: 50%;
+  border: 2.5px solid ${props => props.$selected ? '#d4af37' : 'rgba(0,0,0,0.3)'};
   background: ${props => props.$gradient || props.$color};
-  cursor: ${props => props.$disabled ? 'not-allowed' : 'pointer'};
-  transition: transform 0.1s, border-color 0.1s;
-  box-shadow: ${props => props.$selected ? '0 0 8px rgba(255, 255, 255, 0.8)' : '0 2px 4px rgba(0,0,0,0.3)'};
-  opacity: ${props => props.$disabled ? 0.5 : 1};
+  cursor: ${props => props.$taken ? 'not-allowed' : 'pointer'};
+  transition: transform 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: ${props => props.$selected
+    ? '0 0 0 2px rgba(212, 175, 55, 0.3), 0 0 12px rgba(212, 175, 55, 0.25), 0 2px 6px rgba(0,0,0,0.5)'
+    : '0 2px 6px rgba(0,0,0,0.5), inset 0 1px 2px rgba(255,255,255,0.1)'};
+  position: relative;
+  flex-shrink: 0;
+
+  ${props => props.$taken && css`
+    opacity: 0.4;
+    &::after {
+      content: "✕";
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: clamp(10px, 1.2vw, 16px);
+      color: #ff4444;
+      text-shadow: 0 0 5px rgba(0,0,0,0.9);
+      border-radius: inherit;
+    }
+  `}
 
   &:hover {
-    transform: ${props => props.$disabled ? 'none' : 'scale(1.15)'};
-    border-color: ${props => props.$disabled ? 'transparent' : 'rgba(255, 255, 255, 0.5)'};
+    transform: ${props => props.$taken ? 'none' : 'scale(1.2)'};
+    border-color: ${props => props.$taken ? 'rgba(0,0,0,0.3)' : (props.$selected ? '#d4af37' : 'rgba(212, 175, 55, 0.5)')};
   }
 
   &:active {
-    transform: ${props => props.$disabled ? 'none' : 'scale(0.95)'};
+    transform: ${props => props.$taken ? 'none' : 'scale(0.92)'};
   }
 `;
 
-const YourColorLabel = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.3rem, 0.5vw, 0.5rem);
-  color: #4ade80;
-  text-shadow: 1px 1px 0 #000;
-  text-transform: uppercase;
-  text-align: center;
-`;
-
-// CPU difficulty selector (VS CPU lobby) — same total height as PlayerAvatarArea so cards match
 const DifficultyListContainer = styled.div`
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: clamp(8px, 1.4vh, 14px);
-  padding: clamp(6px, 1vh, 12px) clamp(8px, 1vw, 12px);
-  height: clamp(140px, 28vh, 280px);
+  gap: clamp(4px, 0.8vh, 12px);
+  padding: clamp(4px, 0.8vh, 12px) clamp(6px, 0.8vw, 12px);
+  height: clamp(120px, 30vh, 360px);
   min-height: 0;
 `;
 
@@ -1144,7 +1280,8 @@ const LoadingSpinner = styled.div`
 // ============================================
 
 const PreviewImage = styled.img`
-  height: clamp(130px, 26vh, 260px);
+  height: 90%;
+  max-height: clamp(100px, 28vh, 340px);
   width: auto;
   object-fit: contain;
   filter: drop-shadow(0 8px 20px rgba(0,0,0,0.6));
@@ -1153,7 +1290,7 @@ const PreviewImage = styled.img`
 /**
  * ColoredPlayerPreview - Shows a recolored penguin sprite based on selected color
  */
-function ColoredPlayerPreview({ color }) {
+function ColoredPlayerPreview({ color, bodyColor }) {
   const [imageSrc, setImageSrc] = useState(pumo);
   const mountedRef = useRef(true);
   
@@ -1163,14 +1300,21 @@ function ColoredPlayerPreview({ color }) {
   }, []);
   
   useEffect(() => {
-    // If color is the sprite base color (blue), no recoloring needed
-    if (!color || color === SPRITE_BASE_COLOR) {
+    const needsMawashiRecolor = color && color !== SPRITE_BASE_COLOR;
+    const needsBodyRecolor = !!bodyColor;
+
+    if (!needsMawashiRecolor && !needsBodyRecolor) {
       setImageSrc(pumo);
       return;
     }
     
-    // Recolor the blue sprite to the selected color
-    recolorImage(pumo, BLUE_COLOR_RANGES, color)
+    const options = {};
+    if (needsBodyRecolor) {
+      options.bodyColorRange = GREY_BODY_RANGES;
+      options.bodyColorHex = bodyColor;
+    }
+
+    recolorImage(pumo, BLUE_COLOR_RANGES, needsMawashiRecolor ? color : SPRITE_BASE_COLOR, options)
       .then((recolored) => {
         if (mountedRef.current) {
           setImageSrc(recolored);
@@ -1182,7 +1326,7 @@ function ColoredPlayerPreview({ color }) {
           setImageSrc(pumo);
         }
       });
-  }, [color]);
+  }, [color, bodyColor]);
   
   return <PreviewImage src={imageSrc} alt="Player Preview" />;
 }
@@ -1202,36 +1346,47 @@ const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, onLeaveD
   const { socket } = useContext(SocketContext);
   
   // Color customization - using global context so colors persist to game
-  const { player1Color, player2Color, setPlayer1Color, setPlayer2Color } = usePlayerColors();
+  const { player1Color, player2Color, setPlayer1Color, setPlayer2Color, player1BodyColor, player2BodyColor, setPlayer1BodyColor, setPlayer2BodyColor } = usePlayerColors();
+  
+  // Tab state for color picker: "body" (default first) or "mawashi"
+  const [colorTab, setColorTab] = useState("body");
   
   // Determine which player slot the current user is in (0 = East/Player1, 1 = West/Player2)
   const myPlayerIndex = players.findIndex(p => p.id === socket.id);
   const isPlayer1 = myPlayerIndex === 0;
   const isPlayer2 = myPlayerIndex === 1;
   
-  // Get colors from server player data (synced across all clients) — P1 light blue, P2 red defaults
-  const serverPlayer1Color = players[0]?.mawashiColor || "#5BC0DE";
-  const serverPlayer2Color = players[1]?.mawashiColor || "#DC143C";
+  // Get colors from server player data (synced across all clients)
+  const serverPlayer1Color = players[0]?.mawashiColor || SPRITE_BASE_COLOR;
+  const serverPlayer2Color = players[1]?.mawashiColor || "#D94848";
+  const serverPlayer1BodyColor = players[0]?.bodyColor || null;
+  const serverPlayer2BodyColor = players[1]?.bodyColor || null;
   
   // PvP: other player's color is not selectable (only when both players present and not CPU match)
   const isPvP = !isCPUMatch && players[0]?.fighter && players[1]?.fighter && !players[1]?.isCPU;
-  const otherPlayerColor = isPlayer1 ? serverPlayer2Color : serverPlayer1Color;
-  const isColorTakenByOther = (hex) => isPvP && otherPlayerColor && hex?.toLowerCase() === otherPlayerColor.toLowerCase();
+  const otherPlayerMawashi = isPlayer1 ? serverPlayer2Color : serverPlayer1Color;
+  const otherPlayerBody = isPlayer1 ? serverPlayer2BodyColor : serverPlayer1BodyColor;
+  const isColorTakenByOther = (hex) => isPvP && otherPlayerMawashi && hex?.toLowerCase() === otherPlayerMawashi.toLowerCase();
+  const isBodyColorTakenByOther = (hex) => isPvP && hex !== null && otherPlayerBody !== null && hex?.toLowerCase() === otherPlayerBody?.toLowerCase();
+
+  const myMawashiColor = isPlayer1 ? serverPlayer1Color : serverPlayer2Color;
+  const myBodyColor = isPlayer1 ? serverPlayer1BodyColor : serverPlayer2BodyColor;
   
-  // Color options (standard + special)
+  // Mawashi color options (default + Club Penguin-inspired warm palette + special patterns)
   const colorOptions = [
-    { name: "Black", hex: "#252525" },
-    { name: "Navy", hex: "#000080" },
-    { name: "Purple", hex: "#9932CC" },
-    { name: "Green", hex: "#32CD32" },
-    { name: "Hot Pink", hex: "#FF1493" },
-    { name: "Orange", hex: "#FF8C00" },
-    { name: "Pink", hex: "#FFB6C1" },
-    { name: "Gold", hex: "#FFD700" },
-    { name: "Brown", hex: "#5D3A1A" },
-    { name: "Silver", hex: "#A8A8A8" },
-    { name: "Light Blue", hex: "#5BC0DE" },
-    { name: "Maroon", hex: "#800000" },
+    { name: "Default", hex: SPRITE_BASE_COLOR },
+    { name: "Graphite", hex: "#525252" },
+    { name: "Cobalt", hex: "#3B5EB0" },
+    { name: "Orchid", hex: "#A85DBF" },
+    { name: "Emerald", hex: "#2E9E5A" },
+    { name: "Teal", hex: "#1A7A8A" },
+    { name: "Tangerine", hex: "#E8913A" },
+    { name: "Coral", hex: "#E87070" },
+    { name: "Gold", hex: "#D4A520" },
+    { name: "Caramel", hex: "#A07348" },
+    { name: "Pewter", hex: "#6E8495" },
+    { name: "Powder", hex: "#88C4D8" },
+    { name: "Scarlet", hex: "#D94848" },
     { name: "Rainbow", hex: "rainbow", gradient: "linear-gradient(to right, red, orange, yellow, green, cyan, blue, violet)" },
     { name: "Fire", hex: "fire", gradient: "linear-gradient(to bottom, #FFD700, #FF8C00, #DC143C, #8B0000)" },
     { name: "Vaporwave", hex: "vaporwave", gradient: "linear-gradient(to bottom, #FF69B4, #DA70D6, #9370DB, #00CED1)" },
@@ -1239,13 +1394,50 @@ const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, onLeaveD
     { name: "Galaxy", hex: "galaxy", gradient: "linear-gradient(135deg, #2E0854, #4B0082, #6A0DAD, #9932CC, #4B0082)" },
     { name: "Shiny Gold", hex: "gold", gradient: "linear-gradient(135deg, #B8860B, #FFD700, #FFF8DC, #FFD700, #B8860B)" },
   ];
+
+  // Body color options (Club Penguin-inspired warm palette, no special patterns)
+  const bodyColorOptions = [
+    { name: "Default", hex: null, gradient: "linear-gradient(135deg, #888 0%, #aaa 50%, #888 100%)" },
+    { name: "Black", hex: "#333333" },
+    { name: "Blue", hex: "#2656A8" },
+    { name: "Purple", hex: "#9932CC" },
+    { name: "Green", hex: "#32CD32" },
+    { name: "Aqua", hex: "#17A8A0" },
+    { name: "Orange", hex: "#E27020" },
+    { name: "Pink", hex: "#FFB6C1" },
+    { name: "Yellow", hex: "#F5C422" },
+    { name: "Brown", hex: "#8B5E3C" },
+    { name: "Silver", hex: "#A8A8A8" },
+    { name: "Light Blue", hex: "#6ABED0" },
+    { name: "Red", hex: "#CC3333" },
+  ];
+
+  const selectedMawashiOption = colorOptions.find(c => c.hex === myMawashiColor);
+  const selectedBodyOption = bodyColorOptions.find(c => c.hex === myBodyColor);
+  const selectedMawashiName = selectedMawashiOption?.name || "Default";
+  const selectedBodyName = selectedBodyOption?.name || "Default";
+  const activeColorName = colorTab === "body" ? selectedBodyName : selectedMawashiName;
+  const activeColorHex = colorTab === "body" ? (myBodyColor || "#888") : (myMawashiColor || SPRITE_BASE_COLOR);
+  const activeColorGradient = colorTab === "body" ? selectedBodyOption?.gradient : selectedMawashiOption?.gradient;
   
-  // Handle color selection - emits to server (no-op if color is other player's in PvP)
+  // Handle mawashi color selection
   const handleColorSelect = (color) => {
-    if (myPlayerIndex === -1) return; // Not in room yet
-    if (isColorTakenByOther(color)) return; // PvP: can't pick opponent's color
+    if (myPlayerIndex === -1) return;
+    if (isColorTakenByOther(color)) return;
     
     socket.emit("update_mawashi_color", {
+      roomId: roomName,
+      playerId: socket.id,
+      color,
+    });
+  };
+
+  // Handle body color selection
+  const handleBodyColorSelect = (color) => {
+    if (myPlayerIndex === -1) return;
+    if (isBodyColorTakenByOther(color)) return;
+    
+    socket.emit("update_body_color", {
       roomId: roomName,
       playerId: socket.id,
       color,
@@ -1257,6 +1449,11 @@ const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, onLeaveD
     if (serverPlayer1Color) setPlayer1Color(serverPlayer1Color);
     if (serverPlayer2Color) setPlayer2Color(serverPlayer2Color);
   }, [serverPlayer1Color, serverPlayer2Color, setPlayer1Color, setPlayer2Color]);
+
+  useEffect(() => {
+    setPlayer1BodyColor(serverPlayer1BodyColor);
+    setPlayer2BodyColor(serverPlayer2BodyColor);
+  }, [serverPlayer1BodyColor, serverPlayer2BodyColor, setPlayer1BodyColor, setPlayer2BodyColor]);
 
   const currentRoom = rooms.find((room) => room.id === roomName);
   const playerCount = currentRoom ? currentRoom.players.length : 0;
@@ -1282,11 +1479,12 @@ const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, onLeaveD
 
     socket.on("initial_game_start", (payload) => {
       console.log("game start - navigating to game (preloading handled in Game.jsx)...");
-      // Apply server player data (including mawashiColor) before navigating so PreMatchScreen always shows correct colors
       if (payload?.players && Array.isArray(payload.players) && setRooms) {
         const roomId = payload.roomId || roomName;
         if (payload.players[0]?.mawashiColor) setPlayer1Color(payload.players[0].mawashiColor);
         if (payload.players[1]?.mawashiColor) setPlayer2Color(payload.players[1].mawashiColor);
+        setPlayer1BodyColor(payload.players[0]?.bodyColor || null);
+        setPlayer2BodyColor(payload.players[1]?.bodyColor || null);
         setRooms((prev) =>
           prev.map((r) =>
             r.id === roomId
@@ -1296,6 +1494,7 @@ const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, onLeaveD
                     ...rp,
                     ...(payload.players[i] || {}),
                     mawashiColor: payload.players[i]?.mawashiColor ?? rp.mawashiColor,
+                    bodyColor: payload.players[i]?.bodyColor ?? rp.bodyColor,
                   })),
                 }
               : r
@@ -1312,7 +1511,7 @@ const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, onLeaveD
       socket.off("player_left");
       socket.off("initial_game_start");
     };
-  }, [roomName, socket, handleGame, setRooms, setPlayer1Color, setPlayer2Color]);
+  }, [roomName, socket, handleGame, setRooms, setPlayer1Color, setPlayer2Color, setPlayer1BodyColor, setPlayer2BodyColor]);
 
   const handleLeaveDohyo = () => {
     playButtonPressSound();
@@ -1385,32 +1584,6 @@ const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, onLeaveD
       {/* Arena Section with Dohyo Ring */}
       <ArenaSection>
         <ArenaLayout>
-          {/* Left Side Color Picker (Player 1) */}
-          {players[0]?.fighter && (
-            <SideColorPicker $isOwn={isPlayer1}>
-              {isPlayer1 && <YourColorLabel>Your Color</YourColorLabel>}
-              <ColorPickerTitle $isOwn={isPlayer1}>
-                {isPlayer1 ? "Mawashi" : "P1 Color"}
-              </ColorPickerTitle>
-              <ColorSwatchGrid>
-                {colorOptions.map((color) => {
-                  const takenByOther = isColorTakenByOther(color.hex);
-                  return (
-                    <ColorSwatch
-                      key={color.name}
-                      $color={color.hex}
-                      $gradient={color.gradient}
-                      $selected={serverPlayer1Color === color.hex}
-                      $disabled={!isPlayer1 || takenByOther}
-                      onClick={() => isPlayer1 && !takenByOther && handleColorSelect(color.hex)}
-                      title={takenByOther ? "Opponent's color" : color.name}
-                    />
-                  );
-                })}
-              </ColorSwatchGrid>
-            </SideColorPicker>
-          )}
-          
           <DohyoContainer>
             <DohyoRing />
             <VersusBadge>VS</VersusBadge>
@@ -1435,6 +1608,7 @@ const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, onLeaveD
                       <AvatarWrapper>
                         <ColoredPlayerPreview 
                           color={serverPlayer1Color}
+                          bodyColor={serverPlayer1BodyColor}
                         />
                       </AvatarWrapper>
                     ) : (
@@ -1451,7 +1625,7 @@ const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, onLeaveD
                 </PlayerBanner>
               </PlayerBannerWrapper>
 
-              {/* Player 2 (Right/West) — VS CPU: difficulty selector; online: avatar + colors */}
+              {/* Player 2 (Right/West) -- VS CPU: difficulty selector; online: avatar + colors */}
               <PlayerBannerWrapper $side="right">
                 <PlayerBanner $hasPlayer={!!players[1]?.fighter} $side="right">
                   <PlayerHeader>
@@ -1488,6 +1662,7 @@ const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, onLeaveD
                         <AvatarWrapper>
                           <ColoredPlayerPreview 
                             color={serverPlayer2Color}
+                            bodyColor={serverPlayer2BodyColor}
                           />
                         </AvatarWrapper>
                       ) : (
@@ -1506,34 +1681,63 @@ const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, onLeaveD
               </PlayerBannerWrapper>
             </PlayersContainer>
           </DohyoContainer>
-          
-          {/* Right Side Color Picker (Player 2) — always in layout for alignment; hidden in VS CPU or until opponent joins (online) */}
-          {(players[1]?.fighter || !isCPUMatch) && (
-            <SideColorPicker $isOwn={isPlayer2} $hidden={isCPUMatch || !players[1]?.fighter}>
-              {isPlayer2 && <YourColorLabel>Your Color</YourColorLabel>}
-              <ColorPickerTitle $isOwn={isPlayer2}>
-                {isPlayer2 ? "Mawashi" : "P2 Color"}
-              </ColorPickerTitle>
-              <ColorSwatchGrid>
-                {colorOptions.map((color) => {
-                  const takenByOther = isColorTakenByOther(color.hex);
-                  return (
-                    <ColorSwatch
-                      key={color.name}
-                      $color={color.hex}
-                      $gradient={color.gradient}
-                      $selected={serverPlayer2Color === color.hex}
-                      $disabled={!isPlayer2 || takenByOther}
-                      onClick={() => isPlayer2 && !takenByOther && handleColorSelect(color.hex)}
-                      title={takenByOther ? "Opponent's color" : color.name}
-                    />
-                  );
-                })}
-              </ColorSwatchGrid>
-            </SideColorPicker>
-          )}
         </ArenaLayout>
       </ArenaSection>
+
+      {/* Color Picker Panel */}
+      <PickerPanel $hidden={myPlayerIndex === -1}>
+        <PickerTitle>
+          <PickerTitleText>Customize</PickerTitleText>
+        </PickerTitle>
+
+        <PickerControlRow>
+          <PickerTabGroup>
+            <PickerTab $active={colorTab === "body"} onClick={() => setColorTab("body")}>Body</PickerTab>
+            <PickerTab $active={colorTab === "mawashi"} onClick={() => setColorTab("mawashi")}>Belt</PickerTab>
+          </PickerTabGroup>
+
+          <PickerDivider />
+
+          <SelectedColorInfo>
+            <SelectedColorPreview $color={activeColorHex} $gradient={activeColorGradient} />
+            <SelectedColorName>{activeColorName}</SelectedColorName>
+          </SelectedColorInfo>
+        </PickerControlRow>
+
+        <SwatchContainer>
+          {colorTab === "mawashi" ? (
+            colorOptions.map((color) => {
+              const taken = isColorTakenByOther(color.hex);
+              return (
+                <ColorSwatch
+                  key={color.name}
+                  $color={color.hex}
+                  $gradient={color.gradient}
+                  $selected={myMawashiColor === color.hex}
+                  $taken={taken}
+                  onClick={() => !taken && handleColorSelect(color.hex)}
+                  title={taken ? `Taken by opponent` : color.name}
+                />
+              );
+            })
+          ) : (
+            bodyColorOptions.map((color) => {
+              const taken = isBodyColorTakenByOther(color.hex);
+              return (
+                <ColorSwatch
+                  key={color.name}
+                  $color={color.hex || "#888"}
+                  $gradient={color.gradient}
+                  $selected={myBodyColor === color.hex}
+                  $taken={taken}
+                  onClick={() => !taken && handleBodyColorSelect(color.hex)}
+                  title={taken ? `Taken by opponent` : color.name}
+                />
+              );
+            })
+          )}
+        </SwatchContainer>
+      </PickerPanel>
 
       {/* Controls Footer */}
       <ControlsFooter>

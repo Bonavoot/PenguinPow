@@ -12,12 +12,13 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import {
   recolorImage,
   BLUE_COLOR_RANGES,
+  GREY_BODY_RANGES,
   clearRecolorCache,
   preDecodeImages,
   preDecodeDataUrl,
   getCacheStats,
 } from "../utils/SpriteRecolorizer";
-import { ANIMATED_SPRITES, STATIC_SPRITES, DEFAULT_COLORS, COLOR_PRESETS, SPRITE_BASE_COLOR } from "../config/spriteConfig";
+import { ANIMATED_SPRITES, STATIC_SPRITES, DEFAULT_COLORS, DEFAULT_BODY_COLORS, COLOR_PRESETS, BODY_COLOR_PRESETS, SPRITE_BASE_COLOR } from "../config/spriteConfig";
 import { SPRITESHEET_CONFIG, SPRITESHEET_CONFIG_BY_NAME } from "../config/animatedSpriteConfig";
 
 // Import spritesheets directly to ensure EXACT URL match with GameFighter
@@ -106,9 +107,12 @@ const RITUAL_SPRITE_NAMES = new Set(['ritualPart1', 'ritualPart2', 'ritualPart3'
  * NOTE: Ritual sprite sources are intentionally excluded from allSources to save ~240MB of memory.
  * Rituals are still recolored (cached as blob URLs) but decoded on-demand when first rendered.
  */
-async function recolorPlayerSprites(playerKey, colorHex, skipRecoloring) {
+async function recolorPlayerSprites(playerKey, colorHex, skipRecoloring, bodyColorHex = null) {
   // All sprites are now blue - use BLUE_COLOR_RANGES for both players
   const colorRanges = BLUE_COLOR_RANGES;
+  
+  // Body color options — only included when player has chosen a body color
+  const bodyOpts = bodyColorHex ? { bodyColorRange: GREY_BODY_RANGES, bodyColorHex } : {};
   
   // Collect all sources for pre-decoding
   const allSources = [];
@@ -143,26 +147,36 @@ async function recolorPlayerSprites(playerKey, colorHex, skipRecoloring) {
     const uniqueBaseUrls = [...new Set(baseUrlsForHit)];
     const hitUrls = await Promise.all(
       uniqueBaseUrls.map((src) =>
-        recolorImage(src, colorRanges, colorHex, { hitTintRed: true }).catch(() => null)
+        recolorImage(src, colorRanges, colorHex, { hitTintRed: true, ...bodyOpts }).catch(() => null)
       )
     );
     hitUrls.filter(Boolean).forEach((url) => allSources.push(url));
 
-    // Charge flash variants (all pixels tinted white) so first charge doesn't flash-miss
     const chargeUrls = await Promise.all(
       uniqueBaseUrls.map((src) =>
-        recolorImage(src, colorRanges, colorHex, { chargeTintWhite: true }).catch(() => null)
+        recolorImage(src, colorRanges, colorHex, { chargeTintWhite: true, ...bodyOpts }).catch(() => null)
       )
     );
     chargeUrls.filter(Boolean).forEach((url) => allSources.push(url));
 
-    // Thick blubber variants (non-mawashi tinted purple) so first use shows tint immediately
     const blubberUrls = await Promise.all(
       uniqueBaseUrls.map((src) =>
-        recolorImage(src, colorRanges, colorHex, { blubberTintPurple: true }).catch(() => null)
+        recolorImage(src, colorRanges, colorHex, { blubberTintPurple: true, ...bodyOpts }).catch(() => null)
       )
     );
     blubberUrls.filter(Boolean).forEach((url) => allSources.push(url));
+    
+    // If body color is set but mawashi doesn't need recoloring, still recolor base sprites for body
+    if (bodyColorHex) {
+      await Promise.all(
+        uniqueBaseUrls.map(async (src) => {
+          try {
+            const recoloredSrc = await recolorImage(src, colorRanges, colorHex, bodyOpts);
+            allSources.push(recoloredSrc);
+          } catch (_) { /* skip */ }
+        })
+      );
+    }
     
     return {
       sprites: {
@@ -183,7 +197,7 @@ async function recolorPlayerSprites(playerKey, colorHex, skipRecoloring) {
   await Promise.all(
     animatedEntries.map(async ([name, config]) => {
       try {
-        const recoloredSrc = await recolorImage(config.src, colorRanges, colorHex);
+        const recoloredSrc = await recolorImage(config.src, colorRanges, colorHex, bodyOpts);
         recoloredAnimated[name] = { ...config, src: recoloredSrc };
         // Skip ritual sources from pre-decode list (they're huge and only play once)
         if (!RITUAL_SPRITE_NAMES.has(name)) {
@@ -203,7 +217,7 @@ async function recolorPlayerSprites(playerKey, colorHex, skipRecoloring) {
   await Promise.all(
     DIRECT_SPRITESHEETS.map(async (spritesheetUrl) => {
       try {
-        const recoloredSrc = await recolorImage(spritesheetUrl, colorRanges, colorHex);
+        const recoloredSrc = await recolorImage(spritesheetUrl, colorRanges, colorHex, bodyOpts);
         allSources.push(recoloredSrc);
       } catch (error) {
         console.error(`Failed to recolor spritesheet:`, error);
@@ -222,7 +236,7 @@ async function recolorPlayerSprites(playerKey, colorHex, skipRecoloring) {
           allSources.push(src);
           return;
         }
-        const recoloredSrc = await recolorImage(src, colorRanges, colorHex);
+        const recoloredSrc = await recolorImage(src, colorRanges, colorHex, bodyOpts);
         recoloredStatic[name] = recoloredSrc;
         allSources.push(recoloredSrc);
       } catch (error) {
@@ -239,7 +253,7 @@ async function recolorPlayerSprites(playerKey, colorHex, skipRecoloring) {
     GAME_FIGHTER_STATIC_SPRITES.map(async (src) => {
       try {
         if (typeof src === "string" && !src.endsWith(".gif")) {
-          const recoloredSrc = await recolorImage(src, colorRanges, colorHex);
+          const recoloredSrc = await recolorImage(src, colorRanges, colorHex, bodyOpts);
           allSources.push(recoloredSrc);
         }
       } catch (error) {
@@ -253,7 +267,7 @@ async function recolorPlayerSprites(playerKey, colorHex, skipRecoloring) {
     GAME_FIGHTER_APNG_SPRITES.map(async (src) => {
       try {
         if (typeof src === "string" && !src.endsWith(".gif")) {
-          const recoloredSrc = await recolorImage(src, colorRanges, colorHex);
+          const recoloredSrc = await recolorImage(src, colorRanges, colorHex, bodyOpts);
           allSources.push(recoloredSrc);
         }
       } catch (error) {
@@ -274,25 +288,21 @@ async function recolorPlayerSprites(playerKey, colorHex, skipRecoloring) {
   const uniqueBaseUrls = [...new Set(baseUrlsForHit)];
   const hitUrls = await Promise.all(
     uniqueBaseUrls.map((src) =>
-      recolorImage(src, colorRanges, colorHex, { hitTintRed: true }).catch(() => null)
+      recolorImage(src, colorRanges, colorHex, { hitTintRed: true, ...bodyOpts }).catch(() => null)
     )
   );
   hitUrls.filter(Boolean).forEach((url) => allSources.push(url));
 
-  // Charge flash variants: same sprites with all pixels tinted white (for charge flash effect)
-  // Preloading ensures no missing frame on first charge
   const chargeUrls = await Promise.all(
     uniqueBaseUrls.map((src) =>
-      recolorImage(src, colorRanges, colorHex, { chargeTintWhite: true }).catch(() => null)
+      recolorImage(src, colorRanges, colorHex, { chargeTintWhite: true, ...bodyOpts }).catch(() => null)
     )
   );
   chargeUrls.filter(Boolean).forEach((url) => allSources.push(url));
 
-  // Thick blubber variants: non-mawashi pixels tinted purple (for thick blubber power-up)
-  // Preloading ensures purple shows immediately when power-up is active
   const blubberUrls = await Promise.all(
     uniqueBaseUrls.map((src) =>
-      recolorImage(src, colorRanges, colorHex, { blubberTintPurple: true }).catch(() => null)
+      recolorImage(src, colorRanges, colorHex, { blubberTintPurple: true, ...bodyOpts }).catch(() => null)
     )
   );
   blubberUrls.filter(Boolean).forEach((url) => allSources.push(url));
@@ -307,9 +317,13 @@ async function recolorPlayerSprites(playerKey, colorHex, skipRecoloring) {
 }
 
 export function PlayerColorProvider({ children }) {
-  // Color state
+  // Mawashi color state
   const [player1Color, setPlayer1Color] = useState(DEFAULT_COLORS.player1);
   const [player2Color, setPlayer2Color] = useState(DEFAULT_COLORS.player2);
+
+  // Body color state (null = default grey, no body recoloring)
+  const [player1BodyColor, setPlayer1BodyColor] = useState(DEFAULT_BODY_COLORS.player1);
+  const [player2BodyColor, setPlayer2BodyColor] = useState(DEFAULT_BODY_COLORS.player2);
   
   // Recolored sprites
   const [player1Sprites, setPlayer1Sprites] = useState({
@@ -327,25 +341,25 @@ export function PlayerColorProvider({ children }) {
   const [spritesReady, setSpritesReady] = useState(false);
 
   // Track if colors have been applied
-  const appliedColorsRef = useRef({ player1: DEFAULT_COLORS.player1, player2: DEFAULT_COLORS.player2 });
+  const appliedColorsRef = useRef({ player1: DEFAULT_COLORS.player1, player2: DEFAULT_COLORS.player2, player1Body: null, player2Body: null });
 
   // Store sources for preloading - these refs hold sources from the most recent recolor
   const player1SourcesRef = useRef([]);
   const player2SourcesRef = useRef([]);
 
-  // Recolor player 1 sprites when color changes
-  const applyPlayer1Color = useCallback(async (colorHex) => {
-    if (appliedColorsRef.current.player1 === colorHex) return;
+  // Recolor player 1 sprites when color or body color changes
+  const applyPlayer1Color = useCallback(async (colorHex, bodyHex) => {
+    if (appliedColorsRef.current.player1 === colorHex && appliedColorsRef.current.player1Body === bodyHex) return;
     
     setLoadingProgress(prev => ({ ...prev, player1: true }));
-    // UNIFIED: Only skip recoloring if color is BLUE (sprites are blue)
-    const skipRecoloring = colorHex === DEFAULT_COLORS.player1; // player1 default is blue
+    const skipRecoloring = colorHex === SPRITE_BASE_COLOR && !bodyHex;
     
     try {
-      const { sprites, allSources } = await recolorPlayerSprites("player1", colorHex, skipRecoloring);
+      const { sprites, allSources } = await recolorPlayerSprites("player1", colorHex, skipRecoloring, bodyHex);
       setPlayer1Sprites(sprites);
       player1SourcesRef.current = allSources;
       appliedColorsRef.current.player1 = colorHex;
+      appliedColorsRef.current.player1Body = bodyHex;
     } catch (error) {
       console.error("Failed to recolor player 1 sprites:", error);
     } finally {
@@ -353,20 +367,19 @@ export function PlayerColorProvider({ children }) {
     }
   }, []);
 
-  // Recolor player 2 sprites when color changes
-  const applyPlayer2Color = useCallback(async (colorHex) => {
-    if (appliedColorsRef.current.player2 === colorHex) return;
+  // Recolor player 2 sprites when color or body color changes
+  const applyPlayer2Color = useCallback(async (colorHex, bodyHex) => {
+    if (appliedColorsRef.current.player2 === colorHex && appliedColorsRef.current.player2Body === bodyHex) return;
     
     setLoadingProgress(prev => ({ ...prev, player2: true }));
-    // UNIFIED: Only skip recoloring if color is BLUE (sprites are blue)
-    // Player 2's default is RED, so we ALWAYS recolor (blue sprites need to become red/custom)
-    const skipRecoloring = colorHex === DEFAULT_COLORS.player1; // Check against BLUE, not player2's red
+    const skipRecoloring = colorHex === SPRITE_BASE_COLOR && !bodyHex;
     
     try {
-      const { sprites, allSources } = await recolorPlayerSprites("player2", colorHex, skipRecoloring);
+      const { sprites, allSources } = await recolorPlayerSprites("player2", colorHex, skipRecoloring, bodyHex);
       setPlayer2Sprites(sprites);
       player2SourcesRef.current = allSources;
       appliedColorsRef.current.player2 = colorHex;
+      appliedColorsRef.current.player2Body = bodyHex;
     } catch (error) {
       console.error("Failed to recolor player 2 sprites:", error);
     } finally {
@@ -376,12 +389,12 @@ export function PlayerColorProvider({ children }) {
 
   // Apply colors when they change
   useEffect(() => {
-    applyPlayer1Color(player1Color);
-  }, [player1Color, applyPlayer1Color]);
+    applyPlayer1Color(player1Color, player1BodyColor);
+  }, [player1Color, player1BodyColor, applyPlayer1Color]);
 
   useEffect(() => {
-    applyPlayer2Color(player2Color);
-  }, [player2Color, applyPlayer2Color]);
+    applyPlayer2Color(player2Color, player2BodyColor);
+  }, [player2Color, player2BodyColor, applyPlayer2Color]);
 
   // Update loading state
   useEffect(() => {
@@ -391,32 +404,29 @@ export function PlayerColorProvider({ children }) {
   // Preload all sprites with current colors (call before game starts)
   // MEMORY OPTIMIZED: Recolor once via apply functions, skip duplicate work
   // Optional: Pass colors directly to avoid race condition with context state updates
-  const preloadSprites = useCallback(async (overrideP1Color, overrideP2Color) => {
-    // Use override colors if provided, otherwise use context state
+  const preloadSprites = useCallback(async (overrideP1Color, overrideP2Color, overrideP1Body, overrideP2Body) => {
     const p1Color = overrideP1Color || player1Color;
     const p2Color = overrideP2Color || player2Color;
+    const p1Body = overrideP1Body !== undefined ? overrideP1Body : player1BodyColor;
+    const p2Body = overrideP2Body !== undefined ? overrideP2Body : player2BodyColor;
     
     setIsLoading(true);
-    console.log(`[Preload] Starting sprite preload with colors: P1=${p1Color}, P2=${p2Color}`);
+    console.log(`[Preload] Starting sprite preload with colors: P1=${p1Color} body=${p1Body}, P2=${p2Color} body=${p2Body}`);
     const startTime = performance.now();
     
-    // Step 1: FORCE full recoloring by calling recolorPlayerSprites directly
-    // This bypasses the early-return check in applyPlayer*Color which can skip recoloring
-    // if colors were "already applied" (even if caching was incomplete)
-    const skipP1Recolor = p1Color === DEFAULT_COLORS.player1; // Only skip if blue
-    const skipP2Recolor = p2Color === DEFAULT_COLORS.player1; // Only skip if blue (not red!)
+    const skipP1Recolor = p1Color === SPRITE_BASE_COLOR && !p1Body;
+    const skipP2Recolor = p2Color === SPRITE_BASE_COLOR && !p2Body;
     
     const [p1Result, p2Result] = await Promise.all([
-      recolorPlayerSprites("player1", p1Color, skipP1Recolor),
-      recolorPlayerSprites("player2", p2Color, skipP2Recolor),
+      recolorPlayerSprites("player1", p1Color, skipP1Recolor, p1Body),
+      recolorPlayerSprites("player2", p2Color, skipP2Recolor, p2Body),
     ]);
     
-    // Update state and refs
     setPlayer1Sprites(p1Result.sprites);
     setPlayer2Sprites(p2Result.sprites);
     player1SourcesRef.current = p1Result.allSources;
     player2SourcesRef.current = p2Result.allSources;
-    appliedColorsRef.current = { player1: p1Color, player2: p2Color };
+    appliedColorsRef.current = { player1: p1Color, player2: p2Color, player1Body: p1Body, player2Body: p2Body };
     
     // Step 2: Collect ALL sprite sources for pre-decoding (both original and recolored)
     // MEMORY: Ritual spritesheets are excluded - they're huge (~35MB decoded each) and only play once
@@ -502,7 +512,7 @@ export function PlayerColorProvider({ children }) {
     setSpritesReady(true);
     
     return true;
-  }, [player1Color, player2Color]);
+  }, [player1Color, player2Color, player1BodyColor, player2BodyColor]);
   
   // Warmup function - can be called early to pre-initialize the Web Worker
   const warmupWorker = useCallback(() => {
@@ -514,6 +524,8 @@ export function PlayerColorProvider({ children }) {
   const resetColors = useCallback(() => {
     setPlayer1Color(DEFAULT_COLORS.player1);
     setPlayer2Color(DEFAULT_COLORS.player2);
+    setPlayer1BodyColor(DEFAULT_BODY_COLORS.player1);
+    setPlayer2BodyColor(DEFAULT_BODY_COLORS.player2);
     clearRecolorCache();
   }, []);
 
@@ -532,11 +544,17 @@ export function PlayerColorProvider({ children }) {
   }, [player1Sprites, player2Sprites]);
 
   const value = {
-    // Colors
+    // Mawashi colors
     player1Color,
     player2Color,
     setPlayer1Color,
     setPlayer2Color,
+
+    // Body colors
+    player1BodyColor,
+    player2BodyColor,
+    setPlayer1BodyColor,
+    setPlayer2BodyColor,
     
     // Sprites
     player1Sprites,
@@ -556,7 +574,9 @@ export function PlayerColorProvider({ children }) {
     
     // Constants
     colorPresets: COLOR_PRESETS,
+    bodyColorPresets: BODY_COLOR_PRESETS,
     defaultColors: DEFAULT_COLORS,
+    defaultBodyColors: DEFAULT_BODY_COLORS,
   };
 
   return (

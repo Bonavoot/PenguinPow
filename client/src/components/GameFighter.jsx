@@ -45,6 +45,7 @@ import {
   recolorImage,
   getCachedRecoloredImage,
   BLUE_COLOR_RANGES,
+  GREY_BODY_RANGES,
   SPRITE_BASE_COLOR,
   COLOR_PRESETS,
 } from "../utils/SpriteRecolorizer";
@@ -1875,6 +1876,7 @@ const GameFighter = ({
   isPowerUpSelectionActive,
   predictionRef, // Ref for client-side prediction (only used for local player)
   playerColor, // Custom color for mawashi/headband recoloring
+  playerBodyColor, // Custom body color (null = default grey)
 }) => {
   const { socket } = useContext(SocketContext);
   const emitParticles = useParticles();
@@ -1890,10 +1892,8 @@ const GameFighter = ({
   // UNIFIED: All sprites are BLUE - only skip recoloring if target color is blue
   // Player 2's default is red, so they ALWAYS need recoloring (blue -> red/custom)
   const playerNumber = index === 0 ? 1 : 2;
-  const targetColor = playerColor || (playerNumber === 1 ? SPRITE_BASE_COLOR : COLOR_PRESETS.red);
-  // Only skip recoloring if target color is blue (sprites are already blue)
-  const needsRecoloring = targetColor !== SPRITE_BASE_COLOR;
-  // Both players use BLUE_COLOR_RANGES since all sprites are blue
+  const targetColor = playerColor || (playerNumber === 1 ? SPRITE_BASE_COLOR : COLOR_PRESETS.scarlet);
+  const needsRecoloring = targetColor !== SPRITE_BASE_COLOR || !!playerBodyColor;
   const colorRanges = BLUE_COLOR_RANGES;
   
   // Get both player colors for pumo clone coloring
@@ -1927,8 +1927,8 @@ const GameFighter = ({
       };
     }
     
-    // Build options for cache lookup
-    const tintOptions = {};
+    // Build options for cache lookup (body color options computed inline to avoid stale closure)
+    const tintOptions = playerBodyColor ? { bodyColorRange: GREY_BODY_RANGES, bodyColorHex: playerBodyColor } : {};
     if (useHitTint) tintOptions.hitTintRed = true;
     if (useChargeTint) tintOptions.chargeTintWhite = true;
     if (useBlubberTint) tintOptions.blubberTintPurple = true;
@@ -1943,8 +1943,7 @@ const GameFighter = ({
       };
     }
     
-    // Check local cache as fallback
-    const cacheKey = `${sourceToRecolor}_${targetColor}${useHitTint ? '_hit' : ''}${useChargeTint ? '_charge' : ''}${useBlubberTint ? '_blubber' : ''}`;
+    const cacheKey = `${sourceToRecolor}_${targetColor}${playerBodyColor ? '_body_' + playerBodyColor : ''}${useHitTint ? '_hit' : ''}${useChargeTint ? '_charge' : ''}${useBlubberTint ? '_blubber' : ''}`;
     if (recoloredSprites[cacheKey]) {
       return {
         src: recoloredSprites[cacheKey],
@@ -1982,7 +1981,7 @@ const GameFighter = ({
       isAnimated,
       config: spritesheetConfig,
     };
-  }, [needsRecoloring, targetColor, colorRanges, recoloredSprites]);
+  }, [needsRecoloring, targetColor, colorRanges, recoloredSprites, playerBodyColor]);
   
   // Backwards compatible wrapper for simple recoloring (ritual spritesheets, etc.)
   const getRecoloredSrc = useCallback((originalSrc, isHit = false) => {
@@ -3849,10 +3848,11 @@ const GameFighter = ({
       emitParticles("dodgeLand", {
         x: interpolatedPosition.x || penguin.x,
         y: penguin.y,
+        slideVelocity: penguin.movementVelocity || 0,
       });
     }
     lastDodgeLandParticleState.current = penguin.justLandedFromDodge;
-  }, [penguin.justLandedFromDodge, interpolatedPosition.x, penguin.x, penguin.y, emitParticles]);
+  }, [penguin.justLandedFromDodge, interpolatedPosition.x, penguin.x, penguin.y, penguin.movementVelocity, emitParticles]);
 
   // Grab push dust trail — continuous emission under the GRABBED player while being pushed.
   // Uses a ref so the interval callback always sees the latest pushed state,

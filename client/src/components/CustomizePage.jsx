@@ -13,6 +13,7 @@ import { usePlayerColors } from "../context/PlayerColorContext";
 import {
   recolorImage,
   BLUE_COLOR_RANGES,
+  GREY_BODY_RANGES,
   SPRITE_BASE_COLOR,
   COLOR_PRESETS,
   RAINBOW_COLOR,
@@ -482,6 +483,41 @@ const ColorName = styled.div`
 `;
 
 // ============================================
+// TAB BUTTONS
+// ============================================
+
+const TabRow = styled.div`
+  display: flex;
+  gap: clamp(4px, 0.5vw, 8px);
+  width: 100%;
+  position: relative;
+  z-index: 1;
+`;
+
+const Tab = styled.button`
+  flex: 1;
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.4rem, 0.7vw, 0.6rem);
+  padding: clamp(5px, 0.7vh, 8px) 0;
+  border: 2px solid ${props => props.$active ? '#d4af37' : '#5c4033'};
+  border-radius: clamp(4px, 0.5vw, 6px);
+  background: ${props => props.$active
+    ? 'linear-gradient(180deg, #4a3525 0%, #3d2817 100%)'
+    : 'rgba(26, 10, 8, 0.6)'};
+  color: ${props => props.$active ? '#d4af37' : '#777'};
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  text-shadow: 1px 1px 0 #000;
+  transition: all 0.15s ease;
+
+  &:hover {
+    border-color: ${props => props.$active ? '#d4af37' : '#8b7355'};
+    color: ${props => props.$active ? '#d4af37' : '#aaa'};
+  }
+`;
+
+// ============================================
 // CSS GRADIENT PREVIEWS FOR SPECIAL COLORS
 // ============================================
 
@@ -499,18 +535,19 @@ const SPECIAL_SWATCH_STYLES = {
 // ============================================
 
 const STANDARD_COLORS = [
-  { name: "Black", hex: COLOR_PRESETS.black },
-  { name: "Navy", hex: COLOR_PRESETS.navy },
-  { name: "Purple", hex: COLOR_PRESETS.purple },
-  { name: "Green", hex: COLOR_PRESETS.green },
-  { name: "Hot Pink", hex: COLOR_PRESETS.red },
-  { name: "Orange", hex: COLOR_PRESETS.orange },
-  { name: "Pink", hex: COLOR_PRESETS.pink },
+  { name: "Default", hex: SPRITE_BASE_COLOR },
+  { name: "Graphite", hex: COLOR_PRESETS.graphite },
+  { name: "Cobalt", hex: COLOR_PRESETS.cobalt },
+  { name: "Orchid", hex: COLOR_PRESETS.orchid },
+  { name: "Emerald", hex: COLOR_PRESETS.emerald },
+  { name: "Teal", hex: COLOR_PRESETS.teal },
+  { name: "Tangerine", hex: COLOR_PRESETS.tangerine },
+  { name: "Coral", hex: COLOR_PRESETS.coral },
   { name: "Gold", hex: COLOR_PRESETS.gold },
-  { name: "Brown", hex: COLOR_PRESETS.brown },
-  { name: "Silver", hex: COLOR_PRESETS.silver },
-  { name: "Light Blue", hex: COLOR_PRESETS.lightBlue },
-  { name: "Maroon", hex: COLOR_PRESETS.maroon },
+  { name: "Caramel", hex: COLOR_PRESETS.caramel },
+  { name: "Pewter", hex: COLOR_PRESETS.pewter },
+  { name: "Powder", hex: COLOR_PRESETS.powder },
+  { name: "Scarlet", hex: COLOR_PRESETS.scarlet },
 ];
 
 const SPECIAL_COLOR_OPTIONS = [
@@ -522,14 +559,31 @@ const SPECIAL_COLOR_OPTIONS = [
   { name: "Shiny Gold", hex: GOLD_COLOR },
 ];
 
+const BODY_COLOR_OPTIONS = [
+  { name: "Default", hex: null },
+  { name: "Black", hex: "#333333" },
+  { name: "Blue", hex: "#2656A8" },
+  { name: "Purple", hex: "#9932CC" },
+  { name: "Green", hex: "#32CD32" },
+  { name: "Aqua", hex: "#17A8A0" },
+  { name: "Orange", hex: "#E27020" },
+  { name: "Pink", hex: "#FFB6C1" },
+  { name: "Yellow", hex: "#F5C422" },
+  { name: "Brown", hex: "#8B5E3C" },
+  { name: "Silver", hex: "#A8A8A8" },
+  { name: "Light Blue", hex: "#6ABED0" },
+  { name: "Red", hex: "#CC3333" },
+];
+
 // ============================================
 // COMPONENT
 // ============================================
 
 function CustomizePage({ onBack }) {
-  const { player1Color, setPlayer1Color } = usePlayerColors();
+  const { player1Color, setPlayer1Color, player1BodyColor, setPlayer1BodyColor } = usePlayerColors();
   const [previewSrc, setPreviewSrc] = useState(pumo);
   const [isLoading, setIsLoading] = useState(false);
+  const [customizeTab, setCustomizeTab] = useState("mawashi");
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -537,15 +591,19 @@ function CustomizePage({ onBack }) {
     return () => { mountedRef.current = false; };
   }, []);
 
-  // Update preview when color changes
+  // Update preview when mawashi or body color changes — show both combined
   useEffect(() => {
-    if (!player1Color || player1Color === SPRITE_BASE_COLOR) {
+    const needsMawashi = player1Color && player1Color !== SPRITE_BASE_COLOR;
+    const needsBody = !!player1BodyColor;
+
+    if (!needsMawashi && !needsBody) {
       setPreviewSrc(pumo);
       return;
     }
 
     setIsLoading(true);
-    recolorImage(pumo, BLUE_COLOR_RANGES, player1Color)
+    const bodyOpts = needsBody ? { bodyColorRange: GREY_BODY_RANGES, bodyColorHex: player1BodyColor } : {};
+    recolorImage(pumo, BLUE_COLOR_RANGES, player1Color || SPRITE_BASE_COLOR, bodyOpts)
       .then((recolored) => {
         if (mountedRef.current) setPreviewSrc(recolored);
       })
@@ -555,16 +613,22 @@ function CustomizePage({ onBack }) {
       .finally(() => {
         if (mountedRef.current) setIsLoading(false);
       });
-  }, [player1Color]);
+  }, [player1Color, player1BodyColor]);
 
   const handleColorSelect = (hex) => {
     playButtonPressSound2();
     setPlayer1Color(hex);
   };
 
-  // Find the name of the currently selected color
+  const handleBodyColorSelect = (hex) => {
+    playButtonPressSound2();
+    setPlayer1BodyColor(hex);
+  };
+
+  // Find the name of the currently selected colors
   const allColors = [...STANDARD_COLORS, ...SPECIAL_COLOR_OPTIONS];
   const selectedName = allColors.find(c => c.hex === player1Color)?.name || "Default Blue";
+  const selectedBodyName = BODY_COLOR_OPTIONS.find(c => c.hex === player1BodyColor)?.name || "Default";
 
   return (
     <PageContainer>
@@ -581,7 +645,7 @@ function CustomizePage({ onBack }) {
         </BackButton>
 
         <PageTitle>Customize</PageTitle>
-        <Subtitle>Mawashi & Headband</Subtitle>
+        <Subtitle>{customizeTab === "mawashi" ? "Mawashi & Headband" : "Body Color"}</Subtitle>
 
         <ContentLayout>
           {/* Left: Preview in wooden banner */}
@@ -601,8 +665,8 @@ function CustomizePage({ onBack }) {
                 <PreviewImageContainer>
                   <PreviewImage src={previewSrc} alt="Penguin preview" />
                 </PreviewImageContainer>
-                <SelectedColorLabel>{selectedName}</SelectedColorLabel>
-                <SelectedColorSubtitle>Current Mawashi</SelectedColorSubtitle>
+                <SelectedColorLabel>{customizeTab === "mawashi" ? selectedName : selectedBodyName}</SelectedColorLabel>
+                <SelectedColorSubtitle>{customizeTab === "mawashi" ? "Current Mawashi" : "Current Body"}</SelectedColorSubtitle>
               </PreviewBody>
             </PreviewBanner>
           </PreviewPanel>
@@ -622,39 +686,76 @@ function CustomizePage({ onBack }) {
                 </IcicleRow>
               </ColorsHangingBar>
               <ColorsBody>
-                <ColorCategory>
-                  <CategoryTitle>Mawashi Colors</CategoryTitle>
-                  <ColorGrid>
-                    {STANDARD_COLORS.map((color) => (
-                      <ColorSwatch
-                        key={color.name}
-                        $color={color.hex}
-                        $selected={player1Color === color.hex}
-                        onClick={() => handleColorSelect(color.hex)}
-                        onMouseEnter={playButtonHoverSound}
-                        title={color.name}
-                      />
-                    ))}
-                  </ColorGrid>
-                </ColorCategory>
+                <TabRow>
+                  <Tab
+                    $active={customizeTab === "mawashi"}
+                    onClick={() => { playButtonPressSound2(); setCustomizeTab("mawashi"); }}
+                    onMouseEnter={playButtonHoverSound}
+                  >
+                    Mawashi
+                  </Tab>
+                  <Tab
+                    $active={customizeTab === "body"}
+                    onClick={() => { playButtonPressSound2(); setCustomizeTab("body"); }}
+                    onMouseEnter={playButtonHoverSound}
+                  >
+                    Body
+                  </Tab>
+                </TabRow>
 
-                <SectionDivider />
+                {customizeTab === "mawashi" ? (
+                  <>
+                    <ColorCategory>
+                      <CategoryTitle>Mawashi Colors</CategoryTitle>
+                      <ColorGrid>
+                        {STANDARD_COLORS.map((color) => (
+                          <ColorSwatch
+                            key={color.name}
+                            $color={color.hex}
+                            $selected={player1Color === color.hex}
+                            onClick={() => handleColorSelect(color.hex)}
+                            onMouseEnter={playButtonHoverSound}
+                            title={color.name}
+                          />
+                        ))}
+                      </ColorGrid>
+                    </ColorCategory>
 
-                <ColorCategory>
-                  <CategoryTitle $special>Special Patterns</CategoryTitle>
-                  <ColorGrid>
-                    {SPECIAL_COLOR_OPTIONS.map((color) => (
-                      <ColorSwatch
-                        key={color.name}
-                        $gradient={SPECIAL_SWATCH_STYLES[color.hex]}
-                        $selected={player1Color === color.hex}
-                        onClick={() => handleColorSelect(color.hex)}
-                        onMouseEnter={playButtonHoverSound}
-                        title={color.name}
-                      />
-                    ))}
-                  </ColorGrid>
-                </ColorCategory>
+                    <SectionDivider />
+
+                    <ColorCategory>
+                      <CategoryTitle $special>Special Patterns</CategoryTitle>
+                      <ColorGrid>
+                        {SPECIAL_COLOR_OPTIONS.map((color) => (
+                          <ColorSwatch
+                            key={color.name}
+                            $gradient={SPECIAL_SWATCH_STYLES[color.hex]}
+                            $selected={player1Color === color.hex}
+                            onClick={() => handleColorSelect(color.hex)}
+                            onMouseEnter={playButtonHoverSound}
+                            title={color.name}
+                          />
+                        ))}
+                      </ColorGrid>
+                    </ColorCategory>
+                  </>
+                ) : (
+                  <ColorCategory>
+                    <CategoryTitle>Body Colors</CategoryTitle>
+                    <ColorGrid>
+                      {BODY_COLOR_OPTIONS.map((color) => (
+                        <ColorSwatch
+                          key={color.name}
+                          $color={color.hex || "#888"}
+                          $selected={player1BodyColor === color.hex}
+                          onClick={() => handleBodyColorSelect(color.hex)}
+                          onMouseEnter={playButtonHoverSound}
+                          title={color.name}
+                        />
+                      ))}
+                    </ColorGrid>
+                  </ColorCategory>
+                )}
               </ColorsBody>
             </ColorsBanner>
           </ColorsPanel>

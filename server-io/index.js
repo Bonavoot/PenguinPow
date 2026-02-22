@@ -177,7 +177,7 @@ function getPlayerById(playerId) {
 // PERFORMANCE: Delta State Updates
 // Only send properties that changed since last tick
 // ============================================
-const ALWAYS_SEND_PROPS = ['x', 'y', 'facing', 'stamina', 'id', 'fighter', 'color', 'mawashiColor']; // Always include position and identity data
+const ALWAYS_SEND_PROPS = ['x', 'y', 'facing', 'stamina', 'id', 'fighter', 'color', 'mawashiColor', 'bodyColor'];
 
 // Properties that change frequently during gameplay
 const DELTA_TRACKED_PROPS = [
@@ -1088,13 +1088,14 @@ function activateBufferedInputAfterGrab(player, rooms) {
 
 // Lobby color options - CPU picks randomly from these (excluding player's color)
 const LOBBY_COLORS = [
-  "#252525", "#000080", "#9932CC", "#32CD32", "#FF1493", "#FF8C00",
-  "#FFB6C1", "#FFD700", "#5D3A1A", "#A8A8A8", "#5BC0DE", "#800000",
+  "#4169E1", "#525252", "#3B5EB0", "#A85DBF", "#2E9E5A", "#1A7A8A", "#E8913A",
+  "#E87070", "#D4A520", "#A07348", "#6E8495", "#88C4D8", "#D94848",
   "rainbow", "fire", "vaporwave", "camo", "galaxy", "gold",
 ];
 
 // CPU Player creation helper - accepts unique ID for concurrent game support
 // CPU's mawashiColor is set when human readies (see ready_count handler)
+// CPU never customizes body color (stays default grey)
 function createCPUPlayer(uniqueId) {
   const cpuPlayerId = uniqueId || `CPU_PLAYER_${Date.now()}`;
   return {
@@ -1102,7 +1103,8 @@ function createCPUPlayer(uniqueId) {
     isCPU: true,
     fighter: "player 2",
     color: "salmon",
-    mawashiColor: "#DC143C", // Placeholder until human readies; then random color
+    mawashiColor: "#D94848", // Placeholder until human readies; then random color
+    bodyColor: null,
     isJumping: false,
     isAttacking: false,
     throwCooldown: false,
@@ -6282,6 +6284,27 @@ io.on("connection", (socket) => {
     });
   });
 
+  // Handle body color updates — mirrors mawashi_color logic
+  socket.on("update_body_color", (data) => {
+    const { roomId, playerId, color } = data;
+    const roomIndex = rooms.findIndex((room) => room.id === roomId);
+    if (roomIndex === -1) return;
+
+    const room = rooms[roomIndex];
+    const playerIndex = room.players.findIndex((p) => p.id === playerId);
+    if (playerIndex === -1) return;
+
+    room.players[playerIndex].bodyColor = color;
+
+    io.in(roomId).emit("lobby", room.players);
+    io.emit("rooms", getCleanedRoomsData(rooms));
+    io.in(roomId).emit("body_color_updated", {
+      playerId,
+      playerIndex,
+      color,
+    });
+  });
+
   socket.on("join_room", (data) => {
     socket.join(data.roomId);
     const roomIndex = rooms.findIndex((room) => room.id === data.roomId);
@@ -6326,7 +6349,8 @@ io.on("connection", (socket) => {
         id: data.socketId,
         fighter: "player 1",
         color: "aqua",
-        mawashiColor: "#5BC0DE", // Default light blue for Player 1
+        mawashiColor: "#4169E1",
+        bodyColor: null,
         isJumping: false,
         isAttacking: false,
         throwCooldown: false,
@@ -6509,7 +6533,8 @@ io.on("connection", (socket) => {
         id: data.socketId,
         fighter: "player 2",
         color: "salmon",
-        mawashiColor: "#DC143C", // Default crimson red for Player 2
+        mawashiColor: "#D94848",
+        bodyColor: null,
         isJumping: false,
         isAttacking: false,
         throwCooldown: false,
@@ -6754,7 +6779,8 @@ io.on("connection", (socket) => {
       id: data.socketId,
       fighter: "player 1",
       color: "aqua",
-      mawashiColor: "#5BC0DE", // Default light blue for Player 1
+      mawashiColor: "#4169E1",
+      bodyColor: null,
       isJumping: false,
       isAttacking: false,
       throwCooldown: false,
@@ -6981,7 +7007,7 @@ io.on("connection", (socket) => {
             );
             const chosen = availableColors.length > 0
               ? availableColors[Math.floor(Math.random() * availableColors.length)]
-              : "#DC143C";
+              : "#D94848";
             cpuPlayer.mawashiColor = chosen;
             cpuPlayer.isReady = true;
             room.readyCount++;
@@ -7021,6 +7047,7 @@ io.on("connection", (socket) => {
           id: p.id,
           fighter: p.fighter,
           mawashiColor: p.mawashiColor,
+          bodyColor: p.bodyColor || null,
           isCPU: p.isCPU,
           wins: p.wins || [],
         })),

@@ -79,7 +79,7 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
   const index = rooms.findIndex((room) => room.id === roomName);
   
   // Get player colors for sprite recoloring
-  const { player1Color, player2Color, preloadSprites } = usePlayerColors();
+  const { player1Color, player2Color, player1BodyColor, player2BodyColor, preloadSprites } = usePlayerColors();
 
   // Get the current room with null safety
   const currentRoom = index !== -1 ? rooms[index] : null;
@@ -405,7 +405,7 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
       
       try {
         // Preload all recolored sprites
-        await preloadSprites(player1Color, player2Color);
+        await preloadSprites(player1Color, player2Color, player1BodyColor, player2BodyColor);
         console.log("Game: Sprites preloaded successfully");
         
         // Complete the progress bar
@@ -428,7 +428,7 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
     };
     
     runPreload();
-  }, [preloadSprites, player1Color, player2Color, socket, roomName]);
+  }, [preloadSprites, player1Color, player2Color, player1BodyColor, player2BodyColor, socket, roomName]);
 
   // Handle opponent disconnection - hide power-up selection UI for ALL game phases
   useEffect(() => {
@@ -515,6 +515,7 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
                       isPowerUpSelectionActive={isPowerUpSelectionActive}
                       predictionRef={isLocalPlayerFighter ? predictionRef : null}
                       playerColor={i === 0 ? player1Color : player2Color}
+                      playerBodyColor={i === 0 ? player1BodyColor : player2BodyColor}
                     />
                   );
                 })}
@@ -540,6 +541,8 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
             player2Name={currentRoom.players[1]?.isCPU ? "CPU" : (currentRoom.players[1]?.fighter || "Player 2")}
             player1Color={currentRoom.players[0]?.mawashiColor || player1Color}
             player2Color={currentRoom.players[1]?.mawashiColor || player2Color}
+            player1BodyColor={currentRoom.players[0]?.bodyColor || player1BodyColor}
+            player2BodyColor={currentRoom.players[1]?.bodyColor || player2BodyColor}
             player1Record={{ wins: 0, losses: 0 }}
             player2Record={{ wins: 0, losses: 0 }}
             loadingProgress={loadingProgress}

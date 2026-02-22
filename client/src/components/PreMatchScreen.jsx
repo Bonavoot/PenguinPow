@@ -4,7 +4,7 @@ import PropTypes from "prop-types";
 
 // Import penguin sprites
 import pumo from "../assets/pumo.png";
-import { SPRITE_BASE_COLOR, recolorImage, BLUE_COLOR_RANGES } from "../utils/SpriteRecolorizer";
+import { SPRITE_BASE_COLOR, recolorImage, BLUE_COLOR_RANGES, GREY_BODY_RANGES } from "../utils/SpriteRecolorizer";
 
 // ============================================
 // ANIMATIONS
@@ -658,7 +658,9 @@ const PreMatchScreen = ({
   player1Name = "Player 1",
   player2Name = "Player 2",
   player1Color = SPRITE_BASE_COLOR,
-  player2Color = "#DC143C",
+  player2Color = "#D94848",
+  player1BodyColor = null,
+  player2BodyColor = null,
   player1Record = { wins: 0, losses: 0 },
   player2Record = { wins: 0, losses: 0 },
   loadingProgress = 0,
@@ -684,17 +686,21 @@ const PreMatchScreen = ({
     setSpritesReady(false);
 
     const recolorSprites = async () => {
-      const p1Promise =
-        player1Color && player1Color !== SPRITE_BASE_COLOR
-          ? recolorImage(pumo, BLUE_COLOR_RANGES, player1Color).catch((err) => {
+      const p1BodyOpts = player1BodyColor ? { bodyColorRange: GREY_BODY_RANGES, bodyColorHex: player1BodyColor } : {};
+      const p2BodyOpts = player2BodyColor ? { bodyColorRange: GREY_BODY_RANGES, bodyColorHex: player2BodyColor } : {};
+
+      const p1Needs = (player1Color && player1Color !== SPRITE_BASE_COLOR) || player1BodyColor;
+      const p2Needs = (player2Color && player2Color !== SPRITE_BASE_COLOR) || player2BodyColor;
+
+      const p1Promise = p1Needs
+          ? recolorImage(pumo, BLUE_COLOR_RANGES, player1Color || SPRITE_BASE_COLOR, p1BodyOpts).catch((err) => {
               console.error("Failed to recolor player 1 sprite:", err);
               return pumo;
             })
           : Promise.resolve(pumo);
 
-      const p2Promise =
-        player2Color && player2Color !== SPRITE_BASE_COLOR
-          ? recolorImage(pumo, BLUE_COLOR_RANGES, player2Color).catch((err) => {
+      const p2Promise = p2Needs
+          ? recolorImage(pumo, BLUE_COLOR_RANGES, player2Color || SPRITE_BASE_COLOR, p2BodyOpts).catch((err) => {
               console.error("Failed to recolor player 2 sprite:", err);
               return pumo;
             })
@@ -709,7 +715,7 @@ const PreMatchScreen = ({
 
     recolorSprites();
     return () => { cancelled = true; };
-  }, [player1Color, player2Color]);
+  }, [player1Color, player2Color, player1BodyColor, player2BodyColor]);
 
   // Smooth progress animation
   useEffect(() => {
@@ -855,6 +861,8 @@ PreMatchScreen.propTypes = {
   player2Name: PropTypes.string,
   player1Color: PropTypes.string,
   player2Color: PropTypes.string,
+  player1BodyColor: PropTypes.string,
+  player2BodyColor: PropTypes.string,
   player1Record: PropTypes.shape({
     wins: PropTypes.number,
     losses: PropTypes.number,

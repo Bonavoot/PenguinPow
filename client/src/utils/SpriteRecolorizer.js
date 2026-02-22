@@ -152,7 +152,7 @@ if (typeof window !== 'undefined') {
 /**
  * Process image data using Web Worker (off main thread)
  */
-function processInWorker(imageData, width, height, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed = false, chargeTintWhite = false, blubberTintPurple = false) {
+function processInWorker(imageData, width, height, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed = false, chargeTintWhite = false, blubberTintPurple = false, bodyColorRange = null, bodyTargetHue = 0, bodyTargetSat = 0, bodyTargetLight = 50, bodyReferenceLightness = 49) {
   return new Promise((resolve, reject) => {
     if (!workerReady || !recolorWorker) {
       reject(new Error('Worker not ready'));
@@ -181,6 +181,11 @@ function processInWorker(imageData, width, height, sourceColorRange, targetHue, 
         hitTintRed,
         chargeTintWhite,
         blubberTintPurple,
+        bodyColorRange,
+        bodyTargetHue,
+        bodyTargetSat,
+        bodyTargetLight,
+        bodyReferenceLightness,
       }
     }, [buffer]);
   });
@@ -220,6 +225,16 @@ export const RED_COLOR_RANGES = {
   maxSaturation: 100,
   minLightness: 20,  // Include darker shaded areas
   maxLightness: 60,  // EXCLUDE lighter pinks (nipples are often lighter/pinker)
+};
+
+// GREY body (penguin plumage) — low-saturation pixels between black outlines and white highlights
+export const GREY_BODY_RANGES = {
+  minHue: 0,
+  maxHue: 360,        // Hue is irrelevant for desaturated greys
+  minSaturation: 0,
+  maxSaturation: 15,  // Only desaturated pixels — mawashi blues (40+) are safe
+  minLightness: 20,   // Exclude black outlines (~0-15% lightness)
+  maxLightness: 78,   // Exclude white highlights / eyes
 };
 
 /**
@@ -403,8 +418,10 @@ export async function recolorImage(imageSrc, sourceColorRange, targetColorHex, o
   const hitTintRed = !!options.hitTintRed;
   const chargeTintWhite = !!options.chargeTintWhite;
   const blubberTintPurple = !!options.blubberTintPurple;
-  // Generate cache key (hit/charge/blubber variants cached separately)
-  const cacheKey = `${imageSrc}_${sourceColorRange.minHue}-${sourceColorRange.maxHue}_${targetColorHex}${hitTintRed ? '_hit' : ''}${chargeTintWhite ? '_charge' : ''}${blubberTintPurple ? '_blubber' : ''}`;
+  const bodyColorRange = options.bodyColorRange || null;
+  const bodyColorHex = options.bodyColorHex || null;
+  // Generate cache key (hit/charge/blubber/body variants cached separately)
+  const cacheKey = `${imageSrc}_${sourceColorRange.minHue}-${sourceColorRange.maxHue}_${targetColorHex}${bodyColorHex ? '_body_' + bodyColorHex : ''}${hitTintRed ? '_hit' : ''}${chargeTintWhite ? '_charge' : ''}${blubberTintPurple ? '_blubber' : ''}`;
   
   // Check LRU cache first
   const cached = getFromCache(cacheKey);
@@ -456,6 +473,16 @@ export async function recolorImage(imageSrc, sourceColorRange, targetColorHex, o
         // Calculate reference lightness from source color range midpoint
         const referenceLightness = (sourceColorRange.minLightness + sourceColorRange.maxLightness) / 2;
 
+        // Body color HSL (if customizing body)
+        let bodyTargetHue = 0, bodyTargetSat = 0, bodyTargetLight = 50, bodyRefLight = 49;
+        if (bodyColorRange && bodyColorHex) {
+          const bodyHsl = getHslFromHex(bodyColorHex);
+          bodyTargetHue = bodyHsl.h;
+          bodyTargetSat = bodyHsl.s;
+          bodyTargetLight = bodyHsl.l;
+          bodyRefLight = (bodyColorRange.minLightness + bodyColorRange.maxLightness) / 2;
+        }
+
         let processedData;
         
         // Try to use Web Worker for processing (off main thread)
@@ -473,7 +500,12 @@ export async function recolorImage(imageSrc, sourceColorRange, targetColorHex, o
               specialMode,
               hitTintRed,
               chargeTintWhite,
-              blubberTintPurple
+              blubberTintPurple,
+              bodyColorRange,
+              bodyTargetHue,
+              bodyTargetSat,
+              bodyTargetLight,
+              bodyRefLight
             );
             
             // Create ImageData from returned buffer
@@ -484,12 +516,10 @@ export async function recolorImage(imageSrc, sourceColorRange, targetColorHex, o
             );
           } catch (workerError) {
             console.warn('Worker processing failed, falling back to main thread:', workerError);
-            // Fall back to main thread processing
-            processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, canvas.width, canvas.height, chargeTintWhite, blubberTintPurple);
+            processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, canvas.width, canvas.height, chargeTintWhite, blubberTintPurple, bodyColorRange, bodyTargetHue, bodyTargetSat, bodyTargetLight, bodyRefLight);
           }
         } else {
-          // No worker available, process on main thread
-          processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, canvas.width, canvas.height, chargeTintWhite, blubberTintPurple);
+          processedData = processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, canvas.width, canvas.height, chargeTintWhite, blubberTintPurple, bodyColorRange, bodyTargetHue, bodyTargetSat, bodyTargetLight, bodyRefLight);
         }
 
         // Put the modified data back
@@ -633,7 +663,7 @@ function getSpecialPixelColor(specialMode, x, y, width, height) {
  *   Pass 2 – recolor, using coordinates RELATIVE to the centroid so the
  *            pattern stays locked to the body during animation.
  */
-function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, width, height, chargeTintWhite = false, blubberTintPurple = false) {
+function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, width, height, chargeTintWhite = false, blubberTintPurple = false, bodyColorRange = null, bodyTargetHue = 0, bodyTargetSat = 0, bodyTargetLight = 50, bodyReferenceLightness = 49) {
   const data = imageData.data;
 
   // --- Pass 1: centroid of matching pixels (only needed for special modes) ---
@@ -667,17 +697,12 @@ function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targe
   }
 
   // --- Pass 2: recolor ---
-  // Hit tint: blend toward true red, slightly subtle
   const HIT_RED_RGB = hslToRgb(0, 58, 55);
   const HIT_BLEND = 0.34;
-
-  // Charge tint: blend toward bright white for charge flash effect
   const CHARGE_WHITE_RGB = { r: 255, g: 255, b: 255 };
-  const CHARGE_BLEND = 0.7; // 70% white / 30% original - bold flash that's clearly visible
-
-  // Blubber tint: vibrant purple on non-mawashi pixels (thick blubber power-up), sprite-level like hit/charge
-  const BLUBBER_PURPLE_RGB = hslToRgb(278, 78, 65); // Vivid violet-purple
-  const BLUBBER_BLEND = 0.35; // More transparent so original sprite shows through more
+  const CHARGE_BLEND = 0.7;
+  const BLUBBER_PURPLE_RGB = hslToRgb(278, 78, 65);
+  const BLUBBER_BLEND = 0.35;
 
   for (let i = 0; i < data.length; i += 4) {
     const r = data[i];
@@ -690,6 +715,7 @@ function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targe
     const pixelHsl = rgbToHsl(r, g, b);
 
     if (isColorInHslRange(pixelHsl.h, pixelHsl.s, pixelHsl.l, sourceColorRange)) {
+      // --- Mawashi / headband ---
       let hue = targetHue;
       let sat = targetSat;
       let light = targetLight;
@@ -709,25 +735,41 @@ function processPixelsOnMainThread(imageData, sourceColorRange, targetHue, targe
       data[i + 1] = newColor.g;
       data[i + 2] = newColor.b;
 
-      // Also tint mawashi/headband white during charge flash (everything goes white)
       if (chargeTintWhite) {
         data[i] = Math.round((1 - CHARGE_BLEND) * data[i] + CHARGE_BLEND * CHARGE_WHITE_RGB.r);
         data[i + 1] = Math.round((1 - CHARGE_BLEND) * data[i + 1] + CHARGE_BLEND * CHARGE_WHITE_RGB.g);
         data[i + 2] = Math.round((1 - CHARGE_BLEND) * data[i + 2] + CHARGE_BLEND * CHARGE_WHITE_RGB.b);
       }
-      // Blubber: leave mawashi/headband as recolored (no purple on them, same as isHit leaves them)
+    } else if (bodyColorRange && isColorInHslRange(pixelHsl.h, pixelHsl.s, pixelHsl.l, bodyColorRange)) {
+      // --- Body (grey plumage) ---
+      const newColor = recolorPixel(r, g, b, bodyTargetHue, bodyTargetSat, bodyTargetLight, bodyReferenceLightness);
+      data[i] = newColor.r;
+      data[i + 1] = newColor.g;
+      data[i + 2] = newColor.b;
+
+      // Body pixels receive the same tints as other non-mawashi pixels
+      if (hitTintRed) {
+        data[i] = Math.round((1 - HIT_BLEND) * data[i] + HIT_BLEND * HIT_RED_RGB.r);
+        data[i + 1] = Math.round((1 - HIT_BLEND) * data[i + 1] + HIT_BLEND * HIT_RED_RGB.g);
+        data[i + 2] = Math.round((1 - HIT_BLEND) * data[i + 2] + HIT_BLEND * HIT_RED_RGB.b);
+      } else if (chargeTintWhite) {
+        data[i] = Math.round((1 - CHARGE_BLEND) * data[i] + CHARGE_BLEND * CHARGE_WHITE_RGB.r);
+        data[i + 1] = Math.round((1 - CHARGE_BLEND) * data[i + 1] + CHARGE_BLEND * CHARGE_WHITE_RGB.g);
+        data[i + 2] = Math.round((1 - CHARGE_BLEND) * data[i + 2] + CHARGE_BLEND * CHARGE_WHITE_RGB.b);
+      } else if (blubberTintPurple) {
+        data[i] = Math.round((1 - BLUBBER_BLEND) * data[i] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.r);
+        data[i + 1] = Math.round((1 - BLUBBER_BLEND) * data[i + 1] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.g);
+        data[i + 2] = Math.round((1 - BLUBBER_BLEND) * data[i + 2] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b);
+      }
     } else if (hitTintRed) {
-      // Blend original with soft red: subtle tint, and white turns same light red as other colors
       data[i] = Math.round((1 - HIT_BLEND) * r + HIT_BLEND * HIT_RED_RGB.r);
       data[i + 1] = Math.round((1 - HIT_BLEND) * g + HIT_BLEND * HIT_RED_RGB.g);
       data[i + 2] = Math.round((1 - HIT_BLEND) * b + HIT_BLEND * HIT_RED_RGB.b);
     } else if (chargeTintWhite) {
-      // Blend original with white for charge flash effect (all non-transparent pixels)
       data[i] = Math.round((1 - CHARGE_BLEND) * r + CHARGE_BLEND * CHARGE_WHITE_RGB.r);
       data[i + 1] = Math.round((1 - CHARGE_BLEND) * g + CHARGE_BLEND * CHARGE_WHITE_RGB.g);
       data[i + 2] = Math.round((1 - CHARGE_BLEND) * b + CHARGE_BLEND * CHARGE_WHITE_RGB.b);
     } else if (blubberTintPurple) {
-      // Blend original with transparent purple for thick blubber (all non-transparent pixels)
       data[i] = Math.round((1 - BLUBBER_BLEND) * r + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.r);
       data[i + 1] = Math.round((1 - BLUBBER_BLEND) * g + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.g);
       data[i + 2] = Math.round((1 - BLUBBER_BLEND) * b + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b);
@@ -917,7 +959,8 @@ export function getCachedRecoloredImage(imageSrc, sourceColorRange, targetColorH
   const hitTintRed = !!options.hitTintRed;
   const chargeTintWhite = !!options.chargeTintWhite;
   const blubberTintPurple = !!options.blubberTintPurple;
-  const cacheKey = `${imageSrc}_${sourceColorRange.minHue}-${sourceColorRange.maxHue}_${targetColorHex}${hitTintRed ? '_hit' : ''}${chargeTintWhite ? '_charge' : ''}${blubberTintPurple ? '_blubber' : ''}`;
+  const bodyColorHex = options.bodyColorHex || null;
+  const cacheKey = `${imageSrc}_${sourceColorRange.minHue}-${sourceColorRange.maxHue}_${targetColorHex}${bodyColorHex ? '_body_' + bodyColorHex : ''}${hitTintRed ? '_hit' : ''}${chargeTintWhite ? '_charge' : ''}${blubberTintPurple ? '_blubber' : ''}`;
   return getFromCache(cacheKey);
 }
 
@@ -962,35 +1005,20 @@ export const SPECIAL_COLORS = new Set([
  * Predefined color options for player customization
  */
 export const COLOR_PRESETS = {
-  // Neutrals
-  black: "#252525",
-  silver: "#A8A8A8",
-  
-  // Blues
-  navy: "#000080",
-  lightBlue: "#5BC0DE",
-  
-  // Reds
-  red: "#FF1493",       // Hot Pink
-  maroon: "#800000",
-  
-  // Pinks
-  pink: "#FFB6C1",      // Light Pink
-  
-  // Greens
-  green: "#32CD32",     // Lime Green
-  
-  // Purples
-  purple: "#9932CC",    // Dark Orchid
-  
-  // Oranges/Yellows
-  orange: "#FF8C00",    // Dark Orange
-  gold: "#FFD700",
-  
-  // Browns
-  brown: "#5D3A1A",
-  
-  // Special
+  graphite:  "#525252",
+  cobalt:    "#3B5EB0",
+  orchid:    "#A85DBF",
+  emerald:   "#2E9E5A",
+  teal:      "#1A7A8A",
+  tangerine: "#E8913A",
+  coral:     "#E87070",
+  gold:      "#D4A520",
+  caramel:   "#A07348",
+  pewter:    "#6E8495",
+  powder:    "#88C4D8",
+  scarlet:   "#D94848",
+
+  // Special (mawashi-only patterns)
   rainbow: RAINBOW_COLOR,
   fire: FIRE_COLOR,
   vaporwave: VAPORWAVE_COLOR,
@@ -1012,6 +1040,7 @@ export default {
   getHueSatFromHex,
   BLUE_COLOR_RANGES,
   RED_COLOR_RANGES,
+  GREY_BODY_RANGES,
   COLOR_PRESETS,
   SPECIAL_COLORS,
   RAINBOW_COLOR,
