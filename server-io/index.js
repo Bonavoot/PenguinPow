@@ -4889,6 +4889,7 @@ io.on("connection", (socket) => {
               // Initialize push start time on first processing tick (after hitstop)
               if (!player.grabPushStartTime) {
                 player.grabPushStartTime = Date.now();
+                opponent.isBeingGrabPushed = true;
               }
 
               const pushElapsed = Date.now() - player.grabPushStartTime;

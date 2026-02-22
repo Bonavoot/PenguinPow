@@ -3267,7 +3267,8 @@ const GameFighter = ({
           prev.isBeingGrabFrontalForceOut !== newState.isBeingGrabFrontalForceOut ||
           prev.isGrabTeching !== newState.isGrabTeching ||
           prev.grabTechRole !== newState.grabTechRole ||
-          prev.isGrabWhiffRecovery !== newState.isGrabWhiffRecovery;
+          prev.isGrabWhiffRecovery !== newState.isGrabWhiffRecovery ||
+          prev.justLandedFromDodge !== newState.justLandedFromDodge;
         
         if (!discreteStateChanged) {
           return prev; // No discrete state change, skip re-render
@@ -3852,6 +3853,171 @@ const GameFighter = ({
     }
     lastDodgeLandParticleState.current = penguin.justLandedFromDodge;
   }, [penguin.justLandedFromDodge, interpolatedPosition.x, penguin.x, penguin.y, emitParticles]);
+
+  // Grab push dust trail — continuous emission under the GRABBED player while being pushed.
+  // Uses a ref so the interval callback always sees the latest pushed state,
+  // stopping immediately when ANY grab action interrupts the push.
+  const grabPushLastX = useRef(null);
+  const grabPushIntervalRef = useRef(null);
+  const isBeingGrabPushedRef = useRef(false);
+
+  useEffect(() => {
+    isBeingGrabPushedRef.current = penguin.isBeingGrabPushed && penguin.isBeingGrabbed;
+  }, [penguin.isBeingGrabPushed, penguin.isBeingGrabbed]);
+
+  useEffect(() => {
+    const shouldEmit = penguin.isBeingGrabPushed && penguin.isBeingGrabbed;
+    if (shouldEmit) {
+      grabPushLastX.current = interpolatedPosition.x || penguin.x;
+      const EMIT_INTERVAL = 50;
+      const MAX_DELTA_FOR_FULL_SPEED = 12;
+
+      grabPushIntervalRef.current = setInterval(() => {
+        if (!isBeingGrabPushedRef.current) {
+          clearInterval(grabPushIntervalRef.current);
+          grabPushIntervalRef.current = null;
+          return;
+        }
+
+        const curX = interpolatedPositionRef.current.x || penguin.x;
+        const dx = Math.abs(curX - (grabPushLastX.current ?? curX));
+        grabPushLastX.current = curX;
+        const speed = Math.min(dx / MAX_DELTA_FOR_FULL_SPEED, 1);
+
+        emitParticles("grabPushTrail", {
+          x: curX,
+          y: penguin.y,
+          direction: penguin.facing ?? 1,
+          speed,
+        });
+      }, EMIT_INTERVAL);
+    } else {
+      if (grabPushIntervalRef.current) {
+        clearInterval(grabPushIntervalRef.current);
+        grabPushIntervalRef.current = null;
+      }
+      grabPushLastX.current = null;
+    }
+    return () => {
+      if (grabPushIntervalRef.current) {
+        clearInterval(grabPushIntervalRef.current);
+        grabPushIntervalRef.current = null;
+      }
+    };
+  }, [penguin.isBeingGrabPushed, penguin.isBeingGrabbed, penguin.facing, penguin.x, penguin.y, emitParticles]);
+
+  // Charged attack (flying headbutt) jet trail — big clouds behind the player during lunge
+  const chargedTrailLastX = useRef(null);
+  const chargedTrailIntervalRef = useRef(null);
+  const isChargedLungingRef = useRef(false);
+
+  useEffect(() => {
+    isChargedLungingRef.current = penguin.isAttacking && penguin.attackType === "charged";
+  }, [penguin.isAttacking, penguin.attackType]);
+
+  useEffect(() => {
+    const isLunging = penguin.isAttacking && penguin.attackType === "charged";
+    if (isLunging) {
+      chargedTrailLastX.current = interpolatedPosition.x || penguin.x;
+      const EMIT_INTERVAL = 50;
+      const MAX_DELTA_FOR_FULL_SPEED = 14;
+
+      chargedTrailIntervalRef.current = setInterval(() => {
+        if (!isChargedLungingRef.current) {
+          clearInterval(chargedTrailIntervalRef.current);
+          chargedTrailIntervalRef.current = null;
+          return;
+        }
+
+        const curX = interpolatedPositionRef.current.x || penguin.x;
+        const dx = Math.abs(curX - (chargedTrailLastX.current ?? curX));
+        chargedTrailLastX.current = curX;
+        const speed = Math.min(dx / MAX_DELTA_FOR_FULL_SPEED, 1);
+
+        emitParticles("chargedAttackTrail", {
+          x: curX,
+          y: penguin.y,
+          direction: penguin.facing ?? 1,
+          speed,
+        });
+      }, EMIT_INTERVAL);
+    } else {
+      if (chargedTrailIntervalRef.current) {
+        clearInterval(chargedTrailIntervalRef.current);
+        chargedTrailIntervalRef.current = null;
+      }
+      chargedTrailLastX.current = null;
+    }
+    return () => {
+      if (chargedTrailIntervalRef.current) {
+        clearInterval(chargedTrailIntervalRef.current);
+        chargedTrailIntervalRef.current = null;
+      }
+    };
+  }, [penguin.isAttacking, penguin.attackType, penguin.facing, penguin.x, penguin.y, emitParticles]);
+
+  // Pull reversal hop landings — schedule a dust burst at each hop landing time.
+  // The server hop tween is deterministic (650ms, 4 decaying hops after 18% delay),
+  // but the 32Hz broadcast rate is too coarse to capture the brief ground touches
+  // between hops, so we schedule bursts based on known tween timing instead.
+  const pullReversalTimeouts = useRef([]);
+  useEffect(() => {
+    if (penguin.isBeingPullReversaled) {
+      const TWEEN_DURATION = 650;
+      const HOP_DELAY = 0.18;
+      const HOP_COUNT = 4;
+      const hopWindowStart = TWEEN_DURATION * HOP_DELAY;
+      const hopDuration = TWEEN_DURATION * (1 - HOP_DELAY) / HOP_COUNT;
+      const LATENCY_OFFSET = 35;
+
+      const baseY = interpolatedPositionRef.current.y || penguin.y;
+
+      // Immediate burst at the start of the pull (the initial yank).
+      // Direction = facing, so dust kicks up in front of the player (opposite pull travel).
+      emitParticles("pullReversalLand", {
+        x: interpolatedPositionRef.current.x,
+        y: baseY,
+        intensity: 1.0,
+        direction: penguin.facing ?? 1,
+      });
+
+      for (let i = 0; i < HOP_COUNT; i++) {
+        const landingTime = hopWindowStart + (i + 1) * hopDuration - LATENCY_OFFSET;
+        const intensity = Math.max(0.15, 1.0 - (i + 1) * 0.2);
+
+        const tid = setTimeout(() => {
+          emitParticles("pullReversalLand", {
+            x: interpolatedPositionRef.current.x,
+            y: baseY,
+            intensity,
+          });
+        }, Math.max(0, landingTime));
+        pullReversalTimeouts.current.push(tid);
+      }
+    } else {
+      pullReversalTimeouts.current.forEach(clearTimeout);
+      pullReversalTimeouts.current = [];
+    }
+    return () => {
+      pullReversalTimeouts.current.forEach(clearTimeout);
+      pullReversalTimeouts.current = [];
+    };
+  }, [penguin.isBeingPullReversaled, emitParticles]);
+
+  // Grab throw landing — dust burst when the thrown player hits the ground.
+  // Uses penguin.y (not interpolatedPositionRef) because at the moment isBeingThrown
+  // flips to false, the interpolated Y is still mid-throw-arc. The React state update
+  // includes the corrected ground-level Y from the same delta.
+  const wasBeingThrown = useRef(false);
+  useEffect(() => {
+    if (wasBeingThrown.current && !penguin.isBeingThrown) {
+      emitParticles("throwLand", {
+        x: interpolatedPositionRef.current.x || penguin.x,
+        y: penguin.y,
+      });
+    }
+    wasBeingThrown.current = !!penguin.isBeingThrown;
+  }, [penguin.isBeingThrown, penguin.x, penguin.y, emitParticles]);
 
   useEffect(() => {
     const STRAFE_VOL = 0.015 * getGlobalVolume();

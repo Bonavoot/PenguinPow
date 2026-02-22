@@ -347,11 +347,21 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
       e.preventDefault();
     };
 
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        for (const key in keyState) {
+          keyState[key] = false;
+        }
+        socket.emit("fighter_action", { id: socket.id, keys: keyState });
+      }
+    };
+
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
     window.addEventListener("mousedown", handleMouseDown);
     window.addEventListener("mouseup", handleMouseUp);
     window.addEventListener("contextmenu", handleContextMenu);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
@@ -359,6 +369,7 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
       window.removeEventListener("mousedown", handleMouseDown);
       window.removeEventListener("mouseup", handleMouseUp);
       window.removeEventListener("contextmenu", handleContextMenu);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
 
       // Remove gamepad input callback
       gamepadHandler.removeInputCallback(handleGamepadInput);

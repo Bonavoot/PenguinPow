@@ -156,6 +156,8 @@ const NameBanner = styled.div`
   width: 100%;
   gap: clamp(5px, 0.8vw, 10px);
   flex-direction: ${(p) => (p.$isRight ? "row-reverse" : "row")};
+  /* Rounded corner under avatar so no sharp edge shows through avatar radius */
+  border-radius: ${(p) => (p.$isRight ? "0 4px 0 0" : "4px 0 0 0")};
   /* Angled banner edge — fighting game energy */
   clip-path: ${(p) =>
     p.$isRight
@@ -167,8 +169,8 @@ const NameBanner = styled.div`
     rgba(18, 24, 50, 0.88) 60%,
     rgba(28, 18, 18, 0.75) 100%
   );
-  /* Match the full stamina bar height (BarTrack + BarTrack border + BarFrame border) */
-  height: calc(clamp(26px, 5.4vh, 56px) + 8px);
+  /* Height fits square avatar; can be shorter than stamina bar */
+  height: calc(clamp(24px, 4.5vh, 50px) + 6px);
   box-sizing: border-box;
   padding: 0 clamp(10px, 1.5vw, 20px);
   ${(p) => p.$isRight
@@ -189,31 +191,17 @@ const NameBanner = styled.div`
     pointer-events: none;
     z-index: 4;
   }
-
-  /* Colored accent edge — east(teal)/west(crimson) sumo tradition */
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0; bottom: 0;
-    ${(p) => (p.$isRight ? "right: 0;" : "left: 0;")}
-    width: clamp(3px, 0.3vw, 6px);
-    background: ${(p) =>
-      p.$isRight
-        ? "linear-gradient(180deg, #b83232, #8B1A1A, #5c0e0e)"
-        : "linear-gradient(180deg, #1a7a8a, #0d5a6c, #073d4a)"};
-    z-index: 2;
-  }
 `;
 
-/* Square seal avatar (hanko stamp feel) — full banner height, flush to side accent */
+/* Square seal avatar (hanko stamp feel) — square, flush to side accent */
 const AvatarSeal = styled.div`
   width: clamp(24px, 4.5vh, 50px);
-  align-self: stretch;
+  height: clamp(24px, 4.5vh, 50px);
+  flex-shrink: 0;
   /* Push flush to the banner edge, covering the side accent */
   ${(p) => p.$isRight
     ? "margin-right: calc(-1 * clamp(10px, 1.5vw, 20px));"
     : "margin-left: calc(-1 * clamp(10px, 1.5vw, 20px));"}
-  /* Bottom aligns with banner's gold bottom edge */
   margin-bottom: 0;
   background: radial-gradient(
     circle at 35% 35%,
@@ -235,7 +223,6 @@ const AvatarSeal = styled.div`
     0 0 0 1px rgba(0, 0, 0, 0.6),
     inset 0 0 8px rgba(0, 0, 0, 0.5),
     0 3px 10px rgba(0, 0, 0, 0.5);
-  flex-shrink: 0;
   position: relative;
   z-index: 3;
 
@@ -267,7 +254,7 @@ const NameBlock = styled.div`
 
 const FighterName = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(14px, 2.1vw, 26px);
+  font-size: clamp(11px, 1.55vw, 19px);
   color: #ffffff;
   text-shadow:
     clamp(2px, 0.16vw, 4px) clamp(2px, 0.16vw, 4px) 0 #000,
@@ -275,10 +262,12 @@ const FighterName = styled.div`
     clamp(2px, 0.16vw, 4px) clamp(-2px, -0.16vw, -1px) 0 #000,
     clamp(-2px, -0.16vw, -1px) clamp(2px, 0.16vw, 4px) 0 #000,
     0 0 clamp(12px, 1.4vw, 24px) rgba(0, 0, 0, 0.8),
-    0 0 clamp(4px, 0.4vw, 8px) rgba(0, 0, 0, 1);
-  letter-spacing: 0.12em;
+    0 0 clamp(4px, 0.4vw, 8px) rgba(0, 0, 0, 1),
+    0 0 6px rgba(255, 255, 255, 0.25),
+    0 0 3px rgba(255, 255, 255, 0.15);
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  line-height: 1.1;
+  line-height: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -670,13 +659,13 @@ const BarRow = styled.div`
   width: 100%;
 `;
 
-/* Same height as stamina bar (BarTrack + BarFrame border only; box-shadow ring is drawn outside) */
+/* Square slot aligned with stamina bar row */
 const PowerUpSlot = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
   width: clamp(30px, 3.8vw, 48px);
-  height: calc(clamp(26px, 5.4vh, 56px) + clamp(5px, 0.4vw, 10px));
+  height: clamp(30px, 3.8vw, 48px);
   border-radius: 4px;
   border: clamp(1.5px, 0.15vw, 3px) solid;
   position: relative;
