@@ -179,8 +179,6 @@ const PerfectParryPowerEffect = ({ x, y, isPerfectParrySuccess }) => {
       {effectInstances.map((effect) => (
         <EffectContainer key={effect.key} $x={effect.x} $y={effect.y}>
           <ImpactFlash />
-          <ShockwaveRingPrimary />
-          <ShockwaveRingSecondary />
           {/* Ground sparks burst outward in different directions */}
           <GroundSpark $gx="-2.96cqw" $gy="-0.59cqw" $delay={0} />
           <GroundSpark $gx="2.96cqw" $gy="-0.59cqw" $delay={0.02} />

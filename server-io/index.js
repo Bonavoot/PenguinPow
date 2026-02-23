@@ -5813,7 +5813,19 @@ io.on("connection", (socket) => {
         
         // Apply stronger knockback velocity for perfect parry (causes sliding on ice)
         const pushDirection = player.x < otherPlayer.x ? -1 : 1;
-        player.knockbackVelocity.x = PERFECT_PARRY_KNOCKBACK * pushDirection;
+
+        // When overlapping (e.g. dodge cancel inside opponent), boost knockback velocity
+        // to compensate for the overlap distance. This keeps the slide smooth (no teleport)
+        // while ensuring the stunned player always ends up at the same final distance from
+        // the parrier regardless of how deep the overlap was.
+        // ~110px of displacement per 1.0 velocity unit over the 400ms knockback window
+        // (derived from 64Hz tick, 0.185 speedFactor, 0.985 friction, 0.8x mvVel transfer)
+        const ppDistance = Math.abs(player.x - otherPlayer.x);
+        const ppMinSep = HITBOX_DISTANCE_VALUE * 2 * Math.max(player.sizeMultiplier || 1, otherPlayer.sizeMultiplier || 1);
+        const overlapAmount = Math.max(0, ppMinSep - ppDistance);
+        const overlapCompensation = overlapAmount / 110;
+
+        player.knockbackVelocity.x = (PERFECT_PARRY_KNOCKBACK + overlapCompensation) * pushDirection;
         player.knockbackVelocity.y = 0;
         
         // Track stun start time

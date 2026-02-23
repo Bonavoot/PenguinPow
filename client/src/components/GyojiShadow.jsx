@@ -4,7 +4,7 @@ import PropTypes from "prop-types";
 const GyojiShadowElement = styled.div`
   position: absolute;
   left: ${(props) => (props.$gyojiState === "idle" ? "43.2%" : "43.75%")};
-  bottom: ${(props) => (props.$gyojiState === "idle" ? "44.5%" : "45.3%")};
+  bottom: ${(props) => (props.$gyojiState === "idle" ? "46%" : "46.8%")};
   width: ${(props) => (props.$gyojiState === "idle" ? "14%" : "12%")};
   height: 7.8%;
   background: radial-gradient(

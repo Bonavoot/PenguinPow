@@ -34,27 +34,29 @@ const FontWarmup = () => (
   <div
     aria-hidden="true"
     style={{
-      position: 'absolute',
-      left: '-9999px',
-      top: '-9999px',
-      visibility: 'hidden',
-      pointerEvents: 'none',
-      overflow: 'hidden',
-      width: '1px',
-      height: '1px',
+      position: "absolute",
+      left: "-9999px",
+      top: "-9999px",
+      visibility: "hidden",
+      pointerEvents: "none",
+      overflow: "hidden",
+      width: "1px",
+      height: "1px",
     }}
   >
     <span
       style={{
         fontFamily: '"Noto Serif JP", serif',
-        fontSize: '22rem',
+        fontSize: "22rem",
         fontWeight: 900,
         lineHeight: 1,
-        textShadow: '4px 4px 0 #E6B800, 8px 8px 0 #CC9900, 12px 12px 0 #B38600, 0 0 40px rgba(255, 215, 0, 0.35)',
-        background: 'linear-gradient(145deg, #FFFFFF 0%, #FFD700 40%, #FF8000 100%)',
-        WebkitBackgroundClip: 'text',
-        WebkitTextFillColor: 'transparent',
-        backgroundClip: 'text',
+        textShadow:
+          "4px 4px 0 #E6B800, 8px 8px 0 #CC9900, 12px 12px 0 #B38600, 0 0 40px rgba(255, 215, 0, 0.35)",
+        background:
+          "linear-gradient(145deg, #FFFFFF 0%, #FFD700 40%, #FF8000 100%)",
+        WebkitBackgroundClip: "text",
+        WebkitTextFillColor: "transparent",
+        backgroundClip: "text",
       }}
     >
       勝敗
@@ -62,24 +64,36 @@ const FontWarmup = () => (
   </div>
 );
 
-const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) => {
+const Game = ({
+  rooms,
+  roomName,
+  localId,
+  setCurrentPage,
+  isCPUMatch = false,
+}) => {
   const { socket } = useContext(SocketContext);
   const [isPowerUpSelectionActive, setIsPowerUpSelectionActive] =
     useState(false);
   const [opponentDisconnected, setOpponentDisconnected] = useState(false);
   const [disconnectedRoomId, setDisconnectedRoomId] = useState(null);
   const [crowdEvent, setCrowdEvent] = useState(null);
-  
+
   // Pre-match screen state
   const [showPreMatchScreen, setShowPreMatchScreen] = useState(true); // Start with overlay visible
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [isPreloading, setIsPreloading] = useState(true);
   const preMatchShownRef = useRef(false); // Track if we've already shown/hidden the pre-match
-  
+
   const index = rooms.findIndex((room) => room.id === roomName);
-  
+
   // Get player colors for sprite recoloring
-  const { player1Color, player2Color, player1BodyColor, player2BodyColor, preloadSprites } = usePlayerColors();
+  const {
+    player1Color,
+    player2Color,
+    player1BodyColor,
+    player2BodyColor,
+    preloadSprites,
+  } = usePlayerColors();
 
   // Get the current room with null safety
   const currentRoom = index !== -1 ? rooms[index] : null;
@@ -105,19 +119,19 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
   const containerRef = useRef(null);
 
   useCamera(containerRef, socket);
-  
+
   // Helper function to apply prediction for an action
   const applyPrediction = useCallback((actionType, direction = null) => {
     if (predictionRef.current?.applyPrediction) {
       // Pass gameStarted state so predictions know if game is active
-      predictionRef.current.applyPrediction({ 
-        type: actionType, 
+      predictionRef.current.applyPrediction({
+        type: actionType,
         direction,
-        gameStarted: isGameActiveRef.current 
+        gameStarted: isGameActiveRef.current,
       });
     }
   }, []);
-  
+
   // Track previous key states for edge detection (just pressed)
   const prevKeyState = useRef({
     mouse1: false,
@@ -169,10 +183,10 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
       if (currentPlayer?.isBeingGrabbed) {
         const grabCounterOnly = {
           w: false,
-          a: gamepadKeyState.a || false,    // Counter pull reversal / resist push
-          s: gamepadKeyState.s || false,    // Counter throw
-          d: gamepadKeyState.d || false,    // Counter pull reversal / resist push
-          " ": false,                        // Spacebar no longer used for grab break
+          a: gamepadKeyState.a || false, // Counter pull reversal / resist push
+          s: gamepadKeyState.s || false, // Counter throw
+          d: gamepadKeyState.d || false, // Counter pull reversal / resist push
+          " ": false, // Spacebar no longer used for grab break
           shift: false,
           e: false,
           f: false,
@@ -200,16 +214,22 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
         applyPrediction("parry_release");
       }
       // ICE PHYSICS: Power slide predictions for gamepad
-      if ((gamepadKeyState.c || gamepadKeyState.control) && !(keyState.c || keyState.control)) {
+      if (
+        (gamepadKeyState.c || gamepadKeyState.control) &&
+        !(keyState.c || keyState.control)
+      ) {
         applyPrediction("power_slide_start");
       }
-      if (!(gamepadKeyState.c || gamepadKeyState.control) && (keyState.c || keyState.control)) {
+      if (
+        !(gamepadKeyState.c || gamepadKeyState.control) &&
+        (keyState.c || keyState.control)
+      ) {
         applyPrediction("power_slide_end");
       }
 
       // Update keyState for next comparison
       Object.assign(keyState, gamepadKeyState);
-      
+
       socket.emit("fighter_action", { id: socket.id, keys: gamepadKeyState });
     };
 
@@ -224,8 +244,11 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
       if (currentPlayer?.isThrowingSnowball) return;
 
       // When being grabbed, only allow A, D, S keys for directional counter-inputs
-      const allowedGrabKeys = ['a', 'd', 's'];
-      if (currentPlayer?.isBeingGrabbed && !allowedGrabKeys.includes(e.key.toLowerCase())) {
+      const allowedGrabKeys = ["a", "d", "s"];
+      if (
+        currentPlayer?.isBeingGrabbed &&
+        !allowedGrabKeys.includes(e.key.toLowerCase())
+      ) {
         return;
       }
 
@@ -233,10 +256,10 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
       if (Object.prototype.hasOwnProperty.call(keyState, key)) {
         // Prevent browser default behavior for game keys (especially CTRL which triggers selection)
         e.preventDefault();
-        
+
         const wasPressed = keyState[key];
         keyState[key] = true;
-        
+
         // CLIENT-SIDE PREDICTION: Apply predicted state immediately for certain actions
         // Don't apply predictions while being grabbed - only send counter-inputs
         if (!wasPressed && !currentPlayer?.isBeingGrabbed) {
@@ -254,7 +277,7 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
             applyPrediction("power_slide_start");
           }
         }
-        
+
         socket.emit("fighter_action", { id: socket.id, keys: keyState });
       }
     };
@@ -267,8 +290,11 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
       if (currentPlayer?.isThrowingSnowball) return;
 
       // When being grabbed, only allow A, D, S key releases (for directional counter-inputs)
-      const allowedGrabKeysUp = ['a', 'd', 's'];
-      if (currentPlayer?.isBeingGrabbed && !allowedGrabKeysUp.includes(e.key.toLowerCase())) {
+      const allowedGrabKeysUp = ["a", "d", "s"];
+      if (
+        currentPlayer?.isBeingGrabbed &&
+        !allowedGrabKeysUp.includes(e.key.toLowerCase())
+      ) {
         return;
       }
 
@@ -276,9 +302,9 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
       if (Object.prototype.hasOwnProperty.call(keyState, key)) {
         // Prevent browser default behavior for game keys
         e.preventDefault();
-        
+
         keyState[key] = false;
-        
+
         // CLIENT-SIDE PREDICTION: Apply predicted state for releases
         if (key === "s") {
           applyPrediction("parry_release");
@@ -287,7 +313,7 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
         else if (key === "c" || key === "control") {
           applyPrediction("power_slide_end");
         }
-        
+
         socket.emit("fighter_action", { id: socket.id, keys: keyState });
       }
     };
@@ -311,12 +337,12 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
         e.preventDefault();
         const wasPressed = keyState.mouse2;
         keyState.mouse2 = true;
-        
+
         // CLIENT-SIDE PREDICTION: Immediately show grab
         if (!wasPressed) {
           applyPrediction("grab");
         }
-        
+
         socket.emit("fighter_action", { id: socket.id, keys: keyState });
       }
     };
@@ -391,44 +417,58 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
     // Only run once when game first loads
     if (preMatchShownRef.current) return;
     preMatchShownRef.current = true;
-    
+
     const runPreload = async () => {
       console.log("Game: Starting pre-match screen and sprite preload...");
-      
+
       // Simulate loading progress while actual preloading happens
       const progressInterval = setInterval(() => {
-        setLoadingProgress(prev => {
+        setLoadingProgress((prev) => {
           if (prev >= 90) return 90;
           return prev + Math.random() * 15;
         });
       }, 200);
-      
+
       try {
         // Preload all recolored sprites
-        await preloadSprites(player1Color, player2Color, player1BodyColor, player2BodyColor);
+        await preloadSprites(
+          player1Color,
+          player2Color,
+          player1BodyColor,
+          player2BodyColor
+        );
         console.log("Game: Sprites preloaded successfully");
-        
+
         // Complete the progress bar
         clearInterval(progressInterval);
         setLoadingProgress(100);
-        
       } catch (error) {
         console.error("Game: Failed to preload sprites:", error);
         clearInterval(progressInterval);
         setLoadingProgress(100);
       }
-      
+
       // Hide pre-match screen
       setIsPreloading(false);
       setShowPreMatchScreen(false);
-      
+
       // Signal server that pre-match is complete - NOW start power-up selection
-      console.log("Game: Pre-match complete, signaling server to start power-up selection");
+      console.log(
+        "Game: Pre-match complete, signaling server to start power-up selection"
+      );
       socket.emit("pre_match_complete", { roomId: roomName });
     };
-    
+
     runPreload();
-  }, [preloadSprites, player1Color, player2Color, player1BodyColor, player2BodyColor, socket, roomName]);
+  }, [
+    preloadSprites,
+    player1Color,
+    player2Color,
+    player1BodyColor,
+    player2BodyColor,
+    socket,
+    roomName,
+  ]);
 
   // Handle opponent disconnection - hide power-up selection UI for ALL game phases
   useEffect(() => {
@@ -447,7 +487,11 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
 
     const handleGameOver = () => {
       requestAnimationFrame(() => {
-        setCrowdEvent({ type: "cheer", intensity: "heavy", timestamp: Date.now() });
+        setCrowdEvent({
+          type: "cheer",
+          intensity: "heavy",
+          timestamp: Date.now(),
+        });
       });
       isGameActiveRef.current = false;
     };
@@ -457,7 +501,11 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
     };
 
     const handlePerfectParry = () => {
-      setCrowdEvent({ type: "cheer", intensity: "medium", timestamp: Date.now() });
+      setCrowdEvent({
+        type: "cheer",
+        intensity: "medium",
+        timestamp: Date.now(),
+      });
     };
 
     socket.on("opponent_disconnected", handleOpponentDisconnected);
@@ -513,9 +561,13 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
                         setDisconnectedRoomId(null);
                       }}
                       isPowerUpSelectionActive={isPowerUpSelectionActive}
-                      predictionRef={isLocalPlayerFighter ? predictionRef : null}
+                      predictionRef={
+                        isLocalPlayerFighter ? predictionRef : null
+                      }
                       playerColor={i === 0 ? player1Color : player2Color}
-                      playerBodyColor={i === 0 ? player1BodyColor : player2BodyColor}
+                      playerBodyColor={
+                        i === 0 ? player1BodyColor : player2BodyColor
+                      }
                     />
                   );
                 })}
@@ -531,18 +583,23 @@ const Game = ({ rooms, roomName, localId, setCurrentPage, isCPUMatch = false }) 
           playerId={localId}
           onSelectionStateChange={setIsPowerUpSelectionActive}
         />
-        <PowerUpReveal
-          roomId={roomName}
-          localId={localId}
-        />
+        <PowerUpReveal roomId={roomName} localId={localId} />
         {showPreMatchScreen && currentRoom && (
           <PreMatchScreen
             player1Name={currentRoom.players[0]?.fighter || "Player 1"}
-            player2Name={currentRoom.players[1]?.isCPU ? "CPU" : (currentRoom.players[1]?.fighter || "Player 2")}
+            player2Name={
+              currentRoom.players[1]?.isCPU
+                ? "CPU"
+                : currentRoom.players[1]?.fighter || "Player 2"
+            }
             player1Color={currentRoom.players[0]?.mawashiColor || player1Color}
             player2Color={currentRoom.players[1]?.mawashiColor || player2Color}
-            player1BodyColor={currentRoom.players[0]?.bodyColor || player1BodyColor}
-            player2BodyColor={currentRoom.players[1]?.bodyColor || player2BodyColor}
+            player1BodyColor={
+              currentRoom.players[0]?.bodyColor || player1BodyColor
+            }
+            player2BodyColor={
+              currentRoom.players[1]?.bodyColor || player2BodyColor
+            }
             player1Record={{ wins: 0, losses: 0 }}
             player2Record={{ wins: 0, losses: 0 }}
             loadingProgress={loadingProgress}

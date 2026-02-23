@@ -212,7 +212,7 @@ function handleWinCondition(room, loser, winner, io) {
   // Reset loser's states immediately
   resetPlayerAttackStates(loser);
 
-  // Reset all key states for both players
+  // Reset all key states and animation-triggering states for both players
   room.players.forEach((p) => {
     const currentX = p.x;
     p.isStrafing = false;
@@ -222,6 +222,24 @@ function handleWinCondition(room, loser, winner, io) {
       p.isAtTheRopes = false;
       p.atTheRopesStartTime = 0;
     }
+
+    // Clear parry states to prevent jiggle/flash animations persisting into round result
+    p.isRawParrying = false;
+    p.rawParryStartTime = 0;
+    p.rawParryMinDurationMet = false;
+    p.isRawParrySuccess = false;
+    p.isPerfectRawParrySuccess = false;
+    p.isRawParryStun = false;
+
+    // Clear grab animation states that cause shake/jiggle if round ends mid-grab
+    p.isGrabBreaking = false;
+    p.isGrabBreakCountered = false;
+    p.isGrabTeching = false;
+    p.grabTechRole = null;
+    p.isGrabPushing = false;
+    p.isBeingGrabPushed = false;
+    p.isAttemptingPull = false;
+    p.isGrabSeparating = false;
 
     // Clear buffered slap attack states to prevent attacks after winner is declared
     p.hasPendingSlapAttack = false;
@@ -886,34 +904,54 @@ function adjustPlayerPositions(player1, player2, delta) {
       (player1.isRecovering || player1.isInEndlag) ||
       (player2.isRecovering || player2.isInEndlag);
 
-    // SPECIAL CASE: Perfect parry stun - stunned player is "anchored" and cannot be pushed
-    // The pushing player takes ALL separation and their velocity is killed
+    // SPECIAL CASE: Perfect parry stun separation
     const player1IsStunned = player1.isRawParryStun;
     const player2IsStunned = player2.isRawParryStun;
 
     let separationSpeed, newPlayer1X, newPlayer2X;
 
     if (player1IsStunned || player2IsStunned) {
-      // One player is stunned - they are anchored in place
-      separationSpeed = Math.min(overlap * 0.7, 16);
       const separationDirection = player1.x < player2.x ? -1 : 1;
 
-      if (player1IsStunned && !player2IsStunned) {
-        // Player 1 is stunned - player 1 stays in place, player 2 takes all separation
-        newPlayer1X = player1.x; // Stunned player doesn't move
-        newPlayer2X = player2.x + -separationDirection * separationSpeed; // Pusher takes full separation
-        // Kill the pusher's velocity completely
-        player2.movementVelocity = 0;
-      } else if (player2IsStunned && !player1IsStunned) {
-        // Player 2 is stunned - player 2 stays in place, player 1 takes all separation
-        newPlayer1X = player1.x + separationDirection * separationSpeed; // Pusher takes full separation
-        newPlayer2X = player2.x; // Stunned player doesn't move
-        // Kill the pusher's velocity completely
-        player1.movementVelocity = 0;
+      // Deep overlap = players are inside each other (e.g. dodge cancel through into perfect parry)
+      // Need aggressive two-sided separation so the stunned knockback fully plays out
+      const deepOverlapThreshold = finalMinDistance * 0.3;
+      const isDeepOverlap = overlap > deepOverlapThreshold;
+
+      if (isDeepOverlap) {
+        // Both players push apart — fast resolution like post-dodge overlap
+        separationSpeed = Math.min(overlap * 0.85, 16);
+        const stunnedShare = separationSpeed * 0.35;
+        const otherShare = separationSpeed - stunnedShare;
+
+        if (player1IsStunned && !player2IsStunned) {
+          newPlayer1X = player1.x + separationDirection * stunnedShare;
+          newPlayer2X = player2.x + -separationDirection * otherShare;
+          player2.movementVelocity = 0;
+        } else if (player2IsStunned && !player1IsStunned) {
+          newPlayer1X = player1.x + separationDirection * otherShare;
+          newPlayer2X = player2.x + -separationDirection * stunnedShare;
+          player1.movementVelocity = 0;
+        } else {
+          newPlayer1X = player1.x;
+          newPlayer2X = player2.x;
+        }
       } else {
-        // Both stunned (shouldn't happen normally) - neither moves
-        newPlayer1X = player1.x;
-        newPlayer2X = player2.x;
+        // Shallow overlap — stunned player is anchored, other player takes all separation
+        separationSpeed = Math.min(overlap * 0.7, 16);
+
+        if (player1IsStunned && !player2IsStunned) {
+          newPlayer1X = player1.x;
+          newPlayer2X = player2.x + -separationDirection * separationSpeed;
+          player2.movementVelocity = 0;
+        } else if (player2IsStunned && !player1IsStunned) {
+          newPlayer1X = player1.x + separationDirection * separationSpeed;
+          newPlayer2X = player2.x;
+          player1.movementVelocity = 0;
+        } else {
+          newPlayer1X = player1.x;
+          newPlayer2X = player2.x;
+        }
       }
     } else if (isPostDodgeOverlap || isPostChargedAttackOverlap) {
       // FAST separation after dodge landing or charged attack ends

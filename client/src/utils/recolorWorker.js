@@ -1,6 +1,6 @@
 /**
  * Web Worker for sprite recolorization
- * 
+ *
  * Handles the heavy pixel-by-pixel processing off the main thread
  * to prevent animation stuttering and invisible frames.
  */
@@ -81,7 +81,7 @@ function isColorInHslRange(h, s, l, colorRange) {
   if (h >= colorRange.minHue && h <= colorRange.maxHue) {
     return true;
   }
-  
+
   if (colorRange.minHue2 !== undefined && colorRange.maxHue2 !== undefined) {
     if (h >= colorRange.minHue2 && h <= colorRange.maxHue2) {
       return true;
@@ -95,29 +95,37 @@ function isColorInHslRange(h, s, l, colorRange) {
  * Recolor a pixel from source color to target color while preserving relative luminosity
  * This maintains the shading/highlights of the original sprite while shifting toward target lightness
  */
-function recolorPixel(r, g, b, targetHue, targetSaturation, targetLightness, referenceLightness) {
+function recolorPixel(
+  r,
+  g,
+  b,
+  targetHue,
+  targetSaturation,
+  targetLightness,
+  referenceLightness
+) {
   const hsl = rgbToHsl(r, g, b);
-  
+
   // Calculate how far the original pixel's lightness is from the reference (source midpoint)
   const lightnessOffset = hsl.l - referenceLightness;
-  
+
   // Apply this offset to the target lightness, with some compression for extreme targets
   let newLightness;
-  
+
   if (targetLightness < 20) {
     // Very dark target (like black): compress lightness range, bias toward dark
-    newLightness = targetLightness + (lightnessOffset * 0.3);
+    newLightness = targetLightness + lightnessOffset * 0.3;
   } else if (targetLightness > 80) {
     // Very light target (like light pink): compress lightness range, bias toward light
-    newLightness = targetLightness + (lightnessOffset * 0.3);
+    newLightness = targetLightness + lightnessOffset * 0.3;
   } else {
     // Normal target: preserve more of the original shading
-    newLightness = targetLightness + (lightnessOffset * 0.7);
+    newLightness = targetLightness + lightnessOffset * 0.7;
   }
-  
+
   // Clamp to valid range
   newLightness = Math.max(0, Math.min(100, newLightness));
-  
+
   return hslToRgb(targetHue, targetSaturation, newLightness);
 }
 
@@ -137,24 +145,24 @@ function posMod(n, m) {
  */
 function getSpecialPixelColor(specialMode, x, y, width, height) {
   switch (specialMode) {
-    case 'rainbow': {
+    case "rainbow": {
       const CYCLE = 50;
       return { h: (posMod(y, CYCLE) / CYCLE) * 360, s: 90, l: 50 };
     }
-    case 'fire': {
+    case "fire": {
       const CYCLE = 70;
       const t = posMod(y, CYCLE) / CYCLE;
       const hue = 55 - t * 55;
       const lightness = 60 - t * 30;
       return { h: hue, s: 100, l: lightness };
     }
-    case 'vaporwave': {
+    case "vaporwave": {
       const CYCLE = 60;
       const t = posMod(y, CYCLE) / CYCLE;
       const hue = 300 - t * 120;
       return { h: hue, s: 80, l: 55 };
     }
-    case 'camo': {
+    case "camo": {
       const BLOCK = 5;
       const bx = Math.floor(x / BLOCK);
       const by = Math.floor(y / BLOCK);
@@ -168,14 +176,14 @@ function getSpecialPixelColor(specialMode, x, y, width, height) {
       if (val < 88) return { h: 55, s: 25, l: 45 };
       return { h: 0, s: 0, l: 10 };
     }
-    case 'galaxy': {
+    case "galaxy": {
       let hash = (x * 374761393 + y * 668265263) | 0;
       hash = ((hash ^ (hash >>> 13)) * 1274126177) | 0;
       hash = (hash ^ (hash >>> 16)) >>> 0;
       const val = hash % 1000;
 
-      if (val < 3) return { h: 200, s: 10, l: 98 };    // rare brilliant white-blue star
-      if (val < 5) return { h: 45, s: 15, l: 95 };     // rare warm white star
+      if (val < 3) return { h: 200, s: 10, l: 98 }; // rare brilliant white-blue star
+      if (val < 5) return { h: 45, s: 15, l: 95 }; // rare warm white star
 
       const CYCLE = 60;
       const drift = posMod(x + y * 2, CYCLE) / CYCLE;
@@ -186,7 +194,7 @@ function getSpecialPixelColor(specialMode, x, y, width, height) {
       const baseHue = 260 + drift * 30;
       return { h: baseHue, s: 60, l: 15 };
     }
-    case 'gold': {
+    case "gold": {
       const CYCLE = 100;
       const shine = posMod(x + y, CYCLE) / CYCLE;
       const peak = Math.pow(Math.sin(shine * Math.PI), 6);
@@ -212,7 +220,26 @@ function getSpecialPixelColor(specialMode, x, y, width, height) {
  * (preserve lightness for shading); mawashi/headband stay target color.
  * When blubberTintPurple is true: all non-transparent pixels get a transparent purple tint (thick blubber).
  */
-function processImageData(imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, hitTintRed, width, height, chargeTintWhite = false, blubberTintPurple = false, bodyColorRange = null, bodyTargetHue = 0, bodyTargetSat = 0, bodyTargetLight = 50, bodyReferenceLightness = 49, skipMawashiRecolor = false) {
+function processImageData(
+  imageData,
+  sourceColorRange,
+  targetHue,
+  targetSat,
+  targetLight,
+  referenceLightness,
+  specialMode,
+  hitTintRed,
+  width,
+  height,
+  chargeTintWhite = false,
+  blubberTintPurple = false,
+  bodyColorRange = null,
+  bodyTargetHue = 0,
+  bodyTargetSat = 0,
+  bodyTargetLight = 50,
+  bodyReferenceLightness = 49,
+  skipMawashiRecolor = false
+) {
   const data = imageData.data;
   const length = data.length;
   const HIT_RED_RGB = hslToRgb(0, 58, 55);
@@ -223,11 +250,18 @@ function processImageData(imageData, sourceColorRange, targetHue, targetSat, tar
   const BLUBBER_BLEND = 0.35;
 
   // --- Pass 1: centroid of matching pixels (only needed for special modes) ---
-  let anchorX = 0, anchorY = 0;
-  let spanW = 1, spanH = 1;
+  let anchorX = 0,
+    anchorY = 0;
+  let spanW = 1,
+    spanH = 1;
   if (specialMode) {
-    let sumX = 0, sumY = 0, count = 0;
-    let minX = width, minY = height, maxX = 0, maxY = 0;
+    let sumX = 0,
+      sumY = 0,
+      count = 0;
+    let minX = width,
+      minY = height,
+      maxX = 0,
+      maxY = 0;
     for (let i = 0; i < length; i += 4) {
       if (data[i + 3] === 0) continue;
       const ph = rgbToHsl(data[i], data[i + 1], data[i + 2]);
@@ -259,7 +293,10 @@ function processImageData(imageData, sourceColorRange, targetHue, targetSat, tar
     edgeFlags = new Uint8Array(pixelCount);
     for (let p = 0; p < pixelCount; p++) {
       const pi = p * 4;
-      if (data[pi + 3] === 0) { edgeFlags[p] = 1; continue; }
+      if (data[pi + 3] === 0) {
+        edgeFlags[p] = 1;
+        continue;
+      }
       const nl = rgbToHsl(data[pi], data[pi + 1], data[pi + 2]).l;
       if (nl < 15 || nl > 85) edgeFlags[p] = 1;
     }
@@ -276,7 +313,9 @@ function processImageData(imageData, sourceColorRange, targetHue, targetSat, tar
 
     const pixelHsl = rgbToHsl(r, g, b);
 
-    if (isColorInHslRange(pixelHsl.h, pixelHsl.s, pixelHsl.l, sourceColorRange)) {
+    if (
+      isColorInHslRange(pixelHsl.h, pixelHsl.s, pixelHsl.l, sourceColorRange)
+    ) {
       // --- Mawashi / headband ---
       if (!skipMawashiRecolor) {
         let hue = targetHue;
@@ -287,24 +326,47 @@ function processImageData(imageData, sourceColorRange, targetHue, targetSat, tar
           const idx = i / 4;
           const relX = (idx % width) - anchorX;
           const relY = ((idx / width) | 0) - anchorY;
-          const sc = getSpecialPixelColor(specialMode, relX, relY, spanW, spanH);
+          const sc = getSpecialPixelColor(
+            specialMode,
+            relX,
+            relY,
+            spanW,
+            spanH
+          );
           hue = sc.h;
           sat = sc.s;
           light = sc.l;
         }
 
-        const newColor = recolorPixel(r, g, b, hue, sat, light, referenceLightness);
+        const newColor = recolorPixel(
+          r,
+          g,
+          b,
+          hue,
+          sat,
+          light,
+          referenceLightness
+        );
         data[i] = newColor.r;
         data[i + 1] = newColor.g;
         data[i + 2] = newColor.b;
       }
 
       if (chargeTintWhite) {
-        data[i] = Math.round((1 - CHARGE_BLEND) * data[i] + CHARGE_BLEND * CHARGE_WHITE_RGB.r);
-        data[i + 1] = Math.round((1 - CHARGE_BLEND) * data[i + 1] + CHARGE_BLEND * CHARGE_WHITE_RGB.g);
-        data[i + 2] = Math.round((1 - CHARGE_BLEND) * data[i + 2] + CHARGE_BLEND * CHARGE_WHITE_RGB.b);
+        data[i] = Math.round(
+          (1 - CHARGE_BLEND) * data[i] + CHARGE_BLEND * CHARGE_WHITE_RGB.r
+        );
+        data[i + 1] = Math.round(
+          (1 - CHARGE_BLEND) * data[i + 1] + CHARGE_BLEND * CHARGE_WHITE_RGB.g
+        );
+        data[i + 2] = Math.round(
+          (1 - CHARGE_BLEND) * data[i + 2] + CHARGE_BLEND * CHARGE_WHITE_RGB.b
+        );
       }
-    } else if (bodyColorRange && isColorInHslRange(pixelHsl.h, pixelHsl.s, pixelHsl.l, bodyColorRange)) {
+    } else if (
+      bodyColorRange &&
+      isColorInHslRange(pixelHsl.h, pixelHsl.s, pixelHsl.l, bodyColorRange)
+    ) {
       // --- Body (grey plumage) — skip thin lines (outlines, eyes, hair details) ---
       const pidx = i / 4;
       const px = pidx % width;
@@ -318,87 +380,183 @@ function processImageData(imageData, sourceColorRange, targetHue, targetSat, tar
       if (edgeNeighbors >= 2) {
         if (hitTintRed) {
           data[i] = Math.round((1 - HIT_BLEND) * r + HIT_BLEND * HIT_RED_RGB.r);
-          data[i + 1] = Math.round((1 - HIT_BLEND) * g + HIT_BLEND * HIT_RED_RGB.g);
-          data[i + 2] = Math.round((1 - HIT_BLEND) * b + HIT_BLEND * HIT_RED_RGB.b);
+          data[i + 1] = Math.round(
+            (1 - HIT_BLEND) * g + HIT_BLEND * HIT_RED_RGB.g
+          );
+          data[i + 2] = Math.round(
+            (1 - HIT_BLEND) * b + HIT_BLEND * HIT_RED_RGB.b
+          );
         } else if (chargeTintWhite) {
-          data[i] = Math.round((1 - CHARGE_BLEND) * r + CHARGE_BLEND * CHARGE_WHITE_RGB.r);
-          data[i + 1] = Math.round((1 - CHARGE_BLEND) * g + CHARGE_BLEND * CHARGE_WHITE_RGB.g);
-          data[i + 2] = Math.round((1 - CHARGE_BLEND) * b + CHARGE_BLEND * CHARGE_WHITE_RGB.b);
+          data[i] = Math.round(
+            (1 - CHARGE_BLEND) * r + CHARGE_BLEND * CHARGE_WHITE_RGB.r
+          );
+          data[i + 1] = Math.round(
+            (1 - CHARGE_BLEND) * g + CHARGE_BLEND * CHARGE_WHITE_RGB.g
+          );
+          data[i + 2] = Math.round(
+            (1 - CHARGE_BLEND) * b + CHARGE_BLEND * CHARGE_WHITE_RGB.b
+          );
         } else if (blubberTintPurple) {
-          data[i] = Math.round((1 - BLUBBER_BLEND) * r + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.r);
-          data[i + 1] = Math.round((1 - BLUBBER_BLEND) * g + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.g);
-          data[i + 2] = Math.round((1 - BLUBBER_BLEND) * b + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b);
+          data[i] = Math.round(
+            (1 - BLUBBER_BLEND) * r + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.r
+          );
+          data[i + 1] = Math.round(
+            (1 - BLUBBER_BLEND) * g + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.g
+          );
+          data[i + 2] = Math.round(
+            (1 - BLUBBER_BLEND) * b + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b
+          );
         }
         continue;
       }
 
-      const newColor = recolorPixel(r, g, b, bodyTargetHue, bodyTargetSat, bodyTargetLight, bodyReferenceLightness);
+      const newColor = recolorPixel(
+        r,
+        g,
+        b,
+        bodyTargetHue,
+        bodyTargetSat,
+        bodyTargetLight,
+        bodyReferenceLightness
+      );
       data[i] = newColor.r;
       data[i + 1] = newColor.g;
       data[i + 2] = newColor.b;
 
       if (hitTintRed) {
-        data[i] = Math.round((1 - HIT_BLEND) * data[i] + HIT_BLEND * HIT_RED_RGB.r);
-        data[i + 1] = Math.round((1 - HIT_BLEND) * data[i + 1] + HIT_BLEND * HIT_RED_RGB.g);
-        data[i + 2] = Math.round((1 - HIT_BLEND) * data[i + 2] + HIT_BLEND * HIT_RED_RGB.b);
+        data[i] = Math.round(
+          (1 - HIT_BLEND) * data[i] + HIT_BLEND * HIT_RED_RGB.r
+        );
+        data[i + 1] = Math.round(
+          (1 - HIT_BLEND) * data[i + 1] + HIT_BLEND * HIT_RED_RGB.g
+        );
+        data[i + 2] = Math.round(
+          (1 - HIT_BLEND) * data[i + 2] + HIT_BLEND * HIT_RED_RGB.b
+        );
       } else if (chargeTintWhite) {
-        data[i] = Math.round((1 - CHARGE_BLEND) * data[i] + CHARGE_BLEND * CHARGE_WHITE_RGB.r);
-        data[i + 1] = Math.round((1 - CHARGE_BLEND) * data[i + 1] + CHARGE_BLEND * CHARGE_WHITE_RGB.g);
-        data[i + 2] = Math.round((1 - CHARGE_BLEND) * data[i + 2] + CHARGE_BLEND * CHARGE_WHITE_RGB.b);
+        data[i] = Math.round(
+          (1 - CHARGE_BLEND) * data[i] + CHARGE_BLEND * CHARGE_WHITE_RGB.r
+        );
+        data[i + 1] = Math.round(
+          (1 - CHARGE_BLEND) * data[i + 1] + CHARGE_BLEND * CHARGE_WHITE_RGB.g
+        );
+        data[i + 2] = Math.round(
+          (1 - CHARGE_BLEND) * data[i + 2] + CHARGE_BLEND * CHARGE_WHITE_RGB.b
+        );
       } else if (blubberTintPurple) {
-        data[i] = Math.round((1 - BLUBBER_BLEND) * data[i] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.r);
-        data[i + 1] = Math.round((1 - BLUBBER_BLEND) * data[i + 1] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.g);
-        data[i + 2] = Math.round((1 - BLUBBER_BLEND) * data[i + 2] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b);
+        data[i] = Math.round(
+          (1 - BLUBBER_BLEND) * data[i] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.r
+        );
+        data[i + 1] = Math.round(
+          (1 - BLUBBER_BLEND) * data[i + 1] +
+            BLUBBER_BLEND * BLUBBER_PURPLE_RGB.g
+        );
+        data[i + 2] = Math.round(
+          (1 - BLUBBER_BLEND) * data[i + 2] +
+            BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b
+        );
       }
     } else if (hitTintRed) {
       data[i] = Math.round((1 - HIT_BLEND) * r + HIT_BLEND * HIT_RED_RGB.r);
       data[i + 1] = Math.round((1 - HIT_BLEND) * g + HIT_BLEND * HIT_RED_RGB.g);
       data[i + 2] = Math.round((1 - HIT_BLEND) * b + HIT_BLEND * HIT_RED_RGB.b);
     } else if (chargeTintWhite) {
-      data[i] = Math.round((1 - CHARGE_BLEND) * r + CHARGE_BLEND * CHARGE_WHITE_RGB.r);
-      data[i + 1] = Math.round((1 - CHARGE_BLEND) * g + CHARGE_BLEND * CHARGE_WHITE_RGB.g);
-      data[i + 2] = Math.round((1 - CHARGE_BLEND) * b + CHARGE_BLEND * CHARGE_WHITE_RGB.b);
+      data[i] = Math.round(
+        (1 - CHARGE_BLEND) * r + CHARGE_BLEND * CHARGE_WHITE_RGB.r
+      );
+      data[i + 1] = Math.round(
+        (1 - CHARGE_BLEND) * g + CHARGE_BLEND * CHARGE_WHITE_RGB.g
+      );
+      data[i + 2] = Math.round(
+        (1 - CHARGE_BLEND) * b + CHARGE_BLEND * CHARGE_WHITE_RGB.b
+      );
     } else if (blubberTintPurple) {
-      data[i] = Math.round((1 - BLUBBER_BLEND) * r + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.r);
-      data[i + 1] = Math.round((1 - BLUBBER_BLEND) * g + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.g);
-      data[i + 2] = Math.round((1 - BLUBBER_BLEND) * b + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b);
+      data[i] = Math.round(
+        (1 - BLUBBER_BLEND) * r + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.r
+      );
+      data[i + 1] = Math.round(
+        (1 - BLUBBER_BLEND) * g + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.g
+      );
+      data[i + 2] = Math.round(
+        (1 - BLUBBER_BLEND) * b + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b
+      );
     }
   }
-  
+
   return imageData;
 }
 
 // Handle messages from main thread
-self.onmessage = function(e) {
+self.onmessage = function (e) {
   const { type, payload, id } = e.data;
-  
-  if (type === 'recolor') {
-    const { imageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, width, height, specialMode, hitTintRed, chargeTintWhite, blubberTintPurple, bodyColorRange, bodyTargetHue, bodyTargetSat, bodyTargetLight, bodyReferenceLightness, skipMawashiRecolor } = payload;
-    
+
+  if (type === "recolor") {
+    const {
+      imageData,
+      sourceColorRange,
+      targetHue,
+      targetSat,
+      targetLight,
+      referenceLightness,
+      width,
+      height,
+      specialMode,
+      hitTintRed,
+      chargeTintWhite,
+      blubberTintPurple,
+      bodyColorRange,
+      bodyTargetHue,
+      bodyTargetSat,
+      bodyTargetLight,
+      bodyReferenceLightness,
+      skipMawashiRecolor,
+    } = payload;
+
     try {
       const newImageData = new ImageData(
         new Uint8ClampedArray(imageData),
         width,
         height
       );
-      
-      const processedData = processImageData(newImageData, sourceColorRange, targetHue, targetSat, targetLight, referenceLightness, specialMode, !!hitTintRed, width, height, !!chargeTintWhite, !!blubberTintPurple, bodyColorRange || null, bodyTargetHue || 0, bodyTargetSat || 0, bodyTargetLight || 50, bodyReferenceLightness || 49, !!skipMawashiRecolor);
-      
-      self.postMessage({
-        type: 'recolor_complete',
-        id,
-        payload: {
-          imageData: processedData.data.buffer,
-          width,
-          height,
-        }
-      }, [processedData.data.buffer]);
-      
+
+      const processedData = processImageData(
+        newImageData,
+        sourceColorRange,
+        targetHue,
+        targetSat,
+        targetLight,
+        referenceLightness,
+        specialMode,
+        !!hitTintRed,
+        width,
+        height,
+        !!chargeTintWhite,
+        !!blubberTintPurple,
+        bodyColorRange || null,
+        bodyTargetHue || 0,
+        bodyTargetSat || 0,
+        bodyTargetLight || 50,
+        bodyReferenceLightness || 49,
+        !!skipMawashiRecolor
+      );
+
+      self.postMessage(
+        {
+          type: "recolor_complete",
+          id,
+          payload: {
+            imageData: processedData.data.buffer,
+            width,
+            height,
+          },
+        },
+        [processedData.data.buffer]
+      );
     } catch (error) {
       self.postMessage({
-        type: 'recolor_error',
+        type: "recolor_error",
         id,
-        payload: { error: error.message }
+        payload: { error: error.message },
       });
     }
   }

@@ -218,6 +218,10 @@ function generateTextures() {
     speedLineIce: createSpeedLine(80, 3, 220, 240, 255, 0.85),
     speedLineThin: createSpeedLine(60, 2, 255, 255, 255, 0.8),
     speedLineThick: createSpeedLine(80, 5, 255, 255, 255, 0.9),
+
+    // Salt grains / clumps for salt throw
+    saltGrain: createChunk(6, 255, 255, 255, 1.0),
+    saltClump: createChunk(14, 255, 255, 255, 0.95),
   };
 }
 
@@ -526,6 +530,36 @@ const PRESETS = {
     }
   },
 
+  // Salt throw: tight forward arc of small grains that disappear at ground level.
+  saltThrow(engine, { x, y, facing }) {
+    const dir = -(facing || 1);
+    const handX = x + dir * 25;
+    const handY = GAME_H - y - 75;
+    const ground = GAME_H - y - 10;
+
+    for (let i = 0; i < 90; i++) {
+      const elevation = rand(0.75, 1.05);
+      const speed = rand(260, 560);
+      engine.spawn({
+        x: handX + rand(-3, 3),
+        y: handY + rand(-3, 3),
+        vx: dir * Math.cos(elevation) * speed,
+        vy: -Math.sin(elevation) * speed,
+        gravity: rand(1100, 1280),
+        drag: 0.998,
+        size: rand(2.5, 5),
+        sizeEnd: rand(2, 4.5),
+        alpha: rand(0.9, 1.0),
+        alphaEnd: rand(0.8, 1.0),
+        maxLife: 2.0,
+        groundY: ground,
+        texture: engine.textures.saltGrain,
+        ease: "linear",
+        easeAlpha: "linear",
+      });
+    }
+  },
+
   // Expanding ring for dodge landing. Biggest ring.
   dodgeLand(engine, { x, y, slideVelocity = 0 }) {
     const slideOffset = slideVelocity * 28;
@@ -576,6 +610,7 @@ class Particle {
     this.easeAlpha = null;
     this.blendMode = null;
     this.stretchX = 1;
+    this.groundY = Infinity;
   }
 }
 
@@ -630,6 +665,7 @@ export class ParticleEngine {
     p.easeAlpha = cfg.easeAlpha ?? null;
     p.blendMode = cfg.blendMode ?? null;
     p.stretchX = cfg.stretchX ?? 1;
+    p.groundY = cfg.groundY ?? Infinity;
   }
 
   _acquire() {
@@ -657,7 +693,7 @@ export class ParticleEngine {
       if (!p.active) continue;
 
       p.life += dt;
-      if (p.life >= p.maxLife) {
+      if (p.life >= p.maxLife || p.y >= p.groundY) {
         p.active = false;
         continue;
       }

@@ -197,23 +197,63 @@ function isAtGrabRange(cpu, human) {
   return Math.abs(cpu.x - human.x) <= AI_CONFIG.GRAB_RANGE;
 }
 
+// Check if the opponent is in a state where a grab can actually connect
+function isOpponentGrabbable(human) {
+  return !human.isDodging &&
+         !human.isBeingThrown &&
+         !human.isBeingGrabbed &&
+         !human.isGrabWhiffRecovery &&
+         !human.isGrabTeching &&
+         !human.isGrabBreaking &&
+         !human.isGrabBreakSeparating;
+}
+
+// Check if the opponent is actively moving away from the CPU
+function isOpponentRetreating(cpu, human) {
+  if (!human.movementVelocity || Math.abs(human.movementVelocity) < 0.15) return false;
+  const opponentIsRight = human.x > cpu.x;
+  return opponentIsRight ? human.movementVelocity > 0.15 : human.movementVelocity < -0.15;
+}
+
+// Check if CPU is facing toward the opponent (required for grab to connect)
+function isFacingOpponent(cpu, human) {
+  // facing: 1 = facing left, -1 = facing right
+  const opponentIsRight = human.x > cpu.x;
+  return (cpu.facing === -1 && opponentIsRight) || (cpu.facing === 1 && !opponentIsRight);
+}
+
+// Smart grab viability: is this a good moment to grab?
+function isGoodGrabOpportunity(cpu, human, distance) {
+  if (!isOpponentGrabbable(human)) return false;
+  if (!isFacingOpponent(cpu, human)) return false;
+
+  // Opponent is committed to an action (attacking, parrying, recovering) — great time to grab
+  if (human.isAttacking || human.isRawParrying || human.isRecovering || human.isHit) return true;
+  // Opponent is stationary or moving toward us — grab will likely connect
+  if (!isOpponentRetreating(cpu, human)) return true;
+  // Opponent is retreating — only grab if we're very close (startup won't let them escape)
+  if (isOpponentRetreating(cpu, human) && distance <= AI_CONFIG.GRAB_RANGE * 0.7) return true;
+  return false;
+}
+
 // Try to grab if at point-blank range, otherwise walk toward opponent to close the gap.
 // Returns true if the AI committed to an action (grab or approach), false if not close enough to even approach.
 function attemptGrabOrApproach(cpu, human, aiState, currentTime, distance) {
-  if (isAtGrabRange(cpu, human) && canGrab(cpu)) {
-    // At point-blank — execute grab immediately
+  if (!isOpponentGrabbable(human) || !isFacingOpponent(cpu, human)) return false;
+
+  if (isAtGrabRange(cpu, human) && canGrab(cpu) && isGoodGrabOpportunity(cpu, human, distance)) {
     cpu.keys.mouse2 = true;
     aiState.mouse2ReleaseTime = currentTime + 50;
     aiState.lastDecisionTime = currentTime;
     return 'grabbed';
   } else if (distance < AI_CONFIG.GRAB_APPROACH_RANGE && canGrab(cpu)) {
-    // Within approach range — walk toward opponent to close the gap
+    // Only start an approach if opponent isn't sprinting away
+    if (isOpponentRetreating(cpu, human) && distance > AI_CONFIG.GRAB_RANGE) return false;
     const dir = getDirectionToOpponent(cpu, human);
     if (dir === 1) cpu.keys.d = true;
     else cpu.keys.a = true;
-    // Set intent so AI keeps walking in on subsequent frames
     aiState.grabApproachIntent = true;
-    aiState.grabApproachIntentUntil = currentTime + 400; // Walk in for up to 400ms
+    aiState.grabApproachIntentUntil = currentTime + 400;
     aiState.lastDecisionTime = currentTime;
     return 'approaching';
   }
@@ -484,22 +524,30 @@ function updateCPUAI(cpu, human, room, currentTime) {
   // Handle pending key releases
   handlePendingKeyReleases(cpu, aiState, currentTime);
   
-  // Cancel grab approach if AI is hit, being grabbed, or opponent starts attacking
-  if (aiState.grabApproachIntent && (cpu.isHit || cpu.isBeingGrabbed || cpu.isBeingThrown || human.isAttacking)) {
+  // Cancel grab approach if situation changed (hit, grabbed, opponent dodging/retreating/ungrabable)
+  if (aiState.grabApproachIntent && (
+    cpu.isHit || cpu.isBeingGrabbed || cpu.isBeingThrown ||
+    human.isAttacking || human.isDodging || !isOpponentGrabbable(human) ||
+    !isFacingOpponent(cpu, human)
+  )) {
     aiState.grabApproachIntent = false;
   }
 
   // GRAB APPROACH: If AI is walking in for a grab, keep going until in range or expired
   if (aiState.grabApproachIntent && currentTime < aiState.grabApproachIntentUntil && canGrab(cpu)) {
     if (isAtGrabRange(cpu, human)) {
-      // Reached point-blank — execute grab!
-      resetAllKeys(cpu);
-      cpu.keys.mouse2 = true;
-      aiState.mouse2ReleaseTime = currentTime + 50;
-      aiState.grabApproachIntent = false;
-      aiState.lastDecisionTime = currentTime;
-      aiState.lastActionType = "grab_approach_execute";
-      return;
+      // Reached point-blank — only execute if it's still a good opportunity
+      if (isGoodGrabOpportunity(cpu, human, Math.abs(cpu.x - human.x))) {
+        resetAllKeys(cpu);
+        cpu.keys.mouse2 = true;
+        aiState.mouse2ReleaseTime = currentTime + 50;
+        aiState.grabApproachIntent = false;
+        aiState.lastDecisionTime = currentTime;
+        aiState.lastActionType = "grab_approach_execute";
+        return;
+      } else {
+        aiState.grabApproachIntent = false;
+      }
     } else {
       // Keep walking toward opponent
       resetAllKeys(cpu);

@@ -173,7 +173,6 @@ body {
   }
 }
 
-
 .sumo {
   position: absolute;
   right: -10%;
@@ -380,7 +379,7 @@ body {
   --arena-grain-light: rgba(255, 255, 255, 0.007);
   --arena-grain-dark: rgba(0, 0, 0, 0.014);
   /* Dohyo grade — desaturated stage so fighters & effects pop against it */
-  --dohyo-filter: brightness(0.95) saturate(0.94) contrast(1.10);
+  --dohyo-filter: brightness(0.95) saturate(0.94) contrast(1.1);
 
   /* ── Camera defaults — JS will drive these later for dynamic pan/zoom ── */
   --cam-scale: 1.35;
@@ -393,8 +392,7 @@ body {
   position: absolute;
   inset: 0;
   transform-origin: center center;
-  transform:
-    translate3d(var(--cam-x, 0px), var(--cam-y, 0px), 0)
+  transform: translate3d(var(--cam-x, 0px), var(--cam-y, 0px), 0)
     scale(var(--cam-scale, 1));
   will-change: transform;
   backface-visibility: hidden;
@@ -441,20 +439,18 @@ body {
   inset: 0;
   background-image: url(./assets/dohyo.png);
   background-repeat: no-repeat;
-  background-size: 85% 85%;          /* width height — increase 2nd value to make platform taller */
+  background-size: 85% 85%; /* width height — increase 2nd value to make platform taller */
   background-position: 50% 25%;
   pointer-events: none;
   z-index: 1;
   filter: var(--dohyo-filter);
   /* ── Perspective tilt — tweak these to flatten / angle the dohyo ── */
-  transform-origin: 50% 10%;      /* pivot near the top — back stays wide, front narrows */
-  transform:
-    perspective(700px)             /* depth — lower = more dramatic, higher = subtler */
-    rotateX(5deg)                 /* tilt — back stays anchored, front swings away (narrows) */
-    scaleY(0.86)                   /* vertical squash — < 1 = flatter, 1 = no change */
-    translateY(10%);               /* raise/lower — negative = up, positive = down */
+  transform-origin: 50% 10%; /* pivot near the top — back stays wide, front narrows */
+  transform: perspective(700px)
+    /* depth — lower = more dramatic, higher = subtler */ rotateX(5deg)
+    /* tilt — back stays anchored, front swings away (narrows) */ scaleY(0.86)
+    /* vertical squash — < 1 = flatter, 1 = no change */ translateY(10%); /* raise/lower — negative = up, positive = down */
 }
-
 
 /* Cheap post-processing passes to unify the look without blurs */
 .arena-tone-pass {
@@ -462,8 +458,7 @@ body {
   inset: 0;
   pointer-events: none;
   z-index: 6;
-  background:
-    radial-gradient(
+  background: radial-gradient(
       ellipse at 50% 55%,
       var(--arena-tone-center) 0%,
       var(--arena-tone-center-mid) 35%,
@@ -482,8 +477,7 @@ body {
   inset: 0;
   pointer-events: none;
   z-index: 7;
-  background:
-    radial-gradient(
+  background: radial-gradient(
       circle at 50% 50%,
       rgba(0, 0, 0, 0) 48%,
       var(--arena-vignette-mid) 76%,
@@ -497,7 +491,6 @@ body {
       var(--arena-grain-dark) 3px
     );
 }
-
 
 @media (min-aspect-ratio: 16/9) {
   .game-container {
@@ -681,7 +674,9 @@ body {
   font-family: "Bungee";
   font-size: clamp(0.75rem, 4.25vw, 3rem);
   top: 0;
-  text-shadow: var(--neg-text-ol) var(--neg-text-ol) 0 #000, var(--text-ol) var(--neg-text-ol) 0 #000, var(--neg-text-ol) var(--text-ol) 0 #000,
+  text-shadow: var(--neg-text-ol) var(--neg-text-ol) 0 #000,
+    var(--text-ol) var(--neg-text-ol) 0 #000,
+    var(--neg-text-ol) var(--text-ol) 0 #000,
     var(--text-ol) var(--text-ol) 0 #000;
 }
 
@@ -696,7 +691,9 @@ body {
   font-family: "Bungee";
   font-size: clamp(0.75rem, 4vw, 2.75rem);
   color: white;
-  text-shadow: var(--neg-text-ol) var(--neg-text-ol) 0 #000, var(--text-ol) var(--neg-text-ol) 0 #000, var(--neg-text-ol) var(--text-ol) 0 #000,
+  text-shadow: var(--neg-text-ol) var(--neg-text-ol) 0 #000,
+    var(--text-ol) var(--neg-text-ol) 0 #000,
+    var(--neg-text-ol) var(--text-ol) 0 #000,
     var(--text-ol) var(--text-ol) 0 #000;
 }
 
@@ -797,10 +794,9 @@ body {
   letter-spacing: 0.15em;
   white-space: nowrap;
   animation: gyojiCallAnnounce 2s ease-out forwards;
-  text-shadow: 
-    var(--neg-text-ol) var(--neg-text-ol) 0 #000, 
-    var(--text-ol) var(--neg-text-ol) 0 #000, 
-    var(--neg-text-ol) var(--text-ol) 0 #000, 
+  text-shadow: var(--neg-text-ol) var(--neg-text-ol) 0 #000,
+    var(--text-ol) var(--neg-text-ol) 0 #000,
+    var(--neg-text-ol) var(--text-ol) 0 #000,
     var(--text-ol) var(--text-ol) 0 #000,
     0 0 clamp(10px, 1.2vw, 20px) rgba(255, 200, 50, 0.6);
   will-change: transform, opacity;
@@ -853,8 +849,10 @@ body {
   animation: hakkiyoiBurst 2.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
   -webkit-text-fill-color: #ffffff;
   /* Simplified shadows for better performance */
-  text-shadow: 
-    var(--neg-text-ol) var(--neg-text-ol) 0 #000, var(--text-ol) var(--neg-text-ol) 0 #000, var(--neg-text-ol) var(--text-ol) 0 #000, var(--text-ol) var(--text-ol) 0 #000,
+  text-shadow: var(--neg-text-ol) var(--neg-text-ol) 0 #000,
+    var(--text-ol) var(--neg-text-ol) 0 #000,
+    var(--neg-text-ol) var(--text-ol) 0 #000,
+    var(--text-ol) var(--text-ol) 0 #000,
     0 0 clamp(8px, 1vw, 16px) rgba(255, 200, 50, 0.8);
   z-index: 1001;
   will-change: transform, opacity;
@@ -924,8 +922,10 @@ body {
   color: var(--win-color);
   -webkit-text-fill-color: var(--win-color);
   /* Simpler shadows - no animated filters */
-  text-shadow: 
-    var(--neg-text-ol) var(--neg-text-ol) 0 #000, var(--text-ol) var(--neg-text-ol) 0 #000, var(--neg-text-ol) var(--text-ol) 0 #000, var(--text-ol) var(--text-ol) 0 #000,
+  text-shadow: var(--neg-text-ol) var(--neg-text-ol) 0 #000,
+    var(--text-ol) var(--neg-text-ol) 0 #000,
+    var(--neg-text-ol) var(--text-ol) 0 #000,
+    var(--text-ol) var(--text-ol) 0 #000,
     0 0 clamp(10px, 1.2vw, 20px) var(--win-glow);
   z-index: 1001;
   letter-spacing: 0.15em;
@@ -974,7 +974,7 @@ body {
 .gyoji {
   position: absolute;
   left: 41.4%;
-  bottom: 47%;
+  bottom: 48.5%;
   width: 17.33%;
   height: auto;
   z-index: 2;
@@ -988,7 +988,8 @@ body {
 }
 
 @keyframes gyojiBreathe {
-  0%, 100% {
+  0%,
+  100% {
     transform: scaleY(1);
   }
   50% {
