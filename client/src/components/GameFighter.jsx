@@ -3316,6 +3316,7 @@ const GameFighter = ({
   const lastAttackState = useRef(false);
   const lastHitState = useRef(false);
   const lastThrowingSaltState = useRef(false);
+  const saltParticleTimerRef = useRef(null);
   const lastThrowState = useRef(false);
   const lastDodgeState = useRef(false);
   const lastDodgeLandState = useRef(false);
@@ -4118,12 +4119,31 @@ const GameFighter = ({
   useEffect(() => {
     if (penguin.isThrowingSalt && !lastThrowingSaltState.current) {
       setHasUsedPowerUp(true);
-      playSound(saltSound, 0.01);
-      emitParticles("saltThrow", {
-        x: penguin.x,
-        y: penguin.y,
-        facing: penguin.facing ?? 1,
-      });
+
+      const throwX = penguin.x;
+      const throwY = penguin.y;
+      const throwFacing = penguin.facing ?? 1;
+
+      // Salt is released on frame 12 of the 17-frame animation at 15fps
+      const SALT_RELEASE_FRAME = 12;
+      const SALT_FPS = 15;
+      const particleDelay = Math.round(((SALT_RELEASE_FRAME - 1) / SALT_FPS) * 1000);
+
+      saltParticleTimerRef.current = setTimeout(() => {
+        playSound(saltSound, 0.01);
+        emitParticles("saltThrow", {
+          x: throwX,
+          y: throwY,
+          facing: throwFacing,
+        });
+        saltParticleTimerRef.current = null;
+      }, particleDelay);
+    }
+    if (!penguin.isThrowingSalt && lastThrowingSaltState.current) {
+      if (saltParticleTimerRef.current) {
+        clearTimeout(saltParticleTimerRef.current);
+        saltParticleTimerRef.current = null;
+      }
     }
     lastThrowingSaltState.current = penguin.isThrowingSalt;
   }, [penguin.isThrowingSalt, penguin.x, penguin.y, penguin.facing, emitParticles]);

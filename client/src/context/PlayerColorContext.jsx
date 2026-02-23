@@ -32,6 +32,7 @@ import isBeingGrabbedSpritesheet from "../assets/spritesheets/is-being-grabbed_s
 import snowballThrowSpritesheet from "../assets/spritesheets/snowball-throw_spritesheet.png";
 import atTheRopesSpritesheet from "../assets/spritesheets/at-the-ropes_spritesheet.png";
 import crouchStrafingSpritesheet from "../assets/spritesheets/crouch-strafing_spritesheet.png";
+import saltSpritesheet from "../assets/spritesheets/salt_spritesheet.png";
 
 // Direct spritesheet imports for explicit recoloring
 const DIRECT_SPRITESHEETS = [
@@ -45,6 +46,7 @@ const DIRECT_SPRITESHEETS = [
   snowballThrowSpritesheet,
   atTheRopesSpritesheet,
   crouchStrafingSpritesheet,
+  saltSpritesheet,
 ];
 
 // CRITICAL: Import the EXACT same sprites that GameFighter uses
@@ -80,7 +82,7 @@ import crouchStrafing from "../assets/crouch-strafing.png";
 // GameFighter's static sprites - these are the actual URLs it uses
 const GAME_FIGHTER_STATIC_SPRITES = [
   pumo, attack, throwing, grabbing, attemptingGrabThrow, isAttemptingPull,
-  ready, dodging, crouchStance, salt,
+  ready, dodging, crouchStance,
   recovering, rawParrySuccess, slapAttack1, slapAttack2,
   crouching, bow,
 ];
@@ -88,7 +90,7 @@ const GAME_FIGHTER_STATIC_SPRITES = [
 // GameFighter's APNG sprites that get mapped to spritesheets
 const GAME_FIGHTER_APNG_SPRITES = [
   pumoWaddle, pumoArmy, grabAttempt, hit,
-  snowballThrow, atTheRopes, crouchStrafing,
+  snowballThrow, atTheRopes, crouchStrafing, salt,
 ];
 
 const PlayerColorContext = createContext(null);

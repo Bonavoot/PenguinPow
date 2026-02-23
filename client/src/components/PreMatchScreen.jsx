@@ -279,7 +279,7 @@ const CharacterImage = styled.img`
   height: auto;
   object-fit: contain;
   transform: ${props => props.$flip ? 'scaleX(1)' : 'scaleX(-1)'};
-  filter: drop-shadow(4px 4px 8px rgba(0, 0, 0, 0.4));
+  filter: drop-shadow(4px 4px 8px rgba(0, 0, 0, 0.4)) contrast(1.18) brightness(1.05);
   opacity: ${props => props.$ready ? 1 : 0};
   transition: opacity 0.25s ease-out;
 `;

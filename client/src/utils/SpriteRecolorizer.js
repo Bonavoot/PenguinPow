@@ -823,19 +823,95 @@ function processPixelsOnMainThread(
     }
   }
 
-  // --- Pre-compute edge flags for body neighbor filtering (from ORIGINAL data) ---
+  // --- Pre-compute edge flags + white tinting flags for body neighbor filtering ---
   const pixelCount = data.length / 4;
   let edgeFlags = null;
+  let whiteTintFlags = null;
+  let scleraFlags = null;
   if (bodyColorRange) {
     edgeFlags = new Uint8Array(pixelCount);
+    const isGreyBody = new Uint8Array(pixelCount);
+    const isWhite = new Uint8Array(pixelCount);
+    const isDark = new Uint8Array(pixelCount);
     for (let p = 0; p < pixelCount; p++) {
       const pi = p * 4;
       if (data[pi + 3] === 0) {
         edgeFlags[p] = 1;
         continue;
       }
-      const nl = rgbToHsl(data[pi], data[pi + 1], data[pi + 2]).l;
-      if (nl < 15 || nl > 85) edgeFlags[p] = 1;
+      const pHsl = rgbToHsl(data[pi], data[pi + 1], data[pi + 2]);
+      if (pHsl.l < 15 || pHsl.l > 85) edgeFlags[p] = 1;
+      if (pHsl.l < 15) isDark[p] = 1;
+      if (isColorInHslRange(pHsl.h, pHsl.s, pHsl.l, bodyColorRange)) {
+        isGreyBody[p] = 1;
+      }
+      if (pHsl.l > 72 && pHsl.s <= 15) {
+        isWhite[p] = 1;
+      }
+    }
+
+    // BFS from grey body into adjacent white pixels to find all body-connected whites
+    whiteTintFlags = new Uint8Array(pixelCount);
+    const queue = [];
+    for (let p = 0; p < pixelCount; p++) {
+      if (!isWhite[p]) continue;
+      const px = p % width;
+      const py = (p / width) | 0;
+      if ((px > 0 && isGreyBody[p - 1]) ||
+          (px < width - 1 && isGreyBody[p + 1]) ||
+          (py > 0 && isGreyBody[p - width]) ||
+          (py < height - 1 && isGreyBody[p + width])) {
+        whiteTintFlags[p] = 1;
+        queue.push(p);
+      }
+    }
+    let qi = 0;
+    while (qi < queue.length) {
+      const cp = queue[qi++];
+      const cx = cp % width;
+      const cy = (cp / width) | 0;
+      if (cx > 0 && isWhite[cp - 1] && !whiteTintFlags[cp - 1]) {
+        whiteTintFlags[cp - 1] = 1; queue.push(cp - 1);
+      }
+      if (cx < width - 1 && isWhite[cp + 1] && !whiteTintFlags[cp + 1]) {
+        whiteTintFlags[cp + 1] = 1; queue.push(cp + 1);
+      }
+      if (cy > 0 && isWhite[cp - width] && !whiteTintFlags[cp - width]) {
+        whiteTintFlags[cp - width] = 1; queue.push(cp - width);
+      }
+      if (cy < height - 1 && isWhite[cp + width] && !whiteTintFlags[cp + width]) {
+        whiteTintFlags[cp + width] = 1; queue.push(cp + width);
+      }
+    }
+
+    // Eye protection: find small enclosed white regions (sclera).
+    // Each eye's sclera is a separate white connected component fully enclosed
+    // by the dark eye outline. The face/chest is one huge component (tens of
+    // thousands of pixels). Sclera regions are 50-1000 pixels.
+    const MIN_SCLERA = 20;
+    const MAX_SCLERA = 1400;
+    scleraFlags = new Uint8Array(pixelCount);
+    const wVis = new Uint8Array(pixelCount);
+    for (let p = 0; p < pixelCount; p++) {
+      if (!isWhite[p] || wVis[p]) continue;
+      const comp = [p];
+      wVis[p] = 1;
+      let ci = 0;
+      while (ci < comp.length) {
+        const cp = comp[ci++];
+        const cx = cp % width;
+        const cy = (cp / width) | 0;
+        if (cx > 0 && isWhite[cp - 1] && !wVis[cp - 1])             { wVis[cp - 1] = 1; comp.push(cp - 1); }
+        if (cx < width - 1 && isWhite[cp + 1] && !wVis[cp + 1])     { wVis[cp + 1] = 1; comp.push(cp + 1); }
+        if (cy > 0 && isWhite[cp - width] && !wVis[cp - width])     { wVis[cp - width] = 1; comp.push(cp - width); }
+        if (cy < height - 1 && isWhite[cp + width] && !wVis[cp + width]) { wVis[cp + width] = 1; comp.push(cp + width); }
+      }
+      if (comp.length >= MIN_SCLERA && comp.length <= MAX_SCLERA) {
+        for (let ci2 = 0; ci2 < comp.length; ci2++) {
+          whiteTintFlags[comp[ci2]] = 0;
+          scleraFlags[comp[ci2]] = 1;
+        }
+      }
     }
   }
 
@@ -846,6 +922,9 @@ function processPixelsOnMainThread(
   const CHARGE_BLEND = 0.7;
   const BLUBBER_PURPLE_RGB = hslToRgb(278, 78, 65);
   const BLUBBER_BLEND = 0.35;
+  const BODY_WHITE_TINT = 0.14;
+  const SCLERA_WHITEN = 0.8;
+  const bodyTintRgb = bodyColorRange ? hslToRgb(bodyTargetHue, bodyTargetSat, bodyTargetLight) : null;
 
   for (let i = 0; i < data.length; i += 4) {
     const r = data[i];
@@ -999,6 +1078,38 @@ function processPixelsOnMainThread(
           (1 - BLUBBER_BLEND) * data[i + 2] +
             BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b
         );
+      }
+    } else if (scleraFlags && scleraFlags[i / 4]) {
+      data[i] = Math.round(r + (255 - r) * SCLERA_WHITEN);
+      data[i + 1] = Math.round(g + (255 - g) * SCLERA_WHITEN);
+      data[i + 2] = Math.round(b + (255 - b) * SCLERA_WHITEN);
+
+      if (hitTintRed) {
+        data[i] = Math.round((1 - HIT_BLEND) * data[i] + HIT_BLEND * HIT_RED_RGB.r);
+        data[i + 1] = Math.round((1 - HIT_BLEND) * data[i + 1] + HIT_BLEND * HIT_RED_RGB.g);
+        data[i + 2] = Math.round((1 - HIT_BLEND) * data[i + 2] + HIT_BLEND * HIT_RED_RGB.b);
+      } else if (blubberTintPurple) {
+        data[i] = Math.round((1 - BLUBBER_BLEND) * data[i] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.r);
+        data[i + 1] = Math.round((1 - BLUBBER_BLEND) * data[i + 1] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.g);
+        data[i + 2] = Math.round((1 - BLUBBER_BLEND) * data[i + 2] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b);
+      }
+    } else if (whiteTintFlags && whiteTintFlags[i / 4]) {
+      data[i] = Math.round((1 - BODY_WHITE_TINT) * r + BODY_WHITE_TINT * bodyTintRgb.r);
+      data[i + 1] = Math.round((1 - BODY_WHITE_TINT) * g + BODY_WHITE_TINT * bodyTintRgb.g);
+      data[i + 2] = Math.round((1 - BODY_WHITE_TINT) * b + BODY_WHITE_TINT * bodyTintRgb.b);
+
+      if (hitTintRed) {
+        data[i] = Math.round((1 - HIT_BLEND) * data[i] + HIT_BLEND * HIT_RED_RGB.r);
+        data[i + 1] = Math.round((1 - HIT_BLEND) * data[i + 1] + HIT_BLEND * HIT_RED_RGB.g);
+        data[i + 2] = Math.round((1 - HIT_BLEND) * data[i + 2] + HIT_BLEND * HIT_RED_RGB.b);
+      } else if (chargeTintWhite) {
+        data[i] = Math.round((1 - CHARGE_BLEND) * data[i] + CHARGE_BLEND * CHARGE_WHITE_RGB.r);
+        data[i + 1] = Math.round((1 - CHARGE_BLEND) * data[i + 1] + CHARGE_BLEND * CHARGE_WHITE_RGB.g);
+        data[i + 2] = Math.round((1 - CHARGE_BLEND) * data[i + 2] + CHARGE_BLEND * CHARGE_WHITE_RGB.b);
+      } else if (blubberTintPurple) {
+        data[i] = Math.round((1 - BLUBBER_BLEND) * data[i] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.r);
+        data[i + 1] = Math.round((1 - BLUBBER_BLEND) * data[i + 1] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.g);
+        data[i + 2] = Math.round((1 - BLUBBER_BLEND) * data[i + 2] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b);
       }
     } else if (hitTintRed) {
       data[i] = Math.round((1 - HIT_BLEND) * r + HIT_BLEND * HIT_RED_RGB.r);

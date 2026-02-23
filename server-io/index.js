@@ -1093,9 +1093,14 @@ const LOBBY_COLORS = [
   "rainbow", "fire", "vaporwave", "camo", "galaxy", "gold",
 ];
 
+// Body color options - CPU picks randomly from these (excluding player's body color)
+const LOBBY_BODY_COLORS = [
+  null, "#4d4d4d", "#2656A8", "#9932CC", "#32CD32", "#17A8A0", "#E27020",
+  "#FFB6C1", "#F5C422", "#8B5E3C", "#A8A8A8", "#6ABED0", "#CC3333",
+];
+
 // CPU Player creation helper - accepts unique ID for concurrent game support
-// CPU's mawashiColor is set when human readies (see ready_count handler)
-// CPU never customizes body color (stays default grey)
+// CPU's mawashiColor and bodyColor are set when human readies (see ready_count handler)
 function createCPUPlayer(uniqueId) {
   const cpuPlayerId = uniqueId || `CPU_PLAYER_${Date.now()}`;
   return {
@@ -1412,7 +1417,7 @@ function handleSaltThrowAndPowerUp(player, room) {
   // Check if both players have now selected - if so, reveal both power-ups
   checkAndRevealPowerUps(room);
 
-  // Reset salt throwing state after animation
+  // Reset salt throwing state after full animation (17 frames at 15fps ≈ 1133ms) + 350ms hold on last frame
   setPlayerTimeout(
     player.id,
     () => {
@@ -1422,7 +1427,7 @@ function handleSaltThrowAndPowerUp(player, room) {
       // Allow movement after salt throw is complete
       player.canMoveToReady = true;
     },
-    500
+    1483
   );
 }
 
@@ -7021,6 +7026,15 @@ io.on("connection", (socket) => {
               ? availableColors[Math.floor(Math.random() * availableColors.length)]
               : "#D94848";
             cpuPlayer.mawashiColor = chosen;
+
+            const humanBodyHex = (humanPlayer.bodyColor || "").toString().toLowerCase();
+            const availableBodyColors = LOBBY_BODY_COLORS.filter(
+              (c) => (c || "").toString().toLowerCase() !== humanBodyHex
+            );
+            cpuPlayer.bodyColor = availableBodyColors.length > 0
+              ? availableBodyColors[Math.floor(Math.random() * availableBodyColors.length)]
+              : null;
+
             cpuPlayer.isReady = true;
             room.readyCount++;
           }
@@ -7579,7 +7593,7 @@ io.on("connection", (socket) => {
         () => {
           player.isThrowingSalt = false;
         },
-        500,
+        1483,
         "throwingSaltReset"
       );
 
@@ -7588,7 +7602,7 @@ io.on("connection", (socket) => {
         () => {
           player.saltCooldown = false;
         },
-        750,
+        1733,
         "saltCooldownReset"
       );
     }

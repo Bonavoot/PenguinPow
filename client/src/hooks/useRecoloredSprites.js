@@ -35,7 +35,6 @@ import crouching from "../assets/blocking.png";
 import crouchStance from "../assets/crouch-stance.png";
 import crouchStrafing from "../assets/crouch-strafing.png";
 import bow from "../assets/bow.png";
-import salt from "../assets/salt.png";
 import recovering from "../assets/recovering.png";
 import rawParrySuccess from "../assets/raw-parry-success.png";
 import atTheRopes from "../assets/at-the-ropes.png";
@@ -45,6 +44,7 @@ import slapAttack2 from "../assets/slapAttack2.png";
 
 // Spritesheets
 import beingGrabbedSheet from "../assets/spritesheets/is-being-grabbed_spritesheet.png";
+import saltSheet from "../assets/spritesheets/salt_spritesheet.png";
 
 // All sprites use the same base - recoloring handles differentiation
 const BLUE_SPRITES = {
@@ -65,7 +65,7 @@ const BLUE_SPRITES = {
   crouchStance: crouchStance,
   crouchStrafing: crouchStrafing,
   bow: bow,
-  salt: salt,
+  salt: saltSheet,
   recovering: recovering,
   rawParrySuccess: rawParrySuccess,
   atTheRopes: atTheRopes,

@@ -26,6 +26,7 @@ import atTheRopesSheet from "../assets/spritesheets/at-the-ropes_spritesheet.png
 import crouchStrafingSheet from "../assets/spritesheets/crouch-strafing_spritesheet.png";
 import beingGrabbedSheet from "../assets/spritesheets/is-being-grabbed_spritesheet.png";
 import isPerfectParriedSheet from "../assets/spritesheets/is_perfect_parried_spritesheet.png";
+import saltSheet from "../assets/spritesheets/salt_spritesheet.png";
 
 // Ritual animation spritesheets
 import ritualPart1Sheet from "../assets/ritual_part1_spritesheet.png";
@@ -45,7 +46,6 @@ import isAttemptingPull from "../assets/is-attempting-pull.png";
 import ready from "../assets/ready.png";
 import dodging from "../assets/dodging.png";
 import crouchStance from "../assets/crouch-stance.png";
-import salt from "../assets/salt.png";
 import recovering from "../assets/recovering.png";
 import rawParrySuccess from "../assets/raw-parry-success.png";
 import slapAttack1 from "../assets/slapAttack1.png";
@@ -144,6 +144,13 @@ const BLUE_ANIMATED_SPRITES = {
     frameHeight: 480,
     fps: 15,
   },
+  salt: {
+    src: saltSheet,
+    frameCount: 17,
+    frameWidth: 480,
+    frameHeight: 480,
+    fps: 15,
+  },
   // Ritual animation spritesheets (need to be preloaded with player colors)
   ritualPart1: {
     src: ritualPart1Sheet,
@@ -190,7 +197,6 @@ const BLUE_STATIC_SPRITES = {
   ready: ready,
   dodging: dodging,
   crouchStance: crouchStance,
-  salt: salt,
   recovering: recovering,
   rawParrySuccess: rawParrySuccess,
   slapAttack1: slapAttack1,
