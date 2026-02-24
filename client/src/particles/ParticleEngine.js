@@ -127,79 +127,6 @@ function createSpeedLine(length, thickness, r, g, b, peakAlpha = 0.9) {
   return c;
 }
 
-function createDodgeStar(size) {
-  const c = document.createElement("canvas");
-  c.width = size;
-  c.height = size;
-  const ctx = c.getContext("2d");
-  const cx = size / 2;
-  const cy = size / 2;
-
-  // Irregular 4-pointed star with asymmetric spikes (Smash Bros style)
-  const spikes = [
-    { angle: -Math.PI / 2, outerR: 0.48, innerR: 0.11 },  // top — tallest
-    { angle: 0,            outerR: 0.40, innerR: 0.09 },   // right
-    { angle: Math.PI / 2,  outerR: 0.35, innerR: 0.10 },   // bottom — shortest
-    { angle: Math.PI,      outerR: 0.42, innerR: 0.12 },   // left
-  ];
-
-  ctx.save();
-  ctx.translate(cx, cy);
-
-  // Outer glow — visible blue aura around the star
-  const glowR = size * 0.48;
-  const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, glowR);
-  glow.addColorStop(0, "rgba(255,255,255,1)");
-  glow.addColorStop(0.15, "rgba(180,210,255,0.8)");
-  glow.addColorStop(0.35, "rgba(80,150,255,0.45)");
-  glow.addColorStop(0.6, "rgba(50,120,255,0.15)");
-  glow.addColorStop(1, "rgba(30,100,255,0)");
-  ctx.fillStyle = glow;
-  ctx.fillRect(-cx, -cy, size, size);
-
-  // Build the star path with imperfect spikes
-  ctx.beginPath();
-  for (let i = 0; i < spikes.length; i++) {
-    const s = spikes[i];
-    const next = spikes[(i + 1) % spikes.length];
-    const midAngle = (s.angle + next.angle + (next.angle <= s.angle ? Math.PI * 2 : 0)) / 2;
-    const innerDist = ((s.innerR + next.innerR) / 2) * size;
-
-    const ox = Math.cos(s.angle) * s.outerR * size;
-    const oy = Math.sin(s.angle) * s.outerR * size;
-    const ix = Math.cos(midAngle) * innerDist;
-    const iy = Math.sin(midAngle) * innerDist;
-
-    if (i === 0) ctx.moveTo(ox, oy);
-    else ctx.lineTo(ox, oy);
-    ctx.lineTo(ix, iy);
-  }
-  ctx.closePath();
-
-  // Fill: bright white center → distinctly blue spike tips
-  const starGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 0.45);
-  starGrad.addColorStop(0, "rgba(255,255,255,1)");
-  starGrad.addColorStop(0.2, "rgba(255,255,255,1)");
-  starGrad.addColorStop(0.4, "rgba(190,220,255,1)");
-  starGrad.addColorStop(0.6, "rgba(100,170,255,1)");
-  starGrad.addColorStop(0.8, "rgba(55,130,255,0.9)");
-  starGrad.addColorStop(1, "rgba(35,105,255,0.7)");
-  ctx.fillStyle = starGrad;
-  ctx.fill();
-
-  // Bright white core
-  const coreR = size * 0.1;
-  const core = ctx.createRadialGradient(0, 0, 0, 0, 0, coreR);
-  core.addColorStop(0, "rgba(255,255,255,1)");
-  core.addColorStop(0.7, "rgba(255,255,255,1)");
-  core.addColorStop(1, "rgba(255,255,255,0)");
-  ctx.fillStyle = core;
-  ctx.fillRect(-coreR, -coreR, coreR * 2, coreR * 2);
-
-  ctx.restore();
-  return c;
-}
-
 function createCloudRing(diameter, bandWidth, seed) {
   const c = document.createElement("canvas");
   c.width = diameter;
@@ -296,9 +223,6 @@ function generateTextures() {
     saltGrain: createChunk(6, 255, 255, 255, 1.0),
     saltClump: createChunk(14, 255, 255, 255, 0.95),
 
-    // Dodge star flash (imperfect blue-white star)
-    dodgeStar: createDodgeStar(128),
-    dodgeStarSm: createDodgeStar(80),
   };
 }
 
@@ -324,131 +248,125 @@ const PRESETS = {
     const dir = direction || facing || 1;
     const footX = x;
     const footY = GAME_H - y;
-    const cloudDelay = 0.10;
 
-    // ── STAR FLASH at feet — fires instantly, before clouds ───────
-    for (let i = 0; i < 2; i++) {
-      const sz = i === 0 ? rand(68, 82) : rand(48, 58);
+    // ── GROUND DUST — tight compact cluster behind the character ──
+    // 3 overlapping puffs that read as one cohesive cloud, not scattered bubbles.
+    const puffOffsets = [4, 18, 34];
+    for (let i = 0; i < puffOffsets.length; i++) {
+      const t = i / (puffOffsets.length - 1);
+      const size = rand(28, 38) + t * 12;
       engine.spawn({
-        x: footX + -dir * rand(0, 5),
-        y: footY - rand(8, 16),
-        vx: -dir * rand(4, 10),
-        vy: rand(-2, 1),
-        gravity: 0,
-        drag: 1,
-        size: sz * 0.15,
-        sizeEnd: sz,
-        alpha: 1.0,
-        alphaEnd: 0,
-        rotation: rand(0, Math.PI * 2),
-        rotationSpeed: rand(-3.5, 3.5),
-        ease: "outExpo",
-        easeAlpha: "inQuad",
-        maxLife: i === 0 ? rand(0.14, 0.20) : rand(0.10, 0.15),
-        texture: i === 0 ? engine.textures.dodgeStar : engine.textures.dodgeStarSm,
-        blendMode: "lighter",
-      });
-    }
-
-    // ── CLOUD PUFFS — right-triangle silhouette ────────────────────
-    // Bottom edge of every puff sits at ground level (y = footY - size/2).
-    // Linear size ramp: short at front, tall at back.
-    // Bubbly individual puffs, packed tight so they all touch.
-    const puffSlots = [2, 16, 30, 44, 58];
-    for (let i = 0; i < puffSlots.length; i++) {
-      const t = i / (puffSlots.length - 1);
-      const baseSize = 26 + t * 32;
-      const size = rand(baseSize * 0.9, baseSize * 1.1);
-      engine.spawn({
-        x: footX + -dir * (puffSlots[i] + rand(-3, 3)),
-        y: footY - size / 2 + Math.sqrt(t) * 14 + rand(0, 2),
-        vx: -dir * rand(50, 130),
-        vy: rand(0, 3),
-        gravity: 35,
-        drag: 0.90,
+        x: footX + -dir * (puffOffsets[i] + rand(-2, 2)),
+        y: footY - size * 0.45 + rand(0, 3),
+        vx: -dir * rand(60, 100),
+        vy: rand(-2, 2),
+        gravity: 20,
+        drag: 0.88,
         size,
-        sizeEnd: size * rand(0.35, 0.55),
-        alpha: rand(0.8, 0.95),
+        sizeEnd: size * rand(0.3, 0.45),
+        alpha: rand(0.75, 0.9),
         alphaEnd: 0,
         ease: "outCubic",
         easeAlpha: "inCubic",
-        rotationSpeed: rand(-1.0, 1.0),
-        maxLife: rand(0.4, 0.6),
+        rotationSpeed: rand(-0.6, 0.6),
+        maxLife: rand(0.28, 0.38),
         texture: pickPuff(engine.textures),
-        delay: cloudDelay,
       });
     }
 
-    // ── FILL PUFFS — interleaved to close gaps ───────────────────
-    const fillSlots = [9, 23, 37, 51];
-    for (let i = 0; i < fillSlots.length; i++) {
-      const t = i / (fillSlots.length - 1);
-      const baseSize = 22 + t * 26;
-      const size = rand(baseSize * 0.9, baseSize * 1.1);
+    // ── SPEED LINES — sharp streaks at body height in dodge direction ──
+    const bodyY = footY - 55;
+    for (let i = 0; i < 3; i++) {
+      const thickness = rand(2.5, 4);
+      const stretch = rand(14, 22);
       engine.spawn({
-        x: footX + -dir * (fillSlots[i] + rand(-3, 3)),
-        y: footY - size / 2 + Math.sqrt(t) * 12 + rand(0, 2),
-        vx: -dir * rand(45, 120),
-        vy: rand(0, 3),
-        gravity: 30,
-        drag: 0.91,
-        size,
-        sizeEnd: size * rand(0.35, 0.55),
-        alpha: rand(0.7, 0.9),
+        x: footX + dir * rand(5, 20),
+        y: bodyY + rand(-20, 20),
+        vx: dir * rand(180, 320),
+        vy: rand(-8, 8),
+        gravity: 0,
+        drag: 0.92,
+        size: thickness,
+        sizeEnd: thickness * 0.6,
+        alpha: rand(0.8, 1.0),
         alphaEnd: 0,
-        ease: "outCubic",
+        rotation: 0,
+        rotationSpeed: 0,
+        ease: "linear",
         easeAlpha: "inCubic",
-        rotationSpeed: rand(-1.0, 1.0),
-        maxLife: rand(0.35, 0.55),
-        texture: pickSmallPuff(engine.textures),
-        delay: cloudDelay,
+        maxLife: rand(0.1, 0.16),
+        texture: pick([engine.textures.speedLine, engine.textures.speedLineThin]),
+        stretchX: stretch,
       });
     }
 
-    // ── ICE CHIPS — small fast chunks near ground ────────────────
-    for (let i = 0; i < 8; i++) {
-      const spread = rand(-0.5, 0.5);
-      const speed = rand(120, 260);
+    // ── ICE CHIPS — a few small chunks kicked from the ground ────
+    for (let i = 0; i < 4; i++) {
+      const spread = rand(-0.4, 0.4);
+      const speed = rand(100, 200);
       engine.spawn({
-        x: footX + rand(-8, 8),
-        y: footY - rand(2, 8),
-        vx: -dir * Math.cos(spread) * speed + rand(-30, 30),
-        vy: -Math.abs(Math.sin(spread)) * speed * 0.3 + rand(-10, 0),
+        x: footX + rand(-6, 6),
+        y: footY - rand(2, 6),
+        vx: -dir * Math.cos(spread) * speed + rand(-20, 20),
+        vy: -Math.abs(Math.sin(spread)) * speed * 0.35 + rand(-8, 0),
         gravity: 400,
-        drag: 0.97,
-        size: rand(3, 7),
+        drag: 0.96,
+        size: rand(2, 5),
         sizeEnd: rand(1, 2),
-        alpha: rand(0.7, 1.0),
+        alpha: rand(0.6, 0.9),
         alphaEnd: 0,
         ease: "linear",
         easeAlpha: "outQuad",
-        rotationSpeed: rand(-7, 7),
-        maxLife: rand(0.2, 0.35),
+        rotationSpeed: rand(-5, 5),
+        maxLife: rand(0.18, 0.3),
         texture: pick([engine.textures.chunk, engine.textures.chunkIce]),
-        delay: cloudDelay,
       });
     }
+  },
 
-    // ── CIRCLES — soft round puffs ───────────────────────────────
-    for (let i = 0; i < 4; i++) {
-      const size = rand(8, 16);
+  snowballTrail(engine, { x, y, direction }) {
+    const dir = direction || 1;
+    const ballX = x;
+    const ballY = GAME_H - y - 100;
+
+    // Small wispy puff left behind the snowball
+    const size = rand(10, 18);
+    engine.spawn({
+      x: ballX + -dir * rand(8, 16),
+      y: ballY + rand(-4, 4),
+      vx: -dir * rand(10, 30),
+      vy: rand(-6, 6),
+      gravity: 8,
+      drag: 0.95,
+      size,
+      sizeEnd: size * rand(0.2, 0.4),
+      alpha: rand(0.4, 0.65),
+      alphaEnd: 0,
+      ease: "outCubic",
+      easeAlpha: "inQuad",
+      rotationSpeed: rand(-0.8, 0.8),
+      maxLife: rand(0.25, 0.4),
+      texture: pickSmallPuff(engine.textures),
+    });
+
+    // Tiny ice sparkle
+    if (Math.random() < 0.5) {
       engine.spawn({
-        x: footX + -dir * rand(6, 50) + rand(-10, 10),
-        y: footY - rand(4, 14),
-        vx: -dir * rand(35, 110) + rand(-15, 15),
-        vy: rand(-4, 2),
-        gravity: 60,
-        drag: 0.94,
-        size,
-        sizeEnd: size * rand(0.25, 0.45),
+        x: ballX + -dir * rand(4, 12) + rand(-6, 6),
+        y: ballY + rand(-8, 8),
+        vx: -dir * rand(15, 40) + rand(-10, 10),
+        vy: rand(-15, 5),
+        gravity: 80,
+        drag: 0.96,
+        size: rand(2, 4),
+        sizeEnd: rand(0.5, 1.5),
         alpha: rand(0.6, 0.9),
         alphaEnd: 0,
-        ease: "outQuad",
-        easeAlpha: "inQuad",
-        rotationSpeed: 0,
-        maxLife: rand(0.25, 0.45),
-        texture: pick([engine.textures.circle, engine.textures.circleIce]),
-        delay: cloudDelay,
+        ease: "linear",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-3, 3),
+        maxLife: rand(0.15, 0.25),
+        texture: pick([engine.textures.chunk, engine.textures.chunkIce]),
       });
     }
   },
@@ -673,27 +591,70 @@ const PRESETS = {
     }
   },
 
-  // Expanding ring for dodge landing. Biggest ring.
   dodgeLand(engine, { x, y, slideVelocity = 0 }) {
     const slideOffset = slideVelocity * 28;
     const footX = x + slideOffset;
     const footY = GAME_H - y - 12;
-    const textures = [engine.textures.ring, engine.textures.ringAlt, engine.textures.ringThick];
+
+    // ── IMPACT RING — single clean expanding ring ────────────────
+    engine.spawn({
+      x: footX,
+      y: footY,
+      vx: 0, vy: 0, gravity: 0, drag: 1,
+      size: 10,
+      sizeEnd: 48,
+      alpha: 0.85,
+      alphaEnd: 0,
+      rotation: 0, rotationSpeed: 0,
+      ease: "outCubic", easeAlpha: "outCubic",
+      maxLife: 0.3,
+      texture: engine.textures.ring,
+      stretchX: 2.2,
+    });
+
+    // ── GROUND PUFFS — small dust that spreads laterally ─────────
     for (let i = 0; i < 3; i++) {
-      const scale = 1 + i * 0.05;
+      const side = i === 0 ? -1 : i === 1 ? 1 : (Math.random() > 0.5 ? 1 : -1);
+      const size = rand(16, 26);
       engine.spawn({
-        x: footX,
-        y: footY,
-        vx: 0, vy: 0, gravity: 0, drag: 1,
-        size: 14 * scale,
-        sizeEnd: 58 * scale,
-        alpha: 0.95,
+        x: footX + side * rand(2, 10),
+        y: footY - size * 0.4,
+        vx: side * rand(40, 90),
+        vy: rand(-6, -1),
+        gravity: 15,
+        drag: 0.9,
+        size,
+        sizeEnd: size * rand(0.3, 0.5),
+        alpha: rand(0.6, 0.8),
         alphaEnd: 0,
-        rotation: 0, rotationSpeed: 0,
-        ease: "outCubic", easeAlpha: "outCubic",
-        maxLife: 0.38 + i * 0.02,
-        texture: textures[i],
-        stretchX: 2.4,
+        ease: "outCubic",
+        easeAlpha: "inQuad",
+        rotationSpeed: rand(-0.5, 0.5),
+        maxLife: rand(0.22, 0.32),
+        texture: pickSmallPuff(engine.textures),
+      });
+    }
+
+    // ── TINY CHIPS — kicked up on impact ─────────────────────────
+    for (let i = 0; i < 3; i++) {
+      const angle = rand(-1.2, 1.2);
+      const speed = rand(60, 130);
+      engine.spawn({
+        x: footX + rand(-4, 4),
+        y: footY - rand(1, 4),
+        vx: Math.cos(angle) * speed,
+        vy: -Math.abs(Math.sin(angle)) * speed * 0.5 + rand(-20, -5),
+        gravity: 350,
+        drag: 0.95,
+        size: rand(2, 4),
+        sizeEnd: rand(1, 2),
+        alpha: rand(0.5, 0.8),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-4, 4),
+        maxLife: rand(0.2, 0.3),
+        texture: pick([engine.textures.chunk, engine.textures.chunkIce]),
       });
     }
   },

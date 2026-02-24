@@ -1727,20 +1727,9 @@ const SaltBasket = styled.img
     },
   }))``;
 
-const youLabelPulse = keyframes`
-  0%, 100% { 
-    transform: translateX(-50%) scale(1);
-    filter: drop-shadow(0 0 12px rgba(0, 230, 255, 0.6));
-  }
-  50% { 
-    transform: translateX(-50%) scale(1.06);
-    filter: drop-shadow(0 0 20px rgba(0, 230, 255, 0.9));
-  }
-`;
-
-const youArrowBounce = keyframes`
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(3px); }
+const youLabelGlow = keyframes`
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
 `;
 
 const YouLabel = styled.div
@@ -1752,6 +1741,7 @@ const YouLabel = styled.div
       position: "absolute",
       bottom: `${(props.y / 720) * 100 + 21}%`,
       left: `${(props.x / 1280) * 100}%`,
+      transform: "translateX(-50%)",
     },
   }))`
   z-index: 1000;
@@ -1759,63 +1749,63 @@ const YouLabel = styled.div
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0;
-  transform: translateX(-50%);
-  animation: ${youLabelPulse} 1.5s ease-in-out infinite;
-  
-  /* YOU badge — Bungee font, angled plate shape to match game HUD (~17% smaller) */
+  gap: 1px;
+  animation: ${youLabelGlow} 2.5s ease-in-out infinite;
+
   &::before {
     content: "YOU";
     font-family: "Bungee", cursive;
-    font-size: clamp(10px, 0.92vw, 13px);
-    letter-spacing: 0.08em;
-    color: #ffffff;
-    background: linear-gradient(
-      135deg,
-      #00b8d9 0%,
-      #00e5ff 50%,
-      #00b8d9 100%
-    );
-    padding: clamp(4px, 0.42vw, 6px) clamp(10px, 1vw, 15px);
-    clip-path: polygon(0 0, calc(100% - 5px) 0, 100% 100%, 5px 100%);
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-    box-shadow: 
-      0 0 0 2px rgba(255, 255, 255, 0.9),
-      0 0 12px rgba(0, 230, 255, 0.5),
-      0 3px 10px rgba(0, 0, 0, 0.4);
+    font-size: clamp(8px, 0.7vw, 10px);
+    letter-spacing: 0.05em;
+    line-height: 1;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.6);
+    padding: clamp(2px, 0.2vw, 3px) clamp(5px, 0.45vw, 7px);
+    border-radius: 3px;
+    border: 1px solid rgba(0, 230, 255, 0.5);
+    text-shadow: 0 0 6px rgba(0, 230, 255, 0.9);
   }
-  
-  /* Arrow pointer */
+
   &::after {
     content: "";
     width: 0;
     height: 0;
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-top: 6.5px solid #00e5ff;
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
-    animation: ${youArrowBounce} 0.8s ease-in-out infinite;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid rgba(0, 230, 255, 0.8);
+    filter: drop-shadow(0 0 3px rgba(0, 230, 255, 0.5));
   }
 `;
 
-const SnowballProjectile = styled.img
+const snowballSpin = keyframes`
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+`;
+
+const SnowballWrapper = styled.div
   .withConfig({
-    shouldForwardProp: (prop) => !["$x", "$y"].includes(prop),
+    shouldForwardProp: (prop) => !["$x", "$y", "$vx"].includes(prop),
   })
   .attrs((props) => ({
     style: {
       position: "absolute",
       width: "3.37%",
-      height: "auto",
       left: `${(props.$x / 1280) * 100}%`,
       bottom: `${(props.$y / 720) * 100 + 11}%`,
       translate: "-50%",
       zIndex: 95,
       pointerEvents: "none",
-      filter: "drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000)",
       transition: "left 33ms linear, bottom 33ms linear",
+      filter: "drop-shadow(0 0 5px rgba(200,230,255,0.7))",
     },
   }))``;
+
+const SnowballProjectileImg = styled.img`
+  width: 100%;
+  height: auto;
+  display: block;
+  animation: ${snowballSpin} 0.3s linear infinite;
+`;
 
 const PumoClone = styled.img
   .withConfig({
@@ -4398,6 +4388,17 @@ const GameFighter = ({
   }, [penguin.isThrowingSnowball]);
 
   useEffect(() => {
+    if (index !== 0 || allSnowballs.length === 0) return;
+    for (const sb of allSnowballs) {
+      emitParticles("snowballTrail", {
+        x: sb.x,
+        y: sb.y,
+        direction: sb.velocityX > 0 ? 1 : -1,
+      });
+    }
+  }, [allSnowballs, index, emitParticles]);
+
+  useEffect(() => {
     if (penguin.isSpawningPumoArmy && !lastSpawningPumoArmyState.current) {
       playSound(pumoArmySound, 0.02);
     }
@@ -5094,13 +5095,14 @@ const GameFighter = ({
           <CountdownTimer>{countdown}</CountdownTimer>
         )}
       {allSnowballs.map((projectile) => (
-        <SnowballProjectile
+        <SnowballWrapper
           key={projectile.id}
-          src={snowball}
-          alt="Snowball"
           $x={projectile.x}
           $y={projectile.y}
-        />
+          $vx={projectile.velocityX}
+        >
+          <SnowballProjectileImg src={snowball} alt="" draggable={false} />
+        </SnowballWrapper>
       ))}
       <PumoCloneSpawnEffect
         clones={allPumoArmies}
