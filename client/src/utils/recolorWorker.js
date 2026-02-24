@@ -248,7 +248,7 @@ function processImageData(
   const CHARGE_BLEND = 0.7;
   const BLUBBER_PURPLE_RGB = hslToRgb(278, 78, 65);
   const BLUBBER_BLEND = 0.35;
-  const BODY_WHITE_TINT = 0.14;
+  const BODY_WHITE_TINT = 0.02;
   const SCLERA_WHITEN = 0.8;
   const bodyTintRgb = bodyColorRange ? hslToRgb(bodyTargetHue, bodyTargetSat, bodyTargetLight) : null;
 

@@ -127,6 +127,79 @@ function createSpeedLine(length, thickness, r, g, b, peakAlpha = 0.9) {
   return c;
 }
 
+function createDodgeStar(size) {
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext("2d");
+  const cx = size / 2;
+  const cy = size / 2;
+
+  // Irregular 4-pointed star with asymmetric spikes (Smash Bros style)
+  const spikes = [
+    { angle: -Math.PI / 2, outerR: 0.48, innerR: 0.11 },  // top — tallest
+    { angle: 0,            outerR: 0.40, innerR: 0.09 },   // right
+    { angle: Math.PI / 2,  outerR: 0.35, innerR: 0.10 },   // bottom — shortest
+    { angle: Math.PI,      outerR: 0.42, innerR: 0.12 },   // left
+  ];
+
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  // Outer glow — visible blue aura around the star
+  const glowR = size * 0.48;
+  const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, glowR);
+  glow.addColorStop(0, "rgba(255,255,255,1)");
+  glow.addColorStop(0.15, "rgba(180,210,255,0.8)");
+  glow.addColorStop(0.35, "rgba(80,150,255,0.45)");
+  glow.addColorStop(0.6, "rgba(50,120,255,0.15)");
+  glow.addColorStop(1, "rgba(30,100,255,0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(-cx, -cy, size, size);
+
+  // Build the star path with imperfect spikes
+  ctx.beginPath();
+  for (let i = 0; i < spikes.length; i++) {
+    const s = spikes[i];
+    const next = spikes[(i + 1) % spikes.length];
+    const midAngle = (s.angle + next.angle + (next.angle <= s.angle ? Math.PI * 2 : 0)) / 2;
+    const innerDist = ((s.innerR + next.innerR) / 2) * size;
+
+    const ox = Math.cos(s.angle) * s.outerR * size;
+    const oy = Math.sin(s.angle) * s.outerR * size;
+    const ix = Math.cos(midAngle) * innerDist;
+    const iy = Math.sin(midAngle) * innerDist;
+
+    if (i === 0) ctx.moveTo(ox, oy);
+    else ctx.lineTo(ox, oy);
+    ctx.lineTo(ix, iy);
+  }
+  ctx.closePath();
+
+  // Fill: bright white center → distinctly blue spike tips
+  const starGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 0.45);
+  starGrad.addColorStop(0, "rgba(255,255,255,1)");
+  starGrad.addColorStop(0.2, "rgba(255,255,255,1)");
+  starGrad.addColorStop(0.4, "rgba(190,220,255,1)");
+  starGrad.addColorStop(0.6, "rgba(100,170,255,1)");
+  starGrad.addColorStop(0.8, "rgba(55,130,255,0.9)");
+  starGrad.addColorStop(1, "rgba(35,105,255,0.7)");
+  ctx.fillStyle = starGrad;
+  ctx.fill();
+
+  // Bright white core
+  const coreR = size * 0.1;
+  const core = ctx.createRadialGradient(0, 0, 0, 0, 0, coreR);
+  core.addColorStop(0, "rgba(255,255,255,1)");
+  core.addColorStop(0.7, "rgba(255,255,255,1)");
+  core.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = core;
+  ctx.fillRect(-coreR, -coreR, coreR * 2, coreR * 2);
+
+  ctx.restore();
+  return c;
+}
+
 function createCloudRing(diameter, bandWidth, seed) {
   const c = document.createElement("canvas");
   c.width = diameter;
@@ -222,6 +295,10 @@ function generateTextures() {
     // Salt grains / clumps for salt throw
     saltGrain: createChunk(6, 255, 255, 255, 1.0),
     saltClump: createChunk(14, 255, 255, 255, 0.95),
+
+    // Dodge star flash (imperfect blue-white star)
+    dodgeStar: createDodgeStar(128),
+    dodgeStarSm: createDodgeStar(80),
   };
 }
 
@@ -247,63 +324,97 @@ const PRESETS = {
     const dir = direction || facing || 1;
     const footX = x;
     const footY = GAME_H - y;
+    const cloudDelay = 0.10;
 
-    // MAIN CLOUD PUFFS — evenly spaced trail behind the dodge
-    const mainSlots = [8, 26, 44];
-    for (let i = 0; i < 3; i++) {
-      const size = rand(28, 42);
+    // ── STAR FLASH at feet — fires instantly, before clouds ───────
+    for (let i = 0; i < 2; i++) {
+      const sz = i === 0 ? rand(68, 82) : rand(48, 58);
       engine.spawn({
-        x: footX + -dir * (mainSlots[i] + rand(-4, 4)),
-        y: footY - size / 2 + rand(-4, 4),
-        vx: -dir * rand(40, 110),
-        vy: rand(-18, 3),
-        gravity: 15,
-        drag: 0.92,
+        x: footX + -dir * rand(0, 5),
+        y: footY - rand(8, 16),
+        vx: -dir * rand(4, 10),
+        vy: rand(-2, 1),
+        gravity: 0,
+        drag: 1,
+        size: sz * 0.15,
+        sizeEnd: sz,
+        alpha: 1.0,
+        alphaEnd: 0,
+        rotation: rand(0, Math.PI * 2),
+        rotationSpeed: rand(-3.5, 3.5),
+        ease: "outExpo",
+        easeAlpha: "inQuad",
+        maxLife: i === 0 ? rand(0.14, 0.20) : rand(0.10, 0.15),
+        texture: i === 0 ? engine.textures.dodgeStar : engine.textures.dodgeStarSm,
+        blendMode: "lighter",
+      });
+    }
+
+    // ── CLOUD PUFFS — right-triangle silhouette ────────────────────
+    // Bottom edge of every puff sits at ground level (y = footY - size/2).
+    // Linear size ramp: short at front, tall at back.
+    // Bubbly individual puffs, packed tight so they all touch.
+    const puffSlots = [2, 16, 30, 44, 58];
+    for (let i = 0; i < puffSlots.length; i++) {
+      const t = i / (puffSlots.length - 1);
+      const baseSize = 26 + t * 32;
+      const size = rand(baseSize * 0.9, baseSize * 1.1);
+      engine.spawn({
+        x: footX + -dir * (puffSlots[i] + rand(-3, 3)),
+        y: footY - size / 2 + Math.sqrt(t) * 14 + rand(0, 2),
+        vx: -dir * rand(50, 130),
+        vy: rand(0, 3),
+        gravity: 35,
+        drag: 0.90,
         size,
-        sizeEnd: size * rand(0.4, 0.6),
+        sizeEnd: size * rand(0.35, 0.55),
+        alpha: rand(0.8, 0.95),
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "inCubic",
+        rotationSpeed: rand(-1.0, 1.0),
+        maxLife: rand(0.4, 0.6),
+        texture: pickPuff(engine.textures),
+        delay: cloudDelay,
+      });
+    }
+
+    // ── FILL PUFFS — interleaved to close gaps ───────────────────
+    const fillSlots = [9, 23, 37, 51];
+    for (let i = 0; i < fillSlots.length; i++) {
+      const t = i / (fillSlots.length - 1);
+      const baseSize = 22 + t * 26;
+      const size = rand(baseSize * 0.9, baseSize * 1.1);
+      engine.spawn({
+        x: footX + -dir * (fillSlots[i] + rand(-3, 3)),
+        y: footY - size / 2 + Math.sqrt(t) * 12 + rand(0, 2),
+        vx: -dir * rand(45, 120),
+        vy: rand(0, 3),
+        gravity: 30,
+        drag: 0.91,
+        size,
+        sizeEnd: size * rand(0.35, 0.55),
         alpha: rand(0.7, 0.9),
         alphaEnd: 0,
         ease: "outCubic",
         easeAlpha: "inCubic",
-        rotationSpeed: rand(-0.8, 0.8),
+        rotationSpeed: rand(-1.0, 1.0),
         maxLife: rand(0.35, 0.55),
-        texture: pickPuff(engine.textures),
-      });
-    }
-
-    // SMALLER PUFFS — interleaved between main puffs for fill
-    const smallSlots = [17, 35];
-    for (let i = 0; i < 2; i++) {
-      const size = rand(16, 24);
-      engine.spawn({
-        x: footX + -dir * (smallSlots[i] + rand(-5, 5)) + rand(-6, 6),
-        y: footY - size / 2 + rand(-3, 3),
-        vx: -dir * rand(50, 140) + rand(-15, 15),
-        vy: rand(-25, 0),
-        gravity: 20,
-        drag: 0.93,
-        size,
-        sizeEnd: size * rand(0.35, 0.55),
-        alpha: rand(0.6, 0.85),
-        alphaEnd: 0,
-        ease: "outQuad",
-        easeAlpha: "inQuad",
-        rotationSpeed: rand(-1.2, 1.2),
-        maxLife: rand(0.25, 0.4),
         texture: pickSmallPuff(engine.textures),
+        delay: cloudDelay,
       });
     }
 
-    // ICE CHIPS — small fast chunks scattering
-    for (let i = 0; i < 6; i++) {
-      const spread = rand(-0.6, 0.6);
-      const speed = rand(100, 250);
+    // ── ICE CHIPS — small fast chunks near ground ────────────────
+    for (let i = 0; i < 8; i++) {
+      const spread = rand(-0.5, 0.5);
+      const speed = rand(120, 260);
       engine.spawn({
-        x: footX + rand(-6, 6),
+        x: footX + rand(-8, 8),
         y: footY - rand(2, 8),
         vx: -dir * Math.cos(spread) * speed + rand(-30, 30),
-        vy: -Math.abs(Math.sin(spread)) * speed * 0.4 + rand(-30, 0),
-        gravity: 320,
+        vy: -Math.abs(Math.sin(spread)) * speed * 0.3 + rand(-10, 0),
+        gravity: 400,
         drag: 0.97,
         size: rand(3, 7),
         sizeEnd: rand(1, 2),
@@ -311,24 +422,25 @@ const PRESETS = {
         alphaEnd: 0,
         ease: "linear",
         easeAlpha: "outQuad",
-        rotationSpeed: rand(-6, 6),
-        maxLife: rand(0.18, 0.33),
+        rotationSpeed: rand(-7, 7),
+        maxLife: rand(0.2, 0.35),
         texture: pick([engine.textures.chunk, engine.textures.chunkIce]),
+        delay: cloudDelay,
       });
     }
 
-    // CIRCLES — soft round puffs that pop out and fade
+    // ── CIRCLES — soft round puffs ───────────────────────────────
     for (let i = 0; i < 4; i++) {
       const size = rand(8, 16);
       engine.spawn({
-        x: footX + -dir * rand(4, 30) + rand(-10, 10),
-        y: footY - rand(4, 18),
-        vx: -dir * rand(30, 100) + rand(-15, 15),
-        vy: rand(-35, -8),
-        gravity: 40,
-        drag: 0.95,
+        x: footX + -dir * rand(6, 50) + rand(-10, 10),
+        y: footY - rand(4, 14),
+        vx: -dir * rand(35, 110) + rand(-15, 15),
+        vy: rand(-4, 2),
+        gravity: 60,
+        drag: 0.94,
         size,
-        sizeEnd: size * rand(0.3, 0.5),
+        sizeEnd: size * rand(0.25, 0.45),
         alpha: rand(0.6, 0.9),
         alphaEnd: 0,
         ease: "outQuad",
@@ -336,6 +448,7 @@ const PRESETS = {
         rotationSpeed: 0,
         maxLife: rand(0.25, 0.45),
         texture: pick([engine.textures.circle, engine.textures.circleIce]),
+        delay: cloudDelay,
       });
     }
   },
@@ -611,6 +724,7 @@ class Particle {
     this.blendMode = null;
     this.stretchX = 1;
     this.groundY = Infinity;
+    this.delay = 0;
   }
 }
 
@@ -666,6 +780,7 @@ export class ParticleEngine {
     p.blendMode = cfg.blendMode ?? null;
     p.stretchX = cfg.stretchX ?? 1;
     p.groundY = cfg.groundY ?? Infinity;
+    p.delay = cfg.delay ?? 0;
   }
 
   _acquire() {
@@ -692,6 +807,11 @@ export class ParticleEngine {
       const p = this.particles[i];
       if (!p.active) continue;
 
+      if (p.delay > 0) {
+        p.delay -= dt;
+        continue;
+      }
+
       p.life += dt;
       if (p.life >= p.maxLife || p.y >= p.groundY) {
         p.active = false;
@@ -715,7 +835,7 @@ export class ParticleEngine {
 
     for (let i = 0; i < this.particles.length; i++) {
       const p = this.particles[i];
-      if (!p.active || !p.texture) continue;
+      if (!p.active || !p.texture || p.delay > 0) continue;
 
       const rawT = p.life / p.maxLife;
       const easeFnSize = EASE[p.ease] || EASE.linear;

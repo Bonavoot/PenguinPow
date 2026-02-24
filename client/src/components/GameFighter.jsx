@@ -633,43 +633,27 @@ const getFighterPopFilter = (props) => {
   const base = "drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000)";
 
   if (props.$isAtTheRopes) {
-    return `${base} drop-shadow(0 0 8px rgba(255, 50, 50, 0.7)) brightness(1.15) contrast(1.25)`;
+    return `${base} drop-shadow(0 0 8px rgba(255, 50, 50, 0.7))`;
   }
   if (props.$isGrabBreaking) {
-    return `${base} drop-shadow(0 0 8px rgba(0, 255, 128, 0.85)) brightness(1.35)`;
+    return `${base} drop-shadow(0 0 8px rgba(0, 255, 128, 0.85))`;
   }
   if (props.$isRawParrying) {
-    return `${base} drop-shadow(0 0 8px rgba(0, 150, 255, 0.8)) brightness(1.3)`;
+    return `${base} drop-shadow(0 0 8px rgba(0, 150, 255, 0.8))`;
   }
-  if (props.$isHit) {
-    return `${base} contrast(1.2) brightness(1.15)`;
-  }
-  if (props.$isChargingAttack) {
-    return `${base} contrast(1.15)`;
-  }
-  if (props.$isGrabClashActive) {
-    return `${base} contrast(1.25) brightness(1.1)`;
-  }
-  // New grab action visual effects
   if (props.$isGrabPushing) {
-    return `${base} drop-shadow(0 0 4px rgba(255, 150, 50, 0.5)) contrast(1.15)`;
+    return `${base} drop-shadow(0 0 4px rgba(255, 150, 50, 0.5))`;
   }
   if (props.$isBeingGrabPushed) {
-    return `${base} drop-shadow(0 0 4px rgba(255, 100, 50, 0.4)) contrast(1.1)`;
-  }
-  if (props.$isAttemptingPull) {
-    return `${base} contrast(1.18) brightness(1.05)`;
-  }
-  if (props.$isGrabSeparating) {
-    return `${base} brightness(1.1)`;
+    return `${base} drop-shadow(0 0 4px rgba(255, 100, 50, 0.4))`;
   }
   if (props.$isGrabBellyFlopping || props.$isGrabFrontalForceOut) {
-    return `${base} drop-shadow(0 0 8px rgba(255, 50, 50, 0.7)) brightness(1.2) contrast(1.2)`;
+    return `${base} drop-shadow(0 0 8px rgba(255, 50, 50, 0.7))`;
   }
   if (props.$isBeingGrabBellyFlopped || props.$isBeingGrabFrontalForceOut) {
-    return `${base} drop-shadow(0 0 6px rgba(255, 50, 50, 0.5)) contrast(1.15)`;
+    return `${base} drop-shadow(0 0 6px rgba(255, 50, 50, 0.5))`;
   }
-  return `${base} contrast(1.18) brightness(1.05)`;
+  return base;
 };
 
 const StyledImage = styled("img")
@@ -880,7 +864,7 @@ const StyledImage = styled("img")
         : // : props.$isDodgeCancelling
         // ? "dodgeCancelSlam 0.12s cubic-bezier(0.25, 0.1, 0.25, 1) forwards"
         props.$isDodging
-        ? "dodgeTakeoff 0.2s cubic-bezier(0.25, 0.1, 0.25, 1) forwards"
+        ? "dodgeTakeoff 0.2s cubic-bezier(0.25, 0.1, 0.25, 1) forwards, dodgeInvincibilityFlash 0.2s ease-out forwards"
         : // ICE PHYSICS: Movement animations take priority over charging
         // Power slide animation (C/CTRL) - always show when power sliding (even after charged attack/recovery)
         props.$isPowerSliding &&
@@ -947,36 +931,36 @@ const StyledImage = styled("img")
   /* PERFORMANCE: Optimized keyframes - reduced drop-shadows from 4+ to 1-2 */
   @keyframes rawParryFlash {
     0% {
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 2px rgba(0, 150, 255, 0.4)) brightness(1);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 2px rgba(0, 150, 255, 0.4));
     }
     25% {
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 12px rgba(0, 150, 255, 0.9)) brightness(1.6);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 12px rgba(0, 150, 255, 0.9));
     }
     50% {
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.7)) brightness(1.3);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.7));
     }
     75% {
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 12px rgba(0, 150, 255, 0.9)) brightness(1.6);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 12px rgba(0, 150, 255, 0.9));
     }
     100% {
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 2px rgba(0, 150, 255, 0.4)) brightness(1);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 2px rgba(0, 150, 255, 0.4));
     }
   }
   @keyframes grabBreakFlash {
     0% {
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 2px rgba(0, 255, 128, 0.45)) brightness(1);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 2px rgba(0, 255, 128, 0.45));
     }
     25% {
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 12px rgba(0, 255, 128, 0.95)) brightness(1.7);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 12px rgba(0, 255, 128, 0.95));
     }
     50% {
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.75)) brightness(1.4);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.75));
     }
     75% {
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 12px rgba(0, 255, 128, 0.95)) brightness(1.7);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 12px rgba(0, 255, 128, 0.95));
     }
     100% {
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 2px rgba(0, 255, 128, 0.45)) brightness(1);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 2px rgba(0, 255, 128, 0.45));
     }
   }
   
@@ -984,32 +968,26 @@ const StyledImage = styled("img")
   @keyframes hitSquash {
     0% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg);
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2) brightness(1.15);
     }
-    /* IMPACT - hard compression, bright flash */
+    /* IMPACT - hard compression */
     6% {
       transform: scaleX(calc(var(--facing, 1) * 1.25)) scaleY(0.75) translateX(calc(var(--facing, 1) * -3%)) rotate(calc(var(--facing, 1) * 2deg));
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.5) brightness(1.8);
     }
     /* Recoil - shoved back hard, body whips */
     18% {
       transform: scaleX(calc(var(--facing, 1) * 0.88)) scaleY(1.12) translateX(calc(var(--facing, 1) * -5%)) rotate(calc(var(--facing, 1) * -4deg));
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.35) brightness(1.4);
     }
     /* Secondary bounce - body weight shifts */
     35% {
       transform: scaleX(calc(var(--facing, 1) * 1.08)) scaleY(0.92) translateX(calc(var(--facing, 1) * -2%)) rotate(calc(var(--facing, 1) * 1.5deg));
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.25) brightness(1.2);
     }
     /* Settling */
     55% {
       transform: scaleX(calc(var(--facing, 1) * 0.96)) scaleY(1.04) translateX(calc(var(--facing, 1) * -0.5%)) rotate(calc(var(--facing, 1) * -0.5deg));
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2) brightness(1.15);
     }
     /* Back to normal */
     100% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg);
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2) brightness(1.15);
     }
   }
   
@@ -1017,29 +995,25 @@ const StyledImage = styled("img")
   @keyframes attackPunch {
     0% {
       transform: scaleX(var(--facing, 1)) scaleY(1);
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2);
     }
     25% {
       transform: scaleX(calc(var(--facing, 1) * 0.9)) scaleY(1.1);
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.3) brightness(1.15);
     }
     55% {
       transform: scaleX(calc(var(--facing, 1) * 1.12)) scaleY(0.92);
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.25) brightness(1.1);
     }
     100% {
       transform: scaleX(var(--facing, 1)) scaleY(1);
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2);
     }
   }
   
   /* Charge pulse animation - builds anticipation for charged attack (no gold glow) */
   @keyframes chargePulse {
     0%, 100% {
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2);
+      transform: scaleX(var(--facing, 1)) scaleY(1);
     }
     50% {
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.35) brightness(1.1);
+      transform: scaleX(var(--facing, 1)) scaleY(1.02);
     }
   }
   
@@ -1152,11 +1126,11 @@ const StyledImage = styled("img")
   @keyframes slapRush {
     0%, 100% {
       transform: scaleX(var(--facing, 1));
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2) blur(0.3px);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) blur(0.3px);
     }
     50% {
       transform: scaleX(var(--facing, 1));
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2) blur(0.6px);
+      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) blur(0.6px);
     }
   }
   
@@ -1352,47 +1326,45 @@ const StyledImage = styled("img")
   @keyframes dodgeTakeoff {
     0% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2);
     }
     20% {
       transform: scaleX(calc(var(--facing, 1) * 1.08)) scaleY(0.88) translateY(0);
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.25) brightness(1.05);
     }
     50% {
       transform: scaleX(calc(var(--facing, 1) * 0.94)) scaleY(1.08) translateY(-2px);
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.22) brightness(1.08);
     }
     80% {
       transform: scaleX(calc(var(--facing, 1) * 0.97)) scaleY(1.04) translateY(-1px);
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2) brightness(1.03);
     }
     100% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2);
     }
+  }
+
+  /* Dodge invincibility: bright flash held through i-frames then fades — readable at game speed */
+  @keyframes dodgeInvincibilityFlash {
+    0% { filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) brightness(2.5) saturate(0.2); }
+    40% { filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) brightness(2.2) saturate(0.3); }
+    70% { filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) brightness(1.3) saturate(0.7); }
+    100% { filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) brightness(1) saturate(1); }
   }
   
   /* Dodge cancel slam - smooth drop with impact squash */
   @keyframes dodgeCancelSlam {
     0% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2);
     }
     40% {
       transform: scaleX(calc(var(--facing, 1) * 0.94)) scaleY(1.08) translateY(1px);
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.22) brightness(1.05);
     }
     70% {
       transform: scaleX(calc(var(--facing, 1) * 1.12)) scaleY(0.82) translateY(0);
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.28) brightness(1.1);
     }
     90% {
       transform: scaleX(calc(var(--facing, 1) * 0.98)) scaleY(1.03) translateY(0);
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.22);
     }
     100% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2);
     }
   }
   
@@ -1401,27 +1373,22 @@ const StyledImage = styled("img")
     0% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
       transform-origin: center bottom;
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2);
     }
     25% {
       transform: scaleX(calc(var(--facing, 1) * 1.06)) scaleY(0.88) translateY(0);
       transform-origin: center bottom;
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.24) brightness(1.05);
     }
     55% {
       transform: scaleX(calc(var(--facing, 1) * 0.98)) scaleY(1.04) translateY(0);
       transform-origin: center bottom;
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.21) brightness(1.02);
     }
     80% {
       transform: scaleX(calc(var(--facing, 1) * 1.02)) scaleY(0.99) translateY(0);
       transform-origin: center bottom;
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2);
     }
     100% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
       transform-origin: center bottom;
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2);
     }
   }
   
@@ -1493,7 +1460,7 @@ const RitualSpriteImage = styled.img.attrs((props) => {
       willChange: "transform",
       backfaceVisibility: "hidden",
       // PERFORMANCE: Reduced drop-shadows
-      filter: "drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.2)",
+      filter: "drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000)",
     },
   };
 })``;
@@ -1869,7 +1836,7 @@ const PumoClone = styled.img
           ? 0
           : 98,
       pointerEvents: "none",
-      filter: "drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.3)",
+      filter: "drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000)",
     },
   }))``;
 
@@ -1914,7 +1881,7 @@ const AnimatedPumoCloneImage = styled.img
         height: "100%",
         width: "auto",
         backfaceVisibility: "hidden",
-        filter: "drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) contrast(1.3)",
+        filter: "drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000)",
         animation:
           frameCount > 1
             ? `spritesheet-${frameCount} ${duration}s steps(${
@@ -2011,14 +1978,14 @@ const GameFighter = ({
 
   // Function to get sprite render info (handles both static and animated sprites)
   // Returns: { src, isAnimated, config } where config contains spritesheet animation data
-  // When isHit is true and recoloring is needed, uses hit-tinted variant (mawashi/headband unchanged, rest tinted red)
-  // When isChargeFlash is true, uses white-tinted variant for charge flash effect
-  // When isBlubberTint is true, uses purple-tinted variant for thick blubber power-up (sprite-level like hit/charge)
+  // When isHit is true, uses hit-tinted variant (mawashi/headband unchanged, rest tinted red)
+  // When isWhiteFlash is true, uses white-tinted variant (dodge invincibility flash)
+  // When isBlubberTint is true, uses purple-tinted variant for thick blubber power-up
   const getSpriteRenderInfo = useCallback(
     (
       originalSrc,
       isHit = false,
-      isChargeFlash = false,
+      isWhiteFlash = false,
       isBlubberTint = false
     ) => {
       if (!originalSrc) {
@@ -2033,14 +2000,14 @@ const GameFighter = ({
       const sourceToRecolor = isAnimated
         ? spritesheetConfig.spritesheet
         : originalSrc;
-      const useHitTint = isHit; // When hit, use sprite-level red tint (mawashi/headband unchanged, rest red)
-      const useChargeTint = isChargeFlash; // When charge flashing, use sprite-level white tint
-      const useBlubberTint = isBlubberTint; // When thick blubber active, use sprite-level transparent purple tint
+      const useHitTint = isHit;
+      const useWhiteFlash = isWhiteFlash;
+      const useBlubberTint = isBlubberTint;
 
       if (
         !needsRecoloring &&
         !useHitTint &&
-        !useChargeTint &&
+        !useWhiteFlash &&
         !useBlubberTint
       ) {
         return {
@@ -2055,7 +2022,7 @@ const GameFighter = ({
         ? { bodyColorRange: GREY_BODY_RANGES, bodyColorHex: playerBodyColor }
         : {};
       if (useHitTint) tintOptions.hitTintRed = true;
-      if (useChargeTint) tintOptions.chargeTintWhite = true;
+      if (useWhiteFlash) tintOptions.chargeTintWhite = true;
       if (useBlubberTint) tintOptions.blubberTintPurple = true;
 
       // FIRST: Check global cache (populated by preloadSprites in Lobby)
@@ -2075,7 +2042,7 @@ const GameFighter = ({
 
       const cacheKey = `${sourceToRecolor}_${targetColor}${
         playerBodyColor ? "_body_" + playerBodyColor : ""
-      }${useHitTint ? "_hit" : ""}${useChargeTint ? "_charge" : ""}${
+      }${useHitTint ? "_hit" : ""}${useWhiteFlash ? "_charge" : ""}${
         useBlubberTint ? "_blubber" : ""
       }`;
       if (recoloredSprites[cacheKey]) {
@@ -3331,7 +3298,6 @@ const GameFighter = ({
   const strafingSoundRef = useRef(null);
   const lastHitSoundTime = useRef(0);
   const hitTintFramesRemaining = useRef(0); // Show hit tint for first N frames of isHit so red is visible (1 frame was too short)
-  const chargeFlashCycleStart = useRef(0); // Wall-clock timestamp (ms) when current flash cycle began
   const gameMusicRef = useRef(null);
   const eeshiMusicRef = useRef(null);
 
@@ -4764,61 +4730,15 @@ const GameFighter = ({
     hitTintFramesRemaining.current -= 1;
   }
 
-  // Charge flash: white sprite-level tint that pulses as charge builds
-  // Brief white flash (~120ms) followed by a longer gap. Gap shrinks as charge increases.
-  // Uses wall-clock time (performance.now) so flash speed is independent of sprite animation framerate.
-  // Both players see the flash (not just local player)
-  const isCharging = displayPenguin.isChargingAttack;
-  const chargePower = penguin.chargeAttackPower ?? 0;
-  let showChargeFlashThisFrame = false;
-
-  const FLASH_DURATION_MS = 120; // How long each white flash stays on (brief pulse)
-
-  if (isCharging && chargePower > 0) {
-    const now = performance.now();
-
-    // Initialize cycle start on first frame of charging
-    if (chargeFlashCycleStart.current === 0) {
-      chargeFlashCycleStart.current = now;
-    }
-
-    // Total cycle = flash ON duration + gap. Gap shrinks as charge power increases.
-    // Low charge (0-33%): ~1440ms, Medium (33-66%): ~800ms, High (66-100%): ~480ms, Full: ~280ms
-    let totalCycleMs;
-    if (chargePower >= 95) {
-      totalCycleMs = 280;
-    } else if (chargePower >= 66) {
-      totalCycleMs = 480;
-    } else if (chargePower >= 33) {
-      totalCycleMs = 800;
-    } else {
-      totalCycleMs = 1440;
-    }
-
-    // How far into the current cycle are we (wall-clock based)
-    const elapsed = now - chargeFlashCycleStart.current;
-    if (elapsed >= totalCycleMs) {
-      // Start a new cycle
-      chargeFlashCycleStart.current = now;
-    }
-    const cyclePosition = now - chargeFlashCycleStart.current;
-    // Flash is ON only during the first FLASH_DURATION_MS of each cycle
-    showChargeFlashThisFrame = cyclePosition < FLASH_DURATION_MS;
-  } else {
-    // Reset flash state when not charging
-    chargeFlashCycleStart.current = 0;
-  }
-
-  // Tint priority: hit > thick blubber > charge flash (only one applied at a time for sprite variant)
+  // Tint priority: hit > thick blubber
+  // (Dodge invincibility is handled via CSS opacity pulse, not sprite-level tinting)
   const useBlubberTint = thickBlubberIndicator && !showHitTintThisFrame;
-  const useChargeTint =
-    showChargeFlashThisFrame && !showHitTintThisFrame && !useBlubberTint;
 
-  // Get sprite render info (handles animated spritesheets and recoloring; uses hit-/charge-/blubber-tinted sprite when active)
+  // Get sprite render info (handles animated spritesheets and recoloring)
   const spriteRenderInfo = getSpriteRenderInfo(
     effectiveSpriteSrc,
     showHitTintThisFrame,
-    useChargeTint,
+    false,
     useBlubberTint
   );
   const {
@@ -4827,17 +4747,7 @@ const GameFighter = ({
     config: spriteConfig,
   } = spriteRenderInfo;
 
-  // Stable key for animated sprites: use the base (non-charge-flash) sprite so toggling
-  // charge flash on/off doesn't remount the component and restart CSS animations.
-  // Hit tint changes DO restart (different animation state), but charge flash should NOT.
-  const baseSpriteSrc = showChargeFlashThisFrame
-    ? getSpriteRenderInfo(
-        effectiveSpriteSrc,
-        showHitTintThisFrame,
-        false,
-        useBlubberTint
-      ).src
-    : recoloredSpriteSrc;
+  const baseSpriteSrc = recoloredSpriteSrc;
 
   // Update animation state (will start/stop intervals as needed)
   updateSpriteAnimation(effectiveSpriteSrc);
@@ -4937,7 +4847,7 @@ const GameFighter = ({
         countdown > 0 && (
           <YouLabel x={displayPosition.x} y={displayPosition.y} />
         )}
-      {/* PowerMeter removed - replaced by sprite-level white charge flash */}
+      {/* PowerMeter and charge flash removed — hidden charge (TAP-style) */}
 
       <SaltBasket
         src={

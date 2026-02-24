@@ -429,8 +429,11 @@ function startCharging(player) {
   // This allows players to charge while sliding for aggressive plays
   
   player.isChargingAttack = true;
-  player.chargeStartTime = Date.now();
-  player.chargeAttackPower = 1;
+  // TAP-style: resume existing charge if player had power preserved (e.g., after being hit)
+  if (!player.chargeStartTime) {
+    player.chargeStartTime = Date.now();
+    player.chargeAttackPower = 1;
+  }
   player.attackType = "charged";
   // Consuming the intent once we begin charging prevents perpetual auto-restarts
   player.wantsToRestartCharge = false;

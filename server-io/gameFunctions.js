@@ -444,12 +444,14 @@ function executeSlapAttack(player, rooms) {
         return;
       }
       
-      // After attack ends, check if we should restart charging
-      // IMPORTANT: Always enforce 200ms threshold to prevent quick taps from triggering charge
+      // After slap ends, if mouse1 still held → begin charging (TAP-style hidden charge)
+      // Require a minimum hold duration to prevent spam-tapping from accidentally triggering charge.
+      // A player genuinely holding through the slap cycle (270ms) easily clears this threshold,
+      // while a mid-tap during spam (~60-80ms hold) does not.
+      const holdDuration = player.mouse1PressTime > 0 ? Date.now() - player.mouse1PressTime : 0;
       if (
         player.keys.mouse1 &&
-        player.mouse1PressTime > 0 && (Date.now() - player.mouse1PressTime) >= 200 &&
-        player.wantsToRestartCharge &&
+        holdDuration >= 150 &&
         !player.isAttacking &&
         !player.isDodging &&
         !player.isThrowing &&
@@ -461,10 +463,11 @@ function executeSlapAttack(player, rooms) {
         !player.canMoveToReady
       ) {
         player.isChargingAttack = true;
-        player.chargeStartTime = Date.now();
-        player.chargeAttackPower = 1;
+        if (!player.chargeStartTime) {
+          player.chargeStartTime = Date.now();
+          player.chargeAttackPower = 1;
+        }
         player.attackType = "charged";
-        player.wantsToRestartCharge = false;
       }
   };
 

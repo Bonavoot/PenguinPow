@@ -1063,11 +1063,13 @@ function activateBufferedInputAfterGrab(player, rooms) {
     return;
   }
 
-  // Priority 3: Mouse1 held — start fresh hold timer so normal slap/charge logic applies
-  // (charge after 200ms hold, slap only on quick tap release)
-  // Do NOT auto-fire slap — holding mouse1 should lead to charging, not an instant slap
+  // Priority 3: Mouse1 held — fire slap immediately (slap fires on press)
+  // If mouse1 stays held, charging begins after slap cycle ends
   if (player.keys.mouse1) {
     player.mouse1PressTime = Date.now();
+    if (canPlayerSlap(player)) {
+      executeSlapAttack(player, rooms);
+    }
     return;
   }
 
@@ -5270,16 +5272,17 @@ io.on("connection", (socket) => {
           player.mouse1BufferedBeforeStart = false;
         }
 
-        // CONTINUOUS MOUSE1 CHECK: Auto-start charging when mouse1 is held past threshold
-        // canPlayerCharge() checks: !isChargingAttack AND isPlayerInActiveState() which includes
-        // !isAttacking, !isRecovering, !isHit, !isGrabbing, !isDodging, etc.
+        // CONTINUOUS MOUSE1 CHECK: Auto-start charging when mouse1 is held and player is idle
+        // Slap fires on press; this catches edge cases where slapCycleEndCallback
+        // didn't start charging (e.g., state cleared between slap end and next tick)
+        // Require 150ms minimum hold to prevent spam-tapping from accidentally triggering charge
         if (
-          room.gameStart && // Only during active gameplay
-          player.keys.mouse1 && // Mouse1 is being held
-          player.mouse1PressTime > 0 && // Press time is tracked
-          (Date.now() - player.mouse1PressTime) >= 200 && // Past slap threshold (200ms)
-          !(player.inputLockUntil && Date.now() < player.inputLockUntil) && // Not during input freeze
-          canPlayerCharge(player) // All blocking states are cleared (includes !isChargingAttack)
+          room.gameStart &&
+          player.keys.mouse1 &&
+          player.mouse1PressTime > 0 &&
+          (Date.now() - player.mouse1PressTime) >= 150 &&
+          !(player.inputLockUntil && Date.now() < player.inputLockUntil) &&
+          canPlayerCharge(player)
         ) {
           startCharging(player);
         }
@@ -5968,7 +5971,14 @@ io.on("connection", (socket) => {
       }
       
       // CRITICAL: Clear ALL action states - ensures only ONE state at a time
+      // TAP-style: preserve charge power through hits — charge keeps ticking as long as mouse1 is held
+      const savedChargeStartTime = otherPlayer.chargeStartTime;
+      const savedChargePower = otherPlayer.chargeAttackPower;
       clearAllActionStates(otherPlayer);
+      if (savedChargeStartTime && otherPlayer.keys.mouse1) {
+        otherPlayer.chargeStartTime = savedChargeStartTime;
+        otherPlayer.chargeAttackPower = savedChargePower;
+      }
       
       // Clear parry success states when hit
       otherPlayer.isRawParrySuccess = false;
@@ -7490,12 +7500,24 @@ io.on("connection", (socket) => {
       // ============================================
     }
 
-    // MOUSE1 RELEASE: Slap (quick tap) or charge release (held past threshold)
-    // This MUST be processed before other actions since mouse1 release is the primary attack trigger
-    const MOUSE1_CHARGE_THRESHOLD_MS = 200; // Hold mouse1 longer than this to charge instead of slap
+    // MOUSE1 PRESS: Fire slap immediately for responsive poke
+    // Charging starts later if mouse1 is held past the slap cycle (TAP-style)
+    if (player.mouse1JustPressed && !shouldBlockAction()) {
+      if (canPlayerSlap(player)) {
+        executeSlapAttack(player, rooms);
+      } else if (player.isAttacking && player.attackType === "slap") {
+        const attackElapsed = Date.now() - player.attackStartTime;
+        const attackDuration = player.attackEndTime - player.attackStartTime;
+        const attackProgress = attackElapsed / attackDuration;
+        if (attackProgress >= 0.20 && !player.hasPendingSlapAttack) {
+          player.hasPendingSlapAttack = true;
+        }
+      }
+    }
+
+    // MOUSE1 RELEASE: Release charged attack (if charging)
     if (player.mouse1JustReleased) {
       if (player.isChargingAttack) {
-        // Mouse1 was held past threshold and charging started — release the charged attack
         if (
           !player.isGrabbing &&
           !player.isBeingGrabbed &&
@@ -7504,7 +7526,6 @@ io.on("connection", (socket) => {
           !player.isThrowingSnowball
         ) {
           if (player.isDodging) {
-            // Store charge for after dodge ends
             player.pendingChargeAttack = {
               power: player.chargeAttackPower,
               startTime: player.chargeStartTime,
@@ -7515,7 +7536,6 @@ io.on("connection", (socket) => {
             executeChargedAttack(player, player.chargeAttackPower, rooms);
           }
         }
-        // Clear charging state if mouse1 released and we're not in a valid state to execute
         if (player.isChargingAttack) {
           player.isChargingAttack = false;
           player.chargeStartTime = 0;
@@ -7524,27 +7544,10 @@ io.on("connection", (socket) => {
           player.attackType = null;
           player.mouse1HeldDuringAttack = false;
         }
-      } else if (
-        player.mouse1PressTime > 0 &&
-        (Date.now() - player.mouse1PressTime) < MOUSE1_CHARGE_THRESHOLD_MS &&
-        !shouldBlockAction()
-      ) {
-        // Quick tap — execute slap attack
-        if (canPlayerSlap(player)) {
-          executeSlapAttack(player, rooms);
-        } else if (player.isAttacking && player.attackType === "slap") {
-          // Already slapping — buffer the next attack
-          const attackElapsed = Date.now() - player.attackStartTime;
-          const attackDuration = player.attackEndTime - player.attackStartTime;
-          const attackProgress = attackElapsed / attackDuration;
-          if (attackProgress >= 0.20 && !player.hasPendingSlapAttack) {
-            player.hasPendingSlapAttack = true;
-          }
-        }
       }
-      player.mouse1PressTime = 0; // Reset press time on release
-      player.wantsToRestartCharge = false; // Clear charge restart intent on release
-      player.mouse1HeldDuringAttack = false; // Clear held-during-attack flag on release
+      player.mouse1PressTime = 0;
+      player.wantsToRestartCharge = false;
+      player.mouse1HeldDuringAttack = false;
     }
 
     // Handle clearing charge during charging phase with throw/grab/snowball - MUST BE FIRST
@@ -7991,13 +7994,15 @@ io.on("connection", (socket) => {
       socket.emit("stamina_blocked", { playerId: player.id, action: "dodge" });
     }
 
-    // MOUSE1 HOLD-TO-CHARGE: Start charging when mouse1 held past threshold
-    // Block if grab (mouse2) was just pressed (grab cancels charge)
+    // MOUSE1 HOLD-TO-CHARGE: Start charging when mouse1 held and player is idle
+    // Slap fires on press; charging only starts after slap cycle ends (via callback)
+    // or when pressing mouse1 during dodge (TAP-style hidden charge)
+    // Require 150ms minimum hold to prevent spam-tapping from accidentally triggering charge
     if (
       player.keys.mouse1 &&
       !player.isChargingAttack &&
       player.mouse1PressTime > 0 &&
-      (Date.now() - player.mouse1PressTime) >= MOUSE1_CHARGE_THRESHOLD_MS &&
+      (Date.now() - player.mouse1PressTime) >= 150 &&
       !shouldBlockAction() &&
       canPlayerCharge(player) &&
       !player.mouse2JustPressed
@@ -8006,12 +8011,10 @@ io.on("connection", (socket) => {
       player.spacebarReleasedDuringDodge = false;
     }
     // For continuing a charge OR starting a charge during dodge
-    // Use shouldBlockAction(false, true) to allow charging during dodge
     else if (
       player.keys.mouse1 &&
       player.mouse1PressTime > 0 &&
-      (Date.now() - player.mouse1PressTime) >= MOUSE1_CHARGE_THRESHOLD_MS &&
-      !shouldBlockAction(false, true) && // Allow charging during dodge
+      !shouldBlockAction(false, true) &&
       (player.isChargingAttack || player.isDodging) &&
       !player.isHit &&
       !player.isRawParryStun &&

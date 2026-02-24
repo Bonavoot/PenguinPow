@@ -1284,7 +1284,7 @@ const PreviewImage = styled.img`
   max-height: clamp(100px, 28vh, 340px);
   width: auto;
   object-fit: contain;
-  filter: drop-shadow(0 8px 20px rgba(0,0,0,0.6)) contrast(1.18) brightness(1.05);
+  filter: drop-shadow(0 8px 20px rgba(0,0,0,0.6));
 `;
 
 /**

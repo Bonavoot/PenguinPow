@@ -198,8 +198,9 @@ const Game = ({
       }
 
       // CLIENT-SIDE PREDICTION for gamepad inputs
-      // Check for newly pressed buttons by comparing with previous keyState
-      // NOTE: Mouse1 predictions removed — server decides slap vs charge based on hold duration
+      if (gamepadKeyState.mouse1 && !keyState.mouse1) {
+        applyPrediction("slap");
+      }
       if (gamepadKeyState.mouse2 && !keyState.mouse2) {
         applyPrediction("grab");
       }
@@ -331,7 +332,7 @@ const Game = ({
       if (e.button === 0) {
         e.preventDefault();
         keyState.mouse1 = true;
-        // No client prediction — server decides slap vs charge based on hold duration
+        applyPrediction("slap");
         socket.emit("fighter_action", { id: socket.id, keys: keyState });
       } else if (e.button === 2) {
         e.preventDefault();
@@ -360,7 +361,6 @@ const Game = ({
       if (e.button === 0) {
         e.preventDefault();
         keyState.mouse1 = false;
-        // No client prediction — server handles slap (quick release) or charge release (held)
         socket.emit("fighter_action", { id: socket.id, keys: keyState });
       } else if (e.button === 2) {
         e.preventDefault();
