@@ -1,3 +1,13 @@
+const {
+  SCREEN_SHAKE_MIN_INTERVAL,
+  DOHYO_EDGE_PANIC_ZONE,
+  SLIDE_BRAKE_FRICTION, SLIDE_FRICTION,
+  ICE_EDGE_BRAKE_BONUS, ICE_BRAKE_FRICTION,
+  ICE_MOVING_FRICTION, ICE_COAST_FRICTION, ICE_EDGE_SLIDE_PENALTY,
+  KNOCKBACK_IMMUNITY_DURATION,
+  HITSTOP_CHARGED_MIN_MS, HITSTOP_CHARGED_MAX_MS,
+} = require("./constants");
+
 // Game constants
 const MAP_LEFT_BOUNDARY = 340;
 const MAP_RIGHT_BOUNDARY = 940;
@@ -272,7 +282,10 @@ function clearAllActionStates(player) {
   player.isAttacking = false;
   player.isChargingAttack = false;
   player.chargeStartTime = 0;
-  player.chargeAttackPower = 0;
+  // TAP-style: keep charge power if mouse1 is still held
+  if (!(player.keys && player.keys.mouse1)) {
+    player.chargeAttackPower = 0;
+  }
   player.chargingFacingDirection = null;
   player.slapFacingDirection = null;
   player.isSlapAttack = false;
@@ -284,7 +297,7 @@ function clearAllActionStates(player) {
   player.hasPendingSlapAttack = false;
   player.isSlapSliding = false;
   player.mouse1HeldDuringAttack = false;
-  player.mouse1BufferedBeforeStart = false; // Clear pre-game buffer
+  player.mouse1BufferedBeforeStart = false;
   player.wantsToRestartCharge = false;
   player.chargedAttackHit = false;
   
@@ -432,13 +445,15 @@ function startCharging(player) {
   // This allows players to charge while sliding for aggressive plays
   
   player.isChargingAttack = true;
-  // TAP-style: resume existing charge if player had power preserved (e.g., after being hit)
-  if (!player.chargeStartTime) {
+  if (player.chargeAttackPower > 0) {
+    // TAP-style resume: backdate chargeStartTime so the continuous charge formula
+    // (chargeDuration / 750 * 100) picks up from the preserved power level
+    player.chargeStartTime = Date.now() - (player.chargeAttackPower / 100 * 750);
+  } else if (!player.chargeStartTime) {
     player.chargeStartTime = Date.now();
     player.chargeAttackPower = 1;
   }
   player.attackType = "charged";
-  // Consuming the intent once we begin charging prevents perpetual auto-restarts
   player.wantsToRestartCharge = false;
 }
 
@@ -460,22 +475,22 @@ function canPlayerSlap(player) {
   );
 }
 
-// Add helper function for clearing charge with auto-restart
+// Clear charging state. TAP-style: preserve accumulated charge power when mouse1
+// is still held — only releasing mouse1 or consuming the charge should zero it out.
 function clearChargeState(player, isCancelled = false) {
-  // Clear charge state only - no auto-restart
-  // Auto-restart is now handled by specific action completion callbacks
   player.isChargingAttack = false;
   player.chargeStartTime = 0;
-  player.chargeAttackPower = 0;
+  // TAP-style: keep charge power if mouse1 is still held
+  if (!(player.keys && player.keys.mouse1)) {
+    player.chargeAttackPower = 0;
+  }
   player.chargingFacingDirection = null;
   player.pendingChargeAttack = null;
   player.spacebarReleasedDuringDodge = false;
-  player.mouse1HeldDuringAttack = false; // Clear the flag when clearing charge state
+  player.mouse1HeldDuringAttack = false;
 
-  // Set flag to indicate charge was cancelled (not executed)
   if (isCancelled) {
     player.chargeCancelled = true;
-    // Clear the flag after a short delay to prevent interference with next charge
     setTimeout(() => {
       if (player.chargeCancelled) {
         player.chargeCancelled = false;
@@ -508,6 +523,90 @@ function isOutsideDohyo(x, y) {
   );
 }
 
+function clampStaminaValue(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  if (n < 0) return 0;
+  if (n > 100) return 100;
+  return Math.round(n);
+}
+
+function isNearDohyoEdge(playerX) {
+  const leftEdgeDistance = playerX - MAP_LEFT_BOUNDARY;
+  const rightEdgeDistance = MAP_RIGHT_BOUNDARY - playerX;
+  return Math.min(leftEdgeDistance, rightEdgeDistance) < DOHYO_EDGE_PANIC_ZONE;
+}
+
+function getEdgeProximity(playerX) {
+  const leftEdgeDistance = playerX - MAP_LEFT_BOUNDARY;
+  const rightEdgeDistance = MAP_RIGHT_BOUNDARY - playerX;
+  const nearestEdge = Math.min(leftEdgeDistance, rightEdgeDistance);
+  return Math.max(0, 1 - (nearestEdge / DOHYO_EDGE_PANIC_ZONE));
+}
+
+function getIceFriction(player, isActiveBraking, nearEdge, edgeProximity) {
+  if (player.isPowerSliding) {
+    if (isActiveBraking) {
+      let friction = SLIDE_BRAKE_FRICTION;
+      if (nearEdge) friction -= ICE_EDGE_BRAKE_BONUS * edgeProximity;
+      return friction;
+    }
+    return SLIDE_FRICTION;
+  }
+  
+  if (isActiveBraking) {
+    let friction = ICE_BRAKE_FRICTION;
+    if (nearEdge) {
+      friction -= ICE_EDGE_BRAKE_BONUS * edgeProximity;
+    }
+    return friction;
+  } else if (player.keys.a || player.keys.d) {
+    return ICE_MOVING_FRICTION;
+  } else {
+    let friction = ICE_COAST_FRICTION;
+    if (nearEdge) {
+      friction += ICE_EDGE_SLIDE_PENALTY * edgeProximity;
+    }
+    return friction;
+  }
+}
+
+function canApplyKnockback(player) {
+  return !player.knockbackImmune || Date.now() >= player.knockbackImmuneEndTime;
+}
+
+function setKnockbackImmunity(player) {
+  player.knockbackImmune = true;
+  player.knockbackImmuneEndTime = Date.now() + KNOCKBACK_IMMUNITY_DURATION;
+}
+
+function getChargedHitstop(chargePower) {
+  const normalizedPower = Math.max(0, Math.min(1, (chargePower - 0.3) / 0.7));
+  return HITSTOP_CHARGED_MIN_MS + (HITSTOP_CHARGED_MAX_MS - HITSTOP_CHARGED_MIN_MS) * normalizedPower;
+}
+
+function triggerHitstop(room, durationMs) {
+  const now = Date.now();
+  const target = now + durationMs;
+  room.hitstopUntil = Math.max(room.hitstopUntil || 0, target);
+}
+
+function isRoomInHitstop(room) {
+  return room.hitstopUntil && Date.now() < room.hitstopUntil;
+}
+
+function emitThrottledScreenShake(room, io, shakeData) {
+  const now = Date.now();
+  if (room.lastScreenShakeTime === undefined) {
+    room.lastScreenShakeTime = 0;
+  }
+  if (now - room.lastScreenShakeTime < SCREEN_SHAKE_MIN_INTERVAL) {
+    return;
+  }
+  room.lastScreenShakeTime = now;
+  io.in(room.id).emit("screen_shake", shakeData);
+}
+
 module.exports = {
   // Constants
   MAP_LEFT_BOUNDARY,
@@ -529,7 +628,7 @@ module.exports = {
   canPlayerUseAction,
   canPlayerDodge,
   resetPlayerAttackStates,
-  clearAllActionStates,  // Critical: clears ALL states when player loses control
+  clearAllActionStates,
   isWithinMapBoundaries,
   constrainToMapBoundaries,
   shouldRestartCharging,
@@ -537,4 +636,14 @@ module.exports = {
   canPlayerSlap,
   clearChargeState,
   isOutsideDohyo,
+  clampStaminaValue,
+  isNearDohyoEdge,
+  getEdgeProximity,
+  getIceFriction,
+  canApplyKnockback,
+  setKnockbackImmunity,
+  getChargedHitstop,
+  triggerHitstop,
+  isRoomInHitstop,
+  emitThrottledScreenShake,
 };

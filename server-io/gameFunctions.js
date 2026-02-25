@@ -9,17 +9,23 @@ const {
   DOHYO_RIGHT_BOUNDARY,
   DOHYO_FALL_DEPTH,
   isOutsideDohyo,
+  canPlayerSlap,
+  shouldRestartCharging,
+  startCharging,
 } = require("./gameUtils");
 
-// Game constants that are used by these functions
-const GROUND_LEVEL = 290;
-const HITBOX_DISTANCE_VALUE = Math.round(77 * 0.96);
-const SLAP_HITBOX_DISTANCE_VALUE = Math.round(155 * 0.96);
-
-// Stamina drain constants
-const SLAP_ATTACK_STAMINA_COST = 3; // Small cost to not deter spamming
-const CHARGED_ATTACK_STAMINA_COST = 9; // 3x slap attack cost
-const DODGE_STAMINA_COST = 7; // ~7% of max stamina per dodge
+const {
+  GROUND_LEVEL,
+  HITBOX_DISTANCE_VALUE,
+  SLAP_HITBOX_DISTANCE_VALUE,
+  SLAP_ATTACK_STAMINA_COST,
+  CHARGED_ATTACK_STAMINA_COST,
+  DODGE_STAMINA_COST,
+  DODGE_DURATION,
+  DODGE_SLIDE_MOMENTUM,
+  DODGE_POWERSLIDE_BOOST,
+  RAW_PARRY_STAMINA_COST,
+} = require("./constants");
 
 // Add new function for grab state cleanup
 function cleanupGrabStates(player, opponent) {
@@ -467,7 +473,9 @@ function executeSlapAttack(player, rooms) {
         !player.canMoveToReady
       ) {
         player.isChargingAttack = true;
-        if (!player.chargeStartTime) {
+        if (player.chargeAttackPower > 0) {
+          player.chargeStartTime = Date.now() - (player.chargeAttackPower / 100 * 750);
+        } else if (!player.chargeStartTime) {
           player.chargeStartTime = Date.now();
           player.chargeAttackPower = 1;
         }
@@ -676,17 +684,16 @@ function handleReadyPositions(room, player1, player2, io) {
     const player2ReadyX = 735;
 
     // Only move players if they're allowed to move (after salt throw) AND they're not attacking
+    // isChargingAttack is allowed — tachiai charging during walk-to-ready
     if (
       player1.canMoveToReady &&
-      !player1.isAttacking &&
-      !player1.isChargingAttack
+      !player1.isAttacking
     ) {
       if (player1.x < player1ReadyX) {
-        player1.x += 2; // Adjust speed as needed
+        player1.x += 2;
         player1.isStrafing = true;
       } else {
         player1.x = player1ReadyX;
-        // Only set isStrafing to false when we're setting isReady to true
         if (player2.x === player2ReadyX) {
           player1.isStrafing = false;
         }
@@ -695,8 +702,7 @@ function handleReadyPositions(room, player1, player2, io) {
 
     if (
       player2.canMoveToReady &&
-      !player2.isAttacking &&
-      !player2.isChargingAttack
+      !player2.isAttacking
     ) {
       if (player2.x > player2ReadyX) {
         player2.x -= 2; // Adjust speed as needed
@@ -708,10 +714,10 @@ function handleReadyPositions(room, player1, player2, io) {
     }
 
     // Set ready state INDEPENDENTLY for each player when they reach their position
+    // isChargingAttack is allowed — tachiai charging doesn't block ready state
     if (
       player1.x === player1ReadyX &&
       !player1.isAttacking &&
-      !player1.isChargingAttack &&
       !player1.isReady
     ) {
       player1.isReady = true;
@@ -720,7 +726,6 @@ function handleReadyPositions(room, player1, player2, io) {
     if (
       player2.x === player2ReadyX &&
       !player2.isAttacking &&
-      !player2.isChargingAttack &&
       !player2.isReady
     ) {
       player2.isReady = true;
@@ -1388,6 +1393,183 @@ function safelyEndChargedAttack(player, rooms) {
   }
 }
 
+// Enables frame-1 reversals: if a player holds an input during an unactionable grab/throw state,
+// that input activates on the first possible frame (like invincible reversals in fighting games).
+function activateBufferedInputAfterGrab(player, rooms) {
+  if (player.isAtTheRopes || player.isThrowLanded || player.isHit ||
+      player.isGrabBreaking || player.isGrabBreakCountered || player.isGrabBreakSeparating) return;
+
+  // Priority 0: Buffered dodge (spammed shift while grabbed/thrown)
+  if (
+    player.bufferedAction &&
+    player.bufferedAction.type === "dodge" &&
+    player.bufferExpiryTime &&
+    Date.now() < player.bufferExpiryTime &&
+    !player.isGassed
+  ) {
+    const direction = player.bufferedAction.direction;
+    player.bufferedAction = null;
+    player.bufferExpiryTime = 0;
+    player.isRawParrySuccess = false;
+    player.isPerfectRawParrySuccess = false;
+    player.movementVelocity = 0;
+    player.isStrafing = false;
+    player.isPowerSliding = false;
+    player.isBraking = false;
+    player.isDodging = true;
+    player.isDodgeCancelling = false;
+    player.dodgeCancelStartTime = 0;
+    player.dodgeCancelStartY = 0;
+    player.dodgeStartTime = Date.now();
+    player.dodgeEndTime = Date.now() + DODGE_DURATION;
+    player.dodgeStartX = player.x;
+    player.dodgeStartY = player.y;
+    player.dodgeDirection = direction;
+    player.currentAction = "dodge";
+    player.actionLockUntil = Date.now() + 100;
+    player.justLandedFromDodge = false;
+    player.justCrossedThrough = false;
+    player.crossedThroughTime = 0;
+    player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
+    clearChargeState(player, true);
+    setPlayerTimeout(player.id, () => {
+      if (player.isDodging && !player.isDodgeCancelling) {
+        const landingDir = player.dodgeDirection || 0;
+        if (landingDir !== 0 && Math.abs(player.movementVelocity) < 0.1) {
+          if (player.keys.c || player.keys.control) {
+            player.movementVelocity = landingDir * DODGE_SLIDE_MOMENTUM * DODGE_POWERSLIDE_BOOST;
+            player.isPowerSliding = true;
+          } else {
+            player.movementVelocity = landingDir * DODGE_SLIDE_MOMENTUM;
+          }
+          player.justLandedFromDodge = true;
+        }
+        player.isDodging = false;
+        
+        const dodgeRoom = rooms.find(r => r.players.some(p => p.id === player.id));
+        if (dodgeRoom) {
+          const dodgeOpponent = dodgeRoom.players.find(p => p.id !== player.id);
+          if (dodgeOpponent && !player.atTheRopesFacingDirection && !player.slapFacingDirection) {
+            player.facing = player.x < dodgeOpponent.x ? -1 : 1;
+          }
+          if (dodgeOpponent) {
+            const overlapDistance = Math.abs(player.x - dodgeOpponent.x);
+            const bodyHitboxSize = HITBOX_DISTANCE_VALUE * 2 * Math.max(player.sizeMultiplier || 1, dodgeOpponent.sizeMultiplier || 1);
+            if (overlapDistance < bodyHitboxSize) {
+              player.justCrossedThrough = true;
+              player.crossedThroughTime = Date.now();
+            }
+          }
+        }
+      }
+    }, DODGE_DURATION, "bufferedDodge");
+    return;
+  }
+
+  // Priority 1: Raw parry (spacebar) - defensive reversal
+  if (player.keys[" "] && !player.grabBreakSpaceConsumed) {
+    player.isRawParrying = true;
+    player.rawParryStartTime = Date.now();
+    player.rawParryMinDurationMet = false;
+    player.isRawParrySuccess = false;
+    player.isPerfectRawParrySuccess = false;
+    player.stamina = Math.max(0, player.stamina - RAW_PARRY_STAMINA_COST);
+    player.movementVelocity = 0;
+    player.isStrafing = false;
+    player.isPowerSliding = false;
+    player.isCrouchStance = false;
+    player.isCrouchStrafing = false;
+    player.hasPendingSlapAttack = false;
+    clearChargeState(player, true);
+    return;
+  }
+
+  // Priority 2: Dodge (shift) - evasive option (blocked only when gassed)
+  if (player.keys.shift && !player.keys.mouse2 && !player.isGassed) {
+    player.isRawParrySuccess = false;
+    player.isPerfectRawParrySuccess = false;
+    player.movementVelocity = 0;
+    player.isStrafing = false;
+    player.isPowerSliding = false;
+    player.isBraking = false;
+    player.isDodging = true;
+    player.isDodgeCancelling = false;
+    player.dodgeCancelStartTime = 0;
+    player.dodgeCancelStartY = 0;
+    player.dodgeStartTime = Date.now();
+    player.dodgeEndTime = Date.now() + DODGE_DURATION;
+    player.dodgeStartX = player.x;
+    player.dodgeStartY = player.y;
+    player.currentAction = "dodge";
+    player.actionLockUntil = Date.now() + 100;
+    player.justLandedFromDodge = false;
+    player.justCrossedThrough = false;
+    player.crossedThroughTime = 0;
+    player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
+    clearChargeState(player, true);
+
+    if (player.keys.a) {
+      player.dodgeDirection = -1;
+    } else if (player.keys.d) {
+      player.dodgeDirection = 1;
+    } else {
+      player.dodgeDirection = player.facing === -1 ? 1 : -1;
+    }
+
+    setPlayerTimeout(player.id, () => {
+      if (player.isDodging && !player.isDodgeCancelling) {
+        const landingDir = player.dodgeDirection || 0;
+        if (landingDir !== 0 && Math.abs(player.movementVelocity) < 0.1) {
+          if (player.keys.c || player.keys.control) {
+            player.movementVelocity = landingDir * DODGE_SLIDE_MOMENTUM * DODGE_POWERSLIDE_BOOST;
+            player.isPowerSliding = true;
+          } else {
+            player.movementVelocity = landingDir * DODGE_SLIDE_MOMENTUM;
+          }
+          player.justLandedFromDodge = true;
+        }
+        player.isDodging = false;
+        
+        const dodgeRoom = rooms.find(r => r.players.some(p => p.id === player.id));
+        if (dodgeRoom) {
+          const dodgeOpponent = dodgeRoom.players.find(p => p.id !== player.id);
+          if (dodgeOpponent && !player.atTheRopesFacingDirection && !player.slapFacingDirection) {
+            player.facing = player.x < dodgeOpponent.x ? -1 : 1;
+          }
+          if (dodgeOpponent) {
+            const overlapDistance = Math.abs(player.x - dodgeOpponent.x);
+            const bodyHitboxSize = HITBOX_DISTANCE_VALUE * 2 * Math.max(player.sizeMultiplier || 1, dodgeOpponent.sizeMultiplier || 1);
+            if (overlapDistance < bodyHitboxSize) {
+              player.justCrossedThrough = true;
+              player.crossedThroughTime = Date.now();
+            }
+          }
+        }
+      }
+    }, DODGE_DURATION, "bufferedDodge");
+    return;
+  }
+
+  // Priority 3: Mouse1 held — resume charging or fire a slap
+  if (player.keys.mouse1) {
+    if (player.chargeAttackPower > 0) {
+      startCharging(player);
+    } else {
+      player.mouse1PressTime = Date.now();
+      if (canPlayerSlap(player)) {
+        executeSlapAttack(player, rooms);
+      }
+    }
+    return;
+  }
+
+  // Priority 4: Grab (mouse2)
+  if (player.keys.mouse2 && !player.grabCooldown) {
+    player.postGrabInputBuffer = true;
+    return;
+  }
+}
+
 module.exports = {
   cleanupGrabStates,
   handleWinCondition,
@@ -1399,4 +1581,5 @@ module.exports = {
   arePlayersColliding,
   adjustPlayerPositions,
   safelyEndChargedAttack,
+  activateBufferedInputAfterGrab,
 };

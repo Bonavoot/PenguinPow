@@ -67,27 +67,46 @@ const dangerFramePulse = keyframes`
   }
 `;
 
-/* Gassed state — pulsing red/dark overlay when stamina hits 0 */
-const gassedPulse = keyframes`
+/* Gassed state — scrolling diagonal hazard stripes */
+const gassedStripeScroll = keyframes`
+  from { transform: translateX(0); }
+  to { transform: translateX(22.63px); }
+`;
+
+/* Labored breathing pulse — slow, heavy */
+const gassedBreathe = keyframes`
+  0%, 100% { opacity: 0.92; }
+  50% { opacity: 0.6; }
+`;
+
+/* Gassed text plate pulse — border brightens, tiny scale bump */
+const gassedTextPulse = keyframes`
   0%, 100% {
-    opacity: 0.7;
-    background: linear-gradient(180deg,
-      rgba(180, 20, 20, 0.6) 0%,
-      rgba(120, 10, 10, 0.8) 50%,
-      rgba(80, 0, 0, 0.6) 100%);
+    border-color: rgba(255, 40, 40, 0.5);
+    transform: scale(1);
   }
   50% {
-    opacity: 0.4;
-    background: linear-gradient(180deg,
-      rgba(140, 15, 15, 0.4) 0%,
-      rgba(90, 5, 5, 0.6) 50%,
-      rgba(60, 0, 0, 0.4) 100%);
+    border-color: rgba(255, 60, 60, 0.85);
+    transform: scale(1.04);
   }
 `;
 
-const gassedTextFlicker = keyframes`
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+/* Intense red frame pulse when fully gassed */
+const gassedFramePulse = keyframes`
+  0%, 100% {
+    box-shadow:
+      inset 0 0 10px rgba(255, 20, 20, 0.15),
+      0 0 12px rgba(255, 20, 20, 0.35),
+      0 0 24px rgba(255, 10, 10, 0.2),
+      0 0 0 2px rgba(220, 30, 30, 0.8);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 16px rgba(255, 20, 20, 0.4),
+      0 0 28px rgba(255, 30, 30, 0.6),
+      0 0 48px rgba(255, 10, 10, 0.3),
+      0 0 0 2px rgba(255, 50, 50, 0.95);
+  }
 `;
 
 /* Icy burst when recovering from gassed state — "second wind" */
@@ -470,10 +489,10 @@ const BarFrame = styled.div`
 
   /* Danger mode: pulsing crimson frame */
   ${(p) =>
-    p.$danger &&
-    css`
-      animation: ${dangerFramePulse} 0.7s ease-in-out infinite;
-    `}
+    p.$gassed
+      ? css`animation: ${gassedFramePulse} 1.2s ease-in-out infinite;`
+      : p.$danger &&
+        css`animation: ${dangerFramePulse} 0.7s ease-in-out infinite;`}
 `;
 
 /* Dark inner track with frost-crack texture — height tuned so bar total matches power-up slot */
@@ -708,7 +727,7 @@ const ParryRefundFlash = styled.div`
   animation: ${parryRefundFlash} 0.5s ease-out forwards;
 `;
 
-/* Gassed overlay — fills entire bar track when stamina hits 0 */
+/* Gassed overlay — hazard stripes with breathing pulse */
 const GassedOverlay = styled.div`
   position: absolute;
   top: 0;
@@ -718,24 +737,46 @@ const GassedOverlay = styled.div`
   border-radius: 3px;
   z-index: 5;
   pointer-events: none;
-  animation: ${gassedPulse} 0.6s ease-in-out infinite;
+  overflow: hidden;
+  animation: ${gassedBreathe} 1.2s ease-in-out infinite;
   display: flex;
   align-items: center;
   justify-content: center;
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    right: -50%;
+    bottom: -50%;
+    background: repeating-linear-gradient(
+      -45deg,
+      rgba(180, 20, 20, 0.8) 0px,
+      rgba(180, 20, 20, 0.8) 8px,
+      rgba(40, 5, 5, 0.85) 8px,
+      rgba(40, 5, 5, 0.85) 16px
+    );
+    animation: ${gassedStripeScroll} 0.8s linear infinite;
+  }
 `;
 
 const GassedText = styled.span`
   font-family: "Bungee", cursive;
-  font-size: clamp(8px, 1.1vh, 14px);
-  color: #ff4444;
+  font-size: clamp(9px, 1.3vh, 16px);
+  color: #fff;
   text-shadow:
-    0 0 8px rgba(255, 40, 40, 0.9),
-    0 0 16px rgba(255, 20, 20, 0.5),
-    -1px -1px 0 #000, 1px -1px 0 #000,
-    -1px 1px 0 #000, 1px 1px 0 #000;
-  letter-spacing: 0.2em;
-  animation: ${gassedTextFlicker} 0.6s ease-in-out infinite;
-  ${(p) => p.$isRight && "transform: scaleX(-1);"}
+    0 0 6px rgba(255, 40, 40, 0.7),
+    0 0 12px rgba(255, 20, 20, 0.4);
+  letter-spacing: 0.3em;
+  position: relative;
+  z-index: 1;
+  background: rgba(0, 0, 0, 0.82);
+  padding: clamp(2px, 0.3vh, 4px) clamp(8px, 1.2vw, 18px);
+  border: 1.5px solid rgba(255, 40, 40, 0.5);
+  border-radius: 2px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.6);
+  animation: ${gassedTextPulse} 1.2s ease-in-out infinite;
 `;
 
 /* Gassed recovery burst — bright icy flash when "second wind" kicks in */
@@ -1205,6 +1246,11 @@ const UiPlayerInfo = ({
 
   // ── Gassed → recovered transition detection ──
   useEffect(() => {
+    if (!p1WasGassed.current && player1IsGassed) {
+      setP1Ghost(0);
+      setP1GhostCatching(false);
+      if (p1GhostTimer.current) clearTimeout(p1GhostTimer.current);
+    }
     if (p1WasGassed.current && !player1IsGassed) {
       p1RecoveryPending.current = true;
       setP1Recovery((c) => c + 1);
@@ -1213,6 +1259,11 @@ const UiPlayerInfo = ({
   }, [player1IsGassed]);
 
   useEffect(() => {
+    if (!p2WasGassed.current && player2IsGassed) {
+      setP2Ghost(0);
+      setP2GhostCatching(false);
+      if (p2GhostTimer.current) clearTimeout(p2GhostTimer.current);
+    }
     if (p2WasGassed.current && !player2IsGassed) {
       p2RecoveryPending.current = true;
       setP2Recovery((c) => c + 1);
@@ -1463,7 +1514,7 @@ const UiPlayerInfo = ({
         </NameBanner>
 
         <BarRow $isRight={false}>
-          <BarFrame $danger={p1Danger} $isRight={false}>
+          <BarFrame $danger={p1Danger} $gassed={player1IsGassed} $isRight={false}>
             <BarTrack $isRight={false}>
               <BarLabel $isRight={false}>STA</BarLabel>
               <BarFill
@@ -1471,12 +1522,14 @@ const UiPlayerInfo = ({
                 $danger={p1Danger}
                 $isRight={false}
               />
-              <BarGhost
-                $stamina={p1Ghost}
-                $catching={p1GhostCatching}
-                $isRight={false}
-              />
-              {p1Regen && (
+              {!player1IsGassed && (
+                <BarGhost
+                  $stamina={p1Ghost}
+                  $catching={p1GhostCatching}
+                  $isRight={false}
+                />
+              )}
+              {p1Regen && !player1IsGassed && (
                 <RegenGlow
                   $stamina={p1DisplayStamina}
                   $isRight={false}
@@ -1484,10 +1537,10 @@ const UiPlayerInfo = ({
               )}
               {player1IsGassed && (
                 <GassedOverlay>
-                  <GassedText $isRight={false}>GASSED</GassedText>
+                  <GassedText>GASSED</GassedText>
                 </GassedOverlay>
               )}
-              {p1ParryFlash > 0 && (
+              {p1ParryFlash > 0 && !player1IsGassed && (
                 <ParryRefundFlash key={p1ParryFlash} />
               )}
               {p1Recovery > 0 && (
@@ -1552,7 +1605,7 @@ const UiPlayerInfo = ({
         </NameBanner>
 
         <BarRow $isRight={true}>
-          <BarFrame $danger={p2Danger} $isRight={true}>
+          <BarFrame $danger={p2Danger} $gassed={player2IsGassed} $isRight={true}>
             <BarTrack $isRight={true}>
               <BarLabel $isRight={true}>STA</BarLabel>
               <BarFill
@@ -1560,12 +1613,14 @@ const UiPlayerInfo = ({
                 $danger={p2Danger}
                 $isRight={true}
               />
-              <BarGhost
-                $stamina={p2Ghost}
-                $catching={p2GhostCatching}
-                $isRight={true}
-              />
-              {p2Regen && (
+              {!player2IsGassed && (
+                <BarGhost
+                  $stamina={p2Ghost}
+                  $catching={p2GhostCatching}
+                  $isRight={true}
+                />
+              )}
+              {p2Regen && !player2IsGassed && (
                 <RegenGlow
                   $stamina={p2DisplayStamina}
                   $isRight={true}
@@ -1573,10 +1628,10 @@ const UiPlayerInfo = ({
               )}
               {player2IsGassed && (
                 <GassedOverlay>
-                  <GassedText $isRight={true}>GASSED</GassedText>
+                  <GassedText>GASSED</GassedText>
                 </GassedOverlay>
               )}
-              {p2ParryFlash > 0 && (
+              {p2ParryFlash > 0 && !player2IsGassed && (
                 <ParryRefundFlash key={p2ParryFlash} />
               )}
               {p2Recovery > 0 && (

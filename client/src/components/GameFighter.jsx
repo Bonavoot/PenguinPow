@@ -9,7 +9,6 @@ import React, {
 import { createPortal } from "react-dom";
 import { SocketContext } from "../SocketContext";
 import PropTypes from "prop-types";
-import styled, { keyframes } from "styled-components";
 import "./MatchOver.css";
 import Gyoji from "./Gyoji";
 import {
@@ -20,9 +19,6 @@ import PlayerShadow from "./PlayerShadow";
 import ThrowTechEffect from "./ThrowTechEffect";
 import PowerMeter from "./PowerMeter";
 import SlapParryEffect from "./SlapParryEffect";
-// import DodgeSmokeEffect from "./DodgeDustEffect";
-// import DodgeLandingEffect from "./DodgeLandingEffect";
-// import ChargedAttackSmokeEffect from "./ChargedAttackSmokeEffect";
 import { useParticles } from "../particles/ParticleContext";
 import StarStunEffect from "./StarStunEffect";
 import ThickBlubberEffect from "./ThickBlubberEffect";
@@ -36,10 +32,7 @@ import NoStaminaEffect from "./GassedEffect";
 import SnowballImpactEffect from "./SnowballImpactEffect";
 import PumoCloneSpawnEffect from "./PumoCloneSpawnEffect";
 import SlapAttackHandsEffect from "./SlapAttackHandsEffect";
-
 import SumoGameAnnouncement from "./SumoGameAnnouncement";
-
-// Dynamic sprite recoloring system
 import { useDynamicSprite } from "../hooks/useDynamicSprite";
 import {
   recolorImage,
@@ -51,119 +44,13 @@ import {
 } from "../utils/SpriteRecolorizer";
 import { usePlayerColors } from "../context/PlayerColorContext";
 import { SPECIAL_MAWASHI_GRADIENTS } from "./PreMatchScreen";
-
-// ============================================
-// STATIC SPRITE IMPORTS (Single frame images)
-// ============================================
-import pumo from "../assets/pumo.png";
-import powerWaterIcon from "../assets/power-water.png";
-import snowballImage from "../assets/snowball.png";
-import pumoArmyIcon from "./pumo-army-icon.png";
-import happyFeetIcon from "../assets/happy-feet.png";
-import thickBlubberIcon from "../assets/thick-blubber-icon.png";
-import grabbing from "../assets/grabbing.png";
-import attemptingGrabThrow from "../assets/attempting-grab-throw.png";
-import attemptingPull from "../assets/is-attempting-pull.png";
-import grabSound from "../sounds/grab-sound.mp3";
-import ready from "../assets/ready.png";
-import attack from "../assets/attack.png";
-import slapAttack1 from "../assets/slapAttack1.png";
-import slapAttack2 from "../assets/slapAttack2.png";
-import dodging from "../assets/dodging.png";
-import throwing from "../assets/throwing.png";
-import salt from "../assets/salt.png";
-import saltBasket from "../assets/salt-basket.png";
-import saltBasketEmpty from "../assets/salt-basket-empty.png";
-import recovering from "../assets/recovering.png";
-import rawParrySuccess from "../assets/raw-parry-success.png";
-import snowball from "../assets/snowball.png";
-import crouchStance from "../assets/crouch-stance.png";
-
-// ============================================
-// ANIMATED SPRITE IMPORTS (APNGs/GIFs)
-// ============================================
-import pumoWaddle from "../assets/pumo-waddle.png"; // APNG
-import pumoArmy from "../assets/pumo-army.png"; // APNG
-import crouching from "../assets/blocking.png"; // APNG
-import bow from "../assets/bow.png"; // APNG
-import grabAttempt from "../assets/grab-attempt.png"; // APNG
-import hit from "../assets/hit.png"; // APNG
-import snowballThrow from "../assets/snowball-throw.png"; // APNG
-import beingGrabbed from "../assets/is-being-grabbed.gif";
-import atTheRopes from "../assets/at-the-ropes.png"; // APNG
-import crouchStrafingApng from "../assets/crouch-strafing.png"; // APNG
-import isPerfectParried from "../assets/is_perfect_parried.png"; // APNG
-import attackSound from "../sounds/attack-sound.wav";
-import hitSound from "../sounds/hit-sound.mp3";
-import dodgeSound from "../sounds/dodge-sound.mp3";
-import throwSound from "../sounds/throw-sound.mp3";
-import winnerSound from "../sounds/winner-sound.wav";
-import hakkiyoiSound from "../sounds/hakkiyoi-sound.mp3";
-import teWoTsuiteSound from "../sounds/tewotsuite.wav";
-import bellSound from "../sounds/bell-sound.mp3";
-import gameMusic from "../sounds/game-music.mp3";
-import eeshiMusic from "../sounds/eeshi.mp3";
-import slapParrySound from "../sounds/slap-parry-sound.mp3";
-import saltSound from "../sounds/salt-sound.mp3";
-import snowballThrowSound from "../sounds/snowball-throw-sound.mp3";
-import pumoArmySound from "../sounds/pumo-army-sound.mp3";
-import thickBlubberSound from "../sounds/thick-blubber-sound.mp3";
-import rawParryGruntSound from "../sounds/raw-parry-grunt.mp3";
-import rawParrySuccessSound from "../sounds/raw-parry-success-sound.wav";
-import regularRawParrySound from "../sounds/regular-raw-parry-sound.wav";
-import stunnedSound from "../sounds/stunned-sound.mp3";
-import grabBreakSound from "../sounds/grab-break-sound.wav";
-import counterGrabSound from "../sounds/counter-grab-sound.wav";
-import notEnoughStaminaSound from "../sounds/not-enough-stamina-sound.wav";
-import grabClashSound from "../sounds/grab-clash-sound.wav";
-import isTechingSound from "../sounds/is-teching-sound.wav";
-import clashVictorySound from "../sounds/clash-victory-sound.wav";
-import clashDefeatSound from "../sounds/clash-defeat-sound.wav";
-import roundVictorySound from "../sounds/round-victory-sound.mp3";
-import roundDefeatSound from "../sounds/round-defeat-sound.mp3";
-import strafingSound from "../sounds/strafing-sound.wav";
-import heartbeatSound from "../sounds/heartbeat.mp3";
-
-// crouchStance and crouchStrafing already imported above
-
-// CSS background images (preload to prevent flash on game start)
-import gameMapBackground from "../assets/game-map-1.png";
-import dohyoOverlay from "../assets/dohyo.png";
-
-// Gyoji images (referee appears at game start and during announcements)
-import gyojiImage from "../assets/gyoji.png";
-import gyojiReady from "../assets/gyoji-ready.png";
-import gyojiPlayer1wins from "../assets/gyoji-player1-wins.png";
-import gyojiPlayer2wins from "../assets/gyoji-player2-wins.png";
-import gyojiHakkiyoi from "../assets/gyoji-hakkiyoi.gif";
-
-// Effect images (used during gameplay)
-import dodgeEffectGif from "../assets/dodge-effect.gif";
-import slapAttackHand from "../assets/slap-attack-hand.png";
-
-// Get ritual sprites from ANIMATED_SPRITES to share cache with preloading system
-// This ensures preloaded sprites are found in cache when GameFighter looks them up
-import { ANIMATED_SPRITES } from "../config/spriteConfig";
-
-// Extract ritual spritesheets from the same source as preloading uses
-const ritualPart1Spritesheet = ANIMATED_SPRITES.player1.ritualPart1.src;
-const ritualPart2Spritesheet = ANIMATED_SPRITES.player1.ritualPart2.src;
-const ritualPart3Spritesheet = ANIMATED_SPRITES.player1.ritualPart3.src;
-const ritualPart4Spritesheet = ANIMATED_SPRITES.player1.ritualPart4.src;
-
-// Ritual clap sounds
-import clap1Sound from "../sounds/clap1-sound.wav";
-import clap2Sound from "../sounds/clap2-sound.mp3";
-import clap3Sound from "../sounds/clap3-sound.wav";
-import clap4Sound from "../sounds/clap4-sound.wav";
-
 import UiPlayerInfo from "./UiPlayerInfo";
 import MatchOver from "./MatchOver";
 import RoundResult from "./RoundResult";
 import HitEffect from "./HitEffect";
 import RawParryEffect from "./RawParryEffect";
 import { getGlobalVolume } from "./Settings";
-import { preloadSounds, playBuffer } from "../utils/audioEngine";
+import { playBuffer } from "../utils/audioEngine";
 import SnowEffect from "./SnowEffect";
 import ThemeOverlay from "./ThemeOverlay";
 import "./theme.css";
@@ -173,1762 +60,78 @@ import {
   SERVER_BROADCAST_HZ,
 } from "../constants";
 
-const GROUND_LEVEL = 140; // Ground level constant (client-side, for fall detection)
-const SPRITE_HALF_W = 0; // Sprite is now centred on player.x via CSS translate, so no offset needed
-const PLAYER_MID_Y = 366; // Effect Y at player's visual midpoint when standing
-
-// ============================================
-// RITUAL ANIMATION CONFIGURATION (Sprite Sheets)
-// Each part has: spritesheet image, frame count, frame width, fps
-// ============================================
-const RITUAL_SPRITE_CONFIG = [
-  {
-    spritesheet: ritualPart1Spritesheet,
-    frameCount: 28,
-    frameWidth: 480,
-    fps: 14,
-  },
-  {
-    spritesheet: ritualPart2Spritesheet,
-    frameCount: 24,
-    frameWidth: 480,
-    fps: 14,
-  },
-  {
-    spritesheet: ritualPart3Spritesheet,
-    frameCount: 39,
-    frameWidth: 480,
-    fps: 14,
-  },
-  {
-    spritesheet: ritualPart4Spritesheet,
-    frameCount: 38,
-    frameWidth: 480,
-    fps: 14,
-  },
-];
-
-// Calculate durations from frame count and fps
-const RITUAL_ANIMATION_DURATIONS = RITUAL_SPRITE_CONFIG.map((config) =>
-  Math.round((config.frameCount / config.fps) * 1000)
-);
-
-// How many ms BEFORE the animation ends should the clap sound play?
-const CLAP_SOUND_OFFSET = 100; // ms before animation end
-
-// Player 1 (Blue) ritual spritesheets
-const ritualSpritesheetsPlayer1 = RITUAL_SPRITE_CONFIG;
-
-// Player 2 - NOW USES BLUE spritesheets (same as player 1)
-// CSS hue-rotate filter in RitualSpriteImage will shift blue -> pink
-// This allows both players to use the same sprites with different colors
-const ritualSpritesheetsPlayer2 = RITUAL_SPRITE_CONFIG;
-
-// Clap sounds for each ritual part
-const ritualClapSounds = [clap1Sound, clap2Sound, clap3Sound, clap4Sound];
-
-// MEMORY OPTIMIZATION: Ritual spritesheet preloading removed
-// Ritual spritesheets are enormous (up to 18720x480 px, ~35MB decoded bitmap each).
-// Pre-decoding all 4 parts at module load wastes ~120MB per player of decoded bitmap memory
-// for images that are never displayed directly (recolored versions are used instead).
-// The recoloring system caches them as blob URLs - the browser decodes on-demand when rendered.
-
-const imagePool = new Map();
-
-// Image preloading function
-const preloadImage = (src) => {
-  if (!imagePool.has(src)) {
-    const img = new Image();
-    img.src = src;
-    imagePool.set(src, img);
-  }
-};
-
-// Pre-decode all sound effects into AudioBuffers via the Web Audio API.
-// Unlike HTML5 Audio elements, decoded buffers stay in memory permanently
-// and play back instantly with zero startup latency.
-preloadSounds([
+// Assets, sounds, preloading, constants, ritual config, playSound helper
+import {
+  pumo,
+  saltBasket,
+  saltBasketEmpty,
+  snowball,
   attackSound,
   hitSound,
   dodgeSound,
   throwSound,
   grabSound,
+  winnerSound,
+  hakkiyoiSound,
+  teWoTsuiteSound,
+  bellSound,
+  gameMusic,
+  eeshiMusic,
   slapParrySound,
   saltSound,
   snowballThrowSound,
   pumoArmySound,
-  hakkiyoiSound,
-  teWoTsuiteSound,
-  bellSound,
-  winnerSound,
   thickBlubberSound,
   rawParryGruntSound,
   rawParrySuccessSound,
   regularRawParrySound,
   stunnedSound,
+  gassedSound,
+  gassedRegenSound,
   grabBreakSound,
   counterGrabSound,
   notEnoughStaminaSound,
   grabClashSound,
   isTechingSound,
-  clashVictorySound,
-  clashDefeatSound,
   roundVictorySound,
   roundDefeatSound,
+  strafingSound,
+  heartbeatSound,
   clap1Sound,
   clap2Sound,
   clap3Sound,
   clap4Sound,
-  strafingSound,
-  heartbeatSound,
-]);
-
-// Initialize image preloading
-// UNIFIED SPRITES: Only preload blue sprites - recoloring handles Player 2
-const initializeImagePreloading = () => {
-  // Character sprites (blue only)
-  preloadImage(pumo);
-  preloadImage(pumoWaddle);
-  preloadImage(pumoArmy);
-
-  // Action sprites (blue only)
-  preloadImage(attack);
-  preloadImage(throwing);
-  preloadImage(grabbing);
-  preloadImage(grabAttempt);
-  preloadImage(attemptingGrabThrow);
-  preloadImage(attemptingPull);
-  preloadImage(beingGrabbed);
-
-  // State sprites (blue only)
-  preloadImage(ready);
-  preloadImage(hit);
-  preloadImage(dodging);
-  preloadImage(crouching);
-  preloadImage(crouchStance);
-  preloadImage(crouchStrafingApng);
-
-  // Special moves (blue only)
-  preloadImage(slapAttack1);
-  preloadImage(slapAttack2);
-  preloadImage(snowballThrow);
-
-  // Utility sprites (blue only)
-  preloadImage(bow);
-  preloadImage(salt);
-  preloadImage(saltBasket);
-  preloadImage(saltBasketEmpty);
-  preloadImage(recovering);
-  preloadImage(rawParrySuccess);
-  preloadImage(atTheRopes);
-  preloadImage(snowball);
-
-  // CSS background images (critical for smooth game start)
-  preloadImage(gameMapBackground);
-  preloadImage(dohyoOverlay);
-
-  // Power-up icons
-  preloadImage(powerWaterIcon);
-  preloadImage(pumoArmyIcon);
-  preloadImage(happyFeetIcon);
-  preloadImage(thickBlubberIcon);
-
-  // Gyoji images (referee)
-  preloadImage(gyojiImage);
-  preloadImage(gyojiReady);
-  preloadImage(gyojiPlayer1wins);
-  preloadImage(gyojiPlayer2wins);
-  preloadImage(gyojiHakkiyoi);
-
-  // Effect images
-  preloadImage(dodgeEffectGif);
-  preloadImage(slapAttackHand);
-};
-
-// Initialize preloading immediately
-initializeImagePreloading();
-
-// UNIFIED SPRITES: Both players use blue sprites as base
-// Player 2's color is handled via canvas-based recoloring (defaults to red)
-
-const playSound = (audioFile, volume = 1.0, duration = null) => {
-  playBuffer(audioFile, volume * getGlobalVolume(), duration);
-};
-
-const getImageSrc = (
-  fighter,
-  isDiving,
-  isJumping,
-  isAttacking,
-  isDodging,
-  isStrafing,
-  isRawParrying,
-  isGrabBreaking,
-  isReady,
-  isHit,
-  isDead,
-  isSlapAttack,
-  isThrowing,
-  isGrabbing,
-  isGrabbingMovement,
-  isBeingGrabbed,
-  isThrowingSalt,
-  slapAnimation,
-  isBowing,
-  isThrowTeching,
-  isBeingPulled,
-  isBeingPushed,
-  grabState,
-  grabAttemptType,
-  isRecovering,
-  isRawParryStun,
-  isRawParrySuccess,
-  isPerfectRawParrySuccess,
-  isThrowingSnowball,
-  isSpawningPumoArmy,
-  isAtTheRopes,
-  isCrouchStance,
-  isCrouchStrafing,
-  isPowerSliding,
-  isGrabBreakCountered,
-  // new optional trailing param(s)
-  isGrabbingMovementTrailing,
-  isGrabClashActive,
-  isAttemptingGrabThrow,
-  // Ritual animation source - if provided, use it instead of state-based selection
-  ritualAnimationSrc,
-  // New grab action system states
-  isGrabPushing,
-  isBeingGrabPushed,
-  isAttemptingPull,
-  isBeingPullReversaled,
-  isGrabSeparating,
-  isGrabBellyFlopping,
-  isBeingGrabBellyFlopped,
-  isGrabFrontalForceOut,
-  isBeingGrabFrontalForceOut,
-  isGrabTeching,
-  grabTechRole,
-  isGrabWhiffRecovery
-) => {
-  // If ritual animation is active, return that directly
-  if (ritualAnimationSrc) {
-    return ritualAnimationSrc;
-  }
-
-  // Pull attempt (static image - same pattern as dodging)
-  if (isAttemptingPull) return attemptingPull;
-
-  // Backward-compat: allow passing as trailing param or main param
-  const attemptingGrabMovement =
-    typeof isGrabbingMovementTrailing === "boolean"
-      ? isGrabbingMovementTrailing
-      : !!isGrabbingMovement;
-  // ============================================
-  // UNIFIED SPRITES - Both players use BLUE sprites
-  // Color differentiation is handled by the recoloring system
-  // Player 1 stays blue, Player 2 gets recolored to red (or custom color)
-  // ============================================
-
-  // Grab tech state — different sprites based on role:
-  // 'grabber' = the player who shows grabbing sprite (one who completed startup)
-  // 'techer' = the player who shows parry/block sprite (one who was in startup)
-  if (isGrabTeching) {
-    if (grabTechRole === "grabber") return grabbing;
-    return rawParrySuccess; // 'techer' or default
-  }
-  // Grab whiff recovery — uses grab-attempt sprite as placeholder (future: custom stumble animation)
-  if (isGrabWhiffRecovery) return grabAttempt;
-
-  // New grab action states - use existing sprites as placeholders until custom spritesheets
-  if (isGrabBellyFlopping) return grabbing; // Placeholder: grabbing sprite (future: belly flop spritesheet)
-  if (isBeingGrabBellyFlopped) return beingGrabbed; // Placeholder: being grabbed sprite (future: belly flop victim spritesheet)
-  if (isGrabFrontalForceOut) return grabbing; // Placeholder: grabbing sprite (future: frontal force out spritesheet)
-  if (isBeingGrabFrontalForceOut) return beingGrabbed; // Placeholder: being grabbed sprite (future: frontal force out victim spritesheet)
-  if (isBeingPullReversaled) return beingGrabbed; // Placeholder: being grabbed sprite (future: pull reversal victim spritesheet)
-  if (isGrabSeparating) return rawParrySuccess; // Placeholder: raw parry success sprite (push-away animation)
-  if (isGrabBreaking) return crouching;
-  if (isGrabBreakCountered) return hit;
-  // Both perfect and regular parry use the same success animation
-  if (isRawParrySuccess || isPerfectRawParrySuccess) return rawParrySuccess;
-  // Raw parry stun (being perfect-parried): looping stun animation
-  if (isRawParryStun) return isPerfectParried;
-  // Check isHit before isAtTheRopes to prevent red silhouette issue
-  if (isHit) return hit;
-  if (isAtTheRopes) return atTheRopes;
-  if (isBowing) return bow;
-  // Power sliding (C/CTRL): check before recovery/attack so slide always shows crouch stance
-  if (isPowerSliding) return crouchStance;
-  if (isRecovering) return recovering;
-  if (isThrowingSnowball) return snowballThrow;
-  if (isSpawningPumoArmy) return pumoArmy;
-  // CRITICAL: Check isBeingGrabbed BEFORE isDodging to prevent dodge animation during grab
-  if (isBeingGrabbed || isBeingPulled || isBeingPushed) return beingGrabbed;
-  // CRITICAL: Check isDodging BEFORE isAttacking to prevent attack animation during dodge
-  if (isDodging) return dodging;
-  if (isJumping) return throwing;
-  if (isAttacking && !isSlapAttack) return attack;
-  if (isCrouchStrafing) return crouchStrafingApng;
-  if (isCrouchStance) return crouchStance;
-  // Show attempting grab throw animation
-  if (isAttemptingGrabThrow) return attemptingGrabThrow;
-  // Show attempt animation during grab movement attempt
-  if (attemptingGrabMovement) {
-    return grabAttemptType === "throw" ? throwing : grabAttempt;
-  }
-  // Show attempt animation even if isGrabbing is false, UNLESS in grab clash
-  if (grabState === "attempting") {
-    // During grab clash, show grabbing animation instead of grab attempt
-    if (isGrabClashActive) {
-      return grabbing;
-    }
-    return grabAttemptType === "throw" ? throwing : grabAttempt;
-  }
-  if (isSlapAttack) {
-    return slapAnimation === 1 ? slapAttack1 : slapAttack2;
-  }
-  if (isGrabbing) {
-    if (grabState === "attempting") {
-      // During grab clash, show grabbing animation instead of grab attempt
-      if (isGrabClashActive) {
-        return grabbing;
-      }
-      return grabAttemptType === "throw" ? throwing : grabAttempt;
-    }
-    return grabbing;
-  }
-  if (isRawParrying) return crouching;
-  if (isReady) return ready;
-  if (isStrafing && !isThrowing) return pumoWaddle;
-  if (isDead) return pumo;
-  if (isThrowing) return throwing;
-  if (isThrowingSalt) return salt;
-  return pumo;
-};
-
-const validProps = [
-  // valid HTML attributes
-  "src",
-  "style",
-  "alt",
-  "className",
-  "id",
-  "onClick",
-  "pullSpeed",
-  "pullHopHeight",
-  "pullHopSpeed",
-];
-
-const RedTintOverlay = styled.div
-  .withConfig({
-    shouldForwardProp: (prop) =>
-      ![
-        "$x",
-        "$y",
-        "$facing",
-        "$isThrowing",
-        "$isRingOutThrowCutscene",
-        "$imageSrc",
-      ].includes(prop),
-  })
-  .attrs((props) => ({
-    style: {
-      position: "absolute",
-      width: "12.30%",
-      height: "auto",
-      aspectRatio: 1,
-      left: `${(props.$x / 1280) * 100}%`,
-      bottom: `${(props.$y / 720) * 100}%`,
-      translate: "-50%",
-      transform: props.$facing === 1 ? "scaleX(1)" : "scaleX(-1)",
-      background: "rgba(156, 136, 255, 0.6)",
-      zIndex: isOutsideDohyo(props.$x, props.$y) ? 0 : 101,
-      pointerEvents: "none",
-      mixBlendMode: "multiply",
-      maskImage: `url(${props.$imageSrc})`,
-      maskSize: "contain",
-      maskRepeat: "no-repeat",
-      maskPosition: "center",
-      WebkitMaskImage: `url(${props.$imageSrc})`,
-      WebkitMaskSize: "contain",
-      WebkitMaskRepeat: "no-repeat",
-      WebkitMaskPosition: "center",
-    },
-  }))``;
-
-const HurtTintOverlay = styled.div
-  .withConfig({
-    shouldForwardProp: (prop) =>
-      ![
-        "$x",
-        "$y",
-        "$facing",
-        "$isThrowing",
-        "$isRingOutThrowCutscene",
-        "$imageSrc",
-      ].includes(prop),
-  })
-  .attrs((props) => ({
-    style: {
-      position: "absolute",
-      width: "12.30%",
-      height: "auto",
-      aspectRatio: 1,
-      left: `${(props.$x / 1280) * 100}%`,
-      bottom: `${(props.$y / 720) * 100}%`,
-      translate: "-50%",
-      transform: props.$facing === 1 ? "scaleX(1)" : "scaleX(-1)",
-      background: "rgba(255, 64, 64, 0.55)",
-      zIndex: isOutsideDohyo(props.$x, props.$y) ? 0 : 101,
-      pointerEvents: "none",
-      mixBlendMode: "multiply",
-      maskImage: `url(${props.$imageSrc})`,
-      maskSize: "contain",
-      maskRepeat: "no-repeat",
-      maskPosition: "center",
-      WebkitMaskImage: `url(${props.$imageSrc})`,
-      WebkitMaskSize: "contain",
-      WebkitMaskRepeat: "no-repeat",
-      WebkitMaskPosition: "center",
-    },
-  }))``;
-
-// Lightweight tinted clone image (no masks) for performance and perfect alignment
-const TintedImage = styled.img
-  .withConfig({
-    shouldForwardProp: (prop) =>
-      ![
-        "$x",
-        "$y",
-        "$facing",
-        "$isThrowing",
-        "$isRingOutThrowCutscene",
-        "$variant",
-      ].includes(prop),
-  })
-  .attrs((props) => ({
-    decoding: "async",
-    style: {
-      position: "absolute",
-      left: `${(props.$x / 1280) * 100}%`,
-      bottom: `${(props.$y / 720) * 100}%`,
-      translate: "-50%",
-      transform: props.$facing === 1 ? "scaleX(1)" : "scaleX(-1)",
-      zIndex: isOutsideDohyo(props.$x, props.$y) ? 0 : 101,
-      pointerEvents: "none",
-      width: "min(12.30%, 379px)",
-
-      height: "auto",
-      willChange: "opacity, transform",
-      // Force strong hue for consistent red/purple regardless of base colors
-      filter:
-        props.$variant === "hurt"
-          ? "sepia(1) saturate(10000%) hue-rotate(0deg) brightness(.75)"
-          : "sepia(1) saturate(10000%) hue-rotate(265deg) brightness(.75)",
-      opacity: props.$variant === "hurt" ? 0.4 : 0.4,
-      // Use color blend so the red hue overlays predictably on aqua/salmon bases
-      mixBlendMode: "color",
-    },
-  }))``;
-
-const getFighterPopFilter = (props) => {
-  const base = "drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000)";
-
-  if (props.$isAtTheRopes) {
-    return `${base} drop-shadow(0 0 8px rgba(255, 50, 50, 0.7))`;
-  }
-  if (props.$isGrabBreaking) {
-    return `${base} drop-shadow(0 0 8px rgba(0, 255, 128, 0.85))`;
-  }
-  if (props.$isRawParrying) {
-    return `${base} drop-shadow(0 0 8px rgba(0, 150, 255, 0.8))`;
-  }
-  if (props.$isGrabPushing) {
-    return `${base} drop-shadow(0 0 4px rgba(255, 150, 50, 0.5))`;
-  }
-  if (props.$isBeingGrabPushed) {
-    return `${base} drop-shadow(0 0 4px rgba(255, 100, 50, 0.4))`;
-  }
-  if (props.$isGrabBellyFlopping || props.$isGrabFrontalForceOut) {
-    return `${base} drop-shadow(0 0 8px rgba(255, 50, 50, 0.7))`;
-  }
-  if (props.$isBeingGrabBellyFlopped || props.$isBeingGrabFrontalForceOut) {
-    return `${base} drop-shadow(0 0 6px rgba(255, 50, 50, 0.5))`;
-  }
-  return base;
-};
-
-const StyledImage = styled("img")
-  .withConfig({
-    shouldForwardProp: (prop) =>
-      validProps.includes(prop) ||
-      ![
-        "fighter",
-        "isJumping",
-        "isDiving",
-        "isAttacking",
-        "isAttackCooldown",
-        "isDodging",
-        "isStrafing",
-        "isRawParrying",
-        "isGrabBreaking",
-        "isReady",
-        "isHit",
-        "isDead",
-        "x",
-        "y",
-        "facing",
-        "yVelocity",
-        "attackEndTime",
-        "knockbackVelocity",
-        "dodgeEndTime",
-        "isAlreadyHit",
-        "attackStartTime",
-        "isSpaceBarPressed",
-        "isThrowing",
-        "throwStartTime",
-        "throwEndTime",
-        "throwOpponent",
-        "throwingFacingDirection",
-        "throwFacingDirection",
-        "beingThrownFacingDirection",
-        "isBeingThrown",
-        "isGrabbing",
-        "isBeingGrabbed",
-        "isSlapAttack",
-        "slapAnimation",
-        "isBowing",
-        "isThrowTeching",
-        "isBeingPulled",
-        "isBeingPushed",
-        "grabState",
-        "grabAttemptType",
-        "throwCooldown",
-        "grabCooldown",
-        "isChargingAttack",
-        "chargeStartTime",
-        "chargeMaxDuration",
-        "chargeAttackPower",
-        "chargingFacingDirection",
-        "isThrowingSalt",
-        "isThrowingSnowball",
-        "isSpawningPumoArmy",
-        "saltCooldown",
-        "grabStartTime",
-        "grabbedOpponent",
-        "grabAttemptStartTime",
-        "throwTechCooldown",
-        "isSlapParrying",
-        "lastThrowAttemptTime",
-        "lastGrabAttemptTime",
-        "dodgeDirection",
-        "isDodgeCancelling",
-        "justLandedFromDodge",
-        "speedFactor",
-        "sizeMultiplier",
-        "isRecovering",
-        "isRawParryStun",
-        "isRawParrySuccess",
-        "isPerfectRawParrySuccess",
-        "isAtTheRopes",
-        "isCrouchStance",
-        "isCrouchStrafing",
-        "isPowerSliding",
-        "isGrabBreakCountered",
-        "isGrabClashActive",
-        "isAttemptingGrabThrow",
-        "ritualAnimationSrc",
-        "isLocalPlayer",
-        "overrideSrc",
-      ].includes(prop),
-  })
-  .attrs((props) => ({
-    // Use override src if provided (for recolored sprites), otherwise compute from state
-    src:
-      props.$overrideSrc ||
-      getImageSrc(
-        props.$fighter,
-        props.$isDiving,
-        props.$isJumping,
-        props.$isAttacking,
-        props.$isDodging,
-        props.$isStrafing,
-        props.$isRawParrying,
-        props.$isGrabBreaking,
-        props.$isReady,
-        props.$isHit,
-        props.$isDead,
-        props.$isSlapAttack,
-        props.$isThrowing,
-        props.$isGrabbing,
-        props.$isGrabbingMovement,
-        props.$isBeingGrabbed,
-        props.$isThrowingSalt,
-        props.$slapAnimation,
-        props.$isBowing,
-        props.$isThrowTeching,
-        props.$isBeingPulled,
-        props.$isBeingPushed,
-        props.$grabState,
-        props.$grabAttemptType,
-        props.$isRecovering,
-        props.$isRawParryStun,
-        props.$isRawParrySuccess,
-        props.$isPerfectRawParrySuccess,
-        props.$isThrowingSnowball,
-        props.$isSpawningPumoArmy,
-        props.$isAtTheRopes,
-        props.$isCrouchStance,
-        props.$isCrouchStrafing,
-        props.$isPowerSliding,
-        props.$isGrabBreakCountered,
-        props.$isGrabbingMovement,
-        props.$isGrabClashActive,
-        props.$isAttemptingGrabThrow,
-        props.$ritualAnimationSrc,
-        // New grab action system states
-        props.$isGrabPushing,
-        props.$isBeingGrabPushed,
-        props.$isAttemptingPull,
-        props.$isBeingPullReversaled,
-        props.$isGrabSeparating,
-        props.$isGrabBellyFlopping,
-        props.$isBeingGrabBellyFlopped,
-        props.$isGrabFrontalForceOut,
-        props.$isBeingGrabFrontalForceOut,
-        props.$isGrabTeching,
-        props.$grabTechRole,
-        props.$isGrabWhiffRecovery
-      ),
-    style: {
-      position: "absolute",
-      left:
-        props.$isAtTheRopes && props.$fighter === "player 1"
-          ? `${((props.$x + (props.$x < 640 ? -5 : 5)) / 1280) * 100}%` // Move 5px closer to ropes
-          : `${(props.$x / 1280) * 100}%`,
-      bottom: `${(props.$y / 720) * 100}%`,
-      translate: "-50%",
-      "--facing": props.$facing === 1 ? "1" : "-1",
-      transform:
-        props.$isAtTheRopes && props.$fighter === "player 1"
-          ? props.$facing === 1
-            ? "scaleX(1) scaleY(0.95)"
-            : "scaleX(-1) scaleY(0.95)"
-          : props.$facing === 1
-          ? "scaleX(1)"
-          : "scaleX(-1)",
-      zIndex: isOutsideDohyo(props.$x, props.$y)
-        ? 0 // Behind dohyo overlay when outside
-        : props.$isThrowing || props.$isDodging || props.$isGrabbing
-        ? 98
-        : 99,
-      // Keep one cheap black outline and add a subtle bright rim for separation.
-      filter: getFighterPopFilter(props),
-      animation: props.$isAtTheRopes
-        ? "atTheRopesWobble 0.3s ease-in-out infinite"
-        : // New grab action animations
-        props.$isGrabBellyFlopping
-        ? "grabBellyFlopLunge 0.4s cubic-bezier(0.25, 0.1, 0.25, 1) forwards"
-        : props.$isBeingGrabBellyFlopped
-        ? "grabBellyFlopVictim 0.4s cubic-bezier(0.25, 0.1, 0.25, 1) forwards"
-        : props.$isGrabFrontalForceOut
-        ? "grabFrontalForceOut 0.3s ease-out forwards"
-        : props.$isBeingGrabFrontalForceOut
-        ? "grabFrontalForceOutVictim 0.3s ease-out forwards"
-        : props.$isBeingPullReversaled
-        ? "none" // Hop is server-driven via Y position changes (no CSS animation needed)
-        : props.$isGrabSeparating
-        ? "grabSeparatePush 0.3s ease-out"
-        : props.$isAttemptingPull
-        ? "attemptingPullTug 0.6s cubic-bezier(0.4, 0.0, 0.6, 1.0)"
-        : props.$isGrabPushing
-        ? "grabPushStrain 0.3s ease-in-out infinite"
-        : props.$isBeingGrabPushed
-        ? "grabPushResist 0.3s ease-in-out infinite"
-        : props.$isAttemptingGrabThrow
-        ? "attemptingGrabThrowPull 1.0s cubic-bezier(0.4, 0.0, 0.6, 1.0)"
-        : props.$isRawParrySuccess || props.$isPerfectRawParrySuccess
-        ? "rawParryRecoil 0.5s ease-out"
-        : props.$isGrabBreaking
-        ? "grabBreakShake 0.1s ease-in-out infinite"
-        : props.$isGrabBreakCountered
-        ? "grabBreakShake 0.1s ease-in-out infinite"
-        : props.$isRawParrying
-        ? "rawParryFlash 1.2s ease-in-out infinite"
-        : props.$isGrabTeching
-        ? "grabTechShake 0.25s ease-in-out infinite"
-        : props.$isGrabClashActive
-        ? "grabClashStruggle 0.15s ease-in-out infinite"
-        : props.$isHit
-        ? "hitSquash 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)"
-        : props.$justLandedFromDodge && !props.$isPowerSliding
-        ? "dodgeLanding 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards"
-        : // : props.$isDodgeCancelling
-        // ? "dodgeCancelSlam 0.12s cubic-bezier(0.25, 0.1, 0.25, 1) forwards"
-        props.$isDodging
-        ? "dodgeTakeoff 0.2s cubic-bezier(0.25, 0.1, 0.25, 1) forwards, dodgeInvincibilityFlash 0.2s ease-out forwards"
-        : // ICE PHYSICS: Movement animations take priority over charging
-        // Power slide animation (C/CTRL) - always show when power sliding (even after charged attack/recovery)
-        props.$isPowerSliding &&
-          !props.$isBeingGrabbed &&
-          !props.$isBeingThrown &&
-          !props.$isThrowing &&
-          !props.$isGrabbing &&
-          !props.$isDead
-        ? "powerSlide 0.15s ease-in-out infinite"
-        : // ICE PHYSICS: Braking animation when digging in to stop - shows during charging
-        // Also blocked during victim/special states
-        props.$isBraking &&
-          !props.$isBeingGrabbed &&
-          !props.$isBeingThrown &&
-          !props.$isThrowing &&
-          !props.$isGrabbing &&
-          !props.$isRecovering &&
-          !props.$isDead
-        ? "iceBrake 0.2s ease-in-out infinite"
-        : props.$isChargingAttack
-        ? "chargePulse 0.6s ease-in-out infinite"
-        : props.$isAttacking && !props.$isSlapAttack
-        ? "attackPunch 0.2s ease-out"
-        : props.$isSlapAttack
-        ? "slapRush 0.12s ease-in-out infinite"
-        : // Breathing animation for idle states
-        !props.$isAttacking &&
-          !props.$isDodging &&
-          !props.$isJumping &&
-          !props.$isThrowing &&
-          !props.$isGrabbing &&
-          !props.$isBeingGrabbed &&
-          !props.$isBeingPulled &&
-          !props.$isBeingPushed &&
-          !props.$isThrowTeching &&
-          !props.$isRecovering &&
-          !props.$isThrowingSalt &&
-          !props.$isThrowingSnowball &&
-          !props.$isSpawningPumoArmy &&
-          !props.$isBowing &&
-          !props.$isGrabPushing &&
-          !props.$isBeingGrabPushed &&
-          !props.$isAttemptingPull &&
-          !props.$isBeingPullReversaled &&
-          !props.$isGrabSeparating &&
-          !props.$isGrabBellyFlopping &&
-          !props.$isBeingGrabBellyFlopped &&
-          !props.$isGrabFrontalForceOut &&
-          !props.$isBeingGrabFrontalForceOut
-        ? "breathe 1.5s ease-in-out infinite"
-        : "none",
-      width:
-        props.$isAtTheRopes && props.$fighter === "player 1"
-          ? "min(11.56%, 356px)" // 6% smaller: 16.609 * 0.94
-          : "min(12.30%, 379px)",
-      height: "auto",
-      // PERFORMANCE: Reduced willChange - only specify transform (most frequent)
-      willChange: "transform",
-      pointerEvents: "none",
-      transformOrigin: "center bottom",
-      transition: "none",
-    },
-  }))`
-  /* PERFORMANCE: Optimized keyframes - reduced drop-shadows from 4+ to 1-2 */
-  @keyframes rawParryFlash {
-    0% {
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 2px rgba(0, 150, 255, 0.4));
-    }
-    25% {
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 12px rgba(0, 150, 255, 0.9));
-    }
-    50% {
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.7));
-    }
-    75% {
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 12px rgba(0, 150, 255, 0.9));
-    }
-    100% {
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 2px rgba(0, 150, 255, 0.4));
-    }
-  }
-  @keyframes grabBreakFlash {
-    0% {
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 2px rgba(0, 255, 128, 0.45));
-    }
-    25% {
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 12px rgba(0, 255, 128, 0.95));
-    }
-    50% {
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 8px rgba(0, 255, 128, 0.75));
-    }
-    75% {
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 12px rgba(0, 255, 128, 0.95));
-    }
-    100% {
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) drop-shadow(0 0 2px rgba(0, 255, 128, 0.45));
-    }
-  }
-  
-  /* Hit impact animation - heavy sumo palm/headbutt impact with recoil; hit tint is applied at sprite level (recolor) */
-  @keyframes hitSquash {
-    0% {
-      transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg);
-    }
-    /* IMPACT - hard compression */
-    6% {
-      transform: scaleX(calc(var(--facing, 1) * 1.25)) scaleY(0.75) translateX(calc(var(--facing, 1) * -3%)) rotate(calc(var(--facing, 1) * 2deg));
-    }
-    /* Recoil - shoved back hard, body whips */
-    18% {
-      transform: scaleX(calc(var(--facing, 1) * 0.88)) scaleY(1.12) translateX(calc(var(--facing, 1) * -5%)) rotate(calc(var(--facing, 1) * -4deg));
-    }
-    /* Secondary bounce - body weight shifts */
-    35% {
-      transform: scaleX(calc(var(--facing, 1) * 1.08)) scaleY(0.92) translateX(calc(var(--facing, 1) * -2%)) rotate(calc(var(--facing, 1) * 1.5deg));
-    }
-    /* Settling */
-    55% {
-      transform: scaleX(calc(var(--facing, 1) * 0.96)) scaleY(1.04) translateX(calc(var(--facing, 1) * -0.5%)) rotate(calc(var(--facing, 1) * -0.5deg));
-    }
-    /* Back to normal */
-    100% {
-      transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg);
-    }
-  }
-  
-  /* Attack punch animation - wind up and release with facing direction */
-  @keyframes attackPunch {
-    0% {
-      transform: scaleX(var(--facing, 1)) scaleY(1);
-    }
-    25% {
-      transform: scaleX(calc(var(--facing, 1) * 0.9)) scaleY(1.1);
-    }
-    55% {
-      transform: scaleX(calc(var(--facing, 1) * 1.12)) scaleY(0.92);
-    }
-    100% {
-      transform: scaleX(var(--facing, 1)) scaleY(1);
-    }
-  }
-  
-  /* Charge pulse animation - builds anticipation for charged attack (no gold glow) */
-  @keyframes chargePulse {
-    0%, 100% {
-      transform: scaleX(var(--facing, 1)) scaleY(1);
-    }
-    50% {
-      transform: scaleX(var(--facing, 1)) scaleY(1.02);
-    }
-  }
-  
-  /* Lively idle animation - smooth rhythmic stretch from feet */
-  @keyframes breathe {
-    0%, 100% {
-      transform: scaleX(var(--facing, 1)) scaleY(1);
-    }
-    50% {
-      transform: scaleX(var(--facing, 1)) scaleY(1.03);
-    }
-  }
-  
-  /* ICE PHYSICS: Braking animation - penguin digs in to stop sliding */
-  @keyframes iceBrake {
-    0%, 100% {
-      transform: scaleX(var(--facing, 1)) scaleY(0.96) rotate(calc(var(--facing, 1) * 3deg));
-    }
-    50% {
-      transform: scaleX(var(--facing, 1)) scaleY(0.94) rotate(calc(var(--facing, 1) * 5deg));
-    }
-  }
-  
-  /* Power slide - more squished down with bounce */
-  @keyframes powerSlide {
-    0%, 100% {
-      transform: scaleX(var(--facing, 1)) translateY(6px);
-    }
-    50% {
-      transform: scaleX(var(--facing, 1)) translateY(8px);
-    }
-  }
-  
-  /* At the ropes wobble - showing off-balance fear and panic */
-  @keyframes atTheRopesWobble {
-    0%, 100% {
-      transform: scaleX(var(--facing, 1)) scaleY(0.95) rotate(0deg) translateX(0);
-    }
-    25% {
-      transform: scaleX(var(--facing, 1)) scaleY(0.95) rotate(-4deg) translateX(-2px) translateY(1px);
-    }
-    50% {
-      transform: scaleX(var(--facing, 1)) scaleY(0.95) rotate(2deg) translateX(1px) translateY(-1px);
-    }
-    75% {
-      transform: scaleX(var(--facing, 1)) scaleY(0.95) rotate(-2deg) translateX(-1px) translateY(1px);
-    }
-  }
-  
-  /* Grab clash struggling animation - rapid horizontal shake */
-  @keyframes grabClashStruggle {
-    0% {
-      transform: scaleX(var(--facing, 1)) translateX(0px);
-    }
-    25% {
-      transform: scaleX(var(--facing, 1)) translateX(-3px);
-    }
-    50% {
-      transform: scaleX(var(--facing, 1)) translateX(0px);
-    }
-    75% {
-      transform: scaleX(var(--facing, 1)) translateX(3px);
-    }
-    100% {
-      transform: scaleX(var(--facing, 1)) translateX(0px);
-    }
-  }
-
-  /* Grab tech shake — X-axis jiggle during the freeze phase */
-  @keyframes grabTechShake {
-    0% {
-      transform: scaleX(var(--facing, 1)) translateX(0px);
-    }
-    12% {
-      transform: scaleX(var(--facing, 1)) translateX(-7px);
-    }
-    25% {
-      transform: scaleX(var(--facing, 1)) translateX(7px);
-    }
-    37% {
-      transform: scaleX(var(--facing, 1)) translateX(-6px);
-    }
-    50% {
-      transform: scaleX(var(--facing, 1)) translateX(6px);
-    }
-    62% {
-      transform: scaleX(var(--facing, 1)) translateX(-4px);
-    }
-    75% {
-      transform: scaleX(var(--facing, 1)) translateX(4px);
-    }
-    87% {
-      transform: scaleX(var(--facing, 1)) translateX(-2px);
-    }
-    100% {
-      transform: scaleX(var(--facing, 1)) translateX(0px);
-    }
-  }
-
-  /* Grab break shake — fast, tight rattle during the short freeze before knockback */
-  @keyframes grabBreakShake {
-    0%   { transform: scaleX(var(--facing, 1)) translateX(0px); }
-    25%  { transform: scaleX(var(--facing, 1)) translateX(-5px); }
-    50%  { transform: scaleX(var(--facing, 1)) translateX(5px); }
-    75%  { transform: scaleX(var(--facing, 1)) translateX(-4px); }
-    100% { transform: scaleX(var(--facing, 1)) translateX(0px); }
-  }
-
-  /* Slap attack animation - subtle motion blur */
-  @keyframes slapRush {
-    0%, 100% {
-      transform: scaleX(var(--facing, 1));
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) blur(0.3px);
-    }
-    50% {
-      transform: scaleX(var(--facing, 1));
-      filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) blur(0.6px);
-    }
-  }
-  
-  /* Attempting grab throw animation - slower, more deliberate pulling motion (1s window) */
-  @keyframes attemptingGrabThrowPull {
-    0% {
-      transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
-      transform-origin: center bottom;
-    }
-    15% {
-      transform: scaleX(calc(var(--facing, 1) * 0.95)) scaleY(1.08) translateY(-3px);
-      transform-origin: center bottom;
-    }
-    40% {
-      transform: scaleX(calc(var(--facing, 1) * 0.93)) scaleY(1.10) translateY(-5px);
-      transform-origin: center bottom;
-    }
-    70% {
-      transform: scaleX(calc(var(--facing, 1) * 0.96)) scaleY(1.06) translateY(-3px);
-      transform-origin: center bottom;
-    }
-    100% {
-      transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
-      transform-origin: center bottom;
-    }
-  }
-
-  /* ============================================ */
-  /* NEW GRAB ACTION SYSTEM ANIMATIONS            */
-  /* Low-cost CSS transforms as placeholders      */
-  /* Replace with spritesheet animations later    */
-  /* ============================================ */
-
-  /* Forward push - grabber straining forward */
-  @keyframes grabPushStrain {
-    0%, 100% {
-      transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1);
-      transform-origin: center bottom;
-    }
-    50% {
-      transform: scaleX(calc(var(--facing, 1) * 1.03)) translateX(calc(var(--facing, 1) * -2px)) scaleY(0.97);
-      transform-origin: center bottom;
-    }
-  }
-
-  /* Being pushed - opponent resisting backward */
-  @keyframes grabPushResist {
-    0%, 100% {
-      transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1);
-      transform-origin: center bottom;
-    }
-    30% {
-      transform: scaleX(calc(var(--facing, 1) * 0.97)) translateX(calc(var(--facing, 1) * 1px)) scaleY(1.02);
-      transform-origin: center bottom;
-    }
-    70% {
-      transform: scaleX(calc(var(--facing, 1) * 0.98)) translateX(calc(var(--facing, 1) * 2px)) scaleY(1.01);
-      transform-origin: center bottom;
-    }
-  }
-
-  /* Attempting pull - tug wind-up using only scaleY (origin bottom = feet stay planted); max height 1, deeper dips for more drama */
-  @keyframes attemptingPullTug {
-    0% {
-      transform: scaleX(var(--facing, 1)) scaleY(1);
-      transform-origin: 50% 100%;
-    }
-    12% {
-      transform: scaleX(var(--facing, 1)) scaleY(0.95);
-      transform-origin: 50% 100%;
-    }
-    28% {
-      transform: scaleX(var(--facing, 1)) scaleY(0.94);
-      transform-origin: 50% 100%;
-    }
-    45% {
-      transform: scaleX(var(--facing, 1)) scaleY(1);
-      transform-origin: 50% 100%;
-    }
-    62% {
-      transform: scaleX(var(--facing, 1)) scaleY(0.94);
-      transform-origin: 50% 100%;
-    }
-    78% {
-      transform: scaleX(var(--facing, 1)) scaleY(0.96);
-      transform-origin: 50% 100%;
-    }
-    92% {
-      transform: scaleX(var(--facing, 1)) scaleY(1);
-      transform-origin: 50% 100%;
-    }
-    100% {
-      transform: scaleX(var(--facing, 1)) scaleY(0.97);
-      transform-origin: 50% 100%;
-    }
-  }
-
-  /* Pull reversal victim - hopping/bouncing knockback */
-  /* Pull reversal hop is server-driven via Y position changes (decaying bounces).
-     No CSS @keyframes needed — the server oscillates player.y during the tween. */
-
-  /* Grab separation push-away - gentle push apart */
-  @keyframes grabSeparatePush {
-    0% {
-      transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1);
-      transform-origin: center bottom;
-    }
-    40% {
-      transform: scaleX(calc(var(--facing, 1) * 1.04)) translateX(calc(var(--facing, 1) * 3px)) scaleY(0.97);
-      transform-origin: center bottom;
-    }
-    100% {
-      transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1);
-      transform-origin: center bottom;
-    }
-  }
-
-  /* Belly flop lunge - grabber lunges forward with exaggerated squash */
-  @keyframes grabBellyFlopLunge {
-    0% {
-      transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
-      transform-origin: center bottom;
-    }
-    40% {
-      transform: scaleX(calc(var(--facing, 1) * 1.15)) scaleY(0.85) translateY(0);
-      transform-origin: center bottom;
-    }
-    70% {
-      transform: scaleX(calc(var(--facing, 1) * 1.2)) scaleY(0.75) translateY(2px);
-      transform-origin: center bottom;
-    }
-    100% {
-      transform: scaleX(calc(var(--facing, 1) * 1.25)) scaleY(0.7) translateY(4px);
-      transform-origin: center bottom;
-    }
-  }
-
-  /* Belly flop victim - squashed and flattened */
-  @keyframes grabBellyFlopVictim {
-    0% {
-      transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
-      transform-origin: center bottom;
-    }
-    30% {
-      transform: scaleX(calc(var(--facing, 1) * 0.85)) scaleY(1.1) translateY(-4px);
-      transform-origin: center bottom;
-    }
-    70% {
-      transform: scaleX(calc(var(--facing, 1) * 1.15)) scaleY(0.8) translateY(2px);
-      transform-origin: center bottom;
-    }
-    100% {
-      transform: scaleX(calc(var(--facing, 1) * 1.3)) scaleY(0.65) translateY(5px);
-      transform-origin: center bottom;
-    }
-  }
-
-  /* Frontal force out - simple forward tumble */
-  @keyframes grabFrontalForceOut {
-    0% {
-      transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
-      transform-origin: center bottom;
-    }
-    50% {
-      transform: scaleX(calc(var(--facing, 1) * 1.1)) scaleY(0.92) translateX(calc(var(--facing, 1) * -3px));
-      transform-origin: center bottom;
-    }
-    100% {
-      transform: scaleX(calc(var(--facing, 1) * 1.05)) scaleY(0.95) translateX(calc(var(--facing, 1) * -5px));
-      transform-origin: center bottom;
-    }
-  }
-
-  /* Frontal force out victim - stumbling forward */
-  @keyframes grabFrontalForceOutVictim {
-    0% {
-      transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
-      transform-origin: center bottom;
-    }
-    40% {
-      transform: scaleX(calc(var(--facing, 1) * 0.9)) scaleY(1.05) translateY(-2px);
-      transform-origin: center bottom;
-    }
-    100% {
-      transform: scaleX(calc(var(--facing, 1) * 0.85)) scaleY(0.9) translateY(3px);
-      transform-origin: center bottom;
-    }
-  }
-  
-  /* DODGE ANIMATIONS - Smooth graceful arc with subtle squash/stretch */
-  
-  /* Dodge takeoff - gentle squash then smooth stretch */
-  @keyframes dodgeTakeoff {
-    0% {
-      transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
-    }
-    20% {
-      transform: scaleX(calc(var(--facing, 1) * 1.08)) scaleY(0.88) translateY(0);
-    }
-    50% {
-      transform: scaleX(calc(var(--facing, 1) * 0.94)) scaleY(1.08) translateY(-2px);
-    }
-    80% {
-      transform: scaleX(calc(var(--facing, 1) * 0.97)) scaleY(1.04) translateY(-1px);
-    }
-    100% {
-      transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
-    }
-  }
-
-  /* Dodge invincibility: bright flash held through i-frames then fades — readable at game speed */
-  @keyframes dodgeInvincibilityFlash {
-    0% { filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) brightness(2.5) saturate(0.2); }
-    40% { filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) brightness(2.2) saturate(0.3); }
-    70% { filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) brightness(1.3) saturate(0.7); }
-    100% { filter: drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000) brightness(1) saturate(1); }
-  }
-  
-  /* Dodge cancel slam - smooth drop with impact squash */
-  @keyframes dodgeCancelSlam {
-    0% {
-      transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
-    }
-    40% {
-      transform: scaleX(calc(var(--facing, 1) * 0.94)) scaleY(1.08) translateY(1px);
-    }
-    70% {
-      transform: scaleX(calc(var(--facing, 1) * 1.12)) scaleY(0.82) translateY(0);
-    }
-    90% {
-      transform: scaleX(calc(var(--facing, 1) * 0.98)) scaleY(1.03) translateY(0);
-    }
-    100% {
-      transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
-    }
-  }
-  
-  /* Dodge landing - gentle impact squash with smooth recovery */
-  @keyframes dodgeLanding {
-    0% {
-      transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
-      transform-origin: center bottom;
-    }
-    25% {
-      transform: scaleX(calc(var(--facing, 1) * 1.06)) scaleY(0.88) translateY(0);
-      transform-origin: center bottom;
-    }
-    55% {
-      transform: scaleX(calc(var(--facing, 1) * 0.98)) scaleY(1.04) translateY(0);
-      transform-origin: center bottom;
-    }
-    80% {
-      transform: scaleX(calc(var(--facing, 1) * 1.02)) scaleY(0.99) translateY(0);
-      transform-origin: center bottom;
-    }
-    100% {
-      transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
-      transform-origin: center bottom;
-    }
-  }
-  
-  /* Raw parry success animation - defensive recoil and recovery */
-  @keyframes rawParryRecoil {
-    0% {
-      transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0);
-      transform-origin: center bottom;
-    }
-    10% {
-      transform: scaleX(calc(var(--facing, 1) * 1.05)) scaleY(0.95) translateX(calc(var(--facing, 1) * -8px));
-      transform-origin: center bottom;
-    }
-    25% {
-      transform: scaleX(calc(var(--facing, 1) * 0.92)) scaleY(1.08) translateX(calc(var(--facing, 1) * -5px));
-      transform-origin: center bottom;
-    }
-    45% {
-      transform: scaleX(calc(var(--facing, 1) * 1.03)) scaleY(0.97) translateX(calc(var(--facing, 1) * 3px));
-      transform-origin: center bottom;
-    }
-    65% {
-      transform: scaleX(calc(var(--facing, 1) * 0.98)) scaleY(1.02) translateX(calc(var(--facing, 1) * -2px));
-      transform-origin: center bottom;
-    }
-    85% {
-      transform: scaleX(calc(var(--facing, 1) * 1.01)) scaleY(0.99) translateX(calc(var(--facing, 1) * 1px));
-      transform-origin: center bottom;
-    }
-    100% {
-      transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0);
-      transform-origin: center bottom;
-    }
-  }
-`;
-
-// Ritual Sprite Sheet Container - clips to show one frame with extra clipping to prevent bleed
-const RitualSpriteContainer = styled.div.attrs((props) => ({
-  style: {
-    position: "absolute",
-    width: "min(12.30%, 379px)",
-    aspectRatio: "1",
-    left: `${(props.$x / 1280) * 100}%`,
-    bottom: `${(props.$y / 720) * 100}%`,
-    translate: "-50%",
-    transform: props.$facing === 1 ? "scaleX(1)" : "scaleX(-1)",
-    overflow: "hidden",
-    zIndex: 99,
-    pointerEvents: "none",
-    // Clip from left/right edges to prevent sub-pixel bleed from adjacent frames
-    clipPath: "inset(0 1.5% 0 1.5%)",
-  },
-}))``;
-
-// Sprite sheet image - positioned to show current frame
-const RitualSpriteImage = styled.img.attrs((props) => {
-  // Clamp frame to valid range to prevent showing invalid frames
-  const safeFrame = Math.max(0, Math.min(props.$frame, props.$frameCount - 1));
-  // Each frame is 1/frameCount of the total image width
-  const offsetPercent = (safeFrame / props.$frameCount) * 100;
-  return {
-    style: {
-      position: "relative",
-      display: "block",
-      height: "100%",
-      width: "auto",
-      // Use translate3d for GPU acceleration and more precise rendering
-      transform: `translate3d(-${offsetPercent}%, 0, 0)`,
-      willChange: "transform",
-      backfaceVisibility: "hidden",
-      // PERFORMANCE: Reduced drop-shadows
-      filter: "drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000)",
-    },
-  };
-})``;
-
-// Animated Fighter Sprite Container - for spritesheet animations (like waddle, hit, bow)
-const AnimatedFighterContainer = styled.div
-  .withConfig({
-    shouldForwardProp: (prop) =>
-      ![
-        "x",
-        "y",
-        "facing",
-        "fighter",
-        "isThrowing",
-        "isDodging",
-        "isGrabbing",
-        "isRingOutThrowCutscene",
-        "isAtTheRopes",
-        "isHit",
-        "isRawParryStun",
-      ].includes(prop),
-  })
-  .attrs((props) => ({
-    style: {
-      position: "absolute",
-      width: "min(12.30%, 379px)",
-      aspectRatio: "1",
-      left:
-        props.$isAtTheRopes && props.$fighter === "player 1"
-          ? `${((props.$x + (props.$x < 640 ? -5 : 5)) / 1280) * 100}%`
-          : `${(props.$x / 1280) * 100}%`,
-      bottom: `${(props.$y / 720) * 100}%`,
-      translate: "-50%",
-      "--facing": props.$facing === 1 ? "1" : "-1",
-      transform:
-        props.$facing === 1
-          ? `scaleX(${props.$isRawParryStun ? 1.08 : 1})`
-          : `scaleX(${props.$isRawParryStun ? -1.08 : -1})`,
-      overflow: "hidden",
-      zIndex: isOutsideDohyo(props.$x, props.$y)
-        ? 0 // Behind dohyo overlay when outside
-        : props.$isThrowing || props.$isDodging || props.$isGrabbing
-        ? 98
-        : 99,
-      pointerEvents: "none",
-      // Clip edges to prevent sub-pixel bleed from adjacent frames
-      clipPath: "inset(0 0.5% 0 0.5%)",
-      transformOrigin: "center bottom",
-      animation: props.$isHit
-        ? "hitSquashContainer 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)"
-        : "none",
-    },
-  }))`
-  /* Hit impact animation for animated sprite container - sumo palm/headbutt */
-  @keyframes hitSquashContainer {
-    0% {
-      transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg);
-    }
-    /* IMPACT - hard compression */
-    6% {
-      transform: scaleX(calc(var(--facing, 1) * 1.25)) scaleY(0.75) translateX(calc(var(--facing, 1) * -3%)) rotate(calc(var(--facing, 1) * 2deg));
-    }
-    /* Recoil - shoved back hard, body whips */
-    18% {
-      transform: scaleX(calc(var(--facing, 1) * 0.88)) scaleY(1.12) translateX(calc(var(--facing, 1) * -5%)) rotate(calc(var(--facing, 1) * -4deg));
-    }
-    /* Secondary bounce - body weight shifts */
-    35% {
-      transform: scaleX(calc(var(--facing, 1) * 1.08)) scaleY(0.92) translateX(calc(var(--facing, 1) * -2%)) rotate(calc(var(--facing, 1) * 1.5deg));
-    }
-    /* Settling */
-    55% {
-      transform: scaleX(calc(var(--facing, 1) * 0.96)) scaleY(1.04) translateX(calc(var(--facing, 1) * -0.5%)) rotate(calc(var(--facing, 1) * -0.5deg));
-    }
-    /* Back to normal */
-    100% {
-      transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg);
-    }
-  }
-`;
-
-// Animated Fighter Sprite Image - CSS-based animation for PERFORMANCE
-// Uses CSS animation with steps() instead of React state updates
-// This moves animation to GPU and avoids 30-40 React re-renders per second
-const AnimatedFighterImage = styled.img
-  .withConfig({
-    shouldForwardProp: (prop) =>
-      ![
-        "frameCount",
-        "fps",
-        "loop",
-        "isLocalPlayer",
-        "isAtTheRopes",
-        "isGrabBreaking",
-        "isRawParrying",
-        "isHit",
-        "isChargingAttack",
-        "isGrabClashActive",
-        "animationKey",
-      ].includes(prop),
-  })
-  .attrs((props) => {
-    // Calculate animation duration based on fps and frame count
-    const frameCount = props.$frameCount || 1;
-    const fps = props.$fps || 30;
-    const duration = frameCount / fps; // seconds for full animation cycle
-
-    // Calculate total width percentage for the full animation offset
-    // The image moves from 0% to -(100% - 100%/frameCount)
-    const totalOffset = ((frameCount - 1) / frameCount) * 100;
-
-    return {
-      style: {
-        position: "relative",
-        display: "block",
-        height: "100%",
-        width: "auto",
-        backfaceVisibility: "hidden",
-        // Match static sprite readability treatment.
-        filter: getFighterPopFilter(props),
-        // CSS-based spritesheet animation - no React state updates needed!
-        animation:
-          frameCount > 1
-            ? `spritesheet-${frameCount} ${duration}s steps(${
-                frameCount - 1
-              }) ${props.$loop !== false ? "infinite" : "forwards"}`
-            : "none",
-        // Use animationKey to force restart animation when sprite changes
-        animationName: frameCount > 1 ? `spritesheet-${frameCount}` : "none",
-      },
-    };
-  })`
-  /* Generate keyframes for common frame counts (2-25) */
-  @keyframes spritesheet-2 {
-    from { transform: translate3d(0%, 0, 0); }
-    to { transform: translate3d(-50%, 0, 0); }
-  }
-  @keyframes spritesheet-3 {
-    from { transform: translate3d(0%, 0, 0); }
-    to { transform: translate3d(-66.667%, 0, 0); }
-  }
-  @keyframes spritesheet-4 {
-    from { transform: translate3d(0%, 0, 0); }
-    to { transform: translate3d(-75%, 0, 0); }
-  }
-  @keyframes spritesheet-5 {
-    from { transform: translate3d(0%, 0, 0); }
-    to { transform: translate3d(-80%, 0, 0); }
-  }
-  @keyframes spritesheet-6 {
-    from { transform: translate3d(0%, 0, 0); }
-    to { transform: translate3d(-83.333%, 0, 0); }
-  }
-  @keyframes spritesheet-7 {
-    from { transform: translate3d(0%, 0, 0); }
-    to { transform: translate3d(-85.714%, 0, 0); }
-  }
-  @keyframes spritesheet-8 {
-    from { transform: translate3d(0%, 0, 0); }
-    to { transform: translate3d(-87.5%, 0, 0); }
-  }
-  @keyframes spritesheet-9 {
-    from { transform: translate3d(0%, 0, 0); }
-    to { transform: translate3d(-88.889%, 0, 0); }
-  }
-  @keyframes spritesheet-10 {
-    from { transform: translate3d(0%, 0, 0); }
-    to { transform: translate3d(-90%, 0, 0); }
-  }
-  @keyframes spritesheet-11 {
-    from { transform: translate3d(0%, 0, 0); }
-    to { transform: translate3d(-90.909%, 0, 0); }
-  }
-  @keyframes spritesheet-12 {
-    from { transform: translate3d(0%, 0, 0); }
-    to { transform: translate3d(-91.667%, 0, 0); }
-  }
-  @keyframes spritesheet-13 {
-    from { transform: translate3d(0%, 0, 0); }
-    to { transform: translate3d(-92.308%, 0, 0); }
-  }
-  @keyframes spritesheet-14 {
-    from { transform: translate3d(0%, 0, 0); }
-    to { transform: translate3d(-92.857%, 0, 0); }
-  }
-  @keyframes spritesheet-15 {
-    from { transform: translate3d(0%, 0, 0); }
-    to { transform: translate3d(-93.333%, 0, 0); }
-  }
-  @keyframes spritesheet-16 {
-    from { transform: translate3d(0%, 0, 0); }
-    to { transform: translate3d(-93.75%, 0, 0); }
-  }
-  @keyframes spritesheet-17 {
-    from { transform: translate3d(0%, 0, 0); }
-    to { transform: translate3d(-94.118%, 0, 0); }
-  }
-  @keyframes spritesheet-18 {
-    from { transform: translate3d(0%, 0, 0); }
-    to { transform: translate3d(-94.444%, 0, 0); }
-  }
-  @keyframes spritesheet-19 {
-    from { transform: translate3d(0%, 0, 0); }
-    to { transform: translate3d(-94.737%, 0, 0); }
-  }
-  @keyframes spritesheet-20 {
-    from { transform: translate3d(0%, 0, 0); }
-    to { transform: translate3d(-95%, 0, 0); }
-  }
-  @keyframes spritesheet-21 {
-    from { transform: translate3d(0%, 0, 0); }
-    to { transform: translate3d(-95.238%, 0, 0); }
-  }
-  @keyframes spritesheet-22 {
-    from { transform: translate3d(0%, 0, 0); }
-    to { transform: translate3d(-95.455%, 0, 0); }
-  }
-  @keyframes spritesheet-23 {
-    from { transform: translate3d(0%, 0, 0); }
-    to { transform: translate3d(-95.652%, 0, 0); }
-  }
-  @keyframes spritesheet-24 {
-    from { transform: translate3d(0%, 0, 0); }
-    to { transform: translate3d(-95.833%, 0, 0); }
-  }
-  @keyframes spritesheet-25 {
-    from { transform: translate3d(0%, 0, 0); }
-    to { transform: translate3d(-96%, 0, 0); }
-  }
-`;
-
-const CountdownTimer = styled.div`
-  position: absolute;
-  opacity: 0;
-  font-family: "Bungee";
-  font-size: clamp(1rem, 3vw, 2.5rem);
-  color: rgb(255, 0, 0);
-  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
-    1px 1px 0 #000;
-  pointer-events: none;
-  bottom: 80.5%;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 100;
-`;
-
-const SaltBasket = styled.img
-  .withConfig({
-    shouldForwardProp: (prop) => !["isVisible", "index"].includes(prop),
-  })
-  .attrs((props) => ({
-    style: {
-      position: "absolute",
-      width: "3.37%",
-      height: "auto",
-      bottom: `${((GROUND_LEVEL + 100) / 720) * 150}%`,
-      left: props.$index === 0 ? "25.3%" : "auto",
-      right: props.$index === 1 ? "25.3%" : "auto",
-      transform: props.$index === 1 ? "scaleX(-1)" : "none",
-      zIndex: 1,
-      pointerEvents: "none",
-      opacity: props.$isVisible ? 1 : 0,
-      transition: "opacity 0.3s ease",
-    },
-  }))``;
-
-const youLabelGlow = keyframes`
-  0%, 100% { opacity: 0.85; }
-  50% { opacity: 1; }
-`;
-
-const YouLabel = styled.div
-  .withConfig({
-    shouldForwardProp: (prop) => !["x", "y"].includes(prop),
-  })
-  .attrs((props) => ({
-    style: {
-      position: "absolute",
-      bottom: `${(props.y / 720) * 100 + 21}%`,
-      left: `${(props.x / 1280) * 100}%`,
-      transform: "translateX(-50%)",
-    },
-  }))`
-  z-index: 1000;
-  pointer-events: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
-  animation: ${youLabelGlow} 2.5s ease-in-out infinite;
-
-  &::before {
-    content: "YOU";
-    font-family: "Bungee", cursive;
-    font-size: clamp(8px, 0.7vw, 10px);
-    letter-spacing: 0.05em;
-    line-height: 1;
-    color: #fff;
-    background: rgba(0, 0, 0, 0.6);
-    padding: clamp(2px, 0.2vw, 3px) clamp(5px, 0.45vw, 7px);
-    border-radius: 3px;
-    border: 1px solid rgba(0, 230, 255, 0.5);
-    text-shadow: 0 0 6px rgba(0, 230, 255, 0.9);
-  }
-
-  &::after {
-    content: "";
-    width: 0;
-    height: 0;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-top: 5px solid rgba(0, 230, 255, 0.8);
-    filter: drop-shadow(0 0 3px rgba(0, 230, 255, 0.5));
-  }
-`;
-
-const snowballSpin = keyframes`
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-`;
-
-const SnowballWrapper = styled.div
-  .withConfig({
-    shouldForwardProp: (prop) => !["$x", "$y", "$vx"].includes(prop),
-  })
-  .attrs((props) => ({
-    style: {
-      position: "absolute",
-      width: "3.37%",
-      left: `${(props.$x / 1280) * 100}%`,
-      bottom: `${(props.$y / 720) * 100 + 11}%`,
-      translate: "-50%",
-      zIndex: 95,
-      pointerEvents: "none",
-      transition: "left 33ms linear, bottom 33ms linear",
-      filter: "drop-shadow(0 0 5px rgba(200,230,255,0.7))",
-    },
-  }))``;
-
-const SnowballProjectileImg = styled.img`
-  width: 100%;
-  height: auto;
-  display: block;
-  animation: ${snowballSpin} 0.3s linear infinite;
-`;
-
-const PumoClone = styled.img
-  .withConfig({
-    shouldForwardProp: (prop) =>
-      !["$x", "$y", "$facing", "$size"].includes(prop),
-  })
-  .attrs((props) => ({
-    style: {
-      position: "absolute",
-      width: `${(props.$size || 0.6) * 14.47}%`,
-      height: "auto",
-      left: `${(props.$x / 1280) * 100}%`,
-      bottom: `${(props.$y / 720) * 100}%`,
-      translate: "-50%",
-      transform: `scaleX(${props.$facing * -1})`,
-      zIndex:
-        props.$x < -20 || props.$x > 1075 || props.$y < GROUND_LEVEL - 35
-          ? 0
-          : 98,
-      pointerEvents: "none",
-      filter: "drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000)",
-    },
-  }))``;
-
-// Animated Pumo Clone Container - clips to one frame of the spritesheet
-const AnimatedPumoCloneContainer = styled.div
-  .withConfig({
-    shouldForwardProp: (prop) =>
-      !["$x", "$y", "$facing", "$size"].includes(prop),
-  })
-  .attrs((props) => ({
-    style: {
-      position: "absolute",
-      width: `${(props.$size || 0.6) * 14.47}%`,
-      aspectRatio: "1",
-      left: `${(props.$x / 1280) * 100}%`,
-      bottom: `${(props.$y / 720) * 100}%`,
-      translate: "-50%",
-      transform: `scaleX(${props.$facing * -1})`,
-      zIndex:
-        props.$x < -20 || props.$x > 1075 || props.$y < GROUND_LEVEL - 35
-          ? 0
-          : 98,
-      pointerEvents: "none",
-      overflow: "hidden",
-      clipPath: "inset(0 0.5% 0 0.5%)",
-    },
-  }))``;
-
-// Animated Pumo Clone Image - CSS spritesheet animation (same approach as AnimatedFighterImage)
-const AnimatedPumoCloneImage = styled.img
-  .withConfig({
-    shouldForwardProp: (prop) => !["$frameCount", "$fps"].includes(prop),
-  })
-  .attrs((props) => {
-    const frameCount = props.$frameCount || 1;
-    const fps = props.$fps || 30;
-    const duration = frameCount / fps;
-    return {
-      style: {
-        position: "relative",
-        display: "block",
-        height: "100%",
-        width: "auto",
-        backfaceVisibility: "hidden",
-        filter: "drop-shadow(0 0 clamp(1px, 0.08vw, 2.5px) #000)",
-        animation:
-          frameCount > 1
-            ? `spritesheet-${frameCount} ${duration}s steps(${
-                frameCount - 1
-              }) infinite`
-            : "none",
-      },
-    };
-  })``;
-
-const OpponentDisconnectedOverlay = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.8);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 10000;
-  backdrop-filter: blur(5px);
-`;
-
-const DisconnectedModal = styled.div`
-  background: linear-gradient(
-    135deg,
-    rgba(28, 28, 28, 0.95),
-    rgba(18, 18, 18, 0.95)
-  );
-  border: 2px solid #8b4513;
-  border-radius: 12px;
-  padding: 2rem;
-  text-align: center;
-  box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
-  min-width: 400px;
-`;
-
-const DisconnectedTitle = styled.h2`
-  font-family: "Bungee", cursive;
-  font-size: 1.8rem;
-  color: #d4af37;
-  margin: 0 0 1rem 0;
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
-`;
-
-const DisconnectedMessage = styled.p`
-  font-family: "Noto Sans JP", sans-serif;
-  font-size: 1.2rem;
-  color: #ffffff;
-  margin: 0 0 2rem 0;
-  font-weight: 600;
-`;
-
-// ExitButton removed - no longer needed with automatic exit
+  GROUND_LEVEL,
+  SPRITE_HALF_W,
+  PLAYER_MID_Y,
+  RITUAL_SPRITE_CONFIG,
+  CLAP_SOUND_OFFSET,
+  ritualSpritesheetsPlayer1,
+  ritualSpritesheetsPlayer2,
+  ritualClapSounds,
+  playSound,
+} from "./fighterAssets";
+import getImageSrc from "./getImageSrc";
+import {
+  StyledImage,
+  getFighterPopFilter,
+  RitualSpriteContainer,
+  RitualSpriteImage,
+  AnimatedFighterContainer,
+  AnimatedFighterImage,
+  CountdownTimer,
+  SaltBasket,
+  YouLabel,
+  SnowballWrapper,
+  SnowballProjectileImg,
+  PumoClone,
+  AnimatedPumoCloneContainer,
+  AnimatedPumoCloneImage,
+  OpponentDisconnectedOverlay,
+  DisconnectedModal,
+  DisconnectedTitle,
+  DisconnectedMessage,
+} from "./fighterStyledComponents";
 
 const GameFighter = ({
   player,
@@ -2800,7 +1003,9 @@ const GameFighter = ({
     startTime: 0,
   });
   const [allSnowballs, setAllSnowballs] = useState([]);
+  const snowballDomRefs = useRef({});
   const [allPumoArmies, setAllPumoArmies] = useState([]);
+
   const [thickBlubberEffect, setThickBlubberEffect] = useState({
     isActive: false,
     x: 0,
@@ -3498,6 +1703,20 @@ const GameFighter = ({
           ...(player1Data.snowballs || []),
           ...(player2Data.snowballs || []),
         ];
+
+        // Direct DOM position updates bypass React's render pipeline, keeping
+        // snowball movement smooth even when heavy state changes (parry, etc.)
+        // delay React re-renders. React state update below handles mount/unmount.
+        for (let i = 0; i < combinedSnowballs.length; i++) {
+          const sb = combinedSnowballs[i];
+          const wrapper = snowballDomRefs.current[sb.id];
+          const el = wrapper && wrapper.firstElementChild;
+          if (el) {
+            el.style.left = `${(sb.x / 1280) * 100}%`;
+            el.style.bottom = `${(sb.y / 720) * 100 + 11}%`;
+          }
+        }
+
         setAllSnowballs(combinedSnowballs);
       }
 
@@ -3517,6 +1736,7 @@ const GameFighter = ({
             ownerPlayerNumber: 2,
           })),
         ];
+
         setAllPumoArmies(combinedPumoArmies);
       }
     },
@@ -4499,12 +2719,26 @@ const GameFighter = ({
   }, [penguin.isRawParryStun, penguin.id, player.id]);
 
   const lastGassedState = useRef(false);
+  const gassedSoundSuppressed = useRef(false);
   useEffect(() => {
-    if (penguin.isGassed && !lastGassedState.current && penguin.id === player.id) {
-      playSound(stunnedSound, 0.06);
+    if (gameOver || penguin.isDead) {
+      lastGassedState.current = false;
+      gassedSoundSuppressed.current = true;
+      return;
+    }
+    if (gassedSoundSuppressed.current) {
+      lastGassedState.current = penguin.isGassed;
+      if (!penguin.isGassed) gassedSoundSuppressed.current = false;
+      return;
+    }
+    if (penguin.isGassed && !lastGassedState.current) {
+      playSound(gassedSound, 0.03);
+    }
+    if (!penguin.isGassed && lastGassedState.current && player.id === localId) {
+      playSound(gassedRegenSound, 0.03, null, 2.0);
     }
     lastGassedState.current = penguin.isGassed;
-  }, [penguin.isGassed, penguin.id, player.id]);
+  }, [penguin.isGassed, penguin.isDead, gameOver, player.id, localId]);
 
   const lastPerfectParryState = useRef(false);
   useEffect(() => {
@@ -5078,9 +3312,6 @@ const GameFighter = ({
           $throwCooldown={penguin.throwCooldown}
           $grabCooldown={penguin.grabCooldown}
           $isChargingAttack={displayPenguin.isChargingAttack}
-          $chargeStartTime={penguin.chargeStartTime}
-          $chargeMaxDuration={penguin.chargeMaxDuration}
-          $chargeAttackPower={penguin.chargeAttackPower}
           $chargingFacingDirection={penguin.chargingFacingDirection}
           $saltCooldown={penguin.saltCooldown}
           $grabStartTime={penguin.grabStartTime}
@@ -5200,14 +3431,22 @@ const GameFighter = ({
           <CountdownTimer>{countdown}</CountdownTimer>
         )}
       {allSnowballs.map((projectile) => (
-        <SnowballWrapper
+        <div
           key={projectile.id}
-          $x={projectile.x}
-          $y={projectile.y}
-          $vx={projectile.velocityX}
+          ref={(el) => {
+            if (el) snowballDomRefs.current[projectile.id] = el;
+            else delete snowballDomRefs.current[projectile.id];
+          }}
+          style={{ display: "contents" }}
         >
-          <SnowballProjectileImg src={snowball} alt="" draggable={false} />
-        </SnowballWrapper>
+          <SnowballWrapper
+            $x={projectile.x}
+            $y={projectile.y}
+            $vx={projectile.velocityX}
+          >
+            <SnowballProjectileImg src={snowball} alt="" draggable={false} />
+          </SnowballWrapper>
+        </div>
       ))}
       <PumoCloneSpawnEffect
         clones={allPumoArmies}
