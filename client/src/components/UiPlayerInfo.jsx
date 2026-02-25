@@ -35,6 +35,22 @@ const regenPulse = keyframes`
   50% { opacity: 0.85; }
 `;
 
+/* Bright green flash for parry stamina refund — punchy and unmissable */
+const parryRefundFlash = keyframes`
+  0% {
+    opacity: 1;
+    box-shadow: inset 0 0 20px rgba(74, 255, 160, 0.9), 0 0 16px rgba(74, 255, 160, 0.7);
+  }
+  30% {
+    opacity: 0.9;
+    box-shadow: inset 0 0 14px rgba(74, 255, 160, 0.6), 0 0 10px rgba(74, 255, 160, 0.4);
+  }
+  100% {
+    opacity: 0;
+    box-shadow: inset 0 0 0px rgba(74, 255, 160, 0), 0 0 0px rgba(74, 255, 160, 0);
+  }
+`;
+
 /* Pulsing danger glow for the bar frame when stamina is critical */
 const dangerFramePulse = keyframes`
   0%, 100% {
@@ -48,6 +64,69 @@ const dangerFramePulse = keyframes`
       inset 0 0 14px rgba(255, 40, 40, 0.25),
       0 0 16px rgba(255, 40, 40, 0.35),
       0 0 0 2px rgba(255, 60, 60, 0.7);
+  }
+`;
+
+/* Gassed state — pulsing red/dark overlay when stamina hits 0 */
+const gassedPulse = keyframes`
+  0%, 100% {
+    opacity: 0.7;
+    background: linear-gradient(180deg,
+      rgba(180, 20, 20, 0.6) 0%,
+      rgba(120, 10, 10, 0.8) 50%,
+      rgba(80, 0, 0, 0.6) 100%);
+  }
+  50% {
+    opacity: 0.4;
+    background: linear-gradient(180deg,
+      rgba(140, 15, 15, 0.4) 0%,
+      rgba(90, 5, 5, 0.6) 50%,
+      rgba(60, 0, 0, 0.4) 100%);
+  }
+`;
+
+const gassedTextFlicker = keyframes`
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+`;
+
+/* Icy burst when recovering from gassed state — "second wind" */
+const recoveryBurst = keyframes`
+  0% {
+    opacity: 1;
+    box-shadow: inset 0 0 30px rgba(186, 230, 253, 0.95), 0 0 24px rgba(56, 189, 248, 0.8);
+  }
+  25% {
+    opacity: 0.9;
+    box-shadow: inset 0 0 20px rgba(186, 230, 253, 0.6), 0 0 16px rgba(56, 189, 248, 0.5);
+  }
+  100% {
+    opacity: 0;
+    box-shadow: inset 0 0 0px rgba(186, 230, 253, 0), 0 0 0px rgba(56, 189, 248, 0);
+  }
+`;
+
+const recoveryTextPop = keyframes`
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.5);
+  }
+  20% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.15);
+  }
+  35% {
+    transform: translate(-50%, -50%) scale(0.95);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.05);
   }
 `;
 
@@ -609,6 +688,113 @@ const RegenGlow = styled.div.attrs((p) => ({
   animation: ${regenPulse} 0.8s ease-in-out infinite;
 `;
 
+/* Instant bright green flash overlay for parry stamina refund */
+const ParryRefundFlash = styled.div`
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  border-radius: 3px;
+  z-index: 6;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(74, 255, 160, 0.5) 0%,
+    rgba(52, 211, 153, 0.7) 40%,
+    rgba(16, 185, 129, 0.7) 60%,
+    rgba(52, 211, 153, 0.5) 100%
+  );
+  animation: ${parryRefundFlash} 0.5s ease-out forwards;
+`;
+
+/* Gassed overlay — fills entire bar track when stamina hits 0 */
+const GassedOverlay = styled.div`
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  border-radius: 3px;
+  z-index: 5;
+  pointer-events: none;
+  animation: ${gassedPulse} 0.6s ease-in-out infinite;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+`;
+
+const GassedText = styled.span`
+  font-family: "Bungee", cursive;
+  font-size: clamp(8px, 1.1vh, 14px);
+  color: #ff4444;
+  text-shadow:
+    0 0 8px rgba(255, 40, 40, 0.9),
+    0 0 16px rgba(255, 20, 20, 0.5),
+    -1px -1px 0 #000, 1px -1px 0 #000,
+    -1px 1px 0 #000, 1px 1px 0 #000;
+  letter-spacing: 0.2em;
+  animation: ${gassedTextFlicker} 0.6s ease-in-out infinite;
+  ${(p) => p.$isRight && "transform: scaleX(-1);"}
+`;
+
+/* Gassed recovery burst — bright icy flash when "second wind" kicks in */
+const RecoveryFlash = styled.div`
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  border-radius: 3px;
+  z-index: 7;
+  pointer-events: none;
+  background: linear-gradient(180deg,
+    rgba(186, 230, 253, 0.6) 0%,
+    rgba(56, 189, 248, 0.8) 30%,
+    rgba(14, 165, 233, 0.8) 60%,
+    rgba(56, 189, 248, 0.6) 100%);
+  animation: ${recoveryBurst} 0.7s ease-out forwards;
+  overflow: hidden;
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 0; bottom: 0;
+    left: 0;
+    width: 60%;
+    background: linear-gradient(
+      100deg,
+      transparent 0%,
+      transparent 30%,
+      rgba(255, 255, 255, 0.35) 45%,
+      rgba(255, 255, 255, 0.55) 50%,
+      rgba(255, 255, 255, 0.35) 55%,
+      transparent 70%,
+      transparent 100%
+    );
+    animation: ${iceShimmer} 0.6s ease-out forwards;
+  }
+`;
+
+const RecoveryText = styled.span`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  font-family: "Bungee", cursive;
+  font-size: clamp(7px, 1vh, 13px);
+  color: #bae6fd;
+  text-shadow:
+    0 0 10px rgba(56, 189, 248, 0.9),
+    0 0 20px rgba(14, 165, 233, 0.6),
+    -1px -1px 0 #000, 1px -1px 0 #000,
+    -1px 1px 0 #000, 1px 1px 0 #000;
+  letter-spacing: 0.15em;
+  white-space: nowrap;
+  z-index: 8;
+  pointer-events: none;
+  animation: ${recoveryTextPop} 0.8s ease-out forwards;
+`;
+
 /* STA label inside the bar */
 const BarLabel = styled.div`
   position: absolute;
@@ -894,7 +1080,7 @@ const RoundText = styled.div`
 // CONSTANTS
 // ============================================
 
-const THROW_BREAK_STAMINA_THRESHOLD = 33;
+const LOW_STAMINA_WARNING_THRESHOLD = 25;
 
 // ============================================
 // COMPONENT
@@ -909,10 +1095,14 @@ const UiPlayerInfo = ({
   player1ActivePowerUp = null,
   player1SnowballCooldown = false,
   player1PumoArmyCooldown = false,
+  player1IsGassed = false,
+  player1ParryRefund = 0,
   player2Stamina,
   player2ActivePowerUp = null,
   player2SnowballCooldown = false,
   player2PumoArmyCooldown = false,
+  player2IsGassed = false,
+  player2ParryRefund = 0,
 }) => {
   const clampStamina = (value) => {
     const n = Number(value);
@@ -948,6 +1138,34 @@ const UiPlayerInfo = ({
   const p1RegenTimer = useRef(null);
   const p2RegenTimer = useRef(null);
 
+  // ── Parry refund flash (instant green burst) ──
+  const [p1ParryFlash, setP1ParryFlash] = useState(0);
+  const [p2ParryFlash, setP2ParryFlash] = useState(0);
+  const p1ParryRefundPending = useRef(false);
+  const p2ParryRefundPending = useRef(false);
+
+  // ── Gassed recovery ("second wind") ──
+  const [p1Recovery, setP1Recovery] = useState(0);
+  const [p2Recovery, setP2Recovery] = useState(0);
+  const p1WasGassed = useRef(false);
+  const p2WasGassed = useRef(false);
+  const p1RecoveryPending = useRef(false);
+  const p2RecoveryPending = useRef(false);
+
+  useEffect(() => {
+    if (player1ParryRefund > 0) {
+      setP1ParryFlash(player1ParryRefund);
+      p1ParryRefundPending.current = true;
+    }
+  }, [player1ParryRefund]);
+
+  useEffect(() => {
+    if (player2ParryRefund > 0) {
+      setP2ParryFlash(player2ParryRefund);
+      p2ParryRefundPending.current = true;
+    }
+  }, [player2ParryRefund]);
+
   // ── Post-reset throttle bypass ──
   // After a round reset, the first stamina update from the server may arrive
   // AFTER game_reset (race condition). This flag lets that first update snap
@@ -977,7 +1195,30 @@ const UiPlayerInfo = ({
     if (p2RegenTimer.current) clearTimeout(p2RegenTimer.current);
     p1LastDecreaseAtRef.current = 0;
     p2LastDecreaseAtRef.current = 0;
+    p1WasGassed.current = false;
+    p2WasGassed.current = false;
+    p1RecoveryPending.current = false;
+    p2RecoveryPending.current = false;
+    setP1Recovery(0);
+    setP2Recovery(0);
   }, [roundId]);
+
+  // ── Gassed → recovered transition detection ──
+  useEffect(() => {
+    if (p1WasGassed.current && !player1IsGassed) {
+      p1RecoveryPending.current = true;
+      setP1Recovery((c) => c + 1);
+    }
+    p1WasGassed.current = player1IsGassed;
+  }, [player1IsGassed]);
+
+  useEffect(() => {
+    if (p2WasGassed.current && !player2IsGassed) {
+      p2RecoveryPending.current = true;
+      setP2Recovery((c) => c + 1);
+    }
+    p2WasGassed.current = player2IsGassed;
+  }, [player2IsGassed]);
 
   // ── Player 1 stamina + ghost + regen ──
   useEffect(() => {
@@ -986,11 +1227,15 @@ const UiPlayerInfo = ({
     let next = s1;
 
     // After a round reset, snap immediately to the server value (bypass throttle)
+    // BUT only if stamina didn't decrease — if it dropped, fall through to damage
+    // logic so the ghost bar correctly trails the first hit
     if (p1JustReset.current) {
       p1JustReset.current = false;
-      setP1DisplayStamina(s1);
-      setP1Ghost(s1);
-      return;
+      if (s1 >= prev) {
+        setP1DisplayStamina(s1);
+        setP1Ghost(s1);
+        return;
+      }
     }
 
     if (s1 < prev) {
@@ -1032,6 +1277,22 @@ const UiPlayerInfo = ({
       p1RegenTimer.current = setTimeout(() => setP1Regen(false), 500);
     }
 
+    // Parry refund bypass: snap instantly, skip all throttling
+    if (p1ParryRefundPending.current && s1 > prev) {
+      p1ParryRefundPending.current = false;
+      setP1DisplayStamina(s1);
+      setP1Ghost(s1);
+      return;
+    }
+
+    // Gassed recovery bypass: snap to new stamina when "second wind" kicks in
+    if (p1RecoveryPending.current && s1 > prev) {
+      p1RecoveryPending.current = false;
+      setP1DisplayStamina(s1);
+      setP1Ghost(s1);
+      return;
+    }
+
     // Throttle regen display (prevents jarring jumps after recent damage)
     const justDecreased =
       Date.now() - p1LastDecreaseAt < 600 || p1DisplayStamina === 0;
@@ -1058,11 +1319,15 @@ const UiPlayerInfo = ({
     let next = s2;
 
     // After a round reset, snap immediately to the server value (bypass throttle)
+    // BUT only if stamina didn't decrease — if it dropped, fall through to damage
+    // logic so the ghost bar correctly trails the first hit
     if (p2JustReset.current) {
       p2JustReset.current = false;
-      setP2DisplayStamina(s2);
-      setP2Ghost(s2);
-      return;
+      if (s2 >= prev) {
+        setP2DisplayStamina(s2);
+        setP2Ghost(s2);
+        return;
+      }
     }
 
     if (s2 < prev) {
@@ -1097,6 +1362,22 @@ const UiPlayerInfo = ({
       setP2Regen(true);
       if (p2RegenTimer.current) clearTimeout(p2RegenTimer.current);
       p2RegenTimer.current = setTimeout(() => setP2Regen(false), 500);
+    }
+
+    // Parry refund bypass: snap instantly, skip all throttling
+    if (p2ParryRefundPending.current && s2 > prev) {
+      p2ParryRefundPending.current = false;
+      setP2DisplayStamina(s2);
+      setP2Ghost(s2);
+      return;
+    }
+
+    // Gassed recovery bypass: snap to new stamina when "second wind" kicks in
+    if (p2RecoveryPending.current && s2 > prev) {
+      p2RecoveryPending.current = false;
+      setP2DisplayStamina(s2);
+      setP2Ghost(s2);
+      return;
     }
 
     const justDecreased =
@@ -1139,7 +1420,7 @@ const UiPlayerInfo = ({
   };
 
   const shouldShowLowStaminaWarning = (stamina) =>
-    stamina < THROW_BREAK_STAMINA_THRESHOLD;
+    stamina < LOW_STAMINA_WARNING_THRESHOLD;
 
   const getPowerUpIsOnCooldown = (
     powerUpType,
@@ -1200,6 +1481,19 @@ const UiPlayerInfo = ({
                   $stamina={p1DisplayStamina}
                   $isRight={false}
                 />
+              )}
+              {player1IsGassed && (
+                <GassedOverlay>
+                  <GassedText $isRight={false}>GASSED</GassedText>
+                </GassedOverlay>
+              )}
+              {p1ParryFlash > 0 && (
+                <ParryRefundFlash key={p1ParryFlash} />
+              )}
+              {p1Recovery > 0 && (
+                <RecoveryFlash key={`r1-${p1Recovery}`}>
+                  <RecoveryText>SECOND WIND</RecoveryText>
+                </RecoveryFlash>
               )}
               <BarTicks />
               <BarCenterTick />
@@ -1277,6 +1571,19 @@ const UiPlayerInfo = ({
                   $isRight={true}
                 />
               )}
+              {player2IsGassed && (
+                <GassedOverlay>
+                  <GassedText $isRight={true}>GASSED</GassedText>
+                </GassedOverlay>
+              )}
+              {p2ParryFlash > 0 && (
+                <ParryRefundFlash key={p2ParryFlash} />
+              )}
+              {p2Recovery > 0 && (
+                <RecoveryFlash key={`r2-${p2Recovery}`}>
+                  <RecoveryText>SECOND WIND</RecoveryText>
+                </RecoveryFlash>
+              )}
               <BarTicks />
               <BarCenterTick />
             </BarTrack>
@@ -1318,10 +1625,14 @@ UiPlayerInfo.propTypes = {
   player1ActivePowerUp: PropTypes.string,
   player1SnowballCooldown: PropTypes.bool,
   player1PumoArmyCooldown: PropTypes.bool,
+  player1IsGassed: PropTypes.bool,
+  player1ParryRefund: PropTypes.number,
   player2Stamina: PropTypes.number,
   player2ActivePowerUp: PropTypes.string,
   player2SnowballCooldown: PropTypes.bool,
   player2PumoArmyCooldown: PropTypes.bool,
+  player2IsGassed: PropTypes.bool,
+  player2ParryRefund: PropTypes.number,
 };
 
 export default UiPlayerInfo;

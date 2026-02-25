@@ -266,6 +266,7 @@ function clearAllActionStates(player) {
   player.isHit = false;
   player.isAlreadyHit = false;
   player.isSlapKnockback = false;
+  player.isParryKnockback = false;
   
   // Clear attack states
   player.isAttacking = false;
@@ -329,6 +330,8 @@ function clearAllActionStates(player) {
   // New grab action system states
   player.isGrabPushing = false;
   player.isBeingGrabPushed = false;
+  player.isEdgePushing = false;
+  player.isBeingEdgePushed = false;
   player.isAttemptingPull = false;
   player.isBeingPullReversaled = false;
   player.pullReversalPullerId = null;

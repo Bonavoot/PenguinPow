@@ -193,13 +193,14 @@ const DELTA_TRACKED_PROPS = [
   'isCrouchStance', 'isCrouchStrafing', 'isGrabBreaking', 'isGrabBreakCountered',
   'isAttemptingGrabThrow', 'isInRitualPhase',
   // New grab action system states
-  'isGrabPushing', 'isBeingGrabPushed', 'isAttemptingPull', 'isBeingPullReversaled',
+  'isGrabPushing', 'isBeingGrabPushed', 'isEdgePushing', 'isBeingEdgePushed',
+  'isAttemptingPull', 'isBeingPullReversaled',
   'isGrabSeparating', 'isGrabBellyFlopping', 'isBeingGrabBellyFlopped',
   'isGrabFrontalForceOut', 'isBeingGrabFrontalForceOut',
   'knockbackVelocity', 'activePowerUp', 'powerUpMultiplier',
   'snowballs', 'pumoArmy', 'snowballCooldown', 'pumoArmyCooldown',
   'isPowerSliding', 'isBraking', 'movementVelocity', 'isStrafing',
-  'isJumping', 'isDiving', 'sizeMultiplier'
+  'isJumping', 'isDiving', 'sizeMultiplier', 'isGassed'
 ];
 
 // PERFORMANCE: Pre-compute the combined props list once (avoids spread on every call)
@@ -526,12 +527,24 @@ function setKnockbackImmunity(player) {
 }
 
 // Grab break constants
-const GRAB_BREAK_STAMINA_COST = 33; // 33% of max stamina to break a grab (used for directional counter breaks)
+const GRAB_BREAK_STAMINA_COST = 10; // Equal stamina cost for both players on a successful grab break
 
 // Stamina drain constants
 const SLAP_ATTACK_STAMINA_COST = 3; // Small cost to not deter spamming
 const CHARGED_ATTACK_STAMINA_COST = 9; // 3x slap attack cost
-const DODGE_STAMINA_COST = 7; // ~7% of max stamina per dodge (halved from 15)
+const DODGE_STAMINA_COST = 7; // ~7% of max stamina per dodge
+
+// Stamina drain on victim when hit (victim pays MORE than attacker spent)
+const SLAP_HIT_VICTIM_STAMINA_DRAIN = 6; // Victim loses 6 (attacker paid 3)
+const CHARGED_HIT_VICTIM_STAMINA_DRAIN = 18; // Victim loses 18 (attacker paid 9)
+
+// Raw parry stamina: flat cost on press, refunded on any successful parry
+const RAW_PARRY_STAMINA_COST = 5; // Flat cost when parry is initiated
+const RAW_PARRY_STAMINA_REFUND = 5; // Full refund on successful parry (regular or perfect)
+
+// Gassed state: regen freeze when stamina hits 0
+const GASSED_DURATION_MS = 3000; // 3 second regen freeze penalty
+const GASSED_RECOVERY_STAMINA = 30; // Stamina granted immediately when gassed ends
 // Grab stamina drain: 10 stamina over full 1.5s duration
 // Drain 1 stamina every 150ms (1500ms / 10 = 150ms per stamina point)
 const GRAB_STAMINA_DRAIN_INTERVAL = 150;
@@ -554,7 +567,8 @@ const GRAB_PUSH_DECAY_RATE = 2.2;          // Exponential decay rate — higher 
 const GRAB_PUSH_MIN_VELOCITY = 0.15;       // Push ends when speed decays below this
 const GRAB_PUSH_MAX_DURATION = 1500;        // Safety cap: push can never exceed this (ms)
 const GRAB_PUSH_BACKWARD_GRACE = 150;       // ms before backward input triggers pull during push (prevents accidental pull)
-const GRAB_PUSH_STAMINA_DRAIN_INTERVAL = 35; // Drain 1 stamina per 35ms on pushed opponent (~28.6/sec)
+const GRAB_PUSH_STAMINA_DRAIN_INTERVAL = 70; // Drain 1 stamina per 70ms mid-ring (~14/sec)
+const GRAB_PUSH_EDGE_STAMINA_DRAIN_INTERVAL = 17; // Drain 1 stamina per 17ms at edge (~59/sec)
 const GRAB_PUSH_SEPARATION_OPPONENT_VEL = 1.2; // Velocity given to opponent when push ends
 const GRAB_PUSH_SEPARATION_GRABBER_VEL = 0.4;  // Velocity given to grabber when push ends
 const GRAB_PUSH_SEPARATION_INPUT_LOCK = 150;    // Brief input lock after push separation (ms)
@@ -620,6 +634,10 @@ function correctFacingAfterGrabOrThrow(player, opponent) {
 // successfully inputs the correct counter-direction during a grab action window.
 // Called from both pull reversal counter and throw counter code paths.
 function executeDirectionalGrabBreak(grabber, breaker, room, io) {
+  // Equal stamina cost for both players on a successful grab break
+  grabber.stamina = Math.max(0, grabber.stamina - GRAB_BREAK_STAMINA_COST);
+  breaker.stamina = Math.max(0, breaker.stamina - GRAB_BREAK_STAMINA_COST);
+
   // Clear grab states for both
   cleanupGrabStates(grabber, breaker);
 
@@ -913,7 +931,7 @@ function activateBufferedInputAfterGrab(player, rooms) {
     player.bufferedAction.type === "dodge" &&
     player.bufferExpiryTime &&
     Date.now() < player.bufferExpiryTime &&
-    player.stamina >= DODGE_STAMINA_COST
+    !player.isGassed
   ) {
     const direction = player.bufferedAction.direction;
     player.bufferedAction = null;
@@ -983,6 +1001,8 @@ function activateBufferedInputAfterGrab(player, rooms) {
     player.rawParryMinDurationMet = false;
     player.isRawParrySuccess = false;
     player.isPerfectRawParrySuccess = false;
+    // Flat stamina cost on parry initiation
+    player.stamina = Math.max(0, player.stamina - RAW_PARRY_STAMINA_COST);
     player.movementVelocity = 0;
     player.isStrafing = false;
     player.isPowerSliding = false;
@@ -993,8 +1013,8 @@ function activateBufferedInputAfterGrab(player, rooms) {
     return;
   }
 
-  // Priority 2: Dodge (shift) - evasive option
-  if (player.keys.shift && !player.keys.mouse2 && player.stamina >= DODGE_STAMINA_COST) {
+  // Priority 2: Dodge (shift) - evasive option (blocked only when gassed)
+  if (player.keys.shift && !player.keys.mouse2 && !player.isGassed) {
     player.isRawParrySuccess = false;
     player.isPerfectRawParrySuccess = false;
     player.movementVelocity = 0;
@@ -1161,6 +1181,8 @@ function createCPUPlayer(uniqueId) {
     // New grab action system states
     isGrabPushing: false,
     isBeingGrabPushed: false,
+    isEdgePushing: false,
+    isBeingEdgePushed: false,
     isAttemptingPull: false,
     isBeingPullReversaled: false,
     pullReversalPullerId: null,
@@ -1213,10 +1235,13 @@ function createCPUPlayer(uniqueId) {
     isReady: false,
     isHit: false,
     isAlreadyHit: false,
+    isParryKnockback: false,
     isDead: false,
     isBowing: false,
     facing: -1,
     stamina: 100,
+    isGassed: false,
+    gassedUntil: 0,
     x: 845,
     y: GROUND_LEVEL,
     knockbackVelocity: { x: 0, y: 0 },
@@ -1507,8 +1532,11 @@ function resetRoomAndPlayers(room) {
     player.isReady = false;
     player.isHit = false;
     player.isAlreadyHit = false;
+    player.isParryKnockback = false;
     player.isDead = false;
     player.stamina = 100;
+    player.isGassed = false;
+    player.gassedUntil = 0;
     player.isBowing = false;
     player.x = player.fighter === "player 1" ? 440 : 840;
     player.y = GROUND_LEVEL;
@@ -1603,6 +1631,8 @@ function resetRoomAndPlayers(room) {
     // Reset new grab action system states
     player.isGrabPushing = false;
     player.isBeingGrabPushed = false;
+    player.isEdgePushing = false;
+    player.isBeingEdgePushed = false;
     player.isAttemptingPull = false;
     player.isBeingPullReversaled = false;
     player.pullReversalPullerId = null;
@@ -1850,6 +1880,7 @@ io.on("connection", (socket) => {
     winner.grabPushStartTime = 0;
     winner.grabApproachSpeed = 0;
     winner.isGrabPushing = false;
+    winner.isEdgePushing = false;
     winner.isGrabWalking = false;
     winner.grabActionType = null;
     winner.grabActionStartTime = 0;
@@ -1864,6 +1895,7 @@ io.on("connection", (socket) => {
     clearAllActionStates(loser);
     loser.isBeingGrabbed = true;
     loser.isBeingGrabPushed = false;
+    loser.isBeingEdgePushed = false;
     loser.lastGrabPushStaminaDrainTime = 0;
     
     // If loser was at the ropes, clear that state but keep the facing direction locked
@@ -2483,6 +2515,9 @@ io.on("connection", (socket) => {
                 const canReflect = isPerfectParry && !snowball.reflectedByPerfectParry;
                 
                 // Set parry success state for the defending player
+                // Refund parry stamina cost on any successful parry
+                opponent.stamina = Math.min(100, opponent.stamina + RAW_PARRY_STAMINA_REFUND);
+
                 if (canReflect) {
                   // Perfect parry on non-reflected snowball: reflect it back!
                   opponent.isRawParrying = true;
@@ -2737,6 +2772,8 @@ io.on("connection", (socket) => {
                 // Clone is blocked - destroy it but don't apply knockback
                 clone.hasHit = true;
                 
+                // Refund parry stamina cost on successful parry
+                opponent.stamina = Math.min(100, opponent.stamina + RAW_PARRY_STAMINA_REFUND);
                 // Trigger parry success animation and sound
                 opponent.isRawParrySuccess = true;
                 // Emit raw parry success event for visual effect and sound
@@ -2904,6 +2941,7 @@ io.on("connection", (socket) => {
             player.isHit = false;
             player.isAlreadyHit = false;
             player.isSlapKnockback = false;
+            player.isParryKnockback = false;
             player.knockbackVelocity.x = 0;
             player.movementVelocity = 0;
             // Don't return - continue normal processing
@@ -2994,6 +3032,20 @@ io.on("connection", (socket) => {
               player.x = player.x + delta * speedFactor * player.movementVelocity;
             }
 
+            // Parry knockback cannot push past map boundaries (no ring-out from parry)
+            if (player.isParryKnockback) {
+              const PARRY_BOUNDARY_BUFFER = 10;
+              const clampedX = Math.max(
+                MAP_LEFT_BOUNDARY + PARRY_BOUNDARY_BUFFER,
+                Math.min(player.x, MAP_RIGHT_BOUNDARY - PARRY_BOUNDARY_BUFFER)
+              );
+              if (clampedX !== player.x) {
+                player.x = clampedX;
+                player.knockbackVelocity.x = 0;
+                player.movementVelocity = 0;
+              }
+            }
+
             // Reset hit state when both knockback and sliding are nearly complete
             // But KEEP isHit true if game is over and player is the loser (so knockback continues)
             const hitMovementThreshold = player.isSlapKnockback
@@ -3013,6 +3065,7 @@ io.on("connection", (socket) => {
                 player.isHit = false;
                 player.isAlreadyHit = false; // Also clear isAlreadyHit to ensure player can be hit again
                 player.isSlapKnockback = false; // Reset slap knockback flag
+                player.isParryKnockback = false;
               }
               
               // If player was at the ropes and is now back within ring boundaries,
@@ -3340,8 +3393,8 @@ io.on("connection", (socket) => {
         }
 
         // Stamina regen (freeze stamina once round is over)
-        // Don't regen while being grabbed — victim's stamina is being drained
-        if (player.stamina < 100 && !room.gameOver && !player.isBeingGrabbed) {
+        // Don't regen while being grabbed or gassed
+        if (player.stamina < 100 && !room.gameOver && !player.isBeingGrabbed && !player.isGassed) {
           if (staminaRegenCounter >= STAMINA_REGEN_INTERVAL_MS) {
             player.stamina += STAMINA_REGEN_AMOUNT;
             player.stamina = Math.min(player.stamina, 100);
@@ -4680,6 +4733,8 @@ io.on("connection", (socket) => {
             player.isRawParrying = true;
             player.rawParryStartTime = Date.now();
             player.rawParryMinDurationMet = false;
+            // Flat stamina cost on parry initiation
+            player.stamina = Math.max(0, player.stamina - RAW_PARRY_STAMINA_COST);
             // Clear any existing charge attack when starting raw parry
             clearChargeState(player, true); // true = cancelled
             // Clear movement momentum when starting raw parry to prevent dodge momentum interference
@@ -4935,8 +4990,10 @@ io.on("connection", (socket) => {
                 if (isPressingBackward) {
                   // Interrupt push → initiate pull reversal attempt
                   player.isGrabPushing = false;
+                  player.isEdgePushing = false;
                   player.isGrabWalking = false;
                   opponent.isBeingGrabPushed = false;
+                  opponent.isBeingEdgePushed = false;
                   opponent.lastGrabPushStaminaDrainTime = 0;
 
                   // Reset opponent's counter state — they get a fresh read for each grab action
@@ -5019,12 +5076,15 @@ io.on("connection", (socket) => {
               // === Push direction and movement ===
               const pushDirection = player.facing === -1 ? 1 : -1;
 
-              // Passive stamina drain on pushed opponent
+              // Stamina drain on pushed opponent (faster at edge)
               if (!opponent.lastGrabPushStaminaDrainTime) {
                 opponent.lastGrabPushStaminaDrainTime = Date.now();
               }
+              const drainInterval = player.isAtBoundaryDuringGrab
+                ? GRAB_PUSH_EDGE_STAMINA_DRAIN_INTERVAL
+                : GRAB_PUSH_STAMINA_DRAIN_INTERVAL;
               const timeSinceOpponentDrain = Date.now() - opponent.lastGrabPushStaminaDrainTime;
-              if (timeSinceOpponentDrain >= GRAB_PUSH_STAMINA_DRAIN_INTERVAL) {
+              if (timeSinceOpponentDrain >= drainInterval) {
                 opponent.stamina = Math.max(0, opponent.stamina - 1);
                 opponent.lastGrabPushStaminaDrainTime = Date.now();
               }
@@ -5074,11 +5134,13 @@ io.on("connection", (socket) => {
                       grabberRef.isGrabFrontalForceOut = false;
                       grabberRef.isGrabBellyFlopping = false;
                       grabberRef.isGrabPushing = false;
+                      grabberRef.isEdgePushing = false;
                       grabberRef.isGrabWalking = false;
                       grabbedRef.isBeingGrabbed = false;
                       grabbedRef.isBeingGrabFrontalForceOut = false;
                       grabbedRef.isBeingGrabBellyFlopped = false;
                       grabbedRef.isBeingGrabPushed = false;
+                      grabbedRef.isBeingEdgePushed = false;
 
                       grabberRef.isThrowing = true;
                       grabberRef.throwStartTime = Date.now();
@@ -5105,6 +5167,8 @@ io.on("connection", (socket) => {
                 } else {
                   // Opponent has stamina — PIN at boundary
                   player.isAtBoundaryDuringGrab = true;
+                  player.isEdgePushing = true;
+                  opponent.isBeingEdgePushed = true;
 
                   if (opponentAtLeftBoundary) {
                     newOpponentX = leftBoundary;
@@ -5122,6 +5186,8 @@ io.on("connection", (socket) => {
               } else {
                 // Not at boundary — normal push movement
                 player.isAtBoundaryDuringGrab = false;
+                player.isEdgePushing = false;
+                opponent.isBeingEdgePushed = false;
                 newX = Math.max(leftBoundary, Math.min(newX, rightBoundary));
                 player.x = newX;
 
@@ -5298,6 +5364,22 @@ io.on("connection", (socket) => {
 
         // FINAL GUARD: sanitize stamina once per tick per player before emit
         player.stamina = clampStaminaValue(player.stamina);
+
+        // Gassed state: trigger when stamina hits 0, auto-clear after duration
+        // During gassed, stamina is locked at 0 (no drain can extend it)
+        if (player.isGassed) {
+          player.stamina = 0;
+        }
+        if (player.stamina <= 0 && !player.isGassed && !room.gameOver) {
+          player.isGassed = true;
+          player.gassedUntil = Date.now() + GASSED_DURATION_MS;
+          player.stamina = 0;
+        }
+        if (player.isGassed && Date.now() >= player.gassedUntil) {
+          player.isGassed = false;
+          player.gassedUntil = 0;
+          player.stamina = Math.min(100, GASSED_RECOVERY_STAMINA);
+        }
       });
 
       // ROOM-LEVEL SAFETY: Check game reset outside player loop
@@ -5708,6 +5790,7 @@ io.on("connection", (socket) => {
       player.knockbackVelocity.x = knockbackAmount * knockbackDirection;
       player.knockbackVelocity.y = 0;
       player.isHit = true;
+      player.isParryKnockback = true;
       player.lastHitTime = currentTime; // Track hit time for safety mechanism
 
       // Side-switch fix: set parried player's facing to face the parrier immediately so is_perfect_parried
@@ -5720,13 +5803,16 @@ io.on("connection", (socket) => {
       }
 
       // Set parry success state for the defending player
+      // Both regular and perfect parries refund the flat parry cost
+      otherPlayer.stamina = Math.min(100, otherPlayer.stamina + RAW_PARRY_STAMINA_REFUND);
+
       if (isPerfectParry) {
         // Perfect parry: keep isRawParrying active and lock movement
         otherPlayer.isRawParrying = true;
         otherPlayer.isPerfectRawParrySuccess = true;
         otherPlayer.inputLockUntil = Math.max(otherPlayer.inputLockUntil || 0, Date.now() + PERFECT_PARRY_ANIMATION_LOCK);
       } else {
-        // Regular parry: use parry success animation
+        // Regular parry: success animation
         otherPlayer.isRawParrySuccess = true;
       }
 
@@ -5780,6 +5866,7 @@ io.on("connection", (socket) => {
         () => {
           player.isHit = false;
           player.isAlreadyHit = false; // Also clear to ensure player can be hit again
+          player.isParryKnockback = false;
 
           // After knockback ends, check if we should restart charging
           // IMPORTANT: Always enforce 200ms threshold to prevent quick taps from triggering charge
@@ -6003,6 +6090,13 @@ io.on("connection", (socket) => {
 
       // Increment hit counter for reliable hit sound triggering
       otherPlayer.hitCounter = (otherPlayer.hitCounter || 0) + 1;
+
+      // Drain victim's stamina on hit (victim loses more than attacker spent)
+      if (isSlapAttack) {
+        otherPlayer.stamina = Math.max(0, otherPlayer.stamina - SLAP_HIT_VICTIM_STAMINA_DRAIN);
+      } else {
+        otherPlayer.stamina = Math.max(0, otherPlayer.stamina - CHARGED_HIT_VICTIM_STAMINA_DRAIN);
+      }
 
       // Update opponent's facing direction based on attacker's position
       // UNLESS they're at the ropes OR have locked atTheRopes facing direction
@@ -6482,6 +6576,8 @@ io.on("connection", (socket) => {
         isBowing: false,
         facing: 1,
         stamina: 100,
+        isGassed: false,
+        gassedUntil: 0,
         x: 220,
         y: GROUND_LEVEL,
         knockbackVelocity: { x: 0, y: 0 },
@@ -6611,6 +6707,8 @@ io.on("connection", (socket) => {
         // New grab action system states
         isGrabPushing: false,
         isBeingGrabPushed: false,
+        isEdgePushing: false,
+        isBeingEdgePushed: false,
         isAttemptingPull: false,
         isBeingPullReversaled: false,
         pullReversalPullerId: null,
@@ -6662,10 +6760,13 @@ io.on("connection", (socket) => {
         isReady: false,
         isHit: false,
         isAlreadyHit: false,
+        isParryKnockback: false,
         isDead: false,
         isBowing: false,
         facing: -1,
         stamina: 100,
+        isGassed: false,
+        gassedUntil: 0,
         x: 845,
         y: GROUND_LEVEL,
         knockbackVelocity: { x: 0, y: 0 },
@@ -6857,6 +6958,8 @@ io.on("connection", (socket) => {
       // New grab action system states
       isGrabPushing: false,
       isBeingGrabPushed: false,
+      isEdgePushing: false,
+      isBeingEdgePushed: false,
       isAttemptingPull: false,
       isBeingPullReversaled: false,
       pullReversalPullerId: null,
@@ -6906,10 +7009,13 @@ io.on("connection", (socket) => {
       isReady: false,
       isHit: false,
       isAlreadyHit: false,
+      isParryKnockback: false,
       isDead: false,
       isBowing: false,
       facing: 1,
       stamina: 100,
+      isGassed: false,
+      gassedUntil: 0,
       x: 220,
       y: GROUND_LEVEL,
       knockbackVelocity: { x: 0, y: 0 },
@@ -7638,6 +7744,8 @@ io.on("connection", (socket) => {
       }
 
       if (player.activePowerUp === POWER_UP_TYPES.SNOWBALL) {
+        // Snowball costs same stamina as a slap attack
+        player.stamina = Math.max(0, player.stamina - SLAP_ATTACK_STAMINA_COST);
         // Set throwing state
         player.isThrowingSnowball = true;
         // Lock actions during throw windup/animation window for visual clarity
@@ -7689,6 +7797,8 @@ io.on("connection", (socket) => {
           500
         );
       } else if (player.activePowerUp === POWER_UP_TYPES.PUMO_ARMY) {
+        // Pumo army costs same stamina as a charged attack
+        player.stamina = Math.max(0, player.stamina - CHARGED_ATTACK_STAMINA_COST);
         // Set spawning state
         player.isSpawningPumoArmy = true;
         player.currentAction = "pumo_army";
@@ -7768,7 +7878,7 @@ io.on("connection", (socket) => {
       !player.isBeingGrabbed && // Block dodge when being grabbed
       !isInChargedAttackExecution() && // Block during charged attack execution
       canPlayerDodge(player) &&
-      player.stamina >= DODGE_STAMINA_COST // Check if player has enough stamina to dodge
+      !player.isGassed
     ) {
       // Allow dodge to cancel recovery
       if (player.isRecovering) {
@@ -7877,7 +7987,7 @@ io.on("connection", (socket) => {
 
             // Execute the buffered action
             // CRITICAL: Block buffered dodge if player is being grabbed
-            if (action.type === "dodge" && player.stamina >= DODGE_STAMINA_COST && !player.isBeingGrabbed) {
+            if (action.type === "dodge" && !player.isGassed && !player.isBeingGrabbed) {
               // Clear parry success state when starting a dodge
               player.isRawParrySuccess = false;
               player.isPerfectRawParrySuccess = false;
@@ -7965,7 +8075,7 @@ io.on("connection", (socket) => {
       !player.isThrowingSnowball &&
       !player.isRawParrying &&
       !isInChargedAttackExecution() &&
-      player.stamina >= DODGE_STAMINA_COST
+      !player.isGassed
     ) {
       // Buffer the dodge action
       const dodgeDirection = player.keys.a
@@ -7983,12 +8093,12 @@ io.on("connection", (socket) => {
     }
     // Emit "No Stamina" feedback when player tries to dodge but doesn't have enough stamina
     else if (
-      player.shiftJustPressed && // Use just pressed to match dodge behavior
-      !player.keys.mouse2 && // Don't dodge while grabbing
+      player.shiftJustPressed &&
+      !player.keys.mouse2 &&
       !(player.keys.w && player.isGrabbing && !player.isBeingGrabbed) &&
-      canPlayerDodge(player) && // Use canPlayerDodge for consistency with dodge handler
-      player.stamina < DODGE_STAMINA_COST && // Not enough stamina
-      (!player.lastStaminaBlockedTime || Date.now() - player.lastStaminaBlockedTime > 500) // Rate limit to prevent spam
+      canPlayerDodge(player) &&
+      player.isGassed &&
+      (!player.lastStaminaBlockedTime || Date.now() - player.lastStaminaBlockedTime > 500)
     ) {
       player.lastStaminaBlockedTime = Date.now();
       socket.emit("stamina_blocked", { playerId: player.id, action: "dodge" });
@@ -8117,10 +8227,12 @@ io.on("connection", (socket) => {
 
       // Clear push states if transitioning from push (throw interrupts push)
       player.isGrabPushing = false;
+      player.isEdgePushing = false;
       player.isGrabWalking = false;
       const throwOpponent = rooms[roomIndex].players.find((p) => p.id !== player.id);
       if (throwOpponent) {
         throwOpponent.isBeingGrabPushed = false;
+        throwOpponent.isBeingEdgePushed = false;
         throwOpponent.lastGrabPushStaminaDrainTime = 0;
         // Reset opponent's counter state — they get a fresh read for each grab action
         throwOpponent.grabCounterAttempted = false;
@@ -8187,6 +8299,7 @@ io.on("connection", (socket) => {
               clearAllActionStates(opponent);
               opponent.isBeingGrabbed = false;
               opponent.isBeingGrabPushed = false;
+              opponent.isBeingEdgePushed = false;
               opponent.isBeingThrown = true;
               
               triggerHitstop(rooms[roomIndex], HITSTOP_THROW_MS);
@@ -8272,9 +8385,11 @@ io.on("connection", (socket) => {
 
         // Clear push states
         player.isGrabPushing = false;
+        player.isEdgePushing = false;
         const pullOpponent = rooms[roomIndex].players.find((p) => p.id !== player.id);
         if (pullOpponent) {
           pullOpponent.isBeingGrabPushed = false;
+          pullOpponent.isBeingEdgePushed = false;
           pullOpponent.lastGrabPushStaminaDrainTime = 0;
         }
 

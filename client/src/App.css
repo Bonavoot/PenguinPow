@@ -492,6 +492,26 @@ body {
     );
 }
 
+/* Danger vignette — red pulsing border when being edge-pushed at low stamina */
+.danger-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 999;
+  animation: danger-pulse ease-in-out infinite alternate;
+  background: radial-gradient(
+    ellipse at 50% 50%,
+    transparent 50%,
+    rgba(180, 0, 0, 0.15) 75%,
+    rgba(140, 0, 0, 0.55) 100%
+  );
+}
+
+@keyframes danger-pulse {
+  0% { opacity: var(--danger-lo, 0.35); }
+  100% { opacity: var(--danger-hi, 0.9); }
+}
+
 @media (min-aspect-ratio: 16/9) {
   .game-container {
     width: calc(100vh * 16 / 9);

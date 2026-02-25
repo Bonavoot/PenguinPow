@@ -122,6 +122,7 @@ import clashDefeatSound from "../sounds/clash-defeat-sound.wav";
 import roundVictorySound from "../sounds/round-victory-sound.mp3";
 import roundDefeatSound from "../sounds/round-defeat-sound.mp3";
 import strafingSound from "../sounds/strafing-sound.wav";
+import heartbeatSound from "../sounds/heartbeat.mp3";
 
 // crouchStance and crouchStrafing already imported above
 
@@ -279,6 +280,7 @@ preloadSounds([
   clap3Sound,
   clap4Sound,
   strafingSound,
+  heartbeatSound,
 ]);
 
 // Initialize image preloading
@@ -2786,6 +2788,8 @@ const GameFighter = ({
   const [parryEffectPosition, setParryEffectPosition] = useState(null);
   const [hitEffectPosition, setHitEffectPosition] = useState(null);
   const [rawParryEffectPosition, setRawParryEffectPosition] = useState(null);
+  const [p1ParryRefund, setP1ParryRefund] = useState(0);
+  const [p2ParryRefund, setP2ParryRefund] = useState(0);
   const [showStarStunEffect, setShowStarStunEffect] = useState(false);
   const [hasUsedPowerUp, setHasUsedPowerUp] = useState(false);
   const [countdown, setCountdown] = useState(15);
@@ -3567,6 +3571,12 @@ const GameFighter = ({
           playerNumber: data.playerNumber || 1,
         };
         setRawParryEffectPosition(effectData);
+        // Signal parry stamina refund to the HUD
+        if (data.playerNumber === 1) {
+          setP1ParryRefund(Date.now());
+        } else if (data.playerNumber === 2) {
+          setP2ParryRefund(Date.now());
+        }
         // Play different sounds for regular vs perfect parry
         if (data.isPerfect) {
           playSound(rawParrySuccessSound, 0.01);
@@ -4360,6 +4370,70 @@ const GameFighter = ({
     };
   }, [penguin.isStrafing]);
 
+  // Edge-push danger state for local player (vignette + heartbeat + shake)
+  const DANGER_STAMINA_THRESHOLD = 40;
+  const localEdgeData = index === 0
+    ? (isLocalPlayer ? allPlayersData.player1 : allPlayersData.player2)
+    : null;
+  const isLocalEdgePushed = !!localEdgeData?.isBeingEdgePushed;
+  const localEdgeStamina = localEdgeData?.stamina ?? 100;
+
+  // Heartbeat sound: plays single-beat mp3 repeatedly while edge-pushed.
+  // Speed ramps up as stamina drops below 50%. Beats never overlap — each
+  // plays to completion, then the next one uses the latest stamina to pick its speed.
+  const heartbeatTimeoutRef = useRef(null);
+  const heartbeatActiveRef = useRef(false);
+  const staminaRef = useRef(localEdgeStamina);
+  staminaRef.current = localEdgeStamina;
+
+  useEffect(() => {
+    const BEAT_VOL = 0.18;
+
+    // Above 50% stamina: 2x rate, 250ms gap
+    // At or below 50%:   3x rate, 30ms gap
+    const getBeatParams = () => {
+      const stamina = staminaRef.current;
+      if (stamina > 50) return { rate: 2.3, gap: 250 };
+      return { rate: 2.5, gap: 30 };
+    };
+
+    const scheduleBeat = () => {
+      if (!heartbeatActiveRef.current) return;
+      const { rate, gap } = getBeatParams();
+      const result = playBuffer(heartbeatSound, BEAT_VOL * getGlobalVolume(), null, rate);
+      const duration = (result?.source?.buffer?.duration ?? 0.4) / rate;
+      const delay = (duration * 1000) + gap;
+      heartbeatTimeoutRef.current = setTimeout(scheduleBeat, delay);
+    };
+
+    if (isLocalEdgePushed) {
+      heartbeatActiveRef.current = true;
+      scheduleBeat();
+    } else {
+      heartbeatActiveRef.current = false;
+      if (heartbeatTimeoutRef.current) {
+        clearTimeout(heartbeatTimeoutRef.current);
+        heartbeatTimeoutRef.current = null;
+      }
+    }
+    return () => {
+      heartbeatActiveRef.current = false;
+      if (heartbeatTimeoutRef.current) {
+        clearTimeout(heartbeatTimeoutRef.current);
+        heartbeatTimeoutRef.current = null;
+      }
+    };
+  }, [isLocalEdgePushed]);
+
+  // Screen shake on initial edge pin
+  const wasEdgePushedRef = useRef(false);
+  useEffect(() => {
+    if (isLocalEdgePushed && !wasEdgePushedRef.current) {
+      setScreenShake({ intensity: 2.0, duration: 120, startTime: Date.now() });
+    }
+    wasEdgePushedRef.current = isLocalEdgePushed;
+  }, [isLocalEdgePushed]);
+
   // Screen shake on dodge landing for satisfying impact feel
   useEffect(() => {
     if (penguin.justLandedFromDodge && !lastDodgeLandState.current) {
@@ -4423,6 +4497,14 @@ const GameFighter = ({
     }
     lastRawParryStunState.current = penguin.isRawParryStun;
   }, [penguin.isRawParryStun, penguin.id, player.id]);
+
+  const lastGassedState = useRef(false);
+  useEffect(() => {
+    if (penguin.isGassed && !lastGassedState.current && penguin.id === player.id) {
+      playSound(stunnedSound, 0.06);
+    }
+    lastGassedState.current = penguin.isGassed;
+  }, [penguin.isGassed, penguin.id, player.id]);
 
   const lastPerfectParryState = useRef(false);
   useEffect(() => {
@@ -4793,6 +4875,8 @@ const GameFighter = ({
                 player1PumoArmyCooldown={
                   allPlayersData.player1?.pumoArmyCooldown ?? false
                 }
+                player1IsGassed={allPlayersData.player1?.isGassed ?? false}
+                player1ParryRefund={p1ParryRefund}
                 player2Stamina={allPlayersData.player2?.stamina ?? 100}
                 player2ActivePowerUp={
                   allPlayersData.player2?.activePowerUp ?? null
@@ -4803,8 +4887,29 @@ const GameFighter = ({
                 player2PumoArmyCooldown={
                   allPlayersData.player2?.pumoArmyCooldown ?? false
                 }
+                player2IsGassed={allPlayersData.player2?.isGassed ?? false}
+                player2ParryRefund={p2ParryRefund}
               />
             )}
+            {index === 0 && isLocalEdgePushed && (() => {
+              const belowThreshold = localEdgeStamina <= DANGER_STAMINA_THRESHOLD;
+              const staminaRatio = belowThreshold
+                ? 1 - localEdgeStamina / DANGER_STAMINA_THRESHOLD
+                : 0;
+              return (
+                <div
+                  className="danger-vignette"
+                  style={{
+                    animationDuration: belowThreshold
+                      ? `${Math.max(0.25, 0.8 - staminaRatio * 0.55)}s`
+                      : '1.6s',
+                    '--danger-lo': belowThreshold ? 0.45 + staminaRatio * 0.2 : 0.28,
+                    '--danger-hi': belowThreshold ? 0.7 + staminaRatio * 0.25 : 0.5,
+                  }}
+                  aria-hidden="true"
+                />
+              );
+            })()}
             {gyojiCall && (
               <SumoGameAnnouncement type="tewotsuite" duration={2} />
             )}

@@ -19,7 +19,7 @@ const SLAP_HITBOX_DISTANCE_VALUE = Math.round(155 * 0.96);
 // Stamina drain constants
 const SLAP_ATTACK_STAMINA_COST = 3; // Small cost to not deter spamming
 const CHARGED_ATTACK_STAMINA_COST = 9; // 3x slap attack cost
-const DODGE_STAMINA_COST = 15; // 15% of max stamina per dodge
+const DODGE_STAMINA_COST = 7; // ~7% of max stamina per dodge
 
 // Add new function for grab state cleanup
 function cleanupGrabStates(player, opponent) {
@@ -39,6 +39,8 @@ function cleanupGrabStates(player, opponent) {
   // New grab action system cleanup - grabber
   player.isGrabPushing = false;
   player.isBeingGrabPushed = false;
+  player.isEdgePushing = false;
+  player.isBeingEdgePushed = false;
   player.isAttemptingPull = false;
   player.isBeingPullReversaled = false;
   player.pullReversalPullerId = null;
@@ -81,6 +83,8 @@ function cleanupGrabStates(player, opponent) {
   // New grab action system cleanup - opponent
   opponent.isGrabPushing = false;
   opponent.isBeingGrabPushed = false;
+  opponent.isEdgePushing = false;
+  opponent.isBeingEdgePushed = false;
   opponent.isAttemptingPull = false;
   opponent.isBeingPullReversaled = false;
   opponent.pullReversalPullerId = null;
@@ -1355,7 +1359,7 @@ function safelyEndChargedAttack(player, rooms) {
 
             // Execute the buffered action
             // CRITICAL: Block buffered dodge if player is being grabbed
-            if (action.type === "dodge" && player.stamina >= DODGE_STAMINA_COST && !player.isBeingGrabbed) {
+            if (action.type === "dodge" && !player.isGassed && !player.isBeingGrabbed) {
               // Clear movement momentum for static dodge distance
               player.movementVelocity = 0;
               player.isStrafing = false;

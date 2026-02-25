@@ -32,8 +32,8 @@ const AI_CONFIG = {
   DECISION_COOLDOWN: 120,  // Minimum time between major decisions
   
   // Stamina thresholds
-  GRAB_BREAK_STAMINA: 33,  // 33% of max stamina to attempt grab break
-  DODGE_STAMINA_COST: 15,  // 15% of max stamina per dodge
+  GRAB_BREAK_STAMINA: 10,  // Stamina cost for grab break (equal for both players)
+  DODGE_STAMINA_COST: 7,   // ~7% of max stamina per dodge
   LOW_STAMINA_THRESHOLD: 25, // Opponent considered low stamina
   
   // Movement
@@ -391,7 +391,7 @@ function canDodge(cpu) {
          !isOnCooldown &&
          !isInputLocked &&
          !isActionLocked &&
-         cpu.stamina >= AI_CONFIG.DODGE_STAMINA_COST;
+         !cpu.isGassed;
 }
 
 // Check if CPU can parry
@@ -1111,15 +1111,16 @@ function handleCommitment(cpu, human, aiState, currentTime, distance) {
   return false;
 }
 
-// === OVERHAULED: Handle grab decision with intelligent position/stamina awareness ===
-// Options:
-// 1. PUSH (forward): Can't be broken, just resisted. Good when opponent low stamina or near front boundary.
-// 2. THROW (W): Sends opponent behind CPU. Good when CPU's back is near boundary.
-// 3. PULL (backward): Switches sides, sends opponent other way. Good when back boundary is CLOSER than front.
+// === Handle grab decision with position-aware strategy ===
+// Push sends opponent toward the boundary CPU is facing.
+// Throw (W) sends opponent behind CPU. Pull (backward) switches sides.
+// Key rules:
+//   - If push would pin opponent at the front edge → ALWAYS push (never interrupt)
+//   - Only throw/pull if CPU's back is near the boundary (escape the edge)
+//   - In the middle → push (favored) or pull occasionally
 function handleGrabDecision(cpu, human, aiState, currentTime) {
   const cpuFacingLeft = cpu.facing === 1;
   
-  // Clear all keys first
   cpu.keys.a = false;
   cpu.keys.d = false;
   cpu.keys.w = false;
@@ -1129,92 +1130,55 @@ function handleGrabDecision(cpu, human, aiState, currentTime) {
   cpu.keys.mouse1 = false;
   cpu.keys.mouse2 = false;
   
-  // Don't override during active throw/pull attempts (those are committed)
   if (cpu.isAttemptingGrabThrow || cpu.isAttemptingPull) {
     return;
   }
   
   if (!cpu.grabStartTime) return;
   
-  const grabElapsed = currentTime - cpu.grabStartTime;
-  
-  // Push starts immediately in new system. AI decides whether to interrupt with pull/throw.
-  // Choose strategy once, then execute during push.
   if (!aiState.grabDecisionMade) {
     aiState.grabDecisionMade = true;
     
-    // === INTELLIGENT GRAB STRATEGY ===
     const distBehind = distanceToBehind(cpu);
     const distFront = distanceToFront(cpu);
-    const opponentStamina = human.stamina;
-    const opponentLow = opponentStamina < AI_CONFIG.LOW_STAMINA_THRESHOLD;
-    const opponentNearFrontEdge = distFront < 250;
-    const backIsCloser = distBehind < distFront;
-    const backVeryClose = distBehind < 150;
     
-    // Score each option — favor THROW (W) so CPU uses W grab action more, not just pull (A/D)
-    let pushScore = 22; // Safe default — can't be broken
-    let throwScore = 38; // W throw — higher base so CPU goes for it often
-    let pullScore = 28; // Pull (A/D backward) — still used but less than throw
+    const EDGE_PIN_THRESHOLD = 280;
+    const BACK_DANGER_THRESHOLD = 250;
     
-    // PUSH bonuses: low stamina or near front boundary
-    if (opponentLow) pushScore += 35;
-    else if (opponentStamina < 50) pushScore += 15;
-    if (opponentNearFrontEdge) pushScore += 20;
-    if (distFront < 150) pushScore += 15;
-    
-    // THROW (W) bonuses: back is close to boundary — strong incentive
-    if (backVeryClose) throwScore += 45;
-    else if (distBehind < 200) throwScore += 25;
-    else if (distBehind < 350) throwScore += 10;
-    
-    // THROW (W) — extra random so CPU uses W often (mix-up)
-    throwScore += randomInRange(0, 28);
-    
-    // PULL bonuses: back boundary closer than front (switching sides)
-    if (backIsCloser) {
-      pullScore += 18;
-      const ratio = distFront / Math.max(distBehind, 1);
-      if (ratio > 1.5) pullScore += 10;
-      if (ratio > 2.5) pullScore += 5;
-    }
-    
-    const nearCenter = Math.abs(cpu.x - MAP_CENTER) < MAP_WIDTH * 0.3;
-    if (nearCenter) pullScore += 8;
-    
-    pullScore += randomInRange(0, 14);
-    
-    // Add randomness (±10)
-    pushScore += randomInRange(-10, 10);
-    throwScore += randomInRange(-10, 10);
-    pullScore += randomInRange(-10, 10);
-    
-    // Aggression mode influence
-    const aggMult = getAggressionMultiplier(aiState);
-    pushScore *= aggMult.attack;
-    throwScore *= aggMult.grab;
-    pullScore *= aggMult.grab;
-    
-    // Pick highest scoring strategy
-    if (throwScore >= pushScore && throwScore >= pullScore) {
-      aiState.grabStrategy = 'throw';
-    } else if (pullScore >= pushScore && pullScore >= throwScore) {
-      aiState.grabStrategy = 'pull';
-    } else {
+    if (distFront < EDGE_PIN_THRESHOLD) {
+      // Push will pin opponent at the front edge — never interrupt, just let it ride
       aiState.grabStrategy = 'push';
+    } else if (distBehind < BACK_DANGER_THRESHOLD) {
+      // CPU's back is near the boundary — throw or pull to escape the edge
+      let throwScore = 50 + randomInRange(0, 20);
+      let pullScore = 40 + randomInRange(0, 20);
+      
+      if (distBehind < 150) throwScore += 15;
+      
+      const aggMult = getAggressionMultiplier(aiState);
+      throwScore *= aggMult.grab;
+      pullScore *= aggMult.grab;
+      
+      aiState.grabStrategy = throwScore >= pullScore ? 'throw' : 'pull';
+    } else {
+      // Middle of the map — push (favored) or pull as a mix-up
+      let pushScore = 55 + randomInRange(0, 20);
+      let pullScore = 30 + randomInRange(0, 20);
+      
+      const aggMult = getAggressionMultiplier(aiState);
+      pushScore *= aggMult.attack;
+      pullScore *= aggMult.grab;
+      
+      aiState.grabStrategy = pushScore >= pullScore ? 'push' : 'pull';
     }
     
-    // Small reaction delay for throw/pull to feel natural (~200-350ms into push)
     aiState.grabActionDelay = currentTime + randomInRange(200, 350);
   }
   
-  // Execute chosen strategy (with reaction delay for non-push actions)
   if (aiState.grabStrategy === 'push') {
-    // Push is already happening by default — do nothing
     return;
   }
   
-  // Wait for reaction delay before executing pull/throw interrupt
   if (currentTime < (aiState.grabActionDelay || 0)) {
     return;
   }
@@ -1222,7 +1186,6 @@ function handleGrabDecision(cpu, human, aiState, currentTime) {
   if (aiState.grabStrategy === 'throw') {
     cpu.keys.w = true;
   } else if (aiState.grabStrategy === 'pull') {
-    // Press backward key to interrupt push with pull
     const backwardKey = cpuFacingLeft ? 'd' : 'a';
     cpu.keys[backwardKey] = true;
   }
@@ -1730,7 +1693,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       !cpu.keys.mouse2 &&
       !shouldBlockAction() &&
       canPlayerUseAction(cpu) &&
-      cpu.stamina >= AI_CONFIG.DODGE_STAMINA_COST &&
+      !cpu.isGassed &&
       !cpu.isDodging) {
     
     cpu.movementVelocity = 0;

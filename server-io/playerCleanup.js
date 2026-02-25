@@ -24,6 +24,7 @@ function cleanupPlayerStates(player) {
   player.isAttacking = false;
   player.isHit = false;
   player.isAlreadyHit = false;
+  player.isParryKnockback = false;
   player.isDodging = false;
   player.isRawParrying = false;
   player.isRawParryStun = false;
@@ -139,6 +140,7 @@ function getCleanedRoomData(room) {
       isAttacking: false,
       isHit: false,
       isAlreadyHit: false,
+      isParryKnockback: false,
       isDodging: false,
       isRawParrying: false,
       isRawParryStun: false,
@@ -259,6 +261,7 @@ function getCleanedRoomsData(rooms) {
         isBeingThrown: false,
         isHit: false,
         isAlreadyHit: false,
+        isParryKnockback: false,
         isDead: false,
         isBowing: false,
         knockbackVelocity: { x: 0, y: 0 },
