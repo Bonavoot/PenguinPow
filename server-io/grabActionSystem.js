@@ -21,7 +21,7 @@ const {
 } = require("./gameUtils");
 
 const { correctFacingAfterGrabOrThrow, executeDirectionalGrabBreak, executeGrabSeparation } = require("./grabMechanics");
-const { activateBufferedInputAfterGrab, cleanupGrabStates, handleWinCondition } = require("./gameFunctions");
+const { cleanupGrabStates, handleWinCondition } = require("./gameFunctions");
 
 function updateGrabActions(player, room, io, delta, rooms) {
   // ============================================
@@ -74,8 +74,6 @@ function updateGrabActions(player, room, io, delta, rooms) {
         // Safety cap — force separation at max duration
         if (pushElapsed >= GRAB_PUSH_MAX_DURATION) {
           executeGrabSeparation(player, opponent, room, io);
-          activateBufferedInputAfterGrab(player, rooms);
-          activateBufferedInputAfterGrab(opponent, rooms);
           return;
         }
 
@@ -88,8 +86,6 @@ function updateGrabActions(player, room, io, delta, rooms) {
         // UNLESS pinned at boundary (let max duration + stamina drain handle that)
         if (currentPushSpeed < GRAB_PUSH_MIN_VELOCITY && pushElapsed > 200 && !player.isAtBoundaryDuringGrab) {
           executeGrabSeparation(player, opponent, room, io);
-          activateBufferedInputAfterGrab(player, rooms);
-          activateBufferedInputAfterGrab(opponent, rooms);
           return;
         }
 

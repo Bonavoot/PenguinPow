@@ -50,7 +50,7 @@ import RoundResult from "./RoundResult";
 import HitEffect from "./HitEffect";
 import RawParryEffect from "./RawParryEffect";
 import { getGlobalVolume } from "./Settings";
-import { playBuffer } from "../utils/audioEngine";
+import { playBuffer, createCrossfadeLoop } from "../utils/audioEngine";
 import SnowEffect from "./SnowEffect";
 import ThemeOverlay from "./ThemeOverlay";
 import "./theme.css";
@@ -110,6 +110,13 @@ import {
   ritualSpritesheetsPlayer2,
   ritualClapSounds,
   playSound,
+  slapHitSounds,
+  slapWhiffSounds,
+  chargedHitSounds,
+  grabHitSounds,
+  rawParrySounds,
+  pickRandomSound,
+  xToPan,
 } from "./fighterAssets";
 import getImageSrc from "./getImageSrc";
 import {
@@ -1429,10 +1436,7 @@ const GameFighter = ({
     }
 
     // Stop all music immediately
-    if (eeshiMusicRef.current) {
-      eeshiMusicRef.current.pause();
-      eeshiMusicRef.current.currentTime = 0;
-    }
+    stopEeshi();
     if (gameMusicRef.current) {
       gameMusicRef.current.pause();
       gameMusicRef.current.currentTime = 0;
@@ -1473,9 +1477,8 @@ const GameFighter = ({
 
   // Stop eeshi music when opponent disconnects
   useEffect(() => {
-    if (opponentDisconnected && eeshiMusicRef.current) {
-      eeshiMusicRef.current.pause();
-      eeshiMusicRef.current.currentTime = 0;
+    if (opponentDisconnected) {
+      stopEeshi();
     }
   }, [opponentDisconnected]);
 
@@ -1495,10 +1498,50 @@ const GameFighter = ({
   const lastWinnerState = useRef(false);
   const lastWinnerSoundPlay = useRef(0);
   const strafingSoundRef = useRef(null);
-  const lastHitSoundTime = useRef(0);
+  const lastPlayerHitTime = useRef(0);
+  const lastRawParryTime = useRef(0);
   const hitTintFramesRemaining = useRef(0); // Show hit tint for first N frames of isHit so red is visible (1 frame was too short)
   const gameMusicRef = useRef(null);
   const eeshiMusicRef = useRef(null);
+
+  const startEeshi = useCallback(() => {
+    if (eeshiMusicRef.current) return;
+    eeshiMusicRef.current = createCrossfadeLoop(eeshiMusic, 0.018 * getGlobalVolume(), 1.5);
+  }, []);
+
+  const stopEeshi = useCallback(() => {
+    if (eeshiMusicRef.current) {
+      eeshiMusicRef.current.stop();
+      eeshiMusicRef.current = null;
+    }
+  }, []);
+  const duckTimerRef = useRef(null);
+  const musicBaseVolume = useRef(0.029);
+
+  const duckMusic = useCallback((intensity = 0.3, durationMs = 400) => {
+    const music = gameMusicRef.current;
+    if (!music || music.paused) return;
+
+    if (duckTimerRef.current) cancelAnimationFrame(duckTimerRef.current);
+
+    const baseVol = musicBaseVolume.current;
+    const duckedVol = baseVol * intensity;
+    music.volume = duckedVol;
+
+    const startTime = performance.now();
+    const recover = (now) => {
+      const elapsed = now - startTime;
+      if (elapsed >= durationMs) {
+        music.volume = baseVol;
+        duckTimerRef.current = null;
+        return;
+      }
+      const t = elapsed / durationMs;
+      music.volume = duckedVol + (baseVol - duckedVol) * t * t;
+      duckTimerRef.current = requestAnimationFrame(recover);
+    };
+    duckTimerRef.current = requestAnimationFrame(recover);
+  }, []);
 
   // Add performance optimizations
   const frameRate = useRef(60);
@@ -1762,6 +1805,18 @@ const GameFighter = ({
 
     socket.on("player_hit", (data) => {
       if (data && typeof data.x === "number" && typeof data.y === "number") {
+        lastPlayerHitTime.current = Date.now();
+        if (index === 0) {
+          const pan = xToPan(data.x);
+          if (data.attackType === "slap") {
+            const sound = pickRandomSound(slapHitSounds);
+            playSound(sound.src, 0.045 * sound.vol, null, 1.0, pan);
+            duckMusic(0.4, 300);
+          } else {
+            playSound(pickRandomSound(chargedHitSounds), 0.045, null, 1.0, pan);
+            duckMusic(0.2, 500);
+          }
+        }
         setHitEffectPosition({
           x: data.x + 70,
           y: PLAYER_MID_Y,
@@ -1776,6 +1831,7 @@ const GameFighter = ({
     });
 
     socket.on("raw_parry_success", (data) => {
+      lastRawParryTime.current = Date.now();
       if (data && typeof data.parrierX === "number") {
         // Position effect in front of the parrying player (where a hit effect would appear)
         const facing = data.facing || 1;
@@ -1797,11 +1853,11 @@ const GameFighter = ({
         } else if (data.playerNumber === 2) {
           setP2ParryRefund(Date.now());
         }
-        // Play different sounds for regular vs perfect parry
+        const parryPan = xToPan(data.parrierX);
         if (data.isPerfect) {
-          playSound(rawParrySuccessSound, 0.01);
+          playSound(rawParrySuccessSound, 0.015, null, 1.0, parryPan);
         } else {
-          playSound(regularRawParrySound, 0.03);
+          playSound(regularRawParrySound, 0.04, null, 1.0, parryPan);
         }
       }
     });
@@ -1885,18 +1941,6 @@ const GameFighter = ({
         }
       });
 
-      // Snowball impact effect
-      socket.on("snowball_hit", (data) => {
-        if (data && typeof data.x === "number" && typeof data.y === "number") {
-          setSnowballImpactPosition({
-            x: data.x + 70,
-            y: data.y + 50,
-            facing: data.facing,
-            hitId: data.hitId || `snowball-${Date.now()}`,
-          });
-        }
-      });
-
       // Counter hit effect - when active frames hit opponent's startup frames
       socket.on("counter_hit", (data) => {
         if (data && typeof data.x === "number" && typeof data.y === "number") {
@@ -1927,6 +1971,22 @@ const GameFighter = ({
         }
       });
     }
+
+    // Snowball impact - listen on all components so both update lastPlayerHitTime
+    socket.on("snowball_hit", (data) => {
+      if (data && typeof data.x === "number" && typeof data.y === "number") {
+        lastPlayerHitTime.current = Date.now();
+        if (index === 0) {
+          playSound(hitSound, 0.02, null, 1.0, xToPan(data.x));
+        }
+        setSnowballImpactPosition({
+          x: data.x + 70,
+          y: data.y + 50,
+          facing: data.facing,
+          hitId: data.hitId || `snowball-${Date.now()}`,
+        });
+      }
+    });
 
     // Grab clash events - listen on ALL components so both players get the animation
     socket.on("grab_clash_start", () => {
@@ -2065,10 +2125,7 @@ const GameFighter = ({
       });
 
       // Handle music transition: eeshi -> game music
-      if (eeshiMusicRef.current) {
-        eeshiMusicRef.current.pause();
-        eeshiMusicRef.current.currentTime = 0;
-      }
+      stopEeshi();
       if (gameMusicRef.current) {
         gameMusicRef.current.loop = true;
         gameMusicRef.current.play().catch((e) => {
@@ -2152,13 +2209,8 @@ const GameFighter = ({
         gameMusicRef.current.pause();
         gameMusicRef.current.currentTime = 0;
       }
-      // Only restart eeshi music if opponent hasn't disconnected
-      if (!opponentDisconnected && eeshiMusicRef.current) {
-        eeshiMusicRef.current.loop = true;
-        eeshiMusicRef.current.play().catch((e) => {
-          if (e.name !== "AbortError")
-            console.error("Eeshi music play error:", e);
-        });
+      if (!opponentDisconnected) {
+        startEeshi();
       }
     });
 
@@ -2191,10 +2243,10 @@ const GameFighter = ({
         socket.off("grab_tech");
         socket.off("counter_grab");
         socket.off("punish_banner");
-        socket.off("snowball_hit");
         socket.off("stamina_blocked");
         socket.off("counter_hit"); // Fix: was missing cleanup
       }
+      socket.off("snowball_hit");
       socket.off("gyoji_call");
       socket.off("game_start");
       socket.off("game_reset");
@@ -2218,26 +2270,14 @@ const GameFighter = ({
   useEffect(() => {
     if (!gameMusicRef.current) {
       gameMusicRef.current = new Audio(gameMusic);
-      gameMusicRef.current.volume = 0.009;
+      gameMusicRef.current.volume = 0.029;
     }
-    if (!eeshiMusicRef.current) {
-      eeshiMusicRef.current = new Audio(eeshiMusic);
-      eeshiMusicRef.current.volume = 0.009;
-      eeshiMusicRef.current.loop = true;
-    }
-
     if (!opponentDisconnected) {
-      eeshiMusicRef.current.play().catch((e) => {
-        if (e.name !== "AbortError")
-          console.error("Eeshi music play error:", e);
-      });
+      startEeshi();
     }
 
     return () => {
-      if (eeshiMusicRef.current) {
-        eeshiMusicRef.current.pause();
-        eeshiMusicRef.current.currentTime = 0;
-      }
+      stopEeshi();
       if (gameMusicRef.current) {
         gameMusicRef.current.pause();
         gameMusicRef.current.currentTime = 0;
@@ -2263,37 +2303,22 @@ const GameFighter = ({
 
   // Separate effect for slap attack sounds based on slapAnimation changes
   useEffect(() => {
-    // Trigger sound whenever slapAnimation changes and player is slap attacking
     if (penguin.isSlapAttack && penguin.isAttacking) {
-      playSound(attackSound, 0.05);
+      playSound(pickRandomSound(slapWhiffSounds), 0.02, null, 1.0, xToPan(penguin.x));
     }
   }, [penguin.slapAnimation, penguin.isSlapAttack, penguin.isAttacking]);
 
   useEffect(() => {
-    // Play hit sound based on isHit state transitions (false -> true)
-    // This ensures hit sound plays exactly once per hit
-    const currentTime = Date.now();
-
-    // Use a consistent throttle time for all hit sounds
-    // The server already handles preventing multiple hits per attack
-    const throttleTime = 30; // Short throttle just to prevent audio glitches
-
-    // Only play sound if:
-    // 1. isHit is currently true
-    // 2. isHit was false in the previous frame (state transition)
-    // 3. Player is not being thrown
-    // 4. Appropriate time has passed since last hit sound (throttle)
+    const now = Date.now();
     if (
       penguin.isHit &&
       !lastHitState.current &&
       !penguin.isBeingThrown &&
-      currentTime - lastHitSoundTime.current > throttleTime
+      now - lastPlayerHitTime.current > 200 &&
+      now - lastRawParryTime.current > 200
     ) {
       playSound(hitSound, 0.02);
-      lastHitSoundTime.current = currentTime;
     }
-
-    // Update the previous state for next comparison
     lastHitState.current = penguin.isHit;
   }, [
     penguin.isHit,
@@ -2669,7 +2694,10 @@ const GameFighter = ({
 
   useEffect(() => {
     if (penguin.isGrabbing && !lastGrabState.current) {
-      playSound(grabSound, 0.03);
+      const pan = xToPan(penguin.x);
+      playSound(grabSound, 0.04, null, 1.0, pan);
+      playSound(pickRandomSound(grabHitSounds), 0.03, null, 1.0, pan);
+      duckMusic(0.25, 450);
     }
     lastGrabState.current = penguin.isGrabbing;
   }, [penguin.isGrabbing]);
@@ -2760,7 +2788,7 @@ const GameFighter = ({
 
   useEffect(() => {
     if (gyojiCall === "TE WO TSUITE!") {
-      playSound(teWoTsuiteSound, 0.2);
+      playSound(teWoTsuiteSound, 0.1);
     }
   }, [gyojiCall]);
 
@@ -2932,11 +2960,7 @@ const GameFighter = ({
   // Final cleanup effect - ensure all music stops when component unmounts
   useEffect(() => {
     return () => {
-      // This cleanup runs when the component unmounts for any reason
-      if (eeshiMusicRef.current) {
-        eeshiMusicRef.current.pause();
-        eeshiMusicRef.current.currentTime = 0;
-      }
+      stopEeshi();
       if (gameMusicRef.current) {
         gameMusicRef.current.pause();
         gameMusicRef.current.currentTime = 0;

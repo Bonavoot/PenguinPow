@@ -1397,7 +1397,8 @@ function safelyEndChargedAttack(player, rooms) {
 // that input activates on the first possible frame (like invincible reversals in fighting games).
 function activateBufferedInputAfterGrab(player, rooms) {
   if (player.isAtTheRopes || player.isThrowLanded || player.isHit ||
-      player.isGrabBreaking || player.isGrabBreakCountered || player.isGrabBreakSeparating) return;
+      player.isGrabBreaking || player.isGrabBreakCountered || player.isGrabBreakSeparating ||
+      player.isGrabSeparating) return;
 
   // Priority 0: Buffered dodge (spammed shift while grabbed/thrown)
   if (

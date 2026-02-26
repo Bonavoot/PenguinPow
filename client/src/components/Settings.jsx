@@ -378,7 +378,9 @@ Settings.propTypes = {
   onClose: PropTypes.func.isRequired,
 };
 
+const BASE_VOLUME_MULTIPLIER = 2.5;
+
 // Export the global volume getter
-export const getGlobalVolume = () => globalVolume;
+export const getGlobalVolume = () => globalVolume * BASE_VOLUME_MULTIPLIER;
 
 export default Settings;

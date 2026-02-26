@@ -19,7 +19,7 @@ preloadSounds([
 
 const updateBackgroundMusicVolume = () => {
   if (backgroundMusic) {
-    backgroundMusic.volume = 0.01 * getGlobalVolume(); // Reduced to 1% of global volume
+    backgroundMusic.volume = 0.009 * getGlobalVolume();
   }
 };
 
@@ -72,23 +72,23 @@ function stopVolumeSyncInterval() {
 }
 
 const playButtonHoverSound = () => {
-  playBuffer(buttonHoverSound, 0.1 * getGlobalVolume());
+  playBuffer(buttonHoverSound, 0.06 * getGlobalVolume());
 };
 
 const playButtonPressSound = () => {
-  playBuffer(buttonPressSound, 0.1 * getGlobalVolume());
+  playBuffer(buttonPressSound, 0.06 * getGlobalVolume());
 };
 
 const playButtonPressSound2 = () => {
-  playBuffer(buttonPressSound2, 0.2 * getGlobalVolume());
+  playBuffer(buttonPressSound2, 0.12 * getGlobalVolume());
 };
 
 const playPowerUpSelectionHoverSound = () => {
-  playBuffer(powerUpSelectionHoverSound, 0.1 * getGlobalVolume());
+  playBuffer(powerUpSelectionHoverSound, 0.06 * getGlobalVolume());
 };
 
 const playPowerUpSelectionPressSound = () => {
-  playBuffer(powerUpSelectionPressSound, 0.15 * getGlobalVolume());
+  playBuffer(powerUpSelectionPressSound, 0.09 * getGlobalVolume());
 };
 
 export {

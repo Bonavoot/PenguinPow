@@ -56,7 +56,7 @@ import hakkiyoiSound from "../sounds/hakkiyoi-sound.mp3";
 import teWoTsuiteSound from "../sounds/tewotsuite.wav";
 import bellSound from "../sounds/bell-sound.mp3";
 import gameMusic from "../sounds/game-music.mp3";
-import eeshiMusic from "../sounds/eeshi.mp3";
+import eeshiMusic from "../sounds/eeshi.wav";
 import slapParrySound from "../sounds/slap-parry-sound.mp3";
 import saltSound from "../sounds/salt-sound.mp3";
 import snowballThrowSound from "../sounds/snowball-throw-sound.mp3";
@@ -81,6 +81,24 @@ import clap1Sound from "../sounds/clap1-sound.wav";
 import clap2Sound from "../sounds/clap2-sound.mp3";
 import clap3Sound from "../sounds/clap3-sound.wav";
 import clap4Sound from "../sounds/clap4-sound.wav";
+import slapHit01 from "../sounds/slap-hit-01.wav";
+import slapHit02 from "../sounds/slap-hit-02.wav";
+import slapHit03 from "../sounds/slap-hit-03.wav";
+import slapHit04 from "../sounds/slap-hit-04.wav";
+import slapWhiff01 from "../sounds/slap-whiff-01.wav";
+import slapWhiff02 from "../sounds/slap-whiff-02.wav";
+import slapWhiff03 from "../sounds/slap-whiff-03.wav";
+import chargedHit01 from "../sounds/charged-hit-01.wav";
+import chargedHit02 from "../sounds/charged-hit-02.wav";
+import chargedHit03 from "../sounds/charged-hit-03.wav";
+import chargedHit04 from "../sounds/charged-hit-04.wav";
+import grabHit01 from "../sounds/grab-hit-01.wav";
+import grabHit02 from "../sounds/grab-hit-02.wav";
+import grabHit03 from "../sounds/grab-hit-03.wav";
+import rawParry01 from "../sounds/raw-parry-01.wav";
+import rawParry02 from "../sounds/raw-parry-02.wav";
+import rawParry03 from "../sounds/raw-parry-03.wav";
+
 
 // ============================================
 // PRELOAD-ONLY IMPORTS (not exported — consumed internally by preloading)
@@ -147,6 +165,18 @@ export const ritualSpritesheetsPlayer1 = RITUAL_SPRITE_CONFIG;
 export const ritualSpritesheetsPlayer2 = RITUAL_SPRITE_CONFIG;
 
 export const ritualClapSounds = [clap1Sound, clap2Sound, clap3Sound, clap4Sound];
+
+export const slapHitSounds = [
+  { src: slapHit01, vol: 1.0 },
+  { src: slapHit02, vol: 1.0 },
+  { src: slapHit03, vol: 1.75 },
+  { src: slapHit04, vol: 1.25 },
+];
+export const slapWhiffSounds = [slapWhiff01, slapWhiff02, slapWhiff03];
+export const chargedHitSounds = [chargedHit01, chargedHit02, chargedHit03, chargedHit04];
+export const grabHitSounds = [grabHit01, grabHit02, grabHit03];
+export const rawParrySounds = [rawParry01, rawParry02, rawParry03];
+export const pickRandomSound = (sounds) => sounds[Math.floor(Math.random() * sounds.length)];
 
 // ============================================
 // IMAGE PRELOADING
@@ -252,13 +282,42 @@ preloadSounds([
   clap4Sound,
   strafingSound,
   heartbeatSound,
+  slapHit01,
+  slapHit02,
+  slapHit03,
+  slapHit04,
+  slapWhiff01,
+  slapWhiff02,
+  slapWhiff03,
+  chargedHit01,
+  chargedHit02,
+  chargedHit03,
+  chargedHit04,
+  grabHit01,
+  grabHit02,
+  grabHit03,
+  rawParry01,
+  rawParry02,
+  rawParry03,
+  eeshiMusic,
 ]);
 
 // ============================================
 // SOUND PLAYBACK HELPER
 // ============================================
-export const playSound = (audioFile, volume = 1.0, duration = null, playbackRate = 1.0) => {
-  playBuffer(audioFile, volume * getGlobalVolume(), duration, playbackRate);
+const PITCH_VARIATION = 0.06;
+
+export const playSound = (audioFile, volume = 1.0, duration = null, playbackRate = 1.0, pan = 0) => {
+  playBuffer(audioFile, volume * getGlobalVolume(), duration, playbackRate, false, pan);
+};
+
+export const playSoundVaried = (audioFile, volume = 1.0, duration = null, playbackRate = 1.0, pan = 0) => {
+  const pitchShift = 1 + (Math.random() * 2 - 1) * PITCH_VARIATION;
+  playBuffer(audioFile, volume * getGlobalVolume(), duration, playbackRate * pitchShift, false, pan);
+};
+
+export const xToPan = (x, screenWidth = 1100) => {
+  return Math.max(-1, Math.min(1, ((x / screenWidth) * 2 - 1) * 0.6));
 };
 
 // ============================================

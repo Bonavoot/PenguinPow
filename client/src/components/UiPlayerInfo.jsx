@@ -707,16 +707,20 @@ const RegenGlow = styled.div.attrs((p) => ({
   animation: ${regenPulse} 0.8s ease-in-out infinite;
 `;
 
-/* Instant bright green flash overlay for parry stamina refund */
-const ParryRefundFlash = styled.div`
+/* Instant bright green flash overlay for parry stamina refund — sized to current fill */
+const ParryRefundFlash = styled.div.attrs((p) => ({
+  style: {
+    width: `calc(${p.$stamina}% - 4px)`,
+  },
+}))`
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  border-radius: 3px;
+  top: 2px;
+  bottom: 2px;
+  ${(p) => (p.$isRight ? "right: 2px;" : "left: 2px;")}
+  border-radius: 2px;
   z-index: 6;
   pointer-events: none;
+  transition: width 0.3s ease;
   background: linear-gradient(
     180deg,
     rgba(74, 255, 160, 0.5) 0%,
@@ -1541,7 +1545,11 @@ const UiPlayerInfo = ({
                 </GassedOverlay>
               )}
               {p1ParryFlash > 0 && !player1IsGassed && (
-                <ParryRefundFlash key={p1ParryFlash} />
+                <ParryRefundFlash
+                  key={p1ParryFlash}
+                  $stamina={p1DisplayStamina}
+                  $isRight={false}
+                />
               )}
               {p1Recovery > 0 && (
                 <RecoveryFlash key={`r1-${p1Recovery}`}>
@@ -1632,7 +1640,11 @@ const UiPlayerInfo = ({
                 </GassedOverlay>
               )}
               {p2ParryFlash > 0 && !player2IsGassed && (
-                <ParryRefundFlash key={p2ParryFlash} />
+                <ParryRefundFlash
+                  key={p2ParryFlash}
+                  $stamina={p2DisplayStamina}
+                  $isRight={true}
+                />
               )}
               {p2Recovery > 0 && (
                 <RecoveryFlash key={`r2-${p2Recovery}`}>

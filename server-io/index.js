@@ -1852,6 +1852,7 @@ function tick(delta) {
         !player.isGrabWhiffRecovery && // Block movement during grab whiff recovery (new)
         !player.isGrabTeching && // Block movement during grab tech
         !player.isGrabClashing && // Block movement during grab clashing
+        !player.isGrabSeparating && // Block movement during grab push separation
         ((!player.keys[" "] &&
           !(player.isAttacking && player.attackType === "charged") && // Block only during charged attack execution
           player.saltCooldown === false &&
@@ -2462,6 +2463,7 @@ function tick(delta) {
         !player.isGrabbingMovement &&
         !player.isWhiffingGrab &&
         !player.isGrabClashing &&
+        !player.isGrabSeparating &&
         !player.isThrowing &&
         !player.isBeingThrown &&
         !player.isRecovering &&
@@ -2500,6 +2502,7 @@ function tick(delta) {
         !player.isGrabBreaking && // Block raw parry while grab break is active
         !player.isGrabBreakCountered && // Block while countered by grab break
         !player.isGrabBreakSeparating && // Block during grab break separation
+        !player.isGrabSeparating && // Block during grab push separation
         !player.grabBreakSpaceConsumed && // Block until the triggering space press is released
         !player.isDodging && // Block raw parry during dodge - don't interrupt dodge hop
         !player.isGrabbing &&

@@ -140,6 +140,7 @@ function isPlayerInActiveState(player) {
     !player.isGrabBreaking &&
     !player.isGrabBreakCountered &&
     !player.isGrabBreakSeparating &&
+    !player.isGrabSeparating &&
     !player.isThrowingSalt &&
     !player.isThrowTeching &&
     !player.isSpawningPumoArmy &&
@@ -174,6 +175,7 @@ function isPlayerInBasicActiveState(player) {
     !player.isGrabBreakCountered &&
     !player.isGrabBreakSeparating &&
     !player.isGrabClashing &&
+    !player.isGrabSeparating &&
     // Other action states
     !player.isThrowingSalt &&
     !player.isThrowTeching &&
@@ -233,6 +235,7 @@ function canPlayerDodge(player) {
     !player.isGrabBreakCountered &&
     !player.isGrabBreakSeparating &&
     !player.isGrabClashing &&
+    !player.isGrabSeparating &&
     // Other action states
     !player.isThrowingSalt &&
     !player.isThrowTeching &&
