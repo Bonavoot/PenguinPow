@@ -240,6 +240,20 @@ const RAW_PARRY_STAMINA_REFUND = 5; // Full refund on successful parry (regular 
 const AT_THE_ROPES_DURATION = 1000; // 1 second stun duration
 
 // ============================================
+// Charge Clash (charged vs charged simultaneous collision)
+// ============================================
+const CHARGE_CLASH_RECOVERY_DURATION = 450; // Recovery duration after clash (slightly longer than normal charged recovery)
+const CHARGE_CLASH_BASE_KNOCKBACK = 2.8; // Base knockback for the lower-charge player
+const CHARGE_CLASH_MIN_KNOCKBACK = 1.4; // Minimum knockback even for the higher-charge player
+const CHARGE_CLASH_ADVANTAGE_SCALE = 0.5; // How much charge difference affects knockback asymmetry
+
+// ============================================
+// Slap vs Charged Attack Priority
+// ============================================
+const CHARGE_PRIORITY_THRESHOLD = 30; // Charge % above which charged attack beats slap
+const CHARGE_VS_SLAP_ATTACKER_PENALTY = 1.5; // Extra knockback multiplier on charged attacker when beating a slap
+
+// ============================================
 // Knockback Immunity
 // ============================================
 const KNOCKBACK_IMMUNITY_DURATION = 150; // 150ms immunity window
@@ -422,6 +436,16 @@ module.exports = {
 
   // At the ropes
   AT_THE_ROPES_DURATION,
+
+  // Charge clash
+  CHARGE_CLASH_RECOVERY_DURATION,
+  CHARGE_CLASH_BASE_KNOCKBACK,
+  CHARGE_CLASH_MIN_KNOCKBACK,
+  CHARGE_CLASH_ADVANTAGE_SCALE,
+
+  // Slap vs charged priority
+  CHARGE_PRIORITY_THRESHOLD,
+  CHARGE_VS_SLAP_ATTACKER_PENALTY,
 
   // Knockback immunity
   KNOCKBACK_IMMUNITY_DURATION,

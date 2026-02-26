@@ -9,8 +9,11 @@ const {
   PARRY_SUCCESS_DURATION,
   RAW_PARRY_KNOCKBACK, RAW_PARRY_SLAP_KNOCKBACK,
   RAW_PARRY_STAMINA_REFUND,
-  HITSTOP_SLAP_MS, HITSTOP_PARRY_MS,
+  HITSTOP_SLAP_MS, HITSTOP_PARRY_MS, HITSTOP_CHARGED_MIN_MS, HITSTOP_CHARGED_MAX_MS,
   SLAP_HIT_VICTIM_STAMINA_DRAIN, CHARGED_HIT_VICTIM_STAMINA_DRAIN,
+  CHARGE_CLASH_RECOVERY_DURATION, CHARGE_CLASH_BASE_KNOCKBACK,
+  CHARGE_CLASH_MIN_KNOCKBACK, CHARGE_CLASH_ADVANTAGE_SCALE,
+  CHARGE_PRIORITY_THRESHOLD, CHARGE_VS_SLAP_ATTACKER_PENALTY,
 } = require("./constants");
 
 const {
@@ -112,6 +115,25 @@ function checkCollision(player, otherPlayer, rooms, io) {
           return;
         }
       }
+
+      // Slap vs Charged: if opponent is executing a charged attack above the
+      // priority threshold AND their charged hitbox reaches us, defer to the
+      // charged branch (charged attack wins through with a graze penalty).
+      if (
+        otherPlayer.isAttacking &&
+        otherPlayer.attackType === "charged" &&
+        !otherPlayer.isInStartupFrames &&
+        (otherPlayer.chargeAttackPower || 0) >= CHARGE_PRIORITY_THRESHOLD
+      ) {
+        const chargedHitboxDist = HITBOX_DISTANCE_VALUE * (otherPlayer.sizeMultiplier || 1);
+        const dxFromCharged = player.x - otherPlayer.x;
+        const chargedAtkDir = otherPlayer.facing === 1 ? -1 : 1;
+        const inFrontOfCharged = dxFromCharged * chargedAtkDir >= 0;
+        if (inFrontOfCharged && Math.abs(dxFromCharged) < chargedHitboxDist) {
+          return; // Charged attack has priority — that branch will process the hit
+        }
+      }
+
       // First-to-active wins: if defender is in grab startup, timing determines winner
       if (otherPlayer.isGrabStartup && grabBeatsSlap(otherPlayer, player)) {
         return; // Grab wins — don't process slap hit, grab will connect
@@ -148,30 +170,46 @@ function checkCollision(player, otherPlayer, rooms, io) {
 
   if (isCollision && chargedOpponentInFront) {
     if (player.isAttacking && otherPlayer.isAttacking) {
-      // Check for thick blubber absorption in charge vs charge scenarios
-      const playerHasThickBlubber =
-        player.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
-        player.isAttacking &&
-        player.attackType === "charged" &&
-        !player.hitAbsorptionUsed;
+      if (otherPlayer.attackType === "charged") {
+        // === CHARGED vs CHARGED ===
+        // Check thick blubber first — one-sided blubber wins outright
+        const playerHasThickBlubber =
+          player.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
+          !player.hitAbsorptionUsed;
+        const otherPlayerHasThickBlubber =
+          otherPlayer.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
+          !otherPlayer.hitAbsorptionUsed;
 
-      const otherPlayerHasThickBlubber =
-        otherPlayer.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
-        otherPlayer.isAttacking &&
-        otherPlayer.attackType === "charged" &&
-        !otherPlayer.hitAbsorptionUsed;
-
-      if (playerHasThickBlubber && !otherPlayerHasThickBlubber) {
-        // Player has thick blubber, they win
-        processHit(player, otherPlayer, rooms, io);
-      } else if (otherPlayerHasThickBlubber && !playerHasThickBlubber) {
-        // Other player has thick blubber, they win
-        processHit(otherPlayer, player, rooms, io);
+        if (playerHasThickBlubber && !otherPlayerHasThickBlubber) {
+          processHit(player, otherPlayer, rooms, io);
+        } else if (otherPlayerHasThickBlubber && !playerHasThickBlubber) {
+          processHit(otherPlayer, player, rooms, io);
+        } else {
+          // Both or neither have thick blubber → charge clash
+          const currentRoom = rooms.find((room) =>
+            room.players.some((p) => p.id === player.id)
+          );
+          if (currentRoom) {
+            resolveChargeClash(
+              player, otherPlayer,
+              player.chargeAttackPower || 0,
+              otherPlayer.chargeAttackPower || 0,
+              currentRoom, io
+            );
+          }
+        }
+      } else if (otherPlayer.attackType === "slap") {
+        // === CHARGED vs SLAP ===
+        const chargeLevel = player.chargeAttackPower || 0;
+        if (chargeLevel >= CHARGE_PRIORITY_THRESHOLD) {
+          // Charged attack has priority — hit the slap player
+          processHit(player, otherPlayer, rooms, io);
+          // Slap graze penalty: amplify the charged attacker's recovery knockback
+          player.knockbackVelocity.x *= CHARGE_VS_SLAP_ATTACKER_PENALTY;
+        }
+        // Below threshold: skip — the slap branch handles it (slap wins)
       } else {
-        // Either both have thick blubber or neither do - use random selection
-        const winner = Math.random() < 0.5 ? player : otherPlayer;
-        const loser = winner === player ? otherPlayer : player;
-        processHit(winner, loser, rooms, io);
+        processHit(player, otherPlayer, rooms, io);
       }
     } else {
       processHit(player, otherPlayer, rooms, io);
@@ -208,6 +246,83 @@ function applyParryEffect(player, knockbackDirection) {
   // Give brief immunity to prevent hits right after parry
   // This lasts until the current slap attack would end
   player.slapParryImmunityUntil = Date.now() + 300;
+}
+
+function resolveChargeClash(player1, player2, p1Charge, p2Charge, room, io) {
+  const knockbackDir1 = player1.x < player2.x ? -1 : 1;
+  const knockbackDir2 = -knockbackDir1;
+
+  // Charge advantage: positive = player1 charged more, negative = player2 charged more
+  const chargeDiff = p1Charge - p2Charge;
+  const advantage = chargeDiff / 100; // -1 to 1
+
+  // Higher charge = less knockback (they "won" the clash positionally)
+  const p1Knockback = Math.max(
+    CHARGE_CLASH_MIN_KNOCKBACK,
+    CHARGE_CLASH_BASE_KNOCKBACK * (1 - advantage * CHARGE_CLASH_ADVANTAGE_SCALE)
+  );
+  const p2Knockback = Math.max(
+    CHARGE_CLASH_MIN_KNOCKBACK,
+    CHARGE_CLASH_BASE_KNOCKBACK * (1 + advantage * CHARGE_CLASH_ADVANTAGE_SCALE)
+  );
+
+  // Clear attack states for both players
+  [player1, player2].forEach((p) => {
+    p.isAttacking = false;
+    p.isChargingAttack = false;
+    p.chargeStartTime = 0;
+    p.chargeAttackPower = 0;
+    p.chargingFacingDirection = null;
+    p.attackType = null;
+    p.attackStartTime = 0;
+    p.attackEndTime = 0;
+    p.chargedAttackHit = false;
+    p.isSlapAttack = false;
+    p.isInStartupFrames = false;
+    p.startupEndTime = 0;
+
+    if (p.keys && p.keys.mouse1) {
+      p.mouse1HeldDuringAttack = true;
+      if (!p.mouse1PressTime) p.mouse1PressTime = Date.now();
+    }
+  });
+
+  // Put both in recovery (uses the charged-recovery animation)
+  player1.isRecovering = true;
+  player1.recoveryStartTime = Date.now();
+  player1.recoveryDuration = CHARGE_CLASH_RECOVERY_DURATION;
+  player1.recoveryDirection = player1.facing;
+  player1.knockbackVelocity = { x: p1Knockback * knockbackDir1, y: 0 };
+  player1.movementVelocity = p1Knockback * knockbackDir1 * 0.5;
+  player1.actionLockUntil = Date.now() + CHARGE_CLASH_RECOVERY_DURATION;
+  player1.attackCooldownUntil = Date.now() + CHARGE_CLASH_RECOVERY_DURATION + 150;
+
+  player2.isRecovering = true;
+  player2.recoveryStartTime = Date.now();
+  player2.recoveryDuration = CHARGE_CLASH_RECOVERY_DURATION;
+  player2.recoveryDirection = player2.facing;
+  player2.knockbackVelocity = { x: p2Knockback * knockbackDir2, y: 0 };
+  player2.movementVelocity = p2Knockback * knockbackDir2 * 0.5;
+  player2.actionLockUntil = Date.now() + CHARGE_CLASH_RECOVERY_DURATION;
+  player2.attackCooldownUntil = Date.now() + CHARGE_CLASH_RECOVERY_DURATION + 150;
+
+  // Hitstop + screen shake scaled to combined charge power
+  const combinedCharge = (p1Charge + p2Charge) / 200; // 0-1 range
+  const hitstopMs = HITSTOP_CHARGED_MIN_MS + (HITSTOP_CHARGED_MAX_MS - HITSTOP_CHARGED_MIN_MS) * combinedCharge;
+  triggerHitstop(room, hitstopMs);
+  emitThrottledScreenShake(room, io, {
+    intensity: 0.8 + combinedCharge * 0.5,
+    duration: 250 + combinedCharge * 200,
+  });
+
+  // Emit charge clash VFX event
+  const midpointX = (player1.x + player2.x) / 2;
+  const midpointY = (player1.y + player2.y) / 2;
+  io.in(room.id).emit("charge_clash", {
+    x: midpointX,
+    y: midpointY,
+    combinedCharge: p1Charge + p2Charge,
+  });
 }
 
 function processHit(player, otherPlayer, rooms, io) {
@@ -954,4 +1069,4 @@ function processHit(player, otherPlayer, rooms, io) {
   }
 }
 
-module.exports = { checkCollision, processHit, resolveSlapParry, applyParryEffect };
+module.exports = { checkCollision, processHit, resolveSlapParry, applyParryEffect, resolveChargeClash };

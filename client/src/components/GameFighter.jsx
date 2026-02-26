@@ -19,6 +19,7 @@ import PlayerShadow from "./PlayerShadow";
 import ThrowTechEffect from "./ThrowTechEffect";
 import PowerMeter from "./PowerMeter";
 import SlapParryEffect from "./SlapParryEffect";
+import ChargeClashEffect from "./ChargeClashEffect";
 import { useParticles } from "../particles/ParticleContext";
 import StarStunEffect from "./StarStunEffect";
 import ThickBlubberEffect from "./ThickBlubberEffect";
@@ -110,6 +111,7 @@ import {
   ritualSpritesheetsPlayer2,
   ritualClapSounds,
   playSound,
+  playSoundVaried,
   slapHitSounds,
   slapWhiffSounds,
   chargedHitSounds,
@@ -996,6 +998,7 @@ const GameFighter = ({
   const [roundHistory, setRoundHistory] = useState([]); // Track order of wins: ["player1", "player2", "player1", ...]
   const [matchOver, setMatchOver] = useState(false);
   const [parryEffectPosition, setParryEffectPosition] = useState(null);
+  const [chargeClashEffectPosition, setChargeClashEffectPosition] = useState(null);
   const [hitEffectPosition, setHitEffectPosition] = useState(null);
   const [rawParryEffectPosition, setRawParryEffectPosition] = useState(null);
   const [p1ParryRefund, setP1ParryRefund] = useState(0);
@@ -1803,14 +1806,31 @@ const GameFighter = ({
       }
     });
 
+    socket.on("charge_clash", (data) => {
+      if (
+        data &&
+        typeof data.x === "number" &&
+        typeof data.y === "number"
+      ) {
+        setChargeClashEffectPosition({
+          x: data.x + SPRITE_HALF_W,
+          y: PLAYER_MID_Y,
+        });
+        if (index === 0) {
+          const pan = xToPan(data.x);
+          playSound(pickRandomSound(chargedHitSounds), 0.04, null, 0.8, pan);
+          duckMusic(0.3, 400);
+        }
+      }
+    });
+
     socket.on("player_hit", (data) => {
       if (data && typeof data.x === "number" && typeof data.y === "number") {
         lastPlayerHitTime.current = Date.now();
         if (index === 0) {
           const pan = xToPan(data.x);
           if (data.attackType === "slap") {
-            const sound = pickRandomSound(slapHitSounds);
-            playSound(sound.src, 0.045 * sound.vol, null, 1.0, pan);
+            playSoundVaried(pickRandomSound(slapHitSounds), 0.045, null, 1.0, pan);
             duckMusic(0.4, 300);
           } else {
             playSound(pickRandomSound(chargedHitSounds), 0.045, null, 1.0, pan);
@@ -2052,6 +2072,7 @@ const GameFighter = ({
       setHasUsedPowerUp(false);
       setGyojiCall(null); // Clear gyoji call
       setRawParryEffectPosition(null); // Clear any active parry effects
+      setChargeClashEffectPosition(null); // Clear any active charge clash effects
       setNoStaminaEffectKey(0); // Clear "No Stamina" effect on round reset
       setIsGrabClashActive(false); // Reset grab clash state
       onResetDisconnectState(); // Reset opponent disconnected state for new games
@@ -2093,6 +2114,7 @@ const GameFighter = ({
       setGyojiCall(null); // Clear any lingering gyoji call
       setHakkiyoi(true);
       setRawParryEffectPosition(null); // Clear any leftover parry effects
+      setChargeClashEffectPosition(null); // Clear any leftover charge clash effects
       // Clear stale predictions to prevent phantom charge at round start
       predictedState.current = {
         isSlapAttack: false,
@@ -2235,6 +2257,7 @@ const GameFighter = ({
     return () => {
       socket.off("fighter_action");
       socket.off("slap_parry");
+      socket.off("charge_clash");
       socket.off("player_hit");
       socket.off("raw_parry_success");
       socket.off("perfect_parry");
@@ -3418,6 +3441,7 @@ const GameFighter = ({
         slapAnimation={penguin.slapAnimation}
       />
       <SlapParryEffect position={parryEffectPosition} />
+      <ChargeClashEffect position={chargeClashEffectPosition} />
       <HitEffect position={hitEffectPosition} />
       <RawParryEffect position={rawParryEffectPosition} />
       <GrabBreakEffect position={grabBreakEffectPosition} />

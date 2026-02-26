@@ -84,7 +84,7 @@ import clap4Sound from "../sounds/clap4-sound.wav";
 import slapHit01 from "../sounds/slap-hit-01.wav";
 import slapHit02 from "../sounds/slap-hit-02.wav";
 import slapHit03 from "../sounds/slap-hit-03.wav";
-import slapHit04 from "../sounds/slap-hit-04.wav";
+
 import slapWhiff01 from "../sounds/slap-whiff-01.wav";
 import slapWhiff02 from "../sounds/slap-whiff-02.wav";
 import slapWhiff03 from "../sounds/slap-whiff-03.wav";
@@ -166,12 +166,7 @@ export const ritualSpritesheetsPlayer2 = RITUAL_SPRITE_CONFIG;
 
 export const ritualClapSounds = [clap1Sound, clap2Sound, clap3Sound, clap4Sound];
 
-export const slapHitSounds = [
-  { src: slapHit01, vol: 1.0 },
-  { src: slapHit02, vol: 1.0 },
-  { src: slapHit03, vol: 1.75 },
-  { src: slapHit04, vol: 1.25 },
-];
+export const slapHitSounds = [slapHit01, slapHit02, slapHit03];
 export const slapWhiffSounds = [slapWhiff01, slapWhiff02, slapWhiff03];
 export const chargedHitSounds = [chargedHit01, chargedHit02, chargedHit03, chargedHit04];
 export const grabHitSounds = [grabHit01, grabHit02, grabHit03];
@@ -285,7 +280,6 @@ preloadSounds([
   slapHit01,
   slapHit02,
   slapHit03,
-  slapHit04,
   slapWhiff01,
   slapWhiff02,
   slapWhiff03,
