@@ -1,5 +1,5 @@
 const {
-  GRAB_STATES, GROUND_LEVEL,
+  GRAB_STATES, GROUND_LEVEL, TICK_RATE, speedFactor,
   HITBOX_DISTANCE_VALUE, SLAP_HITBOX_DISTANCE_VALUE,
   SLAP_PARRY_WINDOW,
   DOHYO_FALL_DEPTH,
@@ -14,6 +14,13 @@ const {
   CHARGE_CLASH_RECOVERY_DURATION, CHARGE_CLASH_BASE_KNOCKBACK,
   CHARGE_CLASH_MIN_KNOCKBACK, CHARGE_CLASH_ADVANTAGE_SCALE,
   CHARGE_PRIORITY_THRESHOLD, CHARGE_VS_SLAP_ATTACKER_PENALTY,
+  CINEMATIC_KILL_MIN_MULTIPLIER,
+  CINEMATIC_KILL_HITSTOP_MS,
+  CINEMATIC_KILL_KNOCKBACK_BOOST,
+  CINEMATIC_KB_FRICTION,
+  CINEMATIC_KB_DI_FRICTION,
+  CINEMATIC_KB_MOVEMENT_TRANSFER,
+  CINEMATIC_KB_MOVEMENT_FRICTION,
 } = require("./constants");
 
 const {
@@ -25,11 +32,34 @@ const {
   setKnockbackImmunity,
   getChargedHitstop,
   timeoutManager,
+  MAP_LEFT_BOUNDARY,
+  MAP_RIGHT_BOUNDARY,
   DOHYO_LEFT_BOUNDARY,
   DOHYO_RIGHT_BOUNDARY,
 } = require("./gameUtils");
 
 const { grabBeatsSlap } = require("./combatHelpers");
+
+const SIM_DELTA = 1000 / TICK_RATE;
+
+function willGuaranteeRingOut(victimX, knockbackDir, finalMultiplier) {
+  let kbVel = 1.7 * knockbackDir * finalMultiplier;
+  let mvVel = 1.2 * knockbackDir * finalMultiplier;
+  let x = victimX;
+
+  for (let i = 0; i < 300; i++) {
+    kbVel *= CINEMATIC_KB_FRICTION;
+    kbVel *= CINEMATIC_KB_DI_FRICTION;
+    mvVel = kbVel * CINEMATIC_KB_MOVEMENT_TRANSFER;
+    mvVel *= CINEMATIC_KB_MOVEMENT_FRICTION;
+
+    x += SIM_DELTA * speedFactor * (kbVel + mvVel);
+
+    if (x <= MAP_LEFT_BOUNDARY || x >= MAP_RIGHT_BOUNDARY) return true;
+    if (Math.abs(kbVel) < 0.01 && Math.abs(mvVel) < 0.01) break;
+  }
+  return false;
+}
 
 function checkCollision(player, otherPlayer, rooms, io) {
   // Reset isAlreadyHit only once per attack to allow exactly one hit per attack
@@ -527,8 +557,9 @@ function processHit(player, otherPlayer, rooms, io) {
       otherPlayer.isPerfectRawParrySuccess = true;
       otherPlayer.inputLockUntil = Math.max(otherPlayer.inputLockUntil || 0, Date.now() + PERFECT_PARRY_ANIMATION_LOCK);
     } else {
-      // Regular parry: success animation
+      // Regular parry: success animation + allow early exit (reward the correct read)
       otherPlayer.isRawParrySuccess = true;
+      otherPlayer.rawParryMinDurationMet = true;
     }
 
     // Emit raw parry success event for visual effect
@@ -870,6 +901,8 @@ function processHit(player, otherPlayer, rooms, io) {
       }
     }
 
+    let isCinematicKill = false;
+
     if (canApplyKnockback(otherPlayer)) {
       if (isSlapAttack) {
         // For slap attacks, use consistent knockback regardless of distance
@@ -915,20 +948,39 @@ function processHit(player, otherPlayer, rooms, io) {
         otherPlayer.knockbackVelocity.x = 0;
         otherPlayer.movementVelocity = 0;
 
+        // Cinematic kill: guaranteed ring-out from a heavy charged hit
+        isCinematicKill =
+          finalKnockbackMultiplier >= CINEMATIC_KILL_MIN_MULTIPLIER &&
+          willGuaranteeRingOut(otherPlayer.x, knockbackDirection, finalKnockbackMultiplier);
+
+        if (isCinematicKill) {
+          otherPlayer.isCinematicKillVictim = true;
+
+          // Snap victim right next to attacker so the freeze catches them touching
+          const touchOffset = 45 * (player.facing === 1 ? 1 : -1);
+          otherPlayer.x = player.x - touchOffset;
+        }
+
+        const kbBoost = isCinematicKill ? CINEMATIC_KILL_KNOCKBACK_BOOST : 1;
+
         // For charged attacks, use a combination of immediate knockback and sliding
         const immediateKnockback =
-          1.7 * knockbackDirection * finalKnockbackMultiplier;
+          1.7 * knockbackDirection * finalKnockbackMultiplier * kbBoost;
         otherPlayer.movementVelocity =
-          1.2 * knockbackDirection * finalKnockbackMultiplier;
+          1.2 * knockbackDirection * finalKnockbackMultiplier * kbBoost;
         otherPlayer.knockbackVelocity.x = immediateKnockback;
 
         // Calculate attacker bounce-off based on charge percentage
         const attackerBounceDirection = -knockbackDirection;
         const attackerBounceMultiplier = 0.3 + (chargePercentage / 100) * 0.5;
 
-        // Set movement velocity for the attacker to create bounce-off effect
-        player.movementVelocity =
-          2 * attackerBounceDirection * attackerBounceMultiplier;
+        if (isCinematicKill) {
+          // Attacker stays planted during cinematic — no bounce
+          player.movementVelocity = 0;
+        } else {
+          player.movementVelocity =
+            2 * attackerBounceDirection * attackerBounceMultiplier;
+        }
         player.knockbackVelocity = { x: 0, y: 0 };
 
       }
@@ -943,10 +995,12 @@ function processHit(player, otherPlayer, rooms, io) {
           y: otherPlayer.y,
           facing: otherPlayer.facing,
           attackType: isSlapAttack ? "slap" : "charged",
-          timestamp: Date.now(), // Add unique timestamp to ensure effect triggers every time
-          hitId: Math.random().toString(36).substr(2, 9), // Add unique ID for guaranteed uniqueness
-          isCounterHit: isCounterHit, // Counter hit for yellow/gold effect
-          isPunish: isPunish, // Punish for purple effect (hit during recovery)
+          timestamp: Date.now(),
+          hitId: Math.random().toString(36).substr(2, 9),
+          isCounterHit: isCounterHit,
+          isPunish: isPunish,
+          cinematicKill: isCinematicKill || false,
+          knockbackDirection: knockbackDirection,
         });
 
         // Emit counter hit banner event (separate from hit effect for side banner display)
@@ -1003,13 +1057,29 @@ function processHit(player, otherPlayer, rooms, io) {
           });
         } else {
           // Charged attacks scale hitstop with charge power
-          const hitstopDuration = getChargedHitstop(chargePercentage / 100);
+          const hitstopDuration = isCinematicKill
+            ? CINEMATIC_KILL_HITSTOP_MS
+            : getChargedHitstop(chargePercentage / 100);
           triggerHitstop(currentRoom, hitstopDuration);
-          // Heavy screen shake for charged attacks - scales with power (throttled)
-          emitThrottledScreenShake(currentRoom, io, {
-            intensity: 0.9 + (chargePercentage / 100) * 0.4,
-            duration: 220 + (chargePercentage / 100) * 180,
-          });
+
+          if (isCinematicKill) {
+            io.in(currentRoom.id).emit("cinematic_kill", {
+              victimId: otherPlayer.id,
+              victimX: otherPlayer.x,
+              victimY: otherPlayer.y,
+              attackerX: player.x,
+              attackerY: player.y,
+              knockbackDirection: knockbackDirection,
+              hitstopMs: CINEMATIC_KILL_HITSTOP_MS,
+              impactX: (player.x + otherPlayer.x) / 2,
+              impactY: otherPlayer.y,
+            });
+          } else {
+            emitThrottledScreenShake(currentRoom, io, {
+              intensity: 0.9 + (chargePercentage / 100) * 0.4,
+              duration: 220 + (chargePercentage / 100) * 180,
+            });
+          }
         }
       }
     }
@@ -1025,10 +1095,12 @@ function processHit(player, otherPlayer, rooms, io) {
     // Slap stun bumped to 260ms to account for 130ms hitstop eating into the timer.
     // This ensures ~130ms of VISIBLE stun after the freeze ends.
     let hitStateDuration = isSlapAttack ? 260 : 380;
-    if (isCounterHit) {
+    if (isCinematicKill) {
+      hitStateDuration = 3000;
+    } else if (isCounterHit) {
       hitStateDuration = Math.round(hitStateDuration * 1.4);
     }
-    if (isPunish) {
+    if (isPunish && !isCinematicKill) {
       hitStateDuration = Math.round(hitStateDuration * 1.5);
     }
 

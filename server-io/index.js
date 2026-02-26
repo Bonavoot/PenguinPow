@@ -34,7 +34,7 @@ const {
   GRAB_BREAK_STAMINA_COST, GRAB_BREAK_PUSH_VELOCITY, GRAB_BREAK_FORCED_DISTANCE,
   GRAB_BREAK_TWEEN_DURATION, GRAB_BREAK_RESIDUAL_VEL,
   GRAB_BREAK_INPUT_LOCK_MS, GRAB_BREAK_ACTION_LOCK_MS,
-  RAW_PARRY_STAMINA_COST, PULL_BOUNDARY_MARGIN,
+  RAW_PARRY_STAMINA_COST, RAW_PARRY_MIN_DURATION, PULL_BOUNDARY_MARGIN,
   AT_THE_ROPES_DURATION,
   KNOCKBACK_IMMUNITY_DURATION,
   STAMINA_REGEN_INTERVAL_MS, STAMINA_REGEN_AMOUNT,
@@ -747,8 +747,8 @@ function tick(delta) {
           // Check if player is past map boundaries (for reduced friction after ring-out)
           const isPastMapBoundaries = player.x < MAP_LEFT_BOUNDARY || player.x > MAP_RIGHT_BOUNDARY;
           
-          // Fast heavy drop when outside dohyo
-          if (isOutsideDohyo && !player.isFallingOffDohyo) {
+          // Cinematic kill victims stay at ground level — no dohyo fall
+          if (isOutsideDohyo && !player.isFallingOffDohyo && !player.isCinematicKillVictim) {
             player.isFallingOffDohyo = true;
           }
 
@@ -2562,8 +2562,8 @@ function tick(delta) {
 
         const parryDuration = Date.now() - player.rawParryStartTime;
 
-        // Check if minimum duration has been met
-        if (parryDuration >= 375) {
+        // Check if minimum duration has been met (whiffed parries use full commitment)
+        if (parryDuration >= RAW_PARRY_MIN_DURATION) {
           player.rawParryMinDurationMet = true;
         }
 
@@ -2573,6 +2573,7 @@ function tick(delta) {
           player.isRawParrying = false;
           player.rawParryStartTime = 0;
           player.rawParryMinDurationMet = false;
+          player.isRawParrySuccess = false;
           // Space released - clear grab-break consumption so future parries can occur
           player.grabBreakSpaceConsumed = false;
 

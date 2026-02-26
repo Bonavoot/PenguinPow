@@ -256,6 +256,7 @@ const GrabTechEffect = ({ position }) => {
   const [activeEffects, setActiveEffects] = useState([]);
   const processedTechsRef = useRef(new Set());
   const effectIdCounter = useRef(0);
+  const pendingTimeouts = useRef([]);
   const EFFECT_DURATION = 1600;
 
   const generateSparks = () => {
@@ -299,14 +300,17 @@ const GrabTechEffect = ({ position }) => {
 
     setActiveEffects((prev) => [...prev, newEffect]);
 
-    setTimeout(() => {
+    const tid = setTimeout(() => {
       setActiveEffects((prev) => prev.filter((e) => e.id !== effectId));
       processedTechsRef.current.delete(position.techId);
     }, EFFECT_DURATION);
+    pendingTimeouts.current.push(tid);
   }, [position?.techId, position?.x, position?.y, position?.facing]);
 
   useEffect(() => {
     return () => {
+      pendingTimeouts.current.forEach(clearTimeout);
+      pendingTimeouts.current = [];
       setActiveEffects([]);
     };
   }, []);

@@ -30,6 +30,7 @@ const ThrowTechEffect = () => {
 
   const lastTechTime = useRef(0);
   const wasTeching = useRef(false);
+  const hideTimeout = useRef(null);
 
   useEffect(() => {
     const handleFighterAction = (data) => {
@@ -53,8 +54,8 @@ const ThrowTechEffect = () => {
 
         lastTechTime.current = currentTime;
 
-        // Increased duration for better visibility
-        setTimeout(() => {
+        if (hideTimeout.current) clearTimeout(hideTimeout.current);
+        hideTimeout.current = setTimeout(() => {
           setEffectState((prev) => ({ ...prev, isVisible: false }));
         }, 400);
       }
@@ -66,6 +67,7 @@ const ThrowTechEffect = () => {
 
     return () => {
       socket.off("fighter_action", handleFighterAction);
+      if (hideTimeout.current) clearTimeout(hideTimeout.current);
     };
   }, [socket]);
 

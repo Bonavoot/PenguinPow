@@ -46,6 +46,7 @@ const PumoCloneSpawnEffect = ({ clones, lastCloneCount, player1Color, player2Col
   const [activeEffects, setActiveEffects] = useState([]);
   const processedClonesRef = useRef(new Set());
   const effectIdCounter = useRef(0);
+  const pendingTimeouts = useRef([]);
   const EFFECT_DURATION = 450;
 
   useEffect(() => {
@@ -54,7 +55,6 @@ const PumoCloneSpawnEffect = ({ clones, lastCloneCount, player1Color, player2Col
       return;
     }
 
-    // Find new clones that haven't been processed yet
     clones.forEach((clone) => {
       if (!processedClonesRef.current.has(clone.id)) {
         processedClonesRef.current.add(clone.id);
@@ -69,15 +69,18 @@ const PumoCloneSpawnEffect = ({ clones, lastCloneCount, player1Color, player2Col
 
         setActiveEffects((prev) => [...prev, newEffect]);
 
-        setTimeout(() => {
+        const tid = setTimeout(() => {
           setActiveEffects((prev) => prev.filter((e) => e.id !== effectId));
         }, EFFECT_DURATION);
+        pendingTimeouts.current.push(tid);
       }
     });
   }, [clones]);
 
   useEffect(() => {
     return () => {
+      pendingTimeouts.current.forEach(clearTimeout);
+      pendingTimeouts.current = [];
       setActiveEffects([]);
     };
   }, []);

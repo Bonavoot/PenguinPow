@@ -103,6 +103,7 @@ const SnowballImpactEffect = ({ position }) => {
   const [activeEffects, setActiveEffects] = useState([]);
   const processedHitsRef = useRef(new Set());
   const effectIdCounter = useRef(0);
+  const pendingTimeouts = useRef([]);
   const EFFECT_DURATION = 450;
 
   // Generate snowflake particles - reduced count for performance
@@ -147,14 +148,17 @@ const SnowballImpactEffect = ({ position }) => {
 
     setActiveEffects((prev) => [...prev, newEffect]);
 
-    setTimeout(() => {
+    const tid = setTimeout(() => {
       setActiveEffects((prev) => prev.filter((e) => e.id !== effectId));
       processedHitsRef.current.delete(position.hitId);
     }, EFFECT_DURATION);
+    pendingTimeouts.current.push(tid);
   }, [position?.hitId, position?.x, position?.y, position?.facing]);
 
   useEffect(() => {
     return () => {
+      pendingTimeouts.current.forEach(clearTimeout);
+      pendingTimeouts.current = [];
       setActiveEffects([]);
     };
   }, []);

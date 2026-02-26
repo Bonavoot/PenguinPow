@@ -2,7 +2,7 @@ const {
   GROUND_LEVEL, DOHYO_FALL_DEPTH, DOHYO_FALL_SPEED,
   speedFactor,
   POWER_UP_TYPES,
-  PERFECT_PARRY_WINDOW, PERFECT_PARRY_ANIMATION_LOCK,
+  PERFECT_PARRY_WINDOW, PERFECT_PARRY_ANIMATION_LOCK, PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK,
   RAW_PARRY_STAMINA_REFUND, PARRY_SUCCESS_DURATION,
 } = require("./constants");
 
@@ -185,7 +185,7 @@ function updateProjectiles(room, io, delta) {
             // Perfect parry on non-reflected snowball: reflect it back!
             opponent.isRawParrying = true;
             opponent.isPerfectRawParrySuccess = true;
-            opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, Date.now() + PERFECT_PARRY_ANIMATION_LOCK);
+            opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, Date.now() + PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK);
             // REFLECT THE SNOWBALL BACK - faster than original
             snowball.hasHit = false; // Reset hit flag so it can hit the thrower
             snowball.velocityX = -snowball.velocityX * 1.3; // Reverse direction and make it 30% faster
@@ -201,9 +201,10 @@ function updateProjectiles(room, io, delta) {
             if (isPerfectParry) {
               opponent.isPerfectRawParrySuccess = true;
               opponent.isRawParrying = true;
-              opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, Date.now() + PERFECT_PARRY_ANIMATION_LOCK);
+              opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, Date.now() + PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK);
             } else {
               opponent.isRawParrySuccess = true;
+              opponent.rawParryMinDurationMet = true;
             }
           }
           
@@ -221,14 +222,14 @@ function updateProjectiles(room, io, delta) {
           
           // Clear parry success state after duration
           if (canReflect) {
-            // For perfect parry with reflection: clear the parry pose after animation lock duration
+            // For perfect parry with reflection: clear the parry pose after reduced snowball lock
             setPlayerTimeout(
               opponent.id,
               () => {
                 opponent.isRawParrying = false;
                 opponent.isPerfectRawParrySuccess = false;
               },
-              PERFECT_PARRY_ANIMATION_LOCK,
+              PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK,
               "perfectParryAnimationEnd"
             );
             
@@ -242,7 +243,7 @@ function updateProjectiles(room, io, delta) {
                 opponent.isRawParrying = false;
                 opponent.isPerfectRawParrySuccess = false;
               },
-              PERFECT_PARRY_ANIMATION_LOCK,
+              PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK,
               "perfectParryAnimationEnd"
             );
             
@@ -437,8 +438,9 @@ function updateProjectiles(room, io, delta) {
           
           // Refund parry stamina cost on successful parry
           opponent.stamina = Math.min(100, opponent.stamina + RAW_PARRY_STAMINA_REFUND);
-          // Trigger parry success animation and sound
+          // Trigger parry success animation and sound + allow early exit
           opponent.isRawParrySuccess = true;
+          opponent.rawParryMinDurationMet = true;
           // Emit raw parry success event for visual effect and sound
           // Send both positions so client can calculate center
           const parryingPlayerNumber = room.players.findIndex(p => p.id === opponent.id) + 1;

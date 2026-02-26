@@ -126,15 +126,14 @@ function handleWinCondition(room, loser, winner, io) {
   room.gameOver = true;
   
   // Determine correct Y position for the loser based on whether they fell off the dohyo
-  // Check multiple conditions to catch all fall scenarios:
-  // 1. isFallingOffDohyo flag is set (fall was triggered)
-  // 2. X position is outside dohyo boundaries
-  // 3. Y is already below normal ground level (they're mid-fall)
+  // Cinematic kill victims stay at ground level (no fall)
   const fallenGroundLevel = GROUND_LEVEL - DOHYO_FALL_DEPTH;
   const loserShouldBeAtFallenLevel = 
-    loser.isFallingOffDohyo || 
-    isOutsideDohyo(loser.x, loser.y) || 
-    loser.y < GROUND_LEVEL; // Already below normal ground = mid-fall
+    !loser.isCinematicKillVictim && (
+      loser.isFallingOffDohyo || 
+      isOutsideDohyo(loser.x, loser.y) || 
+      loser.y < GROUND_LEVEL
+    );
   
   // Force both players to correct ground level immediately
   loser.y = loserShouldBeAtFallenLevel ? fallenGroundLevel : GROUND_LEVEL;

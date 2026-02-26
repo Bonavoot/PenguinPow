@@ -98,6 +98,7 @@ import grabHit03 from "../sounds/grab-hit-03.wav";
 import rawParry01 from "../sounds/raw-parry-01.wav";
 import rawParry02 from "../sounds/raw-parry-02.wav";
 import rawParry03 from "../sounds/raw-parry-03.wav";
+import chargeAttackLaunchSound from "../sounds/charge-attack-launch-sound.wav";
 
 
 // ============================================
@@ -171,6 +172,7 @@ export const slapWhiffSounds = [slapWhiff01, slapWhiff02, slapWhiff03];
 export const chargedHitSounds = [chargedHit01, chargedHit02, chargedHit03, chargedHit04];
 export const grabHitSounds = [grabHit01, grabHit02, grabHit03];
 export const rawParrySounds = [rawParry01, rawParry02, rawParry03];
+export { chargeAttackLaunchSound };
 export const pickRandomSound = (sounds) => sounds[Math.floor(Math.random() * sounds.length)];
 
 // ============================================
@@ -293,6 +295,7 @@ preloadSounds([
   rawParry01,
   rawParry02,
   rawParry03,
+  chargeAttackLaunchSound,
   eeshiMusic,
 ]);
 

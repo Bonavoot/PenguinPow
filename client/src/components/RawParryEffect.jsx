@@ -114,9 +114,10 @@ const Spark = styled.div`
 const RawParryEffect = ({ position }) => {
   // Track multiple active effects with unique IDs
   const [activeEffects, setActiveEffects] = useState([]);
-  const processedParriesRef = useRef(new Set()); // Track processed parry IDs to prevent duplicates
+  const processedParriesRef = useRef(new Set());
   const effectIdCounter = useRef(0);
-  const EFFECT_DURATION = 800; // Slightly longer than the longest animation (~650ms)
+  const pendingTimeouts = useRef([]);
+  const EFFECT_DURATION = 800;
 
   // Memoize the unique identifier to prevent unnecessary re-processing
   const parryIdentifier = useMemo(() => {
@@ -171,13 +172,13 @@ const RawParryEffect = ({ position }) => {
     // Add the new effect to active effects
     setActiveEffects((prev) => [...prev, newEffect]);
 
-    // Remove this effect after duration and clean up tracking
-    setTimeout(() => {
+    const tid = setTimeout(() => {
       setActiveEffects((prev) =>
         prev.filter((effect) => effect.id !== effectId)
       );
       processedParriesRef.current.delete(parryIdentifier);
     }, EFFECT_DURATION);
+    pendingTimeouts.current.push(tid);
   }, [
     parryIdentifier,
     position?.x,
@@ -187,9 +188,10 @@ const RawParryEffect = ({ position }) => {
     position?.playerNumber,
   ]); // Depend on stable identifier and position values
 
-  // Cleanup effects on unmount
   useEffect(() => {
     return () => {
+      pendingTimeouts.current.forEach(clearTimeout);
+      pendingTimeouts.current = [];
       setActiveEffects([]);
     };
   }, []);

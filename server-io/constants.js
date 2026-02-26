@@ -226,6 +226,10 @@ const PERFECT_PARRY_WINDOW = 100; // 100ms window for perfect parries
 const PERFECT_PARRY_SUCCESS_DURATION = 2000; // 2 seconds - parrier holds success pose
 const PERFECT_PARRY_ATTACKER_STUN_DURATION = 1100; // 1.1 second stun duration for perfect parry
 const PERFECT_PARRY_ANIMATION_LOCK = 600; // 600ms - parrier is locked in parry pose after perfect parry
+const PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK = 300; // 300ms - reduced lock for snowball perfect parries (no player stun to capitalize on)
+
+// Raw parry commitment: minimum time locked in parry stance
+const RAW_PARRY_MIN_DURATION = 375; // Whiffed parry: full commitment (punishable by grab)
 
 // Parry visual timing
 const PARRY_SUCCESS_DURATION = 500; // How long the parry success pose is held
@@ -288,6 +292,17 @@ const HITSTOP_CHARGED_MAX_MS = 150; // Maximum charged attack hitstop at full po
 const HITSTOP_PARRY_MS = 120;     // Parry hitstop - impactful but not too long (7 frames)
 const HITSTOP_GRAB_MS = 60;       // Brief hitstop when grab connects (4 frames)
 const HITSTOP_THROW_MS = 100;     // Hitstop when throw lands (6 frames)
+
+// ============================================
+// Cinematic Kill — guaranteed ring-out finishing blow
+// ============================================
+const CINEMATIC_KILL_MIN_MULTIPLIER = 1.0;
+const CINEMATIC_KILL_HITSTOP_MS = 550;
+const CINEMATIC_KILL_KNOCKBACK_BOOST = 3.0;
+const CINEMATIC_KB_FRICTION = 0.985;
+const CINEMATIC_KB_DI_FRICTION = 0.96;
+const CINEMATIC_KB_MOVEMENT_TRANSFER = 0.8;
+const CINEMATIC_KB_MOVEMENT_FRICTION = 0.996;
 
 // ============================================
 // Global Attack Timing
@@ -430,6 +445,8 @@ module.exports = {
   PERFECT_PARRY_SUCCESS_DURATION,
   PERFECT_PARRY_ATTACKER_STUN_DURATION,
   PERFECT_PARRY_ANIMATION_LOCK,
+  PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK,
+  RAW_PARRY_MIN_DURATION,
   PARRY_SUCCESS_DURATION,
   RAW_PARRY_STAMINA_COST,
   RAW_PARRY_STAMINA_REFUND,
@@ -474,4 +491,13 @@ module.exports = {
   ATTACK_ENDLAG_CHARGED_MS,
   ATTACK_COOLDOWN_MS,
   BUFFERED_ATTACK_GAP_MS,
+
+  // Cinematic kill
+  CINEMATIC_KILL_MIN_MULTIPLIER,
+  CINEMATIC_KILL_HITSTOP_MS,
+  CINEMATIC_KILL_KNOCKBACK_BOOST,
+  CINEMATIC_KB_FRICTION,
+  CINEMATIC_KB_DI_FRICTION,
+  CINEMATIC_KB_MOVEMENT_TRANSFER,
+  CINEMATIC_KB_MOVEMENT_FRICTION,
 };

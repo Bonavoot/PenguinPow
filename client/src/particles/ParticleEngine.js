@@ -658,6 +658,234 @@ const PRESETS = {
       });
     }
   },
+
+  cinematicKillTrail(engine, { x, y, direction }) {
+    const dir = direction || 1;
+    const baseY = GAME_H - y - 60;
+
+    // Big billowing smoke — fewer, varied sizes for shape
+    for (let i = 0; i < 3; i++) {
+      const size = rand(35, 65);
+      engine.spawn({
+        x: x + -dir * rand(5, 25),
+        y: baseY + rand(-18, 18),
+        vx: -dir * rand(100, 240),
+        vy: rand(-35, 25),
+        gravity: rand(-15, 10),
+        drag: 0.91,
+        size,
+        sizeEnd: size * rand(1.4, 2.2),
+        alpha: rand(0.6, 0.85),
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "inQuad",
+        rotationSpeed: rand(-2, 2),
+        maxLife: rand(0.5, 0.8),
+        texture: pickPuff(engine.textures),
+        delay: i * 0.015,
+      });
+    }
+
+    // Smaller turbulent puffs — more of them, scattered wider
+    for (let i = 0; i < 4; i++) {
+      const size = rand(14, 28);
+      engine.spawn({
+        x: x + -dir * rand(0, 20) + rand(-10, 10),
+        y: baseY + rand(-25, 25),
+        vx: -dir * rand(60, 200) + rand(-30, 30),
+        vy: rand(-50, 30),
+        gravity: rand(10, 40),
+        drag: 0.89,
+        size,
+        sizeEnd: size * rand(0.6, 1.2),
+        alpha: rand(0.5, 0.75),
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-3, 3),
+        maxLife: rand(0.3, 0.55),
+        texture: pickSmallPuff(engine.textures),
+      });
+    }
+
+    // Speed lines streaking behind
+    for (let i = 0; i < 3; i++) {
+      engine.spawn({
+        x: x + -dir * rand(10, 45),
+        y: baseY + rand(-22, 18),
+        vx: -dir * rand(200, 450),
+        vy: rand(-12, 12),
+        gravity: 0,
+        drag: 0.93,
+        size: rand(30, 55),
+        sizeEnd: rand(8, 20),
+        alpha: rand(0.5, 0.85),
+        alphaEnd: 0,
+        ease: "outExpo",
+        easeAlpha: "inQuad",
+        rotation: dir > 0 ? 0 : Math.PI,
+        rotationSpeed: 0,
+        maxLife: rand(0.18, 0.35),
+        texture: pick([engine.textures.speedLine, engine.textures.speedLineThick, engine.textures.speedLineThin]),
+        stretchX: rand(2.5, 5),
+      });
+    }
+
+    // Ice chunks — tumbling hard debris for texture
+    for (let i = 0; i < 5; i++) {
+      const angle = rand(-1.8, 1.8);
+      const speed = rand(80, 220);
+      engine.spawn({
+        x: x + rand(-10, 10),
+        y: baseY + rand(-15, 10),
+        vx: -dir * Math.abs(Math.cos(angle)) * speed + rand(-40, 40),
+        vy: -Math.abs(Math.sin(angle)) * speed * 0.5 + rand(-40, -5),
+        gravity: 380,
+        drag: 0.96,
+        size: rand(3, 7),
+        sizeEnd: rand(1, 3),
+        alpha: rand(0.6, 0.95),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-8, 8),
+        maxLife: rand(0.3, 0.5),
+        texture: pick([engine.textures.chunk, engine.textures.chunkIce]),
+      });
+    }
+
+    // Bright sparks — sharp bright points that pop against the smoke
+    for (let i = 0; i < 3; i++) {
+      const angle = rand(-1, 1);
+      const speed = rand(120, 300);
+      engine.spawn({
+        x: x + rand(-6, 6),
+        y: baseY + rand(-10, 10),
+        vx: -dir * Math.abs(Math.cos(angle)) * speed + rand(-20, 20),
+        vy: Math.sin(angle) * speed * 0.4,
+        gravity: 200,
+        drag: 0.95,
+        size: rand(3, 6),
+        sizeEnd: rand(1, 2),
+        alpha: rand(0.7, 1.0),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-5, 5),
+        maxLife: rand(0.15, 0.3),
+        texture: pick([engine.textures.circle, engine.textures.circleIce]),
+        blendMode: "lighter",
+      });
+    }
+
+    // Wispy ring fragment — expanding ring that breaks up the solid cloud
+    if (Math.random() < 0.35) {
+      engine.spawn({
+        x: x + -dir * rand(5, 20),
+        y: baseY + rand(-5, 5),
+        vx: -dir * rand(60, 120),
+        vy: rand(-10, 10),
+        gravity: 0,
+        drag: 0.96,
+        size: 8,
+        sizeEnd: rand(40, 65),
+        alpha: rand(0.4, 0.6),
+        alphaEnd: 0,
+        rotation: rand(0, Math.PI * 2),
+        rotationSpeed: rand(-1, 1),
+        ease: "outCubic",
+        easeAlpha: "inQuad",
+        maxLife: rand(0.3, 0.45),
+        texture: pick([engine.textures.ring, engine.textures.ringAlt]),
+        stretchX: rand(1.5, 2.5),
+      });
+    }
+  },
+
+  cinematicKillImpact(engine, { x, y }) {
+    const footY = GAME_H - y;
+
+    // Massive expanding ring at impact point
+    engine.spawn({
+      x,
+      y: footY,
+      vx: 0, vy: 0, gravity: 0, drag: 1,
+      size: 8,
+      sizeEnd: 120,
+      alpha: 0.95,
+      alphaEnd: 0,
+      rotation: 0, rotationSpeed: 0,
+      ease: "outCubic", easeAlpha: "outCubic",
+      maxLife: 0.45,
+      texture: engine.textures.ringThick,
+      stretchX: 2.0,
+    });
+
+    // Second ring, slightly delayed
+    engine.spawn({
+      x,
+      y: footY,
+      vx: 0, vy: 0, gravity: 0, drag: 1,
+      size: 5,
+      sizeEnd: 80,
+      alpha: 0.8,
+      alphaEnd: 0,
+      rotation: 0, rotationSpeed: 0,
+      ease: "outCubic", easeAlpha: "outCubic",
+      maxLife: 0.35,
+      texture: engine.textures.ring,
+      stretchX: 2.4,
+      delay: 0.06,
+    });
+
+    // Burst of puffs radiating outward
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2 + rand(-0.3, 0.3);
+      const speed = rand(100, 200);
+      const size = rand(25, 45);
+      engine.spawn({
+        x: x + Math.cos(angle) * 10,
+        y: footY + Math.sin(angle) * 6,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed * 0.5,
+        gravity: 20,
+        drag: 0.88,
+        size,
+        sizeEnd: size * rand(0.3, 0.5),
+        alpha: rand(0.7, 0.9),
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "inQuad",
+        rotationSpeed: rand(-1.5, 1.5),
+        maxLife: rand(0.35, 0.55),
+        texture: pickPuff(engine.textures),
+      });
+    }
+
+    // Bright sparks
+    for (let i = 0; i < 10; i++) {
+      const angle = rand(0, Math.PI * 2);
+      const speed = rand(150, 350);
+      engine.spawn({
+        x: x + rand(-5, 5),
+        y: footY + rand(-5, 5),
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed * 0.6,
+        gravity: 300,
+        drag: 0.95,
+        size: rand(3, 7),
+        sizeEnd: rand(1, 2),
+        alpha: rand(0.8, 1.0),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-5, 5),
+        maxLife: rand(0.25, 0.45),
+        texture: pick([engine.textures.chunk, engine.textures.circle]),
+        blendMode: "lighter",
+      });
+    }
+  },
 };
 
 // ─── Engine ─────────────────────────────────────────────────────────

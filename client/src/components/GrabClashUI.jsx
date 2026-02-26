@@ -337,6 +337,8 @@ const GrabClashUI = ({ socket, player1, player2, localId }) => {
   const [uiPosition, setUiPosition] = useState({ x: null, y: null });
   const [isPlayer1OnLeft, setIsPlayer1OnLeft] = useState(true); // Track if player1 is on left side
   const spatialLayoutRef = useRef({ leftPlayerId: null, rightPlayerId: null });
+  const clashTimerRef = useRef(null);
+  const clashEndTimeoutRef = useRef(null);
 
   useEffect(() => {
     if (!socket) return;
@@ -402,14 +404,16 @@ const GrabClashUI = ({ socket, player1, player2, localId }) => {
         rightPlayerId: newRightPlayerId
       };
       
+      if (clashTimerRef.current) clearInterval(clashTimerRef.current);
       const startTime = Date.now();
-      const timer = setInterval(() => {
+      clashTimerRef.current = setInterval(() => {
         const elapsed = Date.now() - startTime;
         const remaining = Math.max(0, data.duration - elapsed);
         setTimeLeft(remaining);
         
         if (remaining <= 0) {
-          clearInterval(timer);
+          clearInterval(clashTimerRef.current);
+          clashTimerRef.current = null;
         }
       }, 50);
     };
@@ -429,7 +433,8 @@ const GrabClashUI = ({ socket, player1, player2, localId }) => {
       setWinnerSide(winnerSideValue);
       setWinnerId(data.winnerId);
       
-      setTimeout(() => {
+      if (clashEndTimeoutRef.current) clearTimeout(clashEndTimeoutRef.current);
+      clashEndTimeoutRef.current = setTimeout(() => {
         setIsVisible(false);
         setPlayer1Inputs(0);
         setPlayer2Inputs(0);
@@ -472,6 +477,8 @@ const GrabClashUI = ({ socket, player1, player2, localId }) => {
       socket.off('grab_clash_progress', handleGrabClashProgress);
       socket.off('grab_clash_end', handleGrabClashEnd);
       socket.off('grab_clash_cancelled', handleGrabClashCancelled);
+      if (clashTimerRef.current) clearInterval(clashTimerRef.current);
+      if (clashEndTimeoutRef.current) clearTimeout(clashEndTimeoutRef.current);
     };
   }, [socket]);
 

@@ -20,7 +20,8 @@ const ChargeClashEffect = ({ position }) => {
   useEffect(() => {
     if (position) {
       setShowEffect(true);
-      setTimeout(() => setShowEffect(false), 550);
+      const tid = setTimeout(() => setShowEffect(false), 550);
+      return () => clearTimeout(tid);
     }
   }, [position]);
 

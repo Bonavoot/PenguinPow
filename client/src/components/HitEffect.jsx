@@ -30,7 +30,8 @@ const HitEffect = ({ position }) => {
   const [activeEffects, setActiveEffects] = useState([]);
   const processedHitsRef = useRef(new Set());
   const effectIdCounter = useRef(0);
-  
+  const pendingTimeouts = useRef([]);
+
   const EFFECT_DURATION_SLAP = 400;
   const EFFECT_DURATION_CHARGED = 600;
 
@@ -50,6 +51,9 @@ const HitEffect = ({ position }) => {
     const isCounterHit = position.isCounterHit || false;
     const isPunish = position.isPunish || false;
 
+    const isCinematic = position.cinematicKill || false;
+    const cinematicMs = position.cinematicHitstopMs || 0;
+
     const newEffect = {
       id: effectId,
       x: position.x,
@@ -58,19 +62,36 @@ const HitEffect = ({ position }) => {
       attackType,
       isCounterHit,
       isPunish,
+      frozen: isCinematic,
     };
 
     setActiveEffects((prev) => [...prev, newEffect]);
 
-    const duration = attackType === 'charged' ? EFFECT_DURATION_CHARGED : EFFECT_DURATION_SLAP;
-    setTimeout(() => {
+    if (isCinematic && cinematicMs > 0) {
+      // Unfreeze after the hitstop ends
+      const unfreezeId = setTimeout(() => {
+        setActiveEffects((prev) =>
+          prev.map((e) => e.id === effectId ? { ...e, frozen: false } : e)
+        );
+      }, cinematicMs);
+      pendingTimeouts.current.push(unfreezeId);
+    }
+
+    const extraTime = isCinematic ? cinematicMs : 0;
+    const duration = (attackType === 'charged' ? EFFECT_DURATION_CHARGED : EFFECT_DURATION_SLAP) + extraTime;
+    const tid = setTimeout(() => {
       setActiveEffects((prev) => prev.filter((e) => e.id !== effectId));
       processedHitsRef.current.delete(hitIdentifier);
     }, duration);
-  }, [hitIdentifier, position?.x, position?.y, position?.facing, position?.attackType, position?.isCounterHit, position?.isPunish]);
+    pendingTimeouts.current.push(tid);
+  }, [hitIdentifier, position?.x, position?.y, position?.facing, position?.attackType, position?.isCounterHit, position?.isPunish, position?.cinematicKill]);
 
   useEffect(() => {
-    return () => setActiveEffects([]);
+    return () => {
+      pendingTimeouts.current.forEach(clearTimeout);
+      pendingTimeouts.current = [];
+      setActiveEffects([]);
+    };
   }, []);
 
   return (
@@ -80,6 +101,7 @@ const HitEffect = ({ position }) => {
         const hitTypeClass = isCharged ? 'charged-hit' : 'slap-hit';
         const counterHitClass = effect.isCounterHit ? 'counter-hit' : '';
         const punishHitClass = effect.isPunish ? 'punish-hit' : '';
+        const frozenClass = effect.frozen ? 'cinematic-frozen' : '';
         // Mirror faux-3D tilt direction by facing for ring-based effects.
         const ringTiltSigned = effect.facing === -1 ? "55deg" : "-55deg";
         
@@ -95,7 +117,7 @@ const HitEffect = ({ position }) => {
             $facing={effect.facing}
           >
             <div
-              className={`hit-ring-wrapper ${hitTypeClass} ${counterHitClass} ${punishHitClass}`}
+              className={`hit-ring-wrapper ${hitTypeClass} ${counterHitClass} ${punishHitClass} ${frozenClass}`}
               style={{
                 "--charged-ring-tilt-signed": ringTiltSigned,
                 "--slap-ring-tilt-signed": ringTiltSigned,

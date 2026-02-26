@@ -207,6 +207,7 @@ const GrabBreakEffect = ({ position }) => {
   const [activeEffects, setActiveEffects] = useState([]);
   const processedBreaksRef = useRef(new Set());
   const effectIdCounter = useRef(0);
+  const pendingTimeouts = useRef([]);
   const EFFECT_DURATION = 1600;
 
   const generateShards = () => {
@@ -263,14 +264,17 @@ const GrabBreakEffect = ({ position }) => {
 
     setActiveEffects((prev) => [...prev, newEffect]);
 
-    setTimeout(() => {
+    const tid = setTimeout(() => {
       setActiveEffects((prev) => prev.filter((e) => e.id !== effectId));
       processedBreaksRef.current.delete(position.breakId);
     }, EFFECT_DURATION);
+    pendingTimeouts.current.push(tid);
   }, [position?.breakId, position?.x, position?.y, position?.breakerPlayerNumber]);
 
   useEffect(() => {
     return () => {
+      pendingTimeouts.current.forEach(clearTimeout);
+      pendingTimeouts.current = [];
       setActiveEffects([]);
     };
   }, []);

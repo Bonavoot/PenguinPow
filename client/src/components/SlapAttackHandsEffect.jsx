@@ -125,38 +125,39 @@ const SlapAttackHandsEffect = ({ x, y, facing, isActive, slapAnimation }) => {
   const lastSlapRef = useRef(null);
   const handIdCounter = useRef(0);
   const positionCycleRef = useRef(0);
+  const handTimeoutRef = useRef(null);
 
   useEffect(() => {
-    // Trigger ONE hand when slap animation changes (new slap attack)
     if (isActive && slapAnimation !== null && slapAnimation !== lastSlapRef.current) {
       lastSlapRef.current = slapAnimation;
 
       const id = ++handIdCounter.current;
       
-      // Cycle through Y positions: tighter spread (less gap between hands)
       const yPositions = [-4, 0, 4, -2, 2];
       const offsetY = yPositions[positionCycleRef.current % yPositions.length];
       positionCycleRef.current++;
       
-      // ONE hand at a cycled position (smaller startX = less horizontal gap)
       const newHand = {
         id,
         offsetY,
-        startX: Math.random() * 0.7, // Tighter: less spread from center
+        startX: Math.random() * 0.7,
       };
 
       setHand(newHand);
 
-      // Clean up after animation completes
-      setTimeout(() => {
+      if (handTimeoutRef.current) clearTimeout(handTimeoutRef.current);
+      handTimeoutRef.current = setTimeout(() => {
         setHand((current) => (current?.id === id ? null : current));
       }, 200);
     }
 
-    // Reset tracking when slap attack ends
     if (!isActive) {
       lastSlapRef.current = null;
     }
+
+    return () => {
+      if (handTimeoutRef.current) clearTimeout(handTimeoutRef.current);
+    };
   }, [isActive, slapAnimation]);
 
   // Don't render if no hand or invalid position

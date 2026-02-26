@@ -284,6 +284,7 @@ const CounterGrabEffect = ({ position }) => {
   const [activeEffects, setActiveEffects] = useState([]);
   const processedCountersRef = useRef(new Set());
   const effectIdCounter = useRef(0);
+  const pendingTimeouts = useRef([]);
   const EFFECT_DURATION = 1600;
 
   const generateSparks = () => {
@@ -342,13 +343,17 @@ const CounterGrabEffect = ({ position }) => {
 
     setActiveEffects((prev) => [...prev, newEffect]);
 
-    setTimeout(() => {
+    const tid = setTimeout(() => {
       setActiveEffects((prev) => prev.filter((e) => e.id !== effectId));
     }, EFFECT_DURATION);
+    pendingTimeouts.current.push(tid);
   }, [position?.counterId, position?.x, position?.y, position?.grabberPlayerNumber]);
 
   useEffect(() => {
     return () => {
+      pendingTimeouts.current.forEach(clearTimeout);
+      pendingTimeouts.current = [];
+      processedCountersRef.current.clear();
       setActiveEffects([]);
     };
   }, []);

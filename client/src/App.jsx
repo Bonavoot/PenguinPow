@@ -52,6 +52,7 @@ function App() {
     };
 
     const controllerCheckInterval = setInterval(checkControllerStatus, 1000);
+    let reconnectTimeout = null;
 
     socket.on("connect", () => {
       setLocalId(socket.id);
@@ -62,7 +63,8 @@ function App() {
     socket.on("connect_error", (error) => {
       console.error("Connection error:", error);
       setConnectionError(true);
-      setTimeout(() => socket.connect(), 5000);
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      reconnectTimeout = setTimeout(() => socket.connect(), 5000);
     });
 
     socket.on("disconnect", (reason) => {
@@ -80,6 +82,7 @@ function App() {
       socket.off("disconnect");
       socket.off("rooms");
       clearInterval(controllerCheckInterval);
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
     };
   }, []);
 

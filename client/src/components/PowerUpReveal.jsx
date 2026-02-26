@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext, useMemo } from "react";
+import { useState, useEffect, useContext, useMemo, useRef } from "react";
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
 import { SocketContext } from "../SocketContext";
@@ -424,6 +424,7 @@ const PowerUpReveal = ({ roomId, localId }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   const [revealData, setRevealData] = useState(null);
+  const revealTimeoutsRef = useRef([]);
 
   const powerUpInfo = useMemo(() => ({
     speed: { name: "Happy Feet", icon: happyFeetIcon, isActive: false },
@@ -464,19 +465,23 @@ const PowerUpReveal = ({ roomId, localId }) => {
       setIsVisible(true);
       setIsExiting(false);
 
-      // Start exit animation after display time
-      setTimeout(() => {
-        setIsExiting(true);
-      }, 2500);
+      revealTimeoutsRef.current.forEach(clearTimeout);
+      revealTimeoutsRef.current = [];
 
-      // Hide completely after exit animation
-      setTimeout(() => {
-        setIsVisible(false);
-        setRevealData(null);
-      }, 2900);
+      revealTimeoutsRef.current.push(
+        setTimeout(() => {
+          setIsExiting(true);
+        }, 2500),
+        setTimeout(() => {
+          setIsVisible(false);
+          setRevealData(null);
+        }, 2900)
+      );
     };
 
     const handleGameReset = () => {
+      revealTimeoutsRef.current.forEach(clearTimeout);
+      revealTimeoutsRef.current = [];
       setIsVisible(false);
       setIsExiting(false);
       setRevealData(null);
@@ -488,6 +493,8 @@ const PowerUpReveal = ({ roomId, localId }) => {
     return () => {
       socket.off("power_ups_revealed", handlePowerUpsRevealed);
       socket.off("game_reset", handleGameReset);
+      revealTimeoutsRef.current.forEach(clearTimeout);
+      revealTimeoutsRef.current = [];
     };
   }, [socket, localId]);
 

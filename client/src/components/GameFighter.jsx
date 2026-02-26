@@ -119,6 +119,7 @@ import {
   rawParrySounds,
   pickRandomSound,
   xToPan,
+  chargeAttackLaunchSound,
 } from "./fighterAssets";
 import getImageSrc from "./getImageSrc";
 import {
@@ -1007,6 +1008,7 @@ const GameFighter = ({
   const [hasUsedPowerUp, setHasUsedPowerUp] = useState(false);
   const [countdown, setCountdown] = useState(15);
   const countdownRef = useRef(null);
+  const pendingSocketTimeouts = useRef([]);
   const [screenShake, setScreenShake] = useState({
     intensity: 0,
     duration: 0,
@@ -1827,10 +1829,10 @@ const GameFighter = ({
     socket.on("player_hit", (data) => {
       if (data && typeof data.x === "number" && typeof data.y === "number") {
         lastPlayerHitTime.current = Date.now();
-        if (index === 0) {
+        if (index === 0 && !data.cinematicKill) {
           const pan = xToPan(data.x);
           if (data.attackType === "slap") {
-            playSoundVaried(pickRandomSound(slapHitSounds), 0.045, null, 1.0, pan);
+            playSoundVaried(pickRandomSound(slapHitSounds), 0.038, null, 1.0, pan);
             duckMusic(0.4, 300);
           } else {
             playSound(pickRandomSound(chargedHitSounds), 0.045, null, 1.0, pan);
@@ -1840,12 +1842,14 @@ const GameFighter = ({
         setHitEffectPosition({
           x: data.x + 70,
           y: PLAYER_MID_Y,
-          facing: data.facing || 1, // Default to 1 if facing not provided
-          timestamp: data.timestamp, // Pass through unique timestamp
-          hitId: data.hitId, // Pass through unique hit ID
-          attackType: data.attackType || "slap", // Pass attack type for distinct effects
-          isCounterHit: data.isCounterHit || false, // Counter hit for yellow effect
-          isPunish: data.isPunish || false, // Punish for purple effect
+          facing: data.facing || 1,
+          timestamp: data.timestamp,
+          hitId: data.hitId,
+          attackType: data.attackType || "slap",
+          isCounterHit: data.isCounterHit || false,
+          isPunish: data.isPunish || false,
+          cinematicKill: data.cinematicKill || false,
+          cinematicHitstopMs: data.cinematicKill ? 550 : 0,
         });
       }
     });
@@ -1982,12 +1986,12 @@ const GameFighter = ({
           // Use timestamp as key to trigger new animation each time
           const newKey = Date.now();
           setNoStaminaEffectKey(newKey);
-          // Auto-clear after animation completes (0.8 second)
-          setTimeout(() => {
+          const tid = setTimeout(() => {
             setNoStaminaEffectKey((current) =>
               current === newKey ? 0 : current
             );
           }, 900);
+          pendingSocketTimeouts.current.push(tid);
         }
       });
     }
@@ -2104,10 +2108,10 @@ const GameFighter = ({
     socket.on("gyoji_call", (call) => {
       setGyojiCall(call);
 
-      // Clear the call after animation completes
-      setTimeout(() => {
+      const tid = setTimeout(() => {
         setGyojiCall(null);
       }, 2000);
+      pendingSocketTimeouts.current.push(tid);
     });
 
     socket.on("game_start", () => {
@@ -2156,10 +2160,10 @@ const GameFighter = ({
         });
       }
 
-      // Hide hakkiyoi text after 3 seconds
-      setTimeout(() => {
+      const tid = setTimeout(() => {
         setHakkiyoi(false);
       }, 3000);
+      pendingSocketTimeouts.current.push(tid);
     });
 
     socket.on("game_over", (data) => {
@@ -2197,9 +2201,9 @@ const GameFighter = ({
       // Play round victory or defeat sound based on local player result
       if (index === 0) {
         if (data.winner.id === localId) {
-          playSound(roundVictorySound, 0.02);
+          playSound(roundVictorySound, 0.05);
         } else {
-          playSound(roundDefeatSound, 0.01);
+          playSound(roundDefeatSound, 0.03);
         }
       }
       // Bump round ID immediately on winner declaration to reset UI stamina to server value
@@ -2237,10 +2241,10 @@ const GameFighter = ({
     });
 
     socket.on("match_over", (data) => {
-      // Delay showing match over screen so round result animation can play (3 seconds)
-      setTimeout(() => {
+      const tid = setTimeout(() => {
         setMatchOver(data.isMatchOver);
       }, 3000);
+      pendingSocketTimeouts.current.push(tid);
       // Keep win counts displayed until rematch - don't reset here!
       // Also bump round id at match end to reset UI
       setUiRoundId((id) => id + 1);
@@ -2270,6 +2274,8 @@ const GameFighter = ({
         socket.off("counter_hit"); // Fix: was missing cleanup
       }
       socket.off("snowball_hit");
+      socket.off("grab_clash_start");
+      socket.off("grab_clash_end");
       socket.off("gyoji_call");
       socket.off("game_start");
       socket.off("game_reset");
@@ -2286,6 +2292,8 @@ const GameFighter = ({
         cancelAnimationFrame(showRoundResultRafRef.current);
         showRoundResultRafRef.current = null;
       }
+      pendingSocketTimeouts.current.forEach(clearTimeout);
+      pendingSocketTimeouts.current = [];
     };
   }, [index, socket, handleFighterAction, opponentDisconnected, localId]);
 
@@ -2719,7 +2727,7 @@ const GameFighter = ({
     if (penguin.isGrabbing && !lastGrabState.current) {
       const pan = xToPan(penguin.x);
       playSound(grabSound, 0.04, null, 1.0, pan);
-      playSound(pickRandomSound(grabHitSounds), 0.03, null, 1.0, pan);
+      playSound(pickRandomSound(grabHitSounds), 0.035, null, 1.0, pan);
       duckMusic(0.25, 450);
     }
     lastGrabState.current = penguin.isGrabbing;
@@ -2783,7 +2791,7 @@ const GameFighter = ({
       return;
     }
     if (penguin.isGassed && !lastGassedState.current) {
-      playSound(gassedSound, 0.03);
+      playSound(gassedSound, 0.06);
     }
     if (!penguin.isGassed && lastGassedState.current && player.id === localId) {
       playSound(gassedRegenSound, 0.03, null, 2.0);
@@ -2971,12 +2979,61 @@ const GameFighter = ({
       });
     });
 
+    socket.on("cinematic_kill", (data) => {
+      if (index === 0) {
+        emitParticles("cinematicKillImpact", {
+          x: data.impactX,
+          y: data.victimY,
+        });
+
+        playSound(pickRandomSound(chargedHitSounds), 0.07, null, 0.55, xToPan(data.impactX));
+        duckMusic(0.3, 400);
+
+        const launchDelay = data.hitstopMs || 550;
+        const launchSoundId = setTimeout(() => {
+          playSound(chargeAttackLaunchSound, 0.09, null, 1.5, xToPan(data.victimX));
+        }, launchDelay);
+        pendingTimeouts.push(launchSoundId);
+      }
+
+      const isVictim = player.id === data.victimId;
+      if (isVictim) {
+        const trailDir = data.knockbackDirection;
+        const trailStartDelay = data.hitstopMs || 550;
+        let trailTick = 0;
+
+        const trailStartId = setTimeout(() => {
+          const trailInterval = setInterval(() => {
+            trailTick++;
+            if (trailTick > 50) {
+              clearInterval(trailInterval);
+              return;
+            }
+            const victimPos = interpolatedPositionRef.current;
+            if (victimPos && typeof victimPos.x === "number") {
+              emitParticles("cinematicKillTrail", {
+                x: victimPos.x,
+                y: victimPos.y ?? 290,
+                direction: trailDir,
+              });
+            }
+          }, 16);
+          pendingTimeouts.push(trailInterval);
+        }, trailStartDelay);
+        pendingTimeouts.push(trailStartId);
+      }
+    });
+
     return () => {
-      pendingTimeouts.forEach(clearTimeout);
+      pendingTimeouts.forEach((id) => {
+        clearTimeout(id);
+        clearInterval(id);
+      });
       socket.off("screen_shake");
       socket.off("thick_blubber_absorption");
       socket.off("danger_zone");
       socket.off("ring_out");
+      socket.off("cinematic_kill");
     };
   }, [socket, player.id, localId, roomName]);
 

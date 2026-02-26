@@ -231,10 +231,14 @@ const Rematch = ({ roomName }) => {
   const { socket } = useContext(SocketContext);
 
   useEffect(() => {
-    socket.on("rematch_count", (rematchCount) => {
+    const handleRematchCount = (rematchCount) => {
       setCount(rematchCount);
-    });
-  });
+    };
+    socket.on("rematch_count", handleRematchCount);
+    return () => {
+      socket.off("rematch_count", handleRematchCount);
+    };
+  }, [socket]);
 
   const handleRematch = (e) => {
     if (e.target.textContent === "REMATCH") {

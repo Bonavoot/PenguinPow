@@ -767,3 +767,14 @@
   background: radial-gradient(circle, #B388FF 30%, rgba(140, 80, 220, 0.7) 100%);
   box-shadow: 0 0 4px rgba(160, 100, 255, 0.7);
 }
+
+/* --- Cinematic kill freeze: pause all animations at their current frame --- */
+.cinematic-frozen,
+.cinematic-frozen *,
+.cinematic-frozen .hit-ring,
+.cinematic-frozen .hit-shockwave-secondary,
+.cinematic-frozen .hit-speed-line,
+.cinematic-frozen .spark,
+.cinematic-frozen .particle {
+  animation-play-state: paused !important;
+}

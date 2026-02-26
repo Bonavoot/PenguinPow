@@ -27,9 +27,12 @@ function ensureContextResumed() {
   }
 }
 
-["click", "touchstart", "keydown"].forEach((event) => {
-  document.addEventListener(event, ensureContextResumed, { passive: true });
-});
+if (!window.__audioEngineListenersAttached) {
+  ["click", "touchstart", "keydown"].forEach((event) => {
+    document.addEventListener(event, ensureContextResumed, { passive: true });
+  });
+  window.__audioEngineListenersAttached = true;
+}
 
 function trimLeadingSilence(ctx, buffer) {
   const threshold = 0.02;
@@ -121,14 +124,23 @@ function _play(ctx, buffer, volume, duration, playbackRate = 1.0, loop = false, 
 
     source.connect(gainNode);
 
+    let panner = null;
     if (pan !== 0) {
-      const panner = ctx.createStereoPanner();
+      panner = ctx.createStereoPanner();
       panner.pan.value = Math.max(-1, Math.min(1, pan));
       gainNode.connect(panner);
       panner.connect(getMasterEQ());
     } else {
       gainNode.connect(getMasterEQ());
     }
+
+    source.onended = () => {
+      try {
+        source.disconnect();
+        gainNode.disconnect();
+        if (panner) panner.disconnect();
+      } catch (e) {}
+    };
 
     source.start(0);
 
@@ -145,14 +157,15 @@ function _play(ctx, buffer, volume, duration, playbackRate = 1.0, loop = false, 
 
 function createCrossfadeLoop(src, volume = 1.0, crossfadeDuration = 2.0) {
   const ctx = getContext();
-  ensureContextResumed();
 
   const buffer = audioBuffers.get(src);
   if (!buffer) return null;
 
   const activeSources = [];
+  const pendingTimers = [];
   let nextTimer = null;
   let stopped = false;
+  let isFirstPlay = true;
 
   const CURVE_STEPS = 64;
   const fadeInCurve = new Float32Array(CURVE_STEPS);
@@ -169,22 +182,31 @@ function createCrossfadeLoop(src, volume = 1.0, crossfadeDuration = 2.0) {
     const source = ctx.createBufferSource();
     const gainNode = ctx.createGain();
     source.buffer = buffer;
-    gainNode.gain.value = 0;
     source.connect(gainNode);
     gainNode.connect(getMasterEQ());
 
     const startTime = ctx.currentTime;
-    gainNode.gain.setValueCurveAtTime(fadeInCurve, startTime, crossfadeDuration);
+
+    if (isFirstPlay) {
+      gainNode.gain.value = volume;
+      isFirstPlay = false;
+    } else {
+      gainNode.gain.value = 0;
+      gainNode.gain.setValueCurveAtTime(fadeInCurve, startTime, crossfadeDuration);
+    }
 
     if (activeSources.length > 0) {
       const prev = activeSources[activeSources.length - 1];
       prev.gainNode.gain.cancelScheduledValues(startTime);
       prev.gainNode.gain.setValueCurveAtTime(fadeOutCurve, startTime, crossfadeDuration);
-      setTimeout(() => {
+      const fadeTimer = setTimeout(() => {
+        if (stopped) return;
         try { prev.source.stop(); } catch (e) {}
+        try { prev.source.disconnect(); prev.gainNode.disconnect(); } catch (e) {}
         const idx = activeSources.indexOf(prev);
         if (idx !== -1) activeSources.splice(idx, 1);
       }, crossfadeDuration * 1000 + 100);
+      pendingTimers.push(fadeTimer);
     }
 
     source.start(0);
@@ -192,25 +214,38 @@ function createCrossfadeLoop(src, volume = 1.0, crossfadeDuration = 2.0) {
 
     const nextTime = (buffer.duration - crossfadeDuration) * 1000;
     nextTimer = setTimeout(scheduleNext, nextTime);
+    pendingTimers.push(nextTimer);
   }
 
-  scheduleNext();
+  function begin() {
+    if (ctx.state === "suspended") {
+      ctx.resume().then(() => { if (!stopped) scheduleNext(); });
+    } else {
+      scheduleNext();
+    }
+  }
+
+  begin();
 
   return {
     stop() {
       stopped = true;
+      pendingTimers.forEach(clearTimeout);
+      pendingTimers.length = 0;
       if (nextTimer) clearTimeout(nextTimer);
       const now = ctx.currentTime;
       for (const entry of activeSources) {
         entry.gainNode.gain.setValueAtTime(entry.gainNode.gain.value, now);
         entry.gainNode.gain.linearRampToValueAtTime(0, now + 0.3);
       }
-      setTimeout(() => {
+      const stopTimer = setTimeout(() => {
         for (const entry of activeSources) {
           try { entry.source.stop(); } catch (e) {}
+          try { entry.source.disconnect(); entry.gainNode.disconnect(); } catch (e) {}
         }
         activeSources.length = 0;
       }, 350);
+      pendingTimers.push(stopTimer);
     }
   };
 }

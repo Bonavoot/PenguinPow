@@ -28,6 +28,14 @@ const PUNCH_STOP = 0.001;    // cut to zero below this
 
 // Knockback reference ceiling for normalising intensity
 const KB_REF = 2.5;
+
+// ── Cinematic kill camera ────────────────────────────────────────
+const CINEMATIC_ZOOM_SCALE = 2.2;
+const CINEMATIC_SHAKE_INTENSITY = 12;
+const CINEMATIC_SHAKE_DECAY = 0.94;
+const CINEMATIC_ZOOM_IN_SPEED = 0.18;
+const CINEMATIC_PAN_SPEED = 0.12;
+const CINEMATIC_MIN_HOLD_MS = 2000;
 // ───────────────────────────────────────────────────────────────────
 
 function clamp(v, lo, hi) {
@@ -51,6 +59,23 @@ export default function useCamera(containerRef, socket) {
   const shakeRef = useRef({ x: 0, y: 0, intensity: 0 });
   const punchRef = useRef({ amount: 0 });
   const hitTrackRef = useRef({ p1: 0, p2: 0 });
+
+  // Cinematic kill state
+  const cinematicRef = useRef({
+    active: false,
+    phase: "none",       // "freeze" | "release" | "none"
+    impactFraction: 0.5,
+    startTime: 0,
+    hitstopMs: 0,
+    targetScale: CINEMATIC_ZOOM_SCALE,
+    shakeIntensity: 0,
+    knockbackDir: 1,
+    holdStartTime: 0,
+    // Saved pre-freeze camera state
+    preScale: DEFAULT_SCALE,
+    preX: 0,
+    preY: Y_OFFSET,
+  });
 
   useEffect(() => {
     if (!socket) return;
@@ -91,7 +116,31 @@ export default function useCamera(containerRef, socket) {
       }
     };
 
+    const onCinematicKill = (data) => {
+      const cin = cinematicRef.current;
+      const cam = camRef.current;
+
+      // Save current camera state before zoom-in
+      cin.preScale = cam.scale;
+      cin.preX = cam.x;
+      cin.preY = cam.y;
+
+      cin.active = true;
+      cin.phase = "freeze";
+      cin.impactFraction = (data.impactX ?? 640) / GAME_WIDTH;
+      cin.startTime = performance.now();
+      cin.hitstopMs = data.hitstopMs || 550;
+      cin.targetScale = CINEMATIC_ZOOM_SCALE;
+      cin.shakeIntensity = CINEMATIC_SHAKE_INTENSITY;
+      cin.knockbackDir = data.knockbackDirection || 1;
+
+      // Suppress normal impact effects during cinematic
+      shakeRef.current.intensity = 0;
+      punchRef.current.amount = 0;
+    };
+
     socket.on("fighter_action", onFighterAction);
+    socket.on("cinematic_kill", onCinematicKill);
 
     const tick = () => {
       const { p1x, p2x } = posRef.current;
@@ -108,17 +157,72 @@ export default function useCamera(containerRef, socket) {
           0,
           1,
         );
-        const targetScale = lerp(MAX_SCALE, MIN_SCALE, t);
+        const normalTargetScale = lerp(MAX_SCALE, MIN_SCALE, t);
+        const normalTargetX = -(midFraction - 0.5) * normalTargetScale * 100;
+        const normalTargetY = Y_OFFSET;
 
-        // ── Target pan ──
-        const targetX = -(midFraction - 0.5) * targetScale * 100;
-        const targetY = Y_OFFSET;
-
-        // ── Smooth lerp ──
         const cam = camRef.current;
-        cam.scale = lerp(cam.scale, targetScale, SMOOTH_FACTOR);
-        cam.x = lerp(cam.x, targetX, SMOOTH_FACTOR);
-        cam.y = lerp(cam.y, targetY, SMOOTH_FACTOR);
+        const cin = cinematicRef.current;
+
+        if (cin.active) {
+          const elapsed = performance.now() - cin.startTime;
+
+          if (cin.phase === "freeze") {
+            // Zoom IN toward impact point
+            const cinematicTargetX = -(cin.impactFraction - 0.5) * cin.targetScale * 100;
+            const cinematicTargetY = Y_OFFSET + 2;
+
+            cam.scale = lerp(cam.scale, cin.targetScale, CINEMATIC_ZOOM_IN_SPEED);
+            cam.x = lerp(cam.x, cinematicTargetX, CINEMATIC_ZOOM_IN_SPEED);
+            cam.y = lerp(cam.y, cinematicTargetY, CINEMATIC_ZOOM_IN_SPEED);
+
+            // Heavy screen shake during freeze
+            cin.shakeIntensity *= CINEMATIC_SHAKE_DECAY;
+            if (cin.shakeIntensity > SHAKE_STOP) {
+              shakeRef.current.intensity = cin.shakeIntensity;
+            }
+
+            if (elapsed >= cin.hitstopMs) {
+              cin.phase = "release";
+              // Snap scale and Y back to pre-freeze state immediately
+              cam.scale = cin.preScale;
+              cam.y = cin.preY;
+            }
+          } else if (cin.phase === "release") {
+            // Lock scale at pre-freeze level — no zooming out further
+            cam.scale = cin.preScale;
+            cam.y = lerp(cam.y, normalTargetY, SMOOTH_FACTOR);
+
+            // Pan toward the knockout edge at locked zoom
+            const maxPan = 50 * (cam.scale - 1);
+            const edgeTargetX = cin.knockbackDir < 0 ? maxPan : -maxPan;
+            cam.x = lerp(cam.x, edgeTargetX, CINEMATIC_PAN_SPEED);
+
+            if (Math.abs(cam.x - edgeTargetX) < 0.5) {
+              cam.x = edgeTargetX;
+              cin.phase = "hold";
+              cin.holdStartTime = performance.now();
+            }
+          } else if (cin.phase === "hold") {
+            // Stay locked at the edge until players are close again (next round)
+            cam.scale = cin.preScale;
+            const maxPan = 50 * (cam.scale - 1);
+            const edgeTargetX = cin.knockbackDir < 0 ? maxPan : -maxPan;
+            cam.x = edgeTargetX;
+            cam.y = lerp(cam.y, normalTargetY, SMOOTH_FACTOR);
+
+            const holdElapsed = performance.now() - cin.holdStartTime;
+            if (holdElapsed >= CINEMATIC_MIN_HOLD_MS && distance < FAR_DISTANCE) {
+              cin.active = false;
+              cin.phase = "none";
+            }
+          }
+        } else {
+          // ── Normal camera behavior ──
+          cam.scale = lerp(cam.scale, normalTargetScale, SMOOTH_FACTOR);
+          cam.x = lerp(cam.x, normalTargetX, SMOOTH_FACTOR);
+          cam.y = lerp(cam.y, normalTargetY, SMOOTH_FACTOR);
+        }
 
         // ── Clamp so map edges are never exposed ──
         const maxPanX = 50 * (cam.scale - 1);
@@ -179,6 +283,7 @@ export default function useCamera(containerRef, socket) {
 
     return () => {
       socket.off("fighter_action", onFighterAction);
+      socket.off("cinematic_kill", onCinematicKill);
       if (rafId.current) cancelAnimationFrame(rafId.current);
     };
   }, [containerRef, socket]);
