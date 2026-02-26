@@ -233,6 +233,7 @@ export const StyledImage = styled("img")
         "ritualAnimationSrc",
         "isLocalPlayer",
         "overrideSrc",
+        "isCinematicKillAttacker",
       ].includes(prop),
   })
   .attrs((props) => ({
@@ -310,6 +311,8 @@ export const StyledImage = styled("img")
           : "scaleX(-1)",
       zIndex: isOutsideDohyo(props.$x, props.$y)
         ? 0
+        : props.$isCinematicKillAttacker
+        ? 100
         : props.$isThrowing || props.$isDodging || props.$isGrabbing
         ? 98
         : 99,
@@ -621,6 +624,7 @@ export const AnimatedFighterContainer = styled.div
       ![
         "x", "y", "facing", "fighter", "isThrowing", "isDodging",
         "isGrabbing", "isRingOutThrowCutscene", "isAtTheRopes", "isHit", "isRawParryStun",
+        "isCinematicKillAttacker",
       ].includes(prop),
   })
   .attrs((props) => ({
@@ -642,6 +646,8 @@ export const AnimatedFighterContainer = styled.div
       overflow: "hidden",
       zIndex: isOutsideDohyo(props.$x, props.$y)
         ? 0
+        : props.$isCinematicKillAttacker
+        ? 100
         : props.$isThrowing || props.$isDodging || props.$isGrabbing
         ? 98
         : 99,

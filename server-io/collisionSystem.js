@@ -956,9 +956,18 @@ function processHit(player, otherPlayer, rooms, io) {
         if (isCinematicKill) {
           otherPlayer.isCinematicKillVictim = true;
 
-          // Snap victim right next to attacker so the freeze catches them touching
-          const touchOffset = 45 * (player.facing === 1 ? 1 : -1);
-          otherPlayer.x = player.x - touchOffset;
+          // Keep attacker in charged attack pose during the freeze
+          player.isRecovering = false;
+          player.isAttacking = true;
+          player.attackType = "charged";
+
+          // Transition to recovery after the hitstop ends
+          setPlayerTimeout(player.id, () => {
+            player.isAttacking = false;
+            player.isRecovering = true;
+            player.recoveryStartTime = Date.now();
+            player.recoveryDuration = 400;
+          }, CINEMATIC_KILL_HITSTOP_MS, "cinematicAttackerRecovery");
         }
 
         const kbBoost = isCinematicKill ? CINEMATIC_KILL_KNOCKBACK_BOOST : 1;
@@ -1064,6 +1073,7 @@ function processHit(player, otherPlayer, rooms, io) {
 
           if (isCinematicKill) {
             io.in(currentRoom.id).emit("cinematic_kill", {
+              attackerId: player.id,
               victimId: otherPlayer.id,
               victimX: otherPlayer.x,
               victimY: otherPlayer.y,

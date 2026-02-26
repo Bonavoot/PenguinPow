@@ -120,6 +120,7 @@ import {
   pickRandomSound,
   xToPan,
   chargeAttackLaunchSound,
+  gunLaunchSound,
 } from "./fighterAssets";
 import getImageSrc from "./getImageSrc";
 import {
@@ -2791,7 +2792,7 @@ const GameFighter = ({
       return;
     }
     if (penguin.isGassed && !lastGassedState.current) {
-      playSound(gassedSound, 0.06);
+      playSound(gassedSound, 0.12);
     }
     if (!penguin.isGassed && lastGassedState.current && player.id === localId) {
       playSound(gassedRegenSound, 0.03, null, 2.0);
@@ -2925,6 +2926,7 @@ const GameFighter = ({
   // Add state for danger zone effect
   const [dangerZoneActive, setDangerZoneActive] = useState(false);
   const [slowMoActive, setSlowMoActive] = useState(false);
+  const [isCinematicKillAttacker, setIsCinematicKillAttacker] = useState(false);
 
   // Add screen shake, thick blubber absorption, and danger zone event listeners
   // MEMORY FIX: Track timeouts so we can clear them on unmount (prevents setState after unmount)
@@ -2991,9 +2993,18 @@ const GameFighter = ({
 
         const launchDelay = data.hitstopMs || 550;
         const launchSoundId = setTimeout(() => {
-          playSound(chargeAttackLaunchSound, 0.09, null, 1.5, xToPan(data.victimX));
+          playSound(chargeAttackLaunchSound, 0.2, null, 1.5, xToPan(data.victimX));
+          playSound(gunLaunchSound, 0.06, null, 1.0, xToPan(data.victimX));
         }, launchDelay);
         pendingTimeouts.push(launchSoundId);
+      }
+
+      if (player.id === data.attackerId) {
+        setIsCinematicKillAttacker(true);
+        const clearId = setTimeout(() => {
+          setIsCinematicKillAttacker(false);
+        }, (data.hitstopMs || 550) + 200);
+        pendingTimeouts.push(clearId);
       }
 
       const isVictim = player.id === data.victimId;
@@ -3356,6 +3367,7 @@ const GameFighter = ({
           $isAtTheRopes={penguin.isAtTheRopes}
           $isHit={penguin.isHit}
           $isRawParryStun={penguin.isRawParryStun}
+          $isCinematicKillAttacker={isCinematicKillAttacker}
         >
           <AnimatedFighterImage
             key={baseSpriteSrc}
@@ -3455,6 +3467,7 @@ const GameFighter = ({
           $isGrabTeching={penguin.isGrabTeching}
           $grabTechRole={penguin.grabTechRole}
           $isGrabWhiffRecovery={penguin.isGrabWhiffRecovery}
+          $isCinematicKillAttacker={isCinematicKillAttacker}
           $isLocalPlayer={penguin.id === localId}
           style={{ display: showRitualSprite ? "none" : "block" }}
         />
