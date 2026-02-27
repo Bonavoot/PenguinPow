@@ -107,9 +107,9 @@ const brushReveal = keyframes`
 // ============================================
 
 const ScreenFlash = styled.div`
-  position: fixed;
+  position: absolute;
   top: 0; left: 0;
-  width: 100vw; height: 100vh;
+  width: 100%; height: 100%;
   pointer-events: none;
   z-index: 1000;
   animation: ${screenFlash} 0.65s ease-out forwards;
@@ -129,8 +129,8 @@ const DarkVignette = styled.div`
   position: fixed;
   top: ${ANNOUNCE_Y};
   left: 50%;
-  width: clamp(420px, 55vw, 700px);
-  height: clamp(110px, 16vh, 180px);
+  width: clamp(420px, 55cqw, 700px);
+  height: clamp(110px, 16cqh, 180px);
   border-radius: 50%;
   pointer-events: none;
   z-index: 1001;
@@ -147,12 +147,12 @@ const DarkVignette = styled.div`
   animation: ${vignettePulse} ${p => p.$duration} ease-out forwards;
 
   @media (max-width: 900px) {
-    width: clamp(320px, 50vw, 520px);
-    height: clamp(80px, 14vh, 140px);
+    width: clamp(320px, 50cqw, 520px);
+    height: clamp(80px, 14cqh, 140px);
   }
   @media (max-width: 600px) {
-    width: clamp(240px, 48vw, 380px);
-    height: clamp(60px, 12vh, 110px);
+    width: clamp(240px, 48cqw, 380px);
+    height: clamp(60px, 12cqh, 110px);
   }
 `;
 
@@ -208,7 +208,7 @@ const HakkiyoiText = styled.div`
   pointer-events: none;
 
   font-family: "Bungee", cursive;
-  font-size: clamp(2.4rem, 7vw, 6rem);
+  font-size: clamp(2.4rem, 7cqw, 6rem);
   font-weight: 400;
   line-height: 1;
   letter-spacing: 0.12em;
@@ -217,12 +217,12 @@ const HakkiyoiText = styled.div`
 
   /* Solid gold — no background-clip tricks, fully readable */
   color: #FFD700;
-  -webkit-text-stroke: clamp(1.5px, 0.25vw, 3px) #3d0e0e;
+  -webkit-text-stroke: clamp(1.5px, 0.25cqw, 3px) #3d0e0e;
 
   text-shadow:
     0 0 8px rgba(255, 215, 0, 0.6),
     0 0 20px rgba(255, 180, 0, 0.3),
-    clamp(3px, 0.24vw, 6px) clamp(3px, 0.24vw, 6px) 0 #200404,
+    clamp(3px, 0.24cqw, 6px) clamp(3px, 0.24cqw, 6px) 0 #200404,
     5px 5px 0 rgba(20, 4, 4, 0.7),
     7px 7px 0 rgba(20, 4, 4, 0.4),
     0 2px 8px rgba(0, 0, 0, 0.8);
@@ -230,11 +230,11 @@ const HakkiyoiText = styled.div`
   animation: ${css`${slamIn}`} ${p => p.$duration} cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
 
   @media (max-width: 900px) {
-    font-size: clamp(1.8rem, 6vw, 4.2rem);
+    font-size: clamp(1.8rem, 6cqw, 4.2rem);
     letter-spacing: 0.1em;
   }
   @media (max-width: 600px) {
-    font-size: clamp(1.4rem, 5.5vw, 3rem);
+    font-size: clamp(1.4rem, 5.5cqw, 3rem);
     letter-spacing: 0.08em;
   }
 `;
@@ -242,14 +242,14 @@ const HakkiyoiText = styled.div`
 /* Japanese subtitle 八卦良い — gold, below the main text */
 const HakkiyoiKanji = styled.div`
   position: fixed;
-  top: calc(${ANNOUNCE_Y} + clamp(28px, 4.5vh, 48px));
+  top: calc(${ANNOUNCE_Y} + clamp(28px, 4.5cqh, 48px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 1004;
   pointer-events: none;
 
   font-family: "Noto Serif JP", "Yu Mincho", serif;
-  font-size: clamp(0.85rem, 1.8vw, 1.5rem);
+  font-size: clamp(0.85rem, 1.8cqw, 1.5rem);
   color: #d4af37;
   letter-spacing: 0.35em;
   opacity: 0;
@@ -261,9 +261,9 @@ const HakkiyoiKanji = styled.div`
     1px 1px 2px rgba(0, 0, 0, 0.9);
 
   @media (max-width: 600px) {
-    font-size: clamp(0.65rem, 1.5vw, 1rem);
+    font-size: clamp(0.65rem, 1.5cqw, 1rem);
     letter-spacing: 0.25em;
-    top: calc(${ANNOUNCE_Y} + clamp(22px, 3.5vh, 38px));
+    top: calc(${ANNOUNCE_Y} + clamp(22px, 3.5cqh, 38px));
   }
 `;
 
@@ -277,7 +277,7 @@ const GoldRule = styled.div`
   z-index: 1003;
   transform-origin: center center;
 
-  width: clamp(350px, 50vw, 600px);
+  width: clamp(350px, 50cqw, 600px);
   margin-top: ${p => p.$offset || "0px"};
 
   background: linear-gradient(
@@ -294,8 +294,8 @@ const GoldRule = styled.div`
   animation: ${ruleExtend} ${p => p.$duration} ease-out forwards;
   animation-delay: 0.06s;
 
-  @media (max-width: 900px) { width: clamp(260px, 45vw, 450px); }
-  @media (max-width: 600px) { width: clamp(190px, 42vw, 320px); height: 2px; }
+  @media (max-width: 900px) { width: clamp(260px, 45cqw, 450px); }
+  @media (max-width: 600px) { width: clamp(190px, 42cqw, 320px); height: 2px; }
 `;
 
 /* Small gold diamond accent */
@@ -304,26 +304,26 @@ const Diamond = styled.div`
   top: ${ANNOUNCE_Y};
   z-index: 1004;
   pointer-events: none;
-  width: clamp(7px, 0.7vw, 10px);
-  height: clamp(7px, 0.7vw, 10px);
+  width: clamp(7px, 0.7cqw, 10px);
+  height: clamp(7px, 0.7cqw, 10px);
   background: linear-gradient(135deg, #d4af37, #FFD700, #b8860b);
   transform: rotate(45deg);
-  margin-top: clamp(-4px, -0.35vw, -5px);
+  margin-top: clamp(-4px, -0.35cqw, -5px);
   opacity: 0;
   animation: ${fadeIO} ${p => p.$duration} ease-out forwards;
   animation-delay: 0.12s;
   box-shadow: 0 0 5px rgba(255, 215, 0, 0.4);
 
-  ${p => p.$side === "left" && `left: calc(50% - clamp(180px, 26vw, 310px));`}
-  ${p => p.$side === "right" && `left: calc(50% + clamp(172px, 25.3vw, 300px));`}
+  ${p => p.$side === "left" && `left: calc(50% - clamp(180px, 26cqw, 310px));`}
+  ${p => p.$side === "right" && `left: calc(50% + clamp(172px, 25.3cqw, 300px));`}
 
   @media (max-width: 900px) {
-    ${p => p.$side === "left" && `left: calc(50% - clamp(135px, 23vw, 235px));`}
-    ${p => p.$side === "right" && `left: calc(50% + clamp(127px, 22.3vw, 225px));`}
+    ${p => p.$side === "left" && `left: calc(50% - clamp(135px, 23cqw, 235px));`}
+    ${p => p.$side === "right" && `left: calc(50% + clamp(127px, 22.3cqw, 225px));`}
   }
   @media (max-width: 600px) {
-    ${p => p.$side === "left" && `left: calc(50% - clamp(100px, 22vw, 170px));`}
-    ${p => p.$side === "right" && `left: calc(50% + clamp(92px, 21vw, 160px));`}
+    ${p => p.$side === "left" && `left: calc(50% - clamp(100px, 22cqw, 170px));`}
+    ${p => p.$side === "right" && `left: calc(50% + clamp(92px, 21cqw, 160px));`}
   }
 `;
 
@@ -361,7 +361,7 @@ const TeWoTsuiteText = styled.div`
   pointer-events: none;
 
   font-family: "Bungee", cursive;
-  font-size: clamp(1.3rem, 3.8vw, 3rem);
+  font-size: clamp(1.3rem, 3.8cqw, 3rem);
   font-weight: 400;
   line-height: 1;
   letter-spacing: 0.18em;
@@ -369,24 +369,24 @@ const TeWoTsuiteText = styled.div`
   white-space: nowrap;
 
   color: #FFFFFF;
-  -webkit-text-stroke: clamp(1px, 0.15vw, 2px) rgba(0, 0, 0, 0.8);
+  -webkit-text-stroke: clamp(1px, 0.15cqw, 2px) rgba(0, 0, 0, 0.8);
 
   text-shadow:
-    clamp(-4px, -0.15vw, -2px) clamp(-4px, -0.15vw, -2px) 0 #000,
-    clamp(2px, 0.15vw, 4px) clamp(-4px, -0.15vw, -2px) 0 #000,
-    clamp(-4px, -0.15vw, -2px) clamp(2px, 0.15vw, 4px) 0 #000,
-    clamp(2px, 0.15vw, 4px) clamp(2px, 0.15vw, 4px) 0 #000,
-    0 0 clamp(8px, 0.8vw, 16px) rgba(0, 0, 0, 0.7),
-    0 0 clamp(16px, 1.6vw, 32px) rgba(0, 0, 0, 0.3);
+    clamp(-4px, -0.15cqw, -2px) clamp(-4px, -0.15cqw, -2px) 0 #000,
+    clamp(2px, 0.15cqw, 4px) clamp(-4px, -0.15cqw, -2px) 0 #000,
+    clamp(-4px, -0.15cqw, -2px) clamp(2px, 0.15cqw, 4px) 0 #000,
+    clamp(2px, 0.15cqw, 4px) clamp(2px, 0.15cqw, 4px) 0 #000,
+    0 0 clamp(8px, 0.8cqw, 16px) rgba(0, 0, 0, 0.7),
+    0 0 clamp(16px, 1.6cqw, 32px) rgba(0, 0, 0, 0.3);
 
   animation: ${css`${slideIn}`} ${p => p.$duration} cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
 
   @media (max-width: 900px) {
-    font-size: clamp(1rem, 3.2vw, 2.2rem);
+    font-size: clamp(1rem, 3.2cqw, 2.2rem);
     letter-spacing: 0.14em;
   }
   @media (max-width: 600px) {
-    font-size: clamp(0.85rem, 2.8vw, 1.7rem);
+    font-size: clamp(0.85rem, 2.8cqw, 1.7rem);
     letter-spacing: 0.1em;
   }
 `;
@@ -394,11 +394,11 @@ const TeWoTsuiteText = styled.div`
 /* Subtle brush stroke under TE WO TSUITE */
 const TeWoBrush = styled.div`
   position: fixed;
-  top: calc(${ANNOUNCE_Y} + clamp(16px, 2.5vh, 28px));
+  top: calc(${ANNOUNCE_Y} + clamp(16px, 2.5cqh, 28px));
   left: 50%;
   transform: translateX(-50%);
-  width: clamp(200px, 32vw, 380px);
-  height: clamp(10px, 1.5vh, 18px);
+  width: clamp(200px, 32cqw, 380px);
+  height: clamp(10px, 1.5cqh, 18px);
   z-index: 1003;
   pointer-events: none;
   border-radius: 50%;
@@ -416,26 +416,26 @@ const TeWoBrush = styled.div`
   animation: ${brushReveal} ${p => p.$duration} ease-out forwards;
 
   @media (max-width: 900px) {
-    width: clamp(160px, 28vw, 290px);
-    top: calc(${ANNOUNCE_Y} + clamp(12px, 2vh, 22px));
+    width: clamp(160px, 28cqw, 290px);
+    top: calc(${ANNOUNCE_Y} + clamp(12px, 2cqh, 22px));
   }
   @media (max-width: 600px) {
-    width: clamp(120px, 26vw, 210px);
-    top: calc(${ANNOUNCE_Y} + clamp(10px, 1.8vh, 18px));
+    width: clamp(120px, 26cqw, 210px);
+    top: calc(${ANNOUNCE_Y} + clamp(10px, 1.8cqh, 18px));
   }
 `;
 
 /* Japanese subtitle for TE WO TSUITE — very faint */
 const TeWoKanji = styled.div`
   position: fixed;
-  top: calc(${ANNOUNCE_Y} + clamp(18px, 3vh, 32px));
+  top: calc(${ANNOUNCE_Y} + clamp(18px, 3cqh, 32px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 1004;
   pointer-events: none;
 
   font-family: "Noto Serif JP", "Yu Mincho", serif;
-  font-size: clamp(0.65rem, 1.3vw, 1rem);
+  font-size: clamp(0.65rem, 1.3cqw, 1rem);
   color: rgba(255, 255, 255, 0.65);
   letter-spacing: 0.3em;
   opacity: 0;
@@ -445,8 +445,8 @@ const TeWoKanji = styled.div`
   text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.8);
 
   @media (max-width: 600px) {
-    font-size: clamp(0.55rem, 1.1vw, 0.8rem);
-    top: calc(${ANNOUNCE_Y} + clamp(14px, 2.5vh, 24px));
+    font-size: clamp(0.55rem, 1.1cqw, 0.8rem);
+    top: calc(${ANNOUNCE_Y} + clamp(14px, 2.5cqh, 24px));
   }
 `;
 
@@ -500,8 +500,8 @@ const SumoGameAnnouncement = ({
         ))}
 
         {/* Gold ornamental rules above & below text */}
-        <GoldRule $duration={durationStr} $offset="clamp(-24px, -3.5vh, -40px)" />
-        <GoldRule $duration={durationStr} $offset="clamp(20px, 3vh, 34px)" />
+        <GoldRule $duration={durationStr} $offset="clamp(-24px, -3.5cqh, -40px)" />
+        <GoldRule $duration={durationStr} $offset="clamp(20px, 3cqh, 34px)" />
 
         {/* Diamond accents at rule ends */}
         <Diamond $side="left" $duration={durationStr} />

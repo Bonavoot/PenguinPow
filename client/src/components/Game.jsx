@@ -174,6 +174,32 @@ const Game = ({
       mouse2: false,
     };
 
+    // Input throttle: batch rapid key events into at most ~60 emits/sec
+    // (one per server tick). Sends immediately on first change, then
+    // schedules a trailing emit so the final state is never lost.
+    let lastEmitTime = 0;
+    let emitTimerId = null;
+    const MIN_EMIT_INTERVAL = 16;
+
+    const emitInputNow = () => {
+      if (emitTimerId !== null) {
+        clearTimeout(emitTimerId);
+        emitTimerId = null;
+      }
+      lastEmitTime = performance.now();
+      socket.emit("fighter_action", { id: socket.id, keys: keyState });
+    };
+
+    const scheduleEmit = () => {
+      const now = performance.now();
+      const elapsed = now - lastEmitTime;
+      if (elapsed >= MIN_EMIT_INTERVAL) {
+        emitInputNow();
+      } else if (emitTimerId === null) {
+        emitTimerId = setTimeout(emitInputNow, MIN_EMIT_INTERVAL - elapsed);
+      }
+    };
+
     // Set up Steam Deck controller input
     const handleGamepadInput = (gamepadKeyState) => {
       // Block inputs during power-up selection or when throwing snowball
@@ -231,7 +257,7 @@ const Game = ({
       // Update keyState for next comparison
       Object.assign(keyState, gamepadKeyState);
 
-      socket.emit("fighter_action", { id: socket.id, keys: gamepadKeyState });
+      scheduleEmit();
     };
 
     // Add gamepad input callback
@@ -279,7 +305,7 @@ const Game = ({
           }
         }
 
-        socket.emit("fighter_action", { id: socket.id, keys: keyState });
+        scheduleEmit();
       }
     };
 
@@ -315,7 +341,7 @@ const Game = ({
           applyPrediction("power_slide_end");
         }
 
-        socket.emit("fighter_action", { id: socket.id, keys: keyState });
+        scheduleEmit();
       }
     };
 
@@ -333,7 +359,7 @@ const Game = ({
         e.preventDefault();
         keyState.mouse1 = true;
         applyPrediction("slap");
-        socket.emit("fighter_action", { id: socket.id, keys: keyState });
+        scheduleEmit();
       } else if (e.button === 2) {
         e.preventDefault();
         const wasPressed = keyState.mouse2;
@@ -344,7 +370,7 @@ const Game = ({
           applyPrediction("grab");
         }
 
-        socket.emit("fighter_action", { id: socket.id, keys: keyState });
+        scheduleEmit();
       }
     };
 
@@ -361,11 +387,11 @@ const Game = ({
       if (e.button === 0) {
         e.preventDefault();
         keyState.mouse1 = false;
-        socket.emit("fighter_action", { id: socket.id, keys: keyState });
+        scheduleEmit();
       } else if (e.button === 2) {
         e.preventDefault();
         keyState.mouse2 = false;
-        socket.emit("fighter_action", { id: socket.id, keys: keyState });
+        scheduleEmit();
       }
     };
 
@@ -378,7 +404,7 @@ const Game = ({
         for (const key in keyState) {
           keyState[key] = false;
         }
-        socket.emit("fighter_action", { id: socket.id, keys: keyState });
+        emitInputNow();
       }
     };
 
@@ -399,6 +425,9 @@ const Game = ({
 
       // Remove gamepad input callback
       gamepadHandler.removeInputCallback(handleGamepadInput);
+      if (emitTimerId !== null) {
+        clearTimeout(emitTimerId);
+      }
     };
   }, [isPowerUpSelectionActive, socket, currentPlayer, applyPrediction]);
 
@@ -419,7 +448,6 @@ const Game = ({
     preMatchShownRef.current = true;
 
     const runPreload = async () => {
-      console.log("Game: Starting pre-match screen and sprite preload...");
 
       // Simulate loading progress while actual preloading happens
       const progressInterval = setInterval(() => {
@@ -437,7 +465,6 @@ const Game = ({
           player1BodyColor,
           player2BodyColor
         );
-        console.log("Game: Sprites preloaded successfully");
 
         // Complete the progress bar
         clearInterval(progressInterval);
@@ -453,9 +480,6 @@ const Game = ({
       setShowPreMatchScreen(false);
 
       // Signal server that pre-match is complete - NOW start power-up selection
-      console.log(
-        "Game: Pre-match complete, signaling server to start power-up selection"
-      );
       socket.emit("pre_match_complete", { roomId: roomName });
     };
 

@@ -17,7 +17,6 @@ import {
 } from "../config/animatedSpriteConfig";
 import PlayerShadow from "./PlayerShadow";
 import ThrowTechEffect from "./ThrowTechEffect";
-import PowerMeter from "./PowerMeter";
 import SlapParryEffect from "./SlapParryEffect";
 import ChargeClashEffect from "./ChargeClashEffect";
 import { useParticles } from "../particles/ParticleContext";
@@ -34,7 +33,6 @@ import SnowballImpactEffect from "./SnowballImpactEffect";
 import PumoCloneSpawnEffect from "./PumoCloneSpawnEffect";
 import SlapAttackHandsEffect from "./SlapAttackHandsEffect";
 import SumoGameAnnouncement from "./SumoGameAnnouncement";
-import { useDynamicSprite } from "../hooks/useDynamicSprite";
 import {
   recolorImage,
   getCachedRecoloredImage,
@@ -55,11 +53,7 @@ import { playBuffer, createCrossfadeLoop } from "../utils/audioEngine";
 import SnowEffect from "./SnowEffect";
 import ThemeOverlay from "./ThemeOverlay";
 import "./theme.css";
-import {
-  isOutsideDohyo,
-  DOHYO_FALL_DEPTH,
-  SERVER_BROADCAST_HZ,
-} from "../constants";
+import { SERVER_BROADCAST_HZ } from "../constants";
 
 // Assets, sounds, preloading, constants, ritual config, playSound helper
 import {
@@ -98,14 +92,9 @@ import {
   roundDefeatSound,
   strafingSound,
   heartbeatSound,
-  clap1Sound,
   clap2Sound,
-  clap3Sound,
-  clap4Sound,
-  GROUND_LEVEL,
   SPRITE_HALF_W,
   PLAYER_MID_Y,
-  RITUAL_SPRITE_CONFIG,
   CLAP_SOUND_OFFSET,
   ritualSpritesheetsPlayer1,
   ritualSpritesheetsPlayer2,
@@ -116,7 +105,6 @@ import {
   slapWhiffSounds,
   chargedHitSounds,
   grabHitSounds,
-  rawParrySounds,
   pickRandomSound,
   xToPan,
   chargeAttackLaunchSound,
@@ -125,7 +113,6 @@ import {
 import getImageSrc from "./getImageSrc";
 import {
   StyledImage,
-  getFighterPopFilter,
   RitualSpriteContainer,
   RitualSpriteImage,
   AnimatedFighterContainer,
@@ -153,8 +140,7 @@ const GameFighter = ({
   opponentDisconnected,
   disconnectedRoomId,
   onResetDisconnectState,
-  isPowerUpSelectionActive,
-  predictionRef, // Ref for client-side prediction (only used for local player)
+  predictionRef,
   playerColor, // Custom color for mawashi/headband recoloring
   playerBodyColor, // Custom body color (null = default grey)
 }) => {
@@ -378,8 +364,7 @@ const GameFighter = ({
   const previousState = useRef(null);
   const currentState = useRef(null);
   const lastUpdateTime = useRef(performance.now());
-  const previousUpdateTime = useRef(0); // Tracks when the update before lastUpdateTime arrived
-  const lastRenderUpdateTime = useRef(0);
+  const previousUpdateTime = useRef(0);
   // PERFORMANCE: Only skip updates when position change is imperceptible
   // This gives smooth 60fps visuals while skipping redundant micro-updates
   const MIN_POSITION_CHANGE = 0.3; // pixels - skip if position changed less than this
@@ -405,7 +390,7 @@ const GameFighter = ({
   });
 
   // Force re-render when predictions change (refs don't trigger re-renders)
-  const [predictionTrigger, setPredictionTrigger] = useState(0);
+  const [, setPredictionTrigger] = useState(0);
 
   // Prediction timeout - clear predictions if server doesn't confirm within this time
   // Shorter timeout to prevent predictions from staying visible too long
@@ -644,18 +629,12 @@ const GameFighter = ({
             predictionChanged = true;
           }
           break;
-        case "power_slide_start":
-          // Predict power sliding when C/CTRL pressed
-          // Must match server's canPowerSlide conditions (server-io/index.js line 2898)
-          // NOTE: isChargingAttack is NOT blocked - can power slide while charging!
-          // CRITICAL: gameStarted check prevents visual squish before hakkiyoi and after match ends
-          // CRITICAL: velocity check prevents visual squish when standing still or moving too slow
-          // NOTE: We allow prediction when isRecovering or when charged attack (so charged HIT -> power slide works)
-          const SLIDE_MIN_VELOCITY = 0.5; // Must match server (server-io/index.js line 209)
+        case "power_slide_start": {
+          const SLIDE_MIN_VELOCITY = 0.5;
           const hasEnoughVelocity =
             Math.abs(penguin.movementVelocity || 0) >= SLIDE_MIN_VELOCITY;
           const blockSlideForAttack =
-            penguin.isAttacking && penguin.isSlapAttack; // Only block for slap, allow for charged
+            penguin.isAttacking && penguin.isSlapAttack;
           if (
             gameStarted &&
             hasEnoughVelocity &&
@@ -672,18 +651,12 @@ const GameFighter = ({
             !penguin.isGrabClashing &&
             !penguin.isGrabBreaking &&
             !penguin.isGrabBreakSeparating &&
-            // Check we're not already predicting power slide
             !predictedState.current.isPowerSliding
           ) {
             predictedState.current = {
               ...predictedState.current,
               isPowerSliding: true,
               isBraking: false,
-              // CRITICAL: Clear stale attack predictions to prevent chargedAttack animation flash.
-              // charge_release sets isAttacking=true and if the prediction expires without being
-              // cleared (e.g. victim handler never ran), the stale isAttacking persists in the ref.
-              // When isPowerSliding gets cleared by reconciliation (~50ms), the stale isAttacking
-              // would leak through the merge and briefly show the attack animation.
               isAttacking: false,
               isSlapAttack: false,
               timestamp: now,
@@ -691,10 +664,8 @@ const GameFighter = ({
             predictionChanged = true;
           }
           break;
-        case "power_slide_end":
-          // Clear power sliding prediction when C/CTRL released (only if was predicting).
-          // During recovery or while server still has charged attack (e.g. right after charged hit),
-          // don't clear so we keep showing power slide until that state ends.
+        }
+        case "power_slide_end": {
           const inChargedAttackOrRecoveryEnd =
             penguin.isRecovering ||
             (penguin.isAttacking && !penguin.isSlapAttack);
@@ -710,6 +681,7 @@ const GameFighter = ({
             predictionChanged = true;
           }
           break;
+        }
         case "brake_start":
           // Predict braking when holding opposite direction while sliding
           if (
@@ -983,6 +955,8 @@ const GameFighter = ({
     player1: null,
     player2: null,
   });
+  const allPlayersDataRef = useRef({ player1: null, player2: null });
+  const prevUiSnapshot = useRef({});
   const [hakkiyoi, setHakkiyoi] = useState(false);
   const [gyojiCall, setGyojiCall] = useState(null); // Gyoji's call before HAKKIYOI (e.g., "TE WO TSUITE!")
   const [gyojiState, setGyojiState] = useState("idle");
@@ -1062,7 +1036,6 @@ const GameFighter = ({
   // Use server state to determine if this specific player is in ritual phase
   // This allows each player to independently show/hide ritual based on their own state
   const shouldShowRitualForPlayer = penguin.isInRitualPhase === true;
-  const ritualAnimationSrc = shouldShowRitualForPlayer ? "sprite" : null;
 
   const trackedCounterGrabEffectPosition = useMemo(() => {
     if (!counterGrabEffectPosition) return null;
@@ -1071,8 +1044,8 @@ const GameFighter = ({
     const { grabberId, grabbedId } = counterGrabEffectPosition;
     if (!grabberId || !grabbedId) return counterGrabEffectPosition;
 
-    const player1 = allPlayersData.player1;
-    const player2 = allPlayersData.player2;
+    const player1 = allPlayersDataRef.current.player1;
+    const player2 = allPlayersDataRef.current.player2;
     if (!player1 || !player2) return counterGrabEffectPosition;
 
     const grabbed =
@@ -1089,118 +1062,7 @@ const GameFighter = ({
       x: grabbed.x + SPRITE_HALF_W,
       y: PLAYER_MID_Y,
     };
-  }, [counterGrabEffectPosition, allPlayersData, index]);
-
-  // Exact sprite source used for the main fighter image so masks always match
-  const currentSpriteSrc = useMemo(() => {
-    return getImageSrc(
-      penguin.fighter,
-      penguin.isDiving,
-      penguin.isJumping,
-      penguin.isAttacking,
-      penguin.isDodging,
-      penguin.isStrafing,
-      penguin.isRawParrying,
-      penguin.isGrabBreaking,
-      penguin.isReady,
-      penguin.isHit,
-      penguin.isDead,
-      penguin.isSlapAttack,
-      penguin.isThrowing,
-      penguin.isGrabbing,
-      penguin.isGrabbingMovement,
-      penguin.isBeingGrabbed,
-      penguin.isThrowingSalt,
-      penguin.slapAnimation,
-      penguin.isBowing,
-      penguin.isThrowTeching,
-      penguin.isBeingPulled,
-      penguin.isBeingPushed,
-      penguin.grabState,
-      penguin.grabAttemptType,
-      penguin.isRecovering,
-      penguin.isRawParryStun,
-      penguin.isRawParrySuccess,
-      penguin.isPerfectRawParrySuccess,
-      penguin.isThrowingSnowball,
-      penguin.isSpawningPumoArmy,
-      penguin.isAtTheRopes,
-      penguin.isCrouchStance,
-      penguin.isCrouchStrafing,
-      penguin.isPowerSliding,
-      penguin.isGrabBreakCountered,
-      penguin.isGrabbingMovement,
-      isGrabClashActive,
-      penguin.isAttemptingGrabThrow,
-      ritualAnimationSrc, // Pass ritual animation if active
-      // New grab action system states
-      penguin.isGrabPushing,
-      penguin.isBeingGrabPushed,
-      penguin.isAttemptingPull,
-      penguin.isBeingPullReversaled,
-      penguin.isGrabSeparating,
-      penguin.isGrabBellyFlopping,
-      penguin.isBeingGrabBellyFlopped,
-      penguin.isGrabFrontalForceOut,
-      penguin.isBeingGrabFrontalForceOut,
-      penguin.isGrabTeching,
-      penguin.grabTechRole,
-      penguin.isGrabWhiffRecovery
-    );
-  }, [
-    penguin.fighter,
-    penguin.isDiving,
-    penguin.isJumping,
-    penguin.isAttacking,
-    penguin.isDodging,
-    penguin.isStrafing,
-    penguin.isRawParrying,
-    penguin.isGrabBreaking,
-    penguin.isReady,
-    penguin.isHit,
-    penguin.isDead,
-    penguin.isSlapAttack,
-    penguin.isThrowing,
-    penguin.isGrabbing,
-    penguin.isGrabbingMovement,
-    penguin.isBeingGrabbed,
-    penguin.isThrowingSalt,
-    penguin.slapAnimation,
-    penguin.isBowing,
-    penguin.isThrowTeching,
-    penguin.isBeingPulled,
-    penguin.isBeingPushed,
-    penguin.grabState,
-    penguin.grabAttemptType,
-    penguin.isRecovering,
-    penguin.isRawParryStun,
-    penguin.isRawParrySuccess,
-    penguin.isPerfectRawParrySuccess,
-    penguin.isThrowingSnowball,
-    penguin.isSpawningPumoArmy,
-    penguin.isAtTheRopes,
-    penguin.isCrouchStance,
-    penguin.isCrouchStrafing,
-    penguin.isPowerSliding,
-    penguin.isGrabBreakCountered,
-    penguin.isGrabbingMovement,
-    isGrabClashActive,
-    penguin.isAttemptingGrabThrow,
-    ritualAnimationSrc,
-    // New grab action system states
-    penguin.isGrabPushing,
-    penguin.isBeingGrabPushed,
-    penguin.isAttemptingPull,
-    penguin.isBeingPullReversaled,
-    penguin.isGrabSeparating,
-    penguin.isGrabBellyFlopping,
-    penguin.isBeingGrabBellyFlopped,
-    penguin.isGrabFrontalForceOut,
-    penguin.isBeingGrabFrontalForceOut,
-    penguin.isGrabTeching,
-    penguin.grabTechRole,
-    penguin.isGrabWhiffRecovery,
-  ]);
+  }, [counterGrabEffectPosition, index]);
 
   // PERFORMANCE: Remove RoundResult warmup after styled-components CSS is generated.
   // Rendering both victory/defeat variants for 2 frames generates all CSS classes.
@@ -1549,39 +1411,8 @@ const GameFighter = ({
     duckTimerRef.current = requestAnimationFrame(recover);
   }, []);
 
-  // Add performance optimizations
-  const frameRate = useRef(60);
-  const lastFrameTime = useRef(performance.now());
-  const frameCount = useRef(0);
-  const lastFpsUpdate = useRef(performance.now());
-  const animateIdRef = useRef(null);
-
-  // Optimize animation frame with actual usage
-  // MEMORY FIX: Store animation ID in ref so cleanup can cancel the actual pending frame
-  const animate = useCallback((timestamp) => {
-    animateIdRef.current = requestAnimationFrame(animate);
-
-    // Calculate delta time for smooth animations
-    lastFrameTime.current = timestamp;
-
-    // Update FPS counter every second
-    frameCount.current++;
-    if (timestamp - lastFpsUpdate.current >= 1000) {
-      frameRate.current = frameCount.current;
-      frameCount.current = 0;
-      lastFpsUpdate.current = timestamp;
-    }
-  }, []);
-
-  useEffect(() => {
-    animateIdRef.current = requestAnimationFrame(animate);
-    return () => {
-      if (animateIdRef.current) {
-        cancelAnimationFrame(animateIdRef.current);
-        animateIdRef.current = null;
-      }
-    };
-  }, [animate]);
+  // FPS counter RAF loop removed — it consumed a full rAF slot per
+  // GameFighter instance (×2) with no visible output.
 
   // PERFORMANCE: Refs to store accumulated player state for delta merging
   const accumulatedPlayer1State = useRef(null);
@@ -1592,8 +1423,8 @@ const GameFighter = ({
     (data) => {
       const currentTime = performance.now();
 
-      // PERFORMANCE: Handle delta updates by merging with existing state
-      // Server sends isDelta: true when only changed properties are included
+      // PERFORMANCE: Handle delta updates by merging into existing refs in-place
+      // (avoids creating new objects 32×/sec which causes GC pressure)
       let player1Data, player2Data;
 
       if (
@@ -1601,43 +1432,80 @@ const GameFighter = ({
         accumulatedPlayer1State.current &&
         accumulatedPlayer2State.current
       ) {
-        // Merge delta with accumulated state (only if we have previous state)
-        player1Data = { ...accumulatedPlayer1State.current, ...data.player1 };
-        player2Data = { ...accumulatedPlayer2State.current, ...data.player2 };
+        const d1 = data.player1;
+        const d2 = data.player2;
+        const a1 = accumulatedPlayer1State.current;
+        const a2 = accumulatedPlayer2State.current;
+        for (const k in d1) a1[k] = d1[k];
+        for (const k in d2) a2[k] = d2[k];
+        player1Data = a1;
+        player2Data = a2;
       } else {
-        // First update or full update - use as-is
-        // Delta updates contain all essential properties on first send
-        player1Data = data.player1;
-        player2Data = data.player2;
+        accumulatedPlayer1State.current = { ...data.player1 };
+        accumulatedPlayer2State.current = { ...data.player2 };
+        player1Data = accumulatedPlayer1State.current;
+        player2Data = accumulatedPlayer2State.current;
       }
 
-      // Store accumulated state for next delta merge
-      accumulatedPlayer1State.current = player1Data;
-      accumulatedPlayer2State.current = player2Data;
+      // Always update ref (read by counter-grab positioning etc.)
+      allPlayersDataRef.current.player1 = player1Data;
+      allPlayersDataRef.current.player2 = player2Data;
 
-      // Store both players' data for UI (only for first component)
+      // Only trigger React re-render when UI-visible properties change.
+      // Because accumulated state is mutated in-place, we compare against a
+      // separate snapshot of primitive values (not the object reference).
       if (index === 0) {
-        setAllPlayersData({
-          player1: player1Data,
-          player2: player2Data,
-        });
+        const snap = prevUiSnapshot.current;
+        if (
+          snap.p1Stam !== player1Data.stamina ||
+          snap.p2Stam !== player2Data.stamina ||
+          snap.p1Pow !== player1Data.activePowerUp ||
+          snap.p2Pow !== player2Data.activePowerUp ||
+          snap.p1SbCd !== player1Data.snowballCooldown ||
+          snap.p2SbCd !== player2Data.snowballCooldown ||
+          snap.p1PaCd !== player1Data.pumoArmyCooldown ||
+          snap.p2PaCd !== player2Data.pumoArmyCooldown ||
+          snap.p1Gas !== player1Data.isGassed ||
+          snap.p2Gas !== player2Data.isGassed ||
+          snap.p1Edge !== player1Data.isBeingEdgePushed
+        ) {
+          snap.p1Stam = player1Data.stamina;
+          snap.p2Stam = player2Data.stamina;
+          snap.p1Pow = player1Data.activePowerUp;
+          snap.p2Pow = player2Data.activePowerUp;
+          snap.p1SbCd = player1Data.snowballCooldown;
+          snap.p2SbCd = player2Data.snowballCooldown;
+          snap.p1PaCd = player1Data.pumoArmyCooldown;
+          snap.p2PaCd = player2Data.pumoArmyCooldown;
+          snap.p1Gas = player1Data.isGassed;
+          snap.p2Gas = player2Data.isGassed;
+          snap.p1Edge = player1Data.isBeingEdgePushed;
+          setAllPlayersData({ player1: player1Data, player2: player2Data });
+        }
       }
 
       // Get the relevant player data based on index
       const playerData = index === 0 ? player1Data : player2Data;
 
-      // Store previous state for interpolation
+      // Store previous state for interpolation (mutate in-place to avoid GC)
       if (currentState.current) {
-        previousState.current = { ...currentState.current };
+        if (!previousState.current) {
+          previousState.current = { x: 0, y: 0, facing: 1, knockbackVelocity: null };
+        }
+        previousState.current.x = currentState.current.x;
+        previousState.current.y = currentState.current.y;
+        previousState.current.facing = currentState.current.facing;
+        previousState.current.knockbackVelocity = currentState.current.knockbackVelocity;
       }
 
-      // Store current state
-      currentState.current = {
-        x: playerData.x,
-        y: playerData.y,
-        facing: playerData.facing,
-        knockbackVelocity: playerData.knockbackVelocity,
-      };
+      // Store current state (mutate in-place)
+      if (!currentState.current) {
+        currentState.current = { x: 0, y: 0, facing: 1, knockbackVelocity: null };
+      }
+      currentState.current.x = playerData.x;
+      currentState.current.y = playerData.y;
+      currentState.current.facing = playerData.facing;
+      currentState.current.knockbackVelocity = playerData.knockbackVelocity;
 
       // Track actual intervals between server updates for adaptive interpolation
       previousUpdateTime.current = lastUpdateTime.current;
@@ -1748,10 +1616,9 @@ const GameFighter = ({
         player1Data.snowballs !== undefined ||
         player2Data.snowballs !== undefined
       ) {
-        const combinedSnowballs = [
-          ...(player1Data.snowballs || []),
-          ...(player2Data.snowballs || []),
-        ];
+        const combinedSnowballs = (player1Data.snowballs || []).concat(
+          player2Data.snowballs || []
+        );
 
         // Direct DOM position updates bypass React's render pipeline, keeping
         // snowball movement smooth even when heavy state changes (parry, etc.)
@@ -1775,18 +1642,16 @@ const GameFighter = ({
         player1Data.pumoArmy !== undefined ||
         player2Data.pumoArmy !== undefined
       ) {
-        const combinedPumoArmies = [
-          ...(player1Data.pumoArmy || []).map((clone) => ({
-            ...clone,
-            ownerPlayerNumber: 1,
-          })),
-          ...(player2Data.pumoArmy || []).map((clone) => ({
-            ...clone,
-            ownerPlayerNumber: 2,
-          })),
-        ];
-
-        setAllPumoArmies(combinedPumoArmies);
+        const p1a = player1Data.pumoArmy || [];
+        const p2a = player2Data.pumoArmy || [];
+        const combined = new Array(p1a.length + p2a.length);
+        for (let i = 0; i < p1a.length; i++) {
+          combined[i] = { ...p1a[i], ownerPlayerNumber: 1 };
+        }
+        for (let i = 0; i < p2a.length; i++) {
+          combined[p1a.length + i] = { ...p2a[i], ownerPlayerNumber: 2 };
+        }
+        setAllPumoArmies(combined);
       }
     },
     [index]
@@ -2026,9 +1891,9 @@ const GameFighter = ({
     socket.on("grab_clash_end", (data) => {
       if (index === 0) {
         if (data.winnerId === localId) {
-          playSound(clashVictorySound, 0.01);
+          playSound(roundVictorySound, 0.01);
         } else if (data.loserId === localId) {
-          playSound(clashDefeatSound, 0.08);
+          playSound(roundDefeatSound, 0.08);
         }
       }
       setIsGrabClashActive(false);
@@ -2625,7 +2490,7 @@ const GameFighter = ({
         strafingSoundRef.current = result;
       }
     } else if (strafingSoundRef.current) {
-      const { source, gainNode } = strafingSoundRef.current;
+      const { gainNode } = strafingSoundRef.current;
       const ctx = gainNode.context;
       gainNode.gain.setValueAtTime(gainNode.gain.value, ctx.currentTime);
       gainNode.gain.linearRampToValueAtTime(0, ctx.currentTime + FADE_MS);
@@ -2634,14 +2499,14 @@ const GameFighter = ({
       setTimeout(() => {
         try {
           ref.source.stop();
-        } catch (_) {}
+        } catch (_) { /* AudioNode may already be stopped */ }
       }, FADE_MS * 1000 + 20);
     }
     return () => {
       if (strafingSoundRef.current) {
         try {
           strafingSoundRef.current.source.stop();
-        } catch (_) {}
+        } catch (_) { /* AudioNode may already be stopped */ }
         strafingSoundRef.current = null;
       }
     };
@@ -2924,8 +2789,8 @@ const GameFighter = ({
   }, [shouldShowThickBlubberIndicator]);
 
   // Add state for danger zone effect
-  const [dangerZoneActive, setDangerZoneActive] = useState(false);
-  const [slowMoActive, setSlowMoActive] = useState(false);
+  const [, setDangerZoneActive] = useState(false);
+  const [, setSlowMoActive] = useState(false);
   const [isCinematicKillAttacker, setIsCinematicKillAttacker] = useState(false);
 
   // Add screen shake, thick blubber absorption, and danger zone event listeners
@@ -2962,7 +2827,7 @@ const GameFighter = ({
       }
     });
 
-    socket.on("danger_zone", (data) => {
+    socket.on("danger_zone", () => {
       setDangerZoneActive(true);
       setSlowMoActive(true);
 
@@ -2973,7 +2838,7 @@ const GameFighter = ({
       pendingTimeouts.push(id);
     });
 
-    socket.on("ring_out", (data) => {
+    socket.on("ring_out", () => {
       setScreenShake({
         intensity: 1.2,
         duration: 600,
@@ -3541,7 +3406,7 @@ const GameFighter = ({
         y={thickBlubberEffect.y}
         isActive={thickBlubberEffect.isActive}
       />
-      <ThrowTechEffect />
+      {index === 0 && <ThrowTechEffect />}
       {countdown > 0 &&
         !hakkiyoi &&
         !matchOver &&
@@ -3676,7 +3541,9 @@ GameFighter.propTypes = {
   disconnectedRoomId: PropTypes.string,
   onResetDisconnectState: PropTypes.func.isRequired,
   isPowerUpSelectionActive: PropTypes.bool,
-  predictionRef: PropTypes.object, // Ref object for client-side prediction
+  predictionRef: PropTypes.object,
+  playerColor: PropTypes.string,
+  playerBodyColor: PropTypes.string,
 };
 
 // Optimize the component with React.memo

@@ -15,27 +15,22 @@ const SaltContainer = styled.div.attrs((props) => ({
   },
 }))``;
 
-const SaltParticle = styled.div.attrs((props) => ({
-  style: {
-    position: "absolute",
-    width: "calc(0.3cqw * (16 / 9))",
-    height: "calc(0.3vh * (16 / 9))", 
-    background: `radial-gradient(circle at center, 
-      rgba(255, 255, 255, 1) 0%, 
-      rgba(255, 255, 255, 0.96) 32%, 
-      rgba(248, 252, 255, 0.82) 62%, 
-      rgba(255, 255, 255, 0) 100%)`,
-    borderRadius: "50%",
-    willChange: "transform, opacity",
-    transformStyle: "preserve-3d",
-    backfaceVisibility: "hidden",
-    transform: `translate(${props.$x}px, ${-props.$y}px) scale(${
-      props.$scale
-    })`,
-    opacity: props.$opacity,
-    filter: `brightness(1.18) contrast(1.15) blur(${props.$blur}px)`,
-  },
-}))``;
+const SaltParticle = styled.div`
+  position: absolute;
+  width: calc(0.3cqw * (16 / 9));
+  height: calc(0.3cqw * (16 / 9));
+  background: radial-gradient(
+    circle at center,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(255, 255, 255, 0.96) 32%,
+    rgba(248, 252, 255, 0.82) 62%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  border-radius: 50%;
+  will-change: transform, opacity;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+`;
 
 const SaltEffect = ({
   isActive,
@@ -45,70 +40,59 @@ const SaltEffect = ({
   xOffset = 0,
   yOffset = 0,
 }) => {
-  const [particles, setParticles] = useState([]);
+  const [particleSlots, setParticleSlots] = useState([]);
+  const particlesRef = useRef([]);
   const lastActiveState = useRef(false);
   const lastUpdateTime = useRef(null);
   const animationFrameRef = useRef(null);
   const containerRef = useRef(null);
-
-  const updateParticle = useCallback((particle, deltaTime) => {
-    // Apply gravity to velocityY (negative Y makes particles fall down since we use bottom positioning)
-    const gravity = -0.5; // Negative gravity since bottom-referenced positioning
-    const newVelocityY = particle.velocityY + gravity * (deltaTime / 16);
-
-    const newX = particle.x + particle.velocityX * (deltaTime / 16);
-    const newY = particle.y + newVelocityY * (deltaTime / 16);
-    const newOpacity = particle.opacity - deltaTime / particle.life;
-    const newScale = particle.scale * 0.99;
-    const newBlur = particle.blur + 0.1;
-
-    return {
-      ...particle,
-      x: newX,
-      y: newY,
-      velocityY: newVelocityY, // Store the updated velocity for next frame
-      opacity: newOpacity,
-      scale: newScale,
-      blur: newBlur,
-      life: particle.life - deltaTime,
-    };
-  }, []);
+  const domRefs = useRef([]);
 
   useEffect(() => {
-    // Only generate particles when isActive changes from false to true
     if (isActive && !lastActiveState.current) {
       const baseAngle = playerFacing === 1 ? 135 : 40;
-      const windowWidth = window.innerWidth;
-      const maxWidth = 1280;
-      const velocityScale = Math.min(windowWidth / maxWidth, 1);
+      const velocityScale = 1;
+      const baseIdx = particlesRef.current.length;
 
-      const newParticles = Array.from({ length: 20 }, () => { // Increased count to compensate for smaller size
-        const angle = (baseAngle + (Math.random() * 80 - 40)) * (Math.PI / 180);
+      const newParticles = [];
+      for (let i = 0; i < 20; i++) {
+        const angle =
+          (baseAngle + (Math.random() * 80 - 40)) * (Math.PI / 180);
         const baseSpeed = 8 + Math.random() * 7;
         const speed = baseSpeed * velocityScale;
-        const scale = 0.7 + Math.random() * 0.6; // Varied scale for realistic salt grain sizes
+        const scale = 0.7 + Math.random() * 0.6;
 
-        return {
-          id: Math.random(),
+        newParticles.push({
           x:
             ((playerX + xOffset + (playerFacing === 1 ? -20 : 1000)) / 1280) *
             100,
           y: ((playerY + yOffset) / 720) * 100,
           velocityX: Math.cos(angle) * speed * (playerFacing === 1 ? 1 : -1),
           velocityY: Math.sin(angle) * speed,
-          opacity: 0.94 + Math.random() * 0.06, // Brighter white salt visibility
+          opacity: 0.94 + Math.random() * 0.06,
+          maxLife: 1200 + Math.random() * 400,
           life: 1200 + Math.random() * 400,
           scale,
-          blur: Math.random() * 0.08, // Keep grains crisp and readable
-          rotation: Math.random() * 360,
-          rotationSpeed: (Math.random() - 0.5) * 2,
-        };
-      });
+          blur: Math.random() * 0.08,
+          alive: true,
+        });
+      }
 
-      setParticles((prev) => [...prev, ...newParticles]);
+      particlesRef.current = particlesRef.current.concat(newParticles);
+      // Tell React to mount new DOM elements (one render per burst, not per frame)
+      setParticleSlots((prev) => {
+        const next = new Array(particlesRef.current.length);
+        for (let i = 0; i < next.length; i++) next[i] = i;
+        return next;
+      });
+      domRefs.current.length = particlesRef.current.length;
     }
     lastActiveState.current = isActive;
   }, [isActive, playerFacing, playerX, playerY, xOffset, yOffset]);
+
+  const setDomRef = useCallback((idx, el) => {
+    domRefs.current[idx] = el;
+  }, []);
 
   useEffect(() => {
     const animate = (timestamp) => {
@@ -119,13 +103,44 @@ const SaltEffect = ({
       const deltaTime = timestamp - lastUpdateTime.current;
 
       if (deltaTime >= 16) {
-        setParticles((prevParticles) => {
-          const updatedParticles = prevParticles
-            .map((particle) => updateParticle(particle, deltaTime))
-            .filter((particle) => particle.life > 0 && particle.opacity > 0);
+        const particles = particlesRef.current;
+        let aliveCount = 0;
+        const dtFactor = deltaTime / 16;
 
-          return updatedParticles;
-        });
+        for (let i = 0; i < particles.length; i++) {
+          const p = particles[i];
+          if (!p.alive) continue;
+
+          p.velocityY += -0.5 * dtFactor;
+          p.x += p.velocityX * dtFactor;
+          p.y += p.velocityY * dtFactor;
+          p.opacity -= deltaTime / p.maxLife;
+          p.scale *= 0.99;
+          p.blur += 0.1;
+          p.life -= deltaTime;
+
+          if (p.life <= 0 || p.opacity <= 0) {
+            p.alive = false;
+            const el = domRefs.current[i];
+            if (el) el.style.opacity = "0";
+            continue;
+          }
+
+          aliveCount++;
+
+          const el = domRefs.current[i];
+          if (el) {
+            el.style.transform = `translate(${p.x}px, ${-p.y}px) scale(${p.scale})`;
+            el.style.opacity = p.opacity;
+            el.style.filter = `brightness(1.18) contrast(1.15) blur(${p.blur}px)`;
+          }
+        }
+
+        if (aliveCount === 0 && particles.length > 0) {
+          particlesRef.current = [];
+          domRefs.current = [];
+          setParticleSlots([]);
+        }
 
         lastUpdateTime.current = timestamp;
       }
@@ -140,7 +155,9 @@ const SaltEffect = ({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [updateParticle]);
+  }, []);
+
+  if (particleSlots.length === 0) return null;
 
   return (
     <SaltContainer
@@ -149,15 +166,8 @@ const SaltEffect = ({
       $y={playerY}
       $facing={playerFacing}
     >
-      {particles.map((particle, index) => (
-        <SaltParticle
-          key={index}
-          $x={particle.x}
-          $y={particle.y}
-          $opacity={particle.opacity}
-          $scale={particle.scale}
-          $blur={particle.blur}
-        />
+      {particleSlots.map((idx) => (
+        <SaltParticle key={idx} ref={(el) => setDomRef(idx, el)} />
       ))}
     </SaltContainer>
   );

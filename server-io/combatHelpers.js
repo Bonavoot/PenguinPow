@@ -31,8 +31,7 @@ function isOpponentCloseEnoughForGrab(player, opponent) {
 
 function isOpponentInFrontOfGrabber(player, opponent) {
   // Grab should only connect with opponents who are in front of the grabber,
-  // not behind them. Uses player.facing instead of grabMovementDirection
-  // since grabs are now instant (no lunge movement).
+  // not behind them. Uses player.facing for direction check.
   // facing: 1 = facing left, -1 = facing right
   const BEHIND_TOLERANCE = 20; // Small tolerance (pixels) for near-overlap edge cases
   // Convert facing to direction: facing 1 (left) → check opponent is to left (-1)

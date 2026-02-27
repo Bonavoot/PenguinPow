@@ -150,12 +150,12 @@ const FlashOverlay = styled.div`
 `;
 
 const RevealContainer = styled.div`
-  margin-top: calc(10.6vh + 22px);
+  margin-top: calc(10.6cqh + 22px);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: clamp(16px, 3vw, 40px);
-  padding: clamp(15px, 2.5vw, 28px);
+  gap: clamp(16px, 3cqw, 40px);
+  padding: clamp(15px, 2.5cqw, 28px);
   background: linear-gradient(180deg,
     rgba(20, 10, 5, 0.95) 0%,
     rgba(45, 21, 16, 0.95) 50%,
@@ -183,8 +183,8 @@ const RevealContainer = styled.div`
   }
   
   @media (max-width: 700px) {
-    gap: clamp(12px, 2.5vw, 24px);
-    padding: clamp(10px, 2vw, 18px);
+    gap: clamp(12px, 2.5cqw, 24px);
+    padding: clamp(10px, 2cqw, 18px);
     border-width: 3px;
   }
 `;
@@ -214,11 +214,11 @@ const PlayerCard = styled.div`
 
 const PlayerLabel = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.55rem, 1.1vw, 0.85rem);
+  font-size: clamp(0.55rem, 1.1cqw, 0.85rem);
   color: ${props => props.$isPlayer1 ? '#00d2ff' : '#ff6b6b'};
   text-transform: uppercase;
   letter-spacing: 0.15em;
-  margin-bottom: clamp(6px, 1vh, 10px);
+  margin-bottom: clamp(6px, 1cqh, 10px);
   text-shadow: 
     2px 2px 0 #000,
     0 0 10px ${props => props.$isPlayer1 ? 'rgba(0, 210, 255, 0.5)' : 'rgba(255, 107, 107, 0.5)'};
@@ -227,21 +227,21 @@ const PlayerLabel = styled.div`
   opacity: 0;
   
   @media (max-width: 600px) {
-    font-size: clamp(0.45rem, 1.8vw, 0.7rem);
-    margin-bottom: clamp(4px, 0.8vh, 8px);
+    font-size: clamp(0.45rem, 1.8cqw, 0.7rem);
+    margin-bottom: clamp(4px, 0.8cqh, 8px);
   }
 `;
 
 const PowerUpCard = styled.div`
-  width: clamp(80px, 12vw, 145px);
+  width: clamp(80px, 12cqw, 145px);
   background: linear-gradient(180deg,
     #4a3525 0%,
     #3d2817 50%,
     #2a1d14 100%
   );
   border: 3px solid ${props => getTypeColor(props.$powerUpType).main};
-  border-radius: clamp(4px, 0.6vw, 8px);
-  padding: clamp(12px, 1.6vh, 20px) clamp(8px, 1.2vw, 14px);
+  border-radius: clamp(4px, 0.6cqw, 8px);
+  padding: clamp(12px, 1.6cqh, 20px) clamp(8px, 1.2cqw, 14px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -271,25 +271,25 @@ const PowerUpCard = styled.div`
   }
   
   @media (max-width: 600px) {
-    width: clamp(65px, 17vw, 110px);
-    padding: clamp(10px, 1.4vh, 16px) clamp(6px, 1vw, 10px);
+    width: clamp(65px, 17cqw, 110px);
+    padding: clamp(10px, 1.4cqh, 16px) clamp(6px, 1cqw, 10px);
     border-width: 2px;
   }
 `;
 
 const IconContainer = styled.div`
-  width: clamp(35px, 5.5vw, 58px);
-  height: clamp(35px, 5.5vw, 58px);
+  width: clamp(35px, 5.5cqw, 58px);
+  height: clamp(35px, 5.5cqw, 58px);
   background: linear-gradient(135deg,
     ${props => getTypeColor(props.$powerUpType).main} 0%,
     ${props => getTypeColor(props.$powerUpType).dark} 100%
   );
   border: 3px solid #000;
-  border-radius: clamp(4px, 0.6vw, 8px);
+  border-radius: clamp(4px, 0.6cqw, 8px);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: clamp(8px, 1vh, 12px);
+  margin-bottom: clamp(8px, 1cqh, 12px);
   box-shadow: 
     inset 0 3px 6px rgba(255, 255, 255, 0.3),
     inset 0 -3px 6px rgba(0, 0, 0, 0.4),
@@ -328,43 +328,43 @@ const IconContainer = styled.div`
   }
   
   @media (max-width: 600px) {
-    width: clamp(34px, 8vw, 55px);
-    height: clamp(34px, 8vw, 55px);
-    margin-bottom: clamp(6px, 0.8vh, 10px);
+    width: clamp(34px, 8cqw, 55px);
+    height: clamp(34px, 8cqw, 55px);
+    margin-bottom: clamp(6px, 0.8cqh, 10px);
     border-width: 2px;
   }
 `;
 
 const PowerUpName = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.65rem, 1.25vw, 0.95rem);
+  font-size: clamp(0.65rem, 1.25cqw, 0.95rem);
   color: ${props => getTypeColor(props.$powerUpType).main};
   text-transform: uppercase;
   letter-spacing: 0.04em;
   text-align: center;
   line-height: 1.1;
-  margin-bottom: clamp(3px, 0.4vh, 6px);
+  margin-bottom: clamp(3px, 0.4cqh, 6px);
   text-shadow: 
     2px 2px 0 #000,
     0 0 10px ${props => getTypeColor(props.$powerUpType).glow};
   white-space: nowrap;
   
   @media (max-width: 600px) {
-    font-size: clamp(0.5rem, 2.2vw, 0.75rem);
+    font-size: clamp(0.5rem, 2.2cqw, 0.75rem);
   }
 `;
 
 const PowerUpType = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.44rem, 0.85vw, 0.62rem);
+  font-size: clamp(0.44rem, 0.85cqw, 0.62rem);
   color: ${props => props.$isActive ? '#44ff88' : 'white'};
   text-transform: uppercase;
-  margin-top: clamp(4px, 0.6vh, 8px);
+  margin-top: clamp(4px, 0.6cqh, 8px);
   letter-spacing: 0.05em;
   text-shadow: ${props => props.$isActive ? '0 0 6px rgba(68, 255, 136, 0.4), 1px 1px 1px rgba(0,0,0,0.8)' : '1px 1px 1px rgba(0,0,0,0.7)'};
   
   @media (max-width: 600px) {
-    font-size: clamp(0.38rem, 1.35vw, 0.54rem);
+    font-size: clamp(0.38rem, 1.35cqw, 0.54rem);
   }
 `;
 
@@ -379,7 +379,7 @@ const VSContainer = styled.div`
 
 const VSText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(1.2rem, 3vw, 2rem);
+  font-size: clamp(1.2rem, 3cqw, 2rem);
   color: #d4af37;
   text-shadow: 
     3px 3px 0 #000,
@@ -390,7 +390,7 @@ const VSText = styled.div`
   letter-spacing: 0.1em;
   
   @media (max-width: 600px) {
-    font-size: clamp(0.9rem, 4vw, 1.5rem);
+    font-size: clamp(0.9rem, 4cqw, 1.5rem);
   }
 `;
 

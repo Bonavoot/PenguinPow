@@ -48,8 +48,8 @@ const RoomCard = styled.div`
     #1a0a08 100%
   );
   border: 2px solid ${props => props.$isFull ? '#4a3a2a' : '#8b7355'};
-  border-radius: clamp(6px, 0.8vw, 10px);
-  padding: clamp(14px, 2vh, 22px) clamp(18px, 2.5vw, 28px);
+  border-radius: clamp(6px, 0.8cqw, 10px);
+  padding: clamp(14px, 2cqh, 22px) clamp(18px, 2.5cqw, 28px);
   position: relative;
   transition: all 0.25s ease;
   animation: ${slideIn} 0.4s ease-out;
@@ -75,7 +75,7 @@ const RoomCard = styled.div`
         transparent 2px
       );
     pointer-events: none;
-    border-radius: clamp(6px, 0.8vw, 10px);
+    border-radius: clamp(6px, 0.8cqw, 10px);
   }
 
   &:hover {
@@ -92,18 +92,18 @@ const RoomCard = styled.div`
 const RoomInfo = styled.div`
   display: flex;
   align-items: center;
-  gap: clamp(16px, 2.5vw, 32px);
+  gap: clamp(16px, 2.5cqw, 32px);
 `;
 
 const RoomIdSection = styled.div`
   display: flex;
   flex-direction: column;
-  gap: clamp(2px, 0.3vh, 4px);
+  gap: clamp(2px, 0.3cqh, 4px);
 `;
 
 const RoomLabel = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.4rem, 0.7vw, 0.5rem);
+  font-size: clamp(0.4rem, 0.7cqw, 0.5rem);
   color: #5c4033;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -111,7 +111,7 @@ const RoomLabel = styled.div`
 
 const RoomId = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.85rem, 1.4vw, 1.15rem);
+  font-size: clamp(0.85rem, 1.4cqw, 1.15rem);
   color: #e8dcc8;
   text-shadow: 2px 2px 0 #000;
   letter-spacing: 0.05em;
@@ -120,12 +120,12 @@ const RoomId = styled.div`
 const PlayerCount = styled.div`
   display: flex;
   align-items: center;
-  gap: clamp(6px, 0.8vw, 10px);
+  gap: clamp(6px, 0.8cqw, 10px);
 `;
 
 const PlayerDot = styled.div`
-  width: clamp(10px, 1.2vw, 14px);
-  height: clamp(10px, 1.2vw, 14px);
+  width: clamp(10px, 1.2cqw, 14px);
+  height: clamp(10px, 1.2cqw, 14px);
   border-radius: 50%;
   background: ${props => props.$filled ? '#4ade80' : 'rgba(92, 64, 51, 0.5)'};
   border: 2px solid ${props => props.$filled ? '#4ade80' : '#5c4033'};
@@ -136,23 +136,23 @@ const PlayerDot = styled.div`
 
 const PlayerCountText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.6rem, 1vw, 0.8rem);
+  font-size: clamp(0.6rem, 1cqw, 0.8rem);
   color: ${props => props.$isFull ? '#5c4033' : '#8b7355'};
   text-shadow: 1px 1px 0 #000;
 `;
 
 const StatusBadge = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.4rem, 0.7vw, 0.55rem);
+  font-size: clamp(0.4rem, 0.7cqw, 0.55rem);
   color: ${props => props.$isFull ? '#5c4033' : '#4ade80'};
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  padding: clamp(4px, 0.6vh, 7px) clamp(10px, 1.5vw, 16px);
+  padding: clamp(4px, 0.6cqh, 7px) clamp(10px, 1.5cqw, 16px);
   background: ${props => props.$isFull 
     ? 'rgba(92, 64, 51, 0.2)' 
     : 'rgba(74, 222, 128, 0.1)'};
   border: 1px solid ${props => props.$isFull ? '#4a3a2a' : 'rgba(74, 222, 128, 0.3)'};
-  border-radius: clamp(3px, 0.4vw, 5px);
+  border-radius: clamp(3px, 0.4cqw, 5px);
   ${props => !props.$isFull && css`
     box-shadow: 0 0 10px rgba(74, 222, 128, 0.1);
   `}
@@ -164,7 +164,7 @@ const StatusBadge = styled.div`
 
 const JoinButton = styled.button`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.6rem, 1vw, 0.8rem);
+  font-size: clamp(0.6rem, 1cqw, 0.8rem);
   background: ${props => props.$isFull ? css`
     linear-gradient(180deg,
       #2a2a2a 0%,
@@ -180,8 +180,8 @@ const JoinButton = styled.button`
   `};
   color: ${props => props.$isFull ? '#555' : '#4ade80'};
   border: 2px solid ${props => props.$isFull ? '#3a3a3a' : '#4ade80'};
-  border-radius: clamp(4px, 0.6vw, 8px);
-  padding: clamp(10px, 1.4vh, 16px) clamp(20px, 2.8vw, 32px);
+  border-radius: clamp(4px, 0.6cqw, 8px);
+  padding: clamp(10px, 1.4cqh, 16px) clamp(20px, 2.8cqw, 32px);
   cursor: ${props => props.$isFull ? 'not-allowed' : 'pointer'};
   transition: all 0.25s ease;
   text-transform: uppercase;
@@ -208,7 +208,7 @@ const JoinButton = styled.button`
       rgba(255,255,255,0.02) 1px,
       transparent 3px
     );
-    border-radius: clamp(4px, 0.6vw, 8px);
+    border-radius: clamp(4px, 0.6cqw, 8px);
     pointer-events: none;
   }
 

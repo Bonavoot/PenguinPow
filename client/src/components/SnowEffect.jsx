@@ -81,8 +81,8 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
   const createParticleData = useCallback((initialY = -10) => {
     const depth = getRandomDepth();
     const isEnvelope = shouldShowEnvelopes;
-    const screenW = window.innerWidth;
-    const screenH = window.innerHeight;
+    const screenW = 1280;
+    const screenH = 720;
 
     // Scale based on depth
     const depthScale = isEnvelope
@@ -146,7 +146,7 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
     const maxParticles = shouldShowEnvelopes ? MAX_ENVELOPES : MAX_SNOWFLAKES;
 
     for (let i = 0; i < maxParticles; i++) {
-      const initialY = -10 - Math.random() * window.innerHeight * 0.8;
+      const initialY = -10 - Math.random() * 720 * 0.8;
       const particle = createParticleData(initialY);
       particlesRef.current.push(particle);
 
@@ -196,7 +196,7 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
       lastTimeRef.current = timestamp;
       const time = timestamp / 1000;
       const timeFactor = deltaTime / 16;
-      const screenW = window.innerWidth;
+      const screenW = 1280;
 
       particlesRef.current.forEach((particle, i) => {
         const el = elementsRef.current[i];

@@ -82,7 +82,7 @@ const ModalOverlay = styled.div`
 const BannerContainer = styled.div`
   width: 90%;
   max-width: 900px;
-  max-height: 85vh;
+  max-height: 85cqh;
   display: flex;
   flex-direction: column;
   animation: ${bannerDrop} 0.5s ease-out forwards, ${bannerSway} 12s ease-in-out 0.5s infinite;
@@ -91,7 +91,7 @@ const BannerContainer = styled.div`
 
 const HangingBar = styled.div`
   width: 104%;
-  height: clamp(16px, 2.2vh, 24px);
+  height: clamp(16px, 2.2cqh, 24px);
   background: linear-gradient(180deg,
     #5c4033 0%,
     #3d2817 50%,
@@ -110,8 +110,8 @@ const HangingBar = styled.div`
     content: "";
     position: absolute;
     top: -10px;
-    width: clamp(12px, 1.5vw, 18px);
-    height: clamp(12px, 1.5vw, 18px);
+    width: clamp(12px, 1.5cqw, 18px);
+    height: clamp(12px, 1.5cqw, 18px);
     background: radial-gradient(circle at 30% 30%, #d4af37, #8b7355);
     border-radius: 50%;
     border: 2px solid #5c4033;
@@ -130,7 +130,7 @@ const BannerBody = styled.div`
   );
   border: 3px solid #8b7355;
   border-top: none;
-  border-radius: 0 0 clamp(10px, 1.2vw, 16px) clamp(10px, 1.2vw, 16px);
+  border-radius: 0 0 clamp(10px, 1.2cqw, 16px) clamp(10px, 1.2cqw, 16px);
   box-shadow: 
     0 20px 60px rgba(0,0,0,0.7),
     inset 0 0 50px rgba(0,0,0,0.5),
@@ -176,7 +176,7 @@ const BannerBody = styled.div`
     right: 10px;
     bottom: 10px;
     border: 1px solid rgba(212, 175, 55, 0.1);
-    border-radius: clamp(6px, 0.8vw, 12px);
+    border-radius: clamp(6px, 0.8cqw, 12px);
     pointer-events: none;
     z-index: 0;
   }
@@ -195,8 +195,8 @@ const TasselContainer = styled.div`
 `;
 
 const Tassel = styled.div`
-  width: clamp(7px, 1vw, 11px);
-  height: clamp(22px, 3.5vh, 36px);
+  width: clamp(7px, 1cqw, 11px);
+  height: clamp(22px, 3.5cqh, 36px);
   background: linear-gradient(180deg, #d4af37 0%, #8b7355 100%);
   border-radius: 0 0 4px 4px;
   animation: ${tasselSway} ${props => 2 + props.$delay * 0.3}s ease-in-out infinite;
@@ -212,7 +212,7 @@ const Header = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: clamp(16px, 2.5vh, 26px) clamp(20px, 3vw, 36px);
+  padding: clamp(16px, 2.5cqh, 26px) clamp(20px, 3cqw, 36px);
   border-bottom: 2px solid rgba(139, 115, 85, 0.4);
   position: relative;
   z-index: 1;
@@ -225,7 +225,7 @@ const Header = styled.div`
     bottom: -8px;
     left: 50%;
     transform: translateX(-50%);
-    font-size: clamp(6px, 0.8vw, 10px);
+    font-size: clamp(6px, 0.8cqw, 10px);
     color: rgba(212, 175, 55, 0.4);
     letter-spacing: 1em;
   }
@@ -233,7 +233,7 @@ const Header = styled.div`
 
 const Title = styled.h1`
   font-family: "Bungee", cursive;
-  font-size: clamp(1.2rem, 2.5vw, 1.8rem);
+  font-size: clamp(1.2rem, 2.5cqw, 1.8rem);
   color: #d4af37;
   margin: 0;
   text-transform: uppercase;
@@ -243,13 +243,13 @@ const Title = styled.h1`
 
 const ButtonContainer = styled.div`
   display: flex;
-  gap: clamp(8px, 1.5vw, 16px);
+  gap: clamp(8px, 1.5cqw, 16px);
   align-items: center;
 `;
 
 const HeaderButton = styled.button`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.5rem, 0.9vw, 0.7rem);
+  font-size: clamp(0.5rem, 0.9cqw, 0.7rem);
   background: ${props => props.$variant === "back" ? css`
     linear-gradient(180deg,
       #4a3525 0%,
@@ -265,8 +265,8 @@ const HeaderButton = styled.button`
   `};
   color: ${props => props.$variant === "back" ? '#d4af37' : '#888'};
   border: 2px solid ${props => props.$variant === "back" ? '#8b7355' : '#444'};
-  border-radius: clamp(4px, 0.6vw, 7px);
-  padding: clamp(8px, 1.2vh, 14px) clamp(14px, 2vw, 22px);
+  border-radius: clamp(4px, 0.6cqw, 7px);
+  padding: clamp(8px, 1.2cqh, 14px) clamp(14px, 2cqw, 22px);
   cursor: pointer;
   transition: all 0.25s ease;
   text-transform: uppercase;
@@ -277,7 +277,7 @@ const HeaderButton = styled.button`
   text-shadow: 1px 1px 0 #000;
   display: flex;
   align-items: center;
-  gap: clamp(4px, 0.6vw, 8px);
+  gap: clamp(4px, 0.6cqw, 8px);
   position: relative;
   
   /* Wood grain */
@@ -294,12 +294,12 @@ const HeaderButton = styled.button`
       rgba(255,255,255,0.02) 1px,
       transparent 3px
     );
-    border-radius: clamp(4px, 0.6vw, 7px);
+    border-radius: clamp(4px, 0.6cqw, 7px);
     pointer-events: none;
   }
 
   .material-symbols-outlined {
-    font-size: clamp(0.8rem, 1.2vw, 1rem);
+    font-size: clamp(0.8rem, 1.2cqw, 1rem);
   }
 
   &:hover {
@@ -346,9 +346,9 @@ const RoomListContainer = styled.div`
 const RoomList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: clamp(10px, 1.5vh, 16px);
-  padding: clamp(18px, 2.5vh, 28px) clamp(20px, 3vw, 36px);
-  padding-bottom: clamp(40px, 5vh, 60px);
+  gap: clamp(10px, 1.5cqh, 16px);
+  padding: clamp(18px, 2.5cqh, 28px) clamp(20px, 3cqw, 36px);
+  padding-bottom: clamp(40px, 5cqh, 60px);
   overflow-y: auto;
   position: relative;
   z-index: 1;
@@ -379,50 +379,50 @@ const EmptyState = styled.div`
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: clamp(40px, 6vh, 80px) clamp(20px, 3vw, 40px);
+  padding: clamp(40px, 6cqh, 80px) clamp(20px, 3cqw, 40px);
   text-align: center;
   position: relative;
   z-index: 1;
 `;
 
 const EmptyIcon = styled.div`
-  font-size: clamp(2.5rem, 5vw, 4rem);
-  margin-bottom: clamp(12px, 2vh, 20px);
+  font-size: clamp(2.5rem, 5cqw, 4rem);
+  margin-bottom: clamp(12px, 2cqh, 20px);
   opacity: 0.6;
 `;
 
 const EmptyTitle = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.9rem, 1.6vw, 1.2rem);
+  font-size: clamp(0.9rem, 1.6cqw, 1.2rem);
   color: #8b7355;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  margin-bottom: clamp(8px, 1.2vh, 14px);
+  margin-bottom: clamp(8px, 1.2cqh, 14px);
   text-shadow: 2px 2px 0 #000;
 `;
 
 const EmptySubtext = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.55rem, 1vw, 0.75rem);
+  font-size: clamp(0.55rem, 1cqw, 0.75rem);
   color: #5c4033;
   letter-spacing: 0.08em;
   text-shadow: 1px 1px 0 #000;
 `;
 
 const CreateRoomHint = styled.div`
-  margin-top: clamp(20px, 3vh, 32px);
-  padding: clamp(12px, 1.8vh, 20px) clamp(20px, 3vw, 32px);
+  margin-top: clamp(20px, 3cqh, 32px);
+  padding: clamp(12px, 1.8cqh, 20px) clamp(20px, 3cqw, 32px);
   background: linear-gradient(180deg,
     rgba(74, 53, 37, 0.3) 0%,
     rgba(42, 29, 20, 0.3) 100%
   );
   border: 1px solid rgba(139, 115, 85, 0.3);
-  border-radius: clamp(4px, 0.6vw, 8px);
+  border-radius: clamp(4px, 0.6cqw, 8px);
 `;
 
 const HintText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.5rem, 0.9vw, 0.65rem);
+  font-size: clamp(0.5rem, 0.9cqw, 0.65rem);
   color: #d4af37;
   letter-spacing: 0.08em;
   text-shadow: 1px 1px 0 #000;

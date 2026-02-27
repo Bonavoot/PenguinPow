@@ -25,6 +25,7 @@ const {
   DODGE_SLIDE_MOMENTUM,
   DODGE_POWERSLIDE_BOOST,
   RAW_PARRY_STAMINA_COST,
+  CHARGE_FULL_POWER_MS,
 } = require("./constants");
 
 // Add new function for grab state cleanup
@@ -473,7 +474,7 @@ function executeSlapAttack(player, rooms) {
       ) {
         player.isChargingAttack = true;
         if (player.chargeAttackPower > 0) {
-          player.chargeStartTime = Date.now() - (player.chargeAttackPower / 100 * 750);
+          player.chargeStartTime = Date.now() - (player.chargeAttackPower / 100 * CHARGE_FULL_POWER_MS);
         } else if (!player.chargeStartTime) {
           player.chargeStartTime = Date.now();
           player.chargeAttackPower = 1;

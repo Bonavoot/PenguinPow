@@ -78,7 +78,7 @@ const ClashHeader = styled.div`
 // Clean, bold title with Japanese-inspired styling
 const ClashTitle = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.75rem, 1.8vw, 1.1rem);
+  font-size: clamp(0.75rem, 1.8cqw, 1.1rem);
   color: #999;
   text-transform: uppercase;
   letter-spacing: 0.15em;
@@ -87,7 +87,7 @@ const ClashTitle = styled.div`
 // Mash instruction - prominent and animated
 const MashInstruction = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(1.1rem, 2.8vw, 1.8rem);
+  font-size: clamp(1.1rem, 2.8cqw, 1.8rem);
   color: #fff;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -152,7 +152,7 @@ const PlayerMarker = styled.div`
 
 // Main meter frame with traditional-inspired styling
 const ClashMeterFrame = styled.div`
-  width: clamp(240px, 32vw, 380px);
+  width: clamp(240px, 32cqw, 380px);
   height: 32px;
   background: #0d0d0d;
   border: 3px solid #3a3a3a;
@@ -273,13 +273,13 @@ const StatsRow = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  width: clamp(240px, 32vw, 380px);
+  width: clamp(240px, 32cqw, 380px);
   padding: 0 4px;
 `;
 
 const InputDisplay = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.85rem, 1.4vw, 1.1rem);
+  font-size: clamp(0.85rem, 1.4cqw, 1.1rem);
   color: ${props => {
     // Determine color based on which player is on which side
     const isPlayer1Side = (props.$side === 'left' && !props.$isPlayer1OnLeft) || 
@@ -305,7 +305,7 @@ const InputDisplay = styled.div`
 
 // Compact timer bar
 const TimerContainer = styled.div`
-  width: clamp(240px, 32vw, 380px);
+  width: clamp(240px, 32cqw, 380px);
   height: 4px;
   background: #1a1a1a;
   border: 1px solid #333;
@@ -344,7 +344,6 @@ const GrabClashUI = ({ socket, player1, player2, localId }) => {
     if (!socket) return;
 
     const handleGrabClashStart = (data) => {
-      console.log('Grab clash started:', data);
       setIsVisible(true);
       setPlayer1Inputs(0);
       setPlayer2Inputs(0);
@@ -424,8 +423,6 @@ const GrabClashUI = ({ socket, player1, player2, localId }) => {
     };
 
     const handleGrabClashEnd = (data) => {
-      console.log('Grab clash ended:', data);
-      
       const refLeftPlayerId = spatialLayoutRef.current.leftPlayerId;
       const winnerIsLeft = data.winnerId === refLeftPlayerId;
       const winnerSideValue = winnerIsLeft ? 'left' : 'right';

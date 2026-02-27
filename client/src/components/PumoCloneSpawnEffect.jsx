@@ -34,8 +34,8 @@ const EffectContainer = styled.div.attrs((props) => ({
 //   position: absolute;
 //   top: 50%;
 //   left: 50%;
-//   width: clamp(35px, 4vw, 50px);
-//   height: clamp(35px, 4vw, 50px);
+//   width: clamp(35px, 4cqw, 50px);
+//   height: clamp(35px, 4cqw, 50px);
 //   border: 3px solid;
 //   border-radius: 50%;
 //   transform: translate(-50%, -50%) scale(0.3);

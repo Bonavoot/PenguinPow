@@ -118,8 +118,8 @@
 //   position: absolute;
 //   bottom: 0;
 //   left: 50%;
-//   width: clamp(60px, 8vw, 120px);
-//   height: clamp(25px, 3vw, 45px);
+//   width: clamp(60px, 8cqw, 120px);
+//   height: clamp(25px, 3cqw, 45px);
 //   background: radial-gradient(ellipse at center bottom, 
 //     rgba(255, 255, 255, 0.7) 0%, 
 //     rgba(200, 220, 255, 0.4) 40%, 
@@ -135,8 +135,8 @@
 //   position: absolute;
 //   bottom: 2px;
 //   left: 50%;
-//   width: clamp(80px, 10vw, 150px);
-//   height: clamp(15px, 2vw, 25px);
+//   width: clamp(80px, 10cqw, 150px);
+//   height: clamp(15px, 2cqw, 25px);
 //   background: transparent;
 //   border: 2px solid rgba(255, 255, 255, 0.6);
 //   border-radius: 50%;
@@ -149,7 +149,7 @@
 //   position: absolute;
 //   bottom: 8px;
 //   left: ${(props) => props.$left ? '45%' : '55%'};
-//   width: clamp(30px, 4vw, 60px);
+//   width: clamp(30px, 4cqw, 60px);
 //   height: 3px;
 //   background: linear-gradient(
 //     ${(props) => props.$left ? '90deg' : '270deg'},
@@ -165,8 +165,8 @@
 //   position: absolute;
 //   bottom: 5px;
 //   left: 50%;
-//   width: clamp(4px, 0.5vw, 8px);
-//   height: clamp(4px, 0.5vw, 8px);
+//   width: clamp(4px, 0.5cqw, 8px);
+//   height: clamp(4px, 0.5cqw, 8px);
 //   background: rgba(255, 255, 255, 0.9);
 //   border-radius: 50%;
 //   animation: ${(props) => {

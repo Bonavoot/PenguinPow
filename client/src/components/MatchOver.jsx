@@ -63,23 +63,23 @@ const MatchOverContainer = styled.div`
   top: 48%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: clamp(220px, 25vw, 320px);
+  width: clamp(220px, 25cqw, 320px);
   z-index: 200;
   animation: ${bannerDrop} 0.5s ease-out forwards, ${bannerSway} 8s ease-in-out 0.5s infinite;
   
   @media (max-width: 1200px) {
-    width: clamp(190px, 30vw, 280px);
+    width: clamp(190px, 30cqw, 280px);
   }
   
   @media (max-width: 900px) {
-    width: clamp(170px, 38vw, 250px);
+    width: clamp(170px, 38cqw, 250px);
   }
 `;
 
 // Top hanging bar
 const HangingBar = styled.div`
   width: 110%;
-  height: clamp(14px, 2vh, 22px);
+  height: clamp(14px, 2cqh, 22px);
   background: linear-gradient(180deg,
     #5c4033 0%,
     #3d2817 50%,
@@ -97,8 +97,8 @@ const HangingBar = styled.div`
     content: "";
     position: absolute;
     top: -8px;
-    width: clamp(10px, 1.5vw, 16px);
-    height: clamp(10px, 1.5vw, 16px);
+    width: clamp(10px, 1.5cqw, 16px);
+    height: clamp(10px, 1.5cqw, 16px);
     background: radial-gradient(circle at 30% 30%, #d4af37, #8b7355);
     border-radius: 50%;
     border: 2px solid #5c4033;
@@ -121,8 +121,8 @@ const TasselContainer = styled.div`
 `;
 
 const Tassel = styled.div`
-  width: clamp(6px, 1vw, 10px);
-  height: clamp(20px, 3vh, 35px);
+  width: clamp(6px, 1cqw, 10px);
+  height: clamp(20px, 3cqh, 35px);
   background: linear-gradient(180deg, #d4af37 0%, #8b7355 100%);
   border-radius: 0 0 3px 3px;
   animation: ${tasselSway} ${props => 2 + props.$delay * 0.3}s ease-in-out infinite;
@@ -152,8 +152,8 @@ const BannerBody = styled.div`
   );
   border: 3px solid #8b7355;
   border-top: none;
-  border-radius: 0 0 clamp(8px, 1.2vw, 14px) clamp(8px, 1.2vw, 14px);
-  padding: clamp(18px, 3vh, 30px) clamp(14px, 2vw, 24px) clamp(16px, 2.5vh, 26px);
+  border-radius: 0 0 clamp(8px, 1.2cqw, 14px) clamp(8px, 1.2cqw, 14px);
+  padding: clamp(18px, 3cqh, 30px) clamp(14px, 2cqw, 24px) clamp(16px, 2.5cqh, 26px);
   box-shadow: 
     0 15px 50px rgba(0,0,0,0.7),
     inset 0 0 40px rgba(0,0,0,0.6),
@@ -182,7 +182,7 @@ const BannerBody = styled.div`
         transparent 2px
       );
     pointer-events: none;
-    border-radius: 0 0 clamp(8px, 1.2vw, 14px) clamp(8px, 1.2vw, 14px);
+    border-radius: 0 0 clamp(8px, 1.2cqw, 14px) clamp(8px, 1.2cqw, 14px);
   }
   
   /* Gold corner decorations */
@@ -194,12 +194,12 @@ const BannerBody = styled.div`
     right: 10px;
     bottom: 10px;
     border: 1px solid rgba(212, 175, 55, 0.15);
-    border-radius: clamp(4px, 0.8vw, 10px);
+    border-radius: clamp(4px, 0.8cqw, 10px);
     pointer-events: none;
   }
   
   @media (max-width: 900px) {
-    padding: clamp(14px, 2.5vh, 22px) clamp(10px, 1.8vw, 18px) clamp(12px, 2vh, 18px);
+    padding: clamp(14px, 2.5cqh, 22px) clamp(10px, 1.8cqw, 18px) clamp(12px, 2cqh, 18px);
     border-width: 2px;
   }
 `;
@@ -207,8 +207,8 @@ const BannerBody = styled.div`
 // Result section
 const ResultSection = styled.div`
   text-align: center;
-  margin-bottom: clamp(14px, 2vh, 22px);
-  padding-bottom: clamp(12px, 1.8vh, 18px);
+  margin-bottom: clamp(14px, 2cqh, 22px);
+  padding-bottom: clamp(12px, 1.8cqh, 18px);
   border-bottom: 2px solid ${props => props.$isWinner ? 'rgba(74, 222, 128, 0.3)' : 'rgba(248, 113, 113, 0.3)'};
   position: relative;
   
@@ -217,7 +217,7 @@ const ResultSection = styled.div`
     content: "◆";
     position: absolute;
     bottom: -8px;
-    font-size: clamp(8px, 1vw, 12px);
+    font-size: clamp(8px, 1cqw, 12px);
     color: ${props => props.$isWinner ? '#4ade80' : '#f87171'};
   }
   &::before { left: 20%; }
@@ -226,27 +226,27 @@ const ResultSection = styled.div`
 
 const ResultText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(1rem, 2.8vw, 1.6rem);
+  font-size: clamp(1rem, 2.8cqw, 1.6rem);
   color: ${props => props.$isWinner ? '#4ade80' : '#f87171'};
   text-transform: uppercase;
   letter-spacing: 0.15em;
   animation: ${props => props.$isWinner ? victoryGlow : defeatPulse} 2s ease-in-out infinite;
   
   @media (max-width: 900px) {
-    font-size: clamp(0.85rem, 3.5vw, 1.3rem);
+    font-size: clamp(0.85rem, 3.5cqw, 1.3rem);
   }
 `;
 
 const SubText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.5rem, 1.2vw, 0.75rem);
+  font-size: clamp(0.5rem, 1.2cqw, 0.75rem);
   color: #e8dcc8;
-  margin-top: clamp(6px, 1vh, 10px);
+  margin-top: clamp(6px, 1cqh, 10px);
   letter-spacing: 0.12em;
   text-shadow: 2px 2px 0 #000;
   
   @media (max-width: 900px) {
-    font-size: clamp(0.42rem, 1.8vw, 0.65rem);
+    font-size: clamp(0.42rem, 1.8cqw, 0.65rem);
   }
 `;
 

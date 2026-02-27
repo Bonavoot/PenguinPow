@@ -9,24 +9,24 @@ const drift1 = keyframes`
   0% { transform: translate(0, -10px); opacity: 0; }
   10% { opacity: 1; }
   90% { opacity: 0.6; }
-  100% { transform: translate(25px, 105vh); opacity: 0; }
+  100% { transform: translate(25px, 105cqh); opacity: 0; }
 `;
 
 const drift2 = keyframes`
   0% { transform: translate(0, -10px); opacity: 0; }
   10% { opacity: 0.8; }
-  50% { transform: translate(-18px, 52vh); }
+  50% { transform: translate(-18px, 52cqh); }
   90% { opacity: 0.4; }
-  100% { transform: translate(12px, 105vh); opacity: 0; }
+  100% { transform: translate(12px, 105cqh); opacity: 0; }
 `;
 
 const drift3 = keyframes`
   0% { transform: translate(0, -10px); opacity: 0; }
   10% { opacity: 0.9; }
-  30% { transform: translate(12px, 32vh); }
-  60% { transform: translate(-8px, 62vh); }
+  30% { transform: translate(12px, 32cqh); }
+  60% { transform: translate(-8px, 62cqh); }
   90% { opacity: 0.5; }
-  100% { transform: translate(6px, 105vh); opacity: 0; }
+  100% { transform: translate(6px, 105cqh); opacity: 0; }
 `;
 
 const frostPulse = keyframes`

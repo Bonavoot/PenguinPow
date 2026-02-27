@@ -5,6 +5,7 @@ const {
   DODGE_DURATION, DODGE_STAMINA_COST,
   DODGE_SLIDE_MOMENTUM, DODGE_POWERSLIDE_BOOST,
   SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST,
+  CHARGE_FULL_POWER_MS,
   GRAB_ACTION_WINDOW, GRAB_STARTUP_DURATION_MS,
   HITSTOP_THROW_MS,
   PULL_REVERSAL_DISTANCE, PULL_REVERSAL_TWEEN_DURATION,
@@ -1880,7 +1881,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
       }
       // Calculate charge power (0-100%)
       const chargeDuration = Date.now() - player.chargeStartTime;
-      player.chargeAttackPower = Math.min((chargeDuration / 750) * 100, 100);
+      player.chargeAttackPower = Math.min((chargeDuration / CHARGE_FULL_POWER_MS) * 100, 100);
 
       // Lock facing direction while charging
       if (player.isThrowing || player.throwingFacingDirection !== null) {
@@ -2257,8 +2258,8 @@ function registerSocketHandlers(socket, io, rooms, context) {
         player.hitAbsorptionUsed = false;
       }
 
-      // Begin near-instant startup (70ms telegraph, no hop, no forward movement)
-      // After startup, tick loop does instant range check → connect / whiff / tech
+      // Begin startup with forward lunge — tick loop applies lunge movement,
+      // then does range check at the end → connect / whiff / tech
       player.isGrabStartup = true;
       player.grabStartupStartTime = Date.now();
       player.grabStartupDuration = GRAB_STARTUP_DURATION_MS;

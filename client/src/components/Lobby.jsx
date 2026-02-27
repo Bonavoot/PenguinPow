@@ -151,8 +151,8 @@ const ropeSwing = keyframes`
 const LobbyContainer = styled.div`
   display: flex;
   flex-direction: column;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   min-height: 400px;
   background: linear-gradient(180deg,
     #0a0505 0%,
@@ -201,14 +201,14 @@ const TopDecoration = styled.div`
   top: 0;
   left: 0;
   right: 0;
-  height: clamp(60px, 10vh, 100px);
+  height: clamp(60px, 10cqh, 100px);
   z-index: 5;
   pointer-events: none;
 `;
 
 const HangingRope = styled.div`
   position: absolute;
-  top: clamp(20px, 3vh, 35px);
+  top: clamp(20px, 3cqh, 35px);
   left: 10%;
   right: 10%;
   height: 4px;
@@ -227,8 +227,8 @@ const HangingRope = styled.div`
     content: "";
     position: absolute;
     top: -8px;
-    width: clamp(12px, 2vw, 20px);
-    height: clamp(12px, 2vw, 20px);
+    width: clamp(12px, 2cqw, 20px);
+    height: clamp(12px, 2cqw, 20px);
     background: radial-gradient(circle at 30% 30%, #d4af37, #8b7355);
     border-radius: 50%;
     border: 2px solid #5c4033;
@@ -239,15 +239,15 @@ const HangingRope = styled.div`
 
 const Lantern = styled.div`
   position: absolute;
-  top: clamp(22px, 3.5vh, 45px);
-  width: clamp(22px, 3.2vw, 45px);
-  height: clamp(32px, 5vh, 70px);
+  top: clamp(22px, 3.5cqh, 45px);
+  width: clamp(22px, 3.2cqw, 45px);
+  height: clamp(32px, 5cqh, 70px);
   background: linear-gradient(180deg,
     #cc3300 0%,
     #aa2200 50%,
     #881100 100%
   );
-  border-radius: clamp(4px, 0.6vw, 8px);
+  border-radius: clamp(4px, 0.6cqw, 8px);
   animation: ${lanternGlow} 3s ease-in-out infinite;
   animation-delay: ${props => props.$delay || 0}s;
   
@@ -272,7 +272,7 @@ const Lantern = styled.div`
     left: 50%;
     transform: translate(-50%, -50%);
     font-family: "Noto Serif JP", serif;
-    font-size: clamp(12px, 1.8vw, 20px);
+    font-size: clamp(12px, 1.8cqw, 20px);
     color: #d4af37;
     text-shadow: 1px 1px 0 rgba(0,0,0,0.5);
   }
@@ -292,7 +292,7 @@ const CenterLantern = styled(Lantern)`
   
   &::after {
     content: "力";
-    font-size: clamp(14px, 2vw, 22px);
+    font-size: clamp(14px, 2cqw, 22px);
   }
 `;
 
@@ -372,8 +372,8 @@ const Header = styled.header`
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: clamp(68px, 12vh, 130px) clamp(16px, 2.5vw, 40px) clamp(2px, 0.5vh, 10px);
-  margin-bottom: clamp(-8px, -1vh, -16px);
+  padding: clamp(68px, 12cqh, 130px) clamp(16px, 2.5cqw, 40px) clamp(2px, 0.5cqh, 10px);
+  margin-bottom: clamp(-8px, -1cqh, -16px);
   position: relative;
   z-index: 10;
   flex-shrink: 0;
@@ -387,7 +387,7 @@ const TournamentBanner = styled.div`
 
 const BannerHangingBar = styled.div`
   width: 110%;
-  height: clamp(12px, 1.8vh, 18px);
+  height: clamp(12px, 1.8cqh, 18px);
   background: linear-gradient(180deg,
     #5c4033 0%,
     #3d2817 50%,
@@ -404,8 +404,8 @@ const BannerHangingBar = styled.div`
     content: "";
     position: absolute;
     top: -6px;
-    width: clamp(8px, 1.2vw, 14px);
-    height: clamp(8px, 1.2vw, 14px);
+    width: clamp(8px, 1.2cqw, 14px);
+    height: clamp(8px, 1.2cqw, 14px);
     background: radial-gradient(circle at 30% 30%, #d4af37, #8b7355);
     border-radius: 50%;
     border: 2px solid #5c4033;
@@ -424,8 +424,8 @@ const BannerBody = styled.div`
   );
   border: 3px solid #8b7355;
   border-top: none;
-  border-radius: 0 0 clamp(6px, 1vw, 12px) clamp(6px, 1vw, 12px);
-  padding: clamp(5px, 1vh, 16px) clamp(12px, 2.5vw, 40px);
+  border-radius: 0 0 clamp(6px, 1cqw, 12px) clamp(6px, 1cqw, 12px);
+  padding: clamp(5px, 1cqh, 16px) clamp(12px, 2.5cqw, 40px);
   box-shadow: 
     0 10px 40px rgba(0,0,0,0.6),
     inset 0 0 30px rgba(0,0,0,0.4);
@@ -448,7 +448,7 @@ const BannerBody = styled.div`
         transparent 2px
       );
     pointer-events: none;
-    border-radius: 0 0 clamp(6px, 1vw, 12px) clamp(6px, 1vw, 12px);
+    border-radius: 0 0 clamp(6px, 1cqw, 12px) clamp(6px, 1cqw, 12px);
   }
 `;
 
@@ -464,8 +464,8 @@ const BannerTassels = styled.div`
 `;
 
 const Tassel = styled.div`
-  width: clamp(5px, 0.8vw, 8px);
-  height: clamp(18px, 2.8vh, 28px);
+  width: clamp(5px, 0.8cqw, 8px);
+  height: clamp(18px, 2.8cqh, 28px);
   background: linear-gradient(180deg, #d4af37 0%, #8b7355 100%);
   border-radius: 0 0 2px 2px;
   animation: ${tasselSway} ${props => 2 + props.$delay * 0.3}s ease-in-out infinite;
@@ -477,13 +477,13 @@ const RoomCodeSection = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(4px, 0.6vh, 8px);
+  gap: clamp(4px, 0.6cqh, 8px);
 `;
 
 const RoomLabel = styled.div`
   font-family: "Outfit", sans-serif;
   font-weight: 500;
-  font-size: clamp(0.5rem, 0.85vw, 0.6rem);
+  font-size: clamp(0.5rem, 0.85cqw, 0.6rem);
   color: #8b7355;
   text-transform: uppercase;
   letter-spacing: 0.25em;
@@ -492,7 +492,7 @@ const RoomLabel = styled.div`
 
 const RoomCode = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(1.1rem, 2.2vw, 1.6rem);
+  font-size: clamp(1.1rem, 2.2cqw, 1.6rem);
   color: #d4af37;
   letter-spacing: 0.18em;
   text-shadow: 
@@ -509,7 +509,7 @@ const ArenaSection = styled.main`
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: clamp(4px, 1.5vh, 24px) clamp(16px, 3vw, 60px);
+  padding: clamp(4px, 1.5cqh, 24px) clamp(16px, 3cqw, 60px);
   position: relative;
   z-index: 2;
   min-height: 0;
@@ -520,7 +520,7 @@ const ArenaLayout = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: clamp(16px, 4vw, 60px);
+  gap: clamp(16px, 4cqw, 60px);
   width: 100%;
   max-width: 1400px;
   height: 100%;
@@ -540,8 +540,8 @@ const DohyoRing = styled.div`
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: clamp(60px, 10vw, 180px);
-  height: clamp(60px, 10vw, 180px);
+  width: clamp(60px, 10cqw, 180px);
+  height: clamp(60px, 10cqw, 180px);
   border-radius: 50%;
   background: radial-gradient(
     circle at center,
@@ -550,19 +550,19 @@ const DohyoRing = styled.div`
     #0f0503 80%,
     #0a0505 100%
   );
-  border: clamp(4px, 0.8vw, 10px) solid transparent;
+  border: clamp(4px, 0.8cqw, 10px) solid transparent;
   background-clip: padding-box;
   animation: ${dohyoPulse} 4s ease-in-out infinite;
   
   /* Ring border effect */
   &::before {
     position: absolute;
-    top: -clamp(6px, 1vw, 12px);
-    left: -clamp(6px, 1vw, 12px);
-    right: -clamp(6px, 1vw, 12px);
-    bottom: -clamp(6px, 1vw, 12px);
+    top: -clamp(6px, 1cqw, 12px);
+    left: -clamp(6px, 1cqw, 12px);
+    right: -clamp(6px, 1cqw, 12px);
+    bottom: -clamp(6px, 1cqw, 12px);
     border-radius: 50%;
-    border: clamp(3px, 0.6vw, 7px) solid;
+    border: clamp(3px, 0.6cqw, 7px) solid;
     border-color: #8b7355;
     box-shadow: 
       inset 0 0 20px rgba(139, 115, 85, 0.3),
@@ -589,7 +589,7 @@ const VersusBadge = styled.div`
   top: 50%;
   transform: translate(-50%, -50%);
   font-family: "Bungee", cursive;
-  font-size: clamp(0.9rem, 2.2vw, 2.2rem);
+  font-size: clamp(0.9rem, 2.2cqw, 2.2rem);
   color: #d4af37;
   z-index: 5;
   animation: ${versusGlow} 3s ease-in-out infinite;
@@ -605,7 +605,7 @@ const PlayersContainer = styled.div`
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: clamp(60px, 20vw, 360px);
+  gap: clamp(60px, 20cqw, 360px);
   width: 100%;
   height: 100%;
   position: relative;
@@ -620,7 +620,7 @@ const PlayerBannerWrapper = styled.div`
 `;
 
 const PlayerBanner = styled.div`
-  width: clamp(170px, 24vw, 340px);
+  width: clamp(170px, 24cqw, 340px);
   display: flex;
   flex-direction: column;
   background: linear-gradient(180deg,
@@ -631,7 +631,7 @@ const PlayerBanner = styled.div`
     #150805 100%
   );
   border: 3px solid ${props => props.$hasPlayer ? '#8b7355' : '#5c4033'};
-  border-radius: clamp(10px, 1.4vw, 16px);
+  border-radius: clamp(10px, 1.4cqw, 16px);
   overflow: hidden;
   position: relative;
   box-shadow: 
@@ -683,7 +683,7 @@ const PlayerHeader = styled.div`
     rgba(45, 21, 16, 0.98) 0%,
     rgba(26, 10, 8, 0.95) 100%
   );
-  padding: clamp(6px, 1.2vh, 18px) clamp(8px, 1.4vw, 22px);
+  padding: clamp(6px, 1.2cqh, 18px) clamp(8px, 1.4cqw, 22px);
   border-bottom: 2px solid rgba(139, 115, 85, 0.3);
   position: relative;
   z-index: 3;
@@ -693,25 +693,25 @@ const PlayerHeaderTop = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: clamp(2px, 0.4vh, 8px);
+  margin-bottom: clamp(2px, 0.4cqh, 8px);
 `;
 
 const PlayerStatus = styled.div`
   font-family: "Outfit", sans-serif;
   font-weight: 500;
-  font-size: clamp(0.5rem, 0.85vw, 0.6rem);
+  font-size: clamp(0.5rem, 0.85cqw, 0.6rem);
   color: ${props => props.$connected ? '#4ade80' : '#5c4033'};
   text-transform: uppercase;
   letter-spacing: 0.15em;
   display: flex;
   align-items: center;
-  gap: clamp(5px, 0.7vw, 8px);
+  gap: clamp(5px, 0.7cqw, 8px);
   text-shadow: 1px 1px 0 #000;
   
   &::before {
     content: "";
-    width: clamp(6px, 0.8vw, 9px);
-    height: clamp(6px, 0.8vw, 9px);
+    width: clamp(6px, 0.8cqw, 9px);
+    height: clamp(6px, 0.8cqw, 9px);
     background: ${props => props.$connected ? '#4ade80' : '#5c4033'};
     border-radius: 50%;
     ${props => props.$connected && css`
@@ -722,10 +722,10 @@ const PlayerStatus = styled.div`
 
 const PlayerRankBadge = styled.div`
   background: linear-gradient(135deg, #d4af37 0%, #8b7355 100%);
-  padding: clamp(3px, 0.5vh, 5px) clamp(10px, 1.4vw, 16px);
-  border-radius: clamp(3px, 0.5vw, 5px);
+  padding: clamp(3px, 0.5cqh, 5px) clamp(10px, 1.4cqw, 16px);
+  border-radius: clamp(3px, 0.5cqw, 5px);
   font-family: "Bungee", cursive;
-  font-size: clamp(0.4rem, 0.7vw, 0.5rem);
+  font-size: clamp(0.4rem, 0.7cqw, 0.5rem);
   color: #1a0a08;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -734,7 +734,7 @@ const PlayerRankBadge = styled.div`
 
 const PlayerName = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(1rem, 1.8vw, 1.4rem);
+  font-size: clamp(1rem, 1.8cqw, 1.4rem);
   color: ${props => props.$hasPlayer ? '#f0ebe5' : '#5c4033'};
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -745,13 +745,13 @@ const PlayerName = styled.div`
 
 const PlayerAvatarArea = styled.div`
   box-sizing: border-box;
-  height: clamp(120px, 30vh, 360px);
+  height: clamp(120px, 30cqh, 360px);
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
   overflow: hidden;
-  padding: clamp(4px, 0.8vh, 16px);
+  padding: clamp(4px, 0.8cqh, 16px);
   
   /* Flip for left player */
   ${props => props.$side === 'left' && css`
@@ -770,7 +770,7 @@ const WaitingState = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(10px, 1.5vh, 18px);
+  gap: clamp(10px, 1.5cqh, 18px);
   
   /* Unflip text if parent is flipped */
   ${props => props.$side === 'left' && css`
@@ -781,7 +781,7 @@ const WaitingState = styled.div`
 const WaitingText = styled.div`
   font-family: "Outfit", sans-serif;
   font-weight: 500;
-  font-size: clamp(0.6rem, 1.1vw, 0.85rem);
+  font-size: clamp(0.6rem, 1.1cqw, 0.85rem);
   color: #5c4033;
   text-transform: uppercase;
   letter-spacing: 0.18em;
@@ -790,12 +790,12 @@ const WaitingText = styled.div`
 
 const LoadingDots = styled.div`
   display: flex;
-  gap: clamp(6px, 1vw, 12px);
+  gap: clamp(6px, 1cqw, 12px);
 `;
 
 const Dot = styled.div`
-  width: clamp(8px, 1.1vw, 14px);
-  height: clamp(8px, 1.1vw, 14px);
+  width: clamp(8px, 1.1cqw, 14px);
+  height: clamp(8px, 1.1cqw, 14px);
   background: #d4af37;
   border-radius: 50%;
   animation: ${dotPulse} 1.4s ease-in-out infinite;
@@ -811,7 +811,7 @@ const ControlsFooter = styled.footer`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: clamp(6px, 1.2vh, 20px) clamp(12px, 2.5vw, 40px);
+  padding: clamp(6px, 1.2cqh, 20px) clamp(12px, 2.5cqw, 40px);
   background: linear-gradient(180deg,
     rgba(0, 0, 0, 0.95) 0%,
     rgba(26, 10, 8, 0.98) 100%
@@ -825,7 +825,7 @@ const ControlsFooter = styled.footer`
 
 const ExitButton = styled.button`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.5rem, 0.85vw, 0.8rem);
+  font-size: clamp(0.5rem, 0.85cqw, 0.8rem);
   background: linear-gradient(180deg,
     #4a3525 0%,
     #3d2817 50%,
@@ -833,15 +833,15 @@ const ExitButton = styled.button`
   );
   color: #e8dcc8;
   border: 2px solid #8b7355;
-  border-radius: clamp(5px, 0.8vw, 10px);
-  padding: clamp(6px, 1vh, 14px) clamp(10px, 1.8vw, 24px);
+  border-radius: clamp(5px, 0.8cqw, 10px);
+  padding: clamp(6px, 1cqh, 14px) clamp(10px, 1.8cqw, 24px);
   cursor: pointer;
   transition: all 0.25s ease;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   display: flex;
   align-items: center;
-  gap: clamp(4px, 0.8vw, 12px);
+  gap: clamp(4px, 0.8cqw, 12px);
   box-shadow: 
     0 4px 15px rgba(0,0,0,0.4),
     inset 0 1px 0 rgba(255,255,255,0.05);
@@ -876,13 +876,13 @@ const ReadySection = styled.div`
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: clamp(8px, 1.5vw, 24px);
+  gap: clamp(8px, 1.5cqw, 24px);
 `;
 
 const ReadyButton = styled.button`
   font-family: "Outfit", sans-serif;
   font-weight: 700;
-  font-size: clamp(0.65rem, 1.1vw, 1.1rem);
+  font-size: clamp(0.65rem, 1.1cqw, 1.1rem);
   background: linear-gradient(180deg,
     #5a8a3a 0%,
     #4a7a2a 50%,
@@ -890,8 +890,8 @@ const ReadyButton = styled.button`
   );
   color: #e8f0e0;
   border: 3px solid #6aa040;
-  border-radius: clamp(5px, 0.8vw, 10px);
-  padding: clamp(7px, 1.2vh, 18px) clamp(16px, 2.5vw, 40px);
+  border-radius: clamp(5px, 0.8cqw, 10px);
+  padding: clamp(7px, 1.2cqh, 18px) clamp(16px, 2.5cqw, 40px);
   cursor: pointer;
   transition: all 0.25s ease;
   text-transform: uppercase;
@@ -951,15 +951,15 @@ const CancelButton = styled(ReadyButton)`
 
 const ReadyCount = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.55rem, 0.95vw, 0.9rem);
+  font-size: clamp(0.55rem, 0.95cqw, 0.9rem);
   color: ${props => props.$ready ? '#4ade80' : '#8b7355'};
   background: linear-gradient(180deg,
     #1a0a08 0%,
     #0f0505 100%
   );
-  padding: clamp(5px, 1vh, 14px) clamp(10px, 1.5vw, 24px);
+  padding: clamp(5px, 1cqh, 14px) clamp(10px, 1.5cqw, 24px);
   border: 2px solid ${props => props.$ready ? '#4ade80' : '#5c4033'};
-  border-radius: clamp(6px, 1vw, 10px);
+  border-radius: clamp(6px, 1cqw, 10px);
   text-align: center;
   letter-spacing: 0.1em;
   text-shadow: 1px 1px 0 #000;
@@ -974,7 +974,7 @@ const ReadyLabel = styled.span`
   font-size: 0.55em;
   color: rgba(212, 175, 55, 0.6);
   display: block;
-  margin-bottom: clamp(2px, 0.4vh, 4px);
+  margin-bottom: clamp(2px, 0.4cqh, 4px);
   letter-spacing: 0.12em;
   text-transform: uppercase;
 `;
@@ -987,21 +987,21 @@ const PickerPanel = styled.div`
   display: ${props => props.$hidden ? 'none' : 'flex'};
   flex-direction: column;
   align-items: center;
-  gap: clamp(6px, 1vh, 14px);
-  padding: clamp(10px, 1.4vh, 20px) clamp(16px, 2vw, 32px);
+  gap: clamp(6px, 1cqh, 14px);
+  padding: clamp(10px, 1.4cqh, 20px) clamp(16px, 2cqw, 32px);
   background: linear-gradient(180deg,
     rgba(26, 10, 8, 0.97) 0%,
     rgba(35, 16, 12, 0.96) 40%,
     rgba(26, 10, 8, 0.97) 100%
   );
   border: 2px solid #8b7355;
-  border-radius: clamp(8px, 1vw, 14px);
+  border-radius: clamp(8px, 1cqw, 14px);
   box-shadow:
     0 6px 30px rgba(0,0,0,0.7),
     inset 0 1px 0 rgba(212, 175, 55, 0.08);
   width: 88%;
   max-width: 800px;
-  margin: clamp(4px, 1vh, 16px) auto clamp(4px, 0.8vh, 12px);
+  margin: clamp(4px, 1cqh, 16px) auto clamp(4px, 0.8cqh, 12px);
   z-index: 10;
   flex-shrink: 0;
   position: relative;
@@ -1015,7 +1015,7 @@ const PickerPanel = styled.div`
     right: 4px;
     bottom: 4px;
     border: 1px solid rgba(212, 175, 55, 0.12);
-    border-radius: clamp(5px, 0.7vw, 10px);
+    border-radius: clamp(5px, 0.7cqw, 10px);
     pointer-events: none;
   }
 `;
@@ -1023,7 +1023,7 @@ const PickerPanel = styled.div`
 const PickerTitle = styled.div`
   display: flex;
   align-items: center;
-  gap: clamp(8px, 1vw, 16px);
+  gap: clamp(8px, 1cqw, 16px);
   width: 100%;
   justify-content: center;
 
@@ -1042,7 +1042,7 @@ const PickerTitle = styled.div`
 
 const PickerTitleText = styled.span`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.5rem, 0.8vw, 0.7rem);
+  font-size: clamp(0.5rem, 0.8cqw, 0.7rem);
   color: rgba(212, 175, 55, 0.6);
   text-transform: uppercase;
   letter-spacing: 0.3em;
@@ -1054,26 +1054,26 @@ const PickerControlRow = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: clamp(12px, 2vw, 28px);
+  gap: clamp(12px, 2cqw, 28px);
   width: 100%;
 `;
 
 const PickerTabGroup = styled.div`
   display: flex;
   align-items: center;
-  gap: clamp(2px, 0.3vw, 4px);
+  gap: clamp(2px, 0.3cqw, 4px);
   background: rgba(0, 0, 0, 0.3);
-  border-radius: clamp(5px, 0.6vw, 8px);
+  border-radius: clamp(5px, 0.6cqw, 8px);
   padding: 2px;
   border: 1px solid rgba(92, 64, 51, 0.5);
 `;
 
 const PickerTab = styled.button`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.5rem, 0.75vw, 0.65rem);
-  padding: clamp(5px, 0.6vh, 8px) clamp(12px, 1.4vw, 20px);
+  font-size: clamp(0.5rem, 0.75cqw, 0.65rem);
+  padding: clamp(5px, 0.6cqh, 8px) clamp(12px, 1.4cqw, 20px);
   border: none;
-  border-radius: clamp(4px, 0.5vw, 7px);
+  border-radius: clamp(4px, 0.5cqw, 7px);
   background: ${props => props.$active
     ? 'linear-gradient(180deg, #5c4033 0%, #3d2817 100%)'
     : 'transparent'};
@@ -1098,7 +1098,7 @@ const PickerTab = styled.button`
 
 const PickerDivider = styled.div`
   width: 1px;
-  height: clamp(18px, 2.5vh, 28px);
+  height: clamp(18px, 2.5cqh, 28px);
   background: linear-gradient(180deg,
     transparent 0%,
     rgba(139, 115, 85, 0.4) 50%,
@@ -1109,12 +1109,12 @@ const PickerDivider = styled.div`
 const SelectedColorInfo = styled.div`
   display: flex;
   align-items: center;
-  gap: clamp(6px, 0.8vw, 12px);
+  gap: clamp(6px, 0.8cqw, 12px);
 `;
 
 const SelectedColorPreview = styled.div`
-  width: clamp(18px, 2vw, 26px);
-  height: clamp(18px, 2vw, 26px);
+  width: clamp(18px, 2cqw, 26px);
+  height: clamp(18px, 2cqw, 26px);
   border-radius: 50%;
   background: ${props => props.$gradient || props.$color || '#888'};
   border: 2px solid rgba(212, 175, 55, 0.5);
@@ -1127,7 +1127,7 @@ const SelectedColorPreview = styled.div`
 const SelectedColorName = styled.div`
   font-family: "Outfit", sans-serif;
   font-weight: 600;
-  font-size: clamp(0.55rem, 0.85vw, 0.75rem);
+  font-size: clamp(0.55rem, 0.85cqw, 0.75rem);
   color: #e8dcc8;
   text-shadow: 1px 1px 0 #000;
   text-transform: uppercase;
@@ -1138,14 +1138,14 @@ const SwatchContainer = styled.div`
   display: flex;
   flex-wrap: nowrap;
   justify-content: center;
-  gap: clamp(3px, 0.4vw, 7px);
+  gap: clamp(3px, 0.4cqw, 7px);
   width: 100%;
-  padding: clamp(4px, 0.5vh, 8px) 0;
+  padding: clamp(4px, 0.5cqh, 8px) 0;
 `;
 
 const ColorSwatch = styled.button`
-  width: clamp(22px, 2.5vw, 32px);
-  height: clamp(22px, 2.5vw, 32px);
+  width: clamp(22px, 2.5cqw, 32px);
+  height: clamp(22px, 2.5cqw, 32px);
   border-radius: 50%;
   border: 2.5px solid ${props => props.$selected ? '#d4af37' : 'rgba(0,0,0,0.3)'};
   background: ${props => props.$gradient || props.$color};
@@ -1167,7 +1167,7 @@ const ColorSwatch = styled.button`
       align-items: center;
       justify-content: center;
       font-weight: 900;
-      font-size: clamp(10px, 1.2vw, 16px);
+      font-size: clamp(10px, 1.2cqw, 16px);
       color: #ff4444;
       text-shadow: 0 0 5px rgba(0,0,0,0.9);
       border-radius: inherit;
@@ -1189,9 +1189,9 @@ const DifficultyListContainer = styled.div`
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: clamp(4px, 0.8vh, 12px);
-  padding: clamp(4px, 0.8vh, 12px) clamp(6px, 0.8vw, 12px);
-  height: clamp(120px, 30vh, 360px);
+  gap: clamp(4px, 0.8cqh, 12px);
+  padding: clamp(4px, 0.8cqh, 12px) clamp(6px, 0.8cqw, 12px);
+  height: clamp(120px, 30cqh, 360px);
   min-height: 0;
 `;
 
@@ -1200,13 +1200,13 @@ const DifficultyOptionRow = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 clamp(10px, 1.2vw, 14px);
+  padding: 0 clamp(10px, 1.2cqw, 14px);
   min-height: 0;
   background: ${props => props.$selected
     ? 'linear-gradient(180deg, rgba(139, 115, 85, 0.4) 0%, rgba(92, 64, 51, 0.35) 100%)'
     : 'linear-gradient(180deg, rgba(26, 10, 8, 0.6) 0%, rgba(15, 5, 3, 0.5) 100%)'};
   border: 2px solid ${props => props.$selected ? '#8b7355' : '#5c4033'};
-  border-radius: clamp(5px, 0.7vw, 8px);
+  border-radius: clamp(5px, 0.7cqw, 8px);
   cursor: ${props => props.$available ? 'pointer' : 'default'};
   opacity: ${props => props.$available ? 1 : 0.7};
   transition: border-color 0.2s ease, background 0.2s ease;
@@ -1214,7 +1214,7 @@ const DifficultyOptionRow = styled.div`
 
 const DifficultyLabel = styled.span`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.6rem, 1.1vw, 0.9rem);
+  font-size: clamp(0.6rem, 1.1cqw, 0.9rem);
   color: ${props => props.$selected ? '#d4af37' : '#8b7355'};
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -1248,7 +1248,7 @@ const LoadingOverlay = styled.div`
 
 const LoadingText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(1.5rem, 3vw, 2.5rem);
+  font-size: clamp(1.5rem, 3cqw, 2.5rem);
   color: #d4af37;
   text-shadow: 2px 2px 0 #000, 0 0 20px rgba(212, 175, 55, 0.5);
   margin-bottom: 20px;
@@ -1281,7 +1281,7 @@ const LoadingSpinner = styled.div`
 
 const PreviewImage = styled.img`
   height: 90%;
-  max-height: clamp(100px, 28vh, 340px);
+  max-height: clamp(100px, 28cqh, 340px);
   width: auto;
   object-fit: contain;
   filter: drop-shadow(0 8px 20px rgba(0,0,0,0.6));
@@ -1462,23 +1462,19 @@ const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, onLeaveD
   useEffect(() => {
     socket.emit("lobby", { roomId: roomName });
     socket.on("lobby", (playerData) => {
-      console.log("Received lobby data:", playerData);
       setPlayers(playerData);
     });
 
     socket.on("player_left", () => {
-      console.log("Player left event received");
       setReady(false);
       setReadyCount(0);
     });
 
     socket.on("ready_count", (count) => {
-      console.log("ready count activated");
       setReadyCount(count);
     });
 
     socket.on("initial_game_start", (payload) => {
-      console.log("game start - navigating to game (preloading handled in Game.jsx)...");
       if (payload?.players && Array.isArray(payload.players) && setRooms) {
         const roomId = payload.roomId || roomName;
         if (payload.players[0]?.mawashiColor) setPlayer1Color(payload.players[0].mawashiColor);

@@ -20,7 +20,7 @@ const SmokeContainer = styled.div.attrs((props) => {
       left: `calc(${(props.$x / 1280) * 100}% + ${offset}%)`,
       bottom: `calc(${(props.$y / 720) * 100}% - 15px)`, // Fixed pixel offset instead of percentage to maintain consistent positioning
       pointerEvents: "none",
-      width: "clamp(85px, 14.81vw, 189px)",
+      width: "clamp(85px, 14.81cqw, 189px)",
       height: "auto",
       transform: `translateX(-50%) scaleX(${props.$facing === 1 ? 1 : -1})`,
       opacity: 0.8,
@@ -84,7 +84,7 @@ const ChargedAttackSmokeEffect = ({
             src={chargedAttackSmokeGif}
             alt="Charged Attack Smoke Effect"
             style={{
-              width: "clamp(85px, 14.81vw, 189px)",
+              width: "clamp(85px, 14.81cqw, 189px)",
               height: "auto",
               display: "block",
               zIndex: 1000,

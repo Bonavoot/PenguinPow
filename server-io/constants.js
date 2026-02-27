@@ -155,9 +155,10 @@ const DODGE_CROSSED_THROUGH_GRACE = 300; // ms grace period after dodge landing 
 const GRAB_WALK_SPEED_MULTIPLIER = 0.8; // Slightly slower than normal strafing
 const GRAB_WALK_ACCEL_MULTIPLIER = 0.7; // Slightly lower acceleration than normal strafing
 
-// Grab startup (anticipation) tuning — near-instant, no hop, no forward movement
-const GRAB_STARTUP_DURATION_MS = 70; // Near-instant startup (~4 frames) — just enough for visual telegraph
+// Grab startup tuning — lunge forward during startup for better grab range
+const GRAB_STARTUP_DURATION_MS = 150; // Startup with forward lunge (~9 frames) — readable telegraph with approach
 const GRAB_STARTUP_HOP_HEIGHT = 0; // No hop — grab is a grounded technique
+const GRAB_LUNGE_DISTANCE = 55; // Pixels of forward movement during grab startup
 const SLAP_ATTACK_STARTUP_MS = 55; // Slap becomes active after 55ms (for grab vs slap timing)
 
 // Grab whiff recovery — big vulnerable window if grab misses
@@ -223,10 +224,10 @@ const RAW_PARRY_SLAP_KNOCKBACK = 0.5; // Lighter knockback for slap parries
 const PERFECT_PARRY_KNOCKBACK = 0.65; // Slightly stronger than regular parry
 const RAW_PARRY_SLAP_STUN_DURATION = 500; // Reduced stun duration for slap attack parries
 const PERFECT_PARRY_WINDOW = 100; // 100ms window for perfect parries
-const PERFECT_PARRY_SUCCESS_DURATION = 2000; // 2 seconds - parrier holds success pose
-const PERFECT_PARRY_ATTACKER_STUN_DURATION = 1100; // 1.1 second stun duration for perfect parry
-const PERFECT_PARRY_ANIMATION_LOCK = 600; // 600ms - parrier is locked in parry pose after perfect parry
-const PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK = 300; // 300ms - reduced lock for snowball perfect parries (no player stun to capitalize on)
+const PERFECT_PARRY_SUCCESS_DURATION = 850; // Compressed parry — fast enough to keep pace, long enough for visual read
+const PERFECT_PARRY_ATTACKER_STUN_DURATION = 600; // 600ms stun — tight punish window requiring decisiveness
+const PERFECT_PARRY_ANIMATION_LOCK = 250; // 250ms — brief flash moment, then parrier can act
+const PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK = 200; // Shorter than player parry lock — the reflected snowball is the reward
 
 // Raw parry commitment: minimum time locked in parry stance
 const RAW_PARRY_MIN_DURATION = 375; // Whiffed parry: full commitment (punishable by grab)
@@ -267,6 +268,9 @@ const KNOCKBACK_IMMUNITY_DURATION = 150; // 150ms immunity window
 // ============================================
 const STAMINA_REGEN_INTERVAL_MS = 2500; // regen interval
 const STAMINA_REGEN_AMOUNT = 8; // per tick
+
+// Charged attack timing
+const CHARGE_FULL_POWER_MS = 1000; // Time to reach 100% charge (1 second)
 
 // Stamina costs
 const SLAP_ATTACK_STAMINA_COST = 3; // Small cost to not deter spamming
@@ -394,6 +398,7 @@ module.exports = {
   GRAB_WALK_ACCEL_MULTIPLIER,
   GRAB_STARTUP_DURATION_MS,
   GRAB_STARTUP_HOP_HEIGHT,
+  GRAB_LUNGE_DISTANCE,
   SLAP_ATTACK_STARTUP_MS,
   GRAB_WHIFF_RECOVERY_MS,
   GRAB_WHIFF_STUMBLE_VEL,
@@ -470,6 +475,7 @@ module.exports = {
   // Stamina system
   STAMINA_REGEN_INTERVAL_MS,
   STAMINA_REGEN_AMOUNT,
+  CHARGE_FULL_POWER_MS,
   SLAP_ATTACK_STAMINA_COST,
   CHARGED_ATTACK_STAMINA_COST,
   DODGE_STAMINA_COST,

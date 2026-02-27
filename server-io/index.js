@@ -26,7 +26,8 @@ const {
   DODGE_DURATION, DODGE_BASE_SPEED, DODGE_HOP_HEIGHT, DODGE_LANDING_MOMENTUM,
   DODGE_CANCEL_DURATION, DODGE_CANCEL_SPEED_MULT, DODGE_CROSSED_THROUGH_GRACE,
   GRAB_WALK_SPEED_MULTIPLIER, GRAB_WALK_ACCEL_MULTIPLIER,
-  GRAB_STARTUP_DURATION_MS, GRAB_STARTUP_HOP_HEIGHT, SLAP_ATTACK_STARTUP_MS,
+  CHARGE_FULL_POWER_MS,
+  GRAB_STARTUP_DURATION_MS, GRAB_STARTUP_HOP_HEIGHT, GRAB_LUNGE_DISTANCE, SLAP_ATTACK_STARTUP_MS,
   GRAB_WHIFF_RECOVERY_MS, GRAB_WHIFF_STUMBLE_VEL,
   GRAB_TECH_FREEZE_MS, GRAB_TECH_FORCED_DISTANCE,
   GRAB_TECH_TWEEN_DURATION, GRAB_TECH_RESIDUAL_VEL,
@@ -235,9 +236,40 @@ function getPlayerById(playerId) {
 
 let gameLoop = null;
 let staminaRegenCounter = 0;
-// TICK_RATE and BROADCAST_EVERY_N_TICKS from constants.js (32 Hz broadcast, client interpolates to 60fps)
 let broadcastTickCounter = 0;
 const delta = 1000 / TICK_RATE;
+
+// Self-correcting game loop that doesn't drift under load.
+// setInterval can bunch ticks or skip them when the event loop is busy;
+// this accumulator-based approach catches up smoothly.
+function startGameLoop() {
+  if (gameLoop) return;
+  let lastTime = Date.now();
+  let accumulator = 0;
+  gameLoop = setInterval(() => {
+    const now = Date.now();
+    accumulator += now - lastTime;
+    lastTime = now;
+    // Process accumulated time in fixed steps, cap to prevent spiral of death
+    const maxCatchUp = delta * 4;
+    if (accumulator > maxCatchUp) accumulator = maxCatchUp;
+    while (accumulator >= delta) {
+      accumulator -= delta;
+      try {
+        tick(delta);
+      } catch (error) {
+        console.error("Error in game loop:", error);
+      }
+    }
+  }, Math.floor(delta));
+}
+
+function stopGameLoop() {
+  if (gameLoop) {
+    clearInterval(gameLoop);
+    gameLoop = null;
+  }
+}
 
 
 
@@ -553,7 +585,7 @@ function tick(delta) {
             if (player.mouse1HeldDuringAttack && player.keys.mouse1 && player.mouse1PressTime > 0 && (Date.now() - player.mouse1PressTime) >= 200) {
               player.isChargingAttack = true;
               if (player.chargeAttackPower > 0) {
-                player.chargeStartTime = Date.now() - (player.chargeAttackPower / 100 * 750);
+                player.chargeStartTime = Date.now() - (player.chargeAttackPower / 100 * CHARGE_FULL_POWER_MS);
               } else {
                 player.chargeStartTime = Date.now();
                 player.chargeAttackPower = 1;
@@ -579,7 +611,7 @@ function tick(delta) {
             ) {
               player.isChargingAttack = true;
               if (player.chargeAttackPower > 0) {
-                player.chargeStartTime = Date.now() - (player.chargeAttackPower / 100 * 750);
+                player.chargeStartTime = Date.now() - (player.chargeAttackPower / 100 * CHARGE_FULL_POWER_MS);
               } else {
                 player.chargeStartTime = Date.now();
                 player.chargeAttackPower = 1;
@@ -895,11 +927,20 @@ function tick(delta) {
         }
       }
 
-      // Handle grab startup — near-instant (70ms), then instant range check
-      // No hop, no forward movement. Grab either connects, techs, or whiffs.
+      // Handle grab startup — lunge forward during startup, then range check at the end.
       if (player.isGrabStartup) {
         const elapsed = Date.now() - player.grabStartupStartTime;
-        if (elapsed >= (player.grabStartupDuration || GRAB_STARTUP_DURATION_MS)) {
+        const startupMs = player.grabStartupDuration || GRAB_STARTUP_DURATION_MS;
+
+        // Apply forward lunge movement each tick during startup
+        if (elapsed < startupMs && GRAB_LUNGE_DISTANCE > 0) {
+          const lungePerTick = GRAB_LUNGE_DISTANCE / (startupMs / delta);
+          const lungeDir = -player.facing; // facing 1=left, -1=right
+          const newX = player.x + lungeDir * lungePerTick;
+          player.x = Math.max(MAP_LEFT_BOUNDARY, Math.min(newX, MAP_RIGHT_BOUNDARY));
+        }
+
+        if (elapsed >= startupMs) {
           // Startup complete — instant range check
           const opponent = room.players.find((p) => p.id !== player.id);
 
@@ -2596,7 +2637,7 @@ function tick(delta) {
           ) {
             player.isChargingAttack = true;
             if (player.chargeAttackPower > 0) {
-              player.chargeStartTime = Date.now() - (player.chargeAttackPower / 100 * 750);
+              player.chargeStartTime = Date.now() - (player.chargeAttackPower / 100 * CHARGE_FULL_POWER_MS);
             } else {
               player.chargeStartTime = Date.now();
               player.chargeAttackPower = 1;
@@ -2732,7 +2773,7 @@ function tick(delta) {
       if (player.isChargingAttack) {
         const chargeDuration = Date.now() - player.chargeStartTime;
         player.chargeAttackPower = Math.min(
-          (chargeDuration / 750) * 100,
+          (chargeDuration / CHARGE_FULL_POWER_MS) * 100,
           100
         );
       }
@@ -2855,15 +2896,7 @@ io.on("connection", (socket) => {
 
   io.emit("rooms", rooms);
 
-  if (!gameLoop) {
-    gameLoop = setInterval(() => {
-      try {
-        tick(delta);
-      } catch (error) {
-        console.error("Error in game loop:", error);
-      }
-    }, delta);
-  }
+  startGameLoop();
 
   // Register all socket event handlers
   registerSocketHandlers(socket, io, rooms, {

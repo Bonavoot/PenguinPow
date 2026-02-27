@@ -1674,9 +1674,9 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     cpu.lastGrabAttemptTime = currentTime;
     cpu.isGrabStartup = true;
     cpu.grabStartupStartTime = currentTime;
-    cpu.grabStartupDuration = 220;
+    cpu.grabStartupDuration = 150;
     cpu.currentAction = "grab_startup";
-    cpu.actionLockUntil = currentTime + 220;
+    cpu.actionLockUntil = currentTime + 150;
     cpu.grabState = "attempting";
     cpu.grabAttemptType = "grab";
     cpu.grabApproachSpeed = Math.abs(cpu.movementVelocity);
@@ -1758,7 +1758,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     }
     
     const chargeDuration = currentTime - cpu.chargeStartTime;
-    cpu.chargeAttackPower = Math.min((chargeDuration / 750) * 100, 100);
+    cpu.chargeAttackPower = Math.min((chargeDuration / 1000) * 100, 100);
     cpu.chargingFacingDirection = cpu.facing;
   }
   

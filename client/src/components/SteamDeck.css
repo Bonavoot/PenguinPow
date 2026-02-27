@@ -22,14 +22,7 @@
     --touch-target-size: 44px; /* Standard touch target */
   }
 
-  /* Game Container - Keep desktop sizing */
-  .game-container {
-    width: 100vw !important;
-    height: 100vh !important;
-    max-width: 1280px;
-    max-height: 800px;
-    /* No font-size scaling to maintain desktop appearance */
-  }
+  /* Game Container - scaling handled by --game-scale transform in Game.jsx */
 
   /* UI Elements - Minimal adjustments */
   .ui-player-info {
@@ -123,8 +116,8 @@
   img,
   .character-image,
   .StyledImage {
-    filter: drop-shadow(clamp(1px, 0.08vw, 2.5px) 0 0 #000) drop-shadow(clamp(-2.5px, -0.08vw, -1px) 0 0 #000)
-      drop-shadow(0 clamp(1px, 0.08vw, 2.5px) 0 #000) drop-shadow(0 clamp(-2.5px, -0.08vw, -1px) 0 #000);
+    filter: drop-shadow(clamp(1px, 0.08cqw, 2.5px) 0 0 #000) drop-shadow(clamp(-2.5px, -0.08cqw, -1px) 0 0 #000)
+      drop-shadow(0 clamp(1px, 0.08cqw, 2.5px) 0 #000) drop-shadow(0 clamp(-2.5px, -0.08cqw, -1px) 0 #000);
     /* Keep the same visual effect as desktop */
   }
 

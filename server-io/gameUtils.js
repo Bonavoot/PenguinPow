@@ -6,6 +6,7 @@ const {
   ICE_MOVING_FRICTION, ICE_COAST_FRICTION, ICE_EDGE_SLIDE_PENALTY,
   KNOCKBACK_IMMUNITY_DURATION,
   HITSTOP_CHARGED_MIN_MS, HITSTOP_CHARGED_MAX_MS,
+  CHARGE_FULL_POWER_MS,
 } = require("./constants");
 
 // Game constants
@@ -449,9 +450,9 @@ function startCharging(player) {
   
   player.isChargingAttack = true;
   if (player.chargeAttackPower > 0) {
-    // TAP-style resume: backdate chargeStartTime so the continuous charge formula
-    // (chargeDuration / 750 * 100) picks up from the preserved power level
-    player.chargeStartTime = Date.now() - (player.chargeAttackPower / 100 * 750);
+    // TAP-style resume: backdate chargeStartTime so the continuous charge formula picks up
+    // from the preserved power level
+    player.chargeStartTime = Date.now() - (player.chargeAttackPower / 100 * CHARGE_FULL_POWER_MS);
   } else if (!player.chargeStartTime) {
     player.chargeStartTime = Date.now();
     player.chargeAttackPower = 1;

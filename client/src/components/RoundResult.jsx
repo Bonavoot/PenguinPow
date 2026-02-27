@@ -135,11 +135,11 @@ const shockwaveExpand = keyframes`
   0% {
     transform: translate(-50%, -50%) scale(0.1);
     opacity: 0.9;
-    border-width: clamp(4px, 0.5vw, 8px);
+    border-width: clamp(4px, 0.5cqw, 8px);
   }
   50% {
     opacity: 0.5;
-    border-width: clamp(2px, 0.25vw, 4px);
+    border-width: clamp(2px, 0.25cqw, 4px);
   }
   100% {
     transform: translate(-50%, -50%) scale(2.5);
@@ -158,7 +158,7 @@ const floatUp = keyframes`
     opacity: 0.8;
   }
   100% {
-    transform: translateY(clamp(-60px, -8vw, -100px)) scale(0.3);
+    transform: translateY(clamp(-60px, -8cqw, -100px)) scale(0.3);
     opacity: 0;
   }
 `;
@@ -226,10 +226,10 @@ const ShockwaveRing = styled.div`
   position: absolute;
   top: ${ANNOUNCE_TOP};
   left: 50%;
-  width: clamp(160px, 26vw, 360px);
-  height: clamp(160px, 26vw, 360px);
+  width: clamp(160px, 26cqw, 360px);
+  height: clamp(160px, 26cqw, 360px);
   border-radius: 50%;
-  border: clamp(4px, 0.5vw, 8px) solid ${props => props.$isVictory
+  border: clamp(4px, 0.5cqw, 8px) solid ${props => props.$isVictory
     ? 'rgba(255, 215, 0, 0.85)'
     : 'rgba(180, 0, 0, 0.7)'
   };
@@ -242,8 +242,8 @@ const ShockwaveRing = styled.div`
 // Single ember particle
 const Ember = styled.div`
   position: absolute;
-  width: ${props => props.$size || 'clamp(4px, 0.5vw, 8px)'};
-  height: ${props => props.$size || 'clamp(4px, 0.5vw, 8px)'};
+  width: ${props => props.$size || 'clamp(4px, 0.5cqw, 8px)'};
+  height: ${props => props.$size || 'clamp(4px, 0.5cqw, 8px)'};
   background: ${props => props.$isVictory
     ? 'radial-gradient(circle, rgba(255, 255, 220, 1) 0%, rgba(255, 215, 0, 0.9) 40%, rgba(255, 180, 0, 0.6) 70%, transparent 100%)'
     : 'radial-gradient(circle, rgba(255, 150, 150, 1) 0%, rgba(200, 50, 50, 0.9) 40%, rgba(150, 0, 0, 0.6) 70%, transparent 100%)'
@@ -260,9 +260,9 @@ const Ember = styled.div`
 // Japanese corner decoration — scales with game container
 const CornerDecoration = styled.div`
   position: absolute;
-  width: clamp(35px, 6vw, 85px);
-  height: clamp(35px, 6vw, 85px);
-  border: clamp(2px, 0.35vw, 5px) solid ${props => props.$isVictory
+  width: clamp(35px, 6cqw, 85px);
+  height: clamp(35px, 6cqw, 85px);
+  border: clamp(2px, 0.35cqw, 5px) solid ${props => props.$isVictory
     ? 'rgba(255, 215, 0, 0.75)'
     : 'rgba(180, 0, 0, 0.6)'
   };
@@ -270,26 +270,26 @@ const CornerDecoration = styled.div`
   z-index: 47;
 
   ${props => props.$position === 'topLeft' && `
-    top: clamp(-35px, -6vw, -80px);
-    left: clamp(-35px, -6vw, -80px);
+    top: clamp(-35px, -6cqw, -80px);
+    left: clamp(-35px, -6cqw, -80px);
     border-right: none;
     border-bottom: none;
   `}
   ${props => props.$position === 'topRight' && `
-    top: clamp(-35px, -6vw, -80px);
-    right: clamp(-35px, -6vw, -80px);
+    top: clamp(-35px, -6cqw, -80px);
+    right: clamp(-35px, -6cqw, -80px);
     border-left: none;
     border-bottom: none;
   `}
   ${props => props.$position === 'bottomLeft' && `
-    bottom: clamp(-35px, -6vw, -80px);
-    left: clamp(-35px, -6vw, -80px);
+    bottom: clamp(-35px, -6cqw, -80px);
+    left: clamp(-35px, -6cqw, -80px);
     border-right: none;
     border-top: none;
   `}
   ${props => props.$position === 'bottomRight' && `
-    bottom: clamp(-35px, -6vw, -80px);
-    right: clamp(-35px, -6vw, -80px);
+    bottom: clamp(-35px, -6cqw, -80px);
+    right: clamp(-35px, -6cqw, -80px);
     border-left: none;
     border-top: none;
   `}
@@ -322,7 +322,7 @@ const SubtitleContainer = styled.div`
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  margin-top: clamp(4.5rem, 10vw, 12rem);
+  margin-top: clamp(4.5rem, 10cqw, 12rem);
 `;
 
 const KanjiContainer = styled.div`
@@ -334,7 +334,7 @@ const KanjiContainer = styled.div`
 
 const MainKanji = styled.div`
   font-family: "Noto Serif JP", "Yu Mincho", "Hiragino Mincho Pro", serif;
-  font-size: clamp(8rem, 19vw, 22rem);
+  font-size: clamp(8rem, 19cqw, 22rem);
   font-weight: 900;
   line-height: 1;
   position: relative;
@@ -345,20 +345,20 @@ const MainKanji = styled.div`
   };
   text-shadow: ${props => props.$isVictory
     ? `
-      clamp(3px, 0.4vw, 6px) clamp(3px, 0.4vw, 6px) 0 #E6B800,
-      clamp(6px, 0.8vw, 12px) clamp(6px, 0.8vw, 12px) 0 #CC9900,
-      clamp(9px, 1.2vw, 18px) clamp(9px, 1.2vw, 18px) 0 #B38600,
-      clamp(12px, 1.6vw, 24px) clamp(12px, 1.6vw, 24px) 0 rgba(153, 115, 0, 0.85),
-      clamp(15px, 2vw, 30px) clamp(15px, 2vw, 30px) 0 rgba(120, 90, 0, 0.6),
-      0 0 clamp(24px, 4vw, 60px) rgba(255, 215, 0, 0.35)
+      clamp(3px, 0.4cqw, 6px) clamp(3px, 0.4cqw, 6px) 0 #E6B800,
+      clamp(6px, 0.8cqw, 12px) clamp(6px, 0.8cqw, 12px) 0 #CC9900,
+      clamp(9px, 1.2cqw, 18px) clamp(9px, 1.2cqw, 18px) 0 #B38600,
+      clamp(12px, 1.6cqw, 24px) clamp(12px, 1.6cqw, 24px) 0 rgba(153, 115, 0, 0.85),
+      clamp(15px, 2cqw, 30px) clamp(15px, 2cqw, 30px) 0 rgba(120, 90, 0, 0.6),
+      0 0 clamp(24px, 4cqw, 60px) rgba(255, 215, 0, 0.35)
     `
     : `
-      clamp(3px, 0.4vw, 6px) clamp(3px, 0.4vw, 6px) 0 #4a0000,
-      clamp(6px, 0.8vw, 12px) clamp(6px, 0.8vw, 12px) 0 #2a0000,
-      clamp(9px, 1.2vw, 18px) clamp(9px, 1.2vw, 18px) 0 #1a0000,
-      clamp(12px, 1.6vw, 24px) clamp(12px, 1.6vw, 24px) 0 #0a0a0a,
-      clamp(15px, 2vw, 30px) clamp(15px, 2vw, 30px) 0 rgba(0, 0, 0, 0.7),
-      0 0 clamp(24px, 4vw, 60px) rgba(139, 0, 0, 0.4)
+      clamp(3px, 0.4cqw, 6px) clamp(3px, 0.4cqw, 6px) 0 #4a0000,
+      clamp(6px, 0.8cqw, 12px) clamp(6px, 0.8cqw, 12px) 0 #2a0000,
+      clamp(9px, 1.2cqw, 18px) clamp(9px, 1.2cqw, 18px) 0 #1a0000,
+      clamp(12px, 1.6cqw, 24px) clamp(12px, 1.6cqw, 24px) 0 #0a0a0a,
+      clamp(15px, 2cqw, 30px) clamp(15px, 2cqw, 30px) 0 rgba(0, 0, 0, 0.7),
+      0 0 clamp(24px, 4cqw, 60px) rgba(139, 0, 0, 0.4)
     `
   };
   background: ${props => props.$isVictory
@@ -376,11 +376,11 @@ const MainKanji = styled.div`
 const KanjiShadow = styled.div`
   position: absolute;
   font-family: "Noto Serif JP", "Yu Mincho", "Hiragino Mincho Pro", serif;
-  font-size: clamp(8rem, 19vw, 22rem);
+  font-size: clamp(8rem, 19cqw, 22rem);
   font-weight: 900;
   line-height: 1;
-  top: clamp(5px, 0.6vw, 10px);
-  left: clamp(5px, 0.6vw, 10px);
+  top: clamp(5px, 0.6cqw, 10px);
+  left: clamp(5px, 0.6cqw, 10px);
   color: ${props => props.$isVictory ? '#FFFFFF' : '#000000'};
   z-index: -1;
   opacity: 0.7;
@@ -390,8 +390,8 @@ const KanjiShadow = styled.div`
 
 const InkSplatter = styled.div`
   position: absolute;
-  width: clamp(190px, 36vw, 500px);
-  height: clamp(190px, 36vw, 500px);
+  width: clamp(190px, 36cqw, 500px);
+  height: clamp(190px, 36cqw, 500px);
   border-radius: 50%;
   background: ${props => props.$isVictory
     ? 'radial-gradient(ellipse at center, rgba(255, 215, 0, 0.45) 0%, rgba(255, 190, 0, 0.35) 25%, rgba(255, 160, 0, 0.2) 50%, transparent 70%)'
@@ -410,8 +410,8 @@ const InkSplatter = styled.div`
 `;
 
 const SecondaryInkSplatter = styled(InkSplatter)`
-  width: clamp(140px, 27vw, 370px);
-  height: clamp(140px, 27vw, 370px);
+  width: clamp(140px, 27cqw, 370px);
+  height: clamp(140px, 27cqw, 370px);
   animation-delay: 0.1s;
   transform: rotate(45deg);
   opacity: 0.7;
@@ -419,12 +419,12 @@ const SecondaryInkSplatter = styled(InkSplatter)`
 
 const SubtitleText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(1.1rem, 2.4vw, 3rem);
+  font-size: clamp(1.1rem, 2.4cqw, 3rem);
   color: ${props => props.$isVictory ? '#FFF8E7' : '#E8E8E8'};
   text-transform: uppercase;
   letter-spacing: clamp(0.15em, 0.3em, 0.3em);
   animation: ${subtitleSlide} 3s ease-out forwards;
-  -webkit-text-stroke: ${props => props.$isVictory ? 'clamp(1px, 0.12vw, 2px) #996600' : 'clamp(0.5px, 0.08vw, 1px) #2a0000'};
+  -webkit-text-stroke: ${props => props.$isVictory ? 'clamp(1px, 0.12cqw, 2px) #996600' : 'clamp(0.5px, 0.08cqw, 1px) #2a0000'};
   text-shadow: ${props => props.$isVictory
     ? `
       2px 2px 0 #CC8800,
@@ -444,13 +444,13 @@ const SubtitleText = styled.div`
 
 const BrushStroke = styled.div`
   position: absolute;
-  width: clamp(240px, 48vw, 660px);
-  height: clamp(20px, 3.8vw, 50px);
+  width: clamp(240px, 48cqw, 660px);
+  height: clamp(20px, 3.8cqw, 50px);
   background: ${props => props.$isVictory
     ? 'linear-gradient(90deg, transparent 0%, rgba(255, 180, 0, 0.3) 15%, rgba(255, 200, 0, 0.55) 35%, rgba(255, 215, 0, 0.7) 50%, rgba(255, 200, 0, 0.55) 65%, rgba(255, 180, 0, 0.3) 85%, transparent 100%)'
     : 'linear-gradient(90deg, transparent 0%, rgba(60, 0, 0, 0.25) 15%, rgba(120, 0, 0, 0.45) 35%, rgba(139, 0, 0, 0.55) 50%, rgba(120, 0, 0, 0.45) 65%, rgba(60, 0, 0, 0.25) 85%, transparent 100%)'
   };
-  bottom: clamp(-20px, -3.8vw, -50px);
+  bottom: clamp(-20px, -3.8cqw, -50px);
   animation: ${brushReveal} 3s ease-out forwards;
   border-radius: 50%;
   filter: blur(2px);
@@ -467,7 +467,7 @@ const RoundResult = ({ isVictory }) => {
         id: i,
         left: `${38 + (i * 4)}%`,
         bottom: `${38 + (i % 2) * 10}%`,
-        size: `clamp(4px, ${0.4 + (i % 3) * 0.15}vw, ${6 + (i % 3) * 2}px)`,
+        size: `clamp(4px, ${0.4 + (i % 3) * 0.15}cqw, ${6 + (i % 3) * 2}px)`,
         delay: `${0.15 + (i * 0.1)}s`,
         duration: `${1.3 + (i % 2) * 0.4}s`
       });

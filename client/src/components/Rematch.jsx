@@ -21,7 +21,7 @@ const RematchWrapper = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(10px, 1.5vh, 16px);
+  gap: clamp(10px, 1.5cqh, 16px);
   width: 100%;
 `;
 
@@ -29,14 +29,14 @@ const ButtonContainer = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(8px, 1.2vh, 14px);
+  gap: clamp(8px, 1.2cqh, 14px);
   width: 100%;
 `;
 
 // Wooden plaque style button
 const RematchButton = styled.button`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.55rem, 1.3vw, 0.85rem);
+  font-size: clamp(0.55rem, 1.3cqw, 0.85rem);
   width: 100%;
   background: linear-gradient(180deg,
     #4a3525 0%,
@@ -45,8 +45,8 @@ const RematchButton = styled.button`
   );
   color: #d4af37;
   border: 2px solid #8b7355;
-  border-radius: clamp(4px, 0.7vw, 8px);
-  padding: clamp(10px, 1.5vh, 16px) clamp(16px, 2.5vw, 28px);
+  border-radius: clamp(4px, 0.7cqw, 8px);
+  padding: clamp(10px, 1.5cqh, 16px) clamp(16px, 2.5cqw, 28px);
   cursor: pointer;
   transition: all 0.2s ease;
   text-transform: uppercase;
@@ -74,7 +74,7 @@ const RematchButton = styled.button`
       rgba(255,255,255,0.02) 1px,
       transparent 3px
     );
-    border-radius: clamp(4px, 0.7vw, 8px);
+    border-radius: clamp(4px, 0.7cqw, 8px);
     pointer-events: none;
   }
 
@@ -99,8 +99,8 @@ const RematchButton = styled.button`
   }
   
   @media (max-width: 900px) {
-    font-size: clamp(0.45rem, 1.8vw, 0.7rem);
-    padding: clamp(8px, 1.2vh, 12px) clamp(12px, 2vw, 20px);
+    font-size: clamp(0.45rem, 1.8cqw, 0.7rem);
+    padding: clamp(8px, 1.2cqh, 12px) clamp(12px, 2cqw, 20px);
   }
 `;
 
@@ -132,15 +132,15 @@ const CancelButton = styled(RematchButton)`
 // Ready counter - like a small wooden sign
 const ReadyCount = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.7rem, 1.4vw, 1rem);
+  font-size: clamp(0.7rem, 1.4cqw, 1rem);
   color: ${props => props.$ready ? '#4ade80' : '#8b7355'};
   background: linear-gradient(180deg,
     #1a0a08 0%,
     #0f0505 100%
   );
-  padding: clamp(8px, 1.2vh, 12px) clamp(20px, 3vw, 32px);
+  padding: clamp(8px, 1.2cqh, 12px) clamp(20px, 3cqw, 32px);
   border: 2px solid ${props => props.$ready ? '#4ade80' : '#5c4033'};
-  border-radius: clamp(4px, 0.6vw, 7px);
+  border-radius: clamp(4px, 0.6cqw, 7px);
   text-align: center;
   letter-spacing: 0.12em;
   text-shadow: 
@@ -155,43 +155,43 @@ const ReadyCount = styled.div`
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
-    font-size: clamp(4px, 0.6vw, 7px);
+    font-size: clamp(4px, 0.6cqw, 7px);
     color: ${props => props.$ready ? '#4ade80' : '#5c4033'};
   }
-  &::before { left: clamp(6px, 1vw, 10px); }
-  &::after { right: clamp(6px, 1vw, 10px); }
+  &::before { left: clamp(6px, 1cqw, 10px); }
+  &::after { right: clamp(6px, 1cqw, 10px); }
   
   @media (max-width: 900px) {
-    font-size: clamp(0.55rem, 2vw, 0.85rem);
-    padding: clamp(6px, 1vh, 10px) clamp(14px, 2.5vw, 24px);
+    font-size: clamp(0.55rem, 2cqw, 0.85rem);
+    padding: clamp(6px, 1cqh, 10px) clamp(14px, 2.5cqw, 24px);
   }
 `;
 
 const ReadyLabel = styled.span`
-  font-size: clamp(0.38rem, 0.8vw, 0.55rem);
+  font-size: clamp(0.38rem, 0.8cqw, 0.55rem);
   color: rgba(212, 175, 55, 0.7);
   display: block;
-  margin-bottom: clamp(3px, 0.5vh, 5px);
+  margin-bottom: clamp(3px, 0.5cqh, 5px);
   letter-spacing: 0.18em;
   
   @media (max-width: 900px) {
-    font-size: clamp(0.32rem, 1.2vw, 0.45rem);
+    font-size: clamp(0.32rem, 1.2cqw, 0.45rem);
   }
 `;
 
 // Exit - subtle, like stamped text
 const ExitButton = styled.button`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.38rem, 0.8vw, 0.52rem);
+  font-size: clamp(0.38rem, 0.8cqw, 0.52rem);
   background: transparent;
   color: rgba(139, 115, 85, 0.6);
   border: none;
-  padding: clamp(4px, 0.6vh, 8px) clamp(10px, 1.5vw, 16px);
+  padding: clamp(4px, 0.6cqh, 8px) clamp(10px, 1.5cqw, 16px);
   cursor: pointer;
   transition: all 0.2s ease;
   text-transform: uppercase;
   letter-spacing: 0.15em;
-  margin-top: clamp(4px, 0.8vh, 10px);
+  margin-top: clamp(4px, 0.8cqh, 10px);
   position: relative;
 
   /* Underline decoration */
@@ -221,7 +221,7 @@ const ExitButton = styled.button`
   }
   
   @media (max-width: 900px) {
-    font-size: clamp(0.32rem, 1.1vw, 0.45rem);
+    font-size: clamp(0.32rem, 1.1cqw, 0.45rem);
   }
 `;
 

@@ -19,7 +19,7 @@ const SettingsContainer = styled.div`
   width: 80%;
   max-width: 500px;
   backdrop-filter: blur(10px);
-  max-height: 80vh;
+  max-height: 80cqh;
   overflow-y: auto;
 `;
 

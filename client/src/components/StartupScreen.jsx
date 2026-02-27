@@ -80,7 +80,7 @@ const connectedPulse = keyframes`
 
 const floatParticle = keyframes`
   0% {
-    transform: translateY(100vh) rotate(0deg);
+    transform: translateY(100cqh) rotate(0deg);
     opacity: 0;
   }
   10% {
@@ -104,13 +104,13 @@ const snowParticle = keyframes`
     opacity: 0.8;
   }
   50% {
-    transform: translate(15px, 50vh) rotate(180deg);
+    transform: translate(15px, 50cqh) rotate(180deg);
   }
   90% {
     opacity: 0.5;
   }
   100% {
-    transform: translate(-5px, 100vh) rotate(360deg);
+    transform: translate(-5px, 100cqh) rotate(360deg);
     opacity: 0;
   }
 `;
@@ -120,11 +120,11 @@ const snowParticle = keyframes`
 // ============================================
 
 const ScreenContainer = styled.div`
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   background: linear-gradient(180deg,
     #0a0505 0%,
     #120a08 30%,
@@ -198,13 +198,13 @@ const Content = styled.div`
 // ============================================
 
 const LogoSection = styled.div`
-  margin-bottom: clamp(60px, 12vh, 120px);
+  margin-bottom: clamp(60px, 12cqh, 120px);
   animation: ${fadeIn} 0.8s ease-out 0.2s both;
 `;
 
 const Logo = styled.h1`
   font-family: "Bungee", cursive;
-  font-size: clamp(2rem, 7vw, 4rem);
+  font-size: clamp(2rem, 7cqw, 4rem);
   color: #d4af37;
   margin: 0;
   letter-spacing: 0.08em;
@@ -212,7 +212,7 @@ const Logo = styled.h1`
   animation: ${logoGlow} 4s ease-in-out infinite;
   
   @media (max-width: 600px) {
-    font-size: clamp(1.5rem, 8vw, 2.5rem);
+    font-size: clamp(1.5rem, 8cqw, 2.5rem);
   }
 `;
 
@@ -239,13 +239,13 @@ const ConnectingContainer = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(12px, 2vh, 20px);
+  gap: clamp(12px, 2cqh, 20px);
 `;
 
 const ConnectingText = styled.p`
   font-family: "Outfit", sans-serif;
   font-weight: 500;
-  font-size: clamp(0.7rem, 1.6vw, 1rem);
+  font-size: clamp(0.7rem, 1.6cqw, 1rem);
   color: #8b7355;
   margin: 0;
   letter-spacing: 0.15em;
@@ -255,12 +255,12 @@ const ConnectingText = styled.p`
 
 const DotsContainer = styled.div`
   display: flex;
-  gap: clamp(6px, 1vw, 10px);
+  gap: clamp(6px, 1cqw, 10px);
 `;
 
 const Dot = styled.div`
-  width: clamp(8px, 1.2vw, 12px);
-  height: clamp(8px, 1.2vw, 12px);
+  width: clamp(8px, 1.2cqw, 12px);
+  height: clamp(8px, 1.2cqw, 12px);
   background: #d4af37;
   border-radius: 50%;
   animation: ${dotBounce} 1.2s ease-in-out infinite;
@@ -271,16 +271,16 @@ const Dot = styled.div`
 const ConnectionError = styled.div`
   display: flex;
   align-items: center;
-  gap: clamp(8px, 1.2vw, 12px);
+  gap: clamp(8px, 1.2cqw, 12px);
 `;
 
 const ErrorIcon = styled.span`
-  font-size: clamp(1rem, 2vw, 1.4rem);
+  font-size: clamp(1rem, 2cqw, 1.4rem);
 `;
 
 const ErrorText = styled.p`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.55rem, 1.3vw, 0.8rem);
+  font-size: clamp(0.55rem, 1.3cqw, 0.8rem);
   color: #f87171;
   margin: 0;
   letter-spacing: 0.1em;
@@ -294,12 +294,12 @@ const ConnectedContainer = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(16px, 2.5vh, 28px);
+  gap: clamp(16px, 2.5cqh, 28px);
 `;
 
 const ConnectedText = styled.p`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.6rem, 1.4vw, 0.85rem);
+  font-size: clamp(0.6rem, 1.4cqw, 0.85rem);
   color: #4ade80;
   margin: 0;
   letter-spacing: 0.15em;
@@ -307,12 +307,12 @@ const ConnectedText = styled.p`
   animation: ${connectedPulse} 2s ease-in-out infinite;
   display: flex;
   align-items: center;
-  gap: clamp(8px, 1vw, 12px);
+  gap: clamp(8px, 1cqw, 12px);
   
   &::before {
     content: "";
-    width: clamp(8px, 1vw, 10px);
-    height: clamp(8px, 1vw, 10px);
+    width: clamp(8px, 1cqw, 10px);
+    height: clamp(8px, 1cqw, 10px);
     background: #4ade80;
     border-radius: 50%;
     box-shadow: 0 0 10px rgba(74, 222, 128, 0.6);
@@ -322,7 +322,7 @@ const ConnectedText = styled.p`
 const PressKeyText = styled.p`
   font-family: "Outfit", sans-serif;
   font-weight: 400;
-  font-size: clamp(0.65rem, 1.3vw, 0.85rem);
+  font-size: clamp(0.65rem, 1.3cqw, 0.85rem);
   color: #8b7355;
   margin: 0;
   letter-spacing: 0.2em;
@@ -337,7 +337,7 @@ const PressKeyText = styled.p`
 
 const Footer = styled.div`
   position: absolute;
-  bottom: clamp(16px, 3vh, 32px);
+  bottom: clamp(16px, 3cqh, 32px);
   width: 100%;
   text-align: center;
   animation: ${fadeIn} 0.6s ease-out 0.8s both;
@@ -346,7 +346,7 @@ const Footer = styled.div`
 const VersionText = styled.p`
   font-family: "Outfit", sans-serif;
   font-weight: 400;
-  font-size: clamp(0.5rem, 0.85vw, 0.65rem);
+  font-size: clamp(0.5rem, 0.85cqw, 0.65rem);
   color: rgba(92, 64, 51, 0.6);
   margin: 0;
   letter-spacing: 0.12em;
@@ -357,14 +357,14 @@ const VersionText = styled.p`
 // ============================================
 
 const DecoLine = styled.div`
-  width: clamp(60px, 12vw, 120px);
+  width: clamp(60px, 12cqw, 120px);
   height: 2px;
   background: linear-gradient(90deg, 
     transparent 0%, 
     rgba(139, 115, 85, 0.4) 50%, 
     transparent 100%
   );
-  margin: clamp(20px, 4vh, 40px) auto;
+  margin: clamp(20px, 4cqh, 40px) auto;
   animation: ${subtlePulse} 3s ease-in-out infinite;
 `;
 

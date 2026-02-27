@@ -3,28 +3,28 @@ import { useEffect, useRef } from "react";
 // ── Tunable constants ──────────────────────────────────────────────
 const GAME_WIDTH = 1280;
 
-const MIN_SCALE = 1.08;      // widest zoom — slightly tighter than full map
-const MAX_SCALE = 1.6;       // tightest zoom when players are very close
-const DEFAULT_SCALE = 1.35;  // fallback before game starts
+const MIN_SCALE = 1.18; // widest zoom — tighter crop, hides below dohyo
+const MAX_SCALE = 1.75; // tightest zoom when players are very close
+const DEFAULT_SCALE = 1.45; // fallback before game starts
 
-const CLOSE_DISTANCE = 100;  // player gap (game-coords) for max zoom
-const FAR_DISTANCE = 700;    // player gap (game-coords) for min zoom
+const CLOSE_DISTANCE = 100; // player gap (game-coords) for max zoom
+const FAR_DISTANCE = 700; // player gap (game-coords) for min zoom
 
-const SPRITE_HALF_W = 0;     // Sprites are now centred on player.x via CSS translate
-const SMOOTH_FACTOR = 0.07;  // lerp speed per frame (0–1, higher = snappier)
-const Y_OFFSET = 10;         // fixed vertical bias (%) — positive = show more top
+const SPRITE_HALF_W = 0; // Sprites are now centred on player.x via CSS translate
+const SMOOTH_FACTOR = 0.07; // lerp speed per frame (0–1, higher = snappier)
+const Y_OFFSET = 12; // fixed vertical bias (%) — positive = show more top
 
 // ── Impact shake ─────────────────────────────────────────────────
-const SHAKE_MIN = 2;         // px — lightest hit (slap)
-const SHAKE_MAX = 7;         // px — heaviest hit (full-charge + power-up)
-const SHAKE_DECAY = 0.88;    // per-frame multiplier → ~150 ms at 60 fps
-const SHAKE_STOP = 0.3;      // cut to zero below this
+const SHAKE_MIN = 2; // px — lightest hit (slap)
+const SHAKE_MAX = 7; // px — heaviest hit (full-charge + power-up)
+const SHAKE_DECAY = 0.88; // per-frame multiplier → ~150 ms at 60 fps
+const SHAKE_STOP = 0.3; // cut to zero below this
 
 // ── Hit zoom punch-in ────────────────────────────────────────────
-const PUNCH_MIN = 0.02;      // scale boost — light hit
-const PUNCH_MAX = 0.06;      // scale boost — heavy hit
-const PUNCH_DECAY = 0.92;    // per-frame multiplier → ~200 ms
-const PUNCH_STOP = 0.001;    // cut to zero below this
+const PUNCH_MIN = 0.02; // scale boost — light hit
+const PUNCH_MAX = 0.06; // scale boost — heavy hit
+const PUNCH_DECAY = 0.92; // per-frame multiplier → ~200 ms
+const PUNCH_STOP = 0.001; // cut to zero below this
 
 // Knockback reference ceiling for normalising intensity
 const KB_REF = 2.5;
@@ -35,7 +35,6 @@ const CINEMATIC_SHAKE_INTENSITY = 12;
 const CINEMATIC_SHAKE_DECAY = 0.94;
 const CINEMATIC_ZOOM_IN_SPEED = 0.18;
 const CINEMATIC_PAN_SPEED = 0.12;
-const CINEMATIC_MIN_HOLD_MS = 2000;
 // ───────────────────────────────────────────────────────────────────
 
 function clamp(v, lo, hi) {
@@ -63,7 +62,7 @@ export default function useCamera(containerRef, socket) {
   // Cinematic kill state
   const cinematicRef = useRef({
     active: false,
-    phase: "none",       // "freeze" | "release" | "none"
+    phase: "none", // "freeze" | "release" | "hold" | "none"
     impactFraction: 0.5,
     startTime: 0,
     hitstopMs: 0,
@@ -139,8 +138,15 @@ export default function useCamera(containerRef, socket) {
       punchRef.current.amount = 0;
     };
 
+    const onGameReset = () => {
+      const cin = cinematicRef.current;
+      cin.active = false;
+      cin.phase = "none";
+    };
+
     socket.on("fighter_action", onFighterAction);
     socket.on("cinematic_kill", onCinematicKill);
+    socket.on("game_reset", onGameReset);
 
     const tick = () => {
       const { p1x, p2x } = posRef.current;
@@ -149,7 +155,7 @@ export default function useCamera(containerRef, socket) {
       if (el && p1x !== null && p2x !== null) {
         const distance = Math.abs(p1x - p2x);
         const midFraction =
-          ((p1x + SPRITE_HALF_W) + (p2x + SPRITE_HALF_W)) / 2 / GAME_WIDTH;
+          (p1x + SPRITE_HALF_W + (p2x + SPRITE_HALF_W)) / 2 / GAME_WIDTH;
 
         // ── Target zoom ──
         const t = clamp(
@@ -169,10 +175,15 @@ export default function useCamera(containerRef, socket) {
 
           if (cin.phase === "freeze") {
             // Zoom IN toward impact point
-            const cinematicTargetX = -(cin.impactFraction - 0.5) * cin.targetScale * 100;
+            const cinematicTargetX =
+              -(cin.impactFraction - 0.5) * cin.targetScale * 100;
             const cinematicTargetY = Y_OFFSET + 2;
 
-            cam.scale = lerp(cam.scale, cin.targetScale, CINEMATIC_ZOOM_IN_SPEED);
+            cam.scale = lerp(
+              cam.scale,
+              cin.targetScale,
+              CINEMATIC_ZOOM_IN_SPEED,
+            );
             cam.x = lerp(cam.x, cinematicTargetX, CINEMATIC_ZOOM_IN_SPEED);
             cam.y = lerp(cam.y, cinematicTargetY, CINEMATIC_ZOOM_IN_SPEED);
 
@@ -184,13 +195,14 @@ export default function useCamera(containerRef, socket) {
 
             if (elapsed >= cin.hitstopMs) {
               cin.phase = "release";
-              // Snap scale and Y back to pre-freeze state immediately
-              cam.scale = cin.preScale;
+              // Snap scale back but never zoom out wider than default
+              const lockedScale = Math.max(cin.preScale, DEFAULT_SCALE);
+              cam.scale = lockedScale;
               cam.y = cin.preY;
             }
           } else if (cin.phase === "release") {
-            // Lock scale at pre-freeze level — no zooming out further
-            cam.scale = cin.preScale;
+            // Lock scale — no zooming out further than default
+            cam.scale = Math.max(cin.preScale, DEFAULT_SCALE);
             cam.y = lerp(cam.y, normalTargetY, SMOOTH_FACTOR);
 
             // Pan toward the knockout edge at locked zoom
@@ -204,18 +216,12 @@ export default function useCamera(containerRef, socket) {
               cin.holdStartTime = performance.now();
             }
           } else if (cin.phase === "hold") {
-            // Stay locked at the edge until players are close again (next round)
-            cam.scale = cin.preScale;
+            // Stay locked at the edge — only game_reset clears cinematic state
+            cam.scale = Math.max(cin.preScale, DEFAULT_SCALE);
             const maxPan = 50 * (cam.scale - 1);
             const edgeTargetX = cin.knockbackDir < 0 ? maxPan : -maxPan;
             cam.x = edgeTargetX;
             cam.y = lerp(cam.y, normalTargetY, SMOOTH_FACTOR);
-
-            const holdElapsed = performance.now() - cin.holdStartTime;
-            if (holdElapsed >= CINEMATIC_MIN_HOLD_MS && distance < FAR_DISTANCE) {
-              cin.active = false;
-              cin.phase = "none";
-            }
           }
         } else {
           // ── Normal camera behavior ──
@@ -258,17 +264,19 @@ export default function useCamera(containerRef, socket) {
 
         // Recompute edge limits using effective scale so the punch's
         // extra zoom gives more pan headroom — shake never exposes edges.
-        const maxPxX = Math.floor(50 * (effectiveScale - 1) * cw / 100);
-        const maxPxY = Math.floor(50 * (effectiveScale - 1) * ch / 100);
+        const maxPxX = Math.floor((50 * (effectiveScale - 1) * cw) / 100);
+        const maxPxY = Math.floor((50 * (effectiveScale - 1) * ch) / 100);
 
         const snappedScale = Math.round(effectiveScale * 1000) / 1000;
         const pixelX = clamp(
-          Math.round(cam.x * cw / 100 + shake.x),
-          -maxPxX, maxPxX,
+          Math.round((cam.x * cw) / 100 + shake.x),
+          -maxPxX,
+          maxPxX,
         );
         const pixelY = clamp(
-          Math.round(cam.y * ch / 100 + shake.y),
-          -maxPxY, maxPxY,
+          Math.round((cam.y * ch) / 100 + shake.y),
+          -maxPxY,
+          maxPxY,
         );
 
         el.style.setProperty("--cam-scale", snappedScale);
@@ -284,6 +292,7 @@ export default function useCamera(containerRef, socket) {
     return () => {
       socket.off("fighter_action", onFighterAction);
       socket.off("cinematic_kill", onCinematicKill);
+      socket.off("game_reset", onGameReset);
       if (rafId.current) cancelAnimationFrame(rafId.current);
     };
   }, [containerRef, socket]);

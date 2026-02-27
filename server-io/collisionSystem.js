@@ -15,6 +15,7 @@ const {
   CHARGE_CLASH_MIN_KNOCKBACK, CHARGE_CLASH_ADVANTAGE_SCALE,
   CHARGE_PRIORITY_THRESHOLD, CHARGE_VS_SLAP_ATTACKER_PENALTY,
   CINEMATIC_KILL_MIN_MULTIPLIER,
+  CHARGE_FULL_POWER_MS,
   CINEMATIC_KILL_HITSTOP_MS,
   CINEMATIC_KILL_KNOCKBACK_BOOST,
   CINEMATIC_KB_FRICTION,
@@ -633,7 +634,7 @@ function processHit(player, otherPlayer, rooms, io) {
         ) {
           player.isChargingAttack = true;
           if (player.chargeAttackPower > 0) {
-            player.chargeStartTime = Date.now() - (player.chargeAttackPower / 100 * 750);
+            player.chargeStartTime = Date.now() - (player.chargeAttackPower / 100 * CHARGE_FULL_POWER_MS);
           } else {
             player.chargeStartTime = Date.now();
             player.chargeAttackPower = 1;
@@ -725,7 +726,7 @@ function processHit(player, otherPlayer, rooms, io) {
           ) {
             player.isChargingAttack = true;
             if (player.chargeAttackPower > 0) {
-              player.chargeStartTime = Date.now() - (player.chargeAttackPower / 100 * 750);
+              player.chargeStartTime = Date.now() - (player.chargeAttackPower / 100 * CHARGE_FULL_POWER_MS);
             } else {
               player.chargeStartTime = Date.now();
               player.chargeAttackPower = 1;
@@ -866,7 +867,7 @@ function processHit(player, otherPlayer, rooms, io) {
     if (isSlapAttack) {
       finalKnockbackMultiplier = 0.38; // Tuned knockback - consecutive slaps stay in range
     } else {
-      finalKnockbackMultiplier = 0.4675 + (chargePercentage / 100) * 1.122; // Reduced base power by 15% (0.55 -> 0.4675) and scaling by 15% (1.32 -> 1.122)
+      finalKnockbackMultiplier = 0.4675 + Math.pow(chargePercentage / 100, 2) * 0.55; // Quadratic ease-in: low charges are moderate, power ramps sharply at high charge
     }
 
     // Counter hit bonus: 25% extra knockback for catching opponent in startup

@@ -8,6 +8,12 @@
   z-index: 1000;
 }
 
+@media (hover: hover) and (pointer: fine) {
+  .mobile-controls {
+    display: none !important;
+  }
+}
+
 .joystick-area {
   position: absolute;
   bottom: 2rem;

@@ -202,10 +202,12 @@ const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
     });
   };
 
-  // Only show controls on touch devices
+  // Only show controls on actual touch-only devices (not desktop/laptop with trackpad)
   const [isTouchDevice, setIsTouchDevice] = useState(false);
   useEffect(() => {
-    setIsTouchDevice("ontouchstart" in window);
+    const hasTouchScreen = navigator.maxTouchPoints > 1;
+    const hasNoMouse = window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+    setIsTouchDevice(hasTouchScreen && hasNoMouse);
   }, []);
 
   // Prevent default touch behavior to avoid scrolling

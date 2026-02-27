@@ -6,21 +6,42 @@ body {
   margin: 0;
   color: white;
   background-color: #0b0c0e;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.app-container {
+  width: 1280px;
+  height: 720px;
+  container-type: size;
+  transform: scale(var(--app-scale, 1));
+  transform-origin: center center;
+  position: relative;
+  overflow: hidden;
 }
 
 /* Startup Screen Styles */
 .startup-screen {
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   background-color: #121213;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  border: black clamp(2px, 0.16vw, 4px) solid;
+  border: black clamp(2px, 0.16cqw, 4px) solid;
 }
 
 .startup-content {
@@ -35,14 +56,14 @@ body {
 }
 
 .startup-logo {
-  font-size: clamp(2rem, 8vw, 4rem);
+  font-size: clamp(2rem, 8cqw, 4rem);
   margin: 0;
   color: white;
   font-family: "Bungee", cursive;
 }
 
 .startup-pow {
-  font-size: clamp(2rem, 8vw, 4.5rem);
+  font-size: clamp(2rem, 8cqw, 4.5rem);
   color: red;
   font-family: "Bungee", cursive;
 }
@@ -56,7 +77,7 @@ body {
 }
 
 .connecting-message p {
-  font-size: clamp(0.7rem, 2vw, 1rem);
+  font-size: clamp(0.7rem, 2cqw, 1rem);
   color: white;
   margin: 0;
   font-family: "Bungee", cursive;
@@ -64,7 +85,7 @@ body {
 }
 
 .connection-error p {
-  font-size: clamp(0.6rem, 2vw, 0.9rem);
+  font-size: clamp(0.6rem, 2cqw, 0.9rem);
   color: red;
   margin: 0;
   font-family: "Bungee", cursive;
@@ -79,7 +100,7 @@ body {
 }
 
 .press-key-text {
-  font-size: clamp(0.7rem, 2vw, 1rem);
+  font-size: clamp(0.7rem, 2cqw, 1rem);
   color: white;
   margin: 0;
   font-family: "Bungee", cursive;
@@ -113,7 +134,7 @@ body {
 
 /* Steam Deck specific adjustments for startup */
 .steam-deck-mode .startup-logo {
-  font-size: clamp(1.5rem, 6vw, 3rem);
+  font-size: clamp(1.5rem, 6cqw, 3rem);
 }
 
 .steam-deck-mode .startup-title {
@@ -121,23 +142,22 @@ body {
 }
 
 .steam-deck-mode .press-key-text {
-  font-size: clamp(0.6rem, 2vw, 0.9rem);
+  font-size: clamp(0.6rem, 2cqw, 0.9rem);
 }
 
 .steam-deck-mode .connecting-message p {
-  font-size: clamp(0.6rem, 2vw, 0.9rem);
+  font-size: clamp(0.6rem, 2cqw, 0.9rem);
 }
 
 .main-menu {
   display: flex;
   align-items: center;
-  width: 100vw;
-  height: 100vh;
-  aspect-ratio: 16 / 9;
+  width: 100%;
+  height: 100%;
   z-index: 100;
   position: relative;
   overflow: hidden;
-  border: black clamp(2px, 0.16vw, 4px) solid;
+  border: black clamp(2px, 0.16cqw, 4px) solid;
 }
 
 .main-menu-btn-container {
@@ -149,8 +169,8 @@ body {
 
 .cherry-blossom {
   position: absolute;
-  width: clamp(8px, 0.8vw, 16px);
-  height: clamp(8px, 0.8vw, 16px);
+  width: clamp(8px, 0.8cqw, 16px);
+  height: clamp(8px, 0.8cqw, 16px);
   background-color: #ffc0cb;
   border-radius: 50%;
   opacity: 0.7;
@@ -168,7 +188,7 @@ body {
     opacity: 0.7;
   }
   100% {
-    transform: translateY(100vh) rotate(360deg);
+    transform: translateY(100cqh) rotate(360deg);
     opacity: 0;
   }
 }
@@ -183,7 +203,7 @@ body {
 }
 
 #play {
-  font-size: clamp(3rem, 10vw, 6rem);
+  font-size: clamp(3rem, 10cqw, 6rem);
   color: rgb(255, 0, 0);
 }
 
@@ -192,13 +212,13 @@ body {
 }
 
 .main-menu-btn-container > button {
-  margin-left: 3vw;
+  margin-left: 3cqw;
   background-color: none;
   background: none;
   border-radius: 10px;
   width: fit-content;
   border: none;
-  font-size: clamp(0.5rem, 2.5vw, 2rem);
+  font-size: clamp(0.5rem, 2.5cqw, 2rem);
   color: black;
   font-family: "Bungee", cursive;
   cursor: pointer;
@@ -225,8 +245,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100vh;
-  width: 100vw;
+  height: 100%;
+  width: 100%;
 }
 
 .rooms {
@@ -234,11 +254,10 @@ body {
   flex-direction: column;
   justify-self: center;
   align-self: center;
-  width: 100vw;
-  height: 100vh;
-  aspect-ratio: 16 / 9;
+  width: 100%;
+  height: 100%;
   background-color: rgb(22, 22, 22);
-  box-shadow: 0px 0px clamp(2px, 0.16vw, 4px) clamp(1px, 0.08vw, 2px) black;
+  box-shadow: 0px 0px clamp(2px, 0.16cqw, 4px) clamp(1px, 0.08cqw, 2px) black;
   border-radius: 1%;
   position: relative;
   font-family: cursive;
@@ -255,7 +274,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: clamp(0.2rem, 1vw, 1rem);
+  font-size: clamp(0.2rem, 1cqw, 1rem);
   border-top: grey solid 1px;
   border-bottom: grey solid 1px;
   background-color: rgb(25, 25, 25);
@@ -268,7 +287,7 @@ body {
   border: none;
   border-radius: 5%;
   color: white;
-  font-size: clamp(0.5rem, 2vw, 1.5rem);
+  font-size: clamp(0.5rem, 2cqw, 1.5rem);
   cursor: pointer;
   font-family: "Bungee", cursive;
   text-align: center;
@@ -280,13 +299,13 @@ body {
 
 .room-id {
   font-family: "Bungee";
-  font-size: clamp(0.5rem, 2vw, 1.5rem);
+  font-size: clamp(0.5rem, 2cqw, 1.5rem);
   margin-left: 1rem;
 }
 
 .room-count {
   font-family: Tahoma, sans-serif;
-  font-size: clamp(0.5rem, 2vw, 1.5rem);
+  font-size: clamp(0.5rem, 2cqw, 1.5rem);
 }
 
 .rooms-button-container {
@@ -310,7 +329,7 @@ body {
   cursor: pointer;
 }
 .material-symbols-outlined {
-  font-size: clamp(0.5rem, 2vw, 1.5rem);
+  font-size: clamp(0.5rem, 2cqw, 1.5rem);
 }
 
 .refresh-btn:active {
@@ -325,7 +344,7 @@ body {
 .back-btn {
   background-color: black;
   color: white;
-  font-size: clamp(0.5rem, 2vw, 1rem);
+  font-size: clamp(0.5rem, 2cqw, 1rem);
   font-family: "Bungee", cursive;
 }
 
@@ -336,11 +355,11 @@ body {
 }
 
 .game-wrapper {
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -350,19 +369,16 @@ body {
 
 .game-container {
   position: relative;
-  width: 100vw;
-  height: calc(100vw * 9 / 16);
-  max-width: 100vw;
-  max-height: 100vh;
-  aspect-ratio: 16 / 9;
-  container-type: inline-size;
-  border: clamp(2px, 0.16vw, 4px) solid black;
+  width: 100%;
+  height: 100%;
+  container-type: size;
+  border: 3px solid black;
   overflow: hidden;
   z-index: 99;
   /* ── Scaling helpers: visual weight that grows with screen size ── */
-  --text-ol: clamp(2px, 0.15vw, 4px);
-  --neg-text-ol: clamp(-4px, -0.15vw, -2px);
-  --border-w: clamp(2px, 0.16vw, 4px);
+  --text-ol: clamp(2px, 0.15cqw, 4px);
+  --neg-text-ol: clamp(-4px, -0.15cqw, -2px);
+  --border-w: clamp(2px, 0.16cqw, 4px);
 
   /* ── Visual grading — anime-fighter contrast hierarchy ── */
   --arena-map-filter: brightness(0.88) saturate(0.92) contrast(1.08);
@@ -382,7 +398,7 @@ body {
   --dohyo-filter: brightness(0.95) saturate(0.94) contrast(1.1);
 
   /* ── Camera defaults — JS will drive these later for dynamic pan/zoom ── */
-  --cam-scale: 1.35;
+  --cam-scale: 1.45;
   --cam-x: 0px;
   --cam-y: 0px;
 }
@@ -512,12 +528,7 @@ body {
   100% { opacity: var(--danger-hi, 0.9); }
 }
 
-@media (min-aspect-ratio: 16/9) {
-  .game-container {
-    width: calc(100vh * 16 / 9);
-    height: 100vh;
-  }
-}
+/* Responsive sizing handled by --game-scale transform (set in Game.jsx) */
 
 .ui {
   position: absolute;
@@ -540,14 +551,14 @@ body {
 
 #ui-container-1 {
   height: 5%;
-  left: 3vw;
-  bottom: 3vw;
+  left: 3cqw;
+  bottom: 3cqw;
 }
 
 #ui-container-2 {
   height: 5%;
-  right: 3vw;
-  bottom: 3vw;
+  right: 3cqw;
+  bottom: 3cqw;
   transform: scaleX(-1);
 }
 
@@ -562,7 +573,7 @@ body {
 
 /* .ui-player-name {
   font-family: "Bungee";
-  font-size: 2vw;
+  font-size: 2cqw;
 } */
 
 .ui-player-info {
@@ -612,7 +623,7 @@ body {
   padding: 1% 5%; /* Reduced padding to prevent overflow */
   border: red solid 0.15rem;
   text-align: center;
-  font-size: clamp(0.2rem, 1vw, 1rem);
+  font-size: clamp(0.2rem, 1cqw, 1rem);
   box-sizing: border-box; /* Include padding in width calculation */
 }
 
@@ -658,13 +669,13 @@ body {
 
 .ui-player-1-name,
 .ui-player-2-name {
-  border: red solid clamp(2px, 0.16vw, 4px);
+  border: red solid clamp(2px, 0.16cqw, 4px);
   height: 80%;
   width: 20%;
   display: flex;
   justify-content: center;
   align-items: center;
-  font-size: clamp(0.5rem, 2vw, 2rem);
+  font-size: clamp(0.5rem, 2cqw, 2rem);
   background-color: white;
 }
 
@@ -682,17 +693,17 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 1vw;
+  gap: 1cqw;
   /* Let the width auto-adjust for two-digit numbers */
   width: auto;
-  padding: 0 1vw; /* optional padding to give some space on sides */
-  font-size: clamp(0.75rem, 4.25vw, 3rem);
+  padding: 0 1cqw; /* optional padding to give some space on sides */
+  font-size: clamp(0.75rem, 4.25cqw, 3rem);
 }
 
 .player1-win-count,
 .player2-win-count {
   font-family: "Bungee";
-  font-size: clamp(0.75rem, 4.25vw, 3rem);
+  font-size: clamp(0.75rem, 4.25cqw, 3rem);
   top: 0;
   text-shadow: var(--neg-text-ol) var(--neg-text-ol) 0 #000,
     var(--text-ol) var(--neg-text-ol) 0 #000,
@@ -709,7 +720,7 @@ body {
 
 .dash {
   font-family: "Bungee";
-  font-size: clamp(0.75rem, 4vw, 2.75rem);
+  font-size: clamp(0.75rem, 4cqw, 2.75rem);
   color: white;
   text-shadow: var(--neg-text-ol) var(--neg-text-ol) 0 #000,
     var(--text-ol) var(--neg-text-ol) 0 #000,
@@ -735,7 +746,7 @@ body {
 }
 
 /* .material-symbols-outlined {
-  font-size: 1vh;
+  font-size: 1cqh;
   text-align: center;
 }
 
@@ -762,22 +773,22 @@ body {
 #ui-container-1 {
   height: 5%;
   width: 15%;
-  left: 2vw;
-  bottom: 1vw;
+  left: 2cqw;
+  bottom: 1cqw;
 }
 
 #ui-container-2 {
   height: 5%;
   width: 15%;
-  right: 2vw;
-  bottom: 1vw;
+  right: 2cqw;
+  bottom: 1cqw;
   transform: scaleX(-1);
 }
 
 .ui-player-stamina-container {
   background-color: black;
   height: 100%;
-  border: rgba(71, 71, 71, 0.7) solid clamp(2px, 0.16vw, 4px);
+  border: rgba(71, 71, 71, 0.7) solid clamp(2px, 0.16cqw, 4px);
   border-radius: 3px;
   position: relative;
   z-index: 1;
@@ -806,7 +817,7 @@ body {
   left: 50%;
   transform: translate(-50%, -50%);
   font-family: "Bungee", cursive;
-  font-size: clamp(1.2rem, 4vw, 2.8rem);
+  font-size: clamp(1.2rem, 4cqw, 2.8rem);
   color: #fff;
   text-align: center;
   pointer-events: none;
@@ -818,7 +829,7 @@ body {
     var(--text-ol) var(--neg-text-ol) 0 #000,
     var(--neg-text-ol) var(--text-ol) 0 #000,
     var(--text-ol) var(--text-ol) 0 #000,
-    0 0 clamp(10px, 1.2vw, 20px) rgba(255, 200, 50, 0.6);
+    0 0 clamp(10px, 1.2cqw, 20px) rgba(255, 200, 50, 0.6);
   will-change: transform, opacity;
 }
 
@@ -858,7 +869,7 @@ body {
   white-space: nowrap;
   max-width: 100%;
   /* Smaller minimum font size for small screens */
-  font-size: clamp(1rem, 4vw, 3.5rem);
+  font-size: clamp(1rem, 4cqw, 3.5rem);
   color: #fff;
   text-align: center;
   opacity: 0;
@@ -873,7 +884,7 @@ body {
     var(--text-ol) var(--neg-text-ol) 0 #000,
     var(--neg-text-ol) var(--text-ol) 0 #000,
     var(--text-ol) var(--text-ol) 0 #000,
-    0 0 clamp(8px, 1vw, 16px) rgba(255, 200, 50, 0.8);
+    0 0 clamp(8px, 1cqw, 16px) rgba(255, 200, 50, 0.8);
   z-index: 1001;
   will-change: transform, opacity;
 }
@@ -937,7 +948,7 @@ body {
 .hakkiyoi[style*="color: aqua"],
 .hakkiyoi[style*="color: salmon"] {
   /* Smaller font for winner text on small screens */
-  font-size: clamp(0.9rem, 3.5vw, 3rem);
+  font-size: clamp(0.9rem, 3.5cqw, 3rem);
   animation: winAnnounce 3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
   color: var(--win-color);
   -webkit-text-fill-color: var(--win-color);
@@ -946,7 +957,7 @@ body {
     var(--text-ol) var(--neg-text-ol) 0 #000,
     var(--neg-text-ol) var(--text-ol) 0 #000,
     var(--text-ol) var(--text-ol) 0 #000,
-    0 0 clamp(10px, 1.2vw, 20px) var(--win-glow);
+    0 0 clamp(10px, 1.2cqw, 20px) var(--win-glow);
   z-index: 1001;
   letter-spacing: 0.15em;
   will-change: transform, opacity;

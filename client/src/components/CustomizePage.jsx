@@ -79,8 +79,8 @@ const PageContainer = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   position: relative;
   overflow: hidden;
   font-family: "Bungee", cursive;
@@ -118,7 +118,7 @@ const ContentWrapper = styled.div`
   align-items: center;
   height: 100%;
   width: 100%;
-  padding: clamp(16px, 2.5vh, 28px) clamp(20px, 3vw, 40px);
+  padding: clamp(16px, 2.5cqh, 28px) clamp(20px, 3cqw, 40px);
 `;
 
 // ============================================
@@ -127,10 +127,10 @@ const ContentWrapper = styled.div`
 
 const BackButton = styled.button`
   position: absolute;
-  top: clamp(14px, 2vh, 22px);
-  left: clamp(20px, 3vw, 48px);
+  top: clamp(14px, 2cqh, 22px);
+  left: clamp(20px, 3cqw, 48px);
   font-family: "Bungee", cursive;
-  font-size: clamp(0.55rem, 0.9vw, 0.75rem);
+  font-size: clamp(0.55rem, 0.9cqw, 0.75rem);
   color: #d4af37;
   background: linear-gradient(180deg,
     #4a3525 0%,
@@ -138,8 +138,8 @@ const BackButton = styled.button`
     #2a1d14 100%
   );
   border: 2px solid #8b7355;
-  border-radius: clamp(4px, 0.7vw, 8px);
-  padding: clamp(8px, 1vh, 12px) clamp(16px, 2vw, 24px);
+  border-radius: clamp(4px, 0.7cqw, 8px);
+  padding: clamp(8px, 1cqh, 12px) clamp(16px, 2cqw, 24px);
   cursor: pointer;
   text-transform: uppercase;
   letter-spacing: 0.14em;
@@ -166,7 +166,7 @@ const BackButton = styled.button`
       rgba(255,255,255,0.02) 1px,
       transparent 3px
     );
-    border-radius: clamp(4px, 0.7vw, 8px);
+    border-radius: clamp(4px, 0.7cqw, 8px);
     pointer-events: none;
   }
 
@@ -192,24 +192,24 @@ const BackButton = styled.button`
 
 const PageTitle = styled.h1`
   font-family: "Bungee", cursive;
-  font-size: clamp(1.3rem, 2.8vw, 2.2rem);
+  font-size: clamp(1.3rem, 2.8cqw, 2.2rem);
   color: #d4af37;
   text-transform: uppercase;
   letter-spacing: 0.15em;
   animation: ${titleGlow} 3s ease-in-out infinite;
-  margin: clamp(4px, 1vh, 12px) 0 clamp(8px, 1.5vh, 16px) 0;
+  margin: clamp(4px, 1cqh, 12px) 0 clamp(8px, 1.5cqh, 16px) 0;
 `;
 
 const Subtitle = styled.div`
   font-family: "Outfit", sans-serif;
   font-weight: 500;
-  font-size: clamp(0.45rem, 0.8vw, 0.65rem);
+  font-size: clamp(0.45rem, 0.8cqw, 0.65rem);
   color: #e8dcc8;
   letter-spacing: 0.25em;
   text-transform: uppercase;
   text-shadow: 1px 1px 0 #000;
   opacity: 0.7;
-  margin-bottom: clamp(12px, 2vh, 24px);
+  margin-bottom: clamp(12px, 2cqh, 24px);
   animation: ${fadeIn} 0.5s ease-out;
 `;
 
@@ -221,9 +221,9 @@ const ContentLayout = styled.div`
   display: flex;
   align-items: stretch;
   justify-content: center;
-  gap: clamp(20px, 3vw, 50px);
+  gap: clamp(20px, 3cqw, 50px);
   flex: 1;
-  max-height: calc(100vh - 160px);
+  max-height: calc(100% - 160px);
   animation: ${slideUp} 0.5s ease-out;
 `;
 
@@ -243,7 +243,7 @@ const PreviewBanner = styled.div`
 
 const PreviewHangingBar = styled.div`
   width: 105%;
-  height: clamp(12px, 1.8vh, 18px);
+  height: clamp(12px, 1.8cqh, 18px);
   background: linear-gradient(180deg,
     #5c4033 0%,
     #3d2817 50%,
@@ -261,8 +261,8 @@ const PreviewHangingBar = styled.div`
     content: "";
     position: absolute;
     top: -7px;
-    width: clamp(8px, 1.2vw, 14px);
-    height: clamp(8px, 1.2vw, 14px);
+    width: clamp(8px, 1.2cqw, 14px);
+    height: clamp(8px, 1.2cqw, 14px);
     background: radial-gradient(circle at 30% 30%, #d4af37, #8b7355);
     border-radius: 50%;
     border: 2px solid #5c4033;
@@ -281,8 +281,8 @@ const PreviewBody = styled.div`
   );
   border: 3px solid #8b7355;
   border-top: none;
-  border-radius: 0 0 clamp(8px, 1.2vw, 14px) clamp(8px, 1.2vw, 14px);
-  padding: clamp(16px, 2.5vh, 28px) clamp(20px, 3vw, 36px);
+  border-radius: 0 0 clamp(8px, 1.2cqw, 14px) clamp(8px, 1.2cqw, 14px);
+  padding: clamp(16px, 2.5cqh, 28px) clamp(20px, 3cqw, 36px);
   box-shadow: 
     0 15px 50px rgba(0,0,0,0.7),
     inset 0 0 40px rgba(0,0,0,0.5),
@@ -304,7 +304,7 @@ const PreviewBody = styled.div`
       repeating-linear-gradient(0deg, transparent 0px, rgba(255,255,255,0.015) 1px, transparent 2px),
       repeating-linear-gradient(90deg, transparent 0px, rgba(255,255,255,0.01) 1px, transparent 2px);
     pointer-events: none;
-    border-radius: 0 0 clamp(8px, 1.2vw, 14px) clamp(8px, 1.2vw, 14px);
+    border-radius: 0 0 clamp(8px, 1.2cqw, 14px) clamp(8px, 1.2cqw, 14px);
   }
 
   /* Gold inner border */
@@ -316,14 +316,14 @@ const PreviewBody = styled.div`
     right: 8px;
     bottom: 8px;
     border: 1px solid rgba(212, 175, 55, 0.12);
-    border-radius: clamp(4px, 0.8vw, 10px);
+    border-radius: clamp(4px, 0.8cqw, 10px);
     pointer-events: none;
   }
 `;
 
 const PreviewImageContainer = styled.div`
-  width: clamp(200px, 24vw, 320px);
-  height: clamp(200px, 24vw, 320px);
+  width: clamp(200px, 24cqw, 320px);
+  height: clamp(200px, 24cqw, 320px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -343,12 +343,12 @@ const PreviewImage = styled.img`
 
 const SelectedColorLabel = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.6rem, 1vw, 0.85rem);
+  font-size: clamp(0.6rem, 1cqw, 0.85rem);
   color: #d4af37;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   text-shadow: 2px 2px 0 #000;
-  margin-top: clamp(8px, 1.5vh, 16px);
+  margin-top: clamp(8px, 1.5cqh, 16px);
   text-align: center;
   position: relative;
   z-index: 1;
@@ -357,7 +357,7 @@ const SelectedColorLabel = styled.div`
 const SelectedColorSubtitle = styled.div`
   font-family: "Outfit", sans-serif;
   font-weight: 500;
-  font-size: clamp(0.4rem, 0.7vw, 0.55rem);
+  font-size: clamp(0.4rem, 0.7cqw, 0.55rem);
   color: #8b7355;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -383,8 +383,8 @@ const ColorsBanner = styled.div`
 const ColorsHangingBar = styled(PreviewHangingBar)``;
 
 const ColorsBody = styled(PreviewBody)`
-  padding: clamp(14px, 2vh, 22px) clamp(16px, 2.5vw, 28px);
-  gap: clamp(14px, 2vh, 22px);
+  padding: clamp(14px, 2cqh, 22px) clamp(16px, 2.5cqw, 28px);
+  gap: clamp(14px, 2cqh, 22px);
 `;
 
 const SectionDivider = styled.div`
@@ -408,14 +408,14 @@ const SectionDivider = styled.div`
 const ColorCategory = styled.div`
   display: flex;
   flex-direction: column;
-  gap: clamp(6px, 1vh, 10px);
+  gap: clamp(6px, 1cqh, 10px);
   position: relative;
   z-index: 1;
 `;
 
 const CategoryTitle = styled.h3`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.5rem, 0.85vw, 0.7rem);
+  font-size: clamp(0.5rem, 0.85cqw, 0.7rem);
   color: ${props => props.$special ? '#e8d4f0' : '#d4af37'};
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -426,12 +426,12 @@ const CategoryTitle = styled.h3`
 const ColorGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(6, 1fr);
-  gap: clamp(5px, 0.6vw, 8px);
+  gap: clamp(5px, 0.6cqw, 8px);
 `;
 
 const ColorSwatch = styled.button`
-  width: clamp(30px, 3.2vw, 44px);
-  height: clamp(30px, 3.2vw, 44px);
+  width: clamp(30px, 3.2cqw, 44px);
+  height: clamp(30px, 3.2cqw, 44px);
   border-radius: 6px;
   border: 2px solid ${props => props.$selected ? '#d4af37' : 'rgba(139, 115, 85, 0.3)'};
   background: ${props => props.$gradient || props.$color};
@@ -469,7 +469,7 @@ const ColorSwatch = styled.button`
 
 const ColorName = styled.div`
   font-family: "Outfit", sans-serif;
-  font-size: clamp(0.35rem, 0.55vw, 0.45rem);
+  font-size: clamp(0.35rem, 0.55cqw, 0.45rem);
   color: #8b7355;
   text-align: center;
   margin-top: 2px;
@@ -488,7 +488,7 @@ const ColorName = styled.div`
 
 const TabRow = styled.div`
   display: flex;
-  gap: clamp(4px, 0.5vw, 8px);
+  gap: clamp(4px, 0.5cqw, 8px);
   width: 100%;
   position: relative;
   z-index: 1;
@@ -497,10 +497,10 @@ const TabRow = styled.div`
 const Tab = styled.button`
   flex: 1;
   font-family: "Bungee", cursive;
-  font-size: clamp(0.4rem, 0.7vw, 0.6rem);
-  padding: clamp(5px, 0.7vh, 8px) 0;
+  font-size: clamp(0.4rem, 0.7cqw, 0.6rem);
+  padding: clamp(5px, 0.7cqh, 8px) 0;
   border: 2px solid ${props => props.$active ? '#d4af37' : '#5c4033'};
-  border-radius: clamp(4px, 0.5vw, 6px);
+  border-radius: clamp(4px, 0.5cqw, 6px);
   background: ${props => props.$active
     ? 'linear-gradient(180deg, #4a3525 0%, #3d2817 100%)'
     : 'rgba(26, 10, 8, 0.6)'};

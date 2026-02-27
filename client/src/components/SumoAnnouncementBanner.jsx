@@ -149,15 +149,15 @@ const BannerContainer = styled.div`
 // Hanging rope/cord at top
 const HangingCord = styled.div`
   width: 2px;
-  height: clamp(6px, 1vh, 10px);
+  height: clamp(6px, 1cqh, 10px);
   background: linear-gradient(180deg, #5c4033 0%, #3d2817 100%);
   border-radius: 2px;
 `;
 
 // Top wooden bar
 const TopBar = styled.div`
-  width: clamp(62px, 10vw, 115px);
-  height: clamp(7px, 1.1vh, 12px);
+  width: clamp(62px, 10cqw, 115px);
+  height: clamp(7px, 1.1cqh, 12px);
   background: linear-gradient(180deg,
     #5c4033 0%,
     #3d2817 50%,
@@ -174,8 +174,8 @@ const TopBar = styled.div`
     content: "";
     position: absolute;
     top: -2px;
-    width: clamp(5px, 0.9vw, 9px);
-    height: clamp(5px, 0.9vw, 9px);
+    width: clamp(5px, 0.9cqw, 9px);
+    height: clamp(5px, 0.9cqw, 9px);
     background: radial-gradient(circle at 30% 30%, #d4af37, #8b7355);
     border-radius: 50%;
     border: 1px solid #5c4033;
@@ -184,13 +184,13 @@ const TopBar = styled.div`
   &::after { right: 8%; }
   
   @media (max-width: 900px) {
-    width: clamp(50px, 13vw, 90px);
+    width: clamp(50px, 13cqw, 90px);
   }
 `;
 
 // Main banner body
 const BannerBody = styled.div`
-  width: clamp(58px, 9.5vw, 110px);
+  width: clamp(58px, 9.5cqw, 110px);
   background: linear-gradient(180deg,
     #1a0a08 0%,
     #2d1510 30%,
@@ -199,8 +199,8 @@ const BannerBody = styled.div`
   );
   border: 2px solid ${props => getThemeColors(props.$type).primary};
   border-top: none;
-  border-radius: 0 0 clamp(4px, 0.5vw, 7px) clamp(4px, 0.5vw, 7px);
-  padding: clamp(8px, 1.1vh, 12px) clamp(6px, 0.9vw, 11px);
+  border-radius: 0 0 clamp(4px, 0.5cqw, 7px) clamp(4px, 0.5cqw, 7px);
+  padding: clamp(8px, 1.1cqh, 12px) clamp(6px, 0.9cqw, 11px);
   box-shadow: 
     0 4px 15px rgba(0,0,0,0.5),
     inset 0 0 20px rgba(0,0,0,0.5),
@@ -227,8 +227,8 @@ const BannerBody = styled.div`
   }
   
   @media (max-width: 900px) {
-    width: clamp(46px, 12vw, 85px);
-    padding: clamp(6px, 0.9vh, 10px) clamp(5px, 0.7vw, 9px);
+    width: clamp(46px, 12cqw, 85px);
+    padding: clamp(6px, 0.9cqh, 10px) clamp(5px, 0.7cqw, 9px);
   }
 `;
 
@@ -237,13 +237,13 @@ const TextContainer = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(2px, 0.3vh, 4px);
+  gap: clamp(2px, 0.3cqh, 4px);
 `;
 
 // Main announcement text
 const AnnouncementText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.48rem, 1vw, 0.85rem);
+  font-size: clamp(0.48rem, 1cqw, 0.85rem);
   color: ${props => getThemeColors(props.$type).primary};
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -254,7 +254,7 @@ const AnnouncementText = styled.div`
   --glow-color: ${props => getThemeColors(props.$type).glow};
   
   @media (max-width: 900px) {
-    font-size: clamp(0.4rem, 1.3vw, 0.68rem);
+    font-size: clamp(0.4rem, 1.3cqw, 0.68rem);
   }
 `;
 
@@ -269,7 +269,7 @@ const Separator = styled.div`
     ${props => getThemeColors(props.$type).primary} 70%,
     transparent 100%
   );
-  margin: clamp(3px, 0.4vh, 6px) 0;
+  margin: clamp(3px, 0.4cqh, 6px) 0;
 `;
 
 // Tassels at the bottom - positioned at corners of banner body
@@ -280,12 +280,12 @@ const TasselContainer = styled.div`
   right: 0;
   display: flex;
   justify-content: space-between;
-  padding: 0 clamp(5px, 0.7vw, 10px);
+  padding: 0 clamp(5px, 0.7cqw, 10px);
 `;
 
 const Tassel = styled.div`
-  width: clamp(3px, 0.45vw, 5px);
-  height: clamp(10px, 1.4vh, 16px);
+  width: clamp(3px, 0.45cqw, 5px);
+  height: clamp(10px, 1.4cqh, 16px);
   background: linear-gradient(180deg, 
     ${props => getThemeColors(props.$type).primary} 0%, 
     ${props => getThemeColors(props.$type).secondary} 100%

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { io } from "socket.io-client";
 import { SocketContext } from "./SocketContext";
 import MainMenu from "./components/MainMenu";
@@ -27,6 +27,21 @@ function App() {
   const [steamDeckMode, setSteamDeckMode] = useState(false);
   const [controllerConnected, setControllerConnected] = useState(false);
   const [showStartupScreen, setShowStartupScreen] = useState(true);
+  const appContainerRef = useRef(null);
+
+  useEffect(() => {
+    const updateScale = () => {
+      if (!appContainerRef.current) return;
+      const scale = Math.min(
+        window.innerWidth / 1280,
+        window.innerHeight / 720
+      );
+      appContainerRef.current.style.setProperty("--app-scale", String(scale));
+    };
+    updateScale();
+    window.addEventListener("resize", updateScale);
+    return () => window.removeEventListener("resize", updateScale);
+  }, []);
 
   const handleContinueFromStartup = () => {
     setShowStartupScreen(false);
@@ -90,6 +105,7 @@ function App() {
     <SocketContext.Provider value={{ socket, getRooms }}>
       <PlayerColorProvider>
         <div
+          ref={appContainerRef}
           className={`app-container ${steamDeckMode ? "steam-deck-mode" : ""} ${
             controllerConnected ? "controller-connected" : ""
           }`}

@@ -281,10 +281,10 @@ const CrowdEditor = ({ positions, crowdTypes, onClose }) => {
         ref={containerRef}
         style={{
           position: "relative",
-          width: "82vw",
-          height: "calc(82vw * 9 / 16)",
-          maxHeight: "88vh",
-          maxWidth: "calc(88vh * 16 / 9)",
+          width: "82cqw",
+          height: "calc(82cqw * 9 / 16)",
+          maxHeight: "88cqh",
+          maxWidth: "calc(88cqh * 16 / 9)",
           overflow: "hidden",
           borderRadius: "4px",
           boxShadow: "0 0 60px rgba(0,0,0,0.9)",

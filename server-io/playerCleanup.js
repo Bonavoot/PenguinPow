@@ -296,18 +296,7 @@ function getCleanedRoomsData(rooms) {
     })(),
   }));
 
-  // Debug: Log rooms with disconnection states
-  cleanedRooms.forEach((room, index) => {
-    if (room.opponentDisconnected || room.disconnectedDuringGame) {
-      console.log(
-        `CLEANED ROOMS DEBUG: Room ${room.id} (index ${index}) - opponentDisconnected: ${room.opponentDisconnected}, disconnectedDuringGame: ${room.disconnectedDuringGame}, players: ${room.players.length}`
-      );
-      console.log(
-        `CLEANED ROOMS DEBUG: Room ${room.id} player IDs:`,
-        room.players.map((p) => ({ id: p.id, fighter: p.fighter }))
-      );
-    }
-  });
+
 
   return cleanedRooms;
 }

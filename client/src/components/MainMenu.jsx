@@ -94,8 +94,8 @@ const dotPulse = keyframes`
 
 const MainMenuContainer = styled.div`
   display: flex;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   position: relative;
   overflow: hidden;
 `;
@@ -136,21 +136,21 @@ const DarkOverlay = styled.div`
 const LeftPanel = styled.div`
   position: relative;
   z-index: 10;
-  width: clamp(280px, 28vw, 380px);
+  width: clamp(280px, 28cqw, 380px);
   height: 100%;
   display: flex;
   flex-direction: column;
-  padding: clamp(30px, 4vh, 50px) clamp(24px, 3vw, 40px);
-  padding-right: clamp(30px, 4vw, 50px);
+  padding: clamp(30px, 4cqh, 50px) clamp(24px, 3cqw, 40px);
+  padding-right: clamp(30px, 4cqw, 50px);
   
   @media (max-width: 900px) {
-    width: clamp(250px, 45vw, 320px);
-    padding: clamp(20px, 3vh, 35px) clamp(16px, 2.5vw, 28px);
+    width: clamp(250px, 45cqw, 320px);
+    padding: clamp(20px, 3cqh, 35px) clamp(16px, 2.5cqw, 28px);
   }
   
   @media (max-width: 600px) {
     width: 100%;
-    padding: clamp(16px, 2.5vh, 28px) clamp(16px, 4vw, 24px);
+    padding: clamp(16px, 2.5cqh, 28px) clamp(16px, 4cqw, 24px);
   }
 `;
 
@@ -167,7 +167,7 @@ const MenuBanner = styled.div`
 
 const HangingBar = styled.div`
   width: 105%;
-  height: clamp(14px, 2vh, 22px);
+  height: clamp(14px, 2cqh, 22px);
   background: linear-gradient(180deg,
     #5c4033 0%,
     #3d2817 50%,
@@ -185,8 +185,8 @@ const HangingBar = styled.div`
     content: "";
     position: absolute;
     top: -8px;
-    width: clamp(10px, 1.5vw, 16px);
-    height: clamp(10px, 1.5vw, 16px);
+    width: clamp(10px, 1.5cqw, 16px);
+    height: clamp(10px, 1.5cqw, 16px);
     background: radial-gradient(circle at 30% 30%, #d4af37, #8b7355);
     border-radius: 50%;
     border: 2px solid #5c4033;
@@ -205,8 +205,8 @@ const BannerBody = styled.div`
   );
   border: 3px solid #8b7355;
   border-top: none;
-  border-radius: 0 0 clamp(8px, 1.2vw, 14px) clamp(8px, 1.2vw, 14px);
-  padding: clamp(20px, 3vh, 32px) clamp(18px, 2.5vw, 28px) clamp(18px, 2.5vh, 28px);
+  border-radius: 0 0 clamp(8px, 1.2cqw, 14px) clamp(8px, 1.2cqw, 14px);
+  padding: clamp(20px, 3cqh, 32px) clamp(18px, 2.5cqw, 28px) clamp(18px, 2.5cqh, 28px);
   box-shadow: 
     0 15px 50px rgba(0,0,0,0.7),
     inset 0 0 40px rgba(0,0,0,0.5),
@@ -235,7 +235,7 @@ const BannerBody = styled.div`
         transparent 2px
       );
     pointer-events: none;
-    border-radius: 0 0 clamp(8px, 1.2vw, 14px) clamp(8px, 1.2vw, 14px);
+    border-radius: 0 0 clamp(8px, 1.2cqw, 14px) clamp(8px, 1.2cqw, 14px);
   }
   
   /* Gold corner decoration */
@@ -247,12 +247,12 @@ const BannerBody = styled.div`
     right: 10px;
     bottom: 10px;
     border: 1px solid rgba(212, 175, 55, 0.12);
-    border-radius: clamp(4px, 0.8vw, 10px);
+    border-radius: clamp(4px, 0.8cqw, 10px);
     pointer-events: none;
   }
   
   @media (max-width: 900px) {
-    padding: clamp(16px, 2.5vh, 26px) clamp(14px, 2vw, 22px) clamp(14px, 2vh, 22px);
+    padding: clamp(16px, 2.5cqh, 26px) clamp(14px, 2cqw, 22px) clamp(14px, 2cqh, 22px);
     border-width: 2px;
   }
 `;
@@ -269,8 +269,8 @@ const TasselContainer = styled.div`
 `;
 
 const Tassel = styled.div`
-  width: clamp(6px, 1vw, 10px);
-  height: clamp(22px, 3.5vh, 35px);
+  width: clamp(6px, 1cqw, 10px);
+  height: clamp(22px, 3.5cqh, 35px);
   background: linear-gradient(180deg, #d4af37 0%, #8b7355 100%);
   border-radius: 0 0 3px 3px;
   animation: ${tasselSway} ${props => 2 + props.$delay * 0.3}s ease-in-out infinite;
@@ -296,8 +296,8 @@ const Tassel = styled.div`
 
 const TitleSection = styled.div`
   text-align: center;
-  margin-bottom: clamp(16px, 2.5vh, 24px);
-  padding-bottom: clamp(12px, 1.8vh, 18px);
+  margin-bottom: clamp(16px, 2.5cqh, 24px);
+  padding-bottom: clamp(12px, 1.8cqh, 18px);
   border-bottom: 2px solid rgba(212, 175, 55, 0.25);
   position: relative;
   
@@ -306,7 +306,7 @@ const TitleSection = styled.div`
     content: "◆";
     position: absolute;
     bottom: -8px;
-    font-size: clamp(8px, 1vw, 12px);
+    font-size: clamp(8px, 1cqw, 12px);
     color: #d4af37;
   }
   &::before { left: 15%; }
@@ -315,22 +315,22 @@ const TitleSection = styled.div`
 
 const GameTitle = styled.h1`
   font-family: "Bungee", cursive;
-  font-size: clamp(1.4rem, 2.8vw, 2rem);
-  margin: 0 0 clamp(3px, 0.4vh, 6px) 0;
+  font-size: clamp(1.4rem, 2.8cqw, 2rem);
+  margin: 0 0 clamp(3px, 0.4cqh, 6px) 0;
   color: #d4af37;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   animation: ${titleGlow} 3s ease-in-out infinite;
   
   @media (max-width: 600px) {
-    font-size: clamp(1.2rem, 4.5vw, 1.6rem);
+    font-size: clamp(1.2rem, 4.5cqw, 1.6rem);
   }
 `;
 
 const GameSubtitle = styled.div`
   font-family: "Outfit", sans-serif;
   font-weight: 500;
-  font-size: clamp(0.5rem, 1vw, 0.7rem);
+  font-size: clamp(0.5rem, 1cqw, 0.7rem);
   color: #e8dcc8;
   letter-spacing: 0.25em;
   text-transform: uppercase;
@@ -345,14 +345,14 @@ const GameSubtitle = styled.div`
 const ButtonsContainer = styled.div`
   display: flex;
   flex-direction: column;
-  gap: clamp(8px, 1.2vh, 14px);
+  gap: clamp(8px, 1.2cqh, 14px);
   position: relative;
   z-index: 1;
 `;
 
 const MenuButton = styled.button`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.7rem, 1.3vw, 0.95rem);
+  font-size: clamp(0.7rem, 1.3cqw, 0.95rem);
   width: 100%;
   background: linear-gradient(180deg,
     #4a3525 0%,
@@ -361,8 +361,8 @@ const MenuButton = styled.button`
   );
   color: ${props => props.$isActive ? '#d4af37' : '#6b5a4a'};
   border: 2px solid ${props => props.$isActive ? '#8b7355' : '#4a3a2a'};
-  border-radius: clamp(4px, 0.7vw, 8px);
-  padding: clamp(10px, 1.5vh, 16px) clamp(16px, 2.5vw, 26px);
+  border-radius: clamp(4px, 0.7cqw, 8px);
+  padding: clamp(10px, 1.5cqh, 16px) clamp(16px, 2.5cqw, 26px);
   cursor: ${props => props.$isActive ? 'pointer' : 'default'};
   transition: all 0.25s ease;
   text-transform: uppercase;
@@ -394,7 +394,7 @@ const MenuButton = styled.button`
       rgba(255,255,255,0.02) 1px,
       transparent 3px
     );
-    border-radius: clamp(4px, 0.7vw, 8px);
+    border-radius: clamp(4px, 0.7cqw, 8px);
     pointer-events: none;
   }
 
@@ -421,8 +421,8 @@ const MenuButton = styled.button`
   `}
   
   @media (max-width: 900px) {
-    font-size: clamp(0.6rem, 1.8vw, 0.8rem);
-    padding: clamp(9px, 1.3vh, 13px) clamp(14px, 2vw, 20px);
+    font-size: clamp(0.6rem, 1.8cqw, 0.8rem);
+    padding: clamp(9px, 1.3cqh, 13px) clamp(14px, 2cqw, 20px);
   }
 `;
 
@@ -446,7 +446,7 @@ const RightPanel = styled.div`
   flex-direction: column;
   align-items: flex-end;
   justify-content: flex-end;
-  padding: clamp(24px, 3vh, 40px);
+  padding: clamp(24px, 3cqh, 40px);
   position: relative;
   z-index: 5;
   
@@ -461,9 +461,9 @@ const AnnouncementCard = styled.div`
     rgba(21, 8, 5, 0.95) 100%
   );
   border: 2px solid rgba(139, 115, 85, 0.4);
-  border-radius: clamp(8px, 1vw, 12px);
-  padding: clamp(16px, 2vh, 24px) clamp(18px, 2.5vw, 28px);
-  max-width: clamp(280px, 30vw, 380px);
+  border-radius: clamp(8px, 1cqw, 12px);
+  padding: clamp(16px, 2cqh, 24px) clamp(18px, 2.5cqw, 28px);
+  max-width: clamp(280px, 30cqw, 380px);
   box-shadow: 
     0 10px 40px rgba(0,0,0,0.5),
     inset 0 0 30px rgba(0,0,0,0.4);
@@ -486,22 +486,22 @@ const AnnouncementCard = styled.div`
         transparent 2px
       );
     pointer-events: none;
-    border-radius: clamp(8px, 1vw, 12px);
+    border-radius: clamp(8px, 1cqw, 12px);
   }
 `;
 
 const AnnouncementHeader = styled.div`
   display: flex;
   align-items: center;
-  gap: clamp(8px, 1vw, 12px);
-  margin-bottom: clamp(10px, 1.5vh, 16px);
-  padding-bottom: clamp(8px, 1vh, 12px);
+  gap: clamp(8px, 1cqw, 12px);
+  margin-bottom: clamp(10px, 1.5cqh, 16px);
+  padding-bottom: clamp(8px, 1cqh, 12px);
   border-bottom: 1px solid rgba(212, 175, 55, 0.2);
 `;
 
 const LiveDot = styled.span`
-  width: clamp(6px, 0.8vw, 10px);
-  height: clamp(6px, 0.8vw, 10px);
+  width: clamp(6px, 0.8cqw, 10px);
+  height: clamp(6px, 0.8cqw, 10px);
   background: #4ade80;
   border-radius: 50%;
   animation: ${dotPulse} 2s ease-in-out infinite;
@@ -510,7 +510,7 @@ const LiveDot = styled.span`
 
 const AnnouncementTitle = styled.h3`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.6rem, 1.1vw, 0.8rem);
+  font-size: clamp(0.6rem, 1.1cqw, 0.8rem);
   color: #d4af37;
   margin: 0;
   text-transform: uppercase;
@@ -521,13 +521,13 @@ const AnnouncementTitle = styled.h3`
 const AnnouncementContent = styled.div`
   font-family: "Outfit", sans-serif;
   font-weight: 400;
-  font-size: clamp(0.55rem, 1vw, 0.75rem);
+  font-size: clamp(0.55rem, 1cqw, 0.75rem);
   color: #c8bca8;
   line-height: 1.7;
   text-shadow: 1px 1px 0 #000;
   
   p {
-    margin: 0 0 clamp(6px, 1vh, 10px) 0;
+    margin: 0 0 clamp(6px, 1cqh, 10px) 0;
     
     &:last-child {
       margin-bottom: 0;
@@ -546,8 +546,8 @@ const AnnouncementContent = styled.div`
 
 const SettingsButton = styled.button`
   position: absolute;
-  top: clamp(12px, 2vh, 20px);
-  right: clamp(12px, 2vw, 20px);
+  top: clamp(12px, 2cqh, 20px);
+  right: clamp(12px, 2cqw, 20px);
   background: linear-gradient(180deg,
     rgba(26, 10, 8, 0.9) 0%,
     rgba(15, 5, 5, 0.9) 100%
@@ -557,8 +557,8 @@ const SettingsButton = styled.button`
   color: #8b7355;
   cursor: pointer;
   z-index: 20;
-  width: clamp(40px, 4.5vw, 52px);
-  height: clamp(40px, 4.5vw, 52px);
+  width: clamp(40px, 4.5cqw, 52px);
+  height: clamp(40px, 4.5cqw, 52px);
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
@@ -568,7 +568,7 @@ const SettingsButton = styled.button`
     inset 0 0 15px rgba(0,0,0,0.4);
   
   .material-symbols-outlined {
-    font-size: clamp(1.1rem, 2.2vw, 1.6rem);
+    font-size: clamp(1.1rem, 2.2cqw, 1.6rem);
     transition: transform 0.3s ease;
   }
 
@@ -589,11 +589,11 @@ const SettingsButton = styled.button`
 
 const VersionInfo = styled.div`
   position: absolute;
-  bottom: clamp(8px, 1.5vh, 14px);
-  left: clamp(12px, 2vw, 20px);
+  bottom: clamp(8px, 1.5cqh, 14px);
+  left: clamp(12px, 2cqw, 20px);
   font-family: "Outfit", sans-serif;
   font-weight: 400;
-  font-size: clamp(0.5rem, 0.75vw, 0.65rem);
+  font-size: clamp(0.5rem, 0.75cqw, 0.65rem);
   color: rgba(255, 255, 255, 0.6);
   letter-spacing: 0.12em;
   z-index: 10;
@@ -605,7 +605,7 @@ const VersionInfo = styled.div`
 
 const ConnectionErrorBanner = styled.div`
   position: absolute;
-  top: clamp(12px, 2vh, 20px);
+  top: clamp(12px, 2cqh, 20px);
   left: 50%;
   transform: translateX(-50%);
   background: linear-gradient(180deg,
@@ -613,8 +613,8 @@ const ConnectionErrorBanner = styled.div`
     rgba(100, 0, 0, 0.95) 100%
   );
   border: 2px solid rgba(255, 100, 100, 0.6);
-  border-radius: clamp(6px, 1vw, 10px);
-  padding: clamp(8px, 1.5vh, 14px) clamp(16px, 2.5vw, 24px);
+  border-radius: clamp(6px, 1cqw, 10px);
+  padding: clamp(8px, 1.5cqh, 14px) clamp(16px, 2.5cqw, 24px);
   z-index: 30;
   box-shadow: 
     0 6px 20px rgba(0,0,0,0.6),
@@ -623,7 +623,7 @@ const ConnectionErrorBanner = styled.div`
   animation: ${fadeIn} 0.4s ease-out;
   
   font-family: "Bungee", cursive;
-  font-size: clamp(0.5rem, 0.9vw, 0.7rem);
+  font-size: clamp(0.5rem, 0.9cqw, 0.7rem);
   color: #ffcccc;
   letter-spacing: 0.08em;
   text-align: center;

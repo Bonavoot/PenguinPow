@@ -168,8 +168,8 @@ const HudShell = styled.div`
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  padding: clamp(7px, 1.2vh, 12px) clamp(6px, 1vw, 14px);
-  padding-top: clamp(9px, 1.6vh, 16px);
+  padding: clamp(7px, 1.2cqh, 12px) clamp(6px, 1cqw, 14px);
+  padding-top: clamp(9px, 1.6cqh, 16px);
 
   /* Rich layered dark — darker up top, fading out toward gameplay */
   background:
@@ -190,7 +190,7 @@ const HudShell = styled.div`
     content: "";
     position: absolute;
     top: 0; left: 0; right: 0;
-    height: clamp(4px, 0.4vw, 8px);
+    height: clamp(4px, 0.4cqw, 8px);
     background: linear-gradient(
       90deg,
       transparent 0%,
@@ -215,8 +215,8 @@ const HudShell = styled.div`
   &::after {
     content: "";
     position: absolute;
-    top: clamp(4px, 0.4vw, 8px); left: 0; right: 0;
-    height: clamp(2px, 0.16vw, 4px);
+    top: clamp(4px, 0.4cqw, 8px); left: 0; right: 0;
+    height: clamp(2px, 0.16cqw, 4px);
     background: linear-gradient(
       90deg,
       transparent 0%,
@@ -238,10 +238,10 @@ const HudShell = styled.div`
 
 const PlayerWing = styled.div`
   flex: 0 1 40%;
-  max-width: min(480px, 36%);
+  max-width: min(440px, 34%);
   display: flex;
   flex-direction: column;
-  gap: clamp(4px, 0.6vh, 8px);
+  gap: clamp(4px, 0.6cqh, 8px);
 `;
 
 // ============================================
@@ -252,7 +252,7 @@ const NameBanner = styled.div`
   display: flex;
   align-items: center;
   width: 100%;
-  gap: clamp(5px, 0.8vw, 10px);
+  gap: clamp(5px, 0.8cqw, 10px);
   flex-direction: ${(p) => (p.$isRight ? "row-reverse" : "row")};
   /* Rounded corner under avatar so no sharp edge shows through avatar radius */
   border-radius: ${(p) => (p.$isRight ? "0 4px 0 0" : "4px 0 0 0")};
@@ -268,12 +268,12 @@ const NameBanner = styled.div`
     rgba(28, 18, 18, 0.75) 100%
   );
   /* Height fits square avatar; can be shorter than stamina bar */
-  height: calc(clamp(24px, 4.5vh, 50px) + 6px);
+  height: calc(clamp(24px, 4.5cqh, 50px) + 6px);
   box-sizing: border-box;
-  padding: 0 clamp(10px, 1.5vw, 20px);
+  padding: 0 clamp(10px, 1.5cqw, 20px);
   ${(p) => p.$isRight
-    ? "padding-left: clamp(16px, 2.5vw, 30px);"
-    : "padding-right: clamp(16px, 2.5vw, 30px);"}
+    ? "padding-left: clamp(16px, 2.5cqw, 30px);"
+    : "padding-right: clamp(16px, 2.5cqw, 30px);"}
   position: relative;
 
   /* Gold gradient bottom edge — renders above the avatar so it continues through it */
@@ -281,7 +281,7 @@ const NameBanner = styled.div`
     content: "";
     position: absolute;
     bottom: 0; left: 0; right: 0;
-    height: clamp(2px, 0.16vw, 4px);
+    height: clamp(2px, 0.16cqw, 4px);
     background: linear-gradient(
       ${(p) => (p.$isRight ? "270deg" : "90deg")},
       #d4af37 0%, #b8860b 60%, transparent 100%
@@ -293,30 +293,30 @@ const NameBanner = styled.div`
 
 /* Square seal avatar (hanko stamp feel) — square, flush to side accent */
 const AvatarSeal = styled.div`
-  width: clamp(24px, 4.5vh, 50px);
-  height: clamp(24px, 4.5vh, 50px);
+  width: clamp(24px, 4.5cqh, 50px);
+  height: clamp(24px, 4.5cqh, 50px);
   flex-shrink: 0;
   /* Push flush to the banner edge, covering the side accent */
   ${(p) => p.$isRight
-    ? "margin-right: calc(-1 * clamp(10px, 1.5vw, 20px));"
-    : "margin-left: calc(-1 * clamp(10px, 1.5vw, 20px));"}
+    ? "margin-right: calc(-1 * clamp(10px, 1.5cqw, 20px));"
+    : "margin-left: calc(-1 * clamp(10px, 1.5cqw, 20px));"}
   margin-bottom: 0;
   background: radial-gradient(
     circle at 35% 35%,
     #5c1a1a, #3d0a0a 70%, #200404
   );
-  border: clamp(2px, 0.16vw, 4px) solid #d4af37;
+  border: clamp(2px, 0.16cqw, 4px) solid #d4af37;
   border-bottom: none;
   border-radius: 4px 4px 0 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: clamp(11px, 1.8vw, 20px);
+  font-size: clamp(11px, 1.8cqw, 20px);
   font-weight: 900;
   color: #ffd700;
   text-shadow:
-    0 0 clamp(6px, 0.6vw, 12px) rgba(255, 215, 0, 0.4),
-    0 clamp(1.5px, 0.12vw, 3px) 0 rgba(0, 0, 0, 0.8);
+    0 0 clamp(6px, 0.6cqw, 12px) rgba(255, 215, 0, 0.4),
+    0 clamp(1.5px, 0.12cqw, 3px) 0 rgba(0, 0, 0, 0.8);
   box-shadow:
     0 0 0 1px rgba(0, 0, 0, 0.6),
     inset 0 0 8px rgba(0, 0, 0, 0.5),
@@ -352,15 +352,15 @@ const NameBlock = styled.div`
 
 const FighterName = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(11px, 1.55vw, 19px);
+  font-size: clamp(11px, 1.55cqw, 19px);
   color: #ffffff;
   text-shadow:
-    clamp(2px, 0.16vw, 4px) clamp(2px, 0.16vw, 4px) 0 #000,
-    clamp(-2px, -0.16vw, -1px) clamp(-2px, -0.16vw, -1px) 0 #000,
-    clamp(2px, 0.16vw, 4px) clamp(-2px, -0.16vw, -1px) 0 #000,
-    clamp(-2px, -0.16vw, -1px) clamp(2px, 0.16vw, 4px) 0 #000,
-    0 0 clamp(12px, 1.4vw, 24px) rgba(0, 0, 0, 0.8),
-    0 0 clamp(4px, 0.4vw, 8px) rgba(0, 0, 0, 1),
+    clamp(2px, 0.16cqw, 4px) clamp(2px, 0.16cqw, 4px) 0 #000,
+    clamp(-2px, -0.16cqw, -1px) clamp(-2px, -0.16cqw, -1px) 0 #000,
+    clamp(2px, 0.16cqw, 4px) clamp(-2px, -0.16cqw, -1px) 0 #000,
+    clamp(-2px, -0.16cqw, -1px) clamp(2px, 0.16cqw, 4px) 0 #000,
+    0 0 clamp(12px, 1.4cqw, 24px) rgba(0, 0, 0, 0.8),
+    0 0 clamp(4px, 0.4cqw, 8px) rgba(0, 0, 0, 1),
     0 0 6px rgba(255, 255, 255, 0.25),
     0 0 3px rgba(255, 255, 255, 0.15);
   letter-spacing: 0.16em;
@@ -380,8 +380,8 @@ const RankPlaque = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: clamp(4px, 0.5vw, 8px);
-  padding: clamp(4px, 0.55vh, 8px) clamp(12px, 1.5vw, 22px);
+  gap: clamp(4px, 0.5cqw, 8px);
+  padding: clamp(4px, 0.55cqh, 8px) clamp(12px, 1.5cqw, 22px);
   position: relative;
 
   /* Dark lacquered plaque with subtle grain */
@@ -443,7 +443,7 @@ const RankPlaque = styled.div`
 
 const RankText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(10px, 1.4vw, 17px);
+  font-size: clamp(10px, 1.4cqw, 17px);
   color: #ffd700;
   text-transform: uppercase;
   letter-spacing: 0.16em;
@@ -458,8 +458,8 @@ const RankText = styled.div`
 /* Small decorative diamond separator */
 const RankDiamond = styled.span`
   display: inline-block;
-  width: clamp(4px, 0.4vw, 6px);
-  height: clamp(4px, 0.4vw, 6px);
+  width: clamp(4px, 0.4cqw, 6px);
+  height: clamp(4px, 0.4cqw, 6px);
   background: linear-gradient(135deg, #d4af37 0%, #ffd700 50%, #b8860b 100%);
   transform: rotate(45deg);
   flex-shrink: 0;
@@ -478,14 +478,14 @@ const BarFrame = styled.div`
   border-radius: 4px;
 
   /* Multi-ring gold frame — same thickness as banner bottom border */
-  border: clamp(2px, 0.16vw, 4px) solid transparent;
+  border: clamp(2px, 0.16cqw, 4px) solid transparent;
   box-shadow:
     /* Gold outer ring */
-    0 0 0 clamp(2px, 0.16vw, 4px) rgba(180, 130, 30, 0.6),
+    0 0 0 clamp(2px, 0.16cqw, 4px) rgba(180, 130, 30, 0.6),
     /* Dark outer gap */
-    0 0 0 clamp(4px, 0.32vw, 8px) rgba(0, 0, 0, 0.5),
+    0 0 0 clamp(4px, 0.32cqw, 8px) rgba(0, 0, 0, 0.5),
     /* Depth shadow */
-    0 clamp(3px, 0.24vw, 6px) clamp(12px, 1vw, 24px) rgba(0, 0, 0, 0.5);
+    0 clamp(3px, 0.24cqw, 6px) clamp(12px, 1cqw, 24px) rgba(0, 0, 0, 0.5);
 
   /* Danger mode: pulsing crimson frame */
   ${(p) =>
@@ -499,7 +499,7 @@ const BarFrame = styled.div`
 const BarTrack = styled.div`
   position: relative;
   width: 100%;
-  height: calc(clamp(26px, 5.4vh, 56px) - 3px);
+  height: calc(clamp(26px, 5.4cqh, 56px) - 3px);
   border-radius: 3px;
   overflow: hidden;
 
@@ -767,7 +767,7 @@ const GassedOverlay = styled.div`
 
 const GassedText = styled.span`
   font-family: "Bungee", cursive;
-  font-size: clamp(9px, 1.3vh, 16px);
+  font-size: clamp(9px, 1.3cqh, 16px);
   color: #fff;
   text-shadow:
     0 0 6px rgba(255, 40, 40, 0.7),
@@ -776,7 +776,7 @@ const GassedText = styled.span`
   position: relative;
   z-index: 1;
   background: rgba(0, 0, 0, 0.82);
-  padding: clamp(2px, 0.3vh, 4px) clamp(8px, 1.2vw, 18px);
+  padding: clamp(2px, 0.3cqh, 4px) clamp(8px, 1.2cqw, 18px);
   border: 1.5px solid rgba(255, 40, 40, 0.5);
   border-radius: 2px;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.6);
@@ -826,7 +826,7 @@ const RecoveryText = styled.span`
   top: 50%;
   left: 50%;
   font-family: "Bungee", cursive;
-  font-size: clamp(7px, 1vh, 13px);
+  font-size: clamp(7px, 1cqh, 13px);
   color: #bae6fd;
   text-shadow:
     0 0 10px rgba(56, 189, 248, 0.9),
@@ -845,9 +845,9 @@ const BarLabel = styled.div`
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  ${(p) => (p.$isRight ? "right: clamp(6px, 1vw, 14px);" : "left: clamp(6px, 1vw, 14px);")}
+  ${(p) => (p.$isRight ? "right: clamp(6px, 1cqw, 14px);" : "left: clamp(6px, 1cqw, 14px);")}
   font-family: "Bungee", cursive;
-  font-size: clamp(8px, 0.95vw, 12px);
+  font-size: clamp(8px, 0.95cqw, 12px);
   color: rgba(255, 255, 255, 0.82);
   text-transform: uppercase;
   letter-spacing: 0.18em;
@@ -866,7 +866,7 @@ const BarLabel = styled.div`
 
 /* Invisible spacer to align rank plaque with stamina bar (same width as PowerUpSlot) */
 const BarRowSpacer = styled.div`
-  width: clamp(30px, 3.8vw, 48px);
+  width: clamp(30px, 3.8cqw, 48px);
   flex-shrink: 0;
   min-height: 0;
 `;
@@ -876,8 +876,8 @@ const SubBarRow = styled.div`
   display: flex;
   flex-direction: ${(p) => (p.$isRight ? "row-reverse" : "row")};
   align-items: center;
-  gap: clamp(4px, 0.5vw, 8px);
-  margin-top: clamp(3px, 0.5vh, 6px);
+  gap: clamp(4px, 0.5cqw, 8px);
+  margin-top: clamp(3px, 0.5cqh, 6px);
   width: 100%;
 `;
 
@@ -886,7 +886,7 @@ const BarRow = styled.div`
   display: flex;
   align-items: center;
   flex-direction: ${(p) => (p.$isRight ? "row" : "row-reverse")};
-  gap: clamp(4px, 0.5vw, 8px);
+  gap: clamp(4px, 0.5cqw, 8px);
   width: 100%;
 `;
 
@@ -895,10 +895,10 @@ const PowerUpSlot = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  width: clamp(30px, 3.8vw, 48px);
-  height: clamp(30px, 3.8vw, 48px);
+  width: clamp(30px, 3.8cqw, 48px);
+  height: clamp(30px, 3.8cqw, 48px);
   border-radius: 4px;
-  border: clamp(1.5px, 0.15vw, 3px) solid;
+  border: clamp(1.5px, 0.15cqw, 3px) solid;
   position: relative;
   transition: all 0.25s ease;
   flex-shrink: 0;
@@ -961,15 +961,15 @@ const PowerUpSlot = styled.div`
 
 const CenterCrest = styled.div`
   position: absolute;
-  top: clamp(14px, 3vh, 36px);
+  top: 28px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 1001;
 
   display: flex;
   align-items: center;
-  gap: clamp(5px, 1vw, 16px);
-  padding: clamp(5px, 0.8vh, 12px) clamp(8px, 1.4vw, 22px);
+  gap: 12px;
+  padding: 8px 18px;
 
   /* Deep crimson lacquer (urushi) — authentic sumo */
   background:
@@ -991,8 +991,8 @@ const CenterCrest = styled.div`
       #350808 65%,
       #200404 100%
     );
-  border: clamp(2.5px, 0.2vw, 5px) solid #b8860b;
-  border-radius: clamp(5px, 0.8vw, 10px);
+  border: clamp(2.5px, 0.2cqw, 5px) solid #b8860b;
+  border-radius: clamp(5px, 0.8cqw, 10px);
   box-shadow:
     0 0 0 1px rgba(0, 0, 0, 0.5),
     0 5px 20px rgba(0, 0, 0, 0.55),
@@ -1006,8 +1006,8 @@ const CenterCrest = styled.div`
   &::before {
     content: "";
     position: absolute;
-    top: clamp(-3px, -0.16vw, -2px); left: 0; right: 0;
-    height: clamp(3px, 0.24vw, 6px);
+    top: clamp(-3px, -0.16cqw, -2px); left: 0; right: 0;
+    height: clamp(3px, 0.24cqw, 6px);
     background: linear-gradient(
       90deg,
       #6b4c12 0%, #c9a22e 15%, #f0d060 35%,
@@ -1022,8 +1022,8 @@ const CenterCrest = styled.div`
   &::after {
     content: "";
     position: absolute;
-    bottom: clamp(-3px, -0.16vw, -2px); left: 0; right: 0;
-    height: clamp(3px, 0.24vw, 6px);
+    bottom: clamp(-3px, -0.16cqw, -2px); left: 0; right: 0;
+    height: clamp(3px, 0.24cqw, 6px);
     background: linear-gradient(
       90deg,
       #6b4c12 0%, #c9a22e 15%, #f0d060 35%,
@@ -1039,14 +1039,14 @@ const CenterCrest = styled.div`
 const StoneTray = styled.div`
   display: flex;
   flex-direction: ${(p) => (p.$reverse ? "row-reverse" : "row")};
-  gap: clamp(3px, 0.4vw, 5px);
+  gap: clamp(3px, 0.4cqw, 5px);
   background: linear-gradient(
     145deg,
     rgba(8, 2, 2, 0.85) 0%,
     rgba(18, 4, 4, 0.6) 50%,
     rgba(8, 2, 2, 0.85) 100%
   );
-  padding: clamp(3px, 0.5vw, 7px) clamp(4px, 0.6vw, 10px);
+  padding: clamp(3px, 0.5cqw, 7px) clamp(4px, 0.6cqw, 10px);
   border-radius: 4px;
   border: 1px solid rgba(139, 105, 20, 0.4);
   box-shadow:
@@ -1056,8 +1056,8 @@ const StoneTray = styled.div`
 
 /* Traditional go-stones: white = win, black = loss */
 const GoStone = styled.div`
-  width: clamp(9px, 1.3vw, 17px);
-  height: clamp(9px, 1.3vw, 17px);
+  width: clamp(9px, 1.3cqw, 17px);
+  height: clamp(9px, 1.3cqw, 17px);
   border-radius: 50%;
   position: relative;
   z-index: 1;
@@ -1072,10 +1072,10 @@ const GoStone = styled.div`
   }};
 
   border: ${(p) => {
-    if (p.$isEmpty) return "clamp(1.5px, 0.12vw, 3px) solid rgba(139, 105, 20, 0.2)";
+    if (p.$isEmpty) return "clamp(1.5px, 0.12cqw, 3px) solid rgba(139, 105, 20, 0.2)";
     return p.$isWin
-      ? "clamp(2px, 0.16vw, 4px) solid rgba(255, 255, 255, 0.9)"
-      : "clamp(2px, 0.16vw, 4px) solid rgba(255, 255, 255, 0.5)";
+      ? "clamp(2px, 0.16cqw, 4px) solid rgba(255, 255, 255, 0.9)"
+      : "clamp(2px, 0.16cqw, 4px) solid rgba(255, 255, 255, 0.5)";
   }};
 
   box-shadow: ${(p) => {
@@ -1095,25 +1095,25 @@ const RoundSeal = styled.div`
   align-items: center;
   position: relative;
   z-index: 1;
-  min-width: clamp(22px, 3vw, 40px);
+  min-width: clamp(22px, 3cqw, 40px);
 `;
 
 const RoundNum = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(14px, 2.6vw, 40px);
+  font-size: clamp(14px, 2.6cqw, 40px);
   color: #ffd700;
-  -webkit-text-stroke: clamp(1px, 0.15vw, 3px) #000;
+  -webkit-text-stroke: clamp(1px, 0.15cqw, 3px) #000;
   text-shadow:
-    0 0 clamp(8px, 0.8vw, 16px) rgba(255, 215, 0, 0.4),
-    0 0 clamp(3px, 0.3vw, 6px) rgba(212, 175, 55, 0.5),
-    0 clamp(2px, 0.16vw, 4px) clamp(4px, 0.32vw, 8px) rgba(0, 0, 0, 0.8);
+    0 0 clamp(8px, 0.8cqw, 16px) rgba(255, 215, 0, 0.4),
+    0 0 clamp(3px, 0.3cqw, 6px) rgba(212, 175, 55, 0.5),
+    0 clamp(2px, 0.16cqw, 4px) clamp(4px, 0.32cqw, 8px) rgba(0, 0, 0, 0.8);
   line-height: 1;
   user-select: none;
 `;
 
 const RoundText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(5px, 0.6vw, 8px);
+  font-size: clamp(5px, 0.6cqw, 8px);
   color: rgba(220, 185, 110, 0.75);
   text-transform: uppercase;
   letter-spacing: 0.18em;
