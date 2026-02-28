@@ -1,19 +1,45 @@
 const { app, BrowserWindow, ipcMain, screen } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
 
-// Check if we're in development mode
+app.commandLine.appendSwitch('no-sandbox');
+
 const isDev = !app.isPackaged;
 
-// Enable hardware acceleration
-app.disableHardwareAcceleration = false;
+const logLocations = [
+  path.join(path.dirname(process.execPath), 'penguinpow-debug.log'),
+  path.join(os.homedir(), 'Desktop', 'penguinpow-debug.log'),
+  path.join(os.tmpdir(), 'penguinpow-debug.log'),
+];
+if (!isDev) {
+  try { logLocations.push(path.join(app.getPath('userData'), 'penguinpow-debug.log')); } catch (_) {}
+}
 
-// Settings file path
+function debugLog(msg) {
+  const line = `[${new Date().toISOString()}] ${msg}\n`;
+  console.log(msg);
+  for (const p of logLocations) {
+    try { fs.appendFileSync(p, line); } catch (_) {}
+  }
+}
+
+debugLog('=== PenguinPow starting ===');
+debugLog(`app.isPackaged: ${app.isPackaged}`);
+debugLog(`isDev: ${isDev}`);
+debugLog(`__dirname: ${__dirname}`);
+debugLog(`process.execPath: ${process.execPath}`);
+debugLog(`process.cwd(): ${process.cwd()}`);
+debugLog(`process.platform: ${process.platform}`);
+debugLog(`electron version: ${process.versions.electron}`);
+debugLog(`chrome version: ${process.versions.chrome}`);
+debugLog(`node version: ${process.versions.node}`);
+debugLog(`logLocations: ${JSON.stringify(logLocations)}`);
+
 const settingsPath = path.join(app.getPath('userData'), 'settings.json');
 
-// Default settings
 const defaultSettings = {
-  displayMode: 'fullscreen', // 'fullscreen', 'windowed', 'maximized'
+  displayMode: 'fullscreen',
   windowWidth: 1920,
   windowHeight: 1080,
   brightness: 100,
@@ -21,7 +47,6 @@ const defaultSettings = {
   volume: 100
 };
 
-// Load settings from file
 function loadSettings() {
   try {
     if (fs.existsSync(settingsPath)) {
@@ -29,47 +54,43 @@ function loadSettings() {
       return { ...defaultSettings, ...JSON.parse(data) };
     }
   } catch (error) {
-    console.error('Error loading settings:', error);
+    debugLog(`Error loading settings: ${error.message}`);
   }
   return defaultSettings;
 }
 
-// Save settings to file
 function saveSettings(settings) {
   try {
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
   } catch (error) {
-    console.error('Error saving settings:', error);
+    debugLog(`Error saving settings: ${error.message}`);
   }
 }
 
 let mainWindow;
 
 function createWindow() {
+  debugLog('createWindow called');
   const settings = loadSettings();
+  debugLog(`Settings loaded: displayMode=${settings.displayMode}`);
+
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+  debugLog(`Screen: ${screenWidth}x${screenHeight}`);
 
-  // Calculate window dimensions
   let windowOptions = {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, "preload.js"),
-      // Enable hardware acceleration
-      enableWebGL: true,
-      enableAcceleratedLayers: true,
-      enableAccelerated2dCanvas: true,
     },
-    // Add performance settings
     backgroundColor: "#000000",
-    show: false, // Don't show until ready
+    show: false,
     icon: process.platform !== 'darwin' ? path.join(__dirname, 'assets/icon.png') : undefined,
     titleBarStyle: 'hidden',
-    frame: false, // Remove window frame for fullscreen experience
+    frame: false,
   };
 
-  // Set window size based on display mode
   switch (settings.displayMode) {
     case 'fullscreen':
       windowOptions.fullscreen = true;
@@ -90,43 +111,64 @@ function createWindow() {
       break;
   }
 
+  debugLog(`Creating BrowserWindow...`);
   mainWindow = new BrowserWindow(windowOptions);
 
-  // Apply display mode after window creation
   if (settings.displayMode === 'maximized') {
     mainWindow.maximize();
   }
 
-  // Optimize for performance
   mainWindow.setBackgroundThrottling(false);
 
-  // Show window when ready to prevent white flash
   mainWindow.once("ready-to-show", () => {
+    debugLog('ready-to-show fired');
     mainWindow.show();
-    
-    // Set fullscreen after showing if needed
     if (settings.displayMode === 'fullscreen') {
       mainWindow.setFullScreen(true);
     }
   });
 
-  // Load the app
-  if (isDev) {
-    // In development, load from Vite dev server
+  mainWindow.webContents.on('did-finish-load', () => {
+    debugLog('did-finish-load — page loaded successfully');
+  });
+
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    debugLog(`[LOAD FAILED] ${errorDescription} (code: ${errorCode}) URL: ${validatedURL}`);
+  });
+
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    debugLog(`[Renderer ${level >= 2 ? 'ERROR' : 'LOG'}] ${message} (${sourceId}:${line})`);
+  });
+
+  mainWindow.webContents.on('render-process-gone', (event, details) => {
+    debugLog(`[RENDERER CRASHED] reason: ${details.reason}, exitCode: ${details.exitCode}`);
+  });
+
+  mainWindow.webContents.on('unresponsive', () => {
+    debugLog('[UNRESPONSIVE] Renderer became unresponsive');
+  });
+
+  const indexPath = path.join(__dirname, "client", "dist", "index.html");
+  const fileExists = fs.existsSync(indexPath);
+  debugLog(`Index path: ${indexPath}`);
+  debugLog(`Index exists: ${fileExists}`);
+
+  if (fileExists) {
+    debugLog('Loading from file...');
+    mainWindow.loadFile(indexPath).then(() => {
+      debugLog('loadFile resolved');
+    }).catch((err) => {
+      debugLog(`loadFile rejected: ${err.message}`);
+    });
+  } else if (isDev) {
+    debugLog('File not found, loading dev server...');
     mainWindow.loadURL("http://localhost:5173");
-    // mainWindow.webContents.openDevTools();
   } else {
-    // In production, load from built client files
-    // Use absolute path to ensure it works regardless of working directory
-    const indexPath = path.join(__dirname, "client", "dist", "index.html");
-    console.log("Loading from:", indexPath);
-    console.log("Process cwd:", process.cwd());
-    console.log("__dirname:", __dirname);
-    mainWindow.loadFile(indexPath);
+    debugLog('[FATAL] No index.html found and not in dev mode!');
+    mainWindow.loadURL(`data:text/html,<h1 style="color:white;background:#000;padding:40px;font-family:sans-serif">PenguinPow Error: index.html not found at ${indexPath.replace(/\\/g, '\\\\')}</h1>`);
   }
 }
 
-// IPC handlers for settings
 ipcMain.handle('get-settings', () => {
   return loadSettings();
 });
@@ -139,18 +181,17 @@ ipcMain.handle('save-settings', (event, newSettings) => {
 
 ipcMain.handle('set-display-mode', (event, mode, width, height) => {
   if (!mainWindow) return;
-  
+
   const settings = loadSettings();
   settings.displayMode = mode;
-  
+
   if (width && height) {
     settings.windowWidth = width;
     settings.windowHeight = height;
   }
-  
+
   saveSettings(settings);
-  
-  // Apply the new display mode
+
   switch (mode) {
     case 'fullscreen':
       mainWindow.setFullScreen(true);
@@ -173,7 +214,7 @@ ipcMain.handle('set-display-mode', (event, mode, width, height) => {
 ipcMain.handle('get-screen-info', () => {
   const displays = screen.getAllDisplays();
   const primaryDisplay = screen.getPrimaryDisplay();
-  
+
   return {
     displays: displays.map(display => ({
       id: display.id,
@@ -192,6 +233,7 @@ ipcMain.handle('get-screen-info', () => {
 });
 
 app.whenReady().then(() => {
+  debugLog('app ready');
   createWindow();
 
   app.on("activate", function () {

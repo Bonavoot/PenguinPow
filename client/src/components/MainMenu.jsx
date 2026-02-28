@@ -1,10 +1,11 @@
+import { useState, useEffect, useContext } from "react";
+import PropTypes from "prop-types";
+
 import Lobby from "./Lobby";
 import Rooms from "./Rooms";
 import Game from "./Game";
 import Settings from "./Settings";
 import CustomizePage from "./CustomizePage";
-import { useState, useEffect, useContext } from "react";
-import PropTypes from "prop-types";
 import styled, { keyframes, css } from "styled-components";
 import { SocketContext } from "../SocketContext";
 import lobbyBackground from "../assets/lobby-bkg.webp";
@@ -641,13 +642,6 @@ const ConnectionErrorBanner = styled.div`
 // PRELOAD ASSETS
 // ============================================
 
-const preloadAssets = (sources) => {
-  sources.forEach((src) => {
-    const img = new Image();
-    img.src = src;
-  });
-};
-
 const preGameImages = [
   lobbyBackground,
   pumo,
@@ -655,7 +649,6 @@ const preGameImages = [
   mainMenuBackground2,
   mainMenuBackground3,
 ];
-preloadAssets(preGameImages);
 
 // ============================================
 // MAIN COMPONENT
@@ -675,7 +668,11 @@ const MainMenu = ({ rooms, setRooms, currentPage, setCurrentPage, localId, conne
   ];
 
   useEffect(() => {
-    // Start playing background music when MainMenu mounts
+    preGameImages.forEach((src) => {
+      const img = new Image();
+      img.src = src;
+    });
+
     playBackgroundMusic();
 
     // Listen for CPU match creation success
@@ -902,48 +899,48 @@ const MainMenu = ({ rooms, setRooms, currentPage, setCurrentPage, localId, conne
         <div className="current-page">
           {renderMainMenu()}
           {currentPage === "rooms" && (
-            <Rooms
-              rooms={rooms}
-              handleMainMenuPage={handleMainMenuPage}
-              handleJoinRoom={handleJoinRoom}
-              setRoomName={setRoomName}
-            />
+              <Rooms
+                rooms={rooms}
+                handleMainMenuPage={handleMainMenuPage}
+                handleJoinRoom={handleJoinRoom}
+                setRoomName={setRoomName}
+              />
           )}
         </div>
       );
     case "lobby":
       return (
         <div className="current-page">
-          <Lobby
-            rooms={rooms}
-            setRooms={setRooms}
-            roomName={roomName}
-            handleGame={handleGame}
-            setCurrentPage={setCurrentPage}
-            onLeaveDohyo={() => {
-              setIsCPUMatch(false);
-              setCurrentPage("mainMenu");
-            }}
-            isCPUMatch={isCPUMatch}
-          />
+            <Lobby
+              rooms={rooms}
+              setRooms={setRooms}
+              roomName={roomName}
+              handleGame={handleGame}
+              setCurrentPage={setCurrentPage}
+              onLeaveDohyo={() => {
+                setIsCPUMatch(false);
+                setCurrentPage("mainMenu");
+              }}
+              isCPUMatch={isCPUMatch}
+            />
         </div>
       );
     case "game":
       return (
         <div className="current-page">
-          <Game
-            localId={localId}
-            rooms={rooms}
-            roomName={roomName}
-            setCurrentPage={setCurrentPage}
-            isCPUMatch={isCPUMatch}
-          />
+            <Game
+              localId={localId}
+              rooms={rooms}
+              roomName={roomName}
+              setCurrentPage={setCurrentPage}
+              isCPUMatch={isCPUMatch}
+            />
         </div>
       );
     case "customize":
       return (
         <div className="current-page">
-          <CustomizePage onBack={() => setCurrentPage("mainMenu")} />
+            <CustomizePage onBack={() => setCurrentPage("mainMenu")} />
         </div>
       );
     default:
@@ -951,12 +948,12 @@ const MainMenu = ({ rooms, setRooms, currentPage, setCurrentPage, localId, conne
         <div className="current-page">
           {renderMainMenu()}
           {currentPage === "rooms" && (
-            <Rooms
-              rooms={rooms}
-              handleMainMenuPage={handleMainMenuPage}
-              handleJoinRoom={handleJoinRoom}
-              setRoomName={setRoomName}
-            />
+              <Rooms
+                rooms={rooms}
+                handleMainMenuPage={handleMainMenuPage}
+                handleJoinRoom={handleJoinRoom}
+                setRoomName={setRoomName}
+              />
           )}
         </div>
       );

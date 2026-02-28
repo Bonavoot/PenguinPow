@@ -14,8 +14,10 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Step 2: Copy updated files to build_windows
-echo "2. Copying files to build_windows..."
+# Step 2: Clean stale files and copy fresh build to build_windows
+echo "2. Cleaning old client dist and copying fresh build..."
+rm -rf build_windows/win-unpacked/resources/app/client/dist
+mkdir -p build_windows/win-unpacked/resources/app/client/dist
 cp -r client/dist/* build_windows/win-unpacked/resources/app/client/dist/
 cp main.js preload.js build_windows/win-unpacked/resources/app/
 

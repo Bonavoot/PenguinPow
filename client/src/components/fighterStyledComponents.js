@@ -491,8 +491,8 @@ export const StyledImage = styled("img")
     100% { transform: scaleX(var(--facing, 1)) translateX(0px); }
   }
   @keyframes slapRush {
-    0%, 100% { transform: scaleX(var(--facing, 1)); filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) blur(0.3px); }
-    50% { transform: scaleX(var(--facing, 1)); filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) blur(0.6px); }
+    0%, 100% { transform: scaleX(var(--facing, 1)); filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000); }
+    50% { transform: scaleX(var(--facing, 1)); filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000); }
   }
   @keyframes attemptingGrabThrowPull {
     0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0); transform-origin: center bottom; }

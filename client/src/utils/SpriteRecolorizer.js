@@ -107,11 +107,25 @@ let workerReady = false;
 let pendingRequests = new Map();
 let requestIdCounter = 0;
 
+function isElectron() {
+  try {
+    return typeof navigator !== "undefined" &&
+      navigator.userAgent.includes("Electron");
+  } catch (_) {
+    return false;
+  }
+}
+
 function initWorker() {
   if (recolorWorker) return;
 
+  if (isElectron()) {
+    console.log("SpriteRecolorizer: Electron detected, using main-thread fallback");
+    workerReady = false;
+    return;
+  }
+
   try {
-    // Create worker from the worker file
     recolorWorker = new Worker(new URL("./recolorWorker.js", import.meta.url));
 
     recolorWorker.onmessage = (e) => {
@@ -134,7 +148,6 @@ function initWorker() {
 
     recolorWorker.onerror = (e) => {
       console.error("Worker error:", e);
-      // Reject all pending requests
       pendingRequests.forEach((pending) => {
         pending.reject(new Error("Worker error"));
       });
@@ -151,7 +164,7 @@ function initWorker() {
   }
 }
 
-// Initialize worker immediately
+// Initialize worker immediately (skipped on file:// protocol)
 if (typeof window !== "undefined") {
   initWorker();
 }

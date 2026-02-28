@@ -1,12 +1,13 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useLayoutEffect, useState, useRef } from "react";
 import { io } from "socket.io-client";
 import { SocketContext } from "./SocketContext";
-import MainMenu from "./components/MainMenu";
 import StartupScreen from "./components/StartupScreen";
 import gamepadHandler from "./utils/gamepadHandler";
 import { PlayerColorProvider } from "./context/PlayerColorContext";
 import "./App.css";
 import "./components/SteamDeck.css";
+
+import MainMenu from "./components/MainMenu";
 
 const SOCKET_URL = import.meta.env.PROD
   ? "https://secure-beach-15962-3c882c6fcbf9.herokuapp.com/"
@@ -29,18 +30,18 @@ function App() {
   const [showStartupScreen, setShowStartupScreen] = useState(true);
   const appContainerRef = useRef(null);
 
-  useEffect(() => {
-    const updateScale = () => {
+  useLayoutEffect(() => {
+    const updateZoom = () => {
       if (!appContainerRef.current) return;
-      const scale = Math.min(
+      const zoom = Math.min(
         window.innerWidth / 1280,
         window.innerHeight / 720
       );
-      appContainerRef.current.style.setProperty("--app-scale", String(scale));
+      appContainerRef.current.style.setProperty("--app-zoom", String(zoom));
     };
-    updateScale();
-    window.addEventListener("resize", updateScale);
-    return () => window.removeEventListener("resize", updateScale);
+    updateZoom();
+    window.addEventListener("resize", updateZoom);
+    return () => window.removeEventListener("resize", updateZoom);
   }, []);
 
   const handleContinueFromStartup = () => {

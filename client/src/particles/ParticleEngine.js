@@ -933,9 +933,11 @@ export class ParticleEngine {
 
   init(canvas) {
     this.canvas = canvas;
-    canvas.width = GAME_W;
-    canvas.height = GAME_H;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(GAME_W * dpr);
+    canvas.height = Math.round(GAME_H * dpr);
     this.ctx = canvas.getContext("2d");
+    this.ctx.scale(dpr, dpr);
     this.textures = generateTextures();
     this._start();
   }
@@ -1020,7 +1022,7 @@ export class ParticleEngine {
     const { ctx, canvas } = this;
     if (!ctx) return;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, GAME_W, GAME_H);
 
     for (let i = 0; i < this.particles.length; i++) {
       const p = this.particles[i];
