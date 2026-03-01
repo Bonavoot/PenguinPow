@@ -397,7 +397,7 @@ body {
   --dohyo-filter: brightness(0.95) saturate(0.94) contrast(1.1);
 
   /* ── Camera defaults — JS will drive these later for dynamic pan/zoom ── */
-  --cam-scale: 1.45;
+  --cam-scale: 1.305;
   --cam-x: 0px;
   --cam-y: 0px;
 }

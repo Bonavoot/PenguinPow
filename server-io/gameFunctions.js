@@ -86,6 +86,7 @@ function cleanupGrabStates(player, opponent) {
   player.grabTechResidualVel = 0;
   player.grabCounterAttempted = false;
   player.grabCounterInput = null;
+  player.lastResistStaminaDrainTime = 0;
   // Clear action lock so grab/other actions aren't blocked after grab ends
   player.actionLockUntil = 0;
 
@@ -130,6 +131,7 @@ function cleanupGrabStates(player, opponent) {
   opponent.grabTechResidualVel = 0;
   opponent.grabCounterAttempted = false;
   opponent.grabCounterInput = null;
+  opponent.lastResistStaminaDrainTime = 0;
   // Clear action lock so grab/other actions aren't blocked after grab ends
   opponent.actionLockUntil = 0;
 }
@@ -389,18 +391,19 @@ function executeSlapAttack(player, rooms) {
       // Use the locked facing direction
       player.facing = player.slapFacingDirection;
 
-      // === TWO-SPEED LUNGE SYSTEM ===
-      // APPROACH (no recent hit): Normal forward slide, controlled distance.
-      // CHAIN (just landed a slap): Strong lunge to close the gap from the stop-on-hit + recoil.
-      // This gives the rekka "lunge back in" feel during chains without rocketing across
-      // the screen on the initial approach.
+      // === CONTINUOUS PRESSURE LUNGE ===
+      // APPROACH (no recent hit): Normal forward slide.
+      // CHAIN (just landed a slap): Refresh forward velocity. Attacker never stops
+      // during chains — they maintain continuous forward pressure like a sumo advance.
+      // The pushbox (148px) naturally maintains visual separation while the hitbox
+      // (158px) guarantees hits at pushbox distance.
       const recentlyLandedSlap = player.lastSlapHitLandedTime && 
-        (Date.now() - player.lastSlapHitLandedTime < 450); // Within one attack cycle (wider window for longer recovery)
-      let slapSlideVelocity = recentlyLandedSlap ? 1.6 : 1.0; // Chain lunge vs normal approach (nerfed from 2.2/1.2)
+        (Date.now() - player.lastSlapHitLandedTime < 450);
+      let slapSlideVelocity = recentlyLandedSlap ? 1.6 : 1.0;
 
       // Apply POWER power-up multiplier to slap slide distance
       if (player.activePowerUp === "power") {
-        slapSlideVelocity *= player.powerUpMultiplier - 0.1; // Adjusted to achieve 20% increase (1.3 - 0.1 = 1.2x multiplier)
+        slapSlideVelocity *= player.powerUpMultiplier - 0.1;
       }
 
       const slideDirection = player.facing === 1 ? -1 : 1; // Slide in the direction player is facing
@@ -426,7 +429,7 @@ function executeSlapAttack(player, rooms) {
   player.stamina = Math.max(0, player.stamina - SLAP_ATTACK_STAMINA_COST);
 
   // === SLAP ATTACK TIMING - Formal frame data ===
-  // Startup (70ms) → Active (100ms) → Recovery (150ms) = 320ms total
+  // Startup (55ms) → Active (100ms) → Recovery (130ms) = 285ms total
   // Recovery creates a gap where the opponent can respond between slaps.
   const attackDuration = SLAP_STARTUP_MS + SLAP_ACTIVE_MS; // 170ms — hitbox is live from startup end to here
 

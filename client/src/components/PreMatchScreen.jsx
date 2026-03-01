@@ -768,7 +768,7 @@ const PreMatchScreen = ({
               <PlayerName>{player1Name}</PlayerName>
             </PlayerNameArea>
             
-            <MawashiIndicator $color={player1Color} $gradient={SPECIAL_MAWASHI_GRADIENTS[player1Color]} />
+            <MawashiIndicator $color={player1Color === SPRITE_BASE_COLOR ? "#0891b2" : player1Color} $gradient={SPECIAL_MAWASHI_GRADIENTS[player1Color]} />
 
             <RecordContainer>
               <RecordItem>

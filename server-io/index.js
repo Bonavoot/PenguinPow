@@ -793,7 +793,7 @@ function tick(delta) {
             const DI_FRICTION_BONUS = 0.96;
             
             if (player.isSlapKnockback) {
-              player.knockbackVelocity.x *= 0.97; // Was 0.992 — shorter knockback, positional play rewarded
+              player.knockbackVelocity.x *= 0.97; // Slap knockback friction
             } else {
               player.knockbackVelocity.x *= 0.96; // Was 0.985 — shorter knockback for charged too
             }

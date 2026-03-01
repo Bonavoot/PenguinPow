@@ -3,9 +3,9 @@ import { useEffect, useRef } from "react";
 // ── Tunable constants ──────────────────────────────────────────────
 const GAME_WIDTH = 1280;
 
-const MIN_SCALE = 1.18; // widest zoom — tighter crop, hides below dohyo
-const MAX_SCALE = 1.75; // tightest zoom when players are very close
-const DEFAULT_SCALE = 1.45; // fallback before game starts
+const MIN_SCALE = 1.20; // widest zoom — tighter crop, hides below dohyo (~10% out)
+const MAX_SCALE = 1.575; // tightest zoom when players are very close (~10% out)
+const DEFAULT_SCALE = 1.305; // fallback before game starts (~10% out)
 
 const CLOSE_DISTANCE = 100; // player gap (game-coords) for max zoom
 const FAR_DISTANCE = 700; // player gap (game-coords) for min zoom
@@ -30,7 +30,7 @@ const PUNCH_STOP = 0.001; // cut to zero below this
 const KB_REF = 2.5;
 
 // ── Cinematic kill camera ────────────────────────────────────────
-const CINEMATIC_ZOOM_SCALE = 2.2;
+const CINEMATIC_ZOOM_SCALE = 1.98; // ~10% out from 2.2
 const CINEMATIC_SHAKE_INTENSITY = 12;
 const CINEMATIC_SHAKE_DECAY = 0.94;
 const CINEMATIC_ZOOM_IN_SPEED = 0.18;

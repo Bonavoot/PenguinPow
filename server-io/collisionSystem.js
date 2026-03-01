@@ -92,7 +92,7 @@ function checkCollision(player, otherPlayer, rooms, io) {
   // Fallback: Check startup timing if flag not set (for backward compatibility)
   if (player.isAttacking && player.attackStartTime && !player.startupEndTime) {
     const CHARGED_ATTACK_STARTUP_DELAY = 150; // Matches CHARGED_STARTUP_MS
-    const SLAP_ATTACK_STARTUP_DELAY = 70;     // Matches SLAP_STARTUP_MS
+    const SLAP_ATTACK_STARTUP_DELAY = 55;     // Matches SLAP_STARTUP_MS
 
     const startupDelay =
       player.attackType === "slap"
@@ -857,7 +857,7 @@ function processHit(player, otherPlayer, rooms, io) {
     // Calculate knockback multiplier based on charge percentage
     let finalKnockbackMultiplier;
     if (isSlapAttack) {
-      finalKnockbackMultiplier = 0.38; // Tuned knockback - consecutive slaps stay in range
+      finalKnockbackMultiplier = 0.38; // Original knockback — strong initial snap, paired with heavy friction for chain consistency
     } else {
       finalKnockbackMultiplier = 0.4675 + Math.pow(chargePercentage / 100, 2) * 0.55; // Quadratic ease-in: low charges are moderate, power ramps sharply at high charge
     }
@@ -905,21 +905,21 @@ function processHit(player, otherPlayer, rooms, io) {
         // Mark this as a slap knockback for special friction handling
         otherPlayer.isSlapKnockback = true;
 
-        // Track that the attacker just landed a slap hit - used by executeSlapAttack
-        // to apply the strong chain lunge velocity on follow-up slaps
+        // Track that the attacker just landed a slap hit
+        const isChainHit = player.lastSlapHitLandedTime && 
+          (currentTime - player.lastSlapHitLandedTime < 450);
         player.lastSlapHitLandedTime = currentTime;
 
-        // === LUNGE-HIT-SEPARATE: Kill attacker momentum on hit ===
-        // Stop the attacker's forward slide dead when the slap connects.
-        // This creates visible separation: victim slides back, attacker stays put.
-        // Visual rhythm: lunge → HIT → separate → lunge → HIT → separate
-        player.movementVelocity = 0;
-        player.isSlapSliding = false;
-
-        // === ATTACKER RECOIL ON SLAP HIT ===
-        // Light recoil — enough to see separation but chain lunge (1.6) can close the gap.
-        const attackerRecoilDirection = -knockbackDirection;
-        player.slapParryKnockbackVelocity = 0.2 * attackerRecoilDirection;
+        if (isChainHit) {
+          // Chain hit: maintain forward momentum — continuous pressure model.
+          // The pushbox keeps visual separation, attacker smoothly follows the victim.
+        } else {
+          // First approach hit: stop + recoil for satisfying initial impact
+          player.movementVelocity = 0;
+          player.isSlapSliding = false;
+          const attackerRecoilDirection = -knockbackDirection;
+          player.slapParryKnockbackVelocity = 0.12 * attackerRecoilDirection;
+        }
 
         // Screen shake is handled in the hitstop section below
       } else {
@@ -972,13 +972,18 @@ function processHit(player, otherPlayer, rooms, io) {
 
       }
 
-      // Enforce minimum separation so knockback starts from a clean position
-      const minSepDist = HITBOX_DISTANCE_VALUE * 2 * Math.max(player.sizeMultiplier || 1, otherPlayer.sizeMultiplier || 1);
-      const currentDist = Math.abs(player.x - otherPlayer.x);
-      if (currentDist < minSepDist) {
-        const deficit = minSepDist - currentDist;
-        const pushDir = otherPlayer.x >= player.x ? 1 : -1;
-        otherPlayer.x += pushDir * deficit;
+      // Enforce minimum separation so knockback starts from a clean position.
+      // Skip for slaps — pushbox (148px) exceeds slap hitbox range (134px),
+      // so enforcing it guarantees the next chain slap misses. Slap knockback
+      // and the continuous pushbox handle separation naturally.
+      if (!isSlapAttack) {
+        const minSepDist = HITBOX_DISTANCE_VALUE * 2 * Math.max(player.sizeMultiplier || 1, otherPlayer.sizeMultiplier || 1);
+        const currentDist = Math.abs(player.x - otherPlayer.x);
+        if (currentDist < minSepDist) {
+          const deficit = minSepDist - currentDist;
+          const pushDir = otherPlayer.x >= player.x ? 1 : -1;
+          otherPlayer.x += pushDir * deficit;
+        }
       }
 
       // Set knockback immunity

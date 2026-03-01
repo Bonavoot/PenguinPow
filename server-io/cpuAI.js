@@ -115,6 +115,8 @@ function getAIState(playerId) {
       grabBreakReactionDecided: false,
       grabBreakReactS: false,       // true = press S when we see throw
       grabBreakReactDirection: false, // true = press direction when we see pull
+      // === Push resistance: dig in during grab push with a human-like delay ===
+      grabResistStartTime: 0,
     });
   }
   return aiStates.get(playerId);
@@ -581,6 +583,7 @@ function updateCPUAI(cpu, human, room, currentTime) {
     aiState.grabBreakReactionDecided = false;
     aiState.grabBreakReactS = false;
     aiState.grabBreakReactDirection = false;
+    aiState.grabResistStartTime = 0;
   }
   
   // Handle pending parry release
@@ -705,12 +708,21 @@ function handleGrabBreak(cpu, grabber, aiState, currentTime) {
   // Pull counter key is determined by GRABBER's facing (matches server: counterKey = player.facing === -1 ? 'd' : 'a')
   const pullCounterKey = grabber.facing === -1 ? 'd' : 'a';
 
-  // No grab action yet (grabber is just pushing) — do not input anything until we see throw or pull
+  // No grab action yet (grabber is just pushing) — resist the push by pressing toward grabber
   if (!grabber.isAttemptingGrabThrow && !grabber.isAttemptingPull) {
     aiState.grabBreakReactionDecided = false;
     aiState.grabBreakReactS = false;
     aiState.grabBreakReactDirection = false;
     resetAllKeys(cpu);
+
+    // Resist push after a human-like delay (150-300ms after grab starts)
+    if (!aiState.grabResistStartTime) {
+      aiState.grabResistStartTime = currentTime + randomInRange(150, 300);
+    }
+    if (currentTime >= aiState.grabResistStartTime) {
+      const pushResistKey = grabber.facing === -1 ? 'a' : 'd';
+      cpu.keys[pushResistKey] = true;
+    }
     return;
   }
 

@@ -4,6 +4,7 @@ const {
   GRAB_PUSH_DECAY_RATE, GRAB_PUSH_MIN_VELOCITY, GRAB_PUSH_MAX_DURATION,
   GRAB_PUSH_BACKWARD_GRACE,
   GRAB_PUSH_STAMINA_DRAIN_INTERVAL, GRAB_PUSH_EDGE_STAMINA_DRAIN_INTERVAL,
+  GRAB_PUSH_RESIST_SPEED_MULT, GRAB_PUSH_RESIST_STAMINA_DRAIN_INTERVAL,
   GRAB_STAMINA_DRAIN_INTERVAL,
   GRAB_PULL_ATTEMPT_DISTANCE_MULTIPLIER,
   PULL_REVERSAL_DISTANCE, PULL_REVERSAL_TWEEN_DURATION,
@@ -80,7 +81,28 @@ function updateGrabActions(player, room, io, delta, rooms) {
         // Calculate current push speed: burst with exponential decay
         // Initial speed = base burst + momentum transferred from approach velocity
         const initialPushSpeed = GRAB_PUSH_BURST_BASE + (player.grabApproachSpeed || 0) * GRAB_PUSH_MOMENTUM_TRANSFER;
-        const currentPushSpeed = initialPushSpeed * Math.exp(-GRAB_PUSH_DECAY_RATE * pushElapsedSec);
+        let currentPushSpeed = initialPushSpeed * Math.exp(-GRAB_PUSH_DECAY_RATE * pushElapsedSec);
+
+        // Push resistance: opponent presses toward grabber to dig in and resist
+        const pushResistKey = player.facing === -1 ? 'a' : 'd';
+        const isResistingPush = opponent.keys[pushResistKey] && !opponent.isCounterGrabbed && !opponent.isGassed;
+        if (isResistingPush) {
+          currentPushSpeed *= GRAB_PUSH_RESIST_SPEED_MULT;
+          // Extra stamina drain for resisting, but NOT at the boundary (edge drain is enough)
+          if (!player.isAtBoundaryDuringGrab) {
+            if (!opponent.lastResistStaminaDrainTime) {
+              opponent.lastResistStaminaDrainTime = Date.now();
+            }
+            if (Date.now() - opponent.lastResistStaminaDrainTime >= GRAB_PUSH_RESIST_STAMINA_DRAIN_INTERVAL) {
+              opponent.stamina = Math.max(0, opponent.stamina - 1);
+              opponent.lastResistStaminaDrainTime = Date.now();
+            }
+          } else {
+            opponent.lastResistStaminaDrainTime = 0;
+          }
+        } else {
+          opponent.lastResistStaminaDrainTime = 0;
+        }
 
         // End push when velocity decays below threshold
         // UNLESS pinned at boundary (let max duration + stamina drain handle that)

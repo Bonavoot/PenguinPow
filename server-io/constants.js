@@ -55,7 +55,7 @@ const speedFactor = 0.185; // Scaled for camera zoom (was 0.25)
 const GROUND_LEVEL = 300;
 const HITBOX_DISTANCE_VALUE = Math.round(77 * 0.96); // ~74 — PUSHBOX size (body collision, keeps players separated)
 const CHARGED_HITBOX_DISTANCE_VALUE = Math.round(160 * 0.96); // ~154 → effective ~131 with sizeMultiplier (just past pushbox 126 — hit fires at body contact; lunge provides range)
-const SLAP_HITBOX_DISTANCE_VALUE = Math.round(140 * 0.96); // ~134 (nerfed from 149 — comfortably past pushbox, still connects on spam)
+const SLAP_HITBOX_DISTANCE_VALUE = Math.round(165 * 0.96); // ~158 — must exceed pushbox (148px) so slaps connect at pushbox distance
 const SLAP_PARRY_WINDOW = 200; // Updated to 200ms window for parry to account for longer slap animation
 const SLAP_PARRY_KNOCKBACK_VELOCITY = 1.5; // Reduced knockback for parried attacks
 const THROW_RANGE = Math.round(166 * 0.96); // ~159 (scaled for camera zoom)
@@ -68,9 +68,9 @@ const GRAB_PUSH_DURATION = 650;
 // Real fighting game structure: Startup → Active → Recovery
 // Startup: committed but can't hit. Active: hitbox live. Recovery: punishable.
 // ============================================
-const SLAP_STARTUP_MS = 70;       // Wind-up before hitbox (was 55)
+const SLAP_STARTUP_MS = 55;       // Wind-up before hitbox — snappy initiation
 const SLAP_ACTIVE_MS = 100;       // Hitbox live window
-const SLAP_RECOVERY_MS = 150;     // Can't act, no hitbox — opponent's response window
+const SLAP_RECOVERY_MS = 130;     // Can't act, no hitbox — opponent's response window
 const SLAP_TOTAL_MS = SLAP_STARTUP_MS + SLAP_ACTIVE_MS + SLAP_RECOVERY_MS; // 320ms
 
 const CHARGED_STARTUP_MS = 150;   // Clear windup (unchanged)
@@ -211,7 +211,7 @@ const GRAB_STAMINA_DRAIN_INTERVAL = 150;
 // Push starts IMMEDIATELY on grab connect (burst-with-decay).
 // Grabber can interrupt push with pull (backward) or throw (W) during push.
 // ============================================
-const GRAB_ACTION_WINDOW = 500; // 0.5s window for pull/throw counter attempts
+const GRAB_ACTION_WINDOW = 350; // 0.35s reaction window for pull/throw counter attempts
 const GRAB_PUSH_BURST_BASE = 2.5;          // Base burst speed when push starts
 const GRAB_PUSH_MOMENTUM_TRANSFER = 0.6;   // Multiplier on approach speed added to burst (power slide grab = devastating)
 const GRAB_PUSH_DECAY_RATE = 1.6;          // Exponential decay rate (was 2.2 — slower decay for sustained yorikiri push)
@@ -219,7 +219,9 @@ const GRAB_PUSH_MIN_VELOCITY = 0.15;       // Push ends when speed decays below 
 const GRAB_PUSH_MAX_DURATION = 1500;        // Safety cap: push can never exceed this (ms)
 const GRAB_PUSH_BACKWARD_GRACE = 150;       // ms before backward input triggers pull during push (prevents accidental pull)
 const GRAB_PUSH_STAMINA_DRAIN_INTERVAL = 70; // Drain 1 stamina per 70ms mid-ring (~14/sec)
-const GRAB_PUSH_EDGE_STAMINA_DRAIN_INTERVAL = 17; // Drain 1 stamina per 17ms at edge (~59/sec)
+const GRAB_PUSH_EDGE_STAMINA_DRAIN_INTERVAL = 35; // Drain 1 stamina per 35ms at edge (~29/sec)
+const GRAB_PUSH_RESIST_SPEED_MULT = 0.45;  // Push speed multiplied by this when opponent resists (55% reduction)
+const GRAB_PUSH_RESIST_STAMINA_DRAIN_INTERVAL = 125; // Extra drain on resisting opponent: 1 per 125ms (~8/sec additional, ~22/sec total with grab drain)
 const GRAB_PUSH_SEPARATION_OPPONENT_VEL = 1.2; // Velocity given to opponent when push ends
 const GRAB_PUSH_SEPARATION_GRABBER_VEL = 0.4;  // Velocity given to grabber when push ends
 const GRAB_PUSH_SEPARATION_INPUT_LOCK = 180;    // Input lock after push separation — matches isGrabSeparating duration (ms)
@@ -326,8 +328,8 @@ const GASSED_RECOVERY_STAMINA = 30; // Stamina granted immediately when gassed e
 // Every hit has hitstop to make impacts feel satisfying
 // Scales with power - stronger hits freeze longer
 // ============================================
-const SLAP_CHAIN_HIT_GAP_MS = 60;  // Minimum visual gap after slap hitstun before victim can be hit again (prevents infinite combo appearance)
-const HITSTOP_SLAP_MS = 100;      // Rekka-style hitstop - punchy freeze for each slap impact (6 frames)
+const SLAP_CHAIN_HIT_GAP_MS = 40;  // Minimum visual gap after slap hitstun before victim can be hit again
+const HITSTOP_SLAP_MS = 90;       // Punchy freeze for each slap impact — meaty and satisfying
 const HITSTOP_CHARGED_MIN_MS = 80;  // Minimum charged attack hitstop (5 frames)
 const HITSTOP_CHARGED_MAX_MS = 150; // Maximum charged attack hitstop at full power (9 frames)
 const HITSTOP_PARRY_MS = 120;     // Parry hitstop - impactful but not too long (7 frames)
@@ -477,6 +479,8 @@ module.exports = {
   GRAB_PUSH_BACKWARD_GRACE,
   GRAB_PUSH_STAMINA_DRAIN_INTERVAL,
   GRAB_PUSH_EDGE_STAMINA_DRAIN_INTERVAL,
+  GRAB_PUSH_RESIST_SPEED_MULT,
+  GRAB_PUSH_RESIST_STAMINA_DRAIN_INTERVAL,
   GRAB_PUSH_SEPARATION_OPPONENT_VEL,
   GRAB_PUSH_SEPARATION_GRABBER_VEL,
   GRAB_PUSH_SEPARATION_INPUT_LOCK,
