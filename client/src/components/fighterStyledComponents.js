@@ -215,7 +215,6 @@ export const StyledImage = styled("img")
         "lastThrowAttemptTime",
         "lastGrabAttemptTime",
         "dodgeDirection",
-        "isDodgeCancelling",
         "justLandedFromDodge",
         "speedFactor",
         "sizeMultiplier",
@@ -234,6 +233,8 @@ export const StyledImage = styled("img")
         "isLocalPlayer",
         "overrideSrc",
         "isCinematicKillAttacker",
+        "isRopeJumping",
+        "ropeJumpPhase",
       ].includes(prop),
   })
   .attrs((props) => ({
@@ -290,7 +291,10 @@ export const StyledImage = styled("img")
         props.$isBeingGrabFrontalForceOut,
         props.$isGrabTeching,
         props.$grabTechRole,
-        props.$isGrabWhiffRecovery
+        props.$isGrabWhiffRecovery,
+        props.$isRopeJumping,
+        props.$ropeJumpPhase,
+        props.$isDodgeRecovery
       ),
     style: {
       position: "absolute",
@@ -313,12 +317,18 @@ export const StyledImage = styled("img")
         ? 0
         : props.$isCinematicKillAttacker
         ? 100
+        : props.$isRopeJumping
+        ? 101
         : props.$isThrowing || props.$isDodging || props.$isGrabbing
         ? 98
         : 99,
       filter: getFighterPopFilter(props),
       animation: props.$isAtTheRopes
         ? "atTheRopesWobble 0.3s ease-in-out infinite"
+        : props.$isRopeJumping && props.$ropeJumpPhase === "landing"
+        ? "ropeJumpLandBounce 0.18s ease-out forwards"
+        : props.$isRopeJumping
+        ? "none"
         : props.$isGrabBellyFlopping
         ? "grabBellyFlopLunge 0.4s cubic-bezier(0.25, 0.1, 0.25, 1) forwards"
         : props.$isBeingGrabBellyFlopped
@@ -353,10 +363,8 @@ export const StyledImage = styled("img")
         ? "grabClashStruggle 0.15s ease-in-out infinite"
         : props.$isHit
         ? "hitSquash 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)"
-        : props.$justLandedFromDodge && !props.$isPowerSliding
-        ? "dodgeLanding 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards"
         : props.$isDodging
-        ? "dodgeTakeoff 0.2s cubic-bezier(0.25, 0.1, 0.25, 1) forwards, dodgeInvincibilityFlash 0.2s ease-out forwards"
+        ? "dashSquash 0.15s ease-out forwards"
         : props.$isPowerSliding &&
           !props.$isBeingGrabbed &&
           !props.$isBeingThrown &&
@@ -380,7 +388,7 @@ export const StyledImage = styled("img")
         ? "slapRush 0.12s ease-in-out infinite"
         : !props.$isAttacking &&
           !props.$isDodging &&
-          !props.$isJumping &&
+          !props.$isRopeJumping &&
           !props.$isThrowing &&
           !props.$isGrabbing &&
           !props.$isBeingGrabbed &&
@@ -456,8 +464,14 @@ export const StyledImage = styled("img")
     50% { transform: scaleX(var(--facing, 1)) scaleY(0.94) rotate(calc(var(--facing, 1) * 5deg)); }
   }
   @keyframes powerSlide {
-    0%, 100% { transform: scaleX(var(--facing, 1)) translateY(6px); }
-    50% { transform: scaleX(var(--facing, 1)) translateY(8px); }
+    0%, 100% { transform: scaleX(calc(var(--facing, 1) * 1.06)) scaleY(0.92); transform-origin: center bottom; }
+    50% { transform: scaleX(calc(var(--facing, 1) * 1.08)) scaleY(0.88); transform-origin: center bottom; }
+  }
+  @keyframes ropeJumpLandBounce {
+    0% { transform: scaleX(var(--facing, 1)) translateY(-8%); }
+    35% { transform: scaleX(var(--facing, 1)) translateY(2%); }
+    65% { transform: scaleX(var(--facing, 1)) translateY(-1%); }
+    100% { transform: scaleX(var(--facing, 1)) translateY(0%); }
   }
   @keyframes atTheRopesWobble {
     0%, 100% { transform: scaleX(var(--facing, 1)) scaleY(0.95) rotate(0deg) translateX(0); }
@@ -547,27 +561,18 @@ export const StyledImage = styled("img")
     40% { transform: scaleX(calc(var(--facing, 1) * 0.9)) scaleY(1.05) translateY(-2px); transform-origin: center bottom; }
     100% { transform: scaleX(calc(var(--facing, 1) * 0.85)) scaleY(0.9) translateY(3px); transform-origin: center bottom; }
   }
-  @keyframes dodgeTakeoff {
-    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0); }
-    20% { transform: scaleX(calc(var(--facing, 1) * 1.08)) scaleY(0.88) translateY(0); }
-    50% { transform: scaleX(calc(var(--facing, 1) * 0.94)) scaleY(1.08) translateY(-2px); }
-    80% { transform: scaleX(calc(var(--facing, 1) * 0.97)) scaleY(1.04) translateY(-1px); }
-    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0); }
+  @keyframes dashSquash {
+    0% { transform: scaleX(calc(var(--facing, 1) * 1.15)) scaleY(0.85) translateY(0); transform-origin: center bottom; }
+    30% { transform: scaleX(calc(var(--facing, 1) * 1.12)) scaleY(0.88) translateY(0); transform-origin: center bottom; }
+    100% { transform: scaleX(calc(var(--facing, 1) * 1.08)) scaleY(0.92) translateY(0); transform-origin: center bottom; }
   }
-  @keyframes dodgeInvincibilityFlash {
+  @keyframes dashInvincibilityFlash {
     0% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) brightness(2.5) saturate(0.2); }
     40% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) brightness(2.2) saturate(0.3); }
     70% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) brightness(1.3) saturate(0.7); }
     100% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) brightness(1) saturate(1); }
   }
-  @keyframes dodgeCancelSlam {
-    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0); }
-    40% { transform: scaleX(calc(var(--facing, 1) * 0.94)) scaleY(1.08) translateY(1px); }
-    70% { transform: scaleX(calc(var(--facing, 1) * 1.12)) scaleY(0.82) translateY(0); }
-    90% { transform: scaleX(calc(var(--facing, 1) * 0.98)) scaleY(1.03) translateY(0); }
-    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0); }
-  }
-  @keyframes dodgeLanding {
+  @keyframes dashLanding {
     0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0); transform-origin: center bottom; }
     25% { transform: scaleX(calc(var(--facing, 1) * 1.06)) scaleY(0.88) translateY(0); transform-origin: center bottom; }
     55% { transform: scaleX(calc(var(--facing, 1) * 0.98)) scaleY(1.04) translateY(0); transform-origin: center bottom; }
@@ -840,7 +845,7 @@ export const PumoClone = styled.img
       zIndex:
         props.$x < -20 || props.$x > 1075 || props.$y < GROUND_LEVEL - 35
           ? 0
-          : 98,
+          : 97,
       pointerEvents: "none",
       filter: "drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000)",
     },
@@ -863,7 +868,7 @@ export const AnimatedPumoCloneContainer = styled.div
       zIndex:
         props.$x < -20 || props.$x > 1075 || props.$y < GROUND_LEVEL - 35
           ? 0
-          : 98,
+          : 97,
       pointerEvents: "none",
       overflow: "hidden",
       clipPath: "inset(0 0.5% 0 0.5%)",

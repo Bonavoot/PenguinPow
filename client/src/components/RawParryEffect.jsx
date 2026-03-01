@@ -41,7 +41,7 @@ const ParryTextCenter = styled.div`
   top: 50%;
   left: 50%;
   font-family: "Bungee", cursive;
-  font-size: 0.86cqw;
+  font-size: 1.02cqw;
   color: ${props => props.$isPerfect ? '#FFD700' : '#00BFFF'};
   -webkit-text-stroke: 2.5px #000;
   paint-order: stroke fill;

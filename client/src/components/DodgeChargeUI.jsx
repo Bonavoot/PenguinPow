@@ -1,7 +1,7 @@
 import PropTypes from "prop-types";
 import "./DodgeChargeUI.css";
 
-const DodgeChargeUI = ({ dodgeCharges, dodgeChargeCooldowns, index }) => {
+const DashChargeUI = ({ dodgeCharges, dodgeChargeCooldowns, index }) => {
   const currentTime = Date.now();
 
   return (
@@ -27,10 +27,10 @@ const DodgeChargeUI = ({ dodgeCharges, dodgeChargeCooldowns, index }) => {
   );
 };
 
-DodgeChargeUI.propTypes = {
+DashChargeUI.propTypes = {
   dodgeCharges: PropTypes.number.isRequired,
   dodgeChargeCooldowns: PropTypes.arrayOf(PropTypes.number).isRequired,
   index: PropTypes.number.isRequired,
 };
 
-export default DodgeChargeUI;
+export default DashChargeUI;

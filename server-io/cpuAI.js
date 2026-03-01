@@ -11,12 +11,12 @@ const MAP_WIDTH = MAP_RIGHT_BOUNDARY - MAP_LEFT_BOUNDARY;
 
 // AI Configuration - Tuned for expert sumo gameplay
 const AI_CONFIG = {
-  // Distance thresholds
-  SLAP_RANGE: 119,         // Scaled for camera zoom (was 160)
+  // Distance thresholds — adjusted for new frame data hitbox ranges
+  SLAP_RANGE: 100,         // Nerfed to match new SLAP_HITBOX_DISTANCE_VALUE (~125px)
   GRAB_RANGE: 148,         // Scaled for camera zoom (was 200)
   GRAB_APPROACH_RANGE: 185, // Scaled for camera zoom (was 250)
   MID_RANGE: 185,          // Scaled for camera zoom (was 250)
-  CHARGED_ATTACK_RANGE: 259, // Scaled for camera zoom (was 350)
+  CHARGED_ATTACK_RANGE: 200, // Adjusted for buffed charged hitbox (~106px)
   
   // Edge/corner awareness
   EDGE_DANGER_ZONE: 89,    // Scaled for camera zoom (was 120)
@@ -33,7 +33,7 @@ const AI_CONFIG = {
   
   // Stamina thresholds
   GRAB_BREAK_STAMINA: 10,  // Stamina cost for grab break (equal for both players)
-  DODGE_STAMINA_COST: 7,   // ~7% of max stamina per dodge
+  DODGE_STAMINA_COST: 4,   // Matches new DODGE_STAMINA_COST constant
   LOW_STAMINA_THRESHOLD: 25, // Opponent considered low stamina
   
   // Movement
@@ -198,9 +198,9 @@ function isAtGrabRange(cpu, human) {
 }
 
 // Check if the opponent is in a state where a grab can actually connect
+// Grabs beat dodge at any point — dodge is never safe from grabs
 function isOpponentGrabbable(human) {
-  return !human.isDodging &&
-         !human.isBeingThrown &&
+  return !human.isBeingThrown &&
          !human.isBeingGrabbed &&
          !human.isGrabWhiffRecovery &&
          !human.isGrabTeching &&
@@ -524,10 +524,10 @@ function updateCPUAI(cpu, human, room, currentTime) {
   // Handle pending key releases
   handlePendingKeyReleases(cpu, aiState, currentTime);
   
-  // Cancel grab approach if situation changed (hit, grabbed, opponent dodging/retreating/ungrabable)
+  // Cancel grab approach if situation changed (hit, grabbed, opponent in i-frames/ungrabable)
   if (aiState.grabApproachIntent && (
     cpu.isHit || cpu.isBeingGrabbed || cpu.isBeingThrown ||
-    human.isAttacking || human.isDodging || !isOpponentGrabbable(human) ||
+    human.isAttacking || !isOpponentGrabbable(human) ||
     !isFacingOpponent(cpu, human)
   )) {
     aiState.grabApproachIntent = false;
@@ -756,7 +756,8 @@ function handlePunishParry(cpu, human, aiState, currentTime) {
 
 // Handle power-up usage (F key)
 function handlePowerUpUsage(cpu, human, aiState, currentTime, distance) {
-  const hasSnowball = cpu.activePowerUp === "snowball" && !cpu.snowballCooldown && !cpu.isThrowingSnowball;
+  const snowballThrowsRemaining = cpu.snowballThrowsRemaining ?? 3;
+  const hasSnowball = cpu.activePowerUp === "snowball" && snowballThrowsRemaining > 0 && !cpu.snowballCooldown && !cpu.isThrowingSnowball;
   const hasPumoArmy = cpu.activePowerUp === "pumo_army" && !cpu.pumoArmyCooldown && !cpu.isSpawningPumoArmy;
   
   if (!hasSnowball && !hasPumoArmy) return false;
@@ -1517,6 +1518,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     if (cpu.isRecovering) return true;
     if (cpu.isThrowingSnowball || cpu.isSpawningPumoArmy || cpu.isThrowingSalt) return true;
     if (cpu.isAtTheRopes) return true;
+    if (cpu.isRopeJumping) return true;
     if (cpu.isInEndlag) return true;
     if (cpu.isGrabBreaking || cpu.isGrabBreakCountered || cpu.isGrabBreakSeparating) return true;
     if (cpu.isGrabClashing) return true;
@@ -1701,13 +1703,11 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     clearChargeState(cpu, true); // Dodge cancels charging
     
     cpu.isDodging = true;
-    cpu.isDodgeCancelling = false;
-    cpu.dodgeCancelStartTime = 0;
-    cpu.dodgeCancelStartY = 0;
+    cpu.isDodgeStartup = true;
     cpu.dodgeStartTime = currentTime;
-    cpu.dodgeEndTime = currentTime + 450;
+    cpu.dodgeStartupEndTime = currentTime + 50; // DODGE_STARTUP_MS
+    cpu.dodgeEndTime = currentTime + 270; // DODGE_DURATION (startup + active)
     cpu.dodgeStartX = cpu.x;
-    cpu.dodgeStartY = cpu.y;
     
     cpu.stamina = Math.max(0, cpu.stamina - AI_CONFIG.DODGE_STAMINA_COST);
     
@@ -1718,12 +1718,6 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     } else {
       cpu.dodgeDirection = cpu.facing === -1 ? 1 : -1;
     }
-    
-    setPlayerTimeout(cpu.id, () => {
-      cpu.isDodging = false;
-      cpu.isDodgeCancelling = false;
-      cpu.dodgeDirection = null;
-    }, 450);
     
     cpu._prevKeys = { ...cpu.keys };
     return;
@@ -1776,6 +1770,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
   // Process F key power-ups
   if (keyJustPressed("f") && 
       (cpu.activePowerUp === "snowball" || cpu.activePowerUp === "pumo_army") &&
+      (cpu.activePowerUp !== "snowball" || (cpu.snowballThrowsRemaining ?? 3) > 0) &&
       !cpu.snowballCooldown &&
       !cpu.pumoArmyCooldown &&
       !cpu.isThrowingSnowball &&
@@ -1793,6 +1788,14 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       !cpu.isChargingAttack) {
     
     if (cpu.activePowerUp === "snowball") {
+      if (cpu.snowballThrowsRemaining == null) {
+        cpu.snowballThrowsRemaining = 3;
+      }
+      if (cpu.snowballThrowsRemaining <= 0) {
+        cpu._prevKeys = { ...cpu.keys };
+        return;
+      }
+
       cpu.isThrowingSnowball = true;
       cpu.currentAction = "snowball";
       cpu.actionLockUntil = currentTime + 250;
@@ -1814,6 +1817,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       };
       
       cpu.snowballs.push(snowball);
+      cpu.snowballThrowsRemaining = Math.max(0, cpu.snowballThrowsRemaining - 1);
       cpu.snowballCooldown = true;
       
       setPlayerTimeout(cpu.id, () => {
@@ -1834,7 +1838,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       cpu.isStrafing = false;
       
       const armyDirection = cpu.facing === 1 ? -1 : 1;
-      const numClones = 5;
+      const numClones = 3;
       const spawnDelay = 1000;
       const startX = armyDirection === 1 ? 0 : 1150;
       const GROUND_LEVEL = 230;

@@ -126,7 +126,7 @@ function App() {
               )}
               {steamDeckMode && (
                 <div className="steam-deck-controls-hint">
-                  A: Attack | B: Dodge | X: Grab | Y: Throw | Left Stick: Move
+                  A: Attack | B: Dash | X: Grab | Y: Throw | Left Stick: Move
                 </div>
               )}
               <MainMenu

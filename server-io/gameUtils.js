@@ -7,6 +7,8 @@ const {
   KNOCKBACK_IMMUNITY_DURATION,
   HITSTOP_CHARGED_MIN_MS, HITSTOP_CHARGED_MAX_MS,
   CHARGE_FULL_POWER_MS,
+  DODGE_RECOVERY_MS,
+  GROUND_LEVEL,
 } = require("./constants");
 
 // Game constants
@@ -121,8 +123,9 @@ function setPlayerTimeout(playerId, callback, delay, name = null) {
 function isPlayerInActiveState(player) {
   return (
     !player.isAttacking &&
-    !player.isJumping &&
+    !player.isRopeJumping &&
     !player.isDodging &&
+    !player.isDodgeRecovery &&
     !player.isThrowing &&
     !player.isBeingThrown &&
     !player.isGrabbing &&
@@ -158,7 +161,9 @@ function isPlayerInBasicActiveState(player) {
   return (
     // Core action states
     !player.isAttacking &&
+    !player.isRopeJumping &&
     !player.isDodging &&
+    !player.isDodgeRecovery &&
     !player.isThrowing &&
     !player.isBeingThrown &&
     !player.isGrabbing &&
@@ -207,10 +212,15 @@ function canPlayerUseAction(player) {
   );
 }
 
-// Special function for dodge - allows dodging DURING charging (dodge will cancel the charge)
-function canPlayerDodge(player) {
+// Special function for dash - allows dashing DURING charging (dash will cancel the charge)
+function canPlayerDash(player) {
   // Check action lock timer
   if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
+    return false;
+  }
+
+  // Dash-specific cooldown: forced idle gap after recovery so consecutive dashes read as distinct
+  if (player.dodgeCooldownUntil && Date.now() < player.dodgeCooldownUntil) {
     return false;
   }
   
@@ -218,7 +228,9 @@ function canPlayerDodge(player) {
   return (
     // Core action states
     !player.isAttacking &&
+    !player.isRopeJumping &&
     !player.isDodging &&
+    !player.isDodgeRecovery &&
     !player.isThrowing &&
     !player.isBeingThrown &&
     !player.isGrabbing &&
@@ -244,7 +256,7 @@ function canPlayerDodge(player) {
     // Attack timing states (startup/endlag)
     !player.isInStartupFrames &&
     !player.isInEndlag &&
-    // NOTE: isChargingAttack is NOT checked - dodge is allowed during charging (but cancels it)
+    // NOTE: isChargingAttack is NOT checked - dash is allowed during charging (but cancels it)
     // Recovery and ready states
     !player.isRecovering &&
     !player.canMoveToReady
@@ -269,6 +281,8 @@ function resetPlayerAttackStates(player) {
   player.startupEndTime = 0;
   player.isInEndlag = false;
   player.endlagEndTime = 0;
+  player.slapActiveEndTime = 0;
+  player.chargedActiveEndTime = 0;
   player.attackCooldownUntil = 0;
 }
 
@@ -310,19 +324,19 @@ function clearAllActionStates(player) {
   player.startupEndTime = 0;
   player.isInEndlag = false;
   player.endlagEndTime = 0;
+  player.slapActiveEndTime = 0;
+  player.chargedActiveEndTime = 0;
   
   // Clear dodge states
   player.isDodging = false;
-  player.isDodgeCancelling = false;
-  player.dodgeCancelStartTime = 0;
-  player.dodgeCancelStartY = 0;
+  player.isDodgeStartup = false;
+  player.isDodgeRecovery = false;
+  player.dodgeCooldownUntil = 0;
   player.dodgeStartTime = 0;
   player.dodgeEndTime = 0;
   player.dodgeDirection = null;
   player.dodgeStartX = 0;
-  player.dodgeStartY = 0;
-  player.justCrossedThrough = false;
-  player.crossedThroughTime = 0;
+  player.dodgeStartupEndTime = 0;
   
   // CRITICAL: Clear any buffered actions - prevents buffered dodge from executing while grabbed
   player.bufferedAction = null;
@@ -413,6 +427,17 @@ function clearAllActionStates(player) {
   player.isThrowingSnowball = false;
   player.isSpawningPumoArmy = false;
   player.isThrowingSalt = false;
+  
+  // Clear rope jump states (keep Y position — gravity handles the fall naturally,
+  // hitstop freezes at the air contact point for fighting-game-style anti-air clarity)
+  player.isRopeJumping = false;
+  player.ropeJumpPhase = null;
+  player.ropeJumpStartTime = 0;
+  player.ropeJumpStartX = 0;
+  player.ropeJumpTargetX = 0;
+  player.ropeJumpDirection = 0;
+  player.ropeJumpActiveStartTime = 0;
+  player.ropeJumpLandingTime = 0;
 }
 
 function isWithinMapBoundaries(
@@ -471,7 +496,7 @@ function canPlayerSlap(player) {
   return (
     // Use the comprehensive blocking state check
     isPlayerInBasicActiveState(player) &&
-    !player.isJumping &&
+    !player.isRopeJumping &&
     !player.canMoveToReady &&
     !player.isRecovering &&
     !isOnCooldown &&
@@ -630,7 +655,7 @@ module.exports = {
   isPlayerInBasicActiveState,
   canPlayerCharge,
   canPlayerUseAction,
-  canPlayerDodge,
+  canPlayerDash,
   resetPlayerAttackStates,
   clearAllActionStates,
   isWithinMapBoundaries,

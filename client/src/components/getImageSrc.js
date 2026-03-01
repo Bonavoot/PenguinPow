@@ -80,7 +80,10 @@ const getImageSrc = (
   isBeingGrabFrontalForceOut,
   isGrabTeching,
   grabTechRole,
-  isGrabWhiffRecovery
+  isGrabWhiffRecovery,
+  isRopeJumping,
+  ropeJumpPhase,
+  isDodgeRecovery
 ) => {
   if (ritualAnimationSrc) {
     return ritualAnimationSrc;
@@ -111,6 +114,10 @@ const getImageSrc = (
   if (isRawParryStun) return isPerfectParried;
   if (isHit) return hit;
   if (isAtTheRopes) return atTheRopes;
+  if (isRopeJumping) {
+    if (ropeJumpPhase === "startup" || ropeJumpPhase === "landing") return recovering;
+    return dodging;
+  }
   if (isBowing) return bow;
   if (isPowerSliding) return crouchStance;
   if (isRecovering) return recovering;
@@ -118,6 +125,7 @@ const getImageSrc = (
   if (isSpawningPumoArmy) return pumoArmy;
   if (isBeingGrabbed || isBeingPulled || isBeingPushed) return beingGrabbed;
   if (isDodging) return dodging;
+  if (isDodgeRecovery) return recovering;
   if (isJumping) return throwing;
   if (isAttacking && !isSlapAttack) return attack;
   if (isCrouchStrafing) return crouchStrafingApng;

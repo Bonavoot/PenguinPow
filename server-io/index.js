@@ -23,8 +23,11 @@ const {
   MOVEMENT_ACCELERATION, MOVEMENT_DECELERATION, MAX_MOVEMENT_SPEED,
   MOVEMENT_MOMENTUM, MOVEMENT_FRICTION, ICE_DRIFT_FACTOR,
   MIN_MOVEMENT_THRESHOLD, INITIAL_MOVEMENT_BURST,
-  DODGE_DURATION, DODGE_BASE_SPEED, DODGE_HOP_HEIGHT, DODGE_LANDING_MOMENTUM,
-  DODGE_CANCEL_DURATION, DODGE_CANCEL_SPEED_MULT, DODGE_CROSSED_THROUGH_GRACE,
+  DODGE_DURATION, DODGE_BASE_SPEED,
+  DODGE_CANCEL_ACTION_LOCK,
+  DODGE_STARTUP_MS, DODGE_RECOVERY_MS, DODGE_COOLDOWN_MS,
+  SLAP_STARTUP_MS, SLAP_ACTIVE_MS,
+  CHARGED_STARTUP_MS, CHARGED_ACTIVE_MS,
   GRAB_WALK_SPEED_MULTIPLIER, GRAB_WALK_ACCEL_MULTIPLIER,
   CHARGE_FULL_POWER_MS,
   GRAB_STARTUP_DURATION_MS, GRAB_STARTUP_HOP_HEIGHT, GRAB_LUNGE_DISTANCE, SLAP_ATTACK_STARTUP_MS,
@@ -37,6 +40,8 @@ const {
   GRAB_BREAK_INPUT_LOCK_MS, GRAB_BREAK_ACTION_LOCK_MS,
   RAW_PARRY_STAMINA_COST, RAW_PARRY_MIN_DURATION, PULL_BOUNDARY_MARGIN,
   AT_THE_ROPES_DURATION,
+  ROPE_JUMP_STARTUP_MS, ROPE_JUMP_ACTIVE_MS, ROPE_JUMP_LANDING_RECOVERY_MS,
+  ROPE_JUMP_ARC_HEIGHT,
   KNOCKBACK_IMMUNITY_DURATION,
   STAMINA_REGEN_INTERVAL_MS, STAMINA_REGEN_AMOUNT,
   SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST, DODGE_STAMINA_COST,
@@ -55,7 +60,7 @@ const {
   isPlayerInActiveState,
   canPlayerCharge,
   canPlayerUseAction,
-  canPlayerDodge,
+  canPlayerDash,
   resetPlayerAttackStates,
   clearAllActionStates,
   isWithinMapBoundaries,
@@ -85,6 +90,7 @@ const {
   adjustPlayerPositions,
   safelyEndChargedAttack,
   activateBufferedInputAfterGrab,
+  executeInputBuffer,
 } = require("./gameFunctions");
 
 // Import delta state utilities
@@ -381,26 +387,9 @@ function tick(delta) {
         }
       }
 
-      // Check for collision and adjust positions
-      // Always enable collision detection during slap attacks to prevent pass-through
-      if (
-        arePlayersColliding(player1, player2) &&
-        // Enable collision if one player is hit (prevents pass-through from knockback)
-        (player1.isHit ||
-          player2.isHit ||
-          // Enable collision during slap attacks to prevent pass-through
-          (player1.isAttacking && player1.attackType === "slap") ||
-          (player2.isAttacking && player2.attackType === "slap") ||
-          // Original collision bypass conditions (only when neither player is hit and not slapping)
-          (!(player1.isAttacking && player1.attackType === "charged") &&
-            !(player2.isAttacking && player2.attackType === "charged") &&
-            !player1.isGrabbing &&
-            !player2.isGrabbing &&
-            !player1.isBeingGrabbed &&
-            !player2.isBeingGrabbed &&
-            !player1.isThrowLanded &&
-            !player2.isThrowLanded))
-      ) {
+      // Pushbox: always resolve overlap when players are colliding.
+      // arePlayersColliding already returns false during dodge/grab/throw states.
+      if (arePlayersColliding(player1, player2)) {
         adjustPlayerPositions(player1, player2, delta);
       }
 
@@ -411,7 +400,7 @@ function tick(delta) {
         !player2.isBeingGrabbed &&
         !player1.isThrowing &&
         !player2.isThrowing &&
-        !(player1.isHit && player2.isHit) // Only disable if BOTH are hit
+        !(player1.isHit && player2.isHit)
       ) {
         // Preserve facing direction during attacks and throws
         // Special case: allow dodging player to update facing even when opponent is attacking
@@ -426,33 +415,29 @@ function tick(delta) {
           if (!player1.isHit && !player2.isHit) {
             // Normal facing logic when both players are not hit
             // Don't update facing if player has locked slap facing direction OR is attacking OR has atTheRopes facing locked
-            // Also freeze facing for players in the crossed-through grace period (post-dodge overlap)
-            if (!player1.slapFacingDirection && !player1.isAttacking && !player1.atTheRopesFacingDirection && !player1.justCrossedThrough && player1.x < player2.x) {
-              player1.facing = -1; // Player 1 faces right
+            if (!player1.slapFacingDirection && !player1.isAttacking && !player1.atTheRopesFacingDirection && player1.x < player2.x) {
+              player1.facing = -1;
             } else if (
               !player1.slapFacingDirection &&
               !player1.isAttacking &&
               !player1.atTheRopesFacingDirection &&
-              !player1.justCrossedThrough &&
               player1.x >= player2.x
             ) {
-              player1.facing = 1; // Player 1 faces left
+              player1.facing = 1;
             }
 
-            if (!player2.slapFacingDirection && !player2.isAttacking && !player2.atTheRopesFacingDirection && !player2.justCrossedThrough && player1.x < player2.x) {
-              player2.facing = 1; // Player 2 faces left
+            if (!player2.slapFacingDirection && !player2.isAttacking && !player2.atTheRopesFacingDirection && player1.x < player2.x) {
+              player2.facing = 1;
             } else if (
               !player2.slapFacingDirection &&
               !player2.isAttacking &&
               !player2.atTheRopesFacingDirection &&
-              !player2.justCrossedThrough &&
               player1.x >= player2.x
             ) {
-              player2.facing = -1; // Player 2 faces right
+              player2.facing = -1;
             }
           } else if (!player1.isHit && player2.isHit) {
-            // Only update player1's facing when player2 is hit and player1 doesn't have locked slap facing
-            if (!player1.slapFacingDirection && !player1.isAttacking && !player1.atTheRopesFacingDirection && !player1.justCrossedThrough) {
+            if (!player1.slapFacingDirection && !player1.isAttacking && !player1.atTheRopesFacingDirection) {
               if (player1.x < player2.x) {
                 player1.facing = -1; // Player 1 faces right
               } else {
@@ -461,7 +446,7 @@ function tick(delta) {
             }
           } else if (player1.isHit && !player2.isHit) {
             // Only update player2's facing when player1 is hit and player2 doesn't have locked slap facing
-            if (!player2.slapFacingDirection && !player2.isAttacking && !player2.atTheRopesFacingDirection && !player2.justCrossedThrough) {
+            if (!player2.slapFacingDirection && !player2.isAttacking && !player2.atTheRopesFacingDirection) {
               if (player1.x < player2.x) {
                 player2.facing = 1; // Player 2 faces left
               } else {
@@ -739,8 +724,14 @@ function tick(delta) {
               activateBufferedInputAfterGrab(pullerRef, rooms);
             }
           }
-          if (player.isGrabBreaking) player.isGrabBreaking = false;
-          if (player.isGrabBreakCountered) player.isGrabBreakCountered = false;
+          if (player.isGrabBreaking) {
+            player.isGrabBreaking = false;
+            activateBufferedInputAfterGrab(player, rooms);
+          }
+          if (player.isGrabBreakCountered) {
+            player.isGrabBreakCountered = false;
+            activateBufferedInputAfterGrab(player, rooms);
+          }
 
           // Fall through to normal movement so residual velocity applies this tick
         } else {
@@ -748,6 +739,8 @@ function tick(delta) {
           return;
         }
       }
+
+
 
       // Handle knockback movement with NO boundary restrictions
       if (player.isRingOutFreezeActive) {
@@ -769,93 +762,47 @@ function tick(delta) {
           player.movementVelocity = 0;
           // Don't return - continue normal processing
         } else {
-          // Apply immediate knockback without boundary check
+          // Single unified knockback — only knockbackVelocity drives displacement during hitstun
           player.x =
             player.x + player.knockbackVelocity.x * delta * speedFactor;
 
-          // Check if player crossed the dohyo boundary - trigger fast heavy fall
           const isOutsideDohyo = player.x < DOHYO_LEFT_BOUNDARY || player.x > DOHYO_RIGHT_BOUNDARY;
-          
-          // Check if player is past map boundaries (for reduced friction after ring-out)
           const isPastMapBoundaries = player.x < MAP_LEFT_BOUNDARY || player.x > MAP_RIGHT_BOUNDARY;
           
-          // Cinematic kill victims stay at ground level — no dohyo fall
           if (isOutsideDohyo && !player.isFallingOffDohyo && !player.isCinematicKillVictim) {
             player.isFallingOffDohyo = true;
           }
 
-          // Check if this is the loser after game over (for special handling)
           const isLoserAfterGameOver = room.gameOver && player.id === room.loserId;
           
-          // Fast, heavy fall physics - straight down while maintaining horizontal speed
           if (player.isFallingOffDohyo) {
-            // Fast downward movement (no arc, just straight down)
             const targetY = GROUND_LEVEL - DOHYO_FALL_DEPTH;
-            // If game is over, snap immediately to target Y (no gradual fall)
             if (isLoserAfterGameOver) {
-              if (player.y !== targetY) {
-                player.y = targetY; // Only set if different to avoid unnecessary updates
-              }
+              if (player.y !== targetY) player.y = targetY;
             } else if (player.y > targetY) {
               player.y = Math.max(targetY, player.y - DOHYO_FALL_SPEED);
             }
-            
-            // Maintain horizontal momentum with very slight friction (0.98 = minimal resistance)
             player.knockbackVelocity.x *= DOHYO_FALL_HORIZONTAL_RETENTION;
-            player.movementVelocity *= DOHYO_FALL_HORIZONTAL_RETENTION;
           } else if (isLoserAfterGameOver && isPastMapBoundaries) {
-            // LOSER PAST MAP BOUNDARIES BUT NOT YET PAST DOHYO:
-            // Apply same minimal friction as dohyo fall (0.98) - feels smooth, not jarring
             player.knockbackVelocity.x *= DOHYO_FALL_HORIZONTAL_RETENTION;
-            player.movementVelocity *= DOHYO_FALL_HORIZONTAL_RETENTION;
           } else {
-            // ICE PHYSICS: Getting hit on ice = SLIDING, not resistance!
-            // The ice makes knockback LONGER, not shorter
-            // Use very low friction - players slide when hit
-            
-            // DI (Directional Influence): Holding the opposite direction reduces knockback!
-            // This rewards skilled players who react quickly to hits
-            const knockbackDirection = player.knockbackVelocity.x > 0 ? 1 : -1; // 1 = right, -1 = left
+            // DI: holding opposite direction adds extra friction
+            const knockbackDirection = player.knockbackVelocity.x > 0 ? 1 : -1;
             const isHoldingOpposite = (knockbackDirection > 0 && player.keys.a && !player.keys.d) || 
                                       (knockbackDirection < 0 && player.keys.d && !player.keys.a);
-            
-            // DI friction multiplier - holding opposite direction adds significant friction
-            const DI_FRICTION_BONUS = 0.96; // Extra friction when holding opposite direction
+            const DI_FRICTION_BONUS = 0.96;
             
             if (player.isSlapKnockback) {
-              player.knockbackVelocity.x *= 0.992; // Slap hits slide far on ice
-              if (isHoldingOpposite) {
-                player.knockbackVelocity.x *= DI_FRICTION_BONUS; // DI reduces slap knockback
-              }
+              player.knockbackVelocity.x *= 0.97; // Was 0.992 — shorter knockback, positional play rewarded
             } else {
-              player.knockbackVelocity.x *= 0.985; // Charged hits slide even further
-              if (isHoldingOpposite) {
-                player.knockbackVelocity.x *= DI_FRICTION_BONUS; // DI reduces charged knockback
-              }
+              player.knockbackVelocity.x *= 0.96; // Was 0.985 — shorter knockback for charged too
             }
-            
-            // Transfer knockback into movement velocity for continued sliding
-            // This creates the "hit and slide on ice" effect
-            if (Math.abs(player.knockbackVelocity.x) > 0.1) {
-              player.movementVelocity = player.knockbackVelocity.x * 0.8;
+            if (isHoldingOpposite) {
+              player.knockbackVelocity.x *= DI_FRICTION_BONUS;
             }
           }
 
-          // Apply ice sliding physics to movement velocity
-          if (Math.abs(player.movementVelocity) > MIN_MOVEMENT_THRESHOLD) {
-            // ICE PHYSICS: Very low friction when hit - they're sliding on ice!
-            // For loser after game over, use same minimal friction as dohyo fall
-            if (isLoserAfterGameOver && isPastMapBoundaries) {
-              player.movementVelocity *= DOHYO_FALL_HORIZONTAL_RETENTION;
-            } else {
-              player.movementVelocity *= 0.996;
-            }
-
-            // Calculate new position with sliding
-            player.x = player.x + delta * speedFactor * player.movementVelocity;
-          }
-
-          // Parry knockback cannot push past map boundaries (no ring-out from parry)
+          // Parry knockback cannot push past map boundaries
           if (player.isParryKnockback) {
             const PARRY_BOUNDARY_BUFFER = 10;
             const clampedX = Math.max(
@@ -865,44 +812,21 @@ function tick(delta) {
             if (clampedX !== player.x) {
               player.x = clampedX;
               player.knockbackVelocity.x = 0;
-              player.movementVelocity = 0;
             }
           }
 
-          // Reset hit state when both knockback and sliding are nearly complete
-          // But KEEP isHit true if game is over and player is the loser (so knockback continues)
-          const hitMovementThreshold = player.isSlapKnockback
-            ? MIN_MOVEMENT_THRESHOLD * 0.3 // Much smaller threshold for slap attacks (longer slides)
-            : MIN_MOVEMENT_THRESHOLD; // Normal threshold for charged attacks
-
-          if (
-            Math.abs(player.knockbackVelocity.x) < 0.1 &&
-            Math.abs(player.movementVelocity) < hitMovementThreshold
-          ) {
-            player.knockbackVelocity.x = 0;
-            player.movementVelocity = 0;
-            
-            // Only clear isHit if game is NOT over, or if player is NOT the loser
-            // This keeps the loser sliding after ring-out instead of freezing
-            if (!(room.gameOver && player.id === room.loserId)) {
-              player.isHit = false;
-              player.isAlreadyHit = false; // Also clear isAlreadyHit to ensure player can be hit again
-              player.isSlapKnockback = false; // Reset slap knockback flag
-              player.isParryKnockback = false;
-            }
-            
-            // If player was at the ropes and is now back within ring boundaries,
-            // clear the locked facing direction so they can face normally again
-            if (player.atTheRopesFacingDirection !== null) {
-              const isWithinBoundaries = player.x > MAP_LEFT_BOUNDARY && player.x < MAP_RIGHT_BOUNDARY;
-              if (isWithinBoundaries) {
-                player.atTheRopesFacingDirection = null;
-                player.isAtTheRopes = false;
-                player.atTheRopesStartTime = 0;
-              }
-              // If still outside boundaries, keep the facing locked until round reset
+          // Clear at-the-ropes facing lock if back within boundaries
+          if (player.atTheRopesFacingDirection !== null) {
+            const isWithinBoundaries = player.x > MAP_LEFT_BOUNDARY && player.x < MAP_RIGHT_BOUNDARY;
+            if (isWithinBoundaries) {
+              player.atTheRopesFacingDirection = null;
+              player.isAtTheRopes = false;
+              player.atTheRopesStartTime = 0;
             }
           }
+
+          // Hitstun is purely timer-based — no velocity-based isHit reset.
+          // The processHit timer is the ONLY thing that ends hitstun.
         }
       }
 
@@ -927,6 +851,24 @@ function tick(delta) {
         }
       }
 
+      // Apply separation velocity after grab push ends (movement section blocks input during isGrabSeparating,
+      // but the separation velocity still needs to be applied so players slide apart).
+      if (player.isGrabSeparating && Math.abs(player.movementVelocity) > MIN_MOVEMENT_THRESHOLD) {
+        player.x += delta * speedFactor * player.movementVelocity;
+        player.movementVelocity *= ICE_COAST_FRICTION;
+        if (Math.abs(player.movementVelocity) < MIN_MOVEMENT_THRESHOLD) {
+          player.movementVelocity = 0;
+        }
+        player.x = Math.max(MAP_LEFT_BOUNDARY, Math.min(player.x, MAP_RIGHT_BOUNDARY));
+      }
+
+      // Process buffered inputs for human players.
+      // Runs every tick after state transitions so buffered actions fire on the
+      // first frame the player becomes actionable (same tick-level fairness as CPU).
+      if (!player.isCPU && player.inputBuffer) {
+        executeInputBuffer(player, rooms);
+      }
+
       // Handle grab startup — lunge forward during startup, then range check at the end.
       if (player.isGrabStartup) {
         const elapsed = Date.now() - player.grabStartupStartTime;
@@ -944,7 +886,7 @@ function tick(delta) {
           // Startup complete — instant range check
           const opponent = room.players.find((p) => p.id !== player.id);
 
-          if (opponent && isOpponentCloseEnoughForGrab(player, opponent) && isOpponentInFrontOfGrabber(player, opponent)) {
+          if (opponent && !(opponent.isRopeJumping && opponent.ropeJumpPhase === "active") && isOpponentCloseEnoughForGrab(player, opponent) && isOpponentInFrontOfGrabber(player, opponent)) {
             // === TECH CHECK: opponent also in grab startup → both tech ===
             // Whiffing players CANNOT tech — they are fully vulnerable.
             // Also check if opponent's startup has already expired AND their grab
@@ -961,13 +903,12 @@ function tick(delta) {
             }
 
             // === GRAB CHECK: opponent is in range and grabbable ===
-            // First-to-active wins: when opponent is slapping, timing determines winner
+            // Grabs beat dodges at any point — the hard counter to dodge
             const opponentGrabbableNeutral =
               !opponent.isBeingThrown &&
               !opponent.isBeingGrabbed &&
               !player.isBeingGrabbed &&
-              !player.throwTechCooldown &&
-              !opponent.isDodging;
+              !player.throwTechCooldown;
             const grabWinsVsSlap =
               opponent.isAttacking &&
               opponent.attackType === "slap" &&
@@ -1431,225 +1372,139 @@ function tick(delta) {
           player.knockbackVelocity.x = 0;
         }
       }
-      // Dodging - Revolutionary physics: "snap up, hang, slam down" like Celeste/Hollow Knight
-      // CRITICAL: Never process dodge movement if player is being grabbed
+      // Grounded dash dodge — slides forward on the ground, triggers dodge slap if deep enough into opponent
       if (player.isDodging && player.isBeingGrabbed) {
-        // Safety clear - if somehow both states are true, force clear dodge
         player.isDodging = false;
-        player.isDodgeCancelling = false;
+        player.isDodgeStartup = false;
         player.dodgeDirection = null;
         player.y = GROUND_LEVEL;
       }
+      // S-key dodge cancel — stops the dash immediately
+      if (player.isDodging && !player.isBeingGrabbed && player.keys.s) {
+        player.isDodging = false;
+        player.isDodgeStartup = false;
+        player.dodgeDirection = null;
+        player.y = GROUND_LEVEL;
+        player.movementVelocity = 0;
+        player.isStrafing = false;
+        player.isBraking = false;
+        player.isPowerSliding = false;
+        player.actionLockUntil = Math.max(player.actionLockUntil || 0, Date.now() + DODGE_CANCEL_ACTION_LOCK);
+
+        const cancelOpponent = room.players.find(p => p.id !== player.id);
+        if (cancelOpponent && !player.atTheRopesFacingDirection) {
+          player.facing = player.x < cancelOpponent.x ? -1 : 1;
+        }
+      }
       if (player.isDodging && !player.isBeingGrabbed) {
-        // Use fixed dodge speed - no momentum-based variations
-        let currentDodgeSpeed = speedFactor * DODGE_BASE_SPEED;
+        const dodgeOpponent = room.players.find(p => p.id !== player.id);
 
-        // Apply speed power-up to dodge with moderate multiplier
-        if (player.activePowerUp === POWER_UP_TYPES.SPEED) {
-          currentDodgeSpeed *= Math.min(player.powerUpMultiplier * 0.85, 1.5);
-        }
-
-        // Check for dodge cancel (holding 's' key) - FAST SLAM DOWN
-        if (player.keys.s && !player.isDodgeCancelling && player.y > GROUND_LEVEL) {
-          player.isDodgeCancelling = true;
-          player.dodgeCancelStartTime = Date.now();
-          player.dodgeCancelStartY = player.y;
-          player.dodgeCancelVelocity = 0; // For accelerating fall
-        }
-
-        // Handle dodge cancel - PUNCHY slam down with acceleration
-        if (player.isDodgeCancelling) {
-          const cancelProgress = Math.min(
-            (Date.now() - player.dodgeCancelStartTime) / DODGE_CANCEL_DURATION,
-            1
-          );
-          
-          // Use easeInQuad for accelerating slam: t^2 (starts slow, accelerates into ground)
-          // Then easeOutBack for slight bounce feel at the end
-          let easedProgress;
-          if (cancelProgress < 0.7) {
-            // Accelerating fall (easeInQuad)
-            const t = cancelProgress / 0.7;
-            easedProgress = t * t * 0.85;
-          } else {
-            // Quick settle with slight overshoot (easeOutBack feel)
-            const t = (cancelProgress - 0.7) / 0.3;
-            easedProgress = 0.85 + t * 0.15 * (1 + 0.3 * (1 - t));
+        // STARTUP PHASE: no movement yet, brief wind-up
+        if (player.isDodgeStartup) {
+          if (Date.now() >= player.dodgeStartupEndTime) {
+            player.isDodgeStartup = false;
           }
-          
-          // Interpolate from cancel start Y to ground level
-          player.y = player.dodgeCancelStartY - (player.dodgeCancelStartY - GROUND_LEVEL) * Math.min(easedProgress, 1);
-          
-          // Minimal horizontal movement during cancel - commitment to the slam
-          const newX = player.x + player.dodgeDirection * delta * currentDodgeSpeed * DODGE_CANCEL_SPEED_MULT;
-          
-          // Calculate effective boundary based on player size
-          const sizeOffset = 0;
-          const leftBoundary = MAP_LEFT_BOUNDARY + sizeOffset;
-          const rightBoundary = MAP_RIGHT_BOUNDARY - sizeOffset;
-          
-          if (newX >= leftBoundary && newX <= rightBoundary) {
-            player.x = newX;
+          // No movement during startup — player is committed but stationary
+        }
+        // ACTIVE PHASE: actual dash movement
+        else {
+          let currentDodgeSpeed = speedFactor * DODGE_BASE_SPEED;
+
+          if (player.activePowerUp === POWER_UP_TYPES.SPEED) {
+            currentDodgeSpeed *= Math.min(player.powerUpMultiplier * 0.85, 1.5);
           }
-          
-          // End dodge when cancel animation completes
-          if (cancelProgress >= 1) {
-            player.isDodging = false;
-            player.isDodgeCancelling = false;
-            const landingDirection = player.dodgeDirection || 0;
-            player.dodgeDirection = null;
-            player.y = GROUND_LEVEL;
-            
-            // Immediately update facing direction on dodge landing
-            // This prevents wrong-way attacks when dodge-through switches sides
-            const dodgeCancelOpponent = room.players.find(p => p.id !== player.id);
-            if (dodgeCancelOpponent && !player.atTheRopesFacingDirection && !player.slapFacingDirection) {
-              player.facing = player.x < dodgeCancelOpponent.x ? -1 : 1;
-            }
-            
-            // Set crossed-through grace period if overlapping with opponent after dodge
-            if (dodgeCancelOpponent) {
-              const overlapDistance = Math.abs(player.x - dodgeCancelOpponent.x);
-              const bodyHitboxSize = HITBOX_DISTANCE_VALUE * 2 * Math.max(player.sizeMultiplier || 1, dodgeCancelOpponent.sizeMultiplier || 1);
-              if (overlapDistance < bodyHitboxSize) {
-                player.justCrossedThrough = true;
-                player.crossedThroughTime = Date.now();
+
+          let newX = player.x + player.dodgeDirection * delta * currentDodgeSpeed;
+          newX = Math.max(MAP_LEFT_BOUNDARY, Math.min(newX, MAP_RIGHT_BOUNDARY));
+
+          // Pushbox: stop at opponent's body instead of phasing through.
+          if (dodgeOpponent && !dodgeOpponent.isDead) {
+            const opponentAllowsPhaseThrough =
+              dodgeOpponent.isAttacking && dodgeOpponent.attackType === "charged" && !dodgeOpponent.isInStartupFrames;
+            if (!opponentAllowsPhaseThrough) {
+              const bodyWidth = HITBOX_DISTANCE_VALUE * 2 * Math.max(player.sizeMultiplier || 1, dodgeOpponent.sizeMultiplier || 1);
+              const wouldOverlap = Math.abs(newX - dodgeOpponent.x) < bodyWidth;
+              if (wouldOverlap) {
+                if (player.dodgeDirection > 0 && dodgeOpponent.x > player.x) {
+                  newX = Math.min(newX, dodgeOpponent.x - bodyWidth);
+                } else if (player.dodgeDirection < 0 && dodgeOpponent.x < player.x) {
+                  newX = Math.max(newX, dodgeOpponent.x + bodyWidth);
+                }
+                newX = Math.max(MAP_LEFT_BOUNDARY, Math.min(newX, MAP_RIGHT_BOUNDARY));
               }
             }
-            
-            // ICE PHYSICS: Dodge landing = sliding on ice!
-            if ((player.keys.c || player.keys.control) && room.gameStart && !room.gameOver && !room.matchOver) {
-              // Holding C = STRONG power slide from dodge
-              player.movementVelocity = landingDirection * DODGE_SLIDE_MOMENTUM * DODGE_POWERSLIDE_BOOST;
-              player.isPowerSliding = true;
-            } else {
-              // Normal landing = still slides, just less
-              player.movementVelocity = landingDirection * DODGE_SLIDE_MOMENTUM;
-            }
-            
-            player.isBraking = false;
-            player.isStrafing = false;
-            
-            // Mark landing for visual effects
-            player.justLandedFromDodge = true;
-            player.dodgeLandTime = Date.now();
-            // Emit screen shake for dodge cancel slam (gentler than before)
-            emitThrottledScreenShake(room, io, {
-              intensity: 1.2,
-              duration: 70,
-            });
           }
-        } else {
-          // Normal dodge movement (not cancelling)
-          // Smooth sine-based arc for natural, graceful motion
-          
-          const elapsed = Date.now() - player.dodgeStartTime;
-          const totalDuration = player.dodgeEndTime - player.dodgeStartTime;
-          const dodgeProgress = Math.min(elapsed / totalDuration, 1);
 
-          // Smooth sine arc - natural parabolic feel
-          // sin(0 to PI) creates perfect 0 -> 1 -> 0 curve
-          const arcProgress = Math.sin(dodgeProgress * Math.PI);
-          
-          // Add slight ease-out on the rise and ease-in on the fall for weight
-          // This makes the penguin feel heavy at the top of the arc
-          let weightedArc;
-          if (dodgeProgress < 0.5) {
-            // Rising: ease-out cubic for snappy start
-            const riseT = dodgeProgress * 2; // 0 to 1 for first half
-            const easeOut = 1 - Math.pow(1 - riseT, 2.5);
-            weightedArc = easeOut * arcProgress / Math.sin(riseT * Math.PI / 2 + 0.001);
-            weightedArc = Math.min(weightedArc, 1) * arcProgress;
+          player.y = GROUND_LEVEL;
+          player.x = newX;
+        }
+
+        // Dodge active phase expired → transition to RECOVERY PHASE
+        if (Date.now() >= player.dodgeEndTime) {
+          const landingDirection = player.dodgeDirection || 0;
+          player.isDodging = false;
+          player.isDodgeStartup = false;
+          player.dodgeDirection = null;
+          player.y = GROUND_LEVEL;
+          player.isStrafing = false;
+          player.isBraking = false;
+
+          if (dodgeOpponent && !player.atTheRopesFacingDirection && !player.slapFacingDirection) {
+            player.facing = player.x < dodgeOpponent.x ? -1 : 1;
+          }
+
+          // Landing momentum on ice
+          if ((player.keys.c || player.keys.control) && room.gameStart && !room.gameOver && !room.matchOver) {
+            player.movementVelocity = landingDirection * DODGE_SLIDE_MOMENTUM * DODGE_POWERSLIDE_BOOST;
+            player.isPowerSliding = true;
           } else {
-            // Falling: ease-in for weighted drop
-            const fallT = (dodgeProgress - 0.5) * 2; // 0 to 1 for second half
-            const easeIn = Math.pow(fallT, 1.8);
-            weightedArc = arcProgress * (1 - easeIn * 0.15);
-          }
-          
-          // Blend between pure sine and weighted version for smoothness
-          const blendedArc = arcProgress * 0.7 + weightedArc * 0.3;
-          const hopHeight = blendedArc * DODGE_HOP_HEIGHT;
-
-          // Smooth speed curve - slightly faster at start and end, slower at apex
-          const speedMultiplier = 0.92 + Math.cos(dodgeProgress * Math.PI) * 0.08;
-
-          const adjustedSpeed = currentDodgeSpeed * speedMultiplier;
-
-          // Calculate new position - uses fixed speed, not affected by prior momentum
-          const newX = player.x + player.dodgeDirection * delta * adjustedSpeed;
-          const newY = GROUND_LEVEL + hopHeight;
-
-          // Calculate effective boundary based on player size
-          const sizeOffset = 0;
-          const leftBoundary = MAP_LEFT_BOUNDARY + sizeOffset;
-          const rightBoundary = MAP_RIGHT_BOUNDARY - sizeOffset;
-
-          // Only update position if within boundaries
-          if (newX >= leftBoundary && newX <= rightBoundary) {
-            player.x = newX;
-            player.y = newY;
-          } else {
-            // Still update Y position even if hitting boundary
-            player.y = newY;
+            player.movementVelocity = landingDirection * DODGE_SLIDE_MOMENTUM;
           }
 
-          if (Date.now() >= player.dodgeEndTime) {
-            // ICE PHYSICS: Dodge landing = sliding on ice!
-            const landingDirection = player.dodgeDirection || 0;
-            
-            player.isDodging = false;
-            player.isDodgeCancelling = false;
-            player.dodgeDirection = null;
-            player.y = GROUND_LEVEL;
-            player.isStrafing = false;
-            player.isBraking = false;
-            
-            // Immediately update facing direction on dodge landing
-            // This prevents wrong-way attacks when dodge-through switches sides
-            const dodgeLandOpponent = room.players.find(p => p.id !== player.id);
-            if (dodgeLandOpponent && !player.atTheRopesFacingDirection && !player.slapFacingDirection) {
-              player.facing = player.x < dodgeLandOpponent.x ? -1 : 1;
-            }
-            
-            // Set crossed-through grace period if overlapping with opponent after dodge
-            if (dodgeLandOpponent) {
-              const overlapDistance = Math.abs(player.x - dodgeLandOpponent.x);
-              const bodyHitboxSize = HITBOX_DISTANCE_VALUE * 2 * Math.max(player.sizeMultiplier || 1, dodgeLandOpponent.sizeMultiplier || 1);
-              if (overlapDistance < bodyHitboxSize) {
-                player.justCrossedThrough = true;
-                player.crossedThroughTime = Date.now();
-              }
-            }
-            
-            if ((player.keys.c || player.keys.control) && room.gameStart && !room.gameOver && !room.matchOver) {
-              // Holding C/CTRL = STRONG power slide from dodge
-              player.movementVelocity = landingDirection * DODGE_SLIDE_MOMENTUM * DODGE_POWERSLIDE_BOOST;
-              player.isPowerSliding = true;
-            } else {
-              // Normal landing = still slides, just less
-              player.movementVelocity = landingDirection * DODGE_SLIDE_MOMENTUM;
-            }
-            
-            // Direction keys can influence landing momentum slightly
-            if (player.keys.a && !player.keys.d) {
-              player.movementVelocity -= 0.2;
-            } else if (player.keys.d && !player.keys.a) {
-              player.movementVelocity += 0.2;
-            }
-            
-            // Mark landing for visual effects
-            player.justLandedFromDodge = true;
-            player.dodgeLandTime = Date.now();
+          if (player.keys.a && !player.keys.d) {
+            player.movementVelocity -= 0.2;
+          } else if (player.keys.d && !player.keys.a) {
+            player.movementVelocity += 0.2;
           }
+
+          player.justLandedFromDodge = true;
+          player.dodgeLandTime = Date.now();
+
+          // Enter RECOVERY PHASE — punishable, can't act
+          player.isDodgeRecovery = true;
+          player.dodgeRecoveryEndTime = Date.now() + DODGE_RECOVERY_MS;
+          player.actionLockUntil = Math.max(player.actionLockUntil || 0, Date.now() + DODGE_RECOVERY_MS);
         }
       }
 
-      // Clear crossed-through grace period
-      if (player.justCrossedThrough && player.crossedThroughTime) {
-        if (Date.now() - player.crossedThroughTime > DODGE_CROSSED_THROUGH_GRACE) {
-          player.justCrossedThrough = false;
-          player.crossedThroughTime = 0;
+      // Dodge recovery phase — clear when expired
+      if (player.isDodgeRecovery && Date.now() >= player.dodgeRecoveryEndTime) {
+        player.isDodgeRecovery = false;
+        player.dodgeRecoveryEndTime = 0;
+        player.dodgeCooldownUntil = Date.now() + DODGE_COOLDOWN_MS;
+
+        // Execute pending charge attack stored during dash
+        if (player.pendingChargeAttack && player.spacebarReleasedDuringDodge) {
+          const chargePercentage = player.pendingChargeAttack.power;
+          if (player.keys.mouse1) {
+            executeSlapAttack(player, rooms);
+          } else {
+            executeChargedAttack(player, chargePercentage, rooms);
+          }
+          player.isChargingAttack = false;
+          player.pendingChargeAttack = null;
+          player.spacebarReleasedDuringDodge = false;
+        } else if (
+          player.keys.mouse1 &&
+          player.mouse1PressTime > 0 && (Date.now() - player.mouse1PressTime) >= 200 &&
+          !player.isChargingAttack && !player.isAttacking &&
+          !player.isHit && !player.isRawParryStun && !player.isRawParrying &&
+          !player.isGrabbing && !player.isBeingGrabbed &&
+          !player.isThrowing && !player.isBeingThrown &&
+          !player.isGrabBreaking && !player.isGrabBreakCountered &&
+          !player.isRecovering && !player.canMoveToReady
+        ) {
+          startCharging(player);
         }
       }
 
@@ -1661,9 +1516,64 @@ function tick(delta) {
       }
       
       // POWER SLIDE FROM DODGE: If just landed and holding C/CTRL, ensure power slide is active
-      // This handles the immediate frame after dodge landing
       if (player.justLandedFromDodge && (player.keys.c || player.keys.control) && Math.abs(player.movementVelocity) > SLIDE_MAINTAIN_VELOCITY && room.gameStart && !room.gameOver && !room.matchOver) {
         player.isPowerSliding = true;
+      }
+
+      // ── ROPE JUMP arc physics ──
+      if (player.isRopeJumping) {
+        const now = Date.now();
+
+        if (player.ropeJumpPhase === "startup") {
+          if (now >= player.ropeJumpStartTime + ROPE_JUMP_STARTUP_MS) {
+            player.ropeJumpPhase = "active";
+            player.ropeJumpActiveStartTime = now;
+          }
+        } else if (player.ropeJumpPhase === "active") {
+          const elapsed = now - player.ropeJumpActiveStartTime;
+          const t = Math.min(1, elapsed / ROPE_JUMP_ACTIVE_MS);
+
+          const easedT = 0.5 - 0.5 * Math.cos(Math.PI * t);
+
+          player.x = player.ropeJumpStartX + (player.ropeJumpTargetX - player.ropeJumpStartX) * easedT;
+          player.y = GROUND_LEVEL + ROPE_JUMP_ARC_HEIGHT * 4 * t * (1 - t);
+
+          player.x = Math.max(MAP_LEFT_BOUNDARY, Math.min(player.x, MAP_RIGHT_BOUNDARY));
+
+          if (t >= 1) {
+            player.ropeJumpPhase = "landing";
+            player.ropeJumpLandingTime = now;
+            player.x = player.ropeJumpTargetX;
+            player.y = GROUND_LEVEL;
+            player.actionLockUntil = now + ROPE_JUMP_LANDING_RECOVERY_MS;
+
+            // No one-frame position snap — adjustPlayerPositions handles the
+            // overlap gradually over several ticks for a smooth visual slide.
+
+            emitThrottledScreenShake(room, io, {
+              intensity: 0.65,
+              duration: 250,
+            });
+          }
+        } else if (player.ropeJumpPhase === "landing") {
+          if (now >= player.ropeJumpLandingTime + ROPE_JUMP_LANDING_RECOVERY_MS) {
+            player.isRopeJumping = false;
+            player.ropeJumpPhase = null;
+            player.ropeJumpStartTime = 0;
+            player.ropeJumpStartX = 0;
+            player.ropeJumpTargetX = 0;
+            player.ropeJumpDirection = 0;
+            player.ropeJumpActiveStartTime = 0;
+            player.ropeJumpLandingTime = 0;
+            player.currentAction = null;
+            player.actionLockUntil = 0;
+
+            const ropeJumpOpponent = room.players.find(p => p.id !== player.id);
+            if (ropeJumpOpponent) {
+              player.facing = player.x < ropeJumpOpponent.x ? -1 : 1;
+            }
+          }
+        }
       }
 
       // Grab Movement
@@ -1777,6 +1687,7 @@ function tick(delta) {
         if (
           opponent &&
           !opponent.isGrabbingMovement &&
+          !(opponent.isRopeJumping && opponent.ropeJumpPhase === "active") &&
           isOpponentCloseEnoughForGrab(player, opponent) &&
           isOpponentInFrontOfGrabber(player, opponent) &&
           !opponent.isBeingThrown &&
@@ -2107,6 +2018,7 @@ function tick(delta) {
           player.keys.d &&
           !player.isCrouchStance &&
           !player.isDodging &&
+          !player.isRopeJumping &&
           !player.isThrowing &&
           !player.isGrabbing &&
           !player.isGrabbingMovement &&
@@ -2189,6 +2101,7 @@ function tick(delta) {
           player.keys.a &&
           !player.isCrouchStance &&
           !player.isDodging &&
+          !player.isRopeJumping &&
           !player.isThrowing &&
           !player.isGrabbing &&
           !player.isGrabbingMovement &&
@@ -2448,11 +2361,12 @@ function tick(delta) {
             Date.now() < player.slapStrafeCooldownEndTime) || // Clear strafing during post-slap cooldown
           player.isHit || // Add isHit to force clear strafing when parried
           player.isRawParrying || // Add isRawParrying to force clear strafing during raw parry
-          player.isAtTheRopes // Block strafing while at the ropes
+          player.isAtTheRopes || // Block strafing while at the ropes
+          player.isRopeJumping // Block strafing during rope jump
         ) {
           player.isStrafing = false;
-          // Don't immediately stop on ice unless hit
-          if (!player.isHit) {
+          // Don't immediately stop on ice unless hit or rope jumping
+          if (!player.isHit && !player.isRopeJumping) {
             player.movementVelocity *= MOVEMENT_FRICTION;
           }
           // Also clear grab walking if no movement conditions are met
@@ -2461,8 +2375,8 @@ function tick(delta) {
           }
         }
 
-        // Keep player from going below ground level
-        if (player.y > GROUND_LEVEL) {
+        // Keep player from going below ground level (skip during rope jump - arc controls Y)
+        if (player.y > GROUND_LEVEL && !player.isRopeJumping) {
           player.y -= delta * speedFactor + 10;
           player.y = Math.max(player.y, GROUND_LEVEL);
         }
@@ -2595,6 +2509,8 @@ function tick(delta) {
         player.isStrafing = false;
         player.movementVelocity = 0;
         player.isDodging = false;
+        player.isDodgeStartup = false;
+        player.isDodgeRecovery = false;
         player.isAttacking = false;
         player.isJumping = false;
         // Force clear crouch states during raw parry to prevent concurrent use
@@ -2652,7 +2568,6 @@ function tick(delta) {
         player.attackType === "charged" &&
         !player.isAtTheRopes
       ) {
-        // Only move in the direction the player is facing, but not if at the ropes
         const attackDirection = player.facing === 1 ? -1 : 1;
         const newX = player.x + attackDirection * delta * speedFactor * 2.5;
 

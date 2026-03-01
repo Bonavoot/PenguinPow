@@ -150,42 +150,46 @@ const FlashOverlay = styled.div`
 `;
 
 const RevealContainer = styled.div`
-  margin-top: calc(10.6cqh + 22px);
-  display: flex;
+  --player-card-width: clamp(74px, 11.2cqw, 132px);
+  margin-top: clamp(56px, 17.2cqh, 124px);
+  width: fit-content;
+  max-width: 96cqw;
+  display: grid;
+  grid-template-columns: var(--player-card-width) auto var(--player-card-width);
   align-items: center;
-  justify-content: center;
-  gap: clamp(16px, 3cqw, 40px);
-  padding: clamp(15px, 2.5cqw, 28px);
+  column-gap: clamp(5px, 0.9cqw, 10px);
+  padding: clamp(9px, 1.35cqh, 13px) clamp(10px, 1.1cqw, 14px);
   background: linear-gradient(180deg,
-    rgba(20, 10, 5, 0.95) 0%,
-    rgba(45, 21, 16, 0.95) 50%,
-    rgba(20, 10, 5, 0.95) 100%
+    rgba(20, 10, 5, 0.9) 0%,
+    rgba(45, 21, 16, 0.86) 50%,
+    rgba(20, 10, 5, 0.9) 100%
   );
-  border: 4px solid #d4af37;
-  border-radius: 16px;
+  border: 2px solid rgba(212, 175, 55, 0.65);
+  border-radius: clamp(10px, 1.1cqw, 16px);
   box-shadow: 
-    0 0 40px rgba(212, 175, 55, 0.4),
-    0 0 80px rgba(0, 0, 0, 0.8),
-    inset 0 0 60px rgba(0, 0, 0, 0.5);
+    0 8px 28px rgba(0, 0, 0, 0.55),
+    0 0 18px rgba(212, 175, 55, 0.2),
+    inset 0 0 30px rgba(0, 0, 0, 0.36);
   position: relative;
   overflow: visible;
   
   &::before {
     content: "";
     position: absolute;
-    top: 8px;
-    left: 8px;
-    right: 8px;
-    bottom: 8px;
-    border: 2px solid rgba(212, 175, 55, 0.3);
-    border-radius: 10px;
+    top: 6px;
+    left: 6px;
+    right: 6px;
+    bottom: 6px;
+    border: 1px solid rgba(212, 175, 55, 0.22);
+    border-radius: clamp(8px, 0.9cqw, 12px);
     pointer-events: none;
   }
   
   @media (max-width: 700px) {
-    gap: clamp(12px, 2.5cqw, 24px);
-    padding: clamp(10px, 2cqw, 18px);
-    border-width: 3px;
+    max-width: 96cqw;
+    column-gap: clamp(5px, 0.85cqw, 10px);
+    padding: clamp(7px, 1cqh, 10px) clamp(7px, 0.8cqw, 10px);
+    border-width: 2px;
   }
 `;
 
@@ -203,9 +207,13 @@ const getTypeColor = (type) => {
 const PlayerCard = styled.div`
   --glow-color: ${props => getTypeColor(props.$powerUpType).glow};
   
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto auto auto;
+  justify-items: center;
   align-items: center;
+  row-gap: clamp(3px, 0.45cqh, 6px);
+  min-width: 0;
+  width: 100%;
   animation: ${props => props.$isPlayer1 ? slamInLeft : slamInRight} 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   animation-delay: ${props => props.$isPlayer1 ? '0.1s' : '0.2s'};
   opacity: 0;
@@ -218,7 +226,7 @@ const PlayerLabel = styled.div`
   color: ${props => props.$isPlayer1 ? '#00d2ff' : '#ff6b6b'};
   text-transform: uppercase;
   letter-spacing: 0.15em;
-  margin-bottom: clamp(6px, 1cqh, 10px);
+  margin-bottom: 0;
   text-shadow: 
     2px 2px 0 #000,
     0 0 10px ${props => props.$isPlayer1 ? 'rgba(0, 210, 255, 0.5)' : 'rgba(255, 107, 107, 0.5)'};
@@ -232,68 +240,23 @@ const PlayerLabel = styled.div`
   }
 `;
 
-const PowerUpCard = styled.div`
-  width: clamp(80px, 12cqw, 145px);
-  background: linear-gradient(180deg,
-    #4a3525 0%,
-    #3d2817 50%,
-    #2a1d14 100%
-  );
-  border: 3px solid ${props => getTypeColor(props.$powerUpType).main};
-  border-radius: clamp(4px, 0.6cqw, 8px);
-  padding: clamp(12px, 1.6cqh, 20px) clamp(8px, 1.2cqw, 14px);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  box-shadow: 
-    0 8px 25px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    inset 0 -3px 6px rgba(0, 0, 0, 0.4);
-  animation: ${glowPulse} 2s ease-in-out infinite;
-  animation-delay: 0.8s;
-  position: relative;
-  
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: repeating-linear-gradient(
-      90deg,
-      transparent 0px,
-      rgba(255, 255, 255, 0.02) 1px,
-      transparent 3px
-    );
-    border-radius: inherit;
-    pointer-events: none;
-  }
-  
-  @media (max-width: 600px) {
-    width: clamp(65px, 17cqw, 110px);
-    padding: clamp(10px, 1.4cqh, 16px) clamp(6px, 1cqw, 10px);
-    border-width: 2px;
-  }
-`;
-
 const IconContainer = styled.div`
-  width: clamp(35px, 5.5cqw, 58px);
-  height: clamp(35px, 5.5cqw, 58px);
+  width: clamp(24px, 3.9cqw, 38px);
+  height: clamp(24px, 3.9cqw, 38px);
   background: linear-gradient(135deg,
     ${props => getTypeColor(props.$powerUpType).main} 0%,
     ${props => getTypeColor(props.$powerUpType).dark} 100%
   );
-  border: 3px solid #000;
+  border: 2px solid #000;
   border-radius: clamp(4px, 0.6cqw, 8px);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: clamp(8px, 1cqh, 12px);
+  margin-bottom: 0;
   box-shadow: 
-    inset 0 3px 6px rgba(255, 255, 255, 0.3),
-    inset 0 -3px 6px rgba(0, 0, 0, 0.4),
-    0 4px 12px rgba(0, 0, 0, 0.5);
+    inset 0 2px 4px rgba(255, 255, 255, 0.3),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.3),
+    0 3px 8px rgba(0, 0, 0, 0.4);
   position: relative;
   overflow: hidden;
   
@@ -301,7 +264,7 @@ const IconContainer = styled.div`
     width: 65%;
     height: 65%;
     object-fit: contain;
-    filter: drop-shadow(2px 2px 4px rgba(0, 0, 0, 0.5));
+    filter: drop-shadow(1px 1px 2px rgba(0, 0, 0, 0.5));
     position: relative;
     z-index: 1;
   }
@@ -328,43 +291,32 @@ const IconContainer = styled.div`
   }
   
   @media (max-width: 600px) {
-    width: clamp(34px, 8cqw, 55px);
-    height: clamp(34px, 8cqw, 55px);
-    margin-bottom: clamp(6px, 0.8cqh, 10px);
+    width: clamp(22px, 5.4cqw, 34px);
+    height: clamp(22px, 5.4cqw, 34px);
+    margin-bottom: clamp(2px, 0.35cqh, 4px);
     border-width: 2px;
   }
 `;
 
 const PowerUpName = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.65rem, 1.25cqw, 0.95rem);
+  font-size: clamp(0.5rem, 0.95cqw, 0.7rem);
   color: ${props => getTypeColor(props.$powerUpType).main};
   text-transform: uppercase;
   letter-spacing: 0.04em;
   text-align: center;
-  line-height: 1.1;
-  margin-bottom: clamp(3px, 0.4cqh, 6px);
+  line-height: 1.05;
+  margin-bottom: 0;
   text-shadow: 
     2px 2px 0 #000,
     0 0 10px ${props => getTypeColor(props.$powerUpType).glow};
   white-space: nowrap;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   
   @media (max-width: 600px) {
-    font-size: clamp(0.5rem, 2.2cqw, 0.75rem);
-  }
-`;
-
-const PowerUpType = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.44rem, 0.85cqw, 0.62rem);
-  color: ${props => props.$isActive ? '#44ff88' : 'white'};
-  text-transform: uppercase;
-  margin-top: clamp(4px, 0.6cqh, 8px);
-  letter-spacing: 0.05em;
-  text-shadow: ${props => props.$isActive ? '0 0 6px rgba(68, 255, 136, 0.4), 1px 1px 1px rgba(0,0,0,0.8)' : '1px 1px 1px rgba(0,0,0,0.7)'};
-  
-  @media (max-width: 600px) {
-    font-size: clamp(0.38rem, 1.35cqw, 0.54rem);
+    font-size: clamp(0.4rem, 1.6cqw, 0.58rem);
   }
 `;
 
@@ -372,6 +324,7 @@ const VSContainer = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
+  align-self: center;
   animation: ${vsAppear} 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
   animation-delay: 0.3s;
   opacity: 0;
@@ -379,8 +332,12 @@ const VSContainer = styled.div`
 
 const VSText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(1.2rem, 3cqw, 2rem);
+  font-size: clamp(0.95rem, 2.4cqw, 1.6rem);
   color: #d4af37;
+  padding: clamp(3px, 0.45cqh, 6px) clamp(8px, 1.1cqw, 14px);
+  border-radius: 6px;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  background: linear-gradient(180deg, rgba(10, 14, 30, 0.55) 0%, rgba(10, 14, 30, 0.2) 100%);
   text-shadow: 
     3px 3px 0 #000,
     -2px -2px 0 #000,
@@ -390,7 +347,7 @@ const VSText = styled.div`
   letter-spacing: 0.1em;
   
   @media (max-width: 600px) {
-    font-size: clamp(0.9rem, 4cqw, 1.5rem);
+    font-size: clamp(0.72rem, 3.2cqw, 1.2rem);
   }
 `;
 
@@ -509,7 +466,6 @@ const PowerUpReveal = ({ roomId, localId }) => {
   return (
     <RevealOverlay $isExiting={isExiting}>
       <FlashOverlay />
-      
       <RevealContainer>
         <ParticleContainer>
           {particles.map(p => (
@@ -530,17 +486,12 @@ const PowerUpReveal = ({ roomId, localId }) => {
           <PlayerLabel $isPlayer1={true}>
             {isLocalP1 ? "YOU" : "P1"}
           </PlayerLabel>
-          <PowerUpCard $powerUpType={revealData.player1.powerUpType}>
-            <IconContainer $powerUpType={revealData.player1.powerUpType}>
-              <img src={player1Info?.icon} alt={player1Info?.name} />
-            </IconContainer>
-            <PowerUpName $powerUpType={revealData.player1.powerUpType}>
-              {player1Info?.name}
-            </PowerUpName>
-            <PowerUpType $isActive={player1Info?.isActive}>
-              {player1Info?.isActive ? "● Active" : "○ Passive"}
-            </PowerUpType>
-          </PowerUpCard>
+          <IconContainer $powerUpType={revealData.player1.powerUpType}>
+            <img src={player1Info?.icon} alt={player1Info?.name} />
+          </IconContainer>
+          <PowerUpName $powerUpType={revealData.player1.powerUpType}>
+            {player1Info?.name}
+          </PowerUpName>
         </PlayerCard>
 
         {/* VS Badge */}
@@ -553,17 +504,12 @@ const PowerUpReveal = ({ roomId, localId }) => {
           <PlayerLabel $isPlayer1={false}>
             {!isLocalP1 ? "YOU" : "P2"}
           </PlayerLabel>
-          <PowerUpCard $powerUpType={revealData.player2.powerUpType}>
-            <IconContainer $powerUpType={revealData.player2.powerUpType}>
-              <img src={player2Info?.icon} alt={player2Info?.name} />
-            </IconContainer>
-            <PowerUpName $powerUpType={revealData.player2.powerUpType}>
-              {player2Info?.name}
-            </PowerUpName>
-            <PowerUpType $isActive={player2Info?.isActive}>
-              {player2Info?.isActive ? "● Active" : "○ Passive"}
-            </PowerUpType>
-          </PowerUpCard>
+          <IconContainer $powerUpType={revealData.player2.powerUpType}>
+            <img src={player2Info?.icon} alt={player2Info?.name} />
+          </IconContainer>
+          <PowerUpName $powerUpType={revealData.player2.powerUpType}>
+            {player2Info?.name}
+          </PowerUpName>
         </PlayerCard>
       </RevealContainer>
     </RevealOverlay>

@@ -180,7 +180,7 @@ const BurstContainer = styled.div`
   z-index: 998;
 `;
 
-const DodgeSmokeEffect = ({ x, y, isDodging, facing, dodgeDirection }) => {
+const DashSmokeEffect = ({ x, y, isDodging, facing, dodgeDirection }) => {
   const [smokeInstances, setSmokeInstances] = useState([]);
   const lastDodgeState = useRef(isDodging);
 
@@ -263,7 +263,7 @@ const DodgeSmokeEffect = ({ x, y, isDodging, facing, dodgeDirection }) => {
   );
 };
 
-DodgeSmokeEffect.propTypes = {
+DashSmokeEffect.propTypes = {
   x: PropTypes.number.isRequired,
   y: PropTypes.number.isRequired,
   isDodging: PropTypes.bool.isRequired,
@@ -271,4 +271,4 @@ DodgeSmokeEffect.propTypes = {
   dodgeDirection: PropTypes.number,
 };
 
-export default DodgeSmokeEffect;
+export default DashSmokeEffect;

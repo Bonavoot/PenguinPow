@@ -2,7 +2,7 @@ import styled from "styled-components";
 import PropTypes from "prop-types";
 import { isOutsideDohyo } from "../constants";
 
-const GROUND_LEVEL = 290; // Match the server's GROUND_LEVEL
+const GROUND_LEVEL = 300; // Match the server's GROUND_LEVEL
 
 // Ring mask so only the ring band is visible (used when background is a gradient)
 const RING_MASK =
@@ -14,7 +14,8 @@ const sharedAttrs = (props) => {
     props.$isGrabStartup ||
     props.$isThrowing ||
     props.$isBeingThrown ||
-    props.$isRingOutThrowCutscene;
+    props.$isRingOutThrowCutscene ||
+    props.$isRopeJumping;
   const bottomPos = forceGround ? GROUND_LEVEL : props.$y;
   const adjustedBottomPos = bottomPos;
   const offsetLeft =
@@ -118,6 +119,7 @@ const PlayerShadow = ({
   isThrowing,
   isBeingThrown,
   isRingOutThrowCutscene,
+  isRopeJumping,
   width,
   height,
   offsetLeft,
@@ -136,6 +138,7 @@ const PlayerShadow = ({
     $isThrowing: isThrowing,
     $isBeingThrown: isBeingThrown,
     $isRingOutThrowCutscene: isRingOutThrowCutscene,
+    $isRopeJumping: isRopeJumping,
     $width: width,
     $height: height,
     $offsetLeft: offsetLeft,
@@ -164,6 +167,7 @@ PlayerShadow.propTypes = {
   isThrowing: PropTypes.bool,
   isBeingThrown: PropTypes.bool,
   isRingOutThrowCutscene: PropTypes.bool,
+  isRopeJumping: PropTypes.bool,
   width: PropTypes.string,
   height: PropTypes.string,
   offsetLeft: PropTypes.string,

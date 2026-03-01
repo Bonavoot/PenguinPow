@@ -110,7 +110,7 @@ class GamepadHandler {
     // UNIVERSAL BUTTON MAPPING - Works on both PC and Steam Deck
     // Try all common button combinations to ensure compatibility
     newKeyState[" "] = this.getButtonPressed(gamepad, [0, 1, 7]) || false; // Attack - A button (multiple indices)
-    newKeyState.shift = this.getButtonPressed(gamepad, [1, 0, 6]) || false; // Dodge - B button
+    newKeyState.shift = this.getButtonPressed(gamepad, [1, 0, 6]) || false; // Dash - B button
     newKeyState.mouse2 = this.getButtonPressed(gamepad, [2, 3, 5]) || false; // Grab - X button (mouse2 = grab)
     newKeyState.w = this.getButtonPressed(gamepad, [3, 2, 4]) || false; // Throw - Y button
 
@@ -167,7 +167,7 @@ class GamepadHandler {
         intensity = 0.4;
         duration = 200;
       }
-      // Dodge feedback
+      // Dash feedback
       else if (keyState.shift) {
         intensity = 0.1;
         duration = 80;

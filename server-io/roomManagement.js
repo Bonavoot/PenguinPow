@@ -47,6 +47,7 @@ function createCPUPlayer(uniqueId) {
     saltCooldown: false,
     snowballCooldown: false,
     lastSnowballTime: 0,
+    snowballThrowsRemaining: null,
     snowballs: [],
     isThrowingSnowball: false,
     pumoArmyCooldown: false,
@@ -103,6 +104,7 @@ function createCPUPlayer(uniqueId) {
     isSlapParrying: false,
     slapParryKnockbackVelocity: 0,
     slapParryImmunityUntil: 0,
+    inputBuffer: null,
     lastThrowAttemptTime: 0,
     lastGrabAttemptTime: 0,
     isStrafing: false,
@@ -122,13 +124,16 @@ function createCPUPlayer(uniqueId) {
     isAtTheRopes: false,
     atTheRopesStartTime: 0,
     atTheRopesFacingDirection: null,
+    isRopeJumping: false,
+    ropeJumpPhase: null,
+    ropeJumpStartTime: 0,
+    ropeJumpStartX: 0,
+    ropeJumpTargetX: 0,
+    ropeJumpDirection: 0,
+    ropeJumpActiveStartTime: 0,
+    ropeJumpLandingTime: 0,
     dodgeDirection: null,
     dodgeEndTime: 0,
-    isDodgeCancelling: false,
-    dodgeCancelStartTime: 0,
-    dodgeCancelStartY: 0,
-    justCrossedThrough: false,
-    crossedThroughTime: 0,
     isReady: false,
     isHit: false,
     isAlreadyHit: false,
@@ -324,6 +329,8 @@ function checkAndRevealPowerUps(room, io) {
     room.players.forEach(player => {
       player.activePowerUp = player.pendingPowerUp;
       player.powerUpMultiplier = POWER_UP_EFFECTS[player.pendingPowerUp];
+      player.snowballThrowsRemaining =
+        player.pendingPowerUp === POWER_UP_TYPES.SNOWBALL ? 3 : null;
       player.powerUpRevealed = true;
     });
     
@@ -376,7 +383,22 @@ function resetRoomAndPlayers(room, io) {
     player.isAtTheRopes = false;
     player.atTheRopesStartTime = 0;
     player.atTheRopesFacingDirection = null;
+    player.isRopeJumping = false;
+    player.ropeJumpPhase = null;
+    player.ropeJumpStartTime = 0;
+    player.ropeJumpStartX = 0;
+    player.ropeJumpTargetX = 0;
+    player.ropeJumpDirection = 0;
+    player.ropeJumpActiveStartTime = 0;
+    player.ropeJumpLandingTime = 0;
     player.isDodging = false;
+    player.isDodgeStartup = false;
+    player.isDodgeRecovery = false;
+    player.dodgeCooldownUntil = 0;
+    player.dodgeStartupEndTime = 0;
+    player.dodgeRecoveryEndTime = 0;
+    player.slapActiveEndTime = 0;
+    player.chargedActiveEndTime = 0;
     player.isReady = false;
     player.isHit = false;
     player.isAlreadyHit = false;
@@ -398,6 +420,7 @@ function resetRoomAndPlayers(room, io) {
     player.snowballs = [];
     player.snowballCooldown = false;
     player.lastSnowballTime = 0;
+    player.snowballThrowsRemaining = null;
     player.isThrowingSnowball = false;
     player.pumoArmy = [];
     player.pumoArmyCooldown = false;
@@ -440,10 +463,35 @@ function resetRoomAndPlayers(room, io) {
     player.isOverlapping = false;
     player.overlapStartTime = null;
     player.canMoveToReady = false;
+    player.isGrabbing = false;
+    player.isBeingGrabbed = false;
+    player.grabbedOpponent = null;
+    player.grabStartTime = 0;
+    player.isThrowing = false;
+    player.isBeingThrown = false;
+    player.throwStartTime = 0;
+    player.throwEndTime = 0;
+    player.throwOpponent = null;
+    player.throwingFacingDirection = null;
+    player.beingThrownFacingDirection = null;
+    player.throwCooldown = false;
+    player.grabCooldown = false;
+    player.isBeingPushed = false;
+    player.lastGrabStaminaDrainTime = 0;
+    player.isAttemptingGrabThrow = false;
+    player.grabThrowAttemptStartTime = 0;
+    player.isCounterGrabbed = false;
+    player.grabCounterAttempted = false;
+    player.grabCounterInput = null;
+    player.isThrowTeching = false;
+    player.throwTechCooldown = false;
+    player.lastThrowAttemptTime = 0;
+    player.lastGrabAttemptTime = 0;
     player.isGrabBreaking = false;
     player.isGrabBreakCountered = false;
     player.grabBreakSpaceConsumed = false;
     player.postGrabInputBuffer = false;
+    player.inputBuffer = null;
     player.isGrabBreaking = false;
     player.isGrabWalking = false;
     player.isGrabbingMovement = false;

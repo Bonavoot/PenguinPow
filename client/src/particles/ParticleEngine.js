@@ -186,6 +186,39 @@ function createCloudRing(diameter, bandWidth, seed) {
   return c;
 }
 
+function createSpark(size) {
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext("2d");
+  const half = size / 2;
+  const grad = ctx.createRadialGradient(half, half, 0, half, half, half);
+  grad.addColorStop(0, "rgba(255,255,255,1.0)");
+  grad.addColorStop(0.25, "rgba(230,245,255,0.95)");
+  grad.addColorStop(0.5, "rgba(180,220,255,0.5)");
+  grad.addColorStop(1, "rgba(150,200,255,0)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+  return c;
+}
+
+function createGroundStreak(length, thickness) {
+  const c = document.createElement("canvas");
+  c.width = length;
+  c.height = thickness + 4;
+  const ctx = c.getContext("2d");
+  const cy = c.height / 2;
+  const grad = ctx.createLinearGradient(0, 0, length, 0);
+  grad.addColorStop(0, "rgba(200,230,255,0)");
+  grad.addColorStop(0.15, "rgba(220,240,255,0.7)");
+  grad.addColorStop(0.5, "rgba(255,255,255,0.5)");
+  grad.addColorStop(0.85, "rgba(220,240,255,0.7)");
+  grad.addColorStop(1, "rgba(200,230,255,0)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, cy - thickness / 2, length, thickness);
+  return c;
+}
+
 function generateTextures() {
   return {
     // Several anime cloud puffs with different shapes (different seeds)
@@ -223,6 +256,13 @@ function generateTextures() {
     saltGrain: createChunk(6, 255, 255, 255, 1.0),
     saltClump: createChunk(14, 255, 255, 255, 0.95),
 
+    // Bright sparks for dash ice-skating effect
+    spark: createSpark(16),
+    sparkSmall: createSpark(10),
+
+    // Ground streaks for dash skid marks
+    groundStreak: createGroundStreak(60, 3),
+    groundStreakThin: createGroundStreak(40, 2),
   };
 }
 
@@ -244,13 +284,13 @@ function pickSmallPuff(textures) {
 
 const PRESETS = {
 
-  dodgeStart(engine, { x, y, direction, facing }) {
+  // Fired once at dash start — smoke puffs, speed lines, ice chips, and burst ring
+  dashStart(engine, { x, y, direction, facing }) {
     const dir = direction || facing || 1;
     const footX = x;
     const footY = GAME_H - y;
 
     // ── GROUND DUST — tight compact cluster behind the character ──
-    // 3 overlapping puffs that read as one cohesive cloud, not scattered bubbles.
     const puffOffsets = [4, 18, 34];
     for (let i = 0; i < puffOffsets.length; i++) {
       const t = i / (puffOffsets.length - 1);
@@ -274,7 +314,7 @@ const PRESETS = {
       });
     }
 
-    // ── SPEED LINES — sharp streaks at body height in dodge direction ──
+    // ── SPEED LINES — sharp streaks at body height in dash direction ──
     const bodyY = footY - 55;
     for (let i = 0; i < 3; i++) {
       const thickness = rand(2.5, 4);
@@ -322,6 +362,125 @@ const PRESETS = {
         texture: pick([engine.textures.chunk, engine.textures.chunkIce]),
       });
     }
+
+    // ── BURST RING — fast-expanding horizontal shockwave at the feet ──
+    const ringTextures = [engine.textures.ring, engine.textures.ringAlt];
+    for (let i = 0; i < 2; i++) {
+      engine.spawn({
+        x: footX - dir * 8,
+        y: footY - 14,
+        vx: 0, vy: 0, gravity: 0, drag: 1,
+        size: 6 * (1 + i * 0.08),
+        sizeEnd: 36 * (1 + i * 0.08),
+        alpha: rand(0.75, 0.9),
+        alphaEnd: 0,
+        rotation: 0, rotationSpeed: 0,
+        ease: "outExpo", easeAlpha: "outCubic",
+        maxLife: 0.22 + i * 0.03,
+        texture: ringTextures[i],
+        stretchX: 2.4,
+        delay: i * 0.02,
+      });
+    }
+
+    // ── INITIAL SPARKS — bright points that burst from the feet at launch ──
+    for (let i = 0; i < 5; i++) {
+      const angle = rand(-1.0, 0.6);
+      const spd = rand(120, 260);
+      engine.spawn({
+        x: footX + rand(-4, 4),
+        y: footY - rand(3, 10),
+        vx: -dir * Math.cos(angle) * spd + rand(-15, 15),
+        vy: -Math.abs(Math.sin(angle)) * spd * 0.5 + rand(-30, -5),
+        gravity: 500,
+        drag: 0.94,
+        size: rand(4, 7),
+        sizeEnd: rand(1, 2),
+        alpha: rand(0.9, 1.0),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "outQuad",
+        rotationSpeed: 0,
+        maxLife: rand(0.12, 0.22),
+        texture: pick([engine.textures.spark, engine.textures.sparkSmall]),
+        blendMode: "lighter",
+      });
+    }
+  },
+
+  // Called every ~45ms during the dash. Bright sparks arcing down from the feet
+  // like ice skate blades grinding — visually distinct from charged attack's static speed lines.
+  dashSparkTrail(engine, { x, y, direction }) {
+    const dir = direction || 1;
+    const footX = x;
+    const footY = GAME_H - y;
+
+    // Bright ice sparks — short-lived, high gravity, arc downward
+    for (let i = 0; i < 3; i++) {
+      const spd = rand(60, 160);
+      const angle = rand(-0.3, 0.5);
+      engine.spawn({
+        x: footX + -dir * rand(0, 12) + rand(-4, 4),
+        y: footY - rand(4, 12),
+        vx: -dir * Math.cos(angle) * spd + rand(-20, 20),
+        vy: -Math.abs(Math.sin(angle)) * spd * 0.4 + rand(-25, -5),
+        gravity: 600,
+        drag: 0.93,
+        size: rand(3, 6),
+        sizeEnd: rand(1, 2),
+        alpha: rand(0.85, 1.0),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "outQuad",
+        rotationSpeed: 0,
+        maxLife: rand(0.08, 0.16),
+        texture: pick([engine.textures.spark, engine.textures.sparkSmall]),
+        blendMode: "lighter",
+      });
+    }
+
+    // Occasional larger spark that lingers a bit more
+    if (Math.random() < 0.4) {
+      engine.spawn({
+        x: footX + -dir * rand(2, 8),
+        y: footY - rand(6, 14),
+        vx: -dir * rand(30, 80) + rand(-10, 10),
+        vy: rand(-40, -15),
+        gravity: 450,
+        drag: 0.95,
+        size: rand(5, 8),
+        sizeEnd: rand(2, 3),
+        alpha: rand(0.9, 1.0),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "inCubic",
+        rotationSpeed: 0,
+        maxLife: rand(0.14, 0.22),
+        texture: engine.textures.spark,
+        blendMode: "lighter",
+      });
+    }
+
+    // Ground streaks — stay nearly stationary, fade in place to leave a "trail" on the ice
+    engine.spawn({
+      x: footX + -dir * rand(2, 16),
+      y: footY - rand(1, 4),
+      vx: -dir * rand(5, 15),
+      vy: 0,
+      gravity: 0,
+      drag: 0.98,
+      size: rand(3, 5),
+      sizeEnd: rand(2, 3),
+      alpha: rand(0.5, 0.7),
+      alphaEnd: 0,
+      rotation: 0,
+      rotationSpeed: 0,
+      ease: "linear",
+      easeAlpha: "inQuad",
+      maxLife: rand(0.25, 0.4),
+      texture: pick([engine.textures.groundStreak, engine.textures.groundStreakThin]),
+      stretchX: rand(3, 6),
+    });
   },
 
   snowballTrail(engine, { x, y, direction }) {
@@ -591,7 +750,7 @@ const PRESETS = {
     }
   },
 
-  dodgeLand(engine, { x, y, slideVelocity = 0 }) {
+  dashLand(engine, { x, y, slideVelocity = 0 }) {
     const slideOffset = slideVelocity * 28;
     const footX = x + slideOffset;
     const footY = GAME_H - y - 12;

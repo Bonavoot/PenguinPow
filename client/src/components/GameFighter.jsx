@@ -58,6 +58,8 @@ import { SERVER_BROADCAST_HZ } from "../constants";
 // Assets, sounds, preloading, constants, ritual config, playSound helper
 import {
   pumo,
+  dodging,
+  recovering,
   saltBasket,
   saltBasketEmpty,
   snowball,
@@ -171,7 +173,7 @@ const GameFighter = ({
   // Function to get sprite render info (handles both static and animated sprites)
   // Returns: { src, isAnimated, config } where config contains spritesheet animation data
   // When isHit is true, uses hit-tinted variant (mawashi/headband unchanged, rest tinted red)
-  // When isWhiteFlash is true, uses white-tinted variant (dodge invincibility flash)
+  // When isWhiteFlash is true, uses white-tinted variant (dash invincibility flash)
   // When isBlubberTint is true, uses purple-tinted variant for thick blubber power-up
   const getSpriteRenderInfo = useCallback(
     (
@@ -342,6 +344,7 @@ const GameFighter = ({
     y: 0,
     snowballs: [],
     snowballCooldown: false,
+    snowballThrowsRemaining: null,
     lastSnowballTime: 0,
     pumoArmy: [],
     pumoArmyCooldown: false,
@@ -452,14 +455,16 @@ const GameFighter = ({
     [penguin]
   );
 
-  // Helper: Check if player can dodge (more permissive - allows during charging)
-  const canPredictDodge = useCallback(
+  // Helper: Check if player can dash (more permissive - allows during charging)
+  const canPredictDash = useCallback(
     (gameStarted) => {
       if (!gameStarted) return false;
 
       return (
         !penguin.isAttacking &&
         !penguin.isDodging &&
+        !penguin.isDodgeRecovery &&
+        !penguin.justLandedFromDodge &&
         !penguin.isThrowing &&
         !penguin.isBeingThrown &&
         !penguin.isGrabbing &&
@@ -568,14 +573,14 @@ const GameFighter = ({
             predictionChanged = true;
           }
           break;
-        case "dodge":
-          // Dodge has special rules - allowed during charging
-          if (canPredictDodge(gameStarted)) {
+        case "dash":
+          // Dash has special rules - allowed during charging
+          if (canPredictDash(gameStarted)) {
             predictedState.current = {
               ...predictedState.current,
               isDodging: true,
               dodgeDirection: action.direction || penguin.facing,
-              // CRITICAL: Dodge cancels charging - clear it to prevent visual flicker
+              // CRITICAL: Dash cancels charging - clear it to prevent visual flicker
               isChargingAttack: false,
               isAttacking: false,
               isSlapAttack: false,
@@ -743,7 +748,7 @@ const GameFighter = ({
     [
       isLocalPlayer,
       canPredictAction,
-      canPredictDodge,
+      canPredictDash,
       penguin.isChargingAttack,
       penguin.isRawParrying,
       penguin.facing,
@@ -1463,6 +1468,8 @@ const GameFighter = ({
           snap.p2Pow !== player2Data.activePowerUp ||
           snap.p1SbCd !== player1Data.snowballCooldown ||
           snap.p2SbCd !== player2Data.snowballCooldown ||
+          snap.p1SbRem !== player1Data.snowballThrowsRemaining ||
+          snap.p2SbRem !== player2Data.snowballThrowsRemaining ||
           snap.p1PaCd !== player1Data.pumoArmyCooldown ||
           snap.p2PaCd !== player2Data.pumoArmyCooldown ||
           snap.p1Gas !== player1Data.isGassed ||
@@ -1475,6 +1482,8 @@ const GameFighter = ({
           snap.p2Pow = player2Data.activePowerUp;
           snap.p1SbCd = player1Data.snowballCooldown;
           snap.p2SbCd = player2Data.snowballCooldown;
+          snap.p1SbRem = player1Data.snowballThrowsRemaining;
+          snap.p2SbRem = player2Data.snowballThrowsRemaining;
           snap.p1PaCd = player1Data.pumoArmyCooldown;
           snap.p2PaCd = player2Data.pumoArmyCooldown;
           snap.p1Gas = player1Data.isGassed;
@@ -1602,7 +1611,10 @@ const GameFighter = ({
           prev.isGrabTeching !== newState.isGrabTeching ||
           prev.grabTechRole !== newState.grabTechRole ||
           prev.isGrabWhiffRecovery !== newState.isGrabWhiffRecovery ||
-          prev.justLandedFromDodge !== newState.justLandedFromDodge;
+          prev.isDodgeRecovery !== newState.isDodgeRecovery ||
+          prev.justLandedFromDodge !== newState.justLandedFromDodge ||
+          prev.isRopeJumping !== newState.isRopeJumping ||
+          prev.ropeJumpPhase !== newState.ropeJumpPhase;
 
         if (!discreteStateChanged) {
           return prev; // No discrete state change, skip re-render
@@ -2266,9 +2278,9 @@ const GameFighter = ({
   useEffect(() => {
     if (penguin.isDodging && !lastDodgeState.current) {
       playSound(dodgeSound, 0.02);
-      emitParticles("dodgeStart", {
+      emitParticles("dashStart", {
         x: penguin.dodgeStartX ?? penguin.x,
-        y: penguin.dodgeStartY ?? penguin.y,
+        y: penguin.y,
         direction: penguin.dodgeDirection ?? penguin.facing ?? 1,
         facing: penguin.facing ?? 1,
       });
@@ -2277,7 +2289,54 @@ const GameFighter = ({
   }, [
     penguin.isDodging,
     penguin.dodgeStartX,
-    penguin.dodgeStartY,
+    penguin.dodgeDirection,
+    penguin.facing,
+    penguin.x,
+    penguin.y,
+    emitParticles,
+  ]);
+
+  // Dash spark trail — continuous ice sparks + ground streaks during the dash
+  const dashTrailIntervalRef = useRef(null);
+  const isDashingRef = useRef(false);
+
+  useEffect(() => {
+    isDashingRef.current = penguin.isDodging;
+  }, [penguin.isDodging]);
+
+  useEffect(() => {
+    if (penguin.isDodging) {
+      const EMIT_INTERVAL = 45;
+
+      dashTrailIntervalRef.current = setInterval(() => {
+        if (!isDashingRef.current) {
+          clearInterval(dashTrailIntervalRef.current);
+          dashTrailIntervalRef.current = null;
+          return;
+        }
+
+        const curX = interpolatedPositionRef.current.x || penguin.x;
+
+        emitParticles("dashSparkTrail", {
+          x: curX,
+          y: penguin.y,
+          direction: penguin.dodgeDirection ?? penguin.facing ?? 1,
+        });
+      }, EMIT_INTERVAL);
+    } else {
+      if (dashTrailIntervalRef.current) {
+        clearInterval(dashTrailIntervalRef.current);
+        dashTrailIntervalRef.current = null;
+      }
+    }
+    return () => {
+      if (dashTrailIntervalRef.current) {
+        clearInterval(dashTrailIntervalRef.current);
+        dashTrailIntervalRef.current = null;
+      }
+    };
+  }, [
+    penguin.isDodging,
     penguin.dodgeDirection,
     penguin.facing,
     penguin.x,
@@ -2471,6 +2530,18 @@ const GameFighter = ({
     wasBeingThrown.current = !!penguin.isBeingThrown;
   }, [penguin.isBeingThrown, penguin.x, penguin.y, emitParticles]);
 
+  // Rope jump landing — smoke ring on touchdown
+  const prevRopeJumpPhase = useRef(null);
+  useEffect(() => {
+    if (prevRopeJumpPhase.current === "active" && penguin.ropeJumpPhase === "landing") {
+      emitParticles("throwLand", {
+        x: interpolatedPositionRef.current.x || penguin.x,
+        y: penguin.y,
+      });
+    }
+    prevRopeJumpPhase.current = penguin.ropeJumpPhase;
+  }, [penguin.ropeJumpPhase, penguin.x, penguin.y, emitParticles]);
+
   useEffect(() => {
     const STRAFE_VOL = 0.015 * getGlobalVolume();
     const FADE_MS = 0.08;
@@ -2576,18 +2647,9 @@ const GameFighter = ({
     wasEdgePushedRef.current = isLocalEdgePushed;
   }, [isLocalEdgePushed]);
 
-  // Screen shake on dodge landing for satisfying impact feel
   useEffect(() => {
-    if (penguin.justLandedFromDodge && !lastDodgeLandState.current) {
-      // Subtle shake for landing impact - gentler for smoother feel
-      setScreenShake({
-        intensity: penguin.isDodgeCancelling ? 2.5 : 1.5, // Gentler shake
-        duration: penguin.isDodgeCancelling ? 100 : 60,
-        startTime: Date.now(),
-      });
-    }
     lastDodgeLandState.current = penguin.justLandedFromDodge;
-  }, [penguin.justLandedFromDodge, penguin.isDodgeCancelling]);
+  }, [penguin.justLandedFromDodge]);
 
   useEffect(() => {
     if (penguin.isGrabbing && !lastGrabState.current) {
@@ -2995,14 +3057,22 @@ const GameFighter = ({
     penguin.isBeingGrabFrontalForceOut,
     penguin.isGrabTeching,
     penguin.grabTechRole,
-    penguin.isGrabWhiffRecovery
+    penguin.isGrabWhiffRecovery,
+    penguin.isRopeJumping,
+    penguin.ropeJumpPhase,
+    penguin.isDodgeRecovery
   );
 
   // Hold previous sprite for a few frames when transitioning to idle to prevent
   // ghost frames during state transition gaps (e.g. isHit=false before isRecovering=true)
+  // Skip hold for dodge→idle: dash recovery should snap to idle instantly so
+  // consecutive dashes read as distinct (the hold would mask the idle gap).
   let effectiveSpriteSrc = displaySpriteSrc;
   if (displaySpriteSrc === pumo && lastNonIdleSpriteRef.current) {
-    if (idleHoldFramesRef.current < IDLE_HOLD_FRAMES) {
+    if (lastNonIdleSpriteRef.current === dodging || lastNonIdleSpriteRef.current === recovering) {
+      lastNonIdleSpriteRef.current = null;
+      idleHoldFramesRef.current = 0;
+    } else if (idleHoldFramesRef.current < IDLE_HOLD_FRAMES) {
       effectiveSpriteSrc = lastNonIdleSpriteRef.current;
       idleHoldFramesRef.current++;
     } else {
@@ -3086,6 +3156,9 @@ const GameFighter = ({
                 player1SnowballCooldown={
                   allPlayersData.player1?.snowballCooldown ?? false
                 }
+                player1SnowballThrowsRemaining={
+                  allPlayersData.player1?.snowballThrowsRemaining ?? null
+                }
                 player1PumoArmyCooldown={
                   allPlayersData.player1?.pumoArmyCooldown ?? false
                 }
@@ -3097,6 +3170,9 @@ const GameFighter = ({
                 }
                 player2SnowballCooldown={
                   allPlayersData.player2?.snowballCooldown ?? false
+                }
+                player2SnowballThrowsRemaining={
+                  allPlayersData.player2?.snowballThrowsRemaining ?? null
                 }
                 player2PumoArmyCooldown={
                   allPlayersData.player2?.pumoArmyCooldown ?? false
@@ -3188,6 +3264,7 @@ const GameFighter = ({
         isThrowing={penguin.isThrowing}
         isBeingThrown={penguin.isBeingThrown}
         isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
+        isRopeJumping={penguin.isRopeJumping}
         isLocalPlayer={penguin.id === localId}
         localPlayerRingStyle={
           penguin.id === localId
@@ -3197,7 +3274,7 @@ const GameFighter = ({
       />
       {/* <DodgeSmokeEffect
         x={penguin.dodgeStartX || displayPosition.x}
-        y={penguin.dodgeStartY || displayPosition.y}
+        y={displayPosition.y}
         isDodging={penguin.isDodging}
         facing={penguin.facing ?? -1}
         dodgeDirection={penguin.dodgeDirection}
@@ -3303,7 +3380,6 @@ const GameFighter = ({
           $lastThrowAttemptTime={penguin.lastThrowAttemptTime}
           $lastGrabAttemptTime={penguin.lastGrabAttemptTime}
           $dodgeDirection={displayPenguin.dodgeDirection}
-          $isDodgeCancelling={penguin.isDodgeCancelling}
           $justLandedFromDodge={penguin.justLandedFromDodge}
           $speedFactor={penguin.speedFactor}
           $sizeMultiplier={penguin.sizeMultiplier}
@@ -3314,6 +3390,8 @@ const GameFighter = ({
           $isThrowingSnowball={penguin.isThrowingSnowball}
           $isSpawningPumoArmy={penguin.isSpawningPumoArmy}
           $isAtTheRopes={penguin.isAtTheRopes}
+          $isRopeJumping={penguin.isRopeJumping}
+          $ropeJumpPhase={penguin.ropeJumpPhase}
           $isCrouchStance={penguin.isCrouchStance}
           $isCrouchStrafing={penguin.isCrouchStrafing}
           $isGrabBreakCountered={penguin.isGrabBreakCountered}

@@ -135,19 +135,24 @@ function updateProjectiles(room, io, delta) {
             // Clear any existing slap knockback state to ensure consistent snowball knockback
             targetPlayer.isSlapKnockback = false;
 
-            targetPlayer.knockbackVelocity.x = knockbackDirection * 0.75; // Reduced by 50%
-            targetPlayer.movementVelocity = knockbackDirection * 0.65; // Reduced by 50%
+            targetPlayer.knockbackVelocity.x = knockbackDirection * 1.55;
+            targetPlayer.movementVelocity = 0;
 
             // Set knockback immunity
             setKnockbackImmunity(targetPlayer);
           }
 
-          // Reset hit state after duration
+          // Reset hit state after duration — transfer remaining knockback to movement
           setPlayerTimeout(
             targetPlayer.id,
             () => {
+              if (Math.abs(targetPlayer.knockbackVelocity.x) > 0.01) {
+                targetPlayer.movementVelocity = targetPlayer.knockbackVelocity.x;
+              }
+              targetPlayer.knockbackVelocity.x = 0;
               targetPlayer.isHit = false;
               targetPlayer.isAlreadyHit = false;
+              targetPlayer.isSlapKnockback = false;
             },
             300
           );
@@ -340,6 +345,31 @@ function updateProjectiles(room, io, delta) {
           distance < horizThresh &&
           Math.abs(clone.y - opponent.y) < vertThresh
         ) {
+          // Clone should pass through any connected grab state.
+          // Grab startup / whiff attempts are intentionally still vulnerable.
+          const isOpponentInConnectedGrabState =
+            opponent.isGrabbingMovement ||
+            opponent.isGrabbing ||
+            opponent.isBeingGrabbed ||
+            opponent.isThrowing ||
+            opponent.isBeingThrown ||
+            opponent.isGrabTeching ||
+            opponent.isGrabClashing ||
+            opponent.isGrabPushing ||
+            opponent.isBeingGrabPushed ||
+            opponent.isEdgePushing ||
+            opponent.isBeingEdgePushed ||
+            opponent.isAttemptingPull ||
+            opponent.isBeingPullReversaled ||
+            opponent.isGrabSeparating ||
+            opponent.isGrabBellyFlopping ||
+            opponent.isBeingGrabBellyFlopped ||
+            opponent.isGrabFrontalForceOut ||
+            opponent.isBeingGrabFrontalForceOut;
+          if (isOpponentInConnectedGrabState) {
+            return true; // Keep clone in flight, don't register hit
+          }
+
           // Check for thick blubber hit absorption
           const isOpponentGrabbingClone = opponent.isGrabStartup || opponent.isGrabbingMovement || opponent.isGrabbing;
           if (
@@ -402,19 +432,24 @@ function updateProjectiles(room, io, delta) {
             // Clear any existing slap knockback state to ensure consistent pumo army knockback
             opponent.isSlapKnockback = false;
 
-            opponent.knockbackVelocity.x = knockbackDirection * 0.9; // Reduced by 40% from original 1.5
-            opponent.movementVelocity = knockbackDirection * 0.9;
+            opponent.knockbackVelocity.x = knockbackDirection * 1.6;
+            opponent.movementVelocity = 0;
 
             // Set knockback immunity
             setKnockbackImmunity(opponent);
           }
 
-          // Reset hit state after duration
+          // Reset hit state after duration — transfer remaining knockback to movement
           setPlayerTimeout(
             opponent.id,
             () => {
+              if (Math.abs(opponent.knockbackVelocity.x) > 0.01) {
+                opponent.movementVelocity = opponent.knockbackVelocity.x;
+              }
+              opponent.knockbackVelocity.x = 0;
               opponent.isHit = false;
               opponent.isAlreadyHit = false;
+              opponent.isSlapKnockback = false;
             },
             200
           );

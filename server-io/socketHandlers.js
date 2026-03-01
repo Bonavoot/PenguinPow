@@ -3,7 +3,9 @@ const {
   POWER_UP_TYPES, POWER_UP_EFFECTS,
   HITBOX_DISTANCE_VALUE, DOHYO_FALL_DEPTH,
   DODGE_DURATION, DODGE_STAMINA_COST,
+  ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST, ROPE_JUMP_BOUNDARY_ZONE,
   DODGE_SLIDE_MOMENTUM, DODGE_POWERSLIDE_BOOST,
+  DODGE_STARTUP_MS,
   SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST,
   CHARGE_FULL_POWER_MS,
   GRAB_ACTION_WINDOW, GRAB_STARTUP_DURATION_MS,
@@ -14,12 +16,14 @@ const {
 
 const {
   DEFAULT_PLAYER_SIZE_MULTIPLIER,
+  MAP_LEFT_BOUNDARY,
+  MAP_RIGHT_BOUNDARY,
   timeoutManager,
   setPlayerTimeout,
   clearAllActionStates,
   clearChargeState,
   canPlayerSlap,
-  canPlayerDodge,
+  canPlayerDash,
   canPlayerCharge,
   canPlayerUseAction,
   shouldRestartCharging,
@@ -175,6 +179,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
       existingPlayer.saltCooldown = false;
       existingPlayer.snowballCooldown = false;
       existingPlayer.pumoArmyCooldown = false;
+      existingPlayer.snowballThrowsRemaining = null;
       existingPlayer.isThrowingSnowball = false;
       existingPlayer.isSpawningPumoArmy = false;
       existingPlayer.hitAbsorptionUsed = false;
@@ -282,13 +287,22 @@ function registerSocketHandlers(socket, io, rooms, context) {
         isAtTheRopes: false,
         atTheRopesStartTime: 0,
         atTheRopesFacingDirection: null,
+        isRopeJumping: false,
+        ropeJumpPhase: null,
+        ropeJumpStartTime: 0,
+        ropeJumpStartX: 0,
+        ropeJumpTargetX: 0,
+        ropeJumpDirection: 0,
+        ropeJumpActiveStartTime: 0,
+        ropeJumpLandingTime: 0,
         dodgeDirection: false,
         dodgeEndTime: 0,
-        isDodgeCancelling: false,
-        dodgeCancelStartTime: 0,
-        dodgeCancelStartY: 0,
-        justCrossedThrough: false,
-        crossedThroughTime: 0,
+        isDodgeStartup: false,
+        isDodgeRecovery: false,
+        dodgeStartupEndTime: 0,
+        dodgeRecoveryEndTime: 0,
+        slapActiveEndTime: 0,
+        chargedActiveEndTime: 0,
         isReady: false,
         isHit: false,
         isAlreadyHit: false,
@@ -349,6 +363,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
         wJustPressed: false, // Track if W was just pressed this frame
         fJustPressed: false, // Track if F was just pressed this frame
         spaceJustPressed: false, // Track if spacebar was just pressed this frame
+        inputBuffer: null,
         attackIntentTime: 0, // When mouse1 was pressed (for counter hit detection)
         attackAttemptTime: 0, // When attack execution started (for counter hit detection)
         isOverlapping: false, // Track overlap state for smoother separation
@@ -470,13 +485,22 @@ function registerSocketHandlers(socket, io, rooms, context) {
         isAtTheRopes: false,
         atTheRopesStartTime: 0,
         atTheRopesFacingDirection: null,
+        isRopeJumping: false,
+        ropeJumpPhase: null,
+        ropeJumpStartTime: 0,
+        ropeJumpStartX: 0,
+        ropeJumpTargetX: 0,
+        ropeJumpDirection: 0,
+        ropeJumpActiveStartTime: 0,
+        ropeJumpLandingTime: 0,
         dodgeDirection: null,
         dodgeEndTime: 0,
-        isDodgeCancelling: false,
-        dodgeCancelStartTime: 0,
-        dodgeCancelStartY: 0,
-        justCrossedThrough: false,
-        crossedThroughTime: 0,
+        isDodgeStartup: false,
+        isDodgeRecovery: false,
+        dodgeStartupEndTime: 0,
+        dodgeRecoveryEndTime: 0,
+        slapActiveEndTime: 0,
+        chargedActiveEndTime: 0,
         isReady: false,
         isHit: false,
         isAlreadyHit: false,
@@ -538,6 +562,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
         wJustPressed: false, // Track if W was just pressed this frame
         fJustPressed: false, // Track if F was just pressed this frame
         spaceJustPressed: false, // Track if spacebar was just pressed this frame
+        inputBuffer: null,
         attackIntentTime: 0, // When mouse1 was pressed (for counter hit detection)
         attackAttemptTime: 0, // When attack execution started (for counter hit detection)
         isOverlapping: false, // Track overlap state for smoother separation
@@ -721,11 +746,12 @@ function registerSocketHandlers(socket, io, rooms, context) {
       atTheRopesFacingDirection: null,
       dodgeDirection: false,
       dodgeEndTime: 0,
-      isDodgeCancelling: false,
-      dodgeCancelStartTime: 0,
-      dodgeCancelStartY: 0,
-      justCrossedThrough: false,
-      crossedThroughTime: 0,
+      isDodgeStartup: false,
+      isDodgeRecovery: false,
+      dodgeStartupEndTime: 0,
+      dodgeRecoveryEndTime: 0,
+      slapActiveEndTime: 0,
+      chargedActiveEndTime: 0,
       isReady: false,
       isHit: false,
       isAlreadyHit: false,
@@ -786,6 +812,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
       wJustPressed: false,
       fJustPressed: false,
       spaceJustPressed: false,
+      inputBuffer: null,
       attackIntentTime: 0, // When mouse1 was pressed (for counter hit detection)
       attackAttemptTime: 0, // When attack execution started (for counter hit detection)
       isOverlapping: false,
@@ -1147,6 +1174,9 @@ function registerSocketHandlers(socket, io, rooms, context) {
         // Track mouse1 press/release timing during lock so charging can begin
         // immediately when the lock expires (inputs are READ, not acted on)
         const prevMouse1 = player.keys.mouse1;
+        const prevMouse2 = player.keys.mouse2;
+        const prevSpace = player.keys[" "];
+        const prevShift = player.keys.shift;
         if (!prevMouse1 && data.keys.mouse1) {
           // mouse1 just pressed during lock — record press time
           player.mouse1PressTime = Date.now();
@@ -1155,6 +1185,17 @@ function registerSocketHandlers(socket, io, rooms, context) {
           player.mouse1PressTime = 0;
         }
         player.keys = data.keys;
+
+        // Buffer inputs during lockout so they fire on frame 1 when lock expires
+        if (!prevSpace && data.keys[" "]) {
+          player.inputBuffer = { type: "rawParry", timestamp: Date.now() };
+        } else if (!prevShift && data.keys.shift && !data.keys.mouse2) {
+          player.inputBuffer = { type: "dodge", timestamp: Date.now() };
+        } else if (!prevMouse1 && data.keys.mouse1) {
+          player.inputBuffer = { type: "slap", timestamp: Date.now() };
+        } else if (!prevMouse2 && data.keys.mouse2) {
+          player.inputBuffer = { type: "grab", timestamp: Date.now() };
+        }
       }
       return;
     }
@@ -1232,7 +1273,19 @@ function registerSocketHandlers(socket, io, rooms, context) {
     // If room is in hitstop, buffer key states but block actions for both players
     if (isRoomInHitstop(rooms[roomIndex])) {
       if (data.keys) {
+        const prevKeys = { ...player.keys };
         player.keys = data.keys;
+
+        // Buffer inputs during hitstop so they fire on frame 1 when hitstop ends
+        if (!prevKeys[" "] && data.keys[" "]) {
+          player.inputBuffer = { type: "rawParry", timestamp: Date.now() };
+        } else if (!prevKeys.shift && data.keys.shift && !data.keys.mouse2) {
+          player.inputBuffer = { type: "dodge", timestamp: Date.now() };
+        } else if (!prevKeys.mouse1 && data.keys.mouse1) {
+          player.inputBuffer = { type: "slap", timestamp: Date.now() };
+        } else if (!prevKeys.mouse2 && data.keys.mouse2) {
+          player.inputBuffer = { type: "grab", timestamp: Date.now() };
+        }
       }
       return;
     }
@@ -1317,6 +1370,20 @@ function registerSocketHandlers(socket, io, rooms, context) {
       if (player.postGrabInputBuffer) {
         if (data.keys.mouse2 && !player.mouse2JustPressed) player.mouse2JustPressed = true;
         player.postGrabInputBuffer = false;
+      }
+
+      // Buffer inputs when shouldBlockAction() prevents execution.
+      // The game loop processes the buffer on the first actionable frame.
+      if (shouldBlockAction()) {
+        if (player.spaceJustPressed) {
+          player.inputBuffer = { type: "rawParry", timestamp: Date.now() };
+        } else if (player.shiftJustPressed && !data.keys.mouse2) {
+          player.inputBuffer = { type: "dodge", timestamp: Date.now() };
+        } else if (player.mouse1JustPressed) {
+          player.inputBuffer = { type: "slap", timestamp: Date.now() };
+        } else if (player.mouse2JustPressed) {
+          player.inputBuffer = { type: "grab", timestamp: Date.now() };
+        }
       }
 
       // Track mouse1 held during recovery from a connected charged attack
@@ -1467,6 +1534,8 @@ function registerSocketHandlers(socket, io, rooms, context) {
       !shouldBlockAction() &&
       (player.activePowerUp === POWER_UP_TYPES.SNOWBALL ||
         player.activePowerUp === POWER_UP_TYPES.PUMO_ARMY) &&
+      (player.activePowerUp !== POWER_UP_TYPES.SNOWBALL ||
+        (player.snowballThrowsRemaining ?? 3) > 0) &&
       !player.snowballCooldown &&
       !player.pumoArmyCooldown &&
       !player.isThrowingSnowball &&
@@ -1488,8 +1557,20 @@ function registerSocketHandlers(socket, io, rooms, context) {
       }
 
       if (player.activePowerUp === POWER_UP_TYPES.SNOWBALL) {
+        // Backfill for older in-progress states where this field may be missing.
+        if (player.snowballThrowsRemaining == null) {
+          player.snowballThrowsRemaining = 3;
+        }
+        if (player.snowballThrowsRemaining <= 0) {
+          return;
+        }
+
         // Snowball costs same stamina as a slap attack
         player.stamina = Math.max(0, player.stamina - SLAP_ATTACK_STAMINA_COST);
+        player.snowballThrowsRemaining = Math.max(
+          0,
+          player.snowballThrowsRemaining - 1
+        );
         // Set throwing state
         player.isThrowingSnowball = true;
         // Lock actions during throw windup/animation window for visual clarity
@@ -1556,7 +1637,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
         const armyDirection = player.facing === 1 ? -1 : 1; // Army moves in direction player is facing
 
         // Spawn multiple mini clones sequentially
-        const numClones = 5;
+        const numClones = 3;
         const spawnDelay = 1000; // 1 second between spawns
         const startX = armyDirection === 1 ? -100 : 1200; // Start from off-screen (outside visible dohyo)
 
@@ -1611,17 +1692,17 @@ function registerSocketHandlers(socket, io, rooms, context) {
       }
     }
 
-    // Handle dodge - allow canceling recovery but block during charged attack execution
-    // Dodging now costs stamina (15% of max) instead of using charges
-    // Use shiftJustPressed to prevent dodge from triggering when key is held through other actions
-    // NOTE: Dodge cancels charging - clearing charge state when dodge starts
+    // Handle dash - allow canceling recovery but block during charged attack execution
+    // Dashing now costs stamina (15% of max) instead of using charges
+    // Use shiftJustPressed to prevent dash from triggering when key is held through other actions
+    // NOTE: Dash cancels charging - clearing charge state when dash starts
     if (
       player.shiftJustPressed &&
-      !player.keys.mouse2 && // Don't dodge while grabbing
+      !player.keys.mouse2 && // Don't dash while grabbing
       !(player.keys.w && player.isGrabbing && !player.isBeingGrabbed) &&
-      !player.isBeingGrabbed && // Block dodge when being grabbed
+      !player.isBeingGrabbed && // Block dash when being grabbed
       !isInChargedAttackExecution() && // Block during charged attack execution
-      canPlayerDodge(player) &&
+      canPlayerDash(player) &&
       !player.isGassed
     ) {
       // Allow dodge to cancel recovery
@@ -1653,20 +1734,15 @@ function registerSocketHandlers(socket, io, rooms, context) {
       player.isBraking = false;
 
       player.isDodging = true;
-      player.isDodgeCancelling = false;
-      player.dodgeCancelStartTime = 0;
-      player.dodgeCancelStartY = 0;
+      player.isDodgeStartup = true;
       player.dodgeStartTime = Date.now();
-      player.dodgeEndTime = Date.now() + DODGE_DURATION; // Snappy dodge duration
+      player.dodgeStartupEndTime = Date.now() + DODGE_STARTUP_MS;
+      player.dodgeEndTime = Date.now() + DODGE_DURATION;
       player.dodgeStartX = player.x;
-      player.dodgeStartY = player.y;
-      player.currentAction = "dodge";
-      player.actionLockUntil = Date.now() + 100; // Slightly shorter lock for responsiveness
+      player.currentAction = "dash";
+      player.actionLockUntil = Date.now() + 100;
       player.justLandedFromDodge = false;
-      player.justCrossedThrough = false;
-      player.crossedThroughTime = 0;
 
-      // Drain stamina for dodge (15% of max stamina)
       player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
 
       if (player.keys.a) {
@@ -1677,137 +1753,8 @@ function registerSocketHandlers(socket, io, rooms, context) {
         player.dodgeDirection = player.facing === -1 ? 1 : -1;
       }
 
-      setPlayerTimeout(
-        player.id,
-        () => {
-          // Only clear dodge state if not already handled by tick loop
-          // The tick loop handles landing momentum, this is just a safety cleanup
-          if (player.isDodging && !player.isDodgeCancelling) {
-            // Tick loop should have handled this - apply landing momentum if it didn't
-            const landingDir = player.dodgeDirection || 0;
-            if (landingDir !== 0 && Math.abs(player.movementVelocity) < 0.1) {
-              // Tick didn't set momentum yet - do it here
-              if (player.keys.c || player.keys.control) {
-                // Holding C/CTRL = power slide from dodge
-                player.movementVelocity = landingDir * DODGE_SLIDE_MOMENTUM * DODGE_POWERSLIDE_BOOST;
-                player.isPowerSliding = true;
-              } else {
-                player.movementVelocity = landingDir * DODGE_SLIDE_MOMENTUM;
-              }
-              player.justLandedFromDodge = true;
-              player.dodgeLandTime = Date.now();
-            }
-            player.isDodging = false;
-            player.isDodgeCancelling = false;
-            player.dodgeDirection = null;
-            
-            // Immediately update facing direction on dodge landing (timeout fallback)
-            const dodgeRoom = rooms.find(r => r.players.some(p => p.id === player.id));
-            if (dodgeRoom) {
-              const dodgeOpponent = dodgeRoom.players.find(p => p.id !== player.id);
-              if (dodgeOpponent && !player.atTheRopesFacingDirection && !player.slapFacingDirection) {
-                player.facing = player.x < dodgeOpponent.x ? -1 : 1;
-              }
-              // Set crossed-through grace period if overlapping with opponent after dodge
-              if (dodgeOpponent) {
-                const overlapDistance = Math.abs(player.x - dodgeOpponent.x);
-                const bodyHitboxSize = HITBOX_DISTANCE_VALUE * 2 * Math.max(player.sizeMultiplier || 1, dodgeOpponent.sizeMultiplier || 1);
-                if (overlapDistance < bodyHitboxSize) {
-                  player.justCrossedThrough = true;
-                  player.crossedThroughTime = Date.now();
-                }
-              }
-            }
-          }
-          if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
-            player.actionLockUntil = 0;
-          }
-
-          // Check for buffered actions after dodge ends
-          if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
-            const action = player.bufferedAction;
-            player.bufferedAction = null;
-            player.bufferExpiryTime = 0;
-
-            // Execute the buffered action
-            // CRITICAL: Block buffered dodge if player is being grabbed
-            if (action.type === "dodge" && !player.isGassed && !player.isBeingGrabbed) {
-              // Clear parry success state when starting a dodge
-              player.isRawParrySuccess = false;
-              player.isPerfectRawParrySuccess = false;
-              
-              // Dodge cancels charging
-              clearChargeState(player, true);
-              
-              // Clear movement momentum for static dodge distance
-              // Also cancels power slide - dodge is an escape option from slide
-              player.movementVelocity = 0;
-              player.isStrafing = false;
-              player.isPowerSliding = false;
-              player.isBraking = false;
-              
-              player.isDodging = true;
-              player.isDodgeCancelling = false;
-              player.dodgeCancelStartTime = 0;
-              player.dodgeCancelStartY = 0;
-              player.dodgeStartTime = Date.now();
-              player.dodgeEndTime = Date.now() + DODGE_DURATION;
-              player.dodgeDirection = action.direction;
-              player.dodgeStartX = player.x;
-              player.dodgeStartY = player.y;
-              player.justLandedFromDodge = false;
-              player.justCrossedThrough = false;
-              player.crossedThroughTime = 0;
-              
-              // Drain stamina for buffered dodge
-              player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
-            }
-          }
-
-          // Handle pending charge attack
-          if (player.pendingChargeAttack && player.spacebarReleasedDuringDodge) {
-            const chargePercentage = player.pendingChargeAttack.power;
-
-            // Determine if it's a slap or charged attack
-            if (player.keys.mouse1) {
-              // Use the simplified slap attack system
-
-              executeSlapAttack(player, rooms);
-            } else {
-              executeChargedAttack(player, chargePercentage, rooms);
-            }
-
-            // Reset charging state
-            player.isChargingAttack = false;
-            player.pendingChargeAttack = null;
-            player.spacebarReleasedDuringDodge = false;
-          }
-          // Start charging immediately after dodge ends if mouse1 is held past threshold
-          // This ensures no delay between dodge ending and charge starting
-          // IMPORTANT: Always enforce 200ms threshold to prevent quick taps from triggering charge
-          else if (
-            player.keys.mouse1 &&
-            player.mouse1PressTime > 0 && (Date.now() - player.mouse1PressTime) >= 200 &&
-            !player.isChargingAttack &&
-            !player.isAttacking &&
-            !player.isHit &&
-            !player.isRawParryStun &&
-            !player.isRawParrying &&
-            !player.isGrabbing &&
-            !player.isBeingGrabbed &&
-            !player.isThrowing &&
-            !player.isBeingThrown &&
-            !player.isGrabBreaking &&
-            !player.isGrabBreakCountered &&
-            !player.isRecovering &&
-            !player.canMoveToReady
-          ) {
-            startCharging(player);
-          }
-        },
-        DODGE_DURATION,
-        "dodgeReset"
-      );
+      // Dodge lifecycle (landing, recovery, cooldown) is handled entirely by the tick
+      // loop in index.js. Pending charge attacks are executed when recovery ends.
     } else if (
       (player.shiftJustPressed || player.keys.shift) && // Buffer on press OR hold (catches spammers who end on held key)
       (player.isAttacking ||
@@ -1830,22 +1777,87 @@ function registerSocketHandlers(socket, io, rooms, context) {
         ? 1
         : -1;
       player.bufferedAction = {
-        type: "dodge",
+        type: "dash",
         direction: dodgeDirection,
       };
       player.bufferExpiryTime = Date.now() + 500; // Buffer expires after 500ms
+    }
+    // Buffer dash during recovery/cooldown so spamming fires on frame 1 when allowed
+    else if (
+      player.shiftJustPressed &&
+      !player.keys.mouse2 &&
+      !player.isGassed &&
+      !player.isDodging &&
+      (player.isDodgeRecovery || (player.dodgeCooldownUntil && Date.now() < player.dodgeCooldownUntil))
+    ) {
+      player.inputBuffer = { type: "dodge", timestamp: Date.now() };
     }
     // Emit "No Stamina" feedback when player tries to dodge but doesn't have enough stamina
     else if (
       player.shiftJustPressed &&
       !player.keys.mouse2 &&
       !(player.keys.w && player.isGrabbing && !player.isBeingGrabbed) &&
-      canPlayerDodge(player) &&
+      canPlayerDash(player) &&
       player.isGassed &&
       (!player.lastStaminaBlockedTime || Date.now() - player.lastStaminaBlockedTime > 500)
     ) {
       player.lastStaminaBlockedTime = Date.now();
-      socket.emit("stamina_blocked", { playerId: player.id, action: "dodge" });
+      socket.emit("stamina_blocked", { playerId: player.id, action: "dash" });
+    }
+
+    // ── ROPE JUMP: W + forward key near map boundary ──
+    // Escape over the opponent when cornered. Forward = away from nearest boundary.
+    {
+      const nearLeftBound = player.x - MAP_LEFT_BOUNDARY < ROPE_JUMP_BOUNDARY_ZONE;
+      const nearRightBound = MAP_RIGHT_BOUNDARY - player.x < ROPE_JUMP_BOUNDARY_ZONE;
+      const forwardHeld = (nearLeftBound && player.keys.d) || (nearRightBound && player.keys.a);
+      const wantsRopeJump = player.keys.w && forwardHeld && (nearLeftBound || nearRightBound);
+
+      if (
+        wantsRopeJump &&
+        !player.isRopeJumping &&
+        canPlayerDash(player) &&
+        !player.isGassed &&
+        !isInChargedAttackExecution() &&
+        !player.isBeingGrabbed &&
+        rooms[roomIndex].gameStart &&
+        !rooms[roomIndex].gameOver
+      ) {
+        clearChargeState(player, true);
+
+        player.movementVelocity = 0;
+        player.isStrafing = false;
+        player.isPowerSliding = false;
+        player.isBraking = false;
+
+        const jumpDir = nearLeftBound ? 1 : -1;
+        const mapMidpoint = (MAP_LEFT_BOUNDARY + MAP_RIGHT_BOUNDARY) / 2;
+        const targetX = player.x + (mapMidpoint - player.x) * 0.52;
+
+        player.facing = nearLeftBound ? -1 : 1;
+        player.isRopeJumping = true;
+        player.ropeJumpPhase = "startup";
+        player.ropeJumpStartTime = Date.now();
+        player.ropeJumpStartX = player.x;
+        player.ropeJumpTargetX = Math.max(MAP_LEFT_BOUNDARY, Math.min(targetX, MAP_RIGHT_BOUNDARY));
+        player.ropeJumpDirection = jumpDir;
+        player.ropeJumpActiveStartTime = 0;
+        player.ropeJumpLandingTime = 0;
+        player.currentAction = "ropeJump";
+        player.actionLockUntil = Date.now() + ROPE_JUMP_STARTUP_MS;
+        player.stamina = Math.max(0, player.stamina - ROPE_JUMP_STAMINA_COST);
+      }
+      // "Not enough stamina" feedback when gassed
+      else if (
+        wantsRopeJump &&
+        !player.isRopeJumping &&
+        canPlayerDash(player) &&
+        player.isGassed &&
+        (!player.lastStaminaBlockedTime || Date.now() - player.lastStaminaBlockedTime > 500)
+      ) {
+        player.lastStaminaBlockedTime = Date.now();
+        socket.emit("stamina_blocked", { playerId: player.id, action: "ropeJump" });
+      }
     }
 
     // MOUSE1 HOLD-TO-CHARGE: Start charging when mouse1 held and player is idle
@@ -1876,7 +1888,8 @@ function registerSocketHandlers(socket, io, rooms, context) {
       !player.mouse2JustPressed
     ) {
       // If we're dodging and not already charging, start charging
-      if (player.isDodging && !player.isChargingAttack) {
+      // Require 150ms minimum hold to prevent quick taps from accidentally starting a charge
+      if (player.isDodging && !player.isChargingAttack && (Date.now() - player.mouse1PressTime) >= 150) {
         startCharging(player);
       }
       // Calculate charge power (0-100%)

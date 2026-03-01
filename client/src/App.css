@@ -467,6 +467,25 @@ body {
     /* vertical squash — < 1 = flatter, 1 = no change */ translateY(10%); /* raise/lower — negative = up, positive = down */
 }
 
+.dohyo-overlay::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  width: 78%;
+  height: 30%;
+  transform: translateX(-50%);
+  background: radial-gradient(
+    ellipse 100% 100% at 50% 40%,
+    rgba(0, 0, 0, 0.35) 0%,
+    rgba(0, 0, 0, 0.15) 40%,
+    transparent 70%
+  );
+  pointer-events: none;
+  z-index: -1;
+  filter: blur(12px);
+}
+
 /* Cheap post-processing passes to unify the look without blurs */
 .arena-tone-pass {
   position: absolute;

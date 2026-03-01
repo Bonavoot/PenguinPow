@@ -26,6 +26,13 @@ function cleanupPlayerStates(player) {
   player.isAlreadyHit = false;
   player.isParryKnockback = false;
   player.isDodging = false;
+  player.isDodgeStartup = false;
+  player.isDodgeRecovery = false;
+  player.dodgeCooldownUntil = 0;
+  player.dodgeStartupEndTime = 0;
+  player.dodgeRecoveryEndTime = 0;
+  player.slapActiveEndTime = 0;
+  player.chargedActiveEndTime = 0;
   player.isRawParrying = false;
   player.isRawParryStun = false;
   player.isRawParrySuccess = false;
@@ -33,6 +40,14 @@ function cleanupPlayerStates(player) {
   player.postGrabInputBuffer = false;
   player.isStrafing = false;
   player.isJumping = false;
+  player.isRopeJumping = false;
+  player.ropeJumpPhase = null;
+  player.ropeJumpStartTime = 0;
+  player.ropeJumpStartX = 0;
+  player.ropeJumpTargetX = 0;
+  player.ropeJumpDirection = 0;
+  player.ropeJumpActiveStartTime = 0;
+  player.ropeJumpLandingTime = 0;
   player.isReady = false;
   player.isBowing = false;
   player.knockbackVelocity = { x: 0, y: 0 };
@@ -45,6 +60,7 @@ function cleanupPlayerStates(player) {
   player.saltCooldown = false;
   player.snowballCooldown = false;
   player.pumoArmyCooldown = false;
+  player.snowballThrowsRemaining = null;
   player.isThrowingSnowball = false;
   player.isSpawningPumoArmy = false;
   player.hitAbsorptionUsed = false;
@@ -159,6 +175,7 @@ function getCleanedRoomData(room) {
       saltCooldown: false,
       snowballCooldown: false,
       pumoArmyCooldown: false,
+      snowballThrowsRemaining: null,
       isThrowingSnowball: false,
       isSpawningPumoArmy: false,
       hitAbsorptionUsed: false,
@@ -273,6 +290,7 @@ function getCleanedRoomsData(rooms) {
         saltCooldown: false,
         snowballCooldown: false,
         pumoArmyCooldown: false,
+        snowballThrowsRemaining: null,
         isThrowingSnowball: false,
         isSpawningPumoArmy: false,
         hitAbsorptionUsed: false,

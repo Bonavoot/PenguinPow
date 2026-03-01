@@ -163,7 +163,7 @@ const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
         case "grab":
           newState.mouse2 = true;
           break;
-        case "dodge":
+        case "dash":
           newState.shift = true;
           break;
       }
@@ -193,7 +193,7 @@ const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
         case "grab":
           newState.mouse2 = false;
           break;
-        case "dodge":
+        case "dash":
           newState.shift = false;
           break;
       }
@@ -266,9 +266,9 @@ const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
           G
         </button>
         <button
-          className="action-button dodge-button"
-          onTouchStart={(e) => handleButtonPress(e, "dodge")}
-          onTouchEnd={(e) => handleButtonRelease(e, "dodge")}
+          className="action-button dash-button"
+          onTouchStart={(e) => handleButtonPress(e, "dash")}
+          onTouchEnd={(e) => handleButtonRelease(e, "dash")}
         >
           D
         </button>

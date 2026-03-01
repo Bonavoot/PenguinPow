@@ -109,7 +109,7 @@ const CrowdContainer = styled.div`
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.22);
+    background: rgba(0, 0, 0, 0.18);
     pointer-events: none;
     z-index: 9999;
   }
@@ -541,12 +541,16 @@ const CrowdLayer = ({ crowdEvent = null }) => {
     }
   }, [crowdEvent]);
 
-  const renderCrowdMembers = (members) => {
+  const renderCrowdMembers = (members, { darken = false } = {}) => {
     return members.map((member) => {
       const crowdType = CROWD_TYPES[member.typeIndex];
       const animOffset = ((member.id * 7) % 10) / 10;
       const shouldAnimate = member.y < 55;
       const needsFilter = crowdType.idle === crowdType.cheering && member.applyDarkFilter;
+
+      let filter = "none";
+      if (needsFilter) filter = OYAKATA_FILTER;
+      else if (darken) filter = "brightness(0.82)";
 
       return (
         <CrowdMember
@@ -558,7 +562,7 @@ const CrowdLayer = ({ crowdEvent = null }) => {
           $size={member.size}
           $flip={member.flip}
           $opacity={computeOpacityFromSize(member.size)}
-          $filter={needsFilter ? OYAKATA_FILTER : "none"}
+          $filter={filter}
           $animOffset={animOffset}
           $shouldAnimate={shouldAnimate}
           $customZIndex={member.customZIndex}
@@ -577,7 +581,7 @@ const CrowdLayer = ({ crowdEvent = null }) => {
       </CrowdContainer>
       {foregroundCrowd.length > 0 && (
         <ForegroundCrowdContainer>
-          {renderCrowdMembers(foregroundCrowd)}
+          {renderCrowdMembers(foregroundCrowd, { darken: true })}
         </ForegroundCrowdContainer>
       )}
       {editorMode && (

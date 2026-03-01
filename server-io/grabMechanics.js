@@ -28,7 +28,7 @@ const {
   startCharging,
 } = require("./gameUtils");
 
-const { cleanupGrabStates } = require("./gameFunctions");
+const { cleanupGrabStates, activateBufferedInputAfterGrab } = require("./gameFunctions");
 
 // Correct both players' facing to match their current positions after throw/grab.
 // Prevents wonky dodge/attack direction when a player immediately acts after landing.
@@ -128,13 +128,19 @@ function executeGrabSeparation(grabber, opponent, room, io) {
 
   setPlayerTimeout(
     grabber.id,
-    () => { grabber.isGrabSeparating = false; },
+    () => {
+      grabber.isGrabSeparating = false;
+      activateBufferedInputAfterGrab(grabber, [room]);
+    },
     300,
     "grabSepAnim"
   );
   setPlayerTimeout(
     opponent.id,
-    () => { opponent.isGrabSeparating = false; },
+    () => {
+      opponent.isGrabSeparating = false;
+      activateBufferedInputAfterGrab(opponent, [room]);
+    },
     300,
     "grabSepAnim"
   );

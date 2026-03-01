@@ -955,6 +955,30 @@ const PowerUpSlot = styled.div`
   }
 `;
 
+const SnowballCountBadge = styled.div`
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  width: clamp(13px, 1.5cqw, 18px);
+  height: clamp(13px, 1.5cqw, 18px);
+  padding: 0;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Bungee", cursive;
+  font-size: clamp(7px, 0.8cqw, 10px);
+  line-height: 1;
+  color: #fff;
+  background: linear-gradient(180deg, #1f2937 0%, #111827 100%);
+  border: 1px solid rgba(168, 212, 255, 0.7);
+  box-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  z-index: 2;
+  pointer-events: none;
+`;
+
 // ============================================
 // CENTER CREST — crimson lacquer scoreboard
 // ============================================
@@ -1139,12 +1163,14 @@ const UiPlayerInfo = ({
   player1Stamina,
   player1ActivePowerUp = null,
   player1SnowballCooldown = false,
+  player1SnowballThrowsRemaining = null,
   player1PumoArmyCooldown = false,
   player1IsGassed = false,
   player1ParryRefund = 0,
   player2Stamina,
   player2ActivePowerUp = null,
   player2SnowballCooldown = false,
+  player2SnowballThrowsRemaining = null,
   player2PumoArmyCooldown = false,
   player2IsGassed = false,
   player2ParryRefund = 0,
@@ -1574,6 +1600,12 @@ const UiPlayerInfo = ({
                 alt={player1ActivePowerUp}
               />
             )}
+            {player1ActivePowerUp === "snowball" &&
+              Number.isFinite(player1SnowballThrowsRemaining) && (
+                <SnowballCountBadge>
+                  {Math.max(0, player1SnowballThrowsRemaining)}
+                </SnowballCountBadge>
+              )}
           </PowerUpSlot>
         </BarRow>
 
@@ -1669,6 +1701,12 @@ const UiPlayerInfo = ({
                 alt={player2ActivePowerUp}
               />
             )}
+            {player2ActivePowerUp === "snowball" &&
+              Number.isFinite(player2SnowballThrowsRemaining) && (
+                <SnowballCountBadge>
+                  {Math.max(0, player2SnowballThrowsRemaining)}
+                </SnowballCountBadge>
+              )}
           </PowerUpSlot>
         </BarRow>
 
@@ -1691,12 +1729,14 @@ UiPlayerInfo.propTypes = {
   player1Stamina: PropTypes.number,
   player1ActivePowerUp: PropTypes.string,
   player1SnowballCooldown: PropTypes.bool,
+  player1SnowballThrowsRemaining: PropTypes.number,
   player1PumoArmyCooldown: PropTypes.bool,
   player1IsGassed: PropTypes.bool,
   player1ParryRefund: PropTypes.number,
   player2Stamina: PropTypes.number,
   player2ActivePowerUp: PropTypes.string,
   player2SnowballCooldown: PropTypes.bool,
+  player2SnowballThrowsRemaining: PropTypes.number,
   player2PumoArmyCooldown: PropTypes.bool,
   player2IsGassed: PropTypes.bool,
   player2ParryRefund: PropTypes.number,

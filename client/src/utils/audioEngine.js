@@ -235,8 +235,11 @@ function createCrossfadeLoop(src, volume = 1.0, crossfadeDuration = 2.0) {
       if (nextTimer) clearTimeout(nextTimer);
       const now = ctx.currentTime;
       for (const entry of activeSources) {
-        entry.gainNode.gain.setValueAtTime(entry.gainNode.gain.value, now);
-        entry.gainNode.gain.linearRampToValueAtTime(0, now + 0.3);
+        try {
+          entry.gainNode.gain.cancelScheduledValues(now);
+          entry.gainNode.gain.setValueAtTime(entry.gainNode.gain.value, now);
+          entry.gainNode.gain.linearRampToValueAtTime(0, now + 0.3);
+        } catch (e) {}
       }
       const stopTimer = setTimeout(() => {
         for (const entry of activeSources) {

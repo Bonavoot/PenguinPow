@@ -23,7 +23,7 @@ const DELTA_TRACKED_PROPS = [
   'isChargingAttack', 'chargeAttackPower', 'chargeStartTime',
   'isGrabbing', 'isBeingGrabbed', 'grabbedOpponent', 'grabState', 'grabAttemptType',
   'isGrabbingMovement', 'isWhiffingGrab', 'isGrabWhiffRecovery', 'isGrabTeching', 'grabTechRole', 'isGrabClashing', 'isGrabStartup',
-  'isHit', 'isDead', 'isRecovering', 'isDodging', 'dodgeDirection', 'justLandedFromDodge',
+  'isHit', 'isDead', 'isRecovering', 'isDodging', 'isDodgeStartup', 'isDodgeRecovery', 'dodgeDirection', 'justLandedFromDodge',
   'isRawParrying', 'isRawParryStun', 'isRawParrySuccess', 'isPerfectRawParrySuccess',
   'isThrowing', 'isBeingThrown', 'isThrowTeching', 'isBeingPulled', 'isBeingPushed',
   'isThrowingSalt', 'isReady', 'isBowing', 'isAtTheRopes',
@@ -35,9 +35,9 @@ const DELTA_TRACKED_PROPS = [
   'isGrabSeparating', 'isGrabBellyFlopping', 'isBeingGrabBellyFlopped',
   'isGrabFrontalForceOut', 'isBeingGrabFrontalForceOut',
   'knockbackVelocity', 'activePowerUp', 'powerUpMultiplier',
-  'snowballs', 'pumoArmy', 'snowballCooldown', 'pumoArmyCooldown',
+  'snowballs', 'pumoArmy', 'snowballCooldown', 'pumoArmyCooldown', 'snowballThrowsRemaining',
   'isPowerSliding', 'isBraking', 'movementVelocity', 'isStrafing',
-  'isJumping', 'isDiving', 'sizeMultiplier', 'isGassed'
+  'isRopeJumping', 'ropeJumpPhase', 'sizeMultiplier', 'isGassed'
 ];
 
 // Pre-compute the combined props list once (avoids spread on every call)
@@ -52,15 +52,38 @@ const SCREEN_SHAKE_MIN_INTERVAL = 100; // Minimum ms between screen shakes
 // Core Physics
 // ============================================
 const speedFactor = 0.185; // Scaled for camera zoom (was 0.25)
-const GROUND_LEVEL = 290;
-const HITBOX_DISTANCE_VALUE = Math.round(77 * 0.96); // ~74 (scaled for camera zoom)
-const SLAP_HITBOX_DISTANCE_VALUE = Math.round(155 * 0.96); // ~149 (scaled for camera zoom)
+const GROUND_LEVEL = 300;
+const HITBOX_DISTANCE_VALUE = Math.round(77 * 0.96); // ~74 — PUSHBOX size (body collision, keeps players separated)
+const CHARGED_HITBOX_DISTANCE_VALUE = Math.round(160 * 0.96); // ~154 → effective ~131 with sizeMultiplier (just past pushbox 126 — hit fires at body contact; lunge provides range)
+const SLAP_HITBOX_DISTANCE_VALUE = Math.round(140 * 0.96); // ~134 (nerfed from 149 — comfortably past pushbox, still connects on spam)
 const SLAP_PARRY_WINDOW = 200; // Updated to 200ms window for parry to account for longer slap animation
 const SLAP_PARRY_KNOCKBACK_VELOCITY = 1.5; // Reduced knockback for parried attacks
 const THROW_RANGE = Math.round(166 * 0.96); // ~159 (scaled for camera zoom)
 const GRAB_RANGE = Math.round(172 * 0.96); // ~165px - command grab range (scaled for camera zoom)
-const GRAB_PUSH_SPEED = 0.3; // Push movement speed
+const GRAB_PUSH_SPEED = 0.55; // Push movement speed (buffed from 0.3 — yorikiri should grind to the edge)
 const GRAB_PUSH_DURATION = 650;
+
+// ============================================
+// FRAME DATA SYSTEM — Formal startup/active/recovery for every move
+// Real fighting game structure: Startup → Active → Recovery
+// Startup: committed but can't hit. Active: hitbox live. Recovery: punishable.
+// ============================================
+const SLAP_STARTUP_MS = 70;       // Wind-up before hitbox (was 55)
+const SLAP_ACTIVE_MS = 100;       // Hitbox live window
+const SLAP_RECOVERY_MS = 150;     // Can't act, no hitbox — opponent's response window
+const SLAP_TOTAL_MS = SLAP_STARTUP_MS + SLAP_ACTIVE_MS + SLAP_RECOVERY_MS; // 320ms
+
+const CHARGED_STARTUP_MS = 150;   // Clear windup (unchanged)
+const CHARGED_ACTIVE_MS = 120;    // Hitbox live window
+
+const GRAB_STARTUP_MS = 180;      // Readable telegraph (was 150)
+const GRAB_ACTIVE_MS = 100;       // Grab connect window
+
+const DODGE_STARTUP_MS = 40;      // Brief crouch/wind-up before movement (was 50)
+const DODGE_ACTIVE_MS = 200;      // Actual dash movement (was 220)
+const DODGE_RECOVERY_MS = 90;     // Sliding to a stop, punishable (was 120)
+const DODGE_TOTAL_MS = DODGE_STARTUP_MS + DODGE_ACTIVE_MS + DODGE_RECOVERY_MS; // 330ms
+const DODGE_COOLDOWN_MS = 100;    // Forced idle gap after recovery before next dash (prevents chain-dash blur)
 
 // Dohyo edge fall physics - fast heavy drop with maintained horizontal momentum
 const DOHYO_FALL_SPEED = 5.93; // Scaled for camera zoom (was 8)
@@ -137,15 +160,11 @@ const MIN_MOVEMENT_THRESHOLD = ICE_STOP_THRESHOLD;
 const INITIAL_MOVEMENT_BURST = ICE_INITIAL_BURST;
 
 // ============================================
-// Dodge Physics - smooth graceful arc with weight
+// Dash Physics - grounded dash with dash slap
 // ============================================
-const DODGE_DURATION = 450; // Longer for bigger, more dramatic arc
-const DODGE_BASE_SPEED = 2.2; // Base horizontal speed during dodge
-const DODGE_HOP_HEIGHT = 70; // Scaled for camera zoom (was 95)
-const DODGE_LANDING_MOMENTUM = 0.35; // Momentum burst on landing
-const DODGE_CANCEL_DURATION = 100; // Smooth but quick slam-down
-const DODGE_CANCEL_SPEED_MULT = 0.2; // Some horizontal movement during cancel
-const DODGE_CROSSED_THROUGH_GRACE = 300; // ms grace period after dodge landing while overlapping
+const DODGE_DURATION = DODGE_STARTUP_MS + DODGE_ACTIVE_MS; // 240ms total before recovery phase
+const DODGE_BASE_SPEED = 3.2; // Grounded dash speed (was 2.0 — buffed to cover ~118px, escapes grab range)
+const DODGE_CANCEL_ACTION_LOCK = 80; // Brief lock after S-cancel to prevent instant pivoting
 
 // ============================================
 // Grab Mechanics
@@ -156,10 +175,10 @@ const GRAB_WALK_SPEED_MULTIPLIER = 0.8; // Slightly slower than normal strafing
 const GRAB_WALK_ACCEL_MULTIPLIER = 0.7; // Slightly lower acceleration than normal strafing
 
 // Grab startup tuning — lunge forward during startup for better grab range
-const GRAB_STARTUP_DURATION_MS = 150; // Startup with forward lunge (~9 frames) — readable telegraph with approach
+const GRAB_STARTUP_DURATION_MS = GRAB_STARTUP_MS; // Uses frame data constant (180ms)
 const GRAB_STARTUP_HOP_HEIGHT = 0; // No hop — grab is a grounded technique
-const GRAB_LUNGE_DISTANCE = 55; // Pixels of forward movement during grab startup
-const SLAP_ATTACK_STARTUP_MS = 55; // Slap becomes active after 55ms (for grab vs slap timing)
+const GRAB_LUNGE_DISTANCE = 75; // Pixels of forward movement during grab startup (buffed from 55 — grabs more threatening)
+const SLAP_ATTACK_STARTUP_MS = SLAP_STARTUP_MS; // Uses frame data constant (70ms)
 
 // Grab whiff recovery — big vulnerable window if grab misses
 const GRAB_WHIFF_RECOVERY_MS = 450; // Whiff recovery duration (fully vulnerable to punishment)
@@ -195,7 +214,7 @@ const GRAB_STAMINA_DRAIN_INTERVAL = 150;
 const GRAB_ACTION_WINDOW = 500; // 0.5s window for pull/throw counter attempts
 const GRAB_PUSH_BURST_BASE = 2.5;          // Base burst speed when push starts
 const GRAB_PUSH_MOMENTUM_TRANSFER = 0.6;   // Multiplier on approach speed added to burst (power slide grab = devastating)
-const GRAB_PUSH_DECAY_RATE = 2.2;          // Exponential decay rate — higher = faster slowdown
+const GRAB_PUSH_DECAY_RATE = 1.6;          // Exponential decay rate (was 2.2 — slower decay for sustained yorikiri push)
 const GRAB_PUSH_MIN_VELOCITY = 0.15;       // Push ends when speed decays below this
 const GRAB_PUSH_MAX_DURATION = 1500;        // Safety cap: push can never exceed this (ms)
 const GRAB_PUSH_BACKWARD_GRACE = 150;       // ms before backward input triggers pull during push (prevents accidental pull)
@@ -211,6 +230,11 @@ const PULL_REVERSAL_PULLER_LOCK = 700; // ms input lock for puller (same as pull
 const PULL_BOUNDARY_MARGIN = 11; // Scaled for camera zoom (was 15)
 
 // ============================================
+// Input Buffering
+// ============================================
+const INPUT_BUFFER_WINDOW_MS = 200; // Buffer window: inputs within this window before lockout ends fire on frame 1
+
+// ============================================
 // Ring-out cutscene
 // ============================================
 const RINGOUT_THROW_DURATION_MS = 400; // Match normal throw timing for consistent physics
@@ -219,13 +243,13 @@ const RINGOUT_THROW_DURATION_MS = 400; // Match normal throw timing for consiste
 // Parry System
 // ============================================
 const RAW_PARRY_KNOCKBACK = 0.49; // Knockback velocity for charged attack parries
-const RAW_PARRY_STUN_DURATION = 1000; // 1 second stun duration
+const RAW_PARRY_STUN_DURATION = 700; // Stun duration (was 1000 — guarantees slap/grab but not charged)
 const RAW_PARRY_SLAP_KNOCKBACK = 0.5; // Lighter knockback for slap parries
 const PERFECT_PARRY_KNOCKBACK = 0.65; // Slightly stronger than regular parry
-const RAW_PARRY_SLAP_STUN_DURATION = 500; // Reduced stun duration for slap attack parries
+const RAW_PARRY_SLAP_STUN_DURATION = 400; // Stun for slap parries (was 500)
 const PERFECT_PARRY_WINDOW = 100; // 100ms window for perfect parries
 const PERFECT_PARRY_SUCCESS_DURATION = 850; // Compressed parry — fast enough to keep pace, long enough for visual read
-const PERFECT_PARRY_ATTACKER_STUN_DURATION = 600; // 600ms stun — tight punish window requiring decisiveness
+const PERFECT_PARRY_ATTACKER_STUN_DURATION = 550; // Stun (was 600 — still guarantees any follow-up)
 const PERFECT_PARRY_ANIMATION_LOCK = 250; // 250ms — brief flash moment, then parrier can act
 const PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK = 200; // Shorter than player parry lock — the reflected snowball is the reward
 
@@ -243,6 +267,18 @@ const RAW_PARRY_STAMINA_REFUND = 5; // Full refund on successful parry (regular 
 // At the Ropes
 // ============================================
 const AT_THE_ROPES_DURATION = 1000; // 1 second stun duration
+
+// ============================================
+// Rope Jump - Escape from boundary pressure
+// Arc over the opponent when cornered near the edge
+// ============================================
+const ROPE_JUMP_STARTUP_MS = 166;        // Punishable telegraph before jump
+const ROPE_JUMP_ACTIVE_MS = 450;         // Duration of the parabolic arc
+const ROPE_JUMP_LANDING_RECOVERY_MS = 183; // Landing endlag (punishable)
+const ROPE_JUMP_STAMINA_COST = 4;        // Same as dodge
+const ROPE_JUMP_ARC_HEIGHT = 120;        // Peak Y offset above GROUND_LEVEL
+const ROPE_JUMP_SAFE_HEIGHT = 80;        // Y offset above which player can't be hit
+const ROPE_JUMP_BOUNDARY_ZONE = 40;      // Tight to the rope — must be near the boundary to jump
 
 // ============================================
 // Charge Clash (charged vs charged simultaneous collision)
@@ -272,14 +308,14 @@ const STAMINA_REGEN_AMOUNT = 8; // per tick
 // Charged attack timing
 const CHARGE_FULL_POWER_MS = 1000; // Time to reach 100% charge (1 second)
 
-// Stamina costs
-const SLAP_ATTACK_STAMINA_COST = 3; // Small cost to not deter spamming
-const CHARGED_ATTACK_STAMINA_COST = 9; // 3x slap attack cost
-const DODGE_STAMINA_COST = 7; // ~7% of max stamina per dodge
+// Stamina costs — every action is a real decision
+const SLAP_ATTACK_STAMINA_COST = 5; // Meaningful cost (was 3 — ~20 slaps before exhaustion)
+const CHARGED_ATTACK_STAMINA_COST = 12; // Heavy commitment (was 9)
+const DODGE_STAMINA_COST = 4; // Deliberate escape (was 2 — ~25 dodges before exhaustion)
 
 // Stamina drain on victim when hit (victim pays MORE than attacker spent)
-const SLAP_HIT_VICTIM_STAMINA_DRAIN = 6; // Victim loses 6 (attacker paid 3)
-const CHARGED_HIT_VICTIM_STAMINA_DRAIN = 18; // Victim loses 18 (attacker paid 9)
+const SLAP_HIT_VICTIM_STAMINA_DRAIN = 8; // Victim loses 8 (was 6)
+const CHARGED_HIT_VICTIM_STAMINA_DRAIN = 22; // Victim loses 22 (was 18)
 
 // Gassed state: regen freeze when stamina hits 0
 const GASSED_DURATION_MS = 3000; // 3 second regen freeze penalty
@@ -290,6 +326,7 @@ const GASSED_RECOVERY_STAMINA = 30; // Stamina granted immediately when gassed e
 // Every hit has hitstop to make impacts feel satisfying
 // Scales with power - stronger hits freeze longer
 // ============================================
+const SLAP_CHAIN_HIT_GAP_MS = 60;  // Minimum visual gap after slap hitstun before victim can be hit again (prevents infinite combo appearance)
 const HITSTOP_SLAP_MS = 100;      // Rekka-style hitstop - punchy freeze for each slap impact (6 frames)
 const HITSTOP_CHARGED_MIN_MS = 80;  // Minimum charged attack hitstop (5 frames)
 const HITSTOP_CHARGED_MAX_MS = 150; // Maximum charged attack hitstop at full power (9 frames)
@@ -311,8 +348,8 @@ const CINEMATIC_KB_MOVEMENT_FRICTION = 0.996;
 // ============================================
 // Global Attack Timing
 // ============================================
-const ATTACK_ENDLAG_SLAP_MS = 30;       // Minimal recovery for ultra-spammable slaps
-const ATTACK_ENDLAG_CHARGED_MS = 280;   // Longer recovery for charged attacks
+const ATTACK_ENDLAG_SLAP_MS = SLAP_RECOVERY_MS; // Uses frame data (150ms — creates response window)
+const ATTACK_ENDLAG_CHARGED_MS = 300;   // Recovery for charged attacks (was 280)
 const ATTACK_COOLDOWN_MS = 50;          // Minimal cooldown for fast gameplay
 const BUFFERED_ATTACK_GAP_MS = 80;      // Fast chaining
 
@@ -333,6 +370,7 @@ module.exports = {
   speedFactor,
   GROUND_LEVEL,
   HITBOX_DISTANCE_VALUE,
+  CHARGED_HITBOX_DISTANCE_VALUE,
   SLAP_HITBOX_DISTANCE_VALUE,
   SLAP_PARRY_WINDOW,
   SLAP_PARRY_KNOCKBACK_VELOCITY,
@@ -384,14 +422,25 @@ module.exports = {
   MIN_MOVEMENT_THRESHOLD,
   INITIAL_MOVEMENT_BURST,
 
+  // Frame data
+  SLAP_STARTUP_MS,
+  SLAP_ACTIVE_MS,
+  SLAP_RECOVERY_MS,
+  SLAP_TOTAL_MS,
+  CHARGED_STARTUP_MS,
+  CHARGED_ACTIVE_MS,
+  GRAB_STARTUP_MS,
+  GRAB_ACTIVE_MS,
+  DODGE_STARTUP_MS,
+  DODGE_ACTIVE_MS,
+  DODGE_RECOVERY_MS,
+  DODGE_TOTAL_MS,
+  DODGE_COOLDOWN_MS,
+
   // Dodge physics
   DODGE_DURATION,
   DODGE_BASE_SPEED,
-  DODGE_HOP_HEIGHT,
-  DODGE_LANDING_MOMENTUM,
-  DODGE_CANCEL_DURATION,
-  DODGE_CANCEL_SPEED_MULT,
-  DODGE_CROSSED_THROUGH_GRACE,
+  DODGE_CANCEL_ACTION_LOCK,
 
   // Grab mechanics
   GRAB_WALK_SPEED_MULTIPLIER,
@@ -437,6 +486,9 @@ module.exports = {
   PULL_REVERSAL_PULLER_LOCK,
   PULL_BOUNDARY_MARGIN,
 
+  // Input Buffering
+  INPUT_BUFFER_WINDOW_MS,
+
   // Ring-out
   RINGOUT_THROW_DURATION_MS,
 
@@ -458,6 +510,15 @@ module.exports = {
 
   // At the ropes
   AT_THE_ROPES_DURATION,
+
+  // Rope jump
+  ROPE_JUMP_STARTUP_MS,
+  ROPE_JUMP_ACTIVE_MS,
+  ROPE_JUMP_LANDING_RECOVERY_MS,
+  ROPE_JUMP_STAMINA_COST,
+  ROPE_JUMP_ARC_HEIGHT,
+  ROPE_JUMP_SAFE_HEIGHT,
+  ROPE_JUMP_BOUNDARY_ZONE,
 
   // Charge clash
   CHARGE_CLASH_RECOVERY_DURATION,
@@ -485,6 +546,7 @@ module.exports = {
   GASSED_RECOVERY_STAMINA,
 
   // Hitstop
+  SLAP_CHAIN_HIT_GAP_MS,
   HITSTOP_SLAP_MS,
   HITSTOP_CHARGED_MIN_MS,
   HITSTOP_CHARGED_MAX_MS,

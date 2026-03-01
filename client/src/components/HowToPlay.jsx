@@ -5,7 +5,7 @@ const HowToPlay = () => {
         <li>MOVEMENT: A S D</li>
         <li>ATTACK: SPACEBAR</li>
         <li>TOSS: W</li>
-        <li>DODGE: SHIFT</li>
+        <li>DASH: SHIFT</li>
       </ul>
     </div>
   );

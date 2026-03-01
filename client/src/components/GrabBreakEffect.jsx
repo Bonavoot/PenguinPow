@@ -187,7 +187,7 @@ const BreakText = styled.div`
   top: 50%;
   left: 50%;
   font-family: "Bungee", cursive;
-  font-size: 0.86cqw;
+  font-size: 1.02cqw;
   color: #00ff88;
   -webkit-text-stroke: 2.5px #000;
   paint-order: stroke fill;

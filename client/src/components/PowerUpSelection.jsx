@@ -94,25 +94,25 @@ const PowerUpSelectionOverlay = styled.div`
   pointer-events: none;
 `;
 
-// Main container - centered horizontally, positioned below header
+// Main container - centered horizontally, same y as power-up reveal
 const BannerContainer = styled.div`
-  margin-top: calc(10.6cqh + 22px);
+  margin-top: clamp(56px, 17.2cqh, 124px);
   width: fit-content;
-  max-width: min(90cqw, 850px);
+  max-width: min(82cqw, 760px);
   pointer-events: auto;
   animation: ${bannerDrop} 0.5s ease-out forwards, ${bannerSway} 8s ease-in-out 0.5s infinite;
   transform-origin: top center;
   
   @media (max-width: 1200px) {
-    max-width: min(92cqw, 750px);
+    max-width: min(84cqw, 690px);
   }
   
   @media (max-width: 900px) {
-    max-width: min(94cqw, 650px);
+    max-width: min(88cqw, 620px);
   }
   
   @media (max-width: 600px) {
-    max-width: min(96cqw, 500px);
+    max-width: min(92cqw, 500px);
   }
 `;
 
@@ -159,7 +159,7 @@ const BannerBody = styled.div`
   border: 3px solid #8b7355;
   border-top: none;
   border-radius: 0 0 clamp(8px, 1.2cqw, 14px) clamp(8px, 1.2cqw, 14px);
-  padding: clamp(16px, 2.5cqh, 28px) clamp(18px, 2cqw, 32px) clamp(14px, 2cqh, 24px);
+  padding: clamp(12px, 2cqh, 22px) clamp(14px, 1.6cqw, 24px) clamp(10px, 1.6cqh, 18px);
   box-shadow: 
     0 15px 50px rgba(0,0,0,0.7),
     inset 0 0 40px rgba(0,0,0,0.6),
@@ -205,7 +205,7 @@ const BannerBody = styled.div`
   }
   
   @media (max-width: 900px) {
-    padding: clamp(12px, 2cqh, 20px) clamp(12px, 1.8cqw, 22px) clamp(10px, 1.5cqh, 16px);
+    padding: clamp(10px, 1.7cqh, 16px) clamp(10px, 1.4cqw, 18px) clamp(8px, 1.2cqh, 14px);
     border-width: 2px;
   }
 `;
@@ -247,8 +247,8 @@ const Tassel = styled.div`
 // Title section with decorative border
 const TitleSection = styled.div`
   text-align: center;
-  margin-bottom: clamp(12px, 2cqh, 20px);
-  padding-bottom: clamp(10px, 1.5cqh, 16px);
+  margin-bottom: clamp(8px, 1.35cqh, 14px);
+  padding-bottom: clamp(6px, 0.9cqh, 10px);
   border-bottom: 2px solid rgba(212, 175, 55, 0.3);
   position: relative;
   
@@ -266,7 +266,7 @@ const TitleSection = styled.div`
 
 const Title = styled.h1`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.9rem, 2.2cqw, 1.4rem);
+  font-size: clamp(0.78rem, 1.9cqw, 1.2rem);
   margin: 0;
   color: #d4af37;
   text-transform: uppercase;
@@ -276,7 +276,7 @@ const Title = styled.h1`
     0 0 20px rgba(212, 175, 55, 0.4);
   
   @media (max-width: 900px) {
-    font-size: clamp(0.75rem, 3cqw, 1.1rem);
+    font-size: clamp(0.66rem, 2.6cqw, 0.95rem);
   }
 `;
 
@@ -290,7 +290,7 @@ const CardsContainer = styled.div`
   z-index: 1;
   
   @media (max-width: 600px) {
-    gap: clamp(5px, 1.2cqw, 10px);
+    gap: clamp(6px, 1.3cqw, 12px);
   }
 `;
 
@@ -313,8 +313,12 @@ const PowerCard = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: clamp(80px, 12cqw, 145px);
-  padding: clamp(12px, 1.6cqh, 20px) clamp(8px, 1.2cqw, 14px);
+  justify-content: flex-start;
+  width: clamp(72px, 10.8cqw, 128px);
+  aspect-ratio: 1 / 0.88;
+  height: auto;
+  padding: clamp(7px, 1cqh, 12px) clamp(6px, 0.9cqw, 10px);
+  box-sizing: border-box;
   background: linear-gradient(180deg,
     #4a3525 0%,
     #3d2817 50%,
@@ -378,15 +382,15 @@ const PowerCard = styled.div`
   }
   
   @media (max-width: 600px) {
-    width: clamp(65px, 17cqw, 110px);
-    padding: clamp(10px, 1.4cqh, 16px) clamp(6px, 1cqw, 10px);
+    width: clamp(62px, 15.2cqw, 98px);
+    padding: clamp(6px, 0.8cqh, 10px) clamp(5px, 0.75cqw, 8px);
   }
 `;
 
 // Square icon with type color
 const IconSquare = styled.div`
-  width: clamp(35px, 5.5cqw, 58px);
-  height: clamp(35px, 5.5cqw, 58px);
+  width: clamp(24px, 3.9cqw, 38px);
+  height: clamp(24px, 3.9cqw, 38px);
   background: linear-gradient(135deg,
     ${props => getTypeColor(props.$type).main} 0%,
     ${props => getTypeColor(props.$type).dark} 100%
@@ -396,7 +400,7 @@ const IconSquare = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: clamp(8px, 1cqh, 12px);
+  margin-bottom: clamp(3px, 0.45cqh, 5px);
   box-shadow: 
     inset 0 2px 4px rgba(255,255,255,0.3),
     inset 0 -2px 4px rgba(0,0,0,0.3),
@@ -410,52 +414,59 @@ const IconSquare = styled.div`
   }
   
   @media (max-width: 600px) {
-    width: clamp(34px, 8cqw, 55px);
-    height: clamp(34px, 8cqw, 55px);
-    margin-bottom: clamp(6px, 0.8cqh, 10px);
+    width: clamp(22px, 5.4cqw, 34px);
+    height: clamp(22px, 5.4cqw, 34px);
+    margin-bottom: clamp(2px, 0.35cqh, 4px);
   }
 `;
 
 const PowerName = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.65rem, 1.25cqw, 0.95rem);
-  color: ${props => props.$selected ? getTypeColor(props.$type).light : '#e8dcc8'};
+  font-size: clamp(0.5rem, 0.95cqw, 0.7rem);
+  color: ${props => getTypeColor(props.$type).main};
   text-transform: uppercase;
   letter-spacing: 0.04em;
   text-align: center;
   line-height: 1.1;
-  margin-bottom: clamp(3px, 0.4cqh, 6px);
+  margin-bottom: 0;
   text-shadow: 1px 1px 2px rgba(0,0,0,0.9);
   
   @media (max-width: 600px) {
-    font-size: clamp(0.5rem, 2.2cqw, 0.75rem);
+    font-size: clamp(0.4rem, 1.6cqw, 0.58rem);
   }
 `;
 
 const PowerDesc = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.48rem, 0.95cqw, 0.7rem);
-  color: rgba(232, 220, 200, 0.6);
+  font-size: clamp(0.43rem, 0.82cqw, 0.62rem);
+  color: rgba(214, 224, 238, 0.96);
   text-align: center;
-  line-height: 1.15;
-  text-shadow: 1px 1px 1px rgba(0,0,0,0.7);
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.95),
+    1px 0 0 rgba(0, 0, 0, 0.95),
+    -1px 0 0 rgba(0, 0, 0, 0.95),
+    0 -1px 0 rgba(0, 0, 0, 0.95);
+  margin-top: auto;
+  margin-bottom: auto;
   
   @media (max-width: 600px) {
-    font-size: clamp(0.4rem, 1.65cqw, 0.58rem);
+    font-size: clamp(0.36rem, 1.3cqw, 0.52rem);
   }
 `;
 
 const PowerType = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.44rem, 0.85cqw, 0.62rem);
+  font-size: clamp(0.35rem, 0.64cqw, 0.46rem);
   color: ${props => props.$isActive ? '#44ff88' : 'white'};
   text-transform: uppercase;
-  margin-top: clamp(4px, 0.6cqh, 8px);
+  margin-top: auto;
   letter-spacing: 0.05em;
   text-shadow: ${props => props.$isActive ? '0 0 6px rgba(68, 255, 136, 0.4), 1px 1px 1px rgba(0,0,0,0.8)' : '1px 1px 1px rgba(0,0,0,0.7)'};
   
   @media (max-width: 600px) {
-    font-size: clamp(0.38rem, 1.35cqw, 0.54rem);
+    font-size: clamp(0.29rem, 1cqw, 0.4rem);
   }
 `;
 
@@ -464,7 +475,7 @@ const TimerDisplay = styled.div`
   display: flex;
   justify-content: center;
   align-items: baseline;
-  margin-top: clamp(14px, 2cqh, 22px);
+  margin-top: clamp(8px, 1.1cqh, 12px);
   position: relative;
   z-index: 1;
   
@@ -475,25 +486,25 @@ const TimerDisplay = styled.div`
 
 const TimerNumber = styled.span`
   font-family: "Bungee", cursive;
-  font-size: clamp(1rem, 2cqw, 1.5rem);
+  font-size: clamp(0.86rem, 1.65cqw, 1.2rem);
   color: ${props => props.$urgent ? '#ff3333' : '#d4af37'};
   text-shadow: 2px 2px 0 #000, 0 0 10px rgba(212, 175, 55, 0.3);
   letter-spacing: 0.05em;
   
   @media (max-width: 600px) {
-    font-size: clamp(0.85rem, 2.5cqw, 1.2rem);
+    font-size: clamp(0.72rem, 2.1cqw, 1rem);
   }
 `;
 
 const TimerUnit = styled.span`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.5rem, 1cqw, 0.75rem);
+  font-size: clamp(0.42rem, 0.8cqw, 0.62rem);
   color: ${props => props.$urgent ? '#ff3333' : '#8b7355'};
   text-shadow: 1px 1px 0 #000;
   margin-left: 2px;
   
   @media (max-width: 600px) {
-    font-size: clamp(0.4rem, 1.2cqw, 0.6rem);
+    font-size: clamp(0.34rem, 1cqw, 0.5rem);
   }
 `;
 
@@ -517,7 +528,7 @@ const PowerUpSelection = ({
     () => ({
       speed: {
         name: "Happy Feet",
-        description: "Speed & dodge",
+        description: "Speed & dash",
         icon: happyFeetIcon,
       },
       power: {
@@ -527,7 +538,7 @@ const PowerUpSelection = ({
       },
       snowball: {
         name: "Snowball",
-        description: "Throw with F",
+        description: "Max 3 throws",
         icon: snowballImage,
       },
       pumo_army: {

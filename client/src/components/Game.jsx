@@ -232,7 +232,7 @@ const Game = ({
       }
       if (gamepadKeyState.shift && !keyState.shift) {
         const direction = gamepadKeyState.a ? -1 : gamepadKeyState.d ? 1 : null;
-        applyPrediction("dodge", direction);
+        applyPrediction("dash", direction);
       }
       if (gamepadKeyState.s && !keyState.s) {
         applyPrediction("parry_start");
@@ -290,10 +290,10 @@ const Game = ({
         // CLIENT-SIDE PREDICTION: Apply predicted state immediately for certain actions
         // Don't apply predictions while being grabbed - only send counter-inputs
         if (!wasPressed && !currentPlayer?.isBeingGrabbed) {
-          // Dodge (shift + direction)
+          // Dash (shift + direction)
           if (key === "shift") {
             const direction = keyState.a ? -1 : keyState.d ? 1 : null;
-            applyPrediction("dodge", direction);
+            applyPrediction("dash", direction);
           }
           // Raw parry (s key)
           else if (key === "s") {

@@ -1,6 +1,6 @@
 import PropTypes from "prop-types";
 import "./PlayerStaminaUi.css";
-import DodgeChargeUI from "./DodgeChargeUI";
+import DashChargeUI from "./DodgeChargeUI";
 import PowerUpUI from "./PowerUpUI";
 
 const PlayerStaminaUi = ({
@@ -23,7 +23,7 @@ const PlayerStaminaUi = ({
           pumoArmyCooldown={pumoArmyCooldown}
           index={index}
         />
-        <DodgeChargeUI
+        <DashChargeUI
           dodgeCharges={dodgeCharges}
           dodgeChargeCooldowns={dodgeChargeCooldowns}
           index={index}

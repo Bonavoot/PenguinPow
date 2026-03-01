@@ -10,6 +10,8 @@ const {
   DOHYO_FALL_DEPTH,
   isOutsideDohyo,
   canPlayerSlap,
+  canPlayerUseAction,
+  canPlayerDash,
   shouldRestartCharging,
   startCharging,
 } = require("./gameUtils");
@@ -26,6 +28,17 @@ const {
   DODGE_POWERSLIDE_BOOST,
   RAW_PARRY_STAMINA_COST,
   CHARGE_FULL_POWER_MS,
+  SLAP_STARTUP_MS,
+  SLAP_ACTIVE_MS,
+  SLAP_RECOVERY_MS,
+  SLAP_TOTAL_MS,
+  CHARGED_STARTUP_MS,
+  CHARGED_ACTIVE_MS,
+  DODGE_STARTUP_MS,
+  DODGE_RECOVERY_MS,
+  GRAB_STARTUP_DURATION_MS,
+  GRAB_STATES,
+  INPUT_BUFFER_WINDOW_MS,
 } = require("./constants");
 
 // Add new function for grab state cleanup
@@ -233,6 +246,19 @@ function handleWinCondition(room, loser, winner, io) {
       p.atTheRopesStartTime = 0;
     }
 
+    // Clear rope jump state when game ends
+    if (p.isRopeJumping) {
+      p.y = GROUND_LEVEL;
+      p.isRopeJumping = false;
+      p.ropeJumpPhase = null;
+      p.ropeJumpStartTime = 0;
+      p.ropeJumpStartX = 0;
+      p.ropeJumpTargetX = 0;
+      p.ropeJumpDirection = 0;
+      p.ropeJumpActiveStartTime = 0;
+      p.ropeJumpLandingTime = 0;
+    }
+
     // Clear parry states to prevent jiggle/flash animations persisting into round result
     p.isRawParrying = false;
     p.rawParryStartTime = 0;
@@ -241,7 +267,18 @@ function handleWinCondition(room, loser, winner, io) {
     p.isPerfectRawParrySuccess = false;
     p.isRawParryStun = false;
 
-    // Clear grab animation states that cause shake/jiggle if round ends mid-grab
+    // Clear ALL grab states to prevent grabs persisting into next round
+    p.isGrabbing = false;
+    p.isBeingGrabbed = false;
+    p.grabbedOpponent = null;
+    p.grabStartTime = 0;
+    p.isThrowing = false;
+    p.isBeingThrown = false;
+    p.throwStartTime = 0;
+    p.throwEndTime = 0;
+    p.throwOpponent = null;
+    p.throwingFacingDirection = null;
+    p.beingThrownFacingDirection = null;
     p.isGrabBreaking = false;
     p.isGrabBreakCountered = false;
     p.isGrabTeching = false;
@@ -250,6 +287,18 @@ function handleWinCondition(room, loser, winner, io) {
     p.isBeingGrabPushed = false;
     p.isAttemptingPull = false;
     p.isGrabSeparating = false;
+    p.isGrabWalking = false;
+    p.isGrabbingMovement = false;
+    p.isGrabStartup = false;
+    p.isWhiffingGrab = false;
+    p.isGrabWhiffRecovery = false;
+    p.isGrabBellyFlopping = false;
+    p.isBeingGrabBellyFlopped = false;
+    p.isGrabFrontalForceOut = false;
+    p.isBeingGrabFrontalForceOut = false;
+    p.isCounterGrabbed = false;
+    p.isAttemptingGrabThrow = false;
+    p.grabThrowAttemptStartTime = 0;
 
     // Clear buffered slap attack states to prevent attacks after winner is declared
     p.hasPendingSlapAttack = false;
@@ -346,8 +395,8 @@ function executeSlapAttack(player, rooms) {
       // This gives the rekka "lunge back in" feel during chains without rocketing across
       // the screen on the initial approach.
       const recentlyLandedSlap = player.lastSlapHitLandedTime && 
-        (Date.now() - player.lastSlapHitLandedTime < 400); // Within one attack cycle
-      let slapSlideVelocity = recentlyLandedSlap ? 2.2 : 1.2; // Chain lunge vs normal approach
+        (Date.now() - player.lastSlapHitLandedTime < 450); // Within one attack cycle (wider window for longer recovery)
+      let slapSlideVelocity = recentlyLandedSlap ? 1.6 : 1.0; // Chain lunge vs normal approach (nerfed from 2.2/1.2)
 
       // Apply POWER power-up multiplier to slap slide distance
       if (player.activePowerUp === "power") {
@@ -376,22 +425,23 @@ function executeSlapAttack(player, rooms) {
   // Slap attacks drain a small amount of stamina
   player.stamina = Math.max(0, player.stamina - SLAP_ATTACK_STAMINA_COST);
 
-  // === SLAP ATTACK TIMING - Rekka-style chainable attack ===
-  // Each slap is deliberate with clear wind-up and impact, not rapid-fire spam.
-  // Combined with 130ms hitstop, creates a "BAM... BAM... BAM" rhythm.
-  const attackDuration = 270;  // Snappy cycle - rapid but deliberate
+  // === SLAP ATTACK TIMING - Formal frame data ===
+  // Startup (70ms) → Active (100ms) → Recovery (150ms) = 320ms total
+  // Recovery creates a gap where the opponent can respond between slaps.
+  const attackDuration = SLAP_STARTUP_MS + SLAP_ACTIVE_MS; // 170ms — hitbox is live from startup end to here
 
   // DESPERATION COUNTER-SLAP: If the player just recovered from hit stun,
   // their next slap has faster startup so it's more likely to create a slap parry.
   const recentlyRecoveredFromHit = player.lastHitTime && 
     (Date.now() - player.lastHitTime < 380) && // Within hit stun window + small buffer
     !player.isHit; // Must have already recovered
-  const startupDuration = recentlyRecoveredFromHit ? 35 : 55; // Quick wind-up per strike
+  const startupDuration = recentlyRecoveredFromHit ? 45 : SLAP_STARTUP_MS; // Quick wind-up per strike
 
-  const totalCycleDuration = attackDuration; // NO extra cooldown - chains immediately
+  const totalCycleDuration = SLAP_TOTAL_MS; // Full cycle including recovery gap
 
   player.isSlapAttack = true;
   player.attackEndTime = Date.now() + attackDuration;
+  player.slapActiveEndTime = Date.now() + SLAP_STARTUP_MS + SLAP_ACTIVE_MS; // When hitbox goes away
   player.isAttacking = true;
   player.attackStartTime = Date.now();
   player.attackType = "slap";
@@ -402,7 +452,7 @@ function executeSlapAttack(player, rooms) {
   // we can detect if the player was trying to attack
   player.attackAttemptTime = Date.now();
   
-  // Single cooldown controls everything - simple and consistent
+  // Single cooldown controls everything - full cycle including recovery
   player.attackCooldownUntil = Date.now() + totalCycleDuration;
 
   // Add startup frame tracking
@@ -427,6 +477,7 @@ function executeSlapAttack(player, rooms) {
       player.isSlapSliding = false;
       player.slapFacingDirection = null;
       player.isInStartupFrames = false;
+      player.slapActiveEndTime = 0;
       // ICE PHYSICS: Slap attack ends - momentum carries into sliding!
       // Don't reduce momentum, let ice physics handle the slide
       // Player keeps sliding in the direction they were moving
@@ -587,9 +638,11 @@ function executeChargedAttack(player, chargePercentage, rooms) {
   player.attackAttemptTime = Date.now();
   
   // === STARTUP FRAMES - Telegraph before attack becomes active ===
-  const CHARGED_STARTUP_MS = 150; // Clear windup before hit is active
   player.isInStartupFrames = true;
   player.startupEndTime = Date.now() + CHARGED_STARTUP_MS;
+  // Hitbox stays active from end of startup until the attack ends (full lunge duration).
+  // CHARGED_ACTIVE_MS is no longer used as a cutoff — the lunge IS the active window.
+  player.chargedActiveEndTime = player.attackEndTime;
   
   // Set timeout to end startup frames
   setPlayerTimeout(
@@ -635,7 +688,7 @@ function executeChargedAttack(player, chargePercentage, rooms) {
     // Only auto-correct if opponent exists, is NOT dodging, and hasn't just dodged through us
     // If opponent is dodging or just crossed through, preserve the original facing direction
     // so the charged attack continues in its committed direction and whiffs naturally
-    if (opponent && !opponent.isDodging && !opponent.justCrossedThrough) {
+    if (opponent && !opponent.isDodging) {
       const shouldFaceRight = player.x < opponent.x;
       const correctedFacing = shouldFaceRight ? -1 : 1;
 
@@ -790,13 +843,15 @@ function handleReadyPositions(room, player1, player2, io) {
 }
 
 function arePlayersColliding(player1, player2) {
-  // If either player is dodging, return false immediately
-  if (player1.isDodging || player2.isDodging) {
+  // If either player is dodging or rope jumping, return false immediately
+  if (player1.isDodging || player2.isDodging ||
+      (player1.isRopeJumping && player1.ropeJumpPhase === "active") ||
+      (player2.isRopeJumping && player2.ropeJumpPhase === "active")) {
     return false;
   }
 
-  // If either player is in recovery from a dodge + charged attack, allow collision checks
-  const isRecoveringFromDodgeAttack = (player) => {
+  // If either player is in recovery from a dash + charged attack, allow collision checks
+  const isRecoveringFromDashAttack = (player) => {
     return (
       player.isRecovering &&
       player.recoveryStartTime &&
@@ -805,8 +860,8 @@ function arePlayersColliding(player1, player2) {
   };
 
   if (
-    isRecoveringFromDodgeAttack(player1) ||
-    isRecoveringFromDodgeAttack(player2)
+    isRecoveringFromDashAttack(player1) ||
+    isRecoveringFromDashAttack(player2)
   ) {
     return true;
   }
@@ -862,437 +917,152 @@ function arePlayersColliding(player1, player2) {
 }
 
 function adjustPlayerPositions(player1, player2, delta) {
-  // Calculate the overlap between players
   if (
-    player1.isDodging ||
-    player2.isDodging ||
-    player1.isThrowing ||
-    player2.isThrowing ||
-    player1.isBeingThrown ||
-    player2.isBeingThrown
+    player1.isThrowing || player2.isThrowing ||
+    player1.isBeingThrown || player2.isBeingThrown ||
+    (player1.isRopeJumping && player1.ropeJumpPhase === "active") ||
+    (player2.isRopeJumping && player2.ropeJumpPhase === "active")
   ) {
     return;
   }
 
-  // Calculate hitbox sizes based on power-ups
+  // Charged attacks need to reach the opponent to connect — pushbox yields to hit detection.
+  // Without this, the pushbox (148px) prevents the lunge from closing distance.
+  const p1ActiveCharged = player1.isAttacking && player1.attackType === "charged" && !player1.isInStartupFrames;
+  const p2ActiveCharged = player2.isAttacking && player2.attackType === "charged" && !player2.isInStartupFrames;
+  if (p1ActiveCharged || p2ActiveCharged) {
+    return;
+  }
+
+  // Grab system tweens (pull reversal, belly flop, etc.) control position directly.
+  // The pushbox must yield so side-swap mechanics work correctly.
+  // Note: isGrabSeparating is NOT included — the pushbox should snap players to minDistance
+  // after a grab push ends, and the separation velocity handles the rest.
+  if (
+    player1.isGrabBreakSeparating || player2.isGrabBreakSeparating ||
+    player1.isBeingPullReversaled || player2.isBeingPullReversaled ||
+    player1.isGrabBellyFlopping || player2.isGrabBellyFlopping ||
+    player1.isBeingGrabBellyFlopped || player2.isBeingGrabBellyFlopped ||
+    player1.isGrabFrontalForceOut || player2.isGrabFrontalForceOut ||
+    player1.isBeingGrabFrontalForceOut || player2.isBeingGrabFrontalForceOut
+  ) {
+    return;
+  }
+
   const player1Hitbox = calculateEffectiveHitboxSize(player1);
   const player2Hitbox = calculateEffectiveHitboxSize(player2);
 
-  // Calculate the center points of each player's hitbox
-  const player1Center = player1.x;
-  const player2Center = player2.x;
+  const distanceBetweenCenters = Math.abs(player1.x - player2.x);
+  const minDistance = player1Hitbox.left + player2Hitbox.right;
 
-  // Calculate the distance between centers
-  const distanceBetweenCenters = Math.abs(player1Center - player2Center);
+  if (distanceBetweenCenters >= minDistance) return;
 
-  // Calculate the minimum distance needed between centers to prevent overlap
-  // Slightly reduced to allow natural close-quarters feel without excessive visual overlap
-  const minDistance = (player1Hitbox.left + player2Hitbox.right) * 0.95;
+  const overlap = minDistance - distanceBetweenCenters;
 
-  // Allow slightly closer proximity during slap attacks for close-quarters feel
-  const slapOverlapReduction = 0.90; // Allow 10% more overlap during slap attacks (was 25%)
-  const finalMinDistance =
-    (player1.isAttacking && player1.isSlapAttack) ||
-    (player2.isAttacking && player2.isSlapAttack)
-      ? minDistance * slapOverlapReduction
-      : minDistance;
+  // Rope jump landing: use jump direction as tiebreaker only when centers are
+  // ambiguously close (genuine crossup zone). Otherwise let positions decide.
+  let p1IsLeft;
+  const halfBody = minDistance * 0.5;
+  if (player1.isRopeJumping && player1.ropeJumpPhase === "landing" && distanceBetweenCenters < halfBody) {
+    p1IsLeft = player1.ropeJumpDirection < 0;
+  } else if (player2.isRopeJumping && player2.ropeJumpPhase === "landing" && distanceBetweenCenters < halfBody) {
+    p1IsLeft = player2.ropeJumpDirection > 0;
+  } else {
+    p1IsLeft = player1.x <= player2.x;
+  }
 
-  // If players are overlapping
-  if (distanceBetweenCenters < finalMinDistance) {
-    // Calculate how much overlap there is
-    const overlap = finalMinDistance - distanceBetweenCenters;
+  const p1Anchored = player1.isHit || player1.isRawParryStun || player1.isRawParrying;
+  const p2Anchored = player2.isHit || player2.isRawParryStun || player2.isRawParrying;
 
-    // Check if this is a slap attack scenario for gentler separation
-    const isSlapAttackScenario =
-      (player1.isAttacking && player1.attackType === "slap") ||
-      (player2.isAttacking && player2.attackType === "slap");
+  let p1Share, p2Share;
 
-    // Check if either player just landed from a dodge (needs fast separation to resolve overlap)
-    const isPostDodgeOverlap =
-      player1.justLandedFromDodge || player2.justLandedFromDodge;
+  if (p1Anchored && p2Anchored) {
+    p1Share = 0.5;
+    p2Share = 0.5;
+  } else if (p1Anchored) {
+    p1Share = 0;
+    p2Share = 1;
+  } else if (p2Anchored) {
+    p1Share = 1;
+    p2Share = 0;
+  } else {
+    const p1MovingToward = (p1IsLeft && player1.movementVelocity > 0) ||
+                           (!p1IsLeft && player1.movementVelocity < 0);
+    const p2MovingToward = (!p1IsLeft && player2.movementVelocity > 0) ||
+                           (p1IsLeft && player2.movementVelocity < 0);
 
-    // Check if either player just finished a charged attack (recovery/endlag)
-    const isPostChargedAttackOverlap =
-      (player1.isRecovering || player1.isInEndlag) ||
-      (player2.isRecovering || player2.isInEndlag);
-
-    // SPECIAL CASE: Perfect parry stun separation
-    const player1IsStunned = player1.isRawParryStun;
-    const player2IsStunned = player2.isRawParryStun;
-
-    let separationSpeed, newPlayer1X, newPlayer2X;
-
-    if (player1IsStunned || player2IsStunned) {
-      const separationDirection = player1.x < player2.x ? -1 : 1;
-
-      // Deep overlap = players are inside each other (e.g. dodge cancel through into perfect parry)
-      // Need aggressive two-sided separation so the stunned knockback fully plays out
-      const deepOverlapThreshold = finalMinDistance * 0.3;
-      const isDeepOverlap = overlap > deepOverlapThreshold;
-
-      if (isDeepOverlap) {
-        // Both players push apart — fast resolution like post-dodge overlap
-        separationSpeed = Math.min(overlap * 0.85, 16);
-        const stunnedShare = separationSpeed * 0.35;
-        const otherShare = separationSpeed - stunnedShare;
-
-        if (player1IsStunned && !player2IsStunned) {
-          newPlayer1X = player1.x + separationDirection * stunnedShare;
-          newPlayer2X = player2.x + -separationDirection * otherShare;
-          player2.movementVelocity = 0;
-        } else if (player2IsStunned && !player1IsStunned) {
-          newPlayer1X = player1.x + separationDirection * otherShare;
-          newPlayer2X = player2.x + -separationDirection * stunnedShare;
-          player1.movementVelocity = 0;
-        } else {
-          newPlayer1X = player1.x;
-          newPlayer2X = player2.x;
-        }
-      } else {
-        // Shallow overlap — stunned player is anchored, other player takes all separation
-        separationSpeed = Math.min(overlap * 0.7, 16);
-
-        if (player1IsStunned && !player2IsStunned) {
-          newPlayer1X = player1.x;
-          newPlayer2X = player2.x + -separationDirection * separationSpeed;
-          player2.movementVelocity = 0;
-        } else if (player2IsStunned && !player1IsStunned) {
-          newPlayer1X = player1.x + separationDirection * separationSpeed;
-          newPlayer2X = player2.x;
-          player1.movementVelocity = 0;
-        } else {
-          newPlayer1X = player1.x;
-          newPlayer2X = player2.x;
-        }
-      }
-    } else if (isPostDodgeOverlap || isPostChargedAttackOverlap) {
-      // FAST separation after dodge landing or charged attack ends
-      // Resolves overlap in ~4-5 frames instead of lingering — smooth exponential ease-out
-      separationSpeed = Math.min(overlap * 0.85, 16);
-
-      // Calculate separation direction
-      const separationDirection = player1.x < player2.x ? -1 : 1;
-
-      // Apply smooth separation - each player moves by half
-      const separationPerPlayer = separationSpeed / 2;
-
-      // Calculate new positions
-      newPlayer1X = player1.x + separationDirection * separationPerPlayer;
-      newPlayer2X = player2.x + -separationDirection * separationPerPlayer;
-    } else if (isSlapAttackScenario) {
-      // Moderate separation during slap attacks — close-quarters but not overlapping
-      separationSpeed = Math.min(overlap * 0.6, 10);
-
-      // Calculate separation direction
-      const separationDirection = player1.x < player2.x ? -1 : 1;
-
-      // Apply smooth separation - each player moves by half
-      const separationPerPlayer = separationSpeed / 2;
-
-      // Calculate new positions
-      newPlayer1X = player1.x + separationDirection * separationPerPlayer;
-      newPlayer2X = player2.x + -separationDirection * separationPerPlayer;
+    if (p1MovingToward && !p2MovingToward) {
+      p1Share = 1; p2Share = 0;
+    } else if (p2MovingToward && !p1MovingToward) {
+      p1Share = 0; p2Share = 1;
     } else {
-      // Normal collision — block movement without pushing the other player
-      separationSpeed = Math.min(overlap * 0.7, 16);
-      const separationDirection = player1.x < player2.x ? -1 : 1;
+      p1Share = 0.5; p2Share = 0.5;
+    }
+  }
 
-      const p1MovingToward =
-        (player1.x < player2.x && player1.movementVelocity > 0) ||
-        (player1.x > player2.x && player1.movementVelocity < 0);
-      const p2MovingToward =
-        (player2.x < player1.x && player2.movementVelocity > 0) ||
-        (player2.x > player1.x && player2.movementVelocity < 0);
+  // During rope jump landing, cap the push per tick for a smooth slide instead of a snap
+  const ropeJumpLanding = (player1.isRopeJumping && player1.ropeJumpPhase === "landing") ||
+                          (player2.isRopeJumping && player2.ropeJumpPhase === "landing");
+  const effectiveOverlap = ropeJumpLanding ? Math.min(overlap, 18) : overlap;
 
-      if (p1MovingToward && !p2MovingToward) {
-        newPlayer1X = player1.x + separationDirection * separationSpeed;
-        newPlayer2X = player2.x;
-        player1.movementVelocity = 0;
-      } else if (p2MovingToward && !p1MovingToward) {
-        newPlayer1X = player1.x;
-        newPlayer2X = player2.x + -separationDirection * separationSpeed;
-        player2.movementVelocity = 0;
-      } else {
-        const separationPerPlayer = separationSpeed / 2;
-        newPlayer1X = player1.x + separationDirection * separationPerPlayer;
-        newPlayer2X = player2.x + -separationDirection * separationPerPlayer;
+  if (p1IsLeft) {
+    player1.x -= effectiveOverlap * p1Share;
+    player2.x += effectiveOverlap * p2Share;
+  } else {
+    player1.x += effectiveOverlap * p1Share;
+    player2.x -= effectiveOverlap * p2Share;
+  }
+
+  const leftBoundary = MAP_LEFT_BOUNDARY;
+  const rightBoundary = MAP_RIGHT_BOUNDARY;
+
+  // Boundary enforcement with remainder transfer
+  if (!player1.isHit) {
+    const clamped = Math.max(leftBoundary, Math.min(player1.x, rightBoundary));
+    if (clamped !== player1.x) {
+      const remainder = Math.abs(player1.x - clamped);
+      player1.x = clamped;
+      if (!player2.isHit) {
+        player2.x += (p1IsLeft ? 1 : -1) * remainder;
       }
     }
-
-    // Apply strong resistance to movement velocity when players are pushing into each other
-    // Reduce resistance during slap attacks to allow smooth close-quarters movement
-    // Note: Stunned players already handled above with full anchor behavior
-    if (
-      !player1.isHit &&
-      !player1.isSlapKnockback &&
-      !player1IsStunned && // Don't double-process stunned players
-      player1.movementVelocity
-    ) {
-      const isMovingTowards =
-        (player1.x < player2.x && player1.movementVelocity > 0) ||
-        (player1.x > player2.x && player1.movementVelocity < 0);
-      if (isMovingTowards) {
-        // If opponent is stunned, apply maximum resistance (already handled above)
-        // Otherwise use normal resistance
-        const resistance = isSlapAttackScenario ? 0.85 : 0.5;
-        player1.movementVelocity *= resistance;
+  }
+  if (!player2.isHit) {
+    const clamped = Math.max(leftBoundary, Math.min(player2.x, rightBoundary));
+    if (clamped !== player2.x) {
+      const remainder = Math.abs(player2.x - clamped);
+      player2.x = clamped;
+      if (!player1.isHit) {
+        player1.x += (p1IsLeft ? -1 : 1) * remainder;
       }
     }
-    if (
-      !player2.isHit &&
-      !player2.isSlapKnockback &&
-      !player2IsStunned && // Don't double-process stunned players
-      player2.movementVelocity
-    ) {
-      const isMovingTowards =
-        (player2.x < player1.x && player2.movementVelocity > 0) ||
-        (player2.x > player1.x && player2.movementVelocity < 0);
-      if (isMovingTowards) {
-        // If opponent is stunned, apply maximum resistance (already handled above)
-        // Otherwise use normal resistance
-        const resistance = isSlapAttackScenario ? 0.85 : 0.5;
-        player2.movementVelocity *= resistance;
-      }
-    }
+  }
 
-    // Enforce map boundaries with symmetric correction
-    // BUT: Don't enforce boundaries if players are being knocked back from hits
-    const leftBoundary = MAP_LEFT_BOUNDARY;
-    const rightBoundary = MAP_RIGHT_BOUNDARY;
+  // Final safety clamp
+  if (!player1.isHit) {
+    player1.x = Math.max(leftBoundary, Math.min(player1.x, rightBoundary));
+  }
+  if (!player2.isHit) {
+    player2.x = Math.max(leftBoundary, Math.min(player2.x, rightBoundary));
+  }
 
-    // Check if either player would go out of bounds
-    const player1OutOfBounds =
-      newPlayer1X < leftBoundary || newPlayer1X > rightBoundary;
-    const player2OutOfBounds =
-      newPlayer2X < leftBoundary || newPlayer2X > rightBoundary;
-
-    // Don't enforce boundaries if either player is being knocked back from a hit
-    const player1IsBeingKnockedBack = player1.isHit;
-    const player2IsBeingKnockedBack = player2.isHit;
-
-    // Special case: if both players are at the same boundary and overlapping,
-    // force one player to switch sides for proper separation (like dodge through behavior)
-    const bothAtSameBoundary =
-      (player1.x <= leftBoundary + 5 && player2.x <= leftBoundary + 5) ||
-      (player1.x >= rightBoundary - 5 && player2.x >= rightBoundary - 5);
-
-    if (bothAtSameBoundary && distanceBetweenCenters < finalMinDistance) {
-      // Handle boundary-respecting separation ONLY during knockback scenarios
-      if (player1IsBeingKnockedBack || player2IsBeingKnockedBack) {
-        // Apply separation but enforce boundaries to prevent players from going outside map
-        // Note: Stunned players (isRawParryStun) should never be moved by collision
-        if (!player1IsBeingKnockedBack && !player1.isRawParrying && !player1.isRawParryStun) {
-          player1.x = Math.max(
-            leftBoundary,
-            Math.min(newPlayer1X, rightBoundary)
-          );
-        }
-        if (!player2IsBeingKnockedBack && !player2.isRawParrying && !player2.isRawParryStun) {
-          player2.x = Math.max(
-            leftBoundary,
-            Math.min(newPlayer2X, rightBoundary)
-          );
-        }
-        return;
-      }
-
-      // Smooth separation when both players are at the same boundary
-
-      // Determine which player should switch sides based on their recent movement or facing direction
-      let playerToMove = null;
-      let playerToKeep = null;
-
-      // First check if either player is raw parrying - they should stay put
-      if (player1.isRawParrying && !player2.isRawParrying) {
-        playerToKeep = player1;
-        playerToMove = player2;
-      } else if (player2.isRawParrying && !player1.isRawParrying) {
-        playerToKeep = player2;
-        playerToMove = player1;
-      } else if (player1.isRawParrying && player2.isRawParrying) {
-        // Both are raw parrying - neither should move, just return
-        return;
-      } else {
-        // Neither is raw parrying, use normal logic
-        // Check if either player has recent movement velocity that suggests they just arrived
-        if (
-          Math.abs(player2.movementVelocity || 0) >
-          Math.abs(player1.movementVelocity || 0)
-        ) {
-          // Player2 has more momentum, they probably just arrived (like from a dodge)
-          playerToMove = player2;
-          playerToKeep = player1;
-        } else if (
-          Math.abs(player1.movementVelocity || 0) >
-          Math.abs(player2.movementVelocity || 0)
-        ) {
-          // Player1 has more momentum
-          playerToMove = player1;
-          playerToKeep = player2;
-        } else {
-          // Equal or no momentum, use position preference
-          // If both are at right boundary, move the rightmost player to the left
-          // If both are at left boundary, move the leftmost player to the right
-          if (
-            player1.x >= rightBoundary - 5 &&
-            player2.x >= rightBoundary - 5
-          ) {
-            playerToMove = player1.x > player2.x ? player1 : player2;
-            playerToKeep = playerToMove === player1 ? player2 : player1;
-          } else {
-            playerToMove = player1.x < player2.x ? player1 : player2;
-            playerToKeep = playerToMove === player1 ? player2 : player1;
-          }
-        }
-      }
-
-      // Keep one player at the boundary (minimal adjustment)
-      if (!playerToKeep.isRawParrying) {
-        const keeperTargetX = Math.max(
-          leftBoundary,
-          Math.min(playerToKeep.x, rightBoundary)
-        );
-        playerToKeep.x += (keeperTargetX - playerToKeep.x) * 0.4; // Increased from 0.2 to 0.4 for faster approach to boundary
-      }
-
-      // Calculate minimal separation needed - just enough to resolve collision
-      // We want the distance between centers to equal finalMinDistance (no extra padding)
-      const currentDistance = Math.abs(playerToMove.x - playerToKeep.x);
-      const neededSeparation = finalMinDistance - currentDistance;
-
-      // Only move if we actually need separation
-      if (neededSeparation > 0) {
-        // Determine direction to move the player (away from the boundary)
-        let direction;
-        if (playerToKeep.x >= rightBoundary - 5) {
-          // Keeper is at right boundary, move the other player to the left
-          direction = -1;
-        } else {
-          // Keeper is at left boundary, move the other player to the right
-          direction = 1;
-        }
-
-        // Calculate target position with minimal separation
-        const targetX = playerToKeep.x + direction * finalMinDistance;
-        const clampedTargetX = Math.max(
-          leftBoundary,
-          Math.min(targetX, rightBoundary)
-        );
-
-        // Direct position-based movement - no velocity momentum
-        if (!playerToMove.isRawParrying) {
-          const distanceToTarget = clampedTargetX - playerToMove.x;
-          const maxMovePerFrame = 6; // Increased from 3 to 6 pixels per frame for faster movement
-
-          if (Math.abs(distanceToTarget) <= maxMovePerFrame) {
-            // Close enough - move directly to target and stop
-            playerToMove.x = clampedTargetX;
-            playerToMove.movementVelocity = 0; // Clear any existing velocity
-          } else {
-            // Move incrementally toward target without velocity
-            const moveDirection = distanceToTarget > 0 ? 1 : -1;
-            playerToMove.x += moveDirection * maxMovePerFrame;
-            playerToMove.movementVelocity = 0; // Clear velocity to prevent momentum
-          }
-        }
-      } else {
-        // Already properly separated, clear any velocity (but only if not raw parrying)
-        if (!playerToMove.isRawParrying) {
-          playerToMove.movementVelocity = 0;
-        }
-      }
-    } else if (player1OutOfBounds || player2OutOfBounds) {
-      // Handle boundary-respecting separation ONLY during knockback scenarios
-      if (player1IsBeingKnockedBack || player2IsBeingKnockedBack) {
-        // Apply separation but enforce boundaries to prevent players from going outside map
-        // Note: Stunned players (isRawParryStun) should never be moved by collision
-        if (!player1IsBeingKnockedBack && !player1.isRawParrying && !player1.isRawParryStun) {
-          player1.x = Math.max(
-            leftBoundary,
-            Math.min(newPlayer1X, rightBoundary)
-          );
-        }
-        if (!player2IsBeingKnockedBack && !player2.isRawParrying && !player2.isRawParryStun) {
-          player2.x = Math.max(
-            leftBoundary,
-            Math.min(newPlayer2X, rightBoundary)
-          );
-        }
-        return;
-      }
-
-      // Normal boundary handling for non-overlapping cases
-      // Note: Stunned players (isRawParryStun) should never be moved by collision
-      if (player1OutOfBounds && !player2OutOfBounds) {
-        // Player 1 is blocked by boundary, move player 2 by full separation distance
-        if (!player1.isRawParrying && !player1.isRawParryStun) {
-          player1.x = Math.max(
-            leftBoundary,
-            Math.min(player1.x, rightBoundary)
-          ); // Keep player1 at boundary
-        }
-        const fullSeparationDirection = player2.x < player1.x ? -1 : 1;
-        const newPlayer2XFull =
-          player2.x + fullSeparationDirection * separationSpeed;
-        if (
-          newPlayer2XFull >= leftBoundary &&
-          newPlayer2XFull <= rightBoundary &&
-          !player2.isRawParrying &&
-          !player2.isRawParryStun
-        ) {
-          player2.x = newPlayer2XFull;
-        }
-      } else if (player2OutOfBounds && !player1OutOfBounds) {
-        // Player 2 is blocked by boundary, move player 1 by full separation distance
-        if (!player2.isRawParrying && !player2.isRawParryStun) {
-          player2.x = Math.max(
-            leftBoundary,
-            Math.min(player2.x, rightBoundary)
-          ); // Keep player2 at boundary
-        }
-        const fullSeparationDirection = player1.x < player2.x ? -1 : 1;
-        const newPlayer1XFull =
-          player1.x + fullSeparationDirection * separationSpeed;
-        if (
-          newPlayer1XFull >= leftBoundary &&
-          newPlayer1XFull <= rightBoundary &&
-          !player1.isRawParrying &&
-          !player1.isRawParryStun
-        ) {
-          player1.x = newPlayer1XFull;
-        }
-      } else {
-        // Both players would go out of bounds - clamp both to boundaries
-        if (!player1.isRawParrying && !player1.isRawParryStun) {
-          player1.x = Math.max(
-            leftBoundary,
-            Math.min(newPlayer1X, rightBoundary)
-          );
-        }
-        if (!player2.isRawParrying && !player2.isRawParryStun) {
-          player2.x = Math.max(
-            leftBoundary,
-            Math.min(newPlayer2X, rightBoundary)
-          );
-        }
-      }
-    } else {
-      // Both players can move normally, but check if they're raw parrying or stunned
-      // Stunned players (isRawParryStun) should be anchored and not moved by collision
-      if (!player1.isRawParrying && !player1.isRawParryStun) {
-        player1.x = newPlayer1X;
-      }
-      if (!player2.isRawParrying && !player2.isRawParryStun) {
-        player2.x = newPlayer2X;
-      }
-    }
+  // Kill velocity for any non-anchored player moving toward the other
+  if (!p1Anchored) {
+    const isToward = (player1.x < player2.x && player1.movementVelocity > 0) ||
+                     (player1.x > player2.x && player1.movementVelocity < 0);
+    if (isToward) player1.movementVelocity = 0;
+  }
+  if (!p2Anchored) {
+    const isToward = (player2.x < player1.x && player2.movementVelocity > 0) ||
+                     (player2.x > player1.x && player2.movementVelocity < 0);
+    if (isToward) player2.movementVelocity = 0;
   }
 }
 
 // Add helper function to safely end charged attacks with recovery check
 function safelyEndChargedAttack(player, rooms) {
   // === ENDLAG DURATION FOR CHARGED ATTACKS ===
-  const CHARGED_ENDLAG_DURATION = 300; // Recovery after charged attack ends
+  const CHARGED_ENDLAG_DURATION = 300; // Recovery after charged attack ends (matches ATTACK_ENDLAG_CHARGED_MS)
 
   // Only handle charged attacks, let slap attacks end normally
   if (player.attackType === "charged" && !player.chargedAttackHit) {
@@ -1328,7 +1098,8 @@ function safelyEndChargedAttack(player, rooms) {
     player.chargingFacingDirection = null;
     player.attackType = null;
     player.chargeAttackPower = 0;
-    player.chargedAttackHit = false; // Reset hit tracking
+    player.chargedAttackHit = false;
+    player.chargedActiveEndTime = 0;
     
     // Only apply endlag for attacks that DIDN'T connect (whiffed attacks)
     // Connected attacks are already handled by processHit's recovery state
@@ -1363,22 +1134,17 @@ function safelyEndChargedAttack(player, rooms) {
             player.bufferExpiryTime = 0;
 
             // Execute the buffered action
-            // CRITICAL: Block buffered dodge if player is being grabbed
-            if (action.type === "dodge" && !player.isGassed && !player.isBeingGrabbed) {
-              // Clear movement momentum for static dodge distance
+            // CRITICAL: Block buffered dash if player is being grabbed
+            if (action.type === "dash" && !player.isGassed && !player.isBeingGrabbed) {
               player.movementVelocity = 0;
               player.isStrafing = false;
               
               player.isDodging = true;
-              player.isDodgeCancelling = false;
-              player.dodgeCancelStartTime = 0;
-              player.dodgeCancelStartY = 0;
               player.dodgeStartTime = Date.now();
-              player.dodgeEndTime = Date.now() + 450;
+              player.dodgeEndTime = Date.now() + DODGE_DURATION;
               player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
               player.dodgeDirection = action.direction;
               player.dodgeStartX = player.x;
-              player.dodgeStartY = player.y;
             }
           }
         },
@@ -1396,14 +1162,16 @@ function safelyEndChargedAttack(player, rooms) {
 // Enables frame-1 reversals: if a player holds an input during an unactionable grab/throw state,
 // that input activates on the first possible frame (like invincible reversals in fighting games).
 function activateBufferedInputAfterGrab(player, rooms) {
-  if (player.isAtTheRopes || player.isThrowLanded || player.isHit ||
+  if (player.isAtTheRopes || player.isRopeJumping || player.isThrowLanded || player.isHit ||
       player.isGrabBreaking || player.isGrabBreakCountered || player.isGrabBreakSeparating ||
       player.isGrabSeparating) return;
 
-  // Priority 0: Buffered dodge (spammed shift while grabbed/thrown)
+  player.inputBuffer = null;
+
+  // Priority 0: Buffered dash (spammed shift while grabbed/thrown)
   if (
     player.bufferedAction &&
-    player.bufferedAction.type === "dodge" &&
+    player.bufferedAction.type === "dash" &&
     player.bufferExpiryTime &&
     Date.now() < player.bufferExpiryTime &&
     !player.isGassed
@@ -1418,52 +1186,17 @@ function activateBufferedInputAfterGrab(player, rooms) {
     player.isPowerSliding = false;
     player.isBraking = false;
     player.isDodging = true;
-    player.isDodgeCancelling = false;
-    player.dodgeCancelStartTime = 0;
-    player.dodgeCancelStartY = 0;
+    player.isDodgeStartup = true;
     player.dodgeStartTime = Date.now();
+    player.dodgeStartupEndTime = Date.now() + DODGE_STARTUP_MS;
     player.dodgeEndTime = Date.now() + DODGE_DURATION;
     player.dodgeStartX = player.x;
-    player.dodgeStartY = player.y;
     player.dodgeDirection = direction;
-    player.currentAction = "dodge";
+    player.currentAction = "dash";
     player.actionLockUntil = Date.now() + 100;
     player.justLandedFromDodge = false;
-    player.justCrossedThrough = false;
-    player.crossedThroughTime = 0;
     player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
     clearChargeState(player, true);
-    setPlayerTimeout(player.id, () => {
-      if (player.isDodging && !player.isDodgeCancelling) {
-        const landingDir = player.dodgeDirection || 0;
-        if (landingDir !== 0 && Math.abs(player.movementVelocity) < 0.1) {
-          if (player.keys.c || player.keys.control) {
-            player.movementVelocity = landingDir * DODGE_SLIDE_MOMENTUM * DODGE_POWERSLIDE_BOOST;
-            player.isPowerSliding = true;
-          } else {
-            player.movementVelocity = landingDir * DODGE_SLIDE_MOMENTUM;
-          }
-          player.justLandedFromDodge = true;
-        }
-        player.isDodging = false;
-        
-        const dodgeRoom = rooms.find(r => r.players.some(p => p.id === player.id));
-        if (dodgeRoom) {
-          const dodgeOpponent = dodgeRoom.players.find(p => p.id !== player.id);
-          if (dodgeOpponent && !player.atTheRopesFacingDirection && !player.slapFacingDirection) {
-            player.facing = player.x < dodgeOpponent.x ? -1 : 1;
-          }
-          if (dodgeOpponent) {
-            const overlapDistance = Math.abs(player.x - dodgeOpponent.x);
-            const bodyHitboxSize = HITBOX_DISTANCE_VALUE * 2 * Math.max(player.sizeMultiplier || 1, dodgeOpponent.sizeMultiplier || 1);
-            if (overlapDistance < bodyHitboxSize) {
-              player.justCrossedThrough = true;
-              player.crossedThroughTime = Date.now();
-            }
-          }
-        }
-      }
-    }, DODGE_DURATION, "bufferedDodge");
     return;
   }
 
@@ -1494,18 +1227,14 @@ function activateBufferedInputAfterGrab(player, rooms) {
     player.isPowerSliding = false;
     player.isBraking = false;
     player.isDodging = true;
-    player.isDodgeCancelling = false;
-    player.dodgeCancelStartTime = 0;
-    player.dodgeCancelStartY = 0;
+    player.isDodgeStartup = true;
     player.dodgeStartTime = Date.now();
+    player.dodgeStartupEndTime = Date.now() + DODGE_STARTUP_MS;
     player.dodgeEndTime = Date.now() + DODGE_DURATION;
     player.dodgeStartX = player.x;
-    player.dodgeStartY = player.y;
-    player.currentAction = "dodge";
+    player.currentAction = "dash";
     player.actionLockUntil = Date.now() + 100;
     player.justLandedFromDodge = false;
-    player.justCrossedThrough = false;
-    player.crossedThroughTime = 0;
     player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
     clearChargeState(player, true);
 
@@ -1517,37 +1246,6 @@ function activateBufferedInputAfterGrab(player, rooms) {
       player.dodgeDirection = player.facing === -1 ? 1 : -1;
     }
 
-    setPlayerTimeout(player.id, () => {
-      if (player.isDodging && !player.isDodgeCancelling) {
-        const landingDir = player.dodgeDirection || 0;
-        if (landingDir !== 0 && Math.abs(player.movementVelocity) < 0.1) {
-          if (player.keys.c || player.keys.control) {
-            player.movementVelocity = landingDir * DODGE_SLIDE_MOMENTUM * DODGE_POWERSLIDE_BOOST;
-            player.isPowerSliding = true;
-          } else {
-            player.movementVelocity = landingDir * DODGE_SLIDE_MOMENTUM;
-          }
-          player.justLandedFromDodge = true;
-        }
-        player.isDodging = false;
-        
-        const dodgeRoom = rooms.find(r => r.players.some(p => p.id === player.id));
-        if (dodgeRoom) {
-          const dodgeOpponent = dodgeRoom.players.find(p => p.id !== player.id);
-          if (dodgeOpponent && !player.atTheRopesFacingDirection && !player.slapFacingDirection) {
-            player.facing = player.x < dodgeOpponent.x ? -1 : 1;
-          }
-          if (dodgeOpponent) {
-            const overlapDistance = Math.abs(player.x - dodgeOpponent.x);
-            const bodyHitboxSize = HITBOX_DISTANCE_VALUE * 2 * Math.max(player.sizeMultiplier || 1, dodgeOpponent.sizeMultiplier || 1);
-            if (overlapDistance < bodyHitboxSize) {
-              player.justCrossedThrough = true;
-              player.crossedThroughTime = Date.now();
-            }
-          }
-        }
-      }
-    }, DODGE_DURATION, "bufferedDodge");
     return;
   }
 
@@ -1571,6 +1269,123 @@ function activateBufferedInputAfterGrab(player, rooms) {
   }
 }
 
+function executeInputBuffer(player, rooms) {
+  if (!player.inputBuffer) return false;
+
+  const age = Date.now() - player.inputBuffer.timestamp;
+  if (age >= INPUT_BUFFER_WINDOW_MS) {
+    player.inputBuffer = null;
+    return false;
+  }
+
+  if (player.inputLockUntil && Date.now() < player.inputLockUntil) return false;
+  if (player.actionLockUntil && Date.now() < player.actionLockUntil) return false;
+  if (player.isGrabSeparating || player.isGrabBreakSeparating) return false;
+  if (player.isBeingPullReversaled) return false;
+  if (player.isGrabBreaking || player.isGrabBreakCountered) return false;
+  if (player.isGrabBellyFlopping || player.isBeingGrabBellyFlopped) return false;
+  if (player.isGrabFrontalForceOut || player.isBeingGrabFrontalForceOut) return false;
+  if (player.isHit || player.isBeingThrown || player.isBeingGrabbed) return false;
+  if (player.isAtTheRopes || player.isRopeJumping || player.isGrabClashing) return false;
+  if (player.canMoveToReady) return false;
+
+  const buffer = player.inputBuffer;
+
+  switch (buffer.type) {
+    case "rawParry": {
+      if (!player.isRawParrying && !player.isRawParryStun &&
+          !player.isAttacking && !player.isDodging &&
+          !player.isRecovering && !player.isGrabbing &&
+          !player.isGrabbingMovement && !player.isWhiffingGrab &&
+          !player.isThrowing && !player.grabBreakSpaceConsumed) {
+        player.isRawParrying = true;
+        player.rawParryStartTime = Date.now();
+        player.rawParryMinDurationMet = false;
+        player.isRawParrySuccess = false;
+        player.isPerfectRawParrySuccess = false;
+        player.stamina = Math.max(0, player.stamina - RAW_PARRY_STAMINA_COST);
+        player.movementVelocity = 0;
+        player.isStrafing = false;
+        player.isPowerSliding = false;
+        player.isCrouchStance = false;
+        player.isCrouchStrafing = false;
+        player.hasPendingSlapAttack = false;
+        clearChargeState(player, true);
+        player.inputBuffer = null;
+        return true;
+      }
+      break;
+    }
+    case "dodge": {
+      if (canPlayerDash(player) && !player.isGassed) {
+        player.isRawParrySuccess = false;
+        player.isPerfectRawParrySuccess = false;
+        clearChargeState(player, true);
+        player.movementVelocity = 0;
+        player.isStrafing = false;
+        player.isPowerSliding = false;
+        player.isBraking = false;
+        player.isDodging = true;
+        player.isDodgeStartup = true;
+        player.dodgeStartTime = Date.now();
+        player.dodgeStartupEndTime = Date.now() + DODGE_STARTUP_MS;
+        player.dodgeEndTime = Date.now() + DODGE_DURATION;
+        player.dodgeStartX = player.x;
+        player.currentAction = "dash";
+        player.actionLockUntil = Date.now() + 100;
+        player.justLandedFromDodge = false;
+        player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
+
+        if (player.keys.a) {
+          player.dodgeDirection = -1;
+        } else if (player.keys.d) {
+          player.dodgeDirection = 1;
+        } else {
+          player.dodgeDirection = player.facing === -1 ? 1 : -1;
+        }
+
+        player.inputBuffer = null;
+        return true;
+      }
+      break;
+    }
+    case "slap": {
+      if (canPlayerSlap(player)) {
+        executeSlapAttack(player, rooms);
+        player.inputBuffer = null;
+        return true;
+      }
+      break;
+    }
+    case "grab": {
+      if (canPlayerUseAction(player) && !player.grabCooldown &&
+          !player.isRawParrying && !player.isGrabbingMovement &&
+          !player.isWhiffingGrab && !player.isGrabWhiffRecovery &&
+          !player.isGrabTeching && !player.isGrabStartup) {
+        player.isRawParrySuccess = false;
+        player.isPerfectRawParrySuccess = false;
+        clearChargeState(player, true);
+        player.isGrabStartup = true;
+        player.grabStartupStartTime = Date.now();
+        player.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
+        player.currentAction = "grab_startup";
+        player.actionLockUntil = Date.now() + GRAB_STARTUP_DURATION_MS;
+        player.grabState = GRAB_STATES.ATTEMPTING;
+        player.grabAttemptType = "grab";
+        player.grabApproachSpeed = Math.abs(player.movementVelocity);
+        player.movementVelocity = 0;
+        player.isStrafing = false;
+        player.isPowerSliding = false;
+        player.inputBuffer = null;
+        return true;
+      }
+      break;
+    }
+  }
+
+  return false;
+}
+
 module.exports = {
   cleanupGrabStates,
   handleWinCondition,
@@ -1583,4 +1398,5 @@ module.exports = {
   adjustPlayerPositions,
   safelyEndChargedAttack,
   activateBufferedInputAfterGrab,
+  executeInputBuffer,
 };
