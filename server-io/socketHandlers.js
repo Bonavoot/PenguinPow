@@ -68,6 +68,7 @@ const {
 } = require("./playerCleanup");
 
 const { clearAIState } = require("./cpuAI");
+const { clearImpossibleAIState } = require("./cpuAI_impossible");
 
 function registerSocketHandlers(socket, io, rooms, context) {
   const { registerPlayerInMaps, unregisterPlayerFromMaps } = context;
@@ -295,6 +296,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
         ropeJumpDirection: 0,
         ropeJumpActiveStartTime: 0,
         ropeJumpLandingTime: 0,
+        ropeJumpBufferedAttackRelease: 0,
         dodgeDirection: false,
         dodgeEndTime: 0,
         isDodgeStartup: false,
@@ -493,6 +495,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
         ropeJumpDirection: 0,
         ropeJumpActiveStartTime: 0,
         ropeJumpLandingTime: 0,
+        ropeJumpBufferedAttackRelease: 0,
         dodgeDirection: null,
         dodgeEndTime: 0,
         isDodgeStartup: false,
@@ -637,6 +640,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
       hakkiyoiCount: 0,
       teWoTsuiteSent: false, // Track if gyoji call was sent before HAKKIYOI
       isCPURoom: true, // Mark as CPU room
+      cpuDifficulty: "HARD",
       playerAvailablePowerUps: {},
       playersSelectedPowerUps: {},
     };
@@ -854,6 +858,13 @@ function registerSocketHandlers(socket, io, rooms, context) {
     // Update lobby
     io.in(room.id).emit("lobby", room.players);
     io.emit("rooms", getCleanedRoomsData(rooms));
+  });
+
+  socket.on("set_cpu_difficulty", (data) => {
+    const room = rooms.find(r => r.isCPURoom && r.players.some(p => p.id === socket.id));
+    if (room && data.difficulty) {
+      room.cpuDifficulty = data.difficulty;
+    }
   });
 
   socket.on("ready_count", (data) => {
@@ -1181,7 +1192,6 @@ function registerSocketHandlers(socket, io, rooms, context) {
           // mouse1 just pressed during lock — record press time
           player.mouse1PressTime = Date.now();
         } else if (prevMouse1 && !data.keys.mouse1) {
-          // mouse1 released during lock — clear press time
           player.mouse1PressTime = 0;
         }
         player.keys = data.keys;
@@ -1428,6 +1438,10 @@ function registerSocketHandlers(socket, io, rooms, context) {
 
     // MOUSE1 RELEASE: Release charged attack (if charging)
     if (player.mouse1JustReleased) {
+      // Buffer release during rope jump landing so the attack fires when recovery ends
+      if (player.isRopeJumping && player.ropeJumpPhase === "landing" && player.mouse1PressTime > 0) {
+        player.ropeJumpBufferedAttackRelease = Date.now() - player.mouse1PressTime;
+      }
       if (player.isChargingAttack) {
         if (
           !player.isGrabbing &&
@@ -1843,6 +1857,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
         player.ropeJumpDirection = jumpDir;
         player.ropeJumpActiveStartTime = 0;
         player.ropeJumpLandingTime = 0;
+        player.ropeJumpBufferedAttackRelease = 0;
         player.currentAction = "ropeJump";
         player.actionLockUntil = Date.now() + ROPE_JUMP_STARTUP_MS;
         player.stamina = Math.max(0, player.stamina - ROPE_JUMP_STAMINA_COST);
@@ -2391,6 +2406,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
         const cpuPlayerId = room.cpuPlayerId || "CPU_PLAYER";
         timeoutManager.clearPlayer(cpuPlayerId);
         clearAIState(cpuPlayerId);
+        clearImpossibleAIState(cpuPlayerId);
 
         // Leave the socket room
         socket.leave(roomId);
@@ -2548,6 +2564,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
         const cpuPlayerId = room.cpuPlayerId || "CPU_PLAYER";
         timeoutManager.clearPlayer(cpuPlayerId);
         clearAIState(cpuPlayerId);
+        clearImpossibleAIState(cpuPlayerId);
 
         // Remove the CPU room from the rooms array entirely
         rooms.splice(roomIndex, 1);

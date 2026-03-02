@@ -42,7 +42,7 @@ import {
   COLOR_PRESETS,
 } from "../utils/SpriteRecolorizer";
 import { usePlayerColors } from "../context/PlayerColorContext";
-import { SPECIAL_MAWASHI_GRADIENTS } from "./PreMatchScreen";
+
 import UiPlayerInfo from "./UiPlayerInfo";
 import MatchOver from "./MatchOver";
 import RoundResult from "./RoundResult";
@@ -3266,11 +3266,6 @@ const GameFighter = ({
         isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
         isRopeJumping={penguin.isRopeJumping}
         isLocalPlayer={penguin.id === localId}
-        localPlayerRingStyle={
-          penguin.id === localId
-            ? SPECIAL_MAWASHI_GRADIENTS[playerColor] || playerColor
-            : undefined
-        }
       />
       {/* <DodgeSmokeEffect
         x={penguin.dodgeStartX || displayPosition.x}

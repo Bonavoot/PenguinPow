@@ -1335,9 +1335,8 @@ function ColoredPlayerPreview({ color, bodyColor }) {
 // LOBBY COMPONENT
 // ============================================
 
-// Only HARD is implemented for VS CPU; others show "Soon"
 const CPU_DIFFICULTIES = ["EASY", "NORMAL", "HARD", "IMPOSSIBLE"];
-const AVAILABLE_CPU_DIFFICULTY = "HARD";
+const AVAILABLE_CPU_DIFFICULTIES = new Set(["HARD", "IMPOSSIBLE"]);
 
 const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, onLeaveDohyo, isCPUMatch = false }) => {
   const [players, setPlayers] = useState([]);
@@ -1347,6 +1346,9 @@ const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, onLeaveD
   
   // Color customization - using global context so colors persist to game
   const { player1Color, player2Color, setPlayer1Color, setPlayer2Color, player1BodyColor, player2BodyColor, setPlayer1BodyColor, setPlayer2BodyColor } = usePlayerColors();
+  
+  // CPU difficulty selection
+  const [selectedDifficulty, setSelectedDifficulty] = useState("HARD");
   
   // Tab state for color picker: "body" (default first) or "mawashi"
   const [colorTab, setColorTab] = useState("body");
@@ -1638,13 +1640,19 @@ const Lobby = ({ rooms, setRooms, roomName, handleGame, setCurrentPage, onLeaveD
                   {isCPUMatch ? (
                     <DifficultyListContainer>
                       {CPU_DIFFICULTIES.map((diff) => {
-                        const available = diff === AVAILABLE_CPU_DIFFICULTY;
-                        const selected = diff === AVAILABLE_CPU_DIFFICULTY;
+                        const available = AVAILABLE_CPU_DIFFICULTIES.has(diff);
+                        const selected = diff === selectedDifficulty;
                         return (
                           <DifficultyOptionRow
                             key={diff}
                             $available={available}
                             $selected={selected}
+                            onClick={() => {
+                              if (available && diff !== selectedDifficulty) {
+                                setSelectedDifficulty(diff);
+                                socket.emit("set_cpu_difficulty", { difficulty: diff });
+                              }
+                            }}
                           >
                             <DifficultyLabel $selected={selected}>{diff}</DifficultyLabel>
                             {!available && <SoonBadge>Soon</SoonBadge>}

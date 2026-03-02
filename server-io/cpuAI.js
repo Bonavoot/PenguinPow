@@ -3,30 +3,33 @@
 // Design philosophy: Human-like decision making with strategic reads, commitment,
 // and intelligent grab system usage based on positioning and stamina.
 
-// Map boundaries - must match server constants in gameUtils.js
-const MAP_LEFT_BOUNDARY = 135;
-const MAP_RIGHT_BOUNDARY = 930;
+const { ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST } = require("./constants");
+const { MAP_LEFT_BOUNDARY: GAME_MAP_LEFT, MAP_RIGHT_BOUNDARY: GAME_MAP_RIGHT } = require("./gameUtils");
+
+// Map boundaries - MUST match gameUtils.js (340 and 940)
+const MAP_LEFT_BOUNDARY = 340;
+const MAP_RIGHT_BOUNDARY = 940;
 const MAP_CENTER = (MAP_LEFT_BOUNDARY + MAP_RIGHT_BOUNDARY) / 2;
 const MAP_WIDTH = MAP_RIGHT_BOUNDARY - MAP_LEFT_BOUNDARY;
 
 // AI Configuration - Tuned for expert sumo gameplay
 const AI_CONFIG = {
   // Distance thresholds — adjusted for new frame data hitbox ranges
-  SLAP_RANGE: 100,         // Nerfed to match new SLAP_HITBOX_DISTANCE_VALUE (~125px)
-  GRAB_RANGE: 148,         // Scaled for camera zoom (was 200)
-  GRAB_APPROACH_RANGE: 185, // Scaled for camera zoom (was 250)
+  SLAP_RANGE: 125,         // Must exceed pushbox distance (~116px) so AI attacks at body contact
+  GRAB_RANGE: 136,         // Scaled down 8% to match tighter pushbox
+  GRAB_APPROACH_RANGE: 170, // Scaled down 8% to match tighter pushbox
   MID_RANGE: 185,          // Scaled for camera zoom (was 250)
   CHARGED_ATTACK_RANGE: 200, // Adjusted for buffed charged hitbox (~106px)
   
   // Edge/corner awareness
   EDGE_DANGER_ZONE: 89,    // Scaled for camera zoom (was 120)
   CORNER_CRITICAL_ZONE: 59, // Scaled for camera zoom (was 80)
-  BACK_TO_BOUNDARY_THROW_ZONE: 148, // Scaled for camera zoom (was 200)
+  BACK_TO_BOUNDARY_THROW_ZONE: 136, // Scaled down 8% to match tighter pushbox
   
   // Reaction chances (0-1) — intentionally imperfect to feel human
-  PARRY_CHANCE: 0.22,      // Base chance to parry incoming attacks (lowered from 0.28)
-  DODGE_CHANCE: 0.16,      // Base chance to dodge instead of parry (lowered from 0.20)
-  REACTION_MISS_CHANCE: 0.25, // Chance to completely miss reacting to an attack
+  PARRY_CHANCE: 0.38,      // Base chance to parry incoming attacks (expert AI)
+  DODGE_CHANCE: 0.16,      // Base chance to dodge instead of parry
+  REACTION_MISS_CHANCE: 0.20, // Chance to completely miss reacting to an attack
   
   // Timing (ms)
   DECISION_COOLDOWN: 120,  // Minimum time between major decisions
@@ -59,6 +62,26 @@ const AI_CONFIG = {
   
   // Grab system intelligence
   GRAB_MID_SCREEN_CHANCE: 0.25, // Chance to grab at mid range (not just close)
+
+  // Human-like reaction jitter — not every reaction is frame-perfect
+  REACTION_JITTER_MIN: 0,         // Best case: react same frame (good read)
+  REACTION_JITTER_MAX: 55,        // Worst case: ~3-4 ticks late (missed the window)
+
+  // Rope jump escape
+  ROPE_JUMP_MIN_DISTANCE: 130,    // Don't rope jump if opponent is too close (startup is punishable)
+  ROPE_JUMP_COOLDOWN: 6000,       // Don't spam rope jump
+  ROPE_JUMP_CHANCE: 0.28,         // Chance to use rope jump when conditions are right
+
+  // Punish recognition delay — how long before AI recognizes a punish window
+  PUNISH_DELAY_MIN: 100,
+  PUNISH_DELAY_MAX: 280,
+
+  // Slap pressure adaptation — AI gets more defensive after eating consecutive hits
+  PRESSURE_HIT_THRESHOLD: 2,       // After this many consecutive hits, boost defense
+  PRESSURE_PARRY_BOOST: 0.60,      // Boosted parry chance when under slap pressure
+  PRESSURE_JITTER_MAX: 10,         // Near-instant reactions when pressured
+  PRESSURE_MISS_CHANCE: 0.05,      // Almost never misses when focused on defense
+  PRESSURE_DECAY_TIME: 2500,       // How long the defensive boost lasts after last hit (ms)
 };
 
 // AI State tracking per CPU player
@@ -117,6 +140,21 @@ function getAIState(playerId) {
       grabBreakReactDirection: false, // true = press direction when we see pull
       // === Push resistance: dig in during grab push with a human-like delay ===
       grabResistStartTime: 0,
+      // === Human-like reaction jitter — delays defensive reactions by a few frames ===
+      reactionTarget: null,
+      reactionDetectTime: 0,
+      reactionDelay: 0,
+      reactionProcessed: false,
+      // === Punish recognition delay ===
+      punishDetectTime: 0,
+      punishDelay: 0,
+      punishProcessed: false,
+      // === Rope jump tracking ===
+      lastRopeJumpTime: 0,
+      // === Slap pressure tracking — adapts defense after consecutive hits ===
+      consecutiveHitsTaken: 0,
+      lastHitTime: 0,
+      wasHitLastCheck: false,
     });
   }
   return aiStates.get(playerId);
@@ -506,6 +544,18 @@ function updateCPUAI(cpu, human, room, currentTime) {
   // === UPDATE AGGRESSION MODE ===
   updateAggressionMode(aiState, currentTime);
   
+  // === TRACK CONSECUTIVE HITS — adapt defense when getting pressured ===
+  if (cpu.isHit && !aiState.wasHitLastCheck) {
+    aiState.consecutiveHitsTaken++;
+    aiState.lastHitTime = currentTime;
+    aiState.wasHitLastCheck = true;
+  } else if (!cpu.isHit) {
+    aiState.wasHitLastCheck = false;
+  }
+  if (aiState.lastHitTime && currentTime - aiState.lastHitTime > AI_CONFIG.PRESSURE_DECAY_TIME) {
+    aiState.consecutiveHitsTaken = 0;
+  }
+  
   // HIGHEST PRIORITY: DI (Directional Influence) - Reduce knockback by holding opposite direction!
   if (cpu.isHit && cpu.knockbackVelocity && Math.abs(cpu.knockbackVelocity.x) > 0.1) {
     handleKnockbackDI(cpu, aiState, currentTime);
@@ -602,9 +652,13 @@ function updateCPUAI(cpu, human, room, currentTime) {
     return;
   }
   
-  // Priority 2: ESCAPE CORNER
+  // Priority 2: ESCAPE CORNER — but only if opponent is actually blocking the escape route
+  // If opponent is on the SAME side as the corner (further into the edge), CPU should
+  // PRESS the advantage, not flee. Only flee when opponent is between CPU and center.
   const corneredSide = getCorneredSide(cpu);
-  if (corneredSide !== 0 && canAct(cpu)) {
+  const opponentBlocksEscape = (corneredSide === -1 && human.x > cpu.x) ||
+                                (corneredSide === 1 && human.x < cpu.x);
+  if (corneredSide !== 0 && opponentBlocksEscape && canAct(cpu)) {
     if (handleCornerEscape(cpu, human, aiState, currentTime, distance, corneredSide)) {
       return;
     }
@@ -617,27 +671,60 @@ function updateCPUAI(cpu, human, room, currentTime) {
     }
   }
   
-  // Priority 3: React to opponent attacks — BUT NOT ALWAYS (human-like)
-  // Sometimes the AI just doesn't react, or makes a "read" instead
-  if (human.isAttacking && !human.isInStartupFrames && canParry(cpu)) {
-    // Roll a miss chance — sometimes the CPU just doesn't react (feels human)
-    if (!chance(AI_CONFIG.REACTION_MISS_CHANCE)) {
-      if (handleDefensiveReaction(cpu, human, aiState, currentTime, distance)) {
+  // Priority 3: React to opponent attacks with HUMAN-LIKE TIMING
+  // Under slap pressure (3+ consecutive hits), the AI "wakes up" and gets sharper defensively.
+  // Otherwise, normal jitter + miss chance apply.
+  if (human.isAttacking && !human.isInStartupFrames) {
+    const isCommittedToOffense = aiState.commitAction && currentTime < aiState.commitUntil && aiState.commitCount > 0;
+    const underPressure = aiState.consecutiveHitsTaken >= AI_CONFIG.PRESSURE_HIT_THRESHOLD;
+
+    // Under pressure: break out of offensive commitment to defend
+    if (!isCommittedToOffense || underPressure) {
+      if (!aiState.reactionTarget) {
+        aiState.reactionTarget = human.attackType || 'slap';
+        aiState.reactionDetectTime = currentTime;
+        aiState.reactionDelay = underPressure
+          ? randomInRange(0, AI_CONFIG.PRESSURE_JITTER_MAX)
+          : randomInRange(AI_CONFIG.REACTION_JITTER_MIN, AI_CONFIG.REACTION_JITTER_MAX);
+        aiState.reactionProcessed = false;
+      }
+
+      if (!aiState.reactionProcessed && currentTime - aiState.reactionDetectTime >= aiState.reactionDelay) {
+        aiState.reactionProcessed = true;
+        const missChance = underPressure ? AI_CONFIG.PRESSURE_MISS_CHANCE : AI_CONFIG.REACTION_MISS_CHANCE;
+        if (canParry(cpu) && !chance(missChance)) {
+          if (handleDefensiveReaction(cpu, human, aiState, currentTime, distance, underPressure)) {
+            aiState.consecutiveHitsTaken = 0;
+            return;
+          }
+        }
+      }
+    }
+  } else if (aiState.reactionTarget) {
+    aiState.reactionTarget = null;
+    aiState.reactionProcessed = false;
+  }
+  
+  // Priority 3.5: PUNISH OPPONENT PARRYING with human-like recognition delay
+  // A human player notices the parry, thinks "I should grab", THEN goes for it.
+  if (human.isRawParrying && !cpu.isAttacking && distance < AI_CONFIG.GRAB_APPROACH_RANGE && canGrab(cpu)) {
+    if (!aiState.punishDetectTime) {
+      aiState.punishDetectTime = currentTime;
+      aiState.punishDelay = randomInRange(AI_CONFIG.PUNISH_DELAY_MIN, AI_CONFIG.PUNISH_DELAY_MAX);
+      aiState.punishProcessed = false;
+    }
+    if (!aiState.punishProcessed && currentTime - aiState.punishDetectTime >= aiState.punishDelay) {
+      aiState.punishProcessed = true;
+      resetAllKeys(cpu);
+      const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
+      if (result) {
+        aiState.lastActionType = "punish_grab";
         return;
       }
     }
-    // If we "missed" the reaction, fall through to offensive actions
-    // This means sometimes the CPU gets hit because it was trying to attack instead of defend
-  }
-  
-  // Priority 3.5: PUNISH OPPONENT PARRYING — walk in and grab if needed
-  if (human.isRawParrying && !cpu.isAttacking && distance < AI_CONFIG.GRAB_APPROACH_RANGE && canGrab(cpu)) {
-    resetAllKeys(cpu);
-    const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
-    if (result) {
-      aiState.lastActionType = "punish_grab";
-      return;
-    }
+  } else if (aiState.punishDetectTime) {
+    aiState.punishDetectTime = 0;
+    aiState.punishProcessed = false;
   }
   
   // Priority 4: COMMITMENT SYSTEM — if in a burst, continue it
@@ -857,6 +944,24 @@ function handleCornerEscape(cpu, human, aiState, currentTime, distance, cornered
       return true;
     }
   } else {
+    // Rope jump escape — arc over the opponent when cornered and they're far enough away
+    // Only works within ROPE_JUMP_BOUNDARY_ZONE of actual game boundaries
+    const nearLeftBound = cpu.x - GAME_MAP_LEFT < ROPE_JUMP_BOUNDARY_ZONE + 10;
+    const nearRightBound = GAME_MAP_RIGHT - cpu.x < ROPE_JUMP_BOUNDARY_ZONE + 10;
+    if ((nearLeftBound || nearRightBound) &&
+        distance > AI_CONFIG.ROPE_JUMP_MIN_DISTANCE &&
+        currentTime - aiState.lastRopeJumpTime > AI_CONFIG.ROPE_JUMP_COOLDOWN &&
+        !cpu.isGassed &&
+        chance(AI_CONFIG.ROPE_JUMP_CHANCE)) {
+      resetAllKeys(cpu);
+      cpu.keys.w = true;
+      if (nearLeftBound) cpu.keys.d = true;
+      else cpu.keys.a = true;
+      aiState.lastRopeJumpTime = currentTime;
+      aiState.lastDecisionTime = currentTime;
+      aiState.lastActionType = "rope_jump";
+      return true;
+    }
     // Move toward center
     if (escapeDirection === 1) cpu.keys.d = true;
     else cpu.keys.a = true;
@@ -914,26 +1019,61 @@ function handleRingOutOpportunity(cpu, human, aiState, currentTime, distance) {
     }
   }
   
-  // Too far — approach aggressively, sometimes dodge-in
-  const dirToOpponent = getDirectionToOpponent(cpu, human);
-  if (distance < AI_CONFIG.MID_RANGE + 50 && canDodge(cpu) && chance(0.20)) {
-    // Dodge toward opponent to close gap fast
-    cpu.keys.shift = true;
+  // Mid-range: approach with attack intent (slaps while walking in, charged attacks)
+  if (distance < AI_CONFIG.MID_RANGE) {
+    const midRoll = Math.random();
+    const dirToOpponent = getDirectionToOpponent(cpu, human);
+
+    if (midRoll < 0.40 && canAttack(cpu)) {
+      // Slap while approaching — slap hitbox (146px) reaches past pushbox
+      cpu.keys.mouse1 = true;
+      aiState.mouse1ReleaseTime = currentTime + 40;
+      if (dirToOpponent === 1) cpu.keys.d = true;
+      else cpu.keys.a = true;
+      aiState.lastDecisionTime = currentTime;
+      aiState.lastActionType = "slap_approach_ringout";
+      return;
+    } else if (midRoll < 0.60 && canAttack(cpu) && aiState.consecutiveChargedAttacks < AI_CONFIG.MAX_CONSECUTIVE_CHARGED) {
+      // Charged attack — lunge closes the remaining gap
+      cpu.keys.mouse1 = true;
+      cpu.mouse1PressTime = currentTime;
+      aiState.isChargingIntentional = true;
+      aiState.chargeStartTime = currentTime;
+      aiState.targetChargeTime = randomInRange(250, 450);
+      aiState.lastDecisionTime = currentTime;
+      aiState.lastActionType = "charge_ringout";
+      return;
+    } else if (midRoll < 0.80 && canGrab(cpu)) {
+      const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
+      if (result) {
+        aiState.lastActionType = "grab_ringout";
+        aiState.lastDecisionTime = currentTime;
+        return;
+      }
+    }
+
+    // Walk in carefully as fallback
     if (dirToOpponent === 1) cpu.keys.d = true;
     else cpu.keys.a = true;
-    aiState.shiftReleaseTime = currentTime + 80;
+    aiState.lastActionType = "approach_ringout";
     aiState.lastDecisionTime = currentTime;
-    aiState.lastActionType = "dodge_approach";
-  } else {
-    if (dirToOpponent === 1) cpu.keys.d = true;
-    else cpu.keys.a = true;
+    return;
   }
+
+  // Far away — walk in, no dodge-approach (overshooting swaps who's cornered)
+  const dirToOpponent = getDirectionToOpponent(cpu, human);
+  if (dirToOpponent === 1) cpu.keys.d = true;
+  else cpu.keys.a = true;
+  aiState.lastActionType = "approach_ringout";
+  aiState.lastDecisionTime = currentTime;
 }
 
-// Handle defensive reactions — with imperfect human-like response
-function handleDefensiveReaction(cpu, human, aiState, currentTime, distance) {
-  // Reaction cooldown
-  if (currentTime - aiState.lastAttackReactionTime < 250) {
+// Handle defensive reactions — dodge restricted to charged attacks only
+// Dodge has NO i-frames vs slaps, so using it defensively vs slaps is a waste.
+// underPressure: true when the AI has taken 3+ consecutive hits (boosted parry chance)
+function handleDefensiveReaction(cpu, human, aiState, currentTime, distance, underPressure = false) {
+  const reactionCooldown = underPressure ? 150 : 250;
+  if (currentTime - aiState.lastAttackReactionTime < reactionCooldown) {
     return false;
   }
   
@@ -944,8 +1084,8 @@ function handleDefensiveReaction(cpu, human, aiState, currentTime, distance) {
   const roll = Math.random();
   
   // In aggressive mode, sometimes trade hits instead of defending
-  if (aiState.aggressionMode === 'aggressive' && distance < AI_CONFIG.SLAP_RANGE && canAttack(cpu) && roll < 0.30) {
-    // Trade! Attack through the opponent's attack instead of defending
+  // But NOT when under pressure — the AI has learned to stop trading into a barrage
+  if (!underPressure && aiState.aggressionMode === 'aggressive' && distance < AI_CONFIG.SLAP_RANGE && canAttack(cpu) && roll < 0.30) {
     resetAllKeys(cpu);
     cpu.keys.mouse1 = true;
     aiState.mouse1ReleaseTime = currentTime + 40;
@@ -954,8 +1094,9 @@ function handleDefensiveReaction(cpu, human, aiState, currentTime, distance) {
     return true;
   }
   
-  const parryChance = AI_CONFIG.PARRY_CHANCE * aggMult.defense;
-  const dodgeChance = AI_CONFIG.DODGE_CHANCE * aggMult.defense;
+  const parryChance = underPressure
+    ? AI_CONFIG.PRESSURE_PARRY_BOOST
+    : AI_CONFIG.PARRY_CHANCE * aggMult.defense;
   
   if (roll < parryChance && canParry(cpu)) {
     resetAllKeys(cpu);
@@ -964,40 +1105,43 @@ function handleDefensiveReaction(cpu, human, aiState, currentTime, distance) {
     aiState.lastDecisionTime = currentTime;
     aiState.pendingParry = true;
     aiState.parryStartTime = currentTime;
-    aiState.parryReleaseTime = currentTime + randomInRange(180, 350);
+    // Shorter hold = tighter perfect parry timing + less vulnerability after
+    aiState.parryReleaseTime = currentTime + (underPressure ? randomInRange(60, 120) : randomInRange(100, 220));
     return true;
-  } else if (roll < parryChance + dodgeChance && canDodge(cpu)) {
-    resetAllKeys(cpu);
-    cpu.keys.shift = true;
-    
-    // Smart dodge away from boundaries
-    const cpuLeftDist = distanceToLeftEdge(cpu);
-    const cpuRightDist = distanceToRightEdge(cpu);
-    const nearestEdge = cpuLeftDist < cpuRightDist ? 'left' : 'right';
-    const distToNearestEdge = Math.min(cpuLeftDist, cpuRightDist);
-    
-    if (distToNearestEdge < 250) {
-      if (nearestEdge === 'left') cpu.keys.d = true;
-      else cpu.keys.a = true;
-    } else {
-      // Mix it up — sometimes dodge toward, sometimes away
-      if (chance(0.6)) {
-        // Dodge away from opponent
-        const intendedDir = cpu.x < human.x ? -1 : 1;
-        if (intendedDir === -1) cpu.keys.a = true;
-        else cpu.keys.d = true;
-      } else {
-        // Dodge THROUGH opponent (aggressive dodge)
-        const dirToOpponent = getDirectionToOpponent(cpu, human);
-        if (dirToOpponent === 1) cpu.keys.d = true;
+  }
+  
+  // Dodge ONLY vs charged attacks — dodge has i-frames vs charged but NOT vs slaps
+  if (human.attackType === 'charged') {
+    const dodgeChance = AI_CONFIG.DODGE_CHANCE * aggMult.defense;
+    if (roll < parryChance + dodgeChance && canDodge(cpu)) {
+      resetAllKeys(cpu);
+      cpu.keys.shift = true;
+      
+      const cpuLeftDist = distanceToLeftEdge(cpu);
+      const cpuRightDist = distanceToRightEdge(cpu);
+      const nearestEdge = cpuLeftDist < cpuRightDist ? 'left' : 'right';
+      const distToNearestEdge = Math.min(cpuLeftDist, cpuRightDist);
+      
+      if (distToNearestEdge < 250) {
+        if (nearestEdge === 'left') cpu.keys.d = true;
         else cpu.keys.a = true;
+      } else {
+        if (chance(0.6)) {
+          const intendedDir = cpu.x < human.x ? -1 : 1;
+          if (intendedDir === -1) cpu.keys.a = true;
+          else cpu.keys.d = true;
+        } else {
+          const dirToOpponent = getDirectionToOpponent(cpu, human);
+          if (dirToOpponent === 1) cpu.keys.d = true;
+          else cpu.keys.a = true;
+        }
       }
+      
+      aiState.lastAttackReactionTime = currentTime;
+      aiState.lastDecisionTime = currentTime;
+      aiState.shiftReleaseTime = currentTime + 80;
+      return true;
     }
-    
-    aiState.lastAttackReactionTime = currentTime;
-    aiState.lastDecisionTime = currentTime;
-    aiState.shiftReleaseTime = currentTime + 80;
-    return true;
   }
   
   return false;
@@ -1735,6 +1879,46 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     return;
   }
   
+  // Process rope jump (W + forward key near game boundary)
+  if (cpu.keys.w && !shouldBlockAction()) {
+    const { canPlayerDash: canDash } = gameHelpers;
+    if (canDash) {
+      const nearLeftBound = cpu.x - GAME_MAP_LEFT < ROPE_JUMP_BOUNDARY_ZONE;
+      const nearRightBound = GAME_MAP_RIGHT - cpu.x < ROPE_JUMP_BOUNDARY_ZONE;
+      const forwardHeld = (nearLeftBound && cpu.keys.d) || (nearRightBound && cpu.keys.a);
+
+      if (forwardHeld && (nearLeftBound || nearRightBound) &&
+          !cpu.isRopeJumping && canDash(cpu) && !cpu.isGassed) {
+        clearChargeState(cpu, true);
+        cpu.movementVelocity = 0;
+        cpu.isStrafing = false;
+        cpu.isPowerSliding = false;
+        cpu.isBraking = false;
+
+        const jumpDir = nearLeftBound ? 1 : -1;
+        const mapMidpoint = (GAME_MAP_LEFT + GAME_MAP_RIGHT) / 2;
+        const targetX = cpu.x + (mapMidpoint - cpu.x) * 0.52;
+
+        cpu.facing = nearLeftBound ? -1 : 1;
+        cpu.isRopeJumping = true;
+        cpu.ropeJumpPhase = "startup";
+        cpu.ropeJumpStartTime = currentTime;
+        cpu.ropeJumpStartX = cpu.x;
+        cpu.ropeJumpTargetX = Math.max(GAME_MAP_LEFT, Math.min(targetX, GAME_MAP_RIGHT));
+        cpu.ropeJumpDirection = jumpDir;
+        cpu.ropeJumpActiveStartTime = 0;
+        cpu.ropeJumpLandingTime = 0;
+        cpu.ropeJumpBufferedAttackRelease = 0;
+        cpu.currentAction = "ropeJump";
+        cpu.actionLockUntil = currentTime + ROPE_JUMP_STARTUP_MS;
+        cpu.stamina = Math.max(0, cpu.stamina - ROPE_JUMP_STAMINA_COST);
+
+        cpu._prevKeys = { ...cpu.keys };
+        return;
+      }
+    }
+  }
+
   // Process raw parry
   if (keyJustPressed("s") && 
       canPlayerUseAction(cpu) &&

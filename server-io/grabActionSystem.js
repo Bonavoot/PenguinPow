@@ -56,7 +56,7 @@ function updateGrabActions(player, room, io, delta, rooms) {
       const rightBoundary = MAP_RIGHT_BOUNDARY;
 
       // Keep opponent attached at fixed distance
-      const baseDistance = Math.round(81 * 0.96);
+      const baseDistance = Math.round(75 * 0.96);
       const distanceMultiplier = player.isAttemptingGrabThrow ? 1.15 : 1;
       const fixedDistance = baseDistance * distanceMultiplier * (opponent.sizeMultiplier || 1);
 
@@ -354,7 +354,7 @@ function updateGrabActions(player, room, io, delta, rooms) {
       (p) => p.id === player.grabbedOpponent
     );
     if (opponent) {
-      const baseDistance = Math.round(81 * 0.96);
+      const baseDistance = Math.round(75 * 0.96);
       const fixedDistance = baseDistance * 1.15 * (opponent.sizeMultiplier || 1);
       opponent.x =
         player.facing === 1
@@ -397,7 +397,7 @@ function updateGrabActions(player, room, io, delta, rooms) {
       (p) => p.id === player.grabbedOpponent
     );
     if (opponent) {
-      const baseDistance = Math.round(81 * 0.96);
+      const baseDistance = Math.round(75 * 0.96);
       const fixedDistance = baseDistance * GRAB_PULL_ATTEMPT_DISTANCE_MULTIPLIER * (opponent.sizeMultiplier || 1);
       opponent.x =
         player.facing === 1

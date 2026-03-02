@@ -438,6 +438,7 @@ function clearAllActionStates(player) {
   player.ropeJumpDirection = 0;
   player.ropeJumpActiveStartTime = 0;
   player.ropeJumpLandingTime = 0;
+  player.ropeJumpBufferedAttackRelease = 0;
 }
 
 function isWithinMapBoundaries(

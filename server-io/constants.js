@@ -53,13 +53,13 @@ const SCREEN_SHAKE_MIN_INTERVAL = 100; // Minimum ms between screen shakes
 // ============================================
 const speedFactor = 0.185; // Scaled for camera zoom (was 0.25)
 const GROUND_LEVEL = 300;
-const HITBOX_DISTANCE_VALUE = Math.round(77 * 0.96); // ~74 — PUSHBOX size (body collision, keeps players separated)
-const CHARGED_HITBOX_DISTANCE_VALUE = Math.round(160 * 0.96); // ~154 → effective ~131 with sizeMultiplier (just past pushbox 126 — hit fires at body contact; lunge provides range)
-const SLAP_HITBOX_DISTANCE_VALUE = Math.round(165 * 0.96); // ~158 — must exceed pushbox (148px) so slaps connect at pushbox distance
+const HITBOX_DISTANCE_VALUE = Math.round(71 * 0.96); // ~68 — PUSHBOX size (body collision, keeps players separated) [8% tighter]
+const CHARGED_HITBOX_DISTANCE_VALUE = Math.round(147 * 0.96); // ~141 → just past pushbox 136 — hit fires at body contact; lunge provides range [8% tighter]
+const SLAP_HITBOX_DISTANCE_VALUE = Math.round(152 * 0.96); // ~146 — must exceed pushbox (136px) so slaps connect at pushbox distance [8% tighter]
 const SLAP_PARRY_WINDOW = 200; // Updated to 200ms window for parry to account for longer slap animation
 const SLAP_PARRY_KNOCKBACK_VELOCITY = 1.5; // Reduced knockback for parried attacks
 const THROW_RANGE = Math.round(166 * 0.96); // ~159 (scaled for camera zoom)
-const GRAB_RANGE = Math.round(172 * 0.96); // ~165px - command grab range (scaled for camera zoom)
+const GRAB_RANGE = Math.round(158 * 0.96); // ~152px - command grab range (scaled for camera zoom) [8% tighter]
 const GRAB_PUSH_SPEED = 0.55; // Push movement speed (buffed from 0.3 — yorikiri should grind to the edge)
 const GRAB_PUSH_DURATION = 650;
 
@@ -186,7 +186,7 @@ const GRAB_WHIFF_STUMBLE_VEL = 0.4; // Slight forward stumble velocity during wh
 
 // Grab tech — both players grab simultaneously, freeze then push apart
 const GRAB_TECH_FREEZE_MS = 350; // Freeze duration before separation (shake/jiggle phase)
-const GRAB_TECH_FORCED_DISTANCE = 44; // Scaled for camera zoom (was 60)
+const GRAB_TECH_FORCED_DISTANCE = 40; // Scaled for camera zoom [8% tighter]
 const GRAB_PULL_ATTEMPT_DISTANCE_MULTIPLIER = 1.4; // Larger gap during pull attempt (vs 1.0 for normal grab)
 const GRAB_TECH_TWEEN_DURATION = 120; // Duration of forced separation tween (ms)
 const GRAB_TECH_RESIDUAL_VEL = 1.2; // Residual velocity fed into ice sliding after forced separation
@@ -196,7 +196,7 @@ const GRAB_TECH_ANIM_DURATION_MS = 700; // Total tech animation duration (freeze
 // Grab break constants
 const GRAB_BREAK_STAMINA_COST = 10; // Equal stamina cost for both players on a successful grab break
 const GRAB_BREAK_PUSH_VELOCITY = 1.2; // Push velocity for grab breaks
-const GRAB_BREAK_FORCED_DISTANCE = 55; // Even separation distance for both players
+const GRAB_BREAK_FORCED_DISTANCE = 51; // Even separation distance for both players [8% tighter]
 const GRAB_BREAK_TWEEN_DURATION = 350; // Knockback slide duration
 const GRAB_BREAK_RESIDUAL_VEL = 0; // No residual sliding — players stop cleanly when knockback ends
 const GRAB_BREAK_INPUT_LOCK_MS = 350; // Locked during knockback tween only

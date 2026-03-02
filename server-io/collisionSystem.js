@@ -857,7 +857,7 @@ function processHit(player, otherPlayer, rooms, io) {
     // Calculate knockback multiplier based on charge percentage
     let finalKnockbackMultiplier;
     if (isSlapAttack) {
-      finalKnockbackMultiplier = 0.38; // Original knockback — strong initial snap, paired with heavy friction for chain consistency
+      finalKnockbackMultiplier = 0.475; // 25% stronger knockback for more ring-out pressure
     } else {
       finalKnockbackMultiplier = 0.4675 + Math.pow(chargePercentage / 100, 2) * 0.55; // Quadratic ease-in: low charges are moderate, power ramps sharply at high charge
     }

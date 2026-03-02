@@ -119,6 +119,7 @@ const {
 
 // Import CPU AI
 const { updateCPUAI, processCPUInputs } = require("./cpuAI");
+const { updateImpossibleAI } = require("./cpuAI_impossible");
 
 // Import collision system
 const { checkCollision } = require("./collisionSystem");
@@ -344,7 +345,11 @@ function tick(delta) {
         const humanPlayer = room.players.find(p => !p.isCPU);
         if (cpuPlayer && humanPlayer) {
           // Update AI decision making (sets keys)
-          updateCPUAI(cpuPlayer, humanPlayer, room, currentTime);
+          if (room.cpuDifficulty === "IMPOSSIBLE") {
+            updateImpossibleAI(cpuPlayer, humanPlayer, room, currentTime);
+          } else {
+            updateCPUAI(cpuPlayer, humanPlayer, room, currentTime);
+          }
           
           // Process the CPU's inputs (converts keys to actions)
           const gameHelpers = {
@@ -353,12 +358,13 @@ function tick(delta) {
             canPlayerCharge,
             canPlayerSlap,
             canPlayerUseAction,
+            canPlayerDash,
             startCharging,
             clearChargeState,
             isPlayerInActiveState,
             setPlayerTimeout,
             rooms,
-            io, // Add io for emitting events
+            io,
           };
           processCPUInputs(cpuPlayer, humanPlayer, room, gameHelpers);
         }
@@ -375,7 +381,7 @@ function tick(delta) {
         if (opponent && !opponent.isHit) {
           // Keep opponent at fixed distance during grab
           const fixedDistance =
-            Math.round(81 * 0.96) * (opponent.sizeMultiplier || 1); // Scaled +30%
+            Math.round(75 * 0.96) * (opponent.sizeMultiplier || 1);
           opponent.x =
             player1.facing === 1
               ? player1.x - fixedDistance
@@ -1571,6 +1577,26 @@ function tick(delta) {
             const ropeJumpOpponent = room.players.find(p => p.id !== player.id);
             if (ropeJumpOpponent) {
               player.facing = player.x < ropeJumpOpponent.x ? -1 : 1;
+            }
+
+            // Attack buffer: if mouse1 was released during landing recovery,
+            // fire the buffered attack now (slap if quick tap, charged attack if held)
+            if (player.ropeJumpBufferedAttackRelease) {
+              const holdMs = player.ropeJumpBufferedAttackRelease;
+              player.ropeJumpBufferedAttackRelease = 0;
+              if (holdMs >= 200) {
+                const chargePower = Math.min(100, (holdMs / CHARGE_FULL_POWER_MS) * 100);
+                executeChargedAttack(player, chargePower, rooms);
+              } else {
+                executeSlapAttack(player, rooms);
+              }
+            } else if (player.keys.mouse1 && player.mouse1PressTime > 0 &&
+                !player.isAttacking && !player.isChargingAttack) {
+              // mouse1 still held → start charging immediately
+              player.isChargingAttack = true;
+              player.chargeStartTime = player.mouse1PressTime;
+              player.chargeAttackPower = Math.min(100, ((Date.now() - player.mouse1PressTime) / CHARGE_FULL_POWER_MS) * 100) || 1;
+              player.attackType = "charged";
             }
           }
         }

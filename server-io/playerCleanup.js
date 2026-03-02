@@ -48,6 +48,7 @@ function cleanupPlayerStates(player) {
   player.ropeJumpDirection = 0;
   player.ropeJumpActiveStartTime = 0;
   player.ropeJumpLandingTime = 0;
+  player.ropeJumpBufferedAttackRelease = 0;
   player.isReady = false;
   player.isBowing = false;
   player.knockbackVelocity = { x: 0, y: 0 };

@@ -150,15 +150,15 @@ const FlashOverlay = styled.div`
 `;
 
 const RevealContainer = styled.div`
-  --player-card-width: clamp(74px, 11.2cqw, 132px);
+  --player-card-width: clamp(68px, 10.2cqw, 118px);
   margin-top: clamp(56px, 17.2cqh, 124px);
   width: fit-content;
   max-width: 96cqw;
   display: grid;
   grid-template-columns: var(--player-card-width) auto var(--player-card-width);
   align-items: center;
-  column-gap: clamp(5px, 0.9cqw, 10px);
-  padding: clamp(9px, 1.35cqh, 13px) clamp(10px, 1.1cqw, 14px);
+  column-gap: clamp(4px, 0.7cqw, 8px);
+  padding: clamp(9px, 1.35cqh, 13px) clamp(8px, 0.95cqw, 12px);
   background: linear-gradient(180deg,
     rgba(20, 10, 5, 0.9) 0%,
     rgba(45, 21, 16, 0.86) 50%,
@@ -187,8 +187,8 @@ const RevealContainer = styled.div`
   
   @media (max-width: 700px) {
     max-width: 96cqw;
-    column-gap: clamp(5px, 0.85cqw, 10px);
-    padding: clamp(7px, 1cqh, 10px) clamp(7px, 0.8cqw, 10px);
+    column-gap: clamp(4px, 0.65cqw, 8px);
+    padding: clamp(7px, 1cqh, 10px) clamp(6px, 0.7cqw, 9px);
     border-width: 2px;
   }
 `;
@@ -334,7 +334,7 @@ const VSText = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(0.95rem, 2.4cqw, 1.6rem);
   color: #d4af37;
-  padding: clamp(3px, 0.45cqh, 6px) clamp(8px, 1.1cqw, 14px);
+  padding: clamp(3px, 0.45cqh, 6px) clamp(6px, 0.9cqw, 11px);
   border-radius: 6px;
   border: 1px solid rgba(212, 175, 55, 0.35);
   background: linear-gradient(180deg, rgba(10, 14, 30, 0.55) 0%, rgba(10, 14, 30, 0.2) 100%);

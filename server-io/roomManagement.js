@@ -132,6 +132,7 @@ function createCPUPlayer(uniqueId) {
     ropeJumpDirection: 0,
     ropeJumpActiveStartTime: 0,
     ropeJumpLandingTime: 0,
+    ropeJumpBufferedAttackRelease: 0,
     dodgeDirection: null,
     dodgeEndTime: 0,
     isReady: false,
@@ -391,6 +392,7 @@ function resetRoomAndPlayers(room, io) {
     player.ropeJumpDirection = 0;
     player.ropeJumpActiveStartTime = 0;
     player.ropeJumpLandingTime = 0;
+    player.ropeJumpBufferedAttackRelease = 0;
     player.isDodging = false;
     player.isDodgeStartup = false;
     player.isDodgeRecovery = false;
