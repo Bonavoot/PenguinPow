@@ -50,6 +50,7 @@ import recovering from "../assets/recovering.png";
 import rawParrySuccess from "../assets/raw-parry-success.png";
 import slapAttack1 from "../assets/slapAttack1.png";
 import slapAttack2 from "../assets/slapAttack2.png";
+import slapAttack3 from "../assets/attack.png";
 
 // ============================================
 // SPRITE CONFIGURATIONS
@@ -201,6 +202,7 @@ const BLUE_STATIC_SPRITES = {
   rawParrySuccess: rawParrySuccess,
   slapAttack1: slapAttack1,
   slapAttack2: slapAttack2,
+  slapAttack3: slapAttack3,
 };
 
 /**

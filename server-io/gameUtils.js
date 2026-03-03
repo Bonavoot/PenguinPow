@@ -284,6 +284,11 @@ function resetPlayerAttackStates(player) {
   player.slapActiveEndTime = 0;
   player.chargedActiveEndTime = 0;
   player.attackCooldownUntil = 0;
+  // Reset slap string state
+  player.slapStringPosition = 0;
+  player.slapStringWindowUntil = 0;
+  player.isSlapStringFinisher = false;
+  player.isSlapStringComboDrift = false;
 }
 
 // === CRITICAL: Clear ALL action states when player loses control ===
@@ -294,6 +299,7 @@ function clearAllActionStates(player) {
   player.isHit = false;
   player.isAlreadyHit = false;
   player.isSlapKnockback = false;
+  player.isSlapStringComboKnockback = false;
   player.isParryKnockback = false;
   
   // Clear attack states
@@ -312,8 +318,12 @@ function clearAllActionStates(player) {
   player.attackType = null;
   player.pendingChargeAttack = null;
   player.spacebarReleasedDuringDodge = false;
-  player.hasPendingSlapAttack = false;
+  player.pendingSlapCount = 0;
   player.isSlapSliding = false;
+  player.slapStringPosition = 0;
+  player.slapStringWindowUntil = 0;
+  player.isSlapStringFinisher = false;
+  player.isSlapStringComboDrift = false;
   player.mouse1HeldDuringAttack = false;
   player.mouse1BufferedBeforeStart = false;
   player.wantsToRestartCharge = false;

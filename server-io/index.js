@@ -47,6 +47,7 @@ const {
   SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST, DODGE_STAMINA_COST,
   GASSED_DURATION_MS, GASSED_RECOVERY_STAMINA,
   HITSTOP_GRAB_MS, HITSTOP_THROW_MS,
+  SLAP_STRING_COMBO_DRIFT_FRICTION,
 } = require("./constants");
 
 // Import game utilities
@@ -763,6 +764,7 @@ function tick(delta) {
           player.isHit = false;
           player.isAlreadyHit = false;
           player.isSlapKnockback = false;
+          player.isSlapStringComboKnockback = false;
           player.isParryKnockback = false;
           player.knockbackVelocity.x = 0;
           player.movementVelocity = 0;
@@ -798,12 +800,15 @@ function tick(delta) {
                                       (knockbackDirection < 0 && player.keys.d && !player.keys.a);
             const DI_FRICTION_BONUS = 0.96;
             
-            if (player.isSlapKnockback) {
-              player.knockbackVelocity.x *= 0.97; // Slap knockback friction
+            if (player.isSlapStringComboKnockback) {
+              player.knockbackVelocity.x *= SLAP_STRING_COMBO_DRIFT_FRICTION;
+            } else if (player.isSlapKnockback) {
+              player.knockbackVelocity.x *= 0.97;
             } else {
-              player.knockbackVelocity.x *= 0.96; // Was 0.985 — shorter knockback for charged too
+              player.knockbackVelocity.x *= 0.96;
             }
-            if (isHoldingOpposite) {
+            // DI disabled during string combo hits (1&2) so displacement is perfectly deterministic
+            if (isHoldingOpposite && !player.isSlapStringComboKnockback) {
               player.knockbackVelocity.x *= DI_FRICTION_BONUS;
             }
           }
@@ -1297,8 +1302,9 @@ function tick(delta) {
             opponent.isBeingThrown = false;
             opponent.beingThrownFacingDirection = null;
             opponent.isHit = false;
-            opponent.isAlreadyHit = false; // Ensure player can be hit again after landing
+            opponent.isAlreadyHit = false;
             opponent.isSlapKnockback = false;
+            opponent.isSlapStringComboKnockback = false;
             
             // Set Y to correct ground level based on whether they landed outside the dohyo
             const landedOutsideDohyo = opponent.x <= DOHYO_LEFT_BOUNDARY || opponent.x >= DOHYO_RIGHT_BOUNDARY;
@@ -2059,7 +2065,7 @@ function tick(delta) {
           !player.isGrabBreakSeparating && // Block during grab break separation
           !player.isThrowingSnowball &&
           !player.isSpawningPumoArmy &&
-          !player.hasPendingSlapAttack && // Block strafing when buffered slap attack is pending
+          !player.pendingSlapCount && // Block strafing when buffered slap attack is pending
           !(
             player.slapStrafeCooldown &&
             Date.now() < player.slapStrafeCooldownEndTime
@@ -2142,7 +2148,7 @@ function tick(delta) {
           !player.isGrabBreakSeparating &&
           !player.isThrowingSnowball &&
           !player.isSpawningPumoArmy &&
-          !player.hasPendingSlapAttack &&
+          !player.pendingSlapCount &&
           !(
             player.slapStrafeCooldown &&
             Date.now() < player.slapStrafeCooldownEndTime
@@ -2284,7 +2290,21 @@ function tick(delta) {
             const nearEdge = isNearDohyoEdge(player.x);
             const edgeProximity = getEdgeProximity(player.x);
             
-            // Get appropriate friction
+            // Cinematic drift: position FIRST, then friction — matches victim's
+            // knockbackVelocity order so both players move in perfect lockstep.
+            if (player.isSlapStringComboDrift) {
+              const newX = player.x + delta * speedFactor * player.movementVelocity;
+              player.movementVelocity *= SLAP_STRING_COMBO_DRIFT_FRICTION;
+              player.isBraking = false;
+              player.isStrafing = false;
+              if (newX >= leftBoundary && newX <= rightBoundary) {
+                player.x = newX;
+              } else {
+                player.x = newX < leftBoundary ? leftBoundary : rightBoundary;
+                player.movementVelocity = 0;
+              }
+            } else {
+            // Normal ice physics: friction first, then position
             const friction = getIceFriction(player, isActiveBraking, nearEdge, edgeProximity);
             
             // Apply friction to velocity
@@ -2316,6 +2336,7 @@ function tick(delta) {
             } else {
               player.x = newX;
             }
+            } // end normal ice physics else
           } else {
             // Velocity below threshold - full stop
             player.movementVelocity = 0;
@@ -2342,7 +2363,7 @@ function tick(delta) {
             !player.keys.d &&
             (!player.canMoveToReady || room.gameStart)) ||
           player.isAttacking || // Clear strafing during any attack (slap or charged)
-          player.hasPendingSlapAttack || // Clear strafing when buffered slap attack is pending
+          player.pendingSlapCount || // Clear strafing when buffered slap attack is pending
           (player.slapStrafeCooldown &&
             Date.now() < player.slapStrafeCooldownEndTime) // Clear strafing during post-slap cooldown
         ) {
@@ -2355,7 +2376,7 @@ function tick(delta) {
           (!player.keys.a && !player.keys.d) ||
           player.keys.mouse1 ||
           player.isAttacking ||
-          player.hasPendingSlapAttack ||
+          player.pendingSlapCount ||
           (player.slapStrafeCooldown &&
             Date.now() < player.slapStrafeCooldownEndTime) ||
           player.isHit ||
@@ -2382,7 +2403,7 @@ function tick(delta) {
           player.isRecovering ||
           (player.keys.a && player.keys.d) ||
           player.isAttacking || // Clear strafing during any attack (slap or charged)
-          player.hasPendingSlapAttack || // Clear strafing when buffered slap attack is pending
+          player.pendingSlapCount || // Clear strafing when buffered slap attack is pending
           (player.slapStrafeCooldown &&
             Date.now() < player.slapStrafeCooldownEndTime) || // Clear strafing during post-slap cooldown
           player.isHit || // Add isHit to force clear strafing when parried
@@ -2414,7 +2435,7 @@ function tick(delta) {
         player.isThrowTeching ||
         player.isRecovering ||
         player.isAttacking || // Clear strafing during any attack
-        player.hasPendingSlapAttack || // Clear strafing when buffered slap attack is pending
+        player.pendingSlapCount || // Clear strafing when buffered slap attack is pending
         (player.slapStrafeCooldown &&
           Date.now() < player.slapStrafeCooldownEndTime) || // Clear strafing during post-slap cooldown
         player.isHit || // Add isHit to force clear strafing when parried
@@ -2520,8 +2541,10 @@ function tick(delta) {
           // Clear crouch states when starting raw parry
           player.isCrouchStance = false;
           player.isCrouchStrafing = false;
-          // Clear buffered slap attack when starting raw parry
-          player.hasPendingSlapAttack = false;
+          // Clear buffered slap attack and string state when starting raw parry
+          player.pendingSlapCount = 0;
+          player.slapStringPosition = 0;
+          player.slapStringWindowUntil = 0;
         }
         // Only set isReady to false if we're not in an attack state
         if (!player.isAttacking && !player.isChargingAttack) {

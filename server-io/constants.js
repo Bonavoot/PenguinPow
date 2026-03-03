@@ -71,7 +71,47 @@ const GRAB_PUSH_DURATION = 650;
 const SLAP_STARTUP_MS = 55;       // Wind-up before hitbox — snappy initiation
 const SLAP_ACTIVE_MS = 100;       // Hitbox live window
 const SLAP_RECOVERY_MS = 130;     // Can't act, no hitbox — opponent's response window
-const SLAP_TOTAL_MS = SLAP_STARTUP_MS + SLAP_ACTIVE_MS + SLAP_RECOVERY_MS; // 320ms
+const SLAP_TOTAL_MS = SLAP_STARTUP_MS + SLAP_ACTIVE_MS + SLAP_RECOVERY_MS;
+
+// Slap String System — 3-hit rekka string: bam bam..BAM
+// Hits 1&2 are FAST (short cycles) so they naturally combo through speed, not inflated stun.
+// Hit 3 has a LONG startup — the windup itself IS the frame trap gap. No artificial timer.
+const SLAP_STRING_BUFFER_WINDOW_MS = 300;  // How long after hit 1 cycle end the player can manually input hit 2
+const SLAP_STRING_HIT2_MANUAL_WINDOW_MS = 100;  // Short window after hit 2 for delayed hit 3 — also prevents 1-2 loop from comboing
+
+// String hit 1 — same startup/active as solo slap, recovery slashed for fast chain
+const SLAP_STRING_HIT1_RECOVERY_MS = 40;   // Was 130ms — massive reduction for snappy chaining
+const SLAP_STRING_HIT1_TOTAL_MS = SLAP_STARTUP_MS + SLAP_ACTIVE_MS + SLAP_STRING_HIT1_RECOVERY_MS; // 195ms
+
+// String hit 2 — fast follow-up jab
+const SLAP_STRING_HIT2_STARTUP_MS = 35;    // Snappy startup for rapid chain feel
+const SLAP_STRING_HIT2_ACTIVE_MS = 80;     // Slightly shorter active
+const SLAP_STRING_HIT2_RECOVERY_MS = 120;  // Extended recovery — combined with hit 3 startup creates 100-180ms escape gap
+const SLAP_STRING_HIT2_TOTAL_MS = SLAP_STRING_HIT2_STARTUP_MS + SLAP_STRING_HIT2_ACTIVE_MS + SLAP_STRING_HIT2_RECOVERY_MS; // 235ms
+
+// String hit 3 — heavy finisher with long windup
+const SLAP_HIT3_STARTUP_MS = 180;          // Long wind-up — paired with hit 2 recovery for meaningful escape window
+const SLAP_HIT3_ACTIVE_MS = 100;           // Full active window for the big hit
+const SLAP_HIT3_RECOVERY_MS = 200;         // Very punishable — committed string ender
+const SLAP_HIT3_TOTAL_MS = SLAP_HIT3_STARTUP_MS + SLAP_HIT3_ACTIVE_MS + SLAP_HIT3_RECOVERY_MS; // 480ms
+
+// Cinematic String System — deterministic combo that looks identical every time.
+// Hits 1&2: both players snap to fixed spacing + shared drift (no KB multiplier, no ice physics).
+// Hit 3: "release" back to real physics with heavy knockback.
+const SLAP_STRING_COMBO_SPACING = 140;            // Fixed px between players (~pushbox distance so they don't overlap)
+const SLAP_STRING_COMBO_DRIFT_HIT1 = 1.3;         // Drift velocity after hit 1 — moderate push
+const SLAP_STRING_COMBO_DRIFT_HIT2 = 1.3;         // Drift velocity after hit 2 — same as hit 1
+const SLAP_STRING_COMBO_DRIFT_FRICTION = 0.95;    // Drift decay per tick (independent of game physics)
+const SLAP_STRING_HIT3_KB_MULTIPLIER = 0.80;      // Hit 3 finisher — release to real physics
+const SLAP_NEUTRAL_KB_MULTIPLIER = 0.475;          // Solo slap (outside string) keeps current feel
+const SLAP_STRING_HIT3_SLIDE_VELOCITY = 2.2;      // Hit 3 forward slide — strong lunge to close gap even on delayed strings
+
+// String stun — hit 1 uses DEFAULT 260ms. Hit 2 uses 200ms — the escape gap between
+// hits 2 and 3 comes from frame data (hit 2 recovery + hit 3 startup), not inflated stun.
+// With symmetric hitstop, gap = hit2_cycle + hit3_startup - connect_time - stun.
+// Worst case (late connect): 120 + 180 - 200 = 100ms gap.
+// Best case (early connect): 235 + 180 - 35 - 200 = 180ms gap.
+const SLAP_STRING_HIT2_STUN_MS = 200;
 
 const CHARGED_STARTUP_MS = 150;   // Clear windup (unchanged)
 const CHARGED_ACTIVE_MS = 120;    // Hitbox live window
@@ -429,6 +469,26 @@ module.exports = {
   SLAP_ACTIVE_MS,
   SLAP_RECOVERY_MS,
   SLAP_TOTAL_MS,
+  SLAP_STRING_BUFFER_WINDOW_MS,
+  SLAP_STRING_HIT2_MANUAL_WINDOW_MS,
+  SLAP_STRING_HIT1_RECOVERY_MS,
+  SLAP_STRING_HIT1_TOTAL_MS,
+  SLAP_STRING_HIT2_STARTUP_MS,
+  SLAP_STRING_HIT2_ACTIVE_MS,
+  SLAP_STRING_HIT2_RECOVERY_MS,
+  SLAP_STRING_HIT2_TOTAL_MS,
+  SLAP_HIT3_STARTUP_MS,
+  SLAP_HIT3_ACTIVE_MS,
+  SLAP_HIT3_RECOVERY_MS,
+  SLAP_HIT3_TOTAL_MS,
+  SLAP_STRING_COMBO_SPACING,
+  SLAP_STRING_COMBO_DRIFT_HIT1,
+  SLAP_STRING_COMBO_DRIFT_HIT2,
+  SLAP_STRING_COMBO_DRIFT_FRICTION,
+  SLAP_STRING_HIT3_KB_MULTIPLIER,
+  SLAP_NEUTRAL_KB_MULTIPLIER,
+  SLAP_STRING_HIT3_SLIDE_VELOCITY,
+  SLAP_STRING_HIT2_STUN_MS,
   CHARGED_STARTUP_MS,
   CHARGED_ACTIVE_MS,
   GRAB_STARTUP_MS,

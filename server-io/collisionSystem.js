@@ -15,6 +15,9 @@ const {
   CHARGE_CLASH_RECOVERY_DURATION, CHARGE_CLASH_BASE_KNOCKBACK,
   CHARGE_CLASH_MIN_KNOCKBACK, CHARGE_CLASH_ADVANTAGE_SCALE,
   CHARGE_PRIORITY_THRESHOLD, CHARGE_VS_SLAP_ATTACKER_PENALTY,
+  SLAP_STRING_COMBO_SPACING, SLAP_STRING_COMBO_DRIFT_HIT1, SLAP_STRING_COMBO_DRIFT_HIT2,
+  SLAP_STRING_HIT3_KB_MULTIPLIER, SLAP_NEUTRAL_KB_MULTIPLIER,
+  SLAP_STRING_HIT2_STUN_MS,
   CINEMATIC_KILL_MIN_MULTIPLIER,
   CHARGE_FULL_POWER_MS,
   CINEMATIC_KILL_HITSTOP_MS,
@@ -148,21 +151,36 @@ function checkCollision(player, otherPlayer, rooms, io) {
     const horizontalDistance = Math.abs(deltaX);
     if (opponentInFront && horizontalDistance < hitboxDistance) {
       if (otherPlayer.isAttacking && otherPlayer.attackType === "slap") {
-        // Check if both slaps occurred within the parry window
-        const timeDifference = Math.abs(
-          player.attackStartTime - otherPlayer.attackStartTime
-        );
-        if (timeDifference <= SLAP_PARRY_WINDOW) {
-          // Find the current room
-          const currentRoom = rooms.find((room) =>
-            room.players.some((p) => p.id === player.id)
-          );
+        const bothAreFinishers = player.isSlapStringFinisher && otherPlayer.isSlapStringFinisher;
+        const eitherIsStringFinisher = player.isSlapStringFinisher || otherPlayer.isSlapStringFinisher;
 
-          if (currentRoom) {
-            resolveSlapParry(player, otherPlayer, currentRoom.id, io);
+        if (bothAreFinishers) {
+          const bothInActiveFrames = !player.isInStartupFrames && !otherPlayer.isInStartupFrames;
+          if (bothInActiveFrames) {
+            const currentRoom = rooms.find((room) =>
+              room.players.some((p) => p.id === player.id)
+            );
+            if (currentRoom) {
+              resolveSlap3Clash(player, otherPlayer, currentRoom, io);
+            }
+            return;
           }
-          return;
+          // One active, one in startup → fall through to processHit (counter hit)
+        } else if (!eitherIsStringFinisher) {
+          const timeDifference = Math.abs(
+            player.attackStartTime - otherPlayer.attackStartTime
+          );
+          if (timeDifference <= SLAP_PARRY_WINDOW) {
+            const currentRoom = rooms.find((room) =>
+              room.players.some((p) => p.id === player.id)
+            );
+            if (currentRoom) {
+              resolveSlapParry(player, otherPlayer, currentRoom.id, io);
+            }
+            return;
+          }
         }
+        // eitherIsStringFinisher (but not both) → fall through to processHit
       }
 
       // Slap vs Charged: if opponent is executing a charged attack above the
@@ -352,6 +370,76 @@ function resolveChargeClash(player1, player2, p1Charge, p2Charge, room, io) {
     x: midpointX,
     y: midpointY,
     combinedCharge: p1Charge + p2Charge,
+  });
+}
+
+function resolveSlap3Clash(player1, player2, room, io) {
+  const knockbackDir1 = player1.x < player2.x ? -1 : 1;
+  const knockbackDir2 = -knockbackDir1;
+
+  const clashKnockback = CHARGE_CLASH_BASE_KNOCKBACK;
+
+  [player1, player2].forEach((p) => {
+    p.isAttacking = false;
+    p.isSlapAttack = false;
+    p.attackType = null;
+    p.attackStartTime = 0;
+    p.attackEndTime = 0;
+    p.isInStartupFrames = false;
+    p.startupEndTime = 0;
+    p.isSlapStringFinisher = false;
+    p.slapStringPosition = 0;
+    p.slapStringWindowUntil = 0;
+    p.pendingSlapCount = 0;
+    p.isSlapSliding = false;
+    p.slapFacingDirection = null;
+    p.slapActiveEndTime = 0;
+    p.currentAction = null;
+    p.isSlapStringComboDrift = false;
+
+    if (p.slapCycleEndCallback) {
+      timeoutManager.clearPlayerSpecific(p.id, "slapCycle");
+      p.slapCycleEndCallback = null;
+    }
+
+    if (p.keys && p.keys.mouse1) {
+      p.mouse1HeldDuringAttack = true;
+      if (!p.mouse1PressTime) p.mouse1PressTime = Date.now();
+    }
+  });
+
+  const now = Date.now();
+
+  player1.isRecovering = true;
+  player1.recoveryStartTime = now;
+  player1.recoveryDuration = CHARGE_CLASH_RECOVERY_DURATION;
+  player1.recoveryDirection = player1.facing;
+  player1.knockbackVelocity = { x: clashKnockback * knockbackDir1, y: 0 };
+  player1.movementVelocity = clashKnockback * knockbackDir1 * 0.5;
+  player1.actionLockUntil = now + CHARGE_CLASH_RECOVERY_DURATION;
+  player1.attackCooldownUntil = now + CHARGE_CLASH_RECOVERY_DURATION + 150;
+
+  player2.isRecovering = true;
+  player2.recoveryStartTime = now;
+  player2.recoveryDuration = CHARGE_CLASH_RECOVERY_DURATION;
+  player2.recoveryDirection = player2.facing;
+  player2.knockbackVelocity = { x: clashKnockback * knockbackDir2, y: 0 };
+  player2.movementVelocity = clashKnockback * knockbackDir2 * 0.5;
+  player2.actionLockUntil = now + CHARGE_CLASH_RECOVERY_DURATION;
+  player2.attackCooldownUntil = now + CHARGE_CLASH_RECOVERY_DURATION + 150;
+
+  triggerHitstop(room, HITSTOP_SLAP_MS);
+  emitThrottledScreenShake(room, io, {
+    intensity: 1.0,
+    duration: 300,
+  });
+
+  const midpointX = (player1.x + player2.x) / 2;
+  const midpointY = (player1.y + player2.y) / 2;
+  io.in(room.id).emit("charge_clash", {
+    x: midpointX,
+    y: midpointY,
+    combinedCharge: 100,
   });
 }
 
@@ -854,10 +942,16 @@ function processHit(player, otherPlayer, rooms, io) {
     } else {
     }
 
-    // Calculate knockback multiplier based on charge percentage
+    // Calculate knockback multiplier based on attack type and string position
+    // String hits 1&2 use cinematic drift (no KB multiplier) — only hit 3 and solo slaps need this.
     let finalKnockbackMultiplier;
     if (isSlapAttack) {
-      finalKnockbackMultiplier = 0.475; // 25% stronger knockback for more ring-out pressure
+      const stringPos = player.slapStringPosition || 0;
+      if (stringPos === 3) {
+        finalKnockbackMultiplier = SLAP_STRING_HIT3_KB_MULTIPLIER;
+      } else {
+        finalKnockbackMultiplier = SLAP_NEUTRAL_KB_MULTIPLIER;
+      }
     } else {
       finalKnockbackMultiplier = 0.4675 + Math.pow(chargePercentage / 100, 2) * 0.55; // Quadratic ease-in: low charges are moderate, power ramps sharply at high charge
     }
@@ -897,34 +991,55 @@ function processHit(player, otherPlayer, rooms, io) {
 
     if (canApplyKnockback(otherPlayer)) {
       if (isSlapAttack) {
-        // Slap knockback — tuned so chain slaps stay in range with 0.97 friction
-        otherPlayer.knockbackVelocity.x =
-          2.6 * knockbackDirection * finalKnockbackMultiplier;
-        otherPlayer.movementVelocity = 0;
+        const stringPos = player.slapStringPosition || 0;
+        const isCinematicStringHit = (stringPos === 1 || stringPos === 2);
 
-        // Mark this as a slap knockback for special friction handling
         otherPlayer.isSlapKnockback = true;
+        otherPlayer.isSlapStringComboKnockback = isCinematicStringHit;
 
-        // Track that the attacker just landed a slap hit
-        const isChainHit = player.lastSlapHitLandedTime && 
-          (currentTime - player.lastSlapHitLandedTime < 450);
-        player.lastSlapHitLandedTime = currentTime;
+        if (isCinematicStringHit) {
+          // CINEMATIC STRING: snap to fixed spacing + shared drift.
+          // Both players get the same velocity so relative distance stays constant.
+          const driftVelocity = (stringPos === 1)
+            ? SLAP_STRING_COMBO_DRIFT_HIT1
+            : SLAP_STRING_COMBO_DRIFT_HIT2;
 
-        if (isChainHit) {
-          // Chain hit: maintain forward momentum — continuous pressure model.
-          // The pushbox keeps visual separation, attacker smoothly follows the victim.
+          otherPlayer.x = player.x + (knockbackDirection * SLAP_STRING_COMBO_SPACING);
+          otherPlayer.knockbackVelocity.x = driftVelocity * knockbackDirection;
+          otherPlayer.movementVelocity = 0;
+
+          player.movementVelocity = driftVelocity * knockbackDirection;
+          player.isSlapStringComboDrift = true;
+          player.isSlapSliding = true;
+          player.lastSlapHitLandedTime = currentTime;
+        } else if (stringPos === 3) {
+          // HIT 3 RELEASE: back to real physics with heavy knockback
+          otherPlayer.knockbackVelocity.x =
+            2.6 * knockbackDirection * finalKnockbackMultiplier;
+          otherPlayer.movementVelocity = 0;
+
+          player.isSlapStringComboDrift = false;
+          player.movementVelocity = 0;
+          player.isSlapSliding = false;
+          const attackerRecoilDirection = -knockbackDirection;
+          player.slapParryKnockbackVelocity = 0.15 * attackerRecoilDirection;
+          player.lastSlapHitLandedTime = currentTime;
         } else {
-          // First approach hit: stop + recoil for satisfying initial impact
+          // SOLO SLAP (no string) — original physics
+          otherPlayer.knockbackVelocity.x =
+            2.6 * knockbackDirection * finalKnockbackMultiplier;
+          otherPlayer.movementVelocity = 0;
+
           player.movementVelocity = 0;
           player.isSlapSliding = false;
           const attackerRecoilDirection = -knockbackDirection;
           player.slapParryKnockbackVelocity = 0.12 * attackerRecoilDirection;
+          player.lastSlapHitLandedTime = currentTime;
         }
 
-        // Screen shake is handled in the hitstop section below
       } else {
-        // Clear prior knockback values for consistent charged attack knockback
         otherPlayer.isSlapKnockback = false;
+        otherPlayer.isSlapStringComboKnockback = false;
         otherPlayer.knockbackVelocity.x = 0;
         otherPlayer.movementVelocity = 0;
 
@@ -1036,13 +1151,11 @@ function processHit(player, otherPlayer, rooms, io) {
           // Rekka-style hitstop - substantial freeze for each slap impact
           triggerHitstop(currentRoom, HITSTOP_SLAP_MS);
 
-          // === HITSTOP CYCLE COMPENSATION ===
-          // The hitstop freezes physics but the attack cycle setTimeout keeps ticking.
-          // Without compensation, the freeze "steals" movement time from the cycle,
-          // causing inconsistent distances and hit timing between chain slaps.
-          // Fix: extend both active frames AND the full cycle by the hitstop duration.
-          // IMPORTANT: Use remaining CYCLE time (attackCooldownUntil), not just remaining
-          // ACTIVE time (attackEndTime), so the recovery gap between slaps is preserved.
+          // === SYMMETRIC HITSTOP COMPENSATION ===
+          // Hitstop freezes physics but setTimeout timers keep ticking.
+          // Fix: extend BOTH the attacker's cycle AND the victim's hitstun by the
+          // same duration. This makes frame advantage deterministic — the hitstop
+          // cancels out of the gap equation regardless of when the hit connected.
           if (player.slapCycleEndCallback) {
             timeoutManager.clearPlayerSpecific(player.id, "slapCycle");
             const remainingActive = Math.max(0, player.attackEndTime - currentTime);
@@ -1054,6 +1167,11 @@ function processHit(player, otherPlayer, rooms, io) {
             player.attackCooldownUntil = currentTime + extendedCycle;
             setPlayerTimeout(player.id, player.slapCycleEndCallback, extendedCycle, "slapCycle");
           }
+
+          // Victim side: mark that hitstun should be extended by the freeze duration.
+          // The actual hitstun timeout is set below in the HIT STUN DURATION section;
+          // this flag tells it to add HITSTOP_SLAP_MS so both timers stretch equally.
+          otherPlayer._slapHitstopExtension = HITSTOP_SLAP_MS;
 
           // Meaty screen shake for slaps (throttled)
           emitThrottledScreenShake(currentRoom, io, {
@@ -1094,11 +1212,17 @@ function processHit(player, otherPlayer, rooms, io) {
     otherPlayer.y = GROUND_LEVEL;
 
     // === HIT STUN DURATION ===
-    // Slaps: visible hit reaction - enough time to see the animation
-    // Charged: longer stun for more impactful hits
-    // Counter hit and punish: unified 1.4x stun multiplier (consistent system)
-    // Slap stun bumped to 260ms to account for 130ms hitstop eating into the timer.
-    let hitStateDuration = isSlapAttack ? 260 : 380;
+    // String hit 1: 260ms — hit 2's fast 195ms cycle guarantees the true combo.
+    // String hit 2: 200ms — escape gap comes from frame data, not inflated stun.
+    //   Gap = hit2_recovery(120) + hit3_startup(180) - stun(200) = 100ms minimum.
+    // Hit 3 / solo slaps: 260ms stun.
+    const stringPos = isSlapAttack ? (player.slapStringPosition || 0) : 0;
+    let hitStateDuration;
+    if (isSlapAttack) {
+      hitStateDuration = (stringPos === 2) ? SLAP_STRING_HIT2_STUN_MS : 260;
+    } else {
+      hitStateDuration = 380;
+    }
     if (isCinematicKill) {
       hitStateDuration = 3000;
     } else if (isCounterHit) {
@@ -1107,6 +1231,12 @@ function processHit(player, otherPlayer, rooms, io) {
     if (isPunish && !isCinematicKill) {
       hitStateDuration = Math.round(hitStateDuration * 1.4);
     }
+
+    // Symmetric hitstop: extend victim's stun by the same amount the attacker's
+    // cycle was extended, so the gap between string hits is frame-perfect every time.
+    const hitstopExtension = otherPlayer._slapHitstopExtension || 0;
+    otherPlayer._slapHitstopExtension = 0;
+    hitStateDuration += hitstopExtension;
 
     // Update the last hit time for tracking
     otherPlayer.lastHitTime = currentTime;
@@ -1122,12 +1252,14 @@ function processHit(player, otherPlayer, rooms, io) {
         otherPlayer.knockbackVelocity.x = 0;
         otherPlayer.isHit = false;
         otherPlayer.isSlapKnockback = false;
+        otherPlayer.isSlapStringComboKnockback = false;
 
         // For slaps: keep isAlreadyHit active briefly after hitstun ends so the victim
         // visibly exits the hit animation before the next slap can connect.
-        // Without this, chain slaps appear as an infinite combo because the ~10ms gap
-        // between hitstun ending and the next hit is invisible at 32Hz broadcast rate.
-        if (isSlapAttack && SLAP_CHAIN_HIT_GAP_MS > 0) {
+        // Exception: string hits 1 & 2 skip this gap — the string system already controls
+        // timing, and the gap would interfere with the tight frame trap math.
+        const isStringHit = isSlapAttack && (stringPos === 1 || stringPos === 2);
+        if (isSlapAttack && SLAP_CHAIN_HIT_GAP_MS > 0 && !isStringHit) {
           setPlayerTimeout(
             otherPlayer.id,
             () => { otherPlayer.isAlreadyHit = false; },
@@ -1165,4 +1297,4 @@ function processHit(player, otherPlayer, rooms, io) {
   }
 }
 
-module.exports = { checkCollision, processHit, resolveSlapParry, applyParryEffect, resolveChargeClash };
+module.exports = { checkCollision, processHit, resolveSlapParry, applyParryEffect, resolveChargeClash, resolveSlap3Clash };

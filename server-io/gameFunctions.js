@@ -32,6 +32,16 @@ const {
   SLAP_ACTIVE_MS,
   SLAP_RECOVERY_MS,
   SLAP_TOTAL_MS,
+  SLAP_STRING_BUFFER_WINDOW_MS,
+  SLAP_STRING_HIT2_MANUAL_WINDOW_MS,
+  SLAP_STRING_HIT1_TOTAL_MS,
+  SLAP_STRING_HIT2_STARTUP_MS,
+  SLAP_STRING_HIT2_ACTIVE_MS,
+  SLAP_STRING_HIT2_TOTAL_MS,
+  SLAP_HIT3_STARTUP_MS,
+  SLAP_HIT3_ACTIVE_MS,
+  SLAP_HIT3_TOTAL_MS,
+  SLAP_STRING_HIT3_SLIDE_VELOCITY,
   CHARGED_STARTUP_MS,
   CHARGED_ACTIVE_MS,
   DODGE_STARTUP_MS,
@@ -302,8 +312,10 @@ function handleWinCondition(room, loser, winner, io) {
     p.isAttemptingGrabThrow = false;
     p.grabThrowAttemptStartTime = 0;
 
-    // Clear buffered slap attack states to prevent attacks after winner is declared
-    p.hasPendingSlapAttack = false;
+    p.pendingSlapCount = 0;
+    p.slapStringPosition = 0;
+    p.slapStringWindowUntil = 0;
+    p.isSlapStringFinisher = false;
     p.mouse1JustPressed = false;
     p.mouse1JustReleased = false;
 
@@ -391,88 +403,118 @@ function executeSlapAttack(player, rooms) {
       // Use the locked facing direction
       player.facing = player.slapFacingDirection;
 
-      // === CONTINUOUS PRESSURE LUNGE ===
-      // APPROACH (no recent hit): Normal forward slide.
-      // CHAIN (just landed a slap): Refresh forward velocity. Attacker never stops
-      // during chains — they maintain continuous forward pressure like a sumo advance.
-      // The pushbox (148px) naturally maintains visual separation while the hitbox
-      // (158px) guarantees hits at pushbox distance.
-      const recentlyLandedSlap = player.lastSlapHitLandedTime && 
-        (Date.now() - player.lastSlapHitLandedTime < 450);
-      let slapSlideVelocity = recentlyLandedSlap ? 1.6 : 1.0;
+      // === APPROACH SLIDE ===
+      // Cinematic string hits 1&2: moderate approach velocity. The collision system
+      // overrides this with the shared combo drift when the hit actually connects.
+      // Hit 3: separate forward slide — enough to reach but not stay on top.
+      const isStringFinisher = player.slapStringPosition === 2 &&
+        player.slapStringWindowUntil && Date.now() <= player.slapStringWindowUntil;
+      const willBeHit3 = isStringFinisher ||
+        (player.slapStringPosition === 3);
 
-      // Apply POWER power-up multiplier to slap slide distance
-      if (player.activePowerUp === "power") {
-        slapSlideVelocity *= player.powerUpMultiplier - 0.1;
+      const slideDirection = player.facing === 1 ? -1 : 1;
+
+      if (willBeHit3) {
+        let slapSlideVelocity = SLAP_STRING_HIT3_SLIDE_VELOCITY;
+        if (player.activePowerUp === "power") {
+          slapSlideVelocity *= player.powerUpMultiplier - 0.1;
+        }
+        player.movementVelocity = slideDirection * slapSlideVelocity;
+        player.isSlapSliding = true;
+      } else {
+        const recentlyLandedSlap = player.lastSlapHitLandedTime && 
+          (Date.now() - player.lastSlapHitLandedTime < 450);
+        let slapSlideVelocity = recentlyLandedSlap ? 2.5 : 1.0;
+
+        if (player.activePowerUp === "power") {
+          slapSlideVelocity *= player.powerUpMultiplier - 0.1;
+        }
+
+        player.movementVelocity = slideDirection * slapSlideVelocity;
+        player.isSlapSliding = true;
       }
-
-      const slideDirection = player.facing === 1 ? -1 : 1; // Slide in the direction player is facing
-
-      // Apply slide velocity and mark that we're in a slap slide
-      player.movementVelocity = slideDirection * slapSlideVelocity;
-      player.isSlapSliding = true; // New flag to track slap slide state
     }
   }
 
-  // If already attacking, don't start a new attack - buffering is handled by index.js
   if (player.isSlapAttack && player.isAttacking) {
     return;
   }
 
-  // Clear charge state
   clearChargeState(player);
 
-  // Ensure slapAnimation alternates consistently for every actual attack execution
-  player.slapAnimation = player.slapAnimation === 1 ? 2 : 1;
-  
-  // Slap attacks drain a small amount of stamina
+  // === STRING POSITION TRACKING ===
+  // Advance through the 3-hit string (1→2→3) if within the string window,
+  // otherwise reset to hit 1. Each hit uses a distinct animation.
+  const now = Date.now();
+  const inStringWindow = player.slapStringWindowUntil && now <= player.slapStringWindowUntil;
+
+  if (inStringWindow && player.slapStringPosition === 1) {
+    player.slapStringPosition = 2;
+  } else if (inStringWindow && player.slapStringPosition === 2) {
+    player.slapStringPosition = 3;
+  } else {
+    player.slapStringPosition = 1;
+  }
+
+  player.slapStringWindowUntil = 0;
+
+  const isHit3 = player.slapStringPosition === 3;
+  player.slapAnimation = isHit3 ? 4 : player.slapStringPosition;
+  player.isSlapStringFinisher = isHit3;
+
   player.stamina = Math.max(0, player.stamina - SLAP_ATTACK_STAMINA_COST);
 
-  // === SLAP ATTACK TIMING - Formal frame data ===
-  // Startup (55ms) → Active (100ms) → Recovery (130ms) = 285ms total
-  // Recovery creates a gap where the opponent can respond between slaps.
-  const attackDuration = SLAP_STARTUP_MS + SLAP_ACTIVE_MS; // 170ms — hitbox is live from startup end to here
+  // === FRAME DATA — each string position has distinct timing ===
+  // Hit 1: standard startup, fast recovery for chain speed (195ms total)
+  // Hit 2: fast startup, extended recovery for escape gap (235ms total)
+  // Hit 3: long startup + recovery — the escape window is hit2 recovery + hit3 startup (480ms total)
+  let baseStartupMs, activeMs, totalCycleDuration;
+  if (isHit3) {
+    baseStartupMs = SLAP_HIT3_STARTUP_MS;
+    activeMs = SLAP_HIT3_ACTIVE_MS;
+    totalCycleDuration = SLAP_HIT3_TOTAL_MS;
+  } else if (player.slapStringPosition === 2) {
+    baseStartupMs = SLAP_STRING_HIT2_STARTUP_MS;
+    activeMs = SLAP_STRING_HIT2_ACTIVE_MS;
+    totalCycleDuration = SLAP_STRING_HIT2_TOTAL_MS;
+  } else {
+    baseStartupMs = SLAP_STARTUP_MS;
+    activeMs = SLAP_ACTIVE_MS;
+    totalCycleDuration = SLAP_STRING_HIT1_TOTAL_MS;
+  }
 
-  // DESPERATION COUNTER-SLAP: If the player just recovered from hit stun,
-  // their next slap has faster startup so it's more likely to create a slap parry.
+  // DESPERATION COUNTER-SLAP: faster startup when recently hit (hit 1 & 2 only)
   const recentlyRecoveredFromHit = player.lastHitTime && 
-    (Date.now() - player.lastHitTime < 380) && // Within hit stun window + small buffer
-    !player.isHit; // Must have already recovered
-  const startupDuration = recentlyRecoveredFromHit ? 45 : SLAP_STARTUP_MS; // Quick wind-up per strike
+    (now - player.lastHitTime < 380) && !player.isHit;
+  const startupDuration = (!isHit3 && recentlyRecoveredFromHit) ? Math.min(45, baseStartupMs) : baseStartupMs;
 
-  const totalCycleDuration = SLAP_TOTAL_MS; // Full cycle including recovery gap
+  const attackDuration = baseStartupMs + activeMs;
 
   player.isSlapAttack = true;
-  player.attackEndTime = Date.now() + attackDuration;
-  player.slapActiveEndTime = Date.now() + SLAP_STARTUP_MS + SLAP_ACTIVE_MS; // When hitbox goes away
+  player.attackEndTime = now + attackDuration;
+  player.slapActiveEndTime = now + baseStartupMs + activeMs;
   player.isAttacking = true;
-  player.attackStartTime = Date.now();
+  player.attackStartTime = now;
   player.attackType = "slap";
   player.currentAction = "slap";
-  
-  // Track when attack was attempted for counter hit detection
-  // This is set immediately so even if hit detection happens in the same tick,
-  // we can detect if the player was trying to attack
-  player.attackAttemptTime = Date.now();
-  
-  // Single cooldown controls everything - full cycle including recovery
-  player.attackCooldownUntil = Date.now() + totalCycleDuration;
+  player.attackAttemptTime = now;
+  player.attackCooldownUntil = now + totalCycleDuration;
 
-  // Add startup frame tracking
   player.isInStartupFrames = true;
-  player.startupEndTime = Date.now() + startupDuration;
+  player.startupEndTime = now + startupDuration;
 
-  // Set timeout to end startup frames
   setPlayerTimeout(
     player.id,
     () => {
       player.isInStartupFrames = false;
+      if (isHit3) player.slapAnimation = 3;
     },
     startupDuration
   );
 
-  // Store the cycle-end callback on the player so processHit can re-set it
-  // when extending the cycle for hitstop compensation
+  // Capture the position this attack was executed at for the cycle-end callback
+  const finishedPosition = player.slapStringPosition;
+
   player.slapCycleEndCallback = () => {
       player.isAttacking = false;
       player.isSlapAttack = false;
@@ -481,37 +523,82 @@ function executeSlapAttack(player, rooms) {
       player.slapFacingDirection = null;
       player.isInStartupFrames = false;
       player.slapActiveEndTime = 0;
-      // ICE PHYSICS: Slap attack ends - momentum carries into sliding!
-      // Don't reduce momentum, let ice physics handle the slide
-      // Player keeps sliding in the direction they were moving
+      player.isSlapStringFinisher = false;
       player.currentAction = null;
+      player.isSlapStringComboDrift = false;
 
-      // Check if there's a pending slap attack to execute immediately
-      if (player.hasPendingSlapAttack) {
-        player.hasPendingSlapAttack = false;
-        
-        // Execute the next slap immediately if player is still valid
-        if (
-          !player.isDodging &&
-          !player.isThrowing &&
-          !player.isBeingThrown &&
-          !player.isGrabbing &&
-          !player.isBeingGrabbed &&
-          !player.isRawParryStun &&
-          !player.isRawParrying &&
-          !player.isHit &&
-          !player.canMoveToReady
-        ) {
-          // Execute next slap IMMEDIATELY - no delay
-          executeSlapAttack(player, rooms);
+      // Clear cinematic combo state on opponent when string ends
+      if (currentRoom) {
+        const opp = currentRoom.players.find((p) => p.id !== player.id);
+        if (opp && opp.isSlapStringComboKnockback) {
+          opp.isSlapStringComboKnockback = false;
         }
-        return;
       }
-      
-      // After slap ends, if mouse1 still held → begin charging (TAP-style hidden charge)
-      // Require a minimum hold duration to prevent spam-tapping from accidentally triggering charge.
-      // A player genuinely holding through the slap cycle (270ms) easily clears this threshold,
-      // while a mid-tap during spam (~60-80ms hold) does not.
+
+      const isPlayerValid = () => (
+        !player.isDodging && !player.isThrowing && !player.isBeingThrown &&
+        !player.isGrabbing && !player.isBeingGrabbed && !player.isRawParryStun &&
+        !player.isRawParrying && !player.isHit && !player.canMoveToReady
+      );
+
+      // === STRING TRANSITIONS ===
+      if (player.pendingSlapCount > 0) {
+        player.pendingSlapCount--;
+
+        if (finishedPosition === 1 && isPlayerValid()) {
+          // Hit 1 → Hit 2: chain immediately (true combo)
+          player.slapStringWindowUntil = Date.now() + 100;
+          executeSlapAttack(player, rooms);
+          return;
+        }
+
+        if (finishedPosition === 2 && isPlayerValid()) {
+          // Hit 2 → Hit 3: chain immediately — the 100-180ms escape gap is built into
+          // hit 2's extended recovery + hit 3's 180ms startup, not an artificial delay.
+          // Zero the victim's residual drift for clean handoff to hit 3's real physics.
+          if (currentRoom) {
+            const opp = currentRoom.players.find((p) => p.id !== player.id);
+            if (opp) {
+              opp.knockbackVelocity.x = 0;
+            }
+          }
+          player.slapStringWindowUntil = Date.now() + 100;
+          executeSlapAttack(player, rooms);
+          return;
+        }
+
+        // Hit 3 finished or player invalid: reset string, fall through to charge
+        player.slapStringPosition = 0;
+        player.slapStringWindowUntil = 0;
+        player.pendingSlapCount = 0;
+      } else if (finishedPosition === 1) {
+        // Hit 1 with no buffer: keep window open for manual hit 2 continuation
+        player.slapStringWindowUntil = Date.now() + SLAP_STRING_BUFFER_WINDOW_MS;
+        setPlayerTimeout(player.id, () => {
+          if (player.slapStringPosition === finishedPosition && !player.isSlapAttack) {
+            player.slapStringPosition = 0;
+            player.slapStringWindowUntil = 0;
+          }
+        }, SLAP_STRING_BUFFER_WINDOW_MS, "slapStringReset");
+      } else if (finishedPosition === 2) {
+        // Hit 2 with no buffer: short window for delayed hit 3.
+        // During this window, pressing fires hit 3 (string position is still 2).
+        // After it expires, string resets — the window doubles as a cooldown
+        // that prevents the 1-2 loop from comboing into a new hit 1.
+        player.slapStringWindowUntil = Date.now() + SLAP_STRING_HIT2_MANUAL_WINDOW_MS;
+        setPlayerTimeout(player.id, () => {
+          if (player.slapStringPosition === 2 && !player.isSlapAttack) {
+            player.slapStringPosition = 0;
+            player.slapStringWindowUntil = 0;
+          }
+        }, SLAP_STRING_HIT2_MANUAL_WINDOW_MS, "slapStringReset");
+      } else {
+        // Hit 3 with no buffer: reset string
+        player.slapStringPosition = 0;
+        player.slapStringWindowUntil = 0;
+      }
+
+      // Charge transition (only when string is not continuing)
       const holdDuration = player.mouse1PressTime > 0 ? Date.now() - player.mouse1PressTime : 0;
       if (
         player.keys.mouse1 &&
@@ -537,8 +624,6 @@ function executeSlapAttack(player, rooms) {
       }
   };
 
-  // Set the cycle timer with a name so processHit can clear and re-set it
-  // when compensating for hitstop freeze time
   setPlayerTimeout(
     player.id,
     player.slapCycleEndCallback,
@@ -937,6 +1022,13 @@ function adjustPlayerPositions(player1, player2, delta) {
     return;
   }
 
+  // Cinematic string combo: positions are managed by the combo system's snap + drift.
+  // Pushbox must yield or it fights the fixed spacing every tick.
+  if ((player1.isSlapStringComboDrift && player2.isSlapStringComboKnockback) ||
+      (player2.isSlapStringComboDrift && player1.isSlapStringComboKnockback)) {
+    return;
+  }
+
   // Grab system tweens (pull reversal, belly flop, etc.) control position directly.
   // The pushbox must yield so side-swap mechanics work correctly.
   // Note: isGrabSeparating is NOT included — the pushbox should snap players to minDistance
@@ -1216,7 +1308,9 @@ function activateBufferedInputAfterGrab(player, rooms) {
     player.isPowerSliding = false;
     player.isCrouchStance = false;
     player.isCrouchStrafing = false;
-    player.hasPendingSlapAttack = false;
+    player.pendingSlapCount = 0;
+    player.slapStringPosition = 0;
+    player.slapStringWindowUntil = 0;
     clearChargeState(player, true);
     return;
   }
@@ -1312,7 +1406,9 @@ function executeInputBuffer(player, rooms) {
         player.isPowerSliding = false;
         player.isCrouchStance = false;
         player.isCrouchStrafing = false;
-        player.hasPendingSlapAttack = false;
+        player.pendingSlapCount = 0;
+        player.slapStringPosition = 0;
+        player.slapStringWindowUntil = 0;
         clearChargeState(player, true);
         player.inputBuffer = null;
         return true;

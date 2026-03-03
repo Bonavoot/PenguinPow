@@ -355,13 +355,17 @@ function registerSocketHandlers(socket, io, rooms, context) {
         lastHitTime: 0, // Add timing tracking for dynamic hit duration
         lastSlapHitLandedTime: 0, // Track when attacker last landed a slap (for chain lunge)
         lastCheckedAttackTime: 0, // Add tracking for attack collision checking
-        hasPendingSlapAttack: false, // Add flag for buffering one additional slap attack
-        mouse1JustPressed: false, // Track if mouse1 was just pressed this frame
-        mouse1JustReleased: false, // Track if mouse1 was just released this frame
-        mouse2JustPressed: false, // Track if mouse2 was just pressed this frame (grab)
-        mouse2JustReleased: false, // Track if mouse2 was just released this frame
-        shiftJustPressed: false, // Track if shift was just pressed this frame
-        eJustPressed: false, // Track if E was just pressed this frame
+        pendingSlapCount: 0,
+        slapStringPosition: 0,
+        slapStringWindowUntil: 0,
+        isSlapStringFinisher: false,
+        isSlapStringComboDrift: false,
+        mouse1JustPressed: false,
+        mouse1JustReleased: false,
+        mouse2JustPressed: false,
+        mouse2JustReleased: false,
+        shiftJustPressed: false,
+        eJustPressed: false,
         wJustPressed: false, // Track if W was just pressed this frame
         fJustPressed: false, // Track if F was just pressed this frame
         spaceJustPressed: false, // Track if spacebar was just pressed this frame
@@ -555,13 +559,17 @@ function registerSocketHandlers(socket, io, rooms, context) {
         lastHitTime: 0, // Add timing tracking for dynamic hit duration
         lastSlapHitLandedTime: 0, // Track when attacker last landed a slap (for chain lunge)
         lastCheckedAttackTime: 0, // Add tracking for attack collision checking
-        hasPendingSlapAttack: false, // Add flag for buffering one additional slap attack
-        mouse1JustPressed: false, // Track if mouse1 was just pressed this frame
-        mouse1JustReleased: false, // Track if mouse1 was just released this frame
-        mouse2JustPressed: false, // Track if mouse2 was just pressed this frame (grab)
-        mouse2JustReleased: false, // Track if mouse2 was just released this frame
-        shiftJustPressed: false, // Track if shift was just pressed this frame
-        eJustPressed: false, // Track if E was just pressed this frame
+        pendingSlapCount: 0,
+        slapStringPosition: 0,
+        slapStringWindowUntil: 0,
+        isSlapStringFinisher: false,
+        isSlapStringComboDrift: false,
+        mouse1JustPressed: false,
+        mouse1JustReleased: false,
+        mouse2JustPressed: false,
+        mouse2JustReleased: false,
+        shiftJustPressed: false,
+        eJustPressed: false,
         wJustPressed: false, // Track if W was just pressed this frame
         fJustPressed: false, // Track if F was just pressed this frame
         spaceJustPressed: false, // Track if spacebar was just pressed this frame
@@ -806,7 +814,11 @@ function registerSocketHandlers(socket, io, rooms, context) {
       lastHitTime: 0,
       lastSlapHitLandedTime: 0,
       lastCheckedAttackTime: 0,
-      hasPendingSlapAttack: false,
+      pendingSlapCount: 0,
+      slapStringPosition: 0,
+      slapStringWindowUntil: 0,
+      isSlapStringFinisher: false,
+      isSlapStringComboDrift: false,
       mouse1JustPressed: false,
       mouse1JustReleased: false,
       mouse2JustPressed: false,
@@ -1423,15 +1435,15 @@ function registerSocketHandlers(socket, io, rooms, context) {
 
     // MOUSE1 PRESS: Fire slap immediately for responsive poke
     // Charging starts later if mouse1 is held past the slap cycle (TAP-style)
+    // Buffer is generous: press at ANY point during the current slap to queue the next hit.
+    // Counter-based: pressing twice during hit 1 queues both hit 2 and hit 3.
     if (player.mouse1JustPressed && !shouldBlockAction()) {
       if (canPlayerSlap(player)) {
         executeSlapAttack(player, rooms);
       } else if (player.isAttacking && player.attackType === "slap") {
-        const attackElapsed = Date.now() - player.attackStartTime;
-        const attackDuration = player.attackEndTime - player.attackStartTime;
-        const attackProgress = attackElapsed / attackDuration;
-        if (attackProgress >= 0.20 && !player.hasPendingSlapAttack) {
-          player.hasPendingSlapAttack = true;
+        const maxBuffer = 3 - (player.slapStringPosition || 1);
+        if (player.pendingSlapCount < maxBuffer) {
+          player.pendingSlapCount++;
         }
       }
     }

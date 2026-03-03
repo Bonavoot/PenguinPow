@@ -132,17 +132,15 @@ function updateProjectiles(room, io, delta) {
           if (canApplyKnockback(targetPlayer)) {
             const knockbackDirection = snowball.velocityX > 0 ? 1 : -1;
 
-            // Clear any existing slap knockback state to ensure consistent snowball knockback
             targetPlayer.isSlapKnockback = false;
+            targetPlayer.isSlapStringComboKnockback = false;
 
             targetPlayer.knockbackVelocity.x = knockbackDirection * 1.55;
             targetPlayer.movementVelocity = 0;
 
-            // Set knockback immunity
             setKnockbackImmunity(targetPlayer);
           }
 
-          // Reset hit state after duration — transfer remaining knockback to movement
           setPlayerTimeout(
             targetPlayer.id,
             () => {
@@ -153,6 +151,7 @@ function updateProjectiles(room, io, delta) {
               targetPlayer.isHit = false;
               targetPlayer.isAlreadyHit = false;
               targetPlayer.isSlapKnockback = false;
+              targetPlayer.isSlapStringComboKnockback = false;
             },
             300
           );
@@ -429,17 +428,15 @@ function updateProjectiles(room, io, delta) {
           if (canApplyKnockback(opponent)) {
             const knockbackDirection = clone.velocityX > 0 ? 1 : -1;
 
-            // Clear any existing slap knockback state to ensure consistent pumo army knockback
             opponent.isSlapKnockback = false;
+            opponent.isSlapStringComboKnockback = false;
 
             opponent.knockbackVelocity.x = knockbackDirection * 1.6;
             opponent.movementVelocity = 0;
 
-            // Set knockback immunity
             setKnockbackImmunity(opponent);
           }
 
-          // Reset hit state after duration — transfer remaining knockback to movement
           setPlayerTimeout(
             opponent.id,
             () => {
@@ -450,6 +447,7 @@ function updateProjectiles(room, io, delta) {
               opponent.isHit = false;
               opponent.isAlreadyHit = false;
               opponent.isSlapKnockback = false;
+              opponent.isSlapStringComboKnockback = false;
             },
             200
           );

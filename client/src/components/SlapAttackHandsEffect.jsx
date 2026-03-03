@@ -128,7 +128,8 @@ const SlapAttackHandsEffect = ({ x, y, facing, isActive, slapAnimation }) => {
   const handTimeoutRef = useRef(null);
 
   useEffect(() => {
-    if (isActive && slapAnimation !== null && slapAnimation !== lastSlapRef.current) {
+    // Only show hand effect for slap1 (animation 1) and slap2 (animation 2)
+    if (isActive && (slapAnimation === 1 || slapAnimation === 2) && slapAnimation !== lastSlapRef.current) {
       lastSlapRef.current = slapAnimation;
 
       const id = ++handIdCounter.current;

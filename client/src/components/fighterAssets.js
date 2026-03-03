@@ -18,6 +18,7 @@ import ready from "../assets/ready.png";
 import attack from "../assets/attack.png";
 import slapAttack1 from "../assets/slapAttack1.png";
 import slapAttack2 from "../assets/slapAttack2.png";
+import slapAttack3 from "../assets/attack.png";
 import dodging from "../assets/dodging.png";
 import throwing from "../assets/throwing.png";
 import salt from "../assets/salt.png";
@@ -211,6 +212,7 @@ const initializeImagePreloading = () => {
 
   preloadImage(slapAttack1);
   preloadImage(slapAttack2);
+  preloadImage(slapAttack3);
   preloadImage(snowballThrow);
 
   preloadImage(bow);
@@ -331,6 +333,7 @@ export {
   attack,
   slapAttack1,
   slapAttack2,
+  slapAttack3,
   dodging,
   throwing,
   salt,
