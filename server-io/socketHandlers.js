@@ -6,6 +6,8 @@ const {
   ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST, ROPE_JUMP_BOUNDARY_ZONE,
   DODGE_SLIDE_MOMENTUM, DODGE_POWERSLIDE_BOOST,
   DODGE_STARTUP_MS,
+  SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS, SIDESTEP_RECOVERY_MS,
+  SIDESTEP_TOTAL_MS, SIDESTEP_STAMINA_COST,
   SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST,
   CHARGE_FULL_POWER_MS,
   GRAB_ACTION_WINDOW, GRAB_STARTUP_DURATION_MS,
@@ -24,6 +26,8 @@ const {
   clearChargeState,
   canPlayerSlap,
   canPlayerDash,
+  canPlayerSidestep,
+  calculateSidestepTarget,
   canPlayerCharge,
   canPlayerUseAction,
   shouldRestartCharging,
@@ -303,6 +307,16 @@ function registerSocketHandlers(socket, io, rooms, context) {
         isDodgeRecovery: false,
         dodgeStartupEndTime: 0,
         dodgeRecoveryEndTime: 0,
+        isSidestepping: false,
+        isSidestepStartup: false,
+        isSidestepRecovery: false,
+        sidestepStartTime: 0,
+        sidestepStartupEndTime: 0,
+        sidestepActiveEndTime: 0,
+        sidestepEndTime: 0,
+        sidestepStartX: 0,
+        sidestepTargetX: 0,
+        sidestepOpponentX: 0,
         slapActiveEndTime: 0,
         chargedActiveEndTime: 0,
         isReady: false,
@@ -507,6 +521,16 @@ function registerSocketHandlers(socket, io, rooms, context) {
         isDodgeRecovery: false,
         dodgeStartupEndTime: 0,
         dodgeRecoveryEndTime: 0,
+        isSidestepping: false,
+        isSidestepStartup: false,
+        isSidestepRecovery: false,
+        sidestepStartTime: 0,
+        sidestepStartupEndTime: 0,
+        sidestepActiveEndTime: 0,
+        sidestepEndTime: 0,
+        sidestepStartX: 0,
+        sidestepTargetX: 0,
+        sidestepOpponentX: 0,
         slapActiveEndTime: 0,
         chargedActiveEndTime: 0,
         isReady: false,
@@ -1249,6 +1273,8 @@ function registerSocketHandlers(socket, io, rooms, context) {
           // Non-slap states: use generic inputBuffer
           if (!prevSpace && data.keys[" "]) {
             player.inputBuffer = { type: "rawParry", timestamp: Date.now() };
+          } else if (!prevShift && data.keys.shift && data.keys.s && !data.keys.mouse2) {
+            player.inputBuffer = { type: "sidestep", timestamp: Date.now() };
           } else if (!prevShift && data.keys.shift && !data.keys.mouse2) {
             player.inputBuffer = { type: "dodge", timestamp: Date.now() };
           } else if (!prevMouse1 && data.keys.mouse1) {
@@ -1340,6 +1366,8 @@ function registerSocketHandlers(socket, io, rooms, context) {
         // Buffer inputs during hitstop so they fire on frame 1 when hitstop ends
         if (!prevKeys[" "] && data.keys[" "]) {
           player.inputBuffer = { type: "rawParry", timestamp: Date.now() };
+        } else if (!prevKeys.shift && data.keys.shift && data.keys.s && !data.keys.mouse2) {
+          player.inputBuffer = { type: "sidestep", timestamp: Date.now() };
         } else if (!prevKeys.shift && data.keys.shift && !data.keys.mouse2) {
           player.inputBuffer = { type: "dodge", timestamp: Date.now() };
         } else if (!prevKeys.mouse1 && data.keys.mouse1) {
@@ -1438,6 +1466,8 @@ function registerSocketHandlers(socket, io, rooms, context) {
       if (shouldBlockAction()) {
         if (player.spaceJustPressed) {
           player.inputBuffer = { type: "rawParry", timestamp: Date.now() };
+        } else if (player.shiftJustPressed && data.keys.s && !data.keys.mouse2) {
+          player.inputBuffer = { type: "sidestep", timestamp: Date.now() };
         } else if (player.shiftJustPressed && !data.keys.mouse2) {
           player.inputBuffer = { type: "dodge", timestamp: Date.now() };
         } else if (player.mouse1JustPressed) {
@@ -1505,6 +1535,9 @@ function registerSocketHandlers(socket, io, rooms, context) {
         if (atPos2) player.pendingSlapCount = 0;
       } else if (player.spaceJustPressed) {
         player.pendingStringEnder = { type: "rawParry" };
+        if (atPos2) player.pendingSlapCount = 0;
+      } else if (player.shiftJustPressed && player.keys.s) {
+        player.pendingStringEnder = { type: "sidestep" };
         if (atPos2) player.pendingSlapCount = 0;
       } else if (player.shiftJustPressed) {
         player.pendingStringEnder = { type: "dash" };
@@ -1788,11 +1821,62 @@ function registerSocketHandlers(socket, io, rooms, context) {
       }
     }
 
+    // Handle sidestep (S + SHIFT) — henka-style lateral evasion that switches sides
+    // Must be checked BEFORE dodge so the combo input takes priority
+    if (
+      player.shiftJustPressed &&
+      player.keys.s &&
+      !player.keys.mouse2 &&
+      !player.isBeingGrabbed &&
+      !isInChargedAttackExecution() &&
+      canPlayerSidestep(player) &&
+      !player.isGassed
+    ) {
+      const sidestepOpponent = rooms[roomIndex].players.find(p => p.id !== player.id && !p.isDead);
+      if (sidestepOpponent) {
+        if (player.isRecovering) {
+          const recoveryAge = Date.now() - player.recoveryStartTime;
+          if (recoveryAge > 100) {
+            player.isRecovering = false;
+            player.movementVelocity = 0;
+            player.recoveryDirection = null;
+          }
+        }
+
+        if (!player.isRecovering) {
+        player.isRawParrySuccess = false;
+        player.isPerfectRawParrySuccess = false;
+        clearChargeState(player, true);
+
+        player.movementVelocity = 0;
+        player.isStrafing = false;
+        player.isPowerSliding = false;
+        player.isBraking = false;
+        player.isCrouchStance = false;
+        player.isCrouchStrafing = false;
+
+        player.isSidestepping = true;
+        player.isSidestepStartup = true;
+        player.isSidestepRecovery = false;
+        player.sidestepStartTime = Date.now();
+        player.sidestepStartupEndTime = Date.now() + SIDESTEP_STARTUP_MS;
+        player.sidestepActiveEndTime = Date.now() + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS;
+        player.sidestepEndTime = Date.now() + SIDESTEP_TOTAL_MS;
+        player.sidestepStartX = player.x;
+        player.sidestepOpponentX = sidestepOpponent.x;
+        player.sidestepTargetX = calculateSidestepTarget(player.x, sidestepOpponent.x);
+
+        player.currentAction = "sidestep";
+        player.actionLockUntil = Date.now() + SIDESTEP_TOTAL_MS;
+        player.stamina = Math.max(0, player.stamina - SIDESTEP_STAMINA_COST);
+        }
+      }
+    }
     // Handle dash - allow canceling recovery but block during charged attack execution
     // Dashing now costs stamina (15% of max) instead of using charges
     // Use shiftJustPressed to prevent dash from triggering when key is held through other actions
     // NOTE: Dash cancels charging - clearing charge state when dash starts
-    if (
+    else if (
       player.shiftJustPressed &&
       !player.keys.mouse2 && // Don't dash while grabbing
       !(player.keys.w && player.isGrabbing && !player.isBeingGrabbed) &&
@@ -1859,24 +1943,28 @@ function registerSocketHandlers(socket, io, rooms, context) {
         player.isGrabbing ||
         player.isBeingGrabbed) && // Allow buffering while being grabbed/thrown so spamming shift comes out frame 1 when freed
       !player.isDodging &&
+      !player.isSidestepping &&
       !player.isThrowingSnowball &&
       !player.isRawParrying &&
       !isInChargedAttackExecution() &&
       !player.isGassed
     ) {
-      // Buffer the dodge action
-      const dodgeDirection = player.keys.a
-        ? -1
-        : player.keys.d
-        ? 1
-        : player.facing === -1
-        ? 1
-        : -1;
-      player.bufferedAction = {
-        type: "dash",
-        direction: dodgeDirection,
-      };
-      player.bufferExpiryTime = Date.now() + 500; // Buffer expires after 500ms
+      if (player.keys.s) {
+        player.bufferedAction = { type: "sidestep" };
+      } else {
+        const dodgeDirection = player.keys.a
+          ? -1
+          : player.keys.d
+          ? 1
+          : player.facing === -1
+          ? 1
+          : -1;
+        player.bufferedAction = {
+          type: "dash",
+          direction: dodgeDirection,
+        };
+      }
+      player.bufferExpiryTime = Date.now() + 500;
     }
     // Buffer dash during recovery/cooldown so spamming fires on frame 1 when allowed
     else if (

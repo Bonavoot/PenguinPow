@@ -9,6 +9,13 @@ const {
   CHARGE_FULL_POWER_MS,
   DODGE_RECOVERY_MS,
   GROUND_LEVEL,
+  SIDESTEP_STARTUP_MS,
+  SIDESTEP_ACTIVE_MS,
+  SIDESTEP_RECOVERY_MS,
+  SIDESTEP_STAMINA_COST,
+  SIDESTEP_SWITCH_RANGE,
+  SIDESTEP_MAX_TRAVEL,
+  HITBOX_DISTANCE_VALUE,
 } = require("./constants");
 
 // Game constants
@@ -126,6 +133,8 @@ function isPlayerInActiveState(player) {
     !player.isRopeJumping &&
     !player.isDodging &&
     !player.isDodgeRecovery &&
+    !player.isSidestepping &&
+    !player.isSidestepRecovery &&
     !player.isThrowing &&
     !player.isBeingThrown &&
     !player.isGrabbing &&
@@ -164,6 +173,8 @@ function isPlayerInBasicActiveState(player) {
     !player.isRopeJumping &&
     !player.isDodging &&
     !player.isDodgeRecovery &&
+    !player.isSidestepping &&
+    !player.isSidestepRecovery &&
     !player.isThrowing &&
     !player.isBeingThrown &&
     !player.isGrabbing &&
@@ -231,6 +242,8 @@ function canPlayerDash(player) {
     !player.isRopeJumping &&
     !player.isDodging &&
     !player.isDodgeRecovery &&
+    !player.isSidestepping &&
+    !player.isSidestepRecovery &&
     !player.isThrowing &&
     !player.isBeingThrown &&
     !player.isGrabbing &&
@@ -261,6 +274,12 @@ function canPlayerDash(player) {
     !player.isRecovering &&
     !player.canMoveToReady
   );
+}
+
+function canPlayerSidestep(player) {
+  if (player.actionLockUntil && Date.now() < player.actionLockUntil) return false;
+  if (player.dodgeCooldownUntil && Date.now() < player.dodgeCooldownUntil) return false;
+  return canPlayerUseAction(player) && !player.isSidestepping && !player.isSidestepRecovery;
 }
 
 function resetPlayerAttackStates(player) {
@@ -348,6 +367,18 @@ function clearAllActionStates(player) {
   player.dodgeDirection = null;
   player.dodgeStartX = 0;
   player.dodgeStartupEndTime = 0;
+  
+  // Clear sidestep states
+  player.isSidestepping = false;
+  player.isSidestepStartup = false;
+  player.isSidestepRecovery = false;
+  player.sidestepStartTime = 0;
+  player.sidestepStartupEndTime = 0;
+  player.sidestepActiveEndTime = 0;
+  player.sidestepEndTime = 0;
+  player.sidestepStartX = 0;
+  player.sidestepTargetX = 0;
+  player.sidestepOpponentX = 0;
   
   // CRITICAL: Clear any buffered actions - prevents buffered dodge from executing while grabbed
   player.bufferedAction = null;
@@ -648,6 +679,28 @@ function emitThrottledScreenShake(room, io, shakeData) {
   io.in(room.id).emit("screen_shake", shakeData);
 }
 
+function calculateSidestepTarget(playerX, opponentX) {
+  const distToOpponent = Math.abs(opponentX - playerX);
+  const direction = playerX < opponentX ? 1 : -1;
+
+  const minSep = HITBOX_DISTANCE_VALUE * 2;
+
+  if (distToOpponent <= SIDESTEP_SWITCH_RANGE) {
+    const targetX = opponentX + direction * minSep;
+    return Math.max(MAP_LEFT_BOUNDARY, Math.min(targetX, MAP_RIGHT_BOUNDARY));
+  }
+
+  const rawTarget = playerX + SIDESTEP_MAX_TRAVEL * direction;
+  const landingDistToOpp = (opponentX - rawTarget) * direction;
+
+  if (landingDistToOpp < minSep) {
+    const targetX = opponentX - direction * minSep;
+    return Math.max(MAP_LEFT_BOUNDARY, Math.min(targetX, MAP_RIGHT_BOUNDARY));
+  }
+
+  return Math.max(MAP_LEFT_BOUNDARY, Math.min(rawTarget, MAP_RIGHT_BOUNDARY));
+}
+
 module.exports = {
   // Constants
   MAP_LEFT_BOUNDARY,
@@ -668,6 +721,7 @@ module.exports = {
   canPlayerCharge,
   canPlayerUseAction,
   canPlayerDash,
+  canPlayerSidestep,
   resetPlayerAttackStates,
   clearAllActionStates,
   isWithinMapBoundaries,
@@ -687,4 +741,5 @@ module.exports = {
   triggerHitstop,
   isRoomInHitstop,
   emitThrottledScreenShake,
+  calculateSidestepTarget,
 };

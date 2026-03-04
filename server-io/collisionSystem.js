@@ -121,12 +121,18 @@ function checkCollision(player, otherPlayer, rooms, io) {
   const otherInDodgeIFrames = otherPlayer.isDodging && !otherPlayer.isDodgeStartup && player.attackType === "charged";
   const playerInDodgeIFrames = player.isDodging && !player.isDodgeStartup && otherPlayer.attackType === "charged";
 
+  // Sidestep grants i-frames vs ALL strikes during ACTIVE phase (not startup/recovery)
+  const otherInSidestepIFrames = otherPlayer.isSidestepping && !otherPlayer.isSidestepStartup && !otherPlayer.isSidestepRecovery;
+  const playerInSidestepIFrames = player.isSidestepping && !player.isSidestepStartup && !player.isSidestepRecovery;
+
   if (
     !player.isAttacking ||
     otherPlayer.isAlreadyHit ||
     otherPlayer.isDead ||
     otherInDodgeIFrames ||
     playerInDodgeIFrames ||
+    otherInSidestepIFrames ||
+    playerInSidestepIFrames ||
     player.isBeingThrown ||
     otherPlayer.isBeingThrown ||
     (player.slapParryImmunityUntil && now < player.slapParryImmunityUntil) ||
@@ -987,7 +993,7 @@ function processHit(player, otherPlayer, rooms, io) {
         finalKnockbackMultiplier = SLAP_NEUTRAL_KB_MULTIPLIER;
       }
     } else {
-      finalKnockbackMultiplier = 0.4675 + Math.pow(chargePercentage / 100, 2) * 0.55; // Quadratic ease-in: low charges are moderate, power ramps sharply at high charge
+      finalKnockbackMultiplier = 0.55 + Math.pow(chargePercentage / 100, 1.5) * 0.42; // Flatter curve: early charges hit harder, full charge toned down (was 0.4675 + x² * 0.55)
     }
 
     // Counter hit and punish: unified 25% bonus (consistent system)
@@ -1101,9 +1107,8 @@ function processHit(player, otherPlayer, rooms, io) {
 
         const kbBoost = isCinematicKill ? CINEMATIC_KILL_KNOCKBACK_BOOST : 1;
 
-        // Single unified knockback velocity (was 1.7 + 0.8x = ~1.8x effective)
         otherPlayer.knockbackVelocity.x =
-          3.0 * knockbackDirection * finalKnockbackMultiplier * kbBoost;
+          2.7 * knockbackDirection * finalKnockbackMultiplier * kbBoost;
         otherPlayer.movementVelocity = 0;
 
         // Calculate attacker bounce-off based on charge percentage

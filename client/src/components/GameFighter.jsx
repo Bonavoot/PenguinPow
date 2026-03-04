@@ -314,6 +314,9 @@ const GameFighter = ({
     isAttacking: false,
     isDodging: false,
     dodgeDirection: null,
+    isSidestepping: false,
+    isSidestepStartup: false,
+    isSidestepRecovery: false,
     isStrafing: false,
     isBraking: false, // ICE PHYSICS: True when actively braking (digging in)
     isPowerSliding: false, // ICE PHYSICS: True when power sliding (C key held)
@@ -1540,6 +1543,9 @@ const GameFighter = ({
             typeof playerData.dodgeDirection === "number"
               ? playerData.dodgeDirection
               : playerData.facing ?? prev.dodgeDirection ?? 1,
+          isSidestepping: playerData.isSidestepping ?? prev.isSidestepping ?? false,
+          isSidestepStartup: playerData.isSidestepStartup ?? prev.isSidestepStartup ?? false,
+          isSidestepRecovery: playerData.isSidestepRecovery ?? prev.isSidestepRecovery ?? false,
           isGrabBreaking:
             playerData.isGrabBreaking ?? prev.isGrabBreaking ?? false,
           isGrabBreakCountered:
@@ -1615,7 +1621,10 @@ const GameFighter = ({
           prev.isDodgeRecovery !== newState.isDodgeRecovery ||
           prev.justLandedFromDodge !== newState.justLandedFromDodge ||
           prev.isRopeJumping !== newState.isRopeJumping ||
-          prev.ropeJumpPhase !== newState.ropeJumpPhase;
+          prev.ropeJumpPhase !== newState.ropeJumpPhase ||
+          prev.isSidestepping !== newState.isSidestepping ||
+          prev.isSidestepStartup !== newState.isSidestepStartup ||
+          prev.isSidestepRecovery !== newState.isSidestepRecovery;
 
         if (!discreteStateChanged) {
           return prev; // No discrete state change, skip re-render
@@ -3061,7 +3070,9 @@ const GameFighter = ({
     penguin.isGrabWhiffRecovery,
     penguin.isRopeJumping,
     penguin.ropeJumpPhase,
-    penguin.isDodgeRecovery
+    penguin.isDodgeRecovery,
+    penguin.isSidestepping,
+    penguin.isSidestepRecovery
   );
 
   // Hold previous sprite for a few frames when transitioning to idle to prevent
@@ -3261,6 +3272,7 @@ const GameFighter = ({
         y={displayPosition.y}
         facing={penguin.facing ?? -1}
         isDodging={penguin.isDodging}
+        isSidestepping={penguin.isSidestepping}
         isGrabStartup={penguin.isGrabStartup}
         isThrowing={penguin.isThrowing}
         isBeingThrown={penguin.isBeingThrown}
@@ -3300,6 +3312,7 @@ const GameFighter = ({
           $fighter={penguin.fighter}
           $isThrowing={penguin.isThrowing}
           $isDodging={displayPenguin.isDodging}
+          $isSidestepping={penguin.isSidestepping}
           $isGrabbing={displayPenguin.isGrabbing}
           $isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
           $isAtTheRopes={penguin.isAtTheRopes}

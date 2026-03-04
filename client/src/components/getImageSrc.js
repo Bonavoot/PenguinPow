@@ -84,7 +84,9 @@ const getImageSrc = (
   isGrabWhiffRecovery,
   isRopeJumping,
   ropeJumpPhase,
-  isDodgeRecovery
+  isDodgeRecovery,
+  isSidestepping,
+  isSidestepRecovery
 ) => {
   if (ritualAnimationSrc) {
     return ritualAnimationSrc;
@@ -119,6 +121,8 @@ const getImageSrc = (
     if (ropeJumpPhase === "startup" || ropeJumpPhase === "landing") return recovering;
     return dodging;
   }
+  if (isSidestepping) return isPerfectParried;
+  if (isSidestepRecovery) return recovering;
   if (isBowing) return bow;
   if (isPowerSliding) return crouchStance;
   if (isRecovering) return recovering;

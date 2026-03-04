@@ -31,6 +31,16 @@ function cleanupPlayerStates(player) {
   player.dodgeCooldownUntil = 0;
   player.dodgeStartupEndTime = 0;
   player.dodgeRecoveryEndTime = 0;
+  player.isSidestepping = false;
+  player.isSidestepStartup = false;
+  player.isSidestepRecovery = false;
+  player.sidestepStartTime = 0;
+  player.sidestepStartupEndTime = 0;
+  player.sidestepActiveEndTime = 0;
+  player.sidestepEndTime = 0;
+  player.sidestepStartX = 0;
+  player.sidestepTargetX = 0;
+  player.sidestepOpponentX = 0;
   player.slapActiveEndTime = 0;
   player.chargedActiveEndTime = 0;
   player.isRawParrying = false;
@@ -163,6 +173,9 @@ function getCleanedRoomData(room) {
       isRawParryStun: false,
       isRawParrySuccess: false,
       isPerfectRawParrySuccess: false,
+      isSidestepping: false,
+      isSidestepStartup: false,
+      isSidestepRecovery: false,
       isStrafing: false,
       isJumping: false,
       isReady: false,
@@ -272,6 +285,9 @@ function getCleanedRoomsData(rooms) {
         isRawParrying: false,
         isRawParryStun: false,
         isDodging: false,
+        isSidestepping: false,
+        isSidestepStartup: false,
+        isSidestepRecovery: false,
         isGrabbing: false,
         isBeingGrabbed: false,
         isCounterGrabbed: false,

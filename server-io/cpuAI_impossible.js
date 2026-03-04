@@ -94,7 +94,8 @@ function isOpponentGrabbable(human) {
          !human.isGrabWhiffRecovery &&
          !human.isGrabTeching &&
          !human.isGrabBreaking &&
-         !human.isGrabBreakSeparating;
+         !human.isGrabBreakSeparating &&
+         !human.isSidestepping;
 }
 
 function isNearEdge(player) {

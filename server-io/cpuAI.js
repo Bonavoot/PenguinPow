@@ -239,13 +239,16 @@ function isAtGrabRange(cpu, human) {
 
 // Check if the opponent is in a state where a grab can actually connect
 // Grabs beat dodge at any point — dodge is never safe from grabs
+// Sidestep: grabs track through it by design, but the AI shouldn't react-grab
+// on a dime. Already-in-progress grabs still track; this only blocks NEW attempts.
 function isOpponentGrabbable(human) {
   return !human.isBeingThrown &&
          !human.isBeingGrabbed &&
          !human.isGrabWhiffRecovery &&
          !human.isGrabTeching &&
          !human.isGrabBreaking &&
-         !human.isGrabBreakSeparating;
+         !human.isGrabBreakSeparating &&
+         !human.isSidestepping;
 }
 
 // Check if the opponent is actively moving away from the CPU

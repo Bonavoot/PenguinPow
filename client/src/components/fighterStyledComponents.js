@@ -629,41 +629,49 @@ export const AnimatedFighterContainer = styled.div
       ![
         "x", "y", "facing", "fighter", "isThrowing", "isDodging",
         "isGrabbing", "isRingOutThrowCutscene", "isAtTheRopes", "isHit", "isRawParryStun",
-        "isCinematicKillAttacker",
+        "isCinematicKillAttacker", "isSidestepping",
       ].includes(prop),
   })
-  .attrs((props) => ({
-    style: {
-      position: "absolute",
-      width: "min(12.30%, 379px)",
-      aspectRatio: "1",
-      left:
-        props.$isAtTheRopes && props.$fighter === "player 1"
-          ? `${((props.$x + (props.$x < 640 ? -5 : 5)) / 1280) * 100}%`
-          : `${(props.$x / 1280) * 100}%`,
-      bottom: `${(props.$y / 720) * 100}%`,
-      translate: "-50%",
-      "--facing": props.$facing === 1 ? "1" : "-1",
-      transform:
-        props.$facing === 1
-          ? `scaleX(${props.$isRawParryStun ? 1.08 : 1})`
-          : `scaleX(${props.$isRawParryStun ? -1.08 : -1})`,
-      overflow: "hidden",
-      zIndex: isOutsideDohyo(props.$x, props.$y)
-        ? 0
-        : props.$isCinematicKillAttacker
-        ? 100
-        : props.$isThrowing || props.$isDodging || props.$isGrabbing
-        ? 98
-        : 99,
-      pointerEvents: "none",
-      clipPath: "inset(0 0.5% 0 0.5%)",
-      transformOrigin: "center bottom",
-      animation: props.$isHit
-        ? "hitSquashContainer 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)"
-        : "none",
-    },
-  }))`
+  .attrs((props) => {
+    const sidestepping = props.$isSidestepping;
+    const sidestepScale = sidestepping ? 1.07 : 1;
+    const baseScaleX = props.$facing === 1
+      ? (props.$isRawParryStun ? 1.08 : 1)
+      : (props.$isRawParryStun ? -1.08 : -1);
+    const finalScaleX = baseScaleX * (baseScaleX > 0 ? sidestepScale : sidestepScale);
+
+    return {
+      style: {
+        position: "absolute",
+        width: "min(12.30%, 379px)",
+        aspectRatio: "1",
+        left:
+          props.$isAtTheRopes && props.$fighter === "player 1"
+            ? `${((props.$x + (props.$x < 640 ? -5 : 5)) / 1280) * 100}%`
+            : `${(props.$x / 1280) * 100}%`,
+        bottom: `${(props.$y / 720) * 100}%`,
+        translate: "-50%",
+        "--facing": props.$facing === 1 ? "1" : "-1",
+        transform: `scaleX(${finalScaleX}) scaleY(${sidestepScale})`,
+        overflow: "hidden",
+        zIndex: isOutsideDohyo(props.$x, props.$y)
+          ? 0
+          : props.$isCinematicKillAttacker
+          ? 100
+          : sidestepping
+          ? 101
+          : props.$isThrowing || props.$isDodging || props.$isGrabbing
+          ? 98
+          : 99,
+        pointerEvents: "none",
+        clipPath: "inset(0 0.5% 0 0.5%)",
+        transformOrigin: "center bottom",
+        animation: props.$isHit
+          ? "hitSquashContainer 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)"
+          : "none",
+      },
+    };
+  })`
   @keyframes hitSquashContainer {
     0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg); }
     6% { transform: scaleX(calc(var(--facing, 1) * 1.25)) scaleY(0.75) translateX(calc(var(--facing, 1) * -3%)) rotate(calc(var(--facing, 1) * 2deg)); }

@@ -37,7 +37,8 @@ const DELTA_TRACKED_PROPS = [
   'knockbackVelocity', 'activePowerUp', 'powerUpMultiplier',
   'snowballs', 'pumoArmy', 'snowballCooldown', 'pumoArmyCooldown', 'snowballThrowsRemaining',
   'isPowerSliding', 'isBraking', 'movementVelocity', 'isStrafing',
-  'isRopeJumping', 'ropeJumpPhase', 'sizeMultiplier', 'isGassed'
+  'isRopeJumping', 'ropeJumpPhase', 'sizeMultiplier', 'isGassed',
+  'isSidestepping', 'isSidestepStartup', 'isSidestepRecovery'
 ];
 
 // Pre-compute the combined props list once (avoids spread on every call)
@@ -103,7 +104,7 @@ const SLAP_STRING_COMBO_DRIFT_HIT1 = 1.3;         // Drift velocity after hit 1 
 const SLAP_STRING_COMBO_DRIFT_HIT2 = 1.3;         // Drift velocity after hit 2 — same as hit 1
 const SLAP_STRING_COMBO_DRIFT_FRICTION = 0.95;    // Drift decay per tick (independent of game physics)
 const SLAP_STRING_HIT3_KB_MULTIPLIER = 0.80;      // Hit 3 finisher — release to real physics
-const SLAP_NEUTRAL_KB_MULTIPLIER = 0.475;          // Solo slap (outside string) keeps current feel
+const SLAP_NEUTRAL_KB_MULTIPLIER = 0.42;            // Solo slap — tuned so 3-4 slaps reach boundary from neutral (was 0.475)
 const SLAP_STRING_HIT3_SLIDE_VELOCITY = 2.2;      // Hit 3 forward slide — strong lunge to close gap even on delayed strings
 
 // String stun — hit 1 uses DEFAULT 260ms. Hit 2 uses 200ms — the escape gap between
@@ -124,6 +125,21 @@ const DODGE_ACTIVE_MS = 200;      // Actual dash movement (was 220)
 const DODGE_RECOVERY_MS = 90;     // Sliding to a stop, punishable (was 120)
 const DODGE_TOTAL_MS = DODGE_STARTUP_MS + DODGE_ACTIVE_MS + DODGE_RECOVERY_MS; // 330ms
 const DODGE_COOLDOWN_MS = 100;    // Forced idle gap after recovery before next dash (prevents chain-dash blur)
+
+// ============================================
+// Sidestep — Henka-style lateral evasion around the dohyo
+// Switches sides with opponent. Immune to strikes during active phase.
+// Grabs track through all phases (hard counter).
+// ============================================
+const SIDESTEP_STARTUP_MS = 80;       // Vulnerable wind-up (the "read" commitment)
+const SIDESTEP_ACTIVE_MS = 350;       // Arc movement with strike immunity
+const SIDESTEP_RECOVERY_MS = 150;     // Landing on other side, vulnerable
+const SIDESTEP_TOTAL_MS = SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS + SIDESTEP_RECOVERY_MS; // 580ms
+const SIDESTEP_STAMINA_COST = 8;      // Expensive — bigger reward than dodge (4) or parry (5)
+const SIDESTEP_ARC_DEPTH = 35;        // Y dip below ground level at arc peak (viewer-facing depth illusion)
+const SIDESTEP_GRAB_TRACK_RANGE = 400; // Generous grab range when target is sidestepping
+const SIDESTEP_SWITCH_RANGE = 210;    // Max distance from opponent to get a side switch (~1.4x grab range)
+const SIDESTEP_MAX_TRAVEL = 200;      // Max arc travel when NOT switching (modest — no teleporting across stage)
 
 // Dohyo edge fall physics - fast heavy drop with maintained horizontal momentum
 const DOHYO_FALL_SPEED = 5.93; // Scaled for camera zoom (was 8)
@@ -308,7 +324,7 @@ const RAW_PARRY_STAMINA_REFUND = 5; // Full refund on successful parry (regular 
 // ============================================
 // At the Ropes
 // ============================================
-const AT_THE_ROPES_DURATION = 1000; // 1 second stun duration
+const AT_THE_ROPES_DURATION = 800; // 0.8 second stun duration (was 1000 — still guarantees punish, less helpless)
 
 // ============================================
 // Rope Jump - Escape from boundary pressure
@@ -498,6 +514,17 @@ module.exports = {
   DODGE_RECOVERY_MS,
   DODGE_TOTAL_MS,
   DODGE_COOLDOWN_MS,
+
+  // Sidestep
+  SIDESTEP_STARTUP_MS,
+  SIDESTEP_ACTIVE_MS,
+  SIDESTEP_RECOVERY_MS,
+  SIDESTEP_TOTAL_MS,
+  SIDESTEP_STAMINA_COST,
+  SIDESTEP_ARC_DEPTH,
+  SIDESTEP_GRAB_TRACK_RANGE,
+  SIDESTEP_SWITCH_RANGE,
+  SIDESTEP_MAX_TRAVEL,
 
   // Dodge physics
   DODGE_DURATION,

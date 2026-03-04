@@ -48,6 +48,8 @@ const {
   GASSED_DURATION_MS, GASSED_RECOVERY_STAMINA,
   HITSTOP_GRAB_MS, HITSTOP_THROW_MS,
   SLAP_STRING_COMBO_DRIFT_FRICTION,
+  SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS, SIDESTEP_RECOVERY_MS,
+  SIDESTEP_ARC_DEPTH, SIDESTEP_GRAB_TRACK_RANGE,
 } = require("./constants");
 
 // Import game utilities
@@ -62,6 +64,7 @@ const {
   canPlayerCharge,
   canPlayerUseAction,
   canPlayerDash,
+  canPlayerSidestep,
   resetPlayerAttackStates,
   clearAllActionStates,
   isWithinMapBoundaries,
@@ -413,7 +416,7 @@ function tick(delta) {
         // Special case: allow dodging player to update facing even when opponent is attacking
         // This allows dodge-through to work correctly during charged attacks
         if (
-          (!player1.isAttacking && !player2.isAttacking && !player1.isDodging && !player2.isDodging) ||
+          (!player1.isAttacking && !player2.isAttacking && !player1.isDodging && !player2.isDodging && !player1.isSidestepping && !player2.isSidestepping) ||
           (player1.isDodging && player2.isAttacking) ||
           (player2.isDodging && player1.isAttacking)
         ) {
@@ -897,7 +900,12 @@ function tick(delta) {
           // Startup complete — instant range check
           const opponent = room.players.find((p) => p.id !== player.id);
 
-          if (opponent && !(opponent.isRopeJumping && opponent.ropeJumpPhase === "active") && isOpponentCloseEnoughForGrab(player, opponent) && isOpponentInFrontOfGrabber(player, opponent)) {
+          // Grabs auto-track sidestepping opponents within generous range
+          const opponentSidestepping = opponent && opponent.isSidestepping;
+          const sidestepTrackInRange = opponentSidestepping && Math.abs(player.x - opponent.x) < SIDESTEP_GRAB_TRACK_RANGE;
+          const normalGrabInRange = opponent && !opponentSidestepping && isOpponentCloseEnoughForGrab(player, opponent) && isOpponentInFrontOfGrabber(player, opponent);
+
+          if (opponent && !(opponent.isRopeJumping && opponent.ropeJumpPhase === "active") && (normalGrabInRange || sidestepTrackInRange)) {
             // === TECH CHECK: opponent also in grab startup → both tech ===
             // Whiffing players CANNOT tech — they are fully vulnerable.
             // Also check if opponent's startup has already expired AND their grab
@@ -984,6 +992,7 @@ function tick(delta) {
               player.isPerfectRawParrySuccess = false;
 
               clearAllActionStates(opponent);
+              opponent.y = GROUND_LEVEL;
               opponent.isBeingGrabbed = true;
               opponent.isBeingGrabPushed = false;
               opponent.lastGrabPushStaminaDrainTime = 0;
@@ -1532,6 +1541,58 @@ function tick(delta) {
         player.isPowerSliding = true;
       }
 
+      // ── SIDESTEP arc physics ──
+      if (player.isSidestepping && player.isBeingGrabbed) {
+        player.isSidestepping = false;
+        player.isSidestepStartup = false;
+        player.isSidestepRecovery = false;
+        player.y = GROUND_LEVEL;
+      }
+      if (player.isSidestepping && !player.isBeingGrabbed) {
+        const now = Date.now();
+
+        if (player.isSidestepStartup) {
+          if (now >= player.sidestepStartupEndTime) {
+            player.isSidestepStartup = false;
+          }
+        }
+        else if (!player.isSidestepRecovery) {
+          const activeStart = player.sidestepStartupEndTime;
+          const activeElapsed = now - activeStart;
+          const t = Math.min(activeElapsed / SIDESTEP_ACTIVE_MS, 1);
+
+          player.x = player.sidestepStartX + (player.sidestepTargetX - player.sidestepStartX) * t;
+          player.x = Math.max(MAP_LEFT_BOUNDARY, Math.min(player.x, MAP_RIGHT_BOUNDARY));
+
+          player.y = GROUND_LEVEL - SIDESTEP_ARC_DEPTH * Math.sin(Math.PI * t);
+        }
+
+        if (Date.now() >= player.sidestepActiveEndTime && !player.isSidestepStartup && !player.isSidestepRecovery) {
+          player.isSidestepRecovery = true;
+          player.x = player.sidestepTargetX;
+          player.x = Math.max(MAP_LEFT_BOUNDARY, Math.min(player.x, MAP_RIGHT_BOUNDARY));
+          player.y = GROUND_LEVEL;
+
+          const sidestepOpponent = room.players.find(p => p.id !== player.id);
+          if (sidestepOpponent && !player.atTheRopesFacingDirection) {
+            player.facing = player.x < sidestepOpponent.x ? -1 : 1;
+          }
+        }
+
+        if (Date.now() >= player.sidestepEndTime) {
+          player.isSidestepping = false;
+          player.isSidestepStartup = false;
+          player.isSidestepRecovery = false;
+          player.y = GROUND_LEVEL;
+          player.actionLockUntil = 0;
+
+          const sidestepOpponent = room.players.find(p => p.id !== player.id);
+          if (sidestepOpponent && !player.atTheRopesFacingDirection) {
+            player.facing = player.x < sidestepOpponent.x ? -1 : 1;
+          }
+        }
+      }
+
       // ── ROPE JUMP arc physics ──
       if (player.isRopeJumping) {
         const now = Date.now();
@@ -1955,6 +2016,7 @@ function tick(delta) {
           player.keys.d &&
           !player.keys.a &&
           !player.isDodging &&
+          !player.isSidestepping &&
           !player.isThrowing &&
           !player.isGrabbing &&
           !player.isGrabbingMovement &&
@@ -2003,6 +2065,7 @@ function tick(delta) {
           player.keys.a &&
           !player.keys.d &&
           !player.isDodging &&
+          !player.isSidestepping &&
           !player.isThrowing &&
           !player.isGrabbing &&
           !player.isGrabbingMovement &&
@@ -2050,6 +2113,7 @@ function tick(delta) {
           player.keys.d &&
           !player.isCrouchStance &&
           !player.isDodging &&
+          !player.isSidestepping &&
           !player.isRopeJumping &&
           !player.isThrowing &&
           !player.isGrabbing &&
@@ -2133,6 +2197,7 @@ function tick(delta) {
           player.keys.a &&
           !player.isCrouchStance &&
           !player.isDodging &&
+          !player.isSidestepping &&
           !player.isRopeJumping &&
           !player.isThrowing &&
           !player.isGrabbing &&
@@ -2460,6 +2525,7 @@ function tick(delta) {
       if (
         player.keys.s &&
         !player.isDodging &&
+        !player.isSidestepping &&
         !player.isGrabbing &&
         !player.isBeingGrabbed &&
         !player.isGrabbingMovement &&
@@ -2507,6 +2573,7 @@ function tick(delta) {
         !player.isGrabSeparating && // Block during grab push separation
         !player.grabBreakSpaceConsumed && // Block until the triggering space press is released
         !player.isDodging && // Block raw parry during dodge - don't interrupt dodge hop
+        !player.isSidestepping && // Block raw parry during sidestep
         !player.isGrabbing &&
         !player.isBeingGrabbed &&
         !player.isGrabbingMovement && // Block raw parry during grab movement
@@ -2676,7 +2743,7 @@ function tick(delta) {
             // Prevent attacker from passing through opponent during charged attack
             // This ensures the attack direction and facing remain consistent
             const opponent = room.players.find(p => p.id !== player.id && !p.isDead);
-            if (opponent && !opponent.isDodging) {
+            if (opponent && !opponent.isDodging && !opponent.isSidestepping) {
               const minDistance = 30; // Scaled for camera zoom (was 40)
               const playerToLeft = player.x < opponent.x;
               const playerToRight = player.x > opponent.x;

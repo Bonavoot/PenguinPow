@@ -12,6 +12,8 @@ const {
   canPlayerSlap,
   canPlayerUseAction,
   canPlayerDash,
+  canPlayerSidestep,
+  calculateSidestepTarget,
   shouldRestartCharging,
   startCharging,
 } = require("./gameUtils");
@@ -50,6 +52,8 @@ const {
   GRAB_STATES,
   INPUT_BUFFER_WINDOW_MS,
   POWER_UP_TYPES,
+  SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS, SIDESTEP_RECOVERY_MS,
+  SIDESTEP_TOTAL_MS, SIDESTEP_STAMINA_COST,
 } = require("./constants");
 
 // Add new function for grab state cleanup
@@ -604,6 +608,28 @@ function executeSlapAttack(player, rooms) {
             }
             break;
 
+          case "sidestep":
+            if (canPlayerSidestep(player) && !player.isGassed) {
+              const currentRoom = rooms.find(r => r.players.some(p => p.id === player.id));
+              const sOpp = currentRoom && currentRoom.players.find(p => p.id !== player.id && !p.isDead);
+              if (sOpp) {
+                player.isSidestepping = true;
+                player.isSidestepStartup = true;
+                player.isSidestepRecovery = false;
+                player.sidestepStartTime = Date.now();
+                player.sidestepStartupEndTime = Date.now() + SIDESTEP_STARTUP_MS;
+                player.sidestepActiveEndTime = Date.now() + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS;
+                player.sidestepEndTime = Date.now() + SIDESTEP_TOTAL_MS;
+                player.sidestepStartX = player.x;
+                player.sidestepOpponentX = sOpp.x;
+                player.sidestepTargetX = calculateSidestepTarget(player.x, sOpp.x);
+                player.currentAction = "sidestep";
+                player.actionLockUntil = Date.now() + SIDESTEP_TOTAL_MS;
+                player.stamina = Math.max(0, player.stamina - SIDESTEP_STAMINA_COST);
+              }
+            }
+            break;
+
           case "snowball":
             if (player.activePowerUp === POWER_UP_TYPES.SNOWBALL &&
                 (player.snowballThrowsRemaining ?? 3) > 0 &&
@@ -894,7 +920,7 @@ function executeChargedAttack(player, chargePercentage, rooms) {
     // Only auto-correct if opponent exists, is NOT dodging, and hasn't just dodged through us
     // If opponent is dodging or just crossed through, preserve the original facing direction
     // so the charged attack continues in its committed direction and whiffs naturally
-    if (opponent && !opponent.isDodging) {
+    if (opponent && !opponent.isDodging && !opponent.isSidestepping) {
       const shouldFaceRight = player.x < opponent.x;
       const correctedFacing = shouldFaceRight ? -1 : 1;
 
@@ -1049,8 +1075,9 @@ function handleReadyPositions(room, player1, player2, io) {
 }
 
 function arePlayersColliding(player1, player2) {
-  // If either player is dodging or rope jumping, return false immediately
+  // If either player is dodging, sidestepping, or rope jumping, return false immediately
   if (player1.isDodging || player2.isDodging ||
+      player1.isSidestepping || player2.isSidestepping ||
       (player1.isRopeJumping && player1.ropeJumpPhase === "active") ||
       (player2.isRopeJumping && player2.ropeJumpPhase === "active")) {
     return false;
@@ -1126,6 +1153,7 @@ function adjustPlayerPositions(player1, player2, delta) {
   if (
     player1.isThrowing || player2.isThrowing ||
     player1.isBeingThrown || player2.isBeingThrown ||
+    player1.isSidestepping || player2.isSidestepping ||
     (player1.isRopeJumping && player1.ropeJumpPhase === "active") ||
     (player2.isRopeJumping && player2.ropeJumpPhase === "active")
   ) {
@@ -1381,7 +1409,46 @@ function activateBufferedInputAfterGrab(player, rooms) {
 
   player.inputBuffer = null;
 
-  // Priority 0: Buffered dash (spammed shift while grabbed/thrown)
+  // Priority 0a: Buffered sidestep (S + SHIFT while grabbed/thrown)
+  if (
+    player.bufferedAction &&
+    player.bufferedAction.type === "sidestep" &&
+    player.bufferExpiryTime &&
+    Date.now() < player.bufferExpiryTime &&
+    !player.isGassed
+  ) {
+    player.bufferedAction = null;
+    player.bufferExpiryTime = 0;
+    const currentRoom = rooms.find(r => r.players.some(p => p.id === player.id));
+    const sOpp = currentRoom && currentRoom.players.find(p => p.id !== player.id && !p.isDead);
+    if (sOpp && canPlayerSidestep(player)) {
+      player.isRawParrySuccess = false;
+      player.isPerfectRawParrySuccess = false;
+      clearChargeState(player, true);
+      player.movementVelocity = 0;
+      player.isStrafing = false;
+      player.isPowerSliding = false;
+      player.isBraking = false;
+      player.isCrouchStance = false;
+      player.isCrouchStrafing = false;
+      player.isSidestepping = true;
+      player.isSidestepStartup = true;
+      player.isSidestepRecovery = false;
+      player.sidestepStartTime = Date.now();
+      player.sidestepStartupEndTime = Date.now() + SIDESTEP_STARTUP_MS;
+      player.sidestepActiveEndTime = Date.now() + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS;
+      player.sidestepEndTime = Date.now() + SIDESTEP_TOTAL_MS;
+      player.sidestepStartX = player.x;
+      player.sidestepOpponentX = sOpp.x;
+      player.sidestepTargetX = calculateSidestepTarget(player.x, sOpp.x);
+      player.currentAction = "sidestep";
+      player.actionLockUntil = Date.now() + SIDESTEP_TOTAL_MS;
+      player.stamina = Math.max(0, player.stamina - SIDESTEP_STAMINA_COST);
+      return;
+    }
+  }
+
+  // Priority 0b: Buffered dash (spammed shift while grabbed/thrown)
   if (
     player.bufferedAction &&
     player.bufferedAction.type === "dash" &&
@@ -1434,7 +1501,38 @@ function activateBufferedInputAfterGrab(player, rooms) {
     return;
   }
 
-  // Priority 2: Dodge (shift) - evasive option (blocked only when gassed)
+  // Priority 2a: Sidestep (S + SHIFT) - lateral evasion
+  if (player.keys.shift && player.keys.s && !player.keys.mouse2 && !player.isGassed) {
+    const currentRoom = rooms.find(r => r.players.some(p => p.id === player.id));
+    const sOpp = currentRoom && currentRoom.players.find(p => p.id !== player.id && !p.isDead);
+    if (sOpp && canPlayerSidestep(player)) {
+      player.isRawParrySuccess = false;
+      player.isPerfectRawParrySuccess = false;
+      clearChargeState(player, true);
+      player.movementVelocity = 0;
+      player.isStrafing = false;
+      player.isPowerSliding = false;
+      player.isBraking = false;
+      player.isCrouchStance = false;
+      player.isCrouchStrafing = false;
+      player.isSidestepping = true;
+      player.isSidestepStartup = true;
+      player.isSidestepRecovery = false;
+      player.sidestepStartTime = Date.now();
+      player.sidestepStartupEndTime = Date.now() + SIDESTEP_STARTUP_MS;
+      player.sidestepActiveEndTime = Date.now() + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS;
+      player.sidestepEndTime = Date.now() + SIDESTEP_TOTAL_MS;
+      player.sidestepStartX = player.x;
+      player.sidestepOpponentX = sOpp.x;
+      player.sidestepTargetX = calculateSidestepTarget(player.x, sOpp.x);
+      player.currentAction = "sidestep";
+      player.actionLockUntil = Date.now() + SIDESTEP_TOTAL_MS;
+      player.stamina = Math.max(0, player.stamina - SIDESTEP_STAMINA_COST);
+      return;
+    }
+  }
+
+  // Priority 2b: Dodge (shift) - evasive option (blocked only when gassed)
   if (player.keys.shift && !player.keys.mouse2 && !player.isGassed) {
     player.isRawParrySuccess = false;
     player.isPerfectRawParrySuccess = false;
@@ -1573,6 +1671,41 @@ function executeInputBuffer(player, rooms) {
         executeSlapAttack(player, rooms);
         player.inputBuffer = null;
         return true;
+      }
+      break;
+    }
+    case "sidestep": {
+      if (canPlayerSidestep(player) && !player.isGassed) {
+        const room = rooms.find(r => r.players.some(p => p.id === player.id));
+        const sidestepOpponent = room && room.players.find(p => p.id !== player.id && !p.isDead);
+        if (sidestepOpponent) {
+          player.isRawParrySuccess = false;
+          player.isPerfectRawParrySuccess = false;
+          clearChargeState(player, true);
+          player.movementVelocity = 0;
+          player.isStrafing = false;
+          player.isPowerSliding = false;
+          player.isBraking = false;
+          player.isCrouchStance = false;
+          player.isCrouchStrafing = false;
+
+          player.isSidestepping = true;
+          player.isSidestepStartup = true;
+          player.isSidestepRecovery = false;
+          player.sidestepStartTime = Date.now();
+          player.sidestepStartupEndTime = Date.now() + SIDESTEP_STARTUP_MS;
+          player.sidestepActiveEndTime = Date.now() + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS;
+          player.sidestepEndTime = Date.now() + SIDESTEP_TOTAL_MS;
+          player.sidestepStartX = player.x;
+          player.sidestepOpponentX = sidestepOpponent.x;
+          player.sidestepTargetX = calculateSidestepTarget(player.x, sidestepOpponent.x);
+
+          player.currentAction = "sidestep";
+          player.actionLockUntil = Date.now() + SIDESTEP_TOTAL_MS;
+          player.stamina = Math.max(0, player.stamina - SIDESTEP_STAMINA_COST);
+          player.inputBuffer = null;
+          return true;
+        }
       }
       break;
     }

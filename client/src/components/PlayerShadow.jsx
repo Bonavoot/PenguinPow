@@ -7,6 +7,7 @@ const GROUND_LEVEL = 300; // Match the server's GROUND_LEVEL
 const sharedAttrs = (props) => {
   const forceGround =
     props.$isDodging ||
+    props.$isSidestepping ||
     props.$isGrabStartup ||
     props.$isThrowing ||
     props.$isBeingThrown ||
@@ -18,13 +19,15 @@ const sharedAttrs = (props) => {
     props.$facing === -1
       ? props.$offsetLeft || "-50%"
       : props.$offsetRight || "-50%";
+  const shadowScale = props.$isSidestepping ? 1.2 : 1;
   return {
     style: {
       position: "absolute",
       left: `${(props.$x / 1280) * 100}%`,
       bottom: `${(adjustedBottomPos / 720) * 100 - .2}%`,
-      transform: `translateX(${offsetLeft})`,
+      transform: `translateX(${offsetLeft}) scale(${shadowScale})`,
       zIndex: isOutsideDohyo(props.$x, props.$y) ? 0 : 1,
+      opacity: props.$isSidestepping ? 0.5 : undefined,
     },
   };
 };
@@ -49,6 +52,7 @@ const PlayerShadow = ({
   y,
   facing,
   isDodging,
+  isSidestepping,
   isGrabStartup,
   isThrowing,
   isBeingThrown,
@@ -66,6 +70,7 @@ const PlayerShadow = ({
       $y={y}
       $facing={facing}
       $isDodging={isDodging}
+      $isSidestepping={isSidestepping}
       $isGrabStartup={isGrabStartup}
       $isThrowing={isThrowing}
       $isBeingThrown={isBeingThrown}
@@ -85,6 +90,7 @@ PlayerShadow.propTypes = {
   y: PropTypes.number.isRequired,
   facing: PropTypes.number.isRequired,
   isDodging: PropTypes.bool,
+  isSidestepping: PropTypes.bool,
   isGrabStartup: PropTypes.bool,
   isThrowing: PropTypes.bool,
   isBeingThrown: PropTypes.bool,
