@@ -266,19 +266,52 @@ function checkCollision(player, otherPlayer, rooms, io) {
 }
 
 function resolveSlapParry(player1, player2, roomId, io) {
-  // Calculate knockback directions based on player positions
   const knockbackDirection1 = player1.x < player2.x ? -1 : 1;
   const knockbackDirection2 = -knockbackDirection1;
 
-  // Apply parry effects to both players
   applyParryEffect(player1, knockbackDirection1);
   applyParryEffect(player2, knockbackDirection2);
 
-  // Calculate the midpoint between the two players
+  // Let the slap animation play out visually — don't clear attack state.
+  // Instead, replace the cycle end callback with a simple cleanup that
+  // won't chain into the next string hit, and reset string progression.
+  [player1, player2].forEach((p) => {
+    p.isSlapSliding = false;
+    p.isSlapStringComboDrift = false;
+
+    // Alternate the next slap's animation so repeated parries don't always show slap1
+    if (p.slapAnimation === 1) {
+      p.slapStringPosition = 1;
+      p.slapStringWindowUntil = Date.now() + 500;
+    } else {
+      p.slapStringPosition = 0;
+      p.slapStringWindowUntil = 0;
+    }
+    p.pendingSlapCount = 0;
+    p.isSlapStringFinisher = false;
+
+    // Replace the cycle timer with a clean termination — no string transitions
+    if (p.slapCycleEndCallback) {
+      timeoutManager.clearPlayerSpecific(p.id, "slapCycle");
+      const remaining = Math.max(0, (p.attackCooldownUntil || 0) - Date.now());
+      setPlayerTimeout(p.id, () => {
+        p.isAttacking = false;
+        p.isSlapAttack = false;
+        p.attackType = null;
+        p.isSlapSliding = false;
+        p.slapFacingDirection = null;
+        p.isInStartupFrames = false;
+        p.slapActiveEndTime = 0;
+        p.isSlapStringFinisher = false;
+        p.currentAction = null;
+        p.isSlapStringComboDrift = false;
+        p.slapCycleEndCallback = null;
+      }, remaining, "slapCycle");
+    }
+  });
+
   const midpointX = (player1.x + player2.x) / 2;
   const midpointY = (player1.y + player2.y) / 2;
-
-  // Emit the parry event with just the necessary data (visual/audio effect)
   io.in(roomId).emit("slap_parry", { x: midpointX, y: midpointY });
 }
 
@@ -391,6 +424,7 @@ function resolveSlap3Clash(player1, player2, room, io) {
     p.slapStringPosition = 0;
     p.slapStringWindowUntil = 0;
     p.pendingSlapCount = 0;
+    p.pendingStringEnder = null;
     p.isSlapSliding = false;
     p.slapFacingDirection = null;
     p.slapActiveEndTime = 0;

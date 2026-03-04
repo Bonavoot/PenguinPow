@@ -2543,6 +2543,7 @@ function tick(delta) {
           player.isCrouchStrafing = false;
           // Clear buffered slap attack and string state when starting raw parry
           player.pendingSlapCount = 0;
+          player.pendingStringEnder = null;
           player.slapStringPosition = 0;
           player.slapStringWindowUntil = 0;
         }

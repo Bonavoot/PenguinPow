@@ -178,6 +178,7 @@ function createCPUPlayer(uniqueId) {
     lastSlapHitLandedTime: 0,
     lastCheckedAttackTime: 0,
     pendingSlapCount: 0,
+    pendingStringEnder: null,
     slapStringPosition: 0,
     slapStringWindowUntil: 0,
     isSlapStringFinisher: false,
@@ -436,6 +437,7 @@ function resetRoomAndPlayers(room, io) {
     player.lastHitTime = 0;
     player.lastSlapHitLandedTime = 0;
     player.pendingSlapCount = 0;
+    player.pendingStringEnder = null;
     player.slapStringPosition = 0;
     player.slapStringWindowUntil = 0;
     player.isSlapStringFinisher = false;

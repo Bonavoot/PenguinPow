@@ -49,6 +49,7 @@ const {
   GRAB_STARTUP_DURATION_MS,
   GRAB_STATES,
   INPUT_BUFFER_WINDOW_MS,
+  POWER_UP_TYPES,
 } = require("./constants");
 
 // Add new function for grab state cleanup
@@ -313,6 +314,7 @@ function handleWinCondition(room, loser, winner, io) {
     p.grabThrowAttemptStartTime = 0;
 
     p.pendingSlapCount = 0;
+    p.pendingStringEnder = null;
     p.slapStringPosition = 0;
     p.slapStringWindowUntil = 0;
     p.isSlapStringFinisher = false;
@@ -541,12 +543,121 @@ function executeSlapAttack(player, rooms) {
         !player.isRawParrying && !player.isHit && !player.canMoveToReady
       );
 
+      // === STRING ENDER VARIATIONS ===
+      // After hit 2, an alternate ender (grab/parry/dash/snowball) replaces hit 3.
+      // Fires at the same point hit 3 would, preserving the string's natural gap.
+      if (finishedPosition === 2 && player.pendingStringEnder && isPlayerValid()) {
+        const ender = player.pendingStringEnder;
+        player.pendingStringEnder = null;
+        player.pendingSlapCount = 0;
+        player.slapStringPosition = 0;
+        player.slapStringWindowUntil = 0;
+
+        switch (ender.type) {
+          case "grab":
+            player.isGrabStartup = true;
+            player.grabStartupStartTime = Date.now();
+            player.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
+            player.currentAction = "grab_startup";
+            player.actionLockUntil = Date.now() + GRAB_STARTUP_DURATION_MS;
+            player.grabState = GRAB_STATES.ATTEMPTING;
+            player.grabAttemptType = "grab";
+            player.grabApproachSpeed = 0;
+            player.movementVelocity = 0;
+            player.isStrafing = false;
+            player.isPowerSliding = false;
+            break;
+
+          case "rawParry":
+            player.isRawParrying = true;
+            player.rawParryStartTime = Date.now();
+            player.rawParryMinDurationMet = false;
+            player.isRawParrySuccess = false;
+            player.isPerfectRawParrySuccess = false;
+            player.stamina = Math.max(0, player.stamina - RAW_PARRY_STAMINA_COST);
+            player.movementVelocity = 0;
+            player.isStrafing = false;
+            player.isPowerSliding = false;
+            player.isCrouchStance = false;
+            player.isCrouchStrafing = false;
+            break;
+
+          case "dash":
+            if (canPlayerDash(player) && !player.isGassed) {
+              player.isDodging = true;
+              player.isDodgeStartup = true;
+              player.dodgeStartTime = Date.now();
+              player.dodgeStartupEndTime = Date.now() + DODGE_STARTUP_MS;
+              player.dodgeEndTime = Date.now() + DODGE_DURATION;
+              player.dodgeStartX = player.x;
+              player.currentAction = "dash";
+              player.actionLockUntil = Date.now() + 100;
+              player.justLandedFromDodge = false;
+              player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
+              if (player.keys.a) {
+                player.dodgeDirection = -1;
+              } else if (player.keys.d) {
+                player.dodgeDirection = 1;
+              } else {
+                player.dodgeDirection = player.facing === -1 ? 1 : -1;
+              }
+            }
+            break;
+
+          case "snowball":
+            if (player.activePowerUp === POWER_UP_TYPES.SNOWBALL &&
+                (player.snowballThrowsRemaining ?? 3) > 0 &&
+                !player.snowballCooldown) {
+              if (player.snowballThrowsRemaining == null) {
+                player.snowballThrowsRemaining = 3;
+              }
+              player.stamina = Math.max(0, player.stamina - SLAP_ATTACK_STAMINA_COST);
+              player.snowballThrowsRemaining = Math.max(0, player.snowballThrowsRemaining - 1);
+              player.isThrowingSnowball = true;
+              player.currentAction = "snowball";
+              player.actionLockUntil = Date.now() + 250;
+
+              const opp = currentRoom ? currentRoom.players.find((p) => p.id !== player.id) : null;
+              let snowballDir;
+              if (opp) {
+                snowballDir = player.x < opp.x ? 2 : -2;
+              } else {
+                snowballDir = player.facing === 1 ? -2 : 2;
+              }
+              const snowball = {
+                id: Math.random().toString(36).substr(2, 9),
+                x: player.x,
+                y: player.y + 20,
+                velocityX: snowballDir,
+                hasHit: false,
+                ownerId: player.id,
+              };
+              player.snowballs.push(snowball);
+              player.snowballCooldown = true;
+
+              setPlayerTimeout(player.id, () => {
+                player.isThrowingSnowball = false;
+                if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
+                  player.actionLockUntil = 0;
+                }
+                if (shouldRestartCharging(player)) {
+                  startCharging(player);
+                }
+              }, 500);
+            }
+            break;
+        }
+        return;
+      }
+
       // === STRING TRANSITIONS ===
       if (player.pendingSlapCount > 0) {
         player.pendingSlapCount--;
 
         if (finishedPosition === 1 && isPlayerValid()) {
-          // Hit 1 → Hit 2: chain immediately (true combo)
+          // Hit 1 → Hit 2: chain immediately (true combo).
+          // pendingStringEnder intentionally persists — it was buffered during hit 1
+          // and should fire when hit 2 ends (handles hitstop eating the input window).
           player.slapStringWindowUntil = Date.now() + 100;
           executeSlapAttack(player, rooms);
           return;
@@ -562,6 +673,7 @@ function executeSlapAttack(player, rooms) {
               opp.knockbackVelocity.x = 0;
             }
           }
+          player.pendingStringEnder = null;
           player.slapStringWindowUntil = Date.now() + 100;
           executeSlapAttack(player, rooms);
           return;
@@ -571,20 +683,25 @@ function executeSlapAttack(player, rooms) {
         player.slapStringPosition = 0;
         player.slapStringWindowUntil = 0;
         player.pendingSlapCount = 0;
+        player.pendingStringEnder = null;
       } else if (finishedPosition === 1) {
-        // Hit 1 with no buffer: keep window open for manual hit 2 continuation
+        // Hit 1 with no buffer: keep window open for manual hit 2 continuation.
+        // pendingStringEnder persists — if the user manually fires hit 2 during the
+        // window, the ender will be consumed when hit 2's cycle ends.
         player.slapStringWindowUntil = Date.now() + SLAP_STRING_BUFFER_WINDOW_MS;
         setPlayerTimeout(player.id, () => {
           if (player.slapStringPosition === finishedPosition && !player.isSlapAttack) {
             player.slapStringPosition = 0;
             player.slapStringWindowUntil = 0;
+            player.pendingStringEnder = null;
           }
         }, SLAP_STRING_BUFFER_WINDOW_MS, "slapStringReset");
       } else if (finishedPosition === 2) {
-        // Hit 2 with no buffer: short window for delayed hit 3.
+        // Hit 2 with no buffer and no ender: short window for delayed hit 3.
         // During this window, pressing fires hit 3 (string position is still 2).
         // After it expires, string resets — the window doubles as a cooldown
         // that prevents the 1-2 loop from comboing into a new hit 1.
+        player.pendingStringEnder = null;
         player.slapStringWindowUntil = Date.now() + SLAP_STRING_HIT2_MANUAL_WINDOW_MS;
         setPlayerTimeout(player.id, () => {
           if (player.slapStringPosition === 2 && !player.isSlapAttack) {
@@ -596,6 +713,7 @@ function executeSlapAttack(player, rooms) {
         // Hit 3 with no buffer: reset string
         player.slapStringPosition = 0;
         player.slapStringWindowUntil = 0;
+        player.pendingStringEnder = null;
       }
 
       // Charge transition (only when string is not continuing)
@@ -1309,6 +1427,7 @@ function activateBufferedInputAfterGrab(player, rooms) {
     player.isCrouchStance = false;
     player.isCrouchStrafing = false;
     player.pendingSlapCount = 0;
+    player.pendingStringEnder = null;
     player.slapStringPosition = 0;
     player.slapStringWindowUntil = 0;
     clearChargeState(player, true);
@@ -1407,6 +1526,7 @@ function executeInputBuffer(player, rooms) {
         player.isCrouchStance = false;
         player.isCrouchStrafing = false;
         player.pendingSlapCount = 0;
+        player.pendingStringEnder = null;
         player.slapStringPosition = 0;
         player.slapStringWindowUntil = 0;
         clearChargeState(player, true);

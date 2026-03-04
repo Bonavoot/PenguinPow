@@ -461,7 +461,7 @@ body {
   filter: var(--dohyo-filter);
   /* ── Perspective tilt — tweak these to flatten / angle the dohyo ── */
   transform-origin: 50% 10%; /* pivot near the top — back stays wide, front narrows */
-  transform: perspective(700px)
+  transform: perspective(600px)
     /* depth — lower = more dramatic, higher = subtler */ rotateX(5deg)
     /* tilt — back stays anchored, front swings away (narrows) */ scaleY(0.86)
     /* vertical squash — < 1 = flatter, 1 = no change */ translateY(10%); /* raise/lower — negative = up, positive = down */

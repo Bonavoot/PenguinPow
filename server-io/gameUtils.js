@@ -319,6 +319,7 @@ function clearAllActionStates(player) {
   player.pendingChargeAttack = null;
   player.spacebarReleasedDuringDodge = false;
   player.pendingSlapCount = 0;
+  player.pendingStringEnder = null;
   player.isSlapSliding = false;
   player.slapStringPosition = 0;
   player.slapStringWindowUntil = 0;

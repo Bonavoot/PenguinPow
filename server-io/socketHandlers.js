@@ -356,6 +356,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
         lastSlapHitLandedTime: 0, // Track when attacker last landed a slap (for chain lunge)
         lastCheckedAttackTime: 0, // Add tracking for attack collision checking
         pendingSlapCount: 0,
+        pendingStringEnder: null,
         slapStringPosition: 0,
         slapStringWindowUntil: 0,
         isSlapStringFinisher: false,
@@ -560,6 +561,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
         lastSlapHitLandedTime: 0, // Track when attacker last landed a slap (for chain lunge)
         lastCheckedAttackTime: 0, // Add tracking for attack collision checking
         pendingSlapCount: 0,
+        pendingStringEnder: null,
         slapStringPosition: 0,
         slapStringWindowUntil: 0,
         isSlapStringFinisher: false,
@@ -815,6 +817,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
       lastSlapHitLandedTime: 0,
       lastCheckedAttackTime: 0,
       pendingSlapCount: 0,
+      pendingStringEnder: null,
       slapStringPosition: 0,
       slapStringWindowUntil: 0,
       isSlapStringFinisher: false,
@@ -1200,6 +1203,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
         const prevMouse2 = player.keys.mouse2;
         const prevSpace = player.keys[" "];
         const prevShift = player.keys.shift;
+        const prevF = player.keys.f;
         if (!prevMouse1 && data.keys.mouse1) {
           // mouse1 just pressed during lock — record press time
           player.mouse1PressTime = Date.now();
@@ -1208,15 +1212,50 @@ function registerSocketHandlers(socket, io, rooms, context) {
         }
         player.keys = data.keys;
 
-        // Buffer inputs during lockout so they fire on frame 1 when lock expires
-        if (!prevSpace && data.keys[" "]) {
-          player.inputBuffer = { type: "rawParry", timestamp: Date.now() };
-        } else if (!prevShift && data.keys.shift && !data.keys.mouse2) {
-          player.inputBuffer = { type: "dodge", timestamp: Date.now() };
-        } else if (!prevMouse1 && data.keys.mouse1) {
-          player.inputBuffer = { type: "slap", timestamp: Date.now() };
-        } else if (!prevMouse2 && data.keys.mouse2) {
-          player.inputBuffer = { type: "grab", timestamp: Date.now() };
+        // During slap attacks, route inputs through the string buffer system
+        // (pendingSlapCount / pendingStringEnder) instead of the generic inputBuffer.
+        // Without this, hitstop's 50ms inputLock captures mouse2/space/shift/F into
+        // inputBuffer, bypassing the ender system entirely — causing SLAP1→GRAB on hit.
+        if (player.isAttacking && player.attackType === "slap") {
+          if (!prevMouse1 && data.keys.mouse1) {
+            const maxBuffer = 3 - (player.slapStringPosition || 1);
+            if (player.pendingSlapCount < maxBuffer) {
+              player.pendingSlapCount++;
+              if (player.slapStringPosition >= 2) {
+                player.pendingStringEnder = null;
+              }
+            }
+          }
+          if (player.slapStringPosition === 1 || player.slapStringPosition === 2) {
+            const atPos2 = player.slapStringPosition === 2;
+            if (!prevMouse2 && data.keys.mouse2) {
+              player.pendingStringEnder = { type: "grab" };
+              if (atPos2) player.pendingSlapCount = 0;
+            } else if (!prevSpace && data.keys[" "]) {
+              player.pendingStringEnder = { type: "rawParry" };
+              if (atPos2) player.pendingSlapCount = 0;
+            } else if (!prevShift && data.keys.shift) {
+              player.pendingStringEnder = { type: "dash" };
+              if (atPos2) player.pendingSlapCount = 0;
+            } else if (!prevF && data.keys.f &&
+                       player.activePowerUp === POWER_UP_TYPES.SNOWBALL &&
+                       (player.snowballThrowsRemaining ?? 3) > 0 &&
+                       !player.snowballCooldown) {
+              player.pendingStringEnder = { type: "snowball" };
+              if (atPos2) player.pendingSlapCount = 0;
+            }
+          }
+        } else {
+          // Non-slap states: use generic inputBuffer
+          if (!prevSpace && data.keys[" "]) {
+            player.inputBuffer = { type: "rawParry", timestamp: Date.now() };
+          } else if (!prevShift && data.keys.shift && !data.keys.mouse2) {
+            player.inputBuffer = { type: "dodge", timestamp: Date.now() };
+          } else if (!prevMouse1 && data.keys.mouse1) {
+            player.inputBuffer = { type: "slap", timestamp: Date.now() };
+          } else if (!prevMouse2 && data.keys.mouse2) {
+            player.inputBuffer = { type: "grab", timestamp: Date.now() };
+          }
         }
       }
       return;
@@ -1444,7 +1483,38 @@ function registerSocketHandlers(socket, io, rooms, context) {
         const maxBuffer = 3 - (player.slapStringPosition || 1);
         if (player.pendingSlapCount < maxBuffer) {
           player.pendingSlapCount++;
+          // At position 2, mouse1 and ender compete for the hit-3 slot → last input wins.
+          // At position 1, they don't conflict (mouse1 = hit 2, ender = after hit 2).
+          if (player.slapStringPosition >= 2) {
+            player.pendingStringEnder = null;
+          }
         }
+      }
+    }
+
+    // STRING ENDER BUFFER: alternate inputs replace the hit 3 slot.
+    // Buffers at position 1 or 2 during any slap. At position 1 this catches the case
+    // where mouse2 arrives in a separate event before the second mouse1 — the ender
+    // persists and only fires when finishedPosition === 2, so SLAP1→ENDER can't happen.
+    // Only clear pendingSlapCount at position 2 to avoid breaking the hit 1→2 chain.
+    if (player.isAttacking && player.attackType === "slap" &&
+        (player.slapStringPosition === 1 || player.slapStringPosition === 2)) {
+      const atPos2 = player.slapStringPosition === 2;
+      if (player.mouse2JustPressed) {
+        player.pendingStringEnder = { type: "grab" };
+        if (atPos2) player.pendingSlapCount = 0;
+      } else if (player.spaceJustPressed) {
+        player.pendingStringEnder = { type: "rawParry" };
+        if (atPos2) player.pendingSlapCount = 0;
+      } else if (player.shiftJustPressed) {
+        player.pendingStringEnder = { type: "dash" };
+        if (atPos2) player.pendingSlapCount = 0;
+      } else if (player.fJustPressed &&
+                 player.activePowerUp === POWER_UP_TYPES.SNOWBALL &&
+                 (player.snowballThrowsRemaining ?? 3) > 0 &&
+                 !player.snowballCooldown) {
+        player.pendingStringEnder = { type: "snowball" };
+        if (atPos2) player.pendingSlapCount = 0;
       }
     }
 
