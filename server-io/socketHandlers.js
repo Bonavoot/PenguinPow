@@ -8,7 +8,7 @@ const {
   DODGE_STARTUP_MS,
   SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS, SIDESTEP_RECOVERY_MS,
   SIDESTEP_TOTAL_MS, SIDESTEP_STAMINA_COST,
-  SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST,
+  SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST, RAW_PARRY_STAMINA_COST,
   CHARGE_FULL_POWER_MS,
   GRAB_ACTION_WINDOW, GRAB_STARTUP_DURATION_MS,
   HITSTOP_THROW_MS,
@@ -273,6 +273,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
         throwTechCooldown: false,
         isSlapParrying: false,
         slapParryKnockbackVelocity: 0,
+        isSlapParryRecovering: false,
         lastThrowAttemptTime: 0,
         lastGrabAttemptTime: 0,
         isStrafing: false,
@@ -487,6 +488,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
         throwTechCooldown: false,
         isSlapParrying: false,
         slapParryKnockbackVelocity: 0,
+        isSlapParryRecovering: false,
         lastThrowAttemptTime: 0,
         lastGrabAttemptTime: 0,
         isStrafing: false,
@@ -1500,6 +1502,46 @@ function registerSocketHandlers(socket, io, rooms, context) {
       // - Forward push: cannot be broken, only slowed
       // Counter-input checks are handled in the grab action sections below.
       // ============================================
+    }
+
+    // SPACE PRESS: Fire raw parry immediately for zero-tick-delay responsiveness
+    // Same pattern as slap — execute on the socket event instead of waiting for the game tick
+    if (
+      player.spaceJustPressed &&
+      !shouldBlockAction() &&
+      !player.isRawParrying &&
+      !player.isRawParryStun &&
+      !player.grabBreakSpaceConsumed &&
+      !player.isSidestepping &&
+      !player.isGrabbing &&
+      !player.isBeingGrabbed &&
+      !player.isGrabbingMovement &&
+      !player.isWhiffingGrab &&
+      !player.isGrabClashing &&
+      !player.isThrowing &&
+      !player.isBeingThrown &&
+      !player.isAttacking &&
+      !player.isHit &&
+      !player.isThrowingSnowball &&
+      !player.isSpawningPumoArmy &&
+      !player.canMoveToReady
+    ) {
+      player.isRawParrySuccess = false;
+      player.isPerfectRawParrySuccess = false;
+      player.isRawParrying = true;
+      player.rawParryStartTime = Date.now();
+      player.rawParryMinDurationMet = false;
+      player.stamina = Math.max(0, player.stamina - RAW_PARRY_STAMINA_COST);
+      clearChargeState(player, true);
+      player.movementVelocity = 0;
+      player.isStrafing = false;
+      player.isPowerSliding = false;
+      player.isCrouchStance = false;
+      player.isCrouchStrafing = false;
+      player.pendingSlapCount = 0;
+      player.pendingStringEnder = null;
+      player.slapStringPosition = 0;
+      player.slapStringWindowUntil = 0;
     }
 
     // MOUSE1 PRESS: Fire slap immediately for responsive poke

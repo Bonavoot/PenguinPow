@@ -148,7 +148,7 @@ const getImageSrc = (
   if (isSlapAttack) {
     if (slapAnimation === 1) return slapAttack1;
     if (slapAnimation === 4) return recovering;
-    if (slapAnimation === 3) return slapAttack3;
+    if (slapAnimation === 3) return slapAttack1;
     return slapAttack2;
   }
   if (isGrabbing) {

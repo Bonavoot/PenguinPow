@@ -471,9 +471,8 @@ function executeSlapAttack(player, rooms) {
   player.stamina = Math.max(0, player.stamina - SLAP_ATTACK_STAMINA_COST);
 
   // === FRAME DATA — each string position has distinct timing ===
-  // Hit 1: standard startup, fast recovery for chain speed (195ms total)
-  // Hit 2: fast startup, extended recovery for escape gap (235ms total)
-  // Hit 3: long startup + recovery — the escape window is hit2 recovery + hit3 startup (480ms total)
+  // Hit 1 & 2: identical — standard startup, fast recovery for chain speed (195ms total each)
+  // Hit 3: heavy windup (165ms) IS the frame trap gap — escapable by dash/parry, beats mashing (465ms total)
   let baseStartupMs, activeMs, totalCycleDuration;
   if (isHit3) {
     baseStartupMs = SLAP_HIT3_STARTUP_MS;
@@ -489,10 +488,13 @@ function executeSlapAttack(player, rooms) {
     totalCycleDuration = SLAP_STRING_HIT1_TOTAL_MS;
   }
 
-  // DESPERATION COUNTER-SLAP: faster startup when recently hit (hit 1 & 2 only)
+  // DESPERATION COUNTER-SLAP: faster startup when recently hit (hit 1 & 2 only).
+  // Disabled for combo victims (hit by string hit 1 or 2) — the attacker earned the
+  // frame trap through the string, so the victim shouldn't get a speed boost to escape it.
   const recentlyRecoveredFromHit = player.lastHitTime && 
     (now - player.lastHitTime < 380) && !player.isHit;
-  const startupDuration = (!isHit3 && recentlyRecoveredFromHit) ? Math.min(45, baseStartupMs) : baseStartupMs;
+  const wasComboVictim = player.lastHitByStringPos >= 1;
+  const startupDuration = (!isHit3 && recentlyRecoveredFromHit && !wasComboVictim) ? Math.min(45, baseStartupMs) : baseStartupMs;
 
   const attackDuration = baseStartupMs + activeMs;
 
@@ -690,8 +692,8 @@ function executeSlapAttack(player, rooms) {
         }
 
         if (finishedPosition === 2 && isPlayerValid()) {
-          // Hit 2 → Hit 3: chain immediately — the 100-180ms escape gap is built into
-          // hit 2's extended recovery + hit 3's 180ms startup, not an artificial delay.
+          // Hit 2 → Hit 3: chain immediately — the ~45ms escape gap comes entirely
+          // from hit 3's 165ms startup vs the 120ms frame advantage after hit 2.
           // Zero the victim's residual drift for clean handoff to hit 3's real physics.
           if (currentRoom) {
             const opp = currentRoom.players.find((p) => p.id !== player.id);

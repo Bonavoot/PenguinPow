@@ -104,6 +104,7 @@ function createCPUPlayer(uniqueId) {
     isSlapParrying: false,
     slapParryKnockbackVelocity: 0,
     slapParryImmunityUntil: 0,
+    isSlapParryRecovering: false,
     inputBuffer: null,
     lastThrowAttemptTime: 0,
     lastGrabAttemptTime: 0,
@@ -175,6 +176,7 @@ function createCPUPlayer(uniqueId) {
     hitAbsorptionUsed: false,
     hitCounter: 0,
     lastHitTime: 0,
+    lastHitByStringPos: 0,
     lastSlapHitLandedTime: 0,
     lastCheckedAttackTime: 0,
     pendingSlapCount: 0,
@@ -435,6 +437,7 @@ function resetRoomAndPlayers(room, io) {
     player.hitAbsorptionUsed = false;
     player.hitCounter = 0;
     player.lastHitTime = 0;
+    player.lastHitByStringPos = 0;
     player.lastSlapHitLandedTime = 0;
     player.pendingSlapCount = 0;
     player.pendingStringEnder = null;

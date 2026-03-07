@@ -59,6 +59,7 @@ const CHARGED_HITBOX_DISTANCE_VALUE = Math.round(147 * 0.96); // ~141 → just p
 const SLAP_HITBOX_DISTANCE_VALUE = Math.round(152 * 0.96); // ~146 — must exceed pushbox (136px) so slaps connect at pushbox distance [8% tighter]
 const SLAP_PARRY_WINDOW = 200; // Updated to 200ms window for parry to account for longer slap animation
 const SLAP_PARRY_KNOCKBACK_VELOCITY = 1.5; // Reduced knockback for parried attacks
+const SLAP_PARRY_RECOVERY_MS = 150; // Fixed recovery for both players after slap parry — guarantees +0
 const THROW_RANGE = Math.round(166 * 0.96); // ~159 (scaled for camera zoom)
 const GRAB_RANGE = Math.round(158 * 0.96); // ~152px - command grab range (scaled for camera zoom) [8% tighter]
 const GRAB_PUSH_SPEED = 0.55; // Push movement speed (buffed from 0.3 — yorikiri should grind to the edge)
@@ -75,26 +76,26 @@ const SLAP_RECOVERY_MS = 130;     // Can't act, no hitbox — opponent's respons
 const SLAP_TOTAL_MS = SLAP_STARTUP_MS + SLAP_ACTIVE_MS + SLAP_RECOVERY_MS;
 
 // Slap String System — 3-hit rekka string: bam bam..BAM
-// Hits 1&2 are FAST (short cycles) so they naturally combo through speed, not inflated stun.
-// Hit 3 has a LONG startup — the windup itself IS the frame trap gap. No artificial timer.
+// Hits 1&2 are IDENTICAL — same startup/active/recovery/stun. Combo through speed.
+// Hit 3 startup alone creates the frame trap gap. No hitstun inflation needed.
 const SLAP_STRING_BUFFER_WINDOW_MS = 300;  // How long after hit 1 cycle end the player can manually input hit 2
 const SLAP_STRING_HIT2_MANUAL_WINDOW_MS = 100;  // Short window after hit 2 for delayed hit 3 — also prevents 1-2 loop from comboing
 
-// String hit 1 — same startup/active as solo slap, recovery slashed for fast chain
+// String hits 1 & 2 — identical frame data, recovery slashed for fast chain
 const SLAP_STRING_HIT1_RECOVERY_MS = 40;   // Was 130ms — massive reduction for snappy chaining
 const SLAP_STRING_HIT1_TOTAL_MS = SLAP_STARTUP_MS + SLAP_ACTIVE_MS + SLAP_STRING_HIT1_RECOVERY_MS; // 195ms
 
-// String hit 2 — fast follow-up jab
-const SLAP_STRING_HIT2_STARTUP_MS = 35;    // Snappy startup for rapid chain feel
-const SLAP_STRING_HIT2_ACTIVE_MS = 80;     // Slightly shorter active
-const SLAP_STRING_HIT2_RECOVERY_MS = 120;  // Extended recovery — combined with hit 3 startup creates 100-180ms escape gap
-const SLAP_STRING_HIT2_TOTAL_MS = SLAP_STRING_HIT2_STARTUP_MS + SLAP_STRING_HIT2_ACTIVE_MS + SLAP_STRING_HIT2_RECOVERY_MS; // 235ms
+// String hit 2 — identical to hit 1
+const SLAP_STRING_HIT2_STARTUP_MS = SLAP_STARTUP_MS;     // 55ms — same as hit 1
+const SLAP_STRING_HIT2_ACTIVE_MS = SLAP_ACTIVE_MS;       // 100ms — same as hit 1
+const SLAP_STRING_HIT2_RECOVERY_MS = SLAP_STRING_HIT1_RECOVERY_MS; // 40ms — same as hit 1
+const SLAP_STRING_HIT2_TOTAL_MS = SLAP_STRING_HIT1_TOTAL_MS; // 195ms — same as hit 1
 
-// String hit 3 — heavy finisher with long windup
-const SLAP_HIT3_STARTUP_MS = 180;          // Long wind-up — paired with hit 2 recovery for meaningful escape window
+// String hit 3 — heavy finisher whose startup IS the frame trap gap
+const SLAP_HIT3_STARTUP_MS = 165;          // Tuned so escape window ≈ 45ms (dash/parry escape, slap loses)
 const SLAP_HIT3_ACTIVE_MS = 100;           // Full active window for the big hit
 const SLAP_HIT3_RECOVERY_MS = 200;         // Very punishable — committed string ender
-const SLAP_HIT3_TOTAL_MS = SLAP_HIT3_STARTUP_MS + SLAP_HIT3_ACTIVE_MS + SLAP_HIT3_RECOVERY_MS; // 480ms
+const SLAP_HIT3_TOTAL_MS = SLAP_HIT3_STARTUP_MS + SLAP_HIT3_ACTIVE_MS + SLAP_HIT3_RECOVERY_MS; // 465ms
 
 // Cinematic String System — deterministic combo that looks identical every time.
 // Hits 1&2: both players snap to fixed spacing + shared drift (no KB multiplier, no ice physics).
@@ -107,12 +108,11 @@ const SLAP_STRING_HIT3_KB_MULTIPLIER = 0.80;      // Hit 3 finisher — release 
 const SLAP_NEUTRAL_KB_MULTIPLIER = 0.42;            // Solo slap — tuned so 3-4 slaps reach boundary from neutral (was 0.475)
 const SLAP_STRING_HIT3_SLIDE_VELOCITY = 2.2;      // Hit 3 forward slide — strong lunge to close gap even on delayed strings
 
-// String stun — hit 1 uses DEFAULT 260ms. Hit 2 uses 200ms — the escape gap between
-// hits 2 and 3 comes from frame data (hit 2 recovery + hit 3 startup), not inflated stun.
-// With symmetric hitstop, gap = hit2_cycle + hit3_startup - connect_time - stun.
-// Worst case (late connect): 120 + 180 - 200 = 100ms gap.
-// Best case (early connect): 235 + 180 - 35 - 200 = 180ms gap.
-const SLAP_STRING_HIT2_STUN_MS = 200;
+// String stun — hits 1 & 2 both use 260ms (identical).
+// Frame trap math (slap2→slap3): advantage = t_hit(55) + stun(260) - cycle(195) = 120ms.
+// Escape window = S3(165) - 120 = 45ms. Opponent's slap (55ms startup) > 45ms → slap3 wins.
+// Dash (40ms startup) fits in 45ms window → escapable with good timing.
+const SLAP_STRING_HIT2_STUN_MS = 260;
 
 const CHARGED_STARTUP_MS = 150;   // Clear windup (unchanged)
 const CHARGED_ACTIVE_MS = 120;    // Hitbox live window
@@ -307,7 +307,7 @@ const PERFECT_PARRY_KNOCKBACK = 0.65; // Slightly stronger than regular parry
 const RAW_PARRY_SLAP_STUN_DURATION = 400; // Stun for slap parries (was 500)
 const PERFECT_PARRY_WINDOW = 100; // 100ms window for perfect parries
 const PERFECT_PARRY_SUCCESS_DURATION = 850; // Compressed parry — fast enough to keep pace, long enough for visual read
-const PERFECT_PARRY_ATTACKER_STUN_DURATION = 550; // Stun (was 600 — still guarantees any follow-up)
+const PERFECT_PARRY_ATTACKER_STUN_DURATION = 700; // Stun — comfortable window for slap/grab follow-up
 const PERFECT_PARRY_ANIMATION_LOCK = 250; // 250ms — brief flash moment, then parrier can act
 const PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK = 200; // Shorter than player parry lock — the reflected snowball is the reward
 
@@ -432,6 +432,7 @@ module.exports = {
   SLAP_HITBOX_DISTANCE_VALUE,
   SLAP_PARRY_WINDOW,
   SLAP_PARRY_KNOCKBACK_VELOCITY,
+  SLAP_PARRY_RECOVERY_MS,
   THROW_RANGE,
   GRAB_RANGE,
   GRAB_PUSH_SPEED,

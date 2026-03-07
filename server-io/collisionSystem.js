@@ -1,7 +1,7 @@
 const {
   GRAB_STATES, GROUND_LEVEL, TICK_RATE, speedFactor,
   HITBOX_DISTANCE_VALUE, CHARGED_HITBOX_DISTANCE_VALUE, SLAP_HITBOX_DISTANCE_VALUE,
-  SLAP_PARRY_WINDOW,
+  SLAP_PARRY_WINDOW, SLAP_PARRY_RECOVERY_MS,
   DOHYO_FALL_DEPTH,
   POWER_UP_TYPES,
   PERFECT_PARRY_WINDOW, PERFECT_PARRY_KNOCKBACK,
@@ -185,8 +185,14 @@ function checkCollision(player, otherPlayer, rooms, io) {
             }
             return;
           }
+        } else if (!player.isSlapStringFinisher && otherPlayer.isSlapStringFinisher) {
+          // Non-finisher vs finisher: finisher has priority.
+          // If both active, suppress the non-finisher's hit — the finisher's
+          // collision check will handle processHit. Prevents mutual trade from
+          // network jitter / tick alignment when the frame trap gap is tight.
+          if (!otherPlayer.isInStartupFrames) return;
         }
-        // eitherIsStringFinisher (but not both) → fall through to processHit
+        // Finisher vs non-finisher (or one in startup) → fall through to processHit
       }
 
       // Slap vs Charged: if opponent is executing a charged attack above the
@@ -284,6 +290,7 @@ function resolveSlapParry(player1, player2, roomId, io) {
   [player1, player2].forEach((p) => {
     p.isSlapSliding = false;
     p.isSlapStringComboDrift = false;
+    p.isSlapParryRecovering = true;
 
     // Alternate the next slap's animation so repeated parries don't always show slap1
     if (p.slapAnimation === 1) {
@@ -296,10 +303,11 @@ function resolveSlapParry(player1, player2, roomId, io) {
     p.pendingSlapCount = 0;
     p.isSlapStringFinisher = false;
 
-    // Replace the cycle timer with a clean termination — no string transitions
+    // Replace the cycle timer with a fixed-duration recovery — both players get
+    // the same lockout from this moment, guaranteeing +0 after every slap parry.
     if (p.slapCycleEndCallback) {
       timeoutManager.clearPlayerSpecific(p.id, "slapCycle");
-      const remaining = Math.max(0, (p.attackCooldownUntil || 0) - Date.now());
+      p.attackCooldownUntil = Date.now() + SLAP_PARRY_RECOVERY_MS;
       setPlayerTimeout(p.id, () => {
         p.isAttacking = false;
         p.isSlapAttack = false;
@@ -312,7 +320,8 @@ function resolveSlapParry(player1, player2, roomId, io) {
         p.currentAction = null;
         p.isSlapStringComboDrift = false;
         p.slapCycleEndCallback = null;
-      }, remaining, "slapCycle");
+        p.isSlapParryRecovering = false;
+      }, SLAP_PARRY_RECOVERY_MS, "slapCycle");
     }
   });
 
@@ -327,12 +336,12 @@ function applyParryEffect(player, knockbackDirection) {
   
   // Use smooth knockback velocity that gets processed in the game loop
   // More dramatic knockback so players visibly bounce off each other
-  const SLAP_PARRY_KNOCKBACK_STRENGTH = 2.0; // Stronger bounce effect
+  const SLAP_PARRY_KNOCKBACK_STRENGTH = 0.9;
   player.slapParryKnockbackVelocity = SLAP_PARRY_KNOCKBACK_STRENGTH * knockbackDirection;
   
   // Give brief immunity to prevent hits right after parry
   // This lasts until the current slap attack would end
-  player.slapParryImmunityUntil = Date.now() + 300;
+  player.slapParryImmunityUntil = Date.now() + SLAP_PARRY_RECOVERY_MS;
 }
 
 function resolveChargeClash(player1, player2, p1Charge, p2Charge, room, io) {
@@ -1251,9 +1260,8 @@ function processHit(player, otherPlayer, rooms, io) {
     otherPlayer.y = GROUND_LEVEL;
 
     // === HIT STUN DURATION ===
-    // String hit 1: 260ms — hit 2's fast 195ms cycle guarantees the true combo.
-    // String hit 2: 200ms — escape gap comes from frame data, not inflated stun.
-    //   Gap = hit2_recovery(120) + hit3_startup(180) - stun(200) = 100ms minimum.
+    // String hits 1 & 2: identical 260ms — hit 2's fast 195ms cycle guarantees
+    //   the true combo. Slap3's 165ms startup creates the frame trap gap (~45ms).
     // Hit 3 / solo slaps: 260ms stun.
     const stringPos = isSlapAttack ? (player.slapStringPosition || 0) : 0;
     let hitStateDuration;
@@ -1279,6 +1287,7 @@ function processHit(player, otherPlayer, rooms, io) {
 
     // Update the last hit time for tracking
     otherPlayer.lastHitTime = currentTime;
+    otherPlayer.lastHitByStringPos = stringPos;
 
     // Single, deterministic cleanup — hitstun is purely time-based
     setPlayerTimeout(

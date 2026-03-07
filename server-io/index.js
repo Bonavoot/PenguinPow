@@ -1898,6 +1898,7 @@ function tick(delta) {
         !player.isGrabTeching && // Block movement during grab tech
         !player.isGrabClashing && // Block movement during grab clashing
         !player.isGrabSeparating && // Block movement during grab push separation
+        !player.isSlapParryRecovering && // Block movement during slap parry recovery for consistent knockback
         ((!player.keys[" "] &&
           !(player.isAttacking && player.attackType === "charged") && // Block only during charged attack execution
           player.saltCooldown === false &&
