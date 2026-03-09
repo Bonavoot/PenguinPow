@@ -420,6 +420,8 @@ const GameFighter = ({
         // Core action states
         !penguin.isAttacking &&
         !penguin.isDodging &&
+        !penguin.isSidestepping &&
+        !penguin.isSidestepRecovery &&
         !penguin.isThrowing &&
         !penguin.isBeingThrown &&
         !penguin.isGrabbing &&
@@ -467,6 +469,8 @@ const GameFighter = ({
         !penguin.isAttacking &&
         !penguin.isDodging &&
         !penguin.isDodgeRecovery &&
+        !penguin.isSidestepping &&
+        !penguin.isSidestepRecovery &&
         !penguin.justLandedFromDodge &&
         !penguin.isThrowing &&
         !penguin.isBeingThrown &&
@@ -971,6 +975,7 @@ const GameFighter = ({
   const [gyojiState, setGyojiState] = useState("idle");
   const [gameOver, setGameOver] = useState(false);
   const [showRoundResult, setShowRoundResult] = useState(false); // Deferred from gameOver to prevent freeze
+  const [winType, setWinType] = useState(null);
   const showRoundResultRafRef = useRef(null); // Track rAF so we can cancel on reset
   // PERFORMANCE: Pre-warm RoundResult styled-components CSS on mount.
   // Rendering both variants (victory/defeat) for 1 frame forces styled-components to
@@ -1954,7 +1959,8 @@ const GameFighter = ({
 
     socket.on("game_reset", (data) => {
       setGameOver(data);
-      setShowRoundResult(false); // Clear deferred round result
+      setShowRoundResult(false);
+      setWinType(null);
       if (showRoundResultRafRef.current) {
         cancelAnimationFrame(showRoundResultRafRef.current);
         showRoundResultRafRef.current = null;
@@ -2057,6 +2063,7 @@ const GameFighter = ({
     socket.on("game_over", (data) => {
       setGameOver(data.isGameOver);
       setWinner(data.winner);
+      setWinType(data.winType || "ringOut");
 
       // Clear animation states that could cause stale jiggle/shake during round result
       setIsGrabClashActive(false);
@@ -3218,6 +3225,9 @@ const GameFighter = ({
             {hakkiyoi && (
               <SumoGameAnnouncement type="hakkiyoi" duration={1.8} />
             )}
+            {showRoundResult && !matchOver && (
+              <RoundResult isVictory={winner.id === localId} winType={winType} />
+            )}
             {matchOver && (
               <MatchOver
                 winner={winner}
@@ -3228,9 +3238,6 @@ const GameFighter = ({
           </>,
           document.getElementById("game-hud")
         )}
-      {showRoundResult && !matchOver && (
-        <RoundResult isVictory={winner.id === localId} />
-      )}
       {warmupRoundResult && (
         <div
           aria-hidden="true"
@@ -3245,8 +3252,8 @@ const GameFighter = ({
             height: "1px",
           }}
         >
-          <RoundResult isVictory={true} />
-          <RoundResult isVictory={false} />
+          <RoundResult isVictory={true} winType="slap" />
+          <RoundResult isVictory={false} winType="slap" />
         </div>
       )}
       {penguin.id === localId &&

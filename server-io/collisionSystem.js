@@ -958,6 +958,7 @@ function processHit(player, otherPlayer, rooms, io) {
     otherPlayer.grabClashInputCount = 0;
 
     otherPlayer.isHit = true;
+    otherPlayer.lastHitType = isSlapAttack ? "slap" : "charged";
 
     // Block multiple hits from this same attack
     otherPlayer.isAlreadyHit = true;
@@ -1099,6 +1100,7 @@ function processHit(player, otherPlayer, rooms, io) {
 
         if (isCinematicKill) {
           otherPlayer.isCinematicKillVictim = true;
+          otherPlayer.lastHitType = "cinematicKill";
 
           // Keep attacker in charged attack pose during the freeze
           player.isRecovering = false;

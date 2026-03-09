@@ -2,528 +2,434 @@ import React, { memo, useMemo } from "react";
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
 
-// Victory animation - explosive, triumphant entrance (NO blur - causes freeze)
-const victorySlam = keyframes`
-  0% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(3) rotate(-8deg);
-  }
-  15% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(0.85) rotate(3deg);
-  }
-  25% {
-    transform: translate(-50%, -50%) scale(1.1) rotate(-1deg);
-  }
-  35% {
-    transform: translate(-50%, -50%) scale(0.98) rotate(0.5deg);
-  }
-  45% {
-    transform: translate(-50%, -50%) scale(1.02) rotate(0deg);
-  }
-  55% {
-    transform: translate(-50%, -50%) scale(1) rotate(0deg);
-  }
-  80% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1) rotate(0deg);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(1.1) rotate(0deg);
-  }
-`;
+const ANNOUNCE_Y = "clamp(90px, 25%, 175px)";
 
-// Defeat animation - heavy, crushing drop
-const defeatDrop = keyframes`
-  0% {
-    opacity: 0;
-    transform: translate(-50%, -200%) scale(1.2) rotate(0deg);
-  }
-  20% {
-    opacity: 1;
-    transform: translate(-50%, -45%) scale(1) rotate(-2deg);
-  }
-  25% {
-    transform: translate(-50%, -50%) scale(0.95) rotate(1deg);
-  }
-  30% {
-    transform: translate(-50%, -48%) scale(1.02) rotate(-0.5deg);
-  }
-  40% {
-    transform: translate(-50%, -50%) scale(1) rotate(0deg);
-  }
-  80% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1) rotate(0deg);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.95) rotate(0deg);
-  }
-`;
+const WIN_TYPE_CONFIG = {
+  slap: { english: "THRUST OUT!", japanese: "Tsukidashi" },
+  charged: { english: "PUSH OUT!", japanese: "Oshidashi" },
+  cinematicKill: { english: "DEMOLISHED!", japanese: null },
+  grabPush: { english: "FORCE OUT!", japanese: "Yorikiri" },
+  grabThrow: { english: "OVERARM THROW!", japanese: "Uwatenage" },
+  okuridashi: { english: "REAR PUSH OUT!", japanese: "Okuridashi" },
+  snowball: { english: "RING OUT!", japanese: null },
+  pumoClone: { english: "RING OUT!", japanese: null },
+  ringOut: { english: "RING OUT!", japanese: null },
+};
 
-// Brush stroke reveal effect
-const brushReveal = keyframes`
-  0% {
-    clip-path: inset(0 100% 0 0);
-  }
-  30% {
-    clip-path: inset(0 0% 0 0);
-  }
-  100% {
-    clip-path: inset(0 0% 0 0);
-  }
-`;
+// ============================================
+// ANIMATIONS
+// ============================================
 
-// Ink splatter animation
-const inkSplatter = keyframes`
-  0% {
-    transform: scale(0) rotate(0deg);
-    opacity: 0;
-  }
-  20% {
-    transform: scale(1.2) rotate(10deg);
-    opacity: 0.8;
-  }
-  40% {
-    transform: scale(1) rotate(-5deg);
-    opacity: 0.6;
-  }
-  100% {
-    transform: scale(1.1) rotate(0deg);
-    opacity: 0;
-  }
-`;
-
-// Subtitle slide in
-const subtitleSlide = keyframes`
-  0% {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  30% {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  50% {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  80% {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-`;
-
-// Screen flash effect
 const screenFlash = keyframes`
-  0% { opacity: 0; }
-  5% { opacity: 0.7; }
-  15% { opacity: 0.35; }
-  30% { opacity: 0.45; }
-  50% { opacity: 0.15; }
+  0%   { opacity: 0; }
+  6%   { opacity: 0.45; }
+  16%  { opacity: 0.18; }
+  30%  { opacity: 0.06; }
   100% { opacity: 0; }
 `;
 
-// Shockwave ring expanding outward
-const shockwaveExpand = keyframes`
-  0% {
-    transform: translate(-50%, -50%) scale(0.1);
-    opacity: 0.9;
-    border-width: clamp(4px, 0.5cqw, 8px);
-  }
-  50% {
-    opacity: 0.5;
-    border-width: clamp(2px, 0.25cqw, 4px);
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(2.5);
-    opacity: 0;
-    border-width: 1px;
-  }
+const hazePulse = keyframes`
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+  12%  { opacity: 0.75; transform: translate(-50%, -50%) scale(1.05); }
+  22%  { transform: translate(-50%, -50%) scale(1); }
+  78%  { opacity: 0.75; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
 `;
 
-// Floating ember/spark animation
-const floatUp = keyframes`
-  0% {
-    transform: translateY(0) scale(1);
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.8;
-  }
-  100% {
-    transform: translateY(clamp(-60px, -8cqw, -100px)) scale(0.3);
-    opacity: 0;
-  }
+const textDrop = keyframes`
+  0%   { opacity: 0; transform: translate(-50%, -50%) translateY(-180%) scaleY(1.2) scaleX(0.92); }
+  5%   { opacity: 0; }
+  14%  { opacity: 1; transform: translate(-50%, -50%) translateY(6%) scaleY(0.82) scaleX(1.12); }
+  22%  { transform: translate(-50%, -50%) translateY(-4%) scaleY(1.06) scaleX(0.97); }
+  30%  { transform: translate(-50%, -50%) translateY(2%) scaleY(0.97) scaleX(1.02); }
+  38%  { transform: translate(-50%, -50%) translateY(-1%) scaleY(1.01) scaleX(1); }
+  46%  { transform: translate(-50%, -50%) translateY(0%) scaleY(1) scaleX(1); }
+  78%  { opacity: 1; transform: translate(-50%, -50%) scaleY(1) scaleX(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scaleY(0.97) scaleX(1.02); }
 `;
 
-// Corner decoration fade in
-const cornerFadeIn = keyframes`
-  0% { opacity: 0; transform: scale(0.5); }
-  20% { opacity: 0; transform: scale(0.5); }
-  40% { opacity: 1; transform: scale(1); }
-  80% { opacity: 1; transform: scale(1); }
-  100% { opacity: 0; transform: scale(1.1); }
+const brushPaint = keyframes`
+  0%   { clip-path: inset(0 100% 0 0); opacity: 0; }
+  8%   { opacity: 0; }
+  14%  { opacity: 1; }
+  30%  { clip-path: inset(0 0% 0 0); }
+  78%  { clip-path: inset(0 0% 0 0); opacity: 1; }
+  100% { clip-path: inset(0 0% 0 0); opacity: 0; }
 `;
 
-// Victory screen shake
-const victoryShake = keyframes`
-  0%, 100% { transform: translate(-50%, -50%); }
-  10% { transform: translate(-52%, -48%); }
-  20% { transform: translate(-48%, -52%); }
-  30% { transform: translate(-51%, -49%); }
-  40% { transform: translate(-49%, -51%); }
-  50% { transform: translate(-50%, -50%); }
+const splashAppear = keyframes`
+  0%   { opacity: 0; transform: rotate(15deg) scale(0.3); }
+  26%  { opacity: 0; transform: rotate(15deg) scale(0.3); }
+  34%  { opacity: 0.65; transform: rotate(15deg) scale(1.1); }
+  42%  { opacity: 0.5; transform: rotate(15deg) scale(1); }
+  78%  { opacity: 0.5; }
+  100% { opacity: 0; }
 `;
 
-// Vertical center for the announcement — centered in the play area below the HUD.
-// The HUD (UiPlayerInfo) occupies roughly the top 18% of the game container,
-// so the remaining play area spans ~18%–100%. Its midpoint is ~60%.
-const ANNOUNCE_TOP = "52%";
-
-// Counteracts the .game-scene camera transform so children stay screen-centered
-// (aligned with the HUD scoreboard) regardless of camera pan/zoom.
-// The scene applies: translate3d(cam-x, cam-y, 0) scale(cam-scale)
-// This applies the inverse: scale(1/cam-scale) translate3d(-cam-x, -cam-y, 0)
-// Because `transform` creates a stacking context, z-index on this wrapper
-// determines where ALL its children render relative to player sprites.
-const CameraStableLayer = styled.div`
-  position: absolute;
-  inset: 0;
-  transform-origin: center center;
-  transform:
-    scale(calc(1 / var(--cam-scale, 1)))
-    translate3d(
-      calc(-1 * var(--cam-x, 0px)),
-      calc(-1 * var(--cam-y, 0px)),
-      0
-    );
-  pointer-events: none;
-  will-change: transform;
+const subtitleTrack = keyframes`
+  0%   { opacity: 0; letter-spacing: 0.8em; }
+  24%  { opacity: 0; letter-spacing: 0.8em; }
+  42%  { opacity: 1; letter-spacing: 0.3em; }
+  78%  { opacity: 1; letter-spacing: 0.3em; }
+  100% { opacity: 0; letter-spacing: 0.25em; }
 `;
 
-// Screen flash overlay - fills the game container, behind players
+const outcomeFade = keyframes`
+  0%   { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  30%  { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  46%  { opacity: 1; transform: translateX(-50%) translateY(0); }
+  78%  { opacity: 1; }
+  100% { opacity: 0; }
+`;
+
+const dividerScale = keyframes`
+  0%   { transform: translateX(-50%) scaleX(0); opacity: 0; }
+  28%  { opacity: 0; }
+  44%  { transform: translateX(-50%) scaleX(1); opacity: 0.45; }
+  78%  { opacity: 0.45; }
+  100% { opacity: 0; }
+`;
+
+const shardFly = keyframes`
+  0%   { opacity: 0; transform: translate(0, 0) scale(0.4); }
+  14%  { opacity: 0; }
+  20%  { opacity: 0.8; transform: translate(0, 0) scale(1); }
+  70%  { opacity: 0.2; }
+  100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(0.1) rotate(var(--rot)); }
+`;
+
+// ============================================
+// STYLED COMPONENTS
+// ============================================
+
 const ScreenFlash = styled.div`
   position: absolute;
   inset: 0;
-  background: ${props => props.$isVictory
-    ? 'radial-gradient(circle at center, rgba(255, 255, 200, 0.95) 0%, rgba(255, 215, 0, 0.65) 30%, rgba(255, 180, 0, 0.4) 55%, transparent 80%)'
-    : 'radial-gradient(circle at center, rgba(180, 20, 20, 0.8) 0%, rgba(120, 0, 0, 0.5) 35%, rgba(60, 0, 0, 0.25) 55%, transparent 80%)'
-  };
-  animation: ${screenFlash} 0.8s ease-out forwards;
   pointer-events: none;
-  contain: strict;
+  z-index: 1000;
+  animation: ${screenFlash} 0.6s ease-out forwards;
+  background: ${p => p.$isVictory
+    ? "radial-gradient(ellipse at 50% 25%, rgba(255,215,0,0.45) 0%, rgba(255,200,50,0.18) 28%, transparent 55%)"
+    : "radial-gradient(ellipse at 50% 25%, rgba(200,30,30,0.35) 0%, rgba(150,20,20,0.15) 25%, transparent 50%)"
+  };
 `;
 
-// Shockwave ring effect — scales with game container
-const ShockwaveRing = styled.div`
-  position: absolute;
-  top: ${ANNOUNCE_TOP};
+const ContrastHaze = styled.div`
+  position: fixed;
+  top: ${ANNOUNCE_Y};
   left: 50%;
-  width: clamp(160px, 26cqw, 360px);
-  height: clamp(160px, 26cqw, 360px);
+  width: clamp(440px, 58cqw, 720px);
+  height: clamp(120px, 18cqh, 200px);
   border-radius: 50%;
-  border: clamp(4px, 0.5cqw, 8px) solid ${props => props.$isVictory
-    ? 'rgba(255, 215, 0, 0.85)'
-    : 'rgba(180, 0, 0, 0.7)'
-  };
-  background: transparent;
-  animation: ${shockwaveExpand} 0.6s ease-out forwards;
-  animation-delay: ${props => props.$delay || '0s'};
   pointer-events: none;
-`;
+  z-index: 1001;
 
-// Single ember particle
-const Ember = styled.div`
-  position: absolute;
-  width: ${props => props.$size || 'clamp(4px, 0.5cqw, 8px)'};
-  height: ${props => props.$size || 'clamp(4px, 0.5cqw, 8px)'};
-  background: ${props => props.$isVictory
-    ? 'radial-gradient(circle, rgba(255, 255, 220, 1) 0%, rgba(255, 215, 0, 0.9) 40%, rgba(255, 180, 0, 0.6) 70%, transparent 100%)'
-    : 'radial-gradient(circle, rgba(255, 150, 150, 1) 0%, rgba(200, 50, 50, 0.9) 40%, rgba(150, 0, 0, 0.6) 70%, transparent 100%)'
-  };
-  border-radius: 50%;
-  animation: ${floatUp} ${props => props.$duration || '1.5s'} ease-out forwards;
-  animation-delay: ${props => props.$delay || '0.1s'};
-  left: ${props => props.$left || '50%'};
-  bottom: ${props => props.$bottom || '40%'};
-  z-index: 46;
-  pointer-events: none;
-`;
-
-// Japanese corner decoration — scales with game container
-const CornerDecoration = styled.div`
-  position: absolute;
-  width: clamp(35px, 6cqw, 85px);
-  height: clamp(35px, 6cqw, 85px);
-  border: clamp(2px, 0.35cqw, 5px) solid ${props => props.$isVictory
-    ? 'rgba(255, 215, 0, 0.75)'
-    : 'rgba(180, 0, 0, 0.6)'
-  };
-  animation: ${cornerFadeIn} 3s ease-out forwards;
-  z-index: 47;
-
-  ${props => props.$position === 'topLeft' && `
-    top: clamp(-35px, -6cqw, -80px);
-    left: clamp(-35px, -6cqw, -80px);
-    border-right: none;
-    border-bottom: none;
-  `}
-  ${props => props.$position === 'topRight' && `
-    top: clamp(-35px, -6cqw, -80px);
-    right: clamp(-35px, -6cqw, -80px);
-    border-left: none;
-    border-bottom: none;
-  `}
-  ${props => props.$position === 'bottomLeft' && `
-    bottom: clamp(-35px, -6cqw, -80px);
-    left: clamp(-35px, -6cqw, -80px);
-    border-right: none;
-    border-top: none;
-  `}
-  ${props => props.$position === 'bottomRight' && `
-    bottom: clamp(-35px, -6cqw, -80px);
-    right: clamp(-35px, -6cqw, -80px);
-    border-left: none;
-    border-top: none;
-  `}
-`;
-
-// Effects + kanji container — behind players, in front of dohyo
-const EffectsContainer = styled.div`
-  position: absolute;
-  top: ${ANNOUNCE_TOP};
-  left: 50%;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  animation: ${props => props.$isVictory ? css`${victoryShake} 0.4s ease-out` : 'none'};
-  will-change: transform;
-  contain: layout style;
-`;
-
-// Subtitle container — above players
-const SubtitleContainer = styled.div`
-  position: absolute;
-  top: ${ANNOUNCE_TOP};
-  left: 50%;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  margin-top: clamp(4.5rem, 10cqw, 12rem);
-`;
-
-const KanjiContainer = styled.div`
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-`;
-
-const MainKanji = styled.div`
-  font-family: "Noto Serif JP", "Yu Mincho", "Hiragino Mincho Pro", serif;
-  font-size: clamp(8rem, 19cqw, 22rem);
-  font-weight: 900;
-  line-height: 1;
-  position: relative;
-  color: ${props => props.$isVictory ? '#FFD700' : '#8B0000'};
-  animation: ${props => props.$isVictory
-    ? css`${victorySlam} 3s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards`
-    : css`${defeatDrop} 3s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards`
-  };
-  text-shadow: ${props => props.$isVictory
-    ? `
-      clamp(3px, 0.4cqw, 6px) clamp(3px, 0.4cqw, 6px) 0 #E6B800,
-      clamp(6px, 0.8cqw, 12px) clamp(6px, 0.8cqw, 12px) 0 #CC9900,
-      clamp(9px, 1.2cqw, 18px) clamp(9px, 1.2cqw, 18px) 0 #B38600,
-      clamp(12px, 1.6cqw, 24px) clamp(12px, 1.6cqw, 24px) 0 rgba(153, 115, 0, 0.85),
-      clamp(15px, 2cqw, 30px) clamp(15px, 2cqw, 30px) 0 rgba(120, 90, 0, 0.6),
-      0 0 clamp(24px, 4cqw, 60px) rgba(255, 215, 0, 0.35)
-    `
-    : `
-      clamp(3px, 0.4cqw, 6px) clamp(3px, 0.4cqw, 6px) 0 #4a0000,
-      clamp(6px, 0.8cqw, 12px) clamp(6px, 0.8cqw, 12px) 0 #2a0000,
-      clamp(9px, 1.2cqw, 18px) clamp(9px, 1.2cqw, 18px) 0 #1a0000,
-      clamp(12px, 1.6cqw, 24px) clamp(12px, 1.6cqw, 24px) 0 #0a0a0a,
-      clamp(15px, 2cqw, 30px) clamp(15px, 2cqw, 30px) 0 rgba(0, 0, 0, 0.7),
-      0 0 clamp(24px, 4cqw, 60px) rgba(139, 0, 0, 0.4)
-    `
-  };
-  background: ${props => props.$isVictory
-    ? 'linear-gradient(145deg, #FFFFFF 0%, #FFFFA0 10%, #FFEE44 22%, #FFD700 40%, #FFC500 55%, #FFB000 70%, #FF9500 85%, #FF8000 100%)'
-    : 'linear-gradient(145deg, #FF4444 0%, #DD2222 10%, #BB1111 20%, #8B0000 35%, #6B0000 50%, #4a0000 65%, #2a0000 80%, #000000 100%)'
-  };
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  will-change: transform, opacity;
-  contain: layout style;
-`;
-
-// Shadow layer behind the kanji for depth
-const KanjiShadow = styled.div`
-  position: absolute;
-  font-family: "Noto Serif JP", "Yu Mincho", "Hiragino Mincho Pro", serif;
-  font-size: clamp(8rem, 19cqw, 22rem);
-  font-weight: 900;
-  line-height: 1;
-  top: clamp(5px, 0.6cqw, 10px);
-  left: clamp(5px, 0.6cqw, 10px);
-  color: ${props => props.$isVictory ? '#FFFFFF' : '#000000'};
-  z-index: -1;
-  opacity: 0.7;
-  will-change: transform, opacity;
-  contain: layout style;
-`;
-
-const InkSplatter = styled.div`
-  position: absolute;
-  width: clamp(190px, 36cqw, 500px);
-  height: clamp(190px, 36cqw, 500px);
-  border-radius: 50%;
-  background: ${props => props.$isVictory
-    ? 'radial-gradient(ellipse at center, rgba(255, 215, 0, 0.45) 0%, rgba(255, 190, 0, 0.35) 25%, rgba(255, 160, 0, 0.2) 50%, transparent 70%)'
-    : 'radial-gradient(ellipse at center, rgba(180, 0, 0, 0.4) 0%, rgba(120, 0, 0, 0.25) 30%, rgba(60, 0, 0, 0.12) 50%, transparent 70%)'
-  };
-  animation: ${inkSplatter} 3s ease-out forwards;
-  z-index: -1;
-  transform-origin: center center;
-  clip-path: polygon(
-    50% 0%, 65% 10%, 80% 5%, 85% 20%, 100% 25%,
-    95% 40%, 100% 50%, 95% 65%, 85% 75%, 90% 85%,
-    75% 90%, 65% 100%, 50% 95%, 35% 100%, 25% 90%,
-    15% 85%, 10% 70%, 0% 60%, 5% 45%, 0% 30%,
-    10% 20%, 20% 10%, 35% 5%
+  background: radial-gradient(
+    ellipse at center,
+    rgba(10, 5, 5, 0.55) 0%,
+    rgba(8, 4, 4, 0.35) 28%,
+    rgba(5, 3, 3, 0.12) 55%,
+    transparent 78%
   );
+  filter: blur(8px);
+
+  animation: ${hazePulse} 3s ease-out forwards;
+
+  @media (max-width: 900px) {
+    width: clamp(340px, 55cqw, 580px);
+    height: clamp(100px, 16cqh, 170px);
+  }
+  @media (max-width: 600px) {
+    width: clamp(280px, 58cqw, 440px);
+    height: clamp(85px, 15cqh, 145px);
+  }
 `;
 
-const SecondaryInkSplatter = styled(InkSplatter)`
-  width: clamp(140px, 27cqw, 370px);
-  height: clamp(140px, 27cqw, 370px);
-  animation-delay: 0.1s;
-  transform: rotate(45deg);
-  opacity: 0.7;
-`;
+const MainText = styled.div`
+  position: fixed;
+  top: ${ANNOUNCE_Y};
+  left: 50%;
+  z-index: 1005;
+  pointer-events: none;
 
-const SubtitleText = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(1.1rem, 2.4cqw, 3rem);
-  color: ${props => props.$isVictory ? '#FFF8E7' : '#E8E8E8'};
+  font-family: "Bungee", "Impact", sans-serif;
+  font-size: clamp(2.2rem, 6.5cqw, 5.8rem);
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  letter-spacing: clamp(0.15em, 0.3em, 0.3em);
-  animation: ${subtitleSlide} 3s ease-out forwards;
-  -webkit-text-stroke: ${props => props.$isVictory ? 'clamp(1px, 0.12cqw, 2px) #996600' : 'clamp(0.5px, 0.08cqw, 1px) #2a0000'};
-  text-shadow: ${props => props.$isVictory
+  white-space: nowrap;
+
+  color: ${p => p.$isVictory ? "#FFFFFF" : "#FFD0D0"};
+  -webkit-text-stroke: ${p => p.$isVictory
+    ? "clamp(1.5px, 0.25cqw, 3px) #2a1400"
+    : "clamp(1.5px, 0.25cqw, 3px) #2a0000"
+  };
+
+  text-shadow: ${p => p.$isVictory
     ? `
-      2px 2px 0 #CC8800,
-      4px 4px 0 #AA6600,
-      5px 5px 10px rgba(0, 0, 0, 0.7),
-      0 0 20px rgba(255, 215, 0, 0.5)
+      0 0 10px rgba(255,215,0,0.6),
+      0 0 25px rgba(255,180,0,0.3),
+      clamp(3px, 0.24cqw, 6px) clamp(3px, 0.24cqw, 6px) 0 #1a0a00,
+      5px 5px 0 rgba(15,5,0,0.6),
+      7px 7px 0 rgba(10,3,0,0.35),
+      0 2px 10px rgba(0,0,0,0.8)
     `
     : `
-      2px 2px 0 #6a0000,
-      4px 4px 0 #4a0000,
-      6px 6px 12px rgba(0, 0, 0, 0.9),
-      0 0 25px rgba(139, 0, 0, 0.5),
-      0 0 50px rgba(80, 0, 0, 0.3)
+      0 0 10px rgba(220,40,40,0.5),
+      0 0 25px rgba(180,20,20,0.25),
+      clamp(3px, 0.24cqw, 6px) clamp(3px, 0.24cqw, 6px) 0 #1a0000,
+      5px 5px 0 rgba(15,0,0,0.6),
+      7px 7px 0 rgba(10,0,0,0.35),
+      0 2px 10px rgba(0,0,0,0.8)
     `
   };
+
+  animation: ${css`${textDrop}`} 3s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+  will-change: transform, opacity;
+
+  @media (max-width: 900px) {
+    font-size: clamp(1.8rem, 5.6cqw, 4.2rem);
+    letter-spacing: 0.08em;
+  }
+  @media (max-width: 600px) {
+    font-size: clamp(1.4rem, 5cqw, 3rem);
+    letter-spacing: 0.06em;
+  }
 `;
 
 const BrushStroke = styled.div`
-  position: absolute;
-  width: clamp(240px, 48cqw, 660px);
-  height: clamp(20px, 3.8cqw, 50px);
-  background: ${props => props.$isVictory
-    ? 'linear-gradient(90deg, transparent 0%, rgba(255, 180, 0, 0.3) 15%, rgba(255, 200, 0, 0.55) 35%, rgba(255, 215, 0, 0.7) 50%, rgba(255, 200, 0, 0.55) 65%, rgba(255, 180, 0, 0.3) 85%, transparent 100%)'
-    : 'linear-gradient(90deg, transparent 0%, rgba(60, 0, 0, 0.25) 15%, rgba(120, 0, 0, 0.45) 35%, rgba(139, 0, 0, 0.55) 50%, rgba(120, 0, 0, 0.45) 65%, rgba(60, 0, 0, 0.25) 85%, transparent 100%)'
+  position: fixed;
+  top: calc(${ANNOUNCE_Y} + clamp(22px, 3.5cqh, 48px));
+  left: 50%;
+  transform: translateX(-50%) rotate(-0.8deg);
+  width: clamp(240px, 38cqw, 480px);
+  height: clamp(7px, 1cqh, 14px);
+  pointer-events: none;
+  z-index: 1004;
+  border-radius: 60% 25% 45% 50% / 80% 50% 40% 65%;
+  filter: blur(0.5px);
+
+  background: ${p => p.$isVictory
+    ? `linear-gradient(90deg,
+        transparent,
+        rgba(255,215,0,0.2) 5%,
+        rgba(255,215,0,0.55) 16%,
+        rgba(255,215,0,0.8) 38%,
+        rgba(255,215,0,0.85) 52%,
+        rgba(255,215,0,0.6) 72%,
+        rgba(255,215,0,0.3) 90%,
+        transparent)`
+    : `linear-gradient(90deg,
+        transparent,
+        rgba(185,28,28,0.18) 5%,
+        rgba(185,28,28,0.45) 16%,
+        rgba(185,28,28,0.68) 38%,
+        rgba(185,28,28,0.75) 52%,
+        rgba(185,28,28,0.52) 72%,
+        rgba(185,28,28,0.25) 90%,
+        transparent)`
   };
-  bottom: clamp(-20px, -3.8cqw, -50px);
-  animation: ${brushReveal} 3s ease-out forwards;
-  border-radius: 50%;
-  filter: blur(2px);
+
+  animation: ${brushPaint} 3s ease-out forwards;
+
+  @media (max-width: 900px) { width: clamp(200px, 35cqw, 380px); }
+  @media (max-width: 600px) { width: clamp(160px, 34cqw, 300px); }
 `;
 
-const RoundResult = ({ isVictory }) => {
-  const kanji = isVictory ? '勝' : '敗';
+const BrushSplash = styled.div`
+  position: fixed;
+  top: calc(${ANNOUNCE_Y} + clamp(24px, 3.8cqh, 50px));
+  left: calc(50% + clamp(100px, 16cqw, 200px));
+  width: clamp(10px, 1.5cqw, 20px);
+  height: clamp(4px, 0.5cqh, 7px);
+  pointer-events: none;
+  z-index: 1004;
+  border-radius: 50% 30% 45% 55% / 60% 40% 55% 45%;
 
-  const embers = useMemo(() => {
-    const positions = [];
-    const emberCount = 6;
-    for (let i = 0; i < emberCount; i++) {
-      positions.push({
-        id: i,
-        left: `${38 + (i * 4)}%`,
-        bottom: `${38 + (i % 2) * 10}%`,
-        size: `clamp(4px, ${0.4 + (i % 3) * 0.15}cqw, ${6 + (i % 3) * 2}px)`,
-        delay: `${0.15 + (i * 0.1)}s`,
-        duration: `${1.3 + (i % 2) * 0.4}s`
-      });
-    }
-    return positions;
-  }, []);
+  background: ${p => p.$isVictory
+    ? "rgba(255,215,0,0.5)"
+    : "rgba(185,28,28,0.4)"
+  };
+
+  animation: ${splashAppear} 3s ease-out forwards;
+
+  @media (max-width: 900px) {
+    left: calc(50% + clamp(80px, 14cqw, 160px));
+  }
+  @media (max-width: 600px) {
+    left: calc(50% + clamp(65px, 14cqw, 125px));
+  }
+`;
+
+const KimariteText = styled.div`
+  position: fixed;
+  top: calc(${ANNOUNCE_Y} + clamp(36px, 5.5cqh, 68px));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1005;
+  pointer-events: none;
+
+  font-family: "Noto Serif JP", "Yu Mincho", "Hiragino Mincho Pro", serif;
+  font-size: clamp(0.8rem, 1.7cqw, 1.4rem);
+  font-weight: 700;
+  font-style: italic;
+  color: ${p => p.$isVictory ? "#FFE8B8" : "#FFB8B8"};
+  letter-spacing: 0.3em;
+
+  text-shadow: ${p => p.$isVictory
+    ? "1px 1px 3px rgba(0,0,0,0.9), 0 0 10px rgba(255,215,0,0.15)"
+    : "1px 1px 3px rgba(0,0,0,0.9), 0 0 10px rgba(200,30,30,0.1)"
+  };
+
+  animation: ${subtitleTrack} 3s ease-out forwards;
+
+  @media (max-width: 600px) {
+    font-size: clamp(0.65rem, 1.4cqw, 1rem);
+    top: calc(${ANNOUNCE_Y} + clamp(30px, 4.5cqh, 56px));
+  }
+`;
+
+const ResultDivider = styled.div`
+  position: fixed;
+  top: calc(${ANNOUNCE_Y} + clamp(50px, 7.5cqh, 86px));
+  left: 50%;
+  width: clamp(45px, 7cqw, 90px);
+  height: 1px;
+  pointer-events: none;
+  z-index: 1005;
+
+  background: ${p => p.$isVictory
+    ? "linear-gradient(90deg, transparent, rgba(255,215,0,0.35), transparent)"
+    : "linear-gradient(90deg, transparent, rgba(185,28,28,0.28), transparent)"
+  };
+
+  animation: ${dividerScale} 3s ease-out forwards;
+
+  @media (max-width: 600px) {
+    top: calc(${ANNOUNCE_Y} + clamp(42px, 6.5cqh, 70px));
+  }
+`;
+
+const OutcomeText = styled.div`
+  position: fixed;
+  top: calc(${ANNOUNCE_Y} + ${p => p.$compact
+    ? "clamp(36px, 5.5cqh, 64px)"
+    : "clamp(58px, 8.8cqh, 100px)"
+  });
+  left: 50%;
+  z-index: 1005;
+  pointer-events: none;
+
+  font-family: "Bungee", "Impact", sans-serif;
+  font-size: clamp(0.65rem, 1.3cqw, 1.3rem);
+  color: ${p => p.$isVictory ? "#FFD700" : "#DC2626"};
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  white-space: nowrap;
+
+  text-shadow: 1px 1px 4px rgba(0,0,0,0.9);
+
+  animation: ${outcomeFade} 3s ease-out forwards;
+
+  @media (max-width: 600px) {
+    font-size: clamp(0.55rem, 1.1cqw, 1rem);
+    top: calc(${ANNOUNCE_Y} + ${p => p.$compact
+      ? "clamp(30px, 4.8cqh, 54px)"
+      : "clamp(50px, 7.5cqh, 84px)"
+    });
+  }
+`;
+
+const Shard = styled.div`
+  position: fixed;
+  top: ${ANNOUNCE_Y};
+  left: ${p => p.$x};
+  margin-top: ${p => p.$yOff};
+  z-index: 1006;
+  pointer-events: none;
+  width: ${p => p.$size};
+  height: ${p => p.$size};
+  border-radius: 1px;
+
+  background: ${p => p.$isVictory
+    ? "linear-gradient(135deg, #FFFAD0, #FFD700)"
+    : "linear-gradient(135deg, #ffd0d0, #DC2626)"
+  };
+  box-shadow: 0 0 3px ${p => p.$isVictory
+    ? "rgba(255,215,0,0.4)"
+    : "rgba(220,40,40,0.3)"
+  };
+
+  --tx: ${p => p.$tx};
+  --ty: ${p => p.$ty};
+  --rot: ${p => p.$rot};
+
+  animation: ${shardFly} ${p => p.$dur} ease-out forwards;
+`;
+
+// ============================================
+// COMPONENT
+// ============================================
+
+const RoundResult = ({ isVictory, winType }) => {
+  const config = WIN_TYPE_CONFIG[winType] || WIN_TYPE_CONFIG.ringOut;
+  const hasKimarite = !!config.japanese;
+
+  const shards = useMemo(() => [
+    { id: 0, x: "calc(50% - 95px)", yOff: "-8px",  size: "5px", tx: "-55px", ty: "-40px", rot: "120deg", dur: "1.9s" },
+    { id: 1, x: "calc(50% - 45px)", yOff: "10px",  size: "4px", tx: "-35px", ty: "42px",  rot: "-95deg", dur: "1.6s" },
+    { id: 2, x: "calc(50% + 8px)",  yOff: "-14px", size: "6px", tx: "12px",  ty: "-48px", rot: "175deg", dur: "2.1s" },
+    { id: 3, x: "calc(50% + 55px)", yOff: "6px",   size: "4px", tx: "42px",  ty: "38px",  rot: "55deg",  dur: "1.7s" },
+    { id: 4, x: "calc(50% + 105px)", yOff: "-5px", size: "5px", tx: "58px",  ty: "-32px", rot: "-145deg", dur: "2s" },
+    { id: 5, x: "calc(50% - 72px)", yOff: "14px",  size: "3px", tx: "-48px", ty: "28px",  rot: "40deg",  dur: "1.5s" },
+  ], []);
 
   return (
     <>
-      {/* Behind players (z-index 10) — camera-stabilized so it stays screen-centered */}
-      <CameraStableLayer style={{ zIndex: 10 }}>
-        <ScreenFlash $isVictory={isVictory} />
-        <ShockwaveRing $isVictory={isVictory} $delay="0s" />
-        <EffectsContainer $isVictory={isVictory}>
-          <InkSplatter $isVictory={isVictory} />
-          <SecondaryInkSplatter $isVictory={isVictory} />
+      <ScreenFlash $isVictory={isVictory} />
+      <ContrastHaze />
 
-          <CornerDecoration $isVictory={isVictory} $position="topLeft" />
-          <CornerDecoration $isVictory={isVictory} $position="topRight" />
-          <CornerDecoration $isVictory={isVictory} $position="bottomLeft" />
-          <CornerDecoration $isVictory={isVictory} $position="bottomRight" />
+      <MainText $isVictory={isVictory}>
+        {config.english}
+      </MainText>
 
-          <KanjiContainer>
-            <KanjiShadow $isVictory={isVictory}>{kanji}</KanjiShadow>
-            <MainKanji $isVictory={isVictory}>{kanji}</MainKanji>
-          </KanjiContainer>
-          <BrushStroke $isVictory={isVictory} />
+      <BrushStroke $isVictory={isVictory} />
+      <BrushSplash $isVictory={isVictory} />
 
-          {embers.map(ember => (
-            <Ember
-              key={ember.id}
-              $isVictory={isVictory}
-              $left={ember.left}
-              $bottom={ember.bottom}
-              $size={ember.size}
-              $delay={ember.delay}
-              $duration={ember.duration}
-            />
-          ))}
-        </EffectsContainer>
-      </CameraStableLayer>
+      {hasKimarite && (
+        <>
+          <KimariteText $isVictory={isVictory}>
+            {config.japanese}
+          </KimariteText>
+          <ResultDivider $isVictory={isVictory} />
+        </>
+      )}
 
-      {/* Above players (z-index 110) — camera-stabilized */}
-      <CameraStableLayer style={{ zIndex: 110 }}>
-        <SubtitleContainer>
-          <SubtitleText $isVictory={isVictory}>
-            {isVictory ? 'SHIROBOSHI' : 'KUROBOSHI'}
-          </SubtitleText>
-        </SubtitleContainer>
-      </CameraStableLayer>
+      <OutcomeText $isVictory={isVictory} $compact={!hasKimarite}>
+        {isVictory ? "SHIROBOSHI" : "KUROBOSHI"}
+      </OutcomeText>
+
+      {shards.map(s => (
+        <Shard
+          key={s.id}
+          $isVictory={isVictory}
+          $x={s.x}
+          $yOff={s.yOff}
+          $size={s.size}
+          $tx={s.tx}
+          $ty={s.ty}
+          $rot={s.rot}
+          $dur={s.dur}
+        />
+      ))}
     </>
   );
 };
 
 RoundResult.propTypes = {
   isVictory: PropTypes.bool.isRequired,
+  winType: PropTypes.string,
 };
 
 export default memo(RoundResult);

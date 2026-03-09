@@ -23,6 +23,7 @@ function cleanupPlayerStates(player) {
   player.isBeingThrown = false;
   player.isAttacking = false;
   player.isHit = false;
+  player.lastHitType = null;
   player.isAlreadyHit = false;
   player.isParryKnockback = false;
   player.isDodging = false;
@@ -39,8 +40,11 @@ function cleanupPlayerStates(player) {
   player.sidestepActiveEndTime = 0;
   player.sidestepEndTime = 0;
   player.sidestepStartX = 0;
+  player.sidestepDirection = 0;
+  player.sidestepMaxTravel = 0;
   player.sidestepTargetX = 0;
-  player.sidestepOpponentX = 0;
+  player.sidestepRecoveryStartX = 0;
+  player.sidestepRecoveryTargetX = 0;
   player.slapActiveEndTime = 0;
   player.chargedActiveEndTime = 0;
   player.isRawParrying = false;

@@ -503,16 +503,14 @@ const BarTrack = styled.div`
   border-radius: 3px;
   overflow: hidden;
 
-  /* Deep dark track — like looking into ice */
   background:
-    /* Subtle frost-crack pattern */
-    linear-gradient(137deg, transparent 48%, rgba(168,212,255,0.025) 49%, rgba(168,212,255,0.025) 51%, transparent 52%),
-    linear-gradient(-137deg, transparent 48%, rgba(168,212,255,0.015) 49%, rgba(168,212,255,0.015) 51%, transparent 52%),
+    linear-gradient(137deg, transparent 48%, rgba(168,212,255,0.02) 49%, rgba(168,212,255,0.02) 51%, transparent 52%),
+    linear-gradient(-137deg, transparent 48%, rgba(168,212,255,0.012) 49%, rgba(168,212,255,0.012) 51%, transparent 52%),
     linear-gradient(
       ${(p) => (p.$isRight ? "280deg" : "100deg")},
-      rgba(4, 8, 22, 0.97) 0%,
-      rgba(8, 14, 35, 0.93) 50%,
-      rgba(12, 20, 45, 0.88) 100%
+      rgba(2, 2, 2, 0.97) 0%,
+      rgba(6, 6, 6, 0.95) 50%,
+      rgba(10, 10, 10, 0.92) 100%
     );
   border: 1.5px solid rgba(168, 212, 255, 0.12);
   box-shadow:

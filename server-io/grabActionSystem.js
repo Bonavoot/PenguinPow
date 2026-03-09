@@ -292,7 +292,7 @@ function updateGrabActions(player, room, io, delta, rooms) {
               "ringOutFreezeDelay"
             );
 
-            handleWinCondition(room, opponent, player, io);
+            handleWinCondition(room, opponent, player, io, "grabPush");
             opponent.knockbackVelocity = { ...opponent.knockbackVelocity };
           } else {
             // Opponent has stamina — PIN at boundary

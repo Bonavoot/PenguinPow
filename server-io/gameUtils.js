@@ -13,7 +13,6 @@ const {
   SIDESTEP_ACTIVE_MS,
   SIDESTEP_RECOVERY_MS,
   SIDESTEP_STAMINA_COST,
-  SIDESTEP_SWITCH_RANGE,
   SIDESTEP_MAX_TRAVEL,
   HITBOX_DISTANCE_VALUE,
 } = require("./constants");
@@ -377,8 +376,11 @@ function clearAllActionStates(player) {
   player.sidestepActiveEndTime = 0;
   player.sidestepEndTime = 0;
   player.sidestepStartX = 0;
+  player.sidestepDirection = 0;
+  player.sidestepMaxTravel = 0;
   player.sidestepTargetX = 0;
-  player.sidestepOpponentX = 0;
+  player.sidestepRecoveryStartX = 0;
+  player.sidestepRecoveryTargetX = 0;
   
   // CRITICAL: Clear any buffered actions - prevents buffered dodge from executing while grabbed
   player.bufferedAction = null;
@@ -679,26 +681,11 @@ function emitThrottledScreenShake(room, io, shakeData) {
   io.in(room.id).emit("screen_shake", shakeData);
 }
 
-function calculateSidestepTarget(playerX, opponentX) {
-  const distToOpponent = Math.abs(opponentX - playerX);
+function getSidestepInitData(playerX, opponentX) {
   const direction = playerX < opponentX ? 1 : -1;
-
-  const minSep = HITBOX_DISTANCE_VALUE * 2;
-
-  if (distToOpponent <= SIDESTEP_SWITCH_RANGE) {
-    const targetX = opponentX + direction * minSep;
-    return Math.max(MAP_LEFT_BOUNDARY, Math.min(targetX, MAP_RIGHT_BOUNDARY));
-  }
-
-  const rawTarget = playerX + SIDESTEP_MAX_TRAVEL * direction;
-  const landingDistToOpp = (opponentX - rawTarget) * direction;
-
-  if (landingDistToOpp < minSep) {
-    const targetX = opponentX - direction * minSep;
-    return Math.max(MAP_LEFT_BOUNDARY, Math.min(targetX, MAP_RIGHT_BOUNDARY));
-  }
-
-  return Math.max(MAP_LEFT_BOUNDARY, Math.min(rawTarget, MAP_RIGHT_BOUNDARY));
+  const dist = Math.abs(opponentX - playerX);
+  const maxTravel = Math.min(dist + 140 + 20, SIDESTEP_MAX_TRAVEL);
+  return { direction, maxTravel };
 }
 
 module.exports = {
@@ -741,5 +728,5 @@ module.exports = {
   triggerHitstop,
   isRoomInHitstop,
   emitThrottledScreenShake,
-  calculateSidestepTarget,
+  getSidestepInitData,
 };

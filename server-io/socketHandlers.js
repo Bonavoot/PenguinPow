@@ -27,7 +27,7 @@ const {
   canPlayerSlap,
   canPlayerDash,
   canPlayerSidestep,
-  calculateSidestepTarget,
+  getSidestepInitData,
   canPlayerCharge,
   canPlayerUseAction,
   shouldRestartCharging,
@@ -316,8 +316,11 @@ function registerSocketHandlers(socket, io, rooms, context) {
         sidestepActiveEndTime: 0,
         sidestepEndTime: 0,
         sidestepStartX: 0,
+        sidestepDirection: 0,
+        sidestepMaxTravel: 0,
         sidestepTargetX: 0,
-        sidestepOpponentX: 0,
+        sidestepRecoveryStartX: 0,
+        sidestepRecoveryTargetX: 0,
         slapActiveEndTime: 0,
         chargedActiveEndTime: 0,
         isReady: false,
@@ -531,8 +534,11 @@ function registerSocketHandlers(socket, io, rooms, context) {
         sidestepActiveEndTime: 0,
         sidestepEndTime: 0,
         sidestepStartX: 0,
+        sidestepDirection: 0,
+        sidestepMaxTravel: 0,
         sidestepTargetX: 0,
-        sidestepOpponentX: 0,
+        sidestepRecoveryStartX: 0,
+        sidestepRecoveryTargetX: 0,
         slapActiveEndTime: 0,
         chargedActiveEndTime: 0,
         isReady: false,
@@ -1886,6 +1892,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
         }
 
         if (!player.isRecovering) {
+        const initData = getSidestepInitData(player.x, sidestepOpponent.x);
         player.isRawParrySuccess = false;
         player.isPerfectRawParrySuccess = false;
         clearChargeState(player, true);
@@ -1905,8 +1912,8 @@ function registerSocketHandlers(socket, io, rooms, context) {
         player.sidestepActiveEndTime = Date.now() + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS;
         player.sidestepEndTime = Date.now() + SIDESTEP_TOTAL_MS;
         player.sidestepStartX = player.x;
-        player.sidestepOpponentX = sidestepOpponent.x;
-        player.sidestepTargetX = calculateSidestepTarget(player.x, sidestepOpponent.x);
+        player.sidestepDirection = initData.direction;
+        player.sidestepMaxTravel = initData.maxTravel;
 
         player.currentAction = "sidestep";
         player.actionLockUntil = Date.now() + SIDESTEP_TOTAL_MS;

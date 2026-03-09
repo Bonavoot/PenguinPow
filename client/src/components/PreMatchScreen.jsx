@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 
-// Import penguin sprites
 import pumo from "../assets/pumo.png";
 import { SPRITE_BASE_COLOR, recolorImage, BLUE_COLOR_RANGES, GREY_BODY_RANGES } from "../utils/SpriteRecolorizer";
 
@@ -24,6 +23,11 @@ const slideInRight = keyframes`
   to { transform: translateX(0); opacity: 1; }
 `;
 
+const slideUp = keyframes`
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+`;
+
 const pulse = keyframes`
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
@@ -40,7 +44,7 @@ const float = keyframes`
 `;
 
 // ============================================
-// STYLED COMPONENTS
+// LAYOUT
 // ============================================
 const ScreenContainer = styled.div`
   position: absolute;
@@ -56,7 +60,6 @@ const ScreenContainer = styled.div`
   overflow: hidden;
 `;
 
-// Transparent overlay to let the actual game scene show through
 const BlurredBackground = styled.div`
   position: absolute;
   top: 0;
@@ -66,7 +69,6 @@ const BlurredBackground = styled.div`
   background: transparent;
 `;
 
-// Dark overlay - semi-transparent to see game scene behind
 const DarkOverlay = styled.div`
   position: absolute;
   top: 0;
@@ -76,200 +78,228 @@ const DarkOverlay = styled.div`
   background: rgba(0, 0, 0, 0.3);
 `;
 
-// Main match card - 90% width, 80% height with cloud pattern background
+// The card is a CSS grid with transparent background.
+// Individual panels (character, info) are opaque cream boxes.
+// Gaps and the center column show the game scene through.
 const MatchCard = styled.div`
   position: relative;
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr clamp(70px, 12cqw, 180px) 1fr;
+  grid-template-rows: 1fr auto;
+  gap: clamp(5px, 0.55cqw, 10px);
+  padding: clamp(8px, 0.8cqw, 14px);
   width: 90%;
   height: 80%;
-  background: transparent;
-  border: clamp(2px, 0.21cqw, 4px) solid #8b5a2b;
-  box-shadow: 
-    0 0 0 clamp(1px, 0.1cqw, 2px) #d4af37,
-    0 0 0 clamp(3px, 0.31cqw, 6px) #8b5a2b,
-    0 0 0 clamp(4px, 0.42cqw, 8px) #d4af37,
-    0 clamp(8px, 0.78cqw, 15px) clamp(30px, 3.13cqw, 60px) rgba(0, 0, 0, 0.6);
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px, transparent 3px,
+      rgba(212, 175, 55, 0.012) 3px, rgba(212, 175, 55, 0.012) 4px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px, transparent 3px,
+      rgba(212, 175, 55, 0.008) 3px, rgba(212, 175, 55, 0.008) 4px
+    ),
+    linear-gradient(
+      180deg,
+      rgba(44, 24, 16, 0.92) 0%,
+      rgba(35, 18, 12, 0.94) 30%,
+      rgba(26, 14, 10, 0.95) 60%,
+      rgba(35, 18, 12, 0.94) 80%,
+      rgba(44, 24, 16, 0.92) 100%
+    );
+  border: clamp(2.5px, 0.2cqw, 5px) solid #b8860b;
+  border-radius: clamp(4px, 0.4cqw, 8px);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.6),
+    0 0 0 clamp(4px, 0.35cqw, 7px) rgba(92, 64, 51, 0.7),
+    0 0 0 clamp(5px, 0.45cqw, 9px) rgba(180, 130, 30, 0.4),
+    inset 0 1px 0 rgba(255, 200, 100, 0.1),
+    inset 0 -2px 8px rgba(0, 0, 0, 0.4),
+    0 clamp(8px, 0.78cqw, 15px) clamp(30px, 3.13cqw, 60px) rgba(0, 0, 0, 0.7);
   animation: ${fadeIn} 0.5s ease-out 0.2s both;
-  overflow: visible;
-  
-  /* Cloud pattern overlay */
+  overflow: hidden;
+
   &::before {
-    content: '';
+    content: "";
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-image: 
-      radial-gradient(ellipse 80px 40px at 10% 15%, rgba(255, 255, 255, 0.25) 0%, transparent 70%),
-      radial-gradient(ellipse 60px 30px at 5% 25%, rgba(255, 255, 255, 0.2) 0%, transparent 70%),
-      radial-gradient(ellipse 70px 35px at 90% 15%, rgba(255, 255, 255, 0.25) 0%, transparent 70%),
-      radial-gradient(ellipse 50px 25px at 95% 25%, rgba(255, 255, 255, 0.2) 0%, transparent 70%),
-      radial-gradient(ellipse 90px 45px at 8% 85%, rgba(255, 255, 255, 0.2) 0%, transparent 70%),
-      radial-gradient(ellipse 70px 35px at 92% 85%, rgba(255, 255, 255, 0.2) 0%, transparent 70%);
+    top: 0; left: 0; right: 0;
+    height: clamp(3px, 0.24cqw, 6px);
+    background: linear-gradient(
+      90deg,
+      #6b4c12 0%, #c9a22e 15%, #f0d060 35%,
+      #ffe87a 50%,
+      #f0d060 65%, #c9a22e 85%, #6b4c12 100%
+    );
+    border-radius: clamp(4px, 0.4cqw, 8px) clamp(4px, 0.4cqw, 8px) 0 0;
+    z-index: 10;
     pointer-events: none;
-    z-index: 0;
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: clamp(3px, 0.24cqw, 6px);
+    background: linear-gradient(
+      90deg,
+      #6b4c12 0%, #c9a22e 15%, #f0d060 35%,
+      #ffe87a 50%,
+      #f0d060 65%, #c9a22e 85%, #6b4c12 100%
+    );
+    border-radius: 0 0 clamp(4px, 0.4cqw, 8px) clamp(4px, 0.4cqw, 8px);
+    z-index: 10;
+    pointer-events: none;
   }
 `;
 
-// Decorative corner ornaments
-const CornerOrnament = styled.div`
-  position: absolute;
-  width: clamp(30px, 3.13cqw, 60px);
-  height: clamp(30px, 3.13cqw, 60px);
-  z-index: 10;
-  opacity: 0.7;
-  
-  ${props => props.$position === 'top-left' && `
-    top: clamp(4px, 0.42cqw, 8px);
-    left: clamp(4px, 0.42cqw, 8px);
-    border-top: clamp(2px, 0.16cqw, 3px) solid #8b5a2b;
-    border-left: clamp(2px, 0.16cqw, 3px) solid #8b5a2b;
-    &::after {
-      content: '';
-      position: absolute;
-      top: clamp(4px, 0.42cqw, 8px);
-      left: clamp(4px, 0.42cqw, 8px);
-      width: clamp(10px, 1.04cqw, 20px);
-      height: clamp(10px, 1.04cqw, 20px);
-      border-top: clamp(1px, 0.1cqw, 2px) solid #d4af37;
-      border-left: clamp(1px, 0.1cqw, 2px) solid #d4af37;
-    }
-  `}
-  
-  ${props => props.$position === 'top-right' && `
-    top: clamp(4px, 0.42cqw, 8px);
-    right: clamp(4px, 0.42cqw, 8px);
-    border-top: clamp(2px, 0.16cqw, 3px) solid #8b5a2b;
-    border-right: clamp(2px, 0.16cqw, 3px) solid #8b5a2b;
-    &::after {
-      content: '';
-      position: absolute;
-      top: clamp(4px, 0.42cqw, 8px);
-      right: clamp(4px, 0.42cqw, 8px);
-      width: clamp(10px, 1.04cqw, 20px);
-      height: clamp(10px, 1.04cqw, 20px);
-      border-top: clamp(1px, 0.1cqw, 2px) solid #d4af37;
-      border-right: clamp(1px, 0.1cqw, 2px) solid #d4af37;
-    }
-  `}
-  
-  ${props => props.$position === 'bottom-left' && `
-    bottom: clamp(4px, 0.42cqw, 8px);
-    left: clamp(4px, 0.42cqw, 8px);
-    border-bottom: clamp(2px, 0.16cqw, 3px) solid #8b5a2b;
-    border-left: clamp(2px, 0.16cqw, 3px) solid #8b5a2b;
-    &::after {
-      content: '';
-      position: absolute;
-      bottom: clamp(4px, 0.42cqw, 8px);
-      left: clamp(4px, 0.42cqw, 8px);
-      width: clamp(10px, 1.04cqw, 20px);
-      height: clamp(10px, 1.04cqw, 20px);
-      border-bottom: clamp(1px, 0.1cqw, 2px) solid #d4af37;
-      border-left: clamp(1px, 0.1cqw, 2px) solid #d4af37;
-    }
-  `}
-  
-  ${props => props.$position === 'bottom-right' && `
-    bottom: clamp(4px, 0.42cqw, 8px);
-    right: clamp(4px, 0.42cqw, 8px);
-    border-bottom: clamp(2px, 0.16cqw, 3px) solid #8b5a2b;
-    border-right: clamp(2px, 0.16cqw, 3px) solid #8b5a2b;
-    &::after {
-      content: '';
-      position: absolute;
-      bottom: clamp(4px, 0.42cqw, 8px);
-      right: clamp(4px, 0.42cqw, 8px);
-      width: clamp(10px, 1.04cqw, 20px);
-      height: clamp(10px, 1.04cqw, 20px);
-      border-bottom: clamp(1px, 0.1cqw, 2px) solid #d4af37;
-      border-right: clamp(1px, 0.1cqw, 2px) solid #d4af37;
-    }
-  `}
-`;
 
-// Player panel (left or right)
-const PlayerPanel = styled.div`
-  flex: 1;
-  display: flex;
-  flex-direction: column;
+// ============================================
+// ROW 1: Character Panels + Transparent Center
+// ============================================
+const PANEL_PATTERNS = {
+  left: `
+    background-color: #0a4a6b;
+    background-image:
+      repeating-conic-gradient(
+        from 0deg at 50% 110%,
+        #0a4a6b 0deg 10deg,
+        #0e6e9e 10deg 20deg
+      ),
+      radial-gradient(circle at 30% 20%, rgba(0, 255, 255, 0.25) 0%, transparent 40%),
+      radial-gradient(circle at 70% 80%, rgba(56, 189, 248, 0.2) 0%, transparent 35%),
+      radial-gradient(circle at 50% 110%, rgba(212, 175, 55, 0.35) 0%, transparent 35%);
+    background-blend-mode: screen;
+  `,
+  right: `
+    background-color: #0a4a6b;
+    background-image:
+      repeating-conic-gradient(
+        from 0deg at 50% 110%,
+        #0a4a6b 0deg 10deg,
+        #0e6e9e 10deg 20deg
+      ),
+      radial-gradient(circle at 30% 20%, rgba(0, 255, 255, 0.25) 0%, transparent 40%),
+      radial-gradient(circle at 70% 80%, rgba(56, 189, 248, 0.2) 0%, transparent 35%),
+      radial-gradient(circle at 50% 110%, rgba(212, 175, 55, 0.35) 0%, transparent 35%);
+    background-blend-mode: screen;
+  `,
+};
+
+const CharacterPanel = styled.div`
+  grid-row: 1;
+  ${props => PANEL_PATTERNS[props.$side]}
+  border: clamp(1.5px, 0.12cqw, 3px) solid rgba(180, 130, 30, 0.5);
+  border-radius: 3px;
   position: relative;
-  overflow: visible;
-  z-index: 1;
-  background: transparent;
+  overflow: hidden;
   animation: ${props => props.$side === 'left' ? slideInLeft : slideInRight} 0.6s ease-out 0.3s both;
 `;
 
-// Rank banner (East/West) - styled like Abema's rank badges
-const RankBanner = styled.div`
+const RankPlaque = styled.div`
   position: absolute;
   top: clamp(6px, 0.63cqw, 12px);
   ${props => props.$side === 'left' ? `left: clamp(6px, 0.63cqw, 12px);` : `right: clamp(6px, 0.63cqw, 12px);`}
-  background: linear-gradient(180deg, #e63946 0%, #c41e3a 50%, #9d1a2d 100%);
-  color: white;
-  padding: clamp(5px, 0.52cqw, 10px) clamp(10px, 1.04cqw, 20px);
-  font-size: clamp(10px, 1.3cqw, 20px);
-  font-family: "Bungee", cursive;
-  letter-spacing: 0.1em;
-  border: clamp(1px, 0.1cqw, 2px) solid #ffd700;
-  border-radius: clamp(2px, 0.21cqw, 4px);
-  box-shadow: 
-    0 clamp(2px, 0.16cqw, 3px) clamp(5px, 0.52cqw, 10px) rgba(0, 0, 0, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  z-index: 10;
-  text-shadow: 
-    -1px -1px 0 #000, 
-    1px -1px 0 #000, 
-    -1px 1px 0 #000, 
-    1px 1px 0 #000;
-`;
-
-// Rank number badge - smaller secondary badge
-const RankNumber = styled.div`
-  position: absolute;
-  top: clamp(28px, 2.86cqw, 55px);
-  ${props => props.$side === 'left' ? `left: clamp(6px, 0.63cqw, 12px);` : `right: clamp(6px, 0.63cqw, 12px);`}
-  background: linear-gradient(180deg, #2d2d2d 0%, #1a1a1a 100%);
-  color: #ffd700;
-  padding: clamp(3px, 0.31cqw, 6px) clamp(7px, 0.73cqw, 14px);
-  font-size: clamp(8px, 1cqw, 14px);
-  font-family: "Bungee", cursive;
-  letter-spacing: 0.05em;
-  border: 1px solid #d4af37;
-  border-radius: clamp(2px, 0.16cqw, 3px);
-  z-index: 10;
-  text-shadow: 
-    -1px -1px 0 #000, 
-    1px -1px 0 #000, 
-    -1px 1px 0 #000, 
-    1px 1px 0 #000;
-`;
-
-// Character display area - takes up most of the panel
-const CharacterArea = styled.div`
-  flex: 1;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
-  position: relative;
-  overflow: hidden;
-  padding-top: clamp(30px, 3.13cqw, 60px);
-  background: linear-gradient(180deg, rgba(248, 244, 235, 0.85) 0%, rgba(232, 224, 208, 0.85) 100%);
-  border: clamp(1px, 0.1cqw, 2px) solid #8b5a2b;
+  gap: clamp(4px, 0.5cqw, 8px);
+  padding: clamp(4px, 0.55cqw, 8px) clamp(10px, 1.2cqw, 20px);
+  z-index: 10;
+
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px, transparent 3px,
+      rgba(212, 175, 55, 0.015) 3px, rgba(212, 175, 55, 0.015) 4px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px, transparent 3px,
+      rgba(212, 175, 55, 0.015) 3px, rgba(212, 175, 55, 0.015) 4px
+    ),
+    linear-gradient(
+      180deg,
+      rgba(14, 18, 36, 0.92) 0%,
+      rgba(10, 14, 28, 0.95) 50%,
+      rgba(8, 10, 22, 0.92) 100%
+    );
+  border-radius: 3px;
+  border: 1.5px solid rgba(180, 130, 30, 0.35);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 200, 100, 0.06),
+    inset 0 -1px 3px rgba(0, 0, 0, 0.3);
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 3px; bottom: 3px;
+    left: -1px;
+    width: 3px;
+    background: linear-gradient(
+      180deg,
+      rgba(180, 130, 30, 0.2) 0%,
+      #d4af37 20%,
+      #ffd700 50%,
+      #d4af37 80%,
+      rgba(180, 130, 30, 0.2) 100%
+    );
+    border-radius: 2px;
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 3px; bottom: 3px;
+    right: -1px;
+    width: 3px;
+    background: linear-gradient(
+      180deg,
+      rgba(180, 130, 30, 0.2) 0%,
+      #d4af37 20%,
+      #ffd700 50%,
+      #d4af37 80%,
+      rgba(180, 130, 30, 0.2) 100%
+    );
+    border-radius: 2px;
+  }
 `;
 
-// Character image container - positioned to extend below info section
+const RankText = styled.span`
+  font-family: "Bungee", cursive;
+  font-size: clamp(9px, 1.2cqw, 16px);
+  color: #ffd700;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  line-height: 1;
+  text-shadow:
+    0 0 10px rgba(255, 215, 0, 0.4),
+    0 0 4px rgba(212, 175, 55, 0.5),
+    0 1px 3px rgba(0, 0, 0, 0.9);
+  white-space: nowrap;
+`;
+
+const RankDiamond = styled.span`
+  display: inline-block;
+  width: clamp(4px, 0.4cqw, 6px);
+  height: clamp(4px, 0.4cqw, 6px);
+  background: linear-gradient(135deg, #d4af37 0%, #ffd700 50%, #b8860b 100%);
+  transform: rotate(45deg);
+  flex-shrink: 0;
+  box-shadow: 0 0 4px rgba(212, 175, 55, 0.3);
+`;
+
 const CharacterImageContainer = styled.div`
   position: absolute;
   top: 0;
-  bottom: -20%;
   left: 0;
   right: 0;
+  bottom: -20%;
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  z-index: 1;
 `;
 
 const CharacterImage = styled.img`
@@ -284,60 +314,126 @@ const CharacterImage = styled.img`
   transition: opacity 0.25s ease-out;
 `;
 
-// Horizontal gap between player image and info section
-const HorizontalDivider = styled.div`
-  width: 100%;
-  height: clamp(4px, 0.63cqw, 12px);
-  background: linear-gradient(180deg, rgba(248, 244, 235, 0.6) 0%, rgba(232, 224, 208, 0.6) 100%);
-`;
-
-// Info section at bottom of player panel - styled like Abema
-const PlayerInfoSection = styled.div`
-  background: linear-gradient(180deg, #f8f4eb 0%, #e8e0d0 100%);
-  padding: clamp(8px, 1.04cqw, 20px) clamp(6px, 0.78cqw, 15px) clamp(10px, 1.25cqw, 24px);
+const CenterTop = styled.div`
+  grid-row: 1;
+  grid-column: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
-  position: relative;
-  z-index: 5;
-  border: clamp(1px, 0.1cqw, 2px) solid #8b5a2b;
+  justify-content: center;
+  gap: clamp(6px, 0.8cqw, 14px);
+  padding: clamp(8px, 1cqw, 16px) clamp(4px, 0.5cqw, 8px);
 `;
 
-// Player name area - larger and more prominent
-const PlayerNameArea = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-bottom: clamp(4px, 0.63cqw, 12px);
-  width: 100%;
-`;
-
-// Stable name - displayed above player name like in sumo broadcasts
-const StableName = styled.div`
-  font-size: clamp(8px, 1cqw, 14px);
-  color: #6b4423;
+const GameLogo = styled.div`
+  font-size: clamp(9px, 1.3cqw, 20px);
+  font-family: "Bungee", cursive;
+  color: #1a1a1a;
+  text-shadow:
+    -1px -1px 0 #fff,
+    1px -1px 0 #fff,
+    -1px 1px 0 #fff,
+    1px 1px 0 #fff;
   letter-spacing: 0.15em;
-  margin-bottom: clamp(2px, 0.21cqw, 4px);
+  text-align: center;
+  animation: ${float} 3s ease-in-out infinite;
+
+  &:nth-child(2) {
+    animation-delay: 0.5s;
+  }
+`;
+
+const VsText = styled.div`
+  font-size: clamp(24px, 5cqw, 70px);
+  font-family: "Bungee", cursive;
+  color: #ffd700;
+  -webkit-text-stroke: clamp(1px, 0.1cqw, 2px) #000;
+  text-shadow:
+    0 0 12px rgba(255, 215, 0, 0.5),
+    0 0 6px rgba(212, 175, 55, 0.6),
+    0 2px 4px rgba(0, 0, 0, 0.8);
+  letter-spacing: 0.1em;
+`;
+
+// ============================================
+// ROW 2: Single spanning bottom section with internal 3-col grid
+// ============================================
+const BottomSection = styled.div`
+  grid-row: 2;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr clamp(70px, 12cqw, 180px) 1fr;
+  column-gap: clamp(5px, 0.55cqw, 10px);
+  animation: ${slideUp} 0.5s ease-out 0.5s both;
+`;
+
+const cellBorder = 'clamp(1px, 0.1cqw, 2px) solid rgba(180, 130, 30, 0.5)';
+const cellDivider = 'clamp(1px, 0.1cqw, 2px) solid rgba(180, 130, 30, 0.2)';
+
+const InfoCell = styled.div`
+  background: linear-gradient(180deg, #d4c4a8 0%, #c8b898 50%, #bead8e 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: ${props => props.$isName
+    ? 'clamp(6px, 0.8cqw, 14px) clamp(8px, 1cqw, 16px) clamp(4px, 0.5cqw, 8px)'
+    : 'clamp(4px, 0.55cqw, 10px) clamp(8px, 1cqw, 16px)'};
+  border-left: ${cellBorder};
+  border-right: ${cellBorder};
+  border-radius: 2px;
+  ${props => props.$isFirst
+    ? `border-top: ${cellBorder}; border-bottom: ${cellBorder}; margin-bottom: clamp(5px, 0.55cqw, 10px);`
+    : props.$isLast
+      ? `border-top: ${cellDivider}; border-bottom: ${cellBorder};`
+      : `border-top: ${cellBorder}; border-bottom: none;`
+  }
+`;
+
+const CenterCell = styled.div`
+  background: linear-gradient(180deg, #d4c4a8 0%, #c8b898 50%, #bead8e 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(2px, 0.3cqw, 6px) clamp(4px, 0.5cqw, 8px);
+  border-left: ${cellBorder};
+  border-right: ${cellBorder};
+  border-radius: 2px;
+  ${props => props.$isFirst
+    ? `border-top: ${cellBorder}; border-bottom: ${cellBorder}; margin-bottom: clamp(5px, 0.55cqw, 10px);`
+    : props.$isLast
+      ? `border-top: ${cellDivider}; border-bottom: ${cellBorder};`
+      : `border-top: ${cellBorder}; border-bottom: none;`
+  }
+`;
+
+const StableName = styled.div`
+  font-size: clamp(7px, 0.85cqw, 12px);
+  color: #6b5a4a;
+  letter-spacing: 0.15em;
+  margin-bottom: clamp(1px, 0.15cqw, 3px);
   font-family: "Bungee", cursive;
   text-transform: uppercase;
 `;
 
 const PlayerName = styled.div`
-  font-size: clamp(14px, 2.3cqw, 36px);
+  font-size: clamp(14px, 2.4cqw, 34px);
   font-family: "Bungee", cursive;
-  color: #1a1a1a;
-  text-shadow: 
-    -1px -1px 0 #fff, 
-    1px -1px 0 #fff, 
-    -1px 1px 0 #fff, 
-    1px 1px 0 #fff;
+  color: #2a1d14;
+  text-shadow:
+    -1px -1px 0 rgba(255,255,255,0.4),
+    1px 1px 0 rgba(0,0,0,0.15);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   text-align: center;
   line-height: 1.1;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 `;
 
-// Special mawashi colors (same gradients as Lobby color picker squares) — exported for player ring indicator
 export const SPECIAL_MAWASHI_GRADIENTS = {
   rainbow: "linear-gradient(to right, red, orange, yellow, green, cyan, blue, violet)",
   fire: "linear-gradient(to bottom, #FFD700, #FF8C00, #DC143C, #8B0000)",
@@ -347,28 +443,26 @@ export const SPECIAL_MAWASHI_GRADIENTS = {
   gold: "linear-gradient(135deg, #B8860B, #FFD700, #FFF8DC, #FFD700, #B8860B)",
 };
 
-// Mawashi color indicator - styled like a belt (supports solid hex and special gradients like Lobby swatches)
 const MawashiIndicator = styled.div`
-  width: 70%;
-  height: clamp(5px, 0.52cqw, 10px);
+  width: 60%;
+  height: clamp(4px, 0.42cqw, 8px);
   background: ${props => props.$gradient || props.$color || '#888'};
-  margin: clamp(4px, 0.52cqw, 10px) 0 clamp(6px, 0.73cqw, 14px);
-  box-shadow: 
+  margin-top: clamp(3px, 0.35cqw, 6px);
+  box-shadow:
     0 2px 4px rgba(0, 0, 0, 0.3),
     inset 0 1px 2px rgba(255, 255, 255, 0.3),
     inset 0 -1px 2px rgba(0, 0, 0, 0.2);
   border: 1px solid rgba(0, 0, 0, 0.3);
   position: relative;
-  
-  /* Belt knot detail */
+
   &::before {
     content: '';
     position: absolute;
     left: 50%;
     top: 50%;
     transform: translate(-50%, -50%);
-    width: clamp(8px, 0.83cqw, 16px);
-    height: clamp(8px, 0.83cqw, 16px);
+    width: clamp(6px, 0.7cqw, 14px);
+    height: clamp(6px, 0.7cqw, 14px);
     background: ${props => props.$gradient || props.$color || '#888'};
     border: clamp(1px, 0.1cqw, 2px) solid rgba(0, 0, 0, 0.3);
     border-radius: 2px;
@@ -376,156 +470,84 @@ const MawashiIndicator = styled.div`
   }
 `;
 
-// Record display - styled like Abema with larger numbers
-const RecordContainer = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: clamp(4px, 0.42cqw, 8px);
-  margin-bottom: clamp(4px, 0.52cqw, 10px);
-`;
 
-const RecordItem = styled.div`
+const RecordDisplay = styled.div`
   display: flex;
   align-items: baseline;
-  gap: 2px;
+  gap: clamp(2px, 0.25cqw, 4px);
 `;
 
 const RecordNum = styled.span`
-  font-size: clamp(16px, 2.6cqw, 42px);
+  font-size: clamp(14px, 2.2cqw, 32px);
   font-family: "Bungee", cursive;
-  color: #1a1a1a;
+  color: #2a1d14;
   line-height: 1;
-  text-shadow: 
-    -1px -1px 0 #fff, 
-    1px -1px 0 #fff, 
-    -1px 1px 0 #fff, 
-    1px 1px 0 #fff;
+  text-shadow:
+    -1px -1px 0 rgba(255,255,255,0.4),
+    1px 1px 0 rgba(0,0,0,0.15);
 `;
 
 const RecordLabel = styled.span`
-  font-size: clamp(8px, 1.1cqw, 18px);
+  font-size: clamp(8px, 1cqw, 16px);
   font-family: "Bungee", cursive;
-  color: #c41e3a;
+  color: #8b5a2b;
   text-transform: uppercase;
 `;
 
 const RecordSeparator = styled.span`
-  font-size: clamp(10px, 1.4cqw, 24px);
+  font-size: clamp(10px, 1.3cqw, 22px);
   font-family: "Bungee", cursive;
-  color: #666;
-  margin: 0 clamp(2px, 0.21cqw, 4px);
+  color: #8b7355;
+  margin: 0 clamp(2px, 0.2cqw, 4px);
 `;
 
-// Additional info row (like Birthplace in Abema)
-const InfoRow = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: clamp(4px, 0.42cqw, 8px);
-  margin-top: clamp(3px, 0.31cqw, 6px);
-`;
-
-const InfoValue = styled.span`
-  font-size: clamp(8px, 1cqw, 15px);
-  color: #444;
+const StyleValue = styled.span`
+  font-size: clamp(9px, 1.1cqw, 16px);
+  color: #5c4033;
   font-family: "Bungee", cursive;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 `;
 
 
-// Center divider - styled like Abema's center section
-const CenterDivider = styled.div`
-  width: clamp(60px, 10cqw, 160px);
-  background: linear-gradient(180deg, rgba(248, 244, 235, 0.6) 0%, rgba(232, 224, 208, 0.6) 100%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: space-between;
-  padding: clamp(8px, 1.04cqw, 20px) clamp(4px, 0.52cqw, 10px);
-  position: relative;
-  z-index: 5;
-`;
-
-// Top branding area
-const BrandingArea = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: clamp(1px, 0.1cqw, 2px);
-`;
-
-const GameLogo = styled.div`
-  font-size: clamp(9px, 1.3cqw, 20px);
-  font-family: "Bungee", cursive;
-  color: #1a1a1a;
-  text-shadow: 
-    -1px -1px 0 #fff,
-    1px -1px 0 #fff,
-    -1px 1px 0 #fff,
-    1px 1px 0 #fff;
-  letter-spacing: 0.15em;
-  text-align: center;
-  animation: ${float} 3s ease-in-out infinite;
-  
-  &:nth-child(2) {
-    animation-delay: 0.5s;
-  }
-`;
-
-const VsText = styled.div`
-  font-size: clamp(20px, 3.8cqw, 60px);
-  font-family: "Bungee", cursive;
-  color: #c41e3a;
-  text-shadow: 
-    -2px -2px 0 #fff,
-    2px -2px 0 #fff,
-    -2px 2px 0 #fff,
-    2px 2px 0 #fff,
-    -2px 0 0 #fff,
-    2px 0 0 #fff,
-    0 -2px 0 #fff,
-    0 2px 0 #fff;
-  letter-spacing: 0.1em;
-`;
-
-// Bottom area with game title
-const BottomArea = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: clamp(2px, 0.21cqw, 4px);
-`;
-
-const GameTitle = styled.div`
-  font-size: clamp(12px, 1.5cqw, 16px);
-  color: #1a1a1a;
+const MatchLabel = styled.div`
+  font-size: clamp(11px, 1.4cqw, 18px);
+  color: #2a1d14;
   text-transform: uppercase;
   letter-spacing: 0.15em;
-  text-align: center;
   font-family: "Bungee", cursive;
-  text-shadow: 
-    -1px -1px 0 #fff,
-    1px -1px 0 #fff,
-    -1px 1px 0 #fff,
-    1px 1px 0 #fff;
+  text-shadow:
+    -1px -1px 0 rgba(255,255,255,0.4),
+    1px 1px 0 rgba(0,0,0,0.15);
 `;
 
-const MatchType = styled.div`
-  font-size: clamp(10px, 1.2cqw, 13px);
-  color: #8b5a2b;
+const MatchSubLabel = styled.div`
+  font-size: clamp(8px, 1cqw, 13px);
+  color: #6b5a4a;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   font-family: "Bungee", cursive;
-  text-shadow: 
-    -1px -1px 0 #fff,
-    1px -1px 0 #fff,
-    -1px 1px 0 #fff,
-    1px 1px 0 #fff;
 `;
 
-// Loading indicator - at bottom center of screen
+const CenterLabelBox = styled.div`
+  background: linear-gradient(180deg, #5c4033 0%, #3d2817 100%);
+  color: #d4af37;
+  padding: clamp(2px, 0.25cqw, 5px) clamp(6px, 0.7cqw, 14px);
+  font-size: clamp(7px, 0.8cqw, 11px);
+  font-family: "Bungee", cursive;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-shadow:
+    0 0 6px rgba(212, 175, 55, 0.3),
+    0 1px 2px rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
+  border: 1px solid rgba(180, 130, 30, 0.4);
+  border-radius: 2px;
+`;
+
+// ============================================
+// LOADING & LIVE INDICATORS
+// ============================================
 const LoadingContainer = styled.div`
   position: absolute;
   bottom: 2%;
@@ -563,14 +585,9 @@ const LoadingText = styled.div`
   letter-spacing: 0.15em;
   font-family: "Bungee", cursive;
   animation: ${pulse} 1.5s ease-in-out infinite;
-  text-shadow: 
-    -2px -2px 0 #000, 
-    2px -2px 0 #000, 
-    -2px 2px 0 #000, 
-    2px 2px 0 #000;
+  text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000;
 `;
 
-// Live indicator
 const LiveIndicator = styled.div`
   position: absolute;
   top: clamp(8px, 1.04cqw, 20px);
@@ -588,11 +605,7 @@ const LiveIndicator = styled.div`
   z-index: 100;
   animation: ${pulse} 2s ease-in-out infinite;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
-  text-shadow: 
-    -2px -2px 0 #000, 
-    2px -2px 0 #000, 
-    -2px 2px 0 #000, 
-    2px 2px 0 #000;
+  text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000;
 `;
 
 const LiveDot = styled.div`
@@ -605,7 +618,6 @@ const LiveDot = styled.div`
 // ============================================
 // HELPER DATA
 // ============================================
-// Fun dojo names for players
 const DOJO_NAMES = [
   "Ice Floe Dojo",
   "Blizzard Hall",
@@ -617,7 +629,6 @@ const DOJO_NAMES = [
   "Frozen Tundra",
 ];
 
-// Fighting styles
 const FIGHTING_STYLES = [
   "Pusher",
   "Grappler",
@@ -627,7 +638,6 @@ const FIGHTING_STYLES = [
   "Balanced",
 ];
 
-// Function to get consistent random value based on name
 const getSeededValue = (name, array) => {
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
@@ -637,18 +647,17 @@ const getSeededValue = (name, array) => {
   return array[Math.abs(hash) % array.length];
 };
 
-// Calculate rank based on wins
 const getRank = (wins, losses) => {
   const total = wins + losses;
   const winRate = total > 0 ? wins / total : 0;
-  
+
   if (wins >= 50 && winRate >= 0.7) return { title: "YOKOZUNA", number: "" };
   if (wins >= 30 && winRate >= 0.6) return { title: "OZEKI", number: "" };
   if (wins >= 20 && winRate >= 0.55) return { title: "SEKIWAKE", number: "" };
   if (wins >= 10) return { title: "KOMUSUBI", number: `#${Math.max(1, 10 - Math.floor(wins / 5))}` };
   if (wins >= 5) return { title: "MAEGASHIRA", number: `#${Math.max(1, 15 - wins)}` };
   if (wins >= 2) return { title: "JONIDAN", number: `#${Math.max(1, 50 - (wins * 10))}` };
-  return { title: "JONOKUCHI", number: `#${Math.max(1, 80 - total)}` };
+  return { title: "JONOKUCHI", number: "" };
 };
 
 // ============================================
@@ -671,8 +680,7 @@ const PreMatchScreen = ({
   const [player1Sprite, setPlayer1Sprite] = useState(pumo);
   const [player2Sprite, setPlayer2Sprite] = useState(pumo);
   const [spritesReady, setSpritesReady] = useState(false);
-  
-  // Derive additional info from player names
+
   const player1Dojo = getSeededValue(player1Name, DOJO_NAMES);
   const player2Dojo = getSeededValue(player2Name, DOJO_NAMES);
   const player1Style = getSeededValue(player1Name + "style", FIGHTING_STYLES);
@@ -680,7 +688,6 @@ const PreMatchScreen = ({
   const player1Rank = getRank(player1Record.wins, player1Record.losses);
   const player2Rank = getRank(player2Record.wins, player2Record.losses);
 
-  // Recolor sprites based on player colors; only reveal images when both are ready (avoids flash of wrong color)
   useEffect(() => {
     let cancelled = false;
     setSpritesReady(false);
@@ -717,7 +724,6 @@ const PreMatchScreen = ({
     return () => { cancelled = true; };
   }, [player1Color, player2Color, player1BodyColor, player2BodyColor]);
 
-  // Smooth progress animation
   useEffect(() => {
     const target = Math.min(loadingProgress, 100);
     const timer = setInterval(() => {
@@ -732,118 +738,101 @@ const PreMatchScreen = ({
     return () => clearInterval(timer);
   }, [loadingProgress]);
 
+  const p1MawashiColor = player1Color === SPRITE_BASE_COLOR ? "#0891b2" : player1Color;
+  const p2MawashiColor = player2Color;
+
   return (
     <ScreenContainer>
       <BlurredBackground />
       <DarkOverlay />
-      
+
       <LiveIndicator>
         <LiveDot />
         LIVE
       </LiveIndicator>
 
       <MatchCard>
-        {/* Decorative corner ornaments */}
-        <CornerOrnament $position="top-left" />
-        <CornerOrnament $position="top-right" />
-        <CornerOrnament $position="bottom-left" />
-        <CornerOrnament $position="bottom-right" />
+        {/* Row 1, Col 1 — Left character */}
+        <CharacterPanel $side="left">
+          <RankPlaque $side="left">
+            <RankText>{player1Rank.title}</RankText>
+            {player1Rank.number && <><RankDiamond /><RankText>{player1Rank.number}</RankText></>}
+          </RankPlaque>
+          <CharacterImageContainer>
+            <CharacterImage src={player1Sprite} alt={player1Name} $flip={false} $ready={spritesReady} />
+          </CharacterImageContainer>
+        </CharacterPanel>
 
-        {/* Left Player (East) - facing right */}
-        <PlayerPanel $side="left">
-          <RankBanner $side="left">{player1Rank.title}</RankBanner>
-          {player1Rank.number && <RankNumber $side="left">{player1Rank.number}</RankNumber>}
-          
-          <CharacterArea>
-            <CharacterImageContainer>
-              <CharacterImage src={player1Sprite} alt={player1Name} $flip={false} $ready={spritesReady} />
-            </CharacterImageContainer>
-          </CharacterArea>
-
-          <HorizontalDivider />
-
-          <PlayerInfoSection>
-            <PlayerNameArea>
-              <StableName>{player1Dojo}</StableName>
-              <PlayerName>{player1Name}</PlayerName>
-            </PlayerNameArea>
-            
-            <MawashiIndicator $color={player1Color === SPRITE_BASE_COLOR ? "#0891b2" : player1Color} $gradient={SPECIAL_MAWASHI_GRADIENTS[player1Color]} />
-
-            <RecordContainer>
-              <RecordItem>
-                <RecordNum>{player1Record.wins}</RecordNum>
-                <RecordLabel>W</RecordLabel>
-              </RecordItem>
-              <RecordSeparator>-</RecordSeparator>
-              <RecordItem>
-                <RecordNum>{player1Record.losses}</RecordNum>
-                <RecordLabel>L</RecordLabel>
-              </RecordItem>
-            </RecordContainer>
-            
-            <InfoRow>
-              <InfoValue>{player1Style}</InfoValue>
-            </InfoRow>
-          </PlayerInfoSection>
-        </PlayerPanel>
-
-        {/* Center Divider */}
-        <CenterDivider>
-          <BrandingArea>
-            <GameLogo>PUMO</GameLogo>
-            <GameLogo>PUMO</GameLogo>
-          </BrandingArea>
-          
+        {/* Row 1, Col 2 — Center branding (transparent) */}
+        <CenterTop>
           <VsText>VS</VsText>
-          
-          <BottomArea>
-            <GameTitle>MATCH</GameTitle>
-            <MatchType>{isCPUMatch ? "VS CPU" : "PVP"}</MatchType>
-          </BottomArea>
-        </CenterDivider>
+        </CenterTop>
 
-        {/* Right Player (West) - facing left (flipped) */}
-        <PlayerPanel $side="right">
-          <RankBanner $side="right">{player2Rank.title}</RankBanner>
-          {player2Rank.number && <RankNumber $side="right">{player2Rank.number}</RankNumber>}
-          
-          <CharacterArea>
-            <CharacterImageContainer>
-              <CharacterImage src={player2Sprite} alt={player2Name} $flip={true} $ready={spritesReady} />
-            </CharacterImageContainer>
-          </CharacterArea>
+        {/* Row 1, Col 3 — Right character (cream panel) */}
+        <CharacterPanel $side="right">
+          <RankPlaque $side="right">
+            <RankText>{player2Rank.title}</RankText>
+            {player2Rank.number && <><RankDiamond /><RankText>{player2Rank.number}</RankText></>}
+          </RankPlaque>
+          <CharacterImageContainer>
+            <CharacterImage src={player2Sprite} alt={player2Name} $flip={true} $ready={spritesReady} />
+          </CharacterImageContainer>
+        </CharacterPanel>
 
-          <HorizontalDivider />
+        {/* Row 2 — Bottom section: row-aligned grid, visually unified panels */}
+        <BottomSection>
+          {/* Row 1: Names */}
+          <InfoCell $isName $isFirst>
+            <StableName>{player1Dojo}</StableName>
+            <PlayerName>{player1Name}</PlayerName>
+            <MawashiIndicator $color={p1MawashiColor} $gradient={SPECIAL_MAWASHI_GRADIENTS[player1Color]} />
+          </InfoCell>
+          <CenterCell $isFirst>
+            <MatchLabel>MATCH</MatchLabel>
+            <MatchSubLabel>{isCPUMatch ? "VS CPU" : "PVP"}</MatchSubLabel>
+          </CenterCell>
+          <InfoCell $isName $isFirst>
+            <StableName>{player2Dojo}</StableName>
+            <PlayerName>{player2Name}</PlayerName>
+            <MawashiIndicator $color={p2MawashiColor} $gradient={SPECIAL_MAWASHI_GRADIENTS[player2Color]} />
+          </InfoCell>
 
-          <PlayerInfoSection>
-            <PlayerNameArea>
-              <StableName>{player2Dojo}</StableName>
-              <PlayerName>{player2Name}</PlayerName>
-            </PlayerNameArea>
-            
-            <MawashiIndicator $color={player2Color} $gradient={SPECIAL_MAWASHI_GRADIENTS[player2Color]} />
-
-            <RecordContainer>
-              <RecordItem>
-                <RecordNum>{player2Record.wins}</RecordNum>
-                <RecordLabel>W</RecordLabel>
-              </RecordItem>
+          {/* Row 2: Record */}
+          <InfoCell>
+            <RecordDisplay>
+              <RecordNum>{player1Record.wins}</RecordNum>
+              <RecordLabel>W</RecordLabel>
               <RecordSeparator>-</RecordSeparator>
-              <RecordItem>
-                <RecordNum>{player2Record.losses}</RecordNum>
-                <RecordLabel>L</RecordLabel>
-              </RecordItem>
-            </RecordContainer>
-            
-            <InfoRow>
-              <InfoValue>{player2Style}</InfoValue>
-            </InfoRow>
-          </PlayerInfoSection>
-        </PlayerPanel>
+              <RecordNum>{player1Record.losses}</RecordNum>
+              <RecordLabel>L</RecordLabel>
+            </RecordDisplay>
+          </InfoCell>
+          <CenterCell>
+            <CenterLabelBox>RECORD</CenterLabelBox>
+          </CenterCell>
+          <InfoCell>
+            <RecordDisplay>
+              <RecordNum>{player2Record.wins}</RecordNum>
+              <RecordLabel>W</RecordLabel>
+              <RecordSeparator>-</RecordSeparator>
+              <RecordNum>{player2Record.losses}</RecordNum>
+              <RecordLabel>L</RecordLabel>
+            </RecordDisplay>
+          </InfoCell>
+
+          {/* Row 3: Style */}
+          <InfoCell $isLast>
+            <StyleValue>{player1Style}</StyleValue>
+          </InfoCell>
+          <CenterCell $isLast>
+            <CenterLabelBox>STYLE</CenterLabelBox>
+          </CenterCell>
+          <InfoCell $isLast>
+            <StyleValue>{player2Style}</StyleValue>
+          </InfoCell>
+        </BottomSection>
       </MatchCard>
 
-      {/* Loading indicator at bottom of screen */}
       {isLoading && (
         <LoadingContainer>
           <LoadingBar>

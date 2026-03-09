@@ -5,7 +5,7 @@ import { useMemo } from "react";
 // ============================================
 // SHARED Y-POSITION (both announcements live here — below the HUD)
 // ============================================
-const ANNOUNCE_Y = "clamp(120px, 32%, 220px)";
+const ANNOUNCE_Y = "clamp(90px, 25%, 175px)";
 
 // ============================================
 // ANIMATIONS

@@ -128,18 +128,22 @@ const DODGE_COOLDOWN_MS = 100;    // Forced idle gap after recovery before next 
 
 // ============================================
 // Sidestep — Henka-style lateral evasion around the dohyo
-// Switches sides with opponent. Immune to strikes during active phase.
-// Grabs track through all phases (hard counter).
+// Fixed-speed arc toward opponent's far side with dynamic tracking.
+// Side switch succeeds only if the arc carries you past the opponent.
+// Opponent can defeat it by dashing away (outpaces the arc).
+// Immune to strikes during active phase. Grabs track through all phases.
 // ============================================
 const SIDESTEP_STARTUP_MS = 80;       // Vulnerable wind-up (the "read" commitment)
 const SIDESTEP_ACTIVE_MS = 350;       // Arc movement with strike immunity
-const SIDESTEP_RECOVERY_MS = 150;     // Landing on other side, vulnerable
+const SIDESTEP_RECOVERY_MS = 150;     // Smooth slide to final position, vulnerable
 const SIDESTEP_TOTAL_MS = SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS + SIDESTEP_RECOVERY_MS; // 580ms
 const SIDESTEP_STAMINA_COST = 8;      // Expensive — bigger reward than dodge (4) or parry (5)
-const SIDESTEP_ARC_DEPTH = 35;        // Y dip below ground level at arc peak (viewer-facing depth illusion)
+const SIDESTEP_ARC_DEPTH_MIN = 35;    // Y dip at max travel distance (long sidesteps — already looks good)
+const SIDESTEP_ARC_DEPTH_MAX = 55;    // Y dip at close range (short sidesteps — dramatic arc into ring space)
 const SIDESTEP_GRAB_TRACK_RANGE = 400; // Generous grab range when target is sidestepping
-const SIDESTEP_SWITCH_RANGE = 210;    // Max distance from opponent to get a side switch (~1.4x grab range)
-const SIDESTEP_MAX_TRAVEL = 200;      // Max arc travel when NOT switching (modest — no teleporting across stage)
+const SIDESTEP_INITIATION_RANGE = 280; // Max distance to attempt sidestep (generous — arc physics decide success)
+const SIDESTEP_ARC_SPEED = 0.70;      // Fixed px/ms during active phase (~700 px/s, deliberate arc just above dash speed)
+const SIDESTEP_MAX_TRAVEL = 500;      // Safety cap — must cover distance to opponent + visual separation (~173px)
 
 // Dohyo edge fall physics - fast heavy drop with maintained horizontal momentum
 const DOHYO_FALL_SPEED = 5.93; // Scaled for camera zoom (was 8)
@@ -522,9 +526,11 @@ module.exports = {
   SIDESTEP_RECOVERY_MS,
   SIDESTEP_TOTAL_MS,
   SIDESTEP_STAMINA_COST,
-  SIDESTEP_ARC_DEPTH,
+  SIDESTEP_ARC_DEPTH_MIN,
+  SIDESTEP_ARC_DEPTH_MAX,
   SIDESTEP_GRAB_TRACK_RANGE,
-  SIDESTEP_SWITCH_RANGE,
+  SIDESTEP_INITIATION_RANGE,
+  SIDESTEP_ARC_SPEED,
   SIDESTEP_MAX_TRAVEL,
 
   // Dodge physics

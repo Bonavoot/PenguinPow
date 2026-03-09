@@ -49,7 +49,8 @@ const {
   HITSTOP_GRAB_MS, HITSTOP_THROW_MS,
   SLAP_STRING_COMBO_DRIFT_FRICTION,
   SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS, SIDESTEP_RECOVERY_MS,
-  SIDESTEP_ARC_DEPTH, SIDESTEP_GRAB_TRACK_RANGE,
+  SIDESTEP_ARC_DEPTH_MIN, SIDESTEP_ARC_DEPTH_MAX, SIDESTEP_GRAB_TRACK_RANGE,
+  SIDESTEP_MAX_TRAVEL,
 } = require("./constants");
 
 // Import game utilities
@@ -1140,11 +1141,21 @@ function tick(delta) {
           })())
       ) {
         const winner = room.players.find((p) => p.id !== player.id);
-        handleWinCondition(room, player, winner, io);
-        // Don't reset knockback velocity for the loser
+
+        let winType;
+        if (player.isBeingThrown) {
+          winType = "grabThrow";
+        } else if (player.isCinematicKillVictim) {
+          winType = "cinematicKill";
+        } else if (player.isAtTheRopes) {
+          winType = "okuridashi";
+        } else {
+          winType = player.lastHitType || "ringOut";
+        }
+
+        handleWinCondition(room, player, winner, io, winType);
         player.knockbackVelocity = { ...player.knockbackVelocity };
         
-        // Emit ring-out event for dramatic effect
         io.in(room.id).emit("ring_out", {
           loserId: player.id,
           winnerId: winner.id,
@@ -1165,7 +1176,7 @@ function tick(delta) {
         const winner = room.players.find((p) => p.id !== player.id);
         if (winner) {
           console.log(`[FALLBACK WIN] Player ${player.id} fell off dohyo at x=${player.x}, y=${player.y}`);
-          handleWinCondition(room, player, winner, io);
+          handleWinCondition(room, player, winner, io, "ringOut");
           player.knockbackVelocity = { ...player.knockbackVelocity };
           
           io.in(room.id).emit("ring_out", {
@@ -1281,7 +1292,7 @@ function tick(delta) {
                 (opponent.x <= MAP_LEFT_BOUNDARY &&
                   player.throwingFacingDirection === -1)
               ) {
-                handleWinCondition(room, opponent, player, io);
+                handleWinCondition(room, opponent, player, io, "grabThrow");
               } else {
                 // Emit screen shake for landing after throw (throttled)
                 emitThrottledScreenShake(room, io, {
@@ -1542,6 +1553,10 @@ function tick(delta) {
       }
 
       // ── SIDESTEP arc physics ──
+      // Fixed-speed arc with dynamic opponent tracking.
+      // Active phase: move at constant speed toward opponent's far side.
+      // Recovery phase: smooth ease-out slide to final landing position.
+      // Side switch succeeds only if the arc carries you past the opponent.
       if (player.isSidestepping && player.isBeingGrabbed) {
         player.isSidestepping = false;
         player.isSidestepStartup = false;
@@ -1550,43 +1565,114 @@ function tick(delta) {
       }
       if (player.isSidestepping && !player.isBeingGrabbed) {
         const now = Date.now();
+        const sidestepOpponent = room.players.find(p => p.id !== player.id && !p.isDead);
 
+        // STARTUP: no movement, vulnerable wind-up.
+        // At the end of startup, lock the target so the arc is a fixed trajectory.
         if (player.isSidestepStartup) {
           if (now >= player.sidestepStartupEndTime) {
             player.isSidestepStartup = false;
+
+            const LANDING_SEPARATION = 140;
+            const SIDESTEP_SWITCH_RANGE = GRAB_RANGE * 1.4;
+            const NO_SWITCH_MAX_TRAVEL = 120;
+
+            let targetX;
+            if (sidestepOpponent) {
+              const initDist = Math.abs(player.sidestepStartX - sidestepOpponent.x);
+              if (initDist <= SIDESTEP_SWITCH_RANGE) {
+                targetX = sidestepOpponent.x + player.sidestepDirection * LANDING_SEPARATION;
+              } else {
+                targetX = player.sidestepStartX + player.sidestepDirection * NO_SWITCH_MAX_TRAVEL;
+              }
+            } else {
+              targetX = player.sidestepStartX + player.sidestepDirection * NO_SWITCH_MAX_TRAVEL;
+            }
+
+            const maxBound = player.sidestepStartX + player.sidestepDirection * player.sidestepMaxTravel;
+            if ((targetX - maxBound) * player.sidestepDirection > 0) {
+              targetX = maxBound;
+            }
+            player.sidestepTargetX = Math.max(MAP_LEFT_BOUNDARY, Math.min(targetX, MAP_RIGHT_BOUNDARY));
           }
         }
+        // ACTIVE: fixed-trajectory ease-in-out arc toward the locked target.
+        // Nothing the opponent does during iframes can alter this path.
         else if (!player.isSidestepRecovery) {
-          const activeStart = player.sidestepStartupEndTime;
-          const activeElapsed = now - activeStart;
+          const activeElapsed = now - player.sidestepStartupEndTime;
           const t = Math.min(activeElapsed / SIDESTEP_ACTIVE_MS, 1);
 
-          player.x = player.sidestepStartX + (player.sidestepTargetX - player.sidestepStartX) * t;
+          const easeT = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) * (-2 * t + 2) / 2;
+
+          player.x = player.sidestepStartX + (player.sidestepTargetX - player.sidestepStartX) * easeT;
           player.x = Math.max(MAP_LEFT_BOUNDARY, Math.min(player.x, MAP_RIGHT_BOUNDARY));
 
-          player.y = GROUND_LEVEL - SIDESTEP_ARC_DEPTH * Math.sin(Math.PI * t);
+          const travelRatio = player.sidestepMaxTravel / SIDESTEP_MAX_TRAVEL;
+          const arcDepth = SIDESTEP_ARC_DEPTH_MAX - (SIDESTEP_ARC_DEPTH_MAX - SIDESTEP_ARC_DEPTH_MIN) * travelRatio;
+          player.y = GROUND_LEVEL - arcDepth * Math.sin(Math.PI * t);
         }
 
-        if (Date.now() >= player.sidestepActiveEndTime && !player.isSidestepStartup && !player.isSidestepRecovery) {
+        // TRANSITION: active → recovery
+        // Arc delivered the player to the locked target. Now compute the
+        // ideal resting position based on where the opponent ACTUALLY is,
+        // and let recovery smoothly slide there.
+        if (now >= player.sidestepActiveEndTime && !player.isSidestepStartup && !player.isSidestepRecovery) {
           player.isSidestepRecovery = true;
-          player.x = player.sidestepTargetX;
-          player.x = Math.max(MAP_LEFT_BOUNDARY, Math.min(player.x, MAP_RIGHT_BOUNDARY));
           player.y = GROUND_LEVEL;
+          player.x = player.sidestepTargetX;
 
-          const sidestepOpponent = room.players.find(p => p.id !== player.id);
+          const LANDING_SEP = 140;
+          if (sidestepOpponent) {
+            const landingSide = player.x >= sidestepOpponent.x ? 1 : -1;
+            const idealX = sidestepOpponent.x + landingSide * LANDING_SEP;
+            const currentDist = Math.abs(player.x - sidestepOpponent.x);
+
+            if (currentDist < LANDING_SEP) {
+              player.sidestepRecoveryTargetX = Math.max(MAP_LEFT_BOUNDARY,
+                Math.min(idealX, MAP_RIGHT_BOUNDARY));
+            } else {
+              player.sidestepRecoveryTargetX = player.x;
+            }
+          } else {
+            player.sidestepRecoveryTargetX = player.x;
+          }
+
           if (sidestepOpponent && !player.atTheRopesFacingDirection) {
             player.facing = player.x < sidestepOpponent.x ? -1 : 1;
           }
         }
 
-        if (Date.now() >= player.sidestepEndTime) {
+        // RECOVERY: smooth ease-out slide away from opponent if overlapping.
+        if (player.isSidestepRecovery) {
+          const recoveryElapsed = now - player.sidestepActiveEndTime;
+          const recoveryT = Math.min(recoveryElapsed / SIDESTEP_RECOVERY_MS, 1);
+          const easeOut = 1 - (1 - recoveryT) * (1 - recoveryT);
+
+          if (sidestepOpponent) {
+            const LANDING_SEP = 140;
+            const landingSide = player.x >= sidestepOpponent.x ? 1 : -1;
+            const idealX = sidestepOpponent.x + landingSide * LANDING_SEP;
+            const currentDist = Math.abs(player.sidestepTargetX - sidestepOpponent.x);
+
+            if (currentDist < LANDING_SEP) {
+              player.sidestepRecoveryTargetX = Math.max(MAP_LEFT_BOUNDARY,
+                Math.min(idealX, MAP_RIGHT_BOUNDARY));
+            }
+          }
+
+          const arcLandX = player.sidestepTargetX;
+          player.x = arcLandX + (player.sidestepRecoveryTargetX - arcLandX) * easeOut;
+          player.x = Math.max(MAP_LEFT_BOUNDARY, Math.min(player.x, MAP_RIGHT_BOUNDARY));
+        }
+
+        // END: cleanup
+        if (now >= player.sidestepEndTime) {
           player.isSidestepping = false;
           player.isSidestepStartup = false;
           player.isSidestepRecovery = false;
           player.y = GROUND_LEVEL;
           player.actionLockUntil = 0;
 
-          const sidestepOpponent = room.players.find(p => p.id !== player.id);
           if (sidestepOpponent && !player.atTheRopesFacingDirection) {
             player.facing = player.x < sidestepOpponent.x ? -1 : 1;
           }

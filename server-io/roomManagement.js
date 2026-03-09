@@ -175,6 +175,7 @@ function createCPUPlayer(uniqueId) {
     sizeMultiplier: DEFAULT_PLAYER_SIZE_MULTIPLIER,
     hitAbsorptionUsed: false,
     hitCounter: 0,
+    lastHitType: null,
     lastHitTime: 0,
     lastHitByStringPos: 0,
     lastSlapHitLandedTime: 0,
@@ -553,6 +554,7 @@ function resetRoomAndPlayers(room, io) {
     player.ringOutThrowDirection = null;
     player.inputLockUntil = 0;
     player.isFallingOffDohyo = false;
+    player.lastHitType = null;
     player.knockbackImmune = false;
     player.knockbackImmuneEndTime = 0;
   });

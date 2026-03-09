@@ -13,7 +13,7 @@ const {
   canPlayerUseAction,
   canPlayerDash,
   canPlayerSidestep,
-  calculateSidestepTarget,
+  getSidestepInitData,
   shouldRestartCharging,
   startCharging,
 } = require("./gameUtils");
@@ -151,7 +151,7 @@ function cleanupGrabStates(player, opponent) {
   opponent.actionLockUntil = 0;
 }
 
-function handleWinCondition(room, loser, winner, io) {
+function handleWinCondition(room, loser, winner, io, winType) {
   if (room.gameOver) return; // Prevent multiple win declarations
 
   room.gameOver = true;
@@ -360,7 +360,8 @@ function handleWinCondition(room, loser, winner, io) {
       id: winner.id,
       fighter: winner.fighter,
     },
-    wins: winCount, // Use stored winCount since winner.wins may have been cleared for match_over
+    wins: winCount,
+    winType: winType || "ringOut",
   });
   room.winnerId = winner.id;
   room.loserId = loser.id;
@@ -615,6 +616,7 @@ function executeSlapAttack(player, rooms) {
               const currentRoom = rooms.find(r => r.players.some(p => p.id === player.id));
               const sOpp = currentRoom && currentRoom.players.find(p => p.id !== player.id && !p.isDead);
               if (sOpp) {
+                const initData = getSidestepInitData(player.x, sOpp.x);
                 player.isSidestepping = true;
                 player.isSidestepStartup = true;
                 player.isSidestepRecovery = false;
@@ -623,8 +625,8 @@ function executeSlapAttack(player, rooms) {
                 player.sidestepActiveEndTime = Date.now() + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS;
                 player.sidestepEndTime = Date.now() + SIDESTEP_TOTAL_MS;
                 player.sidestepStartX = player.x;
-                player.sidestepOpponentX = sOpp.x;
-                player.sidestepTargetX = calculateSidestepTarget(player.x, sOpp.x);
+                player.sidestepDirection = initData.direction;
+                player.sidestepMaxTravel = initData.maxTravel;
                 player.currentAction = "sidestep";
                 player.actionLockUntil = Date.now() + SIDESTEP_TOTAL_MS;
                 player.stamina = Math.max(0, player.stamina - SIDESTEP_STAMINA_COST);
@@ -1424,6 +1426,7 @@ function activateBufferedInputAfterGrab(player, rooms) {
     const currentRoom = rooms.find(r => r.players.some(p => p.id === player.id));
     const sOpp = currentRoom && currentRoom.players.find(p => p.id !== player.id && !p.isDead);
     if (sOpp && canPlayerSidestep(player)) {
+      const initData = getSidestepInitData(player.x, sOpp.x);
       player.isRawParrySuccess = false;
       player.isPerfectRawParrySuccess = false;
       clearChargeState(player, true);
@@ -1441,8 +1444,8 @@ function activateBufferedInputAfterGrab(player, rooms) {
       player.sidestepActiveEndTime = Date.now() + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS;
       player.sidestepEndTime = Date.now() + SIDESTEP_TOTAL_MS;
       player.sidestepStartX = player.x;
-      player.sidestepOpponentX = sOpp.x;
-      player.sidestepTargetX = calculateSidestepTarget(player.x, sOpp.x);
+      player.sidestepDirection = initData.direction;
+      player.sidestepMaxTravel = initData.maxTravel;
       player.currentAction = "sidestep";
       player.actionLockUntil = Date.now() + SIDESTEP_TOTAL_MS;
       player.stamina = Math.max(0, player.stamina - SIDESTEP_STAMINA_COST);
@@ -1508,6 +1511,7 @@ function activateBufferedInputAfterGrab(player, rooms) {
     const currentRoom = rooms.find(r => r.players.some(p => p.id === player.id));
     const sOpp = currentRoom && currentRoom.players.find(p => p.id !== player.id && !p.isDead);
     if (sOpp && canPlayerSidestep(player)) {
+      const initData = getSidestepInitData(player.x, sOpp.x);
       player.isRawParrySuccess = false;
       player.isPerfectRawParrySuccess = false;
       clearChargeState(player, true);
@@ -1525,8 +1529,8 @@ function activateBufferedInputAfterGrab(player, rooms) {
       player.sidestepActiveEndTime = Date.now() + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS;
       player.sidestepEndTime = Date.now() + SIDESTEP_TOTAL_MS;
       player.sidestepStartX = player.x;
-      player.sidestepOpponentX = sOpp.x;
-      player.sidestepTargetX = calculateSidestepTarget(player.x, sOpp.x);
+      player.sidestepDirection = initData.direction;
+      player.sidestepMaxTravel = initData.maxTravel;
       player.currentAction = "sidestep";
       player.actionLockUntil = Date.now() + SIDESTEP_TOTAL_MS;
       player.stamina = Math.max(0, player.stamina - SIDESTEP_STAMINA_COST);
@@ -1681,6 +1685,7 @@ function executeInputBuffer(player, rooms) {
         const room = rooms.find(r => r.players.some(p => p.id === player.id));
         const sidestepOpponent = room && room.players.find(p => p.id !== player.id && !p.isDead);
         if (sidestepOpponent) {
+          const initData = getSidestepInitData(player.x, sidestepOpponent.x);
           player.isRawParrySuccess = false;
           player.isPerfectRawParrySuccess = false;
           clearChargeState(player, true);
@@ -1699,8 +1704,8 @@ function executeInputBuffer(player, rooms) {
           player.sidestepActiveEndTime = Date.now() + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS;
           player.sidestepEndTime = Date.now() + SIDESTEP_TOTAL_MS;
           player.sidestepStartX = player.x;
-          player.sidestepOpponentX = sidestepOpponent.x;
-          player.sidestepTargetX = calculateSidestepTarget(player.x, sidestepOpponent.x);
+          player.sidestepDirection = initData.direction;
+          player.sidestepMaxTravel = initData.maxTravel;
 
           player.currentAction = "sidestep";
           player.actionLockUntil = Date.now() + SIDESTEP_TOTAL_MS;

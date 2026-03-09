@@ -125,6 +125,7 @@ function updateProjectiles(room, io, delta) {
           // CRITICAL: Clear ALL action states before setting isHit
           clearAllActionStates(targetPlayer);
           targetPlayer.isHit = true;
+          targetPlayer.lastHitType = "snowball";
           targetPlayer.isAlreadyHit = true;
           targetPlayer.lastHitTime = Date.now(); // Track hit time for safety mechanism
 
@@ -421,6 +422,7 @@ function updateProjectiles(room, io, delta) {
           // CRITICAL: Clear ALL action states before setting isHit
           clearAllActionStates(opponent);
           opponent.isHit = true;
+          opponent.lastHitType = "pumoClone";
           opponent.isAlreadyHit = true;
           opponent.lastHitTime = Date.now(); // Track hit time for safety mechanism
 
