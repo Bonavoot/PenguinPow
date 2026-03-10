@@ -432,7 +432,7 @@ body {
   background-repeat: no-repeat;
   background-size: cover;
   background-position: center -5%;
-  filter: var(--arena-map-filter);
+  filter: var(--arena-map-filter) url(#game-sharpen);
   z-index: -1;
   isolation: isolate;
 }
@@ -458,7 +458,7 @@ body {
   background-position: 50% 25%;
   pointer-events: none;
   z-index: 1;
-  filter: var(--dohyo-filter);
+  filter: var(--dohyo-filter) url(#game-sharpen);
   /* ── Perspective tilt — tweak these to flatten / angle the dohyo ── */
   transform-origin: 50% 10%; /* pivot near the top — back stays wide, front narrows */
   transform: perspective(600px)

@@ -111,6 +111,17 @@ function App() {
             controllerConnected ? "controller-connected" : ""
           }`}
         >
+          <svg width="0" height="0" style={{position:'absolute'}}>
+            <defs>
+              <filter id="game-sharpen" colorInterpolationFilters="sRGB">
+                <feConvolveMatrix
+                  order="3"
+                  kernelMatrix="0 -0.15 0 -0.15 1.6 -0.15 0 -0.15 0"
+                  preserveAlpha="true"
+                />
+              </filter>
+            </defs>
+          </svg>
           {showStartupScreen ? (
             <StartupScreen
               onContinue={handleContinueFromStartup}

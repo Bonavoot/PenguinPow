@@ -12,6 +12,8 @@
  * 3. Add an entry to the ANIMATED_SPRITES section below
  */
 
+import { resolveHiRes } from "./hiResSprites";
+
 // ============================================
 // SPRITESHEET IMPORTS
 // ============================================
@@ -183,6 +185,11 @@ const BLUE_ANIMATED_SPRITES = {
   },
 };
 
+// Upgrade to @2x spritesheets when available
+for (const config of Object.values(BLUE_ANIMATED_SPRITES)) {
+  config.src = resolveHiRes(config.src);
+}
+
 export const ANIMATED_SPRITES = {
   player1: BLUE_ANIMATED_SPRITES,
   player2: BLUE_ANIMATED_SPRITES,
@@ -204,6 +211,11 @@ const BLUE_STATIC_SPRITES = {
   slapAttack2: slapAttack2,
   slapAttack3: slapAttack3,
 };
+
+// Upgrade to @2x static sprites when available
+for (const key of Object.keys(BLUE_STATIC_SPRITES)) {
+  BLUE_STATIC_SPRITES[key] = resolveHiRes(BLUE_STATIC_SPRITES[key]);
+}
 
 /**
  * Static sprite configurations

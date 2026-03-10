@@ -1,3 +1,5 @@
+import { resolveHiRes } from "../config/hiResSprites";
+
 /**
  * SpriteRecolorizer - Canvas-based pixel manipulation for precise color replacement
  *
@@ -471,13 +473,14 @@ export async function recolorImage(
   targetColorHex,
   options = {}
 ) {
+  const hiResSrc = resolveHiRes(imageSrc);
   const hitTintRed = !!options.hitTintRed;
   const chargeTintWhite = !!options.chargeTintWhite;
   const blubberTintPurple = !!options.blubberTintPurple;
   const bodyColorRange = options.bodyColorRange || null;
   const bodyColorHex = options.bodyColorHex || null;
-  // Generate cache key (hit/charge/blubber/body variants cached separately)
-  const cacheKey = `${imageSrc}_${sourceColorRange.minHue}-${
+  // Cache key uses the resolved (possibly @2x) URL so lookups are consistent
+  const cacheKey = `${hiResSrc}_${sourceColorRange.minHue}-${
     sourceColorRange.maxHue
   }_${targetColorHex}${bodyColorHex ? "_body_" + bodyColorHex : ""}${
     hitTintRed ? "_hit" : ""
@@ -669,7 +672,7 @@ export async function recolorImage(
       reject(new Error(`Failed to load image: ${imageSrc}`));
     };
 
-    img.src = imageSrc;
+    img.src = hiResSrc;
   });
 
   // Register the in-flight Promise; clean up when settled (success or failure)

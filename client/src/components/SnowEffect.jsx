@@ -58,6 +58,7 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
   const elementsRef = useRef([]);
   const animationFrameRef = useRef(null);
   const lastTimeRef = useRef(0);
+  const containerSizeRef = useRef({ w: 1280, h: 720 });
 
   const isFrontLayer = (depth, isEnvelope) =>
     depth > (isEnvelope ? FRONT_DEPTH_THRESHOLD_ENVELOPE : FRONT_DEPTH_THRESHOLD_SNOW);
@@ -78,11 +79,24 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
     return 0.5;
   }, []);
 
+  useEffect(() => {
+    const wrapper = backContainerRef.current?.parentElement;
+    if (!wrapper) return;
+    const update = () => {
+      containerSizeRef.current.w = wrapper.offsetWidth || 1280;
+      containerSizeRef.current.h = wrapper.offsetHeight || 720;
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(wrapper);
+    return () => ro.disconnect();
+  }, []);
+
   const createParticleData = useCallback((initialY = -10) => {
     const depth = getRandomDepth();
     const isEnvelope = shouldShowEnvelopes;
-    const screenW = 1280;
-    const screenH = 720;
+    const screenW = containerSizeRef.current.w;
+    const screenH = containerSizeRef.current.h;
 
     // Scale based on depth
     const depthScale = isEnvelope
@@ -146,7 +160,7 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
     const maxParticles = shouldShowEnvelopes ? MAX_ENVELOPES : MAX_SNOWFLAKES;
 
     for (let i = 0; i < maxParticles; i++) {
-      const initialY = -10 - Math.random() * 720 * 0.8;
+      const initialY = -10 - Math.random() * containerSizeRef.current.h * 0.8;
       const particle = createParticleData(initialY);
       particlesRef.current.push(particle);
 
@@ -196,7 +210,7 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
       lastTimeRef.current = timestamp;
       const time = timestamp / 1000;
       const timeFactor = deltaTime / 16;
-      const screenW = 1280;
+      const screenW = containerSizeRef.current.w;
 
       particlesRef.current.forEach((particle, i) => {
         const el = elementsRef.current[i];

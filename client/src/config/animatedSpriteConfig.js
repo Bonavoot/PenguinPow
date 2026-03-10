@@ -4,6 +4,8 @@
 // MEMORY OPTIMIZATION: Using string keys instead of imported APNG URLs
 // to avoid loading large APNG files into memory just for lookup keys.
 
+import { resolveHiRes } from "./hiResSprites";
+
 // Import spritesheets
 import pumoWaddleSpritesheet from "../assets/spritesheets/pumo-waddle_spritesheet.png";
 import pumoArmySpritesheet from "../assets/spritesheets/pumo-army_spritesheet.png";
@@ -117,6 +119,11 @@ export const SPRITESHEET_CONFIG_BY_NAME = {
     loop: false,
   },
 };
+
+// Upgrade spritesheet URLs to @2x when available
+for (const config of Object.values(SPRITESHEET_CONFIG_BY_NAME)) {
+  config.spritesheet = resolveHiRes(config.spritesheet);
+}
 
 // Legacy: Map of source URLs to configs (for backwards compatibility)
 // Built dynamically from the name-based config

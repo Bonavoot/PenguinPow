@@ -219,50 +219,42 @@ function createGroundStreak(length, thickness) {
   return c;
 }
 
-function generateTextures() {
+function generateTextures(s) {
+  const r = (v) => Math.round(v * s);
   return {
-    // Several anime cloud puffs with different shapes (different seeds)
-    puff1: createAnimePuff(96, 1234),
-    puff2: createAnimePuff(96, 5678),
-    puff3: createAnimePuff(96, 9012),
-    puff4: createAnimePuff(96, 3456),
-    puff5: createAnimePuff(112, 7890),
+    puff1: createAnimePuff(r(96), 1234),
+    puff2: createAnimePuff(r(96), 5678),
+    puff3: createAnimePuff(r(96), 9012),
+    puff4: createAnimePuff(r(96), 3456),
+    puff5: createAnimePuff(r(112), 7890),
 
-    // Smaller puffs for variety
-    puffSm1: createAnimePuffSmall(64, 2345),
-    puffSm2: createAnimePuffSmall(64, 6789),
-    puffSm3: createAnimePuffSmall(64, 1357),
+    puffSm1: createAnimePuffSmall(r(64), 2345),
+    puffSm2: createAnimePuffSmall(r(64), 6789),
+    puffSm3: createAnimePuffSmall(r(64), 1357),
 
-    // Tiny ice chunks
-    chunk: createChunk(12, 255, 255, 255, 0.85),
-    chunkIce: createChunk(12, 210, 235, 255, 0.75),
+    chunk: createChunk(r(12), 255, 255, 255, 0.85),
+    chunkIce: createChunk(r(12), 210, 235, 255, 0.75),
 
-    // Clean soft circles
-    circle: createChunk(24, 255, 255, 255, 0.9),
-    circleIce: createChunk(24, 220, 240, 255, 0.8),
+    circle: createChunk(r(24), 255, 255, 255, 0.9),
+    circleIce: createChunk(r(24), 220, 240, 255, 0.8),
 
-    // Cloudy smoke rings (dense layered blobs along a circle)
-    ring: createCloudRing(160, 14, 4321),
-    ringAlt: createCloudRing(160, 14, 8765),
-    ringThick: createCloudRing(160, 17, 1597),
+    ring: createCloudRing(r(160), r(14), 4321),
+    ringAlt: createCloudRing(r(160), r(14), 8765),
+    ringThick: createCloudRing(r(160), r(17), 1597),
 
-    // Speed lines (sharp pointed dashes, not soft blobs)
-    speedLine: createSpeedLine(80, 3, 255, 255, 255, 0.95),
-    speedLineIce: createSpeedLine(80, 3, 220, 240, 255, 0.85),
-    speedLineThin: createSpeedLine(60, 2, 255, 255, 255, 0.8),
-    speedLineThick: createSpeedLine(80, 5, 255, 255, 255, 0.9),
+    speedLine: createSpeedLine(r(80), r(3), 255, 255, 255, 0.95),
+    speedLineIce: createSpeedLine(r(80), r(3), 220, 240, 255, 0.85),
+    speedLineThin: createSpeedLine(r(60), r(2), 255, 255, 255, 0.8),
+    speedLineThick: createSpeedLine(r(80), r(5), 255, 255, 255, 0.9),
 
-    // Salt grains / clumps for salt throw
-    saltGrain: createChunk(6, 255, 255, 255, 1.0),
-    saltClump: createChunk(14, 255, 255, 255, 0.95),
+    saltGrain: createChunk(r(6), 255, 255, 255, 1.0),
+    saltClump: createChunk(r(14), 255, 255, 255, 0.95),
 
-    // Bright sparks for dash ice-skating effect
-    spark: createSpark(16),
-    sparkSmall: createSpark(10),
+    spark: createSpark(r(16)),
+    sparkSmall: createSpark(r(10)),
 
-    // Ground streaks for dash skid marks
-    groundStreak: createGroundStreak(60, 3),
-    groundStreakThin: createGroundStreak(40, 2),
+    groundStreak: createGroundStreak(r(60), r(3)),
+    groundStreakThin: createGroundStreak(r(40), r(2)),
   };
 }
 
@@ -1092,12 +1084,16 @@ export class ParticleEngine {
 
   init(canvas) {
     this.canvas = canvas;
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.round(GAME_W * dpr);
-    canvas.height = Math.round(GAME_H * dpr);
+    const dpr = Math.max(window.devicePixelRatio || 1, 2);
+    const rect = canvas.getBoundingClientRect();
+    const physW = Math.round(rect.width * dpr);
+    const physH = Math.round(rect.height * dpr);
+    canvas.width = physW;
+    canvas.height = physH;
     this.ctx = canvas.getContext("2d");
-    this.ctx.scale(dpr, dpr);
-    this.textures = generateTextures();
+    this.ctx.scale(physW / GAME_W, physH / GAME_H);
+    const texScale = Math.min(physW / GAME_W, 3);
+    this.textures = generateTextures(texScale);
     this._start();
   }
 
