@@ -42,6 +42,7 @@ function cleanupPlayerStates(player) {
   player.sidestepStartX = 0;
   player.sidestepDirection = 0;
   player.sidestepMaxTravel = 0;
+  player.sidestepActiveDuration = 0;
   player.sidestepTargetX = 0;
   player.sidestepRecoveryStartX = 0;
   player.sidestepRecoveryTargetX = 0;

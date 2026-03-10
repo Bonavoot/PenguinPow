@@ -10,7 +10,6 @@ const {
   DODGE_RECOVERY_MS,
   GROUND_LEVEL,
   SIDESTEP_STARTUP_MS,
-  SIDESTEP_ACTIVE_MS,
   SIDESTEP_RECOVERY_MS,
   SIDESTEP_STAMINA_COST,
   SIDESTEP_MAX_TRAVEL,
@@ -378,6 +377,7 @@ function clearAllActionStates(player) {
   player.sidestepStartX = 0;
   player.sidestepDirection = 0;
   player.sidestepMaxTravel = 0;
+  player.sidestepActiveDuration = 0;
   player.sidestepTargetX = 0;
   player.sidestepRecoveryStartX = 0;
   player.sidestepRecoveryTargetX = 0;

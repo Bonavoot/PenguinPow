@@ -134,9 +134,10 @@ const DODGE_COOLDOWN_MS = 100;    // Forced idle gap after recovery before next 
 // Immune to strikes during active phase. Grabs track through all phases.
 // ============================================
 const SIDESTEP_STARTUP_MS = 80;       // Vulnerable wind-up (the "read" commitment)
-const SIDESTEP_ACTIVE_MS = 350;       // Arc movement with strike immunity
+const SIDESTEP_ACTIVE_MIN_MS = 200;   // Floor — very short sidesteps stay readable
+const SIDESTEP_ACTIVE_MAX_MS = 500;   // Ceiling — very long sidesteps don't drag
 const SIDESTEP_RECOVERY_MS = 150;     // Smooth slide to final position, vulnerable
-const SIDESTEP_TOTAL_MS = SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS + SIDESTEP_RECOVERY_MS; // 580ms
+const SIDESTEP_TOTAL_MS = SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MAX_MS + SIDESTEP_RECOVERY_MS; // Max possible (730ms)
 const SIDESTEP_STAMINA_COST = 8;      // Expensive — bigger reward than dodge (4) or parry (5)
 const SIDESTEP_ARC_DEPTH_MIN = 35;    // Y dip at max travel distance (long sidesteps — already looks good)
 const SIDESTEP_ARC_DEPTH_MAX = 55;    // Y dip at close range (short sidesteps — dramatic arc into ring space)
@@ -312,7 +313,7 @@ const RAW_PARRY_SLAP_STUN_DURATION = 400; // Stun for slap parries (was 500)
 const PERFECT_PARRY_WINDOW = 100; // 100ms window for perfect parries
 const PERFECT_PARRY_SUCCESS_DURATION = 850; // Compressed parry — fast enough to keep pace, long enough for visual read
 const PERFECT_PARRY_ATTACKER_STUN_DURATION = 700; // Stun — comfortable window for slap/grab follow-up
-const PERFECT_PARRY_ANIMATION_LOCK = 250; // 250ms — brief flash moment, then parrier can act
+const PERFECT_PARRY_ANIMATION_LOCK = 150; // 150ms — brief flash moment, then parrier can act (was 250 — too slow to follow up on stunned opponent)
 const PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK = 200; // Shorter than player parry lock — the reflected snowball is the reward
 
 // Raw parry commitment: minimum time locked in parry stance
@@ -522,7 +523,8 @@ module.exports = {
 
   // Sidestep
   SIDESTEP_STARTUP_MS,
-  SIDESTEP_ACTIVE_MS,
+  SIDESTEP_ACTIVE_MIN_MS,
+  SIDESTEP_ACTIVE_MAX_MS,
   SIDESTEP_RECOVERY_MS,
   SIDESTEP_TOTAL_MS,
   SIDESTEP_STAMINA_COST,

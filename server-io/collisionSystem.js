@@ -125,6 +125,10 @@ function checkCollision(player, otherPlayer, rooms, io) {
   const otherInSidestepIFrames = otherPlayer.isSidestepping && !otherPlayer.isSidestepStartup && !otherPlayer.isSidestepRecovery;
   const playerInSidestepIFrames = player.isSidestepping && !player.isSidestepStartup && !player.isSidestepRecovery;
 
+  const eitherHasSlapParryImmunity =
+    (player.slapParryImmunityUntil && now < player.slapParryImmunityUntil) ||
+    (otherPlayer.slapParryImmunityUntil && now < otherPlayer.slapParryImmunityUntil);
+
   if (
     !player.isAttacking ||
     otherPlayer.isAlreadyHit ||
@@ -134,11 +138,19 @@ function checkCollision(player, otherPlayer, rooms, io) {
     otherInSidestepIFrames ||
     playerInSidestepIFrames ||
     player.isBeingThrown ||
-    otherPlayer.isBeingThrown ||
-    (player.slapParryImmunityUntil && now < player.slapParryImmunityUntil) ||
-    (otherPlayer.slapParryImmunityUntil && now < otherPlayer.slapParryImmunityUntil)
+    otherPlayer.isBeingThrown
   ) {
     return;
+  }
+
+  if (eitherHasSlapParryImmunity) {
+    const bothInNonFinisherSlaps =
+      player.attackType === "slap" &&
+      otherPlayer.isAttacking && otherPlayer.attackType === "slap" &&
+      !player.isSlapStringFinisher && !otherPlayer.isSlapStringFinisher;
+    if (!bothInNonFinisherSlaps) {
+      return;
+    }
   }
 
   // Calculate hitbox distance based on attack type
@@ -173,6 +185,7 @@ function checkCollision(player, otherPlayer, rooms, io) {
           }
           // One active, one in startup → fall through to processHit (counter hit)
         } else if (!eitherIsStringFinisher) {
+          if (player.isSlapParryRecovering || otherPlayer.isSlapParryRecovering) return;
           const timeDifference = Math.abs(
             player.attackStartTime - otherPlayer.attackStartTime
           );
@@ -217,6 +230,7 @@ function checkCollision(player, otherPlayer, rooms, io) {
       if (otherPlayer.isGrabStartup && grabBeatsSlap(otherPlayer, player)) {
         return; // Grab wins — don't process slap hit, grab will connect
       }
+      if (eitherHasSlapParryImmunity) return;
       processHit(player, otherPlayer, rooms, io);
     }
     return;
@@ -339,9 +353,10 @@ function applyParryEffect(player, knockbackDirection) {
   const SLAP_PARRY_KNOCKBACK_STRENGTH = 0.9;
   player.slapParryKnockbackVelocity = SLAP_PARRY_KNOCKBACK_STRENGTH * knockbackDirection;
   
-  // Give brief immunity to prevent hits right after parry
-  // This lasts until the current slap attack would end
-  player.slapParryImmunityUntil = Date.now() + SLAP_PARRY_RECOVERY_MS;
+  // Immunity must outlast recovery + next slap startup + a tick so the next parry
+  // is guaranteed to be detected before any hit can land. Recovery alone (150ms) leaves
+  // an ~85ms gap where both players are actionable but not yet parry-checked again.
+  player.slapParryImmunityUntil = Date.now() + SLAP_PARRY_RECOVERY_MS + SLAP_PARRY_WINDOW;
 }
 
 function resolveChargeClash(player1, player2, p1Charge, p2Charge, room, io) {

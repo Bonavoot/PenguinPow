@@ -48,9 +48,9 @@ const {
   GASSED_DURATION_MS, GASSED_RECOVERY_STAMINA,
   HITSTOP_GRAB_MS, HITSTOP_THROW_MS,
   SLAP_STRING_COMBO_DRIFT_FRICTION,
-  SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS, SIDESTEP_RECOVERY_MS,
+  SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MIN_MS, SIDESTEP_ACTIVE_MAX_MS, SIDESTEP_RECOVERY_MS,
   SIDESTEP_ARC_DEPTH_MIN, SIDESTEP_ARC_DEPTH_MAX, SIDESTEP_GRAB_TRACK_RANGE,
-  SIDESTEP_MAX_TRAVEL,
+  SIDESTEP_ARC_SPEED, SIDESTEP_MAX_TRAVEL,
 } = require("./constants");
 
 // Import game utilities
@@ -1594,13 +1594,21 @@ function tick(delta) {
               targetX = maxBound;
             }
             player.sidestepTargetX = Math.max(MAP_LEFT_BOUNDARY, Math.min(targetX, MAP_RIGHT_BOUNDARY));
+
+            const travelDist = Math.abs(player.sidestepTargetX - player.sidestepStartX);
+            const rawActiveMs = travelDist / SIDESTEP_ARC_SPEED;
+            const activeMs = Math.max(SIDESTEP_ACTIVE_MIN_MS, Math.min(rawActiveMs, SIDESTEP_ACTIVE_MAX_MS));
+            player.sidestepActiveDuration = activeMs;
+            player.sidestepActiveEndTime = now + activeMs;
+            player.sidestepEndTime = player.sidestepActiveEndTime + SIDESTEP_RECOVERY_MS;
+            player.actionLockUntil = player.sidestepEndTime;
           }
         }
         // ACTIVE: fixed-trajectory ease-in-out arc toward the locked target.
         // Nothing the opponent does during iframes can alter this path.
         else if (!player.isSidestepRecovery) {
           const activeElapsed = now - player.sidestepStartupEndTime;
-          const t = Math.min(activeElapsed / SIDESTEP_ACTIVE_MS, 1);
+          const t = Math.min(activeElapsed / player.sidestepActiveDuration, 1);
 
           const easeT = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) * (-2 * t + 2) / 2;
 

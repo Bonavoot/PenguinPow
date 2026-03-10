@@ -3,8 +3,11 @@
 // Design philosophy: Human-like decision making with strategic reads, commitment,
 // and intelligent grab system usage based on positioning and stamina.
 
-const { ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST } = require("./constants");
-const { MAP_LEFT_BOUNDARY: GAME_MAP_LEFT, MAP_RIGHT_BOUNDARY: GAME_MAP_RIGHT } = require("./gameUtils");
+const { ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST,
+        SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MAX_MS, SIDESTEP_TOTAL_MS,
+        SIDESTEP_STAMINA_COST, SIDESTEP_INITIATION_RANGE } = require("./constants");
+const { MAP_LEFT_BOUNDARY: GAME_MAP_LEFT, MAP_RIGHT_BOUNDARY: GAME_MAP_RIGHT,
+        canPlayerSidestep, getSidestepInitData } = require("./gameUtils");
 
 // Map boundaries - MUST match gameUtils.js (340 and 940)
 const MAP_LEFT_BOUNDARY = 340;
@@ -76,6 +79,21 @@ const AI_CONFIG = {
   PUNISH_DELAY_MIN: 100,
   PUNISH_DELAY_MAX: 280,
 
+  // When AI sees opponent raw parrying: chance to grab vs commit to an attack
+  PUNISH_PARRY_GRAB_CHANCE: 0.40,    // 40% grab the parry (punish)
+  PUNISH_PARRY_ATTACK_CHANCE: 0.35,  // 35% commit to a slap attack (parryable!)
+  // Remaining 25%: AI ignores the parry and continues with normal behavior
+
+  // Sidestep — corner escape tool (s + shift)
+  SIDESTEP_CORNER_CHANCE: 0.25,       // Chance to sidestep when cornered and distance is safe
+  SIDESTEP_SAFE_MIN_DISTANCE: 100,    // Don't sidestep if opponent is point-blank (startup is punishable)
+  SIDESTEP_SAFE_MAX_DISTANCE: 250,    // Don't sidestep if opponent is too far (won't arc past them)
+
+  // Slap string commitment — full rekka strings instead of random isolated slaps
+  STRING_FULL_CHANCE: 0.30,           // Chance to do full 3-hit string (mouse1×3)
+  STRING_GRAB_CHANCE: 0.25,           // Chance to do slap-slap-grab (mouse1×2 + mouse2)
+  // Remaining ~45%: single slap or legacy burst behavior
+
   // Slap pressure adaptation — AI gets more defensive after eating consecutive hits
   PRESSURE_HIT_THRESHOLD: 2,       // After this many consecutive hits, boost defense
   PRESSURE_PARRY_BOOST: 0.60,      // Boosted parry chance when under slap pressure
@@ -117,10 +135,11 @@ function getAIState(playerId) {
       grabActionDelay: 0, // Reaction delay before executing pull/throw interrupt
       // Snowball defense tracking
       lastSnowballReactionTime: 0,
-      // === NEW: Commitment system ===
-      commitAction: null,      // 'slap_burst', 'aggressive_push', etc.
+      // === Commitment system ===
+      commitAction: null,      // 'slap_burst', 'slap_string_full', 'slap_string_grab', etc.
       commitCount: 0,          // How many actions left in commitment
       commitUntil: 0,          // Timestamp when commitment expires
+      stringBuffered: false,   // Whether string inputs have been buffered on the player object
       // === NEW: Aggression mode ===
       aggressionMode: 'balanced', // 'aggressive', 'balanced', 'defensive'
       aggressionShiftTime: 0,    // When to re-roll aggression
@@ -149,6 +168,7 @@ function getAIState(playerId) {
       punishDetectTime: 0,
       punishDelay: 0,
       punishProcessed: false,
+      punishDecision: null,
       // === Rope jump tracking ===
       lastRopeJumpTime: 0,
       // === Slap pressure tracking — adapts defense after consecutive hits ===
@@ -270,8 +290,8 @@ function isGoodGrabOpportunity(cpu, human, distance) {
   if (!isOpponentGrabbable(human)) return false;
   if (!isFacingOpponent(cpu, human)) return false;
 
-  // Opponent is committed to an action (attacking, parrying, recovering) — great time to grab
-  if (human.isAttacking || human.isRawParrying || human.isRecovering || human.isHit) return true;
+  // Opponent is committed to an action (attacking, recovering) — great time to grab
+  if (human.isAttacking || human.isRecovering || human.isHit) return true;
   // Opponent is stationary or moving toward us — grab will likely connect
   if (!isOpponentRetreating(cpu, human)) return true;
   // Opponent is retreating — only grab if we're very close (startup won't let them escape)
@@ -348,6 +368,8 @@ function canAct(cpu) {
          !cpu.isBeingThrown && 
          !cpu.isThrowing && 
          !cpu.isDodging && 
+         !cpu.isSidestepping &&
+         !cpu.isSidestepRecovery &&
          !cpu.isRecovering && 
          !cpu.isRawParryStun && 
          !cpu.isThrowTeching &&
@@ -708,26 +730,63 @@ function updateCPUAI(cpu, human, room, currentTime) {
     aiState.reactionProcessed = false;
   }
   
-  // Priority 3.5: PUNISH OPPONENT PARRYING with human-like recognition delay
-  // A human player notices the parry, thinks "I should grab", THEN goes for it.
-  if (human.isRawParrying && !cpu.isAttacking && distance < AI_CONFIG.GRAB_APPROACH_RANGE && canGrab(cpu)) {
+  // Priority 3.5: REACT TO OPPONENT PARRYING with human-like recognition delay
+  // A human player notices the parry, decides what to do, THEN acts.
+  // Sometimes grabs (punish), sometimes commits to an attack (parryable!), sometimes ignores.
+  if (human.isRawParrying && !cpu.isAttacking && distance < AI_CONFIG.GRAB_APPROACH_RANGE && canAct(cpu)) {
     if (!aiState.punishDetectTime) {
       aiState.punishDetectTime = currentTime;
       aiState.punishDelay = randomInRange(AI_CONFIG.PUNISH_DELAY_MIN, AI_CONFIG.PUNISH_DELAY_MAX);
       aiState.punishProcessed = false;
+      aiState.punishDecision = null;
     }
     if (!aiState.punishProcessed && currentTime - aiState.punishDetectTime >= aiState.punishDelay) {
       aiState.punishProcessed = true;
-      resetAllKeys(cpu);
-      const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
-      if (result) {
-        aiState.lastActionType = "punish_grab";
+
+      if (!aiState.punishDecision) {
+        const roll = Math.random();
+        if (roll < AI_CONFIG.PUNISH_PARRY_GRAB_CHANCE && canGrab(cpu)) {
+          aiState.punishDecision = 'grab';
+        } else if (roll < AI_CONFIG.PUNISH_PARRY_GRAB_CHANCE + AI_CONFIG.PUNISH_PARRY_ATTACK_CHANCE) {
+          aiState.punishDecision = 'attack';
+        } else {
+          aiState.punishDecision = 'ignore';
+        }
+      }
+
+      if (aiState.punishDecision === 'grab' && canGrab(cpu)) {
+        resetAllKeys(cpu);
+        const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
+        if (result) {
+          aiState.lastActionType = "punish_grab";
+          return;
+        }
+      } else if (aiState.punishDecision === 'attack' && canAttack(cpu)) {
+        resetAllKeys(cpu);
+        if (distance < AI_CONFIG.SLAP_RANGE + 30) {
+          const stringType = pickStringCommitment(aiState, currentTime);
+          if (!stringType) {
+            startCommitment(aiState, 'slap_burst', randomInRange(2, 4), currentTime);
+          }
+          cpu.keys.mouse1 = true;
+          aiState.mouse1ReleaseTime = currentTime + 40;
+        } else {
+          const dirToOpponent = getDirectionToOpponent(cpu, human);
+          if (dirToOpponent === 1) cpu.keys.d = true;
+          else cpu.keys.a = true;
+          cpu.keys.mouse1 = true;
+          aiState.mouse1ReleaseTime = currentTime + 40;
+        }
+        aiState.lastDecisionTime = currentTime;
+        aiState.lastActionType = "punish_attack";
         return;
       }
+      // 'ignore' falls through to normal behavior
     }
   } else if (aiState.punishDetectTime) {
     aiState.punishDetectTime = 0;
     aiState.punishProcessed = false;
+    aiState.punishDecision = null;
   }
   
   // Priority 4: COMMITMENT SYSTEM — if in a burst, continue it
@@ -936,9 +995,10 @@ function handleCornerEscape(cpu, human, aiState, currentTime, distance, cornered
       }
     }
     if (canAttack(cpu)) {
-      // Sometimes commit to a slap burst to push them back
-      if (chance(0.3)) {
-        startCommitment(aiState, 'slap_burst', randomInRange(2, 4), currentTime);
+      if (chance(0.5)) {
+        if (!pickStringCommitment(aiState, currentTime)) {
+          startCommitment(aiState, 'slap_burst', randomInRange(2, 4), currentTime);
+        }
       }
       cpu.keys.mouse1 = true;
       aiState.mouse1ReleaseTime = currentTime + 40;
@@ -947,8 +1007,22 @@ function handleCornerEscape(cpu, human, aiState, currentTime, distance, cornered
       return true;
     }
   } else {
+    // Sidestep escape — arc around the opponent when cornered at safe distance
+    if (distance >= AI_CONFIG.SIDESTEP_SAFE_MIN_DISTANCE &&
+        distance <= AI_CONFIG.SIDESTEP_SAFE_MAX_DISTANCE &&
+        canPlayerSidestep(cpu) &&
+        !cpu.isGassed &&
+        cpu.stamina >= SIDESTEP_STAMINA_COST + 5 &&
+        chance(AI_CONFIG.SIDESTEP_CORNER_CHANCE)) {
+      resetAllKeys(cpu);
+      cpu.keys.s = true;
+      cpu.keys.shift = true;
+      aiState.lastDecisionTime = currentTime;
+      aiState.lastActionType = "sidestep_escape";
+      return true;
+    }
+
     // Rope jump escape — arc over the opponent when cornered and they're far enough away
-    // Only works within ROPE_JUMP_BOUNDARY_ZONE of actual game boundaries
     const nearLeftBound = cpu.x - GAME_MAP_LEFT < ROPE_JUMP_BOUNDARY_ZONE + 10;
     const nearRightBound = GAME_MAP_RIGHT - cpu.x < ROPE_JUMP_BOUNDARY_ZONE + 10;
     if ((nearLeftBound || nearRightBound) &&
@@ -995,9 +1069,10 @@ function handleRingOutOpportunity(cpu, human, aiState, currentTime, distance) {
       }
     }
     if (roll < 0.85 * aggMult.attack) {
-      // Slap burst — commit to pushing them off!
-      if (chance(0.45)) {
-        startCommitment(aiState, 'slap_burst', randomInRange(3, 5), currentTime);
+      if (chance(0.55)) {
+        if (!pickStringCommitment(aiState, currentTime)) {
+          startCommitment(aiState, 'slap_burst', randomInRange(3, 5), currentTime);
+        }
       }
       cpu.keys.mouse1 = true;
       aiState.mouse1ReleaseTime = currentTime + 40;
@@ -1229,15 +1304,121 @@ function handleSnowballDefense(cpu, human, aiState, currentTime, distance) {
   return false;
 }
 
-// === NEW: Start a commitment (burst of actions) ===
+// Start a commitment (burst of actions or string sequence)
 function startCommitment(aiState, action, count, currentTime) {
   aiState.commitAction = action;
   aiState.commitCount = count;
-  aiState.commitUntil = currentTime + count * 250 + 500; // Buffer time
+  aiState.stringBuffered = false;
+  if (action === 'slap_string_full' || action === 'slap_string_grab') {
+    aiState.commitUntil = currentTime + 2000;
+  } else {
+    aiState.commitUntil = currentTime + count * 250 + 500;
+  }
 }
 
-// === NEW: Handle committed action sequences ===
+// Decide which string type to commit to based on config chances
+function pickStringCommitment(aiState, currentTime) {
+  const roll = Math.random();
+  if (roll < AI_CONFIG.STRING_FULL_CHANCE) {
+    startCommitment(aiState, 'slap_string_full', 3, currentTime);
+    return 'slap_string_full';
+  } else if (roll < AI_CONFIG.STRING_FULL_CHANCE + AI_CONFIG.STRING_GRAB_CHANCE) {
+    startCommitment(aiState, 'slap_string_grab', 2, currentTime);
+    return 'slap_string_grab';
+  }
+  return null;
+}
+
+// Handle committed action sequences
 function handleCommitment(cpu, human, aiState, currentTime, distance) {
+  // === SLAP STRING: full 3-hit rekka (mouse1 × 3) ===
+  if (aiState.commitAction === 'slap_string_full') {
+    if (!cpu.isAttacking && !aiState.stringBuffered && canAttack(cpu) && distance < AI_CONFIG.SLAP_RANGE + 30) {
+      resetAllKeys(cpu);
+      cpu.keys.mouse1 = true;
+      aiState.mouse1ReleaseTime = currentTime + 40;
+      aiState.lastDecisionTime = currentTime;
+      aiState.lastActionType = "string_full_start";
+      const dirToOpponent = getDirectionToOpponent(cpu, human);
+      if (dirToOpponent === 1) cpu.keys.d = true;
+      else cpu.keys.a = true;
+      return true;
+    }
+    if (cpu.isAttacking && cpu.attackType === "slap" && cpu.slapStringPosition === 1 && !aiState.stringBuffered) {
+      cpu.pendingSlapCount = 2;
+      cpu.pendingStringEnder = null;
+      aiState.stringBuffered = true;
+      return true;
+    }
+    if (aiState.stringBuffered) {
+      if (!cpu.isAttacking && !cpu.isInStartupFrames && !cpu.isInEndlag) {
+        aiState.commitAction = null;
+        aiState.commitCount = 0;
+        aiState.stringBuffered = false;
+        return false;
+      }
+      return true;
+    }
+    if (distance >= AI_CONFIG.SLAP_RANGE + 80) {
+      aiState.commitAction = null;
+      aiState.commitCount = 0;
+      aiState.stringBuffered = false;
+      return false;
+    }
+    if (distance < AI_CONFIG.SLAP_RANGE + 80) {
+      const dirToOpponent = getDirectionToOpponent(cpu, human);
+      if (dirToOpponent === 1) cpu.keys.d = true;
+      else cpu.keys.a = true;
+      return true;
+    }
+    return false;
+  }
+
+  // === SLAP STRING: slap-slap-grab (mouse1 × 2 + mouse2) ===
+  if (aiState.commitAction === 'slap_string_grab') {
+    if (!cpu.isAttacking && !aiState.stringBuffered && canAttack(cpu) && distance < AI_CONFIG.SLAP_RANGE + 30) {
+      resetAllKeys(cpu);
+      cpu.keys.mouse1 = true;
+      aiState.mouse1ReleaseTime = currentTime + 40;
+      aiState.lastDecisionTime = currentTime;
+      aiState.lastActionType = "string_grab_start";
+      const dirToOpponent = getDirectionToOpponent(cpu, human);
+      if (dirToOpponent === 1) cpu.keys.d = true;
+      else cpu.keys.a = true;
+      return true;
+    }
+    if (cpu.isAttacking && cpu.attackType === "slap" && cpu.slapStringPosition === 1 && !aiState.stringBuffered) {
+      cpu.pendingSlapCount = 1;
+      cpu.pendingStringEnder = { type: "grab" };
+      aiState.stringBuffered = true;
+      return true;
+    }
+    if (aiState.stringBuffered) {
+      if (!cpu.isAttacking && !cpu.isInStartupFrames && !cpu.isInEndlag &&
+          !cpu.isGrabStartup && !cpu.isGrabbing && !cpu.isGrabbingMovement) {
+        aiState.commitAction = null;
+        aiState.commitCount = 0;
+        aiState.stringBuffered = false;
+        return false;
+      }
+      return true;
+    }
+    if (distance >= AI_CONFIG.SLAP_RANGE + 80) {
+      aiState.commitAction = null;
+      aiState.commitCount = 0;
+      aiState.stringBuffered = false;
+      return false;
+    }
+    if (distance < AI_CONFIG.SLAP_RANGE + 80) {
+      const dirToOpponent = getDirectionToOpponent(cpu, human);
+      if (dirToOpponent === 1) cpu.keys.d = true;
+      else cpu.keys.a = true;
+      return true;
+    }
+    return false;
+  }
+
+  // === Legacy slap burst (individual disconnected slaps) ===
   if (aiState.commitAction === 'slap_burst') {
     if (distance < AI_CONFIG.SLAP_RANGE + 30 && canAttack(cpu)) {
       resetAllKeys(cpu);
@@ -1249,19 +1430,16 @@ function handleCommitment(cpu, human, aiState, currentTime, distance) {
       if (aiState.commitCount <= 0) {
         aiState.commitAction = null;
       }
-      // Keep approaching while slapping
       const dirToOpponent = getDirectionToOpponent(cpu, human);
       if (dirToOpponent === 1) cpu.keys.d = true;
       else cpu.keys.a = true;
       return true;
     } else if (distance < AI_CONFIG.SLAP_RANGE + 80) {
-      // Close enough — approach to get back in range
       const dirToOpponent = getDirectionToOpponent(cpu, human);
       if (dirToOpponent === 1) cpu.keys.d = true;
       else cpu.keys.a = true;
       return true;
     } else {
-      // Too far, abandon commitment
       aiState.commitAction = null;
       aiState.commitCount = 0;
       return false;
@@ -1398,15 +1576,16 @@ function handleCloseRange(cpu, human, aiState, currentTime, distance) {
     }
   }
   
-  // SLAP BURST — commit to multiple slaps in a row (aggressive pressure)
+  // SLAP STRING / BURST — commit to a proper string sequence or burst pressure
   if (roll < 0.22 + AI_CONFIG.COMMIT_BURST_CHANCE * aggMult.attack && canAttack(cpu)) {
-    const burstCount = randomInRange(AI_CONFIG.COMMIT_SLAP_BURST_MIN, AI_CONFIG.COMMIT_SLAP_BURST_MAX);
-    startCommitment(aiState, 'slap_burst', burstCount, currentTime);
+    if (!pickStringCommitment(aiState, currentTime)) {
+      const burstCount = randomInRange(AI_CONFIG.COMMIT_SLAP_BURST_MIN, AI_CONFIG.COMMIT_SLAP_BURST_MAX);
+      startCommitment(aiState, 'slap_burst', burstCount, currentTime);
+    }
     cpu.keys.mouse1 = true;
     aiState.mouse1ReleaseTime = currentTime + 40;
     aiState.lastDecisionTime = currentTime;
-    aiState.lastActionType = "slap_burst_start";
-    // Walk forward while slapping
+    aiState.lastActionType = "string_start";
     const dirToOpponent = getDirectionToOpponent(cpu, human);
     if (dirToOpponent === 1) cpu.keys.d = true;
     else cpu.keys.a = true;
@@ -1670,6 +1849,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     if (cpu.isThrowing) return true;
     if (cpu.isBeingThrown) return true;
     if (cpu.isDodging) return true;
+    if (cpu.isSidestepping || cpu.isSidestepRecovery) return true;
     if (cpu.isGrabStartup || cpu.isGrabbingMovement || cpu.isWhiffingGrab) return true;
     if (cpu.isGrabbing && !allowThrowFromGrab) return true;
     if (cpu.isBeingGrabbed) return true;
@@ -1849,6 +2029,40 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     return;
   }
   
+  // Process sidestep (s + shift) — must be checked BEFORE dodge
+  if (keyJustPressed("shift") && cpu.keys.s &&
+      !cpu.keys.mouse2 &&
+      !shouldBlockAction() &&
+      canPlayerSidestep(cpu) &&
+      !cpu.isGassed) {
+    const sidestepOpponent = opponent;
+    if (sidestepOpponent) {
+      const initData = getSidestepInitData(cpu.x, sidestepOpponent.x);
+      clearChargeState(cpu, true);
+      cpu.movementVelocity = 0;
+      cpu.isStrafing = false;
+
+      cpu.isSidestepping = true;
+      cpu.isSidestepStartup = true;
+      cpu.isSidestepRecovery = false;
+      cpu.sidestepStartTime = currentTime;
+      cpu.sidestepStartupEndTime = currentTime + SIDESTEP_STARTUP_MS;
+      cpu.sidestepActiveEndTime = currentTime + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MAX_MS;
+      cpu.sidestepEndTime = currentTime + SIDESTEP_TOTAL_MS;
+      cpu.sidestepStartX = cpu.x;
+      cpu.sidestepDirection = initData.direction;
+      cpu.sidestepMaxTravel = initData.maxTravel;
+      cpu.sidestepActiveDuration = SIDESTEP_ACTIVE_MAX_MS;
+
+      cpu.currentAction = "sidestep";
+      cpu.actionLockUntil = currentTime + SIDESTEP_TOTAL_MS;
+      cpu.stamina = Math.max(0, cpu.stamina - SIDESTEP_STAMINA_COST);
+
+      cpu._prevKeys = { ...cpu.keys };
+      return;
+    }
+  }
+
   // Process dodge
   if (keyJustPressed("shift") && 
       !cpu.keys.mouse2 &&
@@ -1859,7 +2073,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     
     cpu.movementVelocity = 0;
     cpu.isStrafing = false;
-    clearChargeState(cpu, true); // Dodge cancels charging
+    clearChargeState(cpu, true);
     
     cpu.isDodging = true;
     cpu.isDodgeStartup = true;

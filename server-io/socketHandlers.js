@@ -6,7 +6,7 @@ const {
   ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST, ROPE_JUMP_BOUNDARY_ZONE,
   DODGE_SLIDE_MOMENTUM, DODGE_POWERSLIDE_BOOST,
   DODGE_STARTUP_MS,
-  SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS, SIDESTEP_RECOVERY_MS,
+  SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MAX_MS, SIDESTEP_RECOVERY_MS,
   SIDESTEP_TOTAL_MS, SIDESTEP_STAMINA_COST,
   SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST, RAW_PARRY_STAMINA_COST,
   CHARGE_FULL_POWER_MS,
@@ -1909,11 +1909,12 @@ function registerSocketHandlers(socket, io, rooms, context) {
         player.isSidestepRecovery = false;
         player.sidestepStartTime = Date.now();
         player.sidestepStartupEndTime = Date.now() + SIDESTEP_STARTUP_MS;
-        player.sidestepActiveEndTime = Date.now() + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS;
+        player.sidestepActiveEndTime = Date.now() + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MAX_MS;
         player.sidestepEndTime = Date.now() + SIDESTEP_TOTAL_MS;
         player.sidestepStartX = player.x;
         player.sidestepDirection = initData.direction;
         player.sidestepMaxTravel = initData.maxTravel;
+        player.sidestepActiveDuration = SIDESTEP_ACTIVE_MAX_MS;
 
         player.currentAction = "sidestep";
         player.actionLockUntil = Date.now() + SIDESTEP_TOTAL_MS;
