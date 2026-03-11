@@ -134,7 +134,7 @@ function updateProjectiles(room, io, delta) {
             const knockbackDirection = snowball.velocityX > 0 ? 1 : -1;
 
             targetPlayer.isSlapKnockback = false;
-            targetPlayer.isSlapStringComboKnockback = false;
+            targetPlayer.isBurstKnockback = false;
 
             targetPlayer.knockbackVelocity.x = knockbackDirection * 1.55;
             targetPlayer.movementVelocity = 0;
@@ -152,7 +152,7 @@ function updateProjectiles(room, io, delta) {
               targetPlayer.isHit = false;
               targetPlayer.isAlreadyHit = false;
               targetPlayer.isSlapKnockback = false;
-              targetPlayer.isSlapStringComboKnockback = false;
+              targetPlayer.isBurstKnockback = false;
             },
             300
           );
@@ -431,7 +431,7 @@ function updateProjectiles(room, io, delta) {
             const knockbackDirection = clone.velocityX > 0 ? 1 : -1;
 
             opponent.isSlapKnockback = false;
-            opponent.isSlapStringComboKnockback = false;
+            opponent.isBurstKnockback = false;
 
             opponent.knockbackVelocity.x = knockbackDirection * 1.6;
             opponent.movementVelocity = 0;
@@ -449,7 +449,7 @@ function updateProjectiles(room, io, delta) {
               opponent.isHit = false;
               opponent.isAlreadyHit = false;
               opponent.isSlapKnockback = false;
-              opponent.isSlapStringComboKnockback = false;
+              opponent.isBurstKnockback = false;
             },
             200
           );

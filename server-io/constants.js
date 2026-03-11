@@ -21,6 +21,7 @@ const ALWAYS_SEND_PROPS = ['x', 'y', 'facing', 'stamina', 'id', 'fighter', 'colo
 const DELTA_TRACKED_PROPS = [
   'isAttacking', 'isSlapAttack', 'slapAnimation', 'attackType',
   'isChargingAttack', 'chargeAttackPower', 'chargeStartTime',
+  'isBurstKnockback',
   'isGrabbing', 'isBeingGrabbed', 'grabbedOpponent', 'grabState', 'grabAttemptType',
   'isGrabbingMovement', 'isWhiffingGrab', 'isGrabWhiffRecovery', 'isGrabTeching', 'grabTechRole', 'isGrabClashing', 'isGrabStartup',
   'isHit', 'isDead', 'isRecovering', 'isDodging', 'isDodgeStartup', 'isDodgeRecovery', 'dodgeDirection', 'justLandedFromDodge',
@@ -75,44 +76,31 @@ const SLAP_ACTIVE_MS = 100;       // Hitbox live window
 const SLAP_RECOVERY_MS = 130;     // Can't act, no hitbox — opponent's response window
 const SLAP_TOTAL_MS = SLAP_STARTUP_MS + SLAP_ACTIVE_MS + SLAP_RECOVERY_MS;
 
-// Slap String System — 3-hit rekka string: bam bam..BAM
-// Hits 1&2 are IDENTICAL — same startup/active/recovery/stun. Combo through speed.
-// Hit 3 startup alone creates the frame trap gap. No hitstun inflation needed.
-const SLAP_STRING_BUFFER_WINDOW_MS = 300;  // How long after hit 1 cycle end the player can manually input hit 2
-const SLAP_STRING_HIT2_MANUAL_WINDOW_MS = 100;  // Short window after hit 2 for delayed hit 3 — also prevents 1-2 loop from comboing
+// Slap String System — 3-hit combo: tap tap BOOM
+// Hits 1 & 2 are light pokes with minimal knockback (true combo on hit).
+// Hit 3 is the finisher with burst knockback that creates spacing.
+// All hits share identical frame data for snappy chaining.
+// After hit 2, player can input mouse2 instead of mouse1 to grab ender.
+const SLAP_STRING_BUFFER_WINDOW_MS = 300;  // Manual input window after cycle end
 
-// String hits 1 & 2 — identical frame data, recovery slashed for fast chain
-const SLAP_STRING_HIT1_RECOVERY_MS = 40;   // Was 130ms — massive reduction for snappy chaining
-const SLAP_STRING_HIT1_TOTAL_MS = SLAP_STARTUP_MS + SLAP_ACTIVE_MS + SLAP_STRING_HIT1_RECOVERY_MS; // 195ms
+// String hits 1, 2, 3 — identical frame data, recovery slashed for fast chain
+const SLAP_STRING_HIT_RECOVERY_MS = 40;    // Recovery between string hits
+const SLAP_STRING_HIT_TOTAL_MS = SLAP_STARTUP_MS + SLAP_ACTIVE_MS + SLAP_STRING_HIT_RECOVERY_MS;
 
-// String hit 2 — identical to hit 1
-const SLAP_STRING_HIT2_STARTUP_MS = SLAP_STARTUP_MS;     // 55ms — same as hit 1
-const SLAP_STRING_HIT2_ACTIVE_MS = SLAP_ACTIVE_MS;       // 100ms — same as hit 1
-const SLAP_STRING_HIT2_RECOVERY_MS = SLAP_STRING_HIT1_RECOVERY_MS; // 40ms — same as hit 1
-const SLAP_STRING_HIT2_TOTAL_MS = SLAP_STRING_HIT1_TOTAL_MS; // 195ms — same as hit 1
+// Knockback per string position
+const SLAP_STRING_LIGHT_KB_VELOCITY = 0.15;       // Hits 1 & 2: minimal — keeps opponent close for next hit
+const SLAP_NEUTRAL_KB_MULTIPLIER = 0.42;          // Solo slap (no string) — standard physics
 
-// String hit 3 — heavy finisher whose startup IS the frame trap gap
-const SLAP_HIT3_STARTUP_MS = 165;          // Tuned so escape window ≈ 45ms (dash/parry escape, slap loses)
-const SLAP_HIT3_ACTIVE_MS = 100;           // Full active window for the big hit
-const SLAP_HIT3_RECOVERY_MS = 200;         // Very punishable — committed string ender
-const SLAP_HIT3_TOTAL_MS = SLAP_HIT3_STARTUP_MS + SLAP_HIT3_ACTIVE_MS + SLAP_HIT3_RECOVERY_MS; // 465ms
+// Hit 3: physics-based knockback (velocity impulse, no DI, decays via 0.97 friction)
+// ~110px total slide at 0.97 friction. isHit ends early so victim can brake near edges.
+const SLAP_HIT3_KB_VELOCITY = 4.0;
+const SLAP_HIT3_STUN_MS = 200;
 
-// Cinematic String System — deterministic combo that looks identical every time.
-// Hits 1&2: both players snap to fixed spacing + shared drift (no KB multiplier, no ice physics).
-// Hit 3: "release" back to real physics with heavy knockback.
-const SLAP_STRING_COMBO_SPACING = 140;            // Fixed px between players (~pushbox distance so they don't overlap)
-const SLAP_STRING_COMBO_DRIFT_HIT1 = 1.3;         // Drift velocity after hit 1 — moderate push
-const SLAP_STRING_COMBO_DRIFT_HIT2 = 1.3;         // Drift velocity after hit 2 — same as hit 1
-const SLAP_STRING_COMBO_DRIFT_FRICTION = 0.95;    // Drift decay per tick (independent of game physics)
-const SLAP_STRING_HIT3_KB_MULTIPLIER = 0.80;      // Hit 3 finisher — release to real physics
-const SLAP_NEUTRAL_KB_MULTIPLIER = 0.42;            // Solo slap — tuned so 3-4 slaps reach boundary from neutral (was 0.475)
-const SLAP_STRING_HIT3_SLIDE_VELOCITY = 2.2;      // Hit 3 forward slide — strong lunge to close gap even on delayed strings
+// String stun (hits 1 & 2)
+const SLAP_STRING_HIT_STUN_MS = 260;
 
-// String stun — hits 1 & 2 both use 260ms (identical).
-// Frame trap math (slap2→slap3): advantage = t_hit(55) + stun(260) - cycle(195) = 120ms.
-// Escape window = S3(165) - 120 = 45ms. Opponent's slap (55ms startup) > 45ms → slap3 wins.
-// Dash (40ms startup) fits in 45ms window → escapable with good timing.
-const SLAP_STRING_HIT2_STUN_MS = 260;
+// On-hit combo push: both players drift forward together on connect (matches whiff slide)
+const SLAP_ONHIT_ATTACKER_PUSH = 1.0;
 
 const CHARGED_STARTUP_MS = 150;   // Clear windup (unchanged)
 const CHARGED_ACTIVE_MS = 120;    // Hitbox live window
@@ -120,10 +108,10 @@ const CHARGED_ACTIVE_MS = 120;    // Hitbox live window
 const GRAB_STARTUP_MS = 180;      // Readable telegraph (was 150)
 const GRAB_ACTIVE_MS = 100;       // Grab connect window
 
-const DODGE_STARTUP_MS = 40;      // Brief crouch/wind-up before movement (was 50)
-const DODGE_ACTIVE_MS = 200;      // Actual dash movement (was 220)
-const DODGE_RECOVERY_MS = 90;     // Sliding to a stop, punishable (was 120)
-const DODGE_TOTAL_MS = DODGE_STARTUP_MS + DODGE_ACTIVE_MS + DODGE_RECOVERY_MS; // 330ms
+const DODGE_STARTUP_MS = 20;      // Near-instant startup (was 40)
+const DODGE_ACTIVE_MS = 175;      // Actual dash movement (was 200)
+const DODGE_RECOVERY_MS = 0;      // No recovery — cooldown prevents chain-dash (was 90)
+const DODGE_TOTAL_MS = DODGE_STARTUP_MS + DODGE_ACTIVE_MS + DODGE_RECOVERY_MS; // 220ms
 const DODGE_COOLDOWN_MS = 100;    // Forced idle gap after recovery before next dash (prevents chain-dash blur)
 
 // ============================================
@@ -492,25 +480,14 @@ module.exports = {
   SLAP_RECOVERY_MS,
   SLAP_TOTAL_MS,
   SLAP_STRING_BUFFER_WINDOW_MS,
-  SLAP_STRING_HIT2_MANUAL_WINDOW_MS,
-  SLAP_STRING_HIT1_RECOVERY_MS,
-  SLAP_STRING_HIT1_TOTAL_MS,
-  SLAP_STRING_HIT2_STARTUP_MS,
-  SLAP_STRING_HIT2_ACTIVE_MS,
-  SLAP_STRING_HIT2_RECOVERY_MS,
-  SLAP_STRING_HIT2_TOTAL_MS,
-  SLAP_HIT3_STARTUP_MS,
-  SLAP_HIT3_ACTIVE_MS,
-  SLAP_HIT3_RECOVERY_MS,
-  SLAP_HIT3_TOTAL_MS,
-  SLAP_STRING_COMBO_SPACING,
-  SLAP_STRING_COMBO_DRIFT_HIT1,
-  SLAP_STRING_COMBO_DRIFT_HIT2,
-  SLAP_STRING_COMBO_DRIFT_FRICTION,
-  SLAP_STRING_HIT3_KB_MULTIPLIER,
+  SLAP_STRING_HIT_RECOVERY_MS,
+  SLAP_STRING_HIT_TOTAL_MS,
+  SLAP_STRING_LIGHT_KB_VELOCITY,
   SLAP_NEUTRAL_KB_MULTIPLIER,
-  SLAP_STRING_HIT3_SLIDE_VELOCITY,
-  SLAP_STRING_HIT2_STUN_MS,
+  SLAP_HIT3_KB_VELOCITY,
+  SLAP_STRING_HIT_STUN_MS,
+  SLAP_HIT3_STUN_MS,
+  SLAP_ONHIT_ATTACKER_PUSH,
   CHARGED_STARTUP_MS,
   CHARGED_ACTIVE_MS,
   GRAB_STARTUP_MS,

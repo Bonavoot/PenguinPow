@@ -181,11 +181,12 @@ function createCPUPlayer(uniqueId) {
     lastSlapHitLandedTime: 0,
     lastCheckedAttackTime: 0,
     pendingSlapCount: 0,
-    pendingStringEnder: null,
+    pendingGrabEnder: false,
     slapStringPosition: 0,
     slapStringWindowUntil: 0,
-    isSlapStringFinisher: false,
-    isSlapStringComboDrift: false,
+    slapAnimationToggle: 0,
+    currentSlapHitConnected: false,
+    isBurstKnockback: false,
     mouse1JustPressed: false,
     mouse1JustReleased: false,
     mouse2JustPressed: false,
@@ -441,11 +442,12 @@ function resetRoomAndPlayers(room, io) {
     player.lastHitByStringPos = 0;
     player.lastSlapHitLandedTime = 0;
     player.pendingSlapCount = 0;
-    player.pendingStringEnder = null;
+    player.pendingGrabEnder = false;
     player.slapStringPosition = 0;
     player.slapStringWindowUntil = 0;
-    player.isSlapStringFinisher = false;
-    player.isSlapStringComboDrift = false;
+    player.slapAnimationToggle = 0;
+    player.currentSlapHitConnected = false;
+    player.isBurstKnockback = false;
     player.isChargingAttack = false;
     player.chargeStartTime = 0;
     player.chargeAttackPower = 0;

@@ -47,7 +47,6 @@ const {
   SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST, DODGE_STAMINA_COST,
   GASSED_DURATION_MS, GASSED_RECOVERY_STAMINA,
   HITSTOP_GRAB_MS, HITSTOP_THROW_MS,
-  SLAP_STRING_COMBO_DRIFT_FRICTION,
   SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MIN_MS, SIDESTEP_ACTIVE_MAX_MS, SIDESTEP_RECOVERY_MS,
   SIDESTEP_ARC_DEPTH_MIN, SIDESTEP_ARC_DEPTH_MAX, SIDESTEP_GRAB_TRACK_RANGE,
   SIDESTEP_ARC_SPEED, SIDESTEP_MAX_TRAVEL,
@@ -576,44 +575,7 @@ function tick(delta) {
             player.movementVelocity = 0;
             player.recoveryDirection = null;
 
-            // Check if we should restart charging immediately after recovery ends
-            // IMPORTANT: Always enforce 200ms threshold to prevent quick taps from triggering charge
-            if (player.mouse1HeldDuringAttack && player.keys.mouse1 && player.mouse1PressTime > 0 && (Date.now() - player.mouse1PressTime) >= 200) {
-              player.isChargingAttack = true;
-              if (player.chargeAttackPower > 0) {
-                player.chargeStartTime = Date.now() - (player.chargeAttackPower / 100 * CHARGE_FULL_POWER_MS);
-              } else {
-                player.chargeStartTime = Date.now();
-                player.chargeAttackPower = 1;
-              }
-              player.attackType = "charged";
-              player.mouse1HeldDuringAttack = false;
-            }
-            // Otherwise check normal conditions for restart
-            else if (
-              player.keys.mouse1 &&
-              player.mouse1PressTime > 0 && (Date.now() - player.mouse1PressTime) >= 200 &&
-              !player.isAttacking &&
-              !player.isJumping &&
-              !player.isDodging &&
-              !player.isThrowing &&
-              !player.isBeingThrown &&
-              !player.isGrabbing &&
-              !player.isBeingGrabbed &&
-              !player.isHit &&
-              !player.isRawParryStun &&
-              !player.isThrowingSnowball &&
-              !player.canMoveToReady
-            ) {
-              player.isChargingAttack = true;
-              if (player.chargeAttackPower > 0) {
-                player.chargeStartTime = Date.now() - (player.chargeAttackPower / 100 * CHARGE_FULL_POWER_MS);
-              } else {
-                player.chargeStartTime = Date.now();
-                player.chargeAttackPower = 1;
-              }
-              player.attackType = "charged";
-            }
+            player.mouse1HeldDuringAttack = false;
 
             // Clean up stale chargedAttackHit flag after recovery ends
             // This flag is set by processHit and never cleared by safelyEndChargedAttack
@@ -768,13 +730,13 @@ function tick(delta) {
           player.isHit = false;
           player.isAlreadyHit = false;
           player.isSlapKnockback = false;
-          player.isSlapStringComboKnockback = false;
+          player.isBurstKnockback = false;
           player.isParryKnockback = false;
           player.knockbackVelocity.x = 0;
           player.movementVelocity = 0;
           // Don't return - continue normal processing
         } else {
-          // Single unified knockback — only knockbackVelocity drives displacement during hitstun
+          // Standard knockback — knockbackVelocity drives displacement
           player.x =
             player.x + player.knockbackVelocity.x * delta * speedFactor;
 
@@ -798,21 +760,17 @@ function tick(delta) {
           } else if (isLoserAfterGameOver && isPastMapBoundaries) {
             player.knockbackVelocity.x *= DOHYO_FALL_HORIZONTAL_RETENTION;
           } else {
-            // DI: holding opposite direction adds extra friction
             const knockbackDirection = player.knockbackVelocity.x > 0 ? 1 : -1;
             const isHoldingOpposite = (knockbackDirection > 0 && player.keys.a && !player.keys.d) || 
                                       (knockbackDirection < 0 && player.keys.d && !player.keys.a);
             const DI_FRICTION_BONUS = 0.96;
             
-            if (player.isSlapStringComboKnockback) {
-              player.knockbackVelocity.x *= SLAP_STRING_COMBO_DRIFT_FRICTION;
-            } else if (player.isSlapKnockback) {
+            if (player.isSlapKnockback) {
               player.knockbackVelocity.x *= 0.97;
             } else {
               player.knockbackVelocity.x *= 0.96;
             }
-            // DI disabled during string combo hits (1&2) so displacement is perfectly deterministic
-            if (isHoldingOpposite && !player.isSlapStringComboKnockback) {
+            if (isHoldingOpposite && !player.isBurstKnockback) {
               player.knockbackVelocity.x *= DI_FRICTION_BONUS;
             }
           }
@@ -1324,7 +1282,7 @@ function tick(delta) {
             opponent.isHit = false;
             opponent.isAlreadyHit = false;
             opponent.isSlapKnockback = false;
-            opponent.isSlapStringComboKnockback = false;
+            opponent.isBurstKnockback = false;
             
             // Set Y to correct ground level based on whether they landed outside the dohyo
             const landedOutsideDohyo = opponent.x <= DOHYO_LEFT_BOUNDARY || opponent.x >= DOHYO_RIGHT_BOUNDARY;
@@ -1370,12 +1328,6 @@ function tick(delta) {
 
         if (currentTime >= player.throwEndTime) {
           player.isThrowing = false;
-
-          // Check if we should restart charging after missed throw completes
-          if (shouldRestartCharging(player)) {
-            // Restart charging immediately
-            startCharging(player);
-          }
         }
       }
 
@@ -1515,28 +1467,10 @@ function tick(delta) {
         player.dodgeRecoveryEndTime = 0;
         player.dodgeCooldownUntil = Date.now() + DODGE_COOLDOWN_MS;
 
-        // Execute pending charge attack stored during dash
-        if (player.pendingChargeAttack && player.spacebarReleasedDuringDodge) {
-          const chargePercentage = player.pendingChargeAttack.power;
-          if (player.keys.mouse1) {
-            executeSlapAttack(player, rooms);
-          } else {
-            executeChargedAttack(player, chargePercentage, rooms);
-          }
-          player.isChargingAttack = false;
+        // Neutral charged attack removed — pending charge cleared, no charge restart
+        if (player.pendingChargeAttack) {
           player.pendingChargeAttack = null;
           player.spacebarReleasedDuringDodge = false;
-        } else if (
-          player.keys.mouse1 &&
-          player.mouse1PressTime > 0 && (Date.now() - player.mouse1PressTime) >= 200 &&
-          !player.isChargingAttack && !player.isAttacking &&
-          !player.isHit && !player.isRawParryStun && !player.isRawParrying &&
-          !player.isGrabbing && !player.isBeingGrabbed &&
-          !player.isThrowing && !player.isBeingThrown &&
-          !player.isGrabBreaking && !player.isGrabBreakCountered &&
-          !player.isRecovering && !player.canMoveToReady
-        ) {
-          startCharging(player);
         }
       }
 
@@ -1743,21 +1677,8 @@ function tick(delta) {
             // Attack buffer: if mouse1 was released during landing recovery,
             // fire the buffered attack now (slap if quick tap, charged attack if held)
             if (player.ropeJumpBufferedAttackRelease) {
-              const holdMs = player.ropeJumpBufferedAttackRelease;
               player.ropeJumpBufferedAttackRelease = 0;
-              if (holdMs >= 200) {
-                const chargePower = Math.min(100, (holdMs / CHARGE_FULL_POWER_MS) * 100);
-                executeChargedAttack(player, chargePower, rooms);
-              } else {
-                executeSlapAttack(player, rooms);
-              }
-            } else if (player.keys.mouse1 && player.mouse1PressTime > 0 &&
-                !player.isAttacking && !player.isChargingAttack) {
-              // mouse1 still held → start charging immediately
-              player.isChargingAttack = true;
-              player.chargeStartTime = player.mouse1PressTime;
-              player.chargeAttackPower = Math.min(100, ((Date.now() - player.mouse1PressTime) / CHARGE_FULL_POWER_MS) * 100) || 1;
-              player.attackType = "charged";
+              executeSlapAttack(player, rooms);
             }
           }
         }
@@ -2214,17 +2135,17 @@ function tick(delta) {
           !player.isGrabbing &&
           !player.isGrabbingMovement &&
           !player.isWhiffingGrab &&
-          !player.isAttacking && // Block during any attack (slap or charged)
+          !player.isAttacking &&
           !player.isRecovering &&
           !player.isRawParryStun &&
           !player.isRawParrying &&
-          !player.isPerfectRawParrySuccess && // Block during perfect parry animation
-          !player.isGrabBreaking && // Block during grab break animation
-          !player.isGrabBreakCountered && // Block during grab break countered state
-          !player.isGrabBreakSeparating && // Block during grab break separation
+          !player.isPerfectRawParrySuccess &&
+          !player.isGrabBreaking &&
+          !player.isGrabBreakCountered &&
+          !player.isGrabBreakSeparating &&
           !player.isThrowingSnowball &&
           !player.isSpawningPumoArmy &&
-          !player.pendingSlapCount && // Block strafing when buffered slap attack is pending
+          !player.pendingSlapCount &&
           !(
             player.slapStrafeCooldown &&
             Date.now() < player.slapStrafeCooldownEndTime
@@ -2450,31 +2371,14 @@ function tick(delta) {
             const nearEdge = isNearDohyoEdge(player.x);
             const edgeProximity = getEdgeProximity(player.x);
             
-            // Cinematic drift: position FIRST, then friction — matches victim's
-            // knockbackVelocity order so both players move in perfect lockstep.
-            if (player.isSlapStringComboDrift) {
-              const newX = player.x + delta * speedFactor * player.movementVelocity;
-              player.movementVelocity *= SLAP_STRING_COMBO_DRIFT_FRICTION;
-              player.isBraking = false;
-              player.isStrafing = false;
-              if (newX >= leftBoundary && newX <= rightBoundary) {
-                player.x = newX;
-              } else {
-                player.x = newX < leftBoundary ? leftBoundary : rightBoundary;
-                player.movementVelocity = 0;
-              }
-            } else {
             // Normal ice physics: friction first, then position
             const friction = getIceFriction(player, isActiveBraking, nearEdge, edgeProximity);
             
-            // Apply friction to velocity
             player.movementVelocity *= friction;
             
-            // Set braking state for visual feedback
             player.isBraking = isActiveBraking;
             player.isStrafing = false;
 
-            // Calculate new position
             let newX;
             if (player.isSlapSliding) {
               const opponent = room.players.find((p) => p.id !== player.id);
@@ -2487,7 +2391,6 @@ function tick(delta) {
               newX = player.x + delta * currentSpeedFactor * player.movementVelocity;
             }
 
-            // Apply position with boundary checks
             if (newX >= leftBoundary && newX <= rightBoundary) {
               player.x = newX;
             } else if (!player.isHit && !player.isThrowLanded) {
@@ -2496,7 +2399,6 @@ function tick(delta) {
             } else {
               player.x = newX;
             }
-            } // end normal ice physics else
           } else {
             // Velocity below threshold - full stop
             player.movementVelocity = 0;
@@ -2703,9 +2605,8 @@ function tick(delta) {
           // Clear crouch states when starting raw parry
           player.isCrouchStance = false;
           player.isCrouchStrafing = false;
-          // Clear buffered slap attack and string state when starting raw parry
           player.pendingSlapCount = 0;
-          player.pendingStringEnder = null;
+          player.pendingGrabEnder = false;
           player.slapStringPosition = 0;
           player.slapStringWindowUntil = 0;
         }
@@ -2746,32 +2647,7 @@ function tick(delta) {
           // Space released - clear grab-break consumption so future parries can occur
           player.grabBreakSpaceConsumed = false;
 
-          // Check if we should restart charging after raw parry ends
-          if (
-            player.keys.mouse1 &&
-            player.mouse1PressTime > 0 && (Date.now() - player.mouse1PressTime) >= 200 &&
-            !player.isAttacking &&
-            !player.isJumping &&
-            !player.isDodging &&
-            !player.isThrowing &&
-            !player.isBeingThrown &&
-            !player.isGrabbing &&
-            !player.isBeingGrabbed &&
-            !player.isHit &&
-            !player.isRecovering &&
-            !player.isRawParryStun &&
-            !player.isThrowingSnowball &&
-            !player.canMoveToReady
-          ) {
-            player.isChargingAttack = true;
-            if (player.chargeAttackPower > 0) {
-              player.chargeStartTime = Date.now() - (player.chargeAttackPower / 100 * CHARGE_FULL_POWER_MS);
-            } else {
-              player.chargeStartTime = Date.now();
-              player.chargeAttackPower = 1;
-            }
-            player.attackType = "charged";
-          }
+          // Neutral charged attack removed — no charge to restart after parry
         }
       }
 
@@ -2873,7 +2749,6 @@ function tick(delta) {
       ) {
         // If at the ropes, still check for attack end time but don't move
         if (Date.now() >= player.attackEndTime) {
-          // Use helper function to safely end charged attacks
           safelyEndChargedAttack(player, rooms);
         }
       }
@@ -2908,19 +2783,7 @@ function tick(delta) {
       // TACHIAI CHARGING: Allow charging during the walk-to-ready and ready phases
       // (after power-up pick, before hakkiyoi). Players hold mouse1 to build charge
       // for a powered tachiai at round start.
-      if (
-        !room.gameStart &&
-        !player.isChargingAttack &&
-        player.keys && player.keys.mouse1 &&
-        player.mouse1PressTime > 0 &&
-        (Date.now() - player.mouse1PressTime) >= 200 &&
-        !player.isThrowingSalt
-      ) {
-        startCharging(player);
-      }
-
       // INPUT BUFFERING: Apply buffered mouse1 when game starts.
-      // Skip if player is already charging from pre-round (tachiai charge).
       if (room.gameStart && player.mouse1BufferedBeforeStart) {
         if (!player.isChargingAttack) {
           player.keys.mouse1 = true;
@@ -2930,16 +2793,7 @@ function tick(delta) {
       }
 
       // CONTINUOUS MOUSE1 CHECK: Auto-start charging when mouse1 is held and player is idle
-      if (
-        room.gameStart &&
-        player.keys.mouse1 &&
-        player.mouse1PressTime > 0 &&
-        (Date.now() - player.mouse1PressTime) >= 150 &&
-        !(player.inputLockUntil && Date.now() < player.inputLockUntil) &&
-        canPlayerCharge(player)
-      ) {
-        startCharging(player);
-      }
+      // Neutral charged attack removed — no charge initiation from held mouse1
 
       // Clear strafing cooldown when it expires
       if (

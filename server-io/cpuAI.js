@@ -796,9 +796,11 @@ function updateCPUAI(cpu, human, room, currentTime) {
     }
   }
   
-  // Priority 5: Handle charging attack
+  // Legacy: Handle charging attack (disabled — neutral charge removed)
   if (cpu.isChargingAttack) {
-    handleChargeAttack(cpu, human, aiState, currentTime, distance);
+    cpu.isChargingAttack = false;
+    cpu.chargeStartTime = 0;
+    cpu.chargeAttackPower = 0;
     return;
   }
   
@@ -1079,16 +1081,11 @@ function handleRingOutOpportunity(cpu, human, aiState, currentTime, distance) {
       aiState.lastDecisionTime = currentTime;
       aiState.lastActionType = "slap";
       return;
-    } else if (aiState.consecutiveChargedAttacks < AI_CONFIG.MAX_CONSECUTIVE_CHARGED) {
-      cpu.keys.mouse1 = true;
-      cpu.mouse1PressTime = currentTime; // Set press time for threshold detection
-      aiState.isChargingIntentional = true;
-      aiState.chargeStartTime = currentTime;
-      aiState.targetChargeTime = randomInRange(300, 500);
-      aiState.lastDecisionTime = currentTime;
-      aiState.lastActionType = "charge";
-      return;
     } else {
+      // String pressure: slap to build into hit 3 charge near the edge
+      if (!pickStringCommitment(aiState, currentTime)) {
+        startCommitment(aiState, 'slap_burst', randomInRange(2, 4), currentTime);
+      }
       cpu.keys.mouse1 = true;
       aiState.mouse1ReleaseTime = currentTime + 40;
       aiState.lastDecisionTime = currentTime;
@@ -1111,15 +1108,15 @@ function handleRingOutOpportunity(cpu, human, aiState, currentTime, distance) {
       aiState.lastDecisionTime = currentTime;
       aiState.lastActionType = "slap_approach_ringout";
       return;
-    } else if (midRoll < 0.60 && canAttack(cpu) && aiState.consecutiveChargedAttacks < AI_CONFIG.MAX_CONSECUTIVE_CHARGED) {
-      // Charged attack — lunge closes the remaining gap
+    } else if (midRoll < 0.60 && canAttack(cpu)) {
+      // Slap approach — close gap and start a string
       cpu.keys.mouse1 = true;
-      cpu.mouse1PressTime = currentTime;
-      aiState.isChargingIntentional = true;
-      aiState.chargeStartTime = currentTime;
-      aiState.targetChargeTime = randomInRange(250, 450);
+      aiState.mouse1ReleaseTime = currentTime + 40;
+      const dirToOpponent2 = getDirectionToOpponent(cpu, human);
+      if (dirToOpponent2 === 1) cpu.keys.d = true;
+      else cpu.keys.a = true;
       aiState.lastDecisionTime = currentTime;
-      aiState.lastActionType = "charge_ringout";
+      aiState.lastActionType = "slap_approach";
       return;
     } else if (midRoll < 0.80 && canGrab(cpu)) {
       const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
@@ -1331,7 +1328,7 @@ function pickStringCommitment(aiState, currentTime) {
 
 // Handle committed action sequences
 function handleCommitment(cpu, human, aiState, currentTime, distance) {
-  // === SLAP STRING: full 3-hit rekka (mouse1 × 3) ===
+  // === SLAP STRING: full 3-hit combo (mouse1 × 3) ===
   if (aiState.commitAction === 'slap_string_full') {
     if (!cpu.isAttacking && !aiState.stringBuffered && canAttack(cpu) && distance < AI_CONFIG.SLAP_RANGE + 30) {
       resetAllKeys(cpu);
@@ -1344,9 +1341,8 @@ function handleCommitment(cpu, human, aiState, currentTime, distance) {
       else cpu.keys.a = true;
       return true;
     }
-    if (cpu.isAttacking && cpu.attackType === "slap" && cpu.slapStringPosition === 1 && !aiState.stringBuffered) {
+    if (cpu.isAttacking && cpu.attackType === "slap" && !aiState.stringBuffered) {
       cpu.pendingSlapCount = 2;
-      cpu.pendingStringEnder = null;
       aiState.stringBuffered = true;
       return true;
     }
@@ -1374,7 +1370,7 @@ function handleCommitment(cpu, human, aiState, currentTime, distance) {
     return false;
   }
 
-  // === SLAP STRING: slap-slap-grab (mouse1 × 2 + mouse2) ===
+  // === SLAP STRING: slap-slap-grab ender (mouse1 × 2 + mouse2) ===
   if (aiState.commitAction === 'slap_string_grab') {
     if (!cpu.isAttacking && !aiState.stringBuffered && canAttack(cpu) && distance < AI_CONFIG.SLAP_RANGE + 30) {
       resetAllKeys(cpu);
@@ -1387,9 +1383,9 @@ function handleCommitment(cpu, human, aiState, currentTime, distance) {
       else cpu.keys.a = true;
       return true;
     }
-    if (cpu.isAttacking && cpu.attackType === "slap" && cpu.slapStringPosition === 1 && !aiState.stringBuffered) {
+    if (cpu.isAttacking && cpu.attackType === "slap" && !aiState.stringBuffered) {
       cpu.pendingSlapCount = 1;
-      cpu.pendingStringEnder = { type: "grab" };
+      cpu.pendingGrabEnder = true;
       aiState.stringBuffered = true;
       return true;
     }
@@ -1529,22 +1525,7 @@ function handleGrabDecision(cpu, human, aiState, currentTime) {
   }
 }
 
-// Handle charging attack logic
-function handleChargeAttack(cpu, human, aiState, currentTime, distance) {
-  const chargeElapsed = currentTime - aiState.chargeStartTime;
-  
-  if (chargeElapsed >= aiState.targetChargeTime || 
-      distance < AI_CONFIG.SLAP_RANGE - 30 ||
-      human.isDodging) {
-    cpu.keys.mouse1 = false;
-    cpu.mouse1PressTime = 0;
-    aiState.isChargingIntentional = false;
-    aiState.consecutiveChargedAttacks++;
-  } else {
-    cpu.keys.mouse1 = true;
-    if (!cpu.mouse1PressTime) cpu.mouse1PressTime = currentTime;
-  }
-}
+// handleHit3Charge removed — hit 3 no longer part of slap string
 
 // === OVERHAULED: Close range combat — commit to actions, don't always back off ===
 function handleCloseRange(cpu, human, aiState, currentTime, distance) {
@@ -1674,15 +1655,15 @@ function handleMidRange(cpu, human, aiState, currentTime, distance) {
   else if (roll < 0.68) {
     handleMovement(cpu, human, aiState, currentTime, distance);
   }
-  // Charged attack (occasionally)
-  else if (roll < 0.82 && canAttack(cpu) && aiState.consecutiveChargedAttacks < AI_CONFIG.MAX_CONSECUTIVE_CHARGED) {
+  // Slap pressure at mid range
+  else if (roll < 0.82 && canAttack(cpu)) {
     cpu.keys.mouse1 = true;
-    cpu.mouse1PressTime = currentTime;
-    aiState.isChargingIntentional = true;
-    aiState.chargeStartTime = currentTime;
-    aiState.targetChargeTime = randomInRange(350, 600);
+    aiState.mouse1ReleaseTime = currentTime + 40;
+    const dirToOpponent = getDirectionToOpponent(cpu, human);
+    if (dirToOpponent === 1) cpu.keys.d = true;
+    else cpu.keys.a = true;
     aiState.lastDecisionTime = currentTime;
-    aiState.lastActionType = "charge";
+    aiState.lastActionType = "slap_approach";
   } else {
     // Approach
     const dirToOpponent = getDirectionToOpponent(cpu, human);
@@ -1717,18 +1698,15 @@ function handleFarRange(cpu, human, aiState, currentTime, distance) {
     else cpu.keys.a = true;
     aiState.lastActionType = "approach";
   }
-  // Charged attack (15%)
-  else if (roll < 0.90 && 
-           distance >= AI_CONFIG.CHARGED_ATTACK_RANGE && 
-           canAttack(cpu) && 
-           aiState.consecutiveChargedAttacks < AI_CONFIG.MAX_CONSECUTIVE_CHARGED) {
-    cpu.keys.mouse1 = true;
-    cpu.mouse1PressTime = currentTime;
-    aiState.isChargingIntentional = true;
-    aiState.chargeStartTime = currentTime;
-    aiState.targetChargeTime = randomInRange(500, 900);
+  // Dash approach (15%) — close the gap faster at far range
+  else if (roll < 0.90 && canDodge(cpu)) {
+    cpu.keys.shift = true;
+    const dirToOpponent = getDirectionToOpponent(cpu, human);
+    if (dirToOpponent === 1) cpu.keys.d = true;
+    else cpu.keys.a = true;
+    aiState.shiftReleaseTime = currentTime + 80;
     aiState.lastDecisionTime = currentTime;
-    aiState.lastActionType = "charge";
+    aiState.lastActionType = "dodge_approach";
   }
   // Just approach
   else {
@@ -2158,25 +2136,9 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     cpu.rawParryStartTime = 0;
   }
   
-  // Process charge attack (mouse1 held past threshold)
-  if (cpu.keys.mouse1 && cpu.mouse1PressTime > 0 && (currentTime - cpu.mouse1PressTime) >= 200 && !shouldBlockAction() && canPlayerCharge(cpu) && !keyJustPressed("mouse2")) {
-    if (!cpu.isChargingAttack) {
-      startCharging(cpu);
-    }
-    
-    const chargeDuration = currentTime - cpu.chargeStartTime;
-    cpu.chargeAttackPower = Math.min((chargeDuration / 1000) * 100, 100);
-    cpu.chargingFacingDirection = cpu.facing;
-  }
-  
-  // Release charged attack (mouse1 released while charging)
-  if (!cpu.keys.mouse1 && cpu.isChargingAttack && !cpu.isDodging) {
-    const chargePercentage = cpu.chargeAttackPower;
-    
-    if (chargePercentage >= 10) {
-      executeChargedAttack(cpu, chargePercentage, rooms);
-    }
-    
+  // Neutral charged attack REMOVED — charge only exists as hit 3 string ender.
+  // Clear any lingering charge state
+  if (cpu.isChargingAttack) {
     clearChargeState(cpu);
   }
   

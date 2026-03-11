@@ -374,11 +374,12 @@ function registerSocketHandlers(socket, io, rooms, context) {
         lastSlapHitLandedTime: 0, // Track when attacker last landed a slap (for chain lunge)
         lastCheckedAttackTime: 0, // Add tracking for attack collision checking
         pendingSlapCount: 0,
-        pendingStringEnder: null,
+        pendingGrabEnder: false,
         slapStringPosition: 0,
         slapStringWindowUntil: 0,
-        isSlapStringFinisher: false,
-        isSlapStringComboDrift: false,
+        slapAnimationToggle: 0,
+        currentSlapHitConnected: false,
+        isBurstKnockback: false,
         mouse1JustPressed: false,
         mouse1JustReleased: false,
         mouse2JustPressed: false,
@@ -593,11 +594,12 @@ function registerSocketHandlers(socket, io, rooms, context) {
         lastSlapHitLandedTime: 0, // Track when attacker last landed a slap (for chain lunge)
         lastCheckedAttackTime: 0, // Add tracking for attack collision checking
         pendingSlapCount: 0,
-        pendingStringEnder: null,
+        pendingGrabEnder: false,
         slapStringPosition: 0,
         slapStringWindowUntil: 0,
-        isSlapStringFinisher: false,
-        isSlapStringComboDrift: false,
+        slapAnimationToggle: 0,
+        currentSlapHitConnected: false,
+        isBurstKnockback: false,
         mouse1JustPressed: false,
         mouse1JustReleased: false,
         mouse2JustPressed: false,
@@ -849,11 +851,12 @@ function registerSocketHandlers(socket, io, rooms, context) {
       lastSlapHitLandedTime: 0,
       lastCheckedAttackTime: 0,
       pendingSlapCount: 0,
-      pendingStringEnder: null,
+      pendingGrabEnder: false,
       slapStringPosition: 0,
       slapStringWindowUntil: 0,
-      isSlapStringFinisher: false,
-      isSlapStringComboDrift: false,
+      slapAnimationToggle: 0,
+      currentSlapHitConnected: false,
+      isBurstKnockback: false,
       mouse1JustPressed: false,
       mouse1JustReleased: false,
       mouse2JustPressed: false,
@@ -864,15 +867,15 @@ function registerSocketHandlers(socket, io, rooms, context) {
       fJustPressed: false,
       spaceJustPressed: false,
       inputBuffer: null,
-      attackIntentTime: 0, // When mouse1 was pressed (for counter hit detection)
-      attackAttemptTime: 0, // When attack execution started (for counter hit detection)
+      attackIntentTime: 0,
+      attackAttemptTime: 0,
       isOverlapping: false,
       overlapStartTime: null,
       chargeCancelled: false,
       isGrabBreaking: false,
       isGrabBreakCountered: false,
       grabBreakSpaceConsumed: false,
-      postGrabInputBuffer: false, // Buffer flag for frame-1 input activation after grab/throw ends
+      postGrabInputBuffer: false,
       isCounterGrabbed: false, // Set when grabbed while raw parrying - cannot grab break
     grabCounterAttempted: false, // True once the grabbed player has committed to a counter input
     grabCounterInput: null, // The key they committed to ('s', 'a', or 'd') — wrong guess = locked out
@@ -1244,38 +1247,17 @@ function registerSocketHandlers(socket, io, rooms, context) {
         }
         player.keys = data.keys;
 
-        // During slap attacks, route inputs through the string buffer system
-        // (pendingSlapCount / pendingStringEnder) instead of the generic inputBuffer.
-        // Without this, hitstop's 50ms inputLock captures mouse2/space/shift/F into
-        // inputBuffer, bypassing the ender system entirely — causing SLAP1→GRAB on hit.
+        // During slap attacks, buffer mouse1 for next hits / mouse2 for grab ender
         if (player.isAttacking && player.attackType === "slap") {
           if (!prevMouse1 && data.keys.mouse1) {
             const maxBuffer = 3 - (player.slapStringPosition || 1);
             if (player.pendingSlapCount < maxBuffer) {
               player.pendingSlapCount++;
-              if (player.slapStringPosition >= 2) {
-                player.pendingStringEnder = null;
-              }
             }
           }
-          if (player.slapStringPosition === 1 || player.slapStringPosition === 2) {
-            const atPos2 = player.slapStringPosition === 2;
-            if (!prevMouse2 && data.keys.mouse2) {
-              player.pendingStringEnder = { type: "grab" };
-              if (atPos2) player.pendingSlapCount = 0;
-            } else if (!prevSpace && data.keys[" "]) {
-              player.pendingStringEnder = { type: "rawParry" };
-              if (atPos2) player.pendingSlapCount = 0;
-            } else if (!prevShift && data.keys.shift) {
-              player.pendingStringEnder = { type: "dash" };
-              if (atPos2) player.pendingSlapCount = 0;
-            } else if (!prevF && data.keys.f &&
-                       player.activePowerUp === POWER_UP_TYPES.SNOWBALL &&
-                       (player.snowballThrowsRemaining ?? 3) > 0 &&
-                       !player.snowballCooldown) {
-              player.pendingStringEnder = { type: "snowball" };
-              if (atPos2) player.pendingSlapCount = 0;
-            }
+          if (!prevMouse2 && data.keys.mouse2 && player.slapStringPosition >= 2) {
+            player.pendingGrabEnder = true;
+            player.pendingSlapCount = 0;
           }
         } else {
           // Non-slap states: use generic inputBuffer
@@ -1545,15 +1527,13 @@ function registerSocketHandlers(socket, io, rooms, context) {
       player.isCrouchStance = false;
       player.isCrouchStrafing = false;
       player.pendingSlapCount = 0;
-      player.pendingStringEnder = null;
+      player.pendingGrabEnder = false;
       player.slapStringPosition = 0;
       player.slapStringWindowUntil = 0;
     }
 
     // MOUSE1 PRESS: Fire slap immediately for responsive poke
-    // Charging starts later if mouse1 is held past the slap cycle (TAP-style)
-    // Buffer is generous: press at ANY point during the current slap to queue the next hit.
-    // Counter-based: pressing twice during hit 1 queues both hit 2 and hit 3.
+    // Buffer presses during active slap to queue next hits in the 3-hit string.
     if (player.mouse1JustPressed && !shouldBlockAction()) {
       if (canPlayerSlap(player)) {
         executeSlapAttack(player, rooms);
@@ -1561,81 +1541,30 @@ function registerSocketHandlers(socket, io, rooms, context) {
         const maxBuffer = 3 - (player.slapStringPosition || 1);
         if (player.pendingSlapCount < maxBuffer) {
           player.pendingSlapCount++;
-          // At position 2, mouse1 and ender compete for the hit-3 slot → last input wins.
-          // At position 1, they don't conflict (mouse1 = hit 2, ender = after hit 2).
-          if (player.slapStringPosition >= 2) {
-            player.pendingStringEnder = null;
-          }
         }
       }
     }
 
-    // STRING ENDER BUFFER: alternate inputs replace the hit 3 slot.
-    // Buffers at position 1 or 2 during any slap. At position 1 this catches the case
-    // where mouse2 arrives in a separate event before the second mouse1 — the ender
-    // persists and only fires when finishedPosition === 2, so SLAP1→ENDER can't happen.
-    // Only clear pendingSlapCount at position 2 to avoid breaking the hit 1→2 chain.
-    if (player.isAttacking && player.attackType === "slap" &&
-        (player.slapStringPosition === 1 || player.slapStringPosition === 2)) {
-      const atPos2 = player.slapStringPosition === 2;
-      if (player.mouse2JustPressed) {
-        player.pendingStringEnder = { type: "grab" };
-        if (atPos2) player.pendingSlapCount = 0;
-      } else if (player.spaceJustPressed) {
-        player.pendingStringEnder = { type: "rawParry" };
-        if (atPos2) player.pendingSlapCount = 0;
-      } else if (player.shiftJustPressed && player.keys.s) {
-        player.pendingStringEnder = { type: "sidestep" };
-        if (atPos2) player.pendingSlapCount = 0;
-      } else if (player.shiftJustPressed) {
-        player.pendingStringEnder = { type: "dash" };
-        if (atPos2) player.pendingSlapCount = 0;
-      } else if (player.fJustPressed &&
-                 player.activePowerUp === POWER_UP_TYPES.SNOWBALL &&
-                 (player.snowballThrowsRemaining ?? 3) > 0 &&
-                 !player.snowballCooldown) {
-        player.pendingStringEnder = { type: "snowball" };
-        if (atPos2) player.pendingSlapCount = 0;
-      }
+    // MOUSE2 DURING SLAP STRING: buffer grab ender (replaces hit 3 with grab)
+    if (player.mouse2JustPressed && player.isAttacking && player.attackType === "slap" &&
+        player.slapStringPosition >= 2) {
+      player.pendingGrabEnder = true;
+      player.pendingSlapCount = 0;
     }
 
-    // MOUSE1 RELEASE: Release charged attack (if charging)
+    // MOUSE1 RELEASE: Clear charge state if applicable
     if (player.mouse1JustReleased) {
-      // Buffer release during rope jump landing so the attack fires when recovery ends
       if (player.isRopeJumping && player.ropeJumpPhase === "landing" && player.mouse1PressTime > 0) {
         player.ropeJumpBufferedAttackRelease = Date.now() - player.mouse1PressTime;
       }
       if (player.isChargingAttack) {
-        if (
-          !player.isGrabbing &&
-          !player.isBeingGrabbed &&
-          !player.isThrowing &&
-          !player.isBeingThrown &&
-          !player.isThrowingSnowball
-        ) {
-          if (player.isDodging) {
-            player.pendingChargeAttack = {
-              power: player.chargeAttackPower,
-              startTime: player.chargeStartTime,
-              type: "charged",
-            };
-            player.spacebarReleasedDuringDodge = true;
-          } else if (!shouldBlockAction()) {
-            executeChargedAttack(player, player.chargeAttackPower, rooms);
-          }
-        }
-        if (player.isChargingAttack) {
-          player.isChargingAttack = false;
-          player.chargeStartTime = 0;
-          player.chargeAttackPower = 0;
-          player.chargingFacingDirection = null;
-          player.attackType = null;
-          player.mouse1HeldDuringAttack = false;
-        }
+        player.isChargingAttack = false;
+        player.chargeStartTime = 0;
+        player.chargeAttackPower = 0;
+        player.chargingFacingDirection = null;
+        player.attackType = null;
+        player.mouse1HeldDuringAttack = false;
       }
-      // TAP-style: releasing mouse1 zeroes preserved charge, UNLESS a charged
-      // attack was just executed (executeChargedAttack sets chargeAttackPower
-      // to the attack's power level for processHit to read on the next tick).
       if (!(player.isAttacking && player.attackType === "charged")) {
         player.chargeAttackPower = 0;
       }
@@ -1790,11 +1719,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
               player.actionLockUntil = 0;
             }
 
-            // Check if we should restart charging after snowball throw completes
-            if (shouldRestartCharging(player)) {
-              // Restart charging immediately
-              startCharging(player);
-            }
+            // Neutral charged attack removed — no charge to restart
           },
           500
         );
@@ -1858,11 +1783,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
               player.actionLockUntil = 0;
             }
 
-            // Check if we should restart charging after pumo army spawn completes
-            if (shouldRestartCharging(player)) {
-              // Restart charging immediately
-              startCharging(player);
-            }
+            // Neutral charged attack removed — no charge to restart
           },
           800
         );
@@ -2095,76 +2016,12 @@ function registerSocketHandlers(socket, io, rooms, context) {
       }
     }
 
-    // MOUSE1 HOLD-TO-CHARGE: Start charging when mouse1 held and player is idle
-    // Slap fires on press; charging only starts after slap cycle ends (via callback)
-    // or when pressing mouse1 during dodge (TAP-style hidden charge)
-    // Require 150ms minimum hold to prevent spam-tapping from accidentally triggering charge
-    if (
-      player.keys.mouse1 &&
-      !player.isChargingAttack &&
-      player.mouse1PressTime > 0 &&
-      (Date.now() - player.mouse1PressTime) >= 150 &&
-      !shouldBlockAction() &&
-      canPlayerCharge(player) &&
-      !player.mouse2JustPressed
-    ) {
-      startCharging(player);
-      player.spacebarReleasedDuringDodge = false;
-    }
-    // For continuing a charge OR starting a charge during dodge
-    else if (
-      player.keys.mouse1 &&
-      player.mouse1PressTime > 0 &&
-      !shouldBlockAction(false, true) &&
-      (player.isChargingAttack || player.isDodging) &&
-      !player.isHit &&
-      !player.isRawParryStun &&
-      !player.isRawParrying &&
-      !player.mouse2JustPressed
-    ) {
-      // If we're dodging and not already charging, start charging
-      // Require 150ms minimum hold to prevent quick taps from accidentally starting a charge
-      if (player.isDodging && !player.isChargingAttack && (Date.now() - player.mouse1PressTime) >= 150) {
-        startCharging(player);
-      }
-      // Calculate charge power (0-100%)
-      const chargeDuration = Date.now() - player.chargeStartTime;
-      player.chargeAttackPower = Math.min((chargeDuration / CHARGE_FULL_POWER_MS) * 100, 100);
+    // NEUTRAL CHARGED ATTACK REMOVED: Mouse1 is now slap-only from neutral.
+    // The charged finisher is exclusively the chargeable hit 3 (earned through the 1→2 string).
+    // Legacy charge accumulation during dodge is disabled.
 
-      // Lock facing direction while charging
-      if (player.isThrowing || player.throwingFacingDirection !== null) {
-        player.chargingFacingDirection = player.throwingFacingDirection;
-      } else {
-        player.chargingFacingDirection = player.facing;
-      }
-
-      if (player.chargingFacingDirection !== null) {
-        player.facing = player.chargingFacingDirection;
-      }
-    }
-    // Handle mouse1 held during active charged attack - wants to restart charge after
-    if (
-      player.keys.mouse1 &&
-      player.isAttacking &&
-      player.attackType === "charged"
-    ) {
-      player.wantsToRestartCharge = true;
-      // Also track held-during-attack for reliable resume after recovery from connected hits
-      player.mouse1HeldDuringAttack = true;
-    }
-
-    // Also check if mouse1 is being held when we're about to execute a charged attack
-    if (
-      player.keys.mouse1 &&
-      player.pendingChargeAttack &&
-      !player.isAttacking
-    ) {
-      player.wantsToRestartCharge = true;
-    }
-
-    // Clear charging state if mouse1 is released and charge wasn't executed
-    // (charge release/slap is handled above in the mouse1JustReleased block)
-    if (!player.keys.mouse1 && player.isChargingAttack) {
+    // Clear any lingering charge state
+    if (player.isChargingAttack && !player.isAttacking) {
       player.isChargingAttack = false;
       player.chargeStartTime = 0;
       player.chargeAttackPower = 0;

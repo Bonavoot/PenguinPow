@@ -526,8 +526,7 @@ const GameFighter = ({
               ...predictedState.current,
               isSlapAttack: true,
               isAttacking: true,
-              slapAnimation: predictedState.current.slapAnimation === 1 ? 2
-                : predictedState.current.slapAnimation === 2 ? 3 : 1,
+              slapAnimation: predictedState.current.slapAnimation === 1 ? 2 : 1,
               // CRITICAL: Clear other action predictions to prevent visual flicker
               isChargingAttack: false,
               isDodging: false,

@@ -7,7 +7,6 @@ import {
   attack,
   slapAttack1,
   slapAttack2,
-  slapAttack3,
   dodging,
   throwing,
   salt,
@@ -147,8 +146,6 @@ const getImageSrc = (
   }
   if (isSlapAttack) {
     if (slapAnimation === 1) return slapAttack1;
-    if (slapAnimation === 4) return recovering;
-    if (slapAnimation === 3) return slapAttack1;
     return slapAttack2;
   }
   if (isGrabbing) {

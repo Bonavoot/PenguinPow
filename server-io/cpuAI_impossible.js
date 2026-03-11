@@ -535,13 +535,17 @@ function updateImpossibleAI(cpu, human, room, currentTime) {
   // Clear charged parry tracking when opponent stops attacking
   st.pendingChargedParry = false;
 
-  // ── COUNTER: Opponent is charging (hasn't released yet) ──
-  // Walk forward to close distance; parry will fire on release detection.
+  // ── COUNTER: Opponent is charging (visible wind-up) ──
   if (human.isChargingAttack && canAct(cpu)) {
     resetAllKeys(cpu);
-    const dir = getDirectionToOpponent(cpu, human);
-    if (dir === 1) cpu.keys.d = true;
-    else cpu.keys.a = true;
+    if (distance < GRAB_RANGE && canGrab(cpu) && isFacingOpponent(cpu, human)) {
+      cpu.keys.mouse2 = true;
+      st.mouse2ReleaseTime = currentTime + 50;
+    } else {
+      const dir = getDirectionToOpponent(cpu, human);
+      if (dir === 1) cpu.keys.d = true;
+      else cpu.keys.a = true;
+    }
     return;
   }
 

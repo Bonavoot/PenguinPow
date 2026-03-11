@@ -35,15 +35,7 @@ const {
   SLAP_RECOVERY_MS,
   SLAP_TOTAL_MS,
   SLAP_STRING_BUFFER_WINDOW_MS,
-  SLAP_STRING_HIT2_MANUAL_WINDOW_MS,
-  SLAP_STRING_HIT1_TOTAL_MS,
-  SLAP_STRING_HIT2_STARTUP_MS,
-  SLAP_STRING_HIT2_ACTIVE_MS,
-  SLAP_STRING_HIT2_TOTAL_MS,
-  SLAP_HIT3_STARTUP_MS,
-  SLAP_HIT3_ACTIVE_MS,
-  SLAP_HIT3_TOTAL_MS,
-  SLAP_STRING_HIT3_SLIDE_VELOCITY,
+  SLAP_STRING_HIT_TOTAL_MS,
   CHARGED_STARTUP_MS,
   CHARGED_ACTIVE_MS,
   DODGE_STARTUP_MS,
@@ -55,6 +47,8 @@ const {
   SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MAX_MS, SIDESTEP_RECOVERY_MS,
   SIDESTEP_TOTAL_MS, SIDESTEP_STAMINA_COST,
 } = require("./constants");
+
+// Hit 3 charge functions removed — charged attack is now a standalone move (S + FORWARD + MOUSE1)
 
 // Add new function for grab state cleanup
 function cleanupGrabStates(player, opponent) {
@@ -318,10 +312,11 @@ function handleWinCondition(room, loser, winner, io, winType) {
     p.grabThrowAttemptStartTime = 0;
 
     p.pendingSlapCount = 0;
-    p.pendingStringEnder = null;
+    p.pendingGrabEnder = false;
     p.slapStringPosition = 0;
     p.slapStringWindowUntil = 0;
-    p.isSlapStringFinisher = false;
+    p.slapAnimationToggle = 0;
+    p.currentSlapHitConnected = false;
     p.mouse1JustPressed = false;
     p.mouse1JustReleased = false;
 
@@ -384,16 +379,13 @@ function handleWinCondition(room, loser, winner, io, winType) {
 
 // Add this new function near the other helper functions
 function executeSlapAttack(player, rooms) {
-  // Cancel power slide when attacking
   if (player.isPowerSliding) {
     player.isPowerSliding = false;
   }
   
-  // Clear parry success state when starting an attack
   player.isRawParrySuccess = false;
   player.isPerfectRawParrySuccess = false;
   
-  // Find the current room and opponent
   const currentRoom = rooms.find((room) =>
     room.players.some((p) => p.id === player.id)
   );
@@ -401,45 +393,20 @@ function executeSlapAttack(player, rooms) {
   if (currentRoom) {
     const opponent = currentRoom.players.find((p) => p.id !== player.id);
     if (opponent) {
-      // Lock facing direction at the start of the slap attack to prevent erratic behavior
-      // Only set facing direction if we don't already have a locked slap facing direction
       if (!player.slapFacingDirection) {
         player.slapFacingDirection = player.x < opponent.x ? -1 : 1;
       }
-
-      // Use the locked facing direction
       player.facing = player.slapFacingDirection;
 
-      // === APPROACH SLIDE ===
-      // Cinematic string hits 1&2: moderate approach velocity. The collision system
-      // overrides this with the shared combo drift when the hit actually connects.
-      // Hit 3: separate forward slide — enough to reach but not stay on top.
-      const isStringFinisher = player.slapStringPosition === 2 &&
-        player.slapStringWindowUntil && Date.now() <= player.slapStringWindowUntil;
-      const willBeHit3 = isStringFinisher ||
-        (player.slapStringPosition === 3);
-
       const slideDirection = player.facing === 1 ? -1 : 1;
+      let slapSlideVelocity = 1.0;
 
-      if (willBeHit3) {
-        let slapSlideVelocity = SLAP_STRING_HIT3_SLIDE_VELOCITY;
-        if (player.activePowerUp === "power") {
-          slapSlideVelocity *= player.powerUpMultiplier - 0.1;
-        }
-        player.movementVelocity = slideDirection * slapSlideVelocity;
-        player.isSlapSliding = true;
-      } else {
-        const recentlyLandedSlap = player.lastSlapHitLandedTime && 
-          (Date.now() - player.lastSlapHitLandedTime < 450);
-        let slapSlideVelocity = recentlyLandedSlap ? 2.5 : 1.0;
-
-        if (player.activePowerUp === "power") {
-          slapSlideVelocity *= player.powerUpMultiplier - 0.1;
-        }
-
-        player.movementVelocity = slideDirection * slapSlideVelocity;
-        player.isSlapSliding = true;
+      if (player.activePowerUp === "power") {
+        slapSlideVelocity *= player.powerUpMultiplier - 0.1;
       }
+
+      player.movementVelocity = slideDirection * slapSlideVelocity;
+      player.isSlapSliding = true;
     }
   }
 
@@ -450,52 +417,40 @@ function executeSlapAttack(player, rooms) {
   clearChargeState(player);
 
   // === STRING POSITION TRACKING ===
-  // Advance through the 3-hit string (1→2→3) if within the string window,
-  // otherwise reset to hit 1. Each hit uses a distinct animation.
+  // 3-hit string: hit 1 → hit 2 → hit 3 (each requires hit confirm).
+  // Hits 1 & 2 are light pokes, hit 3 is the burst knockback finisher.
   const now = Date.now();
   const inStringWindow = player.slapStringWindowUntil && now <= player.slapStringWindowUntil;
 
-  if (inStringWindow && player.slapStringPosition === 1) {
-    player.slapStringPosition = 2;
-  } else if (inStringWindow && player.slapStringPosition === 2) {
-    player.slapStringPosition = 3;
+  if (inStringWindow && player.slapStringPosition >= 1 && player.slapStringPosition <= 2) {
+    player.slapStringPosition++;
   } else {
     player.slapStringPosition = 1;
   }
 
   player.slapStringWindowUntil = 0;
 
-  const isHit3 = player.slapStringPosition === 3;
-  player.slapAnimation = isHit3 ? 4 : player.slapStringPosition;
-  player.isSlapStringFinisher = isHit3;
+  // Animation is decoupled from string position — alternates every slap visually
+  // slapAnimationToggle persists across strings so parries cycle naturally
+  player.slapAnimationToggle = player.slapAnimationToggle === 1 ? 2 : 1;
+  player.slapAnimation = player.slapAnimationToggle;
+
+  player.currentSlapHitConnected = false;
 
   player.stamina = Math.max(0, player.stamina - SLAP_ATTACK_STAMINA_COST);
 
-  // === FRAME DATA — each string position has distinct timing ===
-  // Hit 1 & 2: identical — standard startup, fast recovery for chain speed (195ms total each)
-  // Hit 3: heavy windup (165ms) IS the frame trap gap — escapable by dash/parry, beats mashing (465ms total)
-  let baseStartupMs, activeMs, totalCycleDuration;
-  if (isHit3) {
-    baseStartupMs = SLAP_HIT3_STARTUP_MS;
-    activeMs = SLAP_HIT3_ACTIVE_MS;
-    totalCycleDuration = SLAP_HIT3_TOTAL_MS;
-  } else if (player.slapStringPosition === 2) {
-    baseStartupMs = SLAP_STRING_HIT2_STARTUP_MS;
-    activeMs = SLAP_STRING_HIT2_ACTIVE_MS;
-    totalCycleDuration = SLAP_STRING_HIT2_TOTAL_MS;
-  } else {
-    baseStartupMs = SLAP_STARTUP_MS;
-    activeMs = SLAP_ACTIVE_MS;
-    totalCycleDuration = SLAP_STRING_HIT1_TOTAL_MS;
-  }
+  // All string hits share identical frame data
+  const baseStartupMs = SLAP_STARTUP_MS;
+  const activeMs = SLAP_ACTIVE_MS;
+  const totalCycleDuration = SLAP_STRING_HIT_TOTAL_MS;
 
-  // DESPERATION COUNTER-SLAP: faster startup when recently hit (hit 1 & 2 only).
-  // Disabled for combo victims (hit by string hit 1 or 2) — the attacker earned the
+  // DESPERATION COUNTER-SLAP: faster startup when recently hit.
+  // Disabled for combo victims (hit by string hit 1) — the attacker earned the
   // frame trap through the string, so the victim shouldn't get a speed boost to escape it.
   const recentlyRecoveredFromHit = player.lastHitTime && 
     (now - player.lastHitTime < 380) && !player.isHit;
   const wasComboVictim = player.lastHitByStringPos >= 1;
-  const startupDuration = (!isHit3 && recentlyRecoveredFromHit && !wasComboVictim) ? Math.min(45, baseStartupMs) : baseStartupMs;
+  const startupDuration = (recentlyRecoveredFromHit && !wasComboVictim) ? Math.min(45, baseStartupMs) : baseStartupMs;
 
   const attackDuration = baseStartupMs + activeMs;
 
@@ -516,12 +471,10 @@ function executeSlapAttack(player, rooms) {
     player.id,
     () => {
       player.isInStartupFrames = false;
-      if (isHit3) player.slapAnimation = 3;
     },
     startupDuration
   );
 
-  // Capture the position this attack was executed at for the cycle-end callback
   const finishedPosition = player.slapStringPosition;
 
   player.slapCycleEndCallback = () => {
@@ -532,17 +485,7 @@ function executeSlapAttack(player, rooms) {
       player.slapFacingDirection = null;
       player.isInStartupFrames = false;
       player.slapActiveEndTime = 0;
-      player.isSlapStringFinisher = false;
       player.currentAction = null;
-      player.isSlapStringComboDrift = false;
-
-      // Clear cinematic combo state on opponent when string ends
-      if (currentRoom) {
-        const opp = currentRoom.players.find((p) => p.id !== player.id);
-        if (opp && opp.isSlapStringComboKnockback) {
-          opp.isSlapStringComboKnockback = false;
-        }
-      }
 
       const isPlayerValid = () => (
         !player.isDodging && !player.isThrowing && !player.isBeingThrown &&
@@ -550,18 +493,17 @@ function executeSlapAttack(player, rooms) {
         !player.isRawParrying && !player.isHit && !player.canMoveToReady
       );
 
-      // === STRING ENDER VARIATIONS ===
-      // After hit 2, an alternate ender (grab/parry/dash/snowball) replaces hit 3.
-      // Fires at the same point hit 3 would, preserving the string's natural gap.
-      if (finishedPosition === 2 && player.pendingStringEnder && isPlayerValid()) {
-        const ender = player.pendingStringEnder;
-        player.pendingStringEnder = null;
-        player.pendingSlapCount = 0;
-        player.slapStringPosition = 0;
-        player.slapStringWindowUntil = 0;
-
-        switch (ender.type) {
-          case "grab":
+      // === HIT-CONFIRM STRING: only advance if the hit connected ===
+      if (finishedPosition <= 2) {
+        // Hits 1 & 2: can chain forward on confirm
+        if (player.currentSlapHitConnected && isPlayerValid()) {
+          // Check for grab ender (mouse2 buffered after hit 2)
+          if (finishedPosition === 2 && player.pendingGrabEnder) {
+            player.pendingSlapCount = 0;
+            player.pendingGrabEnder = false;
+            player.slapStringPosition = 0;
+            player.slapStringWindowUntil = 0;
+            // Transition into grab startup
             player.isGrabStartup = true;
             player.grabStartupStartTime = Date.now();
             player.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
@@ -570,206 +512,46 @@ function executeSlapAttack(player, rooms) {
             player.grabState = GRAB_STATES.ATTEMPTING;
             player.grabAttemptType = "grab";
             player.grabApproachSpeed = 0;
-            player.movementVelocity = 0;
-            player.isStrafing = false;
-            player.isPowerSliding = false;
-            break;
-
-          case "rawParry":
-            player.isRawParrying = true;
-            player.rawParryStartTime = Date.now();
-            player.rawParryMinDurationMet = false;
-            player.isRawParrySuccess = false;
-            player.isPerfectRawParrySuccess = false;
-            player.stamina = Math.max(0, player.stamina - RAW_PARRY_STAMINA_COST);
-            player.movementVelocity = 0;
-            player.isStrafing = false;
-            player.isPowerSliding = false;
-            player.isCrouchStance = false;
-            player.isCrouchStrafing = false;
-            break;
-
-          case "dash":
-            if (canPlayerDash(player) && !player.isGassed) {
-              player.isDodging = true;
-              player.isDodgeStartup = true;
-              player.dodgeStartTime = Date.now();
-              player.dodgeStartupEndTime = Date.now() + DODGE_STARTUP_MS;
-              player.dodgeEndTime = Date.now() + DODGE_DURATION;
-              player.dodgeStartX = player.x;
-              player.currentAction = "dash";
-              player.actionLockUntil = Date.now() + 100;
-              player.justLandedFromDodge = false;
-              player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
-              if (player.keys.a) {
-                player.dodgeDirection = -1;
-              } else if (player.keys.d) {
-                player.dodgeDirection = 1;
-              } else {
-                player.dodgeDirection = player.facing === -1 ? 1 : -1;
-              }
-            }
-            break;
-
-          case "sidestep":
-            if (canPlayerSidestep(player) && !player.isGassed) {
-              const currentRoom = rooms.find(r => r.players.some(p => p.id === player.id));
-              const sOpp = currentRoom && currentRoom.players.find(p => p.id !== player.id && !p.isDead);
-              if (sOpp) {
-                const initData = getSidestepInitData(player.x, sOpp.x);
-                player.isSidestepping = true;
-                player.isSidestepStartup = true;
-                player.isSidestepRecovery = false;
-                player.sidestepStartTime = Date.now();
-                player.sidestepStartupEndTime = Date.now() + SIDESTEP_STARTUP_MS;
-                player.sidestepActiveEndTime = Date.now() + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MAX_MS;
-                player.sidestepEndTime = Date.now() + SIDESTEP_TOTAL_MS;
-                player.sidestepStartX = player.x;
-                player.sidestepDirection = initData.direction;
-                player.sidestepMaxTravel = initData.maxTravel;
-                player.sidestepActiveDuration = SIDESTEP_ACTIVE_MAX_MS;
-                player.currentAction = "sidestep";
-                player.actionLockUntil = Date.now() + SIDESTEP_TOTAL_MS;
-                player.stamina = Math.max(0, player.stamina - SIDESTEP_STAMINA_COST);
-              }
-            }
-            break;
-
-          case "snowball":
-            if (player.activePowerUp === POWER_UP_TYPES.SNOWBALL &&
-                (player.snowballThrowsRemaining ?? 3) > 0 &&
-                !player.snowballCooldown) {
-              if (player.snowballThrowsRemaining == null) {
-                player.snowballThrowsRemaining = 3;
-              }
-              player.stamina = Math.max(0, player.stamina - SLAP_ATTACK_STAMINA_COST);
-              player.snowballThrowsRemaining = Math.max(0, player.snowballThrowsRemaining - 1);
-              player.isThrowingSnowball = true;
-              player.currentAction = "snowball";
-              player.actionLockUntil = Date.now() + 250;
-
-              const opp = currentRoom ? currentRoom.players.find((p) => p.id !== player.id) : null;
-              let snowballDir;
-              if (opp) {
-                snowballDir = player.x < opp.x ? 2 : -2;
-              } else {
-                snowballDir = player.facing === 1 ? -2 : 2;
-              }
-              const snowball = {
-                id: Math.random().toString(36).substr(2, 9),
-                x: player.x,
-                y: player.y + 20,
-                velocityX: snowballDir,
-                hasHit: false,
-                ownerId: player.id,
-              };
-              player.snowballs.push(snowball);
-              player.snowballCooldown = true;
-
-              setPlayerTimeout(player.id, () => {
-                player.isThrowingSnowball = false;
-                if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
-                  player.actionLockUntil = 0;
-                }
-                if (shouldRestartCharging(player)) {
-                  startCharging(player);
-                }
-              }, 500);
-            }
-            break;
-        }
-        return;
-      }
-
-      // === STRING TRANSITIONS ===
-      if (player.pendingSlapCount > 0) {
-        player.pendingSlapCount--;
-
-        if (finishedPosition === 1 && isPlayerValid()) {
-          // Hit 1 → Hit 2: chain immediately (true combo).
-          // pendingStringEnder intentionally persists — it was buffered during hit 1
-          // and should fire when hit 2 ends (handles hitstop eating the input window).
-          player.slapStringWindowUntil = Date.now() + 100;
-          executeSlapAttack(player, rooms);
-          return;
-        }
-
-        if (finishedPosition === 2 && isPlayerValid()) {
-          // Hit 2 → Hit 3: chain immediately — the ~45ms escape gap comes entirely
-          // from hit 3's 165ms startup vs the 120ms frame advantage after hit 2.
-          // Zero the victim's residual drift for clean handoff to hit 3's real physics.
-          if (currentRoom) {
-            const opp = currentRoom.players.find((p) => p.id !== player.id);
-            if (opp) {
-              opp.knockbackVelocity.x = 0;
-            }
+            return;
           }
-          player.pendingStringEnder = null;
-          player.slapStringWindowUntil = Date.now() + 100;
-          executeSlapAttack(player, rooms);
-          return;
+          if (player.pendingSlapCount > 0) {
+            // Next hit buffered → chain immediately
+            player.pendingSlapCount--;
+            player.pendingGrabEnder = false;
+            player.slapStringWindowUntil = Date.now() + 100;
+            executeSlapAttack(player, rooms);
+            return;
+          }
+          // Hit connected but no buffer → open manual window
+          player.slapStringWindowUntil = Date.now() + SLAP_STRING_BUFFER_WINDOW_MS;
+          setPlayerTimeout(player.id, () => {
+            if (player.slapStringPosition === finishedPosition && !player.isSlapAttack) {
+              player.slapStringPosition = 0;
+              player.slapStringWindowUntil = 0;
+              player.pendingGrabEnder = false;
+            }
+          }, SLAP_STRING_BUFFER_WINDOW_MS, "slapStringReset");
+        } else {
+          // Whiffed → reset string, but if a slap was buffered start a fresh one
+          player.slapStringPosition = 0;
+          player.slapStringWindowUntil = 0;
+          player.pendingGrabEnder = false;
+          if (player.pendingSlapCount > 0 && isPlayerValid()) {
+            player.pendingSlapCount--;
+            executeSlapAttack(player, rooms);
+            return;
+          }
+          player.pendingSlapCount = 0;
         }
-
-        // Hit 3 finished or player invalid: reset string, fall through to charge
-        player.slapStringPosition = 0;
-        player.slapStringWindowUntil = 0;
-        player.pendingSlapCount = 0;
-        player.pendingStringEnder = null;
-      } else if (finishedPosition === 1) {
-        // Hit 1 with no buffer: keep window open for manual hit 2 continuation.
-        // pendingStringEnder persists — if the user manually fires hit 2 during the
-        // window, the ender will be consumed when hit 2's cycle ends.
-        player.slapStringWindowUntil = Date.now() + SLAP_STRING_BUFFER_WINDOW_MS;
-        setPlayerTimeout(player.id, () => {
-          if (player.slapStringPosition === finishedPosition && !player.isSlapAttack) {
-            player.slapStringPosition = 0;
-            player.slapStringWindowUntil = 0;
-            player.pendingStringEnder = null;
-          }
-        }, SLAP_STRING_BUFFER_WINDOW_MS, "slapStringReset");
-      } else if (finishedPosition === 2) {
-        // Hit 2 with no buffer and no ender: short window for delayed hit 3.
-        // During this window, pressing fires hit 3 (string position is still 2).
-        // After it expires, string resets — the window doubles as a cooldown
-        // that prevents the 1-2 loop from comboing into a new hit 1.
-        player.pendingStringEnder = null;
-        player.slapStringWindowUntil = Date.now() + SLAP_STRING_HIT2_MANUAL_WINDOW_MS;
-        setPlayerTimeout(player.id, () => {
-          if (player.slapStringPosition === 2 && !player.isSlapAttack) {
-            player.slapStringPosition = 0;
-            player.slapStringWindowUntil = 0;
-          }
-        }, SLAP_STRING_HIT2_MANUAL_WINDOW_MS, "slapStringReset");
       } else {
-        // Hit 3 with no buffer: reset string
+        // Hit 3 finished → string complete, reset
+        // Discard any buffered slaps — prevents accidental 4th slap from mashing
+        // Slap cooldown blocks mouse1 attacks but NOT dash (canPlayerDash skips this check)
         player.slapStringPosition = 0;
         player.slapStringWindowUntil = 0;
-        player.pendingStringEnder = null;
-      }
-
-      // Charge transition (only when string is not continuing)
-      const holdDuration = player.mouse1PressTime > 0 ? Date.now() - player.mouse1PressTime : 0;
-      if (
-        player.keys.mouse1 &&
-        holdDuration >= 150 &&
-        !player.isAttacking &&
-        !player.isDodging &&
-        !player.isThrowing &&
-        !player.isBeingThrown &&
-        !player.isGrabbing &&
-        !player.isBeingGrabbed &&
-        !player.isHit &&
-        !player.isRawParryStun &&
-        !player.canMoveToReady
-      ) {
-        player.isChargingAttack = true;
-        if (player.chargeAttackPower > 0) {
-          player.chargeStartTime = Date.now() - (player.chargeAttackPower / 100 * CHARGE_FULL_POWER_MS);
-        } else if (!player.chargeStartTime) {
-          player.chargeStartTime = Date.now();
-          player.chargeAttackPower = 1;
-        }
-        player.attackType = "charged";
+        player.pendingGrabEnder = false;
+        player.pendingSlapCount = 0;
+        player.attackCooldownUntil = Date.now() + SLAP_STRING_BUFFER_WINDOW_MS;
       }
   };
 
@@ -1173,13 +955,6 @@ function adjustPlayerPositions(player1, player2, delta) {
     return;
   }
 
-  // Cinematic string combo: positions are managed by the combo system's snap + drift.
-  // Pushbox must yield or it fights the fixed spacing every tick.
-  if ((player1.isSlapStringComboDrift && player2.isSlapStringComboKnockback) ||
-      (player2.isSlapStringComboDrift && player1.isSlapStringComboKnockback)) {
-    return;
-  }
-
   // Grab system tweens (pull reversal, belly flop, etc.) control position directly.
   // The pushbox must yield so side-swap mechanics work correctly.
   // Note: isGrabSeparating is NOT included — the pushbox should snap players to minDistance
@@ -1501,7 +1276,7 @@ function activateBufferedInputAfterGrab(player, rooms) {
     player.isCrouchStance = false;
     player.isCrouchStrafing = false;
     player.pendingSlapCount = 0;
-    player.pendingStringEnder = null;
+    player.pendingGrabEnder = false;
     player.slapStringPosition = 0;
     player.slapStringWindowUntil = 0;
     clearChargeState(player, true);
@@ -1572,15 +1347,11 @@ function activateBufferedInputAfterGrab(player, rooms) {
     return;
   }
 
-  // Priority 3: Mouse1 held — resume charging or fire a slap
+  // Priority 3: Mouse1 held — fire a slap (neutral charge removed)
   if (player.keys.mouse1) {
-    if (player.chargeAttackPower > 0) {
-      startCharging(player);
-    } else {
-      player.mouse1PressTime = Date.now();
-      if (canPlayerSlap(player)) {
-        executeSlapAttack(player, rooms);
-      }
+    player.mouse1PressTime = Date.now();
+    if (canPlayerSlap(player)) {
+      executeSlapAttack(player, rooms);
     }
     return;
   }
@@ -1633,7 +1404,7 @@ function executeInputBuffer(player, rooms) {
         player.isCrouchStance = false;
         player.isCrouchStrafing = false;
         player.pendingSlapCount = 0;
-        player.pendingStringEnder = null;
+        player.pendingGrabEnder = false;
         player.slapStringPosition = 0;
         player.slapStringWindowUntil = 0;
         clearChargeState(player, true);

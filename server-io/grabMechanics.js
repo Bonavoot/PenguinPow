@@ -274,9 +274,7 @@ function executeGrabWhiff(player) {
       player.isGrabWhiffRecovery = false;
       player.isWhiffingGrab = false;
       player.grabCooldown = false;
-      if (shouldRestartCharging(player)) {
-        startCharging(player);
-      }
+      // Neutral charged attack removed — no charge to restart
     },
     GRAB_WHIFF_RECOVERY_MS,
     "grabWhiffRecovery"
