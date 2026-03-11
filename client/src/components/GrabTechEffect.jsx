@@ -239,11 +239,12 @@ const TechText = styled.div`
   font-family: "Bungee", cursive;
   font-size: 0.86cqw;
   color: #64c8ff;
-  -webkit-text-stroke: 2.5px #000;
+  -webkit-text-stroke: clamp(2px, 0.2cqw, 3.5px) #000;
   paint-order: stroke fill;
   text-shadow:
     -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000,
-    0 0 15px rgba(80, 180, 255, 0.9);
+    2px 2px 0 rgba(20, 50, 100, 0.85), 4px 4px 0 rgba(10, 35, 70, 0.5),
+    0 2px 6px rgba(0, 0, 0, 0.7);
   letter-spacing: 0.15em;
   white-space: nowrap;
   transform: translate(-50%, -50%) scale(0);

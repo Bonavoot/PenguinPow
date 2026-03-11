@@ -24,31 +24,34 @@ const bannerSway = keyframes`
 const victoryGlow = keyframes`
   0%, 100% { 
     text-shadow: 
-      0 0 10px #4ade80,
-      0 0 30px #22c55e,
-      0 0 50px #16a34a,
-      3px 3px 0 #000;
+      3px 3px 0 #1a0e06,
+      6px 6px 0 rgba(18, 10, 4, 0.6),
+      0 0 6px rgba(255, 215, 0, 0.2),
+      0 2px 8px rgba(0, 0, 0, 0.6);
   }
   50% { 
     text-shadow: 
-      0 0 20px #4ade80,
-      0 0 40px #22c55e,
-      0 0 70px #16a34a,
-      3px 3px 0 #000;
+      3px 3px 0 #1a0e06,
+      6px 6px 0 rgba(18, 10, 4, 0.6),
+      0 0 12px rgba(255, 215, 0, 0.35),
+      0 2px 8px rgba(0, 0, 0, 0.6);
   }
 `;
 
 const defeatPulse = keyframes`
   0%, 100% { 
     text-shadow: 
-      0 0 8px #f87171,
-      3px 3px 0 #000;
+      3px 3px 0 #0e0e1a,
+      6px 6px 0 rgba(10, 10, 22, 0.6),
+      0 0 6px rgba(0, 0, 0, 0.3),
+      0 2px 8px rgba(0, 0, 0, 0.5);
   }
   50% { 
     text-shadow: 
-      0 0 15px #f87171,
-      0 0 25px #ef4444,
-      3px 3px 0 #000;
+      3px 3px 0 #0e0e1a,
+      6px 6px 0 rgba(10, 10, 22, 0.6),
+      0 0 10px rgba(0, 0, 0, 0.4),
+      0 2px 8px rgba(0, 0, 0, 0.5);
   }
 `;
 
@@ -209,7 +212,7 @@ const ResultSection = styled.div`
   text-align: center;
   margin-bottom: clamp(14px, 2cqh, 22px);
   padding-bottom: clamp(12px, 1.8cqh, 18px);
-  border-bottom: 2px solid ${props => props.$isWinner ? 'rgba(74, 222, 128, 0.3)' : 'rgba(248, 113, 113, 0.3)'};
+  border-bottom: 2px solid ${props => props.$isWinner ? 'rgba(212, 175, 55, 0.35)' : 'rgba(139, 115, 85, 0.3)'};
   position: relative;
   
   /* Decorative end caps on border */
@@ -218,7 +221,7 @@ const ResultSection = styled.div`
     position: absolute;
     bottom: -8px;
     font-size: clamp(8px, 1cqw, 12px);
-    color: ${props => props.$isWinner ? '#4ade80' : '#f87171'};
+    color: ${props => props.$isWinner ? '#d4af37' : '#8b7355'};
   }
   &::before { left: 20%; }
   &::after { right: 20%; }
@@ -227,7 +230,11 @@ const ResultSection = styled.div`
 const ResultText = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(1rem, 2.8cqw, 1.6rem);
-  color: ${props => props.$isWinner ? '#4ade80' : '#f87171'};
+  color: #FFFFFF;
+  -webkit-text-stroke: ${props => props.$isWinner
+    ? 'clamp(1.5px, 0.15cqw, 3px) #1a0e06'
+    : 'clamp(1.5px, 0.15cqw, 3px) #0e0e1a'};
+  paint-order: stroke fill;
   text-transform: uppercase;
   letter-spacing: 0.15em;
   animation: ${props => props.$isWinner ? victoryGlow : defeatPulse} 2s ease-in-out infinite;

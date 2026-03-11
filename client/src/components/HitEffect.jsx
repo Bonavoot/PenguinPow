@@ -54,12 +54,15 @@ const HitEffect = ({ position }) => {
     const isCinematic = position.cinematicKill || false;
     const cinematicMs = position.cinematicHitstopMs || 0;
 
+    const isBurstHit = position.isBurstHit || false;
+
     const newEffect = {
       id: effectId,
       x: position.x,
       y: position.y,
       facing: position.facing || 1,
       attackType,
+      isBurstHit,
       isCounterHit,
       isPunish,
       frozen: isCinematic,
@@ -78,7 +81,7 @@ const HitEffect = ({ position }) => {
     }
 
     const extraTime = isCinematic ? cinematicMs : 0;
-    const duration = (attackType === 'charged' ? EFFECT_DURATION_CHARGED : EFFECT_DURATION_SLAP) + extraTime;
+    const duration = ((attackType === 'charged' || isBurstHit) ? EFFECT_DURATION_CHARGED : EFFECT_DURATION_SLAP) + extraTime;
     const tid = setTimeout(() => {
       setActiveEffects((prev) => prev.filter((e) => e.id !== effectId));
       processedHitsRef.current.delete(hitIdentifier);
@@ -98,16 +101,17 @@ const HitEffect = ({ position }) => {
     <>
       {activeEffects.map((effect) => {
         const isCharged = effect.attackType === 'charged';
+        const isBurst = effect.isBurstHit && !isCharged;
         const hitTypeClass = isCharged ? 'charged-hit' : 'slap-hit';
+        const burstHitClass = isBurst ? 'burst-hit' : '';
         const counterHitClass = effect.isCounterHit ? 'counter-hit' : '';
         const punishHitClass = effect.isPunish ? 'punish-hit' : '';
         const frozenClass = effect.frozen ? 'cinematic-frozen' : '';
-        // Mirror faux-3D tilt direction by facing for ring-based effects.
         const ringTiltSigned = effect.facing === -1 ? "55deg" : "-55deg";
         
-        const lineIndices = isCharged ? CHARGED_LINE_INDICES : SLAP_LINE_INDICES;
-        const sparkIndices = isCharged ? CHARGED_SPARK_INDICES : SLAP_SPARK_INDICES;
-        const particleIndices = isCharged ? CHARGED_PARTICLE_INDICES : SLAP_PARTICLE_INDICES;
+        const lineIndices = (isCharged || isBurst) ? CHARGED_LINE_INDICES : SLAP_LINE_INDICES;
+        const sparkIndices = (isCharged || isBurst) ? CHARGED_SPARK_INDICES : SLAP_SPARK_INDICES;
+        const particleIndices = (isCharged || isBurst) ? CHARGED_PARTICLE_INDICES : SLAP_PARTICLE_INDICES;
 
         return (
           <HitEffectContainer
@@ -117,7 +121,7 @@ const HitEffect = ({ position }) => {
             $facing={effect.facing}
           >
             <div
-              className={`hit-ring-wrapper ${hitTypeClass} ${counterHitClass} ${punishHitClass} ${frozenClass}`}
+              className={`hit-ring-wrapper ${hitTypeClass} ${burstHitClass} ${counterHitClass} ${punishHitClass} ${frozenClass}`}
               style={{
                 "--charged-ring-tilt-signed": ringTiltSigned,
                 "--slap-ring-tilt-signed": ringTiltSigned,

@@ -82,6 +82,7 @@ const SLAP_TOTAL_MS = SLAP_STARTUP_MS + SLAP_ACTIVE_MS + SLAP_RECOVERY_MS;
 // All hits share identical frame data for snappy chaining.
 // After hit 2, player can input mouse2 instead of mouse1 to grab ender.
 const SLAP_STRING_BUFFER_WINDOW_MS = 300;  // Manual input window after cycle end
+const SLAP_STRING_END_COOLDOWN_MS = 60;   // Post-3rd-slap lockout: just eats stale mashed inputs, not a penalty
 
 // String hits 1, 2, 3 — identical frame data, recovery slashed for fast chain
 const SLAP_STRING_HIT_RECOVERY_MS = 40;    // Recovery between string hits
@@ -91,10 +92,13 @@ const SLAP_STRING_HIT_TOTAL_MS = SLAP_STARTUP_MS + SLAP_ACTIVE_MS + SLAP_STRING_
 const SLAP_STRING_LIGHT_KB_VELOCITY = 0.15;       // Hits 1 & 2: minimal — keeps opponent close for next hit
 const SLAP_NEUTRAL_KB_MULTIPLIER = 0.42;          // Solo slap (no string) — standard physics
 
-// Hit 3: physics-based knockback (velocity impulse, no DI, decays via 0.97 friction)
-// ~110px total slide at 0.97 friction. isHit ends early so victim can brake near edges.
+// Hit 3: physics-based knockback (velocity impulse, no DI)
+// Two-phase friction: holds speed like a heavy mass on ice, then brakes hard.
 const SLAP_HIT3_KB_VELOCITY = 4.0;
 const SLAP_HIT3_STUN_MS = 200;
+const BURST_KB_INITIAL_FRICTION = 0.993;   // Phase 1: heavy momentum — barely decelerates
+const BURST_KB_LATE_FRICTION = 0.93;       // Phase 2: digs in and brakes hard
+const BURST_KB_PHASE_SWITCH_MS = 130;      // When to transition from glide to brake
 
 // String stun (hits 1 & 2)
 const SLAP_STRING_HIT_STUN_MS = 260;
@@ -379,6 +383,7 @@ const GASSED_RECOVERY_STAMINA = 30; // Stamina granted immediately when gassed e
 // ============================================
 const SLAP_CHAIN_HIT_GAP_MS = 40;  // Minimum visual gap after slap hitstun before victim can be hit again
 const HITSTOP_SLAP_MS = 90;       // Punchy freeze for each slap impact — meaty and satisfying
+const HITSTOP_SLAP_HIT3_MS = 150; // Combo finisher: longer freeze sells the weight of the big hit
 const HITSTOP_CHARGED_MIN_MS = 80;  // Minimum charged attack hitstop (5 frames)
 const HITSTOP_CHARGED_MAX_MS = 150; // Maximum charged attack hitstop at full power (9 frames)
 const HITSTOP_PARRY_MS = 120;     // Parry hitstop - impactful but not too long (7 frames)
@@ -390,7 +395,7 @@ const HITSTOP_THROW_MS = 100;     // Hitstop when throw lands (6 frames)
 // ============================================
 const CINEMATIC_KILL_MIN_MULTIPLIER = 1.0;
 const CINEMATIC_KILL_HITSTOP_MS = 550;
-const CINEMATIC_KILL_KNOCKBACK_BOOST = 3.0;
+const CINEMATIC_KILL_KNOCKBACK_BOOST = 4.0;
 const CINEMATIC_KB_FRICTION = 0.985;
 const CINEMATIC_KB_DI_FRICTION = 0.96;
 const CINEMATIC_KB_MOVEMENT_TRANSFER = 0.8;
@@ -480,11 +485,15 @@ module.exports = {
   SLAP_RECOVERY_MS,
   SLAP_TOTAL_MS,
   SLAP_STRING_BUFFER_WINDOW_MS,
+  SLAP_STRING_END_COOLDOWN_MS,
   SLAP_STRING_HIT_RECOVERY_MS,
   SLAP_STRING_HIT_TOTAL_MS,
   SLAP_STRING_LIGHT_KB_VELOCITY,
   SLAP_NEUTRAL_KB_MULTIPLIER,
   SLAP_HIT3_KB_VELOCITY,
+  BURST_KB_INITIAL_FRICTION,
+  BURST_KB_LATE_FRICTION,
+  BURST_KB_PHASE_SWITCH_MS,
   SLAP_STRING_HIT_STUN_MS,
   SLAP_HIT3_STUN_MS,
   SLAP_ONHIT_ATTACKER_PUSH,
@@ -625,6 +634,7 @@ module.exports = {
   // Hitstop
   SLAP_CHAIN_HIT_GAP_MS,
   HITSTOP_SLAP_MS,
+  HITSTOP_SLAP_HIT3_MS,
   HITSTOP_CHARGED_MIN_MS,
   HITSTOP_CHARGED_MAX_MS,
   HITSTOP_PARRY_MS,

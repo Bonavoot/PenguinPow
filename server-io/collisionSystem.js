@@ -10,7 +10,7 @@ const {
   RAW_PARRY_KNOCKBACK, RAW_PARRY_SLAP_KNOCKBACK,
   RAW_PARRY_STAMINA_REFUND,
   SLAP_CHAIN_HIT_GAP_MS,
-  HITSTOP_SLAP_MS, HITSTOP_PARRY_MS, HITSTOP_CHARGED_MIN_MS, HITSTOP_CHARGED_MAX_MS,
+  HITSTOP_SLAP_MS, HITSTOP_SLAP_HIT3_MS, HITSTOP_PARRY_MS, HITSTOP_CHARGED_MIN_MS, HITSTOP_CHARGED_MAX_MS,
   SLAP_HIT_VICTIM_STAMINA_DRAIN, CHARGED_HIT_VICTIM_STAMINA_DRAIN,
   CHARGE_CLASH_RECOVERY_DURATION, CHARGE_CLASH_BASE_KNOCKBACK,
   CHARGE_CLASH_MIN_KNOCKBACK, CHARGE_CLASH_ADVANTAGE_SCALE,
@@ -860,7 +860,7 @@ function processHit(player, otherPlayer, rooms, io) {
     if (isSlapAttack) {
       finalKnockbackMultiplier = SLAP_NEUTRAL_KB_MULTIPLIER;
     } else {
-      finalKnockbackMultiplier = 0.55 + Math.pow(chargePercentage / 100, 1.5) * 0.42;
+      finalKnockbackMultiplier = 0.45 + Math.pow(chargePercentage / 100, 1.3) * 0.75;
     }
 
     if (isCounterHit) {
@@ -906,6 +906,7 @@ function processHit(player, otherPlayer, rooms, io) {
           // STRING HIT 3: physics-based knockback — velocity impulse, no DI
           const pushDirection = player.facing === 1 ? -1 : 1;
           otherPlayer.isBurstKnockback = true;
+          otherPlayer.burstKnockbackStartTime = currentTime;
           otherPlayer.knockbackVelocity.x = knockbackDirection * SLAP_HIT3_KB_VELOCITY;
           otherPlayer.movementVelocity = 0;
           player.movementVelocity = pushDirection * SLAP_ONHIT_ATTACKER_PUSH;
@@ -982,6 +983,7 @@ function processHit(player, otherPlayer, rooms, io) {
           y: otherPlayer.y,
           facing: otherPlayer.facing,
           attackType: isSlapAttack ? "slap" : "charged",
+          stringPos: isSlapAttack ? (player.slapStringPosition || 0) : 0,
           timestamp: Date.now(),
           hitId: Math.random().toString(36).substr(2, 9),
           isCounterHit: isCounterHit,
@@ -1019,28 +1021,36 @@ function processHit(player, otherPlayer, rooms, io) {
         // Charged: heavy, powerful feel scaling with charge
         // ============================================
         if (isSlapAttack) {
-          // Normal slap hitstop
-          triggerHitstop(currentRoom, HITSTOP_SLAP_MS);
+          const isBurstHitLocal = (player.slapStringPosition || 0) === 3;
+          const slapHitstopMs = isBurstHitLocal ? HITSTOP_SLAP_HIT3_MS : HITSTOP_SLAP_MS;
+          triggerHitstop(currentRoom, slapHitstopMs);
 
           // === SYMMETRIC HITSTOP COMPENSATION ===
           if (player.slapCycleEndCallback) {
             timeoutManager.clearPlayerSpecific(player.id, "slapCycle");
             const remainingActive = Math.max(0, player.attackEndTime - currentTime);
-            const extendedActive = remainingActive + HITSTOP_SLAP_MS;
+            const extendedActive = remainingActive + slapHitstopMs;
             player.attackEndTime = currentTime + extendedActive;
 
             const remainingCycle = Math.max(0, player.attackCooldownUntil - currentTime);
-            const extendedCycle = remainingCycle + HITSTOP_SLAP_MS;
+            const extendedCycle = remainingCycle + slapHitstopMs;
             player.attackCooldownUntil = currentTime + extendedCycle;
             setPlayerTimeout(player.id, player.slapCycleEndCallback, extendedCycle, "slapCycle");
           }
 
-          otherPlayer._slapHitstopExtension = HITSTOP_SLAP_MS;
+          otherPlayer._slapHitstopExtension = slapHitstopMs;
 
-          emitThrottledScreenShake(currentRoom, io, {
-            intensity: 0.8,
-            duration: 180,
-          });
+          if (isBurstHitLocal) {
+            emitThrottledScreenShake(currentRoom, io, {
+              intensity: 1.2,
+              duration: 300,
+            });
+          } else {
+            emitThrottledScreenShake(currentRoom, io, {
+              intensity: 0.8,
+              duration: 180,
+            });
+          }
         } else {
           // Charged attacks scale hitstop with charge power
           const hitstopDuration = isCinematicKill
@@ -1121,6 +1131,7 @@ function processHit(player, otherPlayer, rooms, io) {
         otherPlayer.isHit = false;
         otherPlayer.isSlapKnockback = false;
         otherPlayer.isBurstKnockback = false;
+        otherPlayer.burstKnockbackStartTime = 0;
 
         const isStringHit = isSlapAttack && (stringPos === 1 || stringPos === 2);
         if (isSlapAttack && SLAP_CHAIN_HIT_GAP_MS > 0 && !isStringHit) {

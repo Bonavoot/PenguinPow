@@ -10,7 +10,7 @@ const {
   ALWAYS_SEND_PROPS, DELTA_TRACKED_PROPS, ALL_TRACKED_PROPS,
   speedFactor, GROUND_LEVEL, HITBOX_DISTANCE_VALUE,
   THROW_RANGE, GRAB_RANGE, GRAB_PUSH_SPEED, GRAB_PUSH_DURATION,
-  DOHYO_FALL_SPEED, DOHYO_FALL_DEPTH, DOHYO_FALL_HORIZONTAL_RETENTION,
+  DOHYO_FALL_SPEED, DOHYO_FALL_DEPTH,
   POWER_UP_TYPES, POWER_UP_EFFECTS,
   GRAB_DURATION, GRAB_ATTEMPT_DURATION,
   ICE_ACCELERATION, ICE_MAX_SPEED, ICE_INITIAL_BURST,
@@ -47,6 +47,7 @@ const {
   SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST, DODGE_STAMINA_COST,
   GASSED_DURATION_MS, GASSED_RECOVERY_STAMINA,
   HITSTOP_GRAB_MS, HITSTOP_THROW_MS,
+  BURST_KB_INITIAL_FRICTION, BURST_KB_LATE_FRICTION, BURST_KB_PHASE_SWITCH_MS,
   SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MIN_MS, SIDESTEP_ACTIVE_MAX_MS, SIDESTEP_RECOVERY_MS,
   SIDESTEP_ARC_DEPTH_MIN, SIDESTEP_ARC_DEPTH_MAX, SIDESTEP_GRAB_TRACK_RANGE,
   SIDESTEP_ARC_SPEED, SIDESTEP_MAX_TRAVEL,
@@ -399,7 +400,9 @@ function tick(delta) {
 
       // Pushbox: always resolve overlap when players are colliding.
       // arePlayersColliding already returns false during dodge/grab/throw states.
-      if (arePlayersColliding(player1, player2)) {
+      // Skip during game over — boundary clamping inside adjustPlayerPositions
+      // would drag the loser back to the map edge after isHit expires.
+      if (!room.gameOver && arePlayersColliding(player1, player2)) {
         adjustPlayerPositions(player1, player2, delta);
       }
 
@@ -559,11 +562,11 @@ function tick(delta) {
             const leftBoundary = MAP_LEFT_BOUNDARY;
             const rightBoundary = MAP_RIGHT_BOUNDARY;
 
-            // Only update position if within boundaries
             if (newX >= leftBoundary && newX <= rightBoundary) {
               player.x = newX;
+            } else if (isGameOverLoser) {
+              player.x = newX;
             } else {
-              // Stop at boundary and reset velocity
               player.x = newX < leftBoundary ? leftBoundary : rightBoundary;
               player.movementVelocity = 0;
             }
@@ -599,7 +602,10 @@ function tick(delta) {
       if (isRoomInHitstop(room)) {
         return;
       }
-      if (room.gameOver && player.id === room.loserId && !player.isHit) {
+      const isGameOverLoser = room.gameOver && player.id === room.loserId;
+      if (isGameOverLoser && !player.isHit && !player.isCinematicKillVictim &&
+          Math.abs(player.movementVelocity) < ICE_STOP_THRESHOLD &&
+          Math.abs(player.knockbackVelocity.x) < 0.01) {
         return;
       }
 
@@ -723,83 +729,95 @@ function tick(delta) {
         player.knockbackVelocity.y = 0;
         // Keep facing and position; do nothing else until freeze ends
       } else if (player.isHit) {
-        // SAFETY: Maximum isHit duration to prevent stuck states (1 second max)
-        const MAX_HIT_DURATION = 1000;
-        const hitDuration = player.lastHitTime ? Date.now() - player.lastHitTime : 0;
-        if (hitDuration > MAX_HIT_DURATION) {
-          player.isHit = false;
-          player.isAlreadyHit = false;
-          player.isSlapKnockback = false;
-          player.isBurstKnockback = false;
-          player.isParryKnockback = false;
-          player.knockbackVelocity.x = 0;
-          player.movementVelocity = 0;
-          // Don't return - continue normal processing
+        // Cinematic kill victims fly off with no friction, no DI, no slowdown
+        if (player.isCinematicKillVictim) {
+          player.x += player.knockbackVelocity.x * delta * speedFactor;
         } else {
-          // Standard knockback — knockbackVelocity drives displacement
-          player.x =
-            player.x + player.knockbackVelocity.x * delta * speedFactor;
-
-          const isOutsideDohyo = player.x < DOHYO_LEFT_BOUNDARY || player.x > DOHYO_RIGHT_BOUNDARY;
-          const isPastMapBoundaries = player.x < MAP_LEFT_BOUNDARY || player.x > MAP_RIGHT_BOUNDARY;
-          
-          if (isOutsideDohyo && !player.isFallingOffDohyo && !player.isCinematicKillVictim) {
-            player.isFallingOffDohyo = true;
-          }
-
-          const isLoserAfterGameOver = room.gameOver && player.id === room.loserId;
-          
-          if (player.isFallingOffDohyo) {
-            const targetY = GROUND_LEVEL - DOHYO_FALL_DEPTH;
-            if (isLoserAfterGameOver) {
-              if (player.y !== targetY) player.y = targetY;
-            } else if (player.y > targetY) {
-              player.y = Math.max(targetY, player.y - DOHYO_FALL_SPEED);
-            }
-            player.knockbackVelocity.x *= DOHYO_FALL_HORIZONTAL_RETENTION;
-          } else if (isLoserAfterGameOver && isPastMapBoundaries) {
-            player.knockbackVelocity.x *= DOHYO_FALL_HORIZONTAL_RETENTION;
+          // SAFETY: Maximum isHit duration to prevent stuck states (1 second max)
+          const MAX_HIT_DURATION = 1000;
+          const hitDuration = player.lastHitTime ? Date.now() - player.lastHitTime : 0;
+          if (hitDuration > MAX_HIT_DURATION) {
+            player.isHit = false;
+            player.isAlreadyHit = false;
+            player.isSlapKnockback = false;
+            player.isBurstKnockback = false;
+            player.burstKnockbackStartTime = 0;
+            player.isParryKnockback = false;
+            player.knockbackVelocity.x = 0;
+            player.movementVelocity = 0;
+            // Don't return - continue normal processing
           } else {
-            const knockbackDirection = player.knockbackVelocity.x > 0 ? 1 : -1;
-            const isHoldingOpposite = (knockbackDirection > 0 && player.keys.a && !player.keys.d) || 
-                                      (knockbackDirection < 0 && player.keys.d && !player.keys.a);
-            const DI_FRICTION_BONUS = 0.96;
+            // Standard knockback — knockbackVelocity drives displacement
+            player.x =
+              player.x + player.knockbackVelocity.x * delta * speedFactor;
+
+            const isOutsideDohyo = player.x < DOHYO_LEFT_BOUNDARY || player.x > DOHYO_RIGHT_BOUNDARY;
+            const isPastMapBoundaries = player.x < MAP_LEFT_BOUNDARY || player.x > MAP_RIGHT_BOUNDARY;
             
-            if (player.isSlapKnockback) {
-              player.knockbackVelocity.x *= 0.97;
+            if (isOutsideDohyo && !player.isFallingOffDohyo) {
+              player.isFallingOffDohyo = true;
+            }
+
+            const isLoserAfterGameOver = room.gameOver && player.id === room.loserId;
+            
+            if (player.isFallingOffDohyo) {
+              const targetY = GROUND_LEVEL - DOHYO_FALL_DEPTH;
+              if (isLoserAfterGameOver) {
+                if (player.y !== targetY) player.y = targetY;
+              } else if (player.y > targetY) {
+                player.y = Math.max(targetY, player.y - DOHYO_FALL_SPEED);
+              }
+              player.knockbackVelocity.x *= 0.92;
+            } else if (isLoserAfterGameOver && isPastMapBoundaries) {
+              player.knockbackVelocity.x *= 0.95;
             } else {
-              player.knockbackVelocity.x *= 0.96;
+              const knockbackDirection = player.knockbackVelocity.x > 0 ? 1 : -1;
+              const isHoldingOpposite = (knockbackDirection > 0 && player.keys.a && !player.keys.d) || 
+                                        (knockbackDirection < 0 && player.keys.d && !player.keys.a);
+              const DI_FRICTION_BONUS = 0.96;
+              
+              if (player.isBurstKnockback) {
+                const burstAge = Date.now() - (player.burstKnockbackStartTime || 0);
+                const friction = burstAge < BURST_KB_PHASE_SWITCH_MS
+                  ? BURST_KB_INITIAL_FRICTION
+                  : BURST_KB_LATE_FRICTION;
+                player.knockbackVelocity.x *= friction;
+              } else if (player.isSlapKnockback) {
+                player.knockbackVelocity.x *= 0.97;
+              } else {
+                player.knockbackVelocity.x *= 0.96;
+              }
+              if (isHoldingOpposite && !player.isBurstKnockback) {
+                player.knockbackVelocity.x *= DI_FRICTION_BONUS;
+              }
             }
-            if (isHoldingOpposite && !player.isBurstKnockback) {
-              player.knockbackVelocity.x *= DI_FRICTION_BONUS;
-            }
-          }
 
-          // Parry knockback cannot push past map boundaries
-          if (player.isParryKnockback) {
-            const PARRY_BOUNDARY_BUFFER = 10;
-            const clampedX = Math.max(
-              MAP_LEFT_BOUNDARY + PARRY_BOUNDARY_BUFFER,
-              Math.min(player.x, MAP_RIGHT_BOUNDARY - PARRY_BOUNDARY_BUFFER)
-            );
-            if (clampedX !== player.x) {
-              player.x = clampedX;
-              player.knockbackVelocity.x = 0;
+            // Parry knockback cannot push past map boundaries
+            if (player.isParryKnockback) {
+              const PARRY_BOUNDARY_BUFFER = 10;
+              const clampedX = Math.max(
+                MAP_LEFT_BOUNDARY + PARRY_BOUNDARY_BUFFER,
+                Math.min(player.x, MAP_RIGHT_BOUNDARY - PARRY_BOUNDARY_BUFFER)
+              );
+              if (clampedX !== player.x) {
+                player.x = clampedX;
+                player.knockbackVelocity.x = 0;
+              }
             }
-          }
 
-          // Clear at-the-ropes facing lock if back within boundaries
-          if (player.atTheRopesFacingDirection !== null) {
-            const isWithinBoundaries = player.x > MAP_LEFT_BOUNDARY && player.x < MAP_RIGHT_BOUNDARY;
-            if (isWithinBoundaries) {
-              player.atTheRopesFacingDirection = null;
-              player.isAtTheRopes = false;
-              player.atTheRopesStartTime = 0;
+            // Clear at-the-ropes facing lock if back within boundaries
+            if (player.atTheRopesFacingDirection !== null) {
+              const isWithinBoundaries = player.x > MAP_LEFT_BOUNDARY && player.x < MAP_RIGHT_BOUNDARY;
+              if (isWithinBoundaries) {
+                player.atTheRopesFacingDirection = null;
+                player.isAtTheRopes = false;
+                player.atTheRopesStartTime = 0;
+              }
             }
-          }
 
-          // Hitstun is purely timer-based — no velocity-based isHit reset.
-          // The processHit timer is the ONLY thing that ends hitstun.
+            // Hitstun is purely timer-based — no velocity-based isHit reset.
+            // The processHit timer is the ONLY thing that ends hitstun.
+          }
         }
       }
 
@@ -1283,6 +1301,7 @@ function tick(delta) {
             opponent.isAlreadyHit = false;
             opponent.isSlapKnockback = false;
             opponent.isBurstKnockback = false;
+            opponent.burstKnockbackStartTime = 0;
             
             // Set Y to correct ground level based on whether they landed outside the dohyo
             const landedOutsideDohyo = opponent.x <= DOHYO_LEFT_BOUNDARY || opponent.x >= DOHYO_RIGHT_BOUNDARY;
@@ -1916,6 +1935,7 @@ function tick(delta) {
         !player.isSlapParryRecovering && // Block movement during slap parry recovery for consistent knockback
         ((!player.keys[" "] &&
           !(player.isAttacking && player.attackType === "charged") && // Block only during charged attack execution
+          !player.isChargingAttack && // Block movement while charging
           player.saltCooldown === false &&
           !player.isThrowTeching &&
           !player.isGrabbing &&
@@ -1968,8 +1988,7 @@ function tick(delta) {
           !player.isGrabbing &&
           !player.isWhiffingGrab &&
           !player.isAttacking &&
-          // NOTE: isChargingAttack is NOT blocked - can power slide while charging!
-          // This allows fluid movement during charge windup
+          !player.isChargingAttack &&
           !player.isRecovering &&
           !player.isRawParrying &&
           !player.isHit &&
@@ -2038,6 +2057,7 @@ function tick(delta) {
           !player.isGrabbingMovement &&
           !player.isWhiffingGrab &&
           !player.isAttacking &&
+          !player.isChargingAttack &&
           !player.isRecovering &&
           !player.isRawParryStun &&
           !player.isRawParrying &&
@@ -2066,7 +2086,7 @@ function tick(delta) {
           const crouchSpeedFactor = currentSpeedFactor * 0.5;
           const newX =
             player.x + delta * crouchSpeedFactor * player.movementVelocity;
-          if (newX <= rightBoundary || player.isThrowLanded) {
+          if (newX <= rightBoundary || player.isThrowLanded || isGameOverLoser) {
             player.x = newX;
           } else {
             player.x = rightBoundary;
@@ -2087,6 +2107,7 @@ function tick(delta) {
           !player.isGrabbingMovement &&
           !player.isWhiffingGrab &&
           !player.isAttacking &&
+          !player.isChargingAttack &&
           !player.isRecovering &&
           !player.isRawParryStun &&
           !player.isRawParrying &&
@@ -2115,7 +2136,7 @@ function tick(delta) {
           const crouchSpeedFactor = currentSpeedFactor * 0.5;
           const newX =
             player.x + delta * crouchSpeedFactor * player.movementVelocity;
-          if (newX >= leftBoundary || player.isThrowLanded) {
+          if (newX >= leftBoundary || player.isThrowLanded || isGameOverLoser) {
             player.x = newX;
           } else {
             player.x = leftBoundary;
@@ -2200,7 +2221,7 @@ function tick(delta) {
           // Calculate new position and check boundaries
           const newX =
             player.x + delta * currentSpeedFactor * player.movementVelocity;
-          if (newX <= rightBoundary || player.isThrowLanded) {
+          if (newX <= rightBoundary || player.isThrowLanded || isGameOverLoser) {
             player.x = newX;
           } else {
             player.x = rightBoundary;
@@ -2284,7 +2305,7 @@ function tick(delta) {
           // Calculate new position and check boundaries
           const newX =
             player.x + delta * currentSpeedFactor * player.movementVelocity;
-          if (newX >= leftBoundary || player.isThrowLanded) {
+          if (newX >= leftBoundary || player.isThrowLanded || isGameOverLoser) {
             player.x = newX;
           } else {
             player.x = leftBoundary;
@@ -2332,6 +2353,12 @@ function tick(delta) {
             // Get slide friction (can still brake during slide, just harder)
             const friction = getIceFriction(player, isActiveBraking, nearEdge, edgeProximity);
             player.movementVelocity *= friction;
+
+            if (player.x < DOHYO_LEFT_BOUNDARY || player.x > DOHYO_RIGHT_BOUNDARY) {
+              player.movementVelocity *= 0.92;
+            } else if (isGameOverLoser && (player.x < MAP_LEFT_BOUNDARY || player.x > MAP_RIGHT_BOUNDARY)) {
+              player.movementVelocity *= 0.96;
+            }
             
             // Visual states
             player.isBraking = isActiveBraking;
@@ -2343,7 +2370,7 @@ function tick(delta) {
             // Apply position - slides can go off the edge!
             if (newX >= leftBoundary && newX <= rightBoundary) {
               player.x = newX;
-            } else if (!player.isHit && !player.isThrowLanded) {
+            } else if (!player.isHit && !player.isThrowLanded && !isGameOverLoser) {
               player.x = newX < leftBoundary ? leftBoundary : rightBoundary;
               player.movementVelocity = 0;
               player.isPowerSliding = false; // Stop slide at boundary
@@ -2375,6 +2402,12 @@ function tick(delta) {
             const friction = getIceFriction(player, isActiveBraking, nearEdge, edgeProximity);
             
             player.movementVelocity *= friction;
+
+            if (player.x < DOHYO_LEFT_BOUNDARY || player.x > DOHYO_RIGHT_BOUNDARY) {
+              player.movementVelocity *= 0.92;
+            } else if (isGameOverLoser && (player.x < MAP_LEFT_BOUNDARY || player.x > MAP_RIGHT_BOUNDARY)) {
+              player.movementVelocity *= 0.96;
+            }
             
             player.isBraking = isActiveBraking;
             player.isStrafing = false;
@@ -2393,7 +2426,7 @@ function tick(delta) {
 
             if (newX >= leftBoundary && newX <= rightBoundary) {
               player.x = newX;
-            } else if (!player.isHit && !player.isThrowLanded) {
+            } else if (!player.isHit && !player.isThrowLanded && !isGameOverLoser) {
               player.x = newX < leftBoundary ? leftBoundary : rightBoundary;
               player.movementVelocity = 0;
             } else {
@@ -2417,6 +2450,20 @@ function tick(delta) {
         if (player.isStrafing && !player.isPowerSliding && Math.abs(player.movementVelocity) > ICE_STOP_THRESHOLD) {
           // Apply moving friction even while actively moving
           player.movementVelocity *= ICE_MOVING_FRICTION;
+        }
+
+        // Game-over loser: handle dohyo fall after isHit ends (momentum carries them off the ring)
+        if (isGameOverLoser && !player.isHit) {
+          const isOutsideDohyo = player.x < DOHYO_LEFT_BOUNDARY || player.x > DOHYO_RIGHT_BOUNDARY;
+          if (isOutsideDohyo && !player.isFallingOffDohyo) {
+            player.isFallingOffDohyo = true;
+          }
+          if (player.isFallingOffDohyo) {
+            const targetY = GROUND_LEVEL - DOHYO_FALL_DEPTH;
+            if (player.y > targetY) {
+              player.y = Math.max(targetY, player.y - DOHYO_FALL_SPEED);
+            }
+          }
         }
 
         // Update strafing state
@@ -2536,7 +2583,8 @@ function tick(delta) {
         !player.isHit &&
         !player.isRawParryStun &&
         !player.isRawParrying &&
-        !player.isAtTheRopes
+        !player.isAtTheRopes &&
+        !player.isChargingAttack
       ) {
         // Start crouch stance if not already crouching
         if (!player.isCrouchStance) {
@@ -2657,7 +2705,9 @@ function tick(delta) {
         !player.isAtTheRopes
       ) {
         const attackDirection = player.facing === 1 ? -1 : 1;
-        const newX = player.x + attackDirection * delta * speedFactor * 2.5;
+        const chargePower = player.chargeAttackPower || 0;
+        const lungeSpeed = 1.5 + (chargePower / 100) * 5.5;
+        const newX = player.x + attackDirection * delta * speedFactor * lungeSpeed;
 
         // Check if this movement would put player at the ropes
         const leftCheck = newX <= MAP_LEFT_BOUNDARY && attackDirection === -1;

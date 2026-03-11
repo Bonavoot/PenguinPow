@@ -380,6 +380,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
         slapAnimationToggle: 0,
         currentSlapHitConnected: false,
         isBurstKnockback: false,
+        burstKnockbackStartTime: 0,
         mouse1JustPressed: false,
         mouse1JustReleased: false,
         mouse2JustPressed: false,
@@ -600,6 +601,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
         slapAnimationToggle: 0,
         currentSlapHitConnected: false,
         isBurstKnockback: false,
+        burstKnockbackStartTime: 0,
         mouse1JustPressed: false,
         mouse1JustReleased: false,
         mouse2JustPressed: false,
@@ -857,6 +859,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
       slapAnimationToggle: 0,
       currentSlapHitConnected: false,
       isBurstKnockback: false,
+      burstKnockbackStartTime: 0,
       mouse1JustPressed: false,
       mouse1JustReleased: false,
       mouse2JustPressed: false,
@@ -1267,6 +1270,13 @@ function registerSocketHandlers(socket, io, rooms, context) {
             player.inputBuffer = { type: "sidestep", timestamp: Date.now() };
           } else if (!prevShift && data.keys.shift && !data.keys.mouse2) {
             player.inputBuffer = { type: "dodge", timestamp: Date.now() };
+          } else if (!prevMouse1 && data.keys.mouse1 && data.keys.s) {
+            const fwdKey = player.facing === -1 ? 'd' : 'a';
+            if (data.keys[fwdKey]) {
+              player.inputBuffer = { type: "chargedAttack", timestamp: Date.now() };
+            } else {
+              player.inputBuffer = { type: "slap", timestamp: Date.now() };
+            }
           } else if (!prevMouse1 && data.keys.mouse1) {
             player.inputBuffer = { type: "slap", timestamp: Date.now() };
           } else if (!prevMouse2 && data.keys.mouse2) {
@@ -1360,6 +1370,13 @@ function registerSocketHandlers(socket, io, rooms, context) {
           player.inputBuffer = { type: "sidestep", timestamp: Date.now() };
         } else if (!prevKeys.shift && data.keys.shift && !data.keys.mouse2) {
           player.inputBuffer = { type: "dodge", timestamp: Date.now() };
+        } else if (!prevKeys.mouse1 && data.keys.mouse1 && data.keys.s) {
+          const fwdKey = player.facing === -1 ? 'd' : 'a';
+          if (data.keys[fwdKey]) {
+            player.inputBuffer = { type: "chargedAttack", timestamp: Date.now() };
+          } else {
+            player.inputBuffer = { type: "slap", timestamp: Date.now() };
+          }
         } else if (!prevKeys.mouse1 && data.keys.mouse1) {
           player.inputBuffer = { type: "slap", timestamp: Date.now() };
         } else if (!prevKeys.mouse2 && data.keys.mouse2) {
@@ -1460,6 +1477,13 @@ function registerSocketHandlers(socket, io, rooms, context) {
           player.inputBuffer = { type: "sidestep", timestamp: Date.now() };
         } else if (player.shiftJustPressed && !data.keys.mouse2) {
           player.inputBuffer = { type: "dodge", timestamp: Date.now() };
+        } else if (player.mouse1JustPressed && data.keys.s) {
+          const fwdKey = player.facing === -1 ? 'd' : 'a';
+          if (data.keys[fwdKey]) {
+            player.inputBuffer = { type: "chargedAttack", timestamp: Date.now() };
+          } else {
+            player.inputBuffer = { type: "slap", timestamp: Date.now() };
+          }
         } else if (player.mouse1JustPressed) {
           player.inputBuffer = { type: "slap", timestamp: Date.now() };
         } else if (player.mouse2JustPressed) {
@@ -1532,10 +1556,27 @@ function registerSocketHandlers(socket, io, rooms, context) {
       player.slapStringWindowUntil = 0;
     }
 
-    // MOUSE1 PRESS: Fire slap immediately for responsive poke
-    // Buffer presses during active slap to queue next hits in the 3-hit string.
+    // MOUSE1 PRESS: Check for S+FORWARD+MOUSE1 charged attack combo, else fire slap
     if (player.mouse1JustPressed && !shouldBlockAction()) {
-      if (canPlayerSlap(player)) {
+      const forwardKey = player.facing === -1 ? 'd' : 'a';
+      const wantsChargedAttack = player.keys.s && player.keys[forwardKey];
+
+      if (wantsChargedAttack && canPlayerSlap(player, { ignoreCooldown: true })) {
+        player.chargeAttackPower = 0;
+        player.chargeStartTime = 0;
+        startCharging(player);
+        player.chargingFacingDirection = player.facing;
+        player.movementVelocity = 0;
+        player.isStrafing = false;
+        player.isPowerSliding = false;
+        player.isBraking = false;
+        player.isRawParrySuccess = false;
+        player.isPerfectRawParrySuccess = false;
+        player.isCrouchStance = false;
+        player.isCrouchStrafing = false;
+      } else if (wantsChargedAttack && player.isAttacking && player.attackType === "slap") {
+        player.inputBuffer = { type: "chargedAttack", timestamp: Date.now() };
+      } else if (canPlayerSlap(player)) {
         executeSlapAttack(player, rooms);
       } else if (player.isAttacking && player.attackType === "slap") {
         const maxBuffer = 3 - (player.slapStringPosition || 1);
@@ -1552,21 +1593,22 @@ function registerSocketHandlers(socket, io, rooms, context) {
       player.pendingSlapCount = 0;
     }
 
-    // MOUSE1 RELEASE: Clear charge state if applicable
+    // MOUSE1 RELEASE: Execute charged attack if charging, otherwise clear state
     if (player.mouse1JustReleased) {
       if (player.isRopeJumping && player.ropeJumpPhase === "landing" && player.mouse1PressTime > 0) {
         player.ropeJumpBufferedAttackRelease = Date.now() - player.mouse1PressTime;
       }
       if (player.isChargingAttack) {
+        const chargePercentage = player.chargeAttackPower || 1;
         player.isChargingAttack = false;
         player.chargeStartTime = 0;
-        player.chargeAttackPower = 0;
         player.chargingFacingDirection = null;
-        player.attackType = null;
         player.mouse1HeldDuringAttack = false;
-      }
-      if (!(player.isAttacking && player.attackType === "charged")) {
-        player.chargeAttackPower = 0;
+        executeChargedAttack(player, chargePercentage, rooms);
+      } else {
+        if (!(player.isAttacking && player.attackType === "charged")) {
+          player.chargeAttackPower = 0;
+        }
       }
       player.mouse1PressTime = 0;
       player.wantsToRestartCharge = false;
@@ -1583,8 +1625,8 @@ function registerSocketHandlers(socket, io, rooms, context) {
       player.isChargingAttack && // Only interrupt during charging phase, not execution
       !player.isDodging // Block during dodge - charging continues but no actions can interrupt
     ) {
-      // Clear charge state
-      clearChargeState(player);
+      // Clear charge state — cancelled by another action, so zero charge power
+      clearChargeState(player, true);
 
       // The existing input handlers will take over for W/E/F
     }
@@ -1659,7 +1701,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
     ) {
       // Clear charge attack state if player was charging
       if (player.isChargingAttack) {
-        clearChargeState(player);
+        clearChargeState(player, true);
       }
 
       if (player.activePowerUp === POWER_UP_TYPES.SNOWBALL) {
@@ -2016,12 +2058,34 @@ function registerSocketHandlers(socket, io, rooms, context) {
       }
     }
 
-    // NEUTRAL CHARGED ATTACK REMOVED: Mouse1 is now slap-only from neutral.
-    // The charged finisher is exclusively the chargeable hit 3 (earned through the 1→2 string).
-    // Legacy charge accumulation during dodge is disabled.
+    // S+FORWARD+MOUSE1 CHARGED ATTACK: Continuous check for lenient input detection.
+    // Catches the case where mouse1 is already held and player adds S+forward after.
+    if (
+      player.keys.mouse1 &&
+      player.keys.s &&
+      !player.isChargingAttack &&
+      !player.isAttacking &&
+      !shouldBlockAction()
+    ) {
+      const forwardKey = player.facing === -1 ? 'd' : 'a';
+      if (player.keys[forwardKey] && canPlayerSlap(player, { ignoreCooldown: true })) {
+        player.chargeAttackPower = 0;
+        player.chargeStartTime = 0;
+        startCharging(player);
+        player.chargingFacingDirection = player.facing;
+        player.movementVelocity = 0;
+        player.isStrafing = false;
+        player.isPowerSliding = false;
+        player.isBraking = false;
+        player.isRawParrySuccess = false;
+        player.isPerfectRawParrySuccess = false;
+        player.isCrouchStance = false;
+        player.isCrouchStrafing = false;
+      }
+    }
 
-    // Clear any lingering charge state
-    if (player.isChargingAttack && !player.isAttacking) {
+    // Clear any lingering charge state when not attacking
+    if (player.isChargingAttack && !player.keys.mouse1 && !player.isAttacking) {
       player.isChargingAttack = false;
       player.chargeStartTime = 0;
       player.chargeAttackPower = 0;
@@ -2029,14 +2093,10 @@ function registerSocketHandlers(socket, io, rooms, context) {
       player.attackType = null;
       player.mouse1HeldDuringAttack = false;
     }
-    // Safety: clear any stale preserved charge when mouse1 is not held
-    // Catches edge cases where mouse1JustReleased event was missed
+    // Safety: clear stale preserved charge when mouse1 is not held
     if (!player.keys.mouse1 && !player.isChargingAttack && player.chargeAttackPower > 0 && !player.isAttacking) {
       player.chargeAttackPower = 0;
     }
-
-    // NOTE: Continuous mouse1 charge check is also handled in the game loop
-    // for when player holds mouse1 without sending new fighter_action events
 
     // Handle throw attacks - only during grab decision window (first 1s of grab)
     // Uses GRAB_ACTION_WINDOW (1s) and S-key counter by opponent

@@ -22,11 +22,14 @@
   width: 16px;
   height: 16px;
   position: relative;
-  background: #8b4513; /* Brown color for mawashi */
+  background: linear-gradient(135deg, #5c4033 0%, #3d2817 100%);
   border-radius: 4px;
   transform: rotate(45deg);
-  box-shadow: 0 0 5px rgba(139, 69, 19, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow:
+    0 0 0 1.5px rgba(180, 130, 30, 0.5),
+    0 2px 6px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 200, 100, 0.1);
+  border: 1px solid rgba(180, 130, 30, 0.35);
   overflow: hidden;
 }
 
@@ -38,19 +41,21 @@
   transform: translate(-50%, -50%) rotate(-45deg);
   width: 8px;
   height: 8px;
-  background: #ffd700; /* Gold color for the knot */
+  background: #ffd700;
   border-radius: 50%;
-  box-shadow: 0 0 3px rgba(255, 215, 0, 0.5);
+  box-shadow: 0 0 3px rgba(212, 175, 55, 0.4);
   z-index: 2;
 }
 
 .charge-icon.cooldown {
-  background: #4a4a4a;
-  box-shadow: none;
+  background: linear-gradient(135deg, rgba(14, 18, 36, 0.9) 0%, rgba(8, 10, 22, 0.92) 100%);
+  box-shadow:
+    0 0 0 1.5px rgba(100, 90, 80, 0.3),
+    0 2px 4px rgba(0, 0, 0, 0.4);
 }
 
 .charge-icon.cooldown::before {
-  background: #808080;
+  background: rgba(100, 90, 80, 0.5);
   box-shadow: none;
 }
 
@@ -61,7 +66,7 @@
   left: 0;
   width: 100%;
   height: 100%;
-  background: #8b4513;
+  background: linear-gradient(135deg, #5c4033 0%, #3d2817 100%);
   transform: translateY(calc(100% - (100% * var(--cooldown-progress))));
   z-index: 1;
 }

@@ -135,6 +135,7 @@ function updateProjectiles(room, io, delta) {
 
             targetPlayer.isSlapKnockback = false;
             targetPlayer.isBurstKnockback = false;
+            targetPlayer.burstKnockbackStartTime = 0;
 
             targetPlayer.knockbackVelocity.x = knockbackDirection * 1.55;
             targetPlayer.movementVelocity = 0;
@@ -153,6 +154,7 @@ function updateProjectiles(room, io, delta) {
               targetPlayer.isAlreadyHit = false;
               targetPlayer.isSlapKnockback = false;
               targetPlayer.isBurstKnockback = false;
+              targetPlayer.burstKnockbackStartTime = 0;
             },
             300
           );
@@ -432,6 +434,7 @@ function updateProjectiles(room, io, delta) {
 
             opponent.isSlapKnockback = false;
             opponent.isBurstKnockback = false;
+            opponent.burstKnockbackStartTime = 0;
 
             opponent.knockbackVelocity.x = knockbackDirection * 1.6;
             opponent.movementVelocity = 0;
@@ -450,6 +453,7 @@ function updateProjectiles(room, io, delta) {
               opponent.isAlreadyHit = false;
               opponent.isSlapKnockback = false;
               opponent.isBurstKnockback = false;
+              opponent.burstKnockbackStartTime = 0;
             },
             200
           );

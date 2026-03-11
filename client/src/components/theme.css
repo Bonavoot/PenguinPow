@@ -6,6 +6,17 @@
   --edo-aqua: #00ffff;
   --edo-gold: #d4af37;
   --edo-shadow: rgba(0, 0, 0, 0.5);
+
+  /* Penguin Sumo canonical palette */
+  --pp-gold: #d4af37;
+  --pp-gold-bright: #ffd700;
+  --pp-gold-dark: #b8860b;
+  --pp-ice: #38bdf8;
+  --pp-ice-light: #e0f6ff;
+  --pp-wood: #5c4033;
+  --pp-wood-dark: #3d2817;
+  --pp-border-warm: rgba(180, 130, 30, 0.5);
+  --pp-bg-dark: rgba(4, 6, 16, 0.96);
 }
 
 /* Optional theme hooks for future use */

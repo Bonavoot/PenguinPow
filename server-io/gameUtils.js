@@ -23,8 +23,8 @@ const MAP_RIGHT_BOUNDARY = 940;
 const DEFAULT_PLAYER_SIZE_MULTIPLIER = 0.85; // 15% smaller default size
 
 // Dohyo (ring) boundaries - players fall when outside these (horizontal only)
-const DOHYO_LEFT_BOUNDARY = -40;
-const DOHYO_RIGHT_BOUNDARY = 1092;
+const DOHYO_LEFT_BOUNDARY = 250;
+const DOHYO_RIGHT_BOUNDARY =1030;
 
 // Dohyo fall physics
 const DOHYO_FALL_DEPTH = 37; // Scaled for camera zoom (was 50)
@@ -197,9 +197,8 @@ function isPlayerInBasicActiveState(player) {
     !player.isSpawningPumoArmy &&
     // Attack timing states (startup/endlag)
     !player.isInStartupFrames &&
-    !player.isInEndlag &&
-    // Charging state
-    !player.isChargingAttack
+    !player.isInEndlag
+    // NOTE: isChargingAttack NOT checked — actions cancel charging instead of being blocked by it
     // NOTE: Power slide no longer blocks actions - attacks cancel the slide
   );
 }
@@ -306,6 +305,7 @@ function resetPlayerAttackStates(player) {
   player.currentSlapHitConnected = false;
   player.pendingGrabEnder = false;
   player.isBurstKnockback = false;
+  player.burstKnockbackStartTime = 0;
 }
 
 // === CRITICAL: Clear ALL action states when player loses control ===
@@ -317,6 +317,7 @@ function clearAllActionStates(player) {
   player.isAlreadyHit = false;
   player.isSlapKnockback = false;
   player.isBurstKnockback = false;
+  player.burstKnockbackStartTime = 0;
   player.isParryKnockback = false;
   
   // Clear attack states
@@ -342,6 +343,7 @@ function clearAllActionStates(player) {
   player.slapStringWindowUntil = 0;
   player.currentSlapHitConnected = false;
   player.isBurstKnockback = false;
+  player.burstKnockbackStartTime = 0;
   player.mouse1HeldDuringAttack = false;
   player.mouse1BufferedBeforeStart = false;
   player.wantsToRestartCharge = false;
@@ -531,15 +533,11 @@ function startCharging(player) {
   player.wantsToRestartCharge = false;
 }
 
-function canPlayerSlap(player) {
-  // Check if player is on attack cooldown - this is the single source of truth for timing
-  const isOnCooldown = player.attackCooldownUntil && Date.now() < player.attackCooldownUntil;
-  
-  // Check action lock timer
+function canPlayerSlap(player, { ignoreCooldown = false } = {}) {
+  const isOnCooldown = !ignoreCooldown && player.attackCooldownUntil && Date.now() < player.attackCooldownUntil;
   const isActionLocked = player.actionLockUntil && Date.now() < player.actionLockUntil;
   
   return (
-    // Use the comprehensive blocking state check
     isPlayerInBasicActiveState(player) &&
     !player.isRopeJumping &&
     !player.canMoveToReady &&
@@ -549,13 +547,12 @@ function canPlayerSlap(player) {
   );
 }
 
-// Clear charging state. TAP-style: preserve accumulated charge power when mouse1
-// is still held — only releasing mouse1 or consuming the charge should zero it out.
+// Clear charging state. When cancelled by another action (isCancelled=true),
+// always zero charge power. Otherwise preserve power if mouse1 is still held.
 function clearChargeState(player, isCancelled = false) {
   player.isChargingAttack = false;
   player.chargeStartTime = 0;
-  // TAP-style: keep charge power if mouse1 is still held
-  if (!(player.keys && player.keys.mouse1)) {
+  if (isCancelled || !(player.keys && player.keys.mouse1)) {
     player.chargeAttackPower = 0;
   }
   player.chargingFacingDirection = null;

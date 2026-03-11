@@ -10,8 +10,8 @@ export const MAP_RIGHT_BOUNDARY = 982;
 
 // Dohyo (ring) boundaries - players fall when outside these
 // Adjust these values to match the visual dohyo boundaries in the image
-export const DOHYO_LEFT_BOUNDARY = -40;
-export const DOHYO_RIGHT_BOUNDARY = 1092;
+export const DOHYO_LEFT_BOUNDARY = 250;
+export const DOHYO_RIGHT_BOUNDARY = 1030;
 
 // Ground level constant - should match the value in GameFighter.jsx
 const GROUND_LEVEL = 140;

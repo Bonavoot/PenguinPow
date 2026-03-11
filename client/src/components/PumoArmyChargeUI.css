@@ -31,7 +31,7 @@
   overflow: hidden;
   cursor: pointer;
   background: linear-gradient(135deg, #fff4e6 0%, #ffcc80 30%, #ff8c00 100%);
-  border: 1px solid #cc6600;
+  border: 1px solid rgba(180, 130, 30, 0.4);
 }
 
 .pumo-army-image {
@@ -42,11 +42,14 @@
   z-index: 3;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
   transition: all 0.3s ease-in-out;
-  transform: scaleX(-1); /* Mirror the image horizontally */
+  transform: scaleX(-1);
 }
 
 .pumo-army-icon.ready {
-  box-shadow: 0 0 0 2px #cc6600, inset 0 2px 8px rgba(255, 255, 255, 0.2),
+  box-shadow:
+    0 0 0 1.5px rgba(180, 130, 30, 0.5),
+    0 2px 6px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
     inset 0 -2px 8px rgba(0, 0, 0, 0.1);
   transform: scale(1);
   background: linear-gradient(135deg, #fff4e6 0%, #ffcc80 30%, #ff8c00 100%);
@@ -54,7 +57,10 @@
 
 .pumo-army-icon.ready:hover {
   transform: scale(1.05);
-  box-shadow: 0 0 0 2px #cc6600, inset 0 2px 8px rgba(255, 255, 255, 0.3),
+  box-shadow:
+    0 0 0 1.5px rgba(180, 130, 30, 0.5),
+    0 3px 8px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
     inset 0 -2px 8px rgba(0, 0, 0, 0.1);
 }
 
@@ -63,11 +69,12 @@
 }
 
 .pumo-army-icon.cooldown {
-  background: linear-gradient(135deg, #9ca3af 0%, #6b7280 30%, #4a5568 100%);
-  border-color: #374151;
-  box-shadow: 0 0 0 2px #374151, 0 0 8px rgba(0, 0, 0, 0.3),
-    inset 0 2px 8px rgba(0, 0, 0, 0.2),
-    inset 0 -2px 8px rgba(255, 255, 255, 0.05);
+  background: linear-gradient(135deg, rgba(14, 18, 36, 0.9) 0%, rgba(10, 14, 28, 0.92) 30%, rgba(8, 10, 22, 0.95) 100%);
+  border-color: rgba(100, 90, 80, 0.3);
+  box-shadow:
+    0 0 0 1.5px rgba(100, 90, 80, 0.3),
+    0 2px 4px rgba(0, 0, 0, 0.4),
+    inset 0 2px 8px rgba(0, 0, 0, 0.2);
   filter: brightness(0.7);
   transform: scale(0.95);
 }

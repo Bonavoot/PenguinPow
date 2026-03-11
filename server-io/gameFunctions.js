@@ -35,6 +35,7 @@ const {
   SLAP_RECOVERY_MS,
   SLAP_TOTAL_MS,
   SLAP_STRING_BUFFER_WINDOW_MS,
+  SLAP_STRING_END_COOLDOWN_MS,
   SLAP_STRING_HIT_TOTAL_MS,
   CHARGED_STARTUP_MS,
   CHARGED_ACTIVE_MS,
@@ -151,18 +152,16 @@ function handleWinCondition(room, loser, winner, io, winType) {
   room.gameOver = true;
   
   // Determine correct Y position for the loser based on whether they fell off the dohyo
-  // Cinematic kill victims stay at ground level (no fall)
-  const fallenGroundLevel = GROUND_LEVEL - DOHYO_FALL_DEPTH;
-  const loserShouldBeAtFallenLevel = 
-    !loser.isCinematicKillVictim && (
+  // Cinematic kill victims are flying off — don't touch their position
+  if (!loser.isCinematicKillVictim) {
+    const fallenGroundLevel = GROUND_LEVEL - DOHYO_FALL_DEPTH;
+    const loserShouldBeAtFallenLevel = 
       loser.isFallingOffDohyo || 
       isOutsideDohyo(loser.x, loser.y) || 
-      loser.y < GROUND_LEVEL
-    );
-  
-  // Force both players to correct ground level immediately
-  loser.y = loserShouldBeAtFallenLevel ? fallenGroundLevel : GROUND_LEVEL;
-  winner.y = GROUND_LEVEL; // Winner should always be at normal ground level
+      loser.y < GROUND_LEVEL;
+    loser.y = loserShouldBeAtFallenLevel ? fallenGroundLevel : GROUND_LEVEL;
+  }
+  winner.y = GROUND_LEVEL;
   
   winner.wins.push("w");
 
@@ -182,21 +181,20 @@ function handleWinCondition(room, loser, winner, io, winType) {
     winner.wins = [];
     loser.wins = [];
     setTimeout(() => {
-      // CRITICAL: Force both players to correct ground level before bowing starts
-      // Check all fall conditions to ensure correct positioning for loser
-      const loserFellOffDohyo = 
-        loser.isFallingOffDohyo || 
-        isOutsideDohyo(loser.x, loser.y) || 
-        loser.y < GROUND_LEVEL;
-      const loserGroundLevel = loserFellOffDohyo ? (GROUND_LEVEL - DOHYO_FALL_DEPTH) : GROUND_LEVEL;
-      
-      // Force to correct ground level (handles both above and mid-fall cases)
-      loser.y = loserGroundLevel;
-      // Winner should always be at normal ground level for bowing
       winner.y = GROUND_LEVEL;
-      
       winner.isBowing = true;
-      loser.isBowing = true;
+      
+      if (loser.isCinematicKillVictim) {
+        // Cinematic kill victims stay gone — no bowing, no repositioning
+      } else {
+        const loserFellOffDohyo = 
+          loser.isFallingOffDohyo || 
+          isOutsideDohyo(loser.x, loser.y) || 
+          loser.y < GROUND_LEVEL;
+        const loserGroundLevel = loserFellOffDohyo ? (GROUND_LEVEL - DOHYO_FALL_DEPTH) : GROUND_LEVEL;
+        loser.y = loserGroundLevel;
+        loser.isBowing = true;
+      }
       
       // NOTE: Do NOT reset isBowing here for match over.
       // For regular rounds, isBowing stays true until resetRoomAndPlayers() clears it
@@ -207,21 +205,20 @@ function handleWinCondition(room, loser, winner, io, winType) {
     }, 1050);
   } else {
     setTimeout(() => {
-      // CRITICAL: Force both players to correct ground level before bowing starts
-      // Check all fall conditions to ensure correct positioning for loser
-      const loserFellOffDohyo = 
-        loser.isFallingOffDohyo || 
-        isOutsideDohyo(loser.x, loser.y) || 
-        loser.y < GROUND_LEVEL;
-      const loserGroundLevel = loserFellOffDohyo ? (GROUND_LEVEL - DOHYO_FALL_DEPTH) : GROUND_LEVEL;
-      
-      // Force to correct ground level (handles both above and mid-fall cases)
-      loser.y = loserGroundLevel;
-      // Winner should always be at normal ground level for bowing
       winner.y = GROUND_LEVEL;
-      
       winner.isBowing = true;
-      loser.isBowing = true;
+      
+      if (loser.isCinematicKillVictim) {
+        // Cinematic kill victims stay gone — no bowing, no repositioning
+      } else {
+        const loserFellOffDohyo = 
+          loser.isFallingOffDohyo || 
+          isOutsideDohyo(loser.x, loser.y) || 
+          loser.y < GROUND_LEVEL;
+        const loserGroundLevel = loserFellOffDohyo ? (GROUND_LEVEL - DOHYO_FALL_DEPTH) : GROUND_LEVEL;
+        loser.y = loserGroundLevel;
+        loser.isBowing = true;
+      }
     }, 1050);
   }
 
@@ -310,6 +307,8 @@ function handleWinCondition(room, loser, winner, io, winType) {
     p.isCounterGrabbed = false;
     p.isAttemptingGrabThrow = false;
     p.grabThrowAttemptStartTime = 0;
+    p.grabState = GRAB_STATES.INITIAL;
+    p.grabAttemptType = null;
 
     p.pendingSlapCount = 0;
     p.pendingGrabEnder = false;
@@ -342,9 +341,11 @@ function handleWinCondition(room, loser, winner, io, winType) {
   winner.movementVelocity = 0;
   
   // CRITICAL: Force loser Y position AGAIN after all state changes
-  // This ensures no intermediate code has modified Y
-  const loserFellOff = loser.isFallingOffDohyo || isOutsideDohyo(loser.x, loser.y) || loser.y < GROUND_LEVEL;
-  loser.y = loserFellOff ? (GROUND_LEVEL - DOHYO_FALL_DEPTH) : GROUND_LEVEL;
+  // This ensures no intermediate code has modified Y (skip for cinematic kill — they're flying off)
+  if (!loser.isCinematicKillVictim) {
+    const loserFellOff = loser.isFallingOffDohyo || isOutsideDohyo(loser.x, loser.y) || loser.y < GROUND_LEVEL;
+    loser.y = loserFellOff ? (GROUND_LEVEL - DOHYO_FALL_DEPTH) : GROUND_LEVEL;
+  }
   
   // NOTE: Do NOT clear isHit here - the knockback physics need to continue running
   // so the player can slide past the map boundaries naturally
@@ -545,13 +546,13 @@ function executeSlapAttack(player, rooms) {
         }
       } else {
         // Hit 3 finished → string complete, reset
-        // Discard any buffered slaps — prevents accidental 4th slap from mashing
-        // Slap cooldown blocks mouse1 attacks but NOT dash (canPlayerDash skips this check)
+        // Discard buffered slaps + brief cooldown to eat stale mashed inputs.
+        // Only blocks slaps (via canPlayerSlap cooldown); charge bypasses with ignoreCooldown.
         player.slapStringPosition = 0;
         player.slapStringWindowUntil = 0;
         player.pendingGrabEnder = false;
         player.pendingSlapCount = 0;
-        player.attackCooldownUntil = Date.now() + SLAP_STRING_BUFFER_WINDOW_MS;
+        player.attackCooldownUntil = Date.now() + SLAP_STRING_END_COOLDOWN_MS;
       }
   };
 
@@ -1347,10 +1348,24 @@ function activateBufferedInputAfterGrab(player, rooms) {
     return;
   }
 
-  // Priority 3: Mouse1 held — fire a slap (neutral charge removed)
+  // Priority 3: Mouse1 held — check for S+forward charged attack, else slap
   if (player.keys.mouse1) {
     player.mouse1PressTime = Date.now();
-    if (canPlayerSlap(player)) {
+    const fwdKey = player.facing === -1 ? 'd' : 'a';
+    if (player.keys.s && player.keys[fwdKey] && canPlayerSlap(player, { ignoreCooldown: true })) {
+      player.chargeAttackPower = 0;
+      player.chargeStartTime = 0;
+      startCharging(player);
+      player.chargingFacingDirection = player.facing;
+      player.movementVelocity = 0;
+      player.isStrafing = false;
+      player.isPowerSliding = false;
+      player.isBraking = false;
+      player.isRawParrySuccess = false;
+      player.isPerfectRawParrySuccess = false;
+      player.isCrouchStance = false;
+      player.isCrouchStrafing = false;
+    } else if (canPlayerSlap(player)) {
       executeSlapAttack(player, rooms);
     }
     return;
@@ -1488,6 +1503,25 @@ function executeInputBuffer(player, rooms) {
           player.inputBuffer = null;
           return true;
         }
+      }
+      break;
+    }
+    case "chargedAttack": {
+      if (canPlayerSlap(player, { ignoreCooldown: true })) {
+        player.chargeAttackPower = 0;
+        player.chargeStartTime = 0;
+        startCharging(player);
+        player.chargingFacingDirection = player.facing;
+        player.movementVelocity = 0;
+        player.isStrafing = false;
+        player.isPowerSliding = false;
+        player.isBraking = false;
+        player.isRawParrySuccess = false;
+        player.isPerfectRawParrySuccess = false;
+        player.isCrouchStance = false;
+        player.isCrouchStrafing = false;
+        player.inputBuffer = null;
+        return true;
       }
       break;
     }

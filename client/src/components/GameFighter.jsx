@@ -9,7 +9,6 @@ import React, {
 import { createPortal } from "react-dom";
 import { SocketContext } from "../SocketContext";
 import PropTypes from "prop-types";
-import "./MatchOver.css";
 import Gyoji from "./Gyoji";
 import {
   getSpritesheetConfig,
@@ -1376,6 +1375,8 @@ const GameFighter = ({
   const lastSpawningPumoArmyState = useRef(false);
   const lastRawParryState = useRef(false);
   const lastRawParryStunState = useRef(false);
+  const chargeAnimKeyRef = useRef(0);
+  const prevChargingRef = useRef(false);
   const lastWinnerState = useRef(false);
   const lastWinnerSoundPlay = useRef(0);
   const strafingSoundRef = useRef(null);
@@ -1738,6 +1739,7 @@ const GameFighter = ({
           timestamp: data.timestamp,
           hitId: data.hitId,
           attackType: data.attackType || "slap",
+          isBurstHit: data.attackType === "slap" && data.stringPos === 3,
           isCounterHit: data.isCounterHit || false,
           isPunish: data.isPunish || false,
           cinematicKill: data.cinematicKill || false,
@@ -3011,6 +3013,13 @@ const GameFighter = ({
     return getDisplayState();
   }, [getDisplayState]);
 
+  // Track charge sessions so CSS animation restarts on each new charge
+  const isCurrentlyCharging = displayPenguin.isChargingAttack;
+  if (isCurrentlyCharging && !prevChargingRef.current) {
+    chargeAnimKeyRef.current++;
+  }
+  prevChargingRef.current = isCurrentlyCharging;
+
   // PERFORMANCE: Calculate position ONCE per render instead of calling getDisplayPosition() multiple times
   // Memoized to avoid recalculating on every render
   const displayPosition = useMemo(() => {
@@ -3078,7 +3087,8 @@ const GameFighter = ({
     penguin.ropeJumpPhase,
     penguin.isDodgeRecovery,
     penguin.isSidestepping,
-    penguin.isSidestepRecovery
+    penguin.isSidestepRecovery,
+    displayPenguin.isChargingAttack
   );
 
   // Hold previous sprite for a few frames when transitioning to idle to prevent
@@ -3323,6 +3333,7 @@ const GameFighter = ({
           $isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
           $isAtTheRopes={penguin.isAtTheRopes}
           $isHit={penguin.isHit}
+          $isBurstKnockback={penguin.isBurstKnockback}
           $isRawParryStun={penguin.isRawParryStun}
           $isCinematicKillAttacker={isCinematicKillAttacker}
         >
@@ -3351,6 +3362,7 @@ const GameFighter = ({
       {/* Static Sprite (when sprite is not an animated spritesheet) */}
       {!isAnimatedSprite && (
         <StyledImage
+          key={`${baseSpriteSrc}-${chargeAnimKeyRef.current}`}
           $overrideSrc={recoloredSpriteSrc}
           $fighter={penguin.fighter}
           $isDiving={penguin.isDiving}
@@ -3385,6 +3397,7 @@ const GameFighter = ({
           $throwCooldown={penguin.throwCooldown}
           $grabCooldown={penguin.grabCooldown}
           $isChargingAttack={displayPenguin.isChargingAttack}
+          $chargeAttackPower={penguin.chargeAttackPower || 0}
           $chargingFacingDirection={penguin.chargingFacingDirection}
           $saltCooldown={penguin.saltCooldown}
           $grabStartTime={penguin.grabStartTime}

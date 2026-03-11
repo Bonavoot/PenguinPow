@@ -225,7 +225,16 @@ const Game = ({
 
       // CLIENT-SIDE PREDICTION for gamepad inputs
       if (gamepadKeyState.mouse1 && !keyState.mouse1) {
-        applyPrediction("slap");
+        if (gamepadKeyState.s && currentPlayer?.facing != null) {
+          const forwardKey = currentPlayer.facing === -1 ? 'd' : 'a';
+          if (gamepadKeyState[forwardKey]) {
+            applyPrediction("charge_start");
+          } else {
+            applyPrediction("slap");
+          }
+        } else {
+          applyPrediction("slap");
+        }
       }
       if (gamepadKeyState.mouse2 && !keyState.mouse2) {
         applyPrediction("grab");
@@ -358,7 +367,16 @@ const Game = ({
       if (e.button === 0) {
         e.preventDefault();
         keyState.mouse1 = true;
-        applyPrediction("slap");
+        if (keyState.s && currentPlayer?.facing != null) {
+          const forwardKey = currentPlayer.facing === -1 ? 'd' : 'a';
+          if (keyState[forwardKey]) {
+            applyPrediction("charge_start");
+          } else {
+            applyPrediction("slap");
+          }
+        } else {
+          applyPrediction("slap");
+        }
         scheduleEmit();
       } else if (e.button === 2) {
         e.preventDefault();

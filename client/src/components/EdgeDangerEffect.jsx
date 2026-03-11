@@ -65,8 +65,10 @@ const ExclamationMark = styled.div`
   -webkit-text-stroke: 3px #000;
   paint-order: stroke fill;
   text-shadow: 
-    0 0 20px rgba(255, 26, 26, 1),
-    0 0 40px rgba(255, 26, 26, 0.5);
+    -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000,
+    2px 2px 0 #1a0808,
+    4px 4px 0 rgba(18, 8, 8, 0.6),
+    0 2px 6px rgba(0, 0, 0, 0.7);
   animation: ${panicPulse} 0.5s ease-in-out infinite;
   filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.6));
   line-height: 0.8;

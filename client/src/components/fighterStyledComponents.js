@@ -305,6 +305,9 @@ export const StyledImage = styled("img")
       bottom: `${(props.$y / 720) * 100}%`,
       translate: "-50%",
       "--facing": props.$facing === 1 ? "1" : "-1",
+      "--charge-shake": props.$isChargingAttack
+        ? `${Math.min(1 + (props.$chargeAttackPower || 0) / 100 * 5, 6)}px`
+        : "0px",
       transform:
         props.$isAtTheRopes && props.$fighter === "player 1"
           ? props.$facing === 1
@@ -381,7 +384,7 @@ export const StyledImage = styled("img")
           !props.$isDead
         ? "iceBrake 0.2s ease-in-out infinite"
         : props.$isChargingAttack && !props.$isReady
-        ? "chargePulse 0.6s ease-in-out infinite"
+        ? "chargeShake 0.08s linear infinite"
         : props.$isAttacking && !props.$isSlapAttack
         ? "attackPunch 0.2s ease-out"
         : props.$isSlapAttack
@@ -451,9 +454,9 @@ export const StyledImage = styled("img")
     55% { transform: scaleX(calc(var(--facing, 1) * 1.12)) scaleY(0.92); }
     100% { transform: scaleX(var(--facing, 1)) scaleY(1); }
   }
-  @keyframes chargePulse {
-    0%, 100% { transform: scaleX(var(--facing, 1)) scaleY(1); }
-    50% { transform: scaleX(var(--facing, 1)) scaleY(1.02); }
+  @keyframes chargeShake {
+    0%, 100% { transform: scaleX(var(--facing, 1)) translateX(var(--charge-shake, 0px)); }
+    50% { transform: scaleX(var(--facing, 1)) translateX(calc(var(--charge-shake, 0px) * -1)); }
   }
   @keyframes breathe {
     0%, 100% { transform: scaleX(var(--facing, 1)) scaleY(1); }
@@ -628,8 +631,8 @@ export const AnimatedFighterContainer = styled.div
     shouldForwardProp: (prop) =>
       ![
         "x", "y", "facing", "fighter", "isThrowing", "isDodging",
-        "isGrabbing", "isRingOutThrowCutscene", "isAtTheRopes", "isHit", "isRawParryStun",
-        "isCinematicKillAttacker", "isSidestepping",
+        "isGrabbing", "isRingOutThrowCutscene", "isAtTheRopes", "isHit", "isBurstKnockback",
+        "isRawParryStun", "isCinematicKillAttacker", "isSidestepping",
       ].includes(prop),
   })
   .attrs((props) => {
@@ -666,7 +669,9 @@ export const AnimatedFighterContainer = styled.div
         pointerEvents: "none",
         clipPath: "inset(0 0.5% 0 0.5%)",
         transformOrigin: "center bottom",
-        animation: props.$isHit
+        animation: props.$isBurstKnockback
+          ? "burstHitSquash 0.35s cubic-bezier(0.22, 0.6, 0.35, 1)"
+          : props.$isHit
           ? "hitSquashContainer 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)"
           : "none",
       },
@@ -678,6 +683,15 @@ export const AnimatedFighterContainer = styled.div
     18% { transform: scaleX(calc(var(--facing, 1) * 0.88)) scaleY(1.12) translateX(calc(var(--facing, 1) * -5%)) rotate(calc(var(--facing, 1) * -4deg)); }
     35% { transform: scaleX(calc(var(--facing, 1) * 1.08)) scaleY(0.92) translateX(calc(var(--facing, 1) * -2%)) rotate(calc(var(--facing, 1) * 1.5deg)); }
     55% { transform: scaleX(calc(var(--facing, 1) * 0.96)) scaleY(1.04) translateX(calc(var(--facing, 1) * -0.5%)) rotate(calc(var(--facing, 1) * -0.5deg)); }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg); }
+  }
+
+  @keyframes burstHitSquash {
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg); }
+    5% { transform: scaleX(calc(var(--facing, 1) * 1.35)) scaleY(0.65) translateX(calc(var(--facing, 1) * -4%)) rotate(calc(var(--facing, 1) * 3deg)); }
+    15% { transform: scaleX(calc(var(--facing, 1) * 0.82)) scaleY(1.18) translateX(calc(var(--facing, 1) * -7%)) rotate(calc(var(--facing, 1) * -5deg)); }
+    30% { transform: scaleX(calc(var(--facing, 1) * 1.12)) scaleY(0.88) translateX(calc(var(--facing, 1) * -3%)) rotate(calc(var(--facing, 1) * 2deg)); }
+    50% { transform: scaleX(calc(var(--facing, 1) * 0.94)) scaleY(1.06) translateX(calc(var(--facing, 1) * -1%)) rotate(calc(var(--facing, 1) * -1deg)); }
     100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg); }
   }
 `;
@@ -727,9 +741,14 @@ export const CountdownTimer = styled.div`
   opacity: 0;
   font-family: "Bungee";
   font-size: clamp(1rem, 3cqw, 2.5rem);
-  color: rgb(255, 0, 0);
-  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
-    1px 1px 0 #000;
+  color: #ffd700;
+  -webkit-text-stroke: clamp(1.5px, 0.15cqw, 3px) #1a0a08;
+  paint-order: stroke fill;
+  text-shadow:
+    clamp(2px, 0.16cqw, 4px) clamp(2px, 0.16cqw, 4px) 0 #1a0e06,
+    clamp(4px, 0.32cqw, 7px) clamp(4px, 0.32cqw, 7px) 0 rgba(18, 10, 4, 0.6),
+    0 0 8px rgba(255, 215, 0, 0.3),
+    0 clamp(2px, 0.16cqw, 4px) clamp(6px, 0.5cqw, 12px) rgba(0, 0, 0, 0.7);
   pointer-events: none;
   bottom: 80.5%;
   left: 50%;
@@ -785,25 +804,26 @@ export const YouLabel = styled.div
   &::before {
     content: "YOU";
     font-family: "Bungee", cursive;
-    font-size: clamp(8px, 0.7cqw, 10px);
-    letter-spacing: 0.05em;
+    font-size: clamp(10px, 1cqw, 14px);
+    letter-spacing: 0.1em;
     line-height: 1;
     color: #fff;
-    background: rgba(0, 0, 0, 0.6);
-    padding: clamp(2px, 0.2cqw, 3px) clamp(5px, 0.45cqw, 7px);
+    background: linear-gradient(180deg, rgba(14, 165, 233, 0.8) 0%, rgba(3, 105, 161, 0.85) 100%);
+    padding: clamp(3px, 0.3cqw, 5px) clamp(8px, 0.7cqw, 12px);
     border-radius: 3px;
-    border: 1px solid rgba(0, 230, 255, 0.5);
-    text-shadow: 0 0 6px rgba(0, 230, 255, 0.9);
+    border: 1.5px solid rgba(255, 255, 255, 0.5);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 6px rgba(56, 189, 248, 0.4);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6), 0 0 8px rgba(14, 165, 233, 0.25);
   }
 
   &::after {
     content: "";
     width: 0;
     height: 0;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-top: 5px solid rgba(0, 230, 255, 0.8);
-    filter: drop-shadow(0 0 3px rgba(0, 230, 255, 0.5));
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid rgba(14, 165, 233, 0.85);
+    filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5));
   }
 `;
 

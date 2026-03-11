@@ -768,6 +768,189 @@
   box-shadow: 0 0 4px rgba(160, 100, 255, 0.7);
 }
 
+/* ============================================
+   BURST HIT OVERRIDES (Slap Hit 3 Combo Finisher)
+   Bigger, heavier version of slap-hit — sells the weight
+   of the final combo blow. Uses slap-hit as base.
+   ============================================ */
+
+.hit-ring-wrapper.slap-hit.burst-hit {
+  width: 2.47cqw;
+  height: 2.47cqw;
+}
+
+/* Wider squash oval — heavier impact impression */
+.slap-hit.burst-hit::before {
+  width: 150%;
+  height: 55%;
+  animation: burstSquash 0.22s ease-out forwards;
+}
+
+/* Core flash — larger and holds peak longer */
+.slap-hit.burst-hit .hit-ring::before {
+  width: 95%;
+  height: 95%;
+  background: radial-gradient(circle,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(255, 240, 130, 0.95) 20%,
+    rgba(255, 170, 50, 0.75) 50%,
+    transparent 100%);
+  animation: burstCoreFlash 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Expanding ring — larger final scale */
+.slap-hit.burst-hit .hit-ring::after {
+  border-width: clamp(3px, 0.20cqw, 5px);
+  box-shadow: 0 0 0 clamp(1px, 0.12cqw, 3px) rgba(0, 0, 0, 0.2), 0 0 clamp(6px, 0.48cqw, 12px) rgba(255, 150, 55, 0.5), 0 0 clamp(12px, 0.96cqw, 24px) rgba(255, 95, 40, 0.2);
+  animation: burstRingExpand 0.32s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Enable secondary shockwave for burst hits */
+.slap-hit.burst-hit .hit-shockwave-secondary {
+  display: block;
+  width: 2.47cqw;
+  height: 2.47cqw;
+  border: clamp(1px, 0.10cqw, 2px) solid rgba(255, 180, 60, 0.6);
+  box-shadow: 0 0 0 clamp(1px, 0.07cqw, 2px) rgba(0, 0, 0, 0.15), 0 0 clamp(4px, 0.30cqw, 8px) rgba(255, 140, 50, 0.3);
+  animation: burstSecondaryRing 0.38s cubic-bezier(0.22, 1, 0.36, 1) 0.05s forwards;
+}
+
+/* Speed lines — thicker, longer, more dramatic */
+.slap-hit.burst-hit .hit-speed-line {
+  width: 0.14cqw;
+  height: 0.64cqw;
+  background: linear-gradient(to top,
+    transparent 0%,
+    rgba(255, 180, 60, 0.95) 30%,
+    rgba(255, 255, 255, 1) 100%);
+  animation: burstSpeedLine 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.slap-hit.burst-hit .hit-speed-line:nth-child(1) { --angle: 0deg; animation-delay: 0s; }
+.slap-hit.burst-hit .hit-speed-line:nth-child(2) { --angle: 45deg; animation-delay: 0.012s; }
+.slap-hit.burst-hit .hit-speed-line:nth-child(3) { --angle: 90deg; animation-delay: 0.006s; }
+.slap-hit.burst-hit .hit-speed-line:nth-child(4) { --angle: 135deg; animation-delay: 0.018s; }
+.slap-hit.burst-hit .hit-speed-line:nth-child(5) { --angle: 180deg; animation-delay: 0.008s; }
+.slap-hit.burst-hit .hit-speed-line:nth-child(6) { --angle: 225deg; animation-delay: 0.016s; }
+.slap-hit.burst-hit .hit-speed-line:nth-child(7) { --angle: 270deg; animation-delay: 0.004s; }
+.slap-hit.burst-hit .hit-speed-line:nth-child(8) { --angle: 315deg; animation-delay: 0.014s; }
+
+/* Sparks — bigger, fly further */
+.slap-hit.burst-hit .spark {
+  width: 0.36cqw;
+  height: 0.36cqw;
+  animation: sparkBurst 0.30s ease-out forwards;
+  box-shadow: 0 0 5px rgba(255, 180, 60, 0.85), 0 0 10px rgba(255, 100, 40, 0.5);
+}
+
+.slap-hit.burst-hit .spark:nth-child(1) { --tx: 2.22cqw; --ty: -1.85cqw; }
+.slap-hit.burst-hit .spark:nth-child(2) { --tx: -2.22cqw; --ty: -1.48cqw; animation-delay: 0.02s; }
+.slap-hit.burst-hit .spark:nth-child(3) { --tx: 1.85cqw; --ty: 2.22cqw; animation-delay: 0.01s; }
+.slap-hit.burst-hit .spark:nth-child(4) { --tx: -1.85cqw; --ty: 1.85cqw; animation-delay: 0.03s; }
+.slap-hit.burst-hit .spark:nth-child(5) { --tx: 2.59cqw; --ty: 0.37cqw; animation-delay: 0.005s; }
+.slap-hit.burst-hit .spark:nth-child(6) { --tx: -2.59cqw; --ty: -0.37cqw; animation-delay: 0.025s; }
+.slap-hit.burst-hit .spark:nth-child(7) { --tx: 0.74cqw; --ty: -2.59cqw; animation-delay: 0.015s; }
+.slap-hit.burst-hit .spark:nth-child(8) { --tx: -0.74cqw; --ty: 2.59cqw; animation-delay: 0.035s; }
+
+/* Particles — 6 for heavier debris */
+.slap-hit.burst-hit .particle {
+  width: 0.26cqw;
+  height: 0.26cqw;
+}
+
+.slap-hit.burst-hit .particle:nth-child(1) { animation: particleBurst 0.30s ease-out forwards; --px: -1.85cqw; --py: -1.85cqw; }
+.slap-hit.burst-hit .particle:nth-child(2) { animation: particleBurst 0.30s ease-out 0.02s forwards; --px: 1.85cqw; --py: -1.48cqw; }
+.slap-hit.burst-hit .particle:nth-child(3) { animation: particleBurst 0.30s ease-out 0.01s forwards; --px: -1.48cqw; --py: 1.85cqw; }
+.slap-hit.burst-hit .particle:nth-child(4) { animation: particleBurst 0.30s ease-out 0.03s forwards; --px: 1.63cqw; --py: 1.85cqw; }
+.slap-hit.burst-hit .particle:nth-child(5) { animation: particleBurst 0.30s ease-out 0.015s forwards; --px: 2.22cqw; --py: 0cqw; }
+.slap-hit.burst-hit .particle:nth-child(6) { animation: particleBurst 0.30s ease-out 0.025s forwards; --px: -2.22cqw; --py: 0cqw; }
+
+/* ============================================
+   BURST HIT KEYFRAMES
+   ============================================ */
+
+@keyframes burstSquash {
+  0% {
+    transform: translate(-50%, -50%) scaleX(0.2) scaleY(0.9);
+    opacity: 0.9;
+  }
+  35% {
+    transform: translate(-50%, -50%) scaleX(1.6) scaleY(0.5);
+    opacity: 0.7;
+  }
+  100% {
+    transform: translate(-50%, -50%) scaleX(1.8) scaleY(0.2);
+    opacity: 0;
+  }
+}
+
+@keyframes burstCoreFlash {
+  0% {
+    transform: translate(-50%, -50%) rotateY(var(--slap-ring-tilt-signed, var(--slap-ring-tilt))) scale(0);
+    opacity: 1;
+  }
+  30% {
+    transform: translate(-50%, -50%) rotateY(var(--slap-ring-tilt-signed, var(--slap-ring-tilt))) scale(1.6);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(-50%, -50%) rotateY(var(--slap-ring-tilt-signed, var(--slap-ring-tilt))) scale(1.45);
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate(-50%, -50%) rotateY(var(--slap-ring-tilt-signed, var(--slap-ring-tilt))) scale(1.1);
+    opacity: 0;
+  }
+}
+
+@keyframes burstRingExpand {
+  0% {
+    transform: translate(-50%, -50%) rotateY(var(--slap-ring-tilt-signed, var(--slap-ring-tilt))) scale(0.15);
+    opacity: 1;
+    border-width: clamp(4px, 0.28cqw, 7px);
+  }
+  40% {
+    opacity: 0.9;
+    border-width: clamp(2px, 0.18cqw, 5px);
+  }
+  100% {
+    transform: translate(-50%, -50%) rotateY(var(--slap-ring-tilt-signed, var(--slap-ring-tilt))) scale(2.2);
+    opacity: 0;
+    border-width: clamp(0.5px, 0.04cqw, 1px);
+  }
+}
+
+@keyframes burstSecondaryRing {
+  0% {
+    transform: translate(-50%, -50%) rotateY(var(--slap-ring-tilt-signed, var(--slap-ring-tilt))) scale(0);
+    opacity: 0.7;
+    border-width: clamp(2px, 0.18cqw, 4px);
+  }
+  40% {
+    opacity: 0.5;
+    border-width: clamp(1px, 0.12cqw, 3px);
+  }
+  100% {
+    transform: translate(-50%, -50%) rotateY(var(--slap-ring-tilt-signed, var(--slap-ring-tilt))) scale(2.6);
+    opacity: 0;
+    border-width: clamp(0.5px, 0.04cqw, 1px);
+  }
+}
+
+@keyframes burstSpeedLine {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-0.40cqw) scaleY(0.35);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-2.10cqw) scaleY(1.15);
+  }
+}
+
 /* --- Cinematic kill freeze: pause all animations at their current frame --- */
 .cinematic-frozen,
 .cinematic-frozen *,

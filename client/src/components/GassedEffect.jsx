@@ -44,11 +44,14 @@ const NoStaminaText = styled.div`
   font-family: "Bungee", cursive;
   font-size: 1.25cqw;
   color: #ff2222;
+  -webkit-text-stroke: clamp(1px, 0.1cqw, 2px) #000;
+  paint-order: stroke fill;
   text-shadow: 
     -2px -2px 0 #000, 2px -2px 0 #000, 
     -2px 2px 0 #000, 2px 2px 0 #000,
-    0 0 12px rgba(255, 34, 34, 0.8),
-    0 0 24px rgba(255, 34, 34, 0.5);
+    clamp(2px, 0.16cqw, 4px) clamp(2px, 0.16cqw, 4px) 0 #1a0808,
+    clamp(4px, 0.32cqw, 7px) clamp(4px, 0.32cqw, 7px) 0 rgba(18, 8, 8, 0.7),
+    0 2px 8px rgba(0, 0, 0, 0.8);
   white-space: nowrap;
   letter-spacing: 0.06em;
 `;

@@ -264,12 +264,12 @@ const LockedText = styled.div`
   font-family: "Bungee", cursive;
   font-size: 0.86cqw;
   color: #ff3370;
-  -webkit-text-stroke: 2.5px #000;
+  -webkit-text-stroke: clamp(2px, 0.2cqw, 3.5px) #000;
   paint-order: stroke fill;
   text-shadow:
     -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000,
-    0 0 14px rgba(255, 50, 110, 0.9),
-    0 0 28px rgba(160, 40, 255, 0.6);
+    2px 2px 0 rgba(100, 15, 45, 0.85), 4px 4px 0 rgba(70, 10, 30, 0.5),
+    0 2px 6px rgba(0, 0, 0, 0.7);
   z-index: 20;
   letter-spacing: 0.15em;
   white-space: nowrap;

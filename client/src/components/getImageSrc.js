@@ -85,7 +85,8 @@ const getImageSrc = (
   ropeJumpPhase,
   isDodgeRecovery,
   isSidestepping,
-  isSidestepRecovery
+  isSidestepRecovery,
+  isChargingAttack
 ) => {
   if (ritualAnimationSrc) {
     return ritualAnimationSrc;
@@ -124,6 +125,7 @@ const getImageSrc = (
   if (isSidestepRecovery) return recovering;
   if (isBowing) return bow;
   if (isPowerSliding) return crouchStance;
+  if (isChargingAttack) return recovering;
   if (isRecovering) return recovering;
   if (isThrowingSnowball) return snowballThrow;
   if (isSpawningPumoArmy) return pumoArmy;

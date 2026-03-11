@@ -5,12 +5,12 @@ import PropTypes from "prop-types";
 const ANNOUNCE_Y = "clamp(90px, 25%, 175px)";
 
 const WIN_TYPE_CONFIG = {
-  slap: { english: "THRUST OUT!", japanese: "Tsukidashi" },
-  charged: { english: "PUSH OUT!", japanese: "Oshidashi" },
+  slap: { english: "THRUST OUT!", japanese: "突き出し" },
+  charged: { english: "PUSH OUT!", japanese: "押し出し" },
   cinematicKill: { english: "DEMOLISHED!", japanese: null },
-  grabPush: { english: "FORCE OUT!", japanese: "Yorikiri" },
-  grabThrow: { english: "OVERARM THROW!", japanese: "Uwatenage" },
-  okuridashi: { english: "REAR PUSH OUT!", japanese: "Okuridashi" },
+  grabPush: { english: "FORCE OUT!", japanese: "寄り切り" },
+  grabThrow: { english: "OVERARM THROW!", japanese: "上手投げ" },
+  okuridashi: { english: "REAR PUSH OUT!", japanese: "送り出し" },
   snowball: { english: "RING OUT!", japanese: null },
   pumoClone: { english: "RING OUT!", japanese: null },
   ringOut: { english: "RING OUT!", japanese: null },
@@ -74,21 +74,6 @@ const subtitleTrack = keyframes`
   100% { opacity: 0; letter-spacing: 0.25em; }
 `;
 
-const outcomeFade = keyframes`
-  0%   { opacity: 0; transform: translateX(-50%) translateY(8px); }
-  30%  { opacity: 0; transform: translateX(-50%) translateY(8px); }
-  46%  { opacity: 1; transform: translateX(-50%) translateY(0); }
-  78%  { opacity: 1; }
-  100% { opacity: 0; }
-`;
-
-const dividerScale = keyframes`
-  0%   { transform: translateX(-50%) scaleX(0); opacity: 0; }
-  28%  { opacity: 0; }
-  44%  { transform: translateX(-50%) scaleX(1); opacity: 0.45; }
-  78%  { opacity: 0.45; }
-  100% { opacity: 0; }
-`;
 
 const shardFly = keyframes`
   0%   { opacity: 0; transform: translate(0, 0) scale(0.4); }
@@ -109,8 +94,8 @@ const ScreenFlash = styled.div`
   z-index: 1000;
   animation: ${screenFlash} 0.6s ease-out forwards;
   background: ${p => p.$isVictory
-    ? "radial-gradient(ellipse at 50% 25%, rgba(255,215,0,0.45) 0%, rgba(255,200,50,0.18) 28%, transparent 55%)"
-    : "radial-gradient(ellipse at 50% 25%, rgba(200,30,30,0.35) 0%, rgba(150,20,20,0.15) 25%, transparent 50%)"
+    ? "radial-gradient(ellipse at 50% 25%, rgba(255,230,180,0.5) 0%, rgba(255,210,120,0.2) 28%, transparent 55%)"
+    : "radial-gradient(ellipse at 50% 25%, rgba(0,0,0,0.4) 0%, rgba(10,10,20,0.2) 30%, transparent 55%)"
   };
 `;
 
@@ -124,13 +109,22 @@ const ContrastHaze = styled.div`
   pointer-events: none;
   z-index: 1001;
 
-  background: radial-gradient(
-    ellipse at center,
-    rgba(10, 5, 5, 0.55) 0%,
-    rgba(8, 4, 4, 0.35) 28%,
-    rgba(5, 3, 3, 0.12) 55%,
-    transparent 78%
-  );
+  background: ${p => p.$isVictory
+    ? `radial-gradient(
+        ellipse at center,
+        rgba(18, 12, 5, 0.6) 0%,
+        rgba(12, 8, 3, 0.38) 28%,
+        rgba(6, 4, 2, 0.14) 55%,
+        transparent 78%
+      )`
+    : `radial-gradient(
+        ellipse at center,
+        rgba(5, 5, 14, 0.6) 0%,
+        rgba(4, 4, 10, 0.38) 28%,
+        rgba(2, 2, 6, 0.14) 55%,
+        transparent 78%
+      )`
+  };
   filter: blur(8px);
 
   animation: ${hazePulse} 3s ease-out forwards;
@@ -160,28 +154,26 @@ const MainText = styled.div`
   text-transform: uppercase;
   white-space: nowrap;
 
-  color: ${p => p.$isVictory ? "#FFFFFF" : "#FFD0D0"};
+  color: #FFFFFF;
   -webkit-text-stroke: ${p => p.$isVictory
-    ? "clamp(1.5px, 0.25cqw, 3px) #2a1400"
-    : "clamp(1.5px, 0.25cqw, 3px) #2a0000"
+    ? "clamp(1.5px, 0.22cqw, 3px) #1a1008"
+    : "clamp(1.5px, 0.22cqw, 3px) #0c0c18"
   };
 
   text-shadow: ${p => p.$isVictory
     ? `
-      0 0 10px rgba(255,215,0,0.6),
-      0 0 25px rgba(255,180,0,0.3),
-      clamp(3px, 0.24cqw, 6px) clamp(3px, 0.24cqw, 6px) 0 #1a0a00,
-      5px 5px 0 rgba(15,5,0,0.6),
-      7px 7px 0 rgba(10,3,0,0.35),
-      0 2px 10px rgba(0,0,0,0.8)
+      clamp(2px, 0.18cqw, 4px) clamp(2px, 0.18cqw, 4px) 0 #1a0e06,
+      clamp(4px, 0.35cqw, 7px) clamp(4px, 0.35cqw, 7px) 0 rgba(18,10,4,0.8),
+      clamp(6px, 0.5cqw, 10px) clamp(6px, 0.5cqw, 10px) 0 rgba(12,6,2,0.5),
+      clamp(8px, 0.65cqw, 13px) clamp(8px, 0.65cqw, 13px) 0 rgba(8,4,1,0.25),
+      0 clamp(3px, 0.3cqw, 6px) clamp(12px, 1cqw, 22px) rgba(0,0,0,0.7)
     `
     : `
-      0 0 10px rgba(220,40,40,0.5),
-      0 0 25px rgba(180,20,20,0.25),
-      clamp(3px, 0.24cqw, 6px) clamp(3px, 0.24cqw, 6px) 0 #1a0000,
-      5px 5px 0 rgba(15,0,0,0.6),
-      7px 7px 0 rgba(10,0,0,0.35),
-      0 2px 10px rgba(0,0,0,0.8)
+      clamp(2px, 0.18cqw, 4px) clamp(2px, 0.18cqw, 4px) 0 #0e0e1a,
+      clamp(4px, 0.35cqw, 7px) clamp(4px, 0.35cqw, 7px) 0 rgba(10,10,22,0.8),
+      clamp(6px, 0.5cqw, 10px) clamp(6px, 0.5cqw, 10px) 0 rgba(5,5,15,0.5),
+      clamp(8px, 0.65cqw, 13px) clamp(8px, 0.65cqw, 13px) 0 rgba(2,2,10,0.25),
+      0 clamp(3px, 0.3cqw, 6px) clamp(12px, 1cqw, 22px) rgba(0,0,0,0.7)
     `
   };
 
@@ -222,12 +214,12 @@ const BrushStroke = styled.div`
         transparent)`
     : `linear-gradient(90deg,
         transparent,
-        rgba(185,28,28,0.18) 5%,
-        rgba(185,28,28,0.45) 16%,
-        rgba(185,28,28,0.68) 38%,
-        rgba(185,28,28,0.75) 52%,
-        rgba(185,28,28,0.52) 72%,
-        rgba(185,28,28,0.25) 90%,
+        rgba(100,90,80,0.12) 5%,
+        rgba(120,105,90,0.3) 16%,
+        rgba(140,120,100,0.48) 38%,
+        rgba(140,120,100,0.52) 52%,
+        rgba(120,105,90,0.35) 72%,
+        rgba(100,90,80,0.16) 90%,
         transparent)`
   };
 
@@ -249,7 +241,7 @@ const BrushSplash = styled.div`
 
   background: ${p => p.$isVictory
     ? "rgba(255,215,0,0.5)"
-    : "rgba(185,28,28,0.4)"
+    : "rgba(140,130,115,0.35)"
   };
 
   animation: ${splashAppear} 3s ease-out forwards;
@@ -270,16 +262,15 @@ const KimariteText = styled.div`
   z-index: 1005;
   pointer-events: none;
 
-  font-family: "Noto Serif JP", "Yu Mincho", "Hiragino Mincho Pro", serif;
+  font-family: "Noto Serif JP", "Yu Mincho", serif;
   font-size: clamp(0.8rem, 1.7cqw, 1.4rem);
   font-weight: 700;
-  font-style: italic;
-  color: ${p => p.$isVictory ? "#FFE8B8" : "#FFB8B8"};
+  color: ${p => p.$isVictory ? "#F5E6C8" : "#D0D4DE"};
   letter-spacing: 0.3em;
 
   text-shadow: ${p => p.$isVictory
-    ? "1px 1px 3px rgba(0,0,0,0.9), 0 0 10px rgba(255,215,0,0.15)"
-    : "1px 1px 3px rgba(0,0,0,0.9), 0 0 10px rgba(200,30,30,0.1)"
+    ? "1px 1px 3px rgba(0,0,0,0.9), 0 0 8px rgba(255,220,140,0.12)"
+    : "1px 1px 3px rgba(0,0,0,0.9), 0 0 8px rgba(160,170,200,0.1)"
   };
 
   animation: ${subtitleTrack} 3s ease-out forwards;
@@ -290,56 +281,6 @@ const KimariteText = styled.div`
   }
 `;
 
-const ResultDivider = styled.div`
-  position: fixed;
-  top: calc(${ANNOUNCE_Y} + clamp(50px, 7.5cqh, 86px));
-  left: 50%;
-  width: clamp(45px, 7cqw, 90px);
-  height: 1px;
-  pointer-events: none;
-  z-index: 1005;
-
-  background: ${p => p.$isVictory
-    ? "linear-gradient(90deg, transparent, rgba(255,215,0,0.35), transparent)"
-    : "linear-gradient(90deg, transparent, rgba(185,28,28,0.28), transparent)"
-  };
-
-  animation: ${dividerScale} 3s ease-out forwards;
-
-  @media (max-width: 600px) {
-    top: calc(${ANNOUNCE_Y} + clamp(42px, 6.5cqh, 70px));
-  }
-`;
-
-const OutcomeText = styled.div`
-  position: fixed;
-  top: calc(${ANNOUNCE_Y} + ${p => p.$compact
-    ? "clamp(36px, 5.5cqh, 64px)"
-    : "clamp(58px, 8.8cqh, 100px)"
-  });
-  left: 50%;
-  z-index: 1005;
-  pointer-events: none;
-
-  font-family: "Bungee", "Impact", sans-serif;
-  font-size: clamp(0.65rem, 1.3cqw, 1.3rem);
-  color: ${p => p.$isVictory ? "#FFD700" : "#DC2626"};
-  text-transform: uppercase;
-  letter-spacing: 0.2em;
-  white-space: nowrap;
-
-  text-shadow: 1px 1px 4px rgba(0,0,0,0.9);
-
-  animation: ${outcomeFade} 3s ease-out forwards;
-
-  @media (max-width: 600px) {
-    font-size: clamp(0.55rem, 1.1cqw, 1rem);
-    top: calc(${ANNOUNCE_Y} + ${p => p.$compact
-      ? "clamp(30px, 4.8cqh, 54px)"
-      : "clamp(50px, 7.5cqh, 84px)"
-    });
-  }
-`;
 
 const Shard = styled.div`
   position: fixed;
@@ -354,11 +295,11 @@ const Shard = styled.div`
 
   background: ${p => p.$isVictory
     ? "linear-gradient(135deg, #FFFAD0, #FFD700)"
-    : "linear-gradient(135deg, #ffd0d0, #DC2626)"
+    : "linear-gradient(135deg, #E8E4E0, #9A9590)"
   };
   box-shadow: 0 0 3px ${p => p.$isVictory
     ? "rgba(255,215,0,0.4)"
-    : "rgba(220,40,40,0.3)"
+    : "rgba(160,155,150,0.35)"
   };
 
   --tx: ${p => p.$tx};
@@ -388,7 +329,7 @@ const RoundResult = ({ isVictory, winType }) => {
   return (
     <>
       <ScreenFlash $isVictory={isVictory} />
-      <ContrastHaze />
+      <ContrastHaze $isVictory={isVictory} />
 
       <MainText $isVictory={isVictory}>
         {config.english}
@@ -398,17 +339,10 @@ const RoundResult = ({ isVictory, winType }) => {
       <BrushSplash $isVictory={isVictory} />
 
       {hasKimarite && (
-        <>
-          <KimariteText $isVictory={isVictory}>
-            {config.japanese}
-          </KimariteText>
-          <ResultDivider $isVictory={isVictory} />
-        </>
+        <KimariteText $isVictory={isVictory}>
+          {config.japanese}
+        </KimariteText>
       )}
-
-      <OutcomeText $isVictory={isVictory} $compact={!hasKimarite}>
-        {isVictory ? "SHIROBOSHI" : "KUROBOSHI"}
-      </OutcomeText>
 
       {shards.map(s => (
         <Shard

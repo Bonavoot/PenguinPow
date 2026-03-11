@@ -64,6 +64,8 @@ function createCPUPlayer(uniqueId) {
     isGrabStartup: false,
     isWhiffingGrab: false,
     isGrabWhiffRecovery: false,
+    grabState: "initial",
+    grabAttemptType: null,
     isGrabTeching: false,
     grabTechRole: null,
     grabTechResidualVel: 0,
@@ -187,6 +189,7 @@ function createCPUPlayer(uniqueId) {
     slapAnimationToggle: 0,
     currentSlapHitConnected: false,
     isBurstKnockback: false,
+    burstKnockbackStartTime: 0,
     mouse1JustPressed: false,
     mouse1JustReleased: false,
     mouse2JustPressed: false,
@@ -448,6 +451,7 @@ function resetRoomAndPlayers(room, io) {
     player.slapAnimationToggle = 0;
     player.currentSlapHitConnected = false;
     player.isBurstKnockback = false;
+    player.burstKnockbackStartTime = 0;
     player.isChargingAttack = false;
     player.chargeStartTime = 0;
     player.chargeAttackPower = 0;
@@ -516,6 +520,8 @@ function resetRoomAndPlayers(room, io) {
     player.isGrabStartup = false;
     player.isWhiffingGrab = false;
     player.isGrabWhiffRecovery = false;
+    player.grabState = "initial";
+    player.grabAttemptType = null;
     player.isGrabTeching = false;
     player.grabTechRole = null;
     player.grabTechResidualVel = 0;
@@ -559,6 +565,7 @@ function resetRoomAndPlayers(room, io) {
     player.lastHitType = null;
     player.knockbackImmune = false;
     player.knockbackImmuneEndTime = 0;
+    player.isCinematicKillVictim = false;
   });
 
   room.playerAvailablePowerUps = {};
