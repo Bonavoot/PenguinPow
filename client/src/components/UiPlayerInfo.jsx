@@ -170,6 +170,16 @@ const HudShell = styled.div`
   justify-content: space-between;
   padding: clamp(7px, 1.2cqh, 12px) clamp(6px, 1cqw, 14px);
   padding-top: clamp(9px, 1.6cqh, 16px);
+  opacity: ${(p) => (p.$matchOver ? 0.88 : 1)};
+  filter: ${(p) =>
+    p.$matchOver
+      ? "saturate(0.84) brightness(0.86) contrast(0.97)"
+      : "none"};
+  transform: ${(p) => (p.$matchOver ? "translateY(2px)" : "none")};
+  transition:
+    opacity 260ms ease,
+    filter 260ms ease,
+    transform 260ms ease;
 
   /* Rich layered dark — darker up top, fading out toward gameplay */
   background:
@@ -242,6 +252,9 @@ const PlayerWing = styled.div`
   display: flex;
   flex-direction: column;
   gap: clamp(4px, 0.6cqh, 8px);
+  transition: opacity 240ms ease, filter 240ms ease;
+  opacity: ${(p) => (p.$matchOver ? 0.93 : 1)};
+  filter: ${(p) => (p.$matchOver ? "brightness(0.94)" : "none")};
 `;
 
 // ============================================
@@ -455,17 +468,6 @@ const RankText = styled.div`
   white-space: nowrap;
 `;
 
-/* Small decorative diamond separator */
-const RankDiamond = styled.span`
-  display: inline-block;
-  width: clamp(4px, 0.4cqw, 6px);
-  height: clamp(4px, 0.4cqw, 6px);
-  background: linear-gradient(135deg, #d4af37 0%, #ffd700 50%, #b8860b 100%);
-  transform: rotate(45deg);
-  flex-shrink: 0;
-  box-shadow: 0 0 4px rgba(212, 175, 55, 0.3);
-`;
-
 // ============================================
 // STAMINA BAR  — THE HERO OF THE HUD
 // ============================================
@@ -486,13 +488,20 @@ const BarFrame = styled.div`
     0 0 0 clamp(4px, 0.32cqw, 8px) rgba(0, 0, 0, 0.5),
     /* Depth shadow */
     0 clamp(3px, 0.24cqw, 6px) clamp(12px, 1cqw, 24px) rgba(0, 0, 0, 0.5);
+  opacity: ${(p) => (p.$matchOver ? 0.95 : 1)};
+  filter: ${(p) => (p.$matchOver ? "brightness(0.97)" : "none")};
+  transition: opacity 220ms ease, filter 220ms ease;
 
   /* Danger mode: pulsing crimson frame */
   ${(p) =>
     p.$gassed
-      ? css`animation: ${gassedFramePulse} 1.2s ease-in-out infinite;`
+      ? css`
+          animation: ${gassedFramePulse} ${p.$matchOver ? "1.9s" : "1.2s"} ease-in-out infinite;
+        `
       : p.$danger &&
-        css`animation: ${dangerFramePulse} 0.7s ease-in-out infinite;`}
+        css`
+          animation: ${dangerFramePulse} ${p.$matchOver ? "1.15s" : "0.7s"} ease-in-out infinite;
+        `}
 `;
 
 /* Dark inner track with frost-crack texture — height tuned so bar total matches power-up slot */
@@ -740,10 +749,12 @@ const GassedOverlay = styled.div`
   z-index: 5;
   pointer-events: none;
   overflow: hidden;
-  animation: ${gassedBreathe} 1.2s ease-in-out infinite;
+  animation: ${gassedBreathe} ${(p) => (p.$matchOver ? "1.9s" : "1.2s")} ease-in-out infinite;
   display: flex;
   align-items: center;
   justify-content: center;
+  opacity: ${(p) => (p.$matchOver ? 0.88 : 1)};
+  transition: opacity 220ms ease;
 
   &::before {
     content: "";
@@ -759,7 +770,7 @@ const GassedOverlay = styled.div`
       rgba(40, 5, 5, 0.85) 8px,
       rgba(40, 5, 5, 0.85) 16px
     );
-    animation: ${gassedStripeScroll} 0.8s linear infinite;
+    animation: ${gassedStripeScroll} ${(p) => (p.$matchOver ? "1.2s" : "0.8s")} linear infinite;
   }
 `;
 
@@ -1021,6 +1032,12 @@ const CenterCrest = styled.div`
     inset 0 1px 0 rgba(255, 200, 100, 0.15),
     inset 0 -2px 8px rgba(0, 0, 0, 0.5),
     inset 0 0 16px rgba(80, 15, 15, 0.25);
+  opacity: ${(p) => (p.$matchOver ? 0.8 : 1)};
+  filter: ${(p) =>
+    p.$matchOver ? "saturate(0.88) brightness(0.9)" : "none"};
+  transform: translateX(-50%)
+    ${(p) => (p.$matchOver ? "translateY(3px) scale(0.97)" : "scale(1)")};
+  transition: opacity 260ms ease, filter 260ms ease, transform 260ms ease;
 
   animation: ${crestBreath} 6s ease-in-out infinite;
 
@@ -1154,8 +1171,6 @@ const LOW_STAMINA_WARNING_THRESHOLD = 25;
 // ============================================
 
 const UiPlayerInfo = ({
-  playerOneWinCount,
-  playerTwoWinCount,
   roundHistory = [],
   roundId = 0,
   player1Stamina,
@@ -1172,6 +1187,7 @@ const UiPlayerInfo = ({
   player2PumoArmyCooldown = false,
   player2IsGassed = false,
   player2ParryRefund = 0,
+  matchOver = false,
 }) => {
   const clampStamina = (value) => {
     const n = Number(value);
@@ -1531,9 +1547,9 @@ const UiPlayerInfo = ({
   const p2Danger = shouldShowLowStaminaWarning(p2DisplayStamina);
 
   return (
-    <HudShell>
+    <HudShell $matchOver={matchOver}>
       {/* ═══ PLAYER 1 — East (Higashi) ═══ */}
-      <PlayerWing>
+      <PlayerWing $matchOver={matchOver}>
         <NameBanner $isRight={false}>
           <AvatarSeal $isRight={false}>力</AvatarSeal>
           <NameBlock $isRight={false}>
@@ -1542,7 +1558,12 @@ const UiPlayerInfo = ({
         </NameBanner>
 
         <BarRow $isRight={false}>
-          <BarFrame $danger={p1Danger} $gassed={player1IsGassed} $isRight={false}>
+          <BarFrame
+            $danger={p1Danger}
+            $gassed={player1IsGassed}
+            $isRight={false}
+            $matchOver={matchOver}
+          >
             <BarTrack $isRight={false}>
               <BarLabel $isRight={false}>STA</BarLabel>
               <BarFill
@@ -1564,7 +1585,7 @@ const UiPlayerInfo = ({
                 />
               )}
               {player1IsGassed && (
-                <GassedOverlay>
+                <GassedOverlay $matchOver={matchOver}>
                   <GassedText>GASSED</GassedText>
                 </GassedOverlay>
               )}
@@ -1616,7 +1637,7 @@ const UiPlayerInfo = ({
       </PlayerWing>
 
       {/* ═══ CENTER SCOREBOARD ═══ */}
-      <CenterCrest>
+      <CenterCrest $matchOver={matchOver}>
         <SnowCap />
         <StoneTray>{renderCenterMarks("player1")}</StoneTray>
         <RoundSeal>
@@ -1634,7 +1655,7 @@ const UiPlayerInfo = ({
       </CenterCrest>
 
       {/* ═══ PLAYER 2 — West (Nishi) ═══ */}
-      <PlayerWing>
+      <PlayerWing $matchOver={matchOver}>
         <NameBanner $isRight={true}>
           <AvatarSeal $isRight={true}>闘</AvatarSeal>
           <NameBlock $isRight={true}>
@@ -1643,7 +1664,12 @@ const UiPlayerInfo = ({
         </NameBanner>
 
         <BarRow $isRight={true}>
-          <BarFrame $danger={p2Danger} $gassed={player2IsGassed} $isRight={true}>
+          <BarFrame
+            $danger={p2Danger}
+            $gassed={player2IsGassed}
+            $isRight={true}
+            $matchOver={matchOver}
+          >
             <BarTrack $isRight={true}>
               <BarLabel $isRight={true}>STA</BarLabel>
               <BarFill
@@ -1665,7 +1691,7 @@ const UiPlayerInfo = ({
                 />
               )}
               {player2IsGassed && (
-                <GassedOverlay>
+                <GassedOverlay $matchOver={matchOver}>
                   <GassedText>GASSED</GassedText>
                 </GassedOverlay>
               )}
@@ -1720,8 +1746,6 @@ const UiPlayerInfo = ({
 };
 
 UiPlayerInfo.propTypes = {
-  playerOneWinCount: PropTypes.number.isRequired,
-  playerTwoWinCount: PropTypes.number.isRequired,
   roundHistory: PropTypes.array,
   roundId: PropTypes.number,
   player1Stamina: PropTypes.number,
@@ -1738,6 +1762,7 @@ UiPlayerInfo.propTypes = {
   player2PumoArmyCooldown: PropTypes.bool,
   player2IsGassed: PropTypes.bool,
   player2ParryRefund: PropTypes.number,
+  matchOver: PropTypes.bool,
 };
 
 export default UiPlayerInfo;

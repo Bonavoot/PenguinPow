@@ -43,29 +43,12 @@ const screenFlash = keyframes`
   100% { opacity: 0; }
 `;
 
-// ── Shockwave ring ──
-const shockwaveExpand = keyframes`
-  0%   { transform: translate(-50%, -50%) scale(0.12); opacity: 0.8; border-width: 5px; }
-  50%  { transform: translate(-50%, -50%) scale(1.3); opacity: 0.3; border-width: 2px; }
-  100% { transform: translate(-50%, -50%) scale(2.4); opacity: 0; border-width: 1px; }
-`;
-
 // ── Impact line burst ──
 const impactBurst = keyframes`
-  0%   { transform: scaleX(0); opacity: 0; }
-  14%  { transform: scaleX(1); opacity: 0.9; }
-  55%  { transform: scaleX(1); opacity: 0.5; }
-  100% { transform: scaleX(1.2); opacity: 0; }
-`;
-
-// ── Gold rule extends from center ──
-const ruleExtend = keyframes`
-  0%   { transform: translateX(-50%) scaleX(0); opacity: 0; }
-  15%  { transform: translateX(-50%) scaleX(1.05); opacity: 1; }
-  22%  { transform: translateX(-50%) scaleX(0.97); }
-  30%  { transform: translateX(-50%) scaleX(1); }
-  78%  { opacity: 1; transform: translateX(-50%) scaleX(1); }
-  100% { opacity: 0; transform: translateX(-50%) scaleX(1); }
+  0%   { transform: scaleX(0.18); opacity: 0; }
+  14%  { transform: scaleX(1); opacity: 0.82; }
+  50%  { transform: scaleX(1.04); opacity: 0.42; }
+  100% { transform: scaleX(1.1); opacity: 0; }
 `;
 
 // ── Fade in then out ──
@@ -108,95 +91,164 @@ const brushReveal = keyframes`
 
 const ScreenFlash = styled.div`
   position: absolute;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
   z-index: 1000;
   animation: ${screenFlash} 0.65s ease-out forwards;
 
-  background: ${p => p.$type === "hakkiyoi"
-    ? `radial-gradient(ellipse at 50% 25%, rgba(255,215,0,0.5) 0%, rgba(255,200,50,0.2) 25%, transparent 55%)`
-    : `radial-gradient(ellipse at 50% 25%, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0.1) 20%, transparent 45%)`
-  };
+  background: ${(p) =>
+    p.$type === "hakkiyoi"
+      ? `radial-gradient(ellipse at 50% 25%, rgba(255,215,0,0.5) 0%, rgba(255,200,50,0.2) 25%, transparent 55%)`
+      : `radial-gradient(ellipse at 50% 25%, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0.1) 20%, transparent 45%)`};
 `;
 
 // ============================================
 // HAKKIYOI STYLED COMPONENTS
 // ============================================
 
-/* Dark radial vignette behind the text — gives contrast without a boxy banner */
+/* Dark radial vignette behind the text — keeps the call grounded in the arena */
 const DarkVignette = styled.div`
   position: fixed;
   top: ${ANNOUNCE_Y};
   left: 50%;
-  width: clamp(420px, 55cqw, 700px);
-  height: clamp(110px, 16cqh, 180px);
+  width: clamp(480px, 60cqw, 820px);
+  height: clamp(130px, 20cqh, 230px);
   border-radius: 50%;
   pointer-events: none;
   z-index: 1001;
 
-  background: radial-gradient(
-    ellipse at center,
-    rgba(15, 5, 5, 0.82) 0%,
-    rgba(15, 5, 5, 0.6) 30%,
-    rgba(15, 5, 5, 0.25) 55%,
-    transparent 75%
-  );
-  filter: blur(6px);
+  background:
+    radial-gradient(
+      ellipse at center,
+      rgba(16, 8, 6, 0.76) 0%,
+      rgba(16, 8, 6, 0.54) 30%,
+      rgba(16, 8, 6, 0.18) 56%,
+      transparent 78%
+    ),
+    radial-gradient(
+      ellipse at center,
+      rgba(255, 214, 102, 0.05) 0%,
+      rgba(255, 214, 102, 0.02) 34%,
+      transparent 58%
+    );
+  filter: blur(10px);
 
-  animation: ${vignettePulse} ${p => p.$duration} ease-out forwards;
+  animation: ${vignettePulse} ${(p) => p.$duration} ease-out forwards;
 
   @media (max-width: 900px) {
-    width: clamp(320px, 50cqw, 520px);
-    height: clamp(80px, 14cqh, 140px);
+    width: clamp(360px, 54cqw, 620px);
+    height: clamp(95px, 17cqh, 170px);
   }
   @media (max-width: 600px) {
-    width: clamp(240px, 48cqw, 380px);
-    height: clamp(60px, 12cqh, 110px);
+    width: clamp(260px, 50cqw, 420px);
+    height: clamp(72px, 13cqh, 120px);
   }
 `;
 
-/* Shockwave ring — gold */
-const Shockwave = styled.div`
+/* Warm ceremonial haze — premium gold lift without feeling like HUD geometry */
+const CeremonialGlow = styled.div`
   position: fixed;
   top: ${ANNOUNCE_Y};
   left: 50%;
-  width: 200px;
-  height: 200px;
+  width: clamp(320px, 45cqw, 560px);
+  height: clamp(86px, 12cqh, 140px);
   border-radius: 50%;
-  border: 4px solid rgba(255, 215, 0, 0.7);
-  background: transparent;
   pointer-events: none;
   z-index: 1002;
-  animation: ${shockwaveExpand} 0.5s ease-out forwards;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 215, 0, 0.22) 0%,
+    rgba(255, 191, 0, 0.12) 28%,
+    rgba(255, 191, 0, 0.04) 50%,
+    transparent 76%
+  );
+  filter: blur(14px);
+  animation: ${vignettePulse} ${(p) => p.$duration} ease-out forwards;
 
-  @media (max-width: 900px) { width: 150px; height: 150px; }
-  @media (max-width: 600px) { width: 100px; height: 100px; }
+  @media (max-width: 900px) {
+    width: clamp(250px, 42cqw, 440px);
+    height: clamp(68px, 10cqh, 110px);
+  }
+  @media (max-width: 600px) {
+    width: clamp(190px, 38cqw, 320px);
+    height: clamp(54px, 8.5cqh, 90px);
+  }
 `;
 
-/* Impact lines — gold, radiating from the text center */
+/* Impact streaks — support the slam without reading like a reticle */
 const ImpactLine = styled.div`
   position: fixed;
   top: ${ANNOUNCE_Y};
   left: 50%;
-  width: 340px;
-  height: 2px;
-  margin-left: -170px;
-  margin-top: -1px;
+  width: clamp(240px, 34cqw, 420px);
+  height: clamp(2px, 0.25cqh, 4px);
+  margin-left: calc(-0.5 * clamp(240px, 34cqw, 420px));
+  margin-top: ${(p) => p.$yOffset || "0px"};
   pointer-events: none;
-  z-index: 1001;
+  z-index: 1003;
   opacity: 0;
 
   background: linear-gradient(
     90deg,
-    transparent 0%, rgba(255,215,0,0.7) 20%, #FFFAF0 50%, rgba(255,215,0,0.7) 80%, transparent 100%
+    transparent 0%,
+    rgba(255, 215, 0, 0.12) 12%,
+    rgba(255, 215, 0, 0.6) 32%,
+    #fff6d8 50%,
+    rgba(255, 215, 0, 0.6) 68%,
+    rgba(255, 215, 0, 0.12) 88%,
+    transparent 100%
   );
   transform-origin: center center;
   animation: ${impactBurst} 0.45s ease-out forwards;
-  animation-delay: ${p => p.$delay || "0.04s"};
+  animation-delay: ${(p) => p.$delay || "0.04s"};
+  filter: blur(0.4px);
 
-  @media (max-width: 900px) { width: 250px; margin-left: -125px; }
-  @media (max-width: 600px) { width: 170px; margin-left: -85px; }
+  @media (max-width: 900px) {
+    width: clamp(190px, 30cqw, 320px);
+    margin-left: calc(-0.5 * clamp(190px, 30cqw, 320px));
+  }
+  @media (max-width: 600px) {
+    width: clamp(140px, 28cqw, 220px);
+    margin-left: calc(-0.5 * clamp(140px, 28cqw, 220px));
+  }
+`;
+
+/* Broad ceremonial brush under the call — ties it into the stage presentation */
+const HakkiyoiBrush = styled.div`
+  position: fixed;
+  top: calc(${ANNOUNCE_Y} + clamp(22px, 3.5cqh, 44px));
+  left: 50%;
+  transform: translateX(-50%) rotate(-0.5deg);
+  width: clamp(260px, 40cqw, 540px);
+  height: clamp(8px, 1.1cqh, 15px);
+  pointer-events: none;
+  z-index: 1003;
+  border-radius: 60% 25% 45% 50% / 80% 50% 40% 65%;
+  filter: blur(0.8px);
+
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 215, 0, 0.12) 7%,
+    rgba(255, 215, 0, 0.42) 22%,
+    rgba(255, 215, 0, 0.74) 44%,
+    rgba(255, 215, 0, 0.78) 52%,
+    rgba(255, 215, 0, 0.48) 72%,
+    rgba(255, 215, 0, 0.14) 92%,
+    transparent
+  );
+
+  animation: ${brushReveal} ${(p) => p.$duration} ease-out forwards;
+
+  @media (max-width: 900px) {
+    width: clamp(210px, 36cqw, 410px);
+  }
+  @media (max-width: 600px) {
+    width: clamp(170px, 34cqw, 320px);
+  }
 `;
 
 /* Main HAKKIYOI text — solid gold, thick outline, heavy shadows = very readable */
@@ -215,7 +267,7 @@ const HakkiyoiText = styled.div`
   text-transform: uppercase;
   white-space: nowrap;
 
-  color: #FFD700;
+  color: #ffd700;
   -webkit-text-stroke: clamp(1.5px, 0.25cqw, 3px) #3d0e0e;
 
   text-shadow:
@@ -226,7 +278,9 @@ const HakkiyoiText = styled.div`
     7px 7px 0 rgba(20, 4, 4, 0.4),
     0 2px 8px rgba(0, 0, 0, 0.8);
 
-  animation: ${css`${slamIn}`} ${p => p.$duration} cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+  animation: ${css`
+      ${slamIn}`} ${(p) => p.$duration} cubic-bezier(0.22, 0.61, 0.36, 1)
+    forwards;
 
   @media (max-width: 900px) {
     font-size: clamp(1.8rem, 5.6cqw, 4.2rem);
@@ -249,14 +303,14 @@ const HakkiyoiKanji = styled.div`
 
   font-family: "Noto Serif JP", "Yu Mincho", serif;
   font-size: clamp(0.8rem, 1.7cqw, 1.4rem);
-  color: #d4af37;
+  color: rgba(244, 220, 138, 0.92);
   letter-spacing: 0.35em;
   opacity: 0;
-  animation: ${fadeIO} ${p => p.$duration} ease-out forwards;
-  animation-delay: 0.1s;
+  animation: ${fadeIO} ${(p) => p.$duration} ease-out forwards;
+  animation-delay: 0.14s;
 
   text-shadow:
-    0 0 6px rgba(212, 175, 55, 0.3),
+    0 0 10px rgba(212, 175, 55, 0.22),
     1px 1px 2px rgba(0, 0, 0, 0.9);
 
   @media (max-width: 600px) {
@@ -266,85 +320,25 @@ const HakkiyoiKanji = styled.div`
   }
 `;
 
-/* Gold ornamental rules — extend horizontally from the text */
-const GoldRule = styled.div`
-  position: fixed;
-  top: ${ANNOUNCE_Y};
-  left: 50%;
-  height: 2.5px;
-  pointer-events: none;
-  z-index: 1003;
-  transform-origin: center center;
-
-  width: clamp(350px, 50cqw, 600px);
-  margin-top: ${p => p.$offset || "0px"};
-
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    #6b4c12 8%,
-    #c9a22e 20%,
-    #ffe87a 50%,
-    #c9a22e 80%,
-    #6b4c12 92%,
-    transparent 100%
-  );
-
-  animation: ${ruleExtend} ${p => p.$duration} ease-out forwards;
-  animation-delay: 0.06s;
-
-  @media (max-width: 900px) { width: clamp(260px, 45cqw, 450px); }
-  @media (max-width: 600px) { width: clamp(190px, 42cqw, 320px); height: 2px; }
-`;
-
-/* Small gold diamond accent */
-const Diamond = styled.div`
-  position: fixed;
-  top: ${ANNOUNCE_Y};
-  z-index: 1004;
-  pointer-events: none;
-  width: clamp(7px, 0.7cqw, 10px);
-  height: clamp(7px, 0.7cqw, 10px);
-  background: linear-gradient(135deg, #d4af37, #FFD700, #b8860b);
-  transform: rotate(45deg);
-  margin-top: clamp(-4px, -0.35cqw, -5px);
-  opacity: 0;
-  animation: ${fadeIO} ${p => p.$duration} ease-out forwards;
-  animation-delay: 0.12s;
-  box-shadow: 0 0 5px rgba(255, 215, 0, 0.4);
-
-  ${p => p.$side === "left" && `left: calc(50% - clamp(180px, 26cqw, 310px));`}
-  ${p => p.$side === "right" && `left: calc(50% + clamp(172px, 25.3cqw, 300px));`}
-
-  @media (max-width: 900px) {
-    ${p => p.$side === "left" && `left: calc(50% - clamp(135px, 23cqw, 235px));`}
-    ${p => p.$side === "right" && `left: calc(50% + clamp(127px, 22.3cqw, 225px));`}
-  }
-  @media (max-width: 600px) {
-    ${p => p.$side === "left" && `left: calc(50% - clamp(100px, 22cqw, 170px));`}
-    ${p => p.$side === "right" && `left: calc(50% + clamp(92px, 21cqw, 160px));`}
-  }
-`;
-
 /* Ice crystal particle */
 const IceCrystal = styled.div`
   position: fixed;
   top: ${ANNOUNCE_Y};
   pointer-events: none;
   z-index: 1005;
-  width: ${p => p.$size || "5px"};
-  height: ${p => p.$size || "5px"};
+  width: ${(p) => p.$size || "5px"};
+  height: ${(p) => p.$size || "5px"};
   border-radius: 2px;
   transform: rotate(45deg);
-  left: ${p => p.$x || "50%"};
-  margin-top: ${p => p.$yOff || "0px"};
+  left: ${(p) => p.$x || "50%"};
+  margin-top: ${(p) => p.$yOff || "0px"};
   opacity: 0;
 
   background: radial-gradient(circle, #e0f2fe 0%, #38bdf8 50%, #0284c7 100%);
   box-shadow: 0 0 4px rgba(56, 189, 248, 0.5);
 
-  animation: ${crystalDrift} ${p => p.$dur || "1.2s"} ease-out forwards;
-  animation-delay: ${p => p.$delay || "0.15s"};
+  animation: ${crystalDrift} ${(p) => p.$dur || "1.2s"} ease-out forwards;
+  animation-delay: ${(p) => p.$delay || "0.15s"};
 `;
 
 // ============================================
@@ -367,7 +361,7 @@ const TeWoTsuiteText = styled.div`
   text-transform: uppercase;
   white-space: nowrap;
 
-  color: #FFFFFF;
+  color: #ffffff;
   -webkit-text-stroke: clamp(1.5px, 0.2cqw, 2.5px) rgba(10, 10, 10, 0.85);
 
   text-shadow:
@@ -377,7 +371,9 @@ const TeWoTsuiteText = styled.div`
     clamp(7px, 0.52cqw, 10px) clamp(7px, 0.52cqw, 10px) 0 rgba(5, 4, 2, 0.18),
     0 clamp(2px, 0.24cqw, 4px) clamp(8px, 0.8cqw, 16px) rgba(0, 0, 0, 0.6);
 
-  animation: ${css`${slideIn}`} ${p => p.$duration} cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+  animation: ${css`
+      ${slideIn}`} ${(p) => p.$duration} cubic-bezier(0.25, 0.46, 0.45, 0.94)
+    forwards;
 
   @media (max-width: 900px) {
     font-size: clamp(1.35rem, 4.4cqw, 3.2rem);
@@ -405,13 +401,13 @@ const TeWoBrush = styled.div`
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(255,255,255,0.1) 15%,
-    rgba(255,255,255,0.2) 50%,
-    rgba(255,255,255,0.1) 85%,
+    rgba(255, 255, 255, 0.1) 15%,
+    rgba(255, 255, 255, 0.2) 50%,
+    rgba(255, 255, 255, 0.1) 85%,
     transparent 100%
   );
 
-  animation: ${brushReveal} ${p => p.$duration} ease-out forwards;
+  animation: ${brushReveal} ${(p) => p.$duration} ease-out forwards;
 
   @media (max-width: 900px) {
     width: clamp(160px, 28cqw, 290px);
@@ -438,7 +434,7 @@ const TeWoKanji = styled.div`
   color: rgba(255, 255, 255, 0.75);
   letter-spacing: 0.3em;
   opacity: 0;
-  animation: ${fadeIO} ${p => p.$duration} ease-out forwards;
+  animation: ${fadeIO} ${(p) => p.$duration} ease-out forwards;
   animation-delay: 0.1s;
 
   text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.9);
@@ -453,29 +449,66 @@ const TeWoKanji = styled.div`
 // COMPONENT
 // ============================================
 
-const SumoGameAnnouncement = ({
-  type = "hakkiyoi",
-  duration = null,
-}) => {
+const SumoGameAnnouncement = ({ type = "hakkiyoi", duration = null }) => {
   const actualDuration = duration || (type === "hakkiyoi" ? 1.8 : 2);
   const durationStr = `${actualDuration}s`;
 
   // Impact line angles (HAKKIYOI)
-  const impactLines = useMemo(() => [
-    { rotation: 0, delay: "0.03s" },
-    { rotation: 45, delay: "0.06s" },
-    { rotation: 90, delay: "0.09s" },
-    { rotation: 135, delay: "0.12s" },
-  ], []);
+  const impactLines = useMemo(
+    () => [
+      { rotation: -8, delay: "0.04s", yOffset: "clamp(-4px, -0.45cqh, -7px)" },
+      { rotation: 8, delay: "0.08s", yOffset: "clamp(4px, 0.45cqh, 7px)" },
+      { rotation: 0, delay: "0.12s", yOffset: "clamp(16px, 2.2cqh, 26px)" },
+    ],
+    [],
+  );
 
   // Ice crystal particles (HAKKIYOI)
-  const crystals = useMemo(() => [
-    { id: 0, x: "calc(50% - 80px)", yOff: "10px",  size: "5px", delay: "0.18s", dur: "1.1s" },
-    { id: 1, x: "calc(50% - 35px)", yOff: "-5px",  size: "6px", delay: "0.24s", dur: "1.3s" },
-    { id: 2, x: "50%",              yOff: "12px",   size: "4px", delay: "0.14s", dur: "1.0s" },
-    { id: 3, x: "calc(50% + 40px)", yOff: "-3px",   size: "6px", delay: "0.28s", dur: "1.2s" },
-    { id: 4, x: "calc(50% + 85px)", yOff: "8px",    size: "5px", delay: "0.20s", dur: "1.35s" },
-  ], []);
+  const crystals = useMemo(
+    () => [
+      {
+        id: 0,
+        x: "calc(50% - 80px)",
+        yOff: "10px",
+        size: "5px",
+        delay: "0.18s",
+        dur: "1.1s",
+      },
+      {
+        id: 1,
+        x: "calc(50% - 35px)",
+        yOff: "-5px",
+        size: "6px",
+        delay: "0.24s",
+        dur: "1.3s",
+      },
+      {
+        id: 2,
+        x: "50%",
+        yOff: "12px",
+        size: "4px",
+        delay: "0.14s",
+        dur: "1.0s",
+      },
+      {
+        id: 3,
+        x: "calc(50% + 40px)",
+        yOff: "-3px",
+        size: "6px",
+        delay: "0.28s",
+        dur: "1.2s",
+      },
+      {
+        id: 4,
+        x: "calc(50% + 85px)",
+        yOff: "8px",
+        size: "5px",
+        delay: "0.20s",
+        dur: "1.35s",
+      },
+    ],
+    [],
+  );
 
   // ─── HAKKIYOI ───
   if (type === "hakkiyoi") {
@@ -483,36 +516,21 @@ const SumoGameAnnouncement = ({
       <>
         <ScreenFlash $type="hakkiyoi" />
 
-        {/* Dark vignette behind text for contrast */}
         <DarkVignette $duration={durationStr} />
-
-        {/* Shockwave ring */}
-        <Shockwave />
-
-        {/* Impact lines */}
+        <CeremonialGlow $duration={durationStr} />
         {impactLines.map((line, i) => (
           <ImpactLine
             key={i}
             $delay={line.delay}
+            $yOffset={line.yOffset}
             style={{ transform: `rotate(${line.rotation}deg)` }}
           />
         ))}
 
-        {/* Gold ornamental rules above & below text */}
-        <GoldRule $duration={durationStr} $offset="clamp(-24px, -3.5cqh, -40px)" />
-        <GoldRule $duration={durationStr} $offset="clamp(20px, 3cqh, 34px)" />
-
-        {/* Diamond accents at rule ends */}
-        <Diamond $side="left" $duration={durationStr} />
-        <Diamond $side="right" $duration={durationStr} />
-
-        {/* Main text */}
         <HakkiyoiText $duration={durationStr}>HAKKI-YOI !</HakkiyoiText>
-
-        {/* Japanese subtitle */}
+        <HakkiyoiBrush $duration={durationStr} />
         <HakkiyoiKanji $duration={durationStr}>八卦良い</HakkiyoiKanji>
 
-        {/* Ice crystals */}
         {crystals.map((c) => (
           <IceCrystal
             key={c.id}
@@ -531,7 +549,7 @@ const SumoGameAnnouncement = ({
   return (
     <>
       <ScreenFlash $type="tewotsuite" />
-      <TeWoTsuiteText $duration={durationStr}>HANDS DOWN</TeWoTsuiteText>
+      <TeWoTsuiteText $duration={durationStr}>HANDS DOWN !</TeWoTsuiteText>
       <TeWoKanji $duration={durationStr}>手を付いて</TeWoKanji>
       <TeWoBrush $duration={durationStr} />
     </>

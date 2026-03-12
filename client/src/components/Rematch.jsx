@@ -21,7 +21,7 @@ const RematchWrapper = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(10px, 1.5cqh, 16px);
+  gap: clamp(12px, 1.7cqh, 20px);
   width: 100%;
 `;
 
@@ -29,8 +29,8 @@ const ButtonContainer = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(8px, 1.2cqh, 14px);
-  width: 100%;
+  gap: clamp(12px, 1.5cqh, 18px);
+  width: min(100%, 272px);
 `;
 
 // Wooden plaque style button
@@ -132,22 +132,27 @@ const CancelButton = styled(RematchButton)`
 // Ready counter - like a small wooden sign
 const ReadyCount = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.7rem, 1.4cqw, 1rem);
+  font-size: clamp(0.8rem, 1.55cqw, 1.08rem);
   color: ${props => props.$ready ? '#4ade80' : '#8b7355'};
   background: linear-gradient(180deg,
-    #1a0a08 0%,
-    #0f0505 100%
+    #24110d 0%,
+    #140806 100%
   );
-  padding: clamp(8px, 1.2cqh, 12px) clamp(20px, 3cqw, 32px);
-  border: 2px solid ${props => props.$ready ? '#4ade80' : '#5c4033'};
-  border-radius: clamp(4px, 0.6cqw, 7px);
+  width: min(100%, 230px);
+  padding: clamp(10px, 1.4cqh, 14px) clamp(20px, 3cqw, 32px);
+  border: 2px solid ${props => props.$ready ? '#4ade80' : '#6a4b35'};
+  border-radius: clamp(5px, 0.7cqw, 9px);
   text-align: center;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-shadow: 
     1px 1px 0 #000,
     ${props => props.$ready ? '0 0 8px rgba(74, 222, 128, 0.5)' : 'none'};
   animation: ${props => props.$ready ? readyGlow : 'none'} 1.5s ease-in-out infinite;
   position: relative;
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 220, 180, 0.08);
+  align-self: center;
   
   /* Corner decorations */
   &::before, &::after {
@@ -162,20 +167,21 @@ const ReadyCount = styled.div`
   &::after { right: clamp(6px, 1cqw, 10px); }
   
   @media (max-width: 900px) {
-    font-size: clamp(0.55rem, 2cqw, 0.85rem);
-    padding: clamp(6px, 1cqh, 10px) clamp(14px, 2.5cqw, 24px);
+    font-size: clamp(0.62rem, 2.1cqw, 0.92rem);
+    width: min(100%, 208px);
+    padding: clamp(8px, 1.1cqh, 11px) clamp(14px, 2.5cqw, 24px);
   }
 `;
 
 const ReadyLabel = styled.span`
-  font-size: clamp(0.38rem, 0.8cqw, 0.55rem);
+  font-size: clamp(0.42rem, 0.86cqw, 0.6rem);
   color: rgba(212, 175, 55, 0.7);
   display: block;
-  margin-bottom: clamp(3px, 0.5cqh, 5px);
-  letter-spacing: 0.18em;
+  margin-bottom: clamp(4px, 0.55cqh, 6px);
+  letter-spacing: 0.2em;
   
   @media (max-width: 900px) {
-    font-size: clamp(0.32rem, 1.2cqw, 0.45rem);
+    font-size: clamp(0.35rem, 1.25cqw, 0.5rem);
   }
 `;
 
