@@ -1,56 +1,107 @@
 import Rematch from "./Rematch";
-import styled, { keyframes } from "styled-components";
+import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
 
-const bannerDrop = keyframes`
+// ═══════════════════════════════════════════════
+//  PHASE 1 — Cinematic backdrop reveal
+// ═══════════════════════════════════════════════
+
+const backdropReveal = keyframes`
   0% {
     opacity: 0;
-    transform: translateY(-6%) scale(0.86);
+    backdrop-filter: blur(0px) saturate(1) brightness(1);
+    -webkit-backdrop-filter: blur(0px) saturate(1) brightness(1);
   }
-  60% {
-    transform: translateY(1.5%) scale(1.015);
+  35% {
+    opacity: 1;
+    backdrop-filter: blur(2px) saturate(0.7) brightness(0.75);
+    -webkit-backdrop-filter: blur(2px) saturate(0.7) brightness(0.75);
+  }
+  100% {
+    opacity: 1;
+    backdrop-filter: blur(8px) saturate(0.82) brightness(0.78);
+    -webkit-backdrop-filter: blur(8px) saturate(0.82) brightness(0.78);
+  }
+`;
+
+const vignetteClose = keyframes`
+  0% {
+    opacity: 0;
+    transform: scale(1.15);
+  }
+  40% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+`;
+
+// ═══════════════════════════════════════════════
+//  PHASE 2 — Banner entrance
+// ═══════════════════════════════════════════════
+
+const bannerReveal = keyframes`
+  0% {
+    opacity: 0;
+    transform: translateY(-14%) scale(0.88);
+    filter: blur(6px);
+  }
+  50% {
+    opacity: 1;
+    filter: blur(1px);
+  }
+  72% {
+    transform: translateY(1%) scale(1.008);
+    filter: blur(0px);
   }
   100% {
     opacity: 1;
     transform: translateY(0) scale(1);
+    filter: blur(0px);
   }
 `;
 
-const bannerSway = keyframes`
-  0%, 100% { transform: rotate(-0.4deg) translateY(0); }
-  50% { transform: rotate(0.4deg) translateY(0.5%); }
+const bannerFloat = keyframes`
+  0%, 100% { transform: rotate(-0.25deg) translateY(0); }
+  50% { transform: rotate(0.25deg) translateY(0.3%); }
 `;
+
+// ═══════════════════════════════════════════════
+//  Ambient animations
+// ═══════════════════════════════════════════════
 
 const victoryGlow = keyframes`
-  0%, 100% { 
-    text-shadow: 
+  0%, 100% {
+    text-shadow:
       3px 3px 0 #1a0e06,
       6px 6px 0 rgba(18, 10, 4, 0.6),
-      0 0 6px rgba(255, 215, 0, 0.2),
+      0 0 6px rgba(255, 215, 0, 0.15),
       0 2px 8px rgba(0, 0, 0, 0.6);
   }
-  50% { 
-    text-shadow: 
+  50% {
+    text-shadow:
       3px 3px 0 #1a0e06,
       6px 6px 0 rgba(18, 10, 4, 0.6),
-      0 0 12px rgba(255, 215, 0, 0.35),
+      0 0 14px rgba(255, 215, 0, 0.3),
       0 2px 8px rgba(0, 0, 0, 0.6);
   }
 `;
 
 const defeatPulse = keyframes`
-  0%, 100% { 
-    text-shadow: 
+  0%, 100% {
+    text-shadow:
       3px 3px 0 #3a0a0a,
       6px 6px 0 rgba(40, 8, 8, 0.6),
-      0 0 6px rgba(200, 50, 50, 0.2),
+      0 0 6px rgba(200, 50, 50, 0.15),
       0 2px 8px rgba(0, 0, 0, 0.6);
   }
-  50% { 
-    text-shadow: 
+  50% {
+    text-shadow:
       3px 3px 0 #3a0a0a,
       6px 6px 0 rgba(40, 8, 8, 0.6),
-      0 0 12px rgba(200, 50, 50, 0.35),
+      0 0 14px rgba(200, 50, 50, 0.3),
       0 2px 8px rgba(0, 0, 0, 0.6);
   }
 `;
@@ -60,88 +111,89 @@ const tasselSway = keyframes`
   50% { transform: rotate(3deg); }
 `;
 
-const overlayFade = keyframes`
-  0% { opacity: 0; }
-  100% { opacity: 1; }
+const rayDrift = keyframes`
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 `;
 
-const spotlightPulse = keyframes`
-  0%, 100% {
-    opacity: 0.82;
-    transform: translateY(0) scale(1);
+const moteFade = keyframes`
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0) scale(0.6);
   }
-  50% {
-    opacity: 0.9;
-    transform: translateY(-1%) scale(1.02);
-  }
-`;
-
-const haloBreathe = keyframes`
-  0%, 100% {
-    opacity: 0.54;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.68;
-    transform: scale(1.025);
+  15% { opacity: var(--peak-opacity); }
+  85% { opacity: var(--peak-opacity); }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--tx), var(--ty), 0) scale(1.1);
   }
 `;
 
 const innerShimmer = keyframes`
   0% { transform: translateX(-120%); opacity: 0; }
-  18% { opacity: 0.55; }
-  44% { transform: translateX(120%); opacity: 0.12; }
+  18% { opacity: 0.45; }
+  44% { transform: translateX(120%); opacity: 0.08; }
   100% { transform: translateX(120%); opacity: 0; }
 `;
 
-const moteDrift = keyframes`
-  0% {
-    opacity: 0;
-    transform: translate3d(0, 12px, 0) scale(0.7);
-  }
-  18% {
-    opacity: 0.55;
-  }
-  100% {
-    opacity: 0;
-    transform: translate3d(var(--tx), var(--ty), 0) scale(1.12);
-  }
+const grainFlicker = keyframes`
+  0%, 100% { transform: translate(0, 0); }
+  10% { transform: translate(-2%, -3%); }
+  30% { transform: translate(3%, 1%); }
+  50% { transform: translate(-1%, 3%); }
+  70% { transform: translate(2%, -2%); }
+  90% { transform: translate(-3%, 1%); }
 `;
+
+// ═══════════════════════════════════════════════
+//  Root overlay — orchestrates the full reveal
+// ═══════════════════════════════════════════════
 
 const MatchOverOverlay = styled.div`
   position: fixed;
   inset: 0;
   z-index: 1400;
   pointer-events: none;
-  animation: ${overlayFade} 0.35s ease-out forwards;
 `;
+
+// ═══════════════════════════════════════════════
+//  Backdrop — cinematic darken + blur
+// ═══════════════════════════════════════════════
 
 const BackdropScrim = styled.div`
   position: absolute;
   inset: 0;
   pointer-events: none;
+  opacity: 0;
+  animation: ${backdropReveal} 1s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
   background:
-    radial-gradient(
-      ellipse at center,
-      rgba(255, 232, 176, ${(p) => (p.$isWinner ? "0.08" : "0.025")}) 0%,
-      rgba(255, 232, 176, 0.015) 22%,
-      transparent 42%
-    ),
-    radial-gradient(
-      ellipse at 50% 58%,
-      rgba(3, 5, 14, 0.08) 0%,
-      rgba(3, 5, 14, 0.24) 34%,
-      rgba(2, 3, 10, 0.5) 100%
-    ),
     linear-gradient(
       180deg,
-      rgba(4, 5, 12, 0.48) 0%,
-      rgba(4, 6, 14, 0.24) 16%,
-      rgba(4, 6, 14, 0.18) 30%,
-      rgba(3, 5, 12, 0.36) 100%
+      rgba(4, 5, 12, 0.52) 0%,
+      rgba(4, 6, 14, 0.18) 20%,
+      rgba(4, 6, 14, 0.12) 50%,
+      rgba(3, 5, 12, 0.42) 100%
     );
-  backdrop-filter: blur(6px) saturate(0.9) brightness(0.87);
-  -webkit-backdrop-filter: blur(6px) saturate(0.9) brightness(0.87);
+`;
+
+// ═══════════════════════════════════════════════
+//  Vignette — elegant edge darkening
+// ═══════════════════════════════════════════════
+
+const Vignette = styled.div`
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  animation: ${vignetteClose} 1.1s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.15s forwards;
+  background:
+    radial-gradient(
+      ellipse 72% 65% at 50% 50%,
+      transparent 0%,
+      rgba(0, 0, 0, 0.04) 40%,
+      rgba(0, 0, 0, 0.35) 70%,
+      rgba(0, 0, 0, 0.7) 100%
+    );
 
   &::before {
     content: "";
@@ -150,55 +202,127 @@ const BackdropScrim = styled.div`
     background:
       linear-gradient(
         90deg,
-        rgba(0, 0, 0, 0.22) 0%,
-        rgba(0, 0, 0, 0.04) 18%,
-        rgba(0, 0, 0, 0) 50%,
-        rgba(0, 0, 0, 0.04) 82%,
-        rgba(0, 0, 0, 0.22) 100%
+        rgba(0, 0, 0, 0.28) 0%,
+        transparent 15%,
+        transparent 85%,
+        rgba(0, 0, 0, 0.28) 100%
       ),
       linear-gradient(
         180deg,
-        rgba(0, 0, 0, 0.14) 0%,
-        transparent 30%,
-        transparent 72%,
-        rgba(0, 0, 0, 0.18) 100%
+        rgba(0, 0, 0, 0.22) 0%,
+        transparent 20%,
+        transparent 80%,
+        rgba(0, 0, 0, 0.26) 100%
       );
-    opacity: 0.62;
+    opacity: 0.7;
   }
 `;
 
-const StageLight = styled.div`
+// ═══════════════════════════════════════════════
+//  Subtle light rays (replaces the blob)
+// ═══════════════════════════════════════════════
+
+const LightRays = styled.div`
   position: absolute;
   left: 50%;
   top: 50%;
-  width: min(82vw, 960px);
-  height: min(58vh, 620px);
+  width: min(110vw, 1400px);
+  height: min(110vh, 900px);
   transform: translate(-50%, -50%);
   pointer-events: none;
-  border-radius: 50%;
-  background: ${(p) =>
-    p.$isWinner
-      ? "radial-gradient(circle, rgba(255, 215, 120, 0.18) 0%, rgba(212, 175, 55, 0.11) 24%, rgba(90, 50, 15, 0.05) 42%, transparent 66%)"
-      : "radial-gradient(circle, rgba(255, 255, 255, 0.035) 0%, rgba(255, 255, 255, 0.018) 24%, rgba(255, 255, 255, 0.01) 42%, transparent 66%)"};
-  filter: blur(14px);
-  animation: ${spotlightPulse} 4.6s ease-in-out infinite;
+  opacity: 0;
+  animation: ${vignetteClose} 1.6s ease-out 0.4s forwards;
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: -20%;
+    background: ${(p) =>
+      p.$isWinner
+        ? `conic-gradient(
+            from 0deg at 50% 50%,
+            transparent 0deg,
+            rgba(212, 175, 55, 0.025) 8deg,
+            transparent 16deg,
+            transparent 40deg,
+            rgba(255, 215, 120, 0.02) 48deg,
+            transparent 56deg,
+            transparent 85deg,
+            rgba(212, 175, 55, 0.018) 93deg,
+            transparent 101deg,
+            transparent 130deg,
+            rgba(255, 215, 120, 0.022) 138deg,
+            transparent 146deg,
+            transparent 175deg,
+            rgba(212, 175, 55, 0.02) 183deg,
+            transparent 191deg,
+            transparent 220deg,
+            rgba(255, 215, 120, 0.015) 228deg,
+            transparent 236deg,
+            transparent 265deg,
+            rgba(212, 175, 55, 0.02) 273deg,
+            transparent 281deg,
+            transparent 310deg,
+            rgba(255, 215, 120, 0.018) 318deg,
+            transparent 326deg,
+            transparent 360deg
+          )`
+        : `conic-gradient(
+            from 0deg at 50% 50%,
+            transparent 0deg,
+            rgba(180, 180, 200, 0.015) 10deg,
+            transparent 20deg,
+            transparent 50deg,
+            rgba(160, 160, 180, 0.012) 60deg,
+            transparent 70deg,
+            transparent 100deg,
+            rgba(180, 180, 200, 0.01) 110deg,
+            transparent 120deg,
+            transparent 150deg,
+            rgba(160, 160, 180, 0.012) 160deg,
+            transparent 170deg,
+            transparent 200deg,
+            rgba(180, 180, 200, 0.01) 210deg,
+            transparent 220deg,
+            transparent 250deg,
+            rgba(160, 160, 180, 0.012) 260deg,
+            transparent 270deg,
+            transparent 300deg,
+            rgba(180, 180, 200, 0.01) 310deg,
+            transparent 320deg,
+            transparent 360deg
+          )`};
+    animation: ${rayDrift} 120s linear infinite;
+    filter: blur(20px);
+  }
 `;
 
-const MatchOverStage = styled.div`
+// ═══════════════════════════════════════════════
+//  Film grain — cinematic texture
+// ═══════════════════════════════════════════════
+
+const FilmGrain = styled.div`
   position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: clamp(52px, 8vh, 88px) clamp(24px, 4vw, 40px);
+  inset: -50%;
   pointer-events: none;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+  animation: ${grainFlicker} 0.5s steps(4) infinite;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E");
+  background-size: 256px 256px;
 `;
+
+// ═══════════════════════════════════════════════
+//  Mote particles — refined floating specs
+// ═══════════════════════════════════════════════
 
 const MoteField = styled.div`
   position: absolute;
   inset: 0;
   pointer-events: none;
   overflow: hidden;
+  opacity: 0;
+  animation: ${vignetteClose} 2s ease-out 0.8s forwards;
 `;
 
 const Mote = styled.span`
@@ -210,48 +334,67 @@ const Mote = styled.span`
   border-radius: 50%;
   background: ${(p) =>
     p.$isWinner
-      ? "radial-gradient(circle, rgba(255, 229, 165, 0.95) 0%, rgba(255, 205, 96, 0.45) 45%, rgba(255, 205, 96, 0) 72%)"
-      : "radial-gradient(circle, rgba(255, 160, 160, 0.75) 0%, rgba(180, 48, 48, 0.35) 48%, rgba(180, 48, 48, 0) 74%)"};
-  box-shadow: 0 0 14px ${(p) =>
-    p.$isWinner ? "rgba(255, 215, 0, 0.22)" : "rgba(160, 30, 30, 0.22)"};
-  animation: ${moteDrift} var(--dur) linear infinite;
+      ? "radial-gradient(circle, rgba(255, 229, 165, 0.9) 0%, rgba(255, 205, 96, 0.3) 50%, transparent 75%)"
+      : "radial-gradient(circle, rgba(200, 200, 220, 0.7) 0%, rgba(160, 160, 180, 0.2) 50%, transparent 75%)"};
+  box-shadow: 0 0 6px ${(p) =>
+    p.$isWinner ? "rgba(255, 215, 0, 0.12)" : "rgba(160, 160, 180, 0.1)"};
+  animation: ${moteFade} var(--dur) linear infinite;
   animation-delay: var(--delay);
-  opacity: 0.65;
+  --peak-opacity: ${(p) => (p.$isWinner ? "0.4" : "0.25")};
 `;
 
-// Nobori-style banner container
+// ═══════════════════════════════════════════════
+//  Stage — centers the banner
+// ═══════════════════════════════════════════════
+
+const MatchOverStage = styled.div`
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(52px, 8vh, 88px) clamp(24px, 4vw, 40px);
+  pointer-events: none;
+`;
+
+// ═══════════════════════════════════════════════
+//  Banner container — nobori-style, premium entrance
+// ═══════════════════════════════════════════════
+
 const MatchOverContainer = styled.div`
   position: relative;
   width: clamp(328px, 33cqw, 462px);
   max-width: min(92vw, 462px);
   z-index: 1;
   pointer-events: auto;
-  animation: ${bannerDrop} 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) forwards,
-    ${bannerSway} 8s ease-in-out 0.7s infinite;
+  opacity: 0;
+  animation:
+    ${bannerReveal} 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.55s forwards,
+    ${bannerFloat} 8s ease-in-out 1.4s infinite;
 
   @media (max-width: 1200px) {
     width: clamp(300px, 37cqw, 418px);
   }
-
   @media (max-width: 900px) {
     width: clamp(278px, 45cqw, 360px);
   }
 `;
 
-const BannerHalo = styled.div`
+// Subtle glow behind the banner (winner only)
+const BannerGlow = styled.div`
   position: absolute;
-  inset: -26px -34px -38px;
-  border-radius: 32px;
+  inset: -30px -40px -44px;
+  border-radius: 36px;
   pointer-events: none;
+  opacity: 0;
+  animation: ${vignetteClose} 1.4s ease-out 0.7s forwards;
   background: ${(p) =>
     p.$isWinner
-      ? "radial-gradient(circle, rgba(255, 215, 0, 0.18) 0%, rgba(212, 175, 55, 0.12) 26%, rgba(212, 175, 55, 0.04) 46%, transparent 68%)"
-      : "radial-gradient(circle, rgba(255, 255, 255, 0.045) 0%, rgba(255, 255, 255, 0.025) 26%, rgba(255, 255, 255, 0.01) 46%, transparent 68%)"};
-  filter: blur(14px);
-  animation: ${haloBreathe} 4s ease-in-out infinite;
+      ? "radial-gradient(circle, rgba(212, 175, 55, 0.1) 0%, rgba(212, 175, 55, 0.05) 30%, transparent 65%)"
+      : "radial-gradient(circle, rgba(255, 255, 255, 0.025) 0%, rgba(255, 255, 255, 0.012) 30%, transparent 65%)"};
+  filter: blur(16px);
 `;
 
-// Top hanging bar
 const HangingBar = styled.div`
   width: 112%;
   height: clamp(16px, 2.1cqh, 24px);
@@ -271,7 +414,6 @@ const HangingBar = styled.div`
     0 0 18px rgba(0,0,0,0.24),
     inset 0 1px 0 rgba(255, 230, 180, 0.22);
 
-  /* Hanging rings */
   &::before, &::after {
     content: "";
     position: absolute;
@@ -287,7 +429,6 @@ const HangingBar = styled.div`
   &::after { right: 15%; }
 `;
 
-// Tassels
 const TasselContainer = styled.div`
   position: absolute;
   bottom: -25px;
@@ -321,7 +462,6 @@ const Tassel = styled.div`
   }
 `;
 
-// Main banner body
 const BannerBody = styled.div`
   background: linear-gradient(180deg,
     #2a120d 0%,
@@ -340,7 +480,6 @@ const BannerBody = styled.div`
     inset 0 -18px 30px rgba(0, 0, 0, 0.32);
   position: relative;
 
-  /* Fabric texture */
   &::before {
     content: "";
     position: absolute;
@@ -348,7 +487,7 @@ const BannerBody = styled.div`
     left: 0;
     right: 0;
     bottom: 0;
-    background: 
+    background:
       repeating-linear-gradient(
         0deg,
         transparent 0px,
@@ -372,7 +511,6 @@ const BannerBody = styled.div`
     border-radius: 0 0 clamp(12px, 1.5cqw, 20px) clamp(12px, 1.5cqw, 20px);
   }
 
-  /* Gold corner decorations */
   &::after {
     content: "";
     position: absolute;
@@ -465,7 +603,6 @@ const SubText = styled.div`
   }
 `;
 
-// Rematch section wrapper
 const RematchSection = styled.div`
   position: relative;
   z-index: 1;
@@ -489,29 +626,86 @@ const InnerShimmer = styled.div`
     left: 0;
     background: ${(p) =>
       p.$isWinner
-        ? "linear-gradient(100deg, transparent 0%, rgba(255, 228, 156, 0.02) 28%, rgba(255, 228, 156, 0.16) 52%, rgba(255, 228, 156, 0.02) 76%, transparent 100%)"
-        : "linear-gradient(100deg, transparent 0%, rgba(255, 150, 150, 0.02) 28%, rgba(255, 150, 150, 0.1) 52%, rgba(255, 150, 150, 0.02) 76%, transparent 100%)"};
+        ? "linear-gradient(100deg, transparent 0%, rgba(255, 228, 156, 0.02) 28%, rgba(255, 228, 156, 0.14) 52%, rgba(255, 228, 156, 0.02) 76%, transparent 100%)"
+        : "linear-gradient(100deg, transparent 0%, rgba(255, 150, 150, 0.02) 28%, rgba(255, 150, 150, 0.08) 52%, rgba(255, 150, 150, 0.02) 76%, transparent 100%)"};
     transform: translateX(-120%);
     animation: ${innerShimmer} ${(p) => (p.$isWinner ? "5.6s" : "7.4s")} ease-in-out infinite;
-    animation-delay: 1.2s;
+    animation-delay: 1.8s;
   }
 `;
 
+// ═══════════════════════════════════════════════
+//  Horizontal accent lines (top & bottom)
+// ═══════════════════════════════════════════════
+
+const horizLineReveal = keyframes`
+  0% { transform: scaleX(0); opacity: 0; }
+  100% { transform: scaleX(1); opacity: 1; }
+`;
+
+const AccentLine = styled.div`
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  pointer-events: none;
+  transform-origin: center;
+  transform: scaleX(0);
+  opacity: 0;
+  animation: ${horizLineReveal} 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.6s forwards;
+
+  ${(p) =>
+    p.$position === "top"
+      ? css`
+          top: 38%;
+          background: linear-gradient(
+            90deg,
+            transparent 0%,
+            ${p.$isWinner ? "rgba(212, 175, 55, 0.08)" : "rgba(160, 160, 180, 0.06)"} 20%,
+            ${p.$isWinner ? "rgba(212, 175, 55, 0.2)" : "rgba(160, 160, 180, 0.12)"} 50%,
+            ${p.$isWinner ? "rgba(212, 175, 55, 0.08)" : "rgba(160, 160, 180, 0.06)"} 80%,
+            transparent 100%
+          );
+        `
+      : css`
+          bottom: 38%;
+          background: linear-gradient(
+            90deg,
+            transparent 0%,
+            ${p.$isWinner ? "rgba(212, 175, 55, 0.06)" : "rgba(160, 160, 180, 0.04)"} 20%,
+            ${p.$isWinner ? "rgba(212, 175, 55, 0.15)" : "rgba(160, 160, 180, 0.09)"} 50%,
+            ${p.$isWinner ? "rgba(212, 175, 55, 0.06)" : "rgba(160, 160, 180, 0.04)"} 80%,
+            transparent 100%
+          );
+        `}
+`;
+
+// ═══════════════════════════════════════════════
+//  Component
+// ═══════════════════════════════════════════════
+
 const MatchOver = ({ winner, roomName, localId }) => {
   const isWinner = localId === winner.id;
+
   const motes = [
-    { left: "16%", top: "24%", size: "8px", tx: "-24px", ty: "-64px", dur: "6.6s", delay: "-0.9s" },
-    { left: "28%", top: "72%", size: "6px", tx: "16px", ty: "-78px", dur: "7.4s", delay: "-3.1s" },
-    { left: "47%", top: "18%", size: "10px", tx: "-10px", ty: "-58px", dur: "6.9s", delay: "-2.2s" },
-    { left: "61%", top: "78%", size: "7px", tx: "28px", ty: "-70px", dur: "7.8s", delay: "-1.3s" },
-    { left: "76%", top: "26%", size: "5px", tx: "-18px", ty: "-60px", dur: "6.2s", delay: "-4.4s" },
-    { left: "84%", top: "66%", size: "9px", tx: "12px", ty: "-82px", dur: "8.1s", delay: "-0.5s" },
+    { left: "12%", top: "20%", size: "4px", tx: "-18px", ty: "-50px", dur: "7.5s", delay: "-1.2s" },
+    { left: "25%", top: "68%", size: "3px", tx: "12px", ty: "-62px", dur: "8.2s", delay: "-3.5s" },
+    { left: "44%", top: "15%", size: "5px", tx: "-8px", ty: "-44px", dur: "7.8s", delay: "-2.8s" },
+    { left: "58%", top: "75%", size: "3px", tx: "20px", ty: "-56px", dur: "8.6s", delay: "-1.0s" },
+    { left: "73%", top: "22%", size: "3px", tx: "-14px", ty: "-48px", dur: "7.1s", delay: "-4.8s" },
+    { left: "82%", top: "62%", size: "4px", tx: "8px", ty: "-66px", dur: "9.0s", delay: "-0.4s" },
+    { left: "36%", top: "42%", size: "3px", tx: "-6px", ty: "-40px", dur: "8.8s", delay: "-5.2s" },
+    { left: "66%", top: "48%", size: "3px", tx: "14px", ty: "-52px", dur: "7.4s", delay: "-2.0s" },
   ];
 
   return (
     <MatchOverOverlay>
-      <BackdropScrim $isWinner={isWinner} />
-      <StageLight $isWinner={isWinner} />
+      <BackdropScrim />
+      <Vignette />
+      <LightRays $isWinner={isWinner} />
+      <FilmGrain />
+      <AccentLine $position="top" $isWinner={isWinner} />
+      <AccentLine $position="bottom" $isWinner={isWinner} />
       <MoteField aria-hidden="true">
         {motes.map((mote, index) => (
           <Mote
@@ -531,7 +725,7 @@ const MatchOver = ({ winner, roomName, localId }) => {
       </MoteField>
       <MatchOverStage>
         <MatchOverContainer>
-          <BannerHalo $isWinner={isWinner} />
+          <BannerGlow $isWinner={isWinner} />
           <HangingBar />
           <BannerBody>
             <InnerShimmer $isWinner={isWinner} />

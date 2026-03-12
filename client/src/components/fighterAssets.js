@@ -121,7 +121,7 @@ import slapAttackHand from "../assets/slap-attack-hand.png";
 // ============================================
 export const GROUND_LEVEL = 140;
 export const SPRITE_HALF_W = 0;
-export const PLAYER_MID_Y = 366;
+export const PLAYER_MID_Y = 376;
 
 // ============================================
 // RITUAL ANIMATION CONFIGURATION

@@ -39,7 +39,8 @@ const DELTA_TRACKED_PROPS = [
   'snowballs', 'pumoArmy', 'snowballCooldown', 'pumoArmyCooldown', 'snowballThrowsRemaining',
   'isPowerSliding', 'isBraking', 'movementVelocity', 'isStrafing',
   'isRopeJumping', 'ropeJumpPhase', 'sizeMultiplier', 'isGassed',
-  'isSidestepping', 'isSidestepStartup', 'isSidestepRecovery'
+  'isSidestepping', 'isSidestepStartup', 'isSidestepRecovery',
+  'isSlapParryRecovering'
 ];
 
 // Pre-compute the combined props list once (avoids spread on every call)
@@ -60,7 +61,11 @@ const CHARGED_HITBOX_DISTANCE_VALUE = Math.round(147 * 0.96); // ~141 → just p
 const SLAP_HITBOX_DISTANCE_VALUE = Math.round(152 * 0.96); // ~146 — must exceed pushbox (136px) so slaps connect at pushbox distance [8% tighter]
 const SLAP_PARRY_WINDOW = 200; // Updated to 200ms window for parry to account for longer slap animation
 const SLAP_PARRY_KNOCKBACK_VELOCITY = 1.5; // Reduced knockback for parried attacks
-const SLAP_PARRY_RECOVERY_MS = 150; // Fixed recovery for both players after slap parry — guarantees +0
+const SLAP_PARRY_RECOVERY_MS = 220; // Recovery lockout — long enough to feel the clash, short enough to stay fast
+const SLAP_PARRY_HITSTOP_MS = 45; // Brief freeze on clash — sells the impact without slowing the game
+const SLAP_PARRY_KNOCKBACK_STRENGTH = 1.8; // Snappy initial push — sharp pop apart, not a slow slide
+const SLAP_PARRY_KB_FRICTION = 0.82; // Strong friction — quick stop after the initial pop
+const SLAP_PARRY_CONSECUTIVE_DECAY_MS = 800; // Window to count consecutive parries for escalation
 const THROW_RANGE = Math.round(166 * 0.96); // ~159 (scaled for camera zoom)
 const GRAB_RANGE = Math.round(158 * 0.96); // ~152px - command grab range (scaled for camera zoom) [8% tighter]
 const GRAB_PUSH_SPEED = 0.55; // Push movement speed (buffed from 0.3 — yorikiri should grind to the edge)
@@ -305,18 +310,20 @@ const RAW_PARRY_SLAP_STUN_DURATION = 400; // Stun for slap parries (was 500)
 const PERFECT_PARRY_WINDOW = 100; // 100ms window for perfect parries
 const PERFECT_PARRY_SUCCESS_DURATION = 850; // Compressed parry — fast enough to keep pace, long enough for visual read
 const PERFECT_PARRY_ATTACKER_STUN_DURATION = 700; // Stun — comfortable window for slap/grab follow-up
-const PERFECT_PARRY_ANIMATION_LOCK = 150; // 150ms — brief flash moment, then parrier can act (was 250 — too slow to follow up on stunned opponent)
+const PERFECT_PARRY_ANIMATION_LOCK = 370; // 250ms hitstop + 120ms real post-freeze "cool pose" before parrier can act
 const PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK = 200; // Shorter than player parry lock — the reflected snowball is the reward
 
 // Raw parry commitment: minimum time locked in parry stance
-const RAW_PARRY_MIN_DURATION = 375; // Whiffed parry: full commitment (punishable by grab)
+const RAW_PARRY_MIN_DURATION = 200; // Whiffed parry: punishable but not sluggish (was 375 — felt like parry jail)
+const RAW_PARRY_MAX_DURATION = 550; // Auto-end after this — forces timing, prevents infinite camping
+const RAW_PARRY_COOLDOWN_MS = 150; // Cooldown after parry ends before you can parry again (prevents perfect-window spam)
 
 // Parry visual timing
 const PARRY_SUCCESS_DURATION = 500; // How long the parry success pose is held
 
 // Raw parry stamina: flat cost on press, refunded on any successful parry
-const RAW_PARRY_STAMINA_COST = 5; // Flat cost when parry is initiated
-const RAW_PARRY_STAMINA_REFUND = 5; // Full refund on successful parry (regular or perfect)
+const RAW_PARRY_STAMINA_COST = 12; // Meaningful cost — whiffed parries sting (was 5)
+const RAW_PARRY_STAMINA_REFUND = 12; // Full refund on success — correct reads are free (was 5)
 
 // ============================================
 // At the Ropes
@@ -386,7 +393,9 @@ const HITSTOP_SLAP_MS = 90;       // Punchy freeze for each slap impact — meat
 const HITSTOP_SLAP_HIT3_MS = 150; // Combo finisher: longer freeze sells the weight of the big hit
 const HITSTOP_CHARGED_MIN_MS = 80;  // Minimum charged attack hitstop (5 frames)
 const HITSTOP_CHARGED_MAX_MS = 150; // Maximum charged attack hitstop at full power (9 frames)
-const HITSTOP_PARRY_MS = 120;     // Parry hitstop - impactful but not too long (7 frames)
+const HITSTOP_PARRY_MS = 120;     // Regular parry hitstop - impactful but not too long (7 frames)
+const HITSTOP_SLAP_PARRY_MS = 45; // Slap clash freeze — shorter than hit hitstop, just enough to register
+const HITSTOP_PERFECT_PARRY_MS = 250; // Perfect parry hitstop - the "time stops" moment (15 frames — long enough to digest)
 const HITSTOP_GRAB_MS = 60;       // Brief hitstop when grab connects (4 frames)
 const HITSTOP_THROW_MS = 100;     // Hitstop when throw lands (6 frames)
 
@@ -431,6 +440,10 @@ module.exports = {
   SLAP_PARRY_WINDOW,
   SLAP_PARRY_KNOCKBACK_VELOCITY,
   SLAP_PARRY_RECOVERY_MS,
+  SLAP_PARRY_HITSTOP_MS,
+  SLAP_PARRY_KNOCKBACK_STRENGTH,
+  SLAP_PARRY_KB_FRICTION,
+  SLAP_PARRY_CONSECUTIVE_DECAY_MS,
   THROW_RANGE,
   GRAB_RANGE,
   GRAB_PUSH_SPEED,
@@ -590,6 +603,8 @@ module.exports = {
   PERFECT_PARRY_ANIMATION_LOCK,
   PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK,
   RAW_PARRY_MIN_DURATION,
+  RAW_PARRY_MAX_DURATION,
+  RAW_PARRY_COOLDOWN_MS,
   PARRY_SUCCESS_DURATION,
   RAW_PARRY_STAMINA_COST,
   RAW_PARRY_STAMINA_REFUND,
@@ -638,6 +653,8 @@ module.exports = {
   HITSTOP_CHARGED_MIN_MS,
   HITSTOP_CHARGED_MAX_MS,
   HITSTOP_PARRY_MS,
+  HITSTOP_SLAP_PARRY_MS,
+  HITSTOP_PERFECT_PARRY_MS,
   HITSTOP_GRAB_MS,
   HITSTOP_THROW_MS,
 

@@ -1,16 +1,17 @@
 const {
   GRAB_STATES, GROUND_LEVEL, TICK_RATE, speedFactor,
   HITBOX_DISTANCE_VALUE, CHARGED_HITBOX_DISTANCE_VALUE, SLAP_HITBOX_DISTANCE_VALUE,
-  SLAP_PARRY_WINDOW, SLAP_PARRY_RECOVERY_MS,
+  SLAP_PARRY_WINDOW, SLAP_PARRY_RECOVERY_MS, SLAP_PARRY_HITSTOP_MS,
+  SLAP_PARRY_KNOCKBACK_STRENGTH, SLAP_PARRY_CONSECUTIVE_DECAY_MS,
   DOHYO_FALL_DEPTH,
   POWER_UP_TYPES,
   PERFECT_PARRY_WINDOW, PERFECT_PARRY_KNOCKBACK,
   PERFECT_PARRY_ANIMATION_LOCK, PERFECT_PARRY_ATTACKER_STUN_DURATION,
   PARRY_SUCCESS_DURATION,
   RAW_PARRY_KNOCKBACK, RAW_PARRY_SLAP_KNOCKBACK,
-  RAW_PARRY_STAMINA_REFUND,
+  RAW_PARRY_STAMINA_REFUND, RAW_PARRY_COOLDOWN_MS,
   SLAP_CHAIN_HIT_GAP_MS,
-  HITSTOP_SLAP_MS, HITSTOP_SLAP_HIT3_MS, HITSTOP_PARRY_MS, HITSTOP_CHARGED_MIN_MS, HITSTOP_CHARGED_MAX_MS,
+  HITSTOP_SLAP_MS, HITSTOP_SLAP_HIT3_MS, HITSTOP_PARRY_MS, HITSTOP_SLAP_PARRY_MS, HITSTOP_PERFECT_PARRY_MS, HITSTOP_CHARGED_MIN_MS, HITSTOP_CHARGED_MAX_MS,
   SLAP_HIT_VICTIM_STAMINA_DRAIN, CHARGED_HIT_VICTIM_STAMINA_DRAIN,
   CHARGE_CLASH_RECOVERY_DURATION, CHARGE_CLASH_BASE_KNOCKBACK,
   CHARGE_CLASH_MIN_KNOCKBACK, CHARGE_CLASH_ADVANTAGE_SCALE,
@@ -181,7 +182,7 @@ function checkCollision(player, otherPlayer, rooms, io) {
             room.players.some((p) => p.id === player.id)
           );
           if (currentRoom) {
-            resolveSlapParry(player, otherPlayer, currentRoom.id, io);
+            resolveSlapParry(player, otherPlayer, currentRoom, io);
           }
           return;
         }
@@ -270,30 +271,56 @@ function checkCollision(player, otherPlayer, rooms, io) {
   }
 }
 
-function resolveSlapParry(player1, player2, roomId, io) {
+function resolveSlapParry(player1, player2, room, io) {
+  const now = Date.now();
   const knockbackDirection1 = player1.x < player2.x ? -1 : 1;
   const knockbackDirection2 = -knockbackDirection1;
 
-  applyParryEffect(player1, knockbackDirection1);
-  applyParryEffect(player2, knockbackDirection2);
+  // Track consecutive parries for escalation
+  const lastParryTime = Math.max(player1.lastSlapParryTime || 0, player2.lastSlapParryTime || 0);
+  const isConsecutive = (now - lastParryTime) < SLAP_PARRY_CONSECUTIVE_DECAY_MS;
+  const consecutiveCount = isConsecutive
+    ? Math.min((player1.slapParryConsecutiveCount || 0) + 1, 4)
+    : 1;
 
-  // Let the slap animation play out visually — don't clear attack state.
-  // Instead, replace the cycle end callback with a simple cleanup that
-  // won't chain into the next string hit, and reset string progression.
+  [player1, player2].forEach((p) => {
+    p.lastSlapParryTime = now;
+    p.slapParryConsecutiveCount = consecutiveCount;
+  });
+
+  const escalation = 1 + (consecutiveCount - 1) * 0.15;
+
+  // When one player is pinned at the boundary, their knockback has nowhere to go.
+  // Compensate by boosting the non-cornered player's knockback so they visually
+  // separate instead of overlapping at the wall.
+  const BOUNDARY_PROXIMITY = 30;
+  const p1NearWall = player1.x <= MAP_LEFT_BOUNDARY + BOUNDARY_PROXIMITY ||
+                     player1.x >= MAP_RIGHT_BOUNDARY - BOUNDARY_PROXIMITY;
+  const p2NearWall = player2.x <= MAP_LEFT_BOUNDARY + BOUNDARY_PROXIMITY ||
+                     player2.x >= MAP_RIGHT_BOUNDARY - BOUNDARY_PROXIMITY;
+
+  let p1KbScale = escalation;
+  let p2KbScale = escalation;
+  if (p1NearWall && !p2NearWall) {
+    p2KbScale *= 1.6;
+  } else if (p2NearWall && !p1NearWall) {
+    p1KbScale *= 1.6;
+  }
+
+  applyParryEffect(player1, knockbackDirection1, p1KbScale);
+  applyParryEffect(player2, knockbackDirection2, p2KbScale);
+
   [player1, player2].forEach((p) => {
     p.isSlapSliding = false;
     p.isSlapParryRecovering = true;
 
-    // Always reset string on parry — next slap starts fresh at hit 1
     p.slapStringPosition = 0;
     p.slapStringWindowUntil = 0;
     p.pendingSlapCount = 0;
 
-    // Replace the cycle timer with a fixed-duration recovery — both players get
-    // the same lockout from this moment, guaranteeing +0 after every slap parry.
     if (p.slapCycleEndCallback) {
       timeoutManager.clearPlayerSpecific(p.id, "slapCycle");
-      p.attackCooldownUntil = Date.now() + SLAP_PARRY_RECOVERY_MS;
+      p.attackCooldownUntil = now + SLAP_PARRY_RECOVERY_MS;
       setPlayerTimeout(p.id, () => {
         p.isAttacking = false;
         p.isSlapAttack = false;
@@ -309,23 +336,32 @@ function resolveSlapParry(player1, player2, roomId, io) {
     }
   });
 
+  // Hitstop — brief freeze sells the clash impact
+  const hitstopMs = Math.round(SLAP_PARRY_HITSTOP_MS * escalation);
+  triggerHitstop(room, hitstopMs);
+
+  // Screen shake — scales with consecutive parries
+  const shakeIntensity = Math.min(0.45 + (consecutiveCount - 1) * 0.15, 0.9);
+  emitThrottledScreenShake(room, io, {
+    intensity: shakeIntensity * escalation,
+    duration: 180 + consecutiveCount * 30,
+  });
+
   const midpointX = (player1.x + player2.x) / 2;
   const midpointY = (player1.y + player2.y) / 2;
-  io.in(roomId).emit("slap_parry", { x: midpointX, y: midpointY });
+  io.in(room.id).emit("slap_parry", {
+    x: midpointX,
+    y: midpointY,
+    intensity: escalation,
+    consecutiveCount,
+    p1x: player1.x,
+    p2x: player2.x,
+  });
 }
 
-function applyParryEffect(player, knockbackDirection) {
-  // Don't change any player states - players continue their slap attacks as normal,
-  // giving the illusion that they are slapping at the same time and stopping each other
-  
-  // Use smooth knockback velocity that gets processed in the game loop
-  // More dramatic knockback so players visibly bounce off each other
-  const SLAP_PARRY_KNOCKBACK_STRENGTH = 0.9;
-  player.slapParryKnockbackVelocity = SLAP_PARRY_KNOCKBACK_STRENGTH * knockbackDirection;
-  
-  // Immunity must outlast recovery + next slap startup + a tick so the next parry
-  // is guaranteed to be detected before any hit can land. Recovery alone (150ms) leaves
-  // an ~85ms gap where both players are actionable but not yet parry-checked again.
+function applyParryEffect(player, knockbackDirection, escalation) {
+  player.slapParryKnockbackVelocity = SLAP_PARRY_KNOCKBACK_STRENGTH * knockbackDirection * escalation;
+
   player.slapParryImmunityUntil = Date.now() + SLAP_PARRY_RECOVERY_MS + SLAP_PARRY_WINDOW;
 }
 
@@ -445,21 +481,29 @@ function processHit(player, otherPlayer, rooms, io) {
     ? (currentTime - otherPlayer.attackIntentTime)
     : Infinity;
   
-  // Counter hit if:
-  // 1. Opponent is attacking AND within the counter hit window, OR
-  // 2. Opponent just pressed attack but hasn't started yet (hit them as they clicked), OR
-  // 3. Opponent is attempting a grab (startup hop or lunge movement, but NOT whiffing/recovery)
+  // ============================================
+  // COUNTER HIT DETECTION
+  // Counter hit = hitting opponent during STARTUP frames of their move
+  // ============================================
   const counterHitFromAttacking = otherPlayer.isAttacking && timeSinceAttackAttempt <= COUNTER_HIT_WINDOW_MS;
   const counterHitFromIntent = timeSinceAttackIntent <= COUNTER_HIT_WINDOW_MS;
   const counterHitFromGrabAttempt = otherPlayer.isGrabStartup === true || otherPlayer.isGrabbingMovement === true;
-  const isCounterHit = counterHitFromAttacking || counterHitFromIntent || counterHitFromGrabAttempt;
+  const counterHitFromRopeJumpStartup = otherPlayer.isRopeJumping && otherPlayer.ropeJumpPhase === "startup";
+  const counterHitFromSidestepStartup = otherPlayer.isSidestepStartup === true;
+  const counterHitFromDodgeStartup = otherPlayer.isDodgeStartup === true;
+  const isCounterHit = counterHitFromAttacking || counterHitFromIntent || counterHitFromGrabAttempt
+    || counterHitFromRopeJumpStartup || counterHitFromSidestepStartup || counterHitFromDodgeStartup;
 
   // ============================================
   // PUNISH DETECTION
-  // Punish occurs when hitting an opponent during their recovery frames
-  // This rewards players for punishing whiffed attacks and grabs
+  // Punish = hitting opponent during RECOVERY frames of their move
   // ============================================
-  const isPunish = otherPlayer.isRecovering || otherPlayer.isWhiffingGrab || otherPlayer.isGrabWhiffRecovery || otherPlayer.isDodgeRecovery;
+  const isPunish = otherPlayer.isRecovering
+    || otherPlayer.isWhiffingGrab
+    || otherPlayer.isGrabWhiffRecovery
+    || otherPlayer.isDodgeRecovery
+    || (otherPlayer.isRopeJumping && otherPlayer.ropeJumpPhase === "landing")
+    || otherPlayer.isSidestepRecovery;
 
   // Store the charge power before resetting states
   const chargePercentage = player.chargeAttackPower;
@@ -610,9 +654,11 @@ function processHit(player, otherPlayer, rooms, io) {
       otherPlayer.isPerfectRawParrySuccess = true;
       otherPlayer.inputLockUntil = Math.max(otherPlayer.inputLockUntil || 0, Date.now() + PERFECT_PARRY_ANIMATION_LOCK);
     } else {
-      // Regular parry: success animation + allow early exit (reward the correct read)
+      // Regular parry: neutral advantage — parrier can reposition but can't attack freely.
+      // 350ms lock vs 400ms attacker isHit = 50ms advantage (not enough for guaranteed follow-up)
       otherPlayer.isRawParrySuccess = true;
       otherPlayer.rawParryMinDurationMet = true;
+      otherPlayer.inputLockUntil = Math.max(otherPlayer.inputLockUntil || 0, Date.now() + 350);
     }
 
     // Emit raw parry success event for visual effect
@@ -641,6 +687,7 @@ function processHit(player, otherPlayer, rooms, io) {
         () => {
           otherPlayer.isRawParrying = false;
           otherPlayer.isPerfectRawParrySuccess = false;
+          otherPlayer.rawParryCooldownUntil = Date.now() + RAW_PARRY_COOLDOWN_MS;
         },
         PERFECT_PARRY_ANIMATION_LOCK,
         "perfectParryAnimationEnd"
@@ -657,9 +704,11 @@ function processHit(player, otherPlayer, rooms, io) {
       );
     }
 
-    // Longer knockback duration for clear visual - attacker stays in hit state
-    // This syncs with the parrier's success pose for Street Fighter-like clarity
-    const parryKnockbackDuration = 400; // Longer duration so the parry is clearly visible
+    // Knockback duration: 400ms of real sliding AFTER the freeze ends.
+    // setTimeout is wall-clock time but hitstop pauses the simulation, so without
+    // compensation the freeze eats into the slide and the attacker barely moves.
+    const hitstopMs = isPerfectParry ? HITSTOP_PERFECT_PARRY_MS : HITSTOP_PARRY_MS;
+    const parryKnockbackDuration = 400 + (isPerfectParry ? HITSTOP_PERFECT_PARRY_MS : 0);
     setPlayerTimeout(
       player.id,
       () => {
@@ -668,11 +717,10 @@ function processHit(player, otherPlayer, rooms, io) {
         player.isParryKnockback = false;
       },
       parryKnockbackDuration,
-      "parryKnockbackReset" // Named timeout for easier debugging
+      "parryKnockbackReset"
     );
     
-    // Lock attacker's inputs briefly during parry impact for visual clarity
-    player.inputLockUntil = Math.max(player.inputLockUntil || 0, Date.now() + HITSTOP_PARRY_MS + 100);
+    player.inputLockUntil = Math.max(player.inputLockUntil || 0, Date.now() + hitstopMs + 100);
 
     // Apply stun for perfect parries (separate from knockback)
     if (isPerfectParry) {
@@ -712,6 +760,8 @@ function processHit(player, otherPlayer, rooms, io) {
           duration: 400,
         });
 
+        triggerHitstop(currentRoom, HITSTOP_PERFECT_PARRY_MS);
+
         // Emit perfect parry event
         io.in(currentRoom.id).emit("perfect_parry", {
           parryingPlayerId: otherPlayer.id,
@@ -723,8 +773,9 @@ function processHit(player, otherPlayer, rooms, io) {
         });
       }
 
-      // Reset stun after appropriate duration (separate from knockback)
-      // Fixed duration stun (no mash reduction)
+      // Stun duration: 700ms of real stun AFTER the freeze ends.
+      // Same wall-clock vs hitstop issue as knockback — compensate so the
+      // full stun window is available for follow-up attacks post-freeze.
       setPlayerTimeout(
         player.id,
         () => {
@@ -732,8 +783,8 @@ function processHit(player, otherPlayer, rooms, io) {
           player.perfectParryStunStartTime = 0;
           player.perfectParryStunBaseTimeout = null;
         },
-        baseStunDuration,
-        "perfectParryStunReset" // Named timeout for easier debugging
+        baseStunDuration + HITSTOP_PERFECT_PARRY_MS,
+        "perfectParryStunReset"
       );
       
       // Store that we have an active stun timeout

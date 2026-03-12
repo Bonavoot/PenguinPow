@@ -146,7 +146,7 @@ const GameFighter = ({
   playerBodyColor, // Custom body color (null = default grey)
 }) => {
   const { socket } = useContext(SocketContext);
-  const emitParticles = useParticles();
+  const { emit: emitParticles, setFrozen: setParticlesFrozen } = useParticles();
 
   // ============================================
   // SPRITE RECOLORING STATE
@@ -166,8 +166,11 @@ const GameFighter = ({
     targetColor !== SPRITE_BASE_COLOR || !!playerBodyColor;
   const colorRanges = BLUE_COLOR_RANGES;
 
-  // Get both player colors for pumo clone coloring
-  const { player1Color: p1Color, player2Color: p2Color } = usePlayerColors();
+  // Get both player colors (belt + body) for pumo clone coloring
+  const {
+    player1Color: p1Color, player2Color: p2Color,
+    player1BodyColor: p1BodyColor, player2BodyColor: p2BodyColor,
+  } = usePlayerColors();
 
   // Function to get sprite render info (handles both static and animated sprites)
   // Returns: { src, isAnimated, config } where config contains spritesheet animation data
@@ -1001,6 +1004,7 @@ const GameFighter = ({
     duration: 0,
     startTime: 0,
   });
+  
   const [allSnowballs, setAllSnowballs] = useState([]);
   const snowballDomRefs = useRef({});
   const [allPumoArmies, setAllPumoArmies] = useState([]);
@@ -1687,17 +1691,26 @@ const GameFighter = ({
   useEffect(() => {
     socket.on("fighter_action", handleFighterAction);
 
-    socket.on("slap_parry", (position) => {
+    socket.on("slap_parry", (data) => {
       if (
-        position &&
-        typeof position.x === "number" &&
-        typeof position.y === "number"
+        data &&
+        typeof data.x === "number" &&
+        typeof data.y === "number"
       ) {
         setParryEffectPosition({
-          x: position.x + SPRITE_HALF_W,
+          x: data.x + SPRITE_HALF_W,
           y: PLAYER_MID_Y,
         });
         playSound(slapParrySound, 0.01);
+        if (index === 0) {
+          emitParticles("slapParryClash", {
+            x: data.x + SPRITE_HALF_W,
+            y: PLAYER_MID_Y,
+            p1x: data.p1x,
+            p2x: data.p2x,
+            intensity: data.intensity || 1,
+          });
+        }
       }
     });
 
@@ -1772,6 +1785,7 @@ const GameFighter = ({
           setP2ParryRefund(Date.now());
         }
         const parryPan = xToPan(data.parrierX);
+        playSound(rawParryGruntSound, 0.025, null, 1.0, parryPan);
         if (data.isPerfect) {
           playSound(rawParrySuccessSound, 0.015, null, 1.0, parryPan);
         } else {
@@ -1787,12 +1801,10 @@ const GameFighter = ({
         typeof data.stunnedPlayerY === "number" &&
         data.showStarStunEffect
       ) {
-        // Only show the star stun effect for the stunned player (attacking player)
         if (data.attackingPlayerId === player.id) {
           setShowStarStunEffect(true);
-
-          // Don't set a timeout here - let the effect disappear when stun ends
         }
+        
       }
     });
 
@@ -2704,12 +2716,53 @@ const GameFighter = ({
     lastSpawningPumoArmyState.current = penguin.isSpawningPumoArmy;
   }, [penguin.isSpawningPumoArmy]);
 
+  // Parry activation: subtle sound + particle burst on press (grunt moved to success)
   useEffect(() => {
     if (penguin.isRawParrying && !lastRawParryState.current) {
-      playSound(rawParryGruntSound, 0.03);
+      playSound(rawParryGruntSound, 0.006, null, 1.25);
+      emitParticles("parryActivation", {
+        x: penguin.x,
+        y: penguin.y,
+        facing: penguin.facing,
+      });
     }
     lastRawParryState.current = penguin.isRawParrying;
-  }, [penguin.isRawParrying]);
+  }, [penguin.isRawParrying, penguin.x, penguin.y, penguin.facing, emitParticles]);
+
+  // Parry stance: ongoing luminous motes while holding parry
+  const parryStanceIntervalRef = useRef(null);
+  const isParryingRef = useRef(false);
+  useEffect(() => {
+    isParryingRef.current = penguin.isRawParrying && !penguin.isRawParrySuccess && !penguin.isPerfectRawParrySuccess;
+
+    if (isParryingRef.current && !parryStanceIntervalRef.current) {
+      const startTime = Date.now();
+      parryStanceIntervalRef.current = setInterval(() => {
+        if (!isParryingRef.current) return;
+        const held = (Date.now() - startTime) / 550;
+        const intensity = 0.6 + Math.min(held, 1) * 0.4;
+        const curX = interpolatedPositionRef.current.x || penguin.x;
+        emitParticles("parryStance", {
+          x: curX,
+          y: penguin.y,
+          facing: penguin.facing,
+          intensity,
+        });
+      }, 90);
+    }
+
+    if (!isParryingRef.current && parryStanceIntervalRef.current) {
+      clearInterval(parryStanceIntervalRef.current);
+      parryStanceIntervalRef.current = null;
+    }
+
+    return () => {
+      if (parryStanceIntervalRef.current) {
+        clearInterval(parryStanceIntervalRef.current);
+        parryStanceIntervalRef.current = null;
+      }
+    };
+  }, [penguin.isRawParrying, penguin.isRawParrySuccess, penguin.isPerfectRawParrySuccess, penguin.x, penguin.y, emitParticles]);
 
   // Raw perfect parry stun: play stunned sound when this player becomes stunned
   useEffect(() => {
@@ -2798,8 +2851,7 @@ const GameFighter = ({
     }
   }, [penguin.isRawParryStun, showStarStunEffect, penguin.id, player.id]);
 
-  // Add screen shake effect - OPTIMIZED using requestAnimationFrame
-  // Enhanced with punchy initial shake and smooth decay
+  // Screen shake effect - OPTIMIZED using requestAnimationFrame
   useEffect(() => {
     if (screenShake.intensity > 0) {
       let animationId;
@@ -2809,20 +2861,14 @@ const GameFighter = ({
         const elapsed = Date.now() - screenShake.startTime;
         if (elapsed >= screenShake.duration) {
           setScreenShake({ intensity: 0, duration: 0, startTime: 0 });
-          if (gameContainer) {
-            gameContainer.style.transform = "translate(0px, 0px)";
-          }
+          if (gameContainer) gameContainer.style.transform = "";
           return;
         }
 
-        // Use exponential decay for punchier initial shake
-        // The shake is strongest at the start and quickly tapers off
         const progress = elapsed / screenShake.duration;
-        const decayFactor = Math.pow(1 - progress, 1.5); // Exponential decay
+        const decayFactor = Math.pow(1 - progress, 1.5);
         const remainingIntensity = screenShake.intensity * decayFactor;
 
-        // Increased shake multiplier (12px instead of 10px) for more visible impact
-        // Slight bias towards horizontal shake since hits push sideways
         const offsetX = (Math.random() - 0.5) * remainingIntensity * 14;
         const offsetY = (Math.random() - 0.5) * remainingIntensity * 10;
 
@@ -2837,9 +2883,7 @@ const GameFighter = ({
 
       return () => {
         cancelAnimationFrame(animationId);
-        if (gameContainer) {
-          gameContainer.style.transform = "translate(0px, 0px)";
-        }
+        if (gameContainer) gameContainer.style.transform = "";
       };
     }
   }, [screenShake]);
@@ -3406,6 +3450,7 @@ const GameFighter = ({
           $grabAttemptStartTime={penguin.grabAttemptStartTime}
           $throwTechCooldown={penguin.throwTechCooldown}
           $isSlapParrying={penguin.isSlapParrying}
+          $isSlapParryRecovering={penguin.isSlapParryRecovering}
           $lastThrowAttemptTime={penguin.lastThrowAttemptTime}
           $lastGrabAttemptTime={penguin.lastGrabAttemptTime}
           $dodgeDirection={displayPenguin.dodgeDirection}
@@ -3544,11 +3589,14 @@ const GameFighter = ({
         player2Color={p2Color}
       />
       {allPumoArmies.map((clone) => {
-        // Color the clone to match its owner's color
-        // Uses the pre-cached recolored sprites (synchronous lookup, no perf cost)
+        // Color the clone to match its owner's belt + body colors
         const ownerColor = clone.ownerPlayerNumber === 1 ? p1Color : p2Color;
+        const ownerBodyColor = clone.ownerPlayerNumber === 1 ? p1BodyColor : p2BodyColor;
         const needsCloneRecolor =
-          ownerColor && ownerColor !== SPRITE_BASE_COLOR;
+          (ownerColor && ownerColor !== SPRITE_BASE_COLOR) || !!ownerBodyColor;
+        const bodyOpts = ownerBodyColor
+          ? { bodyColorRange: GREY_BODY_RANGES, bodyColorHex: ownerBodyColor }
+          : {};
 
         // For strafing clones, use spritesheet animation (APNG recoloring loses animation frames)
         const waddleConfig = SPRITESHEET_CONFIG_BY_NAME.pumoWaddle;
@@ -3556,24 +3604,24 @@ const GameFighter = ({
 
         let cloneSprite;
         if (isAnimatedClone) {
-          // Use the spritesheet (not the APNG) for animation
           cloneSprite = waddleConfig.spritesheet;
           if (needsCloneRecolor) {
             const cached = getCachedRecoloredImage(
               waddleConfig.spritesheet,
               BLUE_COLOR_RANGES,
-              ownerColor
+              ownerColor,
+              bodyOpts
             );
             if (cached) cloneSprite = cached;
           }
         } else {
-          // Static idle sprite
           cloneSprite = pumo;
           if (needsCloneRecolor) {
             const cached = getCachedRecoloredImage(
               pumo,
               BLUE_COLOR_RANGES,
-              ownerColor
+              ownerColor,
+              bodyOpts
             );
             if (cached) cloneSprite = cached;
           }
@@ -3597,6 +3645,7 @@ const GameFighter = ({
                 $y={clone.y}
                 $facing={clone.facing}
                 $size={clone.size}
+                $lane={clone.lane}
               >
                 <AnimatedPumoCloneImage
                   src={cloneSprite}
@@ -3614,6 +3663,7 @@ const GameFighter = ({
                 $y={clone.y}
                 $facing={clone.facing}
                 $size={clone.size}
+                $lane={clone.lane}
               />
             )}
           </React.Fragment>

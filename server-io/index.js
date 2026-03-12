@@ -38,7 +38,7 @@ const {
   GRAB_BREAK_STAMINA_COST, GRAB_BREAK_PUSH_VELOCITY, GRAB_BREAK_FORCED_DISTANCE,
   GRAB_BREAK_TWEEN_DURATION, GRAB_BREAK_RESIDUAL_VEL,
   GRAB_BREAK_INPUT_LOCK_MS, GRAB_BREAK_ACTION_LOCK_MS,
-  RAW_PARRY_STAMINA_COST, RAW_PARRY_MIN_DURATION, PULL_BOUNDARY_MARGIN,
+  RAW_PARRY_STAMINA_COST, RAW_PARRY_MIN_DURATION, RAW_PARRY_MAX_DURATION, RAW_PARRY_COOLDOWN_MS, PULL_BOUNDARY_MARGIN,
   AT_THE_ROPES_DURATION,
   ROPE_JUMP_STARTUP_MS, ROPE_JUMP_ACTIVE_MS, ROPE_JUMP_LANDING_RECOVERY_MS,
   ROPE_JUMP_ARC_HEIGHT,
@@ -46,7 +46,7 @@ const {
   STAMINA_REGEN_INTERVAL_MS, STAMINA_REGEN_AMOUNT,
   SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST, DODGE_STAMINA_COST,
   GASSED_DURATION_MS, GASSED_RECOVERY_STAMINA,
-  HITSTOP_GRAB_MS, HITSTOP_THROW_MS,
+  HITSTOP_GRAB_MS, HITSTOP_THROW_MS, SLAP_PARRY_KB_FRICTION,
   BURST_KB_INITIAL_FRICTION, BURST_KB_LATE_FRICTION, BURST_KB_PHASE_SWITCH_MS,
   SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MIN_MS, SIDESTEP_ACTIVE_MAX_MS, SIDESTEP_RECOVERY_MS,
   SIDESTEP_ARC_DEPTH_MIN, SIDESTEP_ARC_DEPTH_MAX, SIDESTEP_GRAB_TRACK_RANGE,
@@ -823,20 +823,23 @@ function tick(delta) {
 
       // Handle slap parry knockback (smooth sliding that doesn't interrupt attack state)
       if (Math.abs(player.slapParryKnockbackVelocity) > 0.01) {
-        // Apply knockback movement
         const newX = player.x + player.slapParryKnockbackVelocity * delta * speedFactor;
         
-        // Constrain to map boundaries with buffer (prevents triggering win condition)
         const BOUNDARY_BUFFER = 10;
-        player.x = Math.max(
+        const clampedX = Math.max(
           MAP_LEFT_BOUNDARY + BOUNDARY_BUFFER,
           Math.min(newX, MAP_RIGHT_BOUNDARY - BOUNDARY_BUFFER)
         );
+
+        if (clampedX !== newX) {
+          // Hit boundary — bounce back slightly so the cornered player visibly reacts
+          player.slapParryKnockbackVelocity *= -0.25;
+        }
+
+        player.x = clampedX;
         
-        // Apply friction for smooth deceleration
-        player.slapParryKnockbackVelocity *= 0.92;
+        player.slapParryKnockbackVelocity *= SLAP_PARRY_KB_FRICTION;
         
-        // Clear when velocity is negligible
         if (Math.abs(player.slapParryKnockbackVelocity) < 0.01) {
           player.slapParryKnockbackVelocity = 0;
         }
@@ -2617,6 +2620,7 @@ function tick(delta) {
         !player.isGrabBreakSeparating && // Block during grab break separation
         !player.isGrabSeparating && // Block during grab push separation
         !player.grabBreakSpaceConsumed && // Block until the triggering space press is released
+        Date.now() >= (player.rawParryCooldownUntil || 0) &&
         !player.isDodging && // Block raw parry during dodge - don't interrupt dodge hop
         !player.isSidestepping && // Block raw parry during sidestep
         !player.isGrabbing &&
@@ -2685,17 +2689,19 @@ function tick(delta) {
           player.rawParryMinDurationMet = true;
         }
 
-        // Only end parry if spacebar is released AND minimum duration is met
+        // Auto-end: parry expires after max duration (forces timing, prevents camping)
+        const maxDurationReached = parryDuration >= RAW_PARRY_MAX_DURATION && !player.isPerfectRawParrySuccess;
+
+        // End parry if: (spacebar released AND min duration met) OR max duration reached
         // Don't end parry if in perfect parry animation lock
-        if (!player.keys[" "] && player.rawParryMinDurationMet && !player.isPerfectRawParrySuccess) {
+        if (maxDurationReached || (!player.keys[" "] && player.rawParryMinDurationMet && !player.isPerfectRawParrySuccess)) {
           player.isRawParrying = false;
           player.rawParryStartTime = 0;
           player.rawParryMinDurationMet = false;
           player.isRawParrySuccess = false;
+          player.rawParryCooldownUntil = Date.now() + RAW_PARRY_COOLDOWN_MS;
           // Space released - clear grab-break consumption so future parries can occur
           player.grabBreakSpaceConsumed = false;
-
-          // Neutral charged attack removed — no charge to restart after parry
         }
       }
 

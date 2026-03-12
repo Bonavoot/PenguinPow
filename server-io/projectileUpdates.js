@@ -300,28 +300,22 @@ function updateProjectiles(room, io, delta) {
       clone.x += clone.velocityX * delta * speedFactor;
 
       // Apply dohyo height logic with buffer zone for climbing
-      const CLIMB_BUFFER = 55; // Start climbing 20 pixels before dohyo boundary
+      const CLIMB_BUFFER = 55;
       const isOutsideDohyo = clone.x < (DOHYO_LEFT_BOUNDARY - CLIMB_BUFFER +40) || clone.x > (DOHYO_RIGHT_BOUNDARY + CLIMB_BUFFER + 30);
-      const climbSpeed = DOHYO_FALL_SPEED; // Use same speed for climbing/falling
+      const climbSpeed = DOHYO_FALL_SPEED;
       
       if (isOutsideDohyo) {
-        // Clone is outside dohyo - drop down to fall depth
         const targetY = GROUND_LEVEL - DOHYO_FALL_DEPTH;
         if (clone.y > targetY) {
-          // Falling down
           clone.y = Math.max(targetY, clone.y - climbSpeed);
         } else if (clone.y < targetY) {
-          // Rising up (shouldn't happen, but handle it)
           clone.y = Math.min(targetY, clone.y + climbSpeed);
         }
       } else {
-        // Clone is on the dohyo - climb up to ground level
-        const targetY = GROUND_LEVEL + 5; // Slightly above ground for visibility
+        const targetY = clone.targetY !== undefined ? clone.targetY : (GROUND_LEVEL + 5);
         if (clone.y < targetY) {
-          // Climbing up onto dohyo
           clone.y = Math.min(targetY, clone.y + climbSpeed);
         } else if (clone.y > targetY) {
-          // Descending to correct height (shouldn't happen much)
           clone.y = Math.max(targetY, clone.y - climbSpeed);
         }
       }
@@ -333,16 +327,18 @@ function updateProjectiles(room, io, delta) {
 
       // Check collision with opponent
       const opponent = room.players.find((p) => p.id !== player.id);
+      const isFlanker = clone.lane === 'top' || clone.lane === 'bottom';
       if (
         opponent &&
         !opponent.isDodging &&
         !opponent.isRawParrying &&
-        !clone.hasHit
+        !clone.hasHit &&
+        (!isFlanker || opponent.isSidestepping)
       ) {
         const distance = Math.abs(clone.x - opponent.x);
         const sizeMul = opponent.sizeMultiplier || 1;
         const horizThresh = Math.round(54 * 0.96) * sizeMul;
-        const vertThresh = Math.round(36 * 0.96) * sizeMul;
+        const vertThresh = isFlanker ? 60 * sizeMul : Math.round(36 * 0.96) * sizeMul;
         if (
           distance < horizThresh &&
           Math.abs(clone.y - opponent.y) < vertThresh
@@ -463,7 +459,8 @@ function updateProjectiles(room, io, delta) {
       }
 
       // Check collision with raw parrying opponent (clone is blocked but destroyed)
-      if (opponent && opponent.isRawParrying && !clone.hasHit) {
+      // Flanker clones pass through — only the middle clone can be parried
+      if (opponent && opponent.isRawParrying && !clone.hasHit && !isFlanker) {
         const distance = Math.abs(clone.x - opponent.x);
         const sizeMul = opponent.sizeMultiplier || 1;
         const horizThresh = Math.round(54 * 0.96) * sizeMul;

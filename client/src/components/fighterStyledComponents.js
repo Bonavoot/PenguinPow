@@ -134,7 +134,7 @@ export const getFighterPopFilter = (props) => {
     return `${base} drop-shadow(0 0 8px rgba(0, 255, 128, 0.85))`;
   }
   if (props.$isRawParrying) {
-    return `${base} drop-shadow(0 0 8px rgba(0, 150, 255, 0.8))`;
+    return `${base} drop-shadow(0 0 6px rgba(0,130,255,0.9))`;
   }
   if (props.$isGrabPushing) {
     return `${base} drop-shadow(0 0 4px rgba(255, 150, 50, 0.5))`;
@@ -352,6 +352,8 @@ export const StyledImage = styled("img")
         ? "grabPushResist 0.3s ease-in-out infinite"
         : props.$isAttemptingGrabThrow
         ? "attemptingGrabThrowPull 1.0s cubic-bezier(0.4, 0.0, 0.6, 1.0)"
+        : props.$isSlapParryRecovering
+        ? "slapParryRecoil 0.22s ease-out"
         : props.$isRawParrySuccess || props.$isPerfectRawParrySuccess
         ? "rawParryRecoil 0.5s ease-out"
         : props.$isGrabBreaking
@@ -359,7 +361,7 @@ export const StyledImage = styled("img")
         : props.$isGrabBreakCountered
         ? "grabBreakShake 0.1s ease-in-out infinite"
         : props.$isRawParrying
-        ? "rawParryFlash 1.2s ease-in-out infinite"
+        ? "parryActivationFlash 0.22s ease-out forwards"
         : props.$isGrabTeching
         ? "grabTechShake 0.25s ease-in-out infinite"
         : props.$isGrabClashActive
@@ -426,12 +428,10 @@ export const StyledImage = styled("img")
       transition: "none",
     },
   }))`
-  @keyframes rawParryFlash {
-    0% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) drop-shadow(0 0 2px rgba(0, 150, 255, 0.4)); }
-    25% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) drop-shadow(0 0 12px rgba(0, 150, 255, 0.9)); }
-    50% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) drop-shadow(0 0 8px rgba(0, 150, 255, 0.7)); }
-    75% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) drop-shadow(0 0 12px rgba(0, 150, 255, 0.9)); }
-    100% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) drop-shadow(0 0 2px rgba(0, 150, 255, 0.4)); }
+  @keyframes parryActivationFlash {
+    0% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) drop-shadow(0 0 12px rgba(100,200,255,1)); }
+    35% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) drop-shadow(0 0 8px rgba(0,150,255,0.95)); }
+    100% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) drop-shadow(0 0 6px rgba(0,130,255,0.9)); }
   }
   @keyframes grabBreakFlash {
     0% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) drop-shadow(0 0 2px rgba(0, 255, 128, 0.45)); }
@@ -510,6 +510,12 @@ export const StyledImage = styled("img")
   @keyframes slapRush {
     0%, 100% { transform: scaleX(var(--facing, 1)); filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000); }
     50% { transform: scaleX(var(--facing, 1)); filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000); }
+  }
+  @keyframes slapParryRecoil {
+    0% { transform: scaleX(calc(var(--facing, 1) * 1.12)) scaleY(0.88) translateX(0); transform-origin: center bottom; }
+    20% { transform: scaleX(calc(var(--facing, 1) * 0.90)) scaleY(1.10) translateX(calc(var(--facing, 1) * -6px)); transform-origin: center bottom; }
+    50% { transform: scaleX(calc(var(--facing, 1) * 1.04)) scaleY(0.96) translateX(calc(var(--facing, 1) * 2px)); transform-origin: center bottom; }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0); transform-origin: center bottom; }
   }
   @keyframes attemptingGrabThrowPull {
     0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0); transform-origin: center bottom; }
@@ -859,49 +865,51 @@ export const SnowballProjectileImg = styled.img`
 export const PumoClone = styled.img
   .withConfig({
     shouldForwardProp: (prop) =>
-      !["$x", "$y", "$facing", "$size"].includes(prop),
+      !["$x", "$y", "$facing", "$size", "$lane"].includes(prop),
   })
-  .attrs((props) => ({
-    style: {
-      position: "absolute",
-      width: `${(props.$size || 0.6) * 14.47}%`,
-      height: "auto",
-      left: `${(props.$x / 1280) * 100}%`,
-      bottom: `${(props.$y / 720) * 100}%`,
-      translate: "-50%",
-      transform: `scaleX(${props.$facing * -1})`,
-      zIndex:
-        props.$x < -20 || props.$x > 1075 || props.$y < GROUND_LEVEL - 35
-          ? 0
-          : 97,
-      pointerEvents: "none",
-      filter: "drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000)",
-    },
-  }))``;
+  .attrs((props) => {
+    const offScreen = props.$x < -20 || props.$x > 1075 || props.$y < GROUND_LEVEL - 55;
+    const laneZ = props.$lane === 'top' ? 90 : 100;
+    return {
+      style: {
+        position: "absolute",
+        width: `${(props.$size || 0.6) * 14.47}%`,
+        height: "auto",
+        left: `${(props.$x / 1280) * 100}%`,
+        bottom: `${(props.$y / 720) * 100}%`,
+        translate: "-50%",
+        transform: `scaleX(${props.$facing * -1})`,
+        zIndex: offScreen ? 0 : laneZ,
+        pointerEvents: "none",
+        filter: "drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000)",
+      },
+    };
+  })``;
 
 export const AnimatedPumoCloneContainer = styled.div
   .withConfig({
     shouldForwardProp: (prop) =>
-      !["$x", "$y", "$facing", "$size"].includes(prop),
+      !["$x", "$y", "$facing", "$size", "$lane"].includes(prop),
   })
-  .attrs((props) => ({
-    style: {
-      position: "absolute",
-      width: `${(props.$size || 0.6) * 14.47}%`,
-      aspectRatio: "1",
-      left: `${(props.$x / 1280) * 100}%`,
-      bottom: `${(props.$y / 720) * 100}%`,
-      translate: "-50%",
-      transform: `scaleX(${props.$facing * -1})`,
-      zIndex:
-        props.$x < -20 || props.$x > 1075 || props.$y < GROUND_LEVEL - 35
-          ? 0
-          : 97,
-      pointerEvents: "none",
-      overflow: "hidden",
-      clipPath: "inset(0 0.5% 0 0.5%)",
-    },
-  }))``;
+  .attrs((props) => {
+    const offScreen = props.$x < -20 || props.$x > 1075 || props.$y < GROUND_LEVEL - 55;
+    const laneZ = props.$lane === 'top' ? 90 : 100;
+    return {
+      style: {
+        position: "absolute",
+        width: `${(props.$size || 0.6) * 14.47}%`,
+        aspectRatio: "1",
+        left: `${(props.$x / 1280) * 100}%`,
+        bottom: `${(props.$y / 720) * 100}%`,
+        translate: "-50%",
+        transform: `scaleX(${props.$facing * -1})`,
+        zIndex: offScreen ? 0 : laneZ,
+        pointerEvents: "none",
+        overflow: "hidden",
+        clipPath: "inset(0 0.5% 0 0.5%)",
+      },
+    };
+  })``;
 
 export const AnimatedPumoCloneImage = styled.img
   .withConfig({

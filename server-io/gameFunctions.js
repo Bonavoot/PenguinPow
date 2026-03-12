@@ -28,7 +28,7 @@ const {
   DODGE_DURATION,
   DODGE_SLIDE_MOMENTUM,
   DODGE_POWERSLIDE_BOOST,
-  RAW_PARRY_STAMINA_COST,
+  RAW_PARRY_STAMINA_COST, RAW_PARRY_COOLDOWN_MS,
   CHARGE_FULL_POWER_MS,
   SLAP_STARTUP_MS,
   SLAP_ACTIVE_MS,
@@ -271,6 +271,7 @@ function handleWinCondition(room, loser, winner, io, winType) {
     p.isRawParrying = false;
     p.rawParryStartTime = 0;
     p.rawParryMinDurationMet = false;
+    p.rawParryCooldownUntil = 0;
     p.isRawParrySuccess = false;
     p.isPerfectRawParrySuccess = false;
     p.isRawParryStun = false;
@@ -1264,7 +1265,7 @@ function activateBufferedInputAfterGrab(player, rooms) {
   }
 
   // Priority 1: Raw parry (spacebar) - defensive reversal
-  if (player.keys[" "] && !player.grabBreakSpaceConsumed) {
+  if (player.keys[" "] && !player.grabBreakSpaceConsumed && Date.now() >= (player.rawParryCooldownUntil || 0)) {
     player.isRawParrying = true;
     player.rawParryStartTime = Date.now();
     player.rawParryMinDurationMet = false;
@@ -1406,7 +1407,8 @@ function executeInputBuffer(player, rooms) {
           !player.isAttacking && !player.isDodging &&
           !player.isRecovering && !player.isGrabbing &&
           !player.isGrabbingMovement && !player.isWhiffingGrab &&
-          !player.isThrowing && !player.grabBreakSpaceConsumed) {
+          !player.isThrowing && !player.grabBreakSpaceConsumed &&
+          Date.now() >= (player.rawParryCooldownUntil || 0)) {
         player.isRawParrying = true;
         player.rawParryStartTime = Date.now();
         player.rawParryMinDurationMet = false;

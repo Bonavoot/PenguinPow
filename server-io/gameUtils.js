@@ -349,6 +349,11 @@ function clearAllActionStates(player) {
   player.wantsToRestartCharge = false;
   player.chargedAttackHit = false;
   
+  // Clear counter hit timing — prevents stale timestamps from causing
+  // duplicate counter hits on subsequent hits in a slap string
+  player.attackAttemptTime = 0;
+  player.attackIntentTime = 0;
+
   // Clear startup/endlag states
   player.isInStartupFrames = false;
   player.startupEndTime = 0;

@@ -1,4 +1,4 @@
-import { createContext, useContext, useRef, useEffect, useCallback } from "react";
+import { createContext, useContext, useRef, useEffect, useCallback, useMemo } from "react";
 import { ParticleEngine } from "./ParticleEngine";
 
 const ParticleCtx = createContext(null);
@@ -25,8 +25,14 @@ export function ParticleProvider({ children }) {
     engineRef.current?.emit(preset, opts);
   }, []);
 
+  const setFrozen = useCallback((frozen) => {
+    if (engineRef.current) engineRef.current.frozen = frozen;
+  }, []);
+
+  const value = useMemo(() => ({ emit, setFrozen }), [emit, setFrozen]);
+
   return (
-    <ParticleCtx.Provider value={emit}>
+    <ParticleCtx.Provider value={value}>
       {children}
       <canvas
         ref={canvasRef}
@@ -43,8 +49,8 @@ export function ParticleProvider({ children }) {
   );
 }
 
-const noop = () => {};
+const noopCtx = { emit: () => {}, setFrozen: () => {} };
 
 export function useParticles() {
-  return useContext(ParticleCtx) || noop;
+  return useContext(ParticleCtx) || noopCtx;
 }

@@ -53,6 +53,39 @@ function createAnimePuff(size, seed) {
   return c;
 }
 
+function createBluePuff(size, seed) {
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext("2d");
+  const half = size / 2;
+
+  let s = seed;
+  const srand = () => {
+    s = (s * 9301 + 49297) % 233280;
+    return s / 233280;
+  };
+
+  const numBlobs = 8 + Math.floor(srand() * 6);
+  for (let i = 0; i < numBlobs; i++) {
+    const bx = half + (srand() - 0.5) * size * 0.55;
+    const by = half + (srand() - 0.5) * size * 0.45;
+    const br = size * (0.18 + srand() * 0.18);
+
+    const grad = ctx.createRadialGradient(bx, by, 0, bx, by, br);
+    grad.addColorStop(0, "rgba(120,200,255,0.95)");
+    grad.addColorStop(0.45, "rgba(60,150,255,0.9)");
+    grad.addColorStop(0.7, "rgba(30,100,255,0.6)");
+    grad.addColorStop(1, "rgba(0,60,255,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(bx, by, br, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  return c;
+}
+
 function createAnimePuffSmall(size, seed) {
   const c = document.createElement("canvas");
   c.width = size;
@@ -255,6 +288,13 @@ function generateTextures(s) {
 
     groundStreak: createGroundStreak(r(60), r(3)),
     groundStreakThin: createGroundStreak(r(40), r(2)),
+
+    bluePuff1: createBluePuff(r(96), 2468),
+    bluePuff2: createBluePuff(r(96), 1357),
+    bluePuff3: createBluePuff(r(96), 8024),
+    bluePuff4: createBluePuff(r(112), 5791),
+    circleBlue: createChunk(r(24), 80, 160, 255, 0.9),
+    chunkBlue: createChunk(r(12), 100, 180, 255, 0.85),
   };
 }
 
@@ -272,6 +312,9 @@ function pickPuff(textures) {
 }
 function pickSmallPuff(textures) {
   return pick([textures.puffSm1, textures.puffSm2, textures.puffSm3]);
+}
+function pickBluePuff(textures) {
+  return pick([textures.bluePuff1, textures.bluePuff2, textures.bluePuff3, textures.bluePuff4]);
 }
 
 const PRESETS = {
@@ -1037,6 +1080,370 @@ const PRESETS = {
       });
     }
   },
+
+  // Slap parry clash — two-player slap collision. Central burst, radial sparks, expanding ring.
+  // `intensity` scales with consecutive parries (1.0 = first, up to ~1.6 for 4th).
+  slapParryClash(engine, { x, y, p1x, p2x, intensity = 1 }) {
+    const clashX = x;
+    const clashY = GAME_H - y - 50;
+    const footY = GAME_H - y;
+    const s = Math.min(intensity, 1.6);
+
+    // ── CENTRAL FLASH — bright white burst at the impact point ──
+    const flashSize = 30 * s;
+    engine.spawn({
+      x: clashX,
+      y: clashY,
+      vx: 0, vy: 0, gravity: 0, drag: 1,
+      size: flashSize,
+      sizeEnd: flashSize * 2.5,
+      alpha: 1.0,
+      alphaEnd: 0,
+      rotation: 0, rotationSpeed: 0,
+      ease: "outExpo", easeAlpha: "outCubic",
+      maxLife: 0.12 * s,
+      texture: engine.textures.circle,
+      blendMode: "lighter",
+    });
+
+    // ── EXPANDING SHOCKWAVE RINGS — horizontally stretched ──
+    const ringTextures = [engine.textures.ring, engine.textures.ringAlt, engine.textures.ringThick];
+    const ringCount = s > 1.2 ? 3 : 2;
+    for (let i = 0; i < ringCount; i++) {
+      const scale = 1 + i * 0.06;
+      engine.spawn({
+        x: clashX,
+        y: clashY + 10,
+        vx: 0, vy: 0, gravity: 0, drag: 1,
+        size: 8 * scale,
+        sizeEnd: (55 + i * 8) * s * scale,
+        alpha: Math.min(0.95, 0.85 * s),
+        alphaEnd: 0,
+        rotation: 0, rotationSpeed: 0,
+        ease: "outCubic", easeAlpha: "outCubic",
+        maxLife: 0.28 + i * 0.04,
+        texture: ringTextures[i % ringTextures.length],
+        stretchX: 1.8,
+        delay: i * 0.025,
+      });
+    }
+
+    // ── RADIAL SPARKS — bright points bursting from center ──
+    const sparkCount = Math.round(8 * s);
+    for (let i = 0; i < sparkCount; i++) {
+      const angle = (i / sparkCount) * Math.PI * 2 + rand(-0.4, 0.4);
+      const speed = rand(180, 380) * s;
+      const horizontalBias = 1.6;
+      engine.spawn({
+        x: clashX + rand(-4, 4),
+        y: clashY + rand(-8, 8),
+        vx: Math.cos(angle) * speed * horizontalBias,
+        vy: Math.sin(angle) * speed * 0.6,
+        gravity: 300,
+        drag: 0.93,
+        size: rand(4, 8) * s,
+        sizeEnd: rand(1, 3),
+        alpha: rand(0.85, 1.0),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "outQuad",
+        rotationSpeed: 0,
+        maxLife: rand(0.15, 0.3),
+        texture: pick([engine.textures.spark, engine.textures.sparkSmall, engine.textures.circle]),
+        blendMode: "lighter",
+      });
+    }
+
+    // ── SPEED LINES — horizontal streaks radiating from impact ──
+    const lineCount = Math.round(6 * s);
+    for (let i = 0; i < lineCount; i++) {
+      const side = i % 2 === 0 ? -1 : 1;
+      const stretch = rand(14, 24) * s;
+      engine.spawn({
+        x: clashX + side * rand(8, 30),
+        y: clashY + rand(-25, 25),
+        vx: side * rand(100, 250),
+        vy: rand(-15, 15),
+        gravity: 0,
+        drag: 0.94,
+        size: rand(3, 5),
+        sizeEnd: rand(2, 3),
+        alpha: rand(0.8, 1.0),
+        alphaEnd: 0,
+        rotation: side > 0 ? 0 : Math.PI,
+        rotationSpeed: 0,
+        ease: "linear",
+        easeAlpha: "inCubic",
+        maxLife: rand(0.1, 0.2),
+        texture: pick([engine.textures.speedLine, engine.textures.speedLineThin, engine.textures.speedLineThick]),
+        stretchX: stretch,
+      });
+    }
+
+    // ── SMOKE PUFFS — bilateral clouds at body height ──
+    const puffCount = Math.round(5 * s);
+    for (let i = 0; i < puffCount; i++) {
+      const side = i % 2 === 0 ? -1 : 1;
+      const size = rand(22, 40) * s;
+      engine.spawn({
+        x: clashX + side * rand(5, 25),
+        y: clashY + rand(-10, 15),
+        vx: side * rand(60, 140) * s,
+        vy: rand(-30, 10),
+        gravity: 15,
+        drag: 0.88,
+        size,
+        sizeEnd: size * rand(0.3, 0.5),
+        alpha: rand(0.65, 0.85),
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "inQuad",
+        rotationSpeed: rand(-1.5, 1.5),
+        maxLife: rand(0.3, 0.5),
+        texture: pickPuff(engine.textures),
+        delay: rand(0, 0.02),
+      });
+    }
+
+    // ── ICE CHUNKS — tumbling debris from the impact ──
+    const chunkCount = Math.round(6 * s);
+    for (let i = 0; i < chunkCount; i++) {
+      const angle = rand(-1.5, 1.5);
+      const speed = rand(80, 200) * s;
+      engine.spawn({
+        x: clashX + rand(-8, 8),
+        y: clashY + rand(-5, 10),
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed * 0.5 + rand(-30, -5),
+        gravity: 400,
+        drag: 0.95,
+        size: rand(3, 6),
+        sizeEnd: rand(1, 2),
+        alpha: rand(0.6, 0.9),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-6, 6),
+        maxLife: rand(0.25, 0.4),
+        texture: pick([engine.textures.chunk, engine.textures.chunkIce]),
+      });
+    }
+
+    // ── GROUND DUST — kicked up at the feet from the force ──
+    for (let i = 0; i < 4; i++) {
+      const side = i % 2 === 0 ? -1 : 1;
+      const size = rand(16, 28);
+      engine.spawn({
+        x: clashX + side * rand(10, 40),
+        y: footY - size * 0.3,
+        vx: side * rand(50, 100),
+        vy: rand(-8, -2),
+        gravity: 20,
+        drag: 0.9,
+        size,
+        sizeEnd: size * rand(0.3, 0.5),
+        alpha: rand(0.5, 0.7),
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "inQuad",
+        rotationSpeed: rand(-0.6, 0.6),
+        maxLife: rand(0.25, 0.35),
+        texture: pickSmallPuff(engine.textures),
+      });
+    }
+  },
+
+  // Parry activation — blue smoke burst on press, rising from both sides.
+  parryActivation(engine, { x, y, facing }) {
+    const dir = facing || 1;
+    const bodyX = x + dir * 10;
+    const footY = GAME_H - y - 12;
+    const midY = GAME_H - y - 65;
+
+    // Rising smoke from left and right sides — 5 per side
+    for (let i = 0; i < 10; i++) {
+      const side = i < 5 ? -1 : 1;
+      const spawnX = bodyX + side * rand(30, 58);
+      const spawnY = rand(midY + 15, footY);
+      const size = rand(18, 32);
+      engine.spawn({
+        x: spawnX,
+        y: spawnY,
+        vx: side * rand(15, 45) + rand(-8, 8),
+        vy: rand(-160, -70),
+        gravity: rand(-20, -8),
+        drag: 0.95,
+        size,
+        sizeEnd: size * rand(0.5, 0.8),
+        alpha: rand(0.55, 0.75),
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-1, 1),
+        maxLife: rand(0.4, 0.6),
+        texture: pickBluePuff(engine.textures),
+        blendMode: "lighter",
+      });
+    }
+
+    // Shoulder/head smoke — spawns at the top of the character, spread wide
+    const headY = GAME_H - y - 105;
+    for (let i = 0; i < 5; i++) {
+      const spawnX = bodyX + rand(-60, 60);
+      const spawnY = rand(headY - 5, headY + 15);
+      const size = rand(18, 30);
+      engine.spawn({
+        x: spawnX,
+        y: spawnY,
+        vx: rand(-18, 18),
+        vy: rand(-140, -50),
+        gravity: rand(-20, -8),
+        drag: 0.95,
+        size,
+        sizeEnd: size * rand(0.5, 0.8),
+        alpha: rand(0.5, 0.7),
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-1, 1),
+        maxLife: rand(0.45, 0.65),
+        texture: pickBluePuff(engine.textures),
+        blendMode: "lighter",
+      });
+    }
+
+    // Blue sparks rising from body area
+    for (let i = 0; i < 6; i++) {
+      const side = i < 3 ? -1 : 1;
+      engine.spawn({
+        x: bodyX + side * rand(20, 50),
+        y: rand(midY, footY),
+        vx: side * rand(20, 60),
+        vy: rand(-200, -80),
+        gravity: -15,
+        drag: 0.95,
+        size: rand(3, 5),
+        sizeEnd: rand(1, 2),
+        alpha: rand(0.8, 1.0),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-4, 4),
+        maxLife: rand(0.2, 0.35),
+        texture: pick([engine.textures.circleBlue, engine.textures.circle]),
+        blendMode: "lighter",
+      });
+    }
+
+    // Ground dust at feet
+    for (let i = 0; i < 3; i++) {
+      const side = i === 0 ? -1 : i === 1 ? 1 : (Math.random() > 0.5 ? 1 : -1);
+      const size = rand(18, 28);
+      engine.spawn({
+        x: bodyX + side * rand(8, 35),
+        y: footY,
+        vx: side * rand(40, 80),
+        vy: rand(-10, -3),
+        gravity: 15,
+        drag: 0.9,
+        size,
+        sizeEnd: size * rand(0.3, 0.5),
+        alpha: rand(0.5, 0.7),
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "inQuad",
+        rotationSpeed: rand(-1, 1),
+        maxLife: rand(0.2, 0.3),
+        texture: pickBluePuff(engine.textures),
+      });
+    }
+  },
+
+  // Parry stance — rising blue smoke from both sides of the character.
+  parryStance(engine, { x, y, facing, intensity = 0.5 }) {
+    const dir = facing || 1;
+    const bodyX = x + dir * 10;
+    const footY = GAME_H - y - 12;
+    const midY = GAME_H - y - 65;
+
+    // Rising smoke — explicitly from left AND right sides
+    const perSide = intensity > 0.7 ? 3 : 2;
+    for (let s = -1; s <= 1; s += 2) {
+      for (let i = 0; i < perSide; i++) {
+        const spawnX = bodyX + s * rand(28, 55);
+        const spawnY = rand(midY + 10, footY);
+        const size = rand(14, 24) * intensity + 6;
+        engine.spawn({
+          x: spawnX,
+          y: spawnY,
+          vx: s * rand(5, 22) + rand(-6, 6),
+          vy: rand(-110, -45),
+          gravity: rand(-15, -5),
+          drag: 0.96,
+          size,
+          sizeEnd: size * rand(0.5, 0.8),
+          alpha: rand(0.4, 0.6) * intensity,
+          alphaEnd: 0,
+          ease: "outCubic",
+          easeAlpha: "outQuad",
+          rotationSpeed: rand(-0.8, 0.8),
+          maxLife: rand(0.5, 0.8),
+          texture: pickBluePuff(engine.textures),
+          blendMode: "lighter",
+        });
+      }
+    }
+
+    // Shoulder/head smoke — spawns at the top, spread wide to the sides
+    const headY = GAME_H - y - 105;
+    const topCount = intensity > 0.7 ? 4 : 3;
+    for (let i = 0; i < topCount; i++) {
+      const spawnX = bodyX + rand(-60, 60);
+      const spawnY = rand(headY - 5, headY + 20);
+      const size = rand(16, 26) * intensity + 6;
+      engine.spawn({
+        x: spawnX,
+        y: spawnY,
+        vx: rand(-25, 25),
+        vy: rand(-90, -35),
+        gravity: rand(-15, -6),
+        drag: 0.96,
+        size,
+        sizeEnd: size * rand(0.5, 0.8),
+        alpha: rand(0.35, 0.55) * intensity,
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-0.8, 0.8),
+        maxLife: rand(0.5, 0.8),
+        texture: pickBluePuff(engine.textures),
+        blendMode: "lighter",
+      });
+    }
+
+    // Occasional rising spark from either side
+    if (Math.random() < 0.5 * intensity) {
+      const s = Math.random() > 0.5 ? 1 : -1;
+      engine.spawn({
+        x: bodyX + s * rand(25, 50),
+        y: rand(midY, footY),
+        vx: s * rand(10, 30),
+        vy: rand(-90, -40),
+        gravity: -10,
+        drag: 0.96,
+        size: rand(2, 4),
+        sizeEnd: rand(1, 2),
+        alpha: rand(0.6, 0.85) * intensity,
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-2, 2),
+        maxLife: rand(0.25, 0.4),
+        texture: pick([engine.textures.circleBlue, engine.textures.chunkBlue]),
+        blendMode: "lighter",
+      });
+    }
+  },
 };
 
 // ─── Engine ─────────────────────────────────────────────────────────
@@ -1076,6 +1483,7 @@ export class ParticleEngine {
     this.textures = null;
     this._rafId = null;
     this._lastTime = 0;
+    this.frozen = false;
 
     for (let i = 0; i < MAX_PARTICLES; i++) {
       this.particles.push(new Particle());
@@ -1141,7 +1549,9 @@ export class ParticleEngine {
     const loop = (now) => {
       const dt = Math.min((now - this._lastTime) / 1000, 0.05);
       this._lastTime = now;
-      this._update(dt);
+      if (!this.frozen) {
+        this._update(dt);
+      }
       this._render();
       this._rafId = requestAnimationFrame(loop);
     };

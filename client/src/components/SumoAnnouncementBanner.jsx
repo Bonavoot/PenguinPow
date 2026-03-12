@@ -125,7 +125,7 @@ const getThemeColors = (type) => {
 };
 
 const BannerWrapper = styled.div`
-  position: fixed;
+  position: absolute;
   top: clamp(160px, 38%, 250px);
   ${props => props.$isLeftSide ? 'left: 1.5%;' : 'right: 1.5%;'}
   z-index: 200;

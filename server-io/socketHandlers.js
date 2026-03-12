@@ -8,7 +8,7 @@ const {
   DODGE_STARTUP_MS,
   SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MAX_MS, SIDESTEP_RECOVERY_MS,
   SIDESTEP_TOTAL_MS, SIDESTEP_STAMINA_COST,
-  SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST, RAW_PARRY_STAMINA_COST,
+  SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST, RAW_PARRY_STAMINA_COST, RAW_PARRY_COOLDOWN_MS,
   CHARGE_FULL_POWER_MS,
   GRAB_ACTION_WINDOW, GRAB_STARTUP_DURATION_MS,
   HITSTOP_THROW_MS,
@@ -285,6 +285,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
         isRawParrying: false,
         rawParryStartTime: 0,
         rawParryMinDurationMet: false,
+        rawParryCooldownUntil: 0,
         isRawParryStun: false,
         perfectParryStunStartTime: 0,
         perfectParryStunBaseTimeout: null,
@@ -505,6 +506,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
         isRawParrying: false,
         rawParryStartTime: 0,
         rawParryMinDurationMet: false,
+        rawParryCooldownUntil: 0,
         isRawParryStun: false,
         perfectParryStunStartTime: 0,
         perfectParryStunBaseTimeout: null,
@@ -786,6 +788,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
       isRawParrying: false,
       rawParryStartTime: 0,
       rawParryMinDurationMet: false,
+      rawParryCooldownUntil: 0,
       isRawParryStun: false,
       perfectParryStunStartTime: 0,
       perfectParryStunBaseTimeout: null,
@@ -1524,6 +1527,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
       !player.isRawParrying &&
       !player.isRawParryStun &&
       !player.grabBreakSpaceConsumed &&
+      Date.now() >= (player.rawParryCooldownUntil || 0) &&
       !player.isSidestepping &&
       !player.isGrabbing &&
       !player.isBeingGrabbed &&
@@ -1780,39 +1784,39 @@ function registerSocketHandlers(socket, io, rooms, context) {
         // Determine army direction (same as player facing)
         const armyDirection = player.facing === 1 ? -1 : 1; // Army moves in direction player is facing
 
-        // Spawn multiple mini clones sequentially
-        const numClones = 3;
-        const spawnDelay = 1000; // 1 second between spawns
-        const startX = armyDirection === 1 ? -100 : 1200; // Start from off-screen (outside visible dohyo)
+        const startX = armyDirection === 1 ? -100 : 1200;
+        const Y_SPREAD = 35;
+        const V_OFFSET = 40; // Middle clone leads the V-formation
 
-        // Spawn clones one at a time with delays
-        for (let i = 0; i < numClones; i++) {
-          setPlayerTimeout(
-            player.id,
-            () => {
-              const clone = {
-                id: Math.random().toString(36).substr(2, 9),
-                x: startX,
-                y: GROUND_LEVEL - DOHYO_FALL_DEPTH, // Start at dohyo fall depth (off the dohyo)
-                velocityX: armyDirection * 1.5, // Speed of movement
-                facing: armyDirection, // Face the direction they're moving (1 = right, -1 = left)
-                isStrafing: true, // Use strafing animation
-                isSlapAttacking: true, // Keep for combat functionality
-                slapCooldown: 0,
-                lastSlapTime: 0,
-                spawnTime: Date.now(),
-                lifespan: 10000, // 10 seconds lifespan (enough time to cross entire screen)
-                ownerId: player.id,
-                ownerFighter: player.fighter, // Add fighter type for image selection
-                hasHit: false,
-                size: 0.6, // Smaller than normal players
-              };
-              player.pumoArmy.push(clone);
+        // Spawn all 3 clones at once in a V-formation across Y lanes
+        const lanes = [
+          { lane: 'top',    targetY: GROUND_LEVEL + Y_SPREAD, xOffset: 0 },
+          { lane: 'middle', targetY: GROUND_LEVEL + 5,        xOffset: armyDirection * V_OFFSET },
+          { lane: 'bottom', targetY: GROUND_LEVEL - Y_SPREAD, xOffset: 0 },
+        ];
 
-            },
-            i * spawnDelay
-          );
-        }
+        lanes.forEach(({ lane, targetY, xOffset }) => {
+          const clone = {
+            id: Math.random().toString(36).substr(2, 9),
+            x: startX + xOffset,
+            y: GROUND_LEVEL - DOHYO_FALL_DEPTH,
+            targetY,
+            velocityX: armyDirection * 1.5,
+            facing: armyDirection,
+            isStrafing: true,
+            isSlapAttacking: true,
+            slapCooldown: 0,
+            lastSlapTime: 0,
+            spawnTime: Date.now(),
+            lifespan: 10000,
+            ownerId: player.id,
+            ownerFighter: player.fighter,
+            hasHit: false,
+            size: 0.6,
+            lane,
+          };
+          player.pumoArmy.push(clone);
+        });
 
         player.pumoArmyCooldown = true;
 

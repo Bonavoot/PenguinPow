@@ -243,10 +243,10 @@ const Game = ({
         const direction = gamepadKeyState.a ? -1 : gamepadKeyState.d ? 1 : null;
         applyPrediction("dash", direction);
       }
-      if (gamepadKeyState.s && !keyState.s) {
+      if (gamepadKeyState[" "] && !keyState[" "]) {
         applyPrediction("parry_start");
       }
-      if (!gamepadKeyState.s && keyState.s) {
+      if (!gamepadKeyState[" "] && keyState[" "]) {
         applyPrediction("parry_release");
       }
       // ICE PHYSICS: Power slide predictions for gamepad
@@ -304,8 +304,8 @@ const Game = ({
             const direction = keyState.a ? -1 : keyState.d ? 1 : null;
             applyPrediction("dash", direction);
           }
-          // Raw parry (s key)
-          else if (key === "s") {
+          // Raw parry (spacebar)
+          else if (key === " ") {
             applyPrediction("parry_start");
           }
           // ICE PHYSICS: Power slide (c or control key)
@@ -342,7 +342,7 @@ const Game = ({
         keyState[key] = false;
 
         // CLIENT-SIDE PREDICTION: Apply predicted state for releases
-        if (key === "s") {
+        if (key === " ") {
           applyPrediction("parry_release");
         }
         // ICE PHYSICS: End power slide when c/control released

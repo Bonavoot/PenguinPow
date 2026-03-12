@@ -5,7 +5,11 @@
 
 const { ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST,
         SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MAX_MS, SIDESTEP_TOTAL_MS,
-        SIDESTEP_STAMINA_COST, SIDESTEP_INITIATION_RANGE } = require("./constants");
+        SIDESTEP_STAMINA_COST, SIDESTEP_INITIATION_RANGE,
+        DODGE_STARTUP_MS, DODGE_DURATION, DODGE_STAMINA_COST,
+        GRAB_STARTUP_DURATION_MS, GROUND_LEVEL, DOHYO_FALL_DEPTH,
+        SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST,
+        RAW_PARRY_STAMINA_COST, POWER_UP_TYPES } = require("./constants");
 const { MAP_LEFT_BOUNDARY: GAME_MAP_LEFT, MAP_RIGHT_BOUNDARY: GAME_MAP_RIGHT,
         canPlayerSidestep, getSidestepInitData } = require("./gameUtils");
 
@@ -75,14 +79,6 @@ const AI_CONFIG = {
   ROPE_JUMP_COOLDOWN: 6000,       // Don't spam rope jump
   ROPE_JUMP_CHANCE: 0.28,         // Chance to use rope jump when conditions are right
 
-  // Punish recognition delay — how long before AI recognizes a punish window
-  PUNISH_DELAY_MIN: 100,
-  PUNISH_DELAY_MAX: 280,
-
-  // When AI sees opponent raw parrying: chance to grab vs commit to an attack
-  PUNISH_PARRY_GRAB_CHANCE: 0.40,    // 40% grab the parry (punish)
-  PUNISH_PARRY_ATTACK_CHANCE: 0.35,  // 35% commit to a slap attack (parryable!)
-  // Remaining 25%: AI ignores the parry and continues with normal behavior
 
   // Sidestep — corner escape tool (s + shift)
   SIDESTEP_CORNER_CHANCE: 0.25,       // Chance to sidestep when cornered and distance is safe
@@ -164,11 +160,6 @@ function getAIState(playerId) {
       reactionDetectTime: 0,
       reactionDelay: 0,
       reactionProcessed: false,
-      // === Punish recognition delay ===
-      punishDetectTime: 0,
-      punishDelay: 0,
-      punishProcessed: false,
-      punishDecision: null,
       // === Rope jump tracking ===
       lastRopeJumpTime: 0,
       // === Slap pressure tracking — adapts defense after consecutive hits ===
@@ -730,64 +721,6 @@ function updateCPUAI(cpu, human, room, currentTime) {
     aiState.reactionProcessed = false;
   }
   
-  // Priority 3.5: REACT TO OPPONENT PARRYING with human-like recognition delay
-  // A human player notices the parry, decides what to do, THEN acts.
-  // Sometimes grabs (punish), sometimes commits to an attack (parryable!), sometimes ignores.
-  if (human.isRawParrying && !cpu.isAttacking && distance < AI_CONFIG.GRAB_APPROACH_RANGE && canAct(cpu)) {
-    if (!aiState.punishDetectTime) {
-      aiState.punishDetectTime = currentTime;
-      aiState.punishDelay = randomInRange(AI_CONFIG.PUNISH_DELAY_MIN, AI_CONFIG.PUNISH_DELAY_MAX);
-      aiState.punishProcessed = false;
-      aiState.punishDecision = null;
-    }
-    if (!aiState.punishProcessed && currentTime - aiState.punishDetectTime >= aiState.punishDelay) {
-      aiState.punishProcessed = true;
-
-      if (!aiState.punishDecision) {
-        const roll = Math.random();
-        if (roll < AI_CONFIG.PUNISH_PARRY_GRAB_CHANCE && canGrab(cpu)) {
-          aiState.punishDecision = 'grab';
-        } else if (roll < AI_CONFIG.PUNISH_PARRY_GRAB_CHANCE + AI_CONFIG.PUNISH_PARRY_ATTACK_CHANCE) {
-          aiState.punishDecision = 'attack';
-        } else {
-          aiState.punishDecision = 'ignore';
-        }
-      }
-
-      if (aiState.punishDecision === 'grab' && canGrab(cpu)) {
-        resetAllKeys(cpu);
-        const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
-        if (result) {
-          aiState.lastActionType = "punish_grab";
-          return;
-        }
-      } else if (aiState.punishDecision === 'attack' && canAttack(cpu)) {
-        resetAllKeys(cpu);
-        if (distance < AI_CONFIG.SLAP_RANGE + 30) {
-          const stringType = pickStringCommitment(aiState, currentTime);
-          if (!stringType) {
-            startCommitment(aiState, 'slap_burst', randomInRange(2, 4), currentTime);
-          }
-          cpu.keys.mouse1 = true;
-          aiState.mouse1ReleaseTime = currentTime + 40;
-        } else {
-          const dirToOpponent = getDirectionToOpponent(cpu, human);
-          if (dirToOpponent === 1) cpu.keys.d = true;
-          else cpu.keys.a = true;
-          cpu.keys.mouse1 = true;
-          aiState.mouse1ReleaseTime = currentTime + 40;
-        }
-        aiState.lastDecisionTime = currentTime;
-        aiState.lastActionType = "punish_attack";
-        return;
-      }
-      // 'ignore' falls through to normal behavior
-    }
-  } else if (aiState.punishDetectTime) {
-    aiState.punishDetectTime = 0;
-    aiState.punishProcessed = false;
-    aiState.punishDecision = null;
-  }
   
   // Priority 4: COMMITMENT SYSTEM — if in a burst, continue it
   if (aiState.commitAction && currentTime < aiState.commitUntil && aiState.commitCount > 0) {
@@ -906,15 +839,6 @@ function handleKnockbackDI(cpu, aiState, currentTime) {
     cpu.keys.d = true;
   }
   aiState.lastActionType = "knockback_di";
-}
-
-// PUNISH: Grab opponent while they're stuck in parry animation
-function handlePunishParry(cpu, human, aiState, currentTime) {
-  resetAllKeys(cpu);
-  cpu.keys.mouse2 = true;
-  aiState.mouse2ReleaseTime = currentTime + 50;
-  aiState.lastDecisionTime = currentTime;
-  aiState.lastActionType = "punish_grab";
 }
 
 // Handle power-up usage (F key)
@@ -1795,6 +1719,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     canPlayerCharge,
     canPlayerSlap,
     canPlayerUseAction,
+    canPlayerDash,
     startCharging,
     clearChargeState,
     setPlayerTimeout,
@@ -1980,22 +1905,34 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       !cpu.isBeingGrabbed && 
       !cpu.isDodging &&
       !cpu.grabCooldown &&
+      !cpu.isPushing &&
+      !cpu.isBeingPushed &&
+      !cpu.grabbedOpponent &&
       !cpu.isGrabStartup &&
       !cpu.isGrabbingMovement &&
       !cpu.isWhiffingGrab &&
+      !cpu.isGrabWhiffRecovery &&
+      !cpu.isGrabTeching &&
       !cpu.isRawParrying &&
+      !cpu.isJumping &&
       !cpu.isThrowing &&
       !shouldBlockAction() &&
       canPlayerUseAction(cpu)) {
     
+    cpu.isRawParrySuccess = false;
+    cpu.isPerfectRawParrySuccess = false;
     clearChargeState(cpu, true);
+
+    if (cpu.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER) {
+      cpu.hitAbsorptionUsed = false;
+    }
     
     cpu.lastGrabAttemptTime = currentTime;
     cpu.isGrabStartup = true;
     cpu.grabStartupStartTime = currentTime;
-    cpu.grabStartupDuration = 150;
+    cpu.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
     cpu.currentAction = "grab_startup";
-    cpu.actionLockUntil = currentTime + 150;
+    cpu.actionLockUntil = currentTime + GRAB_STARTUP_DURATION_MS;
     cpu.grabState = "attempting";
     cpu.grabAttemptType = "grab";
     cpu.grabApproachSpeed = Math.abs(cpu.movementVelocity);
@@ -2010,15 +1947,22 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
   // Process sidestep (s + shift) — must be checked BEFORE dodge
   if (keyJustPressed("shift") && cpu.keys.s &&
       !cpu.keys.mouse2 &&
+      !cpu.isBeingGrabbed &&
       !shouldBlockAction() &&
       canPlayerSidestep(cpu) &&
       !cpu.isGassed) {
     const sidestepOpponent = opponent;
     if (sidestepOpponent) {
       const initData = getSidestepInitData(cpu.x, sidestepOpponent.x);
+      cpu.isRawParrySuccess = false;
+      cpu.isPerfectRawParrySuccess = false;
       clearChargeState(cpu, true);
       cpu.movementVelocity = 0;
       cpu.isStrafing = false;
+      cpu.isPowerSliding = false;
+      cpu.isBraking = false;
+      cpu.isCrouchStance = false;
+      cpu.isCrouchStrafing = false;
 
       cpu.isSidestepping = true;
       cpu.isSidestepStartup = true;
@@ -2044,23 +1988,29 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
   // Process dodge
   if (keyJustPressed("shift") && 
       !cpu.keys.mouse2 &&
-      !shouldBlockAction() &&
-      canPlayerUseAction(cpu) &&
-      !cpu.isGassed &&
-      !cpu.isDodging) {
+      !cpu.isBeingGrabbed &&
+      canPlayerDash(cpu) &&
+      !cpu.isGassed) {
     
+    cpu.isRawParrySuccess = false;
+    cpu.isPerfectRawParrySuccess = false;
+    clearChargeState(cpu, true);
     cpu.movementVelocity = 0;
     cpu.isStrafing = false;
-    clearChargeState(cpu, true);
+    cpu.isPowerSliding = false;
+    cpu.isBraking = false;
     
     cpu.isDodging = true;
     cpu.isDodgeStartup = true;
     cpu.dodgeStartTime = currentTime;
-    cpu.dodgeStartupEndTime = currentTime + 50; // DODGE_STARTUP_MS
-    cpu.dodgeEndTime = currentTime + 270; // DODGE_DURATION (startup + active)
+    cpu.dodgeStartupEndTime = currentTime + DODGE_STARTUP_MS;
+    cpu.dodgeEndTime = currentTime + DODGE_DURATION;
     cpu.dodgeStartX = cpu.x;
+    cpu.currentAction = "dash";
+    cpu.actionLockUntil = currentTime + 100;
+    cpu.justLandedFromDodge = false;
     
-    cpu.stamina = Math.max(0, cpu.stamina - AI_CONFIG.DODGE_STAMINA_COST);
+    cpu.stamina = Math.max(0, cpu.stamina - DODGE_STAMINA_COST);
     
     if (cpu.keys.a) {
       cpu.dodgeDirection = -1;
@@ -2116,15 +2066,40 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
 
   // Process raw parry
   if (keyJustPressed("s") && 
-      canPlayerUseAction(cpu) &&
+      !shouldBlockAction() &&
       !cpu.isRawParrying &&
-      !cpu.isChargingAttack &&
+      !cpu.isRawParryStun &&
+      !cpu.isSidestepping &&
+      !cpu.isGrabbing &&
+      !cpu.isBeingGrabbed &&
+      !cpu.isGrabbingMovement &&
+      !cpu.isWhiffingGrab &&
+      !cpu.isGrabClashing &&
+      !cpu.isThrowing &&
+      !cpu.isBeingThrown &&
       !cpu.isAttacking &&
-      !shouldBlockAction()) {
+      !cpu.isHit &&
+      !cpu.isThrowingSnowball &&
+      !cpu.isSpawningPumoArmy &&
+      !cpu.canMoveToReady &&
+      canPlayerUseAction(cpu)) {
     
+    cpu.isRawParrySuccess = false;
+    cpu.isPerfectRawParrySuccess = false;
     cpu.isRawParrying = true;
     cpu.rawParryStartTime = currentTime;
     cpu.rawParryMinDurationMet = false;
+    cpu.stamina = Math.max(0, cpu.stamina - RAW_PARRY_STAMINA_COST);
+    clearChargeState(cpu, true);
+    cpu.movementVelocity = 0;
+    cpu.isStrafing = false;
+    cpu.isPowerSliding = false;
+    cpu.isCrouchStance = false;
+    cpu.isCrouchStrafing = false;
+    cpu.pendingSlapCount = 0;
+    cpu.pendingGrabEnder = false;
+    cpu.slapStringPosition = 0;
+    cpu.slapStringWindowUntil = 0;
     
     cpu._prevKeys = { ...cpu.keys };
     return;
@@ -2144,6 +2119,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
   
   // Process F key power-ups
   if (keyJustPressed("f") && 
+      !shouldBlockAction() &&
       (cpu.activePowerUp === "snowball" || cpu.activePowerUp === "pumo_army") &&
       (cpu.activePowerUp !== "snowball" || (cpu.snowballThrowsRemaining ?? 3) > 0) &&
       !cpu.snowballCooldown &&
@@ -2159,8 +2135,11 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       !cpu.isHit &&
       !cpu.isRawParryStun &&
       !cpu.isRawParrying &&
-      !cpu.canMoveToReady &&
-      !cpu.isChargingAttack) {
+      !cpu.canMoveToReady) {
+    
+    if (cpu.isChargingAttack) {
+      clearChargeState(cpu, true);
+    }
     
     if (cpu.activePowerUp === "snowball") {
       if (cpu.snowballThrowsRemaining == null) {
@@ -2171,6 +2150,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
         return;
       }
 
+      cpu.stamina = Math.max(0, cpu.stamina - SLAP_ATTACK_STAMINA_COST);
       cpu.isThrowingSnowball = true;
       cpu.currentAction = "snowball";
       cpu.actionLockUntil = currentTime + 250;
@@ -2205,6 +2185,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       cpu._prevKeys = { ...cpu.keys };
       return;
     } else if (cpu.activePowerUp === "pumo_army") {
+      cpu.stamina = Math.max(0, cpu.stamina - CHARGED_ATTACK_STAMINA_COST);
       cpu.isSpawningPumoArmy = true;
       cpu.currentAction = "pumo_army";
       cpu.actionLockUntil = currentTime + 400;
@@ -2213,33 +2194,38 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       cpu.isStrafing = false;
       
       const armyDirection = cpu.facing === 1 ? -1 : 1;
-      const numClones = 3;
-      const spawnDelay = 1000;
-      const startX = armyDirection === 1 ? 0 : 1150;
-      const GROUND_LEVEL = 230;
-      
-      for (let i = 0; i < numClones; i++) {
-        setPlayerTimeout(cpu.id, () => {
-          const clone = {
-            id: Math.random().toString(36).substr(2, 9),
-            x: startX,
-            y: GROUND_LEVEL + 5,
-            velocityX: armyDirection * 1.5,
-            facing: armyDirection,
-            isStrafing: true,
-            isSlapAttacking: true,
-            slapCooldown: 0,
-            lastSlapTime: 0,
-            spawnTime: Date.now(),
-            lifespan: 3000,
-            ownerId: cpu.id,
-            ownerFighter: cpu.fighter,
-            hasHit: false,
-            size: 0.6,
-          };
-          cpu.pumoArmy.push(clone);
-        }, i * spawnDelay);
-      }
+      const startX = armyDirection === 1 ? -100 : 1200;
+      const Y_SPREAD = 35;
+      const V_OFFSET = 40;
+
+      const lanes = [
+        { lane: 'top',    targetY: GROUND_LEVEL + Y_SPREAD, xOffset: 0 },
+        { lane: 'middle', targetY: GROUND_LEVEL + 5,        xOffset: armyDirection * V_OFFSET },
+        { lane: 'bottom', targetY: GROUND_LEVEL - Y_SPREAD, xOffset: 0 },
+      ];
+
+      lanes.forEach(({ lane, targetY, xOffset }) => {
+        const clone = {
+          id: Math.random().toString(36).substr(2, 9),
+          x: startX + xOffset,
+          y: GROUND_LEVEL - DOHYO_FALL_DEPTH,
+          targetY,
+          velocityX: armyDirection * 1.5,
+          facing: armyDirection,
+          isStrafing: true,
+          isSlapAttacking: true,
+          slapCooldown: 0,
+          lastSlapTime: 0,
+          spawnTime: Date.now(),
+          lifespan: 10000,
+          ownerId: cpu.id,
+          ownerFighter: cpu.fighter,
+          hasHit: false,
+          size: 0.6,
+          lane,
+        };
+        cpu.pumoArmy.push(clone);
+      });
       
       cpu.pumoArmyCooldown = true;
       
