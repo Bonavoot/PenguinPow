@@ -11,9 +11,9 @@ const WIN_TYPE_CONFIG = {
   grabPush: { english: "FORCE OUT!", japanese: "寄り切り" },
   grabThrow: { english: "OVERARM THROW!", japanese: "上手投げ" },
   okuridashi: { english: "REAR PUSH OUT!", japanese: "送り出し" },
-  snowball: { english: "RING OUT!", japanese: null },
-  pumoClone: { english: "RING OUT!", japanese: null },
-  ringOut: { english: "RING OUT!", japanese: null },
+  snowball: { english: "RING OUT!", japanese: "場外" },
+  pumoClone: { english: "RING OUT!", japanese: "場外" },
+  ringOut: { english: "RING OUT!", japanese: "場外" },
 };
 
 // ============================================
@@ -214,12 +214,12 @@ const BrushStroke = styled.div`
         transparent)`
     : `linear-gradient(90deg,
         transparent,
-        rgba(100,90,80,0.12) 5%,
-        rgba(120,105,90,0.3) 16%,
-        rgba(140,120,100,0.48) 38%,
-        rgba(140,120,100,0.52) 52%,
-        rgba(120,105,90,0.35) 72%,
-        rgba(100,90,80,0.16) 90%,
+        rgba(180,40,40,0.18) 5%,
+        rgba(200,50,50,0.45) 16%,
+        rgba(210,55,55,0.7) 38%,
+        rgba(210,55,55,0.75) 52%,
+        rgba(200,50,50,0.5) 72%,
+        rgba(180,40,40,0.22) 90%,
         transparent)`
   };
 
@@ -241,7 +241,7 @@ const BrushSplash = styled.div`
 
   background: ${p => p.$isVictory
     ? "rgba(255,215,0,0.5)"
-    : "rgba(140,130,115,0.35)"
+    : "rgba(200,50,50,0.4)"
   };
 
   animation: ${splashAppear} 3s ease-out forwards;

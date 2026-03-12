@@ -207,15 +207,14 @@ const HakkiyoiText = styled.div`
   z-index: 1004;
   pointer-events: none;
 
-  font-family: "Bungee", cursive;
-  font-size: clamp(2.4rem, 7cqw, 6rem);
+  font-family: "Bungee", "Impact", sans-serif;
+  font-size: clamp(2.2rem, 6.5cqw, 5.8rem);
   font-weight: 400;
   line-height: 1;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   white-space: nowrap;
 
-  /* Solid gold — no background-clip tricks, fully readable */
   color: #FFD700;
   -webkit-text-stroke: clamp(1.5px, 0.25cqw, 3px) #3d0e0e;
 
@@ -230,12 +229,12 @@ const HakkiyoiText = styled.div`
   animation: ${css`${slamIn}`} ${p => p.$duration} cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
 
   @media (max-width: 900px) {
-    font-size: clamp(1.8rem, 6cqw, 4.2rem);
-    letter-spacing: 0.1em;
+    font-size: clamp(1.8rem, 5.6cqw, 4.2rem);
+    letter-spacing: 0.08em;
   }
   @media (max-width: 600px) {
-    font-size: clamp(1.4rem, 5.5cqw, 3rem);
-    letter-spacing: 0.08em;
+    font-size: clamp(1.4rem, 5cqw, 3rem);
+    letter-spacing: 0.06em;
   }
 `;
 
@@ -249,7 +248,7 @@ const HakkiyoiKanji = styled.div`
   pointer-events: none;
 
   font-family: "Noto Serif JP", "Yu Mincho", serif;
-  font-size: clamp(0.85rem, 1.8cqw, 1.5rem);
+  font-size: clamp(0.8rem, 1.7cqw, 1.4rem);
   color: #d4af37;
   letter-spacing: 0.35em;
   opacity: 0;
@@ -352,7 +351,7 @@ const IceCrystal = styled.div`
 // TE WO TSUITE STYLED COMPONENTS
 // ============================================
 
-/* TE WO TSUITE text — smaller, clean white, subtle */
+/* HANDS DOWN text — matches RoundResult style, slightly smaller than HAKKIYOI/RoundResult */
 const TeWoTsuiteText = styled.div`
   position: fixed;
   top: ${ANNOUNCE_Y};
@@ -360,44 +359,43 @@ const TeWoTsuiteText = styled.div`
   z-index: 1004;
   pointer-events: none;
 
-  font-family: "Bungee", cursive;
-  font-size: clamp(1.3rem, 3.8cqw, 3rem);
+  font-family: "Bungee", "Impact", sans-serif;
+  font-size: clamp(1.65rem, 5cqw, 4.4rem);
   font-weight: 400;
   line-height: 1;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   white-space: nowrap;
 
   color: #FFFFFF;
-  -webkit-text-stroke: clamp(1px, 0.15cqw, 2px) rgba(0, 0, 0, 0.8);
+  -webkit-text-stroke: clamp(1.5px, 0.2cqw, 2.5px) rgba(10, 10, 10, 0.85);
 
   text-shadow:
-    clamp(-4px, -0.15cqw, -2px) clamp(-4px, -0.15cqw, -2px) 0 #000,
-    clamp(2px, 0.15cqw, 4px) clamp(-4px, -0.15cqw, -2px) 0 #000,
-    clamp(-4px, -0.15cqw, -2px) clamp(2px, 0.15cqw, 4px) 0 #000,
-    clamp(2px, 0.15cqw, 4px) clamp(2px, 0.15cqw, 4px) 0 #000,
-    0 0 clamp(8px, 0.8cqw, 16px) rgba(0, 0, 0, 0.7),
-    0 0 clamp(16px, 1.6cqw, 32px) rgba(0, 0, 0, 0.3);
+    clamp(2px, 0.14cqw, 3px) clamp(2px, 0.14cqw, 3px) 0 rgba(10, 8, 6, 0.9),
+    clamp(3px, 0.28cqw, 5px) clamp(3px, 0.28cqw, 5px) 0 rgba(10, 8, 6, 0.65),
+    clamp(5px, 0.4cqw, 8px) clamp(5px, 0.4cqw, 8px) 0 rgba(8, 6, 4, 0.38),
+    clamp(7px, 0.52cqw, 10px) clamp(7px, 0.52cqw, 10px) 0 rgba(5, 4, 2, 0.18),
+    0 clamp(2px, 0.24cqw, 4px) clamp(8px, 0.8cqw, 16px) rgba(0, 0, 0, 0.6);
 
   animation: ${css`${slideIn}`} ${p => p.$duration} cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
 
   @media (max-width: 900px) {
-    font-size: clamp(1rem, 3.2cqw, 2.2rem);
-    letter-spacing: 0.14em;
+    font-size: clamp(1.35rem, 4.4cqw, 3.2rem);
+    letter-spacing: 0.08em;
   }
   @media (max-width: 600px) {
-    font-size: clamp(0.85rem, 2.8cqw, 1.7rem);
-    letter-spacing: 0.1em;
+    font-size: clamp(1.1rem, 3.8cqw, 2.2rem);
+    letter-spacing: 0.06em;
   }
 `;
 
-/* Subtle brush stroke under TE WO TSUITE */
+/* Brush stroke under HANDS DOWN */
 const TeWoBrush = styled.div`
   position: fixed;
-  top: calc(${ANNOUNCE_Y} + clamp(16px, 2.5cqh, 28px));
+  top: calc(${ANNOUNCE_Y} + clamp(15px, 2.5cqh, 32px));
   left: 50%;
   transform: translateX(-50%);
-  width: clamp(200px, 32cqw, 380px);
+  width: clamp(190px, 30cqw, 360px);
   height: clamp(10px, 1.5cqh, 18px);
   z-index: 1003;
   pointer-events: none;
@@ -417,36 +415,37 @@ const TeWoBrush = styled.div`
 
   @media (max-width: 900px) {
     width: clamp(160px, 28cqw, 290px);
-    top: calc(${ANNOUNCE_Y} + clamp(12px, 2cqh, 22px));
+    top: calc(${ANNOUNCE_Y} + clamp(12px, 2cqh, 26px));
   }
   @media (max-width: 600px) {
-    width: clamp(120px, 26cqw, 210px);
-    top: calc(${ANNOUNCE_Y} + clamp(10px, 1.8cqh, 18px));
+    width: clamp(120px, 26cqw, 220px);
+    top: calc(${ANNOUNCE_Y} + clamp(10px, 1.8cqh, 20px));
   }
 `;
 
-/* Japanese subtitle for TE WO TSUITE — very faint */
+/* Japanese subtitle 手を付いて below HANDS DOWN */
 const TeWoKanji = styled.div`
   position: fixed;
-  top: calc(${ANNOUNCE_Y} + clamp(18px, 3cqh, 32px));
+  top: calc(${ANNOUNCE_Y} + clamp(24px, 4cqh, 46px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 1004;
   pointer-events: none;
 
   font-family: "Noto Serif JP", "Yu Mincho", serif;
-  font-size: clamp(0.65rem, 1.3cqw, 1rem);
-  color: rgba(255, 255, 255, 0.65);
+  font-size: clamp(0.65rem, 1.3cqw, 1.05rem);
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.75);
   letter-spacing: 0.3em;
   opacity: 0;
   animation: ${fadeIO} ${p => p.$duration} ease-out forwards;
   animation-delay: 0.1s;
 
-  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.8);
+  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.9);
 
   @media (max-width: 600px) {
     font-size: clamp(0.55rem, 1.1cqw, 0.8rem);
-    top: calc(${ANNOUNCE_Y} + clamp(14px, 2.5cqh, 24px));
+    top: calc(${ANNOUNCE_Y} + clamp(20px, 3.2cqh, 36px));
   }
 `;
 
@@ -532,7 +531,7 @@ const SumoGameAnnouncement = ({
   return (
     <>
       <ScreenFlash $type="tewotsuite" />
-      <TeWoTsuiteText $duration={durationStr}>TE WO TSUITE !</TeWoTsuiteText>
+      <TeWoTsuiteText $duration={durationStr}>HANDS DOWN</TeWoTsuiteText>
       <TeWoKanji $duration={durationStr}>手を付いて</TeWoKanji>
       <TeWoBrush $duration={durationStr} />
     </>

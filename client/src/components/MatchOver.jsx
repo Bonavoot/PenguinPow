@@ -41,17 +41,17 @@ const victoryGlow = keyframes`
 const defeatPulse = keyframes`
   0%, 100% { 
     text-shadow: 
-      3px 3px 0 #0e0e1a,
-      6px 6px 0 rgba(10, 10, 22, 0.6),
-      0 0 6px rgba(0, 0, 0, 0.3),
-      0 2px 8px rgba(0, 0, 0, 0.5);
+      3px 3px 0 #3a0a0a,
+      6px 6px 0 rgba(40, 8, 8, 0.6),
+      0 0 6px rgba(200, 50, 50, 0.2),
+      0 2px 8px rgba(0, 0, 0, 0.6);
   }
   50% { 
     text-shadow: 
-      3px 3px 0 #0e0e1a,
-      6px 6px 0 rgba(10, 10, 22, 0.6),
-      0 0 10px rgba(0, 0, 0, 0.4),
-      0 2px 8px rgba(0, 0, 0, 0.5);
+      3px 3px 0 #3a0a0a,
+      6px 6px 0 rgba(40, 8, 8, 0.6),
+      0 0 12px rgba(200, 50, 50, 0.35),
+      0 2px 8px rgba(0, 0, 0, 0.6);
   }
 `;
 
@@ -230,10 +230,10 @@ const ResultSection = styled.div`
 const ResultText = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(1rem, 2.8cqw, 1.6rem);
-  color: #FFFFFF;
+  color: ${props => props.$isWinner ? '#FFD700' : '#d43535'};
   -webkit-text-stroke: ${props => props.$isWinner
     ? 'clamp(1.5px, 0.15cqw, 3px) #1a0e06'
-    : 'clamp(1.5px, 0.15cqw, 3px) #0e0e1a'};
+    : 'clamp(1.5px, 0.15cqw, 3px) #3a0a0a'};
   paint-order: stroke fill;
   text-transform: uppercase;
   letter-spacing: 0.15em;
