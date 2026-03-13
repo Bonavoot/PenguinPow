@@ -42,6 +42,10 @@ const {
   AT_THE_ROPES_DURATION,
   ROPE_JUMP_STARTUP_MS, ROPE_JUMP_ACTIVE_MS, ROPE_JUMP_LANDING_RECOVERY_MS,
   ROPE_JUMP_ARC_HEIGHT,
+  HIT_FALL_BASE_MS,
+  HIT_FALL_HEIGHT_SCALE,
+  HIT_FALL_POP_FRACTION,
+  HIT_FALL_POP_HEIGHT_RATIO,
   KNOCKBACK_IMMUNITY_DURATION,
   STAMINA_REGEN_INTERVAL_MS, STAMINA_REGEN_AMOUNT,
   SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST, DODGE_STAMINA_COST,
@@ -82,6 +86,8 @@ const {
   triggerHitstop,
   isRoomInHitstop,
   emitThrottledScreenShake,
+  clearHitFall,
+  clearSidestepHitReturn,
 } = require("./gameUtils");
 
 // Import game functions
@@ -1706,6 +1712,43 @@ function tick(delta) {
         }
       }
 
+      // ── Hit Fall — parametric arc back to ground after airborne hit ──
+      if (player.isHitFalling) {
+        const heightAboveGround = player.hitFallStartY - GROUND_LEVEL;
+        const fallDuration = HIT_FALL_BASE_MS + heightAboveGround * HIT_FALL_HEIGHT_SCALE;
+        const elapsed = Date.now() - player.hitFallStartTime;
+        const t = Math.min(elapsed / fallDuration, 1);
+        const popHeight = heightAboveGround * HIT_FALL_POP_HEIGHT_RATIO;
+
+        if (t < HIT_FALL_POP_FRACTION) {
+          const popT = t / HIT_FALL_POP_FRACTION;
+          player.y = player.hitFallStartY + popHeight * Math.sin(Math.PI * popT * 0.5);
+        } else {
+          const fallT = (t - HIT_FALL_POP_FRACTION) / (1 - HIT_FALL_POP_FRACTION);
+          const easeIn = fallT * fallT;
+          const peakY = player.hitFallStartY + popHeight;
+          player.y = peakY - (peakY - GROUND_LEVEL) * easeIn;
+        }
+
+        if (t >= 1) {
+          player.y = GROUND_LEVEL;
+          clearHitFall(player);
+        }
+      }
+
+      // ── Sidestep Hit Return — quick ease back to ground from dip ──
+      if (player.isSidestepHitReturn) {
+        const elapsed = Date.now() - player.sidestepHitReturnStartTime;
+        const t = Math.min(elapsed / player.sidestepHitReturnDuration, 1);
+        const easeOut = 1 - (1 - t) * (1 - t);
+        player.y = player.sidestepHitReturnStartY + (GROUND_LEVEL - player.sidestepHitReturnStartY) * easeOut;
+
+        if (t >= 1) {
+          player.y = GROUND_LEVEL;
+          clearSidestepHitReturn(player);
+        }
+      }
+
       // Grab Movement
       if (player.isGrabbingMovement) {
         const currentTime = Date.now();
@@ -1890,6 +1933,7 @@ function tick(delta) {
           
           // CRITICAL: Clear ALL action states when being grabbed
           clearAllActionStates(opponent);
+          opponent.y = GROUND_LEVEL;
           opponent.isBeingGrabbed = true;
           opponent.isBeingGrabPushed = false;
           opponent.lastGrabPushStaminaDrainTime = 0;
@@ -2534,8 +2578,7 @@ function tick(delta) {
           }
         }
 
-        // Keep player from going below ground level (skip during rope jump - arc controls Y)
-        if (player.y > GROUND_LEVEL && !player.isRopeJumping) {
+        if (player.y > GROUND_LEVEL && !player.isRopeJumping && !player.isHitFalling) {
           player.y -= delta * speedFactor + 10;
           player.y = Math.max(player.y, GROUND_LEVEL);
         }
@@ -2730,6 +2773,7 @@ function tick(delta) {
 
           // CRITICAL: Clear ALL action states when hitting the ropes
           clearAllActionStates(player);
+          player.y = GROUND_LEVEL;
           
           // Set at the ropes state
           player.isAtTheRopes = true;

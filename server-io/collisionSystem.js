@@ -30,6 +30,8 @@ const {
   CINEMATIC_KB_DI_FRICTION,
   CINEMATIC_KB_MOVEMENT_TRANSFER,
   CINEMATIC_KB_MOVEMENT_FRICTION,
+  SIDESTEP_HIT_RETURN_BASE_MS,
+  SIDESTEP_HIT_RETURN_MIN_MS,
 } = require("./constants");
 
 const {
@@ -45,6 +47,8 @@ const {
   MAP_RIGHT_BOUNDARY,
   DOHYO_LEFT_BOUNDARY,
   DOHYO_RIGHT_BOUNDARY,
+  clearHitFall,
+  clearSidestepHitReturn,
 } = require("./gameUtils");
 
 const { grabBeatsSlap } = require("./combatHelpers");
@@ -628,6 +632,7 @@ function processHit(player, otherPlayer, rooms, io) {
     
     // CRITICAL: Clear ALL action states before setting isHit
     clearAllActionStates(player);
+    player.y = GROUND_LEVEL;
     
     player.knockbackVelocity.x = knockbackAmount * knockbackDirection;
     player.knockbackVelocity.y = 0;
@@ -813,6 +818,8 @@ function processHit(player, otherPlayer, rooms, io) {
     // === ROCK-SOLID HIT PROCESSING ===
     // Clear any existing hit state cleanup to prevent conflicts
     timeoutManager.clearPlayerSpecific(otherPlayer.id, "hitStateReset");
+    timeoutManager.clearPlayerSpecific(otherPlayer.id, "parryKnockbackReset");
+    timeoutManager.clearPlayerSpecific(otherPlayer.id, "perfectParryStunReset");
     timeoutManager.clearPlayerSpecific(otherPlayer.id, "grabMovementTimeout");
     timeoutManager.clearPlayerSpecific(otherPlayer.id, "grabClashResolution");
     timeoutManager.clearPlayerSpecific(otherPlayer.id, "atTheRopesTimeout");
@@ -1133,7 +1140,23 @@ function processHit(player, otherPlayer, rooms, io) {
     }
 
     otherPlayer.knockbackVelocity.y = 0;
-    otherPlayer.y = GROUND_LEVEL;
+
+    if (otherPlayer.y > GROUND_LEVEL) {
+      clearSidestepHitReturn(otherPlayer);
+      otherPlayer.isHitFalling = true;
+      otherPlayer.hitFallStartTime = Date.now();
+      otherPlayer.hitFallStartY = otherPlayer.y;
+    } else if (otherPlayer.y < GROUND_LEVEL) {
+      clearHitFall(otherPlayer);
+      const depthRatio = (GROUND_LEVEL - otherPlayer.y) / 55;
+      const duration = SIDESTEP_HIT_RETURN_MIN_MS + (SIDESTEP_HIT_RETURN_BASE_MS - SIDESTEP_HIT_RETURN_MIN_MS) * Math.min(depthRatio, 1);
+      otherPlayer.isSidestepHitReturn = true;
+      otherPlayer.sidestepHitReturnStartTime = Date.now();
+      otherPlayer.sidestepHitReturnStartY = otherPlayer.y;
+      otherPlayer.sidestepHitReturnDuration = duration;
+    } else {
+      otherPlayer.y = GROUND_LEVEL;
+    }
 
     // === HIT STUN DURATION ===
     // String hits 1 & 2: identical 260ms — hit 2's fast 195ms cycle guarantees

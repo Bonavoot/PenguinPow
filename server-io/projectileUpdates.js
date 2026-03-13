@@ -4,6 +4,8 @@ const {
   POWER_UP_TYPES,
   PERFECT_PARRY_WINDOW, PERFECT_PARRY_ANIMATION_LOCK, PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK,
   RAW_PARRY_STAMINA_REFUND, PARRY_SUCCESS_DURATION,
+  SIDESTEP_HIT_RETURN_BASE_MS,
+  SIDESTEP_HIT_RETURN_MIN_MS,
 } = require("./constants");
 
 const {
@@ -14,6 +16,8 @@ const {
   emitThrottledScreenShake,
   DOHYO_LEFT_BOUNDARY,
   DOHYO_RIGHT_BOUNDARY,
+  clearHitFall,
+  clearSidestepHitReturn,
 } = require("./gameUtils");
 
 function updateProjectiles(room, io, delta) {
@@ -124,10 +128,28 @@ function updateProjectiles(room, io, delta) {
           
           // CRITICAL: Clear ALL action states before setting isHit
           clearAllActionStates(targetPlayer);
+
+          if (targetPlayer.y > GROUND_LEVEL) {
+            clearSidestepHitReturn(targetPlayer);
+            targetPlayer.isHitFalling = true;
+            targetPlayer.hitFallStartTime = Date.now();
+            targetPlayer.hitFallStartY = targetPlayer.y;
+          } else if (targetPlayer.y < GROUND_LEVEL) {
+            clearHitFall(targetPlayer);
+            const depthRatio = (GROUND_LEVEL - targetPlayer.y) / 55;
+            const duration = SIDESTEP_HIT_RETURN_MIN_MS + (SIDESTEP_HIT_RETURN_BASE_MS - SIDESTEP_HIT_RETURN_MIN_MS) * Math.min(depthRatio, 1);
+            targetPlayer.isSidestepHitReturn = true;
+            targetPlayer.sidestepHitReturnStartTime = Date.now();
+            targetPlayer.sidestepHitReturnStartY = targetPlayer.y;
+            targetPlayer.sidestepHitReturnDuration = duration;
+          } else {
+            targetPlayer.y = GROUND_LEVEL;
+          }
+
           targetPlayer.isHit = true;
           targetPlayer.lastHitType = "snowball";
           targetPlayer.isAlreadyHit = true;
-          targetPlayer.lastHitTime = Date.now(); // Track hit time for safety mechanism
+          targetPlayer.lastHitTime = Date.now();
 
           // Apply knockback only if not immune
           if (canApplyKnockback(targetPlayer)) {
@@ -419,10 +441,28 @@ function updateProjectiles(room, io, delta) {
           
           // CRITICAL: Clear ALL action states before setting isHit
           clearAllActionStates(opponent);
+
+          if (opponent.y > GROUND_LEVEL) {
+            clearSidestepHitReturn(opponent);
+            opponent.isHitFalling = true;
+            opponent.hitFallStartTime = Date.now();
+            opponent.hitFallStartY = opponent.y;
+          } else if (opponent.y < GROUND_LEVEL) {
+            clearHitFall(opponent);
+            const depthRatio = (GROUND_LEVEL - opponent.y) / 55;
+            const duration = SIDESTEP_HIT_RETURN_MIN_MS + (SIDESTEP_HIT_RETURN_BASE_MS - SIDESTEP_HIT_RETURN_MIN_MS) * Math.min(depthRatio, 1);
+            opponent.isSidestepHitReturn = true;
+            opponent.sidestepHitReturnStartTime = Date.now();
+            opponent.sidestepHitReturnStartY = opponent.y;
+            opponent.sidestepHitReturnDuration = duration;
+          } else {
+            opponent.y = GROUND_LEVEL;
+          }
+
           opponent.isHit = true;
           opponent.lastHitType = "pumoClone";
           opponent.isAlreadyHit = true;
-          opponent.lastHitTime = Date.now(); // Track hit time for safety mechanism
+          opponent.lastHitTime = Date.now();
 
           // Apply knockback only if not immune (lighter than normal slap)
           if (canApplyKnockback(opponent)) {

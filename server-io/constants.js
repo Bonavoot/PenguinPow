@@ -40,7 +40,8 @@ const DELTA_TRACKED_PROPS = [
   'isPowerSliding', 'isBraking', 'movementVelocity', 'isStrafing',
   'isRopeJumping', 'ropeJumpPhase', 'sizeMultiplier', 'isGassed',
   'isSidestepping', 'isSidestepStartup', 'isSidestepRecovery',
-  'isSlapParryRecovering'
+  'isSlapParryRecovering',
+  'isHitFalling', 'isSidestepHitReturn'
 ];
 
 // Pre-compute the combined props list once (avoids spread on every call)
@@ -343,6 +344,16 @@ const ROPE_JUMP_SAFE_HEIGHT = 80;        // Y offset above which player can't be
 const ROPE_JUMP_BOUNDARY_ZONE = 40;      // Tight to the rope — must be near the boundary to jump
 
 // ============================================
+// Hit Recovery — smooth Y return when hit at non-ground positions
+// ============================================
+const HIT_FALL_BASE_MS = 150;              // Min fall duration (near ground)
+const HIT_FALL_HEIGHT_SCALE = 1.6;        // Extra ms per unit of height above ground
+const HIT_FALL_POP_FRACTION = 0.12;       // Fraction of fall time spent on upward pop
+const HIT_FALL_POP_HEIGHT_RATIO = 0.08;   // Pop height as fraction of current height above ground
+const SIDESTEP_HIT_RETURN_BASE_MS = 80;   // Base duration for sidestep Y return at max dip depth
+const SIDESTEP_HIT_RETURN_MIN_MS = 30;    // Floor — even a tiny dip gets a brief ease
+
+// ============================================
 // Charge Clash (charged vs charged simultaneous collision)
 // ============================================
 const CHARGE_CLASH_RECOVERY_DURATION = 450; // Recovery duration after clash (slightly longer than normal charged recovery)
@@ -620,6 +631,14 @@ module.exports = {
   ROPE_JUMP_ARC_HEIGHT,
   ROPE_JUMP_SAFE_HEIGHT,
   ROPE_JUMP_BOUNDARY_ZONE,
+
+  // Hit recovery
+  HIT_FALL_BASE_MS,
+  HIT_FALL_HEIGHT_SCALE,
+  HIT_FALL_POP_FRACTION,
+  HIT_FALL_POP_HEIGHT_RATIO,
+  SIDESTEP_HIT_RETURN_BASE_MS,
+  SIDESTEP_HIT_RETURN_MIN_MS,
 
   // Charge clash
   CHARGE_CLASH_RECOVERY_DURATION,

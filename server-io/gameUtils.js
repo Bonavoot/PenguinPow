@@ -479,8 +479,16 @@ function clearAllActionStates(player) {
   player.isSpawningPumoArmy = false;
   player.isThrowingSalt = false;
   
-  // Clear rope jump states (keep Y position — gravity handles the fall naturally,
-  // hitstop freezes at the air contact point for fighting-game-style anti-air clarity)
+  // Clear hit recovery states (Y snap happens in the caller when appropriate)
+  player.isHitFalling = false;
+  player.hitFallStartTime = 0;
+  player.hitFallStartY = 0;
+  player.isSidestepHitReturn = false;
+  player.sidestepHitReturnStartTime = 0;
+  player.sidestepHitReturnStartY = 0;
+  player.sidestepHitReturnDuration = 0;
+
+  // Clear rope jump states (keep Y position — hit recovery systems handle the fall)
   player.isRopeJumping = false;
   player.ropeJumpPhase = null;
   player.ropeJumpStartTime = 0;
@@ -490,6 +498,19 @@ function clearAllActionStates(player) {
   player.ropeJumpActiveStartTime = 0;
   player.ropeJumpLandingTime = 0;
   player.ropeJumpBufferedAttackRelease = 0;
+}
+
+function clearHitFall(player) {
+  player.isHitFalling = false;
+  player.hitFallStartTime = 0;
+  player.hitFallStartY = 0;
+}
+
+function clearSidestepHitReturn(player) {
+  player.isSidestepHitReturn = false;
+  player.sidestepHitReturnStartTime = 0;
+  player.sidestepHitReturnStartY = 0;
+  player.sidestepHitReturnDuration = 0;
 }
 
 function isWithinMapBoundaries(
@@ -731,4 +752,6 @@ module.exports = {
   isRoomInHitstop,
   emitThrottledScreenShake,
   getSidestepInitData,
+  clearHitFall,
+  clearSidestepHitReturn,
 };

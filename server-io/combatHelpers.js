@@ -2,6 +2,7 @@ const {
   THROW_RANGE, GRAB_RANGE,
   GRAB_STARTUP_DURATION_MS, SLAP_ATTACK_STARTUP_MS,
   GRAB_STATES,
+  GROUND_LEVEL,
 } = require("./constants");
 
 const {
@@ -197,6 +198,7 @@ function resolveGrabClash(room, io) {
   
   // CRITICAL: Clear ALL action states when being grabbed
   clearAllActionStates(loser);
+  loser.y = GROUND_LEVEL;
   loser.isBeingGrabbed = true;
   loser.isBeingGrabPushed = false;
   loser.isBeingEdgePushed = false;
