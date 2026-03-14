@@ -5,7 +5,7 @@ import { useMemo } from "react";
 // ============================================
 // SHARED Y-POSITION (both announcements live here — below the HUD)
 // ============================================
-const ANNOUNCE_Y = "clamp(90px, 25%, 175px)";
+const ANNOUNCE_Y = "clamp(120px, 32cqh, 220px)";
 
 // ============================================
 // ANIMATIONS
@@ -111,7 +111,7 @@ const ScreenFlash = styled.div`
 
 /* Dark radial vignette behind the text — keeps the call grounded in the arena */
 const DarkVignette = styled.div`
-  position: fixed;
+  position: absolute;
   top: ${ANNOUNCE_Y};
   left: 50%;
   width: clamp(480px, 60cqw, 820px);
@@ -150,7 +150,7 @@ const DarkVignette = styled.div`
 
 /* Warm ceremonial haze — premium gold lift without feeling like HUD geometry */
 const CeremonialGlow = styled.div`
-  position: fixed;
+  position: absolute;
   top: ${ANNOUNCE_Y};
   left: 50%;
   width: clamp(320px, 45cqw, 560px);
@@ -180,7 +180,7 @@ const CeremonialGlow = styled.div`
 
 /* Impact streaks — support the slam without reading like a reticle */
 const ImpactLine = styled.div`
-  position: fixed;
+  position: absolute;
   top: ${ANNOUNCE_Y};
   left: 50%;
   width: clamp(240px, 34cqw, 420px);
@@ -218,7 +218,7 @@ const ImpactLine = styled.div`
 
 /* Broad ceremonial brush under the call — ties it into the stage presentation */
 const HakkiyoiBrush = styled.div`
-  position: fixed;
+  position: absolute;
   top: calc(${ANNOUNCE_Y} + clamp(22px, 3.5cqh, 44px));
   left: 50%;
   transform: translateX(-50%) rotate(-0.5deg);
@@ -253,7 +253,7 @@ const HakkiyoiBrush = styled.div`
 
 /* Main HAKKIYOI text — solid gold, thick outline, heavy shadows = very readable */
 const HakkiyoiText = styled.div`
-  position: fixed;
+  position: absolute;
   top: ${ANNOUNCE_Y};
   left: 50%;
   z-index: 1004;
@@ -294,7 +294,7 @@ const HakkiyoiText = styled.div`
 
 /* Japanese subtitle 八卦良い — gold, below the main text */
 const HakkiyoiKanji = styled.div`
-  position: fixed;
+  position: absolute;
   top: calc(${ANNOUNCE_Y} + clamp(28px, 4.5cqh, 48px));
   left: 50%;
   transform: translateX(-50%);
@@ -322,7 +322,7 @@ const HakkiyoiKanji = styled.div`
 
 /* Ice crystal particle */
 const IceCrystal = styled.div`
-  position: fixed;
+  position: absolute;
   top: ${ANNOUNCE_Y};
   pointer-events: none;
   z-index: 1005;
@@ -347,7 +347,7 @@ const IceCrystal = styled.div`
 
 /* HANDS DOWN text — matches RoundResult style, slightly smaller than HAKKIYOI/RoundResult */
 const TeWoTsuiteText = styled.div`
-  position: fixed;
+  position: absolute;
   top: ${ANNOUNCE_Y};
   left: 50%;
   z-index: 1004;
@@ -387,7 +387,7 @@ const TeWoTsuiteText = styled.div`
 
 /* Brush stroke under HANDS DOWN */
 const TeWoBrush = styled.div`
-  position: fixed;
+  position: absolute;
   top: calc(${ANNOUNCE_Y} + clamp(15px, 2.5cqh, 32px));
   left: 50%;
   transform: translateX(-50%);
@@ -421,7 +421,7 @@ const TeWoBrush = styled.div`
 
 /* Japanese subtitle 手を付いて below HANDS DOWN */
 const TeWoKanji = styled.div`
-  position: fixed;
+  position: absolute;
   top: calc(${ANNOUNCE_Y} + clamp(24px, 4cqh, 46px));
   left: 50%;
   transform: translateX(-50%);

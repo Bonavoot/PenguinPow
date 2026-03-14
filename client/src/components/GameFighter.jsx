@@ -2851,17 +2851,21 @@ const GameFighter = ({
     }
   }, [penguin.isRawParryStun, showStarStunEffect, penguin.id, player.id]);
 
-  // Screen shake effect - OPTIMIZED using requestAnimationFrame
+  // Screen shake effect — applies via CSS custom properties on .game-scene
+  // so the HUD layer (game-hud) stays rock-steady during shakes.
   useEffect(() => {
     if (screenShake.intensity > 0) {
       let animationId;
-      const gameContainer = document.querySelector(".game-container");
+      const gameScene = document.querySelector(".game-scene");
 
       const shakeFrame = () => {
         const elapsed = Date.now() - screenShake.startTime;
         if (elapsed >= screenShake.duration) {
           setScreenShake({ intensity: 0, duration: 0, startTime: 0 });
-          if (gameContainer) gameContainer.style.transform = "";
+          if (gameScene) {
+            gameScene.style.setProperty("--shake-x", "0px");
+            gameScene.style.setProperty("--shake-y", "0px");
+          }
           return;
         }
 
@@ -2872,8 +2876,9 @@ const GameFighter = ({
         const offsetX = (Math.random() - 0.5) * remainingIntensity * 14;
         const offsetY = (Math.random() - 0.5) * remainingIntensity * 10;
 
-        if (gameContainer) {
-          gameContainer.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
+        if (gameScene) {
+          gameScene.style.setProperty("--shake-x", `${offsetX}px`);
+          gameScene.style.setProperty("--shake-y", `${offsetY}px`);
         }
 
         animationId = requestAnimationFrame(shakeFrame);
@@ -2883,7 +2888,10 @@ const GameFighter = ({
 
       return () => {
         cancelAnimationFrame(animationId);
-        if (gameContainer) gameContainer.style.transform = "";
+        if (gameScene) {
+          gameScene.style.setProperty("--shake-x", "0px");
+          gameScene.style.setProperty("--shake-y", "0px");
+        }
       };
     }
   }, [screenShake]);
@@ -3273,16 +3281,16 @@ const GameFighter = ({
                 />
               );
             })()}
-            {gyojiCall && (
+            {index === 0 && gyojiCall && (
               <SumoGameAnnouncement type="tewotsuite" duration={2} />
             )}
-            {hakkiyoi && (
+            {index === 0 && hakkiyoi && (
               <SumoGameAnnouncement type="hakkiyoi" duration={1.8} />
             )}
-            {showRoundResult && !matchOver && (
+            {index === 0 && showRoundResult && !matchOver && (
               <RoundResult isVictory={winner.id === localId} winType={winType} />
             )}
-            {matchOver && (
+            {index === 0 && matchOver && (
               <MatchOver
                 winner={winner}
                 localId={localId}

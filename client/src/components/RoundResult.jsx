@@ -2,7 +2,7 @@ import React, { memo, useMemo } from "react";
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
 
-const ANNOUNCE_Y = "clamp(90px, 25%, 175px)";
+const ANNOUNCE_Y = "clamp(120px, 32cqh, 220px)";
 
 const WIN_TYPE_CONFIG = {
   slap: { english: "THRUST OUT !", japanese: "突き出し" },
@@ -99,7 +99,7 @@ const ScreenFlash = styled.div`
 `;
 
 const ContrastHaze = styled.div`
-  position: fixed;
+  position: absolute;
   top: ${ANNOUNCE_Y};
   left: 50%;
   width: clamp(440px, 58cqw, 720px);
@@ -139,7 +139,7 @@ const ContrastHaze = styled.div`
 `;
 
 const MainText = styled.div`
-  position: fixed;
+  position: absolute;
   top: ${ANNOUNCE_Y};
   left: 50%;
   z-index: 1005;
@@ -191,7 +191,7 @@ const MainText = styled.div`
 `;
 
 const BrushStroke = styled.div`
-  position: fixed;
+  position: absolute;
   top: calc(${ANNOUNCE_Y} + clamp(22px, 3.5cqh, 48px));
   left: 50%;
   transform: translateX(-50%) rotate(-0.8deg);
@@ -234,7 +234,7 @@ const BrushStroke = styled.div`
 `;
 
 const BrushSplash = styled.div`
-  position: fixed;
+  position: absolute;
   top: calc(${ANNOUNCE_Y} + clamp(24px, 3.8cqh, 50px));
   left: calc(50% + clamp(100px, 16cqw, 200px));
   width: clamp(10px, 1.5cqw, 20px);
@@ -257,7 +257,7 @@ const BrushSplash = styled.div`
 `;
 
 const KimariteText = styled.div`
-  position: fixed;
+  position: absolute;
   top: calc(${ANNOUNCE_Y} + clamp(36px, 5.5cqh, 68px));
   left: 50%;
   transform: translateX(-50%);
@@ -284,7 +284,7 @@ const KimariteText = styled.div`
 `;
 
 const Shard = styled.div`
-  position: fixed;
+  position: absolute;
   top: ${ANNOUNCE_Y};
   left: ${(p) => p.$x};
   margin-top: ${(p) => p.$yOff};

@@ -403,11 +403,17 @@ body {
 }
 
 /* ── Camera scene: everything that moves with pan/zoom lives here ── */
+/* Screen-shake offsets are layered on top of the camera transform so the   */
+/* HUD layer (game-hud) stays rock-steady during shakes.                   */
 .game-scene {
   position: absolute;
   inset: 0;
   transform-origin: center center;
-  transform: translate3d(var(--cam-x, 0px), var(--cam-y, 0px), 0)
+  transform: translate3d(
+      calc(var(--cam-x, 0px) + var(--shake-x, 0px)),
+      calc(var(--cam-y, 0px) + var(--shake-y, 0px)),
+      0
+    )
     scale(var(--cam-scale, 1));
   will-change: transform;
   backface-visibility: hidden;
