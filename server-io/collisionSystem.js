@@ -13,6 +13,7 @@ const {
   SLAP_CHAIN_HIT_GAP_MS,
   HITSTOP_SLAP_MS, HITSTOP_SLAP_HIT3_MS, HITSTOP_PARRY_MS, HITSTOP_SLAP_PARRY_MS, HITSTOP_PERFECT_PARRY_MS, HITSTOP_CHARGED_MIN_MS, HITSTOP_CHARGED_MAX_MS,
   SLAP_HIT_VICTIM_STAMINA_DRAIN, CHARGED_HIT_VICTIM_STAMINA_DRAIN,
+  BALANCE_MAX, BALANCE_SLAP_HIT_DRAIN, BALANCE_CHARGED_HIT_DRAIN,
   CHARGE_CLASH_RECOVERY_DURATION, CHARGE_CLASH_BASE_KNOCKBACK,
   CHARGE_CLASH_MIN_KNOCKBACK, CHARGE_CLASH_ADVANTAGE_SCALE,
   CHARGE_PRIORITY_THRESHOLD, CHARGE_VS_SLAP_ATTACKER_PENALTY,
@@ -889,8 +890,10 @@ function processHit(player, otherPlayer, rooms, io) {
     // Drain victim's stamina on hit (victim loses more than attacker spent)
     if (isSlapAttack) {
       otherPlayer.stamina = Math.max(0, otherPlayer.stamina - SLAP_HIT_VICTIM_STAMINA_DRAIN);
+      otherPlayer.balance = Math.max(0, otherPlayer.balance - BALANCE_SLAP_HIT_DRAIN);
     } else {
       otherPlayer.stamina = Math.max(0, otherPlayer.stamina - CHARGED_HIT_VICTIM_STAMINA_DRAIN);
+      otherPlayer.balance = Math.max(0, otherPlayer.balance - BALANCE_CHARGED_HIT_DRAIN);
     }
 
     // Update opponent's facing direction based on attacker's position

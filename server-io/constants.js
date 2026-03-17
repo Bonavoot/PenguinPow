@@ -16,7 +16,7 @@ const BROADCAST_EVERY_N_TICKS = 2; // 2 = 32 Hz broadcast (client interpolation 
 // PERFORMANCE: Delta State Updates
 // Only send properties that changed since last tick
 // ============================================
-const ALWAYS_SEND_PROPS = ['x', 'y', 'facing', 'stamina', 'id', 'fighter', 'color', 'mawashiColor', 'bodyColor'];
+const ALWAYS_SEND_PROPS = ['x', 'y', 'facing', 'stamina', 'balance', 'id', 'fighter', 'color', 'mawashiColor', 'bodyColor'];
 
 const DELTA_TRACKED_PROPS = [
   'isAttacking', 'isSlapAttack', 'slapAnimation', 'attackType',
@@ -41,7 +41,12 @@ const DELTA_TRACKED_PROPS = [
   'isRopeJumping', 'ropeJumpPhase', 'sizeMultiplier', 'isGassed',
   'isSidestepping', 'isSidestepStartup', 'isSidestepRecovery',
   'isSlapParryRecovering',
-  'isHitFalling', 'isSidestepHitReturn'
+  'isHitFalling', 'isSidestepHitReturn',
+  'inClinch', 'hasGrip', 'clinchAction',
+  'isBeingLifted', 'isClinchThrowing', 'isClinchClashing',
+  'isClinchLifting', 'isClinchPushing', 'isClinchPlanting',
+  'isResistingThrow', 'isResistingPull',
+  'isClinchKillThrowVictim', 'isClinchKillPullVictim'
 ];
 
 // Pre-compute the combined props list once (avoids spread on every call)
@@ -390,6 +395,120 @@ const DODGE_STAMINA_COST = 4; // Deliberate escape (was 2 — ~25 dodges before 
 const SLAP_HIT_VICTIM_STAMINA_DRAIN = 8; // Victim loses 8 (was 6)
 const CHARGED_HIT_VICTIM_STAMINA_DRAIN = 22; // Victim loses 22 (was 18)
 
+// ============================================
+// Balance System — clinch throw/kill-throw gating
+// ============================================
+const BALANCE_MAX = 100;
+const BALANCE_PASSIVE_REGEN_PER_SEC = 5;        // +5/sec in neutral
+const BALANCE_CROUCH_REGEN_PER_SEC = 10;        // +10/sec additional while crouching (stacks with passive → +15/sec)
+const BALANCE_SLAP_HIT_DRAIN = 8;               // Balance lost when hit by a slap
+const BALANCE_CHARGED_HIT_DRAIN = 20;           // Balance lost when hit by a charged attack
+
+// ============================================
+// Mutual Clinch System — push/plant/throw interactions
+// ============================================
+
+// Clinch push mechanics
+const CLINCH_PUSH_BASE_SPEED = 1.2;             // Base push speed (scaled by balance ratio)
+const CLINCH_PUSH_STAMINA_DRAIN_PER_SEC = 7;    // Stamina cost for pusher per second (matches burst: 1 per 150ms ≈ 6.7/sec)
+const CLINCH_PUSH_OPPONENT_STAMINA_DRAIN_INTERVAL = 250; // -1 stamina per 250ms on pushed neutral opponent (~4/sec)
+const CLINCH_PUSH_BALANCE_DRAIN_OPPONENT_PER_SEC = 12; // Balance drain on opponent being pushed
+const CLINCH_PUSH_BALANCE_DRAIN_SELF_PER_SEC = 4;     // Balance drain on pusher (leaning forward)
+const CLINCH_PUSH_VS_PLANT_SPEED_MULT = 0.3;    // Push speed multiplied by this when opponent plants (70% reduction)
+
+// Clinch plant mechanics — plant recovers balance at the cost of position and small stamina drain
+const CLINCH_PLANT_BALANCE_REGEN_PER_SEC = 10;  // Balance recovery while planting (+10/sec free, net -2/sec under push)
+const CLINCH_PLANT_STAMINA_DRAIN_INTERVAL = 1000; // -1 stamina every 1000ms while planting (~1/sec, small cost)
+const CLINCH_PLANT_STAMINA_DRAIN_PUSHED_INTERVAL = 500; // -1 stamina every 500ms while planting under push (~2/sec)
+
+// Push vs push mechanics
+const CLINCH_PUSH_VS_PUSH_SPEED_SCALE = 0.8;    // Movement = difference * this (near-stalemate at equal balance)
+
+// Clinch gassed push penalty — only gassed players have reduced push power
+const CLINCH_GASSED_PUSH_MULT = 0.2;            // 20% push power when gassed
+
+// Edge push (at boundary)
+const CLINCH_EDGE_STAMINA_DRAIN_PER_SEC = 29;   // Opponent stamina drain at edge (matches burst: 1 per 35ms ≈ 29/sec)
+
+// Edge zone — amplified danger near the boundary
+const CLINCH_EDGE_ZONE_THRESHOLD = 60;           // Pixels from boundary to count as "edge zone"
+const CLINCH_EDGE_BALANCE_DRAIN_MULT = 1.5;      // Push balance drain multiplier in edge zone (+50%)
+const CLINCH_EDGE_THROW_DRAIN_BONUS = 8;         // Extra throw initiation balance drain at edge
+const CLINCH_EDGE_PULL_DRAIN_BONUS = 6;          // Extra pull initiation balance drain at edge
+
+// Stalemate timer
+const CLINCH_STALEMATE_DURATION_MS = 7000;       // 7 seconds before forced separation
+const CLINCH_STALEMATE_MOVEMENT_THRESHOLD = 15;  // Minimum px position change to reset stalemate
+const CLINCH_STALEMATE_BALANCE_THRESHOLD = 8;    // Minimum balance change to reset stalemate
+
+// Clinch separation (forced stalemate break)
+const CLINCH_SEPARATION_DISTANCE = 50;           // Distance to push apart on stalemate
+const CLINCH_SEPARATION_TWEEN_DURATION = 300;    // Tween duration for separation
+const CLINCH_SEPARATION_INPUT_LOCK_MS = 350;     // Input lock after stalemate separation
+
+// Clinch grab attachment
+const CLINCH_ATTACHED_DISTANCE = Math.round(75 * 0.96); // ~72px base distance between players in clinch
+
+// Clinch throw system (Mouse2 + W during clinch)
+const CLINCH_THROW_ANIMATION_MS = 450;           // Committed throw animation length
+const CLINCH_THROW_COOLDOWN_MS = 1200;           // Cooldown after any throw/pull/lift attempt
+const CLINCH_THROW_STAMINA_COST = 10;            // Stamina cost for throw/pull attempt (uniform)
+const CLINCH_THROW_CLASH_WINDOW_MS = 175;        // Both throw within this → clash
+const CLINCH_THROW_BALANCE_DRAIN_VS_PUSH = 20;   // Balance drain on opponent who was pushing (punishes aggression)
+const CLINCH_THROW_BALANCE_DRAIN_VS_PLANT = 5;   // Balance drain on opponent who was planting (braced = hard to throw)
+const CLINCH_THROW_BALANCE_DRAIN_VS_NEUTRAL = 10; // Balance drain on neutral opponent
+const CLINCH_THROW_FAIL_BALANCE_DRAIN = 4;       // Minimal chip on opponent when throw fails — throws are finishers, not grinders
+const CLINCH_THROW_FAIL_SELF_BALANCE_DRAIN = 12; // Attacker loses balance on failed throw — high risk, high reward
+const CLINCH_THROW_FAIL_STAMINA_COST = 5;        // Extra stamina cost on failed throw (self-balance drain is the main punishment)
+
+// Clinch pull balance drain (reduced vs throw — pull is repositioning, not balance-breaking)
+const CLINCH_PULL_BALANCE_DRAIN_VS_PUSH = 14;    // 70% of throw value
+const CLINCH_PULL_BALANCE_DRAIN_VS_PLANT = 4;    // 70% of throw value
+const CLINCH_PULL_BALANCE_DRAIN_VS_NEUTRAL = 7;  // 70% of throw value
+const CLINCH_PULL_FAIL_SELF_BALANCE_DRAIN = 6;   // Pull is safer — less self-punishment on fail
+
+// Clinch tech (clash) cost
+const CLINCH_TECH_STAMINA_COST = 8;              // Both players lose stamina on tech — prevents free resets
+const CLINCH_THROW_LAND_THRESHOLD = 50;          // Balance at/below which throw lands
+const CLINCH_THROW_KILL_THRESHOLD = 15;          // Balance below which = KILL THROW (round over)
+const CLINCH_THROW_DISTANCE = 120;               // Throw arc distance (reuses existing throw physics)
+const CLINCH_THROW_DURATION_MS = 400;            // Throw arc animation after landing
+const CLINCH_CLASH_BALANCE_DRAIN = 8;            // Mutual balance drain on clash
+const CLINCH_CLASH_ANIMATION_MS = 400;           // Cosmetic clash animation duration
+
+// Clinch pull system (Mouse2 + away during clinch)
+const CLINCH_PULL_ANIMATION_MS = 450;            // Committed pull animation length
+const CLINCH_PULL_DISTANCE = 280;                // How far opponent is pulled backward
+const CLINCH_PULL_TWEEN_DURATION = 600;          // Tween duration for pull movement
+const CLINCH_PULL_INPUT_LOCK_MS = 650;           // Input lock after pull
+
+// Clinch lift/carry system (Mouse2 + toward during clinch)
+const CLINCH_LIFT_TOTAL_MS = 700;                // Total lift duration (rise + move + descend)
+const CLINCH_LIFT_RISE_MS = 150;                 // Time to lift opponent off ground
+const CLINCH_LIFT_DESCEND_MS = 150;              // Time to set opponent down
+const CLINCH_LIFT_Y_OFFSET = 35;                 // How high opponent is lifted (pixels)
+const CLINCH_LIFT_BALANCE_COST = 12;             // Balance cost for lifter
+const CLINCH_LIFT_STAMINA_COST = 15;             // Stamina cost for lifter (still the most expensive action)
+const CLINCH_LIFT_TARGET_BALANCE_DRAIN = 8;      // Balance drain on target — being lifted is destabilizing
+
+// ============================================
+// Cinematic Clinch Kill — exaggerated finishers when balance < kill threshold
+// ============================================
+
+// Kill Throw (Mouse2+W): Exaggerated overhead arc — sky-high launch, sideways landing
+const CLINCH_KILL_THROW_ARC_HEIGHT = 900;        // Massive arc vs 450 normal (2x height)
+const CLINCH_KILL_THROW_DURATION_MS = 750;       // Longer hang time vs 400 normal
+const CLINCH_KILL_THROW_HITSTOP_MS = 300;        // Dramatic freeze before the big throw
+
+// Kill Pull (Mouse2+away): Violent yank past the puller, tumble/faceplant
+const CLINCH_KILL_PULL_DISTANCE = 400;           // Flies further past puller (vs 280 normal)
+const CLINCH_KILL_PULL_TWEEN_DURATION = 500;     // Faster, more violent pull (vs 600 normal)
+const CLINCH_KILL_PULL_INPUT_LOCK_MS = 800;      // Longer lock for dramatic finish
+
+// Kill Carry (Mouse2+toward): Bouncer march — carry to the edge, no stamina check
+const CLINCH_KILL_LIFT_TOTAL_MS = 1500;          // Extended march to the edge (vs 700 normal)
+const CLINCH_KILL_LIFT_RISE_MS = 200;            // Slightly longer dramatic lift
+
 // Gassed state: regen freeze when stamina hits 0
 const GASSED_DURATION_MS = 3000; // 3 second regen freeze penalty
 const GASSED_RECOVERY_STAMINA = 30; // Stamina granted immediately when gassed ends
@@ -664,6 +783,82 @@ module.exports = {
   CHARGED_HIT_VICTIM_STAMINA_DRAIN,
   GASSED_DURATION_MS,
   GASSED_RECOVERY_STAMINA,
+
+  // Balance system
+  BALANCE_MAX,
+  BALANCE_PASSIVE_REGEN_PER_SEC,
+  BALANCE_CROUCH_REGEN_PER_SEC,
+  BALANCE_SLAP_HIT_DRAIN,
+  BALANCE_CHARGED_HIT_DRAIN,
+
+  // Mutual clinch system
+  CLINCH_PUSH_BASE_SPEED,
+  CLINCH_PUSH_STAMINA_DRAIN_PER_SEC,
+  CLINCH_PUSH_OPPONENT_STAMINA_DRAIN_INTERVAL,
+  CLINCH_PUSH_BALANCE_DRAIN_OPPONENT_PER_SEC,
+  CLINCH_PUSH_BALANCE_DRAIN_SELF_PER_SEC,
+  CLINCH_PUSH_VS_PLANT_SPEED_MULT,
+  CLINCH_PLANT_BALANCE_REGEN_PER_SEC,
+  CLINCH_PLANT_STAMINA_DRAIN_INTERVAL,
+  CLINCH_PLANT_STAMINA_DRAIN_PUSHED_INTERVAL,
+  CLINCH_PUSH_VS_PUSH_SPEED_SCALE,
+  CLINCH_GASSED_PUSH_MULT,
+  CLINCH_EDGE_STAMINA_DRAIN_PER_SEC,
+  CLINCH_EDGE_ZONE_THRESHOLD,
+  CLINCH_EDGE_BALANCE_DRAIN_MULT,
+  CLINCH_EDGE_THROW_DRAIN_BONUS,
+  CLINCH_EDGE_PULL_DRAIN_BONUS,
+  CLINCH_STALEMATE_DURATION_MS,
+  CLINCH_STALEMATE_MOVEMENT_THRESHOLD,
+  CLINCH_STALEMATE_BALANCE_THRESHOLD,
+  CLINCH_SEPARATION_DISTANCE,
+  CLINCH_SEPARATION_TWEEN_DURATION,
+  CLINCH_SEPARATION_INPUT_LOCK_MS,
+  CLINCH_ATTACHED_DISTANCE,
+
+  // Clinch throw/pull/lift
+  CLINCH_THROW_ANIMATION_MS,
+  CLINCH_THROW_COOLDOWN_MS,
+  CLINCH_THROW_STAMINA_COST,
+  CLINCH_THROW_CLASH_WINDOW_MS,
+  CLINCH_THROW_BALANCE_DRAIN_VS_PUSH,
+  CLINCH_THROW_BALANCE_DRAIN_VS_PLANT,
+  CLINCH_THROW_BALANCE_DRAIN_VS_NEUTRAL,
+  CLINCH_THROW_FAIL_BALANCE_DRAIN,
+  CLINCH_THROW_FAIL_SELF_BALANCE_DRAIN,
+  CLINCH_THROW_FAIL_STAMINA_COST,
+  CLINCH_PULL_BALANCE_DRAIN_VS_PUSH,
+  CLINCH_PULL_BALANCE_DRAIN_VS_PLANT,
+  CLINCH_PULL_BALANCE_DRAIN_VS_NEUTRAL,
+  CLINCH_PULL_FAIL_SELF_BALANCE_DRAIN,
+  CLINCH_TECH_STAMINA_COST,
+  CLINCH_THROW_LAND_THRESHOLD,
+  CLINCH_THROW_KILL_THRESHOLD,
+  CLINCH_THROW_DISTANCE,
+  CLINCH_THROW_DURATION_MS,
+  CLINCH_CLASH_BALANCE_DRAIN,
+  CLINCH_CLASH_ANIMATION_MS,
+  CLINCH_PULL_ANIMATION_MS,
+  CLINCH_PULL_DISTANCE,
+  CLINCH_PULL_TWEEN_DURATION,
+  CLINCH_PULL_INPUT_LOCK_MS,
+  CLINCH_LIFT_TOTAL_MS,
+  CLINCH_LIFT_RISE_MS,
+  CLINCH_LIFT_DESCEND_MS,
+  CLINCH_LIFT_Y_OFFSET,
+  CLINCH_LIFT_BALANCE_COST,
+  CLINCH_LIFT_STAMINA_COST,
+  CLINCH_LIFT_TARGET_BALANCE_DRAIN,
+
+  // Cinematic clinch kills
+  CLINCH_KILL_THROW_ARC_HEIGHT,
+  CLINCH_KILL_THROW_DURATION_MS,
+  CLINCH_KILL_THROW_HITSTOP_MS,
+  CLINCH_KILL_PULL_DISTANCE,
+  CLINCH_KILL_PULL_TWEEN_DURATION,
+  CLINCH_KILL_PULL_INPUT_LOCK_MS,
+  CLINCH_KILL_LIFT_TOTAL_MS,
+  CLINCH_KILL_LIFT_RISE_MS,
 
   // Hitstop
   SLAP_CHAIN_HIT_GAP_MS,

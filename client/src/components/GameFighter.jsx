@@ -110,6 +110,7 @@ import {
   xToPan,
   chargeAttackLaunchSound,
   gunLaunchSound,
+  hit as hitSprite,
 } from "./fighterAssets";
 import getImageSrc from "./getImageSrc";
 import {
@@ -182,14 +183,15 @@ const GameFighter = ({
       originalSrc,
       isHit = false,
       isWhiteFlash = false,
-      isBlubberTint = false
+      isBlubberTint = false,
+      forceStatic = false
     ) => {
       if (!originalSrc) {
         return { src: originalSrc, isAnimated: false, config: null };
       }
 
-      // Check if this is an animated spritesheet
-      const spritesheetConfig = getSpritesheetConfig(originalSrc);
+      // Check if this is an animated spritesheet (skip lookup when forceStatic)
+      const spritesheetConfig = forceStatic ? null : getSpritesheetConfig(originalSrc);
       const isAnimated = !!spritesheetConfig;
 
       // Determine the source to recolor (spritesheet for animated, original for static)
@@ -365,6 +367,7 @@ const GameFighter = ({
   // PERFORMANCE: Use ref for interpolated position to avoid constant re-renders
   // Only update React state when position changes significantly
   const interpolatedPositionRef = useRef({ x: 0, y: 0 });
+  const lastRenderedPositionRef = useRef({ x: 0, y: 0 });
   const [interpolatedPosition, setInterpolatedPosition] = useState({
     x: 0,
     y: 0,
@@ -1253,13 +1256,17 @@ const GameFighter = ({
       }
 
       if (newPos) {
-        const prevPos = interpolatedPositionRef.current;
         interpolatedPositionRef.current = newPos;
 
-        // PERFORMANCE: Only update React state if position changed noticeably
+        // PERFORMANCE: Only update React state if position changed noticeably.
+        // Compare against the last position committed to React state (not the
+        // per-frame ref) so small per-frame deltas accumulate until they cross
+        // the threshold — prevents visual freeze during slow clinch pushes.
         const positionDelta =
-          Math.abs(newPos.x - prevPos.x) + Math.abs(newPos.y - prevPos.y);
+          Math.abs(newPos.x - lastRenderedPositionRef.current.x) +
+          Math.abs(newPos.y - lastRenderedPositionRef.current.y);
         if (positionDelta >= MIN_POSITION_CHANGE) {
+          lastRenderedPositionRef.current = newPos;
           setInterpolatedPosition(newPos);
         }
       }
@@ -1536,7 +1543,9 @@ const GameFighter = ({
       // If this is the first update, set previous state to current
       if (!previousState.current) {
         previousState.current = { ...currentState.current };
-        setInterpolatedPosition({ x: playerData.x, y: playerData.y });
+        const initPos = { x: playerData.x, y: playerData.y };
+        lastRenderedPositionRef.current = initPos;
+        setInterpolatedPosition(initPos);
       }
 
       // Update penguin state with all data (discrete states are not interpolated)
@@ -1633,7 +1642,20 @@ const GameFighter = ({
           prev.ropeJumpPhase !== newState.ropeJumpPhase ||
           prev.isSidestepping !== newState.isSidestepping ||
           prev.isSidestepStartup !== newState.isSidestepStartup ||
-          prev.isSidestepRecovery !== newState.isSidestepRecovery;
+          prev.isSidestepRecovery !== newState.isSidestepRecovery ||
+          prev.hasGrip !== newState.hasGrip ||
+          prev.inClinch !== newState.inClinch ||
+          prev.clinchAction !== newState.clinchAction ||
+          prev.isBeingLifted !== newState.isBeingLifted ||
+          prev.isClinchThrowing !== newState.isClinchThrowing ||
+          prev.isClinchClashing !== newState.isClinchClashing ||
+          prev.isClinchLifting !== newState.isClinchLifting ||
+          prev.isClinchPushing !== newState.isClinchPushing ||
+          prev.isClinchPlanting !== newState.isClinchPlanting ||
+          prev.isResistingThrow !== newState.isResistingThrow ||
+          prev.isResistingPull !== newState.isResistingPull ||
+          prev.isClinchKillThrowVictim !== newState.isClinchKillThrowVictim ||
+          prev.isClinchKillPullVictim !== newState.isClinchKillPullVictim;
 
         if (!discreteStateChanged) {
           return prev; // No discrete state change, skip re-render
@@ -1691,7 +1713,7 @@ const GameFighter = ({
   useEffect(() => {
     socket.on("fighter_action", handleFighterAction);
 
-    socket.on("slap_parry", (data) => {
+    const handleSlapParry = (data) => {
       if (
         data &&
         typeof data.x === "number" &&
@@ -1712,9 +1734,10 @@ const GameFighter = ({
           });
         }
       }
-    });
+    };
+    socket.on("slap_parry", handleSlapParry);
 
-    socket.on("charge_clash", (data) => {
+    const handleChargeClash = (data) => {
       if (
         data &&
         typeof data.x === "number" &&
@@ -1730,9 +1753,10 @@ const GameFighter = ({
           duckMusic(0.3, 400);
         }
       }
-    });
+    };
+    socket.on("charge_clash", handleChargeClash);
 
-    socket.on("player_hit", (data) => {
+    const handlePlayerHit = (data) => {
       if (data && typeof data.x === "number" && typeof data.y === "number") {
         lastPlayerHitTime.current = Date.now();
         if (index === 0 && !data.cinematicKill) {
@@ -1759,9 +1783,10 @@ const GameFighter = ({
           cinematicHitstopMs: data.cinematicKill ? 550 : 0,
         });
       }
-    });
+    };
+    socket.on("player_hit", handlePlayerHit);
 
-    socket.on("raw_parry_success", (data) => {
+    const handleRawParrySuccess = (data) => {
       lastRawParryTime.current = Date.now();
       if (data && typeof data.parrierX === "number") {
         // Position effect in front of the parrying player (where a hit effect would appear)
@@ -1792,9 +1817,10 @@ const GameFighter = ({
           playSound(regularRawParrySound, 0.04, null, 1.0, parryPan);
         }
       }
-    });
+    };
+    socket.on("raw_parry_success", handleRawParrySuccess);
 
-    socket.on("perfect_parry", (data) => {
+    const handlePerfectParry = (data) => {
       if (
         data &&
         typeof data.stunnedPlayerX === "number" &&
@@ -1804,14 +1830,14 @@ const GameFighter = ({
         if (data.attackingPlayerId === player.id) {
           setShowStarStunEffect(true);
         }
-        
       }
-    });
+    };
+    socket.on("perfect_parry", handlePerfectParry);
 
-    // Grab break effect - dramatic feedback when escaping a grab
-    // Only listen on index 0 to prevent duplicate effects
+    let handleGrabBreak, handleGrabTech, handleClinchTech, handleCounterGrab,
+        handlePunishBanner, handleCounterHit, handleStaminaBlocked;
     if (index === 0) {
-      socket.on("grab_break", (data) => {
+      handleGrabBreak = (data) => {
         if (
           data &&
           typeof data.breakerX === "number" &&
@@ -1826,10 +1852,10 @@ const GameFighter = ({
           });
           playSound(grabBreakSound, 0.01);
         }
-      });
+      };
+      socket.on("grab_break", handleGrabBreak);
 
-      // Grab tech effect — both players grabbed simultaneously, frost/blue burst
-      socket.on("grab_tech", (data) => {
+      handleGrabTech = (data) => {
         if (data && typeof data.x === "number") {
           setGrabTechEffectPosition({
             x: data.x + SPRITE_HALF_W,
@@ -1839,10 +1865,31 @@ const GameFighter = ({
           });
           playSound(isTechingSound, 0.04);
         }
-      });
+      };
+      socket.on("grab_tech", handleGrabTech);
 
-      // Counter grab effect - only when grabbing opponent during their raw parry (LOCKED! + Counter Grab banner)
-      socket.on("counter_grab", (data) => {
+      let wasClinchClashing = false;
+      handleClinchTech = (data) => {
+        const p1 = data.isDelta && accumulatedPlayer1State.current
+          ? accumulatedPlayer1State.current : data.player1;
+        const p2 = data.isDelta && accumulatedPlayer2State.current
+          ? accumulatedPlayer2State.current : data.player2;
+        const nowClashing = p1.isClinchClashing || p2.isClinchClashing;
+        if (nowClashing && !wasClinchClashing) {
+          const centerX = (p1.x + p2.x) / 2;
+          setGrabTechEffectPosition({
+            x: centerX + SPRITE_HALF_W,
+            y: PLAYER_MID_Y,
+            techId: `clinch-tech-${Date.now()}`,
+            facing: p1.x < p2.x ? 1 : -1,
+          });
+          playSound(isTechingSound, 0.04);
+        }
+        wasClinchClashing = nowClashing;
+      };
+      socket.on("fighter_action", handleClinchTech);
+
+      handleCounterGrab = (data) => {
         if (data?.type !== "counter_grab") return;
         const x =
           typeof data.grabbedX === "number"
@@ -1859,20 +1906,20 @@ const GameFighter = ({
           grabberPlayerNumber: data.grabberPlayerNumber || 1,
         });
         playSound(counterGrabSound, 0.035);
-      });
+      };
+      socket.on("counter_grab", handleCounterGrab);
 
-      // Punish banner only (no hit effect) - when hitting opponent during recovery
-      socket.on("punish_banner", (data) => {
+      handlePunishBanner = (data) => {
         if (data?.counterId) {
           setPunishBannerPosition({
             counterId: data.counterId,
             grabberPlayerNumber: data.grabberPlayerNumber ?? 1,
           });
         }
-      });
+      };
+      socket.on("punish_banner", handlePunishBanner);
 
-      // Counter hit effect - when active frames hit opponent's startup frames
-      socket.on("counter_hit", (data) => {
+      handleCounterHit = (data) => {
         if (data && typeof data.x === "number" && typeof data.y === "number") {
           setCounterHitEffectPosition({
             x: data.x + 70,
@@ -1882,14 +1929,12 @@ const GameFighter = ({
             timestamp: data.timestamp,
           });
         }
-      });
+      };
+      socket.on("counter_hit", handleCounterHit);
 
-      // "No Stamina" effect - only visible to local player when they try an action they can't afford
-      socket.on("stamina_blocked", (data) => {
+      handleStaminaBlocked = (data) => {
         if (data.playerId === localId) {
-          // Play the not enough stamina sound at low volume
           playSound(notEnoughStaminaSound, 0.08);
-          // Use timestamp as key to trigger new animation each time
           const newKey = Date.now();
           setNoStaminaEffectKey(newKey);
           const tid = setTimeout(() => {
@@ -1899,11 +1944,11 @@ const GameFighter = ({
           }, 900);
           pendingSocketTimeouts.current.push(tid);
         }
-      });
+      };
+      socket.on("stamina_blocked", handleStaminaBlocked);
     }
 
-    // Snowball impact - listen on all components so both update lastPlayerHitTime
-    socket.on("snowball_hit", (data) => {
+    const handleSnowballHit = (data) => {
       if (data && typeof data.x === "number" && typeof data.y === "number") {
         lastPlayerHitTime.current = Date.now();
         if (index === 0) {
@@ -1916,19 +1961,18 @@ const GameFighter = ({
           hitId: data.hitId || `snowball-${Date.now()}`,
         });
       }
-    });
+    };
+    socket.on("snowball_hit", handleSnowballHit);
 
-    // Grab clash events - listen on ALL components so both players get the animation
-    socket.on("grab_clash_start", () => {
-      // Only play sound once (on index 0)
+    const handleGrabClashStart = () => {
       if (index === 0) {
         playSound(grabClashSound, 0.04);
       }
       setIsGrabClashActive(true);
-    });
+    };
+    socket.on("grab_clash_start", handleGrabClashStart);
 
-    // Grab clash end - play victory or defeat sound based on local player result
-    socket.on("grab_clash_end", (data) => {
+    const handleGrabClashEnd = (data) => {
       if (index === 0) {
         if (data.winnerId === localId) {
           playSound(roundVictorySound, 0.01);
@@ -1937,18 +1981,16 @@ const GameFighter = ({
         }
       }
       setIsGrabClashActive(false);
-    });
+    };
+    socket.on("grab_clash_end", handleGrabClashEnd);
 
     // Power-ups revealed simultaneously after both players have picked
     // This prevents counter-picking by hiding choices until both are locked in
     // The visual reveal is now handled by the PowerUpReveal component in Game.jsx
-    socket.on("power_ups_revealed", (data) => {
-      // Find this player's power-up from the reveal data
+    const handlePowerUpsRevealed = (data) => {
       const thisPlayerData =
         data.player1.playerId === player.id ? data.player1 : data.player2;
 
-      // Only update penguin state for local player
-      // Note: salt sound already plays during isThrowingSalt, and hasUsedPowerUp is set there too
       if (thisPlayerData.playerId === localId) {
         setPenguin((prev) => ({
           ...prev,
@@ -1961,16 +2003,16 @@ const GameFighter = ({
               : 1,
         }));
 
-        // Add a satisfying screen shake for power-up reveal
         setScreenShake({
           intensity: 0.35,
           duration: 150,
           startTime: Date.now(),
         });
       }
-    });
+    };
+    socket.on("power_ups_revealed", handlePowerUpsRevealed);
 
-    socket.on("game_reset", (data) => {
+    const handleGameReset = (data) => {
       setGameOver(data);
       setShowRoundResult(false);
       setWinType(null);
@@ -2009,19 +2051,20 @@ const GameFighter = ({
           return prev - 1;
         });
       }, 1000);
-    });
+    };
+    socket.on("game_reset", handleGameReset);
 
-    // Gyoji's call before HAKKIYOI (authentic sumo)
-    socket.on("gyoji_call", (call) => {
+    const handleGyojiCall = (call) => {
       setGyojiCall(call);
 
       const tid = setTimeout(() => {
         setGyojiCall(null);
       }, 2000);
       pendingSocketTimeouts.current.push(tid);
-    });
+    };
+    socket.on("gyoji_call", handleGyojiCall);
 
-    socket.on("game_start", () => {
+    const handleGameStart = () => {
       setGyojiCall(null); // Clear any lingering gyoji call
       setHakkiyoi(true);
       setRawParryEffectPosition(null); // Clear any leftover parry effects
@@ -2071,9 +2114,10 @@ const GameFighter = ({
         setHakkiyoi(false);
       }, 3000);
       pendingSocketTimeouts.current.push(tid);
-    });
+    };
+    socket.on("game_start", handleGameStart);
 
-    socket.on("game_over", (data) => {
+    const handleGameOver = (data) => {
       setGameOver(data.isGameOver);
       setWinner(data.winner);
       setWinType(data.winType || "ringOut");
@@ -2146,51 +2190,52 @@ const GameFighter = ({
       if (!opponentDisconnected) {
         startEeshi();
       }
-    });
+    };
+    socket.on("game_over", handleGameOver);
 
-    socket.on("match_over", (data) => {
+    const handleMatchOver = (data) => {
       const tid = setTimeout(() => {
         setMatchOver(data.isMatchOver);
       }, 3000);
       pendingSocketTimeouts.current.push(tid);
-      // Keep win counts displayed until rematch - don't reset here!
-      // Also bump round id at match end to reset UI
       setUiRoundId((id) => id + 1);
-    });
+    };
+    socket.on("match_over", handleMatchOver);
 
-    socket.on("rematch", () => {
-      // Reset win counts and round history when rematch starts
+    const handleRematch = () => {
       setPlayerOneWinCount(0);
       setPlayerTwoWinCount(0);
       setRoundHistory([]);
       setMatchOver(false);
-    });
+    };
+    socket.on("rematch", handleRematch);
 
     return () => {
-      socket.off("fighter_action");
-      socket.off("slap_parry");
-      socket.off("charge_clash");
-      socket.off("player_hit");
-      socket.off("raw_parry_success");
-      socket.off("perfect_parry");
+      socket.off("fighter_action", handleFighterAction);
+      socket.off("slap_parry", handleSlapParry);
+      socket.off("charge_clash", handleChargeClash);
+      socket.off("player_hit", handlePlayerHit);
+      socket.off("raw_parry_success", handleRawParrySuccess);
+      socket.off("perfect_parry", handlePerfectParry);
       if (index === 0) {
-        socket.off("grab_break");
-        socket.off("grab_tech");
-        socket.off("counter_grab");
-        socket.off("punish_banner");
-        socket.off("stamina_blocked");
-        socket.off("counter_hit"); // Fix: was missing cleanup
+        socket.off("grab_break", handleGrabBreak);
+        socket.off("grab_tech", handleGrabTech);
+        socket.off("fighter_action", handleClinchTech);
+        socket.off("counter_grab", handleCounterGrab);
+        socket.off("punish_banner", handlePunishBanner);
+        socket.off("stamina_blocked", handleStaminaBlocked);
+        socket.off("counter_hit", handleCounterHit);
       }
-      socket.off("snowball_hit");
-      socket.off("grab_clash_start");
-      socket.off("grab_clash_end");
-      socket.off("gyoji_call");
-      socket.off("game_start");
-      socket.off("game_reset");
-      socket.off("game_over");
-      socket.off("match_over");
-      socket.off("power_ups_revealed");
-      socket.off("rematch"); // Fix: was missing cleanup
+      socket.off("snowball_hit", handleSnowballHit);
+      socket.off("grab_clash_start", handleGrabClashStart);
+      socket.off("grab_clash_end", handleGrabClashEnd);
+      socket.off("gyoji_call", handleGyojiCall);
+      socket.off("game_start", handleGameStart);
+      socket.off("game_reset", handleGameReset);
+      socket.off("game_over", handleGameOver);
+      socket.off("match_over", handleMatchOver);
+      socket.off("power_ups_revealed", handlePowerUpsRevealed);
+      socket.off("rematch", handleRematch);
       if (countdownRef.current) {
         clearInterval(countdownRef.current);
         countdownRef.current = null;
@@ -2897,13 +2942,13 @@ const GameFighter = ({
   }, [screenShake]);
 
   // Update thick blubber indicator based on actual game state
+  // Only show during grab startup/lunge, NOT during the full grab hold/clinch
   const shouldShowThickBlubberIndicator = useMemo(() => {
-    const isGrabbing =
-      penguin.isGrabStartup || penguin.isGrabbingMovement || penguin.isGrabbing;
+    const isInGrabLunge = penguin.isGrabStartup || penguin.isGrabbingMovement;
     return (
       penguin.activePowerUp === "thick_blubber" &&
       ((penguin.isAttacking && penguin.attackType === "charged") ||
-        isGrabbing) &&
+        isInGrabLunge) &&
       !penguin.hitAbsorptionUsed
     );
   }, [
@@ -2913,7 +2958,6 @@ const GameFighter = ({
     penguin.hitAbsorptionUsed,
     penguin.isGrabStartup,
     penguin.isGrabbingMovement,
-    penguin.isGrabbing,
   ]);
 
   useEffect(() => {
@@ -2930,15 +2974,16 @@ const GameFighter = ({
   useEffect(() => {
     const pendingTimeouts = [];
 
-    socket.on("screen_shake", (data) => {
+    const handleScreenShake = (data) => {
       setScreenShake({
         intensity: data.intensity,
         duration: data.duration,
         startTime: Date.now(),
       });
-    });
+    };
+    socket.on("screen_shake", handleScreenShake);
 
-    socket.on("thick_blubber_absorption", (data) => {
+    const handleThickBlubber = (data) => {
       if (data.playerId === player.id) {
         setThickBlubberEffect({
           isActive: true,
@@ -2957,9 +3002,10 @@ const GameFighter = ({
         }, 50);
         pendingTimeouts.push(id);
       }
-    });
+    };
+    socket.on("thick_blubber_absorption", handleThickBlubber);
 
-    socket.on("danger_zone", () => {
+    const handleDangerZone = () => {
       setDangerZoneActive(true);
       setSlowMoActive(true);
 
@@ -2968,17 +3014,19 @@ const GameFighter = ({
         setSlowMoActive(false);
       }, 400);
       pendingTimeouts.push(id);
-    });
+    };
+    socket.on("danger_zone", handleDangerZone);
 
-    socket.on("ring_out", () => {
+    const handleRingOut = () => {
       setScreenShake({
         intensity: 1.2,
         duration: 600,
         startTime: Date.now(),
       });
-    });
+    };
+    socket.on("ring_out", handleRingOut);
 
-    socket.on("cinematic_kill", (data) => {
+    const handleCinematicKill = (data) => {
       if (index === 0) {
         emitParticles("cinematicKillImpact", {
           x: data.impactX,
@@ -3030,18 +3078,19 @@ const GameFighter = ({
         }, trailStartDelay);
         pendingTimeouts.push(trailStartId);
       }
-    });
+    };
+    socket.on("cinematic_kill", handleCinematicKill);
 
     return () => {
       pendingTimeouts.forEach((id) => {
         clearTimeout(id);
         clearInterval(id);
       });
-      socket.off("screen_shake");
-      socket.off("thick_blubber_absorption");
-      socket.off("danger_zone");
-      socket.off("ring_out");
-      socket.off("cinematic_kill");
+      socket.off("screen_shake", handleScreenShake);
+      socket.off("thick_blubber_absorption", handleThickBlubber);
+      socket.off("danger_zone", handleDangerZone);
+      socket.off("ring_out", handleRingOut);
+      socket.off("cinematic_kill", handleCinematicKill);
     };
   }, [socket, player.id, localId, roomName]);
 
@@ -3140,7 +3189,17 @@ const GameFighter = ({
     penguin.isDodgeRecovery,
     penguin.isSidestepping,
     penguin.isSidestepRecovery,
-    displayPenguin.isChargingAttack
+    displayPenguin.isChargingAttack,
+    penguin.hasGrip,
+    penguin.isBeingLifted,
+    penguin.isClinchClashing,
+    penguin.isClinchLifting,
+    penguin.isClinchPushing,
+    penguin.isClinchPlanting,
+    penguin.isResistingThrow,
+    penguin.isResistingPull,
+    penguin.isClinchKillThrowVictim,
+    penguin.isClinchKillPullVictim
   );
 
   // Hold previous sprite for a few frames when transitioning to idle to prevent
@@ -3188,11 +3247,17 @@ const GameFighter = ({
     false,
     useBlubberTint
   );
+  const isKillVictim = penguin.isClinchKillThrowVictim || penguin.isClinchKillPullVictim;
+
+  // Kill victims use the raw hit APNG as a static image (forceStatic bypasses the
+  // spritesheet lookup that would return a 3-frame strip, while still applying recoloring)
   const {
     src: recoloredSpriteSrc,
     isAnimated: isAnimatedSprite,
     config: spriteConfig,
-  } = spriteRenderInfo;
+  } = isKillVictim
+    ? getSpriteRenderInfo(hitSprite, showHitTintThisFrame, false, useBlubberTint, true)
+    : spriteRenderInfo;
 
   const baseSpriteSrc = recoloredSpriteSrc;
 
@@ -3245,6 +3310,7 @@ const GameFighter = ({
                 }
                 player1IsGassed={allPlayersData.player1?.isGassed ?? false}
                 player1ParryRefund={p1ParryRefund}
+                player1Balance={allPlayersData.player1?.balance ?? 100}
                 player2Stamina={allPlayersData.player2?.stamina ?? 100}
                 player2ActivePowerUp={
                   allPlayersData.player2?.activePowerUp ?? null
@@ -3260,6 +3326,7 @@ const GameFighter = ({
                 }
                 player2IsGassed={allPlayersData.player2?.isGassed ?? false}
                 player2ParryRefund={p2ParryRefund}
+                player2Balance={allPlayersData.player2?.balance ?? 100}
               />
             )}
             {index === 0 && isLocalEdgePushed && (() => {
@@ -3492,7 +3559,11 @@ const GameFighter = ({
           $isGrabTeching={penguin.isGrabTeching}
           $grabTechRole={penguin.grabTechRole}
           $isGrabWhiffRecovery={penguin.isGrabWhiffRecovery}
+          $isClinchClashing={penguin.isClinchClashing}
           $isCinematicKillAttacker={isCinematicKillAttacker}
+          $isClinchKillThrowVictim={penguin.isClinchKillThrowVictim}
+          $isClinchKillPullVictim={penguin.isClinchKillPullVictim}
+          $isBeingThrown={penguin.isBeingThrown}
           $isLocalPlayer={penguin.id === localId}
           style={{ display: showRitualSprite ? "none" : "block" }}
         />

@@ -97,6 +97,35 @@ function cleanupGrabStates(player, opponent) {
   player.grabCounterAttempted = false;
   player.grabCounterInput = null;
   player.lastResistStaminaDrainTime = 0;
+  // Clinch system cleanup
+  player.hasGrip = false;
+  player.gripAcquiredTime = 0;
+  player.inClinch = false;
+  player.clinchAction = null;
+  player.clinchOpponent = null;
+  player.clinchStalemateStart = 0;
+  player.clinchStalemateLastX = 0;
+  player.clinchStalemateLastBalance = 0;
+  // Clinch throw/pull/lift cleanup
+  player.clinchThrowRequest = null;
+  player.clinchThrowRequestTime = 0;
+  player.clinchThrowActive = false;
+  player.clinchThrowType = null;
+  player.clinchThrowStartTime = 0;
+  player.clinchThrowCooldown = false;
+  player.isClinchThrowing = false;
+  player.isClinchClashing = false;
+  player.clinchClashStartTime = 0;
+  player.clinchLiftStartTime = 0;
+  player.clinchLiftStartX = 0;
+  player.isBeingLifted = false;
+  player.clinchMouse2BufferTime = 0;
+  player.isClinchLifting = false;
+  player.isClinchPushing = false;
+  player.isClinchPlanting = false;
+  player.lastPlantStaminaDrainTime = 0;
+  player.isResistingThrow = false;
+  player.isResistingPull = false;
   // Clear action lock so grab/other actions aren't blocked after grab ends
   player.actionLockUntil = 0;
 
@@ -142,6 +171,35 @@ function cleanupGrabStates(player, opponent) {
   opponent.grabCounterAttempted = false;
   opponent.grabCounterInput = null;
   opponent.lastResistStaminaDrainTime = 0;
+  // Clinch system cleanup
+  opponent.hasGrip = false;
+  opponent.gripAcquiredTime = 0;
+  opponent.inClinch = false;
+  opponent.clinchAction = null;
+  opponent.clinchOpponent = null;
+  opponent.clinchStalemateStart = 0;
+  opponent.clinchStalemateLastX = 0;
+  opponent.clinchStalemateLastBalance = 0;
+  // Clinch throw/pull/lift cleanup
+  opponent.clinchThrowRequest = null;
+  opponent.clinchThrowRequestTime = 0;
+  opponent.clinchThrowActive = false;
+  opponent.clinchThrowType = null;
+  opponent.clinchThrowStartTime = 0;
+  opponent.clinchThrowCooldown = false;
+  opponent.isClinchThrowing = false;
+  opponent.isClinchClashing = false;
+  opponent.clinchClashStartTime = 0;
+  opponent.clinchLiftStartTime = 0;
+  opponent.clinchLiftStartX = 0;
+  opponent.isBeingLifted = false;
+  opponent.clinchMouse2BufferTime = 0;
+  opponent.isClinchLifting = false;
+  opponent.isClinchPushing = false;
+  opponent.isClinchPlanting = false;
+  opponent.lastPlantStaminaDrainTime = 0;
+  opponent.isResistingThrow = false;
+  opponent.isResistingPull = false;
   // Clear action lock so grab/other actions aren't blocked after grab ends
   opponent.actionLockUntil = 0;
 }
@@ -152,8 +210,8 @@ function handleWinCondition(room, loser, winner, io, winType) {
   room.gameOver = true;
   
   // Determine correct Y position for the loser based on whether they fell off the dohyo
-  // Cinematic kill victims are flying off — don't touch their position
-  if (!loser.isCinematicKillVictim) {
+  // Cinematic/clinch kill victims — don't touch their position
+  if (!loser.isCinematicKillVictim && !loser.isClinchKillThrowVictim) {
     const fallenGroundLevel = GROUND_LEVEL - DOHYO_FALL_DEPTH;
     const loserShouldBeAtFallenLevel = 
       loser.isFallingOffDohyo || 
@@ -180,12 +238,13 @@ function handleWinCondition(room, loser, winner, io, winType) {
     // Clear wins AFTER we've stored the count (will be used in game_over event below)
     winner.wins = [];
     loser.wins = [];
-    setTimeout(() => {
+    setPlayerTimeout(winner.id, () => {
       winner.y = GROUND_LEVEL;
       winner.isBowing = true;
       
-      if (loser.isCinematicKillVictim) {
-        // Cinematic kill victims stay gone — no bowing, no repositioning
+      const killVictimStaysDown = loser.isCinematicKillVictim || loser.isClinchKillThrowVictim || loser.isClinchKillPullVictim;
+      if (killVictimStaysDown) {
+        // Kill victims stay in their final pose — no bowing, no repositioning
       } else {
         const loserFellOffDohyo = 
           loser.isFallingOffDohyo || 
@@ -195,21 +254,15 @@ function handleWinCondition(room, loser, winner, io, winType) {
         loser.y = loserGroundLevel;
         loser.isBowing = true;
       }
-      
-      // NOTE: Do NOT reset isBowing here for match over.
-      // For regular rounds, isBowing stays true until resetRoomAndPlayers() clears it
-      // along with the position reset. For match over, we keep bowing until the
-      // match-over screen covers the view and the rematch flow resets everything.
-      // Resetting it early caused players to visually "pop up" from bow to idle
-      // in the gap before the match-over UI appeared.
     }, 1050);
   } else {
-    setTimeout(() => {
+    setPlayerTimeout(winner.id, () => {
       winner.y = GROUND_LEVEL;
       winner.isBowing = true;
       
-      if (loser.isCinematicKillVictim) {
-        // Cinematic kill victims stay gone — no bowing, no repositioning
+      const killVictimStaysDown = loser.isCinematicKillVictim || loser.isClinchKillThrowVictim || loser.isClinchKillPullVictim;
+      if (killVictimStaysDown) {
+        // Kill victims stay in their final pose — no bowing, no repositioning
       } else {
         const loserFellOffDohyo = 
           loser.isFallingOffDohyo || 
@@ -230,8 +283,7 @@ function handleWinCondition(room, loser, winner, io, winType) {
   if (winner.isSlapAttack) {
     const remainingAttackTime = winner.attackEndTime - Date.now();
     if (remainingAttackTime > 0) {
-      setTimeout(() => {
-        // Reset winner's attack states after animation completes
+      setPlayerTimeout(winner.id, () => {
         resetPlayerAttackStates(winner);
       }, remainingAttackTime);
     }
@@ -310,6 +362,28 @@ function handleWinCondition(room, loser, winner, io, winType) {
     p.grabThrowAttemptStartTime = 0;
     p.grabState = GRAB_STATES.INITIAL;
     p.grabAttemptType = null;
+    p.hasGrip = false;
+    p.gripAcquiredTime = 0;
+    p.inClinch = false;
+    p.clinchAction = null;
+    p.clinchStalemateStart = 0;
+    p.clinchThrowRequest = null;
+    p.clinchThrowRequestTime = 0;
+    p.clinchThrowActive = false;
+    p.clinchThrowType = null;
+    p.clinchThrowStartTime = 0;
+    p.clinchThrowCooldown = false;
+    p.isClinchThrowing = false;
+    p.isClinchClashing = false;
+    p.clinchClashStartTime = 0;
+    p.clinchLiftStartTime = 0;
+    p.clinchLiftStartX = 0;
+    p.isBeingLifted = false;
+    p.isClinchLifting = false;
+    p.isClinchPushing = false;
+    p.isClinchPlanting = false;
+    p.isResistingThrow = false;
+    p.isResistingPull = false;
 
     p.pendingSlapCount = 0;
     p.pendingGrabEnder = false;
@@ -342,8 +416,8 @@ function handleWinCondition(room, loser, winner, io, winType) {
   winner.movementVelocity = 0;
   
   // CRITICAL: Force loser Y position AGAIN after all state changes
-  // This ensures no intermediate code has modified Y (skip for cinematic kill — they're flying off)
-  if (!loser.isCinematicKillVictim) {
+  // Skip for cinematic/clinch kill throw victims — they're mid-arc or flying off
+  if (!loser.isCinematicKillVictim && !loser.isClinchKillThrowVictim) {
     const loserFellOff = loser.isFallingOffDohyo || isOutsideDohyo(loser.x, loser.y) || loser.y < GROUND_LEVEL;
     loser.y = loserFellOff ? (GROUND_LEVEL - DOHYO_FALL_DEPTH) : GROUND_LEVEL;
   }
@@ -366,12 +440,12 @@ function handleWinCondition(room, loser, winner, io, winType) {
     room.gameOverTime = Date.now();
   }
 
-  // Wait for winner text to disappear (3 seconds) before resetting states
-  setTimeout(() => {
+  setPlayerTimeout(loser.id, () => {
     if (room.players) {
       room.players.forEach((p) => {
         if (p.id === loser.id) {
-          p.knockbackVelocity = { x: 0, y: 0 };
+          p.knockbackVelocity.x = 0;
+          p.knockbackVelocity.y = 0;
           p.movementVelocity = 0;
         }
       });

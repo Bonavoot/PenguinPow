@@ -2,7 +2,9 @@
 // Design: Zero reaction delay, always-optimal counters, grab-heavy offense.
 // Every opponent action has a hard counter that this AI executes frame-perfectly.
 
-const { ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_STAMINA_COST } = require("./constants");
+const { ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_STAMINA_COST,
+        CLINCH_THROW_LAND_THRESHOLD, CLINCH_THROW_KILL_THRESHOLD,
+        BALANCE_MAX } = require("./constants");
 const { MAP_LEFT_BOUNDARY: GAME_MAP_LEFT, MAP_RIGHT_BOUNDARY: GAME_MAP_RIGHT } = require("./gameUtils");
 
 const MAP_LEFT_BOUNDARY = 340;
@@ -60,6 +62,11 @@ function getState(playerId) {
 
       // Power-up
       lastPowerUpTime: 0,
+
+      // Clinch system
+      clinchLastThrowCheck: 0,
+      clinchPushPlantDecision: null,
+      clinchPushPlantUntil: 0,
     });
   }
   return aiStates.get(playerId);
@@ -116,7 +123,21 @@ function createEmptyKeys() {
 }
 
 function resetAllKeys(cpu) {
-  cpu.keys = createEmptyKeys();
+  if (!cpu.keys) {
+    cpu.keys = createEmptyKeys();
+    return;
+  }
+  const k = cpu.keys;
+  k.w = false;
+  k.a = false;
+  k.s = false;
+  k.d = false;
+  k[" "] = false;
+  k.shift = false;
+  k.e = false;
+  k.f = false;
+  k.mouse1 = false;
+  k.mouse2 = false;
 }
 
 // ─── Capability checks ────────────────────────────────────────────
@@ -205,70 +226,135 @@ function handleGrabClashMashing(cpu, st, now) {
   }
 }
 
-function handleGrabBreak(cpu, grabber, st, now) {
-  if (!cpu.isBeingGrabbed || cpu.grabCounterAttempted) return;
+// Impossible clinch: instant grip-up, optimal push/plant, always-correct throw timing.
+function handleClinchBehavior(cpu, opponent, st, now) {
+  resetAllKeys(cpu);
 
-  const pullCounterKey = grabber.facing === -1 ? 'd' : 'a';
-
-  if (!grabber.isAttemptingGrabThrow && !grabber.isAttemptingPull) {
-    st.grabBreakReactionDecided = false;
-    resetAllKeys(cpu);
-    // Instantly resist the push
-    const pushResistKey = grabber.facing === -1 ? 'a' : 'd';
-    cpu.keys[pushResistKey] = true;
+  if (cpu.clinchThrowActive || cpu.isClinchClashing || cpu.isClinchThrowing ||
+      cpu.isBeingLifted || cpu.isResistingThrow || cpu.isResistingPull ||
+      cpu.isGrabSeparating) {
+    return;
+  }
+  if (opponent.clinchThrowActive || opponent.isClinchClashing || opponent.isClinchThrowing) {
     return;
   }
 
-  // 100% correct counter — always break
-  resetAllKeys(cpu);
-  if (grabber.isAttemptingGrabThrow) {
-    cpu.keys.s = true;
-  } else if (grabber.isAttemptingPull) {
-    cpu.keys[pullCounterKey] = true;
+  // Let burst push ride as grabber
+  if (cpu.isGrabPushing) return;
+
+  const towardKey = cpu.x < opponent.x ? 'd' : 'a';
+  const awayKey = cpu.x < opponent.x ? 'a' : 'd';
+  const cpuDistLeft = cpu.x - MAP_LEFT_BOUNDARY;
+  const cpuDistRight = MAP_RIGHT_BOUNDARY - cpu.x;
+  const oppDistLeft = opponent.x - MAP_LEFT_BOUNDARY;
+  const oppDistRight = MAP_RIGHT_BOUNDARY - opponent.x;
+  const cpuNearestEdge = Math.min(cpuDistLeft, cpuDistRight);
+  const oppNearestEdge = Math.min(oppDistLeft, oppDistRight);
+
+  // Instant grip-up
+  if (!cpu.hasGrip && cpu.inClinch) {
+    cpu.hasGrip = true;
+    cpu.clinchAction = "neutral";
+    return;
   }
-}
 
-function handleGrabDecision(cpu, human, st, now) {
-  cpu.keys.a = false; cpu.keys.d = false; cpu.keys.w = false;
-  cpu.keys.s = false; cpu.keys.shift = false; cpu.keys.e = false;
-  cpu.keys.mouse1 = false; cpu.keys.mouse2 = false;
+  const opponentBalance = opponent.balance;
+  const cpuBalance = cpu.balance;
+  const cpuStamina = cpu.stamina;
 
-  if (cpu.isAttemptingGrabThrow || cpu.isAttemptingPull) return;
-  if (!cpu.grabStartTime) return;
+  const canRequestAction = cpu.hasGrip && !cpu.clinchThrowActive &&
+                           !cpu.clinchThrowCooldown && !cpu.clinchThrowRequest &&
+                           !cpu.isClinchClashing;
+  const canLand = opponentBalance <= CLINCH_THROW_LAND_THRESHOLD;
+  const canKill = opponentBalance < CLINCH_THROW_KILL_THRESHOLD;
 
-  if (!st.grabDecisionMade) {
-    st.grabDecisionMade = true;
+  const cpuBackedToEdge = cpuNearestEdge < EDGE_DANGER_ZONE && cpuNearestEdge < oppNearestEdge;
 
-    const distBehindCpu = cpu.facing === 1
-      ? distanceToRightEdge(cpu) : distanceToLeftEdge(cpu);
-    const distFrontCpu = cpu.facing === 1
-      ? distanceToLeftEdge(cpu) : distanceToRightEdge(cpu);
+  // --- EDGE ESCAPE URGENCY ---
+  // When backed against the boundary, throw/lift to escape even in fail zone
+  if (cpuBackedToEdge && canRequestAction) {
+    const staminaCritical = cpuStamina < 35;
+    const edgeCheckInterval = staminaCritical ? 100 : 200;
 
-    if (distFrontCpu < 280) {
-      // Opponent is near front edge — let the push carry them off
-      st.grabStrategy = 'push';
-    } else if (distBehindCpu < 250) {
-      // Our back is near edge — always throw to escape
-      st.grabStrategy = 'throw';
-    } else {
-      // Mid-map: push toward nearest edge, or throw if that's better
-      const leftDist = distanceToLeftEdge(human);
-      const rightDist = distanceToRightEdge(human);
-      const nearestEdgeDist = Math.min(leftDist, rightDist);
-      st.grabStrategy = nearestEdgeDist < 300 ? 'push' : 'throw';
+    if (now - (st.clinchLastThrowCheck || 0) > edgeCheckInterval) {
+      st.clinchLastThrowCheck = now;
+      // Lift moves both players away from CPU's edge — always the best escape
+      // Fall back to throw if lift isn't ideal
+      let action;
+      if (canKill) {
+        action = cpuNearestEdge > 80 ? "lift" : "throw";
+      } else {
+        action = "lift";
+      }
+      cpu.clinchThrowRequest = action;
+      cpu.clinchThrowRequestTime = now;
+      // Skip normal throw decision — edge escape takes priority
     }
-
-    st.grabActionDelay = now + 80;
   }
 
-  if (st.grabStrategy === 'push') return;
-  if (now < st.grabActionDelay) return;
+  // --- NORMAL THROW / PULL / LIFT DECISION ---
+  if (!st.clinchLastThrowCheck) st.clinchLastThrowCheck = 0;
+  const checkInterval = canKill ? 150 : 400;
+  if (canRequestAction && !cpu.clinchThrowRequest && now - st.clinchLastThrowCheck > checkInterval) {
+    st.clinchLastThrowCheck = now;
 
-  if (st.grabStrategy === 'throw') {
-    cpu.keys.w = true;
-  } else if (st.grabStrategy === 'pull') {
-    const backKey = cpu.facing === 1 ? 'd' : 'a';
-    cpu.keys[backKey] = true;
+    if (canKill) {
+      const liftViable = cpuNearestEdge > 80;
+      let action;
+      if (liftViable) {
+        action = "lift";
+      } else {
+        action = "throw";
+      }
+      cpu.clinchThrowRequest = action;
+      cpu.clinchThrowRequestTime = now;
+    } else if (canLand) {
+      let action;
+      if (cpuNearestEdge > 120) {
+        action = "lift";
+      } else if (oppNearestEdge > cpuNearestEdge) {
+        action = "throw";
+      } else {
+        action = "pull";
+      }
+      cpu.clinchThrowRequest = action;
+      cpu.clinchThrowRequestTime = now;
+    }
+  }
+
+  // Stay neutral when a throw request is active (avoid push penalty on throw)
+  if (cpu.clinchThrowRequest) return;
+
+  // Push/plant: optimal choice every 200ms
+  if (!st.clinchPushPlantUntil || now > st.clinchPushPlantUntil) {
+    st.clinchPushPlantUntil = now + 200;
+
+    const opponentNearEdge = oppNearestEdge < EDGE_DANGER_ZONE;
+    const cpuNearEdge = cpuNearestEdge < EDGE_DANGER_ZONE;
+
+    if (cpuBackedToEdge) {
+      // At edge: push to resist, but plant if stamina is critical (plant regens now)
+      st.clinchPushPlantDecision = cpuStamina < 15 ? "plant" : "push";
+    } else if (opponentNearEdge && cpuBalance > 20) {
+      // Opponent near edge — push hard (edge zone amplifies balance drain)
+      st.clinchPushPlantDecision = "push";
+    } else if (cpuStamina < 35) {
+      // Plant recovers stamina — plant to regroup when stamina is moderate-low
+      st.clinchPushPlantDecision = "plant";
+    } else if (cpuBalance < 30) {
+      st.clinchPushPlantDecision = "plant";
+    } else if (cpuBalance > opponentBalance + 5) {
+      st.clinchPushPlantDecision = "push";
+    } else {
+      st.clinchPushPlantDecision = "plant";
+    }
+  }
+
+  if (st.clinchPushPlantDecision === "push") {
+    cpu.keys[towardKey] = true;
+  } else if (st.clinchPushPlantDecision === "plant") {
+    cpu.keys.s = true;
+    cpu.keys[awayKey] = true;
   }
 }
 
@@ -404,26 +490,24 @@ function updateImpossibleAI(cpu, human, room, currentTime) {
     return;
   }
 
-  // ── Currently grabbing: execute optimal throw ──
-  if (cpu.isGrabbing && cpu.grabbedOpponent) {
-    st.grabDecisionMade = st.grabDecisionMade || false;
-    handleGrabDecision(cpu, human, st, currentTime);
+  // ── Clinch behavior (mutual grab system) ──
+  if (cpu.inClinch && (cpu.isGrabbing || cpu.isBeingGrabbed)) {
+    handleClinchBehavior(cpu, human, st, currentTime);
     return;
-  } else {
+  }
+  // Clean up clinch state when not in clinch
+  if (!cpu.inClinch && !cpu.isGrabbing && !cpu.isBeingGrabbed) {
     st.grabDecisionMade = false;
     st.grabStrategy = null;
     st.grabActionDelay = 0;
+    st.clinchLastThrowCheck = 0;
+    st.clinchPushPlantDecision = null;
+    st.clinchPushPlantUntil = 0;
   }
 
-  // ── Being grabbed: 100% break ──
+  // Being grabbed outside clinch (edge case) — don't act
   if (cpu.isBeingGrabbed && !cpu.isBeingThrown) {
-    handleGrabBreak(cpu, human, st, currentTime);
     return;
-  } else {
-    st.grabBreakReactionDecided = false;
-    st.grabBreakReactS = false;
-    st.grabBreakReactDirection = false;
-    st.grabResistStartTime = 0;
   }
 
   // ── Pending parry hold: keep holding until release time ──

@@ -50,11 +50,13 @@ const {
   STAMINA_REGEN_INTERVAL_MS, STAMINA_REGEN_AMOUNT,
   SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST, DODGE_STAMINA_COST,
   GASSED_DURATION_MS, GASSED_RECOVERY_STAMINA,
+  BALANCE_MAX, BALANCE_PASSIVE_REGEN_PER_SEC, BALANCE_CROUCH_REGEN_PER_SEC,
   HITSTOP_GRAB_MS, HITSTOP_THROW_MS, SLAP_PARRY_KB_FRICTION,
   BURST_KB_INITIAL_FRICTION, BURST_KB_LATE_FRICTION, BURST_KB_PHASE_SWITCH_MS,
   SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MIN_MS, SIDESTEP_ACTIVE_MAX_MS, SIDESTEP_RECOVERY_MS,
   SIDESTEP_ARC_DEPTH_MIN, SIDESTEP_ARC_DEPTH_MAX, SIDESTEP_GRAB_TRACK_RANGE,
   SIDESTEP_ARC_SPEED, SIDESTEP_MAX_TRAVEL,
+  CLINCH_KILL_THROW_ARC_HEIGHT,
 } = require("./constants");
 
 // Import game utilities
@@ -110,7 +112,7 @@ const { computePlayerDelta, clonePlayerState } = require("./deltaState");
 // Import grab mechanics
 const {
   correctFacingAfterGrabOrThrow,
-  executeGrabSeparation,
+  executeClinchSeparation,
   executeGrabTech,
   executeGrabWhiff,
 } = require("./grabMechanics");
@@ -292,13 +294,14 @@ function stopGameLoop() {
 
 
 function tick(delta) {
+  const now = Date.now();
   // PERFORMANCE: Use for-loop instead of forEach to avoid closure overhead at 64Hz.
   // Also skip rooms with < 2 players via continue (no function call overhead).
+  staminaRegenCounter += delta;
+
   for (let _roomIdx = 0; _roomIdx < rooms.length; _roomIdx++) {
     const room = rooms[_roomIdx];
     if (room.players.length < 2) continue;
-
-    staminaRegenCounter += delta;
 
     if (room.players.length === 2) {
       const [player1, player2] = room.players;
@@ -351,7 +354,7 @@ function tick(delta) {
       
       // Update CPU AI for CPU rooms
       if (room.isCPURoom) {
-        const currentTime = Date.now();
+        const currentTime = now;
         const cpuPlayer = room.players.find(p => p.isCPU);
         const humanPlayer = room.players.find(p => !p.isCPU);
         if (cpuPlayer && humanPlayer) {
@@ -499,7 +502,7 @@ function tick(delta) {
         !player2.isJumping &&
         !player2.isAttacking
       ) {
-        const currentTime = Date.now();
+        const currentTime = now;
         if (!room.readyStartTime) {
           room.readyStartTime = currentTime;
         }
@@ -550,7 +553,8 @@ function tick(delta) {
             player.isRecovering = false;
             player.movementVelocity = 0;
           }
-          const recoveryElapsed = Date.now() - player.recoveryStartTime;
+          const recoveryElapsed = now - player.recoveryStartTime;
+          const isRecoveryGameOverLoser = room.gameOver && player.id === room.loserId;
 
           // Apply ice-like physics to recovery movement
           if (Math.abs(player.movementVelocity) > MIN_MOVEMENT_THRESHOLD) {
@@ -570,7 +574,7 @@ function tick(delta) {
 
             if (newX >= leftBoundary && newX <= rightBoundary) {
               player.x = newX;
-            } else if (isGameOverLoser) {
+            } else if (isRecoveryGameOverLoser) {
               player.x = newX;
             } else {
               player.x = newX < leftBoundary ? leftBoundary : rightBoundary;
@@ -610,6 +614,7 @@ function tick(delta) {
       }
       const isGameOverLoser = room.gameOver && player.id === room.loserId;
       if (isGameOverLoser && !player.isHit && !player.isCinematicKillVictim &&
+          !player.isBeingThrown && !player.isGrabBreakSeparating &&
           Math.abs(player.movementVelocity) < ICE_STOP_THRESHOLD &&
           Math.abs(player.knockbackVelocity.x) < 0.01) {
         return;
@@ -618,14 +623,13 @@ function tick(delta) {
       // Clear knockback immunity when timer expires
       if (
         player.knockbackImmune &&
-        Date.now() >= player.knockbackImmuneEndTime
+        now >= player.knockbackImmuneEndTime
       ) {
         player.knockbackImmune = false;
       }
 
       // Smooth grab-break separation tween overrides other movement for its duration
       if (player.isGrabBreakSeparating) {
-        const now = Date.now();
         const elapsed = now - (player.grabBreakSepStartTime || now);
         const duration = player.grabBreakSepDuration || 0;
         const startX = player.grabBreakStartX ?? player.x;
@@ -741,7 +745,7 @@ function tick(delta) {
         } else {
           // SAFETY: Maximum isHit duration to prevent stuck states (1 second max)
           const MAX_HIT_DURATION = 1000;
-          const hitDuration = player.lastHitTime ? Date.now() - player.lastHitTime : 0;
+          const hitDuration = player.lastHitTime ? now - player.lastHitTime : 0;
           if (hitDuration > MAX_HIT_DURATION) {
             player.isHit = false;
             player.isAlreadyHit = false;
@@ -783,7 +787,7 @@ function tick(delta) {
               const DI_FRICTION_BONUS = 0.96;
               
               if (player.isBurstKnockback) {
-                const burstAge = Date.now() - (player.burstKnockbackStartTime || 0);
+                const burstAge = now - (player.burstKnockbackStartTime || 0);
                 const friction = burstAge < BURST_KB_PHASE_SWITCH_MS
                   ? BURST_KB_INITIAL_FRICTION
                   : BURST_KB_LATE_FRICTION;
@@ -871,7 +875,7 @@ function tick(delta) {
 
       // Handle grab startup — lunge forward during startup, then range check at the end.
       if (player.isGrabStartup) {
-        const elapsed = Date.now() - player.grabStartupStartTime;
+        const elapsed = now - player.grabStartupStartTime;
         const startupMs = player.grabStartupDuration || GRAB_STARTUP_DURATION_MS;
 
         // Apply forward lunge movement each tick during startup
@@ -898,7 +902,7 @@ function tick(delta) {
             // would NOT have connected (out of range or facing wrong way).
             // This prevents tick processing order from causing false techs.
             const opponentWouldWhiff = opponent.isGrabStartup &&
-              (Date.now() - opponent.grabStartupStartTime) >= (opponent.grabStartupDuration || GRAB_STARTUP_DURATION_MS) &&
+              (now - opponent.grabStartupStartTime) >= (opponent.grabStartupDuration || GRAB_STARTUP_DURATION_MS) &&
               !(isOpponentCloseEnoughForGrab(opponent, player) && isOpponentInFrontOfGrabber(opponent, player));
             if ((opponent.isGrabStartup || opponent.isGrabTeching) &&
                 !opponent.isWhiffingGrab && !opponent.isGrabWhiffRecovery &&
@@ -933,10 +937,18 @@ function tick(delta) {
               player.grabAttemptType = null;
 
               player.isGrabbing = true;
-              player.grabStartTime = Date.now();
+              player.grabStartTime = now;
               player.grabbedOpponent = opponent.id;
 
-              // IMMEDIATE PUSH
+              // One-sided clinch: grabber has grip, opponent does NOT
+              player.hasGrip = true;
+              player.inClinch = true;
+              player.clinchAction = "push";
+              opponent.hasGrip = false;
+              opponent.inClinch = true;
+              opponent.clinchAction = "neutral";
+
+              // IMMEDIATE PUSH (auto-burst)
               player.isGrabPushing = true;
               player.isGrabWalking = true;
               player.grabActionType = "push";
@@ -970,7 +982,7 @@ function tick(delta) {
                   x: centerX,
                   y: centerY,
                   grabberPlayerNumber,
-                  counterId: `counter-grab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                  counterId: `counter-grab-${now}-${Math.random().toString(36).substr(2, 9)}`,
                 });
               }
 
@@ -1174,7 +1186,7 @@ function tick(delta) {
 
       if (
         room.gameOver &&
-        Date.now() - room.gameOverTime >= 3000 &&
+        now - room.gameOverTime >= 3000 &&
         !room.matchOver
       ) {
         // 5 seconds
@@ -1182,12 +1194,22 @@ function tick(delta) {
       }
 
       // Stamina regen (freeze stamina once round is over)
-      // Don't regen while being grabbed or gassed
-      if (player.stamina < 100 && !room.gameOver && !player.isBeingGrabbed && !player.isGassed) {
+      // Don't regen while being grabbed, gassed, or in clinch
+      if (player.stamina < 100 && !room.gameOver && !player.isBeingGrabbed && !player.isGassed && !player.inClinch) {
         if (staminaRegenCounter >= STAMINA_REGEN_INTERVAL_MS) {
           player.stamina += STAMINA_REGEN_AMOUNT;
           player.stamina = Math.min(player.stamina, 100);
         }
+      }
+
+      // Balance regen — passive +5/sec, crouch bonus +10/sec, no regen when gassed or in clinch
+      if (player.balance < BALANCE_MAX && !room.gameOver && !player.isGassed && !player.inClinch) {
+        const deltaSec = delta / 1000;
+        let balanceRegen = BALANCE_PASSIVE_REGEN_PER_SEC;
+        if (player.isCrouchStance) {
+          balanceRegen += BALANCE_CROUCH_REGEN_PER_SEC;
+        }
+        player.balance = Math.min(BALANCE_MAX, player.balance + balanceRegen * deltaSec);
       }
 
       // if (player.isHit) return;
@@ -1197,7 +1219,7 @@ function tick(delta) {
         player.isThrowing &&
         player.throwOpponent
       ) {
-        const currentTime = Date.now();
+        const currentTime = now;
         const throwDuration = currentTime - player.throwStartTime;
         const throwProgress =
           throwDuration / (player.throwEndTime - player.throwStartTime);
@@ -1207,7 +1229,9 @@ function tick(delta) {
         );
         if (opponent) {
           // Match dodge-style arc for cutscene: peak ~75 with same parabola scale used in dodge (3.2 * height * t * (1-t))
-          const throwArcHeight = player.isRingOutThrowCutscene ? 75 : 450;
+          const throwArcHeight = player.isRingOutThrowCutscene ? 75
+            : player.isClinchKillThrow ? CLINCH_KILL_THROW_ARC_HEIGHT
+            : 450;
           let armsReachDistance = -100;
 
           if (!player.throwingFacingDirection) {
@@ -1269,8 +1293,16 @@ function tick(delta) {
 
           // Check if throw is complete
           if (currentTime >= player.throwEndTime) {
-            // Check for win condition at the end of throw
-            if (!player.isRingOutThrowCutscene) {
+            const wasKillThrow = player.isClinchKillThrow;
+
+            // Kill throw: win triggers on LANDING, not at initiation
+            if (wasKillThrow) {
+              handleWinCondition(room, opponent, player, io, "clinchKillThrow");
+              opponent.isClinchKillThrowVictim = true;
+            }
+
+            // Check for win condition at the end of throw (non-kill)
+            if (!player.isRingOutThrowCutscene && !wasKillThrow) {
               if (
                 (opponent.x >= MAP_RIGHT_BOUNDARY &&
                   player.throwingFacingDirection === 1) ||
@@ -1298,6 +1330,7 @@ function tick(delta) {
             // Clear ring-out cutscene flags
             player.isRingOutThrowCutscene = false;
             player.ringOutThrowDistance = 0;
+            player.isClinchKillThrow = false;
 
             // Check if player landed outside ring-out boundaries
             const landedOutsideBoundaries =
@@ -1312,13 +1345,19 @@ function tick(delta) {
             opponent.isBurstKnockback = false;
             opponent.burstKnockbackStartTime = 0;
             
-            // Set Y to correct ground level based on whether they landed outside the dohyo
-            const landedOutsideDohyo = opponent.x <= DOHYO_LEFT_BOUNDARY || opponent.x >= DOHYO_RIGHT_BOUNDARY;
-            if (landedOutsideDohyo) {
-              opponent.y = GROUND_LEVEL - DOHYO_FALL_DEPTH; // Fallen ground level
-              opponent.isFallingOffDohyo = true; // Mark as having fallen off
+            // Set Y to correct ground level based on landing context
+            if (wasKillThrow) {
+              // Kill throw victim is rotated 90° with center center origin —
+              // lower Y so their visual center sits at ground level
+              opponent.y = GROUND_LEVEL - 30;
             } else {
-              opponent.y = GROUND_LEVEL; // Normal ground level
+              const landedOutsideDohyo = opponent.x <= DOHYO_LEFT_BOUNDARY || opponent.x >= DOHYO_RIGHT_BOUNDARY;
+              if (landedOutsideDohyo) {
+                opponent.y = GROUND_LEVEL - DOHYO_FALL_DEPTH; // Fallen ground level
+                opponent.isFallingOffDohyo = true; // Mark as having fallen off
+              } else {
+                opponent.y = GROUND_LEVEL; // Normal ground level
+              }
             }
             
             opponent.knockbackVelocity.y = 0;
@@ -1349,7 +1388,7 @@ function tick(delta) {
           }
         }
       } else if (player.isThrowing && !player.throwOpponent) {
-        const currentTime = Date.now();
+        const currentTime = now;
         const throwDuration = currentTime - player.throwStartTime;
         const throwProgress =
           throwDuration / (player.throwEndTime - player.throwStartTime);
@@ -1361,7 +1400,7 @@ function tick(delta) {
 
       // Throw tech
       if (player.isThrowTeching) {
-        const currentTime = Date.now();
+        const currentTime = now;
         const freezeElapsed = currentTime - player.techFreezeStartTime;
 
         if (freezeElapsed >= TECH_FREEZE_DURATION) {
@@ -1401,7 +1440,7 @@ function tick(delta) {
         player.isStrafing = false;
         player.isBraking = false;
         player.isPowerSliding = false;
-        player.actionLockUntil = Math.max(player.actionLockUntil || 0, Date.now() + DODGE_CANCEL_ACTION_LOCK);
+        player.actionLockUntil = Math.max(player.actionLockUntil || 0, now + DODGE_CANCEL_ACTION_LOCK);
 
         const cancelOpponent = room.players.find(p => p.id !== player.id);
         if (cancelOpponent && !player.atTheRopesFacingDirection) {
@@ -1413,7 +1452,7 @@ function tick(delta) {
 
         // STARTUP PHASE: no movement yet, brief wind-up
         if (player.isDodgeStartup) {
-          if (Date.now() >= player.dodgeStartupEndTime) {
+          if (now >= player.dodgeStartupEndTime) {
             player.isDodgeStartup = false;
           }
           // No movement during startup — player is committed but stationary
@@ -1452,7 +1491,7 @@ function tick(delta) {
         }
 
         // Dodge active phase expired → transition to RECOVERY PHASE
-        if (Date.now() >= player.dodgeEndTime) {
+        if (now >= player.dodgeEndTime) {
           const landingDirection = player.dodgeDirection || 0;
           player.isDodging = false;
           player.isDodgeStartup = false;
@@ -1480,20 +1519,20 @@ function tick(delta) {
           }
 
           player.justLandedFromDodge = true;
-          player.dodgeLandTime = Date.now();
+          player.dodgeLandTime = now;
 
           // Enter RECOVERY PHASE — punishable, can't act
           player.isDodgeRecovery = true;
-          player.dodgeRecoveryEndTime = Date.now() + DODGE_RECOVERY_MS;
-          player.actionLockUntil = Math.max(player.actionLockUntil || 0, Date.now() + DODGE_RECOVERY_MS);
+          player.dodgeRecoveryEndTime = now + DODGE_RECOVERY_MS;
+          player.actionLockUntil = Math.max(player.actionLockUntil || 0, now + DODGE_RECOVERY_MS);
         }
       }
 
       // Dodge recovery phase — clear when expired
-      if (player.isDodgeRecovery && Date.now() >= player.dodgeRecoveryEndTime) {
+      if (player.isDodgeRecovery && now >= player.dodgeRecoveryEndTime) {
         player.isDodgeRecovery = false;
         player.dodgeRecoveryEndTime = 0;
-        player.dodgeCooldownUntil = Date.now() + DODGE_COOLDOWN_MS;
+        player.dodgeCooldownUntil = now + DODGE_COOLDOWN_MS;
 
         // Neutral charged attack removed — pending charge cleared, no charge restart
         if (player.pendingChargeAttack) {
@@ -1504,7 +1543,7 @@ function tick(delta) {
 
       // Clear dodge landing flag after animation duration (200ms)
       if (player.justLandedFromDodge && player.dodgeLandTime) {
-        if (Date.now() - player.dodgeLandTime > 200) {
+        if (now - player.dodgeLandTime > 200) {
           player.justLandedFromDodge = false;
         }
       }
@@ -1526,7 +1565,6 @@ function tick(delta) {
         player.y = GROUND_LEVEL;
       }
       if (player.isSidestepping && !player.isBeingGrabbed) {
-        const now = Date.now();
         const sidestepOpponent = room.players.find(p => p.id !== player.id && !p.isDead);
 
         // STARTUP: no movement, vulnerable wind-up.
@@ -1651,8 +1689,6 @@ function tick(delta) {
 
       // ── ROPE JUMP arc physics ──
       if (player.isRopeJumping) {
-        const now = Date.now();
-
         if (player.ropeJumpPhase === "startup") {
           if (now >= player.ropeJumpStartTime + ROPE_JUMP_STARTUP_MS) {
             player.ropeJumpPhase = "active";
@@ -1716,7 +1752,7 @@ function tick(delta) {
       if (player.isHitFalling) {
         const heightAboveGround = player.hitFallStartY - GROUND_LEVEL;
         const fallDuration = HIT_FALL_BASE_MS + heightAboveGround * HIT_FALL_HEIGHT_SCALE;
-        const elapsed = Date.now() - player.hitFallStartTime;
+        const elapsed = now - player.hitFallStartTime;
         const t = Math.min(elapsed / fallDuration, 1);
         const popHeight = heightAboveGround * HIT_FALL_POP_HEIGHT_RATIO;
 
@@ -1738,7 +1774,7 @@ function tick(delta) {
 
       // ── Sidestep Hit Return — quick ease back to ground from dip ──
       if (player.isSidestepHitReturn) {
-        const elapsed = Date.now() - player.sidestepHitReturnStartTime;
+        const elapsed = now - player.sidestepHitReturnStartTime;
         const t = Math.min(elapsed / player.sidestepHitReturnDuration, 1);
         const easeOut = 1 - (1 - t) * (1 - t);
         player.y = player.sidestepHitReturnStartY + (GROUND_LEVEL - player.sidestepHitReturnStartY) * easeOut;
@@ -1751,7 +1787,7 @@ function tick(delta) {
 
       // Grab Movement
       if (player.isGrabbingMovement) {
-        const currentTime = Date.now();
+        const currentTime = now;
         const opponent = room.players.find((p) => p.id !== player.id);
 
         // Check for grab clash - both players grabbing towards each other
@@ -1882,8 +1918,16 @@ function tick(delta) {
 
           // Start the actual grab
           player.isGrabbing = true;
-          player.grabStartTime = Date.now();
+          player.grabStartTime = now;
           player.grabbedOpponent = opponent.id;
+
+          // One-sided clinch: grabber has grip, opponent does NOT
+          player.hasGrip = true;
+          player.inClinch = true;
+          player.clinchAction = "push";
+          opponent.hasGrip = false;
+          opponent.inClinch = true;
+          opponent.clinchAction = "neutral";
 
           // IMMEDIATE PUSH: Push starts right away (processed after hitstop)
           // No decision window — push is the default, pull/throw interrupt it
@@ -1923,7 +1967,7 @@ function tick(delta) {
               x: centerX,
               y: centerY,
               grabberPlayerNumber,
-              counterId: `counter-grab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              counterId: `counter-grab-${now}-${Math.random().toString(36).substr(2, 9)}`,
             });
           }
           
@@ -2048,7 +2092,7 @@ function tick(delta) {
 
         if ((player.keys.c || player.keys.control) && canPowerSlide) {
           const currentSpeed = Math.abs(player.movementVelocity);
-          const strafeDuration = player.strafeStartTime > 0 ? Date.now() - player.strafeStartTime : 0;
+          const strafeDuration = player.strafeStartTime > 0 ? now - player.strafeStartTime : 0;
           // Can start power slide if: came from dodge landing OR strafed long enough
           const canStartSlide = player.justLandedFromDodge || strafeDuration >= SLIDE_STRAFE_TIME_REQUIRED;
           
@@ -2216,11 +2260,11 @@ function tick(delta) {
           !player.pendingSlapCount &&
           !(
             player.slapStrafeCooldown &&
-            Date.now() < player.slapStrafeCooldownEndTime
+            now < player.slapStrafeCooldownEndTime
           ) && // Block strafing during post-slap cooldown
           !player.isAtTheRopes && // Block strafing while at the ropes
           !player.isPowerSliding && // Power sliding uses its own physics - no strafing
-          !(player.inputLockUntil && Date.now() < player.inputLockUntil) // Block during input freeze (e.g. pull reversal)
+          !(player.inputLockUntil && now < player.inputLockUntil) // Block during input freeze (e.g. pull reversal)
         ) {
           // ============================================
           // ICE PHYSICS: Moving RIGHT (D key)
@@ -2252,7 +2296,7 @@ function tick(delta) {
             player.wasStrafingLeft = false;
             player.isBraking = false;
             player.isStrafing = true;
-            if (!player.strafeStartTime) player.strafeStartTime = Date.now();
+            if (!player.strafeStartTime) player.strafeStartTime = now;
           } else {
             // ACCELERATING: Already moving right, build more speed
             player.movementVelocity = Math.min(
@@ -2262,7 +2306,7 @@ function tick(delta) {
             player.isBraking = false;
             player.isStrafing = true;
             // Start tracking strafe time if not already (e.g., coasting from dodge)
-            if (!player.strafeStartTime) player.strafeStartTime = Date.now();
+            if (!player.strafeStartTime) player.strafeStartTime = now;
           }
 
           // Calculate new position and check boundaries
@@ -2300,11 +2344,11 @@ function tick(delta) {
           !player.pendingSlapCount &&
           !(
             player.slapStrafeCooldown &&
-            Date.now() < player.slapStrafeCooldownEndTime
+            now < player.slapStrafeCooldownEndTime
           ) &&
           !player.isAtTheRopes &&
           !player.isPowerSliding && // Power sliding uses its own physics - no strafing
-          !(player.inputLockUntil && Date.now() < player.inputLockUntil) // Block during input freeze (e.g. pull reversal)
+          !(player.inputLockUntil && now < player.inputLockUntil) // Block during input freeze (e.g. pull reversal)
         ) {
           // ============================================
           // ICE PHYSICS: Moving LEFT (A key)
@@ -2336,7 +2380,7 @@ function tick(delta) {
             player.wasStrafingRight = false;
             player.isBraking = false;
             player.isStrafing = true;
-            if (!player.strafeStartTime) player.strafeStartTime = Date.now();
+            if (!player.strafeStartTime) player.strafeStartTime = now;
           } else {
             // ACCELERATING: Already moving left, build more speed
             player.movementVelocity = Math.max(
@@ -2346,7 +2390,7 @@ function tick(delta) {
             player.isBraking = false;
             player.isStrafing = true;
             // Start tracking strafe time if not already (e.g., coasting from dodge)
-            if (!player.strafeStartTime) player.strafeStartTime = Date.now();
+            if (!player.strafeStartTime) player.strafeStartTime = now;
           }
 
           // Calculate new position and check boundaries
@@ -2521,7 +2565,7 @@ function tick(delta) {
           player.isAttacking || // Clear strafing during any attack (slap or charged)
           player.pendingSlapCount || // Clear strafing when buffered slap attack is pending
           (player.slapStrafeCooldown &&
-            Date.now() < player.slapStrafeCooldownEndTime) // Clear strafing during post-slap cooldown
+            now < player.slapStrafeCooldownEndTime) // Clear strafing during post-slap cooldown
         ) {
           player.isStrafing = false;
         }
@@ -2534,7 +2578,7 @@ function tick(delta) {
           player.isAttacking ||
           player.pendingSlapCount ||
           (player.slapStrafeCooldown &&
-            Date.now() < player.slapStrafeCooldownEndTime) ||
+            now < player.slapStrafeCooldownEndTime) ||
           player.isHit ||
           player.isRawParrying ||
           player.isAtTheRopes
@@ -2561,7 +2605,7 @@ function tick(delta) {
           player.isAttacking || // Clear strafing during any attack (slap or charged)
           player.pendingSlapCount || // Clear strafing when buffered slap attack is pending
           (player.slapStrafeCooldown &&
-            Date.now() < player.slapStrafeCooldownEndTime) || // Clear strafing during post-slap cooldown
+            now < player.slapStrafeCooldownEndTime) || // Clear strafing during post-slap cooldown
           player.isHit || // Add isHit to force clear strafing when parried
           player.isRawParrying || // Add isRawParrying to force clear strafing during raw parry
           player.isAtTheRopes || // Block strafing while at the ropes
@@ -2592,7 +2636,7 @@ function tick(delta) {
         player.isAttacking || // Clear strafing during any attack
         player.pendingSlapCount || // Clear strafing when buffered slap attack is pending
         (player.slapStrafeCooldown &&
-          Date.now() < player.slapStrafeCooldownEndTime) || // Clear strafing during post-slap cooldown
+          now < player.slapStrafeCooldownEndTime) || // Clear strafing during post-slap cooldown
         player.isHit || // Add isHit to force clear strafing when parried
         player.isRawParrying || // Add isRawParrying to force clear strafing during raw parry
         player.isAtTheRopes // Block strafing while at the ropes
@@ -2663,7 +2707,7 @@ function tick(delta) {
         !player.isGrabBreakSeparating && // Block during grab break separation
         !player.isGrabSeparating && // Block during grab push separation
         !player.grabBreakSpaceConsumed && // Block until the triggering space press is released
-        Date.now() >= (player.rawParryCooldownUntil || 0) &&
+        now >= (player.rawParryCooldownUntil || 0) &&
         !player.isDodging && // Block raw parry during dodge - don't interrupt dodge hop
         !player.isSidestepping && // Block raw parry during sidestep
         !player.isGrabbing &&
@@ -2686,7 +2730,7 @@ function tick(delta) {
           player.isPerfectRawParrySuccess = false;
           
           player.isRawParrying = true;
-          player.rawParryStartTime = Date.now();
+          player.rawParryStartTime = now;
           player.rawParryMinDurationMet = false;
           // Flat stamina cost on parry initiation
           player.stamina = Math.max(0, player.stamina - RAW_PARRY_STAMINA_COST);
@@ -2725,7 +2769,7 @@ function tick(delta) {
         player.isCrouchStance = false;
         player.isCrouchStrafing = false;
 
-        const parryDuration = Date.now() - player.rawParryStartTime;
+        const parryDuration = now - player.rawParryStartTime;
 
         // Check if minimum duration has been met (whiffed parries use full commitment)
         if (parryDuration >= RAW_PARRY_MIN_DURATION) {
@@ -2742,7 +2786,7 @@ function tick(delta) {
           player.rawParryStartTime = 0;
           player.rawParryMinDurationMet = false;
           player.isRawParrySuccess = false;
-          player.rawParryCooldownUntil = Date.now() + RAW_PARRY_COOLDOWN_MS;
+          player.rawParryCooldownUntil = now + RAW_PARRY_COOLDOWN_MS;
           // Space released - clear grab-break consumption so future parries can occur
           player.grabBreakSpaceConsumed = false;
         }
@@ -2777,7 +2821,7 @@ function tick(delta) {
           
           // Set at the ropes state
           player.isAtTheRopes = true;
-          player.atTheRopesStartTime = Date.now();
+          player.atTheRopesStartTime = now;
           
           // Store the facing direction from the charged attack
           // This direction should persist through hits and ring-out until round reset
@@ -2838,7 +2882,7 @@ function tick(delta) {
           }
         }
 
-        if (Date.now() >= player.attackEndTime) {
+        if (now >= player.attackEndTime) {
           // Use helper function to safely end charged attacks
           safelyEndChargedAttack(player, rooms);
         }
@@ -2848,7 +2892,7 @@ function tick(delta) {
         player.isAtTheRopes
       ) {
         // If at the ropes, still check for attack end time but don't move
-        if (Date.now() >= player.attackEndTime) {
+        if (now >= player.attackEndTime) {
           safelyEndChargedAttack(player, rooms);
         }
       }
@@ -2873,7 +2917,7 @@ function tick(delta) {
 
       // Update charge attack power in the game loop
       if (player.isChargingAttack) {
-        const chargeDuration = Date.now() - player.chargeStartTime;
+        const chargeDuration = now - player.chargeStartTime;
         player.chargeAttackPower = Math.min(
           (chargeDuration / CHARGE_FULL_POWER_MS) * 100,
           100
@@ -2887,7 +2931,7 @@ function tick(delta) {
       if (room.gameStart && player.mouse1BufferedBeforeStart) {
         if (!player.isChargingAttack) {
           player.keys.mouse1 = true;
-          player.mouse1PressTime = Date.now();
+          player.mouse1PressTime = now;
         }
         player.mouse1BufferedBeforeStart = false;
       }
@@ -2898,7 +2942,7 @@ function tick(delta) {
       // Clear strafing cooldown when it expires
       if (
         player.slapStrafeCooldown &&
-        Date.now() >= player.slapStrafeCooldownEndTime
+        now >= player.slapStrafeCooldownEndTime
       ) {
         player.slapStrafeCooldown = false;
         player.slapStrafeCooldownEndTime = 0;
@@ -2914,10 +2958,10 @@ function tick(delta) {
       }
       if (player.stamina <= 0 && !player.isGassed && !room.gameOver) {
         player.isGassed = true;
-        player.gassedUntil = Date.now() + GASSED_DURATION_MS;
+        player.gassedUntil = now + GASSED_DURATION_MS;
         player.stamina = 0;
       }
-      if (player.isGassed && Date.now() >= player.gassedUntil) {
+      if (player.isGassed && now >= player.gassedUntil) {
         player.isGassed = false;
         player.gassedUntil = 0;
         player.stamina = Math.min(100, GASSED_RECOVERY_STAMINA);
@@ -2930,7 +2974,7 @@ function tick(delta) {
     if (
       room.gameOver &&
       room.gameOverTime &&
-      Date.now() - room.gameOverTime >= 3000 &&
+      now - room.gameOverTime >= 3000 &&
       !room.matchOver
     ) {
       resetRoomAndPlayers(room, io);
@@ -2971,18 +3015,29 @@ function tick(delta) {
 }
 
 
+let activeConnectionCount = 0;
+
 io.on("connection", (socket) => {
   socket.handshake.session.socketId = socket.id;
   socket.handshake.session.save();
 
-  io.emit("rooms", rooms);
-
+  activeConnectionCount++;
   startGameLoop();
+
+  io.emit("rooms", rooms);
 
   // Register all socket event handlers
   registerSocketHandlers(socket, io, rooms, {
     registerPlayerInMaps,
     unregisterPlayerFromMaps,
+  });
+
+  socket.on("disconnect", () => {
+    activeConnectionCount--;
+    if (activeConnectionCount <= 0) {
+      activeConnectionCount = 0;
+      stopGameLoop();
+    }
   });
 });
 

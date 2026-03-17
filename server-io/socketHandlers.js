@@ -338,6 +338,16 @@ function registerSocketHandlers(socket, io, rooms, context) {
         isBowing: false,
         facing: 1,
         stamina: 100,
+        balance: 100,
+        hasGrip: false,
+        gripAcquiredTime: 0,
+        inClinch: false,
+        clinchAction: null,
+        isClinchPushing: false,
+        isClinchPlanting: false,
+        isClinchLifting: false,
+        isResistingThrow: false,
+        isResistingPull: false,
         isGassed: false,
         gassedUntil: 0,
         x: 220,
@@ -560,6 +570,16 @@ function registerSocketHandlers(socket, io, rooms, context) {
         isBowing: false,
         facing: -1,
         stamina: 100,
+        balance: 100,
+        hasGrip: false,
+        gripAcquiredTime: 0,
+        inClinch: false,
+        clinchAction: null,
+        isClinchPushing: false,
+        isClinchPlanting: false,
+        isClinchLifting: false,
+        isResistingThrow: false,
+        isResistingPull: false,
         isGassed: false,
         gassedUntil: 0,
         x: 845,
@@ -820,6 +840,16 @@ function registerSocketHandlers(socket, io, rooms, context) {
       isBowing: false,
       facing: 1,
       stamina: 100,
+      balance: 100,
+      hasGrip: false,
+      gripAcquiredTime: 0,
+      inClinch: false,
+      clinchAction: null,
+      isClinchPushing: false,
+      isClinchPlanting: false,
+      isClinchLifting: false,
+      isResistingThrow: false,
+      isResistingPull: false,
       isGassed: false,
       gassedUntil: 0,
       x: 220,
@@ -1424,6 +1454,10 @@ function registerSocketHandlers(socket, io, rooms, context) {
           player.isGrabFrontalForceOut || player.isBeingGrabFrontalForceOut) {
         return true;
       }
+      // Block all actions during clinch (push/plant/neutral handled by clinch system)
+      if (player.inClinch) {
+        return true;
+      }
       // Block during recovery unless it's a dodge and dodge cancel is allowed
       if (
         player.isRecovering &&
@@ -1466,6 +1500,8 @@ function registerSocketHandlers(socket, io, rooms, context) {
       player.shiftJustPressed = !previousKeys.shift && data.keys.shift;
       player.eJustPressed = !previousKeys.e && data.keys.e;
       player.wJustPressed = !previousKeys.w && data.keys.w;
+      player.aJustPressed = !previousKeys.a && data.keys.a;
+      player.dJustPressed = !previousKeys.d && data.keys.d;
       player.fJustPressed = !previousKeys.f && data.keys.f;
       player.spaceJustPressed = !previousKeys[" "] && data.keys[" "];
 
@@ -1496,7 +1532,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
           }
         } else if (player.mouse1JustPressed) {
           player.inputBuffer = { type: "slap", timestamp: Date.now() };
-        } else if (player.mouse2JustPressed) {
+        } else if (player.mouse2JustPressed && !player.inClinch) {
           player.inputBuffer = { type: "grab", timestamp: Date.now() };
         }
       }
@@ -2109,21 +2145,84 @@ function registerSocketHandlers(socket, io, rooms, context) {
       player.chargeAttackPower = 0;
     }
 
+    // === GRIP-UP: Opponent presses Mouse2 while being grabbed without grip → gets grip ===
+    // isBeingGrabbed stays true (keeps position-lock and action blocking intact).
+    // hasGrip is used CLIENT-SIDE to switch from being-grabbed to belt-grip animation.
+    // The Mouse2 press that acquires grip is consumed — throw can't ride the same press.
+    if (
+      player.mouse2JustPressed &&
+      player.isBeingGrabbed &&
+      !player.hasGrip &&
+      player.inClinch
+    ) {
+      player.hasGrip = true;
+      player.clinchAction = "neutral";
+      player.gripAcquiredTime = Date.now();
+    }
+
+    // === CLINCH THROW/PULL/LIFT: Mouse2 + direction while in clinch with grip ===
+    // Detects three patterns:
+    //   1) Mouse2 just pressed + direction already held
+    //   2) Mouse2 already held + direction just pressed (most common — player holds mouse2 during clinch)
+    //   3) Mouse2 just pressed, direction arrives within 200ms buffer
+    // Grip must have been acquired on a previous tick — can't throw on the same press that got you the grip.
+    const gripTooRecent = player.gripAcquiredTime && (Date.now() - player.gripAcquiredTime < 50);
+    if (
+      player.keys.mouse2 && player.hasGrip && player.inClinch &&
+      !gripTooRecent &&
+      !player.clinchThrowActive && !player.clinchThrowCooldown && !player.isClinchClashing &&
+      !player.clinchThrowRequest &&
+      !player.isResistingThrow && !player.isResistingPull && !player.isBeingLifted
+    ) {
+      const otherPlayer = rooms[roomIndex].players.find((p) => p.id !== player.id);
+      if (otherPlayer) {
+        const towardKey = player.x < otherPlayer.x ? 'd' : 'a';
+        const awayKey = player.x < otherPlayer.x ? 'a' : 'd';
+
+        const m2Edge = player.mouse2JustPressed ||
+          (player.clinchMouse2BufferTime && Date.now() - player.clinchMouse2BufferTime < 200);
+        const wEdge = player.wJustPressed;
+        const awayJustPressed = awayKey === 'a' ? player.aJustPressed : player.dJustPressed;
+        const towardJustPressed = towardKey === 'a' ? player.aJustPressed : player.dJustPressed;
+
+        if (player.mouse2JustPressed) {
+          player.clinchMouse2BufferTime = Date.now();
+        }
+
+        let request = null;
+        // Pattern 1 & 3: Mouse2 edge + direction held
+        if (m2Edge && player.keys.w) request = "throw";
+        else if (m2Edge && player.keys[awayKey]) request = "pull";
+        else if (m2Edge && player.keys[towardKey]) request = "lift";
+        // Pattern 2: Mouse2 held + direction just pressed
+        else if (wEdge) request = "throw";
+        else if (awayJustPressed) request = "pull";
+        else if (towardJustPressed) request = "lift";
+
+        if (request) {
+          player.clinchThrowRequest = request;
+          player.clinchThrowRequestTime = Date.now();
+          player.clinchMouse2BufferTime = 0;
+        }
+      }
+    }
+
     // Handle throw attacks - only during grab decision window (first 1s of grab)
-    // Uses GRAB_ACTION_WINDOW (1s) and S-key counter by opponent
+    // DISABLED during new clinch system (Phase 4 will add new throw inputs)
     if (
       player.keys.w &&
       player.isGrabbing &&
+      !player.inClinch && // Skip in new clinch system
       !player.isBeingGrabbed &&
-      !player.keys.mouse2 && // Don't throw while grab button held
+      !player.keys.mouse2 &&
       !shouldBlockAction() &&
       !player.isThrowingSalt &&
       !player.canMoveToReady &&
       !player.throwCooldown &&
       !player.isRawParrying &&
       !player.isJumping &&
-      !player.isAttemptingGrabThrow &&  // Don't allow multiple throw attempts
-      !player.isAttemptingPull           // Don't allow throw during pull
+      !player.isAttemptingGrabThrow &&
+      !player.isAttemptingPull
     ) {
       // Reset any lingering throw states before starting a new throw
       player.throwingFacingDirection = null;
@@ -2275,15 +2374,15 @@ function registerSocketHandlers(socket, io, rooms, context) {
     }
 
     // === PULL REVERSAL - Backward input during grab ===
-    // NOTE: Primary pull initiation is in the push processing block (burst-decay push).
-    // This input handler serves as a safety fallback for edge cases.
+    // DISABLED during new clinch system (Phase 4 will add new throw inputs)
     if (
       player.isGrabbing &&
       player.grabbedOpponent &&
+      !player.inClinch && // Skip in new clinch system
       !player.isBeingGrabbed &&
       !player.isAttemptingGrabThrow &&
       !player.isAttemptingPull &&
-      !player.isGrabPushing &&          // Only fires if push somehow isn't active
+      !player.isGrabPushing &&
       !shouldBlockAction()
     ) {
       // Determine backward key based on facing
@@ -2490,6 +2589,10 @@ function registerSocketHandlers(socket, io, rooms, context) {
         clearTimeout(rooms[roomIndex].roundStartTimer);
         rooms[roomIndex].roundStartTimer = null;
       }
+      if (rooms[roomIndex].powerUpNotifyTimer) {
+        clearTimeout(rooms[roomIndex].powerUpNotifyTimer);
+        rooms[roomIndex].powerUpNotifyTimer = null;
+      }
 
       // PERFORMANCE: Unregister from lookup maps before removal
       unregisterPlayerFromMaps(socket.id);
@@ -2547,6 +2650,10 @@ function registerSocketHandlers(socket, io, rooms, context) {
         clearTimeout(room.roundStartTimer);
         room.roundStartTimer = null;
       }
+      if (room.powerUpNotifyTimer) {
+        clearTimeout(room.powerUpNotifyTimer);
+        room.powerUpNotifyTimer = null;
+      }
 
       // Handle CPU room cleanup - REMOVE the room entirely when human leaves
       if (room.isCPURoom) {
@@ -2555,6 +2662,9 @@ function registerSocketHandlers(socket, io, rooms, context) {
         timeoutManager.clearPlayer(cpuPlayerId);
         clearAIState(cpuPlayerId);
         clearImpossibleAIState(cpuPlayerId);
+
+        // Unregister both players from lookup maps before removal
+        room.players.forEach(p => unregisterPlayerFromMaps(p.id));
 
         // Leave the socket room
         socket.leave(roomId);
@@ -2705,6 +2815,10 @@ function registerSocketHandlers(socket, io, rooms, context) {
         clearTimeout(room.roundStartTimer);
         room.roundStartTimer = null;
       }
+      if (room.powerUpNotifyTimer) {
+        clearTimeout(room.powerUpNotifyTimer);
+        room.powerUpNotifyTimer = null;
+      }
 
       // Handle CPU room cleanup - REMOVE the room entirely when human disconnects
       if (room.isCPURoom) {
@@ -2713,6 +2827,9 @@ function registerSocketHandlers(socket, io, rooms, context) {
         timeoutManager.clearPlayer(cpuPlayerId);
         clearAIState(cpuPlayerId);
         clearImpossibleAIState(cpuPlayerId);
+
+        // Unregister both players from lookup maps before removal
+        room.players.forEach(p => unregisterPlayerFromMaps(p.id));
 
         // Remove the CPU room from the rooms array entirely
         rooms.splice(roomIndex, 1);

@@ -9,7 +9,9 @@ const { ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST,
         DODGE_STARTUP_MS, DODGE_DURATION, DODGE_STAMINA_COST,
         GRAB_STARTUP_DURATION_MS, GROUND_LEVEL, DOHYO_FALL_DEPTH,
         SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST,
-        RAW_PARRY_STAMINA_COST, POWER_UP_TYPES } = require("./constants");
+        RAW_PARRY_STAMINA_COST, POWER_UP_TYPES,
+        CLINCH_THROW_LAND_THRESHOLD, CLINCH_THROW_KILL_THRESHOLD,
+        BALANCE_MAX } = require("./constants");
 const { MAP_LEFT_BOUNDARY: GAME_MAP_LEFT, MAP_RIGHT_BOUNDARY: GAME_MAP_RIGHT,
         canPlayerSidestep, getSidestepInitData } = require("./gameUtils");
 
@@ -96,6 +98,21 @@ const AI_CONFIG = {
   PRESSURE_JITTER_MAX: 10,         // Near-instant reactions when pressured
   PRESSURE_MISS_CHANCE: 0.05,      // Almost never misses when focused on defense
   PRESSURE_DECAY_TIME: 2500,       // How long the defensive boost lasts after last hit (ms)
+
+  // Clinch system intelligence
+  CLINCH_GRIP_UP_DELAY_MIN: 200,       // Min delay before gripping up when grabbed
+  CLINCH_GRIP_UP_DELAY_MAX: 500,       // Max delay before gripping up
+  CLINCH_ACTION_INTERVAL_MIN: 600,     // Min interval between throw/pull/lift evaluations
+  CLINCH_ACTION_INTERVAL_MAX: 1400,    // Max interval between evaluations
+  CLINCH_KILL_ACTION_INTERVAL_MIN: 250, // Faster evaluation when opponent is in kill zone
+  CLINCH_KILL_ACTION_INTERVAL_MAX: 600,
+  CLINCH_THROW_REACTION_MIN: 150,      // Min reaction delay before executing a clinch action
+  CLINCH_THROW_REACTION_MAX: 400,      // Max reaction delay
+  CLINCH_THROW_CHANCE_KILL: 0.85,      // Chance to attempt action when opponent is in kill zone
+  CLINCH_THROW_CHANCE_LAND: 0.45,      // Chance to attempt action in land zone (balance 15-50)
+  CLINCH_THROW_CHANCE_FAIL: 0.12,      // Chance to attempt action in fail zone (drains balance)
+  CLINCH_PUSH_PLANT_INTERVAL_MIN: 300, // Min duration before re-evaluating push/plant
+  CLINCH_PUSH_PLANT_INTERVAL_MAX: 800, // Max duration
 };
 
 // AI State tracking per CPU player
@@ -166,6 +183,13 @@ function getAIState(playerId) {
       consecutiveHitsTaken: 0,
       lastHitTime: 0,
       wasHitLastCheck: false,
+      // === Clinch system tracking ===
+      clinchGripUpTime: 0,
+      clinchLastThrowCheck: 0,
+      clinchThrowPending: null,
+      clinchThrowExecuteTime: 0,
+      clinchPushPlantDecision: null,
+      clinchPushPlantUntil: 0,
     });
   }
   return aiStates.get(playerId);
@@ -507,7 +531,21 @@ function createEmptyKeys() {
 }
 
 function resetAllKeys(cpu) {
-  cpu.keys = createEmptyKeys();
+  if (!cpu.keys) {
+    cpu.keys = createEmptyKeys();
+    return;
+  }
+  const k = cpu.keys;
+  k.w = false;
+  k.a = false;
+  k.s = false;
+  k.d = false;
+  k[" "] = false;
+  k.shift = false;
+  k.e = false;
+  k.f = false;
+  k.mouse1 = false;
+  k.mouse2 = false;
 }
 
 // Handle key releases based on timestamps
@@ -629,27 +667,28 @@ function updateCPUAI(cpu, human, room, currentTime) {
     aiState.grabApproachIntent = false;
   }
 
-  // HIGHEST PRIORITY: If currently grabbing, execute grab strategy
-  if (cpu.isGrabbing && cpu.grabbedOpponent) {
-    aiState.grabStartedTime = 0;
-    handleGrabDecision(cpu, human, aiState, currentTime);
+  // HIGHEST PRIORITY: Clinch behavior (mutual grab system)
+  if (cpu.inClinch && (cpu.isGrabbing || cpu.isBeingGrabbed)) {
+    handleClinchBehavior(cpu, human, aiState, currentTime);
     return;
-  } else {
+  }
+  // Clean up clinch state when not in clinch
+  if (!cpu.inClinch && !cpu.isGrabbing && !cpu.isBeingGrabbed) {
+    aiState.clinchGripUpTime = 0;
+    aiState.clinchLastThrowCheck = 0;
+    aiState.clinchThrowPending = null;
+    aiState.clinchThrowExecuteTime = 0;
+    aiState.clinchPushPlantDecision = null;
+    aiState.clinchPushPlantUntil = 0;
     aiState.grabDecisionMade = false;
     aiState.grabStrategy = null;
     aiState.grabActionDelay = 0;
-  }
-  
-  // Priority 1: Handle being grabbed - try to break free
-  if (cpu.isBeingGrabbed && !cpu.isBeingThrown) {
-    handleGrabBreak(cpu, human, aiState, currentTime);
-    return;
-  } else {
     aiState.grabStartedTime = 0;
-    aiState.grabBreakReactionDecided = false;
-    aiState.grabBreakReactS = false;
-    aiState.grabBreakReactDirection = false;
-    aiState.grabResistStartTime = 0;
+  }
+
+  // Being grabbed outside clinch (edge case) — don't act
+  if (cpu.isBeingGrabbed && !cpu.isBeingThrown) {
+    return;
   }
   
   // Handle pending parry release
@@ -826,6 +865,209 @@ function handleGrabBreak(cpu, grabber, aiState, currentTime) {
     }
     if (aiState.grabBreakReactDirection) cpu.keys[pullCounterKey] = true;
   }
+}
+
+// === Clinch behavior: push/plant/throw/pull/lift decisions ===
+// Handles both roles: grabber (isGrabbing) and grabbed (isBeingGrabbed).
+// Reads opponent balance + position to pick optimal clinch actions.
+function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
+  resetAllKeys(cpu);
+
+  // During active throw/pull/lift/clash animations, the system handles everything
+  if (cpu.clinchThrowActive || cpu.isClinchClashing || cpu.isClinchThrowing ||
+      cpu.isBeingLifted || cpu.isResistingThrow || cpu.isResistingPull ||
+      cpu.isGrabSeparating) {
+    return;
+  }
+  if (opponent.clinchThrowActive || opponent.isClinchClashing || opponent.isClinchThrowing) {
+    return;
+  }
+
+  // During burst push as grabber: let the auto-push ride (good for positioning)
+  if (cpu.isGrabPushing) {
+    return;
+  }
+
+  // Positional awareness (toward/away relative to opponent position, not facing)
+  const towardKey = cpu.x < opponent.x ? 'd' : 'a';
+  const awayKey = cpu.x < opponent.x ? 'a' : 'd';
+  const cpuDistLeft = cpu.x - MAP_LEFT_BOUNDARY;
+  const cpuDistRight = MAP_RIGHT_BOUNDARY - cpu.x;
+  const oppDistLeft = opponent.x - MAP_LEFT_BOUNDARY;
+  const oppDistRight = MAP_RIGHT_BOUNDARY - opponent.x;
+  const cpuNearestEdge = Math.min(cpuDistLeft, cpuDistRight);
+  const oppNearestEdge = Math.min(oppDistLeft, oppDistRight);
+
+  // --- GRIP UP (human-like delay before gripping) ---
+  if (!cpu.hasGrip && cpu.inClinch) {
+    if (!aiState.clinchGripUpTime) {
+      aiState.clinchGripUpTime = currentTime + randomInRange(
+        AI_CONFIG.CLINCH_GRIP_UP_DELAY_MIN,
+        AI_CONFIG.CLINCH_GRIP_UP_DELAY_MAX
+      );
+    }
+    if (currentTime >= aiState.clinchGripUpTime) {
+      cpu.hasGrip = true;
+      cpu.clinchAction = "neutral";
+      aiState.clinchGripUpTime = 0;
+    }
+    return;
+  }
+
+  // --- THROW / PULL / LIFT DECISION ---
+  const opponentBalance = opponent.balance;
+  const cpuBalance = cpu.balance;
+  const cpuStamina = cpu.stamina;
+
+  const canRequestAction = cpu.hasGrip && !cpu.clinchThrowActive &&
+                           !cpu.clinchThrowCooldown && !cpu.clinchThrowRequest &&
+                           !cpu.isClinchClashing;
+  const canLand = opponentBalance <= CLINCH_THROW_LAND_THRESHOLD;
+  const canKill = opponentBalance < CLINCH_THROW_KILL_THRESHOLD;
+
+  // Detect when CPU is the one pinned at the boundary (closer to edge than opponent)
+  const cpuBackedToEdge = cpuNearestEdge < AI_CONFIG.EDGE_DANGER_ZONE && cpuNearestEdge < oppNearestEdge;
+
+  // --- EDGE ESCAPE URGENCY ---
+  // When backed against the boundary, throw/lift to escape instead of getting pushed off
+  if (cpuBackedToEdge && canRequestAction && !aiState.clinchThrowPending) {
+    const staminaDesperate = cpuStamina < 15;
+    const staminaCritical = cpuStamina < 35;
+    const edgeCheckInterval = staminaDesperate ? 150 : staminaCritical ? 300 : 500;
+
+    if (currentTime - (aiState.clinchLastThrowCheck || 0) > edgeCheckInterval) {
+      aiState.clinchLastThrowCheck = currentTime;
+      const escapeChance = staminaDesperate ? 0.90 : staminaCritical ? 0.70 : 0.40;
+
+      if (chance(escapeChance)) {
+        let action;
+        if (chance(0.55)) {
+          action = "lift"; // moves both players away from CPU's edge
+        } else if (chance(0.6)) {
+          action = "throw";
+        } else {
+          action = "pull";
+        }
+        const escapeDelay = staminaDesperate
+          ? randomInRange(80, 180)
+          : randomInRange(AI_CONFIG.CLINCH_THROW_REACTION_MIN, AI_CONFIG.CLINCH_THROW_REACTION_MAX);
+        aiState.clinchThrowPending = action;
+        aiState.clinchThrowExecuteTime = currentTime + escapeDelay;
+      }
+    }
+  }
+
+  // --- NORMAL THROW / PULL / LIFT DECISION (when not in edge-escape) ---
+  if (!aiState.clinchLastThrowCheck) aiState.clinchLastThrowCheck = 0;
+  const checkInterval = canKill
+    ? randomInRange(AI_CONFIG.CLINCH_KILL_ACTION_INTERVAL_MIN, AI_CONFIG.CLINCH_KILL_ACTION_INTERVAL_MAX)
+    : randomInRange(AI_CONFIG.CLINCH_ACTION_INTERVAL_MIN, AI_CONFIG.CLINCH_ACTION_INTERVAL_MAX);
+  const shouldCheckThrow = currentTime - aiState.clinchLastThrowCheck > checkInterval;
+
+  if (canRequestAction && shouldCheckThrow && !aiState.clinchThrowPending) {
+    aiState.clinchLastThrowCheck = currentTime;
+    const aggMult = getAggressionMultiplier(aiState);
+
+    if (canKill && chance(AI_CONFIG.CLINCH_THROW_CHANCE_KILL * Math.min(aggMult.grab, 1.3))) {
+      const liftViable = cpuNearestEdge > 100;
+      let action;
+      if (liftViable && chance(0.40)) {
+        action = "lift";
+      } else if (chance(0.55)) {
+        action = "throw";
+      } else {
+        action = "pull";
+      }
+      aiState.clinchThrowPending = action;
+      aiState.clinchThrowExecuteTime = currentTime + randomInRange(
+        AI_CONFIG.CLINCH_THROW_REACTION_MIN,
+        AI_CONFIG.CLINCH_THROW_REACTION_MAX
+      );
+    } else if (canLand && chance(AI_CONFIG.CLINCH_THROW_CHANCE_LAND * Math.min(aggMult.grab, 1.3))) {
+      const roll = Math.random();
+      let action = null;
+      if (roll < 0.40) action = "throw";
+      else if (roll < 0.65 && cpuNearestEdge > 80) action = "lift";
+      else if (roll < 0.85) action = "pull";
+      if (action) {
+        aiState.clinchThrowPending = action;
+        aiState.clinchThrowExecuteTime = currentTime + randomInRange(
+          AI_CONFIG.CLINCH_THROW_REACTION_MIN + 50,
+          AI_CONFIG.CLINCH_THROW_REACTION_MAX + 100
+        );
+      }
+    } else if (!canLand && chance(AI_CONFIG.CLINCH_THROW_CHANCE_FAIL * Math.min(aggMult.grab, 1.3))) {
+      // Failed throws now cost attacker balance — only attempt if CPU has balance to spare
+      if (cpuBalance > 40) {
+        const action = chance(0.6) ? "throw" : "pull";
+        aiState.clinchThrowPending = action;
+        aiState.clinchThrowExecuteTime = currentTime + randomInRange(
+          AI_CONFIG.CLINCH_THROW_REACTION_MIN + 100,
+          AI_CONFIG.CLINCH_THROW_REACTION_MAX + 200
+        );
+      }
+    }
+  }
+
+  // Execute pending throw/pull/lift after reaction delay
+  if (aiState.clinchThrowPending && currentTime >= aiState.clinchThrowExecuteTime) {
+    if (canRequestAction) {
+      cpu.clinchThrowRequest = aiState.clinchThrowPending;
+      cpu.clinchThrowRequestTime = currentTime;
+    }
+    aiState.clinchThrowPending = null;
+    aiState.clinchThrowExecuteTime = 0;
+  }
+
+  // --- PUSH / PLANT DECISION (set keys for getClinchAction to read) ---
+  // Stay neutral when a throw is pending or just submitted (avoid push penalty on throw)
+  if (aiState.clinchThrowPending || cpu.clinchThrowRequest) {
+    return;
+  }
+
+  // Re-evaluate push/plant at intervals to avoid jittery tick-by-tick flipping
+  if (!aiState.clinchPushPlantUntil || currentTime > aiState.clinchPushPlantUntil) {
+    aiState.clinchPushPlantUntil = currentTime + randomInRange(
+      AI_CONFIG.CLINCH_PUSH_PLANT_INTERVAL_MIN,
+      AI_CONFIG.CLINCH_PUSH_PLANT_INTERVAL_MAX
+    );
+
+    const opponentNearEdge = oppNearestEdge < AI_CONFIG.EDGE_DANGER_ZONE;
+    const cpuNearEdge = cpuNearestEdge < AI_CONFIG.EDGE_DANGER_ZONE;
+    const balanceAdvantage = cpuBalance - opponentBalance;
+
+    if (cpuBackedToEdge) {
+      // At the edge: push to resist being shoved off, but plant if stamina is critical
+      if (cpuStamina < 15) {
+        aiState.clinchPushPlantDecision = "plant";
+      } else {
+        aiState.clinchPushPlantDecision = "push";
+      }
+    } else if (opponentNearEdge && cpuBalance > 30) {
+      // Opponent near edge — push harder (edge zone amplifies balance drain)
+      aiState.clinchPushPlantDecision = "push";
+    } else if (cpuBalance < 25 && !opponentNearEdge) {
+      aiState.clinchPushPlantDecision = "plant";
+    } else if (cpuStamina < 40) {
+      // Plant recovers stamina now — plant more readily when stamina is moderate-low
+      aiState.clinchPushPlantDecision = "plant";
+    } else if (balanceAdvantage > 10) {
+      aiState.clinchPushPlantDecision = "push";
+    } else if (chance(0.60)) {
+      aiState.clinchPushPlantDecision = "push";
+    } else {
+      aiState.clinchPushPlantDecision = "plant";
+    }
+  }
+
+  // Apply the push/plant decision via keys
+  if (aiState.clinchPushPlantDecision === "push") {
+    cpu.keys[towardKey] = true;
+  } else if (aiState.clinchPushPlantDecision === "plant") {
+    cpu.keys.s = true;
+    cpu.keys[awayKey] = true;
+  }
+
 }
 
 // DI (Directional Influence)
@@ -1740,7 +1982,8 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
   }
   
   if (cpu.actionLockUntil && Date.now() < cpu.actionLockUntil) {
-    cpu._prevKeys = { ...cpu.keys };
+    if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
+    else Object.assign(cpu._prevKeys, cpu.keys);
     return;
   }
   
@@ -1772,7 +2015,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
   if (!cpu._prevKeys) {
     cpu._prevKeys = { ...cpu.keys };
   }
-  
+
   const prevKeys = cpu._prevKeys;
   const keyJustPressed = (key) => cpu.keys[key] && !prevKeys[key];
   
@@ -1807,13 +2050,15 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       }
     }
     
-    cpu._prevKeys = { ...cpu.keys };
+    if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
+    else Object.assign(cpu._prevKeys, cpu.keys);
     return;
   }
   
-  // === THROW PROCESSING ===
+  // === THROW PROCESSING (legacy, skipped during clinch — clinch uses clinchThrowRequest) ===
   if (cpu.keys.w && 
       cpu.isGrabbing && 
+      !cpu.inClinch &&
       !cpu.isBeingGrabbed &&
       !cpu.keys.mouse2 &&
       !shouldBlockAction(true) &&
@@ -1876,20 +2121,23 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       }
     }, 500);
     
-    cpu._prevKeys = { ...cpu.keys };
+    if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
+    else Object.assign(cpu._prevKeys, cpu.keys);
     return;
   }
   
   // Block if in blocking state
   if (shouldBlockAction()) {
-    cpu._prevKeys = { ...cpu.keys };
+    if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
+    else Object.assign(cpu._prevKeys, cpu.keys);
     return;
   }
   
   // Process slap attack
   if (keyJustPressed("mouse1") && canPlayerSlap(cpu) && !shouldBlockAction()) {
     executeSlapAttack(cpu, rooms);
-    cpu._prevKeys = { ...cpu.keys };
+    if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
+    else Object.assign(cpu._prevKeys, cpu.keys);
     return;
   }
   
@@ -1940,7 +2188,8 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     cpu.isStrafing = false;
     cpu.isPowerSliding = false;
     
-    cpu._prevKeys = { ...cpu.keys };
+    if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
+    else Object.assign(cpu._prevKeys, cpu.keys);
     return;
   }
   
@@ -1980,7 +2229,8 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       cpu.actionLockUntil = currentTime + SIDESTEP_TOTAL_MS;
       cpu.stamina = Math.max(0, cpu.stamina - SIDESTEP_STAMINA_COST);
 
-      cpu._prevKeys = { ...cpu.keys };
+      if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
+      else Object.assign(cpu._prevKeys, cpu.keys);
       return;
     }
   }
@@ -2020,7 +2270,8 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       cpu.dodgeDirection = cpu.facing === -1 ? 1 : -1;
     }
     
-    cpu._prevKeys = { ...cpu.keys };
+    if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
+    else Object.assign(cpu._prevKeys, cpu.keys);
     return;
   }
   
@@ -2058,7 +2309,8 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
         cpu.actionLockUntil = currentTime + ROPE_JUMP_STARTUP_MS;
         cpu.stamina = Math.max(0, cpu.stamina - ROPE_JUMP_STAMINA_COST);
 
-        cpu._prevKeys = { ...cpu.keys };
+        if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
+        else Object.assign(cpu._prevKeys, cpu.keys);
         return;
       }
     }
@@ -2101,7 +2353,8 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     cpu.slapStringPosition = 0;
     cpu.slapStringWindowUntil = 0;
     
-    cpu._prevKeys = { ...cpu.keys };
+    if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
+    else Object.assign(cpu._prevKeys, cpu.keys);
     return;
   }
   
@@ -2146,7 +2399,8 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
         cpu.snowballThrowsRemaining = 3;
       }
       if (cpu.snowballThrowsRemaining <= 0) {
-        cpu._prevKeys = { ...cpu.keys };
+        if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
+        else Object.assign(cpu._prevKeys, cpu.keys);
         return;
       }
 
@@ -2154,7 +2408,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       cpu.isThrowingSnowball = true;
       cpu.currentAction = "snowball";
       cpu.actionLockUntil = currentTime + 250;
-      
+
       let snowballDirection;
       if (opponent) {
         snowballDirection = cpu.x < opponent.x ? 2 : -2;
@@ -2182,7 +2436,8 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
         }
       }, 500);
       
-      cpu._prevKeys = { ...cpu.keys };
+      if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
+      else Object.assign(cpu._prevKeys, cpu.keys);
       return;
     } else if (cpu.activePowerUp === "pumo_army") {
       cpu.stamina = Math.max(0, cpu.stamina - CHARGED_ATTACK_STAMINA_COST);
@@ -2236,12 +2491,14 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
         }
       }, 800);
       
-      cpu._prevKeys = { ...cpu.keys };
+      if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
+      else Object.assign(cpu._prevKeys, cpu.keys);
       return;
     }
   }
   
-  cpu._prevKeys = { ...cpu.keys };
+  if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
+  else Object.assign(cpu._prevKeys, cpu.keys);
 }
 
 module.exports = {

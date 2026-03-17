@@ -153,6 +153,18 @@ function createCPUPlayer(uniqueId) {
     isBowing: false,
     facing: -1,
     stamina: 100,
+    balance: 100,
+    hasGrip: false,
+    gripAcquiredTime: 0,
+    inClinch: false,
+    clinchAction: null,
+    isClinchPushing: false,
+    isClinchPlanting: false,
+    isClinchLifting: false,
+    isResistingThrow: false,
+    isResistingPull: false,
+    isClinchKillThrowVictim: false,
+    isClinchKillPullVictim: false,
     isGassed: false,
     gassedUntil: 0,
     x: 845,
@@ -277,7 +289,7 @@ function handlePowerUpSelection(room, io) {
     room.playerAvailablePowerUps[player.id] = availablePowerUps;
 
     if (player.isCPU) {
-      setTimeout(() => {
+      setPlayerTimeout(player.id, () => {
         if (!room || !room.players || !room.players.includes(player)) return;
         
         const randomPowerUp =
@@ -289,7 +301,8 @@ function handlePowerUpSelection(room, io) {
     }
   });
 
-  setTimeout(() => {
+  room.powerUpNotifyTimer = setTimeout(() => {
+    room.powerUpNotifyTimer = null;
     if (room && room.powerUpSelectionPhase && room.players.length === 2) {
       room.players.forEach((player) => {
         if (player.isCPU) return;
@@ -433,6 +446,7 @@ function resetRoomAndPlayers(room, io) {
     player.isParryKnockback = false;
     player.isDead = false;
     player.stamina = 100;
+    player.balance = 100;
     player.isGassed = false;
     player.gassedUntil = 0;
     player.isBowing = false;
@@ -555,6 +569,11 @@ function resetRoomAndPlayers(room, io) {
     player.isBeingPullReversaled = false;
     player.pullReversalPullerId = null;
     player.isGrabSeparating = false;
+    player.isGrabBreakSeparating = false;
+    player.grabBreakSepStartTime = 0;
+    player.grabBreakSepDuration = 0;
+    player.grabBreakStartX = undefined;
+    player.grabBreakTargetX = undefined;
     player.isGrabBellyFlopping = false;
     player.isBeingGrabBellyFlopped = false;
     player.isGrabFrontalForceOut = false;
@@ -580,6 +599,10 @@ function resetRoomAndPlayers(room, io) {
     player.knockbackImmune = false;
     player.knockbackImmuneEndTime = 0;
     player.isCinematicKillVictim = false;
+    player.isClinchKillThrowVictim = false;
+    player.isClinchKillPullVictim = false;
+    player.isClinchKillThrow = false;
+    player.isClinchKillLift = false;
   });
 
   room.playerAvailablePowerUps = {};

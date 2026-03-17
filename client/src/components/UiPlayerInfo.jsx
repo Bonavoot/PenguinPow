@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import styled, { keyframes, css } from "styled-components";
 import happyFeetIcon from "../assets/happy-feet.png";
 import powerWaterIcon from "../assets/power-water.png";
@@ -23,10 +23,16 @@ const pulseWin = keyframes`
   100% { transform: scale(1); }
 `;
 
-/* Sweeping ice-shine across the stamina fill */
+/* Sweeping ice-shine across the balance fill */
 const iceShimmer = keyframes`
   0%   { transform: translateX(-120%); }
   100% { transform: translateX(220%); }
+`;
+
+/* Warm ember glow sweep across the stamina fill */
+const emberShimmer = keyframes`
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(250%); }
 `;
 
 /* Pulsing glow overlay during stamina regeneration */
@@ -504,28 +510,25 @@ const BarFrame = styled.div`
         `}
 `;
 
-/* Dark inner track with frost-crack texture — height tuned so bar total matches power-up slot */
+/* Dark inner track — unified height for dual-gauge layout */
 const BarTrack = styled.div`
   position: relative;
   width: 100%;
-  height: calc(clamp(26px, 5.4cqh, 56px) - 3px);
+  height: clamp(16px, 3.2cqh, 32px);
   border-radius: 3px;
   overflow: hidden;
 
   background:
-    linear-gradient(137deg, transparent 48%, rgba(168,212,255,0.02) 49%, rgba(168,212,255,0.02) 51%, transparent 52%),
-    linear-gradient(-137deg, transparent 48%, rgba(168,212,255,0.012) 49%, rgba(168,212,255,0.012) 51%, transparent 52%),
     linear-gradient(
       ${(p) => (p.$isRight ? "280deg" : "100deg")},
       rgba(2, 2, 2, 0.97) 0%,
       rgba(6, 6, 6, 0.95) 50%,
       rgba(10, 10, 10, 0.92) 100%
     );
-  border: 1.5px solid rgba(168, 212, 255, 0.12);
+  border: 1.5px solid rgba(212, 175, 55, 0.12);
   box-shadow:
-    inset 0 3px 8px rgba(0, 0, 0, 0.65),
-    inset 0 -1px 4px rgba(0, 0, 0, 0.3),
-    inset 0 0 6px rgba(168, 212, 255, 0.03);
+    inset 0 2px 6px rgba(0, 0, 0, 0.6),
+    inset 0 -1px 3px rgba(0, 0, 0, 0.25);
 `;
 
 /* Tick marks at 25%, 50%, 75% — readability */
@@ -559,7 +562,7 @@ const BarCenterTick = styled.div`
   pointer-events: none;
 `;
 
-/* Icy blue stamina fill — the glowing glacier bar */
+/* Gold/amber stamina fill — warm energy bar */
 const BarFill = styled.div.attrs((p) => ({
   style: {
     width: `calc(${p.$stamina}% - 4px)`,
@@ -574,27 +577,25 @@ const BarFill = styled.div.attrs((p) => ({
   z-index: 2;
   overflow: hidden;
 
-  /* ── Color states ── */
   background: ${(p) =>
     p.$danger
       ? p.$isRight
         ? "linear-gradient(270deg, #dc2626 0%, #ef4444 40%, #f87171 80%, #fca5a5 100%)"
         : "linear-gradient(90deg, #fca5a5 0%, #f87171 20%, #ef4444 60%, #dc2626 100%)"
       : p.$isRight
-        ? "linear-gradient(270deg, #0369a1 0%, #0284c7 15%, #0ea5e9 35%, #38bdf8 60%, #7dd3fc 85%, #bae6fd 100%)"
-        : "linear-gradient(90deg, #bae6fd 0%, #7dd3fc 15%, #38bdf8 40%, #0ea5e9 65%, #0284c7 85%, #0369a1 100%)"};
+        ? "linear-gradient(270deg, #b45309 0%, #d97706 15%, #f59e0b 35%, #fbbf24 60%, #fcd34d 85%, #fde68a 100%)"
+        : "linear-gradient(90deg, #fde68a 0%, #fcd34d 15%, #fbbf24 40%, #f59e0b 65%, #d97706 85%, #b45309 100%)"};
 
   box-shadow: ${(p) =>
     p.$danger
       ? "0 0 14px rgba(239, 68, 68, 0.6), inset 0 0 4px rgba(255, 100, 100, 0.2)"
-      : "0 0 12px rgba(14, 165, 233, 0.45), 0 0 4px rgba(56, 189, 248, 0.3), inset 0 0 4px rgba(186, 230, 253, 0.12)"};
+      : "0 0 10px rgba(245, 158, 11, 0.4), 0 0 4px rgba(251, 191, 36, 0.3), inset 0 0 4px rgba(253, 230, 138, 0.1)"};
 
   animation: ${(p) =>
     p.$danger
       ? css`${flashRedPulse} 0.6s ease-in-out infinite`
       : "none"};
 
-  /* Top highlight — glass bevel */
   &::before {
     content: "";
     position: absolute;
@@ -602,15 +603,15 @@ const BarFill = styled.div.attrs((p) => ({
     height: 40%;
     background: linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.32) 0%,
-      rgba(255, 255, 255, 0.08) 60%,
+      rgba(255, 255, 255, 0.28) 0%,
+      rgba(255, 255, 255, 0.07) 60%,
       transparent 100%
     );
     border-radius: 2px 2px 0 0;
     pointer-events: none;
   }
 
-  /* ── Sweeping ice-shine (only when not danger) ── */
+  /* Warm ember sweep (only when not danger) */
   &::after {
     content: "";
     position: absolute;
@@ -621,20 +622,20 @@ const BarFill = styled.div.attrs((p) => ({
       100deg,
       transparent 0%,
       transparent 35%,
-      rgba(255, 255, 255, 0.10) 42%,
-      rgba(255, 255, 255, 0.22) 50%,
-      rgba(255, 255, 255, 0.10) 58%,
+      rgba(255, 230, 150, 0.08) 42%,
+      rgba(255, 230, 150, 0.16) 50%,
+      rgba(255, 230, 150, 0.08) 58%,
       transparent 65%,
       transparent 100%
     );
-    animation: ${iceShimmer} 3.5s ease-in-out infinite;
-    animation-delay: ${(p) => (p.$isRight ? "1.8s" : "0s")};
+    animation: ${emberShimmer} 4s ease-in-out infinite;
+    animation-delay: ${(p) => (p.$isRight ? "2s" : "0s")};
     pointer-events: none;
     opacity: ${(p) => (p.$danger ? 0 : 1)};
   }
 `;
 
-/* Ghost bar — trailing damage indicator (fighting-game "white health") */
+/* Ghost bar — luminous translucent white trailing indicator */
 const BarGhost = styled.div.attrs((p) => ({
   style: {
     width: `calc(${p.$stamina}% - 4px)`,
@@ -651,31 +652,29 @@ const BarGhost = styled.div.attrs((p) => ({
   z-index: 1;
   pointer-events: none;
 
-  /* Warm amber — immediately reads as "recent damage" against the dark track */
   background: linear-gradient(
     180deg,
-    #fcd679 0%,
-    #f5b944 20%,
-    #ef8e19 45%,
-    #dc6803 75%,
-    #b54708 100%
+    rgba(255, 255, 255, 0.82) 0%,
+    rgba(240, 244, 255, 0.65) 25%,
+    rgba(220, 228, 248, 0.52) 55%,
+    rgba(200, 210, 240, 0.42) 80%,
+    rgba(180, 192, 230, 0.35) 100%
   );
 
-  opacity: 0.88;
+  opacity: 0.75;
   box-shadow:
-    0 0 10px rgba(220, 104, 3, 0.45),
-    inset 0 0 4px rgba(252, 214, 121, 0.15);
+    0 0 8px rgba(220, 230, 255, 0.25),
+    inset 0 0 6px rgba(255, 255, 255, 0.12);
 
-  /* Top highlight bevel (matches fill style) */
   &::before {
     content: "";
     position: absolute;
     top: 0; left: 0; right: 0;
-    height: 40%;
+    height: 45%;
     background: linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.22) 0%,
-      rgba(255, 255, 255, 0.06) 60%,
+      rgba(255, 255, 255, 0.35) 0%,
+      rgba(255, 255, 255, 0.1) 50%,
       transparent 100%
     );
     border-radius: 2px 2px 0 0;
@@ -849,6 +848,21 @@ const RecoveryText = styled.span`
   animation: ${recoveryTextPop} 0.8s ease-out forwards;
 `;
 
+/* Thin gold divider between the two gauge rows */
+const GaugeDivider = styled.div`
+  height: 1px;
+  margin: 3px 0 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(212, 175, 55, 0.15) 15%,
+    rgba(212, 175, 55, 0.25) 50%,
+    rgba(212, 175, 55, 0.15) 85%,
+    transparent 100%
+  );
+  pointer-events: none;
+`;
+
 /* STA label inside the bar */
 const BarLabel = styled.div`
   position: absolute;
@@ -880,7 +894,202 @@ const BarRowSpacer = styled.div`
   min-height: 0;
 `;
 
-/* Stack below the stamina bar — rank plaque aligned with stamina bar left/right */
+// ============================================
+// BALANCE BAR — thinner bar below stamina
+// ============================================
+
+const BalanceBarTrack = styled.div`
+  position: relative;
+  width: 100%;
+  height: clamp(16px, 3.2cqh, 32px);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 3px;
+  background:
+    linear-gradient(
+      ${(p) => (p.$isRight ? "280deg" : "100deg")},
+      rgba(2, 2, 2, 0.97) 0%,
+      rgba(6, 6, 6, 0.95) 50%,
+      rgba(10, 10, 10, 0.92) 100%
+    );
+  border: 1.5px solid rgba(168, 212, 255, 0.12);
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.6),
+    inset 0 -1px 3px rgba(0, 0, 0, 0.25);
+`;
+
+/* Icy blue balance fill — composure/stability gauge */
+const BalanceBarFill = styled.div.attrs((p) => ({
+  style: {
+    width: `calc(${p.$balance}% - 4px)`,
+  },
+}))`
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  ${(p) => (p.$isRight ? "right: 2px;" : "left: 2px;")}
+  border-radius: 2px;
+  transition: width 0.25s ease;
+  z-index: 2;
+  overflow: hidden;
+
+  background: ${(p) =>
+    p.$danger
+      ? p.$isRight
+        ? "linear-gradient(270deg, #dc2626 0%, #ef4444 40%, #f87171 80%, #fca5a5 100%)"
+        : "linear-gradient(90deg, #fca5a5 0%, #f87171 20%, #ef4444 60%, #dc2626 100%)"
+      : p.$isRight
+        ? "linear-gradient(270deg, #0369a1 0%, #0284c7 15%, #0ea5e9 35%, #38bdf8 60%, #7dd3fc 85%, #bae6fd 100%)"
+        : "linear-gradient(90deg, #bae6fd 0%, #7dd3fc 15%, #38bdf8 40%, #0ea5e9 65%, #0284c7 85%, #0369a1 100%)"};
+
+  box-shadow: ${(p) =>
+    p.$danger
+      ? "0 0 10px rgba(239, 68, 68, 0.5), inset 0 0 3px rgba(255, 100, 100, 0.15)"
+      : "0 0 12px rgba(14, 165, 233, 0.45), 0 0 4px rgba(56, 189, 248, 0.3), inset 0 0 4px rgba(186, 230, 253, 0.12)"};
+
+  animation: ${(p) =>
+    p.$danger
+      ? css`${flashRedPulse} 0.8s ease-in-out infinite`
+      : "none"};
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 40%;
+    background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.3) 0%,
+      rgba(255, 255, 255, 0.08) 60%,
+      transparent 100%
+    );
+    border-radius: 2px 2px 0 0;
+    pointer-events: none;
+  }
+
+  /* Sweeping ice-shine (only when not danger) */
+  &::after {
+    content: "";
+    position: absolute;
+    top: 0; bottom: 0;
+    left: 0;
+    width: 45%;
+    background: linear-gradient(
+      100deg,
+      transparent 0%,
+      transparent 35%,
+      rgba(255, 255, 255, 0.10) 42%,
+      rgba(255, 255, 255, 0.22) 50%,
+      rgba(255, 255, 255, 0.10) 58%,
+      transparent 65%,
+      transparent 100%
+    );
+    animation: ${iceShimmer} 3.5s ease-in-out infinite;
+    animation-delay: ${(p) => (p.$isRight ? "1.8s" : "0s")};
+    pointer-events: none;
+    opacity: ${(p) => (p.$danger ? 0 : 1)};
+  }
+`;
+
+/* Balance ghost bar — luminous translucent white trailing indicator */
+const BalanceBarGhost = styled.div.attrs((p) => ({
+  style: {
+    width: `calc(${p.$balance}% - 4px)`,
+    transition: p.$catching
+      ? "width 0.55s ease-out"
+      : "width 0.05s linear",
+  },
+}))`
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  ${(p) => (p.$isRight ? "right: 2px;" : "left: 2px;")}
+  border-radius: 2px;
+  z-index: 1;
+  pointer-events: none;
+
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.82) 0%,
+    rgba(240, 244, 255, 0.65) 25%,
+    rgba(220, 228, 248, 0.52) 55%,
+    rgba(200, 210, 240, 0.42) 80%,
+    rgba(180, 192, 230, 0.35) 100%
+  );
+
+  opacity: 0.75;
+  box-shadow:
+    0 0 8px rgba(220, 230, 255, 0.25),
+    inset 0 0 6px rgba(255, 255, 255, 0.12);
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 45%;
+    background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.35) 0%,
+      rgba(255, 255, 255, 0.1) 50%,
+      transparent 100%
+    );
+    border-radius: 2px 2px 0 0;
+    pointer-events: none;
+  }
+`;
+
+const BalanceBarLabel = styled.div`
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  ${(p) => (p.$isRight ? "right: clamp(6px, 1cqw, 14px);" : "left: clamp(6px, 1cqw, 14px);")}
+  font-family: "Bungee", cursive;
+  font-size: clamp(8px, 0.95cqw, 12px);
+  color: rgba(255, 255, 255, 0.82);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  text-shadow:
+    1px 1px 3px rgba(0, 0, 0, 1),
+    0 0 8px rgba(0, 0, 0, 0.8),
+    0 0 2px rgba(0, 0, 0, 1);
+  z-index: 6;
+  pointer-events: none;
+  user-select: none;
+`;
+
+/* 50% throw-zone + 15% kill-zone reference ticks (mirrored for P2) */
+const BalanceBarTicks = styled.div`
+  position: absolute;
+  top: 0; bottom: 0; left: 0; right: 0;
+  z-index: 4;
+  pointer-events: none;
+
+  /* 50% — throw zone reference */
+  &::before {
+    content: "";
+    position: absolute;
+    top: 10%;
+    bottom: 10%;
+    left: 50%;
+    width: 1.5px;
+    background: rgba(255, 255, 255, 0.28);
+    box-shadow: 0 0 3px rgba(255, 255, 255, 0.08);
+  }
+
+  /* 15% — kill zone reference (mirrored for P2) */
+  &::after {
+    content: "";
+    position: absolute;
+    top: 10%;
+    bottom: 10%;
+    ${(p) => (p.$isRight ? "right: 15%;" : "left: 15%;")}
+    width: 1.5px;
+    background: rgba(255, 140, 120, 0.32);
+    box-shadow: 0 0 3px rgba(255, 100, 80, 0.1);
+  }
+`;
+
+/* Stack below the dual gauge — rank plaque aligned with bar left/right */
 const SubBarRow = styled.div`
   display: flex;
   flex-direction: ${(p) => (p.$isRight ? "row-reverse" : "row")};
@@ -1166,6 +1375,18 @@ const RoundText = styled.div`
 
 const LOW_STAMINA_WARNING_THRESHOLD = 25;
 
+const clampStamina = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, n));
+};
+
+const clampBalance = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 100;
+  return Math.max(0, Math.min(100, n));
+};
+
 // ============================================
 // COMPONENT
 // ============================================
@@ -1180,6 +1401,7 @@ const UiPlayerInfo = ({
   player1PumoArmyCooldown = false,
   player1IsGassed = false,
   player1ParryRefund = 0,
+  player1Balance = 100,
   player2Stamina,
   player2ActivePowerUp = null,
   player2SnowballCooldown = false,
@@ -1187,16 +1409,16 @@ const UiPlayerInfo = ({
   player2PumoArmyCooldown = false,
   player2IsGassed = false,
   player2ParryRefund = 0,
+  player2Balance = 100,
   matchOver = false,
 }) => {
-  const clampStamina = (value) => {
-    const n = Number(value);
-    if (!Number.isFinite(n)) return 0;
-    return Math.max(0, Math.min(100, n));
-  };
-
   const s1 = clampStamina(player1Stamina);
   const s2 = clampStamina(player2Stamina);
+  const b1 = clampBalance(player1Balance);
+  const b2 = clampBalance(player2Balance);
+  const BALANCE_DANGER_THRESHOLD = 15;
+  const b1Danger = b1 < BALANCE_DANGER_THRESHOLD;
+  const b2Danger = b2 < BALANCE_DANGER_THRESHOLD;
 
   // ── Display stamina (throttled regen for smooth bar animation) ──
   const [p1DisplayStamina, setP1DisplayStamina] = useState(s1);
@@ -1216,6 +1438,16 @@ const UiPlayerInfo = ({
   const p2PrevStamina = useRef(s2);
   const p1LastDecreaseAtRef = useRef(0);
   const p2LastDecreaseAtRef = useRef(0);
+
+  // ── Balance ghost bar — trailing indicator for balance changes ──
+  const [p1BalGhost, setP1BalGhost] = useState(b1);
+  const [p2BalGhost, setP2BalGhost] = useState(b2);
+  const [p1BalGhostCatching, setP1BalGhostCatching] = useState(false);
+  const [p2BalGhostCatching, setP2BalGhostCatching] = useState(false);
+  const p1BalGhostTimer = useRef(null);
+  const p2BalGhostTimer = useRef(null);
+  const p1PrevBalance = useRef(b1);
+  const p2PrevBalance = useRef(b2);
 
   // ── Regen indicator (green leading-edge glow) ──
   const [p1Regen, setP1Regen] = useState(false);
@@ -1286,6 +1518,14 @@ const UiPlayerInfo = ({
     p2RecoveryPending.current = false;
     setP1Recovery(0);
     setP2Recovery(0);
+    setP1BalGhost(b1);
+    setP2BalGhost(b2);
+    setP1BalGhostCatching(false);
+    setP2BalGhostCatching(false);
+    if (p1BalGhostTimer.current) clearTimeout(p1BalGhostTimer.current);
+    if (p2BalGhostTimer.current) clearTimeout(p2BalGhostTimer.current);
+    p1PrevBalance.current = b1;
+    p2PrevBalance.current = b2;
   }, [roundId]);
 
   // ── Gassed → recovered transition detection ──
@@ -1493,6 +1733,62 @@ const UiPlayerInfo = ({
     };
   }, [s2]);
 
+  // ── Player 1 balance ghost ──
+  useEffect(() => {
+    const prev = p1PrevBalance.current;
+    p1PrevBalance.current = b1;
+
+    if (b1 < prev) {
+      setP1BalGhost((g) => Math.max(g, prev));
+      setP1BalGhostCatching(false);
+      if (p1BalGhostTimer.current) clearTimeout(p1BalGhostTimer.current);
+      const closureB1 = b1;
+      p1BalGhostTimer.current = setTimeout(() => {
+        setP1BalGhostCatching(true);
+        setP1BalGhost(closureB1);
+      }, 600);
+    } else if (b1 > prev) {
+      if (p1BalGhostTimer.current) clearTimeout(p1BalGhostTimer.current);
+      setP1BalGhostCatching(false);
+      setP1BalGhost(b1);
+    }
+
+    return () => {
+      if (p1BalGhostTimer.current) {
+        clearTimeout(p1BalGhostTimer.current);
+        p1BalGhostTimer.current = null;
+      }
+    };
+  }, [b1]);
+
+  // ── Player 2 balance ghost ──
+  useEffect(() => {
+    const prev = p2PrevBalance.current;
+    p2PrevBalance.current = b2;
+
+    if (b2 < prev) {
+      setP2BalGhost((g) => Math.max(g, prev));
+      setP2BalGhostCatching(false);
+      if (p2BalGhostTimer.current) clearTimeout(p2BalGhostTimer.current);
+      const closureB2 = b2;
+      p2BalGhostTimer.current = setTimeout(() => {
+        setP2BalGhostCatching(true);
+        setP2BalGhost(closureB2);
+      }, 600);
+    } else if (b2 > prev) {
+      if (p2BalGhostTimer.current) clearTimeout(p2BalGhostTimer.current);
+      setP2BalGhostCatching(false);
+      setP2BalGhost(b2);
+    }
+
+    return () => {
+      if (p2BalGhostTimer.current) {
+        clearTimeout(p2BalGhostTimer.current);
+        p2BalGhostTimer.current = null;
+      }
+    };
+  }, [b2]);
+
   // ── Derived match state ──
   const currentRound = Math.min(roundHistory.length + 1, 3);
 
@@ -1604,6 +1900,17 @@ const UiPlayerInfo = ({
               <BarTicks />
               <BarCenterTick />
             </BarTrack>
+            <GaugeDivider />
+            <BalanceBarTrack $isRight={false}>
+              <BalanceBarLabel $isRight={false}>BAL</BalanceBarLabel>
+              <BalanceBarGhost
+                $balance={p1BalGhost}
+                $catching={p1BalGhostCatching}
+                $isRight={false}
+              />
+              <BalanceBarFill $balance={b1} $danger={b1Danger} $isRight={false} />
+              <BalanceBarTicks $isRight={false} />
+            </BalanceBarTrack>
           </BarFrame>
           <PowerUpSlot
             $active={player1ActivePowerUp}
@@ -1710,6 +2017,17 @@ const UiPlayerInfo = ({
               <BarTicks />
               <BarCenterTick />
             </BarTrack>
+            <GaugeDivider />
+            <BalanceBarTrack $isRight={true}>
+              <BalanceBarLabel $isRight={true}>BAL</BalanceBarLabel>
+              <BalanceBarGhost
+                $balance={p2BalGhost}
+                $catching={p2BalGhostCatching}
+                $isRight={true}
+              />
+              <BalanceBarFill $balance={b2} $danger={b2Danger} $isRight={true} />
+              <BalanceBarTicks $isRight={true} />
+            </BalanceBarTrack>
           </BarFrame>
           <PowerUpSlot
             $active={player2ActivePowerUp}
@@ -1755,6 +2073,7 @@ UiPlayerInfo.propTypes = {
   player1PumoArmyCooldown: PropTypes.bool,
   player1IsGassed: PropTypes.bool,
   player1ParryRefund: PropTypes.number,
+  player1Balance: PropTypes.number,
   player2Stamina: PropTypes.number,
   player2ActivePowerUp: PropTypes.string,
   player2SnowballCooldown: PropTypes.bool,
@@ -1762,7 +2081,8 @@ UiPlayerInfo.propTypes = {
   player2PumoArmyCooldown: PropTypes.bool,
   player2IsGassed: PropTypes.bool,
   player2ParryRefund: PropTypes.number,
+  player2Balance: PropTypes.number,
   matchOver: PropTypes.bool,
 };
 
-export default UiPlayerInfo;
+export default React.memo(UiPlayerInfo);

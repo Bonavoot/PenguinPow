@@ -235,6 +235,8 @@ export const StyledImage = styled("img")
         "isCinematicKillAttacker",
         "isRopeJumping",
         "ropeJumpPhase",
+        "isClinchKillThrowVictim",
+        "isClinchKillPullVictim",
       ].includes(prop),
   })
   .attrs((props) => ({
@@ -294,7 +296,20 @@ export const StyledImage = styled("img")
         props.$isGrabWhiffRecovery,
         props.$isRopeJumping,
         props.$ropeJumpPhase,
-        props.$isDodgeRecovery
+        props.$isDodgeRecovery,
+        props.$isSidestepping,
+        props.$isSidestepRecovery,
+        props.$isChargingAttack,
+        props.$hasGrip,
+        props.$isBeingLifted,
+        props.$isClinchClashing,
+        props.$isClinchLifting,
+        props.$isClinchPushing,
+        props.$isClinchPlanting,
+        props.$isResistingThrow,
+        props.$isResistingPull,
+        props.$isClinchKillThrowVictim,
+        props.$isClinchKillPullVictim
       ),
     style: {
       position: "absolute",
@@ -326,7 +341,11 @@ export const StyledImage = styled("img")
         ? 98
         : 99,
       filter: getFighterPopFilter(props),
-      animation: props.$isAtTheRopes
+      animation: props.$isClinchKillThrowVictim
+        ? "clinchKillThrowSpin 0.75s ease-out forwards"
+        : props.$isClinchKillPullVictim
+        ? "clinchKillPullSpin 0.7s ease-in forwards"
+        : props.$isAtTheRopes
         ? "atTheRopesWobble 0.3s ease-in-out infinite"
         : props.$isRopeJumping && props.$ropeJumpPhase === "landing"
         ? "ropeJumpLandBounce 0.18s ease-out forwards"
@@ -362,6 +381,8 @@ export const StyledImage = styled("img")
         ? "grabBreakShake 0.1s ease-in-out infinite"
         : props.$isRawParrying
         ? "parryActivationFlash 0.22s ease-out forwards"
+        : props.$isClinchClashing
+        ? "grabTechShake 0.25s ease-in-out infinite"
         : props.$isGrabTeching
         ? "grabTechShake 0.25s ease-in-out infinite"
         : props.$isGrabClashActive
@@ -424,7 +445,11 @@ export const StyledImage = styled("img")
       height: "auto",
       willChange: "transform",
       pointerEvents: "none",
-      transformOrigin: "center bottom",
+      transformOrigin: props.$isClinchKillPullVictim
+        ? "center 80%"
+        : props.$isClinchKillThrowVictim
+        ? "center center"
+        : "center bottom",
       transition: "none",
     },
   }))`
@@ -596,6 +621,17 @@ export const StyledImage = styled("img")
     65% { transform: scaleX(calc(var(--facing, 1) * 0.98)) scaleY(1.02) translateX(calc(var(--facing, 1) * -2px)); transform-origin: center bottom; }
     85% { transform: scaleX(calc(var(--facing, 1) * 1.01)) scaleY(0.99) translateX(calc(var(--facing, 1) * 1px)); transform-origin: center bottom; }
     100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0); transform-origin: center bottom; }
+  }
+  @keyframes clinchKillThrowSpin {
+    0% { transform: scaleX(var(--facing, 1)) rotate(0deg); transform-origin: center center; }
+    30% { transform: scaleX(var(--facing, 1)) rotate(30deg); transform-origin: center center; }
+    100% { transform: scaleX(var(--facing, 1)) rotate(90deg); transform-origin: center center; }
+  }
+  @keyframes clinchKillPullSpin {
+    0% { transform: scaleX(var(--facing, 1)) rotate(0deg); transform-origin: center 80%; }
+    60% { transform: scaleX(var(--facing, 1)) rotate(8deg); transform-origin: center 80%; }
+    80% { transform: scaleX(var(--facing, 1)) rotate(45deg); transform-origin: center 80%; }
+    100% { transform: scaleX(var(--facing, 1)) rotate(90deg); transform-origin: center 80%; }
   }
 `;
 

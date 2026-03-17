@@ -102,6 +102,8 @@ const Game = ({
   const currentPlayer = currentRoom?.players?.find(
     (player) => player.id === localId
   );
+  const currentPlayerRef = useRef(null);
+  currentPlayerRef.current = currentPlayer;
 
   // ============================================
   // GAME STATE TRACKING FOR PREDICTIONS
@@ -119,6 +121,11 @@ const Game = ({
   const containerRef = useRef(null);
 
   useCamera(containerRef, socket);
+
+  const handleResetDisconnectState = useCallback(() => {
+    setOpponentDisconnected(false);
+    setDisconnectedRoomId(null);
+  }, []);
 
   // Helper function to apply prediction for an action
   const applyPrediction = useCallback((actionType, direction = null) => {
@@ -202,11 +209,12 @@ const Game = ({
 
     // Set up Steam Deck controller input
     const handleGamepadInput = (gamepadKeyState) => {
+      const cp = currentPlayerRef.current;
       // Block inputs during power-up selection or when throwing snowball
-      if (isPowerUpSelectionActive || currentPlayer?.isThrowingSnowball) return;
+      if (isPowerUpSelectionActive || cp?.isThrowingSnowball) return;
 
       // When being grabbed, only allow directional counter-inputs (A, D, S for grab break system)
-      if (currentPlayer?.isBeingGrabbed) {
+      if (cp?.isBeingGrabbed) {
         const grabCounterOnly = {
           w: false,
           a: gamepadKeyState.a || false, // Counter pull reversal / resist push
@@ -225,8 +233,8 @@ const Game = ({
 
       // CLIENT-SIDE PREDICTION for gamepad inputs
       if (gamepadKeyState.mouse1 && !keyState.mouse1) {
-        if (gamepadKeyState.s && currentPlayer?.facing != null) {
-          const forwardKey = currentPlayer.facing === -1 ? 'd' : 'a';
+        if (gamepadKeyState.s && cp?.facing != null) {
+          const forwardKey = cp.facing === -1 ? 'd' : 'a';
           if (gamepadKeyState[forwardKey]) {
             applyPrediction("charge_start");
           } else {
@@ -273,16 +281,17 @@ const Game = ({
     gamepadHandler.addInputCallback(handleGamepadInput);
 
     const handleKeyDown = (e) => {
+      const cp = currentPlayerRef.current;
       // Block inputs during power-up selection
       if (isPowerUpSelectionActive) return;
 
       // Block inputs when current player is throwing snowball
-      if (currentPlayer?.isThrowingSnowball) return;
+      if (cp?.isThrowingSnowball) return;
 
-      // When being grabbed, only allow A, D, S keys for directional counter-inputs
-      const allowedGrabKeys = ["a", "d", "s"];
+      // When being grabbed, allow A/D/S (push/plant) and W (throw backward during clinch)
+      const allowedGrabKeys = ["a", "d", "s", "w"];
       if (
-        currentPlayer?.isBeingGrabbed &&
+        cp?.isBeingGrabbed &&
         !allowedGrabKeys.includes(e.key.toLowerCase())
       ) {
         return;
@@ -297,8 +306,7 @@ const Game = ({
         keyState[key] = true;
 
         // CLIENT-SIDE PREDICTION: Apply predicted state immediately for certain actions
-        // Don't apply predictions while being grabbed - only send counter-inputs
-        if (!wasPressed && !currentPlayer?.isBeingGrabbed) {
+        if (!wasPressed && !cp?.isBeingGrabbed) {
           // Dash (shift + direction)
           if (key === "shift") {
             const direction = keyState.a ? -1 : keyState.d ? 1 : null;
@@ -319,16 +327,17 @@ const Game = ({
     };
 
     const handleKeyUp = (e) => {
+      const cp = currentPlayerRef.current;
       // Block inputs during power-up selection
       if (isPowerUpSelectionActive) return;
 
       // Block inputs when current player is throwing snowball
-      if (currentPlayer?.isThrowingSnowball) return;
+      if (cp?.isThrowingSnowball) return;
 
-      // When being grabbed, only allow A, D, S key releases (for directional counter-inputs)
-      const allowedGrabKeysUp = ["a", "d", "s"];
+      // When being grabbed, allow A/D/S/W key releases (clinch inputs)
+      const allowedGrabKeysUp = ["a", "d", "s", "w"];
       if (
-        currentPlayer?.isBeingGrabbed &&
+        cp?.isBeingGrabbed &&
         !allowedGrabKeysUp.includes(e.key.toLowerCase())
       ) {
         return;
@@ -355,20 +364,21 @@ const Game = ({
     };
 
     const handleMouseDown = (e) => {
+      const cp = currentPlayerRef.current;
       // Block inputs during power-up selection
       if (isPowerUpSelectionActive) return;
 
       // Block inputs when current player is throwing snowball
-      if (currentPlayer?.isThrowingSnowball) return;
+      if (cp?.isThrowingSnowball) return;
 
-      // Block all mouse inputs when being grabbed
-      if (currentPlayer?.isBeingGrabbed) return;
+      // Block Mouse1 (attack) when being grabbed, but allow Mouse2 (grip-up / clinch throws)
+      if (cp?.isBeingGrabbed && e.button === 0) return;
 
       if (e.button === 0) {
         e.preventDefault();
         keyState.mouse1 = true;
-        if (keyState.s && currentPlayer?.facing != null) {
-          const forwardKey = currentPlayer.facing === -1 ? 'd' : 'a';
+        if (keyState.s && cp?.facing != null) {
+          const forwardKey = cp.facing === -1 ? 'd' : 'a';
           if (keyState[forwardKey]) {
             applyPrediction("charge_start");
           } else {
@@ -383,8 +393,7 @@ const Game = ({
         const wasPressed = keyState.mouse2;
         keyState.mouse2 = true;
 
-        // CLIENT-SIDE PREDICTION: Immediately show grab
-        if (!wasPressed) {
+        if (!wasPressed && !cp?.isBeingGrabbed) {
           applyPrediction("grab");
         }
 
@@ -393,14 +402,15 @@ const Game = ({
     };
 
     const handleMouseUp = (e) => {
+      const cp = currentPlayerRef.current;
       // Block inputs during power-up selection
       if (isPowerUpSelectionActive) return;
 
       // Block inputs when current player is throwing snowball
-      if (currentPlayer?.isThrowingSnowball) return;
+      if (cp?.isThrowingSnowball) return;
 
-      // Block all mouse inputs when being grabbed
-      if (currentPlayer?.isBeingGrabbed) return;
+      // Block Mouse1 release when being grabbed, but allow Mouse2 release
+      if (cp?.isBeingGrabbed && e.button === 0) return;
 
       if (e.button === 0) {
         e.preventDefault();
@@ -447,7 +457,7 @@ const Game = ({
         clearTimeout(emitTimerId);
       }
     };
-  }, [isPowerUpSelectionActive, socket, currentPlayer, applyPrediction]);
+  }, [isPowerUpSelectionActive, socket, applyPrediction]);
 
   useEffect(() => {
     const preventDefault = (e) => e.preventDefault();
@@ -598,10 +608,7 @@ const Game = ({
                       setCurrentPage={setCurrentPage}
                       opponentDisconnected={opponentDisconnected}
                       disconnectedRoomId={disconnectedRoomId}
-                      onResetDisconnectState={() => {
-                        setOpponentDisconnected(false);
-                        setDisconnectedRoomId(null);
-                      }}
+                      onResetDisconnectState={handleResetDisconnectState}
                       isPowerUpSelectionActive={isPowerUpSelectionActive}
                       predictionRef={
                         isLocalPlayerFighter ? predictionRef : null

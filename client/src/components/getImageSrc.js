@@ -86,13 +86,26 @@ const getImageSrc = (
   isDodgeRecovery,
   isSidestepping,
   isSidestepRecovery,
-  isChargingAttack
+  isChargingAttack,
+  hasGrip,
+  isBeingLifted,
+  isClinchClashing,
+  isClinchLifting,
+  isClinchPushing,
+  isClinchPlanting,
+  isResistingThrow,
+  isResistingPull,
+  isClinchKillThrowVictim,
+  isClinchKillPullVictim
 ) => {
   if (ritualAnimationSrc) {
     return ritualAnimationSrc;
   }
 
+  if (isClinchKillThrowVictim) return hit;
+  if (isClinchKillPullVictim) return hit;
   if (isAttemptingPull) return attemptingPull;
+  if (isClinchClashing) return attemptingGrabThrow;
 
   const attemptingGrabMovement =
     typeof isGrabbingMovementTrailing === "boolean"
@@ -129,14 +142,23 @@ const getImageSrc = (
   if (isRecovering) return recovering;
   if (isThrowingSnowball) return snowballThrow;
   if (isSpawningPumoArmy) return pumoArmy;
-  if (isBeingGrabbed || isBeingPulled || isBeingPushed) return beingGrabbed;
+  if (isClinchLifting) return attemptingGrabThrow;
+  if (isBeingLifted) return beingGrabbed;
+  if (isAttemptingGrabThrow) return attemptingGrabThrow;
+  if (isResistingThrow) return hit;
+  if (isResistingPull) return hit;
+  if (isClinchPlanting) return crouchStance;
+  if (isClinchPushing) return grabbing;
+  if (isBeingGrabbed) {
+    if (hasGrip) return grabbing;
+    return beingGrabbed;
+  }
   if (isDodging) return dodging;
   if (isDodgeRecovery) return recovering;
   if (isJumping) return throwing;
   if (isAttacking && !isSlapAttack) return attack;
   if (isCrouchStrafing) return crouchStrafingApng;
   if (isCrouchStance) return crouchStance;
-  if (isAttemptingGrabThrow) return attemptingGrabThrow;
   if (attemptingGrabMovement) {
     return grabAttemptType === "throw" ? throwing : grabAttempt;
   }
