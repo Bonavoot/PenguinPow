@@ -471,8 +471,9 @@ const CLINCH_PULL_FAIL_SELF_BALANCE_DRAIN = 6;   // Pull is safer — less self-
 const CLINCH_TECH_STAMINA_COST = 8;              // Both players lose stamina on tech — prevents free resets
 const CLINCH_THROW_LAND_THRESHOLD = 50;          // Balance at/below which throw lands
 const CLINCH_THROW_KILL_THRESHOLD = 15;          // Balance below which = KILL THROW (round over)
-const CLINCH_THROW_DISTANCE = 120;               // Throw arc distance (reuses existing throw physics)
-const CLINCH_THROW_DURATION_MS = 400;            // Throw arc animation after landing
+const CLINCH_THROW_DISTANCE = 260;               // Forward throw distance — repositioning push
+const CLINCH_THROW_ARC_HEIGHT = 100;             // Low hill arc (peak ~80px) — not a big sky launch
+const CLINCH_THROW_DURATION_MS = 550;            // Longer travel time for the farther distance
 const CLINCH_CLASH_BALANCE_DRAIN = 8;            // Mutual balance drain on clash
 const CLINCH_CLASH_ANIMATION_MS = 400;           // Cosmetic clash animation duration
 
@@ -495,10 +496,15 @@ const CLINCH_LIFT_TARGET_BALANCE_DRAIN = 8;      // Balance drain on target — 
 // Cinematic Clinch Kill — exaggerated finishers when balance < kill threshold
 // ============================================
 
-// Kill Throw (Mouse2+W): Exaggerated overhead arc — sky-high launch, sideways landing
-const CLINCH_KILL_THROW_ARC_HEIGHT = 900;        // Massive arc vs 450 normal (2x height)
-const CLINCH_KILL_THROW_DURATION_MS = 750;       // Longer hang time vs 400 normal
+// Kill Throw (Mouse2+W): Comically high forward arc — launched above the screen, crashes down
+const CLINCH_KILL_THROW_ARC_HEIGHT = 3000;       // Absurdly high — well above screen top
+const CLINCH_KILL_THROW_DURATION_MS = 2000;      // Comedic pacing (rise → hang → fall)
 const CLINCH_KILL_THROW_HITSTOP_MS = 300;        // Dramatic freeze before the big throw
+const CLINCH_KILL_THROW_DISTANCE = 260;          // Forward distance matching normal throw
+
+// Normal Throw (Mouse2+W): Small forward arc — repositioning tool
+const CLINCH_THROW_BOUNDARY_MARGIN = 11;         // Stop margin from map edge (matches pull margin)
+const CLINCH_THROW_MIN_SEPARATION = 60;          // Min gap between thrower and victim at boundary
 
 // Kill Pull (Mouse2+away): Violent yank past the puller, tumble/faceplant
 const CLINCH_KILL_PULL_DISTANCE = 400;           // Flies further past puller (vs 280 normal)
@@ -835,6 +841,7 @@ module.exports = {
   CLINCH_THROW_LAND_THRESHOLD,
   CLINCH_THROW_KILL_THRESHOLD,
   CLINCH_THROW_DISTANCE,
+  CLINCH_THROW_ARC_HEIGHT,
   CLINCH_THROW_DURATION_MS,
   CLINCH_CLASH_BALANCE_DRAIN,
   CLINCH_CLASH_ANIMATION_MS,
@@ -854,6 +861,9 @@ module.exports = {
   CLINCH_KILL_THROW_ARC_HEIGHT,
   CLINCH_KILL_THROW_DURATION_MS,
   CLINCH_KILL_THROW_HITSTOP_MS,
+  CLINCH_KILL_THROW_DISTANCE,
+  CLINCH_THROW_BOUNDARY_MARGIN,
+  CLINCH_THROW_MIN_SEPARATION,
   CLINCH_KILL_PULL_DISTANCE,
   CLINCH_KILL_PULL_TWEEN_DURATION,
   CLINCH_KILL_PULL_INPUT_LOCK_MS,

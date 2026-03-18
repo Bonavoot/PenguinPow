@@ -755,6 +755,31 @@ const PRESETS = {
     }
   },
 
+  clinchKillThrowLand(engine, { x, y }) {
+    const footX = x;
+    const footY = GAME_H - y - 12;
+
+    const ringTextures = [engine.textures.ring, engine.textures.ringAlt, engine.textures.ringThick];
+    for (let i = 0; i < 4; i++) {
+      const scale = 1 + i * 0.08;
+      engine.spawn({
+        x: footX,
+        y: footY,
+        vx: 0, vy: 0, gravity: 0, drag: 1,
+        size: 14 * scale,
+        sizeEnd: 90 * scale,
+        alpha: 0.95,
+        alphaEnd: 0,
+        rotation: 0, rotationSpeed: 0,
+        ease: "outCubic", easeAlpha: "outCubic",
+        maxLife: 0.45 + i * 0.03,
+        texture: ringTextures[i % 3],
+        stretchX: 2.5,
+        delay: i * 0.015,
+      });
+    }
+  },
+
   // Salt throw: tight forward arc of small grains that disappear at ground level.
   saltThrow(engine, { x, y, facing }) {
     const dir = -(facing || 1);

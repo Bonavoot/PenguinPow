@@ -174,7 +174,7 @@ export const slapWhiffSounds = [slapWhiff01, slapWhiff02, slapWhiff03];
 export const chargedHitSounds = [chargedHit01, chargedHit02, chargedHit03, chargedHit04];
 export const grabHitSounds = [grabHit01, grabHit02, grabHit03];
 export const rawParrySounds = [rawParry01, rawParry02, rawParry03];
-export { chargeAttackLaunchSound, gunLaunchSound };
+export { chargeAttackLaunchSound, gunLaunchSound, chargedHit04 };
 export const pickRandomSound = (sounds) => sounds[Math.floor(Math.random() * sounds.length)];
 
 // ============================================

@@ -110,6 +110,7 @@ import {
   xToPan,
   chargeAttackLaunchSound,
   gunLaunchSound,
+  chargedHit04,
   hit as hitSprite,
 } from "./fighterAssets";
 import getImageSrc from "./getImageSrc";
@@ -2591,19 +2592,21 @@ const GameFighter = ({
   }, [penguin.isBeingPullReversaled, emitParticles]);
 
   // Grab throw landing — dust burst when the thrown player hits the ground.
-  // Uses penguin.y (not interpolatedPositionRef) because at the moment isBeingThrown
-  // flips to false, the interpolated Y is still mid-throw-arc. The React state update
-  // includes the corrected ground-level Y from the same delta.
+  // Kill throw victims get an enhanced landing cloud + impact sound.
+  // Rise trail + launch sound are handled via the "clinch_kill_throw" socket event.
   const wasBeingThrown = useRef(false);
   useEffect(() => {
     if (wasBeingThrown.current && !penguin.isBeingThrown) {
-      emitParticles("throwLand", {
-        x: interpolatedPositionRef.current.x || penguin.x,
-        y: penguin.y,
-      });
+      const landX = interpolatedPositionRef.current.x || penguin.x;
+      if (penguin.isClinchKillThrowVictim) {
+        emitParticles("clinchKillThrowLand", { x: landX, y: penguin.y });
+        playSound(chargedHit04, 0.09, null, 0.6, xToPan(landX));
+      } else {
+        emitParticles("throwLand", { x: landX, y: penguin.y });
+      }
     }
     wasBeingThrown.current = !!penguin.isBeingThrown;
-  }, [penguin.isBeingThrown, penguin.x, penguin.y, emitParticles]);
+  }, [penguin.isBeingThrown, penguin.isClinchKillThrowVictim, penguin.x, penguin.y, emitParticles]);
 
   // Rope jump landing — smoke ring on touchdown
   const prevRopeJumpPhase = useRef(null);
@@ -3081,6 +3084,20 @@ const GameFighter = ({
     };
     socket.on("cinematic_kill", handleCinematicKill);
 
+    const handleClinchKillThrow = (data) => {
+      const isVictim = player.id === data.victimId;
+      if (!isVictim) return;
+
+      const launchX = data.victimX;
+      const hitstopDelay = (data.hitstopMs || 300) - 50;
+      const soundId = setTimeout(() => {
+        playSound(chargeAttackLaunchSound, 0.18, null, 1.4, xToPan(launchX));
+        duckMusic(0.3, 400);
+      }, hitstopDelay);
+      pendingTimeouts.push(soundId);
+    };
+    socket.on("clinch_kill_throw", handleClinchKillThrow);
+
     return () => {
       pendingTimeouts.forEach((id) => {
         clearTimeout(id);
@@ -3091,6 +3108,7 @@ const GameFighter = ({
       socket.off("danger_zone", handleDangerZone);
       socket.off("ring_out", handleRingOut);
       socket.off("cinematic_kill", handleCinematicKill);
+      socket.off("clinch_kill_throw", handleClinchKillThrow);
     };
   }, [socket, player.id, localId, roomName]);
 

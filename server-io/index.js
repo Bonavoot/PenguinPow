@@ -57,6 +57,11 @@ const {
   SIDESTEP_ARC_DEPTH_MIN, SIDESTEP_ARC_DEPTH_MAX, SIDESTEP_GRAB_TRACK_RANGE,
   SIDESTEP_ARC_SPEED, SIDESTEP_MAX_TRAVEL,
   CLINCH_KILL_THROW_ARC_HEIGHT,
+  CLINCH_KILL_THROW_DISTANCE,
+  CLINCH_THROW_DISTANCE,
+  CLINCH_THROW_ARC_HEIGHT,
+  CLINCH_THROW_BOUNDARY_MARGIN,
+  CLINCH_THROW_MIN_SEPARATION,
 } = require("./constants");
 
 // Import game utilities
@@ -1110,6 +1115,7 @@ function tick(delta) {
       }
 
       // Win Conditions - back to original state
+      // Kill throw victims are excluded — their win is triggered at landing in the throw arc block
       if (
         (player.isHit &&
           player.x <= MAP_LEFT_BOUNDARY &&
@@ -1121,6 +1127,7 @@ function tick(delta) {
           !player.isBeingThrown) ||
         (player.isBeingThrown &&
           !room.gameOver &&
+          !player.isClinchKillThrowVictim &&
           // Find the thrower to check their throwing direction
           (() => {
             const thrower = room.players.find(
@@ -1228,16 +1235,15 @@ function tick(delta) {
           (p) => p.id === player.throwOpponent
         );
         if (opponent) {
-          // Match dodge-style arc for cutscene: peak ~75 with same parabola scale used in dodge (3.2 * height * t * (1-t))
           const throwArcHeight = player.isRingOutThrowCutscene ? 75
             : player.isClinchKillThrow ? CLINCH_KILL_THROW_ARC_HEIGHT
-            : 450;
-          let armsReachDistance = -100;
+            : CLINCH_THROW_ARC_HEIGHT;
+          const isNormalForwardThrow = !player.isRingOutThrowCutscene && !player.isClinchKillThrow;
+          let armsReachDistance = player.isRingOutThrowCutscene ? -100 : 50;
 
           if (!player.throwingFacingDirection) {
             player.throwingFacingDirection = player.facing;
             opponent.beingThrownFacingDirection = opponent.facing;
-            // For ring-out cutscene, keep the current separation; otherwise, snap to arms reach
             if (!player.isRingOutThrowCutscene) {
               opponent.x =
                 player.x + player.throwingFacingDirection * armsReachDistance;
@@ -1245,46 +1251,62 @@ function tick(delta) {
             opponent.y = GROUND_LEVEL;
           }
 
-          // Don't overwrite facing during ring-out cutscene (it's already set correctly for animation)
-          if (!player.isRingOutThrowCutscene) {
-            player.facing = player.throwingFacingDirection;
+          // Ring-out cutscene manages its own facing; forward throws (normal + kill) keep existing facing
+          if (player.isRingOutThrowCutscene) {
+            opponent.facing = opponent.beingThrownFacingDirection;
           }
-          opponent.facing = opponent.beingThrownFacingDirection;
 
-          // Calculate new position with size power-up consideration
-          const sizeOffset = 0;
-
-          // Preserve grab separation at the start of a ring-out cutscene throw
           if (player.isRingOutThrowCutscene) {
             const throwingDir = player.throwingFacingDirection || 1;
             const currentSeparation = opponent.x - player.x;
             armsReachDistance = currentSeparation * throwingDir;
           }
 
-          // For cutscene: travel a small extra distance OUTWARD from current separation
-          // This avoids pulling the opponent back into the player when the separation is already larger than the small target
           let throwDistance;
           if (player.isRingOutThrowCutscene) {
-            const extraOutward = player.ringOutThrowDistance || 4; // treat as extra outward distance
+            const extraOutward = player.ringOutThrowDistance || 4;
             throwDistance = armsReachDistance + Math.max(extraOutward, 0);
+          } else if (player.isClinchKillThrow) {
+            throwDistance = CLINCH_KILL_THROW_DISTANCE;
           } else {
-            throwDistance = 120;
+            throwDistance = CLINCH_THROW_DISTANCE;
           }
 
-          const newX =
+          let newX =
             player.x +
             player.throwingFacingDirection *
               (armsReachDistance +
                 (throwDistance - armsReachDistance) * throwProgress);
 
-          // Always update position during throw - let throws complete their full arc
+          // Normal throws stop short of map edge; kill throws travel freely (no clamping)
+          if (isNormalForwardThrow) {
+            const leftBound = MAP_LEFT_BOUNDARY + CLINCH_THROW_BOUNDARY_MARGIN;
+            const rightBound = MAP_RIGHT_BOUNDARY - CLINCH_THROW_BOUNDARY_MARGIN;
+            newX = Math.max(leftBound, Math.min(newX, rightBound));
+          }
+
           opponent.x = newX;
 
-          // Use a consistent inverted-U arc for cutscene
+          // Y arc
           if (player.isRingOutThrowCutscene) {
-            const arcProgress = 4 * throwProgress * (1 - throwProgress); // perfect inverted-U from 0..1..0
-            const hopHeight = arcProgress * 60; // modest peak
+            const arcProgress = 4 * throwProgress * (1 - throwProgress);
+            const hopHeight = arcProgress * 60;
             opponent.y = GROUND_LEVEL + hopHeight;
+          } else if (player.isClinchKillThrow) {
+            // Piecewise comedic arc: rise → hang off-screen → crash down
+            const RISE_END = 0.28;
+            const HANG_END = 0.58;
+            if (throwProgress < RISE_END) {
+              const riseT = throwProgress / RISE_END;
+              const eased = 1 - Math.pow(1 - riseT, 2.5);
+              opponent.y = GROUND_LEVEL + eased * throwArcHeight;
+            } else if (throwProgress < HANG_END) {
+              opponent.y = GROUND_LEVEL + throwArcHeight;
+            } else {
+              const fallT = (throwProgress - HANG_END) / (1 - HANG_END);
+              const eased = fallT * fallT;
+              opponent.y = GROUND_LEVEL + throwArcHeight * (1 - eased);
+            }
           } else {
             opponent.y =
               GROUND_LEVEL +
@@ -1295,13 +1317,16 @@ function tick(delta) {
           if (currentTime >= player.throwEndTime) {
             const wasKillThrow = player.isClinchKillThrow;
 
-            // Kill throw: win triggers on LANDING, not at initiation
             if (wasKillThrow) {
               handleWinCondition(room, opponent, player, io, "clinchKillThrow");
               opponent.isClinchKillThrowVictim = true;
+              emitThrottledScreenShake(room, io, {
+                intensity: 2.5,
+                duration: 500,
+              });
+              triggerHitstop(room, HITSTOP_THROW_MS);
             }
 
-            // Check for win condition at the end of throw (non-kill)
             if (!player.isRingOutThrowCutscene && !wasKillThrow) {
               if (
                 (opponent.x >= MAP_RIGHT_BOUNDARY &&
@@ -1311,28 +1336,23 @@ function tick(delta) {
               ) {
                 handleWinCondition(room, opponent, player, io, "grabThrow");
               } else {
-                // Emit screen shake for landing after throw (throttled)
                 emitThrottledScreenShake(room, io, {
                   intensity: 0.6,
                   duration: 200,
                 });
-                // SMASH-STYLE: Hitstop when throw lands for impact
                 triggerHitstop(room, HITSTOP_THROW_MS);
               }
             }
 
-            // Ensure landing at ground level, then reset throw-related states for both players
             player.isThrowing = false;
             player.throwOpponent = null;
             player.throwingFacingDirection = null;
             player.throwStartTime = 0;
             player.throwEndTime = 0;
-            // Clear ring-out cutscene flags
             player.isRingOutThrowCutscene = false;
             player.ringOutThrowDistance = 0;
             player.isClinchKillThrow = false;
 
-            // Check if player landed outside ring-out boundaries
             const landedOutsideBoundaries =
               opponent.x <= MAP_LEFT_BOUNDARY ||
               opponent.x >= MAP_RIGHT_BOUNDARY;
@@ -1344,22 +1364,39 @@ function tick(delta) {
             opponent.isSlapKnockback = false;
             opponent.isBurstKnockback = false;
             opponent.burstKnockbackStartTime = 0;
-            
+
             // Set Y to correct ground level based on landing context
+            const landedOutsideDohyo = opponent.x <= DOHYO_LEFT_BOUNDARY || opponent.x >= DOHYO_RIGHT_BOUNDARY;
             if (wasKillThrow) {
-              // Kill throw victim is rotated 90° with center center origin —
-              // lower Y so their visual center sits at ground level
-              opponent.y = GROUND_LEVEL - 30;
-            } else {
-              const landedOutsideDohyo = opponent.x <= DOHYO_LEFT_BOUNDARY || opponent.x >= DOHYO_RIGHT_BOUNDARY;
+              // Kill throw victim is rotated 90° — offset Y so visual center sits at ground
               if (landedOutsideDohyo) {
-                opponent.y = GROUND_LEVEL - DOHYO_FALL_DEPTH; // Fallen ground level
-                opponent.isFallingOffDohyo = true; // Mark as having fallen off
+                opponent.y = GROUND_LEVEL - DOHYO_FALL_DEPTH - 30;
+                opponent.isFallingOffDohyo = true;
               } else {
-                opponent.y = GROUND_LEVEL; // Normal ground level
+                opponent.y = GROUND_LEVEL - 30;
+              }
+            } else {
+              if (landedOutsideDohyo) {
+                opponent.y = GROUND_LEVEL - DOHYO_FALL_DEPTH;
+                opponent.isFallingOffDohyo = true;
+              } else {
+                opponent.y = GROUND_LEVEL;
               }
             }
-            
+
+            // Enforce minimum separation on landing so players don't overlap at boundary
+            if (!wasKillThrow && !landedOutsideBoundaries) {
+              const dir = opponent.x - player.x;
+              const dist = Math.abs(dir);
+              if (dist < CLINCH_THROW_MIN_SEPARATION) {
+                const sign = dir >= 0 ? 1 : -1;
+                const desired = player.x + sign * CLINCH_THROW_MIN_SEPARATION;
+                const leftBound = MAP_LEFT_BOUNDARY + CLINCH_THROW_BOUNDARY_MARGIN;
+                const rightBound = MAP_RIGHT_BOUNDARY - CLINCH_THROW_BOUNDARY_MARGIN;
+                opponent.x = Math.max(leftBound, Math.min(desired, rightBound));
+              }
+            }
+
             opponent.knockbackVelocity.y = 0;
             opponent.knockbackVelocity.x = 0;
             opponent.movementVelocity = 0;

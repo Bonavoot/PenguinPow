@@ -813,8 +813,8 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
     actor.grabCooldown = true;
     setPlayerTimeout(actor.id, () => { actor.grabCooldown = false; }, 300, "pullCooldown");
   } else {
-    // Throw lands: over-head arc throw, ends clinch
-    const throwDir = actor.x < target.x ? -1 : 1;
+    // Throw lands: forward arc throw — pushes opponent away from thrower
+    const throwDir = actor.x < target.x ? 1 : -1;
     const throwDuration = isKill ? CLINCH_KILL_THROW_DURATION_MS : CLINCH_THROW_DURATION_MS;
 
     cleanupGrabStates(actor, target);
@@ -826,15 +826,20 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
     actor.throwingFacingDirection = throwDir;
     clearAllActionStates(target);
     target.isBeingThrown = true;
+    target.isHit = true;
     target.beingThrownFacingDirection = target.facing;
+    const hitstopMs = isKill ? CLINCH_KILL_THROW_HITSTOP_MS : HITSTOP_THROW_MS;
+    target.inputLockUntil = Math.max(target.inputLockUntil || 0, Date.now() + throwDuration + hitstopMs + 100);
     if (isKill) {
       target.isClinchKillThrowVictim = true;
+      io.in(room.id).emit("clinch_kill_throw", {
+        victimId: target.id,
+        throwerId: actor.id,
+        victimX: target.x,
+        hitstopMs,
+      });
     }
-    triggerHitstop(room, isKill ? CLINCH_KILL_THROW_HITSTOP_MS : HITSTOP_THROW_MS);
-
-    if (!isKill) {
-      correctFacingAfterGrabOrThrow(actor, target);
-    }
+    triggerHitstop(room, hitstopMs);
   }
 }
 
