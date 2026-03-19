@@ -989,16 +989,16 @@ const PickerPanel = styled.div`
   align-items: center;
   gap: clamp(6px, 1cqh, 14px);
   padding: clamp(10px, 1.4cqh, 20px) clamp(16px, 2cqw, 32px);
-  background: linear-gradient(180deg,
-    rgba(26, 10, 8, 0.97) 0%,
-    rgba(35, 16, 12, 0.96) 40%,
-    rgba(26, 10, 8, 0.97) 100%
-  );
-  border: 2px solid #8b7355;
-  border-radius: clamp(8px, 1cqw, 14px);
-  box-shadow:
-    0 6px 30px rgba(0,0,0,0.7),
-    inset 0 1px 0 rgba(212, 175, 55, 0.08);
+  // background: linear-gradient(180deg,
+  //   rgba(26, 10, 8, 0.97) 0%,
+  //   rgba(35, 16, 12, 0.96) 40%,
+  //   rgba(26, 10, 8, 0.97) 100%
+  // );
+  // border: 2px solid #8b7355;
+  // border-radius: clamp(8px, 1cqw, 14px);
+  // box-shadow:
+  //   0 6px 30px rgba(0,0,0,0.7),
+  //   inset 0 1px 0 rgba(212, 175, 55, 0.08);
   width: 88%;
   max-width: 800px;
   margin: clamp(4px, 1cqh, 16px) auto clamp(4px, 0.8cqh, 12px);
@@ -1006,18 +1006,18 @@ const PickerPanel = styled.div`
   flex-shrink: 0;
   position: relative;
 
-  /* Inner gold accent border */
-  &::before {
-    content: "";
-    position: absolute;
-    top: 4px;
-    left: 4px;
-    right: 4px;
-    bottom: 4px;
-    border: 1px solid rgba(212, 175, 55, 0.12);
-    border-radius: clamp(5px, 0.7cqw, 10px);
-    pointer-events: none;
-  }
+  // /* Inner gold accent border */
+  // &::before {
+  //   content: "";
+  //   position: absolute;
+  //   top: 4px;
+  //   left: 4px;
+  //   right: 4px;
+  //   bottom: 4px;
+  //   border: 1px solid rgba(212, 175, 55, 0.12);
+  //   border-radius: clamp(5px, 0.7cqw, 10px);
+  //   pointer-events: none;
+  // }
 `;
 
 const PickerTitle = styled.div`

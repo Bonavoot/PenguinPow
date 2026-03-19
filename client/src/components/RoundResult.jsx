@@ -1,4 +1,4 @@
-import React, { memo, useMemo } from "react";
+        import React, { memo, useMemo } from "react";
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
 
@@ -7,7 +7,7 @@ const ANNOUNCE_Y = "clamp(120px, 32cqh, 220px)";
 const WIN_TYPE_CONFIG = {
   slap: { english: "THRUST OUT !", japanese: "突き出し" },
   charged: { english: "PUSH OUT !", japanese: "押し出し" },
-  cinematicKill: { english: "DEMOLISHED !", japanese: null },
+  cinematicKill: { english: "DEMOLISHED !", japanese: "破壊された" },
   grabPush: { english: "FORCE OUT !", japanese: "寄り切り" },
   grabThrow: { english: "OVERARM THROW !", japanese: "上手投げ" },
   okuridashi: { english: "REAR PUSH OUT!", japanese: "送り出し" },

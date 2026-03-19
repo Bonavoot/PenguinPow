@@ -77,14 +77,14 @@ const victoryGlow = keyframes`
     text-shadow:
       3px 3px 0 #1a0e06,
       6px 6px 0 rgba(18, 10, 4, 0.6),
-      0 0 6px rgba(255, 215, 0, 0.15),
+      0 0 6px rgba(68, 173, 7, 0.15),
       0 2px 8px rgba(0, 0, 0, 0.6);
   }
   50% {
     text-shadow:
       3px 3px 0 #1a0e06,
       6px 6px 0 rgba(18, 10, 4, 0.6),
-      0 0 14px rgba(255, 215, 0, 0.3),
+      0 0 14px rgba(68, 173, 7, 0.3),
       0 2px 8px rgba(0, 0, 0, 0.6);
   }
 `;
@@ -574,7 +574,7 @@ const ResultSection = styled.div`
 const ResultText = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(1.28rem, 3.25cqw, 2rem);
-  color: ${(props) => (props.$isWinner ? "#FFD700" : "#e36b6b")};
+  color: ${(props) => (props.$isWinner ? "#4ade80" : "#e36b6b")};
   -webkit-text-stroke: ${(props) =>
     props.$isWinner
       ? "clamp(1.5px, 0.15cqw, 3px) #1a0e06"
