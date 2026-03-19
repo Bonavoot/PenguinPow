@@ -496,9 +496,9 @@ const CLINCH_LIFT_TARGET_BALANCE_DRAIN = 8;      // Balance drain on target — 
 // Cinematic Clinch Kill — exaggerated finishers when balance < kill threshold
 // ============================================
 
-// Kill Throw (Mouse2+W): Comically high forward arc — launched above the screen, crashes down
-const CLINCH_KILL_THROW_ARC_HEIGHT = 3000;       // Absurdly high — well above screen top
-const CLINCH_KILL_THROW_DURATION_MS = 2000;      // Comedic pacing (rise → hang → fall)
+// Kill Throw (Mouse2+W): High forward arc — launched above the screen, crashes down
+const CLINCH_KILL_THROW_ARC_HEIGHT = 1200;       // High above screen top (visible longer during rise/fall)
+const CLINCH_KILL_THROW_DURATION_MS = 2600;      // Slower pacing so rise/fall are readable
 const CLINCH_KILL_THROW_HITSTOP_MS = 300;        // Dramatic freeze before the big throw
 const CLINCH_KILL_THROW_DISTANCE = 260;          // Forward distance matching normal throw
 

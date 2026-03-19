@@ -342,7 +342,7 @@ export const StyledImage = styled("img")
         : 99,
       filter: getFighterPopFilter(props),
       animation: props.$isClinchKillThrowVictim
-        ? "clinchKillThrowSpin 0.75s ease-out forwards"
+        ? "clinchKillThrowSpin 1.2s ease-in 1s forwards"
         : props.$isClinchKillPullVictim
         ? "clinchKillPullSpin 0.7s ease-in forwards"
         : props.$isAtTheRopes

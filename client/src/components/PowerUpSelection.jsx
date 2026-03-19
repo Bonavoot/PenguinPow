@@ -6,6 +6,7 @@ import {
   useCallback,
   useRef,
 } from "react";
+import { createPortal } from "react-dom";
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
 import { SocketContext } from "../SocketContext";
@@ -141,14 +142,11 @@ const timerCorePulse = keyframes`
   }
 `;
 
-// Cinematic overlay
+// Same layering as MatchOver — portalled into #game-hud
 const PowerUpSelectionOverlay = styled.div`
-  position: absolute;
+  position: fixed;
   inset: 0;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  z-index: 9999;
+  z-index: 1400;
   pointer-events: none;
   opacity: 0;
   animation: ${overlayReveal} 0.28s ease-out forwards;
@@ -171,14 +169,23 @@ const PowerUpSelectionOverlay = styled.div`
   }
 `;
 
-// Main container - centered horizontally, same y as power-up reveal
+// Mirrors MatchOverStage — centers the banner in the HUD viewport
+const PowerUpSelectionStage = styled.div`
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(52px, 8vh, 88px) clamp(24px, 4vw, 40px);
+  pointer-events: none;
+`;
+
 const BannerContainer = styled.div`
-  margin-top: clamp(56px, 17.2cqh, 124px);
   width: fit-content;
   max-width: min(84cqw, 790px);
   pointer-events: auto;
   animation: ${bannerDrop} 0.5s ease-out forwards, ${bannerSway} 8s ease-in-out 0.5s infinite;
-  transform-origin: top center;
+  transform-origin: center center;
   position: relative;
   
   @media (max-width: 1200px) {
@@ -479,7 +486,12 @@ const getTypeColor = (type) => {
 // Power card - wooden plaque style (like Rematch button)
 const PowerCard = styled.div`
   --type-color: ${props => getTypeColor(props.$type).main};
-  
+  --power-card-text-gap: clamp(5px, 0.5cqh, 8px);
+  /* Slightly more than name→desc so Passive / Press F sits a bit lower */
+  --power-card-desc-to-hint-gap: calc(
+    var(--power-card-text-gap) + clamp(8px, 0.85cqh, 16px)
+  );
+
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -589,6 +601,7 @@ const IconSquare = styled.div`
   align-items: center;
   justify-content: center;
   margin-bottom: clamp(7px, 0.7cqh, 9px);
+  flex-shrink: 0;
   box-shadow: 
     inset 0 2px 5px rgba(255,255,255,0.36),
     inset 0 -4px 8px rgba(0,0,0,0.35),
@@ -618,6 +631,21 @@ const IconSquare = styled.div`
   }
 `;
 
+/* Remaining card height: centers description + usage under the title */
+const PowerCardMeta = styled.div`
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--power-card-desc-to-hint-gap);
+  position: relative;
+  z-index: 1;
+  transform: translateY(clamp(-6px, -0.45cqh, -2px));
+`;
+
 const PowerName = styled.div`
   font-family: "Bungee Inline", "Bungee", cursive;
   font-size: clamp(0.5rem, 1cqw, 0.72rem);
@@ -626,7 +654,8 @@ const PowerName = styled.div`
   letter-spacing: 0.06em;
   text-align: center;
   line-height: 1.05;
-  margin-bottom: clamp(4px, 0.5cqh, 6px);
+  flex-shrink: 0;
+  margin-bottom: var(--power-card-text-gap);
   text-shadow:
     1px 1px 0 rgba(0,0,0,0.92),
     0 0 10px rgba(0,0,0,0.35);
@@ -639,89 +668,40 @@ const PowerName = styled.div`
 const PowerDesc = styled.div`
   font-family: "Outfit", sans-serif;
   font-weight: 700;
-  font-size: clamp(0.42rem, 0.82cqw, 0.58rem);
+  font-size: clamp(0.48rem, 0.95cqw, 0.66rem);
   color: rgba(234, 239, 246, 0.92);
   text-align: center;
-  line-height: 1.18;
-  letter-spacing: 0.08em;
+  line-height: 1.2;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
   text-shadow:
     0 1px 0 rgba(0, 0, 0, 0.95),
     0 0 8px rgba(0, 0, 0, 0.22);
-  margin-top: auto;
-  margin-bottom: clamp(8px, 0.8cqh, 10px);
+  margin: 0;
   
   @media (max-width: 600px) {
-    font-size: clamp(0.34rem, 1.32cqw, 0.48rem);
+    font-size: clamp(0.4rem, 1.48cqw, 0.54rem);
   }
 `;
 
-const PowerType = styled.div`
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: clamp(4px, 0.45cqw, 6px);
+const UsageHint = styled.div`
   font-family: "Outfit", sans-serif;
-  font-weight: 700;
-  font-size: clamp(0.34rem, 0.68cqw, 0.45rem);
-  color: ${props => props.$isActive ? '#dcefe4' : '#433126'};
-  text-transform: uppercase;
-  margin-top: clamp(5px, 0.55cqh, 7px);
-  margin-bottom: clamp(4px, 0.45cqh, 6px);
-  letter-spacing: 0.15em;
-  text-shadow: ${props => props.$isActive ? '0 0 6px rgba(52, 170, 96, 0.1), 1px 1px 1px rgba(0,0,0,0.62)' : '0 1px 0 rgba(255,255,255,0.28), 1px 1px 1px rgba(0,0,0,0.12)'};
-  background: ${props => props.$isActive
-    ? 'linear-gradient(180deg, rgba(34, 92, 58, 0.94) 0%, rgba(20, 63, 40, 0.94) 52%, rgba(12, 40, 26, 0.94) 100%)'
-    : 'linear-gradient(180deg, rgba(226, 214, 194, 0.94) 0%, rgba(208, 193, 170, 0.94) 52%, rgba(181, 164, 139, 0.94) 100%)'};
-  border: 1px solid ${props => props.$isActive ? 'rgba(108, 192, 142, 0.24)' : 'rgba(231, 218, 195, 0.3)'};
-  border-radius: 999px;
-  padding: clamp(3px, 0.32cqh, 4px) clamp(9px, 0.92cqw, 12px);
-  box-shadow:
-    ${props => props.$isActive
-      ? 'inset 0 1px 0 rgba(225, 255, 235, 0.14), inset 0 -3px 6px rgba(0, 0, 0, 0.16), 0 2px 6px rgba(0,0,0,0.18)'
-      : 'inset 0 1px 0 rgba(255,255,255,0.38), inset 0 -3px 6px rgba(125, 98, 68, 0.1), 0 2px 6px rgba(0,0,0,0.14)'};
-  position: relative;
-  overflow: hidden;
-  align-self: center;
+  font-weight: 600;
+  font-size: clamp(0.38rem, 0.72cqw, 0.52rem);
+  letter-spacing: 0.04em;
+  text-transform: none;
+  text-align: center;
+  line-height: 1.2;
+  margin: 0;
+  padding: 0;
+  align-self: stretch;
+  color: ${(p) =>
+    p.$isActive ? "rgba(124, 218, 168, 0.95)" : "rgba(255, 255, 255, 0.58)"};
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
 
-  &::before {
-    content: "";
-    position: absolute;
-    left: 1px;
-    right: 1px;
-    top: 1px;
-    height: 45%;
-    border-radius: inherit;
-    background: ${props => props.$isActive
-      ? 'linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.01) 100%)'
-      : 'linear-gradient(180deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.03) 100%)'};
-    pointer-events: none;
-  }
-  
   @media (max-width: 600px) {
-    font-size: clamp(0.28rem, 1.02cqw, 0.37rem);
+    font-size: clamp(0.32rem, 1.15cqw, 0.44rem);
   }
-`;
-
-const PowerTypeIcon = styled.span`
-  width: clamp(4px, 0.42cqw, 6px);
-  height: clamp(4px, 0.42cqw, 6px);
-  border-radius: 50%;
-  flex: 0 0 auto;
-  background: ${props => props.$isActive
-    ? 'radial-gradient(circle at 35% 35%, rgba(221, 244, 230, 0.88) 0%, rgba(120, 189, 145, 0.88) 38%, rgba(35, 103, 63, 0.95) 100%)'
-    : 'radial-gradient(circle at 35% 35%, rgba(245, 239, 230, 0.92) 0%, rgba(217, 205, 186, 0.9) 65%, rgba(186, 168, 144, 0.9) 100%)'};
-  border: 1px solid ${props => props.$isActive ? 'rgba(216, 244, 228, 0.22)' : 'rgba(99, 72, 45, 0.42)'};
-  box-shadow: ${props => props.$isActive
-    ? '0 0 4px rgba(82, 200, 128, 0.08)'
-    : 'inset 0 0 0 1px rgba(255,255,255,0.2)'};
-
-  ${props => !props.$isActive && css`
-    background: transparent;
-    box-shadow:
-      inset 0 0 0 1px rgba(245,239,230,0.42),
-      0 0 0 1px rgba(99, 72, 45, 0.2);
-  `}
 `;
 
 const FooterRow = styled.div`
@@ -1009,69 +989,78 @@ const PowerUpSelection = ({
 
   if (!isVisible) return null;
 
-  return (
+  const hudEl = document.getElementById("game-hud");
+  if (!hudEl) return null;
+
+  return createPortal(
     <PowerUpSelectionOverlay>
-      <BannerContainer>
-        <BannerGlow />
-        <HangingBar />
-        <BannerBody>
-          <InnerShimmer />
-          <TitleSection>
-            <Title>Select Power</Title>
-            <Subtitle>Choose Your Sumo Edge</Subtitle>
-          </TitleSection>
+      <PowerUpSelectionStage>
+        <BannerContainer>
+          <BannerGlow />
+          <HangingBar />
+          <BannerBody>
+            <InnerShimmer />
+            <TitleSection>
+              <Title>Select Power</Title>
+              <Subtitle>Choose Your Sumo Edge</Subtitle>
+            </TitleSection>
 
-          <CardsContainer>
-            {availablePowerUps.map((type, index) => {
-              const info = powerUpInfo[type];
-              if (!info) return null;
+            <CardsContainer>
+              {availablePowerUps.map((type, index) => {
+                const info = powerUpInfo[type];
+                if (!info) return null;
 
-              return (
-                <PowerCard
-                  key={type}
-                  $type={type}
-                  $selected={selectedPowerUp === type}
-                  $index={index}
-                  onClick={() => handlePowerUpSelect(type)}
-                  onMouseEnter={playPowerUpSelectionHoverSound}
-                  disabled={selectedPowerUp && selectedPowerUp !== type}
-                >
-                  <IconSquare $type={type}>
-                    <img src={info.icon} alt={info.name} />
-                  </IconSquare>
-                  <PowerName $type={type} $selected={selectedPowerUp === type}>
-                    {info.name}
-                  </PowerName>
-                  <PowerDesc>{info.description}</PowerDesc>
-                  <PowerType $isActive={type === "snowball" || type === "pumo_army"}>
-                    <PowerTypeIcon $isActive={type === "snowball" || type === "pumo_army"} />
-                    {type === "snowball" || type === "pumo_army" ? "Active" : "Passive"}
-                  </PowerType>
-                </PowerCard>
-              );
-            })}
-          </CardsContainer>
+                return (
+                  <PowerCard
+                    key={type}
+                    $type={type}
+                    $selected={selectedPowerUp === type}
+                    $index={index}
+                    onClick={() => handlePowerUpSelect(type)}
+                    onMouseEnter={playPowerUpSelectionHoverSound}
+                    disabled={selectedPowerUp && selectedPowerUp !== type}
+                  >
+                    <IconSquare $type={type}>
+                      <img src={info.icon} alt={info.name} />
+                    </IconSquare>
+                    <PowerName $type={type} $selected={selectedPowerUp === type}>
+                      {info.name}
+                    </PowerName>
+                    <PowerCardMeta>
+                      <PowerDesc>{info.description}</PowerDesc>
+                      <UsageHint $isActive={type === "snowball" || type === "pumo_army"}>
+                        {type === "snowball" || type === "pumo_army"
+                          ? "Press F to use"
+                          : "Passive"}
+                      </UsageHint>
+                    </PowerCardMeta>
+                  </PowerCard>
+                );
+              })}
+            </CardsContainer>
 
-          <FooterRow>
-            <TimerDisplay $urgent={timeLeft <= 5}>
-              <TimerLabel>Lock In</TimerLabel>
-              <TimerValue>
-                <TimerNumber $urgent={timeLeft <= 5}>{timerNumber}</TimerNumber>
-                <TimerUnit $urgent={timeLeft <= 5}>s</TimerUnit>
-              </TimerValue>
-            </TimerDisplay>
-          </FooterRow>
-          
-          <TasselContainer>
-            <Tassel $delay={0} />
-            <Tassel $delay={1} />
-            <Tassel $delay={2} />
-            <Tassel $delay={3} />
-            <Tassel $delay={4} />
-          </TasselContainer>
-        </BannerBody>
-      </BannerContainer>
-    </PowerUpSelectionOverlay>
+            <FooterRow>
+              <TimerDisplay $urgent={timeLeft <= 5}>
+                <TimerLabel>Lock In</TimerLabel>
+                <TimerValue>
+                  <TimerNumber $urgent={timeLeft <= 5}>{timerNumber}</TimerNumber>
+                  <TimerUnit $urgent={timeLeft <= 5}>s</TimerUnit>
+                </TimerValue>
+              </TimerDisplay>
+            </FooterRow>
+
+            <TasselContainer>
+              <Tassel $delay={0} />
+              <Tassel $delay={1} />
+              <Tassel $delay={2} />
+              <Tassel $delay={3} />
+              <Tassel $delay={4} />
+            </TasselContainer>
+          </BannerBody>
+        </BannerContainer>
+      </PowerUpSelectionStage>
+    </PowerUpSelectionOverlay>,
+    hudEl
   );
 };
 

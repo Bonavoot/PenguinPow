@@ -755,7 +755,7 @@ const PRESETS = {
     }
   },
 
-  clinchKillThrowLand(engine, { x, y }) {
+  clinchKillThrowLand(engine, { x, y, behindDohyo }) {
     const footX = x;
     const footY = GAME_H - y - 12;
 
@@ -776,6 +776,7 @@ const PRESETS = {
         texture: ringTextures[i % 3],
         stretchX: 2.5,
         delay: i * 0.015,
+        behindDohyo: !!behindDohyo,
       });
     }
   },
@@ -1497,6 +1498,7 @@ class Particle {
     this.stretchX = 1;
     this.groundY = Infinity;
     this.delay = 0;
+    this.behindDohyo = false;
   }
 }
 
@@ -1504,6 +1506,8 @@ export class ParticleEngine {
   constructor() {
     this.canvas = null;
     this.ctx = null;
+    this.canvasBehind = null;
+    this.ctxBehind = null;
     this.particles = [];
     this.textures = null;
     this._rafId = null;
@@ -1528,6 +1532,18 @@ export class ParticleEngine {
     const texScale = Math.min(physW / GAME_W, 3);
     this.textures = generateTextures(texScale);
     this._start();
+  }
+
+  initBehind(canvas) {
+    this.canvasBehind = canvas;
+    const dpr = Math.max(window.devicePixelRatio || 1, 2);
+    const rect = canvas.getBoundingClientRect();
+    const physW = Math.round(rect.width * dpr);
+    const physH = Math.round(rect.height * dpr);
+    canvas.width = physW;
+    canvas.height = physH;
+    this.ctxBehind = canvas.getContext("2d");
+    this.ctxBehind.scale(physW / GAME_W, physH / GAME_H);
   }
 
   emit(presetName, opts) {
@@ -1560,6 +1576,7 @@ export class ParticleEngine {
     p.stretchX = cfg.stretchX ?? 1;
     p.groundY = cfg.groundY ?? Infinity;
     p.delay = cfg.delay ?? 0;
+    p.behindDohyo = cfg.behindDohyo ?? false;
   }
 
   _acquire() {
@@ -1608,36 +1625,45 @@ export class ParticleEngine {
     }
   }
 
+  _renderParticle(ctx, p) {
+    const rawT = p.life / p.maxLife;
+    const easeFnSize = EASE[p.ease] || EASE.linear;
+    const easeFnAlpha = EASE[p.easeAlpha] || easeFnSize;
+    const tSize = easeFnSize(rawT);
+    const tAlpha = easeFnAlpha(rawT);
+
+    const alpha = p.alpha + (p.alphaEnd - p.alpha) * tAlpha;
+    const size = p.size + (p.sizeEnd - p.size) * tSize;
+
+    if (alpha <= 0.005 || size <= 0.5) return;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    if (p.blendMode) ctx.globalCompositeOperation = p.blendMode;
+    ctx.translate(p.x, p.y);
+    if (p.rotation) ctx.rotate(p.rotation);
+    if (p.stretchX !== 1) ctx.scale(p.stretchX, 1);
+    const half = size / 2;
+    ctx.drawImage(p.texture, -half, -half, size, size);
+    ctx.restore();
+  }
+
   _render() {
-    const { ctx, canvas } = this;
+    const { ctx, ctxBehind } = this;
     if (!ctx) return;
 
     ctx.clearRect(0, 0, GAME_W, GAME_H);
+    if (ctxBehind) ctxBehind.clearRect(0, 0, GAME_W, GAME_H);
 
     for (let i = 0; i < this.particles.length; i++) {
       const p = this.particles[i];
       if (!p.active || !p.texture || p.delay > 0) continue;
 
-      const rawT = p.life / p.maxLife;
-      const easeFnSize = EASE[p.ease] || EASE.linear;
-      const easeFnAlpha = EASE[p.easeAlpha] || easeFnSize;
-      const tSize = easeFnSize(rawT);
-      const tAlpha = easeFnAlpha(rawT);
-
-      const alpha = p.alpha + (p.alphaEnd - p.alpha) * tAlpha;
-      const size = p.size + (p.sizeEnd - p.size) * tSize;
-
-      if (alpha <= 0.005 || size <= 0.5) continue;
-
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      if (p.blendMode) ctx.globalCompositeOperation = p.blendMode;
-      ctx.translate(p.x, p.y);
-      if (p.rotation) ctx.rotate(p.rotation);
-      if (p.stretchX !== 1) ctx.scale(p.stretchX, 1);
-      const half = size / 2;
-      ctx.drawImage(p.texture, -half, -half, size, size);
-      ctx.restore();
+      if (p.behindDohyo && ctxBehind) {
+        this._renderParticle(ctxBehind, p);
+      } else {
+        this._renderParticle(ctx, p);
+      }
     }
   }
 
@@ -1648,5 +1674,7 @@ export class ParticleEngine {
     }
     this.canvas = null;
     this.ctx = null;
+    this.canvasBehind = null;
+    this.ctxBehind = null;
   }
 }

@@ -52,7 +52,7 @@ import { playBuffer, createCrossfadeLoop } from "../utils/audioEngine";
 import SnowEffect from "./SnowEffect";
 import ThemeOverlay from "./ThemeOverlay";
 import "./theme.css";
-import { SERVER_BROADCAST_HZ } from "../constants";
+import { SERVER_BROADCAST_HZ, DOHYO_LEFT_BOUNDARY, DOHYO_RIGHT_BOUNDARY } from "../constants";
 
 // Assets, sounds, preloading, constants, ritual config, playSound helper
 import {
@@ -2151,12 +2151,25 @@ const GameFighter = ({
         setPlayerTwoWinCount(data.wins);
         setGyojiState("player2Win");
       }
-      // Play round victory or defeat sound based on local player result
+      // Play round victory or defeat sound based on local player result.
+      // Kill throws: defer sound to align with the visual landing (state update + render).
+      // The game_over event arrives before the fighter_action state that shows the player
+      // at ground level, so playing immediately sounds ahead of the visual impact.
       if (index === 0) {
-        if (data.winner.id === localId) {
-          playSound(roundVictorySound, 0.05);
+        const playRoundSound = () => {
+          if (data.winner.id === localId) {
+            playSound(roundVictorySound, 0.05);
+          } else {
+            playSound(roundDefeatSound, 0.03);
+          }
+        };
+        if (data.winType === "clinchKillThrow" || data.winType === "clinchKillPull") {
+          const tid = requestAnimationFrame(() => {
+            requestAnimationFrame(playRoundSound);
+          });
+          pendingSocketTimeouts.current.push(tid);
         } else {
-          playSound(roundDefeatSound, 0.03);
+          playRoundSound();
         }
       }
       // Bump round ID immediately on winner declaration to reset UI stamina to server value
@@ -2599,7 +2612,9 @@ const GameFighter = ({
     if (wasBeingThrown.current && !penguin.isBeingThrown) {
       const landX = interpolatedPositionRef.current.x || penguin.x;
       if (penguin.isClinchKillThrowVictim) {
-        emitParticles("clinchKillThrowLand", { x: landX, y: penguin.y });
+        const outsideDohyo = landX <= DOHYO_LEFT_BOUNDARY || landX >= DOHYO_RIGHT_BOUNDARY;
+        const groundY = outsideDohyo ? penguin.y + 10 : penguin.y + 30;
+        emitParticles("clinchKillThrowLand", { x: landX, y: groundY, behindDohyo: outsideDohyo });
         playSound(chargedHit04, 0.09, null, 0.6, xToPan(landX));
       } else {
         emitParticles("throwLand", { x: landX, y: penguin.y });
@@ -3089,7 +3104,7 @@ const GameFighter = ({
       if (!isVictim) return;
 
       const launchX = data.victimX;
-      const hitstopDelay = (data.hitstopMs || 300) - 50;
+      const hitstopDelay = Math.max(0, (data.hitstopMs || 0));
       const soundId = setTimeout(() => {
         playSound(chargeAttackLaunchSound, 0.18, null, 1.4, xToPan(launchX));
         duckMusic(0.3, 400);

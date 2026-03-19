@@ -1228,8 +1228,8 @@ function tick(delta) {
       ) {
         const currentTime = now;
         const throwDuration = currentTime - player.throwStartTime;
-        const throwProgress =
-          throwDuration / (player.throwEndTime - player.throwStartTime);
+        const throwProgress = Math.max(0,
+          throwDuration / (player.throwEndTime - player.throwStartTime));
 
         const opponent = room.players.find(
           (p) => p.id === player.throwOpponent
@@ -1293,19 +1293,21 @@ function tick(delta) {
             const hopHeight = arcProgress * 60;
             opponent.y = GROUND_LEVEL + hopHeight;
           } else if (player.isClinchKillThrow) {
-            // Piecewise comedic arc: rise → hang off-screen → crash down
-            const RISE_END = 0.28;
-            const HANG_END = 0.58;
-            if (throwProgress < RISE_END) {
-              const riseT = throwProgress / RISE_END;
-              const eased = 1 - Math.pow(1 - riseT, 2.5);
+            // Piecewise cinematic arc: rise → brief hang off-screen → crash down
+            const RISE_END = 0.32;
+            const HANG_END = 0.40;
+            const KILL_LAND_OFFSET = 30;
+            const clampedProgress = Math.min(throwProgress, 1);
+            if (clampedProgress < RISE_END) {
+              const riseT = clampedProgress / RISE_END;
+              const eased = 1 - (1 - riseT) * (1 - riseT);
               opponent.y = GROUND_LEVEL + eased * throwArcHeight;
-            } else if (throwProgress < HANG_END) {
+            } else if (clampedProgress < HANG_END) {
               opponent.y = GROUND_LEVEL + throwArcHeight;
             } else {
-              const fallT = (throwProgress - HANG_END) / (1 - HANG_END);
+              const fallT = (clampedProgress - HANG_END) / (1 - HANG_END);
               const eased = fallT * fallT;
-              opponent.y = GROUND_LEVEL + throwArcHeight * (1 - eased);
+              opponent.y = GROUND_LEVEL + throwArcHeight * (1 - eased) - KILL_LAND_OFFSET * eased;
             }
           } else {
             opponent.y =
@@ -1325,6 +1327,7 @@ function tick(delta) {
                 duration: 500,
               });
               triggerHitstop(room, HITSTOP_THROW_MS);
+              room.forceBroadcast = true;
             }
 
             if (!player.isRingOutThrowCutscene && !wasKillThrow) {
@@ -3019,7 +3022,9 @@ function tick(delta) {
 
     // PERFORMANCE: Only broadcast every N ticks to reduce network load
     // Game logic runs at 64Hz, broadcasts at 32Hz — client interpolation smooths to 60fps
-    if (broadcastTickCounter % BROADCAST_EVERY_N_TICKS === 0) {
+    const shouldBroadcast = broadcastTickCounter % BROADCAST_EVERY_N_TICKS === 0 || room.forceBroadcast;
+    if (room.forceBroadcast) room.forceBroadcast = false;
+    if (shouldBroadcast) {
       // Initialize previousPlayerStates if it doesn't exist (for rooms created before optimization)
       if (!room.previousPlayerStates) {
         room.previousPlayerStates = [null, null];

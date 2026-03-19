@@ -820,15 +820,15 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
     cleanupGrabStates(actor, target);
     actor.isThrowing = true;
     actor.isClinchKillThrow = isKill;
-    actor.throwStartTime = Date.now();
-    actor.throwEndTime = Date.now() + throwDuration;
+    const hitstopMs = isKill ? 0 : HITSTOP_THROW_MS;
+    actor.throwStartTime = Date.now() + hitstopMs;
+    actor.throwEndTime = Date.now() + hitstopMs + throwDuration;
     actor.throwOpponent = target.id;
     actor.throwingFacingDirection = throwDir;
     clearAllActionStates(target);
     target.isBeingThrown = true;
     target.isHit = true;
     target.beingThrownFacingDirection = target.facing;
-    const hitstopMs = isKill ? CLINCH_KILL_THROW_HITSTOP_MS : HITSTOP_THROW_MS;
     target.inputLockUntil = Math.max(target.inputLockUntil || 0, Date.now() + throwDuration + hitstopMs + 100);
     if (isKill) {
       target.isClinchKillThrowVictim = true;
@@ -836,10 +836,10 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
         victimId: target.id,
         throwerId: actor.id,
         victimX: target.x,
-        hitstopMs,
+        hitstopMs: 0,
       });
     }
-    triggerHitstop(room, hitstopMs);
+    if (hitstopMs > 0) triggerHitstop(room, hitstopMs);
   }
 }
 
