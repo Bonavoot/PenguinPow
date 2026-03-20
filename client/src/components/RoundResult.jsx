@@ -2,7 +2,7 @@
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
 
-const ANNOUNCE_Y = "clamp(120px, 32cqh, 220px)";
+const ANNOUNCE_Y = "clamp(100px, 28cqh, 190px)";
 
 const WIN_TYPE_CONFIG = {
   slap: { english: "THRUST OUT !", japanese: "突き出し" },

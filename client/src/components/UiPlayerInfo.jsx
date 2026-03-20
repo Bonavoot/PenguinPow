@@ -375,11 +375,11 @@ const BarFrame = styled.div`
         `}
 `;
 
-/* Dark inner track — unified height for dual-gauge layout */
+/* Dark inner track — stamina gauge */
 const BarTrack = styled.div`
   position: relative;
   width: 100%;
-  height: clamp(16px, 3.2cqh, 32px);
+  height: clamp(22px, 4cqh, 40px);
   border-radius: 3px;
   overflow: hidden;
 
@@ -723,20 +723,6 @@ const RecoveryText = styled.span`
   animation: ${recoveryTextPop} 0.8s ease-out forwards;
 `;
 
-/* Thin gold divider between the two gauge rows */
-const GaugeDivider = styled.div`
-  height: 1px;
-  margin: 3px 0 0;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(212, 175, 55, 0.15) 15%,
-    rgba(212, 175, 55, 0.25) 50%,
-    rgba(212, 175, 55, 0.15) 85%,
-    transparent 100%
-  );
-  pointer-events: none;
-`;
 
 /* STA label inside the bar */
 const BarLabel = styled.div`
@@ -749,6 +735,26 @@ const BarLabel = styled.div`
   color: rgba(255, 255, 255, 0.82);
   text-transform: uppercase;
   letter-spacing: 0.18em;
+  text-shadow:
+    1px 1px 3px rgba(0, 0, 0, 1),
+    0 0 8px rgba(0, 0, 0, 0.8),
+    0 0 2px rgba(0, 0, 0, 1);
+  z-index: 6;
+  pointer-events: none;
+  user-select: none;
+`;
+
+/* "YOU" label on the outer side of the local player's stamina bar */
+const YouLabel = styled.div`
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  ${(p) => (p.$isRight ? "right: clamp(6px, 1cqw, 14px);" : "left: clamp(6px, 1cqw, 14px);")}
+  font-family: "Outfit", sans-serif;
+  font-weight: 700;
+  font-size: clamp(8px, 0.95cqw, 12px);
+  color: rgba(255, 255, 255, 0.92);
+  letter-spacing: 0.14em;
   text-shadow:
     1px 1px 3px rgba(0, 0, 0, 1),
     0 0 8px rgba(0, 0, 0, 0.8),
@@ -772,56 +778,102 @@ const BarRowSpacer = styled.div`
 `;
 
 // ============================================
-// BALANCE BAR — thinner bar below stamina
+// BALANCE BAR — compact stability gauge
 // ============================================
 
-const BalanceBarTrack = styled.div`
-  position: relative;
-  width: 100%;
-  height: clamp(16px, 3.2cqh, 32px);
-  border-radius: 3px;
-  overflow: hidden;
-  margin-top: 3px;
-  background:
-    linear-gradient(
-      ${(p) => (p.$isRight ? "280deg" : "100deg")},
-      rgba(2, 2, 2, 0.97) 0%,
-      rgba(6, 6, 6, 0.95) 50%,
-      rgba(10, 10, 10, 0.92) 100%
-    );
-  box-shadow:
-    inset 0 2px 6px rgba(0, 0, 0, 0.6),
-    inset 0 -1px 3px rgba(0, 0, 0, 0.25);
+/* Vertical stack: stamina bar + balance strip — sits beside power-up slot */
+const GaugeStack = styled.div`
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 `;
 
-/* Butter-gold balance fill — lacquered footing gauge */
-const BalanceBarFill = styled.div.attrs((p) => ({
+/* Label + track side-by-side, half-width, aligned to inner edge */
+const BalStripWrap = styled.div`
+  display: flex;
+  align-items: center;
+  flex-direction: ${(p) => (p.$isRight ? "row" : "row-reverse")};
+  gap: clamp(5px, 0.6cqw, 9px);
+  width: 50%;
+  align-self: ${(p) => (p.$isRight ? "flex-start" : "flex-end")};
+  margin-top: clamp(6px, 0.8cqh, 10px);
+`;
+
+/* "BAL" label sitting beside the thin bar */
+const BalLabel = styled.div`
+  font-family: "Bungee", cursive;
+  font-size: clamp(6px, 0.7cqw, 9px);
+  color: rgba(255, 215, 0, 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.95),
+    0 0 6px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+  flex-shrink: 0;
+  user-select: none;
+`;
+
+/* Outer container — taller than the bar so circle markers can protrude */
+const BalTrackOuter = styled.div`
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: clamp(14px, 2cqh, 20px);
+`;
+
+/* Thin pill-shaped dark track */
+const BalTrack = styled.div`
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  left: 0;
+  right: 0;
+  height: clamp(5px, 0.85cqh, 8px);
+  border-radius: 100px;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg,
+      rgba(6, 6, 6, 0.97) 0%,
+      rgba(14, 14, 14, 0.94) 50%,
+      rgba(10, 10, 10, 0.96) 100%
+    );
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.6),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.15),
+    0 1px 0 rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(180, 130, 30, 0.15);
+`;
+
+/* Gold fill inside the thin track */
+const BalFill = styled.div.attrs((p) => ({
   style: {
-    width: `calc(${p.$balance}% - 4px)`,
+    width: `calc(${p.$balance}% - 2px)`,
   },
 }))`
   position: absolute;
-  top: 2px;
-  bottom: 2px;
-  ${(p) => (p.$isRight ? "left: 2px;" : "right: 2px;")}
-  border-radius: 2px;
+  top: 1px;
+  bottom: 1px;
+  ${(p) => (p.$isRight ? "left: 1px;" : "right: 1px;")}
+  border-radius: 100px;
   transition: width 0.25s ease;
-  z-index: 2;
+  z-index: 1;
   overflow: hidden;
 
   background: ${(p) =>
     p.$danger
       ? p.$isRight
-        ? "linear-gradient(90deg, #dc2626 0%, #ef4444 40%, #f87171 80%, #fca5a5 100%)"
-        : "linear-gradient(90deg, #fca5a5 0%, #f87171 20%, #ef4444 60%, #dc2626 100%)"
+        ? "linear-gradient(90deg, #b91c1c 0%, #ef4444 50%, #fca5a5 100%)"
+        : "linear-gradient(90deg, #fca5a5 0%, #ef4444 50%, #b91c1c 100%)"
       : p.$isRight
-        ? "linear-gradient(90deg, #8c7300 0%, #b89a08 14%, #e0c52a 34%, #f7e164 56%, #fff2a8 80%, #fffce0 100%)"
-        : "linear-gradient(90deg, #fffce0 0%, #fff2a8 18%, #f7e164 40%, #e0c52a 64%, #b89a08 84%, #8c7300 100%)"};
+        ? "linear-gradient(90deg, #8c6d00 0%, #c9a211 28%, #f0d43a 58%, #ffe56c 80%, #fff6c2 100%)"
+        : "linear-gradient(90deg, #fff6c2 0%, #ffe56c 18%, #f0d43a 40%, #c9a211 70%, #8c6d00 100%)"};
 
   box-shadow: ${(p) =>
     p.$danger
-      ? "0 0 10px rgba(239, 68, 68, 0.5), inset 0 0 3px rgba(255, 100, 100, 0.15)"
-      : "0 0 10px rgba(247, 225, 100, 0.24), 0 0 4px rgba(255, 252, 192, 0.16), inset 0 0 5px rgba(255, 252, 224, 0.16)"};
+      ? "0 0 6px rgba(239, 68, 68, 0.5)"
+      : "0 0 5px rgba(240, 212, 58, 0.18), inset 0 0 2px rgba(255, 246, 194, 0.12)"};
 
   animation: ${(p) =>
     p.$danger
@@ -832,170 +884,72 @@ const BalanceBarFill = styled.div.attrs((p) => ({
     content: "";
     position: absolute;
     top: 0; left: 0; right: 0;
-    height: 40%;
-    background: linear-gradient(
-      180deg,
-      rgba(255, 253, 231, 0.42) 0%,
-      rgba(255, 244, 170, 0.12) 48%,
+    height: 50%;
+    background: linear-gradient(180deg,
+      rgba(255, 253, 220, 0.28) 0%,
       transparent 100%
     );
-    border-radius: 2px 2px 0 0;
-    pointer-events: none;
-  }
-
-  /* Lacquered glint (only when not danger) */
-  &::after {
-    content: "";
-    position: absolute;
-    top: 0; bottom: 0;
-    left: 0;
-    width: 26%;
-    background: linear-gradient(
-      96deg,
-      transparent 0%,
-      transparent 32%,
-      rgba(255, 246, 175, 0.08) 44%,
-      rgba(255, 255, 240, 0.22) 50%,
-      rgba(255, 238, 150, 0.1) 56%,
-      transparent 68%,
-      transparent 100%
-    );
-    animation: ${iceShimmer} 4.8s ease-in-out infinite;
-    animation-delay: ${(p) => (p.$isRight ? "1.8s" : "0s")};
-    pointer-events: none;
-    opacity: ${(p) => (p.$danger ? 0 : 1)};
-  }
-`;
-
-/* Balance ghost bar — smoked white glass trailing indicator */
-const BalanceBarGhost = styled.div.attrs((p) => ({
-  style: {
-    width: `calc(${p.$balance}% - 4px)`,
-    transition: p.$catching
-      ? "width 0.55s ease-out"
-      : "width 0.05s linear",
-  },
-}))`
-  position: absolute;
-  top: 2px;
-  bottom: 2px;
-  ${(p) => (p.$isRight ? "left: 2px;" : "right: 2px;")}
-  border-radius: 2px;
-  z-index: 1;
-  pointer-events: none;
-
-  background:
-    radial-gradient(
-      120% 95% at 50% 12%,
-      rgba(255, 255, 255, 0.75) 0%,
-      rgba(255, 255, 255, 0.22) 38%,
-      rgba(255, 255, 255, 0) 68%
-    ),
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.92) 0%,
-      rgba(248, 251, 255, 0.8) 16%,
-      rgba(225, 233, 245, 0.62) 42%,
-      rgba(180, 192, 214, 0.42) 72%,
-      rgba(104, 115, 136, 0.32) 100%
-    );
-
-  opacity: 0.88;
-  box-shadow:
-    0 0 12px rgba(255, 255, 255, 0.18),
-    0 0 4px rgba(184, 205, 238, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.35),
-    inset 0 -2px 6px rgba(38, 46, 60, 0.35);
-
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 38%;
-    background: linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.58) 0%,
-      rgba(255, 255, 255, 0.2) 48%,
-      transparent 100%
-    );
-    border-radius: 2px 2px 0 0;
-    pointer-events: none;
-  }
-
-  &::after {
-    content: "";
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 8%;
-    width: 42%;
-    background: linear-gradient(
-      100deg,
-      rgba(255, 255, 255, 0) 0%,
-      rgba(255, 255, 255, 0.1) 32%,
-      rgba(255, 255, 255, 0.26) 48%,
-      rgba(255, 255, 255, 0.08) 62%,
-      rgba(255, 255, 255, 0) 100%
-    );
-    opacity: 0.9;
+    border-radius: 100px 100px 0 0;
     pointer-events: none;
   }
 `;
 
-const BalanceBarLabel = styled.div`
+/* Diamond markers — protrude above/below the thin bar */
+const BalCircleMark = styled.div`
   position: absolute;
   top: 50%;
-  transform: translateY(-50%);
-  ${(p) => (p.$isRight ? "left: clamp(6px, 1cqw, 14px);" : "right: clamp(6px, 1cqw, 14px);")}
-  font-family: "Bungee", cursive;
-  font-size: clamp(8px, 0.95cqw, 12px);
-  color: rgba(255, 255, 255, 0.82);
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-  text-shadow:
-    1px 1px 3px rgba(0, 0, 0, 1),
-    0 0 8px rgba(0, 0, 0, 0.8),
-    0 0 2px rgba(0, 0, 0, 1);
-  z-index: 6;
+  ${(p) => {
+    if (p.$type === "throw")
+      return `left: 50%; transform: translate(-50%, -50%) rotate(45deg);`;
+    return p.$isRight
+      ? `left: 15%; transform: translate(-50%, -50%) rotate(45deg);`
+      : `right: 15%; transform: translate(50%, -50%) rotate(45deg);`;
+  }}
+  width: clamp(9px, 1.3cqh, 14px);
+  height: clamp(9px, 1.3cqh, 14px);
+  border-radius: 2px;
+  z-index: 2;
   pointer-events: none;
-  user-select: none;
+
+  background: ${(p) =>
+    p.$type === "kill"
+      ? `linear-gradient(135deg,
+          #8b2020 0%,
+          #c0392b 35%,
+          #e74c3c 50%,
+          #c0392b 65%,
+          #8b2020 100%)`
+      : `linear-gradient(135deg,
+          #8c6d00 0%,
+          #c9a211 30%,
+          #ffd700 50%,
+          #c9a211 70%,
+          #8c6d00 100%)`};
+
+  border: ${(p) =>
+    p.$type === "kill"
+      ? "1px solid #ff6b5a"
+      : "1px solid #ffe066"};
+
+  box-shadow: ${(p) =>
+    p.$type === "kill"
+      ? `0 0 8px rgba(231, 76, 60, 0.5),
+         0 0 3px rgba(255, 80, 60, 0.4),
+         inset 0 1px 0 rgba(255, 150, 130, 0.3),
+         0 1px 4px rgba(0, 0, 0, 0.7)`
+      : `0 0 8px rgba(255, 215, 0, 0.4),
+         0 0 3px rgba(212, 175, 55, 0.35),
+         inset 0 1px 0 rgba(255, 240, 150, 0.35),
+         0 1px 4px rgba(0, 0, 0, 0.7)`};
 `;
 
-/* Balance 50% throw-zone line — behind fill, visible only in drained area */
-const BalThrowMark = styled.div`
-  position: absolute;
-  top: 2px;
-  bottom: 2px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 1px;
-  z-index: 1;
-  pointer-events: none;
-  background: rgba(255, 236, 184, 0.18);
-  box-shadow: -1px 0 0 rgba(255, 236, 184, 0.06), 1px 0 0 rgba(255, 236, 184, 0.06);
-`;
-
-/* Balance 15% kill-zone line — behind fill, red-tinted for danger */
-const BalKillMark = styled.div`
-  position: absolute;
-  top: 2px;
-  bottom: 2px;
-  ${(p) => (p.$isRight ? "left: 15%;" : "right: 15%;")}
-  transform: translateX(${(p) => (p.$isRight ? "-50%" : "50%")});
-  width: 1.5px;
-  z-index: 1;
-  pointer-events: none;
-  background: rgba(255, 100, 80, 0.25);
-  box-shadow: -1px 0 0 rgba(255, 80, 60, 0.08), 1px 0 0 rgba(255, 80, 60, 0.08);
-`;
-
-/* Stack below the dual gauge — rank plaque aligned with bar left/right */
+/* Rank plaque — tucked up close to the balance strip */
 const SubBarRow = styled.div`
   display: flex;
   flex-direction: ${(p) => (p.$isRight ? "row-reverse" : "row")};
   align-items: center;
-  gap: clamp(4px, 0.5cqw, 8px);
-  margin-top: clamp(3px, 0.5cqh, 6px);
+  gap: clamp(12px, 2cqw, 24px);
+  margin-top: clamp(-4px, -0.4cqh, -2px);
   width: 100%;
 `;
 
@@ -1054,8 +1008,10 @@ const PowerUpSlot = styled.div`
   opacity: ${(p) => (p.$active ? 1 : 0.7)};
 
   img {
-    width: 76%;
-    height: 76%;
+    width: 65%;
+    height: auto;
+    max-width: clamp(26px, 3.5cqw, 42px);
+    max-height: clamp(26px, 3.5cqw, 42px);
     object-fit: contain;
     filter: ${(p) => (p.$cooldown ? "brightness(0.5) grayscale(0.35)" : "brightness(1)")};
   }
@@ -1201,6 +1157,7 @@ const clampBalance = (value) => {
 const UiPlayerInfo = ({
   roundHistory = [],
   roundId = 0,
+  isPlayer1Local = true,
   player1Stamina,
   player1ActivePowerUp = null,
   player1SnowballCooldown = false,
@@ -1246,17 +1203,6 @@ const UiPlayerInfo = ({
   const p1LastDecreaseAtRef = useRef(0);
   const p2LastDecreaseAtRef = useRef(0);
 
-  // ── Balance ghost bar — trailing indicator for balance changes ──
-  const [p1BalGhost, setP1BalGhost] = useState(b1);
-  const [p2BalGhost, setP2BalGhost] = useState(b2);
-  const [p1BalGhostCatching, setP1BalGhostCatching] = useState(false);
-  const [p2BalGhostCatching, setP2BalGhostCatching] = useState(false);
-  const p1BalGhostTimer = useRef(null);
-  const p2BalGhostTimer = useRef(null);
-  const p1PrevBalance = useRef(b1);
-  const p2PrevBalance = useRef(b2);
-  const p1BalLastDecreaseAtRef = useRef(0);
-  const p2BalLastDecreaseAtRef = useRef(0);
 
   // ── Regen indicator (green leading-edge glow) ──
   const [p1Regen, setP1Regen] = useState(false);
@@ -1327,16 +1273,6 @@ const UiPlayerInfo = ({
     p2RecoveryPending.current = false;
     setP1Recovery(0);
     setP2Recovery(0);
-    setP1BalGhost(b1);
-    setP2BalGhost(b2);
-    setP1BalGhostCatching(false);
-    setP2BalGhostCatching(false);
-    if (p1BalGhostTimer.current) clearTimeout(p1BalGhostTimer.current);
-    if (p2BalGhostTimer.current) clearTimeout(p2BalGhostTimer.current);
-    p1PrevBalance.current = b1;
-    p2PrevBalance.current = b2;
-    p1BalLastDecreaseAtRef.current = 0;
-    p2BalLastDecreaseAtRef.current = 0;
   }, [roundId]);
 
   // ── Gassed → recovered transition detection ──
@@ -1544,87 +1480,6 @@ const UiPlayerInfo = ({
     };
   }, [s2]);
 
-  // ── Player 1 balance ghost ──
-  useEffect(() => {
-    const prev = p1PrevBalance.current;
-    p1PrevBalance.current = b1;
-
-    if (b1 < prev) {
-      const now = Date.now();
-      p1BalLastDecreaseAtRef.current = now;
-      setP1BalGhost((g) => Math.max(g, prev));
-      setP1BalGhostCatching(false);
-      if (p1BalGhostTimer.current) clearTimeout(p1BalGhostTimer.current);
-      const closureB1 = b1;
-      const scheduleGhostCatchUp = (delay = 700) => {
-        p1BalGhostTimer.current = setTimeout(() => {
-          const elapsed = Date.now() - p1BalLastDecreaseAtRef.current;
-          if (elapsed < 500) {
-            scheduleGhostCatchUp(400);
-            return;
-          }
-          setP1BalGhostCatching(true);
-          setP1BalGhost(closureB1);
-        }, delay);
-      };
-      scheduleGhostCatchUp(700);
-    } else if (b1 > prev) {
-      const elapsed = Date.now() - p1BalLastDecreaseAtRef.current;
-      if (elapsed > 600) {
-        if (p1BalGhostTimer.current) clearTimeout(p1BalGhostTimer.current);
-        setP1BalGhostCatching(false);
-        setP1BalGhost(b1);
-      }
-    }
-
-    return () => {
-      if (p1BalGhostTimer.current) {
-        clearTimeout(p1BalGhostTimer.current);
-        p1BalGhostTimer.current = null;
-      }
-    };
-  }, [b1]);
-
-  // ── Player 2 balance ghost ──
-  useEffect(() => {
-    const prev = p2PrevBalance.current;
-    p2PrevBalance.current = b2;
-
-    if (b2 < prev) {
-      const now = Date.now();
-      p2BalLastDecreaseAtRef.current = now;
-      setP2BalGhost((g) => Math.max(g, prev));
-      setP2BalGhostCatching(false);
-      if (p2BalGhostTimer.current) clearTimeout(p2BalGhostTimer.current);
-      const closureB2 = b2;
-      const scheduleGhostCatchUp = (delay = 700) => {
-        p2BalGhostTimer.current = setTimeout(() => {
-          const elapsed = Date.now() - p2BalLastDecreaseAtRef.current;
-          if (elapsed < 500) {
-            scheduleGhostCatchUp(400);
-            return;
-          }
-          setP2BalGhostCatching(true);
-          setP2BalGhost(closureB2);
-        }, delay);
-      };
-      scheduleGhostCatchUp(700);
-    } else if (b2 > prev) {
-      const elapsed = Date.now() - p2BalLastDecreaseAtRef.current;
-      if (elapsed > 600) {
-        if (p2BalGhostTimer.current) clearTimeout(p2BalGhostTimer.current);
-        setP2BalGhostCatching(false);
-        setP2BalGhost(b2);
-      }
-    }
-
-    return () => {
-      if (p2BalGhostTimer.current) {
-        clearTimeout(p2BalGhostTimer.current);
-        p2BalGhostTimer.current = null;
-      }
-    };
-  }, [b2]);
 
   // ── Derived match state ──
   const currentRound = Math.min(roundHistory.length + 1, 3);
@@ -1694,66 +1549,66 @@ const UiPlayerInfo = ({
         </NameBanner>
 
         <BarRow $isRight={false}>
-          <BarFrame
-            $danger={p1Danger}
-            $gassed={player1IsGassed}
-            $isRight={false}
-            $matchOver={matchOver}
-          >
-            <BarTrack $isRight={false}>
-              <BarLabel $isRight={false}>STA</BarLabel>
-              <BarFill
-                $stamina={p1DisplayStamina}
-                $danger={p1Danger}
-                $isRight={false}
-              />
-              {!player1IsGassed && (
-                <BarGhost
-                  $stamina={p1Ghost}
-                  $catching={p1GhostCatching}
-                  $isRight={false}
-                />
-              )}
-              {p1Regen && !player1IsGassed && (
-                <RegenGlow
+          <GaugeStack>
+            <BarFrame
+              $danger={p1Danger}
+              $gassed={player1IsGassed}
+              $isRight={false}
+              $matchOver={matchOver}
+            >
+              <BarTrack $isRight={false}>
+                {isPlayer1Local && <YouLabel $isRight={false}>You</YouLabel>}
+                <BarFill
                   $stamina={p1DisplayStamina}
+                  $danger={p1Danger}
                   $isRight={false}
                 />
-              )}
-              {player1IsGassed && (
-                <GassedOverlay $matchOver={matchOver}>
-                  <GassedText>GASSED</GassedText>
-                </GassedOverlay>
-              )}
-              {p1ParryFlash > 0 && !player1IsGassed && (
-                <ParryRefundFlash
-                  key={p1ParryFlash}
-                  $stamina={p1DisplayStamina}
-                  $isRight={false}
-                />
-              )}
-              {p1Recovery > 0 && (
-                <RecoveryFlash key={`r1-${p1Recovery}`}>
-                  <RecoveryText>SECOND WIND</RecoveryText>
-                </RecoveryFlash>
-              )}
-              <StaTickMark $pct={25} />
-              <StaTickMark $pct={50} />
-              <StaTickMark $pct={75} />
-            </BarTrack>
-            <GaugeDivider />
-            <BalanceBarTrack $isRight={false}>
-              <BalanceBarLabel $isRight={false}>BAL</BalanceBarLabel>
-              <BalanceBarGhost
-                $balance={p1BalGhost}
-                $catching={p1BalGhostCatching}
-                $isRight={false}
-              />
-              <BalanceBarFill $balance={b1} $danger={b1Danger} $isRight={false} />
-              <BalThrowMark />
-              <BalKillMark $isRight={false} />
-            </BalanceBarTrack>
-          </BarFrame>
+                {!player1IsGassed && (
+                  <BarGhost
+                    $stamina={p1Ghost}
+                    $catching={p1GhostCatching}
+                    $isRight={false}
+                  />
+                )}
+                {p1Regen && !player1IsGassed && (
+                  <RegenGlow
+                    $stamina={p1DisplayStamina}
+                    $isRight={false}
+                  />
+                )}
+                {player1IsGassed && (
+                  <GassedOverlay $matchOver={matchOver}>
+                    <GassedText>GASSED</GassedText>
+                  </GassedOverlay>
+                )}
+                {p1ParryFlash > 0 && !player1IsGassed && (
+                  <ParryRefundFlash
+                    key={p1ParryFlash}
+                    $stamina={p1DisplayStamina}
+                    $isRight={false}
+                  />
+                )}
+                {p1Recovery > 0 && (
+                  <RecoveryFlash key={`r1-${p1Recovery}`}>
+                    <RecoveryText>SECOND WIND</RecoveryText>
+                  </RecoveryFlash>
+                )}
+                <StaTickMark $pct={25} />
+                <StaTickMark $pct={50} />
+                <StaTickMark $pct={75} />
+              </BarTrack>
+            </BarFrame>
+            <BalStripWrap $isRight={false}>
+              <BalLabel>BAL</BalLabel>
+              <BalTrackOuter>
+                <BalTrack>
+                  <BalFill $balance={b1} $danger={b1Danger} $isRight={false} />
+                </BalTrack>
+                <BalCircleMark $type="throw" />
+                <BalCircleMark $type="kill" $isRight={false} />
+              </BalTrackOuter>
+            </BalStripWrap>
+          </GaugeStack>
           <PowerUpSlot
             $active={player1ActivePowerUp}
             $cooldown={getPowerUpIsOnCooldown(
@@ -1779,7 +1634,7 @@ const UiPlayerInfo = ({
 
         <SubBarRow $isRight={false}>
           <BarRowSpacer />
-          <RankPlaque $isRight={false}>
+          <RankPlaque>
             <RankText>JONOKUCHI</RankText>
           </RankPlaque>
         </SubBarRow>
@@ -1804,66 +1659,66 @@ const UiPlayerInfo = ({
         </NameBanner>
 
         <BarRow $isRight={true}>
-          <BarFrame
-            $danger={p2Danger}
-            $gassed={player2IsGassed}
-            $isRight={true}
-            $matchOver={matchOver}
-          >
-            <BarTrack $isRight={true}>
-              <BarLabel $isRight={true}>STA</BarLabel>
-              <BarFill
-                $stamina={p2DisplayStamina}
-                $danger={p2Danger}
-                $isRight={true}
-              />
-              {!player2IsGassed && (
-                <BarGhost
-                  $stamina={p2Ghost}
-                  $catching={p2GhostCatching}
-                  $isRight={true}
-                />
-              )}
-              {p2Regen && !player2IsGassed && (
-                <RegenGlow
+          <GaugeStack>
+            <BarFrame
+              $danger={p2Danger}
+              $gassed={player2IsGassed}
+              $isRight={true}
+              $matchOver={matchOver}
+            >
+              <BarTrack $isRight={true}>
+                {!isPlayer1Local && <YouLabel $isRight={true}>You</YouLabel>}
+                <BarFill
                   $stamina={p2DisplayStamina}
+                  $danger={p2Danger}
                   $isRight={true}
                 />
-              )}
-              {player2IsGassed && (
-                <GassedOverlay $matchOver={matchOver}>
-                  <GassedText>GASSED</GassedText>
-                </GassedOverlay>
-              )}
-              {p2ParryFlash > 0 && !player2IsGassed && (
-                <ParryRefundFlash
-                  key={p2ParryFlash}
-                  $stamina={p2DisplayStamina}
-                  $isRight={true}
-                />
-              )}
-              {p2Recovery > 0 && (
-                <RecoveryFlash key={`r2-${p2Recovery}`}>
-                  <RecoveryText>SECOND WIND</RecoveryText>
-                </RecoveryFlash>
-              )}
-              <StaTickMark $pct={25} />
-              <StaTickMark $pct={50} />
-              <StaTickMark $pct={75} />
-            </BarTrack>
-            <GaugeDivider />
-            <BalanceBarTrack $isRight={true}>
-              <BalanceBarLabel $isRight={true}>BAL</BalanceBarLabel>
-              <BalanceBarGhost
-                $balance={p2BalGhost}
-                $catching={p2BalGhostCatching}
-                $isRight={true}
-              />
-              <BalanceBarFill $balance={b2} $danger={b2Danger} $isRight={true} />
-              <BalThrowMark />
-              <BalKillMark $isRight={true} />
-            </BalanceBarTrack>
-          </BarFrame>
+                {!player2IsGassed && (
+                  <BarGhost
+                    $stamina={p2Ghost}
+                    $catching={p2GhostCatching}
+                    $isRight={true}
+                  />
+                )}
+                {p2Regen && !player2IsGassed && (
+                  <RegenGlow
+                    $stamina={p2DisplayStamina}
+                    $isRight={true}
+                  />
+                )}
+                {player2IsGassed && (
+                  <GassedOverlay $matchOver={matchOver}>
+                    <GassedText>GASSED</GassedText>
+                  </GassedOverlay>
+                )}
+                {p2ParryFlash > 0 && !player2IsGassed && (
+                  <ParryRefundFlash
+                    key={p2ParryFlash}
+                    $stamina={p2DisplayStamina}
+                    $isRight={true}
+                  />
+                )}
+                {p2Recovery > 0 && (
+                  <RecoveryFlash key={`r2-${p2Recovery}`}>
+                    <RecoveryText>SECOND WIND</RecoveryText>
+                  </RecoveryFlash>
+                )}
+                <StaTickMark $pct={25} />
+                <StaTickMark $pct={50} />
+                <StaTickMark $pct={75} />
+              </BarTrack>
+            </BarFrame>
+            <BalStripWrap $isRight={true}>
+              <BalLabel>BAL</BalLabel>
+              <BalTrackOuter>
+                <BalTrack>
+                  <BalFill $balance={b2} $danger={b2Danger} $isRight={true} />
+                </BalTrack>
+                <BalCircleMark $type="throw" />
+                <BalCircleMark $type="kill" $isRight={true} />
+              </BalTrackOuter>
+            </BalStripWrap>
+          </GaugeStack>
           <PowerUpSlot
             $active={player2ActivePowerUp}
             $cooldown={getPowerUpIsOnCooldown(
@@ -1889,7 +1744,7 @@ const UiPlayerInfo = ({
 
         <SubBarRow $isRight={true}>
           <BarRowSpacer />
-          <RankPlaque $isRight={true}>
+          <RankPlaque>
             <RankText>JONOKUCHI</RankText>
           </RankPlaque>
         </SubBarRow>
@@ -1901,6 +1756,7 @@ const UiPlayerInfo = ({
 UiPlayerInfo.propTypes = {
   roundHistory: PropTypes.array,
   roundId: PropTypes.number,
+  isPlayer1Local: PropTypes.bool,
   player1Stamina: PropTypes.number,
   player1ActivePowerUp: PropTypes.string,
   player1SnowballCooldown: PropTypes.bool,

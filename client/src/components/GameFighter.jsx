@@ -3332,6 +3332,7 @@ const GameFighter = ({
                 roundHistory={roundHistory}
                 roundId={uiRoundId}
                 matchOver={matchOver}
+                isPlayer1Local={isLocalPlayer}
                 player1Stamina={allPlayersData.player1?.stamina ?? 100}
                 player1ActivePowerUp={
                   allPlayersData.player1?.activePowerUp ?? null

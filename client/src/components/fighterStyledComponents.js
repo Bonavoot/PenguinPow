@@ -818,9 +818,9 @@ export const SaltBasket = styled.img
     },
   }))``;
 
-const youLabelGlow = keyframes`
-  0%, 100% { opacity: 0.85; }
-  50% { opacity: 1; }
+const youBob = keyframes`
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-4px); }
 `;
 
 export const YouLabel = styled.div
@@ -832,7 +832,6 @@ export const YouLabel = styled.div
       position: "absolute",
       bottom: `${(props.y / 720) * 100 + 21}%`,
       left: `${(props.x / 1280) * 100}%`,
-      transform: "translateX(-50%)",
     },
   }))`
   z-index: 1000;
@@ -840,22 +839,22 @@ export const YouLabel = styled.div
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1px;
-  animation: ${youLabelGlow} 2.5s ease-in-out infinite;
+  gap: 2px;
+  animation: ${youBob} 1.8s ease-in-out infinite;
 
   &::before {
-    content: "YOU";
-    font-family: "Bungee", cursive;
-    font-size: clamp(10px, 1cqw, 14px);
-    letter-spacing: 0.1em;
+    content: "You";
+    font-family: "Outfit", sans-serif;
+    font-weight: 700;
+    font-size: clamp(12px, 1.2cqw, 18px);
+    letter-spacing: 0.08em;
     line-height: 1;
-    color: #fff;
-    background: linear-gradient(180deg, rgba(14, 165, 233, 0.8) 0%, rgba(3, 105, 161, 0.85) 100%);
-    padding: clamp(3px, 0.3cqw, 5px) clamp(8px, 0.7cqw, 12px);
-    border-radius: 3px;
-    border: 1.5px solid rgba(255, 255, 255, 0.5);
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 6px rgba(56, 189, 248, 0.4);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6), 0 0 8px rgba(14, 165, 233, 0.25);
+    color: #ffffff;
+    -webkit-text-stroke: 1.5px rgba(0, 0, 0, 0.7);
+    paint-order: stroke fill;
+    text-shadow:
+      0 1px 3px rgba(0, 0, 0, 0.9),
+      0 0 8px rgba(0, 0, 0, 0.5);
   }
 
   &::after {
@@ -864,8 +863,8 @@ export const YouLabel = styled.div
     height: 0;
     border-left: 5px solid transparent;
     border-right: 5px solid transparent;
-    border-top: 6px solid rgba(14, 165, 233, 0.85);
-    filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5));
+    border-top: 6px solid #ffffff;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8));
   }
 `;
 
