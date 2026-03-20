@@ -1003,6 +1003,7 @@ const GameFighter = ({
   const [countdown, setCountdown] = useState(15);
   const countdownRef = useRef(null);
   const pendingSocketTimeouts = useRef([]);
+  const pendingSocketRafs = useRef([]);
   const [screenShake, setScreenShake] = useState({
     intensity: 0,
     duration: 0,
@@ -2165,9 +2166,10 @@ const GameFighter = ({
         };
         if (data.winType === "clinchKillThrow" || data.winType === "clinchKillPull") {
           const tid = requestAnimationFrame(() => {
-            requestAnimationFrame(playRoundSound);
+            const tid2 = requestAnimationFrame(playRoundSound);
+            pendingSocketRafs.current.push(tid2);
           });
-          pendingSocketTimeouts.current.push(tid);
+          pendingSocketRafs.current.push(tid);
         } else {
           playRoundSound();
         }
@@ -2261,6 +2263,8 @@ const GameFighter = ({
       }
       pendingSocketTimeouts.current.forEach(clearTimeout);
       pendingSocketTimeouts.current = [];
+      pendingSocketRafs.current.forEach(cancelAnimationFrame);
+      pendingSocketRafs.current = [];
     };
   }, [index, socket, handleFighterAction, opponentDisconnected, localId]);
 

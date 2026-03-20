@@ -176,7 +176,7 @@ const PowerUpSelectionStage = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: clamp(52px, 8vh, 88px) clamp(24px, 4vw, 40px);
+  padding: clamp(32px, 5vh, 56px) clamp(24px, 4vw, 40px);
   pointer-events: none;
 `;
 

@@ -6,7 +6,6 @@ import powerWaterIcon from "../assets/power-water.png";
 import snowballImage from "../assets/snowball.png";
 import pumoArmyIcon from "./pumo-army-icon.png";
 import thickBlubberIcon from "../assets/thick-blubber-icon.png";
-import { SnowCap, IcicleRow, Icicle } from "./Snowfall";
 
 // ============================================
 // ANIMATIONS
@@ -23,13 +22,13 @@ const pulseWin = keyframes`
   100% { transform: scale(1); }
 `;
 
-/* Sweeping ice-shine across the balance fill */
+/* Sweeping brass shine across the balance fill */
 const iceShimmer = keyframes`
   0%   { transform: translateX(-120%); }
   100% { transform: translateX(220%); }
 `;
 
-/* Warm ember glow sweep across the stamina fill */
+/* Satin pearl sweep across the stamina fill */
 const emberShimmer = keyframes`
   0%   { transform: translateX(-120%); }
   100% { transform: translateX(250%); }
@@ -115,19 +114,19 @@ const gassedFramePulse = keyframes`
   }
 `;
 
-/* Icy burst when recovering from gassed state — "second wind" */
+/* Green-mint burst when recovering from gassed state — "second wind" */
 const recoveryBurst = keyframes`
   0% {
     opacity: 1;
-    box-shadow: inset 0 0 30px rgba(186, 230, 253, 0.95), 0 0 24px rgba(56, 189, 248, 0.8);
+    box-shadow: inset 0 0 30px rgba(225, 255, 241, 0.96), 0 0 24px rgba(75, 231, 158, 0.84);
   }
   25% {
     opacity: 0.9;
-    box-shadow: inset 0 0 20px rgba(186, 230, 253, 0.6), 0 0 16px rgba(56, 189, 248, 0.5);
+    box-shadow: inset 0 0 20px rgba(225, 255, 241, 0.62), 0 0 16px rgba(75, 231, 158, 0.5);
   }
   100% {
     opacity: 0;
-    box-shadow: inset 0 0 0px rgba(186, 230, 253, 0), 0 0 0px rgba(56, 189, 248, 0);
+    box-shadow: inset 0 0 0px rgba(225, 255, 241, 0), 0 0 0px rgba(75, 231, 158, 0);
   }
 `;
 
@@ -153,12 +152,6 @@ const recoveryTextPop = keyframes`
     opacity: 0;
     transform: translate(-50%, -50%) scale(1.05);
   }
-`;
-
-/* Subtle breathing for the center crest */
-const crestBreath = keyframes`
-  0%, 100% { filter: brightness(1); }
-  50%      { filter: brightness(1.06); }
 `;
 
 // ============================================
@@ -187,65 +180,16 @@ const HudShell = styled.div`
     filter 260ms ease,
     transform 260ms ease;
 
-  /* Rich layered dark — darker up top, fading out toward gameplay */
   background:
-    /* Subtle seigaiha wave pattern — traditional Japanese, very faint gold */
-    radial-gradient(circle at 100% 150%, transparent 24%, rgba(212,175,55,0.018) 24.5%, rgba(212,175,55,0.018) 27.5%, transparent 28%) 0 0 / 28px 14px,
-    radial-gradient(circle at 0% 150%, transparent 24%, rgba(212,175,55,0.018) 24.5%, rgba(212,175,55,0.018) 27.5%, transparent 28%) 0 0 / 28px 14px,
     linear-gradient(
       180deg,
-      rgba(4, 6, 16, 0.96) 0%,
-      rgba(6, 9, 22, 0.92) 20%,
-      rgba(6, 9, 22, 0.72) 50%,
-      rgba(6, 9, 22, 0.28) 78%,
+      rgba(0, 0, 0, 0.88) 0%,
+      rgba(0, 0, 0, 0.78) 20%,
+      rgba(0, 0, 0, 0.5) 50%,
+      rgba(0, 0, 0, 0.18) 78%,
       transparent 100%
     );
 
-  /* ── Thick gold-over-crimson top beam (dohyo roof feel) ── */
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: clamp(4px, 0.4cqw, 8px);
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      #3d0e0e 4%,
-      #8B1A1A 8%,
-      #c9a22e 18%,
-      #FFD700 30%,
-      #f5e278 42%,
-      #FFD700 50%,
-      #f5e278 58%,
-      #FFD700 70%,
-      #c9a22e 82%,
-      #8B1A1A 92%,
-      #3d0e0e 96%,
-      transparent 100%
-    );
-    z-index: 10;
-    pointer-events: none;
-  }
-
-  /* ── Thin crimson accent under the gold ── */
-  &::after {
-    content: "";
-    position: absolute;
-    top: clamp(4px, 0.4cqw, 8px); left: 0; right: 0;
-    height: clamp(2px, 0.16cqw, 4px);
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgba(139, 26, 26, 0.7) 10%,
-      rgba(180, 40, 40, 0.4) 30%,
-      rgba(139, 26, 26, 0.5) 50%,
-      rgba(180, 40, 40, 0.4) 70%,
-      rgba(139, 26, 26, 0.7) 90%,
-      transparent 100%
-    );
-    z-index: 10;
-    pointer-events: none;
-  }
 `;
 
 // ============================================
@@ -253,8 +197,8 @@ const HudShell = styled.div`
 // ============================================
 
 const PlayerWing = styled.div`
-  flex: 0 1 40%;
-  max-width: min(440px, 34%);
+  flex: 0 1 48%;
+  max-width: min(560px, 45%);
   display: flex;
   flex-direction: column;
   gap: clamp(4px, 0.6cqh, 8px);
@@ -271,99 +215,20 @@ const NameBanner = styled.div`
   display: flex;
   align-items: center;
   width: 100%;
-  gap: clamp(5px, 0.8cqw, 10px);
-  flex-direction: ${(p) => (p.$isRight ? "row-reverse" : "row")};
-  /* Rounded corner under avatar so no sharp edge shows through avatar radius */
-  border-radius: ${(p) => (p.$isRight ? "0 4px 0 0" : "4px 0 0 0")};
-  /* Angled banner edge — fighting game energy */
-  clip-path: ${(p) =>
-    p.$isRight
-      ? "polygon(10px 0, 100% 0, 100% 100%, 0 100%)"
-      : "polygon(0 0, calc(100% - 10px) 0, 100% 100%, 0 100%)"};
-  background: linear-gradient(
-    ${(p) => (p.$isRight ? "270deg" : "90deg")},
-    rgba(10, 16, 38, 0.95) 0%,
-    rgba(18, 24, 50, 0.88) 60%,
-    rgba(28, 18, 18, 0.75) 100%
-  );
-  /* Height fits square avatar; can be shorter than stamina bar */
-  height: calc(clamp(24px, 4.5cqh, 50px) + 6px);
+  gap: clamp(4px, 0.5cqw, 8px);
+  flex-direction: ${(p) => (p.$isRight ? "row" : "row-reverse")};
+  background: none;
+  min-height: clamp(18px, 2.2cqh, 26px);
   box-sizing: border-box;
-  padding: 0 clamp(10px, 1.5cqw, 20px);
-  ${(p) => p.$isRight
-    ? "padding-left: clamp(16px, 2.5cqw, 30px);"
-    : "padding-right: clamp(16px, 2.5cqw, 30px);"}
+  padding: 0;
   position: relative;
-
-  /* Gold gradient bottom edge — renders above the avatar so it continues through it */
-  &::after {
-    content: "";
-    position: absolute;
-    bottom: 0; left: 0; right: 0;
-    height: clamp(2px, 0.16cqw, 4px);
-    background: linear-gradient(
-      ${(p) => (p.$isRight ? "270deg" : "90deg")},
-      #d4af37 0%, #b8860b 60%, transparent 100%
-    );
-    pointer-events: none;
-    z-index: 4;
-  }
-`;
-
-/* Square seal avatar (hanko stamp feel) — square, flush to side accent */
-const AvatarSeal = styled.div`
-  width: clamp(24px, 4.5cqh, 50px);
-  height: clamp(24px, 4.5cqh, 50px);
-  flex-shrink: 0;
-  /* Push flush to the banner edge, covering the side accent */
-  ${(p) => p.$isRight
-    ? "margin-right: calc(-1 * clamp(10px, 1.5cqw, 20px));"
-    : "margin-left: calc(-1 * clamp(10px, 1.5cqw, 20px));"}
-  margin-bottom: 0;
-  background: radial-gradient(
-    circle at 35% 35%,
-    #5c1a1a, #3d0a0a 70%, #200404
-  );
-  border: clamp(2px, 0.16cqw, 4px) solid #d4af37;
-  border-bottom: none;
-  border-radius: 4px 4px 0 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: clamp(11px, 1.8cqw, 20px);
-  font-weight: 900;
-  color: #ffd700;
-  text-shadow:
-    0 0 clamp(6px, 0.6cqw, 12px) rgba(255, 215, 0, 0.4),
-    0 clamp(1.5px, 0.12cqw, 3px) 0 rgba(0, 0, 0, 0.8);
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.6),
-    inset 0 0 8px rgba(0, 0, 0, 0.5),
-    0 3px 10px rgba(0, 0, 0, 0.5);
-  position: relative;
-  z-index: 3;
-
-  /* Subtle diagonal stamp-mark texture */
-  &::after {
-    content: "";
-    position: absolute;
-    inset: 2px;
-    background: repeating-linear-gradient(
-      -45deg,
-      transparent 0px,
-      transparent 3px,
-      rgba(212, 175, 55, 0.04) 3px,
-      rgba(212, 175, 55, 0.04) 4px
-    );
-    border-radius: 2px;
-    pointer-events: none;
-  }
+  margin-bottom: clamp(2px, 0.4cqh, 6px);
 `;
 
 const NameBlock = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   align-items: ${(p) => (p.$isRight ? "flex-end" : "flex-start")};
   min-width: 0;
   flex: 1;
@@ -525,44 +390,26 @@ const BarTrack = styled.div`
       rgba(6, 6, 6, 0.95) 50%,
       rgba(10, 10, 10, 0.92) 100%
     );
-  border: 1.5px solid rgba(212, 175, 55, 0.12);
   box-shadow:
     inset 0 2px 6px rgba(0, 0, 0, 0.6),
     inset 0 -1px 3px rgba(0, 0, 0, 0.25);
 `;
 
-/* Tick marks at 25%, 50%, 75% — readability */
-const BarTicks = styled.div`
+/* Stamina gauge line — sits behind the fill so it only shows in drained areas */
+const StaTickMark = styled.div`
   position: absolute;
-  top: 0; bottom: 0; left: 0; right: 0;
-  z-index: 4;
+  top: 2px;
+  bottom: 2px;
+  left: ${(p) => p.$pct}%;
+  transform: translateX(-50%);
+  width: 1px;
+  z-index: 1;
   pointer-events: none;
-
-  &::before, &::after {
-    content: "";
-    position: absolute;
-    top: 15%;
-    bottom: 15%;
-    width: 1px;
-    background: rgba(255, 255, 255, 0.1);
-  }
-  &::before { left: 25%; }
-  &::after  { left: 75%; }
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: -1px 0 0 rgba(255, 255, 255, 0.05), 1px 0 0 rgba(255, 255, 255, 0.05);
 `;
 
-/* Extra center tick (50% mark — most important for reads) */
-const BarCenterTick = styled.div`
-  position: absolute;
-  top: 10%;
-  bottom: 10%;
-  left: 50%;
-  width: 1.5px;
-  background: rgba(255, 255, 255, 0.15);
-  z-index: 4;
-  pointer-events: none;
-`;
-
-/* Gold/amber stamina fill — warm energy bar */
+/* Mint-lime frost stamina fill — playful arcade energy */
 const BarFill = styled.div.attrs((p) => ({
   style: {
     width: `calc(${p.$stamina}% - 4px)`,
@@ -571,7 +418,7 @@ const BarFill = styled.div.attrs((p) => ({
   position: absolute;
   top: 2px;
   bottom: 2px;
-  ${(p) => (p.$isRight ? "right: 2px;" : "left: 2px;")}
+  ${(p) => (p.$isRight ? "left: 2px;" : "right: 2px;")}
   border-radius: 2px;
   transition: width 0.3s ease;
   z-index: 2;
@@ -580,16 +427,16 @@ const BarFill = styled.div.attrs((p) => ({
   background: ${(p) =>
     p.$danger
       ? p.$isRight
-        ? "linear-gradient(270deg, #dc2626 0%, #ef4444 40%, #f87171 80%, #fca5a5 100%)"
+        ? "linear-gradient(90deg, #dc2626 0%, #ef4444 40%, #f87171 80%, #fca5a5 100%)"
         : "linear-gradient(90deg, #fca5a5 0%, #f87171 20%, #ef4444 60%, #dc2626 100%)"
       : p.$isRight
-        ? "linear-gradient(270deg, #b45309 0%, #d97706 15%, #f59e0b 35%, #fbbf24 60%, #fcd34d 85%, #fde68a 100%)"
-        : "linear-gradient(90deg, #fde68a 0%, #fcd34d 15%, #fbbf24 40%, #f59e0b 65%, #d97706 85%, #b45309 100%)"};
+        ? "linear-gradient(90deg, #14663d 0%, #1c9b52 14%, #46d46a 34%, #95f07a 56%, #caffae 78%, #f0ffe4 100%)"
+        : "linear-gradient(90deg, #f0ffe4 0%, #caffae 18%, #95f07a 40%, #46d46a 64%, #1c9b52 84%, #14663d 100%)"};
 
   box-shadow: ${(p) =>
     p.$danger
       ? "0 0 14px rgba(239, 68, 68, 0.6), inset 0 0 4px rgba(255, 100, 100, 0.2)"
-      : "0 0 10px rgba(245, 158, 11, 0.4), 0 0 4px rgba(251, 191, 36, 0.3), inset 0 0 4px rgba(253, 230, 138, 0.1)"};
+      : "0 0 14px rgba(149, 240, 122, 0.34), 0 0 6px rgba(202, 255, 174, 0.24), inset 0 0 6px rgba(240, 255, 228, 0.18)"};
 
   animation: ${(p) =>
     p.$danger
@@ -603,39 +450,39 @@ const BarFill = styled.div.attrs((p) => ({
     height: 40%;
     background: linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.28) 0%,
-      rgba(255, 255, 255, 0.07) 60%,
+      rgba(249, 255, 241, 0.42) 0%,
+      rgba(236, 255, 214, 0.14) 52%,
       transparent 100%
     );
     border-radius: 2px 2px 0 0;
     pointer-events: none;
   }
 
-  /* Warm ember sweep (only when not danger) */
+  /* Frost-glass sweep (only when not danger) */
   &::after {
     content: "";
     position: absolute;
     top: 0; bottom: 0;
     left: 0;
-    width: 45%;
+    width: 34%;
     background: linear-gradient(
-      100deg,
+      103deg,
       transparent 0%,
-      transparent 35%,
-      rgba(255, 230, 150, 0.08) 42%,
-      rgba(255, 230, 150, 0.16) 50%,
-      rgba(255, 230, 150, 0.08) 58%,
-      transparent 65%,
+      transparent 28%,
+      rgba(238, 255, 219, 0.12) 40%,
+      rgba(252, 255, 243, 0.3) 50%,
+      rgba(219, 255, 184, 0.16) 58%,
+      transparent 70%,
       transparent 100%
     );
-    animation: ${emberShimmer} 4s ease-in-out infinite;
+    animation: ${emberShimmer} 3.6s ease-in-out infinite;
     animation-delay: ${(p) => (p.$isRight ? "2s" : "0s")};
     pointer-events: none;
     opacity: ${(p) => (p.$danger ? 0 : 1)};
   }
 `;
 
-/* Ghost bar — luminous translucent white trailing indicator */
+/* Ghost bar — smoked white glass trailing indicator */
 const BarGhost = styled.div.attrs((p) => ({
   style: {
     width: `calc(${p.$stamina}% - 4px)`,
@@ -647,37 +494,65 @@ const BarGhost = styled.div.attrs((p) => ({
   position: absolute;
   top: 2px;
   bottom: 2px;
-  ${(p) => (p.$isRight ? "right: 2px;" : "left: 2px;")}
+  ${(p) => (p.$isRight ? "left: 2px;" : "right: 2px;")}
   border-radius: 2px;
   z-index: 1;
   pointer-events: none;
 
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.82) 0%,
-    rgba(240, 244, 255, 0.65) 25%,
-    rgba(220, 228, 248, 0.52) 55%,
-    rgba(200, 210, 240, 0.42) 80%,
-    rgba(180, 192, 230, 0.35) 100%
-  );
+  background:
+    radial-gradient(
+      120% 95% at 50% 12%,
+      rgba(255, 255, 255, 0.75) 0%,
+      rgba(255, 255, 255, 0.22) 38%,
+      rgba(255, 255, 255, 0) 68%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.92) 0%,
+      rgba(248, 251, 255, 0.8) 16%,
+      rgba(225, 233, 245, 0.62) 42%,
+      rgba(180, 192, 214, 0.42) 72%,
+      rgba(104, 115, 136, 0.32) 100%
+    );
 
-  opacity: 0.75;
+  opacity: 0.88;
   box-shadow:
-    0 0 8px rgba(220, 230, 255, 0.25),
-    inset 0 0 6px rgba(255, 255, 255, 0.12);
+    0 0 12px rgba(255, 255, 255, 0.18),
+    0 0 4px rgba(184, 205, 238, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -2px 6px rgba(38, 46, 60, 0.35);
 
   &::before {
     content: "";
     position: absolute;
     top: 0; left: 0; right: 0;
-    height: 45%;
+    height: 38%;
     background: linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.35) 0%,
-      rgba(255, 255, 255, 0.1) 50%,
+      rgba(255, 255, 255, 0.58) 0%,
+      rgba(255, 255, 255, 0.2) 48%,
       transparent 100%
     );
     border-radius: 2px 2px 0 0;
+    pointer-events: none;
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 8%;
+    width: 42%;
+    background: linear-gradient(
+      100deg,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.1) 32%,
+      rgba(255, 255, 255, 0.26) 48%,
+      rgba(255, 255, 255, 0.08) 62%,
+      rgba(255, 255, 255, 0) 100%
+    );
+    opacity: 0.9;
     pointer-events: none;
   }
 `;
@@ -691,7 +566,7 @@ const RegenGlow = styled.div.attrs((p) => ({
   position: absolute;
   top: 2px;
   bottom: 2px;
-  ${(p) => (p.$isRight ? "right: 2px;" : "left: 2px;")}
+  ${(p) => (p.$isRight ? "left: 2px;" : "right: 2px;")}
   border-radius: 2px;
   z-index: 3;
   pointer-events: none;
@@ -722,7 +597,7 @@ const ParryRefundFlash = styled.div.attrs((p) => ({
   position: absolute;
   top: 2px;
   bottom: 2px;
-  ${(p) => (p.$isRight ? "right: 2px;" : "left: 2px;")}
+  ${(p) => (p.$isRight ? "left: 2px;" : "right: 2px;")}
   border-radius: 2px;
   z-index: 6;
   pointer-events: none;
@@ -791,7 +666,7 @@ const GassedText = styled.span`
   animation: ${gassedTextPulse} 1.2s ease-in-out infinite;
 `;
 
-/* Gassed recovery burst — bright icy flash when "second wind" kicks in */
+/* Gassed recovery burst — bright green-mint flash when "second wind" kicks in */
 const RecoveryFlash = styled.div`
   position: absolute;
   top: 0;
@@ -802,10 +677,10 @@ const RecoveryFlash = styled.div`
   z-index: 7;
   pointer-events: none;
   background: linear-gradient(180deg,
-    rgba(186, 230, 253, 0.6) 0%,
-    rgba(56, 189, 248, 0.8) 30%,
-    rgba(14, 165, 233, 0.8) 60%,
-    rgba(56, 189, 248, 0.6) 100%);
+    rgba(225, 255, 241, 0.58) 0%,
+    rgba(151, 245, 201, 0.8) 30%,
+    rgba(75, 231, 158, 0.84) 60%,
+    rgba(25, 201, 119, 0.62) 100%);
   animation: ${recoveryBurst} 0.7s ease-out forwards;
   overflow: hidden;
 
@@ -835,10 +710,10 @@ const RecoveryText = styled.span`
   left: 50%;
   font-family: "Bungee", cursive;
   font-size: clamp(7px, 1cqh, 13px);
-  color: #bae6fd;
+  color: #e6fff2;
   text-shadow:
-    0 0 10px rgba(56, 189, 248, 0.9),
-    0 0 20px rgba(14, 165, 233, 0.6),
+    0 0 10px rgba(151, 245, 201, 0.9),
+    0 0 20px rgba(25, 201, 119, 0.62),
     -1px -1px 0 #000, 1px -1px 0 #000,
     -1px 1px 0 #000, 1px 1px 0 #000;
   letter-spacing: 0.15em;
@@ -868,7 +743,7 @@ const BarLabel = styled.div`
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  ${(p) => (p.$isRight ? "right: clamp(6px, 1cqw, 14px);" : "left: clamp(6px, 1cqw, 14px);")}
+  ${(p) => (p.$isRight ? "left: clamp(6px, 1cqw, 14px);" : "right: clamp(6px, 1cqw, 14px);")}
   font-family: "Bungee", cursive;
   font-size: clamp(8px, 0.95cqw, 12px);
   color: rgba(255, 255, 255, 0.82);
@@ -887,9 +762,11 @@ const BarLabel = styled.div`
 // POWER-UP — medal / charm style
 // ============================================
 
-/* Invisible spacer to align rank plaque with stamina bar (same width as PowerUpSlot) */
+const SLOT_SIZE = `clamp(34px, 4.5cqw, 54px)`;
+
+/* Invisible spacer to align rank plaque & name with stamina bar (same width as PowerUpSlot) */
 const BarRowSpacer = styled.div`
-  width: clamp(30px, 3.8cqw, 48px);
+  width: ${SLOT_SIZE};
   flex-shrink: 0;
   min-height: 0;
 `;
@@ -912,13 +789,12 @@ const BalanceBarTrack = styled.div`
       rgba(6, 6, 6, 0.95) 50%,
       rgba(10, 10, 10, 0.92) 100%
     );
-  border: 1.5px solid rgba(168, 212, 255, 0.12);
   box-shadow:
     inset 0 2px 6px rgba(0, 0, 0, 0.6),
     inset 0 -1px 3px rgba(0, 0, 0, 0.25);
 `;
 
-/* Icy blue balance fill — composure/stability gauge */
+/* Butter-gold balance fill — lacquered footing gauge */
 const BalanceBarFill = styled.div.attrs((p) => ({
   style: {
     width: `calc(${p.$balance}% - 4px)`,
@@ -927,7 +803,7 @@ const BalanceBarFill = styled.div.attrs((p) => ({
   position: absolute;
   top: 2px;
   bottom: 2px;
-  ${(p) => (p.$isRight ? "right: 2px;" : "left: 2px;")}
+  ${(p) => (p.$isRight ? "left: 2px;" : "right: 2px;")}
   border-radius: 2px;
   transition: width 0.25s ease;
   z-index: 2;
@@ -936,16 +812,16 @@ const BalanceBarFill = styled.div.attrs((p) => ({
   background: ${(p) =>
     p.$danger
       ? p.$isRight
-        ? "linear-gradient(270deg, #dc2626 0%, #ef4444 40%, #f87171 80%, #fca5a5 100%)"
+        ? "linear-gradient(90deg, #dc2626 0%, #ef4444 40%, #f87171 80%, #fca5a5 100%)"
         : "linear-gradient(90deg, #fca5a5 0%, #f87171 20%, #ef4444 60%, #dc2626 100%)"
       : p.$isRight
-        ? "linear-gradient(270deg, #0369a1 0%, #0284c7 15%, #0ea5e9 35%, #38bdf8 60%, #7dd3fc 85%, #bae6fd 100%)"
-        : "linear-gradient(90deg, #bae6fd 0%, #7dd3fc 15%, #38bdf8 40%, #0ea5e9 65%, #0284c7 85%, #0369a1 100%)"};
+        ? "linear-gradient(90deg, #8c7300 0%, #b89a08 14%, #e0c52a 34%, #f7e164 56%, #fff2a8 80%, #fffce0 100%)"
+        : "linear-gradient(90deg, #fffce0 0%, #fff2a8 18%, #f7e164 40%, #e0c52a 64%, #b89a08 84%, #8c7300 100%)"};
 
   box-shadow: ${(p) =>
     p.$danger
       ? "0 0 10px rgba(239, 68, 68, 0.5), inset 0 0 3px rgba(255, 100, 100, 0.15)"
-      : "0 0 12px rgba(14, 165, 233, 0.45), 0 0 4px rgba(56, 189, 248, 0.3), inset 0 0 4px rgba(186, 230, 253, 0.12)"};
+      : "0 0 10px rgba(247, 225, 100, 0.24), 0 0 4px rgba(255, 252, 192, 0.16), inset 0 0 5px rgba(255, 252, 224, 0.16)"};
 
   animation: ${(p) =>
     p.$danger
@@ -959,39 +835,39 @@ const BalanceBarFill = styled.div.attrs((p) => ({
     height: 40%;
     background: linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.3) 0%,
-      rgba(255, 255, 255, 0.08) 60%,
+      rgba(255, 253, 231, 0.42) 0%,
+      rgba(255, 244, 170, 0.12) 48%,
       transparent 100%
     );
     border-radius: 2px 2px 0 0;
     pointer-events: none;
   }
 
-  /* Sweeping ice-shine (only when not danger) */
+  /* Lacquered glint (only when not danger) */
   &::after {
     content: "";
     position: absolute;
     top: 0; bottom: 0;
     left: 0;
-    width: 45%;
+    width: 26%;
     background: linear-gradient(
-      100deg,
+      96deg,
       transparent 0%,
-      transparent 35%,
-      rgba(255, 255, 255, 0.10) 42%,
-      rgba(255, 255, 255, 0.22) 50%,
-      rgba(255, 255, 255, 0.10) 58%,
-      transparent 65%,
+      transparent 32%,
+      rgba(255, 246, 175, 0.08) 44%,
+      rgba(255, 255, 240, 0.22) 50%,
+      rgba(255, 238, 150, 0.1) 56%,
+      transparent 68%,
       transparent 100%
     );
-    animation: ${iceShimmer} 3.5s ease-in-out infinite;
+    animation: ${iceShimmer} 4.8s ease-in-out infinite;
     animation-delay: ${(p) => (p.$isRight ? "1.8s" : "0s")};
     pointer-events: none;
     opacity: ${(p) => (p.$danger ? 0 : 1)};
   }
 `;
 
-/* Balance ghost bar — luminous translucent white trailing indicator */
+/* Balance ghost bar — smoked white glass trailing indicator */
 const BalanceBarGhost = styled.div.attrs((p) => ({
   style: {
     width: `calc(${p.$balance}% - 4px)`,
@@ -1003,37 +879,65 @@ const BalanceBarGhost = styled.div.attrs((p) => ({
   position: absolute;
   top: 2px;
   bottom: 2px;
-  ${(p) => (p.$isRight ? "right: 2px;" : "left: 2px;")}
+  ${(p) => (p.$isRight ? "left: 2px;" : "right: 2px;")}
   border-radius: 2px;
   z-index: 1;
   pointer-events: none;
 
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.82) 0%,
-    rgba(240, 244, 255, 0.65) 25%,
-    rgba(220, 228, 248, 0.52) 55%,
-    rgba(200, 210, 240, 0.42) 80%,
-    rgba(180, 192, 230, 0.35) 100%
-  );
+  background:
+    radial-gradient(
+      120% 95% at 50% 12%,
+      rgba(255, 255, 255, 0.75) 0%,
+      rgba(255, 255, 255, 0.22) 38%,
+      rgba(255, 255, 255, 0) 68%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.92) 0%,
+      rgba(248, 251, 255, 0.8) 16%,
+      rgba(225, 233, 245, 0.62) 42%,
+      rgba(180, 192, 214, 0.42) 72%,
+      rgba(104, 115, 136, 0.32) 100%
+    );
 
-  opacity: 0.75;
+  opacity: 0.88;
   box-shadow:
-    0 0 8px rgba(220, 230, 255, 0.25),
-    inset 0 0 6px rgba(255, 255, 255, 0.12);
+    0 0 12px rgba(255, 255, 255, 0.18),
+    0 0 4px rgba(184, 205, 238, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -2px 6px rgba(38, 46, 60, 0.35);
 
   &::before {
     content: "";
     position: absolute;
     top: 0; left: 0; right: 0;
-    height: 45%;
+    height: 38%;
     background: linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.35) 0%,
-      rgba(255, 255, 255, 0.1) 50%,
+      rgba(255, 255, 255, 0.58) 0%,
+      rgba(255, 255, 255, 0.2) 48%,
       transparent 100%
     );
     border-radius: 2px 2px 0 0;
+    pointer-events: none;
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 8%;
+    width: 42%;
+    background: linear-gradient(
+      100deg,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.1) 32%,
+      rgba(255, 255, 255, 0.26) 48%,
+      rgba(255, 255, 255, 0.08) 62%,
+      rgba(255, 255, 255, 0) 100%
+    );
+    opacity: 0.9;
     pointer-events: none;
   }
 `;
@@ -1042,7 +946,7 @@ const BalanceBarLabel = styled.div`
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  ${(p) => (p.$isRight ? "right: clamp(6px, 1cqw, 14px);" : "left: clamp(6px, 1cqw, 14px);")}
+  ${(p) => (p.$isRight ? "left: clamp(6px, 1cqw, 14px);" : "right: clamp(6px, 1cqw, 14px);")}
   font-family: "Bungee", cursive;
   font-size: clamp(8px, 0.95cqw, 12px);
   color: rgba(255, 255, 255, 0.82);
@@ -1057,36 +961,32 @@ const BalanceBarLabel = styled.div`
   user-select: none;
 `;
 
-/* 50% throw-zone + 15% kill-zone reference ticks (mirrored for P2) */
-const BalanceBarTicks = styled.div`
+/* Balance 50% throw-zone line — behind fill, visible only in drained area */
+const BalThrowMark = styled.div`
   position: absolute;
-  top: 0; bottom: 0; left: 0; right: 0;
-  z-index: 4;
+  top: 2px;
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1px;
+  z-index: 1;
   pointer-events: none;
+  background: rgba(255, 236, 184, 0.18);
+  box-shadow: -1px 0 0 rgba(255, 236, 184, 0.06), 1px 0 0 rgba(255, 236, 184, 0.06);
+`;
 
-  /* 50% — throw zone reference */
-  &::before {
-    content: "";
-    position: absolute;
-    top: 10%;
-    bottom: 10%;
-    left: 50%;
-    width: 1.5px;
-    background: rgba(255, 255, 255, 0.28);
-    box-shadow: 0 0 3px rgba(255, 255, 255, 0.08);
-  }
-
-  /* 15% — kill zone reference (mirrored for P2) */
-  &::after {
-    content: "";
-    position: absolute;
-    top: 10%;
-    bottom: 10%;
-    ${(p) => (p.$isRight ? "right: 15%;" : "left: 15%;")}
-    width: 1.5px;
-    background: rgba(255, 140, 120, 0.32);
-    box-shadow: 0 0 3px rgba(255, 100, 80, 0.1);
-  }
+/* Balance 15% kill-zone line — behind fill, red-tinted for danger */
+const BalKillMark = styled.div`
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  ${(p) => (p.$isRight ? "left: 15%;" : "right: 15%;")}
+  transform: translateX(${(p) => (p.$isRight ? "-50%" : "50%")});
+  width: 1.5px;
+  z-index: 1;
+  pointer-events: none;
+  background: rgba(255, 100, 80, 0.25);
+  box-shadow: -1px 0 0 rgba(255, 80, 60, 0.08), 1px 0 0 rgba(255, 80, 60, 0.08);
 `;
 
 /* Stack below the dual gauge — rank plaque aligned with bar left/right */
@@ -1108,22 +1008,24 @@ const BarRow = styled.div`
   width: 100%;
 `;
 
-/* Square slot aligned with stamina bar row */
+/* Power-up panel — square, gold ring frame matching bars */
 const PowerUpSlot = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  width: clamp(30px, 3.8cqw, 48px);
-  height: clamp(30px, 3.8cqw, 48px);
+  width: ${SLOT_SIZE};
+  align-self: stretch;
   border-radius: 4px;
-  border: clamp(1.5px, 0.15cqw, 3px) solid;
+  box-sizing: border-box;
   position: relative;
   transition: all 0.25s ease;
   flex-shrink: 0;
 
+  border: clamp(2px, 0.16cqw, 4px) solid transparent;
+
   background: ${(p) => {
     if (!p.$active)
-      return "linear-gradient(145deg, rgba(18, 24, 48, 0.72), rgba(10, 14, 32, 0.78))";
+      return "linear-gradient(145deg, rgba(2, 2, 2, 0.97), rgba(6, 6, 6, 0.95), rgba(10, 10, 10, 0.92))";
     if (p.$cooldown)
       return "linear-gradient(135deg, #4a5568, #2d3748)";
     switch (p.$active) {
@@ -1142,27 +1044,13 @@ const PowerUpSlot = styled.div`
     }
   }};
 
-  border-color: ${(p) => {
-    if (!p.$active)
-      return "rgba(212, 175, 55, 0.32)";
-    if (p.$cooldown)
-      return "rgba(168, 212, 255, 0.15)";
-    switch (p.$active) {
-      case "speed": return "#0088dd";
-      case "power": return "#dc2626";
-      case "snowball": return "#4682b4";
-      case "pumo_army": return "#cc6600";
-      case "thick_blubber": return "#5e35b1";
-      default: return "#d4af37";
-    }
-  }};
+  box-shadow:
+    0 0 0 clamp(2px, 0.16cqw, 4px) rgba(180, 130, 30, 0.6),
+    0 0 0 clamp(4px, 0.32cqw, 8px) rgba(0, 0, 0, 0.5),
+    0 clamp(3px, 0.24cqw, 6px) clamp(12px, 1cqw, 24px) rgba(0, 0, 0, 0.5),
+    inset 0 2px 6px rgba(0, 0, 0, 0.6),
+    inset 0 -1px 3px rgba(0, 0, 0, 0.25);
 
-  box-shadow: ${(p) =>
-    p.$active && !p.$cooldown
-      ? "0 3px 12px rgba(0,0,0,0.4), 0 0 6px rgba(255,255,255,0.1)"
-      : !p.$active
-        ? "0 2px 6px rgba(0,0,0,0.35), inset 0 1px 0 rgba(212, 175, 55, 0.08)"
-        : "0 2px 6px rgba(0,0,0,0.3)"};
   opacity: ${(p) => (p.$active ? 1 : 0.7)};
 
   img {
@@ -1198,108 +1086,33 @@ const SnowballCountBadge = styled.div`
 `;
 
 // ============================================
-// CENTER CREST — crimson lacquer scoreboard
+// CENTER ROUND INDICATOR — bare floating text
 // ============================================
 
-const CenterCrest = styled.div`
+const CenterRound = styled.div`
   position: absolute;
-  top: 28px;
+  top: clamp(24px, 4cqh, 46px);
   left: 50%;
   transform: translateX(-50%);
   z-index: 1001;
-
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 8px 18px;
-
-  /* Deep crimson lacquer (urushi) — authentic sumo */
-  background:
-    /* Very subtle fabric weave texture */
-    repeating-linear-gradient(
-      0deg,
-      transparent 0px, transparent 2px,
-      rgba(255, 200, 100, 0.012) 2px, rgba(255, 200, 100, 0.012) 3px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      transparent 0px, transparent 2px,
-      rgba(255, 200, 100, 0.008) 2px, rgba(255, 200, 100, 0.008) 3px
-    ),
-    linear-gradient(
-      180deg,
-      #6B1A1A 0%,
-      #4A0E0E 30%,
-      #350808 65%,
-      #200404 100%
-    );
-  border: clamp(2.5px, 0.2cqw, 5px) solid #b8860b;
-  border-radius: clamp(5px, 0.8cqw, 10px);
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.5),
-    0 5px 20px rgba(0, 0, 0, 0.55),
-    inset 0 1px 0 rgba(255, 200, 100, 0.15),
-    inset 0 -2px 8px rgba(0, 0, 0, 0.5),
-    inset 0 0 16px rgba(80, 15, 15, 0.25);
-  opacity: ${(p) => (p.$matchOver ? 0.8 : 1)};
-  filter: ${(p) =>
-    p.$matchOver ? "saturate(0.88) brightness(0.9)" : "none"};
-  transform: translateX(-50%)
-    ${(p) => (p.$matchOver ? "translateY(3px) scale(0.97)" : "scale(1)")};
-  transition: opacity 260ms ease, filter 260ms ease, transform 260ms ease;
-
-  animation: ${crestBreath} 6s ease-in-out infinite;
-
-  /* ── Gold ornamental top edge ── */
-  &::before {
-    content: "";
-    position: absolute;
-    top: clamp(-3px, -0.16cqw, -2px); left: 0; right: 0;
-    height: clamp(3px, 0.24cqw, 6px);
-    background: linear-gradient(
-      90deg,
-      #6b4c12 0%, #c9a22e 15%, #f0d060 35%,
-      #ffe87a 50%,
-      #f0d060 65%, #c9a22e 85%, #6b4c12 100%
-    );
-    border-radius: 6px 6px 0 0;
-    pointer-events: none;
-  }
-
-  /* ── Gold ornamental bottom edge ── */
-  &::after {
-    content: "";
-    position: absolute;
-    bottom: clamp(-3px, -0.16cqw, -2px); left: 0; right: 0;
-    height: clamp(3px, 0.24cqw, 6px);
-    background: linear-gradient(
-      90deg,
-      #6b4c12 0%, #c9a22e 15%, #f0d060 35%,
-      #ffe87a 50%,
-      #f0d060 65%, #c9a22e 85%, #6b4c12 100%
-    );
-    border-radius: 0 0 6px 6px;
-    pointer-events: none;
-  }
+  pointer-events: none;
+  opacity: ${(p) => (p.$matchOver ? 0.7 : 1)};
+  transition: opacity 260ms ease;
 `;
 
-/* Stone tray — dark inset for go-stones */
-const StoneTray = styled.div`
+// ============================================
+// WIN/LOSS ROW — stones above player bars
+// ============================================
+
+const WinLossRow = styled.div`
   display: flex;
-  flex-direction: ${(p) => (p.$reverse ? "row-reverse" : "row")};
-  gap: clamp(3px, 0.4cqw, 5px);
-  background: linear-gradient(
-    145deg,
-    rgba(8, 2, 2, 0.85) 0%,
-    rgba(18, 4, 4, 0.6) 50%,
-    rgba(8, 2, 2, 0.85) 100%
-  );
-  padding: clamp(3px, 0.5cqw, 7px) clamp(4px, 0.6cqw, 10px);
-  border-radius: 4px;
-  border: 1px solid rgba(139, 105, 20, 0.4);
-  box-shadow:
-    inset 0 2px 5px rgba(0, 0, 0, 0.55),
-    inset 0 0 8px rgba(0, 0, 0, 0.3);
+  flex-direction: row;
+  align-items: center;
+  gap: clamp(3px, 0.4cqw, 6px);
+  justify-content: ${(p) => (p.$isRight ? "flex-start" : "flex-end")};
 `;
 
 /* Traditional go-stones: white = win, black = loss */
@@ -1313,21 +1126,21 @@ const GoStone = styled.div`
 
   background: ${(p) => {
     if (p.$isEmpty)
-      return "linear-gradient(145deg, rgba(80, 50, 30, 0.15), rgba(60, 35, 20, 0.08))";
+      return "linear-gradient(145deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02))";
     return p.$isWin
       ? "radial-gradient(55% 55% at 32% 32%, #fff 0%, #f0f0f0 55%, #d8d8d8 100%)"
       : "radial-gradient(55% 55% at 32% 32%, #555 0%, #1a1a1a 55%, #050505 100%)";
   }};
 
   border: ${(p) => {
-    if (p.$isEmpty) return "clamp(1.5px, 0.12cqw, 3px) solid rgba(139, 105, 20, 0.2)";
+    if (p.$isEmpty) return "clamp(1.5px, 0.12cqw, 2.5px) solid rgba(255, 255, 255, 0.35)";
     return p.$isWin
       ? "clamp(2px, 0.16cqw, 4px) solid rgba(255, 255, 255, 0.9)"
       : "clamp(2px, 0.16cqw, 4px) solid rgba(255, 255, 255, 0.5)";
   }};
 
   box-shadow: ${(p) => {
-    if (p.$isEmpty) return "inset 0 1px 3px rgba(0, 0, 0, 0.25)";
+    if (p.$isEmpty) return "inset 0 1px 3px rgba(0, 0, 0, 0.4), 0 0 4px rgba(255, 255, 255, 0.08)";
     return p.$isWin
       ? "0 0 8px rgba(255, 255, 255, 0.65), 0 0 3px rgba(212, 175, 55, 0.35), inset 0 -1px 2px rgba(0, 0, 0, 0.15)"
       : "0 0 5px rgba(139, 105, 20, 0.35), 0 0 2px rgba(212, 175, 55, 0.2), inset 0 1px 3px rgba(60, 60, 60, 0.45)";
@@ -1337,36 +1150,30 @@ const GoStone = styled.div`
     p.$isWin && !p.$isEmpty ? pulseWin : "none"} 2s infinite;
 `;
 
-const RoundSeal = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  position: relative;
-  z-index: 1;
-  min-width: clamp(22px, 3cqw, 40px);
-`;
-
 const RoundNum = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(14px, 2.6cqw, 40px);
-  color: #ffd700;
-  -webkit-text-stroke: clamp(1px, 0.15cqw, 3px) #000;
+  font-size: clamp(28px, 5cqw, 72px);
+  color: #fff;
+  -webkit-text-stroke: clamp(1.5px, 0.2cqw, 3px) rgba(0, 0, 0, 0.9);
   text-shadow:
-    0 0 clamp(8px, 0.8cqw, 16px) rgba(255, 215, 0, 0.4),
-    0 0 clamp(3px, 0.3cqw, 6px) rgba(212, 175, 55, 0.5),
-    0 clamp(2px, 0.16cqw, 4px) clamp(4px, 0.32cqw, 8px) rgba(0, 0, 0, 0.8);
+    0 0 24px rgba(255, 215, 0, 0.5),
+    0 0 8px rgba(255, 215, 0, 0.6),
+    0 0 48px rgba(255, 200, 60, 0.2),
+    0 3px 8px rgba(0, 0, 0, 0.95);
   line-height: 1;
   user-select: none;
 `;
 
 const RoundText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(5px, 0.6cqw, 8px);
-  color: rgba(220, 185, 110, 0.75);
+  font-size: clamp(7px, 0.9cqw, 13px);
+  color: rgba(255, 215, 0, 0.7);
   text-transform: uppercase;
-  letter-spacing: 0.18em;
-  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.8);
-  margin-top: 1px;
+  letter-spacing: 0.25em;
+  text-shadow:
+    0 0 6px rgba(255, 215, 0, 0.3),
+    0 1px 3px rgba(0, 0, 0, 0.95);
+  margin-top: clamp(1px, 0.2cqh, 3px);
 `;
 
 // ============================================
@@ -1448,6 +1255,8 @@ const UiPlayerInfo = ({
   const p2BalGhostTimer = useRef(null);
   const p1PrevBalance = useRef(b1);
   const p2PrevBalance = useRef(b2);
+  const p1BalLastDecreaseAtRef = useRef(0);
+  const p2BalLastDecreaseAtRef = useRef(0);
 
   // ── Regen indicator (green leading-edge glow) ──
   const [p1Regen, setP1Regen] = useState(false);
@@ -1526,6 +1335,8 @@ const UiPlayerInfo = ({
     if (p2BalGhostTimer.current) clearTimeout(p2BalGhostTimer.current);
     p1PrevBalance.current = b1;
     p2PrevBalance.current = b2;
+    p1BalLastDecreaseAtRef.current = 0;
+    p2BalLastDecreaseAtRef.current = 0;
   }, [roundId]);
 
   // ── Gassed → recovered transition detection ──
@@ -1739,18 +1550,31 @@ const UiPlayerInfo = ({
     p1PrevBalance.current = b1;
 
     if (b1 < prev) {
+      const now = Date.now();
+      p1BalLastDecreaseAtRef.current = now;
       setP1BalGhost((g) => Math.max(g, prev));
       setP1BalGhostCatching(false);
       if (p1BalGhostTimer.current) clearTimeout(p1BalGhostTimer.current);
       const closureB1 = b1;
-      p1BalGhostTimer.current = setTimeout(() => {
-        setP1BalGhostCatching(true);
-        setP1BalGhost(closureB1);
-      }, 600);
+      const scheduleGhostCatchUp = (delay = 700) => {
+        p1BalGhostTimer.current = setTimeout(() => {
+          const elapsed = Date.now() - p1BalLastDecreaseAtRef.current;
+          if (elapsed < 500) {
+            scheduleGhostCatchUp(400);
+            return;
+          }
+          setP1BalGhostCatching(true);
+          setP1BalGhost(closureB1);
+        }, delay);
+      };
+      scheduleGhostCatchUp(700);
     } else if (b1 > prev) {
-      if (p1BalGhostTimer.current) clearTimeout(p1BalGhostTimer.current);
-      setP1BalGhostCatching(false);
-      setP1BalGhost(b1);
+      const elapsed = Date.now() - p1BalLastDecreaseAtRef.current;
+      if (elapsed > 600) {
+        if (p1BalGhostTimer.current) clearTimeout(p1BalGhostTimer.current);
+        setP1BalGhostCatching(false);
+        setP1BalGhost(b1);
+      }
     }
 
     return () => {
@@ -1767,18 +1591,31 @@ const UiPlayerInfo = ({
     p2PrevBalance.current = b2;
 
     if (b2 < prev) {
+      const now = Date.now();
+      p2BalLastDecreaseAtRef.current = now;
       setP2BalGhost((g) => Math.max(g, prev));
       setP2BalGhostCatching(false);
       if (p2BalGhostTimer.current) clearTimeout(p2BalGhostTimer.current);
       const closureB2 = b2;
-      p2BalGhostTimer.current = setTimeout(() => {
-        setP2BalGhostCatching(true);
-        setP2BalGhost(closureB2);
-      }, 600);
+      const scheduleGhostCatchUp = (delay = 700) => {
+        p2BalGhostTimer.current = setTimeout(() => {
+          const elapsed = Date.now() - p2BalLastDecreaseAtRef.current;
+          if (elapsed < 500) {
+            scheduleGhostCatchUp(400);
+            return;
+          }
+          setP2BalGhostCatching(true);
+          setP2BalGhost(closureB2);
+        }, delay);
+      };
+      scheduleGhostCatchUp(700);
     } else if (b2 > prev) {
-      if (p2BalGhostTimer.current) clearTimeout(p2BalGhostTimer.current);
-      setP2BalGhostCatching(false);
-      setP2BalGhost(b2);
+      const elapsed = Date.now() - p2BalLastDecreaseAtRef.current;
+      if (elapsed > 600) {
+        if (p2BalGhostTimer.current) clearTimeout(p2BalGhostTimer.current);
+        setP2BalGhostCatching(false);
+        setP2BalGhost(b2);
+      }
     }
 
     return () => {
@@ -1847,10 +1684,13 @@ const UiPlayerInfo = ({
       {/* ═══ PLAYER 1 — East (Higashi) ═══ */}
       <PlayerWing $matchOver={matchOver}>
         <NameBanner $isRight={false}>
-          <AvatarSeal $isRight={false}>力</AvatarSeal>
+          <WinLossRow $isRight={false}>
+            {renderCenterMarks("player1")}
+          </WinLossRow>
           <NameBlock $isRight={false}>
             <FighterName>PLAYER 1</FighterName>
           </NameBlock>
+          <BarRowSpacer />
         </NameBanner>
 
         <BarRow $isRight={false}>
@@ -1897,8 +1737,9 @@ const UiPlayerInfo = ({
                   <RecoveryText>SECOND WIND</RecoveryText>
                 </RecoveryFlash>
               )}
-              <BarTicks />
-              <BarCenterTick />
+              <StaTickMark $pct={25} />
+              <StaTickMark $pct={50} />
+              <StaTickMark $pct={75} />
             </BarTrack>
             <GaugeDivider />
             <BalanceBarTrack $isRight={false}>
@@ -1909,7 +1750,8 @@ const UiPlayerInfo = ({
                 $isRight={false}
               />
               <BalanceBarFill $balance={b1} $danger={b1Danger} $isRight={false} />
-              <BalanceBarTicks $isRight={false} />
+              <BalThrowMark />
+              <BalKillMark $isRight={false} />
             </BalanceBarTrack>
           </BarFrame>
           <PowerUpSlot
@@ -1943,31 +1785,22 @@ const UiPlayerInfo = ({
         </SubBarRow>
       </PlayerWing>
 
-      {/* ═══ CENTER SCOREBOARD ═══ */}
-      <CenterCrest $matchOver={matchOver}>
-        <SnowCap />
-        <StoneTray>{renderCenterMarks("player1")}</StoneTray>
-        <RoundSeal>
-          <RoundNum>{currentRound}</RoundNum>
-          <RoundText>ROUND</RoundText>
-        </RoundSeal>
-        <StoneTray $reverse>{renderCenterMarks("player2")}</StoneTray>
-        <IcicleRow $bottom="-12px">
-          <Icicle $w={2} $h={6} />
-          <Icicle $w={3} $h={9} />
-          <Icicle $w={2} $h={7} />
-          <Icicle $w={3} $h={11} />
-          <Icicle $w={2} $h={8} />
-        </IcicleRow>
-      </CenterCrest>
+      {/* ═══ CENTER ROUND ═══ */}
+      <CenterRound $matchOver={matchOver}>
+        <RoundNum>{currentRound}</RoundNum>
+        <RoundText>ROUND</RoundText>
+      </CenterRound>
 
       {/* ═══ PLAYER 2 — West (Nishi) ═══ */}
       <PlayerWing $matchOver={matchOver}>
         <NameBanner $isRight={true}>
-          <AvatarSeal $isRight={true}>闘</AvatarSeal>
+          <WinLossRow $isRight={true}>
+            {renderCenterMarks("player2")}
+          </WinLossRow>
           <NameBlock $isRight={true}>
             <FighterName>PLAYER 2</FighterName>
           </NameBlock>
+          <BarRowSpacer />
         </NameBanner>
 
         <BarRow $isRight={true}>
@@ -2014,8 +1847,9 @@ const UiPlayerInfo = ({
                   <RecoveryText>SECOND WIND</RecoveryText>
                 </RecoveryFlash>
               )}
-              <BarTicks />
-              <BarCenterTick />
+              <StaTickMark $pct={25} />
+              <StaTickMark $pct={50} />
+              <StaTickMark $pct={75} />
             </BarTrack>
             <GaugeDivider />
             <BalanceBarTrack $isRight={true}>
@@ -2026,7 +1860,8 @@ const UiPlayerInfo = ({
                 $isRight={true}
               />
               <BalanceBarFill $balance={b2} $danger={b2Danger} $isRight={true} />
-              <BalanceBarTicks $isRight={true} />
+              <BalThrowMark />
+              <BalKillMark $isRight={true} />
             </BalanceBarTrack>
           </BarFrame>
           <PowerUpSlot

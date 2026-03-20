@@ -9,18 +9,12 @@ import PropTypes from "prop-types";
 const backdropReveal = keyframes`
   0% {
     opacity: 0;
-    backdrop-filter: blur(0px) saturate(1) brightness(1);
-    -webkit-backdrop-filter: blur(0px) saturate(1) brightness(1);
   }
   35% {
     opacity: 1;
-    backdrop-filter: blur(2px) saturate(0.7) brightness(0.75);
-    -webkit-backdrop-filter: blur(2px) saturate(0.7) brightness(0.75);
   }
   100% {
     opacity: 1;
-    backdrop-filter: blur(8px) saturate(0.82) brightness(0.78);
-    -webkit-backdrop-filter: blur(8px) saturate(0.82) brightness(0.78);
   }
 `;
 
@@ -169,10 +163,10 @@ const BackdropScrim = styled.div`
   background:
     linear-gradient(
       180deg,
-      rgba(4, 5, 12, 0.52) 0%,
-      rgba(4, 6, 14, 0.18) 20%,
-      rgba(4, 6, 14, 0.12) 50%,
-      rgba(3, 5, 12, 0.42) 100%
+      rgba(4, 5, 12, 0.72) 0%,
+      rgba(4, 6, 14, 0.55) 20%,
+      rgba(4, 6, 14, 0.50) 50%,
+      rgba(3, 5, 12, 0.68) 100%
     );
 `;
 
@@ -241,59 +235,34 @@ const LightRays = styled.div`
       p.$isWinner
         ? `conic-gradient(
             from 0deg at 50% 50%,
-            transparent 0deg,
-            rgba(212, 175, 55, 0.025) 8deg,
-            transparent 16deg,
-            transparent 40deg,
-            rgba(255, 215, 120, 0.02) 48deg,
-            transparent 56deg,
-            transparent 85deg,
-            rgba(212, 175, 55, 0.018) 93deg,
-            transparent 101deg,
-            transparent 130deg,
-            rgba(255, 215, 120, 0.022) 138deg,
-            transparent 146deg,
-            transparent 175deg,
-            rgba(212, 175, 55, 0.02) 183deg,
-            transparent 191deg,
-            transparent 220deg,
-            rgba(255, 215, 120, 0.015) 228deg,
-            transparent 236deg,
-            transparent 265deg,
-            rgba(212, 175, 55, 0.02) 273deg,
-            transparent 281deg,
-            transparent 310deg,
-            rgba(255, 215, 120, 0.018) 318deg,
-            transparent 326deg,
-            transparent 360deg
+            rgba(212, 175, 55, 0.01) 0deg,
+            rgba(212, 175, 55, 0.03) 30deg,
+            rgba(255, 215, 120, 0.015) 60deg,
+            rgba(212, 175, 55, 0.025) 90deg,
+            rgba(255, 215, 120, 0.01) 120deg,
+            rgba(212, 175, 55, 0.03) 150deg,
+            rgba(255, 215, 120, 0.015) 180deg,
+            rgba(212, 175, 55, 0.025) 210deg,
+            rgba(255, 215, 120, 0.01) 240deg,
+            rgba(212, 175, 55, 0.03) 270deg,
+            rgba(255, 215, 120, 0.02) 300deg,
+            rgba(212, 175, 55, 0.015) 330deg,
+            rgba(212, 175, 55, 0.01) 360deg
           )`
         : `conic-gradient(
             from 0deg at 50% 50%,
-            transparent 0deg,
-            rgba(180, 180, 200, 0.015) 10deg,
-            transparent 20deg,
-            transparent 50deg,
-            rgba(160, 160, 180, 0.012) 60deg,
-            transparent 70deg,
-            transparent 100deg,
-            rgba(180, 180, 200, 0.01) 110deg,
-            transparent 120deg,
-            transparent 150deg,
-            rgba(160, 160, 180, 0.012) 160deg,
-            transparent 170deg,
-            transparent 200deg,
-            rgba(180, 180, 200, 0.01) 210deg,
-            transparent 220deg,
-            transparent 250deg,
-            rgba(160, 160, 180, 0.012) 260deg,
-            transparent 270deg,
-            transparent 300deg,
-            rgba(180, 180, 200, 0.01) 310deg,
-            transparent 320deg,
-            transparent 360deg
+            rgba(180, 180, 200, 0.008) 0deg,
+            rgba(160, 160, 180, 0.018) 45deg,
+            rgba(180, 180, 200, 0.008) 90deg,
+            rgba(160, 160, 180, 0.015) 135deg,
+            rgba(180, 180, 200, 0.008) 180deg,
+            rgba(160, 160, 180, 0.018) 225deg,
+            rgba(180, 180, 200, 0.008) 270deg,
+            rgba(160, 160, 180, 0.015) 315deg,
+            rgba(180, 180, 200, 0.008) 360deg
           )`};
     animation: ${rayDrift} 120s linear infinite;
-    filter: blur(20px);
+    will-change: transform;
   }
 `;
 
@@ -303,13 +272,14 @@ const LightRays = styled.div`
 
 const FilmGrain = styled.div`
   position: absolute;
-  inset: -50%;
+  inset: 0;
   pointer-events: none;
   opacity: 0.035;
   mix-blend-mode: overlay;
-  animation: ${grainFlicker} 0.5s steps(4) infinite;
+  animation: ${grainFlicker} 2s steps(3) infinite;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E");
   background-size: 256px 256px;
+  will-change: transform;
 `;
 
 // ═══════════════════════════════════════════════
@@ -390,9 +360,8 @@ const BannerGlow = styled.div`
   animation: ${vignetteClose} 1.4s ease-out 0.7s forwards;
   background: ${(p) =>
     p.$isWinner
-      ? "radial-gradient(circle, rgba(212, 175, 55, 0.1) 0%, rgba(212, 175, 55, 0.05) 30%, transparent 65%)"
-      : "radial-gradient(circle, rgba(255, 255, 255, 0.025) 0%, rgba(255, 255, 255, 0.012) 30%, transparent 65%)"};
-  filter: blur(16px);
+      ? "radial-gradient(circle, rgba(212, 175, 55, 0.08) 0%, rgba(212, 175, 55, 0.04) 25%, rgba(212, 175, 55, 0.015) 45%, transparent 70%)"
+      : "radial-gradient(circle, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0.01) 25%, rgba(255, 255, 255, 0.004) 45%, transparent 70%)"};
 `;
 
 const HangingBar = styled.div`
@@ -523,10 +492,7 @@ const BannerBody = styled.div`
     pointer-events: none;
   }
 
-  @supports (backdrop-filter: blur(1px)) {
-    backdrop-filter: blur(1.5px);
-    -webkit-backdrop-filter: blur(1.5px);
-  }
+  /* backdrop-filter removed — live blur is expensive with animated content behind */
 
   @media (max-width: 900px) {
     padding: clamp(22px, 3cqh, 32px) clamp(16px, 2.2cqw, 24px) clamp(22px, 2.8cqh, 30px);
