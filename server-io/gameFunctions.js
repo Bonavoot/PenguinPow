@@ -126,6 +126,18 @@ function cleanupGrabStates(player, opponent) {
   player.lastPlantStaminaDrainTime = 0;
   player.isResistingThrow = false;
   player.isResistingPull = false;
+  // Clinch jolt cleanup
+  player.isClinchJolting = false;
+  player.clinchJoltRecovery = false;
+  player.clinchJoltCooldown = false;
+  player.clinchJoltStartTime = 0;
+  player.isBeingClinchJolted = false;
+  player.clinchJoltPlantInterrupt = false;
+  player.isClinchJoltClashing = false;
+  player.clinchJoltRequest = false;
+  player.clinchJoltRequestTime = 0;
+  player.clinchJoltRecoilStart = 0;
+  player.clinchJoltPlantInterruptStart = 0;
   // Clear action lock so grab/other actions aren't blocked after grab ends
   player.actionLockUntil = 0;
 
@@ -200,6 +212,18 @@ function cleanupGrabStates(player, opponent) {
   opponent.lastPlantStaminaDrainTime = 0;
   opponent.isResistingThrow = false;
   opponent.isResistingPull = false;
+  // Clinch jolt cleanup
+  opponent.isClinchJolting = false;
+  opponent.clinchJoltRecovery = false;
+  opponent.clinchJoltCooldown = false;
+  opponent.clinchJoltStartTime = 0;
+  opponent.isBeingClinchJolted = false;
+  opponent.clinchJoltPlantInterrupt = false;
+  opponent.isClinchJoltClashing = false;
+  opponent.clinchJoltRequest = false;
+  opponent.clinchJoltRequestTime = 0;
+  opponent.clinchJoltRecoilStart = 0;
+  opponent.clinchJoltPlantInterruptStart = 0;
   // Clear action lock so grab/other actions aren't blocked after grab ends
   opponent.actionLockUntil = 0;
 }

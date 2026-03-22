@@ -873,10 +873,11 @@ function handleGrabBreak(cpu, grabber, aiState, currentTime) {
 function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
   resetAllKeys(cpu);
 
-  // During active throw/pull/lift/clash animations, the system handles everything
+  // During active throw/pull/lift/clash/jolt animations, the system handles everything
   if (cpu.clinchThrowActive || cpu.isClinchClashing || cpu.isClinchThrowing ||
       cpu.isBeingLifted || cpu.isResistingThrow || cpu.isResistingPull ||
-      cpu.isGrabSeparating) {
+      cpu.isGrabSeparating ||
+      cpu.isClinchJolting || cpu.isClinchJoltClashing || cpu.isBeingClinchJolted) {
     return;
   }
   if (opponent.clinchThrowActive || opponent.isClinchClashing || opponent.isClinchThrowing) {
@@ -1019,9 +1020,50 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
     aiState.clinchThrowExecuteTime = 0;
   }
 
+  // --- CLINCH JOLT DECISION (Mouse1 during clinch) ---
+  const canJolt = cpu.hasGrip && !cpu.isClinchJolting && !cpu.clinchJoltRecovery &&
+                  !cpu.clinchJoltCooldown && !cpu.clinchThrowActive && !cpu.isClinchClashing &&
+                  !cpu.clinchJoltRequest && !cpu.isResistingThrow && !cpu.isResistingPull &&
+                  !cpu.isBeingLifted && cpuStamina >= 10;
+
+  if (canJolt && !aiState.clinchJoltPending && !aiState.clinchThrowPending && !cpu.clinchThrowRequest) {
+    const joltCheckInterval = 400;
+    if (!aiState.clinchLastJoltCheck) aiState.clinchLastJoltCheck = 0;
+    if (currentTime - aiState.clinchLastJoltCheck > joltCheckInterval) {
+      aiState.clinchLastJoltCheck = currentTime;
+
+      const opponentPlanting = opponent.clinchAction === "plant" || opponent.isClinchPlanting;
+      const opponentPushing = opponent.clinchAction === "push" || opponent.isClinchPushing;
+      const opponentNeutral = !opponentPlanting && !opponentPushing;
+
+      let joltChance = 0;
+      if (opponentPlanting) {
+        joltChance = 0.45;
+      } else if (opponentNeutral) {
+        joltChance = 0.15;
+      } else if (opponentPushing) {
+        joltChance = 0.05;
+      }
+
+      if (chance(joltChance)) {
+        aiState.clinchJoltPending = true;
+        aiState.clinchJoltExecuteTime = currentTime + randomInRange(150, 350);
+      }
+    }
+  }
+
+  if (aiState.clinchJoltPending && currentTime >= aiState.clinchJoltExecuteTime) {
+    if (canJolt) {
+      cpu.clinchJoltRequest = true;
+      cpu.clinchJoltRequestTime = currentTime;
+    }
+    aiState.clinchJoltPending = false;
+    aiState.clinchJoltExecuteTime = 0;
+  }
+
   // --- PUSH / PLANT DECISION (set keys for getClinchAction to read) ---
-  // Stay neutral when a throw is pending or just submitted (avoid push penalty on throw)
-  if (aiState.clinchThrowPending || cpu.clinchThrowRequest) {
+  // Stay neutral when a throw/jolt is pending or just submitted (avoid push penalty on throw)
+  if (aiState.clinchThrowPending || cpu.clinchThrowRequest || aiState.clinchJoltPending || cpu.clinchJoltRequest) {
     return;
   }
 

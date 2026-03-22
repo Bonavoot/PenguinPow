@@ -128,7 +128,7 @@ const ContentWrapper = styled.div`
 const BackButton = styled.button`
   position: absolute;
   top: clamp(14px, 2cqh, 22px);
-  left: clamp(20px, 3cqw, 48px);
+  left: clamp(30px, 5cqw, 72px);
   font-family: "Bungee", cursive;
   font-size: clamp(0.55rem, 0.9cqw, 0.75rem);
   color: #d4af37;

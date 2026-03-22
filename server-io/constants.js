@@ -46,7 +46,9 @@ const DELTA_TRACKED_PROPS = [
   'isBeingLifted', 'isClinchThrowing', 'isClinchClashing',
   'isClinchLifting', 'isClinchPushing', 'isClinchPlanting',
   'isResistingThrow', 'isResistingPull',
-  'isClinchKillThrowVictim', 'isClinchKillPullVictim'
+  'isClinchKillThrowVictim', 'isClinchKillPullVictim',
+  'isClinchJolting', 'isBeingClinchJolted', 'isClinchJoltClashing',
+  'clinchJoltRecovery'
 ];
 
 // Pre-compute the combined props list once (avoids spread on every call)
@@ -515,6 +517,32 @@ const CLINCH_KILL_PULL_INPUT_LOCK_MS = 800;      // Longer lock for dramatic fin
 const CLINCH_KILL_LIFT_TOTAL_MS = 1500;          // Extended march to the edge (vs 700 normal)
 const CLINCH_KILL_LIFT_RISE_MS = 200;            // Slightly longer dramatic lift
 
+// ============================================
+// Clinch Jolt System (Mouse1 during clinch)
+// Quick chest-shove that deals balance damage and micro-pushes opponent
+// Completes the push/plant/throw triangle by punishing planting
+// ============================================
+const CLINCH_JOLT_ANIMATION_MS = 150;           // Jolt lunge animation duration
+const CLINCH_JOLT_RECOVERY_MS = 300;            // Recovery window (vulnerable, can't act)
+const CLINCH_JOLT_COOLDOWN_MS = 500;            // Cooldown after recovery ends
+const CLINCH_JOLT_STAMINA_COST = 7;             // Stamina cost per jolt
+const CLINCH_JOLT_BALANCE_VS_PLANT = 10;        // Balance damage vs planting opponent
+const CLINCH_JOLT_BALANCE_VS_NEUTRAL = 8;       // Balance damage vs neutral opponent
+const CLINCH_JOLT_BALANCE_VS_PUSH = 5;          // Balance damage vs pushing opponent (braced)
+const CLINCH_JOLT_PUSH_VS_PLANT = 10;           // Positional micro-push (px) vs plant
+const CLINCH_JOLT_PUSH_VS_NEUTRAL = 8;          // Positional micro-push (px) vs neutral
+const CLINCH_JOLT_PUSH_VS_PUSH = 5;             // Positional micro-push (px) vs push
+const CLINCH_JOLT_MUTUAL_BALANCE = 6;           // Balance damage on mutual jolt (both)
+const CLINCH_JOLT_CLASH_WINDOW_MS = 120;        // Mutual jolt detection window
+const CLINCH_JOLT_HITSTOP_MS = 80;              // Hitstop on jolt landing (needs to be readable)
+const CLINCH_JOLT_MUTUAL_HITSTOP_MS = 90;       // Hitstop on mutual jolt
+const CLINCH_JOLT_PLANT_INTERRUPT_MS = 400;     // Duration plant regen is interrupted after being jolted
+const CLINCH_JOLT_RECOIL_MS = 200;              // How long the target shows recoil animation
+const CLINCH_JOLT_GASSED_MULT = 0.5;            // Damage/push multiplier when jolter is gassed
+const CLINCH_JOLT_LOCKOUT_VS_PLANT = 350;       // +50ms advantage for jolter (300ms recovery - 350ms lockout)
+const CLINCH_JOLT_LOCKOUT_VS_NEUTRAL = 300;     // Even (300ms recovery = 300ms lockout)
+const CLINCH_JOLT_LOCKOUT_VS_PUSH = 200;        // -100ms disadvantage for jolter (bad read punished)
+
 // Gassed state: regen freeze when stamina hits 0
 const GASSED_DURATION_MS = 3000; // 3 second regen freeze penalty
 const GASSED_RECOVERY_STAMINA = 30; // Stamina granted immediately when gassed ends
@@ -869,6 +897,28 @@ module.exports = {
   CLINCH_KILL_PULL_INPUT_LOCK_MS,
   CLINCH_KILL_LIFT_TOTAL_MS,
   CLINCH_KILL_LIFT_RISE_MS,
+
+  // Clinch jolt system
+  CLINCH_JOLT_ANIMATION_MS,
+  CLINCH_JOLT_RECOVERY_MS,
+  CLINCH_JOLT_COOLDOWN_MS,
+  CLINCH_JOLT_STAMINA_COST,
+  CLINCH_JOLT_BALANCE_VS_PLANT,
+  CLINCH_JOLT_BALANCE_VS_NEUTRAL,
+  CLINCH_JOLT_BALANCE_VS_PUSH,
+  CLINCH_JOLT_PUSH_VS_PLANT,
+  CLINCH_JOLT_PUSH_VS_NEUTRAL,
+  CLINCH_JOLT_PUSH_VS_PUSH,
+  CLINCH_JOLT_MUTUAL_BALANCE,
+  CLINCH_JOLT_CLASH_WINDOW_MS,
+  CLINCH_JOLT_HITSTOP_MS,
+  CLINCH_JOLT_MUTUAL_HITSTOP_MS,
+  CLINCH_JOLT_PLANT_INTERRUPT_MS,
+  CLINCH_JOLT_RECOIL_MS,
+  CLINCH_JOLT_GASSED_MULT,
+  CLINCH_JOLT_LOCKOUT_VS_PLANT,
+  CLINCH_JOLT_LOCKOUT_VS_NEUTRAL,
+  CLINCH_JOLT_LOCKOUT_VS_PUSH,
 
   // Hitstop
   SLAP_CHAIN_HIT_GAP_MS,

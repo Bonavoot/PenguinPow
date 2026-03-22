@@ -64,12 +64,33 @@ const {
   CLINCH_KILL_PULL_INPUT_LOCK_MS,
   CLINCH_KILL_LIFT_TOTAL_MS,
   CLINCH_KILL_LIFT_RISE_MS,
+  CLINCH_JOLT_ANIMATION_MS,
+  CLINCH_JOLT_RECOVERY_MS,
+  CLINCH_JOLT_COOLDOWN_MS,
+  CLINCH_JOLT_STAMINA_COST,
+  CLINCH_JOLT_BALANCE_VS_PLANT,
+  CLINCH_JOLT_BALANCE_VS_NEUTRAL,
+  CLINCH_JOLT_BALANCE_VS_PUSH,
+  CLINCH_JOLT_PUSH_VS_PLANT,
+  CLINCH_JOLT_PUSH_VS_NEUTRAL,
+  CLINCH_JOLT_PUSH_VS_PUSH,
+  CLINCH_JOLT_MUTUAL_BALANCE,
+  CLINCH_JOLT_CLASH_WINDOW_MS,
+  CLINCH_JOLT_HITSTOP_MS,
+  CLINCH_JOLT_MUTUAL_HITSTOP_MS,
+  CLINCH_JOLT_PLANT_INTERRUPT_MS,
+  CLINCH_JOLT_RECOIL_MS,
+  CLINCH_JOLT_GASSED_MULT,
+  CLINCH_JOLT_LOCKOUT_VS_PLANT,
+  CLINCH_JOLT_LOCKOUT_VS_NEUTRAL,
+  CLINCH_JOLT_LOCKOUT_VS_PUSH,
 } = require("./constants");
 
 const {
   setPlayerTimeout,
   clearAllActionStates,
   triggerHitstop,
+  emitThrottledScreenShake,
   MAP_LEFT_BOUNDARY,
   MAP_RIGHT_BOUNDARY,
 } = require("./gameUtils");
@@ -289,6 +310,164 @@ function updateGrabActions(player, room, io, delta, rooms) {
   const now = Date.now();
 
   // ============================================
+  // CLINCH JOLT (Mouse1) — quick balance-damage shove
+  // Processed before throw/pull/lift — recovery blocks those actions
+  // ============================================
+
+  // --- Clear expired jolt animation states ---
+  for (const p of [player, opponent]) {
+    if (p.isClinchJolting && p.clinchJoltStartTime && now - p.clinchJoltStartTime >= CLINCH_JOLT_ANIMATION_MS) {
+      p.isClinchJolting = false;
+      p.isClinchJoltClashing = false;
+      if (!p.clinchJoltRecovery) {
+        p.clinchJoltRecovery = true;
+        setPlayerTimeout(p.id, () => {
+          p.clinchJoltRecovery = false;
+          p.clinchJoltCooldown = true;
+          setPlayerTimeout(p.id, () => { p.clinchJoltCooldown = false; }, CLINCH_JOLT_COOLDOWN_MS, "clinchJoltCooldown");
+        }, CLINCH_JOLT_RECOVERY_MS, "clinchJoltRecovery");
+      }
+    }
+    if (p.isBeingClinchJolted && p.clinchJoltRecoilStart && now - p.clinchJoltRecoilStart >= CLINCH_JOLT_RECOIL_MS) {
+      p.isBeingClinchJolted = false;
+    }
+    if (p.clinchJoltPlantInterrupt && p.clinchJoltPlantInterruptStart && now - p.clinchJoltPlantInterruptStart >= CLINCH_JOLT_PLANT_INTERRUPT_MS) {
+      p.clinchJoltPlantInterrupt = false;
+    }
+  }
+
+  // --- Mutual jolt detection ---
+  if (player.clinchJoltRequest && opponent.clinchJoltRequest) {
+    const timeDiff = Math.abs(
+      (player.clinchJoltRequestTime || 0) - (opponent.clinchJoltRequestTime || 0)
+    );
+    if (timeDiff <= CLINCH_JOLT_CLASH_WINDOW_MS) {
+      player.clinchJoltRequest = false;
+      player.clinchJoltRequestTime = 0;
+      opponent.clinchJoltRequest = false;
+      opponent.clinchJoltRequestTime = 0;
+
+      player.isClinchJoltClashing = true;
+      opponent.isClinchJoltClashing = true;
+      player.isClinchJolting = true;
+      opponent.isClinchJolting = true;
+      player.clinchJoltStartTime = now;
+      opponent.clinchJoltStartTime = now;
+
+      player.balance = Math.max(0, player.balance - CLINCH_JOLT_MUTUAL_BALANCE);
+      opponent.balance = Math.max(0, opponent.balance - CLINCH_JOLT_MUTUAL_BALANCE);
+      player.stamina = Math.max(0, player.stamina - CLINCH_JOLT_STAMINA_COST);
+      opponent.stamina = Math.max(0, opponent.stamina - CLINCH_JOLT_STAMINA_COST);
+
+      triggerHitstop(room, CLINCH_JOLT_MUTUAL_HITSTOP_MS);
+      emitThrottledScreenShake(room, io, { intensity: 2.2, duration: 160 });
+      io.in(room.id).emit("clinch_jolt", {
+        jolterId: player.id,
+        targetId: opponent.id,
+        jolterX: player.x,
+        targetX: opponent.x,
+        type: "mutual",
+        direction: 0,
+      });
+
+      player.clinchStalemateStart = now;
+      opponent.clinchStalemateStart = now;
+      player.clinchStalemateLastBalance = player.balance;
+      opponent.clinchStalemateLastBalance = opponent.balance;
+    }
+  }
+
+  // --- Process single jolt ---
+  for (const [jolter, target] of [[player, opponent], [opponent, player]]) {
+    if (!jolter.clinchJoltRequest || jolter.isClinchJolting || jolter.isClinchJoltClashing) continue;
+
+    jolter.clinchJoltRequest = false;
+    jolter.clinchJoltRequestTime = 0;
+
+    const targetAction = target === player ? grabberAction : opponentAction;
+
+    let balanceDmg, pushDist, lockoutMs;
+    if (targetAction === "plant") {
+      balanceDmg = CLINCH_JOLT_BALANCE_VS_PLANT;
+      pushDist = CLINCH_JOLT_PUSH_VS_PLANT;
+      lockoutMs = CLINCH_JOLT_LOCKOUT_VS_PLANT;
+    } else if (targetAction === "push") {
+      balanceDmg = CLINCH_JOLT_BALANCE_VS_PUSH;
+      pushDist = CLINCH_JOLT_PUSH_VS_PUSH;
+      lockoutMs = CLINCH_JOLT_LOCKOUT_VS_PUSH;
+    } else {
+      balanceDmg = CLINCH_JOLT_BALANCE_VS_NEUTRAL;
+      pushDist = CLINCH_JOLT_PUSH_VS_NEUTRAL;
+      lockoutMs = CLINCH_JOLT_LOCKOUT_VS_NEUTRAL;
+    }
+
+    const gassedMult = jolter.isGassed ? CLINCH_JOLT_GASSED_MULT : 1;
+    balanceDmg = Math.round(balanceDmg * gassedMult);
+    pushDist = Math.round(pushDist * gassedMult);
+
+    target.balance = Math.max(0, target.balance - balanceDmg);
+    jolter.stamina = Math.max(0, jolter.stamina - CLINCH_JOLT_STAMINA_COST);
+
+    // Micro-push: move both players toward the target's side
+    const pushDir = jolter.x < target.x ? 1 : -1;
+    const halfPush = pushDist / 2;
+    jolter.x = Math.max(leftBoundary, Math.min(rightBoundary, jolter.x + pushDir * halfPush));
+    target.x = Math.max(leftBoundary, Math.min(rightBoundary, target.x + pushDir * halfPush));
+
+    jolter.isClinchJolting = true;
+    jolter.clinchJoltStartTime = now;
+    target.isBeingClinchJolted = true;
+    target.clinchJoltRecoilStart = now;
+
+    target.inputLockUntil = Math.max(target.inputLockUntil || 0, now + lockoutMs);
+
+    if (targetAction === "plant") {
+      target.clinchJoltPlantInterrupt = true;
+      target.clinchJoltPlantInterruptStart = now;
+    }
+
+    triggerHitstop(room, CLINCH_JOLT_HITSTOP_MS);
+    emitThrottledScreenShake(room, io, { intensity: 1.8, duration: 140 });
+    io.in(room.id).emit("clinch_jolt", {
+      jolterId: jolter.id,
+      targetId: target.id,
+      jolterX: jolter.x,
+      targetX: target.x,
+      type: "single",
+      direction: pushDir,
+    });
+
+    // Stalemate reset
+    jolter.clinchStalemateStart = now;
+    target.clinchStalemateStart = now;
+    jolter.clinchStalemateLastBalance = jolter.balance;
+    target.clinchStalemateLastBalance = target.balance;
+    jolter.clinchStalemateLastX = jolter.x;
+    target.clinchStalemateLastX = target.x;
+  }
+
+  // --- Block actions during jolt recovery ---
+  for (const p of [player, opponent]) {
+    if (p.clinchJoltRecovery) {
+      p.clinchAction = "neutral";
+      if (p === player) {
+        player.isClinchPushing = false;
+        player.isClinchPlanting = false;
+      } else {
+        opponent.isClinchPushing = false;
+        opponent.isClinchPlanting = false;
+      }
+    }
+  }
+
+  // --- Skip throw/pull/lift/push/plant during active jolt animation ---
+  if (player.isClinchJolting || opponent.isClinchJolting ||
+      player.isClinchJoltClashing || opponent.isClinchJoltClashing) {
+    maintainClinchPositions(player, opponent, fixedDistance, leftBoundary, rightBoundary);
+    return;
+  }
+
+  // ============================================
   // CLINCH ACTIONS: Throw / Pull / Lift (Phase 4)
   // Processed before push/plant — a committed action overrides normal clinch
   // ============================================
@@ -337,9 +516,11 @@ function updateGrabActions(player, room, io, delta, rooms) {
   const requesters = [];
   if (player.clinchThrowRequest && !player.clinchThrowActive && !player.clinchThrowCooldown &&
       !player.isResistingThrow && !player.isResistingPull && !player.isBeingLifted &&
+      !player.clinchJoltRecovery && !player.isClinchJolting &&
       bufferExpired(player)) requesters.push(player);
   if (opponent.clinchThrowRequest && !opponent.clinchThrowActive && !opponent.clinchThrowCooldown && opponent.hasGrip &&
       !opponent.isResistingThrow && !opponent.isResistingPull && !opponent.isBeingLifted &&
+      !opponent.clinchJoltRecovery && !opponent.isClinchJolting &&
       bufferExpired(opponent)) requesters.push(opponent);
 
   for (const actor of requesters) {
@@ -543,7 +724,9 @@ function updateGrabActions(player, room, io, delta, rooms) {
 
   // Grabber planting — recovers balance, small stamina drain (higher when being pushed)
   if (grabberAction === "plant") {
-    player.balance = Math.min(BALANCE_MAX, player.balance + CLINCH_PLANT_BALANCE_REGEN_PER_SEC * deltaSec);
+    if (!player.clinchJoltPlantInterrupt) {
+      player.balance = Math.min(BALANCE_MAX, player.balance + CLINCH_PLANT_BALANCE_REGEN_PER_SEC * deltaSec);
+    }
     const drainInterval = opponentAction === "push"
       ? CLINCH_PLANT_STAMINA_DRAIN_PUSHED_INTERVAL
       : CLINCH_PLANT_STAMINA_DRAIN_INTERVAL;
@@ -580,7 +763,9 @@ function updateGrabActions(player, room, io, delta, rooms) {
 
   // Opponent planting (only if they have grip) — recovers balance, small stamina drain
   if (opponentAction === "plant") {
-    opponent.balance = Math.min(BALANCE_MAX, opponent.balance + CLINCH_PLANT_BALANCE_REGEN_PER_SEC * deltaSec);
+    if (!opponent.clinchJoltPlantInterrupt) {
+      opponent.balance = Math.min(BALANCE_MAX, opponent.balance + CLINCH_PLANT_BALANCE_REGEN_PER_SEC * deltaSec);
+    }
     const drainInterval = grabberAction === "push"
       ? CLINCH_PLANT_STAMINA_DRAIN_PUSHED_INTERVAL
       : CLINCH_PLANT_STAMINA_DRAIN_INTERVAL;
@@ -879,6 +1064,12 @@ function triggerRingOut(pusher, victim, room, io, rooms, direction) {
       grabberRef.isClinchLifting = false;
       grabberRef.isResistingThrow = false;
       grabberRef.isResistingPull = false;
+      grabberRef.isClinchJolting = false;
+      grabberRef.clinchJoltRecovery = false;
+      grabberRef.clinchJoltCooldown = false;
+      grabberRef.isBeingClinchJolted = false;
+      grabberRef.isClinchJoltClashing = false;
+      grabberRef.clinchJoltPlantInterrupt = false;
       grabbedRef.isBeingGrabbed = false;
       grabbedRef.isBeingGrabFrontalForceOut = false;
       grabbedRef.isBeingGrabBellyFlopped = false;
@@ -891,6 +1082,12 @@ function triggerRingOut(pusher, victim, room, io, rooms, direction) {
       grabbedRef.isClinchLifting = false;
       grabbedRef.isResistingThrow = false;
       grabbedRef.isResistingPull = false;
+      grabbedRef.isClinchJolting = false;
+      grabbedRef.clinchJoltRecovery = false;
+      grabbedRef.clinchJoltCooldown = false;
+      grabbedRef.isBeingClinchJolted = false;
+      grabbedRef.isClinchJoltClashing = false;
+      grabbedRef.clinchJoltPlantInterrupt = false;
 
       grabberRef.isThrowing = true;
       grabberRef.throwStartTime = Date.now();

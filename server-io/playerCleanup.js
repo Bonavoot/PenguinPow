@@ -68,6 +68,19 @@ function cleanupPlayerStates(player) {
   player.isBowing = false;
   player.knockbackVelocity = { x: 0, y: 0 };
 
+  // Clean up clinch jolt states
+  player.isClinchJolting = false;
+  player.clinchJoltRecovery = false;
+  player.clinchJoltCooldown = false;
+  player.clinchJoltStartTime = 0;
+  player.isBeingClinchJolted = false;
+  player.clinchJoltPlantInterrupt = false;
+  player.isClinchJoltClashing = false;
+  player.clinchJoltRequest = false;
+  player.clinchJoltRequestTime = 0;
+  player.clinchJoltRecoilStart = 0;
+  player.clinchJoltPlantInterruptStart = 0;
+
   // Clean up power-up related states
   player.activePowerUp = null;
   player.powerUpMultiplier = 1;

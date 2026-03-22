@@ -2160,6 +2160,18 @@ function registerSocketHandlers(socket, io, rooms, context) {
       player.gripAcquiredTime = Date.now();
     }
 
+    // === CLINCH JOLT: Mouse1 while in clinch with grip ===
+    if (
+      player.mouse1JustPressed && player.hasGrip && player.inClinch &&
+      !player.isClinchJolting && !player.clinchJoltRecovery && !player.clinchJoltCooldown &&
+      !player.clinchThrowActive && !player.isClinchClashing &&
+      !player.isResistingThrow && !player.isResistingPull && !player.isBeingLifted &&
+      !player.isClinchJoltClashing && !player.clinchJoltRequest
+    ) {
+      player.clinchJoltRequest = true;
+      player.clinchJoltRequestTime = Date.now();
+    }
+
     // === CLINCH THROW/PULL/LIFT: Mouse2 + direction while in clinch with grip ===
     // Detects three patterns:
     //   1) Mouse2 just pressed + direction already held

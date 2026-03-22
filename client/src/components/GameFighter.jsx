@@ -23,6 +23,7 @@ import StarStunEffect from "./StarStunEffect";
 import ThickBlubberEffect from "./ThickBlubberEffect";
 import GrabBreakEffect from "./GrabBreakEffect";
 import GrabTechEffect from "./GrabTechEffect";
+import ClinchJoltEffect from "./ClinchJoltEffect";
 import CounterGrabEffect from "./CounterGrabEffect";
 import PunishBannerEffect from "./PunishBannerEffect";
 import CounterHitEffect from "./CounterHitEffect";
@@ -1032,6 +1033,7 @@ const GameFighter = ({
   const [snowballImpactPosition, setSnowballImpactPosition] = useState(null);
   const [counterHitEffectPosition, setCounterHitEffectPosition] =
     useState(null);
+  const [clinchJoltEffectPosition, setClinchJoltEffectPosition] = useState(null);
 
   // Grab clash state - track when both players are in a grab clash
   const [isGrabClashActive, setIsGrabClashActive] = useState(false);
@@ -1657,7 +1659,11 @@ const GameFighter = ({
           prev.isResistingThrow !== newState.isResistingThrow ||
           prev.isResistingPull !== newState.isResistingPull ||
           prev.isClinchKillThrowVictim !== newState.isClinchKillThrowVictim ||
-          prev.isClinchKillPullVictim !== newState.isClinchKillPullVictim;
+          prev.isClinchKillPullVictim !== newState.isClinchKillPullVictim ||
+          prev.isClinchJolting !== newState.isClinchJolting ||
+          prev.isBeingClinchJolted !== newState.isBeingClinchJolted ||
+          prev.isClinchJoltClashing !== newState.isClinchJoltClashing ||
+          prev.clinchJoltRecovery !== newState.clinchJoltRecovery;
 
         if (!discreteStateChanged) {
           return prev; // No discrete state change, skip re-render
@@ -3103,6 +3109,25 @@ const GameFighter = ({
     };
     socket.on("cinematic_kill", handleCinematicKill);
 
+    const handleClinchJolt = (data) => {
+      const isMutual = data.type === "mutual";
+      const midX = (data.jolterX + data.targetX) / 2;
+      const pushDir = data.jolterX < data.targetX ? 1 : -1;
+      // Mutual: dead center (same as clinch tech). Single: shift ~60% from midpoint toward target's chest.
+      const chestOffset = isMutual ? 0 : (data.targetX - midX) * 0.6;
+      const effectX = midX + chestOffset;
+      setClinchJoltEffectPosition({
+        x: effectX,
+        y: PLAYER_MID_Y,
+        joltId: `clinch-jolt-${Date.now()}`,
+        direction: pushDir,
+        isMutual,
+      });
+      const pan = xToPan(effectX);
+      playSound(pickRandomSound(slapHitSounds), isMutual ? 0.05 : 0.04, null, 1.2, pan);
+    };
+    socket.on("clinch_jolt", handleClinchJolt);
+
     const handleClinchKillThrow = (data) => {
       const isVictim = player.id === data.victimId;
       if (!isVictim) return;
@@ -3128,6 +3153,7 @@ const GameFighter = ({
       socket.off("ring_out", handleRingOut);
       socket.off("cinematic_kill", handleCinematicKill);
       socket.off("clinch_kill_throw", handleClinchKillThrow);
+      socket.off("clinch_jolt", handleClinchJolt);
     };
   }, [socket, player.id, localId, roomName]);
 
@@ -3236,7 +3262,11 @@ const GameFighter = ({
     penguin.isResistingThrow,
     penguin.isResistingPull,
     penguin.isClinchKillThrowVictim,
-    penguin.isClinchKillPullVictim
+    penguin.isClinchKillPullVictim,
+    penguin.isClinchJolting,
+    penguin.isBeingClinchJolted,
+    penguin.isClinchJoltClashing,
+    penguin.clinchJoltRecovery
   );
 
   // Hold previous sprite for a few frames when transitioning to idle to prevent
@@ -3598,6 +3628,10 @@ const GameFighter = ({
           $grabTechRole={penguin.grabTechRole}
           $isGrabWhiffRecovery={penguin.isGrabWhiffRecovery}
           $isClinchClashing={penguin.isClinchClashing}
+          $isClinchJolting={penguin.isClinchJolting}
+          $isBeingClinchJolted={penguin.isBeingClinchJolted}
+          $isClinchJoltClashing={penguin.isClinchJoltClashing}
+          $clinchJoltRecovery={penguin.clinchJoltRecovery}
           $isCinematicKillAttacker={isCinematicKillAttacker}
           $isClinchKillThrowVictim={penguin.isClinchKillThrowVictim}
           $isClinchKillPullVictim={penguin.isClinchKillPullVictim}
@@ -3650,6 +3684,7 @@ const GameFighter = ({
       <RawParryEffect position={rawParryEffectPosition} />
       <GrabBreakEffect position={grabBreakEffectPosition} />
       <GrabTechEffect position={grabTechEffectPosition} />
+      <ClinchJoltEffect position={clinchJoltEffectPosition} />
       <CounterGrabEffect position={trackedCounterGrabEffectPosition} />
       <PunishBannerEffect position={punishBannerPosition} />
       <CounterHitEffect position={counterHitEffectPosition} />

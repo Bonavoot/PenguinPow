@@ -309,7 +309,11 @@ export const StyledImage = styled("img")
         props.$isResistingThrow,
         props.$isResistingPull,
         props.$isClinchKillThrowVictim,
-        props.$isClinchKillPullVictim
+        props.$isClinchKillPullVictim,
+        props.$isClinchJolting,
+        props.$isBeingClinchJolted,
+        props.$isClinchJoltClashing,
+        props.$clinchJoltRecovery
       ),
     style: {
       position: "absolute",
@@ -381,6 +385,12 @@ export const StyledImage = styled("img")
         ? "grabBreakShake 0.1s ease-in-out infinite"
         : props.$isRawParrying
         ? "parryActivationFlash 0.22s ease-out forwards"
+        : props.$isClinchJoltClashing
+        ? "clinchJoltClash 0.15s ease-out"
+        : props.$isClinchJolting
+        ? "clinchJoltLunge 0.15s ease-out"
+        : props.$isBeingClinchJolted
+        ? "clinchJoltRecoil 0.2s ease-out"
         : props.$isClinchClashing
         ? "grabTechShake 0.25s ease-in-out infinite"
         : props.$isGrabTeching
@@ -524,6 +534,24 @@ export const StyledImage = styled("img")
     75% { transform: scaleX(var(--facing, 1)) translateX(4px); }
     87% { transform: scaleX(var(--facing, 1)) translateX(-2px); }
     100% { transform: scaleX(var(--facing, 1)) translateX(0px); }
+  }
+  @keyframes clinchJoltLunge {
+    0% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1); }
+    25% { transform: scaleX(calc(var(--facing, 1) * 1.15)) translateX(calc(var(--facing, 1) * -16px)) scaleY(0.90); }
+    50% { transform: scaleX(calc(var(--facing, 1) * 1.08)) translateX(calc(var(--facing, 1) * -10px)) scaleY(0.94); }
+    100% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1); }
+  }
+  @keyframes clinchJoltRecoil {
+    0% { transform: scaleX(var(--facing, 1)) translateX(0) rotate(0deg) scaleY(1); }
+    20% { transform: scaleX(var(--facing, 1)) translateX(calc(var(--facing, 1) * 14px)) rotate(calc(var(--facing, 1) * -6deg)) scaleY(0.92); }
+    50% { transform: scaleX(var(--facing, 1)) translateX(calc(var(--facing, 1) * 8px)) rotate(calc(var(--facing, 1) * -3deg)) scaleY(0.96); }
+    100% { transform: scaleX(var(--facing, 1)) translateX(0) rotate(0deg) scaleY(1); }
+  }
+  @keyframes clinchJoltClash {
+    0% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1); }
+    20% { transform: scaleX(calc(var(--facing, 1) * 0.88)) translateX(calc(var(--facing, 1) * -10px)) scaleY(0.90); }
+    50% { transform: scaleX(calc(var(--facing, 1) * 1.06)) translateX(calc(var(--facing, 1) * 3px)) scaleY(0.96); }
+    100% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1); }
   }
   @keyframes grabBreakShake {
     0%   { transform: scaleX(var(--facing, 1)) translateX(0px); }

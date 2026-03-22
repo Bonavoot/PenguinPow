@@ -214,17 +214,19 @@ const Game = ({
       if (isPowerUpSelectionActive || cp?.isThrowingSnowball) return;
 
       // When being grabbed, only allow directional counter-inputs (A, D, S for grab break system)
+      // Allow mouse1 through when in clinch with grip (clinch jolt)
       if (cp?.isBeingGrabbed) {
+        const inClinchWithGrip = cp?.inClinch && cp?.hasGrip;
         const grabCounterOnly = {
           w: false,
-          a: gamepadKeyState.a || false, // Counter pull reversal / resist push
-          s: gamepadKeyState.s || false, // Counter throw
-          d: gamepadKeyState.d || false, // Counter pull reversal / resist push
-          " ": false, // Spacebar no longer used for grab break
+          a: gamepadKeyState.a || false,
+          s: gamepadKeyState.s || false,
+          d: gamepadKeyState.d || false,
+          " ": false,
           shift: false,
           e: false,
           f: false,
-          mouse1: false,
+          mouse1: inClinchWithGrip ? (gamepadKeyState.mouse1 || false) : false,
           mouse2: false,
         };
         socket.emit("fighter_action", { id: socket.id, keys: grabCounterOnly });
@@ -372,7 +374,8 @@ const Game = ({
       if (cp?.isThrowingSnowball) return;
 
       // Block Mouse1 (attack) when being grabbed, but allow Mouse2 (grip-up / clinch throws)
-      if (cp?.isBeingGrabbed && e.button === 0) return;
+      // Allow Mouse1 through when in clinch with grip (clinch jolt)
+      if (cp?.isBeingGrabbed && e.button === 0 && !(cp?.inClinch && cp?.hasGrip)) return;
 
       if (e.button === 0) {
         e.preventDefault();
