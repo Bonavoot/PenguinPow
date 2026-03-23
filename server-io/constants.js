@@ -419,7 +419,7 @@ const CLINCH_PUSH_BALANCE_DRAIN_SELF_PER_SEC = 4;     // Balance drain on pusher
 const CLINCH_PUSH_VS_PLANT_SPEED_MULT = 0.3;    // Push speed multiplied by this when opponent plants (70% reduction)
 
 // Clinch plant mechanics — plant recovers balance at the cost of position and small stamina drain
-const CLINCH_PLANT_BALANCE_REGEN_PER_SEC = 10;  // Balance recovery while planting (+10/sec free, net -2/sec under push)
+const CLINCH_PLANT_BALANCE_REGEN_PER_SEC = 15;  // Balance recovery while planting (net +3/sec vs push mid-ring, net -3/sec at edge due to 1.5x drain)
 const CLINCH_PLANT_STAMINA_DRAIN_INTERVAL = 1000; // -1 stamina every 1000ms while planting (~1/sec, small cost)
 const CLINCH_PLANT_STAMINA_DRAIN_PUSHED_INTERVAL = 500; // -1 stamina every 500ms while planting under push (~2/sec)
 
@@ -513,35 +513,41 @@ const CLINCH_KILL_PULL_DISTANCE = 400;           // Flies further past puller (v
 const CLINCH_KILL_PULL_TWEEN_DURATION = 500;     // Faster, more violent pull (vs 600 normal)
 const CLINCH_KILL_PULL_INPUT_LOCK_MS = 800;      // Longer lock for dramatic finish
 
+// Boundary Pull Swap — when puller's back is against the wall, swap positions instead
+const CLINCH_PULL_SWAP_TWEEN_DURATION = 400;     // Quick swap tween (shorter than normal pull)
+const CLINCH_PULL_SWAP_ARC_HEIGHT = 55;          // Hop arc height so pulled player clears the puller visually
+
 // Kill Carry (Mouse2+toward): Bouncer march — carry to the edge, no stamina check
 const CLINCH_KILL_LIFT_TOTAL_MS = 1500;          // Extended march to the edge (vs 700 normal)
 const CLINCH_KILL_LIFT_RISE_MS = 200;            // Slightly longer dramatic lift
 
 // ============================================
 // Clinch Jolt System (Mouse1 during clinch)
-// Quick chest-shove that deals balance damage and micro-pushes opponent
-// Completes the push/plant/throw triangle by punishing planting
+// Heavy committal chest-shove — the anti-plant read in the push/plant triangle.
+// Correct read (vs plant) = dramatic payoff. Wrong read (vs push) = severe punishment.
+// Cooldown ensures each jolt is a real decision, not spam.
 // ============================================
-const CLINCH_JOLT_ANIMATION_MS = 150;           // Jolt lunge animation duration
-const CLINCH_JOLT_RECOVERY_MS = 300;            // Recovery window (vulnerable, can't act)
-const CLINCH_JOLT_COOLDOWN_MS = 500;            // Cooldown after recovery ends
-const CLINCH_JOLT_STAMINA_COST = 7;             // Stamina cost per jolt
-const CLINCH_JOLT_BALANCE_VS_PLANT = 10;        // Balance damage vs planting opponent
-const CLINCH_JOLT_BALANCE_VS_NEUTRAL = 8;       // Balance damage vs neutral opponent
-const CLINCH_JOLT_BALANCE_VS_PUSH = 5;          // Balance damage vs pushing opponent (braced)
-const CLINCH_JOLT_PUSH_VS_PLANT = 10;           // Positional micro-push (px) vs plant
-const CLINCH_JOLT_PUSH_VS_NEUTRAL = 8;          // Positional micro-push (px) vs neutral
-const CLINCH_JOLT_PUSH_VS_PUSH = 5;             // Positional micro-push (px) vs push
+const CLINCH_JOLT_ANIMATION_MS = 250;           // Telegraphed lunge — opponent can see it and react
+const CLINCH_JOLT_RECOVERY_MS = 400;            // Long recovery — real vulnerability if you're wrong
+const CLINCH_JOLT_COOLDOWN_MS = 1200;           // One jolt per clinch cycle (matches throw cooldown)
+const CLINCH_JOLT_STAMINA_COST = 10;            // Committal cost (matches other big clinch actions)
+const CLINCH_JOLT_BALANCE_VS_PLANT = 15;        // Heavy balance damage — correct read rewarded
+const CLINCH_JOLT_BALANCE_VS_NEUTRAL = 6;       // Modest — neutral isn't the intended target
+const CLINCH_JOLT_BALANCE_VS_PUSH = 0;          // No damage — you lunged into their momentum
+const CLINCH_JOLT_SELF_BALANCE_VS_PUSH = 8;     // SELF-DAMAGE on wrong read — jolting a pusher hurts you
+const CLINCH_JOLT_PUSH_VS_PLANT = 60;           // 10% of arena — the opponent genuinely feels this
+const CLINCH_JOLT_PUSH_VS_NEUTRAL = 15;         // Modest positional gain
+const CLINCH_JOLT_PUSH_VS_PUSH = 0;             // No push — you walked into their force
 const CLINCH_JOLT_MUTUAL_BALANCE = 6;           // Balance damage on mutual jolt (both)
 const CLINCH_JOLT_CLASH_WINDOW_MS = 120;        // Mutual jolt detection window
-const CLINCH_JOLT_HITSTOP_MS = 80;              // Hitstop on jolt landing (needs to be readable)
-const CLINCH_JOLT_MUTUAL_HITSTOP_MS = 90;       // Hitstop on mutual jolt
-const CLINCH_JOLT_PLANT_INTERRUPT_MS = 400;     // Duration plant regen is interrupted after being jolted
-const CLINCH_JOLT_RECOIL_MS = 200;              // How long the target shows recoil animation
+const CLINCH_JOLT_HITSTOP_MS = 150;             // Dramatic freeze — "that hit LANDED"
+const CLINCH_JOLT_MUTUAL_HITSTOP_MS = 120;      // Mutual jolt freeze
+const CLINCH_JOLT_PLANT_INTERRUPT_MS = 800;     // Full second of no regen — plant is truly broken
+const CLINCH_JOLT_RECOIL_MS = 300;              // Longer recoil — target visibly staggers
 const CLINCH_JOLT_GASSED_MULT = 0.5;            // Damage/push multiplier when jolter is gassed
-const CLINCH_JOLT_LOCKOUT_VS_PLANT = 350;       // +50ms advantage for jolter (300ms recovery - 350ms lockout)
-const CLINCH_JOLT_LOCKOUT_VS_NEUTRAL = 300;     // Even (300ms recovery = 300ms lockout)
-const CLINCH_JOLT_LOCKOUT_VS_PUSH = 200;        // -100ms disadvantage for jolter (bad read punished)
+const CLINCH_JOLT_LOCKOUT_VS_PLANT = 550;       // +150ms advantage — jolter can follow up with push
+const CLINCH_JOLT_LOCKOUT_VS_NEUTRAL = 400;     // Even (400ms recovery = 400ms lockout)
+const CLINCH_JOLT_LOCKOUT_VS_PUSH = 0;          // NO lockout — target recovers instantly, gets free throw attempt
 
 // Gassed state: regen freeze when stamina hits 0
 const GASSED_DURATION_MS = 3000; // 3 second regen freeze penalty
@@ -895,6 +901,8 @@ module.exports = {
   CLINCH_KILL_PULL_DISTANCE,
   CLINCH_KILL_PULL_TWEEN_DURATION,
   CLINCH_KILL_PULL_INPUT_LOCK_MS,
+  CLINCH_PULL_SWAP_TWEEN_DURATION,
+  CLINCH_PULL_SWAP_ARC_HEIGHT,
   CLINCH_KILL_LIFT_TOTAL_MS,
   CLINCH_KILL_LIFT_RISE_MS,
 
@@ -906,6 +914,7 @@ module.exports = {
   CLINCH_JOLT_BALANCE_VS_PLANT,
   CLINCH_JOLT_BALANCE_VS_NEUTRAL,
   CLINCH_JOLT_BALANCE_VS_PUSH,
+  CLINCH_JOLT_SELF_BALANCE_VS_PUSH,
   CLINCH_JOLT_PUSH_VS_PLANT,
   CLINCH_JOLT_PUSH_VS_NEUTRAL,
   CLINCH_JOLT_PUSH_VS_PUSH,

@@ -66,7 +66,6 @@ const {
   CLINCH_KILL_LIFT_RISE_MS,
   CLINCH_JOLT_ANIMATION_MS,
   CLINCH_JOLT_RECOVERY_MS,
-  CLINCH_JOLT_COOLDOWN_MS,
   CLINCH_JOLT_STAMINA_COST,
   CLINCH_JOLT_BALANCE_VS_PLANT,
   CLINCH_JOLT_BALANCE_VS_NEUTRAL,
@@ -84,6 +83,11 @@ const {
   CLINCH_JOLT_LOCKOUT_VS_PLANT,
   CLINCH_JOLT_LOCKOUT_VS_NEUTRAL,
   CLINCH_JOLT_LOCKOUT_VS_PUSH,
+  CLINCH_JOLT_COOLDOWN_MS,
+  CLINCH_JOLT_SELF_BALANCE_VS_PUSH,
+  PULL_BOUNDARY_MARGIN,
+  CLINCH_THROW_MIN_SEPARATION,
+  CLINCH_PULL_SWAP_TWEEN_DURATION,
 } = require("./constants");
 
 const {
@@ -324,7 +328,9 @@ function updateGrabActions(player, room, io, delta, rooms) {
         setPlayerTimeout(p.id, () => {
           p.clinchJoltRecovery = false;
           p.clinchJoltCooldown = true;
-          setPlayerTimeout(p.id, () => { p.clinchJoltCooldown = false; }, CLINCH_JOLT_COOLDOWN_MS, "clinchJoltCooldown");
+          setPlayerTimeout(p.id, () => {
+            p.clinchJoltCooldown = false;
+          }, CLINCH_JOLT_COOLDOWN_MS, "clinchJoltCooldown");
         }, CLINCH_JOLT_RECOVERY_MS, "clinchJoltRecovery");
       }
     }
@@ -408,18 +414,27 @@ function updateGrabActions(player, room, io, delta, rooms) {
     target.balance = Math.max(0, target.balance - balanceDmg);
     jolter.stamina = Math.max(0, jolter.stamina - CLINCH_JOLT_STAMINA_COST);
 
-    // Micro-push: move both players toward the target's side
+    if (targetAction === "push") {
+      jolter.balance = Math.max(0, jolter.balance - CLINCH_JOLT_SELF_BALANCE_VS_PUSH);
+    }
+
+    // Chest-bump: target takes 70% of push, jolter advances 30%
     const pushDir = jolter.x < target.x ? 1 : -1;
-    const halfPush = pushDist / 2;
-    jolter.x = Math.max(leftBoundary, Math.min(rightBoundary, jolter.x + pushDir * halfPush));
-    target.x = Math.max(leftBoundary, Math.min(rightBoundary, target.x + pushDir * halfPush));
+    if (pushDist > 0) {
+      const targetPush = pushDist * 0.7;
+      const jolterPush = pushDist * 0.3;
+      jolter.x = Math.max(leftBoundary, Math.min(rightBoundary, jolter.x + pushDir * jolterPush));
+      target.x = Math.max(leftBoundary, Math.min(rightBoundary, target.x + pushDir * targetPush));
+    }
 
     jolter.isClinchJolting = true;
     jolter.clinchJoltStartTime = now;
     target.isBeingClinchJolted = true;
     target.clinchJoltRecoilStart = now;
 
-    target.inputLockUntil = Math.max(target.inputLockUntil || 0, now + lockoutMs);
+    if (lockoutMs > 0) {
+      target.inputLockUntil = Math.max(target.inputLockUntil || 0, now + lockoutMs);
+    }
 
     if (targetAction === "plant") {
       target.clinchJoltPlantInterrupt = true;
@@ -964,7 +979,31 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
     const pullDist = isKill ? CLINCH_KILL_PULL_DISTANCE : CLINCH_PULL_DISTANCE;
     const pullTweenDur = isKill ? CLINCH_KILL_PULL_TWEEN_DURATION : CLINCH_PULL_TWEEN_DURATION;
     const pullLockMs = isKill ? CLINCH_KILL_PULL_INPUT_LOCK_MS : CLINCH_PULL_INPUT_LOCK_MS;
-    const targetX = actor.x + pullDirection * pullDist;
+    let targetX = actor.x + pullDirection * pullDist;
+
+    // Boundary pull detection: when the puller's back is against a wall,
+    // a normal pull can't send the target far enough past for a clean side switch.
+    // Use a position swap instead — both players trade positions with a hop arc.
+    const leftBound = MAP_LEFT_BOUNDARY + PULL_BOUNDARY_MARGIN;
+    const rightBound = MAP_RIGHT_BOUNDARY - PULL_BOUNDARY_MARGIN;
+    const clampedTargetX = Math.max(leftBound, Math.min(targetX, rightBound));
+    const distPastActor = pullDirection === -1
+        ? actor.x - clampedTargetX
+        : clampedTargetX - actor.x;
+    const isBoundaryPull = distPastActor < CLINCH_THROW_MIN_SEPARATION;
+
+    let actorTweenTargetX = null;
+    let effectiveTweenDur = pullTweenDur;
+    let effectiveLockMs = pullLockMs;
+
+    if (isBoundaryPull) {
+      const actorOriginalX = actor.x;
+      const targetOriginalX = target.x;
+      targetX = Math.max(leftBound, Math.min(actorOriginalX, rightBound));
+      actorTweenTargetX = targetOriginalX;
+      effectiveTweenDur = CLINCH_PULL_SWAP_TWEEN_DURATION;
+      effectiveLockMs = CLINCH_PULL_SWAP_TWEEN_DURATION;
+    }
 
     cleanupGrabStates(actor, target);
 
@@ -972,27 +1011,45 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
     target.pullReversalPullerId = actor.id;
     target.isGrabBreakSeparating = true;
     target.grabBreakSepStartTime = Date.now();
-    target.grabBreakSepDuration = pullTweenDur;
+    target.grabBreakSepDuration = effectiveTweenDur;
     target.grabBreakStartX = target.x;
     target.grabBreakTargetX = targetX;
+
+    if (isBoundaryPull) {
+      target.isBoundaryPullSwap = true;
+      actor.isBoundaryPullSwap = true;
+      actor.isGrabBreakSeparating = true;
+      actor.grabBreakSepStartTime = Date.now();
+      actor.grabBreakSepDuration = effectiveTweenDur;
+      actor.grabBreakStartX = actor.x;
+      actor.grabBreakTargetX = actorTweenTargetX;
+    }
 
     target.movementVelocity = 0;
     actor.movementVelocity = 0;
     target.isStrafing = false;
     actor.isStrafing = false;
 
-    const lockUntil = Date.now() + pullLockMs;
+    const lockUntil = Date.now() + effectiveLockMs;
     target.inputLockUntil = Math.max(target.inputLockUntil || 0, lockUntil);
     actor.inputLockUntil = Math.max(actor.inputLockUntil || 0, lockUntil);
 
-    correctFacingAfterGrabOrThrow(actor, target);
+    if (isBoundaryPull) {
+      if (!actor.atTheRopesFacingDirection) {
+        actor.facing = actorTweenTargetX < targetX ? -1 : 1;
+      }
+      if (!target.atTheRopesFacingDirection) {
+        target.facing = targetX < actorTweenTargetX ? -1 : 1;
+      }
+    } else {
+      correctFacingAfterGrabOrThrow(actor, target);
+    }
 
     if (isKill) {
       target.isClinchKillPullVictim = true;
       handleWinCondition(room, target, actor, io, "clinchKillPull");
-      // Face victim toward the actor based on where they'll land (targetX),
-      // so the CSS rotation lands them on their back with head away from puller
-      target.facing = targetX < actor.x ? 1 : -1;
+      const actorFinalX = isBoundaryPull ? actorTweenTargetX : actor.x;
+      target.facing = targetX < actorFinalX ? 1 : -1;
     }
 
     actor.grabCooldown = true;

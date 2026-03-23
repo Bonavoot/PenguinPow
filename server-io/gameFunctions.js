@@ -74,6 +74,7 @@ function cleanupGrabStates(player, opponent) {
   player.isAttemptingPull = false;
   player.isBeingPullReversaled = false;
   player.pullReversalPullerId = null;
+  player.isBoundaryPullSwap = false;
   player.isGrabSeparating = false;
   player.isGrabBellyFlopping = false;
   player.isBeingGrabBellyFlopped = false;
@@ -160,6 +161,7 @@ function cleanupGrabStates(player, opponent) {
   opponent.isAttemptingPull = false;
   opponent.isBeingPullReversaled = false;
   opponent.pullReversalPullerId = null;
+  opponent.isBoundaryPullSwap = false;
   opponent.isGrabSeparating = false;
   opponent.isGrabBellyFlopping = false;
   opponent.isBeingGrabBellyFlopped = false;
@@ -408,6 +410,17 @@ function handleWinCondition(room, loser, winner, io, winType) {
     p.isClinchPlanting = false;
     p.isResistingThrow = false;
     p.isResistingPull = false;
+    p.isClinchJolting = false;
+    p.clinchJoltRecovery = false;
+    p.clinchJoltCooldown = false;
+    p.clinchJoltStartTime = 0;
+    p.isBeingClinchJolted = false;
+    p.clinchJoltPlantInterrupt = false;
+    p.isClinchJoltClashing = false;
+    p.clinchJoltRequest = false;
+    p.clinchJoltRequestTime = 0;
+    p.clinchJoltRecoilStart = 0;
+    p.clinchJoltPlantInterruptStart = 0;
 
     p.pendingSlapCount = 0;
     p.pendingGrabEnder = false;

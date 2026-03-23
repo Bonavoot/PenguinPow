@@ -1027,7 +1027,7 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
                   !cpu.isBeingLifted && cpuStamina >= 10;
 
   if (canJolt && !aiState.clinchJoltPending && !aiState.clinchThrowPending && !cpu.clinchThrowRequest) {
-    const joltCheckInterval = 400;
+    const joltCheckInterval = 1600;
     if (!aiState.clinchLastJoltCheck) aiState.clinchLastJoltCheck = 0;
     if (currentTime - aiState.clinchLastJoltCheck > joltCheckInterval) {
       aiState.clinchLastJoltCheck = currentTime;
@@ -1038,16 +1038,16 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
 
       let joltChance = 0;
       if (opponentPlanting) {
-        joltChance = 0.45;
+        joltChance = 0.55;
       } else if (opponentNeutral) {
-        joltChance = 0.15;
+        joltChance = 0.10;
       } else if (opponentPushing) {
-        joltChance = 0.05;
+        joltChance = 0.0;
       }
 
       if (chance(joltChance)) {
         aiState.clinchJoltPending = true;
-        aiState.clinchJoltExecuteTime = currentTime + randomInRange(150, 350);
+        aiState.clinchJoltExecuteTime = currentTime + randomInRange(200, 400);
       }
     }
   }

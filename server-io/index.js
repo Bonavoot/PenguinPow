@@ -62,6 +62,7 @@ const {
   CLINCH_THROW_ARC_HEIGHT,
   CLINCH_THROW_BOUNDARY_MARGIN,
   CLINCH_THROW_MIN_SEPARATION,
+  CLINCH_PULL_SWAP_ARC_HEIGHT,
 } = require("./constants");
 
 // Import game utilities
@@ -640,8 +641,11 @@ function tick(delta) {
         const startX = player.grabBreakStartX ?? player.x;
         const targetX = player.grabBreakTargetX ?? player.x;
         const t = duration > 0 ? Math.min(1, elapsed / duration) : 1;
-        // Ease-out cubic for smooth finish
-        const eased = 1 - Math.pow(1 - t, 3);
+        const isBoundarySwap = player.isBoundaryPullSwap;
+        // Boundary swap: ease-in-out so both players cross at t=0.5 (aligned with arc peak)
+        const eased = isBoundarySwap
+          ? (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2)
+          : 1 - Math.pow(1 - t, 3);
         const newX = startX + (targetX - startX) * eased;
 
         // For pull reversal, clamp to a margin inside boundaries so they stop before the edge
@@ -650,23 +654,26 @@ function tick(delta) {
         const rightBound = isPullTween ? MAP_RIGHT_BOUNDARY - PULL_BOUNDARY_MARGIN : MAP_RIGHT_BOUNDARY;
         const clampedX = Math.max(leftBound, Math.min(newX, rightBound));
         player.x = clampedX;
-        // During pull reversal, simulate decaying hops (server-driven for reliability)
-        // Hops start after a delay so the player slides a bit before bouncing
         if (isPullTween && t < 1) {
-          const HOP_DELAY = 0.18; // Don't start hopping until 18% into the tween (~120ms)
-          if (t > HOP_DELAY) {
-            const HOP_COUNT = 4; // Fewer hops over the remaining time = slower per hop
-            const HOP_HEIGHTS = [26, 17, 10, 4]; // Decaying hop heights in pixels
-            const hopT = (t - HOP_DELAY) / (1 - HOP_DELAY); // 0-1 within the hop window
-            const hopProgress = hopT * HOP_COUNT;
-            const hopIndex = Math.min(Math.floor(hopProgress), HOP_COUNT - 1);
-            const hopPhase = hopProgress - Math.floor(hopProgress); // 0-1 within each hop
-            const maxHeight = HOP_HEIGHTS[hopIndex] || 0;
-            // Sine curve for each hop arc (0 → peak → 0)
-            const hopY = maxHeight * Math.sin(hopPhase * Math.PI);
-            player.y = GROUND_LEVEL + hopY;
+          if (isBoundarySwap) {
+            // Single sine arc — peaks at midpoint so pulled player hops over the puller
+            player.y = GROUND_LEVEL + CLINCH_PULL_SWAP_ARC_HEIGHT * Math.sin(t * Math.PI);
           } else {
-            player.y = GROUND_LEVEL; // Still on ground during initial slide
+            // Normal pull: decaying hops after a delay so the player slides then bounces
+            const HOP_DELAY = 0.18;
+            if (t > HOP_DELAY) {
+              const HOP_COUNT = 4;
+              const HOP_HEIGHTS = [26, 17, 10, 4];
+              const hopT = (t - HOP_DELAY) / (1 - HOP_DELAY);
+              const hopProgress = hopT * HOP_COUNT;
+              const hopIndex = Math.min(Math.floor(hopProgress), HOP_COUNT - 1);
+              const hopPhase = hopProgress - Math.floor(hopProgress);
+              const maxHeight = HOP_HEIGHTS[hopIndex] || 0;
+              const hopY = maxHeight * Math.sin(hopPhase * Math.PI);
+              player.y = GROUND_LEVEL + hopY;
+            } else {
+              player.y = GROUND_LEVEL;
+            }
           }
         } else {
           player.y = GROUND_LEVEL;
@@ -698,7 +705,9 @@ function tick(delta) {
           // Auto-clear associated visual states when tween ends
           // These are mutually exclusive states that use the same tween mechanism
           if (player.isGrabSeparating) player.isGrabSeparating = false;
+          if (player.isBoundaryPullSwap) player.isBoundaryPullSwap = false;
           if (player.isBeingPullReversaled) {
+            const wasBoundarySwap = isBoundarySwap;
             player.isBeingPullReversaled = false;
             // Release both players' input locks when pull tween ends
             player.inputLockUntil = 0;
@@ -709,6 +718,18 @@ function tick(delta) {
               pullerRef = allPlayers.find(p => p.id === player.pullReversalPullerId);
               if (pullerRef) {
                 pullerRef.inputLockUntil = 0;
+                // Boundary swap: also terminate the puller's slide tween for neutral frame advantage
+                if (wasBoundarySwap && pullerRef.isGrabBreakSeparating) {
+                  if (pullerRef.grabBreakTargetX !== undefined) {
+                    pullerRef.x = Math.max(MAP_LEFT_BOUNDARY, Math.min(pullerRef.grabBreakTargetX, MAP_RIGHT_BOUNDARY));
+                  }
+                  pullerRef.isGrabBreakSeparating = false;
+                  pullerRef.grabBreakSepStartTime = 0;
+                  pullerRef.grabBreakSepDuration = 0;
+                  pullerRef.grabBreakStartX = undefined;
+                  pullerRef.grabBreakTargetX = undefined;
+                  pullerRef.isBoundaryPullSwap = false;
+                }
               }
               player.pullReversalPullerId = null;
             }
