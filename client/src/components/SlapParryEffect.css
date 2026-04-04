@@ -2,13 +2,22 @@
   pointer-events: none;
 }
 
+.slap-parry-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  isolation: isolate;
+  --parry-tilt: rotateX(12deg);
+}
+
 .slap-parry-ring {
   position: relative;
   width: 2.29cqw;
   height: 2.29cqw;
 }
 
-/* Main bright white ring */
+/* Main bright white ring — subtle forward tilt */
 .slap-parry-ring::before {
   content: '';
   position: absolute;
@@ -18,9 +27,9 @@
   height: 100%;
   border-radius: 50%;
   border: 0.21cqw solid rgba(255, 255, 255, 1);
-  transform: translate(-50%, -50%) scale(0);
+  transform: translate(-50%, -50%) var(--parry-tilt) scale(0);
   animation: slapParryRing 0.35s ease-out forwards;
-  box-shadow: 
+  box-shadow:
     0 0 20px rgba(255, 255, 255, 1),
     0 0 40px rgba(255, 255, 255, 0.8),
     0 0 60px rgba(135, 206, 250, 0.6),
@@ -28,7 +37,7 @@
   filter: brightness(1.3);
 }
 
-/* Secondary blue ring for contrast */
+/* Secondary blue ring — same tilt */
 .slap-parry-ring::after {
   content: '';
   position: absolute;
@@ -38,17 +47,106 @@
   height: 130%;
   border-radius: 50%;
   border: 0.10cqw solid rgba(135, 206, 250, 1);
-  transform: translate(-50%, -50%) scale(0);
+  transform: translate(-50%, -50%) var(--parry-tilt) scale(0);
   animation: slapParryRingOuter 0.4s ease-out 0.03s forwards;
-  box-shadow: 
+  box-shadow:
     0 0 15px rgba(135, 206, 250, 0.9),
     0 0 30px rgba(135, 206, 250, 0.6);
 }
 
-/* Initial flash effect - creates a bright burst at the start */
+/* Initial flash */
 .slap-parry-ring {
   animation: initialFlash 0.15s ease-out;
 }
+
+/* --- Impact Cross — two energy bars, 45deg rotated, signals "two forces met" --- */
+.slap-parry-impact-cross {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 160%;
+  height: 160%;
+  transform: translate(-50%, -50%) var(--parry-tilt) scale(0) rotate(45deg);
+  pointer-events: none;
+  z-index: 11;
+  background:
+    linear-gradient(0deg,
+      transparent 43%,
+      rgba(220, 240, 255, 0.6) 48%,
+      rgba(255, 255, 255, 0.7) 50%,
+      rgba(220, 240, 255, 0.6) 52%,
+      transparent 57%),
+    linear-gradient(90deg,
+      transparent 43%,
+      rgba(220, 240, 255, 0.6) 48%,
+      rgba(255, 255, 255, 0.7) 50%,
+      rgba(220, 240, 255, 0.6) 52%,
+      transparent 57%);
+  animation: slapParryCross 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* --- Bloom Glow --- */
+.slap-parry-bloom {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 220%;
+  height: 220%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  pointer-events: none;
+  z-index: -1;
+  mix-blend-mode: screen;
+  filter: blur(clamp(6px, 0.5cqw, 14px));
+  background: radial-gradient(circle,
+    rgba(200, 230, 255, 0.7) 0%,
+    rgba(135, 206, 250, 0.4) 35%,
+    transparent 70%);
+  animation: slapParryBloom 0.4s ease-out forwards;
+}
+
+/* --- Held Core --- */
+.slap-parry-held-core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 1.0cqw;
+  height: 1.0cqw;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  pointer-events: none;
+  z-index: 5;
+  background: radial-gradient(circle,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(255, 255, 255, 0.95) 25%,
+    rgba(200, 235, 255, 0.7) 55%,
+    transparent 100%);
+  animation: slapParryHeldCore 0.25s ease-out forwards;
+}
+
+/* --- Afterglow --- */
+.slap-parry-afterglow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 250%;
+  height: 250%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: -2;
+  background: radial-gradient(circle,
+    rgba(135, 206, 250, 0.22) 0%,
+    rgba(100, 180, 240, 0.08) 40%,
+    transparent 70%);
+  opacity: 0;
+  animation: slapParryAfterglow 0.5s ease-out 0.06s forwards;
+}
+
+
+/* ============================================
+   KEYFRAMES
+   ============================================ */
 
 @keyframes initialFlash {
   0% {
@@ -61,7 +159,7 @@
 
 @keyframes slapParryRing {
   0% {
-    transform: translate(-50%, -50%) scale(0);
+    transform: translate(-50%, -50%) var(--parry-tilt) scale(0);
     opacity: 1;
     border-width: 0.36cqw;
   }
@@ -69,7 +167,7 @@
     opacity: 1;
   }
   100% {
-    transform: translate(-50%, -50%) scale(2);
+    transform: translate(-50%, -50%) var(--parry-tilt) scale(2);
     opacity: 0;
     border-width: 1px;
   }
@@ -77,13 +175,74 @@
 
 @keyframes slapParryRingOuter {
   0% {
-    transform: translate(-50%, -50%) scale(0);
+    transform: translate(-50%, -50%) var(--parry-tilt) scale(0);
     opacity: 1;
     border-width: 0.21cqw;
   }
   100% {
-    transform: translate(-50%, -50%) scale(2.5);
+    transform: translate(-50%, -50%) var(--parry-tilt) scale(2.5);
     opacity: 0;
     border-width: 1px;
+  }
+}
+
+@keyframes slapParryCross {
+  0% {
+    transform: translate(-50%, -50%) var(--parry-tilt) scale(0) rotate(45deg);
+    opacity: 1;
+  }
+  35% {
+    transform: translate(-50%, -50%) var(--parry-tilt) scale(1.1) rotate(45deg);
+    opacity: 0.85;
+  }
+  100% {
+    transform: translate(-50%, -50%) var(--parry-tilt) scale(1.8) rotate(45deg);
+    opacity: 0;
+  }
+}
+
+@keyframes slapParryBloom {
+  0% {
+    transform: translate(-50%, -50%) scale(0.2);
+    opacity: 0.85;
+  }
+  30% {
+    transform: translate(-50%, -50%) scale(1.1);
+    opacity: 0.65;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.5);
+    opacity: 0;
+  }
+}
+
+@keyframes slapParryHeldCore {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 1;
+  }
+  25% {
+    transform: translate(-50%, -50%) scale(1.15);
+    opacity: 1;
+  }
+  60% {
+    transform: translate(-50%, -50%) scale(0.85);
+    opacity: 0.75;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(0.3);
+    opacity: 0;
+  }
+}
+
+@keyframes slapParryAfterglow {
+  0% {
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 0;
   }
 }

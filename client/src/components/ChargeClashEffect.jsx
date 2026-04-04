@@ -29,8 +29,13 @@ const ChargeClashEffect = ({ position }) => {
 
   return (
     <ClashEffectContainer $x={position.x} $y={position.y}>
-      <div className="charge-clash-ring">
-        <div className="charge-clash-cross"></div>
+      <div className="charge-clash-wrapper">
+        <div className="charge-clash-bloom" />
+        <div className="charge-clash-ring">
+          <div className="charge-clash-cross" />
+        </div>
+        <div className="charge-clash-held-core" />
+        <div className="charge-clash-afterglow" />
       </div>
     </ClashEffectContainer>
   );

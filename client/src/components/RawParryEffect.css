@@ -396,6 +396,184 @@
 }
 
 /* ============================================
+   NEW LAYERS — Bloom, Held Core, Afterglow
+   ============================================ */
+
+/* --- Bloom Glow (blurred underlayer) --- */
+.parry-bloom-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 200%;
+  height: 200%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+  mix-blend-mode: screen;
+  filter: blur(clamp(6px, 0.5cqw, 14px));
+}
+
+.parry-bloom-glow.regular {
+  background: radial-gradient(circle,
+    rgba(0, 220, 255, 0.6) 0%,
+    rgba(0, 180, 255, 0.3) 40%,
+    transparent 70%);
+  animation: parryBloomGlow 0.4s ease-out forwards;
+}
+
+.parry-bloom-glow.perfect {
+  width: 260%;
+  height: 260%;
+  background: radial-gradient(circle,
+    rgba(120, 240, 255, 0.8) 0%,
+    rgba(0, 220, 255, 0.45) 35%,
+    transparent 70%);
+  animation: parryBloomGlow 0.5s ease-out forwards;
+}
+
+@keyframes parryBloomGlow {
+  0% {
+    transform: translate(-50%, -50%) scale(0.3);
+    opacity: 0.85;
+  }
+  25% {
+    transform: translate(-50%, -50%) scale(1.1);
+    opacity: 0.7;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.4);
+    opacity: 0;
+  }
+}
+
+/* --- Held Core (white-hot center that lingers) --- */
+.parry-held-core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 35%;
+  height: 35%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 19;
+}
+
+.parry-held-core.regular {
+  background: radial-gradient(circle,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(200, 245, 255, 0.85) 40%,
+    rgba(0, 220, 255, 0.4) 70%,
+    transparent 100%);
+  animation: parryHeldCore 0.28s ease-out forwards;
+}
+
+.parry-held-core.perfect {
+  width: 45%;
+  height: 45%;
+  background: radial-gradient(circle,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(255, 255, 255, 0.95) 20%,
+    rgba(180, 250, 255, 0.7) 50%,
+    rgba(0, 230, 255, 0.3) 80%,
+    transparent 100%);
+  box-shadow: 0 0 clamp(4px, 0.3cqw, 8px) rgba(0, 230, 255, 0.5);
+  animation: parryHeldCorePerfect 0.4s ease-out forwards;
+}
+
+@keyframes parryHeldCore {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 1;
+  }
+  30% {
+    transform: translate(-50%, -50%) scale(1.1);
+    opacity: 1;
+  }
+  65% {
+    transform: translate(-50%, -50%) scale(0.8);
+    opacity: 0.7;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(0.3);
+    opacity: 0;
+  }
+}
+
+@keyframes parryHeldCorePerfect {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 1;
+  }
+  20% {
+    transform: translate(-50%, -50%) scale(1.2);
+    opacity: 1;
+  }
+  45% {
+    transform: translate(-50%, -50%) scale(1.0);
+    opacity: 1;
+  }
+  75% {
+    transform: translate(-50%, -50%) scale(0.7);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(0.3);
+    opacity: 0;
+  }
+}
+
+/* --- Afterglow (lingering haze) --- */
+.parry-afterglow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 220%;
+  height: 220%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.parry-afterglow.regular {
+  background: radial-gradient(circle,
+    rgba(0, 200, 255, 0.2) 0%,
+    rgba(0, 160, 220, 0.08) 40%,
+    transparent 70%);
+  animation: parryAfterglow 0.5s ease-out 0.08s forwards;
+}
+
+.parry-afterglow.perfect {
+  width: 280%;
+  height: 280%;
+  background: radial-gradient(circle,
+    rgba(0, 230, 255, 0.3) 0%,
+    rgba(0, 200, 255, 0.12) 35%,
+    transparent 70%);
+  animation: parryAfterglow 0.65s ease-out 0.1s forwards;
+}
+
+@keyframes parryAfterglow {
+  0% {
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 0.3;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ============================================
    LEGACY KEYFRAMES - kept for compatibility
    ============================================ */
 

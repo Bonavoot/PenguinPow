@@ -246,6 +246,8 @@ const RawParryEffect = ({ position }) => {
               }`}
               style={{ "--parry-ring-tilt-signed": parryTiltSigned }}
             >
+              {/* Bloom glow underlayer */}
+              <div className={`parry-bloom-glow ${effect.isPerfect ? "perfect" : "regular"}`} />
               <div
                 className={`raw-parry-ring ${
                   effect.isPerfect ? "perfect" : "regular"
@@ -254,6 +256,8 @@ const RawParryEffect = ({ position }) => {
                   transform: effect.facing === 1 ? "scaleX(-1)" : "scaleX(1)",
                 }}
               />
+              {/* Held core */}
+              <div className={`parry-held-core ${effect.isPerfect ? "perfect" : "regular"}`} />
               {/* Perfect parry speed lines - manga-style radial streaks */}
               {effect.isPerfect && (
                 <div className="perfect-speed-lines">
@@ -265,12 +269,12 @@ const RawParryEffect = ({ position }) => {
               <ParticleContainer className="raw-parry-particles">
                 {particles}
               </ParticleContainer>
-              {/* Spark container */}
               <ParticleContainer className="spark-particles">
                 {sparkElements}
               </ParticleContainer>
+              {/* Afterglow */}
+              <div className={`parry-afterglow ${effect.isPerfect ? "perfect" : "regular"}`} />
             </div>
-            {/* Centered text at the parry location */}
             <ParryTextCenter $isPerfect={effect.isPerfect}>
               {effect.isPerfect ? "PERFECT" : "PARRY"}
             </ParryTextCenter>

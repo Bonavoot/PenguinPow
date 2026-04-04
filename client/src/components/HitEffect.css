@@ -3,8 +3,75 @@
 }
 
 /* ============================================
+   IMPACT FRAME — Full-screen white flash on heavy hits
+   Brief 1-2 frame burst that registers as "powerful"
+   ============================================ */
+.impact-frame {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+.impact-frame--charged {
+  background: radial-gradient(ellipse at 50% 50%,
+    rgba(255, 235, 190, 0.18) 0%,
+    rgba(255, 220, 160, 0.08) 40%,
+    transparent 75%);
+  animation: impactFrameSubtle 0.05s ease-out forwards;
+}
+
+.impact-frame--burst {
+  background: radial-gradient(ellipse at 50% 50%,
+    rgba(255, 230, 180, 0.15) 0%,
+    rgba(255, 215, 150, 0.06) 45%,
+    transparent 75%);
+  animation: impactFrameSubtle 0.045s ease-out forwards;
+}
+
+.impact-frame--cinematic {
+  background: radial-gradient(ellipse at 50% 50%,
+    rgba(255, 245, 220, 0.45) 0%,
+    rgba(255, 235, 190, 0.25) 25%,
+    rgba(255, 220, 160, 0.08) 55%,
+    transparent 85%);
+  animation: impactFrameCinematic 0.08s ease-out forwards;
+}
+
+@keyframes impactFrameSubtle {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes impactFrameCinematic {
+  0% { opacity: 1; }
+  35% { opacity: 0.5; }
+  100% { opacity: 0; }
+}
+
+/* ============================================
+   CHROMATIC ABERRATION — applied to .game-scene
+   Triggered by adding .hit-chromatic class
+   Brief saturate/contrast punch + hue shift
+   ============================================ */
+.game-scene.hit-chromatic {
+  animation: chromaticPunch 0.12s ease-out forwards;
+}
+
+@keyframes chromaticPunch {
+  0% {
+    filter: saturate(1.4) contrast(1.1) brightness(1.06);
+  }
+  40% {
+    filter: saturate(1.15) contrast(1.04) brightness(1.02);
+  }
+  100% {
+    filter: none;
+  }
+}
+
+/* ============================================
    SCREEN FLASH - Vignette style (edges only)
-   Center stays clear, thin flash at edges
    ============================================ */
 .screen-flash {
   position: absolute;
@@ -12,11 +79,10 @@
   left: 0;
   width: 100%;
   height: 100%;
-  /* Very tight vignette: only the very edge */
-  background: radial-gradient(ellipse at center, 
-    transparent 0%, 
-    transparent 80%, 
-    rgba(255, 255, 255, 0.3) 88%, 
+  background: radial-gradient(ellipse at center,
+    transparent 0%,
+    transparent 80%,
+    rgba(255, 255, 255, 0.3) 88%,
     rgba(255, 255, 255, 0.8) 100%);
   pointer-events: none;
   z-index: 9999;
@@ -45,6 +111,77 @@
    SHARED BASE STYLES
    ============================================ */
 
+/* Bloom glow — blurred underlayer for fake bloom effect */
+.hit-bloom-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 180%;
+  height: 180%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1;
+  mix-blend-mode: screen;
+  filter: blur(clamp(6px, 0.5cqw, 14px));
+}
+
+/* Held white-hot core — stays bright during hitstop, fades on release */
+.hit-held-core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 45%;
+  height: 45%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 18;
+}
+
+/* Directional energy streak — oriented along knockback */
+.hit-directional-streak {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 280%;
+  height: 28%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scaleX(0);
+  transform-origin: center center;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* Tertiary rings — extra shockwave ripples */
+.hit-tertiary-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 6;
+}
+
+/* Afterglow haze — slow lingering warmth after impact */
+.hit-afterglow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 200%;
+  height: 200%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
 /* Radial speed lines container */
 .hit-speed-lines {
   position: absolute;
@@ -65,7 +202,7 @@
   opacity: 0;
 }
 
-/* Secondary shockwave ring - hidden by default */
+/* Secondary shockwave ring */
 .hit-shockwave-secondary {
   position: absolute;
   top: 50%;
@@ -93,9 +230,9 @@
   top: 50%;
   left: 50%;
   width: 0.36cqw;
-  height: 0.36cqw;
+  height: 0.14cqw;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 20%, rgba(255, 200, 80, 0.9) 100%);
+  background: radial-gradient(ellipse, rgba(255, 255, 255, 0.98) 15%, rgba(255, 200, 80, 0.9) 100%);
   opacity: 0;
 }
 
@@ -124,10 +261,8 @@
 
 /* ============================================
    SLAP ATTACK - Quick, snappy impact burst
-   Clean smack with radiating speed lines
    ============================================ */
 
-/* Tier 2 (SMALL) size - same as before */
 .hit-ring-wrapper.slap-hit {
   position: relative;
   width: 2.32cqw;
@@ -136,7 +271,48 @@
   filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.22)) drop-shadow(0 0 4px rgba(0, 0, 0, 0.12));
 }
 
-/* Squash oval - brief flat-impact shape suggesting a slap */
+/* --- Slap Bloom Glow --- */
+.slap-hit .hit-bloom-glow {
+  background: radial-gradient(circle,
+    rgba(255, 220, 130, 0.7) 0%,
+    rgba(255, 180, 60, 0.4) 40%,
+    transparent 70%);
+  animation: slapBloomGlow 0.32s ease-out forwards;
+}
+
+/* --- Slap Held Core --- */
+.slap-hit .hit-held-core {
+  background: radial-gradient(circle,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(255, 255, 240, 0.95) 30%,
+    rgba(255, 240, 200, 0.6) 60%,
+    transparent 100%);
+  animation: slapHeldCore 0.22s ease-out forwards;
+  z-index: 18;
+}
+
+/* --- Slap Directional Streak --- */
+.slap-hit .hit-directional-streak {
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(255, 230, 150, 0.5) 20%,
+    rgba(255, 255, 255, 0.7) 50%,
+    rgba(255, 230, 150, 0.5) 80%,
+    transparent 100%);
+  animation: slapDirectionalStreak 0.18s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  transform: translate(-50%, -50%) scaleX(0) scaleY(1);
+}
+
+/* --- Slap Afterglow --- */
+.slap-hit .hit-afterglow {
+  background: radial-gradient(circle,
+    rgba(255, 200, 100, 0.25) 0%,
+    rgba(255, 160, 60, 0.1) 40%,
+    transparent 70%);
+  animation: slapAfterglow 0.45s ease-out 0.08s forwards;
+}
+
+/* Squash oval */
 .slap-hit::before {
   content: '';
   position: absolute;
@@ -169,7 +345,7 @@
   transform: translate(-50%, -50%);
 }
 
-/* Core flash - bright white center fading to red-orange-yellow */
+/* Core flash — bright white center */
 .slap-hit .hit-ring::before {
   content: '';
   position: absolute;
@@ -188,6 +364,7 @@
   animation: slapCoreFlash 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
+/* Expanding ring */
 .slap-hit .hit-ring::after {
   content: '';
   position: absolute;
@@ -202,7 +379,7 @@
   animation: slapRingExpand 0.24s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-/* Slap secondary shockwave - hidden */
+/* Slap secondary shockwave */
 .slap-hit .hit-shockwave-secondary {
   display: none;
 }
@@ -224,24 +401,25 @@
 .slap-hit .hit-speed-line:nth-child(4) { --angle: 210deg; animation-delay: 0.022s; }
 .slap-hit .hit-speed-line:nth-child(5) { --angle: 290deg; animation-delay: 0.012s; }
 
-/* --- Slap Sparks --- */
+/* --- Slap Sparks (elongated along trajectory) --- */
 .slap-hit .spark {
-  animation: sparkBurst 0.24s ease-out forwards;
+  animation: sparkBurstElongated 0.26s ease-out forwards;
   box-shadow: 0 0 4px rgba(255, 180, 60, 0.8), 0 0 8px rgba(255, 100, 40, 0.5);
 }
 
-.slap-hit .spark:nth-child(1) { --tx: 1.85cqw; --ty: -1.48cqw; }
-.slap-hit .spark:nth-child(2) { --tx: -1.85cqw; --ty: -1.11cqw; animation-delay: 0.025s; }
-.slap-hit .spark:nth-child(3) { --tx: 1.48cqw; --ty: 1.85cqw; animation-delay: 0.015s; }
-.slap-hit .spark:nth-child(4) { --tx: -1.48cqw; --ty: 1.48cqw; animation-delay: 0.035s; }
-.slap-hit .spark:nth-child(5) { --tx: 2.22cqw; --ty: 0.22cqw; animation-delay: 0.01s; }
-.slap-hit .spark:nth-child(6) { --tx: -2.22cqw; --ty: -0.22cqw; animation-delay: 0.025s; }
+.slap-hit .spark:nth-child(1) { --tx: 1.85cqw; --ty: -1.48cqw; --spark-angle: -38deg; }
+.slap-hit .spark:nth-child(2) { --tx: -1.85cqw; --ty: -1.11cqw; --spark-angle: 149deg; animation-delay: 0.025s; }
+.slap-hit .spark:nth-child(3) { --tx: 1.48cqw; --ty: 1.85cqw; --spark-angle: 51deg; animation-delay: 0.015s; }
+.slap-hit .spark:nth-child(4) { --tx: -1.48cqw; --ty: 1.48cqw; --spark-angle: 135deg; animation-delay: 0.035s; }
+.slap-hit .spark:nth-child(5) { --tx: 2.22cqw; --ty: 0.22cqw; --spark-angle: 6deg; animation-delay: 0.01s; }
+.slap-hit .spark:nth-child(6) { --tx: -2.22cqw; --ty: -0.22cqw; --spark-angle: 174deg; animation-delay: 0.025s; }
 
 /* --- Slap Particles --- */
-.slap-hit .particle:nth-child(1) { animation: particleBurst 0.26s ease-out forwards; --px: -1.48cqw; --py: -1.63cqw; }
-.slap-hit .particle:nth-child(2) { animation: particleBurst 0.26s ease-out 0.025s forwards; --px: 1.63cqw; --py: -1.11cqw; }
-.slap-hit .particle:nth-child(3) { animation: particleBurst 0.26s ease-out 0.015s forwards; --px: -1.11cqw; --py: 1.48cqw; }
-.slap-hit .particle:nth-child(4) { animation: particleBurst 0.26s ease-out 0.035s forwards; --px: 1.33cqw; --py: 1.63cqw; }
+.slap-hit .particle:nth-child(1) { animation: particleBurstGravity 0.32s ease-out forwards; --px: -1.48cqw; --py: -1.63cqw; }
+.slap-hit .particle:nth-child(2) { animation: particleBurstGravity 0.32s ease-out 0.025s forwards; --px: 1.63cqw; --py: -1.11cqw; }
+.slap-hit .particle:nth-child(3) { animation: particleBurstGravity 0.32s ease-out 0.015s forwards; --px: -1.11cqw; --py: 1.48cqw; }
+.slap-hit .particle:nth-child(4) { animation: particleBurstGravity 0.32s ease-out 0.035s forwards; --px: 1.33cqw; --py: 1.63cqw; }
+
 
 /* ============================================
    SLAP KEYFRAMES
@@ -308,23 +486,151 @@
   }
 }
 
+@keyframes slapBloomGlow {
+  0% {
+    transform: translate(-50%, -50%) scale(0.3);
+    opacity: 0.8;
+  }
+  30% {
+    transform: translate(-50%, -50%) scale(1.2);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.5);
+    opacity: 0;
+  }
+}
+
+@keyframes slapHeldCore {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 1;
+  }
+  25% {
+    transform: translate(-50%, -50%) scale(1.1);
+    opacity: 1;
+  }
+  60% {
+    transform: translate(-50%, -50%) scale(0.9);
+    opacity: 0.85;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 0;
+  }
+}
+
+@keyframes slapDirectionalStreak {
+  0% {
+    transform: translate(-50%, -50%) scaleX(0) scaleY(1);
+    opacity: 0.9;
+  }
+  40% {
+    transform: translate(-50%, -50%) scaleX(1.2) scaleY(0.8);
+    opacity: 0.7;
+  }
+  100% {
+    transform: translate(-50%, -50%) scaleX(1.6) scaleY(0.3);
+    opacity: 0;
+  }
+}
+
+@keyframes slapAfterglow {
+  0% {
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+
 /* ============================================
    CHARGED ATTACK - Heavy dramatic shockwave
-   Powerful impact with dual rings, impact cross,
-   8 speed lines, and heavy particle burst
    ============================================ */
 
-/* Tier 1 (LARGE) size - same as punish/grab break/perfect parry */
 .hit-ring-wrapper.charged-hit {
   position: relative;
   width: 2.47cqw;
   height: 2.47cqw;
-  /* Faux-3D: recede toward background by compressing width */
   --charged-ring-tilt: 55deg;
-  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.22)) drop-shadow(0 0 5px rgba(0, 0, 0, 0.12));
+  filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.25)) drop-shadow(0 0 6px rgba(0, 0, 0, 0.15));
 }
 
-/* Impact cross - dramatic cross-shaped energy burst */
+/* --- Charged Bloom Glow (fake bloom — bright, blurred, additive) --- */
+.charged-hit .hit-bloom-glow {
+  width: 260%;
+  height: 260%;
+  background: radial-gradient(circle,
+    rgba(255, 240, 180, 0.85) 0%,
+    rgba(255, 200, 80, 0.5) 30%,
+    rgba(255, 140, 40, 0.2) 55%,
+    transparent 75%);
+  animation: chargedBloomGlow 0.5s ease-out forwards;
+}
+
+/* --- Charged Held Core (stays white during hitstop) --- */
+.charged-hit .hit-held-core {
+  width: 50%;
+  height: 50%;
+  background: radial-gradient(circle,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(255, 255, 255, 0.98) 20%,
+    rgba(255, 250, 220, 0.8) 50%,
+    rgba(255, 230, 150, 0.3) 80%,
+    transparent 100%);
+  box-shadow: 0 0 clamp(4px, 0.3cqw, 8px) rgba(255, 255, 255, 0.6);
+  animation: chargedHeldCore 0.4s ease-out forwards;
+  z-index: 18;
+}
+
+/* --- Charged Directional Streak --- */
+.charged-hit .hit-directional-streak {
+  width: 360%;
+  height: 35%;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(255, 220, 120, 0.4) 15%,
+    rgba(255, 255, 255, 0.8) 45%,
+    rgba(255, 255, 255, 0.8) 55%,
+    rgba(255, 220, 120, 0.4) 85%,
+    transparent 100%);
+  animation: chargedDirectionalStreak 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  transform: translate(-50%, -50%) scaleX(0);
+}
+
+/* --- Charged Tertiary Rings --- */
+.charged-hit .hit-tertiary-ring {
+  width: 2.47cqw;
+  height: 2.47cqw;
+  border: clamp(1px, 0.08cqw, 2px) solid rgba(255, 180, 60, 0.45);
+  box-shadow: 0 0 clamp(3px, 0.25cqw, 6px) rgba(255, 140, 50, 0.2);
+}
+
+.charged-hit .hit-tertiary-ring--0 {
+  animation: chargedTertiaryRing 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.1s forwards;
+}
+
+.charged-hit .hit-tertiary-ring--1 {
+  animation: chargedTertiaryRing 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.16s forwards;
+}
+
+/* --- Charged Afterglow --- */
+.charged-hit .hit-afterglow {
+  width: 280%;
+  height: 280%;
+  background: radial-gradient(circle,
+    rgba(255, 200, 100, 0.3) 0%,
+    rgba(255, 160, 60, 0.15) 30%,
+    rgba(255, 120, 40, 0.05) 55%,
+    transparent 75%);
+  animation: chargedAfterglow 0.65s ease-out 0.1s forwards;
+}
+
+/* Impact cross */
 .charged-hit::before {
   content: '';
   position: absolute;
@@ -363,7 +669,7 @@
   transform: translate(-50%, -50%);
 }
 
-/* Core flash - larger, brighter, with hitlag-style hold at peak */
+/* Core flash — larger, brighter, with hitlag-style hold at peak */
 .charged-hit .hit-ring::before {
   content: '';
   position: absolute;
@@ -398,7 +704,7 @@
   animation: chargedRingExpand 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-/* Secondary shockwave ring - delayed for layered depth */
+/* Secondary shockwave ring */
 .charged-hit .hit-shockwave-secondary {
   display: block;
   width: 2.47cqw;
@@ -408,7 +714,7 @@
   animation: chargedSecondaryRing 0.42s cubic-bezier(0.22, 1, 0.36, 1) 0.06s forwards;
 }
 
-/* --- Charged Speed Lines - thicker, longer, more dramatic --- */
+/* --- Charged Speed Lines --- */
 .charged-hit .hit-speed-line {
   width: 0.15cqw;
   height: 0.68cqw;
@@ -428,41 +734,41 @@
 .charged-hit .hit-speed-line:nth-child(7) { --angle: 270deg; animation-delay: 0.005s; }
 .charged-hit .hit-speed-line:nth-child(8) { --angle: 315deg; animation-delay: 0.018s; }
 
-/* --- Charged Sparks - larger, fly further --- */
+/* --- Charged Sparks (elongated, fly further) --- */
 .charged-hit .spark {
-  width: 0.36cqw;
-  height: 0.36cqw;
-  animation: sparkBurst 0.32s ease-out forwards;
+  width: 0.42cqw;
+  height: 0.16cqw;
+  animation: sparkBurstElongated 0.36s ease-out forwards;
   box-shadow: 0 0 5px rgba(255, 180, 60, 0.85), 0 0 10px rgba(255, 100, 40, 0.5);
 }
 
-.charged-hit .spark:nth-child(1) { --tx: 2.22cqw; --ty: -1.85cqw; }
-.charged-hit .spark:nth-child(2) { --tx: -2.22cqw; --ty: -1.48cqw; animation-delay: 0.02s; }
-.charged-hit .spark:nth-child(3) { --tx: 1.85cqw; --ty: 2.22cqw; animation-delay: 0.01s; }
-.charged-hit .spark:nth-child(4) { --tx: -1.85cqw; --ty: 1.85cqw; animation-delay: 0.03s; }
-.charged-hit .spark:nth-child(5) { --tx: 2.59cqw; --ty: 0.37cqw; animation-delay: 0.005s; }
-.charged-hit .spark:nth-child(6) { --tx: -2.59cqw; --ty: -0.37cqw; animation-delay: 0.025s; }
-.charged-hit .spark:nth-child(7) { --tx: 0.74cqw; --ty: -2.59cqw; animation-delay: 0.015s; }
-.charged-hit .spark:nth-child(8) { --tx: -0.74cqw; --ty: 2.59cqw; animation-delay: 0.035s; }
+.charged-hit .spark:nth-child(1) { --tx: 2.22cqw; --ty: -1.85cqw; --spark-angle: -40deg; }
+.charged-hit .spark:nth-child(2) { --tx: -2.22cqw; --ty: -1.48cqw; --spark-angle: 146deg; animation-delay: 0.02s; }
+.charged-hit .spark:nth-child(3) { --tx: 1.85cqw; --ty: 2.22cqw; --spark-angle: 50deg; animation-delay: 0.01s; }
+.charged-hit .spark:nth-child(4) { --tx: -1.85cqw; --ty: 1.85cqw; --spark-angle: 135deg; animation-delay: 0.03s; }
+.charged-hit .spark:nth-child(5) { --tx: 2.59cqw; --ty: 0.37cqw; --spark-angle: 8deg; animation-delay: 0.005s; }
+.charged-hit .spark:nth-child(6) { --tx: -2.59cqw; --ty: -0.37cqw; --spark-angle: 172deg; animation-delay: 0.025s; }
+.charged-hit .spark:nth-child(7) { --tx: 0.74cqw; --ty: -2.59cqw; --spark-angle: -74deg; animation-delay: 0.015s; }
+.charged-hit .spark:nth-child(8) { --tx: -0.74cqw; --ty: 2.59cqw; --spark-angle: 106deg; animation-delay: 0.035s; }
 
-/* --- Charged Particles - 6 for heavier debris --- */
+/* --- Charged Particles with gravity --- */
 .charged-hit .particle {
   width: 0.26cqw;
   height: 0.26cqw;
 }
 
-.charged-hit .particle:nth-child(1) { animation: particleBurst 0.3s ease-out forwards; --px: -1.85cqw; --py: -1.85cqw; }
-.charged-hit .particle:nth-child(2) { animation: particleBurst 0.3s ease-out 0.02s forwards; --px: 1.85cqw; --py: -1.48cqw; }
-.charged-hit .particle:nth-child(3) { animation: particleBurst 0.3s ease-out 0.01s forwards; --px: -1.48cqw; --py: 1.85cqw; }
-.charged-hit .particle:nth-child(4) { animation: particleBurst 0.3s ease-out 0.03s forwards; --px: 1.63cqw; --py: 1.85cqw; }
-.charged-hit .particle:nth-child(5) { animation: particleBurst 0.3s ease-out 0.015s forwards; --px: 2.22cqw; --py: 0cqw; }
-.charged-hit .particle:nth-child(6) { animation: particleBurst 0.3s ease-out 0.025s forwards; --px: -2.22cqw; --py: 0cqw; }
+.charged-hit .particle:nth-child(1) { animation: particleBurstGravity 0.38s ease-out forwards; --px: -1.85cqw; --py: -1.85cqw; }
+.charged-hit .particle:nth-child(2) { animation: particleBurstGravity 0.38s ease-out 0.02s forwards; --px: 1.85cqw; --py: -1.48cqw; }
+.charged-hit .particle:nth-child(3) { animation: particleBurstGravity 0.38s ease-out 0.01s forwards; --px: -1.48cqw; --py: 1.85cqw; }
+.charged-hit .particle:nth-child(4) { animation: particleBurstGravity 0.38s ease-out 0.03s forwards; --px: 1.63cqw; --py: 1.85cqw; }
+.charged-hit .particle:nth-child(5) { animation: particleBurstGravity 0.38s ease-out 0.015s forwards; --px: 2.22cqw; --py: 0cqw; }
+.charged-hit .particle:nth-child(6) { animation: particleBurstGravity 0.38s ease-out 0.025s forwards; --px: -2.22cqw; --py: 0cqw; }
+
 
 /* ============================================
    CHARGED KEYFRAMES
    ============================================ */
 
-/* Core flash with brief "hitlag hold" at peak scale */
 @keyframes chargedCoreFlash {
   0% {
     transform: translate(-50%, -50%) rotateY(var(--charged-ring-tilt-signed, var(--charged-ring-tilt))) scale(0);
@@ -472,7 +778,6 @@
     transform: translate(-50%, -50%) rotateY(var(--charged-ring-tilt-signed, var(--charged-ring-tilt))) scale(1.8);
     opacity: 1;
   }
-  /* Brief hold simulates hitlag feel */
   45% {
     transform: translate(-50%, -50%) rotateY(var(--charged-ring-tilt-signed, var(--charged-ring-tilt))) scale(1.6);
     opacity: 0.95;
@@ -546,11 +851,120 @@
   }
 }
 
+@keyframes chargedBloomGlow {
+  0% {
+    transform: translate(-50%, -50%) scale(0.2);
+    opacity: 0.9;
+  }
+  20% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.75;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.3);
+    opacity: 0.4;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.6);
+    opacity: 0;
+  }
+}
+
+@keyframes chargedHeldCore {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 1;
+  }
+  15% {
+    transform: translate(-50%, -50%) scale(1.2);
+    opacity: 1;
+  }
+  40% {
+    transform: translate(-50%, -50%) scale(1.0);
+    opacity: 1;
+  }
+  70% {
+    transform: translate(-50%, -50%) scale(0.85);
+    opacity: 0.7;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(0.4);
+    opacity: 0;
+  }
+}
+
+@keyframes chargedDirectionalStreak {
+  0% {
+    transform: translate(-50%, -50%) scaleX(0) scaleY(1);
+    opacity: 0.95;
+  }
+  30% {
+    transform: translate(-50%, -50%) scaleX(1.3) scaleY(0.7);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translate(-50%, -50%) scaleX(1.8) scaleY(0.15);
+    opacity: 0;
+  }
+}
+
+@keyframes chargedTertiaryRing {
+  0% {
+    transform: translate(-50%, -50%) rotateY(var(--charged-ring-tilt-signed, var(--charged-ring-tilt))) scale(0);
+    opacity: 0.5;
+    border-width: clamp(2px, 0.14cqw, 4px);
+  }
+  40% {
+    opacity: 0.35;
+  }
+  100% {
+    transform: translate(-50%, -50%) rotateY(var(--charged-ring-tilt-signed, var(--charged-ring-tilt))) scale(3.2);
+    opacity: 0;
+    border-width: clamp(0.5px, 0.03cqw, 1px);
+  }
+}
+
+@keyframes chargedAfterglow {
+  0% {
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.25;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+
 /* ============================================
    SHARED KEYFRAMES - Sparks & Particles
    ============================================ */
 
-/* Sparks burst outward with brief stretch at 15% for motion-streak feel */
+/* Sparks burst outward — elongated along trajectory for speed-streak feel */
+@keyframes sparkBurstElongated {
+  0% {
+    opacity: 0.95;
+    transform: translate(-50%, -50%) rotate(var(--spark-angle, 0deg)) scale(0.7) scaleX(1);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(calc(-50% + var(--tx) * 0.15), calc(-50% + var(--ty) * 0.15)) rotate(var(--spark-angle, 0deg)) scale(1.2) scaleX(2.5);
+  }
+  40% {
+    opacity: 0.85;
+    transform: translate(calc(-50% + var(--tx) * 0.5), calc(-50% + var(--ty) * 0.5)) rotate(var(--spark-angle, 0deg)) scale(0.9) scaleX(2);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) rotate(var(--spark-angle, 0deg)) scale(0.2) scaleX(1.5);
+  }
+}
+
+/* Legacy round spark burst (kept for compatibility) */
 @keyframes sparkBurst {
   0% {
     opacity: 0.95;
@@ -570,7 +984,27 @@
   }
 }
 
-/* Particles scatter as small debris */
+/* Particles with simulated gravity — arc downward as they scatter */
+@keyframes particleBurstGravity {
+  0% {
+    opacity: 0.85;
+    transform: translate(-50%, -50%) scale(0.5);
+  }
+  25% {
+    opacity: 1;
+    transform: translate(calc(-50% + var(--px) * 0.35), calc(-50% + var(--py) * 0.35 - 0.3cqw)) scale(1);
+  }
+  60% {
+    opacity: 0.7;
+    transform: translate(calc(-50% + var(--px) * 0.7), calc(-50% + var(--py) * 0.7 - 0.1cqw)) scale(0.7);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--px)), calc(-50% + var(--py) + 0.4cqw)) scale(0.15);
+  }
+}
+
+/* Legacy non-gravity particle burst */
 @keyframes particleBurst {
   0% {
     opacity: 0.85;
@@ -586,14 +1020,11 @@
   }
 }
 
+
 /* ============================================
    COUNTER HIT OVERRIDES - Gold/Yellow theme
-   Applied when opponent is caught during startup
    ============================================ */
 
-/* --- Counter Slap --- */
-
-/* Counter slap core flash - golden center */
 .hit-ring-wrapper.slap-hit.counter-hit .hit-ring::before {
   background: radial-gradient(circle,
     rgba(255, 255, 255, 1) 0%,
@@ -602,12 +1033,10 @@
     transparent 100%);
 }
 
-/* Counter slap ring - golden */
 .hit-ring-wrapper.slap-hit.counter-hit .hit-ring::after {
   border-color: rgba(255, 220, 100, 0.9);
 }
 
-/* Counter slap squash - warm gold glow */
 .hit-ring-wrapper.slap-hit.counter-hit::before {
   background: radial-gradient(ellipse,
     rgba(255, 250, 200, 0.6) 0%,
@@ -615,9 +1044,6 @@
     transparent 75%);
 }
 
-/* --- Counter Charged --- */
-
-/* Counter charged core flash - deep golden */
 .hit-ring-wrapper.charged-hit.counter-hit .hit-ring::before {
   background: radial-gradient(circle,
     rgba(255, 255, 255, 1) 0%,
@@ -627,63 +1053,80 @@
     transparent 100%);
 }
 
-/* Counter charged ring - golden with glow */
 .hit-ring-wrapper.charged-hit.counter-hit .hit-ring::after {
   border-color: rgba(255, 220, 100, 0.9);
   box-shadow: 0 0 8px rgba(255, 215, 0, 0.4), 0 0 16px rgba(255, 200, 0, 0.15);
 }
 
-/* Counter charged secondary ring - golden */
 .charged-hit.counter-hit .hit-shockwave-secondary {
   border-color: rgba(255, 220, 100, 0.65);
   box-shadow: 0 0 6px rgba(255, 215, 0, 0.25);
 }
 
-/* Counter charged impact cross - warm gold cross */
 .hit-ring-wrapper.charged-hit.counter-hit::before {
   background:
-    linear-gradient(0deg,
-      transparent 42%,
-      rgba(255, 245, 180, 0.55) 47%,
-      rgba(255, 245, 180, 0.55) 53%,
-      transparent 58%),
-    linear-gradient(90deg,
-      transparent 42%,
-      rgba(255, 245, 180, 0.55) 47%,
-      rgba(255, 245, 180, 0.55) 53%,
-      transparent 58%);
+    linear-gradient(0deg, transparent 42%, rgba(255, 245, 180, 0.55) 47%, rgba(255, 245, 180, 0.55) 53%, transparent 58%),
+    linear-gradient(90deg, transparent 42%, rgba(255, 245, 180, 0.55) 47%, rgba(255, 245, 180, 0.55) 53%, transparent 58%);
 }
 
-/* --- Counter Speed Lines (both slap & charged) - golden --- */
 .slap-hit.counter-hit .hit-speed-line,
 .charged-hit.counter-hit .hit-speed-line {
-  background: linear-gradient(to top,
-    transparent 0%,
-    rgba(255, 230, 120, 0.9) 35%,
-    rgba(255, 255, 230, 0.95) 100%);
+  background: linear-gradient(to top, transparent 0%, rgba(255, 230, 120, 0.9) 35%, rgba(255, 255, 230, 0.95) 100%);
 }
 
-/* --- Counter Sparks - golden glow --- */
 .slap-hit.counter-hit .spark,
 .charged-hit.counter-hit .spark {
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 20%, rgba(255, 225, 130, 0.85) 100%);
+  background: radial-gradient(ellipse, rgba(255, 255, 255, 0.95) 15%, rgba(255, 225, 130, 0.85) 100%);
   box-shadow: 0 0 5px rgba(255, 215, 0, 0.8), 0 0 10px rgba(255, 200, 0, 0.4);
 }
 
-/* --- Counter Particles - golden --- */
 .counter-hit .particle {
   background: radial-gradient(circle, #FFE066 30%, rgba(255, 200, 50, 0.6) 100%);
   box-shadow: 0 0 4px rgba(255, 215, 0, 0.6);
 }
 
+/* Counter bloom/afterglow overrides */
+.counter-hit .hit-bloom-glow {
+  background: radial-gradient(circle,
+    rgba(255, 240, 160, 0.85) 0%,
+    rgba(255, 215, 0, 0.5) 35%,
+    transparent 70%) !important;
+}
+
+.counter-hit .hit-afterglow {
+  background: radial-gradient(circle,
+    rgba(255, 215, 0, 0.25) 0%,
+    rgba(255, 200, 50, 0.1) 40%,
+    transparent 70%) !important;
+}
+
+.counter-hit .hit-held-core {
+  background: radial-gradient(circle,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(255, 250, 200, 0.95) 30%,
+    rgba(255, 230, 100, 0.6) 70%,
+    transparent 100%) !important;
+}
+
+.counter-hit .hit-directional-streak {
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(255, 230, 120, 0.5) 20%,
+    rgba(255, 255, 230, 0.7) 50%,
+    rgba(255, 230, 120, 0.5) 80%,
+    transparent 100%) !important;
+}
+
+.counter-hit .hit-tertiary-ring {
+  border-color: rgba(255, 220, 100, 0.4) !important;
+  box-shadow: 0 0 clamp(3px, 0.25cqw, 6px) rgba(255, 215, 0, 0.2) !important;
+}
+
+
 /* ============================================
    PUNISH OVERRIDES - Purple theme
-   Applied when hitting opponent during recovery
    ============================================ */
 
-/* --- Punish Slap --- */
-
-/* Punish slap core flash - purple center */
 .hit-ring-wrapper.slap-hit.punish-hit .hit-ring::before {
   background: radial-gradient(circle,
     rgba(255, 255, 255, 1) 0%,
@@ -692,7 +1135,6 @@
     transparent 100%);
 }
 
-/* Punish slap squash - purple glow */
 .hit-ring-wrapper.slap-hit.punish-hit::before {
   background: radial-gradient(ellipse,
     rgba(240, 225, 255, 0.6) 0%,
@@ -700,15 +1142,11 @@
     transparent 75%);
 }
 
-/* Punish slap ring - purple */
 .hit-ring-wrapper.slap-hit.punish-hit .hit-ring::after {
   border-color: rgba(180, 140, 255, 0.9);
   box-shadow: 0 0 0 clamp(1px, 0.09cqw, 2px) rgba(0, 0, 0, 0.2), 0 0 clamp(4px, 0.37cqw, 9px) rgba(160, 100, 255, 0.45), 0 0 clamp(9px, 0.74cqw, 18px) rgba(140, 80, 220, 0.18);
 }
 
-/* --- Punish Charged --- */
-
-/* Punish charged core flash - deep purple */
 .hit-ring-wrapper.charged-hit.punish-hit .hit-ring::before {
   background: radial-gradient(circle,
     rgba(255, 255, 255, 1) 0%,
@@ -718,60 +1156,79 @@
     transparent 100%);
 }
 
-/* Punish charged ring - purple with glow */
 .hit-ring-wrapper.charged-hit.punish-hit .hit-ring::after {
   display: block;
   border-color: rgba(180, 140, 255, 0.9);
   box-shadow: 0 0 8px rgba(160, 100, 255, 0.5), 0 0 16px rgba(140, 80, 220, 0.25);
 }
 
-/* Punish charged secondary ring - purple */
 .charged-hit.punish-hit .hit-shockwave-secondary {
   border-color: rgba(180, 140, 255, 0.7);
   box-shadow: 0 0 6px rgba(160, 100, 255, 0.4);
 }
 
-/* Punish charged impact cross - purple cross */
 .hit-ring-wrapper.charged-hit.punish-hit::before {
   background:
-    linear-gradient(0deg,
-      transparent 42%,
-      rgba(220, 200, 255, 0.55) 47%,
-      rgba(220, 200, 255, 0.55) 53%,
-      transparent 58%),
-    linear-gradient(90deg,
-      transparent 42%,
-      rgba(220, 200, 255, 0.55) 47%,
-      rgba(220, 200, 255, 0.55) 53%,
-      transparent 58%);
+    linear-gradient(0deg, transparent 42%, rgba(220, 200, 255, 0.55) 47%, rgba(220, 200, 255, 0.55) 53%, transparent 58%),
+    linear-gradient(90deg, transparent 42%, rgba(220, 200, 255, 0.55) 47%, rgba(220, 200, 255, 0.55) 53%, transparent 58%);
 }
 
-/* --- Punish Speed Lines (both slap & charged) - purple --- */
 .slap-hit.punish-hit .hit-speed-line,
 .charged-hit.punish-hit .hit-speed-line {
-  background: linear-gradient(to top,
-    transparent 0%,
-    rgba(190, 160, 255, 0.9) 35%,
-    rgba(240, 230, 255, 0.95) 100%);
+  background: linear-gradient(to top, transparent 0%, rgba(190, 160, 255, 0.9) 35%, rgba(240, 230, 255, 0.95) 100%);
 }
 
-/* --- Punish Sparks - purple glow --- */
 .slap-hit.punish-hit .spark,
 .charged-hit.punish-hit .spark {
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 20%, rgba(200, 170, 255, 0.9) 100%);
+  background: radial-gradient(ellipse, rgba(255, 255, 255, 0.95) 15%, rgba(200, 170, 255, 0.9) 100%);
   box-shadow: 0 0 5px rgba(180, 140, 255, 0.8), 0 0 10px rgba(140, 80, 220, 0.5);
 }
 
-/* --- Punish Particles - purple --- */
 .punish-hit .particle {
   background: radial-gradient(circle, #B388FF 30%, rgba(140, 80, 220, 0.7) 100%);
   box-shadow: 0 0 4px rgba(160, 100, 255, 0.7);
 }
 
+/* Punish bloom/afterglow overrides */
+.punish-hit .hit-bloom-glow {
+  background: radial-gradient(circle,
+    rgba(200, 170, 255, 0.8) 0%,
+    rgba(160, 100, 255, 0.45) 35%,
+    transparent 70%) !important;
+}
+
+.punish-hit .hit-afterglow {
+  background: radial-gradient(circle,
+    rgba(180, 140, 255, 0.25) 0%,
+    rgba(140, 80, 220, 0.1) 40%,
+    transparent 70%) !important;
+}
+
+.punish-hit .hit-held-core {
+  background: radial-gradient(circle,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(240, 225, 255, 0.95) 30%,
+    rgba(180, 140, 255, 0.6) 70%,
+    transparent 100%) !important;
+}
+
+.punish-hit .hit-directional-streak {
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(190, 160, 255, 0.5) 20%,
+    rgba(240, 230, 255, 0.7) 50%,
+    rgba(190, 160, 255, 0.5) 80%,
+    transparent 100%) !important;
+}
+
+.punish-hit .hit-tertiary-ring {
+  border-color: rgba(180, 140, 255, 0.4) !important;
+  box-shadow: 0 0 clamp(3px, 0.25cqw, 6px) rgba(160, 100, 255, 0.2) !important;
+}
+
+
 /* ============================================
    BURST HIT OVERRIDES (Slap Hit 3 Combo Finisher)
-   Bigger, heavier version of slap-hit — sells the weight
-   of the final combo blow. Uses slap-hit as base.
    ============================================ */
 
 .hit-ring-wrapper.slap-hit.burst-hit {
@@ -779,14 +1236,14 @@
   height: 2.47cqw;
 }
 
-/* Wider squash oval — heavier impact impression */
+/* Wider squash oval */
 .slap-hit.burst-hit::before {
   width: 150%;
   height: 55%;
   animation: burstSquash 0.22s ease-out forwards;
 }
 
-/* Core flash — larger and holds peak longer */
+/* Core flash — larger, holds peak longer */
 .slap-hit.burst-hit .hit-ring::before {
   width: 95%;
   height: 95%;
@@ -798,14 +1255,14 @@
   animation: burstCoreFlash 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
-/* Expanding ring — larger final scale */
+/* Expanding ring — larger */
 .slap-hit.burst-hit .hit-ring::after {
   border-width: clamp(3px, 0.20cqw, 5px);
   box-shadow: 0 0 0 clamp(1px, 0.12cqw, 3px) rgba(0, 0, 0, 0.2), 0 0 clamp(6px, 0.48cqw, 12px) rgba(255, 150, 55, 0.5), 0 0 clamp(12px, 0.96cqw, 24px) rgba(255, 95, 40, 0.2);
   animation: burstRingExpand 0.32s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-/* Enable secondary shockwave for burst hits */
+/* Enable secondary shockwave */
 .slap-hit.burst-hit .hit-shockwave-secondary {
   display: block;
   width: 2.47cqw;
@@ -815,14 +1272,39 @@
   animation: burstSecondaryRing 0.38s cubic-bezier(0.22, 1, 0.36, 1) 0.05s forwards;
 }
 
-/* Speed lines — thicker, longer, more dramatic */
+/* Burst bloom glow */
+.slap-hit.burst-hit .hit-bloom-glow {
+  width: 240%;
+  height: 240%;
+  animation: chargedBloomGlow 0.45s ease-out forwards;
+}
+
+/* Burst held core */
+.slap-hit.burst-hit .hit-held-core {
+  width: 50%;
+  height: 50%;
+  animation: chargedHeldCore 0.35s ease-out forwards;
+}
+
+/* Burst directional streak */
+.slap-hit.burst-hit .hit-directional-streak {
+  width: 340%;
+  height: 32%;
+  animation: chargedDirectionalStreak 0.25s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Burst afterglow */
+.slap-hit.burst-hit .hit-afterglow {
+  width: 260%;
+  height: 260%;
+  animation: chargedAfterglow 0.55s ease-out 0.08s forwards;
+}
+
+/* Speed lines — thicker, longer */
 .slap-hit.burst-hit .hit-speed-line {
   width: 0.14cqw;
   height: 0.64cqw;
-  background: linear-gradient(to top,
-    transparent 0%,
-    rgba(255, 180, 60, 0.95) 30%,
-    rgba(255, 255, 255, 1) 100%);
+  background: linear-gradient(to top, transparent 0%, rgba(255, 180, 60, 0.95) 30%, rgba(255, 255, 255, 1) 100%);
   animation: burstSpeedLine 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
@@ -835,35 +1317,36 @@
 .slap-hit.burst-hit .hit-speed-line:nth-child(7) { --angle: 270deg; animation-delay: 0.004s; }
 .slap-hit.burst-hit .hit-speed-line:nth-child(8) { --angle: 315deg; animation-delay: 0.014s; }
 
-/* Sparks — bigger, fly further */
+/* Sparks */
 .slap-hit.burst-hit .spark {
-  width: 0.36cqw;
-  height: 0.36cqw;
-  animation: sparkBurst 0.30s ease-out forwards;
+  width: 0.42cqw;
+  height: 0.16cqw;
+  animation: sparkBurstElongated 0.30s ease-out forwards;
   box-shadow: 0 0 5px rgba(255, 180, 60, 0.85), 0 0 10px rgba(255, 100, 40, 0.5);
 }
 
-.slap-hit.burst-hit .spark:nth-child(1) { --tx: 2.22cqw; --ty: -1.85cqw; }
-.slap-hit.burst-hit .spark:nth-child(2) { --tx: -2.22cqw; --ty: -1.48cqw; animation-delay: 0.02s; }
-.slap-hit.burst-hit .spark:nth-child(3) { --tx: 1.85cqw; --ty: 2.22cqw; animation-delay: 0.01s; }
-.slap-hit.burst-hit .spark:nth-child(4) { --tx: -1.85cqw; --ty: 1.85cqw; animation-delay: 0.03s; }
-.slap-hit.burst-hit .spark:nth-child(5) { --tx: 2.59cqw; --ty: 0.37cqw; animation-delay: 0.005s; }
-.slap-hit.burst-hit .spark:nth-child(6) { --tx: -2.59cqw; --ty: -0.37cqw; animation-delay: 0.025s; }
-.slap-hit.burst-hit .spark:nth-child(7) { --tx: 0.74cqw; --ty: -2.59cqw; animation-delay: 0.015s; }
-.slap-hit.burst-hit .spark:nth-child(8) { --tx: -0.74cqw; --ty: 2.59cqw; animation-delay: 0.035s; }
+.slap-hit.burst-hit .spark:nth-child(1) { --tx: 2.22cqw; --ty: -1.85cqw; --spark-angle: -40deg; }
+.slap-hit.burst-hit .spark:nth-child(2) { --tx: -2.22cqw; --ty: -1.48cqw; --spark-angle: 146deg; animation-delay: 0.02s; }
+.slap-hit.burst-hit .spark:nth-child(3) { --tx: 1.85cqw; --ty: 2.22cqw; --spark-angle: 50deg; animation-delay: 0.01s; }
+.slap-hit.burst-hit .spark:nth-child(4) { --tx: -1.85cqw; --ty: 1.85cqw; --spark-angle: 135deg; animation-delay: 0.03s; }
+.slap-hit.burst-hit .spark:nth-child(5) { --tx: 2.59cqw; --ty: 0.37cqw; --spark-angle: 8deg; animation-delay: 0.005s; }
+.slap-hit.burst-hit .spark:nth-child(6) { --tx: -2.59cqw; --ty: -0.37cqw; --spark-angle: 172deg; animation-delay: 0.025s; }
+.slap-hit.burst-hit .spark:nth-child(7) { --tx: 0.74cqw; --ty: -2.59cqw; --spark-angle: -74deg; animation-delay: 0.015s; }
+.slap-hit.burst-hit .spark:nth-child(8) { --tx: -0.74cqw; --ty: 2.59cqw; --spark-angle: 106deg; animation-delay: 0.035s; }
 
-/* Particles — 6 for heavier debris */
+/* Particles with gravity */
 .slap-hit.burst-hit .particle {
   width: 0.26cqw;
   height: 0.26cqw;
 }
 
-.slap-hit.burst-hit .particle:nth-child(1) { animation: particleBurst 0.30s ease-out forwards; --px: -1.85cqw; --py: -1.85cqw; }
-.slap-hit.burst-hit .particle:nth-child(2) { animation: particleBurst 0.30s ease-out 0.02s forwards; --px: 1.85cqw; --py: -1.48cqw; }
-.slap-hit.burst-hit .particle:nth-child(3) { animation: particleBurst 0.30s ease-out 0.01s forwards; --px: -1.48cqw; --py: 1.85cqw; }
-.slap-hit.burst-hit .particle:nth-child(4) { animation: particleBurst 0.30s ease-out 0.03s forwards; --px: 1.63cqw; --py: 1.85cqw; }
-.slap-hit.burst-hit .particle:nth-child(5) { animation: particleBurst 0.30s ease-out 0.015s forwards; --px: 2.22cqw; --py: 0cqw; }
-.slap-hit.burst-hit .particle:nth-child(6) { animation: particleBurst 0.30s ease-out 0.025s forwards; --px: -2.22cqw; --py: 0cqw; }
+.slap-hit.burst-hit .particle:nth-child(1) { animation: particleBurstGravity 0.36s ease-out forwards; --px: -1.85cqw; --py: -1.85cqw; }
+.slap-hit.burst-hit .particle:nth-child(2) { animation: particleBurstGravity 0.36s ease-out 0.02s forwards; --px: 1.85cqw; --py: -1.48cqw; }
+.slap-hit.burst-hit .particle:nth-child(3) { animation: particleBurstGravity 0.36s ease-out 0.01s forwards; --px: -1.48cqw; --py: 1.85cqw; }
+.slap-hit.burst-hit .particle:nth-child(4) { animation: particleBurstGravity 0.36s ease-out 0.03s forwards; --px: 1.63cqw; --py: 1.85cqw; }
+.slap-hit.burst-hit .particle:nth-child(5) { animation: particleBurstGravity 0.36s ease-out 0.015s forwards; --px: 2.22cqw; --py: 0cqw; }
+.slap-hit.burst-hit .particle:nth-child(6) { animation: particleBurstGravity 0.36s ease-out 0.025s forwards; --px: -2.22cqw; --py: 0cqw; }
+
 
 /* ============================================
    BURST HIT KEYFRAMES
@@ -951,13 +1434,19 @@
   }
 }
 
-/* --- Cinematic kill freeze: pause all animations at their current frame --- */
+
+/* --- Cinematic kill freeze: pause all animations --- */
 .cinematic-frozen,
 .cinematic-frozen *,
 .cinematic-frozen .hit-ring,
 .cinematic-frozen .hit-shockwave-secondary,
 .cinematic-frozen .hit-speed-line,
 .cinematic-frozen .spark,
-.cinematic-frozen .particle {
+.cinematic-frozen .particle,
+.cinematic-frozen .hit-bloom-glow,
+.cinematic-frozen .hit-held-core,
+.cinematic-frozen .hit-directional-streak,
+.cinematic-frozen .hit-tertiary-ring,
+.cinematic-frozen .hit-afterglow {
   animation-play-state: paused !important;
 }

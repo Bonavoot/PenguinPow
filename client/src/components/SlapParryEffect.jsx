@@ -29,7 +29,13 @@ const SlapParryEffect = ({ position }) => {
 
   return (
     <ParryEffectContainer $x={position.x} $y={position.y}>
-      <div className="slap-parry-ring"></div>
+      <div className="slap-parry-wrapper">
+        <div className="slap-parry-bloom" />
+        <div className="slap-parry-ring" />
+        <div className="slap-parry-impact-cross" />
+        <div className="slap-parry-held-core" />
+        <div className="slap-parry-afterglow" />
+      </div>
     </ParryEffectContainer>
   );
 };
