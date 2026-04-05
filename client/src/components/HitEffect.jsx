@@ -83,17 +83,16 @@ const HitEffect = ({ position }) => {
 
     setActiveEffects((prev) => [...prev, newEffect]);
 
-    if (isHeavy) {
-      const frameType = isCinematic ? 'cinematic' : (attackType === 'charged' ? 'charged' : 'burst');
-      setImpactFrame(frameType);
+    if (isCinematic) {
+      setImpactFrame('cinematic');
       if (impactFrameTimeoutRef.current) clearTimeout(impactFrameTimeoutRef.current);
       impactFrameTimeoutRef.current = setTimeout(() => {
         setImpactFrame(null);
         impactFrameTimeoutRef.current = null;
-      }, isCinematic ? 90 : 55);
+      }, 90);
     }
 
-    if (isHeavy) {
+    if (isCinematic || attackType === 'charged') {
       if (!gameSceneRef.current) {
         gameSceneRef.current = document.querySelector('.game-scene');
       }

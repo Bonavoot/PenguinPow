@@ -13,22 +13,6 @@
   z-index: 9999;
 }
 
-.impact-frame--charged {
-  background: radial-gradient(ellipse at 50% 50%,
-    rgba(255, 235, 190, 0.18) 0%,
-    rgba(255, 220, 160, 0.08) 40%,
-    transparent 75%);
-  animation: impactFrameSubtle 0.05s ease-out forwards;
-}
-
-.impact-frame--burst {
-  background: radial-gradient(ellipse at 50% 50%,
-    rgba(255, 230, 180, 0.15) 0%,
-    rgba(255, 215, 150, 0.06) 45%,
-    transparent 75%);
-  animation: impactFrameSubtle 0.045s ease-out forwards;
-}
-
 .impact-frame--cinematic {
   background: radial-gradient(ellipse at 50% 50%,
     rgba(255, 245, 220, 0.45) 0%,
@@ -36,11 +20,6 @@
     rgba(255, 220, 160, 0.08) 55%,
     transparent 85%);
   animation: impactFrameCinematic 0.08s ease-out forwards;
-}
-
-@keyframes impactFrameSubtle {
-  0% { opacity: 1; }
-  100% { opacity: 0; }
 }
 
 @keyframes impactFrameCinematic {
@@ -1272,32 +1251,56 @@
   animation: burstSecondaryRing 0.38s cubic-bezier(0.22, 1, 0.36, 1) 0.05s forwards;
 }
 
-/* Burst bloom glow */
+/* Burst bloom glow — same as charged */
 .slap-hit.burst-hit .hit-bloom-glow {
-  width: 240%;
-  height: 240%;
-  animation: chargedBloomGlow 0.45s ease-out forwards;
+  width: 260%;
+  height: 260%;
+  background: radial-gradient(circle,
+    rgba(255, 240, 180, 0.85) 0%,
+    rgba(255, 200, 80, 0.5) 30%,
+    rgba(255, 140, 40, 0.2) 55%,
+    transparent 75%);
+  animation: chargedBloomGlow 0.5s ease-out forwards;
 }
 
-/* Burst held core */
+/* Burst held core — same as charged */
 .slap-hit.burst-hit .hit-held-core {
   width: 50%;
   height: 50%;
-  animation: chargedHeldCore 0.35s ease-out forwards;
+  background: radial-gradient(circle,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(255, 255, 255, 0.98) 20%,
+    rgba(255, 250, 220, 0.8) 50%,
+    rgba(255, 230, 150, 0.3) 80%,
+    transparent 100%);
+  box-shadow: 0 0 clamp(4px, 0.3cqw, 8px) rgba(255, 255, 255, 0.6);
+  animation: chargedHeldCore 0.4s ease-out forwards;
 }
 
-/* Burst directional streak */
+/* Burst directional streak — same as charged */
 .slap-hit.burst-hit .hit-directional-streak {
-  width: 340%;
-  height: 32%;
-  animation: chargedDirectionalStreak 0.25s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  width: 360%;
+  height: 35%;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(255, 220, 120, 0.4) 15%,
+    rgba(255, 255, 255, 0.8) 45%,
+    rgba(255, 255, 255, 0.8) 55%,
+    rgba(255, 220, 120, 0.4) 85%,
+    transparent 100%);
+  animation: chargedDirectionalStreak 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-/* Burst afterglow */
+/* Burst afterglow — same as charged */
 .slap-hit.burst-hit .hit-afterglow {
-  width: 260%;
-  height: 260%;
-  animation: chargedAfterglow 0.55s ease-out 0.08s forwards;
+  width: 280%;
+  height: 280%;
+  background: radial-gradient(circle,
+    rgba(255, 200, 100, 0.3) 0%,
+    rgba(255, 160, 60, 0.15) 30%,
+    rgba(255, 120, 40, 0.05) 55%,
+    transparent 75%);
+  animation: chargedAfterglow 0.65s ease-out 0.1s forwards;
 }
 
 /* Speed lines — thicker, longer */
@@ -1433,7 +1436,6 @@
     transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-2.10cqw) scaleY(1.15);
   }
 }
-
 
 /* --- Cinematic kill freeze: pause all animations --- */
 .cinematic-frozen,

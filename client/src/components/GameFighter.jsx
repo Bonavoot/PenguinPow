@@ -1790,6 +1790,18 @@ const GameFighter = ({
           cinematicKill: data.cinematicKill || false,
           cinematicHitstopMs: data.cinematicKill ? 550 : 0,
         });
+
+        const isBurst = data.attackType === "slap" && data.stringPos === 3;
+        const hitFacing = data.facing || 1;
+        const facingOffsetPx = (hitFacing === 1 ? -8 : -3) * 12.8;
+        const sparkOpts = { x: data.x + 70 + facingOffsetPx, y: PLAYER_MID_Y, facing: hitFacing };
+        if (data.attackType === "charged") {
+          emitParticles("hitSparkCharged", sparkOpts);
+        } else if (isBurst) {
+          emitParticles("hitSparkBurst", sparkOpts);
+        } else {
+          emitParticles("hitSparkSlap", sparkOpts);
+        }
       }
     };
     socket.on("player_hit", handlePlayerHit);
