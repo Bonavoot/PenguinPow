@@ -168,7 +168,7 @@ const HudShell = styled.div`
   align-items: flex-start;
   justify-content: space-between;
   padding: clamp(7px, 1.2cqh, 12px) clamp(6px, 1cqw, 14px);
-  padding-top: clamp(9px, 1.6cqh, 16px);
+  padding-top: clamp(16px, 2.4cqh, 26px);
   opacity: ${(p) => (p.$matchOver ? 0.88 : 1)};
   filter: ${(p) =>
     p.$matchOver
