@@ -125,7 +125,9 @@ export const TintedImage = styled.img
   }))``;
 
 export const getFighterPopFilter = (props) => {
-  const base = "drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000)";
+  const outline = "drop-shadow(0 1px clamp(1px, 0.1cqw, 3px) rgba(8, 4, 2, 0.85))";
+  const rim = "drop-shadow(0 -1px clamp(0.5px, 0.05cqw, 1.5px) rgba(255, 250, 235, 0.1))";
+  const base = `${outline} ${rim}`;
 
   if (props.$isAtTheRopes) {
     return `${base} drop-shadow(0 0 8px rgba(255, 50, 50, 0.7))`;

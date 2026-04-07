@@ -379,22 +379,9 @@ body {
   --neg-text-ol: clamp(-4px, -0.15cqw, -2px);
   --border-w: clamp(2px, 0.16cqw, 4px);
 
-  /* ── Visual grading — anime-fighter contrast hierarchy ── */
-  --arena-map-filter: brightness(0.88) saturate(0.92) contrast(1.08);
-  --arena-ambient-top: rgba(0, 0, 0, 0.18);
-  --arena-ambient-bottom: rgba(0, 0, 0, 0.25);
-  --arena-tone-center: rgba(255, 230, 155, 0.09);
-  --arena-tone-center-mid: rgba(255, 230, 155, 0.022);
-  --arena-tone-edge: rgba(0, 0, 0, 0.16);
-  --arena-tone-top: rgba(0, 0, 0, 0.07);
-  --arena-tone-mid: rgba(0, 0, 0, 0.035);
-  --arena-tone-bottom: rgba(0, 0, 0, 0.18);
-  --arena-vignette-mid: rgba(0, 0, 0, 0.13);
-  --arena-vignette-edge: rgba(0, 0, 0, 0.32);
-  --arena-grain-light: rgba(255, 255, 255, 0.007);
-  --arena-grain-dark: rgba(0, 0, 0, 0.014);
-  /* Dohyo grade — desaturated stage so fighters & effects pop against it */
-  --dohyo-filter: brightness(0.95) saturate(0.94) contrast(1.1);
+  /* ── Visual grading — clean contrast hierarchy ── */
+  --arena-map-filter: brightness(0.82) saturate(0.88) contrast(1.02);
+  --dohyo-filter: brightness(1.03) saturate(1.06) contrast(1.06);
 
   /* ── Camera defaults — JS will drive these later for dynamic pan/zoom ── */
   --cam-scale: 1.305;
@@ -438,22 +425,11 @@ body {
   background-repeat: no-repeat;
   background-size: cover;
   background-position: center -5%;
-  filter: var(--arena-map-filter) url(#game-sharpen);
+  filter: var(--arena-map-filter);
   z-index: -1;
   isolation: isolate;
 }
 
-.ambient-overlay {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    180deg,
-    var(--arena-ambient-top) 0%,
-    var(--arena-ambient-bottom) 100%
-  );
-  pointer-events: none;
-  z-index: 0;
-}
 
 .dohyo-overlay {
   position: absolute;
@@ -492,43 +468,24 @@ body {
   filter: blur(12px);
 }
 
-/* Cheap post-processing passes to unify the look without blurs */
-.arena-tone-pass {
+/* Single consolidated lighting pass — warm spotlight + clean vignette */
+.arena-lighting {
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 6;
-  background: radial-gradient(
-      ellipse at 50% 55%,
-      var(--arena-tone-center) 0%,
-      var(--arena-tone-center-mid) 35%,
-      var(--arena-tone-edge) 100%
+  background:
+    radial-gradient(
+      ellipse 60% 50% at 50% 56%,
+      rgba(255, 242, 210, 0.07) 0%,
+      rgba(255, 238, 200, 0.02) 35%,
+      transparent 60%
     ),
-    linear-gradient(
-      180deg,
-      var(--arena-tone-top) 0%,
-      var(--arena-tone-mid) 35%,
-      var(--arena-tone-bottom) 100%
-    );
-}
-
-.arena-vignette-pass {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 7;
-  background: radial-gradient(
-      circle at 50% 50%,
-      rgba(0, 0, 0, 0) 48%,
-      var(--arena-vignette-mid) 76%,
-      var(--arena-vignette-edge) 100%
-    ),
-    repeating-linear-gradient(
-      0deg,
-      var(--arena-grain-light) 0px,
-      var(--arena-grain-light) 1px,
-      var(--arena-grain-dark) 2px,
-      var(--arena-grain-dark) 3px
+    radial-gradient(
+      ellipse at 50% 50%,
+      transparent 35%,
+      rgba(0, 0, 0, 0.2) 68%,
+      rgba(0, 0, 0, 0.48) 100%
     );
 }
 

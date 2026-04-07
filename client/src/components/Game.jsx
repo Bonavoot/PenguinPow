@@ -592,7 +592,6 @@ const Game = ({
         {/* Scene — everything inside moves together when the camera pans/zooms */}
         <div className="game-scene">
           <div className="game-map"></div>
-          <div className="ambient-overlay"></div>
           <CrowdLayer crowdEvent={crowdEvent} />
           <div className="dohyo-overlay"></div>
           <ParticleProvider>
@@ -625,8 +624,7 @@ const Game = ({
                 })}
             </div>
           </ParticleProvider>
-          <div className="arena-tone-pass" aria-hidden="true"></div>
-          <div className="arena-vignette-pass" aria-hidden="true"></div>
+          <div className="arena-lighting" aria-hidden="true"></div>
         </div>
         {/* HUD layer — viewport-fixed, unaffected by camera zoom/pan */}
         <div id="game-hud" className="game-hud"></div>

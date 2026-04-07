@@ -1655,13 +1655,14 @@ const PRESETS = {
     const dir = facing || 1;
     const cx = x;
     const cy = GAME_H - y;
+    const front = (cfg) => engine.spawn({ ...cfg, aboveFighters: true });
 
     // Starburst sparks — irregular star shapes radiating out
     for (let i = 0; i < 3; i++) {
       const angle = rand(-0.8, 0.8) + (dir === 1 ? Math.PI * 0.8 : Math.PI * 0.2);
       const spd = rand(120, 260);
       const size = rand(18, 30);
-      engine.spawn({
+      front({
         x: cx + rand(-6, 6),
         y: cy + rand(-8, 8),
         vx: Math.cos(angle) * spd + dir * rand(20, 60),
@@ -1686,7 +1687,7 @@ const PRESETS = {
     for (let i = 0; i < 2; i++) {
       const slashAngle = rand(0, Math.PI * 2);
       const size = rand(14, 22);
-      engine.spawn({
+      front({
         x: cx + rand(-10, 10),
         y: cy + rand(-10, 10),
         vx: dir * rand(30, 80),
@@ -1713,7 +1714,7 @@ const PRESETS = {
       const angle = rand(0, Math.PI * 2);
       const spd = rand(60, 140);
       const size = rand(12, 20);
-      engine.spawn({
+      front({
         x: cx + rand(-4, 4),
         y: cy + rand(-6, 6),
         vx: Math.cos(angle) * spd,
@@ -1738,7 +1739,7 @@ const PRESETS = {
     for (let i = 0; i < 5; i++) {
       const angle = rand(0, Math.PI * 2);
       const spd = rand(200, 400);
-      engine.spawn({
+      front({
         x: cx + rand(-3, 3),
         y: cy + rand(-3, 3),
         vx: Math.cos(angle) * spd + dir * rand(30, 60),
@@ -1763,13 +1764,14 @@ const PRESETS = {
     const dir = facing || 1;
     const cx = x;
     const cy = GAME_H - y;
+    const front = (cfg) => engine.spawn({ ...cfg, aboveFighters: true });
 
     // Large starburst sparks
     for (let i = 0; i < 5; i++) {
       const angle = rand(0, Math.PI * 2);
       const spd = rand(140, 320);
       const size = rand(26, 44);
-      engine.spawn({
+      front({
         x: cx + rand(-8, 8),
         y: cy + rand(-10, 10),
         vx: Math.cos(angle) * spd + dir * rand(20, 50),
@@ -1794,7 +1796,7 @@ const PRESETS = {
     for (let i = 0; i < 3; i++) {
       const slashAngle = rand(0, Math.PI * 2);
       const size = rand(20, 32);
-      engine.spawn({
+      front({
         x: cx + rand(-14, 14),
         y: cy + rand(-14, 14),
         vx: dir * rand(40, 100),
@@ -1821,7 +1823,7 @@ const PRESETS = {
       const angle = rand(0, Math.PI * 2);
       const spd = rand(80, 180);
       const size = rand(16, 28);
-      engine.spawn({
+      front({
         x: cx + rand(-6, 6),
         y: cy + rand(-8, 8),
         vx: Math.cos(angle) * spd,
@@ -1846,7 +1848,7 @@ const PRESETS = {
     for (let i = 0; i < 8; i++) {
       const angle = rand(0, Math.PI * 2);
       const spd = rand(250, 500);
-      engine.spawn({
+      front({
         x: cx + rand(-4, 4),
         y: cy + rand(-4, 4),
         vx: Math.cos(angle) * spd + dir * rand(20, 50),
@@ -1867,7 +1869,7 @@ const PRESETS = {
     }
 
     // Expanding organic ring (using cloud ring texture)
-    engine.spawn({
+    front({
       x: cx,
       y: cy,
       vx: 0, vy: 0, gravity: 0, drag: 1,
@@ -1916,6 +1918,7 @@ class Particle {
     this.groundY = Infinity;
     this.delay = 0;
     this.behindDohyo = false;
+    this.aboveFighters = false;
   }
 }
 
@@ -1925,6 +1928,8 @@ export class ParticleEngine {
     this.ctx = null;
     this.canvasBehind = null;
     this.ctxBehind = null;
+    this.canvasFront = null;
+    this.ctxFront = null;
     this.particles = [];
     this.textures = null;
     this._rafId = null;
@@ -1963,6 +1968,18 @@ export class ParticleEngine {
     this.ctxBehind.scale(physW / GAME_W, physH / GAME_H);
   }
 
+  initFront(canvas) {
+    this.canvasFront = canvas;
+    const dpr = Math.max(window.devicePixelRatio || 1, 2);
+    const rect = canvas.getBoundingClientRect();
+    const physW = Math.round(rect.width * dpr);
+    const physH = Math.round(rect.height * dpr);
+    canvas.width = physW;
+    canvas.height = physH;
+    this.ctxFront = canvas.getContext("2d");
+    this.ctxFront.scale(physW / GAME_W, physH / GAME_H);
+  }
+
   emit(presetName, opts) {
     const fn = PRESETS[presetName];
     if (fn) fn(this, opts);
@@ -1994,6 +2011,7 @@ export class ParticleEngine {
     p.groundY = cfg.groundY ?? Infinity;
     p.delay = cfg.delay ?? 0;
     p.behindDohyo = cfg.behindDohyo ?? false;
+    p.aboveFighters = cfg.aboveFighters ?? false;
   }
 
   _acquire() {
@@ -2066,11 +2084,12 @@ export class ParticleEngine {
   }
 
   _render() {
-    const { ctx, ctxBehind } = this;
+    const { ctx, ctxBehind, ctxFront } = this;
     if (!ctx) return;
 
     ctx.clearRect(0, 0, GAME_W, GAME_H);
     if (ctxBehind) ctxBehind.clearRect(0, 0, GAME_W, GAME_H);
+    if (ctxFront) ctxFront.clearRect(0, 0, GAME_W, GAME_H);
 
     for (let i = 0; i < this.particles.length; i++) {
       const p = this.particles[i];
@@ -2078,6 +2097,8 @@ export class ParticleEngine {
 
       if (p.behindDohyo && ctxBehind) {
         this._renderParticle(ctxBehind, p);
+      } else if (p.aboveFighters && ctxFront) {
+        this._renderParticle(ctxFront, p);
       } else {
         this._renderParticle(ctx, p);
       }
@@ -2093,5 +2114,7 @@ export class ParticleEngine {
     this.ctx = null;
     this.canvasBehind = null;
     this.ctxBehind = null;
+    this.canvasFront = null;
+    this.ctxFront = null;
   }
 }

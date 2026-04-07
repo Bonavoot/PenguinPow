@@ -6,6 +6,7 @@ const ParticleCtx = createContext(null);
 export function ParticleProvider({ children }) {
   const canvasRef = useRef(null);
   const canvasBehindRef = useRef(null);
+  const canvasFrontRef = useRef(null);
   const engineRef = useRef(null);
 
   useEffect(() => {
@@ -16,6 +17,9 @@ export function ParticleProvider({ children }) {
     engine.init(canvas);
     if (canvasBehindRef.current) {
       engine.initBehind(canvasBehindRef.current);
+    }
+    if (canvasFrontRef.current) {
+      engine.initFront(canvasFrontRef.current);
     }
     engineRef.current = engine;
 
@@ -51,6 +55,17 @@ export function ParticleProvider({ children }) {
       {children}
       <canvas
         ref={canvasRef}
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          pointerEvents: "none",
+          zIndex: 50,
+        }}
+      />
+      <canvas
+        ref={canvasFrontRef}
         style={{
           position: "absolute",
           inset: 0,

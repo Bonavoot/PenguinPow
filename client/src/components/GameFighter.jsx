@@ -51,7 +51,6 @@ import RawParryEffect from "./RawParryEffect";
 import { getGlobalVolume } from "./Settings";
 import { playBuffer, createCrossfadeLoop } from "../utils/audioEngine";
 import SnowEffect from "./SnowEffect";
-import ThemeOverlay from "./ThemeOverlay";
 import "./theme.css";
 import { SERVER_BROADCAST_HZ, DOHYO_LEFT_BOUNDARY, DOHYO_RIGHT_BOUNDARY } from "../constants";
 
@@ -3348,13 +3347,6 @@ const GameFighter = ({
 
   return (
     <div className="ui-container">
-      {/* Global visual theme overlay - optimized for performance */}
-      <ThemeOverlay
-        theme="edo-nightfall"
-        intensity={0.16}
-        lanterns={0.1}
-        zIndex={0}
-      />
       <SnowEffect
         mode={matchOver ? "envelope" : "snow"}
         winner={winner}
