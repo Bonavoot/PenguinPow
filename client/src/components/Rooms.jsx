@@ -1,58 +1,23 @@
 import { useContext, useEffect } from "react";
 import PropTypes from "prop-types";
-import styled, { keyframes, css } from "styled-components";
+import styled, { keyframes } from "styled-components";
 import Room from "./Room";
 import { SocketContext } from "../SocketContext";
 import { playButtonHoverSound, playButtonPressSound } from "../utils/soundUtils";
-import { SnowCap, IcicleRow, Icicle } from "./Snowfall";
+import { C, fadeIn, fadeUp } from "./menuTheme";
 
 // ============================================
 // ANIMATIONS
 // ============================================
 
-const fadeIn = keyframes`
-  0% {
+const panelDrop = keyframes`
+  from {
     opacity: 0;
+    transform: translateY(-12px) scale(0.985);
   }
-  100% {
-    opacity: 1;
-  }
-`;
-
-const bannerDrop = keyframes`
-  0% {
-    opacity: 0;
-    transform: translateY(-30px) scale(0.95);
-  }
-  60% {
-    transform: translateY(5px) scale(1.01);
-  }
-  100% {
+  to {
     opacity: 1;
     transform: translateY(0) scale(1);
-  }
-`;
-
-const bannerSway = keyframes`
-  0%, 100% { transform: rotate(-0.2deg); }
-  50% { transform: rotate(0.2deg); }
-`;
-
-const tasselSway = keyframes`
-  0%, 100% { transform: rotate(-3deg); }
-  50% { transform: rotate(3deg); }
-`;
-
-const titleGlow = keyframes`
-  0%, 100% { 
-    text-shadow: 
-      3px 3px 0 #000,
-      0 0 15px rgba(212, 175, 55, 0.3);
-  }
-  50% { 
-    text-shadow: 
-      3px 3px 0 #000,
-      0 0 25px rgba(212, 175, 55, 0.5);
   }
 `;
 
@@ -62,268 +27,163 @@ const titleGlow = keyframes`
 
 const ModalOverlay = styled.div`
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(6px);
+  inset: 0;
+  background: rgba(7, 10, 20, 0.78);
+  backdrop-filter: blur(8px);
   display: flex;
   justify-content: center;
   align-items: center;
   z-index: 1000;
-  animation: ${fadeIn} 0.3s ease-out;
+  animation: ${fadeIn} 0.25s ease-out;
+  padding: clamp(20px, 4cqw, 60px);
 `;
 
 // ============================================
-// BANNER CONTAINER
+// PANEL CONTAINER
 // ============================================
 
-const BannerContainer = styled.div`
-  width: 90%;
-  max-width: 900px;
-  max-height: 85cqh;
+const Panel = styled.div`
+  position: relative;
+  width: 100%;
+  max-width: clamp(480px, 78cqw, 920px);
+  max-height: 88cqh;
   display: flex;
   flex-direction: column;
-  animation: ${bannerDrop} 0.5s ease-out forwards, ${bannerSway} 12s ease-in-out 0.5s infinite;
-  transform-origin: top center;
-`;
-
-const HangingBar = styled.div`
-  width: 104%;
-  height: clamp(16px, 2.2cqh, 24px);
-  background: linear-gradient(180deg,
-    #5c4033 0%,
-    #3d2817 50%,
-    #2a1d14 100%
-  );
-  border-radius: 6px 6px 0 0;
-  margin-left: -2%;
-  position: relative;
-  border: 3px solid #8b7355;
-  border-bottom: none;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.6);
-  flex-shrink: 0;
-  
-  /* Hanging rings */
-  &::before, &::after {
-    content: "";
-    position: absolute;
-    top: -10px;
-    width: clamp(12px, 1.5cqw, 18px);
-    height: clamp(12px, 1.5cqw, 18px);
-    background: radial-gradient(circle at 30% 30%, #d4af37, #8b7355);
-    border-radius: 50%;
-    border: 2px solid #5c4033;
-    box-shadow: 0 3px 6px rgba(0,0,0,0.5);
-  }
-  &::before { left: 18%; }
-  &::after { right: 18%; }
-`;
-
-const BannerBody = styled.div`
-  background: linear-gradient(180deg,
-    #1a0a08 0%,
-    #2d1510 30%,
-    #1f0f0a 70%,
-    #150805 100%
-  );
-  border: 3px solid #8b7355;
-  border-top: none;
-  border-radius: 0 0 clamp(10px, 1.2cqw, 16px) clamp(10px, 1.2cqw, 16px);
-  box-shadow: 
-    0 20px 60px rgba(0,0,0,0.7),
-    inset 0 0 50px rgba(0,0,0,0.5),
-    inset 0 2px 0 rgba(139, 115, 85, 0.1);
-  position: relative;
-  display: flex;
-  flex-direction: column;
+  background: ${C.inkPanelStrong};
+  border: 1px solid rgba(245, 236, 217, 0.16);
+  border-radius: 4px;
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(245, 236, 217, 0.05);
+  backdrop-filter: blur(6px);
   overflow: hidden;
-  flex: 1;
-  min-height: 0;
-  
-  /* Fabric texture */
+  animation: ${panelDrop} 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+
+  /* Vermillion → gold → vermillion top accent strip */
   &::before {
     content: "";
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
-    bottom: 0;
-    background: 
-      repeating-linear-gradient(
-        0deg,
-        transparent 0px,
-        rgba(255,255,255,0.012) 1px,
-        transparent 2px
-      ),
-      repeating-linear-gradient(
-        90deg,
-        transparent 0px,
-        rgba(255,255,255,0.008) 1px,
-        transparent 2px
-      );
-    pointer-events: none;
-    z-index: 0;
+    height: 3px;
+    background: linear-gradient(
+      90deg,
+      ${C.vermillion} 0%,
+      ${C.gold} 50%,
+      ${C.vermillion} 100%
+    );
+    box-shadow: 0 0 18px ${C.vermillionGlow};
   }
-  
-  /* Gold corner decoration */
+
+  /* Gold corner ticks */
   &::after {
     content: "";
     position: absolute;
-    top: 10px;
-    left: 10px;
-    right: 10px;
-    bottom: 10px;
-    border: 1px solid rgba(212, 175, 55, 0.1);
-    border-radius: clamp(6px, 0.8cqw, 12px);
+    inset: 12px;
+    border: 1px solid rgba(232, 197, 71, 0.12);
+    border-radius: 3px;
     pointer-events: none;
-    z-index: 0;
   }
-`;
-
-const TasselContainer = styled.div`
-  position: absolute;
-  bottom: -28px;
-  left: 0;
-  right: 0;
-  display: flex;
-  justify-content: space-around;
-  padding: 0 20%;
-  pointer-events: none;
-  z-index: 10;
-`;
-
-const Tassel = styled.div`
-  width: clamp(7px, 1cqw, 11px);
-  height: clamp(22px, 3.5cqh, 36px);
-  background: linear-gradient(180deg, #d4af37 0%, #8b7355 100%);
-  border-radius: 0 0 4px 4px;
-  animation: ${tasselSway} ${props => 2 + props.$delay * 0.3}s ease-in-out infinite;
-  animation-delay: ${props => props.$delay * 0.15}s;
-  transform-origin: top center;
 `;
 
 // ============================================
 // HEADER
 // ============================================
 
-const Header = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: clamp(16px, 2.5cqh, 26px) clamp(20px, 3cqw, 36px);
-  border-bottom: 2px solid rgba(139, 115, 85, 0.4);
+const Header = styled.header`
   position: relative;
   z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: clamp(12px, 2cqw, 24px);
+  padding: clamp(18px, 2.6cqh, 26px) clamp(22px, 3cqw, 36px);
+  border-bottom: 1px solid rgba(245, 236, 217, 0.08);
   flex-shrink: 0;
-  
-  /* Decorative diamonds */
-  &::after {
-    content: "◆ ◆ ◆";
+`;
+
+const TitleBlock = styled.div`
+  position: relative;
+  padding-left: clamp(12px, 1.5cqw, 18px);
+  flex: 1;
+  min-width: 0;
+
+  &::before {
+    content: "";
     position: absolute;
-    bottom: -8px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: clamp(6px, 0.8cqw, 10px);
-    color: rgba(212, 175, 55, 0.4);
-    letter-spacing: 1em;
+    left: 0;
+    top: 8%;
+    bottom: 8%;
+    width: 3px;
+    background: linear-gradient(180deg, ${C.vermillion} 0%, ${C.gold} 50%, ${C.vermillion} 100%);
+    box-shadow: 0 0 12px ${C.vermillionGlow};
+    border-radius: 2px;
   }
 `;
 
 const Title = styled.h1`
   font-family: "Bungee", cursive;
-  font-size: clamp(1.2rem, 2.5cqw, 1.8rem);
-  color: #d4af37;
+  font-size: clamp(1.1rem, 1.9cqw, 1.55rem);
+  color: ${C.cream};
   margin: 0;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  animation: ${titleGlow} 3s ease-in-out infinite;
+  line-height: 1.1;
+  text-shadow: 0 3px 0 #000;
 `;
 
-const ButtonContainer = styled.div`
+const TitleMeta = styled.div`
+  font-family: "Outfit", sans-serif;
+  font-weight: 500;
+  font-size: clamp(0.45rem, 0.75cqw, 0.58rem);
+  color: ${C.creamMute};
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  margin-top: 4px;
+`;
+
+const HeaderActions = styled.div`
   display: flex;
-  gap: clamp(8px, 1.5cqw, 16px);
   align-items: center;
+  gap: clamp(6px, 1cqw, 10px);
+  flex-shrink: 0;
 `;
 
 const HeaderButton = styled.button`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.5rem, 0.9cqw, 0.7rem);
-  background: ${props => props.$variant === "back" ? css`
-    linear-gradient(180deg,
-      #4a3525 0%,
-      #3d2817 50%,
-      #2a1d14 100%
-    )
-  ` : css`
-    linear-gradient(180deg,
-      #2a2a2a 0%,
-      #1f1f1f 50%,
-      #151515 100%
-    )
-  `};
-  color: ${props => props.$variant === "back" ? '#d4af37' : '#888'};
-  border: 2px solid ${props => props.$variant === "back" ? '#8b7355' : '#444'};
-  border-radius: clamp(4px, 0.6cqw, 7px);
-  padding: clamp(8px, 1.2cqh, 14px) clamp(14px, 2cqw, 22px);
-  cursor: pointer;
-  transition: all 0.25s ease;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  box-shadow: 
-    0 4px 12px rgba(0,0,0,0.4),
-    inset 0 1px 0 rgba(255,255,255,0.08);
-  text-shadow: 1px 1px 0 #000;
+  position: relative;
   display: flex;
   align-items: center;
-  gap: clamp(4px, 0.6cqw, 8px);
-  position: relative;
-  
-  /* Wood grain */
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: repeating-linear-gradient(
-      90deg,
-      transparent 0px,
-      rgba(255,255,255,0.02) 1px,
-      transparent 3px
-    );
-    border-radius: clamp(4px, 0.6cqw, 7px);
-    pointer-events: none;
-  }
+  gap: clamp(5px, 0.7cqw, 8px);
+  padding: clamp(8px, 1.2cqh, 12px) clamp(13px, 1.8cqw, 20px);
+  background: transparent;
+  border: 1px solid rgba(245, 236, 217, 0.18);
+  border-radius: 2px;
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.5rem, 0.85cqw, 0.65rem);
+  color: ${C.creamMute};
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 0.2s ease, color 0.2s ease, background 0.2s ease,
+    border-color 0.2s ease, box-shadow 0.2s ease;
+  text-shadow: 0 2px 0 #000;
 
   .material-symbols-outlined {
-    font-size: clamp(0.8rem, 1.2cqw, 1rem);
+    font-size: clamp(0.85rem, 1.3cqw, 1rem);
+    transition: transform 0.3s ease;
   }
 
   &:hover {
-    transform: translateY(-2px);
-    ${props => props.$variant === "back" ? css`
-      background: linear-gradient(180deg,
-        #5c4530 0%,
-        #4a3525 50%,
-        #3d2817 100%
-      );
-      border-color: #d4af37;
-      color: #f0d080;
-    ` : css`
-      background: linear-gradient(180deg,
-        #3a3a3a 0%,
-        #2a2a2a 50%,
-        #1f1f1f 100%
-      );
-      border-color: #666;
-      color: #bbb;
-    `}
-    box-shadow: 
-      0 6px 18px rgba(0,0,0,0.5),
-      inset 0 1px 0 rgba(255,255,255,0.1);
+    color: ${C.cream};
+    background: rgba(31, 42, 77, 0.4);
+    border-color: rgba(94, 122, 200, 0.5);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+
+    .material-symbols-outlined {
+      transform: ${(p) => (p.$variant === "refresh" ? "rotate(90deg)" : "translateX(-2px)")};
+    }
   }
 
   &:active {
@@ -335,44 +195,82 @@ const HeaderButton = styled.button`
 // ROOM LIST
 // ============================================
 
+const ListMeta = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: clamp(10px, 1.4cqh, 14px) clamp(22px, 3cqw, 36px);
+  border-bottom: 1px solid rgba(245, 236, 217, 0.06);
+  font-family: "Outfit", sans-serif;
+  font-weight: 600;
+  font-size: clamp(0.45rem, 0.72cqw, 0.55rem);
+  color: ${C.creamMute};
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+
+  span.count {
+    color: ${C.gold};
+    font-weight: 700;
+  }
+
+  span.spacer {
+    flex: 1;
+  }
+
+  span.legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: ${C.creamMute};
+
+    &::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: ${C.ice};
+      box-shadow: 0 0 8px rgba(126, 203, 240, 0.55);
+    }
+  }
+`;
+
 const RoomListContainer = styled.div`
   flex: 1;
   min-height: 0;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 `;
 
 const RoomList = styled.div`
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: clamp(10px, 1.5cqh, 16px);
-  padding: clamp(18px, 2.5cqh, 28px) clamp(20px, 3cqw, 36px);
-  padding-bottom: clamp(40px, 5cqh, 60px);
+  gap: clamp(8px, 1.1cqh, 12px);
+  padding: clamp(16px, 2.2cqh, 24px) clamp(22px, 3cqw, 36px);
   overflow-y: auto;
-  position: relative;
-  z-index: 1;
-  flex: 1;
+  scrollbar-gutter: stable;
 
   &::-webkit-scrollbar {
     width: 8px;
   }
-
   &::-webkit-scrollbar-track {
-    background: rgba(26, 10, 8, 0.5);
-    border-radius: 4px;
+    background: rgba(7, 10, 20, 0.4);
   }
-
   &::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, #5c4033, #3d2817);
+    background: linear-gradient(180deg, ${C.indigo}, ${C.indigoBright});
     border-radius: 4px;
-    border: 1px solid #8b7355;
+    border: 1px solid rgba(245, 236, 217, 0.08);
   }
-
   &::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(180deg, #6d5040, #4e3928);
+    background: ${C.indigoBright};
   }
 `;
+
+// ============================================
+// EMPTY STATE
+// ============================================
 
 const EmptyState = styled.div`
   display: flex;
@@ -381,55 +279,74 @@ const EmptyState = styled.div`
   justify-content: center;
   padding: clamp(40px, 6cqh, 80px) clamp(20px, 3cqw, 40px);
   text-align: center;
-  position: relative;
-  z-index: 1;
+  animation: ${fadeUp} 0.5s ease-out 0.15s backwards;
 `;
 
-const EmptyIcon = styled.div`
-  font-size: clamp(2.5rem, 5cqw, 4rem);
-  margin-bottom: clamp(12px, 2cqh, 20px);
-  opacity: 0.6;
+const EmptyHanko = styled.div`
+  width: clamp(56px, 7cqw, 86px);
+  height: clamp(56px, 7cqw, 86px);
+  display: grid;
+  place-items: center;
+  margin-bottom: clamp(14px, 2cqh, 20px);
+  background: ${C.vermillion};
+  color: ${C.cream};
+  font-family: "Noto Serif JP", serif;
+  font-weight: 900;
+  font-size: clamp(1.4rem, 2.4cqw, 2rem);
+  border-radius: 4px;
+  box-shadow:
+    0 6px 20px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.18);
+  transform: rotate(-3deg);
+  letter-spacing: 0;
+
+  &::after {
+    content: "空";
+  }
 `;
 
 const EmptyTitle = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.9rem, 1.6cqw, 1.2rem);
-  color: #8b7355;
+  font-size: clamp(0.95rem, 1.6cqw, 1.2rem);
+  color: ${C.cream};
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  margin-bottom: clamp(8px, 1.2cqh, 14px);
-  text-shadow: 2px 2px 0 #000;
+  letter-spacing: 0.12em;
+  margin-bottom: clamp(8px, 1.2cqh, 12px);
+  text-shadow: 0 3px 0 #000;
 `;
 
 const EmptySubtext = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.55rem, 1cqw, 0.75rem);
-  color: #5c4033;
-  letter-spacing: 0.08em;
-  text-shadow: 1px 1px 0 #000;
+  font-family: "Outfit", sans-serif;
+  font-weight: 500;
+  font-size: clamp(0.55rem, 0.95cqw, 0.7rem);
+  color: ${C.creamMute};
+  letter-spacing: 0.12em;
+  max-width: 36ch;
+  line-height: 1.6;
 `;
 
-const CreateRoomHint = styled.div`
-  margin-top: clamp(20px, 3cqh, 32px);
-  padding: clamp(12px, 1.8cqh, 20px) clamp(20px, 3cqw, 32px);
-  background: linear-gradient(180deg,
-    rgba(74, 53, 37, 0.3) 0%,
-    rgba(42, 29, 20, 0.3) 100%
-  );
-  border: 1px solid rgba(139, 115, 85, 0.3);
-  border-radius: clamp(4px, 0.6cqw, 8px);
-`;
+const EmptyHint = styled.div`
+  margin-top: clamp(20px, 3cqh, 28px);
+  padding: clamp(10px, 1.4cqh, 14px) clamp(16px, 2.4cqw, 24px);
+  background: rgba(31, 42, 77, 0.35);
+  border: 1px solid rgba(94, 122, 200, 0.3);
+  border-left: 3px solid ${C.indigoBright};
+  border-radius: 2px;
+  font-family: "Outfit", sans-serif;
+  font-weight: 500;
+  font-size: clamp(0.5rem, 0.82cqw, 0.62rem);
+  color: ${C.creamMute};
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+  max-width: 44ch;
+  text-align: left;
 
-const HintText = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.5rem, 0.9cqw, 0.65rem);
-  color: #d4af37;
-  letter-spacing: 0.08em;
-  text-shadow: 1px 1px 0 #000;
-  
-  span {
-    color: #e8dcc8;
-    opacity: 0.8;
+  strong {
+    color: ${C.gold};
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    margin-right: 6px;
   }
 `;
 
@@ -446,86 +363,88 @@ const Rooms = ({ rooms, setRoomName, handleJoinRoom, handleMainMenuPage }) => {
 
   useEffect(() => {
     getRooms();
-    return () => {
-      // Cleanup if needed
-    };
   }, [getRooms]);
 
   const filteredRooms = rooms.filter((room) => !room.isCPURoom);
+  const openCount = filteredRooms.filter((r) => r.players.length < 2).length;
 
   return (
     <ModalOverlay>
-      <BannerContainer>
-        <HangingBar>
-          <SnowCap />
-          <IcicleRow $bottom="-8px">
-            <Icicle $w={2} $h={6} />
-            <Icicle $w={3} $h={10} />
-            <Icicle $w={2} $h={8} />
-            <Icicle $w={3} $h={12} />
-            <Icicle $w={2} $h={7} />
-            <Icicle $w={3} $h={9} />
-            <Icicle $w={2} $h={11} />
-            <Icicle $w={3} $h={6} />
-          </IcicleRow>
-        </HangingBar>
-        <BannerBody>
-          <Header>
+      <Panel>
+        <Header>
+          <TitleBlock>
             <Title>Server Browser</Title>
-            <ButtonContainer>
-              <HeaderButton 
-                $variant="back" 
-                onClick={() => { handleMainMenuPage(); playButtonPressSound(); }} 
-                onMouseEnter={playButtonHoverSound}
-              >
-                <span className="material-symbols-outlined">arrow_back</span>
-                Back
-              </HeaderButton>
-              <HeaderButton 
-                onClick={() => { handleRefresh(); playButtonPressSound(); }} 
-                onMouseEnter={playButtonHoverSound}
-              >
-                <span className="material-symbols-outlined">refresh</span>
-                Refresh
-              </HeaderButton>
-            </ButtonContainer>
-          </Header>
-          
-          <RoomListContainer>
-            <RoomList>
-              {filteredRooms.length === 0 ? (
-                <EmptyState>
-                  <EmptyIcon>🐧</EmptyIcon>
-                  <EmptyTitle>No Dohyos Available</EmptyTitle>
-                  <EmptySubtext>Be the first to create a room!</EmptySubtext>
-                  <CreateRoomHint>
-                    <HintText>
-                      Tip: <span>Rooms are created automatically when you join an empty server</span>
-                    </HintText>
-                  </CreateRoomHint>
-                </EmptyState>
-              ) : (
-                filteredRooms.map((room) => (
-                  <Room
-                    key={room.id}
-                    room={room}
-                    setRoomName={setRoomName}
-                    handleJoinRoom={handleJoinRoom}
-                  />
-                ))
-              )}
-            </RoomList>
-          </RoomListContainer>
-          
-          <TasselContainer>
-            <Tassel $delay={0} />
-            <Tassel $delay={1} />
-            <Tassel $delay={2} />
-            <Tassel $delay={3} />
-            <Tassel $delay={4} />
-          </TasselContainer>
-        </BannerBody>
-      </BannerContainer>
+            <TitleMeta>Find a Dohyo · Join the Bout</TitleMeta>
+          </TitleBlock>
+
+          <HeaderActions>
+            <HeaderButton
+              $variant="back"
+              onClick={() => {
+                handleMainMenuPage();
+                playButtonPressSound();
+              }}
+              onMouseEnter={playButtonHoverSound}
+            >
+              <span className="material-symbols-outlined">arrow_back</span>
+              Back
+            </HeaderButton>
+            <HeaderButton
+              $variant="refresh"
+              onClick={() => {
+                handleRefresh();
+                playButtonPressSound();
+              }}
+              onMouseEnter={playButtonHoverSound}
+            >
+              <span className="material-symbols-outlined">refresh</span>
+              Refresh
+            </HeaderButton>
+          </HeaderActions>
+        </Header>
+
+        <ListMeta>
+          <span>
+            <span className="count">{filteredRooms.length}</span> Dohyo
+            {filteredRooms.length === 1 ? "" : "s"}
+          </span>
+          <span className="spacer" />
+          {filteredRooms.length > 0 && (
+            <span className="legend">
+              {openCount} open · {filteredRooms.length - openCount} full
+            </span>
+          )}
+        </ListMeta>
+
+        <RoomListContainer>
+          <RoomList>
+            {filteredRooms.length === 0 ? (
+              <EmptyState>
+                <EmptyHanko />
+                <EmptyTitle>No Dohyos Available</EmptyTitle>
+                <EmptySubtext>
+                  Be the first to step into the ring. Joining an empty server
+                  will create a new dohyo.
+                </EmptySubtext>
+                <EmptyHint>
+                  <strong>Tip</strong>
+                  Hit Refresh to scan for newly opened bouts.
+                </EmptyHint>
+              </EmptyState>
+            ) : (
+              filteredRooms.map((room, idx) => (
+                <Room
+                  key={room.id}
+                  room={room}
+                  setRoomName={setRoomName}
+                  handleJoinRoom={handleJoinRoom}
+                  index={idx}
+                />
+              ))
+            )}
+          </RoomList>
+        </RoomListContainer>
+      </Panel>
     </ModalOverlay>
   );
 };

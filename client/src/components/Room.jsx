@@ -1,161 +1,188 @@
 import { useContext } from "react";
 import PropTypes from "prop-types";
-import styled, { keyframes, css } from "styled-components";
+import styled, { css, keyframes } from "styled-components";
 import { SocketContext } from "../SocketContext";
-import { playButtonHoverSound, playButtonPressSound2 } from "../utils/soundUtils";
+import {
+  playButtonHoverSound,
+  playButtonPressSound2,
+} from "../utils/soundUtils";
+import { C, slideInLeft, arrowNudge } from "./menuTheme";
 
 // ============================================
 // ANIMATIONS
 // ============================================
 
-const slideIn = keyframes`
-  0% {
-    opacity: 0;
-    transform: translateX(-20px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateX(0);
-  }
-`;
-
-const pulseAvailable = keyframes`
+const subtlePulse = keyframes`
   0%, 100% {
-    box-shadow: 
-      0 4px 15px rgba(0,0,0,0.4),
-      0 0 0 rgba(74, 222, 128, 0),
-      inset 0 0 20px rgba(0,0,0,0.4);
+    box-shadow:
+      0 4px 14px rgba(0, 0, 0, 0.45),
+      0 0 0 rgba(238, 81, 65, 0),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
   }
   50% {
-    box-shadow: 
-      0 4px 15px rgba(0,0,0,0.4),
-      0 0 15px rgba(74, 222, 128, 0.15),
-      inset 0 0 20px rgba(0,0,0,0.4);
+    box-shadow:
+      0 4px 14px rgba(0, 0, 0, 0.45),
+      0 0 16px rgba(238, 81, 65, 0.15),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
   }
 `;
 
 // ============================================
-// ROOM CARD
+// ROOM CARD (blade-button style)
 // ============================================
 
 const RoomCard = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: linear-gradient(180deg,
-    #1a0a08 0%,
-    #241210 50%,
-    #1a0a08 100%
-  );
-  border: 2px solid ${props => props.$isFull ? '#4a3a2a' : '#8b7355'};
-  border-radius: clamp(6px, 0.8cqw, 10px);
-  padding: clamp(14px, 2cqh, 22px) clamp(18px, 2.5cqw, 28px);
+  --accent: ${(p) => (p.$isFull ? "rgba(94, 122, 200, 0.25)" : C.vermillion)};
+  --accentBright: ${(p) => (p.$isFull ? "rgba(94, 122, 200, 0.4)" : C.vermillionBright)};
+
   position: relative;
-  transition: all 0.25s ease;
-  animation: ${slideIn} 0.4s ease-out;
-  
-  ${props => !props.$isFull && css`
-    animation: ${slideIn} 0.4s ease-out, ${pulseAvailable} 3s ease-in-out infinite;
-    animation-delay: 0s, 0.4s;
-  `}
-  
-  /* Fabric texture */
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: 
-      repeating-linear-gradient(
-        0deg,
-        transparent 0px,
-        rgba(255,255,255,0.01) 1px,
-        transparent 2px
-      );
-    pointer-events: none;
-    border-radius: clamp(6px, 0.8cqw, 10px);
-  }
+  display: flex;
+  align-items: center;
+  gap: clamp(14px, 2cqw, 22px);
+  padding: clamp(12px, 1.7cqh, 18px) clamp(18px, 2.4cqw, 26px);
+  background: linear-gradient(
+    100deg,
+    ${(p) =>
+      p.$isFull
+        ? "rgba(15, 18, 30, 0.7) 0%, rgba(8, 11, 24, 0.6) 60%, rgba(8, 11, 24, 0.5) 100%"
+        : "rgba(31, 42, 77, 0.45) 0%, rgba(8, 11, 24, 0.55) 70%, rgba(8, 11, 24, 0.4) 100%"}
+  );
+  border: 1px solid
+    ${(p) =>
+      p.$isFull
+        ? "rgba(245, 236, 217, 0.08)"
+        : "rgba(94, 122, 200, 0.32)"};
+  border-left: 3px solid var(--accent);
+  border-radius: 2px;
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease,
+    box-shadow 0.2s ease;
+  backdrop-filter: blur(3px);
+  box-shadow:
+    0 4px 14px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  opacity: 0;
+  animation: ${slideInLeft} 0.4s ease-out forwards;
+  animation-delay: ${(p) => Math.min(p.$index ?? 0, 12) * 0.05}s;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+
+  ${(p) =>
+    !p.$isFull &&
+    css`
+      animation:
+        ${slideInLeft} 0.4s ease-out forwards,
+        ${subtlePulse} 4s ease-in-out infinite;
+      animation-delay: ${Math.min(p.$index ?? 0, 12) * 0.05}s, 0.5s;
+    `}
 
   &:hover {
-    transform: translateX(6px);
-    background: linear-gradient(180deg,
-      #241210 0%,
-      #2d1815 50%,
-      #241210 100%
-    );
-    border-color: ${props => props.$isFull ? '#5c4a3a' : '#d4af37'};
+    ${(p) =>
+      !p.$isFull &&
+      css`
+        transform: translateX(6px);
+        background: linear-gradient(
+          100deg,
+          rgba(58, 74, 133, 0.55) 0%,
+          rgba(8, 11, 24, 0.55) 70%,
+          rgba(8, 11, 24, 0.35) 100%
+        );
+        border-color: var(--accentBright);
+        box-shadow:
+          0 6px 22px rgba(0, 0, 0, 0.55),
+          0 0 22px ${C.vermillionGlow},
+          inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      `}
   }
 `;
 
-const RoomInfo = styled.div`
+// ============================================
+// ROOM INFO
+// ============================================
+
+const InfoBlock = styled.div`
   display: flex;
   align-items: center;
-  gap: clamp(16px, 2.5cqw, 32px);
+  gap: clamp(14px, 2.4cqw, 28px);
+  flex: 1;
+  min-width: 0;
 `;
 
 const RoomIdSection = styled.div`
   display: flex;
   flex-direction: column;
-  gap: clamp(2px, 0.3cqh, 4px);
+  gap: 2px;
+  min-width: clamp(80px, 9cqw, 110px);
 `;
 
 const RoomLabel = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.4rem, 0.7cqw, 0.5rem);
-  color: #5c4033;
+  font-family: "Outfit", sans-serif;
+  font-weight: 600;
+  font-size: clamp(0.42rem, 0.68cqw, 0.5rem);
+  color: ${C.creamMute};
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.28em;
 `;
 
 const RoomId = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.85rem, 1.4cqw, 1.15rem);
-  color: #e8dcc8;
-  text-shadow: 2px 2px 0 #000;
-  letter-spacing: 0.05em;
+  font-size: clamp(0.85rem, 1.4cqw, 1.1rem);
+  color: ${C.cream};
+  text-shadow: 0 2px 0 #000;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.05;
 `;
 
 const PlayerCount = styled.div`
   display: flex;
   align-items: center;
-  gap: clamp(6px, 0.8cqw, 10px);
+  gap: clamp(6px, 0.9cqw, 10px);
+  flex-shrink: 0;
 `;
 
 const PlayerDot = styled.div`
-  width: clamp(10px, 1.2cqw, 14px);
-  height: clamp(10px, 1.2cqw, 14px);
+  width: clamp(9px, 1.1cqw, 12px);
+  height: clamp(9px, 1.1cqw, 12px);
   border-radius: 50%;
-  background: ${props => props.$filled ? '#4ade80' : 'rgba(92, 64, 51, 0.5)'};
-  border: 2px solid ${props => props.$filled ? '#4ade80' : '#5c4033'};
-  ${props => props.$filled && css`
-    box-shadow: 0 0 8px rgba(74, 222, 128, 0.5);
-  `}
+  background: ${(p) => (p.$filled ? C.ice : "transparent")};
+  border: 1.5px solid
+    ${(p) => (p.$filled ? C.ice : "rgba(245, 236, 217, 0.3)")};
+  ${(p) =>
+    p.$filled &&
+    css`
+      box-shadow: 0 0 8px rgba(126, 203, 240, 0.55);
+    `}
 `;
 
 const PlayerCountText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.6rem, 1cqw, 0.8rem);
-  color: ${props => props.$isFull ? '#5c4033' : '#8b7355'};
-  text-shadow: 1px 1px 0 #000;
+  font-size: clamp(0.6rem, 1cqw, 0.75rem);
+  color: ${(p) => (p.$isFull ? C.creamMute : C.cream)};
+  letter-spacing: 0.06em;
+  text-shadow: 0 2px 0 #000;
 `;
 
 const StatusBadge = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.4rem, 0.7cqw, 0.55rem);
-  color: ${props => props.$isFull ? '#5c4033' : '#4ade80'};
+  font-size: clamp(0.42rem, 0.7cqw, 0.55rem);
+  letter-spacing: 0.2em;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  padding: clamp(4px, 0.6cqh, 7px) clamp(10px, 1.5cqw, 16px);
-  background: ${props => props.$isFull 
-    ? 'rgba(92, 64, 51, 0.2)' 
-    : 'rgba(74, 222, 128, 0.1)'};
-  border: 1px solid ${props => props.$isFull ? '#4a3a2a' : 'rgba(74, 222, 128, 0.3)'};
-  border-radius: clamp(3px, 0.4cqw, 5px);
-  ${props => !props.$isFull && css`
-    box-shadow: 0 0 10px rgba(74, 222, 128, 0.1);
-  `}
+  padding: clamp(4px, 0.6cqh, 6px) clamp(9px, 1.3cqw, 14px);
+  border-radius: 2px;
+  text-shadow: none;
+  flex-shrink: 0;
+
+  ${(p) =>
+    p.$isFull
+      ? css`
+          color: ${C.creamMute};
+          background: rgba(245, 236, 217, 0.05);
+          border: 1px solid rgba(245, 236, 217, 0.12);
+        `
+      : css`
+          color: ${C.gold};
+          background: rgba(232, 197, 71, 0.08);
+          border: 1px solid rgba(232, 197, 71, 0.35);
+        `}
 `;
 
 // ============================================
@@ -163,81 +190,83 @@ const StatusBadge = styled.div`
 // ============================================
 
 const JoinButton = styled.button`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.6rem, 1cqw, 0.8rem);
-  background: ${props => props.$isFull ? css`
-    linear-gradient(180deg,
-      #2a2a2a 0%,
-      #1f1f1f 50%,
-      #151515 100%
-    )
-  ` : css`
-    linear-gradient(180deg,
-      #2d5a2d 0%,
-      #1f4a1f 50%,
-      #153815 100%
-    )
-  `};
-  color: ${props => props.$isFull ? '#555' : '#4ade80'};
-  border: 2px solid ${props => props.$isFull ? '#3a3a3a' : '#4ade80'};
-  border-radius: clamp(4px, 0.6cqw, 8px);
-  padding: clamp(10px, 1.4cqh, 16px) clamp(20px, 2.8cqw, 32px);
-  cursor: ${props => props.$isFull ? 'not-allowed' : 'pointer'};
-  transition: all 0.25s ease;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  box-shadow: ${props => props.$isFull 
-    ? '0 4px 12px rgba(0,0,0,0.3)' 
-    : '0 4px 12px rgba(0,0,0,0.4), 0 0 15px rgba(74, 222, 128, 0.15)'};
-  text-shadow: ${props => props.$isFull 
-    ? 'none' 
-    : '0 0 10px rgba(74, 222, 128, 0.3), 1px 1px 0 #000'};
   position: relative;
-  
-  /* Wood grain */
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: repeating-linear-gradient(
-      90deg,
-      transparent 0px,
-      rgba(255,255,255,0.02) 1px,
-      transparent 3px
-    );
-    border-radius: clamp(4px, 0.6cqw, 8px);
-    pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: clamp(10px, 1.4cqh, 13px) clamp(18px, 2.5cqw, 28px);
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.65rem, 1.05cqw, 0.85rem);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  text-shadow: 0 2px 0 #000;
+  border-radius: 2px;
+  cursor: ${(p) => (p.$isFull ? "not-allowed" : "pointer")};
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease,
+    box-shadow 0.2s ease, color 0.2s ease;
+  flex-shrink: 0;
+
+  ${(p) =>
+    p.$isFull
+      ? css`
+          color: ${C.creamMute};
+          background: rgba(245, 236, 217, 0.05);
+          border: 1px solid rgba(245, 236, 217, 0.12);
+          opacity: 0.6;
+        `
+      : css`
+          color: ${C.cream};
+          background: linear-gradient(
+            180deg,
+            ${C.vermillion} 0%,
+            ${C.vermillionDeep} 100%
+          );
+          border: 1px solid ${C.vermillionBright};
+          box-shadow:
+            0 4px 14px rgba(0, 0, 0, 0.45),
+            0 0 18px rgba(238, 81, 65, 0.25),
+            inset 0 1px 0 rgba(255, 255, 255, 0.18);
+        `}
+
+  .arrow {
+    font-family: "Outfit", sans-serif;
+    font-weight: 700;
+    color: ${(p) => (p.$isFull ? "rgba(245, 236, 217, 0.3)" : C.cream)};
+    transition: transform 0.2s ease;
   }
 
-  ${props => !props.$isFull && css`
-    &:hover {
-      background: linear-gradient(180deg,
-        #3d6a3d 0%,
-        #2d5a2d 50%,
-        #1f4a1f 100%
-      );
-      border-color: #6ade90;
-      transform: translateY(-3px);
-      box-shadow: 
-        0 8px 20px rgba(0,0,0,0.5),
-        0 0 25px rgba(74, 222, 128, 0.25);
-      color: #8afe9f;
-    }
+  ${(p) =>
+    !p.$isFull &&
+    css`
+      &:hover {
+        background: linear-gradient(
+          180deg,
+          ${C.vermillionBright} 0%,
+          ${C.vermillion} 100%
+        );
+        border-color: ${C.gold};
+        transform: translateY(-1px);
+        box-shadow:
+          0 6px 22px rgba(0, 0, 0, 0.55),
+          0 0 28px rgba(238, 81, 65, 0.45),
+          inset 0 1px 0 rgba(255, 255, 255, 0.22);
 
-    &:active {
-      transform: translateY(-1px);
-    }
-  `}
+        .arrow {
+          animation: ${arrowNudge} 0.7s ease-in-out infinite;
+        }
+      }
+
+      &:active {
+        transform: translateY(0) scale(0.98);
+      }
+    `}
 `;
 
 // ============================================
 // COMPONENT
 // ============================================
 
-const Room = ({ room, setRoomName, handleJoinRoom }) => {
+const Room = ({ room, setRoomName, handleJoinRoom, index }) => {
   const { socket } = useContext(SocketContext);
   const isFull = room.players.length === 2;
 
@@ -250,12 +279,13 @@ const Room = ({ room, setRoomName, handleJoinRoom }) => {
   };
 
   return (
-    <RoomCard $isFull={isFull}>
-      <RoomInfo>
+    <RoomCard $isFull={isFull} $index={index}>
+      <InfoBlock>
         <RoomIdSection>
           <RoomLabel>Dohyo</RoomLabel>
           <RoomId>{room.id}</RoomId>
         </RoomIdSection>
+
         <PlayerCount>
           <PlayerDot $filled={room.players.length >= 1} />
           <PlayerDot $filled={room.players.length >= 2} />
@@ -263,22 +293,25 @@ const Room = ({ room, setRoomName, handleJoinRoom }) => {
             {room.players.length}/2
           </PlayerCountText>
         </PlayerCount>
+
         <StatusBadge $isFull={isFull}>
           {isFull ? "Full" : "Open"}
         </StatusBadge>
-      </RoomInfo>
+      </InfoBlock>
+
       <JoinButton
         $isFull={isFull}
-        onClick={() => { 
+        onClick={() => {
           if (!isFull) {
-            handleJoin(); 
-            playButtonPressSound2(); 
+            handleJoin();
+            playButtonPressSound2();
           }
         }}
         onMouseEnter={() => !isFull && playButtonHoverSound()}
         disabled={isFull}
       >
         {isFull ? "Full" : "Join"}
+        {!isFull && <span className="arrow">▶</span>}
       </JoinButton>
     </RoomCard>
   );
@@ -291,6 +324,7 @@ Room.propTypes = {
   }).isRequired,
   setRoomName: PropTypes.func.isRequired,
   handleJoinRoom: PropTypes.func.isRequired,
+  index: PropTypes.number,
 };
 
 export default Room;

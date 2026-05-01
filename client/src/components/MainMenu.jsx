@@ -20,621 +20,821 @@ import {
   playBackgroundMusic,
   stopBackgroundMusic,
 } from "../utils/soundUtils";
-import Snowfall, { SnowCap, IcicleRow, Icicle } from "./Snowfall";
+import Snowfall from "./Snowfall";
+
+import {
+  C,
+  fadeIn,
+  fadeUp,
+  slideInLeft,
+  arrowNudge,
+  livePulse,
+} from "./menuTheme";
 
 // ============================================
-// ANIMATIONS
+// LOCAL ANIMATIONS
 // ============================================
 
-const bannerSlideIn = keyframes`
-  0% {
-    opacity: 0;
-    transform: translateX(-30px);
+const titleShimmer = keyframes`
+  0%, 100% {
+    text-shadow:
+      0 4px 0 #000,
+      4px 4px 0 ${C.vermillionDeep},
+      0 0 30px rgba(238, 81, 65, 0.35),
+      0 0 60px rgba(238, 81, 65, 0.18);
   }
-  100% {
-    opacity: 1;
-    transform: translateX(0);
-  }
-`;
-
-const bannerSway = keyframes`
-  0%, 100% { transform: rotate(-0.2deg); }
-  50% { transform: rotate(0.2deg); }
-`;
-
-const tasselSway = keyframes`
-  0%, 100% { transform: rotate(-3deg); }
-  50% { transform: rotate(3deg); }
-`;
-
-const titleGlow = keyframes`
-  0%, 100% { 
-    text-shadow: 
-      3px 3px 0 #000,
-      0 0 20px rgba(212, 175, 55, 0.4),
-      0 0 40px rgba(212, 175, 55, 0.2);
-  }
-  50% { 
-    text-shadow: 
-      3px 3px 0 #000,
-      0 0 30px rgba(212, 175, 55, 0.6),
-      0 0 60px rgba(212, 175, 55, 0.3);
+  50% {
+    text-shadow:
+      0 4px 0 #000,
+      4px 4px 0 ${C.vermillionDeep},
+      0 0 38px rgba(255, 220, 120, 0.5),
+      0 0 80px rgba(238, 81, 65, 0.28);
   }
 `;
 
-const slideIn = keyframes`
-  0% {
-    opacity: 0;
-    transform: translateX(-15px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateX(0);
-  }
+const kenBurns = keyframes`
+  0%   { transform: scale(1.06) translate(0, 0); }
+  100% { transform: scale(1.14) translate(-1.5%, -1%); }
 `;
 
-const fadeIn = keyframes`
-  0% {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
-`;
-
-const dotPulse = keyframes`
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 1; }
+const tickerScroll = keyframes`
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
 `;
 
 // ============================================
-// MAIN CONTAINER
+// MAIN CONTAINER + BACKGROUND LAYERS
 // ============================================
 
 const MainMenuContainer = styled.div`
   display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100%;
   position: relative;
   overflow: hidden;
+  background: ${C.ink};
+  font-family: "Outfit", sans-serif;
 `;
 
 const BackgroundImage = styled.img`
   position: absolute;
-  top: 0;
-  left: 0;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
   z-index: 0;
   opacity: ${(props) => (props.$isVisible ? 1 : 0)};
-  transition: opacity 1.5s ease-in-out;
+  transition: opacity 1.6s ease-in-out;
   pointer-events: none;
+  filter: saturate(0.8) brightness(0.62);
+  animation: ${kenBurns} 22s ease-in-out infinite alternate;
 `;
 
-// Subtle dark overlay with vignette - keeps images vibrant
-const DarkOverlay = styled.div`
+/* Cinematic letterbox + side gradients to focus the eye */
+const CinematicOverlay = styled.div`
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: 
-    /* Left side fade for menu readability */
-    linear-gradient(90deg, rgba(0, 0, 0, 0.6) 0%, rgba(0, 0, 0, 0.25) 30%, transparent 55%),
-    /* Soft vignette around edges */
-    radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.35) 100%);
+  inset: 0;
   z-index: 1;
   pointer-events: none;
+  background:
+    /* left readability gradient */
+    linear-gradient(
+      90deg,
+      rgba(7, 10, 20, 0.92) 0%,
+      rgba(7, 10, 20, 0.7) 28%,
+      rgba(7, 10, 20, 0.25) 50%,
+      rgba(7, 10, 20, 0.55) 100%
+    ),
+    /* indigo wash */
+    linear-gradient(
+      180deg,
+      rgba(31, 42, 77, 0.35) 0%,
+      transparent 40%,
+      rgba(7, 10, 20, 0.6) 100%
+    ),
+    /* vignette */
+    radial-gradient(
+      ellipse at 35% 55%,
+      transparent 30%,
+      rgba(0, 0, 0, 0.55) 100%
+    );
 `;
 
-// ============================================
-// LEFT MENU PANEL
-// ============================================
-
-const LeftPanel = styled.div`
-  position: relative;
-  z-index: 10;
-  width: clamp(280px, 28cqw, 380px);
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  padding: clamp(30px, 4cqh, 50px) clamp(24px, 3cqw, 40px);
-  padding-right: clamp(30px, 4cqw, 50px);
-  
-  @media (max-width: 900px) {
-    width: clamp(250px, 45cqw, 320px);
-    padding: clamp(20px, 3cqh, 35px) clamp(16px, 2.5cqw, 28px);
-  }
-  
-  @media (max-width: 600px) {
-    width: 100%;
-    padding: clamp(16px, 2.5cqh, 28px) clamp(16px, 4cqw, 24px);
-  }
-`;
-
-// ============================================
-// BANNER COMPONENTS (matching in-game UI)
-// ============================================
-
-const MenuBanner = styled.div`
-  position: relative;
-  animation: ${bannerSlideIn} 0.5s ease-out forwards, ${bannerSway} 12s ease-in-out 0.5s infinite;
-  transform-origin: top left;
-  margin-bottom: auto;
-`;
-
-const HangingBar = styled.div`
-  width: 105%;
-  height: clamp(14px, 2cqh, 22px);
-  background: linear-gradient(180deg,
-    #5c4033 0%,
-    #3d2817 50%,
-    #2a1d14 100%
-  );
-  border-radius: 5px 5px 0 0;
-  margin-left: -2.5%;
-  position: relative;
-  border: 2px solid #8b7355;
-  border-bottom: none;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-  
-  /* Hanging rings */
-  &::before, &::after {
-    content: "";
-    position: absolute;
-    top: -8px;
-    width: clamp(10px, 1.5cqw, 16px);
-    height: clamp(10px, 1.5cqw, 16px);
-    background: radial-gradient(circle at 30% 30%, #d4af37, #8b7355);
-    border-radius: 50%;
-    border: 2px solid #5c4033;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.4);
-  }
-  &::before { left: 12%; }
-  &::after { right: 12%; }
-`;
-
-const BannerBody = styled.div`
-  background: linear-gradient(180deg,
-    #1a0a08 0%,
-    #2d1510 30%,
-    #1f0f0a 70%,
-    #150805 100%
-  );
-  border: 3px solid #8b7355;
-  border-top: none;
-  border-radius: 0 0 clamp(8px, 1.2cqw, 14px) clamp(8px, 1.2cqw, 14px);
-  padding: clamp(20px, 3cqh, 32px) clamp(18px, 2.5cqw, 28px) clamp(18px, 2.5cqh, 28px);
-  box-shadow: 
-    0 15px 50px rgba(0,0,0,0.7),
-    inset 0 0 40px rgba(0,0,0,0.5),
-    inset 0 2px 0 rgba(139, 115, 85, 0.1);
-  position: relative;
-  
-  /* Fabric texture */
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: 
-      repeating-linear-gradient(
-        0deg,
-        transparent 0px,
-        rgba(255,255,255,0.015) 1px,
-        transparent 2px
-      ),
-      repeating-linear-gradient(
-        90deg,
-        transparent 0px,
-        rgba(255,255,255,0.01) 1px,
-        transparent 2px
-      );
-    pointer-events: none;
-    border-radius: 0 0 clamp(8px, 1.2cqw, 14px) clamp(8px, 1.2cqw, 14px);
-  }
-  
-  /* Gold corner decoration */
-  &::after {
-    content: "";
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    right: 10px;
-    bottom: 10px;
-    border: 1px solid rgba(212, 175, 55, 0.12);
-    border-radius: clamp(4px, 0.8cqw, 10px);
-    pointer-events: none;
-  }
-  
-  @media (max-width: 900px) {
-    padding: clamp(16px, 2.5cqh, 26px) clamp(14px, 2cqw, 22px) clamp(14px, 2cqh, 22px);
-    border-width: 2px;
-  }
-`;
-
-const TasselContainer = styled.div`
+/* Subtle paper-grain / film texture overlay */
+const GrainOverlay = styled.div`
   position: absolute;
-  bottom: -28px;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0.35;
+  mix-blend-mode: overlay;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.025) 0px,
+      transparent 1px,
+      transparent 2px,
+      rgba(255, 255, 255, 0.02) 3px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.03) 0px,
+      transparent 1px,
+      transparent 3px
+    );
+`;
+
+/* Cinematic top + bottom letterbox bars (very thin) */
+const Letterbox = styled.div`
+  position: absolute;
   left: 0;
   right: 0;
-  display: flex;
-  justify-content: space-between;
-  padding: 0 15%;
+  height: clamp(3px, 0.5cqh, 5px);
+  background: linear-gradient(180deg, ${C.ink}, ${C.inkSoft});
+  z-index: 3;
   pointer-events: none;
-`;
-
-const Tassel = styled.div`
-  width: clamp(6px, 1cqw, 10px);
-  height: clamp(22px, 3.5cqh, 35px);
-  background: linear-gradient(180deg, #d4af37 0%, #8b7355 100%);
-  border-radius: 0 0 3px 3px;
-  animation: ${tasselSway} ${props => 2 + props.$delay * 0.3}s ease-in-out infinite;
-  animation-delay: ${props => props.$delay * 0.15}s;
-  transform-origin: top center;
-  
-  &::after {
-    content: "";
-    position: absolute;
-    bottom: -4px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 4px;
-    height: 8px;
-    background: linear-gradient(180deg, #8b7355 0%, #5c4033 100%);
-    border-radius: 0 0 2px 2px;
-  }
+  ${(p) => (p.$top ? "top: 0;" : "bottom: 0;")}
 `;
 
 // ============================================
-// TITLE SECTION
+// BOTTOM-BAR STATUS PIECES (inline w/ ticker)
 // ============================================
 
-const TitleSection = styled.div`
-  text-align: center;
-  margin-bottom: clamp(16px, 2.5cqh, 24px);
-  padding-bottom: clamp(12px, 1.8cqh, 18px);
-  border-bottom: 2px solid rgba(212, 175, 55, 0.25);
-  position: relative;
-  
-  /* Decorative diamonds on border */
-  &::before, &::after {
-    content: "◆";
-    position: absolute;
-    bottom: -8px;
-    font-size: clamp(8px, 1cqw, 12px);
-    color: #d4af37;
-  }
-  &::before { left: 15%; }
-  &::after { right: 15%; }
-`;
-
-const GameTitle = styled.h1`
-  font-family: "Bungee", cursive;
-  font-size: clamp(1.4rem, 2.8cqw, 2rem);
-  margin: 0 0 clamp(3px, 0.4cqh, 6px) 0;
-  color: #d4af37;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  animation: ${titleGlow} 3s ease-in-out infinite;
-  
-  @media (max-width: 600px) {
-    font-size: clamp(1.2rem, 4.5cqw, 1.6rem);
-  }
-`;
-
-const GameSubtitle = styled.div`
+const LiveStatus = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-family: "Outfit", sans-serif;
-  font-weight: 500;
-  font-size: clamp(0.5rem, 1cqw, 0.7rem);
-  color: #e8dcc8;
-  letter-spacing: 0.25em;
+  font-weight: 600;
+  font-size: clamp(0.45rem, 0.78cqw, 0.6rem);
+  color: ${C.cream};
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  text-shadow: 1px 1px 0 #000;
-  opacity: 0.8;
+  white-space: nowrap;
+`;
+
+const VersionChip = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: "Outfit", sans-serif;
+  font-weight: 600;
+  font-size: clamp(0.45rem, 0.72cqw, 0.55rem);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  white-space: nowrap;
+
+  span.version {
+    color: ${C.gold};
+    font-weight: 700;
+    letter-spacing: 0.06em;
+  }
+
+  span.divider {
+    width: 1px;
+    height: 10px;
+    background: rgba(245, 236, 217, 0.2);
+  }
+
+  span.tag {
+    color: ${C.creamMute};
+  }
+`;
+
+const LiveDot = styled.span`
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4ade80;
+  animation: ${livePulse} 2s ease-out infinite;
 `;
 
 // ============================================
-// MENU BUTTONS
+// HERO LAYOUT (middle stage)
 // ============================================
 
-const ButtonsContainer = styled.div`
+const HeroStage = styled.main`
+  position: relative;
+  z-index: 10;
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: clamp(20px, 3cqw, 60px);
+  padding: clamp(28px, 4.5cqh, 60px) clamp(28px, 3.5cqw, 56px) clamp(20px, 2.8cqh, 36px);
+  align-items: stretch;
+
+  @media (max-width: 720px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const LeftColumn = styled.div`
   display: flex;
   flex-direction: column;
-  gap: clamp(8px, 1.2cqh, 14px);
+  justify-content: flex-start;
+  gap: clamp(18px, 2.8cqh, 32px);
+  min-width: 0;
+`;
+
+// --- Title block ---
+
+const TitleBlock = styled.div`
   position: relative;
-  z-index: 1;
+  padding-left: clamp(14px, 1.8cqw, 22px);
+
+  &::before {
+    /* vertical vermillion accent bar */
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 6%;
+    bottom: 6%;
+    width: 4px;
+    background: linear-gradient(180deg, ${C.vermillion} 0%, ${C.gold} 50%, ${C.vermillion} 100%);
+    box-shadow: 0 0 16px ${C.vermillionGlow};
+    border-radius: 2px;
+    opacity: 0;
+    animation: ${fadeIn} 0.6s ease-out 0.25s forwards;
+  }
+`;
+
+const MainTitle = styled.h1`
+  font-family: "Bungee", cursive;
+  font-size: clamp(2.6rem, 6.6cqw, 5rem);
+  margin: 0;
+  line-height: 0.92;
+  color: ${C.cream};
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  animation: ${titleShimmer} 4.5s ease-in-out infinite, ${slideInLeft} 0.6s ease-out 0.35s backwards;
+  white-space: nowrap;
+
+  /* offset color "shadow" version layered behind */
+  position: relative;
+
+  span {
+    display: inline-block;
+  }
+
+  span.accent {
+    color: ${C.vermillionBright};
+  }
+`;
+
+// --- Menu list ---
+
+const MenuList = styled.nav`
+  display: flex;
+  flex-direction: column;
+  gap: clamp(9px, 1.3cqh, 14px);
+  position: relative;
+  margin-top: clamp(4px, 0.8cqh, 10px);
 `;
 
 const MenuButton = styled.button`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.7rem, 1.3cqw, 0.95rem);
-  width: 100%;
-  background: linear-gradient(180deg,
-    #4a3525 0%,
-    #3d2817 50%,
-    #2a1d14 100%
-  );
-  color: ${props => props.$isActive ? '#d4af37' : '#6b5a4a'};
-  border: 2px solid ${props => props.$isActive ? '#8b7355' : '#4a3a2a'};
-  border-radius: clamp(4px, 0.7cqw, 8px);
-  padding: clamp(10px, 1.5cqh, 16px) clamp(16px, 2.5cqw, 26px);
-  cursor: ${props => props.$isActive ? 'pointer' : 'default'};
-  transition: all 0.25s ease;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  box-shadow: 
-    0 4px 12px rgba(0,0,0,0.4),
-    inset 0 1px 0 rgba(255,255,255,0.08),
-    inset 0 -2px 4px rgba(0,0,0,0.3);
-  text-shadow: 
-    2px 2px 0 #000,
-    ${props => props.$isActive ? '0 0 8px rgba(212, 175, 55, 0.25)' : 'none'};
+  --accent: ${(p) => (p.$primary ? C.vermillion : C.indigoBright)};
+  --accentBright: ${(p) => (p.$primary ? C.vermillionBright : C.iceBright)};
+  --accentGlow: ${(p) => (p.$primary ? C.vermillionGlow : C.indigoGlow)};
+
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: clamp(10px, 1.4cqw, 18px);
+  width: 100%;
+  max-width: clamp(380px, 44cqw, 560px);
+  padding: ${(p) =>
+    p.$primary
+      ? "clamp(15px, 2.1cqh, 22px) clamp(20px, 2.4cqw, 30px)"
+      : "clamp(12px, 1.7cqh, 17px) clamp(18px, 2.2cqw, 26px)"};
+  background: linear-gradient(
+    100deg,
+    ${(p) =>
+      p.$primary
+        ? "rgba(216, 59, 39, 0.22) 0%, rgba(8, 11, 24, 0.55) 60%, rgba(8, 11, 24, 0.4) 100%"
+        : "rgba(31, 42, 77, 0.45) 0%, rgba(8, 11, 24, 0.55) 70%, rgba(8, 11, 24, 0.35) 100%"}
+  );
+  border: 1px solid
+    ${(p) =>
+      p.$primary
+        ? "rgba(238, 81, 65, 0.55)"
+        : "rgba(94, 122, 200, 0.35)"};
+  border-left: 3px solid var(--accent);
+  border-radius: 2px;
+  cursor: ${(p) => (p.$disabled ? "default" : "pointer")};
+  font-family: "Bungee", cursive;
+  color: ${(p) => (p.$disabled ? "rgba(245, 236, 217, 0.35)" : C.cream)};
   text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.13em;
+  text-shadow: 0 2px 0 #000;
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease,
+    box-shadow 0.2s ease;
+  backdrop-filter: blur(3px);
+  box-shadow:
+    0 4px 14px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
   opacity: 0;
-  animation: ${slideIn} 0.4s ease-out forwards;
-  animation-delay: ${props => 0.2 + props.$index * 0.07}s;
-  
-  /* Wood grain texture */
+  animation: ${slideInLeft} 0.45s ease-out forwards;
+  animation-delay: ${(p) => 0.55 + p.$index * 0.07}s;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
+
+  /* diagonal slash underline accent */
+  &::after {
+    content: "";
+    position: absolute;
+    left: 18px;
+    right: 26px;
+    bottom: 6px;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      var(--accent) 0%,
+      transparent 80%
+    );
+    transform: scaleX(${(p) => (p.$primary ? 1 : 0.4)});
+    transform-origin: left;
+    opacity: ${(p) => (p.$disabled ? 0.2 : 0.7)};
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+
+  ${(p) =>
+    !p.$disabled &&
+    css`
+      &:hover {
+        transform: translateX(8px);
+        background: linear-gradient(
+          100deg,
+          ${p.$primary
+              ? "rgba(238, 81, 65, 0.4) 0%, rgba(8, 11, 24, 0.55) 60%, rgba(8, 11, 24, 0.4) 100%"
+              : "rgba(58, 74, 133, 0.55) 0%, rgba(8, 11, 24, 0.55) 70%, rgba(8, 11, 24, 0.35) 100%"}
+        );
+        border-color: var(--accentBright);
+        box-shadow:
+          0 6px 22px rgba(0, 0, 0, 0.55),
+          0 0 24px var(--accentGlow),
+          inset 0 1px 0 rgba(255, 255, 255, 0.1);
+
+        &::after {
+          transform: scaleX(1);
+          opacity: 1;
+        }
+
+        .menu-arrow {
+          color: var(--accentBright);
+          animation: ${arrowNudge} 0.8s ease-in-out infinite;
+        }
+      }
+
+      &:active {
+        transform: translateX(4px) scale(0.99);
+      }
+    `}
+
+  /* Tooltip reveal on hover (works for disabled buttons too) */
+  &:hover .menu-tooltip {
+    opacity: 1;
+    transform: translateX(0);
+  }
+`;
+
+/*
+ * Tooltip — appears to the right of a menu button on hover.
+ * Used for SOON items (e.g. ranked Play Online) to softly
+ * redirect the player to a working alternative.
+ */
+const MenuTooltip = styled.span.attrs({ className: "menu-tooltip" })`
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 14px);
+  transform: translate(-6px, -50%);
+  padding: clamp(7px, 1cqh, 10px) clamp(12px, 1.6cqw, 18px);
+  background: ${C.inkPanelStrong};
+  border: 1px solid rgba(245, 236, 217, 0.18);
+  border-left: 2px solid ${C.vermillion};
+  border-radius: 2px;
+  font-family: "Outfit", sans-serif;
+  font-weight: 500;
+  font-size: clamp(0.5rem, 0.78cqw, 0.6rem);
+  color: ${C.cream};
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  text-shadow: 0 1px 0 #000;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 5;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+
+  strong {
+    color: ${C.gold};
+    font-weight: 700;
+  }
+
+  /* Left-pointing arrow */
   &::before {
     content: "";
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: repeating-linear-gradient(
-      90deg,
-      transparent 0px,
-      rgba(255,255,255,0.02) 1px,
-      transparent 3px
-    );
-    border-radius: clamp(4px, 0.7cqw, 8px);
-    pointer-events: none;
-  }
-
-  ${props => props.$isActive && css`
-    &:hover {
-      background: linear-gradient(180deg,
-        #5c4530 0%,
-        #4a3525 50%,
-        #3d2817 100%
-      );
-      border-color: #d4af37;
-      transform: translateX(8px);
-      box-shadow: 
-        0 6px 18px rgba(0,0,0,0.5),
-        0 0 20px rgba(212, 175, 55, 0.2),
-        inset 0 1px 0 rgba(255,255,255,0.12),
-        inset 0 -2px 4px rgba(0,0,0,0.3);
-      color: #f0d080;
-    }
-
-    &:active {
-      transform: translateX(4px);
-    }
-  `}
-  
-  @media (max-width: 900px) {
-    font-size: clamp(0.6rem, 1.8cqw, 0.8rem);
-    padding: clamp(9px, 1.3cqh, 13px) clamp(14px, 2cqw, 20px);
+    top: 50%;
+    left: -6px;
+    transform: translateY(-50%) rotate(45deg);
+    width: 8px;
+    height: 8px;
+    background: ${C.inkPanelStrong};
+    border-left: 1px solid ${C.vermillion};
+    border-bottom: 1px solid rgba(245, 236, 217, 0.18);
   }
 `;
 
-const ComingSoonBadge = styled.span`
+const MenuArrow = styled.span.attrs({ className: "menu-arrow" })`
   font-family: "Outfit", sans-serif;
-  font-weight: 500;
-  font-size: 0.65em;
-  color: #666;
-  margin-left: auto;
-  padding-left: 1em;
-  letter-spacing: 0.08em;
+  font-weight: 700;
+  font-size: ${(p) => (p.$primary ? "clamp(0.95rem, 1.5cqw, 1.15rem)" : "clamp(0.7rem, 1.1cqw, 0.85rem)")};
+  color: ${(p) => (p.$disabled ? "rgba(245, 236, 217, 0.25)" : "var(--accent)")};
+  transition: color 0.2s ease;
+  text-shadow: 0 0 12px var(--accentGlow);
+  &::after {
+    content: "▶";
+  }
 `;
 
-// ============================================
-// RIGHT CONTENT AREA
-// ============================================
-
-const RightPanel = styled.div`
-  flex: 1;
+const MenuLabels = styled.div`
   display: flex;
   flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+`;
+
+const MenuLabel = styled.div`
+  font-size: ${(p) => (p.$primary ? "clamp(0.95rem, 1.6cqw, 1.18rem)" : "clamp(0.72rem, 1.2cqw, 0.92rem)")};
+  line-height: 1.05;
+`;
+
+const MenuMeta = styled.div`
+  font-family: "Outfit", sans-serif;
+  font-weight: 500;
+  font-size: clamp(0.45rem, 0.78cqw, 0.6rem);
+  color: ${C.creamMute};
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  text-shadow: 1px 1px 0 #000;
+  margin-top: 4px;
+`;
+
+/*
+ * Thin horizontal divider between game-mode buttons and
+ * system-level entries (e.g. Options). Signals visual hierarchy.
+ */
+const MenuDivider = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: clamp(380px, 44cqw, 560px);
+  margin: clamp(4px, 0.6cqh, 8px) 0 clamp(2px, 0.4cqh, 6px);
+  font-family: "Outfit", sans-serif;
+  font-weight: 600;
+  font-size: clamp(0.4rem, 0.65cqw, 0.5rem);
+  color: ${C.creamMute};
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  opacity: 0;
+  animation: ${fadeIn} 0.5s ease-out forwards;
+  animation-delay: ${(p) => 0.55 + (p.$index ?? 5) * 0.07}s;
+
+  &::before,
+  &::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: rgba(245, 236, 217, 0.12);
+  }
+`;
+
+/*
+ * SystemButton — slimmer, lower-contrast version of MenuButton
+ * used for system-level entries like Options. Same color
+ * language but visually de-emphasized so it doesn't compete
+ * with the primary game-mode list above it.
+ */
+const SystemButton = styled.button`
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: clamp(10px, 1.4cqw, 18px);
+  width: 100%;
+  max-width: clamp(380px, 44cqw, 560px);
+  padding: clamp(9px, 1.3cqh, 13px) clamp(18px, 2.2cqw, 26px);
+  background: transparent;
+  border: 1px solid rgba(245, 236, 217, 0.12);
+  border-radius: 2px;
+  cursor: pointer;
+  font-family: "Bungee", cursive;
+  color: ${C.creamMute};
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.13em;
+  text-shadow: 0 2px 0 #000;
+  font-size: clamp(0.65rem, 1.05cqw, 0.82rem);
+  transition: transform 0.2s ease, color 0.2s ease, background 0.2s ease,
+    border-color 0.2s ease, box-shadow 0.2s ease;
+  opacity: 0;
+  animation: ${slideInLeft} 0.45s ease-out forwards;
+  animation-delay: ${(p) => 0.55 + p.$index * 0.07}s;
+
+  .system-icon {
+    display: grid;
+    place-items: center;
+    width: clamp(16px, 1.6cqw, 22px);
+    height: clamp(16px, 1.6cqw, 22px);
+    color: ${C.creamMute};
+    transition: color 0.2s ease, transform 0.4s ease;
+  }
+  .system-icon .material-symbols-outlined {
+    font-size: clamp(0.85rem, 1.4cqw, 1.05rem);
+  }
+
+  &:hover {
+    color: ${C.cream};
+    background: rgba(31, 42, 77, 0.35);
+    border-color: rgba(94, 122, 200, 0.5);
+    transform: translateX(6px);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+
+    .system-icon {
+      color: ${C.iceBright};
+      transform: rotate(45deg);
+    }
+  }
+
+  &:active {
+    transform: translateX(3px) scale(0.99);
+  }
+`;
+
+const SoonTag = styled.span`
+  font-family: "Outfit", sans-serif;
+  font-weight: 600;
+  font-size: clamp(0.42rem, 0.7cqw, 0.55rem);
+  color: ${C.gold};
+  letter-spacing: 0.22em;
+  padding: 3px 7px;
+  border: 1px solid rgba(232, 197, 71, 0.35);
+  border-radius: 2px;
+  background: rgba(232, 197, 71, 0.06);
+  text-shadow: none;
+`;
+
+// --- Right column: Banzuke (today's stats) panel ---
+
+const RightColumn = styled.aside`
+  position: relative;
+  height: 100%;
+  display: flex;
   align-items: flex-end;
   justify-content: flex-end;
-  padding: clamp(24px, 3cqh, 40px);
-  position: relative;
-  z-index: 5;
-  
-  @media (max-width: 600px) {
+  min-width: 0;
+
+  @media (max-width: 720px) {
     display: none;
   }
 `;
 
-const AnnouncementCard = styled.div`
-  background: linear-gradient(180deg,
-    rgba(26, 10, 8, 0.92) 0%,
-    rgba(21, 8, 5, 0.95) 100%
-  );
-  border: 2px solid rgba(139, 115, 85, 0.4);
-  border-radius: clamp(8px, 1cqw, 12px);
-  padding: clamp(16px, 2cqh, 24px) clamp(18px, 2.5cqw, 28px);
-  max-width: clamp(280px, 30cqw, 380px);
-  box-shadow: 
-    0 10px 40px rgba(0,0,0,0.5),
-    inset 0 0 30px rgba(0,0,0,0.4);
+/*
+ * BanzukeCard — clean stats panel.
+ * The numeric values are wired to placeholders for now;
+ * swap the StatValue children for live data once the
+ * relevant socket events / stats endpoints exist:
+ *   - wrestlersOnline -> server-reported player count
+ *   - matchesToday    -> server-reported daily match count
+ *   - playerRank      -> player's own rank / tier
+ */
+const BanzukeCard = styled.section`
+  position: relative;
+  width: clamp(220px, 26cqw, 320px);
+  padding: clamp(14px, 1.8cqh, 20px) clamp(18px, 2.2cqw, 26px) clamp(14px, 1.8cqh, 20px);
+  background: ${C.inkPanel};
+  border: 1px solid rgba(245, 236, 217, 0.12);
+  border-left: 3px solid ${C.gold};
+  border-radius: 2px;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5);
   opacity: 0;
-  animation: ${fadeIn} 0.5s ease-out 0.6s forwards;
-  
-  /* Fabric texture */
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: 
-      repeating-linear-gradient(
-        0deg,
-        transparent 0px,
-        rgba(255,255,255,0.01) 1px,
-        transparent 2px
-      );
-    pointer-events: none;
-    border-radius: clamp(8px, 1cqw, 12px);
-  }
+  animation: ${fadeUp} 0.6s ease-out 0.55s forwards;
 `;
 
-const AnnouncementHeader = styled.div`
+const BanzukeHeader = styled.div`
   display: flex;
-  align-items: center;
-  gap: clamp(8px, 1cqw, 12px);
-  margin-bottom: clamp(10px, 1.5cqh, 16px);
-  padding-bottom: clamp(8px, 1cqh, 12px);
-  border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: clamp(8px, 1cqh, 10px);
+  margin-bottom: clamp(10px, 1.3cqh, 14px);
+  border-bottom: 1px solid rgba(245, 236, 217, 0.1);
 `;
 
-const LiveDot = styled.span`
-  width: clamp(6px, 0.8cqw, 10px);
-  height: clamp(6px, 0.8cqw, 10px);
-  background: #4ade80;
-  border-radius: 50%;
-  animation: ${dotPulse} 2s ease-in-out infinite;
-  box-shadow: 0 0 8px rgba(74, 222, 128, 0.5);
-`;
-
-const AnnouncementTitle = styled.h3`
+const BanzukeTitle = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.6rem, 1.1cqw, 0.8rem);
-  color: #d4af37;
-  margin: 0;
+  font-size: clamp(0.6rem, 1cqw, 0.75rem);
+  color: ${C.gold};
+  letter-spacing: 0.2em;
   text-transform: uppercase;
-  letter-spacing: 0.14em;
   text-shadow: 1px 1px 0 #000;
 `;
 
-const AnnouncementContent = styled.div`
+const BanzukeDate = styled.div`
   font-family: "Outfit", sans-serif;
-  font-weight: 400;
-  font-size: clamp(0.55rem, 1cqw, 0.75rem);
-  color: #c8bca8;
-  line-height: 1.7;
-  text-shadow: 1px 1px 0 #000;
-  
-  p {
-    margin: 0 0 clamp(6px, 1cqh, 10px) 0;
-    
-    &:last-child {
-      margin-bottom: 0;
-    }
-  }
-  
-  strong {
-    color: #e8dcc8;
-    font-weight: 600;
-  }
+  font-weight: 500;
+  font-size: clamp(0.45rem, 0.72cqw, 0.55rem);
+  color: ${C.creamMute};
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
 `;
 
-// ============================================
-// SETTINGS BUTTON
-// ============================================
-
-const SettingsButton = styled.button`
-  position: absolute;
-  top: clamp(12px, 2cqh, 20px);
-  right: clamp(12px, 2cqw, 20px);
-  background: linear-gradient(180deg,
-    rgba(26, 10, 8, 0.9) 0%,
-    rgba(15, 5, 5, 0.9) 100%
-  );
-  border: 2px solid rgba(139, 115, 85, 0.4);
-  border-radius: 50%;
-  color: #8b7355;
-  cursor: pointer;
-  z-index: 20;
-  width: clamp(40px, 4.5cqw, 52px);
-  height: clamp(40px, 4.5cqw, 52px);
-  transition: all 0.3s ease;
+const StatList = styled.div`
   display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 
-    0 4px 15px rgba(0,0,0,0.5),
-    inset 0 0 15px rgba(0,0,0,0.4);
-  
-  .material-symbols-outlined {
-    font-size: clamp(1.1rem, 2.2cqw, 1.6rem);
-    transition: transform 0.3s ease;
-  }
-
-  &:hover {
-    color: #d4af37;
-    border-color: rgba(212, 175, 55, 0.6);
-    transform: rotate(45deg);
-    box-shadow: 
-      0 6px 20px rgba(0,0,0,0.6),
-      0 0 12px rgba(212, 175, 55, 0.15),
-      inset 0 0 15px rgba(0,0,0,0.4);
-  }
+  flex-direction: column;
+  gap: clamp(8px, 1.1cqh, 12px);
 `;
 
-// ============================================
-// VERSION INFO
-// ============================================
+const StatRow = styled.div`
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+`;
 
-const VersionInfo = styled.div`
-  position: absolute;
-  bottom: clamp(8px, 1.5cqh, 14px);
-  left: clamp(12px, 2cqw, 20px);
+const StatLabel = styled.div`
   font-family: "Outfit", sans-serif;
-  font-weight: 400;
-  font-size: clamp(0.5rem, 0.75cqw, 0.65rem);
-  color: rgba(255, 255, 255, 0.6);
-  letter-spacing: 0.12em;
-  z-index: 10;
+  font-weight: 500;
+  font-size: clamp(0.5rem, 0.8cqw, 0.62rem);
+  color: ${C.creamMute};
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
 `;
 
-// ============================================
-// CONNECTION ERROR BANNER
-// ============================================
+const StatValue = styled.div`
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.75rem, 1.25cqw, 0.95rem);
+  color: ${(p) => (p.$muted ? C.creamMute : C.cream)};
+  letter-spacing: 0.06em;
+  text-shadow: 0 2px 0 #000;
+
+  ${(p) =>
+    p.$accent &&
+    css`
+      color: ${C.vermillionBright};
+    `}
+`;
+
+// --- Connection error ---
 
 const ConnectionErrorBanner = styled.div`
   position: absolute;
-  top: clamp(12px, 2cqh, 20px);
+  top: 50%;
   left: 50%;
-  transform: translateX(-50%);
-  background: linear-gradient(180deg,
-    rgba(139, 0, 0, 0.95) 0%,
-    rgba(100, 0, 0, 0.95) 100%
+  transform: translate(-50%, -50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: clamp(10px, 1.4cqh, 14px) clamp(18px, 2.4cqw, 28px);
+  background: linear-gradient(
+    180deg,
+    ${C.vermillionDeep} 0%,
+    rgba(96, 22, 14, 0.95) 100%
   );
-  border: 2px solid rgba(255, 100, 100, 0.6);
-  border-radius: clamp(6px, 1cqw, 10px);
-  padding: clamp(8px, 1.5cqh, 14px) clamp(16px, 2.5cqw, 24px);
-  z-index: 30;
-  box-shadow: 
-    0 6px 20px rgba(0,0,0,0.6),
-    0 0 15px rgba(255, 0, 0, 0.3),
-    inset 0 0 20px rgba(0,0,0,0.4);
-  animation: ${fadeIn} 0.4s ease-out;
-  
+  border: 1px solid ${C.vermillionBright};
+  border-radius: 4px;
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.6),
+    0 0 30px ${C.vermillionGlow};
   font-family: "Bungee", cursive;
-  font-size: clamp(0.5rem, 0.9cqw, 0.7rem);
-  color: #ffcccc;
-  letter-spacing: 0.08em;
-  text-align: center;
+  font-size: clamp(0.55rem, 0.9cqw, 0.72rem);
+  color: ${C.cream};
+  letter-spacing: 0.14em;
   text-shadow: 1px 1px 0 #000;
-  
+  animation: ${fadeIn} 0.4s ease-out;
+
   &::before {
     content: "⚠";
-    margin-right: 0.5em;
-    color: #ff6666;
-    font-size: 1.2em;
+    color: ${C.gold};
+    font-size: 1.4em;
+  }
+`;
+
+// ============================================
+// BOTTOM HUD — broadcast-style: status pills + scrolling ticker
+// ============================================
+
+const BottomHud = styled.footer`
+  position: relative;
+  z-index: 20;
+  display: flex;
+  align-items: stretch;
+  border-top: 1px solid rgba(245, 236, 217, 0.08);
+  background: linear-gradient(
+    0deg,
+    rgba(7, 10, 20, 0.85) 0%,
+    rgba(7, 10, 20, 0.45) 100%
+  );
+  opacity: 0;
+  animation: ${fadeIn} 0.6s ease-out 0.6s forwards;
+  min-height: clamp(28px, 3.6cqh, 40px);
+`;
+
+/* Fixed-width status block on the left edge of the bottom bar */
+const StatusBlock = styled.div`
+  display: flex;
+  align-items: center;
+  gap: clamp(10px, 1.5cqw, 18px);
+  padding: 0 clamp(16px, 2cqw, 26px);
+  background: linear-gradient(
+    180deg,
+    rgba(31, 42, 77, 0.55) 0%,
+    rgba(8, 11, 24, 0.85) 100%
+  );
+  border-right: 2px solid ${C.vermillion};
+  box-shadow: inset 0 1px 0 rgba(245, 236, 217, 0.05);
+  flex-shrink: 0;
+`;
+
+const StatusDivider = styled.span`
+  width: 1px;
+  height: 14px;
+  background: rgba(245, 236, 217, 0.18);
+`;
+
+const Ticker = styled.div`
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(216, 59, 39, 0.04) 50%,
+    transparent 100%
+  );
+
+  &::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 60px;
+    background: linear-gradient(90deg, ${C.ink}, transparent);
+    z-index: 2;
+    pointer-events: none;
+  }
+  &::after {
+    content: "";
+    position: absolute;
+    right: 0; top: 0; bottom: 0;
+    width: 60px;
+    background: linear-gradient(270deg, ${C.ink}, transparent);
+    z-index: 2;
+    pointer-events: none;
+  }
+`;
+
+const TickerTrack = styled.div`
+  display: inline-flex;
+  white-space: nowrap;
+  animation: ${tickerScroll} 45s linear infinite;
+  font-family: "Outfit", sans-serif;
+  font-weight: 500;
+  font-size: clamp(0.5rem, 0.85cqw, 0.65rem);
+  color: ${C.creamMute};
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+`;
+
+const TickerItem = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 28px;
+
+  &::after {
+    content: "◆";
+    color: ${C.vermillion};
+    font-size: 0.6em;
+  }
+
+  strong {
+    color: ${C.gold};
+    font-weight: 700;
+    margin-right: 6px;
+  }
+
+  em {
+    color: ${C.cream};
+    font-style: normal;
+    font-weight: 600;
   }
 `;
 
@@ -675,7 +875,6 @@ const MainMenu = ({ rooms, setRooms, currentPage, setCurrentPage, localId, conne
 
     playBackgroundMusic();
 
-    // Listen for CPU match creation success
     const handleCPUMatchCreated = (data) => {
       console.log("CPU match created:", data);
       setRoomName(data.roomId);
@@ -691,7 +890,6 @@ const MainMenu = ({ rooms, setRooms, currentPage, setCurrentPage, localId, conne
     socket.on("cpu_match_created", handleCPUMatchCreated);
     socket.on("cpu_match_failed", handleCPUMatchFailed);
 
-    // Cleanup function to stop music when component unmounts
     return () => {
       stopBackgroundMusic();
       socket.off("cpu_match_created", handleCPUMatchCreated);
@@ -699,21 +897,17 @@ const MainMenu = ({ rooms, setRooms, currentPage, setCurrentPage, localId, conne
     };
   }, [socket, setCurrentPage]);
 
-  // Background cycling effect
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentBgIndex((prev) => (prev + 1) % backgroundImages.length);
-    }, 10000); // Change every 10 seconds
-
+    }, 10000);
     return () => clearInterval(interval);
   }, [backgroundImages.length]);
 
-  // Add new effect to handle page changes
   useEffect(() => {
     if (currentPage === "game") {
       stopBackgroundMusic();
     } else if (currentPage === "mainMenu") {
-      // Restart background music when returning to main menu
       playBackgroundMusic();
     }
   }, [currentPage]);
@@ -766,133 +960,225 @@ const MainMenu = ({ rooms, setRooms, currentPage, setCurrentPage, localId, conne
   const renderMainMenu = () => {
     return (
       <MainMenuContainer>
-        {/* Cycling background images */}
+        {/* Cycling background scenes */}
         {backgroundImages.map((bgImage, index) => (
           <BackgroundImage
             key={index}
             src={bgImage}
-            alt={`Background ${index + 1}`}
+            alt=""
             $isVisible={index === currentBgIndex}
           />
         ))}
-        <DarkOverlay />
-        <Snowfall intensity={20} showFrost={true} zIndex={2} />
-        
-        {/* Connection Error Banner */}
+        <CinematicOverlay />
+        <GrainOverlay />
+        <Snowfall intensity={18} showFrost={false} zIndex={4} />
+        <Letterbox $top />
+        <Letterbox />
+
+        {/* Connection error */}
         {connectionError && (
           <ConnectionErrorBanner>
-            Connection error. Attempting to reconnect...
+            CONNECTION LOST — RECONNECTING…
           </ConnectionErrorBanner>
         )}
-        
-        {/* Left Menu Panel */}
-        <LeftPanel>
-          <MenuBanner>
-            <HangingBar>
-              <SnowCap />
-              <IcicleRow $bottom="-8px">
-                <Icicle $w={3} $h={7} />
-                <Icicle $w={2} $h={11} />
-                <Icicle $w={3} $h={6} />
-                <Icicle $w={2} $h={9} />
-                <Icicle $w={3} $h={13} />
-                <Icicle $w={2} $h={7} />
-                <Icicle $w={3} $h={10} />
-              </IcicleRow>
-            </HangingBar>
-            <BannerBody>
-              <TitleSection>
-                <GameTitle>Pumo Pumo !</GameTitle>
-                <GameSubtitle>GRAND PUMO TOURNAMENT</GameSubtitle>
-              </TitleSection>
-              
-              <ButtonsContainer>
-                <MenuButton
-                  $isActive
-                  $index={0}
-                  onClick={() => {
-                    handleDisplayRooms();
-                    playButtonPressSound2();
-                  }}
-                  onMouseEnter={playButtonHoverSound}
-                >
-                  Play Online
-                </MenuButton>
-                <MenuButton
-                  $isActive
-                  $index={1}
-                  onClick={handleVsCPU}
-                  onMouseEnter={playButtonHoverSound}
-                >
-                  VS CPU
-                </MenuButton>
-                <MenuButton
-                  $index={2}
-                  onMouseEnter={playButtonHoverSound}
-                >
-                  Basho<ComingSoonBadge>Soon</ComingSoonBadge>
-                </MenuButton>
-                <MenuButton
-                  $isActive
-                  $index={3}
-                  onClick={() => {
-                    playButtonPressSound2();
-                    setCurrentPage("customize");
-                  }}
-                  onMouseEnter={playButtonHoverSound}
-                >
-                  Customize
-                </MenuButton>
-                <MenuButton
-                  $index={4}
-                  onMouseEnter={playButtonHoverSound}
-                >
-                  Stats<ComingSoonBadge>Soon</ComingSoonBadge>
-                </MenuButton>
-              </ButtonsContainer>
-              
-              <TasselContainer>
-                <Tassel $delay={0} />
-                <Tassel $delay={1} />
-                <Tassel $delay={2} />
-              </TasselContainer>
-            </BannerBody>
-          </MenuBanner>
-        </LeftPanel>
 
-        {/* Right Content Area */}
-        <RightPanel>
-          <AnnouncementCard>
-            <AnnouncementHeader>
+        {/* HERO STAGE */}
+        <HeroStage>
+          <LeftColumn>
+            <TitleBlock>
+              <MainTitle>
+                <span>Pumo</span>{" "}
+                <span className="accent">Pumo&nbsp;!</span>
+              </MainTitle>
+            </TitleBlock>
+
+            <MenuList>
+              <MenuButton
+                $primary
+                $disabled
+                $index={0}
+                onMouseEnter={playButtonHoverSound}
+              >
+                <MenuArrow $primary $disabled />
+                <MenuLabels>
+                  <MenuLabel $primary>Play Online</MenuLabel>
+                  <MenuMeta>Ranked Matchmaking</MenuMeta>
+                </MenuLabels>
+                <SoonTag>Soon</SoonTag>
+                <MenuTooltip>
+                  Coming soon — try <strong>Custom&nbsp;Match</strong>
+                </MenuTooltip>
+              </MenuButton>
+
+              <MenuButton
+                $primary
+                $index={1}
+                onClick={() => {
+                  handleDisplayRooms();
+                  playButtonPressSound2();
+                }}
+                onMouseEnter={playButtonHoverSound}
+              >
+                <MenuArrow $primary />
+                <MenuLabels>
+                  <MenuLabel $primary>Custom Match</MenuLabel>
+                  <MenuMeta>Create or Join a Room · Unranked</MenuMeta>
+                </MenuLabels>
+              </MenuButton>
+
+              <MenuButton
+                $index={2}
+                onClick={handleVsCPU}
+                onMouseEnter={playButtonHoverSound}
+              >
+                <MenuArrow />
+                <MenuLabels>
+                  <MenuLabel>VS CPU</MenuLabel>
+                  <MenuMeta>Practice vs AI</MenuMeta>
+                </MenuLabels>
+              </MenuButton>
+
+              <MenuButton
+                $index={3}
+                $disabled
+                onMouseEnter={playButtonHoverSound}
+              >
+                <MenuArrow $disabled />
+                <MenuLabels>
+                  <MenuLabel>Basho Tournament</MenuLabel>
+                  <MenuMeta>Multi-Round Championship</MenuMeta>
+                </MenuLabels>
+                <SoonTag>Soon</SoonTag>
+              </MenuButton>
+
+              <MenuButton
+                $index={4}
+                onClick={() => {
+                  playButtonPressSound2();
+                  setCurrentPage("customize");
+                }}
+                onMouseEnter={playButtonHoverSound}
+              >
+                <MenuArrow />
+                <MenuLabels>
+                  <MenuLabel>Customize</MenuLabel>
+                  <MenuMeta>Edit Your Wrestler</MenuMeta>
+                </MenuLabels>
+              </MenuButton>
+
+              <MenuButton
+                $index={5}
+                $disabled
+                onMouseEnter={playButtonHoverSound}
+              >
+                <MenuArrow $disabled />
+                <MenuLabels>
+                  <MenuLabel>Career Stats</MenuLabel>
+                  <MenuMeta>Records &amp; Replays</MenuMeta>
+                </MenuLabels>
+                <SoonTag>Soon</SoonTag>
+              </MenuButton>
+
+              <MenuDivider $index={6}>System</MenuDivider>
+
+              <SystemButton
+                $index={7}
+                className="settings-button"
+                onClick={() => {
+                  handleSettings();
+                  playButtonPressSound2();
+                }}
+                onMouseEnter={playButtonHoverSound}
+              >
+                <span className="system-icon">
+                  <span className="material-symbols-outlined">settings</span>
+                </span>
+                Options
+              </SystemButton>
+            </MenuList>
+          </LeftColumn>
+
+          <RightColumn>
+            {/*
+              BanzukeCard — placeholder values for now.
+              When real data is available, replace the StatValue
+              children below with live numbers from the server:
+                wrestlersOnline, matchesToday, playerRank, etc.
+            */}
+            <BanzukeCard>
+              <BanzukeHeader>
+                <BanzukeTitle>Today&apos;s Banzuke</BanzukeTitle>
+                <BanzukeDate>
+                  {new Date().toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                  })}
+                </BanzukeDate>
+              </BanzukeHeader>
+              <StatList>
+                <StatRow>
+                  <StatLabel>Wrestlers Online</StatLabel>
+                  <StatValue>—</StatValue>
+                </StatRow>
+                <StatRow>
+                  <StatLabel>Matches Today</StatLabel>
+                  <StatValue>—</StatValue>
+                </StatRow>
+                <StatRow>
+                  <StatLabel>Your Rank</StatLabel>
+                  <StatValue $muted>Unranked</StatValue>
+                </StatRow>
+              </StatList>
+            </BanzukeCard>
+          </RightColumn>
+        </HeroStage>
+
+        {/* BOTTOM HUD — broadcast-style: status block + scrolling ticker */}
+        <BottomHud>
+          <StatusBlock>
+            <LiveStatus>
               <LiveDot />
-              <AnnouncementTitle>Early Access</AnnouncementTitle>
-            </AnnouncementHeader>
-            <AnnouncementContent>
-              <p>Welcome to <strong>Pumo Pumo!</strong></p>
-              <p>Push your opponents out of the ring in this fast-paced penguin sumo battle. More features coming soon!</p>
-            </AnnouncementContent>
-          </AnnouncementCard>
-        </RightPanel>
+              Servers Online
+            </LiveStatus>
+            <StatusDivider />
+            <VersionChip>
+              <span className="version">v0.1.0</span>
+              <span className="divider" />
+              <span className="tag">Early Access</span>
+            </VersionChip>
+          </StatusBlock>
 
-        <SettingsButton
-          className="settings-button"
-          onClick={() => {
-            handleSettings();
-            playButtonPressSound2();
-          }}
-          onMouseEnter={playButtonHoverSound}
-        >
-          <span className="material-symbols-outlined">settings</span>
-        </SettingsButton>
-        
-        <VersionInfo>v0.1.0 Early Access</VersionInfo>
-        
+          <Ticker>
+            <TickerTrack>
+              {[0, 1].map((i) => (
+                <span key={i} style={{ display: "inline-flex" }}>
+                  <TickerItem>
+                    <strong>UPDATE 0.1</strong>
+                    <em>Push & slap your way to glory in the dohyo</em>
+                  </TickerItem>
+                  <TickerItem>
+                    <strong>NOW LIVE</strong>
+                    <em>Worldwide ranked matchmaking is open</em>
+                  </TickerItem>
+                  <TickerItem>
+                    <strong>HATSU SEASON</strong>
+                    <em>Earn the Yokozuna title before the tournament closes</em>
+                  </TickerItem>
+                  <TickerItem>
+                    <strong>DEV NOTE</strong>
+                    <em>Steam release coming — wishlist now to support the dohyo</em>
+                  </TickerItem>
+                </span>
+              ))}
+            </TickerTrack>
+          </Ticker>
+        </BottomHud>
+
         {showSettings && <Settings onClose={() => setShowSettings(false)} />}
       </MainMenuContainer>
     );
   };
 
-  // Render different pages based on currentPage
   switch (currentPage) {
     case "mainMenu":
       return (
