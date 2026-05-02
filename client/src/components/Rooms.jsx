@@ -176,8 +176,8 @@ const HeaderButton = styled.button`
 
   &:hover {
     color: ${C.cream};
-    background: rgba(31, 42, 77, 0.4);
-    border-color: rgba(94, 122, 200, 0.5);
+    background: rgba(28, 78, 110, 0.4);
+    border-color: rgba(126, 203, 240, 0.5);
     transform: translateY(-1px);
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
 
@@ -259,12 +259,12 @@ const RoomList = styled.div`
     background: rgba(7, 10, 20, 0.4);
   }
   &::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, ${C.indigo}, ${C.indigoBright});
+    background: linear-gradient(180deg, ${C.iceDeep}, ${C.iceMid});
     border-radius: 4px;
     border: 1px solid rgba(245, 236, 217, 0.08);
   }
   &::-webkit-scrollbar-thumb:hover {
-    background: ${C.indigoBright};
+    background: ${C.iceMid};
   }
 `;
 
@@ -328,9 +328,9 @@ const EmptySubtext = styled.div`
 const EmptyHint = styled.div`
   margin-top: clamp(20px, 3cqh, 28px);
   padding: clamp(10px, 1.4cqh, 14px) clamp(16px, 2.4cqw, 24px);
-  background: rgba(31, 42, 77, 0.35);
-  border: 1px solid rgba(94, 122, 200, 0.3);
-  border-left: 3px solid ${C.indigoBright};
+  background: rgba(28, 78, 110, 0.35);
+  border: 1px solid rgba(126, 203, 240, 0.3);
+  border-left: 3px solid ${C.ice};
   border-radius: 2px;
   font-family: "Outfit", sans-serif;
   font-weight: 500;

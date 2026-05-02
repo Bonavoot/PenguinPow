@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext } from "react";
+import { useState, useEffect, useContext, Fragment } from "react";
 import PropTypes from "prop-types";
 
 import Lobby from "./Lobby";
@@ -84,7 +84,22 @@ const BackgroundImage = styled.img`
    * behind the menu and Pumo, instead of competing with them as a
    * detailed foreground image.
    */
-  filter: saturate(0.55) brightness(0.42) contrast(0.95) blur(1px);
+  /*
+   * Shift the source illustration left so its main silhouette stops
+   * sitting directly behind Pumo (right side) and reading as a "second
+   * penguin". Combined with the heavier blur, what remains on the right
+   * half of the frame is just a soft ink wash.
+   */
+  object-position: 22% 50%;
+  transform: scale(1.12);
+  /*
+   * Push the backdrop fully into atmospheric texture: a strong blur
+   * dissolves recognizable shapes so it reads as sumi-e ink mood
+   * rather than a competing foreground illustration. We err on the
+   * side of "too quiet" — the title, menu, and Pumo do all the
+   * talking; the bg just contributes warmth and depth.
+   */
+  filter: saturate(0.36) brightness(0.34) contrast(0.9) blur(8px);
   animation: ${kenBurns} 22s ease-in-out infinite alternate;
 `;
 
@@ -297,8 +312,8 @@ const MenuList = styled.nav`
 
 const MenuButton = styled.button`
   /*
-   * Secondary palette = "Pumo ice" (the mawashi belt color), not the generic
-   * indigo from the shared theme. This is THE penguin's blue. Primary stays
+   * Secondary palette = "Pumo ice" (the mawashi belt color) — the
+   * canonical secondary across all menu surfaces. Primary stays
    * vermillion for the torii / sumo ring identity.
    */
   --accent: ${(p) => (p.$primary ? C.vermillion : C.ice)};
@@ -622,7 +637,54 @@ const pumoBreathe = keyframes`
   50%      { transform: scaleY(1.018); }
 `;
 
-const PumoHero = styled.img`
+/*
+ * Pumo is a bust portrait — his feet are cropped well below the
+ * BottomHud line, so any "ground lighting" reads as warmth glowing
+ * in empty space (no floor visible to be lit).
+ *
+ * Instead, the only ambient lighting we add is a single soft halo
+ * centered behind his head/shoulders — like a paper lantern in the
+ * ante-room. It's positioned relative to Pumo's actual visible
+ * center (which sits well right of the column's right edge because
+ * the sprite extends past it), not to the column itself.
+ */
+const PumoHalo = styled.div`
+  position: absolute;
+  /*
+   * Pumo extends ~32–90px past the right edge of RightColumn, and
+   * his visible head sits in the upper-right of his bounding box.
+   * Anchor the halo to his actual head position so it doesn't read
+   * as biased to the left.
+   */
+  right: clamp(-40px, -2cqw, 10px);
+  top: clamp(40px, 8cqh, 90px);
+  width: clamp(320px, 38cqw, 440px);
+  height: clamp(320px, 38cqw, 440px);
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      circle at center,
+      rgba(245, 236, 217, 0.22) 0%,
+      rgba(232, 197, 71, 0.1) 30%,
+      rgba(126, 203, 240, 0.05) 58%,
+      transparent 78%
+    );
+  filter: blur(28px);
+  opacity: 0;
+  animation: ${fadeIn} 1.2s ease-out 0.45s forwards;
+`;
+
+/*
+ * Pumo wrapper handles the on-load fade-up (opacity + translateY), and
+ * the inner <img> handles the infinite breathing scale. They MUST be
+ * split across two elements — running both animations on the same
+ * element causes a visible stutter on page load because CSS animations
+ * don't blend on a shared `transform` property; the breathing scale and
+ * the fade-up translateY end up fighting and the image jumps when the
+ * fade-up completes.
+ */
+const PumoHeroWrapper = styled.div`
   position: absolute;
   right: clamp(-90px, -5cqw, -32px);
   /*
@@ -637,23 +699,31 @@ const PumoHero = styled.img`
   z-index: 1;
   pointer-events: none;
   user-select: none;
+  /* Hint the compositor so the fade-up runs on the GPU without flicker */
+  will-change: opacity, transform;
+  animation: ${fadeUp} 0.8s ease-out 0.3s backwards;
+`;
+
+const PumoHero = styled.img`
+  display: block;
+  height: 100%;
+  width: auto;
   /*
    * Anchor the breathing scale to his feet so his planted base stays put
    * and only the chest/head subtly rise on the inhale.
    */
   transform-origin: 50% 100%;
   /*
-   * Pumo stays full-color (he's the brand) and crisp \u2014 no mask, no fade.
-   * The faded backdrop already gives him room to read; here we just nudge
-   * his luminance down a hair so he doesn't punch out of the scene, and
-   * drop a soft ground-shadow underneath plus a subtle ice-blue rim glow
-   * to anchor him.
+   * Neutral grounding only: a tight dark contact shadow directly
+   * under him plus a subtle ice-blue ambient halo. No directional
+   * warm shadow — that just reads as a red aura behind a black
+   * silhouette, not as rim lighting.
    */
   filter: saturate(0.96) brightness(0.94)
-          drop-shadow(0 14px 22px rgba(0, 0, 0, 0.6))
-          drop-shadow(0 0 28px rgba(126, 203, 240, 0.12));
-  animation: ${pumoBreathe} 3s ease-in-out infinite,
-             ${fadeUp} 0.8s ease-out 0.3s backwards;
+          drop-shadow(0 22px 22px rgba(0, 0, 0, 0.75))
+          drop-shadow(0 0 32px rgba(126, 203, 240, 0.14));
+  will-change: transform;
+  animation: ${pumoBreathe} 3s ease-in-out infinite;
 `;
 
 /*
@@ -802,12 +872,13 @@ const BottomHud = styled.footer`
   z-index: 20;
   display: flex;
   align-items: stretch;
-  border-top: 1px solid rgba(245, 236, 217, 0.08);
+  border-top: 1px solid rgba(245, 236, 217, 0.1);
   background: linear-gradient(
     0deg,
-    rgba(7, 10, 20, 0.85) 0%,
-    rgba(7, 10, 20, 0.45) 100%
+    rgba(7, 10, 20, 0.96) 0%,
+    rgba(7, 10, 20, 0.78) 100%
   );
+  box-shadow: 0 -10px 24px rgba(0, 0, 0, 0.5);
   opacity: 0;
   animation: ${fadeIn} 0.6s ease-out 0.6s forwards;
   min-height: clamp(28px, 3.6cqh, 40px);
@@ -841,19 +912,29 @@ const Ticker = styled.div`
   overflow: hidden;
   display: flex;
   align-items: center;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(216, 59, 39, 0.04) 50%,
-    transparent 100%
-  );
+  /*
+   * Defined broadcast-style channel: a solid darker backing (slightly
+   * deeper than StatusBlock so it reads as a separate cell of the same
+   * bar), a very subtle warm wash centered, and a thin vermillion
+   * top-edge accent so the whole bottom HUD reads as one strip.
+   */
+  background:
+    linear-gradient(
+      90deg,
+      rgba(7, 10, 20, 0.92) 0%,
+      rgba(12, 16, 28, 0.88) 50%,
+      rgba(7, 10, 20, 0.92) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 ${C.vermillion},
+    inset 0 2px 0 rgba(7, 10, 20, 0.6);
 
   &::before {
     content: "";
     position: absolute;
     left: 0; top: 0; bottom: 0;
     width: 60px;
-    background: linear-gradient(90deg, ${C.ink}, transparent);
+    background: linear-gradient(90deg, rgba(7, 10, 20, 0.95), transparent);
     z-index: 2;
     pointer-events: none;
   }
@@ -862,7 +943,7 @@ const Ticker = styled.div`
     position: absolute;
     right: 0; top: 0; bottom: 0;
     width: 60px;
-    background: linear-gradient(270deg, ${C.ink}, transparent);
+    background: linear-gradient(270deg, rgba(7, 10, 20, 0.95), transparent);
     z-index: 2;
     pointer-events: none;
   }
@@ -884,13 +965,7 @@ const TickerItem = styled.span`
   display: inline-flex;
   align-items: center;
   gap: 14px;
-  padding: 0 28px;
-
-  &::after {
-    content: "◆";
-    color: ${C.vermillion};
-    font-size: 0.6em;
-  }
+  padding: 0 18px;
 
   strong {
     color: ${C.gold};
@@ -905,6 +980,22 @@ const TickerItem = styled.span`
   }
 `;
 
+/*
+ * Separator diamond between announcements. Lives as its own element
+ * (rather than ::after on TickerItem) so it gets equal padding on
+ * both sides — visually centered in the gap between two items
+ * instead of glued to the trailing edge of one.
+ */
+const TickerSeparator = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 18px;
+  color: ${C.vermillion};
+  font-size: 0.55em;
+  line-height: 1;
+`;
+
 // ============================================
 // PRELOAD ASSETS
 // ============================================
@@ -913,6 +1004,19 @@ const preGameImages = [
   lobbyBackground,
   pumo,
   mainMenuBackground,
+];
+
+/*
+ * Ticker copy lives here so the marquee can be a clean .map and the
+ * separator can be interspersed (rather than baked into each item via
+ * ::after, which makes the diamond hug the trailing item instead of
+ * sitting centered between two items).
+ */
+const TICKER_ITEMS = [
+  { label: "UPDATE 0.1", text: "Push & slap your way to glory in the dohyo" },
+  { label: "NOW LIVE", text: "Worldwide ranked matchmaking is open" },
+  { label: "HATSU SEASON", text: "Earn the Yokozuna title before the tournament closes" },
+  { label: "DEV NOTE", text: "Steam release coming — wishlist now to support the dohyo" },
 ];
 
 // ============================================
@@ -1142,10 +1246,16 @@ const MainMenu = ({ rooms, setRooms, currentPage, setCurrentPage, localId, conne
 
           <RightColumn>
             {/*
-              Pumo hero — the brand. Stays in front of the faded battle
-              scene backdrop, idles softly to feel alive.
+              Pumo hero — the brand. A single soft cream halo sits
+              behind his head/shoulders to lift him off the bg
+              (paper lantern in the ante-room). No ground lighting:
+              his feet are cropped below the BottomHud, so there is
+              no visible floor to light.
             */}
-            <PumoHero src={pumoMainMenu} alt="Pumo" />
+            <PumoHalo aria-hidden />
+            <PumoHeroWrapper>
+              <PumoHero src={pumoMainMenu} alt="Pumo" />
+            </PumoHeroWrapper>
           </RightColumn>
 
           {/*
@@ -1200,24 +1310,17 @@ const MainMenu = ({ rooms, setRooms, currentPage, setCurrentPage, localId, conne
 
           <Ticker>
             <TickerTrack>
-              {[0, 1].map((i) => (
-                <span key={i} style={{ display: "inline-flex" }}>
-                  <TickerItem>
-                    <strong>UPDATE 0.1</strong>
-                    <em>Push & slap your way to glory in the dohyo</em>
-                  </TickerItem>
-                  <TickerItem>
-                    <strong>NOW LIVE</strong>
-                    <em>Worldwide ranked matchmaking is open</em>
-                  </TickerItem>
-                  <TickerItem>
-                    <strong>HATSU SEASON</strong>
-                    <em>Earn the Yokozuna title before the tournament closes</em>
-                  </TickerItem>
-                  <TickerItem>
-                    <strong>DEV NOTE</strong>
-                    <em>Steam release coming — wishlist now to support the dohyo</em>
-                  </TickerItem>
+              {[0, 1].map((dupe) => (
+                <span key={dupe} style={{ display: "inline-flex", alignItems: "center" }}>
+                  {TICKER_ITEMS.map((item, idx) => (
+                    <Fragment key={idx}>
+                      <TickerItem>
+                        <strong>{item.label}</strong>
+                        <em>{item.text}</em>
+                      </TickerItem>
+                      <TickerSeparator aria-hidden>◆</TickerSeparator>
+                    </Fragment>
+                  ))}
                 </span>
               ))}
             </TickerTrack>

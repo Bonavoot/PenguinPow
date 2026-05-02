@@ -1,36 +1,13 @@
 import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
-import styled, { keyframes, css } from "styled-components";
+import styled, { keyframes } from "styled-components";
 import gamepadHandler from "../utils/gamepadHandler";
 import Snowfall from "./Snowfall";
+import { C, fadeIn, slideInLeft, fadeUp } from "./menuTheme";
 
 // ============================================
 // ANIMATIONS
 // ============================================
-
-const fadeIn = keyframes`
-  0% {
-    opacity: 0;
-  }
-  100% {
-    opacity: 1;
-  }
-`;
-
-const logoGlow = keyframes`
-  0%, 100% {
-    text-shadow: 
-      3px 3px 0 #000,
-      0 0 20px rgba(212, 175, 55, 0.3),
-      0 0 40px rgba(212, 175, 55, 0.15);
-  }
-  50% {
-    text-shadow: 
-      3px 3px 0 #000,
-      0 0 35px rgba(212, 175, 55, 0.5),
-      0 0 60px rgba(212, 175, 55, 0.25);
-  }
-`;
 
 const subtlePulse = keyframes`
   0%, 100% {
@@ -61,18 +38,18 @@ const pressKeyFade = keyframes`
 
 const connectedPulse = keyframes`
   0% {
-    text-shadow: 
+    text-shadow:
       0 0 8px rgba(74, 222, 128, 0.5),
       1px 1px 0 #000;
   }
   50% {
-    text-shadow: 
+    text-shadow:
       0 0 15px rgba(74, 222, 128, 0.7),
       0 0 25px rgba(74, 222, 128, 0.3),
       1px 1px 0 #000;
   }
   100% {
-    text-shadow: 
+    text-shadow:
       0 0 8px rgba(74, 222, 128, 0.5),
       1px 1px 0 #000;
   }
@@ -125,13 +102,24 @@ const ScreenContainer = styled.div`
   left: 0;
   width: 100%;
   height: 100%;
-  background: linear-gradient(180deg,
-    #0a0505 0%,
-    #120a08 30%,
-    #150c0a 50%,
-    #120a08 70%,
-    #0a0505 100%
-  );
+  /*
+   * Sumi ink base with a faint ice-blue lift in the upper third — same
+   * "cold mountain hall before a match" mood as the Lobby's cinematic
+   * overlay, so the startup screen reads as part of the same world.
+   */
+  background:
+    radial-gradient(
+      ellipse at 50% 30%,
+      rgba(28, 78, 110, 0.22) 0%,
+      rgba(7, 10, 20, 0.55) 55%,
+      ${C.ink} 100%
+    ),
+    linear-gradient(
+      180deg,
+      ${C.ink} 0%,
+      ${C.inkSoft} 50%,
+      ${C.ink} 100%
+    );
   display: flex;
   align-items: center;
   justify-content: center;
@@ -140,7 +128,6 @@ const ScreenContainer = styled.div`
   overflow: hidden;
 `;
 
-// Subtle vignette
 const Vignette = styled.div`
   position: absolute;
   top: 0;
@@ -150,7 +137,7 @@ const Vignette = styled.div`
   background: radial-gradient(
     ellipse at center,
     transparent 40%,
-    rgba(0, 0, 0, 0.6) 100%
+    rgba(0, 0, 0, 0.65) 100%
   );
   pointer-events: none;
 `;
@@ -168,17 +155,19 @@ const ParticleContainer = styled.div`
 
 const Particle = styled.div`
   position: absolute;
-  width: ${props => props.$size}px;
-  height: ${props => props.$size}px;
-  background: ${props => props.$isSnow
-    ? `radial-gradient(circle, rgba(255, 255, 255, 0.7) 0%, rgba(210, 230, 255, 0.3) 50%, transparent 70%)`
-    : `radial-gradient(circle, rgba(212, 175, 55, 0.6) 0%, transparent 70%)`
-  };
+  width: ${(props) => props.$size}px;
+  height: ${(props) => props.$size}px;
+  background: ${(props) =>
+    props.$isSnow
+      ? `radial-gradient(circle, rgba(255, 255, 255, 0.7) 0%, rgba(210, 230, 255, 0.3) 50%, transparent 70%)`
+      : `radial-gradient(circle, rgba(238, 81, 65, 0.55) 0%, transparent 70%)`};
   border-radius: 50%;
-  left: ${props => props.$left}%;
-  animation: ${props => props.$isSnow ? snowParticle : floatParticle} ${props => props.$duration}s linear infinite;
-  animation-delay: ${props => props.$delay}s;
-  filter: ${props => props.$isSnow ? 'blur(0.5px)' : 'none'};
+  left: ${(props) => props.$left}%;
+  animation: ${(props) =>
+      props.$isSnow ? snowParticle : floatParticle}
+    ${(props) => props.$duration}s linear infinite;
+  animation-delay: ${(props) => props.$delay}s;
+  filter: ${(props) => (props.$isSnow ? "blur(0.5px)" : "none")};
 `;
 
 // ============================================
@@ -199,27 +188,79 @@ const Content = styled.div`
 
 const LogoSection = styled.div`
   margin-bottom: clamp(60px, 12cqh, 120px);
-  animation: ${fadeIn} 0.8s ease-out 0.2s both;
+  display: flex;
+  justify-content: center;
+  /*
+   * Lets the inline TitleBlock (with its left vermillion accent bar)
+   * stay attached to the title while the whole block centers in the
+   * screen. Mirrors MainMenu's title treatment exactly — both pages
+   * read as "the same logo wordmark."
+   */
 `;
 
-const Logo = styled.h1`
-  font-family: "Bungee", cursive;
-  font-size: clamp(2rem, 7cqw, 4rem);
-  color: #d4af37;
-  margin: 0;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  animation: ${logoGlow} 4s ease-in-out infinite;
-  
-  @media (max-width: 600px) {
-    font-size: clamp(1.5rem, 8cqw, 2.5rem);
+/*
+ * TitleBlock + LogoTitle mirror MainMenu's TitleBlock + MainTitle so
+ * the wordmark looks identical on both surfaces. The vertical
+ * vermillion-to-gold accent bar on the left is part of the brand
+ * identity — keeping it here makes the startup screen and main menu
+ * read as one product.
+ */
+const TitleBlock = styled.div`
+  position: relative;
+  padding-left: clamp(14px, 1.8cqw, 22px);
+  animation: ${fadeUp} 0.8s ease-out 0.2s backwards;
+
+  &::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 6%;
+    bottom: 6%;
+    width: 4px;
+    background: linear-gradient(
+      180deg,
+      ${C.vermillion} 0%,
+      ${C.gold} 50%,
+      ${C.vermillion} 100%
+    );
+    box-shadow: 0 0 16px ${C.vermillionGlow};
+    border-radius: 2px;
+    opacity: 0;
+    animation: ${fadeIn} 0.6s ease-out 0.45s forwards;
   }
 `;
 
-const LogoAccent = styled.span`
+const LogoTitle = styled.h1`
   font-family: "Bungee", cursive;
-  color: #d4af37;
-  font-size: 1.1em;
+  font-size: clamp(2rem, 7cqw, 4rem);
+  margin: 0;
+  line-height: 0.94;
+  color: ${C.cream};
+  text-transform: uppercase;
+  letter-spacing: 0.012em;
+  white-space: nowrap;
+  position: relative;
+  /*
+   * Static, restrained shadow — matches MainMenu's title exactly.
+   * Tiny vermillion offset for color depth + soft ambient drop for
+   * lift. No animated glow.
+   */
+  text-shadow:
+    1px 2px 0 ${C.vermillionDeep},
+    0 4px 14px rgba(0, 0, 0, 0.55);
+  animation: ${slideInLeft} 0.6s ease-out 0.35s backwards;
+
+  span {
+    display: inline-block;
+  }
+
+  span.accent {
+    color: ${C.vermillionBright};
+  }
+
+  @media (max-width: 600px) {
+    font-size: clamp(1.5rem, 8cqw, 2.5rem);
+  }
 `;
 
 // ============================================
@@ -246,9 +287,9 @@ const ConnectingText = styled.p`
   font-family: "Outfit", sans-serif;
   font-weight: 500;
   font-size: clamp(0.7rem, 1.6cqw, 1rem);
-  color: #8b7355;
+  color: ${C.creamMute};
   margin: 0;
-  letter-spacing: 0.15em;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
   text-shadow: 1px 1px 0 #000;
 `;
@@ -261,11 +302,11 @@ const DotsContainer = styled.div`
 const Dot = styled.div`
   width: clamp(8px, 1.2cqw, 12px);
   height: clamp(8px, 1.2cqw, 12px);
-  background: #d4af37;
+  background: ${C.vermillion};
   border-radius: 50%;
   animation: ${dotBounce} 1.2s ease-in-out infinite;
-  animation-delay: ${props => props.$delay * 0.15}s;
-  box-shadow: 0 0 8px rgba(212, 175, 55, 0.4);
+  animation-delay: ${(props) => props.$delay * 0.15}s;
+  box-shadow: 0 0 8px ${C.vermillionGlow};
 `;
 
 const ConnectionError = styled.div`
@@ -281,12 +322,12 @@ const ErrorIcon = styled.span`
 const ErrorText = styled.p`
   font-family: "Bungee", cursive;
   font-size: clamp(0.55rem, 1.3cqw, 0.8rem);
-  color: #f87171;
+  color: ${C.vermillionBright};
   margin: 0;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  text-shadow: 
-    0 0 10px rgba(248, 113, 113, 0.3),
+  text-shadow:
+    0 0 10px ${C.vermillionGlow},
     1px 1px 0 #000;
 `;
 
@@ -300,32 +341,32 @@ const ConnectedContainer = styled.div`
 const ConnectedText = styled.p`
   font-family: "Bungee", cursive;
   font-size: clamp(0.6rem, 1.4cqw, 0.85rem);
-  color: #4ade80;
+  color: ${C.success};
   margin: 0;
-  letter-spacing: 0.15em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   animation: ${connectedPulse} 2s ease-in-out infinite;
   display: flex;
   align-items: center;
   gap: clamp(8px, 1cqw, 12px);
-  
+
   &::before {
     content: "";
     width: clamp(8px, 1cqw, 10px);
     height: clamp(8px, 1cqw, 10px);
-    background: #4ade80;
+    background: ${C.success};
     border-radius: 50%;
-    box-shadow: 0 0 10px rgba(74, 222, 128, 0.6);
+    box-shadow: 0 0 10px ${C.successGlow};
   }
 `;
 
 const PressKeyText = styled.p`
   font-family: "Outfit", sans-serif;
-  font-weight: 400;
+  font-weight: 500;
   font-size: clamp(0.65rem, 1.3cqw, 0.85rem);
-  color: #8b7355;
+  color: ${C.creamMute};
   margin: 0;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.28em;
   text-transform: uppercase;
   animation: ${pressKeyFade} 2.5s ease-in-out infinite;
   text-shadow: 1px 1px 0 #000;
@@ -345,11 +386,12 @@ const Footer = styled.div`
 
 const VersionText = styled.p`
   font-family: "Outfit", sans-serif;
-  font-weight: 400;
+  font-weight: 500;
   font-size: clamp(0.5rem, 0.85cqw, 0.65rem);
-  color: rgba(92, 64, 51, 0.6);
+  color: ${C.creamMute};
   margin: 0;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
 `;
 
 // ============================================
@@ -359,9 +401,12 @@ const VersionText = styled.p`
 const DecoLine = styled.div`
   width: clamp(60px, 12cqw, 120px);
   height: 2px;
-  background: linear-gradient(90deg, 
-    transparent 0%, 
-    rgba(139, 115, 85, 0.4) 50%, 
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    ${C.vermillion} 35%,
+    ${C.gold} 50%,
+    ${C.vermillion} 65%,
     transparent 100%
   );
   margin: clamp(20px, 4cqh, 40px) auto;
@@ -460,9 +505,12 @@ const StartupScreen = ({ onContinue, connectionError, steamDeckMode }) => {
       
       <Content>
         <LogoSection>
-          <Logo>
-            Pumo Pumo <LogoAccent>!</LogoAccent>
-          </Logo>
+          <TitleBlock>
+            <LogoTitle>
+              <span>Pumo</span>{" "}
+              <span className="accent">Pumo&nbsp;!</span>
+            </LogoTitle>
+          </TitleBlock>
         </LogoSection>
 
         <DecoLine />

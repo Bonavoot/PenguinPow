@@ -2,7 +2,7 @@
  * CustomizePage — Full-page character customization screen.
  *
  * Premium, cinematic single-screen wardrobe inspired by AAA fighter character
- * editors. Uses the shared "Aizome Banzuke" palette (sumi ink, indigo,
+ * editors. Uses the shared "Aizome Banzuke" palette (sumi ink, ice,
  * vermillion, cream, gold) defined in menuTheme.js.
  */
 
@@ -82,7 +82,7 @@ const CinematicOverlay = styled.div`
   background:
     radial-gradient(
       ellipse at 50% 35%,
-      rgba(31, 42, 77, 0.18) 0%,
+      rgba(28, 78, 110, 0.18) 0%,
       rgba(7, 10, 20, 0.55) 55%,
       rgba(7, 10, 20, 0.92) 100%
     ),
@@ -173,8 +173,8 @@ const BackButton = styled.button`
 
   &:hover {
     color: ${C.cream};
-    border-color: ${C.indigoBright};
-    background: rgba(31, 42, 77, 0.35);
+    border-color: ${C.ice};
+    background: rgba(28, 78, 110, 0.35);
 
     .arrow {
       transform: translateX(-3px);
@@ -263,11 +263,11 @@ const PreviewPanel = styled.section`
   flex-direction: column;
   background: linear-gradient(
     180deg,
-    rgba(31, 42, 77, 0.45) 0%,
+    rgba(28, 78, 110, 0.45) 0%,
     rgba(8, 11, 24, 0.85) 60%,
     rgba(8, 11, 24, 0.92) 100%
   );
-  border: 1px solid rgba(94, 122, 200, 0.32);
+  border: 1px solid rgba(126, 203, 240, 0.32);
   border-radius: 2px;
   overflow: hidden;
   backdrop-filter: blur(4px);
@@ -468,8 +468,8 @@ const ResetButton = styled.button`
 
   &:hover {
     color: ${C.cream};
-    border-color: ${C.indigoBright};
-    background: rgba(31, 42, 77, 0.35);
+    border-color: ${C.ice};
+    background: rgba(28, 78, 110, 0.35);
   }
 
   &:active {
@@ -531,8 +531,8 @@ const Tab = styled.button`
   text-transform: uppercase;
   letter-spacing: 0.18em;
   padding: clamp(10px, 1.4cqh, 14px) clamp(18px, 2.4cqw, 28px);
-  background: ${(p) => (p.$active ? "rgba(31, 42, 77, 0.55)" : "transparent")};
-  border: 1px solid ${(p) => (p.$active ? C.indigoBright : "transparent")};
+  background: ${(p) => (p.$active ? "rgba(28, 78, 110, 0.55)" : "transparent")};
+  border: 1px solid ${(p) => (p.$active ? C.ice : "transparent")};
   border-bottom: none;
   border-radius: 2px 2px 0 0;
   color: ${(p) => (p.$active ? C.cream : C.creamMute)};
@@ -563,7 +563,7 @@ const Tab = styled.button`
     ${(p) =>
       !p.$active &&
       css`
-        background: rgba(31, 42, 77, 0.25);
+        background: rgba(28, 78, 110, 0.25);
       `}
   }
 `;
@@ -584,7 +584,7 @@ const ControlsBody = styled.div`
   padding: clamp(16px, 2.4cqh, 26px) clamp(18px, 2.4cqw, 28px);
   overflow-y: auto;
 
-  /* Indigo scrollbar */
+  /* Ice scrollbar */
   &::-webkit-scrollbar {
     width: 6px;
   }
@@ -592,11 +592,11 @@ const ControlsBody = styled.div`
     background: transparent;
   }
   &::-webkit-scrollbar-thumb {
-    background: rgba(94, 122, 200, 0.3);
+    background: rgba(126, 203, 240, 0.3);
     border-radius: 2px;
   }
   &::-webkit-scrollbar-thumb:hover {
-    background: rgba(94, 122, 200, 0.55);
+    background: rgba(126, 203, 240, 0.55);
   }
 `;
 

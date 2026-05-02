@@ -16,13 +16,13 @@ const subtlePulse = keyframes`
   0%, 100% {
     box-shadow:
       0 4px 14px rgba(0, 0, 0, 0.45),
-      0 0 0 rgba(238, 81, 65, 0),
+      0 0 0 rgba(74, 222, 128, 0),
       inset 0 1px 0 rgba(255, 255, 255, 0.06);
   }
   50% {
     box-shadow:
       0 4px 14px rgba(0, 0, 0, 0.45),
-      0 0 16px rgba(238, 81, 65, 0.15),
+      0 0 16px rgba(74, 222, 128, 0.18),
       inset 0 1px 0 rgba(255, 255, 255, 0.06);
   }
 `;
@@ -32,8 +32,9 @@ const subtlePulse = keyframes`
 // ============================================
 
 const RoomCard = styled.div`
-  --accent: ${(p) => (p.$isFull ? "rgba(94, 122, 200, 0.25)" : C.vermillion)};
-  --accentBright: ${(p) => (p.$isFull ? "rgba(94, 122, 200, 0.4)" : C.vermillionBright)};
+  --accent: ${(p) => (p.$isFull ? "rgba(126, 203, 240, 0.25)" : C.success)};
+  --accentBright: ${(p) =>
+    p.$isFull ? "rgba(126, 203, 240, 0.4)" : C.successBright};
 
   position: relative;
   display: flex;
@@ -45,13 +46,13 @@ const RoomCard = styled.div`
     ${(p) =>
       p.$isFull
         ? "rgba(15, 18, 30, 0.7) 0%, rgba(8, 11, 24, 0.6) 60%, rgba(8, 11, 24, 0.5) 100%"
-        : "rgba(31, 42, 77, 0.45) 0%, rgba(8, 11, 24, 0.55) 70%, rgba(8, 11, 24, 0.4) 100%"}
+        : "rgba(28, 78, 110, 0.45) 0%, rgba(8, 11, 24, 0.55) 70%, rgba(8, 11, 24, 0.4) 100%"}
   );
   border: 1px solid
     ${(p) =>
       p.$isFull
         ? "rgba(245, 236, 217, 0.08)"
-        : "rgba(94, 122, 200, 0.32)"};
+        : "rgba(126, 203, 240, 0.32)"};
   border-left: 3px solid var(--accent);
   border-radius: 2px;
   transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease,
@@ -81,14 +82,14 @@ const RoomCard = styled.div`
         transform: translateX(6px);
         background: linear-gradient(
           100deg,
-          rgba(58, 74, 133, 0.55) 0%,
+          rgba(54, 130, 170, 0.55) 0%,
           rgba(8, 11, 24, 0.55) 70%,
           rgba(8, 11, 24, 0.35) 100%
         );
         border-color: var(--accentBright);
         box-shadow:
           0 6px 22px rgba(0, 0, 0, 0.55),
-          0 0 22px ${C.vermillionGlow},
+          0 0 22px ${C.successGlow},
           inset 0 1px 0 rgba(255, 255, 255, 0.1);
       `}
   }
@@ -197,9 +198,13 @@ const JoinButton = styled.button`
   padding: clamp(10px, 1.4cqh, 13px) clamp(18px, 2.5cqw, 28px);
   font-family: "Bungee", cursive;
   font-size: clamp(0.65rem, 1.05cqw, 0.85rem);
-  letter-spacing: 0.13em;
+  /*
+   * Slightly wider tracking than the dark-on-dark CTAs. Bungee gets
+   * dense fast on a bright tile — a hair more letter-spacing lets each
+   * letter breathe so it reads as confident signage instead of squeezed.
+   */
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  text-shadow: 0 2px 0 #000;
   border-radius: 2px;
   cursor: ${(p) => (p.$isFull ? "not-allowed" : "pointer")};
   transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease,
@@ -213,25 +218,38 @@ const JoinButton = styled.button`
           background: rgba(245, 236, 217, 0.05);
           border: 1px solid rgba(245, 236, 217, 0.12);
           opacity: 0.6;
+          /* Dark-on-dark "Full" — keep the chunky black drop for depth */
+          text-shadow: 0 2px 0 #000;
         `
       : css`
-          color: ${C.cream};
+          /*
+           * "Go" green CTA — visually rhymes with the live-status pulse
+           * dot used elsewhere in the menu, signalling "open for action."
+           * Reserved exclusively for accept / join / ready-to-fight CTAs.
+           *
+           * Dark ink text on bright green: do NOT use the chunky black
+           * drop-shadow used elsewhere — text and shadow would muddy
+           * each other. Instead a soft light highlight gives a subtle
+           * letterpress lift on the green tile.
+           */
+          color: ${C.ink};
           background: linear-gradient(
             180deg,
-            ${C.vermillion} 0%,
-            ${C.vermillionDeep} 100%
+            ${C.success} 0%,
+            ${C.successDeep} 100%
           );
-          border: 1px solid ${C.vermillionBright};
+          border: 1px solid ${C.successBright};
+          text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
           box-shadow:
             0 4px 14px rgba(0, 0, 0, 0.45),
-            0 0 18px rgba(238, 81, 65, 0.25),
-            inset 0 1px 0 rgba(255, 255, 255, 0.18);
+            0 0 18px rgba(74, 222, 128, 0.3),
+            inset 0 1px 0 rgba(255, 255, 255, 0.32);
         `}
 
   .arrow {
     font-family: "Outfit", sans-serif;
     font-weight: 700;
-    color: ${(p) => (p.$isFull ? "rgba(245, 236, 217, 0.3)" : C.cream)};
+    color: ${(p) => (p.$isFull ? "rgba(245, 236, 217, 0.3)" : C.ink)};
     transition: transform 0.2s ease;
   }
 
@@ -241,15 +259,15 @@ const JoinButton = styled.button`
       &:hover {
         background: linear-gradient(
           180deg,
-          ${C.vermillionBright} 0%,
-          ${C.vermillion} 100%
+          ${C.successBright} 0%,
+          ${C.success} 100%
         );
-        border-color: ${C.gold};
+        border-color: ${C.cream};
         transform: translateY(-1px);
         box-shadow:
           0 6px 22px rgba(0, 0, 0, 0.55),
-          0 0 28px rgba(238, 81, 65, 0.45),
-          inset 0 1px 0 rgba(255, 255, 255, 0.22);
+          0 0 28px rgba(74, 222, 128, 0.5),
+          inset 0 1px 0 rgba(255, 255, 255, 0.32);
 
         .arrow {
           animation: ${arrowNudge} 0.7s ease-in-out infinite;

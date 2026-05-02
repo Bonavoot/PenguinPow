@@ -89,7 +89,7 @@ const CinematicOverlay = styled.div`
   background:
     radial-gradient(
       ellipse at 50% 35%,
-      rgba(31, 42, 77, 0.2) 0%,
+      rgba(28, 78, 110, 0.2) 0%,
       rgba(7, 10, 20, 0.55) 55%,
       rgba(7, 10, 20, 0.92) 100%
     ),
@@ -178,8 +178,8 @@ const ExitButton = styled.button`
 
   &:hover {
     color: ${C.cream};
-    border-color: ${C.indigoBright};
-    background: rgba(31, 42, 77, 0.35);
+    border-color: ${C.ice};
+    background: rgba(28, 78, 110, 0.35);
 
     .arrow {
       transform: translateX(-3px);
@@ -202,7 +202,7 @@ const DohyoBadge = styled.div`
     ${C.inkPanelStrong} 0%,
     rgba(15, 18, 30, 0.85) 100%
   );
-  border: 1px solid rgba(94, 122, 200, 0.32);
+  border: 1px solid rgba(126, 203, 240, 0.32);
   border-radius: 2px;
   box-shadow:
     0 4px 14px rgba(0, 0, 0, 0.5),
@@ -344,9 +344,9 @@ const PlayerCardWrapper = styled.div`
 `;
 
 const PlayerCard = styled.div`
-  --accent: ${(p) => (p.$hasPlayer ? C.vermillion : "rgba(94, 122, 200, 0.25)")};
+  --accent: ${(p) => (p.$hasPlayer ? C.vermillion : "rgba(126, 203, 240, 0.25)")};
   --accentBright: ${(p) =>
-    p.$hasPlayer ? C.vermillionBright : "rgba(94, 122, 200, 0.4)"};
+    p.$hasPlayer ? C.vermillionBright : "rgba(126, 203, 240, 0.4)"};
 
   position: relative;
   display: flex;
@@ -355,13 +355,13 @@ const PlayerCard = styled.div`
   min-height: 0;
   background: linear-gradient(
     180deg,
-    rgba(31, 42, 77, 0.5) 0%,
+    rgba(28, 78, 110, 0.5) 0%,
     rgba(8, 11, 24, 0.85) 60%,
     rgba(8, 11, 24, 0.92) 100%
   );
   border: 1px solid
     ${(p) =>
-      p.$hasPlayer ? "rgba(94, 122, 200, 0.4)" : "rgba(245, 236, 217, 0.1)"};
+      p.$hasPlayer ? "rgba(126, 203, 240, 0.4)" : "rgba(245, 236, 217, 0.1)"};
   border-radius: 2px;
   overflow: hidden;
   backdrop-filter: blur(4px);
@@ -600,13 +600,13 @@ const DifficultyButton = styled.button`
   background: ${(p) =>
     p.$selected
       ? `linear-gradient(180deg, ${C.vermillion} 0%, ${C.vermillionDeep} 100%)`
-      : "linear-gradient(180deg, rgba(31, 42, 77, 0.45) 0%, rgba(8, 11, 24, 0.55) 100%)"};
+      : "linear-gradient(180deg, rgba(28, 78, 110, 0.45) 0%, rgba(8, 11, 24, 0.55) 100%)"};
   border: 1px solid
     ${(p) =>
       p.$selected
         ? C.vermillionBright
         : p.$available
-          ? "rgba(94, 122, 200, 0.32)"
+          ? "rgba(126, 203, 240, 0.32)"
           : "rgba(245, 236, 217, 0.08)"};
   border-radius: 2px;
   cursor: ${(p) => (p.$available ? "pointer" : "not-allowed")};
@@ -632,10 +632,10 @@ const DifficultyButton = styled.button`
       css`
         background: linear-gradient(
           180deg,
-          rgba(58, 74, 133, 0.55) 0%,
-          rgba(31, 42, 77, 0.55) 100%
+          rgba(54, 130, 170, 0.55) 0%,
+          rgba(28, 78, 110, 0.55) 100%
         );
-        border-color: ${C.indigoBright};
+        border-color: ${C.ice};
         transform: translateX(2px);
       `}
   }
@@ -747,8 +747,8 @@ const Tab = styled.button`
   ${(p) =>
     p.$active &&
     css`
-      background: rgba(31, 42, 77, 0.55);
-      border-color: ${C.indigoBright};
+      background: rgba(28, 78, 110, 0.55);
+      border-color: ${C.ice};
 
       &::after {
         content: "";
@@ -767,7 +767,7 @@ const Tab = styled.button`
     ${(p) =>
       !p.$active &&
       css`
-        background: rgba(31, 42, 77, 0.25);
+        background: rgba(28, 78, 110, 0.25);
       `}
   }
 `;
@@ -977,10 +977,10 @@ const CancelButton = styled.button`
   color: ${C.cream};
   background: linear-gradient(
     180deg,
-    rgba(31, 42, 77, 0.65) 0%,
+    rgba(28, 78, 110, 0.65) 0%,
     rgba(8, 11, 24, 0.85) 100%
   );
-  border: 1px solid rgba(94, 122, 200, 0.45);
+  border: 1px solid rgba(126, 203, 240, 0.45);
   border-radius: 2px;
   padding: clamp(12px, 1.7cqh, 18px) clamp(28px, 4cqw, 56px);
   cursor: pointer;
@@ -996,10 +996,10 @@ const CancelButton = styled.button`
   &:hover {
     background: linear-gradient(
       180deg,
-      rgba(58, 74, 133, 0.65) 0%,
-      rgba(31, 42, 77, 0.75) 100%
+      rgba(54, 130, 170, 0.65) 0%,
+      rgba(28, 78, 110, 0.75) 100%
     );
-    border-color: ${C.indigoBright};
+    border-color: ${C.ice};
     transform: translateY(-2px);
   }
 
@@ -1016,7 +1016,7 @@ const ReadyChip = styled.div`
   padding: clamp(8px, 1.2cqh, 12px) clamp(16px, 2.2cqw, 24px);
   background: rgba(8, 11, 24, 0.6);
   border: 1px solid
-    ${(p) => (p.$ready ? "rgba(232, 197, 71, 0.4)" : "rgba(94, 122, 200, 0.32)")};
+    ${(p) => (p.$ready ? "rgba(232, 197, 71, 0.4)" : "rgba(126, 203, 240, 0.32)")};
   border-radius: 2px;
   min-width: clamp(110px, 14cqw, 160px);
 `;
