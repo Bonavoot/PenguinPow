@@ -11,8 +11,18 @@ import { SocketContext } from "../SocketContext";
 import lobbyBackground from "../assets/lobby-bkg.webp";
 
 import pumo from "../assets/pumo.png";
-import mainMenuBackground3 from "../assets/main-menu-bkg.png";
-import mainMenuBackground2 from "../assets/main-menu-bkg-2.png";
+/*
+ * Hero portrait for the main menu — dignified pre-match pose with the
+ * ceremonial kesho-mawashi. Distinct from the in-game pumo.png sprite
+ * (which stays imported for preloading + use in lobby/game).
+ */
+import pumoMainMenu from "../assets/pumo-main-menu.png";
+/*
+ * Single locked-in hero scene for the main menu — the two-penguins-fighting
+ * sketch reads as "this is what the game IS." We deliberately do not cycle
+ * a slideshow here; a static hero image feels more confident and on-brand
+ * for a Steam main menu.
+ */
 import mainMenuBackground from "../assets/main-menu-bkg-3.png";
 import {
   playButtonHoverSound,
@@ -34,23 +44,6 @@ import {
 // ============================================
 // LOCAL ANIMATIONS
 // ============================================
-
-const titleShimmer = keyframes`
-  0%, 100% {
-    text-shadow:
-      0 4px 0 #000,
-      4px 4px 0 ${C.vermillionDeep},
-      0 0 30px rgba(238, 81, 65, 0.35),
-      0 0 60px rgba(238, 81, 65, 0.18);
-  }
-  50% {
-    text-shadow:
-      0 4px 0 #000,
-      4px 4px 0 ${C.vermillionDeep},
-      0 0 38px rgba(255, 220, 120, 0.5),
-      0 0 80px rgba(238, 81, 65, 0.28);
-  }
-`;
 
 const kenBurns = keyframes`
   0%   { transform: scale(1.06) translate(0, 0); }
@@ -84,10 +77,14 @@ const BackgroundImage = styled.img`
   height: 100%;
   object-fit: cover;
   z-index: 0;
-  opacity: ${(props) => (props.$isVisible ? 1 : 0)};
-  transition: opacity 1.6s ease-in-out;
   pointer-events: none;
-  filter: saturate(0.8) brightness(0.62);
+  /*
+   * Backdrop is ambient atmosphere only \u2014 not a focal scene. We heavily
+   * fade and slightly blur the ink illustration so it reads as texture
+   * behind the menu and Pumo, instead of competing with them as a
+   * detailed foreground image.
+   */
+  filter: saturate(0.55) brightness(0.42) contrast(0.95) blur(1px);
   animation: ${kenBurns} 22s ease-in-out infinite alternate;
 `;
 
@@ -106,10 +103,10 @@ const CinematicOverlay = styled.div`
       rgba(7, 10, 20, 0.25) 50%,
       rgba(7, 10, 20, 0.55) 100%
     ),
-    /* indigo wash */
+    /* ice-blue wash up top, fading to ink at the bottom */
     linear-gradient(
       180deg,
-      rgba(31, 42, 77, 0.35) 0%,
+      rgba(28, 78, 110, 0.32) 0%,
       transparent 40%,
       rgba(7, 10, 20, 0.6) 100%
     ),
@@ -261,17 +258,22 @@ const TitleBlock = styled.div`
 
 const MainTitle = styled.h1`
   font-family: "Bungee", cursive;
-  font-size: clamp(2.6rem, 6.6cqw, 5rem);
+  font-size: clamp(1.85rem, 4.55cqw, 3.45rem);
   margin: 0;
-  line-height: 0.92;
+  line-height: 0.94;
   color: ${C.cream};
   text-transform: uppercase;
-  letter-spacing: 0.01em;
-  animation: ${titleShimmer} 4.5s ease-in-out infinite, ${slideInLeft} 0.6s ease-out 0.35s backwards;
+  letter-spacing: 0.012em;
   white-space: nowrap;
-
-  /* offset color "shadow" version layered behind */
   position: relative;
+  /*
+   * Static, restrained shadow. Tiny vermillion offset for color depth,
+   * a soft ambient drop shadow for lift. No animated neon glow.
+   */
+  text-shadow:
+    1px 2px 0 ${C.vermillionDeep},
+    0 4px 14px rgba(0, 0, 0, 0.55);
+  animation: ${slideInLeft} 0.6s ease-out 0.35s backwards;
 
   span {
     display: inline-block;
@@ -287,15 +289,22 @@ const MainTitle = styled.h1`
 const MenuList = styled.nav`
   display: flex;
   flex-direction: column;
-  gap: clamp(9px, 1.3cqh, 14px);
+  gap: clamp(7px, 1cqh, 11px);
   position: relative;
-  margin-top: clamp(4px, 0.8cqh, 10px);
+  /* Drift the menu down toward visual center, leaving the title pinned up top */
+  margin-top: clamp(28px, 5cqh, 56px);
 `;
 
 const MenuButton = styled.button`
-  --accent: ${(p) => (p.$primary ? C.vermillion : C.indigoBright)};
+  /*
+   * Secondary palette = "Pumo ice" (the mawashi belt color), not the generic
+   * indigo from the shared theme. This is THE penguin's blue. Primary stays
+   * vermillion for the torii / sumo ring identity.
+   */
+  --accent: ${(p) => (p.$primary ? C.vermillion : C.ice)};
   --accentBright: ${(p) => (p.$primary ? C.vermillionBright : C.iceBright)};
-  --accentGlow: ${(p) => (p.$primary ? C.vermillionGlow : C.indigoGlow)};
+  --accentGlow: ${(p) =>
+    p.$primary ? C.vermillionGlow : "rgba(126, 203, 240, 0.45)"};
 
   position: relative;
   display: flex;
@@ -303,30 +312,32 @@ const MenuButton = styled.button`
   gap: clamp(10px, 1.4cqw, 18px);
   width: 100%;
   max-width: clamp(380px, 44cqw, 560px);
+  /* More compact vertical rhythm — shorter buttons, same horizontal weight */
   padding: ${(p) =>
     p.$primary
-      ? "clamp(15px, 2.1cqh, 22px) clamp(20px, 2.4cqw, 30px)"
-      : "clamp(12px, 1.7cqh, 17px) clamp(18px, 2.2cqw, 26px)"};
+      ? "clamp(8px, 1.15cqh, 12px) clamp(20px, 2.4cqw, 30px)"
+      : "clamp(6px, 0.9cqh, 9px) clamp(18px, 2.2cqw, 26px)"};
   background: linear-gradient(
     100deg,
     ${(p) =>
       p.$primary
         ? "rgba(216, 59, 39, 0.22) 0%, rgba(8, 11, 24, 0.55) 60%, rgba(8, 11, 24, 0.4) 100%"
-        : "rgba(31, 42, 77, 0.45) 0%, rgba(8, 11, 24, 0.55) 70%, rgba(8, 11, 24, 0.35) 100%"}
+        : "rgba(28, 78, 110, 0.4) 0%, rgba(8, 11, 24, 0.55) 70%, rgba(8, 11, 24, 0.35) 100%"}
   );
   border: 1px solid
     ${(p) =>
       p.$primary
         ? "rgba(238, 81, 65, 0.55)"
-        : "rgba(94, 122, 200, 0.35)"};
+        : "rgba(126, 203, 240, 0.35)"};
   border-left: 3px solid var(--accent);
   border-radius: 2px;
   cursor: ${(p) => (p.$disabled ? "default" : "pointer")};
-  font-family: "Bungee", cursive;
+  font-family: "Outfit", sans-serif;
+  font-weight: 700;
   color: ${(p) => (p.$disabled ? "rgba(245, 236, 217, 0.35)" : C.cream)};
   text-align: left;
   text-transform: uppercase;
-  letter-spacing: 0.13em;
+  letter-spacing: 0.18em;
   text-shadow: 0 2px 0 #000;
   transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease,
     box-shadow 0.2s ease;
@@ -345,7 +356,7 @@ const MenuButton = styled.button`
     position: absolute;
     left: 18px;
     right: 26px;
-    bottom: 6px;
+    bottom: 4px;
     height: 1px;
     background: linear-gradient(
       90deg,
@@ -367,7 +378,7 @@ const MenuButton = styled.button`
           100deg,
           ${p.$primary
               ? "rgba(238, 81, 65, 0.4) 0%, rgba(8, 11, 24, 0.55) 60%, rgba(8, 11, 24, 0.4) 100%"
-              : "rgba(58, 74, 133, 0.55) 0%, rgba(8, 11, 24, 0.55) 70%, rgba(8, 11, 24, 0.35) 100%"}
+              : "rgba(54, 130, 170, 0.5) 0%, rgba(8, 11, 24, 0.55) 70%, rgba(8, 11, 24, 0.35) 100%"}
         );
         border-color: var(--accentBright);
         box-shadow:
@@ -463,7 +474,7 @@ const MenuArrow = styled.span.attrs({ className: "menu-arrow" })`
 const MenuLabels = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   flex: 1;
   min-width: 0;
 `;
@@ -474,14 +485,14 @@ const MenuLabel = styled.div`
 `;
 
 const MenuMeta = styled.div`
-  font-family: "Outfit", sans-serif;
+  font-family: "Noto Sans JP", sans-serif;
   font-weight: 500;
-  font-size: clamp(0.45rem, 0.78cqw, 0.6rem);
+  font-size: clamp(0.46rem, 0.78cqw, 0.6rem);
   color: ${C.creamMute};
   letter-spacing: 0.22em;
   text-transform: uppercase;
   text-shadow: 1px 1px 0 #000;
-  margin-top: 4px;
+  margin-top: 2px;
 `;
 
 /*
@@ -494,7 +505,7 @@ const MenuDivider = styled.div`
   gap: 10px;
   width: 100%;
   max-width: clamp(380px, 44cqw, 560px);
-  margin: clamp(4px, 0.6cqh, 8px) 0 clamp(2px, 0.4cqh, 6px);
+  margin: clamp(3px, 0.5cqh, 6px) 0 clamp(2px, 0.3cqh, 4px);
   font-family: "Outfit", sans-serif;
   font-weight: 600;
   font-size: clamp(0.4rem, 0.65cqw, 0.5rem);
@@ -527,16 +538,17 @@ const SystemButton = styled.button`
   gap: clamp(10px, 1.4cqw, 18px);
   width: 100%;
   max-width: clamp(380px, 44cqw, 560px);
-  padding: clamp(9px, 1.3cqh, 13px) clamp(18px, 2.2cqw, 26px);
+  padding: clamp(7px, 1cqh, 10px) clamp(18px, 2.2cqw, 26px);
   background: transparent;
   border: 1px solid rgba(245, 236, 217, 0.12);
   border-radius: 2px;
   cursor: pointer;
-  font-family: "Bungee", cursive;
+  font-family: "Outfit", sans-serif;
+  font-weight: 600;
   color: ${C.creamMute};
   text-align: left;
   text-transform: uppercase;
-  letter-spacing: 0.13em;
+  letter-spacing: 0.18em;
   text-shadow: 0 2px 0 #000;
   font-size: clamp(0.65rem, 1.05cqw, 0.82rem);
   transition: transform 0.2s ease, color 0.2s ease, background 0.2s ease,
@@ -559,8 +571,8 @@ const SystemButton = styled.button`
 
   &:hover {
     color: ${C.cream};
-    background: rgba(31, 42, 77, 0.35);
-    border-color: rgba(94, 122, 200, 0.5);
+    background: rgba(28, 78, 110, 0.32);
+    border-color: rgba(126, 203, 240, 0.4);
     transform: translateX(6px);
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
 
@@ -588,19 +600,60 @@ const SoonTag = styled.span`
   text-shadow: none;
 `;
 
-// --- Right column: Banzuke (today's stats) panel ---
+// --- Right column: Pumo hero + Banzuke (today's stats) panel ---
 
 const RightColumn = styled.aside`
   position: relative;
   height: 100%;
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
   min-width: 0;
 
   @media (max-width: 720px) {
     display: none;
   }
+`;
+
+/*
+ * Pumo hero breathing — same subtle scaleY pattern used by the
+ * breathing characters in Lobby + CustomizePage so the menu reads
+ * as part of one consistent animation system across pages.
+ */
+const pumoBreathe = keyframes`
+  0%, 100% { transform: scaleY(1);     }
+  50%      { transform: scaleY(1.018); }
+`;
+
+const PumoHero = styled.img`
+  position: absolute;
+  right: clamp(-90px, -5cqw, -32px);
+  /*
+   * Pushed down so his lower body extends past HeroStage and gets clipped
+   * by MainMenuContainer's overflow:hidden / hidden behind the BottomHud.
+   * Reads as "Pumo emerging at the bottom-right edge of the page" — only
+   * his head, chest, and mawashi are visible above the cutoff line.
+   */
+  bottom: clamp(-220px, -28cqh, -160px);
+  height: clamp(460px, 94cqh, 680px);
+  width: auto;
+  z-index: 1;
+  pointer-events: none;
+  user-select: none;
+  /*
+   * Anchor the breathing scale to his feet so his planted base stays put
+   * and only the chest/head subtly rise on the inhale.
+   */
+  transform-origin: 50% 100%;
+  /*
+   * Pumo stays full-color (he's the brand) and crisp \u2014 no mask, no fade.
+   * The faded backdrop already gives him room to read; here we just nudge
+   * his luminance down a hair so he doesn't punch out of the scene, and
+   * drop a soft ground-shadow underneath plus a subtle ice-blue rim glow
+   * to anchor him.
+   */
+  filter: saturate(0.96) brightness(0.94)
+          drop-shadow(0 14px 22px rgba(0, 0, 0, 0.6))
+          drop-shadow(0 0 28px rgba(126, 203, 240, 0.12));
+  animation: ${pumoBreathe} 3s ease-in-out infinite,
+             ${fadeUp} 0.8s ease-out 0.3s backwards;
 `;
 
 /*
@@ -612,16 +665,30 @@ const RightColumn = styled.aside`
  *   - matchesToday    -> server-reported daily match count
  *   - playerRank      -> player's own rank / tier
  */
+/*
+ * BanzukeCard — slim "today's stats" panel, pinned to the top-RIGHT of
+ * the HeroStage so it sits opposite the title (top-left). Pumo lives
+ * lower in the right column so the banzuke card has clear airspace
+ * above his head. Background is the same ice-blue → ink gradient as the
+ * StatusBlock in the bottom HUD so it reads as part of one panel family.
+ */
 const BanzukeCard = styled.section`
-  position: relative;
-  width: clamp(220px, 26cqw, 320px);
-  padding: clamp(14px, 1.8cqh, 20px) clamp(18px, 2.2cqw, 26px) clamp(14px, 1.8cqh, 20px);
-  background: ${C.inkPanel};
-  border: 1px solid rgba(245, 236, 217, 0.12);
+  position: absolute;
+  top: clamp(44px, 6cqh, 76px);
+  right: clamp(44px, 5cqw, 76px);
+  z-index: 2;
+  width: clamp(200px, 23cqw, 270px);
+  padding: clamp(10px, 1.4cqh, 14px) clamp(14px, 1.8cqw, 20px);
+  background: linear-gradient(
+    180deg,
+    rgba(28, 78, 110, 0.42) 0%,
+    rgba(8, 11, 24, 0.85) 100%
+  );
+  border: 1px solid rgba(126, 203, 240, 0.2);
   border-left: 3px solid ${C.gold};
   border-radius: 2px;
   backdrop-filter: blur(6px);
-  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
   opacity: 0;
   animation: ${fadeUp} 0.6s ease-out 0.55s forwards;
 `;
@@ -631,8 +698,8 @@ const BanzukeHeader = styled.div`
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  padding-bottom: clamp(8px, 1cqh, 10px);
-  margin-bottom: clamp(10px, 1.3cqh, 14px);
+  padding-bottom: clamp(6px, 0.8cqh, 8px);
+  margin-bottom: clamp(8px, 1cqh, 11px);
   border-bottom: 1px solid rgba(245, 236, 217, 0.1);
 `;
 
@@ -657,7 +724,7 @@ const BanzukeDate = styled.div`
 const StatList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: clamp(8px, 1.1cqh, 12px);
+  gap: clamp(6px, 0.9cqh, 9px);
 `;
 
 const StatRow = styled.div`
@@ -754,7 +821,7 @@ const StatusBlock = styled.div`
   padding: 0 clamp(16px, 2cqw, 26px);
   background: linear-gradient(
     180deg,
-    rgba(31, 42, 77, 0.55) 0%,
+    rgba(28, 78, 110, 0.5) 0%,
     rgba(8, 11, 24, 0.85) 100%
   );
   border-right: 2px solid ${C.vermillion};
@@ -846,8 +913,6 @@ const preGameImages = [
   lobbyBackground,
   pumo,
   mainMenuBackground,
-  mainMenuBackground2,
-  mainMenuBackground3,
 ];
 
 // ============================================
@@ -857,15 +922,8 @@ const preGameImages = [
 const MainMenu = ({ rooms, setRooms, currentPage, setCurrentPage, localId, connectionError }) => {
   const [roomName, setRoomName] = useState("");
   const [showSettings, setShowSettings] = useState(false);
-  const [currentBgIndex, setCurrentBgIndex] = useState(0);
   const [isCPUMatch, setIsCPUMatch] = useState(false);
   const { socket } = useContext(SocketContext);
-
-  const backgroundImages = [
-    mainMenuBackground,
-    mainMenuBackground2,
-    mainMenuBackground3,
-  ];
 
   useEffect(() => {
     preGameImages.forEach((src) => {
@@ -896,13 +954,6 @@ const MainMenu = ({ rooms, setRooms, currentPage, setCurrentPage, localId, conne
       socket.off("cpu_match_failed", handleCPUMatchFailed);
     };
   }, [socket, setCurrentPage]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentBgIndex((prev) => (prev + 1) % backgroundImages.length);
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [backgroundImages.length]);
 
   useEffect(() => {
     if (currentPage === "game") {
@@ -960,15 +1011,7 @@ const MainMenu = ({ rooms, setRooms, currentPage, setCurrentPage, localId, conne
   const renderMainMenu = () => {
     return (
       <MainMenuContainer>
-        {/* Cycling background scenes */}
-        {backgroundImages.map((bgImage, index) => (
-          <BackgroundImage
-            key={index}
-            src={bgImage}
-            alt=""
-            $isVisible={index === currentBgIndex}
-          />
-        ))}
+        <BackgroundImage src={mainMenuBackground} alt="" />
         <CinematicOverlay />
         <GrainOverlay />
         <Snowfall intensity={18} showFrost={false} zIndex={4} />
@@ -1011,7 +1054,6 @@ const MainMenu = ({ rooms, setRooms, currentPage, setCurrentPage, localId, conne
               </MenuButton>
 
               <MenuButton
-                $primary
                 $index={1}
                 onClick={() => {
                   handleDisplayRooms();
@@ -1019,9 +1061,9 @@ const MainMenu = ({ rooms, setRooms, currentPage, setCurrentPage, localId, conne
                 }}
                 onMouseEnter={playButtonHoverSound}
               >
-                <MenuArrow $primary />
+                <MenuArrow />
                 <MenuLabels>
-                  <MenuLabel $primary>Custom Match</MenuLabel>
+                  <MenuLabel>Custom Match</MenuLabel>
                   <MenuMeta>Create or Join a Room · Unranked</MenuMeta>
                 </MenuLabels>
               </MenuButton>
@@ -1100,37 +1142,45 @@ const MainMenu = ({ rooms, setRooms, currentPage, setCurrentPage, localId, conne
 
           <RightColumn>
             {/*
-              BanzukeCard — placeholder values for now.
-              When real data is available, replace the StatValue
-              children below with live numbers from the server:
-                wrestlersOnline, matchesToday, playerRank, etc.
+              Pumo hero — the brand. Stays in front of the faded battle
+              scene backdrop, idles softly to feel alive.
             */}
-            <BanzukeCard>
-              <BanzukeHeader>
-                <BanzukeTitle>Today&apos;s Banzuke</BanzukeTitle>
-                <BanzukeDate>
-                  {new Date().toLocaleDateString(undefined, {
-                    month: "short",
-                    day: "numeric",
-                  })}
-                </BanzukeDate>
-              </BanzukeHeader>
-              <StatList>
-                <StatRow>
-                  <StatLabel>Wrestlers Online</StatLabel>
-                  <StatValue>—</StatValue>
-                </StatRow>
-                <StatRow>
-                  <StatLabel>Matches Today</StatLabel>
-                  <StatValue>—</StatValue>
-                </StatRow>
-                <StatRow>
-                  <StatLabel>Your Rank</StatLabel>
-                  <StatValue $muted>Unranked</StatValue>
-                </StatRow>
-              </StatList>
-            </BanzukeCard>
+            <PumoHero src={pumoMainMenu} alt="Pumo" />
           </RightColumn>
+
+          {/*
+            BanzukeCard — sibling of the columns rather than a child of
+            either, so it positions against HeroStage and lives in the
+            empty space below the menu without colliding with Pumo on
+            the right. Values are placeholders until the server-side
+            stats endpoints are wired up (wrestlersOnline,
+            matchesToday, playerRank).
+          */}
+          <BanzukeCard>
+            <BanzukeHeader>
+              <BanzukeTitle>Today&apos;s Banzuke</BanzukeTitle>
+              <BanzukeDate>
+                {new Date().toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                })}
+              </BanzukeDate>
+            </BanzukeHeader>
+            <StatList>
+              <StatRow>
+                <StatLabel>Wrestlers Online</StatLabel>
+                <StatValue>—</StatValue>
+              </StatRow>
+              <StatRow>
+                <StatLabel>Matches Today</StatLabel>
+                <StatValue>—</StatValue>
+              </StatRow>
+              <StatRow>
+                <StatLabel>Your Rank</StatLabel>
+                <StatValue $muted>Unranked</StatValue>
+              </StatRow>
+            </StatList>
+          </BanzukeCard>
         </HeroStage>
 
         {/* BOTTOM HUD — broadcast-style: status block + scrolling ticker */}
