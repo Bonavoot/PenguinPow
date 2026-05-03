@@ -10,7 +10,24 @@ export default defineConfig({
     host: 'localhost',
     strictPort: true
   },
+  // The game ships in Electron (Steam) and modern browsers; both support
+  // es2020 natively, so we avoid the legacy down-leveling that would inflate
+  // bundle size and slow JIT warm-up.
+  esbuild: {
+    legalComments: 'none',
+    // Mark these console calls as side-effect free so esbuild can drop them
+    // from the production bundle. Hot paths (collision, animation, broadcast)
+    // contain console calls that incur string-formatting cost even when
+    // devtools are closed. console.warn / console.error are kept so real
+    // errors remain visible.
+    pure: ['console.log', 'console.debug', 'console.info', 'console.trace'],
+    drop: ['debugger'],
+  },
   build: {
+    target: 'es2020',
+    sourcemap: false,
+    cssCodeSplit: true,
+    chunkSizeWarningLimit: 1500,
     rollupOptions: {
       output: {
         manualChunks(id) {

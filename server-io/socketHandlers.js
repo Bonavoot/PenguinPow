@@ -198,7 +198,10 @@ function registerSocketHandlers(socket, io, rooms, context) {
   });
 
   socket.on("get_rooms", () => {
-    socket.emit("rooms", rooms);
+    // Send the cleaned/sanitized payload, not the raw rooms structure (which
+    // contains huge per-player gameplay state). The lobby UI only needs the
+    // small public summary returned by getCleanedRoomsData.
+    socket.emit("rooms", getCleanedRoomsData(rooms));
   });
 
   socket.on("lobby", (data) => {
@@ -797,7 +800,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
     }
 
     socket.roomId = data.roomId;
-    io.to(data.roomId).emit("rooms", rooms);
+    io.to(data.roomId).emit("rooms", getCleanedRoomsData(rooms));
     io.to(data.roomId).emit("lobby", rooms[roomIndex].players);
     // console.log(rooms[roomIndex].players);
   });
@@ -1304,7 +1307,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
     // console.log(rooms[roomIndex].players[playerIndex]);
 
     io.in(roomId).emit("lobby", rooms[roomIndex].players); // Update all players in the room
-    io.to(roomId).emit("rooms", rooms);
+    io.to(roomId).emit("rooms", getCleanedRoomsData(rooms));
     // console.log(rooms[roomIndex].players);
   });
 

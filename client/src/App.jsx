@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useCallback, useState, useRef } from "react";
 import { io } from "socket.io-client";
 import { SocketContext } from "./SocketContext";
 import StartupScreen from "./components/StartupScreen";
@@ -49,9 +49,16 @@ function App() {
     setShowStartupScreen(false);
   };
 
-  const getRooms = () => {
+  const getRooms = useCallback(() => {
     socket.emit("get_rooms");
-  };
+  }, []);
+
+  // Memoize the context value so that consumers don't re-render every time
+  // App re-renders (e.g. on every rooms/localId/connection state change).
+  const socketContextValue = useMemo(
+    () => ({ socket, getRooms }),
+    [getRooms]
+  );
 
   useEffect(() => {
     // Steam Deck detection and setup
@@ -109,7 +116,7 @@ function App() {
   }, []);
 
   return (
-    <SocketContext.Provider value={{ socket, getRooms }}>
+    <SocketContext.Provider value={socketContextValue}>
       <PlayerColorProvider>
         <div
           ref={appContainerRef}

@@ -29,6 +29,19 @@ const LOG_DIR = path.join(__dirname, "match-logs");
 const MAX_FILES = 100;
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
+// Audit logging is opt-in. By default it is disabled to remove the
+// per-input JSON.stringify + disk write cost from the server hot path.
+// Enable explicitly for tournament/competitive servers via env:
+//     AUDIT_LOG=1 node index.js
+// or
+//     AUDIT_LOG=true node index.js
+const AUDIT_ENABLED = (() => {
+  const v = process.env.AUDIT_LOG;
+  if (!v) return false;
+  const s = String(v).toLowerCase();
+  return s === "1" || s === "true" || s === "yes" || s === "on";
+})();
+
 let dirReady = false;
 
 function ensureDir() {
@@ -109,6 +122,7 @@ async function rotateLogs() {
 // open timestamp so multiple matches in the same room produce distinct
 // files.
 function openLog(room) {
+  if (!AUDIT_ENABLED) return;
   if (!room || !room.id) return;
   if (room.__auditStream) return; // already open for this match
   ensureDir();
@@ -146,6 +160,10 @@ function openLog(room) {
 // rate-limit gate, so dropped malicious packets are not logged. Safe to
 // call when no stream is open (no-op).
 function appendInput(room, entry) {
+  // Fast path: when audit logging is disabled (the default), this is a single
+  // pointer-comparison no-op, avoiding JSON.stringify cost in the hot input
+  // handler path.
+  if (!AUDIT_ENABLED) return;
   if (!room || !room.__auditStream) return;
   try {
     room.__auditStream.write(JSON.stringify(entry) + "\n");
@@ -170,7 +188,9 @@ function closeLog(room) {
 
 // Run rotation once at module load to clean up any stale files left by
 // a previous server process.
-rotateLogs().catch(() => {});
+if (AUDIT_ENABLED) {
+  rotateLogs().catch(() => {});
+}
 
 module.exports = {
   openLog,
@@ -178,4 +198,5 @@ module.exports = {
   closeLog,
   rotateLogs,
   LOG_DIR,
+  AUDIT_ENABLED,
 };

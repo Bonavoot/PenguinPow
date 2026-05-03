@@ -91,8 +91,14 @@ class GamepadHandler {
       if (gamepad) {
         this.processInput(gamepad);
       }
+      // Active controller: poll every animation frame for low-latency input.
+      requestAnimationFrame(() => this.pollGamepad());
+    } else {
+      // No controller connected: don't burn a RAF every frame just to check.
+      // The "gamepadconnected" event handles wakeup, so a slow heartbeat is
+      // sufficient for transient detection edge cases.
+      setTimeout(() => this.pollGamepad(), 500);
     }
-    requestAnimationFrame(() => this.pollGamepad());
   }
 
   processInput(gamepad) {

@@ -2853,14 +2853,34 @@ const GameFighter = ({
     lastThrowingSnowballState.current = penguin.isThrowingSnowball;
   }, [penguin.isThrowingSnowball]);
 
+  // Throttle snowball trail emission per snowball. The previous implementation
+  // emitted a particle for EVERY snowball every time the allSnowballs reference
+  // changed, which happens on every server tick the snowball delta is sent.
+  // That produced thousands of particles/sec from a single in-flight projectile
+  // and was a major source of frame-time spikes during snowball combat.
+  const lastSnowballTrailEmitRef = useRef(new Map());
   useEffect(() => {
     if (index !== 0 || allSnowballs.length === 0) return;
+    const now = performance.now();
+    const SNOWBALL_TRAIL_EMIT_MS = 40;
+    const cache = lastSnowballTrailEmitRef.current;
+    const seen = new Set();
     for (const sb of allSnowballs) {
+      const key = sb.id ?? `${sb.x | 0}:${sb.velocityX > 0 ? 1 : -1}`;
+      seen.add(key);
+      const last = cache.get(key) || 0;
+      if (now - last < SNOWBALL_TRAIL_EMIT_MS) continue;
+      cache.set(key, now);
       emitParticles("snowballTrail", {
         x: sb.x,
         y: sb.y,
         direction: sb.velocityX > 0 ? 1 : -1,
       });
+    }
+    if (cache.size > seen.size) {
+      for (const k of cache.keys()) {
+        if (!seen.has(k)) cache.delete(k);
+      }
     }
   }, [allSnowballs, index, emitParticles]);
 

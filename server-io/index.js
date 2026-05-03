@@ -156,6 +156,8 @@ const { openLog: openAuditLog } = require("./inputAuditLog");
 // Import socket handler registration
 const { registerSocketHandlers } = require("./socketHandlers");
 
+const { getCleanedRoomsData } = require("./playerCleanup");
+
 const app = express();
 app.use(cors());
 
@@ -3044,7 +3046,11 @@ io.on("connection", (socket) => {
   activeConnectionCount++;
   startGameLoop();
 
-  io.emit("rooms", rooms);
+  // Send the lobby snapshot ONLY to the joining socket — and use the cleaned
+  // payload, not the raw rooms array (which contains huge per-player gameplay
+  // state). Previously this broadcast the entire raw rooms structure to every
+  // connected client on every connect, producing a serialization spike.
+  socket.emit("rooms", getCleanedRoomsData(rooms));
 
   // Tiny clock-offset handshake: the client samples this round-trip a few
   // times on connect (and periodically) to derive `serverNow - clientNow`.

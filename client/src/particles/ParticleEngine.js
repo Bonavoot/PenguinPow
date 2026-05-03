@@ -2,6 +2,15 @@ const MAX_PARTICLES = 500;
 const GAME_W = 1280;
 const GAME_H = 720;
 
+// Cap canvas backing-store DPR. The previous implementation forced at least 2x
+// device pixels, which inflates fillrate cost on every frame for three full-
+// scene canvases. 1.5x is visually indistinguishable for soft particles while
+// cutting per-pixel cost roughly in half on common 1920x1080 displays.
+function getCanvasDpr() {
+  const dpr = (typeof window !== "undefined" && window.devicePixelRatio) || 1;
+  return Math.min(Math.max(dpr, 1), 1.5);
+}
+
 // ─── Easing ─────────────────────────────────────────────────────────
 
 const EASE = {
@@ -1997,7 +2006,7 @@ export class ParticleEngine {
 
   init(canvas) {
     this.canvas = canvas;
-    const dpr = Math.max(window.devicePixelRatio || 1, 2);
+    const dpr = getCanvasDpr();
     const rect = canvas.getBoundingClientRect();
     const physW = Math.round(rect.width * dpr);
     const physH = Math.round(rect.height * dpr);
@@ -2012,7 +2021,7 @@ export class ParticleEngine {
 
   initBehind(canvas) {
     this.canvasBehind = canvas;
-    const dpr = Math.max(window.devicePixelRatio || 1, 2);
+    const dpr = getCanvasDpr();
     const rect = canvas.getBoundingClientRect();
     const physW = Math.round(rect.width * dpr);
     const physH = Math.round(rect.height * dpr);
@@ -2024,7 +2033,7 @@ export class ParticleEngine {
 
   initFront(canvas) {
     this.canvasFront = canvas;
-    const dpr = Math.max(window.devicePixelRatio || 1, 2);
+    const dpr = getCanvasDpr();
     const rect = canvas.getBoundingClientRect();
     const physW = Math.round(rect.width * dpr);
     const physH = Math.round(rect.height * dpr);

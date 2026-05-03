@@ -8,7 +8,7 @@
  * - Loading states during recoloring
  */
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   recolorImage,
   BLUE_COLOR_RANGES,
@@ -545,41 +545,53 @@ export function PlayerColorProvider({ children }) {
     return playerNumber === 1 ? player1Sprites : player2Sprites;
   }, [player1Sprites, player2Sprites]);
 
-  const value = {
-    // Mawashi colors
+  // Memoize context value so consumers (e.g. GameFighter, FighterSelect) only
+  // re-render when something they actually depend on changes — not every time
+  // the provider re-renders.
+  const value = useMemo(() => ({
     player1Color,
     player2Color,
     setPlayer1Color,
     setPlayer2Color,
 
-    // Body colors
     player1BodyColor,
     player2BodyColor,
     setPlayer1BodyColor,
     setPlayer2BodyColor,
-    
-    // Sprites
+
     player1Sprites,
     player2Sprites,
     getSprite,
     getPlayerSprites,
-    
-    // State
+
     isLoading,
     loadingProgress,
     spritesReady,
-    
-    // Actions
+
     preloadSprites,
     resetColors,
     warmupWorker,
-    
-    // Constants
+
     colorPresets: COLOR_PRESETS,
     bodyColorPresets: BODY_COLOR_PRESETS,
     defaultColors: DEFAULT_COLORS,
     defaultBodyColors: DEFAULT_BODY_COLORS,
-  };
+  }), [
+    player1Color,
+    player2Color,
+    player1BodyColor,
+    player2BodyColor,
+    player1Sprites,
+    player2Sprites,
+    getSprite,
+    getPlayerSprites,
+    isLoading,
+    loadingProgress,
+    spritesReady,
+    preloadSprites,
+    resetColors,
+    warmupWorker,
+  ]);
 
   return (
     <PlayerColorContext.Provider value={value}>
