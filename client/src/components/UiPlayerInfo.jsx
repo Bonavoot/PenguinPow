@@ -6,6 +6,22 @@ import powerWaterIcon from "../assets/power-water.png";
 import snowballImage from "../assets/snowball.png";
 import pumoArmyIcon from "./pumo-army-icon.png";
 import thickBlubberIcon from "../assets/thick-blubber-icon.png";
+import { C } from "./menuTheme";
+
+/*
+ * Pumo Pumo HUD — palette aligned with the canonical menuTheme tokens
+ * (ink / cream / gold / ice / vermillion). All warm-brown gold has been
+ * migrated to theme saffron gold (`C.gold` / `#e8c547`) and a deeper
+ * cool-saffron shadow (`#c9a614` — same hue/saturation as C.gold but
+ * darker, so it reads as deep gold instead of brown). The legacy
+ * darkgoldenrod (`#b8860b`) and old-gold (`#d4af37`) values have been
+ * fully removed because they read as brown next to the menu's saffron
+ * gold token. Greens (regen) and reds (stamina danger) are intentionally
+ * preserved — they carry semantic meaning that overrides the cool
+ * palette. The balance-bar danger fill DOES use the brand vermillion
+ * (`C.vermillion`) so the kill-marker tassel and the danger fill speak
+ * the same color language.
+ */
 
 // ============================================
 // ANIMATIONS
@@ -56,26 +72,23 @@ const parryRefundFlash = keyframes`
   }
 `;
 
-/* Pulsing danger glow for the bar frame when stamina is critical */
+/* Pulsing danger glow for the bar frame when stamina is critical.
+ * Uses clean gold (C.gold) for the calm-state ring instead of the previous
+ * muddy brown-gold, then transitions to a vermillion-tinged ring on the
+ * pulse peak so the gold→red shift reads as "the frame itself is alarming". */
 const dangerFramePulse = keyframes`
   0%, 100% {
     box-shadow:
       inset 0 0 6px rgba(255, 40, 40, 0.05),
       0 0 4px rgba(255, 40, 40, 0.05),
-      0 0 0 2px rgba(180, 130, 30, 0.6);
+      0 0 0 2px rgba(232, 197, 71, 0.75);
   }
   50% {
     box-shadow:
-      inset 0 0 14px rgba(255, 40, 40, 0.25),
-      0 0 16px rgba(255, 40, 40, 0.35),
-      0 0 0 2px rgba(255, 60, 60, 0.7);
+      inset 0 0 14px rgba(255, 40, 40, 0.28),
+      0 0 18px rgba(238, 81, 65, 0.45),
+      0 0 0 2px rgba(238, 81, 65, 0.85);
   }
-`;
-
-/* Gassed state — scrolling diagonal hazard stripes */
-const gassedStripeScroll = keyframes`
-  from { transform: translateX(0); }
-  to { transform: translateX(22.63px); }
 `;
 
 /* Labored breathing pulse — slow, heavy */
@@ -152,6 +165,141 @@ const recoveryTextPop = keyframes`
     opacity: 0;
     transform: translate(-50%, -50%) scale(1.05);
   }
+`;
+
+/* Drifting motes inside the stamina fill — slow horizontal drift with a
+ * soft fade-in/out at each end, so the bar always feels *alive* without
+ * needing a separate persistent leading-edge spark. Direction matches
+ * the player's anchor side. */
+const moteDrift = keyframes`
+  0%   { transform: translateX(0)    translateY(0);   opacity: 0; }
+  18%  { opacity: 0.85; }
+  60%  { opacity: 0.7;  }
+  100% { transform: translateX(-90px) translateY(-2px); opacity: 0; }
+`;
+const moteDriftReverse = keyframes`
+  0%   { transform: translateX(0)   translateY(0);   opacity: 0; }
+  18%  { opacity: 0.85; }
+  60%  { opacity: 0.7;  }
+  100% { transform: translateX(90px) translateY(-2px); opacity: 0; }
+`;
+
+/* Subtle vertical wobble on the fill's top edge — tells the eye "this is alive" */
+const fillWobble = keyframes`
+  0%, 100% { transform: translateY(0)    scaleY(1);     }
+  50%      { transform: translateY(-0.5px) scaleY(1.02); }
+`;
+
+/* One-shot impact spark at the trailing edge when stamina takes a hit */
+const impactSpark = keyframes`
+  0% {
+    opacity: 1;
+    transform: translateY(-50%) scaleX(0.4) scaleY(1);
+    filter: brightness(2.5);
+  }
+  35% {
+    opacity: 0.95;
+    transform: translateY(-50%) scaleX(1.1) scaleY(1.4);
+    filter: brightness(1.8);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-50%) scaleX(2.2) scaleY(0.4);
+    filter: brightness(1);
+  }
+`;
+
+/* One-shot frame shake on big stamina drops */
+const frameShake = keyframes`
+  0%, 100% { transform: translate(0, 0); }
+  15%      { transform: translate(-1.5px, 0.5px); }
+  30%      { transform: translate(1.5px, -0.5px); }
+  45%      { transform: translate(-1px, -0.5px); }
+  60%      { transform: translate(1px, 0.5px); }
+  80%      { transform: translate(-0.5px, 0); }
+`;
+
+/* Ascending icy mist particle — used in regen overlay */
+const mistRise = keyframes`
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0.6);
+  }
+  20% {
+    opacity: 0.85;
+    transform: translateY(-30%) scale(0.9);
+  }
+  70% {
+    opacity: 0.45;
+    transform: translateY(-110%) scale(1.05);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-160%) scale(0.7);
+  }
+`;
+
+/* Chevron scroll pattern for regen — subtle directional energy */
+const chevronScrollRight = keyframes`
+  from { background-position: 0 0; }
+  to   { background-position: 22px 0; }
+`;
+const chevronScrollLeft = keyframes`
+  from { background-position: 0 0; }
+  to   { background-position: -22px 0; }
+`;
+
+/* Gassed steam — wavy heatwave shimmer rising off the bar.
+ * Combines a slow horizontal drift with a vertical "breath" that swells
+ * the overlay, so the heat blobs feel like they're being pushed by the
+ * wrestler's labored breathing. */
+const gassedSteam = keyframes`
+  0%   { transform: translateX(0)    translateY(0)    scaleY(1);    opacity: 0.55; }
+  50%  { transform: translateX(8px)  translateY(-2px) scaleY(1.05); opacity: 0.9;  }
+  100% { transform: translateX(-6px) translateY(0)    scaleY(1);    opacity: 0.55; }
+`;
+
+/* Animated hairline cracks — appear/fade as the metal "strains" */
+const gassedCracks = keyframes`
+  0%, 100% { opacity: 0.25; }
+  50%      { opacity: 0.7;  }
+`;
+
+/* GASSED letter droop — each letter dips on the breathing pulse */
+const gassedTextDroop = keyframes`
+  0%, 100% { transform: translateY(0)    scaleY(1);    letter-spacing: 0.3em; }
+  50%      { transform: translateY(0.5px) scaleY(0.94); letter-spacing: 0.34em; }
+`;
+
+/* Go-stone place ripple — single radial ring expanding outward */
+const stonePlaceRipple = keyframes`
+  0% {
+    opacity: 0.9;
+    transform: translate(-50%, -50%) scale(0.6);
+  }
+  60% {
+    opacity: 0.4;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(2.4);
+  }
+`;
+
+/* Balance bar in-danger wobble — tilts ±1° + mild shake. Subtle, not nauseating. */
+const balanceTilt = keyframes`
+  0%, 100% { transform: rotate(-1deg)   translateX(0); }
+  25%      { transform: rotate(1deg)    translateX(0.5px); }
+  50%      { transform: rotate(-0.5deg) translateX(-0.5px); }
+  75%      { transform: rotate(0.6deg)  translateX(0.3px); }
+`;
+
+/* Quiet expanding ring around the kill threshold notch — runs constantly
+ * so the danger boundary is always readable without needing to make the
+ * whole strip pulsate. Soft and slow on purpose. */
+const killMarkerPulse = keyframes`
+  0%   { opacity: 0.7; transform: translate(-50%, -50%) scale(0.6); }
+  100% { opacity: 0;   transform: translate(-50%, -50%) scale(1.6); }
 `;
 
 // ============================================
@@ -259,7 +407,15 @@ const FighterName = styled.div`
 // RANK PLAQUE — sumo banzuke-style ranking plate
 // ============================================
 
-/* Sits below the stamina bar — symmetrical sumo banzuke plate */
+/* Sumo banzuke plate — sits below the stamina bar.
+ *
+ * Lacquered ink base with a hint of vertical washi paper grain, framed
+ * by clean gold-leaf side brackets. Replaces the previous muddy brown
+ * gold (`rgba(180, 130, 30, ...)`) on the border and brackets with the
+ * cleaner gold leaf (`C.gold`) so it ties into the new HUD palette.
+ *
+ * The grain is now a vertical (paper-fibre) hatch instead of horizontal
+ * — feels more like washi than ribbed metal. */
 const RankPlaque = styled.div`
   display: flex;
   align-items: center;
@@ -268,27 +424,37 @@ const RankPlaque = styled.div`
   padding: clamp(4px, 0.55cqh, 8px) clamp(12px, 1.5cqw, 22px);
   position: relative;
 
-  /* Dark lacquered plaque with subtle grain */
   background:
+    /* vertical washi paper-fibre grain — barely visible */
     repeating-linear-gradient(
       90deg,
-      transparent 0px, transparent 3px,
-      rgba(212, 175, 55, 0.015) 3px, rgba(212, 175, 55, 0.015) 4px
+      transparent 0px,
+      transparent 2px,
+      rgba(245, 236, 217, 0.018) 2px,
+      rgba(245, 236, 217, 0.018) 3px
+    ),
+    /* very faint horizontal weave to add a second axis of texture */
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 4px,
+      rgba(245, 236, 217, 0.012) 4px,
+      rgba(245, 236, 217, 0.012) 5px
     ),
     linear-gradient(
       180deg,
-      rgba(14, 18, 36, 0.92) 0%,
-      rgba(10, 14, 28, 0.95) 50%,
-      rgba(8, 10, 22, 0.92) 100%
+      rgba(14, 18, 36, 0.94) 0%,
+      rgba(10, 14, 28, 0.97) 50%,
+      rgba(8, 10, 22, 0.94) 100%
     );
   border-radius: 3px;
-  border: 1.5px solid rgba(180, 130, 30, 0.35);
+  border: 1.5px solid rgba(232, 197, 71, 0.5);
   box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.4),
-    inset 0 1px 0 rgba(255, 200, 100, 0.06),
-    inset 0 -1px 3px rgba(0, 0, 0, 0.3);
+    0 2px 8px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 246, 194, 0.1),
+    inset 0 -1px 3px rgba(0, 0, 0, 0.32);
 
-  /* Gold ornamental bracket — LEFT side */
+  /* Gold ornamental bracket — LEFT side. Clean gold leaf gradient now. */
   &::before {
     content: "";
     position: absolute;
@@ -297,16 +463,17 @@ const RankPlaque = styled.div`
     width: 3px;
     background: linear-gradient(
       180deg,
-      rgba(180, 130, 30, 0.2) 0%,
-      #d4af37 20%,
-      #ffd700 50%,
-      #d4af37 80%,
-      rgba(180, 130, 30, 0.2) 100%
+      rgba(232, 197, 71, 0.3) 0%,
+      #e8c547 20%,
+      #fff6c2 50%,
+      #e8c547 80%,
+      rgba(232, 197, 71, 0.3) 100%
     );
     border-radius: 2px;
+    box-shadow: 0 0 4px rgba(232, 197, 71, 0.4);
   }
 
-  /* Gold ornamental bracket — RIGHT side */
+  /* Gold ornamental bracket — RIGHT side. */
   &::after {
     content: "";
     position: absolute;
@@ -315,26 +482,27 @@ const RankPlaque = styled.div`
     width: 3px;
     background: linear-gradient(
       180deg,
-      rgba(180, 130, 30, 0.2) 0%,
-      #d4af37 20%,
-      #ffd700 50%,
-      #d4af37 80%,
-      rgba(180, 130, 30, 0.2) 100%
+      rgba(232, 197, 71, 0.3) 0%,
+      #e8c547 20%,
+      #fff6c2 50%,
+      #e8c547 80%,
+      rgba(232, 197, 71, 0.3) 100%
     );
     border-radius: 2px;
+    box-shadow: 0 0 4px rgba(232, 197, 71, 0.4);
   }
 `;
 
 const RankText = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(10px, 1.4cqw, 17px);
-  color: #ffd700;
+  color: #ffe56c;
   text-transform: uppercase;
   letter-spacing: 0.16em;
   line-height: 1;
   text-shadow:
-    0 0 10px rgba(255, 215, 0, 0.4),
-    0 0 4px rgba(212, 175, 55, 0.5),
+    0 0 10px rgba(232, 197, 71, 0.5),
+    0 0 4px rgba(232, 197, 71, 0.55),
     0 1px 3px rgba(0, 0, 0, 0.9);
   white-space: nowrap;
 `;
@@ -343,36 +511,98 @@ const RankText = styled.div`
 // STAMINA BAR  — THE HERO OF THE HUD
 // ============================================
 
-/* Ornamental outer frame — gold ring with danger state */
+/* Ornamental outer frame — chiseled banzuke plate.
+ *
+ * Layered like a real piece of metal hardware:
+ *   1. Cream highlight rim (inset)        — top-light catch on the inner edge
+ *   2. Clean gold leaf ring (box-shadow)  — primary color (C.gold), no brown
+ *   3. Dark gunmetal underlayer           — cool ink, replaces the old "dark gap"
+ *   4. Soft drop shadow                   — lift off the background
+ *
+ * The ::after pseudo paints 4 corner rivets via stacked radial gradients —
+ * a single-element trick that gives the "premium plated armor" look without
+ * extra DOM nodes.
+ *
+ * NOTE: this used to be paired with a persistent leading-edge spark and
+ * drifting motes inside the fill. The leading-edge spark was the source
+ * of the "competing effects" / messy overlap with the ghost bar during
+ * damage and has stayed removed; the motes have been restored. */
 const BarFrame = styled.div`
   position: relative;
   flex: 1;
   min-width: 0;
   border-radius: 4px;
 
-  /* Multi-ring gold frame — same thickness as banner bottom border */
   border: clamp(2px, 0.16cqw, 4px) solid transparent;
   box-shadow:
-    /* Gold outer ring */
-    0 0 0 clamp(2px, 0.16cqw, 4px) rgba(180, 130, 30, 0.6),
-    /* Dark outer gap */
-    0 0 0 clamp(4px, 0.32cqw, 8px) rgba(0, 0, 0, 0.5),
-    /* Depth shadow */
-    0 clamp(3px, 0.24cqw, 6px) clamp(12px, 1cqw, 24px) rgba(0, 0, 0, 0.5);
+    inset 0 0 0 1px rgba(245, 236, 217, 0.22),
+    0 0 0 clamp(2px, 0.16cqw, 4px) rgba(232, 197, 71, 0.85),
+    0 0 0 clamp(4px, 0.32cqw, 8px) rgba(13, 18, 36, 0.95),
+    0 clamp(3px, 0.24cqw, 6px) clamp(12px, 1cqw, 24px) rgba(0, 0, 0, 0.55);
   opacity: ${(p) => (p.$matchOver ? 0.95 : 1)};
   filter: ${(p) => (p.$matchOver ? "brightness(0.97)" : "none")};
   transition: opacity 220ms ease, filter 220ms ease;
 
-  /* Danger mode: pulsing crimson frame */
-  ${(p) =>
-    p.$gassed
-      ? css`
-          animation: ${gassedFramePulse} ${p.$matchOver ? "1.9s" : "1.2s"} ease-in-out infinite;
-        `
-      : p.$danger &&
-        css`
-          animation: ${dangerFramePulse} ${p.$matchOver ? "1.15s" : "0.7s"} ease-in-out infinite;
-        `}
+  /* Corner rivets — 4 small gold dots painted via stacked radial gradients */
+  &::after {
+    content: "";
+    position: absolute;
+    inset: clamp(-3px, -0.24cqw, -6px);
+    border-radius: 4px;
+    pointer-events: none;
+    z-index: 1;
+    background-image:
+      radial-gradient(circle at 0 0,
+        rgba(255, 252, 220, 0.95) 0%,
+        rgba(232, 197, 71, 0.85) 35%,
+        rgba(232, 197, 71, 0) 55%),
+      radial-gradient(circle at 100% 0,
+        rgba(255, 252, 220, 0.95) 0%,
+        rgba(232, 197, 71, 0.85) 35%,
+        rgba(232, 197, 71, 0) 55%),
+      radial-gradient(circle at 0 100%,
+        rgba(255, 252, 220, 0.95) 0%,
+        rgba(232, 197, 71, 0.85) 35%,
+        rgba(232, 197, 71, 0) 55%),
+      radial-gradient(circle at 100% 100%,
+        rgba(255, 252, 220, 0.95) 0%,
+        rgba(232, 197, 71, 0.85) 35%,
+        rgba(232, 197, 71, 0) 55%);
+    background-size: clamp(6px, 0.7cqw, 9px) clamp(6px, 0.7cqw, 9px);
+    background-repeat: no-repeat;
+    background-position:
+      0 0,
+      100% 0,
+      0 100%,
+      100% 100%;
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.7));
+  }
+
+  /* Composed animation: optional one-shot shake (on big hits) + the
+   * appropriate looping pulse for gassed/danger states. The shake comes
+   * first so it visibly punches through the steady-state pulse.
+   * We branch on each combination so styled-components resolves the
+   * keyframes references (interpolated css\`\`) to their generated names. */
+  ${(p) => {
+    const gassedDur = p.$matchOver ? "1.9s" : "1.2s";
+    const dangerDur = p.$matchOver ? "1.15s" : "0.7s";
+    if (p.$shake && p.$gassed) {
+      return css`animation: ${frameShake} 0.32s ease-out, ${gassedFramePulse} ${gassedDur} ease-in-out infinite;`;
+    }
+    if (p.$shake && p.$danger) {
+      return css`animation: ${frameShake} 0.32s ease-out, ${dangerFramePulse} ${dangerDur} ease-in-out infinite;`;
+    }
+    if (p.$shake) {
+      return css`animation: ${frameShake} 0.32s ease-out;`;
+    }
+    if (p.$gassed) {
+      return css`animation: ${gassedFramePulse} ${gassedDur} ease-in-out infinite;`;
+    }
+    if (p.$danger) {
+      return css`animation: ${dangerFramePulse} ${dangerDur} ease-in-out infinite;`;
+    }
+    return "";
+  }}
 `;
 
 /* Dark inner track — stamina gauge */
@@ -395,21 +625,47 @@ const BarTrack = styled.div`
     inset 0 -1px 3px rgba(0, 0, 0, 0.25);
 `;
 
-/* Stamina gauge line — sits behind the fill so it only shows in drained areas */
+/* Stamina gauge tally — kanji-style tick. A short top notch + a longer
+ * bottom stem evokes a hand-cut tally mark on a banzuke, giving the bar
+ * more identity than the previous plain 1px line while staying subtle. */
 const StaTickMark = styled.div`
   position: absolute;
   top: 2px;
   bottom: 2px;
   left: ${(p) => p.$pct}%;
   transform: translateX(-50%);
-  width: 1px;
+  width: 2px;
   z-index: 1;
   pointer-events: none;
-  background: rgba(255, 255, 255, 0.16);
-  box-shadow: -1px 0 0 rgba(255, 255, 255, 0.05), 1px 0 0 rgba(255, 255, 255, 0.05);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.0) 0%,
+    rgba(255, 255, 255, 0.22) 18%,
+    rgba(255, 255, 255, 0.18) 78%,
+    rgba(0, 0, 0, 0.35) 100%
+  );
+  box-shadow:
+    -1px 0 0 rgba(0, 0, 0, 0.18),
+     1px 0 0 rgba(255, 255, 255, 0.06);
+
+  /* Tiny notch cap on top — sells the "tally mark" feel. */
+  &::before {
+    content: "";
+    position: absolute;
+    top: -1px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 2px;
+    background: rgba(255, 255, 255, 0.28);
+    border-radius: 1px;
+  }
 `;
 
-/* Mint-lime frost stamina fill — playful arcade energy */
+/* Mint-lime frost stamina fill — playful arcade energy with living micro-motion.
+ * The fill keeps its existing color language (mint→red, no green→blue swap)
+ * but gets a subtle vertical wobble (telling the eye it's *energy*, not paint),
+ * plus the existing top highlight + diagonal frost sweep. */
 const BarFill = styled.div.attrs((p) => ({
   style: {
     width: `calc(${p.$stamina}% - 4px)`,
@@ -423,6 +679,7 @@ const BarFill = styled.div.attrs((p) => ({
   transition: width 0.3s ease;
   z-index: 2;
   overflow: hidden;
+  transform-origin: ${(p) => (p.$isRight ? "left center" : "right center")};
 
   background: ${(p) =>
     p.$danger
@@ -441,7 +698,7 @@ const BarFill = styled.div.attrs((p) => ({
   animation: ${(p) =>
     p.$danger
       ? css`${flashRedPulse} 0.6s ease-in-out infinite`
-      : "none"};
+      : css`${fillWobble} 2.4s ease-in-out infinite`};
 
   &::before {
     content: "";
@@ -482,7 +739,106 @@ const BarFill = styled.div.attrs((p) => ({
   }
 `;
 
-/* Ghost bar — smoked white glass trailing indicator */
+/* Drifting energy motes inside the fill — sparse soft white dots that
+ * slowly traverse the fill, telling the eye "this is contained energy."
+ * Sits ABOVE the BarFill but UNDER the regen/parry overlays. Only renders
+ * when not in danger (motes would compete with the red flash pulse).
+ *
+ * NOTE: the previous LeadingSpark companion was deliberately NOT
+ * restored — the persistent bright-edge glow was the source of the
+ * messy overlap with the ghost-bar trailing indicator during damage.
+ * Motes alone keep the bar lively without crowding the damage moment. */
+const FillMotes = styled.div.attrs((p) => ({
+  style: {
+    width: `calc(${p.$stamina}% - 4px)`,
+  },
+}))`
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  ${(p) => (p.$isRight ? "left: 2px;" : "right: 2px;")}
+  border-radius: 2px;
+  z-index: 2;
+  pointer-events: none;
+  overflow: hidden;
+  transition: width 0.3s ease;
+
+  /* Three small motes via stacked radial gradients on a single ::before.
+   * Each gets a different drift speed/delay so the motion feels organic. */
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      radial-gradient(circle at 0 30%,
+        rgba(255, 255, 255, 0.85) 0%,
+        rgba(255, 255, 255, 0.4) 40%,
+        rgba(255, 255, 255, 0) 70%),
+      radial-gradient(circle at 0 70%,
+        rgba(240, 255, 228, 0.7) 0%,
+        rgba(240, 255, 228, 0.3) 40%,
+        rgba(240, 255, 228, 0) 70%),
+      radial-gradient(circle at 0 50%,
+        rgba(255, 255, 255, 0.6) 0%,
+        rgba(255, 255, 255, 0) 60%);
+    background-size: 3px 3px, 2.5px 2.5px, 2px 2px;
+    background-repeat: no-repeat;
+    background-position: 100% 30%, 60% 70%, 30% 50%;
+    animation-name: ${(p) => (p.$isRight ? moteDriftReverse : moteDrift)};
+    animation-duration: 4.2s;
+    animation-iteration-count: infinite;
+    animation-timing-function: linear;
+    opacity: 0.9;
+  }
+  &::after {
+    background-position: 80% 60%, 40% 30%, 20% 70%;
+    animation-duration: 6s;
+    animation-delay: 1.4s;
+    opacity: 0.7;
+  }
+`;
+
+/* One-shot impact spark on heavy hits — sits at the trailing edge of the
+ * fill (the side that just shrank inward), painting a quick flash of light
+ * to sell the visceral "energy bleeding out" feel. Key-driven remount so
+ * each hit gets a fresh animation.
+ *
+ * Uses .attrs() to inject the dynamic position via inline style so each
+ * impact doesn't generate a new styled-components class. */
+const ImpactSpark = styled.div.attrs((p) => ({
+  style: p.$isRight
+    ? { left: `calc(${p.$stamina}% - 4px)` }
+    : { right: `calc(${p.$stamina}% - 4px)` },
+}))`
+  position: absolute;
+  top: 50%;
+  width: clamp(8px, 1.2cqw, 13px);
+  height: 70%;
+  transform: translateY(-50%);
+  transform-origin: center;
+  z-index: 5;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(255, 230, 215, 0.55) 40%,
+    rgba(255, 140, 130, 0.3) 70%,
+    transparent 100%
+  );
+  filter: blur(0.6px);
+  mix-blend-mode: screen;
+  animation: ${impactSpark} 0.26s ease-out forwards;
+`;
+
+/* Ghost bar — matte trailing damage indicator.
+ *
+ * Dialed back from the previous smoked-glass treatment (radial highlight +
+ * vertical sheen + diagonal sweep + dual box-shadow + double pseudo-element
+ * highlights) which competed with the impact spark and the fill's own
+ * sheen during damage. Now it's a flat slightly-translucent matte panel
+ * with one subtle top edge highlight — clear "this is where stamina was"
+ * without piling on extra glass effects. */
 const BarGhost = styled.div.attrs((p) => ({
   style: {
     width: `calc(${p.$stamina}% - 4px)`,
@@ -499,65 +855,47 @@ const BarGhost = styled.div.attrs((p) => ({
   z-index: 1;
   pointer-events: none;
 
-  background:
-    radial-gradient(
-      120% 95% at 50% 12%,
-      rgba(255, 255, 255, 0.75) 0%,
-      rgba(255, 255, 255, 0.22) 38%,
-      rgba(255, 255, 255, 0) 68%
-    ),
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.92) 0%,
-      rgba(248, 251, 255, 0.8) 16%,
-      rgba(225, 233, 245, 0.62) 42%,
-      rgba(180, 192, 214, 0.42) 72%,
-      rgba(104, 115, 136, 0.32) 100%
-    );
+  background: linear-gradient(
+    180deg,
+    rgba(220, 226, 238, 0.72) 0%,
+    rgba(178, 188, 206, 0.55) 60%,
+    rgba(110, 122, 142, 0.35) 100%
+  );
 
-  opacity: 0.88;
-  box-shadow:
-    0 0 12px rgba(255, 255, 255, 0.18),
-    0 0 4px rgba(184, 205, 238, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.35),
-    inset 0 -2px 6px rgba(38, 46, 60, 0.35);
+  opacity: 0.78;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
 
+  /* Single thin top edge highlight so the ghost has a defined upper edge
+   * but doesn't bloom into a glass shine. */
   &::before {
     content: "";
     position: absolute;
     top: 0; left: 0; right: 0;
-    height: 38%;
+    height: 32%;
     background: linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.58) 0%,
-      rgba(255, 255, 255, 0.2) 48%,
+      rgba(255, 255, 255, 0.32) 0%,
       transparent 100%
     );
     border-radius: 2px 2px 0 0;
     pointer-events: none;
   }
 
-  &::after {
-    content: "";
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 8%;
-    width: 42%;
-    background: linear-gradient(
-      100deg,
-      rgba(255, 255, 255, 0) 0%,
-      rgba(255, 255, 255, 0.1) 32%,
-      rgba(255, 255, 255, 0.26) 48%,
-      rgba(255, 255, 255, 0.08) 62%,
-      rgba(255, 255, 255, 0) 100%
-    );
-    opacity: 0.9;
-    pointer-events: none;
-  }
+  /* (The diagonal moving sweep was removed — created a glint that fought
+   * the impact spark during damage.) */
 `;
 
-/* Full-bar green overlay that pulses when stamina is regenerating */
+/* Regen overlay — "catch your breath" treatment.
+ *
+ * Three layered visuals replace the old flat green tint:
+ *   1. Soft green-mint base wash    — keeps the existing readability
+ *   2. Directional chevron pattern  — slow scrolling ↑↑↑ inside the bar,
+ *                                     hinting at ascending energy
+ *   3. Ascending icy mist particles — small white-blue puffs rise and
+ *                                     dissolve (this is the "penguin
+ *                                     breathing cold air" beat)
+ *
+ * Sits over the live fill but under the parry-refund flash. */
 const RegenGlow = styled.div.attrs((p) => ({
   style: {
     width: `calc(${p.$stamina}% - 4px)`,
@@ -571,21 +909,73 @@ const RegenGlow = styled.div.attrs((p) => ({
   z-index: 3;
   pointer-events: none;
   transition: width 0.3s ease;
+  overflow: hidden;
 
-  /* Green gradient — stronger toward the leading (growing) edge */
   background: linear-gradient(
     ${(p) => (p.$isRight ? "270deg" : "90deg")},
     rgba(52, 211, 153, 0.06) 0%,
     rgba(52, 211, 153, 0.18) 40%,
-    rgba(52, 211, 153, 0.35) 75%,
-    rgba(74, 222, 170, 0.5) 100%
+    rgba(52, 211, 153, 0.32) 75%,
+    rgba(74, 222, 170, 0.45) 100%
   );
 
   box-shadow:
-    inset 0 0 10px rgba(52, 211, 153, 0.25),
-    inset ${(p) => (p.$isRight ? "-6px" : "6px")} 0 14px rgba(52, 211, 153, 0.3);
+    inset 0 0 10px rgba(52, 211, 153, 0.22),
+    inset ${(p) => (p.$isRight ? "-6px" : "6px")} 0 14px rgba(52, 211, 153, 0.28);
 
-  animation: ${regenPulse} 0.8s ease-in-out infinite;
+  animation: ${regenPulse} 0.9s ease-in-out infinite;
+
+  /* Scrolling chevron pattern — built from a repeating linear gradient that
+   * paints angled stripes. Direction matches the regen flow (toward the
+   * leading edge of the fill). Subtle opacity so it never dominates. */
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+      ${(p) => (p.$isRight ? "65deg" : "115deg")},
+      rgba(225, 255, 241, 0.0) 0px,
+      rgba(225, 255, 241, 0.0) 7px,
+      rgba(225, 255, 241, 0.22) 8px,
+      rgba(225, 255, 241, 0.22) 10px,
+      rgba(225, 255, 241, 0.0) 11px,
+      rgba(225, 255, 241, 0.0) 22px
+    );
+    background-size: 22px 100%;
+    animation: ${(p) => (p.$isRight ? chevronScrollLeft : chevronScrollRight)}
+      0.8s linear infinite;
+    pointer-events: none;
+    mix-blend-mode: screen;
+  }
+
+  /* Ascending mist particles — three soft white-blue dots that rise and
+   * dissolve. Positioned along the fill so they read as breath rising
+   * out of multiple points. Stacked on ::after so we get all three from
+   * a single pseudo via radial-gradient stacking. */
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      radial-gradient(circle at 0 100%,
+        rgba(225, 255, 241, 0.85) 0%,
+        rgba(168, 224, 255, 0.55) 30%,
+        rgba(168, 224, 255, 0) 60%),
+      radial-gradient(circle at 0 100%,
+        rgba(225, 255, 241, 0.75) 0%,
+        rgba(168, 224, 255, 0.45) 30%,
+        rgba(168, 224, 255, 0) 60%),
+      radial-gradient(circle at 0 100%,
+        rgba(225, 255, 241, 0.7) 0%,
+        rgba(168, 224, 255, 0.4) 30%,
+        rgba(168, 224, 255, 0) 60%);
+    background-size: 6px 6px, 5px 5px, 4px 4px;
+    background-repeat: no-repeat;
+    background-position: 25% 90%, 55% 90%, 80% 90%;
+    animation: ${mistRise} 1.4s ease-out infinite;
+    filter: blur(0.4px);
+    pointer-events: none;
+  }
 `;
 
 /* Instant bright green flash overlay for parry stamina refund — sized to current fill */
@@ -612,7 +1002,21 @@ const ParryRefundFlash = styled.div.attrs((p) => ({
   animation: ${parryRefundFlash} 0.5s ease-out forwards;
 `;
 
-/* Gassed overlay — hazard stripes with breathing pulse */
+/* Gassed overlay — "out of breath", not "construction site".
+ *
+ * Replaces the previous diagonal hazard stripes with a layered heatwave
+ * effect that reads as exhaustion/strain instead of caution-tape:
+ *
+ *   Base layer    — deep crimson-black gradient (the dohyo at dusk)
+ *   ::before      — drifting smoke/heat blobs (large blurred radial
+ *                   gradients that slowly shift, evoking heatwaves
+ *                   rising off an exhausted wrestler)
+ *   ::after       — a wavy hairline near the bottom of the bar that
+ *                   sells the "this metal is straining" feel without
+ *                   needing extra DOM nodes
+ *
+ * The whole overlay still breathes (slow opacity pulse) on the existing
+ * gassedBreathe rhythm — that's the labored-breath cadence you want. */
 const GassedOverlay = styled.div`
   position: absolute;
   top: 0;
@@ -630,40 +1034,129 @@ const GassedOverlay = styled.div`
   opacity: ${(p) => (p.$matchOver ? 0.88 : 1)};
   transition: opacity 220ms ease;
 
+  background:
+    radial-gradient(
+      ellipse at 30% 50%,
+      rgba(60, 12, 12, 0.55) 0%,
+      rgba(28, 6, 6, 0.85) 60%,
+      rgba(14, 4, 4, 0.95) 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(50, 10, 10, 0.85) 0%,
+      rgba(20, 4, 4, 0.95) 100%
+    );
+
+  /* Drifting heatwave / smoke blobs — three soft red-black radial gradients
+   * that slowly translate horizontally, giving the overlay a breathing,
+   * shimmering interior. Heavy blur sells the "rising heat" feel. */
   &::before {
     content: "";
     position: absolute;
-    top: -50%;
-    left: -50%;
-    right: -50%;
-    bottom: -50%;
-    background: repeating-linear-gradient(
-      -45deg,
-      rgba(180, 20, 20, 0.8) 0px,
-      rgba(180, 20, 20, 0.8) 8px,
-      rgba(40, 5, 5, 0.85) 8px,
-      rgba(40, 5, 5, 0.85) 16px
-    );
-    animation: ${gassedStripeScroll} ${(p) => (p.$matchOver ? "1.2s" : "0.8s")} linear infinite;
+    top: -25%;
+    left: -25%;
+    right: -25%;
+    bottom: -25%;
+    background:
+      radial-gradient(
+        ellipse 60% 80% at 20% 50%,
+        rgba(190, 32, 32, 0.55) 0%,
+        rgba(80, 12, 12, 0.0) 70%
+      ),
+      radial-gradient(
+        ellipse 45% 100% at 55% 60%,
+        rgba(220, 60, 40, 0.42) 0%,
+        rgba(80, 12, 12, 0.0) 70%
+      ),
+      radial-gradient(
+        ellipse 55% 70% at 85% 40%,
+        rgba(160, 26, 26, 0.5) 0%,
+        rgba(60, 8, 8, 0.0) 70%
+      );
+    background-size: 100% 100%, 100% 100%, 100% 100%;
+    background-repeat: no-repeat;
+    animation: ${gassedSteam} ${(p) => (p.$matchOver ? "3.4s" : "2.2s")} ease-in-out infinite;
+    filter: blur(3px);
+    mix-blend-mode: screen;
+    pointer-events: none;
+  }
+
+  /* Hairline strain marks across top + bottom of the bar — the "metal
+   * fatigue" detail. Built from a single repeating linear-gradient so
+   * they tile cleanly along the length without extra nodes. */
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      /* top hairline strain */
+      linear-gradient(
+        90deg,
+        transparent 0%,
+        transparent 10%,
+        rgba(255, 80, 60, 0.0) 14%,
+        rgba(255, 100, 80, 0.7) 18%,
+        rgba(255, 80, 60, 0.0) 22%,
+        transparent 30%,
+        transparent 50%,
+        rgba(255, 100, 80, 0.6) 56%,
+        transparent 62%,
+        transparent 75%,
+        rgba(255, 100, 80, 0.7) 80%,
+        transparent 86%,
+        transparent 100%
+      ),
+      /* bottom hairline strain */
+      linear-gradient(
+        90deg,
+        transparent 0%,
+        transparent 8%,
+        rgba(255, 80, 60, 0.0) 12%,
+        rgba(255, 100, 80, 0.55) 16%,
+        rgba(255, 80, 60, 0.0) 20%,
+        transparent 38%,
+        rgba(255, 100, 80, 0.55) 44%,
+        transparent 50%,
+        transparent 70%,
+        rgba(255, 100, 80, 0.6) 76%,
+        transparent 82%,
+        transparent 100%
+      );
+    background-size: 100% 1px, 100% 1px;
+    background-position: 0 1px, 0 calc(100% - 1px);
+    background-repeat: no-repeat;
+    animation: ${gassedCracks} ${(p) => (p.$matchOver ? "1.9s" : "1.2s")} ease-in-out infinite;
+    pointer-events: none;
   }
 `;
 
+/* GASSED text plate — letter droop animation on top of the existing
+ * border-pulse, so the word literally sags on each breath (matches the
+ * labored-breath cadence of the overlay). */
 const GassedText = styled.span`
   font-family: "Bungee", cursive;
   font-size: clamp(9px, 1.3cqh, 16px);
   color: #fff;
   text-shadow:
-    0 0 6px rgba(255, 40, 40, 0.7),
-    0 0 12px rgba(255, 20, 20, 0.4);
+    0 0 6px rgba(255, 40, 40, 0.75),
+    0 0 12px rgba(255, 20, 20, 0.45),
+    0 1px 0 #000;
   letter-spacing: 0.3em;
   position: relative;
   z-index: 1;
-  background: rgba(0, 0, 0, 0.82);
+  background: rgba(0, 0, 0, 0.85);
   padding: clamp(2px, 0.3cqh, 4px) clamp(8px, 1.2cqw, 18px);
   border: 1.5px solid rgba(255, 40, 40, 0.5);
   border-radius: 2px;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.6);
-  animation: ${gassedTextPulse} 1.2s ease-in-out infinite;
+  box-shadow:
+    0 0 10px rgba(0, 0, 0, 0.6),
+    inset 0 0 8px rgba(120, 20, 20, 0.35);
+  /* Two animations: the existing border-pulse + a new vertical droop
+   * that runs slightly slower, so the text and the border breathe out of
+   * phase — the word feels alive, not robotically synced. */
+  animation:
+    ${gassedTextPulse} 1.2s ease-in-out infinite,
+    ${gassedTextDroop} 1.6s ease-in-out infinite;
 `;
 
 /* Gassed recovery burst — bright green-mint flash when "second wind" kicks in */
@@ -789,7 +1282,15 @@ const GaugeStack = styled.div`
   flex-direction: column;
 `;
 
-/* Label + track side-by-side, half-width, aligned to inner edge */
+/* Balance strip — STANCE GAUGE.
+ *
+ * The whole strip can subtly tilt and wobble when balance crosses the
+ * kill threshold (the "losing footing" feel). The tilt only kicks in on
+ * the danger prop so it's never disorienting outside of real danger.
+ *
+ * Transform-origin sits on the INNER edge so the wobble pivots from
+ * "where the wrestler is planted" rather than spinning around the
+ * geometric center. */
 const BalStripWrap = styled.div`
   display: flex;
   align-items: center;
@@ -798,55 +1299,96 @@ const BalStripWrap = styled.div`
   width: 50%;
   align-self: ${(p) => (p.$isRight ? "flex-start" : "flex-end")};
   margin-top: clamp(6px, 0.8cqh, 10px);
+  transform-origin: ${(p) => (p.$isRight ? "left center" : "right center")};
+  transition: transform 220ms ease;
+
+  ${(p) =>
+    p.$danger &&
+    !p.$matchOver &&
+    css`
+      animation: ${balanceTilt} 0.55s ease-in-out infinite;
+    `}
 `;
 
-/* "BAL" label sitting beside the thin bar */
+/* "BAL" label — clean cream text, semantically separate from the gold
+ * threshold notches. The label names the gauge; the gold/vermillion
+ * notches name the THRESHOLDS. Different colors = different roles. */
 const BalLabel = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(6px, 0.7cqw, 9px);
-  color: rgba(255, 215, 0, 0.5);
+  color: ${C.creamMute};
   text-transform: uppercase;
-  letter-spacing: 0.14em;
-  text-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.95),
-    0 0 6px rgba(0, 0, 0, 0.5);
+  letter-spacing: 0.18em;
   white-space: nowrap;
   flex-shrink: 0;
   user-select: none;
+  text-shadow:
+    0 1px 0 #000,
+    0 0 4px rgba(0, 0, 0, 0.7);
 `;
 
-/* Outer container — taller than the bar so circle markers can protrude */
+/* Outer container — taller than the inner track so threshold notches
+ * can sit ABOVE the bar (not on top of the fill, where they'd disappear
+ * into the gold). The tick marks render in this top strip, the bar
+ * itself sits centered. */
 const BalTrackOuter = styled.div`
   position: relative;
   flex: 1;
   min-width: 0;
-  height: clamp(14px, 2cqh, 20px);
+  height: clamp(15px, 2.2cqh, 22px);
 `;
 
-/* Thin pill-shaped dark track */
+/* Stance gauge track — clean ink well with a chiseled gold rim that
+ * mirrors the stamina BarFrame at a smaller scale, so the two bars read
+ * as a matched pair of hardware (same family, different sizes).
+ *
+ * Stripped back: dropped the diagonal weave hatch (invisible at this
+ * size — it just added overhead). Just a deep ink gradient + a single
+ * crisp gold leaf rim. The rim alpha is dialed down vs the main frame
+ * (0.55 vs 0.85) so the small bar doesn't compete for attention. */
 const BalTrack = styled.div`
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
   left: 0;
   right: 0;
-  height: clamp(5px, 0.85cqh, 8px);
+  height: clamp(8px, 1.3cqh, 12px);
   border-radius: 100px;
   overflow: hidden;
-  background:
-    linear-gradient(180deg,
-      rgba(6, 6, 6, 0.97) 0%,
-      rgba(14, 14, 14, 0.94) 50%,
-      rgba(10, 10, 10, 0.96) 100%
-    );
+  background: linear-gradient(
+    180deg,
+    rgba(4, 6, 14, 0.98) 0%,
+    rgba(12, 16, 30, 0.95) 50%,
+    rgba(6, 8, 18, 0.98) 100%
+  );
   box-shadow:
-    inset 0 1px 3px rgba(0, 0, 0, 0.6),
-    inset 0 -1px 1px rgba(0, 0, 0, 0.15),
-    0 1px 0 rgba(255, 255, 255, 0.025);
-  border: 1px solid rgba(180, 130, 30, 0.15);
+    inset 0 1px 2px rgba(0, 0, 0, 0.85),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.4),
+    inset 0 0 0 1px rgba(232, 197, 71, 0.55),
+    0 1px 2px rgba(0, 0, 0, 0.5);
 `;
 
-/* Gold fill inside the thin track */
+/* Stance gauge fill — ICE BLUE.
+ *
+ * The previous saffron-gold fill was a bad idea: it gave us "yellow on
+ * yellow" against the gold-rimmed track and the gold throw notch above,
+ * and there was no semantic reason for the fill to be gold (gold's
+ * already doing the threshold-marker job).
+ *
+ * Ice blue is canonical for this game: it's the color of the wrestler's
+ * MAWASHI (the thick belt). The balance bar represents the wrestler's
+ * footing/stance — directly tied to the mawashi. So pumo's stance gauge
+ * being mawashi-blue is thematically perfect, and gives us THREE distinct
+ * colors on the strip:
+ *   • ice blue   — fill body  (the stance / mawashi)
+ *   • gold       — rim + throw notch (structural / safe threshold)
+ *   • vermillion — kill notch + danger fill (alarm)
+ *
+ * Each color owns one role. No more yellow on yellow.
+ *
+ * Vertical gradient (bright top → mid → deep) gives the polished metal
+ * sheen regardless of which side the bar is anchored on — drops the
+ * direction-dependent horizontal gradient the gold version used. */
 const BalFill = styled.div.attrs((p) => ({
   style: {
     width: `calc(${p.$balance}% - 2px)`,
@@ -863,30 +1405,30 @@ const BalFill = styled.div.attrs((p) => ({
 
   background: ${(p) =>
     p.$danger
-      ? p.$isRight
-        ? "linear-gradient(90deg, #b91c1c 0%, #ef4444 50%, #fca5a5 100%)"
-        : "linear-gradient(90deg, #fca5a5 0%, #ef4444 50%, #b91c1c 100%)"
-      : p.$isRight
-        ? "linear-gradient(90deg, #8c6d00 0%, #c9a211 28%, #f0d43a 58%, #ffe56c 80%, #fff6c2 100%)"
-        : "linear-gradient(90deg, #fff6c2 0%, #ffe56c 18%, #f0d43a 40%, #c9a211 70%, #8c6d00 100%)"};
+      ? `linear-gradient(180deg, ${C.vermillionBright} 0%, ${C.vermillion} 50%, ${C.vermillionDeep} 100%)`
+      : `linear-gradient(180deg, ${C.iceBright} 0%, ${C.ice} 50%, ${C.iceMid} 100%)`};
 
   box-shadow: ${(p) =>
     p.$danger
-      ? "0 0 6px rgba(239, 68, 68, 0.5)"
-      : "0 0 5px rgba(240, 212, 58, 0.18), inset 0 0 2px rgba(255, 246, 194, 0.12)"};
+      ? `0 0 4px ${C.vermillionGlow}, inset 0 -1px 1px rgba(0, 0, 0, 0.45)`
+      : `0 0 5px ${C.iceGlow}, inset 0 -1px 1px rgba(0, 0, 0, 0.5)`};
 
   animation: ${(p) =>
     p.$danger
       ? css`${flashRedPulse} 0.8s ease-in-out infinite`
       : "none"};
 
+  /* Top sheen — frosty white catch on the upper half, sells the polished
+   * mawashi-silk surface. */
   &::before {
     content: "";
     position: absolute;
     top: 0; left: 0; right: 0;
-    height: 50%;
-    background: linear-gradient(180deg,
-      rgba(255, 253, 220, 0.28) 0%,
+    height: 45%;
+    background: linear-gradient(
+      180deg,
+      rgba(245, 252, 255, 0.55) 0%,
+      rgba(220, 240, 255, 0.15) 70%,
       transparent 100%
     );
     border-radius: 100px 100px 0 0;
@@ -894,53 +1436,79 @@ const BalFill = styled.div.attrs((p) => ({
   }
 `;
 
-/* Diamond markers — protrude above/below the thin bar */
-const BalCircleMark = styled.div`
+/* Threshold notch marker — replaces the fusa tassels.
+ *
+ * The fusa tassels were too detailed for the actual rendering size: the
+ * skirt strands didn't read, and the gold-on-gold throw bead disappeared
+ * inside the gold fill at high balance. The new notches sit ABOVE the
+ * bar (anchored to the top of BalTrackOuter, NOT inside the track), so
+ * they're always readable regardless of fill level — they aren't fighting
+ * the fill for visual space.
+ *
+ * Two flavors:
+ *   • throw  — thin gold tick at the 50% midpoint  (subtle, neutral)
+ *   • kill   — chunky vermillion notch with quiet pulse halo at the
+ *              kill threshold (15% from anchor)    (clear danger marker)
+ *
+ * Both render as small downward-pointing trapezoids ("notch heads") with
+ * a thin "stem" line dropping toward the track top — like indicators on
+ * a real precision gauge. Stays out of the bar's way; the bar can do its
+ * own thing underneath. */
+const ThresholdNotch = styled.div`
   position: absolute;
-  top: 50%;
+  top: 0;
   ${(p) => {
-    if (p.$type === "throw")
-      return `left: 50%; transform: translate(-50%, -50%) rotate(45deg);`;
+    if (p.$type === "throw") return `left: 50%; transform: translateX(-50%);`;
     return p.$isRight
-      ? `left: 15%; transform: translate(-50%, -50%) rotate(45deg);`
-      : `right: 15%; transform: translate(50%, -50%) rotate(45deg);`;
+      ? `left: 15%;  transform: translateX(-50%);`
+      : `right: 15%; transform: translateX(50%);`;
   }}
-  width: clamp(9px, 1.3cqh, 14px);
-  height: clamp(9px, 1.3cqh, 14px);
-  border-radius: 2px;
-  z-index: 2;
+  width: ${(p) => (p.$type === "kill" ? "clamp(5px, 0.7cqh, 7px)" : "clamp(2px, 0.32cqh, 3px)")};
+  height: clamp(7px, 1.1cqh, 10px);
+  z-index: 3;
   pointer-events: none;
 
   background: ${(p) =>
     p.$type === "kill"
-      ? `linear-gradient(135deg,
-          #8b2020 0%,
-          #c0392b 35%,
-          #e74c3c 50%,
-          #c0392b 65%,
-          #8b2020 100%)`
-      : `linear-gradient(135deg,
-          #8c6d00 0%,
-          #c9a211 30%,
-          #ffd700 50%,
-          #c9a211 70%,
-          #8c6d00 100%)`};
-
-  border: ${(p) =>
+      ? `linear-gradient(180deg, ${C.vermillionBright} 0%, ${C.vermillion} 55%, ${C.vermillionDeep} 100%)`
+      : `linear-gradient(180deg, #ffe56c 0%, ${C.gold} 60%, #c9a614 100%)`};
+  border-radius: 1px 1px 1.5px 1.5px;
+  box-shadow:
+    inset 0 1px 0 ${(p) =>
+      p.$type === "kill"
+        ? "rgba(255, 200, 180, 0.55)"
+        : "rgba(255, 252, 220, 0.6)"},
+    0 1px 2px rgba(0, 0, 0, 0.7);
+  /* Subtle outline so the notch reads cleanly against any fill state. */
+  outline: 0.5px solid ${(p) =>
     p.$type === "kill"
-      ? "1px solid #ff6b5a"
-      : "1px solid #ffe066"};
+      ? "rgba(138, 31, 18, 0.85)"
+      : "rgba(0, 0, 0, 0.5)"};
 
-  box-shadow: ${(p) =>
-    p.$type === "kill"
-      ? `0 0 8px rgba(231, 76, 60, 0.5),
-         0 0 3px rgba(255, 80, 60, 0.4),
-         inset 0 1px 0 rgba(255, 150, 130, 0.3),
-         0 1px 4px rgba(0, 0, 0, 0.7)`
-      : `0 0 8px rgba(255, 215, 0, 0.4),
-         0 0 3px rgba(212, 175, 55, 0.35),
-         inset 0 1px 0 rgba(255, 240, 150, 0.35),
-         0 1px 4px rgba(0, 0, 0, 0.7)`};
+  /* Quiet pulse halo on the kill notch — never on the throw notch.
+   * Renders as a soft expanding ring. Subtle so it never feels like
+   * the whole HUD is throbbing. */
+  ${(p) =>
+    p.$type === "kill" &&
+    css`
+      &::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 200%;
+        height: 200%;
+        transform: translate(-50%, -50%);
+        border-radius: 50%;
+        background: radial-gradient(
+          circle,
+          ${C.vermillionGlow} 0%,
+          rgba(216, 59, 39, 0) 60%
+        );
+        animation: ${killMarkerPulse} 1.6s ease-out infinite;
+        pointer-events: none;
+      }
+    `}
 `;
 
 /* Rank plaque — tucked up close to the balance strip */
@@ -962,7 +1530,16 @@ const BarRow = styled.div`
   width: 100%;
 `;
 
-/* Power-up panel — square, gold ring frame matching bars */
+/* Power-up panel — matches the simplified BarFrame.
+ *
+ * Same two-band hardware ring as the stamina BarFrame (single softer
+ * gold ring + tight ink gap + short drop shadow). The previous medallion
+ * treatment had a tinted inner halo (mix-blend-mode: screen) that
+ * read as cheesy under-glow and a faint empty-state diamond glyph
+ * that just added visual noise — both removed.
+ *
+ * The icon itself + the slot's tinted background gradient already
+ * communicate which power-up is equipped clearly. */
 const PowerUpSlot = styled.div`
   display: flex;
   align-items: center;
@@ -999,13 +1576,51 @@ const PowerUpSlot = styled.div`
   }};
 
   box-shadow:
-    0 0 0 clamp(2px, 0.16cqw, 4px) rgba(180, 130, 30, 0.6),
-    0 0 0 clamp(4px, 0.32cqw, 8px) rgba(0, 0, 0, 0.5),
-    0 clamp(3px, 0.24cqw, 6px) clamp(12px, 1cqw, 24px) rgba(0, 0, 0, 0.5),
-    inset 0 2px 6px rgba(0, 0, 0, 0.6),
-    inset 0 -1px 3px rgba(0, 0, 0, 0.25);
+    inset 0 0 0 1px rgba(245, 236, 217, 0.22),
+    0 0 0 clamp(2px, 0.16cqw, 4px) rgba(232, 197, 71, 0.85),
+    0 0 0 clamp(4px, 0.32cqw, 8px) rgba(13, 18, 36, 0.95),
+    0 clamp(3px, 0.24cqw, 6px) clamp(12px, 1cqw, 24px) rgba(0, 0, 0, 0.55),
+    inset 0 2px 5px rgba(0, 0, 0, 0.55),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.22);
 
-  opacity: ${(p) => (p.$active ? 1 : 0.7)};
+  opacity: ${(p) => (p.$active ? 1 : 0.78)};
+
+  /* Corner rivets — matches the BarFrame so the slot reads as the same
+   * piece of hardware. No inner-halo / no empty-state diamond glyph by
+   * design (those were the cheesy bits). */
+  &::after {
+    content: "";
+    position: absolute;
+    inset: clamp(-3px, -0.24cqw, -6px);
+    border-radius: 4px;
+    pointer-events: none;
+    z-index: 0;
+    background-image:
+      radial-gradient(circle at 0 0,
+        rgba(255, 252, 220, 0.95) 0%,
+        rgba(232, 197, 71, 0.85) 35%,
+        rgba(232, 197, 71, 0) 55%),
+      radial-gradient(circle at 100% 0,
+        rgba(255, 252, 220, 0.95) 0%,
+        rgba(232, 197, 71, 0.85) 35%,
+        rgba(232, 197, 71, 0) 55%),
+      radial-gradient(circle at 0 100%,
+        rgba(255, 252, 220, 0.95) 0%,
+        rgba(232, 197, 71, 0.85) 35%,
+        rgba(232, 197, 71, 0) 55%),
+      radial-gradient(circle at 100% 100%,
+        rgba(255, 252, 220, 0.95) 0%,
+        rgba(232, 197, 71, 0.85) 35%,
+        rgba(232, 197, 71, 0) 55%);
+    background-size: clamp(6px, 0.7cqw, 9px) clamp(6px, 0.7cqw, 9px);
+    background-repeat: no-repeat;
+    background-position:
+      0 0,
+      100% 0,
+      0 100%,
+      100% 100%;
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.7));
+  }
 
   img {
     width: 65%;
@@ -1014,6 +1629,8 @@ const PowerUpSlot = styled.div`
     max-height: clamp(26px, 3.5cqw, 42px);
     object-fit: contain;
     filter: ${(p) => (p.$cooldown ? "brightness(0.5) grayscale(0.35)" : "brightness(1)")};
+    position: relative;
+    z-index: 1;
   }
 `;
 
@@ -1063,15 +1680,24 @@ const CenterRound = styled.div`
 // WIN/LOSS ROW — stones above player bars
 // ============================================
 
+/* P2's row uses row-reverse so the FIRST go-stone (index 0, the first
+ * round won) sits closest to "PLAYER 2" — matching P1, where index 0
+ * also sits closest to "PLAYER 1". Without this, P2's stones fill from
+ * the center of the screen outward while P1's fill from the name
+ * outward, breaking the mirrored symmetry across the HUD. */
 const WinLossRow = styled.div`
   display: flex;
-  flex-direction: row;
+  flex-direction: ${(p) => (p.$isRight ? "row-reverse" : "row")};
   align-items: center;
   gap: clamp(3px, 0.4cqw, 6px);
   justify-content: ${(p) => (p.$isRight ? "flex-start" : "flex-end")};
 `;
 
-/* Traditional go-stones: white = win, black = loss */
+/* Traditional go-stones: white = win, black = loss.
+ *
+ * When a stone is freshly placed (round just ended), a one-shot ::after
+ * ring expands outward like a stone being dropped on a goban — sells
+ * the moment of round resolution without needing extra DOM. */
 const GoStone = styled.div`
   width: clamp(9px, 1.3cqw, 17px);
   height: clamp(9px, 1.3cqw, 17px);
@@ -1098,23 +1724,56 @@ const GoStone = styled.div`
   box-shadow: ${(p) => {
     if (p.$isEmpty) return "inset 0 1px 3px rgba(0, 0, 0, 0.4), 0 0 4px rgba(255, 255, 255, 0.08)";
     return p.$isWin
-      ? "0 0 8px rgba(255, 255, 255, 0.65), 0 0 3px rgba(212, 175, 55, 0.35), inset 0 -1px 2px rgba(0, 0, 0, 0.15)"
-      : "0 0 5px rgba(139, 105, 20, 0.35), 0 0 2px rgba(212, 175, 55, 0.2), inset 0 1px 3px rgba(60, 60, 60, 0.45)";
+      ? "0 0 8px rgba(255, 255, 255, 0.65), 0 0 3px rgba(232, 197, 71, 0.4), inset 0 -1px 2px rgba(0, 0, 0, 0.15)"
+      : "0 0 5px rgba(232, 197, 71, 0.32), 0 0 2px rgba(232, 197, 71, 0.22), inset 0 1px 3px rgba(60, 60, 60, 0.45)";
   }};
 
   animation: ${(p) =>
     p.$isWin && !p.$isEmpty ? pulseWin : "none"} 2s infinite;
+
+  /* Place ripple — only renders when this stone was just dropped (the
+   * parent tracks roundHistory length and passes $ripple to the newest
+   * stone). The ::after expands outward and fades. */
+  ${(p) =>
+    p.$ripple &&
+    css`
+      &::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        border: 2px solid
+          ${p.$isWin
+            ? "rgba(255, 255, 255, 0.85)"
+            : "rgba(245, 236, 217, 0.55)"};
+        box-shadow: 0 0 10px
+          ${p.$isWin
+            ? "rgba(255, 246, 194, 0.6)"
+            : "rgba(232, 197, 71, 0.45)"};
+        animation: ${stonePlaceRipple} 0.7s ease-out forwards;
+        pointer-events: none;
+      }
+    `}
 `;
 
+/* Center round counter — uses the canonical theme gold (`C.gold` /
+ * #e8c547) for the surrounding glow halos so the center indicator and
+ * the chiseled bar frame ring speak the same gold tone.
+ *
+ * Halo intensities dialed back from the previous version so the round
+ * counter no longer "blooms" against the dark backdrop above the
+ * dohyo. Just one short ambient halo + the strong drop shadow that
+ * lifts the digit off the scene. */
 const RoundNum = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(28px, 5cqw, 72px);
   color: #fff;
   -webkit-text-stroke: clamp(1.5px, 0.2cqw, 3px) rgba(0, 0, 0, 0.9);
   text-shadow:
-    0 0 24px rgba(255, 215, 0, 0.5),
-    0 0 8px rgba(255, 215, 0, 0.6),
-    0 0 48px rgba(255, 200, 60, 0.2),
+    0 0 12px rgba(232, 197, 71, 0.32),
     0 3px 8px rgba(0, 0, 0, 0.95);
   line-height: 1;
   user-select: none;
@@ -1123,12 +1782,10 @@ const RoundNum = styled.div`
 const RoundText = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(7px, 0.9cqw, 13px);
-  color: rgba(255, 215, 0, 0.7);
+  color: rgba(232, 197, 71, 0.7);
   text-transform: uppercase;
   letter-spacing: 0.25em;
-  text-shadow:
-    0 0 6px rgba(255, 215, 0, 0.3),
-    0 1px 3px rgba(0, 0, 0, 0.95);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
   margin-top: clamp(1px, 0.2cqh, 3px);
 `;
 
@@ -1224,6 +1881,32 @@ const UiPlayerInfo = ({
   const p1RecoveryPending = useRef(false);
   const p2RecoveryPending = useRef(false);
 
+  // ── Impact feedback (heavy hits) ──
+  // Bumping the impact counter remounts the ImpactSpark via `key` so its
+  // animation runs fresh on every hit. p1Shake/p2Shake are booleans toggled
+  // by a side-effect chain (false → next-frame true → 340ms later false) so
+  // the BarFrame's CSS shake animation restarts cleanly on each hit instead
+  // of getting stuck "running" across rapid back-to-back hits.
+  const [p1Impact, setP1Impact] = useState(0);
+  const [p2Impact, setP2Impact] = useState(0);
+  const [p1Shake, setP1Shake] = useState(false);
+  const [p2Shake, setP2Shake] = useState(false);
+  const [p1ImpactStamina, setP1ImpactStamina] = useState(0);
+  const [p2ImpactStamina, setP2ImpactStamina] = useState(0);
+  const p1ShakeTimer = useRef(null);
+  const p2ShakeTimer = useRef(null);
+  // Min stamina drop (in points) needed to register as a "heavy" hit. Tuned
+  // low enough that meaningful damage feels punchy, high enough that idle
+  // drain (e.g. crouch holds losing 1 sta) doesn't constantly spark.
+  const IMPACT_DROP_THRESHOLD = 4;
+
+  // ── Go-stone place ripple ──
+  // When roundHistory grows by one, the new stone (always the last one)
+  // gets a one-shot expanding ring overlay. Both wings render the same
+  // history, so both stones (winner's white, loser's black) ripple in sync.
+  const [rippleStoneIdx, setRippleStoneIdx] = useState(-1);
+  const prevRoundCount = useRef(roundHistory.length);
+
   useEffect(() => {
     if (player1ParryRefund > 0) {
       setP1ParryFlash(player1ParryRefund);
@@ -1273,6 +1956,11 @@ const UiPlayerInfo = ({
     p2RecoveryPending.current = false;
     setP1Recovery(0);
     setP2Recovery(0);
+    // Clear any in-flight shake / impact state so a new round starts clean.
+    if (p1ShakeTimer.current) clearTimeout(p1ShakeTimer.current);
+    if (p2ShakeTimer.current) clearTimeout(p2ShakeTimer.current);
+    setP1Shake(false);
+    setP2Shake(false);
   }, [roundId]);
 
   // ── Gassed → recovered transition detection ──
@@ -1302,6 +1990,50 @@ const UiPlayerInfo = ({
     p2WasGassed.current = player2IsGassed;
   }, [player2IsGassed]);
 
+  // ── Shake retrigger on each impact ──
+  // Force the CSS animation to restart on every hit by going through a
+  // false → rAF(true) → setTimeout(false) cycle. The intermediate `false`
+  // render is what makes the browser drop the previous animation instance
+  // so the next `true` render starts a fresh one (rather than letting the
+  // existing animation continue mid-cycle).
+  useEffect(() => {
+    if (p1Impact === 0) return undefined;
+    setP1Shake(false);
+    if (p1ShakeTimer.current) clearTimeout(p1ShakeTimer.current);
+    const raf = requestAnimationFrame(() => setP1Shake(true));
+    p1ShakeTimer.current = setTimeout(() => setP1Shake(false), 340);
+    return () => {
+      cancelAnimationFrame(raf);
+    };
+  }, [p1Impact]);
+
+  useEffect(() => {
+    if (p2Impact === 0) return undefined;
+    setP2Shake(false);
+    if (p2ShakeTimer.current) clearTimeout(p2ShakeTimer.current);
+    const raf = requestAnimationFrame(() => setP2Shake(true));
+    p2ShakeTimer.current = setTimeout(() => setP2Shake(false), 340);
+    return () => {
+      cancelAnimationFrame(raf);
+    };
+  }, [p2Impact]);
+
+  // ── Stone ripple on round-end ──
+  // Depend on length, not the array reference, so a new array prop with the
+  // same content doesn't spuriously fire the ripple. When the match resets
+  // (length shrinks), we just sync prevRoundCount without animating.
+  useEffect(() => {
+    const len = roundHistory.length;
+    if (len > prevRoundCount.current) {
+      setRippleStoneIdx(len - 1);
+      const t = setTimeout(() => setRippleStoneIdx(-1), 800);
+      prevRoundCount.current = len;
+      return () => clearTimeout(t);
+    }
+    prevRoundCount.current = len;
+    return undefined;
+  }, [roundHistory.length]);
+
   // ── Player 1 stamina + ghost + regen ──
   useEffect(() => {
     const prev = p1PrevStamina.current;
@@ -1325,6 +2057,12 @@ const UiPlayerInfo = ({
       const now = Date.now();
       setP1LastDecreaseAt(now);
       p1LastDecreaseAtRef.current = now;
+      // Heavy-hit feedback: spark + frame shake on meaningful drops only
+      const drop = prev - s1;
+      if (drop >= IMPACT_DROP_THRESHOLD) {
+        setP1ImpactStamina(s1);
+        setP1Impact((k) => k + 1);
+      }
       // Ghost stays high (captures "where stamina was" before this drain sequence)
       setP1Ghost((g) => Math.max(g, p1DisplayStamina));
       setP1GhostCatching(false);
@@ -1417,6 +2155,11 @@ const UiPlayerInfo = ({
       const now = Date.now();
       setP2LastDecreaseAt(now);
       p2LastDecreaseAtRef.current = now;
+      const drop = prev - s2;
+      if (drop >= IMPACT_DROP_THRESHOLD) {
+        setP2ImpactStamina(s2);
+        setP2Impact((k) => k + 1);
+      }
       setP2Ghost((g) => Math.max(g, p2DisplayStamina));
       setP2GhostCatching(false);
       if (p2GhostTimer.current) clearTimeout(p2GhostTimer.current);
@@ -1490,8 +2233,17 @@ const UiPlayerInfo = ({
     for (let i = 0; i < maxRounds; i++) {
       if (i < roundHistory.length) {
         const isWin = roundHistory[i] === playerName;
+        // The ripple flag stays on for ~800ms after the stone is placed.
+        // We pass a stable key (`r-${i}`) so the stone itself doesn't
+        // remount when ripple turns off — the ::after pseudo just stops
+        // rendering, leaving the stone in place.
         marks.push(
-          <GoStone key={`r-${i}`} $isWin={isWin} $isEmpty={false} />
+          <GoStone
+            key={`r-${i}`}
+            $isWin={isWin}
+            $isEmpty={false}
+            $ripple={i === rippleStoneIdx}
+          />
         );
       } else {
         marks.push(
@@ -1553,6 +2305,7 @@ const UiPlayerInfo = ({
             <BarFrame
               $danger={p1Danger}
               $gassed={player1IsGassed}
+              $shake={p1Shake}
               $isRight={false}
               $matchOver={matchOver}
             >
@@ -1563,6 +2316,12 @@ const UiPlayerInfo = ({
                   $danger={p1Danger}
                   $isRight={false}
                 />
+                {!player1IsGassed && !p1Danger && (
+                  <FillMotes
+                    $stamina={p1DisplayStamina}
+                    $isRight={false}
+                  />
+                )}
                 {!player1IsGassed && (
                   <BarGhost
                     $stamina={p1Ghost}
@@ -1581,6 +2340,13 @@ const UiPlayerInfo = ({
                     <GassedText>GASSED</GassedText>
                   </GassedOverlay>
                 )}
+                {p1Impact > 0 && !player1IsGassed && (
+                  <ImpactSpark
+                    key={`p1-impact-${p1Impact}`}
+                    $stamina={p1ImpactStamina}
+                    $isRight={false}
+                  />
+                )}
                 {p1ParryFlash > 0 && !player1IsGassed && (
                   <ParryRefundFlash
                     key={p1ParryFlash}
@@ -1598,14 +2364,18 @@ const UiPlayerInfo = ({
                 <StaTickMark $pct={75} />
               </BarTrack>
             </BarFrame>
-            <BalStripWrap $isRight={false}>
+            <BalStripWrap
+              $isRight={false}
+              $danger={b1Danger}
+              $matchOver={matchOver}
+            >
               <BalLabel>BAL</BalLabel>
               <BalTrackOuter>
                 <BalTrack>
                   <BalFill $balance={b1} $danger={b1Danger} $isRight={false} />
                 </BalTrack>
-                <BalCircleMark $type="throw" />
-                <BalCircleMark $type="kill" $isRight={false} />
+                <ThresholdNotch $type="throw" />
+                <ThresholdNotch $type="kill" $isRight={false} />
               </BalTrackOuter>
             </BalStripWrap>
           </GaugeStack>
@@ -1663,6 +2433,7 @@ const UiPlayerInfo = ({
             <BarFrame
               $danger={p2Danger}
               $gassed={player2IsGassed}
+              $shake={p2Shake}
               $isRight={true}
               $matchOver={matchOver}
             >
@@ -1673,6 +2444,12 @@ const UiPlayerInfo = ({
                   $danger={p2Danger}
                   $isRight={true}
                 />
+                {!player2IsGassed && !p2Danger && (
+                  <FillMotes
+                    $stamina={p2DisplayStamina}
+                    $isRight={true}
+                  />
+                )}
                 {!player2IsGassed && (
                   <BarGhost
                     $stamina={p2Ghost}
@@ -1691,6 +2468,13 @@ const UiPlayerInfo = ({
                     <GassedText>GASSED</GassedText>
                   </GassedOverlay>
                 )}
+                {p2Impact > 0 && !player2IsGassed && (
+                  <ImpactSpark
+                    key={`p2-impact-${p2Impact}`}
+                    $stamina={p2ImpactStamina}
+                    $isRight={true}
+                  />
+                )}
                 {p2ParryFlash > 0 && !player2IsGassed && (
                   <ParryRefundFlash
                     key={p2ParryFlash}
@@ -1708,14 +2492,18 @@ const UiPlayerInfo = ({
                 <StaTickMark $pct={75} />
               </BarTrack>
             </BarFrame>
-            <BalStripWrap $isRight={true}>
+            <BalStripWrap
+              $isRight={true}
+              $danger={b2Danger}
+              $matchOver={matchOver}
+            >
               <BalLabel>BAL</BalLabel>
               <BalTrackOuter>
                 <BalTrack>
                   <BalFill $balance={b2} $danger={b2Danger} $isRight={true} />
                 </BalTrack>
-                <BalCircleMark $type="throw" />
-                <BalCircleMark $type="kill" $isRight={true} />
+                <ThresholdNotch $type="throw" />
+                <ThresholdNotch $type="kill" $isRight={true} />
               </BalTrackOuter>
             </BalStripWrap>
           </GaugeStack>

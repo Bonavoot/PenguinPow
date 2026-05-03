@@ -33,12 +33,16 @@ const {
   CINEMATIC_KB_MOVEMENT_FRICTION,
   SIDESTEP_HIT_RETURN_BASE_MS,
   SIDESTEP_HIT_RETURN_MIN_MS,
+  COUNTER_HIT_WINDOW_MS,
+  SLAP_STARTUP_MS,
+  CHARGED_STARTUP_MS,
 } = require("./constants");
 
 const {
   setPlayerTimeout,
   clearAllActionStates,
   triggerHitstop,
+  triggerHitstopAndEmit,
   emitThrottledScreenShake,
   canApplyKnockback,
   setKnockbackImmunity,
@@ -101,15 +105,13 @@ function checkCollision(player, otherPlayer, rooms, io) {
     return; // Skip collision detection during startup frames - attack not active yet
   }
   
-  // Fallback: Check startup timing if flag not set (for backward compatibility)
+  // Fallback: Check startup timing if flag not set (for backward compatibility).
+  // Pulled from shared constants — single source of truth, no drift.
   if (player.isAttacking && player.attackStartTime && !player.startupEndTime) {
-    const CHARGED_ATTACK_STARTUP_DELAY = 150; // Matches CHARGED_STARTUP_MS
-    const SLAP_ATTACK_STARTUP_DELAY = 55;     // Matches SLAP_STARTUP_MS
-
     const startupDelay =
       player.attackType === "slap"
-        ? SLAP_ATTACK_STARTUP_DELAY
-        : CHARGED_ATTACK_STARTUP_DELAY;
+        ? SLAP_STARTUP_MS
+        : CHARGED_STARTUP_MS;
     const attackAge = Date.now() - player.attackStartTime;
 
     if (attackAge < startupDelay) {
@@ -343,7 +345,7 @@ function resolveSlapParry(player1, player2, room, io) {
 
   // Hitstop — brief freeze sells the clash impact
   const hitstopMs = Math.round(SLAP_PARRY_HITSTOP_MS * escalation);
-  triggerHitstop(room, hitstopMs);
+  triggerHitstopAndEmit(io, room, hitstopMs, "slap_parry");
 
   // Screen shake — scales with consecutive parries
   const shakeIntensity = Math.min(0.45 + (consecutiveCount - 1) * 0.15, 0.9);
@@ -431,7 +433,7 @@ function resolveChargeClash(player1, player2, p1Charge, p2Charge, room, io) {
   // Hitstop + screen shake scaled to combined charge power
   const combinedCharge = (p1Charge + p2Charge) / 200; // 0-1 range
   const hitstopMs = HITSTOP_CHARGED_MIN_MS + (HITSTOP_CHARGED_MAX_MS - HITSTOP_CHARGED_MIN_MS) * combinedCharge;
-  triggerHitstop(room, hitstopMs);
+  triggerHitstopAndEmit(io, room, hitstopMs, "charge_clash");
   emitThrottledScreenShake(room, io, {
     intensity: 0.8 + combinedCharge * 0.5,
     duration: 250 + combinedCharge * 200,
@@ -450,9 +452,7 @@ function resolveChargeClash(player1, player2, p1Charge, p2Charge, room, io) {
 // resolveSlap3Clash removed — hit 3 no longer part of slap string
 
 function processHit(player, otherPlayer, rooms, io) {
-  const MIN_ATTACK_DISPLAY_TIME = 100;
   const currentTime = Date.now();
-  const attackDuration = currentTime - player.attackStartTime;
 
   // Find the current room
   const currentRoom = rooms.find((room) =>
@@ -464,17 +464,11 @@ function processHit(player, otherPlayer, rooms, io) {
 
   // ============================================
   // COUNTER HIT DETECTION
-  // Counter hit occurs when attacker's active frames hit opponent's startup frames
-  // This rewards players for timing attacks to catch opponents during their attack startup
-  // Note: This is separate from slap parry (active vs active) - that's handled in checkCollision
+  // Counter hit occurs when attacker's active frames hit opponent's startup frames.
+  // Time-based window (COUNTER_HIT_WINDOW_MS, see constants.js) is forgiving enough
+  // to catch the "I just pressed attack and got hit first" case.
   // ============================================
-  // Use a time-based window for more forgiving detection:
-  // - The actual startup frames are short (40ms slap, 150ms charged)
-  // - But we want to catch cases where the player was trying to attack
-  // - This includes: startup frames + input timing buffer
-  // - Also catches cases where player pressed mouse1 but got hit before attack started
-  const COUNTER_HIT_WINDOW_MS = 150; // Window from attack attempt/intent where counter hit applies
-  
+
   // Check if opponent recently started an attack (either in startup or just started)
   const timeSinceAttackAttempt = otherPlayer.attackAttemptTime 
     ? (currentTime - otherPlayer.attackAttemptTime) 
@@ -501,12 +495,13 @@ function processHit(player, otherPlayer, rooms, io) {
 
   // ============================================
   // PUNISH DETECTION
-  // Punish = hitting opponent during RECOVERY frames of their move
+  // Punish = hitting opponent during RECOVERY frames of their move.
+  // NOTE: Dodge has no punishable recovery (DODGE_RECOVERY_MS = 0); spam is gated
+  // by the post-dodge cooldown instead, so isDodgeRecovery is intentionally excluded.
   // ============================================
   const isPunish = otherPlayer.isRecovering
     || otherPlayer.isWhiffingGrab
     || otherPlayer.isGrabWhiffRecovery
-    || otherPlayer.isDodgeRecovery
     || (otherPlayer.isRopeJumping && otherPlayer.ropeJumpPhase === "landing")
     || otherPlayer.isSidestepRecovery;
 
@@ -766,7 +761,7 @@ function processHit(player, otherPlayer, rooms, io) {
           duration: 400,
         });
 
-        triggerHitstop(currentRoom, HITSTOP_PERFECT_PARRY_MS);
+        triggerHitstopAndEmit(io, currentRoom, HITSTOP_PERFECT_PARRY_MS, "perfect_parry");
 
         // Emit perfect parry event
         io.in(currentRoom.id).emit("perfect_parry", {
@@ -803,7 +798,7 @@ function processHit(player, otherPlayer, rooms, io) {
           duration: 200,
         });
         // Hitstop on parry
-        triggerHitstop(currentRoom, HITSTOP_PARRY_MS);
+        triggerHitstopAndEmit(io, currentRoom, HITSTOP_PARRY_MS, "parry");
       }
       // If movement ended or was interrupted without grabbing, clear telegraph
       if (
@@ -822,25 +817,9 @@ function processHit(player, otherPlayer, rooms, io) {
     timeoutManager.clearPlayerSpecific(otherPlayer.id, "parryKnockbackReset");
     timeoutManager.clearPlayerSpecific(otherPlayer.id, "perfectParryStunReset");
     timeoutManager.clearPlayerSpecific(otherPlayer.id, "grabMovementTimeout");
-    timeoutManager.clearPlayerSpecific(otherPlayer.id, "grabClashResolution");
     timeoutManager.clearPlayerSpecific(otherPlayer.id, "atTheRopesTimeout");
     timeoutManager.clearPlayerSpecific(otherPlayer.id, "slapEndlagReset");
     timeoutManager.clearPlayerSpecific(otherPlayer.id, "chargedEndlagReset");
-
-    // If there was room clash data involving this player, clean it up
-    if (currentRoom && currentRoom.grabClashData) {
-      if (
-        currentRoom.grabClashData.player1Id === otherPlayer.id ||
-        currentRoom.grabClashData.player2Id === otherPlayer.id
-      ) {
-        delete currentRoom.grabClashData;
-        // Emit clash cancellation to room
-        io.in(currentRoom.id).emit("grab_clash_cancelled", {
-          reason: "player_hit",
-          hitPlayerId: otherPlayer.id,
-        });
-      }
-    }
 
     // If otherPlayer was grabbing someone, clear the grabbed player's state first
     if (otherPlayer.isGrabbing && otherPlayer.grabbedOpponent) {
@@ -872,11 +851,6 @@ function processHit(player, otherPlayer, rooms, io) {
     // Clear parry success states when hit
     otherPlayer.isRawParrySuccess = false;
     otherPlayer.isPerfectRawParrySuccess = false;
-    
-    // Clear grab clash state
-    otherPlayer.isGrabClashing = false;
-    otherPlayer.grabClashStartTime = 0;
-    otherPlayer.grabClashInputCount = 0;
 
     otherPlayer.isHit = true;
     otherPlayer.lastHitType = isSlapAttack ? "slap" : "charged";
@@ -1051,6 +1025,12 @@ function processHit(player, otherPlayer, rooms, io) {
           isPunish: isPunish,
           cinematicKill: isCinematicKill || false,
           knockbackDirection: knockbackDirection,
+          // attackerId lets the client trigger an attacker-side hit-confirm flash
+          // on the attacker's sprite only — distinct from the victim's hit VFX.
+          // Without this the attacker has no proprioceptive cue that they "landed it",
+          // which is the AAA-feel detail every premium fighting game has.
+          attackerId: player.id,
+          victimId: otherPlayer.id,
         });
 
         // Emit counter hit banner event (separate from hit effect for side banner display)
@@ -1084,7 +1064,7 @@ function processHit(player, otherPlayer, rooms, io) {
         if (isSlapAttack) {
           const isBurstHitLocal = (player.slapStringPosition || 0) === 3;
           const slapHitstopMs = isBurstHitLocal ? HITSTOP_SLAP_HIT3_MS : HITSTOP_SLAP_MS;
-          triggerHitstop(currentRoom, slapHitstopMs);
+          triggerHitstopAndEmit(io, currentRoom, slapHitstopMs, isBurstHitLocal ? "slap_burst" : "slap");
 
           // === SYMMETRIC HITSTOP COMPENSATION ===
           if (player.slapCycleEndCallback) {
@@ -1101,23 +1081,14 @@ function processHit(player, otherPlayer, rooms, io) {
 
           otherPlayer._slapHitstopExtension = slapHitstopMs;
 
-          if (isBurstHitLocal) {
-            emitThrottledScreenShake(currentRoom, io, {
-              intensity: 1.2,
-              duration: 300,
-            });
-          } else {
-            emitThrottledScreenShake(currentRoom, io, {
-              intensity: 0.8,
-              duration: 180,
-            });
-          }
+          // Screen shake is handled client-side by useCamera (driven by hitCounter +
+          // knockback magnitude) — no need to double-shake from the server here.
         } else {
           // Charged attacks scale hitstop with charge power
           const hitstopDuration = isCinematicKill
             ? CINEMATIC_KILL_HITSTOP_MS
             : getChargedHitstop(chargePercentage / 100);
-          triggerHitstop(currentRoom, hitstopDuration);
+          triggerHitstopAndEmit(io, currentRoom, hitstopDuration, isCinematicKill ? "cinematic_kill" : "charged");
 
           if (isCinematicKill) {
             io.in(currentRoom.id).emit("cinematic_kill", {
@@ -1132,12 +1103,8 @@ function processHit(player, otherPlayer, rooms, io) {
               impactX: (player.x + otherPlayer.x) / 2,
               impactY: otherPlayer.y,
             });
-          } else {
-            emitThrottledScreenShake(currentRoom, io, {
-              intensity: 0.9 + (chargePercentage / 100) * 0.4,
-              duration: 220 + (chargePercentage / 100) * 180,
-            });
           }
+          // Charged-hit shake also handled by useCamera via hitCounter + knockback magnitude.
         }
       }
     }

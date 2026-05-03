@@ -18,6 +18,9 @@ const {
   startCharging,
 } = require("./gameUtils");
 
+// Per-match input audit log (open at first round, close on matchOver)
+const { openLog: openAuditLog, closeLog: closeAuditLog } = require("./inputAuditLog");
+
 const {
   GROUND_LEVEL,
   HITBOX_DISTANCE_VALUE,
@@ -39,6 +42,10 @@ const {
   SLAP_STRING_HIT_TOTAL_MS,
   CHARGED_STARTUP_MS,
   CHARGED_ACTIVE_MS,
+  CHARGED_TIER_LIGHT_MS,
+  CHARGED_TIER_MED_MS,
+  CHARGED_TIER_HEAVY_BASE_MS,
+  CHARGED_TIER_HEAVY_SCALE_MS,
   DODGE_STARTUP_MS,
   DODGE_RECOVERY_MS,
   GRAB_STARTUP_DURATION_MS,
@@ -261,6 +268,8 @@ function handleWinCondition(room, loser, winner, io, winType) {
       winner: winner.fighter,
     });
     room.matchOver = true;
+    // Match concluded — flush and close the per-match input audit log.
+    closeAuditLog(room);
     // Clear wins AFTER we've stored the count (will be used in game_over event below)
     winner.wins = [];
     loser.wins = [];
@@ -747,15 +756,16 @@ function executeChargedAttack(player, chargePercentage, rooms) {
 
   player.isSlapAttack = false;
 
-  // Calculate attack duration based on charge percentage
+  // Lunge duration scales with charge tier — see constants.js for tunable values.
+  // Tier thresholds: ≤25% light, 26–75% med, >75% heavy with linear tail.
   let attackDuration;
   if (chargePercentage <= 25) {
-    attackDuration = 300; // Reduced from 500 to 300 for low charge
+    attackDuration = CHARGED_TIER_LIGHT_MS;
   } else if (chargePercentage <= 75) {
-    attackDuration = 500;
+    attackDuration = CHARGED_TIER_MED_MS;
   } else {
-    const extraDuration = ((chargePercentage - 50) / 50) * 1000;
-    attackDuration = 1000 + extraDuration;
+    const extraDuration = ((chargePercentage - 50) / 50) * CHARGED_TIER_HEAVY_SCALE_MS;
+    attackDuration = CHARGED_TIER_HEAVY_BASE_MS + extraDuration;
   }
 
   player.attackEndTime = Date.now() + attackDuration;
@@ -943,6 +953,8 @@ function handleReadyPositions(room, player1, player2, io) {
           room.roundStartTimer = null;
         }
         room.gameStart = true;
+        // Audit log opens here (idempotent across rounds within a match).
+        openAuditLog(room);
         room.hakkiyoiCount = 1;
         // Reset canMoveToReady for both players when game starts
         player1.canMoveToReady = false;

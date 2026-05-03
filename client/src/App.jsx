@@ -4,6 +4,7 @@ import { SocketContext } from "./SocketContext";
 import StartupScreen from "./components/StartupScreen";
 import gamepadHandler from "./utils/gamepadHandler";
 import { PlayerColorProvider } from "./context/PlayerColorContext";
+import { startServerClock, stopServerClock } from "./lib/serverClock";
 import "./App.css";
 import "./components/SteamDeck.css";
 
@@ -74,6 +75,9 @@ function App() {
       setLocalId(socket.id);
       setConnectionError(false);
       console.log("Connected to server:", SOCKET_URL);
+      // Establish server-clock offset so visual hitstop can end in sync
+      // across clients with asymmetric ping. Safe to call repeatedly.
+      startServerClock(socket);
     });
 
     socket.on("connect_error", (error) => {
@@ -86,6 +90,7 @@ function App() {
     socket.on("disconnect", (reason) => {
       console.log("Disconnected:", reason);
       setConnectionError(true);
+      stopServerClock();
     });
 
     socket.on("rooms", (rooms) => {
@@ -97,6 +102,7 @@ function App() {
       socket.off("connect_error");
       socket.off("disconnect");
       socket.off("rooms");
+      stopServerClock();
       clearInterval(controllerCheckInterval);
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
     };

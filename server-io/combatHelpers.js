@@ -1,14 +1,10 @@
 const {
   THROW_RANGE, GRAB_RANGE,
   GRAB_STARTUP_DURATION_MS, SLAP_ATTACK_STARTUP_MS,
-  GRAB_STATES,
-  GROUND_LEVEL,
 } = require("./constants");
 
 const {
-  timeoutManager,
   setPlayerTimeout,
-  clearAllActionStates,
   clearChargeState,
 } = require("./gameUtils");
 
@@ -123,121 +119,6 @@ function checkForGrabPriority(player, opponent) {
   return opponentGrabbedDuringThrow;
 }
 
-function resolveGrabClash(room, io) {
-  if (!room.grabClashData) {
-    return;
-  }
-
-  const player1 = room.players.find(
-    (p) => p.id === room.grabClashData.player1Id
-  );
-  const player2 = room.players.find(
-    (p) => p.id === room.grabClashData.player2Id
-  );
-
-  if (!player1 || !player2) {
-    return;
-  }
-
-  let winner, loser;
-  if (room.grabClashData.player1Inputs > room.grabClashData.player2Inputs) {
-    winner = player1;
-    loser = player2;
-  } else if (
-    room.grabClashData.player2Inputs > room.grabClashData.player1Inputs
-  ) {
-    winner = player2;
-    loser = player1;
-  } else {
-    // Tie - random winner
-    const randomWinner = Math.random() < 0.5;
-    winner = randomWinner ? player1 : player2;
-    loser = randomWinner ? player2 : player1;
-  }
-
-  // Clear clash states for both players
-  player1.isGrabClashing = false;
-  player1.grabClashStartTime = 0;
-  player1.grabClashInputCount = 0;
-  player2.isGrabClashing = false;
-  player2.grabClashStartTime = 0;
-  player2.grabClashInputCount = 0;
-
-  // Clear grab attempt states for winner (transition out of "attempting" animation)
-  winner.isGrabbingMovement = false;
-  winner.isGrabStartup = false;
-  winner.isWhiffingGrab = false;
-  winner.grabMovementVelocity = 0;
-  winner.movementVelocity = 0;
-  winner.isStrafing = false;
-  winner.grabState = GRAB_STATES.INITIAL;
-  winner.grabAttemptType = null;
-  winner.isRawParrySuccess = false;
-  winner.isPerfectRawParrySuccess = false;
-
-  // Set up grab for winner
-  winner.isGrabbing = true;
-  winner.grabStartTime = Date.now();
-  winner.grabbedOpponent = loser.id;
-  // Reset grab decision/action state from any previous grab
-  winner.grabDecisionMade = false;
-  winner.grabPushEndTime = 0;
-  winner.grabPushStartTime = 0;
-  winner.grabApproachSpeed = 0;
-  winner.isGrabPushing = false;
-  winner.isEdgePushing = false;
-  winner.isGrabWalking = false;
-  winner.grabActionType = null;
-  winner.grabActionStartTime = 0;
-  winner.grabDurationPaused = false;
-  winner.grabDurationPausedAt = 0;
-  winner.isAtBoundaryDuringGrab = false;
-  winner.lastGrabPushStaminaDrainTime = 0;
-  winner.isAttemptingPull = false;
-  winner.isAttemptingGrabThrow = false;
-  
-  // CRITICAL: Clear ALL action states when being grabbed
-  clearAllActionStates(loser);
-  loser.y = GROUND_LEVEL;
-  loser.isBeingGrabbed = true;
-  loser.isBeingGrabPushed = false;
-  loser.isBeingEdgePushed = false;
-  loser.lastGrabPushStaminaDrainTime = 0;
-  
-  // If loser was at the ropes, clear that state but keep the facing direction locked
-  if (loser.isAtTheRopes) {
-    timeoutManager.clearPlayerSpecific(loser.id, "atTheRopesTimeout");
-    loser.isAtTheRopes = false;
-    loser.atTheRopesStartTime = 0;
-    // Keep atTheRopesFacingDirection - this will lock their facing during the grab
-  }
-
-  // Set grab facing direction for winner
-  if (winner.isChargingAttack) {
-    winner.grabFacingDirection = winner.chargingFacingDirection;
-  } else {
-    winner.grabFacingDirection = winner.facing;
-  }
-
-  // Emit clash result before clearing data
-  io.in(room.id).emit("grab_clash_end", {
-    winnerId: winner.id,
-    loserId: loser.id,
-    winnerInputs:
-      winner.id === room.grabClashData.player1Id
-        ? room.grabClashData.player1Inputs
-        : room.grabClashData.player2Inputs,
-    loserInputs:
-      loser.id === room.grabClashData.player1Id
-        ? room.grabClashData.player1Inputs
-        : room.grabClashData.player2Inputs,
-  });
-
-  // Clear room clash data
-  delete room.grabClashData;
-
-}
-
 function applyThrowTech(player, opponent) {
   const knockbackDirection = player.x < opponent.x ? -1 : 1;
 
@@ -324,6 +205,5 @@ module.exports = {
   grabBeatsSlap,
   checkForThrowTech,
   checkForGrabPriority,
-  resolveGrabClash,
   applyThrowTech,
 };

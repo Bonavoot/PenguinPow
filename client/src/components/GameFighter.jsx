@@ -53,6 +53,7 @@ import { playBuffer, createCrossfadeLoop } from "../utils/audioEngine";
 import SnowEffect from "./SnowEffect";
 import "./theme.css";
 import { SERVER_BROADCAST_HZ, DOHYO_LEFT_BOUNDARY, DOHYO_RIGHT_BOUNDARY } from "../constants";
+import { getDisplayHitstopUntil } from "../lib/serverClock";
 
 // Assets, sounds, preloading, constants, ritual config, playSound helper
 import {
@@ -87,7 +88,6 @@ import {
   grabBreakSound,
   counterGrabSound,
   notEnoughStaminaSound,
-  grabClashSound,
   isTechingSound,
   roundVictorySound,
   roundDefeatSound,
@@ -1034,9 +1034,6 @@ const GameFighter = ({
     useState(null);
   const [clinchJoltEffectPosition, setClinchJoltEffectPosition] = useState(null);
 
-  // Grab clash state - track when both players are in a grab clash
-  const [isGrabClashActive, setIsGrabClashActive] = useState(false);
-
   // "No Stamina" effect - shows when player tries to use action without enough stamina
   const [noStaminaEffectKey, setNoStaminaEffectKey] = useState(0);
 
@@ -1226,6 +1223,17 @@ const GameFighter = ({
   // between server updates instead of freezing when interpolation factor hits 1.
   const interpolationLoop = useCallback(
     (timestamp) => {
+      // Hitstop visual sync: while a server-anchored display freeze is active,
+      // pin the rendered position to whatever was last committed. The state
+      // stream still updates currentState/previousState refs underneath; we
+      // just don't advance the interpolated position so both clients exit
+      // the freeze at the same server-clock moment regardless of ping.
+      const hitstopUntil = getDisplayHitstopUntil();
+      if (hitstopUntil > 0 && timestamp < hitstopUntil) {
+        interpolationIdRef.current = requestAnimationFrame(interpolationLoop);
+        return;
+      }
+
       let newPos = null;
 
       if (currentState.current && previousState.current) {
@@ -1292,34 +1300,14 @@ const GameFighter = ({
 
   // Smooth interpolation with predictive positioning for better feel
   const getDisplayPosition = useCallback(() => {
-    // If no interpolation data is available yet, fall back to server position
-    let position;
     if (!interpolatedPosition.x && !interpolatedPosition.y && penguin.x) {
-      position = { x: penguin.x, y: penguin.y };
-    } else {
-      position = interpolatedPosition;
+      return { x: penguin.x, y: penguin.y };
     }
-
-    // During grab clash, move players closer together for more intense overlap
-    if (isGrabClashActive) {
-      const CLASH_PULL_DISTANCE = 20; // pixels to move toward opponent
-      // Move OPPOSITE to facing direction to get closer to opponent
-      // If facing right (1), move left (negative) toward opponent on left
-      // If facing left (-1), move right (positive) toward opponent on right
-      const pullOffset = -penguin.facing * CLASH_PULL_DISTANCE;
-      return {
-        x: position.x + pullOffset,
-        y: position.y,
-      };
-    }
-
-    return position;
+    return interpolatedPosition;
   }, [
     interpolatedPosition,
     penguin.x,
     penguin.y,
-    isGrabClashActive,
-    penguin.facing,
   ]);
 
   // Function to handle exiting from disconnected game
@@ -1412,7 +1400,7 @@ const GameFighter = ({
     }
   }, []);
   const duckTimerRef = useRef(null);
-  const musicBaseVolume = useRef(0.029);
+  const musicBaseVolume = useRef(0.029 * getGlobalVolume());
 
   const duckMusic = useCallback((intensity = 0.3, durationMs = 400) => {
     const music = gameMusicRef.current;
@@ -1766,14 +1754,73 @@ const GameFighter = ({
     const handlePlayerHit = (data) => {
       if (data && typeof data.x === "number" && typeof data.y === "number") {
         lastPlayerHitTime.current = Date.now();
+        const isBurst = data.attackType === "slap" && data.stringPos === 3;
+
+        // Attacker-side hit-confirm flash. Fires only on the GameFighter
+        // instance whose player.id matches the server-provided attackerId, so each
+        // local fighter pulses independently when *they* land a hit. The tier
+        // scales the glow intensity in the styled-component pop filter.
+        if (data.attackerId && data.attackerId === player.id) {
+          let tier = "slap";
+          if (data.attackType === "charged") tier = "charged";
+          else if (isBurst) tier = "burst";
+          if (data.cinematicKill) tier = "cinematic";
+          setAttackerConfirmTier(tier);
+          if (attackerConfirmTimeoutRef.current) {
+            clearTimeout(attackerConfirmTimeoutRef.current);
+          }
+          // Cinematic / charged confirms linger longer so the satisfaction matches the weight.
+          // Slap is short — combos fire fast and the pulse must clear before the next hit.
+          const dur =
+            tier === "cinematic" ? 280 :
+            tier === "charged" ? 200 :
+            tier === "burst" ? 220 : 140;
+          attackerConfirmTimeoutRef.current = setTimeout(() => {
+            setAttackerConfirmTier(null);
+            attackerConfirmTimeoutRef.current = null;
+          }, dur);
+        }
+
         if (index === 0 && !data.cinematicKill) {
           const pan = xToPan(data.x);
           if (data.attackType === "slap") {
-            playSoundVaried(pickRandomSound(slapHitSounds), 0.038, null, 1.0, pan);
-            duckMusic(0.4, 300);
+            const baseSound = pickRandomSound(slapHitSounds);
+            playSoundVaried(baseSound, 0.038, null, 1.0, pan);
+            // Burst (combo finisher) ducks deeper & longer than string hits 1/2 — sells the weight.
+            // Counter / punish ducks deeper too — the moment matters, let it breathe.
+            if (isBurst) {
+              duckMusic(0.22, 520);
+            } else if (data.isCounterHit || data.isPunish) {
+              duckMusic(0.3, 400);
+            } else {
+              duckMusic(0.4, 300);
+            }
+            // A5 sound layering — counter / punish gets a second pitched layer
+            // on top of the base hit. We don't have unique counter/punish sfx
+            // assets so we synthesize them by re-using the same sample at a
+            // different rate (cheap, recognizable, no perceptible artifacts).
+            //   - Counter: pitched DOWN, played simultaneously → adds "thud" weight
+            //   - Punish:  pitched UP,   played simultaneously → adds "crack" snap
+            // Both reuse the same selected base sound so the layer sounds like
+            // it belongs together, not a separate hit.
+            if (data.isCounterHit) {
+              playSound(baseSound, 0.022, null, 0.78, pan);
+            } else if (data.isPunish) {
+              playSound(baseSound, 0.020, null, 1.32, pan);
+            }
           } else {
-            playSound(pickRandomSound(chargedHitSounds), 0.045, null, 1.0, pan);
-            duckMusic(0.2, 500);
+            const baseSound = pickRandomSound(chargedHitSounds);
+            playSound(baseSound, 0.045, null, 1.0, pan);
+            // Charged punish/counter: deeper than a normal charged hit — they're earned.
+            duckMusic(data.isCounterHit || data.isPunish ? 0.15 : 0.2, 500);
+            // Same layering treatment as slaps but slightly louder/wider pitch
+            // gap because charged hits already have weight — the layer needs to
+            // stand out without overpowering the primary thwack.
+            if (data.isCounterHit) {
+              playSound(baseSound, 0.028, null, 0.72, pan);
+            } else if (data.isPunish) {
+              playSound(baseSound, 0.026, null, 1.36, pan);
+            }
           }
         }
         setHitEffectPosition({
@@ -1783,14 +1830,13 @@ const GameFighter = ({
           timestamp: data.timestamp,
           hitId: data.hitId,
           attackType: data.attackType || "slap",
-          isBurstHit: data.attackType === "slap" && data.stringPos === 3,
+          isBurstHit: isBurst,
           isCounterHit: data.isCounterHit || false,
           isPunish: data.isPunish || false,
           cinematicKill: data.cinematicKill || false,
           cinematicHitstopMs: data.cinematicKill ? 550 : 0,
         });
 
-        const isBurst = data.attackType === "slap" && data.stringPos === 3;
         const hitFacing = data.facing || 1;
         const facingOffsetPx = (hitFacing === 1 ? -8 : -3) * 12.8;
         const sparkOpts = { x: data.x + 70 + facingOffsetPx, y: PLAYER_MID_Y, facing: hitFacing };
@@ -1800,6 +1846,45 @@ const GameFighter = ({
           emitParticles("hitSparkBurst", sparkOpts);
         } else {
           emitParticles("hitSparkSlap", sparkOpts);
+        }
+
+        // Charged-hit knockback trail (A4): only the victim's GameFighter instance
+        // tracks its own interpolated position over the next ~280ms and emits speed
+        // lines behind the flight path. Skipped for cinematic kills (they have
+        // their own much-bigger cinematicKillTrail) and for slap hits (knockback
+        // is too short to read as flight). Sells the weight of charged hits at
+        // a glance — you SEE the launch, not just the impact spark.
+        const isVictimOfChargedHit =
+          data.attackType === "charged" &&
+          !data.cinematicKill &&
+          data.victimId &&
+          data.victimId === player.id;
+        if (isVictimOfChargedHit) {
+          if (knockbackTrailIntervalsRef.current.length > 0) {
+            knockbackTrailIntervalsRef.current.forEach((id) => clearInterval(id));
+            knockbackTrailIntervalsRef.current = [];
+          }
+          const trailDir = data.knockbackDirection || (data.facing === 1 ? -1 : 1);
+          const TRAIL_INTERVAL_MS = 28;
+          const TRAIL_DURATION_MS = 280;
+          const maxTicks = Math.ceil(TRAIL_DURATION_MS / TRAIL_INTERVAL_MS);
+          let tick = 0;
+          const intervalId = setInterval(() => {
+            tick++;
+            if (tick > maxTicks) {
+              clearInterval(intervalId);
+              return;
+            }
+            const pos = interpolatedPositionRef.current;
+            if (pos && typeof pos.x === "number") {
+              emitParticles("chargedHitKnockbackTrail", {
+                x: pos.x,
+                y: pos.y ?? 290,
+                direction: trailDir,
+              });
+            }
+          }, TRAIL_INTERVAL_MS);
+          knockbackTrailIntervalsRef.current.push(intervalId);
         }
       }
     };
@@ -1983,26 +2068,6 @@ const GameFighter = ({
     };
     socket.on("snowball_hit", handleSnowballHit);
 
-    const handleGrabClashStart = () => {
-      if (index === 0) {
-        playSound(grabClashSound, 0.04);
-      }
-      setIsGrabClashActive(true);
-    };
-    socket.on("grab_clash_start", handleGrabClashStart);
-
-    const handleGrabClashEnd = (data) => {
-      if (index === 0) {
-        if (data.winnerId === localId) {
-          playSound(roundVictorySound, 0.01);
-        } else if (data.loserId === localId) {
-          playSound(roundDefeatSound, 0.08);
-        }
-      }
-      setIsGrabClashActive(false);
-    };
-    socket.on("grab_clash_end", handleGrabClashEnd);
-
     // Power-ups revealed simultaneously after both players have picked
     // This prevents counter-picking by hiding choices until both are locked in
     // The visual reveal is now handled by the PowerUpReveal component in Game.jsx
@@ -2046,7 +2111,6 @@ const GameFighter = ({
       setRawParryEffectPosition(null); // Clear any active parry effects
       setChargeClashEffectPosition(null); // Clear any active charge clash effects
       setNoStaminaEffectKey(0); // Clear "No Stamina" effect on round reset
-      setIsGrabClashActive(false); // Reset grab clash state
       onResetDisconnectState(); // Reset opponent disconnected state for new games
 
       // Bump round ID so UI can hard reset stamina visuals
@@ -2141,8 +2205,6 @@ const GameFighter = ({
       setWinner(data.winner);
       setWinType(data.winType || "ringOut");
 
-      // Clear animation states that could cause stale jiggle/shake during round result
-      setIsGrabClashActive(false);
       predictedState.current = {
         isSlapAttack: false,
         slapAnimation: predictedState.current.slapAnimation,
@@ -2250,6 +2312,14 @@ const GameFighter = ({
       socket.off("player_hit", handlePlayerHit);
       socket.off("raw_parry_success", handleRawParrySuccess);
       socket.off("perfect_parry", handlePerfectParry);
+      if (attackerConfirmTimeoutRef.current) {
+        clearTimeout(attackerConfirmTimeoutRef.current);
+        attackerConfirmTimeoutRef.current = null;
+      }
+      if (knockbackTrailIntervalsRef.current.length > 0) {
+        knockbackTrailIntervalsRef.current.forEach((id) => clearInterval(id));
+        knockbackTrailIntervalsRef.current = [];
+      }
       if (index === 0) {
         socket.off("grab_break", handleGrabBreak);
         socket.off("grab_tech", handleGrabTech);
@@ -2260,8 +2330,6 @@ const GameFighter = ({
         socket.off("counter_hit", handleCounterHit);
       }
       socket.off("snowball_hit", handleSnowballHit);
-      socket.off("grab_clash_start", handleGrabClashStart);
-      socket.off("grab_clash_end", handleGrabClashEnd);
       socket.off("gyoji_call", handleGyojiCall);
       socket.off("game_start", handleGameStart);
       socket.off("game_reset", handleGameReset);
@@ -2285,11 +2353,14 @@ const GameFighter = ({
     };
   }, [index, socket, handleFighterAction, opponentDisconnected, localId]);
 
-  // MEMORY FIX: Create music Audio objects only once on mount, reuse on opponentDisconnected changes
+  // MEMORY FIX: Create music Audio objects only once on mount, reuse on opponentDisconnected changes.
+  // Match BGM honors getGlobalVolume() — the user's volume slider was previously bypassed for in-match music.
   useEffect(() => {
     if (!gameMusicRef.current) {
       gameMusicRef.current = new Audio(gameMusic);
-      gameMusicRef.current.volume = 0.029;
+      const baseVol = 0.029 * getGlobalVolume();
+      musicBaseVolume.current = baseVol;
+      gameMusicRef.current.volume = baseVol;
     }
     if (!opponentDisconnected) {
       startEeshi();
@@ -2935,8 +3006,26 @@ const GameFighter = ({
     }
   }, [penguin.isRawParryStun, showStarStunEffect, penguin.id, player.id]);
 
-  // Screen shake effect — applies via CSS custom properties on .game-scene
-  // so the HUD layer (game-hud) stays rock-steady during shakes.
+  // ============================================
+  // EVENT SHAKE SYSTEM — distinct from useCamera's hit shake
+  // ============================================
+  // Two screen-shake systems coexist on purpose, each owning a different
+  // CSS variable that .game-scene's transform sums together:
+  //
+  //   useCamera (--cam-x/y)   = HIT shake. Triggered by hitCounter deltas
+  //                             observed in the fighter_action stream. Has
+  //                             directional bias and impact-driven decay.
+  //
+  //   This effect (--shake-x/y) = EVENT shake. Triggered by parries, clashes,
+  //                               clinch jolts, projectile hits, edge pin,
+  //                               ring out, round start, power-up reveal.
+  //                               These never coincide with hit moments, so
+  //                               there's no double-firing in practice.
+  //
+  // Both write into .game-scene's transform but NOT .game-hud, so the HUD
+  // layer stays rock-steady during shakes. If you find yourself wanting to
+  // "consolidate" these — don't. They're orthogonal, well-tested, and
+  // collapsing them would replicate working logic with new bugs.
   useEffect(() => {
     if (screenShake.intensity > 0) {
       let animationId;
@@ -3003,10 +3092,21 @@ const GameFighter = ({
     setThickBlubberIndicator(shouldShowThickBlubberIndicator);
   }, [shouldShowThickBlubberIndicator]);
 
-  // Add state for danger zone effect
-  const [, setDangerZoneActive] = useState(false);
-  const [, setSlowMoActive] = useState(false);
   const [isCinematicKillAttacker, setIsCinematicKillAttacker] = useState(false);
+
+  // Attacker-side hit-confirm: brief golden flash on the *attacker's* sprite when their
+  // attack lands. Distinct from the victim's hit VFX — this is the proprioceptive
+  // "yes, I hit" cue that AAA fighters give the attacker. Tier scales the glow:
+  //   slap < burst (3rd slap finisher) < charged < cinematic
+  // Auto-clears via timeout. Held in a ref so handlePlayerHit can clear stale ones
+  // without re-binding (handler is set up once in a useEffect).
+  const [attackerConfirmTier, setAttackerConfirmTier] = useState(null);
+  const attackerConfirmTimeoutRef = useRef(null);
+
+  // Tracks setInterval ids spawned by the charged-hit knockback trail (A4) so we
+  // can clear them on unmount AND on subsequent hits (prevents double-trails
+  // when the same player gets re-hit before the trail decay finishes).
+  const knockbackTrailIntervalsRef = useRef([]);
 
   // Add screen shake, thick blubber absorption, and danger zone event listeners
   // MEMORY FIX: Track timeouts so we can clear them on unmount (prevents setState after unmount)
@@ -3043,18 +3143,6 @@ const GameFighter = ({
       }
     };
     socket.on("thick_blubber_absorption", handleThickBlubber);
-
-    const handleDangerZone = () => {
-      setDangerZoneActive(true);
-      setSlowMoActive(true);
-
-      const id = setTimeout(() => {
-        setDangerZoneActive(false);
-        setSlowMoActive(false);
-      }, 400);
-      pendingTimeouts.push(id);
-    };
-    socket.on("danger_zone", handleDangerZone);
 
     const handleRingOut = () => {
       setScreenShake({
@@ -3160,7 +3248,6 @@ const GameFighter = ({
       });
       socket.off("screen_shake", handleScreenShake);
       socket.off("thick_blubber_absorption", handleThickBlubber);
-      socket.off("danger_zone", handleDangerZone);
       socket.off("ring_out", handleRingOut);
       socket.off("cinematic_kill", handleCinematicKill);
       socket.off("clinch_kill_throw", handleClinchKillThrow);
@@ -3242,7 +3329,7 @@ const GameFighter = ({
     displayPenguin.isPowerSliding,
     penguin.isGrabBreakCountered,
     penguin.isGrabbingMovement,
-    isGrabClashActive,
+    false, // dead positional slot — used to be isGrabClashActive
     penguin.isAttemptingGrabThrow,
     null, // ritualAnimationSrc - handled separately
     // New grab action system states
@@ -3528,6 +3615,7 @@ const GameFighter = ({
           $isBurstKnockback={penguin.isBurstKnockback}
           $isRawParryStun={penguin.isRawParryStun}
           $isCinematicKillAttacker={isCinematicKillAttacker}
+          $attackerConfirmTier={attackerConfirmTier}
         >
           <AnimatedFighterImage
             key={baseSpriteSrc}
@@ -3542,10 +3630,10 @@ const GameFighter = ({
             $isRawParrying={displayPenguin.isRawParrying}
             $isHit={penguin.isHit}
             $isChargingAttack={displayPenguin.isChargingAttack}
-            $isGrabClashActive={isGrabClashActive}
             $isGrabTeching={penguin.isGrabTeching}
             $grabTechRole={penguin.grabTechRole}
             $isGrabWhiffRecovery={penguin.isGrabWhiffRecovery}
+            $attackerConfirmTier={attackerConfirmTier}
             draggable={false}
           />
         </AnimatedFighterContainer>
@@ -3616,7 +3704,6 @@ const GameFighter = ({
           $isCrouchStance={penguin.isCrouchStance}
           $isCrouchStrafing={penguin.isCrouchStrafing}
           $isGrabBreakCountered={penguin.isGrabBreakCountered}
-          $isGrabClashActive={isGrabClashActive}
           $isAttemptingGrabThrow={penguin.isAttemptingGrabThrow}
           $ritualAnimationSrc={null}
           $isGrabPushing={penguin.isGrabPushing}
@@ -3637,6 +3724,7 @@ const GameFighter = ({
           $isClinchJoltClashing={penguin.isClinchJoltClashing}
           $clinchJoltRecovery={penguin.clinchJoltRecovery}
           $isCinematicKillAttacker={isCinematicKillAttacker}
+          $attackerConfirmTier={attackerConfirmTier}
           $isClinchKillThrowVictim={penguin.isClinchKillThrowVictim}
           $isClinchKillPullVictim={penguin.isClinchKillPullVictim}
           $isBeingThrown={penguin.isBeingThrown}

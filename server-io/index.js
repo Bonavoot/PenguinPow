@@ -92,7 +92,9 @@ const {
   getEdgeProximity,
   getIceFriction,
   triggerHitstop,
+  triggerHitstopAndEmit,
   isRoomInHitstop,
+  gameNow,
   emitThrottledScreenShake,
   clearHitFall,
   clearSidestepHitReturn,
@@ -133,7 +135,6 @@ const {
   isOpponentCloseEnoughForGrab,
   isOpponentInFrontOfGrabber,
   grabBeatsSlap,
-  resolveGrabClash,
 } = require("./combatHelpers");
 
 // Import CPU AI
@@ -148,6 +149,9 @@ const { updateProjectiles } = require("./projectileUpdates");
 
 // Import grab action system
 const { updateGrabActions } = require("./grabActionSystem");
+
+// Import per-match input audit log
+const { openLog: openAuditLog } = require("./inputAuditLog");
 
 // Import socket handler registration
 const { registerSocketHandlers } = require("./socketHandlers");
@@ -268,12 +272,23 @@ const delta = 1000 / TICK_RATE;
 // Self-correcting game loop that doesn't drift under load.
 // setInterval can bunch ticks or skip them when the event loop is busy;
 // this accumulator-based approach catches up smoothly.
+//
+// Scheduler uses performance.now() (monotonic clock) instead of Date.now() so
+// the loop is immune to NTP wall-clock corrections. A backward NTP step on
+// Date.now() would produce a NEGATIVE accumulator delta and freeze sim ticks
+// until the wall clock caught back up; performance.now() never goes backward.
+//
+// Note: Math.floor(delta) gives us 15ms (60⅔Hz) instead of the exact 15.625ms
+// (64Hz) target. That's intentional — the slightly-faster wakeup guarantees
+// the accumulator always crosses the `delta` threshold, so we still produce
+// a clean ~64 sim ticks/second on average. Going slower (e.g. Math.ceil → 16ms,
+// 62.5Hz) would risk under-ticking under jitter.
 function startGameLoop() {
   if (gameLoop) return;
-  let lastTime = Date.now();
+  let lastTime = performance.now();
   let accumulator = 0;
   gameLoop = setInterval(() => {
-    const now = Date.now();
+    const now = performance.now();
     accumulator += now - lastTime;
     lastTime = now;
     // Process accumulated time in fixed steps, cap to prevent spiral of death
@@ -532,6 +547,8 @@ function tick(delta) {
             room.roundStartTimer = null;
           }
           room.gameStart = true;
+          // Audit log opens here (idempotent across rounds within a match).
+          openAuditLog(room);
           io.in(room.id).emit("game_start", true);
           player1.isReady = false;
           player2.isReady = false;
@@ -933,7 +950,7 @@ function tick(delta) {
             if ((opponent.isGrabStartup || opponent.isGrabTeching) &&
                 !opponent.isWhiffingGrab && !opponent.isGrabWhiffRecovery &&
                 !opponentWouldWhiff) {
-              executeGrabTech(player, opponent, room, io, triggerHitstop);
+              executeGrabTech(player, opponent, room, io);
               return;
             }
 
@@ -1021,7 +1038,7 @@ function tick(delta) {
               opponent.isBeingGrabPushed = false;
               opponent.lastGrabPushStaminaDrainTime = 0;
 
-              triggerHitstop(room, HITSTOP_GRAB_MS);
+              triggerHitstopAndEmit(io, room, HITSTOP_GRAB_MS, "grab");
 
               if (opponent.isAtTheRopes) {
                 timeoutManager.clearPlayerSpecific(opponent.id, "atTheRopesTimeout");
@@ -1114,16 +1131,11 @@ function tick(delta) {
         (player.x <= MAP_LEFT_BOUNDARY + DANGER_ZONE_THRESHOLD ||
           player.x >= MAP_RIGHT_BOUNDARY - DANGER_ZONE_THRESHOLD);
 
-      // Emit danger zone event for dramatic slow-mo effect (only once per knockback)
+      // Near-edge tension: extra screen shake for dramatic near-ring-out moments.
+      // The old "danger_zone" event for slow-mo was removed (no slow-mo system); the
+      // dangerZoneTriggered flag now solely gates this once-per-knockback shake.
       if (isInDangerZone && !player.dangerZoneTriggered) {
         player.dangerZoneTriggered = true;
-        io.in(room.id).emit("danger_zone", {
-          playerId: player.id,
-          x: player.x,
-          y: player.y,
-          direction: player.x < (MAP_LEFT_BOUNDARY + MAP_RIGHT_BOUNDARY) / 2 ? "left" : "right",
-        });
-        // Emit extra screen shake for dramatic near-ring-out (throttled)
         emitThrottledScreenShake(room, io, {
           intensity: 1.0,
           duration: 400,
@@ -1347,7 +1359,7 @@ function tick(delta) {
                 intensity: 2.5,
                 duration: 500,
               });
-              triggerHitstop(room, HITSTOP_THROW_MS);
+              triggerHitstopAndEmit(io, room, HITSTOP_THROW_MS, "clinch_kill_throw");
               room.forceBroadcast = true;
             }
 
@@ -1364,7 +1376,7 @@ function tick(delta) {
                   intensity: 0.6,
                   duration: 200,
                 });
-                triggerHitstop(room, HITSTOP_THROW_MS);
+                triggerHitstopAndEmit(io, room, HITSTOP_THROW_MS, "throw");
               }
             }
 
@@ -1848,15 +1860,15 @@ function tick(delta) {
 
       // Grab Movement
       if (player.isGrabbingMovement) {
-        const currentTime = now;
         const opponent = room.players.find((p) => p.id !== player.id);
 
-        // Check for grab clash - both players grabbing towards each other
+        // ── Mutual grab during the lunge phase → both enter the clinch with grips. ──
+        // The old "mash to win" clash was removed; simultaneous grabs now resolve
+        // deterministically via the same path used for simultaneous grab startups
+        // (see executeGrabTech). Single source of truth for the mutual-grab outcome.
         if (
           opponent &&
           opponent.isGrabbingMovement &&
-          !player.isGrabClashing &&
-          !opponent.isGrabClashing &&
           !player.isBeingGrabbed &&
           !opponent.isBeingGrabbed &&
           !player.isThrowing &&
@@ -1865,63 +1877,8 @@ function tick(delta) {
           !opponent.isBeingThrown &&
           isOpponentCloseEnoughForGrab(player, opponent)
         ) {
-          // Clear any existing grab movement timers
-          timeoutManager.clearPlayerSpecific(
-            player.id,
-            "grabMovementTimeout"
-          );
-          timeoutManager.clearPlayerSpecific(
-            opponent.id,
-            "grabMovementTimeout"
-          );
-
-          // Start grab clash for both players
-          player.isGrabbingMovement = false;
-          player.isGrabClashing = true;
-          player.grabClashStartTime = currentTime;
-          player.grabClashInputCount = 0;
-          player.grabMovementVelocity = 0;
-          player.movementVelocity = 0;
-          player.isStrafing = false;
-
-          opponent.isGrabbingMovement = false;
-          opponent.isGrabClashing = true;
-          opponent.grabClashStartTime = currentTime;
-          opponent.grabClashInputCount = 0;
-          opponent.grabMovementVelocity = 0;
-          opponent.movementVelocity = 0;
-          opponent.isStrafing = false;
-
-          // Initialize clash data for the room
-          room.grabClashData = {
-            player1Id: player.id,
-            player2Id: opponent.id,
-            startTime: currentTime,
-            duration: 2000, // 2 seconds
-            player1Inputs: 0,
-            player2Inputs: 0,
-          };
-
-          // Emit grab clash start event
-          io.in(room.id).emit("grab_clash_start", {
-            player1Id: player.id,
-            player2Id: opponent.id,
-            duration: 2000,
-            player1Position: { x: player.x, y: player.y, facing: player.facing },
-            player2Position: { x: opponent.x, y: opponent.y, facing: opponent.facing },
-          });
-
-          // Set clash resolution timer
-          setPlayerTimeout(
-            player.id,
-            () => {
-              resolveGrabClash(room, io);
-            },
-            2000,
-            "grabClashResolution"
-          );
-
-          return; // Skip normal grab movement processing
+          executeGrabTech(player, opponent, room, io);
+          return;
         }
 
         // Move forward during grab movement (after startup hop)
@@ -2044,7 +2001,7 @@ function tick(delta) {
           opponent.lastGrabPushStaminaDrainTime = 0;
 
           // SMASH-STYLE: Brief hitstop when grab connects for impact
-          triggerHitstop(room, HITSTOP_GRAB_MS);
+          triggerHitstopAndEmit(io, room, HITSTOP_GRAB_MS, "grab");
           
           // If opponent was at the ropes, clear that state but keep the facing direction locked
           if (opponent.isAtTheRopes) {
@@ -3088,6 +3045,20 @@ io.on("connection", (socket) => {
   startGameLoop();
 
   io.emit("rooms", rooms);
+
+  // Tiny clock-offset handshake: the client samples this round-trip a few
+  // times on connect (and periodically) to derive `serverNow - clientNow`.
+  // Used to schedule visual freezes (hitstop) at the same server-clock
+  // moment on both clients regardless of ping asymmetry. `gameNow()` is
+  // monotonic on the server so the offset stays stable across NTP jumps.
+  socket.on("time_sync", (data, ack) => {
+    if (typeof ack === "function") {
+      ack({
+        clientSent: data && data.clientSent,
+        serverNow: gameNow(),
+      });
+    }
+  });
 
   // Register all socket event handlers
   registerSocketHandlers(socket, io, rooms, {

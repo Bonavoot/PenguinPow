@@ -615,11 +615,6 @@ function updateCPUAI(cpu, human, room, currentTime) {
     handleKnockbackDI(cpu, aiState, currentTime);
   }
   
-  // GRAB CLASH HANDLING - CPU needs to mash inputs to win!
-  if (cpu.isGrabClashing) {
-    handleGrabClashMashing(cpu, aiState, currentTime);
-    return;
-  }
   const distance = getDistance(cpu, human);
   
   // Initialize keys object if needed
@@ -799,26 +794,6 @@ function updateCPUAI(cpu, human, room, currentTime) {
     }
   } else {
     handleMovement(cpu, human, aiState, currentTime, distance);
-  }
-}
-
-// Handle grab clash mashing
-function handleGrabClashMashing(cpu, aiState, currentTime) {
-  if (!aiState.grabClashLastMashTime) {
-    aiState.grabClashLastMashTime = 0;
-    aiState.grabClashCurrentKey = null;
-  }
-  
-  const MASH_INTERVAL = 70;
-  const mashKeys = ['w', 'a', 's', 'd', 'mouse1', 'mouse2'];
-  
-  if (currentTime - aiState.grabClashLastMashTime >= MASH_INTERVAL) {
-    resetAllKeys(cpu);
-    const keyIndex = Math.floor(Math.random() * mashKeys.length);
-    const key = mashKeys[keyIndex];
-    cpu.keys[key] = true;
-    aiState.grabClashCurrentKey = key;
-    aiState.grabClashLastMashTime = currentTime;
   }
 }
 
@@ -2048,7 +2023,6 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     if (cpu.isRopeJumping) return true;
     if (cpu.isInEndlag) return true;
     if (cpu.isGrabBreaking || cpu.isGrabBreakCountered || cpu.isGrabBreakSeparating) return true;
-    if (cpu.isGrabClashing) return true;
     if (cpu.isThrowTeching) return true;
     if (cpu.isRawParrying) return true;
     return false;
@@ -2060,43 +2034,10 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
 
   const prevKeys = cpu._prevKeys;
   const keyJustPressed = (key) => cpu.keys[key] && !prevKeys[key];
-  
-  // COUNT INPUTS DURING GRAB CLASH
-  if (cpu.isGrabClashing && room.grabClashData) {
-    const mashKeys = ['w', 'a', 's', 'd', 'mouse1', 'mouse2', 'e', 'f', 'shift'];
-    let inputDetected = false;
-    
-    for (const key of mashKeys) {
-      if (cpu.keys[key] && !prevKeys[key]) {
-        inputDetected = true;
-        break;
-      }
-    }
-    
-    if (inputDetected) {
-      cpu.grabClashInputCount++;
-      
-      if (cpu.id === room.grabClashData.player1Id) {
-        room.grabClashData.player1Inputs++;
-      } else if (cpu.id === room.grabClashData.player2Id) {
-        room.grabClashData.player2Inputs++;
-      }
-      
-      if (io) {
-        io.in(room.id).emit("grab_clash_progress", {
-          player1Inputs: room.grabClashData.player1Inputs,
-          player2Inputs: room.grabClashData.player2Inputs,
-          player1Id: room.grabClashData.player1Id,
-          player2Id: room.grabClashData.player2Id,
-        });
-      }
-    }
-    
-    if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
-    else Object.assign(cpu._prevKeys, cpu.keys);
-    return;
-  }
-  
+
+  // NOTE: The old "mash to win" grab-clash system was removed.
+  // Mutual grabs now resolve deterministically into a shared clinch via executeGrabTech.
+
   // === THROW PROCESSING (legacy, skipped during clinch — clinch uses clinchThrowRequest) ===
   if (cpu.keys.w && 
       cpu.isGrabbing && 

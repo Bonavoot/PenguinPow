@@ -35,6 +35,16 @@ const CINEMATIC_SHAKE_INTENSITY = 12;
 const CINEMATIC_SHAKE_DECAY = 0.94;
 const CINEMATIC_ZOOM_IN_SPEED = 0.18;
 const CINEMATIC_PAN_SPEED = 0.12;
+
+// Zoom-punch on cinematic-kill impact: briefly overshoot target zoom by this amount
+// in the first 90ms of freeze. Sharp visual exclamation point — sells the moment of
+// the killing blow before the cinematic lerp takes over.
+const CINEMATIC_PUNCH_BOOST = 0.14;
+const CINEMATIC_PUNCH_DURATION_MS = 90;
+// On release (when cinematic exits freeze), pull back slightly past the locked scale
+// for ~120ms before settling — a small "exhale" that reads as "the moment is over."
+const CINEMATIC_RELEASE_PULL = 0.05;
+const CINEMATIC_RELEASE_DURATION_MS = 120;
 // ───────────────────────────────────────────────────────────────────
 
 function clamp(v, lo, hi) {
@@ -54,8 +64,10 @@ export default function useCamera(containerRef, socket) {
   });
   const rafId = useRef(null);
 
-  // Impact state — written by the socket handler, consumed by the rAF loop
-  const shakeRef = useRef({ x: 0, y: 0, intensity: 0 });
+  // Impact state — written by the socket handler, consumed by the rAF loop.
+  // `dirX` biases the random shake along the knockback vector so the camera
+  // visibly *recoils* in the direction of the hit instead of a generic noise jitter.
+  const shakeRef = useRef({ x: 0, y: 0, intensity: 0, dirX: 0 });
   const punchRef = useRef({ amount: 0 });
   const hitTrackRef = useRef({ p1: 0, p2: 0 });
 
@@ -70,6 +82,7 @@ export default function useCamera(containerRef, socket) {
     shakeIntensity: 0,
     knockbackDir: 1,
     holdStartTime: 0,
+    releaseStartTime: 0,
     // Saved pre-freeze camera state
     preScale: DEFAULT_SCALE,
     preX: 0,
@@ -80,6 +93,9 @@ export default function useCamera(containerRef, socket) {
     if (!socket) return;
 
     // ── Trigger an impact effect scaled by knockback strength ──
+    // Directional bias: the camera should recoil along the hit vector, not just
+    // jitter randomly. The strongest fighting games (SF6, T8, Smash) all pull
+    // the cam toward the launch direction — that's the "weight" you feel.
     const triggerImpact = (knockbackX) => {
       const t = clamp(Math.abs(knockbackX) / KB_REF, 0.3, 1);
       const shake = SHAKE_MIN + t * (SHAKE_MAX - SHAKE_MIN);
@@ -87,6 +103,15 @@ export default function useCamera(containerRef, socket) {
 
       shakeRef.current.intensity = Math.max(shakeRef.current.intensity, shake);
       punchRef.current.amount = Math.max(punchRef.current.amount, punch);
+
+      // Bias direction toward the dominant impact's knockback sign. Magnitude
+      // weighting so heavier hits "win" the direction when overlapping.
+      const incomingDir = Math.sign(knockbackX) || 0;
+      const incomingWeight = Math.abs(knockbackX);
+      const currentWeight = Math.abs(shakeRef.current.dirX) * KB_REF;
+      if (incomingWeight >= currentWeight) {
+        shakeRef.current.dirX = incomingDir;
+      }
     };
 
     const onFighterAction = (data) => {
@@ -144,9 +169,28 @@ export default function useCamera(containerRef, socket) {
       cin.phase = "none";
     };
 
+    // Round-start camera "GO!" punch.
+    // Tiny zoom-in pulse at hakkiyoi (every round, including 2 & 3) so the start
+    // of a round reads as a kick-off moment rather than a quiet fade-in. Reuses
+    // the existing punch-decay loop, so this self-clears in ~200ms with no
+    // dedicated state. Pulse is intentionally LIGHTER than a slap punch — the
+    // moment should feel ceremonial, not violent. Skipped when the cinematic
+    // camera is active so it can't interrupt a kill cinematic.
+    // NOTE: User has a more fleshed-out "tachiai" system planned. This is a
+    // placeholder/teaser. Deletion is trivial: remove this block + the .off().
+    const ROUND_START_PUNCH_AMOUNT = 0.035;
+    const onGameStart = () => {
+      if (cinematicRef.current.active) return;
+      punchRef.current.amount = Math.max(
+        punchRef.current.amount,
+        ROUND_START_PUNCH_AMOUNT,
+      );
+    };
+
     socket.on("fighter_action", onFighterAction);
     socket.on("cinematic_kill", onCinematicKill);
     socket.on("game_reset", onGameReset);
+    socket.on("game_start", onGameStart);
 
     const tick = () => {
       const { p1x, p2x } = posRef.current;
@@ -174,14 +218,22 @@ export default function useCamera(containerRef, socket) {
           const elapsed = performance.now() - cin.startTime;
 
           if (cin.phase === "freeze") {
-            // Zoom IN toward impact point
+            // Zoom IN toward impact point.
+            // Zoom-punch: for the first CINEMATIC_PUNCH_DURATION_MS we aim past the
+            // target scale (overshoot), then settle. Reads as a sharp exclamation
+            // point at the exact frame of impact — the AAA "I just got KO'd" feel.
             const cinematicTargetX =
               -(cin.impactFraction - 0.5) * cin.targetScale * 100;
             const cinematicTargetY = Y_OFFSET + 2;
 
+            const punchT = Math.min(elapsed / CINEMATIC_PUNCH_DURATION_MS, 1);
+            // Bell curve: 0 → 1 → 0 over the punch duration.
+            const punchEnvelope = punchT < 1 ? Math.sin(punchT * Math.PI) : 0;
+            const punchedTarget = cin.targetScale + CINEMATIC_PUNCH_BOOST * punchEnvelope;
+
             cam.scale = lerp(
               cam.scale,
-              cin.targetScale,
+              punchedTarget,
               CINEMATIC_ZOOM_IN_SPEED,
             );
             cam.x = lerp(cam.x, cinematicTargetX, CINEMATIC_ZOOM_IN_SPEED);
@@ -195,14 +247,21 @@ export default function useCamera(containerRef, socket) {
 
             if (elapsed >= cin.hitstopMs) {
               cin.phase = "release";
-              // Snap scale back but never zoom out wider than default
-              const lockedScale = Math.max(cin.preScale, DEFAULT_SCALE);
-              cam.scale = lockedScale;
+              cin.releaseStartTime = performance.now();
+              // DON'T snap scale — let release phase ease the pull-back so we
+              // get a smooth "exhale" instead of a hard cut.
               cam.y = cin.preY;
             }
           } else if (cin.phase === "release") {
-            // Lock scale — no zooming out further than default
-            cam.scale = Math.max(cin.preScale, DEFAULT_SCALE);
+            // "Exhale" pull: for ~120ms after freeze ends, pull the camera
+            // slightly *past* the locked scale (zoom out a hair) before settling.
+            // Tiny detail, big impact — reads as the camera relaxing after the kill.
+            const lockedScale = Math.max(cin.preScale, DEFAULT_SCALE);
+            const releaseElapsed = performance.now() - cin.releaseStartTime;
+            const pullT = Math.min(releaseElapsed / CINEMATIC_RELEASE_DURATION_MS, 1);
+            const pullEnvelope = pullT < 1 ? Math.sin(pullT * Math.PI) : 0;
+            const releaseTargetScale = lockedScale - CINEMATIC_RELEASE_PULL * pullEnvelope;
+            cam.scale = lerp(cam.scale, releaseTargetScale, CINEMATIC_ZOOM_IN_SPEED);
             cam.y = lerp(cam.y, normalTargetY, SMOOTH_FACTOR);
 
             // Pan toward the knockout edge at locked zoom
@@ -210,8 +269,9 @@ export default function useCamera(containerRef, socket) {
             const edgeTargetX = cin.knockbackDir < 0 ? maxPan : -maxPan;
             cam.x = lerp(cam.x, edgeTargetX, CINEMATIC_PAN_SPEED);
 
-            if (Math.abs(cam.x - edgeTargetX) < 0.5) {
+            if (Math.abs(cam.x - edgeTargetX) < 0.5 && pullT >= 1) {
               cam.x = edgeTargetX;
+              cam.scale = lockedScale;
               cin.phase = "hold";
               cin.holdStartTime = performance.now();
             }
@@ -237,15 +297,21 @@ export default function useCamera(containerRef, socket) {
         cam.y = clamp(cam.y, -maxPanY, maxPanY);
 
         // ── Decay impact effects ──
+        // Directional shake: 70% of horizontal jitter is biased toward the
+        // knockback vector (recoil), 30% remains random (texture). Vertical
+        // stays mostly random — vertical recoil reads as ground impact.
         const shake = shakeRef.current;
         if (shake.intensity > SHAKE_STOP) {
-          shake.x = (Math.random() - 0.5) * 2 * shake.intensity;
+          const randX = (Math.random() - 0.5) * 2 * shake.intensity;
+          const dirComponent = shake.dirX * shake.intensity * 0.7;
+          shake.x = dirComponent + randX * 0.3;
           shake.y = (Math.random() - 0.5) * 2 * shake.intensity;
           shake.intensity *= SHAKE_DECAY;
         } else {
           shake.x = 0;
           shake.y = 0;
           shake.intensity = 0;
+          shake.dirX = 0;
         }
 
         const punch = punchRef.current;
@@ -293,6 +359,7 @@ export default function useCamera(containerRef, socket) {
       socket.off("fighter_action", onFighterAction);
       socket.off("cinematic_kill", onCinematicKill);
       socket.off("game_reset", onGameReset);
+      socket.off("game_start", onGameStart);
       if (rafId.current) cancelAnimationFrame(rafId.current);
     };
   }, [containerRef, socket]);

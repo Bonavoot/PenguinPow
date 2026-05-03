@@ -4,7 +4,6 @@ import GameFighter from "./GameFighter";
 import MobileControls from "./MobileControls";
 import PowerUpSelection from "./PowerUpSelection";
 import PowerUpReveal from "./PowerUpReveal";
-// GrabClashUI removed — replaced by GrabTechEffect (rendered in GameFighter.jsx)
 import CrowdLayer from "./CrowdLayer";
 import PreMatchScreen from "./PreMatchScreen";
 import gamepadHandler from "../utils/gamepadHandler";
@@ -188,13 +187,35 @@ const Game = ({
     let emitTimerId = null;
     const MIN_EMIT_INTERVAL = 16;
 
+    // Per-packet edge-event buffer. Records every key state transition
+    // since the last emit so the server can detect a press-release-press
+    // faster than the throttle interval (e.g., piano-tap mashing) — the
+    // trailing snapshot would otherwise collapse the middle press out.
+    // Cap at 32 to absorb realistic bursts; older entries get dropped.
+    const MAX_PENDING_EVENTS = 32;
+    let pendingEvents = [];
+    let droppedEventsWarned = false;
+
+    const pushEvent = (k, action) => {
+      if (pendingEvents.length >= MAX_PENDING_EVENTS) {
+        pendingEvents.shift();
+        if (!droppedEventsWarned) {
+          droppedEventsWarned = true;
+          console.warn("[Game] pendingEvents buffer overflowed; dropping oldest");
+        }
+      }
+      pendingEvents.push({ k, a: action, t: performance.now() });
+    };
+
     const emitInputNow = () => {
       if (emitTimerId !== null) {
         clearTimeout(emitTimerId);
         emitTimerId = null;
       }
       lastEmitTime = performance.now();
-      socket.emit("fighter_action", { id: socket.id, keys: keyState });
+      const events = pendingEvents;
+      pendingEvents = [];
+      socket.emit("fighter_action", { id: socket.id, keys: keyState, events });
     };
 
     const scheduleEmit = () => {
@@ -229,6 +250,9 @@ const Game = ({
           mouse1: inClinchWithGrip ? (gamepadKeyState.mouse1 || false) : false,
           mouse2: false,
         };
+        // No events array for grab-counter packets — this is a constrained
+        // bypass and the server only reads `keys`. Skipping events here is
+        // fine: grab-counter inputs are slow directional holds, not piano taps.
         socket.emit("fighter_action", { id: socket.id, keys: grabCounterOnly });
         return;
       }
@@ -273,6 +297,18 @@ const Game = ({
         applyPrediction("power_slide_end");
       }
 
+      // Diff each tracked key against keyState BEFORE the bulk assign so we
+      // can emit per-key edge events for the gamepad path (the keyboard/mouse
+      // handlers below push events directly at the change site).
+      for (const k in keyState) {
+        if (!Object.prototype.hasOwnProperty.call(keyState, k)) continue;
+        const prev = !!keyState[k];
+        const next = !!gamepadKeyState[k];
+        if (prev !== next) {
+          pushEvent(k, next ? "down" : "up");
+        }
+      }
+
       // Update keyState for next comparison
       Object.assign(keyState, gamepadKeyState);
 
@@ -306,6 +342,7 @@ const Game = ({
 
         const wasPressed = keyState[key];
         keyState[key] = true;
+        if (!wasPressed) pushEvent(key, "down");
 
         // CLIENT-SIDE PREDICTION: Apply predicted state immediately for certain actions
         if (!wasPressed && !cp?.isBeingGrabbed) {
@@ -350,7 +387,9 @@ const Game = ({
         // Prevent browser default behavior for game keys
         e.preventDefault();
 
+        const wasPressed = keyState[key];
         keyState[key] = false;
+        if (wasPressed) pushEvent(key, "up");
 
         // CLIENT-SIDE PREDICTION: Apply predicted state for releases
         if (key === " ") {
@@ -379,7 +418,9 @@ const Game = ({
 
       if (e.button === 0) {
         e.preventDefault();
+        const wasPressed = keyState.mouse1;
         keyState.mouse1 = true;
+        if (!wasPressed) pushEvent("mouse1", "down");
         if (keyState.s && cp?.facing != null) {
           const forwardKey = cp.facing === -1 ? 'd' : 'a';
           if (keyState[forwardKey]) {
@@ -395,6 +436,7 @@ const Game = ({
         e.preventDefault();
         const wasPressed = keyState.mouse2;
         keyState.mouse2 = true;
+        if (!wasPressed) pushEvent("mouse2", "down");
 
         if (!wasPressed && !cp?.isBeingGrabbed) {
           applyPrediction("grab");
@@ -417,11 +459,15 @@ const Game = ({
 
       if (e.button === 0) {
         e.preventDefault();
+        const wasPressed = keyState.mouse1;
         keyState.mouse1 = false;
+        if (wasPressed) pushEvent("mouse1", "up");
         scheduleEmit();
       } else if (e.button === 2) {
         e.preventDefault();
+        const wasPressed = keyState.mouse2;
         keyState.mouse2 = false;
+        if (wasPressed) pushEvent("mouse2", "up");
         scheduleEmit();
       }
     };
@@ -432,7 +478,12 @@ const Game = ({
 
     const handleVisibilityChange = () => {
       if (document.hidden) {
+        // Emit "up" events for any keys that were held so the server's edge
+        // detector sees a clean release on focus loss instead of a stale
+        // "still held" assumption.
         for (const key in keyState) {
+          if (!Object.prototype.hasOwnProperty.call(keyState, key)) continue;
+          if (keyState[key]) pushEvent(key, "up");
           keyState[key] = false;
         }
         emitInputNow();

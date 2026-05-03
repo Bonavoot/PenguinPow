@@ -94,6 +94,7 @@ const {
   setPlayerTimeout,
   clearAllActionStates,
   triggerHitstop,
+  triggerHitstopAndEmit,
   emitThrottledScreenShake,
   MAP_LEFT_BOUNDARY,
   MAP_RIGHT_BOUNDARY,
@@ -365,7 +366,7 @@ function updateGrabActions(player, room, io, delta, rooms) {
       player.stamina = Math.max(0, player.stamina - CLINCH_JOLT_STAMINA_COST);
       opponent.stamina = Math.max(0, opponent.stamina - CLINCH_JOLT_STAMINA_COST);
 
-      triggerHitstop(room, CLINCH_JOLT_MUTUAL_HITSTOP_MS);
+      triggerHitstopAndEmit(io, room, CLINCH_JOLT_MUTUAL_HITSTOP_MS, "clinch_jolt_mutual");
       emitThrottledScreenShake(room, io, { intensity: 2.2, duration: 160 });
       io.in(room.id).emit("clinch_jolt", {
         jolterId: player.id,
@@ -441,7 +442,7 @@ function updateGrabActions(player, room, io, delta, rooms) {
       target.clinchJoltPlantInterruptStart = now;
     }
 
-    triggerHitstop(room, CLINCH_JOLT_HITSTOP_MS);
+    triggerHitstopAndEmit(io, room, CLINCH_JOLT_HITSTOP_MS, "clinch_jolt");
     emitThrottledScreenShake(room, io, { intensity: 1.8, duration: 140 });
     io.in(room.id).emit("clinch_jolt", {
       jolterId: jolter.id,
@@ -1081,7 +1082,7 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
         hitstopMs: 0,
       });
     }
-    if (hitstopMs > 0) triggerHitstop(room, hitstopMs);
+    if (hitstopMs > 0) triggerHitstopAndEmit(io, room, hitstopMs, "clinch_throw");
   }
 }
 

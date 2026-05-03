@@ -1452,3 +1452,26 @@
 .cinematic-frozen .hit-afterglow {
   animation-play-state: paused !important;
 }
+
+/* ============================================
+   COUNTER / PUNISH SCALE PUNCH
+   These special hits should visually POP bigger than a normal trade — the player
+   needs to *feel* the read at a glance. We boost the wrapper scale (multiplies all
+   inner rings/sparks/particles) and amp glow intensity. Punish gets the bigger
+   bump because it's the harder read to pull off and the more painful one to receive.
+   ============================================ */
+.hit-ring-wrapper.counter-hit {
+  transform: scale(1.18);
+  filter: brightness(1.15) saturate(1.2);
+}
+
+.hit-ring-wrapper.punish-hit {
+  transform: scale(1.28);
+  filter: brightness(1.22) saturate(1.35);
+}
+
+/* Punish afterglow lingers ~2x longer — the visual "you got blown up" stays on
+   screen long enough that the punished player learns from it. */
+.punish-hit .hit-afterglow {
+  animation-duration: 1.1s !important;
+}

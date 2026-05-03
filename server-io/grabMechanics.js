@@ -6,6 +6,7 @@ const {
   CLINCH_SEPARATION_TWEEN_DURATION,
   CLINCH_SEPARATION_INPUT_LOCK_MS,
   CLINCH_ATTACHED_DISTANCE,
+  HITSTOP_GRAB_MS,
 } = require("./constants");
 
 const {
@@ -13,6 +14,7 @@ const {
   MAP_RIGHT_BOUNDARY,
   setPlayerTimeout,
   timeoutManager,
+  triggerHitstopAndEmit,
 } = require("./gameUtils");
 
 const { cleanupGrabStates, activateBufferedInputAfterGrab } = require("./gameFunctions");
@@ -29,7 +31,7 @@ function correctFacingAfterGrabOrThrow(player, opponent) {
 
 // Mutual grab: both players grab simultaneously → immediately enter mutual clinch (both get grips).
 // No tech animation, no burst push — straight to clinch.
-function executeGrabTech(player1, player2, room, io, triggerHitstop) {
+function executeGrabTech(player1, player2, room, io) {
   player1.isGrabStartup = false;
   player1.isGrabbingMovement = false;
   player1.isWhiffingGrab = false;
@@ -54,7 +56,7 @@ function executeGrabTech(player1, player2, room, io, triggerHitstop) {
   timeoutManager.clearPlayerSpecific(player1.id, "grabMovementTimeout");
   timeoutManager.clearPlayerSpecific(player2.id, "grabMovementTimeout");
 
-  triggerHitstop(room, 60);
+  triggerHitstopAndEmit(io, room, HITSTOP_GRAB_MS, "grab_tech");
 
   // Immediately enter mutual clinch (both get grips, no burst push)
   player1.isGrabbing = true;

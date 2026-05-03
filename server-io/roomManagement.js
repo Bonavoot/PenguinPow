@@ -69,9 +69,6 @@ function createCPUPlayer(uniqueId) {
     isGrabTeching: false,
     grabTechRole: null,
     grabTechResidualVel: 0,
-    isGrabClashing: false,
-    grabClashStartTime: 0,
-    grabClashInputCount: 0,
     grabMovementStartTime: 0,
     grabMovementDirection: 0,
     grabMovementVelocity: 0,
@@ -564,9 +561,6 @@ function resetRoomAndPlayers(room, io) {
     player.isGrabTeching = false;
     player.grabTechRole = null;
     player.grabTechResidualVel = 0;
-    player.isGrabClashing = false;
-    player.grabClashStartTime = 0;
-    player.grabClashInputCount = 0;
     player.grabMovementStartTime = 0;
     player.grabMovementDirection = 0;
     player.grabMovementVelocity = 0;

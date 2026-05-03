@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext, useCallback } from "react";
+import { useState, useEffect, useContext, useCallback, useRef } from "react";
 import { SocketContext } from "../SocketContext";
 import PropTypes from "prop-types";
 import "./MobileControls.css";
@@ -25,6 +25,11 @@ const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
 
   const [keyState, setKeyState] = useState(initialKeyState);
 
+  // Mirror of the last-emitted key state. Used to compute per-key edge
+  // events for the events array on each emit (server reads them to detect
+  // press-release-press transitions faster than the React state cadence).
+  const lastEmittedKeysRef = useRef({ ...initialKeyState });
+
   // Function to emit key state changes
   const emitKeyState = useCallback(
     (newKeyState) => {
@@ -44,11 +49,25 @@ const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
           e: false,
           f: false,
         };
+        // Constrained packet — no events array (grab-counter inputs are
+        // slow holds and the server doesn't replay events in this branch).
         socket.emit("fighter_action", { id: socket.id, keys: grabBreakOnly });
         return;
       }
 
-      socket.emit("fighter_action", { id: socket.id, keys: newKeyState });
+      // Diff against last-emitted state to produce per-key edge events.
+      const events = [];
+      const prev = lastEmittedKeysRef.current;
+      for (const k in newKeyState) {
+        if (!Object.prototype.hasOwnProperty.call(newKeyState, k)) continue;
+        const prevDown = !!prev[k];
+        const nextDown = !!newKeyState[k];
+        if (prevDown !== nextDown) {
+          events.push({ k, a: nextDown ? "down" : "up", t: performance.now() });
+        }
+      }
+      lastEmittedKeysRef.current = { ...newKeyState };
+      socket.emit("fighter_action", { id: socket.id, keys: newKeyState, events });
     },
     [socket, isInputBlocked, currentPlayer?.isThrowingSnowball, currentPlayer?.isBeingGrabbed]
   );

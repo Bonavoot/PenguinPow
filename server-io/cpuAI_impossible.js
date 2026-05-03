@@ -216,16 +216,6 @@ function handleKnockbackDI(cpu) {
   else         { cpu.keys.a = false; cpu.keys.d = true; }
 }
 
-function handleGrabClashMashing(cpu, st, now) {
-  const MASH_INTERVAL = 50;
-  const mashKeys = ['w', 'a', 's', 'd', 'mouse1', 'mouse2'];
-  if (now - st.grabClashLastMashTime >= MASH_INTERVAL) {
-    resetAllKeys(cpu);
-    cpu.keys[mashKeys[Math.floor(Math.random() * mashKeys.length)]] = true;
-    st.grabClashLastMashTime = now;
-  }
-}
-
 // Impossible clinch: instant grip-up, optimal push/plant, always-correct throw timing.
 function handleClinchBehavior(cpu, opponent, st, now) {
   resetAllKeys(cpu);
@@ -482,12 +472,6 @@ function updateImpossibleAI(cpu, human, room, currentTime) {
   // ── ALWAYS: DI during knockback ──
   if (cpu.isHit && cpu.knockbackVelocity && Math.abs(cpu.knockbackVelocity.x) > 0.1) {
     handleKnockbackDI(cpu);
-  }
-
-  // ── Grab clash: mash faster than any human ──
-  if (cpu.isGrabClashing) {
-    handleGrabClashMashing(cpu, st, currentTime);
-    return;
   }
 
   // ── Clinch behavior (mutual grab system) ──

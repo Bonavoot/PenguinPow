@@ -72,7 +72,6 @@ import gassedRegenSound from "../sounds/gassed-regen-sound.flac";
 import grabBreakSound from "../sounds/grab-break-sound.wav";
 import counterGrabSound from "../sounds/counter-grab-sound.wav";
 import notEnoughStaminaSound from "../sounds/not-enough-stamina-sound.wav";
-import grabClashSound from "../sounds/grab-clash-sound.wav";
 import isTechingSound from "../sounds/is-teching-sound.wav";
 import roundVictorySound from "../sounds/round-victory-sound.mp3";
 import roundDefeatSound from "../sounds/round-defeat-sound.mp3";
@@ -269,7 +268,6 @@ preloadSounds([
   grabBreakSound,
   counterGrabSound,
   notEnoughStaminaSound,
-  grabClashSound,
   isTechingSound,
   gassedSound,
   gassedRegenSound,
@@ -385,7 +383,6 @@ export {
   grabBreakSound,
   counterGrabSound,
   notEnoughStaminaSound,
-  grabClashSound,
   isTechingSound,
   roundVictorySound,
   roundDefeatSound,

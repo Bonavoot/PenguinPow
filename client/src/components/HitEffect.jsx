@@ -92,14 +92,17 @@ const HitEffect = ({ position }) => {
       }, 90);
     }
 
-    if (isCinematic || attackType === 'charged') {
+    // Chromatic burst on .game-scene: charged + cinematic always get it; counter/punish
+    // ALSO get it (regardless of attack type) so reads like "you got caught lacking" pop visually.
+    if (isCinematic || attackType === 'charged' || isCounterHit || isPunish) {
       if (!gameSceneRef.current) {
         gameSceneRef.current = document.querySelector('.game-scene');
       }
       const scene = gameSceneRef.current;
       if (scene) {
         scene.classList.add('hit-chromatic');
-        const chromDuration = isCinematic ? 200 : 100;
+        // Punish gets a noticeably longer chromatic tail — it's the "learn from this" hit.
+        const chromDuration = isCinematic ? 200 : (isPunish ? 160 : (isCounterHit ? 130 : 100));
         const chromTid = setTimeout(() => scene.classList.remove('hit-chromatic'), chromDuration);
         pendingTimeouts.current.push(chromTid);
       }

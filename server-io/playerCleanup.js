@@ -11,9 +11,6 @@ function cleanupPlayerStates(player) {
   player.isGrabbing = false;
   player.isGrabbingMovement = false;
   player.isWhiffingGrab = false;
-  player.isGrabClashing = false;
-  player.grabClashStartTime = 0;
-  player.grabClashInputCount = 0;
   player.grabMovementStartTime = 0;
   player.grabMovementDirection = 0;
   player.grabMovementVelocity = 0;
@@ -172,9 +169,6 @@ function getCleanedRoomData(room) {
       isGrabbing: false,
       isGrabbingMovement: false,
       isWhiffingGrab: false,
-      isGrabClashing: false,
-      grabClashStartTime: 0,
-      grabClashInputCount: 0,
       grabMovementStartTime: 0,
       grabMovementDirection: 0,
       grabMovementVelocity: 0,

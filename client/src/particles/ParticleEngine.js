@@ -1199,6 +1199,60 @@ const PRESETS = {
     }
   },
 
+  // Lighter sibling of cinematicKillTrail — fired on the *victim* of a
+  // non-cinematic charged hit while they're being knocked back. Sells weight
+  // without drowning the screen in debris like the cinematic-kill version.
+  // Only speed-lines + a few small puffs; no chunks, no big smoke balls.
+  // direction = direction of victim's flight (matches knockbackDirection).
+  // Trail spawns BEHIND that flight (-direction).
+  chargedHitKnockbackTrail(engine, { x, y, direction }) {
+    const dir = direction || 1;
+    const baseY = GAME_H - y - 60;
+
+    for (let i = 0; i < 2; i++) {
+      engine.spawn({
+        x: x + -dir * rand(8, 30),
+        y: baseY + rand(-18, 14),
+        vx: -dir * rand(140, 320),
+        vy: rand(-8, 8),
+        gravity: 0,
+        drag: 0.93,
+        size: rand(20, 38),
+        sizeEnd: rand(6, 14),
+        alpha: rand(0.5, 0.78),
+        alphaEnd: 0,
+        ease: "outExpo",
+        easeAlpha: "inQuad",
+        rotation: dir > 0 ? 0 : Math.PI,
+        rotationSpeed: 0,
+        maxLife: rand(0.15, 0.28),
+        texture: pick([engine.textures.speedLine, engine.textures.speedLineThin]),
+        stretchX: rand(2.0, 3.5),
+      });
+    }
+
+    if (Math.random() < 0.55) {
+      const size = rand(10, 18);
+      engine.spawn({
+        x: x + -dir * rand(4, 16) + rand(-6, 6),
+        y: baseY + rand(-18, 14),
+        vx: -dir * rand(60, 140),
+        vy: rand(-30, 8),
+        gravity: rand(15, 35),
+        drag: 0.91,
+        size,
+        sizeEnd: size * rand(0.7, 1.1),
+        alpha: rand(0.4, 0.6),
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-2, 2),
+        maxLife: rand(0.2, 0.4),
+        texture: pickSmallPuff(engine.textures),
+      });
+    }
+  },
+
   cinematicKillImpact(engine, { x, y }) {
     const footY = GAME_H - y;
 

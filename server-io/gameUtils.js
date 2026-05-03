@@ -16,6 +16,31 @@ const {
   HITBOX_DISTANCE_VALUE,
 } = require("./constants");
 
+// ============================================
+// MONOTONIC CLOCK HELPER
+// ============================================
+// Returns a monotonically-increasing millisecond timestamp via process.hrtime.bigint
+// (which Node guarantees is unaffected by NTP wall-clock corrections).
+//
+// USE THIS FOR:  internal time deltas where any backward jump would corrupt
+//                gameplay state — e.g. charge accumulators, action cooldowns,
+//                hitstop windows, attack cancel timers.
+//
+// DO NOT USE FOR: timestamps emitted to the client as "wall clock" values
+//                 (e.g. event payload `timestamp: Date.now()`). Clients use
+//                 those for cross-process display ordering and need real time.
+//
+// MIGRATION NOTE: As of Phase 3, the game loop scheduler in index.js was
+// already migrated to performance.now() (catastrophic case — game freeze on
+// NTP back-jump — is solved). Per-action timers across the server still use
+// Date.now() in matched read/write pairs and are SAFE to migrate ONLY in
+// (write, read) lockstep — flipping just one side of a pair produces garbage
+// deltas. Each timer family (mouse1PressTime, attackStartTime, cooldown
+// timestamps, etc.) should be migrated as a single dedicated change. New code
+// being written from scratch (e.g. the Phase 3 input rate limiter) can and
+// should use gameNow() from day one.
+const gameNow = () => Number(process.hrtime.bigint() / 1000000n);
+
 // Game constants
 const MAP_LEFT_BOUNDARY = 340;
 const MAP_RIGHT_BOUNDARY = 940;
@@ -688,6 +713,26 @@ function triggerHitstop(room, durationMs) {
   room.hitstopUntil = Math.max(room.hitstopUntil || 0, target);
 }
 
+// Companion wrapper that triggers server-side hitstop AND emits a `hitstop`
+// event carrying a server-clock timestamp. Clients use it (with a known clock
+// offset from the time_sync handshake) to schedule their visual freeze to
+// start at the SAME server-clock moment, eliminating the per-client drift
+// that comes from the state stream pausing at staggered packet-arrival times.
+//
+// The sim model is unchanged — this is purely a display-alignment companion.
+// Use `gameNow()` (monotonic) for `startsAt` so client offset math is stable
+// across NTP corrections on the server host.
+function triggerHitstopAndEmit(io, room, durationMs, kind = "hit") {
+  triggerHitstop(room, durationMs);
+  if (io && room && room.id) {
+    io.in(room.id).emit("hitstop", {
+      startsAt: gameNow(),
+      duration: durationMs,
+      kind,
+    });
+  }
+}
+
 function isRoomInHitstop(room) {
   return room.hitstopUntil && Date.now() < room.hitstopUntil;
 }
@@ -720,6 +765,9 @@ module.exports = {
   DOHYO_RIGHT_BOUNDARY,
   DOHYO_FALL_DEPTH,
 
+  // Monotonic clock helper
+  gameNow,
+
   // Classes and instances
   TimeoutManager,
   timeoutManager,
@@ -749,6 +797,7 @@ module.exports = {
   setKnockbackImmunity,
   getChargedHitstop,
   triggerHitstop,
+  triggerHitstopAndEmit,
   isRoomInHitstop,
   emitThrottledScreenShake,
   getSidestepInitData,

@@ -64,7 +64,7 @@ const getImageSrc = (
   isGrabBreakCountered,
   // new optional trailing param(s)
   isGrabbingMovementTrailing,
-  isGrabClashActive,
+  _isGrabClashActive, // dead arg kept to preserve positional signature; remove on next signature audit
   isAttemptingGrabThrow,
   // Ritual animation source - if provided, use it instead of state-based selection
   ritualAnimationSrc,
@@ -163,9 +163,6 @@ const getImageSrc = (
     return grabAttemptType === "throw" ? throwing : grabAttempt;
   }
   if (grabState === "attempting") {
-    if (isGrabClashActive) {
-      return grabbing;
-    }
     return grabAttemptType === "throw" ? throwing : grabAttempt;
   }
   if (isSlapAttack) {
@@ -174,9 +171,6 @@ const getImageSrc = (
   }
   if (isGrabbing) {
     if (grabState === "attempting") {
-      if (isGrabClashActive) {
-        return grabbing;
-      }
       return grabAttemptType === "throw" ? throwing : grabAttempt;
     }
     return grabbing;

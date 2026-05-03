@@ -150,6 +150,21 @@ export const getFighterPopFilter = (props) => {
   if (props.$isBeingGrabBellyFlopped || props.$isBeingGrabFrontalForceOut) {
     return `${base} drop-shadow(0 0 6px rgba(255, 50, 50, 0.5))`;
   }
+  // Attacker-side hit-confirm flash (A1 — Phase 3).
+  // Layered ON TOP of the base outline rather than replacing it, so the player's
+  // sprite never loses its standard rim while flashing. Tier scales the glow
+  // radius/intensity — cinematic is roughly 3x a slap.
+  // Color is warm gold/cream rather than red so it reads "I scored" not
+  // "I'm injured" — and won't be confused with the at-the-ropes red glow.
+  if (props.$attackerConfirmTier) {
+    const tier = props.$attackerConfirmTier;
+    const glow =
+      tier === "cinematic" ? "drop-shadow(0 0 18px rgba(255, 220, 100, 1)) drop-shadow(0 0 32px rgba(255, 200, 80, 0.55))"
+      : tier === "charged" ? "drop-shadow(0 0 12px rgba(255, 235, 160, 0.9))"
+      : tier === "burst"   ? "drop-shadow(0 0 9px rgba(255, 230, 140, 0.78))"
+      :                       "drop-shadow(0 0 6px rgba(255, 245, 220, 0.62))";
+    return `${base} ${glow}`;
+  }
   return base;
 };
 
@@ -229,7 +244,6 @@ export const StyledImage = styled("img")
         "isCrouchStrafing",
         "isPowerSliding",
         "isGrabBreakCountered",
-        "isGrabClashActive",
         "isAttemptingGrabThrow",
         "ritualAnimationSrc",
         "isLocalPlayer",
@@ -239,6 +253,7 @@ export const StyledImage = styled("img")
         "ropeJumpPhase",
         "isClinchKillThrowVictim",
         "isClinchKillPullVictim",
+        "attackerConfirmTier",
       ].includes(prop),
   })
   .attrs((props) => ({
@@ -281,7 +296,7 @@ export const StyledImage = styled("img")
         props.$isPowerSliding,
         props.$isGrabBreakCountered,
         props.$isGrabbingMovement,
-        props.$isGrabClashActive,
+        false, // dead positional slot — used to be props.$isGrabClashActive
         props.$isAttemptingGrabThrow,
         props.$ritualAnimationSrc,
         props.$isGrabPushing,
@@ -397,8 +412,6 @@ export const StyledImage = styled("img")
         ? "grabTechShake 0.25s ease-in-out infinite"
         : props.$isGrabTeching
         ? "grabTechShake 0.25s ease-in-out infinite"
-        : props.$isGrabClashActive
-        ? "grabClashStruggle 0.15s ease-in-out infinite"
         : props.$isHit
         ? "hitSquash 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)"
         : props.$isDodging
@@ -518,13 +531,6 @@ export const StyledImage = styled("img")
     25% { transform: scaleX(var(--facing, 1)) scaleY(0.95) rotate(-4deg) translateX(-2px) translateY(1px); }
     50% { transform: scaleX(var(--facing, 1)) scaleY(0.95) rotate(2deg) translateX(1px) translateY(-1px); }
     75% { transform: scaleX(var(--facing, 1)) scaleY(0.95) rotate(-2deg) translateX(-1px) translateY(1px); }
-  }
-  @keyframes grabClashStruggle {
-    0% { transform: scaleX(var(--facing, 1)) translateX(0px); }
-    25% { transform: scaleX(var(--facing, 1)) translateX(-3px); }
-    50% { transform: scaleX(var(--facing, 1)) translateX(0px); }
-    75% { transform: scaleX(var(--facing, 1)) translateX(3px); }
-    100% { transform: scaleX(var(--facing, 1)) translateX(0px); }
   }
   @keyframes grabTechShake {
     0% { transform: scaleX(var(--facing, 1)) translateX(0px); }
@@ -705,6 +711,7 @@ export const AnimatedFighterContainer = styled.div
         "x", "y", "facing", "fighter", "isThrowing", "isDodging",
         "isGrabbing", "isRingOutThrowCutscene", "isAtTheRopes", "isHit", "isBurstKnockback",
         "isRawParryStun", "isCinematicKillAttacker", "isSidestepping",
+        "attackerConfirmTier",
       ].includes(prop),
   })
   .attrs((props) => {
@@ -774,7 +781,7 @@ export const AnimatedFighterImage = styled.img
       ![
         "frameCount", "fps", "loop", "isLocalPlayer", "isAtTheRopes",
         "isGrabBreaking", "isRawParrying", "isHit", "isChargingAttack",
-        "isGrabClashActive", "animationKey",
+        "animationKey",
       ].includes(prop),
   })
   .attrs((props) => {

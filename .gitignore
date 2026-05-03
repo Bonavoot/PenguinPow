@@ -35,6 +35,9 @@ build_windows/
 logs/
 *.log
 
+# Per-match input audit logs (rotated automatically; see server-io/inputAuditLog.js)
+server-io/match-logs/
+
 # Testing
 coverage/
 

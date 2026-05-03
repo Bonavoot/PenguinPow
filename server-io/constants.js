@@ -23,7 +23,7 @@ const DELTA_TRACKED_PROPS = [
   'isChargingAttack', 'chargeAttackPower', 'chargeStartTime',
   'isBurstKnockback',
   'isGrabbing', 'isBeingGrabbed', 'grabbedOpponent', 'grabState', 'grabAttemptType',
-  'isGrabbingMovement', 'isWhiffingGrab', 'isGrabWhiffRecovery', 'isGrabTeching', 'grabTechRole', 'isGrabClashing', 'isGrabStartup',
+  'isGrabbingMovement', 'isWhiffingGrab', 'isGrabWhiffRecovery', 'isGrabTeching', 'grabTechRole', 'isGrabStartup',
   'isHit', 'isDead', 'isRecovering', 'isDodging', 'isDodgeStartup', 'isDodgeRecovery', 'dodgeDirection', 'justLandedFromDodge',
   'isRawParrying', 'isRawParryStun', 'isRawParrySuccess', 'isPerfectRawParrySuccess',
   'isThrowing', 'isBeingThrown', 'isThrowTeching', 'isBeingPulled', 'isBeingPushed',
@@ -559,10 +559,10 @@ const GASSED_RECOVERY_STAMINA = 30; // Stamina granted immediately when gassed e
 // Scales with power - stronger hits freeze longer
 // ============================================
 const SLAP_CHAIN_HIT_GAP_MS = 40;  // Minimum visual gap after slap hitstun before victim can be hit again
-const HITSTOP_SLAP_MS = 90;       // Punchy freeze for each slap impact — meaty and satisfying
-const HITSTOP_SLAP_HIT3_MS = 150; // Combo finisher: longer freeze sells the weight of the big hit
+const HITSTOP_SLAP_MS = 130;      // Punchy freeze per slap (~8 frames). Bumped from 90 for AAA-feel impact weight.
+const HITSTOP_SLAP_HIT3_MS = 200; // Combo finisher freeze (~12 frames). Bumped from 150 — sells the big hit.
 const HITSTOP_CHARGED_MIN_MS = 80;  // Minimum charged attack hitstop (5 frames)
-const HITSTOP_CHARGED_MAX_MS = 150; // Maximum charged attack hitstop at full power (9 frames)
+const HITSTOP_CHARGED_MAX_MS = 220; // Max charged hitstop at full power (~13 frames). Bumped from 150 — kill blows feel cinematic.
 const HITSTOP_PARRY_MS = 120;     // Regular parry hitstop - impactful but not too long (7 frames)
 const HITSTOP_SLAP_PARRY_MS = 45; // Slap clash freeze — shorter than hit hitstop, just enough to register
 const HITSTOP_PERFECT_PARRY_MS = 250; // Perfect parry hitstop - the "time stops" moment (15 frames — long enough to digest)
@@ -587,6 +587,22 @@ const ATTACK_ENDLAG_SLAP_MS = SLAP_RECOVERY_MS; // Uses frame data (150ms — cr
 const ATTACK_ENDLAG_CHARGED_MS = 300;   // Recovery for charged attacks (was 280)
 const ATTACK_COOLDOWN_MS = 50;          // Minimal cooldown for fast gameplay
 const BUFFERED_ATTACK_GAP_MS = 80;      // Fast chaining
+
+// ============================================
+// Counter-hit / Punish Detection Window
+// Centralized so client + server + AI all agree.
+// ============================================
+const COUNTER_HIT_WINDOW_MS = 150; // Time-since-attack-attempt window where a clean hit becomes a counter
+
+// ============================================
+// Charged Attack Lunge Tiers — duration of the forward lunge
+// (NOT the hitbox active window; lunge IS the active window now.)
+// Charge % thresholds match clearly: light → med → heavy with a scaling tail.
+// ============================================
+const CHARGED_TIER_LIGHT_MS = 300;        // Tap charge (≤25%): short lunge
+const CHARGED_TIER_MED_MS = 500;          // Mid charge (26–75%): full standard lunge
+const CHARGED_TIER_HEAVY_BASE_MS = 1000;  // Heavy charge (>75%) base lunge length
+const CHARGED_TIER_HEAVY_SCALE_MS = 1000; // Linear scale factor: extra ms per (charge%-50)/50
 
 module.exports = {
   GRAB_STATES,
@@ -946,6 +962,12 @@ module.exports = {
   ATTACK_ENDLAG_CHARGED_MS,
   ATTACK_COOLDOWN_MS,
   BUFFERED_ATTACK_GAP_MS,
+
+  COUNTER_HIT_WINDOW_MS,
+  CHARGED_TIER_LIGHT_MS,
+  CHARGED_TIER_MED_MS,
+  CHARGED_TIER_HEAVY_BASE_MS,
+  CHARGED_TIER_HEAVY_SCALE_MS,
 
   // Cinematic kill
   CINEMATIC_KILL_MIN_MULTIPLIER,

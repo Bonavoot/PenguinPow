@@ -33,7 +33,9 @@ const {
   shouldRestartCharging,
   startCharging,
   isRoomInHitstop,
+  gameNow,
   triggerHitstop,
+  triggerHitstopAndEmit,
 } = require("./gameUtils");
 
 const {
@@ -74,6 +76,113 @@ const {
 const { clearAIState } = require("./cpuAI");
 const { clearImpossibleAIState } = require("./cpuAI_impossible");
 
+// Per-match input audit log — appended after rate limit, closed on
+// match-end / disconnect / reset paths below.
+const { appendInput: appendAuditInput, closeLog: closeAuditLog } = require("./inputAuditLog");
+
+// ============================================
+// FIGHTER_ACTION INPUT RATE LIMIT (B7 — Phase 3)
+// ============================================
+// Token bucket per socket on the fighter_action channel. Caps abusive clients
+// (DoS spam, attempted timing exploits) without affecting legitimate play.
+//
+// Tuning rationale:
+//   - Capacity 30 tokens   → tolerates 30-input bursts (mouse+keyboard combos
+//                            during action flurries can spike briefly).
+//   - Refill 200 tokens/s  → sustained ceiling well above any reasonable client
+//                            tick rate (clients send fighter_action ~60–120/s
+//                            in normal play; even 240Hz mice stay well under).
+//
+// Drops are silent (no error reply) to avoid leaking rate-limit state to a
+// would-be attacker. Bucket entries are cleaned up on disconnect.
+//
+// Uses gameNow() (monotonic) so token accrual is immune to NTP clock shifts —
+// a backward Date.now() jump on a regular server would otherwise either
+// freeze refills or grant infinite tokens depending on direction.
+const RATE_LIMIT_CAPACITY = 30;
+const RATE_LIMIT_REFILL_PER_SEC = 200;
+const inputRateBuckets = new Map(); // socket.id -> { tokens, lastRefillNow, dropped }
+
+function takeInputToken(socketId) {
+  const now = gameNow();
+  let bucket = inputRateBuckets.get(socketId);
+  if (!bucket) {
+    bucket = { tokens: RATE_LIMIT_CAPACITY, lastRefillNow: now, dropped: 0 };
+    inputRateBuckets.set(socketId, bucket);
+  }
+  const elapsed = now - bucket.lastRefillNow;
+  bucket.tokens = Math.min(
+    RATE_LIMIT_CAPACITY,
+    bucket.tokens + (elapsed * RATE_LIMIT_REFILL_PER_SEC) / 1000,
+  );
+  bucket.lastRefillNow = now;
+  if (bucket.tokens < 1) {
+    bucket.dropped++;
+    return false;
+  }
+  bucket.tokens -= 1;
+  return true;
+}
+
+function clearInputBucket(socketId) {
+  inputRateBuckets.delete(socketId);
+}
+
+// ============================================
+// FIGHTER_ACTION INPUT EDGE DETECTION (B7 — Phase 5)
+// ============================================
+// Client throttles socket emits to >=16ms intervals, so a press-release-press
+// faster than that window collapses to whichever state the trailing emit
+// captures. The middle press can vanish entirely — players press it, the
+// server never sees an edge, the slap doesn't come out.
+//
+// Mitigation: clients additively send a per-packet `events` array of every
+// key state change since the last emit (`{ k, a: "down"|"up", t }`). This
+// helper walks those events stepwise from the previous snapshot to the
+// current one and reports which keys had ANY rising/falling edge during
+// the packet window — even if the snapshot diff alone would have missed it.
+//
+// Backwards-compatible: when `events` is absent or empty, the result is
+// identical to the current snapshot-only diff. Server caps the events
+// array at MAX_EVENTS_PER_PACKET so abuse can't expand 1 packet (1 rate
+// token) into unlimited synthetic edges.
+const MAX_EVENTS_PER_PACKET = 16;
+
+function detectEdges(prevKeys, events, newKeys) {
+  const rising = {};
+  const falling = {};
+  let working = prevKeys || {};
+
+  if (Array.isArray(events) && events.length > 0) {
+    const limit = Math.min(events.length, MAX_EVENTS_PER_PACKET);
+    for (let i = 0; i < limit; i++) {
+      const ev = events[i];
+      if (!ev || typeof ev.k !== "string") continue;
+      const isDown = ev.a === "down";
+      const wasDown = !!working[ev.k];
+      if (!wasDown && isDown) rising[ev.k] = true;
+      if (wasDown && !isDown) falling[ev.k] = true;
+      working = { ...working, [ev.k]: isDown };
+    }
+  }
+
+  if (newKeys) {
+    for (const k in newKeys) {
+      const wasDown = !!working[k];
+      const isDown = !!newKeys[k];
+      if (!wasDown && isDown) rising[k] = true;
+      if (wasDown && !isDown) falling[k] = true;
+    }
+    // Catch keys that left newKeys but were down in working (rare; safety net).
+    for (const k in working) {
+      if (Object.prototype.hasOwnProperty.call(newKeys, k)) continue;
+      if (working[k] && !newKeys[k]) falling[k] = true;
+    }
+  }
+
+  return { rising, falling };
+}
+
 function registerSocketHandlers(socket, io, rooms, context) {
   const { registerPlayerInMaps, unregisterPlayerFromMaps } = context;
 
@@ -81,6 +190,9 @@ function registerSocketHandlers(socket, io, rooms, context) {
     // Find the room index using the socket's roomId to ensure we're resetting the correct room
     const roomIndex = rooms.findIndex((room) => room.id === socket.roomId);
     if (roomIndex !== -1) {
+      // Player explicitly leaving the match — close the audit log if it's
+      // still open (e.g., reset before matchOver).
+      closeAuditLog(rooms[roomIndex]);
       resetRoomAndPlayers(rooms[roomIndex], io);
     }
   });
@@ -238,9 +350,6 @@ function registerSocketHandlers(socket, io, rooms, context) {
         isGrabTeching: false,
         grabTechRole: null,
         grabTechResidualVel: 0,
-        isGrabClashing: false,
-        grabClashStartTime: 0,
-        grabClashInputCount: 0,
         grabMovementStartTime: 0,
         grabMovementDirection: 0,
         grabMovementVelocity: 0,
@@ -474,9 +583,6 @@ function registerSocketHandlers(socket, io, rooms, context) {
         isGrabTeching: false,
         grabTechRole: null,
         grabTechResidualVel: 0,
-        isGrabClashing: false,
-        grabClashStartTime: 0,
-        grabClashInputCount: 0,
         grabMovementStartTime: 0,
         grabMovementDirection: 0,
         grabMovementVelocity: 0,
@@ -769,9 +875,6 @@ function registerSocketHandlers(socket, io, rooms, context) {
       isGrabTeching: false,
       grabTechRole: null,
       grabTechResidualVel: 0,
-      isGrabClashing: false,
-      grabClashStartTime: 0,
-      grabClashInputCount: 0,
       grabMovementStartTime: 0,
       grabMovementDirection: 0,
       grabMovementVelocity: 0,
@@ -1206,16 +1309,34 @@ function registerSocketHandlers(socket, io, rooms, context) {
   });
 
   socket.on("fighter_action", (data) => {
+    // B7 rate limit: drop excess inputs before doing any work. Cheap rejection
+    // for malicious / runaway clients; legitimate play never depletes the bucket.
+    if (!takeInputToken(socket.id)) return;
+
     let roomId = socket.roomId;
     const roomIndex = rooms.findIndex((room) => room.id === roomId);
 
     if (roomIndex === -1) return; // Room not found
 
+    // SECURITY: bind input to the sending socket — never trust client-supplied IDs.
+    // Prevents one client from forging actions on behalf of the opponent or a CPU.
     let playerIndex = rooms[roomIndex].players.findIndex(
-      (player) => player.id === data.id
+      (player) => player.id === socket.id
     );
 
     if (playerIndex === -1) return; // Player not found
+    // Reject mismatched IDs silently (stale client state or tampered payload)
+    if (data && data.id && data.id !== socket.id) return;
+
+    // Per-match input audit log — append after rate limit and ID binding so
+    // dropped malicious traffic isn't logged but everything the sim acts on
+    // is recorded. No-op if the log isn't open (pre-round, post-match, etc).
+    appendAuditInput(rooms[roomIndex], {
+      ts: gameNow(),
+      socketId: socket.id,
+      roomId: rooms[roomIndex].id,
+      payload: data,
+    });
 
     let player = rooms[roomIndex].players[playerIndex];
     let opponent = rooms[roomIndex].players.find((p) => p.id !== player.id);
@@ -1270,56 +1391,61 @@ function registerSocketHandlers(socket, io, rooms, context) {
     // Input lockout window: allow key state refresh but block actions
     if (player.inputLockUntil && Date.now() < player.inputLockUntil) {
       if (data.keys) {
+        // Edge detection across the packet window (snapshot diff + replayed
+        // per-event edges). Falls back to pure snapshot diff if events
+        // array is absent — preserves legacy behavior bit-for-bit.
+        const prevKeysSnapshot = player.keys || {};
+        const { rising, falling } = detectEdges(
+          prevKeysSnapshot,
+          data.events,
+          data.keys,
+        );
+
         // Clear grabBreakSpaceConsumed if spacebar was released during input lock,
         // so raw parry isn't blocked after the lock expires
-        if (!data.keys[" "] && player.keys[" "] && player.grabBreakSpaceConsumed) {
+        if (falling[" "] && player.grabBreakSpaceConsumed) {
           player.grabBreakSpaceConsumed = false;
         }
         // Track mouse1 press/release timing during lock so charging can begin
         // immediately when the lock expires (inputs are READ, not acted on)
-        const prevMouse1 = player.keys.mouse1;
-        const prevMouse2 = player.keys.mouse2;
-        const prevSpace = player.keys[" "];
-        const prevShift = player.keys.shift;
-        const prevF = player.keys.f;
-        if (!prevMouse1 && data.keys.mouse1) {
+        if (rising.mouse1) {
           // mouse1 just pressed during lock — record press time
           player.mouse1PressTime = Date.now();
-        } else if (prevMouse1 && !data.keys.mouse1) {
+        } else if (falling.mouse1) {
           player.mouse1PressTime = 0;
         }
         player.keys = data.keys;
 
         // During slap attacks, buffer mouse1 for next hits / mouse2 for grab ender
         if (player.isAttacking && player.attackType === "slap") {
-          if (!prevMouse1 && data.keys.mouse1) {
+          if (rising.mouse1) {
             const maxBuffer = 3 - (player.slapStringPosition || 1);
             if (player.pendingSlapCount < maxBuffer) {
               player.pendingSlapCount++;
             }
           }
-          if (!prevMouse2 && data.keys.mouse2 && player.slapStringPosition >= 2) {
+          if (rising.mouse2 && player.slapStringPosition >= 2) {
             player.pendingGrabEnder = true;
             player.pendingSlapCount = 0;
           }
         } else {
           // Non-slap states: use generic inputBuffer
-          if (!prevSpace && data.keys[" "]) {
+          if (rising[" "]) {
             player.inputBuffer = { type: "rawParry", timestamp: Date.now() };
-          } else if (!prevShift && data.keys.shift && data.keys.s && !data.keys.mouse2) {
+          } else if (rising.shift && data.keys.s && !data.keys.mouse2) {
             player.inputBuffer = { type: "sidestep", timestamp: Date.now() };
-          } else if (!prevShift && data.keys.shift && !data.keys.mouse2) {
+          } else if (rising.shift && !data.keys.mouse2) {
             player.inputBuffer = { type: "dodge", timestamp: Date.now() };
-          } else if (!prevMouse1 && data.keys.mouse1 && data.keys.s) {
+          } else if (rising.mouse1 && data.keys.s) {
             const fwdKey = player.facing === -1 ? 'd' : 'a';
             if (data.keys[fwdKey]) {
               player.inputBuffer = { type: "chargedAttack", timestamp: Date.now() };
             } else {
               player.inputBuffer = { type: "slap", timestamp: Date.now() };
             }
-          } else if (!prevMouse1 && data.keys.mouse1) {
+          } else if (rising.mouse1) {
             player.inputBuffer = { type: "slap", timestamp: Date.now() };
-          } else if (!prevMouse2 && data.keys.mouse2) {
+          } else if (rising.mouse2) {
             player.inputBuffer = { type: "grab", timestamp: Date.now() };
           }
         }
@@ -1336,90 +1462,30 @@ function registerSocketHandlers(socket, io, rooms, context) {
       return;
     }
 
-    // Debug data.keys during grab clashing
-    if (player.isGrabClashing) {
-    }
-
-    // Count inputs during grab clash - HAPPENS BEFORE BLOCKING
-    if (player.isGrabClashing && rooms[roomIndex].grabClashData && data.keys) {
-      // Track previous keys for input detection - get from player state
-      const previousKeys = { ...player.keys };
-
-      // Update player keys FIRST so next event can detect changes
-      player.keys = data.keys;
-
-      // Count any key press (not key holds) as mashing input
-      const mashKeys = [
-        "w",
-        "a",
-        "s",
-        "d",
-        "mouse1",
-        "mouse2",
-        "e",
-        "f",
-        "shift",
-      ];
-      let inputDetected = false;
-      let detectedKey = null;
-
-      for (const key of mashKeys) {
-        if (data.keys[key] && !previousKeys[key]) {
-          inputDetected = true;
-          detectedKey = key;
-          break;
-        }
-      }
-
-      if (inputDetected) {
-        player.grabClashInputCount++;
-
-        // Update room clash data
-        if (player.id === rooms[roomIndex].grabClashData.player1Id) {
-          rooms[roomIndex].grabClashData.player1Inputs++;
-        } else if (player.id === rooms[roomIndex].grabClashData.player2Id) {
-          rooms[roomIndex].grabClashData.player2Inputs++;
-        }
-
-        // Emit progress update to all players in the room
-        io.in(roomId).emit("grab_clash_progress", {
-          player1Inputs: rooms[roomIndex].grabClashData.player1Inputs,
-          player2Inputs: rooms[roomIndex].grabClashData.player2Inputs,
-          player1Id: rooms[roomIndex].grabClashData.player1Id,
-          player2Id: rooms[roomIndex].grabClashData.player2Id,
-        });
-
-      }
-    }
-
-    // Block all actions (except input counting) during grab clashing
-    if (player.isGrabClashing) {
-      return;
-    }
-
     // If room is in hitstop, buffer key states but block actions for both players
     if (isRoomInHitstop(rooms[roomIndex])) {
       if (data.keys) {
-        const prevKeys = { ...player.keys };
+        const prevKeysSnapshot = player.keys || {};
+        const { rising } = detectEdges(prevKeysSnapshot, data.events, data.keys);
         player.keys = data.keys;
 
         // Buffer inputs during hitstop so they fire on frame 1 when hitstop ends
-        if (!prevKeys[" "] && data.keys[" "]) {
+        if (rising[" "]) {
           player.inputBuffer = { type: "rawParry", timestamp: Date.now() };
-        } else if (!prevKeys.shift && data.keys.shift && data.keys.s && !data.keys.mouse2) {
+        } else if (rising.shift && data.keys.s && !data.keys.mouse2) {
           player.inputBuffer = { type: "sidestep", timestamp: Date.now() };
-        } else if (!prevKeys.shift && data.keys.shift && !data.keys.mouse2) {
+        } else if (rising.shift && !data.keys.mouse2) {
           player.inputBuffer = { type: "dodge", timestamp: Date.now() };
-        } else if (!prevKeys.mouse1 && data.keys.mouse1 && data.keys.s) {
+        } else if (rising.mouse1 && data.keys.s) {
           const fwdKey = player.facing === -1 ? 'd' : 'a';
           if (data.keys[fwdKey]) {
             player.inputBuffer = { type: "chargedAttack", timestamp: Date.now() };
           } else {
             player.inputBuffer = { type: "slap", timestamp: Date.now() };
           }
-        } else if (!prevKeys.mouse1 && data.keys.mouse1) {
+        } else if (rising.mouse1) {
           player.inputBuffer = { type: "slap", timestamp: Date.now() };
-        } else if (!prevKeys.mouse2 && data.keys.mouse2) {
+        } else if (rising.mouse2) {
           player.inputBuffer = { type: "grab", timestamp: Date.now() };
         }
       }
@@ -1473,20 +1539,25 @@ function registerSocketHandlers(socket, io, rooms, context) {
     };
 
     if (data.keys) {
-      // Track mouse1 state changes for slap/charge dual-purpose input
-      const previousMouse1State = player.keys.mouse1;
-      const previousMouse2State = player.keys.mouse2;
+      // Edge detection across the entire packet window. When `data.events`
+      // is present, walks each per-event transition AND reconciles against
+      // the final snapshot, so a press-release-press faster than the client
+      // emit interval (>=16ms) still surfaces as a rising edge here. When
+      // `data.events` is absent, this reduces to the classic snapshot diff
+      // and behavior is bit-for-bit identical to the pre-events path.
       const previousKeys = { ...player.keys };
+      const { rising, falling } = detectEdges(previousKeys, data.events, data.keys);
       player.keys = data.keys;
 
-      // Set mouse1 press flags
-      player.mouse1JustPressed = !previousMouse1State && data.keys.mouse1;
-      player.mouse1JustReleased = previousMouse1State && !data.keys.mouse1;
-      
+      // Set mouse1 press flags — true if a press happened ANYWHERE in the
+      // packet window, even if the trailing snapshot already shows release.
+      player.mouse1JustPressed = !!rising.mouse1;
+      player.mouse1JustReleased = !!falling.mouse1;
+
       // Set mouse2 press flags (mouse2 = grab now)
-      player.mouse2JustPressed = !previousMouse2State && data.keys.mouse2;
-      player.mouse2JustReleased = previousMouse2State && !data.keys.mouse2;
-      
+      player.mouse2JustPressed = !!rising.mouse2;
+      player.mouse2JustReleased = !!falling.mouse2;
+
       // Track attack intent time when mouse1 is pressed (for counter hit detection)
       // This captures the moment the player tries to attack, even before the attack executes
       if (player.mouse1JustPressed) {
@@ -1494,16 +1565,16 @@ function registerSocketHandlers(socket, io, rooms, context) {
         // Record press time for slap-vs-charge threshold detection
         player.mouse1PressTime = Date.now();
       }
-      
+
       // Track "just pressed" state for all action keys to prevent actions from triggering
       // when keys are held through other actions (e.g., holding E during dodge then grabbing after)
-      player.shiftJustPressed = !previousKeys.shift && data.keys.shift;
-      player.eJustPressed = !previousKeys.e && data.keys.e;
-      player.wJustPressed = !previousKeys.w && data.keys.w;
-      player.aJustPressed = !previousKeys.a && data.keys.a;
-      player.dJustPressed = !previousKeys.d && data.keys.d;
-      player.fJustPressed = !previousKeys.f && data.keys.f;
-      player.spaceJustPressed = !previousKeys[" "] && data.keys[" "];
+      player.shiftJustPressed = !!rising.shift;
+      player.eJustPressed = !!rising.e;
+      player.wJustPressed = !!rising.w;
+      player.aJustPressed = !!rising.a;
+      player.dJustPressed = !!rising.d;
+      player.fJustPressed = !!rising.f;
+      player.spaceJustPressed = !!rising[" "];
 
       // POST-GRAB INPUT BUFFER: After a grab/throw ends, treat held keys as "just pressed"
       // for one cycle. This enables frame-1 activation of grab (mouse2) which has complex
@@ -2332,7 +2403,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
               opponent.isBeingEdgePushed = false;
               opponent.isBeingThrown = true;
               
-              triggerHitstop(rooms[roomIndex], HITSTOP_THROW_MS);
+              triggerHitstopAndEmit(io, rooms[roomIndex], HITSTOP_THROW_MS, "throw");
 
               if (player.isGrabbing) {
                 player.isGrabbing = false;
@@ -2593,6 +2664,8 @@ function registerSocketHandlers(socket, io, rooms, context) {
     const roomIndex = rooms.findIndex((room) => room.id === roomId);
 
     if (roomIndex !== -1 && rooms[roomIndex].opponentDisconnected) {
+      // Match abandoned via opponent-disconnect prompt — close audit log.
+      closeAuditLog(rooms[roomIndex]);
       // Clean up timeouts for the leaving player
       timeoutManager.clearPlayer(socket.id);
 
@@ -2653,6 +2726,10 @@ function registerSocketHandlers(socket, io, rooms, context) {
 
     if (roomIndex !== -1) {
       const room = rooms[roomIndex];
+
+      // Per-match audit log cleanup — close stream if open. Idempotent
+      // and safe whether or not the player got far enough to start a match.
+      closeAuditLog(room);
 
       // Clean up timeouts for the leaving player
       timeoutManager.clearPlayer(socket.id);
@@ -2818,9 +2895,15 @@ function registerSocketHandlers(socket, io, rooms, context) {
 
     // Clean up timeouts for the disconnecting player
     timeoutManager.clearPlayer(socket.id);
+    // B7 rate-limit bucket cleanup — prevents Map growth across reconnects.
+    clearInputBucket(socket.id);
 
     if (rooms[roomIndex]) {
       const room = rooms[roomIndex];
+
+      // Per-match audit log cleanup — close the stream if it was open at
+      // disconnect. Idempotent, safe whether or not gameStart was reached.
+      closeAuditLog(room);
 
       // Clear any active round start timer to prevent interference
       if (room.roundStartTimer) {
