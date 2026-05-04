@@ -412,9 +412,23 @@ body {
   inset: 0;
   pointer-events: none;
   z-index: 200;
+  /* Soft fade in/out so the HUD doesn't pop when the prematch screen
+     dismisses — feels like the broadcast graphic lifting off. */
+  opacity: 1;
+  transition: opacity 0.35s ease-out;
 }
 .game-hud > * {
   pointer-events: auto;
+}
+
+/* While the prematch screen is up, hide the in-game HUD (nameplates,
+   health/balance bars, stamina, power-up chips). We keep the layer
+   mounted (so portalled children retain their DOM) but make it
+   invisible and uninteractive. */
+.game-hud.is-prematch-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 /* Arena map — fills the scene; overflows naturally when the camera zooms in */

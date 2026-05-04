@@ -23,7 +23,7 @@ import pumoMainMenu from "../assets/pumo-main-menu.png";
  * a slideshow here; a static hero image feels more confident and on-brand
  * for a Steam main menu.
  */
-import mainMenuBackground from "../assets/main-menu-bkg-3.png";
+import mainMenuBackground from "../assets/main-menu-bkg-4.png";
 import {
   playButtonHoverSound,
   playButtonPressSound2,
@@ -79,58 +79,74 @@ const BackgroundImage = styled.img`
   z-index: 0;
   pointer-events: none;
   /*
-   * Backdrop is ambient atmosphere only \u2014 not a focal scene. We heavily
-   * fade and slightly blur the ink illustration so it reads as texture
-   * behind the menu and Pumo, instead of competing with them as a
-   * detailed foreground image.
+   * Backdrop is the Penguin Kokugikan arena — a clean, symmetric,
+   * daytime illustration where the colorful nobori banners and the
+   * recognizable green-tiered roof are part of the brand identity.
+   * Unlike the previous painterly ink-wash this asset replaced, it
+   * does NOT want to be mushed into atmosphere — a heavy blur turns
+   * the banners into colored smears and erases the silhouette.
+   *
+   * So we use a much lighter touch: a tiny blur (just enough to push
+   * it back as a backdrop and stop it competing with menu text), a
+   * mild brightness pull so Pumo still pops in front, and saturation
+   * left near-natural so the banners stay vivid. The image is
+   * symmetric and centered on the doorway, so we anchor it dead
+   * center and just nudge the vertical anchor down so the arena
+   * roofline lifts slightly toward the title row.
    */
-  /*
-   * Shift the source illustration left so its main silhouette stops
-   * sitting directly behind Pumo (right side) and reading as a "second
-   * penguin". Combined with the heavier blur, what remains on the right
-   * half of the frame is just a soft ink wash.
-   */
-  object-position: 22% 50%;
-  transform: scale(1.12);
-  /*
-   * Push the backdrop fully into atmospheric texture: a strong blur
-   * dissolves recognizable shapes so it reads as sumi-e ink mood
-   * rather than a competing foreground illustration. We err on the
-   * side of "too quiet" — the title, menu, and Pumo do all the
-   * talking; the bg just contributes warmth and depth.
-   */
-  filter: saturate(0.36) brightness(0.34) contrast(0.9) blur(8px);
+  object-position: 50% 55%;
+  transform: scale(1.08);
+  filter: saturate(0.9) brightness(0.85) contrast(0.95) blur(2px);
   animation: ${kenBurns} 22s ease-in-out infinite alternate;
 `;
 
-/* Cinematic letterbox + side gradients to focus the eye */
+/*
+ * Cinematic overlay — tuned for the Penguin Kokugikan backdrop.
+ *
+ * The arena scene is symmetric and centered on the doorway, so a
+ * heavy left-only readability wash (which the previous overlay
+ * used for an asymmetric ink illustration) reads as a lopsided
+ * dark stripe over a bright daytime image.
+ *
+ * Instead we layer:
+ *   1. A soft left-column tint — much lighter than before — only
+ *      to give the cream title + menu enough contrast against the
+ *      sky / banners. Tapers to fully transparent by ~45% across.
+ *   2. A subtle cool sky wash up top + ink fade at the bottom so
+ *      the BottomHud strip blends into the plaza floor instead of
+ *      sitting on a hard line.
+ *   3. A radial vignette anchored to the arena entrance (~52% x,
+ *      55% y) — pulls the eye to center, darkens corners gently,
+ *      and frames the scene like a key-art shot.
+ */
 const CinematicOverlay = styled.div`
   position: absolute;
   inset: 0;
   z-index: 1;
   pointer-events: none;
   background:
-    /* left readability gradient */
+    /* left-column readability tint (kept light, tapers off mid-frame) */
     linear-gradient(
       90deg,
-      rgba(7, 10, 20, 0.92) 0%,
-      rgba(7, 10, 20, 0.7) 28%,
-      rgba(7, 10, 20, 0.25) 50%,
-      rgba(7, 10, 20, 0.55) 100%
+      rgba(7, 10, 20, 0.45) 0%,
+      rgba(7, 10, 20, 0.22) 22%,
+      rgba(7, 10, 20, 0) 45%,
+      rgba(7, 10, 20, 0) 100%
     ),
-    /* ice-blue wash up top, fading to ink at the bottom */
+    /* cool sky wash up top, fading to ink at the bottom for HUD blend */
     linear-gradient(
-      180deg,
-      rgba(28, 78, 110, 0.32) 0%,
-      transparent 40%,
-      rgba(7, 10, 20, 0.6) 100%
-    ),
-    /* vignette */
+        180deg,
+        rgba(28, 78, 110, 0.18) 0%,
+        transparent 35%,
+        transparent 65%,
+        rgba(7, 10, 20, 0.45) 100%
+      ),
+    /* vignette anchored to the arena entrance */
     radial-gradient(
-      ellipse at 35% 55%,
-      transparent 30%,
-      rgba(0, 0, 0, 0.55) 100%
-    );
+        ellipse at 52% 55%,
+        transparent 35%,
+        rgba(0, 0, 0, 0.45) 100%
+      );
 `;
 
 /* Subtle paper-grain / film texture overlay */
@@ -233,7 +249,8 @@ const HeroStage = styled.main`
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
   gap: clamp(20px, 3cqw, 60px);
-  padding: clamp(28px, 4.5cqh, 60px) clamp(28px, 3.5cqw, 56px) clamp(20px, 2.8cqh, 36px);
+  padding: clamp(28px, 4.5cqh, 60px) clamp(28px, 3.5cqw, 56px)
+    clamp(20px, 2.8cqh, 36px);
   align-items: stretch;
 
   @media (max-width: 720px) {
@@ -263,7 +280,12 @@ const TitleBlock = styled.div`
     top: 6%;
     bottom: 6%;
     width: 4px;
-    background: linear-gradient(180deg, ${C.vermillion} 0%, ${C.gold} 50%, ${C.vermillion} 100%);
+    background: linear-gradient(
+      180deg,
+      ${C.vermillion} 0%,
+      ${C.gold} 50%,
+      ${C.vermillion} 100%
+    );
     box-shadow: 0 0 16px ${C.vermillionGlow};
     border-radius: 2px;
     opacity: 0;
@@ -336,14 +358,12 @@ const MenuButton = styled.button`
     100deg,
     ${(p) =>
       p.$primary
-        ? "rgba(216, 59, 39, 0.22) 0%, rgba(8, 11, 24, 0.55) 60%, rgba(8, 11, 24, 0.4) 100%"
-        : "rgba(28, 78, 110, 0.4) 0%, rgba(8, 11, 24, 0.55) 70%, rgba(8, 11, 24, 0.35) 100%"}
+        ? "rgba(216, 59, 39, 0.42) 0%, rgba(10, 12, 22, 0.85) 55%, rgba(10, 12, 22, 0.78) 100%"
+        : "rgba(28, 78, 110, 0.55) 0%, rgba(10, 12, 22, 0.85) 65%, rgba(10, 12, 22, 0.78) 100%"}
   );
   border: 1px solid
     ${(p) =>
-      p.$primary
-        ? "rgba(238, 81, 65, 0.55)"
-        : "rgba(126, 203, 240, 0.35)"};
+      p.$primary ? "rgba(238, 81, 65, 0.7) " : "rgba(126, 203, 240, 0.55)"};
   border-left: 3px solid var(--accent);
   border-radius: 2px;
   cursor: ${(p) => (p.$disabled ? "default" : "pointer")};
@@ -354,7 +374,10 @@ const MenuButton = styled.button`
   text-transform: uppercase;
   letter-spacing: 0.18em;
   text-shadow: 0 2px 0 #000;
-  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease,
+  transition:
+    transform 0.2s ease,
+    background 0.2s ease,
+    border-color 0.2s ease,
     box-shadow 0.2s ease;
   backdrop-filter: blur(3px);
   box-shadow:
@@ -373,15 +396,13 @@ const MenuButton = styled.button`
     right: 26px;
     bottom: 4px;
     height: 1px;
-    background: linear-gradient(
-      90deg,
-      var(--accent) 0%,
-      transparent 80%
-    );
+    background: linear-gradient(90deg, var(--accent) 0%, transparent 80%);
     transform: scaleX(${(p) => (p.$primary ? 1 : 0.4)});
     transform-origin: left;
     opacity: ${(p) => (p.$disabled ? 0.2 : 0.7)};
-    transition: transform 0.25s ease, opacity 0.25s ease;
+    transition:
+      transform 0.25s ease,
+      opacity 0.25s ease;
   }
 
   ${(p) =>
@@ -392,8 +413,8 @@ const MenuButton = styled.button`
         background: linear-gradient(
           100deg,
           ${p.$primary
-              ? "rgba(238, 81, 65, 0.4) 0%, rgba(8, 11, 24, 0.55) 60%, rgba(8, 11, 24, 0.4) 100%"
-              : "rgba(54, 130, 170, 0.5) 0%, rgba(8, 11, 24, 0.55) 70%, rgba(8, 11, 24, 0.35) 100%"}
+            ? "rgba(238, 81, 65, 0.6) 0%, rgba(10, 12, 22, 0.88) 55%, rgba(10, 12, 22, 0.82) 100%"
+            : "rgba(54, 130, 170, 0.7) 0%, rgba(10, 12, 22, 0.88) 65%, rgba(10, 12, 22, 0.78) 100%"}
         );
         border-color: var(--accentBright);
         box-shadow:
@@ -452,7 +473,9 @@ const MenuTooltip = styled.span.attrs({ className: "menu-tooltip" })`
   opacity: 0;
   pointer-events: none;
   z-index: 5;
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
 
   strong {
     color: ${C.gold};
@@ -477,8 +500,12 @@ const MenuTooltip = styled.span.attrs({ className: "menu-tooltip" })`
 const MenuArrow = styled.span.attrs({ className: "menu-arrow" })`
   font-family: "Outfit", sans-serif;
   font-weight: 700;
-  font-size: ${(p) => (p.$primary ? "clamp(0.95rem, 1.5cqw, 1.15rem)" : "clamp(0.7rem, 1.1cqw, 0.85rem)")};
-  color: ${(p) => (p.$disabled ? "rgba(245, 236, 217, 0.25)" : "var(--accent)")};
+  font-size: ${(p) =>
+    p.$primary
+      ? "clamp(0.95rem, 1.5cqw, 1.15rem)"
+      : "clamp(0.7rem, 1.1cqw, 0.85rem)"};
+  color: ${(p) =>
+    p.$disabled ? "rgba(245, 236, 217, 0.25)" : "var(--accent)"};
   transition: color 0.2s ease;
   text-shadow: 0 0 12px var(--accentGlow);
   &::after {
@@ -495,7 +522,10 @@ const MenuLabels = styled.div`
 `;
 
 const MenuLabel = styled.div`
-  font-size: ${(p) => (p.$primary ? "clamp(0.95rem, 1.6cqw, 1.18rem)" : "clamp(0.72rem, 1.2cqw, 0.92rem)")};
+  font-size: ${(p) =>
+    p.$primary
+      ? "clamp(0.95rem, 1.6cqw, 1.18rem)"
+      : "clamp(0.72rem, 1.2cqw, 0.92rem)"};
   line-height: 1.05;
 `;
 
@@ -554,8 +584,9 @@ const SystemButton = styled.button`
   width: 100%;
   max-width: clamp(380px, 44cqw, 560px);
   padding: clamp(7px, 1cqh, 10px) clamp(18px, 2.2cqw, 26px);
-  background: transparent;
-  border: 1px solid rgba(245, 236, 217, 0.12);
+  background: rgba(10, 12, 22, 0.55);
+  border: 1px solid rgba(245, 236, 217, 0.22);
+  backdrop-filter: blur(3px);
   border-radius: 2px;
   cursor: pointer;
   font-family: "Outfit", sans-serif;
@@ -566,8 +597,12 @@ const SystemButton = styled.button`
   letter-spacing: 0.18em;
   text-shadow: 0 2px 0 #000;
   font-size: clamp(0.65rem, 1.05cqw, 0.82rem);
-  transition: transform 0.2s ease, color 0.2s ease, background 0.2s ease,
-    border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    color 0.2s ease,
+    background 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
   opacity: 0;
   animation: ${slideInLeft} 0.45s ease-out forwards;
   animation-delay: ${(p) => 0.55 + p.$index * 0.07}s;
@@ -578,7 +613,9 @@ const SystemButton = styled.button`
     width: clamp(16px, 1.6cqw, 22px);
     height: clamp(16px, 1.6cqw, 22px);
     color: ${C.creamMute};
-    transition: color 0.2s ease, transform 0.4s ease;
+    transition:
+      color 0.2s ease,
+      transform 0.4s ease;
   }
   .system-icon .material-symbols-outlined {
     font-size: clamp(0.85rem, 1.4cqw, 1.05rem);
@@ -586,8 +623,8 @@ const SystemButton = styled.button`
 
   &:hover {
     color: ${C.cream};
-    background: rgba(28, 78, 110, 0.32);
-    border-color: rgba(126, 203, 240, 0.4);
+    background: rgba(28, 78, 110, 0.55);
+    border-color: rgba(126, 203, 240, 0.6);
     transform: translateX(6px);
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
 
@@ -662,14 +699,13 @@ const PumoHalo = styled.div`
   height: clamp(320px, 38cqw, 440px);
   z-index: 0;
   pointer-events: none;
-  background:
-    radial-gradient(
-      circle at center,
-      rgba(245, 236, 217, 0.22) 0%,
-      rgba(232, 197, 71, 0.1) 30%,
-      rgba(126, 203, 240, 0.05) 58%,
-      transparent 78%
-    );
+  background: radial-gradient(
+    circle at center,
+    rgba(245, 236, 217, 0.22) 0%,
+    rgba(232, 197, 71, 0.1) 30%,
+    rgba(126, 203, 240, 0.05) 58%,
+    transparent 78%
+  );
   filter: blur(28px);
   opacity: 0;
   animation: ${fadeIn} 1.2s ease-out 0.45s forwards;
@@ -720,8 +756,8 @@ const PumoHero = styled.img`
    * silhouette, not as rim lighting.
    */
   filter: saturate(0.96) brightness(0.94)
-          drop-shadow(0 22px 22px rgba(0, 0, 0, 0.75))
-          drop-shadow(0 0 32px rgba(126, 203, 240, 0.14));
+    drop-shadow(0 22px 22px rgba(0, 0, 0, 0.75))
+    drop-shadow(0 0 32px rgba(126, 203, 240, 0.14));
   will-change: transform;
   animation: ${pumoBreathe} 3s ease-in-out infinite;
 `;
@@ -751,10 +787,10 @@ const BanzukeCard = styled.section`
   padding: clamp(10px, 1.4cqh, 14px) clamp(14px, 1.8cqw, 20px);
   background: linear-gradient(
     180deg,
-    rgba(28, 78, 110, 0.42) 0%,
-    rgba(8, 11, 24, 0.85) 100%
+    rgba(28, 78, 110, 0.6) 0%,
+    rgba(10, 12, 22, 0.94) 100%
   );
-  border: 1px solid rgba(126, 203, 240, 0.2);
+  border: 1px solid rgba(126, 203, 240, 0.32);
   border-left: 3px solid ${C.gold};
   border-radius: 2px;
   backdrop-filter: blur(6px);
@@ -873,10 +909,15 @@ const BottomHud = styled.footer`
   display: flex;
   align-items: stretch;
   border-top: 1px solid rgba(245, 236, 217, 0.1);
+  /*
+   * Neutral near-black instead of the previous blue-tinted ink so
+   * the bottom strip reads as a clean broadcast bar rather than a
+   * navy band against the bright daytime arena bg.
+   */
   background: linear-gradient(
     0deg,
-    rgba(7, 10, 20, 0.96) 0%,
-    rgba(7, 10, 20, 0.78) 100%
+    rgba(12, 12, 14, 0.97) 0%,
+    rgba(12, 12, 14, 0.85) 100%
   );
   box-shadow: 0 -10px 24px rgba(0, 0, 0, 0.5);
   opacity: 0;
@@ -892,8 +933,8 @@ const StatusBlock = styled.div`
   padding: 0 clamp(16px, 2cqw, 26px);
   background: linear-gradient(
     180deg,
-    rgba(28, 78, 110, 0.5) 0%,
-    rgba(8, 11, 24, 0.85) 100%
+    rgba(28, 78, 110, 0.45) 0%,
+    rgba(14, 14, 16, 0.95) 100%
   );
   border-right: 2px solid ${C.vermillion};
   box-shadow: inset 0 1px 0 rgba(245, 236, 217, 0.05);
@@ -918,32 +959,35 @@ const Ticker = styled.div`
    * bar), a very subtle warm wash centered, and a thin vermillion
    * top-edge accent so the whole bottom HUD reads as one strip.
    */
-  background:
-    linear-gradient(
-      90deg,
-      rgba(7, 10, 20, 0.92) 0%,
-      rgba(12, 16, 28, 0.88) 50%,
-      rgba(7, 10, 20, 0.92) 100%
-    );
+  background: linear-gradient(
+    90deg,
+    rgba(12, 12, 14, 0.96) 0%,
+    rgba(18, 18, 20, 0.94) 50%,
+    rgba(12, 12, 14, 0.96) 100%
+  );
   box-shadow:
     inset 0 1px 0 ${C.vermillion},
-    inset 0 2px 0 rgba(7, 10, 20, 0.6);
+    inset 0 2px 0 rgba(12, 12, 14, 0.7);
 
   &::before {
     content: "";
     position: absolute;
-    left: 0; top: 0; bottom: 0;
+    left: 0;
+    top: 0;
+    bottom: 0;
     width: 60px;
-    background: linear-gradient(90deg, rgba(7, 10, 20, 0.95), transparent);
+    background: linear-gradient(90deg, rgba(12, 12, 14, 0.97), transparent);
     z-index: 2;
     pointer-events: none;
   }
   &::after {
     content: "";
     position: absolute;
-    right: 0; top: 0; bottom: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
     width: 60px;
-    background: linear-gradient(270deg, rgba(7, 10, 20, 0.95), transparent);
+    background: linear-gradient(270deg, rgba(12, 12, 14, 0.97), transparent);
     z-index: 2;
     pointer-events: none;
   }
@@ -1000,11 +1044,7 @@ const TickerSeparator = styled.span`
 // PRELOAD ASSETS
 // ============================================
 
-const preGameImages = [
-  lobbyBackground,
-  pumo,
-  mainMenuBackground,
-];
+const preGameImages = [lobbyBackground, pumo, mainMenuBackground];
 
 /*
  * Ticker copy lives here so the marquee can be a clean .map and the
@@ -1015,15 +1055,28 @@ const preGameImages = [
 const TICKER_ITEMS = [
   { label: "UPDATE 0.1", text: "Push & slap your way to glory in the dohyo" },
   { label: "NOW LIVE", text: "Worldwide ranked matchmaking is open" },
-  { label: "HATSU SEASON", text: "Earn the Yokozuna title before the tournament closes" },
-  { label: "DEV NOTE", text: "Steam release coming — wishlist now to support the dohyo" },
+  {
+    label: "HATSU SEASON",
+    text: "Earn the Yokozuna title before the tournament closes",
+  },
+  {
+    label: "DEV NOTE",
+    text: "Steam release coming — wishlist now to support the dohyo",
+  },
 ];
 
 // ============================================
 // MAIN COMPONENT
 // ============================================
 
-const MainMenu = ({ rooms, setRooms, currentPage, setCurrentPage, localId, connectionError }) => {
+const MainMenu = ({
+  rooms,
+  setRooms,
+  currentPage,
+  setCurrentPage,
+  localId,
+  connectionError,
+}) => {
   const [roomName, setRoomName] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [isCPUMatch, setIsCPUMatch] = useState(false);
@@ -1134,8 +1187,7 @@ const MainMenu = ({ rooms, setRooms, currentPage, setCurrentPage, localId, conne
           <LeftColumn>
             <TitleBlock>
               <MainTitle>
-                <span>Pumo</span>{" "}
-                <span className="accent">Pumo&nbsp;!</span>
+                <span>Pumo</span> <span className="accent">Pumo&nbsp;!</span>
               </MainTitle>
             </TitleBlock>
 
@@ -1311,7 +1363,10 @@ const MainMenu = ({ rooms, setRooms, currentPage, setCurrentPage, localId, conne
           <Ticker>
             <TickerTrack>
               {[0, 1].map((dupe) => (
-                <span key={dupe} style={{ display: "inline-flex", alignItems: "center" }}>
+                <span
+                  key={dupe}
+                  style={{ display: "inline-flex", alignItems: "center" }}
+                >
                   {TICKER_ITEMS.map((item, idx) => (
                     <Fragment key={idx}>
                       <TickerItem>
@@ -1338,48 +1393,48 @@ const MainMenu = ({ rooms, setRooms, currentPage, setCurrentPage, localId, conne
         <div className="current-page">
           {renderMainMenu()}
           {currentPage === "rooms" && (
-              <Rooms
-                rooms={rooms}
-                handleMainMenuPage={handleMainMenuPage}
-                handleJoinRoom={handleJoinRoom}
-                setRoomName={setRoomName}
-              />
+            <Rooms
+              rooms={rooms}
+              handleMainMenuPage={handleMainMenuPage}
+              handleJoinRoom={handleJoinRoom}
+              setRoomName={setRoomName}
+            />
           )}
         </div>
       );
     case "lobby":
       return (
         <div className="current-page">
-            <Lobby
-              rooms={rooms}
-              setRooms={setRooms}
-              roomName={roomName}
-              handleGame={handleGame}
-              setCurrentPage={setCurrentPage}
-              onLeaveDohyo={() => {
-                setIsCPUMatch(false);
-                setCurrentPage("mainMenu");
-              }}
-              isCPUMatch={isCPUMatch}
-            />
+          <Lobby
+            rooms={rooms}
+            setRooms={setRooms}
+            roomName={roomName}
+            handleGame={handleGame}
+            setCurrentPage={setCurrentPage}
+            onLeaveDohyo={() => {
+              setIsCPUMatch(false);
+              setCurrentPage("mainMenu");
+            }}
+            isCPUMatch={isCPUMatch}
+          />
         </div>
       );
     case "game":
       return (
         <div className="current-page">
-            <Game
-              localId={localId}
-              rooms={rooms}
-              roomName={roomName}
-              setCurrentPage={setCurrentPage}
-              isCPUMatch={isCPUMatch}
-            />
+          <Game
+            localId={localId}
+            rooms={rooms}
+            roomName={roomName}
+            setCurrentPage={setCurrentPage}
+            isCPUMatch={isCPUMatch}
+          />
         </div>
       );
     case "customize":
       return (
         <div className="current-page">
-            <CustomizePage onBack={() => setCurrentPage("mainMenu")} />
+          <CustomizePage onBack={() => setCurrentPage("mainMenu")} />
         </div>
       );
     default:
@@ -1387,12 +1442,12 @@ const MainMenu = ({ rooms, setRooms, currentPage, setCurrentPage, localId, conne
         <div className="current-page">
           {renderMainMenu()}
           {currentPage === "rooms" && (
-              <Rooms
-                rooms={rooms}
-                handleMainMenuPage={handleMainMenuPage}
-                handleJoinRoom={handleJoinRoom}
-                setRoomName={setRoomName}
-              />
+            <Rooms
+              rooms={rooms}
+              handleMainMenuPage={handleMainMenuPage}
+              handleJoinRoom={handleJoinRoom}
+              setRoomName={setRoomName}
+            />
           )}
         </div>
       );

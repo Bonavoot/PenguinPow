@@ -677,8 +677,16 @@ const Game = ({
           </ParticleProvider>
           <div className="arena-lighting" aria-hidden="true"></div>
         </div>
-        {/* HUD layer — viewport-fixed, unaffected by camera zoom/pan */}
-        <div id="game-hud" className="game-hud"></div>
+        {/* HUD layer — viewport-fixed, unaffected by camera zoom/pan.
+            While the pre-match screen is up we add `is-prematch-hidden`
+            so the in-game HUD (player nameplates, health/balance bars,
+            stamina, power-up chips, etc.) doesn't visually compete with
+            the broadcast lower-third. The portal target itself stays
+            mounted so any portalled effects/components keep their DOM. */}
+        <div
+          id="game-hud"
+          className={`game-hud${showPreMatchScreen ? " is-prematch-hidden" : ""}`}
+        ></div>
         <PowerUpSelection
           roomId={roomName}
           playerId={localId}
