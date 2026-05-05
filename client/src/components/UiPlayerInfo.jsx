@@ -409,13 +409,12 @@ const FighterName = styled.div`
 
 /* Sumo banzuke plate — sits below the stamina bar.
  *
- * Lacquered ink base with a hint of vertical washi paper grain, framed
- * by clean gold-leaf side brackets. Replaces the previous muddy brown
- * gold (`rgba(180, 130, 30, ...)`) on the border and brackets with the
- * cleaner gold leaf (`C.gold`) so it ties into the new HUD palette.
- *
- * The grain is now a vertical (paper-fibre) hatch instead of horizontal
- * — feels more like washi than ribbed metal. */
+ * Lacquered ink base with a hint of vertical washi paper grain. The
+ * previous version had ornamental gold-leaf side BRACKETS plus a
+ * 1.5px gold border — a third piece of "premium hardware" on the
+ * HUD competing with the stamina bar AND the power-up slot. Stripped
+ * to a quiet cream-faint border so the rank text + the gold rank
+ * letters do the work; the plate itself is just a backdrop. */
 const RankPlaque = styled.div`
   display: flex;
   align-items: center;
@@ -448,49 +447,11 @@ const RankPlaque = styled.div`
       rgba(8, 10, 22, 0.94) 100%
     );
   border-radius: 3px;
-  border: 1.5px solid rgba(232, 197, 71, 0.5);
+  border: 1px solid rgba(245, 236, 217, 0.18);
   box-shadow:
     0 2px 8px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(255, 246, 194, 0.1),
+    inset 0 1px 0 rgba(245, 236, 217, 0.08),
     inset 0 -1px 3px rgba(0, 0, 0, 0.32);
-
-  /* Gold ornamental bracket — LEFT side. Clean gold leaf gradient now. */
-  &::before {
-    content: "";
-    position: absolute;
-    top: 3px; bottom: 3px;
-    left: -1px;
-    width: 3px;
-    background: linear-gradient(
-      180deg,
-      rgba(232, 197, 71, 0.3) 0%,
-      #e8c547 20%,
-      #fff6c2 50%,
-      #e8c547 80%,
-      rgba(232, 197, 71, 0.3) 100%
-    );
-    border-radius: 2px;
-    box-shadow: 0 0 4px rgba(232, 197, 71, 0.4);
-  }
-
-  /* Gold ornamental bracket — RIGHT side. */
-  &::after {
-    content: "";
-    position: absolute;
-    top: 3px; bottom: 3px;
-    right: -1px;
-    width: 3px;
-    background: linear-gradient(
-      180deg,
-      rgba(232, 197, 71, 0.3) 0%,
-      #e8c547 20%,
-      #fff6c2 50%,
-      #e8c547 80%,
-      rgba(232, 197, 71, 0.3) 100%
-    );
-    border-radius: 2px;
-    box-shadow: 0 0 4px rgba(232, 197, 71, 0.4);
-  }
 `;
 
 const RankText = styled.div`
@@ -537,7 +498,7 @@ const BarFrame = styled.div`
   box-shadow:
     inset 0 0 0 1px rgba(245, 236, 217, 0.22),
     0 0 0 clamp(2px, 0.16cqw, 4px) rgba(232, 197, 71, 0.85),
-    0 0 0 clamp(4px, 0.32cqw, 8px) rgba(13, 18, 36, 0.95),
+    0 0 0 clamp(4px, 0.32cqw, 8px) rgba(20, 23, 30, 0.95),
     0 clamp(3px, 0.24cqw, 6px) clamp(12px, 1cqw, 24px) rgba(0, 0, 0, 0.55);
   opacity: ${(p) => (p.$matchOver ? 0.95 : 1)};
   filter: ${(p) => (p.$matchOver ? "brightness(0.97)" : "none")};
@@ -1243,7 +1204,7 @@ const YouLabel = styled.div`
   top: 50%;
   transform: translateY(-50%);
   ${(p) => (p.$isRight ? "right: clamp(6px, 1cqw, 14px);" : "left: clamp(6px, 1cqw, 14px);")}
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 700;
   font-size: clamp(8px, 0.95cqw, 12px);
   color: rgba(255, 255, 255, 0.92);
@@ -1338,14 +1299,18 @@ const BalTrackOuter = styled.div`
   height: clamp(15px, 2.2cqh, 22px);
 `;
 
-/* Stance gauge track — clean ink well with a chiseled gold rim that
- * mirrors the stamina BarFrame at a smaller scale, so the two bars read
- * as a matched pair of hardware (same family, different sizes).
+/* Stance gauge track — clean ink well with a quiet cream-faint rim.
  *
- * Stripped back: dropped the diagonal weave hatch (invisible at this
- * size — it just added overhead). Just a deep ink gradient + a single
- * crisp gold leaf rim. The rim alpha is dialed down vs the main frame
- * (0.55 vs 0.85) so the small bar doesn't compete for attention. */
+ * Previously this rim was gold (0.55 alpha) to "mirror the stamina
+ * BarFrame at a smaller scale". That mirroring was the problem: it
+ * made the balance gauge look like a smaller copy of the hero
+ * hardware, so the eye couldn't tell which gauge was the priority.
+ *
+ * Now the rim is a thin cream hairline — same color language as the
+ * other menu surfaces, NOT the chiseled gold leaf reserved for the
+ * stamina bar. The track keeps its deep ink fill + ice-blue fill
+ * (which still ties it semantically to the mawashi), but it no
+ * longer pretends to be premium hardware. */
 const BalTrack = styled.div`
   position: absolute;
   top: 50%;
@@ -1364,7 +1329,7 @@ const BalTrack = styled.div`
   box-shadow:
     inset 0 1px 2px rgba(0, 0, 0, 0.85),
     inset 0 -1px 1px rgba(0, 0, 0, 0.4),
-    inset 0 0 0 1px rgba(232, 197, 71, 0.55),
+    inset 0 0 0 1px rgba(245, 236, 217, 0.18),
     0 1px 2px rgba(0, 0, 0, 0.5);
 `;
 
@@ -1530,29 +1495,36 @@ const BarRow = styled.div`
   width: 100%;
 `;
 
-/* Power-up panel — matches the simplified BarFrame.
+/* Power-up panel — visibly DEMOTED from the stamina BarFrame.
  *
- * Same two-band hardware ring as the stamina BarFrame (single softer
- * gold ring + tight ink gap + short drop shadow). The previous medallion
- * treatment had a tinted inner halo (mix-blend-mode: screen) that
- * read as cheesy under-glow and a faint empty-state diamond glyph
- * that just added visual noise — both removed.
+ * Previously this slot used the *same* chiseled treatment as the
+ * BarFrame (gold leaf ring + ink underlayer + corner rivets), which
+ * meant the HUD had two pieces of "premium hardware" competing for
+ * the eye instead of one hero. The stamina bar is the hero; the
+ * power-up slot is supporting hardware and should read as such.
  *
- * The icon itself + the slot's tinted background gradient already
- * communicate which power-up is equipped clearly. */
+ * Stripped to:
+ *   - single 1px cream-faint border (no double-band ring)
+ *   - one quiet drop shadow (no gold halo)
+ *   - inner shadow for the recessed inset feel (kept — it stops the
+ *     icon from looking pasted on)
+ *   - no corner rivets
+ *
+ * The slot's tinted background gradient + the icon do all the work
+ * of communicating which power-up is equipped. */
 const PowerUpSlot = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
   width: ${SLOT_SIZE};
   align-self: stretch;
-  border-radius: 4px;
+  border-radius: 3px;
   box-sizing: border-box;
   position: relative;
   transition: all 0.25s ease;
   flex-shrink: 0;
 
-  border: clamp(2px, 0.16cqw, 4px) solid transparent;
+  border: 1px solid rgba(245, 236, 217, 0.22);
 
   background: ${(p) => {
     if (!p.$active)
@@ -1576,51 +1548,11 @@ const PowerUpSlot = styled.div`
   }};
 
   box-shadow:
-    inset 0 0 0 1px rgba(245, 236, 217, 0.22),
-    0 0 0 clamp(2px, 0.16cqw, 4px) rgba(232, 197, 71, 0.85),
-    0 0 0 clamp(4px, 0.32cqw, 8px) rgba(13, 18, 36, 0.95),
-    0 clamp(3px, 0.24cqw, 6px) clamp(12px, 1cqw, 24px) rgba(0, 0, 0, 0.55),
-    inset 0 2px 5px rgba(0, 0, 0, 0.55),
-    inset 0 -1px 2px rgba(0, 0, 0, 0.22);
+    0 clamp(2px, 0.18cqw, 4px) clamp(8px, 0.8cqw, 16px) rgba(0, 0, 0, 0.5),
+    inset 0 1px 2px rgba(255, 255, 255, 0.05),
+    inset 0 2px 4px rgba(0, 0, 0, 0.4);
 
   opacity: ${(p) => (p.$active ? 1 : 0.78)};
-
-  /* Corner rivets — matches the BarFrame so the slot reads as the same
-   * piece of hardware. No inner-halo / no empty-state diamond glyph by
-   * design (those were the cheesy bits). */
-  &::after {
-    content: "";
-    position: absolute;
-    inset: clamp(-3px, -0.24cqw, -6px);
-    border-radius: 4px;
-    pointer-events: none;
-    z-index: 0;
-    background-image:
-      radial-gradient(circle at 0 0,
-        rgba(255, 252, 220, 0.95) 0%,
-        rgba(232, 197, 71, 0.85) 35%,
-        rgba(232, 197, 71, 0) 55%),
-      radial-gradient(circle at 100% 0,
-        rgba(255, 252, 220, 0.95) 0%,
-        rgba(232, 197, 71, 0.85) 35%,
-        rgba(232, 197, 71, 0) 55%),
-      radial-gradient(circle at 0 100%,
-        rgba(255, 252, 220, 0.95) 0%,
-        rgba(232, 197, 71, 0.85) 35%,
-        rgba(232, 197, 71, 0) 55%),
-      radial-gradient(circle at 100% 100%,
-        rgba(255, 252, 220, 0.95) 0%,
-        rgba(232, 197, 71, 0.85) 35%,
-        rgba(232, 197, 71, 0) 55%);
-    background-size: clamp(6px, 0.7cqw, 9px) clamp(6px, 0.7cqw, 9px);
-    background-repeat: no-repeat;
-    background-position:
-      0 0,
-      100% 0,
-      0 100%,
-      100% 100%;
-    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.7));
-  }
 
   img {
     width: 65%;

@@ -37,6 +37,8 @@ import {
   fadeIn,
   fadeUp,
   slideInLeft,
+  slideInRight,
+  clipRevealUp,
   arrowNudge,
   livePulse,
 } from "./menuTheme";
@@ -66,8 +68,8 @@ const MainMenuContainer = styled.div`
   height: 100%;
   position: relative;
   overflow: hidden;
-  background: ${C.ink};
-  font-family: "Outfit", sans-serif;
+  background: ${C.snow};
+  font-family: "Space Grotesk", sans-serif;
 `;
 
 const BackgroundImage = styled.img`
@@ -79,45 +81,37 @@ const BackgroundImage = styled.img`
   z-index: 0;
   pointer-events: none;
   /*
-   * Backdrop is the Penguin Kokugikan arena — a clean, symmetric,
-   * daytime illustration where the colorful nobori banners and the
-   * recognizable green-tiered roof are part of the brand identity.
-   * Unlike the previous painterly ink-wash this asset replaced, it
-   * does NOT want to be mushed into atmosphere — a heavy blur turns
-   * the banners into colored smears and erases the silhouette.
-   *
-   * So we use a much lighter touch: a tiny blur (just enough to push
-   * it back as a backdrop and stop it competing with menu text), a
-   * mild brightness pull so Pumo still pops in front, and saturation
-   * left near-natural so the banners stay vivid. The image is
-   * symmetric and centered on the doorway, so we anchor it dead
-   * center and just nudge the vertical anchor down so the arena
-   * roofline lifts slightly toward the title row.
+   * Penguin Kokugikan arena. On the snow theme we PUSH the image a
+   * touch brighter (no longer dragging it down toward an inky bg)
+   * and keep the very mild blur so it sits behind the foreground
+   * type without smearing the nobori banners. Saturation stays close
+   * to natural — the colorful banners are part of the brand and
+   * desaturating them was reading as "stock illustration filtered
+   * for a hero section" rather than as a real arena scene.
    */
   object-position: 50% 55%;
   transform: scale(1.08);
-  filter: saturate(0.9) brightness(0.85) contrast(0.95) blur(2px);
+  filter: saturate(1.02) brightness(1.04) contrast(0.98) blur(1.5px);
   animation: ${kenBurns} 22s ease-in-out infinite alternate;
 `;
 
 /*
- * Cinematic overlay — tuned for the Penguin Kokugikan backdrop.
+ * Cinematic overlay — re-tuned for the snow theme.
  *
- * The arena scene is symmetric and centered on the doorway, so a
- * heavy left-only readability wash (which the previous overlay
- * used for an asymmetric ink illustration) reads as a lopsided
- * dark stripe over a bright daytime image.
+ * On the dark theme this overlay was a left-column DARK readability
+ * wash + a dark vignette to pull the eye to the arena entrance. On
+ * the snow theme we invert: the overlay is a soft icy WHITE wash
+ * (so dark navy menu type stays legible against the colorful arena
+ * art) plus a gentle cool corner-shadow framing.
  *
- * Instead we layer:
- *   1. A soft left-column tint — much lighter than before — only
- *      to give the cream title + menu enough contrast against the
- *      sky / banners. Tapers to fully transparent by ~45% across.
- *   2. A subtle cool sky wash up top + ink fade at the bottom so
- *      the BottomHud strip blends into the plaza floor instead of
- *      sitting on a hard line.
- *   3. A radial vignette anchored to the arena entrance (~52% x,
- *      55% y) — pulls the eye to center, darkens corners gently,
- *      and frames the scene like a key-art shot.
+ * Layered:
+ *   1. Left-column snow wash — a frosted veil over the menu side
+ *      of the screen. Tapers off by ~45% across so the arena
+ *      illustration breathes on the right.
+ *   2. Top sky-blue → bottom snow band so the HUD strip blends
+ *      into a snowdrift instead of sitting on a hard cut.
+ *   3. Soft cool corner shadows — frames the scene without
+ *      collapsing the bright daytime art into a stage spotlight.
  */
 const CinematicOverlay = styled.div`
   position: absolute;
@@ -125,61 +119,70 @@ const CinematicOverlay = styled.div`
   z-index: 1;
   pointer-events: none;
   background:
-    /* left-column readability tint (kept light, tapers off mid-frame) */
+    /* left-column frosted readability veil */
     linear-gradient(
       90deg,
-      rgba(7, 10, 20, 0.45) 0%,
-      rgba(7, 10, 20, 0.22) 22%,
-      rgba(7, 10, 20, 0) 45%,
-      rgba(7, 10, 20, 0) 100%
+      rgba(234, 241, 247, 0.86) 0%,
+      rgba(234, 241, 247, 0.6) 22%,
+      rgba(234, 241, 247, 0.2) 38%,
+      rgba(234, 241, 247, 0) 50%,
+      rgba(234, 241, 247, 0) 100%
     ),
-    /* cool sky wash up top, fading to ink at the bottom for HUD blend */
+    /* sky-cool top wash, fading to snow at the bottom for HUD blend */
     linear-gradient(
         180deg,
-        rgba(28, 78, 110, 0.18) 0%,
-        transparent 35%,
-        transparent 65%,
-        rgba(7, 10, 20, 0.45) 100%
+        rgba(203, 219, 231, 0.55) 0%,
+        transparent 30%,
+        transparent 60%,
+        rgba(234, 241, 247, 0.7) 100%
       ),
-    /* vignette anchored to the arena entrance */
+    /* soft cool corner framing — replaces the previous black vignette */
     radial-gradient(
-        ellipse at 52% 55%,
-        transparent 35%,
-        rgba(0, 0, 0, 0.45) 100%
+        ellipse at 50% 55%,
+        transparent 50%,
+        rgba(35, 70, 110, 0.18) 100%
       );
 `;
 
-/* Subtle paper-grain / film texture overlay */
+/*
+ * Paper-grain texture overlay — softened for the snow theme.
+ * On the dark version this was at opacity 0.35 with mix-blend-mode
+ * overlay (which threw flecks of white onto the dark surface as a
+ * subtle "newsprint" texture). On snow that mode either disappears
+ * or muddies the field, so we drop the blend mode and dial the
+ * opacity way back. The grain still adds the faint paper tooth that
+ * keeps a pure-color background from looking like a flat screen
+ * grab, but it no longer fights the lightness of the snow.
+ */
 const GrainOverlay = styled.div`
   position: absolute;
   inset: 0;
   z-index: 2;
   pointer-events: none;
-  opacity: 0.35;
-  mix-blend-mode: overlay;
+  opacity: 0.18;
   background-image:
     repeating-linear-gradient(
       0deg,
-      rgba(255, 255, 255, 0.025) 0px,
+      rgba(35, 70, 110, 0.04) 0px,
       transparent 1px,
       transparent 2px,
-      rgba(255, 255, 255, 0.02) 3px
+      rgba(35, 70, 110, 0.03) 3px
     ),
     repeating-linear-gradient(
       90deg,
-      rgba(0, 0, 0, 0.03) 0px,
+      rgba(35, 70, 110, 0.03) 0px,
       transparent 1px,
       transparent 3px
     );
 `;
 
-/* Cinematic top + bottom letterbox bars (very thin) */
+/* Thin top + bottom letterbox bars in icy snow tones */
 const Letterbox = styled.div`
   position: absolute;
   left: 0;
   right: 0;
   height: clamp(3px, 0.5cqh, 5px);
-  background: linear-gradient(180deg, ${C.ink}, ${C.inkSoft});
+  background: ${C.snowFrost};
   z-index: 3;
   pointer-events: none;
   ${(p) => (p.$top ? "top: 0;" : "bottom: 0;")}
@@ -193,7 +196,7 @@ const LiveStatus = styled.div`
   display: flex;
   align-items: center;
   gap: 8px;
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.45rem, 0.78cqw, 0.6rem);
   color: ${C.cream};
@@ -206,7 +209,7 @@ const VersionChip = styled.div`
   display: flex;
   align-items: center;
   gap: 8px;
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.45rem, 0.72cqw, 0.55rem);
   letter-spacing: 0.22em;
@@ -222,7 +225,7 @@ const VersionChip = styled.div`
   span.divider {
     width: 1px;
     height: 10px;
-    background: rgba(245, 236, 217, 0.2);
+    background: ${C.creamFaint};
   }
 
   span.tag {
@@ -234,7 +237,7 @@ const LiveDot = styled.span`
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #4ade80;
+  background: ${C.success};
   animation: ${livePulse} 2s ease-out infinite;
 `;
 
@@ -268,29 +271,14 @@ const LeftColumn = styled.div`
 
 // --- Title block ---
 
+/*
+ * The wordmark stands on its own — no decorative left bar, no gradient
+ * accent. A single confident lockup reads as a real game logo; the
+ * old vertical gradient rule was fighting the type for attention and
+ * making the two PUMO halves feel like two separate brands.
+ */
 const TitleBlock = styled.div`
   position: relative;
-  padding-left: clamp(14px, 1.8cqw, 22px);
-
-  &::before {
-    /* vertical vermillion accent bar */
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 6%;
-    bottom: 6%;
-    width: 4px;
-    background: linear-gradient(
-      180deg,
-      ${C.vermillion} 0%,
-      ${C.gold} 50%,
-      ${C.vermillion} 100%
-    );
-    box-shadow: 0 0 16px ${C.vermillionGlow};
-    border-radius: 2px;
-    opacity: 0;
-    animation: ${fadeIn} 0.6s ease-out 0.25s forwards;
-  }
 `;
 
 const MainTitle = styled.h1`
@@ -298,26 +286,38 @@ const MainTitle = styled.h1`
   font-size: clamp(1.85rem, 4.55cqw, 3.45rem);
   margin: 0;
   line-height: 0.94;
-  color: ${C.cream};
+  color: ${C.inkTextStrong};
   text-transform: uppercase;
-  letter-spacing: 0.012em;
+  letter-spacing: 0.02em;
   white-space: nowrap;
   position: relative;
   /*
-   * Static, restrained shadow. Tiny vermillion offset for color depth,
-   * a soft ambient drop shadow for lift. No animated neon glow.
+   * Stamped poster depth: a thin white emboss highlight up top makes
+   * the letterforms feel pressed INTO the snow surface, a solid dark
+   * drop at the bottom anchors the wordmark, and a soft cool ambient
+   * shadow lifts it off the arena art behind. No more vermillion
+   * misregistration — that was literally muddying the letterforms
+   * and killing legibility.
    */
   text-shadow:
-    1px 2px 0 ${C.vermillionDeep},
-    0 4px 14px rgba(0, 0, 0, 0.55);
+    0 -1px 0 rgba(255, 255, 255, 0.55),
+    0 2px 0 rgba(15, 29, 46, 0.18),
+    0 4px 0 rgba(15, 29, 46, 0.30),
+    0 8px 18px ${C.snowShadowStrong};
   animation: ${slideInLeft} 0.6s ease-out 0.35s backwards;
 
   span {
     display: inline-block;
   }
 
-  span.accent {
-    color: ${C.vermillionBright};
+  /*
+   * Both PUMO halves now share the same deep ink — the wordmark
+   * reads as ONE word. The exclamation is the single punch of red,
+   * acting like a hanko seal at the end of the lockup.
+   */
+  span.bang {
+    color: ${C.vermillion};
+    margin-left: 0.08em;
   }
 `;
 
@@ -334,14 +334,22 @@ const MenuList = styled.nav`
 
 const MenuButton = styled.button`
   /*
-   * Secondary palette = "Pumo ice" (the mawashi belt color) — the
-   * canonical secondary across all menu surfaces. Primary stays
-   * vermillion for the torii / sumo ring identity.
+   * Snow plaque buttons. Primary stays vermillion (sumo ring red),
+   * secondary uses the deeper iceMid for a calm cool accent — both
+   * pull double-duty as the LEFT RULE that anchors the row. The
+   * body of every button is now a clean white tile with a crisp
+   * solid border (no semi-transparent edges, no glow halos at
+   * rest), which reads as "real signage on a wall" instead of the
+   * previous SaaS card-with-inset-highlight.
+   *
+   * Primary differentiates by:
+   *   - thicker border (1.5px vs 1px)
+   *   - thicker left rule (5px vs 3px)
+   *   - vermillion border color
+   * Secondary uses the same body, just thinner ice-blue chrome.
    */
-  --accent: ${(p) => (p.$primary ? C.vermillion : C.ice)};
-  --accentBright: ${(p) => (p.$primary ? C.vermillionBright : C.iceBright)};
-  --accentGlow: ${(p) =>
-    p.$primary ? C.vermillionGlow : "rgba(126, 203, 240, 0.45)"};
+  --accent: ${(p) => (p.$primary ? C.vermillion : C.iceMid)};
+  --accentBright: ${(p) => (p.$primary ? C.vermillionDeep : C.iceDeep)};
 
   position: relative;
   display: flex;
@@ -349,83 +357,46 @@ const MenuButton = styled.button`
   gap: clamp(10px, 1.4cqw, 18px);
   width: 100%;
   max-width: clamp(380px, 44cqw, 560px);
-  /* More compact vertical rhythm — shorter buttons, same horizontal weight */
   padding: ${(p) =>
     p.$primary
       ? "clamp(8px, 1.15cqh, 12px) clamp(20px, 2.4cqw, 30px)"
       : "clamp(6px, 0.9cqh, 9px) clamp(18px, 2.2cqw, 26px)"};
-  background: linear-gradient(
-    100deg,
-    ${(p) =>
-      p.$primary
-        ? "rgba(216, 59, 39, 0.42) 0%, rgba(10, 12, 22, 0.85) 55%, rgba(10, 12, 22, 0.78) 100%"
-        : "rgba(28, 78, 110, 0.55) 0%, rgba(10, 12, 22, 0.85) 65%, rgba(10, 12, 22, 0.78) 100%"}
-  );
-  border: 1px solid
-    ${(p) =>
-      p.$primary ? "rgba(238, 81, 65, 0.7) " : "rgba(126, 203, 240, 0.55)"};
-  border-left: 3px solid var(--accent);
+  background: ${(p) => (p.$disabled ? C.snowSoft : C.snowPanel)};
+  border: ${(p) => (p.$primary ? "1.5px" : "1px")} solid
+    ${(p) => (p.$primary ? C.vermillion : C.snowBorder)};
+  border-left: ${(p) => (p.$primary ? "5px" : "3px")} solid var(--accent);
   border-radius: 2px;
   cursor: ${(p) => (p.$disabled ? "default" : "pointer")};
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 700;
-  color: ${(p) => (p.$disabled ? "rgba(245, 236, 217, 0.35)" : C.cream)};
+  color: ${(p) => (p.$disabled ? C.inkTextFaint : C.inkText)};
   text-align: left;
   text-transform: uppercase;
   letter-spacing: 0.18em;
-  text-shadow: 0 2px 0 #000;
   transition:
-    transform 0.2s ease,
-    background 0.2s ease,
-    border-color 0.2s ease,
-    box-shadow 0.2s ease;
-  backdrop-filter: blur(3px);
-  box-shadow:
-    0 4px 14px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    transform 0.18s ease,
+    background 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+  /*
+   * Single short cool drop shadow — no glow halo, no inset
+   * highlight. The visual hierarchy is carried by the LEFT RULE
+   * width and color, not by stacking effects.
+   */
+  box-shadow: 0 2px 6px ${C.snowShadow};
   opacity: 0;
   animation: ${slideInLeft} 0.45s ease-out forwards;
   animation-delay: ${(p) => 0.55 + p.$index * 0.07}s;
   clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
-
-  /* diagonal slash underline accent */
-  &::after {
-    content: "";
-    position: absolute;
-    left: 18px;
-    right: 26px;
-    bottom: 4px;
-    height: 1px;
-    background: linear-gradient(90deg, var(--accent) 0%, transparent 80%);
-    transform: scaleX(${(p) => (p.$primary ? 1 : 0.4)});
-    transform-origin: left;
-    opacity: ${(p) => (p.$disabled ? 0.2 : 0.7)};
-    transition:
-      transform 0.25s ease,
-      opacity 0.25s ease;
-  }
 
   ${(p) =>
     !p.$disabled &&
     css`
       &:hover {
         transform: translateX(8px);
-        background: linear-gradient(
-          100deg,
-          ${p.$primary
-            ? "rgba(238, 81, 65, 0.6) 0%, rgba(10, 12, 22, 0.88) 55%, rgba(10, 12, 22, 0.82) 100%"
-            : "rgba(54, 130, 170, 0.7) 0%, rgba(10, 12, 22, 0.88) 65%, rgba(10, 12, 22, 0.78) 100%"}
-        );
+        background: ${C.snowSoft};
         border-color: var(--accentBright);
-        box-shadow:
-          0 6px 22px rgba(0, 0, 0, 0.55),
-          0 0 24px var(--accentGlow),
-          inset 0 1px 0 rgba(255, 255, 255, 0.1);
-
-        &::after {
-          transform: scaleX(1);
-          opacity: 1;
-        }
+        box-shadow: 0 4px 12px ${C.snowShadowStrong};
 
         .menu-arrow {
           color: var(--accentBright);
@@ -456,20 +427,18 @@ const MenuTooltip = styled.span.attrs({ className: "menu-tooltip" })`
   left: calc(100% + 14px);
   transform: translate(-6px, -50%);
   padding: clamp(7px, 1cqh, 10px) clamp(12px, 1.6cqw, 18px);
-  background: ${C.inkPanelStrong};
-  border: 1px solid rgba(245, 236, 217, 0.18);
+  background: ${C.inkText};
+  border: 1px solid ${C.inkText};
   border-left: 2px solid ${C.vermillion};
   border-radius: 2px;
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 500;
   font-size: clamp(0.5rem, 0.78cqw, 0.6rem);
-  color: ${C.cream};
+  color: ${C.snowSoft};
   letter-spacing: 0.16em;
   text-transform: uppercase;
   white-space: nowrap;
-  text-shadow: 0 1px 0 #000;
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(6px);
+  box-shadow: 0 6px 14px ${C.snowShadowStrong};
   opacity: 0;
   pointer-events: none;
   z-index: 5;
@@ -491,23 +460,21 @@ const MenuTooltip = styled.span.attrs({ className: "menu-tooltip" })`
     transform: translateY(-50%) rotate(45deg);
     width: 8px;
     height: 8px;
-    background: ${C.inkPanelStrong};
+    background: ${C.inkText};
     border-left: 1px solid ${C.vermillion};
-    border-bottom: 1px solid rgba(245, 236, 217, 0.18);
+    border-bottom: 1px solid ${C.inkText};
   }
 `;
 
 const MenuArrow = styled.span.attrs({ className: "menu-arrow" })`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 700;
   font-size: ${(p) =>
     p.$primary
       ? "clamp(0.95rem, 1.5cqw, 1.15rem)"
       : "clamp(0.7rem, 1.1cqw, 0.85rem)"};
-  color: ${(p) =>
-    p.$disabled ? "rgba(245, 236, 217, 0.25)" : "var(--accent)"};
+  color: ${(p) => (p.$disabled ? C.inkTextFaint : "var(--accent)")};
   transition: color 0.2s ease;
-  text-shadow: 0 0 12px var(--accentGlow);
   &::after {
     content: "▶";
   }
@@ -533,10 +500,9 @@ const MenuMeta = styled.div`
   font-family: "Noto Sans JP", sans-serif;
   font-weight: 500;
   font-size: clamp(0.46rem, 0.78cqw, 0.6rem);
-  color: ${C.creamMute};
+  color: ${C.inkTextMute};
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  text-shadow: 1px 1px 0 #000;
   margin-top: 2px;
 `;
 
@@ -551,10 +517,10 @@ const MenuDivider = styled.div`
   width: 100%;
   max-width: clamp(380px, 44cqw, 560px);
   margin: clamp(3px, 0.5cqh, 6px) 0 clamp(2px, 0.3cqh, 4px);
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.4rem, 0.65cqw, 0.5rem);
-  color: ${C.creamMute};
+  color: ${C.inkTextMute};
   letter-spacing: 0.32em;
   text-transform: uppercase;
   opacity: 0;
@@ -566,7 +532,7 @@ const MenuDivider = styled.div`
     content: "";
     flex: 1;
     height: 1px;
-    background: rgba(245, 236, 217, 0.12);
+    background: ${C.snowBorder};
   }
 `;
 
@@ -584,18 +550,24 @@ const SystemButton = styled.button`
   width: 100%;
   max-width: clamp(380px, 44cqw, 560px);
   padding: clamp(7px, 1cqh, 10px) clamp(18px, 2.2cqw, 26px);
-  background: rgba(10, 12, 22, 0.55);
-  border: 1px solid rgba(245, 236, 217, 0.22);
-  backdrop-filter: blur(3px);
+  /*
+   * Deliberately low-contrast: transparent tile with just a hairline
+   * snow border. OPTIONS is a SECONDARY action that sits below the
+   * primary game-mode stack, so painting it as a solid plaque (whether
+   * white or dark) competes with the primary list for attention.
+   * Keeping it as a transparent ghost button visually demotes it
+   * exactly as a "system row" should be.
+   */
+  background: transparent;
+  border: 1px solid ${C.snowBorderSoft};
   border-radius: 2px;
   cursor: pointer;
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
-  color: ${C.creamMute};
+  color: ${C.inkTextSoft};
   text-align: left;
   text-transform: uppercase;
   letter-spacing: 0.18em;
-  text-shadow: 0 2px 0 #000;
   font-size: clamp(0.65rem, 1.05cqw, 0.82rem);
   transition:
     transform 0.2s ease,
@@ -612,7 +584,7 @@ const SystemButton = styled.button`
     place-items: center;
     width: clamp(16px, 1.6cqw, 22px);
     height: clamp(16px, 1.6cqw, 22px);
-    color: ${C.creamMute};
+    color: ${C.inkTextMute};
     transition:
       color 0.2s ease,
       transform 0.4s ease;
@@ -622,14 +594,14 @@ const SystemButton = styled.button`
   }
 
   &:hover {
-    color: ${C.cream};
-    background: rgba(28, 78, 110, 0.55);
-    border-color: rgba(126, 203, 240, 0.6);
+    color: ${C.inkText};
+    background: ${C.snowSoft};
+    border-color: ${C.iceMid};
     transform: translateX(6px);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 2px 6px ${C.snowShadow};
 
     .system-icon {
-      color: ${C.iceBright};
+      color: ${C.iceDeep};
       transform: rotate(45deg);
     }
   }
@@ -640,16 +612,15 @@ const SystemButton = styled.button`
 `;
 
 const SoonTag = styled.span`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.42rem, 0.7cqw, 0.55rem);
-  color: ${C.gold};
+  color: ${C.goldDeep};
   letter-spacing: 0.22em;
   padding: 3px 7px;
-  border: 1px solid rgba(232, 197, 71, 0.35);
+  border: 1px solid ${C.gold};
   border-radius: 2px;
-  background: rgba(232, 197, 71, 0.06);
-  text-shadow: none;
+  background: rgba(232, 197, 71, 0.18);
 `;
 
 // --- Right column: Pumo hero + Banzuke (today's stats) panel ---
@@ -692,6 +663,12 @@ const PumoHalo = styled.div`
    * his visible head sits in the upper-right of his bounding box.
    * Anchor the halo to his actual head position so it doesn't read
    * as biased to the left.
+   *
+   * On the snow theme the warm cream-and-gold halo (which lifted
+   * Pumo off the dark sumi-ink ground) becomes a faint cool ICY
+   * glow — like the ambient sky-light scattering off a snowfield
+   * behind him. Warm halo + bright snow bg muddied into a beige
+   * smear, so we replaced it with cool tones only.
    */
   right: clamp(-40px, -2cqw, 10px);
   top: clamp(40px, 8cqh, 90px);
@@ -701,10 +678,10 @@ const PumoHalo = styled.div`
   pointer-events: none;
   background: radial-gradient(
     circle at center,
-    rgba(245, 236, 217, 0.22) 0%,
-    rgba(232, 197, 71, 0.1) 30%,
-    rgba(126, 203, 240, 0.05) 58%,
-    transparent 78%
+    rgba(168, 224, 255, 0.32) 0%,
+    rgba(126, 203, 240, 0.18) 35%,
+    rgba(35, 70, 110, 0.08) 65%,
+    transparent 80%
   );
   filter: blur(28px);
   opacity: 0;
@@ -750,14 +727,16 @@ const PumoHero = styled.img`
    */
   transform-origin: 50% 100%;
   /*
-   * Neutral grounding only: a tight dark contact shadow directly
-   * under him plus a subtle ice-blue ambient halo. No directional
-   * warm shadow — that just reads as a red aura behind a black
-   * silhouette, not as rim lighting.
+   * Pumo grounding on snow: a soft COOL contact shadow directly
+   * under him (replaces the previous near-black drop, which read
+   * as a hard cutout against the snow field) plus a thin ice-blue
+   * ambient halo. He keeps his natural color — no brightness
+   * pull — because the snow background means we want him to
+   * sit forward, not be pulled back into atmosphere.
    */
-  filter: saturate(0.96) brightness(0.94)
-    drop-shadow(0 22px 22px rgba(0, 0, 0, 0.75))
-    drop-shadow(0 0 32px rgba(126, 203, 240, 0.14));
+  filter: saturate(1.02) brightness(1)
+    drop-shadow(0 18px 16px rgba(35, 70, 110, 0.32))
+    drop-shadow(0 0 24px rgba(126, 203, 240, 0.18));
   will-change: transform;
   animation: ${pumoBreathe} 3s ease-in-out infinite;
 `;
@@ -784,19 +763,26 @@ const BanzukeCard = styled.section`
   right: clamp(44px, 5cqw, 76px);
   z-index: 2;
   width: clamp(200px, 23cqw, 270px);
-  padding: clamp(10px, 1.4cqh, 14px) clamp(14px, 1.8cqw, 20px);
-  background: linear-gradient(
-    180deg,
-    rgba(28, 78, 110, 0.6) 0%,
-    rgba(10, 12, 22, 0.94) 100%
-  );
-  border: 1px solid rgba(126, 203, 240, 0.32);
+  /*
+   * Hybrid printed-banzuke panel: dark sumi header band on top,
+   * crisp white body for the stats. Padding is delegated to
+   * Header / StatList so the dark band hugs the rounded card
+   * edges (overflow:hidden clips the band corners). The gold
+   * left rule still runs the full height as the "frame".
+   */
+  background: ${C.snowPanel};
+  border: 1px solid ${C.snowBorder};
   border-left: 3px solid ${C.gold};
   border-radius: 2px;
-  backdrop-filter: blur(6px);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  box-shadow: 0 6px 14px ${C.snowShadow};
   opacity: 0;
-  animation: ${fadeUp} 0.6s ease-out 0.55s forwards;
+  /*
+   * Slides in from the right edge — this card lives in the upper-right
+   * corner so reading "it came from off-screen right" is more honest
+   * than a generic fade-up.
+   */
+  animation: ${slideInRight} 0.55s ease-out 0.55s forwards;
 `;
 
 const BanzukeHeader = styled.div`
@@ -804,9 +790,9 @@ const BanzukeHeader = styled.div`
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  padding-bottom: clamp(6px, 0.8cqh, 8px);
-  margin-bottom: clamp(8px, 1cqh, 11px);
-  border-bottom: 1px solid rgba(245, 236, 217, 0.1);
+  padding: clamp(8px, 1.1cqh, 11px) clamp(14px, 1.8cqw, 20px);
+  background: ${C.sumi};
+  border-bottom: 1px solid ${C.sumiBorder};
 `;
 
 const BanzukeTitle = styled.div`
@@ -815,11 +801,10 @@ const BanzukeTitle = styled.div`
   color: ${C.gold};
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  text-shadow: 1px 1px 0 #000;
 `;
 
 const BanzukeDate = styled.div`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 500;
   font-size: clamp(0.45rem, 0.72cqw, 0.55rem);
   color: ${C.creamMute};
@@ -831,6 +816,7 @@ const StatList = styled.div`
   display: flex;
   flex-direction: column;
   gap: clamp(6px, 0.9cqh, 9px);
+  padding: clamp(11px, 1.5cqh, 15px) clamp(14px, 1.8cqw, 20px);
 `;
 
 const StatRow = styled.div`
@@ -841,10 +827,10 @@ const StatRow = styled.div`
 `;
 
 const StatLabel = styled.div`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 500;
   font-size: clamp(0.5rem, 0.8cqw, 0.62rem);
-  color: ${C.creamMute};
+  color: ${C.inkTextMute};
   letter-spacing: 0.18em;
   text-transform: uppercase;
 `;
@@ -852,14 +838,13 @@ const StatLabel = styled.div`
 const StatValue = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(0.75rem, 1.25cqw, 0.95rem);
-  color: ${(p) => (p.$muted ? C.creamMute : C.cream)};
+  color: ${(p) => (p.$muted ? C.inkTextMute : C.inkText)};
   letter-spacing: 0.06em;
-  text-shadow: 0 2px 0 #000;
 
   ${(p) =>
     p.$accent &&
     css`
-      color: ${C.vermillionBright};
+      color: ${C.vermillion};
     `}
 `;
 
@@ -875,21 +860,14 @@ const ConnectionErrorBanner = styled.div`
   align-items: center;
   gap: 10px;
   padding: clamp(10px, 1.4cqh, 14px) clamp(18px, 2.4cqw, 28px);
-  background: linear-gradient(
-    180deg,
-    ${C.vermillionDeep} 0%,
-    rgba(96, 22, 14, 0.95) 100%
-  );
-  border: 1px solid ${C.vermillionBright};
-  border-radius: 4px;
-  box-shadow:
-    0 12px 40px rgba(0, 0, 0, 0.6),
-    0 0 30px ${C.vermillionGlow};
+  background: ${C.vermillion};
+  border: 2px solid ${C.vermillionDeep};
+  border-radius: 2px;
+  box-shadow: 0 8px 22px rgba(138, 31, 18, 0.4);
   font-family: "Bungee", cursive;
   font-size: clamp(0.55rem, 0.9cqw, 0.72rem);
-  color: ${C.cream};
+  color: ${C.snowSoft};
   letter-spacing: 0.14em;
-  text-shadow: 1px 1px 0 #000;
   animation: ${fadeIn} 0.4s ease-out;
 
   &::before {
@@ -908,43 +886,42 @@ const BottomHud = styled.footer`
   z-index: 20;
   display: flex;
   align-items: stretch;
-  border-top: 1px solid rgba(245, 236, 217, 0.1);
   /*
-   * Neutral near-black instead of the previous blue-tinted ink so
-   * the bottom strip reads as a clean broadcast bar rather than a
-   * navy band against the bright daytime arena bg.
+   * Sumi-ink anchor band. The all-snow main menu had nowhere for the
+   * eye to rest — adding this dark band at the bottom gives the screen
+   * a real broadcast frame again. Cream washi hairline along the top
+   * sells it as a printed bunting strip, not a flat dark slab.
    */
-  background: linear-gradient(
-    0deg,
-    rgba(12, 12, 14, 0.97) 0%,
-    rgba(12, 12, 14, 0.85) 100%
-  );
-  box-shadow: 0 -10px 24px rgba(0, 0, 0, 0.5);
+  background: ${C.sumi};
+  border-top: 1px solid ${C.sumiBorder};
+  box-shadow: 0 -3px 10px ${C.sumiShadow};
   opacity: 0;
-  animation: ${fadeIn} 0.6s ease-out 0.6s forwards;
+  /*
+   * Wipes up from its own bottom edge rather than a generic fade —
+   * the broadcast strip should read like it's being inserted along the
+   * bottom of the frame, not floating in.
+   */
+  animation: ${clipRevealUp} 0.55s ease-out 0.6s forwards;
   min-height: clamp(28px, 3.6cqh, 40px);
 `;
 
-/* Fixed-width status block on the left edge of the bottom bar */
+/* Fixed-width status block on the left edge of the bottom bar.
+ * Slightly lighter (sumiSoft) so it reads as a separate plate-on-plate
+ * within the dark HUD, kept distinct by the vermillion right rule. */
 const StatusBlock = styled.div`
   display: flex;
   align-items: center;
   gap: clamp(10px, 1.5cqw, 18px);
   padding: 0 clamp(16px, 2cqw, 26px);
-  background: linear-gradient(
-    180deg,
-    rgba(28, 78, 110, 0.45) 0%,
-    rgba(14, 14, 16, 0.95) 100%
-  );
+  background: ${C.sumiSoft};
   border-right: 2px solid ${C.vermillion};
-  box-shadow: inset 0 1px 0 rgba(245, 236, 217, 0.05);
   flex-shrink: 0;
 `;
 
 const StatusDivider = styled.span`
   width: 1px;
   height: 14px;
-  background: rgba(245, 236, 217, 0.18);
+  background: ${C.creamFaint};
 `;
 
 const Ticker = styled.div`
@@ -954,20 +931,15 @@ const Ticker = styled.div`
   display: flex;
   align-items: center;
   /*
-   * Defined broadcast-style channel: a solid darker backing (slightly
-   * deeper than StatusBlock so it reads as a separate cell of the same
-   * bar), a very subtle warm wash centered, and a thin vermillion
-   * top-edge accent so the whole bottom HUD reads as one strip.
+   * Sumi-toned ticker channel matching the bottom HUD body. Single
+   * pixel vermillion top accent reads as the bunting hairline that
+   * runs across both StatusBlock and Ticker, so the whole bar feels
+   * like one printed strip. Edge fades use the sumi panel color so
+   * scrolling text appears to slide IN and OUT of the bunting rather
+   * than popping at the boundary.
    */
-  background: linear-gradient(
-    90deg,
-    rgba(12, 12, 14, 0.96) 0%,
-    rgba(18, 18, 20, 0.94) 50%,
-    rgba(12, 12, 14, 0.96) 100%
-  );
-  box-shadow:
-    inset 0 1px 0 ${C.vermillion},
-    inset 0 2px 0 rgba(12, 12, 14, 0.7);
+  background: ${C.sumi};
+  box-shadow: inset 0 2px 0 ${C.vermillion};
 
   &::before {
     content: "";
@@ -976,7 +948,7 @@ const Ticker = styled.div`
     top: 0;
     bottom: 0;
     width: 60px;
-    background: linear-gradient(90deg, rgba(12, 12, 14, 0.97), transparent);
+    background: linear-gradient(90deg, ${C.sumi}, transparent);
     z-index: 2;
     pointer-events: none;
   }
@@ -987,7 +959,7 @@ const Ticker = styled.div`
     top: 0;
     bottom: 0;
     width: 60px;
-    background: linear-gradient(270deg, rgba(12, 12, 14, 0.97), transparent);
+    background: linear-gradient(270deg, ${C.sumi}, transparent);
     z-index: 2;
     pointer-events: none;
   }
@@ -997,7 +969,7 @@ const TickerTrack = styled.div`
   display: inline-flex;
   white-space: nowrap;
   animation: ${tickerScroll} 45s linear infinite;
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 500;
   font-size: clamp(0.5rem, 0.85cqw, 0.65rem);
   color: ${C.creamMute};
@@ -1187,7 +1159,8 @@ const MainMenu = ({
           <LeftColumn>
             <TitleBlock>
               <MainTitle>
-                <span>Pumo</span> <span className="accent">Pumo&nbsp;!</span>
+                <span>Pumo</span> <span>Pumo</span>
+                <span className="bang">!</span>
               </MainTitle>
             </TitleBlock>
 

@@ -14,16 +14,10 @@ import { C, slideInLeft, arrowNudge } from "./menuTheme";
 
 const subtlePulse = keyframes`
   0%, 100% {
-    box-shadow:
-      0 4px 14px rgba(0, 0, 0, 0.45),
-      0 0 0 rgba(74, 222, 128, 0),
-      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    box-shadow: 0 2px 6px ${C.snowShadow};
   }
   50% {
-    box-shadow:
-      0 4px 14px rgba(0, 0, 0, 0.45),
-      0 0 16px rgba(74, 222, 128, 0.18),
-      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    box-shadow: 0 2px 6px ${C.snowShadow}, 0 0 12px rgba(22, 163, 74, 0.18);
   }
 `;
 
@@ -32,35 +26,31 @@ const subtlePulse = keyframes`
 // ============================================
 
 const RoomCard = styled.div`
-  --accent: ${(p) => (p.$isFull ? "rgba(126, 203, 240, 0.25)" : C.success)};
+  --accent: ${(p) => (p.$isFull ? C.snowBorder : C.successDeep)};
   --accentBright: ${(p) =>
-    p.$isFull ? "rgba(126, 203, 240, 0.4)" : C.successBright};
+    p.$isFull ? C.snowBorder : C.success};
 
   position: relative;
   display: flex;
   align-items: center;
   gap: clamp(14px, 2cqw, 22px);
   padding: clamp(12px, 1.7cqh, 18px) clamp(18px, 2.4cqw, 26px);
-  background: linear-gradient(
-    100deg,
-    ${(p) =>
-      p.$isFull
-        ? "rgba(15, 18, 30, 0.7) 0%, rgba(8, 11, 24, 0.6) 60%, rgba(8, 11, 24, 0.5) 100%"
-        : "rgba(28, 78, 110, 0.45) 0%, rgba(8, 11, 24, 0.55) 70%, rgba(8, 11, 24, 0.4) 100%"}
-  );
+  /*
+   * Snow plaque rows. Joinable = clean white tile with green left
+   * rule + green accent dot + subtle pulse animation. Full = the
+   * one-step-darker secondary surface so it visually recedes.
+   * Single short cool drop shadow — no inset highlights, no gradient
+   * stripes. The clip-path angle on the right gives these rows
+   * their blade-card character without depending on stacked effects.
+   */
+  background: ${(p) => (p.$isFull ? C.snowPanelDeep : C.snowPanel)};
   border: 1px solid
-    ${(p) =>
-      p.$isFull
-        ? "rgba(245, 236, 217, 0.08)"
-        : "rgba(126, 203, 240, 0.32)"};
+    ${(p) => (p.$isFull ? C.snowBorder : C.snowBorder)};
   border-left: 3px solid var(--accent);
   border-radius: 2px;
-  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease,
-    box-shadow 0.2s ease;
-  backdrop-filter: blur(3px);
-  box-shadow:
-    0 4px 14px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease,
+    box-shadow 0.18s ease;
+  box-shadow: 0 2px 6px ${C.snowShadow};
   opacity: 0;
   animation: ${slideInLeft} 0.4s ease-out forwards;
   animation-delay: ${(p) => Math.min(p.$index ?? 0, 12) * 0.05}s;
@@ -80,17 +70,12 @@ const RoomCard = styled.div`
       !p.$isFull &&
       css`
         transform: translateX(6px);
-        background: linear-gradient(
-          100deg,
-          rgba(54, 130, 170, 0.55) 0%,
-          rgba(8, 11, 24, 0.55) 70%,
-          rgba(8, 11, 24, 0.35) 100%
-        );
+        /* Soft icy hover background — body shifts to a pale ice
+         * tile, green border deepens, single soft cool shadow
+         * grows. No glow halo (was the AI-default tell). */
+        background: #e0eef9;
         border-color: var(--accentBright);
-        box-shadow:
-          0 6px 22px rgba(0, 0, 0, 0.55),
-          0 0 22px ${C.successGlow},
-          inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        box-shadow: 0 4px 12px ${C.snowShadowStrong};
       `}
   }
 `;
@@ -115,10 +100,10 @@ const RoomIdSection = styled.div`
 `;
 
 const RoomLabel = styled.div`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.42rem, 0.68cqw, 0.5rem);
-  color: ${C.creamMute};
+  color: ${C.inkTextMute};
   text-transform: uppercase;
   letter-spacing: 0.28em;
 `;
@@ -126,8 +111,7 @@ const RoomLabel = styled.div`
 const RoomId = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(0.85rem, 1.4cqw, 1.1rem);
-  color: ${C.cream};
-  text-shadow: 0 2px 0 #000;
+  color: ${C.inkText};
   letter-spacing: 0.06em;
   text-transform: uppercase;
   line-height: 1.05;
@@ -144,22 +128,16 @@ const PlayerDot = styled.div`
   width: clamp(9px, 1.1cqw, 12px);
   height: clamp(9px, 1.1cqw, 12px);
   border-radius: 50%;
-  background: ${(p) => (p.$filled ? C.ice : "transparent")};
+  background: ${(p) => (p.$filled ? C.iceMid : "transparent")};
   border: 1.5px solid
-    ${(p) => (p.$filled ? C.ice : "rgba(245, 236, 217, 0.3)")};
-  ${(p) =>
-    p.$filled &&
-    css`
-      box-shadow: 0 0 8px rgba(126, 203, 240, 0.55);
-    `}
+    ${(p) => (p.$filled ? C.iceMid : C.snowBorder)};
 `;
 
 const PlayerCountText = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(0.6rem, 1cqw, 0.75rem);
-  color: ${(p) => (p.$isFull ? C.creamMute : C.cream)};
+  color: ${(p) => (p.$isFull ? C.inkTextMute : C.inkText)};
   letter-spacing: 0.06em;
-  text-shadow: 0 2px 0 #000;
 `;
 
 const StatusBadge = styled.div`
@@ -169,20 +147,19 @@ const StatusBadge = styled.div`
   text-transform: uppercase;
   padding: clamp(4px, 0.6cqh, 6px) clamp(9px, 1.3cqw, 14px);
   border-radius: 2px;
-  text-shadow: none;
   flex-shrink: 0;
 
   ${(p) =>
     p.$isFull
       ? css`
-          color: ${C.creamMute};
-          background: rgba(245, 236, 217, 0.05);
-          border: 1px solid rgba(245, 236, 217, 0.12);
+          color: ${C.inkTextMute};
+          background: ${C.snowPanelDeep};
+          border: 1px solid ${C.snowBorder};
         `
       : css`
-          color: ${C.gold};
-          background: rgba(232, 197, 71, 0.08);
-          border: 1px solid rgba(232, 197, 71, 0.35);
+          color: ${C.goldDeep};
+          background: rgba(232, 197, 71, 0.18);
+          border: 1px solid ${C.gold};
         `}
 `;
 
@@ -214,42 +191,31 @@ const JoinButton = styled.button`
   ${(p) =>
     p.$isFull
       ? css`
-          color: ${C.creamMute};
-          background: rgba(245, 236, 217, 0.05);
-          border: 1px solid rgba(245, 236, 217, 0.12);
-          opacity: 0.6;
-          /* Dark-on-dark "Full" — keep the chunky black drop for depth */
-          text-shadow: 0 2px 0 #000;
+          color: ${C.inkTextMute};
+          background: ${C.snowPanelDeep};
+          border: 1px solid ${C.snowBorder};
+          opacity: 0.7;
         `
       : css`
           /*
-           * "Go" green CTA — visually rhymes with the live-status pulse
-           * dot used elsewhere in the menu, signalling "open for action."
-           * Reserved exclusively for accept / join / ready-to-fight CTAs.
-           *
-           * Dark ink text on bright green: do NOT use the chunky black
-           * drop-shadow used elsewhere — text and shadow would muddy
-           * each other. Instead a soft light highlight gives a subtle
-           * letterpress lift on the green tile.
+           * "Go" green CTA — flat solid green tile with dark ink
+           * text. Reserved exclusively for accept / join /
+           * ready-to-fight CTAs. Dropped the gradient + glow halo
+           * + inset highlight stack from the dark theme; on a snow
+           * page that recipe reads as glossy SaaS chrome. The
+           * single short cool drop shadow is enough to give the
+           * pill some lift.
            */
-          color: ${C.ink};
-          background: linear-gradient(
-            180deg,
-            ${C.success} 0%,
-            ${C.successDeep} 100%
-          );
-          border: 1px solid ${C.successBright};
-          text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
-          box-shadow:
-            0 4px 14px rgba(0, 0, 0, 0.45),
-            0 0 18px rgba(74, 222, 128, 0.3),
-            inset 0 1px 0 rgba(255, 255, 255, 0.32);
+          color: ${C.inkTextStrong};
+          background: ${C.success};
+          border: 1px solid ${C.successDeep};
+          box-shadow: 0 2px 6px rgba(22, 163, 74, 0.32);
         `}
 
   .arrow {
-    font-family: "Outfit", sans-serif;
+    font-family: "Space Grotesk", sans-serif;
     font-weight: 700;
-    color: ${(p) => (p.$isFull ? "rgba(245, 236, 217, 0.3)" : C.ink)};
+    color: ${(p) => (p.$isFull ? C.inkTextFaint : C.inkTextStrong)};
     transition: transform 0.2s ease;
   }
 
@@ -257,17 +223,10 @@ const JoinButton = styled.button`
     !p.$isFull &&
     css`
       &:hover {
-        background: linear-gradient(
-          180deg,
-          ${C.successBright} 0%,
-          ${C.success} 100%
-        );
-        border-color: ${C.cream};
+        background: ${C.successBright};
+        border-color: ${C.successDeep};
         transform: translateY(-1px);
-        box-shadow:
-          0 6px 22px rgba(0, 0, 0, 0.55),
-          0 0 28px rgba(74, 222, 128, 0.5),
-          inset 0 1px 0 rgba(255, 255, 255, 0.32);
+        box-shadow: 0 4px 12px rgba(22, 163, 74, 0.4);
 
         .arrow {
           animation: ${arrowNudge} 0.7s ease-in-out infinite;

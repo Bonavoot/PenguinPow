@@ -9,7 +9,15 @@ import {
   BLUE_COLOR_RANGES,
   GREY_BODY_RANGES,
 } from "../utils/SpriteRecolorizer";
-import { C } from "./menuTheme";
+import {
+  C,
+  broadcastSlideDown,
+  broadcastSlideDownRight,
+  clipRevealUp,
+  clipRevealLeft,
+  clipRevealRight,
+  stampImpression,
+} from "./menuTheme";
 
 /*
  * PreMatchScreen — "broadcast lower-third over the live dohyo".
@@ -56,7 +64,7 @@ const ScreenContainer = styled.div`
   z-index: 10000;
   animation: ${fadeIn} 0.3s ease-out;
   overflow: hidden;
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   pointer-events: auto;
 `;
 
@@ -139,14 +147,25 @@ const BroadcastBar = styled.div`
   border-bottom: 1px solid rgba(245, 236, 217, 0.18);
   backdrop-filter: blur(6px);
   z-index: 40;
-  animation: ${fadeUp} 0.45s ease-out 0.05s backwards;
+  /*
+   * Drops down from behind the top letterbox bar — reads like a
+   * broadcast graphic being inserted into the frame. Animates only
+   * transform + opacity (the two compositor-cheap properties) so it
+   * stays smooth even with backdrop-filter blurs and live game
+   * content rendering behind it. The will-change hint promotes the
+   * bar to its own GPU layer up-front so the first frame of the
+   * animation doesn't pay a layer-creation cost.
+   */
+  will-change: transform, opacity;
+  animation: ${broadcastSlideDown} 0.45s cubic-bezier(0.2, 0.7, 0.2, 1)
+    0.05s backwards;
 `;
 
 const BroadcastChip = styled.span`
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.42rem, 0.72cqw, 0.58rem);
   color: ${(p) => (p.$accent ? C.gold : C.creamMute)};
@@ -189,7 +208,14 @@ const LiveIndicator = styled.div`
   text-transform: uppercase;
   z-index: 40;
   backdrop-filter: blur(6px);
-  animation: ${fadeUp} 0.45s ease-out 0.05s backwards;
+  /*
+   * Same broadcast-insertion motion as the top BroadcastBar — both
+   * pieces of broadcast chrome drop in together. Transform + opacity
+   * only, with will-change to pre-promote.
+   */
+  will-change: transform, opacity;
+  animation: ${broadcastSlideDownRight} 0.45s cubic-bezier(0.2, 0.7, 0.2, 1)
+    0.05s backwards;
 `;
 
 const LiveDot = styled.span`
@@ -231,7 +257,17 @@ const HankoStamp = styled.div`
     0 8px 18px rgba(0, 0, 0, 0.55),
     inset 0 0 0 2px rgba(245, 236, 217, 0.12);
   z-index: 25;
-  animation: ${fadeUp} 0.6s ease-out 0.35s backwards;
+  transform-origin: 50% 50%;
+  /*
+   * The hanko is a STAMP, not a card. It should land on the page like
+   * an inkpad press: oversized + rotated → snap small → settle to its
+   * final -2° rest. stampImpression already uses pure transforms so
+   * it's compositor-cheap; will-change just makes sure the layer
+   * exists before the first keyframe to avoid a hitch.
+   */
+  will-change: transform, opacity;
+  animation: ${stampImpression} 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)
+    0.35s backwards;
 
   /* tiny inkbleed corner notch — looks like an old worn stamp */
   &::after {
@@ -321,7 +357,17 @@ const WrestlerPanel = styled.div`
   box-shadow:
     0 14px 30px rgba(0, 0, 0, 0.45),
     inset 0 1px 0 rgba(245, 236, 217, 0.05);
-  animation: ${fadeUp} 0.55s ease-out 0.2s backwards;
+  /*
+   * Each panel slides in from its own outer edge (left panel from the
+   * left side of the screen, right panel from the right side) — reads
+   * as a real broadcast pre-bout split-screen rather than two
+   * identical cards floating up together. Transform + opacity only;
+   * will-change pre-promotes since these panels also contain the
+   * recolored sprite images, which are expensive to repaint.
+   */
+  will-change: transform, opacity;
+  animation: ${(p) => (p.$side === "left" ? clipRevealLeft : clipRevealRight)}
+    0.45s cubic-bezier(0.2, 0.7, 0.2, 1) 0.2s backwards;
 `;
 
 /*
@@ -471,7 +517,16 @@ const LowerThird = styled.div`
   border-bottom: 1px solid rgba(245, 236, 217, 0.1);
   backdrop-filter: blur(8px);
   box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.55);
-  animation: ${fadeUp} 0.55s ease-out 0.4s backwards;
+  /*
+   * Comes up from below — the lower-third reads as a broadcast
+   * graphic being inserted along the bottom of the frame. This
+   * element has the heaviest backdrop-filter on the screen (8px
+   * blur over a wide horizontal strip), so it benefits the most
+   * from being on its own layer during the entrance animation.
+   */
+  will-change: transform, opacity;
+  animation: ${clipRevealUp} 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) 0.4s
+    backwards;
 `;
 
 const PlayerSlot = styled.div`
@@ -488,7 +543,7 @@ const PlayerSlot = styled.div`
 `;
 
 const StableLine = styled.div`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.5rem, 0.82cqw, 0.66rem);
   color: ${C.gold};
@@ -529,7 +584,7 @@ const MetaRow = styled.div`
 `;
 
 const StyleLabel = styled.span`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 700;
   font-size: clamp(0.5rem, 0.82cqw, 0.65rem);
   color: ${C.cream};
@@ -607,7 +662,7 @@ const CenterFormatLabel = styled.div`
 `;
 
 const CenterFormatSub = styled.div`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.46rem, 0.78cqw, 0.6rem);
   color: ${C.creamMute};
@@ -670,7 +725,7 @@ const LoadingProgress = styled.div`
 `;
 
 const LoadingText = styled.div`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.45rem, 0.78cqw, 0.58rem);
   color: ${C.creamMute};

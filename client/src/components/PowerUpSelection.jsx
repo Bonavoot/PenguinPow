@@ -442,7 +442,7 @@ const Title = styled.h1`
 `;
 
 const Subtitle = styled.div`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.42rem, 0.86cqw, 0.6rem);
   color: #e9dbc2;
@@ -666,7 +666,7 @@ const PowerName = styled.div`
 `;
 
 const PowerDesc = styled.div`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 700;
   font-size: clamp(0.48rem, 0.95cqw, 0.66rem);
   color: rgba(234, 239, 246, 0.92);
@@ -685,7 +685,7 @@ const PowerDesc = styled.div`
 `;
 
 const UsageHint = styled.div`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.38rem, 0.72cqw, 0.52rem);
   letter-spacing: 0.04em;
@@ -742,7 +742,7 @@ const TimerDisplay = styled.div`
 `;
 
 const TimerLabel = styled.span`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 700;
   font-size: clamp(0.38rem, 0.72cqw, 0.5rem);
   color: rgba(243, 231, 206, 0.82);
@@ -809,7 +809,7 @@ const TimerNumber = styled.span`
 `;
 
 const TimerUnit = styled.span`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 700;
   font-size: clamp(0.38rem, 0.72cqw, 0.52rem);
   line-height: 1;

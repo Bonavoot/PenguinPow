@@ -37,21 +37,11 @@ const pressKeyFade = keyframes`
 `;
 
 const connectedPulse = keyframes`
-  0% {
-    text-shadow:
-      0 0 8px rgba(74, 222, 128, 0.5),
-      1px 1px 0 #000;
+  0%, 100% {
+    opacity: 1;
   }
   50% {
-    text-shadow:
-      0 0 15px rgba(74, 222, 128, 0.7),
-      0 0 25px rgba(74, 222, 128, 0.3),
-      1px 1px 0 #000;
-  }
-  100% {
-    text-shadow:
-      0 0 8px rgba(74, 222, 128, 0.5),
-      1px 1px 0 #000;
+    opacity: 0.78;
   }
 `;
 
@@ -103,23 +93,19 @@ const ScreenContainer = styled.div`
   width: 100%;
   height: 100%;
   /*
-   * Sumi ink base with a faint ice-blue lift in the upper third — same
-   * "cold mountain hall before a match" mood as the Lobby's cinematic
-   * overlay, so the startup screen reads as part of the same world.
+   * Hokkaido daybreak: a flat snow base with the colder ice tone
+   * banded toward the top and the warmest light gathered just below
+   * the title. Single linear gradient — no radial wash on top of a
+   * second gradient like the dark version had. The flatter the
+   * background, the less it reads as templated AI chrome.
    */
-  background:
-    radial-gradient(
-      ellipse at 50% 30%,
-      rgba(28, 78, 110, 0.22) 0%,
-      rgba(7, 10, 20, 0.55) 55%,
-      ${C.ink} 100%
-    ),
-    linear-gradient(
-      180deg,
-      ${C.ink} 0%,
-      ${C.inkSoft} 50%,
-      ${C.ink} 100%
-    );
+  background: linear-gradient(
+    180deg,
+    ${C.snowFrost} 0%,
+    ${C.snow} 38%,
+    ${C.snowSoft} 72%,
+    ${C.snow} 100%
+  );
   display: flex;
   align-items: center;
   justify-content: center;
@@ -128,17 +114,31 @@ const ScreenContainer = styled.div`
   overflow: hidden;
 `;
 
+/*
+ * Soft cool corner shadows. Replaces the previous radial vignette
+ * (transparent center → 65% black edges), which was useful on the
+ * dark theme but is the wrong move on a snow page — a hard radial
+ * dark edge on a light field reads as a dropped gel on a stage.
+ * Instead the corners gently darken with a cool snow-shadow so the
+ * page feels framed, not vignetted.
+ */
 const Vignette = styled.div`
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background: radial-gradient(
-    ellipse at center,
-    transparent 40%,
-    rgba(0, 0, 0, 0.65) 100%
-  );
+  background:
+    radial-gradient(
+      ellipse 80% 60% at 50% 100%,
+      transparent 60%,
+      ${C.snowShadow} 100%
+    ),
+    radial-gradient(
+      ellipse 80% 50% at 50% 0%,
+      transparent 65%,
+      ${C.snowShadow} 100%
+    );
   pointer-events: none;
 `;
 
@@ -157,10 +157,19 @@ const Particle = styled.div`
   position: absolute;
   width: ${(props) => props.$size}px;
   height: ${(props) => props.$size}px;
+  /*
+   * On the snow theme the white drifting "snow-on-black" particle
+   * disappears because the field IS white. So snow particles become
+   * faint cool DOTS (slightly darker than the snow background) that
+   * read like distant flurries against a pale sky. The non-snow
+   * particles are kept as small cool ice glints (pale blue) instead
+   * of the previous warm vermillion specks — a lighter scene wants
+   * cooler particle accents to stay on-brand with the icy palette.
+   */
   background: ${(props) =>
     props.$isSnow
-      ? `radial-gradient(circle, rgba(255, 255, 255, 0.7) 0%, rgba(210, 230, 255, 0.3) 50%, transparent 70%)`
-      : `radial-gradient(circle, rgba(238, 81, 65, 0.55) 0%, transparent 70%)`};
+      ? `radial-gradient(circle, rgba(80, 110, 145, 0.45) 0%, rgba(120, 160, 195, 0.18) 55%, transparent 75%)`
+      : `radial-gradient(circle, rgba(54, 130, 170, 0.55) 0%, rgba(54, 130, 170, 0.18) 50%, transparent 75%)`};
   border-radius: 50%;
   left: ${(props) => props.$left}%;
   animation: ${(props) =>
@@ -200,34 +209,14 @@ const LogoSection = styled.div`
 
 /*
  * TitleBlock + LogoTitle mirror MainMenu's TitleBlock + MainTitle so
- * the wordmark looks identical on both surfaces. The vertical
- * vermillion-to-gold accent bar on the left is part of the brand
- * identity — keeping it here makes the startup screen and main menu
- * read as one product.
+ * the wordmark looks identical on both surfaces — both pages read
+ * as "the same product." The decorative vertical accent bar that
+ * used to live here was fighting the type for attention; the new
+ * lockup carries itself on type alone.
  */
 const TitleBlock = styled.div`
   position: relative;
-  padding-left: clamp(14px, 1.8cqw, 22px);
   animation: ${fadeUp} 0.8s ease-out 0.2s backwards;
-
-  &::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 6%;
-    bottom: 6%;
-    width: 4px;
-    background: linear-gradient(
-      180deg,
-      ${C.vermillion} 0%,
-      ${C.gold} 50%,
-      ${C.vermillion} 100%
-    );
-    box-shadow: 0 0 16px ${C.vermillionGlow};
-    border-radius: 2px;
-    opacity: 0;
-    animation: ${fadeIn} 0.6s ease-out 0.45s forwards;
-  }
 `;
 
 const LogoTitle = styled.h1`
@@ -235,27 +224,38 @@ const LogoTitle = styled.h1`
   font-size: clamp(2rem, 7cqw, 4rem);
   margin: 0;
   line-height: 0.94;
-  color: ${C.cream};
+  color: ${C.inkTextStrong};
   text-transform: uppercase;
-  letter-spacing: 0.012em;
+  letter-spacing: 0.02em;
   white-space: nowrap;
   position: relative;
   /*
-   * Static, restrained shadow — matches MainMenu's title exactly.
-   * Tiny vermillion offset for color depth + soft ambient drop for
-   * lift. No animated glow.
+   * Stamped poster depth: thin white emboss highlight, solid dark
+   * drop at the bottom, and a soft cool ambient shadow that lifts
+   * the wordmark off the snow surface. The previous vermillion
+   * misregistration was muddying the letterforms — the new layered
+   * shadow is what gives the type its real "pressed into paper"
+   * weight without the color smudge.
    */
   text-shadow:
-    1px 2px 0 ${C.vermillionDeep},
-    0 4px 14px rgba(0, 0, 0, 0.55);
+    0 -1px 0 rgba(255, 255, 255, 0.55),
+    0 2px 0 rgba(15, 29, 46, 0.18),
+    0 4px 0 rgba(15, 29, 46, 0.30),
+    0 8px 18px ${C.snowShadowStrong};
   animation: ${slideInLeft} 0.6s ease-out 0.35s backwards;
 
   span {
     display: inline-block;
   }
 
-  span.accent {
-    color: ${C.vermillionBright};
+  /*
+   * Both PUMO halves share the deep ink so the wordmark reads as
+   * ONE word, not two. Only the exclamation mark gets the red
+   * accent — it works like a hanko seal closing the lockup.
+   */
+  span.bang {
+    color: ${C.vermillion};
+    margin-left: 0.08em;
   }
 
   @media (max-width: 600px) {
@@ -284,14 +284,13 @@ const ConnectingContainer = styled.div`
 `;
 
 const ConnectingText = styled.p`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 500;
   font-size: clamp(0.7rem, 1.6cqw, 1rem);
-  color: ${C.creamMute};
+  color: ${C.inkTextMute};
   margin: 0;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  text-shadow: 1px 1px 0 #000;
 `;
 
 const DotsContainer = styled.div`
@@ -306,7 +305,6 @@ const Dot = styled.div`
   border-radius: 50%;
   animation: ${dotBounce} 1.2s ease-in-out infinite;
   animation-delay: ${(props) => props.$delay * 0.15}s;
-  box-shadow: 0 0 8px ${C.vermillionGlow};
 `;
 
 const ConnectionError = styled.div`
@@ -322,13 +320,10 @@ const ErrorIcon = styled.span`
 const ErrorText = styled.p`
   font-family: "Bungee", cursive;
   font-size: clamp(0.55rem, 1.3cqw, 0.8rem);
-  color: ${C.vermillionBright};
+  color: ${C.vermillionDeep};
   margin: 0;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  text-shadow:
-    0 0 10px ${C.vermillionGlow},
-    1px 1px 0 #000;
 `;
 
 const ConnectedContainer = styled.div`
@@ -341,7 +336,24 @@ const ConnectedContainer = styled.div`
 const ConnectedText = styled.p`
   font-family: "Bungee", cursive;
   font-size: clamp(0.6rem, 1.4cqw, 0.85rem);
-  color: ${C.success};
+  /*
+   * Mid-green sitting between C.success (#4ade80, too bright to
+   * read on the icy off-white snow surface) and C.successDeep
+   * (#16a34a, reads as a too-dark forest green). #22c55e
+   * preserves the visual relationship to the bright dot beside
+   * it — same "live" green family.
+   *
+   * Paired with a subtle dark text-shadow that gives each letter
+   * a faint dark fringe so the green pops off the snow surface
+   * without forcing a literal stroke (which would feel out of
+   * place next to all the other unstroked menu type). This is
+   * the standard "live status label on a light background"
+   * recipe — game HUDs and sports tickers all do this.
+   */
+  color: #22c55e;
+  text-shadow:
+    0 0 2px rgba(15, 29, 46, 0.55),
+    0 1px 0 rgba(15, 29, 46, 0.35);
   margin: 0;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -356,20 +368,18 @@ const ConnectedText = styled.p`
     height: clamp(8px, 1cqw, 10px);
     background: ${C.success};
     border-radius: 50%;
-    box-shadow: 0 0 10px ${C.successGlow};
   }
 `;
 
 const PressKeyText = styled.p`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 500;
   font-size: clamp(0.65rem, 1.3cqw, 0.85rem);
-  color: ${C.creamMute};
+  color: ${C.inkTextSoft};
   margin: 0;
   letter-spacing: 0.28em;
   text-transform: uppercase;
   animation: ${pressKeyFade} 2.5s ease-in-out infinite;
-  text-shadow: 1px 1px 0 #000;
 `;
 
 // ============================================
@@ -385,10 +395,10 @@ const Footer = styled.div`
 `;
 
 const VersionText = styled.p`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 500;
   font-size: clamp(0.5rem, 0.85cqw, 0.65rem);
-  color: ${C.creamMute};
+  color: ${C.inkTextMute};
   margin: 0;
   letter-spacing: 0.22em;
   text-transform: uppercase;
@@ -507,8 +517,8 @@ const StartupScreen = ({ onContinue, connectionError, steamDeckMode }) => {
         <LogoSection>
           <TitleBlock>
             <LogoTitle>
-              <span>Pumo</span>{" "}
-              <span className="accent">Pumo&nbsp;!</span>
+              <span>Pumo</span> <span>Pumo</span>
+              <span className="bang">!</span>
             </LogoTitle>
           </TitleBlock>
         </LogoSection>

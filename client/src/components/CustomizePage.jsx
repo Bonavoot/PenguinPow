@@ -56,10 +56,10 @@ const PageContainer = styled.div`
   flex-direction: column;
   width: 100%;
   height: 100%;
-  background: ${C.ink};
+  background: ${C.snow};
   overflow: hidden;
   container-type: size;
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
 `;
 
 const BackgroundImage = styled.img`
@@ -68,8 +68,14 @@ const BackgroundImage = styled.img`
   width: 100%;
   height: 100%;
   object-fit: cover;
-  opacity: 0.32;
-  filter: saturate(0.65) blur(1px);
+  /*
+   * Soft frosted suggestion of the arena bg — brightness up,
+   * saturation slightly down so the colorful banners read as
+   * a pale watermark behind the snow surface, not a competing
+   * mid-tone.
+   */
+  opacity: 0.45;
+  filter: saturate(0.78) brightness(1.18) blur(1.5px);
   z-index: 0;
   pointer-events: none;
 `;
@@ -79,19 +85,25 @@ const CinematicOverlay = styled.div`
   inset: 0;
   z-index: 1;
   pointer-events: none;
+  /*
+   * Snow-tinted readability veil. Mirrors the lobby treatment so
+   * both screens read as part of the same Hokkaido-winter world.
+   * Stronger at the top (where the page header sits) and the
+   * bottom (where panels anchor), faintly transparent through the
+   * middle so the arena watermark breathes.
+   */
   background:
     radial-gradient(
-      ellipse at 50% 35%,
-      rgba(28, 78, 110, 0.18) 0%,
-      rgba(7, 10, 20, 0.55) 55%,
-      rgba(7, 10, 20, 0.92) 100%
+      ellipse at 50% 100%,
+      rgba(35, 70, 110, 0.18) 0%,
+      transparent 55%
     ),
     linear-gradient(
       180deg,
-      rgba(7, 10, 20, 0.5) 0%,
-      rgba(7, 10, 20, 0) 25%,
-      rgba(7, 10, 20, 0) 75%,
-      rgba(7, 10, 20, 0.7) 100%
+      rgba(234, 241, 247, 0.7) 0%,
+      rgba(234, 241, 247, 0.25) 30%,
+      rgba(234, 241, 247, 0.25) 70%,
+      rgba(234, 241, 247, 0.7) 100%
     );
 `;
 
@@ -100,11 +112,11 @@ const GrainOverlay = styled.div`
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  opacity: 0.05;
+  opacity: 0.12;
   background-image: repeating-linear-gradient(
     0deg,
     transparent 0px,
-    rgba(255, 255, 255, 0.06) 1px,
+    rgba(35, 70, 110, 0.05) 1px,
     transparent 2px
   );
 `;
@@ -122,12 +134,14 @@ const TopBar = styled.header`
   align-items: center;
   gap: clamp(12px, 2cqw, 28px);
   padding: clamp(14px, 2.4cqh, 26px) clamp(20px, 3.5cqw, 48px);
-  border-bottom: 1px solid ${C.creamFaint};
-  background: linear-gradient(
-    180deg,
-    ${C.inkPanelStrong} 0%,
-    rgba(7, 10, 20, 0.55) 100%
-  );
+  /*
+   * Sumi anchor band — same role as Lobby's TopBar. Frames the
+   * page so the snow PreviewPanel + ControlsPanel below have
+   * dark chrome to sit against, not just float in white space.
+   */
+  background: ${C.sumi};
+  border-bottom: 1px solid ${C.sumiBorder};
+  box-shadow: 0 3px 10px ${C.sumiShadow};
   animation: ${fadeIn} 0.5s ease-out;
 `;
 
@@ -149,32 +163,36 @@ const BackButton = styled.button`
   align-items: center;
   gap: clamp(8px, 1.1cqw, 12px);
   padding: clamp(8px, 1.2cqh, 12px) clamp(14px, 2cqw, 22px);
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.62rem, 0.95cqw, 0.78rem);
   text-transform: uppercase;
   letter-spacing: 0.22em;
+  /*
+   * Dark-context ghost button (matches Lobby ExitButton). Lives on
+   * the sumi TopBar so it stays subordinate to the central PageTitle.
+   */
   color: ${C.creamMute};
   background: transparent;
-  border: 1px solid ${C.creamFaint};
+  border: 1px solid ${C.sumiBorder};
   border-radius: 2px;
   cursor: pointer;
   transition:
-    color 0.2s ease,
-    border-color 0.2s ease,
-    background 0.2s ease,
-    transform 0.2s ease;
+    color 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease,
+    transform 0.18s ease;
 
   .arrow {
-    font-family: "Outfit", sans-serif;
+    font-family: "Space Grotesk", sans-serif;
     font-weight: 700;
     transition: transform 0.2s ease;
   }
 
   &:hover {
     color: ${C.cream};
-    border-color: ${C.ice};
-    background: rgba(28, 78, 110, 0.35);
+    border-color: ${C.iceMid};
+    background: rgba(234, 241, 247, 0.06);
 
     .arrow {
       transform: translateX(-3px);
@@ -200,12 +218,11 @@ const PageTitle = styled.h1`
   color: ${C.cream};
   text-transform: uppercase;
   letter-spacing: 0.18em;
-  text-shadow: 0 2px 0 #000;
   line-height: 1;
 `;
 
 const PageSubtitle = styled.div`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.45rem, 0.7cqw, 0.55rem);
   color: ${C.creamMute};
@@ -218,12 +235,17 @@ const SaveIndicator = styled.div`
   align-items: center;
   gap: clamp(6px, 0.9cqw, 10px);
   padding: clamp(6px, 1cqh, 10px) clamp(12px, 1.6cqw, 18px);
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.45rem, 0.72cqw, 0.55rem);
+  /*
+   * Plate-on-plate dark chip on the sumi TopBar — slightly elevated
+   * (sumiSoft) so it reads as a status pill on the bunting strip
+   * without competing with the PageTitle for attention.
+   */
   color: ${C.creamMute};
-  background: rgba(8, 11, 24, 0.6);
-  border: 1px solid ${C.creamFaint};
+  background: ${C.sumiSoft};
+  border: 1px solid ${C.sumiBorder};
   border-radius: 2px;
   text-transform: uppercase;
   letter-spacing: 0.28em;
@@ -233,7 +255,7 @@ const SaveDot = styled.span`
   width: clamp(7px, 0.9cqw, 9px);
   height: clamp(7px, 0.9cqw, 9px);
   border-radius: 50%;
-  background: ${(p) => (p.$busy ? C.gold : "#4ade80")};
+  background: ${(p) => (p.$busy ? C.gold : C.success)};
   animation: ${livePulse} 2s ease-in-out infinite;
 `;
 
@@ -261,19 +283,18 @@ const PreviewPanel = styled.section`
   position: relative;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(
-    180deg,
-    rgba(28, 78, 110, 0.45) 0%,
-    rgba(8, 11, 24, 0.85) 60%,
-    rgba(8, 11, 24, 0.92) 100%
-  );
-  border: 1px solid rgba(126, 203, 240, 0.32);
+  /*
+   * Snow panel — pure white card with a vermillion top accent
+   * strip (the canonical brand mark for this surface). Solid fill,
+   * crisp 1px ice-blue border, single soft cool shadow. Mirrors
+   * the Lobby PlayerCard treatment so both screens read as part
+   * of one design language.
+   */
+  background: ${C.snowPanel};
+  border: 1px solid ${C.snowBorder};
   border-radius: 2px;
   overflow: hidden;
-  backdrop-filter: blur(4px);
-  box-shadow:
-    0 12px 38px rgba(0, 0, 0, 0.6),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow: 0 8px 22px ${C.snowShadow};
   animation: ${slideInLeft} 0.5s ease-out 0.15s both;
 
   &::before {
@@ -282,13 +303,8 @@ const PreviewPanel = styled.section`
     top: 0;
     left: 0;
     right: 0;
-    height: 2px;
-    background: linear-gradient(
-      90deg,
-      ${C.vermillion} 0%,
-      ${C.vermillionBright} 50%,
-      ${C.vermillion} 100%
-    );
+    height: 3px;
+    background: ${C.vermillion};
   }
 `;
 
@@ -298,7 +314,13 @@ const PanelHeader = styled.header`
   justify-content: space-between;
   gap: 12px;
   padding: clamp(10px, 1.6cqh, 16px) clamp(16px, 2.2cqw, 24px);
-  border-bottom: 1px solid ${C.creamFaint};
+  /*
+   * Sumi header band over the snow PreviewStage. Same banzuke-poster
+   * pattern as the BanzukeCard on the main menu: dark band on top of
+   * a snow body, framed by the panel's vermillion top accent.
+   */
+  background: ${C.sumi};
+  border-bottom: 1px solid ${C.sumiBorder};
 `;
 
 const PanelHeaderLeft = styled.div`
@@ -313,11 +335,10 @@ const PanelLabel = styled.div`
   color: ${C.cream};
   text-transform: uppercase;
   letter-spacing: 0.22em;
-  text-shadow: 0 2px 0 #000;
 `;
 
 const PanelMeta = styled.div`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.42rem, 0.65cqw, 0.5rem);
   color: ${C.creamMute};
@@ -329,10 +350,10 @@ const LiveBadge = styled.div`
   display: inline-flex;
   align-items: center;
   gap: clamp(5px, 0.7cqw, 8px);
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 700;
   font-size: clamp(0.42rem, 0.65cqw, 0.5rem);
-  color: ${(p) => (p.$busy ? C.gold : "#7be896")};
+  color: ${(p) => (p.$busy ? C.gold : C.success)};
   text-transform: uppercase;
   letter-spacing: 0.28em;
 `;
@@ -341,7 +362,7 @@ const LiveDot = styled.span`
   width: clamp(6px, 0.8cqw, 8px);
   height: clamp(6px, 0.8cqw, 8px);
   border-radius: 50%;
-  background: ${(p) => (p.$busy ? C.gold : "#4ade80")};
+  background: ${(p) => (p.$busy ? C.gold : C.success)};
   animation: ${livePulse} 2s ease-in-out infinite;
 `;
 
@@ -354,14 +375,25 @@ const PreviewStage = styled.div`
   padding: clamp(16px, 2.4cqh, 28px);
   position: relative;
   overflow: hidden;
+  /*
+   * Subtle icy stage — flat color, no inset highlights. Acts as
+   * the "snowfield Pumo is standing on" inside the panel.
+   */
+  background: ${C.snowSoft};
 `;
 
+/*
+ * Pumo backdrop wash — replaces the previous warm vermillion
+ * spotlight (which read as a red glow on a white floor and
+ * fought the icy brand). A single soft cool ambient pool puts
+ * Pumo on a faint "snow halo" without competing with the panel.
+ */
 const PreviewSpotlight = styled.div`
   position: absolute;
   inset: 0;
   background: radial-gradient(
-    ellipse at center 60%,
-    rgba(238, 81, 65, 0.08) 0%,
+    ellipse at center 65%,
+    rgba(126, 203, 240, 0.18) 0%,
     transparent 60%
   );
   pointer-events: none;
@@ -378,7 +410,7 @@ const AvatarBreath = styled.div`
   min-height: 0;
   animation: ${breathe} 2.8s ease-in-out infinite;
   transform-origin: center bottom;
-  filter: drop-shadow(0 18px 32px rgba(0, 0, 0, 0.7));
+  filter: drop-shadow(0 14px 18px rgba(35, 70, 110, 0.32));
 `;
 
 const PreviewImage = styled.img`
@@ -397,8 +429,14 @@ const PanelFooter = styled.footer`
   justify-content: space-between;
   gap: clamp(12px, 1.8cqw, 22px);
   padding: clamp(12px, 1.8cqh, 18px) clamp(16px, 2.2cqw, 24px);
-  border-top: 1px solid ${C.creamFaint};
-  background: rgba(8, 11, 24, 0.45);
+  /*
+   * Sumi footer band closes the bottom of the PreviewPanel so the
+   * snow body is bracketed top-and-bottom by dark chrome (matching
+   * the banzuke header pattern). Holds the "currently selected
+   * swatch" label + the dark-ghost reset button.
+   */
+  background: ${C.sumi};
+  border-top: 1px solid ${C.sumiBorder};
 `;
 
 const CurrentSelection = styled.div`
@@ -413,9 +451,7 @@ const CurrentSwatch = styled.div`
   border-radius: 50%;
   background: ${(p) => p.$gradient || p.$color};
   border: 2px solid ${C.gold};
-  box-shadow:
-    0 0 10px rgba(232, 197, 71, 0.3),
-    inset 0 1px 2px rgba(255, 255, 255, 0.18);
+  box-shadow: 0 2px 6px ${C.sumiShadow};
   flex-shrink: 0;
 `;
 
@@ -426,7 +462,7 @@ const CurrentNameStack = styled.div`
 `;
 
 const CurrentCategory = styled.div`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.45rem, 0.68cqw, 0.55rem);
   color: ${C.creamMute};
@@ -440,7 +476,6 @@ const CurrentName = styled.div`
   color: ${C.cream};
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  text-shadow: 0 2px 0 #000;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -451,25 +486,26 @@ const ResetButton = styled.button`
   align-items: center;
   gap: clamp(6px, 0.9cqw, 10px);
   padding: clamp(7px, 1cqh, 10px) clamp(12px, 1.6cqw, 18px);
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.5rem, 0.78cqw, 0.62rem);
   text-transform: uppercase;
   letter-spacing: 0.22em;
+  /* Dark-context ghost — sits on the sumi PanelFooter. */
   color: ${C.creamMute};
   background: transparent;
-  border: 1px solid ${C.creamFaint};
+  border: 1px solid ${C.sumiBorder};
   border-radius: 2px;
   cursor: pointer;
   transition:
-    color 0.2s ease,
-    border-color 0.2s ease,
-    background 0.2s ease;
+    color 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease;
 
   &:hover {
     color: ${C.cream};
-    border-color: ${C.ice};
-    background: rgba(28, 78, 110, 0.35);
+    border-color: ${C.iceMid};
+    background: rgba(234, 241, 247, 0.06);
   }
 
   &:active {
@@ -485,14 +521,11 @@ const ControlsPanel = styled.section`
   position: relative;
   display: flex;
   flex-direction: column;
-  background: ${C.inkPanelStrong};
-  border: 1px solid ${C.creamFaint};
+  background: ${C.snowPanel};
+  border: 1px solid ${C.snowBorder};
   border-radius: 2px;
   overflow: hidden;
-  backdrop-filter: blur(4px);
-  box-shadow:
-    0 12px 38px rgba(0, 0, 0, 0.6),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow: 0 8px 22px ${C.snowShadow};
   animation: ${slideInRight} 0.5s ease-out 0.2s both;
 
   &::before {
@@ -501,14 +534,9 @@ const ControlsPanel = styled.section`
     top: 0;
     left: 30%;
     right: 30%;
-    height: 1px;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      ${C.gold} 50%,
-      transparent 100%
-    );
-    opacity: 0.6;
+    height: 2px;
+    background: ${C.gold};
+    opacity: 0.85;
   }
 `;
 
@@ -517,7 +545,15 @@ const TabBar = styled.div`
   align-items: stretch;
   gap: clamp(2px, 0.4cqw, 4px);
   padding: clamp(10px, 1.4cqh, 14px) clamp(16px, 2.2cqw, 24px) 0;
-  border-bottom: 1px solid ${C.creamFaint};
+  /*
+   * Sumi tab strip — same banzuke header pattern as PreviewPanel.
+   * The active tab is a snow plate that "pulls down" out of the
+   * dark bunting and merges with the snow ControlsBody beneath,
+   * making the bar/body read as one continuous panel folded over
+   * a dark spine.
+   */
+  background: ${C.sumi};
+  border-bottom: 1px solid ${C.sumiBorder};
 `;
 
 const Tab = styled.button`
@@ -531,17 +567,18 @@ const Tab = styled.button`
   text-transform: uppercase;
   letter-spacing: 0.18em;
   padding: clamp(10px, 1.4cqh, 14px) clamp(18px, 2.4cqw, 28px);
-  background: ${(p) => (p.$active ? "rgba(28, 78, 110, 0.55)" : "transparent")};
-  border: 1px solid ${(p) => (p.$active ? C.ice : "transparent")};
-  border-bottom: none;
+  background: ${(p) => (p.$active ? C.snowPanel : "transparent")};
+  border: 1px solid ${(p) => (p.$active ? C.snowPanel : "transparent")};
+  border-bottom: ${(p) =>
+    p.$active ? `1px solid ${C.snowPanel}` : "none"};
   border-radius: 2px 2px 0 0;
-  color: ${(p) => (p.$active ? C.cream : C.creamMute)};
+  color: ${(p) => (p.$active ? C.iceDeep : C.creamMute)};
   cursor: pointer;
-  text-shadow: 0 2px 0 #000;
   transition:
-    color 0.2s ease,
-    background 0.2s ease,
-    border-color 0.2s ease;
+    color 0.18s ease,
+    background 0.18s ease,
+    border-color 0.18s ease;
+  margin-bottom: -1px;
 
   ${(p) =>
     p.$active &&
@@ -549,27 +586,26 @@ const Tab = styled.button`
       &::after {
         content: "";
         position: absolute;
-        bottom: -1px;
+        top: -1px;
         left: 18%;
         right: 18%;
         height: 2px;
         background: ${C.vermillion};
-        box-shadow: 0 0 8px ${C.vermillionGlow};
       }
     `}
 
   &:hover {
-    color: ${C.cream};
+    color: ${(p) => (p.$active ? C.iceDeep : C.cream)};
     ${(p) =>
       !p.$active &&
       css`
-        background: rgba(28, 78, 110, 0.25);
+        background: rgba(234, 241, 247, 0.06);
       `}
   }
 `;
 
 const TabIcon = styled.span`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 700;
   font-size: 1.1em;
   opacity: 0.85;
@@ -589,14 +625,14 @@ const ControlsBody = styled.div`
     width: 6px;
   }
   &::-webkit-scrollbar-track {
-    background: transparent;
+    background: ${C.snowPanelDeep};
   }
   &::-webkit-scrollbar-thumb {
-    background: rgba(126, 203, 240, 0.3);
+    background: ${C.iceMid};
     border-radius: 2px;
   }
   &::-webkit-scrollbar-thumb:hover {
-    background: rgba(126, 203, 240, 0.55);
+    background: ${C.iceDeep};
   }
 `;
 
@@ -613,24 +649,23 @@ const SectionHeader = styled.div`
   justify-content: space-between;
   gap: 12px;
   padding-bottom: clamp(6px, 0.8cqh, 8px);
-  border-bottom: 1px solid ${C.creamFaint};
+  border-bottom: 1px solid ${C.snowBorderSoft};
 `;
 
 const SectionTitle = styled.h2`
   margin: 0;
   font-family: "Bungee", cursive;
   font-size: clamp(0.65rem, 1cqw, 0.82rem);
-  color: ${C.cream};
+  color: ${C.inkText};
   text-transform: uppercase;
   letter-spacing: 0.22em;
-  text-shadow: 0 2px 0 #000;
 `;
 
 const SectionMeta = styled.div`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.42rem, 0.65cqw, 0.5rem);
-  color: ${C.creamMute};
+  color: ${C.inkTextMute};
   text-transform: uppercase;
   letter-spacing: 0.28em;
 `;
@@ -654,7 +689,7 @@ const ColorSwatch = styled.button`
   aspect-ratio: 1;
   border-radius: 50%;
   border: 2px solid
-    ${(p) => (p.$selected ? C.gold : "rgba(245, 236, 217, 0.18)")};
+    ${(p) => (p.$selected ? C.gold : C.snowBorder)};
   background: ${(p) => p.$gradient || p.$color};
   cursor: pointer;
   transition:
@@ -663,14 +698,14 @@ const ColorSwatch = styled.button`
     box-shadow 0.2s ease;
   box-shadow: ${(p) =>
     p.$selected
-      ? `0 0 0 2px rgba(232, 197, 71, 0.25), 0 0 14px rgba(232, 197, 71, 0.35), 0 2px 6px rgba(0, 0, 0, 0.55)`
-      : "0 2px 6px rgba(0, 0, 0, 0.55), inset 0 1px 2px rgba(255, 255, 255, 0.08)"};
+      ? `0 0 0 2px rgba(232, 197, 71, 0.5), 0 2px 6px ${C.snowShadow}`
+      : `0 2px 5px ${C.snowShadow}`};
   animation: ${swatchPop} 0.3s ease-out both;
   animation-delay: ${(p) => Math.min(p.$index ?? 0, 16) * 0.02}s;
 
   &:hover {
     transform: scale(1.12);
-    border-color: ${(p) => (p.$selected ? C.gold : C.cream)};
+    border-color: ${(p) => (p.$selected ? C.gold : C.iceMid)};
   }
 
   &:active {
@@ -683,10 +718,10 @@ const PatternSwatch = styled(ColorSwatch)`
 `;
 
 const SwatchName = styled.div`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.4rem, 0.62cqw, 0.5rem);
-  color: ${(p) => (p.$selected ? C.cream : C.creamMute)};
+  color: ${(p) => (p.$selected ? C.inkText : C.inkTextMute)};
   text-transform: uppercase;
   letter-spacing: 0.14em;
   text-align: center;

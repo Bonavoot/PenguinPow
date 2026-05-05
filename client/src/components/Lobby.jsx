@@ -19,9 +19,9 @@ import {
 import pumo from "../assets/pumo.png";
 import {
   C,
-  fadeUp,
   slideInLeft,
   slideInRight,
+  clipRevealUp,
   arrowNudge,
   livePulse,
 } from "./menuTheme";
@@ -66,18 +66,24 @@ const LobbyContainer = styled.div`
   width: 100%;
   height: 100%;
   min-height: 400px;
-  background: ${C.ink};
+  background: ${C.snow};
   overflow: hidden;
   container-type: size;
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
 `;
 
 const BackgroundImage = styled.div`
   position: absolute;
   inset: 0;
   background: url(${lobbyBackground}) center/cover;
-  opacity: 0.18;
-  filter: saturate(0.7) blur(1px);
+  /*
+   * On the snow theme the lobby backdrop becomes a faint frosted
+   * suggestion of the arena, not a moody ink-wash. Brightness up,
+   * saturation down so the colorful banners read as a soft pastel
+   * watermark behind the snow surface.
+   */
+  opacity: 0.42;
+  filter: saturate(0.78) brightness(1.18) blur(1.5px);
   z-index: 0;
 `;
 
@@ -86,19 +92,27 @@ const CinematicOverlay = styled.div`
   inset: 0;
   z-index: 1;
   pointer-events: none;
+  /*
+   * Snow-tinted readability wash. The lobby bg is showing through
+   * at 42% opacity, so this overlay does the rest of the work to
+   * lift the bg back toward a clean snowfield: a pale icy veil
+   * that's strongest at the top (where the player cards sit) and
+   * fades to clear in the middle (so a hint of the arena art
+   * still breathes through). Soft cool corner shadows frame the
+   * scene without collapsing it into a dark vignette.
+   */
   background:
     radial-gradient(
-      ellipse at 50% 35%,
-      rgba(28, 78, 110, 0.2) 0%,
-      rgba(7, 10, 20, 0.55) 55%,
-      rgba(7, 10, 20, 0.92) 100%
+      ellipse at 50% 100%,
+      rgba(35, 70, 110, 0.18) 0%,
+      transparent 55%
     ),
     linear-gradient(
       180deg,
-      rgba(7, 10, 20, 0.55) 0%,
-      rgba(7, 10, 20, 0) 25%,
-      rgba(7, 10, 20, 0) 75%,
-      rgba(7, 10, 20, 0.7) 100%
+      rgba(234, 241, 247, 0.65) 0%,
+      rgba(234, 241, 247, 0.25) 30%,
+      rgba(234, 241, 247, 0.25) 70%,
+      rgba(234, 241, 247, 0.7) 100%
     );
 `;
 
@@ -107,12 +121,12 @@ const GrainOverlay = styled.div`
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  opacity: 0.05;
+  opacity: 0.12;
   background-image:
     repeating-linear-gradient(
       0deg,
       transparent 0px,
-      rgba(255, 255, 255, 0.06) 1px,
+      rgba(35, 70, 110, 0.05) 1px,
       transparent 2px
     );
 `;
@@ -130,12 +144,14 @@ const TopBar = styled.header`
   align-items: center;
   gap: clamp(12px, 2cqw, 28px);
   padding: clamp(14px, 2.4cqh, 26px) clamp(20px, 3.5cqw, 48px);
-  border-bottom: 1px solid ${C.creamFaint};
-  background: linear-gradient(
-    180deg,
-    ${C.inkPanelStrong} 0%,
-    rgba(7, 10, 20, 0.55) 100%
-  );
+  /*
+   * Sumi anchor band — frames the top of the lobby so the white
+   * player cards have somewhere dark to sit against. Same
+   * structural role as the bottom HUD on the main menu.
+   */
+  background: ${C.sumi};
+  border-bottom: 1px solid ${C.sumiBorder};
+  box-shadow: 0 3px 10px ${C.sumiShadow};
   animation: ${panelDrop} 0.5s ease-out;
 `;
 
@@ -157,29 +173,35 @@ const ExitButton = styled.button`
   align-items: center;
   gap: clamp(8px, 1.1cqw, 12px);
   padding: clamp(8px, 1.2cqh, 12px) clamp(14px, 2cqw, 22px);
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.62rem, 0.95cqw, 0.78rem);
   text-transform: uppercase;
   letter-spacing: 0.22em;
+  /*
+   * Dark-context ghost button. Sits on the sumi TopBar, so the
+   * surface is transparent + cream hairline border (mirrors the
+   * snow-context ghost SystemButton on the main menu). Stays
+   * subordinate to the central DohyoBadge.
+   */
   color: ${C.creamMute};
   background: transparent;
-  border: 1px solid ${C.creamFaint};
+  border: 1px solid ${C.sumiBorder};
   border-radius: 2px;
   cursor: pointer;
-  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease,
-    transform 0.2s ease;
+  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease,
+    transform 0.18s ease;
 
   .arrow {
-    font-family: "Outfit", sans-serif;
+    font-family: "Space Grotesk", sans-serif;
     font-weight: 700;
     transition: transform 0.2s ease;
   }
 
   &:hover {
     color: ${C.cream};
-    border-color: ${C.ice};
-    background: rgba(28, 78, 110, 0.35);
+    border-color: ${C.iceMid};
+    background: rgba(234, 241, 247, 0.06);
 
     .arrow {
       transform: translateX(-3px);
@@ -196,42 +218,38 @@ const DohyoBadge = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: clamp(8px, 1.2cqh, 12px) clamp(20px, 3cqw, 36px);
-  background: linear-gradient(
-    180deg,
-    ${C.inkPanelStrong} 0%,
-    rgba(15, 18, 30, 0.85) 100%
-  );
-  border: 1px solid rgba(126, 203, 240, 0.32);
+  padding: clamp(6px, 1cqh, 10px) clamp(20px, 3cqw, 36px);
+  /*
+   * Small snow plaque sitting on the dark sumi TopBar — it's the
+   * "room name plate" so it should pop as the only light surface
+   * up here. Same treatment as a banzuke nameplate pinned to a
+   * ribbon: cream-against-dark outside, dark-against-snow inside.
+   */
+  background: ${C.snowPanel};
+  border: 1px solid ${C.sumiBorder};
   border-radius: 2px;
-  box-shadow:
-    0 4px 14px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: 0 2px 8px ${C.sumiShadow};
 
-  /* Top vermillion strip */
-  &::before {
+  /* Single thin gold underline — quiet brand mark, picks up the
+   * gold/cream punctuation echoing the banzuke header on the
+   * main menu so the two screens feel related. */
+  &::after {
     content: "";
     position: absolute;
-    top: 0;
-    left: 12%;
-    right: 12%;
+    bottom: -1px;
+    left: 24%;
+    right: 24%;
     height: 2px;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      ${C.vermillion} 30%,
-      ${C.gold} 50%,
-      ${C.vermillion} 70%,
-      transparent 100%
-    );
+    background: ${C.gold};
+    opacity: 0.9;
   }
 `;
 
 const DohyoLabel = styled.div`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.42rem, 0.7cqw, 0.55rem);
-  color: ${C.creamMute};
+  color: ${C.inkTextMute};
   text-transform: uppercase;
   letter-spacing: 0.32em;
 `;
@@ -239,9 +257,8 @@ const DohyoLabel = styled.div`
 const DohyoCode = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(0.95rem, 1.6cqw, 1.25rem);
-  color: ${C.cream};
+  color: ${C.inkText};
   letter-spacing: 0.14em;
-  text-shadow: 0 2px 0 #000;
   margin-top: 2px;
 `;
 
@@ -282,7 +299,7 @@ const VSLine = styled.div`
   background: linear-gradient(
     180deg,
     transparent 0%,
-    rgba(245, 236, 217, 0.18) 50%,
+    ${C.snowBorder} 50%,
     transparent 100%
   );
 `;
@@ -296,20 +313,19 @@ const VSBadge = styled.div`
   height: clamp(56px, 7cqw, 96px);
   font-family: "Bungee", cursive;
   font-size: clamp(1.1rem, 2.2cqw, 2rem);
-  color: ${C.cream};
-  background: linear-gradient(
-    180deg,
-    ${C.vermillion} 0%,
-    ${C.vermillionDeep} 100%
-  );
+  color: ${C.snowSoft};
+  /*
+   * Solid vermillion disc, gold ring. Dropped the gradient + glow
+   * halo + inset highlight stack — on a snow page that recipe was
+   * the strongest "AI-rendered glossy badge" tell. A single short
+   * warm shadow gives it weight; the gold ring + outer ring keep
+   * it ceremonial.
+   */
+  background: ${C.vermillion};
   border: 2px solid ${C.gold};
   border-radius: 50%;
   letter-spacing: 0.05em;
-  text-shadow: 0 2px 0 #000;
-  box-shadow:
-    0 6px 22px rgba(0, 0, 0, 0.6),
-    0 0 28px ${C.vermillionGlow},
-    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  box-shadow: 0 4px 14px rgba(138, 31, 18, 0.4);
   flex-shrink: 0;
 
   &::before {
@@ -317,7 +333,8 @@ const VSBadge = styled.div`
     position: absolute;
     inset: -6px;
     border-radius: 50%;
-    border: 1px solid rgba(232, 197, 71, 0.35);
+    border: 1px solid ${C.gold};
+    opacity: 0.55;
     pointer-events: none;
   }
 `;
@@ -344,30 +361,29 @@ const PlayerCardWrapper = styled.div`
 `;
 
 const PlayerCard = styled.div`
-  --accent: ${(p) => (p.$hasPlayer ? C.vermillion : "rgba(126, 203, 240, 0.25)")};
+  --accent: ${(p) => (p.$hasPlayer ? C.vermillion : C.iceMid)};
   --accentBright: ${(p) =>
-    p.$hasPlayer ? C.vermillionBright : "rgba(126, 203, 240, 0.4)"};
+    p.$hasPlayer ? C.vermillionBright : C.iceDeep};
 
   position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  background: linear-gradient(
-    180deg,
-    rgba(28, 78, 110, 0.5) 0%,
-    rgba(8, 11, 24, 0.85) 60%,
-    rgba(8, 11, 24, 0.92) 100%
-  );
-  border: 1px solid
-    ${(p) =>
-      p.$hasPlayer ? "rgba(126, 203, 240, 0.4)" : "rgba(245, 236, 217, 0.1)"};
+  /*
+   * Snow panel body — pure white tile with a crisp ice-blue border
+   * when occupied, deeper grey-ice border when empty. The hero
+   * vermillion accent strip across the top still owns the "primary
+   * moment" semantic; the gold side-bar still marks the side. No
+   * backdrop-filter, no inset highlight, no multi-stop body
+   * gradient — just one clean snow tile per fighter.
+   */
+  background: ${C.snowPanel};
+  border: 1.5px solid
+    ${(p) => (p.$hasPlayer ? C.iceMid : C.snowBorder)};
   border-radius: 2px;
   overflow: hidden;
-  backdrop-filter: blur(4px);
-  box-shadow:
-    0 10px 32px rgba(0, 0, 0, 0.55),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow: 0 8px 22px ${C.snowShadow};
   transition: border-color 0.3s ease, box-shadow 0.3s ease;
 
   /* Top accent line */
@@ -377,14 +393,9 @@ const PlayerCard = styled.div`
     top: 0;
     left: 0;
     right: 0;
-    height: 2px;
-    background: linear-gradient(
-      90deg,
-      var(--accent) 0%,
-      var(--accentBright) 50%,
-      var(--accent) 100%
-    );
-    opacity: ${(p) => (p.$hasPlayer ? 1 : 0.35)};
+    height: 3px;
+    background: var(--accent);
+    opacity: ${(p) => (p.$hasPlayer ? 1 : 0.45)};
   }
 
   /* Side-specific subtle accent bar */
@@ -405,9 +416,10 @@ const PlayerCard = styled.div`
     background: linear-gradient(
       180deg,
       transparent 0%,
-      ${(p) => (p.$hasPlayer ? "rgba(232, 197, 71, 0.3)" : C.creamFaint)} 50%,
+      ${(p) => (p.$hasPlayer ? C.gold : C.snowBorder)} 50%,
       transparent 100%
     );
+    opacity: 0.55;
   }
 `;
 
@@ -418,7 +430,8 @@ const CardHeader = styled.div`
     p.$side === "left" ? "space-between" : "space-between"};
   gap: clamp(8px, 1.4cqw, 14px);
   padding: clamp(10px, 1.6cqh, 16px) clamp(14px, 2cqw, 22px);
-  border-bottom: 1px solid ${C.creamFaint};
+  border-bottom: 1px solid ${C.snowBorderSoft};
+  background: ${C.snowSoft};
   position: relative;
   z-index: 2;
 
@@ -432,24 +445,23 @@ const CardHeader = styled.div`
 const RankBadge = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(0.55rem, 0.9cqw, 0.7rem);
-  color: ${C.gold};
-  background: rgba(232, 197, 71, 0.08);
-  border: 1px solid rgba(232, 197, 71, 0.4);
+  color: ${C.goldDeep};
+  background: rgba(232, 197, 71, 0.18);
+  border: 1px solid ${C.gold};
   border-radius: 2px;
   padding: clamp(4px, 0.6cqh, 6px) clamp(10px, 1.4cqw, 16px);
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  text-shadow: 0 1px 0 #000;
 `;
 
 const StatusPill = styled.div`
   display: flex;
   align-items: center;
   gap: clamp(6px, 0.8cqw, 9px);
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.5rem, 0.78cqw, 0.62rem);
-  color: ${(p) => (p.$connected ? "#7be896" : C.creamMute)};
+  color: ${(p) => (p.$connected ? C.successDeep : C.inkTextMute)};
   text-transform: uppercase;
   letter-spacing: 0.22em;
 `;
@@ -458,7 +470,7 @@ const StatusDot = styled.span`
   width: clamp(7px, 0.9cqw, 9px);
   height: clamp(7px, 0.9cqw, 9px);
   border-radius: 50%;
-  background: ${(p) => (p.$connected ? "#4ade80" : "rgba(245, 236, 217, 0.3)")};
+  background: ${(p) => (p.$connected ? C.success : C.snowBorder)};
   ${(p) =>
     p.$connected &&
     css`
@@ -502,7 +514,7 @@ const AvatarBreath = styled.div`
   width: 100%;
   height: 100%;
   min-height: 0;
-  filter: drop-shadow(0 16px 24px rgba(0, 0, 0, 0.7));
+  filter: drop-shadow(0 12px 14px rgba(35, 70, 110, 0.32));
 `;
 
 const PreviewImage = styled.img`
@@ -521,10 +533,10 @@ const WaitingState = styled.div`
 `;
 
 const WaitingText = styled.div`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 500;
   font-size: clamp(0.55rem, 0.95cqw, 0.72rem);
-  color: ${C.creamMute};
+  color: ${C.inkTextMute};
   text-transform: uppercase;
   letter-spacing: 0.32em;
 `;
@@ -541,12 +553,12 @@ const Dot = styled.div`
   border-radius: 50%;
   animation: ${dotPulse} 1.4s ease-in-out infinite;
   animation-delay: ${(p) => p.$delay * 0.18}s;
-  box-shadow: 0 0 8px ${C.vermillionGlow};
 `;
 
 const CardFooter = styled.div`
   padding: clamp(10px, 1.5cqh, 14px) clamp(14px, 2cqw, 22px);
-  border-top: 1px solid ${C.creamFaint};
+  border-top: 1px solid ${C.snowBorderSoft};
+  background: ${C.snowSoft};
   position: relative;
   z-index: 2;
   ${(p) =>
@@ -559,18 +571,17 @@ const CardFooter = styled.div`
 const PlayerName = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(0.85rem, 1.5cqw, 1.15rem);
-  color: ${(p) => (p.$hasPlayer ? C.cream : C.creamMute)};
+  color: ${(p) => (p.$hasPlayer ? C.inkText : C.inkTextMute)};
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  text-shadow: 0 2px 0 #000;
   line-height: 1.05;
 `;
 
 const PlayerSubtext = styled.div`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 500;
   font-size: clamp(0.5rem, 0.78cqw, 0.62rem);
-  color: ${C.creamMute};
+  color: ${C.inkTextMute};
   text-transform: uppercase;
   letter-spacing: 0.22em;
   margin-top: 4px;
@@ -597,32 +608,38 @@ const DifficultyButton = styled.button`
   justify-content: space-between;
   gap: 12px;
   padding: clamp(8px, 1.2cqh, 14px) clamp(14px, 2cqw, 22px);
-  background: ${(p) =>
-    p.$selected
-      ? `linear-gradient(180deg, ${C.vermillion} 0%, ${C.vermillionDeep} 100%)`
-      : "linear-gradient(180deg, rgba(28, 78, 110, 0.45) 0%, rgba(8, 11, 24, 0.55) 100%)"};
-  border: 1px solid
+  /*
+   * Snow-tile rows. Selection is carried by chrome:
+   *   selected   → solid 1.5px iceMid border + 4px iceMid left rule
+   *   available  → thin snow border
+   *   unavailable→ snow border, dimmed
+   * "Selected = ice" matches the existing semantic from the
+   * customize tab indicator and the active mawashi swatch ring.
+   * Body stays a clean snow tile in every state — no gradient
+   * sweeps, no glow halos.
+   */
+  background: ${(p) => (p.$selected ? C.snowSoft : C.snowPanel)};
+  border: ${(p) => (p.$selected ? "1.5px" : "1px")} solid
     ${(p) =>
       p.$selected
-        ? C.vermillionBright
+        ? C.iceMid
         : p.$available
-          ? "rgba(126, 203, 240, 0.32)"
-          : "rgba(245, 236, 217, 0.08)"};
+          ? C.snowBorder
+          : C.snowBorderSoft};
+  border-left: ${(p) =>
+    p.$selected ? `4px solid ${C.iceMid}` : "1px solid transparent"};
   border-radius: 2px;
   cursor: ${(p) => (p.$available ? "pointer" : "not-allowed")};
-  opacity: ${(p) => (p.$available ? 1 : 0.55)};
-  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease,
-    box-shadow 0.2s ease;
+  opacity: ${(p) => (p.$available ? 1 : 0.6)};
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease,
+    box-shadow 0.18s ease;
   font-family: inherit;
   text-align: left;
 
   ${(p) =>
     p.$selected &&
     css`
-      box-shadow:
-        0 4px 14px rgba(0, 0, 0, 0.45),
-        0 0 18px ${C.vermillionGlow},
-        inset 0 1px 0 rgba(255, 255, 255, 0.18);
+      box-shadow: 0 2px 8px rgba(28, 78, 110, 0.18);
     `}
 
   &:hover {
@@ -630,12 +647,8 @@ const DifficultyButton = styled.button`
       p.$available &&
       !p.$selected &&
       css`
-        background: linear-gradient(
-          180deg,
-          rgba(54, 130, 170, 0.55) 0%,
-          rgba(28, 78, 110, 0.55) 100%
-        );
-        border-color: ${C.ice};
+        background: ${C.snowSoft};
+        border-color: ${C.iceMid};
         transform: translateX(2px);
       `}
   }
@@ -653,28 +666,27 @@ const DifficultyLabel = styled.span`
   font-family: "Bungee", cursive;
   font-size: clamp(0.7rem, 1.1cqw, 0.95rem);
   color: ${(p) =>
-    p.$selected ? C.cream : p.$available ? C.cream : C.creamMute};
+    p.$selected ? C.iceDeep : p.$available ? C.inkText : C.inkTextMute};
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  text-shadow: 0 2px 0 #000;
 `;
 
 const DifficultyMeta = styled.span`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.45rem, 0.7cqw, 0.55rem);
-  color: ${(p) => (p.$selected ? "rgba(255, 255, 255, 0.85)" : C.creamMute)};
+  color: ${(p) => (p.$selected ? C.iceMid : C.inkTextMute)};
   text-transform: uppercase;
   letter-spacing: 0.22em;
 `;
 
 const SoonTag = styled.span`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 700;
   font-size: clamp(0.42rem, 0.65cqw, 0.5rem);
-  color: ${C.creamMute};
-  background: rgba(245, 236, 217, 0.06);
-  border: 1px solid ${C.creamFaint};
+  color: ${C.goldDeep};
+  background: rgba(232, 197, 71, 0.18);
+  border: 1px solid ${C.gold};
   border-radius: 2px;
   padding: 3px 8px;
   letter-spacing: 0.22em;
@@ -695,27 +707,29 @@ const CustomizePanel = styled.section`
   width: min(94%, 980px);
   margin: clamp(8px, 1.2cqh, 14px) auto 0;
   padding: clamp(8px, 1cqh, 12px) clamp(14px, 2cqw, 22px);
-  background: ${C.inkPanelStrong};
-  border: 1px solid ${C.creamFaint};
+  background: ${C.snowPanel};
+  border: 1px solid ${C.snowBorder};
   border-radius: 2px;
-  backdrop-filter: blur(6px);
-  animation: ${fadeUp} 0.5s ease-out 0.3s both;
+  box-shadow: 0 4px 14px ${C.snowShadow};
+  /*
+   * Wipes up from its own bottom edge — it lives at the bottom of
+   * the lobby and should read as "the customize tray sliding open"
+   * rather than another generic fade-up panel.
+   */
+  animation: ${clipRevealUp} 0.5s ease-out 0.3s both;
 
-  /* Top accent strip */
+  /* Single thin gold center accent — keeps the panel from feeling
+   * undecorated without piling on another full-width gradient strip
+   * (those are already overused across menu surfaces). */
   &::before {
     content: "";
     position: absolute;
     top: 0;
     left: 30%;
     right: 30%;
-    height: 1px;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      ${C.gold} 50%,
-      transparent 100%
-    );
-    opacity: 0.5;
+    height: 2px;
+    background: ${C.gold};
+    opacity: 0.7;
   }
 `;
 
@@ -723,14 +737,14 @@ const TabGroup = styled.div`
   display: flex;
   align-items: center;
   gap: clamp(2px, 0.4cqw, 4px);
-  border-right: 1px solid ${C.creamFaint};
+  border-right: 1px solid ${C.snowBorder};
   padding-right: clamp(10px, 1.5cqw, 16px);
   flex-shrink: 0;
 `;
 
 const Tab = styled.button`
   position: relative;
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 700;
   font-size: clamp(0.55rem, 0.85cqw, 0.68rem);
   text-transform: uppercase;
@@ -739,16 +753,15 @@ const Tab = styled.button`
   background: transparent;
   border: 1px solid transparent;
   border-radius: 2px;
-  color: ${(p) => (p.$active ? C.cream : C.creamMute)};
+  color: ${(p) => (p.$active ? C.iceDeep : C.inkTextMute)};
   cursor: pointer;
-  transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease;
-  text-shadow: 0 1px 0 #000;
+  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
 
   ${(p) =>
     p.$active &&
     css`
-      background: rgba(28, 78, 110, 0.55);
-      border-color: ${C.ice};
+      background: ${C.snowPanelDeep};
+      border-color: ${C.iceMid};
 
       &::after {
         content: "";
@@ -758,16 +771,15 @@ const Tab = styled.button`
         right: 25%;
         height: 2px;
         background: ${C.vermillion};
-        box-shadow: 0 0 6px ${C.vermillionGlow};
       }
     `}
 
   &:hover {
-    color: ${C.cream};
+    color: ${C.inkText};
     ${(p) =>
       !p.$active &&
       css`
-        background: rgba(28, 78, 110, 0.25);
+        background: ${C.snowSoft};
       `}
   }
 `;
@@ -784,7 +796,7 @@ const SwatchSection = styled.div`
 const SwatchDivider = styled.div`
   width: 1px;
   height: clamp(20px, 2.6cqh, 28px);
-  background: ${C.creamFaint};
+  background: ${C.snowBorder};
   margin: 0 clamp(2px, 0.4cqw, 6px);
   flex-shrink: 0;
 `;
@@ -793,7 +805,7 @@ const SelectedBlock = styled.div`
   display: flex;
   align-items: center;
   gap: clamp(8px, 1cqw, 12px);
-  border-left: 1px solid ${C.creamFaint};
+  border-left: 1px solid ${C.snowBorder};
   padding-left: clamp(12px, 1.6cqw, 18px);
   min-width: clamp(120px, 14cqw, 160px);
   flex-shrink: 0;
@@ -805,9 +817,7 @@ const SelectedSwatchPreview = styled.div`
   border-radius: 50%;
   background: ${(p) => p.$gradient || p.$color};
   border: 2px solid ${C.gold};
-  box-shadow:
-    0 0 8px rgba(232, 197, 71, 0.25),
-    inset 0 1px 2px rgba(255, 255, 255, 0.15);
+  box-shadow: 0 2px 5px ${C.snowShadow};
   flex-shrink: 0;
 `;
 
@@ -819,10 +829,10 @@ const SelectedNameStack = styled.div`
 `;
 
 const SelectedCategory = styled.div`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.42rem, 0.65cqw, 0.5rem);
-  color: ${C.creamMute};
+  color: ${C.inkTextMute};
   text-transform: uppercase;
   letter-spacing: 0.28em;
 `;
@@ -830,10 +840,9 @@ const SelectedCategory = styled.div`
 const SelectedNameLabel = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(0.6rem, 0.95cqw, 0.78rem);
-  color: ${C.cream};
+  color: ${C.inkText};
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  text-shadow: 0 2px 0 #000;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -845,14 +854,14 @@ const ColorSwatch = styled.button`
   height: clamp(22px, 2.4cqw, 28px);
   border-radius: 50%;
   border: 2px solid
-    ${(p) => (p.$selected ? C.gold : "rgba(245, 236, 217, 0.18)")};
+    ${(p) => (p.$selected ? C.gold : C.snowBorder)};
   background: ${(p) => p.$gradient || p.$color};
   cursor: ${(p) => (p.$taken ? "not-allowed" : "pointer")};
   transition: transform 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease;
   box-shadow: ${(p) =>
     p.$selected
-      ? `0 0 0 2px rgba(232, 197, 71, 0.25), 0 0 14px rgba(232, 197, 71, 0.3), 0 2px 6px rgba(0, 0, 0, 0.55)`
-      : "0 2px 6px rgba(0, 0, 0, 0.55), inset 0 1px 2px rgba(255, 255, 255, 0.08)"};
+      ? `0 0 0 2px rgba(232, 197, 71, 0.45), 0 2px 6px ${C.snowShadow}`
+      : `0 2px 5px ${C.snowShadow}`};
   flex-shrink: 0;
   animation: ${swatchPop} 0.35s ease-out both;
   animation-delay: ${(p) => Math.min(p.$index ?? 0, 20) * 0.015}s;
@@ -870,15 +879,14 @@ const ColorSwatch = styled.button`
         justify-content: center;
         font-weight: 900;
         font-size: clamp(10px, 1.3cqw, 15px);
-        color: ${C.vermillionBright};
-        text-shadow: 0 0 4px rgba(0, 0, 0, 0.9);
+        color: ${C.vermillionDeep};
       }
     `}
 
   &:hover {
     transform: ${(p) => (p.$taken ? "none" : "scale(1.18)")};
     border-color: ${(p) =>
-      p.$taken ? "rgba(245, 236, 217, 0.18)" : p.$selected ? C.gold : C.cream};
+      p.$taken ? C.snowBorder : p.$selected ? C.gold : C.iceMid};
   }
 
   &:active {
@@ -905,12 +913,14 @@ const BottomBar = styled.footer`
   justify-content: center;
   gap: clamp(14px, 2.2cqw, 28px);
   padding: clamp(14px, 2.2cqh, 26px) clamp(20px, 3.5cqw, 48px);
-  border-top: 1px solid ${C.creamFaint};
-  background: linear-gradient(
-    180deg,
-    rgba(7, 10, 20, 0.55) 0%,
-    ${C.inkPanelStrong} 100%
-  );
+  /*
+   * Sumi anchor band — closes the lobby frame at the bottom so the
+   * white player cards are bracketed top-and-bottom by dark chrome.
+   * The vermillion READY CTA pops cleanly off the dark.
+   */
+  background: ${C.sumi};
+  border-top: 1px solid ${C.sumiBorder};
+  box-shadow: 0 -3px 10px ${C.sumiShadow};
 `;
 
 const ReadyButton = styled.button`
@@ -920,13 +930,15 @@ const ReadyButton = styled.button`
   gap: clamp(8px, 1.1cqw, 12px);
   font-family: "Bungee", cursive;
   font-size: clamp(0.85rem, 1.3cqw, 1.05rem);
-  color: ${C.cream};
-  background: linear-gradient(
-    180deg,
-    ${C.vermillion} 0%,
-    ${C.vermillionDeep} 100%
-  );
-  border: 1px solid ${C.vermillionBright};
+  color: ${C.snowSoft};
+  /*
+   * Solid vermillion CTA. Dropped the gradient + glow halo +
+   * inset highlight stack — on a snow page that recipe was the
+   * loudest "AI hero button" tell. The single warm shadow gives
+   * it lift, the gold hover ring is the sumo "go" cue.
+   */
+  background: ${C.vermillion};
+  border: 1.5px solid ${C.vermillionDeep};
   border-radius: 2px;
   padding: clamp(12px, 1.7cqh, 18px) clamp(28px, 4cqw, 56px);
   cursor: pointer;
@@ -934,28 +946,17 @@ const ReadyButton = styled.button`
     box-shadow 0.2s ease;
   text-transform: uppercase;
   letter-spacing: 0.22em;
-  text-shadow: 0 2px 0 #000;
-  box-shadow:
-    0 6px 22px rgba(0, 0, 0, 0.55),
-    0 0 24px ${C.vermillionGlow},
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 12px rgba(138, 31, 18, 0.32);
 
   .arrow {
     transition: transform 0.2s ease;
   }
 
   &:hover {
-    background: linear-gradient(
-      180deg,
-      ${C.vermillionBright} 0%,
-      ${C.vermillion} 100%
-    );
+    background: ${C.vermillionBright};
     border-color: ${C.gold};
     transform: translateY(-2px);
-    box-shadow:
-      0 10px 30px rgba(0, 0, 0, 0.6),
-      0 0 32px rgba(238, 81, 65, 0.55),
-      inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    box-shadow: 0 6px 18px rgba(138, 31, 18, 0.4);
 
     .arrow {
       animation: ${arrowNudge} 0.7s ease-in-out infinite;
@@ -974,32 +975,26 @@ const CancelButton = styled.button`
   gap: clamp(8px, 1.1cqw, 12px);
   font-family: "Bungee", cursive;
   font-size: clamp(0.85rem, 1.3cqw, 1.05rem);
-  color: ${C.cream};
-  background: linear-gradient(
-    180deg,
-    rgba(28, 78, 110, 0.65) 0%,
-    rgba(8, 11, 24, 0.85) 100%
-  );
-  border: 1px solid rgba(126, 203, 240, 0.45);
+  /*
+   * Dark-context ghost button. Sits on the sumi BottomBar opposite
+   * the vermillion READY CTA. Transparent with cream hairline so
+   * READY clearly owns the primary action.
+   */
+  color: ${C.creamMute};
+  background: transparent;
+  border: 1.5px solid ${C.sumiBorder};
   border-radius: 2px;
   padding: clamp(12px, 1.7cqh, 18px) clamp(28px, 4cqw, 56px);
   cursor: pointer;
   transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease,
-    box-shadow 0.2s ease;
+    color 0.2s ease;
   text-transform: uppercase;
   letter-spacing: 0.22em;
-  text-shadow: 0 2px 0 #000;
-  box-shadow:
-    0 6px 22px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 
   &:hover {
-    background: linear-gradient(
-      180deg,
-      rgba(54, 130, 170, 0.65) 0%,
-      rgba(28, 78, 110, 0.75) 100%
-    );
-    border-color: ${C.ice};
+    background: rgba(234, 241, 247, 0.06);
+    border-color: ${C.iceMid};
+    color: ${C.cream};
     transform: translateY(-2px);
   }
 
@@ -1014,15 +1009,20 @@ const ReadyChip = styled.div`
   align-items: center;
   gap: 2px;
   padding: clamp(8px, 1.2cqh, 12px) clamp(16px, 2.2cqw, 24px);
-  background: rgba(8, 11, 24, 0.6);
-  border: 1px solid
-    ${(p) => (p.$ready ? "rgba(232, 197, 71, 0.4)" : "rgba(126, 203, 240, 0.32)")};
+  /*
+   * Slim plate-on-plate chip on the sumi BottomBar. Slightly
+   * elevated dark surface (sumiSoft) reads as a status pill on
+   * the bunting strip without competing with the vermillion CTA
+   * in the middle.
+   */
+  background: ${C.sumiSoft};
+  border: 1px solid ${(p) => (p.$ready ? C.gold : C.sumiBorder)};
   border-radius: 2px;
   min-width: clamp(110px, 14cqw, 160px);
 `;
 
 const ReadyChipLabel = styled.span`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.45rem, 0.7cqw, 0.55rem);
   color: ${C.creamMute};
@@ -1035,11 +1035,10 @@ const ReadyChipCount = styled.span`
   font-size: clamp(0.85rem, 1.3cqw, 1.05rem);
   color: ${(p) => (p.$ready ? C.gold : C.cream)};
   letter-spacing: 0.16em;
-  text-shadow: 0 2px 0 #000;
 `;
 
 const ReadyPlaceholder = styled.div`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 500;
   font-size: clamp(0.55rem, 0.9cqw, 0.7rem);
   color: ${C.creamMute};

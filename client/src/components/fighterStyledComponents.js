@@ -881,7 +881,7 @@ export const YouLabel = styled.div
 
   &::before {
     content: "You";
-    font-family: "Outfit", sans-serif;
+    font-family: "Space Grotesk", sans-serif;
     font-weight: 700;
     font-size: clamp(12px, 1.2cqw, 18px);
     letter-spacing: 0.08em;

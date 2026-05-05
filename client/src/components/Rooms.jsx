@@ -28,8 +28,14 @@ const panelDrop = keyframes`
 const ModalOverlay = styled.div`
   position: fixed;
   inset: 0;
-  background: rgba(7, 10, 20, 0.78);
-  backdrop-filter: blur(8px);
+  /*
+   * Soft cool dim, no backdrop-filter blur. Glassmorphism stacking
+   * is the most-recognized AI-generated UI tell — we replace it
+   * with a flat slate-tinted overlay that just dims the menu
+   * behind the modal without smearing it. Reads as "the lights
+   * dimmed in the room" instead of "everything went out of focus."
+   */
+  background: rgba(15, 29, 46, 0.55);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -49,18 +55,15 @@ const Panel = styled.div`
   max-height: 88cqh;
   display: flex;
   flex-direction: column;
-  background: ${C.inkPanelStrong};
-  border: 1px solid rgba(245, 236, 217, 0.16);
-  border-radius: 4px;
-  box-shadow:
-    0 24px 80px rgba(0, 0, 0, 0.7),
-    0 0 0 1px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 rgba(245, 236, 217, 0.05);
-  backdrop-filter: blur(6px);
+  background: ${C.snowPanel};
+  border: 1px solid ${C.snowBorder};
+  border-radius: 3px;
+  box-shadow: 0 18px 38px rgba(15, 29, 46, 0.28);
   overflow: hidden;
   animation: ${panelDrop} 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
 
-  /* Vermillion → gold → vermillion top accent strip */
+  /* Vermillion → gold → vermillion top accent strip — the one
+   * "hero accent" for this surface (canonical brand mark). */
   &::before {
     content: "";
     position: absolute;
@@ -74,17 +77,6 @@ const Panel = styled.div`
       ${C.gold} 50%,
       ${C.vermillion} 100%
     );
-    box-shadow: 0 0 18px ${C.vermillionGlow};
-  }
-
-  /* Gold corner ticks */
-  &::after {
-    content: "";
-    position: absolute;
-    inset: 12px;
-    border: 1px solid rgba(232, 197, 71, 0.12);
-    border-radius: 3px;
-    pointer-events: none;
   }
 `;
 
@@ -99,27 +91,29 @@ const Header = styled.header`
   align-items: center;
   gap: clamp(12px, 2cqw, 24px);
   padding: clamp(18px, 2.6cqh, 26px) clamp(22px, 3cqw, 36px);
-  border-bottom: 1px solid rgba(245, 236, 217, 0.08);
+  /*
+   * Sumi anchor band — turns the modal into a banzuke poster:
+   * dark spine across the top with the "SERVER BROWSER" lockup
+   * in cream + a thin meta line, snow body below for the room
+   * list. Same chrome pattern as the main menu's BanzukeCard
+   * header so the two screens read as one design family.
+   */
+  background: ${C.sumi};
+  border-bottom: 1px solid ${C.sumiBorder};
   flex-shrink: 0;
 `;
 
 const TitleBlock = styled.div`
-  position: relative;
-  padding-left: clamp(12px, 1.5cqw, 18px);
+  /*
+   * No vertical accent bar here — the Panel's top horizontal
+   * vermillion→gold→vermillion strip is the one "hero accent" for
+   * this screen. Doubling it with a vertical accent on the title was
+   * the kind of decorative repetition that makes UI read as
+   * AI-generated chrome rather than as designed restraint.
+   */
+  padding-left: 0;
   flex: 1;
   min-width: 0;
-
-  &::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 8%;
-    bottom: 8%;
-    width: 3px;
-    background: linear-gradient(180deg, ${C.vermillion} 0%, ${C.gold} 50%, ${C.vermillion} 100%);
-    box-shadow: 0 0 12px ${C.vermillionGlow};
-    border-radius: 2px;
-  }
 `;
 
 const Title = styled.h1`
@@ -130,11 +124,10 @@ const Title = styled.h1`
   text-transform: uppercase;
   letter-spacing: 0.08em;
   line-height: 1.1;
-  text-shadow: 0 3px 0 #000;
 `;
 
 const TitleMeta = styled.div`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 500;
   font-size: clamp(0.45rem, 0.75cqw, 0.58rem);
   color: ${C.creamMute};
@@ -156,8 +149,13 @@ const HeaderButton = styled.button`
   align-items: center;
   gap: clamp(5px, 0.7cqw, 8px);
   padding: clamp(8px, 1.2cqh, 12px) clamp(13px, 1.8cqw, 20px);
+  /*
+   * Dark-context ghost button — sits on the sumi modal Header.
+   * Both Back and Refresh are secondary controls; the JOIN buttons
+   * in the room list own the primary affordance.
+   */
   background: transparent;
-  border: 1px solid rgba(245, 236, 217, 0.18);
+  border: 1px solid ${C.sumiBorder};
   border-radius: 2px;
   font-family: "Bungee", cursive;
   font-size: clamp(0.5rem, 0.85cqw, 0.65rem);
@@ -165,9 +163,8 @@ const HeaderButton = styled.button`
   letter-spacing: 0.13em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: transform 0.2s ease, color 0.2s ease, background 0.2s ease,
-    border-color 0.2s ease, box-shadow 0.2s ease;
-  text-shadow: 0 2px 0 #000;
+  transition: transform 0.18s ease, color 0.18s ease, background 0.18s ease,
+    border-color 0.18s ease;
 
   .material-symbols-outlined {
     font-size: clamp(0.85rem, 1.3cqw, 1rem);
@@ -176,10 +173,9 @@ const HeaderButton = styled.button`
 
   &:hover {
     color: ${C.cream};
-    background: rgba(28, 78, 110, 0.4);
-    border-color: rgba(126, 203, 240, 0.5);
+    background: rgba(234, 241, 247, 0.06);
+    border-color: ${C.iceMid};
     transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
 
     .material-symbols-outlined {
       transform: ${(p) => (p.$variant === "refresh" ? "rotate(90deg)" : "translateX(-2px)")};
@@ -200,17 +196,18 @@ const ListMeta = styled.div`
   align-items: center;
   gap: 10px;
   padding: clamp(10px, 1.4cqh, 14px) clamp(22px, 3cqw, 36px);
-  border-bottom: 1px solid rgba(245, 236, 217, 0.06);
-  font-family: "Outfit", sans-serif;
+  border-bottom: 1px solid ${C.snowBorderSoft};
+  background: ${C.snowSoft};
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.45rem, 0.72cqw, 0.55rem);
-  color: ${C.creamMute};
+  color: ${C.inkTextMute};
   letter-spacing: 0.28em;
   text-transform: uppercase;
   flex-shrink: 0;
 
   span.count {
-    color: ${C.gold};
+    color: ${C.goldDeep};
     font-weight: 700;
   }
 
@@ -222,15 +219,14 @@ const ListMeta = styled.div`
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    color: ${C.creamMute};
+    color: ${C.inkTextMute};
 
     &::before {
       content: "";
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background: ${C.ice};
-      box-shadow: 0 0 8px rgba(126, 203, 240, 0.55);
+      background: ${C.iceMid};
     }
   }
 `;
@@ -241,6 +237,7 @@ const RoomListContainer = styled.div`
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: ${C.snow};
 `;
 
 const RoomList = styled.div`
@@ -256,15 +253,14 @@ const RoomList = styled.div`
     width: 8px;
   }
   &::-webkit-scrollbar-track {
-    background: rgba(7, 10, 20, 0.4);
+    background: ${C.snowPanelDeep};
   }
   &::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, ${C.iceDeep}, ${C.iceMid});
+    background: ${C.iceMid};
     border-radius: 4px;
-    border: 1px solid rgba(245, 236, 217, 0.08);
   }
   &::-webkit-scrollbar-thumb:hover {
-    background: ${C.iceMid};
+    background: ${C.iceDeep};
   }
 `;
 
@@ -288,15 +284,18 @@ const EmptyHanko = styled.div`
   display: grid;
   place-items: center;
   margin-bottom: clamp(14px, 2cqh, 20px);
+  /*
+   * Solid vermillion hanko stamp — flat color, just a soft cool
+   * shadow underneath. Reads as a real ink seal pressed onto the
+   * snow page, not a glossy "AI badge" with inset highlights.
+   */
   background: ${C.vermillion};
-  color: ${C.cream};
+  color: ${C.snowSoft};
   font-family: "Noto Serif JP", serif;
   font-weight: 900;
   font-size: clamp(1.4rem, 2.4cqw, 2rem);
-  border-radius: 4px;
-  box-shadow:
-    0 6px 20px rgba(0, 0, 0, 0.5),
-    inset 0 0 0 2px rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+  box-shadow: 0 4px 10px rgba(138, 31, 18, 0.32);
   transform: rotate(-3deg);
   letter-spacing: 0;
 
@@ -308,18 +307,17 @@ const EmptyHanko = styled.div`
 const EmptyTitle = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(0.95rem, 1.6cqw, 1.2rem);
-  color: ${C.cream};
+  color: ${C.inkText};
   text-transform: uppercase;
   letter-spacing: 0.12em;
   margin-bottom: clamp(8px, 1.2cqh, 12px);
-  text-shadow: 0 3px 0 #000;
 `;
 
 const EmptySubtext = styled.div`
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 500;
   font-size: clamp(0.55rem, 0.95cqw, 0.7rem);
-  color: ${C.creamMute};
+  color: ${C.inkTextSoft};
   letter-spacing: 0.12em;
   max-width: 36ch;
   line-height: 1.6;
@@ -328,21 +326,21 @@ const EmptySubtext = styled.div`
 const EmptyHint = styled.div`
   margin-top: clamp(20px, 3cqh, 28px);
   padding: clamp(10px, 1.4cqh, 14px) clamp(16px, 2.4cqw, 24px);
-  background: rgba(28, 78, 110, 0.35);
-  border: 1px solid rgba(126, 203, 240, 0.3);
-  border-left: 3px solid ${C.ice};
+  background: ${C.snowPanel};
+  border: 1px solid ${C.snowBorder};
+  border-left: 3px solid ${C.iceMid};
   border-radius: 2px;
-  font-family: "Outfit", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 500;
   font-size: clamp(0.5rem, 0.82cqw, 0.62rem);
-  color: ${C.creamMute};
+  color: ${C.inkTextSoft};
   letter-spacing: 0.06em;
   line-height: 1.5;
   max-width: 44ch;
   text-align: left;
 
   strong {
-    color: ${C.gold};
+    color: ${C.goldDeep};
     font-weight: 700;
     letter-spacing: 0.18em;
     text-transform: uppercase;
