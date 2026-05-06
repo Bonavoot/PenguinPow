@@ -905,16 +905,16 @@ const PreMatchScreen = ({
 
       <BroadcastBar>
         <BroadcastChip $accent>
-          <strong>BASHO</strong>·HATSU
+          <strong>VER.</strong> HATSU
         </BroadcastChip>
         <BroadcastDivider />
         <BroadcastChip>Day 01</BroadcastChip>
         <BroadcastDivider />
-        <BroadcastChip>
+        {/* <BroadcastChip>
           Bout&nbsp;<strong>01</strong>
         </BroadcastChip>
         <BroadcastDivider />
-        <BroadcastChip>Pumo·Sports</BroadcastChip>
+        <BroadcastChip>Pumo Pumo</BroadcastChip> */}
       </BroadcastBar>
 
       <LiveIndicator>

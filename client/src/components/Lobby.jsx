@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState, useRef } from "react";
+import { useCallback, useContext, useEffect, useState, useRef } from "react";
 import { SocketContext } from "../SocketContext";
 import PropTypes from "prop-types";
 import styled, { keyframes, css } from "styled-components";
@@ -85,27 +85,40 @@ const LobbyContainer = styled.div`
 /*
  * BackgroundImage — the locker room backdrop.
  *
- * AI-DAMPENING PASS (the filter stack):
- *   AI-generated illustration tends to read "off" because of three
- *   characteristics that combined create the uncanny:
- *     1. Hyper-saturated, perfectly balanced color
- *     2. Perfectly sharp linework with no organic micro-irregularity
- *     3. Neutral / slightly cool cast (no curated film grade)
+ * SHALLOW-DEPTH-OF-FIELD PASS (the filter stack):
+ *   The previous filter stack was tuned for SUBTLE AI dampening — sub-
+ *   pixel softening, mild saturation pull, a hint of warmth. Plausible
+ *   deniability, but on a sharp display the lockers, banzuke board,
+ *   robe folds and wall tiling all still read crisply enough to feel
+ *   "rendered" rather than "shot". This pass goes further and commits
+ *   to a real cinematic look: the penguin sprites and UI sit in sharp
+ *   foreground, and the locker room recedes into out-of-focus backstage
+ *   atmosphere — the standard fighting-game character-select move
+ *   (Tekken, Street Fighter, etc.).
  *
- *   The filter stack here counters all three at LOW intensity so the
- *   image still reads clearly but stops shouting "default AI render":
- *     - saturate(0.84): pulls candy-bright color one notch down toward
- *       a hand-painted palette
- *     - contrast(1.05): tiny tonal lift so it doesn't go flat
- *     - sepia(0.07): hints warm into the highlights — film grades are
- *       almost always pushed slightly warm, AI defaults are not
- *     - blur(0.4px): sub-pixel softening that breaks the suspiciously
- *       perfect AI edges into something a brush could have made
+ *   The filter stack:
+ *     - blur(2.4px): real shallow DoF, not pixel-edge cleanup. AI
+ *       art's #1 tell is suspiciously perfect linework; out-of-focus
+ *       backgrounds ARE the cinematographer's standard answer to
+ *       "the set is too detailed and competing with the actors".
+ *       2.4px is enough to dissolve the pixel-perfect grout lines and
+ *       banzuke micro-text but not so much that the 相撲 noren kanji
+ *       stop reading — they soften into "yep, that's a banner with
+ *       sumo on it" rather than disappearing.
+ *     - brightness(0.86): pushes the room behind the action so the
+ *       bright customizable penguins and cream MatchCardBar pop
+ *       forward instead of competing with the AI's saturated palette.
+ *     - saturate(0.62): heavier pull toward a graded palette. AI
+ *       defaults to candy color; films grade it down.
+ *     - contrast(1.07): small tonal lift to keep the dimmed image
+ *       from going muddy.
+ *     - sepia(0.08): a touch of warm toward the highlights, the
+ *       universal "this was through a film stock" cue.
  *
- *   These work together with the Vignette and GrainOverlay layers
- *   below. None of them does much alone — the combination is what
- *   makes the locker room read as "concept art that got scanned and
- *   printed in a program" instead of "diffusion model output".
+ *   Combined with the spotlight-pool CinematicOverlay below and the
+ *   paper-grain GrainOverlay, the locker room reads as a backstage
+ *   tunnel under stage lighting — fighters about to walk out — rather
+ *   than a fresh diffusion render placed behind the UI.
  */
 const BackgroundImage = styled.div`
   position: absolute;
@@ -113,45 +126,84 @@ const BackgroundImage = styled.div`
   /*
    * The user redrew the bg art at a 16:9 aspect (1672x941) with the
    * icicles already removed at the source, so plain cover works
-   * cleanly. Anchored to bottom so the floor stays planted under
-   * the penguins on any non-16:9 viewport (any vertical overflow
-   * gets trimmed off the top, which is wall, instead of off the
-   * bottom, which is floor).
-   *
-   * Slight transform: scale on top of cover gives a deliberate
-   * "punched in" framing — banzuke + robe edges trim off a touch,
-   * the lockers and central banner read bigger, scene feels less
-   * like an empty room. Anchored from bottom-center so the scale
-   * pushes content up + out (off the top + sides) rather than
-   * shifting the floor away from the penguins.
+   * cleanly now — no cropping at typical viewports, no need for
+   * contain + backdrop-color fallback. Anchored to bottom so the
+   * floor stays planted under the penguins on any non-16:9
+   * viewport (any vertical overflow gets trimmed off the top,
+   * which is wall, instead of off the bottom, which is floor).
    */
   background: url(${lobbyBackground}) center bottom / cover;
   /*
-   * translateX shifts the bg art slightly right (~3% of its width)
-   * before the scale anchor takes over. Net effect: image content
-   * slides right inside the container, exposing a touch more of
-   * the left side (robe / left locker) and trimming a touch more
-   * of the right side (banzuke). The scale stays anchored at the
-   * bottom-center so the floor remains planted under the penguins.
+   * Horizontal nudge to the right (+1.1%) WITH a small zoom-in
+   * (scale 1.04) so the shift has room to land without exposing
+   * the container edge.
+   *
+   * Why we can't just use background-position: the bg art is 16:9
+   * (1672x941) and the lobby is 16:9, so background-size: cover
+   * scales the image to EXACTLY fill the container — no overflow
+   * on either axis means background-position is a no-op (it only
+   * controls clipping when the image is larger than its frame).
+   *
+   * transform: scale(1.04) on this layer makes the layer 4%
+   * larger than the container in BOTH dimensions, regardless of
+   * the actual viewport aspect (works on 16:9, ultrawide, and
+   * windowed). cover then fills the now-larger layer, which
+   * gives us 2% of horizontal overflow on each side — pan
+   * headroom for the rightward shift.
+   *
+   * translateX(1.1%) shifts the layer to the right by 1.1% of
+   * the original container width. With 2% headroom on the left,
+   * we keep ~0.9% of safety margin against ever exposing the
+   * container's left edge.
+   *
+   * transform-origin: 50% 100% anchors the scale to the bottom
+   * center, so the floor stays planted (penguins keep their
+   * grounding) and the zoom expands upward and outward.
+   *
+   * The scale has the nice side effect of slightly tightening
+   * the framing — the locker room reads as a touch closer-in,
+   * which works in our favor against the shallow-DoF treatment.
    */
-  transform: translateX(1.2%) scale(1.1);
+  transform: scale(1.04) translateX(1.1%);
   transform-origin: 50% 100%;
-  opacity: 0.94;
-  filter: saturate(0.84) brightness(1.02) contrast(1.05) sepia(0.07)
-    blur(0.4px);
+  opacity: 0.9;
+  filter: saturate(0.62) brightness(0.86) contrast(1.07) sepia(0.08)
+    blur(2.4px);
   z-index: 0;
 `;
 
 /*
- * Vignette + cinematic wash.
+ * CinematicOverlay — backstage stage-light pool + atmospheric dim.
  *
- * The radial vignette darkens the corners with a warm sumi tone —
- * this does double duty: it pulls the eye to the center action,
- * AND it hides the corners and edges of the AI bg (which is where
- * AI imagery is most likely to have telltale repetition or weird
- * artifacts). Pairs with the linear top/bottom wash that gives the
- * cream MatchCardBar and the dark BottomDeck quiet gradients to
- * sit on top of.
+ * Two layered jobs, both sized for the actual composition (penguins
+ * standing on the floor at roughly 25%/75% horizontal, floor at the
+ * lower third):
+ *
+ *   1. WIDE SPOTLIGHT POOL — a horizontally-stretched elliptical
+ *      gradient centered at 50% 70% (the floor between the fighters).
+ *      Transparent at the center, darkening out to a near-black sumi
+ *      tone at the corners. This isn't a literal Hollywood spotlight
+ *      circle (those look tacky on flat 2D bg), it's a soft pool of
+ *      stage light wide enough that BOTH penguins stand inside the
+ *      lit zone with no visible "spot edge" on either of them. Side
+ *      effect: the AI bg's most artifact-prone zones (corners, top
+ *      edges of the locker rims, the framed banzuke board top-right,
+ *      the robe folds top-left) all fall into shadow exactly where
+ *      we want detail to recede.
+ *
+ *   2. TOP-DOWN ATMOSPHERIC DIM — a soft vertical wash that drops
+ *      luminance over the upper third of the room (where the locker
+ *      interiors, towel stacks, banzuke kanji rows and noren rod
+ *      live — the AI-detail hotspots). The wash fades back to clear
+ *      across the middle and re-darkens at the very bottom so the
+ *      cream BottomDeck has a quiet shadow gradient to sit on rather
+ *      than a hard edge against bright floor.
+ *
+ * The two stack additively — corners get hit by both layers and go
+ * darkest; the floor pool stays brightest; the upper room sits at
+ * mid-dim. Net result: the eye is led to the fighters and the noren
+ * banner between them, and the rest of the locker room reads as
+ * supporting atmosphere instead of art.
  */
 const CinematicOverlay = styled.div`
   position: absolute;
@@ -160,17 +212,18 @@ const CinematicOverlay = styled.div`
   pointer-events: none;
   background:
     radial-gradient(
-      ellipse at 50% 55%,
-      transparent 32%,
-      rgba(40, 30, 20, 0.22) 88%,
-      rgba(30, 22, 14, 0.42) 100%
+      ellipse 70% 42% at 50% 70%,
+      transparent 0%,
+      rgba(20, 14, 8, 0.22) 55%,
+      rgba(10, 8, 4, 0.62) 100%
     ),
     linear-gradient(
       180deg,
-      rgba(245, 236, 217, 0.22) 0%,
-      rgba(245, 236, 217, 0) 14%,
-      rgba(245, 236, 217, 0) 70%,
-      rgba(15, 20, 30, 0.28) 100%
+      rgba(12, 10, 6, 0.42) 0%,
+      rgba(12, 10, 6, 0.18) 22%,
+      rgba(12, 10, 6, 0) 44%,
+      rgba(12, 10, 6, 0) 78%,
+      rgba(8, 12, 20, 0.34) 100%
     );
 `;
 
@@ -206,7 +259,15 @@ const GrainOverlay = styled.div`
   inset: 0;
   z-index: 2;
   pointer-events: none;
-  opacity: 0.28;
+  /*
+   * Bumped from 0.28 → 0.34 to keep the paper-tooth grain present
+   * against the now-darker, blurred bg under the spotlight-pool
+   * CinematicOverlay. Without this, grain reads at the corners
+   * (where the bg is dark and grain is mid-warm) but disappears
+   * over the lit floor pool. 0.34 keeps it consistent across the
+   * whole frame without becoming visible as a pattern.
+   */
+  opacity: 0.34;
   mix-blend-mode: overlay;
   background-image:
     repeating-linear-gradient(
@@ -882,10 +943,29 @@ const BottomDeck = styled.footer`
   z-index: 10;
   flex-shrink: 0;
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  /*
+   * minmax(0, 1fr) instead of 1fr is REQUIRED for the swatch row's
+   * internal horizontal scrolling to engage. A bare 1fr is internally
+   * minmax(auto, 1fr) — the track's minimum size is its content's
+   * min-content size. Without minmax(0, ...) the CustomizeArea column
+   * simply expanded to fit ALL the swatches at intrinsic width and
+   * overflowed the deck horizontally (clipped by the container) — the
+   * SwatchSection itself never saw overflow, so its overflow-x: auto
+   * never engaged. minmax(0, 1fr) lets the track shrink below content
+   * size, which is what forces the overflow into SwatchSection where
+   * we want it.
+   */
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: stretch;
   gap: clamp(10px, 1.6cqw, 22px);
-  padding: clamp(8px, 1.2cqh, 14px) clamp(16px, 2.6cqw, 32px);
+  /*
+   * Tighter vertical padding (was clamp(8px, 1.2cqh, 14px)) — the
+   * deck was sitting at a 92px min-height with a ~55px-tall ReadyButton
+   * inside it, leaving ~37px of dead vertical space top+bottom of the
+   * controls. The new values let the controls dictate the deck's
+   * height instead of the deck enforcing a thick band.
+   */
+  padding: clamp(6px, 0.85cqh, 10px) clamp(16px, 2.6cqw, 32px);
   background: ${C.sumi};
   /*
    * Single hairline gold rule along the top — a quiet brand mark
@@ -895,7 +975,14 @@ const BottomDeck = styled.footer`
   border-top: 1px solid ${C.gold};
   box-shadow: 0 -3px 12px ${C.sumiShadow};
   animation: ${slideUp} 0.45s ease-out 0.25s both;
-  min-height: clamp(64px, 9cqh, 92px);
+  /*
+   * min-height trimmed from clamp(64px, 9cqh, 92px) → clamp(54px,
+   * 6.4cqh, 68px). 68px at full size still leaves a comfortable
+   * frame around the ReadyButton + kanji subtitle without enforcing
+   * a band of empty space. The 54px floor protects against tiny
+   * viewports collapsing the swatches into the button.
+   */
+  min-height: clamp(54px, 6.4cqh, 68px);
 `;
 
 const CustomizeArea = styled.div`
@@ -942,13 +1029,131 @@ const Tab = styled.button`
   }
 `;
 
+/*
+ * SwatchSection — horizontal swatch row.
+ *
+ * NOWRAP + HORIZONTAL SCROLL:
+ *   Previously this was flex-wrap: wrap, which had a nasty failure
+ *   mode at narrow viewports: when the swatch row's intrinsic width
+ *   exceeded its lane, ALL the swatches popped onto a second line
+ *   in a single hard jump — and that second line ALSO doubled the
+ *   deck's height (since min-height now allows growth from content).
+ *   It looked broken at any window size below ~1100px.
+ *
+ *   Switching to nowrap + overflow-x: auto + hidden scrollbar gives
+ *   the row a graceful failure mode: at typical viewports nothing
+ *   changes (all swatches fit on one row, no scroll appears); at
+ *   narrow viewports the row stays one line tall and silently
+ *   becomes horizontally scrollable instead of growing the deck.
+ *   Mouse wheel, trackpad swipe, and arrow keys all work; the
+ *   scrollbar is hidden because a visible scrollbar in this band
+ *   would look junky against the dark sumi.
+ *
+ *   min-width: 0 is required so the flex parent doesn't try to fit
+ *   the row's intrinsic width and instead lets overflow-x kick in.
+ *
+ *   scroll-padding gives the first/last swatches a touch of breathing
+ *   room from the lane edges when scrolled to either end.
+ */
 const SwatchSection = styled.div`
   flex: 1;
   display: flex;
   align-items: center;
-  gap: clamp(4px, 0.6cqw, 7px);
-  flex-wrap: wrap;
+  gap: clamp(3px, 0.5cqw, 6px);
+  flex-wrap: nowrap;
   min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-padding-inline: 4px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+`;
+
+/*
+ * SwatchLane — positioning context for the swatch row + scroll arrows.
+ *
+ * Wraps SwatchSection so we can absolutely-position the left/right
+ * scroll affordances on top of it without making the SwatchSection
+ * itself a positioned ancestor (which would interfere with its
+ * native scroll behavior). Also sets the flex grow + min-width: 0 at
+ * this level so SwatchSection can simply be flex: 1 inside.
+ */
+const SwatchLane = styled.div`
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+`;
+
+/*
+ * ScrollArrow — left/right edge scroll affordance.
+ *
+ * Two jobs at once:
+ *   1. EDGE FADE — a sumi-to-transparent gradient at each edge so
+ *      swatches at that edge appear to "fade under" the chevron.
+ *      This is the universal "more content this way" cue and works
+ *      even at a glance, before the user reads the chevron itself.
+ *   2. CHEVRON — a clickable ‹ / › that nudges the lane by ~70% of
+ *      its width on click. Smooth scroll, so the motion confirms
+ *      to the user "yes, you can scroll, here's what was hidden".
+ *
+ * Visibility is driven by parent React state (canScrollLeft /
+ * canScrollRight). When invisible, pointer-events: none ensures the
+ * arrow doesn't accidentally block clicks on swatches at that edge.
+ *
+ * The gradient is only ~38px wide so it doesn't visibly cover
+ * swatches that are fully in view — it just kisses the edge of
+ * whatever is right at the threshold.
+ */
+const ScrollArrow = styled.button`
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  ${(p) => (p.$dir === "left" ? "left: 0;" : "right: 0;")}
+  width: clamp(28px, 3.2cqw, 38px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: ${(p) => (p.$dir === "left" ? "flex-start" : "flex-end")};
+  padding: 0 clamp(4px, 0.6cqw, 7px);
+  border: 0;
+  cursor: pointer;
+  background: linear-gradient(
+    ${(p) => (p.$dir === "left" ? "90deg" : "270deg")},
+    ${C.sumi} 0%,
+    rgba(20, 15, 12, 0.92) 35%,
+    rgba(20, 15, 12, 0) 100%
+  );
+  color: ${C.gold};
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 700;
+  font-size: clamp(13px, 1.4cqw, 17px);
+  line-height: 1;
+  z-index: 2;
+  opacity: ${(p) => (p.$visible ? 1 : 0)};
+  pointer-events: ${(p) => (p.$visible ? "auto" : "none")};
+  transition: opacity 0.18s ease, color 0.18s ease, transform 0.15s ease;
+
+  &:hover {
+    color: ${C.cream};
+  }
+
+  &:active {
+    transform: scale(0.92);
+  }
+
+  /* Subtle pulse on the chevron itself when first appearing as a hint */
+  span {
+    display: inline-block;
+    transition: transform 0.18s ease;
+  }
+  &:hover span {
+    transform: ${(p) =>
+      p.$dir === "left" ? "translateX(-2px)" : "translateX(2px)"};
+  }
 `;
 
 const SwatchDivider = styled.div`
@@ -966,8 +1171,14 @@ const SwatchDivider = styled.div`
  */
 const ColorSwatch = styled.button`
   position: relative;
-  width: clamp(20px, 2.2cqw, 26px);
-  height: clamp(20px, 2.2cqw, 26px);
+  /*
+   * Min size dropped from 20px → 18px and middle from 2.2cqw → 2.0cqw
+   * so the row of 10 solids + 5 patterns fits comfortably in the
+   * lane down to a smaller viewport before SwatchSection's
+   * horizontal scroll fallback engages.
+   */
+  width: clamp(18px, 2.0cqw, 26px);
+  height: clamp(18px, 2.0cqw, 26px);
   border-radius: 50%;
   border: 2px solid
     ${(p) => (p.$selected ? C.gold : "rgba(245, 236, 217, 0.32)")};
@@ -1014,8 +1225,8 @@ const ColorSwatch = styled.button`
 `;
 
 const PatternSwatch = styled(ColorSwatch)`
-  width: clamp(24px, 2.6cqw, 30px);
-  height: clamp(24px, 2.6cqw, 30px);
+  width: clamp(21px, 2.3cqw, 30px);
+  height: clamp(21px, 2.3cqw, 30px);
   border-radius: 4px;
 `;
 
@@ -1112,7 +1323,14 @@ const ReadyButton = styled.button`
   background: ${C.vermillion};
   border: 2px solid ${C.gold};
   border-radius: 0;
-  padding: clamp(8px, 1.3cqh, 14px) clamp(28px, 4cqw, 56px);
+  /*
+   * Vertical padding tightened from clamp(8px, 1.3cqh, 14px) →
+   * clamp(5px, 0.9cqh, 9px). The button's visual weight comes from
+   * the kanji + headline two-line stack and the gold border, not
+   * from a thick padding band. This keeps the button proportionate
+   * inside the now-shorter BottomDeck.
+   */
+  padding: clamp(5px, 0.9cqh, 9px) clamp(28px, 4cqw, 56px);
   cursor: pointer;
   transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease,
     box-shadow 0.2s ease;
@@ -1166,7 +1384,8 @@ const CancelButton = styled.button`
   background: transparent;
   border: 2px solid rgba(245, 236, 217, 0.4);
   border-radius: 0;
-  padding: clamp(8px, 1.3cqh, 14px) clamp(28px, 4cqw, 56px);
+  /* Match ReadyButton padding so toggling state doesn't reflow */
+  padding: clamp(5px, 0.9cqh, 9px) clamp(28px, 4cqw, 56px);
   cursor: pointer;
   transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease,
     color 0.2s ease;
@@ -1200,7 +1419,8 @@ const ReadyChip = styled.div`
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: clamp(6px, 0.9cqh, 9px) clamp(12px, 1.7cqw, 18px);
+  /* Tightened from clamp(6px, 0.9cqh, 9px) to match leaner deck */
+  padding: clamp(4px, 0.6cqh, 7px) clamp(12px, 1.7cqw, 18px);
   background: rgba(245, 236, 217, 0.06);
   border: 1px solid ${(p) => (p.$ready ? C.gold : "rgba(245, 236, 217, 0.18)")};
   min-width: clamp(86px, 11cqw, 124px);
@@ -1229,7 +1449,9 @@ const ReadyPlaceholder = styled.div`
   color: ${C.creamMute};
   text-transform: uppercase;
   letter-spacing: 0.32em;
-  padding: clamp(8px, 1.3cqh, 14px) clamp(20px, 3cqw, 32px);
+  /* Match the trimmed ReadyButton padding so deck height stays consistent
+     between waiting-for-opponent and ready-to-go states */
+  padding: clamp(5px, 0.9cqh, 9px) clamp(20px, 3cqw, 32px);
 `;
 
 // ============================================
@@ -1325,7 +1547,71 @@ const Lobby = ({
   const [selectedDifficulty, setSelectedDifficulty] = useState("HARD");
   const [customizeTab, setCustomizeTab] = useState("body");
 
+  /*
+   * Swatch row scroll affordance state.
+   *
+   * SwatchSection scrolls horizontally when its swatches don't all
+   * fit in the lane. We render left/right ScrollArrow chevrons over
+   * the lane edges, but only when scrolling in that direction is
+   * actually possible — measured here from the section's scrollLeft
+   * / clientWidth / scrollWidth.
+   *
+   * Re-measured on:
+   *   - mount
+   *   - swatch row scroll (onScroll handler)
+   *   - container resize (ResizeObserver)
+   *   - swatch tab change (effect dep on customizeTab — Body and
+   *     Belt tabs render different swatch sets with different
+   *     intrinsic widths)
+   *   - player join (effect dep on myPlayerIndex — when the local
+   *     player's slot resolves from -1, the swatches mount for the
+   *     first time and we need an initial measurement)
+   */
+  const swatchScrollRef = useRef(null);
+  const [canScrollLeftSwatches, setCanScrollLeftSwatches] = useState(false);
+  const [canScrollRightSwatches, setCanScrollRightSwatches] = useState(false);
+
+  const measureSwatchScroll = useCallback(() => {
+    const el = swatchScrollRef.current;
+    if (!el) {
+      setCanScrollLeftSwatches(false);
+      setCanScrollRightSwatches(false);
+      return;
+    }
+    const max = el.scrollWidth - el.clientWidth;
+    setCanScrollLeftSwatches(el.scrollLeft > 1);
+    setCanScrollRightSwatches(el.scrollLeft < max - 1);
+  }, []);
+
+  const scrollSwatchesBy = useCallback((direction) => {
+    const el = swatchScrollRef.current;
+    if (!el) return;
+    el.scrollBy({
+      left: direction * el.clientWidth * 0.72,
+      behavior: "smooth",
+    });
+  }, []);
+
   const myPlayerIndex = players.findIndex((p) => p.id === socket.id);
+
+  /*
+   * Measure the swatch row's scrollability whenever:
+   *   - the local player slot resolves (myPlayerIndex flips from -1)
+   *   - the customize tab toggles between Body/Belt (different swatch
+   *     counts → different intrinsic widths)
+   *   - the lane container resizes (window/lobby resize)
+   * The onScroll handler on SwatchSection covers the scroll case.
+   */
+  useEffect(() => {
+    measureSwatchScroll();
+    const el = swatchScrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(() => {
+      measureSwatchScroll();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [measureSwatchScroll, customizeTab, myPlayerIndex]);
   const isPlayer1 = myPlayerIndex === 0;
 
   const serverPlayer1Color = players[0]?.mawashiColor || SPRITE_BASE_COLOR;
@@ -1579,7 +1865,7 @@ const Lobby = ({
       : player?.isCPU
         ? "CPU"
         : player?.fighter ||
-          (isLeft ? "Awaiting Fighter" : "Awaiting Opponent");
+          (isLeft ? "Awaiting Fighter" : "STANDBY...");
     const statusLabel = showAsCPU
       ? "Ready"
       : hasPlayer
@@ -1704,61 +1990,84 @@ const Lobby = ({
           </Tab>
         </TabGroup>
 
-        <SwatchSection>
-          {isBody ? (
-            bodyColors.map((color, i) => {
-              const taken = isBodyColorTakenByOther(color.hex);
-              return (
-                <ColorSwatch
-                  key={color.name}
-                  $index={i}
-                  $color={color.hex || "#888"}
-                  $gradient={color.gradient}
-                  $selected={myBodyColor === color.hex}
-                  $taken={taken}
-                  onClick={() => !taken && handleBodyColorSelect(color.hex)}
-                  onMouseEnter={() => !taken && playButtonHoverSound()}
-                  title={taken ? "Taken by opponent" : color.name}
-                />
-              );
-            })
-          ) : (
-            <>
-              {beltSolids.map((color, i) => {
-                const taken = isColorTakenByOther(color.hex);
+        <SwatchLane>
+          <SwatchSection
+            ref={swatchScrollRef}
+            onScroll={measureSwatchScroll}
+          >
+            {isBody ? (
+              bodyColors.map((color, i) => {
+                const taken = isBodyColorTakenByOther(color.hex);
                 return (
                   <ColorSwatch
                     key={color.name}
                     $index={i}
-                    $color={color.hex}
-                    $selected={myMawashiColor === color.hex}
-                    $taken={taken}
-                    onClick={() => !taken && handleColorSelect(color.hex)}
-                    onMouseEnter={() => !taken && playButtonHoverSound()}
-                    title={taken ? "Taken by opponent" : color.name}
-                  />
-                );
-              })}
-              <SwatchDivider />
-              {beltPatterns.map((color, i) => {
-                const taken = isColorTakenByOther(color.hex);
-                return (
-                  <PatternSwatch
-                    key={color.name}
-                    $index={i + beltSolids.length}
-                    $color={color.hex}
+                    $color={color.hex || "#888"}
                     $gradient={color.gradient}
-                    $selected={myMawashiColor === color.hex}
+                    $selected={myBodyColor === color.hex}
                     $taken={taken}
-                    onClick={() => !taken && handleColorSelect(color.hex)}
+                    onClick={() => !taken && handleBodyColorSelect(color.hex)}
                     onMouseEnter={() => !taken && playButtonHoverSound()}
                     title={taken ? "Taken by opponent" : color.name}
                   />
                 );
-              })}
-            </>
-          )}
-        </SwatchSection>
+              })
+            ) : (
+              <>
+                {beltSolids.map((color, i) => {
+                  const taken = isColorTakenByOther(color.hex);
+                  return (
+                    <ColorSwatch
+                      key={color.name}
+                      $index={i}
+                      $color={color.hex}
+                      $selected={myMawashiColor === color.hex}
+                      $taken={taken}
+                      onClick={() => !taken && handleColorSelect(color.hex)}
+                      onMouseEnter={() => !taken && playButtonHoverSound()}
+                      title={taken ? "Taken by opponent" : color.name}
+                    />
+                  );
+                })}
+                <SwatchDivider />
+                {beltPatterns.map((color, i) => {
+                  const taken = isColorTakenByOther(color.hex);
+                  return (
+                    <PatternSwatch
+                      key={color.name}
+                      $index={i + beltSolids.length}
+                      $color={color.hex}
+                      $gradient={color.gradient}
+                      $selected={myMawashiColor === color.hex}
+                      $taken={taken}
+                      onClick={() => !taken && handleColorSelect(color.hex)}
+                      onMouseEnter={() => !taken && playButtonHoverSound()}
+                      title={taken ? "Taken by opponent" : color.name}
+                    />
+                  );
+                })}
+              </>
+            )}
+          </SwatchSection>
+          <ScrollArrow
+            $dir="left"
+            $visible={canScrollLeftSwatches}
+            onClick={() => scrollSwatchesBy(-1)}
+            aria-label="Scroll colors left"
+            tabIndex={canScrollLeftSwatches ? 0 : -1}
+          >
+            <span aria-hidden>‹</span>
+          </ScrollArrow>
+          <ScrollArrow
+            $dir="right"
+            $visible={canScrollRightSwatches}
+            onClick={() => scrollSwatchesBy(1)}
+            aria-label="Scroll colors right"
+            tabIndex={canScrollRightSwatches ? 0 : -1}
+          >
+            <span aria-hidden>›</span>
+          </ScrollArrow>
+        </SwatchLane>
 
         <SelectedBlock>
           <SelectedSwatchPreview
@@ -1788,7 +2097,7 @@ const Lobby = ({
             onMouseEnter={playButtonHoverSound}
           >
             <span className="arrow">←</span>
-            Leave LOBBY
+            Leave Dohyo
           </ExitButton>
         </TopLeft>
 
@@ -1797,7 +2106,7 @@ const Lobby = ({
           <MatchCardLabels>
             <MatchCardCaption>Tonight&apos;s Bout</MatchCardCaption>
             <MatchCardTitle>
-              {isCPUMatch ? "LOBBY · VS CPU" : `LOBBY · ${roomName}`}
+              {isCPUMatch ? "Dohyo · VS CPU" : `Dohyo · ${roomName}`}
             </MatchCardTitle>
           </MatchCardLabels>
           <MatchCardKanji aria-hidden>付</MatchCardKanji>
@@ -1806,8 +2115,8 @@ const Lobby = ({
         <TopRight>
           <MatchModeChip>
             <span className="dot" />
-            <strong>{isCPUMatch ? "VS CPU" : ""}</strong>
-            {isCPUMatch ? "" : "Custom Match"}
+            <strong>{isCPUMatch ? "VS CPU" : "1V1"}</strong>
+            {isCPUMatch ? "Solo" : "Custom"}
           </MatchModeChip>
         </TopRight>
       </MatchCardBar>

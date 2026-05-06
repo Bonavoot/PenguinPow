@@ -1619,7 +1619,7 @@ const CenterRound = styled.div`
  * outward, breaking the mirrored symmetry across the HUD. */
 const WinLossRow = styled.div`
   display: flex;
-  flex-direction: ${(p) => (p.$isRight ? "row-reverse" : "row")};
+  flex-direction: ${(p) => (p.$isRight ? "row" : "row-reverse")};
   align-items: center;
   gap: clamp(3px, 0.4cqw, 6px);
   justify-content: ${(p) => (p.$isRight ? "flex-start" : "flex-end")};
