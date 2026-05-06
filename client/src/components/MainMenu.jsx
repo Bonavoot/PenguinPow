@@ -34,14 +34,15 @@ import Snowfall from "./Snowfall";
 
 import {
   C,
+  FONT_BODY,
+  FONT_DISPLAY,
   fadeIn,
   fadeUp,
   slideInLeft,
-  slideInRight,
   clipRevealUp,
-  arrowNudge,
   livePulse,
 } from "./menuTheme";
+
 
 // ============================================
 // LOCAL ANIMATIONS
@@ -55,6 +56,25 @@ const kenBurns = keyframes`
 const tickerScroll = keyframes`
   from { transform: translateX(0); }
   to   { transform: translateX(-50%); }
+`;
+
+/*
+ * Banzuke "pinned poster" entrance — combines the bottom-up rise of
+ * clipRevealUp with a STATIC hand-pinned rotation that's preserved
+ * through the animation. Can't reuse clipRevealUp directly because
+ * its `transform: translateY(...)` would overwrite the rotation
+ * during animation and the card would briefly "straighten up" then
+ * tilt — visually wrong for a poster that should already be hanging.
+ */
+const banzukePin = keyframes`
+  from {
+    opacity: 0;
+    transform: translateY(18px) rotate(-1.5deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) rotate(-1.5deg);
+  }
 `;
 
 // ============================================
@@ -91,7 +111,7 @@ const BackgroundImage = styled.img`
    */
   object-position: 50% 55%;
   transform: scale(1.08);
-  filter: saturate(1.02) brightness(1.04) contrast(0.98) blur(1.5px);
+  filter: saturate(1.04) brightness(1) contrast(1) blur(1.25px);
   animation: ${kenBurns} 22s ease-in-out infinite alternate;
 `;
 
@@ -100,18 +120,18 @@ const BackgroundImage = styled.img`
  *
  * On the dark theme this overlay was a left-column DARK readability
  * wash + a dark vignette to pull the eye to the arena entrance. On
- * the snow theme we invert: the overlay is a soft icy WHITE wash
- * (so dark navy menu type stays legible against the colorful arena
- * art) plus a gentle cool corner-shadow framing.
+ * the snow theme we keep the screen light, but the overlay now reads as
+ * cold blue air and snow haze rather than a white paint layer. That keeps
+ * the arena color alive while giving the menu side enough calm value for
+ * dark type.
  *
  * Layered:
- *   1. Left-column snow wash — a frosted veil over the menu side
- *      of the screen. Tapers off by ~45% across so the arena
- *      illustration breathes on the right.
- *   2. Top sky-blue → bottom snow band so the HUD strip blends
- *      into a snowdrift instead of sitting on a hard cut.
- *   3. Soft cool corner shadows — frames the scene without
- *      collapsing the bright daytime art into a stage spotlight.
+ *   1. Left-column frost veil — cooler and thinner than the previous
+ *      white wash, tapering off before it reaches Pumo.
+ *   2. Snowdrift at the bottom so the HUD strip still belongs to the
+ *      ground plane without bleaching the whole screen.
+ *   3. Low-opacity ice/sumi framing to restore depth without returning
+ *      to the old dark-theme spotlight.
  */
 const CinematicOverlay = styled.div`
   position: absolute;
@@ -122,25 +142,26 @@ const CinematicOverlay = styled.div`
     /* left-column frosted readability veil */
     linear-gradient(
       90deg,
-      rgba(234, 241, 247, 0.86) 0%,
-      rgba(234, 241, 247, 0.6) 22%,
-      rgba(234, 241, 247, 0.2) 38%,
-      rgba(234, 241, 247, 0) 50%,
+      rgba(203, 219, 231, 0.72) 0%,
+      rgba(221, 233, 241, 0.48) 21%,
+      rgba(234, 241, 247, 0.16) 37%,
+      rgba(234, 241, 247, 0) 49%,
       rgba(234, 241, 247, 0) 100%
     ),
-    /* sky-cool top wash, fading to snow at the bottom for HUD blend */
+    /* sky-cool top wash, fading to a colder snowdrift at the bottom */
     linear-gradient(
         180deg,
-        rgba(203, 219, 231, 0.55) 0%,
-        transparent 30%,
-        transparent 60%,
-        rgba(234, 241, 247, 0.7) 100%
+        rgba(126, 203, 240, 0.2) 0%,
+        rgba(203, 219, 231, 0.1) 24%,
+        transparent 54%,
+        rgba(221, 233, 241, 0.58) 100%
       ),
-    /* soft cool corner framing — replaces the previous black vignette */
+    /* cool corner framing, kept well below dark-theme strength */
     radial-gradient(
-        ellipse at 50% 55%,
-        transparent 50%,
-        rgba(35, 70, 110, 0.18) 100%
+        ellipse at 52% 54%,
+        transparent 48%,
+        rgba(28, 78, 110, 0.1) 78%,
+        rgba(23, 26, 32, 0.18) 100%
       );
 `;
 
@@ -322,305 +343,249 @@ const MainTitle = styled.h1`
 `;
 
 // --- Menu list ---
+//
+// REDESIGN NOTE (steam-ready menu):
+//   Each item is bare display type, no chrome. Hierarchy is carried by
+//   SCALE (primary ~30% larger), not by boxes/borders/shadows.
+//
+//   Hover indicator is a vermillion vertical bar that slides in from the
+//   left of the row — a JRPG/Hades-style "menu cursor" that visually
+//   rhymes with the vertical nobori banners hanging in the background
+//   arena art. Deliberately NOT an underline / brush stroke under the
+//   text (that read as a generic modern-web animated underline pattern,
+//   even with the irregular SVG contour). A left-anchored cursor mark
+//   reads as a real game menu, not a webpage.
 
 const MenuList = styled.nav`
   display: flex;
   flex-direction: column;
-  gap: clamp(7px, 1cqh, 11px);
+  /*
+   * Generous gap — each row is bare typography, so whitespace is the
+   * only thing separating one row from the next. The upper bound is
+   * deliberately constrained (16px, not 22px) because the column also
+   * has to fit the bottom-left BanzukeCard underneath; pushing gaps
+   * too wide here causes the menu to overrun the banzuke at large
+   * viewport sizes.
+   */
+  gap: clamp(11px, 1.7cqh, 16px);
   position: relative;
-  /* Drift the menu down toward visual center, leaving the title pinned up top */
-  margin-top: clamp(28px, 5cqh, 56px);
+  /*
+   * Push the menu well below the title so the left column reads as
+   * "title up top, menu in the middle band, banzuke at the bottom"
+   * instead of a top-bunched stack. Capped lower than the gap-driven
+   * size would otherwise allow so we don't push the menu DOWN into
+   * the banzuke at large viewport sizes.
+   */
+  margin-top: clamp(38px, 6cqh, 64px);
+  max-width: clamp(360px, 42cqw, 520px);
 `;
 
 const MenuButton = styled.button`
-  /*
-   * Snow plaque buttons. Primary stays vermillion (sumo ring red),
-   * secondary uses the deeper iceMid for a calm cool accent — both
-   * pull double-duty as the LEFT RULE that anchors the row. The
-   * body of every button is now a clean white tile with a crisp
-   * solid border (no semi-transparent edges, no glow halos at
-   * rest), which reads as "real signage on a wall" instead of the
-   * previous SaaS card-with-inset-highlight.
-   *
-   * Primary differentiates by:
-   *   - thicker border (1.5px vs 1px)
-   *   - thicker left rule (5px vs 3px)
-   *   - vermillion border color
-   * Secondary uses the same body, just thinner ice-blue chrome.
-   */
-  --accent: ${(p) => (p.$primary ? C.vermillion : C.iceMid)};
-  --accentBright: ${(p) => (p.$primary ? C.vermillionDeep : C.iceDeep)};
-
   position: relative;
-  display: flex;
-  align-items: center;
-  gap: clamp(10px, 1.4cqw, 18px);
-  width: 100%;
-  max-width: clamp(380px, 44cqw, 560px);
-  padding: ${(p) =>
-    p.$primary
-      ? "clamp(8px, 1.15cqh, 12px) clamp(20px, 2.4cqw, 30px)"
-      : "clamp(6px, 0.9cqh, 9px) clamp(18px, 2.2cqw, 26px)"};
-  background: ${(p) => (p.$disabled ? C.snowSoft : C.snowPanel)};
-  border: ${(p) => (p.$primary ? "1.5px" : "1px")} solid
-    ${(p) => (p.$primary ? C.vermillion : C.snowBorder)};
-  border-left: ${(p) => (p.$primary ? "5px" : "3px")} solid var(--accent);
-  border-radius: 2px;
-  cursor: ${(p) => (p.$disabled ? "default" : "pointer")};
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 700;
-  color: ${(p) => (p.$disabled ? C.inkTextFaint : C.inkText)};
-  text-align: left;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-  transition:
-    transform 0.18s ease,
-    background 0.18s ease,
-    border-color 0.18s ease,
-    box-shadow 0.18s ease;
+  display: inline-flex;
   /*
-   * Single short cool drop shadow — no glow halo, no inset
-   * highlight. The visual hierarchy is carried by the LEFT RULE
-   * width and color, not by stacking effects.
+   * Center-align (was baseline) so the much smaller SoonMark span sits
+   * at the OPTICAL center of the Bungee label's cap-height instead of
+   * sharing its baseline. With baseline alignment, a 0.4em annotation
+   * drops to the bottom of the line and reads as "floating low and to
+   * the side"; centering aligns the visual midpoints, which is what
+   * an editorial annotation should do.
    */
-  box-shadow: 0 2px 6px ${C.snowShadow};
+  align-items: center;
+  gap: clamp(8px, 1.1cqw, 14px);
+  align-self: flex-start;
+  background: none;
+  border: none;
+  /*
+   * Left padding reserves dedicated space for the cursor bar so the
+   * text doesn't reflow when the bar appears on hover. The bar lives
+   * inside this reserved gutter at left:0.
+   */
+  padding: clamp(2px, 0.4cqh, 5px) clamp(4px, 0.6cqw, 8px)
+    clamp(2px, 0.4cqh, 5px) clamp(16px, 2cqw, 24px);
+  margin: 0;
+  cursor: ${(p) => (p.$disabled ? "default" : "pointer")};
+  font-family: ${FONT_DISPLAY};
+  font-size: ${(p) =>
+    p.$primary
+      ? "clamp(1.5rem, 2.55cqw, 2.05rem)"
+      : "clamp(1.05rem, 1.75cqw, 1.45rem)"};
+  font-weight: 400;
+  /*
+   * Near-natural tracking on a display face. Wide 0.18em tracking on
+   * uppercase Bungee is a generic-AI-tech-UI tell; tight tracking
+   * lets the carved-wood letterforms carry the character.
+   */
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: left;
+  line-height: 0.95;
+  color: ${(p) => (p.$disabled ? C.inkTextFaint : C.inkText)};
+  -webkit-font-smoothing: auto;
+  transition:
+    transform 0.28s cubic-bezier(0.2, 0.85, 0.2, 1),
+    color 0.2s ease;
   opacity: 0;
   animation: ${slideInLeft} 0.45s ease-out forwards;
   animation-delay: ${(p) => 0.55 + p.$index * 0.07}s;
-  clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
+
+  /*
+   * Vermillion cursor bar — the ONE piece of decoration. A short
+   * vertical rectangle sized to the cap-height of the row, vermillion
+   * fill (sumo ring red / nobori banner red). At rest it lives off
+   * to the left at scaleY 0.35 + opacity 0; on hover it slides in to
+   * its home position and grows to full height.
+   *
+   * Visually rhymes with the tall vertical nobori banners in the
+   * arena background, so the menu feels rooted in the world rather
+   * than wearing a generic UI cursor.
+   */
+  &::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: ${(p) => (p.$primary ? "4px" : "3px")};
+    height: ${(p) => (p.$primary ? "0.62em" : "0.7em")};
+    background: ${C.vermillion};
+    border-radius: 1px;
+    transform: translate(-12px, -50%) scaleY(0.35);
+    transform-origin: center;
+    opacity: 0;
+    transition:
+      transform 0.32s cubic-bezier(0.25, 0.85, 0.2, 1),
+      opacity 0.22s ease;
+    pointer-events: none;
+  }
 
   ${(p) =>
     !p.$disabled &&
     css`
       &:hover {
-        transform: translateX(8px);
-        background: ${C.snowSoft};
-        border-color: var(--accentBright);
-        box-shadow: 0 4px 12px ${C.snowShadowStrong};
-
-        .menu-arrow {
-          color: var(--accentBright);
-          animation: ${arrowNudge} 0.8s ease-in-out infinite;
-        }
+        color: ${C.vermillionDeep};
+        transform: translateX(clamp(6px, 0.9cqw, 12px));
       }
-
+      &:hover::before {
+        transform: translate(0, -50%) scaleY(1);
+        opacity: 1;
+      }
       &:active {
-        transform: translateX(4px) scale(0.99);
+        transform: translateX(clamp(3px, 0.5cqw, 6px)) scale(0.99);
       }
     `}
-
-  /* Tooltip reveal on hover (works for disabled buttons too) */
-  &:hover .menu-tooltip {
-    opacity: 1;
-    transform: translateX(0);
-  }
 `;
 
 /*
- * Tooltip — appears to the right of a menu button on hover.
- * Used for SOON items (e.g. ranked Play Online) to softly
- * redirect the player to a working alternative.
+ * Inline "soon" annotation for menu items that aren't shipping yet.
+ *
+ * Sits as a small italic lowercase body annotation next to the Bungee
+ * label, with a leading em-dash. Vertical alignment is delegated to
+ * the parent MenuButton's `align-items: center` so the mark is
+ * optically centered against the cap-height of the label — earlier
+ * passes used `vertical-align` and `transform: translateY` here
+ * directly, which fought the parent's baseline alignment and produced
+ * the "floating up high" / "floating down low" inconsistency.
  */
-const MenuTooltip = styled.span.attrs({ className: "menu-tooltip" })`
-  position: absolute;
-  top: 50%;
-  left: calc(100% + 14px);
-  transform: translate(-6px, -50%);
-  padding: clamp(7px, 1cqh, 10px) clamp(12px, 1.6cqw, 18px);
-  background: ${C.inkText};
-  border: 1px solid ${C.inkText};
-  border-left: 2px solid ${C.vermillion};
-  border-radius: 2px;
-  font-family: "Space Grotesk", sans-serif;
+const SoonMark = styled.span`
+  display: inline-block;
+  font-family: ${FONT_BODY};
+  font-style: italic;
   font-weight: 500;
-  font-size: clamp(0.5rem, 0.78cqw, 0.6rem);
-  color: ${C.snowSoft};
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  box-shadow: 0 6px 14px ${C.snowShadowStrong};
-  opacity: 0;
-  pointer-events: none;
-  z-index: 5;
-  transition:
-    opacity 0.2s ease,
-    transform 0.2s ease;
+  font-size: 0.42em;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  color: ${C.inkTextMute};
+  margin-left: 0.9em;
+  /*
+   * Tighten the line-height around the small annotation so it
+   * doesn't inherit the Bungee row's 0.95 line-height and end up
+   * with extra cross-axis whitespace, which would offset the centered
+   * alignment by a few pixels.
+   */
+  line-height: 1;
 
-  strong {
-    color: ${C.gold};
-    font-weight: 700;
-  }
-
-  /* Left-pointing arrow */
   &::before {
-    content: "";
-    position: absolute;
-    top: 50%;
-    left: -6px;
-    transform: translateY(-50%) rotate(45deg);
-    width: 8px;
-    height: 8px;
-    background: ${C.inkText};
-    border-left: 1px solid ${C.vermillion};
-    border-bottom: 1px solid ${C.inkText};
-  }
-`;
-
-const MenuArrow = styled.span.attrs({ className: "menu-arrow" })`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 700;
-  font-size: ${(p) =>
-    p.$primary
-      ? "clamp(0.95rem, 1.5cqw, 1.15rem)"
-      : "clamp(0.7rem, 1.1cqw, 0.85rem)"};
-  color: ${(p) => (p.$disabled ? C.inkTextFaint : "var(--accent)")};
-  transition: color 0.2s ease;
-  &::after {
-    content: "▶";
-  }
-`;
-
-const MenuLabels = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  flex: 1;
-  min-width: 0;
-`;
-
-const MenuLabel = styled.div`
-  font-size: ${(p) =>
-    p.$primary
-      ? "clamp(0.95rem, 1.6cqw, 1.18rem)"
-      : "clamp(0.72rem, 1.2cqw, 0.92rem)"};
-  line-height: 1.05;
-`;
-
-const MenuMeta = styled.div`
-  font-family: "Noto Sans JP", sans-serif;
-  font-weight: 500;
-  font-size: clamp(0.46rem, 0.78cqw, 0.6rem);
-  color: ${C.inkTextMute};
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  margin-top: 2px;
-`;
-
-/*
- * Thin horizontal divider between game-mode buttons and
- * system-level entries (e.g. Options). Signals visual hierarchy.
- */
-const MenuDivider = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  max-width: clamp(380px, 44cqw, 560px);
-  margin: clamp(3px, 0.5cqh, 6px) 0 clamp(2px, 0.3cqh, 4px);
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
-  font-size: clamp(0.4rem, 0.65cqw, 0.5rem);
-  color: ${C.inkTextMute};
-  letter-spacing: 0.32em;
-  text-transform: uppercase;
-  opacity: 0;
-  animation: ${fadeIn} 0.5s ease-out forwards;
-  animation-delay: ${(p) => 0.55 + (p.$index ?? 5) * 0.07}s;
-
-  &::before,
-  &::after {
-    content: "";
-    flex: 1;
-    height: 1px;
-    background: ${C.snowBorder};
+    content: "— ";
+    opacity: 0.55;
+    font-style: normal;
+    margin-right: 0.05em;
   }
 `;
 
 /*
- * SystemButton — slimmer, lower-contrast version of MenuButton
- * used for system-level entries like Options. Same color
- * language but visually de-emphasized so it doesn't compete
- * with the primary game-mode list above it.
+ * Options at the bottom of the menu.
+ *
+ * Earlier passes treated this as a different visual language (Space
+ * Grotesk uppercase + leading hairline tick), which broke the
+ * typographic system — the menu list above it was Bungee, then
+ * suddenly the system row was a tracked sans, and the leading rule
+ * read as a stray hyphen next to the word.
+ *
+ * This pass keeps Options in the SAME interaction language as the
+ * menu items above it (Bungee, same left cursor-bar gutter, same
+ * vermillion bar slide-in on hover) so the whole column reads as one
+ * consistent menu. It's demoted purely by SCALE and COLOR — much
+ * smaller font size and a softer ink tone — not by changing typeface.
  */
 const SystemButton = styled.button`
   position: relative;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: clamp(10px, 1.4cqw, 18px);
-  width: 100%;
-  max-width: clamp(380px, 44cqw, 560px);
-  padding: clamp(7px, 1cqh, 10px) clamp(18px, 2.2cqw, 26px);
-  /*
-   * Deliberately low-contrast: transparent tile with just a hairline
-   * snow border. OPTIONS is a SECONDARY action that sits below the
-   * primary game-mode stack, so painting it as a solid plaque (whether
-   * white or dark) competes with the primary list for attention.
-   * Keeping it as a transparent ghost button visually demotes it
-   * exactly as a "system row" should be.
-   */
-  background: transparent;
-  border: 1px solid ${C.snowBorderSoft};
-  border-radius: 2px;
+  align-self: flex-start;
+  margin-top: clamp(20px, 3cqh, 34px);
+  background: none;
+  border: none;
+  /* Same left gutter as MenuButton so the cursor bars line up vertically */
+  padding: clamp(2px, 0.4cqh, 5px) clamp(4px, 0.6cqw, 8px)
+    clamp(2px, 0.4cqh, 5px) clamp(16px, 2cqw, 24px);
+  margin-left: 0;
   cursor: pointer;
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
-  color: ${C.inkTextSoft};
-  text-align: left;
+  font-family: ${FONT_DISPLAY};
+  font-weight: 400;
+  font-size: clamp(0.72rem, 1.18cqw, 0.95rem);
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  letter-spacing: 0.18em;
-  font-size: clamp(0.65rem, 1.05cqw, 0.82rem);
+  text-align: left;
+  line-height: 0.95;
+  color: ${C.inkTextSoft};
+  -webkit-font-smoothing: auto;
   transition:
-    transform 0.2s ease,
     color 0.2s ease,
-    background 0.2s ease,
-    border-color 0.2s ease,
-    box-shadow 0.2s ease;
+    transform 0.28s cubic-bezier(0.2, 0.85, 0.2, 1);
   opacity: 0;
   animation: ${slideInLeft} 0.45s ease-out forwards;
   animation-delay: ${(p) => 0.55 + p.$index * 0.07}s;
 
-  .system-icon {
-    display: grid;
-    place-items: center;
-    width: clamp(16px, 1.6cqw, 22px);
-    height: clamp(16px, 1.6cqw, 22px);
-    color: ${C.inkTextMute};
+  /* Vermillion cursor bar — identical interaction to MenuButton above */
+  &::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 3px;
+    height: 0.7em;
+    background: ${C.vermillion};
+    border-radius: 1px;
+    transform: translate(-12px, -50%) scaleY(0.35);
+    transform-origin: center;
+    opacity: 0;
     transition:
-      color 0.2s ease,
-      transform 0.4s ease;
-  }
-  .system-icon .material-symbols-outlined {
-    font-size: clamp(0.85rem, 1.4cqw, 1.05rem);
+      transform 0.32s cubic-bezier(0.25, 0.85, 0.2, 1),
+      opacity 0.22s ease;
+    pointer-events: none;
   }
 
   &:hover {
-    color: ${C.inkText};
-    background: ${C.snowSoft};
-    border-color: ${C.iceMid};
-    transform: translateX(6px);
-    box-shadow: 0 2px 6px ${C.snowShadow};
-
-    .system-icon {
-      color: ${C.iceDeep};
-      transform: rotate(45deg);
-    }
+    color: ${C.vermillionDeep};
+    transform: translateX(clamp(6px, 0.9cqw, 12px));
   }
-
+  &:hover::before {
+    transform: translate(0, -50%) scaleY(1);
+    opacity: 1;
+  }
   &:active {
-    transform: translateX(3px) scale(0.99);
+    transform: translateX(clamp(3px, 0.5cqw, 6px)) scale(0.99);
   }
-`;
-
-const SoonTag = styled.span`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
-  font-size: clamp(0.42rem, 0.7cqw, 0.55rem);
-  color: ${C.goldDeep};
-  letter-spacing: 0.22em;
-  padding: 3px 7px;
-  border: 1px solid ${C.gold};
-  border-radius: 2px;
-  background: rgba(232, 197, 71, 0.18);
 `;
 
 // --- Right column: Pumo hero + Banzuke (today's stats) panel ---
@@ -751,63 +716,101 @@ const PumoHero = styled.img`
  *   - playerRank      -> player's own rank / tier
  */
 /*
- * BanzukeCard — slim "today's stats" panel, pinned to the top-RIGHT of
- * the HeroStage so it sits opposite the title (top-left). Pumo lives
- * lower in the right column so the banzuke card has clear airspace
- * above his head. Background is the same ice-blue → ink gradient as the
- * StatusBlock in the bottom HUD so it reads as part of one panel family.
+ * BanzukeCard — washi paper notice pinned to the wall, bottom-LEFT.
+ *
+ * Earlier passes oscillated between "fully bordered UI card" (which
+ * stacked awkwardly against the dark BottomHud and used a different
+ * visual language than the menu) and "pure typography" (which just
+ * read as more text in the same column as the menu, with no visual
+ * differentiation between menu and stats).
+ *
+ * This pass gives the banzuke its OWN physical identity instead of
+ * reusing either UI chrome or the menu's typographic language: it's
+ * a small piece of warm cream washi paper that's been pinned to the
+ * snowy wall at a slight angle. The metaphor works because:
+ *   - The arena background is ALREADY full of hanging printed banners
+ *     and noborr — a paper notice belongs to that world.
+ *   - Cream + ink is a separate color story from the snow + ink menu,
+ *     so the eye stops conflating the two.
+ *   - A subtle (-1.5deg) hand-pinned tilt + a layered warm drop
+ *     shadow read as "real object lifted off the page", not as a UI
+ *     panel. This is the difference between "designed" and
+ *     "AI-generated card with rounded corners".
+ *   - One vermillion accent (the date, stamped) provides the brand
+ *     red without piling on extra decoration.
+ *
+ * Restraint is doing the work here: NO corner clips, NO tape, NO
+ * paper-grain texture overlay, NO border. Just cream surface + tilt +
+ * shadow + one stamp of red. Adding any of those would push it from
+ * "deliberate paper artifact" to "AI cute UI element".
  */
 const BanzukeCard = styled.section`
   position: absolute;
-  top: clamp(44px, 6cqh, 76px);
-  right: clamp(44px, 5cqw, 76px);
+  bottom: clamp(16px, 2.4cqh, 30px);
+  /*
+   * Slightly more inset than the title rail so the card doesn't
+   * appear to "claim" the same left edge as the menu — paper notices
+   * don't perfectly align with the masthead, they're tacked up
+   * wherever there's wall space.
+   */
+  left: clamp(34px, 4cqw, 64px);
   z-index: 2;
-  width: clamp(200px, 23cqw, 270px);
+  width: clamp(210px, 24cqw, 270px);
+  background: ${C.cream};
+  padding: clamp(11px, 1.6cqh, 16px) clamp(14px, 1.9cqw, 19px)
+    clamp(12px, 1.7cqh, 17px);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(7px, 1cqh, 11px);
   /*
-   * Hybrid printed-banzuke panel: dark sumi header band on top,
-   * crisp white body for the stats. Padding is delegated to
-   * Header / StatList so the dark band hugs the rounded card
-   * edges (overflow:hidden clips the band corners). The gold
-   * left rule still runs the full height as the "frame".
+   * Three-stop layered drop shadow — tight contact + medium ambient
+   * + soft cast. Single shadow looks like a UI bevel; layered shadows
+   * with warm undertones read as paper actually lifted off the snow
+   * surface. The ~brown tint instead of cool grey matches the warm
+   * cream paper rather than fighting it.
    */
-  background: ${C.snowPanel};
-  border: 1px solid ${C.snowBorder};
-  border-left: 3px solid ${C.gold};
-  border-radius: 2px;
-  overflow: hidden;
-  box-shadow: 0 6px 14px ${C.snowShadow};
+  box-shadow:
+    0 1px 2px rgba(50, 30, 10, 0.18),
+    0 4px 10px rgba(50, 30, 10, 0.14),
+    0 14px 28px rgba(50, 30, 10, 0.08);
   opacity: 0;
-  /*
-   * Slides in from the right edge — this card lives in the upper-right
-   * corner so reading "it came from off-screen right" is more honest
-   * than a generic fade-up.
-   */
-  animation: ${slideInRight} 0.55s ease-out 0.55s forwards;
+  animation: ${banzukePin} 0.6s ease-out 0.65s forwards;
 `;
 
 const BanzukeHeader = styled.div`
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 10px;
-  padding: clamp(8px, 1.1cqh, 11px) clamp(14px, 1.8cqw, 20px);
-  background: ${C.sumi};
-  border-bottom: 1px solid ${C.sumiBorder};
+  gap: 12px;
+  /*
+   * Hairline rule beneath the title row — the ONE line in the whole
+   * card. Warm low-opacity ink (matches the cream paper color
+   * family) rather than cool snowBorderSoft, so it reads as faded
+   * print on the paper rather than a UI divider laid on top.
+   */
+  padding-bottom: clamp(5px, 0.8cqh, 8px);
+  border-bottom: 1px solid rgba(60, 40, 20, 0.16);
 `;
 
 const BanzukeTitle = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.6rem, 1cqw, 0.75rem);
-  color: ${C.gold};
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(0.55rem, 0.92cqw, 0.7rem);
+  color: ${C.inkText};
   letter-spacing: 0.2em;
   text-transform: uppercase;
 `;
 
 const BanzukeDate = styled.div`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 500;
-  font-size: clamp(0.45rem, 0.72cqw, 0.55rem);
-  color: ${C.creamMute};
+  font-family: ${FONT_BODY};
+  font-weight: 700;
+  font-size: clamp(0.42rem, 0.7cqw, 0.55rem);
+  /*
+   * Vermillion — the single brand-red accent on the cream paper.
+   * Reads as a stamped "today's date" mark (a real banzuke has
+   * black ink for ranks and a single red stamp for the issuing
+   * association seal).
+   */
+  color: ${C.vermillion};
   letter-spacing: 0.22em;
   text-transform: uppercase;
 `;
@@ -815,8 +818,7 @@ const BanzukeDate = styled.div`
 const StatList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: clamp(6px, 0.9cqh, 9px);
-  padding: clamp(11px, 1.5cqh, 15px) clamp(14px, 1.8cqw, 20px);
+  gap: clamp(4px, 0.6cqh, 7px);
 `;
 
 const StatRow = styled.div`
@@ -827,17 +829,17 @@ const StatRow = styled.div`
 `;
 
 const StatLabel = styled.div`
-  font-family: "Space Grotesk", sans-serif;
+  font-family: ${FONT_BODY};
   font-weight: 500;
-  font-size: clamp(0.5rem, 0.8cqw, 0.62rem);
+  font-size: clamp(0.46rem, 0.76cqw, 0.58rem);
   color: ${C.inkTextMute};
   letter-spacing: 0.18em;
   text-transform: uppercase;
 `;
 
 const StatValue = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.75rem, 1.25cqw, 0.95rem);
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(0.6rem, 1cqw, 0.78rem);
   color: ${(p) => (p.$muted ? C.inkTextMute : C.inkText)};
   letter-spacing: 0.06em;
 
@@ -1143,7 +1145,7 @@ const MainMenu = ({
         <BackgroundImage src={mainMenuBackground} alt="" />
         <CinematicOverlay />
         <GrainOverlay />
-        <Snowfall intensity={18} showFrost={false} zIndex={4} />
+        <Snowfall intensity={45} showFrost={false} zIndex={4} />
         <Letterbox $top />
         <Letterbox />
 
@@ -1171,15 +1173,8 @@ const MainMenu = ({
                 $index={0}
                 onMouseEnter={playButtonHoverSound}
               >
-                <MenuArrow $primary $disabled />
-                <MenuLabels>
-                  <MenuLabel $primary>Play Online</MenuLabel>
-                  <MenuMeta>Ranked Matchmaking</MenuMeta>
-                </MenuLabels>
-                <SoonTag>Soon</SoonTag>
-                <MenuTooltip>
-                  Coming soon — try <strong>Custom&nbsp;Match</strong>
-                </MenuTooltip>
+                Play Online
+                <SoonMark>Soon</SoonMark>
               </MenuButton>
 
               <MenuButton
@@ -1190,11 +1185,7 @@ const MainMenu = ({
                 }}
                 onMouseEnter={playButtonHoverSound}
               >
-                <MenuArrow />
-                <MenuLabels>
-                  <MenuLabel>Custom Match</MenuLabel>
-                  <MenuMeta>Create or Join a Room · Unranked</MenuMeta>
-                </MenuLabels>
+                Custom Match
               </MenuButton>
 
               <MenuButton
@@ -1202,11 +1193,7 @@ const MainMenu = ({
                 onClick={handleVsCPU}
                 onMouseEnter={playButtonHoverSound}
               >
-                <MenuArrow />
-                <MenuLabels>
-                  <MenuLabel>VS CPU</MenuLabel>
-                  <MenuMeta>Practice vs AI</MenuMeta>
-                </MenuLabels>
+                VS CPU
               </MenuButton>
 
               <MenuButton
@@ -1214,12 +1201,8 @@ const MainMenu = ({
                 $disabled
                 onMouseEnter={playButtonHoverSound}
               >
-                <MenuArrow $disabled />
-                <MenuLabels>
-                  <MenuLabel>Basho Tournament</MenuLabel>
-                  <MenuMeta>Multi-Round Championship</MenuMeta>
-                </MenuLabels>
-                <SoonTag>Soon</SoonTag>
+                Basho Tournament
+                <SoonMark>Soon</SoonMark>
               </MenuButton>
 
               <MenuButton
@@ -1230,11 +1213,7 @@ const MainMenu = ({
                 }}
                 onMouseEnter={playButtonHoverSound}
               >
-                <MenuArrow />
-                <MenuLabels>
-                  <MenuLabel>Customize</MenuLabel>
-                  <MenuMeta>Edit Your Wrestler</MenuMeta>
-                </MenuLabels>
+                Customize
               </MenuButton>
 
               <MenuButton
@@ -1242,18 +1221,12 @@ const MainMenu = ({
                 $disabled
                 onMouseEnter={playButtonHoverSound}
               >
-                <MenuArrow $disabled />
-                <MenuLabels>
-                  <MenuLabel>Career Stats</MenuLabel>
-                  <MenuMeta>Records &amp; Replays</MenuMeta>
-                </MenuLabels>
-                <SoonTag>Soon</SoonTag>
+                Career Stats
+                <SoonMark>Soon</SoonMark>
               </MenuButton>
 
-              <MenuDivider $index={6}>System</MenuDivider>
-
               <SystemButton
-                $index={7}
+                $index={6}
                 className="settings-button"
                 onClick={() => {
                   handleSettings();
@@ -1261,9 +1234,6 @@ const MainMenu = ({
                 }}
                 onMouseEnter={playButtonHoverSound}
               >
-                <span className="system-icon">
-                  <span className="material-symbols-outlined">settings</span>
-                </span>
                 Options
               </SystemButton>
             </MenuList>
@@ -1285,11 +1255,12 @@ const MainMenu = ({
 
           {/*
             BanzukeCard — sibling of the columns rather than a child of
-            either, so it positions against HeroStage and lives in the
-            empty space below the menu without colliding with Pumo on
-            the right. Values are placeholders until the server-side
-            stats endpoints are wired up (wrestlersOnline,
-            matchesToday, playerRank).
+            either, so it positions against HeroStage. Anchored
+            bottom-LEFT, aligned with the title/menu rail, so the left
+            column reads as title → menu → banzuke top-to-bottom and
+            Pumo gets the entire right column to himself. Values are
+            placeholders until the server-side stats endpoints are
+            wired up (wrestlersOnline, matchesToday, playerRank).
           */}
           <BanzukeCard>
             <BanzukeHeader>

@@ -215,12 +215,12 @@ function Snowfall({ intensity = 30, showFrost = true, zIndex = 2 }) {
     return Array.from({ length: intensity }, (_, i) => ({
       id: i,
       left: Math.random() * 100,
-      size: 2 + Math.random() * 5,
-      opacity: 0.3 + Math.random() * 0.5,
-      duration: 12 + Math.random() * 18,
+      size: 3 + Math.random() * 6,
+      opacity: 0.55 + Math.random() * 0.45,
+      duration: 10 + Math.random() * 16,
       delay: -(Math.random() * 20), // Negative = start mid-animation (no initial gap)
       variant: Math.floor(Math.random() * 3),
-      blur: Math.random() < 0.3 ? 1 : 0, // Some slightly blurry for depth
+      blur: Math.random() < 0.25 ? 1 : 0, // Some slightly blurry for depth
     }));
   }, [intensity]);
 

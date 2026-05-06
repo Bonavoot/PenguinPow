@@ -497,7 +497,7 @@ const StartupScreen = ({ onContinue, connectionError, steamDeckMode }) => {
   return (
     <ScreenContainer>
       <Vignette />
-      <Snowfall intensity={25} showFrost={true} zIndex={1} />
+      <Snowfall intensity={55} showFrost={true} zIndex={1} />
       
       {/* Subtle floating particles (gold + snow mix) */}
       <ParticleContainer>

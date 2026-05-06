@@ -21,7 +21,7 @@ const getGroundLevel = (depth, screenHeight) => {
 };
 
 // Performance settings
-const MAX_SNOWFLAKES = 15;
+const MAX_SNOWFLAKES = 8;
 const MAX_ENVELOPES = 25;
 
 // Depth threshold: bigger (closer) particles in front of player, smaller (farther) behind
@@ -101,7 +101,7 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
     // Scale based on depth
     const depthScale = isEnvelope
       ? 0.15 + depth * depth * 1.85
-      : 0.3 + depth * 1.0;
+      : 0.2 + depth * 0.7;
 
     // Speed based on depth
     const baseSpeed = isEnvelope
@@ -111,7 +111,7 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
     // Opacity based on depth
     const depthOpacity = isEnvelope
       ? 0.2 + depth * 0.75
-      : 0.5 + depth * 0.5;
+      : 0.3 + depth * 0.4;
 
     // Horizontal drift
     const horizontalDrift = (Math.random() - 0.5) * (0.1 + depth * 0.8);
@@ -175,11 +175,11 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
         el.style.background = `url(${envelope}) no-repeat center center`;
         el.style.backgroundSize = 'contain';
       } else {
-        el.style.width = '5px';
-        el.style.height = '5px';
-        el.style.background = 'rgba(255, 255, 255, 0.9)';
+        el.style.width = '4px';
+        el.style.height = '4px';
+        el.style.background = 'rgba(255, 255, 255, 0.75)';
         el.style.borderRadius = '50%';
-        el.style.boxShadow = '0 0 2px 1px rgba(255, 255, 255, 0.25)';
+        el.style.boxShadow = '0 0 1px 0 rgba(255, 255, 255, 0.15)';
       }
 
       const container = isFrontLayer(particle.depth, particle.isEnvelope) ? frontContainer : backContainer;

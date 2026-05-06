@@ -8,7 +8,7 @@ import {
   playButtonPressSound2,
 } from "../utils/soundUtils";
 import Snowfall from "./Snowfall";
-import lobbyBackground from "../assets/lobby-bkg.webp";
+import lobbyBackground from "../assets/lockerroom.png";
 import { usePlayerColors } from "../context/PlayerColorContext";
 import {
   recolorImage,
@@ -32,7 +32,7 @@ import {
 
 const breathe = keyframes`
   0%, 100% { transform: scaleY(1);     }
-  50%      { transform: scaleY(1.018); }
+  50%      { transform: scaleY(1.022); }
 `;
 
 const dotPulse = keyframes`
@@ -40,13 +40,23 @@ const dotPulse = keyframes`
   50%      { transform: scale(1.3); opacity: 1; }
 `;
 
-const vsBeat = keyframes`
-  0%, 100% { transform: scale(1);    filter: drop-shadow(0 0 0 ${C.vermillionGlow}); }
-  50%      { transform: scale(1.05); filter: drop-shadow(0 0 18px ${C.vermillionGlow}); }
+/*
+ * VS hanko stamp — quick downward press / settle / brief lift.
+ * Reads as a stamp pressing into paper, not a generic UI pulse.
+ */
+const stampPress = keyframes`
+  0%, 100% { transform: rotate(-4deg) scale(1); }
+  48%      { transform: rotate(-4deg) scale(1.04); }
+  52%      { transform: rotate(-4deg) scale(0.98); }
 `;
 
-const panelDrop = keyframes`
-  from { opacity: 0; transform: translateY(-14px); }
+const slideDown = keyframes`
+  from { opacity: 0; transform: translateY(-12px); }
+  to   { opacity: 1; transform: translateY(0); }
+`;
+
+const slideUp = keyframes`
+  from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: translateY(0); }
 `;
 
@@ -65,103 +75,216 @@ const LobbyContainer = styled.div`
   flex-direction: column;
   width: 100%;
   height: 100%;
-  min-height: 400px;
+  min-height: 360px;
   background: ${C.snow};
   overflow: hidden;
   container-type: size;
   font-family: "Space Grotesk", sans-serif;
 `;
 
+/*
+ * BackgroundImage — the locker room backdrop.
+ *
+ * AI-DAMPENING PASS (the filter stack):
+ *   AI-generated illustration tends to read "off" because of three
+ *   characteristics that combined create the uncanny:
+ *     1. Hyper-saturated, perfectly balanced color
+ *     2. Perfectly sharp linework with no organic micro-irregularity
+ *     3. Neutral / slightly cool cast (no curated film grade)
+ *
+ *   The filter stack here counters all three at LOW intensity so the
+ *   image still reads clearly but stops shouting "default AI render":
+ *     - saturate(0.84): pulls candy-bright color one notch down toward
+ *       a hand-painted palette
+ *     - contrast(1.05): tiny tonal lift so it doesn't go flat
+ *     - sepia(0.07): hints warm into the highlights — film grades are
+ *       almost always pushed slightly warm, AI defaults are not
+ *     - blur(0.4px): sub-pixel softening that breaks the suspiciously
+ *       perfect AI edges into something a brush could have made
+ *
+ *   These work together with the Vignette and GrainOverlay layers
+ *   below. None of them does much alone — the combination is what
+ *   makes the locker room read as "concept art that got scanned and
+ *   printed in a program" instead of "diffusion model output".
+ */
 const BackgroundImage = styled.div`
   position: absolute;
   inset: 0;
-  background: url(${lobbyBackground}) center/cover;
   /*
-   * On the snow theme the lobby backdrop becomes a faint frosted
-   * suggestion of the arena, not a moody ink-wash. Brightness up,
-   * saturation down so the colorful banners read as a soft pastel
-   * watermark behind the snow surface.
+   * The user redrew the bg art at a 16:9 aspect (1672x941) with the
+   * icicles already removed at the source, so plain cover works
+   * cleanly. Anchored to bottom so the floor stays planted under
+   * the penguins on any non-16:9 viewport (any vertical overflow
+   * gets trimmed off the top, which is wall, instead of off the
+   * bottom, which is floor).
+   *
+   * Slight transform: scale on top of cover gives a deliberate
+   * "punched in" framing — banzuke + robe edges trim off a touch,
+   * the lockers and central banner read bigger, scene feels less
+   * like an empty room. Anchored from bottom-center so the scale
+   * pushes content up + out (off the top + sides) rather than
+   * shifting the floor away from the penguins.
    */
-  opacity: 0.42;
-  filter: saturate(0.78) brightness(1.18) blur(1.5px);
+  background: url(${lobbyBackground}) center bottom / cover;
+  /*
+   * translateX shifts the bg art slightly right (~3% of its width)
+   * before the scale anchor takes over. Net effect: image content
+   * slides right inside the container, exposing a touch more of
+   * the left side (robe / left locker) and trimming a touch more
+   * of the right side (banzuke). The scale stays anchored at the
+   * bottom-center so the floor remains planted under the penguins.
+   */
+  transform: translateX(1.2%) scale(1.1);
+  transform-origin: 50% 100%;
+  opacity: 0.94;
+  filter: saturate(0.84) brightness(1.02) contrast(1.05) sepia(0.07)
+    blur(0.4px);
   z-index: 0;
 `;
 
+/*
+ * Vignette + cinematic wash.
+ *
+ * The radial vignette darkens the corners with a warm sumi tone —
+ * this does double duty: it pulls the eye to the center action,
+ * AND it hides the corners and edges of the AI bg (which is where
+ * AI imagery is most likely to have telltale repetition or weird
+ * artifacts). Pairs with the linear top/bottom wash that gives the
+ * cream MatchCardBar and the dark BottomDeck quiet gradients to
+ * sit on top of.
+ */
 const CinematicOverlay = styled.div`
   position: absolute;
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  /*
-   * Snow-tinted readability wash. The lobby bg is showing through
-   * at 42% opacity, so this overlay does the rest of the work to
-   * lift the bg back toward a clean snowfield: a pale icy veil
-   * that's strongest at the top (where the player cards sit) and
-   * fades to clear in the middle (so a hint of the arena art
-   * still breathes through). Soft cool corner shadows frame the
-   * scene without collapsing it into a dark vignette.
-   */
   background:
     radial-gradient(
-      ellipse at 50% 100%,
-      rgba(35, 70, 110, 0.18) 0%,
-      transparent 55%
+      ellipse at 50% 55%,
+      transparent 32%,
+      rgba(40, 30, 20, 0.22) 88%,
+      rgba(30, 22, 14, 0.42) 100%
     ),
     linear-gradient(
       180deg,
-      rgba(234, 241, 247, 0.65) 0%,
-      rgba(234, 241, 247, 0.25) 30%,
-      rgba(234, 241, 247, 0.25) 70%,
-      rgba(234, 241, 247, 0.7) 100%
+      rgba(245, 236, 217, 0.22) 0%,
+      rgba(245, 236, 217, 0) 14%,
+      rgba(245, 236, 217, 0) 70%,
+      rgba(15, 20, 30, 0.28) 100%
     );
 `;
 
+/*
+ * GrainOverlay — paper grain on top of everything.
+ *
+ * This is the single most important AI-hiding move. AI imagery is
+ * defined by SUSPICIOUS CLEANNESS — every pixel is exactly right,
+ * no surface texture, no print artifacts. Real illustration that
+ * got reproduced (printed in a program, scanned from a poster, or
+ * shipped in a video game with grading) ALWAYS picks up some grain
+ * along the way. Adding a low-opacity cross-hatch + speckle grain
+ * here makes the bg feel like it lives on a physical surface rather
+ * than rendered fresh on a GPU.
+ *
+ * Two layers stacked: a fine repeating cross-hatch (paper tooth) +
+ * a coarser radial speckle (printed dot pattern). Both at low
+ * opacity. The mix-blend-mode overlay lets them interact with the
+ * underlying color rather than just sitting flat on top.
+ */
+/*
+ * Cross-hatch only — the previous version layered a few large
+ * radial-gradient "speckles" on top of the cross-hatch for a
+ * printed-dot feel, but with mix-blend-mode: overlay those big
+ * radials clustered visibly against flat saturated regions of
+ * the bg (noticeable as patchy lighter blobs on the deep blue
+ * 相撲 noren). The cross-hatch is uniformly distributed so it
+ * doesn't pool against any one color region. Trade: slightly
+ * less "printed paper" feel, but no more patches.
+ */
 const GrainOverlay = styled.div`
   position: absolute;
   inset: 0;
-  z-index: 1;
+  z-index: 2;
   pointer-events: none;
-  opacity: 0.12;
+  opacity: 0.28;
+  mix-blend-mode: overlay;
   background-image:
     repeating-linear-gradient(
       0deg,
-      transparent 0px,
-      rgba(35, 70, 110, 0.05) 1px,
-      transparent 2px
+      rgba(60, 40, 20, 0.05) 0,
+      transparent 1px,
+      transparent 3px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(60, 40, 20, 0.04) 0,
+      transparent 1px,
+      transparent 4px
     );
 `;
 
 // ============================================
-// TOP BAR
+// TOP BAR — printed match-card header (cream washi paper strip)
 // ============================================
 
-const TopBar = styled.header`
+/*
+ * MatchCardBar — the lobby's printed-program header.
+ *
+ * Replaces the old generic dark sumi top bar with a CREAM washi
+ * paper strip that reads as a printed match card / fight program
+ * pinned across the top of the locker room. This gives the
+ * lobby a real visual identity at the top instead of yet another
+ * dark utility bar.
+ *
+ * Composition is editorial, not utilitarian:
+ *   - left:   Leave button (small, ghost on cream)
+ *   - center: TONIGHT'S BOUT label + dohyo / room code, set in
+ *             display type with a kanji accent
+ *   - right:  match-mode chip (1V1 / VS CPU)
+ *
+ * Two thin vermillion rules above and below print as the brand
+ * "stamp marks" on either edge of the printed program — nothing
+ * else uses them, so they read as unique to the header.
+ */
+const MatchCardBar = styled.header`
   position: relative;
   z-index: 10;
   flex-shrink: 0;
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  gap: clamp(12px, 2cqw, 28px);
-  padding: clamp(14px, 2.4cqh, 26px) clamp(20px, 3.5cqw, 48px);
-  /*
-   * Sumi anchor band — frames the top of the lobby so the white
-   * player cards have somewhere dark to sit against. Same
-   * structural role as the bottom HUD on the main menu.
-   */
-  background: ${C.sumi};
-  border-bottom: 1px solid ${C.sumiBorder};
-  box-shadow: 0 3px 10px ${C.sumiShadow};
-  animation: ${panelDrop} 0.5s ease-out;
+  gap: clamp(10px, 1.8cqw, 22px);
+  padding: clamp(8px, 1.4cqh, 14px) clamp(18px, 3cqw, 36px);
+  background: ${C.cream};
+  border-top: 2px solid ${C.vermillion};
+  border-bottom: 2px solid ${C.vermillion};
+  /* Soft warm shadow under the printed paper, not on the page */
+  box-shadow: 0 3px 10px rgba(50, 30, 10, 0.18);
+  animation: ${slideDown} 0.5s ease-out;
+
+  /* Faint grain so the cream reads as paper, not a flat panel */
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        rgba(60, 40, 20, 0.04) 0,
+        transparent 1px,
+        transparent 3px
+      );
+    pointer-events: none;
+  }
 `;
 
-const TopBarLeft = styled.div`
+const TopLeft = styled.div`
   display: flex;
   align-items: center;
   justify-content: flex-start;
 `;
 
-const TopBarRight = styled.div`
+const TopRight = styled.div`
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -171,99 +294,119 @@ const ExitButton = styled.button`
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: clamp(8px, 1.1cqw, 12px);
-  padding: clamp(8px, 1.2cqh, 12px) clamp(14px, 2cqw, 22px);
+  gap: clamp(7px, 1cqw, 11px);
+  padding: clamp(6px, 0.9cqh, 10px) clamp(11px, 1.6cqw, 18px);
   font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
-  font-size: clamp(0.62rem, 0.95cqw, 0.78rem);
+  font-weight: 700;
+  font-size: clamp(0.55rem, 0.85cqw, 0.7rem);
   text-transform: uppercase;
-  letter-spacing: 0.22em;
-  /*
-   * Dark-context ghost button. Sits on the sumi TopBar, so the
-   * surface is transparent + cream hairline border (mirrors the
-   * snow-context ghost SystemButton on the main menu). Stays
-   * subordinate to the central DohyoBadge.
-   */
-  color: ${C.creamMute};
+  letter-spacing: 0.2em;
+  color: ${C.inkTextSoft};
   background: transparent;
-  border: 1px solid ${C.sumiBorder};
-  border-radius: 2px;
+  border: 1px solid rgba(60, 40, 20, 0.22);
+  border-radius: 0;
   cursor: pointer;
   transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease,
     transform 0.18s ease;
 
   .arrow {
-    font-family: "Space Grotesk", sans-serif;
     font-weight: 700;
     transition: transform 0.2s ease;
   }
 
   &:hover {
-    color: ${C.cream};
-    border-color: ${C.iceMid};
-    background: rgba(234, 241, 247, 0.06);
-
-    .arrow {
-      transform: translateX(-3px);
-    }
+    color: ${C.vermillionDeep};
+    border-color: ${C.vermillion};
+    background: rgba(216, 59, 39, 0.06);
+    .arrow { transform: translateX(-3px); }
   }
-
-  &:active {
-    transform: scale(0.98);
-  }
+  &:active { transform: scale(0.98); }
 `;
 
-const DohyoBadge = styled.div`
+/*
+ * MatchCardCenter — the printed center block of the program.
+ *
+ * Uses display type for the dohyo/room name (the headline of the
+ * program) with a small caption row below. The kanji 番付 (banzuke
+ * — "ranking sheet") sits as a single-character mark to the left
+ * of the headline, giving the printed page a real cultural anchor
+ * without leaning on it.
+ */
+const MatchCardCenter = styled.div`
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: clamp(10px, 1.4cqw, 16px);
+`;
+
+const MatchCardKanji = styled.span`
+  font-family: "Noto Serif JP", serif;
+  font-weight: 700;
+  font-size: clamp(1.05rem, 1.7cqw, 1.45rem);
+  color: ${C.vermillion};
+  line-height: 0.9;
+`;
+
+const MatchCardLabels = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: clamp(6px, 1cqh, 10px) clamp(20px, 3cqw, 36px);
-  /*
-   * Small snow plaque sitting on the dark sumi TopBar — it's the
-   * "room name plate" so it should pop as the only light surface
-   * up here. Same treatment as a banzuke nameplate pinned to a
-   * ribbon: cream-against-dark outside, dark-against-snow inside.
-   */
-  background: ${C.snowPanel};
-  border: 1px solid ${C.sumiBorder};
-  border-radius: 2px;
-  box-shadow: 0 2px 8px ${C.sumiShadow};
+  gap: 1px;
+`;
 
-  /* Single thin gold underline — quiet brand mark, picks up the
-   * gold/cream punctuation echoing the banzuke header on the
-   * main menu so the two screens feel related. */
-  &::after {
-    content: "";
-    position: absolute;
-    bottom: -1px;
-    left: 24%;
-    right: 24%;
-    height: 2px;
+const MatchCardCaption = styled.div`
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 600;
+  font-size: clamp(0.42rem, 0.65cqw, 0.52rem);
+  color: ${C.inkTextMute};
+  letter-spacing: 0.36em;
+  text-transform: uppercase;
+`;
+
+const MatchCardTitle = styled.div`
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.95rem, 1.55cqw, 1.2rem);
+  color: ${C.inkText};
+  letter-spacing: 0.16em;
+  line-height: 1;
+  text-transform: uppercase;
+`;
+
+/*
+ * MatchModeChip — top right "1V1 / VS CPU" mode badge.
+ * Compact pill on the cream surface, accented with the gold leaf
+ * to balance the vermillion rules at top + bottom of the bar.
+ */
+const MatchModeChip = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: clamp(7px, 1cqw, 10px);
+  padding: clamp(5px, 0.7cqh, 8px) clamp(10px, 1.5cqw, 16px);
+  background: rgba(15, 20, 30, 0.04);
+  border: 1px solid rgba(60, 40, 20, 0.22);
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 700;
+  font-size: clamp(0.46rem, 0.72cqw, 0.58rem);
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: ${C.inkTextSoft};
+
+  strong {
+    color: ${C.vermillion};
+    font-weight: 800;
+    letter-spacing: 0.14em;
+  }
+
+  .dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
     background: ${C.gold};
-    opacity: 0.9;
   }
 `;
 
-const DohyoLabel = styled.div`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
-  font-size: clamp(0.42rem, 0.7cqw, 0.55rem);
-  color: ${C.inkTextMute};
-  text-transform: uppercase;
-  letter-spacing: 0.32em;
-`;
-
-const DohyoCode = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.95rem, 1.6cqw, 1.25rem);
-  color: ${C.inkText};
-  letter-spacing: 0.14em;
-  margin-top: 2px;
-`;
-
 // ============================================
-// STAGE
+// STAGE — penguins in the locker room (no fake dohyo)
 // ============================================
 
 const Stage = styled.main`
@@ -271,206 +414,126 @@ const Stage = styled.main`
   z-index: 2;
   flex: 1;
   min-height: 0;
-  display: flex;
-  align-items: stretch;
-  justify-content: center;
-  gap: clamp(120px, 16cqw, 240px);
-  padding: clamp(16px, 3cqh, 36px) clamp(24px, 4cqw, 64px);
-`;
-
-const VSCenter = styled.div`
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: clamp(8px, 1.4cqh, 18px);
-  height: 78%;
-  z-index: 4;
-  pointer-events: none;
-`;
-
-const VSLine = styled.div`
-  width: 1px;
-  flex: 1;
-  background: linear-gradient(
-    180deg,
-    transparent 0%,
-    ${C.snowBorder} 50%,
-    transparent 100%
-  );
-`;
-
-const VSBadge = styled.div`
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: clamp(56px, 7cqw, 96px);
-  height: clamp(56px, 7cqw, 96px);
-  font-family: "Bungee", cursive;
-  font-size: clamp(1.1rem, 2.2cqw, 2rem);
-  color: ${C.snowSoft};
+  display: grid;
   /*
-   * Solid vermillion disc, gold ring. Dropped the gradient + glow
-   * halo + inset highlight stack — on a snow page that recipe was
-   * the strongest "AI-rendered glossy badge" tell. A single short
-   * warm shadow gives it weight; the gold ring + outer ring keep
-   * it ceremonial.
+   * Two equal columns now (was 1fr/auto/1fr with a middle "VS"
+   * column). The VS wordmark is now positioned absolutely inside
+   * Stage instead of occupying its own grid column, which lets
+   * each fighter column expand cleanly into half the available
+   * width AND lets the VS wordmark center against the full Stage
+   * width rather than a narrow auto column.
    */
-  background: ${C.vermillion};
-  border: 2px solid ${C.gold};
-  border-radius: 50%;
-  letter-spacing: 0.05em;
-  box-shadow: 0 4px 14px rgba(138, 31, 18, 0.4);
-  flex-shrink: 0;
-
-  &::before {
-    content: "";
-    position: absolute;
-    inset: -6px;
-    border-radius: 50%;
-    border: 1px solid ${C.gold};
-    opacity: 0.55;
-    pointer-events: none;
-  }
+  grid-template-columns: 1fr 1fr;
+  align-items: stretch;
+  gap: clamp(16px, 3cqw, 56px);
+  padding: clamp(10px, 2cqh, 26px) clamp(24px, 4cqw, 70px)
+    clamp(6px, 1.2cqh, 16px);
+  /*
+   * Hard overflow guard — the locker-room background fills
+   * everything beneath, so any fighter sprite that would otherwise
+   * overflow into the bottom deck on a non-16:9 viewport gets
+   * cleanly clipped here instead of showing through.
+   */
+  overflow: hidden;
 `;
 
-const VSBadgeAnimated = styled(VSBadge)`
-  /* Reposition for absolute centering animation */
-  animation: ${vsBeat} 2.4s ease-in-out infinite;
-`;
-
-// ============================================
-// PLAYER CARD
-// ============================================
-
-const PlayerCardWrapper = styled.div`
+const FighterColumn = styled.div`
+  position: relative;
+  z-index: 3;
   display: flex;
   flex-direction: column;
-  flex: 1;
-  width: 100%;
-  max-width: clamp(260px, 32cqw, 480px);
-  min-width: 0;
+  align-items: center;
+  /*
+   * IMPORTANT: min-height: 0 lets this flex child shrink below its
+   * intrinsic content size. Without it, the NamePlate + caption +
+   * difficulty strip would force the column above the grid row's
+   * available height on portrait viewports, pushing the penguin
+   * sprite down past the Stage and into the bottom deck — which is
+   * exactly what was breaking scaling before.
+   */
+  min-height: 0;
   height: 100%;
+  min-width: 0;
+  gap: clamp(6px, 1cqh, 10px);
   animation: ${(p) => (p.$side === "left" ? slideInLeft : slideInRight)} 0.5s
     ease-out 0.15s both;
 `;
 
-const PlayerCard = styled.div`
-  --accent: ${(p) => (p.$hasPlayer ? C.vermillion : C.iceMid)};
-  --accentBright: ${(p) =>
-    p.$hasPlayer ? C.vermillionBright : C.iceDeep};
+// ============================================
+// HORIZONTAL NAMEPLATE (above each penguin)
+// ============================================
 
+/*
+ * NamePlate — the small horizontal name card that sits above each
+ * fighter. Replaces the old vertical Nobori entirely. Reads as a
+ * fighter intro card pinned to the locker (East/West side label,
+ * fighter name, status dot), all on one short horizontal row so
+ * it doesn't eat the Stage's vertical real estate.
+ *
+ * Cream washi surface to visually rhyme with the MatchCardBar at
+ * the top — both are "printed paper" elements pinned to the locker
+ * room. Solid vermillion left rule when occupied, faded ice rule
+ * when empty.
+ */
+const NamePlate = styled.div`
   position: relative;
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  /*
-   * Snow panel body — pure white tile with a crisp ice-blue border
-   * when occupied, deeper grey-ice border when empty. The hero
-   * vermillion accent strip across the top still owns the "primary
-   * moment" semantic; the gold side-bar still marks the side. No
-   * backdrop-filter, no inset highlight, no multi-stop body
-   * gradient — just one clean snow tile per fighter.
-   */
-  background: ${C.snowPanel};
-  border: 1.5px solid
-    ${(p) => (p.$hasPlayer ? C.iceMid : C.snowBorder)};
-  border-radius: 2px;
-  overflow: hidden;
-  box-shadow: 0 8px 22px ${C.snowShadow};
-  transition: border-color 0.3s ease, box-shadow 0.3s ease;
-
-  /* Top accent line */
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 3px;
-    background: var(--accent);
-    opacity: ${(p) => (p.$hasPlayer ? 1 : 0.45)};
-  }
-
-  /* Side-specific subtle accent bar */
-  &::after {
-    content: "";
-    position: absolute;
-    top: 14px;
-    bottom: 14px;
-    width: 2px;
-    ${(p) =>
-      p.$side === "left"
-        ? css`
-            left: 10px;
-          `
-        : css`
-            right: 10px;
-          `}
-    background: linear-gradient(
-      180deg,
-      transparent 0%,
-      ${(p) => (p.$hasPlayer ? C.gold : C.snowBorder)} 50%,
-      transparent 100%
-    );
-    opacity: 0.55;
-  }
-`;
-
-const CardHeader = styled.div`
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: ${(p) =>
-    p.$side === "left" ? "space-between" : "space-between"};
-  gap: clamp(8px, 1.4cqw, 14px);
-  padding: clamp(10px, 1.6cqh, 16px) clamp(14px, 2cqw, 22px);
-  border-bottom: 1px solid ${C.snowBorderSoft};
-  background: ${C.snowSoft};
-  position: relative;
-  z-index: 2;
-
-  ${(p) =>
-    p.$side === "right" &&
-    css`
-      flex-direction: row-reverse;
-    `}
+  gap: clamp(8px, 1.2cqw, 14px);
+  padding: clamp(5px, 0.7cqh, 8px) clamp(10px, 1.5cqw, 16px)
+    clamp(5px, 0.7cqh, 8px) clamp(12px, 1.8cqw, 20px);
+  background: ${C.cream};
+  border: 1px solid rgba(60, 40, 20, 0.22);
+  /* Crisp left accent rule — vermillion for occupied, faded for empty */
+  border-left: 4px solid
+    ${(p) => (p.$hasFighter ? C.vermillion : "rgba(60, 40, 20, 0.2)")};
+  box-shadow: 0 2px 6px rgba(50, 30, 10, 0.18);
+  flex-shrink: 0;
+  max-width: 92%;
 `;
 
-const RankBadge = styled.div`
+const NamePlateSide = styled.span`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.55rem, 0.9cqw, 0.7rem);
-  color: ${C.goldDeep};
-  background: rgba(232, 197, 71, 0.18);
-  border: 1px solid ${C.gold};
-  border-radius: 2px;
-  padding: clamp(4px, 0.6cqh, 6px) clamp(10px, 1.4cqw, 16px);
-  letter-spacing: 0.18em;
+  font-size: clamp(0.5rem, 0.78cqw, 0.62rem);
+  color: ${C.vermillionDeep};
+  letter-spacing: 0.24em;
   text-transform: uppercase;
+  padding-right: clamp(8px, 1.1cqw, 12px);
+  border-right: 1px solid rgba(60, 40, 20, 0.18);
 `;
 
-const StatusPill = styled.div`
-  display: flex;
-  align-items: center;
-  gap: clamp(6px, 0.8cqw, 9px);
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
-  font-size: clamp(0.5rem, 0.78cqw, 0.62rem);
-  color: ${(p) => (p.$connected ? C.successDeep : C.inkTextMute)};
+const NamePlateName = styled.span`
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.7rem, 1.1cqw, 0.9rem);
+  color: ${(p) => (p.$hasFighter ? C.inkText : C.inkTextMute)};
+  letter-spacing: 0.1em;
   text-transform: uppercase;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: clamp(80px, 14cqw, 180px);
+`;
+
+const NamePlateStatus = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 700;
+  font-size: clamp(0.4rem, 0.62cqw, 0.5rem);
+  color: ${(p) => (p.$connected ? C.successDeep : C.inkTextMute)};
   letter-spacing: 0.22em;
+  text-transform: uppercase;
+  padding-left: clamp(6px, 0.9cqw, 10px);
+  border-left: 1px solid rgba(60, 40, 20, 0.18);
 `;
 
 const StatusDot = styled.span`
-  width: clamp(7px, 0.9cqw, 9px);
-  height: clamp(7px, 0.9cqw, 9px);
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: ${(p) => (p.$connected ? C.success : C.snowBorder)};
+  background: ${(p) => (p.$connected ? C.success : "rgba(60, 40, 20, 0.3)")};
   ${(p) =>
     p.$connected &&
     css`
@@ -478,21 +541,52 @@ const StatusDot = styled.span`
     `}
 `;
 
-const CardBody = styled.div`
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: clamp(10px, 1.4cqh, 18px);
+// ============================================
+// FIGHTER PORTRAIT (penguin standing in the locker room)
+// ============================================
+
+const FighterPortrait = styled.div`
   position: relative;
-  z-index: 2;
-  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+
+  /*
+   * Ground shadow — uses the SAME radial gradient as the in-game
+   * PlayerShadow component (rgba(0,0,0,0.86) → transparent at 70%)
+   * so the lobby shadow visually matches what the player will see
+   * once the bout starts. Sized to match the game's player shadow
+   * footprint roughly (the game uses width: 9.15% / height: 3.70%
+   * of a 1280×720 stage, which is a flat ~4:1 oval).
+   */
+  &::before {
+    content: "";
+    position: absolute;
+    bottom: clamp(2px, 0.4cqh, 6px);
+    left: 50%;
+    /* Sized to match the PreviewImage footprint at 43cqh midpoint. */
+    width: clamp(140px, 18cqw, 210px);
+    height: clamp(23px, 3.5cqh, 38px);
+    border-radius: 50%;
+    background: radial-gradient(
+      ellipse at center,
+      rgba(0, 0, 0, 0.86) 0%,
+      rgba(0, 0, 0, 0) 70%
+    );
+    transform: translateX(-50%);
+    z-index: 1;
+    pointer-events: none;
+  }
 `;
 
 const AvatarFrame = styled.div`
+  position: relative;
+  z-index: 2;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
   width: 100%;
   height: 100%;
@@ -514,272 +608,336 @@ const AvatarBreath = styled.div`
   width: 100%;
   height: 100%;
   min-height: 0;
-  filter: drop-shadow(0 12px 14px rgba(35, 70, 110, 0.32));
+  /*
+   * No drop-shadow filter — the ground shadow on FighterPortrait
+   * does the grounding work, matching how the in-game penguin sits
+   * over PlayerShadow (no sprite-edge glow stacked on top).
+   */
 `;
 
 const PreviewImage = styled.img`
-  height: clamp(160px, 40cqh, 380px);
-  max-height: 100%;
-  width: auto;
+  /*
+   * Critical: use max-height (not height) so the sprite ALWAYS
+   * scales down to fit the FighterPortrait's available vertical
+   * space. This was the core scaling bug — the old fixed-height
+   * sprite would overflow below the Stage on any window that wasn't
+   * 16:9. Auto height + max-height: 100% lets the browser shrink
+   * the sprite as needed without distortion.
+   *
+   * Sizing balance: the original 36cqh midpoint felt too small
+   * against the zoomed-in bg, the bumped 51cqh felt too big once
+   * the bg was redrawn at proper proportions. Splitting the
+   * difference at 43cqh keeps the penguin a clear focal element
+   * while reading as "smaller than a locker", matching the cute
+   * scale of the bg art (penguins ~2/3 the height of a locker).
+   */
+  max-height: clamp(180px, 43cqh, 380px);
+  height: auto;
   max-width: 100%;
+  width: auto;
   object-fit: contain;
 `;
 
+/*
+ * WaitingState — empty fighter slot. Faded silhouette of a penguin
+ * (a "ghost" opponent) under the standard nameplate. Reads as
+ * "this corner is empty, waiting for a challenger" — not a generic
+ * loading spinner.
+ */
 const WaitingState = styled.div`
+  position: relative;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(10px, 1.4cqh, 16px);
+  justify-content: flex-end;
+  width: 100%;
+  height: 100%;
+  gap: clamp(6px, 1cqh, 10px);
+`;
+
+const WaitingSilhouette = styled.img`
+  /*
+   * Match PreviewImage sizing so the empty fighter slot reads as
+   * the same "weight" on the stage as the actual penguin across
+   * from it — silhouette and sprite share a baseline AND a scale.
+   */
+  max-height: clamp(180px, 43cqh, 380px);
+  height: auto;
+  max-width: 100%;
+  width: auto;
+  object-fit: contain;
+  filter: brightness(0) opacity(0.18);
+  ${(p) =>
+    p.$side === "left" &&
+    css`
+      transform: scaleX(-1);
+    `}
 `;
 
 const WaitingText = styled.div`
+  display: flex;
+  align-items: center;
+  gap: clamp(7px, 1cqw, 11px);
   font-family: "Space Grotesk", sans-serif;
-  font-weight: 500;
-  font-size: clamp(0.55rem, 0.95cqw, 0.72rem);
+  font-weight: 700;
+  font-size: clamp(0.45rem, 0.7cqw, 0.58rem);
   color: ${C.inkTextMute};
   text-transform: uppercase;
   letter-spacing: 0.32em;
 `;
 
-const LoadingDots = styled.div`
-  display: flex;
-  gap: clamp(6px, 1cqw, 10px);
+const LoadingDots = styled.span`
+  display: inline-flex;
+  gap: 5px;
 `;
 
-const Dot = styled.div`
-  width: clamp(7px, 1cqw, 11px);
-  height: clamp(7px, 1cqw, 11px);
+const Dot = styled.span`
+  width: 5px;
+  height: 5px;
   background: ${C.vermillion};
   border-radius: 50%;
   animation: ${dotPulse} 1.4s ease-in-out infinite;
   animation-delay: ${(p) => p.$delay * 0.18}s;
 `;
 
-const CardFooter = styled.div`
-  padding: clamp(10px, 1.5cqh, 14px) clamp(14px, 2cqw, 22px);
-  border-top: 1px solid ${C.snowBorderSoft};
-  background: ${C.snowSoft};
-  position: relative;
-  z-index: 2;
-  ${(p) =>
-    p.$side === "right" &&
-    css`
-      text-align: right;
-    `}
-`;
+// ============================================
+// VS CENTER — typographic + hanko stamp
+// ============================================
 
-const PlayerName = styled.div`
+/*
+ * VSWordmark — direct child of Stage, absolutely positioned dead
+ * center horizontally and at 75% vertically.
+ *
+ * Previously this lived inside a VSCenter wrapper that took the
+ * middle column of a 1fr/auto/1fr grid. The wrapper's narrow
+ * width + grid-cell positioning was making the wordmark visually
+ * off-center against the full Stage. Hoisting it directly into
+ * Stage and centering with left: 50% + translate(-50%) means it's
+ * centered against the full Stage width — guaranteed.
+ *
+ * Treatment: cream fill with a vermillion stroke (multi-shadow
+ * 8-direction outline) plus a deep dark drop. Cream-on-vermillion
+ * is the same chrome the rest of the game uses (Ready button,
+ * status pills, header), so the wordmark reads as a NATIVE game
+ * element rather than a floating typographic experiment. The
+ * stroke also gives it strong legibility against the busy locker
+ * room bg without needing a card backing.
+ *
+ * No rotation — the previous tilt was the main "looks weird"
+ * complaint. A flat, square wordmark reads as confident and
+ * intentional.
+ */
+const VSWordmark = styled.div`
+  position: absolute;
+  top: 75%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  pointer-events: none;
+
   font-family: "Bungee", cursive;
-  font-size: clamp(0.85rem, 1.5cqw, 1.15rem);
-  color: ${(p) => (p.$hasPlayer ? C.inkText : C.inkTextMute)};
+  font-size: clamp(2.6rem, 5.6cqw, 4.6rem);
+  font-weight: 400;
+  color: ${C.cream};
+  letter-spacing: 0.04em;
+  line-height: 1;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  line-height: 1.05;
-`;
+  white-space: nowrap;
 
-const PlayerSubtext = styled.div`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 500;
-  font-size: clamp(0.5rem, 0.78cqw, 0.62rem);
-  color: ${C.inkTextMute};
-  text-transform: uppercase;
-  letter-spacing: 0.22em;
-  margin-top: 4px;
+  /*
+   * Vermillion stroke via 8-direction text-shadow stack (more
+   * cross-browser reliable than -webkit-text-stroke), then a deep
+   * dark drop for grounded depth against the bg. Order matters:
+   * stroke layers first so they read as one solid outline, drop
+   * shadow last so it sits behind everything.
+   */
+  text-shadow:
+    -2px 0 0 ${C.vermillionDeep},
+    2px 0 0 ${C.vermillionDeep},
+    0 -2px 0 ${C.vermillionDeep},
+    0 2px 0 ${C.vermillionDeep},
+    -2px -2px 0 ${C.vermillionDeep},
+    2px -2px 0 ${C.vermillionDeep},
+    -2px 2px 0 ${C.vermillionDeep},
+    2px 2px 0 ${C.vermillionDeep},
+    0 5px 0 rgba(20, 8, 4, 0.42),
+    0 10px 22px rgba(20, 8, 4, 0.5);
 `;
 
 // ============================================
-// CPU DIFFICULTY LIST
+// CPU DIFFICULTY STRIP (compact horizontal pills under CPU portrait)
 // ============================================
 
-const DifficultyList = styled.div`
+/*
+ * DifficultyStrip — CPU difficulty selector that sits just under
+ * the right NamePlate.
+ *
+ * CRITICAL: this is `position: absolute` (taken OUT of the
+ * FighterColumn's flex flow) so it does NOT compress the CPU
+ * penguin's available space. If it were a normal flex child, the
+ * right column's penguin would bottom-align ABOVE the left
+ * column's penguin (because the strip would steal vertical room
+ * from FighterPortrait), and the two fighters would visibly stand
+ * on different floor levels. By floating absolutely below the
+ * nameplate, both penguins keep the full FighterPortrait height
+ * and stand on the same baseline.
+ */
+const DifficultyStrip = styled.div`
+  position: absolute;
+  /*
+   * Anchor below the NamePlate. The nameplate has clamp(5-8px)
+   * padding + ~28px content height, so ~40-48px from the column
+   * top puts the strip right under it.
+   */
+  top: clamp(38px, 5.5cqh, 56px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  z-index: 5;
+  background: rgba(15, 20, 30, 0.82);
+  border: 1px solid rgba(232, 197, 71, 0.22);
+  max-width: 92%;
+  pointer-events: auto;
+`;
+
+const DifficultyPill = styled.button`
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: clamp(6px, 1cqh, 10px);
-  width: 100%;
-  height: 100%;
-  padding: clamp(4px, 0.6cqh, 8px);
-`;
-
-const DifficultyButton = styled.button`
-  position: relative;
-  flex: 1;
-  display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: clamp(8px, 1.2cqh, 14px) clamp(14px, 2cqw, 22px);
-  /*
-   * Snow-tile rows. Selection is carried by chrome:
-   *   selected   → solid 1.5px iceMid border + 4px iceMid left rule
-   *   available  → thin snow border
-   *   unavailable→ snow border, dimmed
-   * "Selected = ice" matches the existing semantic from the
-   * customize tab indicator and the active mawashi swatch ring.
-   * Body stays a clean snow tile in every state — no gradient
-   * sweeps, no glow halos.
-   */
-  background: ${(p) => (p.$selected ? C.snowSoft : C.snowPanel)};
-  border: ${(p) => (p.$selected ? "1.5px" : "1px")} solid
-    ${(p) =>
-      p.$selected
-        ? C.iceMid
-        : p.$available
-          ? C.snowBorder
-          : C.snowBorderSoft};
-  border-left: ${(p) =>
-    p.$selected ? `4px solid ${C.iceMid}` : "1px solid transparent"};
-  border-radius: 2px;
+  justify-content: center;
+  gap: 1px;
+  padding: clamp(4px, 0.6cqh, 7px) clamp(8px, 1.1cqw, 13px);
+  background: ${(p) =>
+    p.$selected ? C.vermillion : "transparent"};
+  border: 0;
   cursor: ${(p) => (p.$available ? "pointer" : "not-allowed")};
-  opacity: ${(p) => (p.$available ? 1 : 0.6)};
-  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease,
-    box-shadow 0.18s ease;
+  opacity: ${(p) => (p.$available ? 1 : 0.45)};
+  transition: background 0.16s ease, transform 0.16s ease;
   font-family: inherit;
-  text-align: left;
 
-  ${(p) =>
-    p.$selected &&
-    css`
-      box-shadow: 0 2px 8px rgba(28, 78, 110, 0.18);
-    `}
+  & + & {
+    border-left: 1px solid rgba(232, 197, 71, 0.22);
+  }
 
   &:hover {
     ${(p) =>
       p.$available &&
       !p.$selected &&
       css`
-        background: ${C.snowSoft};
-        border-color: ${C.iceMid};
-        transform: translateX(2px);
-      `}
-  }
-
-  &:active {
-    ${(p) =>
-      p.$available &&
-      css`
-        transform: scale(0.99);
+        background: rgba(216, 59, 39, 0.18);
       `}
   }
 `;
 
-const DifficultyLabel = styled.span`
+const DifficultyPillLabel = styled.span`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.7rem, 1.1cqw, 0.95rem);
+  font-size: clamp(0.46rem, 0.72cqw, 0.58rem);
   color: ${(p) =>
-    p.$selected ? C.iceDeep : p.$available ? C.inkText : C.inkTextMute};
+    p.$selected ? C.cream : p.$available ? C.cream : C.creamMute};
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  line-height: 1;
 `;
 
-const DifficultyMeta = styled.span`
+const DifficultyPillMeta = styled.span`
   font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
-  font-size: clamp(0.45rem, 0.7cqw, 0.55rem);
-  color: ${(p) => (p.$selected ? C.iceMid : C.inkTextMute)};
-  text-transform: uppercase;
-  letter-spacing: 0.22em;
-`;
-
-const SoonTag = styled.span`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 700;
-  font-size: clamp(0.42rem, 0.65cqw, 0.5rem);
-  color: ${C.goldDeep};
-  background: rgba(232, 197, 71, 0.18);
-  border: 1px solid ${C.gold};
-  border-radius: 2px;
-  padding: 3px 8px;
+  font-size: clamp(0.34rem, 0.5cqw, 0.42rem);
+  color: ${(p) =>
+    p.$selected ? "rgba(245, 236, 217, 0.85)" : C.creamMute};
   letter-spacing: 0.22em;
   text-transform: uppercase;
+  margin-top: 1px;
 `;
 
 // ============================================
-// CUSTOMIZE PANEL
+// BOTTOM DECK — combined customize + READY in a single bar
 // ============================================
 
-const CustomizePanel = styled.section`
+/*
+ * BottomDeck — the consolidated control bar at the bottom of the
+ * lobby. Replaces the previous TWO separate stacked bars
+ * (CustomizePanel + BottomBar) which were:
+ *   1. Eating ~140-180px of vertical space (forcing the penguin
+ *      sprites to overflow the Stage on any non-16:9 window).
+ *   2. Visually disconnected — customize was a small white toolbar
+ *      floating in front of a darker action bar, with no shared
+ *      visual language.
+ *
+ * Now a single dark sumi anchor band runs across the bottom with
+ * THREE columns:
+ *   LEFT   — Customize (Body/Belt tabs + swatches + selected chip)
+ *   CENTER — vertical divider rule
+ *   RIGHT  — READY action (big stamped button + ready chip)
+ *
+ * The dark surface lets the vermillion READY CTA pop, while keeping
+ * the chrome ONE bar instead of two stacked.
+ */
+const BottomDeck = styled.footer`
   position: relative;
-  z-index: 5;
+  z-index: 10;
   flex-shrink: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
   align-items: stretch;
-  gap: clamp(10px, 1.6cqw, 20px);
-  width: min(94%, 980px);
-  margin: clamp(8px, 1.2cqh, 14px) auto 0;
-  padding: clamp(8px, 1cqh, 12px) clamp(14px, 2cqw, 22px);
-  background: ${C.snowPanel};
-  border: 1px solid ${C.snowBorder};
-  border-radius: 2px;
-  box-shadow: 0 4px 14px ${C.snowShadow};
+  gap: clamp(10px, 1.6cqw, 22px);
+  padding: clamp(8px, 1.2cqh, 14px) clamp(16px, 2.6cqw, 32px);
+  background: ${C.sumi};
   /*
-   * Wipes up from its own bottom edge — it lives at the bottom of
-   * the lobby and should read as "the customize tray sliding open"
-   * rather than another generic fade-up panel.
+   * Single hairline gold rule along the top — a quiet brand mark
+   * (gold leaf) that mirrors the vermillion rules on the cream
+   * MatchCardBar at the top of the page without adding noise.
    */
-  animation: ${clipRevealUp} 0.5s ease-out 0.3s both;
+  border-top: 1px solid ${C.gold};
+  box-shadow: 0 -3px 12px ${C.sumiShadow};
+  animation: ${slideUp} 0.45s ease-out 0.25s both;
+  min-height: clamp(64px, 9cqh, 92px);
+`;
 
-  /* Single thin gold center accent — keeps the panel from feeling
-   * undecorated without piling on another full-width gradient strip
-   * (those are already overused across menu surfaces). */
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 30%;
-    right: 30%;
-    height: 2px;
-    background: ${C.gold};
-    opacity: 0.7;
-  }
+const CustomizeArea = styled.div`
+  display: flex;
+  align-items: center;
+  gap: clamp(8px, 1.4cqw, 18px);
+  min-width: 0;
+  flex: 1;
 `;
 
 const TabGroup = styled.div`
   display: flex;
-  align-items: center;
-  gap: clamp(2px, 0.4cqw, 4px);
-  border-right: 1px solid ${C.snowBorder};
-  padding-right: clamp(10px, 1.5cqw, 16px);
+  align-items: stretch;
+  gap: 2px;
   flex-shrink: 0;
+  border: 1px solid rgba(245, 236, 217, 0.18);
 `;
 
 const Tab = styled.button`
   position: relative;
   font-family: "Space Grotesk", sans-serif;
   font-weight: 700;
-  font-size: clamp(0.55rem, 0.85cqw, 0.68rem);
+  font-size: clamp(0.5rem, 0.78cqw, 0.62rem);
   text-transform: uppercase;
   letter-spacing: 0.24em;
-  padding: clamp(7px, 1cqh, 11px) clamp(12px, 1.6cqw, 18px);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 2px;
-  color: ${(p) => (p.$active ? C.iceDeep : C.inkTextMute)};
+  padding: clamp(7px, 1cqh, 11px) clamp(11px, 1.5cqw, 16px);
+  background: ${(p) => (p.$active ? C.vermillion : "transparent")};
+  border: 0;
+  color: ${(p) => (p.$active ? C.cream : C.creamMute)};
   cursor: pointer;
-  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+  transition: color 0.18s ease, background 0.18s ease;
 
-  ${(p) =>
-    p.$active &&
-    css`
-      background: ${C.snowPanelDeep};
-      border-color: ${C.iceMid};
-
-      &::after {
-        content: "";
-        position: absolute;
-        bottom: -4px;
-        left: 25%;
-        right: 25%;
-        height: 2px;
-        background: ${C.vermillion};
-      }
-    `}
+  & + & {
+    border-left: 1px solid rgba(245, 236, 217, 0.18);
+  }
 
   &:hover {
-    color: ${C.inkText};
+    color: ${C.cream};
     ${(p) =>
       !p.$active &&
       css`
-        background: ${C.snowSoft};
+        background: rgba(245, 236, 217, 0.06);
       `}
   }
 `;
@@ -788,80 +946,38 @@ const SwatchSection = styled.div`
   flex: 1;
   display: flex;
   align-items: center;
-  gap: clamp(5px, 0.7cqw, 8px);
+  gap: clamp(4px, 0.6cqw, 7px);
   flex-wrap: wrap;
   min-width: 0;
 `;
 
 const SwatchDivider = styled.div`
   width: 1px;
-  height: clamp(20px, 2.6cqh, 28px);
-  background: ${C.snowBorder};
-  margin: 0 clamp(2px, 0.4cqw, 6px);
+  height: clamp(18px, 2.4cqh, 26px);
+  background: rgba(245, 236, 217, 0.22);
+  margin: 0 clamp(2px, 0.4cqw, 5px);
   flex-shrink: 0;
 `;
 
-const SelectedBlock = styled.div`
-  display: flex;
-  align-items: center;
-  gap: clamp(8px, 1cqw, 12px);
-  border-left: 1px solid ${C.snowBorder};
-  padding-left: clamp(12px, 1.6cqw, 18px);
-  min-width: clamp(120px, 14cqw, 160px);
-  flex-shrink: 0;
-`;
-
-const SelectedSwatchPreview = styled.div`
-  width: clamp(24px, 2.6cqw, 30px);
-  height: clamp(24px, 2.6cqw, 30px);
-  border-radius: 50%;
-  background: ${(p) => p.$gradient || p.$color};
-  border: 2px solid ${C.gold};
-  box-shadow: 0 2px 5px ${C.snowShadow};
-  flex-shrink: 0;
-`;
-
-const SelectedNameStack = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-`;
-
-const SelectedCategory = styled.div`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
-  font-size: clamp(0.42rem, 0.65cqw, 0.5rem);
-  color: ${C.inkTextMute};
-  text-transform: uppercase;
-  letter-spacing: 0.28em;
-`;
-
-const SelectedNameLabel = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.6rem, 0.95cqw, 0.78rem);
-  color: ${C.inkText};
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-`;
-
+/*
+ * ColorSwatch — color circle. Repainted for the dark sumi BottomDeck
+ * background: cream-tinted hairline border (was snowBorder which
+ * disappeared on dark), gold ring on selection.
+ */
 const ColorSwatch = styled.button`
   position: relative;
-  width: clamp(22px, 2.4cqw, 28px);
-  height: clamp(22px, 2.4cqw, 28px);
+  width: clamp(20px, 2.2cqw, 26px);
+  height: clamp(20px, 2.2cqw, 26px);
   border-radius: 50%;
   border: 2px solid
-    ${(p) => (p.$selected ? C.gold : C.snowBorder)};
+    ${(p) => (p.$selected ? C.gold : "rgba(245, 236, 217, 0.32)")};
   background: ${(p) => p.$gradient || p.$color};
   cursor: ${(p) => (p.$taken ? "not-allowed" : "pointer")};
   transition: transform 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease;
   box-shadow: ${(p) =>
     p.$selected
-      ? `0 0 0 2px rgba(232, 197, 71, 0.45), 0 2px 6px ${C.snowShadow}`
-      : `0 2px 5px ${C.snowShadow}`};
+      ? `0 0 0 2px rgba(232, 197, 71, 0.45), 0 1px 4px rgba(0,0,0,0.4)`
+      : `0 1px 4px rgba(0,0,0,0.4)`};
   flex-shrink: 0;
   animation: ${swatchPop} 0.35s ease-out both;
   animation-delay: ${(p) => Math.min(p.$index ?? 0, 20) * 0.015}s;
@@ -878,129 +994,205 @@ const ColorSwatch = styled.button`
         align-items: center;
         justify-content: center;
         font-weight: 900;
-        font-size: clamp(10px, 1.3cqw, 15px);
-        color: ${C.vermillionDeep};
+        font-size: clamp(9px, 1.2cqw, 13px);
+        color: ${C.cream};
       }
     `}
 
   &:hover {
     transform: ${(p) => (p.$taken ? "none" : "scale(1.18)")};
     border-color: ${(p) =>
-      p.$taken ? C.snowBorder : p.$selected ? C.gold : C.iceMid};
+      p.$taken
+        ? "rgba(245, 236, 217, 0.32)"
+        : p.$selected
+          ? C.gold
+          : C.cream};
   }
-
   &:active {
     transform: ${(p) => (p.$taken ? "none" : "scale(0.94)")};
   }
 `;
 
 const PatternSwatch = styled(ColorSwatch)`
-  width: clamp(26px, 2.8cqw, 32px);
-  height: clamp(26px, 2.8cqw, 32px);
+  width: clamp(24px, 2.6cqw, 30px);
+  height: clamp(24px, 2.6cqw, 30px);
   border-radius: 4px;
 `;
 
-// ============================================
-// BOTTOM BAR
-// ============================================
-
-const BottomBar = styled.footer`
-  position: relative;
-  z-index: 10;
-  flex-shrink: 0;
+const SelectedBlock = styled.div`
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: clamp(14px, 2.2cqw, 28px);
-  padding: clamp(14px, 2.2cqh, 26px) clamp(20px, 3.5cqw, 48px);
-  /*
-   * Sumi anchor band — closes the lobby frame at the bottom so the
-   * white player cards are bracketed top-and-bottom by dark chrome.
-   * The vermillion READY CTA pops cleanly off the dark.
-   */
-  background: ${C.sumi};
-  border-top: 1px solid ${C.sumiBorder};
-  box-shadow: 0 -3px 10px ${C.sumiShadow};
+  gap: clamp(7px, 1cqw, 11px);
+  border-left: 1px solid rgba(245, 236, 217, 0.22);
+  padding-left: clamp(10px, 1.4cqw, 16px);
+  min-width: clamp(110px, 13cqw, 150px);
+  flex-shrink: 0;
 `;
 
+const SelectedSwatchPreview = styled.div`
+  width: clamp(22px, 2.4cqw, 28px);
+  height: clamp(22px, 2.4cqw, 28px);
+  border-radius: 50%;
+  background: ${(p) => p.$gradient || p.$color};
+  border: 2px solid ${C.gold};
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  flex-shrink: 0;
+`;
+
+const SelectedNameStack = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+`;
+
+const SelectedCategory = styled.div`
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 600;
+  font-size: clamp(0.4rem, 0.6cqw, 0.48rem);
+  color: ${C.creamMute};
+  text-transform: uppercase;
+  letter-spacing: 0.28em;
+`;
+
+const SelectedNameLabel = styled.div`
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.55rem, 0.88cqw, 0.72rem);
+  color: ${C.cream};
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+const DeckDivider = styled.div`
+  width: 1px;
+  align-self: stretch;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(245, 236, 217, 0.28) 50%,
+    transparent 100%
+  );
+  margin: 0 clamp(2px, 0.4cqw, 6px);
+`;
+
+// ============================================
+// READY ACTION (right side of the BottomDeck)
+// ============================================
+
+const ActionArea = styled.div`
+  display: flex;
+  align-items: center;
+  gap: clamp(10px, 1.5cqw, 18px);
+  flex-shrink: 0;
+`;
+
+/*
+ * ReadyButton — the headliner CTA. Larger and more theatrical than
+ * the previous version: a vermillion stamped block with cream
+ * Bungee headline, kanji subtitle (準備 — "ready/preparation") and
+ * a directional arrow. Reads as "stamp yourself in for the bout"
+ * rather than a generic submit pill.
+ *
+ * The two-line vertical layout (kanji over headline) gives the
+ * button real visual weight against the rest of the dark deck
+ * without needing to be physically huge.
+ */
 const ReadyButton = styled.button`
   position: relative;
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
-  gap: clamp(8px, 1.1cqw, 12px);
+  justify-content: center;
+  gap: 1px;
   font-family: "Bungee", cursive;
-  font-size: clamp(0.85rem, 1.3cqw, 1.05rem);
-  color: ${C.snowSoft};
-  /*
-   * Solid vermillion CTA. Dropped the gradient + glow halo +
-   * inset highlight stack — on a snow page that recipe was the
-   * loudest "AI hero button" tell. The single warm shadow gives
-   * it lift, the gold hover ring is the sumo "go" cue.
-   */
+  color: ${C.cream};
   background: ${C.vermillion};
-  border: 1.5px solid ${C.vermillionDeep};
-  border-radius: 2px;
-  padding: clamp(12px, 1.7cqh, 18px) clamp(28px, 4cqw, 56px);
+  border: 2px solid ${C.gold};
+  border-radius: 0;
+  padding: clamp(8px, 1.3cqh, 14px) clamp(28px, 4cqw, 56px);
   cursor: pointer;
   transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease,
     box-shadow 0.2s ease;
-  text-transform: uppercase;
-  letter-spacing: 0.22em;
-  box-shadow: 0 4px 12px rgba(138, 31, 18, 0.32);
+  box-shadow: 0 4px 14px rgba(138, 31, 18, 0.45),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 
-  .arrow {
-    transition: transform 0.2s ease;
+  .kanji {
+    font-family: "Noto Serif JP", serif;
+    font-weight: 700;
+    font-size: clamp(0.42rem, 0.65cqw, 0.55rem);
+    color: rgba(245, 236, 217, 0.85);
+    letter-spacing: 0.4em;
+    line-height: 1;
   }
+
+  .headline {
+    display: inline-flex;
+    align-items: center;
+    gap: clamp(6px, 0.9cqw, 10px);
+    font-size: clamp(0.95rem, 1.5cqw, 1.2rem);
+    letter-spacing: 0.24em;
+    line-height: 1;
+  }
+
+  .arrow { transition: transform 0.2s ease; }
 
   &:hover {
     background: ${C.vermillionBright};
-    border-color: ${C.gold};
     transform: translateY(-2px);
-    box-shadow: 0 6px 18px rgba(138, 31, 18, 0.4);
-
-    .arrow {
-      animation: ${arrowNudge} 0.7s ease-in-out infinite;
-    }
+    box-shadow: 0 7px 20px rgba(138, 31, 18, 0.55),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+    .arrow { animation: ${arrowNudge} 0.7s ease-in-out infinite; }
   }
-
-  &:active {
-    transform: translateY(0) scale(0.98);
-  }
+  &:active { transform: translateY(0) scale(0.98); }
 `;
 
+/*
+ * CancelButton — paired ghost button when the player has already
+ * pressed READY. Same physical footprint as ReadyButton so the
+ * BottomDeck doesn't reflow when toggling state.
+ */
 const CancelButton = styled.button`
   position: relative;
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
-  gap: clamp(8px, 1.1cqw, 12px);
+  justify-content: center;
+  gap: 1px;
   font-family: "Bungee", cursive;
-  font-size: clamp(0.85rem, 1.3cqw, 1.05rem);
-  /*
-   * Dark-context ghost button. Sits on the sumi BottomBar opposite
-   * the vermillion READY CTA. Transparent with cream hairline so
-   * READY clearly owns the primary action.
-   */
   color: ${C.creamMute};
   background: transparent;
-  border: 1.5px solid ${C.sumiBorder};
-  border-radius: 2px;
-  padding: clamp(12px, 1.7cqh, 18px) clamp(28px, 4cqw, 56px);
+  border: 2px solid rgba(245, 236, 217, 0.4);
+  border-radius: 0;
+  padding: clamp(8px, 1.3cqh, 14px) clamp(28px, 4cqw, 56px);
   cursor: pointer;
   transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease,
     color 0.2s ease;
-  text-transform: uppercase;
-  letter-spacing: 0.22em;
+
+  .kanji {
+    font-family: "Noto Serif JP", serif;
+    font-weight: 700;
+    font-size: clamp(0.42rem, 0.65cqw, 0.55rem);
+    color: rgba(245, 236, 217, 0.55);
+    letter-spacing: 0.4em;
+    line-height: 1;
+  }
+
+  .headline {
+    font-size: clamp(0.95rem, 1.5cqw, 1.2rem);
+    letter-spacing: 0.24em;
+    line-height: 1;
+  }
 
   &:hover {
-    background: rgba(234, 241, 247, 0.06);
-    border-color: ${C.iceMid};
+    background: rgba(245, 236, 217, 0.06);
+    border-color: ${C.cream};
     color: ${C.cream};
     transform: translateY(-2px);
   }
-
-  &:active {
-    transform: translateY(0) scale(0.98);
-  }
+  &:active { transform: translateY(0) scale(0.98); }
 `;
 
 const ReadyChip = styled.div`
@@ -1008,23 +1200,16 @@ const ReadyChip = styled.div`
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: clamp(8px, 1.2cqh, 12px) clamp(16px, 2.2cqw, 24px);
-  /*
-   * Slim plate-on-plate chip on the sumi BottomBar. Slightly
-   * elevated dark surface (sumiSoft) reads as a status pill on
-   * the bunting strip without competing with the vermillion CTA
-   * in the middle.
-   */
-  background: ${C.sumiSoft};
-  border: 1px solid ${(p) => (p.$ready ? C.gold : C.sumiBorder)};
-  border-radius: 2px;
-  min-width: clamp(110px, 14cqw, 160px);
+  padding: clamp(6px, 0.9cqh, 9px) clamp(12px, 1.7cqw, 18px);
+  background: rgba(245, 236, 217, 0.06);
+  border: 1px solid ${(p) => (p.$ready ? C.gold : "rgba(245, 236, 217, 0.18)")};
+  min-width: clamp(86px, 11cqw, 124px);
 `;
 
 const ReadyChipLabel = styled.span`
   font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
-  font-size: clamp(0.45rem, 0.7cqw, 0.55rem);
+  font-weight: 700;
+  font-size: clamp(0.4rem, 0.62cqw, 0.5rem);
   color: ${C.creamMute};
   text-transform: uppercase;
   letter-spacing: 0.28em;
@@ -1032,18 +1217,19 @@ const ReadyChipLabel = styled.span`
 
 const ReadyChipCount = styled.span`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.85rem, 1.3cqw, 1.05rem);
+  font-size: clamp(0.78rem, 1.2cqw, 1rem);
   color: ${(p) => (p.$ready ? C.gold : C.cream)};
   letter-spacing: 0.16em;
 `;
 
 const ReadyPlaceholder = styled.div`
   font-family: "Space Grotesk", sans-serif;
-  font-weight: 500;
-  font-size: clamp(0.55rem, 0.9cqw, 0.7rem);
+  font-weight: 600;
+  font-size: clamp(0.5rem, 0.82cqw, 0.66rem);
   color: ${C.creamMute};
   text-transform: uppercase;
   letter-spacing: 0.32em;
+  padding: clamp(8px, 1.3cqh, 14px) clamp(20px, 3cqw, 32px);
 `;
 
 // ============================================
@@ -1129,7 +1315,6 @@ const Lobby = ({
   const [readyCount, setReadyCount] = useState(0);
   const { socket } = useContext(SocketContext);
 
-  // Color customization - using global context so colors persist to game
   const {
     setPlayer1Color,
     setPlayer2Color,
@@ -1143,7 +1328,6 @@ const Lobby = ({
   const myPlayerIndex = players.findIndex((p) => p.id === socket.id);
   const isPlayer1 = myPlayerIndex === 0;
 
-  // Server-synced colors
   const serverPlayer1Color = players[0]?.mawashiColor || SPRITE_BASE_COLOR;
   const serverPlayer2Color = players[1]?.mawashiColor || "#D94848";
   const serverPlayer1BodyColor = players[0]?.bodyColor || null;
@@ -1171,8 +1355,6 @@ const Lobby = ({
   const myMawashiColor = isPlayer1 ? serverPlayer1Color : serverPlayer2Color;
   const myBodyColor = isPlayer1 ? serverPlayer1BodyColor : serverPlayer2BodyColor;
 
-  // Mawashi (belt) solid colors — curated rainbow + 2 neutrals so all
-  // 8 solids + 6 patterns fit on a single row of the customize panel.
   const beltSolids = [
     { name: "Default", hex: SPRITE_BASE_COLOR },
     { name: "Graphite", hex: "#525252" },
@@ -1185,12 +1367,12 @@ const Lobby = ({
     { name: "Orchid", hex: "#A85DBF" },
   ];
 
-  // Mawashi (belt) special patterns
   const beltPatterns = [
     {
       name: "Rainbow",
       hex: "rainbow",
-      gradient: "linear-gradient(to right, red, orange, yellow, green, cyan, blue, violet)",
+      gradient:
+        "linear-gradient(to right, red, orange, yellow, green, cyan, blue, violet)",
     },
     {
       name: "Fire",
@@ -1211,18 +1393,23 @@ const Lobby = ({
     {
       name: "Galaxy",
       hex: "galaxy",
-      gradient: "linear-gradient(135deg, #2E0854, #4B0082, #6A0DAD, #9932CC, #4B0082)",
+      gradient:
+        "linear-gradient(135deg, #2E0854, #4B0082, #6A0DAD, #9932CC, #4B0082)",
     },
     {
       name: "Shiny Gold",
       hex: "gold",
-      gradient: "linear-gradient(135deg, #B8860B, #FFD700, #FFF8DC, #FFD700, #B8860B)",
+      gradient:
+        "linear-gradient(135deg, #B8860B, #FFD700, #FFF8DC, #FFD700, #B8860B)",
     },
   ];
 
-  // Body color options
   const bodyColors = [
-    { name: "Default", hex: null, gradient: "linear-gradient(135deg, #888 0%, #aaa 50%, #888 100%)" },
+    {
+      name: "Default",
+      hex: null,
+      gradient: "linear-gradient(135deg, #888 0%, #aaa 50%, #888 100%)",
+    },
     { name: "Black", hex: "#4d4d4d" },
     { name: "Blue", hex: "#2656A8" },
     { name: "Purple", hex: "#9932CC" },
@@ -1238,7 +1425,9 @@ const Lobby = ({
   ];
 
   const allBeltOptions = [...beltSolids, ...beltPatterns];
-  const selectedBeltOption = allBeltOptions.find((c) => c.hex === myMawashiColor);
+  const selectedBeltOption = allBeltOptions.find(
+    (c) => c.hex === myMawashiColor
+  );
   const selectedBodyOption = bodyColors.find((c) => c.hex === myBodyColor);
   const selectedBeltName = selectedBeltOption?.name || "Default";
   const selectedBodyName = selectedBodyOption?.name || "Default";
@@ -1263,7 +1452,6 @@ const Lobby = ({
     });
   };
 
-  // Sync server colors to global context
   useEffect(() => {
     if (serverPlayer1Color) setPlayer1Color(serverPlayer1Color);
     if (serverPlayer2Color) setPlayer2Color(serverPlayer2Color);
@@ -1356,7 +1544,7 @@ const Lobby = ({
   };
 
   const handleReady = (e) => {
-    const isReadyAction = e.target.textContent.trim().startsWith("READY");
+    const isReadyAction = e.currentTarget.dataset.action === "ready";
     setReady(isReadyAction);
     socket.emit("ready_count", {
       playerId: socket.id,
@@ -1367,114 +1555,122 @@ const Lobby = ({
 
   // ============ RENDER HELPERS ============
 
-  const renderPlayerCard = (side) => {
+  const renderFighter = (side) => {
     const isLeft = side === "left";
     const player = isLeft ? players[0] : players[1];
     const hasPlayer = !!player?.fighter;
+    /*
+     * In CPU mode the right slot is always semantically occupied
+     * (the CPU is always present), so paint the fighter even if
+     * the lobby socket payload hasn't echoed back the CPU player
+     * yet. The default red mawashi (#D94848) used here matches the
+     * hex the server seeds for player2's mawashiColor in CPU mode.
+     */
+    const showAsCPU = !isLeft && isCPUMatch;
+    const showFighter = hasPlayer || showAsCPU;
     const playerColor = isLeft ? serverPlayer1Color : serverPlayer2Color;
     const playerBodyColor = isLeft
       ? serverPlayer1BodyColor
       : serverPlayer2BodyColor;
-    const showCPUDifficulty = !isLeft && isCPUMatch;
+
+    const sideLabel = isLeft ? "East" : "West";
+    const fighterName = showAsCPU
+      ? "CPU"
+      : player?.isCPU
+        ? "CPU"
+        : player?.fighter ||
+          (isLeft ? "Awaiting Fighter" : "Awaiting Opponent");
+    const statusLabel = showAsCPU
+      ? "Ready"
+      : hasPlayer
+        ? "Connected"
+        : "Waiting";
 
     return (
-      <PlayerCardWrapper $side={side}>
-        <PlayerCard $hasPlayer={hasPlayer || showCPUDifficulty} $side={side}>
-          <CardHeader $side={side}>
-            <RankBadge>{isLeft ? "East" : "West"}</RankBadge>
-            <StatusPill $connected={hasPlayer || showCPUDifficulty}>
-              <StatusDot $connected={hasPlayer || showCPUDifficulty} />
-              {showCPUDifficulty
-                ? "CPU Ready"
-                : hasPlayer
-                  ? "Connected"
-                  : "Waiting"}
-            </StatusPill>
-          </CardHeader>
+      <FighterColumn $side={side}>
+        <NamePlate $hasFighter={showFighter}>
+          <NamePlateSide>{sideLabel}</NamePlateSide>
+          <NamePlateName $hasFighter={showFighter}>{fighterName}</NamePlateName>
+          <NamePlateStatus $connected={showFighter}>
+            <StatusDot $connected={showFighter} />
+            {statusLabel}
+          </NamePlateStatus>
+        </NamePlate>
 
-          <CardBody>
-            {showCPUDifficulty ? (
-              <DifficultyList>
-                {CPU_DIFFICULTIES.map((diff) => {
-                  const available = AVAILABLE_CPU_DIFFICULTIES.has(diff.id);
-                  const selected = diff.id === selectedDifficulty;
-                  return (
-                    <DifficultyButton
-                      key={diff.id}
-                      $available={available}
-                      $selected={selected}
-                      onClick={() => {
-                        if (available && diff.id !== selectedDifficulty) {
-                          playButtonPressSound2();
-                          setSelectedDifficulty(diff.id);
-                          socket.emit("set_cpu_difficulty", { difficulty: diff.id });
-                        }
-                      }}
-                      onMouseEnter={() => available && playButtonHoverSound()}
-                    >
-                      <DifficultyLabel
-                        $selected={selected}
-                        $available={available}
-                      >
-                        {diff.id}
-                      </DifficultyLabel>
-                      {available ? (
-                        <DifficultyMeta $selected={selected}>
-                          {diff.meta}
-                        </DifficultyMeta>
-                      ) : (
-                        <SoonTag>Soon</SoonTag>
-                      )}
-                    </DifficultyButton>
-                  );
-                })}
-              </DifficultyList>
-            ) : hasPlayer ? (
-              <AvatarFrame $side={side}>
-                <AvatarBreath>
-                  <ColoredPlayerPreview
-                    color={playerColor}
-                    bodyColor={playerBodyColor}
-                  />
-                </AvatarBreath>
-              </AvatarFrame>
-            ) : (
-              <WaitingState>
-                <WaitingText>Waiting For Pumo</WaitingText>
+        <FighterPortrait>
+          {showFighter ? (
+            <AvatarFrame $side={side}>
+              <AvatarBreath>
+                <ColoredPlayerPreview
+                  color={playerColor}
+                  bodyColor={playerBodyColor}
+                />
+              </AvatarBreath>
+            </AvatarFrame>
+          ) : (
+            <WaitingState>
+              {/*
+               * Order matters: text first, silhouette second. Combined
+               * with justify-content: flex-end on WaitingState, this
+               * pins the silhouette to the bottom of the column so it
+               * shares a ground baseline with the opposing player's
+               * actual penguin sprite — text floats above the ghost
+               * rather than the ghost floating above the text.
+               */}
+              <WaitingText>
+                Waiting
                 <LoadingDots>
                   <Dot $delay={0} />
                   <Dot $delay={1} />
                   <Dot $delay={2} />
                 </LoadingDots>
-              </WaitingState>
-            )}
-          </CardBody>
+              </WaitingText>
+              <WaitingSilhouette $side={side} src={pumo} alt="" />
+            </WaitingState>
+          )}
+        </FighterPortrait>
 
-          <CardFooter $side={side}>
-            <PlayerName $hasPlayer={hasPlayer || showCPUDifficulty}>
-              {showCPUDifficulty
-                ? "CPU Opponent"
-                : player?.isCPU
-                  ? "CPU"
-                  : player?.fighter || (isLeft ? "Awaiting Fighter" : "Awaiting Opponent")}
-            </PlayerName>
-            <PlayerSubtext>
-              {showCPUDifficulty
-                ? `Difficulty · ${selectedDifficulty}`
-                : hasPlayer
-                  ? isLeft
-                    ? "East Side · Player 1"
-                    : "West Side · Player 2"
-                  : "Empty Slot"}
-            </PlayerSubtext>
-          </CardFooter>
-        </PlayerCard>
-      </PlayerCardWrapper>
+        {showAsCPU && (
+          <DifficultyStrip>
+            {CPU_DIFFICULTIES.map((diff) => {
+              const available = AVAILABLE_CPU_DIFFICULTIES.has(diff.id);
+              const selected = diff.id === selectedDifficulty;
+              return (
+                <DifficultyPill
+                  key={diff.id}
+                  $available={available}
+                  $selected={selected}
+                  onClick={() => {
+                    if (available && diff.id !== selectedDifficulty) {
+                      playButtonPressSound2();
+                      setSelectedDifficulty(diff.id);
+                      socket.emit("set_cpu_difficulty", {
+                        difficulty: diff.id,
+                      });
+                    }
+                  }}
+                  onMouseEnter={() => available && playButtonHoverSound()}
+                >
+                  <DifficultyPillLabel
+                    $selected={selected}
+                    $available={available}
+                  >
+                    {diff.id}
+                  </DifficultyPillLabel>
+                  <DifficultyPillMeta $selected={selected}>
+                    {available ? diff.meta : "Soon"}
+                  </DifficultyPillMeta>
+                </DifficultyPill>
+              );
+            })}
+          </DifficultyStrip>
+        )}
+      </FighterColumn>
     );
   };
 
-  const renderCustomizePanel = () => {
-    if (myPlayerIndex === -1) return null;
+  const renderCustomizeArea = () => {
+    if (myPlayerIndex === -1) return <CustomizeArea />;
 
     const isBody = customizeTab === "body";
     const isPattern = !isBody && !!selectedBeltOption?.gradient;
@@ -1498,7 +1694,7 @@ const Lobby = ({
     };
 
     return (
-      <CustomizePanel>
+      <CustomizeArea>
         <TabGroup>
           <Tab $active={isBody} onClick={() => handleTabChange("body")}>
             Body
@@ -1509,59 +1705,59 @@ const Lobby = ({
         </TabGroup>
 
         <SwatchSection>
-          {isBody
-            ? bodyColors.map((color, i) => {
-                const taken = isBodyColorTakenByOther(color.hex);
+          {isBody ? (
+            bodyColors.map((color, i) => {
+              const taken = isBodyColorTakenByOther(color.hex);
+              return (
+                <ColorSwatch
+                  key={color.name}
+                  $index={i}
+                  $color={color.hex || "#888"}
+                  $gradient={color.gradient}
+                  $selected={myBodyColor === color.hex}
+                  $taken={taken}
+                  onClick={() => !taken && handleBodyColorSelect(color.hex)}
+                  onMouseEnter={() => !taken && playButtonHoverSound()}
+                  title={taken ? "Taken by opponent" : color.name}
+                />
+              );
+            })
+          ) : (
+            <>
+              {beltSolids.map((color, i) => {
+                const taken = isColorTakenByOther(color.hex);
                 return (
                   <ColorSwatch
                     key={color.name}
                     $index={i}
-                    $color={color.hex || "#888"}
-                    $gradient={color.gradient}
-                    $selected={myBodyColor === color.hex}
+                    $color={color.hex}
+                    $selected={myMawashiColor === color.hex}
                     $taken={taken}
-                    onClick={() => !taken && handleBodyColorSelect(color.hex)}
+                    onClick={() => !taken && handleColorSelect(color.hex)}
                     onMouseEnter={() => !taken && playButtonHoverSound()}
                     title={taken ? "Taken by opponent" : color.name}
                   />
                 );
-              })
-            : (
-              <>
-                {beltSolids.map((color, i) => {
-                  const taken = isColorTakenByOther(color.hex);
-                  return (
-                    <ColorSwatch
-                      key={color.name}
-                      $index={i}
-                      $color={color.hex}
-                      $selected={myMawashiColor === color.hex}
-                      $taken={taken}
-                      onClick={() => !taken && handleColorSelect(color.hex)}
-                      onMouseEnter={() => !taken && playButtonHoverSound()}
-                      title={taken ? "Taken by opponent" : color.name}
-                    />
-                  );
-                })}
-                <SwatchDivider />
-                {beltPatterns.map((color, i) => {
-                  const taken = isColorTakenByOther(color.hex);
-                  return (
-                    <PatternSwatch
-                      key={color.name}
-                      $index={i + beltSolids.length}
-                      $color={color.hex}
-                      $gradient={color.gradient}
-                      $selected={myMawashiColor === color.hex}
-                      $taken={taken}
-                      onClick={() => !taken && handleColorSelect(color.hex)}
-                      onMouseEnter={() => !taken && playButtonHoverSound()}
-                      title={taken ? "Taken by opponent" : color.name}
-                    />
-                  );
-                })}
-              </>
-            )}
+              })}
+              <SwatchDivider />
+              {beltPatterns.map((color, i) => {
+                const taken = isColorTakenByOther(color.hex);
+                return (
+                  <PatternSwatch
+                    key={color.name}
+                    $index={i + beltSolids.length}
+                    $color={color.hex}
+                    $gradient={color.gradient}
+                    $selected={myMawashiColor === color.hex}
+                    $taken={taken}
+                    onClick={() => !taken && handleColorSelect(color.hex)}
+                    onMouseEnter={() => !taken && playButtonHoverSound()}
+                    title={taken ? "Taken by opponent" : color.name}
+                  />
+                );
+              })}
+            </>
+          )}
         </SwatchSection>
 
         <SelectedBlock>
@@ -1574,7 +1770,7 @@ const Lobby = ({
             <SelectedNameLabel>{selectedColorName}</SelectedNameLabel>
           </SelectedNameStack>
         </SelectedBlock>
-      </CustomizePanel>
+      </CustomizeArea>
     );
   };
 
@@ -1583,81 +1779,97 @@ const Lobby = ({
       <BackgroundImage />
       <CinematicOverlay />
       <GrainOverlay />
-      <Snowfall intensity={20} showFrost={false} zIndex={2} />
+      <Snowfall intensity={14} showFrost={false} zIndex={3} />
 
-      <TopBar>
-        <TopBarLeft>
+      <MatchCardBar>
+        <TopLeft>
           <ExitButton
             onClick={handleLeaveDohyo}
             onMouseEnter={playButtonHoverSound}
           >
             <span className="arrow">←</span>
-            Leave Dohyo
+            Leave LOBBY
           </ExitButton>
-        </TopBarLeft>
+        </TopLeft>
 
-        <DohyoBadge>
-          <DohyoLabel>Dohyo</DohyoLabel>
-          <DohyoCode>{isCPUMatch ? "VS CPU" : roomName}</DohyoCode>
-        </DohyoBadge>
+        <MatchCardCenter>
+          <MatchCardKanji aria-hidden>番</MatchCardKanji>
+          <MatchCardLabels>
+            <MatchCardCaption>Tonight&apos;s Bout</MatchCardCaption>
+            <MatchCardTitle>
+              {isCPUMatch ? "LOBBY · VS CPU" : `LOBBY · ${roomName}`}
+            </MatchCardTitle>
+          </MatchCardLabels>
+          <MatchCardKanji aria-hidden>付</MatchCardKanji>
+        </MatchCardCenter>
 
-        <TopBarRight />
-      </TopBar>
+        <TopRight>
+          <MatchModeChip>
+            <span className="dot" />
+            <strong>{isCPUMatch ? "VS CPU" : ""}</strong>
+            {isCPUMatch ? "" : "Custom Match"}
+          </MatchModeChip>
+        </TopRight>
+      </MatchCardBar>
 
       <Stage>
-        {renderPlayerCard("left")}
+        {renderFighter("left")}
 
-        <VSCenter>
-          <VSLine />
-          <VSBadgeAnimated>VS</VSBadgeAnimated>
-          <VSLine />
-        </VSCenter>
+        <VSWordmark>VS</VSWordmark>
 
-        {renderPlayerCard("right")}
+        {renderFighter("right")}
       </Stage>
 
-      {renderCustomizePanel()}
+      <BottomDeck>
+        {renderCustomizeArea()}
 
-      <BottomBar>
-        {canShowReadyButton ? (
-          <>
-            {ready ? (
-              <CancelButton
-                onClick={(e) => {
-                  handleReady(e);
-                  playButtonPressSound();
-                }}
-                onMouseEnter={playButtonHoverSound}
-              >
-                CANCEL
-              </CancelButton>
-            ) : (
-              <ReadyButton
-                onClick={(e) => {
-                  handleReady(e);
-                  playButtonPressSound2();
-                }}
-                onMouseEnter={playButtonHoverSound}
-              >
-                READY
-                <span className="arrow">▶</span>
-              </ReadyButton>
-            )}
-            {!isCPUMatch && (
-              <ReadyChip $ready={readyCount > 0}>
-                <ReadyChipLabel>Fighters Ready</ReadyChipLabel>
-                <ReadyChipCount $ready={readyCount > 0}>
-                  {readyCount} / 2
-                </ReadyChipCount>
-              </ReadyChip>
-            )}
-          </>
-        ) : (
-          <ReadyPlaceholder>
-            Waiting for an opponent to enter the dohyo...
-          </ReadyPlaceholder>
-        )}
-      </BottomBar>
+        <DeckDivider />
+
+        <ActionArea>
+          {canShowReadyButton ? (
+            <>
+              {ready ? (
+                <CancelButton
+                  data-action="cancel"
+                  onClick={(e) => {
+                    handleReady(e);
+                    playButtonPressSound();
+                  }}
+                  onMouseEnter={playButtonHoverSound}
+                >
+                  <span className="kanji">取消</span>
+                  <span className="headline">Cancel</span>
+                </CancelButton>
+              ) : (
+                <ReadyButton
+                  data-action="ready"
+                  onClick={(e) => {
+                    handleReady(e);
+                    playButtonPressSound2();
+                  }}
+                  onMouseEnter={playButtonHoverSound}
+                >
+                  <span className="kanji">準備</span>
+                  <span className="headline">
+                    Ready
+                    <span className="arrow">▶</span>
+                  </span>
+                </ReadyButton>
+              )}
+              {!isCPUMatch && (
+                <ReadyChip $ready={readyCount > 0}>
+                  <ReadyChipLabel>Ready</ReadyChipLabel>
+                  <ReadyChipCount $ready={readyCount > 0}>
+                    {readyCount} / 2
+                  </ReadyChipCount>
+                </ReadyChip>
+              )}
+            </>
+          ) : (
+            <ReadyPlaceholder>Waiting for an opponent…</ReadyPlaceholder>
+          )}
+        </ActionArea>
+      </BottomDeck>
     </LobbyContainer>
   );
 };
