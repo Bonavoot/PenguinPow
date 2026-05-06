@@ -1064,6 +1064,25 @@ const SwatchSection = styled.div`
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
+  /*
+   * Vertical padding INSIDE the scroll container — required so the
+   * selected swatch's gold ring (2px border + 2px box-shadow spread =
+   * ~4px past the base swatch on every side) doesn't get clipped
+   * top/bottom by overflow-y: hidden.
+   *
+   * We can't switch overflow-y to visible: per CSS spec, when one
+   * overflow axis is auto/scroll and the other is visible, browsers
+   * compute the visible side back to auto. So padding inside the
+   * scroll area is the right move — it gives the rings physical
+   * room within the clipped lane.
+   *
+   * 6px at full size (clamp top): comfortably accommodates the
+   * selection ring on both ColorSwatch (26px max) and PatternSwatch
+   * (30px max). The hover scale (×1.18) may still get a hair of
+   * clipping at the very edge, but hover is transient — the
+   * persistent selected-state ring is what matters and now fits.
+   */
+  padding-block: clamp(4px, 0.6cqh, 6px);
   scroll-padding-inline: 4px;
   scrollbar-width: none;
   -ms-overflow-style: none;
