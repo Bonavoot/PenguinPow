@@ -32,6 +32,41 @@ const flashRedPulse = keyframes`
   50% { opacity: 0.55; }
 `;
 
+/* Balance bar danger alarm — strobes the BalTrack's vermillion border
+ * + outer glow ring on the same 0.78s cadence as the gassed lane's
+ * alarm pulse, so the two danger signals feel like one shared
+ * vocabulary when both are active.
+ *
+ * Crucially this only animates the box-shadow stack (the border ring +
+ * outer glow). The track's gradient stays put — the kill-zone red /
+ * throw-zone gold backgrounds are already painted at full saturation
+ * inside the gradient, and strobing the WHOLE track via filter would
+ * drown out the ice-blue fill on top of them. The ring is the alarm
+ * signal; the rest of the bar reads as "the instrument" and stays
+ * stable.
+ *
+ * Amplitude is deliberately gentler than the gassed pulse since
+ * balance danger triggers far more often than gassed — a heavier
+ * strobe would become constant visual noise. */
+const balanceAlarmPulse = keyframes`
+  0%, 100% {
+    box-shadow:
+      inset 0 1px 2px rgba(0, 0, 0, 0.85),
+      inset 0 -1px 1px rgba(0, 0, 0, 0.4),
+      inset 0 0 0 1px rgba(216, 59, 39, 0.78),
+      inset 0 0 0 2px rgba(8, 10, 18, 0.85),
+      0 1px 2px rgba(0, 0, 0, 0.5);
+  }
+  50% {
+    box-shadow:
+      inset 0 1px 2px rgba(0, 0, 0, 0.85),
+      inset 0 -1px 1px rgba(0, 0, 0, 0.4),
+      inset 0 0 0 1.5px rgba(238, 81, 65, 1),
+      inset 0 0 0 2.5px rgba(8, 10, 18, 0.85),
+      0 1px 2px rgba(0, 0, 0, 0.5);
+  }
+`;
+
 const pulseWin = keyframes`
   0% { transform: scale(1); }
   50% { transform: scale(1.18); }
@@ -72,59 +107,56 @@ const parryRefundFlash = keyframes`
   }
 `;
 
-/* Pulsing danger glow for the bar frame when stamina is critical.
- * Uses clean gold (C.gold) for the calm-state ring instead of the previous
- * muddy brown-gold, then transitions to a vermillion-tinged ring on the
- * pulse peak so the gold→red shift reads as "the frame itself is alarming". */
+/* Subtle danger pulse — modulates the frame border opacity gently when
+ * stamina is critical. Was a multi-layer red glow halo for the old
+ * chiseled gold-ring frame; with the minimalist hairline border, the
+ * border color (vermillionBright at $danger) is the alarm signal,
+ * and this pulse just breathes the brightness so the bar doesn't sit
+ * dead at the danger threshold. Same brightness/saturation approach
+ * the gassed pulse uses, slightly punchier amplitude since $danger
+ * fires at higher stamina than $gassed. */
 const dangerFramePulse = keyframes`
-  0%, 100% {
-    box-shadow:
-      inset 0 0 6px rgba(255, 40, 40, 0.05),
-      0 0 4px rgba(255, 40, 40, 0.05),
-      0 0 0 2px rgba(232, 197, 71, 0.75);
-  }
-  50% {
-    box-shadow:
-      inset 0 0 14px rgba(255, 40, 40, 0.28),
-      0 0 18px rgba(238, 81, 65, 0.45),
-      0 0 0 2px rgba(238, 81, 65, 0.85);
-  }
+  0%, 100% { filter: brightness(1)    saturate(1); }
+  50%      { filter: brightness(1.18) saturate(1.2); }
 `;
 
-/* Labored breathing pulse — slow, heavy */
-const gassedBreathe = keyframes`
-  0%, 100% { opacity: 0.92; }
-  50% { opacity: 0.6; }
+/* Quick pulse alarm — strobes the red wash dim → bright → dim on a
+ * fast cadence, like an actual warning indicator light blinking. Uses
+ * brightness + saturation modulation so the underlying red stays
+ * solid (the lane never fades to transparent) but its luminance
+ * pulses dramatically.
+ *
+ * Replaces the previous slow opacity breath. That recipe animated
+ * the overlay's alpha from 0.6 → 0.92, which during the dim phase
+ * let the empty stamina bar bleed through underneath. Reading "the
+ * red overlay is fading away" works against the alarm intent — the
+ * overlay isn't going anywhere, the wrestler is still gassed.
+ *
+ * Brightness ramps 0.78 (dim drained crimson) ↔ 1.42 (vibrant alarm
+ * vermillion) with a coordinated saturation lift at the peak so the
+ * red actually feels hot at the apex rather than just lighter. The
+ * combination reads as a single strobing surface rather than a
+ * surface that's fading in and out. */
+const gassedAlarmPulse = keyframes`
+  0%, 100% { filter: brightness(0.72) saturate(0.92); }
+  50%      { filter: brightness(1.02) saturate(1); }
 `;
 
-/* Gassed text plate pulse — border brightens, tiny scale bump */
-const gassedTextPulse = keyframes`
-  0%, 100% {
-    border-color: rgba(255, 40, 40, 0.5);
-    transform: scale(1);
-  }
-  50% {
-    border-color: rgba(255, 60, 60, 0.85);
-    transform: scale(1.04);
-  }
-`;
-
-/* Intense red frame pulse when fully gassed */
+/* Subtle vermillion frame intensity pulse when gassed.
+ *
+ * Replaces the previous multi-layer red glow halo (4 stacked box-shadows
+ * fanning red light up to 48px out from the bar). That was loud but
+ * read as "the bar is leaking red gas" rather than "the wrestler is in
+ * danger". The new approach colors the FRAME ITSELF vermillion (handled
+ * directly in BarFrame's box-shadow ramp), and this keyframe just
+ * gently breathes the intensity of that vermillion ring — slow heartbeat
+ * cadence, narrow alpha range, no outer glow blooming.
+ *
+ * The dramatic alarm signal is the COLOR SHIFT of the hardware (gold →
+ * vermillion). The pulse is just life on top of that shift. */
 const gassedFramePulse = keyframes`
-  0%, 100% {
-    box-shadow:
-      inset 0 0 10px rgba(255, 20, 20, 0.15),
-      0 0 12px rgba(255, 20, 20, 0.35),
-      0 0 24px rgba(255, 10, 10, 0.2),
-      0 0 0 2px rgba(220, 30, 30, 0.8);
-  }
-  50% {
-    box-shadow:
-      inset 0 0 16px rgba(255, 20, 20, 0.4),
-      0 0 28px rgba(255, 30, 30, 0.6),
-      0 0 48px rgba(255, 10, 10, 0.3),
-      0 0 0 2px rgba(255, 50, 50, 0.95);
-  }
+  0%, 100% { filter: brightness(1) saturate(1); }
+  50%      { filter: brightness(1.12) saturate(1.15); }
 `;
 
 /* Green-mint burst when recovering from gassed state — "second wind" */
@@ -167,45 +199,28 @@ const recoveryTextPop = keyframes`
   }
 `;
 
-/* Drifting motes inside the stamina fill — slow horizontal drift with a
- * soft fade-in/out at each end, so the bar always feels *alive* without
- * needing a separate persistent leading-edge spark. Direction matches
- * the player's anchor side. */
-const moteDrift = keyframes`
-  0%   { transform: translateX(0)    translateY(0);   opacity: 0; }
-  18%  { opacity: 0.85; }
-  60%  { opacity: 0.7;  }
-  100% { transform: translateX(-90px) translateY(-2px); opacity: 0; }
-`;
-const moteDriftReverse = keyframes`
-  0%   { transform: translateX(0)   translateY(0);   opacity: 0; }
-  18%  { opacity: 0.85; }
-  60%  { opacity: 0.7;  }
-  100% { transform: translateX(90px) translateY(-2px); opacity: 0; }
-`;
-
 /* Subtle vertical wobble on the fill's top edge — tells the eye "this is alive" */
 const fillWobble = keyframes`
   0%, 100% { transform: translateY(0)    scaleY(1);     }
   50%      { transform: translateY(-0.5px) scaleY(1.02); }
 `;
 
-/* One-shot impact spark at the trailing edge when stamina takes a hit */
-const impactSpark = keyframes`
+/* Impact strike — a thin sharp vertical hairline at the trailing edge of
+ * the stamina fill. Replaces the previous radial-blob ImpactSpark which
+ * (a) lagged behind the bar's width transition because it was positioned
+ * by data-value while the bar animated, and (b) read as a soft AI-style
+ * white smudge instead of a designed mark. The new strike is mounted as
+ * a CHILD of BarFill, pinned to the parent's trailing edge — so it
+ * tracks the bar's animated width pixel-perfect with no transition
+ * mismatch. Single quick squeeze + fade, no blur, no mix-blend-mode. */
+const impactStrike = keyframes`
   0% {
-    opacity: 1;
-    transform: translateY(-50%) scaleX(0.4) scaleY(1);
-    filter: brightness(2.5);
-  }
-  35% {
     opacity: 0.95;
-    transform: translateY(-50%) scaleX(1.1) scaleY(1.4);
-    filter: brightness(1.8);
+    transform: scaleY(1);
   }
   100% {
     opacity: 0;
-    transform: translateY(-50%) scaleX(2.2) scaleY(0.4);
-    filter: brightness(1);
+    transform: scaleY(0.6);
   }
 `;
 
@@ -249,26 +264,31 @@ const chevronScrollLeft = keyframes`
   to   { background-position: -22px 0; }
 `;
 
-/* Gassed steam — wavy heatwave shimmer rising off the bar.
- * Combines a slow horizontal drift with a vertical "breath" that swells
- * the overlay, so the heat blobs feel like they're being pushed by the
- * wrestler's labored breathing. */
-const gassedSteam = keyframes`
-  0%   { transform: translateX(0)    translateY(0)    scaleY(1);    opacity: 0.55; }
-  50%  { transform: translateX(8px)  translateY(-2px) scaleY(1.05); opacity: 0.9;  }
-  100% { transform: translateX(-6px) translateY(0)    scaleY(1);    opacity: 0.55; }
+/* Slow horizontal drift on the gassed slash overlay — keeps the strain
+ * pattern alive without being twitchy. 18s sweep, opacity holds steady
+ * so it doesn't flicker. */
+const gassedSlashDrift = keyframes`
+  from { background-position: 0 0; }
+  to   { background-position: 36px 0; }
 `;
 
-/* Animated hairline cracks — appear/fade as the metal "strains" */
-const gassedCracks = keyframes`
-  0%, 100% { opacity: 0.25; }
-  50%      { opacity: 0.7;  }
-`;
-
-/* GASSED letter droop — each letter dips on the breathing pulse */
-const gassedTextDroop = keyframes`
-  0%, 100% { transform: translateY(0)    scaleY(1);    letter-spacing: 0.3em; }
-  50%      { transform: translateY(0.5px) scaleY(0.94); letter-spacing: 0.34em; }
+/* Hanko stamp impression for the GASSED text plate — single landing.
+ * Quick scale-down from oversized + tiny rotation settle, like a real
+ * vermillion seal being pressed onto paper. After the stamp lands it
+ * sits still — no infinite pulse, no droop. The stamp IS the alarm. */
+const gassedStamp = keyframes`
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.6) rotate(-6deg);
+  }
+  60% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(0.92) rotate(-2deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1) rotate(-3deg);
+  }
 `;
 
 /* Go-stone place ripple — single radial ring expanding outward */
@@ -284,22 +304,6 @@ const stonePlaceRipple = keyframes`
     opacity: 0;
     transform: translate(-50%, -50%) scale(2.4);
   }
-`;
-
-/* Balance bar in-danger wobble — tilts ±1° + mild shake. Subtle, not nauseating. */
-const balanceTilt = keyframes`
-  0%, 100% { transform: rotate(-1deg)   translateX(0); }
-  25%      { transform: rotate(1deg)    translateX(0.5px); }
-  50%      { transform: rotate(-0.5deg) translateX(-0.5px); }
-  75%      { transform: rotate(0.6deg)  translateX(0.3px); }
-`;
-
-/* Quiet expanding ring around the kill threshold notch — runs constantly
- * so the danger boundary is always readable without needing to make the
- * whole strip pulsate. Soft and slow on purpose. */
-const killMarkerPulse = keyframes`
-  0%   { opacity: 0.7; transform: translate(-50%, -50%) scale(0.6); }
-  100% { opacity: 0;   transform: translate(-50%, -50%) scale(1.6); }
 `;
 
 // ============================================
@@ -322,11 +326,16 @@ const HudShell = styled.div`
     p.$matchOver
       ? "saturate(0.84) brightness(0.86) contrast(0.97)"
       : "none"};
-  transform: ${(p) => (p.$matchOver ? "translateY(2px)" : "none")};
+  /* No transform shift on matchOver. Previous pass added a 2px
+     translateY downshift as a "stepped back" cue, but combined
+     with the dimming below it produced a visible un-gradient'd
+     strip at the very top of the screen — the gradient appeared
+     to detach from the screen edge. The opacity + filter desat
+     alone are enough to communicate the match-over state, and
+     the gradient stays flush with the top edge where it belongs. */
   transition:
     opacity 260ms ease,
-    filter 260ms ease,
-    transform 260ms ease;
+    filter 260ms ease;
 
   background:
     linear-gradient(
@@ -472,80 +481,50 @@ const RankText = styled.div`
 // STAMINA BAR  — THE HERO OF THE HUD
 // ============================================
 
-/* Ornamental outer frame — chiseled banzuke plate.
+/* Stamina bar frame — minimalist hairline.
  *
- * Layered like a real piece of metal hardware:
- *   1. Cream highlight rim (inset)        — top-light catch on the inner edge
- *   2. Clean gold leaf ring (box-shadow)  — primary color (C.gold), no brown
- *   3. Dark gunmetal underlayer           — cool ink, replaces the old "dark gap"
- *   4. Soft drop shadow                   — lift off the background
+ * Stripped HARD from the previous "chiseled banzuke plate" treatment
+ * (cream highlight rim + 4px gold-leaf ring + 4px dark gunmetal
+ * underlayer + 4 corner rivets via stacked radial gradients). That
+ * stack was the single most "premium hardware overdesign" element on
+ * the HUD — it read as a brass-fitted arcade cabinet UI, not a
+ * minimalist game UI. Trying too hard to look expensive is exactly
+ * what reads as cheap.
  *
- * The ::after pseudo paints 4 corner rivets via stacked radial gradients —
- * a single-element trick that gives the "premium plated armor" look without
- * extra DOM nodes.
+ * What's left:
+ *   1. A single 1.5px hairline border. Cream by default for legibility
+ *      against the dim arena; vermillion when $gassed, so the alarm
+ *      signal is the one piece of color information the frame carries.
+ *   2. A short warm drop shadow underneath, so the bar lifts off the
+ *      dohyo backdrop. Bar still reads as a discrete "thing" sitting
+ *      on top of the scene rather than a flat decal.
  *
- * NOTE: this used to be paired with a persistent leading-edge spark and
- * drifting motes inside the fill. The leading-edge spark was the source
- * of the "competing effects" / messy overlap with the ghost bar during
- * damage and has stayed removed; the motes have been restored. */
+ * That's it. No rivets, no rings, no chiselling. The bar's identity
+ * comes from its FILL (the matcha-green stamina + the impact strike +
+ * the gassed overlay), not from ornamental hardware around it.
+ *
+ * The dangerFramePulse + gassedFramePulse animations are still wired
+ * up — they now just modulate brightness/saturation gently (the color
+ * shift to vermillion handles the visual alarm; the pulse is the
+ * life on top of the shift). */
 const BarFrame = styled.div`
   position: relative;
   flex: 1;
   min-width: 0;
-  border-radius: 4px;
-
-  border: clamp(2px, 0.16cqw, 4px) solid transparent;
-  box-shadow:
-    inset 0 0 0 1px rgba(245, 236, 217, 0.22),
-    0 0 0 clamp(2px, 0.16cqw, 4px) rgba(232, 197, 71, 0.85),
-    0 0 0 clamp(4px, 0.32cqw, 8px) rgba(20, 23, 30, 0.95),
-    0 clamp(3px, 0.24cqw, 6px) clamp(12px, 1cqw, 24px) rgba(0, 0, 0, 0.55);
+  border-radius: 3px;
+  border: 1.5px solid ${(p) =>
+    p.$gassed
+      ? "rgba(216, 59, 39, 0.95)"
+      : p.$danger
+        ? "rgba(238, 81, 65, 0.85)"
+        : "rgba(245, 236, 217, 0.32)"};
+  box-shadow: 0 clamp(2px, 0.18cqw, 4px) clamp(8px, 0.7cqw, 16px)
+    rgba(0, 0, 0, 0.55);
   opacity: ${(p) => (p.$matchOver ? 0.95 : 1)};
-  filter: ${(p) => (p.$matchOver ? "brightness(0.97)" : "none")};
-  transition: opacity 220ms ease, filter 220ms ease;
+  transition: border-color 240ms ease, opacity 220ms ease;
 
-  /* Corner rivets — 4 small gold dots painted via stacked radial gradients */
-  &::after {
-    content: "";
-    position: absolute;
-    inset: clamp(-3px, -0.24cqw, -6px);
-    border-radius: 4px;
-    pointer-events: none;
-    z-index: 1;
-    background-image:
-      radial-gradient(circle at 0 0,
-        rgba(255, 252, 220, 0.95) 0%,
-        rgba(232, 197, 71, 0.85) 35%,
-        rgba(232, 197, 71, 0) 55%),
-      radial-gradient(circle at 100% 0,
-        rgba(255, 252, 220, 0.95) 0%,
-        rgba(232, 197, 71, 0.85) 35%,
-        rgba(232, 197, 71, 0) 55%),
-      radial-gradient(circle at 0 100%,
-        rgba(255, 252, 220, 0.95) 0%,
-        rgba(232, 197, 71, 0.85) 35%,
-        rgba(232, 197, 71, 0) 55%),
-      radial-gradient(circle at 100% 100%,
-        rgba(255, 252, 220, 0.95) 0%,
-        rgba(232, 197, 71, 0.85) 35%,
-        rgba(232, 197, 71, 0) 55%);
-    background-size: clamp(6px, 0.7cqw, 9px) clamp(6px, 0.7cqw, 9px);
-    background-repeat: no-repeat;
-    background-position:
-      0 0,
-      100% 0,
-      0 100%,
-      100% 100%;
-    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.7));
-  }
-
-  /* Composed animation: optional one-shot shake (on big hits) + the
-   * appropriate looping pulse for gassed/danger states. The shake comes
-   * first so it visibly punches through the steady-state pulse.
-   * We branch on each combination so styled-components resolves the
-   * keyframes references (interpolated css\`\`) to their generated names. */
   ${(p) => {
-    const gassedDur = p.$matchOver ? "1.9s" : "1.2s";
+    const gassedDur = p.$matchOver ? "2.4s" : "1.6s";
     const dangerDur = p.$matchOver ? "1.15s" : "0.7s";
     if (p.$shake && p.$gassed) {
       return css`animation: ${frameShake} 0.32s ease-out, ${gassedFramePulse} ${gassedDur} ease-in-out infinite;`;
@@ -623,10 +602,20 @@ const StaTickMark = styled.div`
   }
 `;
 
-/* Mint-lime frost stamina fill — playful arcade energy with living micro-motion.
- * The fill keeps its existing color language (mint→red, no green→blue swap)
- * but gets a subtle vertical wobble (telling the eye it's *energy*, not paint),
- * plus the existing top highlight + diagonal frost sweep. */
+/* Matcha-moss stamina fill — pigmented green that reads as "regenerative
+ * energy" without the candy-bar arcade neon. Previous pass ramped through
+ * #14663d → #1c9b52 → #46d46a → #95f07a → #caffae → #f0ffe4 — six
+ * stops climbing into near-white highlights, which is what made it look
+ * Mountain Dew. The new ramp is FOUR stops, lower-saturation, narrower
+ * value range, and the brightest stop is a warm sage instead of neon
+ * white-green. Reads as dyed cloth / hand-painted gauge instead of LCD.
+ *
+ * Still unmistakably green, still tells the eye "this regenerates", but
+ * it sits in the same hand-painted Edo-print world as the menus rather
+ * than fighting them with arcade chroma.
+ *
+ * Vertical wobble + top highlight + diagonal frost sweep all preserved
+ * as before — the change is COLOR, not behaviour. */
 const BarFill = styled.div.attrs((p) => ({
   style: {
     width: `calc(${p.$stamina}% - 4px)`,
@@ -645,22 +634,31 @@ const BarFill = styled.div.attrs((p) => ({
   background: ${(p) =>
     p.$danger
       ? p.$isRight
-        ? "linear-gradient(90deg, #dc2626 0%, #ef4444 40%, #f87171 80%, #fca5a5 100%)"
-        : "linear-gradient(90deg, #fca5a5 0%, #f87171 20%, #ef4444 60%, #dc2626 100%)"
+        ? "linear-gradient(90deg, #b91c1c 0%, #dc2626 40%, #ef4444 80%, #f87171 100%)"
+        : "linear-gradient(90deg, #f87171 0%, #ef4444 20%, #dc2626 60%, #b91c1c 100%)"
       : p.$isRight
-        ? "linear-gradient(90deg, #14663d 0%, #1c9b52 14%, #46d46a 34%, #95f07a 56%, #caffae 78%, #f0ffe4 100%)"
-        : "linear-gradient(90deg, #f0ffe4 0%, #caffae 18%, #95f07a 40%, #46d46a 64%, #1c9b52 84%, #14663d 100%)"};
+        ? "linear-gradient(90deg, #2d6638 0%, #4f9852 28%, #7dc46a 62%, #b6e088 100%)"
+        : "linear-gradient(90deg, #b6e088 0%, #7dc46a 38%, #4f9852 72%, #2d6638 100%)"};
 
+  /* Outer glows removed — they bled into BarTrack's 2px inset gap
+     above and below the fill, making the fill appear flush with
+     (or taller than) the dark track. The inner glow alone gives
+     the fill internal lighting character without extending its
+     visual height past its actual pixel bounds. */
   box-shadow: ${(p) =>
     p.$danger
-      ? "0 0 14px rgba(239, 68, 68, 0.6), inset 0 0 4px rgba(255, 100, 100, 0.2)"
-      : "0 0 14px rgba(149, 240, 122, 0.34), 0 0 6px rgba(202, 255, 174, 0.24), inset 0 0 6px rgba(240, 255, 228, 0.18)"};
+      ? "inset 0 0 4px rgba(255, 100, 100, 0.22)"
+      : "inset 0 0 6px rgba(182, 224, 136, 0.22)"};
 
   animation: ${(p) =>
     p.$danger
       ? css`${flashRedPulse} 0.6s ease-in-out infinite`
       : css`${fillWobble} 2.4s ease-in-out infinite`};
 
+  /* Top highlight — pulled back from the previous near-white cream
+   * stops because on the muted moss base they read as a neon strip.
+   * Cream-faint warm highlight now, just enough to catch the eye on
+   * the upper lip of the bar. */
   &::before {
     content: "";
     position: absolute;
@@ -668,15 +666,17 @@ const BarFill = styled.div.attrs((p) => ({
     height: 40%;
     background: linear-gradient(
       180deg,
-      rgba(249, 255, 241, 0.42) 0%,
-      rgba(236, 255, 214, 0.14) 52%,
+      rgba(245, 236, 217, 0.22) 0%,
+      rgba(245, 236, 217, 0.06) 60%,
       transparent 100%
     );
     border-radius: 2px 2px 0 0;
     pointer-events: none;
   }
 
-  /* Frost-glass sweep (only when not danger) */
+  /* Cream sweep across the fill (only when not danger). Was a bright
+   * lime-tinted "frost-glass" sweep, now a cream washi sweep that
+   * matches the warm highlight above. */
   &::after {
     content: "";
     position: absolute;
@@ -686,11 +686,11 @@ const BarFill = styled.div.attrs((p) => ({
     background: linear-gradient(
       103deg,
       transparent 0%,
-      transparent 28%,
-      rgba(238, 255, 219, 0.12) 40%,
-      rgba(252, 255, 243, 0.3) 50%,
-      rgba(219, 255, 184, 0.16) 58%,
-      transparent 70%,
+      transparent 32%,
+      rgba(245, 236, 217, 0.08) 44%,
+      rgba(245, 236, 217, 0.2) 50%,
+      rgba(245, 236, 217, 0.08) 56%,
+      transparent 68%,
       transparent 100%
     );
     animation: ${emberShimmer} 3.6s ease-in-out infinite;
@@ -700,96 +700,38 @@ const BarFill = styled.div.attrs((p) => ({
   }
 `;
 
-/* Drifting energy motes inside the fill — sparse soft white dots that
- * slowly traverse the fill, telling the eye "this is contained energy."
- * Sits ABOVE the BarFill but UNDER the regen/parry overlays. Only renders
- * when not in danger (motes would compete with the red flash pulse).
+/* Impact strike — crisp 2px cream hairline pinned to the trailing edge
+ * of the BarFill. Mounts as a CHILD of BarFill so it follows the bar's
+ * animated width transition without lag — by construction, the strike
+ * sits exactly where the fill currently ends, no matter what frame of
+ * the 0.3s width transition we're in.
  *
- * NOTE: the previous LeadingSpark companion was deliberately NOT
- * restored — the persistent bright-edge glow was the source of the
- * messy overlap with the ghost-bar trailing indicator during damage.
- * Motes alone keep the bar lively without crowding the damage moment. */
-const FillMotes = styled.div.attrs((p) => ({
-  style: {
-    width: `calc(${p.$stamina}% - 4px)`,
-  },
-}))`
-  position: absolute;
-  top: 2px;
-  bottom: 2px;
-  ${(p) => (p.$isRight ? "left: 2px;" : "right: 2px;")}
-  border-radius: 2px;
-  z-index: 2;
-  pointer-events: none;
-  overflow: hidden;
-  transition: width 0.3s ease;
-
-  /* Three small motes via stacked radial gradients on a single ::before.
-   * Each gets a different drift speed/delay so the motion feels organic. */
-  &::before,
-  &::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background-image:
-      radial-gradient(circle at 0 30%,
-        rgba(255, 255, 255, 0.85) 0%,
-        rgba(255, 255, 255, 0.4) 40%,
-        rgba(255, 255, 255, 0) 70%),
-      radial-gradient(circle at 0 70%,
-        rgba(240, 255, 228, 0.7) 0%,
-        rgba(240, 255, 228, 0.3) 40%,
-        rgba(240, 255, 228, 0) 70%),
-      radial-gradient(circle at 0 50%,
-        rgba(255, 255, 255, 0.6) 0%,
-        rgba(255, 255, 255, 0) 60%);
-    background-size: 3px 3px, 2.5px 2.5px, 2px 2px;
-    background-repeat: no-repeat;
-    background-position: 100% 30%, 60% 70%, 30% 50%;
-    animation-name: ${(p) => (p.$isRight ? moteDriftReverse : moteDrift)};
-    animation-duration: 4.2s;
-    animation-iteration-count: infinite;
-    animation-timing-function: linear;
-    opacity: 0.9;
-  }
-  &::after {
-    background-position: 80% 60%, 40% 30%, 20% 70%;
-    animation-duration: 6s;
-    animation-delay: 1.4s;
-    opacity: 0.7;
-  }
-`;
-
-/* One-shot impact spark on heavy hits — sits at the trailing edge of the
- * fill (the side that just shrank inward), painting a quick flash of light
- * to sell the visceral "energy bleeding out" feel. Key-driven remount so
- * each hit gets a fresh animation.
+ * Replaces the previous ImpactSpark which (a) used a radial-gradient
+ * blob with blur + screen-blend (the AI-tell rendering pattern), and
+ * (b) was positioned by stamina value while the bar's width transitioned,
+ * so the spark snapped to the FINAL position while the bar was still
+ * draining — visible misalignment for ~300ms.
  *
- * Uses .attrs() to inject the dynamic position via inline style so each
- * impact doesn't generate a new styled-components class. */
-const ImpactSpark = styled.div.attrs((p) => ({
-  style: p.$isRight
-    ? { left: `calc(${p.$stamina}% - 4px)` }
-    : { right: `calc(${p.$stamina}% - 4px)` },
-}))`
+ * No blur, no mix-blend-mode, no radial gradient. Just a deliberate
+ * thin stroke that fades in 0.18s. Subtle by design.
+ *
+ * Position: anchored to the trailing edge of the fill, which is the
+ * OPPOSITE side from where BarFill is positioned (BarFill anchored on
+ * left → trailing edge on right; anchored on right → trailing on left). */
+const ImpactStrike = styled.div`
   position: absolute;
-  top: 50%;
-  width: clamp(8px, 1.2cqw, 13px);
-  height: 70%;
-  transform: translateY(-50%);
-  transform-origin: center;
+  top: 0;
+  bottom: 0;
+  ${(p) => (p.$isRight ? "right: 0;" : "left: 0;")}
+  width: 2px;
+  background: rgba(245, 236, 217, 0.95);
+  box-shadow:
+    0 0 3px rgba(245, 236, 217, 0.7),
+    0 0 1px rgba(245, 236, 217, 0.95);
   z-index: 5;
   pointer-events: none;
-  background: radial-gradient(
-    ellipse at center,
-    rgba(255, 255, 255, 0.9) 0%,
-    rgba(255, 230, 215, 0.55) 40%,
-    rgba(255, 140, 130, 0.3) 70%,
-    transparent 100%
-  );
-  filter: blur(0.6px);
-  mix-blend-mode: screen;
-  animation: ${impactSpark} 0.26s ease-out forwards;
+  transform-origin: center;
+  animation: ${impactStrike} 0.18s ease-out forwards;
 `;
 
 /* Ghost bar — matte trailing damage indicator.
@@ -963,21 +905,43 @@ const ParryRefundFlash = styled.div.attrs((p) => ({
   animation: ${parryRefundFlash} 0.5s ease-out forwards;
 `;
 
-/* Gassed overlay — "out of breath", not "construction site".
+/* Gassed overlay — designed strain marks, not blurred AI smoke.
  *
- * Replaces the previous diagonal hazard stripes with a layered heatwave
- * effect that reads as exhaustion/strain instead of caution-tape:
+ * Previous pass was a stack of: crimson-black radial gradient base +
+ * three blurred red radial-gradient "heatwave blobs" with screen-blend +
+ * hairline strain marks built from repeating linear gradients. Six
+ * partially-transparent red layers summed up to one mushy red blob —
+ * loud but shapeless, exactly the "AI rendered an effect" pattern that
+ * everything else in this codebase has been working away from.
  *
- *   Base layer    — deep crimson-black gradient (the dohyo at dusk)
- *   ::before      — drifting smoke/heat blobs (large blurred radial
- *                   gradients that slowly shift, evoking heatwaves
- *                   rising off an exhausted wrestler)
- *   ::after       — a wavy hairline near the bottom of the bar that
- *                   sells the "this metal is straining" feel without
- *                   needing extra DOM nodes
+ * Replaced with two layers, both deliberate:
  *
- * The whole overlay still breathes (slow opacity pulse) on the existing
- * gassedBreathe rhythm — that's the labored-breath cadence you want. */
+ *   Base — a flat solid deep crimson with one quiet vertical gradient
+ *          for shading. No radial gradients. Reads as "this lane is
+ *          drained" instead of "this lane is on fire". The base alpha
+ *          is high enough that the stamina gauge underneath disappears
+ *          (which is the point — you ARE gassed; the gauge is moot).
+ *
+ *   Slashes — bold sumi-brush diagonal hatching across the fill, drawn
+ *             with a repeating-linear-gradient at thick strokes. Slow
+ *             horizontal drift via gassedSlashDrift. Reads as a hand-
+ *             cancelled banzuke entry — "this wrestler is OUT" — rather
+ *             than a heatwave. Sharp, designed mark instead of blurred
+ *             noise. Width and angle are chunky enough that the pattern
+ *             holds its shape at HUD scale.
+ *
+ * Slow opacity breath retained on gassedBreathe so the whole overlay
+ * still lives — that pulse is the labored-breath cadence and it works.
+ * Just narrowed the alpha range so it doesn't strobe. */
+/* GassedOverlay is now just a positioning + clipping container.
+ * The painted visuals (red wash + drifting slashes) live on
+ * GassedBackdrop as a sibling of GassedText — that lets the alarm
+ * pulse animation be applied via `filter` to ONLY the backdrop
+ * subtree, leaving the GASSED hanko stamp solid and unaffected. If
+ * the pulse is applied to the parent (as it was previously), the
+ * filter cascades to every child including the stamp, which then
+ * strobes along with the wash. The stamp is the alarm's identity —
+ * it has to stay rock solid so the eye can read it. */
 const GassedOverlay = styled.div`
   position: absolute;
   top: 0;
@@ -988,136 +952,123 @@ const GassedOverlay = styled.div`
   z-index: 5;
   pointer-events: none;
   overflow: hidden;
-  animation: ${gassedBreathe} ${(p) => (p.$matchOver ? "1.9s" : "1.2s")} ease-in-out infinite;
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: ${(p) => (p.$matchOver ? 0.88 : 1)};
+  opacity: ${(p) => (p.$matchOver ? 0.92 : 1)};
   transition: opacity 220ms ease;
+`;
 
-  background:
-    radial-gradient(
-      ellipse at 30% 50%,
-      rgba(60, 12, 12, 0.55) 0%,
-      rgba(28, 6, 6, 0.85) 60%,
-      rgba(14, 4, 4, 0.95) 100%
-    ),
-    linear-gradient(
-      180deg,
-      rgba(50, 10, 10, 0.85) 0%,
-      rgba(20, 4, 4, 0.95) 100%
-    );
+/* The painted backdrop — red wash + drifting sumi-brush slashes,
+ * both pulsing together as the alarm strobe. The wash carries the
+ * "drained / dangerous" base color; the slashes drift slowly across
+ * it so the lane reads as a hand-cancelled banzuke entry rather
+ * than a flat painted decal.
+ *
+ * The brightness/saturation pulse lives on this element via filter,
+ * so it animates BOTH the gradient (the element's own background)
+ * AND the slashes (the ::before pseudo-element) together — they
+ * read as one cohesive backdrop that flashes dim → bright → dim.
+ * The GASSED stamp is a sibling element above this in the JSX
+ * tree, so the filter has no effect on it. */
+const GassedBackdrop = styled.div`
+  position: absolute;
+  inset: 0;
+  /* Base crimson lifted out of the previous near-black range
+     (108,14,14 → 48,4,4) into a properly red alarm range. Still
+     deep at the bottom so the lane feels "drained from below"
+     rather than uniformly bright; still saturated enough at the
+     top that the lane reads UNMISTAKABLY as a red warning state
+     at a glance. The pulse animation modulates this base via
+     filter rather than its alpha. */
+  background: linear-gradient(
+    180deg,
+    rgba(168, 30, 26, 0.95) 0%,
+    rgba(126, 18, 16, 0.96) 50%,
+    rgba(82, 10, 10, 0.97) 100%
+  );
+  /* Quick alarm strobe — fast cadence during active play (~0.78s
+     beat), notably slower during the post-round freeze so the alarm
+     reads as "still gassed at end of round" rather than continuing
+     to scream urgency. */
+  animation: ${gassedAlarmPulse}
+    ${(p) => (p.$matchOver ? "1.6s" : "0.78s")} ease-in-out infinite;
 
-  /* Drifting heatwave / smoke blobs — three soft red-black radial gradients
-   * that slowly translate horizontally, giving the overlay a breathing,
-   * shimmering interior. Heavy blur sells the "rising heat" feel. */
+  /* Sumi-brush diagonal slashes — thick crimson-on-darker-crimson
+     hatching that drifts slowly across the bar. The pattern uses
+     larger strokes than typical hazard tape so it reads as
+     deliberate brushwork at HUD scale instead of fine pinstripes.
+     Lives as ::before of the backdrop so it inherits the alarm
+     pulse along with the wash beneath it. */
   &::before {
     content: "";
     position: absolute;
-    top: -25%;
-    left: -25%;
-    right: -25%;
-    bottom: -25%;
-    background:
-      radial-gradient(
-        ellipse 60% 80% at 20% 50%,
-        rgba(190, 32, 32, 0.55) 0%,
-        rgba(80, 12, 12, 0.0) 70%
-      ),
-      radial-gradient(
-        ellipse 45% 100% at 55% 60%,
-        rgba(220, 60, 40, 0.42) 0%,
-        rgba(80, 12, 12, 0.0) 70%
-      ),
-      radial-gradient(
-        ellipse 55% 70% at 85% 40%,
-        rgba(160, 26, 26, 0.5) 0%,
-        rgba(60, 8, 8, 0.0) 70%
-      );
-    background-size: 100% 100%, 100% 100%, 100% 100%;
-    background-repeat: no-repeat;
-    animation: ${gassedSteam} ${(p) => (p.$matchOver ? "3.4s" : "2.2s")} ease-in-out infinite;
-    filter: blur(3px);
-    mix-blend-mode: screen;
-    pointer-events: none;
-  }
-
-  /* Hairline strain marks across top + bottom of the bar — the "metal
-   * fatigue" detail. Built from a single repeating linear-gradient so
-   * they tile cleanly along the length without extra nodes. */
-  &::after {
-    content: "";
-    position: absolute;
     inset: 0;
-    background:
-      /* top hairline strain */
-      linear-gradient(
-        90deg,
-        transparent 0%,
-        transparent 10%,
-        rgba(255, 80, 60, 0.0) 14%,
-        rgba(255, 100, 80, 0.7) 18%,
-        rgba(255, 80, 60, 0.0) 22%,
-        transparent 30%,
-        transparent 50%,
-        rgba(255, 100, 80, 0.6) 56%,
-        transparent 62%,
-        transparent 75%,
-        rgba(255, 100, 80, 0.7) 80%,
-        transparent 86%,
-        transparent 100%
-      ),
-      /* bottom hairline strain */
-      linear-gradient(
-        90deg,
-        transparent 0%,
-        transparent 8%,
-        rgba(255, 80, 60, 0.0) 12%,
-        rgba(255, 100, 80, 0.55) 16%,
-        rgba(255, 80, 60, 0.0) 20%,
-        transparent 38%,
-        rgba(255, 100, 80, 0.55) 44%,
-        transparent 50%,
-        transparent 70%,
-        rgba(255, 100, 80, 0.6) 76%,
-        transparent 82%,
-        transparent 100%
-      );
-    background-size: 100% 1px, 100% 1px;
-    background-position: 0 1px, 0 calc(100% - 1px);
-    background-repeat: no-repeat;
-    animation: ${gassedCracks} ${(p) => (p.$matchOver ? "1.9s" : "1.2s")} ease-in-out infinite;
+    background-image: repeating-linear-gradient(
+      -55deg,
+      rgba(20, 4, 4, 0) 0px,
+      rgba(20, 4, 4, 0) 9px,
+      rgba(20, 4, 4, 0.55) 9px,
+      rgba(20, 4, 4, 0.55) 12px,
+      rgba(20, 4, 4, 0) 12px,
+      rgba(20, 4, 4, 0) 18px
+    );
+    animation: ${gassedSlashDrift} 6s linear infinite;
     pointer-events: none;
   }
 `;
 
-/* GASSED text plate — letter droop animation on top of the existing
- * border-pulse, so the word literally sags on each breath (matches the
- * labored-breath cadence of the overlay). */
+/* GASSED text plate — single hanko stamp landing.
+ *
+ * Previous pass infinitely pulsed the border + vertically drooped the
+ * letters. Two infinite animations on the same plate read as "the UI is
+ * malfunctioning" rather than "this wrestler is exhausted". Replaced
+ * with a single stamp impression on mount: scales down from oversized,
+ * tiny rotation, then sits still at -3deg (like a real vermillion seal
+ * pressed onto paper). The DECISION of the stamp is the alarm.
+ *
+ * Vermillion fill + cream text + dark stroke, no glow halo. The kanji
+ * 疲 (tsukareru, "to be exhausted/tired") sits inline before the
+ * Romanized label — adds the same Edo-print character the hanko stamp
+ * on the prematch screen has, anchors the design to the rest of the
+ * game's aesthetic instead of looking like generic FPS damage UI. */
 const GassedText = styled.span`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: inline-flex;
+  align-items: baseline;
+  gap: clamp(4px, 0.6cqw, 8px);
   font-family: "Bungee", cursive;
   font-size: clamp(9px, 1.3cqh, 16px);
-  color: #fff;
-  text-shadow:
-    0 0 6px rgba(255, 40, 40, 0.75),
-    0 0 12px rgba(255, 20, 20, 0.45),
-    0 1px 0 #000;
-  letter-spacing: 0.3em;
-  position: relative;
-  z-index: 1;
-  background: rgba(0, 0, 0, 0.85);
-  padding: clamp(2px, 0.3cqh, 4px) clamp(8px, 1.2cqw, 18px);
-  border: 1.5px solid rgba(255, 40, 40, 0.5);
+  color: ${C.cream};
+  letter-spacing: 0.22em;
+  /* Sits ABOVE the GassedBackdrop sibling so the stamp stays
+     readable while the backdrop strobes underneath it. */
+  z-index: 2;
+  background: ${C.vermillion};
+  padding: clamp(2px, 0.3cqh, 4px) clamp(10px, 1.4cqw, 20px);
+  border: 1.5px solid ${C.vermillionDeep};
   border-radius: 2px;
+  text-shadow: 0 1px 0 rgba(70, 18, 8, 0.6);
   box-shadow:
-    0 0 10px rgba(0, 0, 0, 0.6),
-    inset 0 0 8px rgba(120, 20, 20, 0.35);
-  /* Two animations: the existing border-pulse + a new vertical droop
-   * that runs slightly slower, so the text and the border breathe out of
-   * phase — the word feels alive, not robotically synced. */
-  animation:
-    ${gassedTextPulse} 1.2s ease-in-out infinite,
-    ${gassedTextDroop} 1.6s ease-in-out infinite;
+    0 2px 6px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(245, 236, 217, 0.12);
+  transform-origin: 50% 50%;
+  opacity: 0;
+  animation: ${gassedStamp} 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+`;
+
+/* Inline kanji glyph inside the GASSED stamp. Rendered slightly larger
+ * than the Romanized text so it carries a touch more visual weight,
+ * matching the proportion the prematch hanko uses. */
+const GassedKanji = styled.span`
+  font-family: "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  font-weight: 900;
+  font-size: 1.35em;
+  line-height: 1;
+  color: ${C.cream};
+  letter-spacing: 0;
 `;
 
 /* Gassed recovery burst — bright green-mint flash when "second wind" kicks in */
@@ -1245,13 +1196,17 @@ const GaugeStack = styled.div`
 
 /* Balance strip — STANCE GAUGE.
  *
- * The whole strip can subtly tilt and wobble when balance crosses the
- * kill threshold (the "losing footing" feel). The tilt only kicks in on
- * the danger prop so it's never disorienting outside of real danger.
+ * Sits beneath the stamina BarFrame with breathing room — the previous
+ * pass had this glued tight against the bottom edge of the stamina
+ * bar, which made the two gauges read as one merged element. Bumped
+ * margin-top so the balance gauge has its own visual lane.
  *
- * Transform-origin sits on the INNER edge so the wobble pivots from
- * "where the wrestler is planted" rather than spinning around the
- * geometric center. */
+ * No tilt/wobble animation on danger anymore — the previous balanceTilt
+ * keyframe rotated the whole strip ±1deg in a danger state, which read
+ * as the UI being broken rather than the wrestler being unsteady. The
+ * track's vermillion danger ring + the bright kill-zone background
+ * behind a tiny ice-blue fill sliver carry the alarm cleanly on their
+ * own — no animation needed for the danger reading. */
 const BalStripWrap = styled.div`
   display: flex;
   align-items: center;
@@ -1259,129 +1214,173 @@ const BalStripWrap = styled.div`
   gap: clamp(5px, 0.6cqw, 9px);
   width: 50%;
   align-self: ${(p) => (p.$isRight ? "flex-start" : "flex-end")};
-  margin-top: clamp(6px, 0.8cqh, 10px);
-  transform-origin: ${(p) => (p.$isRight ? "left center" : "right center")};
-  transition: transform 220ms ease;
-
-  ${(p) =>
-    p.$danger &&
-    !p.$matchOver &&
-    css`
-      animation: ${balanceTilt} 0.55s ease-in-out infinite;
-    `}
+  margin-top: clamp(8px, 1cqh, 14px);
 `;
 
-/* "BAL" label — clean cream text, semantically separate from the gold
- * threshold notches. The label names the gauge; the gold/vermillion
- * notches name the THRESHOLDS. Different colors = different roles. */
-const BalLabel = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(6px, 0.7cqw, 9px);
-  color: ${C.creamMute};
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-  white-space: nowrap;
-  flex-shrink: 0;
-  user-select: none;
-  text-shadow:
-    0 1px 0 #000,
-    0 0 4px rgba(0, 0, 0, 0.7);
-`;
-
-/* Outer container — taller than the inner track so threshold notches
- * can sit ABOVE the bar (not on top of the fill, where they'd disappear
- * into the gold). The tick marks render in this top strip, the bar
- * itself sits centered. */
-const BalTrackOuter = styled.div`
+/* Stance gauge track — three-zone precision instrument.
+ *
+ * The threshold zones are baked INTO the track itself, in the empty
+ * space behind the fill. Three regions, separated by thin cream
+ * divider lines at the 15% and 50% boundaries:
+ *
+ *   safe zone  — dark ink (no balance pressure)
+ *   throw zone — saturated bright gold (you can be thrown here)
+ *   kill zone  — saturated bright vermillion (throw = round over)
+ *
+ * Color alphas + brightness cranked from the previous pass — the user
+ * complaint was that the colors looked "drowned out / like a black
+ * filter is over them". The fix was to stop dragging the source colors
+ * down toward black. Now the kill zone uses C.vermillionBright and
+ * the throw zone uses C.gold directly (the canonical theme tokens, not
+ * darker variants), at near-full alpha. They read at first glance.
+ *
+ * Divider lines flipped from rgba(0,0,0,0.85) to a bright cream
+ * hairline (rgba 245,236,217, 0.65) so they're visible against the
+ * saturated zone backgrounds — the previous black lines disappeared
+ * into the dark gaps between zones at HUD scale.
+ *
+ * Direction set so kill zone sits on the side the bar drains INTO.
+ *
+ * Danger ring: when balance is in the kill zone, the inner cream
+ * hairline border swaps to vermillion + a small outer vermillion glow.
+ * The whole instrument turns red as a unit. */
+const BalTrack = styled.div`
   position: relative;
   flex: 1;
   min-width: 0;
-  height: clamp(15px, 2.2cqh, 22px);
-`;
-
-/* Stance gauge track — clean ink well with a quiet cream-faint rim.
- *
- * Previously this rim was gold (0.55 alpha) to "mirror the stamina
- * BarFrame at a smaller scale". That mirroring was the problem: it
- * made the balance gauge look like a smaller copy of the hero
- * hardware, so the eye couldn't tell which gauge was the priority.
- *
- * Now the rim is a thin cream hairline — same color language as the
- * other menu surfaces, NOT the chiseled gold leaf reserved for the
- * stamina bar. The track keeps its deep ink fill + ice-blue fill
- * (which still ties it semantically to the mawashi), but it no
- * longer pretends to be premium hardware. */
-const BalTrack = styled.div`
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  left: 0;
-  right: 0;
   height: clamp(8px, 1.3cqh, 12px);
-  border-radius: 100px;
+  border-radius: 1px;
   overflow: hidden;
-  background: linear-gradient(
-    180deg,
-    rgba(4, 6, 14, 0.98) 0%,
-    rgba(12, 16, 30, 0.95) 50%,
-    rgba(6, 8, 18, 0.98) 100%
-  );
+  /* Single sumi divider at the kill→throw boundary. The previous
+     cream hairlines (rgba 245,236,217,0.7) read as glitches/seams
+     at HUD scale instead of as deliberate partitions, and they
+     dropped to near-zero contrast against the gold throw zone.
+     Sumi reads as a printed-banzuke ink stroke and holds against
+     both the bright vermillion kill zone AND the gold throw zone.
+     Slightly bumped width (1.5% → 2%) so the partition reads as
+     a deliberate ink mark rather than a 1px artifact.
+     The throw→safe boundary drops its divider entirely — gold→dark
+     has massive natural contrast and a hairline there was only
+     adding visual noise. */
+  background:
+    linear-gradient(
+      ${(p) => (p.$isRight ? "to right" : "to left")},
+      ${C.vermillionBright} 0%,
+      ${C.vermillionBright} 14%,
+      rgba(8, 10, 18, 0.96) 14%,
+      rgba(8, 10, 18, 0.96) 16%,
+      ${C.gold} 16%,
+      ${C.gold} 50%,
+      rgba(8, 10, 18, 0.96) 50%,
+      rgba(8, 10, 18, 0.96) 100%
+    );
+  /* Box-shadow stack reads outermost → innermost:
+       1. inset 0 1px 2px / inset 0 -1px 1px — top + bottom
+          recessed shadows that give the bar a "pressed-in well"
+          feel (unchanged from before).
+       2. inset 0 0 0 1px <border> — the visible 1px border ring
+          on the inside edge. Cream at rest, vermillion in danger.
+       3. inset 0 0 0 2px <sumi mat> — a 1px DARK sumi mat sitting
+          INSIDE the border ring. Renders behind the border so only
+          the inner 1px is visible. Critical for danger state: when
+          the border goes vermillion, this mat keeps it visually
+          separated from the vermillion kill zone — without the mat
+          the red border and the red kill zone read as one
+          continuous red blob. Also helps every other zone (the
+          gold throw zone has cleaner edges, the dark safe zone
+          gets a subtle inner frame).
+       4. 0 1px 2px outer drop shadow — sits the bar on the HUD
+          gradient. */
   box-shadow:
     inset 0 1px 2px rgba(0, 0, 0, 0.85),
     inset 0 -1px 1px rgba(0, 0, 0, 0.4),
-    inset 0 0 0 1px rgba(245, 236, 217, 0.18),
+    inset 0 0 0 1px ${(p) =>
+      p.$danger
+        ? "rgba(216, 59, 39, 0.95)"
+        : "rgba(245, 236, 217, 0.32)"},
+    inset 0 0 0 2px rgba(8, 10, 18, 0.85),
     0 1px 2px rgba(0, 0, 0, 0.5);
+  /* Static box-shadow above is the resting / non-danger ring. When
+     $danger fires, the alarm pulse keyframe takes over the box-shadow
+     property entirely on a 0.78s strobe — same cadence as the gassed
+     lane's alarm pulse so both danger signals beat in sync. */
+  transition: box-shadow 220ms ease;
+  ${(p) =>
+    p.$danger &&
+    css`
+      animation: ${balanceAlarmPulse} 0.78s ease-in-out infinite;
+    `}
 `;
 
-/* Stance gauge fill — ICE BLUE.
+/* Stance gauge fill — ICE BLUE mawashi-cloth wrap.
  *
- * The previous saffron-gold fill was a bad idea: it gave us "yellow on
- * yellow" against the gold-rimmed track and the gold throw notch above,
- * and there was no semantic reason for the fill to be gold (gold's
- * already doing the threshold-marker job).
+ * Sized FLUSH with the track (no inset on top/bottom/anchor edge), so
+ * the colored zone background never looks bigger than the bar itself.
  *
- * Ice blue is canonical for this game: it's the color of the wrestler's
- * MAWASHI (the thick belt). The balance bar represents the wrestler's
- * footing/stance — directly tied to the mawashi. So pumo's stance gauge
- * being mawashi-blue is thematically perfect, and gives us THREE distinct
- * colors on the strip:
- *   • ice blue   — fill body  (the stance / mawashi)
- *   • gold       — rim + throw notch (structural / safe threshold)
- *   • vermillion — kill notch + danger fill (alarm)
+ * Stays ice blue in EVERY state (no danger color shift). The previous
+ * pass had a vermillion fill on top of a vermillion kill zone
+ * background — red on red, the bar vanished. Keeping the fill ice
+ * blue means it always pops against whatever zone it's sitting in
+ * (blue on red kill / blue on gold throw / blue on ink safe), so you
+ * can read your balance level at a glance regardless of the danger
+ * state. The alarm reading is carried by the track border + outer
+ * glow + the visible kill zone background behind the fill.
  *
- * Each color owns one role. No more yellow on yellow.
+ * THREE pieces of character added in this pass to fix the "boring
+ * flat blue rectangle" feel:
  *
- * Vertical gradient (bright top → mid → deep) gives the polished metal
- * sheen regardless of which side the bar is anchored on — drops the
- * direction-dependent horizontal gradient the gold version used. */
+ *   1. Squared edges (1px chamfer instead of pill rounding). Reads as
+ *      a printed precision marker rather than a candy capsule. Matches
+ *      the squared-off broadcast aesthetic the rest of the HUD uses.
+ *
+ *   2. Fabric-weave horizontal bands inside the fill. Subtle 1px
+ *      darker-blue stripes every ~3.5px, evoking the visible wrap
+ *      layers on a real wrestler's mawashi belt. The stance gauge
+ *      represents the wrestler's physical balance, which is held by
+ *      the mawashi — so the bar literally looking like fabric layers
+ *      is thematically tight. Subtle enough to not dominate, present
+ *      enough to register as texture instead of flat paint.
+ *
+ *   3. Leading-edge cream marker (::after). A 3px bright cream stripe
+ *      at the side of the fill that recedes as balance drains — the
+ *      "current position" punctuation mark. Asymmetric on purpose,
+ *      gives the bar a directional READ instead of being symmetric
+ *      from both ends. As balance drops, this marker is what you
+ *      visually track moving toward the kill zone.
+ *
+ * Vertical gradient (bright top → mid → deep) preserved for sheen. */
 const BalFill = styled.div.attrs((p) => ({
   style: {
-    width: `calc(${p.$balance}% - 2px)`,
+    width: `${p.$balance}%`,
   },
 }))`
   position: absolute;
-  top: 1px;
-  bottom: 1px;
-  ${(p) => (p.$isRight ? "left: 1px;" : "right: 1px;")}
-  border-radius: 100px;
+  top: 0;
+  bottom: 0;
+  ${(p) => (p.$isRight ? "left: 0;" : "right: 0;")}
+  border-radius: 1px;
   transition: width 0.25s ease;
   z-index: 1;
   overflow: hidden;
 
-  background: ${(p) =>
-    p.$danger
-      ? `linear-gradient(180deg, ${C.vermillionBright} 0%, ${C.vermillion} 50%, ${C.vermillionDeep} 100%)`
-      : `linear-gradient(180deg, ${C.iceBright} 0%, ${C.ice} 50%, ${C.iceMid} 100%)`};
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 2.5px,
+      rgba(20, 60, 90, 0.32) 2.5px,
+      rgba(20, 60, 90, 0.32) 3.5px
+    ),
+    linear-gradient(
+      180deg,
+      ${C.iceBright} 0%,
+      ${C.ice} 50%,
+      ${C.iceMid} 100%
+    );
 
-  box-shadow: ${(p) =>
-    p.$danger
-      ? `0 0 4px ${C.vermillionGlow}, inset 0 -1px 1px rgba(0, 0, 0, 0.45)`
-      : `0 0 5px ${C.iceGlow}, inset 0 -1px 1px rgba(0, 0, 0, 0.5)`};
-
-  animation: ${(p) =>
-    p.$danger
-      ? css`${flashRedPulse} 0.8s ease-in-out infinite`
-      : "none"};
+  box-shadow:
+    0 0 5px ${C.iceGlow},
+    inset 0 -1px 1px rgba(0, 0, 0, 0.5);
 
   /* Top sheen — frosty white catch on the upper half, sells the polished
    * mawashi-silk surface. */
@@ -1392,88 +1391,38 @@ const BalFill = styled.div.attrs((p) => ({
     height: 45%;
     background: linear-gradient(
       180deg,
-      rgba(245, 252, 255, 0.55) 0%,
-      rgba(220, 240, 255, 0.15) 70%,
+      rgba(245, 252, 255, 0.5) 0%,
+      rgba(220, 240, 255, 0.12) 70%,
       transparent 100%
     );
-    border-radius: 100px 100px 0 0;
+    border-radius: 1px 1px 0 0;
     pointer-events: none;
   }
-`;
 
-/* Threshold notch marker — replaces the fusa tassels.
- *
- * The fusa tassels were too detailed for the actual rendering size: the
- * skirt strands didn't read, and the gold-on-gold throw bead disappeared
- * inside the gold fill at high balance. The new notches sit ABOVE the
- * bar (anchored to the top of BalTrackOuter, NOT inside the track), so
- * they're always readable regardless of fill level — they aren't fighting
- * the fill for visual space.
- *
- * Two flavors:
- *   • throw  — thin gold tick at the 50% midpoint  (subtle, neutral)
- *   • kill   — chunky vermillion notch with quiet pulse halo at the
- *              kill threshold (15% from anchor)    (clear danger marker)
- *
- * Both render as small downward-pointing trapezoids ("notch heads") with
- * a thin "stem" line dropping toward the track top — like indicators on
- * a real precision gauge. Stays out of the bar's way; the bar can do its
- * own thing underneath. */
-const ThresholdNotch = styled.div`
-  position: absolute;
-  top: 0;
-  ${(p) => {
-    if (p.$type === "throw") return `left: 50%; transform: translateX(-50%);`;
-    return p.$isRight
-      ? `left: 15%;  transform: translateX(-50%);`
-      : `right: 15%; transform: translateX(50%);`;
-  }}
-  width: ${(p) => (p.$type === "kill" ? "clamp(5px, 0.7cqh, 7px)" : "clamp(2px, 0.32cqh, 3px)")};
-  height: clamp(7px, 1.1cqh, 10px);
-  z-index: 3;
-  pointer-events: none;
-
-  background: ${(p) =>
-    p.$type === "kill"
-      ? `linear-gradient(180deg, ${C.vermillionBright} 0%, ${C.vermillion} 55%, ${C.vermillionDeep} 100%)`
-      : `linear-gradient(180deg, #ffe56c 0%, ${C.gold} 60%, #c9a614 100%)`};
-  border-radius: 1px 1px 1.5px 1.5px;
-  box-shadow:
-    inset 0 1px 0 ${(p) =>
-      p.$type === "kill"
-        ? "rgba(255, 200, 180, 0.55)"
-        : "rgba(255, 252, 220, 0.6)"},
-    0 1px 2px rgba(0, 0, 0, 0.7);
-  /* Subtle outline so the notch reads cleanly against any fill state. */
-  outline: 0.5px solid ${(p) =>
-    p.$type === "kill"
-      ? "rgba(138, 31, 18, 0.85)"
-      : "rgba(0, 0, 0, 0.5)"};
-
-  /* Quiet pulse halo on the kill notch — never on the throw notch.
-   * Renders as a soft expanding ring. Subtle so it never feels like
-   * the whole HUD is throbbing. */
-  ${(p) =>
-    p.$type === "kill" &&
-    css`
-      &::after {
-        content: "";
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        width: 200%;
-        height: 200%;
-        transform: translate(-50%, -50%);
-        border-radius: 50%;
-        background: radial-gradient(
-          circle,
-          ${C.vermillionGlow} 0%,
-          rgba(216, 59, 39, 0) 60%
-        );
-        animation: ${killMarkerPulse} 1.6s ease-out infinite;
-        pointer-events: none;
-      }
-    `}
+  /* Leading-edge marker — bright cream stripe pinned to the side that
+   * recedes as balance drains. Acts as the gauge's "indicator tip" —
+   * the moving punctuation mark you visually track as your balance
+   * pushes toward the danger zones. Glow on the inner edge so it
+   * reads as a lit marker instead of a flat decal. */
+  &::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    ${(p) => (p.$isRight ? "right: 0;" : "left: 0;")}
+    width: clamp(2px, 0.32cqh, 3px);
+    background: linear-gradient(
+      180deg,
+      rgba(245, 252, 255, 0.95) 0%,
+      rgba(245, 252, 255, 0.78) 100%
+    );
+    box-shadow:
+      ${(p) =>
+        p.$isRight
+          ? "-1px 0 4px rgba(245, 252, 255, 0.55)"
+          : "1px 0 4px rgba(245, 252, 255, 0.55)"};
+    pointer-events: none;
+  }
 `;
 
 /* Rank plaque — tucked up close to the balance strip */
@@ -1823,8 +1772,12 @@ const UiPlayerInfo = ({
   const [p2Impact, setP2Impact] = useState(0);
   const [p1Shake, setP1Shake] = useState(false);
   const [p2Shake, setP2Shake] = useState(false);
-  const [p1ImpactStamina, setP1ImpactStamina] = useState(0);
-  const [p2ImpactStamina, setP2ImpactStamina] = useState(0);
+  // p1Impact / p2Impact are bumped on each heavy hit; the bump's value is
+  // used as the React `key` on <ImpactStrike> so each hit remounts the
+  // component and replays the strike animation. The strike anchors itself
+  // to the trailing edge of <BarFill> via CSS (right: 0 / left: 0), so
+  // we no longer need to track the stamina value at the moment of impact —
+  // the strike rides whatever edge the bar's width-transition is at.
   const p1ShakeTimer = useRef(null);
   const p2ShakeTimer = useRef(null);
   // Min stamina drop (in points) needed to register as a "heavy" hit. Tuned
@@ -1989,10 +1942,9 @@ const UiPlayerInfo = ({
       const now = Date.now();
       setP1LastDecreaseAt(now);
       p1LastDecreaseAtRef.current = now;
-      // Heavy-hit feedback: spark + frame shake on meaningful drops only
+      // Heavy-hit feedback: edge strike + frame shake on meaningful drops
       const drop = prev - s1;
       if (drop >= IMPACT_DROP_THRESHOLD) {
-        setP1ImpactStamina(s1);
         setP1Impact((k) => k + 1);
       }
       // Ghost stays high (captures "where stamina was" before this drain sequence)
@@ -2089,7 +2041,6 @@ const UiPlayerInfo = ({
       p2LastDecreaseAtRef.current = now;
       const drop = prev - s2;
       if (drop >= IMPACT_DROP_THRESHOLD) {
-        setP2ImpactStamina(s2);
         setP2Impact((k) => k + 1);
       }
       setP2Ghost((g) => Math.max(g, p2DisplayStamina));
@@ -2247,13 +2198,14 @@ const UiPlayerInfo = ({
                   $stamina={p1DisplayStamina}
                   $danger={p1Danger}
                   $isRight={false}
-                />
-                {!player1IsGassed && !p1Danger && (
-                  <FillMotes
-                    $stamina={p1DisplayStamina}
-                    $isRight={false}
-                  />
-                )}
+                >
+                  {p1Impact > 0 && !player1IsGassed && (
+                    <ImpactStrike
+                      key={`p1-impact-${p1Impact}`}
+                      $isRight={false}
+                    />
+                  )}
+                </BarFill>
                 {!player1IsGassed && (
                   <BarGhost
                     $stamina={p1Ghost}
@@ -2269,15 +2221,12 @@ const UiPlayerInfo = ({
                 )}
                 {player1IsGassed && (
                   <GassedOverlay $matchOver={matchOver}>
-                    <GassedText>GASSED</GassedText>
+                    <GassedBackdrop $matchOver={matchOver} />
+                    <GassedText>
+                      <GassedKanji>疲</GassedKanji>
+                      GASSED
+                    </GassedText>
                   </GassedOverlay>
-                )}
-                {p1Impact > 0 && !player1IsGassed && (
-                  <ImpactSpark
-                    key={`p1-impact-${p1Impact}`}
-                    $stamina={p1ImpactStamina}
-                    $isRight={false}
-                  />
                 )}
                 {p1ParryFlash > 0 && !player1IsGassed && (
                   <ParryRefundFlash
@@ -2301,14 +2250,9 @@ const UiPlayerInfo = ({
               $danger={b1Danger}
               $matchOver={matchOver}
             >
-              <BalLabel>BAL</BalLabel>
-              <BalTrackOuter>
-                <BalTrack>
-                  <BalFill $balance={b1} $danger={b1Danger} $isRight={false} />
-                </BalTrack>
-                <ThresholdNotch $type="throw" />
-                <ThresholdNotch $type="kill" $isRight={false} />
-              </BalTrackOuter>
+              <BalTrack $isRight={false} $danger={b1Danger}>
+                <BalFill $balance={b1} $danger={b1Danger} $isRight={false} />
+              </BalTrack>
             </BalStripWrap>
           </GaugeStack>
           <PowerUpSlot
@@ -2375,13 +2319,14 @@ const UiPlayerInfo = ({
                   $stamina={p2DisplayStamina}
                   $danger={p2Danger}
                   $isRight={true}
-                />
-                {!player2IsGassed && !p2Danger && (
-                  <FillMotes
-                    $stamina={p2DisplayStamina}
-                    $isRight={true}
-                  />
-                )}
+                >
+                  {p2Impact > 0 && !player2IsGassed && (
+                    <ImpactStrike
+                      key={`p2-impact-${p2Impact}`}
+                      $isRight={true}
+                    />
+                  )}
+                </BarFill>
                 {!player2IsGassed && (
                   <BarGhost
                     $stamina={p2Ghost}
@@ -2397,15 +2342,12 @@ const UiPlayerInfo = ({
                 )}
                 {player2IsGassed && (
                   <GassedOverlay $matchOver={matchOver}>
-                    <GassedText>GASSED</GassedText>
+                    <GassedBackdrop $matchOver={matchOver} />
+                    <GassedText>
+                      <GassedKanji>疲</GassedKanji>
+                      GASSED
+                    </GassedText>
                   </GassedOverlay>
-                )}
-                {p2Impact > 0 && !player2IsGassed && (
-                  <ImpactSpark
-                    key={`p2-impact-${p2Impact}`}
-                    $stamina={p2ImpactStamina}
-                    $isRight={true}
-                  />
                 )}
                 {p2ParryFlash > 0 && !player2IsGassed && (
                   <ParryRefundFlash
@@ -2429,14 +2371,9 @@ const UiPlayerInfo = ({
               $danger={b2Danger}
               $matchOver={matchOver}
             >
-              <BalLabel>BAL</BalLabel>
-              <BalTrackOuter>
-                <BalTrack>
-                  <BalFill $balance={b2} $danger={b2Danger} $isRight={true} />
-                </BalTrack>
-                <ThresholdNotch $type="throw" />
-                <ThresholdNotch $type="kill" $isRight={true} />
-              </BalTrackOuter>
+              <BalTrack $isRight={true} $danger={b2Danger}>
+                <BalFill $balance={b2} $danger={b2Danger} $isRight={true} />
+              </BalTrack>
             </BalStripWrap>
           </GaugeStack>
           <PowerUpSlot

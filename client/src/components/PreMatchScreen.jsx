@@ -648,23 +648,39 @@ const WrestlerImage = styled.img`
 // ============================================
 
 /*
- * Unified printed footer. Previously this had 3px vermillion top
- * and 3px vermillion bottom rules — two of the biggest "excessive
- * red" contributors on the screen. Both removed. The bar now
- * relies on:
- *   - 1px warm-brown sumi border on all four sides (the same
- *     hairline used everywhere else for paper edges)
- *   - The player-color signatures inside each PlayerSlot (a 3px
- *     mawashi-color top accent rule + the now-thicker MawashiSash
- *     at the bottom) for color identity, instead of a uniform
- *     vermillion band stretched across the entire bar
- *   - Two-layer warm drop shadow for physical weight, same as
- *     before
+ * Broadcast lower-third — flipped from cream washi to dark sumi
+ * chrome. Previous pass had this as a third large cream slab
+ * stacked under the two cream wrestler cards, which was the
+ * single biggest "too much tan, reads as cheap" contributor on
+ * the screen. Real broadcast graphics (and every reference
+ * fighting game lower-third — SF6, Tekken 8, KOF) use a dark
+ * chyron under bright portraits for two reasons:
  *
- * Net effect: the cream paper stays prominent, the player colors
- * are now what visually anchors each side of the footer, and the
- * vermillion budget for the screen is cut by ~6px of strong
- * horizontal red lines.
+ *   1. Visual hierarchy. Top half = printed banzuke cards.
+ *      Bottom half = broadcast chrome. Two surface tones doing
+ *      two jobs, instead of one tone trying to do both.
+ *   2. Continuity into the live HUD. The in-game bottom HUD bar
+ *      is already C.sumi — when this LowerThird transitions out
+ *      and the live HUD takes its place, the dark band stays
+ *      where the dark band was. Cohesive frame.
+ *
+ * Surface choice: C.sumi (the canonical "dark structural
+ * chrome" token in menuTheme). Same color family as the rank
+ * plaques sitting on the wrestler cards above, so the plaques
+ * now read as little pressed plates from the same dark family
+ * as the band underneath them, instead of orphaned dark spots
+ * floating on cream.
+ *
+ * Removed:
+ *   - The warm paper-grain ::before. Paper grain belongs on the
+ *     cream washi cards; the dark sumi band is a different
+ *     surface metaphor (lacquered chrome / broadcast plate),
+ *     and faking paper texture on it was the templated-AI move.
+ *
+ * Border + shadow swapped to the cool sumi family so the band
+ * sits in the same lighting environment as the rank plaques and
+ * the in-game HUD chrome — no warm-brown spillover from the
+ * cream-paper world above.
  */
 const LowerThird = styled.div`
   position: absolute;
@@ -674,35 +690,15 @@ const LowerThird = styled.div`
   display: grid;
   grid-template-columns: 1fr clamp(120px, 14cqw, 200px) 1fr;
   align-items: stretch;
-  background: ${C.cream};
-  border: 1px solid rgba(60, 40, 20, 0.22);
+  background: ${C.sumi};
+  border: 1px solid ${C.sumiBorder};
   box-shadow:
-    0 -4px 14px rgba(50, 30, 10, 0.2),
-    0 14px 28px rgba(50, 30, 10, 0.3);
+    0 -4px 14px rgba(0, 0, 0, 0.35),
+    0 14px 28px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(245, 236, 217, 0.06);
   will-change: transform, opacity;
   animation: ${clipRevealUp} 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) 0.4s
     backwards;
-
-  &::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background-image:
-      repeating-linear-gradient(
-        0deg,
-        rgba(60, 40, 20, 0.04) 0,
-        transparent 1px,
-        transparent 3px
-      ),
-      repeating-linear-gradient(
-        90deg,
-        rgba(60, 40, 20, 0.025) 0,
-        transparent 1px,
-        transparent 4px
-      );
-    pointer-events: none;
-    z-index: 1;
-  }
 `;
 
 /*
@@ -730,27 +726,33 @@ const PlayerSlot = styled.div`
 `;
 
 /*
- * Stable / dojo line — was C.gold on dark, now C.vermillionDeep
- * on cream. Same "small printed-program caption" energy, native
- * to the cream-paper world.
+ * Stable / dojo line — small gold caption on the dark band.
+ * Color picked to visually rhyme with the gold-leaf rank plaque
+ * text on the wrestler cards above (same family, same broadcast
+ * "printed metal caption" energy). Vermillion would have been
+ * the alternative but vermillion is already carrying the LIVE
+ * tally + hanko + WrestlerPanel side-tag kanji + loading bar
+ * fill — gold gives the bottom band its own quiet accent role
+ * instead of piling on more red.
  */
 const StableLine = styled.div`
   font-family: "Space Grotesk", sans-serif;
   font-weight: 700;
   font-size: clamp(0.5rem, 0.82cqw, 0.66rem);
-  color: ${C.vermillionDeep};
+  color: ${C.gold};
   letter-spacing: 0.26em;
   text-transform: uppercase;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
 `;
 
 const PlayerName = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(16px, 2.4cqw, 32px);
-  color: ${C.inkText};
+  color: ${C.cream};
   text-transform: uppercase;
   letter-spacing: 0.04em;
   line-height: 1.05;
@@ -758,6 +760,9 @@ const PlayerName = styled.div`
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.6),
+    0 2px 6px rgba(0, 0, 0, 0.35);
 `;
 
 const MetaRow = styled.div`
@@ -772,7 +777,7 @@ const StyleLabel = styled.span`
   font-family: "Space Grotesk", sans-serif;
   font-weight: 700;
   font-size: clamp(0.5rem, 0.82cqw, 0.65rem);
-  color: ${C.inkTextSoft};
+  color: ${C.creamMute};
   letter-spacing: 0.28em;
   text-transform: uppercase;
 `;
@@ -780,7 +785,7 @@ const StyleLabel = styled.span`
 const MetaSep = styled.span`
   width: 1px;
   height: 12px;
-  background: rgba(60, 40, 20, 0.32);
+  background: rgba(245, 236, 217, 0.22);
 `;
 
 const RecordText = styled.span`
@@ -789,12 +794,12 @@ const RecordText = styled.span`
   gap: 4px;
   font-family: "Bungee", cursive;
   font-size: clamp(0.6rem, 1cqw, 0.85rem);
-  color: ${C.inkText};
+  color: ${C.cream};
   letter-spacing: 0.04em;
 
   small {
     font-size: 0.7em;
-    color: ${C.inkTextMute};
+    color: ${C.creamMute};
     letter-spacing: 0.1em;
   }
 `;
@@ -827,12 +832,13 @@ const MawashiSash = styled.div`
 `;
 
 /*
- * Center pillar — VS CPU / EXHIBITION title block. Slight warm
- * tint (rgba(20,12,8,0.04)) so it reads as a faintly inset
- * portion of the printed page — the typographic "spine" between
- * the two player slots — rather than a separate panel. Thin
- * vertical hairline rules on each side preserve the printed-
- * program separation without introducing a second surface tone.
+ * Center pillar — VS CPU / EXHIBITION title block. Slight
+ * elevation off the surrounding sumi via C.sumiSoft so it reads
+ * as the typographic "spine" between the two player slots —
+ * one step lighter than the band but still firmly in the dark
+ * chrome family. Thin vertical hairline rules on each side
+ * preserve the printed-program column separation, now in the
+ * cool sumiBorder family to match the LowerThird's outer edge.
  */
 const CenterPillar = styled.div`
   position: relative;
@@ -842,25 +848,28 @@ const CenterPillar = styled.div`
   justify-content: center;
   gap: clamp(4px, 0.5cqh, 7px);
   padding: clamp(12px, 1.5cqh, 18px) clamp(8px, 1cqw, 14px);
-  background: rgba(20, 12, 8, 0.04);
-  border-left: 1px solid rgba(60, 40, 20, 0.22);
-  border-right: 1px solid rgba(60, 40, 20, 0.22);
+  background: ${C.sumiSoft};
+  border-left: 1px solid ${C.sumiBorder};
+  border-right: 1px solid ${C.sumiBorder};
   z-index: 2;
 `;
 
 const CenterFormatLabel = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(0.7rem, 1.15cqw, 0.95rem);
-  color: ${C.inkText};
+  color: ${C.cream};
   letter-spacing: 0.22em;
   text-transform: uppercase;
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.6),
+    0 2px 6px rgba(0, 0, 0, 0.35);
 `;
 
 const CenterFormatSub = styled.div`
   font-family: "Space Grotesk", sans-serif;
   font-weight: 700;
   font-size: clamp(0.46rem, 0.78cqw, 0.6rem);
-  color: ${C.inkTextMute};
+  color: ${C.creamMute};
   letter-spacing: 0.32em;
   text-transform: uppercase;
 `;
@@ -868,8 +877,8 @@ const CenterFormatSub = styled.div`
 const CenterDivider = styled.span`
   width: 32px;
   height: 1px;
-  background: ${C.vermillion};
-  opacity: 0.85;
+  background: ${C.vermillionBright};
+  opacity: 0.9;
 `;
 
 // ============================================

@@ -63,13 +63,14 @@
     drop-shadow(0 0 14px rgba(0, 180, 255, 0.28));
 }
 
+/* Perfect parry: trimmed filter chain — single tight halo instead of two stacked
+   drop-shadows that compounded into a cyan haze. Sharper, "premium" feel. */
 .raw-parry-ring-wrapper.perfect {
   filter:
-    brightness(1.18)
-    saturate(1.3)
-    contrast(1.1)
-    drop-shadow(0 0 10px rgba(120, 240, 255, 0.5))
-    drop-shadow(0 0 18px rgba(0, 210, 255, 0.32));
+    brightness(1.14)
+    saturate(1.22)
+    contrast(1.08)
+    drop-shadow(0 0 4px rgba(180, 245, 255, 0.45));
 }
 
 /* Second shockwave ring - regular (tier 2 SMALL) */
@@ -177,7 +178,9 @@
   height: 3.85cqw;
 }
 
-/* Main impact ring - blue/cyan for perfect, larger size; fill with transparent blue (same shape, same tilt) */
+/* Main impact ring - perfect: white stroke around a faint cyan disc,
+   with a tight cyan halo. The white-on-cyan pairing is what makes
+   the perfect tier feel premium — clean, decisive, defensive. */
 .raw-parry-ring.perfect::before {
   content: '';
   position: absolute;
@@ -185,14 +188,24 @@
   left: 50%;
   width: 100%;
   height: 100%;
-  background: rgba(0, 220, 255, 0.28);
-  border: 0.24cqw solid rgba(0, 200, 255, 0.95);
+  background: rgba(0, 220, 255, 0.14);
+  border: 0.24cqw solid rgba(255, 255, 255, 0.98);
+  box-shadow:
+    0 0 0 clamp(1px, 0.07cqw, 2px) rgba(0, 0, 0, 0.2),
+    0 0 10px rgba(0, 220, 255, 0.6),
+    0 0 22px rgba(0, 180, 255, 0.32);
   border-radius: 50%;
   transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(0.5);
   animation: rawParryMainRing 0.4s ease-out forwards;
 }
 
-/* Perfect parry inner flash: white-hot core, sharp cyan ring, decisive "perfect timing" */
+/* Perfect parry inner flash: tight white pinpoint at the very center
+   that rolls off into the parry's signature cyan-blue body. Previous
+   pass had pure white dominating out to 24% of the core, which read
+   as a white blob with cyan only on the edge. Now white is the
+   specular spike (≤14%) and cyan owns the rest of the burst, so the
+   center reads BLUE with a bright pinpoint, not WHITE with a blue
+   ring. Same crisp-stops shape as the previous pass. */
 .raw-parry-ring.perfect::after {
   content: '';
   position: absolute;
@@ -202,18 +215,17 @@
   height: 55%;
   background: radial-gradient(circle,
     rgba(255, 255, 255, 1) 0%,
-    rgba(255, 255, 255, 0.98) 6%,
-    rgba(200, 245, 255, 0.95) 14%,
-    rgba(0, 230, 255, 0.85) 22%,
-    rgba(0, 210, 255, 0.5) 35%,
-    rgba(0, 200, 255, 0.2) 50%,
-    transparent 68%);
+    rgba(220, 250, 255, 0.95) 12%,
+    rgba(80, 230, 255, 0.85) 30%,
+    rgba(0, 215, 255, 0.55) 50%,
+    rgba(0, 180, 255, 0.18) 68%,
+    transparent 80%);
   border-radius: 50%;
   transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(0);
   animation: rawParryPerfectInnerBurst 0.32s ease-out forwards;
 }
 
-/* Second shockwave ring - cyan (like regular), larger size */
+/* Second shockwave ring - perfect: white stroke, larger, with cyan halo */
 .raw-parry-ring-wrapper.perfect::before {
   content: '';
   position: absolute;
@@ -221,14 +233,21 @@
   left: 50%;
   width: 4.15cqw;
   height: 3.85cqw;
-  border: 2px solid rgba(120, 235, 255, 0.92);
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  box-shadow:
+    0 0 8px rgba(120, 235, 255, 0.55),
+    0 0 18px rgba(0, 200, 255, 0.3);
   border-radius: 50%;
   transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(0.3);
   animation: rawParryOuterRing 0.45s ease-out 0.03s forwards;
   pointer-events: none;
 }
 
-/* Perfect parry impact: unified cyan star burst – 4 lines, white core, no rotation */
+/* Perfect parry impact: tight 8-spoke star burst with bright white cores
+   and razor cyan falloff. Bands narrowed from ~10% wide to ~5% so each
+   spoke reads as a sharp lens-flare line, not a soft cyan blur. The
+   diagonals are slightly thinner than the cardinals, giving it a
+   crystalline asterisk instead of a fat plus. */
 .raw-parry-ring-wrapper.perfect::after {
   content: '';
   position: absolute;
@@ -237,10 +256,10 @@
   width: 4.15cqw;
   height: 3.85cqw;
   background:
-    linear-gradient(0deg, transparent 45%, rgba(0, 235, 255, 0.5) 48%, rgba(255, 255, 255, 0.95) 50%, rgba(0, 235, 255, 0.5) 52%, transparent 55%),
-    linear-gradient(90deg, transparent 45%, rgba(0, 235, 255, 0.5) 48%, rgba(255, 255, 255, 0.95) 50%, rgba(0, 235, 255, 0.5) 52%, transparent 55%),
-    linear-gradient(45deg, transparent 45%, rgba(0, 235, 255, 0.45) 48%, rgba(255, 255, 255, 0.9) 50%, rgba(0, 235, 255, 0.45) 52%, transparent 55%),
-    linear-gradient(-45deg, transparent 45%, rgba(0, 235, 255, 0.45) 48%, rgba(255, 255, 255, 0.9) 50%, rgba(0, 235, 255, 0.45) 52%, transparent 55%);
+    linear-gradient(0deg, transparent 47.5%, rgba(180, 245, 255, 0.7) 48.6%, rgba(255, 255, 255, 1) 50%, rgba(180, 245, 255, 0.7) 51.4%, transparent 52.5%),
+    linear-gradient(90deg, transparent 47.5%, rgba(180, 245, 255, 0.7) 48.6%, rgba(255, 255, 255, 1) 50%, rgba(180, 245, 255, 0.7) 51.4%, transparent 52.5%),
+    linear-gradient(45deg, transparent 48.2%, rgba(180, 245, 255, 0.55) 49%, rgba(255, 255, 255, 0.95) 50%, rgba(180, 245, 255, 0.55) 51%, transparent 51.8%),
+    linear-gradient(-45deg, transparent 48.2%, rgba(180, 245, 255, 0.55) 49%, rgba(255, 255, 255, 0.95) 50%, rgba(180, 245, 255, 0.55) 51%, transparent 51.8%);
   transform: translate(-50%, -50%) rotateY(var(--parry-ring-tilt-signed, var(--parry-ring-tilt))) scale(0);
   animation: rawParryPerfectImpact 0.3s ease-out forwards;
   pointer-events: none;
@@ -423,14 +442,17 @@
   animation: parryBloomGlow 0.4s ease-out forwards;
 }
 
+/* Perfect parry bloom: shrunk from 260% to 180% and trimmed opacity so it
+   reads as a tight halo, not a smokey cloud. Fade pulled from 0.5s to
+   0.38s so it doesn't linger as ambient haze after the impact lands. */
 .parry-bloom-glow.perfect {
-  width: 260%;
-  height: 260%;
+  width: 180%;
+  height: 180%;
   background: radial-gradient(circle,
-    rgba(120, 240, 255, 0.8) 0%,
-    rgba(0, 220, 255, 0.45) 35%,
-    transparent 70%);
-  animation: parryBloomGlow 0.5s ease-out forwards;
+    rgba(180, 245, 255, 0.55) 0%,
+    rgba(0, 220, 255, 0.22) 30%,
+    transparent 65%);
+  animation: parryBloomGlow 0.38s ease-out forwards;
 }
 
 @keyframes parryBloomGlow {
@@ -471,16 +493,21 @@
   animation: parryHeldCore 0.28s ease-out forwards;
 }
 
+/* Perfect held core: tight white pinpoint that quickly hands off to
+   cyan. The pure-white region is a small specular hit at the very
+   center; the bulk of the core's volume reads as the perfect
+   parry's signature cyan-blue. Avoids the "white blob" look where
+   the white dominates the entire core out to 80%. */
 .parry-held-core.perfect {
   width: 45%;
   height: 45%;
   background: radial-gradient(circle,
     rgba(255, 255, 255, 1) 0%,
-    rgba(255, 255, 255, 0.95) 20%,
-    rgba(180, 250, 255, 0.7) 50%,
-    rgba(0, 230, 255, 0.3) 80%,
-    transparent 100%);
-  box-shadow: 0 0 clamp(4px, 0.3cqw, 8px) rgba(0, 230, 255, 0.5);
+    rgba(200, 248, 255, 0.92) 14%,
+    rgba(0, 220, 255, 0.7) 36%,
+    rgba(0, 190, 255, 0.32) 65%,
+    transparent 95%);
+  box-shadow: 0 0 clamp(3px, 0.22cqw, 6px) rgba(0, 220, 255, 0.45);
   animation: parryHeldCorePerfect 0.4s ease-out forwards;
 }
 
@@ -548,14 +575,18 @@
   animation: parryAfterglow 0.5s ease-out 0.08s forwards;
 }
 
+/* Perfect afterglow: previously a 280%-wide cyan haze that lingered
+   0.65s and left a smokey halo well after the impact landed.
+   Pulled to 170% / 0.42s — present enough to feel like residual
+   energy, but too brief and tight to read as ambient fog. */
 .parry-afterglow.perfect {
-  width: 280%;
-  height: 280%;
+  width: 170%;
+  height: 170%;
   background: radial-gradient(circle,
-    rgba(0, 230, 255, 0.3) 0%,
-    rgba(0, 200, 255, 0.12) 35%,
-    transparent 70%);
-  animation: parryAfterglow 0.65s ease-out 0.1s forwards;
+    rgba(0, 230, 255, 0.18) 0%,
+    rgba(0, 200, 255, 0.05) 35%,
+    transparent 65%);
+  animation: parryAfterglow 0.42s ease-out 0.08s forwards;
 }
 
 @keyframes parryAfterglow {

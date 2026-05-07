@@ -149,18 +149,25 @@ const buttonBase = css`
 
 const RematchButton = styled.button`
   ${buttonBase}
-  background: ${C.success};
+  /* Rest tone shifted down one step on the green ramp — the previous
+     pass used C.success (#4ade80, Tailwind green-400) which read as
+     a bright lime against the cream washi card. Pulling it down to
+     successDeep (#16a34a, green-600) grounds the button so it
+     doesn't blow out the page, and shifts the hover lift up to
+     success (the previous rest tone) so hovering gives a properly
+     dramatic brightening instead of a barely-there pop. */
+  background: ${C.successDeep};
   color: ${C.cream};
   border: 2px solid ${C.successDeep};
   box-shadow:
     0 4px 14px rgba(22, 163, 74, 0.32),
-    inset 0 1px 0 rgba(255, 255, 255, 0.36);
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
 
   &:hover {
-    background: ${C.successBright};
+    background: ${C.success};
     box-shadow:
-      0 6px 18px rgba(22, 163, 74, 0.42),
-      inset 0 1px 0 rgba(255, 255, 255, 0.5);
+      0 6px 18px rgba(74, 222, 128, 0.42),
+      inset 0 1px 0 rgba(255, 255, 255, 0.4);
     transform: translateY(-1px);
     color: ${C.inkTextStrong};
     text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);

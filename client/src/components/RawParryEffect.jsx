@@ -1,63 +1,12 @@
-import { useEffect, useState, useRef, useMemo } from "react";
-import styled, { keyframes } from "styled-components";
+import { useEffect, useState, useRef, useMemo, Fragment } from "react";
+import { createPortal } from "react-dom";
+import styled from "styled-components";
 import PropTypes from "prop-types";
 import "./RawParryEffect.css";
-import { HIT_EFFECT_TEXT_DURATION, HIT_EFFECT_TEXT_DELAY } from "../config/hitEffectText";
+import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
 
 // Pre-create indices for perfect parry speed lines
 const PERFECT_LINE_INDICES = [0, 1, 2, 3, 4, 5, 6, 7];
-
-// Text pop: centered in the ring for both regular and perfect
-const textPop = keyframes`
-  0% {
-    transform: translate(-50%, -50%) scale(0);
-    opacity: 0;
-  }
-  20% {
-    transform: translate(-50%, -50%) scale(1.3);
-    opacity: 1;
-  }
-  40% {
-    transform: translate(-50%, -50%) scale(0.9);
-    opacity: 1;
-  }
-  60% {
-    transform: translate(-50%, -50%) scale(1.1);
-    opacity: 1;
-  }
-  80% {
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 1;
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 0;
-  }
-`;
-
-// Text centered in the ring (same for regular and perfect)
-const ParryTextCenter = styled.div`
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  font-family: "Bungee", cursive;
-  font-size: 0.86cqw;
-  color: ${props => props.$isPerfect ? '#FFD700' : '#00BFFF'};
-  -webkit-text-stroke: clamp(2px, 0.2cqw, 3.5px) #000;
-  paint-order: stroke fill;
-  text-shadow:
-    -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000,
-    ${props => props.$isPerfect
-      ? '2px 2px 0 rgba(139, 105, 20, 0.85), 4px 4px 0 rgba(100, 75, 10, 0.5), 0 2px 6px rgba(0, 0, 0, 0.7)'
-      : '2px 2px 0 rgba(0, 60, 100, 0.85), 4px 4px 0 rgba(0, 40, 70, 0.5), 0 2px 6px rgba(0, 0, 0, 0.7)'};
-  letter-spacing: 0.15em;
-  white-space: nowrap;
-  transform: translate(-50%, -50%) scale(0);
-  animation: ${textPop} ${HIT_EFFECT_TEXT_DURATION}s ease-out forwards;
-  animation-delay: ${HIT_EFFECT_TEXT_DELAY}s;
-  pointer-events: none;
-  z-index: 20;
-`;
 
 const EFFECT_TEXT_BASELINE_OFFSET_Y = 0;
 
@@ -76,9 +25,9 @@ const RawParryEffectContainer = styled.div`
   pointer-events: none;
   contain: layout style;
   filter:
-    saturate(1.1)
-    brightness(1.06)
-    drop-shadow(0 0 4px rgba(90, 210, 255, 0.22));
+    saturate(1.08)
+    brightness(1.05)
+    drop-shadow(0 0 2px rgba(90, 210, 255, 0.18));
 `;
 
 const ParticleContainer = styled.div`
@@ -232,53 +181,70 @@ const RawParryEffect = ({ position }) => {
           />
         ));
 
+        // Perfect parry: gets a side announcement banner so the "you read
+        // your opponent" callout matches the noticeability of counter
+        // hit / punish / counter grab. Regular parry stays silent — the
+        // ring alone is enough signal, and the absence of a banner is
+        // what makes the perfect tier feel like an upgrade.
+        const isLeftSide = (effect.playerNumber || 1) === 1;
+        const hudEl =
+          typeof document !== "undefined"
+            ? document.getElementById("game-hud")
+            : null;
+
         return (
-          <RawParryEffectContainer
-            key={effect.id}
-            $x={effect.x}
-            $y={effect.y}
-            $facing={effect.facing}
-            $isPerfect={effect.isPerfect}
-          >
-            <div
-              className={`raw-parry-ring-wrapper ${
-                effect.isPerfect ? "perfect" : "regular"
-              }`}
-              style={{ "--parry-ring-tilt-signed": parryTiltSigned }}
+          <Fragment key={effect.id}>
+            <RawParryEffectContainer
+              $x={effect.x}
+              $y={effect.y}
+              $facing={effect.facing}
+              $isPerfect={effect.isPerfect}
             >
-              {/* Bloom glow underlayer */}
-              <div className={`parry-bloom-glow ${effect.isPerfect ? "perfect" : "regular"}`} />
               <div
-                className={`raw-parry-ring ${
+                className={`raw-parry-ring-wrapper ${
                   effect.isPerfect ? "perfect" : "regular"
                 }`}
-                style={{
-                  transform: effect.facing === 1 ? "scaleX(-1)" : "scaleX(1)",
-                }}
-              />
-              {/* Held core */}
-              <div className={`parry-held-core ${effect.isPerfect ? "perfect" : "regular"}`} />
-              {/* Perfect parry speed lines - manga-style radial streaks */}
-              {effect.isPerfect && (
-                <div className="perfect-speed-lines">
-                  {PERFECT_LINE_INDICES.map((i) => (
-                    <div key={i} className="perfect-speed-line" />
-                  ))}
-                </div>
-              )}
-              <ParticleContainer className="raw-parry-particles">
-                {particles}
-              </ParticleContainer>
-              <ParticleContainer className="spark-particles">
-                {sparkElements}
-              </ParticleContainer>
-              {/* Afterglow */}
-              <div className={`parry-afterglow ${effect.isPerfect ? "perfect" : "regular"}`} />
-            </div>
-            <ParryTextCenter $isPerfect={effect.isPerfect}>
-              {effect.isPerfect ? "PERFECT" : "PARRY"}
-            </ParryTextCenter>
-          </RawParryEffectContainer>
+                style={{ "--parry-ring-tilt-signed": parryTiltSigned }}
+              >
+                {/* Bloom glow underlayer */}
+                <div className={`parry-bloom-glow ${effect.isPerfect ? "perfect" : "regular"}`} />
+                <div
+                  className={`raw-parry-ring ${
+                    effect.isPerfect ? "perfect" : "regular"
+                  }`}
+                  style={{
+                    transform: effect.facing === 1 ? "scaleX(-1)" : "scaleX(1)",
+                  }}
+                />
+                {/* Held core */}
+                <div className={`parry-held-core ${effect.isPerfect ? "perfect" : "regular"}`} />
+                {/* Perfect parry speed lines - manga-style radial streaks */}
+                {effect.isPerfect && (
+                  <div className="perfect-speed-lines">
+                    {PERFECT_LINE_INDICES.map((i) => (
+                      <div key={i} className="perfect-speed-line" />
+                    ))}
+                  </div>
+                )}
+                <ParticleContainer className="raw-parry-particles">
+                  {particles}
+                </ParticleContainer>
+                <ParticleContainer className="spark-particles">
+                  {sparkElements}
+                </ParticleContainer>
+                {/* Afterglow */}
+                <div className={`parry-afterglow ${effect.isPerfect ? "perfect" : "regular"}`} />
+              </div>
+            </RawParryEffectContainer>
+            {effect.isPerfect && hudEl && createPortal(
+              <SumoAnnouncementBanner
+                text="PERFECT"
+                type="perfectparry"
+                isLeftSide={isLeftSide}
+              />,
+              hudEl
+            )}
+          </Fragment>
         );
       })}
     </>

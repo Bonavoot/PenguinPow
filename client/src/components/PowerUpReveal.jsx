@@ -196,7 +196,11 @@ const Cluster = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(6px, 0.9cqh, 10px);
+  /* Tighter gap above the tile (label hugs the tile so the
+     trio reads as one stacked pickup) and a slightly larger
+     gap below it (lets the big Bungee name breathe without
+     fighting the tile). */
+  gap: clamp(4px, 0.55cqh, 6px);
   max-width: 38cqw;
   width: max-content;
   opacity: 0;
@@ -251,10 +255,9 @@ const IconTile = styled.div`
   height: clamp(66px, 8.2cqh, 86px);
   background: ${(p) => getTypeColor(p.$type).main};
   display: flex;
-  flex-direction: column;
   align-items: center;
-  padding: clamp(4px, 0.65cqh, 6px) clamp(3px, 0.4cqw, 5px)
-    clamp(5px, 0.75cqh, 8px);
+  justify-content: center;
+  padding: clamp(6px, 0.85cqh, 9px) clamp(4px, 0.5cqw, 6px);
   box-shadow:
     inset 0 -2px 0 ${(p) => getTypeColor(p.$type).deep},
     inset 0 1px 0 rgba(255, 255, 255, 0.2),
@@ -269,87 +272,110 @@ const IconTile = styled.div`
 `;
 
 /*
- * YOU / OPP label, sitting INSIDE the tile at the top.
+ * YOU / OPP label, free-floating ABOVE the colored tile.
  *
- * YOU is cream — the neutral subject of the reveal (you
- * already know what you picked, no surprise to highlight).
- * OPP is vermillion-bright — the LOUD color, drawing the
- * eye to the surprise of what your opponent went with.
- * This is inverted from the previous pass where YOU was
- * vermillion; the new mapping is correct because the
- * surprise of the reveal lives on the opponent's side.
+ * Two earlier passes tried to put this text ON the tile and
+ * both failed for different reasons:
+ *   - 4-direction sumi text-stroke directly on the colored
+ *     field made the small letters read as chunky pixel
+ *     blobs.
+ *   - A flush sumi header band gave it a surface but felt
+ *     like a UI panel containerizing the icon, working
+ *     against the "two pickup cards on the arena" feel.
  *
- * The sumi stencil stroke around the label is what keeps
- * vermillion legible against the red Power Water tile, the
- * cyan Happy Feet tile, etc. — the dark outline guarantees
- * the text reads regardless of which color tile it sits on.
+ * Moving the label outside the tile sidesteps both problems:
+ *   - No more competing with the tile background (which
+ *     also fixes the OPP-vermillion-on-Power-Water-red case
+ *     since OPP now sits against the arena/crowd, not the
+ *     red tile).
+ *   - No need for a containing surface — the text just sits
+ *     in space above the tile.
+ *
+ * Legibility against the live arena uses a single clean
+ * drop shadow instead of a multi-direction stencil. Bungee-
+ * weight type with a chunky sumi drop reads as a stamp
+ * impression, which is the printed-program metaphor we want.
+ * (Space Grotesk here is bumped to 800 so the same recipe
+ * holds at small sizes — the heavier weight gives the drop
+ * shadow something to sit against.)
+ *
+ * Color coding stays: YOU = cream (neutral self), OPP =
+ * vermillion-bright (loud opponent highlight).
  */
 const TileLabel = styled.span`
   font-family: "Space Grotesk", sans-serif;
-  font-weight: 700;
-  font-size: clamp(0.42rem, 0.74cqw, 0.58rem);
-  letter-spacing: 0.24em;
+  font-weight: 800;
+  font-size: clamp(0.5rem, 0.85cqw, 0.66rem);
+  letter-spacing: 0.3em;
   text-transform: uppercase;
   color: ${(p) => (p.$isLocal ? C.cream : C.vermillionBright)};
+  /* Stamp-impression drop only — no stencil, no halo. The
+     1px crisp drop seats the letterforms; the soft 4px
+     ambient shadow dims the arena directly behind the text
+     so the cream/vermillion can hold its own. */
   text-shadow:
-    -1px 0 0 ${C.sumi}, 1px 0 0 ${C.sumi},
-    0 -1px 0 ${C.sumi}, 0 1px 0 ${C.sumi},
-    0 1px 0 rgba(0, 0, 0, 0.5);
+    0 1px 0 rgba(8, 10, 18, 0.92),
+    0 2px 4px rgba(8, 10, 18, 0.7);
   white-space: nowrap;
 
   @media (max-width: 700px) {
-    font-size: clamp(0.36rem, 1.2cqw, 0.5rem);
-    letter-spacing: 0.16em;
+    font-size: clamp(0.42rem, 1.3cqw, 0.56rem);
+    letter-spacing: 0.22em;
   }
 `;
 
 /*
- * Icon centered in the remaining vertical space below the
- * label. `margin: auto 0` is the cleanest way to vertically
- * center inside the column flex without adding a wrapper
- * div — the auto margins absorb whatever space is left
- * between the top-pinned label and the bottom padding.
+ * Icon, centered inside the colored tile. The tile uses
+ * flex centering so no margin tricks needed — the icon just
+ * sits in the middle of the colored field with the tile's
+ * deep-color bottom-bevel underneath catching it.
  */
 const TileIcon = styled.img`
-  width: clamp(34px, 4.4cqw, 48px);
-  height: clamp(34px, 4.4cqw, 48px);
+  width: clamp(38px, 4.8cqw, 52px);
+  height: clamp(38px, 4.8cqw, 52px);
   object-fit: contain;
-  margin: auto 0;
   filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5));
 
   @media (max-width: 700px) {
-    width: clamp(30px, 5.6cqw, 40px);
-    height: clamp(30px, 5.6cqw, 40px);
+    width: clamp(32px, 6.2cqw, 44px);
+    height: clamp(32px, 6.2cqw, 44px);
   }
 `;
 
 /*
- * Power-up name. Big cream Bungee with a sumi stencil
- * stroke + soft halo so it reads as broadcast-SFX text
- * against any arena content underneath. Same legibility
- * recipe PowerUpReveal has used since the second pass —
- * the only thing that changed in this pass is that the
- * name no longer has a colored underline beneath it
- * (color identity is now carried by the tile above).
+ * Power-up name. Big cream Bungee, free-floating below the
+ * colored tile, no surrounding plate. The earlier 8-stroke
+ * stencil passes plus the sumi-plate-with-colored-top-rule
+ * pass both lost the "two pickup cards on the arena" feel
+ * by adding too much paint and too much chrome.
+ *
+ * This pass uses a single stamp-impression drop-shadow
+ * recipe — a 1px crisp sumi drop seats the letterforms,
+ * and a 2px slightly-offset solid sumi shadow chunks them
+ * up like ink pressed into paper, plus a soft 6px ambient
+ * shadow dims the arena directly behind the text so the
+ * cream can hold its own. No directional stencil. No halo
+ * glow. No background plate.
+ *
+ * Bungee is heavy enough that this minimal recipe carries
+ * the type against any of the arena/crowd backgrounds the
+ * reveal sits over.
  */
 const Name = styled.span`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.72rem, 1.3cqw, 1.05rem);
+  font-size: clamp(0.7rem, 1.18cqw, 0.95rem);
   color: ${C.cream};
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   line-height: 1;
   white-space: nowrap;
   text-shadow:
-    -1.5px 0 0 ${C.sumi}, 1.5px 0 0 ${C.sumi},
-    0 -1.5px 0 ${C.sumi}, 0 1.5px 0 ${C.sumi},
-    -1.5px -1.5px 0 ${C.sumi}, 1.5px -1.5px 0 ${C.sumi},
-    -1.5px 1.5px 0 ${C.sumi}, 1.5px 1.5px 0 ${C.sumi},
-    0 3px 0 rgba(0, 0, 0, 0.55),
-    0 0 12px rgba(0, 0, 0, 0.6);
+    0 1px 0 rgba(8, 10, 18, 0.95),
+    0 2px 0 rgba(8, 10, 18, 0.85),
+    0 4px 8px rgba(8, 10, 18, 0.6);
 
   @media (max-width: 700px) {
-    font-size: clamp(0.62rem, 2cqw, 0.85rem);
+    font-size: clamp(0.6rem, 1.85cqw, 0.78rem);
   }
 `;
 
@@ -437,12 +463,15 @@ const PowerUpReveal = ({ roomId, localId }) => {
 
   return (
     <RevealOverlay>
-      {/* LEFT seat — Player 1 (West-side entrance) */}
+      {/* LEFT seat — Player 1 (West-side entrance).
+          Label sits ABOVE the tile and Name sits BELOW —
+          three free-floating pieces stacked over the
+          arena, no containing chrome. */}
       <Cluster $isLeft={true} $isExiting={isExiting}>
+        <TileLabel $isLocal={isLocalP1}>
+          {isLocalP1 ? "You" : "Opp"}
+        </TileLabel>
         <IconTile $type={revealData.player1.powerUpType}>
-          <TileLabel $isLocal={isLocalP1}>
-            {isLocalP1 ? "You" : "Opp"}
-          </TileLabel>
           <TileIcon src={p1Info?.icon} alt={p1Info?.name} />
         </IconTile>
         <Name>{p1Info?.name}</Name>
@@ -450,10 +479,10 @@ const PowerUpReveal = ({ roomId, localId }) => {
 
       {/* RIGHT seat — Player 2 (East-side entrance) */}
       <Cluster $isLeft={false} $isExiting={isExiting}>
+        <TileLabel $isLocal={!isLocalP1}>
+          {!isLocalP1 ? "You" : "Opp"}
+        </TileLabel>
         <IconTile $type={revealData.player2.powerUpType}>
-          <TileLabel $isLocal={!isLocalP1}>
-            {!isLocalP1 ? "You" : "Opp"}
-          </TileLabel>
           <TileIcon src={p2Info?.icon} alt={p2Info?.name} />
         </IconTile>
         <Name>{p2Info?.name}</Name>

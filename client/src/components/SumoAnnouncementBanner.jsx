@@ -119,13 +119,57 @@ import { C } from "./menuTheme";
 
 const TYPE_COLORS = {
   punish: { color: "#b975ff", deep: "#5a2299" },
-  counterhit: { color: "#ffd54a", deep: "#a07020" },
+  /*
+   * counterhit — bumped from the previous muted gold (#ffd54a) to a
+   * brighter pop-yellow (#ffe066). The old shade leaned amber and
+   * read closer to "warm gold" than to "electric counter-hit
+   * yellow"; the bump pushes it firmly into the high-energy SF6 /
+   * arcade-fighter "POW!" yellow zone so the call lands with more
+   * snap. Deep amber under-stripe is unchanged — it still gives the
+   * right grounding contrast on the rule beneath the brighter body.
+   */
+  counterhit: { color: "#ffe066", deep: "#a07020" },
   counter: { color: "#ff5577", deep: "#a01b3a" },
   countergrab: { color: "#ff4477", deep: "#5e2bb3" },
   parry: { color: "#3ecbff", deep: "#005f80" },
   tech: { color: "#7ed6ff", deep: "#2266aa" },
   break: { color: "#3eea88", deep: "#008844" },
   perfect: { color: "#ffd54a", deep: "#a07020" },
+  /*
+   * perfectparry — saturated electric cyan, bumped up from the
+   * previous #4dd6ff so it doesn't read as the same shade as the
+   * grab tech / parry tech blues (which sit around #64c8ff–#7ed6ff).
+   * Pulling the red channel down to 0 and the green up to ~210 gives
+   * a vivid almost-pure cyan that reads as "premium electric blue"
+   * rather than "another washed cyan in the cyan family".
+   *
+   * The "premium" treatment now lives in two places, not one:
+   *   1. textAccent (yellow #ffd84a) — used by MainText as a single
+   *      hard offset under-shelf below the cyan glyphs, replacing
+   *      the dark drop + halo. No fuzzy glow, no stacked extrusion
+   *      layers — just one solid offset of the accent color, the
+   *      simplest version of the "3D effect text" feel without the
+   *      heavy comic-book layering that didn't land in the previous
+   *      pass.
+   *   2. accent (white) — used by the Rule as its background, so
+   *      the underline is a clean white plate against the cyan text
+   *      with the yellow under-shelf above it.
+   *
+   * Combined read: cyan text on a yellow shelf over a white
+   * underline — three distinct callout colors stacked vertically,
+   * each doing one job, no glow, no haze.
+   *
+   *   color:       electric cyan body (matches the in-arena ring blue)
+   *   deep:        deeper electric blue for the rule 1px separator
+   *   accent:      white — Rule body override
+   *   textAccent:  bright yellow — MainText hard offset under-shelf
+   */
+  perfectparry: {
+    color: "#00d4ff",
+    deep: "#003a55",
+    accent: "#ffffff",
+    textAccent: "#ffd84a",
+  },
   default: { color: C.cream, deep: C.sumi },
 };
 
@@ -328,13 +372,41 @@ const MainText = styled.div`
   line-height: 0.98;
   white-space: pre-line;
   text-align: inherit;
-  text-shadow:
-    -1.5px 0 0 ${C.sumi}, 1.5px 0 0 ${C.sumi},
-    0 -1.5px 0 ${C.sumi}, 0 1.5px 0 ${C.sumi},
-    -1.5px -1.5px 0 ${C.sumi}, 1.5px -1.5px 0 ${C.sumi},
-    -1.5px 1.5px 0 ${C.sumi}, 1.5px 1.5px 0 ${C.sumi},
-    0 3px 0 rgba(0, 0, 0, 0.5),
-    0 0 12px rgba(0, 0, 0, 0.6);
+  /*
+   * Themes that define a textAccent get a hard offset under-shelf
+   * in the accent color instead of the canonical dark drop + dark
+   * halo. The under-shelf is a single solid 0/3px shadow with a
+   * matching 0/4px so it reads as a sharp ~3-4px colored bar
+   * directly beneath the glyphs — broadcast-SFX "shelf" feel,
+   * none of the fuzzy glow the dark recipe carries. Sumi stencil
+   * stroke is preserved either way so legibility stays the same.
+   *
+   * Currently only perfectparry uses textAccent (cyan glyphs +
+   * yellow shelf + white rule); every other banner type falls
+   * back to the original dark drop + halo recipe.
+   */
+  text-shadow: ${(p) => {
+    const theme = getTheme(p.$type);
+    const accent = theme.textAccent;
+    if (accent) {
+      return css`
+        -1.5px 0 0 ${C.sumi}, 1.5px 0 0 ${C.sumi},
+        0 -1.5px 0 ${C.sumi}, 0 1.5px 0 ${C.sumi},
+        -1.5px -1.5px 0 ${C.sumi}, 1.5px -1.5px 0 ${C.sumi},
+        -1.5px 1.5px 0 ${C.sumi}, 1.5px 1.5px 0 ${C.sumi},
+        0 3px 0 ${accent},
+        0 4px 0 ${accent}
+      `;
+    }
+    return css`
+      -1.5px 0 0 ${C.sumi}, 1.5px 0 0 ${C.sumi},
+      0 -1.5px 0 ${C.sumi}, 0 1.5px 0 ${C.sumi},
+      -1.5px -1.5px 0 ${C.sumi}, 1.5px -1.5px 0 ${C.sumi},
+      -1.5px 1.5px 0 ${C.sumi}, 1.5px 1.5px 0 ${C.sumi},
+      0 3px 0 rgba(0, 0, 0, 0.5),
+      0 0 12px rgba(0, 0, 0, 0.6)
+    `;
+  }};
   opacity: 0;
   transform-origin: ${(p) =>
     p.$isLeftSide ? "left center" : "right center"};
@@ -361,7 +433,17 @@ const Rule = styled.div`
      rule under 1.5rem text reads as a heavy bar; 3px reads as
      an underline beat. */
   height: 3px;
-  background: ${(p) => getTheme(p.$type).color};
+  /*
+   * Themes that define an "accent" color use it as the rule's body
+   * (currently only "perfectparry" — its rule is a clean white
+   * plate beneath cyan text). Themes without an accent fall back
+   * to the type's main color, which is the canonical behavior for
+   * every other banner. The box-shadow recipe stays identical for
+   * both cases — same 1px deep under-stripe, same soft glow halo
+   * in the type's main color — so the rule's chrome is consistent
+   * regardless of body color.
+   */
+  background: ${(p) => getTheme(p.$type).accent || getTheme(p.$type).color};
   box-shadow:
     0 1px 0 ${(p) => getTheme(p.$type).deep},
     0 0 10px ${(p) => getTheme(p.$type).color};
@@ -429,6 +511,7 @@ SumoAnnouncementBanner.propTypes = {
   type: PropTypes.oneOf([
     "parry",
     "perfect",
+    "perfectparry",
     "counter",
     "counterhit",
     "punish",

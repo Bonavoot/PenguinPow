@@ -155,8 +155,15 @@ const MatchOverStage = styled.div`
  */
 const ResultCard = styled.div`
   position: relative;
-  width: clamp(320px, 36cqw, 480px);
-  max-width: min(92vw, 480px);
+  /* CPU mode narrows the card — solo runs don't need the full
+     PvP-presentation width. PvP keeps the wider footprint so the
+     post-match handshake feels like a proper bout-end card. */
+  width: ${(p) =>
+    p.$isCPUMatch
+      ? "clamp(280px, 28cqw, 380px)"
+      : "clamp(320px, 36cqw, 480px)"};
+  max-width: ${(p) =>
+    p.$isCPUMatch ? "min(86vw, 380px)" : "min(92vw, 480px)"};
   background: ${C.cream};
   border: 1px solid rgba(60, 40, 20, 0.28);
   border-top: 4px solid ${(p) => (p.$isWinner ? C.gold : C.sumi)};
@@ -198,7 +205,10 @@ const ResultCard = styled.div`
   }
 
   @media (max-width: 900px) {
-    width: clamp(290px, 44cqw, 400px);
+    width: ${(p) =>
+      p.$isCPUMatch
+        ? "clamp(260px, 38cqw, 340px)"
+        : "clamp(290px, 44cqw, 400px)"};
     padding: clamp(22px, 3cqh, 32px) clamp(20px, 2.6cqw, 30px)
       clamp(18px, 2.4cqh, 26px);
   }
@@ -317,7 +327,7 @@ const MatchOver = ({ winner, roomName, localId, isCPUMatch }) => {
     <MatchOverOverlay>
       <Vignette />
       <MatchOverStage>
-        <ResultCard $isWinner={isWinner}>
+        <ResultCard $isWinner={isWinner} $isCPUMatch={isCPUMatch}>
           <ResultSection>
             <Headline $isWinner={isWinner}>
               {isWinner ? "VICTORY" : "DEFEAT"}
