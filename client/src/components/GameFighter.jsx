@@ -146,6 +146,7 @@ const GameFighter = ({
   predictionRef,
   playerColor, // Custom color for mawashi/headband recoloring
   playerBodyColor, // Custom body color (null = default grey)
+  isCPUMatch, // True when playing vs CPU — hides PvP-only HUD bits (rematch tally)
 }) => {
   const { socket } = useContext(SocketContext);
   const { emit: emitParticles, setFrozen: setParticlesFrozen } = useParticles();
@@ -3541,6 +3542,7 @@ const GameFighter = ({
                 winner={winner}
                 localId={localId}
                 roomName={roomName}
+                isCPUMatch={isCPUMatch}
               />
             )}
           </>,
@@ -3965,6 +3967,7 @@ GameFighter.propTypes = {
   predictionRef: PropTypes.object,
   playerColor: PropTypes.string,
   playerBodyColor: PropTypes.string,
+  isCPUMatch: PropTypes.bool,
 };
 
 // Optimize the component with React.memo
@@ -3980,6 +3983,7 @@ export default React.memo(GameFighter, (prevProps, nextProps) => {
     prevProps.opponentDisconnected === nextProps.opponentDisconnected &&
     prevProps.disconnectedRoomId === nextProps.disconnectedRoomId &&
     prevProps.onResetDisconnectState === nextProps.onResetDisconnectState &&
-    prevProps.isPowerUpSelectionActive === nextProps.isPowerUpSelectionActive
+    prevProps.isPowerUpSelectionActive === nextProps.isPowerUpSelectionActive &&
+    prevProps.isCPUMatch === nextProps.isCPUMatch
   );
 });

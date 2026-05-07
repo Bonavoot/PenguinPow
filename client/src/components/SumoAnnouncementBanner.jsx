@@ -1,345 +1,442 @@
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
+import { C } from "./menuTheme";
+
+/*
+ * SumoAnnouncementBanner — fighting-game impact callout.
+ *
+ * THE REWRITE (vs. the previous "wooden hanging sumo banner" pass):
+ *   The previous pass was a tall narrow vertical scroll pinned
+ *   to the side of the arena: dark chocolate-brown lacquered
+ *   body, gold corner caps, hanging cord at the top, infinitely
+ *   swaying tassels at the bottom, infinite text-glow pulse
+ *   loop. Two problems:
+ *
+ *     1. SAME DARK-BROWN VOCABULARY the user explicitly killed
+ *        from PowerUpReveal and PowerUpSelection. The wooden
+ *        sumo-banner chrome was the centerpiece offender —
+ *        dark brown gradient body + gold trim + infinite
+ *        ambient motion is exactly the templated AI-render
+ *        look the rest of the in-game UI moved away from.
+ *     2. NOTICEABILITY. At ~110px wide with 0.85rem text, the
+ *        banner read as a small decorative side scroll, not
+ *        an impact callout. In a fighting-game context — fast
+ *        reads, eyes locked on the dohyo center — peripheral
+ *        callouts have to be BIG, BOLD, and FAST or they
+ *        register as background noise.
+ *
+ *   The rewrite drops the entire wooden-banner vocabulary and
+ *   rejoins the broadcast-SFX typography world the rest of
+ *   the in-game callout family lives in (PowerUpReveal big
+ *   Bungee with sumi stroke, the cream/sumi/vermillion menu
+ *   palette). It treats the announcement the way Street
+ *   Fighter 6 / anime fighters / arcade fighters treat impact
+ *   text: large, colored, briefly violent in motion, gone in
+ *   under a second-and-a-half.
+ *
+ * SHAPE:
+ *   - No container, no panel, no wooden bar, no cord, no
+ *     tassels, no gold caps. Just text + a single colored
+ *     slash rule under it. Same vocabulary as PowerUpReveal
+ *     scaled up to impact size.
+ *   - Anchored to the triggering side of the arena (the side
+ *     where the player who triggered the call lives) so the
+ *     spatial cue ("who did this?") is preserved, and the
+ *     center column of the dohyo stays clear for the actual
+ *     fight.
+ *   - BIG Bungee text in the type color (vermillion for
+ *     punish/counter/countergrab, amber for counterhit, ice
+ *     for parry/tech, success-green for break, gold for
+ *     perfect). Heavy sumi stencil stroke + warm halo so the
+ *     colored type reads against ANY arena content under it
+ *     without needing a background plate. This is the canonical
+ *     comic / SF6 / anime-fighter SFX text recipe — colored
+ *     fill, black outline.
+ *   - One thick color slash rule beneath the text in the
+ *     same type color, sized to the full text width via
+ *     align-self: stretch (same trick PowerUpReveal uses).
+ *   - Optional subtext below the rule for context lines
+ *     (the existing API exposes a `subText` prop; preserved).
+ *
+ * MOTION — fighting-game impact, not informational fade:
+ *   Three-beat entrance:
+ *     1. Whole banner slides in from its anchor edge (~180ms).
+ *        Aggressive easing — overshoots tiny, settles. Reads
+ *        as the call landing into frame from the side it
+ *        belongs to.
+ *     2. Main text "slams" with a scale-from-oversized
+ *        (1.45 → 0.95 → 1.0) — 220ms, snappy. Same beat
+ *        comic-book SFX text uses for "WHAM!" / "POW!".
+ *     3. Color rule wipes in left→right (or right→left for
+ *        right-anchored banners) ~80ms after entrance.
+ *
+ *   Hold for the bulk of the duration prop, then a single
+ *   320ms fade-up exit. No infinite text-glow loop, no
+ *   infinite tassel sway, no swing rotation. Each beat is
+ *   one shot.
+ *
+ * COLOR / TYPE MAPPING:
+ *   These are the GAME'S canonical action colors, not the
+ *   menu palette — punish is purple in the game (always has
+ *   been), counterhit is gold, parry is bright blue, etc.
+ *   Players associate each color with the action mechanic,
+ *   not with a UI palette. The previous rewrite recolored
+ *   them into the menu's vermillion/cream world and broke
+ *   that association — restored here.
+ *
+ *     punish        → purple           (the game's signature PUNISH purple)
+ *     counterhit    → gold             (SF6 / fighting-game canonical)
+ *     counter       → hot red-pink     (the signature counter color)
+ *     countergrab   → red              (with purple accent in deep)
+ *     parry         → bright blue      (defensive cool)
+ *     tech          → light blue       (defensive cool, lighter than parry)
+ *     break         → bright green     (success / breakthrough)
+ *     perfect       → gold             (premium accent)
+ *     default       → cream            (neutral fallback)
+ *
+ * NOTICEABILITY DESIGN NOTES:
+ *   The four moves that buy peripheral noticeability without
+ *   needing to dominate the screen:
+ *     (a) BIG TYPE — clamp(1.6rem, 3.6cqw, 3rem) is roughly
+ *         3-4× the previous pass's text size.
+ *     (b) HARD COLOR FILL on the text — saturated type-color
+ *         glyphs catch the eye in peripheral vision much
+ *         faster than cream-on-stencil.
+ *     (c) HARD STENCIL STROKE on those colored glyphs — the
+ *         black outline guarantees legibility against any
+ *         arena background while preserving the color signal.
+ *     (d) DIRECTIONAL MOTION on entrance — slide-from-edge
+ *         is what the eye picks up in peripheral first
+ *         (motion > color > shape > text in peripheral
+ *         vision). Combined with the text scale-slam, the
+ *         callout REGISTERS in <300ms even if you're not
+ *         looking directly at it.
+ */
+
+// ============================================
+// COLOR THEMES
+// ============================================
+
+const TYPE_COLORS = {
+  punish: { color: "#b975ff", deep: "#5a2299" },
+  counterhit: { color: "#ffd54a", deep: "#a07020" },
+  counter: { color: "#ff5577", deep: "#a01b3a" },
+  countergrab: { color: "#ff4477", deep: "#5e2bb3" },
+  parry: { color: "#3ecbff", deep: "#005f80" },
+  tech: { color: "#7ed6ff", deep: "#2266aa" },
+  break: { color: "#3eea88", deep: "#008844" },
+  perfect: { color: "#ffd54a", deep: "#a07020" },
+  default: { color: C.cream, deep: C.sumi },
+};
+
+const getTheme = (type) => TYPE_COLORS[type] || TYPE_COLORS.default;
 
 // ============================================
 // ANIMATIONS
 // ============================================
 
-// Banner drops in from top with subtle swing
-const bannerDropIn = keyframes`
+/*
+ * Whole banner slides in from its anchor edge. No rotation,
+ * no swing — the previous pass's swing-on-entry was sumo-
+ * banner flavor that doesn't fit the broadcast-SFX direction.
+ * Aggressive easing settles it like a call landing into frame.
+ */
+/*
+ * The end-of-entrance and start-of-exit opacities are capped
+ * at 0.92 (not 1) so the colored type sits at a slight
+ * broadcast-graphic transparency throughout its visible
+ * window. Caps in the keyframes themselves (rather than via
+ * a static opacity: 0.92 on the wrapper) because the wrapper's
+ * animations would otherwise override any static opacity.
+ */
+const slideInFromLeft = keyframes`
   0% {
     opacity: 0;
-    transform: translateY(-100%) rotate(var(--swing-start));
-  }
-  35% {
-    opacity: 1;
-    transform: translateY(3%) rotate(calc(var(--swing-start) * -0.15));
-  }
-  55% {
-    transform: translateY(-1%) rotate(calc(var(--swing-start) * 0.05));
-  }
-  75% {
-    transform: translateY(0) rotate(0deg);
-    opacity: 1;
+    transform: translateX(-44px);
   }
   100% {
-    transform: translateY(0) rotate(0deg);
+    opacity: 0.92;
+    transform: translateX(0);
+  }
+`;
+
+const slideInFromRight = keyframes`
+  0% {
     opacity: 0;
+    transform: translateX(44px);
+  }
+  100% {
+    opacity: 0.92;
+    transform: translateX(0);
   }
 `;
 
-// Tassel sway animation - subtle movement
-const tasselSway = keyframes`
-  0%, 100% { transform: rotate(-3deg); }
-  50% { transform: rotate(3deg); }
+const fadeOutUp = keyframes`
+  0% {
+    opacity: 0.92;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
 `;
 
-// Text glow pulse
-const textGlow = keyframes`
-  0%, 100% {
-    text-shadow: 
-      -2px -2px 0 #000, 2px -2px 0 #000, 
-      -2px 2px 0 #000, 2px 2px 0 #000,
-      0 0 8px var(--glow-color);
+/*
+ * Text slam — scale-from-oversized with a tiny undershoot
+ * settle. The exact "POW!" beat comic-book SFX text uses on
+ * impact frames. Faster and louder than a normal UI fade.
+ */
+const textSlam = keyframes`
+  0% {
+    opacity: 0;
+    transform: scale(1.45);
   }
-  50% {
-    text-shadow: 
-      -2px -2px 0 #000, 2px -2px 0 #000, 
-      -2px 2px 0 #000, 2px 2px 0 #000,
-      0 0 15px var(--glow-color),
-      0 0 25px var(--glow-color);
+  60% {
+    opacity: 1;
+    transform: scale(0.94);
   }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+`;
+
+const subTextRise = keyframes`
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+`;
+
+/*
+ * Color slash wipes from the anchor edge inward — same beat
+ * the rule under PowerUpReveal's names uses. Direction tied
+ * to which side the banner is anchored to.
+ */
+const ruleWipeFromLeft = keyframes`
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+`;
+
+const ruleWipeFromRight = keyframes`
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
 `;
 
 // ============================================
-// STYLED COMPONENTS
+// LAYOUT
 // ============================================
-
-// Color themes for different actions
-const getThemeColors = (type) => {
-  switch (type) {
-    case "parry":
-      return {
-        primary: "#00BFFF",
-        secondary: "#006699",
-        glow: "rgba(0, 191, 255, 0.8)",
-        accent: "#87CEEB",
-      };
-    case "perfect":
-      return {
-        primary: "#FFD700",
-        secondary: "#B8860B",
-        glow: "rgba(255, 215, 0, 0.8)",
-        accent: "#FFF8DC",
-      };
-    case "counter":
-      return {
-        primary: "#FF3366",
-        secondary: "#9933FF",
-        glow: "rgba(255, 51, 102, 0.8)",
-        accent: "#FF99AA",
-      };
-    case "counterhit":
-      return {
-        primary: "#FFD700",
-        secondary: "#FFA500",
-        glow: "rgba(255, 215, 0, 0.8)",
-        accent: "#FFE066",
-      };
-    case "punish":
-      return {
-        primary: "#9933FF",
-        secondary: "#CC44FF",
-        glow: "rgba(153, 51, 255, 0.8)",
-        accent: "#DD77FF",
-      };
-    case "countergrab":
-      return {
-        primary: "#cc2244",
-        secondary: "#9933FF",
-        glow: "rgba(204, 34, 68, 0.85)",
-        accent: "rgba(153, 51, 255, 0.85)",
-      };
-    case "break":
-      return {
-        primary: "#00FF88",
-        secondary: "#008844",
-        glow: "rgba(0, 255, 136, 0.8)",
-        accent: "#88FFBB",
-      };
-    case "tech":
-      return {
-        primary: "#64C8FF",
-        secondary: "#2266AA",
-        glow: "rgba(100, 200, 255, 0.8)",
-        accent: "#AAE0FF",
-      };
-    default:
-      return {
-        primary: "#d4af37",
-        secondary: "#8b7355",
-        glow: "rgba(212, 175, 55, 0.8)",
-        accent: "#f0d080",
-      };
-  }
-};
 
 const BannerWrapper = styled.div`
   position: absolute;
-  top: clamp(160px, 38%, 250px);
-  ${props => props.$isLeftSide ? 'left: 1.5%;' : 'right: 1.5%;'}
+  /* Sits in the lower portion of the empty crowd dead-space —
+     comfortably below the player nameplates and just above
+     the prize baskets / dohyo edge. The previous pass at
+     30cqh was still in the upper crowd area; bumped to 38cqh
+     so the banner reads as "side callout near the action"
+     rather than "hovering up by the HUD". */
+  top: clamp(220px, 38cqh, 290px);
+  ${(props) =>
+    props.$isLeftSide
+      ? css`
+          left: clamp(20px, 3.5cqw, 56px);
+          align-items: flex-start;
+          text-align: left;
+        `
+      : css`
+          right: clamp(20px, 3.5cqw, 56px);
+          align-items: flex-end;
+          text-align: right;
+        `}
+  display: flex;
+  flex-direction: column;
+  /* Cluster width tracks the widest child (the main text), so
+     the rule beneath can stretch to that exact width via
+     align-self: stretch. Same trick PowerUpReveal uses. */
+  width: max-content;
+  max-width: 42cqw;
+  gap: clamp(3px, 0.55cqh, 6px);
   z-index: 200;
   pointer-events: none;
-  --swing-start: ${props => props.$isLeftSide ? '-8deg' : '8deg'};
-  --glow-color: ${props => getThemeColors(props.$type).glow};
-  animation: ${bannerDropIn} ${props => props.$duration || 1.5}s ease-out forwards;
-  transform-origin: top center;
-  
+  will-change: transform, opacity;
+
+  /*
+   * Two animations chained on the same element:
+   *   1) Slide-in from the anchor edge (entrance, ~180ms).
+   *   2) Fade-out-up (exit, ~320ms) delayed to fire near the
+   *      end of the duration prop window.
+   *
+   * Browser runs them in parallel; the second's start state
+   * matches the first's end state, so the visual flow is
+   * "land → hold → exit". The exit delay is computed so the
+   * exit completes right at the duration boundary — the
+   * consumer unmounts the component shortly after that and
+   * the user never sees a flicker.
+   */
+  animation:
+    ${(p) => (p.$isLeftSide ? slideInFromLeft : slideInFromRight)}
+      0.18s cubic-bezier(0.2, 0.7, 0.2, 1) both,
+    ${fadeOutUp} 0.32s ease-in forwards;
+  animation-delay: 0s,
+    ${(p) => Math.max(0.4, (p.$duration || 1.2) - 0.32)}s;
+
   @media (max-width: 900px) {
-    top: clamp(130px, 30%, 190px);
+    top: clamp(170px, 32cqh, 240px);
+    max-width: 56cqw;
+    ${(p) =>
+      p.$isLeftSide
+        ? css`
+            left: clamp(14px, 4cqw, 36px);
+          `
+        : css`
+            right: clamp(14px, 4cqw, 36px);
+          `}
   }
 `;
 
-const BannerContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-`;
-
-// Hanging rope/cord at top
-const HangingCord = styled.div`
-  width: 2px;
-  height: clamp(6px, 1cqh, 10px);
-  background: linear-gradient(180deg, #5c4033 0%, #3d2817 100%);
-  border-radius: 2px;
-`;
-
-// Top wooden bar
-const TopBar = styled.div`
-  width: clamp(62px, 10cqw, 115px);
-  height: clamp(7px, 1.1cqh, 12px);
-  background: linear-gradient(180deg,
-    #5c4033 0%,
-    #3d2817 50%,
-    #2a1d14 100%
-  );
-  border-radius: 3px 3px 0 0;
-  border: 1px solid #8b7355;
-  border-bottom: none;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
-  position: relative;
-  
-  /* Small gold decorative caps */
-  &::before, &::after {
-    content: "";
-    position: absolute;
-    top: -2px;
-    width: clamp(5px, 0.9cqw, 9px);
-    height: clamp(5px, 0.9cqw, 9px);
-    background: radial-gradient(circle at 30% 30%, #d4af37, #8b7355);
-    border-radius: 50%;
-    border: 1px solid #5c4033;
-  }
-  &::before { left: 8%; }
-  &::after { right: 8%; }
-  
-  @media (max-width: 900px) {
-    width: clamp(50px, 13cqw, 90px);
-  }
-`;
-
-// Main banner body
-const BannerBody = styled.div`
-  width: clamp(58px, 9.5cqw, 110px);
-  background: linear-gradient(180deg,
-    #1a0a08 0%,
-    #2d1510 30%,
-    #1f0f0a 70%,
-    #150805 100%
-  );
-  border: 2px solid ${props => getThemeColors(props.$type).primary};
-  border-top: none;
-  border-radius: 0 0 clamp(4px, 0.5cqw, 7px) clamp(4px, 0.5cqw, 7px);
-  padding: clamp(8px, 1.1cqh, 12px) clamp(6px, 0.9cqw, 11px);
-  box-shadow: 
-    0 4px 15px rgba(0,0,0,0.5),
-    inset 0 0 20px rgba(0,0,0,0.5),
-    0 0 10px ${props => getThemeColors(props.$type).glow};
-  position: relative;
-  
-  /* Fabric texture overlay */
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: 
-      repeating-linear-gradient(
-        0deg,
-        transparent 0px,
-        rgba(255,255,255,0.02) 1px,
-        transparent 2px
-      );
-    pointer-events: none;
-    border-radius: inherit;
-  }
-  
-  @media (max-width: 900px) {
-    width: clamp(46px, 12cqw, 85px);
-    padding: clamp(6px, 0.9cqh, 10px) clamp(5px, 0.7cqw, 9px);
-  }
-`;
-
-// Japanese-style vertical text container
-const TextContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: clamp(2px, 0.3cqh, 4px);
-`;
-
-// Main announcement text
-const AnnouncementText = styled.div`
+/*
+ * The headline. Big colored Bungee in the type color with a
+ * heavy sumi stencil stroke + dark warm halo. Two-line text
+ * (e.g. "COUNTER\nHIT") works via white-space: pre-line +
+ * the natural line-height; line height is kept tight (0.96)
+ * so two-line headlines read as a single block, not two
+ * stacked words.
+ *
+ * The transform-origin is set to the anchor edge so the
+ * scale-slam pivots from the side the banner is anchored to
+ * — the text "blooms" outward from its anchor rather than
+ * pulsing from its own center, which keeps the directional
+ * intent of the side-anchored banner consistent across both
+ * the slide-in motion and the text-slam motion.
+ */
+const MainText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.48rem, 1cqw, 0.85rem);
-  color: ${props => getThemeColors(props.$type).primary};
+  /* Tuned to read slightly larger than the player nameplate
+     in peripheral vision but well under the previous pass's
+     1.6-3rem screen-takeover size. ~20% bump from the first
+     dial-back so the callout registers without dominating
+     the frame. */
+  font-size: clamp(1.15rem, 2.4cqw, 1.9rem);
+  color: ${(p) => getTheme(p.$type).color};
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  text-align: center;
-  line-height: 1.15;
+  letter-spacing: 0.04em;
+  line-height: 0.98;
   white-space: pre-line;
-  animation: ${textGlow} 1.2s ease-in-out infinite;
-  --glow-color: ${props => getThemeColors(props.$type).glow};
-  
+  text-align: inherit;
+  text-shadow:
+    -1.5px 0 0 ${C.sumi}, 1.5px 0 0 ${C.sumi},
+    0 -1.5px 0 ${C.sumi}, 0 1.5px 0 ${C.sumi},
+    -1.5px -1.5px 0 ${C.sumi}, 1.5px -1.5px 0 ${C.sumi},
+    -1.5px 1.5px 0 ${C.sumi}, 1.5px 1.5px 0 ${C.sumi},
+    0 3px 0 rgba(0, 0, 0, 0.5),
+    0 0 12px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transform-origin: ${(p) =>
+    p.$isLeftSide ? "left center" : "right center"};
+  animation: ${textSlam} 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)
+    0.05s forwards;
+  will-change: transform, opacity;
+
   @media (max-width: 900px) {
-    font-size: clamp(0.4rem, 1.3cqw, 0.68rem);
+    font-size: clamp(0.92rem, 3.1cqw, 1.4rem);
   }
 `;
 
-// Small decorative line separator
-const Separator = styled.div`
-  width: 60%;
-  height: 1px;
-  background: linear-gradient(90deg, 
-    transparent 0%, 
-    ${props => getThemeColors(props.$type).primary} 30%,
-    ${props => getThemeColors(props.$type).accent} 50%,
-    ${props => getThemeColors(props.$type).primary} 70%,
-    transparent 100%
-  );
-  margin: clamp(3px, 0.4cqh, 6px) 0;
+/*
+ * Color slash beneath the text. align-self: stretch makes it
+ * span the wrapper's width — which equals MainText's width
+ * because MainText is the widest child — so the slash always
+ * matches the headline's width regardless of how long the
+ * action name is ("PUNISH" → short slash, "COUNTER HIT" →
+ * long slash). Wipes in from the anchor edge.
+ */
+const Rule = styled.div`
+  align-self: stretch;
+  /* Proportionally trimmed alongside the smaller text — a 5px
+     rule under 1.5rem text reads as a heavy bar; 3px reads as
+     an underline beat. */
+  height: 3px;
+  background: ${(p) => getTheme(p.$type).color};
+  box-shadow:
+    0 1px 0 ${(p) => getTheme(p.$type).deep},
+    0 0 10px ${(p) => getTheme(p.$type).color};
+  transform: scaleX(0);
+  transform-origin: ${(p) =>
+    p.$isLeftSide ? "left center" : "right center"};
+  animation:
+    ${(p) => (p.$isLeftSide ? ruleWipeFromLeft : ruleWipeFromRight)}
+    0.28s cubic-bezier(0.2, 0.7, 0.2, 1) 0.13s forwards;
 `;
 
-// Tassels at the bottom - positioned at corners of banner body
-const TasselContainer = styled.div`
-  position: absolute;
-  bottom: -1px;
-  left: 0;
-  right: 0;
-  display: flex;
-  justify-content: space-between;
-  padding: 0 clamp(5px, 0.7cqw, 10px);
-`;
+/*
+ * Optional subtitle. Small letter-spaced caps, cream with
+ * sumi stroke (so it stays neutral text — the type color
+ * already speaks through the headline + rule, and subtitle
+ * type-coloring would be visual noise). Rises into place
+ * after the rule has wiped.
+ */
+const SubText = styled.div`
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 700;
+  font-size: clamp(0.55rem, 1cqw, 0.8rem);
+  color: ${C.cream};
+  text-transform: uppercase;
+  letter-spacing: 0.32em;
+  text-align: inherit;
+  text-shadow:
+    -1px 0 0 ${C.sumi}, 1px 0 0 ${C.sumi},
+    0 -1px 0 ${C.sumi}, 0 1px 0 ${C.sumi},
+    0 2px 0 rgba(0, 0, 0, 0.55),
+    0 0 8px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  animation: ${subTextRise} 0.26s ease-out 0.28s forwards;
 
-const Tassel = styled.div`
-  width: clamp(3px, 0.45cqw, 5px);
-  height: clamp(10px, 1.4cqh, 16px);
-  background: linear-gradient(180deg, 
-    ${props => getThemeColors(props.$type).primary} 0%, 
-    ${props => getThemeColors(props.$type).secondary} 100%
-  );
-  border-radius: 0 0 2px 2px;
-  animation: ${tasselSway} ${props => 1.5 + props.$delay * 0.3}s ease-in-out infinite;
-  animation-delay: ${props => props.$delay * 0.15}s;
-  transform-origin: top center;
+  @media (max-width: 900px) {
+    font-size: clamp(0.46rem, 1.5cqw, 0.68rem);
+    letter-spacing: 0.24em;
+  }
 `;
 
 // ============================================
 // COMPONENT
 // ============================================
 
-const SumoAnnouncementBanner = ({ 
-  text, 
-  type = "default", 
+const SumoAnnouncementBanner = ({
+  text,
+  type = "default",
   isLeftSide = true,
   duration = 1.5,
-  subText = null 
+  subText = null,
 }) => {
   return (
-    <BannerWrapper $isLeftSide={isLeftSide} $type={type} $duration={duration}>
-      <BannerContainer>
-        <HangingCord />
-        <TopBar />
-        <BannerBody $type={type}>
-          <TextContainer>
-            <AnnouncementText $type={type}>
-              {text}
-            </AnnouncementText>
-            {subText && (
-              <>
-                <Separator $type={type} />
-                <AnnouncementText $type={type} style={{ fontSize: '0.7em', opacity: 0.8 }}>
-                  {subText}
-                </AnnouncementText>
-              </>
-            )}
-          </TextContainer>
-          {/* Tassels positioned at bottom corners */}
-          <TasselContainer>
-            <Tassel $type={type} $delay={0} />
-            <Tassel $type={type} $delay={1} />
-          </TasselContainer>
-        </BannerBody>
-      </BannerContainer>
+    <BannerWrapper $isLeftSide={isLeftSide} $duration={duration}>
+      <MainText $type={type} $isLeftSide={isLeftSide}>
+        {text}
+      </MainText>
+      <Rule $type={type} $isLeftSide={isLeftSide} />
+      {subText && <SubText>{subText}</SubText>}
     </BannerWrapper>
   );
 };
 
 SumoAnnouncementBanner.propTypes = {
   text: PropTypes.string.isRequired,
-  type: PropTypes.oneOf(["parry", "perfect", "counter", "counterhit", "punish", "countergrab", "break", "tech", "default"]),
+  type: PropTypes.oneOf([
+    "parry",
+    "perfect",
+    "counter",
+    "counterhit",
+    "punish",
+    "countergrab",
+    "break",
+    "tech",
+    "default",
+  ]),
   isLeftSide: PropTypes.bool,
   duration: PropTypes.number,
   subText: PropTypes.string,

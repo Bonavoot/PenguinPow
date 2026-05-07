@@ -8,6 +8,7 @@ import {
   recolorImage,
   BLUE_COLOR_RANGES,
   GREY_BODY_RANGES,
+  hexToRgb,
 } from "../utils/SpriteRecolorizer";
 import {
   C,
@@ -20,21 +21,62 @@ import {
 } from "./menuTheme";
 
 /*
- * PreMatchScreen — "broadcast lower-third over the live dohyo".
+ * PreMatchScreen — printed banzuke program inserted into the broadcast.
  *
- * Design intent (rewritten from a much busier earlier pass):
- *   - The dohyo, gyoji and crowd are rendering behind us. They are the
- *     star. We sit on top as a confident NHK-style broadcast overlay,
- *     not as a fullscreen splash.
- *   - The center of the frame is *transparent* — the gyoji standing
- *     between the two wrestler vignettes IS the visual "VS". We do
- *     not draw a sunburst, hotspot or glowing "VS" on top of him.
- *   - Color is rationed. Vermillion is the broadcast accent (LIVE,
- *     hanko stamp, single inner rule). Each player's mawashi color
- *     is their *only* personal color signature. No more red-tinted
- *     vs blue-tinted player cards.
- *   - One staggered fade-up animation. No shimmer, no halo drift, no
- *     conic sun rays, no multi-glow text shadows.
+ * THE REWRITE (vs. the previous "broadcast glass over live dohyo" pass):
+ *   The previous pass was structurally good but textured wrong. It
+ *   leaned on dark sumi-glass panels (rgba(7,6,10,0.72) +
+ *   backdrop-filter: blur(6-8px) + cream hairline borders) — which
+ *   is the same recipe as every templated AI broadcast overlay on
+ *   the internet. Three problems with that:
+ *
+ *     1. AI TELL. Glassmorphism + semi-transparent dark + cream
+ *        hairline border is the single most over-used UI pattern
+ *        in current AI-generated UI. The PRE-MATCH should not be
+ *        the place the game accidentally announces "this surface
+ *        was generated".
+ *     2. PALETTE DRIFT. The lobby, customize, rooms screens all
+ *        use a printed-paper world: C.cream washi, vermillion top
+ *        and bottom rules, faint warm grain, gold rank accents,
+ *        hand-stamped feel. The prematch sat over that with a
+ *        completely different surface (dark glass), making it
+ *        feel like a second app spliced on at game-start.
+ *     3. ACTUAL BUG. Translucent panels let the not-yet-recolored
+ *        player sprites bleed through during the brief window
+ *        between PreMatchScreen mount and the SpriteRecolorizer
+ *        finishing — you saw the default blue/grey penguins under
+ *        the cards before the picked colors loaded.
+ *
+ *   This pass keeps the layout (top broadcast chip, hanko stamp,
+ *   two side wrestler cards, lower-third matchup card, loading
+ *   bar) but flips the entire surface treatment to match the rest
+ *   of the game's printed-program world:
+ *
+ *     - Solid OPAQUE cream washi paper (no backdrop-filter, no
+ *       see-through). Each panel reads as a printed card pinned
+ *       into the broadcast frame, not a glass overlay.
+ *     - Vermillion top + bottom rules on chrome, vermillion
+ *       inner-edge accent on each wrestler card (printed-program
+ *       gutter facing the dohyo).
+ *     - Sumi-ink kanji watermarks on cream (was cream on dark).
+ *     - Gold rank plaques on cream (was gold-trimmed dark glass).
+ *     - Asymmetric vermillion ink-bleed at each card's OUTER top
+ *       corner — not mirrored. Two cards stamped independently.
+ *     - Vermillion ON-AIR tally for LIVE (cream-on-vermillion;
+ *       reads as a real studio tally light, not a button).
+ *     - Faint warm paper grain on every cream surface, same as
+ *       the lobby's MatchCardBar / NamePlate.
+ *
+ *   The center column stays open so the gyoji + dohyo + crowd
+ *   read through unchanged — the gyoji standing between the two
+ *   cream wrestler cards still does the visual "VS" work, exactly
+ *   as before. The opaque side cards cover the ~25%/~75% screen
+ *   positions where the live player sprites stand, killing the
+ *   recolor bleed-through. Belt-and-suspenders: Game.jsx also
+ *   adds `is-prematch-hidden` to the .ui layer (the GameFighter
+ *   sprites only) while the prematch is up, so even the corners
+ *   of the cards / fade-in window can't expose un-recolored
+ *   penguins.
  */
 
 // ============================================
@@ -51,168 +93,187 @@ const fadeUp = keyframes`
 `;
 
 const liveRedPulse = keyframes`
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(238, 81, 65, 0.65); }
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(238, 81, 65, 0.55); }
   60%      { opacity: 0.85; box-shadow: 0 0 0 6px rgba(238, 81, 65, 0); }
 `;
 
 // ============================================
 // SCREEN BASE
 // ============================================
+
+/*
+ * Faster fade-in than the previous 0.3s. The old fade was visible
+ * enough that you'd see the not-yet-recolored player sprites
+ * underneath even before the panels finished animating in. With
+ * opaque cream panels + .ui hidden via App.css, this fade is
+ * cosmetic — but keeping it short means the prematch lands fast.
+ */
 const ScreenContainer = styled.div`
   position: absolute;
   inset: 0;
   z-index: 10000;
-  animation: ${fadeIn} 0.3s ease-out;
+  animation: ${fadeIn} 0.18s ease-out;
   overflow: hidden;
   font-family: "Space Grotesk", sans-serif;
   pointer-events: auto;
 `;
 
 /*
- * Soft radial vignette only. The in-game HUD is hidden via CSS while
- * the prematch screen is up (see App.css `.game-hud.is-prematch-hidden`),
- * so we no longer need a heavy top scrim to mask it — the top of the
- * frame can stay open and let the dohyo / arena ceiling read through.
- * Center stays nearly clear so the gyoji + crowd + ring breathe; the
- * corners darken just enough to give the lower-third chrome a base
- * to sit on.
+ * Note on a previously-removed element:
+ *   This file used to have a `PrintRule` styled-div pinned to the
+ *   top and bottom edges of the screen — a 4px solid vermillion
+ *   bar at z-index 35. It was meant as a "printing-press
+ *   registration mark" anchoring the whole frame, but combined
+ *   with the wrestler cards' vermillion accents, the LowerThird's
+ *   vermillion top + bottom rules, the hanko, and the LIVE tally,
+ *   it pushed the total vermillion count past where the design
+ *   could carry it. The screen edges read as "outlined in red"
+ *   instead of "printed program with red accents". Removed.
+ *   Coverage at the screen edges is now carried by the cream
+ *   cards (BroadcastBar at top, LowerThird at bottom) and the
+ *   warm shadows under each, which is sufficient grounding.
  */
-const SceneVignette = styled.div`
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: radial-gradient(
-    ellipse at 50% 55%,
-    rgba(7, 6, 10, 0.0) 0%,
-    rgba(7, 6, 10, 0.22) 38%,
-    rgba(7, 6, 10, 0.62) 82%,
-    rgba(7, 6, 10, 0.82) 100%
-  );
-`;
 
-/* Paper-grain / film texture — same family as MainMenu. Kept very subtle. */
+/*
+ * Top-most paper-grain wash — sits above every other layer so the
+ * cream panels AND the visible slivers of the live arena (center
+ * column, top corners, bottom corners) all sit under the same
+ * paper texture. Warm-shifted to match cream washi. Mix-blend
+ * overlay lets it interact rather than sitting flat on top.
+ *
+ * Real photographed/printed material always carries some grain.
+ * Adding it uniformly across the screen is the single highest-
+ * leverage move against the "AI rendered this fresh on a GPU"
+ * read — it gives the whole frame a physical surface.
+ */
 const GrainOverlay = styled.div`
   position: absolute;
   inset: 0;
   pointer-events: none;
-  opacity: 0.22;
+  z-index: 90;
+  opacity: 0.3;
   mix-blend-mode: overlay;
   background-image:
     repeating-linear-gradient(
       0deg,
-      rgba(255, 255, 255, 0.022) 0px,
+      rgba(60, 40, 20, 0.05) 0,
       transparent 1px,
-      transparent 2px,
-      rgba(255, 255, 255, 0.018) 3px
+      transparent 3px
     ),
     repeating-linear-gradient(
       90deg,
-      rgba(0, 0, 0, 0.025) 0px,
+      rgba(60, 40, 20, 0.04) 0,
       transparent 1px,
-      transparent 3px
+      transparent 4px
     );
 `;
 
-/* Cinematic letterbox bars — anchor the page top/bottom like MainMenu. */
-const Letterbox = styled.div`
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: clamp(3px, 0.5cqh, 5px);
-  background: linear-gradient(180deg, ${C.ink}, ${C.inkSoft});
-  z-index: 30;
-  pointer-events: none;
-  ${(p) => (p.$top ? "top: 0;" : "bottom: 0;")}
-`;
-
 // ============================================
-// TOP BROADCAST STRIP
+// TOP BROADCAST CHIP — printed-program micro-card
 // ============================================
 
 /*
- * Flat sumi-ink strip with a single hairline bottom rule — no decorative
- * vermillion side bars, no double border. Reads like real broadcast type
- * sitting on a thin lower-third bar.
+ * Small cream washi chip pinned at top-center. Same surface
+ * formula as the lobby's MatchCardBar: cream fill, vermillion
+ * top + bottom rules, faint warm grain, soft warm shadow. At
+ * chip scale, reads like a printed program slug ("VER. HATSU |
+ * Day 01") clipped into the broadcast feed.
+ *
+ * The previous rgba(7,6,10,0.72) + backdrop-filter blur(6px)
+ * version was the single most "templated AI" element on the
+ * old screen — exactly the recipe you see in every generated
+ * dashboard hero. This is the opposite of that: a flat,
+ * confidently colored printed card.
  */
 const BroadcastBar = styled.div`
   position: absolute;
-  top: clamp(14px, 2.2cqh, 24px);
+  top: clamp(16px, 2.4cqh, 26px);
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: clamp(10px, 1.4cqw, 18px);
-  padding: clamp(5px, 0.7cqh, 7px) clamp(16px, 2cqw, 24px);
-  background: rgba(7, 6, 10, 0.72);
-  border-bottom: 1px solid rgba(245, 236, 217, 0.18);
-  backdrop-filter: blur(6px);
+  padding: clamp(5px, 0.7cqh, 8px) clamp(16px, 2.2cqw, 26px);
+  background: ${C.cream};
+  border: 1px solid rgba(60, 40, 20, 0.22);
+  border-top: 2px solid ${C.vermillion};
+  border-bottom: 2px solid ${C.vermillion};
+  box-shadow: 0 3px 10px rgba(50, 30, 10, 0.22);
   z-index: 40;
-  /*
-   * Drops down from behind the top letterbox bar — reads like a
-   * broadcast graphic being inserted into the frame. Animates only
-   * transform + opacity (the two compositor-cheap properties) so it
-   * stays smooth even with backdrop-filter blurs and live game
-   * content rendering behind it. The will-change hint promotes the
-   * bar to its own GPU layer up-front so the first frame of the
-   * animation doesn't pay a layer-creation cost.
-   */
   will-change: transform, opacity;
   animation: ${broadcastSlideDown} 0.45s cubic-bezier(0.2, 0.7, 0.2, 1)
     0.05s backwards;
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+      0deg,
+      rgba(60, 40, 20, 0.04) 0,
+      transparent 1px,
+      transparent 3px
+    );
+    pointer-events: none;
+  }
 `;
 
 const BroadcastChip = styled.span`
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 8px;
   font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.42rem, 0.72cqw, 0.58rem);
-  color: ${(p) => (p.$accent ? C.gold : C.creamMute)};
+  color: ${(p) => (p.$accent ? C.vermillionDeep : C.inkTextMute)};
   letter-spacing: 0.24em;
   text-transform: uppercase;
   white-space: nowrap;
 
   strong {
-    color: ${C.cream};
+    color: ${C.inkText};
     font-weight: 700;
     letter-spacing: 0.06em;
   }
 `;
 
 const BroadcastDivider = styled.span`
+  position: relative;
   width: 1px;
   height: 11px;
-  background: rgba(245, 236, 217, 0.18);
+  background: rgba(60, 40, 20, 0.22);
 `;
 
+// ============================================
+// LIVE INDICATOR — vermillion ON-AIR tally
+// ============================================
+
 /*
- * LIVE indicator — flat red square block, single bright dot. No pillowy
- * gradient, no inner-highlight, no puffy glow. Reads like an actual
- * studio "ON-AIR" tally light, not a button.
+ * Inverted from the cream BroadcastBar next to it: solid
+ * vermillion fill, cream text. Reads as a real broadcast tally
+ * light rather than a "danger" button. The 2px vermillionDeep
+ * inner border gives it the slight "bezel" feel of a physical
+ * tally lamp.
  */
 const LiveIndicator = styled.div`
   position: absolute;
-  top: clamp(14px, 2.2cqh, 24px);
+  top: clamp(16px, 2.4cqh, 26px);
   right: clamp(20px, 2.6cqw, 36px);
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: clamp(5px, 0.7cqh, 7px) clamp(11px, 1.4cqw, 16px);
-  background: rgba(7, 6, 10, 0.85);
-  border: 1px solid ${C.vermillion};
+  padding: clamp(5px, 0.7cqh, 8px) clamp(11px, 1.5cqw, 16px);
+  background: ${C.vermillion};
+  border: 2px solid ${C.vermillionDeep};
   font-family: "Bungee", cursive;
   font-size: clamp(0.55rem, 0.95cqw, 0.78rem);
   color: ${C.cream};
   letter-spacing: 0.3em;
   text-transform: uppercase;
   z-index: 40;
-  backdrop-filter: blur(6px);
-  /*
-   * Same broadcast-insertion motion as the top BroadcastBar — both
-   * pieces of broadcast chrome drop in together. Transform + opacity
-   * only, with will-change to pre-promote.
-   */
+  box-shadow: 0 3px 10px rgba(70, 18, 8, 0.32);
+  text-shadow: 0 1px 0 rgba(70, 18, 8, 0.5);
   will-change: transform, opacity;
   animation: ${broadcastSlideDownRight} 0.45s cubic-bezier(0.2, 0.7, 0.2, 1)
     0.05s backwards;
@@ -221,30 +282,32 @@ const LiveIndicator = styled.div`
 const LiveDot = styled.span`
   width: 8px;
   height: 8px;
-  background: ${C.vermillionBright};
+  background: ${C.cream};
   animation: ${liveRedPulse} 1.6s ease-out infinite;
 `;
 
 // ============================================
-// HANKO STAMP — replaces the old VS sunburst
+// HANKO STAMP — vermillion seal pressed into cream
 // ============================================
 
 /*
- * A small, dignified vermillion hanko stamp sits in the upper-center of
- * the screen, ABOVE the action so it does not cover the gyoji. The
- * gyoji standing between the two wrestlers does the work of "VS" on
- * his own — we just need a tiny title card. Two characters, 取組
- * (torikumi = "the matchup"), in a serif Mincho stamp face. This is
- * specifically rare in fighting-game UI; it reads like a real sumo
- * program rather than a shounen anime intercard.
+ * Almost unchanged from before — this element was already on the
+ * right track (vermillion stamp + 取組 kanji + slight rotation +
+ * stampImpression keyframe). Tweaks here are narrow:
+ *   - Warm-shifted box shadow (rgba(70,18,8,*) instead of
+ *     rgba(0,0,0,*)) so the drop matches the cream-paper world.
+ *   - The corner ink-bleed got a second satellite blob via
+ *     box-shadow, so it reads as actual ink pulling away from
+ *     the stamp's edge instead of a single perfectly-formed
+ *     decorative dot.
  */
 const HankoStamp = styled.div`
   position: absolute;
-  top: clamp(54px, 7cqh, 88px);
+  top: clamp(58px, 7.6cqh, 96px);
   left: 50%;
   transform: translateX(-50%) rotate(-2deg);
-  width: clamp(56px, 6.5cqw, 88px);
-  height: clamp(56px, 6.5cqw, 88px);
+  width: clamp(58px, 6.8cqw, 92px);
+  height: clamp(58px, 6.8cqw, 92px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -254,43 +317,36 @@ const HankoStamp = styled.div`
   background: ${C.vermillion};
   border: 1.5px solid ${C.vermillionDeep};
   box-shadow:
-    0 8px 18px rgba(0, 0, 0, 0.55),
+    0 8px 18px rgba(70, 18, 8, 0.45),
     inset 0 0 0 2px rgba(245, 236, 217, 0.12);
   z-index: 25;
   transform-origin: 50% 50%;
-  /*
-   * The hanko is a STAMP, not a card. It should land on the page like
-   * an inkpad press: oversized + rotated → snap small → settle to its
-   * final -2° rest. stampImpression already uses pure transforms so
-   * it's compositor-cheap; will-change just makes sure the layer
-   * exists before the first keyframe to avoid a hitch.
-   */
   will-change: transform, opacity;
   animation: ${stampImpression} 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)
     0.35s backwards;
 
-  /* tiny inkbleed corner notch — looks like an old worn stamp */
   &::after {
     content: "";
     position: absolute;
-    top: -2px;
-    right: -2px;
-    width: 4px;
-    height: 4px;
+    top: -3px;
+    right: -3px;
+    width: 5px;
+    height: 5px;
     background: ${C.vermillion};
     transform: rotate(45deg);
-    opacity: 0.6;
+    opacity: 0.75;
+    box-shadow: -2px 7px 0 -1px rgba(216, 59, 39, 0.4);
   }
 `;
 
 const HankoKanji = styled.div`
   font-family: "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
   font-weight: 900;
-  font-size: clamp(14px, 1.7cqw, 22px);
+  font-size: clamp(15px, 1.8cqw, 23px);
   color: ${C.cream};
   line-height: 1;
   letter-spacing: 0.08em;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+  text-shadow: 0 1px 0 rgba(70, 18, 8, 0.5);
 `;
 
 const HankoVs = styled.div`
@@ -307,12 +363,6 @@ const HankoVs = styled.div`
 // STAGE — left wrestler | open center | right wrestler
 // ============================================
 
-/*
- * Three-column grid. The center column is intentionally empty so the
- * gyoji and dohyo read through cleanly. The two wrestler panels live
- * in the outer columns and frame the scene like a real broadcast
- * pre-bout split-screen.
- */
 const Stage = styled.div`
   position: absolute;
   top: clamp(72px, 11cqh, 118px);
@@ -327,54 +377,97 @@ const Stage = styled.div`
 `;
 
 /*
- * Wrestler panel — a deliberately understated window. Compared to the
- * earlier loud version this has:
- *   - NO per-side color tinting (no red wash on East, no blue wash on West)
- *   - NO glowing vermillion+gold "torii" bar at the inner edge
- *   - NO halo glow behind the penguin
- * What it DOES keep, intentionally, is the trading-card composition:
- * the panel is a tall rectangle with overflow:hidden, and the wrestler
- * image extends below the panel's bottom edge so the feet are cropped
- * naturally. This gives the wrestler a confident "above the fold"
- * presence and lets the head + belly + mawashi do the work.
+ * Wrestler card — printed banzuke fighter card pinned beside the
+ * dohyo. Two earlier moves on this element have been pulled back
+ * in this pass:
+ *
+ *   1. The mini dohyo-ring outline behind the wrestler (the
+ *      sumi-ink ellipse at the card's lower ~35%) is REMOVED. It
+ *      was meant to read as "the wrestler is standing in a ring",
+ *      but at this scale, against the wrestler sprite that
+ *      already extends past the card's bottom edge, it just
+ *      looked like a stray oval drawn behind the penguin. Not a
+ *      "character" detail; it didn't add what it was supposed to.
+ *   2. The mawashi-color inner-edge accent rule (was a 5px solid
+ *      band on the side facing the dohyo) is REMOVED. With the
+ *      player's mawashi color already announced strongly on the
+ *      LowerThird PlayerSlot (top border + thicker bottom sash),
+ *      a third loud color band on the wrestler card was
+ *      redundant — and it was visually competing with the
+ *      wrestler sprite and the kanji watermark inside the same
+ *      card. The card no longer needs to fight for color
+ *      identity; the lower-third does that job cleanly.
+ *
+ * What's left is a deliberately quiet card:
+ *   - Solid C.cream washi paper (the bug-fix opacity from the
+ *     previous pass — covers the un-recolored player sprite
+ *     position behind it).
+ *   - A soft radial wash of the player's mawashi color centered
+ *     on the wrestler (alpha ~0.18). This is the ONLY card-level
+ *     color signature now — it's subtle by design, and is the
+ *     single hook that future "custom card background" work will
+ *     plug into via the $washColor prop.
+ *   - 1px warm-brown paper edge on all sides (no inner-edge
+ *     accent — symmetric paper edge).
+ *   - Kanji watermark + paper grain layered behind.
+ *   - Two-layer warm drop shadow grounding the card on the live
+ *     arena.
+ *
+ * `$washColor` stays as a prop; `$accentColor` is no longer
+ * consumed here (the prop wiring is dropped in the JSX).
  */
 const WrestlerPanel = styled.div`
   position: relative;
   align-self: stretch;
   ${(p) => (p.$side === "left" ? "justify-self: end;" : "justify-self: start;")}
   width: 100%;
-  max-width: clamp(260px, 30cqw, 400px);
+  max-width: clamp(280px, 32cqw, 420px);
   overflow: hidden;
   background:
-    /* faint inkwash floor — anchors the wrestler without boxing them in */
-    linear-gradient(
-      180deg,
-      rgba(7, 6, 10, 0.18) 0%,
-      rgba(7, 6, 10, 0.42) 65%,
-      rgba(7, 6, 10, 0.78) 100%
-    );
-  border: 1px solid rgba(245, 236, 217, 0.16);
+    radial-gradient(
+      ellipse 75% 55% at 50% 60%,
+      ${(p) => p.$washColor} 0%,
+      transparent 70%
+    ),
+    ${C.cream};
+  border: 1px solid rgba(60, 40, 20, 0.22);
   box-shadow:
-    0 14px 30px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(245, 236, 217, 0.05);
-  /*
-   * Each panel slides in from its own outer edge (left panel from the
-   * left side of the screen, right panel from the right side) — reads
-   * as a real broadcast pre-bout split-screen rather than two
-   * identical cards floating up together. Transform + opacity only;
-   * will-change pre-promotes since these panels also contain the
-   * recolored sprite images, which are expensive to repaint.
-   */
+    0 3px 10px rgba(50, 30, 10, 0.22),
+    0 14px 28px rgba(50, 30, 10, 0.3);
   will-change: transform, opacity;
   animation: ${(p) => (p.$side === "left" ? clipRevealLeft : clipRevealRight)}
     0.45s cubic-bezier(0.2, 0.7, 0.2, 1) 0.2s backwards;
+
+  /* Paper grain — same formula as BroadcastBar + LowerThird so the
+     three cream surfaces read as cuts of the same washi sheet. */
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        rgba(60, 40, 20, 0.04) 0,
+        transparent 1px,
+        transparent 3px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        rgba(60, 40, 20, 0.025) 0,
+        transparent 1px,
+        transparent 4px
+      );
+    pointer-events: none;
+    z-index: 2;
+  }
 `;
 
 /*
- * Big cream kanji watermark behind the wrestler. No color tint, no glow —
- * reads like real sumi-ink brushwork on washi paper, not a colored decal.
- * Sized to fill the panel, anchored to the side closest to its column
- * edge so it reads as a stamp behind the wrestler.
+ * Big sumi-ink 東 / 西 watermark behind the wrestler. On cream
+ * paper now, so the kanji is rendered in low-opacity warm dark
+ * ink (rgba(20,12,8,0.10)) instead of low-opacity cream-on-dark.
+ * Reads as real brushwork seeping through the back of a printed
+ * page rather than a colored decal.
  */
 const KanjiWatermark = styled.div`
   position: absolute;
@@ -387,11 +480,10 @@ const KanjiWatermark = styled.div`
   font-size: clamp(220px, 38cqw, 520px);
   line-height: 0.78;
   letter-spacing: -0.04em;
-  color: rgba(245, 236, 217, 0.13);
+  color: rgba(20, 12, 8, 0.09);
   pointer-events: none;
   user-select: none;
   z-index: 1;
-  text-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
   ${(p) =>
     p.$side === "left"
       ? "transform: translateX(-6%) translateY(-2%);"
@@ -399,79 +491,132 @@ const KanjiWatermark = styled.div`
 `;
 
 /*
- * Tiny corner tag for East / West. Quiet broadcast type, no chip,
- * no diamond — just a label that lives inside the panel corner.
+ * East / West side tag — small Bungee label with a vermillion
+ * kanji glyph. Kanji color flipped to vermillion (was cream) to
+ * give the corner a small print-program color hit, and to match
+ * the vermillion accent rule on the card's inner edge.
  */
 const SideTag = styled.div`
   position: absolute;
   top: clamp(10px, 1.4cqh, 16px);
-  ${(p) => (p.$side === "left" ? "left: clamp(12px, 1.4cqw, 18px);" : "right: clamp(12px, 1.4cqw, 18px);")}
+  ${(p) =>
+    p.$side === "left"
+      ? "left: clamp(12px, 1.4cqw, 18px);"
+      : "right: clamp(12px, 1.4cqw, 18px);"}
   display: inline-flex;
   align-items: baseline;
   gap: 8px;
   z-index: 5;
   font-family: "Bungee", cursive;
   font-size: clamp(0.5rem, 0.85cqw, 0.65rem);
-  color: ${C.creamMute};
+  color: ${C.inkTextSoft};
   letter-spacing: 0.32em;
   text-transform: uppercase;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
 
   span.kanji {
     font-family: "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
     font-weight: 700;
-    color: ${C.cream};
+    color: ${C.vermillion};
     letter-spacing: 0;
-    font-size: 1.3em;
+    font-size: 1.4em;
   }
 `;
 
 /*
- * Rank plaque — restrained gold-on-ink chip. One thin gold left rule
- * is the only color accent.
+ * Rank plaque — must match the in-game `RankPlaque` in
+ * UiPlayerInfo.jsx so a player who sees "JONOKUCHI" on the
+ * pre-match screen sees the SAME plaque sitting on the HUD when
+ * the bout starts. Continuity > local design optimization here.
+ *
+ * The in-game design is:
+ *   - Layered dark-navy sumi-ink gradient base (nearly black,
+ *     not pure black — sits warmer/cooler than the surrounding
+ *     scene)
+ *   - Two repeating-linear-gradient washes for vertical washi
+ *     paper-fibre grain + horizontal weave (very subtle cream
+ *     fibres at <2% alpha — adds physical texture without being
+ *     visible as a pattern)
+ *   - 1px cream-faint border + inset top highlight + inset bottom
+ *     shadow (the "pressed plate" feel)
+ *   - Bungee text in #ffe56c (warm yellow-gold) with stacked
+ *     gold-glow text-shadow + dark drop, reading as gold leaf
+ *     glowing under spotlight on a lacquered ink plate
+ *
+ * Adaptations for the pre-match context:
+ *   - Same exact background, border, and shadow stack as in-game.
+ *   - Slightly smaller font cap (1.2cqw → 14px) so the plaque
+ *     fits cleanly inside the wrestler card corner without
+ *     fighting the SideTag for space — the in-game version sits
+ *     on the HUD with more horizontal room.
+ *   - The optional rank number (#1, #2, etc.) keeps its diamond
+ *     separator, with the diamond now glowing gold to match the
+ *     RankText treatment.
  */
 const RankPlaque = styled.div`
   position: absolute;
   top: clamp(10px, 1.4cqh, 16px);
-  ${(p) => (p.$side === "left" ? "right: clamp(8px, 1cqw, 14px);" : "left: clamp(8px, 1cqw, 14px);")}
+  ${(p) =>
+    p.$side === "left"
+      ? "right: clamp(8px, 1cqw, 14px);"
+      : "left: clamp(8px, 1cqw, 14px);"}
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 4px 10px;
-  background: rgba(7, 6, 10, 0.78);
-  border: 1px solid rgba(232, 197, 71, 0.32);
-  border-left: 2px solid ${C.gold};
+  justify-content: center;
+  gap: clamp(4px, 0.5cqw, 8px);
+  padding: clamp(4px, 0.55cqh, 8px) clamp(10px, 1.3cqw, 18px);
   z-index: 6;
-  backdrop-filter: blur(4px);
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px,
+      transparent 2px,
+      rgba(245, 236, 217, 0.018) 2px,
+      rgba(245, 236, 217, 0.018) 3px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 4px,
+      rgba(245, 236, 217, 0.012) 4px,
+      rgba(245, 236, 217, 0.012) 5px
+    ),
+    linear-gradient(
+      180deg,
+      rgba(14, 18, 36, 0.94) 0%,
+      rgba(10, 14, 28, 0.97) 50%,
+      rgba(8, 10, 22, 0.94) 100%
+    );
+  border-radius: 3px;
+  border: 1px solid rgba(245, 236, 217, 0.18);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(245, 236, 217, 0.08),
+    inset 0 -1px 3px rgba(0, 0, 0, 0.32);
 `;
 
 const RankText = styled.span`
   font-family: "Bungee", cursive;
-  font-size: clamp(9px, 1.1cqw, 13px);
-  color: ${C.gold};
+  font-size: clamp(10px, 1.2cqw, 14px);
+  color: #ffe56c;
   text-transform: uppercase;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.16em;
   line-height: 1;
-  text-shadow: 0 1px 0 #000;
+  text-shadow:
+    0 0 10px rgba(232, 197, 71, 0.5),
+    0 0 4px rgba(232, 197, 71, 0.55),
+    0 1px 3px rgba(0, 0, 0, 0.9);
   white-space: nowrap;
 `;
 
 const RankDiamond = styled.span`
   width: 4px;
   height: 4px;
-  background: ${C.gold};
+  background: #ffe56c;
   transform: rotate(45deg);
   flex-shrink: 0;
+  box-shadow: 0 0 4px rgba(232, 197, 71, 0.55);
 `;
 
-/*
- * Wrestler image — anchored to the TOP of the panel with the bottom
- * extending past the panel edge so the feet are clipped naturally by
- * the panel's overflow:hidden. Same trading-card crop as a real sumo
- * banzuke or wrestler card: head sits high, belly fills the middle,
- * lower body cropped past the edge. One tight contact shadow only,
- * no cream halo, no double drop.
- */
 const WrestlerImageWrap = styled.div`
   position: absolute;
   top: clamp(36px, 4.8cqh, 60px);
@@ -490,9 +635,12 @@ const WrestlerImage = styled.img`
   max-width: 110%;
   object-fit: contain;
   transform: ${(p) => (p.$flip ? "scaleX(1)" : "scaleX(-1)")};
-  filter: drop-shadow(0 18px 14px rgba(0, 0, 0, 0.6));
+  /* Warm contact shadow (was generic cool black) — keeps the
+     penguin grounded on the cream paper instead of looking
+     pasted-on from a different lighting environment. */
+  filter: drop-shadow(0 12px 12px rgba(50, 30, 10, 0.42));
   opacity: ${(p) => (p.$ready ? 1 : 0)};
-  transition: opacity 0.3s ease-out;
+  transition: opacity 0.25s ease-out;
 `;
 
 // ============================================
@@ -500,9 +648,23 @@ const WrestlerImage = styled.img`
 // ============================================
 
 /*
- * One unified bottom strip with three cells: left player | center meta
- * | right player. Same desaturated chrome on both sides — the only
- * per-side color signature is the mawashi sash beneath each player.
+ * Unified printed footer. Previously this had 3px vermillion top
+ * and 3px vermillion bottom rules — two of the biggest "excessive
+ * red" contributors on the screen. Both removed. The bar now
+ * relies on:
+ *   - 1px warm-brown sumi border on all four sides (the same
+ *     hairline used everywhere else for paper edges)
+ *   - The player-color signatures inside each PlayerSlot (a 3px
+ *     mawashi-color top accent rule + the now-thicker MawashiSash
+ *     at the bottom) for color identity, instead of a uniform
+ *     vermillion band stretched across the entire bar
+ *   - Two-layer warm drop shadow for physical weight, same as
+ *     before
+ *
+ * Net effect: the cream paper stays prominent, the player colors
+ * are now what visually anchors each side of the footer, and the
+ * vermillion budget for the screen is cut by ~6px of strong
+ * horizontal red lines.
  */
 const LowerThird = styled.div`
   position: absolute;
@@ -512,23 +674,46 @@ const LowerThird = styled.div`
   display: grid;
   grid-template-columns: 1fr clamp(120px, 14cqw, 200px) 1fr;
   align-items: stretch;
-  background: rgba(7, 6, 10, 0.86);
-  border-top: 1px solid rgba(245, 236, 217, 0.18);
-  border-bottom: 1px solid rgba(245, 236, 217, 0.1);
-  backdrop-filter: blur(8px);
-  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.55);
-  /*
-   * Comes up from below — the lower-third reads as a broadcast
-   * graphic being inserted along the bottom of the frame. This
-   * element has the heaviest backdrop-filter on the screen (8px
-   * blur over a wide horizontal strip), so it benefits the most
-   * from being on its own layer during the entrance animation.
-   */
+  background: ${C.cream};
+  border: 1px solid rgba(60, 40, 20, 0.22);
+  box-shadow:
+    0 -4px 14px rgba(50, 30, 10, 0.2),
+    0 14px 28px rgba(50, 30, 10, 0.3);
   will-change: transform, opacity;
   animation: ${clipRevealUp} 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) 0.4s
     backwards;
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        rgba(60, 40, 20, 0.04) 0,
+        transparent 1px,
+        transparent 3px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        rgba(60, 40, 20, 0.025) 0,
+        transparent 1px,
+        transparent 4px
+      );
+    pointer-events: none;
+    z-index: 1;
+  }
 `;
 
+/*
+ * Each player slot now carries the mawashi color on BOTH its top
+ * and bottom edges (top via border-top, bottom via the thicker
+ * MawashiSash). The slot reads as a printed page bordered top and
+ * bottom in the wrestler's color band, rather than a generic
+ * cream cell with a thin colored sliver. Solves the "belt color
+ * is barely noticeable" problem head-on: the player color is now
+ * an unmissable frame around their info, not a 4px afterthought.
+ */
 const PlayerSlot = styled.div`
   position: relative;
   display: flex;
@@ -540,16 +725,22 @@ const PlayerSlot = styled.div`
   text-align: ${(p) => (p.$side === "left" ? "left" : "right")};
   align-items: ${(p) => (p.$side === "left" ? "flex-start" : "flex-end")};
   overflow: hidden;
+  z-index: 2;
+  border-top: 3px solid ${(p) => p.$accentColor};
 `;
 
+/*
+ * Stable / dojo line — was C.gold on dark, now C.vermillionDeep
+ * on cream. Same "small printed-program caption" energy, native
+ * to the cream-paper world.
+ */
 const StableLine = styled.div`
   font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
+  font-weight: 700;
   font-size: clamp(0.5rem, 0.82cqw, 0.66rem);
-  color: ${C.gold};
+  color: ${C.vermillionDeep};
   letter-spacing: 0.26em;
   text-transform: uppercase;
-  text-shadow: 0 1px 0 #000;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -559,22 +750,16 @@ const StableLine = styled.div`
 const PlayerName = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(16px, 2.4cqw, 32px);
-  color: ${C.cream};
+  color: ${C.inkText};
   text-transform: uppercase;
   letter-spacing: 0.04em;
   line-height: 1.05;
-  text-shadow: 0 2px 0 #000;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
 `;
 
-/*
- * One row of meta type that combines style + record. No chips, no
- * pills, no per-side colored backgrounds — just typography with thin
- * vertical separators.
- */
 const MetaRow = styled.div`
   display: flex;
   align-items: baseline;
@@ -587,16 +772,15 @@ const StyleLabel = styled.span`
   font-family: "Space Grotesk", sans-serif;
   font-weight: 700;
   font-size: clamp(0.5rem, 0.82cqw, 0.65rem);
-  color: ${C.cream};
+  color: ${C.inkTextSoft};
   letter-spacing: 0.28em;
   text-transform: uppercase;
-  text-shadow: 0 1px 0 #000;
 `;
 
 const MetaSep = styled.span`
   width: 1px;
   height: 12px;
-  background: rgba(245, 236, 217, 0.22);
+  background: rgba(60, 40, 20, 0.32);
 `;
 
 const RecordText = styled.span`
@@ -605,40 +789,50 @@ const RecordText = styled.span`
   gap: 4px;
   font-family: "Bungee", cursive;
   font-size: clamp(0.6rem, 1cqw, 0.85rem);
-  color: ${C.cream};
+  color: ${C.inkText};
   letter-spacing: 0.04em;
-  text-shadow: 0 1px 0 #000;
 
   small {
     font-size: 0.7em;
-    color: ${C.creamMute};
+    color: ${C.inkTextMute};
     letter-spacing: 0.1em;
   }
 `;
 
 /*
- * Mawashi sash — a clean flat band of the player's actual mawashi
- * color along the bottom edge. NO outer glow, no halo — the mawashi
- * IS the player's color signature, so we let it be confident on its
- * own. Special-pattern mawashis (rainbow / camo / etc) keep their
- * pattern but lose the gold-glow shadow that previously tried to
- * "celebrate" them.
+ * Mawashi sash — substantially beefed up. Was 4-6px which was
+ * the user's exact complaint: "the belt color lines are barely
+ * even noticeable". Bumping to 10-14px makes the player's actual
+ * mawashi color a real horizontal banner along the bottom of
+ * each player slot, not an afterthought stripe. Special-pattern
+ * mawashi (rainbow / camo / fire / etc.) get the full pattern
+ * displayed at this size — they finally have room to read.
+ *
+ * Inset highlight on top + inset shadow on bottom give the band
+ * a slight "raised cloth" feel, like a real fabric sash sitting
+ * on top of paper, instead of a flat printed swatch. Subtle but
+ * gives it the physicality the rest of the screen has.
  */
 const MawashiSash = styled.div`
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  height: clamp(3px, 0.4cqh, 5px);
+  height: clamp(10px, 1.2cqh, 14px);
   background: ${(p) => p.$gradient || p.$color || C.ice};
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+  z-index: 3;
 `;
 
 /*
- * Center pillar in the lower third — type only, sits on the same flat
- * sumi-ink ground as the rest of the strip. No colored gradient
- * background, no double border accents. The vertical hairlines on
- * either side give it just enough separation.
+ * Center pillar — VS CPU / EXHIBITION title block. Slight warm
+ * tint (rgba(20,12,8,0.04)) so it reads as a faintly inset
+ * portion of the printed page — the typographic "spine" between
+ * the two player slots — rather than a separate panel. Thin
+ * vertical hairline rules on each side preserve the printed-
+ * program separation without introducing a second surface tone.
  */
 const CenterPillar = styled.div`
   position: relative;
@@ -648,24 +842,25 @@ const CenterPillar = styled.div`
   justify-content: center;
   gap: clamp(4px, 0.5cqh, 7px);
   padding: clamp(12px, 1.5cqh, 18px) clamp(8px, 1cqw, 14px);
-  border-left: 1px solid rgba(245, 236, 217, 0.14);
-  border-right: 1px solid rgba(245, 236, 217, 0.14);
+  background: rgba(20, 12, 8, 0.04);
+  border-left: 1px solid rgba(60, 40, 20, 0.22);
+  border-right: 1px solid rgba(60, 40, 20, 0.22);
+  z-index: 2;
 `;
 
 const CenterFormatLabel = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(0.7rem, 1.15cqw, 0.95rem);
-  color: ${C.cream};
+  color: ${C.inkText};
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  text-shadow: 0 2px 0 #000;
 `;
 
 const CenterFormatSub = styled.div`
   font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
+  font-weight: 700;
   font-size: clamp(0.46rem, 0.78cqw, 0.6rem);
-  color: ${C.creamMute};
+  color: ${C.inkTextMute};
   letter-spacing: 0.32em;
   text-transform: uppercase;
 `;
@@ -674,13 +869,25 @@ const CenterDivider = styled.span`
   width: 32px;
   height: 1px;
   background: ${C.vermillion};
-  opacity: 0.7;
+  opacity: 0.85;
 `;
 
 // ============================================
-// LOADING — bottom-center
+// LOADING — bottom-center, between LowerThird and bottom rule
 // ============================================
 
+/*
+ * The loading bar lives in the strip between the LowerThird's
+ * bottom edge and the screen's bottom vermillion rule — over the
+ * dim live arena floor, NOT over a cream surface. So:
+ *   - Track: warm-brown low-opacity rule (subtle on the dim live
+ *     arena background)
+ *   - Tick marks: warm browns instead of cool greys
+ *   - Fill: vermillion, the only place the broadcast intensity
+ *     "bleeds" into the live area
+ *   - Caption: cream text with a dark drop, so it reads on the
+ *     dim arena floor without needing its own card backing
+ */
 const LoadingContainer = styled.div`
   position: absolute;
   bottom: clamp(16px, 2.4cqh, 28px);
@@ -694,24 +901,40 @@ const LoadingContainer = styled.div`
   animation: ${fadeUp} 0.5s ease-out 0.55s backwards;
 `;
 
-/* Slim flat progress bar — no gradient, no shimmer. Tick marks at
-   25/50/75% give it a diagrammatic, broadcast-graphic feel. */
 const LoadingBar = styled.div`
   position: relative;
   width: clamp(180px, 22cqw, 300px);
   height: clamp(3px, 0.32cqh, 4px);
-  background: rgba(245, 236, 217, 0.12);
+  background: rgba(245, 236, 217, 0.22);
   overflow: hidden;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
 
-  /* tick marks */
   &::before {
     content: "";
     position: absolute;
     inset: 0;
     background:
-      linear-gradient(90deg, transparent 24.5%, rgba(245, 236, 217, 0.35) 24.5%, rgba(245, 236, 217, 0.35) 25.5%, transparent 25.5%),
-      linear-gradient(90deg, transparent 49.5%, rgba(245, 236, 217, 0.35) 49.5%, rgba(245, 236, 217, 0.35) 50.5%, transparent 50.5%),
-      linear-gradient(90deg, transparent 74.5%, rgba(245, 236, 217, 0.35) 74.5%, rgba(245, 236, 217, 0.35) 75.5%, transparent 75.5%);
+      linear-gradient(
+        90deg,
+        transparent 24.5%,
+        rgba(245, 236, 217, 0.55) 24.5%,
+        rgba(245, 236, 217, 0.55) 25.5%,
+        transparent 25.5%
+      ),
+      linear-gradient(
+        90deg,
+        transparent 49.5%,
+        rgba(245, 236, 217, 0.55) 49.5%,
+        rgba(245, 236, 217, 0.55) 50.5%,
+        transparent 50.5%
+      ),
+      linear-gradient(
+        90deg,
+        transparent 74.5%,
+        rgba(245, 236, 217, 0.55) 74.5%,
+        rgba(245, 236, 217, 0.55) 75.5%,
+        transparent 75.5%
+      );
     z-index: 2;
     pointer-events: none;
   }
@@ -726,16 +949,72 @@ const LoadingProgress = styled.div`
 
 const LoadingText = styled.div`
   font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
+  font-weight: 700;
   font-size: clamp(0.45rem, 0.78cqw, 0.58rem);
-  color: ${C.creamMute};
+  color: ${C.cream};
   letter-spacing: 0.36em;
   text-transform: uppercase;
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.7),
+    0 2px 4px rgba(0, 0, 0, 0.5);
 `;
 
 // ============================================
 // HELPERS
 // ============================================
+
+/*
+ * Special mawashi colors (rainbow, fire, etc.) are NOT hex codes —
+ * they're string identifiers that the SpriteRecolorizer maps to
+ * per-pixel patterns (see SPECIAL_MAWASHI_GRADIENTS below). Solid
+ * accents (the wrestler card inner-edge rule, the PlayerSlot top
+ * border, the soft radial wash behind the wrestler) need a real
+ * color value to render with, so we pick a representative single
+ * hex per pattern. The MawashiSash itself still displays the full
+ * gradient, so the special-pattern players don't lose their
+ * identity — they just get a coordinated solid accent on the
+ * card and slot edges.
+ *
+ * Picked with the goal of matching the dominant hue of each
+ * pattern rather than its brightest highlight, so the accent
+ * rules read as "this player's color" at a glance.
+ */
+const SPECIAL_REPRESENTATIVE_COLORS = {
+  rainbow: "#FF6EC7",
+  fire: "#FF8C00",
+  vaporwave: "#DA70D6",
+  camo: "#556B2F",
+  galaxy: "#6A0DAD",
+  gold: "#D4A520",
+};
+
+/*
+ * Resolve any mawashi color value (solid hex OR special pattern
+ * name) to a single solid hex color suitable for borders and
+ * rgba conversion. Future-proof for the planned "customize card
+ * background" feature: callers can ignore the special-mawashi
+ * handling and just pass a hex of their choice, and the same
+ * accent + wash pipeline downstream will Just Work.
+ */
+const resolveAccentColor = (color) => {
+  if (!color) return C.ice;
+  return SPECIAL_REPRESENTATIVE_COLORS[color] || color;
+};
+
+/*
+ * Convert a mawashi color value to an rgba() string at the given
+ * alpha, so we can use it inside a multi-stop gradient. CSS
+ * doesn't let us "alpha-fy" an arbitrary hex value at runtime, so
+ * we go through hexToRgb and reassemble. Falls back to C.ice if
+ * the value can't be parsed (defensive — should never trip).
+ */
+const colorToRgba = (color, alpha) => {
+  const hex = resolveAccentColor(color);
+  const rgb = hexToRgb(hex);
+  if (!rgb) return `rgba(126, 203, 240, ${alpha})`;
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+};
+
 export const SPECIAL_MAWASHI_GRADIENTS = {
   rainbow:
     "linear-gradient(to right, red, orange, yellow, green, cyan, blue, violet)",
@@ -896,25 +1175,24 @@ const PreMatchScreen = ({
   const p1Gradient = SPECIAL_MAWASHI_GRADIENTS[player1Color];
   const p2Gradient = SPECIAL_MAWASHI_GRADIENTS[player2Color];
 
+  // Solid accent colors derived from each player's mawashi. Drive the
+  // wrestler card's inner-edge rule, the PlayerSlot top border, and
+  // (via colorToRgba) the soft radial wash behind the wrestler. When
+  // the user wires up custom card backgrounds later, this is the
+  // single hook to override per player.
+  const p1Accent = resolveAccentColor(p1MawashiColor);
+  const p2Accent = resolveAccentColor(p2MawashiColor);
+  const p1Wash = colorToRgba(p1MawashiColor, 0.18);
+  const p2Wash = colorToRgba(p2MawashiColor, 0.18);
+
   return (
     <ScreenContainer>
-      <SceneVignette />
-      <GrainOverlay />
-      <Letterbox $top />
-      <Letterbox />
-
       <BroadcastBar>
         <BroadcastChip $accent>
           <strong>VER.</strong> HATSU
         </BroadcastChip>
         <BroadcastDivider />
         <BroadcastChip>Day 01</BroadcastChip>
-        <BroadcastDivider />
-        {/* <BroadcastChip>
-          Bout&nbsp;<strong>01</strong>
-        </BroadcastChip>
-        <BroadcastDivider />
-        <BroadcastChip>Pumo Pumo</BroadcastChip> */}
       </BroadcastBar>
 
       <LiveIndicator>
@@ -924,7 +1202,7 @@ const PreMatchScreen = ({
 
       {/* Hanko stamp sits high-center, above the gyoji, so it never
           covers the live action. The gyoji standing between the two
-          wrestlers carries the visual "VS" on his own. */}
+          wrestler cards still carries the visual "VS" on his own. */}
       <HankoStamp aria-hidden>
         <HankoKanji>取組</HankoKanji>
         <HankoVs>VS</HankoVs>
@@ -932,7 +1210,7 @@ const PreMatchScreen = ({
 
       <Stage>
         {/* LEFT WRESTLER — East / 東 */}
-        <WrestlerPanel $side="left">
+        <WrestlerPanel $side="left" $washColor={p1Wash}>
           <KanjiWatermark $side="left" aria-hidden>
             東
           </KanjiWatermark>
@@ -963,7 +1241,7 @@ const PreMatchScreen = ({
         <div />
 
         {/* RIGHT WRESTLER — West / 西 */}
-        <WrestlerPanel $side="right">
+        <WrestlerPanel $side="right" $washColor={p2Wash}>
           <KanjiWatermark $side="right" aria-hidden>
             西
           </KanjiWatermark>
@@ -991,7 +1269,7 @@ const PreMatchScreen = ({
       </Stage>
 
       <LowerThird>
-        <PlayerSlot $side="left">
+        <PlayerSlot $side="left" $accentColor={p1Accent}>
           <StableLine>{player1Dojo}</StableLine>
           <PlayerName>{player1Name}</PlayerName>
           <MetaRow $side="left">
@@ -1014,7 +1292,7 @@ const PreMatchScreen = ({
           <CenterFormatSub>Match&nbsp;01</CenterFormatSub>
         </CenterPillar>
 
-        <PlayerSlot $side="right">
+        <PlayerSlot $side="right" $accentColor={p2Accent}>
           <StableLine>{player2Dojo}</StableLine>
           <PlayerName>{player2Name}</PlayerName>
           <MetaRow $side="right">
@@ -1038,6 +1316,8 @@ const PreMatchScreen = ({
           <LoadingText>Preparing the Dohyo</LoadingText>
         </LoadingContainer>
       )}
+
+      <GrainOverlay />
     </ScreenContainer>
   );
 };

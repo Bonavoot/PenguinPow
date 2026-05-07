@@ -827,61 +827,150 @@ const VSWordmark = styled.div`
 `;
 
 // ============================================
-// CPU DIFFICULTY STRIP (compact horizontal pills under CPU portrait)
+// CPU SKILL CARD (cream washi "challenger card" right of CPU)
 // ============================================
 
 /*
- * DifficultyStrip — CPU difficulty selector that sits just under
- * the right NamePlate.
+ * DifficultyCard — vertical cream washi "challenger card" pinned
+ * to the locker wall to the right of the CPU portrait.
  *
- * CRITICAL: this is `position: absolute` (taken OUT of the
- * FighterColumn's flex flow) so it does NOT compress the CPU
- * penguin's available space. If it were a normal flex child, the
- * right column's penguin would bottom-align ABOVE the left
- * column's penguin (because the strip would steal vertical room
- * from FighterPortrait), and the two fighters would visibly stand
- * on different floor levels. By floating absolutely below the
- * nameplate, both penguins keep the full FighterPortrait height
- * and stand on the same baseline.
+ * Replaces the dark horizontal DifficultyStrip that used to sit
+ * absolutely-positioned below the CPU NamePlate. That strip had
+ * three problems:
+ *   1. EASY TO MISS — small dark slab under the nameplate. With
+ *      the locker bg blurred behind it, it visually disappeared
+ *      against the CinematicOverlay's corner shadows.
+ *   2. WRONG VISUAL LANGUAGE — the cream washi NamePlate above and
+ *      cream MatchCardBar across the top set the surface metaphor
+ *      for the whole lobby ("printed cards pinned to a locker"),
+ *      then the difficulty selector dropped a dark sumi panel into
+ *      that world. Read as "different feature bolted on".
+ *   3. SUBTITLE NOISE — every pill carried a meta caption
+ *      (Casual / Standard / Challenge / Brutal / Soon) that the
+ *      eye had to parse before getting to the actionable name.
+ *
+ * The replacement is the same surface language as the NamePlate
+ * + MatchCardBar — cream paper, vermillion left rule, faint warm
+ * grain, soft warm shadow — but vertical and prominent. Reads as
+ * another printed card in the same program rather than a separate
+ * UI panel. Position is absolute inside the Stage, anchored to the
+ * RIGHT edge and vertically centered against the portrait area, so
+ * it sits next to the CPU penguin without compressing the
+ * symmetric two-column fighter layout.
+ *
+ * Side effect: the asymmetry (player column is bare, CPU column has
+ * a card pinned beside it) visually communicates "the CPU has
+ * different controls than you" — you don't customize a CPU's
+ * mawashi, you set its skill tier.
  */
-const DifficultyStrip = styled.div`
+const DifficultyCard = styled.div`
   position: absolute;
   /*
-   * Anchor below the NamePlate. The nameplate has clamp(5-8px)
-   * padding + ~28px content height, so ~40-48px from the column
-   * top puts the strip right under it.
+   * Anchored to the right edge of Stage with a small inset that
+   * matches the Stage's right padding floor. On wider viewports
+   * the card sits in the empty space to the right of the CPU
+   * portrait (over the blurred banzuke board area in the bg art),
+   * which is where the fighter column's natural negative space
+   * already lives.
    */
-  top: clamp(38px, 5.5cqh, 56px);
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: stretch;
-  gap: 2px;
-  z-index: 5;
-  background: rgba(15, 20, 30, 0.82);
-  border: 1px solid rgba(232, 197, 71, 0.22);
-  max-width: 92%;
-  pointer-events: auto;
-`;
-
-const DifficultyPill = styled.button`
-  position: relative;
+  right: clamp(16px, 2.4cqw, 36px);
+  /*
+   * Vertically centered slightly below midline (55%) so the card
+   * lines up against the CPU portrait's center rather than the
+   * column's geometric center — the nameplate occupies the top
+   * of the column, so the portrait's optical center sits below
+   * the column's true center.
+   */
+  top: 55%;
+  transform: translateY(-50%);
+  z-index: 6;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  background: ${C.cream};
+  border: 1px solid rgba(60, 40, 20, 0.22);
+  border-left: 4px solid ${C.vermillion};
+  box-shadow: 0 3px 12px rgba(50, 30, 10, 0.22);
+  min-width: clamp(120px, 13cqw, 160px);
+  animation: ${slideInRight} 0.5s ease-out 0.4s both;
+  pointer-events: auto;
+
+  /* Faint paper grain — same treatment as MatchCardBar / NamePlate
+   * so all three surfaces read as cuts of the same washi stock. */
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+      0deg,
+      rgba(60, 40, 20, 0.04) 0,
+      transparent 1px,
+      transparent 3px
+    );
+    pointer-events: none;
+  }
+`;
+
+const DifficultyHeader = styled.div`
+  position: relative;
+  padding: clamp(7px, 1cqh, 10px) clamp(11px, 1.5cqw, 16px)
+    clamp(5px, 0.7cqh, 8px);
+  border-bottom: 1px solid rgba(60, 40, 20, 0.18);
+  display: flex;
+  flex-direction: column;
   gap: 1px;
-  padding: clamp(4px, 0.6cqh, 7px) clamp(8px, 1.1cqw, 13px);
-  background: ${(p) =>
-    p.$selected ? C.vermillion : "transparent"};
+`;
+
+const DifficultyHeaderCaption = styled.div`
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 600;
+  font-size: clamp(0.4rem, 0.6cqw, 0.48rem);
+  color: ${C.inkTextMute};
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+`;
+
+const DifficultyHeaderTitle = styled.div`
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.7rem, 1.05cqw, 0.85rem);
+  color: ${C.inkText};
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1;
+`;
+
+const DifficultyOption = styled.button`
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: clamp(7px, 1cqh, 10px) clamp(11px, 1.5cqw, 16px);
+  /*
+   * Selected option fills with vermillion (matches the Body/Belt
+   * customize tab pattern), available options are transparent, and
+   * unavailable options have no fill change — their state is
+   * communicated entirely by faded ink color + not-allowed cursor.
+   * Dropping the "Soon" subtitle from each row cuts the visual
+   * noise; the disabled state IS the message.
+   */
+  background: ${(p) => (p.$selected ? C.vermillion : "transparent")};
   border: 0;
   cursor: ${(p) => (p.$available ? "pointer" : "not-allowed")};
-  opacity: ${(p) => (p.$available ? 1 : 0.45)};
-  transition: background 0.16s ease, transform 0.16s ease;
-  font-family: inherit;
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.62rem, 0.95cqw, 0.78rem);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-align: left;
+  line-height: 1;
+  color: ${(p) =>
+    p.$selected
+      ? C.cream
+      : p.$available
+        ? C.inkText
+        : C.inkTextFaint};
+  transition: background 0.16s ease, color 0.16s ease;
 
   & + & {
-    border-left: 1px solid rgba(232, 197, 71, 0.22);
+    border-top: 1px solid rgba(60, 40, 20, 0.12);
   }
 
   &:hover {
@@ -889,30 +978,10 @@ const DifficultyPill = styled.button`
       p.$available &&
       !p.$selected &&
       css`
-        background: rgba(216, 59, 39, 0.18);
+        background: rgba(216, 59, 39, 0.08);
+        color: ${C.vermillionDeep};
       `}
   }
-`;
-
-const DifficultyPillLabel = styled.span`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.46rem, 0.72cqw, 0.58rem);
-  color: ${(p) =>
-    p.$selected ? C.cream : p.$available ? C.cream : C.creamMute};
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  line-height: 1;
-`;
-
-const DifficultyPillMeta = styled.span`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
-  font-size: clamp(0.34rem, 0.5cqw, 0.42rem);
-  color: ${(p) =>
-    p.$selected ? "rgba(245, 236, 217, 0.85)" : C.creamMute};
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  margin-top: 1px;
 `;
 
 // ============================================
@@ -1461,18 +1530,6 @@ const ReadyChipCount = styled.span`
   letter-spacing: 0.16em;
 `;
 
-const ReadyPlaceholder = styled.div`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
-  font-size: clamp(0.5rem, 0.82cqw, 0.66rem);
-  color: ${C.creamMute};
-  text-transform: uppercase;
-  letter-spacing: 0.32em;
-  /* Match the trimmed ReadyButton padding so deck height stays consistent
-     between waiting-for-opponent and ready-to-go states */
-  padding: clamp(5px, 0.9cqh, 9px) clamp(20px, 3cqw, 32px);
-`;
-
 // ============================================
 // COLORED PLAYER PREVIEW
 // ============================================
@@ -1534,12 +1591,14 @@ ColoredPlayerPreview.propTypes = {
 // LOBBY COMPONENT
 // ============================================
 
-const CPU_DIFFICULTIES = [
-  { id: "EASY", meta: "Casual" },
-  { id: "NORMAL", meta: "Standard" },
-  { id: "HARD", meta: "Challenge" },
-  { id: "IMPOSSIBLE", meta: "Brutal" },
-];
+/*
+ * CPU_DIFFICULTIES is just a list of tier ids now — the previous
+ * meta captions ("Casual" / "Standard" / "Challenge" / "Brutal")
+ * have been dropped from the UI. The greyed-out / not-allowed
+ * cursor on unavailable rows in DifficultyCard is the disabled
+ * state's only signal, no "Soon" caption needed.
+ */
+const CPU_DIFFICULTIES = ["EASY", "NORMAL", "HARD", "IMPOSSIBLE"];
 const AVAILABLE_CPU_DIFFICULTIES = new Set(["HARD", "IMPOSSIBLE"]);
 
 const Lobby = ({
@@ -1879,27 +1938,42 @@ const Lobby = ({
       : serverPlayer2BodyColor;
 
     const sideLabel = isLeft ? "East" : "West";
+    /*
+     * Empty-slot nameplate previously read "EAST · Awaiting Fighter"
+     * and "WEST · STANDBY..." with a separate `WAITING` status pill
+     * on the right — three separate "this slot is empty" signals on
+     * a single 30px-tall plate, on top of the giant silhouette +
+     * "Waiting…" text below. We strip the empty state down to a
+     * single quiet label ("Open Slot") with the status section
+     * hidden entirely; the silhouette + "Waiting…" caption below
+     * carries the load.
+     */
     const fighterName = showAsCPU
       ? "CPU"
       : player?.isCPU
         ? "CPU"
-        : player?.fighter ||
-          (isLeft ? "Awaiting Fighter" : "STANDBY...");
-    const statusLabel = showAsCPU
-      ? "Ready"
-      : hasPlayer
-        ? "Connected"
-        : "Waiting";
+        : player?.fighter || "Open Slot";
+    const statusLabel = showAsCPU ? "Ready" : "Connected";
 
     return (
       <FighterColumn $side={side}>
         <NamePlate $hasFighter={showFighter}>
           <NamePlateSide>{sideLabel}</NamePlateSide>
           <NamePlateName $hasFighter={showFighter}>{fighterName}</NamePlateName>
-          <NamePlateStatus $connected={showFighter}>
-            <StatusDot $connected={showFighter} />
-            {statusLabel}
-          </NamePlateStatus>
+          {/*
+           * Status section only renders for OCCUPIED slots. On an
+           * empty slot, hiding the whole status block (instead of
+           * just changing its text) is what stops the nameplate
+           * from competing with the silhouette below — empty slots
+           * are now visually quieter than filled ones, which is
+           * the right hierarchy.
+           */}
+          {showFighter && (
+            <NamePlateStatus $connected={showFighter}>
+              <StatusDot $connected={showFighter} />
+              {statusLabel}
+            </NamePlateStatus>
+          )}
         </NamePlate>
 
         <FighterPortrait>
@@ -1935,44 +2009,47 @@ const Lobby = ({
           )}
         </FighterPortrait>
 
-        {showAsCPU && (
-          <DifficultyStrip>
-            {CPU_DIFFICULTIES.map((diff) => {
-              const available = AVAILABLE_CPU_DIFFICULTIES.has(diff.id);
-              const selected = diff.id === selectedDifficulty;
-              return (
-                <DifficultyPill
-                  key={diff.id}
-                  $available={available}
-                  $selected={selected}
-                  onClick={() => {
-                    if (available && diff.id !== selectedDifficulty) {
-                      playButtonPressSound2();
-                      setSelectedDifficulty(diff.id);
-                      socket.emit("set_cpu_difficulty", {
-                        difficulty: diff.id,
-                      });
-                    }
-                  }}
-                  onMouseEnter={() => available && playButtonHoverSound()}
-                >
-                  <DifficultyPillLabel
-                    $selected={selected}
-                    $available={available}
-                  >
-                    {diff.id}
-                  </DifficultyPillLabel>
-                  <DifficultyPillMeta $selected={selected}>
-                    {available ? diff.meta : "Soon"}
-                  </DifficultyPillMeta>
-                </DifficultyPill>
-              );
-            })}
-          </DifficultyStrip>
-        )}
       </FighterColumn>
     );
   };
+
+  /*
+   * CPU skill card is rendered as a sibling of the fighter columns
+   * inside Stage (not as a child of the CPU FighterColumn), so it
+   * can pin to the right edge of the stage frame regardless of
+   * how the column itself flexes. See the DifficultyCard styled
+   * component for the rest of the rationale.
+   */
+  const renderDifficultyCard = () => (
+    <DifficultyCard>
+      <DifficultyHeader>
+        <DifficultyHeaderCaption>Challenger</DifficultyHeaderCaption>
+        <DifficultyHeaderTitle>CPU Skill</DifficultyHeaderTitle>
+      </DifficultyHeader>
+      {CPU_DIFFICULTIES.map((id) => {
+        const available = AVAILABLE_CPU_DIFFICULTIES.has(id);
+        const selected = id === selectedDifficulty;
+        return (
+          <DifficultyOption
+            key={id}
+            $available={available}
+            $selected={selected}
+            onClick={() => {
+              if (available && id !== selectedDifficulty) {
+                playButtonPressSound2();
+                setSelectedDifficulty(id);
+                socket.emit("set_cpu_difficulty", { difficulty: id });
+              }
+            }}
+            onMouseEnter={() => available && playButtonHoverSound()}
+            disabled={!available}
+          >
+            {id}
+          </DifficultyOption>
+        );
+      })}
+    </DifficultyCard>
+  );
 
   const renderCustomizeArea = () => {
     if (myPlayerIndex === -1) return <CustomizeArea />;
@@ -2124,18 +2201,39 @@ const Lobby = ({
           <MatchCardKanji aria-hidden>番</MatchCardKanji>
           <MatchCardLabels>
             <MatchCardCaption>Tonight&apos;s Bout</MatchCardCaption>
+            {/*
+             * Title shows just the room name (or "VS CPU" for CPU
+             * matches). Previously prefixed with "Dohyo · " on both
+             * branches, which read as inaccurate (the player isn't
+             * IN the dohyo yet — this is the prep room before the
+             * bout) and visually redundant against the surrounding
+             * 番付 banzuke kanji + the rest of the sumo-themed
+             * chrome. The "TONIGHT'S BOUT" caption already carries
+             * the bout context; the title can just be the identifier.
+             */}
             <MatchCardTitle>
-              {isCPUMatch ? "Dohyo · VS CPU" : `Dohyo · ${roomName}`}
+              {isCPUMatch ? "VS CPU" : roomName}
             </MatchCardTitle>
           </MatchCardLabels>
           <MatchCardKanji aria-hidden>付</MatchCardKanji>
         </MatchCardCenter>
 
         <TopRight>
+          {/*
+           * Mode chip simplified to a single label:
+           *   PvP → "Custom"
+           *   CPU → "VS CPU"
+           *
+           * The previous chip read "● 1V1 Custom" / "● VS CPU Solo".
+           * "1V1" is meaningless in a 1v1-only fighting game (a
+           * coffee shop labeling cups "DRINK"), and the trailing
+           * "Custom"/"Solo" qualifier just doubled the label.
+           * One flat word + accent dot reads as a confident status
+           * pill rather than a configuration summary.
+           */}
           <MatchModeChip>
             <span className="dot" />
-            <strong>{isCPUMatch ? "VS CPU" : "1V1"}</strong>
-            {isCPUMatch ? "Solo" : "Custom"}
+            <strong>{isCPUMatch ? "VS CPU" : "Custom"}</strong>
           </MatchModeChip>
         </TopRight>
       </MatchCardBar>
@@ -2146,16 +2244,37 @@ const Lobby = ({
         <VSWordmark>VS</VSWordmark>
 
         {renderFighter("right")}
+
+        {/*
+         * CPU skill card lives at the Stage level rather than inside
+         * the right FighterColumn so it positions absolutely against
+         * the Stage frame instead of the column's flex flow. Only
+         * shown for CPU matches; PvP gets the symmetric two-column
+         * layout with no extra chrome.
+         */}
+        {isCPUMatch && renderDifficultyCard()}
       </Stage>
 
       <BottomDeck>
         {renderCustomizeArea()}
 
-        <DeckDivider />
+        {/*
+         * DeckDivider + ActionArea only render when both fighter
+         * slots are filled. Previously, when alone, this position
+         * showed a "Waiting for an opponent…" placeholder — but
+         * with the empty-slot silhouette + "Waiting…" caption
+         * already telegraphing the same thing in the Stage above,
+         * the bottom-corner text was a fourth redundant "waiting"
+         * signal. Hiding the entire action region instead lets
+         * the empty-slot stage state be the single source of truth
+         * and gives the room for the Ready button to "appear" as a
+         * meaningful reveal moment when the second player joins.
+         */}
+        {canShowReadyButton && (
+          <>
+            <DeckDivider />
 
-        <ActionArea>
-          {canShowReadyButton ? (
-            <>
+            <ActionArea>
               {ready ? (
                 <CancelButton
                   data-action="cancel"
@@ -2192,11 +2311,9 @@ const Lobby = ({
                   </ReadyChipCount>
                 </ReadyChip>
               )}
-            </>
-          ) : (
-            <ReadyPlaceholder>Waiting for an opponent…</ReadyPlaceholder>
-          )}
-        </ActionArea>
+            </ActionArea>
+          </>
+        )}
       </BottomDeck>
     </LobbyContainer>
   );

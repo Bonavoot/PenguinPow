@@ -55,7 +55,18 @@ const Panel = styled.div`
   max-height: 88cqh;
   display: flex;
   flex-direction: column;
-  background: ${C.snowPanel};
+  /*
+   * Panel surface uses the COOLER snowPanelDeep tone (was snowPanel /
+   * pure white). Reasoning: dropping a pure-white modal in front of
+   * the dark-game world made the whole browser read as a blasted
+   * SaaS card — we wanted "lighter than the in-game HUD" but landed
+   * on "blinding". snowPanelDeep is one step into the icy palette,
+   * so it still reads as light + cool (in the same Hokkaido-winter
+   * family as the main menu's snow page surface) but has enough
+   * tonal weight to ground the sumi header band and let the white
+   * room-card tiles inside POP as the brightest element on screen.
+   */
+  background: ${C.snowPanelDeep};
   border: 1px solid ${C.snowBorder};
   border-radius: 3px;
   box-shadow: 0 18px 38px rgba(15, 29, 46, 0.28);
@@ -197,7 +208,13 @@ const ListMeta = styled.div`
   gap: 10px;
   padding: clamp(10px, 1.4cqh, 14px) clamp(22px, 3cqw, 36px);
   border-bottom: 1px solid ${C.snowBorderSoft};
-  background: ${C.snowSoft};
+  /*
+   * snowFrost — the coldest of the snow tones, intended exactly for
+   * "header bands" per the design tokens. Gives the meta strip its
+   * own physical zone between the dark sumi header and the room
+   * list, instead of dissolving into the snowPanelDeep body.
+   */
+  background: ${C.snowFrost};
   font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
   font-size: clamp(0.45rem, 0.72cqw, 0.55rem);
@@ -237,7 +254,14 @@ const RoomListContainer = styled.div`
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: ${C.snow};
+  /*
+   * Match the Panel body tone (snowPanelDeep). The list lane is the
+   * page surface for the room-card tiles to sit on, and using the
+   * same icy mid-tone here means the open white tiles read as raised
+   * elements on a single continuous icy field rather than as a third
+   * stacked surface inside another white box.
+   */
+  background: ${C.snowPanelDeep};
 `;
 
 const RoomList = styled.div`
@@ -253,7 +277,9 @@ const RoomList = styled.div`
     width: 8px;
   }
   &::-webkit-scrollbar-track {
-    background: ${C.snowPanelDeep};
+    /* Frost track — sits one step darker than the new
+     * snowPanelDeep list lane so the gutter is still readable. */
+    background: ${C.snowFrost};
   }
   &::-webkit-scrollbar-thumb {
     background: ${C.iceMid};

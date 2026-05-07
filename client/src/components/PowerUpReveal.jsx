@@ -2,374 +2,355 @@ import { useState, useEffect, useContext, useMemo, useRef } from "react";
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
 import { SocketContext } from "../SocketContext";
+import { C } from "./menuTheme";
 import powerWaterIcon from "../assets/power-water.png";
 import snowballImage from "../assets/snowball.png";
 import pumoArmyIcon from "./pumo-army-icon.png";
 import happyFeetIcon from "../assets/happy-feet.png";
 import thickBlubberIcon from "../assets/thick-blubber-icon.png";
 
+/*
+ * PowerUpReveal — colored tile pickup card per side.
+ *
+ * THE THIRD PASS (vs. the previous "naked icon + colored
+ *   underline" pass):
+ *
+ *   The previous pass put the power-color identity on a thin
+ *   underline beneath the power-up name and left the icon
+ *   completely naked. Two issues with that:
+ *
+ *     1. The icon felt orphaned. Asset, drop shadow, then
+ *        empty space — there was nothing visually grouping
+ *        the icon and the type identity together. The color
+ *        was carried entirely by a 3px line several pixels
+ *        below the icon, so the icon read as decorative
+ *        rather than as the power's primary face.
+ *     2. The YOU/OPP caption color choice was inverted from
+ *        what the moment actually IS. The previous pass put
+ *        YOU in vermillion (the loud color) and OPP in cream
+ *        (the quiet color). But the surprise of the reveal
+ *        is what your OPPONENT picked — you already know
+ *        what you picked. The opponent's pick deserves the
+ *        loud color treatment, yours doesn't.
+ *
+ *   This pass:
+ *     - The power-color identity moves OFF the underline and
+ *       ONTO the icon's background. Each pick gets a colored
+ *       tile (sharp corners, faint inset bevel + drop shadow,
+ *       like a physical pickup card resting on the arena)
+ *       holding the icon. No more separate underline element
+ *       — the tile IS the color identity.
+ *     - The YOU/OPP label moves INTO the tile, sitting at
+ *       the top with the icon centered in the remaining
+ *       space below it. Same vocabulary as PowerUpSelection's
+ *       card-header band: a colored zone with a label and
+ *       icon, sized smaller and used as a single tile rather
+ *       than a card top-stripe.
+ *     - YOU is cream (the neutral subject — confirmation of
+ *       what you already know). OPP is vermillion-bright
+ *       (the loud highlight — the surprise reveal of what
+ *       you DIDN'T know).
+ *     - Clusters move slightly inward (~6cqw from each edge
+ *       instead of the previous ~3.5cqw). Pinning them to
+ *       the extreme edges read as "screen chrome"; nudging
+ *       them inward reads as "two pickups on the arena".
+ *
+ * STRUCTURE per cluster:
+ *
+ *       ┌──────────────┐
+ *       │     YOU      │   ← label inside tile, top
+ *       │              │
+ *       │    [icon]    │   ← icon centered in remaining space
+ *       │              │
+ *       └──────────────┘
+ *         POWER WATER     ← name in big Bungee, cream stencil
+ *                           stroke, sits BELOW the tile
+ *
+ *   Local cluster anchored to the LEFT edge with content
+ *   center-aligned within the cluster. Opponent cluster
+ *   mirrored on the RIGHT. The local always sits left
+ *   regardless of P1/P2 seat — reads from your POV at a
+ *   glance.
+ *
+ * MOTION:
+ *   Local cluster slides in from the LEFT edge (the West-
+ *   side wrestler entrance), opponent cluster from the RIGHT
+ *   edge (East-side). Pure translateX + opacity, no
+ *   rotation, no overshoot. Once they land, nothing loops.
+ *   After ~2.4s both fade up off-screen as a single beat.
+ *
+ * COLOR BUDGET:
+ *   Cream Bungee names + sumi stencil strokes + cream YOU
+ *   stamp + vermillion OPP stamp + the two functional
+ *   power-type tiles. No gold, no dark brown, no panel
+ *   chrome, no underline rule.
+ */
+
+// ============================================
+// POWER-TYPE COLORS
+// ============================================
+
+/*
+ * Same five-color set PowerUpSelection's card-header bands
+ * use, plus a deep variant per color for the tile's bottom-
+ * edge bevel. The player learns "this color = this power"
+ * once during selection; the tile color here pays off that
+ * learning during the reveal.
+ */
+const TYPE_COLORS = {
+  speed: { main: "#00d2ff", deep: "#005f80" },
+  power: { main: "#ff4444", deep: "#7a1c1c" },
+  snowball: { main: "#74b9ff", deep: "#2a4a78" },
+  pumo_army: { main: "#ffaa44", deep: "#8a5418" },
+  thick_blubber: { main: "#aa77ff", deep: "#4a2c8a" },
+};
+
+const FALLBACK_TYPE = { main: C.gold, deep: C.goldDeep };
+
+const getTypeColor = (type) => TYPE_COLORS[type] || FALLBACK_TYPE;
+
 // ============================================
 // ANIMATIONS
 // ============================================
 
-const screenFlash = keyframes`
-  0% { opacity: 0; }
-  10% { opacity: 0.4; }
-  100% { opacity: 0; }
-`;
-
-const slamInLeft = keyframes`
-  0% {
-    transform: translateX(-120%) rotate(-15deg) scale(1.3);
+const enterFromLeft = keyframes`
+  from {
     opacity: 0;
+    transform: translateX(-44px);
   }
-  50% {
-    transform: translateX(10%) rotate(3deg) scale(1.05);
+  to {
     opacity: 1;
-  }
-  70% {
-    transform: translateX(-3%) rotate(-1deg) scale(1);
-  }
-  100% {
-    transform: translateX(0) rotate(0deg) scale(1);
-    opacity: 1;
+    transform: translateX(0);
   }
 `;
 
-const slamInRight = keyframes`
-  0% {
-    transform: translateX(120%) rotate(15deg) scale(1.3);
+const enterFromRight = keyframes`
+  from {
     opacity: 0;
+    transform: translateX(44px);
   }
-  50% {
-    transform: translateX(-10%) rotate(-3deg) scale(1.05);
+  to {
     opacity: 1;
-  }
-  70% {
-    transform: translateX(3%) rotate(1deg) scale(1);
-  }
-  100% {
-    transform: translateX(0) rotate(0deg) scale(1);
-    opacity: 1;
+    transform: translateX(0);
   }
 `;
 
-const vsAppear = keyframes`
-  0% {
-    transform: scale(0) rotate(-180deg);
-    opacity: 0;
-  }
-  60% {
-    transform: scale(1.3) rotate(10deg);
+const exitUp = keyframes`
+  from {
     opacity: 1;
-  }
-  80% {
-    transform: scale(0.9) rotate(-5deg);
-  }
-  100% {
-    transform: scale(1) rotate(0deg);
-    opacity: 1;
-  }
-`;
-
-const glowPulse = keyframes`
-  0%, 100% {
-    filter: drop-shadow(0 0 10px var(--glow-color)) 
-            drop-shadow(0 0 20px var(--glow-color));
-  }
-  50% {
-    filter: drop-shadow(0 0 20px var(--glow-color)) 
-            drop-shadow(0 0 40px var(--glow-color))
-            drop-shadow(0 0 60px var(--glow-color));
-  }
-`;
-
-const particleFloat = keyframes`
-  0% {
-    transform: translateY(0) scale(1);
-    opacity: 1;
-  }
-  100% {
-    transform: translateY(-80px) scale(0);
-    opacity: 0;
-  }
-`;
-
-const slideOut = keyframes`
-  0% {
-    transform: translateY(0) scale(1);
-    opacity: 1;
-  }
-  100% {
-    transform: translateY(-30px) scale(0.9);
-    opacity: 0;
-  }
-`;
-
-const playerLabelAppear = keyframes`
-  0% {
-    transform: translateY(-20px);
-    opacity: 0;
-  }
-  100% {
     transform: translateY(0);
-    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-14px);
   }
 `;
 
 // ============================================
-// STYLED COMPONENTS
+// LAYOUT
 // ============================================
 
 const RevealOverlay = styled.div`
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
+  inset: 0;
   z-index: 10000;
   pointer-events: none;
-  
-  ${props => props.$isExiting && css`
-    animation: ${slideOut} 0.4s ease-in forwards;
-  `}
 `;
 
-const FlashOverlay = styled.div`
+/*
+ * Cluster anchored to its SEAT side — left cluster is always
+ * the player1 seat, right cluster is always the player2 seat.
+ * This matches the rest of the in-game UI's spatial model:
+ *   - HUD nameplates (PLAYER 1 left, PLAYER 2 right)
+ *   - The "You ▼" indicator that floats above the local
+ *     player's sprite wherever they are on the dohyo
+ *   - The actual penguin sprite positions
+ *
+ * The LOCAL/OPP distinction is now carried by the TileLabel
+ * (YOU vs OPP, and the cream/vermillion color swap), NOT by
+ * the cluster's screen position. So in a PvP match where the
+ * local player happens to be P2, the YOU tile correctly sits
+ * on the RIGHT — matching where their penguin is — instead
+ * of being forced to the left as in the previous pass.
+ *
+ * `$isLeft` drives position and entrance direction (P1 enters
+ * from West, P2 enters from East — same wrestler-entrance
+ * choreography). `$isLocal` is independent and only controls
+ * the label content + color inside the tile.
+ */
+const Cluster = styled.div`
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(135deg, #fff 0%, #d4af37 100%);
-  animation: ${screenFlash} 0.5s ease-out forwards;
-  pointer-events: none;
-`;
-
-const RevealContainer = styled.div`
-  --player-card-width: clamp(68px, 10.2cqw, 118px);
-  margin-top: clamp(56px, 17.2cqh, 124px);
-  width: fit-content;
-  max-width: 96cqw;
-  display: grid;
-  grid-template-columns: var(--player-card-width) auto var(--player-card-width);
-  align-items: center;
-  column-gap: clamp(4px, 0.7cqw, 8px);
-  padding: clamp(9px, 1.35cqh, 13px) clamp(8px, 0.95cqw, 12px);
-  background: linear-gradient(180deg,
-    rgba(20, 10, 5, 0.9) 0%,
-    rgba(45, 21, 16, 0.86) 50%,
-    rgba(20, 10, 5, 0.9) 100%
-  );
-  border: 2px solid rgba(212, 175, 55, 0.65);
-  border-radius: clamp(10px, 1.1cqw, 16px);
-  box-shadow: 
-    0 8px 28px rgba(0, 0, 0, 0.55),
-    0 0 18px rgba(212, 175, 55, 0.2),
-    inset 0 0 30px rgba(0, 0, 0, 0.36);
-  position: relative;
-  overflow: visible;
-  
-  &::before {
-    content: "";
-    position: absolute;
-    top: 6px;
-    left: 6px;
-    right: 6px;
-    bottom: 6px;
-    border: 1px solid rgba(212, 175, 55, 0.22);
-    border-radius: clamp(8px, 0.9cqw, 12px);
-    pointer-events: none;
-  }
-  
-  @media (max-width: 700px) {
-    max-width: 96cqw;
-    column-gap: clamp(4px, 0.65cqw, 8px);
-    padding: clamp(7px, 1cqh, 10px) clamp(6px, 0.7cqw, 9px);
-    border-width: 2px;
-  }
-`;
-
-const getTypeColor = (type) => {
-  switch (type) {
-    case "speed": return { main: "#00d2ff", dark: "#006688", glow: "rgba(0, 210, 255, 0.6)" };
-    case "power": return { main: "#ff4444", dark: "#882222", glow: "rgba(255, 68, 68, 0.6)" };
-    case "snowball": return { main: "#74b9ff", dark: "#3366aa", glow: "rgba(116, 185, 255, 0.6)" };
-    case "pumo_army": return { main: "#ffaa44", dark: "#996622", glow: "rgba(255, 170, 68, 0.6)" };
-    case "thick_blubber": return { main: "#aa77ff", dark: "#553399", glow: "rgba(170, 119, 255, 0.6)" };
-    default: return { main: "#d4af37", dark: "#8b7355", glow: "rgba(212, 175, 55, 0.6)" };
-  }
-};
-
-const PlayerCard = styled.div`
-  --glow-color: ${props => getTypeColor(props.$powerUpType).glow};
-  
-  display: grid;
-  grid-template-rows: auto auto auto;
-  justify-items: center;
-  align-items: center;
-  row-gap: clamp(3px, 0.45cqh, 6px);
-  min-width: 0;
-  width: 100%;
-  animation: ${props => props.$isPlayer1 ? slamInLeft : slamInRight} 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-  animation-delay: ${props => props.$isPlayer1 ? '0.1s' : '0.2s'};
-  opacity: 0;
-  position: relative;
-`;
-
-const PlayerLabel = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.55rem, 1.1cqw, 0.85rem);
-  color: ${props => props.$isPlayer1 ? '#00d2ff' : '#ff6b6b'};
-  text-transform: uppercase;
-  letter-spacing: 0.15em;
-  margin-bottom: 0;
-  text-shadow: 
-    2px 2px 0 #000,
-    0 0 10px ${props => props.$isPlayer1 ? 'rgba(0, 210, 255, 0.5)' : 'rgba(255, 107, 107, 0.5)'};
-  animation: ${playerLabelAppear} 0.4s ease-out forwards;
-  animation-delay: ${props => props.$isPlayer1 ? '0.5s' : '0.6s'};
-  opacity: 0;
-  
-  @media (max-width: 600px) {
-    font-size: clamp(0.45rem, 1.8cqw, 0.7rem);
-    margin-bottom: clamp(4px, 0.8cqh, 8px);
-  }
-`;
-
-const IconContainer = styled.div`
-  width: clamp(24px, 3.9cqw, 38px);
-  height: clamp(24px, 3.9cqw, 38px);
-  background: linear-gradient(135deg,
-    ${props => getTypeColor(props.$powerUpType).main} 0%,
-    ${props => getTypeColor(props.$powerUpType).dark} 100%
-  );
-  border: 2px solid #000;
-  border-radius: clamp(4px, 0.6cqw, 8px);
+  /* Vertical position matches SumoAnnouncementBanner so the
+     two side callouts share the same eye-line — reveal at
+     round start and the in-game announcement banners both
+     land at the same height in your peripheral. */
+  top: clamp(220px, 38cqh, 290px);
+  ${(p) =>
+    p.$isLeft
+      ? css`
+          left: clamp(40px, 6cqw, 96px);
+        `
+      : css`
+          right: clamp(40px, 6cqw, 96px);
+        `}
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  margin-bottom: 0;
-  box-shadow: 
-    inset 0 2px 4px rgba(255, 255, 255, 0.3),
-    inset 0 -2px 4px rgba(0, 0, 0, 0.3),
-    0 3px 8px rgba(0, 0, 0, 0.4);
-  position: relative;
-  overflow: hidden;
-  
-  img {
-    width: 65%;
-    height: 65%;
-    object-fit: contain;
-    filter: drop-shadow(1px 1px 2px rgba(0, 0, 0, 0.5));
-    position: relative;
-    z-index: 1;
-  }
-  
-  &::after {
-    content: "";
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: linear-gradient(
-      45deg,
-      transparent 40%,
-      rgba(255, 255, 255, 0.15) 50%,
-      transparent 60%
-    );
-    animation: shimmer 3s ease-in-out infinite;
-  }
-  
-  @keyframes shimmer {
-    0% { transform: translateX(-100%) rotate(45deg); }
-    100% { transform: translateX(100%) rotate(45deg); }
-  }
-  
-  @media (max-width: 600px) {
-    width: clamp(22px, 5.4cqw, 34px);
-    height: clamp(22px, 5.4cqw, 34px);
-    margin-bottom: clamp(2px, 0.35cqh, 4px);
-    border-width: 2px;
+  gap: clamp(6px, 0.9cqh, 10px);
+  max-width: 38cqw;
+  width: max-content;
+  opacity: 0;
+  animation: ${(p) => (p.$isLeft ? enterFromLeft : enterFromRight)}
+    0.4s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+  animation-delay: ${(p) => (p.$isLeft ? "0.05s" : "0.18s")};
+  will-change: transform, opacity;
+
+  ${(p) =>
+    p.$isExiting &&
+    css`
+      animation: ${exitUp} 0.32s ease-in forwards;
+      animation-delay: 0s;
+    `}
+
+  @media (max-width: 700px) {
+    top: clamp(170px, 32cqh, 240px);
+    max-width: 44cqw;
+    ${(p) =>
+      p.$isLeft
+        ? css`
+            left: clamp(30px, 7cqw, 64px);
+          `
+        : css`
+            right: clamp(30px, 7cqw, 64px);
+          `}
   }
 `;
 
-const PowerUpName = styled.div`
+/*
+ * The colored tile. Sharp corners (printed-program canon),
+ * filled with the power-type's main color, with:
+ *   - inset 1px cream highlight at the top edge (catches
+ *     light, gives the tile a "pressed" feel rather than a
+ *     flat painted slab)
+ *   - inset 2px deep-color shadow at the bottom edge (the
+ *     same trick PowerUpSelection's CardHeader uses to mark
+ *     a chunky bottom bevel without needing a separate
+ *     element)
+ *   - a chunky 5px solid drop shadow in near-black, plus a
+ *     soft 18px ambient drop shadow — together these make
+ *     the tile read as a physical card resting on the arena
+ *     rather than as a flat UI plate floating in front of it.
+ *
+ * Layout inside the tile is column-flex with the label
+ * pinned to the top and the icon centered in the remaining
+ * space via auto vertical margins on the icon — clean stack
+ * without needing intermediate wrapper divs.
+ */
+const IconTile = styled.div`
+  width: clamp(56px, 6.8cqw, 76px);
+  height: clamp(66px, 8.2cqh, 86px);
+  background: ${(p) => getTypeColor(p.$type).main};
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: clamp(4px, 0.65cqh, 6px) clamp(3px, 0.4cqw, 5px)
+    clamp(5px, 0.75cqh, 8px);
+  box-shadow:
+    inset 0 -2px 0 ${(p) => getTypeColor(p.$type).deep},
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 3px 0 rgba(0, 0, 0, 0.42),
+    0 5px 11px rgba(0, 0, 0, 0.5);
+  position: relative;
+
+  @media (max-width: 700px) {
+    width: clamp(48px, 8.5cqw, 64px);
+    height: clamp(58px, 10.5cqh, 72px);
+  }
+`;
+
+/*
+ * YOU / OPP label, sitting INSIDE the tile at the top.
+ *
+ * YOU is cream — the neutral subject of the reveal (you
+ * already know what you picked, no surprise to highlight).
+ * OPP is vermillion-bright — the LOUD color, drawing the
+ * eye to the surprise of what your opponent went with.
+ * This is inverted from the previous pass where YOU was
+ * vermillion; the new mapping is correct because the
+ * surprise of the reveal lives on the opponent's side.
+ *
+ * The sumi stencil stroke around the label is what keeps
+ * vermillion legible against the red Power Water tile, the
+ * cyan Happy Feet tile, etc. — the dark outline guarantees
+ * the text reads regardless of which color tile it sits on.
+ */
+const TileLabel = styled.span`
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 700;
+  font-size: clamp(0.42rem, 0.74cqw, 0.58rem);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: ${(p) => (p.$isLocal ? C.cream : C.vermillionBright)};
+  text-shadow:
+    -1px 0 0 ${C.sumi}, 1px 0 0 ${C.sumi},
+    0 -1px 0 ${C.sumi}, 0 1px 0 ${C.sumi},
+    0 1px 0 rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+
+  @media (max-width: 700px) {
+    font-size: clamp(0.36rem, 1.2cqw, 0.5rem);
+    letter-spacing: 0.16em;
+  }
+`;
+
+/*
+ * Icon centered in the remaining vertical space below the
+ * label. `margin: auto 0` is the cleanest way to vertically
+ * center inside the column flex without adding a wrapper
+ * div — the auto margins absorb whatever space is left
+ * between the top-pinned label and the bottom padding.
+ */
+const TileIcon = styled.img`
+  width: clamp(34px, 4.4cqw, 48px);
+  height: clamp(34px, 4.4cqw, 48px);
+  object-fit: contain;
+  margin: auto 0;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5));
+
+  @media (max-width: 700px) {
+    width: clamp(30px, 5.6cqw, 40px);
+    height: clamp(30px, 5.6cqw, 40px);
+  }
+`;
+
+/*
+ * Power-up name. Big cream Bungee with a sumi stencil
+ * stroke + soft halo so it reads as broadcast-SFX text
+ * against any arena content underneath. Same legibility
+ * recipe PowerUpReveal has used since the second pass —
+ * the only thing that changed in this pass is that the
+ * name no longer has a colored underline beneath it
+ * (color identity is now carried by the tile above).
+ */
+const Name = styled.span`
   font-family: "Bungee", cursive;
-  font-size: clamp(0.5rem, 0.95cqw, 0.7rem);
-  color: ${props => getTypeColor(props.$powerUpType).main};
+  font-size: clamp(0.72rem, 1.3cqw, 1.05rem);
+  color: ${C.cream};
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  text-align: center;
-  line-height: 1.05;
-  margin-bottom: 0;
-  text-shadow: 
-    2px 2px 0 #000,
-    0 0 10px ${props => getTypeColor(props.$powerUpType).glow};
+  line-height: 1;
   white-space: nowrap;
-  width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  
-  @media (max-width: 600px) {
-    font-size: clamp(0.4rem, 1.6cqw, 0.58rem);
+  text-shadow:
+    -1.5px 0 0 ${C.sumi}, 1.5px 0 0 ${C.sumi},
+    0 -1.5px 0 ${C.sumi}, 0 1.5px 0 ${C.sumi},
+    -1.5px -1.5px 0 ${C.sumi}, 1.5px -1.5px 0 ${C.sumi},
+    -1.5px 1.5px 0 ${C.sumi}, 1.5px 1.5px 0 ${C.sumi},
+    0 3px 0 rgba(0, 0, 0, 0.55),
+    0 0 12px rgba(0, 0, 0, 0.6);
+
+  @media (max-width: 700px) {
+    font-size: clamp(0.62rem, 2cqw, 0.85rem);
   }
-`;
-
-const VSContainer = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  align-self: center;
-  animation: ${vsAppear} 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-  animation-delay: 0.3s;
-  opacity: 0;
-`;
-
-const VSText = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.95rem, 2.4cqw, 1.6rem);
-  color: #d4af37;
-  padding: clamp(3px, 0.45cqh, 6px) clamp(6px, 0.9cqw, 11px);
-  border-radius: 6px;
-  border: 1px solid rgba(212, 175, 55, 0.35);
-  background: linear-gradient(180deg, rgba(10, 14, 30, 0.55) 0%, rgba(10, 14, 30, 0.2) 100%);
-  text-shadow: 
-    3px 3px 0 #000,
-    -2px -2px 0 #000,
-    2px -2px 0 #000,
-    -2px 2px 0 #000,
-    0 0 20px rgba(212, 175, 55, 0.6);
-  letter-spacing: 0.1em;
-  
-  @media (max-width: 600px) {
-    font-size: clamp(0.72rem, 3.2cqw, 1.2rem);
-  }
-`;
-
-const ParticleContainer = styled.div`
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-`;
-
-const Particle = styled.div`
-  position: absolute;
-  width: ${props => props.$size}px;
-  height: ${props => props.$size}px;
-  background: ${props => props.$color};
-  border-radius: 50%;
-  animation: ${particleFloat} ${props => props.$duration}s ease-out forwards;
-  animation-delay: ${props => props.$delay}s;
-  left: ${props => props.$x}px;
-  top: ${props => props.$y}px;
-  box-shadow: 0 0 ${props => props.$size * 2}px ${props => props.$color};
 `;
 
 // ============================================
@@ -383,35 +364,16 @@ const PowerUpReveal = ({ roomId, localId }) => {
   const [revealData, setRevealData] = useState(null);
   const revealTimeoutsRef = useRef([]);
 
-  const powerUpInfo = useMemo(() => ({
-    speed: { name: "Happy Feet", icon: happyFeetIcon, isActive: false },
-    power: { name: "Power Water", icon: powerWaterIcon, isActive: false },
-    snowball: { name: "Snowball", icon: snowballImage, isActive: true },
-    pumo_army: { name: "Pumo Army", icon: pumoArmyIcon, isActive: true },
-    thick_blubber: { name: "Thick Blubber", icon: thickBlubberIcon, isActive: false },
-  }), []);
-
-  // Generate particles for the reveal effect
-  const particles = useMemo(() => {
-    if (!revealData) return [];
-    
-    const colors = [
-      getTypeColor(revealData.player1.powerUpType).main,
-      getTypeColor(revealData.player2.powerUpType).main,
-      '#d4af37',
-      '#fff'
-    ];
-    
-    return Array.from({ length: 20 }, (_, i) => ({
-      id: i,
-      x: (Math.random() - 0.5) * 200,
-      y: (Math.random() - 0.5) * 100,
-      size: 3 + Math.random() * 6,
-      color: colors[Math.floor(Math.random() * colors.length)],
-      duration: 0.8 + Math.random() * 0.6,
-      delay: 0.4 + Math.random() * 0.3,
-    }));
-  }, [revealData]);
+  const powerUpInfo = useMemo(
+    () => ({
+      speed: { name: "Happy Feet", icon: happyFeetIcon },
+      power: { name: "Power Water", icon: powerWaterIcon },
+      snowball: { name: "Snowball", icon: snowballImage },
+      pumo_army: { name: "Pumo Army", icon: pumoArmyIcon },
+      thick_blubber: { name: "Thick Blubber", icon: thickBlubberIcon },
+    }),
+    []
+  );
 
   useEffect(() => {
     const handlePowerUpsRevealed = (data) => {
@@ -428,11 +390,11 @@ const PowerUpReveal = ({ roomId, localId }) => {
       revealTimeoutsRef.current.push(
         setTimeout(() => {
           setIsExiting(true);
-        }, 2500),
+        }, 2400),
         setTimeout(() => {
           setIsVisible(false);
           setRevealData(null);
-        }, 2900)
+        }, 2760)
       );
     };
 
@@ -457,61 +419,45 @@ const PowerUpReveal = ({ roomId, localId }) => {
 
   if (!isVisible || !revealData) return null;
 
-  const player1Info = powerUpInfo[revealData.player1.powerUpType];
-  const player2Info = powerUpInfo[revealData.player2.powerUpType];
-
-  // Determine if local player is P1 or P2 for label highlighting
+  /*
+   * Cluster position is locked to the SEAT (P1=left, P2=right)
+   * to match the rest of the in-game UI — HUD nameplates, the
+   * floating "You ▼" indicator, and the actual penguin sprite
+   * positions. The YOU vs OPP label is then chosen per-cluster
+   * based on which seat the local client is occupying.
+   *
+   * In a 1v1 PvP match where you're seated as P2, the YOU tile
+   * correctly appears on the RIGHT — directly above where your
+   * penguin is standing — instead of being forced to the left
+   * as in the previous pass.
+   */
   const isLocalP1 = revealData.player1.playerId === localId;
+  const p1Info = powerUpInfo[revealData.player1.powerUpType];
+  const p2Info = powerUpInfo[revealData.player2.powerUpType];
 
   return (
-    <RevealOverlay $isExiting={isExiting}>
-      <FlashOverlay />
-      <RevealContainer>
-        <ParticleContainer>
-          {particles.map(p => (
-            <Particle
-              key={p.id}
-              $x={p.x}
-              $y={p.y}
-              $size={p.size}
-              $color={p.color}
-              $duration={p.duration}
-              $delay={p.delay}
-            />
-          ))}
-        </ParticleContainer>
+    <RevealOverlay>
+      {/* LEFT seat — Player 1 (West-side entrance) */}
+      <Cluster $isLeft={true} $isExiting={isExiting}>
+        <IconTile $type={revealData.player1.powerUpType}>
+          <TileLabel $isLocal={isLocalP1}>
+            {isLocalP1 ? "You" : "Opp"}
+          </TileLabel>
+          <TileIcon src={p1Info?.icon} alt={p1Info?.name} />
+        </IconTile>
+        <Name>{p1Info?.name}</Name>
+      </Cluster>
 
-        {/* Player 1 Card */}
-        <PlayerCard $isPlayer1={true} $powerUpType={revealData.player1.powerUpType}>
-          <PlayerLabel $isPlayer1={true}>
-            {isLocalP1 ? "YOU" : "P1"}
-          </PlayerLabel>
-          <IconContainer $powerUpType={revealData.player1.powerUpType}>
-            <img src={player1Info?.icon} alt={player1Info?.name} />
-          </IconContainer>
-          <PowerUpName $powerUpType={revealData.player1.powerUpType}>
-            {player1Info?.name}
-          </PowerUpName>
-        </PlayerCard>
-
-        {/* VS Badge */}
-        <VSContainer>
-          <VSText>VS</VSText>
-        </VSContainer>
-
-        {/* Player 2 Card */}
-        <PlayerCard $isPlayer1={false} $powerUpType={revealData.player2.powerUpType}>
-          <PlayerLabel $isPlayer1={false}>
-            {!isLocalP1 ? "YOU" : "P2"}
-          </PlayerLabel>
-          <IconContainer $powerUpType={revealData.player2.powerUpType}>
-            <img src={player2Info?.icon} alt={player2Info?.name} />
-          </IconContainer>
-          <PowerUpName $powerUpType={revealData.player2.powerUpType}>
-            {player2Info?.name}
-          </PowerUpName>
-        </PlayerCard>
-      </RevealContainer>
+      {/* RIGHT seat — Player 2 (East-side entrance) */}
+      <Cluster $isLeft={false} $isExiting={isExiting}>
+        <IconTile $type={revealData.player2.powerUpType}>
+          <TileLabel $isLocal={!isLocalP1}>
+            {!isLocalP1 ? "You" : "Opp"}
+          </TileLabel>
+          <TileIcon src={p2Info?.icon} alt={p2Info?.name} />
+        </IconTile>
+        <Name>{p2Info?.name}</Name>
+      </Cluster>
     </RevealOverlay>
   );
 };

@@ -646,7 +646,11 @@ const Game = ({
           <CrowdLayer crowdEvent={crowdEvent} />
           <div className="dohyo-overlay"></div>
           <ParticleProvider>
-            <div className="ui">
+            <div
+              className={`ui${
+                showPreMatchScreen ? " is-prematch-hidden" : ""
+              }`}
+            >
               {currentRoom.players
                 .filter((player) => player.id !== "disconnected_placeholder")
                 .map((player, i) => {
@@ -670,6 +674,7 @@ const Game = ({
                       playerBodyColor={
                         i === 0 ? player1BodyColor : player2BodyColor
                       }
+                      isCPUMatch={isCPUMatch}
                     />
                   );
                 })}

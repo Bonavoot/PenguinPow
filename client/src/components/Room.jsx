@@ -36,16 +36,25 @@ const RoomCard = styled.div`
   gap: clamp(14px, 2cqw, 22px);
   padding: clamp(12px, 1.7cqh, 18px) clamp(18px, 2.4cqw, 26px);
   /*
-   * Snow plaque rows. Joinable = clean white tile with green left
-   * rule + green accent dot + subtle pulse animation. Full = the
-   * one-step-darker secondary surface so it visually recedes.
+   * Snow plaque rows. Joinable = clean white tile (snowPanel) so the
+   * card POPS as the brightest, most-actionable element on the new
+   * snowPanelDeep modal lane behind it. Full = snowFrost (one step
+   * DARKER than the lane) so the card reads as recessed/sunken
+   * rather than just a duplicate surface — the room is closed, the
+   * tile sits below the surrounding snow line.
+   *
+   * Previously full used snowPanelDeep, but now that the Rooms
+   * Panel/RoomListContainer were pulled down to snowPanelDeep
+   * themselves (to fix the "too white" feel), full cards on that
+   * tone would disappear into the lane. Pulling them to snowFrost
+   * keeps them visible AND clearly recessed.
+   *
    * Single short cool drop shadow — no inset highlights, no gradient
    * stripes. The clip-path angle on the right gives these rows
    * their blade-card character without depending on stacked effects.
    */
-  background: ${(p) => (p.$isFull ? C.snowPanelDeep : C.snowPanel)};
-  border: 1px solid
-    ${(p) => (p.$isFull ? C.snowBorder : C.snowBorder)};
+  background: ${(p) => (p.$isFull ? C.snowFrost : C.snowPanel)};
+  border: 1px solid ${C.snowBorder};
   border-left: 3px solid var(--accent);
   border-radius: 2px;
   transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease,
@@ -152,8 +161,12 @@ const StatusBadge = styled.div`
   ${(p) =>
     p.$isFull
       ? css`
+          /* Snow tone (was snowPanelDeep) — sits one step lighter
+           * than the recessed full-card body (snowFrost), so the
+           * Full pill still has a hint of contrast against the tile
+           * it lives on rather than disappearing into it. */
           color: ${C.inkTextMute};
-          background: ${C.snowPanelDeep};
+          background: ${C.snow};
           border: 1px solid ${C.snowBorder};
         `
       : css`
@@ -191,8 +204,12 @@ const JoinButton = styled.button`
   ${(p) =>
     p.$isFull
       ? css`
+          /* Disabled full-state button — snow (was snowPanelDeep)
+           * to match the StatusBadge above it, so the right edge
+           * of the card has a consistent "ghosted/locked" treatment
+           * sitting on the recessed snowFrost tile body. */
           color: ${C.inkTextMute};
-          background: ${C.snowPanelDeep};
+          background: ${C.snow};
           border: 1px solid ${C.snowBorder};
           opacity: 0.7;
         `

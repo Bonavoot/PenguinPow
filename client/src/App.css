@@ -431,6 +431,26 @@ body {
   pointer-events: none;
 }
 
+/* While the prematch screen is up, also hide the live player sprite
+   layer (.ui contains the GameFighter components — and only those).
+   This is the bug-fix counterpart to the prematch's opaque cream
+   wrestler cards: even though the cards are now opaque, the sprite
+   recolor pass takes a moment to finish, so the default un-recolored
+   penguins were briefly visible during fade-in. Hiding .ui at the CSS
+   layer guarantees zero bleed-through regardless of recolor timing.
+   Game logic, physics, and prediction continue to run normally
+   because visibility/opacity are render-only — DOM/JS state is
+   unaffected. The dohyo, gyoji, and crowd live OUTSIDE .ui (in
+   .dohyo-overlay, gyoji elements, and CrowdLayer respectively), so
+   they remain visible behind the prematch cards as intended. */
+.ui {
+  transition: opacity 0.35s ease-out;
+}
+.ui.is-prematch-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* Arena map — fills the scene; overflows naturally when the camera zooms in */
 .game-map {
   position: absolute;
