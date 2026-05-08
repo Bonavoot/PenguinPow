@@ -36,6 +36,7 @@ const {
   COUNTER_HIT_WINDOW_MS,
   SLAP_STARTUP_MS,
   CHARGED_STARTUP_MS,
+  GRAB_STARTUP_ARMOR_STAGGER_MS,
 } = require("./constants");
 
 const {
@@ -217,6 +218,26 @@ function checkCollision(player, otherPlayer, rooms, io) {
       if (otherPlayer.isGrabStartup && grabBeatsSlap(otherPlayer, player)) {
         return; // Grab wins — don't process slap hit, grab will connect
       }
+
+      // ── GRAB STARTUP SLAP ARMOR ─────────────────────────────────────
+      // Grab loses the timing race against this slap, but it's the defender's
+      // FIRST slap during this grab attempt — armor absorbs the hit so the
+      // grab can complete its commitment. The defender still pays the slap's
+      // normal balance/stamina drain (the armor isn't free), and the slapper's
+      // attack proceeds normally (no punish, but no "stuff the grab" reward).
+      // Charged attacks bypass armor entirely (handled separately below) —
+      // armor ONLY exists for slap. Multi-hit setups still beat grab because
+      // armor consumes after one hit.
+      if (
+        otherPlayer.isGrabStartup &&
+        !otherPlayer.grabStartupArmorUsed &&
+        !otherPlayer.isRawParrying &&
+        !eitherHasSlapParryImmunity
+      ) {
+        applyGrabStartupArmor(player, otherPlayer, rooms, io);
+        return;
+      }
+
       if (eitherHasSlapParryImmunity) return;
       processHit(player, otherPlayer, rooms, io);
     }
@@ -451,6 +472,55 @@ function resolveChargeClash(player1, player2, p1Charge, p2Charge, room, io) {
 
 // resolveSlap3Clash removed — hit 3 no longer part of slap string
 
+// ─── GRAB STARTUP SLAP ARMOR ───────────────────────────────────────────
+// Single-use absorption that lets a committed grab eat one neutral slap and
+// continue its startup. The grabber pays the slap's normal balance + stamina
+// drain, so mashing slap into grab still chips the grabber's resources — it
+// just doesn't stuff the grab outright. Multi-hit setups (slap chains, charged
+// follow-ups) still beat grab because armor is consumed after one hit.
+//
+// CRITICAL: armor also extends the remaining grab startup by a stagger window.
+// Without that, a single slap absorbs and the grab still connects on schedule —
+// since slap chain cycle (~195ms) is longer than the 180ms base startup, the
+// slapper can't fit a second slap inside the grab window, so armor becomes
+// mathematically unbeatable by slaps. The stagger opens a real "chain to break
+// armor" window and gives the slapper a beat to cancel into something else.
+function applyGrabStartupArmor(attacker, defender, rooms, io) {
+  defender.grabStartupArmorUsed = true;
+
+  // Stagger: extend grab startup so a chained slap (or sidestep / parry) can
+  // actually catch the grabber. This is the main fix for "armor too strong" —
+  // without it, single slaps were a free chip-and-lose interaction for the slapper.
+  defender.grabStartupDuration = (defender.grabStartupDuration || 0) + GRAB_STARTUP_ARMOR_STAGGER_MS;
+  defender.actionLockUntil = (defender.actionLockUntil || 0) + GRAB_STARTUP_ARMOR_STAGGER_MS;
+
+  // Defender pays the slap's normal balance + stamina drain — armor isn't free.
+  defender.balance = Math.max(0, defender.balance - BALANCE_SLAP_HIT_DRAIN);
+  defender.stamina = Math.max(0, defender.stamina - SLAP_HIT_VICTIM_STAMINA_DRAIN);
+
+  // End the attacker's slap so it doesn't re-collide on subsequent ticks.
+  // executeSlapAttack's recovery timeout will still fire and clean up cleanly
+  // (clearing already-cleared state is a no-op). Slap player still goes through
+  // their normal recovery window — they aren't punished for the hit attempt.
+  attacker.isAttacking = false;
+  attacker.attackStartTime = 0;
+  attacker.attackEndTime = 0;
+
+  const currentRoom = rooms.find((room) =>
+    room.players.some((p) => p.id === attacker.id)
+  );
+  if (currentRoom) {
+    io.in(currentRoom.id).emit("grab_armor_absorb", {
+      defenderId: defender.id,
+      attackerId: attacker.id,
+      x: defender.x,
+      y: defender.y,
+      facing: defender.facing,
+      armorId: `armor-absorb-${Date.now()}-${defender.id}`,
+    });
+  }
+}
+
 function processHit(player, otherPlayer, rooms, io) {
   const currentTime = Date.now();
 
@@ -461,6 +531,33 @@ function processHit(player, otherPlayer, rooms, io) {
 
   // Use the stored attack type instead of checking isSlapAttack
   const isSlapAttack = player.attackType === "slap";
+
+  // ── ARMOR BREAK VFX ───────────────────────────────────────────────
+  // Charged attack landing during a grab attempt's startup is the canonical
+  // "armor break" — slap armor exists, charged shatters it. This is a visual
+  // annotation of the existing rock-paper-scissors (charged > grab); the hit
+  // proceeds normally below. Skip if thick blubber will absorb the hit anyway,
+  // or if the defender is raw parrying (parry plays its own VFX).
+  if (
+    !isSlapAttack &&
+    otherPlayer.isGrabStartup &&
+    !otherPlayer.isRawParrying &&
+    !(
+      otherPlayer.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
+      !otherPlayer.hitAbsorptionUsed
+    )
+  ) {
+    if (currentRoom) {
+      io.in(currentRoom.id).emit("grab_armor_break", {
+        defenderId: otherPlayer.id,
+        attackerId: player.id,
+        x: otherPlayer.x,
+        y: otherPlayer.y,
+        facing: otherPlayer.facing,
+        breakId: `armor-break-${currentTime}-${otherPlayer.id}`,
+      });
+    }
+  }
 
   // ============================================
   // COUNTER HIT DETECTION
@@ -486,7 +583,14 @@ function processHit(player, otherPlayer, rooms, io) {
   // ============================================
   const counterHitFromAttacking = otherPlayer.isAttacking && timeSinceAttackAttempt <= COUNTER_HIT_WINDOW_MS;
   const counterHitFromIntent = timeSinceAttackIntent <= COUNTER_HIT_WINDOW_MS;
-  const counterHitFromGrabAttempt = otherPlayer.isGrabStartup === true || otherPlayer.isGrabbingMovement === true;
+  // Charged shattering grab armor has its own VFX (grab_armor_break) — don't
+  // also fire the counter-hit banner/effect, it doubles up visually. Slap
+  // stuffing grab (after armor consumed) IS still a counter hit — that's a
+  // skilled chain breaking commitment, and the boost reads correctly there.
+  const isChargedArmorBreak = !isSlapAttack &&
+    (otherPlayer.isGrabStartup === true || otherPlayer.isGrabbingMovement === true);
+  const counterHitFromGrabAttempt = !isChargedArmorBreak &&
+    (otherPlayer.isGrabStartup === true || otherPlayer.isGrabbingMovement === true);
   const counterHitFromRopeJumpStartup = otherPlayer.isRopeJumping && otherPlayer.ropeJumpPhase === "startup";
   const counterHitFromSidestepStartup = otherPlayer.isSidestepStartup === true;
   const counterHitFromDodgeStartup = otherPlayer.isDodgeStartup === true;
@@ -902,6 +1006,13 @@ function processHit(player, otherPlayer, rooms, io) {
       finalKnockbackMultiplier *= 1.25;
     }
 
+    // Armor-break punch: charged shattering grab armor isn't tagged as a
+    // counter hit (separate VFX), but it should still hit harder than a
+    // neutral charged confirm — the grabber committed hard and ate the read.
+    if (isChargedArmorBreak) {
+      finalKnockbackMultiplier *= 1.4;
+    }
+
     if (isPunish) {
       finalKnockbackMultiplier *= 1.25;
     }
@@ -1025,6 +1136,11 @@ function processHit(player, otherPlayer, rooms, io) {
           isPunish: isPunish,
           cinematicKill: isCinematicKill || false,
           knockbackDirection: knockbackDirection,
+          // Charged attack shattering grab armor — client recolors the
+          // charged hit VFX from orange to white/yellow to visually match
+          // the glass-shard armor break (instead of looking like a normal
+          // counter/charged confirm).
+          isArmorBreak: isChargedArmorBreak === true,
           // attackerId lets the client trigger an attacker-side hit-confirm flash
           // on the attacker's sprite only — distinct from the victim's hit VFX.
           // Without this the attacker has no proprioceptive cue that they "landed it",

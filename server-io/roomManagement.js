@@ -74,6 +74,10 @@ function createCPUPlayer(uniqueId) {
     grabMovementVelocity: 0,
     grabStartupStartTime: 0,
     grabStartupDuration: 0,
+    // Slap armor on grab startup — single-use absorption that lets a committed
+    // grab survive one neutral slap without losing its frames. Reset whenever
+    // grab startup begins (executeGrab and equivalents); consumed by collisionSystem.
+    grabStartupArmorUsed: false,
     grabStartTime: 0,
     grabbedOpponent: null,
     isGrabPushing: false,
@@ -173,6 +177,10 @@ function createCPUPlayer(uniqueId) {
     clinchJoltRecoilStart: 0,
     clinchJoltPlantInterruptStart: 0,
     clinchJoltCooldown: false,
+    clinchBreakRequest: false,
+    clinchBreakRequestTime: 0,
+    grabImmune: false,
+    grabImmuneEndTime: 0,
     isGassed: false,
     gassedUntil: 0,
     x: 845,
@@ -566,6 +574,7 @@ function resetRoomAndPlayers(room, io) {
     player.grabMovementVelocity = 0;
     player.grabStartupStartTime = 0;
     player.grabStartupDuration = 0;
+    player.grabStartupArmorUsed = false;
     player.isGrabPushing = false;
     player.isBeingGrabPushed = false;
     player.isEdgePushing = false;
@@ -603,6 +612,10 @@ function resetRoomAndPlayers(room, io) {
     player.lastHitType = null;
     player.knockbackImmune = false;
     player.knockbackImmuneEndTime = 0;
+    player.clinchBreakRequest = false;
+    player.clinchBreakRequestTime = 0;
+    player.grabImmune = false;
+    player.grabImmuneEndTime = 0;
     player.isCinematicKillVictim = false;
     player.isClinchKillThrowVictim = false;
     player.isClinchKillPullVictim = false;

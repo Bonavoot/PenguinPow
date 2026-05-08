@@ -2162,6 +2162,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     cpu.isGrabStartup = true;
     cpu.grabStartupStartTime = currentTime;
     cpu.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
+    cpu.grabStartupArmorUsed = false; // Fresh slap-armor charge per grab attempt
     cpu.currentAction = "grab_startup";
     cpu.actionLockUntil = currentTime + GRAB_STARTUP_DURATION_MS;
     cpu.grabState = "attempting";

@@ -431,6 +431,7 @@ function clearAllActionStates(player) {
   player.grabMovementVelocity = 0;
   player.grabStartupStartTime = 0;
   player.grabStartupDuration = 0;
+  player.grabStartupArmorUsed = false;
   player.grabStartTime = 0;
   player.grabState = "initial";
   player.grabAttemptType = null;

@@ -233,6 +233,7 @@ function processImageData(
   height,
   chargeTintWhite = false,
   blubberTintPurple = false,
+  armorTintPink = false,
   bodyColorRange = null,
   bodyTargetHue = 0,
   bodyTargetSat = 0,
@@ -248,6 +249,9 @@ function processImageData(
   const CHARGE_BLEND = 0.7;
   const BLUBBER_PURPLE_RGB = hslToRgb(278, 78, 65);
   const BLUBBER_BLEND = 0.35;
+  // Armor absorb pink — vivid hot-pink, slightly stronger blend than blubber
+  const ARMOR_PINK_RGB = hslToRgb(338, 85, 68);
+  const ARMOR_PINK_BLEND = 0.4;
   const BODY_WHITE_TINT = 0.02;
   const SCLERA_WHITEN = 0.8;
   const bodyTintRgb = bodyColorRange ? hslToRgb(bodyTargetHue, bodyTargetSat, bodyTargetLight) : null;
@@ -485,6 +489,16 @@ function processImageData(
           data[i + 2] = Math.round(
             (1 - BLUBBER_BLEND) * b + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b
           );
+        } else if (armorTintPink) {
+          data[i] = Math.round(
+            (1 - ARMOR_PINK_BLEND) * r + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.r
+          );
+          data[i + 1] = Math.round(
+            (1 - ARMOR_PINK_BLEND) * g + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.g
+          );
+          data[i + 2] = Math.round(
+            (1 - ARMOR_PINK_BLEND) * b + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.b
+          );
         }
         continue;
       }
@@ -534,6 +548,18 @@ function processImageData(
           (1 - BLUBBER_BLEND) * data[i + 2] +
             BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b
         );
+      } else if (armorTintPink) {
+        data[i] = Math.round(
+          (1 - ARMOR_PINK_BLEND) * data[i] + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.r
+        );
+        data[i + 1] = Math.round(
+          (1 - ARMOR_PINK_BLEND) * data[i + 1] +
+            ARMOR_PINK_BLEND * ARMOR_PINK_RGB.g
+        );
+        data[i + 2] = Math.round(
+          (1 - ARMOR_PINK_BLEND) * data[i + 2] +
+            ARMOR_PINK_BLEND * ARMOR_PINK_RGB.b
+        );
       }
     } else if (scleraFlags && scleraFlags[i / 4]) {
       data[i] = Math.round(r + (255 - r) * SCLERA_WHITEN);
@@ -548,6 +574,10 @@ function processImageData(
         data[i] = Math.round((1 - BLUBBER_BLEND) * data[i] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.r);
         data[i + 1] = Math.round((1 - BLUBBER_BLEND) * data[i + 1] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.g);
         data[i + 2] = Math.round((1 - BLUBBER_BLEND) * data[i + 2] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b);
+      } else if (armorTintPink) {
+        data[i] = Math.round((1 - ARMOR_PINK_BLEND) * data[i] + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.r);
+        data[i + 1] = Math.round((1 - ARMOR_PINK_BLEND) * data[i + 1] + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.g);
+        data[i + 2] = Math.round((1 - ARMOR_PINK_BLEND) * data[i + 2] + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.b);
       }
     } else if (whiteTintFlags && whiteTintFlags[i / 4]) {
       data[i] = Math.round((1 - BODY_WHITE_TINT) * r + BODY_WHITE_TINT * bodyTintRgb.r);
@@ -566,6 +596,10 @@ function processImageData(
         data[i] = Math.round((1 - BLUBBER_BLEND) * data[i] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.r);
         data[i + 1] = Math.round((1 - BLUBBER_BLEND) * data[i + 1] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.g);
         data[i + 2] = Math.round((1 - BLUBBER_BLEND) * data[i + 2] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b);
+      } else if (armorTintPink) {
+        data[i] = Math.round((1 - ARMOR_PINK_BLEND) * data[i] + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.r);
+        data[i + 1] = Math.round((1 - ARMOR_PINK_BLEND) * data[i + 1] + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.g);
+        data[i + 2] = Math.round((1 - ARMOR_PINK_BLEND) * data[i + 2] + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.b);
       }
     } else if (hitTintRed) {
       data[i] = Math.round((1 - HIT_BLEND) * r + HIT_BLEND * HIT_RED_RGB.r);
@@ -591,6 +625,16 @@ function processImageData(
       data[i + 2] = Math.round(
         (1 - BLUBBER_BLEND) * b + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b
       );
+    } else if (armorTintPink) {
+      data[i] = Math.round(
+        (1 - ARMOR_PINK_BLEND) * r + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.r
+      );
+      data[i + 1] = Math.round(
+        (1 - ARMOR_PINK_BLEND) * g + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.g
+      );
+      data[i + 2] = Math.round(
+        (1 - ARMOR_PINK_BLEND) * b + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.b
+      );
     }
   }
 
@@ -615,6 +659,7 @@ self.onmessage = function (e) {
       hitTintRed,
       chargeTintWhite,
       blubberTintPurple,
+      armorTintPink,
       bodyColorRange,
       bodyTargetHue,
       bodyTargetSat,
@@ -643,6 +688,7 @@ self.onmessage = function (e) {
         height,
         !!chargeTintWhite,
         !!blubberTintPurple,
+        !!armorTintPink,
         bodyColorRange || null,
         bodyTargetHue || 0,
         bodyTargetSat || 0,

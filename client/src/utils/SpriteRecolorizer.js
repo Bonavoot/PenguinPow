@@ -187,6 +187,7 @@ function processInWorker(
   hitTintRed = false,
   chargeTintWhite = false,
   blubberTintPurple = false,
+  armorTintPink = false,
   bodyColorRange = null,
   bodyTargetHue = 0,
   bodyTargetSat = 0,
@@ -223,6 +224,7 @@ function processInWorker(
           hitTintRed,
           chargeTintWhite,
           blubberTintPurple,
+          armorTintPink,
           bodyColorRange,
           bodyTargetHue,
           bodyTargetSat,
@@ -477,6 +479,7 @@ export async function recolorImage(
   const hitTintRed = !!options.hitTintRed;
   const chargeTintWhite = !!options.chargeTintWhite;
   const blubberTintPurple = !!options.blubberTintPurple;
+  const armorTintPink = !!options.armorTintPink;
   const bodyColorRange = options.bodyColorRange || null;
   const bodyColorHex = options.bodyColorHex || null;
   // Cache key uses the resolved (possibly @2x) URL so lookups are consistent
@@ -484,7 +487,9 @@ export async function recolorImage(
     sourceColorRange.maxHue
   }_${targetColorHex}${bodyColorHex ? "_body_" + bodyColorHex : ""}${
     hitTintRed ? "_hit" : ""
-  }${chargeTintWhite ? "_charge" : ""}${blubberTintPurple ? "_blubber" : ""}`;
+  }${chargeTintWhite ? "_charge" : ""}${blubberTintPurple ? "_blubber" : ""}${
+    armorTintPink ? "_armor" : ""
+  }`;
 
   // Check LRU cache first
   const cached = getFromCache(cacheKey);
@@ -576,6 +581,7 @@ export async function recolorImage(
               hitTintRed,
               chargeTintWhite,
               blubberTintPurple,
+              armorTintPink,
               bodyColorRange,
               bodyTargetHue,
               bodyTargetSat,
@@ -608,6 +614,7 @@ export async function recolorImage(
               canvas.height,
               chargeTintWhite,
               blubberTintPurple,
+              armorTintPink,
               bodyColorRange,
               bodyTargetHue,
               bodyTargetSat,
@@ -630,6 +637,7 @@ export async function recolorImage(
             canvas.height,
             chargeTintWhite,
             blubberTintPurple,
+            armorTintPink,
             bodyColorRange,
             bodyTargetHue,
             bodyTargetSat,
@@ -793,6 +801,7 @@ function processPixelsOnMainThread(
   height,
   chargeTintWhite = false,
   blubberTintPurple = false,
+  armorTintPink = false,
   bodyColorRange = null,
   bodyTargetHue = 0,
   bodyTargetSat = 0,
@@ -938,6 +947,10 @@ function processPixelsOnMainThread(
   const CHARGE_BLEND = 0.7;
   const BLUBBER_PURPLE_RGB = hslToRgb(278, 78, 65);
   const BLUBBER_BLEND = 0.35;
+  // Armor absorb pink — vivid hot-pink, slightly stronger blend than blubber so
+  // the brief absorb flash reads at a glance against the player's body color.
+  const ARMOR_PINK_RGB = hslToRgb(338, 85, 68);
+  const ARMOR_PINK_BLEND = 0.4;
   const BODY_WHITE_TINT = 0.02;
   const SCLERA_WHITEN = 0.8;
   const bodyTintRgb = bodyColorRange ? hslToRgb(bodyTargetHue, bodyTargetSat, bodyTargetLight) : null;
@@ -1045,6 +1058,16 @@ function processPixelsOnMainThread(
           data[i + 2] = Math.round(
             (1 - BLUBBER_BLEND) * b + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b
           );
+        } else if (armorTintPink) {
+          data[i] = Math.round(
+            (1 - ARMOR_PINK_BLEND) * r + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.r
+          );
+          data[i + 1] = Math.round(
+            (1 - ARMOR_PINK_BLEND) * g + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.g
+          );
+          data[i + 2] = Math.round(
+            (1 - ARMOR_PINK_BLEND) * b + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.b
+          );
         }
         continue;
       }
@@ -1094,6 +1117,18 @@ function processPixelsOnMainThread(
           (1 - BLUBBER_BLEND) * data[i + 2] +
             BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b
         );
+      } else if (armorTintPink) {
+        data[i] = Math.round(
+          (1 - ARMOR_PINK_BLEND) * data[i] + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.r
+        );
+        data[i + 1] = Math.round(
+          (1 - ARMOR_PINK_BLEND) * data[i + 1] +
+            ARMOR_PINK_BLEND * ARMOR_PINK_RGB.g
+        );
+        data[i + 2] = Math.round(
+          (1 - ARMOR_PINK_BLEND) * data[i + 2] +
+            ARMOR_PINK_BLEND * ARMOR_PINK_RGB.b
+        );
       }
     } else if (scleraFlags && scleraFlags[i / 4]) {
       data[i] = Math.round(r + (255 - r) * SCLERA_WHITEN);
@@ -1108,6 +1143,10 @@ function processPixelsOnMainThread(
         data[i] = Math.round((1 - BLUBBER_BLEND) * data[i] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.r);
         data[i + 1] = Math.round((1 - BLUBBER_BLEND) * data[i + 1] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.g);
         data[i + 2] = Math.round((1 - BLUBBER_BLEND) * data[i + 2] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b);
+      } else if (armorTintPink) {
+        data[i] = Math.round((1 - ARMOR_PINK_BLEND) * data[i] + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.r);
+        data[i + 1] = Math.round((1 - ARMOR_PINK_BLEND) * data[i + 1] + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.g);
+        data[i + 2] = Math.round((1 - ARMOR_PINK_BLEND) * data[i + 2] + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.b);
       }
     } else if (whiteTintFlags && whiteTintFlags[i / 4]) {
       data[i] = Math.round((1 - BODY_WHITE_TINT) * r + BODY_WHITE_TINT * bodyTintRgb.r);
@@ -1126,6 +1165,10 @@ function processPixelsOnMainThread(
         data[i] = Math.round((1 - BLUBBER_BLEND) * data[i] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.r);
         data[i + 1] = Math.round((1 - BLUBBER_BLEND) * data[i + 1] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.g);
         data[i + 2] = Math.round((1 - BLUBBER_BLEND) * data[i + 2] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b);
+      } else if (armorTintPink) {
+        data[i] = Math.round((1 - ARMOR_PINK_BLEND) * data[i] + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.r);
+        data[i + 1] = Math.round((1 - ARMOR_PINK_BLEND) * data[i + 1] + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.g);
+        data[i + 2] = Math.round((1 - ARMOR_PINK_BLEND) * data[i + 2] + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.b);
       }
     } else if (hitTintRed) {
       data[i] = Math.round((1 - HIT_BLEND) * r + HIT_BLEND * HIT_RED_RGB.r);
@@ -1150,6 +1193,16 @@ function processPixelsOnMainThread(
       );
       data[i + 2] = Math.round(
         (1 - BLUBBER_BLEND) * b + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b
+      );
+    } else if (armorTintPink) {
+      data[i] = Math.round(
+        (1 - ARMOR_PINK_BLEND) * r + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.r
+      );
+      data[i + 1] = Math.round(
+        (1 - ARMOR_PINK_BLEND) * g + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.g
+      );
+      data[i + 2] = Math.round(
+        (1 - ARMOR_PINK_BLEND) * b + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.b
       );
     }
   }
@@ -1342,7 +1395,7 @@ export function clearDecodedImageCache() {
  * @param {string} imageSrc - Original image source
  * @param {Object} sourceColorRange - HSL color range to detect
  * @param {string} targetColorHex - Target color in hex format
- * @param {Object} options - Optional: { hitTintRed: true }, { chargeTintWhite: true }, { blubberTintPurple: true }
+ * @param {Object} options - Optional: { hitTintRed: true }, { chargeTintWhite: true }, { blubberTintPurple: true }, { armorTintPink: true }
  * @returns {string|null} - Cached recolored image data URL, or null if not cached
  */
 export function getCachedRecoloredImage(
@@ -1354,12 +1407,15 @@ export function getCachedRecoloredImage(
   const hitTintRed = !!options.hitTintRed;
   const chargeTintWhite = !!options.chargeTintWhite;
   const blubberTintPurple = !!options.blubberTintPurple;
+  const armorTintPink = !!options.armorTintPink;
   const bodyColorHex = options.bodyColorHex || null;
   const cacheKey = `${imageSrc}_${sourceColorRange.minHue}-${
     sourceColorRange.maxHue
   }_${targetColorHex}${bodyColorHex ? "_body_" + bodyColorHex : ""}${
     hitTintRed ? "_hit" : ""
-  }${chargeTintWhite ? "_charge" : ""}${blubberTintPurple ? "_blubber" : ""}`;
+  }${chargeTintWhite ? "_charge" : ""}${blubberTintPurple ? "_blubber" : ""}${
+    armorTintPink ? "_armor" : ""
+  }`;
   return getFromCache(cacheKey);
 }
 

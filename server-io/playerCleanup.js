@@ -8,6 +8,7 @@ function cleanupPlayerStates(player) {
   player.grabAttemptType = null;
   player.grabAttemptStartTime = null;
   player.isGrabStartup = false;
+  player.grabStartupArmorUsed = false;
   player.isGrabbing = false;
   player.isGrabbingMovement = false;
   player.isWhiffingGrab = false;

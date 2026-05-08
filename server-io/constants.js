@@ -246,6 +246,13 @@ const GRAB_STARTUP_HOP_HEIGHT = 0; // No hop — grab is a grounded technique
 const GRAB_LUNGE_DISTANCE = 75; // Pixels of forward movement during grab startup (buffed from 55 — grabs more threatening)
 const SLAP_ATTACK_STARTUP_MS = SLAP_STARTUP_MS; // Uses frame data constant (70ms)
 
+// Grab armor stagger — extends grab startup when armor absorbs a slap, so a
+// chained slap can actually catch the grabber before they connect. Without
+// this, slap chain cycle (~195ms) is too long to fit a second slap inside
+// the 180ms base startup, making armored grabs effectively unbeatable by
+// slaps. 100ms gives a tight-but-real "double slap breaks armor" window.
+const GRAB_STARTUP_ARMOR_STAGGER_MS = 100;
+
 // Grab whiff recovery — big vulnerable window if grab misses
 const GRAB_WHIFF_RECOVERY_MS = 450; // Whiff recovery duration (fully vulnerable to punishment)
 const GRAB_WHIFF_STUMBLE_VEL = 0.4; // Slight forward stumble velocity during whiff
@@ -259,14 +266,19 @@ const GRAB_TECH_RESIDUAL_VEL = 1.2; // Residual velocity fed into ice sliding af
 const GRAB_TECH_INPUT_LOCK_MS = 600; // Total input lock (freeze + separation slide)
 const GRAB_TECH_ANIM_DURATION_MS = 700; // Total tech animation duration (freeze + recovery)
 
-// Grab break constants
-const GRAB_BREAK_STAMINA_COST = 10; // Equal stamina cost for both players on a successful grab break
-const GRAB_BREAK_PUSH_VELOCITY = 1.2; // Push velocity for grab breaks
-const GRAB_BREAK_FORCED_DISTANCE = 51; // Even separation distance for both players [8% tighter]
+// Grab break constants — Spacebar in clinch (both players must have grip).
+// Soft-gated by stamina: usable below cost, but breaker self-gasses if under-budget.
+// Halves breaker's current balance. Doesn't reposition meaningfully (boundary-clamped),
+// so edge stress is preserved. Brief grab immunity prevents instant re-clinch.
+const GRAB_BREAK_STAMINA_COST = 30; // Heavy commitment — break is a real escape, not a free reset
+const GRAB_BREAK_PUSH_VELOCITY = 1.2; // (legacy, kept for compat — current impl uses tween)
+const GRAB_BREAK_FORCED_DISTANCE = 140; // Total separation distance (split between breaker + opponent — each moves half this)
 const GRAB_BREAK_TWEEN_DURATION = 350; // Knockback slide duration
 const GRAB_BREAK_RESIDUAL_VEL = 0; // No residual sliding — players stop cleanly when knockback ends
-const GRAB_BREAK_INPUT_LOCK_MS = 350; // Locked during knockback tween only
-const GRAB_BREAK_ACTION_LOCK_MS = 350; // Locked during knockback tween only
+const GRAB_BREAK_INPUT_LOCK_MS = 350; // Breaker is locked during knockback tween — vulnerable window
+const GRAB_BREAK_ACTION_LOCK_MS = 350; // Action lock matches input lock
+const GRAB_BREAK_GRAB_IMMUNITY_MS = 400; // Re-grab protection on the breaker after the tween ends
+const GRAB_BREAK_EDGE_LOCK_MULT = 1.5; // Recovery is 1.5x longer when breaking from edge zone (corner-stress preserved)
 
 // Grab stamina drain: 10 stamina over full 1.5s duration
 // Drain 1 stamina every 150ms (1500ms / 10 = 150ms per stamina point)
@@ -731,6 +743,7 @@ module.exports = {
   GRAB_STARTUP_DURATION_MS,
   GRAB_STARTUP_HOP_HEIGHT,
   GRAB_LUNGE_DISTANCE,
+  GRAB_STARTUP_ARMOR_STAGGER_MS,
   SLAP_ATTACK_STARTUP_MS,
   GRAB_WHIFF_RECOVERY_MS,
   GRAB_WHIFF_STUMBLE_VEL,
@@ -748,6 +761,8 @@ module.exports = {
   GRAB_BREAK_RESIDUAL_VEL,
   GRAB_BREAK_INPUT_LOCK_MS,
   GRAB_BREAK_ACTION_LOCK_MS,
+  GRAB_BREAK_GRAB_IMMUNITY_MS,
+  GRAB_BREAK_EDGE_LOCK_MULT,
   GRAB_STAMINA_DRAIN_INTERVAL,
 
   // Grab action system

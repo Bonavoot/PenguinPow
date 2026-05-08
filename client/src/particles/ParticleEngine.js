@@ -170,6 +170,18 @@ function createSpeedLine(length, thickness, r, g, b, peakAlpha = 0.9) {
 }
 
 function createCloudRing(diameter, bandWidth, seed) {
+  // Default white ring — preserved for existing presets that consume it.
+  return createColoredCloudRing(diameter, bandWidth, seed, {
+    shadow: [210, 215, 220],
+    body: [250, 252, 255],
+    highlight: [255, 255, 255],
+  });
+}
+
+// Three-pass tiled-blob ring builder. Same construction the white ring uses,
+// but with caller-controlled colors so we can mint themed rings (pink absorb
+// ring, glass-yellow break ring, etc.) without hand-rolling each one.
+function createColoredCloudRing(diameter, bandWidth, seed, palette) {
   const c = document.createElement("canvas");
   c.width = diameter;
   c.height = diameter;
@@ -195,35 +207,98 @@ function createCloudRing(diameter, bandWidth, seed) {
     ctx.fill();
   }
 
-  // Pass 1: light gray shadow blobs offset downward for subtle depth
+  const [sr, sg, sb] = palette.shadow;
+  const [br_, bg, bb] = palette.body;
+  const [hr, hg, hb] = palette.highlight;
+
   for (let i = 0; i < 24; i++) {
     const angle = (i / 24) * Math.PI * 2 + srand() * 0.4;
     const jitter = (srand() - 0.5) * bandWidth * 0.5;
     const bx = half + Math.cos(angle) * (ringR + jitter);
     const by = half + Math.sin(angle) * (ringR + jitter) + bandWidth * 0.3;
     const br = bandWidth * (0.6 + srand() * 0.5);
-    drawBlob(bx, by, br, 210, 215, 220, 1.0);
+    drawBlob(bx, by, br, sr, sg, sb, 1.0);
   }
 
-  // Pass 2: near-white body
   for (let i = 0; i < 32; i++) {
     const angle = (i / 32) * Math.PI * 2 + srand() * 0.45;
     const jitter = (srand() - 0.5) * bandWidth * 0.55;
     const bx = half + Math.cos(angle) * (ringR + jitter);
     const by = half + Math.sin(angle) * (ringR + jitter);
     const br = bandWidth * (0.5 + srand() * 0.5);
-    drawBlob(bx, by, br, 250, 252, 255, 1.0);
+    drawBlob(bx, by, br, br_, bg, bb, 1.0);
   }
 
-  // Pass 3: pure white highlights offset upward
   for (let i = 0; i < 20; i++) {
     const angle = (i / 20) * Math.PI * 2 + srand() * 0.5;
     const jitter = (srand() - 0.5) * bandWidth * 0.4;
     const bx = half + Math.cos(angle) * (ringR + jitter);
     const by = half + Math.sin(angle) * (ringR + jitter) - bandWidth * 0.2;
     const br = bandWidth * (0.3 + srand() * 0.4);
-    drawBlob(bx, by, br, 255, 255, 255, 1.0);
+    drawBlob(bx, by, br, hr, hg, hb, 1.0);
   }
+
+  return c;
+}
+
+// Angular wedge with a bright leading edge — reads as a thin shard of glass
+// when spawned at random rotations. Multiple seeds produce subtly different
+// silhouettes so a burst of shards doesn't look stamped from one cookie cutter.
+function createGlassShard(size, seed) {
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext("2d");
+  const half = size / 2;
+
+  let s = seed;
+  const srand = () => {
+    s = (s * 9301 + 49297) % 233280;
+    return s / 233280;
+  };
+
+  // Long, narrow, irregular triangle with one bright tip and a darker tail
+  const lengthScale = 0.55 + srand() * 0.4;
+  const widthScale = 0.12 + srand() * 0.12;
+  const taperBias = 0.55 + srand() * 0.25;
+
+  const tipX = half + size * lengthScale * 0.5;
+  const tailX = half - size * lengthScale * 0.5;
+  const halfWidth = size * widthScale * 0.5;
+
+  ctx.translate(half, half);
+  ctx.rotate((srand() - 0.5) * 0.4); // Slight asymmetric lean
+  ctx.translate(-half, -half);
+
+  ctx.beginPath();
+  ctx.moveTo(tipX, half);
+  ctx.lineTo(tailX + size * 0.05, half - halfWidth * taperBias);
+  ctx.lineTo(tailX, half + (srand() - 0.5) * halfWidth * 0.4);
+  ctx.lineTo(tailX + size * 0.06, half + halfWidth * (1 - taperBias * 0.6));
+  ctx.closePath();
+
+  // Edge-lit gradient: bright white-yellow tip, fading to pale yellow tail
+  const grad = ctx.createLinearGradient(tailX, half, tipX, half);
+  grad.addColorStop(0, "rgba(255,235,140,0)");
+  grad.addColorStop(0.18, "rgba(255,240,170,0.55)");
+  grad.addColorStop(0.55, "rgba(255,250,210,0.85)");
+  grad.addColorStop(0.85, "rgba(255,255,240,1.0)");
+  grad.addColorStop(1, "rgba(255,255,255,1.0)");
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Bright leading-edge highlight along the tip
+  ctx.beginPath();
+  ctx.moveTo(tipX, half);
+  ctx.lineTo(tipX - size * 0.18, half - halfWidth * 0.4);
+  ctx.lineTo(tipX - size * 0.18, half + halfWidth * 0.4);
+  ctx.closePath();
+  const tipGrad = ctx.createRadialGradient(tipX - size * 0.05, half, 0, tipX - size * 0.05, half, size * 0.18);
+  tipGrad.addColorStop(0, "rgba(255,255,255,1)");
+  tipGrad.addColorStop(0.6, "rgba(255,250,210,0.6)");
+  tipGrad.addColorStop(1, "rgba(255,235,140,0)");
+  ctx.fillStyle = tipGrad;
+  ctx.fill();
 
   return c;
 }
@@ -481,6 +556,32 @@ function generateTextures(s) {
     hitSmear1: createHitSmear(r(48), 1357),
     hitSmear2: createHitSmear(r(48), 2468),
     hitSmear3: createHitSmear(r(48), 3579),
+
+    // Grab-armor absorb: pinkish-red tiled ring + matching small chunks/sparks
+    armorAbsorbRing: createColoredCloudRing(r(160), r(14), 6151, {
+      shadow: [180, 60, 90],
+      body: [255, 110, 140],
+      highlight: [255, 200, 215],
+    }),
+    armorAbsorbRingAlt: createColoredCloudRing(r(160), r(14), 9173, {
+      shadow: [180, 60, 90],
+      body: [255, 110, 140],
+      highlight: [255, 200, 215],
+    }),
+    armorAbsorbChunk: createChunk(r(14), 255, 130, 160, 0.85),
+    armorAbsorbSpark: createChunk(r(8), 255, 200, 215, 1.0),
+
+    // Grab-armor break: white-yellow glass shards + a brighter break ring
+    armorBreakRing: createColoredCloudRing(r(170), r(15), 4091, {
+      shadow: [220, 200, 110],
+      body: [255, 240, 170],
+      highlight: [255, 255, 230],
+    }),
+    glassShard1: createGlassShard(r(56), 1217),
+    glassShard2: createGlassShard(r(56), 3491),
+    glassShard3: createGlassShard(r(48), 5783),
+    glassShard4: createGlassShard(r(64), 7129),
+    glassFleck: createChunk(r(6), 255, 250, 220, 1.0),
   };
 }
 
@@ -1951,6 +2052,198 @@ const PRESETS = {
 
   hitSparkBurst(engine, opts) {
     PRESETS.hitSparkCharged(engine, opts);
+  },
+
+  // ── GRAB ARMOR ABSORB ───────────────────────────────────────────────
+  // Subtle pinkish-red ring with a few small particles flying out — fires
+  // when grab startup eats one slap via slap-armor. Deliberately understated:
+  // it's a defensive "I tanked it" moment, not a flashy victory beat.
+  // Position convention matches hitSparkSlap: caller passes y = PLAYER_MID_Y
+  // and the preset flips to canvas via cy = GAME_H - y (no extra offset).
+  grabArmorAbsorb(engine, { x, y, facing }) {
+    const dir = facing || 1;
+    const cx = x;
+    // Identical position math to hitSparkSlap (no offset). Caller passes
+    // PLAYER_MID_Y so the effect's CENTER lands at the same chest height as
+    // the CSS slap hit ring.
+    const cy = GAME_H - y;
+    const front = (cfg) => engine.spawn({ ...cfg, aboveFighters: true });
+
+    // Tall vertical tilt (mimics the CSS slap-hit ring's rotateY(55deg)
+    // foreshortening). cos(55°) ≈ 0.574 — narrower-X is what reads as a
+    // ring tilted away from camera, NOT a wide flat shockwave.
+    //
+    // SIZING NOTE — the SPRITE TINT (pink flash on the defender) is now the
+    // primary visual feedback for "armor absorbed". This particle ring is
+    // intentionally subtle — small enough to stay tightly on the chest hit
+    // point and not draw attention away from the tinted sprite. Matches the
+    // CSS slap-hit ring's actual peak diameter (~30–45px after stretchX).
+    const TILT_X = 0.6;
+
+    // Primary pink ring — small, sits right on the impact point
+    front({
+      x: cx, y: cy,
+      vx: 0, vy: 0, gravity: 0, drag: 1,
+      size: 6,
+      sizeEnd: 40,
+      alpha: 0.92,
+      alphaEnd: 0,
+      rotation: 0, rotationSpeed: 0,
+      ease: "outCubic", easeAlpha: "outCubic",
+      maxLife: 0.28,
+      texture: engine.textures.armorAbsorbRing,
+      stretchX: TILT_X,
+    });
+
+    // 4 small pinkish flecks arcing outward — minimal, just enough to sell
+    // a "stop" without competing with the sprite tint.
+    for (let i = 0; i < 4; i++) {
+      const angle = (i / 4) * Math.PI * 2 + rand(-0.4, 0.4);
+      const spd = rand(80, 140);
+      front({
+        x: cx + Math.cos(angle) * 3,
+        y: cy + Math.sin(angle) * 3,
+        vx: Math.cos(angle) * spd + dir * rand(10, 25),
+        vy: Math.sin(angle) * spd * 0.7,
+        gravity: 220,
+        drag: 0.92,
+        size: rand(3, 5),
+        sizeEnd: rand(1, 2),
+        alpha: rand(0.85, 1.0),
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-2, 2),
+        maxLife: rand(0.2, 0.32),
+        texture: pick([engine.textures.armorAbsorbChunk, engine.textures.armorAbsorbSpark]),
+        blendMode: "lighter",
+      });
+    }
+  },
+
+  // ── GRAB ARMOR BREAK ────────────────────────────────────────────────
+  // Charged attack shatters the armor — bright white-yellow break ring with
+  // a burst of glass shards that arc outward and fall under gravity. Same
+  // tilted-ring idiom, but bigger, brighter, and longer-lived than the absorb.
+  // Sized to read at a glance even in the chaos of a charged-attack confirm.
+  grabArmorBreak(engine, { x, y, facing }) {
+    const dir = facing || 1;
+    const cx = x;
+    // Same chest-level position math as grabArmorAbsorb / hitSparkSlap.
+    const cy = GAME_H - y;
+    const front = (cfg) => engine.spawn({ ...cfg, aboveFighters: true });
+
+    // Same tilted-back ring style as the absorb — keeps the break visually
+    // related to the absorb (it IS the armor's last gasp). Bigger but still
+    // tilted (stretchX < 1) so the ring reads as foreshortened, not as a
+    // wide flat shockwave. The drama comes from the glass shards, not from
+    // a giant ring.
+    const TILT_X = 0.6;
+
+    // Bright central flash — sells the "shatter" instant
+    front({
+      x: cx, y: cy,
+      vx: 0, vy: 0, gravity: 0, drag: 1,
+      size: 22,
+      sizeEnd: 70,
+      alpha: 1.0,
+      alphaEnd: 0,
+      rotation: 0, rotationSpeed: 0,
+      ease: "outExpo", easeAlpha: "outCubic",
+      maxLife: 0.16,
+      texture: engine.textures.circle,
+      blendMode: "lighter",
+    });
+
+    // Primary tilted break ring — same footprint shape as the absorb but
+    // brighter, longer, and a touch larger to read as a shatter.
+    front({
+      x: cx, y: cy,
+      vx: 0, vy: 0, gravity: 0, drag: 1,
+      size: 12,
+      sizeEnd: 86,
+      alpha: 1.0,
+      alphaEnd: 0,
+      rotation: 0, rotationSpeed: 0,
+      ease: "outCubic", easeAlpha: "outCubic",
+      maxLife: 0.4,
+      texture: engine.textures.armorBreakRing,
+      stretchX: TILT_X,
+    });
+
+    // Secondary ring trailing slightly — gives the break a real "double pop"
+    front({
+      x: cx, y: cy,
+      vx: 0, vy: 0, gravity: 0, drag: 1,
+      size: 9,
+      sizeEnd: 64,
+      alpha: 0.75,
+      alphaEnd: 0,
+      rotation: 0, rotationSpeed: 0,
+      ease: "outCubic", easeAlpha: "outCubic",
+      maxLife: 0.34,
+      texture: engine.textures.armorBreakRing,
+      stretchX: TILT_X,
+      delay: 0.06,
+    });
+
+    // 14 glass shards bursting outward — the real noticeability lives here.
+    // Shards arc up then fall under gravity. Wide scatter sells the shatter
+    // without needing a huge ring.
+    const shardCount = 14;
+    for (let i = 0; i < shardCount; i++) {
+      const angle = (i / shardCount) * Math.PI * 2 + rand(-0.3, 0.3);
+      const spd = rand(240, 460);
+      const shardTex = pick([
+        engine.textures.glassShard1,
+        engine.textures.glassShard2,
+        engine.textures.glassShard3,
+        engine.textures.glassShard4,
+      ]);
+      front({
+        x: cx + Math.cos(angle) * 8,
+        y: cy + Math.sin(angle) * 8,
+        vx: Math.cos(angle) * spd + dir * rand(20, 45),
+        vy: Math.sin(angle) * spd * 0.85 - rand(40, 90),
+        gravity: 600,
+        drag: 0.96,
+        size: rand(24, 42),
+        sizeEnd: rand(14, 22),
+        alpha: rand(0.9, 1.0),
+        alphaEnd: 0,
+        rotation: angle,
+        rotationSpeed: rand(-9, 9),
+        ease: "linear",
+        easeAlpha: "inCubic",
+        maxLife: rand(0.5, 0.75),
+        texture: shardTex,
+        blendMode: "lighter",
+      });
+    }
+
+    // 12 bright flecks — "glass dust" — fade fast and scatter wide
+    for (let i = 0; i < 12; i++) {
+      const angle = rand(0, Math.PI * 2);
+      const spd = rand(280, 520);
+      front({
+        x: cx + rand(-5, 5),
+        y: cy + rand(-5, 5),
+        vx: Math.cos(angle) * spd,
+        vy: Math.sin(angle) * spd - rand(15, 40),
+        gravity: 540,
+        drag: 0.94,
+        size: rand(3, 6),
+        sizeEnd: rand(1, 2),
+        alpha: rand(0.9, 1.0),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "outQuad",
+        rotationSpeed: 0,
+        maxLife: rand(0.22, 0.36),
+        texture: engine.textures.glassFleck,
+        blendMode: "lighter",
+      });
+    }
   },
 };
 

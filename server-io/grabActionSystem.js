@@ -88,6 +88,12 @@ const {
   PULL_BOUNDARY_MARGIN,
   CLINCH_THROW_MIN_SEPARATION,
   CLINCH_PULL_SWAP_TWEEN_DURATION,
+  GRAB_BREAK_STAMINA_COST,
+  GRAB_BREAK_FORCED_DISTANCE,
+  GRAB_BREAK_TWEEN_DURATION,
+  GRAB_BREAK_INPUT_LOCK_MS,
+  GRAB_BREAK_GRAB_IMMUNITY_MS,
+  GRAB_BREAK_EDGE_LOCK_MULT,
 } = require("./constants");
 
 const {
@@ -313,6 +319,33 @@ function updateGrabActions(player, room, io, delta, rooms) {
   }
 
   const now = Date.now();
+
+  // ============================================
+  // CLINCH BREAK (Spacebar) — defensive escape from mutual clinch
+  // Processed before jolt/throw/lift/push so a break preempts everything else.
+  // Gated on mutual grip in socketHandlers; here we only check mid-action gates.
+  // ============================================
+  for (const breaker of [player, opponent]) {
+    if (!breaker.clinchBreakRequest) continue;
+    const target = breaker === player ? opponent : player;
+
+    // Late safety gates — if any committed action started between input and processing,
+    // drop the request silently (no half-processed escape mid-throw).
+    const blocked = breaker.isGassed ||
+      breaker.clinchThrowActive || target.clinchThrowActive ||
+      breaker.isClinchClashing || target.isClinchClashing ||
+      breaker.isClinchJolting || breaker.isClinchJoltClashing ||
+      breaker.isResistingThrow || breaker.isResistingPull || breaker.isBeingLifted ||
+      !breaker.hasGrip || !target.hasGrip;
+
+    breaker.clinchBreakRequest = false;
+    breaker.clinchBreakRequestTime = 0;
+
+    if (blocked) continue;
+
+    executeClinchBreak(breaker, target, room, io);
+    return; // Clinch is ending — skip rest of clinch processing this tick
+  }
 
   // ============================================
   // CLINCH JOLT (Mouse1) — quick balance-damage shove
@@ -948,6 +981,79 @@ function endClinchLift(actor, target) {
   setPlayerTimeout(actor.id, () => { actor.clinchThrowCooldown = false; }, CLINCH_THROW_COOLDOWN_MS, "clinchThrowCooldown");
 }
 
+// Execute a clinch break — defensive escape from mutual clinch.
+// Breaker pays heavy stamina (gasses if under-budget) and halves their balance.
+// Both players are knocked apart symmetrically (boundary-clamped, so edge stress
+// is preserved — the breaker can't escape an edge corner this way).
+// Breaker gets brief grab-immunity after the tween so the opponent can't immediately re-clinch.
+function executeClinchBreak(breaker, opponent, room, io) {
+  const now = Date.now();
+
+  // Apply costs to the breaker. Soft-gate: stamina goes negative-clamped, and
+  // the natural gassed mechanism in index.js auto-triggers when stamina hits 0.
+  breaker.stamina = Math.max(0, breaker.stamina - GRAB_BREAK_STAMINA_COST);
+  breaker.balance = Math.floor(breaker.balance / 2);
+
+  cleanupGrabStates(breaker, opponent);
+
+  // Set break visual states — both players animate together.
+  breaker.isGrabBreaking = true;
+  opponent.isGrabBreakCountered = true;
+
+  // Symmetric separation tween. Boundary clamp preserves edge position
+  // (a breaker pinned at the edge stays at the edge — they can't escape positionally).
+  const halfDist = GRAB_BREAK_FORCED_DISTANCE / 2;
+  const breakerDir = breaker.x < opponent.x ? -1 : 1;
+  const opponentDir = -breakerDir;
+  const breakerTargetX = Math.max(MAP_LEFT_BOUNDARY,
+    Math.min(MAP_RIGHT_BOUNDARY, breaker.x + breakerDir * halfDist));
+  const opponentTargetX = Math.max(MAP_LEFT_BOUNDARY,
+    Math.min(MAP_RIGHT_BOUNDARY, opponent.x + opponentDir * halfDist));
+
+  // Wire the tween — index.js drives it via grabBreakSepStartTime/Duration/Start/Target,
+  // and the same end-of-tween handler clears isGrabBreaking/isGrabBreakCountered.
+  for (const [p, targetX] of [[breaker, breakerTargetX], [opponent, opponentTargetX]]) {
+    p.isGrabBreakSeparating = true;
+    p.grabBreakSepStartTime = now;
+    p.grabBreakSepDuration = GRAB_BREAK_TWEEN_DURATION;
+    p.grabBreakStartX = p.x;
+    p.grabBreakTargetX = targetX;
+    p.movementVelocity = 0;
+    p.knockbackVelocity.x = 0;
+    p.knockbackVelocity.y = 0;
+    p.isStrafing = false;
+  }
+
+  // Edge breaks have a longer recovery window — corner escapes still hurt.
+  const edgeMult = isInEdgeZone(breaker.x) ? GRAB_BREAK_EDGE_LOCK_MULT : 1;
+  const breakerLockMs = Math.round(GRAB_BREAK_INPUT_LOCK_MS * edgeMult);
+  breaker.inputLockUntil = Math.max(breaker.inputLockUntil || 0, now + breakerLockMs);
+  opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, now + GRAB_BREAK_INPUT_LOCK_MS);
+
+  // Re-grab protection on the breaker — covers the tween + a small post-tween window
+  // so the opponent can't punish-grab the moment they recover.
+  breaker.grabImmune = true;
+  breaker.grabImmuneEndTime = now + breakerLockMs + GRAB_BREAK_GRAB_IMMUNITY_MS;
+
+  // Facing — players face each other after separating
+  correctFacingAfterGrabOrThrow(breaker, opponent);
+
+  // Reset stalemate timers (the clinch is ending)
+  breaker.clinchStalemateStart = 0;
+  opponent.clinchStalemateStart = 0;
+
+  // Emit visual/audio event. breakerPlayerNumber: room.players[0] = 1, [1] = 2.
+  const breakerPlayerNumber = room.players.indexOf(breaker) === 0 ? 1 : 2;
+  io.in(room.id).emit("grab_break", {
+    breakerId: breaker.id,
+    grabberId: opponent.id,
+    breakerX: breaker.x,
+    grabberX: opponent.x,
+    breakId: `break-${now}-${breaker.id}`,
+    breakerPlayerNumber,
+  });
+}
+
 // Resolve throw/pull outcome after committed animation ends
 // Both throw and pull are gated by opponent balance the same way.
 // The difference is the mechanic when it lands: throw = arc, pull = tween.
@@ -985,13 +1091,15 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
     // Boundary pull detection: when the puller's back is against a wall,
     // a normal pull can't send the target far enough past for a clean side switch.
     // Use a position swap instead — both players trade positions with a hop arc.
+    // Kill pulls bypass this — the victim must fly past the puller and through
+    // the dohyo edge for the cinematic, regardless of where the puller is standing.
     const leftBound = MAP_LEFT_BOUNDARY + PULL_BOUNDARY_MARGIN;
     const rightBound = MAP_RIGHT_BOUNDARY - PULL_BOUNDARY_MARGIN;
     const clampedTargetX = Math.max(leftBound, Math.min(targetX, rightBound));
     const distPastActor = pullDirection === -1
         ? actor.x - clampedTargetX
         : clampedTargetX - actor.x;
-    const isBoundaryPull = distPastActor < CLINCH_THROW_MIN_SEPARATION;
+    const isBoundaryPull = !isKill && distPastActor < CLINCH_THROW_MIN_SEPARATION;
 
     let actorTweenTargetX = null;
     let effectiveTweenDur = pullTweenDur;

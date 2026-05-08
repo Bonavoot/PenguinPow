@@ -70,6 +70,7 @@ import stunnedSound from "../sounds/stunned-sound.mp3";
 import gassedSound from "../sounds/gassed-sound.wav";
 import gassedRegenSound from "../sounds/gassed-regen-sound.flac";
 import grabBreakSound from "../sounds/grab-break-sound.wav";
+import glassBreakSound from "../sounds/glass-break-sound.wav";
 import counterGrabSound from "../sounds/counter-grab-sound.wav";
 import notEnoughStaminaSound from "../sounds/not-enough-stamina-sound.wav";
 import isTechingSound from "../sounds/is-teching-sound.wav";
@@ -266,6 +267,7 @@ preloadSounds([
   regularRawParrySound,
   stunnedSound,
   grabBreakSound,
+  glassBreakSound,
   counterGrabSound,
   notEnoughStaminaSound,
   isTechingSound,
@@ -381,6 +383,7 @@ export {
   gassedSound,
   gassedRegenSound,
   grabBreakSound,
+  glassBreakSound,
   counterGrabSound,
   notEnoughStaminaSound,
   isTechingSound,

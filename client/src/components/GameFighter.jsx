@@ -86,6 +86,7 @@ import {
   gassedSound,
   gassedRegenSound,
   grabBreakSound,
+  glassBreakSound,
   counterGrabSound,
   notEnoughStaminaSound,
   isTechingSound,
@@ -180,13 +181,15 @@ const GameFighter = ({
   // When isHit is true, uses hit-tinted variant (mawashi/headband unchanged, rest tinted red)
   // When isWhiteFlash is true, uses white-tinted variant (dash invincibility flash)
   // When isBlubberTint is true, uses purple-tinted variant for thick blubber power-up
+  // When isArmorTint is true, uses pink-tinted variant for grab-armor absorb flash
   const getSpriteRenderInfo = useCallback(
     (
       originalSrc,
       isHit = false,
       isWhiteFlash = false,
       isBlubberTint = false,
-      forceStatic = false
+      forceStatic = false,
+      isArmorTint = false
     ) => {
       if (!originalSrc) {
         return { src: originalSrc, isAnimated: false, config: null };
@@ -203,12 +206,14 @@ const GameFighter = ({
       const useHitTint = isHit;
       const useWhiteFlash = isWhiteFlash;
       const useBlubberTint = isBlubberTint;
+      const useArmorTint = isArmorTint;
 
       if (
         !needsRecoloring &&
         !useHitTint &&
         !useWhiteFlash &&
-        !useBlubberTint
+        !useBlubberTint &&
+        !useArmorTint
       ) {
         return {
           src: sourceToRecolor,
@@ -224,6 +229,7 @@ const GameFighter = ({
       if (useHitTint) tintOptions.hitTintRed = true;
       if (useWhiteFlash) tintOptions.chargeTintWhite = true;
       if (useBlubberTint) tintOptions.blubberTintPurple = true;
+      if (useArmorTint) tintOptions.armorTintPink = true;
 
       // FIRST: Check global cache (populated by preloadSprites in Lobby)
       const globalCached = getCachedRecoloredImage(
@@ -244,7 +250,7 @@ const GameFighter = ({
         playerBodyColor ? "_body_" + playerBodyColor : ""
       }${useHitTint ? "_hit" : ""}${useWhiteFlash ? "_charge" : ""}${
         useBlubberTint ? "_blubber" : ""
-      }`;
+      }${useArmorTint ? "_armor" : ""}`;
       if (recoloredSprites[cacheKey]) {
         return {
           src: recoloredSprites[cacheKey],
@@ -1021,6 +1027,11 @@ const GameFighter = ({
     y: 0,
   });
   const [thickBlubberIndicator, setThickBlubberIndicator] = useState(false);
+  // Pink sprite tint that flashes on the defender during a grab-armor absorb.
+  // Mirrors the thick-blubber tint pattern but is purely transient (~280ms)
+  // and triggered by the grab_armor_absorb socket event.
+  const [armorAbsorbTintActive, setArmorAbsorbTintActive] = useState(false);
+  const armorAbsorbTintTimeoutRef = useRef(null);
   const [disconnectCountdown, setDisconnectCountdown] = useState(3);
   const [uiRoundId, setUiRoundId] = useState(0);
 
@@ -1834,6 +1845,7 @@ const GameFighter = ({
           isBurstHit: isBurst,
           isCounterHit: data.isCounterHit || false,
           isPunish: data.isPunish || false,
+          isArmorBreak: data.isArmorBreak || false,
           cinematicKill: data.cinematicKill || false,
           cinematicHitstopMs: data.cinematicKill ? 550 : 0,
         });
@@ -3262,6 +3274,57 @@ const GameFighter = ({
     };
     socket.on("clinch_kill_throw", handleClinchKillThrow);
 
+    // Grab-armor absorb — pinkish-red ring + small particles when a grab
+    // attempt eats one slap during startup. Fires once per absorb (gated to
+    // index === 0 so the particle emit + sound don't double on the second
+    // fighter). Reuses the thick-blubber absorb sound — same "tank the hit"
+    // semantic, so the audio language is already established. Position
+    // convention matches hitSparkSlap: x = data.x + SPRITE_HALF_W,
+    // y = PLAYER_MID_Y (the preset converts via GAME_H - y).
+    const handleGrabArmorAbsorb = (data) => {
+      if (typeof data?.x !== "number") return;
+
+      // SPRITE TINT — flash this player's sprite pink only if THEY are the
+      // one absorbing. Per-instance state so both penguins (rendered by two
+      // GameFighter components) tint independently.
+      if (data.defenderId === penguin.id) {
+        if (armorAbsorbTintTimeoutRef.current) {
+          clearTimeout(armorAbsorbTintTimeoutRef.current);
+        }
+        setArmorAbsorbTintActive(true);
+        armorAbsorbTintTimeoutRef.current = setTimeout(() => {
+          setArmorAbsorbTintActive(false);
+          armorAbsorbTintTimeoutRef.current = null;
+        }, 280);
+      }
+
+      // SHARED VFX/SOUND — gate to the index-0 instance so we don't double-emit.
+      if (index !== 0) return;
+      const fxX = data.x + SPRITE_HALF_W;
+      emitParticles("grabArmorAbsorb", {
+        x: fxX,
+        y: PLAYER_MID_Y,
+        facing: data.facing || 1,
+      });
+      playSound(thickBlubberSound, 0.012, null, 1.0, xToPan(fxX));
+    };
+    socket.on("grab_armor_absorb", handleGrabArmorAbsorb);
+
+    // Grab-armor break — glass-shard burst when a charged attack shatters
+    // the grab armor. Same single-emit gating + position convention as above.
+    const handleGrabArmorBreak = (data) => {
+      if (index !== 0) return;
+      if (typeof data?.x !== "number") return;
+      const fxX = data.x + SPRITE_HALF_W;
+      emitParticles("grabArmorBreak", {
+        x: fxX,
+        y: PLAYER_MID_Y,
+        facing: data.facing || 1,
+      });
+      playSound(glassBreakSound, 0.05, null, 1.0, xToPan(fxX));
+    };
+    socket.on("grab_armor_break", handleGrabArmorBreak);
+
     return () => {
       pendingTimeouts.forEach((id) => {
         clearTimeout(id);
@@ -3273,8 +3336,14 @@ const GameFighter = ({
       socket.off("cinematic_kill", handleCinematicKill);
       socket.off("clinch_kill_throw", handleClinchKillThrow);
       socket.off("clinch_jolt", handleClinchJolt);
+      socket.off("grab_armor_absorb", handleGrabArmorAbsorb);
+      socket.off("grab_armor_break", handleGrabArmorBreak);
+      if (armorAbsorbTintTimeoutRef.current) {
+        clearTimeout(armorAbsorbTintTimeoutRef.current);
+        armorAbsorbTintTimeoutRef.current = null;
+      }
     };
-  }, [socket, player.id, localId, roomName]);
+  }, [socket, player.id, localId, roomName, index, emitParticles, penguin.id]);
 
   // Final cleanup effect - ensure all music stops when component unmounts
   useEffect(() => {
@@ -3422,16 +3491,22 @@ const GameFighter = ({
     hitTintFramesRemaining.current -= 1;
   }
 
-  // Tint priority: hit > thick blubber
+  // Tint priority: hit > armor absorb > thick blubber
   // (Dodge invincibility is handled via CSS opacity pulse, not sprite-level tinting)
-  const useBlubberTint = thickBlubberIndicator && !showHitTintThisFrame;
+  // Armor-absorb tint takes priority over blubber so the absorb flash always
+  // reads even if the player happens to also have thick-blubber active.
+  const useArmorTint = armorAbsorbTintActive && !showHitTintThisFrame;
+  const useBlubberTint =
+    thickBlubberIndicator && !showHitTintThisFrame && !useArmorTint;
 
   // Get sprite render info (handles animated spritesheets and recoloring)
   const spriteRenderInfo = getSpriteRenderInfo(
     effectiveSpriteSrc,
     showHitTintThisFrame,
     false,
-    useBlubberTint
+    useBlubberTint,
+    false,
+    useArmorTint
   );
   const isKillVictim = penguin.isClinchKillThrowVictim || penguin.isClinchKillPullVictim;
 
@@ -3442,7 +3517,7 @@ const GameFighter = ({
     isAnimated: isAnimatedSprite,
     config: spriteConfig,
   } = isKillVictim
-    ? getSpriteRenderInfo(hitSprite, showHitTintThisFrame, false, useBlubberTint, true)
+    ? getSpriteRenderInfo(hitSprite, showHitTintThisFrame, false, useBlubberTint, true, useArmorTint)
     : spriteRenderInfo;
 
   const baseSpriteSrc = recoloredSpriteSrc;

@@ -66,6 +66,7 @@ const HitEffect = ({ position }) => {
     const cinematicMs = position.cinematicHitstopMs || 0;
 
     const isBurstHit = position.isBurstHit || false;
+    const isArmorBreak = position.isArmorBreak || false;
 
     const isHeavy = attackType === 'charged' || isBurstHit || isCinematic;
 
@@ -78,6 +79,7 @@ const HitEffect = ({ position }) => {
       isBurstHit,
       isCounterHit,
       isPunish,
+      isArmorBreak,
       frozen: isCinematic,
     };
 
@@ -124,7 +126,7 @@ const HitEffect = ({ position }) => {
       processedHitsRef.current.delete(hitIdentifier);
     }, duration);
     pendingTimeouts.current.push(tid);
-  }, [hitIdentifier, position?.x, position?.y, position?.facing, position?.attackType, position?.isCounterHit, position?.isPunish, position?.cinematicKill]);
+  }, [hitIdentifier, position?.x, position?.y, position?.facing, position?.attackType, position?.isCounterHit, position?.isPunish, position?.isArmorBreak, position?.cinematicKill]);
 
   useEffect(() => {
     return () => {
@@ -152,6 +154,9 @@ const HitEffect = ({ position }) => {
         const burstHitClass = isBurst ? 'burst-hit' : '';
         const counterHitClass = effect.isCounterHit ? 'counter-hit' : '';
         const punishHitClass = effect.isPunish ? 'punish-hit' : '';
+        // Charged attack shattering grab armor — recolor the orange hit VFX
+        // to white/yellow to visually link it to the glass-shard armor break.
+        const armorBreakClass = effect.isArmorBreak ? 'armor-break' : '';
         const frozenClass = effect.frozen ? 'cinematic-frozen' : '';
         const ringTiltSigned = effect.facing === -1 ? "55deg" : "-55deg";
         const knockDir = effect.facing === 1 ? 1 : -1;
@@ -168,7 +173,7 @@ const HitEffect = ({ position }) => {
             $facing={effect.facing}
           >
             <div
-              className={`hit-ring-wrapper ${hitTypeClass} ${burstHitClass} ${counterHitClass} ${punishHitClass} ${frozenClass}`}
+              className={`hit-ring-wrapper ${hitTypeClass} ${burstHitClass} ${counterHitClass} ${punishHitClass} ${armorBreakClass} ${frozenClass}`}
               style={{
                 "--charged-ring-tilt-signed": ringTiltSigned,
                 "--slap-ring-tilt-signed": ringTiltSigned,

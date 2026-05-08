@@ -653,6 +653,14 @@ function tick(delta) {
         player.knockbackImmune = false;
       }
 
+      // Clear grab immunity (post-grab-break protection) when timer expires
+      if (
+        player.grabImmune &&
+        now >= player.grabImmuneEndTime
+      ) {
+        player.grabImmune = false;
+      }
+
       // Smooth grab-break separation tween overrides other movement for its duration
       if (player.isGrabBreakSeparating) {
         const elapsed = now - (player.grabBreakSepStartTime || now);
@@ -668,9 +676,16 @@ function tick(delta) {
         const newX = startX + (targetX - startX) * eased;
 
         // For pull reversal, clamp to a margin inside boundaries so they stop before the edge
+        // Kill-pull victims ignore map boundaries entirely so the cinematic yank can fling
+        // them straight off the dohyo.
         const isPullTween = player.isBeingPullReversaled;
-        const leftBound = isPullTween ? MAP_LEFT_BOUNDARY + PULL_BOUNDARY_MARGIN : MAP_LEFT_BOUNDARY;
-        const rightBound = isPullTween ? MAP_RIGHT_BOUNDARY - PULL_BOUNDARY_MARGIN : MAP_RIGHT_BOUNDARY;
+        const isKillPullVictim = player.isClinchKillPullVictim;
+        const leftBound = isKillPullVictim
+          ? -Infinity
+          : isPullTween ? MAP_LEFT_BOUNDARY + PULL_BOUNDARY_MARGIN : MAP_LEFT_BOUNDARY;
+        const rightBound = isKillPullVictim
+          ? Infinity
+          : isPullTween ? MAP_RIGHT_BOUNDARY - PULL_BOUNDARY_MARGIN : MAP_RIGHT_BOUNDARY;
         const clampedX = Math.max(leftBound, Math.min(newX, rightBound));
         player.x = clampedX;
         if (isPullTween && t < 1) {
@@ -702,13 +717,23 @@ function tick(delta) {
         player.knockbackVelocity.y = 0;
         player.isStrafing = false;
 
-        // If pulled player hits boundary margin during pull, end tween early
-        const hitBoundary = isPullTween && t > 0.05 &&
+        // If pulled player hits boundary margin during pull, end tween early.
+        // Kill-pull victims are exempt — they fly the full distance through the boundary.
+        const hitBoundary = isPullTween && !isKillPullVictim && t > 0.05 &&
           Math.abs(newX - clampedX) > 1;
 
         if (t >= 1 || hitBoundary) {
-          // End tween — ensure player is back on the ground
-          player.y = GROUND_LEVEL;
+          // End tween — ensure player is back on the ground.
+          // Kill-pull victims that landed past the dohyo edge should fall off
+          // instead of snapping back to ground level.
+          const killPullLandedOffDohyo = isKillPullVictim &&
+            (player.x <= DOHYO_LEFT_BOUNDARY || player.x >= DOHYO_RIGHT_BOUNDARY);
+          if (killPullLandedOffDohyo) {
+            player.y = GROUND_LEVEL - DOHYO_FALL_DEPTH;
+            player.isFallingOffDohyo = true;
+          } else {
+            player.y = GROUND_LEVEL;
+          }
           player.isGrabBreakSeparating = false;
           player.grabBreakSepStartTime = 0;
           player.grabBreakSepDuration = 0;
@@ -957,12 +982,16 @@ function tick(delta) {
             }
 
             // === GRAB CHECK: opponent is in range and grabbable ===
-            // Grabs beat dodges at any point — the hard counter to dodge
+            // Grabs beat dodges at any point — the hard counter to dodge.
+            // Grab immunity (post-clinch-break) blocks re-engagement so the
+            // breaker isn't punish-grabbed the instant their input lock ends.
+            const opponentGrabImmune = opponent.grabImmune && now < opponent.grabImmuneEndTime;
             const opponentGrabbableNeutral =
               !opponent.isBeingThrown &&
               !opponent.isBeingGrabbed &&
               !player.isBeingGrabbed &&
-              !player.throwTechCooldown;
+              !player.throwTechCooldown &&
+              !opponentGrabImmune;
             const grabWinsVsSlap =
               opponent.isAttacking &&
               opponent.attackType === "slap" &&
@@ -1923,7 +1952,8 @@ function tick(delta) {
           !opponent.isAttacking &&
           !opponent.isBeingGrabbed &&
           !player.isBeingGrabbed &&
-          !player.throwTechCooldown
+          !player.throwTechCooldown &&
+          !(opponent.grabImmune && now < opponent.grabImmuneEndTime)
         ) {
           // Successful grab - stop all movement and initiate grab
           // NOTE: grabApproachSpeed was already captured at grab startup (E press)

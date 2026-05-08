@@ -146,6 +146,9 @@ function cleanupGrabStates(player, opponent) {
   player.clinchJoltRequestTime = 0;
   player.clinchJoltRecoilStart = 0;
   player.clinchJoltPlantInterruptStart = 0;
+  // Clinch break cleanup
+  player.clinchBreakRequest = false;
+  player.clinchBreakRequestTime = 0;
   // Clear action lock so grab/other actions aren't blocked after grab ends
   player.actionLockUntil = 0;
 
@@ -233,6 +236,9 @@ function cleanupGrabStates(player, opponent) {
   opponent.clinchJoltRequestTime = 0;
   opponent.clinchJoltRecoilStart = 0;
   opponent.clinchJoltPlantInterruptStart = 0;
+  // Clinch break cleanup
+  opponent.clinchBreakRequest = false;
+  opponent.clinchBreakRequestTime = 0;
   // Clear action lock so grab/other actions aren't blocked after grab ends
   opponent.actionLockUntil = 0;
 }
@@ -243,8 +249,8 @@ function handleWinCondition(room, loser, winner, io, winType) {
   room.gameOver = true;
   
   // Determine correct Y position for the loser based on whether they fell off the dohyo
-  // Cinematic/clinch kill victims — don't touch their position
-  if (!loser.isCinematicKillVictim && !loser.isClinchKillThrowVictim) {
+  // Cinematic/clinch kill victims — don't touch their position (pull-kill animates Y via tween)
+  if (!loser.isCinematicKillVictim && !loser.isClinchKillThrowVictim && !loser.isClinchKillPullVictim) {
     const fallenGroundLevel = GROUND_LEVEL - DOHYO_FALL_DEPTH;
     const loserShouldBeAtFallenLevel = 
       loser.isFallingOffDohyo || 
@@ -462,8 +468,8 @@ function handleWinCondition(room, loser, winner, io, winType) {
   winner.movementVelocity = 0;
   
   // CRITICAL: Force loser Y position AGAIN after all state changes
-  // Skip for cinematic/clinch kill throw victims — they're mid-arc or flying off
-  if (!loser.isCinematicKillVictim && !loser.isClinchKillThrowVictim) {
+  // Skip for cinematic/clinch kill victims — they're mid-arc, flying off, or being pulled off
+  if (!loser.isCinematicKillVictim && !loser.isClinchKillThrowVictim && !loser.isClinchKillPullVictim) {
     const loserFellOff = loser.isFallingOffDohyo || isOutsideDohyo(loser.x, loser.y) || loser.y < GROUND_LEVEL;
     loser.y = loserFellOff ? (GROUND_LEVEL - DOHYO_FALL_DEPTH) : GROUND_LEVEL;
   }
@@ -629,6 +635,7 @@ function executeSlapAttack(player, rooms) {
             player.isGrabStartup = true;
             player.grabStartupStartTime = Date.now();
             player.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
+            player.grabStartupArmorUsed = false; // Fresh slap-armor charge per grab attempt
             player.currentAction = "grab_startup";
             player.actionLockUntil = Date.now() + GRAB_STARTUP_DURATION_MS;
             player.grabState = GRAB_STATES.ATTEMPTING;
@@ -1661,6 +1668,7 @@ function executeInputBuffer(player, rooms) {
         player.isGrabStartup = true;
         player.grabStartupStartTime = Date.now();
         player.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
+        player.grabStartupArmorUsed = false; // Fresh slap-armor charge per grab attempt
         player.currentAction = "grab_startup";
         player.actionLockUntil = Date.now() + GRAB_STARTUP_DURATION_MS;
         player.grabState = GRAB_STATES.ATTEMPTING;

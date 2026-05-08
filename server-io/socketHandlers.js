@@ -358,6 +358,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
         grabMovementVelocity: 0,
         grabStartupStartTime: 0,
         grabStartupDuration: 0,
+        grabStartupArmorUsed: false,
         grabStartTime: 0,
         grabbedOpponent: null,
         // New grab action system states
@@ -493,6 +494,10 @@ function registerSocketHandlers(socket, io, rooms, context) {
         mouse1PressTime: 0, // Track when mouse1 was pressed for slap-vs-charge threshold
         knockbackImmune: false, // Add knockback immunity flag
         knockbackImmuneEndTime: 0, // Add knockback immunity timer
+        clinchBreakRequest: false,
+        clinchBreakRequestTime: 0,
+        grabImmune: false, // Re-grab immunity after clinch break
+        grabImmuneEndTime: 0,
         // Add missing power-up initialization
         activePowerUp: null,
         powerUpMultiplier: 1,
@@ -591,6 +596,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
         grabMovementVelocity: 0,
         grabStartupStartTime: 0,
         grabStartupDuration: 0,
+        grabStartupArmorUsed: false,
         grabStartTime: 0,
         grabbedOpponent: null,
         // New grab action system states
@@ -722,6 +728,10 @@ function registerSocketHandlers(socket, io, rooms, context) {
         mouse1PressTime: 0, // Track when mouse1 was pressed for slap-vs-charge threshold
         knockbackImmune: false, // Add knockback immunity flag
         knockbackImmuneEndTime: 0, // Add knockback immunity timer
+        clinchBreakRequest: false,
+        clinchBreakRequestTime: 0,
+        grabImmune: false, // Re-grab immunity after clinch break
+        grabImmuneEndTime: 0,
         // Add missing power-up initialization
         activePowerUp: null,
         powerUpMultiplier: 1,
@@ -883,6 +893,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
       grabMovementVelocity: 0,
       grabStartupStartTime: 0,
       grabStartupDuration: 0,
+      grabStartupArmorUsed: false,
       grabStartTime: 0,
       grabbedOpponent: null,
       // New grab action system states
@@ -989,6 +1000,10 @@ function registerSocketHandlers(socket, io, rooms, context) {
       mouse1PressTime: 0, // Track when mouse1 was pressed for slap-vs-charge threshold
       knockbackImmune: false,
       knockbackImmuneEndTime: 0,
+      clinchBreakRequest: false,
+      clinchBreakRequestTime: 0,
+      grabImmune: false,
+      grabImmuneEndTime: 0,
       activePowerUp: null,
       powerUpMultiplier: 1,
       selectedPowerUp: null,
@@ -2246,6 +2261,26 @@ function registerSocketHandlers(socket, io, rooms, context) {
       player.clinchJoltRequestTime = Date.now();
     }
 
+    // === CLINCH BREAK: Spacebar while in mutual clinch (both must have grip) ===
+    // Defensive escape from the clinch — costs heavy stamina, halves balance,
+    // soft-gated (under-budget breakers self-gas). Phase A grabs (one-sided grip)
+    // can't be broken — opponent must have gripped up first.
+    if (
+      player.spaceJustPressed && player.hasGrip && player.inClinch &&
+      !player.isGassed &&
+      !player.clinchThrowActive && !player.isClinchClashing &&
+      !player.isClinchJolting && !player.isClinchJoltClashing && !player.clinchJoltRecovery &&
+      !player.isResistingThrow && !player.isResistingPull && !player.isBeingLifted &&
+      !player.clinchBreakRequest && !player.isGrabBreaking && !player.isGrabBreakCountered &&
+      !player.isGrabBreakSeparating
+    ) {
+      const otherPlayer = rooms[roomIndex].players.find((p) => p.id !== player.id);
+      if (otherPlayer && otherPlayer.hasGrip) {
+        player.clinchBreakRequest = true;
+        player.clinchBreakRequestTime = Date.now();
+      }
+    }
+
     // === CLINCH THROW/PULL/LIFT: Mouse2 + direction while in clinch with grip ===
     // Detects three patterns:
     //   1) Mouse2 just pressed + direction already held
@@ -2624,6 +2659,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
       player.isGrabStartup = true;
       player.grabStartupStartTime = Date.now();
       player.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
+      player.grabStartupArmorUsed = false; // Fresh slap-armor charge per grab attempt
       player.currentAction = "grab_startup";
       player.actionLockUntil = Date.now() + GRAB_STARTUP_DURATION_MS;
       player.grabState = GRAB_STATES.ATTEMPTING;
