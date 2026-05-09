@@ -10,6 +10,7 @@ const {
   PARRY_SUCCESS_DURATION,
   RAW_PARRY_KNOCKBACK, RAW_PARRY_SLAP_KNOCKBACK,
   RAW_PARRY_STAMINA_REFUND, RAW_PARRY_COOLDOWN_MS,
+  PERFECT_PARRY_BALANCE_REFUND,
   SLAP_CHAIN_HIT_GAP_MS,
   HITSTOP_SLAP_MS, HITSTOP_SLAP_HIT3_MS, HITSTOP_PARRY_MS, HITSTOP_SLAP_PARRY_MS, HITSTOP_PERFECT_PARRY_MS, HITSTOP_CHARGED_MIN_MS, HITSTOP_CHARGED_MAX_MS,
   SLAP_HIT_VICTIM_STAMINA_DRAIN, CHARGED_HIT_VICTIM_STAMINA_DRAIN,
@@ -753,6 +754,14 @@ function processHit(player, otherPlayer, rooms, io) {
     // Both regular and perfect parries refund the flat parry cost
     otherPlayer.stamina = Math.min(100, otherPlayer.stamina + RAW_PARRY_STAMINA_REFUND);
 
+    // Perfect parries also refund a chunk of balance — net defensive gain on a correct read
+    let perfectParryBalanceGain = 0;
+    if (isPerfectParry) {
+      const balanceBefore = otherPlayer.balance;
+      otherPlayer.balance = Math.min(BALANCE_MAX, otherPlayer.balance + PERFECT_PARRY_BALANCE_REFUND);
+      perfectParryBalanceGain = otherPlayer.balance - balanceBefore;
+    }
+
     if (isPerfectParry) {
       // Perfect parry: keep isRawParrying active and lock movement
       otherPlayer.isRawParrying = true;
@@ -779,6 +788,8 @@ function processHit(player, otherPlayer, rooms, io) {
       timestamp: Date.now(),
       parryId: `${otherPlayer.id}_parry_${Date.now()}`,
       playerNumber: parryingPlayerNumber, // 1 or 2
+      parrierId: otherPlayer.id,
+      balanceGain: perfectParryBalanceGain, // 0 for non-perfect; drives client balance gain anim
     };
     if (currentRoom) {
       io.to(currentRoom.id).emit("raw_parry_success", parryData);
@@ -875,6 +886,7 @@ function processHit(player, otherPlayer, rooms, io) {
           stunnedPlayerY: player.y,
           stunnedPlayerFighter: player.fighter, // Add fighter info to help with positioning
           showStarStunEffect: true, // Explicit flag for the star stun effect
+          balanceGain: perfectParryBalanceGain, // Drives balance bar gain animation on client
         });
       }
 

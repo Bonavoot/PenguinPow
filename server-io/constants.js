@@ -345,6 +345,11 @@ const PARRY_SUCCESS_DURATION = 500; // How long the parry success pose is held
 const RAW_PARRY_STAMINA_COST = 12; // Meaningful cost — whiffed parries sting (was 5)
 const RAW_PARRY_STAMINA_REFUND = 12; // Full refund on success — correct reads are free (was 5)
 
+// Perfect parry balance reward: only granted on perfect (100ms window) parries.
+// More than the 8 you'd have lost from eating the slap, so a perfect read is a net
+// defensive gain. Capped well below clinch throw thresholds so it can't trivialize pressure.
+const PERFECT_PARRY_BALANCE_REFUND = 12;
+
 // ============================================
 // At the Ropes
 // ============================================
@@ -394,20 +399,20 @@ const KNOCKBACK_IMMUNITY_DURATION = 150; // 150ms immunity window
 // ============================================
 // Stamina System
 // ============================================
-const STAMINA_REGEN_INTERVAL_MS = 2500; // regen interval
+const STAMINA_REGEN_INTERVAL_MS = 2000; // regen interval — bumped from 2500 to soften gas pressure
 const STAMINA_REGEN_AMOUNT = 8; // per tick
 
 // Charged attack timing
 const CHARGE_FULL_POWER_MS = 1000; // Time to reach 100% charge (1 second)
 
-// Stamina costs — every action is a real decision
-const SLAP_ATTACK_STAMINA_COST = 5; // Meaningful cost (was 3 — ~20 slaps before exhaustion)
-const CHARGED_ATTACK_STAMINA_COST = 12; // Heavy commitment (was 9)
-const DODGE_STAMINA_COST = 4; // Deliberate escape (was 2 — ~25 dodges before exhaustion)
+// Stamina costs — every action is a real decision (lowered to slow neutral pacing)
+const SLAP_ATTACK_STAMINA_COST = 3; // Lighter throw cost — victim still pays more on hit
+const CHARGED_ATTACK_STAMINA_COST = 9; // Heavy but not punishing for the attacker
+const DODGE_STAMINA_COST = 4; // Deliberate escape
 
 // Stamina drain on victim when hit (victim pays MORE than attacker spent)
-const SLAP_HIT_VICTIM_STAMINA_DRAIN = 8; // Victim loses 8 (was 6)
-const CHARGED_HIT_VICTIM_STAMINA_DRAIN = 22; // Victim loses 22 (was 18)
+const SLAP_HIT_VICTIM_STAMINA_DRAIN = 8; // Victim loses 8
+const CHARGED_HIT_VICTIM_STAMINA_DRAIN = 16; // Victim loses 16 — eating one charged shouldn't half-gas you
 
 // ============================================
 // Balance System — clinch throw/kill-throw gating
@@ -416,7 +421,7 @@ const BALANCE_MAX = 100;
 const BALANCE_PASSIVE_REGEN_PER_SEC = 5;        // +5/sec in neutral
 const BALANCE_CROUCH_REGEN_PER_SEC = 10;        // +10/sec additional while crouching (stacks with passive → +15/sec)
 const BALANCE_SLAP_HIT_DRAIN = 8;               // Balance lost when hit by a slap
-const BALANCE_CHARGED_HIT_DRAIN = 20;           // Balance lost when hit by a charged attack
+const BALANCE_CHARGED_HIT_DRAIN = 15;           // Balance lost when hit by a charged attack (down from 20 — pairs with 16 stam drain)
 
 // ============================================
 // Mutual Clinch System — push/plant/throw interactions
@@ -562,8 +567,9 @@ const CLINCH_JOLT_LOCKOUT_VS_NEUTRAL = 400;     // Even (400ms recovery = 400ms 
 const CLINCH_JOLT_LOCKOUT_VS_PUSH = 0;          // NO lockout — target recovers instantly, gets free throw attempt
 
 // Gassed state: regen freeze when stamina hits 0
-const GASSED_DURATION_MS = 3000; // 3 second regen freeze penalty
-const GASSED_RECOVERY_STAMINA = 30; // Stamina granted immediately when gassed ends
+// Longer duration creates a real punish window; bigger recovery prevents immediate re-gas loop
+const GASSED_DURATION_MS = 5000; // 5 second penalty — was 3s, felt like a fake reset
+const GASSED_RECOVERY_STAMINA = 55; // Granted on exit — enough to actually fight back, not gas in 1 trade
 
 // ============================================
 // HITSTOP TUNING - Smash Bros style
@@ -809,6 +815,7 @@ module.exports = {
   PARRY_SUCCESS_DURATION,
   RAW_PARRY_STAMINA_COST,
   RAW_PARRY_STAMINA_REFUND,
+  PERFECT_PARRY_BALANCE_REFUND,
 
   // At the ropes
   AT_THE_ROPES_DURATION,

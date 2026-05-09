@@ -107,6 +107,74 @@ const parryRefundFlash = keyframes`
   }
 `;
 
+/* Balance-gain flash — fires on perfect parry. Ice blue/cream wash that
+ * matches the BalFill palette so the gain reads as "more of the same
+ * stuff filling in" rather than a foreign green-stamina overlay. The
+ * inset glow + outer halo punches the bar without obscuring the fill
+ * level (we still want to read the new balance value at a glance). */
+const balanceGainFlash = keyframes`
+  0% {
+    opacity: 0;
+    box-shadow:
+      inset 0 0 18px rgba(245, 252, 255, 0.95),
+      0 0 14px rgba(170, 220, 255, 0.85);
+    transform: scaleY(1);
+  }
+  18% {
+    opacity: 1;
+    box-shadow:
+      inset 0 0 22px rgba(245, 252, 255, 1),
+      0 0 22px rgba(170, 220, 255, 0.95);
+    transform: scaleY(1.18);
+  }
+  60% {
+    opacity: 0.7;
+    box-shadow:
+      inset 0 0 14px rgba(200, 235, 255, 0.6),
+      0 0 12px rgba(170, 220, 255, 0.45);
+    transform: scaleY(1.05);
+  }
+  100% {
+    opacity: 0;
+    box-shadow:
+      inset 0 0 0 rgba(245, 252, 255, 0),
+      0 0 0 rgba(170, 220, 255, 0);
+    transform: scaleY(1);
+  }
+`;
+
+/* Balance-gain sweep — bright cream highlight rolls outward from the
+ * anchor edge along the new fill, selling the "topped up" direction
+ * without making the rest of the bar look like it changed. Companion
+ * to balanceGainFlash; runs slightly slower so you read the sweep
+ * after the initial pulse instead of both blurring together. */
+const balanceGainSweep = keyframes`
+  0%   { transform: translateX(-110%); opacity: 0.0; }
+  10%  { opacity: 1; }
+  85%  { opacity: 0.9; }
+  100% { transform: translateX(110%); opacity: 0; }
+`;
+
+/* Balance-gain track ring — brief outer outline pulse on the track itself,
+ * harmonized with the BalTrack's existing border tone. Runs at the same
+ * cadence as the inner flash so the inside-fill and outside-frame land
+ * the moment together. */
+const balanceGainTrackPulse = keyframes`
+  0% {
+    box-shadow:
+      inset 0 0 0 1px rgba(245, 252, 255, 0.95),
+      0 0 18px rgba(170, 220, 255, 0.9),
+      inset 0 0 0 2px rgba(8, 10, 18, 0.85),
+      0 1px 2px rgba(0, 0, 0, 0.5);
+  }
+  100% {
+    box-shadow:
+      inset 0 0 0 1px rgba(245, 236, 217, 0.32),
+      inset 0 0 0 2px rgba(8, 10, 18, 0.85),
+      0 1px 2px rgba(0, 0, 0, 0.5);
+  }
+`;
+
 /* Subtle danger pulse — modulates the frame border opacity gently when
  * stamina is critical. Was a multi-layer red glow halo for the old
  * chiseled gold-ring frame; with the minimalist hairline border, the
@@ -905,6 +973,74 @@ const ParryRefundFlash = styled.div.attrs((p) => ({
   animation: ${parryRefundFlash} 0.5s ease-out forwards;
 `;
 
+/* ── Perfect-parry balance gain VFX ───────────────────────────────────
+ *
+ * Sits inside the BalTrack, sized to the current balance width so it
+ * "fills" exactly the visible mawashi-blue zone. Two stacked layers:
+ *
+ *   1. BalanceGainFlash — ice-blue / cream wash that pulses the whole
+ *      fill once (inset glow + outer halo + brief vertical scale).
+ *      Reads as "the bar got recharged."
+ *
+ *   2. BalanceGainSweep — single bright cream stripe that travels
+ *      across the fill from the anchor edge to the leading edge.
+ *      Reads as "energy poured in" with a directional read that
+ *      reinforces which side is the current balance level.
+ *
+ * Companion BalanceGainGlow on the track adds an outer outline pulse
+ * — the inner flash and outer ring land on the same beat so the gauge
+ * "snaps" with the perfect-parry hitstop.
+ */
+const BalanceGainFlash = styled.div.attrs((p) => ({
+  style: {
+    width: `${p.$balance}%`,
+  },
+}))`
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  ${(p) => (p.$isRight ? "left: 0;" : "right: 0;")}
+  border-radius: 1px;
+  z-index: 5;
+  pointer-events: none;
+  overflow: hidden;
+  background: linear-gradient(
+    180deg,
+    rgba(245, 252, 255, 0.95) 0%,
+    rgba(200, 235, 255, 0.65) 50%,
+    rgba(170, 220, 255, 0.85) 100%
+  );
+  animation: ${balanceGainFlash} 0.7s ease-out forwards;
+  transform-origin: center;
+`;
+
+const BalanceGainSweep = styled.div`
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  ${(p) => (p.$isRight ? "left: 0;" : "right: 0;")}
+  width: 50%;
+  pointer-events: none;
+  background: linear-gradient(
+    ${(p) => (p.$isRight ? "90deg" : "270deg")},
+    transparent 0%,
+    rgba(245, 252, 255, 0) 15%,
+    rgba(245, 252, 255, 0.85) 50%,
+    rgba(245, 252, 255, 0) 85%,
+    transparent 100%
+  );
+  filter: blur(0.4px);
+  animation: ${balanceGainSweep} 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+  ${(p) => (p.$isRight ? "" : "transform: translateX(110%);")}
+`;
+
+/* Outer-track halo applied to BalTrack while a gain is active. Driven
+ * by a $gaining prop so the track itself can opt-in to the pulse for
+ * the duration of the inner flash. */
+const balanceGainTrackOverlay = css`
+  animation: ${balanceGainTrackPulse} 0.7s ease-out forwards;
+`;
+
 /* Gassed overlay — designed strain marks, not blurred AI smoke.
  *
  * Previous pass was a stack of: crimson-black radial gradient base +
@@ -1305,11 +1441,17 @@ const BalTrack = styled.div`
      property entirely on a 0.78s strobe — same cadence as the gassed
      lane's alarm pulse so both danger signals beat in sync. */
   transition: box-shadow 220ms ease;
+  /* Animation priority: a perfect-parry gain pulse briefly preempts the
+   * danger strobe so the reward is visible even when balance is low.
+   * When the gain animation finishes ($gaining is reset by the parent
+   * after 700ms), the danger strobe resumes naturally on next render. */
   ${(p) =>
-    p.$danger &&
-    css`
-      animation: ${balanceAlarmPulse} 0.78s ease-in-out infinite;
-    `}
+    p.$gaining
+      ? balanceGainTrackOverlay
+      : p.$danger &&
+        css`
+          animation: ${balanceAlarmPulse} 0.78s ease-in-out infinite;
+        `}
 `;
 
 /* Stance gauge fill — ICE BLUE mawashi-cloth wrap.
@@ -1704,6 +1846,7 @@ const UiPlayerInfo = ({
   player1IsGassed = false,
   player1ParryRefund = 0,
   player1Balance = 100,
+  player1BalanceGain = 0,
   player2Stamina,
   player2ActivePowerUp = null,
   player2SnowballCooldown = false,
@@ -1712,6 +1855,7 @@ const UiPlayerInfo = ({
   player2IsGassed = false,
   player2ParryRefund = 0,
   player2Balance = 100,
+  player2BalanceGain = 0,
   matchOver = false,
 }) => {
   const s1 = clampStamina(player1Stamina);
@@ -1762,6 +1906,16 @@ const UiPlayerInfo = ({
   const p1RecoveryPending = useRef(false);
   const p2RecoveryPending = useRef(false);
 
+  // ── Perfect-parry balance gain flash ──
+  // Each truthy value (a server timestamp) drives a 700ms inner-fill +
+  // outer-track pulse on the balance gauge. The state stores the
+  // timestamp so it can also serve as the React key that remounts the
+  // overlay components, replaying their CSS animation cleanly.
+  const [p1BalGainKey, setP1BalGainKey] = useState(0);
+  const [p2BalGainKey, setP2BalGainKey] = useState(0);
+  const p1BalGainTimer = useRef(null);
+  const p2BalGainTimer = useRef(null);
+
   // ── Impact feedback (heavy hits) ──
   // Bumping the impact counter remounts the ImpactSpark via `key` so its
   // animation runs fresh on every hit. p1Shake/p2Shake are booleans toggled
@@ -1805,6 +1959,32 @@ const UiPlayerInfo = ({
       p2ParryRefundPending.current = true;
     }
   }, [player2ParryRefund]);
+
+  // Perfect-parry balance gain — bump the state to a fresh value (the
+  // server timestamp) so child overlays remount and replay animation,
+  // then clear after 700ms so the track's $gaining flag releases and
+  // any underlying $danger pulse can resume.
+  useEffect(() => {
+    if (player1BalanceGain > 0) {
+      setP1BalGainKey(player1BalanceGain);
+      if (p1BalGainTimer.current) clearTimeout(p1BalGainTimer.current);
+      p1BalGainTimer.current = setTimeout(() => setP1BalGainKey(0), 700);
+    }
+    return () => {
+      if (p1BalGainTimer.current) clearTimeout(p1BalGainTimer.current);
+    };
+  }, [player1BalanceGain]);
+
+  useEffect(() => {
+    if (player2BalanceGain > 0) {
+      setP2BalGainKey(player2BalanceGain);
+      if (p2BalGainTimer.current) clearTimeout(p2BalGainTimer.current);
+      p2BalGainTimer.current = setTimeout(() => setP2BalGainKey(0), 700);
+    }
+    return () => {
+      if (p2BalGainTimer.current) clearTimeout(p2BalGainTimer.current);
+    };
+  }, [player2BalanceGain]);
 
   // ── Post-reset throttle bypass ──
   // After a round reset, the first stamina update from the server may arrive
@@ -2250,8 +2430,25 @@ const UiPlayerInfo = ({
               $danger={b1Danger}
               $matchOver={matchOver}
             >
-              <BalTrack $isRight={false} $danger={b1Danger}>
+              <BalTrack
+                $isRight={false}
+                $danger={b1Danger}
+                $gaining={p1BalGainKey > 0}
+              >
                 <BalFill $balance={b1} $danger={b1Danger} $isRight={false} />
+                {p1BalGainKey > 0 && (
+                  <>
+                    <BalanceGainFlash
+                      key={`p1bg-flash-${p1BalGainKey}`}
+                      $balance={b1}
+                      $isRight={false}
+                    />
+                    <BalanceGainSweep
+                      key={`p1bg-sweep-${p1BalGainKey}`}
+                      $isRight={false}
+                    />
+                  </>
+                )}
               </BalTrack>
             </BalStripWrap>
           </GaugeStack>
@@ -2371,8 +2568,25 @@ const UiPlayerInfo = ({
               $danger={b2Danger}
               $matchOver={matchOver}
             >
-              <BalTrack $isRight={true} $danger={b2Danger}>
+              <BalTrack
+                $isRight={true}
+                $danger={b2Danger}
+                $gaining={p2BalGainKey > 0}
+              >
                 <BalFill $balance={b2} $danger={b2Danger} $isRight={true} />
+                {p2BalGainKey > 0 && (
+                  <>
+                    <BalanceGainFlash
+                      key={`p2bg-flash-${p2BalGainKey}`}
+                      $balance={b2}
+                      $isRight={true}
+                    />
+                    <BalanceGainSweep
+                      key={`p2bg-sweep-${p2BalGainKey}`}
+                      $isRight={true}
+                    />
+                  </>
+                )}
               </BalTrack>
             </BalStripWrap>
           </GaugeStack>
@@ -2422,6 +2636,7 @@ UiPlayerInfo.propTypes = {
   player1IsGassed: PropTypes.bool,
   player1ParryRefund: PropTypes.number,
   player1Balance: PropTypes.number,
+  player1BalanceGain: PropTypes.number,
   player2Stamina: PropTypes.number,
   player2ActivePowerUp: PropTypes.string,
   player2SnowballCooldown: PropTypes.bool,
@@ -2430,6 +2645,7 @@ UiPlayerInfo.propTypes = {
   player2IsGassed: PropTypes.bool,
   player2ParryRefund: PropTypes.number,
   player2Balance: PropTypes.number,
+  player2BalanceGain: PropTypes.number,
   matchOver: PropTypes.bool,
 };
 

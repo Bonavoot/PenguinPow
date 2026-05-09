@@ -21,7 +21,13 @@ import { resolveHiRes } from "../config/hiResSprites";
 // LRU CACHE with size limit
 // Uses Map insertion order for O(1) LRU tracking (delete + re-insert moves to end)
 // ============================================
-const MAX_CACHE_SIZE = 1000; // 2 players × ~25 sprites × 4 tint variants × 2 + headroom
+// 2 players × ~25 sprites × 5 tint variants (base, hit, charge, blubber,
+// armor) × 2 (body color variants) + headroom for cosmetic re-applies.
+// Sized generously — eviction here REVOKES the blob URL, so any GameFighter
+// <img> still pointing at that URL goes blank for a frame and the next
+// render misses cache + falls back to the un-recolored source (default
+// color penguin). Keep this comfortably above expected steady-state usage.
+const MAX_CACHE_SIZE = 2000;
 
 // Map preserves insertion order: oldest entries are first, newest are last.
 // Accessing an entry deletes and re-inserts it (O(1) move-to-end).
@@ -947,10 +953,17 @@ function processPixelsOnMainThread(
   const CHARGE_BLEND = 0.7;
   const BLUBBER_PURPLE_RGB = hslToRgb(278, 78, 65);
   const BLUBBER_BLEND = 0.35;
-  // Armor absorb pink — vivid hot-pink, slightly stronger blend than blubber so
-  // the brief absorb flash reads at a glance against the player's body color.
-  const ARMOR_PINK_RGB = hslToRgb(338, 85, 68);
-  const ARMOR_PINK_BLEND = 0.4;
+  // Armor absorb tint — vivid bright pink-red. Matches the contracting
+  // ring color so the body flash and the absorb ring read as ONE event,
+  // not two. Bright + saturated (NOT desaturated like the previous
+  // steel-blue attempt that made the player look "drained") — the player
+  // looks energized/flashed at the absorb instant, like the impact pulsed
+  // through their armor. Distinct from the hit-red (hue 0, lower saturation,
+  // longer hold) — this is hue 345, max saturation, and the duration is a
+  // 120ms snap rather than a sustained tint.
+  // Variable name kept as ARMOR_PINK_RGB for diff stability.
+  const ARMOR_PINK_RGB = hslToRgb(345, 95, 65);
+  const ARMOR_PINK_BLEND = 0.5;
   const BODY_WHITE_TINT = 0.02;
   const SCLERA_WHITEN = 0.8;
   const bodyTintRgb = bodyColorRange ? hslToRgb(bodyTargetHue, bodyTargetSat, bodyTargetLight) : null;
@@ -1268,7 +1281,10 @@ export function clearRecolorCache() {
 // + ~25 base sprites = 225 total. At 200, tint variants get evicted during gameplay,
 // forcing re-decode on next use = ghost frames. At 350, all variants fit with headroom.
 // Memory cost is ~80-100MB of decoded bitmaps, acceptable since ritual sprites are excluded.
-const MAX_DECODED_CACHE_SIZE = 350;
+// Decoded cache also pins blob URLs from being revoked on recolor-cache eviction
+// (see addToCache), so keeping this generous prevents "invisible frame" bugs where
+// an in-use sprite's URL gets revoked due to LRU pressure.
+const MAX_DECODED_CACHE_SIZE = 500;
 const decodedImageCache = new Map();
 let hiddenImageContainer = null;
 

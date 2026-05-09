@@ -241,6 +241,94 @@ function createColoredCloudRing(diameter, bandWidth, seed, palette) {
   return c;
 }
 
+// Crisp circular ring with a soft inner glow + bright stroke + outer halo.
+// Mimics the CSS hit-effect ring style (border + box-shadow) — sharp/geometric
+// rather than the cloud-blob feel of createCloudRing. Used for the grab-armor
+// absorb where we want the ring to read as a clean shockwave matching the
+// style of the slap/charged hit rings, not as a "smoke puff".
+function createCrispRing(diameter, palette) {
+  const c = document.createElement("canvas");
+  c.width = diameter;
+  c.height = diameter;
+  const ctx = c.getContext("2d");
+  const half = diameter / 2;
+  const ringR = half * 0.78; // leave room for the outer halo
+  // palette.thin → much thinner stroke for delicate "energy boundary" rings
+  // (e.g. armor absorb), vs. the default chunky ~5% diameter line.
+  const strokeW = palette.thin
+    ? Math.max(1.5, diameter * 0.018)
+    : Math.max(2, diameter * 0.045);
+
+  const [sr, sg, sb] = palette.stroke; // bright ring color
+  const [gr, gg, gb] = palette.glow; // soft outer halo
+  const [cr, cg, cb] = palette.core; // optional inner core fill
+
+  // Optional inner core fill (very faint, fades to transparent at the ring)
+  if (palette.coreAlpha > 0) {
+    const coreGrad = ctx.createRadialGradient(half, half, 0, half, half, ringR);
+    coreGrad.addColorStop(0, `rgba(${cr},${cg},${cb},${palette.coreAlpha})`);
+    coreGrad.addColorStop(0.6, `rgba(${cr},${cg},${cb},${palette.coreAlpha * 0.4})`);
+    coreGrad.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+    ctx.fillStyle = coreGrad;
+    ctx.beginPath();
+    ctx.arc(half, half, ringR, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Outer halo (additive-style bloom around the ring) — palette.crisp
+  // skips this entirely (no soft halo = no cloudy/smoky read), used by
+  // tech-feeling rings like the grab-armor absorb.
+  if (!palette.crisp) {
+    const haloGrad = ctx.createRadialGradient(
+      half, half, ringR * 0.85,
+      half, half, half
+    );
+    haloGrad.addColorStop(0, `rgba(${gr},${gg},${gb},0)`);
+    haloGrad.addColorStop(0.35, `rgba(${gr},${gg},${gb},${palette.glowAlpha})`);
+    haloGrad.addColorStop(1, `rgba(${gr},${gg},${gb},0)`);
+    ctx.fillStyle = haloGrad;
+    ctx.beginPath();
+    ctx.arc(half, half, half, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Inner shadow band right inside the stroke (depth) — opt-out via
+  // palette.simple = true for "less detail" rings (e.g. armor absorb).
+  if (!palette.simple) {
+    ctx.lineWidth = Math.max(1, strokeW * 0.45);
+    ctx.strokeStyle = `rgba(0,0,0,0.22)`;
+    ctx.beginPath();
+    ctx.arc(half, half, ringR - strokeW * 0.35, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // Main bright stroke — the "border" of the ring. palette.crisp
+  // disables shadowBlur so the stroke stays geometrically sharp (no
+  // smoky/glowy outline) — meant for tech-style absorb rings.
+  ctx.lineWidth = strokeW;
+  ctx.strokeStyle = `rgba(${sr},${sg},${sb},${palette.strokeAlpha})`;
+  if (!palette.crisp) {
+    ctx.shadowColor = `rgba(${sr},${sg},${sb},0.95)`;
+    ctx.shadowBlur = strokeW * 1.8;
+  }
+  ctx.beginPath();
+  ctx.arc(half, half, ringR, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Bright highlight inner edge (sells the 3D rim feel) — also opt-out
+  // when simple mode is requested for a flatter/cleaner ring read.
+  if (!palette.simple) {
+    ctx.lineWidth = Math.max(1, strokeW * 0.35);
+    ctx.strokeStyle = `rgba(255,255,255,0.55)`;
+    ctx.beginPath();
+    ctx.arc(half, half, ringR + strokeW * 0.25, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  return c;
+}
+
 // Angular wedge with a bright leading edge — reads as a thin shard of glass
 // when spawned at random rotations. Multiple seeds produce subtly different
 // silhouettes so a burst of shards doesn't look stamped from one cookie cutter.
@@ -299,6 +387,99 @@ function createGlassShard(size, seed) {
   tipGrad.addColorStop(1, "rgba(255,235,140,0)");
   ctx.fillStyle = tipGrad;
   ctx.fill();
+
+  return c;
+}
+
+// Punchy 8-point cross flare — 4 long primary rays + 4 short diagonal
+// rays + a hot white-pink core. Designed for the IMPACT moment of the
+// grab-armor absorb so the spark of contact reads as a clean, bright
+// "snap" rather than a blob. Anime-fighter idiom: bright cross flare
+// over a hot pinpoint, additive-blended for bloom. Color is applied
+// via (r,g,b); rays fade to transparent at their tips so the flare
+// reads as light, not as a stamp.
+// Tight white-center → saturated-pink halo with a SHARP falloff.
+// Mirrors the perfect-parry inner-burst gradient (white ≤12% → hot
+// color 30% → faint 68% → transparent by 80%) but in pink instead
+// of cyan. Hard cutoff before the canvas edge is what stops it from
+// reading as a smokey blob — the previous version extended color
+// out to 100% which left a long soft tail. This version snaps to
+// transparent so the bloom looks like a CONTAINED flash, not a
+// foggy puff.
+function createFlashBloom(size, r, g, b) {
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext("2d");
+  const half = size / 2;
+  const grad = ctx.createRadialGradient(half, half, 0, half, half, half);
+  grad.addColorStop(0, "rgba(255,255,255,1)");
+  grad.addColorStop(0.12, "rgba(255,240,246,0.95)");
+  grad.addColorStop(0.30, "rgba(255,160,195,0.88)");
+  grad.addColorStop(0.50, `rgba(${r},${g},${b},0.55)`);
+  grad.addColorStop(0.68, `rgba(${r},${g},${b},0.18)`);
+  grad.addColorStop(0.80, `rgba(${r},${g},${b},0)`);
+  grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+  return c;
+}
+
+function createCrossFlare(size, r, g, b) {
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext("2d");
+  const half = size / 2;
+
+  // Hot white-pink core. Bright nucleus the rays radiate from.
+  const core = ctx.createRadialGradient(half, half, 0, half, half, size * 0.32);
+  core.addColorStop(0, "rgba(255,255,255,1)");
+  core.addColorStop(0.35, "rgba(255,235,242,0.95)");
+  core.addColorStop(0.75, `rgba(${r},${g},${b},0.5)`);
+  core.addColorStop(1, `rgba(${r},${g},${b},0)`);
+  ctx.fillStyle = core;
+  ctx.fillRect(0, 0, size, size);
+
+  const drawTaperedRay = (rayHalfLen, thickness, alphaPeak, midColorRgb) => {
+    const grad = ctx.createLinearGradient(-rayHalfLen, 0, rayHalfLen, 0);
+    grad.addColorStop(0, `rgba(${r},${g},${b},0)`);
+    grad.addColorStop(0.4, `rgba(${midColorRgb},${alphaPeak * 0.7})`);
+    grad.addColorStop(0.5, `rgba(255,255,255,${alphaPeak})`);
+    grad.addColorStop(0.6, `rgba(${midColorRgb},${alphaPeak * 0.7})`);
+    grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    ctx.fillStyle = grad;
+
+    // Tapered diamond — thicker in the middle, points at both ends.
+    ctx.beginPath();
+    ctx.moveTo(-rayHalfLen, 0);
+    ctx.lineTo(-rayHalfLen * 0.25, -thickness);
+    ctx.lineTo(rayHalfLen * 0.25, -thickness);
+    ctx.lineTo(rayHalfLen, 0);
+    ctx.lineTo(rayHalfLen * 0.25, thickness);
+    ctx.lineTo(-rayHalfLen * 0.25, thickness);
+    ctx.closePath();
+    ctx.fill();
+  };
+
+  // 4 PRIMARY rays — long, bright, on the cardinal axes.
+  for (let i = 0; i < 2; i++) {
+    ctx.save();
+    ctx.translate(half, half);
+    ctx.rotate((i * Math.PI) / 2);
+    drawTaperedRay(half * 0.96, size * 0.05, 1.0, "255,170,200");
+    ctx.restore();
+  }
+
+  // 4 SECONDARY rays — shorter, thinner, on the diagonals. Adds the
+  // 8-point flare silhouette without competing with the primaries.
+  for (let i = 0; i < 2; i++) {
+    ctx.save();
+    ctx.translate(half, half);
+    ctx.rotate((i * Math.PI) / 2 + Math.PI / 4);
+    drawTaperedRay(half * 0.62, size * 0.022, 0.7, "255,200,220");
+    ctx.restore();
+  }
 
   return c;
 }
@@ -557,19 +738,42 @@ function generateTextures(s) {
     hitSmear2: createHitSmear(r(48), 2468),
     hitSmear3: createHitSmear(r(48), 3579),
 
-    // Grab-armor absorb: pinkish-red tiled ring + matching small chunks/sparks
-    armorAbsorbRing: createColoredCloudRing(r(160), r(14), 6151, {
-      shadow: [180, 60, 90],
-      body: [255, 110, 140],
-      highlight: [255, 200, 215],
+    // ── GRAB-ARMOR ABSORB textures ─────────────────────────────────
+    // Abigail-style pink absorb VFX: ONE ring that expands from a
+    // small bright ring (with flashy content INSIDE) to a big ring
+    // that WRAPS around the entire player. NO content inside the
+    // big ring — the inner flash fades as the ring grows past it.
+
+    // The single ring used throughout the absorb. Bright magenta
+    // stroke + strong halo + NO inner fill (coreAlpha 0). When small,
+    // the cross flare + hot core sit visibly INSIDE its perimeter;
+    // when expanded, the player sits cleanly inside the ring instead
+    // of being washed out by an interior glow.
+    armorAbsorbWrapRing: createCrispRing(r(240), {
+      stroke: [255, 80, 135],
+      strokeAlpha: 1.0,
+      glow: [255, 110, 165],
+      glowAlpha: 0.7,
+      core: [0, 0, 0],
+      coreAlpha: 0,
+      simple: false,
+      crisp: false,
+      thin: false,
     }),
-    armorAbsorbRingAlt: createColoredCloudRing(r(160), r(14), 9173, {
-      shadow: [180, 60, 90],
-      body: [255, 110, 140],
-      highlight: [255, 200, 215],
-    }),
-    armorAbsorbChunk: createChunk(r(14), 255, 130, 160, 0.85),
-    armorAbsorbSpark: createChunk(r(8), 255, 200, 215, 1.0),
+    // 8-point pink cross flare — the bright "content INSIDE the small
+    // ring" beat. Short lifetime so it's only visible while the ring
+    // is small.
+    armorAbsorbCross: createCrossFlare(r(140), 255, 90, 140),
+    // White-centered bloom — the BANG of light at the very moment of
+    // impact. Pops bigger than the small ring then fades fast; reads
+    // as the "flash" before the ring takes over.
+    armorAbsorbFlash: createFlashBloom(r(160), 255, 110, 160),
+    // Hot pinpoint core — the bright white-pink center inside the
+    // small ring. Even shorter lifetime than the cross flare.
+    armorAbsorbCore: createChunk(r(28), 255, 180, 200, 1.0),
+    // Tiny bright pink spark — used for the outward scatter sparks
+    // around the big ring + the residual upward "mist" tail.
+    armorAbsorbSpark: createChunk(r(6), 255, 220, 230, 1.0),
 
     // Grab-armor break: white-yellow glass shards + a brighter break ring
     armorBreakRing: createColoredCloudRing(r(170), r(15), 4091, {
@@ -2055,67 +2259,307 @@ const PRESETS = {
   },
 
   // ── GRAB ARMOR ABSORB ───────────────────────────────────────────────
-  // Subtle pinkish-red ring with a few small particles flying out — fires
-  // when grab startup eats one slap via slap-armor. Deliberately understated:
-  // it's a defensive "I tanked it" moment, not a flashy victory beat.
-  // Position convention matches hitSparkSlap: caller passes y = PLAYER_MID_Y
-  // and the preset flips to canvas via cy = GAME_H - y (no extra offset).
-  grabArmorAbsorb(engine, { x, y, facing }) {
-    const dir = facing || 1;
+  // ABIGAIL (SF5) STYLE — ONE ring that expands from a small bright
+  // ring (with flashy content INSIDE) to a big ring that WRAPS around
+  // the entire player. Same particle, same position, just expanding.
+  //
+  // It's important that this is ONE ring — small phase and big phase
+  // are the SAME ring at different points in its size animation, NOT
+  // two separately positioned rings. The whole effect lives at the
+  // pulled-back-to-body position the caller passes (chest height,
+  // centered on the absorber's body so the absorb sits IN THE MIDDLE
+  // of the opponent absorbing, not at the slap-contact tip).
+  //
+  // 3D TILT — The ring is rendered with stretchX = 0.65, which is
+  // canvas's analog of the parry effect's `rotateY(55deg)` transform.
+  // Reads as a foreshortened ellipse → the ring looks like a 3D loop
+  // tilted away from the camera, NOT a flat 2D circle pasted on top.
+  //
+  // WRAP ILLUSION — The ring is spawned on TWO layers simultaneously:
+  //   • MIDDLE layer (zIndex 50, behind player at 101): the primary
+  //     ring. Player sprite occludes the part of the ring that
+  //     crosses the body → ring appears to go AROUND the player.
+  //   • FRONT layer (zIndex 102, in front of player) at low alpha:
+  //     keeps the ring visually CONTINUOUS where it crosses the body
+  //     (so the silhouette doesn't appear to bite a chunk out of it)
+  //     AND makes the ring visible during the SMALL phase when the
+  //     middle-layer copy is fully hidden behind the player sprite.
+  //
+  // CONTENT INSIDE → EMPTY OUT — A bright cross flare + hot pinpoint
+  // core have SHORT lifetimes (130–180ms). They're visible while the
+  // ring is small (sit inside its perimeter), then fade by the time
+  // the ring has expanded past them. Result: small ring has flashy
+  // content INSIDE; big ring is empty around the player.
+  grabArmorAbsorb(engine, { x, y, facing, followGetter }) {
     const cx = x;
-    // Identical position math to hitSparkSlap (no offset). Caller passes
-    // PLAYER_MID_Y so the effect's CENTER lands at the same chest height as
-    // the CSS slap hit ring.
     const cy = GAME_H - y;
-    const front = (cfg) => engine.spawn({ ...cfg, aboveFighters: true });
 
-    // Tall vertical tilt (mimics the CSS slap-hit ring's rotateY(55deg)
-    // foreshortening). cos(55°) ≈ 0.574 — narrower-X is what reads as a
-    // ring tilted away from camera, NOT a wide flat shockwave.
+    // Layer helpers — all share the followGetter so they track the
+    // absorber as they lunge forward.
     //
-    // SIZING NOTE — the SPRITE TINT (pink flash on the defender) is now the
-    // primary visual feedback for "armor absorbed". This particle ring is
-    // intentionally subtle — small enough to stay tightly on the chest hit
-    // point and not draw attention away from the tinted sprite. Matches the
-    // CSS slap-hit ring's actual peak diameter (~30–45px after stretchX).
-    const TILT_X = 0.6;
+    //   front  → aboveFighters (zIndex 102) — drawn IN FRONT of player
+    //   middle → default canvas (zIndex 50) — drawn BEHIND player but
+    //             in front of dohyo. THIS is what makes the ring
+    //             appear to go around the player when expanded.
+    const front = (cfg) => engine.spawn({
+      ...cfg,
+      aboveFighters: true,
+      followGetter: followGetter || null,
+    });
+    const middle = (cfg) => engine.spawn({
+      ...cfg,
+      followGetter: followGetter || null,
+    });
 
-    // Primary pink ring — small, sits right on the impact point
+    // 3D foreshortening — 0.65 ≈ rotateY(50°). Tilts the ring back so
+    // it reads as a 3D loop, not a flat circle. Slightly less
+    // aggressive than the parry's 55° so the ring still extends
+    // visibly past the player's silhouette on both sides for the wrap.
+    const TILT_X = 0.65;
+
+    // ──────────────────────────────────────────────────────────────────
+    // THE RING — one particle's lifecycle, expanding from small to
+    // body-encompassing. Same position throughout. Spawned on TWO
+    // layers (middle = wrap, front = continuity/visibility-when-small).
+    // ──────────────────────────────────────────────────────────────────
+
+    const RING_LIFE = 0.55;
+    const RING_SIZE_START = 28;
+    const RING_SIZE_END = 200;
+
+    // PRIMARY ring on MIDDLE layer (behind player).
+    middle({
+      x: cx, y: cy,
+      vx: 0, vy: 0, gravity: 0, drag: 1,
+      size: RING_SIZE_START,
+      sizeEnd: RING_SIZE_END,
+      alpha: 1.0,
+      alphaEnd: 0,
+      rotation: 0, rotationSpeed: 0,
+      ease: "outCubic",
+      easeAlpha: "outCubic",
+      maxLife: RING_LIFE,
+      texture: engine.textures.armorAbsorbWrapRing,
+      stretchX: TILT_X,
+    });
+
+    // FRONT-layer ring at moderate alpha — visible during the SMALL
+    // phase (when middle-layer copy would be hidden behind the
+    // player sprite) AND provides continuity across the body when
+    // the ring is big (so the silhouette doesn't bite into it).
+    // Additive blend so it brightens rather than obscures the body.
+    front({
+      x: cx, y: cy,
+      vx: 0, vy: 0, gravity: 0, drag: 1,
+      size: RING_SIZE_START,
+      sizeEnd: RING_SIZE_END,
+      alpha: 0.55,
+      alphaEnd: 0,
+      rotation: 0, rotationSpeed: 0,
+      ease: "outCubic",
+      easeAlpha: "outCubic",
+      maxLife: RING_LIFE,
+      texture: engine.textures.armorAbsorbWrapRing,
+      stretchX: TILT_X,
+      blendMode: "lighter",
+    });
+
+    // ──────────────────────────────────────────────────────────────────
+    // CONTENT INSIDE THE SMALL RING — decorated "energy contained"
+    // beat. Goal is for the small-ring interior to read as a piece
+    // of designed VFX (sharp 16-spoke star + glowing core + twinkling
+    // inner sparks), not just a single bright dot floating in a soft
+    // pink blob.
+    //
+    // Layered (back-to-front draw order):
+    //   1. BLOOM — tight white→pink halo filling the ring interior
+    //      with a contained glow. NOT a smokey blob (parry-style
+    //      sharp falloff in the texture itself).
+    //   2. INNER TWINKLE SPARKS — 5 tiny bright dots scattered inside
+    //      the ring, staggered timings, each twinkling briefly. Adds
+    //      "energy contained inside" detail to the interior so it
+    //      doesn't read as empty space behind the cross.
+    //   3. PRIMARY CROSS FLARE — 8-spoke starburst, the dominant
+    //      visual. Rays extend to roughly the ring's edge at flash
+    //      peak.
+    //   4. SECONDARY CROSS FLARE — same 8-spoke flare rotated 22.5°
+    //      so its rays interleave with the primary's, producing a
+    //      densely packed 16-SPOKE STAR. This is the "cool design"
+    //      detail that takes the flash from "cross + bloom" to
+    //      "designed energy starburst".
+    //   5. HOT PINPOINT — sharp white-hot center on top.
+    //
+    // Hard constraint: all of this must fully fade BEFORE the ring
+    // becomes "big" (~150ms, ring size ≥150 wrapping the player) so
+    // no flash detail lingers inside the wrapped ring.
+    // ──────────────────────────────────────────────────────────────────
+
+    // FLASH BLOOM — tight halo behind everything else. Sized larger
+    // than before so it actually fills the small-ring interior with
+    // a visible white→pink glow (not just a tiny dot). The texture's
+    // sharp cutoff at 80% radius keeps it from reading as smokey.
+    front({
+      x: cx, y: cy,
+      vx: 0, vy: 0, gravity: 0, drag: 1,
+      size: 14,
+      sizeEnd: 78,
+      alpha: 0.95,
+      alphaEnd: 0,
+      rotation: 0, rotationSpeed: 0,
+      ease: "outExpo",
+      easeAlpha: "linear",
+      maxLife: 0.14,
+      texture: engine.textures.armorAbsorbFlash,
+      blendMode: "lighter",
+    });
+
+    // INNER TWINKLE SPARKS — 5 tiny bright dots scattered inside the
+    // ring perimeter, each twinkling briefly with staggered delays.
+    // Together they shimmer in the interior for the duration of the
+    // flash, giving the impression of contained energy crackling
+    // around the center. Tiny size (peak 5) and very short lives
+    // (≤80ms each) so they read as sparkle detail, not as additional
+    // particles cluttering the frame.
+    for (let i = 0; i < 5; i++) {
+      const sparkleAngle = rand(0, Math.PI * 2);
+      const sparkleR = rand(10, 32);
+      front({
+        x: cx + Math.cos(sparkleAngle) * sparkleR,
+        y: cy + Math.sin(sparkleAngle) * sparkleR * 0.85,
+        vx: 0, vy: 0, gravity: 0, drag: 1,
+        size: rand(1.2, 1.8),
+        sizeEnd: rand(4, 5.5),
+        alpha: 1.0,
+        alphaEnd: 0,
+        rotation: 0, rotationSpeed: 0,
+        ease: "outExpo",
+        easeAlpha: "outQuad",
+        maxLife: rand(0.06, 0.09),
+        delay: i * 0.018,
+        texture: engine.textures.armorAbsorbSpark,
+        blendMode: "lighter",
+      });
+    }
+
+    // PRIMARY 8-POINT CROSS FLARE — first half of the 16-spoke star.
+    // Rays at 0/45/90/135° (and reflections). Sized so the ray tips
+    // reach the ring's edge at peak flash time.
+    front({
+      x: cx, y: cy,
+      vx: 0, vy: 0, gravity: 0, drag: 1,
+      size: 18,
+      sizeEnd: 118,
+      alpha: 1.0,
+      alphaEnd: 0,
+      rotation: rand(-0.06, 0.06),
+      rotationSpeed: rand(-0.5, 0.5),
+      ease: "outCubic",
+      easeAlpha: "linear",
+      maxLife: 0.16,
+      texture: engine.textures.armorAbsorbCross,
+      blendMode: "lighter",
+    });
+
+    // SECONDARY 8-POINT CROSS FLARE — rotated 22.5° (π/8) so its
+    // rays land between the primary's spokes. Combined the two
+    // particles paint a dense 16-SPOKE radial starburst — the
+    // signature "cool design" inside the small ring. Slightly
+    // smaller and dimmer than the primary so the overall pattern
+    // has visible hierarchy (cardinal/diagonal spokes dominate, the
+    // in-between filler spokes recede).
+    front({
+      x: cx, y: cy,
+      vx: 0, vy: 0, gravity: 0, drag: 1,
+      size: 14,
+      sizeEnd: 96,
+      alpha: 0.82,
+      alphaEnd: 0,
+      rotation: Math.PI / 8 + rand(-0.04, 0.04),
+      rotationSpeed: rand(-0.4, 0.4),
+      ease: "outCubic",
+      easeAlpha: "linear",
+      maxLife: 0.16,
+      texture: engine.textures.armorAbsorbCross,
+      blendMode: "lighter",
+    });
+
+    // HOT PINPOINT — sharp white-hot specular on top of everything.
+    // Briefest of the flash elements; punctuates the very first
+    // frame of the impact.
     front({
       x: cx, y: cy,
       vx: 0, vy: 0, gravity: 0, drag: 1,
       size: 6,
-      sizeEnd: 40,
-      alpha: 0.92,
+      sizeEnd: 46,
+      alpha: 1.0,
       alphaEnd: 0,
       rotation: 0, rotationSpeed: 0,
-      ease: "outCubic", easeAlpha: "outCubic",
-      maxLife: 0.28,
-      texture: engine.textures.armorAbsorbRing,
-      stretchX: TILT_X,
+      ease: "outExpo",
+      easeAlpha: "outQuad",
+      maxLife: 0.11,
+      texture: engine.textures.armorAbsorbCore,
+      blendMode: "lighter",
     });
 
-    // 4 small pinkish flecks arcing outward — minimal, just enough to sell
-    // a "stop" without competing with the sprite tint.
-    for (let i = 0; i < 4; i++) {
-      const angle = (i / 4) * Math.PI * 2 + rand(-0.4, 0.4);
-      const spd = rand(80, 140);
+    // ──────────────────────────────────────────────────────────────────
+    // SCATTER PARTICLES — burst outward from the ring's perimeter as
+    // it reaches its expanded size. Spawn on the TILTED-ELLIPSE
+    // perimeter so they shed off the ring's 3D shape consistently.
+    // Delayed so they appear when the ring is at its expanded "around
+    // the player" size, not during the small phase.
+    // ──────────────────────────────────────────────────────────────────
+
+    const SCATTER_COUNT = 10;
+    const SCATTER_R = RING_SIZE_END * 0.45;
+    for (let i = 0; i < SCATTER_COUNT; i++) {
+      const angle = (i / SCATTER_COUNT) * Math.PI * 2 + rand(-0.18, 0.18);
+      const spd = rand(60, 130);
       front({
-        x: cx + Math.cos(angle) * 3,
-        y: cy + Math.sin(angle) * 3,
-        vx: Math.cos(angle) * spd + dir * rand(10, 25),
-        vy: Math.sin(angle) * spd * 0.7,
-        gravity: 220,
-        drag: 0.92,
-        size: rand(3, 5),
-        sizeEnd: rand(1, 2),
-        alpha: rand(0.85, 1.0),
+        x: cx + Math.cos(angle) * SCATTER_R * TILT_X,
+        y: cy + Math.sin(angle) * SCATTER_R,
+        vx: Math.cos(angle) * spd * TILT_X,
+        vy: Math.sin(angle) * spd,
+        gravity: 40,
+        drag: 0.93,
+        size: rand(2, 3.2),
+        sizeEnd: 0.4,
+        alpha: 0.95,
         alphaEnd: 0,
-        ease: "outCubic",
+        ease: "linear",
+        easeAlpha: "outCubic",
+        rotationSpeed: rand(-2, 2),
+        maxLife: rand(0.32, 0.50),
+        delay: 0.32 + rand(-0.04, 0.04),
+        texture: engine.textures.armorAbsorbSpark,
+        blendMode: "lighter",
+      });
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // RESIDUAL MIST — soft trailing tail past the main ring fade so
+    // the effect doesn't cut off when the ring vanishes.
+    // ──────────────────────────────────────────────────────────────────
+
+    for (let i = 0; i < 4; i++) {
+      const angle = -Math.PI / 2 + rand(-0.5, 0.5);
+      const spd = rand(28, 60);
+      front({
+        x: cx + rand(-10, 10),
+        y: cy + rand(-4, 4),
+        vx: Math.cos(angle) * spd,
+        vy: Math.sin(angle) * spd,
+        gravity: -25,
+        drag: 0.94,
+        size: rand(1.6, 2.4),
+        sizeEnd: 0.4,
+        alpha: 0.8,
+        alphaEnd: 0,
+        ease: "linear",
         easeAlpha: "outQuad",
         rotationSpeed: rand(-2, 2),
-        maxLife: rand(0.2, 0.32),
-        texture: pick([engine.textures.armorAbsorbChunk, engine.textures.armorAbsorbSpark]),
+        maxLife: rand(0.45, 0.70),
+        delay: 0.45 + i * 0.04,
+        texture: engine.textures.armorAbsorbSpark,
         blendMode: "lighter",
       });
     }
@@ -2275,6 +2719,13 @@ class Particle {
     this.delay = 0;
     this.behindDohyo = false;
     this.aboveFighters = false;
+    // Optional follow target — if set, the particle's x/y are shifted each
+    // frame by the delta from this getter, so the particle stays anchored
+    // to a moving target (e.g. a player sprite) while still applying its
+    // own local vx/vy motion (e.g. converging toward the target).
+    this.followGetter = null;
+    this.lastFollowX = 0;
+    this.lastFollowY = 0;
   }
 }
 
@@ -2368,6 +2819,15 @@ export class ParticleEngine {
     p.delay = cfg.delay ?? 0;
     p.behindDohyo = cfg.behindDohyo ?? false;
     p.aboveFighters = cfg.aboveFighters ?? false;
+    p.followGetter = cfg.followGetter ?? null;
+    if (p.followGetter) {
+      const initial = p.followGetter();
+      p.lastFollowX = initial?.x ?? 0;
+      p.lastFollowY = initial?.y ?? 0;
+    } else {
+      p.lastFollowX = 0;
+      p.lastFollowY = 0;
+    }
   }
 
   _acquire() {
@@ -2413,6 +2873,21 @@ export class ParticleEngine {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.rotation += p.rotationSpeed * dt;
+
+      // Apply follow target shift AFTER local-velocity integration. The
+      // particle's own motion (vx/vy converging toward center, etc.) still
+      // happens in its local frame; the follow shift just translates that
+      // local frame to keep up with a moving anchor (e.g. a player who's
+      // still moving forward during a 280ms absorb VFX).
+      if (p.followGetter) {
+        const pos = p.followGetter();
+        if (pos) {
+          p.x += pos.x - p.lastFollowX;
+          p.y += pos.y - p.lastFollowY;
+          p.lastFollowX = pos.x;
+          p.lastFollowY = pos.y;
+        }
+      }
     }
   }
 

@@ -286,7 +286,42 @@ const GameFighter = ({
           });
       }
 
-      // Return original/spritesheet while recoloring is in progress
+      // CACHE-MISS FALLBACK for tint variants — instead of returning the raw
+      // un-recolored source (which would flash the default-color penguin while
+      // the tinted variant computes), fall back to the regular body+mawashi
+      // recolored sprite. The player keeps their colors; they just don't see
+      // the tint for that one frame, which is invisible to the eye.
+      const isAnyTint = useHitTint || useWhiteFlash || useBlubberTint || useArmorTint;
+      if (isAnyTint && needsRecoloring) {
+        const baseTintOptions = playerBodyColor
+          ? { bodyColorRange: GREY_BODY_RANGES, bodyColorHex: playerBodyColor }
+          : {};
+        const baseGlobalCached = getCachedRecoloredImage(
+          sourceToRecolor,
+          colorRanges,
+          targetColor,
+          baseTintOptions
+        );
+        if (baseGlobalCached) {
+          return {
+            src: baseGlobalCached,
+            isAnimated,
+            config: spritesheetConfig,
+          };
+        }
+        const baseCacheKey = `${sourceToRecolor}_${targetColor}${
+          playerBodyColor ? "_body_" + playerBodyColor : ""
+        }`;
+        if (recoloredSprites[baseCacheKey]) {
+          return {
+            src: recoloredSprites[baseCacheKey],
+            isAnimated,
+            config: spritesheetConfig,
+          };
+        }
+      }
+
+      // Return original/spritesheet while recoloring is in progress (no base variant available)
       return {
         src: sourceToRecolor,
         isAnimated,
@@ -1005,6 +1040,8 @@ const GameFighter = ({
   const [rawParryEffectPosition, setRawParryEffectPosition] = useState(null);
   const [p1ParryRefund, setP1ParryRefund] = useState(0);
   const [p2ParryRefund, setP2ParryRefund] = useState(0);
+  const [p1BalanceGain, setP1BalanceGain] = useState(0);
+  const [p2BalanceGain, setP2BalanceGain] = useState(0);
   const [showStarStunEffect, setShowStarStunEffect] = useState(false);
   const [hasUsedPowerUp, setHasUsedPowerUp] = useState(false);
   const [countdown, setCountdown] = useState(15);
@@ -1027,11 +1064,9 @@ const GameFighter = ({
     y: 0,
   });
   const [thickBlubberIndicator, setThickBlubberIndicator] = useState(false);
-  // Pink sprite tint that flashes on the defender during a grab-armor absorb.
-  // Mirrors the thick-blubber tint pattern but is purely transient (~280ms)
-  // and triggered by the grab_armor_absorb socket event.
-  const [armorAbsorbTintActive, setArmorAbsorbTintActive] = useState(false);
-  const armorAbsorbTintTimeoutRef = useRef(null);
+  // (Sprite tint for grab-armor absorb intentionally removed — the
+  // particle VFX alone communicates the absorb; tinting the body
+  // washed the player out and competed with the ring's own color.)
   const [disconnectCountdown, setDisconnectCountdown] = useState(3);
   const [uiRoundId, setUiRoundId] = useState(0);
 
@@ -1925,6 +1960,15 @@ const GameFighter = ({
           setP1ParryRefund(Date.now());
         } else if (data.playerNumber === 2) {
           setP2ParryRefund(Date.now());
+        }
+        // Signal perfect-parry balance gain to the HUD (only for perfect parries
+        // that actually moved the balance bar — server reports clamped delta)
+        if (data.isPerfect && data.balanceGain > 0) {
+          if (data.playerNumber === 1) {
+            setP1BalanceGain(Date.now());
+          } else if (data.playerNumber === 2) {
+            setP2BalanceGain(Date.now());
+          }
         }
         const parryPan = xToPan(data.parrierX);
         playSound(rawParryGruntSound, 0.025, null, 1.0, parryPan);
@@ -3277,44 +3321,77 @@ const GameFighter = ({
     // Grab-armor absorb — pinkish-red ring + small particles when a grab
     // attempt eats one slap during startup. Fires once per absorb (gated to
     // index === 0 so the particle emit + sound don't double on the second
-    // fighter). Reuses the thick-blubber absorb sound — same "tank the hit"
-    // semantic, so the audio language is already established. Position
-    // convention matches hitSparkSlap: x = data.x + SPRITE_HALF_W,
-    // y = PLAYER_MID_Y (the preset converts via GAME_H - y).
+    // fighter). Reuses the thick-blubber absorb sound.
+    //
+    // POSITION — uses the EXACT same offset formula as hitSparkSlap so
+    // the absorb VFX lands at the same chest point a slap hit would
+    // (data.x + 70 + facingOffsetPx). When this matched correctly, the
+    // user couldn't see it only because the previous grey ring blended
+    // with the grey sprite tint — placement was already right.
+    //
+    // FOLLOWS THE DEFENDER — emission is gated to the defender's own
+    // GameFighter instance so we can pass its `interpolatedPositionRef`
+    // as the followGetter. The follow offset uses the SAME slap-hit math
+    // so the anchor stays consistent as the player moves.
     const handleGrabArmorAbsorb = (data) => {
       if (typeof data?.x !== "number") return;
 
-      // SPRITE TINT — flash this player's sprite pink only if THEY are the
-      // one absorbing. Per-instance state so both penguins (rendered by two
-      // GameFighter components) tint independently.
-      if (data.defenderId === penguin.id) {
-        if (armorAbsorbTintTimeoutRef.current) {
-          clearTimeout(armorAbsorbTintTimeoutRef.current);
-        }
-        setArmorAbsorbTintActive(true);
-        armorAbsorbTintTimeoutRef.current = setTimeout(() => {
-          setArmorAbsorbTintActive(false);
-          armorAbsorbTintTimeoutRef.current = null;
-        }, 280);
-      }
+      // Both GameFighter components receive this event. Only the
+      // defender's component emits the VFX/sound (so it can use its
+      // own position ref).
+      if (data.defenderId !== penguin.id) return;
 
-      // SHARED VFX/SOUND — gate to the index-0 instance so we don't double-emit.
-      if (index !== 0) return;
-      const fxX = data.x + SPRITE_HALF_W;
+      // ── ABSORB SPAWN POSITION ──────────────────────────────────────
+      // Starts from the same chest-height slap-hit offset that the slap
+      // hit-spark uses (so the absorb visually REPLACES the would-be
+      // hit-spark), then PULLS BACK to the absorber's body anchor so
+      // the ring sits centered ON the absorber's body — not floating
+      // out at the slap-contact tip and not biased toward the
+      // attacker side. Reads as "the energy sank INTO the absorber"
+      // rather than "spark hovering between the two players".
+      //
+      // FACING SEMANTICS (this codebase): facing = -1 means facing
+      // RIGHT (opponent on right, "front" is right), facing = +1
+      // means facing LEFT (opponent on left, "front" is left). The
+      // contact point sits ~32px FORWARD of the body anchor in the
+      // facing direction, so a `+armorFacing * 32` pullback exactly
+      // cancels that, landing the effect on the body anchor.
+      const armorFacing = data.facing || 1;
+      const armorFacingOffsetPx = (armorFacing === 1 ? -8 : -3) * 12.8;
+      const ABSORB_BODY_PULLBACK = 32;
+      const xOffsetFromCenter =
+        70 + armorFacingOffsetPx + armorFacing * ABSORB_BODY_PULLBACK;
+      const fxX = data.x + xOffsetFromCenter;
+
+      // followGetter anchors to the player's CURRENT x with the SAME
+      // offset, so the effect tracks them as they walk/lunge during
+      // the absorb. y is locked to chest height (PLAYER_MID_Y).
+      const armorCanvasY = 720 - PLAYER_MID_Y; // GAME_H - PLAYER_MID_Y
+      const followGetter = () => {
+        const pos = interpolatedPositionRef.current;
+        if (!pos || typeof pos.x !== "number") return null;
+        return {
+          x: pos.x + xOffsetFromCenter,
+          y: armorCanvasY,
+        };
+      };
       emitParticles("grabArmorAbsorb", {
         x: fxX,
         y: PLAYER_MID_Y,
-        facing: data.facing || 1,
+        facing: armorFacing,
+        followGetter,
       });
       playSound(thickBlubberSound, 0.012, null, 1.0, xToPan(fxX));
     };
     socket.on("grab_armor_absorb", handleGrabArmorAbsorb);
 
     // Grab-armor break — glass-shard burst when a charged attack shatters
-    // the grab armor. Same single-emit gating + position convention as above.
+    // the grab armor. Centered on the defender's body too (the armor is
+    // shattering AROUND them, not at the impact point). Single-emit
+    // gated to the defender's component for consistency with the absorb.
     const handleGrabArmorBreak = (data) => {
-      if (index !== 0) return;
       if (typeof data?.x !== "number") return;
+      if (data.defenderId !== penguin.id) return;
       const fxX = data.x + SPRITE_HALF_W;
       emitParticles("grabArmorBreak", {
         x: fxX,
@@ -3338,10 +3415,6 @@ const GameFighter = ({
       socket.off("clinch_jolt", handleClinchJolt);
       socket.off("grab_armor_absorb", handleGrabArmorAbsorb);
       socket.off("grab_armor_break", handleGrabArmorBreak);
-      if (armorAbsorbTintTimeoutRef.current) {
-        clearTimeout(armorAbsorbTintTimeoutRef.current);
-        armorAbsorbTintTimeoutRef.current = null;
-      }
     };
   }, [socket, player.id, localId, roomName, index, emitParticles, penguin.id]);
 
@@ -3491,13 +3564,14 @@ const GameFighter = ({
     hitTintFramesRemaining.current -= 1;
   }
 
-  // Tint priority: hit > armor absorb > thick blubber
+  // Tint priority: hit > thick blubber
   // (Dodge invincibility is handled via CSS opacity pulse, not sprite-level tinting)
-  // Armor-absorb tint takes priority over blubber so the absorb flash always
-  // reads even if the player happens to also have thick-blubber active.
-  const useArmorTint = armorAbsorbTintActive && !showHitTintThisFrame;
-  const useBlubberTint =
-    thickBlubberIndicator && !showHitTintThisFrame && !useArmorTint;
+  // Grab-armor absorb intentionally does NOT tint the body — the
+  // particle ring alone communicates the absorb without washing the
+  // player out. `useArmorTint` is kept as a constant `false` so the
+  // shared sprite-recolor pipeline below doesn't need to change.
+  const useArmorTint = false;
+  const useBlubberTint = thickBlubberIndicator && !showHitTintThisFrame;
 
   // Get sprite render info (handles animated spritesheets and recoloring)
   const spriteRenderInfo = getSpriteRenderInfo(
@@ -3566,6 +3640,7 @@ const GameFighter = ({
                 player1IsGassed={allPlayersData.player1?.isGassed ?? false}
                 player1ParryRefund={p1ParryRefund}
                 player1Balance={allPlayersData.player1?.balance ?? 100}
+                player1BalanceGain={p1BalanceGain}
                 player2Stamina={allPlayersData.player2?.stamina ?? 100}
                 player2ActivePowerUp={
                   allPlayersData.player2?.activePowerUp ?? null
@@ -3582,6 +3657,7 @@ const GameFighter = ({
                 player2IsGassed={allPlayersData.player2?.isGassed ?? false}
                 player2ParryRefund={p2ParryRefund}
                 player2Balance={allPlayersData.player2?.balance ?? 100}
+                player2BalanceGain={p2BalanceGain}
               />
             )}
             {index === 0 && isLocalEdgePushed && (() => {

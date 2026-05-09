@@ -167,6 +167,15 @@ async function recolorPlayerSprites(playerKey, colorHex, skipRecoloring, bodyCol
       )
     );
     blubberUrls.filter(Boolean).forEach((url) => allSources.push(url));
+
+    // Armor-absorb pink — pre-warmed so the first grab-armor absorb doesn't
+    // flash the un-recolored source sprite while the tinted variant builds.
+    const armorUrls = await Promise.all(
+      uniqueBaseUrls.map((src) =>
+        recolorImage(src, colorRanges, colorHex, { armorTintPink: true, ...bodyOpts }).catch(() => null)
+      )
+    );
+    armorUrls.filter(Boolean).forEach((url) => allSources.push(url));
     
     // If body color is set but mawashi doesn't need recoloring, still recolor base sprites for body
     if (bodyColorHex) {
@@ -308,6 +317,15 @@ async function recolorPlayerSprites(playerKey, colorHex, skipRecoloring, bodyCol
     )
   );
   blubberUrls.filter(Boolean).forEach((url) => allSources.push(url));
+
+  // Armor-absorb pink — pre-warmed so the first grab-armor absorb doesn't
+  // flash the un-recolored source sprite while the tinted variant builds.
+  const armorUrls = await Promise.all(
+    uniqueBaseUrls.map((src) =>
+      recolorImage(src, colorRanges, colorHex, { armorTintPink: true, ...bodyOpts }).catch(() => null)
+    )
+  );
+  armorUrls.filter(Boolean).forEach((url) => allSources.push(url));
 
   return {
     sprites: {
