@@ -1255,9 +1255,10 @@ const SwatchDivider = styled.div`
 `;
 
 /*
- * ColorSwatch — circular belt/body chips. Reads as a small enamel /
- * arcade token (lit top, shaded underside) rather than a flat CSS dot,
- * without changing footprint or palette values.
+ * ColorSwatch — circular belt/body chips. Rim must read perfectly even:
+ * no inset 0 1px highlights (those hug only the top inner edge and
+ * fake a thicker top border), and no ultra-high radial focal point.
+ * Pattern squares override gloss/shadows separately — those stay richer.
  */
 const ColorSwatch = styled.button`
   position: relative;
@@ -1282,13 +1283,11 @@ const ColorSwatch = styled.button`
 
   box-shadow: ${(p) =>
     p.$selected
-      ? `inset 0 1px 1px rgba(255, 250, 240, 0.55),
-         inset 0 -4px 8px rgba(0, 0, 0, 0.28),
+      ? `inset 0 0 6px 1px rgba(0, 0, 0, 0.26),
          0 0 0 2px rgba(232, 197, 71, 0.45),
          0 0 8px rgba(232, 197, 71, 0.2),
          0 3px 8px rgba(0, 0, 0, 0.52)`
-      : `inset 0 1px 1px rgba(255, 250, 240, 0.38),
-         inset 0 -3px 6px rgba(0, 0, 0, 0.22),
+      : `inset 0 0 5px 1px rgba(0, 0, 0, 0.2),
          0 2px 6px rgba(0, 0, 0, 0.48)`};
 
   &::before {
@@ -1296,11 +1295,10 @@ const ColorSwatch = styled.button`
     position: absolute;
     inset: 0;
     border-radius: inherit;
-    background: linear-gradient(
-      155deg,
-      rgba(255, 255, 255, 0.42) 0%,
-      rgba(255, 255, 255, 0.08) 38%,
-      transparent 52%
+    background: radial-gradient(
+      circle at 50% 44%,
+      rgba(255, 255, 255, 0.18) 0%,
+      transparent 58%
     );
     pointer-events: none;
     z-index: 0;
@@ -1337,13 +1335,11 @@ const ColorSwatch = styled.button`
       !p.$taken &&
       css`
         box-shadow: ${p.$selected
-          ? `inset 0 1px 2px rgba(255, 252, 248, 0.65),
-             inset 0 -4px 9px rgba(0, 0, 0, 0.26),
+          ? `inset 0 0 7px 1px rgba(0, 0, 0, 0.24),
              0 0 0 2px rgba(232, 197, 71, 0.52),
              0 0 10px rgba(232, 197, 71, 0.28),
              0 4px 10px rgba(0, 0, 0, 0.56)`
-          : `inset 0 1px 2px rgba(255, 252, 248, 0.5),
-             inset 0 -3px 7px rgba(0, 0, 0, 0.2),
+          : `inset 0 0 6px 1px rgba(0, 0, 0, 0.18),
              0 0 0 1px rgba(245, 236, 217, 0.22),
              0 4px 10px rgba(0, 0, 0, 0.5)`};
       `}
@@ -1354,35 +1350,34 @@ const ColorSwatch = styled.button`
 `;
 
 /*
- * PatternSwatch — belt specials stay square-ish: reads as a woven/
- * printed fabric sample (pressed tile + grain line) vs. the glossy
- * round solids.
+ * PatternSwatch — belt specials stay square-ish. Same centered-depth
+ * rules as circles so the pattern fill doesn’t look offset in the frame.
  */
 const PatternSwatch = styled(ColorSwatch)`
   width: clamp(21px, 2.3cqw, 30px);
   height: clamp(21px, 2.3cqw, 30px);
   border-radius: 5px;
 
+  /* Restore slightly directional tile gloss (user-approved); circles stay symmetric above */
   &::before {
-    background: linear-gradient(
-      125deg,
-      rgba(255, 255, 255, 0.26) 0%,
-      rgba(255, 255, 255, 0.04) 38%,
-      transparent 52%
+    background: radial-gradient(
+      ellipse 100% 78% at 50% 20%,
+      rgba(255, 255, 255, 0.24) 0%,
+      transparent 58%
     );
   }
 
   box-shadow: ${(p) =>
     p.$selected
       ? `inset 0 0 0 1px rgba(0, 0, 0, 0.24),
-         inset 0 2px 3px rgba(255, 255, 255, 0.2),
-         inset 0 -4px 8px rgba(0, 0, 0, 0.38),
+         inset 0 0 7px 1px rgba(0, 0, 0, 0.34),
+         inset 0 1px 1px rgba(255, 255, 255, 0.22),
          0 0 0 2px rgba(232, 197, 71, 0.45),
          0 0 8px rgba(232, 197, 71, 0.2),
          0 3px 8px rgba(0, 0, 0, 0.52)`
       : `inset 0 0 0 1px rgba(0, 0, 0, 0.2),
-         inset 0 1px 0 rgba(255, 255, 255, 0.24),
-         inset 0 -3px 7px rgba(0, 0, 0, 0.32),
+         inset 0 0 6px 1px rgba(0, 0, 0, 0.28),
+         inset 0 1px 1px rgba(255, 255, 255, 0.22),
          0 1px 0 rgba(245, 236, 217, 0.22),
          0 3px 7px rgba(0, 0, 0, 0.5)`};
 
@@ -1392,14 +1387,14 @@ const PatternSwatch = styled(ColorSwatch)`
       css`
         box-shadow: ${p.$selected
           ? `inset 0 0 0 1px rgba(0, 0, 0, 0.22),
-             inset 0 2px 4px rgba(255, 255, 255, 0.26),
-             inset 0 -4px 9px rgba(0, 0, 0, 0.34),
+             inset 0 0 8px 1px rgba(0, 0, 0, 0.3),
+             inset 0 1px 2px rgba(255, 255, 255, 0.26),
              0 0 0 2px rgba(232, 197, 71, 0.52),
              0 0 10px rgba(232, 197, 71, 0.28),
              0 4px 10px rgba(0, 0, 0, 0.56)`
           : `inset 0 0 0 1px rgba(0, 0, 0, 0.16),
-             inset 0 2px 3px rgba(255, 255, 255, 0.28),
-             inset 0 -4px 8px rgba(0, 0, 0, 0.26),
+             inset 0 0 7px 1px rgba(0, 0, 0, 0.22),
+             inset 0 1px 2px rgba(255, 255, 255, 0.26),
              0 0 0 1px rgba(245, 236, 217, 0.26),
              0 4px 10px rgba(0, 0, 0, 0.52)`};
       `}
@@ -1426,8 +1421,7 @@ const SelectedSwatchPreview = styled.div`
   flex-shrink: 0;
   overflow: hidden;
   box-shadow:
-    inset 0 1px 1px rgba(255, 250, 240, 0.48),
-    inset 0 -3px 6px rgba(0, 0, 0, 0.26),
+    inset 0 0 5px 1px rgba(0, 0, 0, 0.22),
     0 1px 5px rgba(0, 0, 0, 0.42);
 
   &::before {
@@ -1435,10 +1429,10 @@ const SelectedSwatchPreview = styled.div`
     position: absolute;
     inset: 0;
     border-radius: inherit;
-    background: linear-gradient(
-      155deg,
-      rgba(255, 255, 255, 0.34) 0%,
-      transparent 46%
+    background: radial-gradient(
+      circle at 50% 44%,
+      rgba(255, 255, 255, 0.16) 0%,
+      transparent 58%
     );
     pointer-events: none;
   }
