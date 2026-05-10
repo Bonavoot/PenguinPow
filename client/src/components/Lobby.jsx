@@ -1255,9 +1255,9 @@ const SwatchDivider = styled.div`
 `;
 
 /*
- * ColorSwatch — color circle. Repainted for the dark sumi BottomDeck
- * background: cream-tinted hairline border (was snowBorder which
- * disappeared on dark), gold ring on selection.
+ * ColorSwatch — circular belt/body chips. Reads as a small enamel /
+ * arcade token (lit top, shaded underside) rather than a flat CSS dot,
+ * without changing footprint or palette values.
  */
 const ColorSwatch = styled.button`
   position: relative;
@@ -1275,13 +1275,36 @@ const ColorSwatch = styled.button`
   background: ${(p) => p.$gradient || p.$color};
   cursor: ${(p) => (p.$taken ? "not-allowed" : "pointer")};
   transition: transform 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-  box-shadow: ${(p) =>
-    p.$selected
-      ? `0 0 0 2px rgba(232, 197, 71, 0.45), 0 1px 4px rgba(0,0,0,0.4)`
-      : `0 1px 4px rgba(0,0,0,0.4)`};
   flex-shrink: 0;
   animation: ${swatchPop} 0.35s ease-out both;
   animation-delay: ${(p) => Math.min(p.$index ?? 0, 20) * 0.015}s;
+  overflow: hidden;
+
+  box-shadow: ${(p) =>
+    p.$selected
+      ? `inset 0 1px 1px rgba(255, 250, 240, 0.55),
+         inset 0 -4px 8px rgba(0, 0, 0, 0.28),
+         0 0 0 2px rgba(232, 197, 71, 0.45),
+         0 0 8px rgba(232, 197, 71, 0.2),
+         0 3px 8px rgba(0, 0, 0, 0.52)`
+      : `inset 0 1px 1px rgba(255, 250, 240, 0.38),
+         inset 0 -3px 6px rgba(0, 0, 0, 0.22),
+         0 2px 6px rgba(0, 0, 0, 0.48)`};
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(
+      155deg,
+      rgba(255, 255, 255, 0.42) 0%,
+      rgba(255, 255, 255, 0.08) 38%,
+      transparent 52%
+    );
+    pointer-events: none;
+    z-index: 0;
+  }
 
   ${(p) =>
     p.$taken &&
@@ -1297,6 +1320,8 @@ const ColorSwatch = styled.button`
         font-weight: 900;
         font-size: clamp(9px, 1.2cqw, 13px);
         color: ${C.cream};
+        z-index: 2;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
       }
     `}
 
@@ -1308,16 +1333,77 @@ const ColorSwatch = styled.button`
         : p.$selected
           ? C.gold
           : C.cream};
+    ${(p) =>
+      !p.$taken &&
+      css`
+        box-shadow: ${p.$selected
+          ? `inset 0 1px 2px rgba(255, 252, 248, 0.65),
+             inset 0 -4px 9px rgba(0, 0, 0, 0.26),
+             0 0 0 2px rgba(232, 197, 71, 0.52),
+             0 0 10px rgba(232, 197, 71, 0.28),
+             0 4px 10px rgba(0, 0, 0, 0.56)`
+          : `inset 0 1px 2px rgba(255, 252, 248, 0.5),
+             inset 0 -3px 7px rgba(0, 0, 0, 0.2),
+             0 0 0 1px rgba(245, 236, 217, 0.22),
+             0 4px 10px rgba(0, 0, 0, 0.5)`};
+      `}
   }
   &:active {
     transform: ${(p) => (p.$taken ? "none" : "scale(0.94)")};
   }
 `;
 
+/*
+ * PatternSwatch — belt specials stay square-ish: reads as a woven/
+ * printed fabric sample (pressed tile + grain line) vs. the glossy
+ * round solids.
+ */
 const PatternSwatch = styled(ColorSwatch)`
   width: clamp(21px, 2.3cqw, 30px);
   height: clamp(21px, 2.3cqw, 30px);
-  border-radius: 4px;
+  border-radius: 5px;
+
+  &::before {
+    background: linear-gradient(
+      125deg,
+      rgba(255, 255, 255, 0.26) 0%,
+      rgba(255, 255, 255, 0.04) 38%,
+      transparent 52%
+    );
+  }
+
+  box-shadow: ${(p) =>
+    p.$selected
+      ? `inset 0 0 0 1px rgba(0, 0, 0, 0.24),
+         inset 0 2px 3px rgba(255, 255, 255, 0.2),
+         inset 0 -4px 8px rgba(0, 0, 0, 0.38),
+         0 0 0 2px rgba(232, 197, 71, 0.45),
+         0 0 8px rgba(232, 197, 71, 0.2),
+         0 3px 8px rgba(0, 0, 0, 0.52)`
+      : `inset 0 0 0 1px rgba(0, 0, 0, 0.2),
+         inset 0 1px 0 rgba(255, 255, 255, 0.24),
+         inset 0 -3px 7px rgba(0, 0, 0, 0.32),
+         0 1px 0 rgba(245, 236, 217, 0.22),
+         0 3px 7px rgba(0, 0, 0, 0.5)`};
+
+  &:hover {
+    ${(p) =>
+      !p.$taken &&
+      css`
+        box-shadow: ${p.$selected
+          ? `inset 0 0 0 1px rgba(0, 0, 0, 0.22),
+             inset 0 2px 4px rgba(255, 255, 255, 0.26),
+             inset 0 -4px 9px rgba(0, 0, 0, 0.34),
+             0 0 0 2px rgba(232, 197, 71, 0.52),
+             0 0 10px rgba(232, 197, 71, 0.28),
+             0 4px 10px rgba(0, 0, 0, 0.56)`
+          : `inset 0 0 0 1px rgba(0, 0, 0, 0.16),
+             inset 0 2px 3px rgba(255, 255, 255, 0.28),
+             inset 0 -4px 8px rgba(0, 0, 0, 0.26),
+             0 0 0 1px rgba(245, 236, 217, 0.26),
+             0 4px 10px rgba(0, 0, 0, 0.52)`};
+      `}
+  }
 `;
 
 const SelectedBlock = styled.div`
@@ -1331,13 +1417,31 @@ const SelectedBlock = styled.div`
 `;
 
 const SelectedSwatchPreview = styled.div`
+  position: relative;
   width: clamp(22px, 2.4cqw, 28px);
   height: clamp(22px, 2.4cqw, 28px);
   border-radius: 50%;
   background: ${(p) => p.$gradient || p.$color};
   border: 2px solid ${C.gold};
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
   flex-shrink: 0;
+  overflow: hidden;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 250, 240, 0.48),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.26),
+    0 1px 5px rgba(0, 0, 0, 0.42);
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(
+      155deg,
+      rgba(255, 255, 255, 0.34) 0%,
+      transparent 46%
+    );
+    pointer-events: none;
+  }
 `;
 
 const SelectedNameStack = styled.div`
