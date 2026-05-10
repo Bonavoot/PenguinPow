@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 
@@ -47,15 +47,32 @@ const PumoCloneSpawnEffect = ({ clones, lastCloneCount, player1Color, player2Col
   const processedClonesRef = useRef(new Set());
   const effectIdCounter = useRef(0);
   const pendingTimeouts = useRef([]);
+  const clonesRef = useRef(clones);
+  clonesRef.current = clones;
   const EFFECT_DURATION = 450;
 
+  // The parent rebuilds `clones` every server tick (~60Hz) as a fresh
+  // array, so depending on it directly fired this effect every frame —
+  // wasteful even when no new clones spawned. Derive a stable identity
+  // string from the clone IDs so the effect only re-runs when clones
+  // actually appear or disappear. Read positions from the ref so we
+  // still capture the freshest spawn coords at the moment new ids land.
+  const cloneIdKey = useMemo(() => {
+    if (!clones || clones.length === 0) return "";
+    const ids = new Array(clones.length);
+    for (let i = 0; i < clones.length; i++) ids[i] = clones[i].id;
+    ids.sort();
+    return ids.join("|");
+  }, [clones]);
+
   useEffect(() => {
-    if (!clones || clones.length === 0) {
+    const list = clonesRef.current;
+    if (!list || list.length === 0) {
       processedClonesRef.current.clear();
       return;
     }
 
-    clones.forEach((clone) => {
+    list.forEach((clone) => {
       if (!processedClonesRef.current.has(clone.id)) {
         processedClonesRef.current.add(clone.id);
         const effectId = ++effectIdCounter.current;
@@ -75,7 +92,7 @@ const PumoCloneSpawnEffect = ({ clones, lastCloneCount, player1Color, player2Col
         pendingTimeouts.current.push(tid);
       }
     });
-  }, [clones]);
+  }, [cloneIdKey]);
 
   useEffect(() => {
     return () => {

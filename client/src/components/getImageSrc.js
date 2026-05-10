@@ -134,8 +134,12 @@ const getImageSrc = (
     if (ropeJumpPhase === "startup" || ropeJumpPhase === "landing") return recovering;
     return dodging;
   }
-  if (isSidestepping) return isPerfectParried;
+  // Recovery is checked first because isSidestepping stays true through the
+  // recovery phase. Without this order, the spin sprite would persist into
+  // recovery — and with the active→recovery facing flip, that produced a
+  // visible scaleX mirror that read as the spin "reversing direction".
   if (isSidestepRecovery) return recovering;
+  if (isSidestepping) return isPerfectParried;
   if (isBowing) return bow;
   if (isPowerSliding) return crouchStance;
   if (isChargingAttack) return recovering;

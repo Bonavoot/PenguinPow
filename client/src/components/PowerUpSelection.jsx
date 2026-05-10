@@ -559,13 +559,13 @@ const PowerUpSelection = ({
       },
       snowball: {
         name: "Snowball",
-        description: "Max 3 throws",
+        description: "Max 5 throws",
         icon: snowballImage,
         active: true,
       },
       pumo_army: {
         name: "Pumo Army",
-        description: "Summon clones",
+        description: "3 clone waves",
         icon: pumoArmyIcon,
         active: true,
       },

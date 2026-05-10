@@ -93,7 +93,6 @@ const {
   GRAB_BREAK_TWEEN_DURATION,
   GRAB_BREAK_INPUT_LOCK_MS,
   GRAB_BREAK_GRAB_IMMUNITY_MS,
-  GRAB_BREAK_EDGE_LOCK_MULT,
 } = require("./constants");
 
 const {
@@ -1024,16 +1023,22 @@ function executeClinchBreak(breaker, opponent, room, io) {
     p.isStrafing = false;
   }
 
-  // Edge breaks have a longer recovery window — corner escapes still hurt.
-  const edgeMult = isInEdgeZone(breaker.x) ? GRAB_BREAK_EDGE_LOCK_MULT : 1;
-  const breakerLockMs = Math.round(GRAB_BREAK_INPUT_LOCK_MS * edgeMult);
-  breaker.inputLockUntil = Math.max(breaker.inputLockUntil || 0, now + breakerLockMs);
+  // Symmetric input lock for both players — clinch break always resolves to a
+  // 100% neutral state regardless of breaker position. Boundary-clamped slides
+  // (one or both players being unable to slide the full halfDist because of the
+  // map edge) do NOT shorten or lengthen the recovery window; the lock is a
+  // fixed 350ms timer independent of actual distance traveled.
+  //
+  // Corner stress is already preserved through the positional and resource
+  // costs (breaker stays pinned at the edge, loses 30 stamina, halves their
+  // balance) — there's no need to layer a timing disadvantage on top of those.
+  breaker.inputLockUntil = Math.max(breaker.inputLockUntil || 0, now + GRAB_BREAK_INPUT_LOCK_MS);
   opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, now + GRAB_BREAK_INPUT_LOCK_MS);
 
   // Re-grab protection on the breaker — covers the tween + a small post-tween window
   // so the opponent can't punish-grab the moment they recover.
   breaker.grabImmune = true;
-  breaker.grabImmuneEndTime = now + breakerLockMs + GRAB_BREAK_GRAB_IMMUNITY_MS;
+  breaker.grabImmuneEndTime = now + GRAB_BREAK_INPUT_LOCK_MS + GRAB_BREAK_GRAB_IMMUNITY_MS;
 
   // Facing — players face each other after separating
   correctFacingAfterGrabOrThrow(breaker, opponent);

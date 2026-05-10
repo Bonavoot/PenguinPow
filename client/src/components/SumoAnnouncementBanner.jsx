@@ -1,5 +1,6 @@
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
+import { useEffect, useRef, useState } from "react";
 import { C } from "./menuTheme";
 
 /*
@@ -176,6 +177,78 @@ const TYPE_COLORS = {
 const getTheme = (type) => TYPE_COLORS[type] || TYPE_COLORS.default;
 
 // ============================================
+// SIDE STACK COORDINATION
+// ============================================
+
+const activeAnnouncementStacks = {
+  left: [],
+  right: [],
+};
+
+const stackListeners = new Set();
+let announcementIdSeed = 0;
+
+const getSideKey = (isLeftSide) => (isLeftSide ? "left" : "right");
+
+const notifyStackListeners = () => {
+  stackListeners.forEach((listener) => listener());
+};
+
+const getStackSnapshot = (id, sideKey) => {
+  const sideStack = activeAnnouncementStacks[sideKey];
+  const slotIndex = sideStack.findIndex((entry) => entry.id === id);
+
+  return {
+    slotIndex: slotIndex === -1 ? 0 : slotIndex,
+  };
+};
+
+const removeFromStacks = (id) => {
+  activeAnnouncementStacks.left = activeAnnouncementStacks.left.filter(
+    (entry) => entry.id !== id,
+  );
+  activeAnnouncementStacks.right = activeAnnouncementStacks.right.filter(
+    (entry) => entry.id !== id,
+  );
+};
+
+const useAnnouncementStack = (isLeftSide) => {
+  const idRef = useRef(null);
+  if (idRef.current === null) {
+    announcementIdSeed += 1;
+    idRef.current = `sumo-announcement-${announcementIdSeed}`;
+  }
+
+  const sideKey = getSideKey(isLeftSide);
+  const [stackState, setStackState] = useState(() =>
+    getStackSnapshot(idRef.current, sideKey),
+  );
+
+  useEffect(() => {
+    const id = idRef.current;
+    removeFromStacks(id);
+    activeAnnouncementStacks[sideKey].unshift({
+      id,
+    });
+
+    const updateStackState = () => {
+      setStackState(getStackSnapshot(id, sideKey));
+    };
+
+    stackListeners.add(updateStackState);
+    notifyStackListeners();
+
+    return () => {
+      stackListeners.delete(updateStackState);
+      removeFromStacks(id);
+      notifyStackListeners();
+    };
+  }, [sideKey]);
+
+  return stackState;
+};
+
+// ============================================
 // ANIMATIONS
 // ============================================
 
@@ -186,12 +259,10 @@ const getTheme = (type) => TYPE_COLORS[type] || TYPE_COLORS.default;
  * Aggressive easing settles it like a call landing into frame.
  */
 /*
- * The end-of-entrance and start-of-exit opacities are capped
- * at 0.92 (not 1) so the colored type sits at a slight
- * broadcast-graphic transparency throughout its visible
- * window. Caps in the keyframes themselves (rather than via
- * a static opacity: 0.92 on the wrapper) because the wrapper's
- * animations would otherwise override any static opacity.
+ * Stack opacity lives on the outer wrapper, while these motion
+ * keyframes stay concerned only with the per-banner entrance/exit.
+ * That split lets older banners tuck upward smoothly when a new
+ * callout arrives instead of fighting the slide animation.
  */
 const slideInFromLeft = keyframes`
   0% {
@@ -199,7 +270,7 @@ const slideInFromLeft = keyframes`
     transform: translateX(-44px);
   }
   100% {
-    opacity: 0.92;
+    opacity: 1;
     transform: translateX(0);
   }
 `;
@@ -210,14 +281,14 @@ const slideInFromRight = keyframes`
     transform: translateX(44px);
   }
   100% {
-    opacity: 0.92;
+    opacity: 1;
     transform: translateX(0);
   }
 `;
 
 const fadeOutUp = keyframes`
   0% {
-    opacity: 0.92;
+    opacity: 1;
     transform: translateY(0);
   }
   100% {
@@ -272,6 +343,20 @@ const ruleWipeFromRight = keyframes`
   to   { transform: scaleX(1); }
 `;
 
+const fleckSnap = keyframes`
+  0% {
+    opacity: 0;
+    transform: translateX(var(--fleck-start)) skewX(-18deg) scaleX(0.25);
+  }
+  28% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(var(--fleck-end)) skewX(-18deg) scaleX(1);
+  }
+`;
+
 // ============================================
 // LAYOUT
 // ============================================
@@ -289,25 +374,56 @@ const BannerWrapper = styled.div`
     props.$isLeftSide
       ? css`
           left: clamp(20px, 3.5cqw, 56px);
-          align-items: flex-start;
-          text-align: left;
         `
       : css`
           right: clamp(20px, 3.5cqw, 56px);
-          align-items: flex-end;
-          text-align: right;
         `}
+  pointer-events: none;
+  opacity: var(--announcement-stack-opacity);
+  transform:
+    translateY(var(--announcement-stack-y))
+    scale(var(--announcement-stack-scale));
+  transform-origin: ${(p) =>
+    p.$isLeftSide ? "left center" : "right center"};
+  transition:
+    transform 0.14s cubic-bezier(0.2, 0.7, 0.2, 1),
+    opacity 0.14s ease-out;
+  will-change: transform, opacity;
+  --announcement-stack-y: calc(
+    ${(p) => Math.min(p.$stackIndex, 3)} * clamp(-54px, -5.6cqh, -36px)
+  );
+  --announcement-stack-scale: ${(p) =>
+    Math.max(0.66, 1 - Math.min(p.$stackIndex, 3) * 0.14)};
+  --announcement-stack-opacity: ${(p) =>
+    Math.max(0.34, 0.94 - Math.min(p.$stackIndex, 3) * 0.3)};
+  --fleck-start: ${(p) => (p.$isLeftSide ? "-10px" : "10px")};
+  --fleck-end: ${(p) => (p.$isLeftSide ? "24px" : "-24px")};
+  z-index: ${(p) => 220 - Math.min(p.$stackIndex, 5)};
+
+  @media (max-width: 900px) {
+    top: clamp(170px, 32cqh, 240px);
+    ${(p) =>
+      p.$isLeftSide
+        ? css`
+            left: clamp(14px, 4cqw, 36px);
+          `
+        : css`
+            right: clamp(14px, 4cqw, 36px);
+          `}
+  }
+`;
+
+const BannerMotion = styled.div`
   display: flex;
   flex-direction: column;
+  align-items: ${(p) => (p.$isLeftSide ? "flex-start" : "flex-end")};
+  text-align: ${(p) => (p.$isLeftSide ? "left" : "right")};
   /* Cluster width tracks the widest child (the main text), so
      the rule beneath can stretch to that exact width via
      align-self: stretch. Same trick PowerUpReveal uses. */
   width: max-content;
   max-width: 42cqw;
   gap: clamp(3px, 0.55cqh, 6px);
-  z-index: 200;
-  pointer-events: none;
-  will-change: transform, opacity;
 
   /*
    * Two animations chained on the same element:
@@ -330,16 +446,7 @@ const BannerWrapper = styled.div`
     ${(p) => Math.max(0.4, (p.$duration || 1.2) - 0.32)}s;
 
   @media (max-width: 900px) {
-    top: clamp(170px, 32cqh, 240px);
     max-width: 56cqw;
-    ${(p) =>
-      p.$isLeftSide
-        ? css`
-            left: clamp(14px, 4cqw, 36px);
-          `
-        : css`
-            right: clamp(14px, 4cqw, 36px);
-          `}
   }
 `;
 
@@ -395,7 +502,8 @@ const MainText = styled.div`
         -1.5px -1.5px 0 ${C.sumi}, 1.5px -1.5px 0 ${C.sumi},
         -1.5px 1.5px 0 ${C.sumi}, 1.5px 1.5px 0 ${C.sumi},
         0 3px 0 ${accent},
-        0 4px 0 ${accent}
+        0 4px 0 ${accent},
+        0 7px 8px rgba(0, 0, 0, 0.34)
       `;
     }
     return css`
@@ -403,8 +511,9 @@ const MainText = styled.div`
       0 -1.5px 0 ${C.sumi}, 0 1.5px 0 ${C.sumi},
       -1.5px -1.5px 0 ${C.sumi}, 1.5px -1.5px 0 ${C.sumi},
       -1.5px 1.5px 0 ${C.sumi}, 1.5px 1.5px 0 ${C.sumi},
-      0 3px 0 rgba(0, 0, 0, 0.5),
-      0 0 12px rgba(0, 0, 0, 0.6)
+      0 2px 0 ${theme.deep},
+      0 4px 0 rgba(0, 0, 0, 0.34),
+      0 8px 9px rgba(0, 0, 0, 0.34)
     `;
   }};
   opacity: 0;
@@ -428,6 +537,7 @@ const MainText = styled.div`
  * long slash). Wipes in from the anchor edge.
  */
 const Rule = styled.div`
+  position: relative;
   align-self: stretch;
   /* Proportionally trimmed alongside the smaller text — a 5px
      rule under 1.5rem text reads as a heavy bar; 3px reads as
@@ -445,14 +555,37 @@ const Rule = styled.div`
    */
   background: ${(p) => getTheme(p.$type).accent || getTheme(p.$type).color};
   box-shadow:
-    0 1px 0 ${(p) => getTheme(p.$type).deep},
-    0 0 10px ${(p) => getTheme(p.$type).color};
+    0 2px 0 ${(p) => getTheme(p.$type).deep},
+    0 5px 8px rgba(0, 0, 0, 0.28);
   transform: scaleX(0);
   transform-origin: ${(p) =>
     p.$isLeftSide ? "left center" : "right center"};
   animation:
     ${(p) => (p.$isLeftSide ? ruleWipeFromLeft : ruleWipeFromRight)}
     0.28s cubic-bezier(0.2, 0.7, 0.2, 1) 0.13s forwards;
+
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    top: -3px;
+    ${(p) => (p.$isLeftSide ? "left" : "right")}: 10%;
+    width: clamp(12px, 1.4cqw, 22px);
+    height: 3px;
+    background: ${(p) => getTheme(p.$type).accent || getTheme(p.$type).color};
+    opacity: 0;
+    transform-origin: center;
+    animation: ${fleckSnap} 0.32s ease-out 0.14s forwards;
+  }
+
+  &::after {
+    top: 4px;
+    ${(p) => (p.$isLeftSide ? "left" : "right")}: 42%;
+    width: clamp(8px, 1cqw, 15px);
+    height: 2px;
+    background: ${(p) => getTheme(p.$type).deep};
+    animation-delay: 0.19s;
+  }
 `;
 
 /*
@@ -495,13 +628,17 @@ const SumoAnnouncementBanner = ({
   duration = 1.5,
   subText = null,
 }) => {
+  const { slotIndex } = useAnnouncementStack(isLeftSide);
+
   return (
-    <BannerWrapper $isLeftSide={isLeftSide} $duration={duration}>
-      <MainText $type={type} $isLeftSide={isLeftSide}>
-        {text}
-      </MainText>
-      <Rule $type={type} $isLeftSide={isLeftSide} />
-      {subText && <SubText>{subText}</SubText>}
+    <BannerWrapper $isLeftSide={isLeftSide} $stackIndex={slotIndex}>
+      <BannerMotion $isLeftSide={isLeftSide} $duration={duration}>
+        <MainText $type={type} $isLeftSide={isLeftSide}>
+          {text}
+        </MainText>
+        <Rule $type={type} $isLeftSide={isLeftSide} />
+        {subText && <SubText>{subText}</SubText>}
+      </BannerMotion>
     </BannerWrapper>
   );
 };

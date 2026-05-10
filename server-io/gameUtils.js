@@ -12,7 +12,6 @@ const {
   SIDESTEP_STARTUP_MS,
   SIDESTEP_RECOVERY_MS,
   SIDESTEP_STAMINA_COST,
-  SIDESTEP_MAX_TRAVEL,
   HITBOX_DISTANCE_VALUE,
 } = require("./constants");
 
@@ -408,8 +407,6 @@ function clearAllActionStates(player) {
   player.sidestepEndTime = 0;
   player.sidestepStartX = 0;
   player.sidestepDirection = 0;
-  player.sidestepMaxTravel = 0;
-  player.sidestepActiveDuration = 0;
   player.sidestepTargetX = 0;
   player.sidestepRecoveryStartX = 0;
   player.sidestepRecoveryTargetX = 0;
@@ -501,9 +498,14 @@ function clearAllActionStates(player) {
   player.postGrabInputBuffer = false;
   
   // Clear power-up action states
+  const wasSpawningPumoArmy = player.isSpawningPumoArmy;
   player.isThrowingSnowball = false;
   player.isSpawningPumoArmy = false;
   player.isThrowingSalt = false;
+  if (wasSpawningPumoArmy) {
+    timeoutManager.clearPlayerSpecific(player.id, "pumoArmySpawnEnd");
+    player.pumoArmyCooldown = false;
+  }
   
   // Clear hit recovery states (Y snap happens in the caller when appropriate)
   player.isHitFalling = false;
@@ -752,9 +754,7 @@ function emitThrottledScreenShake(room, io, shakeData) {
 
 function getSidestepInitData(playerX, opponentX) {
   const direction = playerX < opponentX ? 1 : -1;
-  const dist = Math.abs(opponentX - playerX);
-  const maxTravel = Math.min(dist + 140 + 20, SIDESTEP_MAX_TRAVEL);
-  return { direction, maxTravel };
+  return { direction };
 }
 
 module.exports = {

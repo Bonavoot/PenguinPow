@@ -309,7 +309,7 @@ const GrabBreakEffect = ({ position }) => {
                   $shape={shard.shape}
                 />
               ))}
-              <BreakText>BREAK!</BreakText>
+              {/* <BreakText>BREAK!</BreakText> */}
             </EffectContainer>
             {document.getElementById('game-hud') && createPortal(
               <SumoAnnouncementBanner

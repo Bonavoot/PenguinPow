@@ -6,7 +6,7 @@ const {
   ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST, ROPE_JUMP_BOUNDARY_ZONE,
   DODGE_SLIDE_MOMENTUM, DODGE_POWERSLIDE_BOOST,
   DODGE_STARTUP_MS,
-  SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MAX_MS, SIDESTEP_RECOVERY_MS,
+  SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS,
   SIDESTEP_TOTAL_MS, SIDESTEP_STAMINA_COST,
   SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST, RAW_PARRY_STAMINA_COST, RAW_PARRY_COOLDOWN_MS,
   CHARGE_FULL_POWER_MS,
@@ -300,6 +300,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
       existingPlayer.snowballCooldown = false;
       existingPlayer.pumoArmyCooldown = false;
       existingPlayer.snowballThrowsRemaining = null;
+      existingPlayer.pumoArmySpawnsRemaining = null;
       existingPlayer.isThrowingSnowball = false;
       existingPlayer.isSpawningPumoArmy = false;
       existingPlayer.hitAbsorptionUsed = false;
@@ -438,7 +439,6 @@ function registerSocketHandlers(socket, io, rooms, context) {
         sidestepEndTime: 0,
         sidestepStartX: 0,
         sidestepDirection: 0,
-        sidestepMaxTravel: 0,
         sidestepTargetX: 0,
         sidestepRecoveryStartX: 0,
         sidestepRecoveryTargetX: 0,
@@ -671,7 +671,6 @@ function registerSocketHandlers(socket, io, rooms, context) {
         sidestepEndTime: 0,
         sidestepStartX: 0,
         sidestepDirection: 0,
-        sidestepMaxTravel: 0,
         sidestepTargetX: 0,
         sidestepRecoveryStartX: 0,
         sidestepRecoveryTargetX: 0,
@@ -1819,7 +1818,9 @@ function registerSocketHandlers(socket, io, rooms, context) {
       (player.activePowerUp === POWER_UP_TYPES.SNOWBALL ||
         player.activePowerUp === POWER_UP_TYPES.PUMO_ARMY) &&
       (player.activePowerUp !== POWER_UP_TYPES.SNOWBALL ||
-        (player.snowballThrowsRemaining ?? 3) > 0) &&
+        (player.snowballThrowsRemaining ?? 5) > 0) &&
+      (player.activePowerUp !== POWER_UP_TYPES.PUMO_ARMY ||
+        (player.pumoArmySpawnsRemaining ?? 3) > 0) &&
       !player.snowballCooldown &&
       !player.pumoArmyCooldown &&
       !player.isThrowingSnowball &&
@@ -1843,7 +1844,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
       if (player.activePowerUp === POWER_UP_TYPES.SNOWBALL) {
         // Backfill for older in-progress states where this field may be missing.
         if (player.snowballThrowsRemaining == null) {
-          player.snowballThrowsRemaining = 3;
+          player.snowballThrowsRemaining = 5;
         }
         if (player.snowballThrowsRemaining <= 0) {
           return;
@@ -1902,8 +1903,19 @@ function registerSocketHandlers(socket, io, rooms, context) {
           500
         );
       } else if (player.activePowerUp === POWER_UP_TYPES.PUMO_ARMY) {
+        if (player.pumoArmySpawnsRemaining == null) {
+          player.pumoArmySpawnsRemaining = 3;
+        }
+        if (player.pumoArmySpawnsRemaining <= 0) {
+          return;
+        }
+
         // Pumo army costs same stamina as a charged attack
         player.stamina = Math.max(0, player.stamina - CHARGED_ATTACK_STAMINA_COST);
+        player.pumoArmySpawnsRemaining = Math.max(
+          0,
+          player.pumoArmySpawnsRemaining - 1
+        );
         // Set spawning state
         player.isSpawningPumoArmy = true;
         player.currentAction = "pumo_army";
@@ -1952,18 +1964,20 @@ function registerSocketHandlers(socket, io, rooms, context) {
 
         player.pumoArmyCooldown = true;
 
-        // Reset spawning state after animation
+        // Reset spawning state after animation (named so clearAllActionStates can cancel on interrupt)
         setPlayerTimeout(
           player.id,
           () => {
             player.isSpawningPumoArmy = false;
+            player.pumoArmyCooldown = false;
             if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
               player.actionLockUntil = 0;
             }
 
             // Neutral charged attack removed — no charge to restart
           },
-          800
+          800,
+          "pumoArmySpawnEnd"
         );
       }
     }
@@ -2008,12 +2022,10 @@ function registerSocketHandlers(socket, io, rooms, context) {
         player.isSidestepRecovery = false;
         player.sidestepStartTime = Date.now();
         player.sidestepStartupEndTime = Date.now() + SIDESTEP_STARTUP_MS;
-        player.sidestepActiveEndTime = Date.now() + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MAX_MS;
+        player.sidestepActiveEndTime = Date.now() + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS;
         player.sidestepEndTime = Date.now() + SIDESTEP_TOTAL_MS;
         player.sidestepStartX = player.x;
         player.sidestepDirection = initData.direction;
-        player.sidestepMaxTravel = initData.maxTravel;
-        player.sidestepActiveDuration = SIDESTEP_ACTIVE_MAX_MS;
 
         player.currentAction = "sidestep";
         player.actionLockUntil = Date.now() + SIDESTEP_TOTAL_MS;

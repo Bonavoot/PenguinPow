@@ -53,9 +53,9 @@ const {
   BALANCE_MAX, BALANCE_PASSIVE_REGEN_PER_SEC, BALANCE_CROUCH_REGEN_PER_SEC,
   HITSTOP_GRAB_MS, HITSTOP_THROW_MS, SLAP_PARRY_KB_FRICTION,
   BURST_KB_INITIAL_FRICTION, BURST_KB_LATE_FRICTION, BURST_KB_PHASE_SWITCH_MS,
-  SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MIN_MS, SIDESTEP_ACTIVE_MAX_MS, SIDESTEP_RECOVERY_MS,
-  SIDESTEP_ARC_DEPTH_MIN, SIDESTEP_ARC_DEPTH_MAX, SIDESTEP_GRAB_TRACK_RANGE,
-  SIDESTEP_ARC_SPEED, SIDESTEP_MAX_TRAVEL,
+  SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS, SIDESTEP_RECOVERY_MS,
+  SIDESTEP_ARC_DEPTH, SIDESTEP_TRAVEL, SIDESTEP_GRAB_TRACK_RANGE,
+  SIDESTEP_RECOVERY_OVERLAP_THRESHOLD,
   CLINCH_KILL_THROW_ARC_HEIGHT,
   CLINCH_KILL_THROW_DISTANCE,
   CLINCH_THROW_DISTANCE,
@@ -960,9 +960,37 @@ function tick(delta) {
           // Startup complete — instant range check
           const opponent = room.players.find((p) => p.id !== player.id);
 
-          // Grabs auto-track sidestepping opponents within generous range
+          // Grab tracks sidestep ONLY when the sidestepper is in a vulnerable,
+          // CLEANLY SEPARATED state — i.e. startup, OR recovery once they are
+          // no longer LITERALLY clipping the grabber (within
+          // SIDESTEP_RECOVERY_OVERLAP_THRESHOLD = 80px). The active arc is
+          // full i-frames, and during recovery while still clipping the grab
+          // also whiffs (mirrors the strike i-frame rule in collisionSystem.js).
+          // Without this, a sidestepper who landed inside the grabber would eat
+          // a point-blank grab while still visually inside them — messy, not
+          // skilful. Bad timing on startup, or recovery in a clean position,
+          // both still get the grab.
+          //
+          // SUCCESS-ONLY: the recovery overlap i-frame applies only when the
+          // sidestep PASSED the opponent (successful side switch). A failed
+          // sidestep that ended overlapping the opponent is intentionally
+          // exposed — that's the punish for bad range/timing.
+          //
+          // Threshold tightened from full pushbox (~116px @ 0.85 size) to 80px
+          // (literal clipping) to match the strike i-frame fix — see
+          // collisionSystem.js for the math on why the previous threshold ate
+          // almost the entire 150ms recovery window.
           const opponentSidestepping = opponent && opponent.isSidestepping;
-          const sidestepTrackInRange = opponentSidestepping && Math.abs(player.x - opponent.x) < SIDESTEP_GRAB_TRACK_RANGE;
+          const sidestepPushboxOverlap = opponentSidestepping &&
+            Math.abs(player.x - opponent.x) < SIDESTEP_RECOVERY_OVERLAP_THRESHOLD;
+          const opponentPassedPlayer = opponentSidestepping &&
+            (opponent.x - player.x) * (opponent.sidestepDirection || 0) > 0;
+          const opponentInSidestepInvuln = opponentSidestepping &&
+            !opponent.isSidestepStartup &&
+            (!opponent.isSidestepRecovery || (sidestepPushboxOverlap && opponentPassedPlayer));
+          const sidestepTrackInRange = opponentSidestepping &&
+            !opponentInSidestepInvuln &&
+            Math.abs(player.x - opponent.x) < SIDESTEP_GRAB_TRACK_RANGE;
           const normalGrabInRange = opponent && !opponentSidestepping && isOpponentCloseEnoughForGrab(player, opponent) && isOpponentInFrontOfGrabber(player, opponent);
 
           if (opponent && !(opponent.isRopeJumping && opponent.ropeJumpPhase === "active") && (normalGrabInRange || sidestepTrackInRange)) {
@@ -1573,20 +1601,22 @@ function tick(delta) {
           newX = Math.max(MAP_LEFT_BOUNDARY, Math.min(newX, MAP_RIGHT_BOUNDARY));
 
           // Pushbox: stop at opponent's body instead of phasing through.
+          // Phase-through used to be allowed during opponent's charged active
+          // (paired with the dodge i-frame so the dodger slipped past the
+          // lunge cleanly). With the dodge i-frame against charged removed,
+          // phase-through would just produce a messy hit landing while bodies
+          // overlap, so dodge now always pushbox-collides regardless of
+          // opponent attack type.
           if (dodgeOpponent && !dodgeOpponent.isDead) {
-            const opponentAllowsPhaseThrough =
-              dodgeOpponent.isAttacking && dodgeOpponent.attackType === "charged" && !dodgeOpponent.isInStartupFrames;
-            if (!opponentAllowsPhaseThrough) {
-              const bodyWidth = HITBOX_DISTANCE_VALUE * 2 * Math.max(player.sizeMultiplier || 1, dodgeOpponent.sizeMultiplier || 1);
-              const wouldOverlap = Math.abs(newX - dodgeOpponent.x) < bodyWidth;
-              if (wouldOverlap) {
-                if (player.dodgeDirection > 0 && dodgeOpponent.x > player.x) {
-                  newX = Math.min(newX, dodgeOpponent.x - bodyWidth);
-                } else if (player.dodgeDirection < 0 && dodgeOpponent.x < player.x) {
-                  newX = Math.max(newX, dodgeOpponent.x + bodyWidth);
-                }
-                newX = Math.max(MAP_LEFT_BOUNDARY, Math.min(newX, MAP_RIGHT_BOUNDARY));
+            const bodyWidth = HITBOX_DISTANCE_VALUE * 2 * Math.max(player.sizeMultiplier || 1, dodgeOpponent.sizeMultiplier || 1);
+            const wouldOverlap = Math.abs(newX - dodgeOpponent.x) < bodyWidth;
+            if (wouldOverlap) {
+              if (player.dodgeDirection > 0 && dodgeOpponent.x > player.x) {
+                newX = Math.min(newX, dodgeOpponent.x - bodyWidth);
+              } else if (player.dodgeDirection < 0 && dodgeOpponent.x < player.x) {
+                newX = Math.max(newX, dodgeOpponent.x + bodyWidth);
               }
+              newX = Math.max(MAP_LEFT_BOUNDARY, Math.min(newX, MAP_RIGHT_BOUNDARY));
             }
           }
 
@@ -1672,74 +1702,80 @@ function tick(delta) {
         const sidestepOpponent = room.players.find(p => p.id !== player.id && !p.isDead);
 
         // STARTUP: no movement, vulnerable wind-up.
-        // At the end of startup, lock the target so the arc is a fixed trajectory.
+        // At the end of startup, lock the trajectory: fixed lateral travel,
+        // fixed duration. Side-switching is an emergent outcome of being close
+        // enough to the opponent that the arc carries you past them — not a
+        // hard branch in code.
         if (player.isSidestepStartup) {
           if (now >= player.sidestepStartupEndTime) {
             player.isSidestepStartup = false;
 
-            const LANDING_SEPARATION = 140;
-            const SIDESTEP_SWITCH_RANGE = GRAB_RANGE * 1.4;
-            const NO_SWITCH_MAX_TRAVEL = 120;
-
-            let targetX;
-            if (sidestepOpponent) {
-              const initDist = Math.abs(player.sidestepStartX - sidestepOpponent.x);
-              if (initDist <= SIDESTEP_SWITCH_RANGE) {
-                targetX = sidestepOpponent.x + player.sidestepDirection * LANDING_SEPARATION;
-              } else {
-                targetX = player.sidestepStartX + player.sidestepDirection * NO_SWITCH_MAX_TRAVEL;
-              }
-            } else {
-              targetX = player.sidestepStartX + player.sidestepDirection * NO_SWITCH_MAX_TRAVEL;
-            }
-
-            const maxBound = player.sidestepStartX + player.sidestepDirection * player.sidestepMaxTravel;
-            if ((targetX - maxBound) * player.sidestepDirection > 0) {
-              targetX = maxBound;
-            }
+            const targetX = player.sidestepStartX + player.sidestepDirection * SIDESTEP_TRAVEL;
             player.sidestepTargetX = Math.max(MAP_LEFT_BOUNDARY, Math.min(targetX, MAP_RIGHT_BOUNDARY));
 
-            const travelDist = Math.abs(player.sidestepTargetX - player.sidestepStartX);
-            const rawActiveMs = travelDist / SIDESTEP_ARC_SPEED;
-            const activeMs = Math.max(SIDESTEP_ACTIVE_MIN_MS, Math.min(rawActiveMs, SIDESTEP_ACTIVE_MAX_MS));
-            player.sidestepActiveDuration = activeMs;
-            player.sidestepActiveEndTime = now + activeMs;
+            player.sidestepActiveEndTime = now + SIDESTEP_ACTIVE_MS;
             player.sidestepEndTime = player.sidestepActiveEndTime + SIDESTEP_RECOVERY_MS;
             player.actionLockUntil = player.sidestepEndTime;
           }
         }
         // ACTIVE: fixed-trajectory ease-in-out arc toward the locked target.
-        // Nothing the opponent does during iframes can alter this path.
+        // Travel distance, duration, and arc depth are all constants — every
+        // sidestep looks identical regardless of where the opponent is.
+        // The downward Y dip represents stepping forward around the dohyo's
+        // near edge (toward the camera in 2D), NOT a leap.
         else if (!player.isSidestepRecovery) {
           const activeElapsed = now - player.sidestepStartupEndTime;
-          const t = Math.min(activeElapsed / player.sidestepActiveDuration, 1);
+          const t = Math.min(activeElapsed / SIDESTEP_ACTIVE_MS, 1);
 
           const easeT = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) * (-2 * t + 2) / 2;
 
           player.x = player.sidestepStartX + (player.sidestepTargetX - player.sidestepStartX) * easeT;
           player.x = Math.max(MAP_LEFT_BOUNDARY, Math.min(player.x, MAP_RIGHT_BOUNDARY));
 
-          const travelRatio = player.sidestepMaxTravel / SIDESTEP_MAX_TRAVEL;
-          const arcDepth = SIDESTEP_ARC_DEPTH_MAX - (SIDESTEP_ARC_DEPTH_MAX - SIDESTEP_ARC_DEPTH_MIN) * travelRatio;
-          player.y = GROUND_LEVEL - arcDepth * Math.sin(Math.PI * t);
+          player.y = GROUND_LEVEL - SIDESTEP_ARC_DEPTH * Math.sin(Math.PI * t);
         }
 
         // TRANSITION: active → recovery
-        // Arc delivered the player to the locked target. Now compute the
-        // ideal resting position based on where the opponent ACTUALLY is,
-        // and let recovery smoothly slide there.
+        // Arc delivered the player to the locked target. The recovery slide
+        // pushes the sidestepper out to a clean separation distance any time
+        // they landed clipping the opponent's pushbox — and only when they
+        // successfully passed the opponent in the arc direction (committing
+        // to the side switch).
+        //
+        // If the arc fell short (didn't pass the opponent), we DO NOT yank the
+        // player backward to "fix" overlap. The sidestep is a committed move:
+        // a short attempt that landed in the opponent is supposed to read as
+        // exposed/punishable, not as a graceful self-correction. Holding
+        // position here removes the previous "arc continues backward" weirdness.
+        // Any residual clipping at sidestep end is resolved by adjustPlayerPositions.
         if (now >= player.sidestepActiveEndTime && !player.isSidestepStartup && !player.isSidestepRecovery) {
           player.isSidestepRecovery = true;
           player.y = GROUND_LEVEL;
           player.x = player.sidestepTargetX;
 
+          // LANDING_SEP is bumped well past pushbox (~116px @ 0.85 size) so
+          // the final settle position is clearly separated and post-recovery
+          // hits land on cleanly-spaced bodies, not edge-clipping sprites.
           const LANDING_SEP = 140;
           if (sidestepOpponent) {
-            const landingSide = player.x >= sidestepOpponent.x ? 1 : -1;
-            const idealX = sidestepOpponent.x + landingSide * LANDING_SEP;
             const currentDist = Math.abs(player.x - sidestepOpponent.x);
+            // Signed offset along the arc direction:
+            //   > 0 means we passed the opponent in the direction we sidestepped
+            //   ≤ 0 means we didn't make it past
+            const passedOpponent = (player.x - sidestepOpponent.x) * player.sidestepDirection > 0;
 
-            if (currentDist < LANDING_SEP) {
+            // Trigger the slide whenever bodies are pushbox-clipping (the full
+            // body width, not just the tighter literal-clipping threshold).
+            // Previously this used SIDESTEP_RECOVERY_OVERLAP_THRESHOLD (80px),
+            // which meant a sidestep that landed at e.g. 90px past the
+            // opponent — visually still inside the pushbox — would HOLD there
+            // for the entire 150ms recovery, leaving attacks landing on
+            // overlapping sprites the whole time. Using the full pushbox
+            // width pushes ANY clipping landing out to a clean position.
+            const pushboxWidth = HITBOX_DISTANCE_VALUE * 2 *
+              Math.max(player.sizeMultiplier || 1, sidestepOpponent.sizeMultiplier || 1);
+            if (currentDist < pushboxWidth && passedOpponent) {
+              const idealX = sidestepOpponent.x + player.sidestepDirection * LANDING_SEP;
               player.sidestepRecoveryTargetX = Math.max(MAP_LEFT_BOUNDARY,
                 Math.min(idealX, MAP_RIGHT_BOUNDARY));
             } else {
@@ -1754,23 +1790,18 @@ function tick(delta) {
           }
         }
 
-        // RECOVERY: smooth ease-out slide away from opponent if overlapping.
+        // RECOVERY: ease-out settle. Quartic (1 - (1-t)^4) front-loads the
+        // slide more than the previous quadratic curve, so visual clipping
+        // resolves in ~22ms instead of ~59ms. The trade-off is a slightly
+        // higher peak slide speed (~2900 px/sec for typical landings vs
+        // ~1200 px/sec quadratic), but still well below "teleporty" — the
+        // movement decelerates smoothly into the settle position. Total
+        // recovery duration is unchanged so the punish window stays the same.
         if (player.isSidestepRecovery) {
           const recoveryElapsed = now - player.sidestepActiveEndTime;
           const recoveryT = Math.min(recoveryElapsed / SIDESTEP_RECOVERY_MS, 1);
-          const easeOut = 1 - (1 - recoveryT) * (1 - recoveryT);
-
-          if (sidestepOpponent) {
-            const LANDING_SEP = 140;
-            const landingSide = player.x >= sidestepOpponent.x ? 1 : -1;
-            const idealX = sidestepOpponent.x + landingSide * LANDING_SEP;
-            const currentDist = Math.abs(player.sidestepTargetX - sidestepOpponent.x);
-
-            if (currentDist < LANDING_SEP) {
-              player.sidestepRecoveryTargetX = Math.max(MAP_LEFT_BOUNDARY,
-                Math.min(idealX, MAP_RIGHT_BOUNDARY));
-            }
-          }
+          const inv = 1 - recoveryT;
+          const easeOut = 1 - inv * inv * inv * inv; // quartic ease-out
 
           const arcLandX = player.sidestepTargetX;
           player.x = arcLandX + (player.sidestepRecoveryTargetX - arcLandX) * easeOut;
@@ -1784,6 +1815,18 @@ function tick(delta) {
           player.isSidestepRecovery = false;
           player.y = GROUND_LEVEL;
           player.actionLockUntil = 0;
+
+          // Clear stale attack-intent timestamps. Mouse1 presses DURING the
+          // sidestep are buffer mashes, not real "I tried to attack you back"
+          // intent — counterHitFromIntent uses attackIntentTime within a 150ms
+          // window, so without this clear, a slap landing 1–150ms AFTER sidestep
+          // ends would incorrectly classify as a counter hit (because the stale
+          // buffered intent timestamp is still fresh) instead of either a clean
+          // punish (during recovery, handled via isSidestepRecovery) or a normal
+          // hit (just after sidestep ended). Real attack intent expressed AFTER
+          // sidestep ends will set the timestamps fresh again on the next press.
+          player.attackIntentTime = 0;
+          player.attackAttemptTime = 0;
 
           if (sidestepOpponent && !player.atTheRopesFacingDirection) {
             player.facing = player.x < sidestepOpponent.x ? -1 : 1;

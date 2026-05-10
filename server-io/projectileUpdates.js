@@ -559,8 +559,8 @@ function updateProjectiles(room, io, delta) {
       return true; // Keep clone
     });
 
-    // Note: pumoArmyCooldown is now only reset between rounds, not when clones are destroyed
-    // This ensures the pumo army can only be used once per round
+    // pumoArmyCooldown is cleared when a spawn animation finishes (socketHandlers / CPU AI),
+    // allowing multiple army charges per round; charges are tracked on pumoArmySpawnsRemaining.
   });
 }
 

@@ -1,8 +1,10 @@
 import { useState, useEffect, useContext, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
 import { SocketContext } from "../SocketContext";
 import { C } from "./menuTheme";
+import { ANNOUNCE_Y } from "./SumoGameAnnouncement";
 import powerWaterIcon from "../assets/power-water.png";
 import snowballImage from "../assets/snowball.png";
 import pumoArmyIcon from "./pumo-army-icon.png";
@@ -50,10 +52,9 @@ import thickBlubberIcon from "../assets/thick-blubber-icon.png";
  *       what you already know). OPP is vermillion-bright
  *       (the loud highlight — the surprise reveal of what
  *       you DIDN'T know).
- *     - Clusters move slightly inward (~6cqw from each edge
- *       instead of the previous ~3.5cqw). Pinning them to
- *       the extreme edges read as "screen chrome"; nudging
- *       them inward reads as "two pickups on the arena".
+ *     - Clusters sit in the announcement band (same top anchor
+ *       as hakkiyoi / te wo tsuite), centered as a pair with a
+ *       controlled gap — under the HUD, above the fighters.
  *
  * STRUCTURE per cluster:
  *
@@ -66,11 +67,8 @@ import thickBlubberIcon from "../assets/thick-blubber-icon.png";
  *         POWER WATER     ← name in big Bungee, cream stencil
  *                           stroke, sits BELOW the tile
  *
- *   Local cluster anchored to the LEFT edge with content
- *   center-aligned within the cluster. Opponent cluster
- *   mirrored on the RIGHT. The local always sits left
- *   regardless of P1/P2 seat — reads from your POV at a
- *   glance.
+ *   P1 cluster on the left, P2 on the right in a centered row;
+ *   YOU/OPP labels still reflect seat via TileLabel, not position.
  *
  * MOTION:
  *   Local cluster slides in from the LEFT edge (the West-
@@ -153,56 +151,61 @@ const exitUp = keyframes`
 const RevealOverlay = styled.div`
   position: absolute;
   inset: 0;
-  z-index: 10000;
+  /* Inside #game-hud: above HudShell (1000), below SumoGameAnnouncement
+     impact layers (~1003+) so ritual callouts still pop over if overlapping. */
+  z-index: 1002;
   pointer-events: none;
 `;
 
 /*
- * Cluster anchored to its SEAT side — left cluster is always
- * the player1 seat, right cluster is always the player2 seat.
- * This matches the rest of the in-game UI's spatial model:
- *   - HUD nameplates (PLAYER 1 left, PLAYER 2 right)
- *   - The "You ▼" indicator that floats above the local
- *     player's sprite wherever they are on the dohyo
- *   - The actual penguin sprite positions
- *
- * The LOCAL/OPP distinction is now carried by the TileLabel
- * (YOU vs OPP, and the cream/vermillion color swap), NOT by
- * the cluster's screen position. So in a PvP match where the
- * local player happens to be P2, the YOU tile correctly sits
- * on the RIGHT — matching where their penguin is — instead
- * of being forced to the left as in the previous pass.
- *
- * `$isLeft` drives position and entrance direction (P1 enters
- * from West, P2 enters from East — same wrestler-entrance
- * choreography). `$isLocal` is independent and only controls
- * the label content + color inside the tile.
+ * Full HUD width with the pair centered as a unit. Each cluster uses
+ * the same fixed column width so tile midpoints stay on-axis with the
+ * screen center (max-content flex skewed that). Tile-to-tile distance
+ * is driven by column width — keep columns ~tile-sized, not HUD-wide.
  */
-const Cluster = styled.div`
+const RevealRow = styled.div`
   position: absolute;
-  /* Vertical position matches SumoAnnouncementBanner so the
-     two side callouts share the same eye-line — reveal at
-     round start and the in-game announcement banners both
-     land at the same height in your peripheral. */
-  top: clamp(220px, 38cqh, 290px);
-  ${(p) =>
-    p.$isLeft
-      ? css`
-          left: clamp(40px, 6cqw, 96px);
-        `
-      : css`
-          right: clamp(40px, 6cqw, 96px);
-        `}
+  top: calc(${ANNOUNCE_Y} - clamp(68px, 7.5cqh, 104px));
+  left: 0;
+  right: 0;
+  width: 100%;
+  padding-inline: clamp(10px, 2.5cqw, 28px);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: flex-start;
+  gap: clamp(12px, 3cqw, 28px);
+  pointer-events: none;
+
+  @media (max-width: 700px) {
+    gap: clamp(10px, 2.6cqw, 22px);
+    padding-inline: clamp(8px, 3cqw, 20px);
+  }
+`;
+
+/*
+ * Cluster order is always P1 then P2 left-to-right in the row.
+ * LOCAL/OPP is carried by TileLabel only — if you are P2, YOU is
+ * still the right-hand tile.
+ *
+ * `$isLeft` selects entrance direction (west vs east). `$isLocal`
+ * only affects label styling inside the tile.
+ */
+/* Wide enough for longest Bungee title without overlap; equal cols keep tiles centered on screen. */
+const CLUSTER_COL = "clamp(148px, 23cqw, 208px)";
+
+const Cluster = styled.div`
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  /* Tighter gap above the tile (label hugs the tile so the
-     trio reads as one stacked pickup) and a slightly larger
-     gap below it (lets the big Bungee name breathe without
-     fighting the tile). */
-  gap: clamp(4px, 0.55cqh, 6px);
-  max-width: 38cqw;
-  width: max-content;
+  gap: clamp(8px, 0.95cqh, 12px);
+  flex: 0 0 ${CLUSTER_COL};
+  width: ${CLUSTER_COL};
+  max-width: ${CLUSTER_COL};
+  min-width: 0;
+  box-sizing: border-box;
   opacity: 0;
   animation: ${(p) => (p.$isLeft ? enterFromLeft : enterFromRight)}
     0.4s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
@@ -216,18 +219,6 @@ const Cluster = styled.div`
       animation-delay: 0s;
     `}
 
-  @media (max-width: 700px) {
-    top: clamp(170px, 32cqh, 240px);
-    max-width: 44cqw;
-    ${(p) =>
-      p.$isLeft
-        ? css`
-            left: clamp(30px, 7cqw, 64px);
-          `
-        : css`
-            right: clamp(30px, 7cqw, 64px);
-          `}
-  }
 `;
 
 /*
@@ -271,51 +262,16 @@ const IconTile = styled.div`
   }
 `;
 
-/*
- * YOU / OPP label, free-floating ABOVE the colored tile.
- *
- * Two earlier passes tried to put this text ON the tile and
- * both failed for different reasons:
- *   - 4-direction sumi text-stroke directly on the colored
- *     field made the small letters read as chunky pixel
- *     blobs.
- *   - A flush sumi header band gave it a surface but felt
- *     like a UI panel containerizing the icon, working
- *     against the "two pickup cards on the arena" feel.
- *
- * Moving the label outside the tile sidesteps both problems:
- *   - No more competing with the tile background (which
- *     also fixes the OPP-vermillion-on-Power-Water-red case
- *     since OPP now sits against the arena/crowd, not the
- *     red tile).
- *   - No need for a containing surface — the text just sits
- *     in space above the tile.
- *
- * Legibility against the live arena uses a single clean
- * drop shadow instead of a multi-direction stencil. Bungee-
- * weight type with a chunky sumi drop reads as a stamp
- * impression, which is the printed-program metaphor we want.
- * (Space Grotesk here is bumped to 800 so the same recipe
- * holds at small sizes — the heavier weight gives the drop
- * shadow something to sit against.)
- *
- * Color coding stays: YOU = cream (neutral self), OPP =
- * vermillion-bright (loud opponent highlight).
- */
+/* YOU / OPP — above the tile; thin ink outline reads cleaner than stacked drops. */
 const TileLabel = styled.span`
   font-family: "Space Grotesk", sans-serif;
   font-weight: 800;
   font-size: clamp(0.5rem, 0.85cqw, 0.66rem);
   letter-spacing: 0.3em;
   text-transform: uppercase;
-  color: ${(p) => (p.$isLocal ? C.cream : C.vermillionBright)};
-  /* Stamp-impression drop only — no stencil, no halo. The
-     1px crisp drop seats the letterforms; the soft 4px
-     ambient shadow dims the arena directly behind the text
-     so the cream/vermillion can hold its own. */
-  text-shadow:
-    0 1px 0 rgba(8, 10, 18, 0.92),
-    0 2px 4px rgba(8, 10, 18, 0.7);
+  color: ${(p) => (p.$isLocal ? "#fff9f0" : "#ff8f82")};
+  -webkit-text-stroke: clamp(0.4px, 0.06cqw, 0.95px) rgba(12, 14, 22, 0.94);
+  paint-order: stroke fill;
   white-space: nowrap;
 
   @media (max-width: 700px) {
@@ -342,37 +298,17 @@ const TileIcon = styled.img`
   }
 `;
 
-/*
- * Power-up name. Big cream Bungee, free-floating below the
- * colored tile, no surrounding plate. The earlier 8-stroke
- * stencil passes plus the sumi-plate-with-colored-top-rule
- * pass both lost the "two pickup cards on the arena" feel
- * by adding too much paint and too much chrome.
- *
- * This pass uses a single stamp-impression drop-shadow
- * recipe — a 1px crisp sumi drop seats the letterforms,
- * and a 2px slightly-offset solid sumi shadow chunks them
- * up like ink pressed into paper, plus a soft 6px ambient
- * shadow dims the arena directly behind the text so the
- * cream can hold its own. No directional stencil. No halo
- * glow. No background plate.
- *
- * Bungee is heavy enough that this minimal recipe carries
- * the type against any of the arena/crowd backgrounds the
- * reveal sits over.
- */
+/* Power-up title — Bungee with a uniform outline (no offset “stamp” shadows). */
 const Name = styled.span`
   font-family: "Bungee", cursive;
   font-size: clamp(0.7rem, 1.18cqw, 0.95rem);
-  color: ${C.cream};
+  color: #fffbf5;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   line-height: 1;
   white-space: nowrap;
-  text-shadow:
-    0 1px 0 rgba(8, 10, 18, 0.95),
-    0 2px 0 rgba(8, 10, 18, 0.85),
-    0 4px 8px rgba(8, 10, 18, 0.6);
+  -webkit-text-stroke: clamp(0.55px, 0.1cqw, 1.45px) rgba(12, 14, 22, 0.92);
+  paint-order: stroke fill;
 
   @media (max-width: 700px) {
     font-size: clamp(0.6rem, 1.85cqw, 0.78rem);
@@ -445,49 +381,41 @@ const PowerUpReveal = ({ roomId, localId }) => {
 
   if (!isVisible || !revealData) return null;
 
-  /*
-   * Cluster position is locked to the SEAT (P1=left, P2=right)
-   * to match the rest of the in-game UI — HUD nameplates, the
-   * floating "You ▼" indicator, and the actual penguin sprite
-   * positions. The YOU vs OPP label is then chosen per-cluster
-   * based on which seat the local client is occupying.
-   *
-   * In a 1v1 PvP match where you're seated as P2, the YOU tile
-   * correctly appears on the RIGHT — directly above where your
-   * penguin is standing — instead of being forced to the left
-   * as in the previous pass.
-   */
+  const hudEl = document.getElementById("game-hud");
+  if (!hudEl) return null;
+
+  /* Row order is always P1 left / P2 right; YOU vs OPP follows seat. */
   const isLocalP1 = revealData.player1.playerId === localId;
   const p1Info = powerUpInfo[revealData.player1.powerUpType];
   const p2Info = powerUpInfo[revealData.player2.powerUpType];
 
-  return (
+  return createPortal(
     <RevealOverlay>
-      {/* LEFT seat — Player 1 (West-side entrance).
-          Label sits ABOVE the tile and Name sits BELOW —
-          three free-floating pieces stacked over the
-          arena, no containing chrome. */}
-      <Cluster $isLeft={true} $isExiting={isExiting}>
-        <TileLabel $isLocal={isLocalP1}>
-          {isLocalP1 ? "You" : "Opp"}
-        </TileLabel>
-        <IconTile $type={revealData.player1.powerUpType}>
-          <TileIcon src={p1Info?.icon} alt={p1Info?.name} />
-        </IconTile>
-        <Name>{p1Info?.name}</Name>
-      </Cluster>
+      <RevealRow>
+        {/* P1 — west-side entrance animation */}
+        <Cluster $isLeft={true} $isExiting={isExiting}>
+          <TileLabel $isLocal={isLocalP1}>
+            {isLocalP1 ? "You" : "Opp"}
+          </TileLabel>
+          <IconTile $type={revealData.player1.powerUpType}>
+            <TileIcon src={p1Info?.icon} alt={p1Info?.name} />
+          </IconTile>
+          <Name>{p1Info?.name}</Name>
+        </Cluster>
 
-      {/* RIGHT seat — Player 2 (East-side entrance) */}
-      <Cluster $isLeft={false} $isExiting={isExiting}>
-        <TileLabel $isLocal={!isLocalP1}>
-          {!isLocalP1 ? "You" : "Opp"}
-        </TileLabel>
-        <IconTile $type={revealData.player2.powerUpType}>
-          <TileIcon src={p2Info?.icon} alt={p2Info?.name} />
-        </IconTile>
-        <Name>{p2Info?.name}</Name>
-      </Cluster>
-    </RevealOverlay>
+        {/* P2 — east-side entrance animation */}
+        <Cluster $isLeft={false} $isExiting={isExiting}>
+          <TileLabel $isLocal={!isLocalP1}>
+            {!isLocalP1 ? "You" : "Opp"}
+          </TileLabel>
+          <IconTile $type={revealData.player2.powerUpType}>
+            <TileIcon src={p2Info?.icon} alt={p2Info?.name} />
+          </IconTile>
+          <Name>{p2Info?.name}</Name>
+        </Cluster>
+      </RevealRow>
+    </RevealOverlay>,
+    hudEl
   );
 };
 

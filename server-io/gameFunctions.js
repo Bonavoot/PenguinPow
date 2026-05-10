@@ -52,7 +52,7 @@ const {
   GRAB_STATES,
   INPUT_BUFFER_WINDOW_MS,
   POWER_UP_TYPES,
-  SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MAX_MS, SIDESTEP_RECOVERY_MS,
+  SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS,
   SIDESTEP_TOTAL_MS, SIDESTEP_STAMINA_COST,
 } = require("./constants");
 
@@ -1349,12 +1349,10 @@ function activateBufferedInputAfterGrab(player, rooms) {
       player.isSidestepRecovery = false;
       player.sidestepStartTime = Date.now();
       player.sidestepStartupEndTime = Date.now() + SIDESTEP_STARTUP_MS;
-      player.sidestepActiveEndTime = Date.now() + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MAX_MS;
+      player.sidestepActiveEndTime = Date.now() + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS;
       player.sidestepEndTime = Date.now() + SIDESTEP_TOTAL_MS;
       player.sidestepStartX = player.x;
       player.sidestepDirection = initData.direction;
-      player.sidestepMaxTravel = initData.maxTravel;
-      player.sidestepActiveDuration = SIDESTEP_ACTIVE_MAX_MS;
       player.currentAction = "sidestep";
       player.actionLockUntil = Date.now() + SIDESTEP_TOTAL_MS;
       player.stamina = Math.max(0, player.stamina - SIDESTEP_STAMINA_COST);
@@ -1435,12 +1433,10 @@ function activateBufferedInputAfterGrab(player, rooms) {
       player.isSidestepRecovery = false;
       player.sidestepStartTime = Date.now();
       player.sidestepStartupEndTime = Date.now() + SIDESTEP_STARTUP_MS;
-      player.sidestepActiveEndTime = Date.now() + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MAX_MS;
+      player.sidestepActiveEndTime = Date.now() + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS;
       player.sidestepEndTime = Date.now() + SIDESTEP_TOTAL_MS;
       player.sidestepStartX = player.x;
       player.sidestepDirection = initData.direction;
-      player.sidestepMaxTravel = initData.maxTravel;
-      player.sidestepActiveDuration = SIDESTEP_ACTIVE_MAX_MS;
       player.currentAction = "sidestep";
       player.actionLockUntil = Date.now() + SIDESTEP_TOTAL_MS;
       player.stamina = Math.max(0, player.stamina - SIDESTEP_STAMINA_COST);
@@ -1622,12 +1618,10 @@ function executeInputBuffer(player, rooms) {
           player.isSidestepRecovery = false;
           player.sidestepStartTime = Date.now();
           player.sidestepStartupEndTime = Date.now() + SIDESTEP_STARTUP_MS;
-          player.sidestepActiveEndTime = Date.now() + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MAX_MS;
+          player.sidestepActiveEndTime = Date.now() + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS;
           player.sidestepEndTime = Date.now() + SIDESTEP_TOTAL_MS;
           player.sidestepStartX = player.x;
           player.sidestepDirection = initData.direction;
-          player.sidestepMaxTravel = initData.maxTravel;
-          player.sidestepActiveDuration = SIDESTEP_ACTIVE_MAX_MS;
 
           player.currentAction = "sidestep";
           player.actionLockUntil = Date.now() + SIDESTEP_TOTAL_MS;

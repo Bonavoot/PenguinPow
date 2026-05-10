@@ -5,7 +5,8 @@ import { useMemo } from "react";
 // ============================================
 // SHARED Y-POSITION (both announcements live here — below the HUD)
 // ============================================
-const ANNOUNCE_Y = "clamp(100px, 28cqh, 190px)";
+/** Shared with PowerUpReveal — upper-arena band just under the HUD. */
+export const ANNOUNCE_Y = "clamp(100px, 28cqh, 190px)";
 
 // ============================================
 // ANIMATIONS

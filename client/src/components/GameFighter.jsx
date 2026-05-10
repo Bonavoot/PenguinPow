@@ -135,6 +135,77 @@ import {
   DisconnectedMessage,
 } from "./fighterStyledComponents";
 
+// =====================================================================
+// Pumo clone sprite resolution
+// ---------------------------------------------------------------------
+// Fighter sprites have a robust render path (sync cache → local async
+// recolor state → tint-fallback) so a cache miss never flashes the raw
+// blue source. Pumo clones used to call only `getCachedRecoloredImage`,
+// which meant any miss (race, eviction, mid-match color change) showed
+// the default blue penguin. With the Pumo Army charge bump we now have
+// up to 9 simultaneous clones per player; brittleness compounds.
+//
+// This hook gives clones the same resilience: it returns the cached
+// recolored URL if available, otherwise it kicks an async recolor and
+// returns the base sprite while we wait — never null, never wrong color
+// for longer than one paint after the recolor finishes.
+//
+// The hook is also a memo point: calling it once per (player, baseSrc)
+// at the GameFighter level — instead of inline inside the clone .map —
+// collapses N per-frame cache lookups into 4 (p1/p2 × animated/static).
+// =====================================================================
+function useRecoloredCloneSrc(baseSrc, ownerColor, ownerBodyColor) {
+  const needsRecolor =
+    !!baseSrc &&
+    !!ownerColor &&
+    (ownerColor !== SPRITE_BASE_COLOR || !!ownerBodyColor);
+
+  const cachedSrc = useMemo(() => {
+    if (!needsRecolor) return null;
+    const opts = ownerBodyColor
+      ? { bodyColorRange: GREY_BODY_RANGES, bodyColorHex: ownerBodyColor }
+      : {};
+    return getCachedRecoloredImage(
+      baseSrc,
+      BLUE_COLOR_RANGES,
+      ownerColor,
+      opts
+    );
+  }, [baseSrc, ownerColor, ownerBodyColor, needsRecolor]);
+
+  const [asyncSrc, setAsyncSrc] = useState(null);
+
+  useEffect(() => {
+    // Whenever the inputs change we must drop any stale async result so we
+    // don't flash the previous owner's color before the new recolor lands.
+    setAsyncSrc(null);
+
+    if (!needsRecolor || cachedSrc) return undefined;
+
+    let cancelled = false;
+    const opts = ownerBodyColor
+      ? { bodyColorRange: GREY_BODY_RANGES, bodyColorHex: ownerBodyColor }
+      : {};
+    // recolorImage() dedupes concurrent calls with the same key via
+    // inFlightRecolors, so calling this from multiple GameFighter
+    // instances with the same color is a single shared promise.
+    recolorImage(baseSrc, BLUE_COLOR_RANGES, ownerColor, opts)
+      .then((url) => {
+        if (!cancelled) setAsyncSrc(url);
+      })
+      .catch(() => {
+        /* keep the base sprite as graceful fallback */
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [baseSrc, ownerColor, ownerBodyColor, needsRecolor, cachedSrc]);
+
+  if (!needsRecolor) return baseSrc;
+  return cachedSrc || asyncSrc || baseSrc;
+}
+
 const GameFighter = ({
   player,
   index,
@@ -175,6 +246,25 @@ const GameFighter = ({
     player1Color: p1Color, player2Color: p2Color,
     player1BodyColor: p1BodyColor, player2BodyColor: p2BodyColor,
   } = usePlayerColors();
+
+  // ============================================
+  // PUMO CLONE SPRITE RESOLUTION
+  // Resolve the recolored clone sprite per (player, base) ONCE per render
+  // and reuse it across the inline .map below. With 3 charges allowing up
+  // to 9 simultaneous clones per player, doing this lookup per-clone
+  // per-frame caused noticeable churn AND any cache miss painted the
+  // default blue. The hook returns the cached recolored URL if available,
+  // else triggers async recolor and falls back to the base sprite — same
+  // resilience the fighter render path has. Hooks must be unconditional
+  // so we always call them; the cache is global so duplicate calls from
+  // both GameFighter instances are deduped by inFlightRecolors.
+  // ============================================
+  const pumoWaddleConfig = SPRITESHEET_CONFIG_BY_NAME.pumoWaddle;
+  const pumoWaddleBase = pumoWaddleConfig?.spritesheet || null;
+  const p1AnimatedCloneSrc = useRecoloredCloneSrc(pumoWaddleBase, p1Color, p1BodyColor);
+  const p2AnimatedCloneSrc = useRecoloredCloneSrc(pumoWaddleBase, p2Color, p2BodyColor);
+  const p1StaticCloneSrc = useRecoloredCloneSrc(pumo, p1Color, p1BodyColor);
+  const p2StaticCloneSrc = useRecoloredCloneSrc(pumo, p2Color, p2BodyColor);
 
   // Function to get sprite render info (handles both static and animated sprites)
   // Returns: { src, isAnimated, config } where config contains spritesheet animation data
@@ -398,6 +488,7 @@ const GameFighter = ({
     lastSnowballTime: 0,
     pumoArmy: [],
     pumoArmyCooldown: false,
+    pumoArmySpawnsRemaining: null,
     isSpawningPumoArmy: false,
     activePowerUp: null,
     hitAbsorptionUsed: false,
@@ -1530,6 +1621,8 @@ const GameFighter = ({
           snap.p2SbRem !== player2Data.snowballThrowsRemaining ||
           snap.p1PaCd !== player1Data.pumoArmyCooldown ||
           snap.p2PaCd !== player2Data.pumoArmyCooldown ||
+          snap.p1PaRem !== player1Data.pumoArmySpawnsRemaining ||
+          snap.p2PaRem !== player2Data.pumoArmySpawnsRemaining ||
           snap.p1Gas !== player1Data.isGassed ||
           snap.p2Gas !== player2Data.isGassed ||
           snap.p1Edge !== player1Data.isBeingEdgePushed
@@ -1544,6 +1637,8 @@ const GameFighter = ({
           snap.p2SbRem = player2Data.snowballThrowsRemaining;
           snap.p1PaCd = player1Data.pumoArmyCooldown;
           snap.p2PaCd = player2Data.pumoArmyCooldown;
+          snap.p1PaRem = player1Data.pumoArmySpawnsRemaining;
+          snap.p2PaRem = player2Data.pumoArmySpawnsRemaining;
           snap.p1Gas = player1Data.isGassed;
           snap.p2Gas = player2Data.isGassed;
           snap.p1Edge = player1Data.isBeingEdgePushed;
@@ -2784,6 +2879,138 @@ const GameFighter = ({
     prevRopeJumpPhase.current = penguin.ropeJumpPhase;
   }, [penguin.ropeJumpPhase, penguin.x, penguin.y, emitParticles]);
 
+  // ─────────────────────────────────────────────────────────────────
+  // LOCAL PLAYER HALO — persistent identity marker
+  //
+  // Emits localPlayerHalo every 600ms while the LOCAL player is alive
+  // and the round isn't over. Each emission spawns one ring on the
+  // default canvas (occluded by the fighter sprite — wraps around the
+  // feet) and one faint copy on the aboveFighters canvas (preserves
+  // identity through overlap). The ring tracks live X/Y via
+  // followGetter, so it dips with the player during the sidestep arc
+  // — they're walking around the dohyo's curved near edge, not jumping.
+  // ─────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isLocalPlayer || penguin.isDead || gameOver) return;
+
+    // followGetter returns canvas-space coordinates (Y is already flipped
+    // because the engine spawns the particle at GAME_H - y).
+    const followGetter = () => {
+      const pos = interpolatedPositionRef.current;
+      const px = pos?.x ?? penguin.x;
+      const py = pos?.y ?? penguin.y;
+      if (typeof px !== "number" || typeof py !== "number") return null;
+      return { x: px, y: 720 - py };
+    };
+
+    const fire = () => {
+      const pos = interpolatedPositionRef.current;
+      emitParticles("localPlayerHalo", {
+        x: pos?.x ?? penguin.x,
+        y: pos?.y ?? penguin.y,
+        playerNumber,
+        followGetter,
+      });
+    };
+
+    fire();
+    // 2000ms cadence MATCHES the halo's 2.0s `maxLife` exactly.
+    // Each particle's bump-eased alpha goes BASE → PEAK → BASE, and
+    // the next one starts at BASE — same value, seamless transition,
+    // consistent breath rhythm with no double-pulse from overlap.
+    const id = setInterval(fire, 2000);
+    return () => clearInterval(id);
+  }, [isLocalPlayer, penguin.isDead, gameOver, playerNumber, emitParticles]);
+
+  // ─────────────────────────────────────────────────────────────────
+  // SIDESTEP VFX — start / trail / land
+  //
+  // The sidestep is GROUND footwork, not a leap. The downward Y dip
+  // (toward camera) reflects walking around the dohyo's near edge.
+  // All three effects emit ground-level dust, no airborne mist.
+  //
+  // sidestepStart: rising edge of "active arc began" (startup ended)
+  // sidestepTrail: every 40ms while active, with `t` for arc progress
+  // sidestepLand:  rising edge of recovery (arc completed)
+  // ─────────────────────────────────────────────────────────────────
+  const prevSidestepActive = useRef(false);
+  useEffect(() => {
+    const isActive =
+      penguin.isSidestepping &&
+      !penguin.isSidestepStartup &&
+      !penguin.isSidestepRecovery;
+
+    if (isActive && !prevSidestepActive.current) {
+      const pos = interpolatedPositionRef.current;
+      emitParticles("sidestepStart", {
+        x: pos?.x ?? penguin.x,
+        y: pos?.y ?? penguin.y,
+        direction: penguin.facing || 1,
+        playerNumber,
+      });
+    }
+    prevSidestepActive.current = isActive;
+  }, [
+    penguin.isSidestepping,
+    penguin.isSidestepStartup,
+    penguin.isSidestepRecovery,
+    penguin.facing,
+    playerNumber,
+    emitParticles,
+  ]);
+
+  useEffect(() => {
+    const isActive =
+      penguin.isSidestepping &&
+      !penguin.isSidestepStartup &&
+      !penguin.isSidestepRecovery;
+    if (!isActive) return;
+
+    // Active phase length is fixed server-side (SIDESTEP_ACTIVE_MS = 320).
+    // Tracking elapsed locally lets us pass a 0..1 `t` for apex-boost in
+    // the trail preset — fine even with mild server clock drift since the
+    // effect just intensifies dust at mid-arc.
+    const startTime = performance.now();
+    const ACTIVE_MS = 320;
+    const TRAIL_INTERVAL_MS = 40;
+
+    const fire = () => {
+      const pos = interpolatedPositionRef.current;
+      const elapsed = performance.now() - startTime;
+      const t = Math.min(elapsed / ACTIVE_MS, 1);
+      emitParticles("sidestepTrail", {
+        x: pos?.x ?? penguin.x,
+        y: pos?.y ?? penguin.y,
+        direction: penguin.facing || 1,
+        t,
+        playerNumber,
+      });
+    };
+
+    fire();
+    const id = setInterval(fire, TRAIL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [
+    penguin.isSidestepping,
+    penguin.isSidestepStartup,
+    penguin.isSidestepRecovery,
+    penguin.facing,
+    playerNumber,
+    emitParticles,
+  ]);
+
+  const prevSidestepRecovery = useRef(false);
+  useEffect(() => {
+    if (penguin.isSidestepRecovery && !prevSidestepRecovery.current) {
+      const pos = interpolatedPositionRef.current;
+      emitParticles("sidestepLand", {
+        x: pos?.x ?? penguin.x,
+        y: pos?.y ?? penguin.y,
+      });
+    }
+    prevSidestepRecovery.current = penguin.isSidestepRecovery;
+  }, [penguin.isSidestepRecovery, emitParticles]);
+
   useEffect(() => {
     const STRAFE_VOL = 0.015 * getGlobalVolume();
     const FADE_MS = 0.08;
@@ -3637,6 +3864,9 @@ const GameFighter = ({
                 player1PumoArmyCooldown={
                   allPlayersData.player1?.pumoArmyCooldown ?? false
                 }
+                player1PumoArmySpawnsRemaining={
+                  allPlayersData.player1?.pumoArmySpawnsRemaining ?? null
+                }
                 player1IsGassed={allPlayersData.player1?.isGassed ?? false}
                 player1ParryRefund={p1ParryRefund}
                 player1Balance={allPlayersData.player1?.balance ?? 100}
@@ -3653,6 +3883,9 @@ const GameFighter = ({
                 }
                 player2PumoArmyCooldown={
                   allPlayersData.player2?.pumoArmyCooldown ?? false
+                }
+                player2PumoArmySpawnsRemaining={
+                  allPlayersData.player2?.pumoArmySpawnsRemaining ?? null
                 }
                 player2IsGassed={allPlayersData.player2?.isGassed ?? false}
                 player2ParryRefund={p2ParryRefund}
@@ -4000,92 +4233,73 @@ const GameFighter = ({
           </SnowballWrapper>
         </div>
       ))}
-      <PumoCloneSpawnEffect
-        clones={allPumoArmies}
-        player1Color={p1Color}
-        player2Color={p2Color}
-      />
-      {allPumoArmies.map((clone) => {
-        // Color the clone to match its owner's belt + body colors
-        const ownerColor = clone.ownerPlayerNumber === 1 ? p1Color : p2Color;
-        const ownerBodyColor = clone.ownerPlayerNumber === 1 ? p1BodyColor : p2BodyColor;
-        const needsCloneRecolor =
-          (ownerColor && ownerColor !== SPRITE_BASE_COLOR) || !!ownerBodyColor;
-        const bodyOpts = ownerBodyColor
-          ? { bodyColorRange: GREY_BODY_RANGES, bodyColorHex: ownerBodyColor }
-          : {};
+      {/*
+        Pumo clones (and their spawn FX) live in shared world space, not
+        per-player UI. Both GameFighter instances mount this same JSX, so
+        without an index gate we'd render every clone TWICE (one stack
+        per instance) — exactly when the user upgraded to 3 charges and
+        started seeing perf dips and color-flicker between overlapping
+        copies. Render from index 0 only; clone state is socket-driven
+        so both instances stay in sync.
+      */}
+      {index === 0 && (
+        <>
+          <PumoCloneSpawnEffect
+            clones={allPumoArmies}
+            player1Color={p1Color}
+            player2Color={p2Color}
+          />
+          {allPumoArmies.map((clone) => {
+            const isAnimatedClone = clone.isStrafing && pumoWaddleConfig;
+            const isP1 = clone.ownerPlayerNumber === 1;
+            const cloneSprite = isAnimatedClone
+              ? (isP1 ? p1AnimatedCloneSrc : p2AnimatedCloneSrc)
+              : (isP1 ? p1StaticCloneSrc : p2StaticCloneSrc);
 
-        // For strafing clones, use spritesheet animation (APNG recoloring loses animation frames)
-        const waddleConfig = SPRITESHEET_CONFIG_BY_NAME.pumoWaddle;
-        const isAnimatedClone = clone.isStrafing && waddleConfig;
-
-        let cloneSprite;
-        if (isAnimatedClone) {
-          cloneSprite = waddleConfig.spritesheet;
-          if (needsCloneRecolor) {
-            const cached = getCachedRecoloredImage(
-              waddleConfig.spritesheet,
-              BLUE_COLOR_RANGES,
-              ownerColor,
-              bodyOpts
-            );
-            if (cached) cloneSprite = cached;
-          }
-        } else {
-          cloneSprite = pumo;
-          if (needsCloneRecolor) {
-            const cached = getCachedRecoloredImage(
-              pumo,
-              BLUE_COLOR_RANGES,
-              ownerColor,
-              bodyOpts
-            );
-            if (cached) cloneSprite = cached;
-          }
-        }
-
-        return (
-          <React.Fragment key={clone.id}>
-            <PlayerShadow
-              x={clone.x}
-              y={clone.y}
-              facing={clone.facing}
-              isDodging={false}
-              width="9%"
-              height="2.04%"
-              offsetLeft="-50%"
-              offsetRight="-50%"
-            />
-            {isAnimatedClone ? (
-              <AnimatedPumoCloneContainer
-                $x={clone.x}
-                $y={clone.y}
-                $facing={clone.facing}
-                $size={clone.size}
-                $lane={clone.lane}
-              >
-                <AnimatedPumoCloneImage
-                  src={cloneSprite}
-                  alt="Pumo Clone"
-                  $frameCount={waddleConfig.frameCount}
-                  $fps={waddleConfig.fps}
-                  draggable={false}
+            return (
+              <React.Fragment key={clone.id}>
+                <PlayerShadow
+                  x={clone.x}
+                  y={clone.y}
+                  facing={clone.facing}
+                  isDodging={false}
+                  width="9%"
+                  height="2.04%"
+                  offsetLeft="-50%"
+                  offsetRight="-50%"
                 />
-              </AnimatedPumoCloneContainer>
-            ) : (
-              <PumoClone
-                src={cloneSprite}
-                alt="Pumo Clone"
-                $x={clone.x}
-                $y={clone.y}
-                $facing={clone.facing}
-                $size={clone.size}
-                $lane={clone.lane}
-              />
-            )}
-          </React.Fragment>
-        );
-      })}
+                {isAnimatedClone ? (
+                  <AnimatedPumoCloneContainer
+                    $x={clone.x}
+                    $y={clone.y}
+                    $facing={clone.facing}
+                    $size={clone.size}
+                    $lane={clone.lane}
+                  >
+                    <AnimatedPumoCloneImage
+                      src={cloneSprite}
+                      alt="Pumo Clone"
+                      $frameCount={pumoWaddleConfig.frameCount}
+                      $fps={pumoWaddleConfig.fps}
+                      draggable={false}
+                    />
+                  </AnimatedPumoCloneContainer>
+                ) : (
+                  <PumoClone
+                    src={cloneSprite}
+                    alt="Pumo Clone"
+                    $x={clone.x}
+                    $y={clone.y}
+                    $facing={clone.facing}
+                    $size={clone.size}
+                    $lane={clone.lane}
+                  />
+                )}
+              </React.Fragment>
+            );
+          })}
+        </>
+      )}
 
       {/* Opponent Disconnected Overlay - Only show for local player */}
       {opponentDisconnected && player.id === localId && (

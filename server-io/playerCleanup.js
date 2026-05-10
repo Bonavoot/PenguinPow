@@ -39,8 +39,6 @@ function cleanupPlayerStates(player) {
   player.sidestepEndTime = 0;
   player.sidestepStartX = 0;
   player.sidestepDirection = 0;
-  player.sidestepMaxTravel = 0;
-  player.sidestepActiveDuration = 0;
   player.sidestepTargetX = 0;
   player.sidestepRecoveryStartX = 0;
   player.sidestepRecoveryTargetX = 0;
@@ -88,6 +86,7 @@ function cleanupPlayerStates(player) {
   player.snowballCooldown = false;
   player.pumoArmyCooldown = false;
   player.snowballThrowsRemaining = null;
+  player.pumoArmySpawnsRemaining = null;
   player.isThrowingSnowball = false;
   player.isSpawningPumoArmy = false;
   player.hitAbsorptionUsed = false;
@@ -203,6 +202,7 @@ function getCleanedRoomData(room) {
       snowballCooldown: false,
       pumoArmyCooldown: false,
       snowballThrowsRemaining: null,
+      pumoArmySpawnsRemaining: null,
       isThrowingSnowball: false,
       isSpawningPumoArmy: false,
       hitAbsorptionUsed: false,
@@ -331,6 +331,7 @@ function getCleanedRoomsData(rooms) {
         snowballCooldown: false,
         pumoArmyCooldown: false,
         snowballThrowsRemaining: null,
+        pumoArmySpawnsRemaining: null,
         isThrowingSnowball: false,
         isSpawningPumoArmy: false,
         hitAbsorptionUsed: false,

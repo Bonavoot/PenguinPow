@@ -1425,7 +1425,13 @@ export function getCachedRecoloredImage(
   const blubberTintPurple = !!options.blubberTintPurple;
   const armorTintPink = !!options.armorTintPink;
   const bodyColorHex = options.bodyColorHex || null;
-  const cacheKey = `${imageSrc}_${sourceColorRange.minHue}-${
+  // Match recolorImage()'s key construction exactly — both sides MUST use
+  // resolveHiRes() so callers passing a 1x URL still hit entries inserted
+  // under a @2x URL (and vice versa). Asymmetry here means systematic
+  // cache misses → raw blue sprite for any path that happens to query the
+  // 1x URL while preload populated the cache with the @2x key.
+  const hiResSrc = resolveHiRes(imageSrc);
+  const cacheKey = `${hiResSrc}_${sourceColorRange.minHue}-${
     sourceColorRange.maxHue
   }_${targetColorHex}${bodyColorHex ? "_body_" + bodyColorHex : ""}${
     hitTintRed ? "_hit" : ""

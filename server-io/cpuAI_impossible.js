@@ -57,6 +57,14 @@ function getState(playerId) {
       grabBreakReactDirection: false,
       grabResistStartTime: 0,
 
+      // Post-clinch-break "thinking" delay — prevents zero-reaction-time
+      // CPU advantage when both players unlock simultaneously after a clinch
+      // break. Mechanics stay symmetric (both players' inputLockUntil is
+      // identical in mid-ring); this only adds a human-like delay before the
+      // CPU can act on the neutral resume.
+      wasInClinchBreak: false,
+      postClinchBreakReactionUntil: 0,
+
       // Rope jump
       lastRopeJumpTime: 0,
 
@@ -403,9 +411,10 @@ function handleCorneredNeutral(cpu, human, st, now, distance) {
 
 function handlePowerUp(cpu, human, st, now, distance) {
   const snowballReady = cpu.activePowerUp === "snowball" &&
-    (cpu.snowballThrowsRemaining ?? 3) > 0 &&
+    (cpu.snowballThrowsRemaining ?? 5) > 0 &&
     !cpu.snowballCooldown && !cpu.isThrowingSnowball;
   const pumoReady = cpu.activePowerUp === "pumo_army" &&
+    (cpu.pumoArmySpawnsRemaining ?? 3) > 0 &&
     !cpu.pumoArmyCooldown && !cpu.isSpawningPumoArmy;
 
   if (!snowballReady && !pumoReady) return false;
@@ -457,13 +466,28 @@ function updateImpossibleAI(cpu, human, room, currentTime) {
     return;
   }
 
-  if (cpu.isGrabBreaking || cpu.isGrabBreakCountered || cpu.isGrabBreakSeparating ||
-      human.isGrabBreaking || human.isGrabBreakCountered || human.isGrabBreakSeparating) {
+  const st = getState(cpu.id);
+
+  const inClinchBreak = cpu.isGrabBreaking || cpu.isGrabBreakCountered || cpu.isGrabBreakSeparating ||
+      human.isGrabBreaking || human.isGrabBreakCountered || human.isGrabBreakSeparating;
+  if (inClinchBreak) {
+    st.wasInClinchBreak = true;
     resetAllKeys(cpu);
     return;
   }
 
-  const st = getState(cpu.id);
+  // Just exited grab break — assign a human-like reaction delay before the
+  // CPU is allowed to act again. See cpuAI.js for full rationale.
+  if (st.wasInClinchBreak) {
+    st.wasInClinchBreak = false;
+    // Fast-but-not-instant reaction (60-120ms = ~3.5-7 frames @60fps).
+    st.postClinchBreakReactionUntil = currentTime + (60 + Math.floor(Math.random() * 61));
+  }
+  if (st.postClinchBreakReactionUntil && currentTime < st.postClinchBreakReactionUntil) {
+    resetAllKeys(cpu);
+    return;
+  }
+
   const distance = getDistance(cpu, human);
 
   if (!cpu.keys) cpu.keys = createEmptyKeys();

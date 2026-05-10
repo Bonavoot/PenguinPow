@@ -48,6 +48,7 @@ function createCPUPlayer(uniqueId) {
     snowballCooldown: false,
     lastSnowballTime: 0,
     snowballThrowsRemaining: null,
+    pumoArmySpawnsRemaining: null,
     snowballs: [],
     isThrowingSnowball: false,
     pumoArmyCooldown: false,
@@ -379,7 +380,9 @@ function checkAndRevealPowerUps(room, io) {
       player.activePowerUp = player.pendingPowerUp;
       player.powerUpMultiplier = POWER_UP_EFFECTS[player.pendingPowerUp];
       player.snowballThrowsRemaining =
-        player.pendingPowerUp === POWER_UP_TYPES.SNOWBALL ? 3 : null;
+        player.pendingPowerUp === POWER_UP_TYPES.SNOWBALL ? 5 : null;
+      player.pumoArmySpawnsRemaining =
+        player.pendingPowerUp === POWER_UP_TYPES.PUMO_ARMY ? 3 : null;
       player.powerUpRevealed = true;
     });
     
@@ -479,6 +482,7 @@ function resetRoomAndPlayers(room, io) {
     player.snowballCooldown = false;
     player.lastSnowballTime = 0;
     player.snowballThrowsRemaining = null;
+    player.pumoArmySpawnsRemaining = null;
     player.isThrowingSnowball = false;
     player.pumoArmy = [];
     player.pumoArmyCooldown = false;

@@ -1121,8 +1121,10 @@ const Tab = styled.button`
  *   min-width: 0 is required so the flex parent doesn't try to fit
  *   the row's intrinsic width and instead lets overflow-x kick in.
  *
- *   scroll-padding gives the first/last swatches a touch of breathing
- *   room from the lane edges when scrolled to either end.
+ *   Physical padding-inline (not scroll-padding alone) is required so
+ *   the first/last swatches' gold selection ring isn't clipped by
+ *   overflow-x: scroll-padding only affects snap / scrollIntoView and
+ *   does not inset the flex content.
  */
 const SwatchSection = styled.div`
   flex: 1;
@@ -1134,10 +1136,9 @@ const SwatchSection = styled.div`
   overflow-x: auto;
   overflow-y: hidden;
   /*
-   * Vertical padding INSIDE the scroll container — required so the
-   * selected swatch's gold ring (2px border + 2px box-shadow spread =
-   * ~4px past the base swatch on every side) doesn't get clipped
-   * top/bottom by overflow-y: hidden.
+   * Padding INSIDE the scroll container — required so the selected
+   * swatch's gold ring (2px border + 2px box-shadow spread ≈ 4px past
+   * the border box on every side) doesn't get clipped by overflow.
    *
    * We can't switch overflow-y to visible: per CSS spec, when one
    * overflow axis is auto/scroll and the other is visible, browsers
@@ -1152,7 +1153,8 @@ const SwatchSection = styled.div`
    * persistent selected-state ring is what matters and now fits.
    */
   padding-block: clamp(4px, 0.6cqh, 6px);
-  scroll-padding-inline: 4px;
+  padding-inline: clamp(4px, 0.6cqw, 6px);
+  scroll-padding-inline: clamp(4px, 0.6cqw, 6px);
   scrollbar-width: none;
   -ms-overflow-style: none;
   &::-webkit-scrollbar {

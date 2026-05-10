@@ -20,6 +20,12 @@ const EASE = {
   outCubic: (t) => 1 - (1 - t) ** 3,
   inCubic: (t) => t * t * t,
   outExpo: (t) => (t === 1 ? 1 : 1 - 2 ** (-10 * t)),
+  // Sine arc — eases 0 → 1 → 0 over the full life. Use with
+  // alpha == alphaEnd > 0 (or any nonzero target) to get a clean
+  // fade-in/fade-out pulse without needing a multi-keyframe system.
+  // Used by the local player halo so the ring breathes subtly instead
+  // of popping in at full alpha.
+  bump: (t) => Math.sin(Math.PI * t),
 };
 
 // ─── Texture generation ─────────────────────────────────────────────
@@ -90,6 +96,147 @@ function createBluePuff(size, seed) {
     ctx.beginPath();
     ctx.arc(bx, by, br, 0, Math.PI * 2);
     ctx.fill();
+  }
+
+  return c;
+}
+
+// Player-accent puff — parametric sibling of createBluePuff. Used in sidestep
+// trail particles so YOUR dust carries a faint tint of YOUR mawashi color,
+// reinforcing identity during overlap without needing a glow filter.
+function createColoredPuff(size, rgb, seed) {
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext("2d");
+  const half = size / 2;
+  const [r, g, b] = rgb;
+
+  let s = seed;
+  const srand = () => {
+    s = (s * 9301 + 49297) % 233280;
+    return s / 233280;
+  };
+
+  const numBlobs = 8 + Math.floor(srand() * 6);
+  for (let i = 0; i < numBlobs; i++) {
+    const bx = half + (srand() - 0.5) * size * 0.55;
+    const by = half + (srand() - 0.5) * size * 0.45;
+    const br = size * (0.18 + srand() * 0.18);
+
+    const grad = ctx.createRadialGradient(bx, by, 0, bx, by, br);
+    // White-hot core blending into the player's color so the puff still reads
+    // as "dust kicked up" rather than a saturated colored cloud.
+    grad.addColorStop(0, `rgba(255,255,255,0.9)`);
+    grad.addColorStop(0.4, `rgba(${Math.min(255, r + 80)},${Math.min(255, g + 80)},${Math.min(255, b + 80)},0.8)`);
+    grad.addColorStop(0.75, `rgba(${r},${g},${b},0.55)`);
+    grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(bx, by, br, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  return c;
+}
+
+// Local-player ice mark - a horizontally-stretched, broken scuff tinted
+// toward the player's mawashi color. Used by the localPlayerHalo preset
+// to mark "this is YOU" on the dohyo floor without reading as UI chrome.
+//
+// IMPORTANT: this texture is built at the FINAL render aspect ratio
+// (~3.7:1 wide). The localPlayerHalo preset spawns it with a matching
+// `stretchX` so the engine's per-axis scaling is symmetric — no
+// asymmetric squashing of the stroke pixels. That's the difference
+// between a clean floor mark and the blurry over-thick smear you
+// get when you render a square ring texture with a 4× horizontal
+// stretch.
+//
+// Deliberately not a perfect ring: short dry-brush arcs plus tiny
+// scratch flecks make it feel like scuffed frost on the ice, not a
+// selection circle or glow effect.
+function createHaloRing(width, height, rgb) {
+  const c = document.createElement("canvas");
+  c.width = width;
+  c.height = height;
+  const ctx = c.getContext("2d");
+  const [r, g, b] = rgb;
+
+  const cx = width / 2;
+  const cy = height / 2;
+  const baseW = Math.max(1.1, Math.min(width, height) * 0.028);
+  const rx = width / 2 - baseW * 3.2;
+  const ry = height / 2 - baseW * 3.2;
+
+  // Pull saturated belt colors back toward ice/cream so the mark remains
+  // character-tinted without becoming a neon team-color decal.
+  const ice = [218, 246, 252];
+  const tintMix = 0.38;
+  const mr = Math.round(ice[0] * (1 - tintMix) + r * tintMix);
+  const mg = Math.round(ice[1] * (1 - tintMix) + g * tintMix);
+  const mb = Math.round(ice[2] * (1 - tintMix) + b * tintMix);
+
+  let seed = ((r + 17) * 73856093) ^ ((g + 31) * 19349663) ^ ((b + 47) * 83492791);
+  const rand = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+
+  const strokeArc = (start, end, alpha, lineWidth, inset = 0) => {
+    ctx.lineWidth = lineWidth;
+    ctx.strokeStyle = `rgba(${mr},${mg},${mb},${alpha})`;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx - inset, ry - inset * 0.35, 0, start, end);
+    ctx.stroke();
+  };
+
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.globalCompositeOperation = "source-over";
+
+  const segments = [
+    [Math.PI * 0.08, Math.PI * 0.43],
+    [Math.PI * 0.56, Math.PI * 0.91],
+    [Math.PI * 0.98, Math.PI * 1.15],
+    [Math.PI * 1.84, Math.PI * 1.96],
+  ];
+
+  segments.forEach(([start, end], i) => {
+    // A soft under-pass reads as frost rubbed into the floor, not bloom.
+    strokeArc(start, end, 0.18, baseW * (2.1 + rand() * 0.5), -baseW * 0.25);
+
+    for (let pass = 0; pass < 3; pass++) {
+      const jitter = (rand() - 0.5) * 0.035;
+      const inset = (rand() - 0.5) * baseW * 1.4;
+      const alpha = i < 2 ? 0.48 - pass * 0.1 : 0.34 - pass * 0.07;
+      strokeArc(
+        start + jitter,
+        end + jitter + (rand() - 0.5) * 0.03,
+        alpha,
+        baseW * (0.72 + rand() * 0.5),
+        inset
+      );
+    }
+  });
+
+  // Small tangential scratches break the silhouette so the eye reads a scuff,
+  // while still preserving enough oval shape to identify the local fighter.
+  for (let i = 0; i < 38; i++) {
+    const seg = segments[Math.floor(rand() * segments.length)];
+    const a = seg[0] + (seg[1] - seg[0]) * rand();
+    const px = cx + Math.cos(a) * (rx + (rand() - 0.5) * baseW * 4.6);
+    const py = cy + Math.sin(a) * (ry + (rand() - 0.5) * baseW * 2.8);
+    const tangent = a + Math.PI / 2 + (rand() - 0.5) * 0.45;
+    const len = baseW * (0.8 + rand() * 2.4);
+    const half = len / 2;
+    const alpha = 0.18 + rand() * 0.24;
+
+    ctx.lineWidth = Math.max(0.6, baseW * (0.35 + rand() * 0.25));
+    ctx.strokeStyle = `rgba(${mr},${mg},${mb},${alpha})`;
+    ctx.beginPath();
+    ctx.moveTo(px - Math.cos(tangent) * half, py - Math.sin(tangent) * half);
+    ctx.lineTo(px + Math.cos(tangent) * half, py + Math.sin(tangent) * half);
+    ctx.stroke();
   }
 
   return c;
@@ -1370,6 +1517,310 @@ const PRESETS = {
     }
   },
 
+  // ─── Local player ice mark ─────────────────────────────────────────
+  // Persistent "this is YOU" scuff on the dohyo floor under the local
+  // player's feet. Identity preservation for overlap-heavy moments
+  // (sidestep, clinch break, dodge cancel-through, throw recovery).
+  //
+  // Single ring on the DEFAULT canvas (zIndex 50). The fighter sprite
+  // (zIndex 99 normal / 101 sidestepping) draws on top, so the back
+  // half of the foreshortened oval is naturally occluded by the
+  // player's body — no compositing tricks, just z-order. The half
+  // that sits in front of the feet stays visible as the footprint
+  // mark on the dohyo floor.
+  //
+  // followGetter so the mark smoothly tracks the player through any
+  // movement, including the sidestep dip (the player isn't airborne
+  // — they're walking around the dohyo's curved near edge, so the
+  // mark dips with them).
+  //
+  // Spawned on the same cadence as its lifetime. The texture is steady
+  // and low-alpha, so it does not pulse like a UI selection indicator.
+  localPlayerHalo(engine, { x, y, playerNumber, followGetter }) {
+    const accent = engine.accentTextures?.[`player${playerNumber}`];
+    if (!accent || !accent.haloRing) return;
+
+    // Y_LIFT puts the ring center slightly above the raw feet position
+    // — but lower than the PlayerShadow's center so the front edge of
+    // the ring extends past the toes onto the floor in front of the
+    // player. Baked into spawn-time only; followGetter returns
+    // absolute feet position and the engine tracks deltas, so the
+    // lift stays constant relative to the player.
+    const Y_LIFT = 10;
+    const cx = x;
+    const cy = GAME_H - y - Y_LIFT;
+
+    // Keep the marker steady. The texture already contains low-alpha
+    // scuffed frost; pulsing it makes the mark read like UI again.
+    //
+    // Render math: texture aspect is ~3.7:1 (built at r(260)×r(70)).
+    // We render at size 34 (the height) with stretchX = 3.71, so the
+    // texture is downscaled symmetrically on both axes — clean,
+    // uniform stroke width all the way around.
+    engine.spawn({
+      x: cx,
+      y: cy,
+      vx: 0, vy: 0, gravity: 0, drag: 1,
+      size: 30,
+      sizeEnd: 30,
+      stretchX: 260 / 70,
+      alpha: 0.86,
+      alphaEnd: 0.86,
+      rotation: 0, rotationSpeed: 0,
+      ease: "linear",
+      easeAlpha: "linear",
+      maxLife: 2.0,
+      texture: accent.haloRing,
+      followGetter: followGetter || null,
+    });
+  },
+
+  // ─── Sidestep VFX ──────────────────────────────────────────────────
+  // The sidestep is GROUND footwork — the player walks laterally
+  // around the dohyo's curved near edge (Y dips DOWN on screen =
+  // toward camera in 2D). NOT a leap. All three presets read as
+  // dust scuffed sideways from the foot push-off, debris left in
+  // the wake, and a settling step on landing.
+  //
+  // Modeled on dashStart / dashSparkTrail / dashLand but with:
+  //   • Lateral spread rather than forward bias (push-off is sideways)
+  //   • Lower vertical velocity on dust (sidestep is grounded)
+  //   • A touch of player-accent color in the dust to gently
+  //     reinforce identity at peak overlap
+
+  sidestepStart(engine, { x, y, direction, playerNumber }) {
+    const dir = direction || 1;
+    const footX = x;
+    const footY = GAME_H - y;
+    const accent = engine.accentTextures?.[`player${playerNumber}`];
+
+    // Tight cluster of ground dust kicked LATERALLY from the planting foot.
+    // No forward bias — we're stepping sideways, not lunging.
+    const puffOffsets = [6, 22, 38];
+    for (let i = 0; i < puffOffsets.length; i++) {
+      const t = i / (puffOffsets.length - 1);
+      const size = rand(26, 36) + t * 10;
+      engine.spawn({
+        x: footX + -dir * (puffOffsets[i] + rand(-2, 2)),
+        y: footY - size * 0.4 + rand(0, 3),
+        vx: -dir * rand(40, 80),
+        vy: rand(-3, 3),
+        gravity: 18,
+        drag: 0.9,
+        size,
+        sizeEnd: size * rand(0.35, 0.5),
+        alpha: rand(0.7, 0.85),
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "inCubic",
+        rotationSpeed: rand(-0.5, 0.5),
+        maxLife: rand(0.32, 0.42),
+        texture: pickPuff(engine.textures),
+      });
+    }
+
+    // 1–2 player-color accent puffs mixed in — reinforces "this is YOUR
+    // kick-off" without being loud. Skipped if no accent texture is baked.
+    if (accent?.trailPuff) {
+      for (let i = 0; i < 2; i++) {
+        const size = rand(20, 28);
+        engine.spawn({
+          x: footX + -dir * rand(8, 26) + rand(-3, 3),
+          y: footY - size * 0.4 + rand(-2, 4),
+          vx: -dir * rand(30, 65),
+          vy: rand(-2, 2),
+          gravity: 15,
+          drag: 0.91,
+          size,
+          sizeEnd: size * rand(0.3, 0.45),
+          alpha: rand(0.55, 0.75),
+          alphaEnd: 0,
+          ease: "outCubic",
+          easeAlpha: "outQuad",
+          rotationSpeed: rand(-0.4, 0.4),
+          maxLife: rand(0.3, 0.4),
+          texture: accent.trailPuff,
+        });
+      }
+    }
+
+    // Short shin-height speed lines in the direction of travel — sells
+    // the lateral momentum without the vertical "leap" feel of dashStart.
+    const shinY = footY - 26;
+    for (let i = 0; i < 3; i++) {
+      const thickness = rand(2, 3);
+      const stretch = rand(10, 16);
+      engine.spawn({
+        x: footX + dir * rand(2, 14),
+        y: shinY + rand(-8, 8),
+        vx: dir * rand(120, 220),
+        vy: rand(-3, 3),
+        gravity: 0,
+        drag: 0.93,
+        size: thickness,
+        sizeEnd: thickness * 0.7,
+        alpha: rand(0.7, 0.9),
+        alphaEnd: 0,
+        rotation: 0,
+        rotationSpeed: 0,
+        ease: "linear",
+        easeAlpha: "inCubic",
+        maxLife: rand(0.1, 0.16),
+        texture: engine.textures.speedLineThin,
+        stretchX: stretch,
+      });
+    }
+
+    // Single low expanding ring at the feet — settles the kick-off as
+    // a deliberate sumo step rather than a sudden burst.
+    engine.spawn({
+      x: footX,
+      y: footY - 6,
+      vx: 0, vy: 0, gravity: 0, drag: 1,
+      size: 8,
+      sizeEnd: 28,
+      alpha: 0.55,
+      alphaEnd: 0,
+      rotation: 0, rotationSpeed: 0,
+      ease: "outExpo",
+      easeAlpha: "outCubic",
+      maxLife: 0.22,
+      texture: engine.textures.ring,
+      stretchX: 2.6,
+    });
+  },
+
+  // Called every ~40ms during the active arc. Drops a small player-color
+  // puff at foot height and a short ground streak that lingers on the
+  // dohyo where the foot just was. Low/zero vertical velocity = grounded
+  // dust, not airborne mist.
+  sidestepTrail(engine, { x, y, direction, t, playerNumber }) {
+    const dir = direction || 1;
+    const footX = x;
+    const footY = GAME_H - y;
+    const accent = engine.accentTextures?.[`player${playerNumber}`];
+
+    // Slight intensity bump near peak Y dip (mid-arc, t≈0.5) — that's
+    // when the sidestepper is closest to the camera, so the extra dust
+    // there reads as "passing through the foreground".
+    const apexBoost = 1 + 0.4 * Math.sin(Math.PI * Math.min(Math.max(t || 0, 0), 1));
+
+    // Small player-color puff at foot height. Falls back to white if no
+    // accent texture is baked yet.
+    const puffTex = accent?.trailPuff || pickSmallPuff(engine.textures);
+    const puffSize = rand(14, 20) * apexBoost;
+    engine.spawn({
+      x: footX + -dir * rand(4, 12),
+      y: footY - puffSize * 0.4,
+      vx: -dir * rand(8, 22),
+      vy: rand(-2, 1),
+      gravity: 5,
+      drag: 0.93,
+      size: puffSize,
+      sizeEnd: puffSize * rand(0.4, 0.6),
+      alpha: rand(0.5, 0.7),
+      alphaEnd: 0,
+      ease: "outCubic",
+      easeAlpha: "outQuad",
+      rotationSpeed: rand(-0.4, 0.4),
+      maxLife: rand(0.16, 0.22),
+      texture: puffTex,
+    });
+
+    // Ground streak that lingers on the dohyo where the foot just was —
+    // emphasizes the lateral travel as a footwork trail, not airborne fog.
+    engine.spawn({
+      x: footX + -dir * rand(2, 8),
+      y: footY - rand(1, 3),
+      vx: -dir * rand(4, 10),
+      vy: 0,
+      gravity: 0,
+      drag: 0.98,
+      size: rand(2, 4),
+      sizeEnd: rand(1.5, 2.5),
+      alpha: rand(0.45, 0.65),
+      alphaEnd: 0,
+      rotation: 0,
+      rotationSpeed: 0,
+      ease: "linear",
+      easeAlpha: "inQuad",
+      maxLife: rand(0.22, 0.32),
+      texture: engine.textures.groundStreakThin,
+      stretchX: rand(2.5, 4),
+    });
+  },
+
+  // One-shot when the active arc ends. A small foot-plant: tight
+  // expanding ring, 2 lateral ground puffs, a couple of ice chips.
+  // Lower intensity than dashLand — sidestep settles, doesn't slide.
+  sidestepLand(engine, { x, y }) {
+    const footX = x;
+    const footY = GAME_H - y - 10;
+
+    // Single tight impact ring
+    engine.spawn({
+      x: footX,
+      y: footY,
+      vx: 0, vy: 0, gravity: 0, drag: 1,
+      size: 8,
+      sizeEnd: 36,
+      alpha: 0.7,
+      alphaEnd: 0,
+      rotation: 0, rotationSpeed: 0,
+      ease: "outCubic",
+      easeAlpha: "outCubic",
+      maxLife: 0.26,
+      texture: engine.textures.ring,
+      stretchX: 2.4,
+    });
+
+    // 2 lateral ground puffs spreading outward from the foot plant
+    for (let i = 0; i < 2; i++) {
+      const side = i === 0 ? -1 : 1;
+      const size = rand(14, 22);
+      engine.spawn({
+        x: footX + side * rand(2, 8),
+        y: footY - size * 0.3,
+        vx: side * rand(30, 65),
+        vy: rand(-4, 0),
+        gravity: 12,
+        drag: 0.91,
+        size,
+        sizeEnd: size * rand(0.35, 0.5),
+        alpha: rand(0.55, 0.75),
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "inQuad",
+        rotationSpeed: rand(-0.5, 0.5),
+        maxLife: rand(0.2, 0.3),
+        texture: pickSmallPuff(engine.textures),
+      });
+    }
+
+    // A couple of ice chips for texture
+    for (let i = 0; i < 2; i++) {
+      const angle = rand(-1, 1);
+      const speed = rand(50, 110);
+      engine.spawn({
+        x: footX + rand(-3, 3),
+        y: footY - rand(1, 4),
+        vx: Math.cos(angle) * speed,
+        vy: -Math.abs(Math.sin(angle)) * speed * 0.4 + rand(-15, -3),
+        gravity: 320,
+        drag: 0.95,
+        size: rand(2, 4),
+        sizeEnd: rand(1, 2),
+        alpha: rand(0.55, 0.8),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-3, 3),
+        maxLife: rand(0.18, 0.28),
+        texture: pick([engine.textures.chunk, engine.textures.chunkIce]),
+      });
+    }
+  },
+
   cinematicKillTrail(engine, { x, y, direction }) {
     const dir = direction || 1;
     const baseY = GAME_H - y - 60;
@@ -2311,11 +2762,13 @@ const PRESETS = {
       followGetter: followGetter || null,
     });
 
-    // 3D foreshortening — 0.65 ≈ rotateY(50°). Tilts the ring back so
-    // it reads as a 3D loop, not a flat circle. Slightly less
-    // aggressive than the parry's 55° so the ring still extends
-    // visibly past the player's silhouette on both sides for the wrap.
-    const TILT_X = 0.65;
+    // 3D foreshortening — ~rotateY(43°). Tilts the ring back so it
+    // reads as a 3D loop, not a flat circle. Tuned in tandem with
+    // RING_SIZE_END below so the ring's WIDTH (size × TILT_X) stays
+    // ~130px while we shrink HEIGHT (= size). The engine only
+    // supports horizontal stretch, so to shrink height without
+    // shrinking width we compensate by bumping this factor.
+    const TILT_X = 0.73;
 
     // ──────────────────────────────────────────────────────────────────
     // THE RING — one particle's lifecycle, expanding from small to
@@ -2323,9 +2776,14 @@ const PRESETS = {
     // layers (middle = wrap, front = continuity/visibility-when-small).
     // ──────────────────────────────────────────────────────────────────
 
+    // RING_SIZE_END = canvas-space HEIGHT of the ring at peak. Width
+    // is RING_SIZE_END × TILT_X. Currently 178 × 0.73 ≈ 130 wide ×
+    // 178 tall — same width as before (was 200 × 0.65 = 130 × 200),
+    // height shortened by ~11% so the ring fits the player's
+    // silhouette more snugly instead of extending past top/bottom.
     const RING_LIFE = 0.55;
     const RING_SIZE_START = 28;
-    const RING_SIZE_END = 200;
+    const RING_SIZE_END = 178;
 
     // PRIMARY ring on MIDDLE layer (behind player).
     middle({
@@ -2348,12 +2806,17 @@ const PRESETS = {
     // player sprite) AND provides continuity across the body when
     // the ring is big (so the silhouette doesn't bite into it).
     // Additive blend so it brightens rather than obscures the body.
+    // Alpha 0.72 is the sweet spot — opaque enough that the ring
+    // crossing the body reads clearly (not "ghostly translucent"),
+    // but still translucent enough that the body is visible behind
+    // it instead of the ring stamping a solid pink shape over the
+    // player's silhouette.
     front({
       x: cx, y: cy,
       vx: 0, vy: 0, gravity: 0, drag: 1,
       size: RING_SIZE_START,
       sizeEnd: RING_SIZE_END,
-      alpha: 0.55,
+      alpha: 0.72,
       alphaEnd: 0,
       rotation: 0, rotationSpeed: 0,
       ease: "outCubic",
@@ -2739,6 +3202,11 @@ export class ParticleEngine {
     this.ctxFront = null;
     this.particles = [];
     this.textures = null;
+    // Per-player accent textures keyed by playerNumber (1 or 2). Each entry is
+    // { haloRing, trailPuff } baked at color-pick time from the player's
+    // mawashi color via setAccentTextures(). Presets that need player-color
+    // particles read from this map (e.g. localPlayerHalo, sidestepTrail).
+    this.accentTextures = {};
     this._rafId = null;
     this._lastTime = 0;
     this.frozen = false;
@@ -2790,6 +3258,38 @@ export class ParticleEngine {
   emit(presetName, opts) {
     const fn = PRESETS[presetName];
     if (fn) fn(this, opts);
+  }
+
+  // Bake per-player accent textures (halo ring + trail puff) tinted to the
+  // player's mawashi color. Called by PlayerColorContext whenever a player's
+  // color is applied, so the engine always has up-to-date colored textures
+  // ready for sidestep / halo presets to consume.
+  //
+  // accents = { player1: { rgb: [r,g,b] }, player2: { rgb: [r,g,b] } }
+  // (You can pass either or both — missing keys leave the existing entry
+  // alone, so re-baking only one player doesn't wipe the other's textures.)
+  //
+  // Texture sizes are scaled by the same physW/GAME_W ratio used by
+  // generateTextures() so the accent textures pixel-match the rest of the
+  // texture set on this display.
+  setAccentTextures(accents) {
+    if (!this.canvas || !this.ctx) return;
+    const dpr = getCanvasDpr();
+    const rect = this.canvas.getBoundingClientRect();
+    const physW = Math.round(rect.width * dpr);
+    const texScale = Math.min(physW / GAME_W, 3);
+    const r = (v) => Math.round(v * texScale);
+
+    Object.entries(accents).forEach(([playerKey, data]) => {
+      if (!data || !data.rgb) return;
+      this.accentTextures[playerKey] = {
+        // Built at ~3.7:1 aspect to match how localPlayerHalo renders
+        // it (size 34 with stretchX 3.7) — symmetric per-axis scaling,
+        // no stroke distortion.
+        haloRing: createHaloRing(r(260), r(70), data.rgb),
+        trailPuff: createColoredPuff(r(72), data.rgb, 4242),
+      };
+    });
   }
 
   spawn(cfg) {

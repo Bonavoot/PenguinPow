@@ -1,6 +1,7 @@
 const {
   GRAB_STATES, GROUND_LEVEL, TICK_RATE, speedFactor,
   HITBOX_DISTANCE_VALUE, CHARGED_HITBOX_DISTANCE_VALUE, SLAP_HITBOX_DISTANCE_VALUE,
+  SIDESTEP_RECOVERY_OVERLAP_THRESHOLD,
   SLAP_PARRY_WINDOW, SLAP_PARRY_RECOVERY_MS, SLAP_PARRY_HITSTOP_MS,
   SLAP_PARRY_KNOCKBACK_STRENGTH, SLAP_PARRY_CONSECUTIVE_DECAY_MS,
   DOHYO_FALL_DEPTH,
@@ -129,14 +130,48 @@ function checkCollision(player, otherPlayer, rooms, io) {
     return;
   }
 
-  // Dodge only grants i-frames vs charged attacks during ACTIVE phase (not startup/recovery)
+  // Dodge no longer grants i-frames against ANY attack type.
+  // Previously dodge i-framed charged attacks during its active phase, but that
+  // made charged whiff against a well-timed dodge with no counterplay. Charged
+  // now hits dodge as a normal hit (no counter-hit, no punish — see counter-hit
+  // suppression below). Slap was never i-framed by dodge to begin with.
   const now = Date.now();
-  const otherInDodgeIFrames = otherPlayer.isDodging && !otherPlayer.isDodgeStartup && player.attackType === "charged";
-  const playerInDodgeIFrames = player.isDodging && !player.isDodgeStartup && otherPlayer.attackType === "charged";
+  const otherInDodgeIFrames = false;
+  const playerInDodgeIFrames = false;
 
-  // Sidestep grants i-frames vs ALL strikes during ACTIVE phase (not startup/recovery)
-  const otherInSidestepIFrames = otherPlayer.isSidestepping && !otherPlayer.isSidestepStartup && !otherPlayer.isSidestepRecovery;
-  const playerInSidestepIFrames = player.isSidestepping && !player.isSidestepStartup && !player.isSidestepRecovery;
+  // Sidestep grants i-frames vs ALL strikes during the ACTIVE phase, AND
+  // during RECOVERY while still LITERALLY clipping the opponent's body
+  // (within SIDESTEP_RECOVERY_OVERLAP_THRESHOLD = 80px, the same threshold
+  // the recovery-slide logic uses to decide whether to push out). Once the
+  // sidestepper is geometrically separated, recovery becomes normally
+  // vulnerable so opponents get a real punish window.
+  //
+  // IMPORTANT: this overlap-iframe ONLY applies to SUCCESSFUL sidesteps
+  // (passedOpponent = true). A failed sidestep that didn't reach past the
+  // opponent and ended overlapping is supposed to be punished hard — that's
+  // the design intent of "bad timing/range gets exposed". Without the
+  // passedOpponent gate, a failed sidestep would get a free i-frame pass
+  // for the entire recovery while held in place inside the opponent.
+  //
+  // Threshold history: was HITBOX_DISTANCE_VALUE*2*sizeMult (~116px @ 0.85
+  // size). With LANDING_SEP=120, the recovery slide ended only 4px past
+  // threshold, so cubic ease-out kept the sidestepper i-framed until t≈0.65
+  // of the 150ms recovery — leaving only ~53ms of vulnerable window, which
+  // is shorter than slap startup (55ms) so punishes effectively never landed.
+  // Tightening to 80px (literal clipping) crosses threshold at t≈0.24,
+  // giving ~114ms of real vulnerable window without changing move duration.
+  const overlapThreshold = SIDESTEP_RECOVERY_OVERLAP_THRESHOLD;
+  const sidestepPushboxOverlap = Math.abs(player.x - otherPlayer.x) < overlapThreshold;
+  const otherPassedPlayer = otherPlayer.isSidestepping &&
+    (otherPlayer.x - player.x) * (otherPlayer.sidestepDirection || 0) > 0;
+  const playerPassedOther = player.isSidestepping &&
+    (player.x - otherPlayer.x) * (player.sidestepDirection || 0) > 0;
+  const otherInSidestepIFrames = otherPlayer.isSidestepping &&
+    !otherPlayer.isSidestepStartup &&
+    (!otherPlayer.isSidestepRecovery || (sidestepPushboxOverlap && otherPassedPlayer));
+  const playerInSidestepIFrames = player.isSidestepping &&
+    !player.isSidestepStartup &&
+    (!player.isSidestepRecovery || (sidestepPushboxOverlap && playerPassedOther));
 
   const eitherHasSlapParryImmunity =
     (player.slapParryImmunityUntil && now < player.slapParryImmunityUntil) ||
@@ -594,9 +629,13 @@ function processHit(player, otherPlayer, rooms, io) {
     (otherPlayer.isGrabStartup === true || otherPlayer.isGrabbingMovement === true);
   const counterHitFromRopeJumpStartup = otherPlayer.isRopeJumping && otherPlayer.ropeJumpPhase === "startup";
   const counterHitFromSidestepStartup = otherPlayer.isSidestepStartup === true;
-  const counterHitFromDodgeStartup = otherPlayer.isDodgeStartup === true;
-  const isCounterHit = counterHitFromAttacking || counterHitFromIntent || counterHitFromGrabAttempt
-    || counterHitFromRopeJumpStartup || counterHitFromSidestepStartup || counterHitFromDodgeStartup;
+  // Dodge is a pure movement ability, not an attack — hits against any phase
+  // of a dodge land as a clean normal hit (no counter-hit, no punish). Other
+  // movement-ish actions (sidestep, rope jump) ARE still counter-hittable on
+  // startup because they're committed defensive reads with bigger payoffs;
+  // dodge is a quick reposition with no defensive payoff to "earn" a counter.
+  const counterHitRaw = counterHitFromAttacking || counterHitFromIntent || counterHitFromGrabAttempt
+    || counterHitFromRopeJumpStartup || counterHitFromSidestepStartup;
 
   // ============================================
   // PUNISH DETECTION
@@ -609,6 +648,13 @@ function processHit(player, otherPlayer, rooms, io) {
     || otherPlayer.isGrabWhiffRecovery
     || (otherPlayer.isRopeJumping && otherPlayer.ropeJumpPhase === "landing")
     || otherPlayer.isSidestepRecovery;
+
+  // Counter hit and punish are conceptually mutually exclusive: counter = startup
+  // read, punish = recovery exposure. If the victim is in a recovery phase (e.g.
+  // sidestep recovery), it's a punish — even if they had a recent attack-intent
+  // press (e.g. buffering an attack out of recovery), which would otherwise
+  // incorrectly stack a counter-hit bonus on top of the punish bonus.
+  const isCounterHit = counterHitRaw && !isPunish;
 
   // Store the charge power before resetting states
   const chargePercentage = player.chargeAttackPower;

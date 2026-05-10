@@ -36,7 +36,7 @@ const DELTA_TRACKED_PROPS = [
   'isGrabSeparating', 'isGrabBellyFlopping', 'isBeingGrabBellyFlopped',
   'isGrabFrontalForceOut', 'isBeingGrabFrontalForceOut',
   'knockbackVelocity', 'activePowerUp', 'powerUpMultiplier',
-  'snowballs', 'pumoArmy', 'snowballCooldown', 'pumoArmyCooldown', 'snowballThrowsRemaining',
+  'snowballs', 'pumoArmy', 'snowballCooldown', 'pumoArmyCooldown', 'snowballThrowsRemaining', 'pumoArmySpawnsRemaining',
   'isPowerSliding', 'isBraking', 'movementVelocity', 'isStrafing',
   'isRopeJumping', 'ropeJumpPhase', 'sizeMultiplier', 'isGassed',
   'isSidestepping', 'isSidestepStartup', 'isSidestepRecovery',
@@ -132,24 +132,53 @@ const DODGE_TOTAL_MS = DODGE_STARTUP_MS + DODGE_ACTIVE_MS + DODGE_RECOVERY_MS; /
 const DODGE_COOLDOWN_MS = 100;    // Forced idle gap after recovery before next dash (prevents chain-dash blur)
 
 // ============================================
-// Sidestep — Henka-style lateral evasion around the dohyo
-// Fixed-speed arc toward opponent's far side with dynamic tracking.
-// Side switch succeeds only if the arc carries you past the opponent.
-// Opponent can defeat it by dashing away (outpaces the arc).
-// Immune to strikes during active phase. Grabs track through all phases.
+// Sidestep — Henka-style positional escape around the dohyo
+// Fixed-speed lateral arc. Designed as a parallel to raw parry: a committed
+// timing read whose payoff is a clean positional advantage instead of a stun.
+//
+// Identity: this is NOT a hard-read tool against strikes (raw parry already
+// fills that role). Sidestep is for desperate positioning escapes — e.g.
+// flipping sides when you're pinned at the boundary about to lose.
+//
+// Risk/reward profile:
+//   Startup (40ms):  Vulnerable to ALL — strikes counter-hit, grabs track.
+//                    This is the read window: bad timing here is punished hard.
+//                    Tight (~2.5 frames @60fps) but slap-active is 100ms wide,
+//                    giving attackers a real read window to call out the move.
+//   Active  (400ms): Fully invulnerable — both strikes AND grabs whiff. The
+//                    arc is a guaranteed escape if you survive startup.
+//   Recovery(150ms): Vulnerable to ALL again — strikes hit as PUNISH (not
+//                    counter), grabs track. Predictable sidesteps still get
+//                    punished on land.
+//
+// Outpacing the arc: opponent can dash away faster than the sidestep travels,
+// so the side-switch is not free if the opponent is alert.
 // ============================================
-const SIDESTEP_STARTUP_MS = 80;       // Vulnerable wind-up (the "read" commitment)
-const SIDESTEP_ACTIVE_MIN_MS = 200;   // Floor — very short sidesteps stay readable
-const SIDESTEP_ACTIVE_MAX_MS = 500;   // Ceiling — very long sidesteps don't drag
-const SIDESTEP_RECOVERY_MS = 150;     // Smooth slide to final position, vulnerable
-const SIDESTEP_TOTAL_MS = SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MAX_MS + SIDESTEP_RECOVERY_MS; // Max possible (730ms)
+// Sidestep is a single, fully consistent move. Travel distance, active duration,
+// and arc depth are FIXED so the visual feel is identical regardless of opponent
+// distance. Side-switching becomes an emergent outcome of being close enough to
+// the opponent (the fixed lateral travel naturally carries you past them when
+// they're inside grab range), rather than a hard branch in code.
+// Speed/range tuning targets (playable map = 600px, dodge ≈ 592 px/sec):
+//   TRAVEL=160 over ACTIVE=400ms → ~400 px/sec effective lateral speed.
+//   That's slower than dodge AND covers ~27% of the map per move, so the
+//   sidestep reads as a circling step around the dohyo's curve, not a teleport.
+// Startup tuned to 40ms so a defender can escape the slap2→grab option select:
+// after slap2 hit-stun (260ms) ends, defender has a 60ms window before the
+// canceled grab connects. With 40ms startup the sidestep enters its strike+grab
+// invuln before grab lands, while keeping slap3 (which lands DURING hit-stun)
+// unavoidable. 40ms is still 2x dodge startup (20ms), so dodge remains the
+// faster panic button — sidestep is slower-but-bigger-reward by design.
+const SIDESTEP_STARTUP_MS = 40;       // Vulnerable wind-up — counter-hittable on read
+const SIDESTEP_ACTIVE_MS = 400;       // Fixed active phase — same length every time
+const SIDESTEP_RECOVERY_MS = 150;     // Smooth settle to final position, vulnerable (PUNISH on hit)
+const SIDESTEP_TOTAL_MS = SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS + SIDESTEP_RECOVERY_MS; // 590ms total
 const SIDESTEP_STAMINA_COST = 8;      // Expensive — bigger reward than dodge (4) or parry (5)
-const SIDESTEP_ARC_DEPTH_MIN = 35;    // Y dip at max travel distance (long sidesteps — already looks good)
-const SIDESTEP_ARC_DEPTH_MAX = 55;    // Y dip at close range (short sidesteps — dramatic arc into ring space)
+const SIDESTEP_TRAVEL = 160;          // Fixed lateral travel — circling step around the dohyo's curve
+const SIDESTEP_ARC_DEPTH = 50;        // Fixed Y dip — moves DOWN on screen (toward camera, around the ring's near edge)
 const SIDESTEP_GRAB_TRACK_RANGE = 400; // Generous grab range when target is sidestepping
-const SIDESTEP_INITIATION_RANGE = 280; // Max distance to attempt sidestep (generous — arc physics decide success)
-const SIDESTEP_ARC_SPEED = 0.70;      // Fixed px/ms during active phase (~700 px/s, deliberate arc just above dash speed)
-const SIDESTEP_MAX_TRAVEL = 500;      // Safety cap — must cover distance to opponent + visual separation (~173px)
+const SIDESTEP_INITIATION_RANGE = 280; // (legacy) Max distance to attempt sidestep — currently unenforced; kept for AI heuristics
+const SIDESTEP_RECOVERY_OVERLAP_THRESHOLD = 80; // Only push out during recovery if literally clipping pushbox
 
 // Dohyo edge fall physics - fast heavy drop with maintained horizontal momentum
 const DOHYO_FALL_SPEED = 5.93; // Scaled for camera zoom (was 8)
@@ -278,8 +307,6 @@ const GRAB_BREAK_RESIDUAL_VEL = 0; // No residual sliding — players stop clean
 const GRAB_BREAK_INPUT_LOCK_MS = 350; // Breaker is locked during knockback tween — vulnerable window
 const GRAB_BREAK_ACTION_LOCK_MS = 350; // Action lock matches input lock
 const GRAB_BREAK_GRAB_IMMUNITY_MS = 400; // Re-grab protection on the breaker after the tween ends
-const GRAB_BREAK_EDGE_LOCK_MULT = 1.5; // Recovery is 1.5x longer when breaking from edge zone (corner-stress preserved)
-
 // Grab stamina drain: 10 stamina over full 1.5s duration
 // Drain 1 stamina every 150ms (1500ms / 10 = 150ms per stamina point)
 const GRAB_STAMINA_DRAIN_INTERVAL = 150;
@@ -726,17 +753,15 @@ module.exports = {
 
   // Sidestep
   SIDESTEP_STARTUP_MS,
-  SIDESTEP_ACTIVE_MIN_MS,
-  SIDESTEP_ACTIVE_MAX_MS,
+  SIDESTEP_ACTIVE_MS,
   SIDESTEP_RECOVERY_MS,
   SIDESTEP_TOTAL_MS,
   SIDESTEP_STAMINA_COST,
-  SIDESTEP_ARC_DEPTH_MIN,
-  SIDESTEP_ARC_DEPTH_MAX,
+  SIDESTEP_TRAVEL,
+  SIDESTEP_ARC_DEPTH,
   SIDESTEP_GRAB_TRACK_RANGE,
   SIDESTEP_INITIATION_RANGE,
-  SIDESTEP_ARC_SPEED,
-  SIDESTEP_MAX_TRAVEL,
+  SIDESTEP_RECOVERY_OVERLAP_THRESHOLD,
 
   // Dodge physics
   DODGE_DURATION,
@@ -768,7 +793,6 @@ module.exports = {
   GRAB_BREAK_INPUT_LOCK_MS,
   GRAB_BREAK_ACTION_LOCK_MS,
   GRAB_BREAK_GRAB_IMMUNITY_MS,
-  GRAB_BREAK_EDGE_LOCK_MULT,
   GRAB_STAMINA_DRAIN_INTERVAL,
 
   // Grab action system

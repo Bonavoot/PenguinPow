@@ -4,7 +4,7 @@
 // and intelligent grab system usage based on positioning and stamina.
 
 const { ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST,
-        SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MAX_MS, SIDESTEP_TOTAL_MS,
+        SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS, SIDESTEP_TOTAL_MS,
         SIDESTEP_STAMINA_COST, SIDESTEP_INITIATION_RANGE,
         DODGE_STARTUP_MS, DODGE_DURATION, DODGE_STAMINA_COST,
         GRAB_STARTUP_DURATION_MS, GROUND_LEVEL, DOHYO_FALL_DEPTH,
@@ -172,6 +172,15 @@ function getAIState(playerId) {
       grabBreakReactDirection: false, // true = press direction when we see pull
       // === Push resistance: dig in during grab push with a human-like delay ===
       grabResistStartTime: 0,
+      // === Post-clinch-break "thinking" delay ===
+      // Grab break drops both players into a mechanically symmetric neutral
+      // state. Without a CPU-side reaction delay the AI fires its next action
+      // on the very tick the input lock clears, beating any human reaction
+      // (~150–300ms perceive→decide→press) every time. We add a short randomized
+      // delay so the clinch break feels like a genuine 50/50 reset instead of
+      // a free CPU punish window.
+      wasInClinchBreak: false,
+      postClinchBreakReactionUntil: 0,
       // === Human-like reaction jitter — delays defensive reactions by a few frames ===
       reactionTarget: null,
       reactionDetectTime: 0,
@@ -586,14 +595,32 @@ function updateCPUAI(cpu, human, room, currentTime) {
     return;
   }
   
+  const aiState = getAIState(cpu.id);
+
   // Don't process AI during grab break - both players are locked
-  if (cpu.isGrabBreaking || cpu.isGrabBreakCountered || cpu.isGrabBreakSeparating ||
-      human.isGrabBreaking || human.isGrabBreakCountered || human.isGrabBreakSeparating) {
+  const inClinchBreak = cpu.isGrabBreaking || cpu.isGrabBreakCountered || cpu.isGrabBreakSeparating ||
+      human.isGrabBreaking || human.isGrabBreakCountered || human.isGrabBreakSeparating;
+  if (inClinchBreak) {
+    aiState.wasInClinchBreak = true;
     resetAllKeys(cpu);
     return;
   }
-  
-  const aiState = getAIState(cpu.id);
+
+  // Just exited grab break — assign a human-like reaction delay before the
+  // CPU is allowed to act again. Mechanics stay symmetric (input lock is the
+  // same for both players in mid-ring); this only prevents the CPU's zero-
+  // reaction-time advantage on the immediate post-break neutral resume.
+  if (aiState.wasInClinchBreak) {
+    aiState.wasInClinchBreak = false;
+    // Fast-but-not-instant reaction (~3.5–7 frames @60fps). Models a quick-
+    // reflex player, faster than average human reaction (~200ms) but still
+    // gives the human-side player a fighting chance on the neutral resume.
+    aiState.postClinchBreakReactionUntil = currentTime + randomInRange(60, 120);
+  }
+  if (aiState.postClinchBreakReactionUntil && currentTime < aiState.postClinchBreakReactionUntil) {
+    resetAllKeys(cpu);
+    return;
+  }
   
   // === UPDATE AGGRESSION MODE ===
   updateAggressionMode(aiState, currentTime);
@@ -1102,9 +1129,10 @@ function handleKnockbackDI(cpu, aiState, currentTime) {
 
 // Handle power-up usage (F key)
 function handlePowerUpUsage(cpu, human, aiState, currentTime, distance) {
-  const snowballThrowsRemaining = cpu.snowballThrowsRemaining ?? 3;
+  const snowballThrowsRemaining = cpu.snowballThrowsRemaining ?? 5;
+  const pumoSpawnsRemaining = cpu.pumoArmySpawnsRemaining ?? 3;
   const hasSnowball = cpu.activePowerUp === "snowball" && snowballThrowsRemaining > 0 && !cpu.snowballCooldown && !cpu.isThrowingSnowball;
-  const hasPumoArmy = cpu.activePowerUp === "pumo_army" && !cpu.pumoArmyCooldown && !cpu.isSpawningPumoArmy;
+  const hasPumoArmy = cpu.activePowerUp === "pumo_army" && pumoSpawnsRemaining > 0 && !cpu.pumoArmyCooldown && !cpu.isSpawningPumoArmy;
   
   if (!hasSnowball && !hasPumoArmy) return false;
   
@@ -2202,12 +2230,10 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       cpu.isSidestepRecovery = false;
       cpu.sidestepStartTime = currentTime;
       cpu.sidestepStartupEndTime = currentTime + SIDESTEP_STARTUP_MS;
-      cpu.sidestepActiveEndTime = currentTime + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MAX_MS;
+      cpu.sidestepActiveEndTime = currentTime + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS;
       cpu.sidestepEndTime = currentTime + SIDESTEP_TOTAL_MS;
       cpu.sidestepStartX = cpu.x;
       cpu.sidestepDirection = initData.direction;
-      cpu.sidestepMaxTravel = initData.maxTravel;
-      cpu.sidestepActiveDuration = SIDESTEP_ACTIVE_MAX_MS;
 
       cpu.currentAction = "sidestep";
       cpu.actionLockUntil = currentTime + SIDESTEP_TOTAL_MS;
@@ -2358,7 +2384,8 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
   if (keyJustPressed("f") && 
       !shouldBlockAction() &&
       (cpu.activePowerUp === "snowball" || cpu.activePowerUp === "pumo_army") &&
-      (cpu.activePowerUp !== "snowball" || (cpu.snowballThrowsRemaining ?? 3) > 0) &&
+      (cpu.activePowerUp !== "snowball" || (cpu.snowballThrowsRemaining ?? 5) > 0) &&
+      (cpu.activePowerUp !== "pumo_army" || (cpu.pumoArmySpawnsRemaining ?? 3) > 0) &&
       !cpu.snowballCooldown &&
       !cpu.pumoArmyCooldown &&
       !cpu.isThrowingSnowball &&
@@ -2380,7 +2407,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     
     if (cpu.activePowerUp === "snowball") {
       if (cpu.snowballThrowsRemaining == null) {
-        cpu.snowballThrowsRemaining = 3;
+        cpu.snowballThrowsRemaining = 5;
       }
       if (cpu.snowballThrowsRemaining <= 0) {
         if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
@@ -2424,7 +2451,17 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       else Object.assign(cpu._prevKeys, cpu.keys);
       return;
     } else if (cpu.activePowerUp === "pumo_army") {
+      if (cpu.pumoArmySpawnsRemaining == null) {
+        cpu.pumoArmySpawnsRemaining = 3;
+      }
+      if (cpu.pumoArmySpawnsRemaining <= 0) {
+        if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
+        else Object.assign(cpu._prevKeys, cpu.keys);
+        return;
+      }
+
       cpu.stamina = Math.max(0, cpu.stamina - CHARGED_ATTACK_STAMINA_COST);
+      cpu.pumoArmySpawnsRemaining = Math.max(0, cpu.pumoArmySpawnsRemaining - 1);
       cpu.isSpawningPumoArmy = true;
       cpu.currentAction = "pumo_army";
       cpu.actionLockUntil = currentTime + 400;
@@ -2468,12 +2505,18 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       
       cpu.pumoArmyCooldown = true;
       
-      setPlayerTimeout(cpu.id, () => {
-        cpu.isSpawningPumoArmy = false;
-        if (cpu.actionLockUntil && Date.now() < cpu.actionLockUntil) {
-          cpu.actionLockUntil = 0;
-        }
-      }, 800);
+      setPlayerTimeout(
+        cpu.id,
+        () => {
+          cpu.isSpawningPumoArmy = false;
+          cpu.pumoArmyCooldown = false;
+          if (cpu.actionLockUntil && Date.now() < cpu.actionLockUntil) {
+            cpu.actionLockUntil = 0;
+          }
+        },
+        800,
+        "pumoArmySpawnEnd"
+      );
       
       if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
       else Object.assign(cpu._prevKeys, cpu.keys);

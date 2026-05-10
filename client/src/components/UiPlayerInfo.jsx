@@ -1657,7 +1657,7 @@ const PowerUpSlot = styled.div`
   }
 `;
 
-const SnowballCountBadge = styled.div`
+const PowerUpChargeBadge = styled.div`
   position: absolute;
   bottom: -4px;
   right: -4px;
@@ -1843,6 +1843,7 @@ const UiPlayerInfo = ({
   player1SnowballCooldown = false,
   player1SnowballThrowsRemaining = null,
   player1PumoArmyCooldown = false,
+  player1PumoArmySpawnsRemaining = null,
   player1IsGassed = false,
   player1ParryRefund = 0,
   player1Balance = 100,
@@ -1852,6 +1853,7 @@ const UiPlayerInfo = ({
   player2SnowballCooldown = false,
   player2SnowballThrowsRemaining = null,
   player2PumoArmyCooldown = false,
+  player2PumoArmySpawnsRemaining = null,
   player2IsGassed = false,
   player2ParryRefund = 0,
   player2Balance = 100,
@@ -2323,13 +2325,18 @@ const UiPlayerInfo = ({
   const getPowerUpIsOnCooldown = (
     powerUpType,
     snowballCooldown,
-    pumoArmyCooldown
+    pumoArmyCooldown,
+    pumoArmySpawnsRemaining
   ) => {
     switch (powerUpType) {
       case "snowball":
         return snowballCooldown;
       case "pumo_army":
-        return pumoArmyCooldown;
+        return (
+          pumoArmyCooldown ||
+          (Number.isFinite(pumoArmySpawnsRemaining) &&
+            pumoArmySpawnsRemaining <= 0)
+        );
       default:
         return false;
     }
@@ -2457,7 +2464,8 @@ const UiPlayerInfo = ({
             $cooldown={getPowerUpIsOnCooldown(
               player1ActivePowerUp,
               player1SnowballCooldown,
-              player1PumoArmyCooldown
+              player1PumoArmyCooldown,
+              player1PumoArmySpawnsRemaining
             )}
           >
             {player1ActivePowerUp && (
@@ -2468,9 +2476,15 @@ const UiPlayerInfo = ({
             )}
             {player1ActivePowerUp === "snowball" &&
               Number.isFinite(player1SnowballThrowsRemaining) && (
-                <SnowballCountBadge>
+                <PowerUpChargeBadge>
                   {Math.max(0, player1SnowballThrowsRemaining)}
-                </SnowballCountBadge>
+                </PowerUpChargeBadge>
+              )}
+            {player1ActivePowerUp === "pumo_army" &&
+              Number.isFinite(player1PumoArmySpawnsRemaining) && (
+                <PowerUpChargeBadge>
+                  {Math.max(0, player1PumoArmySpawnsRemaining)}
+                </PowerUpChargeBadge>
               )}
           </PowerUpSlot>
         </BarRow>
@@ -2595,7 +2609,8 @@ const UiPlayerInfo = ({
             $cooldown={getPowerUpIsOnCooldown(
               player2ActivePowerUp,
               player2SnowballCooldown,
-              player2PumoArmyCooldown
+              player2PumoArmyCooldown,
+              player2PumoArmySpawnsRemaining
             )}
           >
             {player2ActivePowerUp && (
@@ -2606,9 +2621,15 @@ const UiPlayerInfo = ({
             )}
             {player2ActivePowerUp === "snowball" &&
               Number.isFinite(player2SnowballThrowsRemaining) && (
-                <SnowballCountBadge>
+                <PowerUpChargeBadge>
                   {Math.max(0, player2SnowballThrowsRemaining)}
-                </SnowballCountBadge>
+                </PowerUpChargeBadge>
+              )}
+            {player2ActivePowerUp === "pumo_army" &&
+              Number.isFinite(player2PumoArmySpawnsRemaining) && (
+                <PowerUpChargeBadge>
+                  {Math.max(0, player2PumoArmySpawnsRemaining)}
+                </PowerUpChargeBadge>
               )}
           </PowerUpSlot>
         </BarRow>
@@ -2633,6 +2654,7 @@ UiPlayerInfo.propTypes = {
   player1SnowballCooldown: PropTypes.bool,
   player1SnowballThrowsRemaining: PropTypes.number,
   player1PumoArmyCooldown: PropTypes.bool,
+  player1PumoArmySpawnsRemaining: PropTypes.number,
   player1IsGassed: PropTypes.bool,
   player1ParryRefund: PropTypes.number,
   player1Balance: PropTypes.number,
@@ -2642,6 +2664,7 @@ UiPlayerInfo.propTypes = {
   player2SnowballCooldown: PropTypes.bool,
   player2SnowballThrowsRemaining: PropTypes.number,
   player2PumoArmyCooldown: PropTypes.bool,
+  player2PumoArmySpawnsRemaining: PropTypes.number,
   player2IsGassed: PropTypes.bool,
   player2ParryRefund: PropTypes.number,
   player2Balance: PropTypes.number,
