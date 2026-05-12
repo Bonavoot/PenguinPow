@@ -1356,25 +1356,16 @@ const BalStripWrap = styled.div`
 /* Stance gauge track — three-zone precision instrument.
  *
  * The threshold zones are baked INTO the track itself, in the empty
- * space behind the fill. Three regions, separated by thin cream
- * divider lines at the 15% and 50% boundaries:
+ * space behind the fill. Three regions, with a sumi ink stroke between
+ * kill and throw (14–16%):
  *
  *   safe zone  — dark ink (no balance pressure)
- *   throw zone — saturated bright gold (you can be thrown here)
- *   kill zone  — saturated bright vermillion (throw = round over)
+ *   throw zone — gold (muted toward ink so it reads in the well)
+ *   kill zone  — vermillion (muted toward ink; throw = round over)
  *
- * Color alphas + brightness cranked from the previous pass — the user
- * complaint was that the colors looked "drowned out / like a black
- * filter is over them". The fix was to stop dragging the source colors
- * down toward black. Now the kill zone uses C.vermillionBright and
- * the throw zone uses C.gold directly (the canonical theme tokens, not
- * darker variants), at near-full alpha. They read at first glance.
- *
- * Divider lines flipped from rgba(0,0,0,0.85) to a bright cream
- * hairline (rgba 245,236,217, 0.65) so they're visible against the
- * saturated zone backgrounds — the previous black lines disappeared
- * into the dark gaps between zones at HUD scale.
- *
+ * Zone fills are `color-mix`ed with sumi ink so red/gold keep brand hue
+ * but sit *inside* the track like tinted glass — not flat neon slabs.
+ * The ice-blue BalFill still pops on top.
  * Direction set so kill zone sits on the side the bar drains INTO.
  *
  * Danger ring: when balance is in the kill zone, the inner cream
@@ -1401,12 +1392,12 @@ const BalTrack = styled.div`
   background:
     linear-gradient(
       ${(p) => (p.$isRight ? "to right" : "to left")},
-      ${C.vermillionBright} 0%,
-      ${C.vermillionBright} 14%,
+      color-mix(in srgb, ${C.vermillionBright} 70%, ${C.ink} 30%) 0%,
+      color-mix(in srgb, ${C.vermillionBright} 70%, ${C.ink} 30%) 14%,
       rgba(8, 10, 18, 0.96) 14%,
       rgba(8, 10, 18, 0.96) 16%,
-      ${C.gold} 16%,
-      ${C.gold} 50%,
+      color-mix(in srgb, ${C.gold} 74%, ${C.ink} 26%) 16%,
+      color-mix(in srgb, ${C.gold} 74%, ${C.ink} 26%) 50%,
       rgba(8, 10, 18, 0.96) 50%,
       rgba(8, 10, 18, 0.96) 100%
     );

@@ -107,7 +107,7 @@ const SLAP_NEUTRAL_KB_MULTIPLIER = 0.42;          // Solo slap (no string) — s
 
 // Hit 3: physics-based knockback (velocity impulse, no DI)
 // Two-phase friction: holds speed like a heavy mass on ice, then brakes hard.
-const SLAP_HIT3_KB_VELOCITY = 4.0;
+const SLAP_HIT3_KB_VELOCITY = 3.0;
 const SLAP_HIT3_STUN_MS = 200;
 const BURST_KB_INITIAL_FRICTION = 0.993;   // Phase 1: heavy momentum — barely decelerates
 const BURST_KB_LATE_FRICTION = 0.93;       // Phase 2: digs in and brakes hard

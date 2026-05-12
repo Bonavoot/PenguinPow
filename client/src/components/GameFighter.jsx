@@ -2036,6 +2036,11 @@ const GameFighter = ({
     const handleRawParrySuccess = (data) => {
       lastRawParryTime.current = Date.now();
       if (data && typeof data.parrierX === "number") {
+        // Two GameFighter instances both listen to this event; only index 0
+        // owns the HUD portal + shared VFX state (same pattern as UiPlayerInfo).
+        // Without this guard, RawParryEffect mounts twice and PERFECT banners
+        // stack in #game-hud.
+        if (index !== 0) return;
         // Position effect in front of the parrying player (where a hit effect would appear)
         const facing = data.facing || 1;
         // Offset in front of the parrier based on facing direction
@@ -4179,7 +4184,9 @@ const GameFighter = ({
       <SlapParryEffect position={parryEffectPosition} />
       <ChargeClashEffect position={chargeClashEffectPosition} />
       <HitEffect position={hitEffectPosition} />
-      <RawParryEffect position={rawParryEffectPosition} />
+      {index === 0 && (
+        <RawParryEffect position={rawParryEffectPosition} />
+      )}
       <GrabBreakEffect position={grabBreakEffectPosition} />
       <GrabTechEffect position={grabTechEffectPosition} />
       <ClinchJoltEffect position={clinchJoltEffectPosition} />
