@@ -97,6 +97,27 @@ const liveRedPulse = keyframes`
   60%      { opacity: 0.85; box-shadow: 0 0 0 6px rgba(238, 81, 65, 0); }
 `;
 
+/* Arcade-style marching stripes on the load fill — reads as “tape
+   winding / attract mode” without glow or floating particles. */
+const loadingStripeMarch = keyframes`
+  from { background-position: 0 0; }
+  to   { background-position: 16px 0; }
+`;
+
+/* Must keep translateX(-50%) in the keyframes: if we animate a generic
+   fadeUp’s transform here, it replaces `left:50%` centering and the bar
+   sits wrong until the animation ends. */
+const fadeUpCentered = keyframes`
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+`;
+
 // ============================================
 // SCREEN BASE
 // ============================================
@@ -886,74 +907,98 @@ const CenterDivider = styled.span`
 // ============================================
 
 /*
- * The loading bar lives in the strip between the LowerThird's
- * bottom edge and the screen's bottom vermillion rule — over the
- * dim live arena floor, NOT over a cream surface. So:
- *   - Track: warm-brown low-opacity rule (subtle on the dim live
- *     arena background)
- *   - Tick marks: warm browns instead of cool greys
- *   - Fill: vermillion, the only place the broadcast intensity
- *     "bleeds" into the live area
- *   - Caption: cream text with a dark drop, so it reads on the
- *     dim arena floor without needing its own card backing
+ * Coin-op style meter: inset track + sumi bezel + vermillion fill with
+ * marching pinstripes + cream leading edge. Centering uses fadeUpCentered
+ * so transform animation never drops translateX(-50%).
  */
 const LoadingContainer = styled.div`
   position: absolute;
-  bottom: clamp(16px, 2.4cqh, 28px);
+  /* Sit in the strip under LowerThird; smaller footprint + lower bottom
+     keeps a clear gap above the bezel without overlapping the chyron. */
+  bottom: clamp(10px, 1.5cqh, 20px);
   left: 50%;
-  transform: translateX(-50%);
+  transform: translateX(-50%) translateY(0);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(5px, 0.7cqh, 8px);
+  gap: clamp(4px, 0.55cqh, 7px);
   z-index: 100;
-  animation: ${fadeUp} 0.5s ease-out 0.55s backwards;
+  animation: ${fadeUpCentered} 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) 0.55s
+    both;
 `;
 
-const LoadingBar = styled.div`
+const LoadingBezel = styled.div`
   position: relative;
-  width: clamp(180px, 22cqw, 300px);
-  height: clamp(3px, 0.32cqh, 4px);
-  background: rgba(245, 236, 217, 0.22);
-  overflow: hidden;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+  padding: clamp(3px, 0.38cqh, 4px) clamp(4px, 0.5cqw, 5px);
+  background: linear-gradient(180deg, ${C.sumiSoft} 0%, ${C.sumi} 100%);
+  border: 1px solid ${C.sumiBorder};
+  box-shadow:
+    0 2px 0 rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(245, 236, 217, 0.07);
+`;
 
+const LoadingTrack = styled.div`
+  position: relative;
+  width: clamp(150px, 18cqw, 240px);
+  height: clamp(7px, 0.72cqh, 10px);
+  background: linear-gradient(
+    180deg,
+    #06080c 0%,
+    #10141a 42%,
+    #0b0e14 100%
+  );
+  border: 1px solid rgba(0, 0, 0, 0.65);
+  box-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.78),
+    inset 0 -1px 0 rgba(245, 236, 217, 0.04);
+  overflow: hidden;
+`;
+
+const LoadingFill = styled.div`
+  position: relative;
+  height: 100%;
+  width: ${(p) => p.$progress}%;
+  min-width: ${(p) => (p.$progress > 0.5 ? "3px" : "0")};
+  max-width: 100%;
+  background: linear-gradient(
+    180deg,
+    ${C.vermillionBright} 0%,
+    ${C.vermillion} 45%,
+    ${C.vermillionDeep} 100%
+  );
+  transition: width 0.28s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  overflow: hidden;
+
+  /* Hard “tape head” line at the advancing edge — not a glow. */
   &::before {
     content: "";
     position: absolute;
-    inset: 0;
-    background:
-      linear-gradient(
-        90deg,
-        transparent 24.5%,
-        rgba(245, 236, 217, 0.55) 24.5%,
-        rgba(245, 236, 217, 0.55) 25.5%,
-        transparent 25.5%
-      ),
-      linear-gradient(
-        90deg,
-        transparent 49.5%,
-        rgba(245, 236, 217, 0.55) 49.5%,
-        rgba(245, 236, 217, 0.55) 50.5%,
-        transparent 50.5%
-      ),
-      linear-gradient(
-        90deg,
-        transparent 74.5%,
-        rgba(245, 236, 217, 0.55) 74.5%,
-        rgba(245, 236, 217, 0.55) 75.5%,
-        transparent 75.5%
-      );
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 2px;
+    background: ${C.cream};
+    opacity: 0.92;
     z-index: 2;
     pointer-events: none;
   }
-`;
 
-const LoadingProgress = styled.div`
-  height: 100%;
-  width: ${(p) => p.$progress}%;
-  background: ${C.vermillion};
-  transition: width 0.3s ease-out;
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background-image: repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 5px,
+      rgba(0, 0, 0, 0.22) 5px,
+      rgba(0, 0, 0, 0.22) 7px
+    );
+    background-size: 16px 100%;
+    animation: ${loadingStripeMarch} 0.5s linear infinite;
+  }
 `;
 
 const LoadingText = styled.div`
@@ -1319,9 +1364,17 @@ const PreMatchScreen = ({
 
       {isLoading && (
         <LoadingContainer>
-          <LoadingBar>
-            <LoadingProgress $progress={displayProgress} />
-          </LoadingBar>
+          <LoadingBezel
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(displayProgress)}
+            aria-label="Match loading progress"
+          >
+            <LoadingTrack>
+              <LoadingFill $progress={displayProgress} />
+            </LoadingTrack>
+          </LoadingBezel>
           <LoadingText>Preparing the Dohyo</LoadingText>
         </LoadingContainer>
       )}

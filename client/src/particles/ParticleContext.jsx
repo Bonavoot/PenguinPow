@@ -123,9 +123,13 @@ export function ParticleProvider({ children }) {
     engineRef.current?.setAccentTextures(accents);
   }, []);
 
+  const clearRawParryBlueHold = useCallback(() => {
+    engineRef.current?.clearRawParryBlueHoldParticles();
+  }, []);
+
   const value = useMemo(
-    () => ({ emit, setFrozen, setAccent }),
-    [emit, setFrozen, setAccent]
+    () => ({ emit, setFrozen, setAccent, clearRawParryBlueHold }),
+    [emit, setFrozen, setAccent, clearRawParryBlueHold]
   );
 
   return (
@@ -168,7 +172,12 @@ export function ParticleProvider({ children }) {
   );
 }
 
-const noopCtx = { emit: () => {}, setFrozen: () => {}, setAccent: () => {} };
+const noopCtx = {
+  emit: () => {},
+  setFrozen: () => {},
+  setAccent: () => {},
+  clearRawParryBlueHold: () => {},
+};
 
 export function useParticles() {
   return useContext(ParticleCtx) || noopCtx;

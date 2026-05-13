@@ -101,6 +101,43 @@ function createBluePuff(size, seed) {
   return c;
 }
 
+// Perfect raw parry — same blob recipe as blue parry smoke, biased to shiny
+// yellow metal (lemon / chartreuse gold) rather than orange flame.
+function createGoldPuff(size, seed) {
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext("2d");
+  const half = size / 2;
+
+  let s = seed;
+  const srand = () => {
+    s = (s * 9301 + 49297) % 233280;
+    return s / 233280;
+  };
+
+  const numBlobs = 8 + Math.floor(srand() * 6);
+  for (let i = 0; i < numBlobs; i++) {
+    const bx = half + (srand() - 0.5) * size * 0.55;
+    const by = half + (srand() - 0.5) * size * 0.45;
+    const br = size * (0.18 + srand() * 0.18);
+
+    const grad = ctx.createRadialGradient(bx, by, 0, bx, by, br);
+    grad.addColorStop(0, "rgba(255,255,250,0.98)");
+    grad.addColorStop(0.28, "rgba(255,252,200,0.96)");
+    grad.addColorStop(0.48, "rgba(255,240,120,0.92)");
+    grad.addColorStop(0.68, "rgba(245,215,60,0.78)");
+    grad.addColorStop(0.88, "rgba(215,175,35,0.45)");
+    grad.addColorStop(1, "rgba(190,160,40,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(bx, by, br, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  return c;
+}
+
 // Player-accent puff — parametric sibling of createBluePuff. Used in sidestep
 // trail particles so YOUR dust carries a faint tint of YOUR mawashi color,
 // reinforcing identity during overlap without needing a glow filter.
@@ -871,6 +908,13 @@ function generateTextures(s) {
     circleBlue: createChunk(r(24), 80, 160, 255, 0.9),
     chunkBlue: createChunk(r(12), 100, 180, 255, 0.85),
 
+    goldPuff1: createGoldPuff(r(96), 3141),
+    goldPuff2: createGoldPuff(r(96), 5926),
+    goldPuff3: createGoldPuff(r(96), 7182),
+    goldPuff4: createGoldPuff(r(112), 8453),
+    circleGold: createChunk(r(24), 255, 248, 150, 0.95),
+    chunkGold: createChunk(r(12), 255, 238, 110, 0.92),
+
     hitStar1: createHitStarburst(r(64), 1111),
     hitStar2: createHitStarburst(r(64), 3333),
     hitStar3: createHitStarburst(r(64), 5555),
@@ -953,6 +997,9 @@ function pickSmallPuff(textures) {
 }
 function pickBluePuff(textures) {
   return pick([textures.bluePuff1, textures.bluePuff2, textures.bluePuff3, textures.bluePuff4]);
+}
+function pickGoldPuff(textures) {
+  return pick([textures.goldPuff1, textures.goldPuff2, textures.goldPuff3, textures.goldPuff4]);
 }
 
 const PRESETS = {
@@ -2305,6 +2352,7 @@ const PRESETS = {
         maxLife: rand(0.4, 0.6),
         texture: pickBluePuff(engine.textures),
         blendMode: "lighter",
+        rawParryBlueHold: true,
       });
     }
 
@@ -2331,6 +2379,7 @@ const PRESETS = {
         maxLife: rand(0.45, 0.65),
         texture: pickBluePuff(engine.textures),
         blendMode: "lighter",
+        rawParryBlueHold: true,
       });
     }
 
@@ -2354,6 +2403,7 @@ const PRESETS = {
         maxLife: rand(0.2, 0.35),
         texture: pick([engine.textures.circleBlue, engine.textures.circle]),
         blendMode: "lighter",
+        rawParryBlueHold: true,
       });
     }
 
@@ -2377,6 +2427,7 @@ const PRESETS = {
         rotationSpeed: rand(-1, 1),
         maxLife: rand(0.2, 0.3),
         texture: pickBluePuff(engine.textures),
+        rawParryBlueHold: true,
       });
     }
   },
@@ -2412,6 +2463,7 @@ const PRESETS = {
           maxLife: rand(0.5, 0.8),
           texture: pickBluePuff(engine.textures),
           blendMode: "lighter",
+          rawParryBlueHold: true,
         });
       }
     }
@@ -2440,6 +2492,7 @@ const PRESETS = {
         maxLife: rand(0.5, 0.8),
         texture: pickBluePuff(engine.textures),
         blendMode: "lighter",
+        rawParryBlueHold: true,
       });
     }
 
@@ -2462,6 +2515,112 @@ const PRESETS = {
         rotationSpeed: rand(-2, 2),
         maxLife: rand(0.25, 0.4),
         texture: pick([engine.textures.circleBlue, engine.textures.chunkBlue]),
+        blendMode: "lighter",
+        rawParryBlueHold: true,
+      });
+    }
+  },
+
+  // Perfect raw parry — denser parry-style puff burst, yellow-gold metal read
+  // (CSS RawParryEffect unchanged).
+  perfectParryFlameBurst(engine, { x, y, facing }) {
+    const dir = facing || 1;
+    const bodyX = x + dir * 10;
+    const footY = GAME_H - y - 12;
+    const midY = GAME_H - y - 65;
+    const headY = GAME_H - y - 105;
+    const sz = 1.46;
+
+    for (let i = 0; i < 18; i++) {
+      const side = i < 9 ? -1 : 1;
+      const spawnX = bodyX + side * rand(28, 58);
+      const spawnY = rand(midY - 2, footY);
+      const size = rand(24, 40) * sz;
+      engine.spawn({
+        x: spawnX,
+        y: spawnY,
+        vx: side * rand(18, 58) + rand(-10, 10),
+        vy: rand(-192, -85),
+        gravity: rand(-24, -9),
+        drag: 0.94,
+        size,
+        sizeEnd: size * rand(0.45, 0.72),
+        alpha: rand(0.7, 0.9),
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-1.1, 1.1),
+        maxLife: rand(0.48, 0.7),
+        texture: pickGoldPuff(engine.textures),
+        blendMode: "lighter",
+      });
+    }
+
+    for (let i = 0; i < 8; i++) {
+      const spawnX = bodyX + rand(-52, 52);
+      const spawnY = rand(headY - 14, headY + 14);
+      const size = rand(22, 36) * sz;
+      engine.spawn({
+        x: spawnX,
+        y: spawnY,
+        vx: rand(-22, 22),
+        vy: rand(-170, -58),
+        gravity: rand(-22, -8),
+        drag: 0.94,
+        size,
+        sizeEnd: size * rand(0.45, 0.75),
+        alpha: rand(0.66, 0.86),
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-1.1, 1.1),
+        maxLife: rand(0.5, 0.74),
+        texture: pickGoldPuff(engine.textures),
+        blendMode: "lighter",
+      });
+    }
+
+    for (let i = 0; i < 12; i++) {
+      const side = i < 6 ? -1 : 1;
+      engine.spawn({
+        x: bodyX + side * rand(18, 48),
+        y: rand(midY - 14, footY),
+        vx: side * rand(28, 78),
+        vy: rand(-222, -92),
+        gravity: -16,
+        drag: 0.94,
+        size: rand(4, 8) * sz,
+        sizeEnd: rand(1.4, 3.0),
+        alpha: rand(0.88, 1.0),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-4.5, 4.5),
+        maxLife: rand(0.22, 0.4),
+        texture: pick([engine.textures.circleGold, engine.textures.chunkGold]),
+        blendMode: "lighter",
+      });
+    }
+
+    for (let i = 0; i < 7; i++) {
+      const side = i === 0 ? -1 : i === 1 ? 1 : Math.random() > 0.5 ? 1 : -1;
+      const size = rand(20, 34) * sz;
+      engine.spawn({
+        x: bodyX + side * rand(10, 36),
+        y: footY,
+        vx: side * rand(48, 98),
+        vy: rand(-22, -5),
+        gravity: 18,
+        drag: 0.88,
+        size,
+        sizeEnd: size * rand(0.28, 0.46),
+        alpha: rand(0.6, 0.8),
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "inQuad",
+        rotationSpeed: rand(-1.1, 1.1),
+        maxLife: rand(0.28, 0.42),
+        texture: pickGoldPuff(engine.textures),
         blendMode: "lighter",
       });
     }
@@ -3189,6 +3348,8 @@ class Particle {
     this.followGetter = null;
     this.lastFollowX = 0;
     this.lastFollowY = 0;
+    /** Cleared instantly when a perfect raw parry fires so gold burst isn't mixed with hold-VFX blues. */
+    this.rawParryBlueHold = false;
   }
 }
 
@@ -3260,6 +3421,14 @@ export class ParticleEngine {
     if (fn) fn(this, opts);
   }
 
+  /** Removes in-flight canvas particles from raw-parry hold (space) VFX only. */
+  clearRawParryBlueHoldParticles() {
+    for (let i = 0; i < this.particles.length; i++) {
+      const p = this.particles[i];
+      if (p.active && p.rawParryBlueHold) p.active = false;
+    }
+  }
+
   // Bake per-player accent textures (halo ring + trail puff) tinted to the
   // player's mawashi color. Called by PlayerColorContext whenever a player's
   // color is applied, so the engine always has up-to-date colored textures
@@ -3328,6 +3497,7 @@ export class ParticleEngine {
       p.lastFollowX = 0;
       p.lastFollowY = 0;
     }
+    p.rawParryBlueHold = cfg.rawParryBlueHold ?? false;
   }
 
   _acquire() {

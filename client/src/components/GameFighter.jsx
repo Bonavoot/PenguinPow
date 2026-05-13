@@ -221,7 +221,7 @@ const GameFighter = ({
   isCPUMatch, // True when playing vs CPU — hides PvP-only HUD bits (rematch tally)
 }) => {
   const { socket } = useContext(SocketContext);
-  const { emit: emitParticles, setFrozen: setParticlesFrozen } = useParticles();
+  const { emit: emitParticles, setFrozen: setParticlesFrozen, clearRawParryBlueHold } = useParticles();
 
   // ============================================
   // SPRITE RECOLORING STATE
@@ -3265,13 +3265,19 @@ const GameFighter = ({
   const lastPerfectParryState = useRef(false);
   useEffect(() => {
     if (penguin.isPerfectRawParrySuccess && !lastPerfectParryState.current) {
+      clearRawParryBlueHold();
       emitParticles("throwLand", {
         x: penguin.x,
         y: penguin.y,
       });
+      emitParticles("perfectParryFlameBurst", {
+        x: penguin.x,
+        y: penguin.y,
+        facing: penguin.facing,
+      });
     }
     lastPerfectParryState.current = penguin.isPerfectRawParrySuccess;
-  }, [penguin.isPerfectRawParrySuccess, penguin.x, penguin.y, emitParticles]);
+  }, [penguin.isPerfectRawParrySuccess, penguin.x, penguin.y, penguin.facing, emitParticles, clearRawParryBlueHold]);
 
   useEffect(() => {
     if (hakkiyoi) {
