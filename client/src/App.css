@@ -379,9 +379,16 @@ body {
   --neg-text-ol: clamp(-4px, -0.15cqw, -2px);
   --border-w: clamp(2px, 0.16cqw, 4px);
 
-  /* ── Visual grading — clean contrast hierarchy ── */
+  /* ── Visual grading — clean contrast hierarchy ──
+     Crowd shadow (set on CrowdContainer in CrowdLayer.jsx) does the heavy
+     lifting for the "spotlight on the dohyo" feel. Dohyo gets a tiny warm
+     bias here (sepia + slight hue rotate) so it still reads as "lit from
+     overhead" even though its brightness is just under 1.0 — warmth sells
+     the spotlight more convincingly than raw brightness does, and it
+     prevents the dohyo from blowing out and stealing color from the
+     fighters/crowd. */
   --arena-map-filter: brightness(0.82) saturate(0.88) contrast(1.02);
-  --dohyo-filter: brightness(1.03) saturate(1.06) contrast(1.06);
+  --dohyo-filter: brightness(0.97) saturate(1.05) contrast(1.06) sepia(0.05) hue-rotate(-5deg);
 
   /* ── Camera defaults — JS will drive these later for dynamic pan/zoom ── */
   --cam-scale: 1.305;
@@ -502,7 +509,10 @@ body {
   filter: blur(12px);
 }
 
-/* Single consolidated lighting pass — warm spotlight + clean vignette */
+/* Single consolidated lighting pass — warm spotlight + clean vignette.
+   The warm cone is tightened and slightly strengthened so the dohyo still
+   reads as "spotlit from above" even though the dohyo's own brightness was
+   reined in (--dohyo-filter). The vignette is unchanged. */
 .arena-lighting {
   position: absolute;
   inset: 0;
@@ -510,10 +520,10 @@ body {
   z-index: 6;
   background:
     radial-gradient(
-      ellipse 60% 50% at 50% 56%,
-      rgba(255, 242, 210, 0.07) 0%,
-      rgba(255, 238, 200, 0.02) 35%,
-      transparent 60%
+      ellipse 52% 44% at 50% 54%,
+      rgba(255, 240, 205, 0.11) 0%,
+      rgba(255, 236, 195, 0.05) 32%,
+      transparent 62%
     ),
     radial-gradient(
       ellipse at 50% 50%,

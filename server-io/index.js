@@ -1418,7 +1418,9 @@ function tick(delta) {
                 intensity: 2.5,
                 duration: 500,
               });
-              triggerHitstopAndEmit(io, room, HITSTOP_THROW_MS, "clinch_kill_throw");
+              // No landing hitstop for kill throw: room + client hitstop freeze the
+              // sim and pin interpolated Y for ~100ms, which reads as a hitch right
+              // as the victim touches down. Screen shake + particles sell the impact.
               room.forceBroadcast = true;
             }
 

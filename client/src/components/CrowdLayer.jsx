@@ -90,7 +90,32 @@ const preloadCrowdImages = () => {
 // Execute preload immediately when module loads
 preloadCrowdImages();
 
-// Container for the entire crowd layer
+// Container for the entire crowd layer.
+//
+// LIGHTING NOTE — why this is built the way it is:
+//
+// The crowd sits in shadow while the dohyo is lit from above. The naive way
+// to "darken the crowd" is a flat black overlay (we used to have one at
+// rgba(0,0,0,0.18)), but that washes every color toward gray and kills the
+// poppy palette we worked hard to build into the sprites.
+//
+// Instead we do the darkening with a CSS `filter` chain on the container:
+//   - `brightness(0.6)` drops the luminance by ~40% — enough that the dohyo
+//     reads as the visually dominant focal point
+//   - `saturate(1.22)` *boosts* chroma to counteract the perceptual
+//     desaturation that comes with low brightness. Net effect: the crowd
+//     ends up darker AND more colorful than the original, which is the
+//     classic look of a stage in shadow vs. spotlight.
+//   - `contrast(1.04)` adds a touch of bite so the rim-lit silhouettes
+//     still feel three-dimensional in the shadow.
+//
+// On top of that, the ::after is repurposed from a flat sheet into a soft
+// radial vignette with a cool deep-navy tint. The vignette is clear in the
+// region directly around the dohyo (so the front rows "catch" some spill
+// from the spotlight) and darkens toward the corners of the arena where the
+// nosebleed seats would naturally fall into the deepest shadow. The cool
+// tint plays against the warm spotlight on the dohyo for cinematic
+// warm/cool color contrast.
 const CrowdContainer = styled.div`
   position: absolute;
   top: 0;
@@ -100,16 +125,18 @@ const CrowdContainer = styled.div`
   pointer-events: none;
   z-index: 0; /* Between game map background (-1) and dohyo overlay (1) */
   contain: layout style paint;
-  
-  /* Simple shadow overlay - keeps background from competing with fighters */
+  filter: brightness(0.6) saturate(1.22) contrast(1.04);
+
   &::after {
     content: '';
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.18);
+    inset: 0;
+    background: radial-gradient(
+      ellipse 78% 68% at 50% 56%,
+      rgba(0, 0, 0, 0) 28%,
+      rgba(10, 14, 30, 0.22) 78%,
+      rgba(6, 10, 26, 0.38) 100%
+    );
     pointer-events: none;
     z-index: 9999;
   }

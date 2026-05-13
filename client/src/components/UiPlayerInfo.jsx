@@ -388,7 +388,7 @@ const HudShell = styled.div`
   align-items: flex-start;
   justify-content: space-between;
   padding: clamp(7px, 1.2cqh, 12px) clamp(6px, 1cqw, 14px);
-  padding-top: clamp(16px, 2.4cqh, 26px);
+  padding-top: clamp(24px, 3cqh, 34px);
   opacity: ${(p) => (p.$matchOver ? 0.88 : 1)};
   filter: ${(p) =>
     p.$matchOver
@@ -1678,7 +1678,7 @@ const PowerUpChargeBadge = styled.div`
 
 const CenterRound = styled.div`
   position: absolute;
-  top: clamp(24px, 4cqh, 46px);
+  top: clamp(14px, 3cqh, 36px);
   left: 50%;
   transform: translateX(-50%);
   z-index: 1001;

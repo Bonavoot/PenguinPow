@@ -752,9 +752,8 @@ const PlayerSlot = styled.div`
  * text on the wrestler cards above (same family, same broadcast
  * "printed metal caption" energy). Vermillion would have been
  * the alternative but vermillion is already carrying the LIVE
- * tally + hanko + WrestlerPanel side-tag kanji + loading bar
- * fill — gold gives the bottom band its own quiet accent role
- * instead of piling on more red.
+ * tally + hanko + WrestlerPanel side-tag kanji — gold gives the
+ * bottom band its own quiet accent role instead of piling on more red.
  */
 const StableLine = styled.div`
   font-family: "Space Grotesk", sans-serif;
@@ -907,9 +906,10 @@ const CenterDivider = styled.span`
 // ============================================
 
 /*
- * Coin-op style meter: inset track + sumi bezel + vermillion fill with
- * marching pinstripes + cream leading edge. Centering uses fadeUpCentered
- * so transform animation never drops translateX(-50%).
+ * Coin-op style meter: inset track + sumi bezel + warm gold/amber fill
+ * (lacquer / coin-slot read; avoids another ice swatch) with marching
+ * pinstripes + cream leading edge. Centering uses fadeUpCentered so
+ * transform animation never drops translateX(-50%).
  */
 const LoadingContainer = styled.div`
   position: absolute;
@@ -960,11 +960,12 @@ const LoadingFill = styled.div`
   width: ${(p) => p.$progress}%;
   min-width: ${(p) => (p.$progress > 0.5 ? "3px" : "0")};
   max-width: 100%;
+  /* Warm gold — rhymes with rank/stable accents, not another ice field */
   background: linear-gradient(
     180deg,
-    ${C.vermillionBright} 0%,
-    ${C.vermillion} 45%,
-    ${C.vermillionDeep} 100%
+    #f2d878 0%,
+    ${C.gold} 45%,
+    ${C.goldDeep} 100%
   );
   transition: width 0.28s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   overflow: hidden;
@@ -993,8 +994,8 @@ const LoadingFill = styled.div`
       90deg,
       transparent 0,
       transparent 5px,
-      rgba(0, 0, 0, 0.22) 5px,
-      rgba(0, 0, 0, 0.22) 7px
+      rgba(72, 42, 6, 0.28) 5px,
+      rgba(72, 42, 6, 0.28) 7px
     );
     background-size: 16px 100%;
     animation: ${loadingStripeMarch} 0.5s linear infinite;
