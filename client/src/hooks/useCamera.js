@@ -15,14 +15,22 @@ const SMOOTH_FACTOR = 0.07; // lerp speed per frame (0–1, higher = snappier)
 const Y_OFFSET = 12; // fixed vertical bias (%) — positive = show more top
 
 // ── Impact shake ─────────────────────────────────────────────────
-const SHAKE_MIN = 2; // px — lightest hit (slap)
-const SHAKE_MAX = 7; // px — heaviest hit (full-charge + power-up)
+// Phase 3: values pushed up from (2 → 7) to (3 → 10). Now that the crowd
+// background is desaturated/vignetted (Phase 1), the shake can swing harder
+// without reading as visual noise — it reads as weight. Light slaps now
+// always register a felt camera response (was sometimes imperceptible at 2px),
+// and heavy/cinematic hits genuinely jolt the frame.
+const SHAKE_MIN = 3; // px — lightest hit (slap)
+const SHAKE_MAX = 10; // px — heaviest hit (full-charge + power-up)
 const SHAKE_DECAY = 0.88; // per-frame multiplier → ~150 ms at 60 fps
 const SHAKE_STOP = 0.3; // cut to zero below this
 
 // ── Hit zoom punch-in ────────────────────────────────────────────
-const PUNCH_MIN = 0.02; // scale boost — light hit
-const PUNCH_MAX = 0.06; // scale boost — heavy hit
+// Phase 3: punch boosted from (0.02 → 0.06) to (0.03 → 0.10). The extra zoom
+// on impact, paired with the new 4-frame white impact-snap on the receiving
+// fighter (GameFighter hit-flash), is what sells the "this hit landed" beat.
+const PUNCH_MIN = 0.03; // scale boost — light hit
+const PUNCH_MAX = 0.10; // scale boost — heavy hit
 const PUNCH_DECAY = 0.92; // per-frame multiplier → ~200 ms
 const PUNCH_STOP = 0.001; // cut to zero below this
 

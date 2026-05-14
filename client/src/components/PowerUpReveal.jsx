@@ -12,76 +12,74 @@ import happyFeetIcon from "../assets/happy-feet.png";
 import thickBlubberIcon from "../assets/thick-blubber-icon.png";
 
 /*
- * PowerUpReveal — colored tile pickup card per side.
+ * PowerUpReveal — printed mini-card pickup per side.
  *
- * THE THIRD PASS (vs. the previous "naked icon + colored
- *   underline" pass):
+ * THE FOURTH PASS (vs. the previous "colored tile + floating
+ *   stencil text above and below" pass):
  *
- *   The previous pass put the power-color identity on a thin
- *   underline beneath the power-up name and left the icon
- *   completely naked. Two issues with that:
+ *   The previous pass had three loose elements per cluster
+ *   stacked vertically:
  *
- *     1. The icon felt orphaned. Asset, drop shadow, then
- *        empty space — there was nothing visually grouping
- *        the icon and the type identity together. The color
- *        was carried entirely by a 3px line several pixels
- *        below the icon, so the icon read as decorative
- *        rather than as the power's primary face.
- *     2. The YOU/OPP caption color choice was inverted from
- *        what the moment actually IS. The previous pass put
- *        YOU in vermillion (the loud color) and OPP in cream
- *        (the quiet color). But the surprise of the reveal
- *        is what your OPPONENT picked — you already know
- *        what you picked. The opponent's pick deserves the
- *        loud color treatment, yours doesn't.
+ *       YOU             (stencil label, floating)
+ *       [colored tile]  (icon on type-color)
+ *       POWER WATER     (stencil name, floating)
  *
- *   This pass:
- *     - The power-color identity moves OFF the underline and
- *       ONTO the icon's background. Each pick gets a colored
- *       tile (sharp corners, faint inset bevel + drop shadow,
- *       like a physical pickup card resting on the arena)
- *       holding the icon. No more separate underline element
- *       — the tile IS the color identity.
- *     - The YOU/OPP label moves INTO the tile, sitting at
- *       the top with the icon centered in the remaining
- *       space below it. Same vocabulary as PowerUpSelection's
- *       card-header band: a colored zone with a label and
- *       icon, sized smaller and used as a single tile rather
- *       than a card top-stripe.
- *     - YOU is cream (the neutral subject — confirmation of
- *       what you already know). OPP is vermillion-bright
- *       (the loud highlight — the surprise reveal of what
- *       you DIDN'T know).
- *     - Clusters sit in the announcement band (same top anchor
- *       as hakkiyoi / te wo tsuite), centered as a pair with a
- *       controlled gap — under the HUD, above the fighters.
+ *   The icon tile read fine as a physical object, but the
+ *   YOU/OPP label above and the power-up name below both
+ *   floated as raw stencil text with no anchor. Three
+ *   disconnected pieces stacked vertically reads as
+ *   "unfinished mockup" — the eye expects a single printed
+ *   object since the moment is a single beat (your opponent
+ *   committed; here is what they picked).
+ *
+ *   This pass merges everything into ONE printed object per
+ *   side, reusing the same printed-program vocabulary as
+ *   PowerUpSelection's cards but at smaller scale:
+ *
+ *     - Outer card: cream washi paper, sharp corners, 1.5px
+ *       sumi border, 1px inner frame (the double-border that
+ *       reads "printed card" rather than "div with a stroke").
+ *     - Top zone: colored type-band with icon centered — same
+ *       inset-bevel and dropshadow as the selection card's
+ *       header so the reveal cards feel like the selection
+ *       cards minified, not like a separate UI element.
+ *     - Bottom zone: cream strip holding the power-up NAME in
+ *       Bungee, sumi ink, centered. Name now sits ON the card,
+ *       not floating below it. No stencil/outline treatment
+ *       needed since it has its own paper backing.
+ *     - YOU/OPP becomes a small printed TAB pinned to the top
+ *       of the card, overhanging the colored band by a couple
+ *       pixels. Sumi cardstock with cream Bungee text, mirrored
+ *       across the centerline (P1's tab on the left edge, P2's
+ *       tab on the right edge) so the pair faces each other
+ *       like name plates at a sumo broadcast desk.
  *
  * STRUCTURE per cluster:
  *
- *       ┌──────────────┐
- *       │     YOU      │   ← label inside tile, top
- *       │              │
- *       │    [icon]    │   ← icon centered in remaining space
- *       │              │
- *       └──────────────┘
- *         POWER WATER     ← name in big Bungee, cream stencil
- *                           stroke, sits BELOW the tile
+ *       ┌────────────┐
+ *       │ YOU ┐      │ ← tab pinned top edge, overhanging
+ *       │ [colored]  │
+ *       │  [icon]    │ ← colored art panel
+ *       ├────────────┤
+ *       │ POWER WATER│ ← cream name strip
+ *       └────────────┘
  *
- *   P1 cluster on the left, P2 on the right in a centered row;
- *   YOU/OPP labels still reflect seat via TileLabel, not position.
+ *   P1 cluster on the left, P2 on the right in a centered row.
  *
  * MOTION:
- *   Local cluster slides in from the LEFT edge (the West-
- *   side wrestler entrance), opponent cluster from the RIGHT
- *   edge (East-side). Pure translateX + opacity, no
- *   rotation, no overshoot. Once they land, nothing loops.
- *   After ~2.4s both fade up off-screen as a single beat.
+ *   Local cluster slides in from the LEFT edge (west-side
+ *   wrestler entrance), opponent cluster from the RIGHT (east-
+ *   side). Pure translateX + opacity, no rotation, no
+ *   overshoot. After ~2.4s both fade up off-screen as a single
+ *   beat.
  *
  * COLOR BUDGET:
- *   Cream Bungee names + sumi stencil strokes + cream YOU
- *   stamp + vermillion OPP stamp + the two functional
- *   power-type tiles. No gold, no dark brown, no panel
- *   chrome, no underline rule.
+ *   Cream washi cardstock + sumi ink (borders, name text, tab
+ *   plate) + cream text inside the tab + the two functional
+ *   power-type colors on the art panels. The tab is the same
+ *   sumi-on-cream contrast the in-game HUD chrome uses, so
+ *   the reveal card feels printed on the same paper stock as
+ *   the prematch program and the rank plaques.
  */
 
 // ============================================
@@ -175,11 +173,11 @@ const RevealRow = styled.div`
   flex-direction: row;
   justify-content: center;
   align-items: flex-start;
-  gap: clamp(12px, 3cqw, 28px);
+  gap: clamp(22px, 4.8cqw, 48px);
   pointer-events: none;
 
   @media (max-width: 700px) {
-    gap: clamp(10px, 2.6cqw, 22px);
+    gap: clamp(16px, 4cqw, 34px);
     padding-inline: clamp(8px, 3cqw, 20px);
   }
 `;
@@ -192,15 +190,19 @@ const RevealRow = styled.div`
  * `$isLeft` selects entrance direction (west vs east). `$isLocal`
  * only affects label styling inside the tile.
  */
-/* Wide enough for longest Bungee title without overlap; equal cols keep tiles centered on screen. */
-const CLUSTER_COL = "clamp(148px, 23cqw, 208px)";
+/* Column sizes to the card width plus minimal breathing room.
+ * The card carries its own name and tab internally now, so the
+ * column no longer needs to be wide enough to hold a floating
+ * Bungee title — it just needs to seat the card itself. Tighter
+ * cols pull the two cards closer to center, which sells the
+ * "two opponents facing each other across the dohyo" symmetry. */
+const CLUSTER_COL = "clamp(108px, 12cqw, 148px)";
 
 const Cluster = styled.div`
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(8px, 0.95cqh, 12px);
   flex: 0 0 ${CLUSTER_COL};
   width: ${CLUSTER_COL};
   max-width: ${CLUSTER_COL};
@@ -218,100 +220,192 @@ const Cluster = styled.div`
       animation: ${exitUp} 0.32s ease-in forwards;
       animation-delay: 0s;
     `}
-
 `;
 
 /*
- * The colored tile. Sharp corners (printed-program canon),
- * filled with the power-type's main color, with:
- *   - inset 1px cream highlight at the top edge (catches
- *     light, gives the tile a "pressed" feel rather than a
- *     flat painted slab)
- *   - inset 2px deep-color shadow at the bottom edge (the
- *     same trick PowerUpSelection's CardHeader uses to mark
- *     a chunky bottom bevel without needing a separate
- *     element)
- *   - a chunky 5px solid drop shadow in near-black, plus a
- *     soft 18px ambient drop shadow — together these make
- *     the tile read as a physical card resting on the arena
- *     rather than as a flat UI plate floating in front of it.
+ * The unified mini-card.
  *
- * Layout inside the tile is column-flex with the label
- * pinned to the top and the icon centered in the remaining
- * space via auto vertical margins on the icon — clean stack
- * without needing intermediate wrapper divs.
+ * Construction:
+ *   - cream washi paper background with a 1.5px sumi outer
+ *     border (sharp corners), and a 1px inner frame inset 3px
+ *     via ::after for the double-border read-as-printed-card
+ *     effect. Same recipe as PowerUpSelection's PowerCard so
+ *     the reveal card feels like the selection card minified.
+ *   - chunky 3px solid drop shadow in near-black plus a softer
+ *     12px ambient shadow — keeps the card reading as physical
+ *     cardstock on top of the arena rather than as a flat UI
+ *     plate floating in front of it.
+ *   - the card itself does NOT animate (only the parent
+ *     Cluster wrapper handles the slide-in). Inner structure
+ *     stays GPU-stable during entry.
  */
-const IconTile = styled.div`
-  width: clamp(56px, 6.8cqw, 76px);
-  height: clamp(66px, 8.2cqh, 86px);
+const RevealCard = styled.div`
+  width: clamp(96px, 11cqw, 132px);
+  display: flex;
+  flex-direction: column;
+  background: ${C.cream};
+  border: 1.5px solid ${C.sumi};
+  box-shadow:
+    0 3px 0 rgba(0, 0, 0, 0.45),
+    0 7px 14px rgba(0, 0, 0, 0.5);
+  position: relative;
+
+  /* Inner frame — faint sumi rule inset a few pixels in from
+     the outer border. The two-rule sandwich is what turns the
+     edge from "div stroke" into "printed card border." */
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 3px;
+    border: 1px solid rgba(60, 40, 20, 0.22);
+    pointer-events: none;
+  }
+
+  @media (max-width: 700px) {
+    width: clamp(80px, 14cqw, 108px);
+  }
+`;
+
+/*
+ * Top art panel — colored type-band with the icon centered.
+ *
+ *   - same inset top-cream highlight + inset bottom deep-color
+ *     bevel as PowerUpSelection's CardHeader for a chunky
+ *     pressed-color slab feel.
+ *   - 1.5px sumi bottom border separates the colored zone from
+ *     the cream name strip below, mirroring the hairline rule
+ *     between the selection card's art panel and info zone.
+ *   - aspect-ratio 1 / 0.7 — wider than tall, matching the
+ *     PowerUpSelection CardHeader proportions (5/7 card × 48%
+ *     header flex = roughly 1.49:1 W:H). Earlier passes used
+ *     1 / 0.85 which read as "too square" with the icon
+ *     floating in too much empty colored space. Tightening the
+ *     aspect plus scaling the icon (below) makes the reveal
+ *     card read as a true minified version of the selection
+ *     card, not as a separate UI element.
+ */
+const CardArt = styled.div`
+  width: 100%;
+  aspect-ratio: 1 / 0.7;
   background: ${(p) => getTypeColor(p.$type).main};
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: clamp(6px, 0.85cqh, 9px) clamp(4px, 0.5cqw, 6px);
+  border-bottom: 1.5px solid ${C.sumi};
   box-shadow:
     inset 0 -2px 0 ${(p) => getTypeColor(p.$type).deep},
-    inset 0 1px 0 rgba(255, 255, 255, 0.2),
-    0 3px 0 rgba(0, 0, 0, 0.42),
-    0 5px 11px rgba(0, 0, 0, 0.5);
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
   position: relative;
-
-  @media (max-width: 700px) {
-    width: clamp(48px, 8.5cqw, 64px);
-    height: clamp(58px, 10.5cqh, 72px);
-  }
 `;
 
-/* YOU / OPP — above the tile; thin ink outline reads cleaner than stacked drops. */
-const TileLabel = styled.span`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 800;
-  font-size: clamp(0.5rem, 0.85cqw, 0.66rem);
-  letter-spacing: 0.3em;
-  text-transform: uppercase;
-  color: ${(p) => (p.$isLocal ? "#fff9f0" : "#ff8f82")};
-  -webkit-text-stroke: clamp(0.4px, 0.06cqw, 0.95px) rgba(12, 14, 22, 0.94);
-  paint-order: stroke fill;
-  white-space: nowrap;
+/* Icon, centered in the colored art panel.
+ *
+ * The previous pass jumped from clamp(36-50px) to clamp(52-72px)
+ * which over-corrected — the icon felt slightly oversized and
+ * crowded the colored panel. Pulling it back to clamp(44-62px)
+ * keeps the visual share of the panel similar to the selection
+ * card's icon-in-header proportion (~40% width, ~60% height) but
+ * leaves a touch more breathing room on the colored surround,
+ * which reads as "icon resting on a paint chip" rather than
+ * "icon barely contained by a paint chip." */
+const CardIcon = styled.img`
+  width: clamp(44px, 5.6cqw, 62px);
+  height: clamp(44px, 5.6cqw, 62px);
+  object-fit: contain;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.45));
+  position: relative;
+  z-index: 1;
 
   @media (max-width: 700px) {
-    font-size: clamp(0.42rem, 1.3cqw, 0.56rem);
-    letter-spacing: 0.22em;
+    width: clamp(36px, 7cqw, 50px);
+    height: clamp(36px, 7cqw, 50px);
   }
 `;
 
 /*
- * Icon, centered inside the colored tile. The tile uses
- * flex centering so no margin tricks needed — the icon just
- * sits in the middle of the colored field with the tile's
- * deep-color bottom-bevel underneath catching it.
+ * Bottom cream strip holding the power-up name. Sumi ink on
+ * cream paper, Bungee uppercase, hairline horizontal padding.
+ * No outline/stencil treatment needed since it has its own
+ * paper backing now.
+ *
+ * Washi grain matches the selection card's ::before recipe
+ * (verticals at 90deg + horizontals at 0deg, low alpha) so
+ * cream reads as printed paper rather than as a paint chip.
  */
-const TileIcon = styled.img`
-  width: clamp(38px, 4.8cqw, 52px);
-  height: clamp(38px, 4.8cqw, 52px);
-  object-fit: contain;
-  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5));
+const CardName = styled.div`
+  font-family: "Bungee", cursive;
+  font-size: clamp(0.5rem, 0.78cqw, 0.66rem);
+  color: ${C.inkText};
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  text-align: center;
+  padding: clamp(5px, 0.7cqh, 8px) clamp(4px, 0.5cqw, 6px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  position: relative;
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 2px,
+      rgba(60, 40, 20, 0.05) 2px,
+      rgba(60, 40, 20, 0.05) 3px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0,
+      transparent 4px,
+      rgba(60, 40, 20, 0.035) 4px,
+      rgba(60, 40, 20, 0.035) 5px
+    );
 
   @media (max-width: 700px) {
-    width: clamp(32px, 6.2cqw, 44px);
-    height: clamp(32px, 6.2cqw, 44px);
+    font-size: clamp(0.42rem, 1.4cqw, 0.56rem);
   }
 `;
 
-/* Power-up title — Bungee with a uniform outline (no offset “stamp” shadows). */
-const Name = styled.span`
+/*
+ * YOU / OPP tab. A small sumi cardstock plate pinned to the
+ * top edge of the card, overhanging it by ~4px so it reads as
+ * a separate printed tab clipped onto the card rather than as
+ * a banner inside it.
+ *
+ * Mirrored across the centerline: P1's tab lives on the LEFT
+ * edge of P1's card, P2's tab on the RIGHT edge of P2's card.
+ * The pair faces each other like name plates at a sumo
+ * broadcast desk, which sells the "two competitors revealed"
+ * symmetry far better than two tabs in the same corner would.
+ *
+ * Cream Bungee text on sumi plate — same contrast the in-game
+ * HUD chrome uses, so the tab feels printed on the same stock
+ * as the rank plaques.
+ */
+const PlayerTab = styled.span`
+  position: absolute;
+  top: -6px;
+  ${(p) => (p.$onLeft ? "left: -2px;" : "right: -2px;")}
+  background: ${C.sumi};
+  /* YOU stays in cream (the neutral subject — confirmation of
+     what you already know). OPP gets vermillion text on the same
+     sumi tab — the surprise of the reveal IS what the opponent
+     picked, so it earns the loud color treatment. Same tab
+     structure on both sides, color does the work. */
+  color: ${(p) => (p.$isLocal ? C.cream : C.vermillionBright)};
   font-family: "Bungee", cursive;
-  font-size: clamp(0.7rem, 1.18cqw, 0.95rem);
-  color: #fffbf5;
+  font-size: clamp(0.42rem, 0.7cqw, 0.58rem);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  line-height: 1;
-  white-space: nowrap;
-  -webkit-text-stroke: clamp(0.55px, 0.1cqw, 1.45px) rgba(12, 14, 22, 0.92);
-  paint-order: stroke fill;
+  padding: clamp(2px, 0.4cqh, 4px) clamp(5px, 0.7cqw, 8px);
+  border: 1px solid rgba(245, 236, 217, 0.18);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.5);
+  z-index: 2;
+  pointer-events: none;
 
   @media (max-width: 700px) {
-    font-size: clamp(0.6rem, 1.85cqw, 0.78rem);
+    font-size: clamp(0.38rem, 1.2cqw, 0.5rem);
+    padding: 2px 5px;
   }
 `;
 
@@ -392,26 +486,30 @@ const PowerUpReveal = ({ roomId, localId }) => {
   return createPortal(
     <RevealOverlay>
       <RevealRow>
-        {/* P1 — west-side entrance animation */}
+        {/* P1 — west-side entrance, tab on the OUTER (left) edge. */}
         <Cluster $isLeft={true} $isExiting={isExiting}>
-          <TileLabel $isLocal={isLocalP1}>
-            {isLocalP1 ? "You" : "Opp"}
-          </TileLabel>
-          <IconTile $type={revealData.player1.powerUpType}>
-            <TileIcon src={p1Info?.icon} alt={p1Info?.name} />
-          </IconTile>
-          <Name>{p1Info?.name}</Name>
+          <RevealCard>
+            <PlayerTab $onLeft={true} $isLocal={isLocalP1}>
+              {isLocalP1 ? "You" : "Opp"}
+            </PlayerTab>
+            <CardArt $type={revealData.player1.powerUpType}>
+              <CardIcon src={p1Info?.icon} alt={p1Info?.name} />
+            </CardArt>
+            <CardName>{p1Info?.name}</CardName>
+          </RevealCard>
         </Cluster>
 
-        {/* P2 — east-side entrance animation */}
+        {/* P2 — east-side entrance, tab on the OUTER (right) edge. */}
         <Cluster $isLeft={false} $isExiting={isExiting}>
-          <TileLabel $isLocal={!isLocalP1}>
-            {!isLocalP1 ? "You" : "Opp"}
-          </TileLabel>
-          <IconTile $type={revealData.player2.powerUpType}>
-            <TileIcon src={p2Info?.icon} alt={p2Info?.name} />
-          </IconTile>
-          <Name>{p2Info?.name}</Name>
+          <RevealCard>
+            <PlayerTab $onLeft={false} $isLocal={!isLocalP1}>
+              {!isLocalP1 ? "You" : "Opp"}
+            </PlayerTab>
+            <CardArt $type={revealData.player2.powerUpType}>
+              <CardIcon src={p2Info?.icon} alt={p2Info?.name} />
+            </CardArt>
+            <CardName>{p2Info?.name}</CardName>
+          </RevealCard>
         </Cluster>
       </RevealRow>
     </RevealOverlay>,

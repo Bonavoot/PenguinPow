@@ -5,14 +5,8 @@ import dohyoBg from "../assets/dohyo.png";
 
 const CROWD_STORAGE_KEY = "penguin-pow-crowd-positions";
 
-const OPACITY_MIN = 0.74;
-const OPACITY_MAX = 1.0;
-const SIZE_MIN = 2.0;
-const SIZE_MAX = 8.0;
-const computeOpacityFromSize = (size) => {
-  const t = Math.min(1, Math.max(0, (size - SIZE_MIN) / (SIZE_MAX - SIZE_MIN)));
-  return Math.round((OPACITY_MIN + t * (OPACITY_MAX - OPACITY_MIN)) * 100) / 100;
-};
+// Matches CrowdLayer: crowd is always full opacity (no size-based fade).
+const computeCrowdOpacity = () => 1;
 
 const CrowdEditor = ({ positions, crowdTypes, onClose }) => {
   const [editorPositions, setEditorPositions] = useState(
@@ -336,7 +330,7 @@ const CrowdEditor = ({ positions, crowdTypes, onClose }) => {
                 cursor: "grab",
                 zIndex: isSelected ? 10000 : Math.floor(100 - member.y) + 2,
                 pointerEvents: "auto",
-                opacity: computeOpacityFromSize(member.size),
+                opacity: computeCrowdOpacity(),
               }}
               onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e, member.id); }}
               onWheel={(e) => handleWheel(e, member.id)}
@@ -425,7 +419,7 @@ const CrowdEditor = ({ positions, crowdTypes, onClose }) => {
             <div>size (code): <span style={{ color: "#ff0" }}>
               {Math.round((selectedMember.size / (selectedMember.sizeMultiplier || 1)) * 100) / 100}
             </span></div>
-            <div>opacity: {computeOpacityFromSize(selectedMember.size)}</div>
+            <div>opacity: {computeCrowdOpacity()}</div>
             <div>flip: {selectedMember.flip ? "yes" : "no"}</div>
           </div>
         ) : (

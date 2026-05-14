@@ -380,13 +380,8 @@ body {
   --border-w: clamp(2px, 0.16cqw, 4px);
 
   /* ── Visual grading — clean contrast hierarchy ──
-     Crowd shadow (set on CrowdContainer in CrowdLayer.jsx) does the heavy
-     lifting for the "spotlight on the dohyo" feel. Dohyo gets a tiny warm
-     bias here (sepia + slight hue rotate) so it still reads as "lit from
-     overhead" even though its brightness is just under 1.0 — warmth sells
-     the spotlight more convincingly than raw brightness does, and it
-     prevents the dohyo from blowing out and stealing color from the
-     fighters/crowd. */
+     Crowd lighting is per-sprite (Y-based broadcast grade in CrowdLayer.jsx).
+     Dohyo: slight warm bias so the ring still reads spot-lit without blowing out. */
   --arena-map-filter: brightness(0.82) saturate(0.88) contrast(1.02);
   --dohyo-filter: brightness(0.97) saturate(1.05) contrast(1.06) sepia(0.05) hue-rotate(-5deg);
 
@@ -394,6 +389,28 @@ body {
   --cam-scale: 1.305;
   --cam-x: 0px;
   --cam-y: 0px;
+}
+
+/* ── Screen-space cinematic vignette ──────────────────────────────────────
+   Sits above the camera-transformed .game-scene (z-index 198, below the HUD
+   at 200). Because it lives on .game-container, it does NOT move with cam
+   shake or zoom — the world shakes *inside* a steady frame, which reads as
+   cinematic letterboxing instead of "everything is shaking together".
+   Pointer-events disabled so HUD interaction still works through it. Kept
+   intentionally soft so it stacks safely with the arena-lighting and crowd
+   vignettes without blacking the corners out. */
+.game-container::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 198;
+  background: radial-gradient(
+    ellipse 95% 86% at 50% 50%,
+    transparent 60%,
+    rgba(0, 0, 0, 0.13) 88%,
+    rgba(0, 0, 0, 0.26) 100%
+  );
 }
 
 /* ── Camera scene: everything that moves with pan/zoom lives here ── */
@@ -509,27 +526,34 @@ body {
   filter: blur(12px);
 }
 
-/* Single consolidated lighting pass — warm spotlight + clean vignette.
-   The warm cone is tightened and slightly strengthened so the dohyo still
-   reads as "spotlit from above" even though the dohyo's own brightness was
-   reined in (--dohyo-filter). The vignette is unchanged. */
+/* Single consolidated lighting pass — warm spotlight + clean vignette */
+/* Arena spotlight + edge darkening. Phase 1 brightens the ring spot a touch
+   and pulls the falloff in slightly so the playable area sits in light while
+   the surroundings recede. Kept moderate because the screen-space vignette
+   (.game-container::after) and the crowd-internal vignette (CrowdLayer
+   ::after) also contribute to edge darkening; if all three are stacked at
+   their maximum the corners go too dark and the picture loses depth. */
 .arena-lighting {
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 6;
   background:
+    /* Stage-spot pool centered on the ring — slightly stronger than original
+       so the dohyo reads as lit. */
     radial-gradient(
       ellipse 52% 44% at 50% 54%,
-      rgba(255, 240, 205, 0.11) 0%,
-      rgba(255, 236, 195, 0.05) 32%,
-      transparent 62%
+      rgba(255, 240, 205, 0.14) 0%,
+      rgba(255, 236, 195, 0.06) 32%,
+      transparent 60%
     ),
+    /* Edge darkening — modestly stronger than original. The bulk of the
+       cinematic frame effect comes from the screen-space vignette instead. */
     radial-gradient(
       ellipse at 50% 50%,
-      transparent 35%,
-      rgba(0, 0, 0, 0.2) 68%,
-      rgba(0, 0, 0, 0.48) 100%
+      transparent 33%,
+      rgba(0, 0, 0, 0.24) 66%,
+      rgba(0, 0, 0, 0.54) 100%
     );
 }
 
@@ -1029,13 +1053,30 @@ body {
 
 .gyoji {
   position: absolute;
-  left: 41.4%;
+  /* Slightly inset from the old 41.4% so the smaller gyoji stays
+     horizontally centered on the dohyo (old: 41.4% + 17.33%/2 = 50.07%;
+     new: 42.0% + 16%/2 = 50.00%). */
+  left: 42%;
   bottom: 48.5%;
-  width: 17.33%;
+  /* Phase 2: width pulled in from 17.33% → 16% (~7.7% smaller). Keeps the
+     gyoji authentically taller than the wrestlers — as he is in real sumo —
+     while reducing the amount of vertical screen real estate he occupies
+     between the fighters. transform-origin is center-bottom, so the
+     reduction comes off the top of the figure; his feet stay planted on
+     the dohyo and the breathing animation continues to scale from his feet. */
+  width: 16%;
   height: auto;
   z-index: 2;
   pointer-events: none;
   transform-origin: center bottom;
+  /* Subtle color harmonisation with the new arena lighting. The bright
+     green-and-gold kimono read 1.5–2 stops brighter than the spot-lit ring
+     after Phase 1, pulling focus. A small saturation + contrast pull-down
+     dials him back into the same lighting environment as the wrestlers
+     without dimming him so far that he reads as "in shadow". Applied at
+     the element level so all gyoji states (idle / ready / win / hakkiyoi
+     GIF) inherit the grade uniformly. */
+  filter: saturate(0.88) contrast(0.97);
 }
 
 /* Subtle idle animation for gyoji - gentle stretch from feet */

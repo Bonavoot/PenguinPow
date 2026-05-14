@@ -90,32 +90,9 @@ const preloadCrowdImages = () => {
 // Execute preload immediately when module loads
 preloadCrowdImages();
 
-// Container for the entire crowd layer.
-//
-// LIGHTING NOTE — why this is built the way it is:
-//
-// The crowd sits in shadow while the dohyo is lit from above. The naive way
-// to "darken the crowd" is a flat black overlay (we used to have one at
-// rgba(0,0,0,0.18)), but that washes every color toward gray and kills the
-// poppy palette we worked hard to build into the sprites.
-//
-// Instead we do the darkening with a CSS `filter` chain on the container:
-//   - `brightness(0.6)` drops the luminance by ~40% — enough that the dohyo
-//     reads as the visually dominant focal point
-//   - `saturate(1.22)` *boosts* chroma to counteract the perceptual
-//     desaturation that comes with low brightness. Net effect: the crowd
-//     ends up darker AND more colorful than the original, which is the
-//     classic look of a stage in shadow vs. spotlight.
-//   - `contrast(1.04)` adds a touch of bite so the rim-lit silhouettes
-//     still feel three-dimensional in the shadow.
-//
-// On top of that, the ::after is repurposed from a flat sheet into a soft
-// radial vignette with a cool deep-navy tint. The vignette is clear in the
-// region directly around the dohyo (so the front rows "catch" some spill
-// from the spotlight) and darkens toward the corners of the arena where the
-// nosebleed seats would naturally fall into the deepest shadow. The cool
-// tint plays against the warm spotlight on the dohyo for cinematic
-// warm/cool color contrast.
+// Container for the entire crowd layer. Per-sprite broadcast-style grading lives in
+// `computeCrowdLightingFilter` (Y-based: ringside warmer/brighter, upper deck cooler/darker).
+// ::before: subtle warm floor bounce toward the ring. ::after: soft corner vignette.
 const CrowdContainer = styled.div`
   position: absolute;
   top: 0;
@@ -125,17 +102,34 @@ const CrowdContainer = styled.div`
   pointer-events: none;
   z-index: 0; /* Between game map background (-1) and dohyo overlay (1) */
   contain: layout style paint;
-  filter: brightness(0.6) saturate(1.22) contrast(1.04);
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      0deg,
+      rgba(255, 232, 200, 0.14) 0%,
+      rgba(255, 240, 215, 0.05) 22%,
+      transparent 48%
+    );
+    pointer-events: none;
+    z-index: -1;
+  }
 
   &::after {
     content: '';
     position: absolute;
     inset: 0;
+    /* Crowd-internal vignette — slightly stronger than the original so the
+       crowd self-darkens toward the periphery, but kept moderate so the back
+       rows don't read as a muddy void. The heavier "push the crowd back" work
+       is shared with the screen-space vignette on .game-container::after. */
     background: radial-gradient(
-      ellipse 78% 68% at 50% 56%,
+      ellipse 80% 70% at 50% 56%,
       rgba(0, 0, 0, 0) 28%,
-      rgba(10, 14, 30, 0.22) 78%,
-      rgba(6, 10, 26, 0.38) 100%
+      rgba(10, 14, 30, 0.20) 76%,
+      rgba(6, 10, 26, 0.40) 100%
     );
     pointer-events: none;
     z-index: 9999;
@@ -218,20 +212,62 @@ const CrowdMember = styled.img.attrs((props) => ({
   ${(props) => props.$shouldAnimate ? "will-change: transform;" : ""}
 `;
 
-// Compute opacity from member size for depth fade effect.
-// Bigger members (closer) are more opaque, smaller ones (farther) fade out.
-const OPACITY_MIN = 0.74;
-const OPACITY_MAX = 1.0;
-const SIZE_MIN = 2.0;
-const SIZE_MAX = 8.0;
-const computeOpacityFromSize = (size) => {
-  const t = Math.min(1, Math.max(0, (size - SIZE_MIN) / (SIZE_MAX - SIZE_MIN)));
-  return Math.round((OPACITY_MIN + t * (OPACITY_MAX - OPACITY_MIN)) * 100) / 100;
-};
+// Crowd sprites stay fully opaque. A size-based alpha (old min 0.74) on top of broadcast
+// grading made small / back rows look washed and blurry; depth is scale + lighting, not alpha.
+const computeCrowdOpacity = () => 1;
 
 // Runtime filter only for non-cheering special members (oyakata) whose src never
 // changes, so the compositor-layer cost is a one-time static expense.
 const OYAKATA_FILTER = "brightness(0.45) saturate(0.62) contrast(0.90)";
+
+// `member.y` is CSS bottom % — low values sit near the ring (TV key/fill reads brighter
+// and slightly warmer), high values are upper deck (less light, cooler shadow).
+const CROWD_ROW_Y_NEAR = 6;
+const CROWD_ROW_Y_FAR = 90;
+
+const rowDepthT = (y) => {
+  const t = (y - CROWD_ROW_Y_NEAR) / (CROWD_ROW_Y_FAR - CROWD_ROW_Y_NEAR);
+  return Math.min(1, Math.max(0, t));
+};
+
+// Broadcast-style crowd grade: ringside pops; nosebleeds fall off without one flat wash.
+//
+// IMPORTANT: this filter is intentionally *gentle* on the sprites themselves —
+// crushing contrast, blurring, or hammering saturation here destroys the clean
+// line work of the hand-graded sprites and turns faces into pale blobs. The
+// heavy "push the crowd back" lifting is done by overlays (the CrowdContainer
+// ::after vignette and the .game-container::after screen-space vignette in
+// App.css), not by filter-mutilating each sprite. Keep this pass conservative.
+const computeCrowdLightingFilter = (y, { foreground = false } = {}) => {
+  const t = rowDepthT(y);
+  const ringside = 1 - t;
+  // Mild brightness gradient — back rows sit a touch dimmer than ringside.
+  const brightness = 0.61 + ringside * 0.27;       // 0.61 (far) → 0.88 (near)
+  // Gentle saturation gradient. Ringside pops, back-row clothing stays slightly
+  // less candy-bright. NEVER drop below ~0.85 or skin tones go grey.
+  const saturate = 0.92 + ringside * 0.18;          // 0.92 → 1.10
+  // Keep contrast at ~original. Pulling this down was what turned faces into
+  // grey blobs in the first revision — leave it alone.
+  const contrast = 1.03;
+  // Slight ringside warmth (TV stage-light tint).
+  const sepia = ringside * 0.045;
+  const hueRotate = ringside * -5.5;
+
+  const parts = [
+    `brightness(${brightness.toFixed(3)})`,
+    `saturate(${saturate.toFixed(3)})`,
+    `contrast(${contrast.toFixed(2)})`,
+  ];
+  if (sepia >= 0.01) {
+    parts.push(`sepia(${sepia.toFixed(3)})`, `hue-rotate(${hueRotate.toFixed(1)}deg)`);
+  }
+  let s = parts.join(" ");
+  // Foreground (closest-to-camera) crowd: a touch dimmer so the side-aisle
+  // figures don't compete with the fighters. Kept light enough that they
+  // still read as "people watching", not silhouettes.
+  if (foreground) s = `${s} brightness(0.85)`;
+  return s;
+};
 
 // Crowd member types - easily expandable for future additions
 // sizeMultiplier adjusts for different image dimensions to keep them uniform
@@ -577,7 +613,8 @@ const CrowdLayer = ({ crowdEvent = null }) => {
 
       let filter = "none";
       if (needsFilter) filter = OYAKATA_FILTER;
-      else if (darken) filter = "brightness(0.82)";
+      else if (darken) filter = computeCrowdLightingFilter(member.y, { foreground: true });
+      else filter = computeCrowdLightingFilter(member.y);
 
       return (
         <CrowdMember
@@ -588,7 +625,7 @@ const CrowdLayer = ({ crowdEvent = null }) => {
           $y={member.y}
           $size={member.size}
           $flip={member.flip}
-          $opacity={computeOpacityFromSize(member.size)}
+          $opacity={computeCrowdOpacity()}
           $filter={filter}
           $animOffset={animOffset}
           $shouldAnimate={shouldAnimate}

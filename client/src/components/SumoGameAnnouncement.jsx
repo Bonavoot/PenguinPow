@@ -12,26 +12,55 @@ export const ANNOUNCE_Y = "clamp(100px, 28cqh, 190px)";
 // ANIMATIONS
 // ============================================
 
-// ── HAKKIYOI: explosive slam entrance ──
+/* HAKKI-YOI — scale punch-in, no rebound.
+ *
+ * Iteration history on this animation:
+ *   v1 (original): scale 2.8 → 0.88 → 1.14 → 0.96 → 1.03 → 1.0
+ *                  with a rotation wobble. Five overshoots before
+ *                  settling. Cartoon-fighter squash-and-stretch.
+ *   v2 (clip-path): single left-to-right clip-path calligraphy
+ *                  reveal. No scale, no translate. Read as boring
+ *                  and lifeless — wipes don't have weight.
+ *   v3 (this):     scale 1.18 → 1.0 with sharp ease-out and NO
+ *                  rebound past 1.0. The text PUNCHES into its
+ *                  final size in ~160ms then holds. That's the
+ *                  weight v2 was missing without the cartoon
+ *                  rebound v1 had.
+ *
+ * The bezier on the animation property is cubic-bezier(0.16, 1,
+ * 0.3, 1) — the "out-expo"-style decel curve. It starts fast and
+ * decelerates aggressively into the final value. Critically, it
+ * never overshoots 1.0, so the scale snaps cleanly to its final
+ * size with no rubber-band rebound — that's the difference between
+ * "weighted impact" and "boingy cartoon".
+ *
+ * HAKKI-YOI is the BOUT-START call — the moment of energy release
+ * when both wrestlers explode out of their crouch. Scale-driven
+ * entry matches that release-of-energy feel. */
 const slamIn = keyframes`
-  0%   { opacity: 0; transform: translate(-50%, -50%) scale(2.8) rotate(-5deg); }
-  10%  { opacity: 1; transform: translate(-50%, -50%) scale(0.88) rotate(2deg); }
-  18%  { transform: translate(-50%, -50%) scale(1.14) rotate(-1deg); }
-  26%  { transform: translate(-50%, -50%) scale(0.96) rotate(0.5deg); }
-  34%  { transform: translate(-50%, -50%) scale(1.03) rotate(0deg); }
-  44%  { transform: translate(-50%, -50%) scale(1) rotate(0deg); }
-  78%  { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
-  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.1) rotate(0deg); }
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(1.18); }
+  9%   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  80%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
 `;
 
-// ── TE WO TSUITE: quiet slide-in ──
+/* TE WO TSUITE — quiet rise.
+ *
+ * Te-wo-tsuite is the call before the bout: both wrestlers crouch
+ * into starting position and put their hands on the ground. It's a
+ * moment of held breath, not action. The motion should reflect that:
+ * the text rises gently into its final position over ~360ms and
+ * holds. No scale, no rotation, no rebound. Pure positional motion.
+ *
+ * Distinct from HAKKI-YOI (scale punch-in) and RoundResult (stamp
+ * impression) — using a translate-only entrance here gives each
+ * round-state call its own motion axis instead of layering the same
+ * choreography three times. */
 const slideIn = keyframes`
-  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.7); clip-path: inset(0 100% 0 0); }
-  22%  { opacity: 1; transform: translate(-50%, -50%) scale(1.05); clip-path: inset(0 0% 0 0); }
-  32%  { transform: translate(-50%, -50%) scale(0.98); }
-  42%  { transform: translate(-50%, -50%) scale(1); }
-  78%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
+  0%   { opacity: 0; transform: translate(-50%, calc(-50% + 10px)); }
+  18%  { opacity: 1; transform: translate(-50%, -50%); }
+  80%  { opacity: 1; transform: translate(-50%, -50%); }
+  100% { opacity: 0; transform: translate(-50%, -50%); }
 `;
 
 // ── Screen flash ──
@@ -59,13 +88,6 @@ const fadeIO = keyframes`
   28%  { opacity: 1; }
   75%  { opacity: 1; }
   100% { opacity: 0; }
-`;
-
-// ── Ice crystal float ──
-const crystalDrift = keyframes`
-  0%   { transform: translateY(0) rotate(0deg) scale(1); opacity: 0.9; }
-  50%  { opacity: 0.6; }
-  100% { transform: translateY(-70px) rotate(50deg) scale(0.15); opacity: 0; }
 `;
 
 // ── Dark vignette behind HAKKIYOI text for contrast ──
@@ -149,35 +171,16 @@ const DarkVignette = styled.div`
   }
 `;
 
-/* Warm ceremonial haze — premium gold lift without feeling like HUD geometry */
-const CeremonialGlow = styled.div`
-  position: absolute;
-  top: ${ANNOUNCE_Y};
-  left: 50%;
-  width: clamp(320px, 45cqw, 560px);
-  height: clamp(86px, 12cqh, 140px);
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 1002;
-  background: radial-gradient(
-    ellipse at center,
-    rgba(255, 215, 0, 0.22) 0%,
-    rgba(255, 191, 0, 0.12) 28%,
-    rgba(255, 191, 0, 0.04) 50%,
-    transparent 76%
-  );
-  filter: blur(14px);
-  animation: ${vignettePulse} ${(p) => p.$duration} ease-out forwards;
-
-  @media (max-width: 900px) {
-    width: clamp(250px, 42cqw, 440px);
-    height: clamp(68px, 10cqh, 110px);
-  }
-  @media (max-width: 600px) {
-    width: clamp(190px, 38cqw, 320px);
-    height: clamp(54px, 8.5cqh, 90px);
-  }
-`;
+/* The ceremonial gold haze used to live here as a second blurred
+ * radial gradient stacked on top of DarkVignette. Two stacked blurred
+ * radials sitting concentric is the canonical "AI-rendered hero shot"
+ * fingerprint — it's what every templated fighting-game/3D-render
+ * intro that's never been art-directed reaches for. Removed entirely;
+ * the HakkiyoiBrush below the text already carries the gold band that
+ * this haze was duplicating, and the warm color on the HakkiyoiText
+ * is more than enough warmth in the frame without a halo around it.
+ * Keeping DarkVignette alone gives the call its grounding without
+ * the AI-rendered double-glow signature. */
 
 /* Impact streaks — support the slam without reading like a reticle */
 const ImpactLine = styled.div`
@@ -271,16 +274,25 @@ const HakkiyoiText = styled.div`
   color: #ffd700;
   -webkit-text-stroke: clamp(1.5px, 0.25cqw, 3px) #3d0e0e;
 
+  /* The gold halo glow that used to live here as the first two
+   * shadows (0 0 8px gold @ 0.6, 0 0 20px gold @ 0.3) is removed.
+   * Two stacked gold blur halos around bright gold text on a dark
+   * vignette is the canonical AI-generated fighting-game intro
+   * fingerprint — every templated render uses this exact recipe.
+   * The hard sumi stencil stroke + the hard offset shadow stack
+   * below it already do the broadcast-callout work; the halo was
+   * pure AI-tell noise on top of it. */
   text-shadow:
-    0 0 8px rgba(255, 215, 0, 0.6),
-    0 0 20px rgba(255, 180, 0, 0.3),
     clamp(3px, 0.24cqw, 6px) clamp(3px, 0.24cqw, 6px) 0 #200404,
     5px 5px 0 rgba(20, 4, 4, 0.7),
     7px 7px 0 rgba(20, 4, 4, 0.4),
     0 2px 8px rgba(0, 0, 0, 0.8);
 
+  /* Sharp out-expo decel so the scale snaps to 1.0 without rebounding
+     past it — the "weighted impact" curve. See slamIn keyframes
+     comment for the full motion rationale. */
   animation: ${css`
-      ${slamIn}`} ${(p) => p.$duration} cubic-bezier(0.22, 0.61, 0.36, 1)
+      ${slamIn}`} ${(p) => p.$duration} cubic-bezier(0.16, 1, 0.3, 1)
     forwards;
 
   @media (max-width: 900px) {
@@ -321,25 +333,47 @@ const HakkiyoiKanji = styled.div`
   }
 `;
 
-/* Ice crystal particle */
-const IceCrystal = styled.div`
+/* Sumi-ink flecks beside the brushstroke.
+ *
+ * Replaces the previous "5 floating ice crystals that drift up, rotate,
+ * and fade out" particle system. That particle system was THE textbook
+ * AI-UI fighting-game fingerprint — floating motes that radiate from
+ * text on impact. Every AI-generated fighting game intro has them, and
+ * they pull the design straight into the "generic templated render"
+ * category the rest of this game's UI works hard to stay out of.
+ *
+ * What we want instead: the brush already exists below the text as a
+ * hand-painted gold band. A real hand-painted brushstroke flicks small
+ * ink flecks at its endpoints — that's a physical fact of bristle on
+ * paper, not a stylization. So we add two anchored gold flecks that
+ * APPEAR (clip-reveal in) at the brush endpoints, settle, and fade
+ * with the call. They never drift, never rotate, never animate after
+ * landing. Hand-made, not particle-system. Two flecks total — anything
+ * more starts to look intentional in the wrong way. */
+const InkFleck = styled.div`
   position: absolute;
-  top: ${ANNOUNCE_Y};
+  top: calc(${ANNOUNCE_Y} + clamp(20px, 3.3cqh, 42px));
+  left: 50%;
   pointer-events: none;
-  z-index: 1005;
-  width: ${(p) => p.$size || "5px"};
-  height: ${(p) => p.$size || "5px"};
-  border-radius: 2px;
-  transform: rotate(45deg);
-  left: ${(p) => p.$x || "50%"};
-  margin-top: ${(p) => p.$yOff || "0px"};
-  opacity: 0;
+  z-index: 1003;
+  width: ${(p) => p.$size};
+  height: calc(${(p) => p.$size} * 0.55);
+  /* Irregular blob shape via asymmetric border-radius — the same
+     technique HakkiyoiBrush uses to read as a hand-painted shape
+     rather than a div. Mirrored per side via two corner sets. */
+  border-radius: ${(p) =>
+    p.$side === "left"
+      ? "60% 20% 50% 80% / 70% 30% 60% 40%"
+      : "20% 60% 80% 40% / 30% 70% 40% 60%"};
+  margin-left: ${(p) => p.$offsetX};
+  background: rgba(255, 215, 0, ${(p) => p.$alpha});
+  filter: blur(0.5px);
 
-  background: radial-gradient(circle, #e0f2fe 0%, #38bdf8 50%, #0284c7 100%);
-  box-shadow: 0 0 4px rgba(56, 189, 248, 0.5);
-
-  animation: ${crystalDrift} ${(p) => p.$dur || "1.2s"} ease-out forwards;
-  animation-delay: ${(p) => p.$delay || "0.15s"};
+  /* Brush-reveal in, settle, brush-reveal out — same beat as the
+     HakkiyoiBrush itself so the flecks read as part of the same
+     brushstroke event. */
+  animation: ${brushReveal} ${(p) => p.$duration} ease-out forwards;
+  animation-delay: ${(p) => p.$delay};
 `;
 
 // ============================================
@@ -464,53 +498,6 @@ const SumoGameAnnouncement = ({ type = "hakkiyoi", duration = null }) => {
     [],
   );
 
-  // Ice crystal particles (HAKKIYOI)
-  const crystals = useMemo(
-    () => [
-      {
-        id: 0,
-        x: "calc(50% - 80px)",
-        yOff: "10px",
-        size: "5px",
-        delay: "0.18s",
-        dur: "1.1s",
-      },
-      {
-        id: 1,
-        x: "calc(50% - 35px)",
-        yOff: "-5px",
-        size: "6px",
-        delay: "0.24s",
-        dur: "1.3s",
-      },
-      {
-        id: 2,
-        x: "50%",
-        yOff: "12px",
-        size: "4px",
-        delay: "0.14s",
-        dur: "1.0s",
-      },
-      {
-        id: 3,
-        x: "calc(50% + 40px)",
-        yOff: "-3px",
-        size: "6px",
-        delay: "0.28s",
-        dur: "1.2s",
-      },
-      {
-        id: 4,
-        x: "calc(50% + 85px)",
-        yOff: "8px",
-        size: "5px",
-        delay: "0.20s",
-        dur: "1.35s",
-      },
-    ],
-    [],
-  );
-
   // ─── HAKKIYOI ───
   if (type === "hakkiyoi") {
     return (
@@ -518,7 +505,6 @@ const SumoGameAnnouncement = ({ type = "hakkiyoi", duration = null }) => {
         <ScreenFlash $type="hakkiyoi" />
 
         <DarkVignette $duration={durationStr} />
-        <CeremonialGlow $duration={durationStr} />
         {impactLines.map((line, i) => (
           <ImpactLine
             key={i}
@@ -532,16 +518,26 @@ const SumoGameAnnouncement = ({ type = "hakkiyoi", duration = null }) => {
         <HakkiyoiBrush $duration={durationStr} />
         <HakkiyoiKanji $duration={durationStr}>八卦良い</HakkiyoiKanji>
 
-        {crystals.map((c) => (
-          <IceCrystal
-            key={c.id}
-            $x={c.x}
-            $yOff={c.yOff}
-            $size={c.size}
-            $delay={c.delay}
-            $dur={c.dur}
-          />
-        ))}
+        {/* Two anchored gold ink flecks at the brush endpoints. See
+            InkFleck comment for why this replaced the ice-crystal
+            particle system. Positions deliberately asymmetric — a
+            real brushstroke doesn't flick evenly. */}
+        <InkFleck
+          $side="left"
+          $size="clamp(7px, 1.05cqw, 13px)"
+          $offsetX="clamp(-180px, -22cqw, -130px)"
+          $alpha={0.55}
+          $duration={durationStr}
+          $delay="0.08s"
+        />
+        <InkFleck
+          $side="right"
+          $size="clamp(5px, 0.85cqw, 10px)"
+          $offsetX="clamp(130px, 22cqw, 180px)"
+          $alpha={0.42}
+          $duration={durationStr}
+          $delay="0.14s"
+        />
       </>
     );
   }

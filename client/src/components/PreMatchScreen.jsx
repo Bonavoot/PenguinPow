@@ -615,16 +615,23 @@ const RankPlaque = styled.div`
     inset 0 -1px 3px rgba(0, 0, 0, 0.32);
 `;
 
+/* MUST match `RankText` in `UiPlayerInfo.jsx`. Both surfaces are the
+ * same identity tag for the same wrestler — they need to render in the
+ * same color family, at the same scale, with the same glow weight. See
+ * the long comment on the in-game RankText for why the gold was pulled
+ * off the previous candy-warm #ffe56c onto the canonical saffron
+ * `C.gold` (#e8c547) and the halo alphas were softened. Keep these two
+ * blocks in lockstep when you tune either. */
 const RankText = styled.span`
   font-family: "Bungee", cursive;
   font-size: clamp(10px, 1.2cqw, 14px);
-  color: #ffe56c;
+  color: ${C.gold};
   text-transform: uppercase;
   letter-spacing: 0.16em;
   line-height: 1;
   text-shadow:
-    0 0 10px rgba(232, 197, 71, 0.5),
-    0 0 4px rgba(232, 197, 71, 0.55),
+    0 0 8px rgba(232, 197, 71, 0.35),
+    0 0 3px rgba(232, 197, 71, 0.3),
     0 1px 3px rgba(0, 0, 0, 0.9);
   white-space: nowrap;
 `;
@@ -632,10 +639,10 @@ const RankText = styled.span`
 const RankDiamond = styled.span`
   width: 4px;
   height: 4px;
-  background: #ffe56c;
+  background: ${C.gold};
   transform: rotate(45deg);
   flex-shrink: 0;
-  box-shadow: 0 0 4px rgba(232, 197, 71, 0.55);
+  box-shadow: 0 0 3px rgba(232, 197, 71, 0.4);
 `;
 
 const WrestlerImageWrap = styled.div`

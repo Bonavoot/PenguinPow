@@ -333,11 +333,40 @@ const chevronScrollLeft = keyframes`
 `;
 
 /* Slow horizontal drift on the gassed slash overlay — keeps the strain
- * pattern alive without being twitchy. 18s sweep, opacity holds steady
- * so it doesn't flicker. */
+ * pattern alive without being twitchy.
+ *
+ * IMPORTANT — implementation note. This used to animate
+ * `background-position-x` on the gradient itself, which had two
+ * problems on the gassed lane:
+ *
+ *   1) Layer thrash. The parent (GassedBackdrop) is already animating
+ *      a `filter` (gassedAlarmPulse, 0.78s) and the BarFrame above
+ *      that is animating ANOTHER `filter` (gassedFramePulse, 1.6s).
+ *      Both filters force composited layers. Animating background-
+ *      position on a descendant of those layers forces a full repaint
+ *      of the filtered surface every frame, which the compositor
+ *      then re-rasterizes with the active filter. The result on
+ *      lower-end machines and even on capable ones is a frame-rate-
+ *      coupled wobble — the slashes appear to micro-stutter or
+ *      "glitch" in time with the strobe.
+ *
+ *   2) Subpixel resampling. background-position interpolation feeds
+ *      a fractional offset into the gradient, which the renderer
+ *      re-samples on each paint. The resampled bands subtly shift
+ *      between adjacent paints and read as flicker on the thin
+ *      (3px) slash strokes.
+ *
+ * Switched to `transform: translate3d` on a widened ::before. The
+ * gradient itself never moves relative to the ::before — the
+ * RASTERIZED ::before layer is shifted by the compositor, which is
+ * (a) GPU-accelerated, (b) does not repaint, (c) does not re-sample
+ * the gradient, and (d) does not collide with the parent's filter
+ * compositing. Loop math is identical: -22px ≈ one full X-period of
+ * the -55deg / 18px-axis stripe pattern, so the visible window at
+ * translateX(-22px) matches translateX(0) and the loop is seamless. */
 const gassedSlashDrift = keyframes`
-  from { background-position: 0 0; }
-  to   { background-position: 36px 0; }
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(-22px, 0, 0); }
 `;
 
 /* Hanko stamp impression for the GASSED text plate — single landing.
@@ -531,16 +560,31 @@ const RankPlaque = styled.div`
     inset 0 -1px 3px rgba(0, 0, 0, 0.32);
 `;
 
+/* Rank text — aged saffron gold on lacquered ink plate.
+ *
+ * Previously painted in #ffe56c, a candy-warm yellow that read as neon
+ * once the arena around it darkened in Phase 1. The plaque started
+ * fighting the stamina bar and the power-up slot for attention from
+ * an off-axis position on the HUD.
+ *
+ * Pulled to ${C.gold} (#e8c547) — the canonical menu/prematch saffron.
+ * Same temperature family, but darker and more amber, so it reads as
+ * tarnished gold-leaf on dark lacquer rather than a glowing yellow LED.
+ * Halo softened (alphas 0.5 → 0.35, 0.55 → 0.30) so the plate settles
+ * into the HUD as a quiet identity tag instead of a beacon. Font cap
+ * dropped to 14px to match the prematch RankText exactly — the two
+ * surfaces should print at the same scale so the wrestler sees the
+ * same plaque they were assigned at character select. */
 const RankText = styled.div`
   font-family: "Bungee", cursive;
-  font-size: clamp(10px, 1.4cqw, 17px);
-  color: #ffe56c;
+  font-size: clamp(10px, 1.2cqw, 14px);
+  color: ${C.gold};
   text-transform: uppercase;
   letter-spacing: 0.16em;
   line-height: 1;
   text-shadow:
-    0 0 10px rgba(232, 197, 71, 0.5),
-    0 0 4px rgba(232, 197, 71, 0.55),
+    0 0 8px rgba(232, 197, 71, 0.35),
+    0 0 3px rgba(232, 197, 71, 0.3),
     0 1px 3px rgba(0, 0, 0, 0.9);
   white-space: nowrap;
 `;
@@ -1135,11 +1179,30 @@ const GassedBackdrop = styled.div`
      larger strokes than typical hazard tape so it reads as
      deliberate brushwork at HUD scale instead of fine pinstripes.
      Lives as ::before of the backdrop so it inherits the alarm
-     pulse along with the wash beneath it. */
+     pulse along with the wash beneath it.
+     
+     Geometry:
+     - width: calc(100% + 44px) extends the layer two X-periods past
+       the right edge of the parent. The drift animates a leftward
+       translateX of one X-period (22px) per cycle, so the buffer
+       guarantees the right edge of the pattern never enters the
+       visible viewport at any animation frame. No "torn off" edge
+       visible mid-drift.
+     - left: 0 anchors the layer; the buffer hangs off the right.
+       Parent (GassedBackdrop, inset:0 inside BarTrack which has
+       overflow: hidden) clips the overhang so it never paints past
+       the bar's rounded corners.
+     - will-change: transform promotes this to its own GPU layer so
+       the translate is a pure composite operation. The repeating-
+       gradient is rasterized once when the layer is laid out, then
+       transformed each frame without ever being re-sampled. */
   &::before {
     content: "";
     position: absolute;
-    inset: 0;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: calc(100% + 44px);
     background-image: repeating-linear-gradient(
       -55deg,
       rgba(20, 4, 4, 0) 0px,
@@ -1149,7 +1212,14 @@ const GassedBackdrop = styled.div`
       rgba(20, 4, 4, 0) 12px,
       rgba(20, 4, 4, 0) 18px
     );
-    animation: ${gassedSlashDrift} 6s linear infinite;
+    /* 5s per cycle of one X-period (22px). With the layer now GPU-
+       composited via translate3d, the cycle is mathematically and
+       visually seamless — the compositor shows the rasterized
+       gradient at the new sub-pixel offset each frame without any
+       re-rasterization or re-sampling. */
+    animation: ${gassedSlashDrift} 5s linear infinite;
+    will-change: transform;
+    backface-visibility: hidden;
     pointer-events: none;
   }
 `;
@@ -1593,7 +1663,42 @@ const BarRow = styled.div`
  *   - no corner rivets
  *
  * The slot's tinted background gradient + the icon do all the work
- * of communicating which power-up is equipped. */
+ * of communicating which power-up is equipped.
+ *
+ * One-shot activation pulse:
+ * The slot does a single soft scale + brightness pulse the moment a
+ * new power-up is assigned to it. This is the smallest possible
+ * "you've been handed a new tool" beat — not an infinite glow, not
+ * a particle burst, not a flashing border. Just one settle. It
+ * exists because without it the icon would silently appear in the
+ * slot during the round-start sequence and the player might never
+ * register that the slot changed state.
+ *
+ * Triggering: the JSX render sites pass a stable `key` derived from
+ * the active power-up name. When the power-up changes (null → snowball,
+ * or snowball → pumo_army between matches), React unmounts the slot
+ * and mounts a new one — which re-runs the `slotMountPulse` keyframe
+ * from scratch. When only the cooldown state changes within a single
+ * power-up, the key is unchanged, no remount happens, no pulse runs.
+ * Empty slots ($active falsy) opt out of the animation entirely. */
+/* Activation pulse — confident landing, no overshoot.
+ *
+ * First pass used a cubic-bezier(0.34, 1.56, 0.64, 1) overshoot that
+ * rebounded past 1.0 to 1.05 before settling. That was the same
+ * cartoon-physics rubber-band vocabulary the round announcement
+ * animations were using, and on a HUD element it reads as the slot
+ * "boinging" into place — wrong tone for a sumo broadcast UI.
+ *
+ * New recipe: one ease-out from 0.94 → 1.0 with a brightness flash
+ * from 1.35 → 1.0. The element grows into its final scale and the
+ * brightness drops off — reads as "this slot just lit up" rather
+ * than "this slot bounced in". 0.35s total, fast enough to not
+ * pull focus away from gameplay, slow enough to be felt. */
+const slotMountPulse = keyframes`
+  0%   { transform: scale(0.94); filter: brightness(1.35); }
+  100% { transform: scale(1);    filter: brightness(1); }
+`;
+
 const PowerUpSlot = styled.div`
   display: flex;
   align-items: center;
@@ -1646,6 +1751,17 @@ const PowerUpSlot = styled.div`
     position: relative;
     z-index: 1;
   }
+
+  /* Activation pulse — fires once on mount of an active slot (see the
+     comment above the styled-component for triggering details). Empty
+     slots skip the animation entirely; otherwise every empty slot in
+     the match would also pulse on its first appearance, which would
+     be the opposite of the signal we want. */
+  ${(p) =>
+    p.$active &&
+    css`
+      animation: ${slotMountPulse} 0.35s ease-out;
+    `}
 `;
 
 const PowerUpChargeBadge = styled.div`
@@ -1781,6 +1897,16 @@ const GoStone = styled.div`
  * counter no longer "blooms" against the dark backdrop above the
  * dohyo. Just one short ambient halo + the strong drop shadow that
  * lifts the digit off the scene. */
+/* Round number — arabic numerals.
+ *
+ * Tried roman numerals (I / II / III) for one pass to rhyme with the
+ * banzuke vocabulary. Reverted: Bungee renders the roman numerals as
+ * three identical vertical bars (II = ‖, III = ‖‖‖) with no shape
+ * differentiation. At HUD scale that becomes a column of indistinct
+ * pipes — visually unreadable and competing badly with the other
+ * Bungee type on the HUD. Arabic 1/2/3 in this same font has
+ * actually-distinct glyph shapes and reads at a glance. The
+ * "ceremonial enumeration" idea wasn't worth the legibility loss. */
 const RoundNum = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(28px, 5cqw, 72px);
@@ -2451,6 +2577,11 @@ const UiPlayerInfo = ({
             </BalStripWrap>
           </GaugeStack>
           <PowerUpSlot
+            /* Stable on cooldown / charge-count changes, changes only
+               when the assigned power-up itself changes. Drives the
+               one-shot slotMountPulse — see the styled-component
+               comment for the full rationale. */
+            key={`p1-pu-${player1ActivePowerUp || "empty"}`}
             $active={player1ActivePowerUp}
             $cooldown={getPowerUpIsOnCooldown(
               player1ActivePowerUp,
@@ -2596,6 +2727,7 @@ const UiPlayerInfo = ({
             </BalStripWrap>
           </GaugeStack>
           <PowerUpSlot
+            key={`p2-pu-${player2ActivePowerUp || "empty"}`}
             $active={player2ActivePowerUp}
             $cooldown={getPowerUpIsOnCooldown(
               player2ActivePowerUp,

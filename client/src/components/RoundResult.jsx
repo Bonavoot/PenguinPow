@@ -1,4 +1,4 @@
-        import React, { memo, useMemo } from "react";
+        import React, { memo } from "react";
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
 
@@ -36,16 +36,38 @@ const hazePulse = keyframes`
   100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
 `;
 
+/* Round result reveal — hanko stamp impression.
+ *
+ * Iteration history on this animation:
+ *   v1 (original): drop from translateY(-180%) with simultaneous
+ *                  scaleY(1.2)/scaleX(0.92) stretch, then bounce
+ *                  through FOUR squash/stretch overshoots before
+ *                  settling. Cartoon-fighter rubber-band.
+ *   v2 (clip-path): single left-to-right clip-path calligraphy
+ *                  reveal. Identical motion to HAKKI-YOI and
+ *                  TE WO TSUITE. Three different events collapsing
+ *                  into one wipe. Read as boring and same-y.
+ *   v3 (this):     hanko stamp impression. Text starts oversized
+ *                  and tilted (scale 1.35, rotate -1.5°), lands at
+ *                  final size and orientation (scale 1, rotate 0°)
+ *                  with sharp ease-out, no rebound.
+ *
+ * Different from HAKKI-YOI on purpose: HAKKI-YOI is pure scale
+ * (release of energy), this is scale + rotation (a physical object
+ * pressed onto paper). Same vocabulary as the GASSED hanko stamp
+ * on the HUD — the kimarite call is the moment the move name gets
+ * stamped onto the bout record. It IS a stamp.
+ *
+ * Rotation is intentionally subtle (-1.5° → 0°), only present
+ * during entry — leaving permanent tilt on 5.8rem text would read
+ * as a CSS bug rather than as design intent. The rotation kick
+ * during the impact frame is enough to register the physical
+ * gesture without committing to a tilted final state. */
 const textDrop = keyframes`
-  0%   { opacity: 0; transform: translate(-50%, -50%) translateY(-180%) scaleY(1.2) scaleX(0.92); }
-  5%   { opacity: 0; }
-  14%  { opacity: 1; transform: translate(-50%, -50%) translateY(6%) scaleY(0.82) scaleX(1.12); }
-  22%  { transform: translate(-50%, -50%) translateY(-4%) scaleY(1.06) scaleX(0.97); }
-  30%  { transform: translate(-50%, -50%) translateY(2%) scaleY(0.97) scaleX(1.02); }
-  38%  { transform: translate(-50%, -50%) translateY(-1%) scaleY(1.01) scaleX(1); }
-  46%  { transform: translate(-50%, -50%) translateY(0%) scaleY(1) scaleX(1); }
-  78%  { opacity: 1; transform: translate(-50%, -50%) scaleY(1) scaleX(1); }
-  100% { opacity: 0; transform: translate(-50%, -50%) scaleY(0.97) scaleX(1.02); }
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(1.35) rotate(-1.5deg); }
+  10%  { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+  78%  { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
 `;
 
 const brushPaint = keyframes`
@@ -72,14 +94,6 @@ const subtitleTrack = keyframes`
   42%  { opacity: 1; letter-spacing: 0.3em; }
   78%  { opacity: 1; letter-spacing: 0.3em; }
   100% { opacity: 0; letter-spacing: 0.25em; }
-`;
-
-const shardFly = keyframes`
-  0%   { opacity: 0; transform: translate(0, 0) scale(0.4); }
-  14%  { opacity: 0; }
-  20%  { opacity: 0.8; transform: translate(0, 0) scale(1); }
-  70%  { opacity: 0.2; }
-  100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(0.1) rotate(var(--rot)); }
 `;
 
 // ============================================
@@ -176,8 +190,11 @@ const MainText = styled.div`
       0 clamp(3px, 0.3cqw, 6px) clamp(12px, 1cqw, 22px) rgba(0,0,0,0.7)
     `};
 
+  /* Sharp out-expo decel for the stamp impression — scale + rotation
+     decelerate aggressively into the final value without rebounding
+     past it. See textDrop keyframes comment for the full rationale. */
   animation: ${css`
-      ${textDrop}`} 3s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+      ${textDrop}`} 3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   will-change: transform, opacity;
 
   @media (max-width: 900px) {
@@ -283,30 +300,15 @@ const KimariteText = styled.div`
   }
 `;
 
-const Shard = styled.div`
-  position: absolute;
-  top: ${ANNOUNCE_Y};
-  left: ${(p) => p.$x};
-  margin-top: ${(p) => p.$yOff};
-  z-index: 1006;
-  pointer-events: none;
-  width: ${(p) => p.$size};
-  height: ${(p) => p.$size};
-  border-radius: 1px;
-
-  background: ${(p) =>
-    p.$isVictory
-      ? "linear-gradient(135deg, #FFFAD0, #FFD700)"
-      : "linear-gradient(135deg, #E8E4E0, #9A9590)"};
-  box-shadow: 0 0 3px
-    ${(p) => (p.$isVictory ? "rgba(255,215,0,0.4)" : "rgba(160,155,150,0.35)")};
-
-  --tx: ${(p) => p.$tx};
-  --ty: ${(p) => p.$ty};
-  --rot: ${(p) => p.$rot};
-
-  animation: ${shardFly} ${(p) => p.$dur} ease-out forwards;
-`;
+/* The 6-shard particle burst that used to live here was the same
+ * floating-mote vocabulary the HAKKI-YOI ice crystals were —
+ * little squares flying outward, scaling down, rotating to random
+ * angles. That's a templated AI-fighting-game render fingerprint
+ * (always 4-8 particles, always radial, always rotating). Removed
+ * entirely. The kimarite (winning move) Japanese text, the brush
+ * stroke, and the brush splash already carry the whole call —
+ * they do it with hand-painted vocabulary instead of a generic
+ * burst, so the result reads as broadcast sumo, not AI fighter. */
 
 // ============================================
 // COMPONENT
@@ -315,72 +317,6 @@ const Shard = styled.div`
 const RoundResult = ({ isVictory, winType }) => {
   const config = WIN_TYPE_CONFIG[winType] || WIN_TYPE_CONFIG.ringOut;
   const hasKimarite = !!config.japanese;
-
-  const shards = useMemo(
-    () => [
-      {
-        id: 0,
-        x: "calc(50% - 95px)",
-        yOff: "-8px",
-        size: "5px",
-        tx: "-55px",
-        ty: "-40px",
-        rot: "120deg",
-        dur: "1.9s",
-      },
-      {
-        id: 1,
-        x: "calc(50% - 45px)",
-        yOff: "10px",
-        size: "4px",
-        tx: "-35px",
-        ty: "42px",
-        rot: "-95deg",
-        dur: "1.6s",
-      },
-      {
-        id: 2,
-        x: "calc(50% + 8px)",
-        yOff: "-14px",
-        size: "6px",
-        tx: "12px",
-        ty: "-48px",
-        rot: "175deg",
-        dur: "2.1s",
-      },
-      {
-        id: 3,
-        x: "calc(50% + 55px)",
-        yOff: "6px",
-        size: "4px",
-        tx: "42px",
-        ty: "38px",
-        rot: "55deg",
-        dur: "1.7s",
-      },
-      {
-        id: 4,
-        x: "calc(50% + 105px)",
-        yOff: "-5px",
-        size: "5px",
-        tx: "58px",
-        ty: "-32px",
-        rot: "-145deg",
-        dur: "2s",
-      },
-      {
-        id: 5,
-        x: "calc(50% - 72px)",
-        yOff: "14px",
-        size: "3px",
-        tx: "-48px",
-        ty: "28px",
-        rot: "40deg",
-        dur: "1.5s",
-      },
-    ],
-    [],
-  );
 
   return (
     <>
@@ -395,20 +331,6 @@ const RoundResult = ({ isVictory, winType }) => {
       {hasKimarite && (
         <KimariteText $isVictory={isVictory}>{config.japanese}</KimariteText>
       )}
-
-      {shards.map((s) => (
-        <Shard
-          key={s.id}
-          $isVictory={isVictory}
-          $x={s.x}
-          $yOff={s.yOff}
-          $size={s.size}
-          $tx={s.tx}
-          $ty={s.ty}
-          $rot={s.rot}
-          $dur={s.dur}
-        />
-      ))}
     </>
   );
 };

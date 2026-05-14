@@ -135,6 +135,11 @@ export const getFighterPopFilter = (props) => {
   if (props.$isGrabBreaking) {
     return `${base} drop-shadow(0 0 8px rgba(0, 255, 128, 0.85))`;
   }
+  // Perfect raw parry: same yellow-gold read as ParticleEngine perfectParryFlameBurst
+  // (createGoldPuff / circleGold) — not the blue hold tint.
+  if (props.$isPerfectRawParrySuccess) {
+    return `${base} drop-shadow(0 0 10px rgba(255, 248, 160, 0.95)) drop-shadow(0 0 5px rgba(255, 210, 85, 0.9))`;
+  }
   if (props.$isRawParrying) {
     return `${base} drop-shadow(0 0 6px rgba(0,130,255,0.9))`;
   }
@@ -780,7 +785,7 @@ export const AnimatedFighterImage = styled.img
     shouldForwardProp: (prop) =>
       ![
         "frameCount", "fps", "loop", "isLocalPlayer", "isAtTheRopes",
-        "isGrabBreaking", "isRawParrying", "isHit", "isChargingAttack",
+        "isGrabBreaking", "isRawParrying", "isPerfectRawParrySuccess", "isHit", "isChargingAttack",
         "animationKey",
       ].includes(prop),
   })

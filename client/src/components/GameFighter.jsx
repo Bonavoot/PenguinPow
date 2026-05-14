@@ -1523,6 +1523,22 @@ const GameFighter = ({
   const lastPlayerHitTime = useRef(0);
   const lastRawParryTime = useRef(0);
   const hitTintFramesRemaining = useRef(0); // Show hit tint for first N frames of isHit so red is visible (1 frame was too short)
+  // Pure-white impact snap on the receiving fighter, layered for the first
+  // few frames *before* the lingering red hit tint. This is the AAA "moment
+  // of impact" pop — Smash/SF6/T8 all do it. Uses the existing
+  // chargeTintWhite sprite variant (preloaded by PlayerColorContext for every
+  // skin combo), so it lights up instantly with no first-hit pop.
+  const hitFlashFramesRemaining = useRef(0);
+  // Debounce flag for multi-hit combos (e.g. slap1 → slap2 → slap3). Only the
+  // OPENING hit of a string should flash; subsequent hits within the cooldown
+  // window use the red damage tint only. Three reasons:
+  //   1. Three white flashes in 300ms reads as strobing, not "impact".
+  //   2. Every individual hit still gets camera shake, zoom-punch, chromatic
+  //      burst, and the 10-layer hit VFX — those carry the per-hit response.
+  //   3. Fewer IMG src swaps per combo (was 6+, now 2) eliminates the rare
+  //      "invisible frame" hiccup caused by mid-swap browser compositing.
+  const lastHitFlashTime = useRef(0);
+  const HIT_FLASH_COOLDOWN_MS = 300;
   const gameMusicRef = useRef(null);
   const eeshiMusicRef = useRef(null);
 
@@ -3789,33 +3805,73 @@ const GameFighter = ({
     idleHoldFramesRef.current = 0;
   }
 
-  // Hit tint for first few frames of isHit only (brief red flash on impact, not whole hitstun)
+  // ── Hit visual response: mutually exclusive white flash XOR red tint ──
+  // A single hit only ever produces ONE of these two responses, never both.
+  // Rationale: stacking white→red within a single hit's lifecycle creates a
+  // visually messy color transition (the eye reads it as two separate beats
+  // glued together, not one impact response). Splitting them by hit role
+  // gives each its own coherent moment:
+  //
+  //   • Opening hit (or isolated hit): pure 4-frame white impact-snap.
+  //   • Combo follow-up (within 300ms): pure 10-frame red damage tint.
+  //
+  // Typical combo timing (~100–150ms between hits) means the opener's
+  // 67ms white flash ends well before the follow-up's red tint starts —
+  // so the two colors are separated in time, not adjacent.
   if (penguin.isHit && !lastHitState.current) {
-    hitTintFramesRemaining.current = 10; // ~165ms at 60fps - short red flash on impact
+    const nowMs = performance.now();
+    if (nowMs - lastHitFlashTime.current > HIT_FLASH_COOLDOWN_MS) {
+      // Opening / isolated hit: white impact-snap only.
+      hitFlashFramesRemaining.current = 4;
+      lastHitFlashTime.current = nowMs;
+    } else {
+      // Cooldown-suppressed combo follow-up: red damage tint only.
+      hitTintFramesRemaining.current = 10;
+    }
   }
   if (!penguin.isHit) {
     hitTintFramesRemaining.current = 0;
+    hitFlashFramesRemaining.current = 0;
   }
   const showHitTintThisFrame =
     penguin.isHit && hitTintFramesRemaining.current > 0;
   if (showHitTintThisFrame) {
     hitTintFramesRemaining.current -= 1;
   }
+  // Tick the flash counter independently so the white snap always consumes
+  // its full 4 frames.
+  const showHitFlashThisFrame =
+    penguin.isHit && hitFlashFramesRemaining.current > 0;
+  if (showHitFlashThisFrame) {
+    hitFlashFramesRemaining.current -= 1;
+  }
+  // Safety precedence: by construction (see hit-trigger block above) only ONE
+  // of the two counters is set per hit, so they shouldn't overlap. The
+  // && !showHitFlashThisFrame guard remains as a defensive net for the rare
+  // case where a follow-up hit lands inside the opener's 4-frame flash
+  // window — in that edge case white wins on the contested frames.
+  const renderHitTint = showHitTintThisFrame && !showHitFlashThisFrame;
 
-  // Tint priority: hit > thick blubber
+  // Tint priority: white flash (impact frames) > red hit tint > thick blubber
   // (Dodge invincibility is handled via CSS opacity pulse, not sprite-level tinting)
   // Grab-armor absorb intentionally does NOT tint the body — the
   // particle ring alone communicates the absorb without washing the
   // player out. `useArmorTint` is kept as a constant `false` so the
   // shared sprite-recolor pipeline below doesn't need to change.
   const useArmorTint = false;
-  const useBlubberTint = thickBlubberIndicator && !showHitTintThisFrame;
+  // Suppress blubber tint during both flash and red-tint frames so the
+  // damage-state visuals win cleanly over passive power-up tinting.
+  const useBlubberTint =
+    thickBlubberIndicator && !showHitTintThisFrame && !showHitFlashThisFrame;
 
-  // Get sprite render info (handles animated spritesheets and recoloring)
+  // Get sprite render info (handles animated spritesheets and recoloring).
+  // `renderHitTint` (NOT raw showHitTintThisFrame) is passed for the red tint
+  // arg so the white impact flash visually takes priority during its 4-frame
+  // window. `showHitFlashThisFrame` is passed as the isWhiteFlash arg.
   const spriteRenderInfo = getSpriteRenderInfo(
     effectiveSpriteSrc,
-    showHitTintThisFrame,
-    false,
+    renderHitTint,
+    showHitFlashThisFrame,
     useBlubberTint,
     false,
     useArmorTint
@@ -3823,13 +3879,15 @@ const GameFighter = ({
   const isKillVictim = penguin.isClinchKillThrowVictim || penguin.isClinchKillPullVictim;
 
   // Kill victims use the raw hit APNG as a static image (forceStatic bypasses the
-  // spritesheet lookup that would return a 3-frame strip, while still applying recoloring)
+  // spritesheet lookup that would return a 3-frame strip, while still applying recoloring).
+  // The white impact flash still applies here — being on the receiving end of a
+  // cinematic kill is exactly when a sharp impact-snap reads strongest.
   const {
     src: recoloredSpriteSrc,
     isAnimated: isAnimatedSprite,
     config: spriteConfig,
   } = isKillVictim
-    ? getSpriteRenderInfo(hitSprite, showHitTintThisFrame, false, useBlubberTint, true, useArmorTint)
+    ? getSpriteRenderInfo(hitSprite, renderHitTint, showHitFlashThisFrame, useBlubberTint, true, useArmorTint)
     : spriteRenderInfo;
 
   const baseSpriteSrc = recoloredSpriteSrc;
@@ -4045,6 +4103,7 @@ const GameFighter = ({
             $isAtTheRopes={penguin.isAtTheRopes}
             $isGrabBreaking={penguin.isGrabBreaking}
             $isRawParrying={displayPenguin.isRawParrying}
+            $isPerfectRawParrySuccess={penguin.isPerfectRawParrySuccess}
             $isHit={penguin.isHit}
             $isChargingAttack={displayPenguin.isChargingAttack}
             $isGrabTeching={penguin.isGrabTeching}
