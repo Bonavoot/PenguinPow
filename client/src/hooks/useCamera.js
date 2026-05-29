@@ -14,6 +14,10 @@ const SPRITE_HALF_W = 0; // Sprites are now centred on player.x via CSS translat
 const SMOOTH_FACTOR = 0.07; // lerp speed per frame (0–1, higher = snappier)
 const Y_OFFSET = 12; // fixed vertical bias (%) — positive = show more top
 
+// Ready stance positions (must match server-io/gameFunctions.js handleReadyPositions)
+const PLAYER1_READY_X = 543;
+const PLAYER2_READY_X = 735;
+
 // ── Impact shake ─────────────────────────────────────────────────
 // Phase 3: values pushed up from (2 → 7) to (3 → 10). Now that the crowd
 // background is desaturated/vignetted (Phase 1), the shake can swing harder
@@ -63,12 +67,31 @@ function lerp(a, b, t) {
   return a + (b - a) * t;
 }
 
+function getCameraTargetForPositions(p1x, p2x) {
+  const distance = Math.abs(p1x - p2x);
+  const midFraction =
+    (p1x + SPRITE_HALF_W + (p2x + SPRITE_HALF_W)) / 2 / GAME_WIDTH;
+  const t = clamp(
+    (distance - CLOSE_DISTANCE) / (FAR_DISTANCE - CLOSE_DISTANCE),
+    0,
+    1,
+  );
+  const scale = lerp(MAX_SCALE, MIN_SCALE, t);
+  return {
+    scale,
+    x: -(midFraction - 0.5) * scale * 100,
+    y: Y_OFFSET,
+  };
+}
+
+const READY_CAMERA = getCameraTargetForPositions(PLAYER1_READY_X, PLAYER2_READY_X);
+
 export default function useCamera(containerRef, socket) {
   const posRef = useRef({ p1x: null, p2x: null });
   const camRef = useRef({
-    scale: DEFAULT_SCALE,
-    x: 0,
-    y: Y_OFFSET,
+    scale: READY_CAMERA.scale,
+    x: READY_CAMERA.x,
+    y: READY_CAMERA.y,
   });
   const rafId = useRef(null);
 
@@ -78,6 +101,10 @@ export default function useCamera(containerRef, socket) {
   const shakeRef = useRef({ x: 0, y: 0, intensity: 0, dirX: 0 });
   const punchRef = useRef({ amount: 0 });
   const hitTrackRef = useRef({ p1: 0, p2: 0 });
+
+  // Player-tracking is off during power-up selection, ready-up, and gyoji
+  // calls — camera stays centered until HAKKIYOI (game_start).
+  const trackingEnabledRef = useRef(false);
 
   // Cinematic kill state
   const cinematicRef = useRef({
@@ -175,6 +202,9 @@ export default function useCamera(containerRef, socket) {
       const cin = cinematicRef.current;
       cin.active = false;
       cin.phase = "none";
+      // Sync with server resetRoomAndPlayers — players teleport to spawn
+      // positions and power-up selection begins on this same event.
+      trackingEnabledRef.current = false;
     };
 
     // Round-start camera "GO!" punch.
@@ -188,6 +218,7 @@ export default function useCamera(containerRef, socket) {
     // placeholder/teaser. Deletion is trivial: remove this block + the .off().
     const ROUND_START_PUNCH_AMOUNT = 0.035;
     const onGameStart = () => {
+      trackingEnabledRef.current = true;
       if (cinematicRef.current.active) return;
       punchRef.current.amount = Math.max(
         punchRef.current.amount,
@@ -205,19 +236,8 @@ export default function useCamera(containerRef, socket) {
       const el = containerRef?.current;
 
       if (el && p1x !== null && p2x !== null) {
-        const distance = Math.abs(p1x - p2x);
-        const midFraction =
-          (p1x + SPRITE_HALF_W + (p2x + SPRITE_HALF_W)) / 2 / GAME_WIDTH;
-
-        // ── Target zoom ──
-        const t = clamp(
-          (distance - CLOSE_DISTANCE) / (FAR_DISTANCE - CLOSE_DISTANCE),
-          0,
-          1,
-        );
-        const normalTargetScale = lerp(MAX_SCALE, MIN_SCALE, t);
-        const normalTargetX = -(midFraction - 0.5) * normalTargetScale * 100;
-        const normalTargetY = Y_OFFSET;
+        const { scale: normalTargetScale, x: normalTargetX, y: normalTargetY } =
+          getCameraTargetForPositions(p1x, p2x);
 
         const cam = camRef.current;
         const cin = cinematicRef.current;
@@ -291,11 +311,16 @@ export default function useCamera(containerRef, socket) {
             cam.x = edgeTargetX;
             cam.y = lerp(cam.y, normalTargetY, SMOOTH_FACTOR);
           }
-        } else {
-          // ── Normal camera behavior ──
+        } else if (trackingEnabledRef.current) {
+          // ── Normal camera behavior — track players during active rounds ──
           cam.scale = lerp(cam.scale, normalTargetScale, SMOOTH_FACTOR);
           cam.x = lerp(cam.x, normalTargetX, SMOOTH_FACTOR);
           cam.y = lerp(cam.y, normalTargetY, SMOOTH_FACTOR);
+        } else {
+          // ── Pre-fight / between rounds — drift to ready-stance framing ──
+          cam.scale = lerp(cam.scale, READY_CAMERA.scale, SMOOTH_FACTOR);
+          cam.x = lerp(cam.x, READY_CAMERA.x, SMOOTH_FACTOR);
+          cam.y = lerp(cam.y, READY_CAMERA.y, SMOOTH_FACTOR);
         }
 
         // ── Clamp so map edges are never exposed ──
