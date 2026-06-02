@@ -129,63 +129,55 @@ function drawSegmentTicks(ctx, x, y, w, h, isRight) {
   ctx.restore();
 }
 
-function drawEndCap(ctx, side, cx, cy, ch, isRight) {
-  // Ornamental bracket cap — gives the meter a sculpted silhouette
-  const cw = Math.max(4, Math.min(7, ch * 0.38));
-  const isLeftCap = (side === "left" && !isRight) || (side === "right" && isRight);
-
-  ctx.save();
+/** Symmetric chamfered frame — identical on both ends for P1 and P2 */
+function traceTrackOutline(ctx, x, y, w, h) {
+  const c = Math.min(2, h * 0.14);
   ctx.beginPath();
-  if (isLeftCap) {
-    ctx.moveTo(cx + cw, cy);
-    ctx.lineTo(cx, cy + ch * 0.22);
-    ctx.lineTo(cx, cy + ch * 0.78);
-    ctx.lineTo(cx + cw, cy + ch);
-  } else {
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(cx + cw, cy + ch * 0.22);
-    ctx.lineTo(cx + cw, cy + ch * 0.78);
-    ctx.lineTo(cx, cy + ch);
-  }
+  ctx.moveTo(x + c, y);
+  ctx.lineTo(x + w - c, y);
+  ctx.lineTo(x + w, y + c);
+  ctx.lineTo(x + w, y + h - c);
+  ctx.lineTo(x + w - c, y + h);
+  ctx.lineTo(x + c, y + h);
+  ctx.lineTo(x, y + h - c);
+  ctx.lineTo(x, y + c);
   ctx.closePath();
-
-  const capGrad = ctx.createLinearGradient(cx, cy, cx + cw, cy + ch);
-  capGrad.addColorStop(0, "#1a2030");
-  capGrad.addColorStop(0.5, "#0c0f16");
-  capGrad.addColorStop(1, "#060810");
-  ctx.fillStyle = capGrad;
-  ctx.fill();
-
-  ctx.strokeStyle = "rgba(245, 236, 217, 0.22)";
-  ctx.lineWidth = 0.75;
-  ctx.stroke();
-
-  // Gold pin accent on outer face
-  ctx.fillStyle = "rgba(232, 197, 71, 0.35)";
-  const pinX = isLeftCap ? cx + cw * 0.35 : cx + cw * 0.65;
-  ctx.beginPath();
-  ctx.arc(pinX, cy + ch * 0.5, 1.1, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-
-  return cw;
 }
 
-function drawLeadingMarker(ctx, edgeX, y, h, pointingRight) {
+function fillTrackWell(ctx, x, y, w, h) {
+  traceTrackOutline(ctx, x, y, w, h);
+  ctx.fill();
+}
+
+function strokeTrackOutline(ctx, x, y, w, h, color, lineWidth) {
+  traceTrackOutline(ctx, x, y, w, h);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
+  ctx.stroke();
+}
+
+function drawLeadingMarker(ctx, edgeX, y, h, pointingRight, minX, maxX) {
   const mh = h * 0.72;
   const my = y + (h - mh) * 0.5;
   const mw = Math.max(3, h * 0.28);
 
   ctx.save();
+  // Hard clip — tip and glow must never paint past the track well
+  ctx.beginPath();
+  ctx.rect(minX, y, maxX - minX, h);
+  ctx.clip();
+
   ctx.beginPath();
   if (pointingRight) {
-    ctx.moveTo(edgeX - mw, my);
-    ctx.lineTo(edgeX + 1, my + mh * 0.5);
-    ctx.lineTo(edgeX - mw, my + mh);
+    const tipX = Math.min(edgeX + 0.5, maxX - 0.5);
+    ctx.moveTo(tipX - mw, my);
+    ctx.lineTo(tipX, my + mh * 0.5);
+    ctx.lineTo(tipX - mw, my + mh);
   } else {
-    ctx.moveTo(edgeX + mw, my);
-    ctx.lineTo(edgeX - 1, my + mh * 0.5);
-    ctx.lineTo(edgeX + mw, my + mh);
+    const tipX = Math.max(edgeX - 0.5, minX + 0.5);
+    ctx.moveTo(tipX + mw, my);
+    ctx.lineTo(tipX, my + mh * 0.5);
+    ctx.lineTo(tipX + mw, my + mh);
   }
   ctx.closePath();
 
@@ -193,8 +185,6 @@ function drawLeadingMarker(ctx, edgeX, y, h, pointingRight) {
   mg.addColorStop(0, CREAM_BRIGHT);
   mg.addColorStop(1, "rgba(220, 240, 255, 0.85)");
   ctx.fillStyle = mg;
-  ctx.shadowColor = "rgba(170, 220, 255, 0.85)";
-  ctx.shadowBlur = 4;
   ctx.fill();
   ctx.restore();
 }
@@ -257,13 +247,10 @@ function drawGainVfx(ctx, fx, fy, fw, fh, gainT, isRight) {
 
   ctx.restore();
 
-  // Outer halo on frame
-  ctx.strokeStyle = `rgba(170, 220, 255, ${0.75 * flash})`;
-  ctx.lineWidth = 1.5;
-  ctx.shadowColor = "rgba(170, 220, 255, 0.9)";
-  ctx.shadowBlur = 10 * flash;
-  ctx.strokeRect(fx - 0.5, fy - 0.5, fw + 1, fh + 1);
-  ctx.shadowBlur = 0;
+  // Frame highlight — inset stroke only (shadowBlur ignores clip and bleeds out)
+  ctx.strokeStyle = `rgba(170, 220, 255, ${0.55 * flash})`;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(fx + 0.5, fy + 0.5, fw - 1, fh - 1);
 }
 
 /**
@@ -283,29 +270,25 @@ export function drawBalanceGauge(ctx, opts) {
 
   ctx.clearRect(0, 0, width, height);
 
-  const capW = Math.max(4, Math.min(7, height * 0.32));
   const padY = 2;
   const trackH = height - padY * 2;
   const trackY = padY;
-  const trackX = capW;
-  const trackW = width - capW * 2;
+  const trackX = 0;
+  const trackW = width;
 
   if (trackW < 8 || trackH < 6) return;
 
   // Drop shadow under entire instrument
   ctx.save();
   ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
-  ctx.fillRect(trackX - 1, trackY + trackH + 1, trackW + 2, 2);
+  ctx.fillRect(trackX, trackY + trackH + 1, trackW, 2);
   ctx.restore();
 
-  // End caps
-  drawEndCap(ctx, "left", 0, trackY, trackH, isRight);
-  drawEndCap(ctx, "right", width - capW, trackY, trackH, isRight);
-
-  // Recessed well
+  // Recessed well — full width, symmetric chamfered ends
   ctx.save();
   ctx.fillStyle = INK;
-  ctx.fillRect(trackX, trackY, trackW, trackH);
+  fillTrackWell(ctx, trackX, trackY, trackW, trackH);
+  ctx.restore();
 
   // Zone tint in the well (visible behind low balance)
   drawZoneBackground(ctx, trackX, trackY, trackW, trackH, isRight);
@@ -330,54 +313,73 @@ export function drawBalanceGauge(ctx, opts) {
   ctx.fillStyle = "rgba(8, 10, 18, 0.96)";
   ctx.fillRect(divCenter - divW * 0.5, trackY, divW, trackH);
 
-  // ── Balance fill ──
+  // ── Balance fill (clipped to inner well so full bar never bleeds past frame) ──
+  const inset = 1.25;
+  const innerX = trackX + inset;
+  const innerY = trackY + inset;
+  const innerW = trackW - inset * 2;
+  const innerH = trackH - inset * 2;
+
   const pct = Math.max(0, Math.min(100, balance)) / 100;
-  const fillW = Math.max(0, trackW * pct);
+  const fillW = Math.max(0, innerW * pct);
 
   let fillX;
   if (isRight) {
-    fillX = trackX + trackW - fillW;
+    fillX = innerX + innerW - fillW;
   } else {
-    fillX = trackX;
+    fillX = innerX;
   }
+
+  const atMaxFill = pct >= 0.998 || fillW >= innerW - 0.5;
 
   if (fillW > 0.5) {
     ctx.save();
+    traceTrackOutline(ctx, innerX, innerY, innerW, innerH);
+    ctx.clip();
+
     ctx.beginPath();
-    ctx.rect(fillX, trackY, fillW, trackH);
+    ctx.rect(fillX, innerY, fillW, innerH);
     ctx.clip();
 
     ctx.fillStyle = getFillPattern(ctx);
-    ctx.fillRect(fillX - 8, trackY, fillW + 16, trackH);
+    ctx.fillRect(fillX - 8, innerY, fillW + 16, innerH);
 
-    // Ice outer glow along fill
-    ctx.shadowColor = C.iceGlow;
-    ctx.shadowBlur = 6;
-    ctx.fillStyle = "rgba(126, 203, 240, 0.15)";
-    ctx.fillRect(fillX, trackY, fillW, trackH);
-    ctx.shadowBlur = 0;
+    // Inner luminance — no shadowBlur (shadows ignore clip and bleed past borders)
+    ctx.fillStyle = "rgba(126, 203, 240, 0.18)";
+    ctx.fillRect(fillX, innerY, fillW, innerH);
 
-    drawShimmer(ctx, fillX, trackY, fillW, trackH, time, isRight);
+    drawShimmer(ctx, fillX, innerY, fillW, innerH, time, isRight);
 
-    // Bottom depth on fill
-    const fillDepth = ctx.createLinearGradient(0, trackY + trackH * 0.5, 0, trackY + trackH);
+    const fillDepth = ctx.createLinearGradient(0, innerY + innerH * 0.5, 0, innerY + innerH);
     fillDepth.addColorStop(0, "rgba(0, 0, 0, 0)");
     fillDepth.addColorStop(1, "rgba(0, 40, 70, 0.35)");
     ctx.fillStyle = fillDepth;
-    ctx.fillRect(fillX, trackY, fillW, trackH);
+    ctx.fillRect(fillX, innerY, fillW, innerH);
+
+    // Leading-edge marker — hidden at 100% (no edge to mark; avoids border overlap)
+    if (fillW > 3 && !atMaxFill) {
+      const edgeX = isRight ? fillX : fillX + fillW;
+      drawLeadingMarker(
+        ctx,
+        edgeX,
+        innerY,
+        innerH,
+        !isRight,
+        innerX,
+        innerX + innerW
+      );
+    }
 
     ctx.restore();
-
-    // Leading-edge diamond marker
-    const edgeX = isRight ? fillX : fillX + fillW;
-    if (fillW > 3) {
-      drawLeadingMarker(ctx, edgeX, trackY, trackH, !isRight);
-    }
   }
 
-  // Perfect-parry gain overlay (fill + frame halo)
+  // Perfect-parry gain overlay (clipped to inner well)
   if (fillW > 0.5 && gainT != null) {
-    drawGainVfx(ctx, fillX, trackY, fillW, trackH, gainT, isRight);
+    ctx.save();
+    traceTrackOutline(ctx, innerX, innerY, innerW, innerH);
+    ctx.clip();
+    drawGainVfx(ctx, fillX, innerY, fillW, innerH, gainT, isRight);
+    ctx.restore();
   }
 
   // Frame border — cream at rest, vermillion pulse in danger (suppressed during parry gain)
@@ -388,29 +390,35 @@ export function drawBalanceGauge(ctx, opts) {
     : CREAM;
 
   if (dangerActive) {
-    ctx.save();
-    ctx.strokeStyle = `rgba(238, 81, 65, ${0.12 * pulse})`;
-    ctx.lineWidth = 3;
-    ctx.shadowColor = C.vermillionGlow;
-    ctx.shadowBlur = 6 * pulse;
-    ctx.strokeRect(trackX - 0.5, trackY - 0.5, trackW + 1, trackH + 1);
-    ctx.restore();
+    strokeTrackOutline(
+      ctx,
+      trackX,
+      trackY,
+      trackW,
+      trackH,
+      `rgba(238, 81, 65, ${0.18 * pulse})`,
+      2.5
+    );
   }
 
-  ctx.strokeStyle = borderColor;
-  ctx.lineWidth = 1.25;
-  ctx.strokeRect(trackX + 0.5, trackY + 0.5, trackW - 1, trackH - 1);
+  strokeTrackOutline(ctx, trackX + 0.5, trackY + 0.5, trackW - 1, trackH - 1, borderColor, 1.25);
 
-  // Inner sumi mat — keeps vermillion border separate from kill zone
-  ctx.strokeStyle = "rgba(8, 10, 18, 0.88)";
-  ctx.lineWidth = 1;
-  ctx.strokeRect(trackX + 1.5, trackY + 1.5, trackW - 3, trackH - 3);
+  // Inner sumi mat
+  strokeTrackOutline(
+    ctx,
+    trackX + 1.5,
+    trackY + 1.5,
+    trackW - 3,
+    trackH - 3,
+    "rgba(8, 10, 18, 0.88)",
+    1
+  );
 
-  // Top highlight rim on track
+  // Top highlight rim
   ctx.strokeStyle = "rgba(245, 236, 217, 0.1)";
   ctx.lineWidth = 0.5;
   ctx.beginPath();
-  ctx.moveTo(trackX + 1, trackY + 1);
-  ctx.lineTo(trackX + trackW - 1, trackY + 1);
+  ctx.moveTo(trackX + 2, trackY + 1.5);
+  ctx.lineTo(trackX + trackW - 2, trackY + 1.5);
   ctx.stroke();
 }

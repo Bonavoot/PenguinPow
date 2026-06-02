@@ -86,6 +86,7 @@ const {
   CLINCH_JOLT_COOLDOWN_MS,
   CLINCH_JOLT_SELF_BALANCE_VS_PUSH,
   PULL_BOUNDARY_MARGIN,
+  CLINCH_THROW_BOUNDARY_MARGIN,
   CLINCH_THROW_MIN_SEPARATION,
   CLINCH_PULL_SWAP_TWEEN_DURATION,
   GRAB_BREAK_STAMINA_COST,
@@ -1227,6 +1228,13 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
     actor.throwEndTime = Date.now() + hitstopMs + throwDuration;
     actor.throwOpponent = target.id;
     actor.throwingFacingDirection = throwDir;
+    // Non-kill throws are repositioning tools — keep victim inside the margin so
+    // the tick-order win check can't ring them out while still pinned at the edge.
+    if (!isKill) {
+      const leftBound = MAP_LEFT_BOUNDARY + CLINCH_THROW_BOUNDARY_MARGIN;
+      const rightBound = MAP_RIGHT_BOUNDARY - CLINCH_THROW_BOUNDARY_MARGIN;
+      target.x = Math.max(leftBound, Math.min(target.x, rightBound));
+    }
     clearAllActionStates(target);
     target.isBeingThrown = true;
     target.isHit = true;

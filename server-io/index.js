@@ -1232,6 +1232,11 @@ function tick(delta) {
             );
             if (!thrower) return false;
 
+            // Normal forward throws clamp inside boundary margin — not ring-outs.
+            if (!thrower.isRingOutThrowCutscene && !thrower.isClinchKillThrow) {
+              return false;
+            }
+
             // Only ring out if being thrown TOWARD the boundary
             return (
               (player.x <= MAP_LEFT_BOUNDARY &&
