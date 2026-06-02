@@ -7,6 +7,7 @@ import snowballImage from "../assets/snowball.png";
 import pumoArmyIcon from "./pumo-army-icon.png";
 import thickBlubberIcon from "../assets/thick-blubber-icon.png";
 import { C } from "./menuTheme";
+import BalanceGauge from "./BalanceGauge";
 
 /*
  * Pumo Pumo HUD — palette aligned with the canonical menuTheme tokens
@@ -30,41 +31,6 @@ import { C } from "./menuTheme";
 const flashRedPulse = keyframes`
   0%, 100% { opacity: 1; }
   50% { opacity: 0.55; }
-`;
-
-/* Balance bar danger alarm — strobes the BalTrack's vermillion border
- * + outer glow ring on the same 0.78s cadence as the gassed lane's
- * alarm pulse, so the two danger signals feel like one shared
- * vocabulary when both are active.
- *
- * Crucially this only animates the box-shadow stack (the border ring +
- * outer glow). The track's gradient stays put — the kill-zone red /
- * throw-zone gold backgrounds are already painted at full saturation
- * inside the gradient, and strobing the WHOLE track via filter would
- * drown out the ice-blue fill on top of them. The ring is the alarm
- * signal; the rest of the bar reads as "the instrument" and stays
- * stable.
- *
- * Amplitude is deliberately gentler than the gassed pulse since
- * balance danger triggers far more often than gassed — a heavier
- * strobe would become constant visual noise. */
-const balanceAlarmPulse = keyframes`
-  0%, 100% {
-    box-shadow:
-      inset 0 1px 2px rgba(0, 0, 0, 0.85),
-      inset 0 -1px 1px rgba(0, 0, 0, 0.4),
-      inset 0 0 0 1px rgba(216, 59, 39, 0.78),
-      inset 0 0 0 2px rgba(8, 10, 18, 0.85),
-      0 1px 2px rgba(0, 0, 0, 0.5);
-  }
-  50% {
-    box-shadow:
-      inset 0 1px 2px rgba(0, 0, 0, 0.85),
-      inset 0 -1px 1px rgba(0, 0, 0, 0.4),
-      inset 0 0 0 1.5px rgba(238, 81, 65, 1),
-      inset 0 0 0 2.5px rgba(8, 10, 18, 0.85),
-      0 1px 2px rgba(0, 0, 0, 0.5);
-  }
 `;
 
 const pulseWin = keyframes`
@@ -104,74 +70,6 @@ const parryRefundFlash = keyframes`
   100% {
     opacity: 0;
     box-shadow: inset 0 0 0px rgba(74, 255, 160, 0), 0 0 0px rgba(74, 255, 160, 0);
-  }
-`;
-
-/* Balance-gain flash — fires on perfect parry. Ice blue/cream wash that
- * matches the BalFill palette so the gain reads as "more of the same
- * stuff filling in" rather than a foreign green-stamina overlay. The
- * inset glow + outer halo punches the bar without obscuring the fill
- * level (we still want to read the new balance value at a glance). */
-const balanceGainFlash = keyframes`
-  0% {
-    opacity: 0;
-    box-shadow:
-      inset 0 0 18px rgba(245, 252, 255, 0.95),
-      0 0 14px rgba(170, 220, 255, 0.85);
-    transform: scaleY(1);
-  }
-  18% {
-    opacity: 1;
-    box-shadow:
-      inset 0 0 22px rgba(245, 252, 255, 1),
-      0 0 22px rgba(170, 220, 255, 0.95);
-    transform: scaleY(1.18);
-  }
-  60% {
-    opacity: 0.7;
-    box-shadow:
-      inset 0 0 14px rgba(200, 235, 255, 0.6),
-      0 0 12px rgba(170, 220, 255, 0.45);
-    transform: scaleY(1.05);
-  }
-  100% {
-    opacity: 0;
-    box-shadow:
-      inset 0 0 0 rgba(245, 252, 255, 0),
-      0 0 0 rgba(170, 220, 255, 0);
-    transform: scaleY(1);
-  }
-`;
-
-/* Balance-gain sweep — bright cream highlight rolls outward from the
- * anchor edge along the new fill, selling the "topped up" direction
- * without making the rest of the bar look like it changed. Companion
- * to balanceGainFlash; runs slightly slower so you read the sweep
- * after the initial pulse instead of both blurring together. */
-const balanceGainSweep = keyframes`
-  0%   { transform: translateX(-110%); opacity: 0.0; }
-  10%  { opacity: 1; }
-  85%  { opacity: 0.9; }
-  100% { transform: translateX(110%); opacity: 0; }
-`;
-
-/* Balance-gain track ring — brief outer outline pulse on the track itself,
- * harmonized with the BalTrack's existing border tone. Runs at the same
- * cadence as the inner flash so the inside-fill and outside-frame land
- * the moment together. */
-const balanceGainTrackPulse = keyframes`
-  0% {
-    box-shadow:
-      inset 0 0 0 1px rgba(245, 252, 255, 0.95),
-      0 0 18px rgba(170, 220, 255, 0.9),
-      inset 0 0 0 2px rgba(8, 10, 18, 0.85),
-      0 1px 2px rgba(0, 0, 0, 0.5);
-  }
-  100% {
-    box-shadow:
-      inset 0 0 0 1px rgba(245, 236, 217, 0.32),
-      inset 0 0 0 2px rgba(8, 10, 18, 0.85),
-      0 1px 2px rgba(0, 0, 0, 0.5);
   }
 `;
 
@@ -1017,74 +915,6 @@ const ParryRefundFlash = styled.div.attrs((p) => ({
   animation: ${parryRefundFlash} 0.5s ease-out forwards;
 `;
 
-/* ── Perfect-parry balance gain VFX ───────────────────────────────────
- *
- * Sits inside the BalTrack, sized to the current balance width so it
- * "fills" exactly the visible mawashi-blue zone. Two stacked layers:
- *
- *   1. BalanceGainFlash — ice-blue / cream wash that pulses the whole
- *      fill once (inset glow + outer halo + brief vertical scale).
- *      Reads as "the bar got recharged."
- *
- *   2. BalanceGainSweep — single bright cream stripe that travels
- *      across the fill from the anchor edge to the leading edge.
- *      Reads as "energy poured in" with a directional read that
- *      reinforces which side is the current balance level.
- *
- * Companion BalanceGainGlow on the track adds an outer outline pulse
- * — the inner flash and outer ring land on the same beat so the gauge
- * "snaps" with the perfect-parry hitstop.
- */
-const BalanceGainFlash = styled.div.attrs((p) => ({
-  style: {
-    width: `${p.$balance}%`,
-  },
-}))`
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  ${(p) => (p.$isRight ? "left: 0;" : "right: 0;")}
-  border-radius: 1px;
-  z-index: 5;
-  pointer-events: none;
-  overflow: hidden;
-  background: linear-gradient(
-    180deg,
-    rgba(245, 252, 255, 0.95) 0%,
-    rgba(200, 235, 255, 0.65) 50%,
-    rgba(170, 220, 255, 0.85) 100%
-  );
-  animation: ${balanceGainFlash} 0.7s ease-out forwards;
-  transform-origin: center;
-`;
-
-const BalanceGainSweep = styled.div`
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  ${(p) => (p.$isRight ? "left: 0;" : "right: 0;")}
-  width: 50%;
-  pointer-events: none;
-  background: linear-gradient(
-    ${(p) => (p.$isRight ? "90deg" : "270deg")},
-    transparent 0%,
-    rgba(245, 252, 255, 0) 15%,
-    rgba(245, 252, 255, 0.85) 50%,
-    rgba(245, 252, 255, 0) 85%,
-    transparent 100%
-  );
-  filter: blur(0.4px);
-  animation: ${balanceGainSweep} 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
-  ${(p) => (p.$isRight ? "" : "transform: translateX(110%);")}
-`;
-
-/* Outer-track halo applied to BalTrack while a gain is active. Driven
- * by a $gaining prop so the track itself can opt-in to the pulse for
- * the duration of the inner flash. */
-const balanceGainTrackOverlay = css`
-  animation: ${balanceGainTrackPulse} 0.7s ease-out forwards;
-`;
-
 /* Gassed overlay — designed strain marks, not blurred AI smoke.
  *
  * Previous pass was a stack of: crimson-black radial gradient base +
@@ -1400,232 +1230,11 @@ const GaugeStack = styled.div`
   flex-direction: column;
 `;
 
-/* Balance strip — STANCE GAUGE.
- *
- * Sits beneath the stamina BarFrame with breathing room — the previous
- * pass had this glued tight against the bottom edge of the stamina
- * bar, which made the two gauges read as one merged element. Bumped
- * margin-top so the balance gauge has its own visual lane.
- *
- * No tilt/wobble animation on danger anymore — the previous balanceTilt
- * keyframe rotated the whole strip ±1deg in a danger state, which read
- * as the UI being broken rather than the wrestler being unsteady. The
- * track's vermillion danger ring + the bright kill-zone background
- * behind a tiny ice-blue fill sliver carry the alarm cleanly on their
- * own — no animation needed for the danger reading. */
+/* Balance strip — canvas-rendered stance gauge (see BalanceGauge.jsx). */
 const BalStripWrap = styled.div`
-  display: flex;
-  align-items: center;
-  flex-direction: ${(p) => (p.$isRight ? "row" : "row-reverse")};
-  gap: clamp(5px, 0.6cqw, 9px);
   width: 50%;
   align-self: ${(p) => (p.$isRight ? "flex-start" : "flex-end")};
   margin-top: clamp(8px, 1cqh, 14px);
-`;
-
-/* Stance gauge track — three-zone precision instrument.
- *
- * The threshold zones are baked INTO the track itself, in the empty
- * space behind the fill. Three regions, with a sumi ink stroke between
- * kill and throw (14–16%):
- *
- *   safe zone  — dark ink (no balance pressure)
- *   throw zone — gold (muted toward ink so it reads in the well)
- *   kill zone  — vermillion (muted toward ink; throw = round over)
- *
- * Zone fills are `color-mix`ed with sumi ink so red/gold keep brand hue
- * but sit *inside* the track like tinted glass — not flat neon slabs.
- * The ice-blue BalFill still pops on top.
- * Direction set so kill zone sits on the side the bar drains INTO.
- *
- * Danger ring: when balance is in the kill zone, the inner cream
- * hairline border swaps to vermillion + a small outer vermillion glow.
- * The whole instrument turns red as a unit. */
-const BalTrack = styled.div`
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  height: clamp(8px, 1.3cqh, 12px);
-  border-radius: 1px;
-  overflow: hidden;
-  /* Single sumi divider at the kill→throw boundary. The previous
-     cream hairlines (rgba 245,236,217,0.7) read as glitches/seams
-     at HUD scale instead of as deliberate partitions, and they
-     dropped to near-zero contrast against the gold throw zone.
-     Sumi reads as a printed-banzuke ink stroke and holds against
-     both the bright vermillion kill zone AND the gold throw zone.
-     Slightly bumped width (1.5% → 2%) so the partition reads as
-     a deliberate ink mark rather than a 1px artifact.
-     The throw→safe boundary drops its divider entirely — gold→dark
-     has massive natural contrast and a hairline there was only
-     adding visual noise. */
-  background:
-    linear-gradient(
-      ${(p) => (p.$isRight ? "to right" : "to left")},
-      color-mix(in srgb, ${C.vermillionBright} 70%, ${C.ink} 30%) 0%,
-      color-mix(in srgb, ${C.vermillionBright} 70%, ${C.ink} 30%) 14%,
-      rgba(8, 10, 18, 0.96) 14%,
-      rgba(8, 10, 18, 0.96) 16%,
-      color-mix(in srgb, ${C.gold} 74%, ${C.ink} 26%) 16%,
-      color-mix(in srgb, ${C.gold} 74%, ${C.ink} 26%) 50%,
-      rgba(8, 10, 18, 0.96) 50%,
-      rgba(8, 10, 18, 0.96) 100%
-    );
-  /* Box-shadow stack reads outermost → innermost:
-       1. inset 0 1px 2px / inset 0 -1px 1px — top + bottom
-          recessed shadows that give the bar a "pressed-in well"
-          feel (unchanged from before).
-       2. inset 0 0 0 1px <border> — the visible 1px border ring
-          on the inside edge. Cream at rest, vermillion in danger.
-       3. inset 0 0 0 2px <sumi mat> — a 1px DARK sumi mat sitting
-          INSIDE the border ring. Renders behind the border so only
-          the inner 1px is visible. Critical for danger state: when
-          the border goes vermillion, this mat keeps it visually
-          separated from the vermillion kill zone — without the mat
-          the red border and the red kill zone read as one
-          continuous red blob. Also helps every other zone (the
-          gold throw zone has cleaner edges, the dark safe zone
-          gets a subtle inner frame).
-       4. 0 1px 2px outer drop shadow — sits the bar on the HUD
-          gradient. */
-  box-shadow:
-    inset 0 1px 2px rgba(0, 0, 0, 0.85),
-    inset 0 -1px 1px rgba(0, 0, 0, 0.4),
-    inset 0 0 0 1px ${(p) =>
-      p.$danger
-        ? "rgba(216, 59, 39, 0.95)"
-        : "rgba(245, 236, 217, 0.32)"},
-    inset 0 0 0 2px rgba(8, 10, 18, 0.85),
-    0 1px 2px rgba(0, 0, 0, 0.5);
-  /* Static box-shadow above is the resting / non-danger ring. When
-     $danger fires, the alarm pulse keyframe takes over the box-shadow
-     property entirely on a 0.78s strobe — same cadence as the gassed
-     lane's alarm pulse so both danger signals beat in sync. */
-  transition: box-shadow 220ms ease;
-  /* Animation priority: a perfect-parry gain pulse briefly preempts the
-   * danger strobe so the reward is visible even when balance is low.
-   * When the gain animation finishes ($gaining is reset by the parent
-   * after 700ms), the danger strobe resumes naturally on next render. */
-  ${(p) =>
-    p.$gaining
-      ? balanceGainTrackOverlay
-      : p.$danger &&
-        css`
-          animation: ${balanceAlarmPulse} 0.78s ease-in-out infinite;
-        `}
-`;
-
-/* Stance gauge fill — ICE BLUE mawashi-cloth wrap.
- *
- * Sized FLUSH with the track (no inset on top/bottom/anchor edge), so
- * the colored zone background never looks bigger than the bar itself.
- *
- * Stays ice blue in EVERY state (no danger color shift). The previous
- * pass had a vermillion fill on top of a vermillion kill zone
- * background — red on red, the bar vanished. Keeping the fill ice
- * blue means it always pops against whatever zone it's sitting in
- * (blue on red kill / blue on gold throw / blue on ink safe), so you
- * can read your balance level at a glance regardless of the danger
- * state. The alarm reading is carried by the track border + outer
- * glow + the visible kill zone background behind the fill.
- *
- * THREE pieces of character added in this pass to fix the "boring
- * flat blue rectangle" feel:
- *
- *   1. Squared edges (1px chamfer instead of pill rounding). Reads as
- *      a printed precision marker rather than a candy capsule. Matches
- *      the squared-off broadcast aesthetic the rest of the HUD uses.
- *
- *   2. Fabric-weave horizontal bands inside the fill. Subtle 1px
- *      darker-blue stripes every ~3.5px, evoking the visible wrap
- *      layers on a real wrestler's mawashi belt. The stance gauge
- *      represents the wrestler's physical balance, which is held by
- *      the mawashi — so the bar literally looking like fabric layers
- *      is thematically tight. Subtle enough to not dominate, present
- *      enough to register as texture instead of flat paint.
- *
- *   3. Leading-edge cream marker (::after). A 3px bright cream stripe
- *      at the side of the fill that recedes as balance drains — the
- *      "current position" punctuation mark. Asymmetric on purpose,
- *      gives the bar a directional READ instead of being symmetric
- *      from both ends. As balance drops, this marker is what you
- *      visually track moving toward the kill zone.
- *
- * Vertical gradient (bright top → mid → deep) preserved for sheen. */
-const BalFill = styled.div.attrs((p) => ({
-  style: {
-    width: `${p.$balance}%`,
-  },
-}))`
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  ${(p) => (p.$isRight ? "left: 0;" : "right: 0;")}
-  border-radius: 1px;
-  transition: width 0.25s ease;
-  z-index: 1;
-  overflow: hidden;
-
-  background:
-    repeating-linear-gradient(
-      0deg,
-      transparent 0px,
-      transparent 2.5px,
-      rgba(20, 60, 90, 0.32) 2.5px,
-      rgba(20, 60, 90, 0.32) 3.5px
-    ),
-    linear-gradient(
-      180deg,
-      ${C.iceBright} 0%,
-      ${C.ice} 50%,
-      ${C.iceMid} 100%
-    );
-
-  box-shadow:
-    0 0 5px ${C.iceGlow},
-    inset 0 -1px 1px rgba(0, 0, 0, 0.5);
-
-  /* Top sheen — frosty white catch on the upper half, sells the polished
-   * mawashi-silk surface. */
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 45%;
-    background: linear-gradient(
-      180deg,
-      rgba(245, 252, 255, 0.5) 0%,
-      rgba(220, 240, 255, 0.12) 70%,
-      transparent 100%
-    );
-    border-radius: 1px 1px 0 0;
-    pointer-events: none;
-  }
-
-  /* Leading-edge marker — bright cream stripe pinned to the side that
-   * recedes as balance drains. Acts as the gauge's "indicator tip" —
-   * the moving punctuation mark you visually track as your balance
-   * pushes toward the danger zones. Glow on the inner edge so it
-   * reads as a lit marker instead of a flat decal. */
-  &::after {
-    content: "";
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    ${(p) => (p.$isRight ? "right: 0;" : "left: 0;")}
-    width: clamp(2px, 0.32cqh, 3px);
-    background: linear-gradient(
-      180deg,
-      rgba(245, 252, 255, 0.95) 0%,
-      rgba(245, 252, 255, 0.78) 100%
-    );
-    box-shadow:
-      ${(p) =>
-        p.$isRight
-          ? "-1px 0 4px rgba(245, 252, 255, 0.55)"
-          : "1px 0 4px rgba(245, 252, 255, 0.55)"};
-    pointer-events: none;
-  }
 `;
 
 /* Rank plaque — tucked up close to the balance strip */
@@ -2549,31 +2158,13 @@ const UiPlayerInfo = ({
                 <StaTickMark $pct={75} />
               </BarTrack>
             </BarFrame>
-            <BalStripWrap
-              $isRight={false}
-              $danger={b1Danger}
-              $matchOver={matchOver}
-            >
-              <BalTrack
-                $isRight={false}
-                $danger={b1Danger}
-                $gaining={p1BalGainKey > 0}
-              >
-                <BalFill $balance={b1} $danger={b1Danger} $isRight={false} />
-                {p1BalGainKey > 0 && (
-                  <>
-                    <BalanceGainFlash
-                      key={`p1bg-flash-${p1BalGainKey}`}
-                      $balance={b1}
-                      $isRight={false}
-                    />
-                    <BalanceGainSweep
-                      key={`p1bg-sweep-${p1BalGainKey}`}
-                      $isRight={false}
-                    />
-                  </>
-                )}
-              </BalTrack>
+            <BalStripWrap $isRight={false} $matchOver={matchOver}>
+              <BalanceGauge
+                balance={b1}
+                isRight={false}
+                danger={b1Danger}
+                gainKey={p1BalGainKey}
+              />
             </BalStripWrap>
           </GaugeStack>
           <PowerUpSlot
@@ -2699,31 +2290,13 @@ const UiPlayerInfo = ({
                 <StaTickMark $pct={75} />
               </BarTrack>
             </BarFrame>
-            <BalStripWrap
-              $isRight={true}
-              $danger={b2Danger}
-              $matchOver={matchOver}
-            >
-              <BalTrack
-                $isRight={true}
-                $danger={b2Danger}
-                $gaining={p2BalGainKey > 0}
-              >
-                <BalFill $balance={b2} $danger={b2Danger} $isRight={true} />
-                {p2BalGainKey > 0 && (
-                  <>
-                    <BalanceGainFlash
-                      key={`p2bg-flash-${p2BalGainKey}`}
-                      $balance={b2}
-                      $isRight={true}
-                    />
-                    <BalanceGainSweep
-                      key={`p2bg-sweep-${p2BalGainKey}`}
-                      $isRight={true}
-                    />
-                  </>
-                )}
-              </BalTrack>
+            <BalStripWrap $isRight={true} $matchOver={matchOver}>
+              <BalanceGauge
+                balance={b2}
+                isRight={true}
+                danger={b2Danger}
+                gainKey={p2BalGainKey}
+              />
             </BalStripWrap>
           </GaugeStack>
           <PowerUpSlot

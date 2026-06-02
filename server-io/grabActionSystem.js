@@ -633,6 +633,8 @@ function updateGrabActions(player, room, io, delta, rooms) {
     } else if (actionType === "lift") {
       actor.isClinchLifting = true;
       actor.clinchLiftStartTime = now;
+      actor.clinchLiftDir = actor.x < target.x ? 1 : -1;
+      actor.clinchLiftForwardBlocked = false;
       actor.stamina = Math.max(0, actor.stamina - CLINCH_LIFT_STAMINA_COST);
       actor.balance = Math.max(0, actor.balance - CLINCH_LIFT_BALANCE_COST);
       target.balance = Math.max(0, target.balance - CLINCH_LIFT_TARGET_BALANCE_DRAIN);
@@ -678,58 +680,89 @@ function updateGrabActions(player, room, io, delta, rooms) {
     const descendMs = CLINCH_LIFT_DESCEND_MS;
     const moveMs = totalMs - riseMs - descendMs;
 
+    const liftDir = activeActor.clinchLiftDir || (activeActor.x < activeTarget.x ? 1 : -1);
+    if (!activeActor.clinchLiftDir) activeActor.clinchLiftDir = liftDir;
+    if (!activeActor.clinchLiftStartX) activeActor.clinchLiftStartX = activeActor.x;
+
+    const canPassBoundary = isKillLift || activeTarget.stamina <= 0;
+    const targetAtEdge =
+      activeTarget.x <= leftBoundary || activeTarget.x >= rightBoundary;
+
+    // Opponent gassed while pinned at edge — resume carry-through and ring out
+    if (
+      activeActor.clinchLiftForwardBlocked &&
+      canPassBoundary &&
+      targetAtEdge &&
+      !room.gameOver
+    ) {
+      const dir = activeTarget.x <= leftBoundary ? -1 : 1;
+      endClinchLift(activeActor, activeTarget);
+      triggerRingOut(activeActor, activeTarget, room, io, rooms, dir);
+      return;
+    }
+    if (activeActor.clinchLiftForwardBlocked && canPassBoundary) {
+      activeActor.clinchLiftForwardBlocked = false;
+    }
+
     if (elapsed < riseMs) {
       const riseProgress = elapsed / riseMs;
       activeTarget.y = GROUND_LEVEL + CLINCH_LIFT_Y_OFFSET * riseProgress;
     } else if (elapsed < riseMs + moveMs) {
       activeTarget.y = GROUND_LEVEL + CLINCH_LIFT_Y_OFFSET;
-      const moveProgress = (elapsed - riseMs) / moveMs;
-      const mapWidth = rightBoundary - leftBoundary;
-      const liftDir = activeActor.x < activeTarget.x ? 1 : -1;
 
-      let liftDistance;
-      if (isKillLift) {
-        const distToEdge = liftDir === 1
-          ? rightBoundary - (activeActor.clinchLiftStartX || activeActor.x)
-          : (activeActor.clinchLiftStartX || activeActor.x) - leftBoundary;
-        liftDistance = distToEdge + fixedDistance;
+      if (activeActor.clinchLiftForwardBlocked) {
+        pinClinchLiftAtEdge(
+          activeActor, activeTarget, fixedDistance, leftBoundary, rightBoundary, liftDir
+        );
       } else {
-        liftDistance = mapWidth * 0.15;
-      }
+        const moveProgress = (elapsed - riseMs) / moveMs;
+        const mapWidth = rightBoundary - leftBoundary;
 
-      const totalMove = liftDistance * moveProgress;
-      const baseX = activeActor.clinchLiftStartX || activeActor.x;
-      let newActorX = baseX + liftDir * totalMove;
-      let newTargetX = activeActor.x < activeTarget.x
-        ? newActorX + fixedDistance
-        : newActorX - fixedDistance;
-      if (!activeActor.clinchLiftStartX) activeActor.clinchLiftStartX = activeActor.x;
-
-      const targetAtBoundary = newTargetX <= leftBoundary || newTargetX >= rightBoundary;
-      if (targetAtBoundary) {
-        if (isKillLift && !room.gameOver) {
-          const dir = newTargetX <= leftBoundary ? -1 : 1;
-          endClinchLift(activeActor, activeTarget);
-          triggerRingOut(activeActor, activeTarget, room, io, rooms, dir);
-          return;
+        let liftDistance;
+        if (isKillLift) {
+          const distToEdge = liftDir === 1
+            ? rightBoundary - activeActor.clinchLiftStartX
+            : activeActor.clinchLiftStartX - leftBoundary;
+          liftDistance = distToEdge + fixedDistance;
+        } else {
+          liftDistance = mapWidth * 0.15;
         }
-        if (!isKillLift && activeTarget.stamina > 0) {
-          endClinchLift(activeActor, activeTarget);
-          maintainClinchPositions(player, opponent, fixedDistance, leftBoundary, rightBoundary);
-          return;
+
+        const totalMove = liftDistance * moveProgress;
+        const newActorX = activeActor.clinchLiftStartX + liftDir * totalMove;
+        const newTargetX = liftDir === 1
+          ? newActorX + fixedDistance
+          : newActorX - fixedDistance;
+
+        const targetAtBoundary =
+          newTargetX <= leftBoundary || newTargetX >= rightBoundary;
+        if (targetAtBoundary && !room.gameOver) {
+          if (canPassBoundary) {
+            const dir = newTargetX <= leftBoundary ? -1 : 1;
+            endClinchLift(activeActor, activeTarget);
+            triggerRingOut(activeActor, activeTarget, room, io, rooms, dir);
+            return;
+          }
+          activeActor.clinchLiftForwardBlocked = true;
+          pinClinchLiftAtEdge(
+            activeActor, activeTarget, fixedDistance, leftBoundary, rightBoundary, liftDir
+          );
+        } else {
+          activeActor.x = newActorX;
+          activeTarget.x = newTargetX;
         }
       }
-      newActorX = Math.max(leftBoundary, Math.min(newActorX, rightBoundary));
-      newTargetX = Math.max(leftBoundary, Math.min(newTargetX, rightBoundary));
-      activeActor.x = newActorX;
-      activeTarget.x = newTargetX;
     } else if (elapsed < totalMs) {
       const descendProgress = (elapsed - riseMs - moveMs) / descendMs;
       activeTarget.y = GROUND_LEVEL + CLINCH_LIFT_Y_OFFSET * (1 - descendProgress);
+      if (activeActor.clinchLiftForwardBlocked && !canPassBoundary) {
+        pinClinchLiftAtEdge(
+          activeActor, activeTarget, fixedDistance, leftBoundary, rightBoundary, liftDir
+        );
+      }
     } else {
       endClinchLift(activeActor, activeTarget);
-      const targetAtBoundary = activeTarget.x <= leftBoundary || activeTarget.x >= rightBoundary;
-      if (targetAtBoundary && (activeTarget.stamina <= 0 || isKillLift) && !room.gameOver) {
+      if (targetAtEdge && canPassBoundary && !room.gameOver) {
         const dir = activeTarget.x <= leftBoundary ? -1 : 1;
         triggerRingOut(activeActor, activeTarget, room, io, rooms, dir);
         return;
@@ -943,6 +976,17 @@ function updateGrabActions(player, room, io, delta, rooms) {
   opponent.movementVelocity = 0;
 }
 
+// Pin lift at map edge without overlapping (same logic as burst push boundary pin)
+function pinClinchLiftAtEdge(actor, target, fixedDistance, leftBoundary, rightBoundary, liftDir) {
+  if (liftDir >= 0) {
+    target.x = rightBoundary;
+    actor.x = rightBoundary - fixedDistance;
+  } else {
+    target.x = leftBoundary;
+    actor.x = leftBoundary + fixedDistance;
+  }
+}
+
 // Maintain fixed distance between clinched players (used when movement is paused)
 function maintainClinchPositions(player, opponent, fixedDistance, leftBoundary, rightBoundary) {
   opponent.x = player.x < opponent.x
@@ -972,6 +1016,8 @@ function endClinchLift(actor, target) {
   actor.clinchThrowStartTime = 0;
   actor.clinchLiftStartTime = 0;
   actor.clinchLiftStartX = 0;
+  actor.clinchLiftDir = 0;
+  actor.clinchLiftForwardBlocked = false;
   actor.isClinchLifting = false;
   actor.isClinchKillLift = false;
   target.isBeingLifted = false;

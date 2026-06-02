@@ -126,6 +126,8 @@ function cleanupGrabStates(player, opponent) {
   player.clinchClashStartTime = 0;
   player.clinchLiftStartTime = 0;
   player.clinchLiftStartX = 0;
+  player.clinchLiftDir = 0;
+  player.clinchLiftForwardBlocked = false;
   player.isBeingLifted = false;
   player.clinchMouse2BufferTime = 0;
   player.isClinchLifting = false;
@@ -216,6 +218,8 @@ function cleanupGrabStates(player, opponent) {
   opponent.clinchClashStartTime = 0;
   opponent.clinchLiftStartTime = 0;
   opponent.clinchLiftStartX = 0;
+  opponent.clinchLiftDir = 0;
+  opponent.clinchLiftForwardBlocked = false;
   opponent.isBeingLifted = false;
   opponent.clinchMouse2BufferTime = 0;
   opponent.isClinchLifting = false;
@@ -419,6 +423,8 @@ function handleWinCondition(room, loser, winner, io, winType) {
     p.clinchClashStartTime = 0;
     p.clinchLiftStartTime = 0;
     p.clinchLiftStartX = 0;
+    p.clinchLiftDir = 0;
+    p.clinchLiftForwardBlocked = false;
     p.isBeingLifted = false;
     p.isClinchLifting = false;
     p.isClinchPushing = false;

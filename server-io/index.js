@@ -410,7 +410,12 @@ function tick(delta) {
       // Handle ready positions separately from movement
       handleReadyPositions(room, player1, player2, io);
 
-      if (player1.isGrabbing && player1.grabbedOpponent && !player1.isHit) {
+      if (
+        player1.isGrabbing &&
+        player1.grabbedOpponent &&
+        !player1.isHit &&
+        !(player1.clinchThrowActive && player1.clinchThrowType === "lift")
+      ) {
         // Only handle grab state if not pushing
         const opponent = room.players.find(
           (p) => p.id === player1.grabbedOpponent
