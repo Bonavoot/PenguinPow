@@ -55,6 +55,15 @@ import "./theme.css";
 import { SERVER_BROADCAST_HZ, DOHYO_LEFT_BOUNDARY, DOHYO_RIGHT_BOUNDARY } from "../constants";
 import { getDisplayHitstopUntil } from "../lib/serverClock";
 
+// Eeshi = pre-bout bed; battle BGM sits lower so hits/SFX stay forward in the mix.
+const EESHI_MUSIC_VOL = 0.018;
+const BATTLE_MUSIC_VOL = 0.014;
+const EESHI_LOOP_CROSSFADE = 1.5;
+const BATTLE_LOOP_CROSSFADE = 2.0;
+const EESHI_ENTRY_FADE = 0.9;
+const BATTLE_ENTRY_FADE = 0;
+const BATTLE_MUSIC_ALT_ROUND = 3;
+
 // Assets, sounds, preloading, constants, ritual config, playSound helper
 import {
   pumo,
@@ -72,7 +81,7 @@ import {
   hakkiyoiSound,
   teWoTsuiteSound,
   bellSound,
-  gameMusic,
+  battleMusicTracks,
   eeshiMusic,
   slapParrySound,
   saltSound,
@@ -1448,60 +1457,6 @@ const GameFighter = ({
     penguin.y,
   ]);
 
-  // Function to handle exiting from disconnected game
-  const handleExitDisconnectedGame = useCallback(() => {
-    // Emit exit event to server
-    if (disconnectedRoomId) {
-      socket.emit("exit_disconnected_game", { roomId: disconnectedRoomId });
-    }
-
-    // Stop all music immediately
-    stopEeshi();
-    if (gameMusicRef.current) {
-      gameMusicRef.current.pause();
-      gameMusicRef.current.currentTime = 0;
-    }
-
-    // Clear any active timers
-    if (countdownRef.current) {
-      clearInterval(countdownRef.current);
-      countdownRef.current = null;
-    }
-
-    // Reset disconnect state
-    onResetDisconnectState();
-
-    // Navigate to main menu (use correct page name)
-    setCurrentPage("mainMenu");
-  }, [socket, disconnectedRoomId, onResetDisconnectState, setCurrentPage]);
-
-  // Handle automatic exit after opponent disconnection
-  useEffect(() => {
-    if (opponentDisconnected && player.id === localId) {
-      setDisconnectCountdown(3);
-
-      const countdownInterval = setInterval(() => {
-        setDisconnectCountdown((prev) => {
-          if (prev <= 1) {
-            clearInterval(countdownInterval);
-            handleExitDisconnectedGame();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-
-      return () => clearInterval(countdownInterval);
-    }
-  }, [opponentDisconnected, player.id, localId, handleExitDisconnectedGame]);
-
-  // Stop eeshi music when opponent disconnects
-  useEffect(() => {
-    if (opponentDisconnected) {
-      stopEeshi();
-    }
-  }, [opponentDisconnected]);
-
   const lastAttackState = useRef(false);
   const lastHitState = useRef(false);
   const lastThrowingSaltState = useRef(false);
@@ -1539,47 +1494,104 @@ const GameFighter = ({
   //      "invisible frame" hiccup caused by mid-swap browser compositing.
   const lastHitFlashTime = useRef(0);
   const HIT_FLASH_COOLDOWN_MS = 300;
-  const gameMusicRef = useRef(null);
+  const battleMusicRef = useRef(null);
   const eeshiMusicRef = useRef(null);
+  // Set when match_over fires (2-round win); suppresses eeshi through MatchOver/rematch UI.
+  const matchEndingRef = useRef(false);
+  const battleMusicRoundRef = useRef(0);
+  const ownsMatchMusic = index === 0;
 
-  const startEeshi = useCallback(() => {
-    if (eeshiMusicRef.current) return;
-    eeshiMusicRef.current = createCrossfadeLoop(eeshiMusic, 0.018 * getGlobalVolume(), 1.5);
-  }, []);
+  const startEeshi = useCallback((withFadeIn = false) => {
+    if (!ownsMatchMusic || eeshiMusicRef.current) return;
+    eeshiMusicRef.current = createCrossfadeLoop(
+      eeshiMusic,
+      EESHI_MUSIC_VOL * getGlobalVolume(),
+      EESHI_LOOP_CROSSFADE,
+      withFadeIn ? EESHI_ENTRY_FADE : 0
+    );
+  }, [ownsMatchMusic]);
 
   const stopEeshi = useCallback(() => {
-    if (eeshiMusicRef.current) {
-      eeshiMusicRef.current.stop();
-      eeshiMusicRef.current = null;
+    if (!ownsMatchMusic || !eeshiMusicRef.current) return;
+    const loop = eeshiMusicRef.current;
+    eeshiMusicRef.current = null;
+    loop.stop();
+  }, [ownsMatchMusic]);
+
+  const stopBattleMusic = useCallback(() => {
+    if (!ownsMatchMusic || !battleMusicRef.current) return;
+    const loop = battleMusicRef.current;
+    battleMusicRef.current = null;
+    loop.stop();
+  }, [ownsMatchMusic]);
+
+  const startBattleMusic = useCallback(() => {
+    if (!ownsMatchMusic || battleMusicRef.current) return;
+    battleMusicRoundRef.current += 1;
+    const roundNumber = battleMusicRoundRef.current;
+    const track =
+      roundNumber === BATTLE_MUSIC_ALT_ROUND
+        ? battleMusicTracks[1]
+        : battleMusicTracks[0];
+    const loop = createCrossfadeLoop(
+      track,
+      BATTLE_MUSIC_VOL * getGlobalVolume(),
+      BATTLE_LOOP_CROSSFADE,
+      BATTLE_ENTRY_FADE
+    );
+    if (loop) battleMusicRef.current = loop;
+  }, [ownsMatchMusic]);
+
+  // Function to handle exiting from disconnected game
+  const handleExitDisconnectedGame = useCallback(() => {
+    if (disconnectedRoomId) {
+      socket.emit("exit_disconnected_game", { roomId: disconnectedRoomId });
     }
-  }, []);
-  const duckTimerRef = useRef(null);
-  const musicBaseVolume = useRef(0.029 * getGlobalVolume());
 
-  const duckMusic = useCallback((intensity = 0.3, durationMs = 400) => {
-    const music = gameMusicRef.current;
-    if (!music || music.paused) return;
+    stopEeshi();
+    stopBattleMusic();
 
-    if (duckTimerRef.current) cancelAnimationFrame(duckTimerRef.current);
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+      countdownRef.current = null;
+    }
 
-    const baseVol = musicBaseVolume.current;
-    const duckedVol = baseVol * intensity;
-    music.volume = duckedVol;
+    onResetDisconnectState();
+    setCurrentPage("mainMenu");
+  }, [
+    socket,
+    disconnectedRoomId,
+    onResetDisconnectState,
+    setCurrentPage,
+    stopEeshi,
+    stopBattleMusic,
+  ]);
 
-    const startTime = performance.now();
-    const recover = (now) => {
-      const elapsed = now - startTime;
-      if (elapsed >= durationMs) {
-        music.volume = baseVol;
-        duckTimerRef.current = null;
-        return;
-      }
-      const t = elapsed / durationMs;
-      music.volume = duckedVol + (baseVol - duckedVol) * t * t;
-      duckTimerRef.current = requestAnimationFrame(recover);
-    };
-    duckTimerRef.current = requestAnimationFrame(recover);
-  }, []);
+  useEffect(() => {
+    if (opponentDisconnected && player.id === localId) {
+      setDisconnectCountdown(3);
+
+      const countdownInterval = setInterval(() => {
+        setDisconnectCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(countdownInterval);
+            handleExitDisconnectedGame();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      return () => clearInterval(countdownInterval);
+    }
+  }, [opponentDisconnected, player.id, localId, handleExitDisconnectedGame]);
+
+  useEffect(() => {
+    if (opponentDisconnected && ownsMatchMusic) {
+      stopEeshi();
+      stopBattleMusic();
+    }
+  }, [opponentDisconnected, ownsMatchMusic, stopEeshi, stopBattleMusic]);
 
   // FPS counter RAF loop removed — it consumed a full rAF slot per
   // GameFighter instance (×2) with no visible output.
@@ -1903,7 +1915,6 @@ const GameFighter = ({
         if (index === 0) {
           const pan = xToPan(data.x);
           playSound(pickRandomSound(chargedHitSounds), 0.04, null, 0.8, pan);
-          duckMusic(0.3, 400);
         }
       }
     };
@@ -1944,15 +1955,6 @@ const GameFighter = ({
           if (data.attackType === "slap") {
             const baseSound = pickRandomSound(slapHitSounds);
             playSoundVaried(baseSound, 0.038, null, 1.0, pan);
-            // Burst (combo finisher) ducks deeper & longer than string hits 1/2 — sells the weight.
-            // Counter / punish ducks deeper too — the moment matters, let it breathe.
-            if (isBurst) {
-              duckMusic(0.22, 520);
-            } else if (data.isCounterHit || data.isPunish) {
-              duckMusic(0.3, 400);
-            } else {
-              duckMusic(0.4, 300);
-            }
             // A5 sound layering — counter / punish gets a second pitched layer
             // on top of the base hit. We don't have unique counter/punish sfx
             // assets so we synthesize them by re-using the same sample at a
@@ -1969,8 +1971,6 @@ const GameFighter = ({
           } else {
             const baseSound = pickRandomSound(chargedHitSounds);
             playSound(baseSound, 0.045, null, 1.0, pan);
-            // Charged punish/counter: deeper than a normal charged hit — they're earned.
-            duckMusic(data.isCounterHit || data.isPunish ? 0.15 : 0.2, 500);
             // Same layering treatment as slaps but slightly louder/wider pitch
             // gap because charged hits already have weight — the layer needs to
             // stand out without overpowering the primary thwack.
@@ -2307,6 +2307,13 @@ const GameFighter = ({
           return prev - 1;
         });
       }, 1000);
+
+      // Back to power-up selection: battle BGM off, pre-bout eeshi on.
+      matchEndingRef.current = false;
+      stopBattleMusic();
+      if (!opponentDisconnected) {
+        startEeshi(true);
+      }
     };
     socket.on("game_reset", handleGameReset);
 
@@ -2356,15 +2363,9 @@ const GameFighter = ({
         startTime: Date.now(),
       });
 
-      // Handle music transition: eeshi -> game music
+      // Handle music transition: eeshi -> battle music (after HAKKIYOI)
       stopEeshi();
-      if (gameMusicRef.current) {
-        gameMusicRef.current.loop = true;
-        gameMusicRef.current.play().catch((e) => {
-          if (e.name !== "AbortError")
-            console.error("Game music play error:", e);
-        });
-      }
+      startBattleMusic();
 
       const tid = setTimeout(() => {
         setHakkiyoi(false);
@@ -2450,18 +2451,24 @@ const GameFighter = ({
         });
       });
 
-      // Handle music transition: game music -> eeshi music
-      if (gameMusicRef.current) {
-        gameMusicRef.current.pause();
-        gameMusicRef.current.currentTime = 0;
+      // Round over: battle BGM off; eeshi only if another round follows (not match end).
+      if (data.wins > 1) {
+        matchEndingRef.current = true;
       }
-      if (!opponentDisconnected) {
-        startEeshi();
+      stopBattleMusic();
+      if (!matchEndingRef.current && !opponentDisconnected) {
+        startEeshi(true);
       }
     };
     socket.on("game_over", handleGameOver);
 
     const handleMatchOver = (data) => {
+      // match_over is emitted before game_over on the winning match — silence all BGM
+      // through MatchOver / rematch (game_reset does not run when matchOver is set).
+      matchEndingRef.current = true;
+      stopBattleMusic();
+      stopEeshi();
+
       const tid = setTimeout(() => {
         setMatchOver(data.isMatchOver);
       }, 3000);
@@ -2475,6 +2482,11 @@ const GameFighter = ({
       setPlayerTwoWinCount(0);
       setRoundHistory([]);
       setMatchOver(false);
+      matchEndingRef.current = false;
+      battleMusicRoundRef.current = 0;
+      if (!opponentDisconnected) {
+        startEeshi(true);
+      }
     };
     socket.on("rematch", handleRematch);
 
@@ -2526,27 +2538,19 @@ const GameFighter = ({
     };
   }, [index, socket, handleFighterAction, opponentDisconnected, localId]);
 
-  // MEMORY FIX: Create music Audio objects only once on mount, reuse on opponentDisconnected changes.
-  // Match BGM honors getGlobalVolume() — the user's volume slider was previously bypassed for in-match music.
+  // Index 0 only — two GameFighters share one room; one BGM owner avoids double playback.
   useEffect(() => {
-    if (!gameMusicRef.current) {
-      gameMusicRef.current = new Audio(gameMusic);
-      const baseVol = 0.029 * getGlobalVolume();
-      musicBaseVolume.current = baseVol;
-      gameMusicRef.current.volume = baseVol;
-    }
-    if (!opponentDisconnected) {
-      startEeshi();
+    if (!ownsMatchMusic) return;
+
+    if (!opponentDisconnected && !matchEndingRef.current) {
+      startEeshi(false);
     }
 
     return () => {
       stopEeshi();
-      if (gameMusicRef.current) {
-        gameMusicRef.current.pause();
-        gameMusicRef.current.currentTime = 0;
-      }
+      stopBattleMusic();
     };
-  }, [opponentDisconnected]);
+  }, [opponentDisconnected, ownsMatchMusic, startEeshi, stopEeshi, stopBattleMusic]);
 
   // NOTE: game_start and game_over music handling is now consolidated into the main socket useEffect
   // to prevent duplicate listeners and cleanup race conditions
@@ -3146,7 +3150,6 @@ const GameFighter = ({
       const pan = xToPan(penguin.x);
       playSound(grabSound, 0.04, null, 1.0, pan);
       playSound(pickRandomSound(grabHitSounds), 0.035, null, 1.0, pan);
-      duckMusic(0.25, 450);
     }
     lastGrabState.current = penguin.isGrabbing;
   }, [penguin.isGrabbing]);
@@ -3492,7 +3495,6 @@ const GameFighter = ({
         });
 
         playSound(pickRandomSound(chargedHitSounds), 0.07, null, 0.55, xToPan(data.impactX));
-        duckMusic(0.3, 400);
 
         const launchDelay = data.hitstopMs || 550;
         const launchSoundId = setTimeout(() => {
@@ -3566,7 +3568,6 @@ const GameFighter = ({
       const hitstopDelay = Math.max(0, (data.hitstopMs || 0));
       const soundId = setTimeout(() => {
         playSound(chargeAttackLaunchSound, 0.18, null, 1.4, xToPan(launchX));
-        duckMusic(0.3, 400);
       }, hitstopDelay);
       pendingTimeouts.push(soundId);
     };
@@ -3674,14 +3675,12 @@ const GameFighter = ({
 
   // Final cleanup effect - ensure all music stops when component unmounts
   useEffect(() => {
+    if (!ownsMatchMusic) return;
     return () => {
       stopEeshi();
-      if (gameMusicRef.current) {
-        gameMusicRef.current.pause();
-        gameMusicRef.current.currentTime = 0;
-      }
+      stopBattleMusic();
     };
-  }, []); // Empty dependency array means this only runs on mount/unmount
+  }, [ownsMatchMusic, stopEeshi, stopBattleMusic]);
 
   // ============================================
   // DISPLAY STATE - Merges predicted state with server state

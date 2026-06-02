@@ -155,7 +155,12 @@ function _play(ctx, buffer, volume, duration, playbackRate = 1.0, loop = false, 
   }
 }
 
-function createCrossfadeLoop(src, volume = 1.0, crossfadeDuration = 2.0) {
+function createCrossfadeLoop(
+  src,
+  volume = 1.0,
+  crossfadeDuration = 2.0,
+  initialFadeIn = 0
+) {
   const ctx = getContext();
 
   const buffer = audioBuffers.get(src);
@@ -167,13 +172,16 @@ function createCrossfadeLoop(src, volume = 1.0, crossfadeDuration = 2.0) {
   let stopped = false;
   let isFirstPlay = true;
 
+  const instanceMaster = ctx.createGain();
+  instanceMaster.connect(getMasterEQ());
+
   const CURVE_STEPS = 64;
   const fadeInCurve = new Float32Array(CURVE_STEPS);
   const fadeOutCurve = new Float32Array(CURVE_STEPS);
   for (let i = 0; i < CURVE_STEPS; i++) {
     const t = i / (CURVE_STEPS - 1);
-    fadeInCurve[i] = Math.sin(t * Math.PI / 2) * volume;
-    fadeOutCurve[i] = Math.cos(t * Math.PI / 2) * volume;
+    fadeInCurve[i] = Math.sin(t * Math.PI / 2);
+    fadeOutCurve[i] = Math.cos(t * Math.PI / 2);
   }
 
   function scheduleNext() {
@@ -183,12 +191,18 @@ function createCrossfadeLoop(src, volume = 1.0, crossfadeDuration = 2.0) {
     const gainNode = ctx.createGain();
     source.buffer = buffer;
     source.connect(gainNode);
-    gainNode.connect(getMasterEQ());
+    gainNode.connect(instanceMaster);
 
     const startTime = ctx.currentTime;
 
     if (isFirstPlay) {
-      gainNode.gain.value = volume;
+      if (initialFadeIn > 0) {
+        instanceMaster.gain.setValueAtTime(0, startTime);
+        instanceMaster.gain.linearRampToValueAtTime(volume, startTime + initialFadeIn);
+      } else {
+        instanceMaster.gain.setValueAtTime(volume, startTime);
+      }
+      gainNode.gain.value = 1;
       isFirstPlay = false;
     } else {
       gainNode.gain.value = 0;
@@ -234,22 +248,21 @@ function createCrossfadeLoop(src, volume = 1.0, crossfadeDuration = 2.0) {
       pendingTimers.length = 0;
       if (nextTimer) clearTimeout(nextTimer);
       const now = ctx.currentTime;
-      for (const entry of activeSources) {
-        try {
-          entry.gainNode.gain.cancelScheduledValues(now);
-          entry.gainNode.gain.setValueAtTime(entry.gainNode.gain.value, now);
-          entry.gainNode.gain.linearRampToValueAtTime(0, now + 0.3);
-        } catch (e) {}
-      }
+      try {
+        instanceMaster.gain.cancelScheduledValues(now);
+        instanceMaster.gain.setValueAtTime(instanceMaster.gain.value, now);
+        instanceMaster.gain.linearRampToValueAtTime(0, now + 0.5);
+      } catch (e) {}
       const stopTimer = setTimeout(() => {
         for (const entry of activeSources) {
           try { entry.source.stop(); } catch (e) {}
           try { entry.source.disconnect(); entry.gainNode.disconnect(); } catch (e) {}
         }
         activeSources.length = 0;
-      }, 350);
+        try { instanceMaster.disconnect(); } catch (e) {}
+      }, 550);
       pendingTimers.push(stopTimer);
-    }
+    },
   };
 }
 
