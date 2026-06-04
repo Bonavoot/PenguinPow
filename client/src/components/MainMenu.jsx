@@ -11,10 +11,10 @@ import styled, { keyframes, css } from "styled-components";
 import { SocketContext } from "../SocketContext";
 import lobbyBackground from "../assets/lobby-bkg.webp";
 
-import pumo from "../assets/pumo.png";
+import pumo from "../assets/pumo-idle.png";
 /*
  * Hero portrait for the main menu — dignified pre-match pose with the
- * ceremonial kesho-mawashi. Distinct from the in-game pumo.png sprite
+ * ceremonial kesho-mawashi. Distinct from the in-game pumo-idle.png sprite
  * (which stays imported for preloading + use in lobby/game).
  */
 import pumoMainMenu from "../assets/pumo-main-menu.png";

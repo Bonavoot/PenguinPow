@@ -6,7 +6,7 @@
  * the higher-resolution URL instead.
  *
  * NAMING CONVENTION:
- *   Original:  pumo.png               →  @2x:  pumo@2x.png
+ *   Original:  pumo-idle.png          →  @2x:  pumo-idle@2x.png
  *   Original:  hit_spritesheet.png     →  @2x:  hit_spritesheet@2x.png
  *   Original:  ritual_part1_spritesheet.png → @2x: ritual_part1_spritesheet@2x.png
  *

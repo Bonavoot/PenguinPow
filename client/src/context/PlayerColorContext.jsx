@@ -53,7 +53,7 @@ const DIRECT_SPRITESHEETS = [
 // This ensures cache keys match when GameFighter looks up recolored sprites
 
 // Static sprites
-import pumo from "../assets/pumo.png";
+import pumo from "../assets/pumo-idle.png";
 import attack from "../assets/attack.png";
 import throwing from "../assets/throwing.png";
 import grabbing from "../assets/grabbing.png";

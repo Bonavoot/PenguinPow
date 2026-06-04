@@ -21,7 +21,7 @@ import {
   playButtonPressSound2,
 } from "../utils/soundUtils";
 import Snowfall from "./Snowfall";
-import pumo from "../assets/pumo.png";
+import pumo from "../assets/pumo-idle.png";
 import mainMenuBackground from "../assets/main-menu-bkg-3.png";
 import {
   C,

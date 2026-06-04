@@ -5,7 +5,7 @@ import { ANIMATED_SPRITES } from "../config/spriteConfig";
 // ============================================
 // STATIC SPRITE IMPORTS (Single frame images)
 // ============================================
-import pumo from "../assets/pumo.png";
+import pumo from "../assets/pumo-idle.png";
 import powerWaterIcon from "../assets/power-water.png";
 import snowballImage from "../assets/snowball.png";
 import pumoArmyIcon from "./pumo-army-icon.png";

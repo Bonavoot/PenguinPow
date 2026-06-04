@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 
-import pumo from "../assets/pumo.png";
+import pumo from "../assets/pumo-idle.png";
 import {
   SPRITE_BASE_COLOR,
   recolorImage,

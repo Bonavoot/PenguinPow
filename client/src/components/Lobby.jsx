@@ -16,7 +16,7 @@ import {
   GREY_BODY_RANGES,
   SPRITE_BASE_COLOR,
 } from "../utils/SpriteRecolorizer";
-import pumo from "../assets/pumo.png";
+import pumo from "../assets/pumo-idle.png";
 import {
   C,
   slideInLeft,

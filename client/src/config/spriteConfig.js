@@ -39,7 +39,7 @@ import ritualPart4Sheet from "../assets/ritual_part4_spritesheet.png";
 // ============================================
 // STATIC SPRITE IMPORTS
 // ============================================
-import pumo from "../assets/pumo.png";
+import pumo from "../assets/pumo-idle.png";
 import attack from "../assets/attack.png";
 import throwing from "../assets/throwing.png";
 import grabbing from "../assets/grabbing.png";

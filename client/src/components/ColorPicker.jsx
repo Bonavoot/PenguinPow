@@ -22,7 +22,7 @@ import {
 } from "../utils/SpriteRecolorizer";
 
 // UNIFIED: Both players use BLUE sprite as preview
-import pumo from "../assets/pumo.png";
+import pumo from "../assets/pumo-idle.png";
 
 const PickerContainer = styled.div`
   display: flex;
