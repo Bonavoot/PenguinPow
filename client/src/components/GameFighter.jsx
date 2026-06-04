@@ -1119,6 +1119,7 @@ const GameFighter = ({
   const prevUiSnapshot = useRef({});
   const [hakkiyoi, setHakkiyoi] = useState(false);
   const [gyojiCall, setGyojiCall] = useState(null); // Gyoji's call before HAKKIYOI (e.g., "TE WO TSUITE!")
+  const [handsDownReached, setHandsDownReached] = useState(false);
   const [gyojiState, setGyojiState] = useState("idle");
   const [gameOver, setGameOver] = useState(false);
   const [showRoundResult, setShowRoundResult] = useState(false); // Deferred from gameOver to prevent freeze
@@ -3311,6 +3312,17 @@ const GameFighter = ({
     }
   }, [gyojiCall]);
 
+  // Latch tachiai pose once HANDS DOWN fires — gyojiCall clears after 2s but ready holds until HAKKIYOI
+  useEffect(() => {
+    if (!penguin.isReady) {
+      setHandsDownReached(false);
+      return;
+    }
+    if (gyojiCall === "TE WO TSUITE!") {
+      setHandsDownReached(true);
+    }
+  }, [penguin.isReady, gyojiCall]);
+
   useEffect(() => {
     const currentTime = Date.now();
     if (
@@ -3708,6 +3720,9 @@ const GameFighter = ({
   // SPRITE RECOLORING
   // Compute the current sprite and apply recoloring if needed
   // ============================================
+  // Side profile until gyoji "TE WO TSUITE!" (HANDS DOWN), then tachiai until HAKKIYOI
+  const readyIntroComplete = penguin.isReady && handsDownReached;
+
   const displaySpriteSrc = getImageSrc(
     penguin.fighter,
     penguin.isDiving,
@@ -3718,6 +3733,7 @@ const GameFighter = ({
     displayPenguin.isRawParrying,
     penguin.isGrabBreaking,
     penguin.isReady,
+    readyIntroComplete,
     penguin.isHit,
     penguin.isDead,
     displayPenguin.isSlapAttack,
@@ -4130,6 +4146,7 @@ const GameFighter = ({
           $isRawParrying={displayPenguin.isRawParrying}
           $isGrabBreaking={penguin.isGrabBreaking}
           $isReady={penguin.isReady}
+          $readyIntroComplete={readyIntroComplete}
           $isHit={penguin.isHit}
           $isDead={penguin.isDead}
           $isSlapAttack={displayPenguin.isSlapAttack}

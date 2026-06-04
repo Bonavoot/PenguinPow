@@ -3,7 +3,8 @@ import {
   grabbing,
   attemptingGrabThrow,
   attemptingPull,
-  ready,
+  pumoSideProfile,
+  pumoTachiaiPosition,
   attack,
   slapAttack1,
   slapAttack2,
@@ -36,6 +37,7 @@ const getImageSrc = (
   isRawParrying,
   isGrabBreaking,
   isReady,
+  readyIntroComplete = true,
   isHit,
   isDead,
   isSlapAttack,
@@ -180,7 +182,9 @@ const getImageSrc = (
     return grabbing;
   }
   if (isRawParrying) return crouching;
-  if (isReady) return ready;
+  if (isReady) {
+    return readyIntroComplete ? pumoTachiaiPosition : pumoSideProfile;
+  }
   if (isStrafing && !isThrowing) return pumoWaddle;
   if (isDead) return pumo;
   if (isThrowing) return throwing;

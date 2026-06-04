@@ -14,7 +14,8 @@ import thickBlubberIcon from "../assets/thick-blubber-icon.png";
 import grabbing from "../assets/grabbing.png";
 import attemptingGrabThrow from "../assets/attempting-grab-throw.png";
 import attemptingPull from "../assets/is-attempting-pull.png";
-import ready from "../assets/ready.png";
+import pumoSideProfile from "../assets/pumo-side-profile.png";
+import pumoTachiaiPosition from "../assets/pumo-tachiai-position.png";
 import attack from "../assets/attack.png";
 import slapAttack1 from "../assets/slapAttack1.png";
 import slapAttack2 from "../assets/slapAttack2.png";
@@ -205,7 +206,8 @@ const initializeImagePreloading = () => {
   preloadImage(attemptingPull);
   preloadImage(beingGrabbed);
 
-  preloadImage(ready);
+  preloadImage(pumoSideProfile);
+  preloadImage(pumoTachiaiPosition);
   preloadImage(hit);
   preloadImage(dodging);
   preloadImage(crouching);
@@ -332,7 +334,8 @@ export {
   grabbing,
   attemptingGrabThrow,
   attemptingPull,
-  ready,
+  pumoSideProfile,
+  pumoTachiaiPosition,
   attack,
   slapAttack1,
   slapAttack2,

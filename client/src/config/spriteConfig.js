@@ -45,7 +45,8 @@ import throwing from "../assets/throwing.png";
 import grabbing from "../assets/grabbing.png";
 import attemptingGrabThrow from "../assets/attempting-grab-throw.png";
 import isAttemptingPull from "../assets/is-attempting-pull.png";
-import ready from "../assets/ready.png";
+import pumoSideProfile from "../assets/pumo-side-profile.png";
+import pumoTachiaiPosition from "../assets/pumo-tachiai-position.png";
 import dodging from "../assets/dodging.png";
 import crouchStance from "../assets/crouch-stance.png";
 import recovering from "../assets/recovering.png";
@@ -202,7 +203,8 @@ const BLUE_STATIC_SPRITES = {
   grabbing: grabbing,
   attemptingGrabThrow: attemptingGrabThrow,
   isAttemptingPull: isAttemptingPull,
-  ready: ready,
+  readySideProfile: pumoSideProfile,
+  ready: pumoTachiaiPosition,
   dodging: dodging,
   crouchStance: crouchStance,
   recovering: recovering,
