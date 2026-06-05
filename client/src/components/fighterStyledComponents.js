@@ -458,7 +458,6 @@ export const StyledImage = styled("img")
           !props.$isThrowingSnowball &&
           !props.$isSpawningPumoArmy &&
           !props.$isBowing &&
-          !props.$isReady &&
           !props.$isGrabPushing &&
           !props.$isBeingGrabPushed &&
           !props.$isAttemptingPull &&
