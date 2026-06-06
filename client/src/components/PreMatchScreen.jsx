@@ -446,7 +446,7 @@ const WrestlerPanel = styled.div`
   overflow: hidden;
   background:
     radial-gradient(
-      ellipse 75% 55% at 50% 60%,
+      ellipse 75% 55% at 50% 65%,
       ${(p) => p.$washColor} 0%,
       transparent 70%
     ),
@@ -645,24 +645,37 @@ const RankDiamond = styled.span`
   box-shadow: 0 0 3px rgba(232, 197, 71, 0.4);
 `;
 
+/*
+ * Portrait zone — bottom-anchored so the sprite's feet stay clipped
+ * by the card edge even when scaled up. The shorter pumo-idle canvas
+ * (more transparent padding above the head) left the old top-aligned
+ * 100%-height layout looking sunken; oversizing + flex-end fills the
+ * card without losing the "cut off at the belt" look.
+ */
 const WrestlerImageWrap = styled.div`
   position: absolute;
-  top: clamp(36px, 4.8cqh, 60px);
+  top: clamp(22px, 2.8cqh, 38px);
   left: 0;
   right: 0;
   bottom: -28%;
   display: flex;
-  align-items: flex-start;
+  align-items: flex-end;
   justify-content: center;
+  padding-bottom: clamp(8px, 1.8cqh, 20px);
   z-index: 4;
 `;
 
 const WrestlerImage = styled.img`
   width: auto;
-  height: 100%;
-  max-width: 110%;
+  height: 138%;
+  max-width: 118%;
   object-fit: contain;
-  transform: ${(p) => (p.$flip ? "scaleX(1)" : "scaleX(-1)")};
+  object-position: center bottom;
+  transform-origin: center bottom;
+  transform: ${(p) =>
+    p.$flip
+      ? "translateY(-5%) scaleX(1)"
+      : "translateY(-5%) scaleX(-1)"};
   /* Warm contact shadow (was generic cool black) — keeps the
      penguin grounded on the cream paper instead of looking
      pasted-on from a different lighting environment. */
