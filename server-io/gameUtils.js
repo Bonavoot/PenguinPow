@@ -326,6 +326,10 @@ function resetPlayerAttackStates(player) {
   player.attackCooldownUntil = 0;
   player.slapStringPosition = 0;
   player.slapStringWindowUntil = 0;
+  player.slapStringCounterLatched = false;
+  player.slapStringPunishLatched = false;
+  player.slapWhiffCount = 0;
+  player.isSlapWhiffPausing = false;
   player.currentSlapHitConnected = false;
   player.pendingGrabEnder = false;
   player.isBurstKnockback = false;
@@ -340,6 +344,7 @@ function clearAllActionStates(player) {
   player.isHit = false;
   player.isAlreadyHit = false;
   player.isSlapKnockback = false;
+  player.slapKnockbackCanRingOut = false;
   player.isBurstKnockback = false;
   player.burstKnockbackStartTime = 0;
   player.isParryKnockback = false;
@@ -365,6 +370,10 @@ function clearAllActionStates(player) {
   player.isSlapSliding = false;
   player.slapStringPosition = 0;
   player.slapStringWindowUntil = 0;
+  player.slapStringCounterLatched = false;
+  player.slapStringPunishLatched = false;
+  player.slapWhiffCount = 0;
+  player.isSlapWhiffPausing = false;
   player.currentSlapHitConnected = false;
   player.isBurstKnockback = false;
   player.burstKnockbackStartTime = 0;
@@ -669,7 +678,9 @@ function getEdgeProximity(playerX) {
   return Math.max(0, 1 - (nearestEdge / DOHYO_EDGE_PANIC_ZONE));
 }
 
-function getIceFriction(player, isActiveBraking, nearEdge, edgeProximity) {
+// ignoreInputs: when true (e.g. during a committed slap slide), movement keys are
+// disregarded entirely so the slide coasts identically regardless of what's held.
+function getIceFriction(player, isActiveBraking, nearEdge, edgeProximity, ignoreInputs = false) {
   if (player.isPowerSliding) {
     if (isActiveBraking) {
       let friction = SLIDE_BRAKE_FRICTION;
@@ -679,13 +690,13 @@ function getIceFriction(player, isActiveBraking, nearEdge, edgeProximity) {
     return SLIDE_FRICTION;
   }
   
-  if (isActiveBraking) {
+  if (!ignoreInputs && isActiveBraking) {
     let friction = ICE_BRAKE_FRICTION;
     if (nearEdge) {
       friction -= ICE_EDGE_BRAKE_BONUS * edgeProximity;
     }
     return friction;
-  } else if (player.keys.a || player.keys.d) {
+  } else if (!ignoreInputs && (player.keys.a || player.keys.d)) {
     return ICE_MOVING_FRICTION;
   } else {
     let friction = ICE_COAST_FRICTION;

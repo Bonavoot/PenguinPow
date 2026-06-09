@@ -14,7 +14,7 @@ import thickBlubberIcon from "../assets/thick-blubber-icon.png";
 import grabbing from "../assets/grabbing.png";
 import attemptingGrabThrow from "../assets/attempting-grab-throw.png";
 import attemptingPull from "../assets/is-attempting-pull.png";
-import pumoSideProfile from "../assets/pumo-side-profile.png";
+import pumoSideProfile from "../assets/pumo-ready-position.png";
 import pumoTachiaiPosition from "../assets/pumo-tachiai-position.png";
 import attack from "../assets/attack.png";
 import slapAttack1 from "../assets/slapAttack1.png";
@@ -39,6 +39,8 @@ import crouching from "../assets/blocking.png"; // APNG
 import bow from "../assets/bow.png"; // APNG
 import grabAttempt from "../assets/grab-attempt.png"; // APNG
 import hit from "../assets/hit.png"; // APNG
+import bellyLaying from "../assets/pumo-belly-laying.png"; // static — clinch kill PULL victim (eyes closed, settled)
+import bellyLayingEyesOpen from "../assets/pumo-belly-laying-eyes-open.png"; // static — clinch kill PULL victim (eyes open, during the slide)
 import snowballThrow from "../assets/snowball-throw.png"; // APNG
 import beingGrabbed from "../assets/is-being-grabbed.gif";
 import atTheRopes from "../assets/at-the-ropes.png"; // APNG
@@ -209,6 +211,8 @@ const initializeImagePreloading = () => {
   preloadImage(pumoSideProfile);
   preloadImage(pumoTachiaiPosition);
   preloadImage(hit);
+  preloadImage(bellyLaying);
+  preloadImage(bellyLayingEyesOpen);
   preloadImage(dodging);
   preloadImage(crouching);
   preloadImage(crouchStance);
@@ -355,6 +359,8 @@ export {
   bow,
   grabAttempt,
   hit,
+  bellyLaying,
+  bellyLayingEyesOpen,
   snowballThrow,
   beingGrabbed,
   atTheRopes,

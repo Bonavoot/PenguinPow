@@ -45,7 +45,7 @@ import throwing from "../assets/throwing.png";
 import grabbing from "../assets/grabbing.png";
 import attemptingGrabThrow from "../assets/attempting-grab-throw.png";
 import isAttemptingPull from "../assets/is-attempting-pull.png";
-import pumoSideProfile from "../assets/pumo-side-profile.png";
+import pumoSideProfile from "../assets/pumo-ready-position.png";
 import pumoTachiaiPosition from "../assets/pumo-tachiai-position.png";
 import dodging from "../assets/dodging.png";
 import crouchStance from "../assets/crouch-stance.png";

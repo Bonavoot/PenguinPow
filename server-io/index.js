@@ -52,7 +52,8 @@ const {
   GASSED_DURATION_MS, GASSED_RECOVERY_STAMINA,
   BALANCE_MAX, BALANCE_PASSIVE_REGEN_PER_SEC, BALANCE_CROUCH_REGEN_PER_SEC,
   HITSTOP_GRAB_MS, HITSTOP_THROW_MS, SLAP_PARRY_KB_FRICTION,
-  BURST_KB_INITIAL_FRICTION, BURST_KB_LATE_FRICTION, BURST_KB_PHASE_SWITCH_MS,
+  SLAP_HIT3_KB_FRICTION,
+  SLAP_ROPE_RESIST_BUFFER,
   SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS, SIDESTEP_RECOVERY_MS,
   SIDESTEP_ARC_DEPTH, SIDESTEP_TRAVEL, SIDESTEP_GRAB_TRACK_RANGE,
   SIDESTEP_RECOVERY_OVERLAP_THRESHOLD,
@@ -465,23 +466,28 @@ function tick(delta) {
           if (!player1.isHit && !player2.isHit) {
             // Normal facing logic when both players are not hit
             // Don't update facing if player has locked slap facing direction OR is attacking OR has atTheRopes facing locked
-            if (!player1.slapFacingDirection && !player1.isAttacking && !player1.atTheRopesFacingDirection && player1.x < player2.x) {
+            // The pull-kill victim keeps its preserved facing (excluded below) so it
+            // doesn't flip as it slides through/past the thrower. The thrower itself
+            // is NOT excluded — its facing still responds naturally.
+            if (!player1.slapFacingDirection && !player1.isAttacking && !player1.atTheRopesFacingDirection && !player1.isClinchKillPullVictim && player1.x < player2.x) {
               player1.facing = -1;
             } else if (
               !player1.slapFacingDirection &&
               !player1.isAttacking &&
               !player1.atTheRopesFacingDirection &&
+              !player1.isClinchKillPullVictim &&
               player1.x >= player2.x
             ) {
               player1.facing = 1;
             }
 
-            if (!player2.slapFacingDirection && !player2.isAttacking && !player2.atTheRopesFacingDirection && player1.x < player2.x) {
+            if (!player2.slapFacingDirection && !player2.isAttacking && !player2.atTheRopesFacingDirection && !player2.isClinchKillPullVictim && player1.x < player2.x) {
               player2.facing = 1;
             } else if (
               !player2.slapFacingDirection &&
               !player2.isAttacking &&
               !player2.atTheRopesFacingDirection &&
+              !player2.isClinchKillPullVictim &&
               player1.x >= player2.x
             ) {
               player2.facing = -1;
@@ -675,6 +681,8 @@ function tick(delta) {
         const t = duration > 0 ? Math.min(1, elapsed / duration) : 1;
         const isBoundarySwap = player.isBoundaryPullSwap;
         // Boundary swap: ease-in-out so both players cross at t=0.5 (aligned with arc peak)
+        // Everything else (incl. the kill pull belly-slide) uses a friction ease-out:
+        // moves quickest at contact, then decelerates to a stop like sliding on ice.
         const eased = isBoundarySwap
           ? (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2)
           : 1 - Math.pow(1 - t, 3);
@@ -697,6 +705,17 @@ function tick(delta) {
           if (isBoundarySwap) {
             // Single sine arc — peaks at midpoint so pulled player hops over the puller
             player.y = GROUND_LEVEL + CLINCH_PULL_SWAP_ARC_HEIGHT * Math.sin(t * Math.PI);
+          } else if (isKillPullVictim) {
+            // Belly-slide: the sprite is already flat on the ground, so emphasize the
+            // SLIDE — just a tiny contact jolt as they hit, then hug the ice the whole
+            // way. No big hops (those would lift the flat penguin into the air).
+            const JOLT_END = 0.12;
+            if (t < JOLT_END) {
+              const jt = t / JOLT_END;
+              player.y = GROUND_LEVEL + 12 * Math.sin(jt * Math.PI);
+            } else {
+              player.y = GROUND_LEVEL;
+            }
           } else {
             // Normal pull: decaying hops after a delay so the player slides then bounces
             const HOP_DELAY = 0.18;
@@ -862,11 +881,10 @@ function tick(delta) {
               const DI_FRICTION_BONUS = 0.96;
               
               if (player.isBurstKnockback) {
-                const burstAge = now - (player.burstKnockbackStartTime || 0);
-                const friction = burstAge < BURST_KB_PHASE_SWITCH_MS
-                  ? BURST_KB_INITIAL_FRICTION
-                  : BURST_KB_LATE_FRICTION;
-                player.knockbackVelocity.x *= friction;
+                // Single smooth ice-slide decay (matches ICE_COAST_FRICTION) so
+                // the forced shove flows seamlessly into the DI-able coast that
+                // follows — one continuous slide instead of pop-then-brake.
+                player.knockbackVelocity.x *= SLAP_HIT3_KB_FRICTION;
               } else if (player.isSlapKnockback) {
                 player.knockbackVelocity.x *= 0.97;
               } else {
@@ -883,6 +901,24 @@ function tick(delta) {
               const clampedX = Math.max(
                 MAP_LEFT_BOUNDARY + PARRY_BOUNDARY_BUFFER,
                 Math.min(player.x, MAP_RIGHT_BOUNDARY - PARRY_BOUNDARY_BUFFER)
+              );
+              if (clampedX !== player.x) {
+                player.x = clampedX;
+                player.knockbackVelocity.x = 0;
+              }
+            }
+
+            // Slap rope resistance: unless this hit was armed for a ring-out
+            // (connected within the kill zone — see processHit), the rope
+            // catches the victim at the edge instead of letting the knockback
+            // carry them out. Same buffer logic as the parry clamp. Hitstun is
+            // timer-based, so stopping the slide here changes only the victim's
+            // resting POSITION, never the recovery timing — frame advantage
+            // stays identical to any other slap, keeping the exchange neutral.
+            if (player.isSlapKnockback && !player.slapKnockbackCanRingOut) {
+              const clampedX = Math.max(
+                MAP_LEFT_BOUNDARY + SLAP_ROPE_RESIST_BUFFER,
+                Math.min(player.x, MAP_RIGHT_BOUNDARY - SLAP_ROPE_RESIST_BUFFER)
               );
               if (clampedX !== player.x) {
                 player.x = clampedX;
@@ -2143,8 +2179,9 @@ function tick(delta) {
           !player.isSpawningPumoArmy &&
           !player.isRawParrying &&
           !player.isHit) ||
-          (!player.keys[" "] &&
-            player.isSlapAttack &&
+          (player.isSlapAttack &&
+            // NOTE: deliberately NOT gated by keys[" "] — an active slap's forced
+            // slide must run regardless of inputs (holding parry must not stop it).
             player.saltCooldown === false &&
             !player.isThrowTeching &&
             !player.isGrabbing &&
@@ -2581,21 +2618,27 @@ function tick(delta) {
           }
           // Normal ice sliding physics if we have velocity
           else if (Math.abs(player.movementVelocity) > ICE_STOP_THRESHOLD) {
+            // The slap slide is fully committed — no input may affect it. While it's
+            // active, ignore movement keys for both braking and friction so the forced
+            // forward slide is identical regardless of what the player holds.
+            const slapSlideCommitted = player.isSlapSliding;
+
             // Determine braking state
             const isMovingRight = player.movementVelocity > 0;
             const isMovingLeft = player.movementVelocity < 0;
             const isHoldingLeft = player.keys.a && !player.keys.d;
             const isHoldingRight = player.keys.d && !player.keys.a;
             
-            // BRAKING = holding opposite direction to current slide
-            const isActiveBraking = (isMovingRight && isHoldingLeft) || (isMovingLeft && isHoldingRight);
+            // BRAKING = holding opposite direction to current slide (disabled during slap slide)
+            const isActiveBraking = !slapSlideCommitted &&
+              ((isMovingRight && isHoldingLeft) || (isMovingLeft && isHoldingRight));
             
             // Edge awareness
             const nearEdge = isNearDohyoEdge(player.x);
             const edgeProximity = getEdgeProximity(player.x);
             
             // Normal ice physics: friction first, then position
-            const friction = getIceFriction(player, isActiveBraking, nearEdge, edgeProximity);
+            const friction = getIceFriction(player, isActiveBraking, nearEdge, edgeProximity, slapSlideCommitted);
             
             player.movementVelocity *= friction;
 
@@ -2826,6 +2869,7 @@ function tick(delta) {
         !player.isAttacking && // Block during any attack (slap or charged)
         !player.isHit &&
         !player.isRawParryStun &&
+        !player.isSlapWhiffPausing && // Committed whiff pause — can't cancel into parry
         !player.isAtTheRopes
       ) {
         // Start raw parry if not already parrying
@@ -2853,6 +2897,8 @@ function tick(delta) {
           player.pendingGrabEnder = false;
           player.slapStringPosition = 0;
           player.slapStringWindowUntil = 0;
+          player.slapWhiffCount = 0;
+          player.isSlapWhiffPausing = false;
         }
         // Only set isReady to false if we're not in an attack state
         if (!player.isAttacking && !player.isChargingAttack) {

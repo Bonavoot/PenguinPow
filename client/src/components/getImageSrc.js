@@ -20,6 +20,8 @@ import {
   bow,
   grabAttempt,
   hit,
+  bellyLaying,
+  bellyLayingEyesOpen,
   snowballThrow,
   beingGrabbed,
   atTheRopes,
@@ -105,7 +107,8 @@ const getImageSrc = (
   }
 
   if (isClinchKillThrowVictim) return hit;
-  if (isClinchKillPullVictim) return hit;
+  // Pull kill: eyes open during the slide, then eyes closed once the bow phase begins.
+  if (isClinchKillPullVictim) return isBowing ? bellyLaying : bellyLayingEyesOpen;
   if (isAttemptingPull) return attemptingPull;
   if (isClinchClashing) return attemptingGrabThrow;
 

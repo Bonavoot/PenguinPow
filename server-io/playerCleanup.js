@@ -23,6 +23,8 @@ function cleanupPlayerStates(player) {
   player.isHit = false;
   player.lastHitType = null;
   player.isAlreadyHit = false;
+  player.isSlapKnockback = false;
+  player.slapKnockbackCanRingOut = false;
   player.isParryKnockback = false;
   player.isDodging = false;
   player.isDodgeStartup = false;

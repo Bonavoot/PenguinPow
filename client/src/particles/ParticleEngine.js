@@ -1416,6 +1416,120 @@ const PRESETS = {
     }
   },
 
+  // Clinch kill PULL: a heavy penguin slammed flat on the ice. The body lands
+  // belly-down, so the impact reads WIDE and LOW — a broad horizontal shockwave
+  // with snow/ice displaced sideways (and up) along the body, plus settling dust.
+  // `intensity` scales the whole burst so the big initial slam is dramatic while
+  // the diminishing bounce-hops just kick up light dust. `direction` (slide dir)
+  // biases debris to trail behind the sliding body.
+  clinchKillPullSlam(engine, { x, y, intensity, direction }) {
+    const dir = direction || 1;
+    const footX = x;
+    const footY = GAME_H - y - 8;
+    const s = Math.min(Math.max(intensity == null ? 1 : intensity, 0), 1);
+
+    // ── WIDE SHOCKWAVE RINGS — broad, flat, hugging the ice ──────────
+    const ringTextures = [engine.textures.ring, engine.textures.ringAlt, engine.textures.ringThick];
+    const ringCount = s > 0.6 ? 3 : 2;
+    for (let i = 0; i < ringCount; i++) {
+      const scale = 1 + i * 0.07;
+      engine.spawn({
+        x: footX,
+        y: footY,
+        vx: 0, vy: 0, gravity: 0, drag: 1,
+        size: 14 * (0.45 + s * 0.55) * scale,
+        sizeEnd: 78 * (0.45 + s * 0.55) * scale,
+        alpha: Math.min(1, 0.95 * s),
+        alphaEnd: 0,
+        rotation: 0, rotationSpeed: 0,
+        ease: "outCubic", easeAlpha: "outCubic",
+        maxLife: 0.34 + i * 0.03,
+        texture: ringTextures[i % 3],
+        stretchX: 3.0,
+        delay: i * 0.012,
+      });
+    }
+
+    // ── SIDEWAYS SNOW/ICE SPRAY — displaced from under the belly to BOTH sides ──
+    const sprayCount = Math.round(7 * s) + 2;
+    for (let i = 0; i < sprayCount; i++) {
+      // Bias outward to both sides; the trailing side gets a touch more.
+      const side = i % 2 === 0 ? 1 : -1;
+      const biased = side === -dir ? 1.15 : 0.9;
+      const speed = rand(130, 300) * (0.6 + s * 0.4) * biased;
+      const lift = rand(0.25, 0.7);
+      engine.spawn({
+        x: footX + side * rand(4, 20),
+        y: footY - rand(2, 8),
+        vx: side * Math.cos(lift) * speed + rand(-15, 15),
+        vy: -Math.abs(Math.sin(lift)) * speed - rand(20, 70) * s,
+        gravity: 700,
+        drag: 0.95,
+        size: rand(3, 7) * (0.7 + s * 0.5),
+        sizeEnd: rand(1, 2),
+        alpha: rand(0.7, 0.95),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-6, 6),
+        maxLife: rand(0.28, 0.5),
+        texture: pick([engine.textures.chunk, engine.textures.chunkIce]),
+      });
+    }
+
+    // ── GROUND DUST PUFFS — billow out low and wide along the ice ──────
+    const puffCount = Math.round(4 * s) + 1;
+    for (let i = 0; i < puffCount; i++) {
+      const side = i % 2 === 0 ? 1 : -1;
+      const size = rand(26, 42) * (0.6 + s * 0.5);
+      engine.spawn({
+        x: footX + side * rand(8, 36),
+        y: footY - size * 0.32 + rand(0, 4),
+        vx: side * rand(50, 130) * (0.5 + s * 0.5),
+        vy: rand(-6, 2),
+        gravity: 18,
+        drag: 0.87,
+        size,
+        sizeEnd: size * rand(0.3, 0.45),
+        alpha: rand(0.6, 0.85) * (0.5 + s * 0.5),
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "inCubic",
+        rotationSpeed: rand(-0.5, 0.5),
+        maxLife: rand(0.3, 0.46),
+        texture: pickPuff(engine.textures),
+      });
+    }
+
+    // ── IMPACT SPARKS — only on the heavy hits, sharp bright flecks ──
+    if (s > 0.55) {
+      const sparkCount = Math.round(5 * s);
+      for (let i = 0; i < sparkCount; i++) {
+        const side = i % 2 === 0 ? 1 : -1;
+        const angle = rand(0.2, 0.9);
+        const spd = rand(160, 320) * s;
+        engine.spawn({
+          x: footX + side * rand(2, 10),
+          y: footY - rand(2, 8),
+          vx: side * Math.cos(angle) * spd + rand(-15, 15),
+          vy: -Math.abs(Math.sin(angle)) * spd - rand(10, 40),
+          gravity: 600,
+          drag: 0.94,
+          size: rand(4, 7),
+          sizeEnd: rand(1, 2),
+          alpha: rand(0.9, 1.0),
+          alphaEnd: 0,
+          ease: "linear",
+          easeAlpha: "outQuad",
+          rotationSpeed: 0,
+          maxLife: rand(0.12, 0.22),
+          texture: pick([engine.textures.spark, engine.textures.sparkSmall]),
+          blendMode: "lighter",
+        });
+      }
+    }
+  },
+
   // Expanding ring for throw landing. Bigger impact than pull reversal.
   throwLand(engine, { x, y }) {
     const footX = x;

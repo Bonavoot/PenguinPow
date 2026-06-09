@@ -222,6 +222,8 @@ function createCPUPlayer(uniqueId) {
     pendingGrabEnder: false,
     slapStringPosition: 0,
     slapStringWindowUntil: 0,
+    slapWhiffCount: 0,
+    isSlapWhiffPausing: false,
     slapAnimationToggle: 0,
     currentSlapHitConnected: false,
     isBurstKnockback: false,
@@ -462,6 +464,8 @@ function resetRoomAndPlayers(room, io) {
     player.isReady = false;
     player.isHit = false;
     player.isAlreadyHit = false;
+    player.isSlapKnockback = false;
+    player.slapKnockbackCanRingOut = false;
     player.isParryKnockback = false;
     player.isDead = false;
     player.stamina = 100;
@@ -496,6 +500,8 @@ function resetRoomAndPlayers(room, io) {
     player.pendingGrabEnder = false;
     player.slapStringPosition = 0;
     player.slapStringWindowUntil = 0;
+    player.slapWhiffCount = 0;
+    player.isSlapWhiffPausing = false;
     player.slapAnimationToggle = 0;
     player.currentSlapHitConnected = false;
     player.isBurstKnockback = false;

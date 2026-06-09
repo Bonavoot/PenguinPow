@@ -1134,10 +1134,15 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
   const isKill = targetBalance < CLINCH_THROW_KILL_THRESHOLD && !room.gameOver;
 
   if (actionType === "pull") {
+    // Snapshot the victim's facing before any facing-correction — kill pulls
+    // preserve it so the belly-laying slam stays oriented as the victim was.
+    const targetFacingBeforeKill = target.facing;
     const pullDirection = target.x < actor.x ? 1 : -1;
     const pullDist = isKill ? CLINCH_KILL_PULL_DISTANCE : CLINCH_PULL_DISTANCE;
     const pullTweenDur = isKill ? CLINCH_KILL_PULL_TWEEN_DURATION : CLINCH_PULL_TWEEN_DURATION;
     const pullLockMs = isKill ? CLINCH_KILL_PULL_INPUT_LOCK_MS : CLINCH_PULL_INPUT_LOCK_MS;
+    // Kill pull drives the opponent THROUGH the thrower and down — same travel
+    // direction as the non-kill pull (past the puller), just slammed onto the ice.
     let targetX = actor.x + pullDirection * pullDist;
 
     // Boundary pull detection: when the puller's back is against a wall,
@@ -1209,8 +1214,9 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
     if (isKill) {
       target.isClinchKillPullVictim = true;
       handleWinCondition(room, target, actor, io, "clinchKillPull");
-      const actorFinalX = isBoundaryPull ? actorTweenTargetX : actor.x;
-      target.facing = targetX < actorFinalX ? 1 : -1;
+      // Belly-laying finisher: the victim is slammed flat where they stand, so
+      // keep whatever direction they were already facing (no flip toward the pull).
+      target.facing = targetFacingBeforeKill;
     }
 
     actor.grabCooldown = true;

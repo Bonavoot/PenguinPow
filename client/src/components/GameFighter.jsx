@@ -122,6 +122,8 @@ import {
   gunLaunchSound,
   chargedHit04,
   hit as hitSprite,
+  bellyLaying as bellyLayingSprite,
+  bellyLayingEyesOpen as bellyLayingEyesOpenSprite,
 } from "./fighterAssets";
 import getImageSrc from "./getImageSrc";
 import {
@@ -1157,6 +1159,13 @@ const GameFighter = ({
   
   const [allSnowballs, setAllSnowballs] = useState([]);
   const snowballDomRefs = useRef({});
+  // Per-snowball server samples for client-side velocity extrapolation.
+  // Snowballs travel at constant velocity, so we can predict position between
+  // 32Hz server broadcasts and render at 60fps. Without this the last sampled
+  // position lingers for a full broadcast interval right before a parry/hit,
+  // which reads as the snowball "freezing" just before it lands.
+  const snowballSamplesRef = useRef(new Map());
+  const snowballRafRef = useRef(null);
   const [allPumoArmies, setAllPumoArmies] = useState([]);
 
   const [thickBlubberEffect, setThickBlubberEffect] = useState({
@@ -1445,6 +1454,51 @@ const GameFighter = ({
       }
     };
   }, [interpolationLoop]);
+
+  // Snowball extrapolation loop. Snowballs move at a constant velocity, so we
+  // predict their position between 32Hz server broadcasts and render at 60fps.
+  // This removes the brief "freeze" of the last sampled position right before a
+  // snowball lands or is parried (the server destroys/reflects the ball on a
+  // tick between broadcasts, so without extrapolation the final visible sample
+  // lingers ~one broadcast interval). Matches the player interpolation loop's
+  // hitstop handling so melee freezes still pause the whole scene together.
+  const snowballLoop = useCallback((timestamp) => {
+    const samples = snowballSamplesRef.current;
+    if (samples.size > 0) {
+      // During a display-hitstop freeze, pin snowballs to their last sample so
+      // they freeze in sync with players (snowball parries never trigger
+      // hitstop, so the parry itself stays fully fluid).
+      const hitstopUntil = getDisplayHitstopUntil();
+      const frozen = hitstopUntil > 0 && timestamp < hitstopUntil;
+      // Server moves the ball by velocityX * delta(ms) * speedFactor per tick,
+      // so the per-ms rate is velocityX * speedFactor (speedFactor = 0.185).
+      const RATE = 0.185;
+      const MAX_EXTRAPOLATION_MS = 60; // cap so a dropped packet can't overshoot
+      for (const [id, sample] of samples) {
+        const wrapper = snowballDomRefs.current[id];
+        const el = wrapper && wrapper.firstElementChild;
+        if (!el) continue;
+        let predictedX = sample.x;
+        if (!frozen) {
+          const elapsed = Math.min(timestamp - sample.t, MAX_EXTRAPOLATION_MS);
+          predictedX = sample.x + sample.velocityX * RATE * elapsed;
+        }
+        el.style.left = `${(predictedX / 1280) * 100}%`;
+        el.style.bottom = `${(sample.y / 720) * 100 + 11}%`;
+      }
+    }
+    snowballRafRef.current = requestAnimationFrame(snowballLoop);
+  }, []);
+
+  useEffect(() => {
+    snowballRafRef.current = requestAnimationFrame(snowballLoop);
+    return () => {
+      if (snowballRafRef.current) {
+        cancelAnimationFrame(snowballRafRef.current);
+        snowballRafRef.current = null;
+      }
+    };
+  }, [snowballLoop]);
 
   // Smooth interpolation with predictive positioning for better feel
   const getDisplayPosition = useCallback(() => {
@@ -1839,17 +1893,31 @@ const GameFighter = ({
           player2Data.snowballs || []
         );
 
-        // Direct DOM position updates bypass React's render pipeline, keeping
-        // snowball movement smooth even when heavy state changes (parry, etc.)
-        // delay React re-renders. React state update below handles mount/unmount.
+        // Store the latest server sample per snowball (position + velocity +
+        // arrival time). The rAF loop below extrapolates from this each frame
+        // so motion is smooth at 60fps instead of stepping at the 32Hz
+        // broadcast rate. Direct DOM write here sets the baseline immediately
+        // and prunes samples for snowballs that no longer exist.
+        const samples = snowballSamplesRef.current;
+        const seenIds = new Set();
         for (let i = 0; i < combinedSnowballs.length; i++) {
           const sb = combinedSnowballs[i];
+          seenIds.add(sb.id);
+          samples.set(sb.id, {
+            x: sb.x,
+            y: sb.y,
+            velocityX: sb.velocityX || 0,
+            t: currentTime,
+          });
           const wrapper = snowballDomRefs.current[sb.id];
           const el = wrapper && wrapper.firstElementChild;
           if (el) {
             el.style.left = `${(sb.x / 1280) * 100}%`;
             el.style.bottom = `${(sb.y / 720) * 100 + 11}%`;
           }
+        }
+        for (const id of samples.keys()) {
+          if (!seenIds.has(id)) samples.delete(id);
         }
 
         setAllSnowballs(combinedSnowballs);
@@ -2831,7 +2899,9 @@ const GameFighter = ({
   // between hops, so we schedule bursts based on known tween timing instead.
   const pullReversalTimeouts = useRef([]);
   useEffect(() => {
-    if (penguin.isBeingPullReversaled) {
+    // Kill pulls have their own heavy slam burst (below) — skip the light
+    // hop dust here so the two don't stack.
+    if (penguin.isBeingPullReversaled && !penguin.isClinchKillPullVictim) {
       const TWEEN_DURATION = 650;
       const HOP_DELAY = 0.18;
       const HOP_COUNT = 4;
@@ -2872,7 +2942,57 @@ const GameFighter = ({
       pullReversalTimeouts.current.forEach(clearTimeout);
       pullReversalTimeouts.current = [];
     };
-  }, [penguin.isBeingPullReversaled, emitParticles]);
+  }, [penguin.isBeingPullReversaled, penguin.isClinchKillPullVictim, emitParticles]);
+
+  // Clinch kill PULL — heavy belly-slam onto the ice. One big slam burst on the
+  // first ground contact, then diminishing bursts on each bounce-hop landing.
+  // Timing mirrors the server tween (constants: CLINCH_KILL_PULL_TWEEN_DURATION,
+  // and the kill hop profile in index.js: HOP_DELAY 0.03, 4 hops).
+  const killPullSlamTimeouts = useRef([]);
+  useEffect(() => {
+    if (penguin.isClinchKillPullVictim) {
+      // Matches the server belly-slide (constants: CLINCH_KILL_PULL_TWEEN_DURATION).
+      const TWEEN_DURATION = 850;
+      const dir = penguin.facing ?? 1;
+
+      // Light contact puff right where they hit (de-emphasized — the slide is the star,
+      // and a big burst here read as "too close to the thrower").
+      emitParticles("clinchKillPullSlam", {
+        x: interpolatedPositionRef.current.x,
+        y: interpolatedPositionRef.current.y || penguin.y,
+        intensity: 0.4,
+        direction: dir,
+      });
+
+      // Snow kicked up ALONG the slide. Each burst fires at the body's CURRENT position
+      // as it glides away, so the dust trails out across the ice instead of clumping at
+      // the thrower. Peaks just after they've moved clear, then tapers as they slow.
+      const slideBursts = [
+        { frac: 0.32, intensity: 0.6 },
+        { frac: 0.52, intensity: 0.5 },
+        { frac: 0.72, intensity: 0.38 },
+        { frac: 0.9, intensity: 0.26 },
+      ];
+      slideBursts.forEach(({ frac, intensity }) => {
+        const tid = setTimeout(() => {
+          emitParticles("clinchKillPullSlam", {
+            x: interpolatedPositionRef.current.x,
+            y: interpolatedPositionRef.current.y || penguin.y,
+            intensity,
+            direction: dir,
+          });
+        }, TWEEN_DURATION * frac);
+        killPullSlamTimeouts.current.push(tid);
+      });
+    } else {
+      killPullSlamTimeouts.current.forEach(clearTimeout);
+      killPullSlamTimeouts.current = [];
+    }
+    return () => {
+      killPullSlamTimeouts.current.forEach(clearTimeout);
+      killPullSlamTimeouts.current = [];
+    };
+  }, [penguin.isClinchKillPullVictim, emitParticles]);
 
   // Grab throw landing — dust burst when the thrown player hits the ground.
   // Kill throw victims get an enhanced landing cloud + impact sound.
@@ -3893,16 +4013,24 @@ const GameFighter = ({
   );
   const isKillVictim = penguin.isClinchKillThrowVictim || penguin.isClinchKillPullVictim;
 
-  // Kill victims use the raw hit APNG as a static image (forceStatic bypasses the
-  // spritesheet lookup that would return a 3-frame strip, while still applying recoloring).
-  // The white impact flash still applies here — being on the receiving end of a
-  // cinematic kill is exactly when a sharp impact-snap reads strongest.
+  // Kill victims use a static image (forceStatic bypasses the spritesheet lookup
+  // that would return a 3-frame strip, while still applying recoloring). The white
+  // impact flash still applies here — being on the receiving end of a cinematic
+  // kill is exactly when a sharp impact-snap reads strongest.
+  //   • Throw kill → the hit APNG (spinning faceplant arc).
+  //   • Pull kill  → belly-laying pose: eyes open during the slide, eyes closed
+  //     once the bow phase starts.
+  const killVictimSprite = penguin.isClinchKillPullVictim
+    ? penguin.isBowing
+      ? bellyLayingSprite
+      : bellyLayingEyesOpenSprite
+    : hitSprite;
   const {
     src: recoloredSpriteSrc,
     isAnimated: isAnimatedSprite,
     config: spriteConfig,
   } = isKillVictim
-    ? getSpriteRenderInfo(hitSprite, renderHitTint, showHitFlashThisFrame, useBlubberTint, true, useArmorTint)
+    ? getSpriteRenderInfo(killVictimSprite, renderHitTint, showHitFlashThisFrame, useBlubberTint, true, useArmorTint)
     : spriteRenderInfo;
 
   const baseSpriteSrc = recoloredSpriteSrc;

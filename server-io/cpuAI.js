@@ -2362,6 +2362,8 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     cpu.pendingGrabEnder = false;
     cpu.slapStringPosition = 0;
     cpu.slapStringWindowUntil = 0;
+    cpu.slapWhiffCount = 0;
+    cpu.isSlapWhiffPausing = false;
     
     if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
     else Object.assign(cpu._prevKeys, cpu.keys);

@@ -83,6 +83,11 @@ function updateProjectiles(room, io, delta) {
             // Remove snowball but don't hit the player
             snowball.hasHit = true;
 
+            // Collision resolves on a 64Hz tick between 32Hz broadcasts; force
+            // an immediate broadcast so the consumed ball reaches clients now
+            // instead of lingering at its last sampled spot for a frame.
+            room.forceBroadcast = true;
+
             // Emit absorption effect
             io.in(room.id).emit("thick_blubber_absorption", {
               playerId: targetPlayer.id,
@@ -95,7 +100,12 @@ function updateProjectiles(room, io, delta) {
 
           // Hit target player normally
           snowball.hasHit = true;
-          
+
+          // Collision resolves on a 64Hz tick between 32Hz broadcasts; force an
+          // immediate broadcast so the ball is removed on clients right as it
+          // lands instead of freezing at its last sampled spot for a frame.
+          room.forceBroadcast = true;
+
           // Emit snowball hit effect for visual clarity (facing = hit player's facing for effect offset)
           io.in(room.id).emit("snowball_hit", {
             x: targetPlayer.x,
@@ -196,6 +206,12 @@ function updateProjectiles(room, io, delta) {
           distance < horizThresh &&
           Math.abs(snowball.y - opponent.y) < vertThresh
         ) {
+          // Parry resolves on a 64Hz collision tick that may fall between the
+          // 32Hz broadcasts. Force an immediate broadcast so the destroyed/
+          // reflected snowball reaches clients without waiting for the next
+          // scheduled frame — keeps the impact crisp with no lingering ball.
+          room.forceBroadcast = true;
+
           // Check if this is a perfect parry (within 100ms of parry start)
           const currentTime = Date.now();
           const parryDuration = currentTime - opponent.rawParryStartTime;

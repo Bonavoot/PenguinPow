@@ -2,7 +2,7 @@ import { memo } from "react";
 import PropTypes from "prop-types";
 import { isOutsideDohyo } from "../constants";
 
-const GROUND_LEVEL = 300; // Match the server's GROUND_LEVEL
+const GROUND_LEVEL = 294; // Match the server's GROUND_LEVEL
 
 const SHADOW_GRADIENT =
   "radial-gradient(ellipse at center, rgba(0,0,0,0.86) 0%, rgba(0,0,0,0) 70%)";

@@ -40,6 +40,10 @@ const {
   SLAP_STRING_BUFFER_WINDOW_MS,
   SLAP_STRING_END_COOLDOWN_MS,
   SLAP_STRING_HIT_TOTAL_MS,
+  SLAP_STRING_RECOVERY_POS1_MS,
+  SLAP_STRING_RECOVERY_POS2_MS,
+  SLAP_WHIFF_PAUSE_COUNT,
+  SLAP_WHIFF_PAUSE_MS,
   CHARGED_STARTUP_MS,
   CHARGED_ACTIVE_MS,
   CHARGED_TIER_LIGHT_MS,
@@ -320,6 +324,16 @@ function handleWinCondition(room, loser, winner, io, winType) {
     }, 1050);
   }
 
+  // Pull-kill victim: let them lie there dazed (eyes open) for a beat after sliding
+  // to a stop, THEN close the eyes as a separate "passed out" moment. This runs on
+  // its own timer (not the winner's bow timeout) so it lands later in the bow window
+  // but still well before the ~3000ms round reset. isBowing here is only the
+  // eyes-closed signal — the belly-laying pose still takes render precedence, so the
+  // victim doesn't actually bow or reposition.
+  if (loser.isClinchKillPullVictim) {
+    setPlayerTimeout(loser.id, () => { loser.isBowing = true; }, 2100, "killPullEyesClose");
+  }
+
   // Store the current states that we want to preserve
   const loserKnockbackVelocity = { ...loser.knockbackVelocity };
   const loserMovementVelocity = loser.movementVelocity;
@@ -447,6 +461,8 @@ function handleWinCondition(room, loser, winner, io, winType) {
     p.pendingGrabEnder = false;
     p.slapStringPosition = 0;
     p.slapStringWindowUntil = 0;
+    p.slapWhiffCount = 0;
+    p.isSlapWhiffPausing = false;
     p.slapAnimationToggle = 0;
     p.currentSlapHitConnected = false;
     p.mouse1JustPressed = false;
@@ -513,6 +529,13 @@ function handleWinCondition(room, loser, winner, io, winType) {
 
 // Add this new function near the other helper functions
 function executeSlapAttack(player, rooms) {
+  // Round is over — never fire a stray slap. This is the central guard covering
+  // every slap entry point (buffered post-grab inputs, slap-string continuations
+  // on timers, rope-jump attack releases, CPU, etc.) so none of them resolve into
+  // a slap (and its slap-hands VFX) during a win cinematic.
+  const ownerRoom = rooms && rooms.find((room) => room.players.some((p) => p.id === player.id));
+  if (ownerRoom && (ownerRoom.gameOver || ownerRoom.matchOver)) return;
+
   if (player.isPowerSliding) {
     player.isPowerSliding = false;
   }
@@ -564,6 +587,9 @@ function executeSlapAttack(player, rooms) {
 
   player.slapStringWindowUntil = 0;
 
+  // Clear any prior committed whiff-pause state — we're actively slapping again.
+  player.isSlapWhiffPausing = false;
+
   // Animation is decoupled from string position — alternates every slap visually
   // slapAnimationToggle persists across strings so parries cycle naturally
   player.slapAnimationToggle = player.slapAnimationToggle === 1 ? 2 : 1;
@@ -573,10 +599,14 @@ function executeSlapAttack(player, rooms) {
 
   player.stamina = Math.max(0, player.stamina - SLAP_ATTACK_STAMINA_COST);
 
-  // All string hits share identical frame data
+  // Startup/active are shared; recovery (and thus the gap to the next slap) is
+  // position-aware so slap1→slap2 is the biggest gap, slap2→slap3 tightens up.
   const baseStartupMs = SLAP_STARTUP_MS;
   const activeMs = SLAP_ACTIVE_MS;
-  const totalCycleDuration = SLAP_STRING_HIT_TOTAL_MS;
+  const positionRecoveryMs = player.slapStringPosition === 1
+    ? SLAP_STRING_RECOVERY_POS1_MS
+    : SLAP_STRING_RECOVERY_POS2_MS;
+  const totalCycleDuration = baseStartupMs + activeMs + positionRecoveryMs;
 
   // DESPERATION COUNTER-SLAP: faster startup when recently hit.
   // Disabled for combo victims (hit by string hit 1) — the attacker earned the
@@ -631,6 +661,9 @@ function executeSlapAttack(player, rooms) {
       if (finishedPosition <= 2) {
         // Hits 1 & 2: can chain forward on confirm
         if (player.currentSlapHitConnected && isPlayerValid()) {
+          // Landing a slap drops us into the combo path — clear the whiff streak so
+          // a connected hit never inherits a pending whiff-pause.
+          player.slapWhiffCount = 0;
           // Check for grab ender (mouse2 buffered after hit 2)
           if (finishedPosition === 2 && player.pendingGrabEnder) {
             player.pendingSlapCount = 0;
@@ -667,16 +700,49 @@ function executeSlapAttack(player, rooms) {
             }
           }, SLAP_STRING_BUFFER_WINDOW_MS, "slapStringReset");
         } else {
-          // Whiffed → reset string, but if a slap was buffered start a fresh one
+          // === WHIFF: "BOP BOP <committed pause>" ===
           player.slapStringPosition = 0;
           player.slapStringWindowUntil = 0;
           player.pendingGrabEnder = false;
+
+          player.slapWhiffCount = (player.slapWhiffCount || 0) + 1;
+
+          // After N consecutive whiffs, commit to an un-cancelable recovery pause —
+          // the whiff-punish window. Buffered inputs are KEPT so the rhythm resumes
+          // after the pause, but the player is hard-locked (no slap/dodge/parry) during it.
+          if (player.slapWhiffCount >= SLAP_WHIFF_PAUSE_COUNT && isPlayerValid()) {
+            player.slapWhiffCount = 0;
+            player.isSlapWhiffPausing = true;
+            player.currentAction = "slap_whiff_recovery";
+            const pauseUntil = Date.now() + SLAP_WHIFF_PAUSE_MS;
+            player.actionLockUntil = Math.max(player.actionLockUntil || 0, pauseUntil);
+            player.attackCooldownUntil = Math.max(player.attackCooldownUntil || 0, pauseUntil);
+            setPlayerTimeout(player.id, () => {
+              player.isSlapWhiffPausing = false;
+              if (player.currentAction === "slap_whiff_recovery") {
+                player.currentAction = null;
+              }
+              // Resume the BOP-BOP rhythm if the player mashed into the pause.
+              // Guard against a stale fire if the player was interrupted mid-pause.
+              if (player.pendingSlapCount > 0 && !player.isSlapAttack && isPlayerValid()) {
+                player.pendingSlapCount--;
+                executeSlapAttack(player, rooms);
+              } else {
+                player.pendingSlapCount = 0;
+              }
+            }, SLAP_WHIFF_PAUSE_MS, "slapWhiffPause");
+            return;
+          }
+
+          // First whiff of a sequence: a buffered input fires the 2nd BOP immediately.
           if (player.pendingSlapCount > 0 && isPlayerValid()) {
             player.pendingSlapCount--;
             executeSlapAttack(player, rooms);
             return;
           }
+          // Player stopped after a single whiff → sequence ends, no pause.
           player.pendingSlapCount = 0;
+          player.slapWhiffCount = 0;
         }
       } else {
         // Hit 3 finished → string complete, reset
@@ -686,6 +752,7 @@ function executeSlapAttack(player, rooms) {
         player.slapStringWindowUntil = 0;
         player.pendingGrabEnder = false;
         player.pendingSlapCount = 0;
+        player.slapWhiffCount = 0;
         player.attackCooldownUntil = Date.now() + SLAP_STRING_END_COOLDOWN_MS;
       }
   };
@@ -1321,6 +1388,12 @@ function safelyEndChargedAttack(player, rooms) {
 // Enables frame-1 reversals: if a player holds an input during an unactionable grab/throw state,
 // that input activates on the first possible frame (like invincible reversals in fighting games).
 function activateBufferedInputAfterGrab(player, rooms) {
+  // Round is over (e.g. a clinch kill pull/throw just resolved) — no buffered
+  // action should fire. Without this, a held mouse1 triggers a buffered slap on
+  // the thrower the instant the kill resolves (stray slap-hands during the finish).
+  const ownerRoom = rooms && rooms.find((r) => r.players.some((p) => p.id === player.id));
+  if (ownerRoom && ownerRoom.gameOver) return;
+
   if (player.isAtTheRopes || player.isRopeJumping || player.isThrowLanded || player.isHit ||
       player.isGrabBreaking || player.isGrabBreakCountered || player.isGrabBreakSeparating ||
       player.isGrabSeparating) return;

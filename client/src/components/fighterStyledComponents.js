@@ -356,10 +356,19 @@ export const StyledImage = styled("img")
           ? props.$facing === 1
             ? "scaleX(1) scaleY(0.95)"
             : "scaleX(-1) scaleY(0.95)"
+          // Belly-laying pull-kill image: oriented to the victim's preserved facing.
+          // The translateY nudge pushes the body down onto the ice (the image has
+          // padding below the penguin, which otherwise leaves it floating).
+          : props.$isClinchKillPullVictim
+          ? props.$facing === 1
+            ? "scaleX(1) translateY(5%)"
+            : "scaleX(-1) translateY(5%)"
           : props.$facing === 1
           ? "scaleX(1)"
           : "scaleX(-1)",
-      zIndex: isOutsideDohyo(props.$x, props.$y)
+      zIndex: props.$isClinchKillPullVictim
+        ? (isOutsideDohyo(props.$x, props.$y) ? 0 : 102)
+        : isOutsideDohyo(props.$x, props.$y)
         ? 0
         : props.$isCinematicKillAttacker
         ? 100
@@ -372,7 +381,10 @@ export const StyledImage = styled("img")
       animation: props.$isClinchKillThrowVictim
         ? "clinchKillThrowSpin 1.2s ease-in forwards"
         : props.$isClinchKillPullVictim
-        ? "clinchKillPullSpin 0.7s ease-in forwards"
+        // Pull kill uses the belly-laying pose (already a flat-on-ice image) and
+        // the server drives the heavy bounce/slide via Y position — so no CSS
+        // rotation/transform here, just hold the sprite.
+        ? "none"
         : props.$isAtTheRopes
         ? "atTheRopesWobble 0.3s ease-in-out infinite"
         : props.$isRopeJumping && props.$ropeJumpPhase === "landing"
@@ -476,9 +488,7 @@ export const StyledImage = styled("img")
       height: "auto",
       willChange: "transform",
       pointerEvents: "none",
-      transformOrigin: props.$isClinchKillPullVictim
-        ? "center 80%"
-        : props.$isClinchKillThrowVictim
+      transformOrigin: props.$isClinchKillThrowVictim
         ? "center center"
         : "center bottom",
       transition: "none",
@@ -668,12 +678,6 @@ export const StyledImage = styled("img")
     0% { transform: scaleX(var(--facing, 1)) rotate(0deg); transform-origin: center center; }
     30% { transform: scaleX(var(--facing, 1)) rotate(30deg); transform-origin: center center; }
     100% { transform: scaleX(var(--facing, 1)) rotate(90deg); transform-origin: center center; }
-  }
-  @keyframes clinchKillPullSpin {
-    0% { transform: scaleX(var(--facing, 1)) rotate(0deg); transform-origin: center 80%; }
-    60% { transform: scaleX(var(--facing, 1)) rotate(8deg); transform-origin: center 80%; }
-    80% { transform: scaleX(var(--facing, 1)) rotate(45deg); transform-origin: center 80%; }
-    100% { transform: scaleX(var(--facing, 1)) rotate(90deg); transform-origin: center 80%; }
   }
 `;
 

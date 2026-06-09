@@ -63,7 +63,7 @@ const SCREEN_SHAKE_MIN_INTERVAL = 100; // Minimum ms between screen shakes
 // Core Physics
 // ============================================
 const speedFactor = 0.185; // Scaled for camera zoom (was 0.25)
-const GROUND_LEVEL = 300;
+const GROUND_LEVEL = 294;
 const HITBOX_DISTANCE_VALUE = Math.round(71 * 0.96); // ~68 — PUSHBOX size (body collision, keeps players separated) [8% tighter]
 const CHARGED_HITBOX_DISTANCE_VALUE = Math.round(147 * 0.96); // ~141 → just past pushbox 136 — hit fires at body contact; lunge provides range [8% tighter]
 const SLAP_HITBOX_DISTANCE_VALUE = Math.round(152 * 0.96); // ~146 — must exceed pushbox (136px) so slaps connect at pushbox distance [8% tighter]
@@ -92,26 +92,79 @@ const SLAP_TOTAL_MS = SLAP_STARTUP_MS + SLAP_ACTIVE_MS + SLAP_RECOVERY_MS;
 // Slap String System — 3-hit combo: tap tap BOOM
 // Hits 1 & 2 are light pokes with minimal knockback (true combo on hit).
 // Hit 3 is the finisher with burst knockback that creates spacing.
-// All hits share identical frame data for snappy chaining.
 // After hit 2, player can input mouse2 instead of mouse1 to grab ender.
+//
+// RHYTHM: the slap1→slap2 gap is intentionally the BIGGEST (deliberate "BOP.. BOP"),
+// then slap2→slap3 tightens into the finisher. Gap = startup(55) + active(100) + recovery.
+// On hit, each gap is further extended by the attacker's hitstop (see collisionSystem).
 const SLAP_STRING_BUFFER_WINDOW_MS = 300;  // Manual input window after cycle end
 const SLAP_STRING_END_COOLDOWN_MS = 60;   // Post-3rd-slap lockout: just eats stale mashed inputs, not a penalty
 
-// String hits 1, 2, 3 — identical frame data, recovery slashed for fast chain
-const SLAP_STRING_HIT_RECOVERY_MS = 40;    // Recovery between string hits
+// Per-position recovery (the gap-shaper). Whiff gaps = startup+active+recovery.
+//   slap1 → slap2 (whiff): 55+100+75 = 230ms  (was 195 — slower, more deliberate)
+//   slap2 → slap3 (whiff/base): 55+100+50 = 205ms (snappier into the finisher)
+// On hit these become ~280 / ~255 once the attacker hitstop (~50ms) is added — still
+// well under the victim's hit-stun (260 + 70 hitstop = 330), so the true combo holds.
+const SLAP_STRING_RECOVERY_POS1_MS = 75;   // Recovery after slap1 → biggest gap (to slap2)
+const SLAP_STRING_RECOVERY_POS2_MS = 50;   // Recovery after slap2 → tighter gap (to slap3)
+const SLAP_STRING_HIT_RECOVERY_MS = 40;    // Legacy/default recovery (kept for any non-positional refs)
 const SLAP_STRING_HIT_TOTAL_MS = SLAP_STARTUP_MS + SLAP_ACTIVE_MS + SLAP_STRING_HIT_RECOVERY_MS;
+
+// === WHIFF RHYTHM: "BOP BOP <pause>" ===
+// Two whiffed slaps come out, then a COMMITTED recovery pause (not cancelable into
+// any action) before you can slap again. The pause is the whiff-punish window: a
+// prompt, in-range opponent can punish it, but it's short enough that a DELAYED punish
+// attempt arrives after you're actionable again (so you can parry/dodge that one).
+// On hit the string flows normally (up to 3) — landing extends your turn, whiffing
+// interrupts it, which rewards accuracy. Counter resets the instant a slap connects.
+const SLAP_WHIFF_PAUSE_COUNT = 2;   // Consecutive whiffs before the committed pause
+const SLAP_WHIFF_PAUSE_MS = 220;    // Committed lockout duration — the punish window (main dial)
 
 // Knockback per string position
 const SLAP_STRING_LIGHT_KB_VELOCITY = 0.15;       // Hits 1 & 2: minimal — keeps opponent close for next hit
 const SLAP_NEUTRAL_KB_MULTIPLIER = 0.42;          // Solo slap (no string) — standard physics
 
 // Hit 3: physics-based knockback (velocity impulse, no DI)
-// Two-phase friction: holds speed like a heavy mass on ice, then brakes hard.
-const SLAP_HIT3_KB_VELOCITY = 3.0;
-const SLAP_HIT3_STUN_MS = 200;
-const BURST_KB_INITIAL_FRICTION = 0.993;   // Phase 1: heavy momentum — barely decelerates
-const BURST_KB_LATE_FRICTION = 0.93;       // Phase 2: digs in and brakes hard
-const BURST_KB_PHASE_SWITCH_MS = 130;      // When to transition from glide to brake
+// ICE-SLIDE MODEL: a single, smooth exponential decay — the victim is shoved
+// at a moderate impulse and decelerates at the SAME friction as the ice coast
+// they settle into afterward (ICE_COAST_FRICTION). This makes the forced
+// knockback read as one continuous slide on ice instead of a fast pop that
+// brakes hard and then suddenly glides (the old two-phase glide→brake model
+// covered the same ground but looked "quick, then stops").
+//
+// DISTANCE TUNING: total travel ≈ k·v0/(1−friction) with k = delta·speedFactor
+// (~2.89 px per velocity-unit per tick). v0=3.1 @ 0.982 ≈ 494px total — matched
+// to the old 4.5 @ 0.95/0.993 feel so the knockback DISTANCE is unchanged; only
+// the velocity curve (the "feel") is reshaped. Peak speed drops ~13→9 px/tick.
+const SLAP_HIT3_KB_VELOCITY = 3.1;         // Finisher impulse (lowered from 4.5 to kill the "zoom").
+                                           // Main DISTANCE dial: raise/lower to send them further/less.
+                                           // Outside the kill zone the rope catches the victim (see
+                                           // SLAP_KILL_RANGE), so this mainly tunes positional dominance.
+const SLAP_HIT3_STUN_MS = 200;             // Forced (no-DI) window. After this the remaining velocity
+                                           // hands off to the DI-able ice coast — seamless, since both
+                                           // phases now use the same friction.
+const SLAP_HIT3_KB_FRICTION = 0.982;       // Per-tick decay during the forced window. Matched to
+                                           // ICE_COAST_FRICTION so the shove and the follow-through slide
+                                           // are visually one motion. Higher = longer, slower glide
+                                           // (and more total distance); pair with v0 to hold distance.
+
+// ─── SLAP ROPE RESISTANCE ───────────────────────────────────────────────
+// Real-sumo rope feel: a slap can only send the opponent OUT if the hit
+// connected while they were already near the boundary (the "kill zone").
+// From mid-ring, the rope catches them — the victim is stopped at the edge
+// instead of being knocked through it. Evaluated PER HIT at connect time
+// (using the victim's distance to the boundary in the knockback direction),
+// so the slap string naturally walks them into the zone before slap3 finishes.
+//
+// TUNING: SLAP_KILL_RANGE must be <= how far slap3 actually travels during
+// its hitstun window. If "armed" finishers ever fizzle just short of the
+// rope, either lower this range or raise SLAP_HIT3_KB_VELOCITY. ~95px ≈ the
+// edge-panic zone (89) — i.e. "you were genuinely cornered."
+const SLAP_KILL_RANGE = 45;
+// Where a rope-caught victim comes to rest, measured INWARD from the boundary.
+// Keeps them a few px off the literal edge (not pixel-perfect on the rope) and
+// safely short of the ring-out line so the win check never trips on a save.
+const SLAP_ROPE_RESIST_BUFFER = 12;
 
 // String stun (hits 1 & 2)
 const SLAP_STRING_HIT_STUN_MS = 260;
@@ -273,7 +326,7 @@ const GRAB_WALK_ACCEL_MULTIPLIER = 0.7; // Slightly lower acceleration than norm
 const GRAB_STARTUP_DURATION_MS = GRAB_STARTUP_MS; // Uses frame data constant (180ms)
 const GRAB_STARTUP_HOP_HEIGHT = 0; // No hop — grab is a grounded technique
 const GRAB_LUNGE_DISTANCE = 75; // Pixels of forward movement during grab startup (buffed from 55 — grabs more threatening)
-const SLAP_ATTACK_STARTUP_MS = SLAP_STARTUP_MS; // Uses frame data constant (70ms)
+const SLAP_ATTACK_STARTUP_MS = SLAP_STARTUP_MS; // Uses frame data constant (55ms — all slaps share this startup)
 
 // Grab armor stagger — extends grab startup when armor absorbs a slap, so a
 // chained slap can actually catch the grabber before they connect. Without
@@ -552,9 +605,12 @@ const CLINCH_KILL_THROW_DISTANCE = 260;          // Forward distance matching no
 const CLINCH_THROW_BOUNDARY_MARGIN = 11;         // Stop margin from map edge (matches pull margin)
 const CLINCH_THROW_MIN_SEPARATION = 60;          // Min gap between thrower and victim at boundary
 
-// Kill Pull (Mouse2+away): Violent yank past the puller, tumble/faceplant
-const CLINCH_KILL_PULL_DISTANCE = 400;           // Flies further past puller (vs 280 normal)
-const CLINCH_KILL_PULL_TWEEN_DURATION = 500;     // Faster, more violent pull (vs 600 normal)
+// Kill Pull (Mouse2+away): dragged THROUGH the thrower and belly-SLIDES across the ice.
+// The sprite is already a flat, grounded penguin, so this leans into a silly/cute slide
+// rather than an airborne bounce — a tiny contact jolt, then a long friction glide to a
+// stop. The win is already registered; this is purely the "pulled through, slides out" read.
+const CLINCH_KILL_PULL_DISTANCE = 210;           // Total glide distance (friction ease-out)
+const CLINCH_KILL_PULL_TWEEN_DURATION = 850;     // Slow, weighty slide-to-stop (cute, not a blink)
 const CLINCH_KILL_PULL_INPUT_LOCK_MS = 800;      // Longer lock for dramatic finish
 
 // Boundary Pull Swap — when puller's back is against the wall, swap positions instead
@@ -604,8 +660,20 @@ const GASSED_RECOVERY_STAMINA = 55; // Granted on exit — enough to actually fi
 // Scales with power - stronger hits freeze longer
 // ============================================
 const SLAP_CHAIN_HIT_GAP_MS = 40;  // Minimum visual gap after slap hitstun before victim can be hit again
-const HITSTOP_SLAP_MS = 130;      // Punchy freeze per slap (~8 frames). Bumped from 90 for AAA-feel impact weight.
-const HITSTOP_SLAP_HIT3_MS = 200; // Combo finisher freeze (~12 frames). Bumped from 150 — sells the big hit.
+const HITSTOP_SLAP_MS = 130;      // Solo/fallback slap freeze (~8 frames). Rarely hit in practice — every active
+                                  // slap is a string hit (pos 1-3), so this is the defensive fallback value.
+// AAA "fast lights, heavy finisher" model: the tap-tap of the string should feel SNAPPY, with the
+// dramatic freeze saved for the BOOM. A shorter freeze here is SAFE for the true combo because the
+// hitstop compensation is symmetric (see collisionSystem) — the combo margin is set by base frame data,
+// not by the hitstop, so the hitstop cancels out of the guarantee math.
+const HITSTOP_SLAP_STRING_MS = 70; // String hits 1 & 2 freeze (~4 frames). Snappy pop. On-hit cadence: 325ms → ~245ms.
+const HITSTOP_SLAP_HIT3_MS = 200; // Combo finisher freeze (~12 frames). The "BOOM" — contrast with the fast lights sells it.
+// Attacker-favored asymmetry on chainable string hits (1 & 2): extend the ATTACKER's recovery by
+// `relief` ms LESS than the victim's stun, so the attacker un-freezes slightly ahead of the victim.
+// This adds on-hit flow / extra frame advantage so the chain feels aggressive rather than sluggish.
+// TRADE-OFF: tightens the post-slap2 escape/option-select read window by this many ms. Keep modest
+// (~1 frame) so counterplay still exists. Only applied to hits 1 & 2 (the finisher ends the string).
+const SLAP_STRING_ATTACKER_HITSTOP_RELIEF_MS = 20;
 const HITSTOP_CHARGED_MIN_MS = 80;  // Minimum charged attack hitstop (5 frames)
 const HITSTOP_CHARGED_MAX_MS = 220; // Max charged hitstop at full power (~13 frames). Bumped from 150 — kill blows feel cinematic.
 const HITSTOP_PARRY_MS = 120;     // Regular parry hitstop - impactful but not too long (7 frames)
@@ -730,14 +798,18 @@ module.exports = {
   SLAP_TOTAL_MS,
   SLAP_STRING_BUFFER_WINDOW_MS,
   SLAP_STRING_END_COOLDOWN_MS,
+  SLAP_STRING_RECOVERY_POS1_MS,
+  SLAP_STRING_RECOVERY_POS2_MS,
   SLAP_STRING_HIT_RECOVERY_MS,
   SLAP_STRING_HIT_TOTAL_MS,
+  SLAP_WHIFF_PAUSE_COUNT,
+  SLAP_WHIFF_PAUSE_MS,
   SLAP_STRING_LIGHT_KB_VELOCITY,
   SLAP_NEUTRAL_KB_MULTIPLIER,
   SLAP_HIT3_KB_VELOCITY,
-  BURST_KB_INITIAL_FRICTION,
-  BURST_KB_LATE_FRICTION,
-  BURST_KB_PHASE_SWITCH_MS,
+  SLAP_KILL_RANGE,
+  SLAP_ROPE_RESIST_BUFFER,
+  SLAP_HIT3_KB_FRICTION,
   SLAP_STRING_HIT_STUN_MS,
   SLAP_HIT3_STUN_MS,
   SLAP_ONHIT_ATTACKER_PUSH,
@@ -994,6 +1066,8 @@ module.exports = {
   // Hitstop
   SLAP_CHAIN_HIT_GAP_MS,
   HITSTOP_SLAP_MS,
+  HITSTOP_SLAP_STRING_MS,
+  SLAP_STRING_ATTACKER_HITSTOP_RELIEF_MS,
   HITSTOP_SLAP_HIT3_MS,
   HITSTOP_CHARGED_MIN_MS,
   HITSTOP_CHARGED_MAX_MS,
