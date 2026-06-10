@@ -1131,59 +1131,53 @@ function processHit(player, otherPlayer, rooms, io) {
     }
 
     let isCinematicKill = false;
+    const knockbackAllowed = canApplyKnockback(otherPlayer);
 
-    if (canApplyKnockback(otherPlayer)) {
+    if (knockbackAllowed || isSlapAttack) {
       if (isSlapAttack) {
         const stringPos = player.slapStringPosition || 0;
+        const pushDirection = player.facing === 1 ? -1 : 1;
 
-        otherPlayer.isSlapKnockback = true;
+        // HIT-CONFIRM (unconditional): a slap that connects is a confirmed hit
+        // even while the victim is knockback-immune. These flags (and the
+        // VFX/hitstop below) must NOT sit behind canApplyKnockback: when slap1
+        // connects LATE in its active window, the 150ms immunity it grants
+        // still covers slap2's connect moment — gating the confirm there made
+        // slap2 land as a silent "phantom hit" (victim stunned, but no VFX,
+        // no hitstop, string reset as if it whiffed → the "5-slap" bug).
+        player.movementVelocity = pushDirection * SLAP_ONHIT_ATTACKER_PUSH;
+        player.isSlapSliding = true;
+        player.lastSlapHitLandedTime = currentTime;
+        player.currentSlapHitConnected = true;
 
-        // ROPE RESISTANCE GATE (per-hit): this slap may only push the victim
-        // OUT of the ring if the hit landed while they were already within
-        // SLAP_KILL_RANGE of the boundary they're being knocked toward.
-        // Otherwise the rope catches them (clamped at the edge in the isHit
-        // movement block). Measured at connect time using the knockback
-        // direction so it's the same intuition for slap1/2/3.
-        const distanceToBoundaryInKbDir = knockbackDirection > 0
-          ? MAP_RIGHT_BOUNDARY - otherPlayer.x
-          : otherPlayer.x - MAP_LEFT_BOUNDARY;
-        otherPlayer.slapKnockbackCanRingOut =
-          distanceToBoundaryInKbDir <= SLAP_KILL_RANGE;
+        if (knockbackAllowed) {
+          otherPlayer.isSlapKnockback = true;
 
-        if (stringPos === 1 || stringPos === 2) {
-          // STRING HITS 1 & 2: cinematic combo push — both players slide forward together
-          // Victim drifts via knockbackVelocity (active during isHit),
-          // attacker drifts via movementVelocity (ice physics). Same speed = locked pair.
-          const pushDirection = player.facing === 1 ? -1 : 1;
-          otherPlayer.knockbackVelocity.x = pushDirection * SLAP_ONHIT_ATTACKER_PUSH;
-          player.movementVelocity = pushDirection * SLAP_ONHIT_ATTACKER_PUSH;
-          player.isSlapSliding = true;
-          player.lastSlapHitLandedTime = currentTime;
-          player.currentSlapHitConnected = true;
+          // ROPE RESISTANCE GATE (per-hit): this slap may only push the victim
+          // OUT of the ring if the hit landed while they were already within
+          // SLAP_KILL_RANGE of the boundary they're being knocked toward.
+          // Otherwise the rope catches them (clamped at the edge in the isHit
+          // movement block). Measured at connect time using the knockback
+          // direction so it's the same intuition for slap1/2/3.
+          const distanceToBoundaryInKbDir = knockbackDirection > 0
+            ? MAP_RIGHT_BOUNDARY - otherPlayer.x
+            : otherPlayer.x - MAP_LEFT_BOUNDARY;
+          otherPlayer.slapKnockbackCanRingOut =
+            distanceToBoundaryInKbDir <= SLAP_KILL_RANGE;
 
-        } else if (stringPos === 3) {
-          // STRING HIT 3: physics-based knockback — velocity impulse, no DI
-          const pushDirection = player.facing === 1 ? -1 : 1;
-          otherPlayer.isBurstKnockback = true;
-          otherPlayer.burstKnockbackStartTime = currentTime;
-          otherPlayer.knockbackVelocity.x = knockbackDirection * SLAP_HIT3_KB_VELOCITY;
-          otherPlayer.movementVelocity = 0;
-          player.movementVelocity = pushDirection * SLAP_ONHIT_ATTACKER_PUSH;
-          player.isSlapSliding = true;
-          player.lastSlapHitLandedTime = currentTime;
-          player.currentSlapHitConnected = true;
-
-        } else {
-          // DEFENSIVE FALLBACK (stringPos 0): unreachable in normal play — every active slap
-          // is a string hit (pos 1-3, set in executeSlapAttack before the hitbox goes live).
-          // Mirror the light-hit path so a stray pos-0 still behaves like a string starter
-          // instead of an out-of-place heavy knockback.
-          const pushDirection = player.facing === 1 ? -1 : 1;
-          otherPlayer.knockbackVelocity.x = pushDirection * SLAP_ONHIT_ATTACKER_PUSH;
-          player.movementVelocity = pushDirection * SLAP_ONHIT_ATTACKER_PUSH;
-          player.isSlapSliding = true;
-          player.lastSlapHitLandedTime = currentTime;
-          player.currentSlapHitConnected = true;
+          if (stringPos === 3) {
+            // STRING HIT 3: physics-based knockback — velocity impulse, no DI
+            otherPlayer.isBurstKnockback = true;
+            otherPlayer.burstKnockbackStartTime = currentTime;
+            otherPlayer.knockbackVelocity.x = knockbackDirection * SLAP_HIT3_KB_VELOCITY;
+            otherPlayer.movementVelocity = 0;
+          } else {
+            // STRING HITS 1 & 2 (and pos-0 fallback): cinematic combo push —
+            // both players slide forward together. Victim drifts via
+            // knockbackVelocity (active during isHit), attacker drifts via
+            // movementVelocity (ice physics). Same speed = locked pair.
+            otherPlayer.knockbackVelocity.x = pushDirection * SLAP_ONHIT_ATTACKER_PUSH;
+          }
         }
 
       } else {
@@ -1240,7 +1234,11 @@ function processHit(player, otherPlayer, rooms, io) {
         }
       }
 
-      setKnockbackImmunity(otherPlayer);
+      // Immunity refresh only when knockback was actually applied — a no-knockback
+      // slap confirm must not extend the immunity window it was suppressed by.
+      if (knockbackAllowed) {
+        setKnockbackImmunity(otherPlayer);
+      }
 
       // Emit hit effect at the hit player's position
       if (currentRoom) {

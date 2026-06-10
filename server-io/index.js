@@ -632,6 +632,13 @@ function tick(delta) {
           const recoveryElapsed = room.simTime - player.recoveryStartTime;
           const isRecoveryGameOverLoser = room.gameOver && player.id === room.loserId;
 
+          // Round over: the WINNER's recovery slide is killed immediately —
+          // no drifting across the dohyo during the result presentation. The
+          // loser keeps momentum so the knockout slide still reads naturally.
+          if (room.gameOver && !isRecoveryGameOverLoser) {
+            player.movementVelocity = 0;
+          }
+
           // Apply ice-like physics to recovery movement
           if (Math.abs(player.movementVelocity) > MIN_MOVEMENT_THRESHOLD) {
             // Apply momentum and friction from global ice physics
@@ -694,6 +701,16 @@ function tick(delta) {
           Math.abs(player.movementVelocity) < ICE_STOP_THRESHOLD &&
           Math.abs(player.knockbackVelocity.x) < 0.01) {
         return;
+      }
+
+      // Round over: the winner gets NO residual slide physics — ice coast,
+      // post-dodge momentum, and leftover knockback are all zeroed every tick
+      // so they stand firm during the result presentation. The loser is
+      // exempt: their knockout momentum carries them out naturally (and
+      // decays on its own once they fall off the dohyo).
+      if (room.gameOver && !isGameOverLoser) {
+        player.movementVelocity = 0;
+        player.knockbackVelocity.x = 0;
       }
 
       // Clear knockback immunity when timer expires
@@ -1020,7 +1037,9 @@ function tick(delta) {
       // Process buffered inputs for human players.
       // Runs every tick after state transitions so buffered actions fire on the
       // first frame the player becomes actionable (same tick-level fairness as CPU).
-      if (!player.isCPU && player.inputBuffer) {
+      // Never during round result — an input buffered while flying out (isHit
+      // blocks immediate execution) must not fire after the loss is decided.
+      if (!room.gameOver && !player.isCPU && player.inputBuffer) {
         executeInputBuffer(player, rooms);
       }
 

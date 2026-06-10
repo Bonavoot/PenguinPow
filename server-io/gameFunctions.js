@@ -482,6 +482,11 @@ function handleWinCondition(room, loser, winner, io, winType) {
     p.mouse1JustPressed = false;
     p.mouse1JustReleased = false;
 
+    // Drop pending inputs — a grab/dodge/slap buffered while flying out must
+    // not execute during the round result, and queued packets are stale too.
+    p.inputBuffer = null;
+    p.inputQueue = [];
+
     p.keys = createInitialKeys();
     p.x = currentX;
   });

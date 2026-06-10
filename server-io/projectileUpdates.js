@@ -211,7 +211,14 @@ function updateProjectiles(room, io, delta) {
       }
 
       // Check collision with raw parrying opponent (snowball is blocked or reflected)
-      if (opponent && opponent.isRawParrying && !snowball.hasHit) {
+      // Direction gate: only balls moving TOWARD the parrier can be parried.
+      // A just-reflected ball's swept segment still starts inside the parry
+      // radius on the tick after reflection — without this gate it would
+      // re-collide with the same parrier and be destroyed (canReflect=false),
+      // making perfect-parry reflection impossible.
+      const movingTowardParrier = opponent &&
+        Math.abs(snowball.x - opponent.x) < Math.abs(snowballPrevX - opponent.x);
+      if (opponent && opponent.isRawParrying && !snowball.hasHit && movingTowardParrier) {
         const distance = sweptHorizDistance(snowballPrevX, snowball.x, opponent.x);
         const sizeMul = opponent.sizeMultiplier || 1;
         const horizThresh = Math.round(45 * 0.96) * sizeMul;
