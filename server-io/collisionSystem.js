@@ -44,6 +44,8 @@ const {
 
 const {
   setPlayerTimeout,
+  simNow,
+  simNowForPlayer,
   clearAllActionStates,
   triggerHitstop,
   triggerHitstopAndEmit,
@@ -116,7 +118,7 @@ function checkCollision(player, otherPlayer, rooms, io) {
       player.attackType === "slap"
         ? SLAP_STARTUP_MS
         : CHARGED_STARTUP_MS;
-    const attackAge = Date.now() - player.attackStartTime;
+    const attackAge = simNowForPlayer(player) - player.attackStartTime;
 
     if (attackAge < startupDelay) {
       return; // Skip collision detection during startup frames
@@ -124,10 +126,10 @@ function checkCollision(player, otherPlayer, rooms, io) {
   }
 
   // Skip collision if the attack's active frames have ended (in recovery phase of attack)
-  if (player.attackType === "slap" && player.slapActiveEndTime && Date.now() > player.slapActiveEndTime) {
+  if (player.attackType === "slap" && player.slapActiveEndTime && simNowForPlayer(player) > player.slapActiveEndTime) {
     return;
   }
-  if (player.attackType === "charged" && player.chargedActiveEndTime && Date.now() > player.chargedActiveEndTime) {
+  if (player.attackType === "charged" && player.chargedActiveEndTime && simNowForPlayer(player) > player.chargedActiveEndTime) {
     return;
   }
 
@@ -136,7 +138,8 @@ function checkCollision(player, otherPlayer, rooms, io) {
   // made charged whiff against a well-timed dodge with no counterplay. Charged
   // now hits dodge as a normal hit (no counter-hit, no punish — see counter-hit
   // suppression below). Slap was never i-framed by dodge to begin with.
-  const now = Date.now();
+  // Sim clock — slapParryImmunityUntil is a sim-clock deadline (pauses with hitstop)
+  const now = simNowForPlayer(player);
   const otherInDodgeIFrames = false;
   const playerInDodgeIFrames = false;
 
@@ -337,7 +340,9 @@ function checkCollision(player, otherPlayer, rooms, io) {
 }
 
 function resolveSlapParry(player1, player2, room, io) {
-  const now = Date.now();
+  // Sim clock — parry triggers hitstop, so its own recovery deadlines must
+  // live on the clock that pauses with it.
+  const now = simNow(room);
   const knockbackDirection1 = player1.x < player2.x ? -1 : 1;
   const knockbackDirection2 = -knockbackDirection1;
 
@@ -429,7 +434,7 @@ function resolveSlapParry(player1, player2, room, io) {
 function applyParryEffect(player, knockbackDirection, escalation) {
   player.slapParryKnockbackVelocity = SLAP_PARRY_KNOCKBACK_STRENGTH * knockbackDirection * escalation;
 
-  player.slapParryImmunityUntil = Date.now() + SLAP_PARRY_RECOVERY_MS + SLAP_PARRY_WINDOW;
+  player.slapParryImmunityUntil = simNowForPlayer(player) + SLAP_PARRY_RECOVERY_MS + SLAP_PARRY_WINDOW;
 }
 
 function resolveChargeClash(player1, player2, p1Charge, p2Charge, room, io) {
@@ -467,28 +472,31 @@ function resolveChargeClash(player1, player2, p1Charge, p2Charge, room, io) {
 
     if (p.keys && p.keys.mouse1) {
       p.mouse1HeldDuringAttack = true;
-      if (!p.mouse1PressTime) p.mouse1PressTime = Date.now();
+      if (!p.mouse1PressTime) p.mouse1PressTime = simNowForPlayer(p);
     }
   });
 
-  // Put both in recovery (uses the charged-recovery animation)
+  // Put both in recovery (uses the charged-recovery animation).
+  // All recovery/cooldown/lock deadlines: sim clock (pause through the
+  // clash hitstop triggered below).
+  const clashSimNow = simNow(room);
   player1.isRecovering = true;
-  player1.recoveryStartTime = Date.now();
+  player1.recoveryStartTime = clashSimNow;
   player1.recoveryDuration = CHARGE_CLASH_RECOVERY_DURATION;
   player1.recoveryDirection = player1.facing;
   player1.knockbackVelocity = { x: p1Knockback * knockbackDir1, y: 0 };
   player1.movementVelocity = p1Knockback * knockbackDir1 * 0.5;
-  player1.actionLockUntil = Date.now() + CHARGE_CLASH_RECOVERY_DURATION;
-  player1.attackCooldownUntil = Date.now() + CHARGE_CLASH_RECOVERY_DURATION + 150;
+  player1.actionLockUntil = clashSimNow + CHARGE_CLASH_RECOVERY_DURATION;
+  player1.attackCooldownUntil = clashSimNow + CHARGE_CLASH_RECOVERY_DURATION + 150;
 
   player2.isRecovering = true;
-  player2.recoveryStartTime = Date.now();
+  player2.recoveryStartTime = clashSimNow;
   player2.recoveryDuration = CHARGE_CLASH_RECOVERY_DURATION;
   player2.recoveryDirection = player2.facing;
   player2.knockbackVelocity = { x: p2Knockback * knockbackDir2, y: 0 };
   player2.movementVelocity = p2Knockback * knockbackDir2 * 0.5;
-  player2.actionLockUntil = Date.now() + CHARGE_CLASH_RECOVERY_DURATION;
-  player2.attackCooldownUntil = Date.now() + CHARGE_CLASH_RECOVERY_DURATION + 150;
+  player2.actionLockUntil = clashSimNow + CHARGE_CLASH_RECOVERY_DURATION;
+  player2.attackCooldownUntil = clashSimNow + CHARGE_CLASH_RECOVERY_DURATION + 150;
 
   // Hitstop + screen shake scaled to combined charge power
   const combinedCharge = (p1Charge + p2Charge) / 200; // 0-1 range
@@ -561,12 +569,15 @@ function applyGrabStartupArmor(attacker, defender, rooms, io) {
 }
 
 function processHit(player, otherPlayer, rooms, io) {
-  const currentTime = Date.now();
-
   // Find the current room
   const currentRoom = rooms.find((room) =>
     room.players.some((p) => p.id === player.id)
   );
+
+  // Sim clock — every combat timestamp written here (lastHitTime, counter-hit
+  // windows, burst knockback) lives on the room's pausable clock so it freezes
+  // in lockstep with the hitstop this hit is about to trigger.
+  const currentTime = simNow(currentRoom);
 
   // Use the stored attack type instead of checking isSlapAttack
   const isSlapAttack = player.attackType === "slap";
@@ -720,13 +731,13 @@ function processHit(player, otherPlayer, rooms, io) {
       if (player.keys.mouse1) {
         player.mouse1HeldDuringAttack = true;
         if (!player.mouse1PressTime) {
-          player.mouse1PressTime = Date.now();
+          player.mouse1PressTime = currentTime;
         }
       }
       
       // Set recovery state for the attacker
       player.isRecovering = true;
-      player.recoveryStartTime = Date.now();
+      player.recoveryStartTime = currentTime;
       player.recoveryDuration = 400;
       player.recoveryDirection = player.facing;
       player.knockbackVelocity = {
@@ -773,13 +784,13 @@ function processHit(player, otherPlayer, rooms, io) {
       player.mouse1HeldDuringAttack = true;
       // Ensure press time is tracked (may already be set from re-press during animation)
       if (!player.mouse1PressTime) {
-        player.mouse1PressTime = Date.now();
+        player.mouse1PressTime = currentTime;
       }
     }
 
     // Set recovery state for successful hits
     player.isRecovering = true;
-    player.recoveryStartTime = Date.now();
+    player.recoveryStartTime = currentTime;
     player.recoveryDuration = 400;
     player.recoveryDirection = player.facing;
     // Initialize knockback velocity in the opposite direction of the attack
@@ -796,7 +807,8 @@ function processHit(player, otherPlayer, rooms, io) {
     const isSlapBeingParried = player.attackType === "slap" || isSlapAttack;
 
     // Check if this is a perfect parry (within 100ms of parry start)
-    const currentTime = Date.now();
+    // Sim clock — rawParryStartTime is written on the sim clock too.
+    const currentTime = simNowForPlayer(otherPlayer);
     const parryDuration = currentTime - otherPlayer.rawParryStartTime;
     const isPerfectParry = parryDuration <= PERFECT_PARRY_WINDOW;
 
@@ -844,13 +856,13 @@ function processHit(player, otherPlayer, rooms, io) {
       // Perfect parry: keep isRawParrying active and lock movement
       otherPlayer.isRawParrying = true;
       otherPlayer.isPerfectRawParrySuccess = true;
-      otherPlayer.inputLockUntil = Math.max(otherPlayer.inputLockUntil || 0, Date.now() + PERFECT_PARRY_ANIMATION_LOCK);
+      otherPlayer.inputLockUntil = Math.max(otherPlayer.inputLockUntil || 0, currentTime + PERFECT_PARRY_ANIMATION_LOCK);
     } else {
       // Regular parry: neutral advantage — parrier can reposition but can't attack freely.
       // 350ms lock vs 400ms attacker isHit = 50ms advantage (not enough for guaranteed follow-up)
       otherPlayer.isRawParrySuccess = true;
       otherPlayer.rawParryMinDurationMet = true;
-      otherPlayer.inputLockUntil = Math.max(otherPlayer.inputLockUntil || 0, Date.now() + 350);
+      otherPlayer.inputLockUntil = Math.max(otherPlayer.inputLockUntil || 0, currentTime + 350);
     }
 
     // Emit raw parry success event for visual effect
@@ -881,7 +893,7 @@ function processHit(player, otherPlayer, rooms, io) {
         () => {
           otherPlayer.isRawParrying = false;
           otherPlayer.isPerfectRawParrySuccess = false;
-          otherPlayer.rawParryCooldownUntil = Date.now() + RAW_PARRY_COOLDOWN_MS;
+          otherPlayer.rawParryCooldownUntil = simNowForPlayer(otherPlayer) + RAW_PARRY_COOLDOWN_MS;
         },
         PERFECT_PARRY_ANIMATION_LOCK,
         "perfectParryAnimationEnd"
@@ -898,11 +910,9 @@ function processHit(player, otherPlayer, rooms, io) {
       );
     }
 
-    // Knockback duration: 400ms of real sliding AFTER the freeze ends.
-    // setTimeout is wall-clock time but hitstop pauses the simulation, so without
-    // compensation the freeze eats into the slide and the attacker barely moves.
-    const hitstopMs = isPerfectParry ? HITSTOP_PERFECT_PARRY_MS : HITSTOP_PARRY_MS;
-    const parryKnockbackDuration = 400 + (isPerfectParry ? HITSTOP_PERFECT_PARRY_MS : 0);
+    // Knockback duration: 400ms of sim time. The sim clock (and this timer)
+    // pause during the parry hitstop, so the full slide window survives the
+    // freeze with no manual +hitstop compensation.
     setPlayerTimeout(
       player.id,
       () => {
@@ -910,11 +920,12 @@ function processHit(player, otherPlayer, rooms, io) {
         player.isAlreadyHit = false;
         player.isParryKnockback = false;
       },
-      parryKnockbackDuration,
+      400,
       "parryKnockbackReset"
     );
-    
-    player.inputLockUntil = Math.max(player.inputLockUntil || 0, Date.now() + hitstopMs + 100);
+
+    // Brief post-freeze input lock (sim clock — freeze itself doesn't consume it)
+    player.inputLockUntil = Math.max(player.inputLockUntil || 0, currentTime + 100);
 
     // Apply stun for perfect parries (separate from knockback)
     if (isPerfectParry) {
@@ -939,8 +950,8 @@ function processHit(player, otherPlayer, rooms, io) {
       player.knockbackVelocity.x = (PERFECT_PARRY_KNOCKBACK + overlapCompensation) * pushDirection;
       player.knockbackVelocity.y = 0;
       
-      // Track stun start time
-      player.perfectParryStunStartTime = Date.now();
+      // Track stun start time (sim clock)
+      player.perfectParryStunStartTime = currentTime;
       
       // Clear any previous perfect parry stun timeout
       if (player.perfectParryStunBaseTimeout) {
@@ -968,9 +979,9 @@ function processHit(player, otherPlayer, rooms, io) {
         });
       }
 
-      // Stun duration: 700ms of real stun AFTER the freeze ends.
-      // Same wall-clock vs hitstop issue as knockback — compensate so the
-      // full stun window is available for follow-up attacks post-freeze.
+      // Stun duration on the sim clock — the timer pauses through the
+      // perfect-parry freeze, so the full stun window is available for
+      // follow-up attacks post-freeze without manual +hitstop compensation.
       setPlayerTimeout(
         player.id,
         () => {
@@ -978,7 +989,7 @@ function processHit(player, otherPlayer, rooms, io) {
           player.perfectParryStunStartTime = 0;
           player.perfectParryStunBaseTimeout = null;
         },
-        baseStunDuration + HITSTOP_PERFECT_PARRY_MS,
+        baseStunDuration,
         "perfectParryStunReset"
       );
       
@@ -1191,12 +1202,16 @@ function processHit(player, otherPlayer, rooms, io) {
           player.isRecovering = false;
           player.isAttacking = true;
           player.attackType = "charged";
+          // Hold the attack pose exactly through the cinematic freeze: sim
+          // timers don't tick during hitstop, so a 0-delay timer fires on the
+          // first tick AFTER the freeze ends (the old version used a wall-clock
+          // delay of CINEMATIC_KILL_HITSTOP_MS to approximate this).
           setPlayerTimeout(player.id, () => {
             player.isAttacking = false;
             player.isRecovering = true;
-            player.recoveryStartTime = Date.now();
+            player.recoveryStartTime = simNowForPlayer(player);
             player.recoveryDuration = 400;
-          }, CINEMATIC_KILL_HITSTOP_MS, "cinematicAttackerRecovery");
+          }, 0, "cinematicAttackerRecovery");
         }
 
         const kbBoost = isCinematicKill ? CINEMATIC_KILL_KNOCKBACK_BOOST : 1;
@@ -1297,36 +1312,22 @@ function processHit(player, otherPlayer, rooms, io) {
               : HITSTOP_SLAP_MS;
           triggerHitstopAndEmit(io, currentRoom, slapHitstopMs, isBurstHitLocal ? "slap_burst" : "slap");
 
-          // === HITSTOP COMPENSATION (attacker-favored on chainable hits) ===
-          // The room sim freezes for `slapHitstopMs`, but wall-clock timers don't pause,
-          // so we manually push the attacker's recovery + the victim's stun forward to
-          // emulate the freeze. Extending BOTH by the full hitstop is "symmetric" and keeps
-          // the true-combo margin constant. On hits 1 & 2 we extend the ATTACKER by `relief`
-          // ms LESS than the victim, so the attacker un-freezes slightly ahead → snappier,
-          // more aggressive chain (and a tighter, but still-present, escape window).
+          // === ATTACKER-FAVORED HITSTOP RELIEF (chainable hits only) ===
+          // The sim clock pauses during hitstop, so the attacker's cycle and the
+          // victim's stun freeze together automatically — no compensation needed.
+          // On hits 1 & 2 we additionally pull the ATTACKER's pending deadlines
+          // EARLIER by `relief` ms, so they un-freeze slightly ahead of the victim
+          // → snappier, more aggressive chain (and a tighter, but still-present,
+          // escape window). Same net frame math as the old wall-clock compensation.
           const attackerRelief = isChainableStringHit ? SLAP_STRING_ATTACKER_HITSTOP_RELIEF_MS : 0;
-          const attackerHitstopMs = Math.max(0, slapHitstopMs - attackerRelief);
-
-          if (player.slapCycleEndCallback) {
-            timeoutManager.clearPlayerSpecific(player.id, "slapCycle");
-            const remainingActive = Math.max(0, player.attackEndTime - currentTime);
-            const extendedActive = remainingActive + attackerHitstopMs;
-            player.attackEndTime = currentTime + extendedActive;
-
-            // Keep the active-window marker in lockstep with attackEndTime so the
-            // hitbox-live bookkeeping stays consistent through the freeze.
+          if (attackerRelief > 0 && player.slapCycleEndCallback) {
+            player.attackEndTime = Math.max(currentTime, player.attackEndTime - attackerRelief);
             if (player.slapActiveEndTime) {
-              player.slapActiveEndTime += attackerHitstopMs;
+              player.slapActiveEndTime = Math.max(currentTime, player.slapActiveEndTime - attackerRelief);
             }
-
-            const remainingCycle = Math.max(0, player.attackCooldownUntil - currentTime);
-            const extendedCycle = remainingCycle + attackerHitstopMs;
-            player.attackCooldownUntil = currentTime + extendedCycle;
-            setPlayerTimeout(player.id, player.slapCycleEndCallback, extendedCycle, "slapCycle");
+            player.attackCooldownUntil = Math.max(currentTime, player.attackCooldownUntil - attackerRelief);
+            timeoutManager.advanceNamed(player.id, "slapCycle", attackerRelief);
           }
-
-          // Victim keeps the FULL hitstop so their stun pauses exactly with the room freeze.
-          otherPlayer._slapHitstopExtension = slapHitstopMs;
 
           // Screen shake is handled client-side by useCamera (driven by hitCounter +
           // knockback magnitude) — no need to double-shake from the server here.
@@ -1361,14 +1362,14 @@ function processHit(player, otherPlayer, rooms, io) {
     if (otherPlayer.y > GROUND_LEVEL) {
       clearSidestepHitReturn(otherPlayer);
       otherPlayer.isHitFalling = true;
-      otherPlayer.hitFallStartTime = Date.now();
+      otherPlayer.hitFallStartTime = currentTime;
       otherPlayer.hitFallStartY = otherPlayer.y;
     } else if (otherPlayer.y < GROUND_LEVEL) {
       clearHitFall(otherPlayer);
       const depthRatio = (GROUND_LEVEL - otherPlayer.y) / 55;
       const duration = SIDESTEP_HIT_RETURN_MIN_MS + (SIDESTEP_HIT_RETURN_BASE_MS - SIDESTEP_HIT_RETURN_MIN_MS) * Math.min(depthRatio, 1);
       otherPlayer.isSidestepHitReturn = true;
-      otherPlayer.sidestepHitReturnStartTime = Date.now();
+      otherPlayer.sidestepHitReturnStartTime = currentTime;
       otherPlayer.sidestepHitReturnStartY = otherPlayer.y;
       otherPlayer.sidestepHitReturnDuration = duration;
     } else {
@@ -1397,18 +1398,16 @@ function processHit(player, otherPlayer, rooms, io) {
       hitStateDuration = Math.round(hitStateDuration * 1.4);
     }
 
-    // Symmetric hitstop: extend victim's stun by the same amount the attacker's
-    // cycle was extended, so the gap between string hits is frame-perfect every time.
-    const hitstopExtension = otherPlayer._slapHitstopExtension || 0;
-    otherPlayer._slapHitstopExtension = 0;
-    hitStateDuration += hitstopExtension;
+    // No hitstop extension needed: the stun timer below runs on the sim clock,
+    // which freezes during hitstop — victim stun and attacker cycle pause in
+    // perfect lockstep, so the true-combo margin is frame-exact by construction.
 
     // Update the last hit time for tracking
     otherPlayer.lastHitTime = currentTime;
     otherPlayer.lastHitByStringPos = stringPos;
 
     const isBurstHit = isSlapAttack && stringPos === 3;
-    const stunDuration = isBurstHit ? (SLAP_HIT3_STUN_MS + hitstopExtension) : hitStateDuration;
+    const stunDuration = isBurstHit ? SLAP_HIT3_STUN_MS : hitStateDuration;
 
     setPlayerTimeout(
       otherPlayer.id,
@@ -1444,18 +1443,18 @@ function processHit(player, otherPlayer, rooms, io) {
     );
 
     // Input lockout - slaps have moderate lock so hit animation is visible
+    // (sim clock — locks freeze through hitstop instead of being eaten by it)
     const victimLockMs = isSlapAttack ? 180 : hitStateDuration;
     // Attacker: brief lock for slaps creates commitment to each strike (rekka feel)
     const attackerLockMs = isSlapAttack ? 50 : 200;
-    const now = Date.now();
     otherPlayer.inputLockUntil = Math.max(
       otherPlayer.inputLockUntil || 0,
-      now + victimLockMs
+      currentTime + victimLockMs
     );
     if (attackerLockMs > 0) {
       player.inputLockUntil = Math.max(
         player.inputLockUntil || 0,
-        now + attackerLockMs
+        currentTime + attackerLockMs
       );
     }
 

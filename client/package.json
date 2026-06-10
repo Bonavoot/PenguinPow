@@ -11,12 +11,8 @@
   },
   "dependencies": {
     "@fontsource/bungee": "^5.2.7",
-    "@fontsource/bungee-inline": "^5.2.8",
-    "@fontsource/bungee-outline": "^5.2.8",
-    "@fontsource/bungee-shade": "^5.2.7",
     "@fontsource/noto-sans-jp": "^5.2.9",
     "@fontsource/noto-serif-jp": "^5.2.8",
-    "@fontsource/outfit": "^5.2.8",
     "@fontsource/space-grotesk": "^5.2.10",
     "@pixi/react": "^7.1.0",
     "pixi.js": "^7.2.4",

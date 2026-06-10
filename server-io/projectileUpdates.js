@@ -11,6 +11,7 @@ const {
 
 const {
   setPlayerTimeout,
+  simNow,
   clearAllActionStates,
   canApplyKnockback,
   setKnockbackImmunity,
@@ -20,6 +21,18 @@ const {
   clearHitFall,
   clearSidestepHitReturn,
 } = require("./gameUtils");
+
+// Swept 1D collision: horizontal distance from targetX to the segment the
+// projectile traversed this tick. Fast projectiles (reflected snowballs move
+// ~12px/tick) can otherwise tunnel across a hit/parry threshold edge between
+// two discrete position samples.
+function sweptHorizDistance(fromX, toX, targetX) {
+  const lo = Math.min(fromX, toX);
+  const hi = Math.max(fromX, toX);
+  if (targetX < lo) return lo - targetX;
+  if (targetX > hi) return targetX - hi;
+  return 0; // target inside the swept span
+}
 
 function updateProjectiles(room, io, delta) {
   const [player1, player2] = room.players;
@@ -31,7 +44,8 @@ function updateProjectiles(room, io, delta) {
 
     // Update snowball positions and check for collisions
     player.snowballs = player.snowballs.filter((snowball) => {
-      // Move snowball
+      // Move snowball (keep pre-move position for swept collision)
+      const snowballPrevX = snowball.x;
       snowball.x += snowball.velocityX * delta * speedFactor;
 
       // Check if snowball is off-screen
@@ -52,7 +66,7 @@ function updateProjectiles(room, io, delta) {
         !targetPlayer.isRawParrying &&
         !snowball.hasHit
       ) {
-        const distance = Math.abs(snowball.x - targetPlayer.x);
+        const distance = sweptHorizDistance(snowballPrevX, snowball.x, targetPlayer.x);
         const sizeMul = targetPlayer.sizeMultiplier || 1;
         const horizThresh = Math.round(45 * 0.96) * sizeMul;
         const vertThresh = Math.round(27 * 0.96) * sizeMul;
@@ -143,14 +157,14 @@ function updateProjectiles(room, io, delta) {
           if (targetPlayer.y > GROUND_LEVEL) {
             clearSidestepHitReturn(targetPlayer);
             targetPlayer.isHitFalling = true;
-            targetPlayer.hitFallStartTime = Date.now();
+            targetPlayer.hitFallStartTime = simNow(room);
             targetPlayer.hitFallStartY = targetPlayer.y;
           } else if (targetPlayer.y < GROUND_LEVEL) {
             clearHitFall(targetPlayer);
             const depthRatio = (GROUND_LEVEL - targetPlayer.y) / 55;
             const duration = SIDESTEP_HIT_RETURN_MIN_MS + (SIDESTEP_HIT_RETURN_BASE_MS - SIDESTEP_HIT_RETURN_MIN_MS) * Math.min(depthRatio, 1);
             targetPlayer.isSidestepHitReturn = true;
-            targetPlayer.sidestepHitReturnStartTime = Date.now();
+            targetPlayer.sidestepHitReturnStartTime = simNow(room);
             targetPlayer.sidestepHitReturnStartY = targetPlayer.y;
             targetPlayer.sidestepHitReturnDuration = duration;
           } else {
@@ -160,7 +174,7 @@ function updateProjectiles(room, io, delta) {
           targetPlayer.isHit = true;
           targetPlayer.lastHitType = "snowball";
           targetPlayer.isAlreadyHit = true;
-          targetPlayer.lastHitTime = Date.now();
+          targetPlayer.lastHitTime = simNow(room);
 
           // Apply knockback only if not immune
           if (canApplyKnockback(targetPlayer)) {
@@ -198,7 +212,7 @@ function updateProjectiles(room, io, delta) {
 
       // Check collision with raw parrying opponent (snowball is blocked or reflected)
       if (opponent && opponent.isRawParrying && !snowball.hasHit) {
-        const distance = Math.abs(snowball.x - opponent.x);
+        const distance = sweptHorizDistance(snowballPrevX, snowball.x, opponent.x);
         const sizeMul = opponent.sizeMultiplier || 1;
         const horizThresh = Math.round(45 * 0.96) * sizeMul;
         const vertThresh = Math.round(27 * 0.96) * sizeMul;
@@ -213,7 +227,7 @@ function updateProjectiles(room, io, delta) {
           room.forceBroadcast = true;
 
           // Check if this is a perfect parry (within 100ms of parry start)
-          const currentTime = Date.now();
+          const currentTime = simNow(room);
           const parryDuration = currentTime - opponent.rawParryStartTime;
           const isPerfectParry = parryDuration <= PERFECT_PARRY_WINDOW;
           
@@ -239,7 +253,7 @@ function updateProjectiles(room, io, delta) {
             // Perfect parry on non-reflected snowball: reflect it back!
             opponent.isRawParrying = true;
             opponent.isPerfectRawParrySuccess = true;
-            opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, Date.now() + PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK);
+            opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, simNow(room) + PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK);
             // REFLECT THE SNOWBALL BACK - faster than original
             snowball.hasHit = false; // Reset hit flag so it can hit the thrower
             snowball.velocityX = -snowball.velocityX * 1.3; // Reverse direction and make it 30% faster
@@ -255,7 +269,7 @@ function updateProjectiles(room, io, delta) {
             if (isPerfectParry) {
               opponent.isPerfectRawParrySuccess = true;
               opponent.isRawParrying = true;
-              opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, Date.now() + PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK);
+              opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, simNow(room) + PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK);
             } else {
               opponent.isRawParrySuccess = true;
               opponent.rawParryMinDurationMet = true;
@@ -336,7 +350,7 @@ function updateProjectiles(room, io, delta) {
 
   // Handle pumo army updates
   [player1, player2].forEach((player) => {
-    const currentTime = Date.now();
+    const currentTime = simNow(room);
 
     // Update pumo army positions and check for collisions
     player.pumoArmy = player.pumoArmy.filter((clone) => {
@@ -345,7 +359,8 @@ function updateProjectiles(room, io, delta) {
         return false; // Remove expired clone
       }
 
-      // Move clone horizontally
+      // Move clone horizontally (keep pre-move position for swept collision)
+      const clonePrevX = clone.x;
       clone.x += clone.velocityX * delta * speedFactor;
 
       // Apply dohyo height logic with buffer zone for climbing
@@ -384,7 +399,7 @@ function updateProjectiles(room, io, delta) {
         !clone.hasHit &&
         (!isFlanker || opponent.isSidestepping)
       ) {
-        const distance = Math.abs(clone.x - opponent.x);
+        const distance = sweptHorizDistance(clonePrevX, clone.x, opponent.x);
         const sizeMul = opponent.sizeMultiplier || 1;
         const horizThresh = Math.round(54 * 0.96) * sizeMul;
         const vertThresh = isFlanker ? 60 * sizeMul : Math.round(36 * 0.96) * sizeMul;
@@ -472,14 +487,14 @@ function updateProjectiles(room, io, delta) {
           if (opponent.y > GROUND_LEVEL) {
             clearSidestepHitReturn(opponent);
             opponent.isHitFalling = true;
-            opponent.hitFallStartTime = Date.now();
+            opponent.hitFallStartTime = simNow(room);
             opponent.hitFallStartY = opponent.y;
           } else if (opponent.y < GROUND_LEVEL) {
             clearHitFall(opponent);
             const depthRatio = (GROUND_LEVEL - opponent.y) / 55;
             const duration = SIDESTEP_HIT_RETURN_MIN_MS + (SIDESTEP_HIT_RETURN_BASE_MS - SIDESTEP_HIT_RETURN_MIN_MS) * Math.min(depthRatio, 1);
             opponent.isSidestepHitReturn = true;
-            opponent.sidestepHitReturnStartTime = Date.now();
+            opponent.sidestepHitReturnStartTime = simNow(room);
             opponent.sidestepHitReturnStartY = opponent.y;
             opponent.sidestepHitReturnDuration = duration;
           } else {
@@ -489,7 +504,7 @@ function updateProjectiles(room, io, delta) {
           opponent.isHit = true;
           opponent.lastHitType = "pumoClone";
           opponent.isAlreadyHit = true;
-          opponent.lastHitTime = Date.now();
+          opponent.lastHitTime = simNow(room);
 
           // Apply knockback only if not immune (lighter than normal slap)
           if (canApplyKnockback(opponent)) {
@@ -528,7 +543,7 @@ function updateProjectiles(room, io, delta) {
       // Check collision with raw parrying opponent (clone is blocked but destroyed)
       // Flanker clones pass through — only the middle clone can be parried
       if (opponent && opponent.isRawParrying && !clone.hasHit && !isFlanker) {
-        const distance = Math.abs(clone.x - opponent.x);
+        const distance = sweptHorizDistance(clonePrevX, clone.x, opponent.x);
         const sizeMul = opponent.sizeMultiplier || 1;
         const horizThresh = Math.round(54 * 0.96) * sizeMul;
         const vertThresh = Math.round(36 * 0.96) * sizeMul;

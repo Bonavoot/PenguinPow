@@ -1,4 +1,5 @@
 const { GRAB_STATES } = require("./constants");
+const { createInitialKeys } = require("./playerFactory");
 
 function cleanupPlayerStates(player) {
   // Clean up all player references
@@ -96,16 +97,7 @@ function cleanupPlayerStates(player) {
   player.pumoArmy = [];
   // Don't set canMoveToReady here - it should only be set during actual salt throwing phase
 
-  player.keys = {
-    w: false,
-    a: false,
-    s: false,
-    d: false,
-    " ": false,
-    shift: false,
-    e: false,
-    f: false,
-  };
+  player.keys = createInitialKeys();
 }
 
 function cleanupOpponentStates(opponent) {

@@ -5,7 +5,7 @@
 const { ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_STAMINA_COST,
         CLINCH_THROW_LAND_THRESHOLD, CLINCH_THROW_KILL_THRESHOLD,
         BALANCE_MAX } = require("./constants");
-const { MAP_LEFT_BOUNDARY: GAME_MAP_LEFT, MAP_RIGHT_BOUNDARY: GAME_MAP_RIGHT } = require("./gameUtils");
+const { MAP_LEFT_BOUNDARY: GAME_MAP_LEFT, MAP_RIGHT_BOUNDARY: GAME_MAP_RIGHT, simNowForPlayer } = require("./gameUtils");
 
 const MAP_LEFT_BOUNDARY = 340;
 const MAP_RIGHT_BOUNDARY = 940;
@@ -151,7 +151,7 @@ function resetAllKeys(cpu) {
 // ─── Capability checks ────────────────────────────────────────────
 
 function canAct(cpu) {
-  const now = Date.now();
+  const now = simNowForPlayer(cpu);
   return !cpu.isHit && !cpu.isBeingThrown && !cpu.isThrowing &&
          !cpu.isDodging && !cpu.isRecovering && !cpu.isRawParryStun &&
          !cpu.isThrowTeching && !cpu.canMoveToReady &&
@@ -165,7 +165,7 @@ function canAct(cpu) {
          !cpu.isGrabBreakSeparating && !cpu.isGrabClashing &&
          !cpu.isAttacking && !cpu.isGrabbing && !cpu.isChargingAttack &&
          !cpu.isRawParrying &&
-         !(cpu.attackCooldownUntil && now < cpu.attackCooldownUntil) &&
+         !(cpu.attackCooldownUntil && simNowForPlayer(cpu) < cpu.attackCooldownUntil) &&
          !(cpu.inputLockUntil && now < cpu.inputLockUntil) &&
          !(cpu.actionLockUntil && now < cpu.actionLockUntil);
 }

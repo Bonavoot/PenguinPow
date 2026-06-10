@@ -1,6 +1,9 @@
 // Import required utilities
 const {
   setPlayerTimeout,
+  timeoutManager,
+  simNow,
+  simNowForPlayer,
   resetPlayerAttackStates,
   clearChargeState,
   MAP_LEFT_BOUNDARY,
@@ -20,6 +23,7 @@ const {
 
 // Per-match input audit log (open at first round, close on matchOver)
 const { openLog: openAuditLog, closeLog: closeAuditLog } = require("./inputAuditLog");
+const { createInitialKeys } = require("./playerFactory");
 
 const {
   GROUND_LEVEL,
@@ -64,6 +68,16 @@ const {
 
 // Add new function for grab state cleanup
 function cleanupGrabStates(player, opponent) {
+  // Cancel pending jolt recovery/cooldown timers FIRST. The nested timeout
+  // chain in grabActionSystem (recovery → cooldown) otherwise survives the
+  // clinch ending and fires into the NEXT engagement: a stale recovery
+  // callback would set clinchJoltCooldown=true on a player who just started
+  // a fresh clinch, silently blocking their jolt for the cooldown duration.
+  for (const p of [player, opponent]) {
+    timeoutManager.clearPlayerSpecific(p.id, "clinchJoltRecovery");
+    timeoutManager.clearPlayerSpecific(p.id, "clinchJoltCooldown");
+  }
+
   // Clean up grabber states
   player.isGrabbing = false;
   player.grabbedOpponent = null;
@@ -340,7 +354,7 @@ function handleWinCondition(room, loser, winner, io, winType) {
 
   // For the winner, if they're doing a slap attack, let it complete
   if (winner.isSlapAttack) {
-    const remainingAttackTime = winner.attackEndTime - Date.now();
+    const remainingAttackTime = winner.attackEndTime - simNowForPlayer(winner);
     if (remainingAttackTime > 0) {
       setPlayerTimeout(winner.id, () => {
         resetPlayerAttackStates(winner);
@@ -468,18 +482,7 @@ function handleWinCondition(room, loser, winner, io, winType) {
     p.mouse1JustPressed = false;
     p.mouse1JustReleased = false;
 
-    p.keys = {
-      w: false,
-      a: false,
-      s: false,
-      d: false,
-      " ": false,
-      shift: false,
-      e: false,
-      f: false,
-      mouse1: false,
-      mouse2: false,
-    };
+    p.keys = createInitialKeys();
     p.x = currentX;
   });
 
@@ -511,7 +514,7 @@ function handleWinCondition(room, loser, winner, io, winType) {
   room.winnerId = winner.id;
   room.loserId = loser.id;
   if (!room.gameOverTime) {
-    room.gameOverTime = Date.now();
+    room.gameOverTime = simNow(room);
   }
 
   setPlayerTimeout(loser.id, () => {
@@ -576,7 +579,9 @@ function executeSlapAttack(player, rooms) {
   // === STRING POSITION TRACKING ===
   // 3-hit string: hit 1 → hit 2 → hit 3 (each requires hit confirm).
   // Hits 1 & 2 are light pokes, hit 3 is the burst knockback finisher.
-  const now = Date.now();
+  // All attack-cycle timestamps below live on the room's pausable sim clock,
+  // so the whole cycle freezes in lockstep during hitstop.
+  const now = simNowForPlayer(player);
   const inStringWindow = player.slapStringWindowUntil && now <= player.slapStringWindowUntil;
 
   if (inStringWindow && player.slapStringPosition >= 1 && player.slapStringPosition <= 2) {
@@ -672,11 +677,11 @@ function executeSlapAttack(player, rooms) {
             player.slapStringWindowUntil = 0;
             // Transition into grab startup
             player.isGrabStartup = true;
-            player.grabStartupStartTime = Date.now();
+            player.grabStartupStartTime = simNowForPlayer(player);
             player.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
             player.grabStartupArmorUsed = false; // Fresh slap-armor charge per grab attempt
             player.currentAction = "grab_startup";
-            player.actionLockUntil = Date.now() + GRAB_STARTUP_DURATION_MS;
+            player.actionLockUntil = simNowForPlayer(player) + GRAB_STARTUP_DURATION_MS;
             player.grabState = GRAB_STATES.ATTEMPTING;
             player.grabAttemptType = "grab";
             player.grabApproachSpeed = 0;
@@ -686,12 +691,12 @@ function executeSlapAttack(player, rooms) {
             // Next hit buffered → chain immediately
             player.pendingSlapCount--;
             player.pendingGrabEnder = false;
-            player.slapStringWindowUntil = Date.now() + 100;
+            player.slapStringWindowUntil = simNowForPlayer(player) + 100;
             executeSlapAttack(player, rooms);
             return;
           }
           // Hit connected but no buffer → open manual window
-          player.slapStringWindowUntil = Date.now() + SLAP_STRING_BUFFER_WINDOW_MS;
+          player.slapStringWindowUntil = simNowForPlayer(player) + SLAP_STRING_BUFFER_WINDOW_MS;
           setPlayerTimeout(player.id, () => {
             if (player.slapStringPosition === finishedPosition && !player.isSlapAttack) {
               player.slapStringPosition = 0;
@@ -714,9 +719,9 @@ function executeSlapAttack(player, rooms) {
             player.slapWhiffCount = 0;
             player.isSlapWhiffPausing = true;
             player.currentAction = "slap_whiff_recovery";
-            const pauseUntil = Date.now() + SLAP_WHIFF_PAUSE_MS;
-            player.actionLockUntil = Math.max(player.actionLockUntil || 0, pauseUntil);
-            player.attackCooldownUntil = Math.max(player.attackCooldownUntil || 0, pauseUntil);
+            // Both deadlines are sim-clock (pause through hitstop).
+            player.actionLockUntil = Math.max(player.actionLockUntil || 0, simNowForPlayer(player) + SLAP_WHIFF_PAUSE_MS);
+            player.attackCooldownUntil = Math.max(player.attackCooldownUntil || 0, simNowForPlayer(player) + SLAP_WHIFF_PAUSE_MS);
             setPlayerTimeout(player.id, () => {
               player.isSlapWhiffPausing = false;
               if (player.currentAction === "slap_whiff_recovery") {
@@ -753,7 +758,7 @@ function executeSlapAttack(player, rooms) {
         player.pendingGrabEnder = false;
         player.pendingSlapCount = 0;
         player.slapWhiffCount = 0;
-        player.attackCooldownUntil = Date.now() + SLAP_STRING_END_COOLDOWN_MS;
+        player.attackCooldownUntil = simNowForPlayer(player) + SLAP_STRING_END_COOLDOWN_MS;
       }
   };
 
@@ -848,20 +853,22 @@ function executeChargedAttack(player, chargePercentage, rooms) {
     attackDuration = CHARGED_TIER_HEAVY_BASE_MS + extraDuration;
   }
 
-  player.attackEndTime = Date.now() + attackDuration;
+  // Attack-cycle timestamps live on the pausable sim clock (freeze with hitstop)
+  const nowSim = simNowForPlayer(player);
+  player.attackEndTime = nowSim + attackDuration;
   player.attackType = "charged";
   player.chargeAttackPower = chargePercentage;
 
   // Set attack state
   player.isAttacking = true;
-  player.attackStartTime = Date.now();
+  player.attackStartTime = nowSim;
   
   // Track when attack was attempted for counter hit detection
-  player.attackAttemptTime = Date.now();
+  player.attackAttemptTime = nowSim;
   
   // === STARTUP FRAMES - Telegraph before attack becomes active ===
   player.isInStartupFrames = true;
-  player.startupEndTime = Date.now() + CHARGED_STARTUP_MS;
+  player.startupEndTime = nowSim + CHARGED_STARTUP_MS;
   // Hitbox stays active from end of startup until the attack ends (full lunge duration).
   // CHARGED_ACTIVE_MS is no longer used as a cutoff — the lunge IS the active window.
   player.chargedActiveEndTime = player.attackEndTime;
@@ -878,7 +885,7 @@ function executeChargedAttack(player, chargePercentage, rooms) {
   
   // Action lock through startup for visual clarity
   player.currentAction = "charged";
-  player.actionLockUntil = Date.now() + CHARGED_STARTUP_MS;
+  player.actionLockUntil = simNowForPlayer(player) + CHARGED_STARTUP_MS;
 
   // Add hit tracking
   player.chargedAttackHit = false;
@@ -1009,11 +1016,12 @@ function handleReadyPositions(room, player1, player2, io) {
     // Only start the game countdown when BOTH players are ready
     if (player1.isReady && player2.isReady) {
       // Start a timer to trigger hakkiyoi after players are ready
+      // (sim clock — index.js tick also reads readyStartTime against room.simTime)
       if (!room.readyStartTime) {
-        room.readyStartTime = Date.now();
+        room.readyStartTime = simNow(room);
       }
 
-      const currentTime = Date.now();
+      const currentTime = simNow(room);
       const elapsedTime = currentTime - room.readyStartTime;
       
       // Authentic sumo timing:
@@ -1080,7 +1088,7 @@ function arePlayersColliding(player1, player2) {
     return (
       player.isRecovering &&
       player.recoveryStartTime &&
-      Date.now() - player.recoveryStartTime < player.recoveryDuration
+      simNowForPlayer(player) - player.recoveryStartTime < player.recoveryDuration
     );
   };
 
@@ -1303,7 +1311,7 @@ function safelyEndChargedAttack(player, rooms) {
       // Set recovery for missed charged attacks - INCREASED duration for visual clarity
       if (opponent && !opponent.isHit && !player.isChargingAttack) {
         player.isRecovering = true;
-        player.recoveryStartTime = Date.now();
+        player.recoveryStartTime = simNowForPlayer(player);
         player.recoveryDuration = 400; // Was 250ms - now longer for clearer punishment
         player.recoveryDirection = player.facing;
         // Use movement velocity for natural sliding
@@ -1331,13 +1339,14 @@ function safelyEndChargedAttack(player, rooms) {
     // Connected attacks are already handled by processHit's recovery state
     if (!attackConnected && !player.isRecovering) {
       // === ENDLAG - Visual recovery period ===
+      // endlag/cooldown deadlines: sim clock. actionLockUntil: wall (Phase 2b family).
       player.isInEndlag = true;
-      player.endlagEndTime = Date.now() + CHARGED_ENDLAG_DURATION;
+      player.endlagEndTime = simNowForPlayer(player) + CHARGED_ENDLAG_DURATION;
       player.currentAction = "endlag";
-      player.actionLockUntil = Date.now() + CHARGED_ENDLAG_DURATION;
+      player.actionLockUntil = simNowForPlayer(player) + CHARGED_ENDLAG_DURATION;
       
       // Set attack cooldown to prevent immediate spam
-      player.attackCooldownUntil = Date.now() + CHARGED_ENDLAG_DURATION + 150;
+      player.attackCooldownUntil = simNowForPlayer(player) + CHARGED_ENDLAG_DURATION + 150;
 
       // Clear the mouse1 flag - restart logic now happens immediately when recovery ends
       player.mouse1HeldDuringAttack = false;
@@ -1354,7 +1363,7 @@ function safelyEndChargedAttack(player, rooms) {
           }
           
           // Check for buffered actions after endlag ends
-          if (player.bufferedAction && Date.now() < player.bufferExpiryTime) {
+          if (player.bufferedAction && simNowForPlayer(player) < player.bufferExpiryTime) {
             const action = player.bufferedAction;
             player.bufferedAction = null;
             player.bufferExpiryTime = 0;
@@ -1366,8 +1375,8 @@ function safelyEndChargedAttack(player, rooms) {
               player.isStrafing = false;
               
               player.isDodging = true;
-              player.dodgeStartTime = Date.now();
-              player.dodgeEndTime = Date.now() + DODGE_DURATION;
+              player.dodgeStartTime = simNowForPlayer(player);
+              player.dodgeEndTime = simNowForPlayer(player) + DODGE_DURATION;
               player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
               player.dodgeDirection = action.direction;
               player.dodgeStartX = player.x;
@@ -1405,7 +1414,7 @@ function activateBufferedInputAfterGrab(player, rooms) {
     player.bufferedAction &&
     player.bufferedAction.type === "sidestep" &&
     player.bufferExpiryTime &&
-    Date.now() < player.bufferExpiryTime &&
+    simNowForPlayer(player) < player.bufferExpiryTime &&
     !player.isGassed
   ) {
     player.bufferedAction = null;
@@ -1426,14 +1435,14 @@ function activateBufferedInputAfterGrab(player, rooms) {
       player.isSidestepping = true;
       player.isSidestepStartup = true;
       player.isSidestepRecovery = false;
-      player.sidestepStartTime = Date.now();
-      player.sidestepStartupEndTime = Date.now() + SIDESTEP_STARTUP_MS;
-      player.sidestepActiveEndTime = Date.now() + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS;
-      player.sidestepEndTime = Date.now() + SIDESTEP_TOTAL_MS;
+      player.sidestepStartTime = simNowForPlayer(player);
+      player.sidestepStartupEndTime = simNowForPlayer(player) + SIDESTEP_STARTUP_MS;
+      player.sidestepActiveEndTime = simNowForPlayer(player) + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS;
+      player.sidestepEndTime = simNowForPlayer(player) + SIDESTEP_TOTAL_MS;
       player.sidestepStartX = player.x;
       player.sidestepDirection = initData.direction;
       player.currentAction = "sidestep";
-      player.actionLockUntil = Date.now() + SIDESTEP_TOTAL_MS;
+      player.actionLockUntil = simNowForPlayer(player) + SIDESTEP_TOTAL_MS;
       player.stamina = Math.max(0, player.stamina - SIDESTEP_STAMINA_COST);
       return;
     }
@@ -1444,7 +1453,7 @@ function activateBufferedInputAfterGrab(player, rooms) {
     player.bufferedAction &&
     player.bufferedAction.type === "dash" &&
     player.bufferExpiryTime &&
-    Date.now() < player.bufferExpiryTime &&
+    simNowForPlayer(player) < player.bufferExpiryTime &&
     !player.isGassed
   ) {
     const direction = player.bufferedAction.direction;
@@ -1458,13 +1467,13 @@ function activateBufferedInputAfterGrab(player, rooms) {
     player.isBraking = false;
     player.isDodging = true;
     player.isDodgeStartup = true;
-    player.dodgeStartTime = Date.now();
-    player.dodgeStartupEndTime = Date.now() + DODGE_STARTUP_MS;
-    player.dodgeEndTime = Date.now() + DODGE_DURATION;
+    player.dodgeStartTime = simNowForPlayer(player);
+    player.dodgeStartupEndTime = simNowForPlayer(player) + DODGE_STARTUP_MS;
+    player.dodgeEndTime = simNowForPlayer(player) + DODGE_DURATION;
     player.dodgeStartX = player.x;
     player.dodgeDirection = direction;
     player.currentAction = "dash";
-    player.actionLockUntil = Date.now() + 100;
+    player.actionLockUntil = simNowForPlayer(player) + 100;
     player.justLandedFromDodge = false;
     player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
     clearChargeState(player, true);
@@ -1472,9 +1481,9 @@ function activateBufferedInputAfterGrab(player, rooms) {
   }
 
   // Priority 1: Raw parry (spacebar) - defensive reversal
-  if (player.keys[" "] && !player.grabBreakSpaceConsumed && Date.now() >= (player.rawParryCooldownUntil || 0)) {
+  if (player.keys[" "] && !player.grabBreakSpaceConsumed && simNowForPlayer(player) >= (player.rawParryCooldownUntil || 0)) {
     player.isRawParrying = true;
-    player.rawParryStartTime = Date.now();
+    player.rawParryStartTime = simNowForPlayer(player);
     player.rawParryMinDurationMet = false;
     player.isRawParrySuccess = false;
     player.isPerfectRawParrySuccess = false;
@@ -1510,14 +1519,14 @@ function activateBufferedInputAfterGrab(player, rooms) {
       player.isSidestepping = true;
       player.isSidestepStartup = true;
       player.isSidestepRecovery = false;
-      player.sidestepStartTime = Date.now();
-      player.sidestepStartupEndTime = Date.now() + SIDESTEP_STARTUP_MS;
-      player.sidestepActiveEndTime = Date.now() + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS;
-      player.sidestepEndTime = Date.now() + SIDESTEP_TOTAL_MS;
+      player.sidestepStartTime = simNowForPlayer(player);
+      player.sidestepStartupEndTime = simNowForPlayer(player) + SIDESTEP_STARTUP_MS;
+      player.sidestepActiveEndTime = simNowForPlayer(player) + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS;
+      player.sidestepEndTime = simNowForPlayer(player) + SIDESTEP_TOTAL_MS;
       player.sidestepStartX = player.x;
       player.sidestepDirection = initData.direction;
       player.currentAction = "sidestep";
-      player.actionLockUntil = Date.now() + SIDESTEP_TOTAL_MS;
+      player.actionLockUntil = simNowForPlayer(player) + SIDESTEP_TOTAL_MS;
       player.stamina = Math.max(0, player.stamina - SIDESTEP_STAMINA_COST);
       return;
     }
@@ -1533,12 +1542,12 @@ function activateBufferedInputAfterGrab(player, rooms) {
     player.isBraking = false;
     player.isDodging = true;
     player.isDodgeStartup = true;
-    player.dodgeStartTime = Date.now();
-    player.dodgeStartupEndTime = Date.now() + DODGE_STARTUP_MS;
-    player.dodgeEndTime = Date.now() + DODGE_DURATION;
+    player.dodgeStartTime = simNowForPlayer(player);
+    player.dodgeStartupEndTime = simNowForPlayer(player) + DODGE_STARTUP_MS;
+    player.dodgeEndTime = simNowForPlayer(player) + DODGE_DURATION;
     player.dodgeStartX = player.x;
     player.currentAction = "dash";
-    player.actionLockUntil = Date.now() + 100;
+    player.actionLockUntil = simNowForPlayer(player) + 100;
     player.justLandedFromDodge = false;
     player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
     clearChargeState(player, true);
@@ -1556,7 +1565,7 @@ function activateBufferedInputAfterGrab(player, rooms) {
 
   // Priority 3: Mouse1 held — check for S+forward charged attack, else slap
   if (player.keys.mouse1) {
-    player.mouse1PressTime = Date.now();
+    player.mouse1PressTime = simNowForPlayer(player);
     const fwdKey = player.facing === -1 ? 'd' : 'a';
     if (player.keys.s && player.keys[fwdKey] && canPlayerSlap(player, { ignoreCooldown: true })) {
       player.chargeAttackPower = 0;
@@ -1587,14 +1596,14 @@ function activateBufferedInputAfterGrab(player, rooms) {
 function executeInputBuffer(player, rooms) {
   if (!player.inputBuffer) return false;
 
-  const age = Date.now() - player.inputBuffer.timestamp;
+  const age = simNowForPlayer(player) - player.inputBuffer.timestamp;
   if (age >= INPUT_BUFFER_WINDOW_MS) {
     player.inputBuffer = null;
     return false;
   }
 
-  if (player.inputLockUntil && Date.now() < player.inputLockUntil) return false;
-  if (player.actionLockUntil && Date.now() < player.actionLockUntil) return false;
+  if (player.inputLockUntil && simNowForPlayer(player) < player.inputLockUntil) return false;
+  if (player.actionLockUntil && simNowForPlayer(player) < player.actionLockUntil) return false;
   if (player.isGrabSeparating || player.isGrabBreakSeparating) return false;
   if (player.isBeingPullReversaled) return false;
   if (player.isGrabBreaking || player.isGrabBreakCountered) return false;
@@ -1613,9 +1622,9 @@ function executeInputBuffer(player, rooms) {
           !player.isRecovering && !player.isGrabbing &&
           !player.isGrabbingMovement && !player.isWhiffingGrab &&
           !player.isThrowing && !player.grabBreakSpaceConsumed &&
-          Date.now() >= (player.rawParryCooldownUntil || 0)) {
+          simNowForPlayer(player) >= (player.rawParryCooldownUntil || 0)) {
         player.isRawParrying = true;
-        player.rawParryStartTime = Date.now();
+        player.rawParryStartTime = simNowForPlayer(player);
         player.rawParryMinDurationMet = false;
         player.isRawParrySuccess = false;
         player.isPerfectRawParrySuccess = false;
@@ -1646,12 +1655,12 @@ function executeInputBuffer(player, rooms) {
         player.isBraking = false;
         player.isDodging = true;
         player.isDodgeStartup = true;
-        player.dodgeStartTime = Date.now();
-        player.dodgeStartupEndTime = Date.now() + DODGE_STARTUP_MS;
-        player.dodgeEndTime = Date.now() + DODGE_DURATION;
+        player.dodgeStartTime = simNowForPlayer(player);
+        player.dodgeStartupEndTime = simNowForPlayer(player) + DODGE_STARTUP_MS;
+        player.dodgeEndTime = simNowForPlayer(player) + DODGE_DURATION;
         player.dodgeStartX = player.x;
         player.currentAction = "dash";
-        player.actionLockUntil = Date.now() + 100;
+        player.actionLockUntil = simNowForPlayer(player) + 100;
         player.justLandedFromDodge = false;
         player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
 
@@ -1695,15 +1704,15 @@ function executeInputBuffer(player, rooms) {
           player.isSidestepping = true;
           player.isSidestepStartup = true;
           player.isSidestepRecovery = false;
-          player.sidestepStartTime = Date.now();
-          player.sidestepStartupEndTime = Date.now() + SIDESTEP_STARTUP_MS;
-          player.sidestepActiveEndTime = Date.now() + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS;
-          player.sidestepEndTime = Date.now() + SIDESTEP_TOTAL_MS;
+          player.sidestepStartTime = simNowForPlayer(player);
+          player.sidestepStartupEndTime = simNowForPlayer(player) + SIDESTEP_STARTUP_MS;
+          player.sidestepActiveEndTime = simNowForPlayer(player) + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS;
+          player.sidestepEndTime = simNowForPlayer(player) + SIDESTEP_TOTAL_MS;
           player.sidestepStartX = player.x;
           player.sidestepDirection = initData.direction;
 
           player.currentAction = "sidestep";
-          player.actionLockUntil = Date.now() + SIDESTEP_TOTAL_MS;
+          player.actionLockUntil = simNowForPlayer(player) + SIDESTEP_TOTAL_MS;
           player.stamina = Math.max(0, player.stamina - SIDESTEP_STAMINA_COST);
           player.inputBuffer = null;
           return true;
@@ -1739,11 +1748,11 @@ function executeInputBuffer(player, rooms) {
         player.isPerfectRawParrySuccess = false;
         clearChargeState(player, true);
         player.isGrabStartup = true;
-        player.grabStartupStartTime = Date.now();
+        player.grabStartupStartTime = simNowForPlayer(player);
         player.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
         player.grabStartupArmorUsed = false; // Fresh slap-armor charge per grab attempt
         player.currentAction = "grab_startup";
-        player.actionLockUntil = Date.now() + GRAB_STARTUP_DURATION_MS;
+        player.actionLockUntil = simNowForPlayer(player) + GRAB_STARTUP_DURATION_MS;
         player.grabState = GRAB_STATES.ATTEMPTING;
         player.grabAttemptType = "grab";
         player.grabApproachSpeed = Math.abs(player.movementVelocity);

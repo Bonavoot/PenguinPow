@@ -1,24 +1,7 @@
 const {
-  THROW_RANGE, GRAB_RANGE,
+  GRAB_RANGE,
   GRAB_STARTUP_DURATION_MS, SLAP_ATTACK_STARTUP_MS,
 } = require("./constants");
-
-const {
-  setPlayerTimeout,
-  clearChargeState,
-} = require("./gameUtils");
-
-const THROW_TECH_COOLDOWN = 500;
-const THROW_TECH_DURATION = 260;
-const THROW_TECH_WINDOW = 200;
-const TECH_FREEZE_DURATION = 200;
-const TECH_KNOCKBACK_VELOCITY = 5;
-
-function isOpponentCloseEnoughForThrow(player, opponent) {
-  // Calculate throw range based on player size
-  const throwRange = THROW_RANGE * (player.sizeMultiplier || 1);
-  return Math.abs(player.x - opponent.x) < throwRange;
-}
 
 function isOpponentCloseEnoughForGrab(player, opponent) {
   // Calculate grab range based on player size
@@ -48,162 +31,13 @@ function grabBeatsSlap(grabber, slapper) {
   return grabActiveTime < slapActiveTime;
 }
 
-function checkForThrowTech(player, opponent) {
-  const currentTime = Date.now();
-
-  // If either player is on cooldown, no throw tech can occur
-  if (player.throwTechCooldown || opponent.throwTechCooldown) {
-    return false;
-  }
-
-  // If either player is already in a throw tech animation, prevent new throw techs
-  if (player.isThrowTeching || opponent.isThrowTeching) {
-    return false;
-  }
-
-  // Players in whiff recovery cannot tech — they are fully vulnerable
-  if (player.isWhiffingGrab || player.isGrabWhiffRecovery ||
-      opponent.isWhiffingGrab || opponent.isGrabWhiffRecovery) {
-    return false;
-  }
-
-  // Only check for throw tech if both players have recent throw attempt times
-  if (!player.lastThrowAttemptTime || !opponent.lastThrowAttemptTime) {
-    return false;
-  }
-
-  // Clean up old throw attempts that are outside the tech window
-  if (currentTime - player.lastThrowAttemptTime > THROW_TECH_WINDOW) {
-    player.lastThrowAttemptTime = 0;
-    return false;
-  }
-  if (currentTime - opponent.lastThrowAttemptTime > THROW_TECH_WINDOW) {
-    opponent.lastThrowAttemptTime = 0;
-    return false;
-  }
-
-  // Check only for simultaneous throws
-  const bothThrew =
-    player.lastThrowAttemptTime &&
-    opponent.lastThrowAttemptTime &&
-    Math.abs(player.lastThrowAttemptTime - opponent.lastThrowAttemptTime) <=
-      THROW_TECH_WINDOW;
-
-  return bothThrew;
-}
-
-function checkForGrabPriority(player, opponent) {
-  const currentTime = Date.now();
-
-  // Players in whiff recovery have no grab priority — they are fully vulnerable
-  if (player.isWhiffingGrab || player.isGrabWhiffRecovery ||
-      opponent.isWhiffingGrab || opponent.isGrabWhiffRecovery) {
-    return false;
-  }
-
-  // Clean up old attempts that are outside the window
-  if (currentTime - player.lastThrowAttemptTime > THROW_TECH_WINDOW) {
-    player.lastThrowAttemptTime = 0;
-  }
-  if (currentTime - opponent.lastGrabAttemptTime > THROW_TECH_WINDOW) {
-    opponent.lastGrabAttemptTime = 0;
-  }
-
-  // Check if opponent grabbed while this player is trying to throw
-  const opponentGrabbedDuringThrow =
-    player.lastThrowAttemptTime &&
-    opponent.lastGrabAttemptTime &&
-    Math.abs(player.lastThrowAttemptTime - opponent.lastGrabAttemptTime) <=
-      THROW_TECH_WINDOW;
-
-  return opponentGrabbedDuringThrow;
-}
-
-function applyThrowTech(player, opponent) {
-  const knockbackDirection = player.x < opponent.x ? -1 : 1;
-
-  // Clear all throw/grab states
-  player.isThrowing = false;
-  player.isGrabbing = false;
-  player.isBeingThrown = false;
-  player.isBeingGrabbed = false;
-  player.grabbedOpponent = null;
-  player.isHit = false;
-  player.isAlreadyHit = false;
-
-  opponent.isThrowing = false;
-  opponent.isGrabbing = false;
-  opponent.isBeingThrown = false;
-  opponent.isBeingGrabbed = false;
-  opponent.grabbedOpponent = null;
-  opponent.isPushing = false;
-  opponent.isBeingPushed = false;
-  opponent.isBeingPulled = false;
-  opponent.isHit = false;
-  opponent.isAlreadyHit = false;
-
-  // Clear charge attack states
-  clearChargeState(player);
-  clearChargeState(opponent);
-
-  // Set up tech state
-  player.isThrowTeching = true;
-  opponent.isThrowTeching = true;
-
-  // Add freeze timing properties
-  player.techFreezeStartTime = Date.now();
-  opponent.techFreezeStartTime = Date.now();
-
-  // Store knockback values
-  player.pendingKnockback = TECH_KNOCKBACK_VELOCITY * knockbackDirection;
-  opponent.pendingKnockback = TECH_KNOCKBACK_VELOCITY * -knockbackDirection;
-
-  // Clear attempt times
-  player.lastThrowAttemptTime = 0;
-  player.lastGrabAttemptTime = 0;
-  opponent.lastThrowAttemptTime = 0;
-  opponent.lastGrabAttemptTime = 0;
-
-  // Reset grab cooldowns
-  player.grabCooldown = false;
-  opponent.grabCooldown = false;
-
-  // Apply cooldown
-  player.throwTechCooldown = true;
-  opponent.throwTechCooldown = true;
-
-  // Reset throw tech animation after duration
-  setPlayerTimeout(
-    player.id,
-    () => {
-      player.isThrowTeching = false;
-      opponent.isThrowTeching = false;
-    },
-    THROW_TECH_DURATION
-  );
-
-  // Reset cooldown after longer duration
-  setPlayerTimeout(
-    player.id,
-    () => {
-      player.throwTechCooldown = false;
-      opponent.throwTechCooldown = false;
-    },
-    THROW_TECH_COOLDOWN
-  );
-}
+// NOTE: The legacy throw-tech system (checkForThrowTech / checkForGrabPriority /
+// applyThrowTech) was removed with the legacy W-throw input path. Mutual grab
+// attempts now resolve via executeGrabTech in grabMechanics.js, and clinch
+// interactions are handled in grabActionSystem.js.
 
 module.exports = {
-  THROW_TECH_COOLDOWN,
-  THROW_TECH_DURATION,
-  THROW_TECH_WINDOW,
-  TECH_FREEZE_DURATION,
-  TECH_KNOCKBACK_VELOCITY,
-  isOpponentCloseEnoughForThrow,
   isOpponentCloseEnoughForGrab,
   isOpponentInFrontOfGrabber,
   grabBeatsSlap,
-  checkForThrowTech,
-  checkForGrabPriority,
-  applyThrowTech,
 };

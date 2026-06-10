@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
-import gameMapBg from "../assets/game-map-1.png";
-import dohyoBg from "../assets/dohyo.png";
+import gameMapBg from "../assets/game-map-1.webp";
+import dohyoBg from "../assets/dohyo.webp";
 
 const CROWD_STORAGE_KEY = "penguin-pow-crowd-positions";
 

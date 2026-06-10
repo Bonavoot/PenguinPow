@@ -480,7 +480,7 @@ body {
 .game-map {
   position: absolute;
   inset: 0;
-  background-image: url(./assets/game-map-1.png);
+  background-image: url(./assets/game-map-1.webp);
   background-repeat: no-repeat;
   background-size: cover;
   background-position: center -5%;
@@ -493,7 +493,7 @@ body {
 .dohyo-overlay {
   position: absolute;
   inset: 0;
-  background-image: url(./assets/dohyo.png);
+  background-image: url(./assets/dohyo.webp);
   background-repeat: no-repeat;
   background-size: 85% 85%; /* width height — increase 2nd value to make platform taller */
   background-position: 50% 25%;

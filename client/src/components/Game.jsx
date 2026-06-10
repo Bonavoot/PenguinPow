@@ -11,11 +11,15 @@ import useCamera from "../hooks/useCamera";
 import { usePlayerColors } from "../context/PlayerColorContext";
 import {
   startMemoryMonitor,
-  stopMemoryMonitor,
   setupMemoryMonitorShortcut,
 } from "../utils/memoryMonitor";
 import { clearDecodedImageCache } from "../utils/SpriteRecolorizer";
 import { ParticleProvider } from "../particles/ParticleContext";
+import {
+  registerLocalKeyState,
+  unregisterLocalKeyState,
+  setLocalGameActive,
+} from "../prediction/localInput";
 // import gameMusic from "../sounds/game-music.mp3";
 import PropTypes from "prop-types";
 
@@ -138,15 +142,6 @@ const Game = ({
     }
   }, []);
 
-  // Track previous key states for edge detection (just pressed)
-  const prevKeyState = useRef({
-    mouse1: false,
-    mouse2: false,
-    shift: false,
-    s: false,
-    e: false,
-  });
-
   // Memory monitor - logs to console every 30s, Ctrl+Shift+M for overlay
   useEffect(() => {
     const cleanupMonitor = startMemoryMonitor();
@@ -179,6 +174,10 @@ const Game = ({
       mouse1: false,
       mouse2: false,
     };
+
+    // Expose the live key state to the movement predictor (read-only, by
+    // reference — this object is mutated in place and never recreated).
+    registerLocalKeyState(keyState);
 
     // Input throttle: batch rapid key events into at most ~60 emits/sec
     // (one per server tick). Sends immediately on first change, then
@@ -461,7 +460,14 @@ const Game = ({
         e.preventDefault();
         const wasPressed = keyState.mouse1;
         keyState.mouse1 = false;
-        if (wasPressed) pushEvent("mouse1", "up");
+        if (wasPressed) {
+          pushEvent("mouse1", "up");
+          // Predict the charged-attack release on the same frame as the
+          // mouse-up. Internally a no-op unless we're actually charging, and
+          // the server unconditionally executes the charged attack on release
+          // while charging — so this prediction can't desync.
+          applyPrediction("charge_release");
+        }
         scheduleEmit();
       } else if (e.button === 2) {
         e.preventDefault();
@@ -510,6 +516,7 @@ const Game = ({
       if (emitTimerId !== null) {
         clearTimeout(emitTimerId);
       }
+      unregisterLocalKeyState(keyState);
     };
   }, [isPowerUpSelectionActive, socket, applyPrediction]);
 
@@ -589,6 +596,7 @@ const Game = ({
       setDisconnectedRoomId(null);
       setCrowdEvent({ type: "reset", timestamp: Date.now() });
       isGameActiveRef.current = false;
+      setLocalGameActive(false);
     };
 
     const handleGameOver = () => {
@@ -600,10 +608,12 @@ const Game = ({
         });
       });
       isGameActiveRef.current = false;
+      setLocalGameActive(false);
     };
 
     const handleGameStart = () => {
       isGameActiveRef.current = true;
+      setLocalGameActive(true);
     };
 
     const handlePerfectParry = () => {
@@ -626,6 +636,7 @@ const Game = ({
       socket.off("game_over", handleGameOver);
       socket.off("game_start", handleGameStart);
       socket.off("perfect_parry", handlePerfectParry);
+      setLocalGameActive(false);
     };
   }, [socket]);
 

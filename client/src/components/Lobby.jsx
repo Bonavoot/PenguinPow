@@ -8,7 +8,7 @@ import {
   playButtonPressSound2,
 } from "../utils/soundUtils";
 import Snowfall from "./Snowfall";
-import lobbyBackground from "../assets/lockerroom.png";
+import lobbyBackground from "../assets/lockerroom.webp";
 import { usePlayerColors } from "../context/PlayerColorContext";
 import {
   recolorImage,

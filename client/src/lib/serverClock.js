@@ -22,6 +22,7 @@ const RESYNC_INTERVAL_MS = 30_000;
 const ACK_TIMEOUT_MS = 2000;
 
 let offsetMs = 0; // serverGameNow - clientPerformanceNow (median of samples)
+let rttMs = 60; // median round-trip estimate; conservative default pre-handshake
 let activeSocket = null;
 let resyncTimer = null;
 
@@ -75,14 +76,19 @@ function sleep(ms) {
 
 async function runHandshake(socket, sampleCount) {
   const collected = [];
+  const rtts = [];
   for (let i = 0; i < sampleCount; i++) {
     if (socket !== activeSocket) return; // disconnected mid-handshake
     const result = await takeOneSample(socket);
-    if (result) collected.push(result.offset);
+    if (result) {
+      collected.push(result.offset);
+      rtts.push(result.rtt);
+    }
     if (i < sampleCount - 1) await sleep(SAMPLE_INTERVAL_MS);
   }
   if (collected.length > 0) {
     offsetMs = median(collected);
+    rttMs = median(rtts);
   }
 }
 
@@ -130,6 +136,12 @@ export function stopServerClock() {
 
 export function getServerOffset() {
   return offsetMs;
+}
+
+// Median RTT from the latest clock-sync handshake. Used by the movement
+// predictor to estimate how old an incoming state snapshot is.
+export function getEstimatedRtt() {
+  return rttMs;
 }
 
 export function getDisplayHitstopUntil() {

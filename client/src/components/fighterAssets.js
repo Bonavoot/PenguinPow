@@ -50,69 +50,69 @@ import isPerfectParried from "../assets/is_perfect_parried.png"; // APNG
 // ============================================
 // SOUND IMPORTS
 // ============================================
-import attackSound from "../sounds/attack-sound.wav";
+import attackSound from "../sounds/attack-sound.ogg";
 import hitSound from "../sounds/hit-sound.mp3";
 import dodgeSound from "../sounds/dodge-sound.mp3";
 import throwSound from "../sounds/throw-sound.mp3";
 import grabSound from "../sounds/grab-sound.mp3";
-import winnerSound from "../sounds/winner-sound.wav";
+import winnerSound from "../sounds/winner-sound.ogg";
 import hakkiyoiSound from "../sounds/hakkiyoi-sound.mp3";
-import teWoTsuiteSound from "../sounds/tewotsuite.wav";
+import teWoTsuiteSound from "../sounds/tewotsuite.ogg";
 import bellSound from "../sounds/bell-sound.mp3";
 import battleMusic1 from "../sounds/battle-music-sound.mp3";
 import battleMusic2 from "../sounds/battle-music-sound2.mp3";
-import eeshiMusic from "../sounds/eeshi.wav";
+import eeshiMusic from "../sounds/eeshi.ogg";
 import slapParrySound from "../sounds/slap-parry-sound.mp3";
 import saltSound from "../sounds/salt-sound.mp3";
 import snowballThrowSound from "../sounds/snowball-throw-sound.mp3";
 import pumoArmySound from "../sounds/pumo-army-sound.mp3";
 import thickBlubberSound from "../sounds/thick-blubber-sound.mp3";
 import rawParryGruntSound from "../sounds/raw-parry-grunt.mp3";
-import rawParrySuccessSound from "../sounds/raw-parry-success-sound.wav";
-import regularRawParrySound from "../sounds/regular-raw-parry-sound.wav";
+import rawParrySuccessSound from "../sounds/raw-parry-success-sound.ogg";
+import regularRawParrySound from "../sounds/regular-raw-parry-sound.ogg";
 import stunnedSound from "../sounds/stunned-sound.mp3";
-import gassedSound from "../sounds/gassed-sound.wav";
-import gassedRegenSound from "../sounds/gassed-regen-sound.flac";
-import grabBreakSound from "../sounds/grab-break-sound.wav";
-import glassBreakSound from "../sounds/glass-break-sound.wav";
-import counterGrabSound from "../sounds/counter-grab-sound.wav";
-import notEnoughStaminaSound from "../sounds/not-enough-stamina-sound.wav";
-import isTechingSound from "../sounds/is-teching-sound.wav";
+import gassedSound from "../sounds/gassed-sound.ogg";
+import gassedRegenSound from "../sounds/gassed-regen-sound.ogg";
+import grabBreakSound from "../sounds/grab-break-sound.ogg";
+import glassBreakSound from "../sounds/glass-break-sound.ogg";
+import counterGrabSound from "../sounds/counter-grab-sound.ogg";
+import notEnoughStaminaSound from "../sounds/not-enough-stamina-sound.ogg";
+import isTechingSound from "../sounds/is-teching-sound.ogg";
 import roundVictorySound from "../sounds/round-victory-sound.mp3";
 import roundDefeatSound from "../sounds/round-defeat-sound.mp3";
-import strafingSound from "../sounds/strafing-sound.wav";
+import strafingSound from "../sounds/strafing-sound.ogg";
 import heartbeatSound from "../sounds/heartbeat.mp3";
-import clap1Sound from "../sounds/clap1-sound.wav";
+import clap1Sound from "../sounds/clap1-sound.ogg";
 import clap2Sound from "../sounds/clap2-sound.mp3";
-import clap3Sound from "../sounds/clap3-sound.wav";
-import clap4Sound from "../sounds/clap4-sound.wav";
-import slapHit01 from "../sounds/slap-hit-01.wav";
-import slapHit02 from "../sounds/slap-hit-02.wav";
-import slapHit03 from "../sounds/slap-hit-03.wav";
+import clap3Sound from "../sounds/clap3-sound.ogg";
+import clap4Sound from "../sounds/clap4-sound.ogg";
+import slapHit01 from "../sounds/slap-hit-01.ogg";
+import slapHit02 from "../sounds/slap-hit-02.ogg";
+import slapHit03 from "../sounds/slap-hit-03.ogg";
 
-import slapWhiff01 from "../sounds/slap-whiff-01.wav";
-import slapWhiff02 from "../sounds/slap-whiff-02.wav";
-import slapWhiff03 from "../sounds/slap-whiff-03.wav";
-import chargedHit01 from "../sounds/charged-hit-01.wav";
-import chargedHit02 from "../sounds/charged-hit-02.wav";
-import chargedHit03 from "../sounds/charged-hit-03.wav";
-import chargedHit04 from "../sounds/charged-hit-04.wav";
-import grabHit01 from "../sounds/grab-hit-01.wav";
-import grabHit02 from "../sounds/grab-hit-02.wav";
-import grabHit03 from "../sounds/grab-hit-03.wav";
-import rawParry01 from "../sounds/raw-parry-01.wav";
-import rawParry02 from "../sounds/raw-parry-02.wav";
-import rawParry03 from "../sounds/raw-parry-03.wav";
-import chargeAttackLaunchSound from "../sounds/charge-attack-launch-sound.wav";
-import gunLaunchSound from "../sounds/gun-launch.wav";
+import slapWhiff01 from "../sounds/slap-whiff-01.ogg";
+import slapWhiff02 from "../sounds/slap-whiff-02.ogg";
+import slapWhiff03 from "../sounds/slap-whiff-03.ogg";
+import chargedHit01 from "../sounds/charged-hit-01.ogg";
+import chargedHit02 from "../sounds/charged-hit-02.ogg";
+import chargedHit03 from "../sounds/charged-hit-03.ogg";
+import chargedHit04 from "../sounds/charged-hit-04.ogg";
+import grabHit01 from "../sounds/grab-hit-01.ogg";
+import grabHit02 from "../sounds/grab-hit-02.ogg";
+import grabHit03 from "../sounds/grab-hit-03.ogg";
+import rawParry01 from "../sounds/raw-parry-01.ogg";
+import rawParry02 from "../sounds/raw-parry-02.ogg";
+import rawParry03 from "../sounds/raw-parry-03.ogg";
+import chargeAttackLaunchSound from "../sounds/charge-attack-launch-sound.ogg";
+import gunLaunchSound from "../sounds/gun-launch.ogg";
 
 const battleMusicTracks = [battleMusic1, battleMusic2];
 
 // ============================================
 // PRELOAD-ONLY IMPORTS (not exported — consumed internally by preloading)
 // ============================================
-import gameMapBackground from "../assets/game-map-1.png";
-import dohyoOverlay from "../assets/dohyo.png";
+import gameMapBackground from "../assets/game-map-1.webp";
+import dohyoOverlay from "../assets/dohyo.webp";
 import gyojiImage from "../assets/gyoji.png";
 import gyojiReady from "../assets/gyoji-ready.png";
 import gyojiPlayer1wins from "../assets/gyoji-player1-wins.png";

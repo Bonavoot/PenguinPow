@@ -30,7 +30,7 @@ const {
   CHARGED_STARTUP_MS, CHARGED_ACTIVE_MS,
   GRAB_WALK_SPEED_MULTIPLIER, GRAB_WALK_ACCEL_MULTIPLIER,
   CHARGE_FULL_POWER_MS,
-  GRAB_STARTUP_DURATION_MS, GRAB_STARTUP_HOP_HEIGHT, GRAB_LUNGE_DISTANCE, SLAP_ATTACK_STARTUP_MS,
+  GRAB_STARTUP_DURATION_MS, GRAB_ACTIVE_MS, GRAB_STARTUP_HOP_HEIGHT, GRAB_LUNGE_DISTANCE, SLAP_ATTACK_STARTUP_MS,
   GRAB_WHIFF_RECOVERY_MS, GRAB_WHIFF_STUMBLE_VEL,
   GRAB_TECH_FREEZE_MS, GRAB_TECH_FORCED_DISTANCE,
   GRAB_TECH_TWEEN_DURATION, GRAB_TECH_RESIDUAL_VEL,
@@ -96,6 +96,8 @@ const {
   triggerHitstopAndEmit,
   isRoomInHitstop,
   gameNow,
+  setSimRoomResolver,
+  advanceRoomSimTime,
   emitThrottledScreenShake,
   clearHitFall,
   clearSidestepHitReturn,
@@ -155,7 +157,7 @@ const { updateGrabActions } = require("./grabActionSystem");
 const { openLog: openAuditLog } = require("./inputAuditLog");
 
 // Import socket handler registration
-const { registerSocketHandlers } = require("./socketHandlers");
+const { registerSocketHandlers, processInputPacket } = require("./socketHandlers");
 
 const { getCleanedRoomsData } = require("./playerCleanup");
 
@@ -267,6 +269,10 @@ function getPlayerById(playerId) {
   return playerById.get(playerId);
 }
 
+// Wire the pausable sim clock + timeout manager to the room lookup so any
+// module can resolve a player's room sim time (see gameUtils.js).
+setSimRoomResolver(getRoomByPlayerId);
+
 let gameLoop = null;
 let staminaRegenCounter = 0;
 let broadcastTickCounter = 0;
@@ -318,16 +324,50 @@ function stopGameLoop() {
 
 
 function tick(delta) {
-  const now = Date.now();
   // PERFORMANCE: Use for-loop instead of forEach to avoid closure overhead at 64Hz.
   // Also skip rooms with < 2 players via continue (no function call overhead).
   staminaRegenCounter += delta;
 
   for (let _roomIdx = 0; _roomIdx < rooms.length; _roomIdx++) {
     const room = rooms[_roomIdx];
+
+    // Advance the room's pausable sim clock (frozen during hitstop) and fire
+    // any due player timers. Runs even for sub-2-player rooms so a remaining
+    // player's pending timers (cooldown resets etc.) still resolve.
+    advanceRoomSimTime(room, delta);
+    timeoutManager.processRoom(room);
+
+    // ALL gameplay timing in this loop reads the room's pausable sim clock.
+    // During hitstop `now` does not advance, so every elapsed/deadline check
+    // below freezes in lockstep with the room — no per-mechanic compensation.
+    const now = room.simTime;
+
+    // PHASE 3: Drain queued player inputs at tick start. The socket handler
+    // only enqueues — ALL input dispatch happens here, at a deterministic
+    // point in the simulation. Held (not drained) during hitstop so a freeze
+    // can't be acted through; packets replay in order on the first
+    // post-freeze tick with their press/release edges intact.
+    if (!isRoomInHitstop(room)) {
+      for (let _pIdx = 0; _pIdx < room.players.length; _pIdx++) {
+        const inputPlayer = room.players[_pIdx];
+        const queue = inputPlayer.inputQueue;
+        if (!queue || queue.length === 0) continue;
+        inputPlayer.inputQueue = [];
+        for (let i = 0; i < queue.length; i++) {
+          processInputPacket(room, inputPlayer, queue[i], io, rooms);
+        }
+      }
+    }
+
     if (room.players.length < 2) continue;
 
-    if (room.players.length === 2) {
+    // FULL HITSTOP FREEZE: this entire two-player block (collision checks,
+    // pushbox separation, facing, recovery movement, CPU AI, projectiles) is
+    // skipped during hitstop, matching the per-player sim skip below. Without
+    // this gate, attacks and snowballs could still connect while the fighters
+    // were visually frozen. Hitstop expiry is wall-clock (isRoomInHitstop), so
+    // the freeze always ends on its own; state broadcast continues below.
+    if (room.players.length === 2 && !isRoomInHitstop(room)) {
       const [player1, player2] = room.players;
       
       // === CRITICAL: Fix orphaned grab states ===
@@ -589,7 +629,7 @@ function tick(delta) {
             player.isRecovering = false;
             player.movementVelocity = 0;
           }
-          const recoveryElapsed = now - player.recoveryStartTime;
+          const recoveryElapsed = room.simTime - player.recoveryStartTime;
           const isRecoveryGameOverLoser = room.gameOver && player.id === room.loserId;
 
           // Apply ice-like physics to recovery movement
@@ -839,7 +879,7 @@ function tick(delta) {
         } else {
           // SAFETY: Maximum isHit duration to prevent stuck states (1 second max)
           const MAX_HIT_DURATION = 1000;
-          const hitDuration = player.lastHitTime ? now - player.lastHitTime : 0;
+          const hitDuration = player.lastHitTime ? room.simTime - player.lastHitTime : 0;
           if (hitDuration > MAX_HIT_DURATION) {
             player.isHit = false;
             player.isAlreadyHit = false;
@@ -986,7 +1026,7 @@ function tick(delta) {
 
       // Handle grab startup — lunge forward during startup, then range check at the end.
       if (player.isGrabStartup) {
-        const elapsed = now - player.grabStartupStartTime;
+        const elapsed = room.simTime - player.grabStartupStartTime;
         const startupMs = player.grabStartupDuration || GRAB_STARTUP_DURATION_MS;
 
         // Apply forward lunge movement each tick during startup
@@ -998,7 +1038,13 @@ function tick(delta) {
         }
 
         if (elapsed >= startupMs) {
-          // Startup complete — instant range check
+          // Startup complete — ACTIVE WINDOW. The range/connect check repeats
+          // every tick for GRAB_ACTIVE_MS (like active frames in a fighting
+          // game) instead of a single instant check. A grab that arrives one
+          // tick after a dash-through no longer whiffs by a frame; the whiff
+          // only commits once the window expires with no connect. Getting hit
+          // cancels the window (clearAllActionStates drops isGrabStartup).
+          const withinActiveWindow = elapsed < startupMs + GRAB_ACTIVE_MS;
           const opponent = room.players.find((p) => p.id !== player.id);
 
           // Grab tracks sidestep ONLY when the sidestepper is in a vulnerable,
@@ -1041,7 +1087,7 @@ function tick(delta) {
             // would NOT have connected (out of range or facing wrong way).
             // This prevents tick processing order from causing false techs.
             const opponentWouldWhiff = opponent.isGrabStartup &&
-              (now - opponent.grabStartupStartTime) >= (opponent.grabStartupDuration || GRAB_STARTUP_DURATION_MS) &&
+              (room.simTime - opponent.grabStartupStartTime) >= (opponent.grabStartupDuration || GRAB_STARTUP_DURATION_MS) &&
               !(isOpponentCloseEnoughForGrab(opponent, player) && isOpponentInFrontOfGrabber(opponent, player));
             if ((opponent.isGrabStartup || opponent.isGrabTeching) &&
                 !opponent.isWhiffingGrab && !opponent.isGrabWhiffRecovery &&
@@ -1161,12 +1207,19 @@ function tick(delta) {
               } else {
                 player.grabFacingDirection = player.facing;
               }
+            } else if (withinActiveWindow) {
+              // Opponent in range but currently ungrabbable (attacking, immune,
+              // etc.) — grab stays active and retests next tick.
+              return;
             } else {
-              // Opponent in ungrabable state (attacking, dodging, etc.) — whiff
+              // Active window expired with opponent still ungrabbable — whiff
               executeGrabWhiff(player);
             }
+          } else if (withinActiveWindow) {
+            // Out of range — grab stays active; opponent may move into range.
+            return;
           } else {
-            // Out of range or no opponent — whiff
+            // Active window expired out of range — whiff
             executeGrabWhiff(player);
           }
         } else {
@@ -1578,31 +1631,9 @@ function tick(delta) {
         }
       }
 
-      // Throw tech
-      if (player.isThrowTeching) {
-        const currentTime = now;
-        const freezeElapsed = currentTime - player.techFreezeStartTime;
+      // NOTE: Legacy throw-tech freeze handling was removed along with the
+      // legacy W-throw input path (nothing sets isThrowTeching anymore).
 
-        if (freezeElapsed >= TECH_FREEZE_DURATION) {
-          // Only apply knockback after freeze duration
-          if (player.pendingKnockback !== undefined) {
-            player.knockbackVelocity.x = player.pendingKnockback;
-            delete player.pendingKnockback;
-          }
-
-          player.x += player.knockbackVelocity.x * delta * speedFactor;
-          player.knockbackVelocity.x *= 0.9; // Apply friction
-
-          if (Math.abs(player.knockbackVelocity.x) < 0.1) {
-            player.knockbackVelocity.x = 0;
-            player.isThrowTeching = false;
-          }
-        }
-        // During freeze duration, ensure the player doesn't move
-        else {
-          player.knockbackVelocity.x = 0;
-        }
-      }
       // Grounded dash dodge — slides forward on the ground, triggers dodge slap if deep enough into opponent
       if (player.isDodging && player.isBeingGrabbed) {
         player.isDodging = false;
@@ -3033,7 +3064,7 @@ function tick(delta) {
           }
         }
 
-        if (now >= player.attackEndTime) {
+        if (room.simTime >= player.attackEndTime) {
           // Use helper function to safely end charged attacks
           safelyEndChargedAttack(player, rooms);
         }
@@ -3043,7 +3074,7 @@ function tick(delta) {
         player.isAtTheRopes
       ) {
         // If at the ropes, still check for attack end time but don't move
-        if (now >= player.attackEndTime) {
+        if (room.simTime >= player.attackEndTime) {
           safelyEndChargedAttack(player, rooms);
         }
       }
@@ -3067,8 +3098,9 @@ function tick(delta) {
       // }
 
       // Update charge attack power in the game loop
+      // (sim clock — charge stops building during hitstop, like everything else)
       if (player.isChargingAttack) {
-        const chargeDuration = now - player.chargeStartTime;
+        const chargeDuration = room.simTime - player.chargeStartTime;
         player.chargeAttackPower = Math.min(
           (chargeDuration / CHARGE_FULL_POWER_MS) * 100,
           100

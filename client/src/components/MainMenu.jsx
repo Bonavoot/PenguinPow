@@ -24,7 +24,7 @@ import pumoMainMenu from "../assets/pumo-main-menu.png";
  * a slideshow here; a static hero image feels more confident and on-brand
  * for a Steam main menu.
  */
-import mainMenuBackground from "../assets/main-menu-bkg-4.png";
+import mainMenuBackground from "../assets/main-menu-bkg-4.webp";
 import {
   playButtonHoverSound,
   playButtonPressSound2,

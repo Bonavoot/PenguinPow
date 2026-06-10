@@ -29,15 +29,13 @@ const {
 //                 (e.g. event payload `timestamp: Date.now()`). Clients use
 //                 those for cross-process display ordering and need real time.
 //
-// MIGRATION NOTE: As of Phase 3, the game loop scheduler in index.js was
-// already migrated to performance.now() (catastrophic case — game freeze on
-// NTP back-jump — is solved). Per-action timers across the server still use
-// Date.now() in matched read/write pairs and are SAFE to migrate ONLY in
-// (write, read) lockstep — flipping just one side of a pair produces garbage
-// deltas. Each timer family (mouse1PressTime, attackStartTime, cooldown
-// timestamps, etc.) should be migrated as a single dedicated change. New code
-// being written from scratch (e.g. the Phase 3 input rate limiter) can and
-// should use gameNow() from day one.
+// MIGRATION NOTE: The clock migration is complete. The game loop scheduler
+// uses performance.now(); hitstop windows use gameNow(); and ALL gameplay
+// timestamps/deadlines (attack lifecycle, locks, cooldowns, grab/clinch,
+// dodge/parry, throws, tweens) live on the per-room pausable sim clock
+// (room.simTime via simNow/simNowForPlayer below). The only remaining
+// Date.now() uses are intentionally wall-clock: emit payload timestamps/IDs,
+// input audit logs, sim-clock seeding, and the screen-shake emit throttle.
 const gameNow = () => Number(process.hrtime.bigint() / 1000000n);
 
 // Game constants
@@ -53,95 +51,222 @@ const DOHYO_RIGHT_BOUNDARY =1030;
 // Dohyo fall physics
 const DOHYO_FALL_DEPTH = 37; // Scaled for camera zoom (was 50)
 
-// Timeout manager for memory leak prevention
+// ============================================================
+// PAUSABLE SIMULATION CLOCK
+// ============================================================
+// Each room carries its own `simTime` (ms). The game loop advances it by the
+// fixed tick delta every tick — EXCEPT while the room is in hitstop. That one
+// rule makes every sim-clock timer and deadline pause during hitstop for free:
+// no per-timer compensation, no manual extension on hit.
+//
+// simTime is seeded from Date.now() at first use so its magnitude is familiar
+// in logs, but after seeding it only ever advances by fixed deltas — making it
+// immune to NTP wall-clock corrections (unlike Date.now()).
+//
+// The resolver maps playerId -> room (injected from index.js, which owns the
+// O(1) lookup maps) so any file can ask "what time is it for this player's
+// sim?" without threading `room` through every call signature.
+let simRoomResolver = null;
+
+function setSimRoomResolver(resolver) {
+  simRoomResolver = resolver;
+}
+
+function simNow(room) {
+  if (!room) return Date.now();
+  if (room.simTime == null) room.simTime = Date.now();
+  return room.simTime;
+}
+
+function simNowForPlayer(player) {
+  const room =
+    player && simRoomResolver ? simRoomResolver(player.id) : null;
+  return room ? simNow(room) : Date.now();
+}
+
+// Advance a room's sim clock by one tick. Called once per room per tick from
+// the game loop. Frozen during hitstop — that's the whole point.
+function advanceRoomSimTime(room, deltaMs) {
+  if (room.simTime == null) room.simTime = Date.now();
+  if (!isRoomInHitstop(room)) {
+    room.simTime += deltaMs;
+  }
+}
+
+// ============================================================
+// TIMEOUT MANAGER (sim-clock scheduled)
+// ============================================================
+// Same public API as the old wall-clock version (set / clearPlayerSpecific /
+// clearPlayer / clearAll), but timers are scheduled against the player's room
+// simTime and fired from the game loop via processRoom(). Consequences:
+//   - Timers automatically pause during hitstop (simTime freezes).
+//   - Timers fire on tick boundaries (~15.6ms quantization), which matches the
+//     simulation's actual resolution instead of pretending ms precision.
+//   - Callbacks run synchronously inside the tick, not from the macrotask
+//     queue, so they can never interleave mid-tick with simulation code.
+// If a player has no room (lobby edge cases), falls back to a real setTimeout
+// with identical bookkeeping so cancellation paths still work.
 class TimeoutManager {
   constructor() {
-    this.timeouts = new Map(); // playerId -> Set of timeout IDs
-    this.namedTimeouts = new Map(); // playerId -> Map(name -> timeoutId)
+    this.timersByPlayer = new Map(); // playerId -> Map(timerId -> timer)
+    this.namedTimeouts = new Map(); // playerId -> Map(name -> timerId)
+    this.nextTimerId = 1;
+  }
+
+  _resolveRoom(playerId) {
+    return simRoomResolver ? simRoomResolver(playerId) : null;
   }
 
   set(playerId, callback, delay, name = null) {
-    const timeoutId = setTimeout(() => {
-      this.remove(playerId, timeoutId);
-      if (name) {
-        this.removeNamed(playerId, name);
-      }
-      callback();
-    }, delay);
+    const timerId = this.nextTimerId++;
+    const room = this._resolveRoom(playerId);
+    const timer = { id: timerId, playerId, name, callback };
 
-    if (!this.timeouts.has(playerId)) {
-      this.timeouts.set(playerId, new Set());
+    if (room) {
+      timer.fireAt = simNow(room) + delay;
+    } else {
+      // Wall-clock fallback for players not (yet) registered to a room.
+      timer.nodeTimeoutId = setTimeout(() => {
+        this._delete(playerId, timerId);
+        callback();
+      }, delay);
     }
-    this.timeouts.get(playerId).add(timeoutId);
 
-    // Handle named timeouts
+    if (!this.timersByPlayer.has(playerId)) {
+      this.timersByPlayer.set(playerId, new Map());
+    }
+    this.timersByPlayer.get(playerId).set(timerId, timer);
+
     if (name) {
       if (!this.namedTimeouts.has(playerId)) {
         this.namedTimeouts.set(playerId, new Map());
       }
-
-      // Clear existing named timeout if exists
+      // Replace any existing timer with the same name
       const existingId = this.namedTimeouts.get(playerId).get(name);
-      if (existingId) {
-        clearTimeout(existingId);
-        this.timeouts.get(playerId).delete(existingId);
+      if (existingId != null) {
+        this._delete(playerId, existingId);
       }
-
-      this.namedTimeouts.get(playerId).set(name, timeoutId);
+      this.namedTimeouts.get(playerId).set(name, timerId);
     }
 
-    return timeoutId;
+    return timerId;
   }
 
-  remove(playerId, timeoutId) {
-    if (this.timeouts.has(playerId)) {
-      this.timeouts.get(playerId).delete(timeoutId);
+  // Fire all due sim timers for a room's players. Called once per room per
+  // tick, after advanceRoomSimTime. During hitstop simTime doesn't advance,
+  // so nothing new becomes due — timers pause without special-casing.
+  processRoom(room) {
+    if (!room.players || room.players.length === 0) return;
+    // The sim is frozen during hitstop — nothing fires, even zero-delay timers
+    // set mid-freeze. They resolve on the first tick after the freeze ends.
+    if (isRoomInHitstop(room)) return;
+    let due = null;
+    const nowSim = room.simTime;
+    if (nowSim == null) return;
+
+    for (let i = 0; i < room.players.length; i++) {
+      const timers = this.timersByPlayer.get(room.players[i].id);
+      if (!timers) continue;
+      for (const timer of timers.values()) {
+        if (timer.fireAt != null && timer.fireAt <= nowSim) {
+          (due || (due = [])).push(timer);
+        }
+      }
     }
+    if (!due) return;
+
+    // Fire in scheduled order; ties resolve by creation order.
+    due.sort((a, b) => a.fireAt - b.fireAt || a.id - b.id);
+    for (const timer of due) {
+      // A previously-fired callback may have cancelled this one mid-loop.
+      const live = this.timersByPlayer.get(timer.playerId);
+      if (!live || !live.has(timer.id)) continue;
+      this._delete(timer.playerId, timer.id);
+      try {
+        timer.callback();
+      } catch (error) {
+        console.error(
+          `Error in sim timer${timer.name ? ` "${timer.name}"` : ""}:`,
+          error
+        );
+      }
+    }
+  }
+
+  // Pull a pending named timer's deadline earlier by `ms` (used for the
+  // attacker-favored hitstop relief on chainable slap hits).
+  advanceNamed(playerId, name, ms) {
+    const named = this.namedTimeouts.get(playerId);
+    if (!named) return;
+    const timerId = named.get(name);
+    if (timerId == null) return;
+    const timer = this.timersByPlayer.get(playerId)?.get(timerId);
+    if (timer && timer.fireAt != null) {
+      timer.fireAt -= ms;
+    }
+  }
+
+  _delete(playerId, timerId) {
+    const timers = this.timersByPlayer.get(playerId);
+    if (timers) {
+      const timer = timers.get(timerId);
+      if (timer) {
+        if (timer.nodeTimeoutId != null) clearTimeout(timer.nodeTimeoutId);
+        if (timer.name) {
+          const named = this.namedTimeouts.get(playerId);
+          if (named && named.get(timer.name) === timerId) {
+            named.delete(timer.name);
+          }
+        }
+        timers.delete(timerId);
+      }
+      if (timers.size === 0) this.timersByPlayer.delete(playerId);
+    }
+  }
+
+  remove(playerId, timerId) {
+    this._delete(playerId, timerId);
   }
 
   removeNamed(playerId, name) {
-    if (this.namedTimeouts.has(playerId)) {
-      this.namedTimeouts.get(playerId).delete(name);
-    }
+    const named = this.namedTimeouts.get(playerId);
+    if (named) named.delete(name);
   }
 
   clearPlayerSpecific(playerId, name) {
-    if (this.namedTimeouts.has(playerId)) {
-      const timeoutId = this.namedTimeouts.get(playerId).get(name);
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        this.timeouts.get(playerId).delete(timeoutId);
-        this.namedTimeouts.get(playerId).delete(name);
-      }
+    const named = this.namedTimeouts.get(playerId);
+    if (named) {
+      const timerId = named.get(name);
+      if (timerId != null) this._delete(playerId, timerId);
     }
   }
 
   clearPlayer(playerId) {
-    if (this.timeouts.has(playerId)) {
-      for (const timeoutId of this.timeouts.get(playerId)) {
-        clearTimeout(timeoutId);
+    const timers = this.timersByPlayer.get(playerId);
+    if (timers) {
+      for (const timer of timers.values()) {
+        if (timer.nodeTimeoutId != null) clearTimeout(timer.nodeTimeoutId);
       }
-      this.timeouts.delete(playerId);
+      this.timersByPlayer.delete(playerId);
     }
-    if (this.namedTimeouts.has(playerId)) {
-      this.namedTimeouts.delete(playerId);
-    }
+    this.namedTimeouts.delete(playerId);
   }
 
   clearAll() {
-    for (const [playerId, timeoutSet] of this.timeouts) {
-      for (const timeoutId of timeoutSet) {
-        clearTimeout(timeoutId);
+    for (const timers of this.timersByPlayer.values()) {
+      for (const timer of timers.values()) {
+        if (timer.nodeTimeoutId != null) clearTimeout(timer.nodeTimeoutId);
       }
     }
-    this.timeouts.clear();
+    this.timersByPlayer.clear();
     this.namedTimeouts.clear();
   }
 }
 
 const timeoutManager = new TimeoutManager();
 
-// Helper function to replace setTimeout calls - keeps exact same behavior
+// Helper function used at every timer call site. Same signature as before,
+// but now schedules on the room's pausable sim clock (see TimeoutManager).
 function setPlayerTimeout(playerId, callback, delay, name = null) {
   return timeoutManager.set(playerId, callback, delay, name);
 }
@@ -233,7 +358,7 @@ function canPlayerCharge(player) {
 
 function canPlayerUseAction(player) {
   // Check action lock timer - this is a global gate to prevent action overlaps
-  if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
+  if (player.actionLockUntil && simNowForPlayer(player) < player.actionLockUntil) {
     return false;
   }
   
@@ -247,12 +372,12 @@ function canPlayerUseAction(player) {
 // Special function for dash - allows dashing DURING charging (dash will cancel the charge)
 function canPlayerDash(player) {
   // Check action lock timer
-  if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
+  if (player.actionLockUntil && simNowForPlayer(player) < player.actionLockUntil) {
     return false;
   }
 
   // Dash-specific cooldown: forced idle gap after recovery so consecutive dashes read as distinct
-  if (player.dodgeCooldownUntil && Date.now() < player.dodgeCooldownUntil) {
+  if (player.dodgeCooldownUntil && simNowForPlayer(player) < player.dodgeCooldownUntil) {
     return false;
   }
   
@@ -298,8 +423,8 @@ function canPlayerDash(player) {
 }
 
 function canPlayerSidestep(player) {
-  if (player.actionLockUntil && Date.now() < player.actionLockUntil) return false;
-  if (player.dodgeCooldownUntil && Date.now() < player.dodgeCooldownUntil) return false;
+  if (player.actionLockUntil && simNowForPlayer(player) < player.actionLockUntil) return false;
+  if (player.dodgeCooldownUntil && simNowForPlayer(player) < player.dodgeCooldownUntil) return false;
   return canPlayerUseAction(player) && !player.isSidestepping && !player.isSidestepRecovery;
 }
 
@@ -573,7 +698,7 @@ function shouldRestartCharging(player) {
   return (
     player.keys.mouse1 &&
     player.mouse1PressTime > 0 &&
-    (Date.now() - player.mouse1PressTime) >= 200 &&
+    (simNowForPlayer(player) - player.mouse1PressTime) >= 200 &&
     player.wantsToRestartCharge &&
     isPlayerInActiveState(player)
   );
@@ -584,12 +709,15 @@ function startCharging(player) {
   // This allows players to charge while sliding for aggressive plays
   
   player.isChargingAttack = true;
+  // chargeStartTime lives on the sim clock: charge progress pauses during
+  // hitstop along with everything else (read in index.js charge tick).
+  const nowSim = simNowForPlayer(player);
   if (player.chargeAttackPower > 0) {
     // TAP-style resume: backdate chargeStartTime so the continuous charge formula picks up
     // from the preserved power level
-    player.chargeStartTime = Date.now() - (player.chargeAttackPower / 100 * CHARGE_FULL_POWER_MS);
+    player.chargeStartTime = nowSim - (player.chargeAttackPower / 100 * CHARGE_FULL_POWER_MS);
   } else if (!player.chargeStartTime) {
-    player.chargeStartTime = Date.now();
+    player.chargeStartTime = nowSim;
     player.chargeAttackPower = 1;
   }
   player.attackType = "charged";
@@ -597,8 +725,9 @@ function startCharging(player) {
 }
 
 function canPlayerSlap(player, { ignoreCooldown = false } = {}) {
-  const isOnCooldown = !ignoreCooldown && player.attackCooldownUntil && Date.now() < player.attackCooldownUntil;
-  const isActionLocked = player.actionLockUntil && Date.now() < player.actionLockUntil;
+  // Both deadlines live on the sim clock (pause during hitstop).
+  const isOnCooldown = !ignoreCooldown && player.attackCooldownUntil && simNowForPlayer(player) < player.attackCooldownUntil;
+  const isActionLocked = player.actionLockUntil && simNowForPlayer(player) < player.actionLockUntil;
   
   return (
     isPlayerInBasicActiveState(player) &&
@@ -625,17 +754,19 @@ function clearChargeState(player, isCancelled = false) {
 
   if (isCancelled) {
     player.chargeCancelled = true;
-    setTimeout(() => {
+    // Managed + named so resets can cancel it, and so it pauses with the sim
+    // like every other timer (was a raw setTimeout that bypassed the manager).
+    setPlayerTimeout(player.id, () => {
       if (player.chargeCancelled) {
         player.chargeCancelled = false;
       }
-    }, 100);
+    }, 100, "chargeCancelledClear");
   }
 }
 
 // Centralized action lock helpers to prevent simultaneous actions during input mashing
 function isActionLocked(player) {
-  return !!player.actionLockUntil && Date.now() < player.actionLockUntil;
+  return !!player.actionLockUntil && simNowForPlayer(player) < player.actionLockUntil;
 }
 
 function beginAction(player, actionName, lockDurationMs) {
@@ -643,7 +774,7 @@ function beginAction(player, actionName, lockDurationMs) {
   const duration = Math.max(0, Number(lockDurationMs || 0));
   player.currentAction = actionName || null;
   if (duration > 0) {
-    player.actionLockUntil = Date.now() + duration;
+    player.actionLockUntil = simNowForPlayer(player) + duration;
   } else {
     player.actionLockUntil = 0;
   }
@@ -708,12 +839,12 @@ function getIceFriction(player, isActiveBraking, nearEdge, edgeProximity, ignore
 }
 
 function canApplyKnockback(player) {
-  return !player.knockbackImmune || Date.now() >= player.knockbackImmuneEndTime;
+  return !player.knockbackImmune || simNowForPlayer(player) >= player.knockbackImmuneEndTime;
 }
 
 function setKnockbackImmunity(player) {
   player.knockbackImmune = true;
-  player.knockbackImmuneEndTime = Date.now() + KNOCKBACK_IMMUNITY_DURATION;
+  player.knockbackImmuneEndTime = simNowForPlayer(player) + KNOCKBACK_IMMUNITY_DURATION;
 }
 
 function getChargedHitstop(chargePower) {
@@ -721,9 +852,12 @@ function getChargedHitstop(chargePower) {
   return HITSTOP_CHARGED_MIN_MS + (HITSTOP_CHARGED_MAX_MS - HITSTOP_CHARGED_MIN_MS) * normalizedPower;
 }
 
+// Hitstop is tracked on the MONOTONIC clock (gameNow), not Date.now(), so an
+// NTP wall-clock correction can never stretch or swallow a freeze. It must
+// also not use simTime — simTime is the thing that pauses DURING hitstop, so
+// the freeze's own duration has to be measured on a clock that keeps running.
 function triggerHitstop(room, durationMs) {
-  const now = Date.now();
-  const target = now + durationMs;
+  const target = gameNow() + durationMs;
   room.hitstopUntil = Math.max(room.hitstopUntil || 0, target);
 }
 
@@ -748,7 +882,7 @@ function triggerHitstopAndEmit(io, room, durationMs, kind = "hit") {
 }
 
 function isRoomInHitstop(room) {
-  return room.hitstopUntil && Date.now() < room.hitstopUntil;
+  return room.hitstopUntil && gameNow() < room.hitstopUntil;
 }
 
 function emitThrottledScreenShake(room, io, shakeData) {
@@ -779,6 +913,12 @@ module.exports = {
 
   // Monotonic clock helper
   gameNow,
+
+  // Pausable simulation clock
+  setSimRoomResolver,
+  simNow,
+  simNowForPlayer,
+  advanceRoomSimTime,
 
   // Classes and instances
   TimeoutManager,

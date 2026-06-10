@@ -13,7 +13,7 @@ const { ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST,
         CLINCH_THROW_LAND_THRESHOLD, CLINCH_THROW_KILL_THRESHOLD,
         BALANCE_MAX } = require("./constants");
 const { MAP_LEFT_BOUNDARY: GAME_MAP_LEFT, MAP_RIGHT_BOUNDARY: GAME_MAP_RIGHT,
-        canPlayerSidestep, getSidestepInitData } = require("./gameUtils");
+        canPlayerSidestep, getSidestepInitData, simNowForPlayer } = require("./gameUtils");
 
 // Map boundaries - MUST match gameUtils.js (340 and 940)
 const MAP_LEFT_BOUNDARY = 340;
@@ -384,9 +384,10 @@ function getAggressionMultiplier(aiState) {
 
 // Check if CPU can act (not in a state that blocks actions)
 function canAct(cpu) {
-  const isOnCooldown = cpu.attackCooldownUntil && Date.now() < cpu.attackCooldownUntil;
-  const isInputLocked = cpu.inputLockUntil && Date.now() < cpu.inputLockUntil;
-  const isActionLocked = cpu.actionLockUntil && Date.now() < cpu.actionLockUntil;
+  // All three deadlines are sim-clock (pause during hitstop)
+  const isOnCooldown = cpu.attackCooldownUntil && simNowForPlayer(cpu) < cpu.attackCooldownUntil;
+  const isInputLocked = cpu.inputLockUntil && simNowForPlayer(cpu) < cpu.inputLockUntil;
+  const isActionLocked = cpu.actionLockUntil && simNowForPlayer(cpu) < cpu.actionLockUntil;
   
   return !cpu.isHit && 
          !cpu.isBeingThrown && 
@@ -448,9 +449,9 @@ function canGrab(cpu) {
 
 // Check if CPU can dodge
 function canDodge(cpu) {
-  const isOnCooldown = cpu.attackCooldownUntil && Date.now() < cpu.attackCooldownUntil;
-  const isInputLocked = cpu.inputLockUntil && Date.now() < cpu.inputLockUntil;
-  const isActionLocked = cpu.actionLockUntil && Date.now() < cpu.actionLockUntil;
+  const isOnCooldown = cpu.attackCooldownUntil && simNowForPlayer(cpu) < cpu.attackCooldownUntil;
+  const isInputLocked = cpu.inputLockUntil && simNowForPlayer(cpu) < cpu.inputLockUntil;
+  const isActionLocked = cpu.actionLockUntil && simNowForPlayer(cpu) < cpu.actionLockUntil;
   
   return !cpu.isHit && 
          !cpu.isBeingThrown && 
@@ -2022,17 +2023,17 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     return;
   }
   
-  if (cpu.inputLockUntil && Date.now() < cpu.inputLockUntil) {
+  if (cpu.inputLockUntil && simNowForPlayer(cpu) < cpu.inputLockUntil) {
     return;
   }
   
-  if (cpu.actionLockUntil && Date.now() < cpu.actionLockUntil) {
+  if (cpu.actionLockUntil && simNowForPlayer(cpu) < cpu.actionLockUntil) {
     if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
     else Object.assign(cpu._prevKeys, cpu.keys);
     return;
   }
   
-  const currentTime = Date.now();
+  const currentTime = simNowForPlayer(cpu);
   
   const shouldBlockAction = (allowThrowFromGrab = false) => {
     if (cpu.isAttacking) return true;
@@ -2065,78 +2066,9 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
 
   // NOTE: The old "mash to win" grab-clash system was removed.
   // Mutual grabs now resolve deterministically into a shared clinch via executeGrabTech.
+  // The legacy W-throw path (gated on isGrabbing && !inClinch) was also removed —
+  // grabs always enter the clinch now, and clinch throws use clinchThrowRequest.
 
-  // === THROW PROCESSING (legacy, skipped during clinch — clinch uses clinchThrowRequest) ===
-  if (cpu.keys.w && 
-      cpu.isGrabbing && 
-      !cpu.inClinch &&
-      !cpu.isBeingGrabbed &&
-      !cpu.keys.mouse2 &&
-      !shouldBlockAction(true) &&
-      !cpu.isThrowingSalt &&
-      !cpu.canMoveToReady &&
-      !cpu.throwCooldown &&
-      !cpu.isRawParrying &&
-      !cpu.isThrowing &&
-      !cpu.isAttemptingGrabThrow) {
-    
-    cpu.lastThrowAttemptTime = currentTime;
-    cpu.isAttemptingGrabThrow = true;
-    cpu.grabThrowAttemptStartTime = currentTime;
-    cpu.actionLockUntil = currentTime + 500;
-    
-    setPlayerTimeout(cpu.id, () => {
-      cpu.isAttemptingGrabThrow = false;
-      
-      if (cpu.isGrabBreakCountered || opponent.isGrabBreaking || opponent.isGrabBreakSeparating) {
-        return;
-      }
-      
-      if (!cpu.isGrabbing && !cpu.isThrowing) {
-        return;
-      }
-      
-      const THROW_RANGE = Math.round(166 * 1.3);
-      const throwRange = THROW_RANGE * (cpu.sizeMultiplier || 1);
-      
-      if (Math.abs(cpu.x - opponent.x) < throwRange && 
-          !opponent.isBeingThrown && 
-          !opponent.isDodging) {
-        
-        clearChargeState(cpu, true);
-        cpu.movementVelocity = 0;
-        cpu.isStrafing = false;
-        
-        const shouldFaceRight = cpu.x < opponent.x;
-        cpu.facing = shouldFaceRight ? -1 : 1;
-        cpu.throwingFacingDirection = cpu.facing;
-        opponent.beingThrownFacingDirection = -cpu.facing;
-        
-        cpu.isThrowing = true;
-        cpu.throwStartTime = Date.now();
-        cpu.throwEndTime = Date.now() + 400;
-        cpu.throwOpponent = opponent.id;
-        cpu.currentAction = "throw";
-        cpu.actionLockUntil = Date.now() + 200;
-        
-        opponent.isBeingThrown = true;
-        opponent.isHit = false;
-        
-        if (cpu.isGrabbing) {
-          cpu.isGrabbing = false;
-          cpu.grabbedOpponent = null;
-        }
-        if (opponent.isBeingGrabbed) {
-          opponent.isBeingGrabbed = false;
-        }
-      }
-    }, 500);
-    
-    if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
-    else Object.assign(cpu._prevKeys, cpu.keys);
-    return;
-  }
-  
   // Block if in blocking state
   if (shouldBlockAction()) {
     if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
@@ -2188,7 +2120,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     
     cpu.lastGrabAttemptTime = currentTime;
     cpu.isGrabStartup = true;
-    cpu.grabStartupStartTime = currentTime;
+    cpu.grabStartupStartTime = simNowForPlayer(cpu);
     cpu.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
     cpu.grabStartupArmorUsed = false; // Fresh slap-armor charge per grab attempt
     cpu.currentAction = "grab_startup";
@@ -2444,7 +2376,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       
       setPlayerTimeout(cpu.id, () => {
         cpu.isThrowingSnowball = false;
-        if (cpu.actionLockUntil && Date.now() < cpu.actionLockUntil) {
+        if (cpu.actionLockUntil && simNowForPlayer(cpu) < cpu.actionLockUntil) {
           cpu.actionLockUntil = 0;
         }
       }, 500);
@@ -2494,7 +2426,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
           isSlapAttacking: true,
           slapCooldown: 0,
           lastSlapTime: 0,
-          spawnTime: Date.now(),
+          spawnTime: simNowForPlayer(cpu),
           lifespan: 10000,
           ownerId: cpu.id,
           ownerFighter: cpu.fighter,
@@ -2512,7 +2444,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
         () => {
           cpu.isSpawningPumoArmy = false;
           cpu.pumoArmyCooldown = false;
-          if (cpu.actionLockUntil && Date.now() < cpu.actionLockUntil) {
+          if (cpu.actionLockUntil && simNowForPlayer(cpu) < cpu.actionLockUntil) {
             cpu.actionLockUntil = 0;
           }
         },

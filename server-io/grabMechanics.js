@@ -13,6 +13,8 @@ const {
   MAP_LEFT_BOUNDARY,
   MAP_RIGHT_BOUNDARY,
   setPlayerTimeout,
+  simNow,
+  simNowForPlayer,
   timeoutManager,
   triggerHitstopAndEmit,
 } = require("./gameUtils");
@@ -60,7 +62,7 @@ function executeGrabTech(player1, player2, room, io) {
 
   // Immediately enter mutual clinch (both get grips, no burst push)
   player1.isGrabbing = true;
-  player1.grabStartTime = Date.now();
+  player1.grabStartTime = simNow(room);
   player1.grabbedOpponent = player2.id;
   player1.hasGrip = true;
   player1.inClinch = true;
@@ -96,7 +98,7 @@ function executeClinchSeparation(grabber, opponent, room, io) {
   grabber.isStrafing = false;
   opponent.isStrafing = false;
 
-  const lockUntil = Date.now() + CLINCH_SEPARATION_INPUT_LOCK_MS;
+  const lockUntil = simNow(room) + CLINCH_SEPARATION_INPUT_LOCK_MS;
   grabber.inputLockUntil = Math.max(grabber.inputLockUntil || 0, lockUntil);
   opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, lockUntil);
 
@@ -140,7 +142,7 @@ function executeGrabWhiff(player) {
   player.movementVelocity = 0;
   player.isStrafing = false;
 
-  player.actionLockUntil = Date.now() + GRAB_WHIFF_RECOVERY_MS;
+  player.actionLockUntil = simNowForPlayer(player) + GRAB_WHIFF_RECOVERY_MS;
 
   player.grabCooldown = true;
 

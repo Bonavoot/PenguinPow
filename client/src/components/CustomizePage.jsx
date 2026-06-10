@@ -22,7 +22,7 @@ import {
 } from "../utils/soundUtils";
 import Snowfall from "./Snowfall";
 import pumo from "../assets/pumo-idle.png";
-import mainMenuBackground from "../assets/main-menu-bkg-3.png";
+import mainMenuBackground from "../assets/main-menu-bkg-3.webp";
 import {
   C,
   fadeIn,

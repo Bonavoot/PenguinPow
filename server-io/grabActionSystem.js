@@ -98,6 +98,7 @@ const {
 
 const {
   setPlayerTimeout,
+  simNow,
   clearAllActionStates,
   triggerHitstop,
   triggerHitstopAndEmit,
@@ -143,7 +144,7 @@ function updateGrabActions(player, room, io, delta, rooms) {
   const opponent = room.players.find((p) => p.id === player.grabbedOpponent);
   if (!opponent) {
     // Orphan grab safety
-    const grabDuration = Date.now() - player.grabStartTime;
+    const grabDuration = simNow(room) - player.grabStartTime;
     if (grabDuration >= 500) {
       player.isGrabbing = false;
       player.grabbedOpponent = null;
@@ -179,11 +180,11 @@ function updateGrabActions(player, room, io, delta, rooms) {
   }
   if (player.hasGrip && !opponent.hasGrip && player.isGrabPushing) {
     if (!player.grabPushStartTime) {
-      player.grabPushStartTime = Date.now();
+      player.grabPushStartTime = simNow(room);
       opponent.isBeingGrabPushed = true;
     }
 
-    const pushElapsed = Date.now() - player.grabPushStartTime;
+    const pushElapsed = simNow(room) - player.grabPushStartTime;
     const pushElapsedSec = pushElapsed / 1000;
 
     // Calculate burst push speed (exponential decay)
@@ -202,23 +203,23 @@ function updateGrabActions(player, room, io, delta, rooms) {
     } else {
       // Stamina drain during burst push — pusher always drains
       if (!player.lastGrabStaminaDrainTime) {
-        player.lastGrabStaminaDrainTime = Date.now();
+        player.lastGrabStaminaDrainTime = simNow(room);
       }
-      if (Date.now() - player.lastGrabStaminaDrainTime >= GRAB_STAMINA_DRAIN_INTERVAL) {
+      if (simNow(room) - player.lastGrabStaminaDrainTime >= GRAB_STAMINA_DRAIN_INTERVAL) {
         player.stamina = Math.max(0, player.stamina - 1);
-        player.lastGrabStaminaDrainTime = Date.now();
+        player.lastGrabStaminaDrainTime = simNow(room);
       }
 
       // Opponent stamina drain during burst push (slower than pusher, faster at edge)
       if (!opponent.lastGrabPushStaminaDrainTime) {
-        opponent.lastGrabPushStaminaDrainTime = Date.now();
+        opponent.lastGrabPushStaminaDrainTime = simNow(room);
       }
       const drainInterval = player.isAtBoundaryDuringGrab
         ? GRAB_PUSH_EDGE_STAMINA_DRAIN_INTERVAL
         : GRAB_PUSH_STAMINA_DRAIN_INTERVAL;
-      if (Date.now() - opponent.lastGrabPushStaminaDrainTime >= drainInterval) {
+      if (simNow(room) - opponent.lastGrabPushStaminaDrainTime >= drainInterval) {
         opponent.stamina = Math.max(0, opponent.stamina - 1);
-        opponent.lastGrabPushStaminaDrainTime = Date.now();
+        opponent.lastGrabPushStaminaDrainTime = simNow(room);
       }
 
       // Still in burst push — apply movement
@@ -301,15 +302,15 @@ function updateGrabActions(player, room, io, delta, rooms) {
 
   // --- Stalemate timer ---
   if (!player.clinchStalemateStart) {
-    player.clinchStalemateStart = Date.now();
+    player.clinchStalemateStart = simNow(room);
     player.clinchStalemateLastX = player.x;
     player.clinchStalemateLastBalance = player.balance;
   }
-  const stalemateElapsed = Date.now() - player.clinchStalemateStart;
+  const stalemateElapsed = simNow(room) - player.clinchStalemateStart;
   const posChanged = Math.abs(player.x - (player.clinchStalemateLastX || player.x)) > CLINCH_STALEMATE_MOVEMENT_THRESHOLD;
   const balChanged = Math.abs(player.balance - (player.clinchStalemateLastBalance || player.balance)) > CLINCH_STALEMATE_BALANCE_THRESHOLD;
   if (posChanged || balChanged) {
-    player.clinchStalemateStart = Date.now();
+    player.clinchStalemateStart = simNow(room);
     player.clinchStalemateLastX = player.x;
     player.clinchStalemateLastBalance = player.balance;
   }
@@ -318,7 +319,7 @@ function updateGrabActions(player, room, io, delta, rooms) {
     return;
   }
 
-  const now = Date.now();
+  const now = simNow(room);
 
   // ============================================
   // CLINCH BREAK (Spacebar) — defensive escape from mutual clinch
@@ -993,6 +994,17 @@ function maintainClinchPositions(player, opponent, fixedDistance, leftBoundary, 
   opponent.x = player.x < opponent.x
     ? player.x + fixedDistance
     : player.x - fixedDistance;
+  // Boundary clamp: hard-attaching the opponent can place them past the map
+  // edge when the grabber stands near it (jolt/clash freezes). Shift the PAIR
+  // back inside while preserving the clinch distance — mirrors the boundary
+  // pin used by the burst-push and lift paths.
+  if (opponent.x > rightBoundary) {
+    player.x -= opponent.x - rightBoundary;
+    opponent.x = rightBoundary;
+  } else if (opponent.x < leftBoundary) {
+    player.x += leftBoundary - opponent.x;
+    opponent.x = leftBoundary;
+  }
   if (!opponent.atTheRopesFacingDirection) opponent.facing = player.x < opponent.x ? 1 : -1;
   if (!player.atTheRopesFacingDirection) player.facing = player.x < opponent.x ? -1 : 1;
   player.movementVelocity = 0;
@@ -1033,7 +1045,7 @@ function endClinchLift(actor, target) {
 // is preserved — the breaker can't escape an edge corner this way).
 // Breaker gets brief grab-immunity after the tween so the opponent can't immediately re-clinch.
 function executeClinchBreak(breaker, opponent, room, io) {
-  const now = Date.now();
+  const now = simNow(room);
 
   // Apply costs to the breaker. Soft-gate: stamina goes negative-clamped, and
   // the natural gassed mechanism in index.js auto-triggers when stamina hits 0.
@@ -1176,7 +1188,7 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
     target.isBeingPullReversaled = true;
     target.pullReversalPullerId = actor.id;
     target.isGrabBreakSeparating = true;
-    target.grabBreakSepStartTime = Date.now();
+    target.grabBreakSepStartTime = simNow(room);
     target.grabBreakSepDuration = effectiveTweenDur;
     target.grabBreakStartX = target.x;
     target.grabBreakTargetX = targetX;
@@ -1185,7 +1197,7 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
       target.isBoundaryPullSwap = true;
       actor.isBoundaryPullSwap = true;
       actor.isGrabBreakSeparating = true;
-      actor.grabBreakSepStartTime = Date.now();
+      actor.grabBreakSepStartTime = simNow(room);
       actor.grabBreakSepDuration = effectiveTweenDur;
       actor.grabBreakStartX = actor.x;
       actor.grabBreakTargetX = actorTweenTargetX;
@@ -1196,7 +1208,7 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
     target.isStrafing = false;
     actor.isStrafing = false;
 
-    const lockUntil = Date.now() + effectiveLockMs;
+    const lockUntil = simNow(room) + effectiveLockMs;
     target.inputLockUntil = Math.max(target.inputLockUntil || 0, lockUntil);
     actor.inputLockUntil = Math.max(actor.inputLockUntil || 0, lockUntil);
 
@@ -1230,8 +1242,11 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
     actor.isThrowing = true;
     actor.isClinchKillThrow = isKill;
     const hitstopMs = isKill ? 0 : HITSTOP_THROW_MS;
-    actor.throwStartTime = Date.now() + hitstopMs;
-    actor.throwEndTime = Date.now() + hitstopMs + throwDuration;
+    // Sim clock pauses during the throw hitstop triggered below, so the throw
+    // arc starts right after the freeze with NO manual +hitstopMs offset
+    // (the old wall-clock version had to delay throwStartTime past the freeze).
+    actor.throwStartTime = simNow(room);
+    actor.throwEndTime = simNow(room) + throwDuration;
     actor.throwOpponent = target.id;
     actor.throwingFacingDirection = throwDir;
     // Non-kill throws are repositioning tools — keep victim inside the margin so
@@ -1245,7 +1260,7 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
     target.isBeingThrown = true;
     target.isHit = true;
     target.beingThrownFacingDirection = target.facing;
-    target.inputLockUntil = Math.max(target.inputLockUntil || 0, Date.now() + throwDuration + hitstopMs + 100);
+    target.inputLockUntil = Math.max(target.inputLockUntil || 0, simNow(room) + throwDuration + 100);
     if (isKill) {
       target.isClinchKillThrowVictim = true;
       io.in(room.id).emit("clinch_kill_throw", {
@@ -1268,7 +1283,7 @@ function triggerRingOut(pusher, victim, room, io, rooms, direction) {
   }
 
   pusher.isRingOutFreezeActive = true;
-  pusher.ringOutFreezeEndTime = Date.now() + 200;
+  pusher.ringOutFreezeEndTime = simNow(room) + 200;
   pusher.ringOutThrowDirection = direction;
   pusher.pendingRingOutThrowTarget = victim.id;
 
@@ -1321,8 +1336,8 @@ function triggerRingOut(pusher, victim, room, io, rooms, direction) {
       grabbedRef.clinchJoltPlantInterrupt = false;
 
       grabberRef.isThrowing = true;
-      grabberRef.throwStartTime = Date.now();
-      grabberRef.throwEndTime = Date.now() + RINGOUT_THROW_DURATION_MS;
+      grabberRef.throwStartTime = simNow(currentRoom);
+      grabberRef.throwEndTime = simNow(currentRoom) + RINGOUT_THROW_DURATION_MS;
       grabberRef.throwOpponent = grabbedRef.id;
 
       clearAllActionStates(grabbedRef);

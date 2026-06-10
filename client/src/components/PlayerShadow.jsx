@@ -1,8 +1,11 @@
-import { memo } from "react";
+import { memo, forwardRef } from "react";
 import PropTypes from "prop-types";
 import { isOutsideDohyo } from "../constants";
 
-const GROUND_LEVEL = 294; // Match the server's GROUND_LEVEL
+// Match the server's GROUND_LEVEL. Exported so GameFighter's imperative
+// position loop can mirror the ground-pinning formula exactly.
+export const SHADOW_GROUND_LEVEL = 294;
+const GROUND_LEVEL = SHADOW_GROUND_LEVEL;
 
 const SHADOW_GRADIENT =
   "radial-gradient(ellipse at center, rgba(0,0,0,0.86) 0%, rgba(0,0,0,0) 70%)";
@@ -15,7 +18,7 @@ const baseStyle = {
   background: SHADOW_GRADIENT,
 };
 
-const PlayerShadow = memo(({
+const PlayerShadow = memo(forwardRef(({
   x,
   y,
   facing,
@@ -30,7 +33,7 @@ const PlayerShadow = memo(({
   height,
   offsetLeft,
   offsetRight,
-}) => {
+}, ref) => {
   const sidestepping = isSidestepping;
 
   const forceGround =
@@ -65,8 +68,8 @@ const PlayerShadow = memo(({
     opacity: sidestepping ? 0.5 : undefined,
   };
 
-  return <div style={style} />;
-});
+  return <div ref={ref} style={style} />;
+}));
 
 PlayerShadow.displayName = "PlayerShadow";
 

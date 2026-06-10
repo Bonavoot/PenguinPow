@@ -1,5 +1,5 @@
 const {
-  GRAB_STATES, GROUND_LEVEL, GRAB_RANGE, THROW_RANGE,
+  GRAB_STATES, GROUND_LEVEL,
   POWER_UP_TYPES, POWER_UP_EFFECTS,
   HITBOX_DISTANCE_VALUE, DOHYO_FALL_DEPTH,
   DODGE_DURATION, DODGE_STAMINA_COST,
@@ -10,10 +10,7 @@ const {
   SIDESTEP_TOTAL_MS, SIDESTEP_STAMINA_COST,
   SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST, RAW_PARRY_STAMINA_COST, RAW_PARRY_COOLDOWN_MS,
   CHARGE_FULL_POWER_MS,
-  GRAB_ACTION_WINDOW, GRAB_STARTUP_DURATION_MS,
-  HITSTOP_THROW_MS,
-  PULL_REVERSAL_DISTANCE, PULL_REVERSAL_TWEEN_DURATION,
-  PULL_REVERSAL_PULLED_LOCK, PULL_REVERSAL_PULLER_LOCK,
+  GRAB_STARTUP_DURATION_MS,
 } = require("./constants");
 
 const {
@@ -22,7 +19,6 @@ const {
   MAP_RIGHT_BOUNDARY,
   timeoutManager,
   setPlayerTimeout,
-  clearAllActionStates,
   clearChargeState,
   canPlayerSlap,
   canPlayerDash,
@@ -32,29 +28,14 @@ const {
   canPlayerUseAction,
   shouldRestartCharging,
   startCharging,
-  isRoomInHitstop,
   gameNow,
-  triggerHitstop,
-  triggerHitstopAndEmit,
+  simNowForPlayer,
 } = require("./gameUtils");
 
 const {
-  cleanupGrabStates,
   executeSlapAttack,
   executeChargedAttack,
 } = require("./gameFunctions");
-
-const {
-  correctFacingAfterGrabOrThrow,
-} = require("./grabMechanics");
-
-const {
-  isOpponentCloseEnoughForThrow,
-  isOpponentCloseEnoughForGrab,
-  checkForThrowTech,
-  checkForGrabPriority,
-  applyThrowTech,
-} = require("./combatHelpers");
 
 const {
   LOBBY_COLORS,
@@ -72,6 +53,12 @@ const {
   getCleanedRoomData,
   getCleanedRoomsData,
 } = require("./playerCleanup");
+
+const {
+  createInitialPlayerState,
+  PLAYER_1_SPAWN,
+  PLAYER_2_SPAWN,
+} = require("./playerFactory");
 
 const { clearAIState } = require("./cpuAI");
 const { clearImpossibleAIState } = require("./cpuAI_impossible");
@@ -102,6 +89,11 @@ const { appendInput: appendAuditInput, closeLog: closeAuditLog } = require("./in
 const RATE_LIMIT_CAPACITY = 30;
 const RATE_LIMIT_REFILL_PER_SEC = 200;
 const inputRateBuckets = new Map(); // socket.id -> { tokens, lastRefillNow, dropped }
+
+// Max queued-but-unprocessed input packets per player. The tick drains the
+// whole queue every 15.6ms, so this only matters during hitstop freezes or
+// abuse — 40 packets is ~600ms of 64Hz client input.
+const MAX_INPUT_QUEUE_PACKETS = 40;
 
 function takeInputToken(socketId) {
   const now = gameNow();
@@ -181,6 +173,993 @@ function detectEdges(prevKeys, events, newKeys) {
   }
 
   return { rising, falling };
+}
+
+// ============================================================
+// PHASE 3: TICK-CONSUMED INPUT DISPATCH
+// ============================================================
+// ALL gameplay input execution lives here. The fighter_action socket
+// handler only validates and ENQUEUES packets (player.inputQueue); the
+// game tick (index.js) drains the queue at tick start — outside hitstop —
+// and calls this once per packet, in arrival order. Result: actions
+// execute at deterministic points in the simulation instead of whenever
+// a packet happens to arrive mid-tick, and freezes can't be bypassed.
+function processInputPacket(room, player, data, io, rooms) {
+  if (
+    (room.gameOver && !room.matchOver) ||
+    room.matchOver
+  ) {
+    return; // Skip all other actions if the game is over
+  }
+
+  // TACHIAI CHARGING: Track mouse1 for pre-round charging before blocking other inputs.
+  // This lets players hold mouse1 during walk-to-ready and ready phases to build charge.
+  // Must run BEFORE the canMoveToReady and pre-round input blocks below.
+  if (!room.gameStart && data.keys) {
+    const previousMouse1 = player.keys ? player.keys.mouse1 : false;
+    player.keys = player.keys || {};
+    player.keys.mouse1 = data.keys.mouse1 || false;
+
+    if (!previousMouse1 && data.keys.mouse1) {
+      player.mouse1PressTime = simNowForPlayer(player);
+    }
+    if (previousMouse1 && !data.keys.mouse1) {
+      player.chargeAttackPower = 0;
+      player.mouse1PressTime = 0;
+      if (player.isChargingAttack) {
+        player.isChargingAttack = false;
+        player.chargeStartTime = 0;
+        player.chargingFacingDirection = null;
+        player.attackType = null;
+      }
+    }
+
+    player.mouse1BufferedBeforeStart = data.keys.mouse1 || false;
+  }
+
+  // Block all actions if player is moving to ready position
+  if (player.canMoveToReady) {
+    return;
+  }
+
+  // Block all non-mouse1 inputs during pre-round phase
+  if (!room.gameStart || room.hakkiyoiCount === 0) {
+    return;
+  }
+
+  // Block all inputs during pumo army spawning animation
+  if (player.isSpawningPumoArmy) {
+    return;
+  }
+
+  // Input lockout window: allow key state refresh but block actions
+  if (player.inputLockUntil && simNowForPlayer(player) < player.inputLockUntil) {
+    if (data.keys) {
+      // Edge detection across the packet window (snapshot diff + replayed
+      // per-event edges). Falls back to pure snapshot diff if events
+      // array is absent — preserves legacy behavior bit-for-bit.
+      const prevKeysSnapshot = player.keys || {};
+      const { rising, falling } = detectEdges(
+        prevKeysSnapshot,
+        data.events,
+        data.keys,
+      );
+
+      // Clear grabBreakSpaceConsumed if spacebar was released during input lock,
+      // so raw parry isn't blocked after the lock expires
+      if (falling[" "] && player.grabBreakSpaceConsumed) {
+        player.grabBreakSpaceConsumed = false;
+      }
+      // Track mouse1 press/release timing during lock so charging can begin
+      // immediately when the lock expires (inputs are READ, not acted on)
+      if (rising.mouse1) {
+        // mouse1 just pressed during lock — record press time
+        player.mouse1PressTime = simNowForPlayer(player);
+      } else if (falling.mouse1) {
+        player.mouse1PressTime = 0;
+      }
+      player.keys = data.keys;
+
+      // During slap attacks, buffer mouse1 for next hits / mouse2 for grab ender
+      if (player.isAttacking && player.attackType === "slap") {
+        if (rising.mouse1) {
+          const maxBuffer = 3 - (player.slapStringPosition || 1);
+          if (player.pendingSlapCount < maxBuffer) {
+            player.pendingSlapCount++;
+          }
+        }
+        if (rising.mouse2 && player.slapStringPosition >= 2) {
+          player.pendingGrabEnder = true;
+          player.pendingSlapCount = 0;
+        }
+      } else {
+        // Non-slap states: use generic inputBuffer
+        if (rising[" "]) {
+          player.inputBuffer = { type: "rawParry", timestamp: simNowForPlayer(player) };
+        } else if (rising.shift && data.keys.s && !data.keys.mouse2) {
+          player.inputBuffer = { type: "sidestep", timestamp: simNowForPlayer(player) };
+        } else if (rising.shift && !data.keys.mouse2) {
+          player.inputBuffer = { type: "dodge", timestamp: simNowForPlayer(player) };
+        } else if (rising.mouse1 && data.keys.s) {
+          const fwdKey = player.facing === -1 ? 'd' : 'a';
+          if (data.keys[fwdKey]) {
+            player.inputBuffer = { type: "chargedAttack", timestamp: simNowForPlayer(player) };
+          } else {
+            player.inputBuffer = { type: "slap", timestamp: simNowForPlayer(player) };
+          }
+        } else if (rising.mouse1) {
+          player.inputBuffer = { type: "slap", timestamp: simNowForPlayer(player) };
+        } else if (rising.mouse2) {
+          player.inputBuffer = { type: "grab", timestamp: simNowForPlayer(player) };
+        }
+      }
+    }
+    return;
+  }
+
+  // Block ALL inputs while grab movement is active
+  if (player.isGrabbingMovement) {
+    // Only allow key state updates for grab movement, but block all other actions
+    if (data.keys) {
+      player.keys = data.keys;
+    }
+    return;
+  }
+
+  // NOTE: No explicit hitstop handling here. The tick only drains the input
+  // queue while the room is NOT in hitstop, so packets that arrive during a
+  // freeze are held and replayed in order on the first post-freeze tick —
+  // edges intact, first input wins.
+
+  // Helper function to check if player is in a charged attack execution state
+  const isInChargedAttackExecution = () => {
+    return player.isAttacking && player.attackType === "charged";
+  };
+
+  // Helper function to check if an action should be blocked
+  // allowDodgeCancelRecovery: allows dodge to cancel recovery state
+  // allowChargingDuringDodge: allows starting/continuing charged attack during dodge
+  const shouldBlockAction = (allowDodgeCancelRecovery = false, allowChargingDuringDodge = false) => {
+    // Global action lock gate to serialize actions visually/feel-wise
+    if (player.actionLockUntil && simNowForPlayer(player) < player.actionLockUntil) {
+      return true;
+    }
+    // Always block during charged attack execution
+    if (isInChargedAttackExecution()) {
+      return true;
+    }
+    // Block during dodge - unless allowChargingDuringDodge is true (charging can happen during dodge)
+    if (player.isDodging && !allowChargingDuringDodge) {
+      return true;
+    }
+    // Block during grab break animation, separation, and new grab action states
+    if (player.isGrabBreaking || player.isGrabBreakCountered || player.isGrabBreakSeparating ||
+        player.isGrabSeparating || player.isBeingPullReversaled ||
+        player.isGrabBellyFlopping || player.isBeingGrabBellyFlopped ||
+        player.isGrabFrontalForceOut || player.isBeingGrabFrontalForceOut) {
+      return true;
+    }
+    // Block all actions during clinch (push/plant/neutral handled by clinch system)
+    if (player.inClinch) {
+      return true;
+    }
+    // Block during recovery unless it's a dodge and dodge cancel is allowed
+    if (
+      player.isRecovering &&
+      !(allowDodgeCancelRecovery && data.keys && data.keys.shift)
+    ) {
+      return true;
+    }
+    // Block all actions when at the ropes
+    if (player.isAtTheRopes) {
+      return true;
+    }
+    return false;
+  };
+
+  if (data.keys) {
+    // Edge detection across the entire packet window. When `data.events`
+    // is present, walks each per-event transition AND reconciles against
+    // the final snapshot, so a press-release-press faster than the client
+    // emit interval (>=16ms) still surfaces as a rising edge here. When
+    // `data.events` is absent, this reduces to the classic snapshot diff
+    // and behavior is bit-for-bit identical to the pre-events path.
+    const previousKeys = { ...player.keys };
+    const { rising, falling } = detectEdges(previousKeys, data.events, data.keys);
+    player.keys = data.keys;
+
+    // Set mouse1 press flags — true if a press happened ANYWHERE in the
+    // packet window, even if the trailing snapshot already shows release.
+    player.mouse1JustPressed = !!rising.mouse1;
+    player.mouse1JustReleased = !!falling.mouse1;
+
+    // Set mouse2 press flags (mouse2 = grab now)
+    player.mouse2JustPressed = !!rising.mouse2;
+    player.mouse2JustReleased = !!falling.mouse2;
+
+    // Track attack intent time when mouse1 is pressed (for counter hit detection)
+    // This captures the moment the player tries to attack, even before the attack executes
+    if (player.mouse1JustPressed) {
+      // Sim clock — read by processHit's counter-hit window against sim time
+      player.attackIntentTime = simNowForPlayer(player);
+      // Record press time for slap-vs-charge threshold detection (sim clock,
+      // so a hold through hitstop doesn't silently cross the charge threshold)
+      player.mouse1PressTime = simNowForPlayer(player);
+    }
+
+    // Track "just pressed" state for all action keys to prevent actions from triggering
+    // when keys are held through other actions (e.g., holding E during dodge then grabbing after)
+    player.shiftJustPressed = !!rising.shift;
+    player.eJustPressed = !!rising.e;
+    player.wJustPressed = !!rising.w;
+    player.aJustPressed = !!rising.a;
+    player.dJustPressed = !!rising.d;
+    player.fJustPressed = !!rising.f;
+    player.spaceJustPressed = !!rising[" "];
+
+    // POST-GRAB INPUT BUFFER: After a grab/throw ends, treat held keys as "just pressed"
+    // for one cycle. This enables frame-1 activation of grab (mouse2) which has complex
+    // initiation code with nested timeouts that must run through the normal input path.
+    // Raw parry, slap, dodge, and charge are handled directly in activateBufferedInputAfterGrab().
+    if (player.postGrabInputBuffer) {
+      if (data.keys.mouse2 && !player.mouse2JustPressed) player.mouse2JustPressed = true;
+      player.postGrabInputBuffer = false;
+    }
+
+    // Buffer inputs when shouldBlockAction() prevents execution.
+    // The game loop processes the buffer on the first actionable frame.
+    if (shouldBlockAction()) {
+      if (player.spaceJustPressed) {
+        player.inputBuffer = { type: "rawParry", timestamp: simNowForPlayer(player) };
+      } else if (player.shiftJustPressed && data.keys.s && !data.keys.mouse2) {
+        player.inputBuffer = { type: "sidestep", timestamp: simNowForPlayer(player) };
+      } else if (player.shiftJustPressed && !data.keys.mouse2) {
+        player.inputBuffer = { type: "dodge", timestamp: simNowForPlayer(player) };
+      } else if (player.mouse1JustPressed && data.keys.s) {
+        const fwdKey = player.facing === -1 ? 'd' : 'a';
+        if (data.keys[fwdKey]) {
+          player.inputBuffer = { type: "chargedAttack", timestamp: simNowForPlayer(player) };
+        } else {
+          player.inputBuffer = { type: "slap", timestamp: simNowForPlayer(player) };
+        }
+      } else if (player.mouse1JustPressed) {
+        player.inputBuffer = { type: "slap", timestamp: simNowForPlayer(player) };
+      } else if (player.mouse2JustPressed && !player.inClinch) {
+        player.inputBuffer = { type: "grab", timestamp: simNowForPlayer(player) };
+      }
+    }
+
+    // Track mouse1 held during recovery from a connected charged attack
+    // This catches the case where player re-presses mouse1 AFTER processHit ran
+    // (e.g., mouse1 re-press event arrived after the hit was processed)
+    if (player.keys.mouse1 && player.isRecovering && player.chargedAttackHit) {
+      player.mouse1HeldDuringAttack = true;
+      if (!player.mouse1PressTime) {
+        player.mouse1PressTime = simNowForPlayer(player);
+      }
+    }
+
+    // Debug logging for F key and snowball power-up
+    if (data.keys.f) {
+    }
+
+    // ============================================
+    // DIRECTIONAL GRAB BREAK SYSTEM
+    // Spacebar grab break removed. Grab breaks now happen through
+    // directional counter-inputs during specific grab action windows:
+    // - Pull reversal (backward): counter with opposite direction
+    // - Throw (W): counter with S key
+    // - Forward push: cannot be broken, only slowed
+    // Counter-input checks are handled in the grab action sections below.
+    // ============================================
+  }
+
+  // SPACE PRESS: Fire raw parry immediately for zero-tick-delay responsiveness
+  // Same pattern as slap — execute on the socket event instead of waiting for the game tick
+  if (
+    player.spaceJustPressed &&
+    !shouldBlockAction() &&
+    !player.isRawParrying &&
+    !player.isRawParryStun &&
+    !player.grabBreakSpaceConsumed &&
+    simNowForPlayer(player) >= (player.rawParryCooldownUntil || 0) &&
+    !player.isSidestepping &&
+    !player.isGrabbing &&
+    !player.isBeingGrabbed &&
+    !player.isGrabbingMovement &&
+    !player.isWhiffingGrab &&
+    !player.isGrabClashing &&
+    !player.isThrowing &&
+    !player.isBeingThrown &&
+    !player.isAttacking &&
+    !player.isHit &&
+    !player.isThrowingSnowball &&
+    !player.isSpawningPumoArmy &&
+    !player.canMoveToReady
+  ) {
+    player.isRawParrySuccess = false;
+    player.isPerfectRawParrySuccess = false;
+    player.isRawParrying = true;
+    player.rawParryStartTime = simNowForPlayer(player);
+    player.rawParryMinDurationMet = false;
+    player.stamina = Math.max(0, player.stamina - RAW_PARRY_STAMINA_COST);
+    clearChargeState(player, true);
+    player.movementVelocity = 0;
+    player.isStrafing = false;
+    player.isPowerSliding = false;
+    player.isCrouchStance = false;
+    player.isCrouchStrafing = false;
+    player.pendingSlapCount = 0;
+    player.pendingGrabEnder = false;
+    player.slapStringPosition = 0;
+    player.slapStringWindowUntil = 0;
+  }
+
+  // MOUSE1 PRESS: Check for S+FORWARD+MOUSE1 charged attack combo, else fire slap
+  if (player.mouse1JustPressed && !shouldBlockAction()) {
+    const forwardKey = player.facing === -1 ? 'd' : 'a';
+    const wantsChargedAttack = player.keys.s && player.keys[forwardKey];
+
+    if (wantsChargedAttack && canPlayerSlap(player, { ignoreCooldown: true })) {
+      player.chargeAttackPower = 0;
+      player.chargeStartTime = 0;
+      startCharging(player);
+      player.chargingFacingDirection = player.facing;
+      player.movementVelocity = 0;
+      player.isStrafing = false;
+      player.isPowerSliding = false;
+      player.isBraking = false;
+      player.isRawParrySuccess = false;
+      player.isPerfectRawParrySuccess = false;
+      player.isCrouchStance = false;
+      player.isCrouchStrafing = false;
+    } else if (wantsChargedAttack && player.isAttacking && player.attackType === "slap") {
+      player.inputBuffer = { type: "chargedAttack", timestamp: simNowForPlayer(player) };
+    } else if (canPlayerSlap(player)) {
+      executeSlapAttack(player, rooms);
+    } else if (player.isAttacking && player.attackType === "slap") {
+      const maxBuffer = 3 - (player.slapStringPosition || 1);
+      if (player.pendingSlapCount < maxBuffer) {
+        player.pendingSlapCount++;
+      }
+    }
+  }
+
+  // MOUSE2 DURING SLAP STRING: buffer grab ender (replaces hit 3 with grab)
+  if (player.mouse2JustPressed && player.isAttacking && player.attackType === "slap" &&
+      player.slapStringPosition >= 2) {
+    player.pendingGrabEnder = true;
+    player.pendingSlapCount = 0;
+  }
+
+  // MOUSE1 RELEASE: Execute charged attack if charging, otherwise clear state
+  if (player.mouse1JustReleased) {
+    if (player.isRopeJumping && player.ropeJumpPhase === "landing" && player.mouse1PressTime > 0) {
+      player.ropeJumpBufferedAttackRelease = simNowForPlayer(player) - player.mouse1PressTime;
+    }
+    if (player.isChargingAttack) {
+      const chargePercentage = player.chargeAttackPower || 1;
+      player.isChargingAttack = false;
+      player.chargeStartTime = 0;
+      player.chargingFacingDirection = null;
+      player.mouse1HeldDuringAttack = false;
+      executeChargedAttack(player, chargePercentage, rooms);
+    } else {
+      if (!(player.isAttacking && player.attackType === "charged")) {
+        player.chargeAttackPower = 0;
+      }
+    }
+    player.mouse1PressTime = 0;
+    player.wantsToRestartCharge = false;
+    player.mouse1HeldDuringAttack = false;
+  }
+
+  // Handle clearing charge during charging phase with throw/grab/snowball - MUST BE FIRST
+  // Use "just pressed" to prevent charge cancellation when keys are held through other states
+  // Block during dodge - only charging should continue during dodge, no other actions
+  if (
+    ((player.wJustPressed && player.isGrabbing && !player.isBeingGrabbed) ||
+      player.mouse2JustPressed ||
+      player.fJustPressed) &&
+    player.isChargingAttack && // Only interrupt during charging phase, not execution
+    !player.isDodging // Block during dodge - charging continues but no actions can interrupt
+  ) {
+    // Clear charge state — cancelled by another action, so zero charge power
+    clearChargeState(player, true);
+
+    // The existing input handlers will take over for W/E/F
+  }
+
+
+  // Handle F key power-ups (snowball and pumo army) - block during charged attack execution and recovery
+  // Use fJustPressed to prevent power-ups from triggering when key is held through other actions
+  if (
+    player.fJustPressed &&
+    !shouldBlockAction() &&
+    (player.activePowerUp === POWER_UP_TYPES.SNOWBALL ||
+      player.activePowerUp === POWER_UP_TYPES.PUMO_ARMY) &&
+    (player.activePowerUp !== POWER_UP_TYPES.SNOWBALL ||
+      (player.snowballThrowsRemaining ?? 5) > 0) &&
+    (player.activePowerUp !== POWER_UP_TYPES.PUMO_ARMY ||
+      (player.pumoArmySpawnsRemaining ?? 3) > 0) &&
+    !player.snowballCooldown &&
+    !player.pumoArmyCooldown &&
+    !player.isThrowingSnowball &&
+    !player.isSpawningPumoArmy &&
+    !player.isAttacking &&
+    !player.isDodging &&
+    !player.isThrowing &&
+    !player.isBeingThrown &&
+    !player.isGrabbing &&
+    !player.isBeingGrabbed &&
+    !player.isHit &&
+    !player.isRawParryStun &&
+    !player.isRawParrying &&
+    !player.canMoveToReady
+  ) {
+    // Clear charge attack state if player was charging
+    if (player.isChargingAttack) {
+      clearChargeState(player, true);
+    }
+
+    if (player.activePowerUp === POWER_UP_TYPES.SNOWBALL) {
+      // Backfill for older in-progress states where this field may be missing.
+      if (player.snowballThrowsRemaining == null) {
+        player.snowballThrowsRemaining = 5;
+      }
+      if (player.snowballThrowsRemaining <= 0) {
+        return;
+      }
+
+      // Snowball costs same stamina as a slap attack
+      player.stamina = Math.max(0, player.stamina - SLAP_ATTACK_STAMINA_COST);
+      player.snowballThrowsRemaining = Math.max(
+        0,
+        player.snowballThrowsRemaining - 1
+      );
+      // Set throwing state
+      player.isThrowingSnowball = true;
+      // Lock actions during throw windup/animation window for visual clarity
+      player.currentAction = "snowball";
+      player.actionLockUntil = simNowForPlayer(player) + 250;
+
+      // Determine snowball direction based on current position relative to opponent
+      const opponent = room.players.find(
+        (p) => p.id !== player.id
+      );
+      let snowballDirection;
+      if (opponent) {
+        // Throw towards the opponent based on current positions
+        snowballDirection = player.x < opponent.x ? 2 : -2;
+      } else {
+        // Fallback to facing direction if no opponent found
+        snowballDirection = player.facing === 1 ? -2 : 2;
+      }
+
+      // Create snowball projectile
+      const snowball = {
+        id: Math.random().toString(36).substr(2, 9),
+        x: player.x,
+        y: player.y + 20, // Slightly above ground
+        velocityX: snowballDirection, // Direction determined by position relative to opponent
+        hasHit: false,
+        ownerId: player.id,
+      };
+
+      player.snowballs.push(snowball);
+      player.snowballCooldown = true;
+
+      // Reset throwing state after animation
+      setPlayerTimeout(
+        player.id,
+        () => {
+          player.isThrowingSnowball = false;
+          // Clear lock if it’s still set
+          if (player.actionLockUntil && simNowForPlayer(player) < player.actionLockUntil) {
+            player.actionLockUntil = 0;
+          }
+
+          // Neutral charged attack removed — no charge to restart
+        },
+        500
+      );
+    } else if (player.activePowerUp === POWER_UP_TYPES.PUMO_ARMY) {
+      if (player.pumoArmySpawnsRemaining == null) {
+        player.pumoArmySpawnsRemaining = 3;
+      }
+      if (player.pumoArmySpawnsRemaining <= 0) {
+        return;
+      }
+
+      // Pumo army costs same stamina as a charged attack
+      player.stamina = Math.max(0, player.stamina - CHARGED_ATTACK_STAMINA_COST);
+      player.pumoArmySpawnsRemaining = Math.max(
+        0,
+        player.pumoArmySpawnsRemaining - 1
+      );
+      // Set spawning state
+      player.isSpawningPumoArmy = true;
+      player.currentAction = "pumo_army";
+      player.actionLockUntil = simNowForPlayer(player) + 400;
+
+      // Clear any existing movement momentum to prevent sliding during animation
+      player.movementVelocity = 0;
+      player.isStrafing = false;
+
+      // Determine army direction (same as player facing)
+      const armyDirection = player.facing === 1 ? -1 : 1; // Army moves in direction player is facing
+
+      const startX = armyDirection === 1 ? -100 : 1200;
+      const Y_SPREAD = 35;
+      const V_OFFSET = 40; // Middle clone leads the V-formation
+
+      // Spawn all 3 clones at once in a V-formation across Y lanes
+      const lanes = [
+        { lane: 'top',    targetY: GROUND_LEVEL + Y_SPREAD, xOffset: 0 },
+        { lane: 'middle', targetY: GROUND_LEVEL + 5,        xOffset: armyDirection * V_OFFSET },
+        { lane: 'bottom', targetY: GROUND_LEVEL - Y_SPREAD, xOffset: 0 },
+      ];
+
+      lanes.forEach(({ lane, targetY, xOffset }) => {
+        const clone = {
+          id: Math.random().toString(36).substr(2, 9),
+          x: startX + xOffset,
+          y: GROUND_LEVEL - DOHYO_FALL_DEPTH,
+          targetY,
+          velocityX: armyDirection * 1.5,
+          facing: armyDirection,
+          isStrafing: true,
+          isSlapAttacking: true,
+          slapCooldown: 0,
+          lastSlapTime: 0,
+          spawnTime: simNowForPlayer(player),
+          lifespan: 10000,
+          ownerId: player.id,
+          ownerFighter: player.fighter,
+          hasHit: false,
+          size: 0.6,
+          lane,
+        };
+        player.pumoArmy.push(clone);
+      });
+
+      player.pumoArmyCooldown = true;
+
+      // Reset spawning state after animation (named so clearAllActionStates can cancel on interrupt)
+      setPlayerTimeout(
+        player.id,
+        () => {
+          player.isSpawningPumoArmy = false;
+          player.pumoArmyCooldown = false;
+          if (player.actionLockUntil && simNowForPlayer(player) < player.actionLockUntil) {
+            player.actionLockUntil = 0;
+          }
+
+          // Neutral charged attack removed — no charge to restart
+        },
+        800,
+        "pumoArmySpawnEnd"
+      );
+    }
+  }
+
+  // Handle sidestep (S + SHIFT) — henka-style lateral evasion that switches sides
+  // Must be checked BEFORE dodge so the combo input takes priority
+  if (
+    player.shiftJustPressed &&
+    player.keys.s &&
+    !player.keys.mouse2 &&
+    !player.isBeingGrabbed &&
+    !isInChargedAttackExecution() &&
+    canPlayerSidestep(player) &&
+    !player.isGassed
+  ) {
+    const sidestepOpponent = room.players.find(p => p.id !== player.id && !p.isDead);
+    if (sidestepOpponent) {
+      if (player.isRecovering) {
+        const recoveryAge = simNowForPlayer(player) - player.recoveryStartTime;
+        if (recoveryAge > 100) {
+          player.isRecovering = false;
+          player.movementVelocity = 0;
+          player.recoveryDirection = null;
+        }
+      }
+
+      if (!player.isRecovering) {
+      const initData = getSidestepInitData(player.x, sidestepOpponent.x);
+      player.isRawParrySuccess = false;
+      player.isPerfectRawParrySuccess = false;
+      clearChargeState(player, true);
+
+      player.movementVelocity = 0;
+      player.isStrafing = false;
+      player.isPowerSliding = false;
+      player.isBraking = false;
+      player.isCrouchStance = false;
+      player.isCrouchStrafing = false;
+
+      player.isSidestepping = true;
+      player.isSidestepStartup = true;
+      player.isSidestepRecovery = false;
+      player.sidestepStartTime = simNowForPlayer(player);
+      player.sidestepStartupEndTime = simNowForPlayer(player) + SIDESTEP_STARTUP_MS;
+      player.sidestepActiveEndTime = simNowForPlayer(player) + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS;
+      player.sidestepEndTime = simNowForPlayer(player) + SIDESTEP_TOTAL_MS;
+      player.sidestepStartX = player.x;
+      player.sidestepDirection = initData.direction;
+
+      player.currentAction = "sidestep";
+      player.actionLockUntil = simNowForPlayer(player) + SIDESTEP_TOTAL_MS;
+      player.stamina = Math.max(0, player.stamina - SIDESTEP_STAMINA_COST);
+      }
+    }
+  }
+  // Handle dash - allow canceling recovery but block during charged attack execution
+  // Dashing now costs stamina (15% of max) instead of using charges
+  // Use shiftJustPressed to prevent dash from triggering when key is held through other actions
+  // NOTE: Dash cancels charging - clearing charge state when dash starts
+  else if (
+    player.shiftJustPressed &&
+    !player.keys.mouse2 && // Don't dash while grabbing
+    !(player.keys.w && player.isGrabbing && !player.isBeingGrabbed) &&
+    !player.isBeingGrabbed && // Block dash when being grabbed
+    !isInChargedAttackExecution() && // Block during charged attack execution
+    canPlayerDash(player) &&
+    !player.isGassed
+  ) {
+    // Allow dodge to cancel recovery
+    if (player.isRecovering) {
+      // Add grace period - don't allow dodge to cancel recovery for 100ms after it starts
+      // This prevents immediate dodge from canceling recovery that was just set
+      const recoveryAge = simNowForPlayer(player) - player.recoveryStartTime;
+      if (recoveryAge > 100) {
+        player.isRecovering = false;
+        player.movementVelocity = 0;
+        player.recoveryDirection = null;
+      } else {
+        return; // Don't execute dodge if recovery is too fresh
+      }
+    }
+
+    // Clear parry success state when starting a dodge
+    player.isRawParrySuccess = false;
+    player.isPerfectRawParrySuccess = false;
+
+    // Dodge cancels charging - clear charge state
+    clearChargeState(player, true);
+
+    // Clear movement momentum for static dodge distance
+    // Also cancels power slide - dodge is an escape option from slide
+    player.movementVelocity = 0;
+    player.isStrafing = false;
+    player.isPowerSliding = false;
+    player.isBraking = false;
+
+    player.isDodging = true;
+    player.isDodgeStartup = true;
+    player.dodgeStartTime = simNowForPlayer(player);
+    player.dodgeStartupEndTime = simNowForPlayer(player) + DODGE_STARTUP_MS;
+    player.dodgeEndTime = simNowForPlayer(player) + DODGE_DURATION;
+    player.dodgeStartX = player.x;
+    player.currentAction = "dash";
+    player.actionLockUntil = simNowForPlayer(player) + 100;
+    player.justLandedFromDodge = false;
+
+    player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
+
+    if (player.keys.a) {
+      player.dodgeDirection = -1;
+    } else if (player.keys.d) {
+      player.dodgeDirection = 1;
+    } else {
+      player.dodgeDirection = player.facing === -1 ? 1 : -1;
+    }
+
+    // Dodge lifecycle (landing, recovery, cooldown) is handled entirely by the tick
+    // loop in index.js. Pending charge attacks are executed when recovery ends.
+  } else if (
+    (player.shiftJustPressed || player.keys.shift) && // Buffer on press OR hold (catches spammers who end on held key)
+    (player.isAttacking ||
+      player.isThrowing ||
+      player.isBeingThrown ||
+      player.isGrabbing ||
+      player.isBeingGrabbed) && // Allow buffering while being grabbed/thrown so spamming shift comes out frame 1 when freed
+    !player.isDodging &&
+    !player.isSidestepping &&
+    !player.isThrowingSnowball &&
+    !player.isRawParrying &&
+    !isInChargedAttackExecution() &&
+    !player.isGassed
+  ) {
+    if (player.keys.s) {
+      player.bufferedAction = { type: "sidestep" };
+    } else {
+      const dodgeDirection = player.keys.a
+        ? -1
+        : player.keys.d
+        ? 1
+        : player.facing === -1
+        ? 1
+        : -1;
+      player.bufferedAction = {
+        type: "dash",
+        direction: dodgeDirection,
+      };
+    }
+    player.bufferExpiryTime = simNowForPlayer(player) + 500;
+  }
+  // Buffer dash during recovery/cooldown so spamming fires on frame 1 when allowed
+  else if (
+    player.shiftJustPressed &&
+    !player.keys.mouse2 &&
+    !player.isGassed &&
+    !player.isDodging &&
+    (player.isDodgeRecovery || (player.dodgeCooldownUntil && simNowForPlayer(player) < player.dodgeCooldownUntil))
+  ) {
+    player.inputBuffer = { type: "dodge", timestamp: simNowForPlayer(player) };
+  }
+  // Emit "No Stamina" feedback when player tries to dodge but doesn't have enough stamina
+  else if (
+    player.shiftJustPressed &&
+    !player.keys.mouse2 &&
+    !(player.keys.w && player.isGrabbing && !player.isBeingGrabbed) &&
+    canPlayerDash(player) &&
+    player.isGassed &&
+    (!player.lastStaminaBlockedTime || simNowForPlayer(player) - player.lastStaminaBlockedTime > 500)
+  ) {
+    player.lastStaminaBlockedTime = simNowForPlayer(player);
+    io.to(player.id).emit("stamina_blocked", { playerId: player.id, action: "dash" });
+  }
+
+  // ── ROPE JUMP: W + forward key near map boundary ──
+  // Escape over the opponent when cornered. Forward = away from nearest boundary.
+  {
+    const nearLeftBound = player.x - MAP_LEFT_BOUNDARY < ROPE_JUMP_BOUNDARY_ZONE;
+    const nearRightBound = MAP_RIGHT_BOUNDARY - player.x < ROPE_JUMP_BOUNDARY_ZONE;
+    const forwardHeld = (nearLeftBound && player.keys.d) || (nearRightBound && player.keys.a);
+    const wantsRopeJump = player.keys.w && forwardHeld && (nearLeftBound || nearRightBound);
+
+    if (
+      wantsRopeJump &&
+      !player.isRopeJumping &&
+      canPlayerDash(player) &&
+      !player.isGassed &&
+      !isInChargedAttackExecution() &&
+      !player.isBeingGrabbed &&
+      room.gameStart &&
+      !room.gameOver
+    ) {
+      clearChargeState(player, true);
+
+      player.movementVelocity = 0;
+      player.isStrafing = false;
+      player.isPowerSliding = false;
+      player.isBraking = false;
+
+      const jumpDir = nearLeftBound ? 1 : -1;
+      const mapMidpoint = (MAP_LEFT_BOUNDARY + MAP_RIGHT_BOUNDARY) / 2;
+      const targetX = player.x + (mapMidpoint - player.x) * 0.52;
+
+      player.facing = nearLeftBound ? -1 : 1;
+      player.isRopeJumping = true;
+      player.ropeJumpPhase = "startup";
+      player.ropeJumpStartTime = simNowForPlayer(player);
+      player.ropeJumpStartX = player.x;
+      player.ropeJumpTargetX = Math.max(MAP_LEFT_BOUNDARY, Math.min(targetX, MAP_RIGHT_BOUNDARY));
+      player.ropeJumpDirection = jumpDir;
+      player.ropeJumpActiveStartTime = 0;
+      player.ropeJumpLandingTime = 0;
+      player.ropeJumpBufferedAttackRelease = 0;
+      player.currentAction = "ropeJump";
+      player.actionLockUntil = simNowForPlayer(player) + ROPE_JUMP_STARTUP_MS;
+      player.stamina = Math.max(0, player.stamina - ROPE_JUMP_STAMINA_COST);
+    }
+    // "Not enough stamina" feedback when gassed
+    else if (
+      wantsRopeJump &&
+      !player.isRopeJumping &&
+      canPlayerDash(player) &&
+      player.isGassed &&
+      (!player.lastStaminaBlockedTime || simNowForPlayer(player) - player.lastStaminaBlockedTime > 500)
+    ) {
+      player.lastStaminaBlockedTime = simNowForPlayer(player);
+      io.to(player.id).emit("stamina_blocked", { playerId: player.id, action: "ropeJump" });
+    }
+  }
+
+  // S+FORWARD+MOUSE1 CHARGED ATTACK: Continuous check for lenient input detection.
+  // Catches the case where mouse1 is already held and player adds S+forward after.
+  if (
+    player.keys.mouse1 &&
+    player.keys.s &&
+    !player.isChargingAttack &&
+    !player.isAttacking &&
+    !shouldBlockAction()
+  ) {
+    const forwardKey = player.facing === -1 ? 'd' : 'a';
+    if (player.keys[forwardKey] && canPlayerSlap(player, { ignoreCooldown: true })) {
+      player.chargeAttackPower = 0;
+      player.chargeStartTime = 0;
+      startCharging(player);
+      player.chargingFacingDirection = player.facing;
+      player.movementVelocity = 0;
+      player.isStrafing = false;
+      player.isPowerSliding = false;
+      player.isBraking = false;
+      player.isRawParrySuccess = false;
+      player.isPerfectRawParrySuccess = false;
+      player.isCrouchStance = false;
+      player.isCrouchStrafing = false;
+    }
+  }
+
+  // Clear any lingering charge state when not attacking
+  if (player.isChargingAttack && !player.keys.mouse1 && !player.isAttacking) {
+    player.isChargingAttack = false;
+    player.chargeStartTime = 0;
+    player.chargeAttackPower = 0;
+    player.chargingFacingDirection = null;
+    player.attackType = null;
+    player.mouse1HeldDuringAttack = false;
+  }
+  // Safety: clear stale preserved charge when mouse1 is not held
+  if (!player.keys.mouse1 && !player.isChargingAttack && player.chargeAttackPower > 0 && !player.isAttacking) {
+    player.chargeAttackPower = 0;
+  }
+
+  // === GRIP-UP: Opponent presses Mouse2 while being grabbed without grip → gets grip ===
+  // isBeingGrabbed stays true (keeps position-lock and action blocking intact).
+  // hasGrip is used CLIENT-SIDE to switch from being-grabbed to belt-grip animation.
+  // The Mouse2 press that acquires grip is consumed — throw can't ride the same press.
+  if (
+    player.mouse2JustPressed &&
+    player.isBeingGrabbed &&
+    !player.hasGrip &&
+    player.inClinch
+  ) {
+    player.hasGrip = true;
+    player.clinchAction = "neutral";
+    player.gripAcquiredTime = simNowForPlayer(player);
+  }
+
+  // === CLINCH JOLT: Mouse1 while in clinch with grip ===
+  if (
+    player.mouse1JustPressed && player.hasGrip && player.inClinch &&
+    !player.isClinchJolting && !player.clinchJoltRecovery && !player.clinchJoltCooldown &&
+    !player.clinchThrowActive && !player.isClinchClashing &&
+    !player.isResistingThrow && !player.isResistingPull && !player.isBeingLifted &&
+    !player.isClinchJoltClashing && !player.clinchJoltRequest
+  ) {
+    player.clinchJoltRequest = true;
+    player.clinchJoltRequestTime = simNowForPlayer(player);
+  }
+
+  // === CLINCH BREAK: Spacebar while in mutual clinch (both must have grip) ===
+  // Defensive escape from the clinch — costs heavy stamina, halves balance,
+  // soft-gated (under-budget breakers self-gas). Phase A grabs (one-sided grip)
+  // can't be broken — opponent must have gripped up first.
+  if (
+    player.spaceJustPressed && player.hasGrip && player.inClinch &&
+    !player.isGassed &&
+    !player.clinchThrowActive && !player.isClinchClashing &&
+    !player.isClinchJolting && !player.isClinchJoltClashing && !player.clinchJoltRecovery &&
+    !player.isResistingThrow && !player.isResistingPull && !player.isBeingLifted &&
+    !player.clinchBreakRequest && !player.isGrabBreaking && !player.isGrabBreakCountered &&
+    !player.isGrabBreakSeparating
+  ) {
+    const otherPlayer = room.players.find((p) => p.id !== player.id);
+    if (otherPlayer && otherPlayer.hasGrip) {
+      player.clinchBreakRequest = true;
+      player.clinchBreakRequestTime = simNowForPlayer(player);
+    }
+  }
+
+  // === CLINCH THROW/PULL/LIFT: Mouse2 + direction while in clinch with grip ===
+  // Detects three patterns:
+  //   1) Mouse2 just pressed + direction already held
+  //   2) Mouse2 already held + direction just pressed (most common — player holds mouse2 during clinch)
+  //   3) Mouse2 just pressed, direction arrives within 200ms buffer
+  // Grip must have been acquired on a previous tick — can't throw on the same press that got you the grip.
+  const gripTooRecent = player.gripAcquiredTime && (simNowForPlayer(player) - player.gripAcquiredTime < 50);
+  if (
+    player.keys.mouse2 && player.hasGrip && player.inClinch &&
+    !gripTooRecent &&
+    !player.clinchThrowActive && !player.clinchThrowCooldown && !player.isClinchClashing &&
+    !player.clinchThrowRequest &&
+    !player.isResistingThrow && !player.isResistingPull && !player.isBeingLifted
+  ) {
+    const otherPlayer = room.players.find((p) => p.id !== player.id);
+    if (otherPlayer) {
+      const towardKey = player.x < otherPlayer.x ? 'd' : 'a';
+      const awayKey = player.x < otherPlayer.x ? 'a' : 'd';
+
+      const m2Edge = player.mouse2JustPressed ||
+        (player.clinchMouse2BufferTime && simNowForPlayer(player) - player.clinchMouse2BufferTime < 200);
+      const wEdge = player.wJustPressed;
+      const awayJustPressed = awayKey === 'a' ? player.aJustPressed : player.dJustPressed;
+      const towardJustPressed = towardKey === 'a' ? player.aJustPressed : player.dJustPressed;
+
+      if (player.mouse2JustPressed) {
+        player.clinchMouse2BufferTime = simNowForPlayer(player);
+      }
+
+      let request = null;
+      // Pattern 1 & 3: Mouse2 edge + direction held
+      if (m2Edge && player.keys.w) request = "throw";
+      else if (m2Edge && player.keys[awayKey]) request = "pull";
+      else if (m2Edge && player.keys[towardKey]) request = "lift";
+      // Pattern 2: Mouse2 held + direction just pressed
+      else if (wEdge) request = "throw";
+      else if (awayJustPressed) request = "pull";
+      else if (towardJustPressed) request = "lift";
+
+      if (request) {
+        player.clinchThrowRequest = request;
+        player.clinchThrowRequestTime = simNowForPlayer(player);
+        player.clinchMouse2BufferTime = 0;
+      }
+    }
+  }
+
+  // NOTE: The legacy W-throw and pull-reversal grab paths were removed.
+  // Every successful grab now enters the clinch (inClinch = true is set at
+  // grab connect), so any branch gated on `isGrabbing && !inClinch` was
+  // unreachable. Clinch throws/pulls/lifts live in grabActionSystem.js.
+
+  // Handle grab attacks — instant grab with no forward movement
+  // Use mouse2JustPressed to prevent grab from triggering when key is held through other actions
+  if (
+    player.mouse2JustPressed &&
+    !shouldBlockAction() &&
+    canPlayerUseAction(player) &&
+    !player.grabCooldown &&
+    !player.isPushing &&
+    !player.isBeingPushed &&
+    !player.grabbedOpponent &&
+    !player.isRawParrying &&
+    !player.isJumping &&
+    !player.isGrabbingMovement &&
+    !player.isWhiffingGrab &&
+    !player.isGrabWhiffRecovery &&
+    !player.isGrabTeching &&
+    !player.isGrabStartup
+  ) {
+    player.lastGrabAttemptTime = simNowForPlayer(player);
+
+    // Clear parry success state when starting a grab
+    player.isRawParrySuccess = false;
+    player.isPerfectRawParrySuccess = false;
+
+    // Clear charging attack state when starting grab
+    clearChargeState(player, true); // true = cancelled by grab
+
+    // Reset hit absorption for thick blubber power-up when starting grab (like charged attack)
+    if (player.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER) {
+      player.hitAbsorptionUsed = false;
+    }
+
+    // Begin startup with forward lunge — tick loop applies lunge movement,
+    // then does range check at the end → connect / whiff / tech
+    player.isGrabStartup = true;
+    player.grabStartupStartTime = simNowForPlayer(player);
+    player.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
+    player.grabStartupArmorUsed = false; // Fresh slap-armor charge per grab attempt
+    player.currentAction = "grab_startup";
+    player.actionLockUntil = simNowForPlayer(player) + GRAB_STARTUP_DURATION_MS;
+    player.grabState = GRAB_STATES.ATTEMPTING;
+    player.grabAttemptType = "grab";
+
+    // Capture approach speed BEFORE clearing momentum (for momentum-transferred push)
+    player.grabApproachSpeed = Math.abs(player.movementVelocity);
+
+    // Clear any existing movement momentum
+    player.movementVelocity = 0;
+    player.isStrafing = false;
+    // Cancel power slide when grabbing
+    player.isPowerSliding = false;
+
+    // No movement timeout needed — startup tick block handles connect/whiff/tech instantly
+  }
 }
 
 function registerSocketHandlers(socket, io, rooms, context) {
@@ -312,479 +1291,15 @@ function registerSocketHandlers(socket, io, rooms, context) {
     }
 
     if (rooms[roomIndex].players.length < 1) {
-      rooms[roomIndex].players.push({
-        id: data.socketId,
-        fighter: "player 1",
-        color: "aqua",
-        mawashiColor: "#4169E1",
-        bodyColor: null,
-        isJumping: false,
-        isAttacking: false,
-        throwCooldown: false,
-        grabCooldown: false,
-        isChargingAttack: false,
-        chargeStartTime: 0,
-        chargeMaxDuration: 2000,
-        chargeAttackPower: 0,
-        chargingFacingDirection: null,
-        slapFacingDirection: null,
-        isSlapAttack: false,
-        slapAnimation: 2,
-        isThrowing: false,
-        isThrowingSalt: false,
-        saltCooldown: false,
-        snowballCooldown: false,
-        lastSnowballTime: 0,
-        snowballs: [],
-        isThrowingSnowball: false,
-        pumoArmyCooldown: false,
-        pumoArmy: [],
-        isSpawningPumoArmy: false,
-        throwStartTime: 0,
-        throwEndTime: 0,
-        throwOpponent: null,
-        throwingFacingDirection: null,
-        beingThrownFacingDirection: null,
-        isGrabbing: false,
-        isGrabWalking: false,
-        isGrabbingMovement: false,
-        isGrabStartup: false,
-        isWhiffingGrab: false,
-        isGrabWhiffRecovery: false,
-        isGrabTeching: false,
-        grabTechRole: null,
-        grabTechResidualVel: 0,
-        grabMovementStartTime: 0,
-        grabMovementDirection: 0,
-        grabMovementVelocity: 0,
-        grabStartupStartTime: 0,
-        grabStartupDuration: 0,
-        grabStartupArmorUsed: false,
-        grabStartTime: 0,
-        grabbedOpponent: null,
-        // New grab action system states
-        isGrabPushing: false,
-        isBeingGrabPushed: false,
-        isAttemptingPull: false,
-        isBeingPullReversaled: false,
-        pullReversalPullerId: null,
-        isGrabSeparating: false,
-        isGrabBellyFlopping: false,
-        isBeingGrabBellyFlopped: false,
-        isGrabFrontalForceOut: false,
-        isBeingGrabFrontalForceOut: false,
-        grabActionStartTime: 0,
-        grabActionType: null,
-        lastGrabPushStaminaDrainTime: 0,
-        isAtBoundaryDuringGrab: false,
-        grabDurationPaused: false,
-        grabDurationPausedAt: 0,
-        grabPushEndTime: 0,
-        grabPushStartTime: 0,
-        grabApproachSpeed: 0,
-        grabDecisionMade: false,
-        isThrowTeching: false,
-        throwTechCooldown: false,
-        isSlapParrying: false,
-        slapParryKnockbackVelocity: 0,
-        isSlapParryRecovering: false,
-        lastThrowAttemptTime: 0,
-        lastGrabAttemptTime: 0,
-        isStrafing: false,
-        isBraking: false,
-        isPowerSliding: false,
-        strafeStartTime: 0,
-        isCrouchStance: false,
-        isCrouchStrafing: false,
-        isRawParrying: false,
-        rawParryStartTime: 0,
-        rawParryMinDurationMet: false,
-        rawParryCooldownUntil: 0,
-        isRawParryStun: false,
-        perfectParryStunStartTime: 0,
-        perfectParryStunBaseTimeout: null,
-        isRawParrySuccess: false,
-        isPerfectRawParrySuccess: false,
-        isAtTheRopes: false,
-        atTheRopesStartTime: 0,
-        atTheRopesFacingDirection: null,
-        isRopeJumping: false,
-        ropeJumpPhase: null,
-        ropeJumpStartTime: 0,
-        ropeJumpStartX: 0,
-        ropeJumpTargetX: 0,
-        ropeJumpDirection: 0,
-        ropeJumpActiveStartTime: 0,
-        ropeJumpLandingTime: 0,
-        ropeJumpBufferedAttackRelease: 0,
-        isHitFalling: false,
-        hitFallStartTime: 0,
-        hitFallStartY: 0,
-        isSidestepHitReturn: false,
-        sidestepHitReturnStartTime: 0,
-        sidestepHitReturnStartY: 0,
-        sidestepHitReturnDuration: 0,
-        dodgeDirection: false,
-        dodgeEndTime: 0,
-        isDodgeStartup: false,
-        isDodgeRecovery: false,
-        dodgeStartupEndTime: 0,
-        dodgeRecoveryEndTime: 0,
-        isSidestepping: false,
-        isSidestepStartup: false,
-        isSidestepRecovery: false,
-        sidestepStartTime: 0,
-        sidestepStartupEndTime: 0,
-        sidestepActiveEndTime: 0,
-        sidestepEndTime: 0,
-        sidestepStartX: 0,
-        sidestepDirection: 0,
-        sidestepTargetX: 0,
-        sidestepRecoveryStartX: 0,
-        sidestepRecoveryTargetX: 0,
-        slapActiveEndTime: 0,
-        chargedActiveEndTime: 0,
-        isReady: false,
-        isHit: false,
-        isAlreadyHit: false,
-        isDead: false,
-        isBowing: false,
-        facing: 1,
-        stamina: 100,
-        balance: 100,
-        hasGrip: false,
-        gripAcquiredTime: 0,
-        inClinch: false,
-        clinchAction: null,
-        isClinchPushing: false,
-        isClinchPlanting: false,
-        isClinchLifting: false,
-        isResistingThrow: false,
-        isResistingPull: false,
-        isGassed: false,
-        gassedUntil: 0,
-        x: 220,
-        y: GROUND_LEVEL,
-        knockbackVelocity: { x: 0, y: 0 },
-        // Visual clarity timing states
-        isInStartupFrames: false,
-        startupEndTime: 0,
-        isInEndlag: false,
-        endlagEndTime: 0,
-        attackCooldownUntil: 0,
-        keys: {
-          w: false,
-          a: false,
-          s: false,
-          d: false,
-          " ": false,
-          shift: false,
-          e: false,
-          f: false,
-          c: false,
-          mouse1: false,
-          mouse2: false,
-        },
-        wins: [],
-        bufferedAction: null, // Add buffer for pending actions
-        bufferExpiryTime: 0, // Add expiry time for buffered actions
-        wantsToRestartCharge: false, // Add flag for charge restart detection
-        mouse1HeldDuringAttack: false, // Add flag for simpler charge restart detection
-        mouse1BufferedBeforeStart: false, // Buffer for mouse1 held before round start
-        mouse1PressTime: 0, // Track when mouse1 was pressed for slap-vs-charge threshold
-        knockbackImmune: false, // Add knockback immunity flag
-        knockbackImmuneEndTime: 0, // Add knockback immunity timer
-        clinchBreakRequest: false,
-        clinchBreakRequestTime: 0,
-        grabImmune: false, // Re-grab immunity after clinch break
-        grabImmuneEndTime: 0,
-        // Add missing power-up initialization
-        activePowerUp: null,
-        powerUpMultiplier: 1,
-        selectedPowerUp: null,
-        sizeMultiplier: DEFAULT_PLAYER_SIZE_MULTIPLIER,
-        hitAbsorptionUsed: false, // Add thick blubber hit absorption tracking
-        hitCounter: 0, // Add counter for reliable hit sound triggering
-        lastHitTime: 0, // Add timing tracking for dynamic hit duration
-        lastSlapHitLandedTime: 0, // Track when attacker last landed a slap (for chain lunge)
-        lastCheckedAttackTime: 0, // Add tracking for attack collision checking
-        pendingSlapCount: 0,
-        pendingGrabEnder: false,
-        slapStringPosition: 0,
-        slapStringWindowUntil: 0,
-        slapWhiffCount: 0,
-        isSlapWhiffPausing: false,
-        slapAnimationToggle: 0,
-        currentSlapHitConnected: false,
-        isBurstKnockback: false,
-        burstKnockbackStartTime: 0,
-        mouse1JustPressed: false,
-        mouse1JustReleased: false,
-        mouse2JustPressed: false,
-        mouse2JustReleased: false,
-        shiftJustPressed: false,
-        eJustPressed: false,
-        wJustPressed: false, // Track if W was just pressed this frame
-        fJustPressed: false, // Track if F was just pressed this frame
-        spaceJustPressed: false, // Track if spacebar was just pressed this frame
-        inputBuffer: null,
-        attackIntentTime: 0, // When mouse1 was pressed (for counter hit detection)
-        attackAttemptTime: 0, // When attack execution started (for counter hit detection)
-        isOverlapping: false, // Track overlap state for smoother separation
-        overlapStartTime: null, // Track when overlap began for progressive separation
-        chargeCancelled: false, // Track if charge was cancelled (vs executed)
-        isGrabBreaking: false,
-        isGrabBreakCountered: false,
-        grabBreakSpaceConsumed: false,
-        postGrabInputBuffer: false, // Buffer flag for frame-1 input activation after grab/throw ends
-        isCounterGrabbed: false, // Set when grabbed while raw parrying - cannot grab break
-    grabCounterAttempted: false, // True once the grabbed player has committed to a counter input
-    grabCounterInput: null, // The key they committed to ('s', 'a', or 'd') — wrong guess = locked out
-        // Ring-out throw cutscene flags
-        isRingOutThrowCutscene: false,
-        ringOutThrowDistance: 0,
-        isRingOutFreezeActive: false,
-        ringOutFreezeEndTime: 0,
-        ringOutThrowDirection: null,
-        inputLockUntil: 0,
-      });
+      rooms[roomIndex].players.push(
+        createInitialPlayerState({ id: data.socketId, ...PLAYER_1_SPAWN })
+      );
       // PERFORMANCE: Register player 1 in lookup maps
       registerPlayerInMaps(rooms[roomIndex].players[0], rooms[roomIndex]);
     } else if (rooms[roomIndex].players.length === 1) {
-      rooms[roomIndex].players.push({
-        id: data.socketId,
-        fighter: "player 2",
-        color: "salmon",
-        mawashiColor: "#D94848",
-        bodyColor: null,
-        isJumping: false,
-        isAttacking: false,
-        throwCooldown: false,
-        grabCooldown: false,
-        isChargingAttack: false,
-        chargeStartTime: 0,
-        chargeMaxDuration: 2000,
-        chargeAttackPower: 0,
-        chargingFacingDirection: null,
-        slapFacingDirection: null,
-        isSlapAttack: false,
-        slapAnimation: 2,
-        isThrowing: false,
-        isThrowingSalt: false,
-        saltCooldown: false,
-        snowballCooldown: false,
-        lastSnowballTime: 0,
-        snowballs: [],
-        isThrowingSnowball: false,
-        pumoArmyCooldown: false,
-        pumoArmy: [],
-        isSpawningPumoArmy: false,
-        throwStartTime: 0,
-        throwEndTime: 0,
-        throwOpponent: null,
-        throwingFacingDirection: null,
-        beingThrownFacingDirection: null,
-        isGrabbing: false,
-        isGrabWalking: false,
-        isGrabbingMovement: false,
-        isGrabStartup: false,
-        isWhiffingGrab: false,
-        isGrabWhiffRecovery: false,
-        isGrabTeching: false,
-        grabTechRole: null,
-        grabTechResidualVel: 0,
-        grabMovementStartTime: 0,
-        grabMovementDirection: 0,
-        grabMovementVelocity: 0,
-        grabStartupStartTime: 0,
-        grabStartupDuration: 0,
-        grabStartupArmorUsed: false,
-        grabStartTime: 0,
-        grabbedOpponent: null,
-        // New grab action system states
-        isGrabPushing: false,
-        isBeingGrabPushed: false,
-        isEdgePushing: false,
-        isBeingEdgePushed: false,
-        isAttemptingPull: false,
-        isBeingPullReversaled: false,
-        pullReversalPullerId: null,
-        isGrabSeparating: false,
-        isGrabBellyFlopping: false,
-        isBeingGrabBellyFlopped: false,
-        isGrabFrontalForceOut: false,
-        isBeingGrabFrontalForceOut: false,
-        grabActionStartTime: 0,
-        grabActionType: null,
-        lastGrabPushStaminaDrainTime: 0,
-        isAtBoundaryDuringGrab: false,
-        grabDurationPaused: false,
-        grabDurationPausedAt: 0,
-        grabPushEndTime: 0,
-        grabPushStartTime: 0,
-        grabApproachSpeed: 0,
-        grabDecisionMade: false,
-        isThrowTeching: false,
-        throwTechCooldown: false,
-        isSlapParrying: false,
-        slapParryKnockbackVelocity: 0,
-        isSlapParryRecovering: false,
-        lastThrowAttemptTime: 0,
-        lastGrabAttemptTime: 0,
-        isStrafing: false,
-        isBraking: false,
-        isPowerSliding: false,
-        strafeStartTime: 0,
-        isCrouchStance: false,
-        isCrouchStrafing: false,
-        isRawParrying: false,
-        rawParryStartTime: 0,
-        rawParryMinDurationMet: false,
-        rawParryCooldownUntil: 0,
-        isRawParryStun: false,
-        perfectParryStunStartTime: 0,
-        perfectParryStunBaseTimeout: null,
-        isRawParrySuccess: false,
-        isPerfectRawParrySuccess: false,
-        isAtTheRopes: false,
-        atTheRopesStartTime: 0,
-        atTheRopesFacingDirection: null,
-        isRopeJumping: false,
-        ropeJumpPhase: null,
-        ropeJumpStartTime: 0,
-        ropeJumpStartX: 0,
-        ropeJumpTargetX: 0,
-        ropeJumpDirection: 0,
-        ropeJumpActiveStartTime: 0,
-        ropeJumpLandingTime: 0,
-        ropeJumpBufferedAttackRelease: 0,
-        dodgeDirection: null,
-        dodgeEndTime: 0,
-        isDodgeStartup: false,
-        isDodgeRecovery: false,
-        dodgeStartupEndTime: 0,
-        dodgeRecoveryEndTime: 0,
-        isSidestepping: false,
-        isSidestepStartup: false,
-        isSidestepRecovery: false,
-        sidestepStartTime: 0,
-        sidestepStartupEndTime: 0,
-        sidestepActiveEndTime: 0,
-        sidestepEndTime: 0,
-        sidestepStartX: 0,
-        sidestepDirection: 0,
-        sidestepTargetX: 0,
-        sidestepRecoveryStartX: 0,
-        sidestepRecoveryTargetX: 0,
-        slapActiveEndTime: 0,
-        chargedActiveEndTime: 0,
-        isReady: false,
-        isHit: false,
-        isAlreadyHit: false,
-        isParryKnockback: false,
-        isDead: false,
-        isBowing: false,
-        facing: -1,
-        stamina: 100,
-        balance: 100,
-        hasGrip: false,
-        gripAcquiredTime: 0,
-        inClinch: false,
-        clinchAction: null,
-        isClinchPushing: false,
-        isClinchPlanting: false,
-        isClinchLifting: false,
-        isResistingThrow: false,
-        isResistingPull: false,
-        isGassed: false,
-        gassedUntil: 0,
-        x: 845,
-        y: GROUND_LEVEL,
-        knockbackVelocity: { x: 0, y: 0 },
-        // Visual clarity timing states
-        isInStartupFrames: false,
-        startupEndTime: 0,
-        isInEndlag: false,
-        endlagEndTime: 0,
-        attackCooldownUntil: 0,
-        keys: {
-          w: false,
-          a: false,
-          s: false,
-          d: false,
-          " ": false,
-          shift: false,
-          e: false,
-          f: false,
-          c: false,
-          mouse1: false,
-          mouse2: false,
-        },
-        wins: [],
-        bufferedAction: null, // Add buffer for pending actions
-        bufferExpiryTime: 0, // Add expiry time for buffered actions
-        wantsToRestartCharge: false, // Add flag for charge restart detection
-        mouse1HeldDuringAttack: false, // Add flag for simpler charge restart detection
-        mouse1BufferedBeforeStart: false, // Buffer for mouse1 held before round start
-        mouse1PressTime: 0, // Track when mouse1 was pressed for slap-vs-charge threshold
-        knockbackImmune: false, // Add knockback immunity flag
-        knockbackImmuneEndTime: 0, // Add knockback immunity timer
-        clinchBreakRequest: false,
-        clinchBreakRequestTime: 0,
-        grabImmune: false, // Re-grab immunity after clinch break
-        grabImmuneEndTime: 0,
-        // Add missing power-up initialization
-        activePowerUp: null,
-        powerUpMultiplier: 1,
-        selectedPowerUp: null,
-        sizeMultiplier: DEFAULT_PLAYER_SIZE_MULTIPLIER,
-        hitAbsorptionUsed: false, // Add thick blubber hit absorption tracking
-        hitCounter: 0, // Add counter for reliable hit sound triggering
-        lastHitTime: 0, // Add timing tracking for dynamic hit duration
-        lastSlapHitLandedTime: 0, // Track when attacker last landed a slap (for chain lunge)
-        lastCheckedAttackTime: 0, // Add tracking for attack collision checking
-        pendingSlapCount: 0,
-        pendingGrabEnder: false,
-        slapStringPosition: 0,
-        slapStringWindowUntil: 0,
-        slapWhiffCount: 0,
-        isSlapWhiffPausing: false,
-        slapAnimationToggle: 0,
-        currentSlapHitConnected: false,
-        isBurstKnockback: false,
-        burstKnockbackStartTime: 0,
-        mouse1JustPressed: false,
-        mouse1JustReleased: false,
-        mouse2JustPressed: false,
-        mouse2JustReleased: false,
-        shiftJustPressed: false,
-        eJustPressed: false,
-        wJustPressed: false, // Track if W was just pressed this frame
-        fJustPressed: false, // Track if F was just pressed this frame
-        spaceJustPressed: false, // Track if spacebar was just pressed this frame
-        inputBuffer: null,
-        attackIntentTime: 0, // When mouse1 was pressed (for counter hit detection)
-        attackAttemptTime: 0, // When attack execution started (for counter hit detection)
-        isOverlapping: false, // Track overlap state for smoother separation
-        overlapStartTime: null, // Track when overlap began for progressive separation
-        chargeCancelled: false, // Track if charge was cancelled (vs executed)
-        isGrabBreaking: false,
-        isGrabBreakCountered: false,
-        grabBreakSpaceConsumed: false,
-        postGrabInputBuffer: false, // Buffer flag for frame-1 input activation after grab/throw ends
-        isCounterGrabbed: false, // Set when grabbed while raw parrying - cannot grab break
-    grabCounterAttempted: false, // True once the grabbed player has committed to a counter input
-    grabCounterInput: null, // The key they committed to ('s', 'a', or 'd') — wrong guess = locked out
-        // Ring-out throw cutscene flags
-        isRingOutThrowCutscene: false,
-        ringOutThrowDistance: 0,
-        isRingOutFreezeActive: false,
-        ringOutFreezeEndTime: 0,
-        ringOutThrowDirection: null,
-        inputLockUntil: 0,
-        // Dohyo fall physics
-        isFallingOffDohyo: false,
-      });
+      rooms[roomIndex].players.push(
+        createInitialPlayerState({ id: data.socketId, ...PLAYER_2_SPAWN })
+      );
       // PERFORMANCE: Register player 2 in lookup maps
       registerPlayerInMaps(rooms[roomIndex].players[1], rooms[roomIndex]);
     }
@@ -849,214 +1364,9 @@ function registerSocketHandlers(socket, io, rooms, context) {
     socket.join(room.id);
     socket.roomId = room.id;
 
-    room.players.push({
-      id: data.socketId,
-      fighter: "player 1",
-      color: "aqua",
-      mawashiColor: "#4169E1",
-      bodyColor: null,
-      isJumping: false,
-      isAttacking: false,
-      throwCooldown: false,
-      grabCooldown: false,
-      isChargingAttack: false,
-      chargeStartTime: 0,
-      chargeMaxDuration: 2000,
-      chargeAttackPower: 0,
-      chargingFacingDirection: null,
-      slapFacingDirection: null,
-      isSlapAttack: false,
-      slapAnimation: 2,
-      isThrowing: false,
-      isThrowingSalt: false,
-      saltCooldown: false,
-      snowballCooldown: false,
-      lastSnowballTime: 0,
-      snowballs: [],
-      isThrowingSnowball: false,
-      pumoArmyCooldown: false,
-      pumoArmy: [],
-      isSpawningPumoArmy: false,
-      throwStartTime: 0,
-      throwEndTime: 0,
-      throwOpponent: null,
-      throwingFacingDirection: null,
-      beingThrownFacingDirection: null,
-      isGrabbing: false,
-      isGrabWalking: false,
-      isGrabbingMovement: false,
-      isGrabStartup: false,
-      isWhiffingGrab: false,
-      isGrabWhiffRecovery: false,
-      isGrabTeching: false,
-      grabTechRole: null,
-      grabTechResidualVel: 0,
-      grabMovementStartTime: 0,
-      grabMovementDirection: 0,
-      grabMovementVelocity: 0,
-      grabStartupStartTime: 0,
-      grabStartupDuration: 0,
-      grabStartupArmorUsed: false,
-      grabStartTime: 0,
-      grabbedOpponent: null,
-      // New grab action system states
-      isGrabPushing: false,
-      isBeingGrabPushed: false,
-      isEdgePushing: false,
-      isBeingEdgePushed: false,
-      isAttemptingPull: false,
-      isBeingPullReversaled: false,
-      pullReversalPullerId: null,
-      isGrabSeparating: false,
-      isGrabBellyFlopping: false,
-      isBeingGrabBellyFlopped: false,
-      isGrabFrontalForceOut: false,
-      isBeingGrabFrontalForceOut: false,
-      grabActionStartTime: 0,
-      grabActionType: null,
-      lastGrabPushStaminaDrainTime: 0,
-      isAtBoundaryDuringGrab: false,
-      grabDurationPaused: false,
-      grabDurationPausedAt: 0,
-      grabPushEndTime: 0,
-      grabPushStartTime: 0,
-      grabApproachSpeed: 0,
-      grabDecisionMade: false,
-      isThrowTeching: false,
-      throwTechCooldown: false,
-      isSlapParrying: false,
-      lastThrowAttemptTime: 0,
-      lastGrabAttemptTime: 0,
-      isStrafing: false,
-      isBraking: false,
-      isPowerSliding: false,
-      isCrouchStance: false,
-      isCrouchStrafing: false,
-      isRawParrying: false,
-      rawParryStartTime: 0,
-      rawParryMinDurationMet: false,
-      rawParryCooldownUntil: 0,
-      isRawParryStun: false,
-      perfectParryStunStartTime: 0,
-      perfectParryStunBaseTimeout: null,
-      isRawParrySuccess: false,
-      isPerfectRawParrySuccess: false,
-      isAtTheRopes: false,
-      atTheRopesStartTime: 0,
-      atTheRopesFacingDirection: null,
-      dodgeDirection: false,
-      dodgeEndTime: 0,
-      isDodgeStartup: false,
-      isDodgeRecovery: false,
-      dodgeStartupEndTime: 0,
-      dodgeRecoveryEndTime: 0,
-      slapActiveEndTime: 0,
-      chargedActiveEndTime: 0,
-      isReady: false,
-      isHit: false,
-      isAlreadyHit: false,
-      isParryKnockback: false,
-      isDead: false,
-      isBowing: false,
-      facing: 1,
-      stamina: 100,
-      balance: 100,
-      hasGrip: false,
-      gripAcquiredTime: 0,
-      inClinch: false,
-      clinchAction: null,
-      isClinchPushing: false,
-      isClinchPlanting: false,
-      isClinchLifting: false,
-      isResistingThrow: false,
-      isResistingPull: false,
-      isGassed: false,
-      gassedUntil: 0,
-      x: 220,
-      y: GROUND_LEVEL,
-      knockbackVelocity: { x: 0, y: 0 },
-      movementVelocity: 0,
-      // Visual clarity timing states
-      isInStartupFrames: false,
-      startupEndTime: 0,
-      isInEndlag: false,
-      endlagEndTime: 0,
-      attackCooldownUntil: 0,
-      keys: {
-        w: false,
-        a: false,
-        s: false,
-        d: false,
-        " ": false,
-        shift: false,
-        e: false,
-        f: false,
-        mouse1: false,
-        mouse2: false,
-      },
-      wins: [],
-      bufferedAction: null,
-      bufferExpiryTime: 0,
-      wantsToRestartCharge: false,
-      mouse1HeldDuringAttack: false,
-      mouse1BufferedBeforeStart: false, // Buffer for mouse1 held before round start
-      mouse1PressTime: 0, // Track when mouse1 was pressed for slap-vs-charge threshold
-      knockbackImmune: false,
-      knockbackImmuneEndTime: 0,
-      clinchBreakRequest: false,
-      clinchBreakRequestTime: 0,
-      grabImmune: false,
-      grabImmuneEndTime: 0,
-      activePowerUp: null,
-      powerUpMultiplier: 1,
-      selectedPowerUp: null,
-      sizeMultiplier: DEFAULT_PLAYER_SIZE_MULTIPLIER,
-      hitAbsorptionUsed: false,
-      hitCounter: 0,
-      lastHitTime: 0,
-      lastSlapHitLandedTime: 0,
-      lastCheckedAttackTime: 0,
-      pendingSlapCount: 0,
-      pendingGrabEnder: false,
-      slapStringPosition: 0,
-      slapStringWindowUntil: 0,
-      slapWhiffCount: 0,
-      isSlapWhiffPausing: false,
-      slapAnimationToggle: 0,
-      currentSlapHitConnected: false,
-      isBurstKnockback: false,
-      burstKnockbackStartTime: 0,
-      mouse1JustPressed: false,
-      mouse1JustReleased: false,
-      mouse2JustPressed: false,
-      mouse2JustReleased: false,
-      shiftJustPressed: false,
-      eJustPressed: false,
-      wJustPressed: false,
-      fJustPressed: false,
-      spaceJustPressed: false,
-      inputBuffer: null,
-      attackIntentTime: 0,
-      attackAttemptTime: 0,
-      isOverlapping: false,
-      overlapStartTime: null,
-      chargeCancelled: false,
-      isGrabBreaking: false,
-      isGrabBreakCountered: false,
-      grabBreakSpaceConsumed: false,
-      postGrabInputBuffer: false,
-      isCounterGrabbed: false, // Set when grabbed while raw parrying - cannot grab break
-    grabCounterAttempted: false, // True once the grabbed player has committed to a counter input
-    grabCounterInput: null, // The key they committed to ('s', 'a', or 'd') — wrong guess = locked out
-      isRingOutThrowCutscene: false,
-      ringOutThrowDistance: 0,
-      isRingOutFreezeActive: false,
-      ringOutFreezeEndTime: 0,
-      ringOutThrowDirection: null,
-      inputLockUntil: 0,
-      // Dohyo fall physics
-      isFallingOffDohyo: false,
-    });
+    room.players.push(
+      createInitialPlayerState({ id: data.socketId, ...PLAYER_1_SPAWN })
+    );
 
     // Add CPU player as player 2 with unique ID tied to the room
     const cpuPlayerId = `CPU_${cpuRoomId}`;
@@ -1336,1364 +1646,37 @@ function registerSocketHandlers(socket, io, rooms, context) {
     // for malicious / runaway clients; legitimate play never depletes the bucket.
     if (!takeInputToken(socket.id)) return;
 
-    let roomId = socket.roomId;
-    const roomIndex = rooms.findIndex((room) => room.id === roomId);
-
+    const roomIndex = rooms.findIndex((room) => room.id === socket.roomId);
     if (roomIndex === -1) return; // Room not found
+
+    const room = rooms[roomIndex];
 
     // SECURITY: bind input to the sending socket — never trust client-supplied IDs.
     // Prevents one client from forging actions on behalf of the opponent or a CPU.
-    let playerIndex = rooms[roomIndex].players.findIndex(
-      (player) => player.id === socket.id
-    );
-
-    if (playerIndex === -1) return; // Player not found
+    const player = room.players.find((p) => p.id === socket.id);
+    if (!player) return; // Player not found
     // Reject mismatched IDs silently (stale client state or tampered payload)
     if (data && data.id && data.id !== socket.id) return;
 
     // Per-match input audit log — append after rate limit and ID binding so
     // dropped malicious traffic isn't logged but everything the sim acts on
     // is recorded. No-op if the log isn't open (pre-round, post-match, etc).
-    appendAuditInput(rooms[roomIndex], {
+    appendAuditInput(room, {
       ts: gameNow(),
       socketId: socket.id,
-      roomId: rooms[roomIndex].id,
+      roomId: room.id,
       payload: data,
     });
 
-    let player = rooms[roomIndex].players[playerIndex];
-    let opponent = rooms[roomIndex].players.find((p) => p.id !== player.id);
-
-    if (
-      (rooms[roomIndex].gameOver && !rooms[roomIndex].matchOver) ||
-      rooms[roomIndex].matchOver
-    ) {
-      return; // Skip all other actions if the game is over
+    // ENQUEUE ONLY — execution happens at the start of the next game tick
+    // (processInputPacket above). Bounded: under pathological flooding or a
+    // long freeze, drop the OLDEST packets; the newest key snapshot must
+    // survive so held-key state can't get stuck.
+    if (!player.inputQueue) player.inputQueue = [];
+    if (player.inputQueue.length >= MAX_INPUT_QUEUE_PACKETS) {
+      player.inputQueue.shift();
     }
-
-    // TACHIAI CHARGING: Track mouse1 for pre-round charging before blocking other inputs.
-    // This lets players hold mouse1 during walk-to-ready and ready phases to build charge.
-    // Must run BEFORE the canMoveToReady and pre-round input blocks below.
-    if (!rooms[roomIndex].gameStart && data.keys) {
-      const previousMouse1 = player.keys ? player.keys.mouse1 : false;
-      player.keys = player.keys || {};
-      player.keys.mouse1 = data.keys.mouse1 || false;
-
-      if (!previousMouse1 && data.keys.mouse1) {
-        player.mouse1PressTime = Date.now();
-      }
-      if (previousMouse1 && !data.keys.mouse1) {
-        player.chargeAttackPower = 0;
-        player.mouse1PressTime = 0;
-        if (player.isChargingAttack) {
-          player.isChargingAttack = false;
-          player.chargeStartTime = 0;
-          player.chargingFacingDirection = null;
-          player.attackType = null;
-        }
-      }
-
-      player.mouse1BufferedBeforeStart = data.keys.mouse1 || false;
-    }
-
-    // Block all actions if player is moving to ready position
-    if (player.canMoveToReady) {
-      return;
-    }
-
-    // Block all non-mouse1 inputs during pre-round phase
-    if (!rooms[roomIndex].gameStart || rooms[roomIndex].hakkiyoiCount === 0) {
-      return;
-    }
-
-    // Block all inputs during pumo army spawning animation
-    if (player.isSpawningPumoArmy) {
-      return;
-    }
-
-    // Input lockout window: allow key state refresh but block actions
-    if (player.inputLockUntil && Date.now() < player.inputLockUntil) {
-      if (data.keys) {
-        // Edge detection across the packet window (snapshot diff + replayed
-        // per-event edges). Falls back to pure snapshot diff if events
-        // array is absent — preserves legacy behavior bit-for-bit.
-        const prevKeysSnapshot = player.keys || {};
-        const { rising, falling } = detectEdges(
-          prevKeysSnapshot,
-          data.events,
-          data.keys,
-        );
-
-        // Clear grabBreakSpaceConsumed if spacebar was released during input lock,
-        // so raw parry isn't blocked after the lock expires
-        if (falling[" "] && player.grabBreakSpaceConsumed) {
-          player.grabBreakSpaceConsumed = false;
-        }
-        // Track mouse1 press/release timing during lock so charging can begin
-        // immediately when the lock expires (inputs are READ, not acted on)
-        if (rising.mouse1) {
-          // mouse1 just pressed during lock — record press time
-          player.mouse1PressTime = Date.now();
-        } else if (falling.mouse1) {
-          player.mouse1PressTime = 0;
-        }
-        player.keys = data.keys;
-
-        // During slap attacks, buffer mouse1 for next hits / mouse2 for grab ender
-        if (player.isAttacking && player.attackType === "slap") {
-          if (rising.mouse1) {
-            const maxBuffer = 3 - (player.slapStringPosition || 1);
-            if (player.pendingSlapCount < maxBuffer) {
-              player.pendingSlapCount++;
-            }
-          }
-          if (rising.mouse2 && player.slapStringPosition >= 2) {
-            player.pendingGrabEnder = true;
-            player.pendingSlapCount = 0;
-          }
-        } else {
-          // Non-slap states: use generic inputBuffer
-          if (rising[" "]) {
-            player.inputBuffer = { type: "rawParry", timestamp: Date.now() };
-          } else if (rising.shift && data.keys.s && !data.keys.mouse2) {
-            player.inputBuffer = { type: "sidestep", timestamp: Date.now() };
-          } else if (rising.shift && !data.keys.mouse2) {
-            player.inputBuffer = { type: "dodge", timestamp: Date.now() };
-          } else if (rising.mouse1 && data.keys.s) {
-            const fwdKey = player.facing === -1 ? 'd' : 'a';
-            if (data.keys[fwdKey]) {
-              player.inputBuffer = { type: "chargedAttack", timestamp: Date.now() };
-            } else {
-              player.inputBuffer = { type: "slap", timestamp: Date.now() };
-            }
-          } else if (rising.mouse1) {
-            player.inputBuffer = { type: "slap", timestamp: Date.now() };
-          } else if (rising.mouse2) {
-            player.inputBuffer = { type: "grab", timestamp: Date.now() };
-          }
-        }
-      }
-      return;
-    }
-
-    // Block ALL inputs while grab movement is active
-    if (player.isGrabbingMovement) {
-      // Only allow key state updates for grab movement, but block all other actions
-      if (data.keys) {
-        player.keys = data.keys;
-      }
-      return;
-    }
-
-    // If room is in hitstop, buffer key states but block actions for both players
-    if (isRoomInHitstop(rooms[roomIndex])) {
-      if (data.keys) {
-        const prevKeysSnapshot = player.keys || {};
-        const { rising } = detectEdges(prevKeysSnapshot, data.events, data.keys);
-        player.keys = data.keys;
-
-        // Buffer inputs during hitstop so they fire on frame 1 when hitstop ends
-        if (rising[" "]) {
-          player.inputBuffer = { type: "rawParry", timestamp: Date.now() };
-        } else if (rising.shift && data.keys.s && !data.keys.mouse2) {
-          player.inputBuffer = { type: "sidestep", timestamp: Date.now() };
-        } else if (rising.shift && !data.keys.mouse2) {
-          player.inputBuffer = { type: "dodge", timestamp: Date.now() };
-        } else if (rising.mouse1 && data.keys.s) {
-          const fwdKey = player.facing === -1 ? 'd' : 'a';
-          if (data.keys[fwdKey]) {
-            player.inputBuffer = { type: "chargedAttack", timestamp: Date.now() };
-          } else {
-            player.inputBuffer = { type: "slap", timestamp: Date.now() };
-          }
-        } else if (rising.mouse1) {
-          player.inputBuffer = { type: "slap", timestamp: Date.now() };
-        } else if (rising.mouse2) {
-          player.inputBuffer = { type: "grab", timestamp: Date.now() };
-        }
-      }
-      return;
-    }
-
-    // Helper function to check if player is in a charged attack execution state
-    const isInChargedAttackExecution = () => {
-      return player.isAttacking && player.attackType === "charged";
-    };
-
-    // Helper function to check if an action should be blocked
-    // allowDodgeCancelRecovery: allows dodge to cancel recovery state
-    // allowChargingDuringDodge: allows starting/continuing charged attack during dodge
-    const shouldBlockAction = (allowDodgeCancelRecovery = false, allowChargingDuringDodge = false) => {
-      // Global action lock gate to serialize actions visually/feel-wise
-      if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
-        return true;
-      }
-      // Always block during charged attack execution
-      if (isInChargedAttackExecution()) {
-        return true;
-      }
-      // Block during dodge - unless allowChargingDuringDodge is true (charging can happen during dodge)
-      if (player.isDodging && !allowChargingDuringDodge) {
-        return true;
-      }
-      // Block during grab break animation, separation, and new grab action states
-      if (player.isGrabBreaking || player.isGrabBreakCountered || player.isGrabBreakSeparating ||
-          player.isGrabSeparating || player.isBeingPullReversaled ||
-          player.isGrabBellyFlopping || player.isBeingGrabBellyFlopped ||
-          player.isGrabFrontalForceOut || player.isBeingGrabFrontalForceOut) {
-        return true;
-      }
-      // Block all actions during clinch (push/plant/neutral handled by clinch system)
-      if (player.inClinch) {
-        return true;
-      }
-      // Block during recovery unless it's a dodge and dodge cancel is allowed
-      if (
-        player.isRecovering &&
-        !(allowDodgeCancelRecovery && data.keys && data.keys.shift)
-      ) {
-        return true;
-      }
-      // Block all actions when at the ropes
-      if (player.isAtTheRopes) {
-        return true;
-      }
-      return false;
-    };
-
-    if (data.keys) {
-      // Edge detection across the entire packet window. When `data.events`
-      // is present, walks each per-event transition AND reconciles against
-      // the final snapshot, so a press-release-press faster than the client
-      // emit interval (>=16ms) still surfaces as a rising edge here. When
-      // `data.events` is absent, this reduces to the classic snapshot diff
-      // and behavior is bit-for-bit identical to the pre-events path.
-      const previousKeys = { ...player.keys };
-      const { rising, falling } = detectEdges(previousKeys, data.events, data.keys);
-      player.keys = data.keys;
-
-      // Set mouse1 press flags — true if a press happened ANYWHERE in the
-      // packet window, even if the trailing snapshot already shows release.
-      player.mouse1JustPressed = !!rising.mouse1;
-      player.mouse1JustReleased = !!falling.mouse1;
-
-      // Set mouse2 press flags (mouse2 = grab now)
-      player.mouse2JustPressed = !!rising.mouse2;
-      player.mouse2JustReleased = !!falling.mouse2;
-
-      // Track attack intent time when mouse1 is pressed (for counter hit detection)
-      // This captures the moment the player tries to attack, even before the attack executes
-      if (player.mouse1JustPressed) {
-        player.attackIntentTime = Date.now();
-        // Record press time for slap-vs-charge threshold detection
-        player.mouse1PressTime = Date.now();
-      }
-
-      // Track "just pressed" state for all action keys to prevent actions from triggering
-      // when keys are held through other actions (e.g., holding E during dodge then grabbing after)
-      player.shiftJustPressed = !!rising.shift;
-      player.eJustPressed = !!rising.e;
-      player.wJustPressed = !!rising.w;
-      player.aJustPressed = !!rising.a;
-      player.dJustPressed = !!rising.d;
-      player.fJustPressed = !!rising.f;
-      player.spaceJustPressed = !!rising[" "];
-
-      // POST-GRAB INPUT BUFFER: After a grab/throw ends, treat held keys as "just pressed"
-      // for one cycle. This enables frame-1 activation of grab (mouse2) which has complex
-      // initiation code with nested timeouts that must run through the normal input path.
-      // Raw parry, slap, dodge, and charge are handled directly in activateBufferedInputAfterGrab().
-      if (player.postGrabInputBuffer) {
-        if (data.keys.mouse2 && !player.mouse2JustPressed) player.mouse2JustPressed = true;
-        player.postGrabInputBuffer = false;
-      }
-
-      // Buffer inputs when shouldBlockAction() prevents execution.
-      // The game loop processes the buffer on the first actionable frame.
-      if (shouldBlockAction()) {
-        if (player.spaceJustPressed) {
-          player.inputBuffer = { type: "rawParry", timestamp: Date.now() };
-        } else if (player.shiftJustPressed && data.keys.s && !data.keys.mouse2) {
-          player.inputBuffer = { type: "sidestep", timestamp: Date.now() };
-        } else if (player.shiftJustPressed && !data.keys.mouse2) {
-          player.inputBuffer = { type: "dodge", timestamp: Date.now() };
-        } else if (player.mouse1JustPressed && data.keys.s) {
-          const fwdKey = player.facing === -1 ? 'd' : 'a';
-          if (data.keys[fwdKey]) {
-            player.inputBuffer = { type: "chargedAttack", timestamp: Date.now() };
-          } else {
-            player.inputBuffer = { type: "slap", timestamp: Date.now() };
-          }
-        } else if (player.mouse1JustPressed) {
-          player.inputBuffer = { type: "slap", timestamp: Date.now() };
-        } else if (player.mouse2JustPressed && !player.inClinch) {
-          player.inputBuffer = { type: "grab", timestamp: Date.now() };
-        }
-      }
-
-      // Track mouse1 held during recovery from a connected charged attack
-      // This catches the case where player re-presses mouse1 AFTER processHit ran
-      // (e.g., mouse1 re-press event arrived after the hit was processed)
-      if (player.keys.mouse1 && player.isRecovering && player.chargedAttackHit) {
-        player.mouse1HeldDuringAttack = true;
-        if (!player.mouse1PressTime) {
-          player.mouse1PressTime = Date.now();
-        }
-      }
-
-      // Debug logging for F key and snowball power-up
-      if (data.keys.f) {
-      }
-
-      // ============================================
-      // DIRECTIONAL GRAB BREAK SYSTEM
-      // Spacebar grab break removed. Grab breaks now happen through
-      // directional counter-inputs during specific grab action windows:
-      // - Pull reversal (backward): counter with opposite direction
-      // - Throw (W): counter with S key
-      // - Forward push: cannot be broken, only slowed
-      // Counter-input checks are handled in the grab action sections below.
-      // ============================================
-    }
-
-    // SPACE PRESS: Fire raw parry immediately for zero-tick-delay responsiveness
-    // Same pattern as slap — execute on the socket event instead of waiting for the game tick
-    if (
-      player.spaceJustPressed &&
-      !shouldBlockAction() &&
-      !player.isRawParrying &&
-      !player.isRawParryStun &&
-      !player.grabBreakSpaceConsumed &&
-      Date.now() >= (player.rawParryCooldownUntil || 0) &&
-      !player.isSidestepping &&
-      !player.isGrabbing &&
-      !player.isBeingGrabbed &&
-      !player.isGrabbingMovement &&
-      !player.isWhiffingGrab &&
-      !player.isGrabClashing &&
-      !player.isThrowing &&
-      !player.isBeingThrown &&
-      !player.isAttacking &&
-      !player.isHit &&
-      !player.isThrowingSnowball &&
-      !player.isSpawningPumoArmy &&
-      !player.canMoveToReady
-    ) {
-      player.isRawParrySuccess = false;
-      player.isPerfectRawParrySuccess = false;
-      player.isRawParrying = true;
-      player.rawParryStartTime = Date.now();
-      player.rawParryMinDurationMet = false;
-      player.stamina = Math.max(0, player.stamina - RAW_PARRY_STAMINA_COST);
-      clearChargeState(player, true);
-      player.movementVelocity = 0;
-      player.isStrafing = false;
-      player.isPowerSliding = false;
-      player.isCrouchStance = false;
-      player.isCrouchStrafing = false;
-      player.pendingSlapCount = 0;
-      player.pendingGrabEnder = false;
-      player.slapStringPosition = 0;
-      player.slapStringWindowUntil = 0;
-    }
-
-    // MOUSE1 PRESS: Check for S+FORWARD+MOUSE1 charged attack combo, else fire slap
-    if (player.mouse1JustPressed && !shouldBlockAction()) {
-      const forwardKey = player.facing === -1 ? 'd' : 'a';
-      const wantsChargedAttack = player.keys.s && player.keys[forwardKey];
-
-      if (wantsChargedAttack && canPlayerSlap(player, { ignoreCooldown: true })) {
-        player.chargeAttackPower = 0;
-        player.chargeStartTime = 0;
-        startCharging(player);
-        player.chargingFacingDirection = player.facing;
-        player.movementVelocity = 0;
-        player.isStrafing = false;
-        player.isPowerSliding = false;
-        player.isBraking = false;
-        player.isRawParrySuccess = false;
-        player.isPerfectRawParrySuccess = false;
-        player.isCrouchStance = false;
-        player.isCrouchStrafing = false;
-      } else if (wantsChargedAttack && player.isAttacking && player.attackType === "slap") {
-        player.inputBuffer = { type: "chargedAttack", timestamp: Date.now() };
-      } else if (canPlayerSlap(player)) {
-        executeSlapAttack(player, rooms);
-      } else if (player.isAttacking && player.attackType === "slap") {
-        const maxBuffer = 3 - (player.slapStringPosition || 1);
-        if (player.pendingSlapCount < maxBuffer) {
-          player.pendingSlapCount++;
-        }
-      }
-    }
-
-    // MOUSE2 DURING SLAP STRING: buffer grab ender (replaces hit 3 with grab)
-    if (player.mouse2JustPressed && player.isAttacking && player.attackType === "slap" &&
-        player.slapStringPosition >= 2) {
-      player.pendingGrabEnder = true;
-      player.pendingSlapCount = 0;
-    }
-
-    // MOUSE1 RELEASE: Execute charged attack if charging, otherwise clear state
-    if (player.mouse1JustReleased) {
-      if (player.isRopeJumping && player.ropeJumpPhase === "landing" && player.mouse1PressTime > 0) {
-        player.ropeJumpBufferedAttackRelease = Date.now() - player.mouse1PressTime;
-      }
-      if (player.isChargingAttack) {
-        const chargePercentage = player.chargeAttackPower || 1;
-        player.isChargingAttack = false;
-        player.chargeStartTime = 0;
-        player.chargingFacingDirection = null;
-        player.mouse1HeldDuringAttack = false;
-        executeChargedAttack(player, chargePercentage, rooms);
-      } else {
-        if (!(player.isAttacking && player.attackType === "charged")) {
-          player.chargeAttackPower = 0;
-        }
-      }
-      player.mouse1PressTime = 0;
-      player.wantsToRestartCharge = false;
-      player.mouse1HeldDuringAttack = false;
-    }
-
-    // Handle clearing charge during charging phase with throw/grab/snowball - MUST BE FIRST
-    // Use "just pressed" to prevent charge cancellation when keys are held through other states
-    // Block during dodge - only charging should continue during dodge, no other actions
-    if (
-      ((player.wJustPressed && player.isGrabbing && !player.isBeingGrabbed) ||
-        player.mouse2JustPressed ||
-        player.fJustPressed) &&
-      player.isChargingAttack && // Only interrupt during charging phase, not execution
-      !player.isDodging // Block during dodge - charging continues but no actions can interrupt
-    ) {
-      // Clear charge state — cancelled by another action, so zero charge power
-      clearChargeState(player, true);
-
-      // The existing input handlers will take over for W/E/F
-    }
-
-    if (
-      false && // Disabled: power-ups are now selected via UI
-      player.keys.f &&
-      !player.saltCooldown &&
-      ((player.fighter === "player 1" && player.x <= 280) ||
-        (player.fighter === "player 2" && player.x >= 765)) && // Adjusted range for player 2
-      rooms[roomIndex].gameStart === false &&
-      !player.activePowerUp
-    ) {
-      player.isThrowingSalt = true;
-      player.saltCooldown = true;
-
-      // Randomly select a power-up
-      const powerUpTypes = Object.values(POWER_UP_TYPES);
-      const randomPowerUp =
-        powerUpTypes[Math.floor(Math.random() * powerUpTypes.length)];
-      player.activePowerUp = randomPowerUp;
-      player.powerUpMultiplier = POWER_UP_EFFECTS[randomPowerUp];
-
-      // Emit power-up event to clients
-      io.in(roomId).emit("power_up_activated", {
-        playerId: player.id,
-        powerUpType: randomPowerUp,
-      });
-
-      setPlayerTimeout(
-        player.id,
-        () => {
-          player.isThrowingSalt = false;
-        },
-        1483,
-        "throwingSaltReset"
-      );
-
-      setPlayerTimeout(
-        player.id,
-        () => {
-          player.saltCooldown = false;
-        },
-        1733,
-        "saltCooldownReset"
-      );
-    }
-
-    // Handle F key power-ups (snowball and pumo army) - block during charged attack execution and recovery
-    // Use fJustPressed to prevent power-ups from triggering when key is held through other actions
-    if (
-      player.fJustPressed &&
-      !shouldBlockAction() &&
-      (player.activePowerUp === POWER_UP_TYPES.SNOWBALL ||
-        player.activePowerUp === POWER_UP_TYPES.PUMO_ARMY) &&
-      (player.activePowerUp !== POWER_UP_TYPES.SNOWBALL ||
-        (player.snowballThrowsRemaining ?? 5) > 0) &&
-      (player.activePowerUp !== POWER_UP_TYPES.PUMO_ARMY ||
-        (player.pumoArmySpawnsRemaining ?? 3) > 0) &&
-      !player.snowballCooldown &&
-      !player.pumoArmyCooldown &&
-      !player.isThrowingSnowball &&
-      !player.isSpawningPumoArmy &&
-      !player.isAttacking &&
-      !player.isDodging &&
-      !player.isThrowing &&
-      !player.isBeingThrown &&
-      !player.isGrabbing &&
-      !player.isBeingGrabbed &&
-      !player.isHit &&
-      !player.isRawParryStun &&
-      !player.isRawParrying &&
-      !player.canMoveToReady
-    ) {
-      // Clear charge attack state if player was charging
-      if (player.isChargingAttack) {
-        clearChargeState(player, true);
-      }
-
-      if (player.activePowerUp === POWER_UP_TYPES.SNOWBALL) {
-        // Backfill for older in-progress states where this field may be missing.
-        if (player.snowballThrowsRemaining == null) {
-          player.snowballThrowsRemaining = 5;
-        }
-        if (player.snowballThrowsRemaining <= 0) {
-          return;
-        }
-
-        // Snowball costs same stamina as a slap attack
-        player.stamina = Math.max(0, player.stamina - SLAP_ATTACK_STAMINA_COST);
-        player.snowballThrowsRemaining = Math.max(
-          0,
-          player.snowballThrowsRemaining - 1
-        );
-        // Set throwing state
-        player.isThrowingSnowball = true;
-        // Lock actions during throw windup/animation window for visual clarity
-        player.currentAction = "snowball";
-        player.actionLockUntil = Date.now() + 250;
-
-        // Determine snowball direction based on current position relative to opponent
-        const opponent = rooms[roomIndex].players.find(
-          (p) => p.id !== player.id
-        );
-        let snowballDirection;
-        if (opponent) {
-          // Throw towards the opponent based on current positions
-          snowballDirection = player.x < opponent.x ? 2 : -2;
-        } else {
-          // Fallback to facing direction if no opponent found
-          snowballDirection = player.facing === 1 ? -2 : 2;
-        }
-
-        // Create snowball projectile
-        const snowball = {
-          id: Math.random().toString(36).substr(2, 9),
-          x: player.x,
-          y: player.y + 20, // Slightly above ground
-          velocityX: snowballDirection, // Direction determined by position relative to opponent
-          hasHit: false,
-          ownerId: player.id,
-        };
-
-        player.snowballs.push(snowball);
-        player.snowballCooldown = true;
-
-        // Reset throwing state after animation
-        setPlayerTimeout(
-          player.id,
-          () => {
-            player.isThrowingSnowball = false;
-            // Clear lock if it’s still set
-            if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
-              player.actionLockUntil = 0;
-            }
-
-            // Neutral charged attack removed — no charge to restart
-          },
-          500
-        );
-      } else if (player.activePowerUp === POWER_UP_TYPES.PUMO_ARMY) {
-        if (player.pumoArmySpawnsRemaining == null) {
-          player.pumoArmySpawnsRemaining = 3;
-        }
-        if (player.pumoArmySpawnsRemaining <= 0) {
-          return;
-        }
-
-        // Pumo army costs same stamina as a charged attack
-        player.stamina = Math.max(0, player.stamina - CHARGED_ATTACK_STAMINA_COST);
-        player.pumoArmySpawnsRemaining = Math.max(
-          0,
-          player.pumoArmySpawnsRemaining - 1
-        );
-        // Set spawning state
-        player.isSpawningPumoArmy = true;
-        player.currentAction = "pumo_army";
-        player.actionLockUntil = Date.now() + 400;
-
-        // Clear any existing movement momentum to prevent sliding during animation
-        player.movementVelocity = 0;
-        player.isStrafing = false;
-
-        // Determine army direction (same as player facing)
-        const armyDirection = player.facing === 1 ? -1 : 1; // Army moves in direction player is facing
-
-        const startX = armyDirection === 1 ? -100 : 1200;
-        const Y_SPREAD = 35;
-        const V_OFFSET = 40; // Middle clone leads the V-formation
-
-        // Spawn all 3 clones at once in a V-formation across Y lanes
-        const lanes = [
-          { lane: 'top',    targetY: GROUND_LEVEL + Y_SPREAD, xOffset: 0 },
-          { lane: 'middle', targetY: GROUND_LEVEL + 5,        xOffset: armyDirection * V_OFFSET },
-          { lane: 'bottom', targetY: GROUND_LEVEL - Y_SPREAD, xOffset: 0 },
-        ];
-
-        lanes.forEach(({ lane, targetY, xOffset }) => {
-          const clone = {
-            id: Math.random().toString(36).substr(2, 9),
-            x: startX + xOffset,
-            y: GROUND_LEVEL - DOHYO_FALL_DEPTH,
-            targetY,
-            velocityX: armyDirection * 1.5,
-            facing: armyDirection,
-            isStrafing: true,
-            isSlapAttacking: true,
-            slapCooldown: 0,
-            lastSlapTime: 0,
-            spawnTime: Date.now(),
-            lifespan: 10000,
-            ownerId: player.id,
-            ownerFighter: player.fighter,
-            hasHit: false,
-            size: 0.6,
-            lane,
-          };
-          player.pumoArmy.push(clone);
-        });
-
-        player.pumoArmyCooldown = true;
-
-        // Reset spawning state after animation (named so clearAllActionStates can cancel on interrupt)
-        setPlayerTimeout(
-          player.id,
-          () => {
-            player.isSpawningPumoArmy = false;
-            player.pumoArmyCooldown = false;
-            if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
-              player.actionLockUntil = 0;
-            }
-
-            // Neutral charged attack removed — no charge to restart
-          },
-          800,
-          "pumoArmySpawnEnd"
-        );
-      }
-    }
-
-    // Handle sidestep (S + SHIFT) — henka-style lateral evasion that switches sides
-    // Must be checked BEFORE dodge so the combo input takes priority
-    if (
-      player.shiftJustPressed &&
-      player.keys.s &&
-      !player.keys.mouse2 &&
-      !player.isBeingGrabbed &&
-      !isInChargedAttackExecution() &&
-      canPlayerSidestep(player) &&
-      !player.isGassed
-    ) {
-      const sidestepOpponent = rooms[roomIndex].players.find(p => p.id !== player.id && !p.isDead);
-      if (sidestepOpponent) {
-        if (player.isRecovering) {
-          const recoveryAge = Date.now() - player.recoveryStartTime;
-          if (recoveryAge > 100) {
-            player.isRecovering = false;
-            player.movementVelocity = 0;
-            player.recoveryDirection = null;
-          }
-        }
-
-        if (!player.isRecovering) {
-        const initData = getSidestepInitData(player.x, sidestepOpponent.x);
-        player.isRawParrySuccess = false;
-        player.isPerfectRawParrySuccess = false;
-        clearChargeState(player, true);
-
-        player.movementVelocity = 0;
-        player.isStrafing = false;
-        player.isPowerSliding = false;
-        player.isBraking = false;
-        player.isCrouchStance = false;
-        player.isCrouchStrafing = false;
-
-        player.isSidestepping = true;
-        player.isSidestepStartup = true;
-        player.isSidestepRecovery = false;
-        player.sidestepStartTime = Date.now();
-        player.sidestepStartupEndTime = Date.now() + SIDESTEP_STARTUP_MS;
-        player.sidestepActiveEndTime = Date.now() + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS;
-        player.sidestepEndTime = Date.now() + SIDESTEP_TOTAL_MS;
-        player.sidestepStartX = player.x;
-        player.sidestepDirection = initData.direction;
-
-        player.currentAction = "sidestep";
-        player.actionLockUntil = Date.now() + SIDESTEP_TOTAL_MS;
-        player.stamina = Math.max(0, player.stamina - SIDESTEP_STAMINA_COST);
-        }
-      }
-    }
-    // Handle dash - allow canceling recovery but block during charged attack execution
-    // Dashing now costs stamina (15% of max) instead of using charges
-    // Use shiftJustPressed to prevent dash from triggering when key is held through other actions
-    // NOTE: Dash cancels charging - clearing charge state when dash starts
-    else if (
-      player.shiftJustPressed &&
-      !player.keys.mouse2 && // Don't dash while grabbing
-      !(player.keys.w && player.isGrabbing && !player.isBeingGrabbed) &&
-      !player.isBeingGrabbed && // Block dash when being grabbed
-      !isInChargedAttackExecution() && // Block during charged attack execution
-      canPlayerDash(player) &&
-      !player.isGassed
-    ) {
-      // Allow dodge to cancel recovery
-      if (player.isRecovering) {
-        // Add grace period - don't allow dodge to cancel recovery for 100ms after it starts
-        // This prevents immediate dodge from canceling recovery that was just set
-        const recoveryAge = Date.now() - player.recoveryStartTime;
-        if (recoveryAge > 100) {
-          player.isRecovering = false;
-          player.movementVelocity = 0;
-          player.recoveryDirection = null;
-        } else {
-          return; // Don't execute dodge if recovery is too fresh
-        }
-      }
-
-      // Clear parry success state when starting a dodge
-      player.isRawParrySuccess = false;
-      player.isPerfectRawParrySuccess = false;
-
-      // Dodge cancels charging - clear charge state
-      clearChargeState(player, true);
-
-      // Clear movement momentum for static dodge distance
-      // Also cancels power slide - dodge is an escape option from slide
-      player.movementVelocity = 0;
-      player.isStrafing = false;
-      player.isPowerSliding = false;
-      player.isBraking = false;
-
-      player.isDodging = true;
-      player.isDodgeStartup = true;
-      player.dodgeStartTime = Date.now();
-      player.dodgeStartupEndTime = Date.now() + DODGE_STARTUP_MS;
-      player.dodgeEndTime = Date.now() + DODGE_DURATION;
-      player.dodgeStartX = player.x;
-      player.currentAction = "dash";
-      player.actionLockUntil = Date.now() + 100;
-      player.justLandedFromDodge = false;
-
-      player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
-
-      if (player.keys.a) {
-        player.dodgeDirection = -1;
-      } else if (player.keys.d) {
-        player.dodgeDirection = 1;
-      } else {
-        player.dodgeDirection = player.facing === -1 ? 1 : -1;
-      }
-
-      // Dodge lifecycle (landing, recovery, cooldown) is handled entirely by the tick
-      // loop in index.js. Pending charge attacks are executed when recovery ends.
-    } else if (
-      (player.shiftJustPressed || player.keys.shift) && // Buffer on press OR hold (catches spammers who end on held key)
-      (player.isAttacking ||
-        player.isThrowing ||
-        player.isBeingThrown ||
-        player.isGrabbing ||
-        player.isBeingGrabbed) && // Allow buffering while being grabbed/thrown so spamming shift comes out frame 1 when freed
-      !player.isDodging &&
-      !player.isSidestepping &&
-      !player.isThrowingSnowball &&
-      !player.isRawParrying &&
-      !isInChargedAttackExecution() &&
-      !player.isGassed
-    ) {
-      if (player.keys.s) {
-        player.bufferedAction = { type: "sidestep" };
-      } else {
-        const dodgeDirection = player.keys.a
-          ? -1
-          : player.keys.d
-          ? 1
-          : player.facing === -1
-          ? 1
-          : -1;
-        player.bufferedAction = {
-          type: "dash",
-          direction: dodgeDirection,
-        };
-      }
-      player.bufferExpiryTime = Date.now() + 500;
-    }
-    // Buffer dash during recovery/cooldown so spamming fires on frame 1 when allowed
-    else if (
-      player.shiftJustPressed &&
-      !player.keys.mouse2 &&
-      !player.isGassed &&
-      !player.isDodging &&
-      (player.isDodgeRecovery || (player.dodgeCooldownUntil && Date.now() < player.dodgeCooldownUntil))
-    ) {
-      player.inputBuffer = { type: "dodge", timestamp: Date.now() };
-    }
-    // Emit "No Stamina" feedback when player tries to dodge but doesn't have enough stamina
-    else if (
-      player.shiftJustPressed &&
-      !player.keys.mouse2 &&
-      !(player.keys.w && player.isGrabbing && !player.isBeingGrabbed) &&
-      canPlayerDash(player) &&
-      player.isGassed &&
-      (!player.lastStaminaBlockedTime || Date.now() - player.lastStaminaBlockedTime > 500)
-    ) {
-      player.lastStaminaBlockedTime = Date.now();
-      socket.emit("stamina_blocked", { playerId: player.id, action: "dash" });
-    }
-
-    // ── ROPE JUMP: W + forward key near map boundary ──
-    // Escape over the opponent when cornered. Forward = away from nearest boundary.
-    {
-      const nearLeftBound = player.x - MAP_LEFT_BOUNDARY < ROPE_JUMP_BOUNDARY_ZONE;
-      const nearRightBound = MAP_RIGHT_BOUNDARY - player.x < ROPE_JUMP_BOUNDARY_ZONE;
-      const forwardHeld = (nearLeftBound && player.keys.d) || (nearRightBound && player.keys.a);
-      const wantsRopeJump = player.keys.w && forwardHeld && (nearLeftBound || nearRightBound);
-
-      if (
-        wantsRopeJump &&
-        !player.isRopeJumping &&
-        canPlayerDash(player) &&
-        !player.isGassed &&
-        !isInChargedAttackExecution() &&
-        !player.isBeingGrabbed &&
-        rooms[roomIndex].gameStart &&
-        !rooms[roomIndex].gameOver
-      ) {
-        clearChargeState(player, true);
-
-        player.movementVelocity = 0;
-        player.isStrafing = false;
-        player.isPowerSliding = false;
-        player.isBraking = false;
-
-        const jumpDir = nearLeftBound ? 1 : -1;
-        const mapMidpoint = (MAP_LEFT_BOUNDARY + MAP_RIGHT_BOUNDARY) / 2;
-        const targetX = player.x + (mapMidpoint - player.x) * 0.52;
-
-        player.facing = nearLeftBound ? -1 : 1;
-        player.isRopeJumping = true;
-        player.ropeJumpPhase = "startup";
-        player.ropeJumpStartTime = Date.now();
-        player.ropeJumpStartX = player.x;
-        player.ropeJumpTargetX = Math.max(MAP_LEFT_BOUNDARY, Math.min(targetX, MAP_RIGHT_BOUNDARY));
-        player.ropeJumpDirection = jumpDir;
-        player.ropeJumpActiveStartTime = 0;
-        player.ropeJumpLandingTime = 0;
-        player.ropeJumpBufferedAttackRelease = 0;
-        player.currentAction = "ropeJump";
-        player.actionLockUntil = Date.now() + ROPE_JUMP_STARTUP_MS;
-        player.stamina = Math.max(0, player.stamina - ROPE_JUMP_STAMINA_COST);
-      }
-      // "Not enough stamina" feedback when gassed
-      else if (
-        wantsRopeJump &&
-        !player.isRopeJumping &&
-        canPlayerDash(player) &&
-        player.isGassed &&
-        (!player.lastStaminaBlockedTime || Date.now() - player.lastStaminaBlockedTime > 500)
-      ) {
-        player.lastStaminaBlockedTime = Date.now();
-        socket.emit("stamina_blocked", { playerId: player.id, action: "ropeJump" });
-      }
-    }
-
-    // S+FORWARD+MOUSE1 CHARGED ATTACK: Continuous check for lenient input detection.
-    // Catches the case where mouse1 is already held and player adds S+forward after.
-    if (
-      player.keys.mouse1 &&
-      player.keys.s &&
-      !player.isChargingAttack &&
-      !player.isAttacking &&
-      !shouldBlockAction()
-    ) {
-      const forwardKey = player.facing === -1 ? 'd' : 'a';
-      if (player.keys[forwardKey] && canPlayerSlap(player, { ignoreCooldown: true })) {
-        player.chargeAttackPower = 0;
-        player.chargeStartTime = 0;
-        startCharging(player);
-        player.chargingFacingDirection = player.facing;
-        player.movementVelocity = 0;
-        player.isStrafing = false;
-        player.isPowerSliding = false;
-        player.isBraking = false;
-        player.isRawParrySuccess = false;
-        player.isPerfectRawParrySuccess = false;
-        player.isCrouchStance = false;
-        player.isCrouchStrafing = false;
-      }
-    }
-
-    // Clear any lingering charge state when not attacking
-    if (player.isChargingAttack && !player.keys.mouse1 && !player.isAttacking) {
-      player.isChargingAttack = false;
-      player.chargeStartTime = 0;
-      player.chargeAttackPower = 0;
-      player.chargingFacingDirection = null;
-      player.attackType = null;
-      player.mouse1HeldDuringAttack = false;
-    }
-    // Safety: clear stale preserved charge when mouse1 is not held
-    if (!player.keys.mouse1 && !player.isChargingAttack && player.chargeAttackPower > 0 && !player.isAttacking) {
-      player.chargeAttackPower = 0;
-    }
-
-    // === GRIP-UP: Opponent presses Mouse2 while being grabbed without grip → gets grip ===
-    // isBeingGrabbed stays true (keeps position-lock and action blocking intact).
-    // hasGrip is used CLIENT-SIDE to switch from being-grabbed to belt-grip animation.
-    // The Mouse2 press that acquires grip is consumed — throw can't ride the same press.
-    if (
-      player.mouse2JustPressed &&
-      player.isBeingGrabbed &&
-      !player.hasGrip &&
-      player.inClinch
-    ) {
-      player.hasGrip = true;
-      player.clinchAction = "neutral";
-      player.gripAcquiredTime = Date.now();
-    }
-
-    // === CLINCH JOLT: Mouse1 while in clinch with grip ===
-    if (
-      player.mouse1JustPressed && player.hasGrip && player.inClinch &&
-      !player.isClinchJolting && !player.clinchJoltRecovery && !player.clinchJoltCooldown &&
-      !player.clinchThrowActive && !player.isClinchClashing &&
-      !player.isResistingThrow && !player.isResistingPull && !player.isBeingLifted &&
-      !player.isClinchJoltClashing && !player.clinchJoltRequest
-    ) {
-      player.clinchJoltRequest = true;
-      player.clinchJoltRequestTime = Date.now();
-    }
-
-    // === CLINCH BREAK: Spacebar while in mutual clinch (both must have grip) ===
-    // Defensive escape from the clinch — costs heavy stamina, halves balance,
-    // soft-gated (under-budget breakers self-gas). Phase A grabs (one-sided grip)
-    // can't be broken — opponent must have gripped up first.
-    if (
-      player.spaceJustPressed && player.hasGrip && player.inClinch &&
-      !player.isGassed &&
-      !player.clinchThrowActive && !player.isClinchClashing &&
-      !player.isClinchJolting && !player.isClinchJoltClashing && !player.clinchJoltRecovery &&
-      !player.isResistingThrow && !player.isResistingPull && !player.isBeingLifted &&
-      !player.clinchBreakRequest && !player.isGrabBreaking && !player.isGrabBreakCountered &&
-      !player.isGrabBreakSeparating
-    ) {
-      const otherPlayer = rooms[roomIndex].players.find((p) => p.id !== player.id);
-      if (otherPlayer && otherPlayer.hasGrip) {
-        player.clinchBreakRequest = true;
-        player.clinchBreakRequestTime = Date.now();
-      }
-    }
-
-    // === CLINCH THROW/PULL/LIFT: Mouse2 + direction while in clinch with grip ===
-    // Detects three patterns:
-    //   1) Mouse2 just pressed + direction already held
-    //   2) Mouse2 already held + direction just pressed (most common — player holds mouse2 during clinch)
-    //   3) Mouse2 just pressed, direction arrives within 200ms buffer
-    // Grip must have been acquired on a previous tick — can't throw on the same press that got you the grip.
-    const gripTooRecent = player.gripAcquiredTime && (Date.now() - player.gripAcquiredTime < 50);
-    if (
-      player.keys.mouse2 && player.hasGrip && player.inClinch &&
-      !gripTooRecent &&
-      !player.clinchThrowActive && !player.clinchThrowCooldown && !player.isClinchClashing &&
-      !player.clinchThrowRequest &&
-      !player.isResistingThrow && !player.isResistingPull && !player.isBeingLifted
-    ) {
-      const otherPlayer = rooms[roomIndex].players.find((p) => p.id !== player.id);
-      if (otherPlayer) {
-        const towardKey = player.x < otherPlayer.x ? 'd' : 'a';
-        const awayKey = player.x < otherPlayer.x ? 'a' : 'd';
-
-        const m2Edge = player.mouse2JustPressed ||
-          (player.clinchMouse2BufferTime && Date.now() - player.clinchMouse2BufferTime < 200);
-        const wEdge = player.wJustPressed;
-        const awayJustPressed = awayKey === 'a' ? player.aJustPressed : player.dJustPressed;
-        const towardJustPressed = towardKey === 'a' ? player.aJustPressed : player.dJustPressed;
-
-        if (player.mouse2JustPressed) {
-          player.clinchMouse2BufferTime = Date.now();
-        }
-
-        let request = null;
-        // Pattern 1 & 3: Mouse2 edge + direction held
-        if (m2Edge && player.keys.w) request = "throw";
-        else if (m2Edge && player.keys[awayKey]) request = "pull";
-        else if (m2Edge && player.keys[towardKey]) request = "lift";
-        // Pattern 2: Mouse2 held + direction just pressed
-        else if (wEdge) request = "throw";
-        else if (awayJustPressed) request = "pull";
-        else if (towardJustPressed) request = "lift";
-
-        if (request) {
-          player.clinchThrowRequest = request;
-          player.clinchThrowRequestTime = Date.now();
-          player.clinchMouse2BufferTime = 0;
-        }
-      }
-    }
-
-    // Handle throw attacks - only during grab decision window (first 1s of grab)
-    // DISABLED during new clinch system (Phase 4 will add new throw inputs)
-    if (
-      player.keys.w &&
-      player.isGrabbing &&
-      !player.inClinch && // Skip in new clinch system
-      !player.isBeingGrabbed &&
-      !player.keys.mouse2 &&
-      !shouldBlockAction() &&
-      !player.isThrowingSalt &&
-      !player.canMoveToReady &&
-      !player.throwCooldown &&
-      !player.isRawParrying &&
-      !player.isJumping &&
-      !player.isAttemptingGrabThrow &&
-      !player.isAttemptingPull
-    ) {
-      // Reset any lingering throw states before starting a new throw
-      player.throwingFacingDirection = null;
-      player.throwStartTime = 0;
-      player.throwEndTime = 0;
-      player.throwOpponent = null;
-
-      player.lastThrowAttemptTime = Date.now();
-      
-      // Set attempting grab throw state - this triggers the animation
-      player.isAttemptingGrabThrow = true;
-      player.grabThrowAttemptStartTime = Date.now();
-      player.grabActionType = "throw";
-      player.grabActionStartTime = Date.now();
-      player.grabDecisionMade = true; // Lock in the decision
-      
-      // Pause grab duration during throw attempt (action extends grab)
-      player.grabDurationPaused = true;
-      player.grabDurationPausedAt = Date.now();
-
-      // Clear push states if transitioning from push (throw interrupts push)
-      player.isGrabPushing = false;
-      player.isEdgePushing = false;
-      player.isGrabWalking = false;
-      const throwOpponent = rooms[roomIndex].players.find((p) => p.id !== player.id);
-      if (throwOpponent) {
-        throwOpponent.isBeingGrabPushed = false;
-        throwOpponent.isBeingEdgePushed = false;
-        throwOpponent.lastGrabPushStaminaDrainTime = 0;
-        // Reset opponent's counter state — they get a fresh read for each grab action
-        throwOpponent.grabCounterAttempted = false;
-        throwOpponent.grabCounterInput = null;
-      }
-
-      // Block all player inputs during the attempt
-      player.actionLockUntil = Date.now() + GRAB_ACTION_WINDOW;
-
-      setPlayerTimeout(
-        player.id,
-        () => {
-          const opponent = rooms[roomIndex].players.find(
-            (p) => p.id !== player.id
-          );
-          
-          // Clear attempting state after the window
-          player.isAttemptingGrabThrow = false;
-          player.grabDurationPaused = false;
-          player.grabActionType = null;
-          player.grabActionStartTime = 0;
-          player.grabDecisionMade = false;
-          player.grabPushEndTime = 0;
-
-          // CRITICAL: Check if grab break has already occurred
-          if (player.isGrabBreakCountered || opponent.isGrabBreaking || opponent.isGrabBreakSeparating) {
-            return;
-          }
-
-          // Also check if we're no longer in a valid grab state
-          if (!player.isGrabbing && !player.isThrowing) {
-            return;
-          }
-
-          // S-key counter check is done in the tick loop (throw attempt branch above).
-          // If we reach here, opponent did NOT counter - execute the throw.
-          if (
-            isOpponentCloseEnoughForThrow(player, opponent) &&
-            !opponent.isBeingThrown &&
-            !opponent.isAttacking &&
-            !opponent.isDodging
-          ) {
-            if (checkForGrabPriority(player, opponent)) {
-              return;
-            } else if (checkForThrowTech(player, opponent)) {
-              applyThrowTech(player, opponent);
-            } else if (!player.throwTechCooldown) {
-              clearChargeState(player, true);
-
-              player.movementVelocity = 0;
-              player.isStrafing = false;
-
-              const shouldFaceRight = player.x < opponent.x;
-              player.facing = shouldFaceRight ? -1 : 1;
-              player.throwingFacingDirection = player.facing;
-
-              player.isThrowing = true;
-              player.throwStartTime = Date.now();
-              player.throwEndTime = Date.now() + 400;
-              player.throwOpponent = opponent.id;
-              player.currentAction = "throw";
-              player.actionLockUntil = Date.now() + 200;
-              
-              clearAllActionStates(opponent);
-              opponent.isBeingGrabbed = false;
-              opponent.isBeingGrabPushed = false;
-              opponent.isBeingEdgePushed = false;
-              opponent.isBeingThrown = true;
-              
-              triggerHitstopAndEmit(io, rooms[roomIndex], HITSTOP_THROW_MS, "throw");
-
-              if (player.isGrabbing) {
-                player.isGrabbing = false;
-                player.grabbedOpponent = null;
-              }
-
-              player.throwCooldown = true;
-              setPlayerTimeout(
-                player.id,
-                () => {
-                  player.throwCooldown = false;
-                  if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
-                    player.actionLockUntil = 0;
-                  }
-                },
-                250
-              );
-            }
-          } else {
-            if (checkForGrabPriority(player, opponent)) {
-              return;
-            }
-
-            clearChargeState(player, true);
-
-            const shouldFaceRight = player.x < opponent.x;
-            player.facing = shouldFaceRight ? -1 : 1;
-            player.throwingFacingDirection = player.facing;
-
-            player.isThrowing = true;
-            player.throwStartTime = Date.now();
-            player.throwEndTime = Date.now() + 400;
-            player.currentAction = "throw";
-            player.actionLockUntil = Date.now() + 200;
-
-            player.throwCooldown = true;
-            setPlayerTimeout(
-              player.id,
-              () => {
-                player.throwCooldown = false;
-                if (player.actionLockUntil && Date.now() < player.actionLockUntil) {
-                  player.actionLockUntil = 0;
-                }
-              },
-              250
-            );
-          }
-        },
-        GRAB_ACTION_WINDOW  // 1 second window (was 500ms)
-      );
-    }
-
-    // === PULL REVERSAL - Backward input during grab ===
-    // DISABLED during new clinch system (Phase 4 will add new throw inputs)
-    if (
-      player.isGrabbing &&
-      player.grabbedOpponent &&
-      !player.inClinch && // Skip in new clinch system
-      !player.isBeingGrabbed &&
-      !player.isAttemptingGrabThrow &&
-      !player.isAttemptingPull &&
-      !player.isGrabPushing &&
-      !shouldBlockAction()
-    ) {
-      // Determine backward key based on facing
-      const backwardKey = player.facing === -1 ? 'a' : 'd';
-      const forwardKey = player.facing === -1 ? 'd' : 'a';
-      const isPressingBackward = player.keys[backwardKey] && !player.keys[forwardKey];
-
-      // No grace period for backward — holding backward before grab is intentional (pull)
-      if (isPressingBackward) {
-        player.isAttemptingPull = true;
-        player.grabActionStartTime = Date.now();
-        player.grabActionType = "pull";
-        player.grabDecisionMade = true; // Lock in the decision
-
-        // Pause grab duration during pull attempt (action extends grab)
-        player.grabDurationPaused = true;
-        player.grabDurationPausedAt = Date.now();
-
-        // Clear push states
-        player.isGrabPushing = false;
-        player.isEdgePushing = false;
-        const pullOpponent = rooms[roomIndex].players.find((p) => p.id !== player.id);
-        if (pullOpponent) {
-          pullOpponent.isBeingGrabPushed = false;
-          pullOpponent.isBeingEdgePushed = false;
-          pullOpponent.lastGrabPushStaminaDrainTime = 0;
-        }
-
-        // Block grabber inputs during pull attempt
-        player.actionLockUntil = Date.now() + GRAB_ACTION_WINDOW;
-
-        setPlayerTimeout(
-          player.id,
-          () => {
-            const opponent = rooms[roomIndex].players.find(
-              (p) => p.id !== player.id
-            );
-
-            // Clear pull attempt state
-            player.isAttemptingPull = false;
-            player.grabDurationPaused = false;
-            player.grabActionType = null;
-            player.grabActionStartTime = 0;
-            player.grabDecisionMade = false;
-            player.grabPushEndTime = 0;
-
-            // Check if grab break already happened
-            if (player.isGrabBreakCountered || !opponent || opponent.isGrabBreaking || opponent.isGrabBreakSeparating) {
-              return;
-            }
-
-            // Check if still in valid grab state
-            if (!player.isGrabbing) {
-              return;
-            }
-
-            // Counter check is done in the tick loop (pull attempt branch).
-            // If we reach here, opponent did NOT counter - execute pull reversal!
-            
-            // Calculate pull reversal destination (other side of grabber)
-            // Pull direction is opposite of current opponent position relative to grabber
-            const pullDirection = opponent.x < player.x ? 1 : -1; // send to other side
-            // Don't clamp targetX — let it overshoot so the tween handler detects boundary
-            const targetX = player.x + pullDirection * PULL_REVERSAL_DISTANCE;
-
-            // Release the grab (pull reversal ends the grab)
-            cleanupGrabStates(player, opponent);
-
-            // Set pull reversal state for animation
-            opponent.isBeingPullReversaled = true;
-            opponent.pullReversalPullerId = player.id; // Track who pulled us
-
-            // Move opponent to target position via tween (longer duration for visible knockback)
-            opponent.isGrabBreakSeparating = true;
-            opponent.grabBreakSepStartTime = Date.now();
-            opponent.grabBreakSepDuration = PULL_REVERSAL_TWEEN_DURATION;
-            opponent.grabBreakStartX = opponent.x;
-            opponent.grabBreakTargetX = targetX;
-
-            // Zero out velocities
-            opponent.movementVelocity = 0;
-            player.movementVelocity = 0;
-            opponent.isStrafing = false;
-            player.isStrafing = false;
-
-            // Lock both players equally (cleared early when tween ends or boundary hit)
-            const pulledLockUntil = Date.now() + PULL_REVERSAL_PULLED_LOCK;
-            opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, pulledLockUntil);
-            const pullerLockUntil = Date.now() + PULL_REVERSAL_PULLER_LOCK;
-            player.inputLockUntil = Math.max(player.inputLockUntil || 0, pullerLockUntil);
-
-            // Correct facing after sides switch
-            correctFacingAfterGrabOrThrow(player, opponent);
-
-            // Note: isBeingPullReversaled is auto-cleared when the tween ends (in tick handler)
-
-            // Grab cooldown
-            player.grabCooldown = true;
-            setPlayerTimeout(
-              player.id,
-              () => { player.grabCooldown = false; },
-              300,
-              "pullReversalCooldown"
-            );
-
-            // Emit for client VFX/SFX
-            io.in(rooms[roomIndex].id).emit("pull_reversal", {
-              grabberId: player.id,
-              opponentId: opponent.id,
-              grabberX: player.x,
-              opponentTargetX: targetX,
-            });
-          },
-          GRAB_ACTION_WINDOW  // 1 second window
-        );
-      }
-    }
-
-    // Handle grab attacks — instant grab with no forward movement
-    // Use mouse2JustPressed to prevent grab from triggering when key is held through other actions
-    if (
-      player.mouse2JustPressed &&
-      !shouldBlockAction() &&
-      canPlayerUseAction(player) &&
-      !player.grabCooldown &&
-      !player.isPushing &&
-      !player.isBeingPushed &&
-      !player.grabbedOpponent &&
-      !player.isRawParrying &&
-      !player.isJumping &&
-      !player.isGrabbingMovement &&
-      !player.isWhiffingGrab &&
-      !player.isGrabWhiffRecovery &&
-      !player.isGrabTeching &&
-      !player.isGrabStartup
-    ) {
-      player.lastGrabAttemptTime = Date.now();
-
-      // Clear parry success state when starting a grab
-      player.isRawParrySuccess = false;
-      player.isPerfectRawParrySuccess = false;
-
-      // Clear charging attack state when starting grab
-      clearChargeState(player, true); // true = cancelled by grab
-
-      // Reset hit absorption for thick blubber power-up when starting grab (like charged attack)
-      if (player.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER) {
-        player.hitAbsorptionUsed = false;
-      }
-
-      // Begin startup with forward lunge — tick loop applies lunge movement,
-      // then does range check at the end → connect / whiff / tech
-      player.isGrabStartup = true;
-      player.grabStartupStartTime = Date.now();
-      player.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
-      player.grabStartupArmorUsed = false; // Fresh slap-armor charge per grab attempt
-      player.currentAction = "grab_startup";
-      player.actionLockUntil = Date.now() + GRAB_STARTUP_DURATION_MS;
-      player.grabState = GRAB_STATES.ATTEMPTING;
-      player.grabAttemptType = "grab";
-
-      // Capture approach speed BEFORE clearing momentum (for momentum-transferred push)
-      player.grabApproachSpeed = Math.abs(player.movementVelocity);
-
-      // Clear any existing movement momentum
-      player.movementVelocity = 0;
-      player.isStrafing = false;
-      // Cancel power slide when grabbing
-      player.isPowerSliding = false;
-
-      // No movement timeout needed — startup tick block handles connect/whiff/tech instantly
-    }
+    player.inputQueue.push(data);
   });
 
   // TEST EVENT - Force opponent disconnection (for debugging)
@@ -3120,4 +2103,4 @@ function registerSocketHandlers(socket, io, rooms, context) {
   });
 }
 
-module.exports = { registerSocketHandlers };
+module.exports = { registerSocketHandlers, processInputPacket };

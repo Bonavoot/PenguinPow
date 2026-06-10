@@ -35,7 +35,7 @@ import crowdSalarymanSideIdle2 from "../assets/crowd-salaryman-side-idle-2-grade
 import crowdSalarymanSideCheering2 from "../assets/crowd-salaryman-side-cheering-2-graded.png";
 import CrowdEditor from "./CrowdEditor";
 import CROWD_POSITIONS from "./crowdPositionsData";
-import winnerSound from "../sounds/winner-sound.wav";
+import winnerSound from "../sounds/winner-sound.ogg";
 import { playBuffer, preloadSound } from "../utils/audioEngine";
 import { getGlobalVolume } from "./Settings";
 

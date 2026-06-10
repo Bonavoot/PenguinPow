@@ -52,8 +52,14 @@ import { getGlobalVolume } from "./Settings";
 import { playBuffer, createCrossfadeLoop } from "../utils/audioEngine";
 import SnowEffect from "./SnowEffect";
 import "./theme.css";
-import { SERVER_BROADCAST_HZ, DOHYO_LEFT_BOUNDARY, DOHYO_RIGHT_BOUNDARY } from "../constants";
-import { getDisplayHitstopUntil } from "../lib/serverClock";
+import { SERVER_BROADCAST_HZ, DOHYO_LEFT_BOUNDARY, DOHYO_RIGHT_BOUNDARY, isOutsideDohyo } from "../constants";
+import { SHADOW_GROUND_LEVEL } from "./PlayerShadow";
+import { getDisplayHitstopUntil, getEstimatedRtt } from "../lib/serverClock";
+import {
+  MovementPredictor,
+  isMovementPredictionEnabled,
+} from "../prediction/movementPredictor";
+import { getLocalKeyState, isLocalGameActive } from "../prediction/localInput";
 
 // Eeshi = pre-bout bed; battle BGM sits lower so hits/SFX stay forward in the mix.
 const EESHI_MUSIC_VOL = 0.018;
@@ -217,6 +223,39 @@ function useRecoloredCloneSrc(baseSrc, ownerColor, ownerBodyColor) {
   return cachedSrc || asyncSrc || baseSrc;
 }
 
+// =====================================================================
+// SHARED SERVER-STATE ACCUMULATOR (module scope)
+// Both GameFighter instances (and the clinch-tech listener) subscribe to
+// the same "fighter_action" packets. socket.io hands every listener the
+// SAME parsed object, so deltas are merged exactly once per packet here
+// and each listener reads the shared result — previously every listener
+// repeated the full merge for both players on every broadcast.
+// A full (non-delta) packet resets the accumulator, so stale state from
+// a previous match can never leak into a new one.
+// =====================================================================
+const sharedFighterState = { player1: null, player2: null, lastPacket: null };
+
+function mergeFighterPacket(data) {
+  if (data === sharedFighterState.lastPacket) return; // already merged this packet
+  sharedFighterState.lastPacket = data;
+  if (
+    data.isDelta &&
+    sharedFighterState.player1 &&
+    sharedFighterState.player2
+  ) {
+    // Merge in-place (avoids creating new objects 32×/sec → GC pressure)
+    const d1 = data.player1;
+    const d2 = data.player2;
+    const a1 = sharedFighterState.player1;
+    const a2 = sharedFighterState.player2;
+    for (const k in d1) a1[k] = d1[k];
+    for (const k in d2) a2[k] = d2[k];
+  } else {
+    sharedFighterState.player1 = { ...data.player1 };
+    sharedFighterState.player2 = { ...data.player2 };
+  }
+}
+
 const GameFighter = ({
   player,
   index,
@@ -232,7 +271,7 @@ const GameFighter = ({
   isCPUMatch, // True when playing vs CPU — hides PvP-only HUD bits (rematch tally)
 }) => {
   const { socket } = useContext(SocketContext);
-  const { emit: emitParticles, setFrozen: setParticlesFrozen, clearRawParryBlueHold } = useParticles();
+  const { emit: emitParticles, clearRawParryBlueHold } = useParticles();
 
   // ============================================
   // SPRITE RECOLORING STATE
@@ -451,8 +490,10 @@ const GameFighter = ({
   // PERFORMANCE: Sprite animation now handled by CSS (no React state needed)
   // ============================================
   const lastNonIdleSpriteRef = useRef(null);
-  const idleHoldFramesRef = useRef(0);
-  const IDLE_HOLD_FRAMES = 2;
+  // Time-based (was render-frame-based): movement no longer re-renders the
+  // component, so visual windows are deadlines checked by the rAF loop.
+  const idleHoldUntilRef = useRef(0);
+  const IDLE_HOLD_MS = 34; // ~2 frames @60fps
 
   const [penguin, setPenguin] = useState({
     id: "",
@@ -509,21 +550,34 @@ const GameFighter = ({
     isCrouchStrafing: false,
   });
 
-  // PERFORMANCE: Use ref for interpolated position to avoid constant re-renders
-  // Only update React state when position changes significantly
+  // PERFORMANCE: Position is rendered IMPERATIVELY, outside React.
+  // The interpolation rAF loop writes left/bottom styles directly to the DOM
+  // nodes below every frame. React renders only happen on discrete state
+  // changes (sprite/flag changes), never for movement. This removes the
+  // 60fps full-component re-render that movement used to cause.
   const interpolatedPositionRef = useRef({ x: 0, y: 0 });
-  const lastRenderedPositionRef = useRef({ x: 0, y: 0 });
-  const [interpolatedPosition, setInterpolatedPosition] = useState({
-    x: 0,
-    y: 0,
-  });
   const previousState = useRef(null);
   const currentState = useRef(null);
   const lastUpdateTime = useRef(performance.now());
   const previousUpdateTime = useRef(0);
-  // PERFORMANCE: Only skip updates when position change is imperceptible
-  // This gives smooth 60fps visuals while skipping redundant micro-updates
-  const MIN_POSITION_CHANGE = 0.3; // pixels - skip if position changed less than this
+
+  // DOM nodes driven imperatively by the interpolation loop (position only —
+  // all flag-dependent styling still flows through React renders).
+  const fighterImgDomRef = useRef(null); // StyledImage (static sprite)
+  const animContainerDomRef = useRef(null); // AnimatedFighterContainer
+  const shadowDomRef = useRef(null); // PlayerShadow root div
+  const youLabelDomRef = useRef(null); // pre-game "You" label
+  // Mirror of the latest rendered penguin state for the rAF loop (flags used
+  // in position formulas: at-the-ropes nudge, shadow ground-pinning).
+  const penguinRef = useRef(penguin);
+  // Last value of isOutsideDohyo(x, y) committed by a React render. The rAF
+  // loop watches for position-driven flips (ring-out slides) and forces a
+  // re-render so all zIndex formulas update consistently.
+  const lastRenderedOutsideRef = useRef(false);
+  // Bumped by the rAF loop when a time-based visual (hit flash / hit tint /
+  // idle sprite hold / dohyo-side flip) needs a re-render to update.
+  const [, setVisualTick] = useState(0);
+  const forceVisualRender = useCallback(() => setVisualTick((t) => t + 1), []);
 
   // ============================================
   // CLIENT-SIDE PREDICTION SYSTEM
@@ -545,8 +599,13 @@ const GameFighter = ({
     timestamp: 0,
   });
 
-  // Force re-render when predictions change (refs don't trigger re-renders)
-  const [, setPredictionTrigger] = useState(0);
+  // Force re-render when predictions change (refs don't trigger re-renders).
+  // CRITICAL: predictionVersion is also a dependency of the displayPenguin
+  // memo below — without it, a prediction-triggered re-render would read the
+  // CACHED display state (memo keyed only on server state) and the predicted
+  // action wouldn't be visible until the next server broadcast, defeating
+  // the entire point of client-side prediction.
+  const [predictionVersion, setPredictionVersion] = useState(0);
 
   // Prediction timeout - clear predictions if server doesn't confirm within this time
   // Shorter timeout to prevent predictions from staying visible too long
@@ -554,6 +613,17 @@ const GameFighter = ({
 
   // Track if this is the local player
   const isLocalPlayer = player.id === localId;
+
+  // ============================================
+  // CLIENT-SIDE MOVEMENT PREDICTION (local player only)
+  // Runs the server's ice-movement physics locally so strafing responds on
+  // the same frame as the keypress; reconciled against every server snapshot.
+  // See client/src/prediction/movementPredictor.js for details + kill switch.
+  // ============================================
+  const movementPredictorRef = useRef(null);
+  if (isLocalPlayer && !movementPredictorRef.current) {
+    movementPredictorRef.current = new MovementPredictor();
+  }
 
   // ============================================
   // HELPER: Check if player can perform ANY action
@@ -899,7 +969,7 @@ const GameFighter = ({
 
       // OPTIMIZATION: Only force re-render if prediction actually changed
       if (predictionChanged) {
-        setPredictionTrigger((prev) => prev + 1);
+        setPredictionVersion((prev) => prev + 1);
       }
     },
     [
@@ -1387,6 +1457,9 @@ const GameFighter = ({
       // the freeze at the same server-clock moment regardless of ping.
       const hitstopUntil = getDisplayHitstopUntil();
       if (hitstopUntil > 0 && timestamp < hitstopUntil) {
+        // Keep the movement predictor's clock aligned so the freeze doesn't
+        // turn into a burst of catch-up simulation ticks afterwards.
+        movementPredictorRef.current?.notePause(timestamp);
         interpolationIdRef.current = requestAnimationFrame(interpolationLoop);
         return;
       }
@@ -1423,25 +1496,125 @@ const GameFighter = ({
         };
       }
 
+      // MOVEMENT PREDICTION: for the local player, let the predictor either
+      // take over the X position (active) or blend a residual offset while
+      // handing control back to server interpolation (inactive). Y always
+      // comes from the server path — predicted movement is ground-only.
+      if (newPos && isLocalPlayer && isMovementPredictionEnabled()) {
+        const predictor = movementPredictorRef.current;
+        const selfState =
+          index === 0
+            ? allPlayersDataRef.current.player1
+            : allPlayersDataRef.current.player2;
+        const oppState =
+          index === 0
+            ? allPlayersDataRef.current.player2
+            : allPlayersDataRef.current.player1;
+        if (predictor && selfState) {
+          // If the action-prediction layer is already showing an unconfirmed
+          // action (dodge/attack/parry/...), suspend movement prediction NOW
+          // instead of waiting a round trip for the server's state flag.
+          const pendingAction = predictedState.current;
+          const locallyActing =
+            pendingAction.isAttacking ||
+            pendingAction.isSlapAttack ||
+            pendingAction.isDodging ||
+            pendingAction.isChargingAttack ||
+            pendingAction.isRawParrying ||
+            pendingAction.isGrabbing ||
+            pendingAction.isPowerSliding;
+          const result = predictor.update(
+            timestamp,
+            getLocalKeyState(),
+            selfState,
+            oppState,
+            isLocalGameActive() && !locallyActing,
+            newPos.x
+          );
+          if (result.active) {
+            newPos = { x: result.x, y: newPos.y };
+          } else if (result.offsetX !== 0) {
+            newPos = { x: newPos.x + result.offsetX, y: newPos.y };
+          }
+        }
+      }
+
       if (newPos) {
         interpolatedPositionRef.current = newPos;
 
-        // PERFORMANCE: Only update React state if position changed noticeably.
-        // Compare against the last position committed to React state (not the
-        // per-frame ref) so small per-frame deltas accumulate until they cross
-        // the threshold — prevents visual freeze during slow clinch pushes.
-        const positionDelta =
-          Math.abs(newPos.x - lastRenderedPositionRef.current.x) +
-          Math.abs(newPos.y - lastRenderedPositionRef.current.y);
-        if (positionDelta >= MIN_POSITION_CHANGE) {
-          lastRenderedPositionRef.current = newPos;
-          setInterpolatedPosition(newPos);
+        // PERFORMANCE: Write position straight to the DOM — no React render.
+        // Formulas must mirror the styled-components attrs exactly so a React
+        // render (which re-applies attrs from this same ref) is a no-op.
+        const p = penguinRef.current;
+        const atRopesNudge =
+          p.isAtTheRopes && p.fighter === "player 1"
+            ? newPos.x < 640
+              ? -5
+              : 5
+            : 0;
+        const leftPct = `${((newPos.x + atRopesNudge) / 1280) * 100}%`;
+        const plainLeftPct = `${(newPos.x / 1280) * 100}%`;
+        const bottomPct = `${(newPos.y / 720) * 100}%`;
+
+        const fighterEl = fighterImgDomRef.current;
+        if (fighterEl) {
+          fighterEl.style.left = leftPct;
+          fighterEl.style.bottom = bottomPct;
         }
+        const animEl = animContainerDomRef.current;
+        if (animEl) {
+          animEl.style.left = leftPct;
+          animEl.style.bottom = bottomPct;
+        }
+        const shadowEl = shadowDomRef.current;
+        if (shadowEl) {
+          // Mirror PlayerShadow's ground-pinning: during airborne moves the
+          // shadow stays at GROUND_LEVEL; during sidestep it tracks the dip.
+          const forceGround =
+            !p.isSidestepping &&
+            (p.isDodging ||
+              p.isGrabStartup ||
+              p.isThrowing ||
+              p.isBeingThrown ||
+              p.isRingOutThrowCutscene ||
+              p.isRopeJumping);
+          const shadowY = forceGround ? SHADOW_GROUND_LEVEL : newPos.y;
+          shadowEl.style.left = plainLeftPct;
+          shadowEl.style.bottom = `${(shadowY / 720) * 100 - 0.2}%`;
+        }
+        const youEl = youLabelDomRef.current;
+        if (youEl) {
+          youEl.style.left = plainLeftPct;
+          youEl.style.bottom = `${(newPos.y / 720) * 100 + 21}%`;
+        }
+
+        // Position-driven zIndex flip (falling off the dohyo): needs a real
+        // render so every element's zIndex formula updates consistently.
+        if (
+          isOutsideDohyo(newPos.x, newPos.y) !== lastRenderedOutsideRef.current
+        ) {
+          forceVisualRender();
+        }
+      }
+
+      // Time-based visual windows (hit flash / hit tint / idle sprite hold /
+      // unconfirmed predictions): re-render when a window the last render
+      // showed as active has expired, so the "off" state actually commits.
+      const rendered = renderedHitVisualsRef.current;
+      const nowMs = timestamp;
+      if (
+        (rendered.flash && nowMs >= hitFlashUntilRef.current) ||
+        (rendered.tint && nowMs >= hitTintUntilRef.current) ||
+        (rendered.hold && nowMs >= idleHoldUntilRef.current) ||
+        (rendered.prediction &&
+          nowMs - predictedState.current.timestamp > PREDICTION_TIMEOUT_MS)
+      ) {
+        forceVisualRender();
       }
 
       interpolationIdRef.current = requestAnimationFrame(interpolationLoop);
     },
-    [interpolatePosition, MIN_POSITION_CHANGE]
+    [interpolatePosition, isLocalPlayer, index, forceVisualRender]
   );
 
   // Start interpolation loop
@@ -1500,17 +1673,16 @@ const GameFighter = ({
     };
   }, [snowballLoop]);
 
-  // Smooth interpolation with predictive positioning for better feel
+  // Position for the current render pass. Reads the live interpolation ref —
+  // between renders the rAF loop keeps the DOM nodes up to date imperatively,
+  // so whatever React commits here is immediately consistent with the loop.
   const getDisplayPosition = useCallback(() => {
-    if (!interpolatedPosition.x && !interpolatedPosition.y && penguin.x) {
+    const pos = interpolatedPositionRef.current;
+    if (!pos.x && !pos.y && penguin.x) {
       return { x: penguin.x, y: penguin.y };
     }
-    return interpolatedPosition;
-  }, [
-    interpolatedPosition,
-    penguin.x,
-    penguin.y,
-  ]);
+    return pos;
+  }, [penguin.x, penguin.y]);
 
   const lastAttackState = useRef(false);
   const lastHitState = useRef(false);
@@ -1532,13 +1704,26 @@ const GameFighter = ({
   const strafingSoundRef = useRef(null);
   const lastPlayerHitTime = useRef(0);
   const lastRawParryTime = useRef(0);
-  const hitTintFramesRemaining = useRef(0); // Show hit tint for first N frames of isHit so red is visible (1 frame was too short)
+  // Deadline (performance.now() ms) until which the red hit tint shows.
+  // Time-based, not render-frame-based: movement no longer re-renders the
+  // component, so the rAF loop watches these deadlines and forces a render
+  // when one expires.
+  const hitTintUntilRef = useRef(0);
   // Pure-white impact snap on the receiving fighter, layered for the first
   // few frames *before* the lingering red hit tint. This is the AAA "moment
   // of impact" pop — Smash/SF6/T8 all do it. Uses the existing
   // chargeTintWhite sprite variant (preloaded by PlayerColorContext for every
   // skin combo), so it lights up instantly with no first-hit pop.
-  const hitFlashFramesRemaining = useRef(0);
+  const hitFlashUntilRef = useRef(0);
+  // What the last committed render showed (flash/tint/hold/prediction
+  // visible) — the rAF loop compares against live deadlines to know when a
+  // re-render is needed.
+  const renderedHitVisualsRef = useRef({
+    flash: false,
+    tint: false,
+    hold: false,
+    prediction: false,
+  });
   // Debounce flag for multi-hit combos (e.g. slap1 → slap2 → slap3). Only the
   // OPENING hit of a string should flash; subsequent hits within the cooldown
   // window use the red damage tint only. Three reasons:
@@ -1549,6 +1734,8 @@ const GameFighter = ({
   //      "invisible frame" hiccup caused by mid-swap browser compositing.
   const lastHitFlashTime = useRef(0);
   const HIT_FLASH_COOLDOWN_MS = 300;
+  const HIT_FLASH_MS = 67; // ~4 frames @60fps
+  const HIT_TINT_MS = 167; // ~10 frames @60fps
   const battleMusicRef = useRef(null);
   const eeshiMusicRef = useRef(null);
   // Set when match_over fires (2-round win); suppresses eeshi through MatchOver/rematch UI.
@@ -1651,38 +1838,18 @@ const GameFighter = ({
   // FPS counter RAF loop removed — it consumed a full rAF slot per
   // GameFighter instance (×2) with no visible output.
 
-  // PERFORMANCE: Refs to store accumulated player state for delta merging
-  const accumulatedPlayer1State = useRef(null);
-  const accumulatedPlayer2State = useRef(null);
-
   // Memoize frequently accessed socket listeners to prevent recreation
   const handleFighterAction = useCallback(
     (data) => {
       const currentTime = performance.now();
 
-      // PERFORMANCE: Handle delta updates by merging into existing refs in-place
-      // (avoids creating new objects 32×/sec which causes GC pressure)
-      let player1Data, player2Data;
-
-      if (
-        data.isDelta &&
-        accumulatedPlayer1State.current &&
-        accumulatedPlayer2State.current
-      ) {
-        const d1 = data.player1;
-        const d2 = data.player2;
-        const a1 = accumulatedPlayer1State.current;
-        const a2 = accumulatedPlayer2State.current;
-        for (const k in d1) a1[k] = d1[k];
-        for (const k in d2) a2[k] = d2[k];
-        player1Data = a1;
-        player2Data = a2;
-      } else {
-        accumulatedPlayer1State.current = { ...data.player1 };
-        accumulatedPlayer2State.current = { ...data.player2 };
-        player1Data = accumulatedPlayer1State.current;
-        player2Data = accumulatedPlayer2State.current;
-      }
+      // PERFORMANCE: Delta merging is done ONCE per packet in the shared
+      // module-level accumulator (see sharedFighterState) — both GameFighter
+      // instances receive the same parsed packet object from socket.io, so
+      // the second instance reuses the merge instead of repeating it.
+      mergeFighterPacket(data);
+      const player1Data = sharedFighterState.player1;
+      const player2Data = sharedFighterState.player2;
 
       // Always update ref (read by counter-grab positioning etc.)
       allPlayersDataRef.current.player1 = player1Data;
@@ -1752,6 +1919,16 @@ const GameFighter = ({
       currentState.current.facing = playerData.facing;
       currentState.current.knockbackVelocity = playerData.knockbackVelocity;
 
+      // MOVEMENT PREDICTION: reconcile the local predictor against this
+      // authoritative snapshot (no-op while the predictor is passive).
+      if (isLocalPlayer && movementPredictorRef.current) {
+        movementPredictorRef.current.onServerSnapshot(
+          playerData,
+          currentTime,
+          getEstimatedRtt()
+        );
+      }
+
       // Track actual intervals between server updates for adaptive interpolation
       previousUpdateTime.current = lastUpdateTime.current;
       lastUpdateTime.current = currentTime;
@@ -1759,9 +1936,7 @@ const GameFighter = ({
       // If this is the first update, set previous state to current
       if (!previousState.current) {
         previousState.current = { ...currentState.current };
-        const initPos = { x: playerData.x, y: playerData.y };
-        lastRenderedPositionRef.current = initPos;
-        setInterpolatedPosition(initPos);
+        interpolatedPositionRef.current = { x: playerData.x, y: playerData.y };
       }
 
       // Update penguin state with all data (discrete states are not interpolated)
@@ -1920,7 +2095,15 @@ const GameFighter = ({
           if (!seenIds.has(id)) samples.delete(id);
         }
 
-        setAllSnowballs(combinedSnowballs);
+        // Bail out when the list stays empty: the `snowballs` key persists in
+        // the accumulated state after the last ball despawns, and committing
+        // a fresh empty array every packet would re-render at broadcast rate
+        // for the rest of the match.
+        setAllSnowballs((prev) =>
+          prev.length === 0 && combinedSnowballs.length === 0
+            ? prev
+            : combinedSnowballs
+        );
       }
 
       // Update all pumo armies from both players (only if present in update)
@@ -1938,10 +2121,15 @@ const GameFighter = ({
         for (let i = 0; i < p2a.length; i++) {
           combined[p1a.length + i] = { ...p2a[i], ownerPlayerNumber: 2 };
         }
-        setAllPumoArmies(combined);
+        // Same empty-list bailout as snowballs above (clone positions are
+        // React-rendered, so while clones are alive the per-broadcast commit
+        // is what animates them — only the empty steady-state is skippable).
+        setAllPumoArmies((prev) =>
+          prev.length === 0 && combined.length === 0 ? prev : combined
+        );
       }
     },
-    [index]
+    [index, isLocalPlayer]
   );
 
   useEffect(() => {
@@ -2216,10 +2404,10 @@ const GameFighter = ({
 
       let wasClinchClashing = false;
       handleClinchTech = (data) => {
-        const p1 = data.isDelta && accumulatedPlayer1State.current
-          ? accumulatedPlayer1State.current : data.player1;
-        const p2 = data.isDelta && accumulatedPlayer2State.current
-          ? accumulatedPlayer2State.current : data.player2;
+        // Idempotent — reuses the merge if handleFighterAction ran first.
+        mergeFighterPacket(data);
+        const p1 = sharedFighterState.player1;
+        const p2 = sharedFighterState.player2;
         const nowClashing = p1.isClinchClashing || p2.isClinchClashing;
         if (nowClashing && !wasClinchClashing) {
           const centerX = (p1.x + p2.x) / 2;
@@ -2790,7 +2978,7 @@ const GameFighter = ({
   useEffect(() => {
     const shouldEmit = penguin.isBeingGrabPushed && penguin.isBeingGrabbed;
     if (shouldEmit) {
-      grabPushLastX.current = interpolatedPosition.x || penguin.x;
+      grabPushLastX.current = interpolatedPositionRef.current.x || penguin.x;
       const EMIT_INTERVAL = 50;
       const MAX_DELTA_FOR_FULL_SPEED = 12;
 
@@ -2848,7 +3036,7 @@ const GameFighter = ({
   useEffect(() => {
     const isLunging = penguin.isAttacking && penguin.attackType === "charged";
     if (isLunging) {
-      chargedTrailLastX.current = interpolatedPosition.x || penguin.x;
+      chargedTrailLastX.current = interpolatedPositionRef.current.x || penguin.x;
       const EMIT_INTERVAL = 50;
       const MAX_DELTA_FOR_FULL_SPEED = 14;
 
@@ -3821,7 +4009,11 @@ const GameFighter = ({
   // ============================================
   const displayPenguin = useMemo(() => {
     return getDisplayState();
-  }, [getDisplayState]);
+    // predictionVersion invalidates the cache when a local prediction is
+    // applied (predictions live in a ref, invisible to React's dep tracking).
+    // Without it predicted actions only render after the next server packet.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getDisplayState, predictionVersion]);
 
   // Track charge sessions so CSS animation restarts on each new charge
   const isCurrentlyCharging = displayPenguin.isChargingAttack;
@@ -3830,11 +4022,19 @@ const GameFighter = ({
   }
   prevChargingRef.current = isCurrentlyCharging;
 
-  // PERFORMANCE: Calculate position ONCE per render instead of calling getDisplayPosition() multiple times
-  // Memoized to avoid recalculating on every render
-  const displayPosition = useMemo(() => {
-    return getDisplayPosition();
-  }, [getDisplayPosition]);
+  // Calculate position ONCE per render. Deliberately NOT memoized: it reads
+  // the live interpolation ref, so every render must commit the freshest
+  // value (a memo keyed on server x/y would snap elements back to a stale
+  // position on prediction-triggered renders).
+  const displayPosition = getDisplayPosition();
+
+  // Sync refs the imperative position loop reads (flags for position
+  // formulas + which side of the dohyo boundary this render committed).
+  penguinRef.current = penguin;
+  lastRenderedOutsideRef.current = isOutsideDohyo(
+    displayPosition.x,
+    displayPosition.y
+  );
 
   // ============================================
   // SPRITE RECOLORING
@@ -3919,25 +4119,32 @@ const GameFighter = ({
     penguin.clinchJoltRecovery
   );
 
-  // Hold previous sprite for a few frames when transitioning to idle to prevent
+  // Hold previous sprite briefly when transitioning to idle to prevent
   // ghost frames during state transition gaps (e.g. isHit=false before isRecovering=true)
   // Skip hold for dodge→idle: dash recovery should snap to idle instantly so
   // consecutive dashes read as distinct (the hold would mask the idle gap).
+  // Time-based window; the rAF loop forces a re-render when it expires.
+  const renderNowMs = performance.now();
   let effectiveSpriteSrc = displaySpriteSrc;
   if (displaySpriteSrc === pumo && lastNonIdleSpriteRef.current) {
     if (lastNonIdleSpriteRef.current === dodging || lastNonIdleSpriteRef.current === recovering) {
       lastNonIdleSpriteRef.current = null;
-      idleHoldFramesRef.current = 0;
-    } else if (idleHoldFramesRef.current < IDLE_HOLD_FRAMES) {
-      effectiveSpriteSrc = lastNonIdleSpriteRef.current;
-      idleHoldFramesRef.current++;
+      idleHoldUntilRef.current = 0;
     } else {
-      lastNonIdleSpriteRef.current = null;
-      idleHoldFramesRef.current = 0;
+      if (idleHoldUntilRef.current === 0) {
+        // First idle render after a non-idle sprite — open the hold window.
+        idleHoldUntilRef.current = renderNowMs + IDLE_HOLD_MS;
+      }
+      if (renderNowMs < idleHoldUntilRef.current) {
+        effectiveSpriteSrc = lastNonIdleSpriteRef.current;
+      } else {
+        lastNonIdleSpriteRef.current = null;
+        idleHoldUntilRef.current = 0;
+      }
     }
   } else if (displaySpriteSrc !== pumo) {
     lastNonIdleSpriteRef.current = displaySpriteSrc;
-    idleHoldFramesRef.current = 0;
+    idleHoldUntilRef.current = 0;
   }
 
   // ── Hit visual response: mutually exclusive white flash XOR red tint ──
@@ -3947,45 +4154,49 @@ const GameFighter = ({
   // glued together, not one impact response). Splitting them by hit role
   // gives each its own coherent moment:
   //
-  //   • Opening hit (or isolated hit): pure 4-frame white impact-snap.
-  //   • Combo follow-up (within 300ms): pure 10-frame red damage tint.
+  //   • Opening hit (or isolated hit): pure ~67ms white impact-snap.
+  //   • Combo follow-up (within 300ms): pure ~167ms red damage tint.
   //
   // Typical combo timing (~100–150ms between hits) means the opener's
   // 67ms white flash ends well before the follow-up's red tint starts —
   // so the two colors are separated in time, not adjacent.
+  // Windows are time deadlines (was render-frame counters); the rAF loop
+  // forces the "off" re-render when an active window expires.
   if (penguin.isHit && !lastHitState.current) {
-    const nowMs = performance.now();
-    if (nowMs - lastHitFlashTime.current > HIT_FLASH_COOLDOWN_MS) {
+    if (renderNowMs - lastHitFlashTime.current > HIT_FLASH_COOLDOWN_MS) {
       // Opening / isolated hit: white impact-snap only.
-      hitFlashFramesRemaining.current = 4;
-      lastHitFlashTime.current = nowMs;
+      hitFlashUntilRef.current = renderNowMs + HIT_FLASH_MS;
+      lastHitFlashTime.current = renderNowMs;
     } else {
       // Cooldown-suppressed combo follow-up: red damage tint only.
-      hitTintFramesRemaining.current = 10;
+      hitTintUntilRef.current = renderNowMs + HIT_TINT_MS;
     }
   }
   if (!penguin.isHit) {
-    hitTintFramesRemaining.current = 0;
-    hitFlashFramesRemaining.current = 0;
+    hitTintUntilRef.current = 0;
+    hitFlashUntilRef.current = 0;
   }
   const showHitTintThisFrame =
-    penguin.isHit && hitTintFramesRemaining.current > 0;
-  if (showHitTintThisFrame) {
-    hitTintFramesRemaining.current -= 1;
-  }
-  // Tick the flash counter independently so the white snap always consumes
-  // its full 4 frames.
+    penguin.isHit && renderNowMs < hitTintUntilRef.current;
   const showHitFlashThisFrame =
-    penguin.isHit && hitFlashFramesRemaining.current > 0;
-  if (showHitFlashThisFrame) {
-    hitFlashFramesRemaining.current -= 1;
-  }
+    penguin.isHit && renderNowMs < hitFlashUntilRef.current;
   // Safety precedence: by construction (see hit-trigger block above) only ONE
-  // of the two counters is set per hit, so they shouldn't overlap. The
+  // of the two windows is opened per hit, so they shouldn't overlap. The
   // && !showHitFlashThisFrame guard remains as a defensive net for the rare
-  // case where a follow-up hit lands inside the opener's 4-frame flash
-  // window — in that edge case white wins on the contested frames.
+  // case where a follow-up hit lands inside the opener's flash window —
+  // in that edge case white wins on the contested frames.
   const renderHitTint = showHitTintThisFrame && !showHitFlashThisFrame;
+
+  // Bookkeeping for the rAF watcher: record what this render committed so the
+  // loop knows when an active visual window expires (and only then re-renders).
+  renderedHitVisualsRef.current.flash = showHitFlashThisFrame;
+  renderedHitVisualsRef.current.tint = showHitTintThisFrame;
+  renderedHitVisualsRef.current.hold = effectiveSpriteSrc !== displaySpriteSrc;
+  // True when this render showed merged (unconfirmed) predictions — the rAF
+  // watcher uses it to force the cleanup render once the prediction window
+  // (PREDICTION_TIMEOUT_MS) lapses without server confirmation.
+  renderedHitVisualsRef.current.prediction =
+    isLocalPlayer && displayPenguin !== penguin;
 
   // Tint priority: white flash (impact frames) > red hit tint > thick blubber
   // (Dodge invincibility is handled via CSS opacity pulse, not sprite-level tinting)
@@ -4166,7 +4377,11 @@ const GameFighter = ({
         !hakkiyoi &&
         gyojiState === "idle" &&
         countdown > 0 && (
-          <YouLabel x={displayPosition.x} y={displayPosition.y} />
+          <YouLabel
+            ref={youLabelDomRef}
+            x={displayPosition.x}
+            y={displayPosition.y}
+          />
         )}
       {/* PowerMeter and charge flash removed — hidden charge (TAP-style) */}
 
@@ -4181,6 +4396,7 @@ const GameFighter = ({
         $isVisible={true}
       />
       <PlayerShadow
+        ref={shadowDomRef}
         x={displayPosition.x}
         y={displayPosition.y}
         facing={penguin.facing ?? -1}
@@ -4219,6 +4435,7 @@ const GameFighter = ({
       {/* Animated Sprite Sheet (when sprite is a spritesheet animation) */}
       {isAnimatedSprite && !showRitualSprite && (
         <AnimatedFighterContainer
+          ref={animContainerDomRef}
           $x={displayPosition.x}
           $y={displayPosition.y}
           $facing={penguin.facing ?? -1}
@@ -4261,6 +4478,7 @@ const GameFighter = ({
       {/* Static Sprite (when sprite is not an animated spritesheet) */}
       {!isAnimatedSprite && (
         <StyledImage
+          ref={fighterImgDomRef}
           key={`${baseSpriteSrc}-${chargeAnimKeyRef.current}`}
           $overrideSrc={recoloredSpriteSrc}
           $fighter={penguin.fighter}
