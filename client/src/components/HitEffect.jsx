@@ -4,20 +4,14 @@ import styled from "styled-components";
 import PropTypes from "prop-types";
 import "./HitEffect.css";
 
-const SLAP_LINE_INDICES = [0, 1, 2, 3, 4];
-const CHARGED_LINE_INDICES = [0, 1, 2, 3, 4, 5, 6, 7];
-const SLAP_SPARK_INDICES = [0, 1, 2, 3, 4, 5];
-const CHARGED_SPARK_INDICES = [0, 1, 2, 3, 4, 5, 6, 7];
-const SLAP_PARTICLE_INDICES = [0, 1, 2, 3];
-const CHARGED_PARTICLE_INDICES = [0, 1, 2, 3, 4, 5];
-const TERTIARY_RING_INDICES = [0, 1];
-
+// Fixed container (sized to the largest tier) so every hit shares one
+// center point — same approach as RawParryEffectContainer.
 const HitEffectContainer = styled.div`
   position: absolute;
   left: ${props => (props.$x / 1280) * 100 + (props.$facing === 1 ? -8 : -3)}%;
   bottom: ${props => (props.$y / 720) * 100}%;
-  width: 2.47cqw;
-  height: 2.47cqw;
+  width: 4cqw;
+  height: 4cqw;
   transform: translate(-50%, 50%);
   display: flex;
   align-items: center;
@@ -25,6 +19,7 @@ const HitEffectContainer = styled.div`
   z-index: 100;
   pointer-events: none;
 `;
+
 
 const ImpactFrame = styled.div`
   position: fixed;
@@ -149,22 +144,25 @@ const HitEffect = ({ position }) => {
       {activeEffects.map((effect) => {
         const isCharged = effect.attackType === 'charged';
         const isBurst = effect.isBurstHit && !isCharged;
-        const isHeavy = isCharged || isBurst;
-        const hitTypeClass = isCharged ? 'charged-hit' : 'slap-hit';
-        const burstHitClass = isBurst ? 'burst-hit' : '';
+        const hitTypeClass = isCharged ? 'charged-hit' : (isBurst ? 'burst-hit' : 'slap-hit');
         const counterHitClass = effect.isCounterHit ? 'counter-hit' : '';
         const punishHitClass = effect.isPunish ? 'punish-hit' : '';
-        // Charged attack shattering grab armor — recolor the orange hit VFX
-        // to white/yellow to visually link it to the glass-shard armor break.
+        // Charged attack shattering grab armor — recolor the hit glow to
+        // white/yellow to visually link it to the glass-shard armor break.
         const armorBreakClass = effect.isArmorBreak ? 'armor-break' : '';
         const frozenClass = effect.frozen ? 'cinematic-frozen' : '';
-        const ringTiltSigned = effect.facing === -1 ? "55deg" : "-55deg";
-        const knockDir = effect.facing === 1 ? 1 : -1;
-        
-        const lineIndices = isHeavy ? CHARGED_LINE_INDICES : SLAP_LINE_INDICES;
-        const sparkIndices = isHeavy ? CHARGED_SPARK_INDICES : SLAP_SPARK_INDICES;
-        const particleIndices = isHeavy ? CHARGED_PARTICLE_INDICES : SLAP_PARTICLE_INDICES;
+        // Faux-3D tilt — signed by facing so the ring plane angles toward the
+        // struck side (same rotateY trick the raw-parry ring uses).
+        const ringTiltSigned = effect.facing === -1 ? '55deg' : '-55deg';
 
+        // Hit VFX is a white-hot sibling of the raw-parry glow: a tilted
+        // glowing ring + inner flash, a soft bloom, a held core, and an
+        // afterglow — clean and simple, NOT a stacked blob. A thin dark
+        // keyline (in CSS) keeps the white shapes readable over the
+        // penguins' white bellies. The fast directional IMPACT SPARKS that
+        // fly out through the ring are emitted on the canvas particle engine
+        // (hitSparkSlap / hitSparkBurst / hitSparkCharged) for real motion.
+        // Counter / punish / armor-break recolor the glow for special reads.
         return (
           <HitEffectContainer
             key={effect.id}
@@ -173,46 +171,14 @@ const HitEffect = ({ position }) => {
             $facing={effect.facing}
           >
             <div
-              className={`hit-ring-wrapper ${hitTypeClass} ${burstHitClass} ${counterHitClass} ${punishHitClass} ${armorBreakClass} ${frozenClass}`}
-              style={{
-                "--charged-ring-tilt-signed": ringTiltSigned,
-                "--slap-ring-tilt-signed": ringTiltSigned,
-                "--knock-dir": knockDir,
-              }}
+              className={`hit-ring-wrapper ${hitTypeClass} ${counterHitClass} ${punishHitClass} ${armorBreakClass} ${frozenClass}`}
+              style={{ "--hit-ring-tilt-signed": ringTiltSigned }}
             >
-              {/* L1: Bloom glow (blurred underlayer for fake bloom) */}
               <div className="hit-bloom-glow" />
-              {/* L2: Core flash + expanding ring */}
-              <div className="hit-ring" />
-              {/* L3: Held white-hot core during hitstop */}
-              <div className="hit-held-core" />
-              {/* L4: Secondary shockwave */}
-              <div className="hit-shockwave-secondary" />
-              {/* L5: Tertiary rings (staggered) */}
-              {isHeavy && TERTIARY_RING_INDICES.map((i) => (
-                <div key={i} className={`hit-tertiary-ring hit-tertiary-ring--${i}`} />
-              ))}
-              {/* L6: Directional energy streak */}
-              <div className="hit-directional-streak" />
-              {/* L7: Manga-style radial speed lines */}
-              <div className="hit-speed-lines">
-                {lineIndices.map((i) => (
-                  <div key={i} className="hit-speed-line" />
-                ))}
-              </div>
-              {/* L8: Energy sparks (elongated) */}
-              <div className="spark-particles">
-                {sparkIndices.map((i) => (
-                  <div key={i} className="spark" />
-                ))}
-              </div>
-              {/* L9: Debris particles */}
-              <div className="hit-particles">
-                {particleIndices.map((i) => (
-                  <div key={i} className="particle" />
-                ))}
-              </div>
-              {/* L10: Afterglow haze (slow lingering fade) */}
+              <div
+                className="hit-ring"
+                style={{ transform: effect.facing === 1 ? "scaleX(-1)" : "scaleX(1)" }}
+              />
               <div className="hit-afterglow" />
             </div>
           </HitEffectContainer>

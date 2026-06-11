@@ -516,7 +516,7 @@ function createCrispRing(diameter, palette) {
 // Angular wedge with a bright leading edge — reads as a thin shard of glass
 // when spawned at random rotations. Multiple seeds produce subtly different
 // silhouettes so a burst of shards doesn't look stamped from one cookie cutter.
-function createGlassShard(size, seed) {
+function createGlassShard(size, seed, frost = false) {
   const c = document.createElement("canvas");
   c.width = size;
   c.height = size;
@@ -549,12 +549,19 @@ function createGlassShard(size, seed) {
   ctx.lineTo(tailX + size * 0.06, half + halfWidth * (1 - taperBias * 0.6));
   ctx.closePath();
 
-  // Edge-lit gradient: bright white-yellow tip, fading to pale yellow tail
+  // Edge-lit gradient: bright white tip, fading to a pale tail. Warm
+  // white-yellow by default (glass-shard armor break); frost=true swaps
+  // to an icy white-cyan tint so the same shard silhouette reads as cold
+  // impact energy on the slap/charged/burst hits.
+  const sEdge = frost ? "120,195,255" : "255,235,140";
+  const sNear = frost ? "150,210,255" : "255,240,170";
+  const sMid = frost ? "205,235,255" : "255,250,210";
+  const sHot = frost ? "240,250,255" : "255,255,240";
   const grad = ctx.createLinearGradient(tailX, half, tipX, half);
-  grad.addColorStop(0, "rgba(255,235,140,0)");
-  grad.addColorStop(0.18, "rgba(255,240,170,0.55)");
-  grad.addColorStop(0.55, "rgba(255,250,210,0.85)");
-  grad.addColorStop(0.85, "rgba(255,255,240,1.0)");
+  grad.addColorStop(0, `rgba(${sEdge},0)`);
+  grad.addColorStop(0.18, `rgba(${sNear},0.55)`);
+  grad.addColorStop(0.55, `rgba(${sMid},0.85)`);
+  grad.addColorStop(0.85, `rgba(${sHot},1.0)`);
   grad.addColorStop(1, "rgba(255,255,255,1.0)");
   ctx.fillStyle = grad;
   ctx.fill();
@@ -567,8 +574,8 @@ function createGlassShard(size, seed) {
   ctx.closePath();
   const tipGrad = ctx.createRadialGradient(tipX - size * 0.05, half, 0, tipX - size * 0.05, half, size * 0.18);
   tipGrad.addColorStop(0, "rgba(255,255,255,1)");
-  tipGrad.addColorStop(0.6, "rgba(255,250,210,0.6)");
-  tipGrad.addColorStop(1, "rgba(255,235,140,0)");
+  tipGrad.addColorStop(0.6, `rgba(${sMid},0.6)`);
+  tipGrad.addColorStop(1, `rgba(${sEdge},0)`);
   ctx.fillStyle = tipGrad;
   ctx.fill();
 
@@ -609,7 +616,7 @@ function createFlashBloom(size, r, g, b) {
   return c;
 }
 
-function createCrossFlare(size, r, g, b) {
+function createCrossFlare(size, r, g, b, coreMid = "255,235,242", rayPrimaryMid = "255,170,200", raySecondaryMid = "255,200,220") {
   const c = document.createElement("canvas");
   c.width = size;
   c.height = size;
@@ -619,7 +626,7 @@ function createCrossFlare(size, r, g, b) {
   // Hot white-pink core. Bright nucleus the rays radiate from.
   const core = ctx.createRadialGradient(half, half, 0, half, half, size * 0.32);
   core.addColorStop(0, "rgba(255,255,255,1)");
-  core.addColorStop(0.35, "rgba(255,235,242,0.95)");
+  core.addColorStop(0.35, `rgba(${coreMid},0.95)`);
   core.addColorStop(0.75, `rgba(${r},${g},${b},0.5)`);
   core.addColorStop(1, `rgba(${r},${g},${b},0)`);
   ctx.fillStyle = core;
@@ -651,7 +658,7 @@ function createCrossFlare(size, r, g, b) {
     ctx.save();
     ctx.translate(half, half);
     ctx.rotate((i * Math.PI) / 2);
-    drawTaperedRay(half * 0.96, size * 0.05, 1.0, "255,170,200");
+    drawTaperedRay(half * 0.96, size * 0.05, 1.0, rayPrimaryMid);
     ctx.restore();
   }
 
@@ -661,7 +668,7 @@ function createCrossFlare(size, r, g, b) {
     ctx.save();
     ctx.translate(half, half);
     ctx.rotate((i * Math.PI) / 2 + Math.PI / 4);
-    drawTaperedRay(half * 0.62, size * 0.022, 0.7, "255,200,220");
+    drawTaperedRay(half * 0.62, size * 0.022, 0.7, raySecondaryMid);
     ctx.restore();
   }
 
@@ -731,7 +738,7 @@ function createHitStarburst(size, seed, r = 255, g = 220, b = 100) {
 }
 
 // Organic slash mark — tapered curved brushstroke
-function createHitSlash(length, thickness, seed) {
+function createHitSlash(length, thickness, seed, edgeRgb = [255, 200, 80], midRgb = [255, 240, 200]) {
   const c = document.createElement("canvas");
   const pad = thickness * 2;
   c.width = length + pad * 2;
@@ -780,12 +787,14 @@ function createHitSlash(length, thickness, seed) {
   }
   ctx.closePath();
 
+  const [er, eg, eb] = edgeRgb;
+  const [mr, mg, mb] = midRgb;
   const grad = ctx.createLinearGradient(startX, 0, endX, 0);
-  grad.addColorStop(0, "rgba(255,200,80,0)");
-  grad.addColorStop(0.15, "rgba(255,240,200,0.9)");
+  grad.addColorStop(0, `rgba(${er},${eg},${eb},0)`);
+  grad.addColorStop(0.15, `rgba(${mr},${mg},${mb},0.9)`);
   grad.addColorStop(0.5, "rgba(255,255,255,0.95)");
-  grad.addColorStop(0.85, "rgba(255,240,200,0.9)");
-  grad.addColorStop(1, "rgba(255,200,80,0)");
+  grad.addColorStop(0.85, `rgba(${mr},${mg},${mb},0.9)`);
+  grad.addColorStop(1, `rgba(${er},${eg},${eb},0)`);
   ctx.fillStyle = grad;
   ctx.fill();
 
@@ -977,6 +986,7 @@ function generateTextures(s) {
     glassShard3: createGlassShard(r(48), 5783),
     glassShard4: createGlassShard(r(64), 7129),
     glassFleck: createChunk(r(6), 255, 250, 220, 1.0),
+
   };
 }
 
@@ -1000,6 +1010,45 @@ function pickBluePuff(textures) {
 }
 function pickGoldPuff(textures) {
   return pick([textures.goldPuff1, textures.goldPuff2, textures.goldPuff3, textures.goldPuff4]);
+}
+
+// Directional spark BLAST out of the middle of the hit ring — fast,
+// motion-blurred white streaks firing radially in all directions. Low
+// gravity so they SHOOT OUT and fade (not droop and fall). Shared by the
+// slap / burst / charged presets; tier params scale density / speed /
+// length. cy is already screen-space (GAME_H - y).
+function emitImpactSparks(engine, cx, cy, {
+  count, spdMin, spdMax, sizeMin, sizeMax, stretchMin, stretchMax,
+  lifeMin, lifeMax, gravity = 120,
+}) {
+  for (let i = 0; i < count; i++) {
+    // Even radial spread + jitter so it blasts out in ALL directions
+    // without looking like a mechanical spoked wheel.
+    const ang = (i / count) * Math.PI * 2 + rand(-0.3, 0.3);
+    const spd = rand(spdMin, spdMax);
+    const size = rand(sizeMin, sizeMax);
+    engine.spawn({
+      x: cx + Math.cos(ang) * rand(2, 8),
+      y: cy + Math.sin(ang) * rand(2, 8),
+      vx: Math.cos(ang) * spd,
+      vy: Math.sin(ang) * spd,
+      gravity,
+      drag: 0.9,
+      size,
+      sizeEnd: size * 0.4,
+      alpha: 1,
+      alphaEnd: 0,
+      rotation: ang, // orient the streak along its outward direction
+      rotationSpeed: 0,
+      ease: "outCubic",
+      easeAlpha: "outQuad",
+      maxLife: rand(lifeMin, lifeMax),
+      texture: pick([engine.textures.speedLine, engine.textures.speedLineThin]),
+      stretchX: rand(stretchMin, stretchMax),
+      blendMode: "lighter",
+      aboveFighters: true,
+    });
+  }
 }
 
 const PRESETS = {
@@ -2743,243 +2792,38 @@ const PRESETS = {
   // ─── Hit Spark presets ──────────────────────────────────────────
   // Layered on top of existing CSS hit effects for organic texture
 
-  hitSparkSlap(engine, { x, y, facing }) {
-    const dir = facing || 1;
-    const cx = x;
-    const cy = GAME_H - y;
-    const front = (cfg) => engine.spawn({ ...cfg, aboveFighters: true });
+  // The hit GLOW (tilted ring + flash + bloom) is the white-hot CSS sibling
+  // of the raw-parry effect (HitEffect.jsx). These canvas presets add the
+  // fast directional IMPACT SPARKS that fly out through the ring in all
+  // directions — the "oomph". (The victim's charged knockback flight trail
+  // is a separate preset and still active.)
 
-    // Starburst sparks — irregular star shapes radiating out
-    for (let i = 0; i < 3; i++) {
-      const angle = rand(-0.8, 0.8) + (dir === 1 ? Math.PI * 0.8 : Math.PI * 0.2);
-      const spd = rand(120, 260);
-      const size = rand(18, 30);
-      front({
-        x: cx + rand(-6, 6),
-        y: cy + rand(-8, 8),
-        vx: Math.cos(angle) * spd + dir * rand(20, 60),
-        vy: Math.sin(angle) * spd,
-        gravity: rand(80, 200),
-        drag: 0.92,
-        size,
-        sizeEnd: size * rand(0.1, 0.3),
-        alpha: rand(0.85, 1.0),
-        alphaEnd: 0,
-        rotation: rand(0, Math.PI * 2),
-        rotationSpeed: rand(-4, 4),
-        ease: "outCubic",
-        easeAlpha: "outQuad",
-        maxLife: rand(0.12, 0.22),
-        texture: pick([engine.textures.hitStar1, engine.textures.hitStar2, engine.textures.hitStar3]),
-        blendMode: "lighter",
-      });
-    }
-
-    // Slash marks — curved brushstrokes at random angles
-    for (let i = 0; i < 2; i++) {
-      const slashAngle = rand(0, Math.PI * 2);
-      const size = rand(14, 22);
-      front({
-        x: cx + rand(-10, 10),
-        y: cy + rand(-10, 10),
-        vx: dir * rand(30, 80),
-        vy: rand(-20, 20),
-        gravity: 0,
-        drag: 0.9,
-        size,
-        sizeEnd: size * 0.4,
-        alpha: rand(0.8, 0.95),
-        alphaEnd: 0,
-        rotation: slashAngle,
-        rotationSpeed: rand(-2, 2),
-        ease: "outCubic",
-        easeAlpha: "inQuad",
-        maxLife: rand(0.1, 0.18),
-        texture: pick([engine.textures.hitSlash1, engine.textures.hitSlash2, engine.textures.hitSlash3]),
-        stretchX: rand(1.5, 2.5),
-        blendMode: "lighter",
-      });
-    }
-
-    // Smear blobs — organic paint-splatter feel
-    for (let i = 0; i < 2; i++) {
-      const angle = rand(0, Math.PI * 2);
-      const spd = rand(60, 140);
-      const size = rand(12, 20);
-      front({
-        x: cx + rand(-4, 4),
-        y: cy + rand(-6, 6),
-        vx: Math.cos(angle) * spd,
-        vy: Math.sin(angle) * spd,
-        gravity: rand(100, 250),
-        drag: 0.91,
-        size,
-        sizeEnd: size * 0.2,
-        alpha: rand(0.7, 0.9),
-        alphaEnd: 0,
-        rotation: rand(0, Math.PI * 2),
-        rotationSpeed: rand(-3, 3),
-        ease: "outCubic",
-        easeAlpha: "outQuad",
-        maxLife: rand(0.14, 0.24),
-        texture: pick([engine.textures.hitSmear1, engine.textures.hitSmear2, engine.textures.hitSmear3]),
-        blendMode: "lighter",
-      });
-    }
-
-    // Bright point sparks — tiny hot dots that scatter fast
-    for (let i = 0; i < 5; i++) {
-      const angle = rand(0, Math.PI * 2);
-      const spd = rand(200, 400);
-      front({
-        x: cx + rand(-3, 3),
-        y: cy + rand(-3, 3),
-        vx: Math.cos(angle) * spd + dir * rand(30, 60),
-        vy: Math.sin(angle) * spd,
-        gravity: rand(300, 600),
-        drag: 0.93,
-        size: rand(3, 6),
-        sizeEnd: rand(1, 2),
-        alpha: rand(0.9, 1.0),
-        alphaEnd: 0,
-        ease: "linear",
-        easeAlpha: "outQuad",
-        rotationSpeed: 0,
-        maxLife: rand(0.1, 0.2),
-        texture: pick([engine.textures.spark, engine.textures.sparkSmall]),
-        blendMode: "lighter",
-      });
-    }
-  },
-
-  hitSparkCharged(engine, { x, y, facing }) {
-    const dir = facing || 1;
-    const cx = x;
-    const cy = GAME_H - y;
-    const front = (cfg) => engine.spawn({ ...cfg, aboveFighters: true });
-
-    // Large starburst sparks
-    for (let i = 0; i < 5; i++) {
-      const angle = rand(0, Math.PI * 2);
-      const spd = rand(140, 320);
-      const size = rand(26, 44);
-      front({
-        x: cx + rand(-8, 8),
-        y: cy + rand(-10, 10),
-        vx: Math.cos(angle) * spd + dir * rand(20, 50),
-        vy: Math.sin(angle) * spd,
-        gravity: rand(60, 160),
-        drag: 0.93,
-        size,
-        sizeEnd: size * rand(0.1, 0.25),
-        alpha: rand(0.9, 1.0),
-        alphaEnd: 0,
-        rotation: rand(0, Math.PI * 2),
-        rotationSpeed: rand(-5, 5),
-        ease: "outCubic",
-        easeAlpha: "outQuad",
-        maxLife: rand(0.18, 0.32),
-        texture: pick([engine.textures.hitStarBig1, engine.textures.hitStarBig2, engine.textures.hitStar1, engine.textures.hitStar2]),
-        blendMode: "lighter",
-      });
-    }
-
-    // Big slash marks
-    for (let i = 0; i < 3; i++) {
-      const slashAngle = rand(0, Math.PI * 2);
-      const size = rand(20, 32);
-      front({
-        x: cx + rand(-14, 14),
-        y: cy + rand(-14, 14),
-        vx: dir * rand(40, 100),
-        vy: rand(-30, 30),
-        gravity: 0,
-        drag: 0.88,
-        size,
-        sizeEnd: size * 0.3,
-        alpha: rand(0.85, 1.0),
-        alphaEnd: 0,
-        rotation: slashAngle,
-        rotationSpeed: rand(-2, 2),
-        ease: "outCubic",
-        easeAlpha: "inQuad",
-        maxLife: rand(0.14, 0.26),
-        texture: pick([engine.textures.hitSlash1, engine.textures.hitSlash2, engine.textures.hitSlash3]),
-        stretchX: rand(2, 3.5),
-        blendMode: "lighter",
-      });
-    }
-
-    // Smear blobs — larger, more dramatic
-    for (let i = 0; i < 4; i++) {
-      const angle = rand(0, Math.PI * 2);
-      const spd = rand(80, 180);
-      const size = rand(16, 28);
-      front({
-        x: cx + rand(-6, 6),
-        y: cy + rand(-8, 8),
-        vx: Math.cos(angle) * spd,
-        vy: Math.sin(angle) * spd,
-        gravity: rand(80, 200),
-        drag: 0.92,
-        size,
-        sizeEnd: size * 0.15,
-        alpha: rand(0.75, 0.95),
-        alphaEnd: 0,
-        rotation: rand(0, Math.PI * 2),
-        rotationSpeed: rand(-3, 3),
-        ease: "outCubic",
-        easeAlpha: "outQuad",
-        maxLife: rand(0.18, 0.3),
-        texture: pick([engine.textures.hitSmear1, engine.textures.hitSmear2, engine.textures.hitSmear3]),
-        blendMode: "lighter",
-      });
-    }
-
-    // Bright point sparks — more, faster, longer lived
-    for (let i = 0; i < 8; i++) {
-      const angle = rand(0, Math.PI * 2);
-      const spd = rand(250, 500);
-      front({
-        x: cx + rand(-4, 4),
-        y: cy + rand(-4, 4),
-        vx: Math.cos(angle) * spd + dir * rand(20, 50),
-        vy: Math.sin(angle) * spd,
-        gravity: rand(250, 550),
-        drag: 0.94,
-        size: rand(4, 8),
-        sizeEnd: rand(1, 2),
-        alpha: rand(0.9, 1.0),
-        alphaEnd: 0,
-        ease: "linear",
-        easeAlpha: "outQuad",
-        rotationSpeed: 0,
-        maxLife: rand(0.14, 0.28),
-        texture: pick([engine.textures.spark, engine.textures.sparkSmall]),
-        blendMode: "lighter",
-      });
-    }
-
-    // Expanding organic ring (using cloud ring texture)
-    front({
-      x: cx,
-      y: cy,
-      vx: 0, vy: 0, gravity: 0, drag: 1,
-      size: 8,
-      sizeEnd: 50,
-      alpha: 0.7,
-      alphaEnd: 0,
-      rotation: 0, rotationSpeed: 0,
-      ease: "outExpo", easeAlpha: "outCubic",
-      maxLife: 0.25,
-      texture: pick([engine.textures.ring, engine.textures.ringAlt]),
-      stretchX: 1.2,
-      blendMode: "lighter",
+  // SLAP — compact, snappy spark burst (small hand, quick tsuppari).
+  hitSparkSlap(engine, { x, y }) {
+    emitImpactSparks(engine, x, GAME_H - y, {
+      count: 13, spdMin: 360, spdMax: 640, sizeMin: 3.5, sizeMax: 5.5,
+      stretchMin: 4, stretchMax: 8, lifeMin: 0.15, lifeMax: 0.27, gravity: 120,
     });
   },
 
-  hitSparkBurst(engine, opts) {
-    PRESETS.hitSparkCharged(engine, opts);
+  // CHARGED / HEADBUTT — the heavy hit. Dense, fast, long-tailed spark
+  // EXPLOSION in all directions — this radial burst (plus the bigger CSS
+  // shockwave and no parry-style cross) is what separates the charged hit
+  // from the clean raw-parry deflect.
+  hitSparkCharged(engine, { x, y }) {
+    emitImpactSparks(engine, x, GAME_H - y, {
+      count: 22, spdMin: 460, spdMax: 880, sizeMin: 4.5, sizeMax: 7,
+      stretchMin: 6, stretchMax: 12, lifeMin: 0.18, lifeMax: 0.34, gravity: 100,
+    });
+  },
+
+  // SLAP 3 / BURST — the tsuppari finisher. Bigger / faster than slap 1-2,
+  // but lighter than the charged explosion.
+  hitSparkBurst(engine, { x, y }) {
+    emitImpactSparks(engine, x, GAME_H - y, {
+      count: 17, spdMin: 400, spdMax: 720, sizeMin: 4, sizeMax: 6.5,
+      stretchMin: 5, stretchMax: 10, lifeMin: 0.16, lifeMax: 0.3, gravity: 110,
+    });
   },
 
   // ── GRAB ARMOR ABSORB ───────────────────────────────────────────────
