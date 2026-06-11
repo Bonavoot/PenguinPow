@@ -87,9 +87,9 @@ const BLUE_ANIMATED_SPRITES = {
   },
   crouching: {
     src: blockingSheet,
-    frameCount: 6,
-    frameWidth: 480,
-    frameHeight: 480,
+    frameCount: 1,
+    frameWidth: 960,
+    frameHeight: 960,
     fps: 8,
   },
   bow: {

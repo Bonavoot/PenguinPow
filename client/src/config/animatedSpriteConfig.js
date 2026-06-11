@@ -56,9 +56,9 @@ export const SPRITESHEET_CONFIG_BY_NAME = {
   },
   blocking: {
     spritesheet: blockingSpritesheet,
-    frameCount: 6,
-    frameWidth: 480,
-    frameHeight: 480,
+    frameCount: 1,
+    frameWidth: 960,
+    frameHeight: 960,
     fps: 12,
     loop: true,
   },

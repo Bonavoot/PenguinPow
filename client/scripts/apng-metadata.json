@@ -9,11 +9,11 @@
   },
   "blocking": {
     "originalFile": "blocking.png",
-    "frameCount": 6,
-    "frameWidth": 480,
-    "frameHeight": 480,
+    "frameCount": 1,
+    "frameWidth": 960,
+    "frameHeight": 960,
     "fps": 12,
-    "totalDuration": 498
+    "totalDuration": 0
   },
   "bow": {
     "originalFile": "bow.png",
