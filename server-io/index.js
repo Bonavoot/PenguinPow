@@ -98,6 +98,7 @@ const {
   gameNow,
   setSimRoomResolver,
   advanceRoomSimTime,
+  lagCompensatedParryStart,
   emitThrottledScreenShake,
   clearHitFall,
   clearSidestepHitReturn,
@@ -2910,6 +2911,7 @@ function tick(delta) {
         !player.isSidestepping && // Block raw parry during sidestep
         !player.isGrabbing &&
         !player.isBeingGrabbed &&
+        !player.isGrabStartup && // Block raw parry during grab startup (the lunge windup) — otherwise parry coexists with the grab attempt
         !player.isGrabbingMovement && // Block raw parry during grab movement
         !player.isWhiffingGrab && // Block raw parry during grab whiff recovery
         !player.isGrabClashing && // Block raw parry during grab clashing
@@ -2929,7 +2931,9 @@ function tick(delta) {
           player.isPerfectRawParrySuccess = false;
           
           player.isRawParrying = true;
-          player.rawParryStartTime = now;
+          // Backdate toward the true press moment so the perfect-parry window is
+          // judged on when the player pressed, not when the packet arrived.
+          player.rawParryStartTime = lagCompensatedParryStart(player, now);
           player.rawParryMinDurationMet = false;
           // Flat stamina cost on parry initiation
           player.stamina = Math.max(0, player.stamina - RAW_PARRY_STAMINA_COST);

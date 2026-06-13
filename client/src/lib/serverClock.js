@@ -23,6 +23,7 @@ const ACK_TIMEOUT_MS = 2000;
 
 let offsetMs = 0; // serverGameNow - clientPerformanceNow (median of samples)
 let rttMs = 60; // median round-trip estimate; conservative default pre-handshake
+let synced = false; // true once at least one handshake has produced samples
 let activeSocket = null;
 let resyncTimer = null;
 
@@ -89,6 +90,7 @@ async function runHandshake(socket, sampleCount) {
   if (collected.length > 0) {
     offsetMs = median(collected);
     rttMs = median(rtts);
+    synced = true;
   }
 }
 
@@ -132,10 +134,19 @@ export function stopServerClock() {
   }
   activeSocket = null;
   displayHitstopUntilMs = 0;
+  synced = false;
 }
 
 export function getServerOffset() {
   return offsetMs;
+}
+
+// True once the clock handshake has completed at least one successful round of
+// samples. Until then, `offsetMs` is the pre-handshake default (0) and must NOT
+// be used to convert client timestamps into server-clock time — doing so would
+// feed the server garbage. Consumers (e.g. parry lag-compensation) gate on this.
+export function isServerClockSynced() {
+  return synced;
 }
 
 // Median RTT from the latest clock-sync handshake. Used by the movement

@@ -1,40 +1,40 @@
+import { useState, useEffect } from "react";
 import gyoji from "../assets/gyoji.png";
 import gyojiReady from "../assets/gyoji-ready.png";
 import gyojiPlayer1wins from "../assets/gyoji-player1-wins.png";
 import gyojiPlayer2wins from "../assets/gyoji-player2-wins.png";
-import gyojiHakkiyoi from "../assets/gyoji-hakkiyoi.gif";
+import { getActiveGyojiSprites } from "../utils/GyojiRecolorizer";
 import GyojiShadow from "./GyojiShadow";
 import PropTypes from "prop-types";
-import { useState, useEffect } from "react";
+
+const BASE_SOURCES = {
+  idle: gyoji,
+  ready: gyojiReady,
+  player1Win: gyojiPlayer1wins,
+  player2Win: gyojiPlayer2wins,
+};
 
 const Gyoji = ({ gyojiState, hakkiyoi }) => {
-  const [showHakkiyoiAnimation, setShowHakkiyoiAnimation] = useState(false);
-
-  useEffect(() => {
-    if (hakkiyoi) {
-      setShowHakkiyoiAnimation(true);
-      const timer = setTimeout(() => {
-        setShowHakkiyoiAnimation(false);
-      }, 1000); // Animation lasts 1 second
-      return () => clearTimeout(timer);
-    }
-  }, [hakkiyoi]);
-
-  let imgSrc = gyoji;
-
-  if (showHakkiyoiAnimation) {
-    imgSrc = gyojiHakkiyoi;
-  } else if (gyojiState === "ready") {
-    imgSrc = gyojiReady;
+  let sourceKey = "idle";
+  if (hakkiyoi || gyojiState === "ready") {
+    sourceKey = "ready";
   } else if (gyojiState === "player1Win") {
-    imgSrc = gyojiPlayer1wins;
+    sourceKey = "player1Win";
   } else if (gyojiState === "player2Win") {
-    imgSrc = gyojiPlayer2wins;
+    sourceKey = "player2Win";
   }
 
-  // Determine if gyoji should breathe (idle state, not declaring winner or hakkiyoi)
-  const shouldBreathe =
-    gyojiState === "idle" && !showHakkiyoiAnimation;
+  const recoloredSources = getActiveGyojiSprites();
+  const preferredSrc =
+    recoloredSources?.[sourceKey] || BASE_SOURCES[sourceKey];
+
+  const [imgSrc, setImgSrc] = useState(preferredSrc);
+
+  useEffect(() => {
+    setImgSrc(preferredSrc);
+  }, [preferredSrc]);
+
+  const shouldBreathe = gyojiState === "idle" && !hakkiyoi;
 
   return (
     <>
@@ -43,6 +43,11 @@ const Gyoji = ({ gyojiState, hakkiyoi }) => {
         src={imgSrc}
         alt="gyoji"
         className={`gyoji${shouldBreathe ? " gyoji-breathing" : ""}`}
+        onError={() => {
+          if (imgSrc !== BASE_SOURCES[sourceKey]) {
+            setImgSrc(BASE_SOURCES[sourceKey]);
+          }
+        }}
       />
     </>
   );

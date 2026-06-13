@@ -166,6 +166,7 @@ function createInitialPlayerState(overrides = {}) {
     isSlapParryRecovering: false,
     isRawParrying: false,
     rawParryStartTime: 0,
+    rawParryPressGameTime: 0,
     rawParryMinDurationMet: false,
     rawParryCooldownUntil: 0,
     isRawParryStun: false,

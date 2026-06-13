@@ -1,33 +1,58 @@
 import { useEffect, useRef } from "react";
+import { valueNoise } from "../utils/shakeNoise";
 
 // ── Tunable constants ──────────────────────────────────────────────
 const GAME_WIDTH = 1280;
-
-const MIN_SCALE = 1.20; // widest zoom — tighter crop, hides below dohyo (~10% out)
-const MAX_SCALE = 1.575; // tightest zoom when players are very close (~10% out)
-const DEFAULT_SCALE = 1.305; // fallback before game starts (~10% out)
 
 const CLOSE_DISTANCE = 100; // player gap (game-coords) for max zoom
 const FAR_DISTANCE = 700; // player gap (game-coords) for min zoom
 
 const SPRITE_HALF_W = 0; // Sprites are now centred on player.x via CSS translate
+const Y_OFFSET = 12; // fixed vertical bias (%) — positive = show more top / hides dohyo bottom
+
+// MIN_SCALE floor — derived from the dohyo-crop constraint, NOT a magic number.
+// The full Y_OFFSET downward bias must fit inside the per-frame edge clamp
+// (maxPanY = 50 * (scale - 1)). If scale drops below 1 + Y_OFFSET/50 the clamp
+// eats part of the bias and the bottom of the dohyo creeps into view at the
+// widest zoom (exactly when players are farthest apart). Solve:
+//   50 * (scale - 1) >= Y_OFFSET  →  scale >= 1 + Y_OFFSET/50  (= 1.24 at Y_OFFSET 12)
+const MIN_SCALE = Math.max(1.2, 1 + Y_OFFSET / 50); // widest zoom — guarantees the bottom crop
+const MAX_SCALE = 1.575; // tightest zoom when players are very close
+const DEFAULT_SCALE = 1.305; // fallback before game starts
+
+// ── Frame-rate independence ─────────────────────────────────────────
+// Every smoothing/decay constant in this file is authored against a 60fps
+// reference frame. At runtime each is re-derived for the ACTUAL frame delta, so
+// the camera feels identical — and hits carry identical weight — at 30/60/120/144Hz.
+// (Previously these were applied raw per-frame: at 144Hz the camera settled ~2.4×
+// faster and shake decayed ~2× faster, literally weakening hits on fast monitors.)
+const REF_FRAME_MS = 1000 / 60; // 60fps reference frame (~16.67ms)
+const MAX_DT_FRAMES = 4; // clamp huge deltas (tab refocus / GC stalls)
+
+// Pan smoothing (authored per 60fps frame)
 const SMOOTH_FACTOR = 0.07; // lerp speed per frame (0–1, higher = snappier)
-const Y_OFFSET = 12; // fixed vertical bias (%) — positive = show more top
+// Asymmetric zoom: snap toward the action a touch faster than we ease apart, so
+// approaches feel responsive and separations read as calm/deliberate.
+const SMOOTH_ZOOM_IN = 0.1; // players closing → quicker push-in
+const SMOOTH_ZOOM_OUT = 0.05; // players separating → slower pull-out
 
 // Ready stance positions (must match server-io/gameFunctions.js handleReadyPositions)
 const PLAYER1_READY_X = 543;
 const PLAYER2_READY_X = 735;
 
-// ── Impact shake ─────────────────────────────────────────────────
-// Phase 3: values pushed up from (2 → 7) to (3 → 10). Now that the crowd
-// background is desaturated/vignetted (Phase 1), the shake can swing harder
-// without reading as visual noise — it reads as weight. Light slaps now
-// always register a felt camera response (was sometimes imperceptible at 2px),
-// and heavy/cinematic hits genuinely jolt the frame.
+// ── Impact shake (smoothed-noise, directional recoil) ───────────────
+// Replaces per-frame white-noise jitter (which read as a cheap high-frequency
+// buzz) with a continuous 1D value-noise path: the frame swings along a smooth
+// arc, so a hit reads as WEIGHT, not vibration. Amplitude (px) and triggers are
+// unchanged, and a decaying directional push pulls the frame along the knockback
+// vector for a real "recoil." Total offset stays within the existing px budget,
+// so map edges can never be exposed.
 const SHAKE_MIN = 3; // px — lightest hit (slap)
 const SHAKE_MAX = 10; // px — heaviest hit (full-charge + power-up)
 const SHAKE_DECAY = 0.88; // per-frame multiplier → ~150 ms at 60 fps
 const SHAKE_STOP = 0.3; // cut to zero below this
+const SHAKE_FREQ_HZ = 22; // oscillation frequency of the smooth shake path
+const SHAKE_DIR_BIAS = 0.5; // share of amplitude given to directional recoil (rest = noise)
 
 // ── Hit zoom punch-in ────────────────────────────────────────────
 // Phase 3: punch boosted from (0.02 → 0.06) to (0.03 → 0.10). The extra zoom
@@ -40,6 +65,15 @@ const PUNCH_STOP = 0.001; // cut to zero below this
 
 // Knockback reference ceiling for normalising intensity
 const KB_REF = 2.5;
+
+// ── Perfect-parry zoom-punch ─────────────────────────────────────
+// Perfect parries never increment hitCounter (they're not "hits"), so the
+// normal impact punch above never fires for them — the single biggest reason
+// a perfect parry felt visually flat despite stunning the opponent. This is a
+// dedicated, stronger punch-in (heavier than the max hit punch of 0.10, just
+// shy of the cinematic-kill boost of 0.14) that lands right as the perfect
+// freeze begins and eases out across it. The "this read MATTERED" beat.
+const PERFECT_PARRY_PUNCH = 0.13;
 
 // ── Cinematic kill camera ────────────────────────────────────────
 const CINEMATIC_ZOOM_SCALE = 1.98; // ~10% out from 2.2
@@ -101,6 +135,10 @@ export default function useCamera(containerRef, socket) {
   const shakeRef = useRef({ x: 0, y: 0, intensity: 0, dirX: 0 });
   const punchRef = useRef({ amount: 0 });
   const hitTrackRef = useRef({ p1: 0, p2: 0 });
+
+  // Frame-rate independence + smooth-shake timing
+  const lastFrameRef = useRef(performance.now());
+  const shakeClockRef = useRef(0); // accumulated wall-clock ms, drives the noise phase
 
   // Player-tracking is off during power-up selection, ready-up, and gyoji
   // calls — camera stays centered until HAKKIYOI (game_start).
@@ -226,14 +264,36 @@ export default function useCamera(containerRef, socket) {
       );
     };
 
+    // Perfect parry: fire the dedicated zoom-punch. Skipped during a kill
+    // cinematic so it can never step on the KO moment.
+    const onPerfectParry = () => {
+      if (cinematicRef.current.active) return;
+      punchRef.current.amount = Math.max(
+        punchRef.current.amount,
+        PERFECT_PARRY_PUNCH,
+      );
+    };
+
     socket.on("fighter_action", onFighterAction);
     socket.on("cinematic_kill", onCinematicKill);
     socket.on("game_reset", onGameReset);
     socket.on("game_start", onGameStart);
+    socket.on("perfect_parry", onPerfectParry);
 
     const tick = () => {
       const { p1x, p2x } = posRef.current;
       const el = containerRef?.current;
+
+      // ── Frame-delta (measured every frame, even when idle) ──
+      const now = performance.now();
+      let dtMs = now - lastFrameRef.current;
+      lastFrameRef.current = now;
+      if (!isFinite(dtMs) || dtMs <= 0) dtMs = REF_FRAME_MS;
+      shakeClockRef.current += dtMs;
+      const dtFrames = Math.min(dtMs / REF_FRAME_MS, MAX_DT_FRAMES);
+      // Re-derive a per-frame smoothing/decay rate for the actual delta.
+      const lerpT = (perFrame) => 1 - Math.pow(1 - perFrame, dtFrames);
+      const decayT = (perFrame) => Math.pow(perFrame, dtFrames);
 
       if (el && p1x !== null && p2x !== null) {
         const { scale: normalTargetScale, x: normalTargetX, y: normalTargetY } =
@@ -262,13 +322,13 @@ export default function useCamera(containerRef, socket) {
             cam.scale = lerp(
               cam.scale,
               punchedTarget,
-              CINEMATIC_ZOOM_IN_SPEED,
+              lerpT(CINEMATIC_ZOOM_IN_SPEED),
             );
-            cam.x = lerp(cam.x, cinematicTargetX, CINEMATIC_ZOOM_IN_SPEED);
-            cam.y = lerp(cam.y, cinematicTargetY, CINEMATIC_ZOOM_IN_SPEED);
+            cam.x = lerp(cam.x, cinematicTargetX, lerpT(CINEMATIC_ZOOM_IN_SPEED));
+            cam.y = lerp(cam.y, cinematicTargetY, lerpT(CINEMATIC_ZOOM_IN_SPEED));
 
             // Heavy screen shake during freeze
-            cin.shakeIntensity *= CINEMATIC_SHAKE_DECAY;
+            cin.shakeIntensity *= decayT(CINEMATIC_SHAKE_DECAY);
             if (cin.shakeIntensity > SHAKE_STOP) {
               shakeRef.current.intensity = cin.shakeIntensity;
             }
@@ -289,13 +349,13 @@ export default function useCamera(containerRef, socket) {
             const pullT = Math.min(releaseElapsed / CINEMATIC_RELEASE_DURATION_MS, 1);
             const pullEnvelope = pullT < 1 ? Math.sin(pullT * Math.PI) : 0;
             const releaseTargetScale = lockedScale - CINEMATIC_RELEASE_PULL * pullEnvelope;
-            cam.scale = lerp(cam.scale, releaseTargetScale, CINEMATIC_ZOOM_IN_SPEED);
-            cam.y = lerp(cam.y, normalTargetY, SMOOTH_FACTOR);
+            cam.scale = lerp(cam.scale, releaseTargetScale, lerpT(CINEMATIC_ZOOM_IN_SPEED));
+            cam.y = lerp(cam.y, normalTargetY, lerpT(SMOOTH_FACTOR));
 
             // Pan toward the knockout edge at locked zoom
             const maxPan = 50 * (cam.scale - 1);
             const edgeTargetX = cin.knockbackDir < 0 ? maxPan : -maxPan;
-            cam.x = lerp(cam.x, edgeTargetX, CINEMATIC_PAN_SPEED);
+            cam.x = lerp(cam.x, edgeTargetX, lerpT(CINEMATIC_PAN_SPEED));
 
             if (Math.abs(cam.x - edgeTargetX) < 0.5 && pullT >= 1) {
               cam.x = edgeTargetX;
@@ -309,18 +369,21 @@ export default function useCamera(containerRef, socket) {
             const maxPan = 50 * (cam.scale - 1);
             const edgeTargetX = cin.knockbackDir < 0 ? maxPan : -maxPan;
             cam.x = edgeTargetX;
-            cam.y = lerp(cam.y, normalTargetY, SMOOTH_FACTOR);
+            cam.y = lerp(cam.y, normalTargetY, lerpT(SMOOTH_FACTOR));
           }
         } else if (trackingEnabledRef.current) {
           // ── Normal camera behavior — track players during active rounds ──
-          cam.scale = lerp(cam.scale, normalTargetScale, SMOOTH_FACTOR);
-          cam.x = lerp(cam.x, normalTargetX, SMOOTH_FACTOR);
-          cam.y = lerp(cam.y, normalTargetY, SMOOTH_FACTOR);
+          // Asymmetric zoom: push IN faster than we pull OUT.
+          const zoomRate =
+            normalTargetScale > cam.scale ? SMOOTH_ZOOM_IN : SMOOTH_ZOOM_OUT;
+          cam.scale = lerp(cam.scale, normalTargetScale, lerpT(zoomRate));
+          cam.x = lerp(cam.x, normalTargetX, lerpT(SMOOTH_FACTOR));
+          cam.y = lerp(cam.y, normalTargetY, lerpT(SMOOTH_FACTOR));
         } else {
           // ── Pre-fight / between rounds — drift to ready-stance framing ──
-          cam.scale = lerp(cam.scale, READY_CAMERA.scale, SMOOTH_FACTOR);
-          cam.x = lerp(cam.x, READY_CAMERA.x, SMOOTH_FACTOR);
-          cam.y = lerp(cam.y, READY_CAMERA.y, SMOOTH_FACTOR);
+          cam.scale = lerp(cam.scale, READY_CAMERA.scale, lerpT(SMOOTH_FACTOR));
+          cam.x = lerp(cam.x, READY_CAMERA.x, lerpT(SMOOTH_FACTOR));
+          cam.y = lerp(cam.y, READY_CAMERA.y, lerpT(SMOOTH_FACTOR));
         }
 
         // ── Clamp so map edges are never exposed ──
@@ -329,17 +392,20 @@ export default function useCamera(containerRef, socket) {
         cam.x = clamp(cam.x, -maxPanX, maxPanX);
         cam.y = clamp(cam.y, -maxPanY, maxPanY);
 
-        // ── Decay impact effects ──
-        // Directional shake: 70% of horizontal jitter is biased toward the
-        // knockback vector (recoil), 30% remains random (texture). Vertical
-        // stays mostly random — vertical recoil reads as ground impact.
+        // ── Impact shake — smoothed continuous-path + directional recoil ──
+        // X = a decaying directional push (recoil along the knockback vector)
+        //     blended with smooth value-noise. Y = pure smooth noise (vertical
+        //     recoil reads as ground impact). Both ride a continuous arc instead
+        //     of teleporting each frame. Peak |offset| ≤ intensity → edge-safe.
         const shake = shakeRef.current;
         if (shake.intensity > SHAKE_STOP) {
-          const randX = (Math.random() - 0.5) * 2 * shake.intensity;
-          const dirComponent = shake.dirX * shake.intensity * 0.7;
-          shake.x = dirComponent + randX * 0.3;
-          shake.y = (Math.random() - 0.5) * 2 * shake.intensity;
-          shake.intensity *= SHAKE_DECAY;
+          const phase = (shakeClockRef.current / 1000) * SHAKE_FREQ_HZ;
+          const nx = valueNoise(phase);
+          const ny = valueNoise(phase + 37.3); // decorrelated channel
+          const dir = shake.dirX * SHAKE_DIR_BIAS;
+          shake.x = (dir + nx * (1 - SHAKE_DIR_BIAS)) * shake.intensity;
+          shake.y = ny * shake.intensity;
+          shake.intensity *= decayT(SHAKE_DECAY);
         } else {
           shake.x = 0;
           shake.y = 0;
@@ -349,7 +415,7 @@ export default function useCamera(containerRef, socket) {
 
         const punch = punchRef.current;
         if (punch.amount > PUNCH_STOP) {
-          punch.amount *= PUNCH_DECAY;
+          punch.amount *= decayT(PUNCH_DECAY);
         } else {
           punch.amount = 0;
         }
@@ -393,6 +459,7 @@ export default function useCamera(containerRef, socket) {
       socket.off("cinematic_kill", onCinematicKill);
       socket.off("game_reset", onGameReset);
       socket.off("game_start", onGameStart);
+      socket.off("perfect_parry", onPerfectParry);
       if (rafId.current) cancelAnimationFrame(rafId.current);
     };
   }, [containerRef, socket]);

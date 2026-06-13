@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
-import styled from "styled-components";
+import styled, { keyframes } from "styled-components";
 import crowdBoyIdle1 from "../assets/crowd-boy-idle-1-graded.png";
 import crowdBoyIdle2 from "../assets/crowd-boy-idle-2-graded.png";
 import crowdBoyIdle3 from "../assets/crowd-boy-idle-3-graded.png";
@@ -102,6 +102,12 @@ const CrowdContainer = styled.div`
   pointer-events: none;
   z-index: 0; /* Between game map background (-1) and dohyo overlay (1) */
   contain: layout style paint;
+  /* No blur on the container itself — the depth-of-field lives on the banded
+     child planes (CrowdDofPlane) so the back wall defocuses progressively
+     HARDER than ringside. A single uniform blur read as "poor vision"; a
+     smooth near→far ramp reads as an intentional shallow-DoF lens (sharp
+     subject, soft background). ::before/::after (floor bounce + vignette)
+     still overlay every plane. */
 
   &::before {
     content: '';
@@ -121,19 +127,88 @@ const CrowdContainer = styled.div`
     content: '';
     position: absolute;
     inset: 0;
-    /* Crowd-internal vignette — slightly stronger than the original so the
-       crowd self-darkens toward the periphery, but kept moderate so the back
-       rows don't read as a muddy void. The heavier "push the crowd back" work
-       is shared with the screen-space vignette on .game-container::after. */
+    /* Crowd-internal vignette — softened. This is one of THREE stacked
+       vignettes (screen-space .game-container::after + .arena-lighting edge +
+       this one); together they were over-darkening the periphery into a void
+       and flattening depth. Pulled back so the crowd recedes without dying —
+       the cinematic frame darkening is owned by the screen-space vignette. */
     background: radial-gradient(
-      ellipse 80% 70% at 50% 56%,
-      rgba(0, 0, 0, 0) 28%,
-      rgba(10, 14, 30, 0.20) 76%,
-      rgba(6, 10, 26, 0.40) 100%
+      ellipse 84% 74% at 50% 56%,
+      rgba(0, 0, 0, 0) 34%,
+      rgba(10, 14, 30, 0.11) 78%,
+      rgba(6, 10, 26, 0.24) 100%
     );
     pointer-events: none;
     z-index: 9999;
   }
+`;
+
+// ── Depth-of-field: tier-aware blur ramp ─────────────────────────────────
+// The stand is TWO physical tiers, so a single linear near→far smear ignored
+// the real geometry (and read as "smeared"/headache-y rather than softly out
+// of focus). `member.y` is CSS bottom %:
+//
+//   y≈89  ┌─────────────────────────┐  ← back wall (farthest, softest)
+//         │   UPPER DECK (rising)    │
+//   y≈65  └─────────────────────────┘
+//   y≈62        · gap: no seats ·         ← divider wall / walkway
+//   y≈60  ┌─────────────────────────┐
+//         │   GROUND FLOOR (bowl)    │
+//   y≈30  └─────────────────────────┘  ← ring-side front rows (nearest, sharp)
+//
+// Each tier gets its OWN gentle near→far ramp, so the defocus tracks the
+// seating instead of crossing the empty divider as if it were continuous. The
+// upper deck starts a hair softer than the ground floor ends, keeping the
+// monotonic "farther = softer" read across the gap.
+//
+// Raw CSS px here are multiplied ON SCREEN by camera × display zoom (~2–2.6×),
+// so keep them small. These are reduced ~30–55% from the old single ramp
+// ([0.9 … 1.8]): the ground-floor bowl (closest to the action) is now nearly
+// crisp so readability/eye-comfort wins, while the upper deck stays clearly
+// soft to keep focus on the fighters and hide the repeating sprite pattern.
+const GROUND_FLOOR_NEAR_Y = 30; // front ring-side bowl rows (sharpest)
+const GROUND_FLOOR_FAR_Y = 60;  // back of the lower bowl (just below the divide)
+const UPPER_DECK_NEAR_Y = 64;   // first rising-deck row above the divide
+const UPPER_DECK_FAR_Y = 90;    // nosebleeds against the back wall (softest)
+
+const GROUND_FLOOR_BLUR = [0.4, 0.75]; // near → far across the lower bowl
+const UPPER_DECK_BLUR = [0.95, 1.3];   // near → far across the rising deck
+
+const lerp = (a, b, t) => a + (b - a) * t;
+const clamp01 = (t) => Math.min(1, Math.max(0, t));
+
+// Continuous desired blur (CSS px) for a given row, piecewise by tier.
+const depthBlur = (y) => {
+  if (y <= GROUND_FLOOR_FAR_Y) {
+    const t = clamp01((y - GROUND_FLOOR_NEAR_Y) / (GROUND_FLOOR_FAR_Y - GROUND_FLOOR_NEAR_Y));
+    return lerp(GROUND_FLOOR_BLUR[0], GROUND_FLOOR_BLUR[1], t);
+  }
+  const t = clamp01((y - UPPER_DECK_NEAR_Y) / (UPPER_DECK_FAR_Y - UPPER_DECK_NEAR_Y));
+  return lerp(UPPER_DECK_BLUR[0], UPPER_DECK_BLUR[1], t);
+};
+
+// Quantize the continuous ramp into a few discrete planes so we pay for only a
+// handful of blur passes (one per distinct level) instead of one per member.
+// Smaller step = smoother gradient but more GPU during camera zooms.
+const DOF_BLUR_STEP = 0.2;
+const quantizeBlur = (b) => Math.round(b / DOF_BLUR_STEP) * DOF_BLUR_STEP;
+
+// The forward-facing oyakata (the master seated dead-center behind the gyoji,
+// CROWD_TYPES index 9) is a focal character, not anonymous crowd. His row would
+// otherwise blur him at ~0.6px; pin him sharper so his face reads clearly.
+// Set to 0 for fully crisp, or nudge up for a hair of atmospheric softness.
+const OYAKATA_FRONT_TYPE_INDEX = 9;
+const OYAKATA_FRONT_BLUR = 0.2;
+
+// Each plane is ONE blur pass over its (already color-graded) child sprites, so
+// total cost stays ~flat regardless of the 400+ members. `filter` makes each
+// plane a stacking context; we paint far → near so nearer rows stay in front.
+const CrowdDofPlane = styled.div.attrs((props) => ({
+  style: { filter: `blur(${props.$blur}px)` },
+}))`
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 `;
 
 // Container for foreground crowd members that appear above the dohyo
@@ -146,6 +221,57 @@ const ForegroundCrowdContainer = styled.div`
   pointer-events: none;
   z-index: 2; /* Above dohyo overlay (1) */
   contain: layout style paint;
+`;
+
+// Broadcast camera-flashes: on a KO the stands erupt with phone/camera shutters
+// firing off in a scattered flurry. Each flash is anchored to a REAL crowd
+// member (see generation below) so they always pop on a spectator, never in
+// empty space (the center stairs, aisles, etc.). Snappy burst — instant attack,
+// then a quick bloom-and-fade. Rendered in a NON-blurred layer above the DoF'd
+// crowd so they read as crisp specular sparks.
+const flashPop = keyframes`
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.45);
+  }
+  12% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.5);
+  }
+`;
+
+const FlashLayer = styled.div`
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  /* Above the crowd (z0) + foreground crowd (z2) + dohyo (z1), below the
+     players (z98+) — the flashes live up in the stands. */
+  z-index: 3;
+  overflow: hidden;
+`;
+
+const Flash = styled.div`
+  position: absolute;
+  aspect-ratio: 1; /* width supplied per-flash (scales with member size) */
+  border-radius: 50%;
+  /* Hot white core → tight bright falloff → soft blue-white halo. */
+  background: radial-gradient(
+    circle,
+    #ffffff 0%,
+    rgba(255, 255, 255, 0.95) 16%,
+    rgba(216, 234, 255, 0.5) 40%,
+    rgba(200, 224, 255, 0) 72%
+  );
+  transform: translate(-50%, -50%);
+  will-change: transform, opacity;
+  animation-name: ${flashPop};
+  animation-timing-function: ease-out;
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
 `;
 
 // Subtle idle sway + breathing animation - pivots from bottom so upper body moves
@@ -241,14 +367,24 @@ const rowDepthT = (y) => {
 const computeCrowdLightingFilter = (y, { foreground = false } = {}) => {
   const t = rowDepthT(y);
   const ringside = 1 - t;
-  // Mild brightness gradient — back rows sit a touch dimmer than ringside.
-  const brightness = 0.61 + ringside * 0.27;       // 0.61 (far) → 0.88 (near)
-  // Gentle saturation gradient. Ringside pops, back-row clothing stays slightly
-  // less candy-bright. NEVER drop below ~0.85 or skin tones go grey.
-  const saturate = 0.92 + ringside * 0.18;          // 0.92 → 1.10
-  // Keep contrast at ~original. Pulling this down was what turned faces into
-  // grey blobs in the first revision — leave it alone.
-  const contrast = 1.03;
+  // Brightness gradient — back rows sit dimmer than ringside. Lifted out of the
+  // old 0.61 floor: the sprites are ALSO baked at brightness(0.76), so the old
+  // runtime floor compounded to ~0.46 and read as a muddy void. This keeps the
+  // crowd reading as people in moody light, not a brown smear.
+  const brightness = 0.72 + ringside * 0.26;       // 0.72 (far) → 0.98 (near)
+  // Saturation gradient. Ringside pops, back-row clothing stays a touch calmer.
+  // Kept VIBRANT on purpose — the background is colorful by design and a low
+  // floor here produces the hated "faded bright" (washed pastel) look. NEVER
+  // drop below ~0.9 net or skin tones go grey.
+  const saturate = 0.96 + ringside * 0.2;           // 0.96 → 1.16
+  // The crowd sprites were baked at contrast(0.95) — i.e. DE-contrasted, which
+  // is exactly what produced the "faded" look. Add the punch back at runtime so
+  // net contrast lands slightly above neutral (≈0.95 × 1.14 ≈ 1.08) and faces
+  // regain definition. Kept FLAT across depth (no far-row taper): lowering
+  // contrast on bright colors reads as washed-out "faded bright", which we
+  // explicitly want to avoid. Depth/recession comes from DoF blur + vignette,
+  // not from crushing the tone curve flat.
+  const contrast = 1.14;
   // Slight ringside warmth (TV stage-light tint).
   const sepia = ringside * 0.045;
   const hueRotate = ringside * -5.5;
@@ -479,6 +615,27 @@ const CrowdLayer = ({ crowdEvent = null }) => {
 
   const normalCrowd = useMemo(() => crowdPositions.filter(m => m.customZIndex === undefined), [crowdPositions]);
   const foregroundCrowd = useMemo(() => crowdPositions.filter(m => m.customZIndex !== undefined), [crowdPositions]);
+  // Bucket the normal crowd by quantized tier-aware blur for a smooth DoF
+  // falloff that follows the two-tier seating (ground bowl + rising deck).
+  const crowdBands = useMemo(() => {
+    const map = new Map();
+    normalCrowd.forEach((m) => {
+      const blur =
+        m.typeIndex === OYAKATA_FRONT_TYPE_INDEX
+          ? OYAKATA_FRONT_BLUR
+          : quantizeBlur(depthBlur(m.y));
+      if (!map.has(blur)) map.set(blur, []);
+      map.get(blur).push(m);
+    });
+    // Far (more blur) first → near (less blur) last so nearer rows paint on top.
+    return [...map.entries()]
+      .map(([blur, members]) => ({ blur, members }))
+      .sort((a, b) => b.blur - a.blur);
+  }, [normalCrowd]);
+
+  // Active camera-flash sparks (populated on a KO, auto-cleared after the burst).
+  const [flashes, setFlashes] = useState([]);
+  const flashClearRef = useRef(null);
 
   // Crowd Editor Mode (dev tool) — press ` to toggle
   const [editorMode, setEditorMode] = useState(false);
@@ -533,6 +690,7 @@ const CrowdLayer = ({ crowdEvent = null }) => {
     return () => {
       clearInterval(cheerTickIntervalRef.current);
       clearTimeout(cheerTimeoutRef.current);
+      clearTimeout(flashClearRef.current);
     };
   }, []);
 
@@ -542,6 +700,8 @@ const CrowdLayer = ({ crowdEvent = null }) => {
     if (crowdEvent.type === "reset") {
       clearInterval(cheerTickIntervalRef.current);
       clearTimeout(cheerTimeoutRef.current);
+      clearTimeout(flashClearRef.current);
+      setFlashes([]);
       if (isCheeringRef.current) resetAllSpritesToIdle();
       isCheeringRef.current = false;
       return;
@@ -553,6 +713,37 @@ const CrowdLayer = ({ crowdEvent = null }) => {
       lastCheerTimeRef.current = now;
 
       const volume = CHEER_VOLUME[crowdEvent.intensity] || 0.003;
+
+      // A KO (heavy cheer) sets off a flurry of camera flashes in the stands.
+      // Anchor each one to an actual crowd member so they fire from spectators,
+      // never from empty space (the center stairs / aisles on the map art).
+      if (crowdEvent.intensity === "heavy") {
+        const pool = crowdPositionsRef.current.filter(
+          (m) => m.customZIndex === undefined
+        );
+        if (pool.length > 0) {
+          const newFlashes = Array.from({ length: 20 }, (_, i) => {
+            const m = pool[Math.floor(Math.random() * pool.length)];
+            // Scale the spark to the member (near rows bigger, back rows tiny),
+            // with a little variance so they don't look stamped.
+            const w =
+              Math.min(0.8, Math.max(0.34, m.size * 0.085)) *
+              (0.85 + Math.random() * 0.3);
+            return {
+              id: `${now}-${i}`,
+              x: m.x,
+              // Lift to roughly the upper body / where a raised phone would be.
+              y: m.y + m.size * 0.8,
+              w,
+              delay: Math.random() * 1800, // ms — scattered over ~2s
+              dur: 150 + Math.random() * 110, // ms — quick shutter pop
+            };
+          });
+          setFlashes(newFlashes);
+          clearTimeout(flashClearRef.current);
+          flashClearRef.current = setTimeout(() => setFlashes([]), 2700);
+        }
+      }
 
       clearInterval(cheerTickIntervalRef.current);
       clearTimeout(cheerTimeoutRef.current);
@@ -641,12 +832,33 @@ const CrowdLayer = ({ crowdEvent = null }) => {
     <>
       <CrowdContainer>
         <StyleInjector />
-        {renderCrowdMembers(normalCrowd)}
+        {/* Already sorted far → near; paint each as one blur plane. */}
+        {crowdBands.map((b) => (
+          <CrowdDofPlane key={b.blur} $blur={b.blur}>
+            {renderCrowdMembers(b.members)}
+          </CrowdDofPlane>
+        ))}
       </CrowdContainer>
       {foregroundCrowd.length > 0 && (
         <ForegroundCrowdContainer>
           {renderCrowdMembers(foregroundCrowd, { darken: true })}
         </ForegroundCrowdContainer>
+      )}
+      {flashes.length > 0 && (
+        <FlashLayer>
+          {flashes.map((f) => (
+            <Flash
+              key={f.id}
+              style={{
+                left: `${f.x}%`,
+                bottom: `${f.y}%`,
+                width: `${f.w}cqw`,
+                animationDelay: `${f.delay}ms`,
+                animationDuration: `${f.dur}ms`,
+              }}
+            />
+          ))}
+        </FlashLayer>
       )}
       {editorMode && (
         <CrowdEditor

@@ -382,8 +382,19 @@ body {
 
   /* ── Visual grading — clean contrast hierarchy ──
      Crowd lighting is per-sprite (Y-based broadcast grade in CrowdLayer.jsx).
-     Dohyo: slight warm bias so the ring still reads spot-lit without blowing out. */
-  --arena-map-filter: brightness(0.82) saturate(0.88) contrast(1.02);
+     Dohyo: slight warm bias so the ring still reads spot-lit without blowing out.
+
+     Backdrop (game-map) now runs through the filmic #scene-grade S-curve
+     (deep blacks + rolled highlights — fixes the milky/faded look) and a
+     depth-of-field blur so the furthest plane recedes and the wrestlers snap
+     forward. The flat `contrast()` multiply was the old, washed approach; the
+     S-curve does the contrast properly with a real black point. The map art is
+     1536×1024 (soft after camera + display zoom) so the DoF blur doubles as
+     cover for its under-resolution until it's re-exported.
+     NOTE: blur is multiplied by --cam-scale × --app-zoom, so the effective
+     radius on-screen is ~2–2.6× this value. The far backdrop can stay heavily
+     defocused (it's just ambient depth) so this stays higher than the crowd. */
+  --arena-map-filter: brightness(0.9) saturate(0.96) url(#scene-grade) blur(2.5px);
   --dohyo-filter: brightness(0.97) saturate(1.05) contrast(1.06) sepia(0.05) hue-rotate(-5deg);
 
   /* ── Camera defaults — JS will drive these later for dynamic pan/zoom ── */
@@ -429,6 +440,59 @@ body {
     scale(var(--cam-scale, 1));
   will-change: transform;
   backface-visibility: hidden;
+  /* ONLY filter transitions — never transform (that would lag the camera,
+     which updates --cam-* every frame). Drives the KO grade-punch ease. */
+  transition: filter 0.14s ease-out;
+}
+
+/* Cinematic-kill grade-punch: a brief, visceral tone snap on the finishing
+   blow. Contrast + saturation jump and the frame brightens a hair so the KO
+   reads as a hit you FEEL, then eases back out over the hitstop. Toggled from
+   Game.jsx (`.ko-grade-punch` added to .game-container for ~hitstop ms). */
+.game-container.ko-grade-punch .game-scene {
+  filter: contrast(1.18) saturate(1.14) brightness(1.02);
+}
+
+/* Lighter, shorter sibling for *regular* ring-outs — a quick blip of juice on
+   every win without diluting the rare cinematic-kill punch above. Deliberately
+   tiered: cinematic = big snap, ring-out = subtle pop. Game.jsx guards against
+   the two firing together. */
+.game-container.ko-grade-punch--lite .game-scene {
+  filter: contrast(1.08) saturate(1.06) brightness(1.01);
+}
+
+/* ── Perfect-parry "time-freeze" beat ────────────────────────────────────
+   Fires alongside the 250ms perfect-parry hitstop. Two layers, both toggled
+   by `.perfect-parry-flash` on .game-container from Game.jsx:
+     1) A brief cool-toned grade snap on .game-scene (eased via the existing
+        `transition: filter` on .game-scene) — the world "charges" for an
+        instant, distinct from the warm/contrasty KO grade-punch.
+     2) A cyan full-screen flash on ::before (::after is the steady vignette),
+        keyed to rise fast and fall over the freeze so it reads as a camera
+        flash-bulb at the clash, not a sustained veil. Cyan matches the parry
+        VFX. Pointer-events disabled; sits above the world, below the HUD. */
+.game-container.perfect-parry-flash .game-scene {
+  filter: contrast(1.06) saturate(1.06) brightness(1.02);
+}
+
+.game-container.perfect-parry-flash::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 199;
+  /* Near-uniform, faint cyan wash. A center-weighted radial spotlit the
+     fighters (the "weird what gets lit up" feel); a flat, low-opacity veil
+     reads as a clean camera flash instead. Never fully clears so there's no
+     bright-center / dark-edge gradient banding. */
+  background: rgba(150, 225, 255, 0.09);
+  animation: perfect-parry-flash 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes perfect-parry-flash {
+  0% { opacity: 0; }
+  14% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 /* HUD layer — viewport-fixed, never affected by camera */
@@ -540,22 +604,128 @@ body {
   pointer-events: none;
   z-index: 6;
   background:
-    /* Stage-spot pool centered on the ring — slightly stronger than original
-       so the dohyo reads as lit. */
+    /* Warm key pool — pushed UP to 50% 31% so the hot center sits over the
+       upper ring / rafters instead of washing the centrally-placed gyoji and
+       the wrestlers' heads. Alpha trimmed (0.17 → 0.14) for the same reason:
+       added light on a saturated robe reads as desaturation. This is the
+       "direction" of the scene's lighting without bleaching the characters. */
     radial-gradient(
-      ellipse 52% 44% at 50% 54%,
-      rgba(255, 240, 205, 0.14) 0%,
-      rgba(255, 236, 195, 0.06) 32%,
+      ellipse 52% 44% at 50% 31%,
+      rgba(255, 243, 212, 0.14) 0%,
+      rgba(255, 236, 196, 0.06) 34%,
       transparent 60%
     ),
-    /* Edge darkening — modestly stronger than original. The bulk of the
-       cinematic frame effect comes from the screen-space vignette instead. */
+    /* Cool counter-fill rising off the ice — gives the key a sense of
+       direction (warm top / cool bottom) and reinforces the icy theme,
+       instead of one even glow. */
+    radial-gradient(
+      ellipse 85% 42% at 50% 102%,
+      rgba(40, 78, 128, 0.12) 0%,
+      transparent 56%
+    ),
+    /* Edge darkening — the bulk of the cinematic frame comes from the
+       screen-space vignette; this just reinforces the falloff. */
     radial-gradient(
       ellipse at 50% 50%,
-      transparent 33%,
-      rgba(0, 0, 0, 0.24) 66%,
-      rgba(0, 0, 0, 0.54) 100%
+      transparent 34%,
+      rgba(0, 0, 0, 0.22) 66%,
+      rgba(0, 0, 0, 0.5) 100%
     );
+}
+
+/* ── God-rays / volumetric light shafts ───────────────────────────────────
+   Soft warm beams raking down from the rafters onto the ring. Lives INSIDE
+   .game-scene (world-space) so the shafts stay anchored to the venue and
+   parallax with the camera. z-index 7 keeps them above the environment +
+   arena-lighting but below the wrestlers (z 98+), so the beams read as light
+   in the air *behind* the action and never wash the players. `screen` blend =
+   purely additive (lighten only). The radial mask kills the beams before they
+   reach the floor; the blur turns the hard gradient stripes into volumetric
+   shafts. Gentle sway + opacity breathe so the light feels alive, not static. */
+.god-rays {
+  position: absolute;
+  left: 50%;
+  top: -10%;
+  width: 72%;
+  height: 64%;
+  transform: translateX(-50%);
+  transform-origin: 50% 0;
+  pointer-events: none;
+  z-index: 7;
+  mix-blend-mode: screen;
+  opacity: 0.5;
+  background: repeating-linear-gradient(
+    96deg,
+    transparent 0px,
+    transparent 26px,
+    rgba(255, 240, 206, 0.05) 32px,
+    rgba(255, 246, 220, 0.11) 40px,
+    rgba(255, 240, 206, 0.05) 48px,
+    transparent 56px,
+    transparent 88px
+  );
+  -webkit-mask-image: radial-gradient(
+    ellipse 58% 72% at 50% 4%,
+    #000 0%,
+    rgba(0, 0, 0, 0.55) 40%,
+    transparent 74%
+  );
+  mask-image: radial-gradient(
+    ellipse 58% 72% at 50% 4%,
+    #000 0%,
+    rgba(0, 0, 0, 0.55) 40%,
+    transparent 74%
+  );
+  filter: blur(7px);
+  animation: godRayDrift 16s ease-in-out infinite alternate;
+}
+
+@keyframes godRayDrift {
+  0% {
+    opacity: 0.28;
+    transform: translateX(-50%) rotate(-1.4deg);
+  }
+  100% {
+    opacity: 0.46;
+    transform: translateX(-50%) rotate(1.4deg);
+  }
+}
+
+/* ── Film grain ────────────────────────────────────────────────────────────
+   Fine, animated luminance grain over the whole frame. Lives on
+   .game-container (screen-space, NOT inside the camera-transformed scene) so
+   the grain is fixed to the "film/lens" and never scales or pans with zoom —
+   exactly how real grain behaves. z-index 199 sits above the scene + the
+   screen-space vignette (198) but below the HUD (200), so UI text stays clean.
+   `overlay` blend + ~5% opacity = a subtle filmic tooth that unifies every
+   plane into one stock and hides gradient banding. The noise tile is rasterized
+   once from an inline SVG turbulence (desaturated to pure luma); animation just
+   translates an oversized layer for cheap grain churn (no per-frame filtering).
+   Oversized 150% with a -25% offset so the translate never exposes edges. */
+.film-grain {
+  position: absolute;
+  top: -25%;
+  left: -25%;
+  width: 150%;
+  height: 150%;
+  pointer-events: none;
+  z-index: 199;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 150px 150px;
+  animation: grainShift 0.6s steps(6) infinite;
+  will-change: transform;
+}
+
+@keyframes grainShift {
+  0% { transform: translate3d(0, 0, 0); }
+  20% { transform: translate3d(-4%, 3%, 0); }
+  40% { transform: translate3d(3%, -5%, 0); }
+  60% { transform: translate3d(-3%, 4%, 0); }
+  80% { transform: translate3d(5%, 2%, 0); }
+  100% { transform: translate3d(0, 0, 0); }
 }
 
 /* Danger vignette — red pulsing border when being edge-pushed at low stamina */
@@ -1077,7 +1247,12 @@ body {
      without dimming him so far that he reads as "in shadow". Applied at
      the element level so all gyoji states (idle / ready / win / hakkiyoi
      GIF) inherit the grade uniformly. */
-  filter: saturate(0.88) contrast(0.97);
+  /* Saturation nudged back up (0.88 → 0.93): with the key pool + god-rays now
+     lifted off his torso, he no longer needs to be dialed down as hard, and
+     the extra saturation lets the maroon kimono hold its color instead of
+     reading washed/dusty. Still below 1.0 so he stays a supporting figure that
+     doesn't pull focus from the wrestlers (the DoF already separates them). */
+  filter: saturate(0.93) contrast(0.98);
 }
 
 /* Subtle idle animation for gyoji - gentle stretch from feet */

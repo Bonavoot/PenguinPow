@@ -13,6 +13,7 @@ const {
   SIDESTEP_RECOVERY_MS,
   SIDESTEP_STAMINA_COST,
   HITBOX_DISTANCE_VALUE,
+  MAX_PARRY_BACKDATE_MS,
 } = require("./constants");
 
 // ============================================
@@ -82,6 +83,41 @@ function simNowForPlayer(player) {
   const room =
     player && simRoomResolver ? simRoomResolver(player.id) : null;
   return room ? simNow(room) : Date.now();
+}
+
+// ============================================================
+// RAW PARRY LAG-COMPENSATION
+// ============================================================
+// Returns the sim-clock start time to stamp on a freshly-started raw parry,
+// backdated toward the player's TRUE press moment instead of the moment the
+// input was drained on the server.
+//
+// Why: the perfect-parry window (PERFECT_PARRY_WINDOW) is judged as
+// `hitTime - rawParryStartTime`. If start time is the packet-arrival time, then
+// network latency + the client send-throttle + the server tick phase all get
+// baked into that duration — and, worse, they JITTER tick-to-tick, so an
+// identically-timed press lands "perfect" one round and "regular" the next.
+// That's the clunky, inconsistent feel.
+//
+// `rawParryPressGameTime` is the press moment expressed on the server's
+// monotonic gameNow() clock (reconstructed client-side from the synced clock
+// offset, set in socketHandlers when the rising space edge is seen). Its age is
+// a real-world duration, so it's valid to subtract from the (pausable) sim
+// clock: no hitstop occurs between a parry press and the hit it answers.
+//
+// Clamped to [0, MAX_PARRY_BACKDATE_MS]: never dates a press into the future,
+// never backdates further than the cap. Because more backdate only makes the
+// perfect window HARDER to hit, a spoofed offset can do no better than the
+// uncompensated (age 0) behavior — so this is exploit-safe by construction.
+// Consumes the press stamp so a stale press can't backdate a later parry.
+function lagCompensatedParryStart(player, simNowMs) {
+  const pressGameTime = player.rawParryPressGameTime || 0;
+  player.rawParryPressGameTime = 0;
+  if (!pressGameTime) return simNowMs;
+  const age = gameNow() - pressGameTime;
+  if (!Number.isFinite(age) || age <= 0) return simNowMs;
+  const backdate = Math.min(age, MAX_PARRY_BACKDATE_MS);
+  return simNowMs - backdate;
 }
 
 // Advance a room's sim clock by one tick. Called once per room per tick from
@@ -598,6 +634,7 @@ function clearAllActionStates(player) {
   // Clear parry states (as parrier)
   player.isRawParrying = false;
   player.rawParryStartTime = 0;
+  player.rawParryPressGameTime = 0;
   player.rawParryMinDurationMet = false;
   player.isSlapParrying = false;
   player.isRawParryStun = false; // Clear stun state when hit
@@ -919,6 +956,7 @@ module.exports = {
   simNow,
   simNowForPlayer,
   advanceRoomSimTime,
+  lagCompensatedParryStart,
 
   // Classes and instances
   TimeoutManager,

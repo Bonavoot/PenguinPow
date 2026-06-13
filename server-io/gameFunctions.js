@@ -19,6 +19,7 @@ const {
   getSidestepInitData,
   shouldRestartCharging,
   startCharging,
+  lagCompensatedParryStart,
 } = require("./gameUtils");
 
 // Per-match input audit log (open at first round, close on matchOver)
@@ -1625,11 +1626,14 @@ function executeInputBuffer(player, rooms) {
       if (!player.isRawParrying && !player.isRawParryStun &&
           !player.isAttacking && !player.isDodging &&
           !player.isRecovering && !player.isGrabbing &&
+          !player.isGrabStartup && // Block buffered parry during grab startup — no parry/grab coexistence
           !player.isGrabbingMovement && !player.isWhiffingGrab &&
           !player.isThrowing && !player.grabBreakSpaceConsumed &&
           simNowForPlayer(player) >= (player.rawParryCooldownUntil || 0)) {
         player.isRawParrying = true;
-        player.rawParryStartTime = simNowForPlayer(player);
+        // Backdate toward the true press moment (lag-compensation) — same as the
+        // main-loop parry path, so buffered parries classify perfect consistently.
+        player.rawParryStartTime = lagCompensatedParryStart(player, simNowForPlayer(player));
         player.rawParryMinDurationMet = false;
         player.isRawParrySuccess = false;
         player.isPerfectRawParrySuccess = false;

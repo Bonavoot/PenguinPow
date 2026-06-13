@@ -124,7 +124,7 @@ function App() {
             controllerConnected ? "controller-connected" : ""
           }`}
         >
-          <svg width="0" height="0" style={{position:'absolute'}}>
+          <svg width="0" height="0" style={{position:'absolute'}} aria-hidden="true">
             <defs>
               <filter id="game-sharpen" colorInterpolationFilters="sRGB">
                 <feConvolveMatrix
@@ -132,6 +132,23 @@ function App() {
                   kernelMatrix="0 -0.15 0 -0.15 1.6 -0.15 0 -0.15 0"
                   preserveAlpha="true"
                 />
+              </filter>
+              {/* ── Filmic scene grade ────────────────────────────────────────
+                  A gentle tone S-curve that deepens blacks and rolls off
+                  highlights so background planes stop reading "milky/faded".
+                  The B channel is pulled a hair lower in the highlights and
+                  lifted slightly in the shadows vs R/G — a subtle warm-
+                  highlight / cool-shadow split-tone (the cohesive "film stock"
+                  look) without a heavy color cast. Applied to background
+                  planes (map/crowd) via CSS `filter: url(#scene-grade)`, NOT
+                  to the players — the wrestlers stay full-contrast/saturation
+                  so they pop forward against the graded environment. */}
+              <filter id="scene-grade" colorInterpolationFilters="sRGB">
+                <feComponentTransfer>
+                  <feFuncR type="table" tableValues="0 0.07 0.19 0.38 0.58 0.76 0.90 1" />
+                  <feFuncG type="table" tableValues="0 0.07 0.19 0.38 0.58 0.76 0.90 1" />
+                  <feFuncB type="table" tableValues="0 0.085 0.205 0.39 0.575 0.745 0.885 1" />
+                </feComponentTransfer>
               </filter>
             </defs>
           </svg>

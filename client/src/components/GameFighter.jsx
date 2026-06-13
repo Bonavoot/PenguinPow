@@ -42,6 +42,7 @@ import {
   COLOR_PRESETS,
 } from "../utils/SpriteRecolorizer";
 import { usePlayerColors } from "../context/PlayerColorContext";
+import { valueNoise } from "../utils/shakeNoise";
 
 import UiPlayerInfo from "./UiPlayerInfo";
 import MatchOver from "./MatchOver";
@@ -69,6 +70,10 @@ const BATTLE_LOOP_CROSSFADE = 2.0;
 const EESHI_ENTRY_FADE = 0.9;
 const BATTLE_ENTRY_FADE = 0;
 const BATTLE_MUSIC_ALT_ROUND = 3;
+
+// Event-shake oscillation frequency (Hz). Matches useCamera's hit-shake
+// SHAKE_FREQ_HZ so both shake systems swing at the same organic rate.
+const EVENT_SHAKE_FREQ_HZ = 22;
 
 // Assets, sounds, preloading, constants, ritual config, playSound helper
 import {
@@ -271,7 +276,7 @@ const GameFighter = ({
   isCPUMatch, // True when playing vs CPU — hides PvP-only HUD bits (rematch tally)
 }) => {
   const { socket } = useContext(SocketContext);
-  const { emit: emitParticles, clearRawParryBlueHold } = useParticles();
+  const { emit: emitParticles, clearRawParryBlueHold, setFrozen } = useParticles();
 
   // ============================================
   // SPRITE RECOLORING STATE
@@ -625,6 +630,28 @@ const GameFighter = ({
     movementPredictorRef.current = new MovementPredictor();
   }
 
+  // Client-side mirror of the server's parry commitment, used to suppress
+  // OFFENSIVE predictions (slap / charge / grab / dash) that the server will
+  // reject because it's parrying. Two reasons the server-confirmed
+  // `penguin.isRawParrying` flag isn't enough on its own:
+  //   1) It lags a round trip behind the keypress, so right after you press
+  //      space the client still thinks it can attack.
+  //   2) The server keeps parrying for RAW_PARRY_MIN_DURATION (~200ms) after a
+  //      press EVEN IF space is released — so spamming space + mashing mouse1
+  //      lands attack presses in the gaps between taps, when space is physically
+  //      up and the lagged flag is false, yet the server is still parrying.
+  // We cover both: the live spacebar (covers holds) OR a commit window stamped
+  // on every space press (covers taps/spam + the round-trip lag). Combined with
+  // the server-confirmed flag in the gates below, the whole parry window is
+  // covered with no hole. Local player only; null keys (mobile) read as inactive.
+  const predictedParryCommitUntilRef = useRef(0);
+  const isLocalParryActive = useCallback(() => {
+    if (!isLocalPlayer) return false;
+    const k = getLocalKeyState();
+    if (k && k[" "]) return true; // space physically held
+    return performance.now() < predictedParryCommitUntilRef.current;
+  }, [isLocalPlayer]);
+
   // ============================================
   // HELPER: Check if player can perform ANY action
   // This must match the server's canPlayerUseAction logic exactly
@@ -699,6 +726,7 @@ const GameFighter = ({
         !penguin.isHit &&
         !penguin.isRawParryStun &&
         !penguin.isRawParrying &&
+        !isLocalParryActive() && // local parry intent + commit window — server flag above lags
         !penguin.isThrowingSnowball &&
         !penguin.isAtTheRopes &&
         !penguin.isGrabStartup &&
@@ -722,7 +750,7 @@ const GameFighter = ({
         // NOTE: isChargingAttack NOT checked - dodge is allowed during charge
       );
     },
-    [penguin]
+    [penguin, isLocalParryActive]
   );
 
   // Function to apply a prediction (called from Game.jsx via callback)
@@ -740,8 +768,9 @@ const GameFighter = ({
 
       switch (action.type) {
         case "slap":
-          // Only predict if we can perform actions AND not already charging
-          if (canPredictAction(gameStarted) && !penguin.isChargingAttack) {
+          // Only predict if we can perform actions AND not already charging AND
+          // not parrying (held, committed, or server-confirmed) — see isLocalParryActive
+          if (canPredictAction(gameStarted) && !penguin.isChargingAttack && !isLocalParryActive()) {
             predictedState.current = {
               ...predictedState.current,
               isSlapAttack: true,
@@ -758,7 +787,7 @@ const GameFighter = ({
           }
           break;
         case "charge_start":
-          if (canPredictAction(gameStarted)) {
+          if (canPredictAction(gameStarted) && !isLocalParryActive()) {
             predictedState.current = {
               ...predictedState.current,
               isChargingAttack: true,
@@ -819,6 +848,13 @@ const GameFighter = ({
           }
           break;
         case "parry_start":
+          // Stamp the parry commit window on EVERY space press (even when the
+          // parry itself can't visually predict this instant), so offensive
+          // predictions stay suppressed across the server's min-duration parry
+          // and the round-trip lag. Mirrors server RAW_PARRY_MIN_DURATION (200).
+          if (gameStarted) {
+            predictedParryCommitUntilRef.current = now + 200;
+          }
           if (canPredictAction(gameStarted) && !penguin.isChargingAttack) {
             predictedState.current = {
               ...predictedState.current,
@@ -846,7 +882,7 @@ const GameFighter = ({
           }
           break;
         case "grab":
-          if (canPredictAction(gameStarted) && !penguin.isChargingAttack) {
+          if (canPredictAction(gameStarted) && !penguin.isChargingAttack && !isLocalParryActive()) {
             predictedState.current = {
               ...predictedState.current,
               isGrabbing: true,
@@ -976,6 +1012,7 @@ const GameFighter = ({
       isLocalPlayer,
       canPredictAction,
       canPredictDash,
+      isLocalParryActive,
       penguin.isChargingAttack,
       penguin.isRawParrying,
       penguin.facing,
@@ -1158,7 +1195,7 @@ const GameFighter = ({
 
     // Merge remaining predicted state with server state
     // Predictions override server state for visual display only
-    return {
+    const merged = {
       ...penguin,
       isSlapAttack: p.isSlapAttack || penguin.isSlapAttack,
       slapAnimation: p.isSlapAttack ? p.slapAnimation : penguin.slapAnimation,
@@ -1172,6 +1209,51 @@ const GameFighter = ({
       isPowerSliding: p.isPowerSliding || penguin.isPowerSliding,
       isBraking: p.isBraking || penguin.isBraking,
     };
+
+    // ── VISUAL EXCLUSIVITY GUARD ──────────────────────────────────────────
+    // The OR-merge above lets two mutually-exclusive action flags assert at the
+    // same time when a freshly-predicted action briefly overlaps a different
+    // server-confirmed one (the round trip during which they disagree). The
+    // sprite picker resolves to a single image by priority, but independent
+    // overlays — most visibly the raw-parry glow, keyed straight off
+    // `isRawParrying` — don't, so a predicted parry's flame leaks on top of a
+    // confirmed grab/attack (and a predicted attack flashes during a confirmed
+    // parry). The raw-parry stance is fully committed and cannot legitimately
+    // coexist with any other action, so resolve it with the SERVER as authority
+    // for which action is real: a confirmed non-parry action strips a predicted
+    // parry; a confirmed parry strips predicted offense. Prediction still leads
+    // freely from neutral — this only fires when the server has already
+    // committed to a conflicting action. (Note: dodge+charge is a LEGITIMATE
+    // co-state in this game, so it is intentionally left untouched here.)
+    if (penguin.isRawParrying) {
+      // Server is parrying — never paint predicted offense over the parry.
+      merged.isSlapAttack = penguin.isSlapAttack;
+      merged.isAttacking = penguin.isAttacking;
+      merged.isChargingAttack = penguin.isChargingAttack;
+      merged.isGrabbing = penguin.isGrabbing;
+    } else if (merged.isRawParrying) {
+      // Predicted parry — drop it if the server has committed to another action.
+      const serverInOtherAction =
+        penguin.isGrabbing ||
+        penguin.isGrabStartup ||
+        penguin.isGrabbingMovement ||
+        penguin.isWhiffingGrab ||
+        penguin.inClinch ||
+        penguin.isThrowing ||
+        penguin.isBeingThrown ||
+        penguin.isBeingGrabbed ||
+        penguin.isAttacking ||
+        penguin.isChargingAttack ||
+        penguin.isDodging ||
+        penguin.isHit ||
+        penguin.isRawParryStun ||
+        penguin.isAtTheRopes;
+      if (serverInOtherAction) {
+        merged.isRawParrying = false;
+      }
+    }
+
+    return merged;
   }, [isLocalPlayer, penguin]);
 
   // Expose the prediction function via the prop ref that Game.jsx can access
@@ -2586,6 +2668,7 @@ const GameFighter = ({
 
     const handleGameStart = () => {
       setGyojiCall(null); // Clear any lingering gyoji call
+      setGyojiState("ready");
       setHakkiyoi(true);
       setRawParryEffectPosition(null); // Clear any leftover parry effects
       setChargeClashEffectPosition(null); // Clear any leftover charge clash effects
@@ -2662,6 +2745,12 @@ const GameFighter = ({
         setPlayerTwoWinCount(data.wins);
         setGyojiState("player2Win");
       }
+
+      const gyojiIdleTid = setTimeout(() => {
+        setGyojiState("idle");
+      }, 2000);
+      pendingSocketTimeouts.current.push(gyojiIdleTid);
+
       // Play round victory or defeat sound based on local player result.
       // Kill throws: defer sound to align with the visual landing (state update + render).
       // The game_over event arrives before the fighter_action state that shows the player
@@ -3700,8 +3789,14 @@ const GameFighter = ({
         const decayFactor = Math.pow(1 - progress, 1.5);
         const remainingIntensity = screenShake.intensity * decayFactor;
 
-        const offsetX = (Math.random() - 0.5) * remainingIntensity * 14;
-        const offsetY = (Math.random() - 0.5) * remainingIntensity * 10;
+        // Smoothed continuous-path shake (matches useCamera's hit shake) instead
+        // of per-frame white noise. Sampled on wall-clock elapsed time at a fixed
+        // frequency, so the oscillation texture is identical at any refresh rate.
+        // The decay envelope above already runs on elapsed time, so duration is
+        // frame-rate independent too.
+        const phase = (elapsed / 1000) * EVENT_SHAKE_FREQ_HZ;
+        const offsetX = valueNoise(phase) * remainingIntensity * 14;
+        const offsetY = valueNoise(phase + 37.3) * remainingIntensity * 10; // decorrelated channel
 
         if (gameScene) {
           gameScene.style.setProperty("--shake-x", `${offsetX}px`);
@@ -3815,6 +3910,22 @@ const GameFighter = ({
         });
 
         playSound(pickRandomSound(chargedHitSounds), 0.07, null, 0.55, xToPan(data.impactX));
+
+        // ── Suspend the particle sim for the hitstop ──
+        // The scene + CSS rings already freeze on a cinematic kill (HitEffect's
+        // `.cinematic-frozen`), but the canvas engine kept simulating, so the
+        // impact sparks flew on through the dramatic freeze-frame. Freeze the
+        // engine for the hitstop window so they hang suspended with everything
+        // else, then release. A short bloom delay first lets the burst expand
+        // into a readable "suspended explosion" (sparks caught mid-flight)
+        // instead of locking as a tight cluster at the contact point.
+        const hold = data.hitstopMs || 550;
+        if (hold > 150) {
+          const FREEZE_BLOOM_MS = 70;
+          const freezeId = setTimeout(() => setFrozen(true), FREEZE_BLOOM_MS);
+          const unfreezeId = setTimeout(() => setFrozen(false), hold);
+          pendingTimeouts.push(freezeId, unfreezeId);
+        }
 
         const launchDelay = data.hitstopMs || 550;
         const launchSoundId = setTimeout(() => {
@@ -3982,6 +4093,10 @@ const GameFighter = ({
         clearTimeout(id);
         clearInterval(id);
       });
+      // Safety net: if this effect tears down mid-cinematic (unmount / round
+      // change) the scheduled unfreeze timeout above is cleared, so make sure
+      // the engine never gets stranded in its frozen state.
+      if (index === 0) setFrozen(false);
       socket.off("screen_shake", handleScreenShake);
       socket.off("thick_blubber_absorption", handleThickBlubber);
       socket.off("ring_out", handleRingOut);
@@ -3991,7 +4106,7 @@ const GameFighter = ({
       socket.off("grab_armor_absorb", handleGrabArmorAbsorb);
       socket.off("grab_armor_break", handleGrabArmorBreak);
     };
-  }, [socket, player.id, localId, roomName, index, emitParticles, penguin.id]);
+  }, [socket, player.id, localId, roomName, index, emitParticles, penguin.id, setFrozen]);
 
   // Final cleanup effect - ensure all music stops when component unmounts
   useEffect(() => {
@@ -4254,11 +4369,12 @@ const GameFighter = ({
 
   return (
     <div className="ui-container">
-      <SnowEffect
-        mode={matchOver ? "envelope" : "snow"}
-        winner={winner}
-        playerIndex={index}
-      />
+      {/* Ambient snowfall now lives at the scene level (single system in
+          Game.jsx). This per-fighter instance only handles the kenshō envelope
+          shower for the winning player on match-over. */}
+      {matchOver && (
+        <SnowEffect mode="envelope" winner={winner} playerIndex={index} />
+      )}
       {/* World-space: Gyoji stays in the scene and zooms with camera */}
       <Gyoji gyojiState={gyojiState} hakkiyoi={hakkiyoi} />
 

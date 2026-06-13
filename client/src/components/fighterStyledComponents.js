@@ -125,9 +125,14 @@ export const TintedImage = styled.img
   }))``;
 
 export const getFighterPopFilter = (props) => {
-  const outline = "drop-shadow(0 1px clamp(1px, 0.1cqw, 3px) rgba(8, 4, 2, 0.85))";
-  const rim = "drop-shadow(0 -1px clamp(0.5px, 0.05cqw, 1.5px) rgba(255, 250, 235, 0.1))";
-  const base = `${outline} ${rim}`;
+  // Subject separation comes from CLARITY + the DoF behind them, NOT a glow.
+  // A warm rim drop-shadow read as a cheesy halo (the cheap-mobile-game tell),
+  // so it's gone. Instead: a tight all-around dark contour that cuts the
+  // (often light) penguin bodies cleanly off the blurred crowd, plus a soft
+  // downward shadow for grounding/weight. Zero color cast — clean cut-out read.
+  const edge = "drop-shadow(0 0 clamp(0.5px, 0.06cqw, 1.5px) rgba(8, 5, 3, 0.6))";
+  const ground = "drop-shadow(0 2px clamp(1px, 0.12cqw, 3px) rgba(0, 0, 0, 0.45))";
+  const base = `${edge} ${ground}`;
 
   if (props.$isAtTheRopes) {
     return `${base} drop-shadow(0 0 8px rgba(255, 50, 50, 0.7))`;

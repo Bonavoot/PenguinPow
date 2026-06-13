@@ -189,6 +189,30 @@ const GrainOverlay = styled.div`
     );
 `;
 
+/*
+ * Cinematic vignette — darkens the screen corners and edges, pulling
+ * the eye into the two wrestler cards + the gyoji at center. This is
+ * the single biggest "premium broadcast" move on the screen: every
+ * AAA fighting-game VS screen and every real TV broadcast frames the
+ * action with a soft falloff at the edges instead of an evenly-lit
+ * flat plane. Kept warm-neutral and moderate so it reads as studio
+ * lighting / lens falloff, not a heavy dark frame. Sits just below
+ * the grain so the grain still rides over the darkened edges.
+ */
+const ScreenVignette = styled.div`
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 80;
+  background:
+    radial-gradient(
+      ellipse 110% 95% at 50% 44%,
+      transparent 52%,
+      rgba(10, 8, 14, 0.28) 80%,
+      rgba(6, 5, 10, 0.52) 100%
+    );
+`;
+
 // ============================================
 // TOP BROADCAST CHIP — printed-program micro-card
 // ============================================
@@ -444,17 +468,35 @@ const WrestlerPanel = styled.div`
   width: 100%;
   max-width: clamp(280px, 32cqw, 420px);
   overflow: hidden;
+  /* Layered paper, lit from the top:
+       1. soft top sheen (light source on the sheet)
+       2. the player's mawashi-color wash behind the wrestler
+       3. a vertical paper-tone ramp (lighter at head, deeper at feet)
+     This replaces the previous FLAT cream fill — flat cream was the
+     single biggest "cheap printout" tell. Real washi/card stock always
+     carries tonal variation across the sheet. */
   background:
+    radial-gradient(
+      ellipse 90% 55% at 50% -8%,
+      rgba(255, 252, 244, 0.78) 0%,
+      transparent 55%
+    ),
     radial-gradient(
       ellipse 75% 55% at 50% 65%,
       ${(p) => p.$washColor} 0%,
       transparent 70%
     ),
-    ${C.cream};
-  border: 1px solid rgba(60, 40, 20, 0.22);
+    linear-gradient(180deg, #f9f1e0 0%, ${C.cream} 48%, #ece0c6 100%);
+  border: 1px solid rgba(60, 40, 20, 0.3);
+  /* Inset top highlight + warm edge vignette give the card a physical
+     surface (raised in the middle, darker at the edges); the two
+     outer drops are warm so the card grounds onto the live arena
+     instead of looking pasted on. */
   box-shadow:
+    inset 0 1px 0 rgba(255, 252, 240, 0.7),
+    inset 0 0 60px -14px rgba(70, 45, 20, 0.22),
     0 3px 10px rgba(50, 30, 10, 0.22),
-    0 14px 28px rgba(50, 30, 10, 0.3);
+    0 18px 38px rgba(40, 24, 8, 0.36);
   will-change: transform, opacity;
   animation: ${(p) => (p.$side === "left" ? clipRevealLeft : clipRevealRight)}
     0.45s cubic-bezier(0.2, 0.7, 0.2, 1) 0.2s backwards;
@@ -527,7 +569,7 @@ const SideTag = styled.div`
   display: inline-flex;
   align-items: baseline;
   gap: 8px;
-  z-index: 5;
+  z-index: 6;
   font-family: "Bungee", cursive;
   font-size: clamp(0.5rem, 0.85cqw, 0.65rem);
   color: ${C.inkTextSoft};
@@ -585,7 +627,7 @@ const RankPlaque = styled.div`
   justify-content: center;
   gap: clamp(4px, 0.5cqw, 8px);
   padding: clamp(4px, 0.55cqh, 8px) clamp(10px, 1.3cqw, 18px);
-  z-index: 6;
+  z-index: 7;
   background:
     repeating-linear-gradient(
       90deg,
@@ -647,10 +689,11 @@ const RankDiamond = styled.span`
 
 /*
  * Portrait zone — bottom-anchored so the sprite's feet stay clipped
- * by the card edge even when scaled up. The shorter pumo-idle canvas
- * (more transparent padding above the head) left the old top-aligned
- * 100%-height layout looking sunken; oversizing + flex-end fills the
- * card without losing the "cut off at the belt" look.
+ * by the card edge even when scaled up. Back to the original framing
+ * the user liked: the penguin sits low in the card and is cropped by
+ * the card's own `overflow: hidden`, NOT by an inner mat frame. The
+ * earlier "matted portrait window" added too much frame detail and
+ * shifted the penguin up — both reverted here.
  */
 const WrestlerImageWrap = styled.div`
   position: absolute;
@@ -673,9 +716,7 @@ const WrestlerImage = styled.img`
   object-position: center bottom;
   transform-origin: center bottom;
   transform: ${(p) =>
-    p.$flip
-      ? "translateY(-5%) scaleX(1)"
-      : "translateY(-5%) scaleX(-1)"};
+    p.$flip ? "translateY(-5%) scaleX(1)" : "translateY(-5%) scaleX(-1)"};
   /* Warm contact shadow (was generic cool black) — keeps the
      penguin grounded on the cream paper instead of looking
      pasted-on from a different lighting environment. */
@@ -731,12 +772,15 @@ const LowerThird = styled.div`
   display: grid;
   grid-template-columns: 1fr clamp(120px, 14cqw, 200px) 1fr;
   align-items: stretch;
-  background: ${C.sumi};
+  /* Subtle top-lit chrome ramp instead of a flat black slab — gives the
+     band the lacquered-plate depth of a real broadcast lower-third. */
+  background: linear-gradient(180deg, #20242c 0%, ${C.sumi} 52%, #101218 100%);
   border: 1px solid ${C.sumiBorder};
   box-shadow:
     0 -4px 14px rgba(0, 0, 0, 0.35),
-    0 14px 28px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(245, 236, 217, 0.06);
+    0 16px 32px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(245, 236, 217, 0.09),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5);
   will-change: transform, opacity;
   animation: ${clipRevealUp} 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) 0.4s
     backwards;
@@ -763,7 +807,17 @@ const PlayerSlot = styled.div`
   align-items: ${(p) => (p.$side === "left" ? "flex-start" : "flex-end")};
   overflow: hidden;
   z-index: 2;
+  /* Faint team-color wash bleeding in from the player's OUTER edge —
+     the SF6/Tekken move where each side of the lower-third is tinted
+     in that fighter's color. Reads far more "designed broadcast
+     nameplate" than a thin colored sliver, and ties the slot to its
+     mawashi sash + top rule into one cohesive color story per side. */
+  background: ${(p) =>
+    p.$side === "left"
+      ? `linear-gradient(90deg, ${p.$tint} 0%, transparent 56%)`
+      : `linear-gradient(270deg, ${p.$tint} 0%, transparent 56%)`};
   border-top: 3px solid ${(p) => p.$accentColor};
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 `;
 
 /*
@@ -792,6 +846,12 @@ const StableLine = styled.div`
 const PlayerName = styled.div`
   font-family: "Bungee", cursive;
   font-size: clamp(16px, 2.4cqw, 32px);
+  /* Subtle top-lit cream gradient instead of flat fill — gives the
+     name a faint engraved-metal sheen under the broadcast lighting. */
+  background: linear-gradient(180deg, #fffaf0 0%, ${C.cream} 55%, #d9cdb2 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
   color: ${C.cream};
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -800,9 +860,8 @@ const PlayerName = styled.div`
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
-  text-shadow:
-    0 1px 0 rgba(0, 0, 0, 0.6),
-    0 2px 6px rgba(0, 0, 0, 0.35);
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.55))
+    drop-shadow(0 3px 8px rgba(0, 0, 0, 0.4));
 `;
 
 const MetaRow = styled.div`
@@ -888,10 +947,20 @@ const CenterPillar = styled.div`
   justify-content: center;
   gap: clamp(4px, 0.5cqh, 7px);
   padding: clamp(12px, 1.5cqh, 18px) clamp(8px, 1cqw, 14px);
-  background: ${C.sumiSoft};
+  /* Brighter, top-lit plate that reads as an elevated stamped medallion
+     between the two player slots — the focal "VS" of the matchup. The
+     outer drop shadow sells the elevation (the plate sits proud of the
+     band); the inset top highlight + side highlights give it pressed-
+     metal edges. */
+  background: linear-gradient(180deg, #2d333e 0%, ${C.sumiSoft} 52%, #171b22 100%);
   border-left: 1px solid ${C.sumiBorder};
   border-right: 1px solid ${C.sumiBorder};
-  z-index: 2;
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(245, 236, 217, 0.13),
+    inset 1px 0 0 rgba(245, 236, 217, 0.05),
+    inset -1px 0 0 rgba(245, 236, 217, 0.05);
+  z-index: 3;
 `;
 
 const CenterFormatLabel = styled.div`
@@ -915,10 +984,16 @@ const CenterFormatSub = styled.div`
 `;
 
 const CenterDivider = styled.span`
-  width: 32px;
-  height: 1px;
-  background: ${C.vermillionBright};
-  opacity: 0.9;
+  width: 38px;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    ${C.vermillion} 28%,
+    ${C.vermillion} 72%,
+    transparent 100%
+  );
+  box-shadow: 0 0 3px rgba(238, 81, 65, 0.2);
 `;
 
 // ============================================
@@ -1259,6 +1334,10 @@ const PreMatchScreen = ({
   const p2Accent = resolveAccentColor(p2MawashiColor);
   const p1Wash = colorToRgba(p1MawashiColor, 0.18);
   const p2Wash = colorToRgba(p2MawashiColor, 0.18);
+  // Faint team-color tint bled into each lower-third player slot from
+  // its outer edge.
+  const p1Tint = colorToRgba(p1MawashiColor, 0.13);
+  const p2Tint = colorToRgba(p2MawashiColor, 0.13);
 
   return (
     <ScreenContainer>
@@ -1344,7 +1423,7 @@ const PreMatchScreen = ({
       </Stage>
 
       <LowerThird>
-        <PlayerSlot $side="left" $accentColor={p1Accent}>
+        <PlayerSlot $side="left" $accentColor={p1Accent} $tint={p1Tint}>
           <StableLine>{player1Dojo}</StableLine>
           <PlayerName>{player1Name}</PlayerName>
           <MetaRow $side="left">
@@ -1367,7 +1446,7 @@ const PreMatchScreen = ({
           <CenterFormatSub>Match&nbsp;01</CenterFormatSub>
         </CenterPillar>
 
-        <PlayerSlot $side="right" $accentColor={p2Accent}>
+        <PlayerSlot $side="right" $accentColor={p2Accent} $tint={p2Tint}>
           <StableLine>{player2Dojo}</StableLine>
           <PlayerName>{player2Name}</PlayerName>
           <MetaRow $side="right">
@@ -1400,6 +1479,7 @@ const PreMatchScreen = ({
         </LoadingContainer>
       )}
 
+      <ScreenVignette />
       <GrainOverlay />
     </ScreenContainer>
   );

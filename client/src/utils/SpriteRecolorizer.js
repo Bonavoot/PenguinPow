@@ -41,6 +41,32 @@ const recoloredImageCache = new Map();
 // With deduplication, concurrent calls share the same Promise and get the same blob URL.
 const inFlightRecolors = new Map();
 
+// Blob URLs registered here are never revoked by LRU eviction or cache clears
+// (e.g. gyoji outfit images that must survive the player sprite decode cache).
+const protectedBlobUrls = new Set();
+
+export function protectBlobUrl(url) {
+  if (url && url.startsWith("blob:")) {
+    protectedBlobUrls.add(url);
+  }
+}
+
+export function unprotectBlobUrl(url) {
+  if (url) protectedBlobUrls.delete(url);
+}
+
+export function clearProtectedBlobUrls() {
+  protectedBlobUrls.clear();
+}
+
+function mayRevokeBlobUrl(url) {
+  return (
+    url &&
+    url.startsWith("blob:") &&
+    !protectedBlobUrls.has(url)
+  );
+}
+
 function addToCache(key, value) {
   // Delete first so re-insert moves it to the end (most recently used)
   if (recoloredImageCache.has(key)) {
@@ -53,11 +79,7 @@ function addToCache(key, value) {
     const oldestKey = recoloredImageCache.keys().next().value;
     const evictedUrl = recoloredImageCache.get(oldestKey);
     recoloredImageCache.delete(oldestKey);
-    if (
-      evictedUrl &&
-      evictedUrl.startsWith("blob:") &&
-      !decodedImageCache.has(evictedUrl)
-    ) {
+    if (evictedUrl && !decodedImageCache.has(evictedUrl) && mayRevokeBlobUrl(evictedUrl)) {
       URL.revokeObjectURL(evictedUrl);
     }
   }
@@ -1263,7 +1285,7 @@ export async function recolorImages(
 export function clearRecolorCache() {
   // Revoke all blob URLs to free browser-held blob data
   for (const url of recoloredImageCache.values()) {
-    if (url && url.startsWith("blob:")) {
+    if (mayRevokeBlobUrl(url)) {
       URL.revokeObjectURL(url);
     }
   }
@@ -1394,7 +1416,7 @@ export async function preDecodeImages(imageSrcs) {
 export function clearDecodedImageCache() {
   // Revoke blob URLs from cached images to free browser-held blob data
   for (const img of decodedImageCache.values()) {
-    if (img && img.src && img.src.startsWith("blob:")) {
+    if (img && img.src && mayRevokeBlobUrl(img.src)) {
       URL.revokeObjectURL(img.src);
     }
   }

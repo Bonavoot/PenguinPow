@@ -21,11 +21,14 @@ const getGroundLevel = (depth, screenHeight) => {
 };
 
 // Performance settings
-const MAX_SNOWFLAKES = 8;
+const MAX_SNOWFLAKES = 62;
 const MAX_ENVELOPES = 25;
 
-// Depth threshold: bigger (closer) particles in front of player, smaller (farther) behind
-const FRONT_DEPTH_THRESHOLD_SNOW = 0.5;
+// Depth threshold: bigger (closer) particles in front of player, smaller (farther) behind.
+// Snow threshold pushed high (0.9) so only the nearest depth band — the big
+// soft foreground-bokeh flakes — renders in front of the wrestlers; the bulk
+// of the snowfield stays BEHIND them so it never muddies the fight read.
+const FRONT_DEPTH_THRESHOLD_SNOW = 0.9;
 const FRONT_DEPTH_THRESHOLD_ENVELOPE = 0.8; // Only really big envelopes in front
 // Player layer in GameFighter is ~95–101; back below, front above
 const Z_BEHIND_PLAYER = 40;
@@ -98,20 +101,23 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
     const screenW = containerSizeRef.current.w;
     const screenH = containerSizeRef.current.h;
 
-    // Scale based on depth
+    // Scale based on depth. Snow uses a depth-SQUARED curve so far flakes stay
+    // tiny (crisp dots) while the nearest flakes grow into soft bokeh. Kept
+    // smaller than the first pass — big near flakes were grabbing the eye.
     const depthScale = isEnvelope
       ? 0.15 + depth * depth * 1.85
-      : 0.2 + depth * 0.7;
+      : 0.14 + depth * depth * 0.82;
 
     // Speed based on depth
     const baseSpeed = isEnvelope
       ? (0.3 + depth * depth * 2.5) * (0.85 + Math.random() * 0.3)
       : (0.4 + depth * 2.5) * (0.8 + Math.random() * 0.4);
 
-    // Opacity based on depth
+    // Opacity based on depth. Pulled down so the snow reads as ambient
+    // atmosphere rather than competing with the fight for attention.
     const depthOpacity = isEnvelope
       ? 0.2 + depth * 0.75
-      : 0.3 + depth * 0.4;
+      : 0.17 + depth * 0.33;
 
     // Horizontal drift
     const horizontalDrift = (Math.random() - 0.5) * (0.1 + depth * 0.8);
@@ -175,11 +181,16 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
         el.style.background = `url(${envelope}) no-repeat center center`;
         el.style.backgroundSize = 'contain';
       } else {
-        el.style.width = '4px';
-        el.style.height = '4px';
-        el.style.background = 'rgba(255, 255, 255, 0.75)';
+        // Soft radial flake. One style serves both far (tiny near-crisp dot)
+        // and near (big soft bokeh) flakes — depth is applied via transform
+        // scale, so the same 14px gradient becomes ~2px far up to ~18px
+        // foreground bokeh. The cool-white falloff reads as snow catching the
+        // arena light rather than a hard CSS dot.
+        el.style.width = '14px';
+        el.style.height = '14px';
         el.style.borderRadius = '50%';
-        el.style.boxShadow = '0 0 1px 0 rgba(255, 255, 255, 0.15)';
+        el.style.background =
+          'radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(238,247,255,0.55) 38%, rgba(225,240,255,0) 72%)';
       }
 
       const container = isFrontLayer(particle.depth, particle.isEnvelope) ? frontContainer : backContainer;
@@ -201,16 +212,23 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
       if (!lastTimeRef.current) lastTimeRef.current = timestamp;
       const deltaTime = timestamp - lastTimeRef.current;
       
-      // Throttle to ~30fps
-      if (deltaTime < 33) {
+      // Throttle to ~60fps for smooth, premium snowfall.
+      if (deltaTime < 16) {
         animationFrameRef.current = requestAnimationFrame(animate);
         return;
       }
-      
+
       lastTimeRef.current = timestamp;
       const time = timestamp / 1000;
       const timeFactor = deltaTime / 16;
       const screenW = containerSizeRef.current.w;
+
+      // Global wind — two layered slow sine gusts so the whole snowfield drifts
+      // and breathes together instead of falling straight down. Near flakes
+      // (higher depth) get pushed harder for a sense of parallax. Envelopes opt
+      // out; they keep their own flutter sway.
+      const gust =
+        Math.sin(time * 0.45) * 0.36 + Math.sin(time * 0.19 + 1.3) * 0.2;
 
       particlesRef.current.forEach((particle, i) => {
         const el = elementsRef.current[i];
@@ -224,9 +242,10 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
           swayX = primarySway + secondarySway;
         }
 
-        // Update position
+        // Update position (snow also catches the global wind gust)
+        const windX = particle.isEnvelope ? 0 : gust * (0.35 + particle.depth);
         particle.y += particle.velocityY * timeFactor;
-        particle.x += particle.velocityX * timeFactor + swayX;
+        particle.x += particle.velocityX * timeFactor + swayX + windX * timeFactor;
         particle.rotation += particle.rotationSpeed * timeFactor;
 
         // Reset if below ground

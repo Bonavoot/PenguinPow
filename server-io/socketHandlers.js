@@ -175,6 +175,38 @@ function detectEdges(prevKeys, events, newKeys) {
   return { rising, falling };
 }
 
+// Scan a packet's edge events for the most recent DOWN edge of `key` and return
+// its timestamp expressed on the server's monotonic gameNow() clock, using the
+// client-supplied clock offset (serverGameNow - clientPerfNow). Returns 0 when
+// the clock isn't synced, the offset is missing/non-finite, or there's no such
+// event (e.g. snapshot-only packet) — callers treat 0 as "no lag-comp data,
+// fall back to arrival time."
+function pressGameTimeFromEvents(data, key) {
+  if (!data || data.clientSynced !== true) return 0;
+  const offset = data.clientOffset;
+  if (typeof offset !== "number" || !Number.isFinite(offset)) return 0;
+  const events = data.events;
+  if (!Array.isArray(events) || events.length === 0) return 0;
+  let latestT = 0;
+  const limit = Math.min(events.length, MAX_EVENTS_PER_PACKET);
+  for (let i = 0; i < limit; i++) {
+    const ev = events[i];
+    if (ev && ev.k === key && ev.a === "down" && typeof ev.t === "number") {
+      if (ev.t > latestT) latestT = ev.t;
+    }
+  }
+  return latestT ? latestT + offset : 0;
+}
+
+// On a rising space edge, record the player's true press moment (in server
+// gameNow() terms) so the parry-start logic can backdate `rawParryStartTime`
+// toward it. See lagCompensatedParryStart() in gameUtils for the rationale.
+function recordParryPressTime(player, data, rising) {
+  if (!rising || !rising[" "]) return;
+  const pressGameTime = pressGameTimeFromEvents(data, " ");
+  if (pressGameTime) player.rawParryPressGameTime = pressGameTime;
+}
+
 // ============================================================
 // PHASE 3: TICK-CONSUMED INPUT DISPATCH
 // ============================================================
@@ -244,6 +276,10 @@ function processInputPacket(room, player, data, io, rooms) {
         data.events,
         data.keys,
       );
+
+      // Capture true press moment for lag-compensated parry timing even while
+      // input-locked — the buffered parry fires when the lock ends and reads it.
+      recordParryPressTime(player, data, rising);
 
       // Clear grabBreakSpaceConsumed if spacebar was released during input lock,
       // so raw parry isn't blocked after the lock expires
@@ -368,6 +404,11 @@ function processInputPacket(room, player, data, io, rooms) {
     const { rising, falling } = detectEdges(previousKeys, data.events, data.keys);
     player.keys = data.keys;
 
+    // Capture true press moment for lag-compensated parry timing. The main loop
+    // (level-triggered on keys[" "]) and the input buffer both consume this when
+    // they actually start the parry, so it must be recorded on the rising edge.
+    recordParryPressTime(player, data, rising);
+
     // Set mouse1 press flags — true if a press happened ANYWHERE in the
     // packet window, even if the trailing snapshot already shows release.
     player.mouse1JustPressed = !!rising.mouse1;
@@ -466,6 +507,7 @@ function processInputPacket(room, player, data, io, rooms) {
     !player.isSidestepping &&
     !player.isGrabbing &&
     !player.isBeingGrabbed &&
+    !player.isGrabStartup && // Block raw parry during grab startup (lunge windup) — prevents parry/grab state coexistence
     !player.isGrabbingMovement &&
     !player.isWhiffingGrab &&
     !player.isGrabClashing &&

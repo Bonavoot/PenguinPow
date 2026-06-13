@@ -5,6 +5,7 @@ import MobileControls from "./MobileControls";
 import PowerUpSelection from "./PowerUpSelection";
 import PowerUpReveal from "./PowerUpReveal";
 import CrowdLayer from "./CrowdLayer";
+import SnowEffect from "./SnowEffect";
 import PreMatchScreen from "./PreMatchScreen";
 import gamepadHandler from "../utils/gamepadHandler";
 import useCamera from "../hooks/useCamera";
@@ -14,12 +15,15 @@ import {
   setupMemoryMonitorShortcut,
 } from "../utils/memoryMonitor";
 import { clearDecodedImageCache } from "../utils/SpriteRecolorizer";
+import { pickRandomGyojiOutfit } from "../config/gyojiOutfitPresets";
+import { preloadGyojiOutfit, clearGyojiRecolorCache } from "../utils/GyojiRecolorizer";
 import { ParticleProvider } from "../particles/ParticleContext";
 import {
   registerLocalKeyState,
   unregisterLocalKeyState,
   setLocalGameActive,
 } from "../prediction/localInput";
+import { getServerOffset, isServerClockSynced } from "../lib/serverClock";
 // import gameMusic from "../sounds/game-music.mp3";
 import PropTypes from "prop-types";
 
@@ -86,6 +90,8 @@ const Game = ({
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [isPreloading, setIsPreloading] = useState(true);
   const preMatchShownRef = useRef(false); // Track if we've already shown/hidden the pre-match
+  const gyojiOutfitRef = useRef(pickRandomGyojiOutfit());
+  const [, setGyojiRevision] = useState(0);
 
   const index = rooms.findIndex((room) => room.id === roomName);
 
@@ -122,8 +128,27 @@ const Game = ({
   // ============================================
   const predictionRef = useRef(null);
   const containerRef = useRef(null);
+  const koPunchTimeoutRef = useRef(null);
+  const koPunchLiteTimeoutRef = useRef(null);
+  const lastCinematicPunchRef = useRef(0);
+  const perfectParryFlashTimeoutRef = useRef(null);
 
   useCamera(containerRef, socket);
+
+  const loadGyojiOutfit = useCallback(async (outfit) => {
+    await preloadGyojiOutfit(outfit);
+    setGyojiRevision((n) => n + 1);
+  }, []);
+
+  useEffect(() => {
+    const handleRematch = () => {
+      const outfit = pickRandomGyojiOutfit();
+      gyojiOutfitRef.current = outfit;
+      loadGyojiOutfit(outfit);
+    };
+    socket.on("rematch", handleRematch);
+    return () => socket.off("rematch", handleRematch);
+  }, [socket, loadGyojiOutfit]);
 
   const handleResetDisconnectState = useCallback(() => {
     setOpponentDisconnected(false);
@@ -152,9 +177,10 @@ const Game = ({
     };
   }, []);
 
-  // Free decoded sprite cache when leaving game (reduces memory when in menu/lobby)
+  // Free sprite caches when leaving game (reduces memory when in menu/lobby)
   useEffect(() => {
     return () => {
+      clearGyojiRecolorCache();
       clearDecodedImageCache();
     };
   }, []);
@@ -214,7 +240,21 @@ const Game = ({
       lastEmitTime = performance.now();
       const events = pendingEvents;
       pendingEvents = [];
-      socket.emit("fighter_action", { id: socket.id, keys: keyState, events });
+      // Lag-compensation: include the client→server clock offset so the server
+      // can reconstruct the real-world moment each event's `t` (performance.now)
+      // occurred, in its own clock. Used to backdate the raw-parry start time so
+      // the perfect-parry window is judged against when the player ACTUALLY
+      // pressed — not when the packet happened to arrive (which jitters with
+      // ping). `clientSynced` gates this: until the handshake completes,
+      // `getServerOffset()` is the meaningless default and must be ignored.
+      const clientSynced = isServerClockSynced();
+      socket.emit("fighter_action", {
+        id: socket.id,
+        keys: keyState,
+        events,
+        clientSynced,
+        clientOffset: clientSynced ? getServerOffset() : 0,
+      });
     };
 
     const scheduleEmit = () => {
@@ -555,6 +595,8 @@ const Game = ({
           player2BodyColor
         );
 
+        await loadGyojiOutfit(gyojiOutfitRef.current);
+
         // Complete the progress bar
         clearInterval(progressInterval);
         setLoadingProgress(100);
@@ -575,6 +617,7 @@ const Game = ({
     runPreload();
   }, [
     preloadSprites,
+    loadGyojiOutfit,
     player1Color,
     player2Color,
     player1BodyColor,
@@ -622,6 +665,58 @@ const Game = ({
         intensity: "medium",
         timestamp: Date.now(),
       });
+
+      // "Time-freeze" flash framing the perfect-parry hitstop: cool grade snap
+      // on the world + a faint cyan camera flash (see .perfect-parry-flash in
+      // App.css). Suppressed if a KO grade-punch is mid-flight so they can't
+      // collide.
+      const el = containerRef.current;
+      if (el && !el.classList.contains("ko-grade-punch")) {
+        // Re-arm the CSS animation cleanly if one is somehow still active.
+        el.classList.remove("perfect-parry-flash");
+        // Force reflow so removing + re-adding restarts the keyframes.
+        void el.offsetWidth;
+        el.classList.add("perfect-parry-flash");
+        clearTimeout(perfectParryFlashTimeoutRef.current);
+        perfectParryFlashTimeoutRef.current = setTimeout(() => {
+          const cur = containerRef.current;
+          if (cur) cur.classList.remove("perfect-parry-flash");
+        }, 360);
+      }
+    };
+
+    // Cinematic-kill grade-punch: for the duration of the KO hitstop, snap the
+    // whole scene to a higher-contrast, richer-saturation grade so the finishing
+    // blow lands with a visceral pop, then ease back out. Pure class toggle —
+    // the filter + transition live in App.css on `.ko-grade-punch .game-scene`.
+    const handleCinematicKill = (data) => {
+      const el = containerRef.current;
+      if (!el) return;
+      lastCinematicPunchRef.current = Date.now();
+      el.classList.add("ko-grade-punch");
+      const hold = (data?.hitstopMs || 550) + 160;
+      clearTimeout(koPunchTimeoutRef.current);
+      koPunchTimeoutRef.current = setTimeout(() => {
+        const cur = containerRef.current;
+        if (cur) cur.classList.remove("ko-grade-punch");
+      }, hold);
+    };
+
+    // Regular ring-outs get the LITE grade pop — but never on top of (or right
+    // after) the big cinematic punch, so the cinematic finish stays special.
+    // A cinematic kill emits its own ring_out ~1–2s later as the victim flies
+    // out; the timestamp guard swallows that one.
+    const handleRingOut = () => {
+      const el = containerRef.current;
+      if (!el) return;
+      if (el.classList.contains("ko-grade-punch")) return;
+      if (Date.now() - lastCinematicPunchRef.current < 2000) return;
+      el.classList.add("ko-grade-punch--lite");
+      clearTimeout(koPunchLiteTimeoutRef.current);
+      koPunchLiteTimeoutRef.current = setTimeout(() => {
+        const cur = containerRef.current;
+        if (cur) cur.classList.remove("ko-grade-punch--lite");
+      }, 240);
     };
 
     socket.on("opponent_disconnected", handleOpponentDisconnected);
@@ -629,6 +724,8 @@ const Game = ({
     socket.on("game_over", handleGameOver);
     socket.on("game_start", handleGameStart);
     socket.on("perfect_parry", handlePerfectParry);
+    socket.on("cinematic_kill", handleCinematicKill);
+    socket.on("ring_out", handleRingOut);
 
     return () => {
       socket.off("opponent_disconnected", handleOpponentDisconnected);
@@ -636,6 +733,16 @@ const Game = ({
       socket.off("game_over", handleGameOver);
       socket.off("game_start", handleGameStart);
       socket.off("perfect_parry", handlePerfectParry);
+      socket.off("cinematic_kill", handleCinematicKill);
+      socket.off("ring_out", handleRingOut);
+      clearTimeout(koPunchTimeoutRef.current);
+      clearTimeout(koPunchLiteTimeoutRef.current);
+      clearTimeout(perfectParryFlashTimeoutRef.current);
+      if (containerRef.current) {
+        containerRef.current.classList.remove("ko-grade-punch");
+        containerRef.current.classList.remove("ko-grade-punch--lite");
+        containerRef.current.classList.remove("perfect-parry-flash");
+      }
       setLocalGameActive(false);
     };
   }, [socket]);
@@ -656,6 +763,11 @@ const Game = ({
           <div className="game-map"></div>
           <CrowdLayer crowdEvent={crowdEvent} />
           <div className="dohyo-overlay"></div>
+          {/* Scene-wide ambient snowfall (single system, parallax depth).
+              Its internal back/front layers (z40 / z105) straddle the players
+              so most snow falls behind them and only sparse foreground bokeh
+              flakes drift in front. */}
+          <SnowEffect mode="snow" />
           <ParticleProvider>
             <div
               className={`ui${
@@ -691,8 +803,12 @@ const Game = ({
                 })}
             </div>
           </ParticleProvider>
+          <div className="god-rays" aria-hidden="true"></div>
           <div className="arena-lighting" aria-hidden="true"></div>
         </div>
+        {/* Screen-space film grain — sits on .game-container (NOT the scene)
+            so it's fixed to the lens and never scales/pans with the camera. */}
+        <div className="film-grain" aria-hidden="true"></div>
         {/* HUD layer — viewport-fixed, unaffected by camera zoom/pan.
             While the pre-match screen is up we add `is-prematch-hidden`
             so the in-game HUD (player nameplates, health/balance bars,

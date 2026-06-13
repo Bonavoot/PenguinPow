@@ -117,7 +117,6 @@ import gyojiImage from "../assets/gyoji.png";
 import gyojiReady from "../assets/gyoji-ready.png";
 import gyojiPlayer1wins from "../assets/gyoji-player1-wins.png";
 import gyojiPlayer2wins from "../assets/gyoji-player2-wins.png";
-import gyojiHakkiyoi from "../assets/gyoji-hakkiyoi.gif";
 import dodgeEffectGif from "../assets/dodge-effect.gif";
 import slapAttackHand from "../assets/slap-attack-hand.png";
 
@@ -244,7 +243,6 @@ const initializeImagePreloading = () => {
   preloadImage(gyojiReady);
   preloadImage(gyojiPlayer1wins);
   preloadImage(gyojiPlayer2wins);
-  preloadImage(gyojiHakkiyoi);
 
   preloadImage(dodgeEffectGif);
   preloadImage(slapAttackHand);

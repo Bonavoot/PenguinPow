@@ -413,6 +413,15 @@ const PERFECT_PARRY_ATTACKER_STUN_DURATION = 700; // Stun — comfortable window
 const PERFECT_PARRY_ANIMATION_LOCK = 370; // 250ms hitstop + 120ms real post-freeze "cool pose" before parrier can act
 const PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK = 200; // Shorter than player parry lock — the reflected snowball is the reward
 
+// Lag-compensation: max the raw-parry start time may be backdated toward the
+// player's true press moment (reconstructed from the client clock offset). The
+// perfect window is 100ms; 120ms covers typical input latency (net/2 + client
+// throttle + server tick phase) so the window is judged against when the player
+// pressed, not when the packet arrived. Clamped both ways: a press can never be
+// backdated past this, and never dated into the future — so a spoofed client
+// can do no better than today's (uncompensated) behavior.
+const MAX_PARRY_BACKDATE_MS = 120;
+
 // Raw parry commitment: minimum time locked in parry stance
 const RAW_PARRY_MIN_DURATION = 200; // Whiffed parry: punishable but not sluggish (was 375 — felt like parry jail)
 const RAW_PARRY_MAX_DURATION = 550; // Auto-end after this — forces timing, prevents infinite camping
@@ -908,6 +917,7 @@ module.exports = {
   RAW_PARRY_MIN_DURATION,
   RAW_PARRY_MAX_DURATION,
   RAW_PARRY_COOLDOWN_MS,
+  MAX_PARRY_BACKDATE_MS,
   PARRY_SUCCESS_DURATION,
   RAW_PARRY_STAMINA_COST,
   RAW_PARRY_STAMINA_REFUND,

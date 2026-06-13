@@ -7,8 +7,13 @@ import { isOutsideDohyo } from "../constants";
 export const SHADOW_GROUND_LEVEL = 294;
 const GROUND_LEVEL = SHADOW_GROUND_LEVEL;
 
+// Two-layer ground shadow for real weight: a tight, dark CONTACT core (sells
+// the point where the penguin meets the ice) sitting on a broad, soft AMBIENT
+// penumbra (the diffuse occlusion that grounds the whole body). The single flat
+// ellipse read as a sticker decal under the feet; this reads as cast light.
 const SHADOW_GRADIENT =
-  "radial-gradient(ellipse at center, rgba(0,0,0,0.86) 0%, rgba(0,0,0,0) 70%)";
+  "radial-gradient(ellipse 56% 62% at 50% 50%, rgba(0,0,0,0.66) 0%, rgba(0,0,0,0.30) 42%, rgba(0,0,0,0) 70%), " +
+  "radial-gradient(ellipse 96% 92% at 50% 52%, rgba(0,0,0,0.24) 0%, rgba(0,0,0,0) 76%)";
 
 const baseStyle = {
   position: "absolute",
@@ -58,8 +63,8 @@ const PlayerShadow = memo(forwardRef(({
 
   const style = {
     ...baseStyle,
-    width: width || "9.15%",
-    height: height || "3.70%",
+    width: width || "8.8%",
+    height: height || "3.55%",
     left: `${(x / 1280) * 100}%`,
     bottom: `${(bottomY / 720) * 100 - 0.2}%`,
     transform: `translateX(${txOffset}) scale(${shadowScale})`,
