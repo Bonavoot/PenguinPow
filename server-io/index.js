@@ -1309,10 +1309,7 @@ function tick(delta) {
       // dangerZoneTriggered flag now solely gates this once-per-knockback shake.
       if (isInDangerZone && !player.dangerZoneTriggered) {
         player.dangerZoneTriggered = true;
-        emitThrottledScreenShake(room, io, {
-          intensity: 1.0,
-          duration: 400,
-        });
+        emitThrottledScreenShake(room, io, { type: "danger_zone" });
       }
 
       // Reset danger zone flag when player is no longer hit
@@ -1533,10 +1530,7 @@ function tick(delta) {
             if (wasKillThrow) {
               handleWinCondition(room, opponent, player, io, "clinchKillThrow");
               opponent.isClinchKillThrowVictim = true;
-              emitThrottledScreenShake(room, io, {
-                intensity: 2.5,
-                duration: 500,
-              });
+              emitThrottledScreenShake(room, io, { type: "kill_throw" });
               // No landing hitstop for kill throw: room + client hitstop freeze the
               // sim and pin interpolated Y for ~100ms, which reads as a hitch right
               // as the victim touches down. Screen shake + particles sell the impact.
@@ -1552,10 +1546,7 @@ function tick(delta) {
               ) {
                 handleWinCondition(room, opponent, player, io, "grabThrow");
               } else {
-                emitThrottledScreenShake(room, io, {
-                  intensity: 0.6,
-                  duration: 200,
-                });
+                emitThrottledScreenShake(room, io, { type: "throw_landing" });
                 triggerHitstopAndEmit(io, room, HITSTOP_THROW_MS, "throw");
               }
             }
@@ -1961,10 +1952,7 @@ function tick(delta) {
             // No one-frame position snap — adjustPlayerPositions handles the
             // overlap gradually over several ticks for a smooth visual slide.
 
-            emitThrottledScreenShake(room, io, {
-              intensity: 0.65,
-              duration: 250,
-            });
+            emitThrottledScreenShake(room, io, { type: "rope_landing" });
           }
         } else if (player.ropeJumpPhase === "landing") {
           if (now >= player.ropeJumpLandingTime + ROPE_JUMP_LANDING_RECOVERY_MS) {

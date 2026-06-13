@@ -401,6 +401,7 @@ body {
   --cam-scale: 1.305;
   --cam-x: 0px;
   --cam-y: 0px;
+  --cam-rot: 0deg;
 }
 
 /* ── Screen-space cinematic vignette ──────────────────────────────────────
@@ -432,11 +433,8 @@ body {
   position: absolute;
   inset: 0;
   transform-origin: center center;
-  transform: translate3d(
-      calc(var(--cam-x, 0px) + var(--shake-x, 0px)),
-      calc(var(--cam-y, 0px) + var(--shake-y, 0px)),
-      0
-    )
+  transform: translate3d(var(--cam-x, 0px), var(--cam-y, 0px), 0)
+    rotate(var(--cam-rot, 0deg))
     scale(var(--cam-scale, 1));
   will-change: transform;
   backface-visibility: hidden;

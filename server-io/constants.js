@@ -69,7 +69,10 @@ const CHARGED_HITBOX_DISTANCE_VALUE = Math.round(147 * 0.96); // ~141 → just p
 const SLAP_HITBOX_DISTANCE_VALUE = Math.round(152 * 0.96); // ~146 — must exceed pushbox (136px) so slaps connect at pushbox distance [8% tighter]
 const SLAP_PARRY_WINDOW = 200; // Updated to 200ms window for parry to account for longer slap animation
 const SLAP_PARRY_KNOCKBACK_VELOCITY = 1.5; // Reduced knockback for parried attacks
-const SLAP_PARRY_RECOVERY_MS = 220; // Recovery lockout — long enough to feel the clash, short enough to stay fast
+const SLAP_PARRY_RECOVERY_MS = 140; // Recovery lockout. Tuned so the clash-to-clash loop
+// (hitstop 45 + recovery 140 + next slap startup 55 ≈ 240ms real) sits AT/just-above the raw
+// slap-spam cadence (~205–230ms) and never out-paces it — the 45ms clash freeze (which raw
+// slaps don't have) guarantees the clash can't become faster than mashing mouse1.
 const SLAP_PARRY_HITSTOP_MS = 45; // Brief freeze on clash — sells the impact without slowing the game
 const SLAP_PARRY_KNOCKBACK_STRENGTH = 1.8; // Snappy initial push — sharp pop apart, not a slow slide
 const SLAP_PARRY_KB_FRICTION = 0.82; // Strong friction — quick stop after the initial pop

@@ -408,15 +408,18 @@ function resolveSlapParry(player1, player2, room, io) {
     }
   });
 
-  // Hitstop — brief freeze sells the clash impact
-  const hitstopMs = Math.round(SLAP_PARRY_HITSTOP_MS * escalation);
-  triggerHitstopAndEmit(io, room, hitstopMs, "slap_parry");
+  // Hitstop — brief freeze sells the clash impact. Kept FLAT (not escalated): a
+  // longer freeze on consecutive clashes used to make a mash-war progressively
+  // slower, which is exactly the "molasses" feel we're removing. Escalation now
+  // only drives visual juice (knockback pop + screen shake + VFX intensity), so
+  // repeated clashes feel BIGGER without the cadence ever slowing down.
+  triggerHitstopAndEmit(io, room, SLAP_PARRY_HITSTOP_MS, "slap_parry");
 
-  // Screen shake — scales with consecutive parries
-  const shakeIntensity = Math.min(0.45 + (consecutiveCount - 1) * 0.15, 0.9);
+  // Screen shake — crisp rattle, NO zoom (slap_parry profile), scales a touch
+  // with consecutive clashes so a mash-war feels bigger without zoom-pumping.
   emitThrottledScreenShake(room, io, {
-    intensity: shakeIntensity * escalation,
-    duration: 180 + consecutiveCount * 30,
+    type: "slap_parry",
+    scale: Math.min(1 + (consecutiveCount - 1) * 0.12, 1.45),
   });
 
   const midpointX = (player1.x + player2.x) / 2;
@@ -503,8 +506,8 @@ function resolveChargeClash(player1, player2, p1Charge, p2Charge, room, io) {
   const hitstopMs = HITSTOP_CHARGED_MIN_MS + (HITSTOP_CHARGED_MAX_MS - HITSTOP_CHARGED_MIN_MS) * combinedCharge;
   triggerHitstopAndEmit(io, room, hitstopMs, "charge_clash");
   emitThrottledScreenShake(room, io, {
-    intensity: 0.8 + combinedCharge * 0.5,
-    duration: 250 + combinedCharge * 200,
+    type: "charge_clash",
+    scale: 0.85 + combinedCharge * 0.4,
   });
 
   // Emit charge clash VFX event
@@ -958,12 +961,11 @@ function processHit(player, otherPlayer, rooms, io) {
         timeoutManager.clearPlayerSpecific(player.id, "perfectParryStunReset");
       }
 
-      // Emit screen shake for perfect parry with higher intensity (throttled)
+      // Perfect-parry screen shake is driven client-side by useCamera's
+      // "perfect_parry" listener (addShake("perfect_parry")) so the heavy
+      // trauma+zoom+roll fires exactly with the freeze and can't be dropped by
+      // the shake throttle.
       if (currentRoom) {
-        emitThrottledScreenShake(currentRoom, io, {
-          intensity: 0.9,
-          duration: 400,
-        });
 
         triggerHitstopAndEmit(io, currentRoom, HITSTOP_PERFECT_PARRY_MS, "perfect_parry");
 
@@ -996,12 +998,9 @@ function processHit(player, otherPlayer, rooms, io) {
       // Store that we have an active stun timeout
       player.perfectParryStunBaseTimeout = true;
     } else {
-      // Regular parry - emit screen shake with lower intensity (throttled)
+      // Regular parry - lighter rattle, no zoom (parry profile)
       if (currentRoom) {
-        emitThrottledScreenShake(currentRoom, io, {
-          intensity: 0.5,
-          duration: 200,
-        });
+        emitThrottledScreenShake(currentRoom, io, { type: "parry" });
         // Hitstop on parry
         triggerHitstopAndEmit(io, currentRoom, HITSTOP_PARRY_MS, "parry");
       }
@@ -1248,6 +1247,8 @@ function processHit(player, otherPlayer, rooms, io) {
           facing: otherPlayer.facing,
           attackType: isSlapAttack ? "slap" : "charged",
           stringPos: isSlapAttack ? (player.slapStringPosition || 0) : 0,
+          // Drives the client charged-hit shake scaling (heavier charge = bigger crunch).
+          chargePercentage: isSlapAttack ? 0 : chargePercentage,
           timestamp: Date.now(),
           hitId: Math.random().toString(36).substr(2, 9),
           // Latched for slap strings so hits 2 & 3 keep the counter/punish

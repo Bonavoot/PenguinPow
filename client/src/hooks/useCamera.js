@@ -1,5 +1,12 @@
 import { useEffect, useRef } from "react";
 import { valueNoise } from "../utils/shakeNoise";
+import {
+  addTrauma,
+  addShake,
+  holdTrauma,
+  getShakeState,
+  resetShakeBias,
+} from "../lib/cameraShake";
 
 // ── Tunable constants ──────────────────────────────────────────────
 const GAME_WIDTH = 1280;
@@ -40,44 +47,35 @@ const SMOOTH_ZOOM_OUT = 0.05; // players separating → slower pull-out
 const PLAYER1_READY_X = 543;
 const PLAYER2_READY_X = 735;
 
-// ── Impact shake (smoothed-noise, directional recoil) ───────────────
-// Replaces per-frame white-noise jitter (which read as a cheap high-frequency
-// buzz) with a continuous 1D value-noise path: the frame swings along a smooth
-// arc, so a hit reads as WEIGHT, not vibration. Amplitude (px) and triggers are
-// unchanged, and a decaying directional push pulls the frame along the knockback
-// vector for a real "recoil." Total offset stays within the existing px budget,
-// so map edges can never be exposed.
-const SHAKE_MIN = 3; // px — lightest hit (slap)
-const SHAKE_MAX = 10; // px — heaviest hit (full-charge + power-up)
-const SHAKE_DECAY = 0.88; // per-frame multiplier → ~150 ms at 60 fps
-const SHAKE_STOP = 0.3; // cut to zero below this
+// ── Unified trauma shake (Eiserloh model) ───────────────────────────
+// All shake — hits AND events (parries, clashes, landings, ring-out…) — flows
+// through the trauma bus (lib/cameraShake). Trauma is 0..1; the rendered offset
+// is trauma², which front-loads the energy: a hit reads as a sharp spike that
+// settles fast (the premium "crack") instead of a slow low-amplitude sway (the
+// old "wobble"). The noise path keeps it organic + frame-rate independent, a
+// directional bias gives real recoil, and translation is hard-clamped so map
+// edges can never be exposed even with the micro-roll added.
+const SHAKE_MAX_OFFSET_X = 34; // px at trauma = 1 (heaviest event)
+const SHAKE_MAX_OFFSET_Y = 24; // px at trauma = 1 (vertical reads as ground impact)
+const TRAUMA_DECAY = 3.0; // trauma units per second → trauma 1.0 settles in ~0.33s
+const TRAUMA_STOP = 0.002; // cut to zero below this
 const SHAKE_FREQ_HZ = 22; // oscillation frequency of the smooth shake path
 const SHAKE_DIR_BIAS = 0.5; // share of amplitude given to directional recoil (rest = noise)
 
-// ── Hit zoom punch-in ────────────────────────────────────────────
-// Phase 3: punch boosted from (0.02 → 0.06) to (0.03 → 0.10). The extra zoom
-// on impact, paired with the new 4-frame white impact-snap on the receiving
-// fighter (GameFighter hit-flash), is what sells the "this hit landed" beat.
-const PUNCH_MIN = 0.03; // scale boost — light hit
-const PUNCH_MAX = 0.10; // scale boost — heavy hit
-const PUNCH_DECAY = 0.92; // per-frame multiplier → ~200 ms
+// ── Zoom punch-in ─────────────────────────────────────────────────
+// The coupled scale push is the single biggest "weight" cue, but it's also the
+// most disorienting if overused — so it's RARE by design (only heavy hits,
+// perfect parry, KO, round start opt in via profile). Snappy decay keeps it a
+// crisp punch, not a lingering/floaty zoom.
+const PUNCH_DECAY = 0.86; // per-frame multiplier → ~110 ms (snappy)
 const PUNCH_STOP = 0.001; // cut to zero below this
 
-// Knockback reference ceiling for normalising intensity
-const KB_REF = 2.5;
-
-// ── Perfect-parry zoom-punch ─────────────────────────────────────
-// Perfect parries never increment hitCounter (they're not "hits"), so the
-// normal impact punch above never fires for them — the single biggest reason
-// a perfect parry felt visually flat despite stunning the opponent. This is a
-// dedicated, stronger punch-in (heavier than the max hit punch of 0.10, just
-// shy of the cinematic-kill boost of 0.14) that lands right as the perfect
-// freeze begins and eases out across it. The "this read MATTERED" beat.
-const PERFECT_PARRY_PUNCH = 0.13;
+// ── Round-start "GO!" punch ──────────────────────────────────────
+const ROUND_START_PUNCH_AMOUNT = 0.035;
 
 // ── Cinematic kill camera ────────────────────────────────────────
 const CINEMATIC_ZOOM_SCALE = 1.98; // ~10% out from 2.2
-const CINEMATIC_SHAKE_INTENSITY = 12;
+const CINEMATIC_SHAKE_TRAUMA = 0.9; // trauma floor held during freeze (heaviest in game)
 const CINEMATIC_SHAKE_DECAY = 0.94;
 const CINEMATIC_ZOOM_IN_SPEED = 0.18;
 const CINEMATIC_PAN_SPEED = 0.12;
@@ -129,12 +127,9 @@ export default function useCamera(containerRef, socket) {
   });
   const rafId = useRef(null);
 
-  // Impact state — written by the socket handler, consumed by the rAF loop.
-  // `dirX` biases the random shake along the knockback vector so the camera
-  // visibly *recoils* in the direction of the hit instead of a generic noise jitter.
-  const shakeRef = useRef({ x: 0, y: 0, intensity: 0, dirX: 0 });
-  const punchRef = useRef({ amount: 0 });
-  const hitTrackRef = useRef({ p1: 0, p2: 0 });
+  // Impact state lives on the shared trauma bus (lib/cameraShake) so hits and
+  // events all feed one renderer. Per-frame shake offsets are computed in the
+  // rAF loop below from the bus's trauma value.
 
   // Frame-rate independence + smooth-shake timing
   const lastFrameRef = useRef(performance.now());
@@ -152,7 +147,7 @@ export default function useCamera(containerRef, socket) {
     startTime: 0,
     hitstopMs: 0,
     targetScale: CINEMATIC_ZOOM_SCALE,
-    shakeIntensity: 0,
+    shakeTrauma: 0,
     knockbackDir: 1,
     holdStartTime: 0,
     releaseStartTime: 0,
@@ -165,51 +160,18 @@ export default function useCamera(containerRef, socket) {
   useEffect(() => {
     if (!socket) return;
 
-    // ── Trigger an impact effect scaled by knockback strength ──
-    // Directional bias: the camera should recoil along the hit vector, not just
-    // jitter randomly. The strongest fighting games (SF6, T8, Smash) all pull
-    // the cam toward the launch direction — that's the "weight" you feel.
-    const triggerImpact = (knockbackX) => {
-      const t = clamp(Math.abs(knockbackX) / KB_REF, 0.3, 1);
-      const shake = SHAKE_MIN + t * (SHAKE_MAX - SHAKE_MIN);
-      const punch = PUNCH_MIN + t * (PUNCH_MAX - PUNCH_MIN);
-
-      shakeRef.current.intensity = Math.max(shakeRef.current.intensity, shake);
-      punchRef.current.amount = Math.max(punchRef.current.amount, punch);
-
-      // Bias direction toward the dominant impact's knockback sign. Magnitude
-      // weighting so heavier hits "win" the direction when overlapping.
-      const incomingDir = Math.sign(knockbackX) || 0;
-      const incomingWeight = Math.abs(knockbackX);
-      const currentWeight = Math.abs(shakeRef.current.dirX) * KB_REF;
-      if (incomingWeight >= currentWeight) {
-        shakeRef.current.dirX = incomingDir;
-      }
-    };
-
     const onFighterAction = (data) => {
       const p1 = data.player1;
       const p2 = data.player2;
 
-      // ── Position tracking (existing) ──
+      // ── Position tracking ──
+      // Hit shake is no longer derived here: it's driven explicitly by the
+      // `player_hit` event (which carries attack type + string position) so we
+      // can give the BIG hits (charged, slap-string finisher) a distinctly
+      // crunchier profile than light pokes. See GameFighter handlePlayerHit.
       if (p1 && p2 && typeof p1.x === "number" && typeof p2.x === "number") {
         posRef.current.p1x = p1.x;
         posRef.current.p2x = p2.x;
-      }
-
-      // ── Hit detection via hitCounter (most reliable signal) ──
-      const track = hitTrackRef.current;
-      if (p1?.hitCounter != null) {
-        if (p1.hitCounter > track.p1) {
-          triggerImpact(p1.knockbackVelocity?.x ?? 1);
-        }
-        track.p1 = p1.hitCounter;
-      }
-      if (p2?.hitCounter != null) {
-        if (p2.hitCounter > track.p2) {
-          triggerImpact(p2.knockbackVelocity?.x ?? 1);
-        }
-        track.p2 = p2.hitCounter;
       }
     };
 
@@ -228,12 +190,13 @@ export default function useCamera(containerRef, socket) {
       cin.startTime = performance.now();
       cin.hitstopMs = data.hitstopMs || 550;
       cin.targetScale = CINEMATIC_ZOOM_SCALE;
-      cin.shakeIntensity = CINEMATIC_SHAKE_INTENSITY;
+      cin.shakeTrauma = CINEMATIC_SHAKE_TRAUMA;
       cin.knockbackDir = data.knockbackDirection || 1;
 
       // Suppress normal impact effects during cinematic
-      shakeRef.current.intensity = 0;
-      punchRef.current.amount = 0;
+      const s = getShakeState();
+      s.trauma = 0;
+      s.punch = 0;
     };
 
     const onGameReset = () => {
@@ -254,24 +217,31 @@ export default function useCamera(containerRef, socket) {
     // camera is active so it can't interrupt a kill cinematic.
     // NOTE: User has a more fleshed-out "tachiai" system planned. This is a
     // placeholder/teaser. Deletion is trivial: remove this block + the .off().
-    const ROUND_START_PUNCH_AMOUNT = 0.035;
     const onGameStart = () => {
       trackingEnabledRef.current = true;
       if (cinematicRef.current.active) return;
-      punchRef.current.amount = Math.max(
-        punchRef.current.amount,
-        ROUND_START_PUNCH_AMOUNT,
-      );
+      // Ceremonial pulse — zoom only, no trauma (it's a kick-off, not a hit).
+      addTrauma(0, { punch: ROUND_START_PUNCH_AMOUNT });
     };
 
-    // Perfect parry: fire the dedicated zoom-punch. Skipped during a kill
-    // cinematic so it can never step on the KO moment.
+    // Perfect parry: fire the dedicated heavy shake (trauma + zoom + roll).
+    // Skipped during a kill cinematic so it can never step on the KO moment.
     const onPerfectParry = () => {
       if (cinematicRef.current.active) return;
-      punchRef.current.amount = Math.max(
-        punchRef.current.amount,
-        PERFECT_PARRY_PUNCH,
-      );
+      addShake("perfect_parry");
+    };
+
+    // ── Unified event shake — ALL server-emitted shakes route here ──
+    // The server tags each shake with a `type` (mapped to a tuned profile) and
+    // an optional `scale` (escalation / charge power) and `dirX` (recoil axis).
+    // Falls back to a trauma derived from the legacy `intensity` if untyped.
+    const onScreenShake = (data) => {
+      if (cinematicRef.current.active) return;
+      if (data?.type) {
+        addShake(data.type, { scale: data.scale ?? 1, dirX: data.dirX ?? 0 });
+      } else if (typeof data?.intensity === "number") {
+        addTrauma(clamp(data.intensity * 0.45, 0, 1), { dirX: data.dirX ?? 0 });
+      }
     };
 
     socket.on("fighter_action", onFighterAction);
@@ -279,6 +249,7 @@ export default function useCamera(containerRef, socket) {
     socket.on("game_reset", onGameReset);
     socket.on("game_start", onGameStart);
     socket.on("perfect_parry", onPerfectParry);
+    socket.on("screen_shake", onScreenShake);
 
     const tick = () => {
       const { p1x, p2x } = posRef.current;
@@ -327,10 +298,10 @@ export default function useCamera(containerRef, socket) {
             cam.x = lerp(cam.x, cinematicTargetX, lerpT(CINEMATIC_ZOOM_IN_SPEED));
             cam.y = lerp(cam.y, cinematicTargetY, lerpT(CINEMATIC_ZOOM_IN_SPEED));
 
-            // Heavy screen shake during freeze
-            cin.shakeIntensity *= decayT(CINEMATIC_SHAKE_DECAY);
-            if (cin.shakeIntensity > SHAKE_STOP) {
-              shakeRef.current.intensity = cin.shakeIntensity;
+            // Heavy screen shake during freeze — drive the trauma floor.
+            cin.shakeTrauma *= decayT(CINEMATIC_SHAKE_DECAY);
+            if (cin.shakeTrauma > TRAUMA_STOP) {
+              holdTrauma(cin.shakeTrauma);
             }
 
             if (elapsed >= cin.hitstopMs) {
@@ -392,32 +363,42 @@ export default function useCamera(containerRef, socket) {
         cam.x = clamp(cam.x, -maxPanX, maxPanX);
         cam.y = clamp(cam.y, -maxPanY, maxPanY);
 
-        // ── Impact shake — smoothed continuous-path + directional recoil ──
-        // X = a decaying directional push (recoil along the knockback vector)
-        //     blended with smooth value-noise. Y = pure smooth noise (vertical
-        //     recoil reads as ground impact). Both ride a continuous arc instead
-        //     of teleporting each frame. Peak |offset| ≤ intensity → edge-safe.
-        const shake = shakeRef.current;
-        if (shake.intensity > SHAKE_STOP) {
+        // ── Unified trauma shake — trauma² envelope + directional recoil ──
+        // Rendered offset scales with trauma² so energy is front-loaded (sharp
+        // spike, fast settle = "crack", not "wobble"). X blends a directional
+        // recoil (along the impact axis) with smooth value-noise; Y is pure
+        // noise (vertical reads as ground impact); a tiny noise-driven roll adds
+        // AAA snap. Translation is hard-clamped below so edges stay hidden.
+        const shakeState = getShakeState();
+        let shakeX = 0;
+        let shakeY = 0;
+        let shakeRot = 0;
+        if (shakeState.trauma > TRAUMA_STOP) {
+          const amt = shakeState.trauma * shakeState.trauma; // perceptual curve
           const phase = (shakeClockRef.current / 1000) * SHAKE_FREQ_HZ;
           const nx = valueNoise(phase);
           const ny = valueNoise(phase + 37.3); // decorrelated channel
-          const dir = shake.dirX * SHAKE_DIR_BIAS;
-          shake.x = (dir + nx * (1 - SHAKE_DIR_BIAS)) * shake.intensity;
-          shake.y = ny * shake.intensity;
-          shake.intensity *= decayT(SHAKE_DECAY);
+          const nr = valueNoise(phase + 71.7); // decorrelated roll channel
+          const dir = shakeState.dirX * SHAKE_DIR_BIAS;
+          shakeX = (dir + nx * (1 - SHAKE_DIR_BIAS)) * amt * SHAKE_MAX_OFFSET_X;
+          shakeY = ny * amt * SHAKE_MAX_OFFSET_Y;
+          shakeRot = nr * amt * shakeState.rot;
+          // Time-based linear trauma decay (frame-rate independent).
+          shakeState.trauma = Math.max(
+            0,
+            shakeState.trauma - TRAUMA_DECAY * (dtMs / 1000),
+          );
         } else {
-          shake.x = 0;
-          shake.y = 0;
-          shake.intensity = 0;
-          shake.dirX = 0;
+          shakeState.trauma = 0;
+          resetShakeBias();
         }
 
-        const punch = punchRef.current;
-        if (punch.amount > PUNCH_STOP) {
-          punch.amount *= decayT(PUNCH_DECAY);
+        // Zoom-punch decays per-frame (independent of trauma so a punch can
+        // outlast / precede the rattle, e.g. the ceremonial round-start pulse).
+        if (shakeState.punch > PUNCH_STOP) {
+          shakeState.punch *= decayT(PUNCH_DECAY);
         } else {
-          punch.amount = 0;
+          shakeState.punch = 0;
         }
 
         // ── Snap values and write CSS custom properties ──
@@ -425,7 +406,7 @@ export default function useCamera(containerRef, socket) {
         const ch = el.offsetHeight;
 
         // Effective scale includes the punch-in boost
-        const effectiveScale = cam.scale + punch.amount;
+        const effectiveScale = cam.scale + shakeState.punch;
 
         // Recompute edge limits using effective scale so the punch's
         // extra zoom gives more pan headroom — shake never exposes edges.
@@ -434,12 +415,12 @@ export default function useCamera(containerRef, socket) {
 
         const snappedScale = Math.round(effectiveScale * 1000) / 1000;
         const pixelX = clamp(
-          Math.round((cam.x * cw) / 100 + shake.x),
+          Math.round((cam.x * cw) / 100 + shakeX),
           -maxPxX,
           maxPxX,
         );
         const pixelY = clamp(
-          Math.round((cam.y * ch) / 100 + shake.y),
+          Math.round((cam.y * ch) / 100 + shakeY),
           -maxPxY,
           maxPxY,
         );
@@ -447,6 +428,7 @@ export default function useCamera(containerRef, socket) {
         el.style.setProperty("--cam-scale", snappedScale);
         el.style.setProperty("--cam-x", pixelX + "px");
         el.style.setProperty("--cam-y", pixelY + "px");
+        el.style.setProperty("--cam-rot", shakeRot.toFixed(3) + "deg");
       }
 
       rafId.current = requestAnimationFrame(tick);
@@ -460,6 +442,7 @@ export default function useCamera(containerRef, socket) {
       socket.off("game_reset", onGameReset);
       socket.off("game_start", onGameStart);
       socket.off("perfect_parry", onPerfectParry);
+      socket.off("screen_shake", onScreenShake);
       if (rafId.current) cancelAnimationFrame(rafId.current);
     };
   }, [containerRef, socket]);

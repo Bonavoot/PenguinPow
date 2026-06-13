@@ -417,7 +417,7 @@ export const StyledImage = styled("img")
         : props.$isAttemptingGrabThrow
         ? "attemptingGrabThrowPull 1.0s cubic-bezier(0.4, 0.0, 0.6, 1.0)"
         : props.$isSlapParryRecovering
-        ? "slapParryRecoil 0.22s ease-out"
+        ? "slapParryRecoil 0.14s ease-out"
         : props.$isRawParrySuccess || props.$isPerfectRawParrySuccess
         ? "rawParryRecoil 0.5s ease-out"
         : props.$isGrabBreaking

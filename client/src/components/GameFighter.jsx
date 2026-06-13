@@ -42,7 +42,7 @@ import {
   COLOR_PRESETS,
 } from "../utils/SpriteRecolorizer";
 import { usePlayerColors } from "../context/PlayerColorContext";
-import { valueNoise } from "../utils/shakeNoise";
+import { addShake } from "../lib/cameraShake";
 
 import UiPlayerInfo from "./UiPlayerInfo";
 import MatchOver from "./MatchOver";
@@ -70,10 +70,6 @@ const BATTLE_LOOP_CROSSFADE = 2.0;
 const EESHI_ENTRY_FADE = 0.9;
 const BATTLE_ENTRY_FADE = 0;
 const BATTLE_MUSIC_ALT_ROUND = 3;
-
-// Event-shake oscillation frequency (Hz). Matches useCamera's hit-shake
-// SHAKE_FREQ_HZ so both shake systems swing at the same organic rate.
-const EVENT_SHAKE_FREQ_HZ = 22;
 
 // Assets, sounds, preloading, constants, ritual config, playSound helper
 import {
@@ -1303,11 +1299,6 @@ const GameFighter = ({
   const countdownRef = useRef(null);
   const pendingSocketTimeouts = useRef([]);
   const pendingSocketRafs = useRef([]);
-  const [screenShake, setScreenShake] = useState({
-    intensity: 0,
-    duration: 0,
-    startTime: 0,
-  });
   
   const [allSnowballs, setAllSnowballs] = useState([]);
   const snowballDomRefs = useRef({});
@@ -2289,9 +2280,35 @@ const GameFighter = ({
           }, dur);
         }
 
+        // Screen shake — explicit per-hit tiers. The BIG hits (charged attack
+        // and the slap-string finisher / slap3) get a heavy crunch profile with
+        // zoom + roll; light pokes (slap 1 & 2) stay snappy with no zoom. Fired
+        // once per client (index===0). Cinematic kills run their own camera, so
+        // we skip here to avoid stepping on it.
+        if (index === 0 && !data.cinematicKill) {
+          const shakeDir = data.knockbackDirection || (data.facing === 1 ? -1 : 1);
+          if (data.attackType === "charged") {
+            const chargeScale =
+              0.8 + Math.min((data.chargePercentage || 0) / 100, 1) * 0.45;
+            addShake("charged_hit", { scale: chargeScale, dirX: shakeDir });
+          } else if (isBurst) {
+            addShake("slap_finisher", { dirX: shakeDir });
+          } else {
+            addShake("slap_hit", { dirX: shakeDir });
+          }
+        }
+
         if (index === 0 && !data.cinematicKill) {
           const pan = xToPan(data.x);
-          if (data.attackType === "slap") {
+          if (data.attackType === "slap" && isBurst) {
+            const baseSound = pickRandomSound(chargedHitSounds);
+            playSound(baseSound, 0.045, null, 1.0, pan);
+            if (data.isCounterHit) {
+              playSound(baseSound, 0.028, null, 0.72, pan);
+            } else if (data.isPunish) {
+              playSound(baseSound, 0.026, null, 1.36, pan);
+            }
+          } else if (data.attackType === "slap") {
             const baseSound = pickRandomSound(slapHitSounds);
             playSoundVaried(baseSound, 0.038, null, 1.0, pan);
             // A5 sound layering — counter / punish gets a second pitched layer
@@ -2599,11 +2616,7 @@ const GameFighter = ({
               : 1,
         }));
 
-        setScreenShake({
-          intensity: 0.35,
-          duration: 150,
-          startTime: Date.now(),
-        });
+        addShake("power_up_reveal");
       }
     };
     socket.on("power_ups_revealed", handlePowerUpsRevealed);
@@ -2696,12 +2709,8 @@ const GameFighter = ({
       // Immediately set countdown to 0 to hide YOU label during gameplay
       setCountdown(0);
 
-      // Add dramatic screen shake for round start
-      setScreenShake({
-        intensity: 0.6,
-        duration: 300,
-        startTime: Date.now(),
-      });
+      // Round-start shake (zoom-punch is handled by useCamera's onGameStart)
+      addShake("round_start");
 
       // Handle music transition: eeshi -> battle music (after HAKKIYOI)
       stopEeshi();
@@ -3534,7 +3543,7 @@ const GameFighter = ({
   const wasEdgePushedRef = useRef(false);
   useEffect(() => {
     if (isLocalEdgePushed && !wasEdgePushedRef.current) {
-      setScreenShake({ intensity: 2.0, duration: 120, startTime: Date.now() });
+      addShake("edge_pin");
     }
     wasEdgePushedRef.current = isLocalEdgePushed;
   }, [isLocalEdgePushed]);
@@ -3750,73 +3759,15 @@ const GameFighter = ({
   }, [penguin.isRawParryStun, showStarStunEffect, penguin.id, player.id]);
 
   // ============================================
-  // EVENT SHAKE SYSTEM — distinct from useCamera's hit shake
+  // SCREEN SHAKE — unified trauma bus (lib/cameraShake)
   // ============================================
-  // Two screen-shake systems coexist on purpose, each owning a different
-  // CSS variable that .game-scene's transform sums together:
-  //
-  //   useCamera (--cam-x/y)   = HIT shake. Triggered by hitCounter deltas
-  //                             observed in the fighter_action stream. Has
-  //                             directional bias and impact-driven decay.
-  //
-  //   This effect (--shake-x/y) = EVENT shake. Triggered by parries, clashes,
-  //                               clinch jolts, projectile hits, edge pin,
-  //                               ring out, round start, power-up reveal.
-  //                               These never coincide with hit moments, so
-  //                               there's no double-firing in practice.
-  //
-  // Both write into .game-scene's transform but NOT .game-hud, so the HUD
-  // layer stays rock-steady during shakes. If you find yourself wanting to
-  // "consolidate" these — don't. They're orthogonal, well-tested, and
-  // collapsing them would replicate working logic with new bugs.
-  useEffect(() => {
-    if (screenShake.intensity > 0) {
-      let animationId;
-      const gameScene = document.querySelector(".game-scene");
-
-      const shakeFrame = () => {
-        const elapsed = Date.now() - screenShake.startTime;
-        if (elapsed >= screenShake.duration) {
-          setScreenShake({ intensity: 0, duration: 0, startTime: 0 });
-          if (gameScene) {
-            gameScene.style.setProperty("--shake-x", "0px");
-            gameScene.style.setProperty("--shake-y", "0px");
-          }
-          return;
-        }
-
-        const progress = elapsed / screenShake.duration;
-        const decayFactor = Math.pow(1 - progress, 1.5);
-        const remainingIntensity = screenShake.intensity * decayFactor;
-
-        // Smoothed continuous-path shake (matches useCamera's hit shake) instead
-        // of per-frame white noise. Sampled on wall-clock elapsed time at a fixed
-        // frequency, so the oscillation texture is identical at any refresh rate.
-        // The decay envelope above already runs on elapsed time, so duration is
-        // frame-rate independent too.
-        const phase = (elapsed / 1000) * EVENT_SHAKE_FREQ_HZ;
-        const offsetX = valueNoise(phase) * remainingIntensity * 14;
-        const offsetY = valueNoise(phase + 37.3) * remainingIntensity * 10; // decorrelated channel
-
-        if (gameScene) {
-          gameScene.style.setProperty("--shake-x", `${offsetX}px`);
-          gameScene.style.setProperty("--shake-y", `${offsetY}px`);
-        }
-
-        animationId = requestAnimationFrame(shakeFrame);
-      };
-
-      animationId = requestAnimationFrame(shakeFrame);
-
-      return () => {
-        cancelAnimationFrame(animationId);
-        if (gameScene) {
-          gameScene.style.setProperty("--shake-x", "0px");
-          gameScene.style.setProperty("--shake-y", "0px");
-        }
-      };
-    }
-  }, [screenShake]);
+  // All shake (hits AND events: parries, clashes, clinch jolts, projectile
+  // hits, edge pin, ring out, round start, power-up reveal) now flows through
+  // one trauma-based model rendered by useCamera. Local events here call
+  // addShake(type); server-emitted shakes are handled directly in useCamera's
+  // "screen_shake" listener. The old --shake-x/y CSS path is retired in favor
+  // of useCamera's --cam-x/y/-rot output, so there's a single coherent motion
+  // and the HUD still stays rock-steady (only .game-scene is transformed).
 
   // Update thick blubber indicator based on actual game state
   // Only show during grab startup/lunge, NOT during the full grab hold/clinch
@@ -3862,15 +3813,6 @@ const GameFighter = ({
   useEffect(() => {
     const pendingTimeouts = [];
 
-    const handleScreenShake = (data) => {
-      setScreenShake({
-        intensity: data.intensity,
-        duration: data.duration,
-        startTime: Date.now(),
-      });
-    };
-    socket.on("screen_shake", handleScreenShake);
-
     const handleThickBlubber = (data) => {
       if (data.playerId === player.id) {
         setThickBlubberEffect({
@@ -3894,11 +3836,7 @@ const GameFighter = ({
     socket.on("thick_blubber_absorption", handleThickBlubber);
 
     const handleRingOut = () => {
-      setScreenShake({
-        intensity: 1.2,
-        duration: 600,
-        startTime: Date.now(),
-      });
+      addShake("ring_out");
     };
     socket.on("ring_out", handleRingOut);
 
@@ -4097,7 +4035,6 @@ const GameFighter = ({
       // change) the scheduled unfreeze timeout above is cleared, so make sure
       // the engine never gets stranded in its frozen state.
       if (index === 0) setFrozen(false);
-      socket.off("screen_shake", handleScreenShake);
       socket.off("thick_blubber_absorption", handleThickBlubber);
       socket.off("ring_out", handleRingOut);
       socket.off("cinematic_kill", handleCinematicKill);

@@ -400,8 +400,8 @@ function updateGrabActions(player, room, io, delta, rooms) {
       player.stamina = Math.max(0, player.stamina - CLINCH_JOLT_STAMINA_COST);
       opponent.stamina = Math.max(0, opponent.stamina - CLINCH_JOLT_STAMINA_COST);
 
-      triggerHitstopAndEmit(io, room, CLINCH_JOLT_MUTUAL_HITSTOP_MS, "clinch_jolt_mutual");
-      emitThrottledScreenShake(room, io, { intensity: 2.2, duration: 160 });
+    triggerHitstopAndEmit(io, room, CLINCH_JOLT_MUTUAL_HITSTOP_MS, "clinch_jolt_mutual");
+    emitThrottledScreenShake(room, io, { type: "clinch_jolt", scale: 1.1 });
       io.in(room.id).emit("clinch_jolt", {
         jolterId: player.id,
         targetId: opponent.id,
@@ -477,7 +477,7 @@ function updateGrabActions(player, room, io, delta, rooms) {
     }
 
     triggerHitstopAndEmit(io, room, CLINCH_JOLT_HITSTOP_MS, "clinch_jolt");
-    emitThrottledScreenShake(room, io, { intensity: 1.8, duration: 140 });
+    emitThrottledScreenShake(room, io, { type: "clinch_jolt" });
     io.in(room.id).emit("clinch_jolt", {
       jolterId: jolter.id,
       targetId: target.id,

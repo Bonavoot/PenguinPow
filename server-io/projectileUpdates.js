@@ -265,11 +265,8 @@ function updateProjectiles(room, io, delta) {
             snowball.hasHit = false; // Reset hit flag so it can hit the thrower
             snowball.velocityX = -snowball.velocityX * 1.3; // Reverse direction and make it 30% faster
             snowball.reflectedByPerfectParry = true; // Mark as reflected to prevent infinite reflection
-            // Emit screen shake for perfect parry (throttled)
-            emitThrottledScreenShake(room, io, {
-              intensity: 0.7,
-              duration: 300,
-            });
+            // Snowball perfect-parry reflect — heavy "read mattered" shake
+            emitThrottledScreenShake(room, io, { type: "perfect_parry" });
           } else {
             // Regular parry OR already-reflected snowball: block and destroy it
             snowball.hasHit = true;
