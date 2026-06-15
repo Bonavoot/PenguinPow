@@ -237,6 +237,15 @@ function useRecoloredCloneSrc(baseSrc, ownerColor, ownerBodyColor) {
 // =====================================================================
 const sharedFighterState = { player1: null, player2: null, lastPacket: null };
 
+// True while the flap power-up owns the player (startup, flight, or landing).
+// Uses flapPhase as a backstop when isFlapping is missing from a delta tick.
+function isInFlapMechanic(p) {
+  if (!p) return false;
+  if (p.isFlapping === true) return true;
+  const phase = p.flapPhase;
+  return phase === "startup" || phase === "flight" || phase === "landing";
+}
+
 function mergeFighterPacket(data) {
   if (data === sharedFighterState.lastPacket) return; // already merged this packet
   sharedFighterState.lastPacket = data;
@@ -709,7 +718,8 @@ const GameFighter = ({
         !penguin.canMoveToReady &&
         // Pre-game states
         !penguin.isReady &&
-        !penguin.isBowing
+        !penguin.isBowing &&
+        !isInFlapMechanic(penguin)
         // NOTE: Power sliding no longer blocks actions - attacks cancel the slide
       );
     },
@@ -1052,6 +1062,19 @@ const GameFighter = ({
       return penguin;
     }
 
+    // Flap owns the player — drop any stale slap predictions so A/D facing
+    // re-renders can't resurrect slap-hands VFX mid-flight.
+    if (isInFlapMechanic(penguin)) {
+      if (
+        predictedState.current.isSlapAttack ||
+        predictedState.current.isAttacking
+      ) {
+        predictedState.current.isSlapAttack = false;
+        predictedState.current.isAttacking = false;
+      }
+      return penguin;
+    }
+
     // Check if prediction has expired
     const predictionAge = now - prediction.timestamp;
     const expired =
@@ -1218,6 +1241,11 @@ const GameFighter = ({
       isPowerSliding: p.isPowerSliding || penguin.isPowerSliding,
       isBraking: p.isBraking || penguin.isBraking,
     };
+
+    if (isInFlapMechanic(penguin)) {
+      merged.isSlapAttack = false;
+      merged.isAttacking = false;
+    }
 
     // ── VISUAL EXCLUSIVITY GUARD ──────────────────────────────────────────
     // The OR-merge above lets two mutually-exclusive action flags assert at the
@@ -2064,6 +2092,14 @@ const GameFighter = ({
             prev.isGrabBreakCountered ??
             false,
         };
+
+        // Flap owns the player — stale slap flags must not survive merge.
+        // A/D air-steer sends facing every tick (re-render); without this,
+        // SlapAttackHandsEffect can fire on stale isSlapAttack mid-flight.
+        if (isInFlapMechanic(newState)) {
+          newState.isSlapAttack = false;
+          newState.isAttacking = false;
+        }
 
         // PERFORMANCE: Check if any key discrete game states changed
         // Position changes are handled by interpolation refs, so we skip x/y comparison
@@ -2960,10 +2996,14 @@ const GameFighter = ({
 
   // Separate effect for slap attack sounds based on slapAnimation changes
   useEffect(() => {
-    if (penguin.isSlapAttack && penguin.isAttacking) {
+    if (
+      penguin.isSlapAttack &&
+      penguin.isAttacking &&
+      !isInFlapMechanic(penguin)
+    ) {
       playSound(pickRandomSound(slapWhiffSounds), 0.02, null, 1.0, xToPan(penguin.x));
     }
-  }, [penguin.slapAnimation, penguin.isSlapAttack, penguin.isAttacking]);
+  }, [penguin.slapAnimation, penguin.isSlapAttack, penguin.isAttacking, penguin.isFlapping, penguin.flapPhase]);
 
   useEffect(() => {
     const now = Date.now();
@@ -4819,7 +4859,7 @@ const GameFighter = ({
         isActive={
           penguin.isSlapAttack === true &&
           penguin.isAttacking === true &&
-          penguin.isFlapping !== true
+          !isInFlapMechanic(penguin)
         }
         slapAnimation={penguin.slapAnimation}
       />

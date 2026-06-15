@@ -107,6 +107,7 @@ const {
   emitThrottledScreenShake,
   clearHitFall,
   clearSidestepHitReturn,
+  cancelPendingSlapWork,
 } = require("./gameUtils");
 
 // Import game functions
@@ -2170,6 +2171,7 @@ function tick(delta) {
 
           if (now >= player.flapLandingTime + recovery) {
             player.y = GROUND_LEVEL;
+            cancelPendingSlapWork(player);
             player.isFlapping = false;
             player.flapPhase = null;
             player.flapCharges = 0;
@@ -3046,7 +3048,8 @@ function tick(delta) {
           now < player.slapStrafeCooldownEndTime) || // Clear strafing during post-slap cooldown
         player.isHit || // Add isHit to force clear strafing when parried
         player.isRawParrying || // Add isRawParrying to force clear strafing during raw parry
-        player.isAtTheRopes // Block strafing while at the ropes
+        player.isAtTheRopes || // Block strafing while at the ropes
+        player.isFlapping // Block strafing during flap (air steer is separate)
       ) {
         // Add isRecovering and isHit checks
         player.isStrafing = false;

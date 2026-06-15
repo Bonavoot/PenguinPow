@@ -575,7 +575,7 @@ function executeSlapAttack(player, rooms) {
   // it while aloft, but the slap cycle outlives the flap, so the hands pop the
   // instant the flap ends. Guarding the single point where isSlapAttack is set
   // true stops the leak at the source (covers buffered/timer/CPU entry points).
-  if (player.isFlapping) return;
+  if (player.isFlapping || player.flapPhase) return;
 
   if (player.isPowerSliding) {
     player.isPowerSliding = false;

@@ -793,6 +793,8 @@ function canPlayerSlap(player, { ignoreCooldown = false } = {}) {
   return (
     isPlayerInBasicActiveState(player) &&
     !player.isRopeJumping &&
+    !player.isFlapping &&
+    !player.flapPhase &&
     !player.canMoveToReady &&
     !player.isRecovering &&
     !isOnCooldown &&
@@ -1101,6 +1103,7 @@ module.exports = {
   resetPlayerAttackStates,
   clearAllActionStates,
   beginFlapStartup,
+  cancelPendingSlapWork,
   isWithinMapBoundaries,
   constrainToMapBoundaries,
   shouldRestartCharging,
