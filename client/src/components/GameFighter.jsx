@@ -497,9 +497,11 @@ const GameFighter = ({
   const idleHoldUntilRef = useRef(0);
   const IDLE_HOLD_MS = 34; // ~2 frames @60fps
   // FLAP wing-beat: each new flapWingBeatTime from the server snaps the wings
-  // DOWN (flap2) for FLAP_WINGBEAT_MS, then back up (flap1). Change-detected
+  // DOWN (flap2) for FLAP_WINGBEAT_MS, then back up (flap1). Once air charges
+  // are spent, getImageSrc holds the dodge pose until landing. Change-detected
   // against a local clock so it doesn't need server sim-clock alignment.
   const flapBeatRef = useRef({ beat: 0, startedAt: 0 });
+  const lastFlapSHeldRef = useRef(false);
   const FLAP_WINGBEAT_MS = 90; // ~down-stroke hold (snappy wing flap)
 
   const [penguin, setPenguin] = useState({
@@ -555,6 +557,11 @@ const GameFighter = ({
     hitCounter: 0,
     isCrouchStance: false,
     isCrouchStrafing: false,
+    isFlapping: false,
+    flapPhase: null,
+    flapWingBeatTime: 0,
+    flapCharges: 0,
+    flapFastFalling: false,
   });
 
   // PERFORMANCE: Position is rendered IMPERATIVELY, outside React.
@@ -1680,6 +1687,19 @@ const GameFighter = ({
       // Time-based visual windows (hit flash / hit tint / idle sprite hold /
       // unconfirmed predictions): re-render when a window the last render
       // showed as active has expired, so the "off" state actually commits.
+      if (isLocalPlayer) {
+        const p = penguinRef.current;
+        if (p?.isFlapping && p?.flapPhase === "flight") {
+          const sHeld = !!getLocalKeyState()?.s;
+          if (sHeld !== lastFlapSHeldRef.current) {
+            lastFlapSHeldRef.current = sHeld;
+            forceVisualRender();
+          }
+        } else if (lastFlapSHeldRef.current) {
+          lastFlapSHeldRef.current = false;
+        }
+      }
+
       const rendered = renderedHitVisualsRef.current;
       const nowMs = timestamp;
       if (
@@ -2116,6 +2136,8 @@ const GameFighter = ({
           prev.isFlapping !== newState.isFlapping ||
           prev.flapPhase !== newState.flapPhase ||
           prev.flapWingBeatTime !== newState.flapWingBeatTime ||
+          prev.flapCharges !== newState.flapCharges ||
+          prev.flapFastFalling !== newState.flapFastFalling ||
           prev.isSidestepping !== newState.isSidestepping ||
           prev.isSidestepStartup !== newState.isSidestepStartup ||
           prev.isSidestepRecovery !== newState.isSidestepRecovery ||
@@ -4150,8 +4172,10 @@ const GameFighter = ({
   const readyIntroComplete = penguin.isReady && handsDownReached;
 
   // FLAP wing-beat frame. Each new server flapWingBeatTime opens a local
-  // down-stroke window (flap2); otherwise the wings are up (flap1). Ref mutated
-  // during render — same pattern as the idle-hold/last-sprite refs above.
+  // down-stroke window (flap2); otherwise the wings are up (flap1). With no
+  // air charges left or holding S to fast-fall, getImageSrc switches to the
+  // dodge pose for the rest of that flight segment. Ref mutated during render —
+  // same pattern as idle-hold refs.
   if (
     penguin.flapWingBeatTime &&
     penguin.flapWingBeatTime !== flapBeatRef.current.beat
@@ -4161,6 +4185,13 @@ const GameFighter = ({
       startedAt: performance.now(),
     };
   }
+  const flapHoldingFastFall =
+    penguin.flapFastFalling === true ||
+    (isLocalPlayer && !!getLocalKeyState()?.s);
+  const flapUseDodgePose =
+    penguin.isFlapping &&
+    penguin.flapPhase === "flight" &&
+    ((penguin.flapCharges ?? 0) <= 0 || flapHoldingFastFall);
   const flapFrame =
     penguin.isFlapping &&
     flapBeatRef.current.startedAt &&
@@ -4244,7 +4275,8 @@ const GameFighter = ({
     penguin.clinchJoltRecovery,
     penguin.isFlapping,
     penguin.flapPhase,
-    flapFrame
+    flapFrame,
+    flapUseDodgePose
   );
 
   // Hold previous sprite briefly when transitioning to idle to prevent
@@ -4321,8 +4353,11 @@ const GameFighter = ({
   renderedHitVisualsRef.current.tint = showHitTintThisFrame;
   renderedHitVisualsRef.current.hold = effectiveSpriteSrc !== displaySpriteSrc;
   // FLAP wing-beat: when this render committed the down-stroke (flap2), the rAF
-  // loop forces the flip back to flap1 once the beat window expires.
-  renderedHitVisualsRef.current.flapBeat = flapFrame === 2;
+  // loop forces the flip back to flap1 once the beat window expires — unless
+  // we're in the dodge pose (out of charges or fast-falling), which holds until
+  // landing or S is released.
+  renderedHitVisualsRef.current.flapBeat =
+    !flapUseDodgePose && flapFrame === 2;
   // True when this render showed merged (unconfirmed) predictions — the rAF
   // watcher uses it to force the cleanup render once the prediction window
   // (PREDICTION_TIMEOUT_MS) lapses without server confirmation.
@@ -4781,7 +4816,11 @@ const GameFighter = ({
         x={displayPosition.x}
         y={displayPosition.y}
         facing={penguin.facing ?? -1}
-        isActive={penguin.isSlapAttack && !penguin.isFlapping}
+        isActive={
+          penguin.isSlapAttack === true &&
+          penguin.isAttacking === true &&
+          penguin.isFlapping !== true
+        }
         slapAnimation={penguin.slapAnimation}
       />
       <SlapParryEffect position={parryEffectPosition} />

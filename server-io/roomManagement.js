@@ -233,6 +233,7 @@ function resetRoomAndPlayers(room, io) {
     player.flapStartTime = 0;
     player.flapLandingTime = 0;
     player.flapWingBeatTime = 0;
+    player.flapFastFalling = false;
     player.flapHitLanded = false;
     player.flapHitLandStartY = 0;
     player.flapHitLandStartX = 0;

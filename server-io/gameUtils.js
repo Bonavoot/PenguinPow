@@ -714,6 +714,7 @@ function clearAllActionStates(player) {
   player.flapVelocityX = 0;
   player.flapStartTime = 0;
   player.flapWingBeatTime = 0;
+  player.flapFastFalling = false;
   player.flapHitLanded = false;
   player.flapHitLandStartY = 0;
   player.flapHitLandStartX = 0;
@@ -824,6 +825,33 @@ function clearChargeState(player, isCancelled = false) {
   }
 }
 
+// Tear down any in-flight or deferred slap work so a flap liftoff can't leave
+// timers/buffers that re-arm isSlapAttack once isFlapping drops (the root cause
+// of slap-hands VFX bleeding into / after flap).
+function cancelPendingSlapWork(player) {
+  timeoutManager.clearPlayerSpecific(player.id, "slapCycle");
+  timeoutManager.clearPlayerSpecific(player.id, "slapWhiffPause");
+  timeoutManager.clearPlayerSpecific(player.id, "slapStringReset");
+  player.slapCycleEndCallback = null;
+
+  player.pendingSlapCount = 0;
+  player.pendingGrabEnder = false;
+  player.slapStringPosition = 0;
+  player.slapStringWindowUntil = 0;
+  player.slapWhiffCount = 0;
+  player.isSlapWhiffPausing = false;
+  player.currentSlapHitConnected = false;
+  player.isSlapSliding = false;
+  player.slapFacingDirection = null;
+  player.isInStartupFrames = false;
+  player.startupEndTime = 0;
+  player.slapActiveEndTime = 0;
+
+  if (player.inputBuffer && player.inputBuffer.type === "slap") {
+    player.inputBuffer = null;
+  }
+}
+
 // ── FLAP: begin the grounded liftoff telegraph ───────────────────────────
 // Shared by the immediate Space-press path (socketHandlers) and the buffered
 // path (gameFunctions.executeInputBuffer) so the two can't drift. Mirrors the
@@ -853,6 +881,7 @@ function beginFlapStartup(player, now) {
   player.flapVelocityY = 0;
   player.flapVelocityX = 0;
   player.flapWingBeatTime = 0;
+  player.flapFastFalling = false;
   player.flapHitLanded = false;
   player.flapHitLandStartY = 0;
   player.flapHitLandStartX = 0;
@@ -876,16 +905,15 @@ function beginFlapStartup(player, now) {
   }
 
   clearChargeState(player, true);
+  cancelPendingSlapWork(player);
   player.movementVelocity = 0;
+  // Air steering uses A/D but is not ground strafe — clear so stale isStrafing
+  // never leaks into the client delta stream mid-flight.
   player.isStrafing = false;
   player.isPowerSliding = false;
   player.isBraking = false;
   player.isCrouchStance = false;
   player.isCrouchStrafing = false;
-  player.pendingSlapCount = 0;
-  player.pendingGrabEnder = false;
-  player.slapStringPosition = 0;
-  player.slapStringWindowUntil = 0;
   player.isRawParrySuccess = false;
   player.isPerfectRawParrySuccess = false;
   // Cancel any in-progress attack so its VFX/SFX (e.g. the slap-hands effect,
@@ -895,7 +923,9 @@ function beginFlapStartup(player, now) {
   player.isSlapAttack = false;
   player.isChargingAttack = false;
   player.attackType = null;
-  player.slapFacingDirection = null;
+  player.attackStartTime = 0;
+  player.attackEndTime = 0;
+  player.attackCooldownUntil = 0;
   return true;
 }
 

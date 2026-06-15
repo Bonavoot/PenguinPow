@@ -123,6 +123,7 @@ const Streak = styled.div`
 const SlapAttackHandsEffect = ({ x, y, facing, isActive, slapAnimation }) => {
   const [hand, setHand] = useState(null);
   const lastSlapRef = useRef(null);
+  const wasActiveRef = useRef(false);
   const handIdCounter = useRef(0);
   const positionCycleRef = useRef(0);
   const handTimeoutRef = useRef(null);
@@ -152,9 +153,13 @@ const SlapAttackHandsEffect = ({ x, y, facing, isActive, slapAnimation }) => {
       }, 200);
     }
 
-    if (!isActive) {
+    // Only clear the slap latch on active→inactive transition. Clearing every
+    // frame while inactive made the effect re-fire on the next active tick even
+    // when slapAnimation never changed (e.g. isFlapping flicker during flight).
+    if (!isActive && wasActiveRef.current) {
       lastSlapRef.current = null;
     }
+    wasActiveRef.current = isActive;
 
     return () => {
       if (handTimeoutRef.current) clearTimeout(handTimeoutRef.current);

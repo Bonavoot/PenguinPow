@@ -112,7 +112,8 @@ const getImageSrc = (
   // Flap (flight power-up) — trailing params
   isFlapping,
   flapPhase,
-  flapFrame
+  flapFrame,
+  flapUseDodgePose
 ) => {
   if (ritualAnimationSrc) {
     return ritualAnimationSrc;
@@ -153,11 +154,13 @@ const getImageSrc = (
   }
   // Flap: grounded startup uses the rope-jump-style recovery pose; in the air
   // we toggle between the two flap frames (the wing-beat) — flapFrame is the
-  // client-computed 1|2 from the last flapWingBeatTime (see GameFighter).
+  // client-computed 1|2 from the last flapWingBeatTime. During flight, use the
+  // dodge pose when out of air charges or holding S to fast-fall (see GameFighter).
   if (isFlapping) {
     // Grounded startup AND the landing/recovery (whiff or post-slam auto-ground)
     // both use the rope-jump-style recovery pose rather than holding a flap frame.
     if (flapPhase === "startup" || flapPhase === "landing") return recovering;
+    if (flapUseDodgePose) return dodging;
     return flapFrame === 2 ? flap2 : flap1;
   }
   // Recovery is checked first because isSidestepping stays true through the

@@ -198,6 +198,7 @@ function createInitialPlayerState(overrides = {}) {
     flapStartTime: 0,
     flapLandingTime: 0,
     flapWingBeatTime: 0, // Timestamp of the last flap — drives the flap2→flap1 wing-beat
+    flapFastFalling: false, // Holding S during flight — fast-fall dive (synced for sprite)
     flapHitLanded: false, // Did the descending body-slam connect this flight?
     lastFlapChargeTime: 0, // Throttles air flaps (FLAP_CHARGE_COOLDOWN_MS)
     // Hit-landing tween: when the body-slam connects mid-air the flapper is

@@ -2021,6 +2021,7 @@ function tick(delta) {
         const flapOpponent = room.players.find((p) => p.id !== player.id);
 
         if (player.flapPhase === "startup") {
+          player.flapFastFalling = false;
           // Grounded telegraph. Interruptible — a hit here runs
           // clearAllActionStates and cancels the whole flap.
           if (now >= player.flapStartTime + FLAP_STARTUP_MS) {
@@ -2045,6 +2046,12 @@ function tick(delta) {
             player.actionLockUntil = 0; // free to turn / air-flap immediately
           }
         } else if (player.flapPhase === "flight") {
+          // A/D air-steer is not ground strafe — keep the flag cleared so client
+          // deltas never resurrect waddle/strafe state mid-flight.
+          player.isStrafing = false;
+
+          player.flapFastFalling = !!player.keys.s;
+
           // Vertical integration with a SOFT CEILING (see constants).
           const ceiling = GROUND_LEVEL + FLAP_MAX_HEIGHT;
           const cushionStart = ceiling - FLAP_CEILING_CUSHION;
@@ -2121,6 +2128,7 @@ function tick(delta) {
             emitThrottledScreenShake(room, io, { type: "rope_landing" });
           }
         } else if (player.flapPhase === "landing") {
+          player.flapFastFalling = false;
           // Hit-landing recovers in lockstep with the victim (flapHitRecoverDuration);
           // a whiff uses the longer punish window.
           const recovery = player.flapHitLanded
@@ -2170,6 +2178,7 @@ function tick(delta) {
             player.flapStartTime = 0;
             player.flapLandingTime = 0;
             player.flapWingBeatTime = 0;
+            player.flapFastFalling = false;
             player.flapHitLanded = false;
             player.flapHitLandStartY = 0;
             player.flapHitLandStartX = 0;

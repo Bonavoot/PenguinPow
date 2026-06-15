@@ -39,7 +39,7 @@ const DELTA_TRACKED_PROPS = [
   'snowballs', 'pumoArmy', 'snowballCooldown', 'pumoArmyCooldown', 'snowballThrowsRemaining', 'pumoArmySpawnsRemaining',
   'isPowerSliding', 'isBraking', 'movementVelocity', 'isStrafing',
   'isRopeJumping', 'ropeJumpPhase', 'sizeMultiplier', 'isGassed',
-  'isFlapping', 'flapPhase', 'flapCharges', 'flapWingBeatTime',
+  'isFlapping', 'flapPhase', 'flapCharges', 'flapWingBeatTime', 'flapFastFalling',
   'isSidestepping', 'isSidestepStartup', 'isSidestepRecovery',
   'isSlapParryRecovering',
   'isHitFalling', 'isSidestepHitReturn',
