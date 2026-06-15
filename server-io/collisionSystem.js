@@ -1709,6 +1709,19 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
   opponent.knockbackVelocity.y = 0;
   opponent.movementVelocity = 0;
 
+  // ROPE RESISTANCE (same treatment as slap3): the slam may only send the
+  // victim OUT of the ring if they were already within SLAP_KILL_RANGE of the
+  // boundary they're knocked toward at connect time. From mid-ring the rope
+  // catches them at the edge instead (clamped in the isHit movement block,
+  // gated on isSlapKnockback). isBurstKnockback already governs the friction
+  // curve, so this flag only enables the rope clamp — no other behavior change.
+  opponent.isSlapKnockback = true;
+  const distanceToBoundaryInKbDir =
+    knockbackDirection > 0
+      ? MAP_RIGHT_BOUNDARY - opponent.x
+      : opponent.x - MAP_LEFT_BOUNDARY;
+  opponent.slapKnockbackCanRingOut = distanceToBoundaryInKbDir <= SLAP_KILL_RANGE;
+
   if (!opponent.isAtTheRopes && !opponent.atTheRopesFacingDirection) {
     opponent.facing = flapper.x < opponent.x ? 1 : -1;
   }

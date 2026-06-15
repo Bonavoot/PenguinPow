@@ -507,10 +507,11 @@ const FLAP_LANDING_RECOVERY_MS = 250;    // WHIFF landing endlag — the punish 
 // frame advantage — both wrestlers are actionable on the same tick.
 const FLAP_HIT_LANDING_DESCENT_MS = 90;  // Fast hard drop to the ground after a connect (weighty impact)
 const FLAP_HIT_LANDING_PUSHBACK = 80;    // Backward shove (px) when the slam connects — strong separation
-// Body-slam impulse = half a slap-string finisher (slap3). Uses the same
-// burst-knockback (no-DI) model as slap3 so the "drop on their head" payoff
-// reads like a real heavy hit, just at half the send.
-const FLAP_BODYSLAM_KB_VELOCITY = SLAP_HIT3_KB_VELOCITY * 0.5;
+// Body-slam impulse = a full slap-string finisher (slap3). Uses the same
+// burst-knockback (no-DI) model so the "drop on their head" payoff reads like a
+// real heavy hit. The move has plenty of counters (parry, dash the landing,
+// walk under it), so a clean connect earns the same reward as the slap3 ender.
+const FLAP_BODYSLAM_KB_VELOCITY = SLAP_HIT3_KB_VELOCITY;
 
 // ============================================
 // Hit Recovery — smooth Y return when hit at non-ground positions
