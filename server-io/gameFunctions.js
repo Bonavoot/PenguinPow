@@ -565,6 +565,17 @@ function executeSlapAttack(player, rooms) {
   const ownerRoom = rooms && rooms.find((room) => room.players.some((p) => p.id === player.id));
   if (ownerRoom && (ownerRoom.gameOver || ownerRoom.matchOver)) return;
 
+  // A flap owns the player from liftoff through landing recovery — no slap may
+  // resolve mid-flight. This is the root cause of the intermittent slap-hands
+  // VFX during flap: a click buffered just before takeoff (or a slap-string
+  // continuation timer scheduled before it) fires here a tick or two AFTER
+  // beginFlapStartup cleared isSlapAttack, re-setting isSlapAttack + a fresh
+  // slapAnimation on the airborne penguin. The client gate (!isFlapping) hides
+  // it while aloft, but the slap cycle outlives the flap, so the hands pop the
+  // instant the flap ends. Guarding the single point where isSlapAttack is set
+  // true stops the leak at the source (covers buffered/timer/CPU entry points).
+  if (player.isFlapping) return;
+
   if (player.isPowerSliding) {
     player.isPowerSliding = false;
   }
@@ -1682,8 +1693,8 @@ function executeInputBuffer(player, rooms) {
     case "flap": {
       // Buffered liftoff for the Flap power-up. Air flaps are never buffered —
       // they fire immediately in socketHandlers while already airborne.
-      // beginFlapStartup gates affordability (gassed / stamina) internally and
-      // returns false without mutating state, so a stale buffer can't fly for free.
+      // beginFlapStartup only denies a GASSED wrestler (returns false without
+      // mutating state); with any stamina it fires and may gas them out on cost.
       if (
         player.activePowerUp === "flap" &&
         !player.isFlapping &&

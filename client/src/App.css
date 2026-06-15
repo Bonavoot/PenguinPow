@@ -405,8 +405,9 @@ body {
 }
 
 /* ── Screen-space cinematic vignette ──────────────────────────────────────
-   Sits above the camera-transformed .game-scene (z-index 198, below the HUD
-   at 200). Because it lives on .game-container, it does NOT move with cam
+   Sits above the camera-transformed background .game-scene (z-index 198, below
+   the player-info HUD at 200, the actors layer at 205 and the main HUD at 210).
+   Because it lives on .game-container, it does NOT move with cam
    shake or zoom — the world shakes *inside* a steady frame, which reads as
    cinematic letterboxing instead of "everything is shaking together".
    Pointer-events disabled so HUD interaction still works through it. Kept
@@ -426,7 +427,12 @@ body {
   );
 }
 
-/* ── Camera scene: everything that moves with pan/zoom lives here ── */
+/* ── Camera scene: the WORLD/background that moves with pan/zoom lives here ──
+   The wrestlers themselves live in a SEPARATE, identically-transformed layer
+   (.game-actors) that sits ABOVE the player-info HUD, so a high-flying penguin
+   is never covered by the nameplate UI. Both layers read the same inherited
+   --cam-* custom properties (set on .game-container by useCamera), so they pan,
+   zoom, rotate and shake in perfect lockstep — there is no second camera. */
 /* Screen-shake offsets are layered on top of the camera transform so the   */
 /* HUD layer (game-hud) stays rock-steady during shakes.                   */
 .game-scene {
@@ -443,11 +449,35 @@ body {
   transition: filter 0.14s ease-out;
 }
 
+/* ── Actors layer: the wrestlers (+ their particles/VFX) ──────────────────
+   Identical box + identical camera transform as .game-scene (reads the same
+   inherited --cam-* props), so the penguins render exactly where they always
+   did. The ONLY difference is z-order: this layer sits ABOVE #game-hud-info
+   (the player-info nameplates) so airborne penguins paint over the UI, and
+   BELOW #game-hud (announcements / KO / power-up screens) which stay on top.
+   pointer-events:none so it never intercepts clicks meant for the HUD beneath
+   it (the wrestlers are keyboard-driven and not interactive). */
+.game-actors {
+  position: absolute;
+  inset: 0;
+  z-index: 205;
+  pointer-events: none;
+  transform-origin: center center;
+  transform: translate3d(var(--cam-x, 0px), var(--cam-y, 0px), 0)
+    rotate(var(--cam-rot, 0deg))
+    scale(var(--cam-scale, 1));
+  will-change: transform;
+  backface-visibility: hidden;
+  transition: filter 0.14s ease-out;
+}
+
 /* Cinematic-kill grade-punch: a brief, visceral tone snap on the finishing
    blow. Contrast + saturation jump and the frame brightens a hair so the KO
    reads as a hit you FEEL, then eases back out over the hitstop. Toggled from
-   Game.jsx (`.ko-grade-punch` added to .game-container for ~hitstop ms). */
-.game-container.ko-grade-punch .game-scene {
+   Game.jsx (`.ko-grade-punch` added to .game-container for ~hitstop ms).
+   Applied to BOTH the world and the actors so the whole image punches as one. */
+.game-container.ko-grade-punch .game-scene,
+.game-container.ko-grade-punch .game-actors {
   filter: contrast(1.18) saturate(1.14) brightness(1.02);
 }
 
@@ -455,7 +485,8 @@ body {
    every win without diluting the rare cinematic-kill punch above. Deliberately
    tiered: cinematic = big snap, ring-out = subtle pop. Game.jsx guards against
    the two firing together. */
-.game-container.ko-grade-punch--lite .game-scene {
+.game-container.ko-grade-punch--lite .game-scene,
+.game-container.ko-grade-punch--lite .game-actors {
   filter: contrast(1.08) saturate(1.06) brightness(1.01);
 }
 
@@ -469,7 +500,8 @@ body {
         keyed to rise fast and fall over the freeze so it reads as a camera
         flash-bulb at the clash, not a sustained veil. Cyan matches the parry
         VFX. Pointer-events disabled; sits above the world, below the HUD. */
-.game-container.perfect-parry-flash .game-scene {
+.game-container.perfect-parry-flash .game-scene,
+.game-container.perfect-parry-flash .game-actors {
   filter: contrast(1.06) saturate(1.06) brightness(1.02);
 }
 
@@ -498,7 +530,9 @@ body {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 200;
+  /* Above the actors layer (205) so announcements, KO/round-result, power-up
+     screens and the danger vignette always stay on top of the wrestlers. */
+  z-index: 210;
   /* Soft fade in/out so the HUD doesn't pop when the prematch screen
      dismisses — feels like the broadcast graphic lifting off. */
   opacity: 1;
@@ -506,6 +540,29 @@ body {
 }
 .game-hud > * {
   pointer-events: auto;
+}
+
+/* ── Player-info HUD (nameplates / health / balance / stamina / power-up
+   chips) — the broadcast lower-thirds. Split out of .game-hud so it can sit
+   BELOW the actors layer (205): high-flying penguins now paint OVER it, just
+   like a fighting-game character jumping in front of its own HUD. Kept at
+   z-index 200 (above the film-grain at 199 and vignette at 198) so the panel
+   itself looks IDENTICAL to before — only the players now layer on top. */
+.game-hud-info {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 200;
+  opacity: 1;
+  transition: opacity 0.35s ease-out;
+}
+.game-hud-info > * {
+  pointer-events: auto;
+}
+.game-hud-info.is-prematch-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 /* While the prematch screen is up, hide the in-game HUD (nameplates,
@@ -587,6 +644,35 @@ body {
   pointer-events: none;
   z-index: -1;
   filter: blur(12px);
+}
+
+/* Ring-out occluder host (see Game.jsx). Players normally render in the
+   `.game-actors` layer (above the HUD), but a fighter sliding OFF the dohyo
+   needs to sink BEHIND the platform. GameFighter portals just that fighter's
+   sprite here while it's outside the ring; the sprite carries its own
+   `z-index: 0`, so to let it compete directly with the dohyo (`z-index: 1`)
+   this host must NOT establish its own stacking context — hence position
+   without a z-index (and no transform/filter/opacity). It already inherits the
+   scene's camera transform from `.game-scene`, so coordinates line up exactly. */
+.fallen-actors {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Behind-dohyo particle canvas (engine `ctxBehind`), hosted in the scene by
+   Game.jsx. z-index 0 keeps it below the dohyo (z:1) but above the map (z:-1),
+   so `behindDohyo` particles — ring-out throw smoke and the local-player halo
+   while its owner is outside the ring — sink behind the platform. It inherits
+   the scene's camera transform, so it stays pixel-aligned with the main/front
+   particle canvases up in the actors layer. */
+.scene-particles-behind {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
 }
 
 /* Single consolidated lighting pass — warm spotlight + clean vignette */
@@ -694,7 +780,9 @@ body {
    .game-container (screen-space, NOT inside the camera-transformed scene) so
    the grain is fixed to the "film/lens" and never scales or pans with zoom —
    exactly how real grain behaves. z-index 199 sits above the scene + the
-   screen-space vignette (198) but below the HUD (200), so UI text stays clean.
+   screen-space vignette (198) but below the player-info HUD (200), so UI text
+   stays clean. The actors layer (205) rides above the grain — a deliberate
+   trade so airborne players can paint over the nameplate UI (200).
    `overlay` blend + ~5% opacity = a subtle filmic tooth that unifies every
    plane into one stock and hides gradient banding. The noise tile is rasterized
    once from an inline SVG turbulence (desaturated to pure luma); animation just

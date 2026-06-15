@@ -17,6 +17,7 @@ const {
   FLAP_STARTUP_MS,
   FLAP_CHARGES,
   FLAP_STAMINA_COST,
+  GASSED_DURATION_MS,
 } = require("./constants");
 
 // ============================================
@@ -835,7 +836,13 @@ function clearChargeState(player, isCancelled = false) {
 // Returns false WITHOUT mutating state if the player can't afford the liftoff
 // (gassed or stamina < cost) so callers can surface the "out of stamina" cue.
 function beginFlapStartup(player, now) {
-  if (player.isGassed || player.stamina < FLAP_STAMINA_COST) {
+  // Only a fully GASSED wrestler is denied the flap (that's the one case that
+  // surfaces "OUT OF STAMINA"). With even 1 stamina the flap still fires; if the
+  // cost drains them past empty they simply gas out on takeoff — the global
+  // stamina→gassed check in the main loop flips isGassed the moment stamina hits
+  // 0, so no special-casing is needed here beyond letting the cost go negative-
+  // clamped below.
+  if (player.isGassed) {
     return false;
   }
 
@@ -855,8 +862,18 @@ function beginFlapStartup(player, now) {
   player.currentAction = "flap";
   player.actionLockUntil = now + FLAP_STARTUP_MS;
 
-  // Liftoff is the ONLY stamina cost — air flaps are free.
+  // Liftoff is the ONLY stamina cost — air flaps are free. Flapping on fumes
+  // (stamina below the cost) is allowed, but it drains them past empty and gasses
+  // them out on takeoff. We set the gassed state EXPLICITLY here rather than
+  // leaning on the global stamina→gassed check so a regen tick can't sneak in and
+  // refill them above 0 first — the punishment for an empty-tank flap is guaranteed.
+  const flappedOnFumes = player.stamina < FLAP_STAMINA_COST;
   player.stamina = Math.max(0, player.stamina - FLAP_STAMINA_COST);
+  if (flappedOnFumes) {
+    player.isGassed = true;
+    player.gassedUntil = now + GASSED_DURATION_MS;
+    player.stamina = 0;
+  }
 
   clearChargeState(player, true);
   player.movementVelocity = 0;
@@ -871,6 +888,14 @@ function beginFlapStartup(player, now) {
   player.slapStringWindowUntil = 0;
   player.isRawParrySuccess = false;
   player.isPerfectRawParrySuccess = false;
+  // Cancel any in-progress attack so its VFX/SFX (e.g. the slap-hands effect,
+  // slap whiff sound) don't bleed into flight. Liftoff out of a slap/charge
+  // must read as a clean takeoff — nothing on screen but the flap.
+  player.isAttacking = false;
+  player.isSlapAttack = false;
+  player.isChargingAttack = false;
+  player.attackType = null;
+  player.slapFacingDirection = null;
   return true;
 }
 

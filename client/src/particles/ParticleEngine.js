@@ -1,3 +1,5 @@
+import { DOHYO_LEFT_BOUNDARY, DOHYO_RIGHT_BOUNDARY } from "../constants";
+
 const MAX_PARTICLES = 500;
 const GAME_W = 1280;
 const GAME_H = 720;
@@ -1782,6 +1784,12 @@ const PRESETS = {
       maxLife: 2.0,
       texture: accent.haloRing,
       followGetter: followGetter || null,
+      // While the owner is inside the ring this draws on the main canvas
+      // (occluded by the sprite, on the floor). When they get knocked OUT of
+      // the ring, it routes to the behind-dohyo canvas so the identity marker
+      // sinks behind the platform with the sprite/shadow instead of floating
+      // over it.
+      behindDohyoWhenOutside: true,
     });
   },
 
@@ -3298,6 +3306,7 @@ class Particle {
     this.groundY = Infinity;
     this.delay = 0;
     this.behindDohyo = false;
+    this.behindDohyoWhenOutside = false;
     this.aboveFighters = false;
     // Optional follow target — if set, the particle's x/y are shifted each
     // frame by the delta from this getter, so the particle stays anchored
@@ -3445,6 +3454,11 @@ export class ParticleEngine {
     p.groundY = cfg.groundY ?? Infinity;
     p.delay = cfg.delay ?? 0;
     p.behindDohyo = cfg.behindDohyo ?? false;
+    // Dynamic variant: route to the behind-dohyo canvas only while the
+    // particle's tracked X is past the ring boundary (e.g. the local-player
+    // halo following its owner during a ring-out). Evaluated per-frame in
+    // _render so it flips exactly when the player crosses the edge.
+    p.behindDohyoWhenOutside = cfg.behindDohyoWhenOutside ?? false;
     p.aboveFighters = cfg.aboveFighters ?? false;
     p.followGetter = cfg.followGetter ?? null;
     if (p.followGetter) {
@@ -3554,7 +3568,16 @@ export class ParticleEngine {
       const p = this.particles[i];
       if (!p.active || !p.texture || p.delay > 0) continue;
 
-      if (p.behindDohyo && ctxBehind) {
+      // `behindDohyoWhenOutside` particles (p.x is tracked in GAME-space)
+      // route behind the dohyo only once their owner crosses the ring edge,
+      // so the local-player halo sinks behind the platform on a ring-out and
+      // sits on the floor normally otherwise.
+      const behind =
+        p.behindDohyo ||
+        (p.behindDohyoWhenOutside &&
+          (p.x < DOHYO_LEFT_BOUNDARY || p.x > DOHYO_RIGHT_BOUNDARY));
+
+      if (behind && ctxBehind) {
         this._renderParticle(ctxBehind, p);
       } else if (p.aboveFighters && ctxFront) {
         this._renderParticle(ctxFront, p);

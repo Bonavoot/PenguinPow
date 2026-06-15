@@ -472,16 +472,32 @@ const ROPE_JUMP_BOUNDARY_ZONE = 40;      // Tight to the rope — must be near t
 // then FLAP_GRAVITY pulls them back down each tick. Airborne = fully hit-immune;
 // while DESCENDING the flapper is an attacker (body-slam). The per-tick values
 // are tuned against the fixed ~64Hz timestep (delta ≈ 15.6ms): a single impulse
-// arcs to ~impulse²/(2·FLAP_GRAVITY) — liftoff (14) ≈ 163px, an air flap (12)
-// ≈ 120px from the press point. FLAP_MAX_HEIGHT caps a chained climb so the
+// arcs to ~impulse²/(2·FLAP_GRAVITY) — liftoff (11.5) ≈ 150px, an air flap (9.5)
+// ≈ 102px from the press point. FLAP_MAX_HEIGHT caps a chained climb so the
 // flapper only dips "a little" into the top UI and is never fully hidden.
+//
+// "FEEL" — soft & cute, not flappy-bird twitchy. The launch impulse and gravity
+// are deliberately LOW and tuned TOGETHER: a low impulse means a gentle pop
+// (no sharp snap), and low gravity means a graceful, slightly-hanging descent
+// instead of a fast plummet. Because the arc is symmetric, impact speed ≈ the
+// launch impulse, so lowering it softens BOTH the rise and the fall. The default
+// float is intentionally easy on the eyes — the AGGRESSIVE option is the S-key
+// fast-fall (FLAP_FASTFALL_GRAVITY), whose heavy dive now contrasts hard against
+// this soft baseline (that's the "hard to react to when you commit" dial).
 const FLAP_STARTUP_MS = 166;             // Grounded telegraph (matches rope jump; interruptible)
 const FLAP_CHARGES = 3;                  // Air flaps AFTER liftoff (liftoff itself is free)
-const FLAP_LIFTOFF_IMPULSE = 14;         // Upward velocity (px/tick) on the initial liftoff — peaks ~163px, clearly below the top UI
-const FLAP_IMPULSE = 12;                 // Upward velocity (px/tick) per AIR flap press — peaks ~120px from press; chaining climbs toward the cap with effort
-const FLAP_GRAVITY = 0.6;                // Downward accel (px/tick²) on the main fall — fast & committal so the slam isn't a free dodge
-const FLAP_MAX_HEIGHT = 225;             // Y-offset cap above GROUND_LEVEL — the MOST a chained flap can climb
+const FLAP_LIFTOFF_IMPULSE = 11.5;       // Upward velocity (px/tick) on the initial liftoff — gentle pop, peaks ~150px, clearly below the top UI
+const FLAP_IMPULSE = 9.5;                // Upward velocity (px/tick) per AIR flap press — soft beat, peaks ~102px; chaining climbs toward the cap with effort
+const FLAP_GRAVITY = 0.44;               // Downward accel (px/tick²) on the main fall — light & graceful (cute float), NOT a heavy plummet. S-key fast-fall is the committal option.
+const FLAP_MAX_HEIGHT = 255;             // Y-offset cap above GROUND_LEVEL — the MOST a chained flap can climb
 const FLAP_AIR_MOVE_SPEED = 4.6;         // Horizontal air-control speed (px/tick) via A/D — fine steering while holding
+// Fast-fall: holding S in the air commits to a hard dive. Gravity is overridden
+// to a heavier value (beats even the ceiling hang), so the flapper drops fast —
+// a deliberate way to crash the slam down quicker / harder to read. While diving
+// the A/D steering is cut way down so the descent is mostly straight (you commit
+// to the spot, you don't get to keep weaving on the way down).
+const FLAP_FASTFALL_GRAVITY = 1.5;       // Downward accel (px/tick²) while S held — a committed dive. ~3.4× the soft base gravity, so it reads as a decisive "drop" against the cute float.
+const FLAP_FASTFALL_AIR_MOVE_SPEED = 1.1; // Greatly reduced A/D steering during a fast-fall — mostly straight down
 // Ceiling "feel" fix: a hard velocity clamp at the cap made hitting the ceiling
 // snap from rising → dead-stop → fast drop, which reads as an ugly bounce. The
 // fix is a CUSHION band just below the cap: rising into it bleeds off upward
@@ -490,7 +506,7 @@ const FLAP_AIR_MOVE_SPEED = 4.6;         // Horizontal air-control speed (px/tic
 // over again — so the actual fall stays fast, and normal mid-air arcs (below the
 // band) are totally unaffected, preserving the "perfect flight" skill ceiling.
 const FLAP_CEILING_CUSHION = 42;         // Height (px) of the soft band below the cap
-const FLAP_CEILING_HANG_GRAVITY = 0.34;  // Reduced gravity inside the cushion band — peak hang, not a full float
+const FLAP_CEILING_HANG_GRAVITY = 0.25;  // Reduced gravity inside the cushion band — peak hang, not a full float (kept ~0.57× of FLAP_GRAVITY)
 // Per-flap horizontal burst: a flap pressed WHILE holding A/D flings the player
 // up-AND-forward (diagonal arc) instead of near-vertical. Decays via friction so
 // it reads as a momentary lunge layered on top of the steering drift. No
@@ -1000,6 +1016,8 @@ module.exports = {
   FLAP_GRAVITY,
   FLAP_MAX_HEIGHT,
   FLAP_AIR_MOVE_SPEED,
+  FLAP_FASTFALL_GRAVITY,
+  FLAP_FASTFALL_AIR_MOVE_SPEED,
   FLAP_CEILING_CUSHION,
   FLAP_CEILING_HANG_GRAVITY,
   FLAP_FLAP_H_IMPULSE,

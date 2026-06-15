@@ -96,6 +96,7 @@ import {
   pumoArmySound,
   thickBlubberSound,
   rawParryGruntSound,
+  flapSound,
   rawParrySuccessSound,
   regularRawParrySound,
   stunnedSound,
@@ -2359,6 +2360,7 @@ const GameFighter = ({
           isCounterHit: data.isCounterHit || false,
           isPunish: data.isPunish || false,
           isArmorBreak: data.isArmorBreak || false,
+          isPowered: data.isPowered || false,
           cinematicKill: data.cinematicKill || false,
           cinematicHitstopMs: data.cinematicKill ? 550 : 0,
         });
@@ -3336,6 +3338,24 @@ const GameFighter = ({
     }
     prevFlapPhase.current = penguin.flapPhase;
   }, [penguin.flapPhase, penguin.x, emitParticles]);
+
+  // Flap audio — each wing beat (the liftoff AND every air-flap bump the
+  // server's flapWingBeatTime) plays a layered "whoosh + flap": the
+  // charged-attack whiff for the wing thrust with the dedicated flap-sound on
+  // top. Fired on the rising edge of each new flapWingBeatTime.
+  const prevFlapBeatSound = useRef(0);
+  useEffect(() => {
+    if (
+      penguin.isFlapping &&
+      penguin.flapWingBeatTime &&
+      penguin.flapWingBeatTime !== prevFlapBeatSound.current
+    ) {
+      const pan = xToPan(penguin.x);
+      playSound(attackSound, 0.04, null, 1.0, pan);
+      playSound(flapSound, 0.012, null, 1.0, pan);
+    }
+    prevFlapBeatSound.current = penguin.flapWingBeatTime || 0;
+  }, [penguin.flapWingBeatTime, penguin.isFlapping, penguin.x]);
 
   // ─────────────────────────────────────────────────────────────────
   // LOCAL PLAYER HALO — persistent identity marker
@@ -4363,6 +4383,19 @@ const GameFighter = ({
   // Determine if we should show ritual or fighter sprite
   const showRitualSprite = shouldShowRitualForPlayer && ritualSpriteConfig;
 
+  // Ring-out layering: while this fighter is OUTSIDE the dohyo boundary, its
+  // sprite is portaled down into the scene (`.fallen-actors`, below the lit
+  // dohyo at z:1) so it sinks BEHIND the platform instead of floating over it
+  // in the actors layer (which lives above the HUD/dohyo). Only the sprite
+  // moves — shadow, VFX and HUD stay put; the shadow never flipped under the
+  // dohyo even in the old single-layer setup. `forceVisualRender` already
+  // forces a render on the boundary flip, so the swap lands at the right frame.
+  const isOutsideRingNow = isOutsideDohyo(displayPosition.x, displayPosition.y);
+  const fallenSpriteHost =
+    isOutsideRingNow && typeof document !== "undefined"
+      ? document.querySelector(".fallen-actors")
+      : null;
+
   return (
     <div className="ui-container">
       {/* Ambient snowfall now lives at the scene level (single system in
@@ -4374,60 +4407,66 @@ const GameFighter = ({
       {/* World-space: Gyoji stays in the scene and zooms with camera */}
       <Gyoji gyojiState={gyojiState} hakkiyoi={hakkiyoi} />
 
-      {/* Screen-space HUD: portalled outside the scene so it never zooms */}
+      {/* Player-info lower-thirds: portalled into #game-hud-info, which sits
+          BELOW the actors layer so airborne penguins paint over the nameplates
+          (fighting-game style) while the panel itself stays visually identical. */}
+      {index === 0 &&
+        document.getElementById("game-hud-info") &&
+        createPortal(
+          <UiPlayerInfo
+            playerOneWinCount={playerOneWinCount}
+            playerTwoWinCount={playerTwoWinCount}
+            roundHistory={roundHistory}
+            roundId={uiRoundId}
+            matchOver={matchOver}
+            isPlayer1Local={isLocalPlayer}
+            player1Stamina={allPlayersData.player1?.stamina ?? 100}
+            player1ActivePowerUp={allPlayersData.player1?.activePowerUp ?? null}
+            player1SnowballCooldown={
+              allPlayersData.player1?.snowballCooldown ?? false
+            }
+            player1SnowballThrowsRemaining={
+              allPlayersData.player1?.snowballThrowsRemaining ?? null
+            }
+            player1PumoArmyCooldown={
+              allPlayersData.player1?.pumoArmyCooldown ?? false
+            }
+            player1PumoArmySpawnsRemaining={
+              allPlayersData.player1?.pumoArmySpawnsRemaining ?? null
+            }
+            player1IsGassed={allPlayersData.player1?.isGassed ?? false}
+            player1ParryRefund={p1ParryRefund}
+            player1Balance={allPlayersData.player1?.balance ?? 100}
+            player1BalanceGain={p1BalanceGain}
+            player2Stamina={allPlayersData.player2?.stamina ?? 100}
+            player2ActivePowerUp={allPlayersData.player2?.activePowerUp ?? null}
+            player2SnowballCooldown={
+              allPlayersData.player2?.snowballCooldown ?? false
+            }
+            player2SnowballThrowsRemaining={
+              allPlayersData.player2?.snowballThrowsRemaining ?? null
+            }
+            player2PumoArmyCooldown={
+              allPlayersData.player2?.pumoArmyCooldown ?? false
+            }
+            player2PumoArmySpawnsRemaining={
+              allPlayersData.player2?.pumoArmySpawnsRemaining ?? null
+            }
+            player2IsGassed={allPlayersData.player2?.isGassed ?? false}
+            player2ParryRefund={p2ParryRefund}
+            player2Balance={allPlayersData.player2?.balance ?? 100}
+            player2BalanceGain={p2BalanceGain}
+          />,
+          document.getElementById("game-hud-info")
+        )}
+
+      {/* Screen-space HUD: portalled outside the scene so it never zooms.
+          NOTE: UiPlayerInfo is portalled separately into #game-hud-info (above)
+          so it can sit UNDER the actors layer. Everything below stays in
+          #game-hud (z 210) and remains ABOVE the wrestlers. */}
       {document.getElementById("game-hud") &&
         createPortal(
           <>
-            {index === 0 && (
-              <UiPlayerInfo
-                playerOneWinCount={playerOneWinCount}
-                playerTwoWinCount={playerTwoWinCount}
-                roundHistory={roundHistory}
-                roundId={uiRoundId}
-                matchOver={matchOver}
-                isPlayer1Local={isLocalPlayer}
-                player1Stamina={allPlayersData.player1?.stamina ?? 100}
-                player1ActivePowerUp={
-                  allPlayersData.player1?.activePowerUp ?? null
-                }
-                player1SnowballCooldown={
-                  allPlayersData.player1?.snowballCooldown ?? false
-                }
-                player1SnowballThrowsRemaining={
-                  allPlayersData.player1?.snowballThrowsRemaining ?? null
-                }
-                player1PumoArmyCooldown={
-                  allPlayersData.player1?.pumoArmyCooldown ?? false
-                }
-                player1PumoArmySpawnsRemaining={
-                  allPlayersData.player1?.pumoArmySpawnsRemaining ?? null
-                }
-                player1IsGassed={allPlayersData.player1?.isGassed ?? false}
-                player1ParryRefund={p1ParryRefund}
-                player1Balance={allPlayersData.player1?.balance ?? 100}
-                player1BalanceGain={p1BalanceGain}
-                player2Stamina={allPlayersData.player2?.stamina ?? 100}
-                player2ActivePowerUp={
-                  allPlayersData.player2?.activePowerUp ?? null
-                }
-                player2SnowballCooldown={
-                  allPlayersData.player2?.snowballCooldown ?? false
-                }
-                player2SnowballThrowsRemaining={
-                  allPlayersData.player2?.snowballThrowsRemaining ?? null
-                }
-                player2PumoArmyCooldown={
-                  allPlayersData.player2?.pumoArmyCooldown ?? false
-                }
-                player2PumoArmySpawnsRemaining={
-                  allPlayersData.player2?.pumoArmySpawnsRemaining ?? null
-                }
-                player2IsGassed={allPlayersData.player2?.isGassed ?? false}
-                player2ParryRefund={p2ParryRefund}
-                player2Balance={allPlayersData.player2?.balance ?? 100}
-                player2BalanceGain={p2BalanceGain}
-              />
-            )}
             {index === 0 && isLocalEdgePushed && (() => {
               const belowThreshold = localEdgeStamina <= DANGER_STAMINA_THRESHOLD;
               const staminaRatio = belowThreshold
@@ -4507,21 +4546,33 @@ const GameFighter = ({
         $index={index}
         $isVisible={true}
       />
-      <PlayerShadow
-        ref={shadowDomRef}
-        x={displayPosition.x}
-        y={displayPosition.y}
-        facing={penguin.facing ?? -1}
-        isDodging={penguin.isDodging}
-        isSidestepping={penguin.isSidestepping}
-        isGrabStartup={penguin.isGrabStartup}
-        isThrowing={penguin.isThrowing}
-        isBeingThrown={penguin.isBeingThrown}
-        isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
-        isRopeJumping={penguin.isRopeJumping}
-        isFlapping={penguin.isFlapping}
-        isLocalPlayer={penguin.id === localId}
-      />
+      {/* Ground shadow — like the sprite, it rides down into `.fallen-actors`
+          (scene, below the dohyo) while this fighter is outside the ring so it
+          sinks behind the platform instead of floating over it. It already
+          flips its own z-index to 0 when outside (PlayerShadow), so once it's
+          back in the scene that 0 lands below the dohyo's z:1. */}
+      {(() => {
+        const shadowNode = (
+          <PlayerShadow
+            ref={shadowDomRef}
+            x={displayPosition.x}
+            y={displayPosition.y}
+            facing={penguin.facing ?? -1}
+            isDodging={penguin.isDodging}
+            isSidestepping={penguin.isSidestepping}
+            isGrabStartup={penguin.isGrabStartup}
+            isThrowing={penguin.isThrowing}
+            isBeingThrown={penguin.isBeingThrown}
+            isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
+            isRopeJumping={penguin.isRopeJumping}
+            isFlapping={penguin.isFlapping}
+            isLocalPlayer={penguin.id === localId}
+          />
+        );
+        return isOutsideRingNow && fallenSpriteHost
+          ? createPortal(shadowNode, fallenSpriteHost)
+          : shadowNode;
+      })()}
       {/* <DodgeSmokeEffect
         x={penguin.dodgeStartX || displayPosition.x}
         y={displayPosition.y}
@@ -4545,6 +4596,12 @@ const GameFighter = ({
         isThrowing={penguin.isThrowing}
         chargeCancelled={penguin.chargeCancelled || false}
       /> */}
+      {/* Sprite — while this fighter is outside the ring its sprite is portaled
+          into `.fallen-actors` (scene, below the dohyo) so it sinks behind the
+          platform; otherwise it renders inline in the actors layer. */}
+      {(() => {
+      const fighterSpriteNodes = (
+      <>
       {/* Animated Sprite Sheet (when sprite is a spritesheet animation) */}
       {isAnimatedSprite && !showRitualSprite && (
         <AnimatedFighterContainer
@@ -4683,6 +4740,12 @@ const GameFighter = ({
           style={{ display: showRitualSprite ? "none" : "block" }}
         />
       )}
+      </>
+      );
+      return isOutsideRingNow && fallenSpriteHost
+        ? createPortal(fighterSpriteNodes, fallenSpriteHost)
+        : fighterSpriteNodes;
+      })()}
 
       {/* Ritual Sprite Sheet Animation - all 4 parts pre-rendered, only current one visible */}
       {/* Each player's ritual stops independently when they select their power-up and start salt throwing */}
@@ -4718,7 +4781,7 @@ const GameFighter = ({
         x={displayPosition.x}
         y={displayPosition.y}
         facing={penguin.facing ?? -1}
-        isActive={penguin.isSlapAttack}
+        isActive={penguin.isSlapAttack && !penguin.isFlapping}
         slapAnimation={penguin.slapAnimation}
       />
       <SlapParryEffect position={parryEffectPosition} />

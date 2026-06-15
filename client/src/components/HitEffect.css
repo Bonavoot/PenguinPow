@@ -51,7 +51,8 @@
    CHROMATIC ABERRATION — applied to .game-scene
    (charged / counter / punish / cinematic)
    ============================================ */
-.game-scene.hit-chromatic {
+.game-scene.hit-chromatic,
+.game-actors.hit-chromatic {
   animation: chromaticPunch 0.12s ease-out forwards;
 }
 @keyframes chromaticPunch {
@@ -321,6 +322,51 @@
 }
 .armor-break .hit-bloom-glow {
   background: radial-gradient(circle, rgba(255, 250, 200, 0.64) 0%, rgba(255, 235, 120, 0.3) 38%, transparent 68%);
+}
+
+/* ============================================
+   POWERED HIT — red read for the POWER power-up's NORMAL confirms.
+   Recolors the plain white slap / charged hit to red to signal the boosted
+   knockback. Counter / punish / armor-break take precedence (the powered-hit
+   class isn't applied when any of those are active), so those keep their own
+   gold / purple / white-yellow reads.
+   ============================================ */
+.powered-hit .hit-ring::before {
+  border-color: rgba(255, 120, 105, 0.99);
+  box-shadow:
+    0 0 0 clamp(1px, 0.07cqw, 2px) rgba(42, 0, 0, 0.45),
+    0 0 9px rgba(255, 70, 60, 0.62),
+    0 0 18px rgba(225, 28, 28, 0.34);
+}
+.powered-hit .hit-ring::after {
+  background: radial-gradient(circle,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(255, 198, 188, 0.95) 26%,
+    rgba(255, 66, 56, 0.6) 52%,
+    transparent 80%);
+}
+.powered-hit .hit-bloom-glow {
+  background: radial-gradient(circle, rgba(255, 110, 95, 0.6) 0%, rgba(232, 38, 38, 0.28) 38%, transparent 68%);
+}
+.powered-hit .hit-afterglow {
+  background: radial-gradient(circle, rgba(255, 78, 68, 0.2) 0%, rgba(220, 28, 28, 0.06) 40%, transparent 70%);
+}
+/* Second shockwave ring (burst / charged) recolored to red too. Only the
+   color properties are overridden — the size + animation from the white rule
+   above still apply. */
+.hit-ring-wrapper.powered-hit.burst-hit::before,
+.hit-ring-wrapper.powered-hit.charged-hit::before {
+  border-color: rgba(255, 92, 82, 0.9);
+  box-shadow:
+    0 0 0 1px rgba(42, 0, 0, 0.35),
+    0 0 12px rgba(255, 70, 60, 0.5),
+    0 0 22px rgba(225, 28, 28, 0.3);
+}
+.hit-ring-wrapper.powered-hit {
+  filter:
+    brightness(1.16) saturate(1.22)
+    drop-shadow(0 0 8px rgba(255, 58, 48, 0.5))
+    drop-shadow(0 0 2px rgba(32, 0, 0, 0.55));
 }
 
 /* ============================================

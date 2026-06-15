@@ -1270,6 +1270,10 @@ function processHit(player, otherPlayer, rooms, io) {
           // the glass-shard armor break (instead of looking like a normal
           // counter/charged confirm).
           isArmorBreak: isChargedArmorBreak === true,
+          // POWER power-up active on the attacker → client recolors the normal
+          // (non-counter / non-punish) white hit VFX to red, signalling the
+          // boosted knockback. Counter/punish keep their own special colors.
+          isPowered: player.activePowerUp === POWER_UP_TYPES.POWER,
           // attackerId lets the client trigger an attacker-side hit-confirm flash
           // on the attacker's sprite only — distinct from the victim's hit VFX.
           // Without this the attacker has no proprioceptive cue that they "landed it",

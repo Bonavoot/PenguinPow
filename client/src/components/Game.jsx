@@ -128,6 +128,13 @@ const Game = ({
   // ============================================
   const predictionRef = useRef(null);
   const containerRef = useRef(null);
+  // Behind-dohyo particle canvas. Lives in `.game-scene` (below the dohyo)
+  // rather than inside the actors layer, so `behindDohyo` particles (ring-out
+  // throw smoke, the local-player halo during a ring-out, etc.) actually paint
+  // BEHIND the platform. Passed down to ParticleProvider, which hands it to the
+  // engine's `initBehind`. (The main + front particle canvases stay in the
+  // actors layer so normal VFX paint over the HUD with the wrestlers.)
+  const sceneBehindCanvasRef = useRef(null);
   const koPunchTimeoutRef = useRef(null);
   const koPunchLiteTimeoutRef = useRef(null);
   const lastCinematicPunchRef = useRef(0);
@@ -770,13 +777,54 @@ const Game = ({
         <div className="game-scene">
           <div className="game-map"></div>
           <CrowdLayer crowdEvent={crowdEvent} />
+          {/* Behind-dohyo particle canvas (engine `ctxBehind`). Sits below the
+              dohyo so `behindDohyo` particles render behind the platform; the
+              engine receives this via ParticleProvider's `behindCanvasRef`. */}
+          <canvas
+            ref={sceneBehindCanvasRef}
+            className="scene-particles-behind"
+            aria-hidden="true"
+          />
           <div className="dohyo-overlay"></div>
+          {/* Ring-out occluder target. Players normally live in `.game-actors`
+              (above the UI) so flight paints over the nameplates. But that layer
+              sits above the dohyo too, so a player who falls OFF the ring would
+              float over the platform instead of sinking behind it. When a fighter
+              crosses the dohyo boundary, GameFighter portals just its SPRITE here
+              — back inside the scene, below the lit dohyo (z1) and its atmospherics
+              — restoring the "fall behind the platform" look. No z-index here so
+              the sprite's own z:0 competes directly with the dohyo's z:1. */}
+          <div className="fallen-actors" aria-hidden="true"></div>
           {/* Scene-wide ambient snowfall (single system, parallax depth).
               Its internal back/front layers (z40 / z105) straddle the players
               so most snow falls behind them and only sparse foreground bokeh
               flakes drift in front. */}
           <SnowEffect mode="snow" />
-          <ParticleProvider>
+          <div className="god-rays" aria-hidden="true"></div>
+          <div className="arena-lighting" aria-hidden="true"></div>
+        </div>
+        {/* Screen-space film grain — sits on .game-container (NOT the scene)
+            so it's fixed to the lens and never scales/pans with the camera. */}
+        <div className="film-grain" aria-hidden="true"></div>
+        {/* Player-info HUD target — portal host for the nameplate/health/stamina
+            lower-thirds (UiPlayerInfo). Lives UNDER the actors layer so airborne
+            penguins paint over it, but above the film-grain/vignette so the panel
+            itself is visually unchanged. Hidden during the pre-match screen, same
+            as the main HUD. */}
+        <div
+          id="game-hud-info"
+          className={`game-hud-info${
+            showPreMatchScreen ? " is-prematch-hidden" : ""
+          }`}
+        ></div>
+        {/* Actors layer — the wrestlers + their particles. A SECOND camera layer
+            that reuses the inherited --cam-* transform (perfect sync with
+            .game-scene) but sits above the player-info HUD so flight is never
+            covered by the UI. ParticleProvider lives here so VFX track the
+            players; the in-HUD portals (UiPlayerInfo, announcements) still target
+            #game-hud-info / #game-hud by id regardless of tree position. */}
+        <div className="game-actors">
+          <ParticleProvider behindCanvasRef={sceneBehindCanvasRef}>
             <div
               className={`ui${
                 showPreMatchScreen ? " is-prematch-hidden" : ""
@@ -811,12 +859,7 @@ const Game = ({
                 })}
             </div>
           </ParticleProvider>
-          <div className="god-rays" aria-hidden="true"></div>
-          <div className="arena-lighting" aria-hidden="true"></div>
         </div>
-        {/* Screen-space film grain — sits on .game-container (NOT the scene)
-            so it's fixed to the lens and never scales/pans with the camera. */}
-        <div className="film-grain" aria-hidden="true"></div>
         {/* HUD layer — viewport-fixed, unaffected by camera zoom/pan.
             While the pre-match screen is up we add `is-prematch-hidden`
             so the in-game HUD (player nameplates, health/balance bars,

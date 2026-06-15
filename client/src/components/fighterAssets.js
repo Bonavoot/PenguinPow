@@ -70,6 +70,7 @@ import snowballThrowSound from "../sounds/snowball-throw-sound.mp3";
 import pumoArmySound from "../sounds/pumo-army-sound.mp3";
 import thickBlubberSound from "../sounds/thick-blubber-sound.mp3";
 import rawParryGruntSound from "../sounds/raw-parry-grunt.mp3";
+import flapSound from "../sounds/flap-sound.wav";
 import rawParrySuccessSound from "../sounds/raw-parry-success-sound.ogg";
 import regularRawParrySound from "../sounds/regular-raw-parry-sound.ogg";
 import stunnedSound from "../sounds/stunned-sound.mp3";
@@ -273,6 +274,7 @@ preloadSounds([
   winnerSound,
   thickBlubberSound,
   rawParryGruntSound,
+  flapSound,
   rawParrySuccessSound,
   regularRawParrySound,
   stunnedSound,
@@ -393,6 +395,7 @@ export {
   pumoArmySound,
   thickBlubberSound,
   rawParryGruntSound,
+  flapSound,
   rawParrySuccessSound,
   regularRawParrySound,
   stunnedSound,

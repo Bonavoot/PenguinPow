@@ -43,7 +43,8 @@ const {
   ROPE_JUMP_STARTUP_MS, ROPE_JUMP_ACTIVE_MS, ROPE_JUMP_LANDING_RECOVERY_MS,
   ROPE_JUMP_ARC_HEIGHT,
   FLAP_STARTUP_MS, FLAP_LIFTOFF_IMPULSE, FLAP_IMPULSE, FLAP_GRAVITY, FLAP_MAX_HEIGHT,
-  FLAP_AIR_MOVE_SPEED, FLAP_CEILING_CUSHION, FLAP_CEILING_HANG_GRAVITY,
+  FLAP_AIR_MOVE_SPEED, FLAP_FASTFALL_GRAVITY, FLAP_FASTFALL_AIR_MOVE_SPEED,
+  FLAP_CEILING_CUSHION, FLAP_CEILING_HANG_GRAVITY,
   FLAP_FLAP_H_IMPULSE, FLAP_H_FRICTION,
   FLAP_LANDING_RECOVERY_MS, FLAP_HIT_LANDING_DESCENT_MS,
   HIT_FALL_BASE_MS,
@@ -2049,10 +2050,17 @@ function tick(delta) {
           const cushionStart = ceiling - FLAP_CEILING_CUSHION;
           const inCeilingZone = player.y > cushionStart;
 
+          // FAST-FALL: holding S commits to a hard dive — heavier gravity that
+          // OVERRIDES the ceiling hang/cushion, so the flapper drops fast (and
+          // any residual rise is killed quickly). A deliberate way to crash the
+          // slam down sooner; horizontal steering is also slashed (see below).
+          const isFastFalling = player.keys.s;
+
           // 1) Glide-to-stop: bleed off upward speed proportionally to how deep
           //    into the cushion the wrestler is, so flapping into the ceiling
-          //    eases to a halt instead of slamming and rebounding.
-          if (inCeilingZone && player.flapVelocityY > 0) {
+          //    eases to a halt instead of slamming and rebounding. Skipped while
+          //    fast-falling — a dive shouldn't be cushioned.
+          if (!isFastFalling && inCeilingZone && player.flapVelocityY > 0) {
             const into = Math.min(
               1,
               (player.y - cushionStart) / FLAP_CEILING_CUSHION
@@ -2063,8 +2071,10 @@ function tick(delta) {
           // 2) Peak hang: softened gravity inside the band lets them float at the
           //    top for a beat; full gravity resumes the instant they drop below
           //    it, keeping the fall fast (position-based, so it's stateless and
-          //    leaves normal mid-air arcs untouched).
-          const gravity = inCeilingZone
+          //    leaves normal mid-air arcs untouched). Fast-fall beats both.
+          const gravity = isFastFalling
+            ? FLAP_FASTFALL_GRAVITY
+            : inCeilingZone
             ? FLAP_CEILING_HANG_GRAVITY
             : FLAP_GRAVITY;
           player.flapVelocityY -= gravity;
@@ -2079,11 +2089,16 @@ function tick(delta) {
           // Horizontal air control — free facing, independent of the opponent.
           // Steering drift (held A/D) layered with the per-flap lunge burst
           // (flapVelocityX, set on a directional press) which decays via friction.
+          // Steering is cut to a trickle while fast-falling — the dive is a
+          // commitment, not a weaving descent.
+          const airMoveSpeed = isFastFalling
+            ? FLAP_FASTFALL_AIR_MOVE_SPEED
+            : FLAP_AIR_MOVE_SPEED;
           if (player.keys.d && !player.keys.a) {
-            player.x += FLAP_AIR_MOVE_SPEED;
+            player.x += airMoveSpeed;
             player.facing = -1;
           } else if (player.keys.a && !player.keys.d) {
-            player.x -= FLAP_AIR_MOVE_SPEED;
+            player.x -= airMoveSpeed;
             player.facing = 1;
           }
           if (player.flapVelocityX !== 0) {

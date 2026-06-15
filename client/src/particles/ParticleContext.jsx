@@ -55,9 +55,14 @@ function parseColorToRgb(input) {
   return null;
 }
 
-export function ParticleProvider({ children }) {
+export function ParticleProvider({ children, behindCanvasRef }) {
   const canvasRef = useRef(null);
-  const canvasBehindRef = useRef(null);
+  // Fallback ref used only if no external behind-canvas is provided. Normally
+  // Game.jsx owns the behind canvas (it lives in `.game-scene`, below the
+  // dohyo) and passes it in via `behindCanvasRef` so `behindDohyo` particles
+  // paint behind the platform instead of over it in the actors layer.
+  const internalBehindRef = useRef(null);
+  const canvasBehindRef = behindCanvasRef || internalBehindRef;
   const canvasFrontRef = useRef(null);
   const engineRef = useRef(null);
   // Bumped when the engine finishes init, so the color-bake effect below
@@ -134,17 +139,22 @@ export function ParticleProvider({ children }) {
 
   return (
     <ParticleCtx.Provider value={value}>
-      <canvas
-        ref={canvasBehindRef}
-        style={{
-          position: "absolute",
-          inset: 0,
-          width: "100%",
-          height: "100%",
-          pointerEvents: "none",
-          zIndex: 0,
-        }}
-      />
+      {/* Behind canvas is normally hosted by Game.jsx inside `.game-scene`
+          (below the dohyo) and passed in via `behindCanvasRef`. Only render an
+          inline fallback here if no external host was provided. */}
+      {!behindCanvasRef && (
+        <canvas
+          ref={internalBehindRef}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            pointerEvents: "none",
+            zIndex: 0,
+          }}
+        />
+      )}
       {children}
       <canvas
         ref={canvasRef}

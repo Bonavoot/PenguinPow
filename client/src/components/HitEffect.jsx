@@ -37,6 +37,7 @@ const HitEffect = ({ position }) => {
   const pendingTimeouts = useRef([]);
   const impactFrameTimeoutRef = useRef(null);
   const gameSceneRef = useRef(null);
+  const gameActorsRef = useRef(null);
 
   const EFFECT_DURATION_SLAP = 550;
   const EFFECT_DURATION_CHARGED = 800;
@@ -62,6 +63,7 @@ const HitEffect = ({ position }) => {
 
     const isBurstHit = position.isBurstHit || false;
     const isArmorBreak = position.isArmorBreak || false;
+    const isPowered = position.isPowered || false;
 
     const isHeavy = attackType === 'charged' || isBurstHit || isCinematic;
 
@@ -75,6 +77,7 @@ const HitEffect = ({ position }) => {
       isCounterHit,
       isPunish,
       isArmorBreak,
+      isPowered,
       frozen: isCinematic,
     };
 
@@ -91,16 +94,24 @@ const HitEffect = ({ position }) => {
 
     // Chromatic burst on .game-scene: charged + cinematic always get it; counter/punish
     // ALSO get it (regardless of attack type) so reads like "you got caught lacking" pop visually.
+    // The wrestlers now live in .game-actors (a separate camera layer above the
+    // player-info HUD), so punch BOTH layers in lockstep or the players wouldn't aberrate.
     if (isCinematic || attackType === 'charged' || isCounterHit || isPunish) {
       if (!gameSceneRef.current) {
         gameSceneRef.current = document.querySelector('.game-scene');
       }
-      const scene = gameSceneRef.current;
-      if (scene) {
-        scene.classList.add('hit-chromatic');
+      if (!gameActorsRef.current) {
+        gameActorsRef.current = document.querySelector('.game-actors');
+      }
+      const layers = [gameSceneRef.current, gameActorsRef.current].filter(Boolean);
+      if (layers.length) {
+        layers.forEach((el) => el.classList.add('hit-chromatic'));
         // Punish gets a noticeably longer chromatic tail — it's the "learn from this" hit.
         const chromDuration = isCinematic ? 200 : (isPunish ? 160 : (isCounterHit ? 130 : 100));
-        const chromTid = setTimeout(() => scene.classList.remove('hit-chromatic'), chromDuration);
+        const chromTid = setTimeout(
+          () => layers.forEach((el) => el.classList.remove('hit-chromatic')),
+          chromDuration
+        );
         pendingTimeouts.current.push(chromTid);
       }
     }
@@ -150,6 +161,16 @@ const HitEffect = ({ position }) => {
         // Charged attack shattering grab armor — recolor the hit glow to
         // white/yellow to visually link it to the glass-shard armor break.
         const armorBreakClass = effect.isArmorBreak ? 'armor-break' : '';
+        // POWER power-up — recolor the NORMAL white hit glow to red. Counter,
+        // punish, and armor-break keep their own special reads (they take
+        // precedence), so this only paints the plain confirms red.
+        const poweredClass =
+          effect.isPowered &&
+          !effect.isCounterHit &&
+          !effect.isPunish &&
+          !effect.isArmorBreak
+            ? 'powered-hit'
+            : '';
         const frozenClass = effect.frozen ? 'cinematic-frozen' : '';
         // Faux-3D tilt — signed by facing so the ring plane angles toward the
         // struck side (same rotateY trick the raw-parry ring uses).
@@ -171,7 +192,7 @@ const HitEffect = ({ position }) => {
             $facing={effect.facing}
           >
             <div
-              className={`hit-ring-wrapper ${hitTypeClass} ${counterHitClass} ${punishHitClass} ${armorBreakClass} ${frozenClass}`}
+              className={`hit-ring-wrapper ${hitTypeClass} ${counterHitClass} ${punishHitClass} ${armorBreakClass} ${poweredClass} ${frozenClass}`}
               style={{ "--hit-ring-tilt-signed": ringTiltSigned }}
             >
               <div className="hit-bloom-glow" />
