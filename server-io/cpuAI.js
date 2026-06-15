@@ -11,9 +11,11 @@ const { ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST,
         SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST,
         RAW_PARRY_STAMINA_COST, POWER_UP_TYPES,
         CLINCH_THROW_LAND_THRESHOLD, CLINCH_THROW_KILL_THRESHOLD,
+        FLAP_IMPULSE, FLAP_FLAP_H_IMPULSE, FLAP_CHARGE_COOLDOWN_MS, FLAP_STAMINA_COST,
         BALANCE_MAX } = require("./constants");
 const { MAP_LEFT_BOUNDARY: GAME_MAP_LEFT, MAP_RIGHT_BOUNDARY: GAME_MAP_RIGHT,
-        canPlayerSidestep, getSidestepInitData, simNowForPlayer } = require("./gameUtils");
+        canPlayerSidestep, getSidestepInitData, simNowForPlayer,
+        beginFlapStartup } = require("./gameUtils");
 
 // Map boundaries - MUST match gameUtils.js (340 and 940)
 const MAP_LEFT_BOUNDARY = 340;
@@ -113,6 +115,21 @@ const AI_CONFIG = {
   CLINCH_THROW_CHANCE_FAIL: 0.12,      // Chance to attempt action in fail zone (drains balance)
   CLINCH_PUSH_PLANT_INTERVAL_MIN: 300, // Min duration before re-evaluating push/plant
   CLINCH_PUSH_PLANT_INTERVAL_MAX: 800, // Max duration
+
+  // === FLAP power-up: offense (CPU piloting its own flight) ===
+  FLAP_USE_CHANCE: 0.45,        // Base chance to commit a liftoff when a good engage window appears
+  FLAP_COOLDOWN: 3000,          // Min ms between liftoff attempts (don't spam flights)
+  FLAP_MIN_RANGE: 110,          // Too close → opponent just parries/dashes the slam; skip
+  FLAP_MAX_RANGE: 380,          // Too far → flight is heavily telegraphed; skip engages
+  FLAP_PUNISH_RANGE: 470,       // When opponent is whiffing/recovering, slam from farther out
+  FLAP_DIVE_ALIGN: 50,          // |dx| under this = "over" the opponent → commit the dive (stop flapping)
+  FLAP_DIVE_KEEP_HEIGHT: 70,    // While still closing, air-flap if below this height so we don't fall short
+
+  // === FLAP power-up: defense (reacting to the opponent's flight) ===
+  FLAP_DEF_RANGE: 150,          // Horizontal threat band of an incoming body-slam
+  FLAP_DEF_REACT_HEIGHT: 130,   // Flapper height (px above ground) at which we commit a parry/dash
+  FLAP_DODGE_CHANCE: 0.55,      // Chance to dash out from under a landing (primary counter)
+  FLAP_PARRY_CHANCE: 0.35,      // Chance to parry the slam instead (only if parry is available)
 };
 
 // AI State tracking per CPU player
@@ -199,6 +216,14 @@ function getAIState(playerId) {
       clinchThrowExecuteTime: 0,
       clinchPushPlantDecision: null,
       clinchPushPlantUntil: 0,
+      // === FLAP power-up tracking ===
+      spaceReleaseTime: 0,       // Release timer for the Space (flap) key press
+      lastFlapTime: 0,           // Last liftoff attempt (cooldown gate)
+      flapDiveCommitted: false,  // Once aligned over the opponent, stop flapping and drop
+      flapReactTarget: null,     // Defensive reaction bookkeeping vs an incoming flap
+      flapReactDetectTime: 0,
+      flapReactDelay: 0,
+      flapReactProcessed: false,
     });
   }
   return aiStates.get(playerId);
@@ -584,6 +609,10 @@ function handlePendingKeyReleases(cpu, aiState, currentTime) {
     cpu.keys.f = false;
     aiState.fReleaseTime = 0;
   }
+  if (aiState.spaceReleaseTime > 0 && currentTime >= aiState.spaceReleaseTime) {
+    cpu.keys[" "] = false;
+    aiState.spaceReleaseTime = 0;
+  }
 }
 
 // Main AI update function - called every game tick
@@ -652,6 +681,20 @@ function updateCPUAI(cpu, human, room, currentTime) {
   
   // Handle pending key releases
   handlePendingKeyReleases(cpu, aiState, currentTime);
+
+  // HIGHEST PRIORITY (flap): if WE are airborne, piloting the flight overrides
+  // all normal logic (grab-approach, clinch, offense) — steer over the opponent
+  // and dive for the body-slam. Checked before everything else because canAct/
+  // canGrab don't exclude the flap states.
+  if (cpu.isFlapping) {
+    pilotFlapFlight(cpu, human, aiState, currentTime, distance);
+    return;
+  }
+  // Reset incoming-flap reaction bookkeeping once the opponent lands.
+  if (!human.isFlapping && aiState.flapReactTarget) {
+    aiState.flapReactTarget = null;
+    aiState.flapReactProcessed = false;
+  }
   
   // Cancel grab approach if situation changed (hit, grabbed, opponent in i-frames/ungrabable)
   if (aiState.grabApproachIntent && (
@@ -748,6 +791,11 @@ function updateCPUAI(cpu, human, room, currentTime) {
       return;
     }
   }
+
+  // Priority 2.6: FLAP DEFENSE — opponent is airborne; dash the landing or parry the slam
+  if (handleFlapDefense(cpu, human, aiState, currentTime, distance)) {
+    return;
+  }
   
   // Priority 3: React to opponent attacks with HUMAN-LIKE TIMING
   // Under slap pressure (3+ consecutive hits), the AI "wakes up" and gets sharper defensively.
@@ -805,6 +853,11 @@ function updateCPUAI(cpu, human, room, currentTime) {
     return;
   }
   
+  // Priority 5.5: FLAP OFFENSE — take flight to slam an opponent (engage or punish a whiff)
+  if (handleFlapOffense(cpu, human, aiState, currentTime, distance)) {
+    return;
+  }
+
   // Priority 6: RING-OUT OPPORTUNITY - Opponent near edge!
   if (isOpponentNearEdge(human) && canAct(cpu)) {
     handleRingOutOpportunity(cpu, human, aiState, currentTime, distance);
@@ -1170,6 +1223,186 @@ function handlePowerUpUsage(cpu, human, aiState, currentTime, distance) {
   return false;
 }
 
+// ============================================================
+// FLAP POWER-UP AI
+// ============================================================
+// The Flap power-up lets the CPU take flight (Space) and body-slam a grounded
+// opponent on the way down. Three pieces:
+//   • pilotFlapFlight  — fly our OWN flight: steer over the opponent, time
+//                        air-flaps, then dive (the slam connects while falling).
+//   • handleFlapOffense — decide WHEN to lift off (engage / punish a whiff).
+//   • handleFlapDefense — react to the OPPONENT's flight (dash the landing or
+//                        parry the slam — the move's intended counters).
+
+// Pick a horizontal flee direction away from the opponent, biased toward center
+// so we don't dash ourselves off the edge.
+function pickFleeDir(cpu, human) {
+  let dir = cpu.x < human.x ? -1 : 1; // away from the opponent
+  if (dir === -1 && distanceToLeftEdge(cpu) < 120) dir = 1;
+  else if (dir === 1 && distanceToRightEdge(cpu) < 120) dir = -1;
+  return dir;
+}
+
+// Pilot an in-progress flight. Startup (grounded telegraph) and landing
+// (recovery) phases are locked — just hold. During flight, steer over the
+// opponent and air-flap to keep enough altitude to reach them, then commit a
+// no-flap dive so gravity brings the body-slam down on top of them.
+function pilotFlapFlight(cpu, human, aiState, currentTime, distance) {
+  resetAllKeys(cpu);
+  if (cpu.flapPhase !== "flight") return;
+
+  const horiz = cpu.x - human.x; // + => cpu is to the right of the opponent
+  const absH = Math.abs(horiz);
+  const aligned = absH <= AI_CONFIG.FLAP_DIVE_ALIGN;
+  const heightAbove = cpu.y - GROUND_LEVEL;
+  const canAirFlap =
+    cpu.flapCharges > 0 &&
+    currentTime - (cpu.lastFlapChargeTime || 0) >= FLAP_CHARGE_COOLDOWN_MS;
+
+  // Face + steer toward the opponent.
+  cpu.facing = horiz > 0 ? 1 : -1;
+  if (!aligned) {
+    if (horiz > 0) cpu.keys.a = true;
+    else cpu.keys.d = true;
+  }
+
+  // Once we've lined up over them, commit to the drop — never flap again.
+  if (aligned) aiState.flapDiveCommitted = true;
+
+  // Otherwise flap to maintain altitude while closing, so we don't fall short.
+  if (
+    !aiState.flapDiveCommitted &&
+    canAirFlap &&
+    !aligned &&
+    heightAbove < AI_CONFIG.FLAP_DIVE_KEEP_HEIGHT
+  ) {
+    cpu.keys[" "] = true;
+    aiState.spaceReleaseTime = currentTime + 50;
+    if (horiz > 0) cpu.keys.a = true;
+    else cpu.keys.d = true;
+  }
+}
+
+// Decide whether to take flight. Best windows: punish an opponent whiff/recovery
+// from range (the slam beats their wake-up), or a mid-range engage mix-up.
+function handleFlapOffense(cpu, human, aiState, currentTime, distance) {
+  if (cpu.activePowerUp !== POWER_UP_TYPES.FLAP) return false;
+  if (cpu.isFlapping) return false; // already airborne — piloting handles it
+  if (!canAct(cpu)) return false;
+  if (cpu.isGassed || cpu.stamina < FLAP_STAMINA_COST + 8) return false;
+  if (currentTime - (aiState.lastFlapTime || 0) < AI_CONFIG.FLAP_COOLDOWN) return false;
+  if (human.isAttacking) return false; // don't lift into a slap (startup is interruptible)
+
+  const horiz = Math.abs(cpu.x - human.x);
+  const punishing =
+    (human.isRecovering ||
+      human.isInEndlag ||
+      human.isWhiffingGrab ||
+      human.isGrabWhiffRecovery ||
+      human.isRawParryStun) &&
+    horiz < AI_CONFIG.FLAP_PUNISH_RANGE;
+  const engage = horiz >= AI_CONFIG.FLAP_MIN_RANGE && horiz <= AI_CONFIG.FLAP_MAX_RANGE;
+  if (!punishing && !engage) return false;
+
+  const aggMult = getAggressionMultiplier(aiState);
+  const useChance = punishing ? 0.85 : AI_CONFIG.FLAP_USE_CHANCE * aggMult.attack;
+  if (!chance(useChance)) {
+    // Don't re-roll every tick — wait most of the cooldown before trying again.
+    aiState.lastFlapTime = currentTime - AI_CONFIG.FLAP_COOLDOWN + 600;
+    return false;
+  }
+
+  resetAllKeys(cpu);
+  cpu.facing = cpu.x < human.x ? -1 : 1;
+  cpu.keys[" "] = true;
+  aiState.spaceReleaseTime = currentTime + 60;
+  aiState.lastFlapTime = currentTime;
+  aiState.flapDiveCommitted = false;
+  aiState.lastDecisionTime = currentTime;
+  aiState.lastActionType = "flap_liftoff";
+  return true;
+}
+
+// React to the OPPONENT flying. They're hit-immune in flight, so the answers are
+// the move's intended counters: dash out from under the landing, or parry the
+// body-slam (which beats it via resolveFlapRawParry). While they're still rising
+// or far, just drift out of the landing lane.
+function handleFlapDefense(cpu, human, aiState, currentTime, distance) {
+  if (!human.isFlapping || human.flapPhase !== "flight") return false;
+  if (cpu.isFlapping) return false; // we're airborne too — our pilot handles us
+  if (!canAct(cpu)) return false;
+
+  const horiz = Math.abs(cpu.x - human.x);
+  const descending = (human.flapVelocityY ?? 0) <= 0;
+  const flapperHeight = human.y - GROUND_LEVEL;
+
+  // Not an imminent slam (rising or far): sidestep out of the landing lane.
+  if (!descending || horiz > AI_CONFIG.FLAP_DEF_RANGE) {
+    if (
+      horiz < AI_CONFIG.FLAP_DEF_RANGE * 1.5 &&
+      currentTime - aiState.lastDecisionTime > AI_CONFIG.DECISION_COOLDOWN
+    ) {
+      resetAllKeys(cpu);
+      const dir = pickFleeDir(cpu, human);
+      if (dir === 1) cpu.keys.d = true;
+      else cpu.keys.a = true;
+      aiState.lastDecisionTime = currentTime;
+      aiState.lastActionType = "flap_evade";
+      return true;
+    }
+    return false;
+  }
+
+  // Imminent slam — react once, with human-like jitter.
+  if (aiState.flapReactTarget !== "incoming") {
+    aiState.flapReactTarget = "incoming";
+    aiState.flapReactDetectTime = currentTime;
+    aiState.flapReactDelay = randomInRange(
+      AI_CONFIG.REACTION_JITTER_MIN,
+      AI_CONFIG.REACTION_JITTER_MAX
+    );
+    aiState.flapReactProcessed = false;
+  }
+  if (aiState.flapReactProcessed) return false; // already committed this descent
+  if (currentTime - aiState.flapReactDetectTime < aiState.flapReactDelay) return false;
+  aiState.flapReactProcessed = true;
+
+  const roll = Math.random();
+  const canParryHit = cpu.activePowerUp !== POWER_UP_TYPES.FLAP; // FLAP replaces parry
+  const aboutToLand = flapperHeight < AI_CONFIG.FLAP_DEF_REACT_HEIGHT;
+
+  // Primary: dash out from under the landing.
+  if (canDodge(cpu) && roll < AI_CONFIG.FLAP_DODGE_CHANCE) {
+    resetAllKeys(cpu);
+    cpu.keys.shift = true;
+    const dir = pickFleeDir(cpu, human);
+    if (dir === 1) cpu.keys.d = true;
+    else cpu.keys.a = true;
+    aiState.shiftReleaseTime = currentTime + 80;
+    aiState.lastDecisionTime = currentTime;
+    aiState.lastActionType = "flap_dash";
+    return true;
+  }
+  // Secondary: parry the slam as it arrives (punishes the flapper).
+  if (
+    canParryHit &&
+    aboutToLand &&
+    canParry(cpu) &&
+    roll < AI_CONFIG.FLAP_DODGE_CHANCE + AI_CONFIG.FLAP_PARRY_CHANCE
+  ) {
+    resetAllKeys(cpu);
+    cpu.keys.s = true;
+    aiState.pendingParry = true;
+    aiState.parryStartTime = currentTime;
+    aiState.parryReleaseTime = currentTime + randomInRange(120, 220);
+    aiState.lastDecisionTime = currentTime;
+    aiState.lastActionType = "flap_parry";
+    return true;
+  }
+
+  return false;
+}
+
 // CRITICAL: Handle escaping from corner
 function handleCornerEscape(cpu, human, aiState, currentTime, distance, corneredSide) {
   resetAllKeys(cpu);
@@ -1385,7 +1618,9 @@ function handleDefensiveReaction(cpu, human, aiState, currentTime, distance, und
     ? AI_CONFIG.PRESSURE_PARRY_BOOST
     : AI_CONFIG.PARRY_CHANCE * aggMult.defense;
   
-  if (roll < parryChance && canParry(cpu)) {
+  // FLAP replaces raw parry entirely — a flap-CPU can't parry, so skip straight
+  // to the dodge option (vs charged) rather than mashing a dead 's'.
+  if (cpu.activePowerUp !== POWER_UP_TYPES.FLAP && roll < parryChance && canParry(cpu)) {
     resetAllKeys(cpu);
     cpu.keys.s = true;
     aiState.lastAttackReactionTime = currentTime;
@@ -2075,7 +2310,39 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     else Object.assign(cpu._prevKeys, cpu.keys);
     return;
   }
-  
+
+  // Process FLAP (Space) — mirrors the human handler in socketHandlers.
+  // Liftoff begins a grounded startup; while airborne (flight phase) a press
+  // spends a charge for another wing-beat. Air-flaps are reachable here because
+  // the flight phase clears actionLock and isn't in shouldBlockAction().
+  if (keyJustPressed(" ") && cpu.activePowerUp === POWER_UP_TYPES.FLAP) {
+    if (cpu.isFlapping && cpu.flapPhase === "flight") {
+      if (
+        cpu.flapCharges > 0 &&
+        currentTime - (cpu.lastFlapChargeTime || 0) >= FLAP_CHARGE_COOLDOWN_MS
+      ) {
+        cpu.flapCharges -= 1;
+        cpu.flapVelocityY = FLAP_IMPULSE;
+        if (cpu.keys.d && !cpu.keys.a) {
+          cpu.flapVelocityX = FLAP_FLAP_H_IMPULSE;
+          cpu.facing = -1;
+        } else if (cpu.keys.a && !cpu.keys.d) {
+          cpu.flapVelocityX = -FLAP_FLAP_H_IMPULSE;
+          cpu.facing = 1;
+        }
+        cpu.flapWingBeatTime = currentTime;
+        cpu.lastFlapChargeTime = currentTime;
+      }
+      Object.assign(cpu._prevKeys, cpu.keys);
+      return;
+    }
+    if (!cpu.isFlapping) {
+      beginFlapStartup(cpu, currentTime); // gates stamina/gassed internally
+      Object.assign(cpu._prevKeys, cpu.keys);
+      return;
+    }
+  }
+
   // Process slap attack
   if (keyJustPressed("mouse1") && canPlayerSlap(cpu) && !shouldBlockAction()) {
     executeSlapAttack(cpu, rooms);
@@ -2258,8 +2525,9 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     }
   }
 
-  // Process raw parry
+  // Process raw parry — FLAP replaces raw parry entirely (same as humans).
   if (keyJustPressed("s") && 
+      cpu.activePowerUp !== POWER_UP_TYPES.FLAP &&
       !shouldBlockAction() &&
       !cpu.isRawParrying &&
       !cpu.isRawParryStun &&

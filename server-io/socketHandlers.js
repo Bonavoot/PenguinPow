@@ -4,6 +4,7 @@ const {
   HITBOX_DISTANCE_VALUE, DOHYO_FALL_DEPTH,
   DODGE_DURATION, DODGE_STAMINA_COST,
   ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST, ROPE_JUMP_BOUNDARY_ZONE,
+  FLAP_STARTUP_MS, FLAP_CHARGES, FLAP_IMPULSE, FLAP_FLAP_H_IMPULSE, FLAP_STAMINA_COST, FLAP_CHARGE_COOLDOWN_MS,
   DODGE_SLIDE_MOMENTUM, DODGE_POWERSLIDE_BOOST,
   DODGE_STARTUP_MS,
   SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS,
@@ -28,6 +29,7 @@ const {
   canPlayerUseAction,
   shouldRestartCharging,
   startCharging,
+  beginFlapStartup,
   gameNow,
   simNowForPlayer,
 } = require("./gameUtils");
@@ -311,7 +313,16 @@ function processInputPacket(room, player, data, io, rooms) {
       } else {
         // Non-slap states: use generic inputBuffer
         if (rising[" "]) {
-          player.inputBuffer = { type: "rawParry", timestamp: simNowForPlayer(player) };
+          // Flap power-up replaces raw parry on Space (the grab/clinch break
+          // has its own handler and is unaffected). Don't buffer a liftoff
+          // while already airborne — the air-flap re-press path owns that.
+          if (player.activePowerUp === POWER_UP_TYPES.FLAP) {
+            if (!player.isFlapping) {
+              player.inputBuffer = { type: "flap", timestamp: simNowForPlayer(player) };
+            }
+          } else {
+            player.inputBuffer = { type: "rawParry", timestamp: simNowForPlayer(player) };
+          }
         } else if (rising.shift && data.keys.s && !data.keys.mouse2) {
           player.inputBuffer = { type: "sidestep", timestamp: simNowForPlayer(player) };
         } else if (rising.shift && !data.keys.mouse2) {
@@ -386,6 +397,12 @@ function processInputPacket(room, player, data, io, rooms) {
     ) {
       return true;
     }
+    // Block all other actions while flapping (startup, flight, landing). The
+    // air-flap re-press is handled on its own Space path, not through here, so
+    // this only stops slap/grab/dodge/charge/etc. from firing mid-flight.
+    if (player.isFlapping) {
+      return true;
+    }
     // Block all actions when at the ropes
     if (player.isAtTheRopes) {
       return true;
@@ -451,7 +468,15 @@ function processInputPacket(room, player, data, io, rooms) {
     // The game loop processes the buffer on the first actionable frame.
     if (shouldBlockAction()) {
       if (player.spaceJustPressed) {
-        player.inputBuffer = { type: "rawParry", timestamp: simNowForPlayer(player) };
+        // Don't buffer a flap liftoff while already airborne (air-flap path
+        // handles mid-flight re-presses).
+        if (player.activePowerUp === POWER_UP_TYPES.FLAP) {
+          if (!player.isFlapping) {
+            player.inputBuffer = { type: "flap", timestamp: simNowForPlayer(player) };
+          }
+        } else {
+          player.inputBuffer = { type: "rawParry", timestamp: simNowForPlayer(player) };
+        }
       } else if (player.shiftJustPressed && data.keys.s && !data.keys.mouse2) {
         player.inputBuffer = { type: "sidestep", timestamp: simNowForPlayer(player) };
       } else if (player.shiftJustPressed && !data.keys.mouse2) {
@@ -495,10 +520,80 @@ function processInputPacket(room, player, data, io, rooms) {
     // ============================================
   }
 
+  // SPACE PRESS with FLAP power-up: take flight instead of raw parry.
+  // - On the ground → begin the grounded liftoff startup (interruptible).
+  // - Already airborne (flight phase) → spend a charge for another wing-beat.
+  // The grab/clinch break has its own Space handler (gated on inClinch/hasGrip)
+  // and is intentionally left intact — Flap only replaces the raw parry.
+  if (
+    player.spaceJustPressed &&
+    player.activePowerUp === POWER_UP_TYPES.FLAP
+  ) {
+    const nowSim = simNowForPlayer(player);
+    if (player.isFlapping && player.flapPhase === "flight") {
+      // Air flap: spend a charge for another upward beat (throttled so the
+      // wing-beat animation has room to read — see FLAP_CHARGE_COOLDOWN_MS).
+      if (
+        player.flapCharges > 0 &&
+        nowSim - (player.lastFlapChargeTime || 0) >= FLAP_CHARGE_COOLDOWN_MS
+      ) {
+        player.flapCharges -= 1;
+        player.flapVelocityY = FLAP_IMPULSE;
+        // Directional flap = diagonal lunge; neutral flap = pure vertical beat.
+        if (player.keys.d && !player.keys.a) {
+          player.flapVelocityX = FLAP_FLAP_H_IMPULSE;
+          player.facing = -1;
+        } else if (player.keys.a && !player.keys.d) {
+          player.flapVelocityX = -FLAP_FLAP_H_IMPULSE;
+          player.facing = 1;
+        }
+        player.flapWingBeatTime = nowSim;
+        player.lastFlapChargeTime = nowSim;
+      }
+    } else if (
+      !player.isFlapping &&
+      !shouldBlockAction() &&
+      !player.isRawParrying &&
+      !player.isRawParryStun &&
+      !player.grabBreakSpaceConsumed &&
+      !player.isSidestepping &&
+      !player.isRopeJumping &&
+      !player.isGrabbing &&
+      !player.isBeingGrabbed &&
+      !player.isGrabStartup &&
+      !player.isGrabbingMovement &&
+      !player.isWhiffingGrab &&
+      !player.isGrabClashing &&
+      !player.isThrowing &&
+      !player.isBeingThrown &&
+      !player.isAttacking &&
+      !player.isHit &&
+      !player.isThrowingSnowball &&
+      !player.isSpawningPumoArmy &&
+      !player.canMoveToReady
+    ) {
+      // Liftoff if affordable; otherwise surface the "out of stamina" cue and
+      // do nothing (no fallback to raw parry — Flap fully replaces it).
+      const lifted = beginFlapStartup(player, nowSim);
+      if (
+        !lifted &&
+        (!player.lastStaminaBlockedTime ||
+          nowSim - player.lastStaminaBlockedTime > 500)
+      ) {
+        player.lastStaminaBlockedTime = nowSim;
+        io.to(player.id).emit("stamina_blocked", {
+          playerId: player.id,
+          action: "flap",
+        });
+      }
+    }
+  }
+
   // SPACE PRESS: Fire raw parry immediately for zero-tick-delay responsiveness
   // Same pattern as slap — execute on the socket event instead of waiting for the game tick
   if (
     player.spaceJustPressed &&
+    player.activePowerUp !== POWER_UP_TYPES.FLAP &&
     !shouldBlockAction() &&
     !player.isRawParrying &&
     !player.isRawParryStun &&

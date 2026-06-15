@@ -4,6 +4,7 @@ import snowballImage from "../assets/snowball.png";
 import powerWaterIcon from "../assets/power-water.png";
 import pumoArmyIcon from "./pumo-army-icon.png";
 import happyFeetIcon from "../assets/happy-feet.png";
+import flapIcon from "../assets/flap-icon.png";
 
 const PowerUpUI = ({
   activePowerUp,
@@ -69,6 +70,17 @@ const PowerUpUI = ({
             ready:
               "linear-gradient(135deg, #9c88ff 0%, #7c4dff 30%, #5e35b1 100%)",
             border: "#5e35b1",
+          },
+        };
+      case "flap":
+        return {
+          icon: flapIcon,
+          isImage: true,
+          name: "Flap",
+          colors: {
+            ready:
+              "linear-gradient(135deg, #c8fff4 0%, #34e0c0 30%, #15705f 100%)",
+            border: "#15705f",
           },
         };
       default:

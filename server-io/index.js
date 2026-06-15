@@ -42,6 +42,10 @@ const {
   AT_THE_ROPES_DURATION,
   ROPE_JUMP_STARTUP_MS, ROPE_JUMP_ACTIVE_MS, ROPE_JUMP_LANDING_RECOVERY_MS,
   ROPE_JUMP_ARC_HEIGHT,
+  FLAP_STARTUP_MS, FLAP_LIFTOFF_IMPULSE, FLAP_IMPULSE, FLAP_GRAVITY, FLAP_MAX_HEIGHT,
+  FLAP_AIR_MOVE_SPEED, FLAP_CEILING_CUSHION, FLAP_CEILING_HANG_GRAVITY,
+  FLAP_FLAP_H_IMPULSE, FLAP_H_FRICTION,
+  FLAP_LANDING_RECOVERY_MS, FLAP_HIT_LANDING_DESCENT_MS,
   HIT_FALL_BASE_MS,
   HIT_FALL_HEIGHT_SCALE,
   HIT_FALL_POP_FRACTION,
@@ -146,7 +150,7 @@ const { updateCPUAI, processCPUInputs } = require("./cpuAI");
 const { updateImpossibleAI } = require("./cpuAI_impossible");
 
 // Import collision system
-const { checkCollision } = require("./collisionSystem");
+const { checkCollision, checkFlapBodySlam } = require("./collisionSystem");
 
 // Import projectile updates (snowballs + pumo army)
 const { updateProjectiles } = require("./projectileUpdates");
@@ -510,25 +514,27 @@ function tick(delta) {
             // The pull-kill victim keeps its preserved facing (excluded below) so it
             // doesn't flip as it slides through/past the thrower. The thrower itself
             // is NOT excluded — its facing still responds naturally.
-            if (!player1.slapFacingDirection && !player1.isAttacking && !player1.atTheRopesFacingDirection && !player1.isClinchKillPullVictim && player1.x < player2.x) {
+            if (!player1.slapFacingDirection && !player1.isAttacking && !player1.atTheRopesFacingDirection && !player1.isClinchKillPullVictim && !player1.isFlapping && player1.x < player2.x) {
               player1.facing = -1;
             } else if (
               !player1.slapFacingDirection &&
               !player1.isAttacking &&
               !player1.atTheRopesFacingDirection &&
               !player1.isClinchKillPullVictim &&
+              !player1.isFlapping &&
               player1.x >= player2.x
             ) {
               player1.facing = 1;
             }
 
-            if (!player2.slapFacingDirection && !player2.isAttacking && !player2.atTheRopesFacingDirection && !player2.isClinchKillPullVictim && player1.x < player2.x) {
+            if (!player2.slapFacingDirection && !player2.isAttacking && !player2.atTheRopesFacingDirection && !player2.isClinchKillPullVictim && !player2.isFlapping && player1.x < player2.x) {
               player2.facing = 1;
             } else if (
               !player2.slapFacingDirection &&
               !player2.isAttacking &&
               !player2.atTheRopesFacingDirection &&
               !player2.isClinchKillPullVictim &&
+              !player2.isFlapping &&
               player1.x >= player2.x
             ) {
               player2.facing = -1;
@@ -560,6 +566,15 @@ function tick(delta) {
       }
       if (player2.isAttacking) {
         checkCollision(player2, player1, rooms, io);
+      }
+
+      // Flap body-slam: a descending flapper that drops onto the grounded
+      // opponent. Polled every tick (it isn't a regular `isAttacking` strike).
+      if (player1.isFlapping) {
+        checkFlapBodySlam(player1, player2, rooms, io);
+      }
+      if (player2.isFlapping) {
+        checkFlapBodySlam(player2, player1, rooms, io);
       }
 
       if (
@@ -1100,7 +1115,7 @@ function tick(delta) {
             Math.abs(player.x - opponent.x) < SIDESTEP_GRAB_TRACK_RANGE;
           const normalGrabInRange = opponent && !opponentSidestepping && isOpponentCloseEnoughForGrab(player, opponent) && isOpponentInFrontOfGrabber(player, opponent);
 
-          if (opponent && !(opponent.isRopeJumping && opponent.ropeJumpPhase === "active") && (normalGrabInRange || sidestepTrackInRange)) {
+          if (opponent && !(opponent.isRopeJumping && opponent.ropeJumpPhase === "active") && !(opponent.isFlapping && opponent.flapPhase === "flight") && (normalGrabInRange || sidestepTrackInRange)) {
             // === TECH CHECK: opponent also in grab startup → both tech ===
             // Whiffing players CANNOT tech — they are fully vulnerable.
             // Also check if opponent's startup has already expired AND their grab
@@ -1697,7 +1712,15 @@ function tick(delta) {
           // phase-through would just produce a messy hit landing while bodies
           // overlap, so dodge now always pushbox-collides regardless of
           // opponent attack type.
-          if (dodgeOpponent && !dodgeOpponent.isDead) {
+          // EXCEPTION: an airborne opponent has no ground pushbox — you can dash
+          // freely underneath them. Covers a flapper in flight (only their
+          // descending body-slam connects) and a rope-jumper in its airborne
+          // active arc (both are hit-immune while overhead).
+          const dodgeOppAirborne =
+            dodgeOpponent &&
+            ((dodgeOpponent.isFlapping && dodgeOpponent.flapPhase === "flight") ||
+              (dodgeOpponent.isRopeJumping && dodgeOpponent.ropeJumpPhase === "active"));
+          if (dodgeOpponent && !dodgeOpponent.isDead && !dodgeOppAirborne) {
             const bodyWidth = HITBOX_DISTANCE_VALUE * 2 * Math.max(player.sizeMultiplier || 1, dodgeOpponent.sizeMultiplier || 1);
             const wouldOverlap = Math.abs(newX - dodgeOpponent.x) < bodyWidth;
             if (wouldOverlap) {
@@ -1864,7 +1887,13 @@ function tick(delta) {
             // width pushes ANY clipping landing out to a clean position.
             const pushboxWidth = HITBOX_DISTANCE_VALUE * 2 *
               Math.max(player.sizeMultiplier || 1, sidestepOpponent.sizeMultiplier || 1);
-            if (currentDist < pushboxWidth && passedOpponent) {
+            // Don't push out from under an airborne opponent — they have no
+            // ground pushbox, so a sidestep should settle freely beneath them
+            // (flapper in flight or rope-jumper in its airborne active arc).
+            const sidestepOppAirborne =
+              (sidestepOpponent.isFlapping && sidestepOpponent.flapPhase === "flight") ||
+              (sidestepOpponent.isRopeJumping && sidestepOpponent.ropeJumpPhase === "active");
+            if (currentDist < pushboxWidth && passedOpponent && !sidestepOppAirborne) {
               const idealX = sidestepOpponent.x + player.sidestepDirection * LANDING_SEP;
               player.sidestepRecoveryTargetX = Math.max(MAP_LEFT_BOUNDARY,
                 Math.min(idealX, MAP_RIGHT_BOUNDARY));
@@ -1982,6 +2011,166 @@ function tick(delta) {
         }
       }
 
+      // ── FLAP flight physics ──
+      // Flappy-bird integrator: each press sets flapVelocityY to FLAP_IMPULSE
+      // (handled on the input edge), gravity pulls it down here every tick.
+      // Airborne = hit-immune (see collisionSystem); while DESCENDING the
+      // flapper is an attacker that body-slams a grounded opponent.
+      if (player.isFlapping) {
+        const flapOpponent = room.players.find((p) => p.id !== player.id);
+
+        if (player.flapPhase === "startup") {
+          // Grounded telegraph. Interruptible — a hit here runs
+          // clearAllActionStates and cancels the whole flap.
+          if (now >= player.flapStartTime + FLAP_STARTUP_MS) {
+            player.flapPhase = "flight";
+            // Liftoff is FREE — it does not consume a charge. The player keeps
+            // all FLAP_CHARGES air flaps to spend while airborne. Liftoff uses a
+            // taller impulse than air flaps so take-off launches noticeably high.
+            player.flapVelocityY = FLAP_LIFTOFF_IMPULSE;
+            // Directional liftoff lunges forward too (diagonal arc); a neutral
+            // liftoff stays vertical.
+            if (player.keys.d && !player.keys.a) {
+              player.flapVelocityX = FLAP_FLAP_H_IMPULSE;
+              player.facing = -1;
+            } else if (player.keys.a && !player.keys.d) {
+              player.flapVelocityX = -FLAP_FLAP_H_IMPULSE;
+              player.facing = 1;
+            } else {
+              player.flapVelocityX = 0;
+            }
+            player.flapWingBeatTime = now;
+            player.lastFlapChargeTime = now;
+            player.actionLockUntil = 0; // free to turn / air-flap immediately
+          }
+        } else if (player.flapPhase === "flight") {
+          // Vertical integration with a SOFT CEILING (see constants).
+          const ceiling = GROUND_LEVEL + FLAP_MAX_HEIGHT;
+          const cushionStart = ceiling - FLAP_CEILING_CUSHION;
+          const inCeilingZone = player.y > cushionStart;
+
+          // 1) Glide-to-stop: bleed off upward speed proportionally to how deep
+          //    into the cushion the wrestler is, so flapping into the ceiling
+          //    eases to a halt instead of slamming and rebounding.
+          if (inCeilingZone && player.flapVelocityY > 0) {
+            const into = Math.min(
+              1,
+              (player.y - cushionStart) / FLAP_CEILING_CUSHION
+            ); // 0 at band entry → 1 at the cap
+            player.flapVelocityY *= Math.max(0, 1 - into);
+          }
+
+          // 2) Peak hang: softened gravity inside the band lets them float at the
+          //    top for a beat; full gravity resumes the instant they drop below
+          //    it, keeping the fall fast (position-based, so it's stateless and
+          //    leaves normal mid-air arcs untouched).
+          const gravity = inCeilingZone
+            ? FLAP_CEILING_HANG_GRAVITY
+            : FLAP_GRAVITY;
+          player.flapVelocityY -= gravity;
+          player.y += player.flapVelocityY;
+
+          // Hard cap on position only (velocity already bled off above).
+          if (player.y > ceiling) {
+            player.y = ceiling;
+            if (player.flapVelocityY > 0) player.flapVelocityY = 0;
+          }
+
+          // Horizontal air control — free facing, independent of the opponent.
+          // Steering drift (held A/D) layered with the per-flap lunge burst
+          // (flapVelocityX, set on a directional press) which decays via friction.
+          if (player.keys.d && !player.keys.a) {
+            player.x += FLAP_AIR_MOVE_SPEED;
+            player.facing = -1;
+          } else if (player.keys.a && !player.keys.d) {
+            player.x -= FLAP_AIR_MOVE_SPEED;
+            player.facing = 1;
+          }
+          if (player.flapVelocityX !== 0) {
+            player.x += player.flapVelocityX;
+            player.flapVelocityX *= FLAP_H_FRICTION;
+            if (Math.abs(player.flapVelocityX) < 0.1) player.flapVelocityX = 0;
+          }
+          player.x = Math.max(MAP_LEFT_BOUNDARY, Math.min(player.x, MAP_RIGHT_BOUNDARY));
+
+          // Landing: touched ground while descending (or out of charges). This
+          // is the WHIFF path only — a connected body-slam transitions to the
+          // "landing" phase from collisionSystem while still airborne (and gets
+          // the synced hit-landing tween below).
+          if (player.y <= GROUND_LEVEL && player.flapVelocityY <= 0) {
+            player.y = GROUND_LEVEL;
+            player.flapVelocityY = 0;
+            player.flapPhase = "landing";
+            player.flapLandingTime = now;
+            player.actionLockUntil = now + FLAP_LANDING_RECOVERY_MS;
+            emitThrottledScreenShake(room, io, { type: "rope_landing" });
+          }
+        } else if (player.flapPhase === "landing") {
+          // Hit-landing recovers in lockstep with the victim (flapHitRecoverDuration);
+          // a whiff uses the longer punish window.
+          const recovery = player.flapHitLanded
+            ? player.flapHitRecoverDuration
+            : FLAP_LANDING_RECOVERY_MS;
+
+          // Connected slam, two-stage ground-down handling:
+          //   1) DROP STRAIGHT DOWN (Y only, no horizontal) — fast, ease-IN so
+          //      it accelerates into the dirt (weighty, not floaty).
+          //   2) Once grounded, a small knockback SLIDE along the ground (X only,
+          //      ease-OUT decel) during the remaining recovery. No mid-air shove.
+          // They sit in recovering.png until the synced recovery ends (no advantage).
+          if (player.flapHitLanded) {
+            const elapsed = now - player.flapLandingTime;
+            const descentMs = FLAP_HIT_LANDING_DESCENT_MS;
+            if (elapsed < descentMs && player.flapHitLandStartY > GROUND_LEVEL) {
+              // Stage 1 — straight-down drop. X frozen at the connect position.
+              const t = descentMs > 0 ? Math.min(1, elapsed / descentMs) : 1;
+              const eased = t * t; // ease-IN
+              player.y =
+                player.flapHitLandStartY +
+                (GROUND_LEVEL - player.flapHitLandStartY) * eased;
+              player.x = player.flapHitLandStartX;
+            } else {
+              // Stage 2 — grounded slide. Y pinned; X eases to the pushback target.
+              player.y = GROUND_LEVEL;
+              const slideMs = Math.max(1, recovery - descentMs);
+              const st = Math.min(1, (elapsed - descentMs) / slideMs);
+              const slideEased = 1 - Math.pow(1 - st, 2); // ease-OUT — slide decel
+              player.x =
+                player.flapHitLandStartX +
+                (player.flapHitLandTargetX - player.flapHitLandStartX) * slideEased;
+              player.x = Math.max(
+                MAP_LEFT_BOUNDARY,
+                Math.min(player.x, MAP_RIGHT_BOUNDARY)
+              );
+            }
+          }
+
+          if (now >= player.flapLandingTime + recovery) {
+            player.y = GROUND_LEVEL;
+            player.isFlapping = false;
+            player.flapPhase = null;
+            player.flapCharges = 0;
+            player.flapVelocityY = 0;
+            player.flapVelocityX = 0;
+            player.flapStartTime = 0;
+            player.flapLandingTime = 0;
+            player.flapWingBeatTime = 0;
+            player.flapHitLanded = false;
+            player.flapHitLandStartY = 0;
+            player.flapHitLandStartX = 0;
+            player.flapHitLandTargetX = 0;
+            player.flapHitRecoverDuration = 0;
+            player.lastFlapChargeTime = 0;
+            player.currentAction = null;
+            player.actionLockUntil = 0;
+
+            if (flapOpponent) {
+              player.facing = player.x < flapOpponent.x ? -1 : 1;
+            }
+          }
+        }
+      }
+
       // ── Hit Fall — parametric arc back to ground after airborne hit ──
       if (player.isHitFalling) {
         const heightAboveGround = player.hitFallStartY - GROUND_LEVEL;
@@ -2076,6 +2265,7 @@ function tick(delta) {
           opponent &&
           !opponent.isGrabbingMovement &&
           !(opponent.isRopeJumping && opponent.ropeJumpPhase === "active") &&
+          !(opponent.isFlapping && opponent.flapPhase === "flight") &&
           isOpponentCloseEnoughForGrab(player, opponent) &&
           isOpponentInFrontOfGrabber(player, opponent) &&
           !opponent.isBeingThrown &&
@@ -2424,6 +2614,7 @@ function tick(delta) {
           !player.isDodging &&
           !player.isSidestepping &&
           !player.isRopeJumping &&
+          !player.isFlapping &&
           !player.isThrowing &&
           !player.isGrabbing &&
           !player.isGrabbingMovement &&
@@ -2508,6 +2699,7 @@ function tick(delta) {
           !player.isDodging &&
           !player.isSidestepping &&
           !player.isRopeJumping &&
+          !player.isFlapping &&
           !player.isThrowing &&
           !player.isGrabbing &&
           !player.isGrabbingMovement &&
@@ -2796,7 +2988,8 @@ function tick(delta) {
           player.isHit || // Add isHit to force clear strafing when parried
           player.isRawParrying || // Add isRawParrying to force clear strafing during raw parry
           player.isAtTheRopes || // Block strafing while at the ropes
-          player.isRopeJumping // Block strafing during rope jump
+          player.isRopeJumping || // Block strafing during rope jump
+          player.isFlapping // Block ground strafing during flap (air control is separate)
         ) {
           player.isStrafing = false;
           // Don't immediately stop on ice unless hit or rope jumping
@@ -2809,7 +3002,10 @@ function tick(delta) {
           }
         }
 
-        if (player.y > GROUND_LEVEL && !player.isRopeJumping && !player.isHitFalling) {
+        // Gravity-snap to ground for stray elevated states. Flap owns its own Y
+        // integration (it can be above GROUND_LEVEL mid-flight), so exclude it
+        // here — otherwise this would yank the flapper straight back down.
+        if (player.y > GROUND_LEVEL && !player.isRopeJumping && !player.isFlapping && !player.isHitFalling) {
           player.y -= delta * speedFactor + 10;
           player.y = Math.max(player.y, GROUND_LEVEL);
         }
@@ -2889,6 +3085,8 @@ function tick(delta) {
       // raw parry
       if (
         player.keys[" "] &&
+        player.activePowerUp !== POWER_UP_TYPES.FLAP && // Flap replaces raw parry on Space
+        !player.isFlapping &&
         !player.isGrabBreaking && // Block raw parry while grab break is active
         !player.isGrabBreakCountered && // Block while countered by grab break
         !player.isGrabBreakSeparating && // Block during grab break separation
@@ -3049,9 +3247,17 @@ function tick(delta) {
             (attackDirection === -1 && newX < player.x)
           ) {
             // Prevent attacker from passing through opponent during charged attack
-            // This ensures the attack direction and facing remain consistent
+            // This ensures the attack direction and facing remain consistent.
+            // EXCEPTION: an airborne opponent has no ground pushbox — a charged
+            // attack passes freely underneath them. Covers a flapper in flight
+            // and a rope-jumper in its airborne active arc (both hit-immune while
+            // overhead; only the flapper's descending body-slam connects).
             const opponent = room.players.find(p => p.id !== player.id && !p.isDead);
-            if (opponent && !opponent.isDodging && !opponent.isSidestepping) {
+            const oppAirborne =
+              opponent &&
+              ((opponent.isFlapping && opponent.flapPhase === "flight") ||
+                (opponent.isRopeJumping && opponent.ropeJumpPhase === "active"));
+            if (opponent && !opponent.isDodging && !opponent.isSidestepping && !oppAirborne) {
               const minDistance = 30; // Scaled for camera zoom (was 40)
               const playerToLeft = player.x < opponent.x;
               const playerToRight = player.x > opponent.x;

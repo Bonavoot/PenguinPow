@@ -189,6 +189,25 @@ function createInitialPlayerState(overrides = {}) {
     ropeJumpLandingTime: 0,
     ropeJumpBufferedAttackRelease: 0,
 
+    // === Flap (flight power-up) ===
+    isFlapping: false,
+    flapPhase: null, // "startup" | "flight" | "landing"
+    flapCharges: 0, // Remaining flaps in the current flight
+    flapVelocityY: 0, // Vertical velocity (px/tick); + = rising, - = falling
+    flapVelocityX: 0, // Horizontal lunge velocity (px/tick) from directional flaps; decays via friction
+    flapStartTime: 0,
+    flapLandingTime: 0,
+    flapWingBeatTime: 0, // Timestamp of the last flap — drives the flap2→flap1 wing-beat
+    flapHitLanded: false, // Did the descending body-slam connect this flight?
+    lastFlapChargeTime: 0, // Throttles air flaps (FLAP_CHARGE_COOLDOWN_MS)
+    // Hit-landing tween: when the body-slam connects mid-air the flapper is
+    // smoothly eased down to the ground (+ a small pushback) over a recovery
+    // window synced to the victim's hitstun, so neither side gains advantage.
+    flapHitLandStartY: 0, // Airborne Y at the moment of the connect (tween start)
+    flapHitLandStartX: 0, // X at the moment of the connect (tween start)
+    flapHitLandTargetX: 0, // X after the small non-hit pushback (tween end)
+    flapHitRecoverDuration: 0, // Recovery window (ms) — matches the victim's stun
+
     // === Throws ===
     isThrowing: false,
     isBeingThrown: false,

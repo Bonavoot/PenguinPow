@@ -77,8 +77,11 @@ function handlePowerUpSelection(room, io) {
 
   room.players.forEach((player) => {
     player.isInRitualPhase = true;
-    
-    const shuffled = [...allPowerUps].sort(() => Math.random() - 0.5);
+
+    // CPUs can now pilot Flap (see flight AI in cpuAI.js / cpuAI_impossible.js),
+    // so it's part of their pool just like human players.
+    const pool = allPowerUps;
+    const shuffled = [...pool].sort(() => Math.random() - 0.5);
     const availablePowerUps = shuffled.slice(0, 3);
 
     room.playerAvailablePowerUps[player.id] = availablePowerUps;
@@ -222,6 +225,20 @@ function resetRoomAndPlayers(room, io) {
     player.ropeJumpActiveStartTime = 0;
     player.ropeJumpLandingTime = 0;
     player.ropeJumpBufferedAttackRelease = 0;
+    player.isFlapping = false;
+    player.flapPhase = null;
+    player.flapCharges = 0;
+    player.flapVelocityY = 0;
+    player.flapVelocityX = 0;
+    player.flapStartTime = 0;
+    player.flapLandingTime = 0;
+    player.flapWingBeatTime = 0;
+    player.flapHitLanded = false;
+    player.flapHitLandStartY = 0;
+    player.flapHitLandStartX = 0;
+    player.flapHitLandTargetX = 0;
+    player.flapHitRecoverDuration = 0;
+    player.lastFlapChargeTime = 0;
     player.isHitFalling = false;
     player.hitFallStartTime = 0;
     player.hitFallStartY = 0;

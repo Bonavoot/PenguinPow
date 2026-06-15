@@ -495,6 +495,11 @@ const GameFighter = ({
   // component, so visual windows are deadlines checked by the rAF loop.
   const idleHoldUntilRef = useRef(0);
   const IDLE_HOLD_MS = 34; // ~2 frames @60fps
+  // FLAP wing-beat: each new flapWingBeatTime from the server snaps the wings
+  // DOWN (flap2) for FLAP_WINGBEAT_MS, then back up (flap1). Change-detected
+  // against a local clock so it doesn't need server sim-clock alignment.
+  const flapBeatRef = useRef({ beat: 0, startedAt: 0 });
+  const FLAP_WINGBEAT_MS = 90; // ~down-stroke hold (snappy wing flap)
 
   const [penguin, setPenguin] = useState({
     id: "",
@@ -1650,7 +1655,8 @@ const GameFighter = ({
               p.isThrowing ||
               p.isBeingThrown ||
               p.isRingOutThrowCutscene ||
-              p.isRopeJumping);
+              p.isRopeJumping ||
+              p.isFlapping);
           const shadowY = forceGround ? SHADOW_GROUND_LEVEL : newPos.y;
           shadowEl.style.left = plainLeftPct;
           shadowEl.style.bottom = `${(shadowY / 720) * 100 - 0.2}%`;
@@ -1679,6 +1685,8 @@ const GameFighter = ({
         (rendered.flash && nowMs >= hitFlashUntilRef.current) ||
         (rendered.tint && nowMs >= hitTintUntilRef.current) ||
         (rendered.hold && nowMs >= idleHoldUntilRef.current) ||
+        (rendered.flapBeat &&
+          nowMs >= flapBeatRef.current.startedAt + FLAP_WINGBEAT_MS) ||
         (rendered.prediction &&
           nowMs - predictedState.current.timestamp > PREDICTION_TIMEOUT_MS)
       ) {
@@ -2104,6 +2112,9 @@ const GameFighter = ({
           prev.justLandedFromDodge !== newState.justLandedFromDodge ||
           prev.isRopeJumping !== newState.isRopeJumping ||
           prev.ropeJumpPhase !== newState.ropeJumpPhase ||
+          prev.isFlapping !== newState.isFlapping ||
+          prev.flapPhase !== newState.flapPhase ||
+          prev.flapWingBeatTime !== newState.flapWingBeatTime ||
           prev.isSidestepping !== newState.isSidestepping ||
           prev.isSidestepStartup !== newState.isSidestepStartup ||
           prev.isSidestepRecovery !== newState.isSidestepRecovery ||
@@ -3311,6 +3322,21 @@ const GameFighter = ({
     prevRopeJumpPhase.current = penguin.ropeJumpPhase;
   }, [penguin.ropeJumpPhase, penguin.x, penguin.y, emitParticles]);
 
+  // Flap landing — same smoke ring as the rope jump on touchdown. Fired on the
+  // rising edge of the "landing" phase and pinned to the ground (a whiff lands
+  // there immediately; a post-hit drop finishes a hair later, but the ring
+  // reads as the ground impact either way).
+  const prevFlapPhase = useRef(null);
+  useEffect(() => {
+    if (prevFlapPhase.current !== "landing" && penguin.flapPhase === "landing") {
+      emitParticles("throwLand", {
+        x: interpolatedPositionRef.current.x || penguin.x,
+        y: SHADOW_GROUND_LEVEL,
+      });
+    }
+    prevFlapPhase.current = penguin.flapPhase;
+  }, [penguin.flapPhase, penguin.x, emitParticles]);
+
   // ─────────────────────────────────────────────────────────────────
   // LOCAL PLAYER HALO — persistent identity marker
   //
@@ -3327,19 +3353,27 @@ const GameFighter = ({
 
     // followGetter returns canvas-space coordinates (Y is already flipped
     // because the engine spawns the particle at GAME_H - y).
+    // While airborne in a flap, the identity ring stays PINNED TO THE GROUND
+    // (like the shadow) so it keeps reading as a ground-position marker rather
+    // than floating up with the penguin. Read live state via a ref since this
+    // closure isn't recreated on every flap toggle.
     const followGetter = () => {
       const pos = interpolatedPositionRef.current;
       const px = pos?.x ?? penguin.x;
-      const py = pos?.y ?? penguin.y;
+      let py = pos?.y ?? penguin.y;
       if (typeof px !== "number" || typeof py !== "number") return null;
+      if (penguinRef.current?.isFlapping) py = SHADOW_GROUND_LEVEL;
       return { x: px, y: 720 - py };
     };
 
     const fire = () => {
       const pos = interpolatedPositionRef.current;
+      const py = penguinRef.current?.isFlapping
+        ? SHADOW_GROUND_LEVEL
+        : pos?.y ?? penguin.y;
       emitParticles("localPlayerHalo", {
         x: pos?.x ?? penguin.x,
-        y: pos?.y ?? penguin.y,
+        y: py,
         playerNumber,
         followGetter,
       });
@@ -4095,6 +4129,25 @@ const GameFighter = ({
   // Side profile until gyoji "TE WO TSUITE!" (HANDS DOWN), then tachiai until HAKKIYOI
   const readyIntroComplete = penguin.isReady && handsDownReached;
 
+  // FLAP wing-beat frame. Each new server flapWingBeatTime opens a local
+  // down-stroke window (flap2); otherwise the wings are up (flap1). Ref mutated
+  // during render — same pattern as the idle-hold/last-sprite refs above.
+  if (
+    penguin.flapWingBeatTime &&
+    penguin.flapWingBeatTime !== flapBeatRef.current.beat
+  ) {
+    flapBeatRef.current = {
+      beat: penguin.flapWingBeatTime,
+      startedAt: performance.now(),
+    };
+  }
+  const flapFrame =
+    penguin.isFlapping &&
+    flapBeatRef.current.startedAt &&
+    performance.now() - flapBeatRef.current.startedAt < FLAP_WINGBEAT_MS
+      ? 2
+      : 1;
+
   const displaySpriteSrc = getImageSrc(
     penguin.fighter,
     penguin.isDiving,
@@ -4168,7 +4221,10 @@ const GameFighter = ({
     penguin.isClinchJolting,
     penguin.isBeingClinchJolted,
     penguin.isClinchJoltClashing,
-    penguin.clinchJoltRecovery
+    penguin.clinchJoltRecovery,
+    penguin.isFlapping,
+    penguin.flapPhase,
+    flapFrame
   );
 
   // Hold previous sprite briefly when transitioning to idle to prevent
@@ -4244,6 +4300,9 @@ const GameFighter = ({
   renderedHitVisualsRef.current.flash = showHitFlashThisFrame;
   renderedHitVisualsRef.current.tint = showHitTintThisFrame;
   renderedHitVisualsRef.current.hold = effectiveSpriteSrc !== displaySpriteSrc;
+  // FLAP wing-beat: when this render committed the down-stroke (flap2), the rAF
+  // loop forces the flip back to flap1 once the beat window expires.
+  renderedHitVisualsRef.current.flapBeat = flapFrame === 2;
   // True when this render showed merged (unconfirmed) predictions — the rAF
   // watcher uses it to force the cleanup render once the prediction window
   // (PREDICTION_TIMEOUT_MS) lapses without server confirmation.
@@ -4460,6 +4519,7 @@ const GameFighter = ({
         isBeingThrown={penguin.isBeingThrown}
         isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
         isRopeJumping={penguin.isRopeJumping}
+        isFlapping={penguin.isFlapping}
         isLocalPlayer={penguin.id === localId}
       />
       {/* <DodgeSmokeEffect

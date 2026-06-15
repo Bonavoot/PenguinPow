@@ -64,6 +64,7 @@ function updateProjectiles(room, io, delta) {
         targetPlayer &&
         !targetPlayer.isDodging &&
         !targetPlayer.isRawParrying &&
+        !(targetPlayer.isFlapping && targetPlayer.flapPhase === "flight") &&
         !snowball.hasHit
       ) {
         const distance = sweptHorizDistance(snowballPrevX, snowball.x, targetPlayer.x);
@@ -400,6 +401,7 @@ function updateProjectiles(room, io, delta) {
         opponent &&
         !opponent.isDodging &&
         !opponent.isRawParrying &&
+        !(opponent.isFlapping && opponent.flapPhase === "flight") &&
         !clone.hasHit &&
         (!isFlanker || opponent.isSidestepping)
       ) {

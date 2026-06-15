@@ -4,8 +4,20 @@
 
 const { ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_STAMINA_COST,
         CLINCH_THROW_LAND_THRESHOLD, CLINCH_THROW_KILL_THRESHOLD,
+        GROUND_LEVEL, POWER_UP_TYPES,
+        FLAP_CHARGE_COOLDOWN_MS, FLAP_STAMINA_COST,
         BALANCE_MAX } = require("./constants");
 const { MAP_LEFT_BOUNDARY: GAME_MAP_LEFT, MAP_RIGHT_BOUNDARY: GAME_MAP_RIGHT, simNowForPlayer } = require("./gameUtils");
+
+// Flap power-up tuning (impossible flavor — reactive & punish-focused)
+const FLAP_DIVE_ALIGN = 50;        // |dx| under this → over the opponent, commit the dive
+const FLAP_DIVE_KEEP_HEIGHT = 70;  // air-flap to keep altitude while closing if below this
+const FLAP_DEF_RANGE = 155;        // horizontal threat band of an incoming slam
+const FLAP_DEF_REACT_HEIGHT = 135; // flapper height (px) at which to commit a parry/dash
+const FLAP_PUNISH_RANGE = 480;     // slam-punish a whiff/recovery from this far
+const FLAP_ENGAGE_MIN = 110;       // mid-range engage lower bound
+const FLAP_ENGAGE_MAX = 380;       // mid-range engage upper bound
+const FLAP_COOLDOWN = 2600;        // min ms between liftoff attempts
 
 const MAP_LEFT_BOUNDARY = 340;
 const MAP_RIGHT_BOUNDARY = 940;
@@ -75,6 +87,12 @@ function getState(playerId) {
       clinchLastThrowCheck: 0,
       clinchPushPlantDecision: null,
       clinchPushPlantUntil: 0,
+
+      // Flap power-up
+      spaceReleaseTime: 0,
+      lastFlapTime: 0,
+      flapDiveCommitted: false,
+      flapReacted: false,        // whether we've committed a reaction this descent
     });
   }
   return aiStates.get(playerId);
@@ -213,6 +231,10 @@ function handlePendingKeyReleases(cpu, st, now) {
   if (st.fReleaseTime > 0 && now >= st.fReleaseTime) {
     cpu.keys.f = false;
     st.fReleaseTime = 0;
+  }
+  if (st.spaceReleaseTime > 0 && now >= st.spaceReleaseTime) {
+    cpu.keys[" "] = false;
+    st.spaceReleaseTime = 0;
   }
 }
 
@@ -456,6 +478,134 @@ function handleSnowballDefense(cpu, human, st, now) {
   return false;
 }
 
+// ─── FLAP power-up ─────────────────────────────────────────────────
+
+function pickFleeDir(cpu, human) {
+  let dir = cpu.x < human.x ? -1 : 1; // away from the opponent
+  if (dir === -1 && distanceToLeftEdge(cpu) < 120) dir = 1;
+  else if (dir === 1 && distanceToRightEdge(cpu) < 120) dir = -1;
+  return dir;
+}
+
+// Pilot our own flight: steer over the opponent, air-flap to keep altitude while
+// closing, then dive (no flap) so the body-slam drops on them. Startup/landing
+// phases are locked — just hold.
+function pilotFlap(cpu, human, st, now) {
+  resetAllKeys(cpu);
+  if (cpu.flapPhase !== "flight") return;
+
+  const horiz = cpu.x - human.x;
+  const absH = Math.abs(horiz);
+  const aligned = absH <= FLAP_DIVE_ALIGN;
+  const heightAbove = cpu.y - GROUND_LEVEL;
+  const canAirFlap =
+    cpu.flapCharges > 0 && now - (cpu.lastFlapChargeTime || 0) >= FLAP_CHARGE_COOLDOWN_MS;
+
+  cpu.facing = horiz > 0 ? 1 : -1;
+  if (!aligned) {
+    if (horiz > 0) cpu.keys.a = true;
+    else cpu.keys.d = true;
+  }
+  if (aligned) st.flapDiveCommitted = true;
+
+  if (!st.flapDiveCommitted && canAirFlap && !aligned && heightAbove < FLAP_DIVE_KEEP_HEIGHT) {
+    cpu.keys[" "] = true;
+    st.spaceReleaseTime = now + 50;
+    if (horiz > 0) cpu.keys.a = true;
+    else cpu.keys.d = true;
+  }
+}
+
+// React to the opponent flying: dash out from under the landing or (if parry is
+// available — FLAP itself replaces parry) parry the slam frame-perfectly.
+function handleFlapDefense(cpu, human, st, now, distance) {
+  if (!human.isFlapping || human.flapPhase !== "flight") return false;
+  if (cpu.isFlapping) return false;
+  if (!canAct(cpu)) return false;
+
+  const horiz = Math.abs(cpu.x - human.x);
+  const descending = (human.flapVelocityY ?? 0) <= 0;
+  const flapperHeight = human.y - GROUND_LEVEL;
+
+  // Not imminent (rising/far) — slide out of the landing lane.
+  if (!descending || horiz > FLAP_DEF_RANGE) {
+    if (horiz < FLAP_DEF_RANGE * 1.5) {
+      resetAllKeys(cpu);
+      const dir = pickFleeDir(cpu, human);
+      if (dir === 1) cpu.keys.d = true;
+      else cpu.keys.a = true;
+      st.lastDecisionTime = now;
+      return true;
+    }
+    return false;
+  }
+
+  if (st.flapReacted) return false; // one committed reaction per descent
+  const aboutToLand = flapperHeight < FLAP_DEF_REACT_HEIGHT;
+  if (!aboutToLand) {
+    // Keep repositioning until the flapper is low enough to commit.
+    resetAllKeys(cpu);
+    const dir = pickFleeDir(cpu, human);
+    if (dir === 1) cpu.keys.d = true;
+    else cpu.keys.a = true;
+    st.lastDecisionTime = now;
+    return true;
+  }
+  st.flapReacted = true;
+
+  const canParryHit = cpu.activePowerUp !== POWER_UP_TYPES.FLAP;
+  // Counter-machine: parry the slam (also punishes the flapper) when able.
+  if (canParryHit && canParry(cpu)) {
+    resetAllKeys(cpu);
+    cpu.keys.s = true;
+    st.pendingParry = true;
+    st.parryReleaseTime = now + PARRY_HOLD_DURATION;
+    st.lastDecisionTime = now;
+    return true;
+  }
+  // Otherwise dash clear of the landing.
+  if (!cpu.isGassed) {
+    resetAllKeys(cpu);
+    cpu.keys.shift = true;
+    const dir = pickFleeDir(cpu, human);
+    if (dir === 1) cpu.keys.d = true;
+    else cpu.keys.a = true;
+    st.shiftReleaseTime = now + 80;
+    st.lastDecisionTime = now;
+    return true;
+  }
+  return false;
+}
+
+// Take flight to slam — primarily to punish an out-of-grab-range whiff/recovery,
+// occasionally as a mid-range engage.
+function handleFlapOffense(cpu, human, st, now, distance) {
+  if (cpu.activePowerUp !== POWER_UP_TYPES.FLAP) return false;
+  if (cpu.isFlapping || !canAct(cpu)) return false;
+  if (cpu.isGassed || cpu.stamina < FLAP_STAMINA_COST + 8) return false;
+  if (now - (st.lastFlapTime || 0) < FLAP_COOLDOWN) return false;
+  if (human.isAttacking) return false;
+
+  const horiz = Math.abs(cpu.x - human.x);
+  const punishing =
+    (human.isRecovering || human.isInEndlag || human.isWhiffingGrab ||
+      human.isGrabWhiffRecovery || human.isRawParryStun) &&
+    horiz < FLAP_PUNISH_RANGE;
+  const engage = horiz >= FLAP_ENGAGE_MIN && horiz <= FLAP_ENGAGE_MAX;
+  if (!punishing && !engage) return false;
+  // Reactive identity: always punish a whiff, but only sometimes engage in neutral.
+  if (!punishing && Math.random() > 0.4) return false;
+
+  resetAllKeys(cpu);
+  cpu.facing = cpu.x < human.x ? -1 : 1;
+  cpu.keys[" "] = true;
+  st.spaceReleaseTime = now + 60;
+  st.lastFlapTime = now;
+  st.flapDiveCommitted = false;
+  st.lastDecisionTime = now;
+  return true;
+}
+
 // ─── Main decision function ────────────────────────────────────────
 
 function updateImpossibleAI(cpu, human, room, currentTime) {
@@ -518,6 +668,13 @@ function updateImpossibleAI(cpu, human, room, currentTime) {
     return;
   }
 
+  // ── FLAP: piloting our own flight overrides everything ──
+  if (cpu.isFlapping) {
+    pilotFlap(cpu, human, st, currentTime);
+    return;
+  }
+  if (!human.isFlapping && st.flapReacted) st.flapReacted = false;
+
   // ── Pending parry hold: keep holding until release time ──
   if (st.pendingParry) {
     if (currentTime >= st.parryReleaseTime || !human.isAttacking) {
@@ -538,6 +695,9 @@ function updateImpossibleAI(cpu, human, room, currentTime) {
   // ═══════════════════════════════════════════════════════════════════
   //  REACTIVE CORE — Counter every opponent action optimally
   // ═══════════════════════════════════════════════════════════════════
+
+  // ── COUNTER: Opponent flying (Flap) — dash the landing or parry the slam ──
+  if (handleFlapDefense(cpu, human, st, currentTime, distance)) return;
 
   // ── COUNTER: Opponent rope jumping — punish every phase ──
   if (human.isRopeJumping) {
@@ -731,6 +891,9 @@ function updateImpossibleAI(cpu, human, room, currentTime) {
 
   // Cornered: escape via rope jump or grab/slap, then wait for reactive core
   if (handleCorneredNeutral(cpu, human, st, currentTime, distance)) return;
+
+  // FLAP: take flight to slam (punish an out-of-range whiff, or engage)
+  if (handleFlapOffense(cpu, human, st, currentTime, distance)) return;
 
   // Opponent near edge: walk in and grab for ring-out
   const humanNearLeftEdge = distanceToLeftEdge(human) < EDGE_DANGER_ZONE;

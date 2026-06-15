@@ -40,6 +40,8 @@ const {
   SLAP_STARTUP_MS,
   CHARGED_STARTUP_MS,
   GRAB_STARTUP_ARMOR_STAGGER_MS,
+  FLAP_BODYSLAM_KB_VELOCITY,
+  FLAP_HIT_LANDING_PUSHBACK,
 } = require("./constants");
 
 const {
@@ -102,6 +104,12 @@ function checkCollision(player, otherPlayer, rooms, io) {
   // Rope jump: full immunity during airborne (active) phase.
   // No ground attack can reach an airborne target — punish the startup or landing instead.
   if (otherPlayer.isRopeJumping && otherPlayer.ropeJumpPhase === "active") {
+    return;
+  }
+
+  // Flap: full immunity for the entire airborne flight (liftoff → landing).
+  // Punish the grounded startup telegraph or the landing recovery instead.
+  if (otherPlayer.isFlapping && otherPlayer.flapPhase === "flight") {
     return;
   }
 
@@ -1464,4 +1472,295 @@ function processHit(player, otherPlayer, rooms, io) {
   }
 }
 
-module.exports = { checkCollision, processHit, resolveSlapParry, applyParryEffect, resolveChargeClash };
+// ── FLAP body-slam ────────────────────────────────────────────────────────
+// The descending flapper is an attacker: dropping onto a grounded opponent
+// deals a burst hit equal to HALF a slap-string finisher (slap3). This is NOT
+// a regular `isAttacking` strike, so it lives outside checkCollision and is
+// polled each tick from the game loop while the flapper is airborne. One
+// connect per flight (flapHitLanded latches it), and only while DESCENDING.
+// Hitbox tuning — kept deliberately modest so the slam isn't oppressive.
+// CONTACT_HEIGHT is the bottom of the slam window raised UP (smaller = the
+// flapper must be nearer the ground to connect). WIDTH_SCALE narrows the
+// left/right reach relative to a full pushbox.
+const FLAP_BODYSLAM_CONTACT_HEIGHT = 60; // Y-offset above ground at which the drop "lands" on a body
+const FLAP_BODYSLAM_WIDTH_SCALE = 0.7;   // Horizontal reach as a fraction of pushbox width
+
+// A grounded defender raw-parrying the flap drop. Mirrors the strike-vs-parry
+// resolution in processHit, but scoped to the flap: the parry ENDS the flight
+// (clearAllActionStates grounds the flapper), bonks the flapper back, and
+// rewards the defender (regular OR perfect). Flap is not a slap, so it uses the
+// non-slap knockback values.
+function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
+  const currentTime = simNowForPlayer(opponent);
+  const parryDuration = currentTime - opponent.rawParryStartTime;
+  const isPerfectParry = parryDuration <= PERFECT_PARRY_WINDOW;
+
+  // End the flapper's flight and ground them (the parry beats the slam). The
+  // connect can only happen within FLAP_BODYSLAM_CONTACT_HEIGHT of the ground,
+  // so this snap is small.
+  clearAllActionStates(flapper);
+  flapper.y = GROUND_LEVEL;
+
+  const knockbackDirection = flapper.x < opponent.x ? -1 : 1;
+  flapper.knockbackVelocity.x = RAW_PARRY_KNOCKBACK * knockbackDirection;
+  flapper.knockbackVelocity.y = 0;
+  flapper.isHit = true;
+  flapper.isParryKnockback = true;
+  flapper.lastHitTime = currentTime;
+  if (!flapper.isAtTheRopes && !flapper.atTheRopesFacingDirection) {
+    flapper.facing = flapper.x < opponent.x ? -1 : 1;
+  }
+
+  // Defender rewards — refund parry cost (+ balance on a perfect read).
+  opponent.stamina = Math.min(100, opponent.stamina + RAW_PARRY_STAMINA_REFUND);
+  let perfectParryBalanceGain = 0;
+  if (isPerfectParry) {
+    const balanceBefore = opponent.balance;
+    opponent.balance = Math.min(BALANCE_MAX, opponent.balance + PERFECT_PARRY_BALANCE_REFUND);
+    perfectParryBalanceGain = opponent.balance - balanceBefore;
+  }
+
+  if (isPerfectParry) {
+    opponent.isRawParrying = true;
+    opponent.isPerfectRawParrySuccess = true;
+    opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, currentTime + PERFECT_PARRY_ANIMATION_LOCK);
+  } else {
+    opponent.isRawParrySuccess = true;
+    opponent.rawParryMinDurationMet = true;
+    opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, currentTime + 350);
+  }
+
+  const parryingPlayerNumber = currentRoom
+    ? currentRoom.players.findIndex((p) => p.id === opponent.id) + 1
+    : 1;
+  if (currentRoom) {
+    io.to(currentRoom.id).emit("raw_parry_success", {
+      attackerX: flapper.x,
+      parrierX: opponent.x,
+      facing: flapper.facing,
+      isPerfect: isPerfectParry,
+      timestamp: Date.now(),
+      parryId: `${opponent.id}_parry_${Date.now()}`,
+      playerNumber: parryingPlayerNumber,
+      parrierId: opponent.id,
+      balanceGain: perfectParryBalanceGain,
+    });
+  }
+
+  if (isPerfectParry) {
+    setPlayerTimeout(
+      opponent.id,
+      () => {
+        opponent.isRawParrying = false;
+        opponent.isPerfectRawParrySuccess = false;
+        opponent.rawParryCooldownUntil = simNowForPlayer(opponent) + RAW_PARRY_COOLDOWN_MS;
+      },
+      PERFECT_PARRY_ANIMATION_LOCK,
+      "perfectParryAnimationEnd"
+    );
+  } else {
+    setPlayerTimeout(
+      opponent.id,
+      () => {
+        opponent.isRawParrySuccess = false;
+      },
+      PARRY_SUCCESS_DURATION,
+      "parrySuccess"
+    );
+  }
+
+  // Reset the flapper's knockback/hit state after the slide window.
+  setPlayerTimeout(
+    flapper.id,
+    () => {
+      flapper.isHit = false;
+      flapper.isAlreadyHit = false;
+      flapper.isParryKnockback = false;
+    },
+    400,
+    "parryKnockbackReset"
+  );
+  flapper.inputLockUntil = Math.max(flapper.inputLockUntil || 0, currentTime + 100);
+
+  if (isPerfectParry) {
+    // Perfect parry stuns the flapper (the big punish), like a strike.
+    flapper.isRawParryStun = true;
+    const pushDirection = flapper.x < opponent.x ? -1 : 1;
+    flapper.knockbackVelocity.x = PERFECT_PARRY_KNOCKBACK * pushDirection;
+    flapper.knockbackVelocity.y = 0;
+    flapper.perfectParryStunStartTime = currentTime;
+    if (flapper.perfectParryStunBaseTimeout) {
+      timeoutManager.clearPlayerSpecific(flapper.id, "perfectParryStunReset");
+    }
+    if (currentRoom) {
+      triggerHitstopAndEmit(io, currentRoom, HITSTOP_PERFECT_PARRY_MS, "perfect_parry");
+      io.in(currentRoom.id).emit("perfect_parry", {
+        parryingPlayerId: opponent.id,
+        attackingPlayerId: flapper.id,
+        stunnedPlayerX: flapper.x,
+        stunnedPlayerY: flapper.y,
+        stunnedPlayerFighter: flapper.fighter,
+        showStarStunEffect: true,
+        balanceGain: perfectParryBalanceGain,
+      });
+    }
+    setPlayerTimeout(
+      flapper.id,
+      () => {
+        flapper.isRawParryStun = false;
+        flapper.perfectParryStunStartTime = 0;
+        flapper.perfectParryStunBaseTimeout = null;
+      },
+      PERFECT_PARRY_ATTACKER_STUN_DURATION,
+      "perfectParryStunReset"
+    );
+    flapper.perfectParryStunBaseTimeout = true;
+  } else if (currentRoom) {
+    emitThrottledScreenShake(currentRoom, io, { type: "parry" });
+    triggerHitstopAndEmit(io, currentRoom, HITSTOP_PARRY_MS, "parry");
+  }
+}
+
+function checkFlapBodySlam(flapper, opponent, rooms, io) {
+  // Must be a descending flapper that hasn't already connected this flight.
+  if (
+    !flapper ||
+    !opponent ||
+    !flapper.isFlapping ||
+    flapper.flapPhase !== "flight" ||
+    flapper.flapVelocityY > 0 || // only while falling (≤ 0 = descending/apex)
+    flapper.flapHitLanded
+  ) {
+    return;
+  }
+
+  // Contact band: low enough that the body is dropping onto the opponent.
+  if (flapper.y - GROUND_LEVEL > FLAP_BODYSLAM_CONTACT_HEIGHT) return;
+
+  // Opponent must be a grounded, hittable target. Airborne/immune/dead/locked
+  // defenders can't be body-slammed (mirror the strike i-frame rules).
+  if (
+    opponent.isDead ||
+    opponent.isAlreadyHit ||
+    opponent.isHit ||
+    opponent.isDodging ||
+    opponent.isBeingThrown ||
+    opponent.isBeingGrabbed ||
+    opponent.isGrabbing ||
+    (opponent.isRopeJumping && opponent.ropeJumpPhase === "active") ||
+    (opponent.isFlapping && opponent.flapPhase === "flight") ||
+    (opponent.isSidestepping && !opponent.isSidestepStartup) ||
+    !canApplyKnockback(opponent)
+  ) {
+    return;
+  }
+
+  // Horizontal overlap: bodies must be within a (narrowed) pushbox-width.
+  const bodyWidth =
+    HITBOX_DISTANCE_VALUE * 2 * FLAP_BODYSLAM_WIDTH_SCALE *
+    Math.max(flapper.sizeMultiplier || 1, opponent.sizeMultiplier || 1);
+  if (Math.abs(flapper.x - opponent.x) > bodyWidth) return;
+
+  const currentRoom = rooms.find((room) =>
+    room.players.some((p) => p.id === flapper.id)
+  );
+  const currentTime = simNow(currentRoom);
+
+  // The grounded defender can RAW PARRY the drop — the parry beats the slam,
+  // ends the flight, and punishes the flapper instead of damaging the defender.
+  if (opponent.isRawParrying) {
+    resolveFlapRawParry(flapper, opponent, currentRoom, io);
+    return;
+  }
+
+  // Connecting ENDS the flight. The flapper can't keep flying after a slam —
+  // they're auto-grounded into a recovery that's synced to the victim's stun
+  // (set below) so the slam grants NO frame advantage. The smooth descent +
+  // small pushback is tweened in the game loop's "landing" branch.
+  flapper.flapHitLanded = true;
+  flapper.flapPhase = "landing";
+  flapper.flapVelocityY = 0;
+  flapper.flapVelocityX = 0;
+  flapper.flapLandingTime = currentTime;
+  flapper.flapHitLandStartY = flapper.y;
+  flapper.flapHitLandStartX = flapper.x;
+  // Push the flapper back AWAY from the opponent a touch (non-hit recoil).
+  const flapperPushDir = flapper.x < opponent.x ? -1 : 1;
+  flapper.flapHitLandTargetX = flapper.x + flapperPushDir * FLAP_HIT_LANDING_PUSHBACK;
+  // Recover in lockstep with the victim's hitstun → no advantage on landing.
+  flapper.flapHitRecoverDuration = SLAP_HIT3_STUN_MS;
+  flapper.actionLockUntil = currentTime + SLAP_HIT3_STUN_MS;
+  flapper.currentAction = null;
+
+  // Knockback away from the flapper (burst model — no DI, like slap3).
+  const knockbackDirection = opponent.x >= flapper.x ? 1 : -1;
+
+  clearAllActionStates(opponent);
+  opponent.isRawParrySuccess = false;
+  opponent.isPerfectRawParrySuccess = false;
+  opponent.isHit = true;
+  opponent.lastHitType = "flap";
+  opponent.lastHitTime = currentTime;
+  opponent.isAlreadyHit = true;
+  opponent.hitCounter = (opponent.hitCounter || 0) + 1;
+  opponent.isBurstKnockback = true;
+  opponent.burstKnockbackStartTime = currentTime;
+  opponent.knockbackVelocity.x = knockbackDirection * FLAP_BODYSLAM_KB_VELOCITY;
+  opponent.knockbackVelocity.y = 0;
+  opponent.movementVelocity = 0;
+
+  if (!opponent.isAtTheRopes && !opponent.atTheRopesFacingDirection) {
+    opponent.facing = flapper.x < opponent.x ? 1 : -1;
+  }
+
+  opponent.stamina = Math.max(0, opponent.stamina - SLAP_HIT_VICTIM_STAMINA_DRAIN);
+  opponent.balance = Math.max(0, opponent.balance - BALANCE_SLAP_HIT_DRAIN);
+
+  setKnockbackImmunity(opponent);
+
+  if (currentRoom) {
+    io.in(currentRoom.id).emit("player_hit", {
+      x: opponent.x,
+      y: opponent.y,
+      facing: opponent.facing,
+      attackType: "flap",
+      stringPos: 0,
+      chargePercentage: 0,
+      timestamp: Date.now(),
+      hitId: Math.random().toString(36).substr(2, 9),
+      isCounterHit: false,
+      isPunish: false,
+      cinematicKill: false,
+      knockbackDirection: knockbackDirection,
+      isArmorBreak: false,
+      attackerId: flapper.id,
+      victimId: opponent.id,
+    });
+
+    triggerHitstopAndEmit(io, currentRoom, HITSTOP_SLAP_HIT3_MS, "slap_burst");
+  }
+
+  // Burst stun → hand the residual velocity to the ice coast when it ends.
+  setPlayerTimeout(
+    opponent.id,
+    () => {
+      if (Math.abs(opponent.knockbackVelocity.x) > 0.01) {
+        opponent.movementVelocity = opponent.knockbackVelocity.x;
+      }
+      opponent.knockbackVelocity.x = 0;
+      opponent.isHit = false;
+      opponent.isBurstKnockback = false;
+      opponent.burstKnockbackStartTime = 0;
+      opponent.isAlreadyHit = false;
+    },
+    SLAP_HIT3_STUN_MS,
+    "hitStateReset"
+  );
+
+  opponent.inputLockUntil = Math.max(
+    opponent.inputLockUntil || 0,
+    currentTime + SLAP_HIT3_STUN_MS
+  );
+}
+
+module.exports = { checkCollision, processHit, checkFlapBodySlam, resolveSlapParry, applyParryEffect, resolveChargeClash };

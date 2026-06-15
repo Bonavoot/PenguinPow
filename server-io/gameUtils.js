@@ -14,6 +14,9 @@ const {
   SIDESTEP_STAMINA_COST,
   HITBOX_DISTANCE_VALUE,
   MAX_PARRY_BACKDATE_MS,
+  FLAP_STARTUP_MS,
+  FLAP_CHARGES,
+  FLAP_STAMINA_COST,
 } = require("./constants");
 
 // ============================================
@@ -354,6 +357,7 @@ function isPlayerInBasicActiveState(player) {
     // Core action states
     !player.isAttacking &&
     !player.isRopeJumping &&
+    !player.isFlapping && // Airborne flap — only Space (flight) inputs allowed
     !player.isDodging &&
     !player.isDodgeRecovery &&
     !player.isSidestepping &&
@@ -422,6 +426,7 @@ function canPlayerDash(player) {
     // Core action states
     !player.isAttacking &&
     !player.isRopeJumping &&
+    !player.isFlapping && // Airborne flap — dash (shift) disabled during flight
     !player.isDodging &&
     !player.isDodgeRecovery &&
     !player.isSidestepping &&
@@ -697,6 +702,23 @@ function clearAllActionStates(player) {
   player.ropeJumpActiveStartTime = 0;
   player.ropeJumpLandingTime = 0;
   player.ropeJumpBufferedAttackRelease = 0;
+
+  // Clear flap states. Only reachable while grounded (startup is the only
+  // interruptible flap phase — flight is hit-immune), so no airborne Y is
+  // stranded here; the hit-fall systems own Y from this point.
+  player.isFlapping = false;
+  player.flapPhase = null;
+  player.flapCharges = 0;
+  player.flapVelocityY = 0;
+  player.flapVelocityX = 0;
+  player.flapStartTime = 0;
+  player.flapWingBeatTime = 0;
+  player.flapHitLanded = false;
+  player.flapHitLandStartY = 0;
+  player.flapHitLandStartX = 0;
+  player.flapHitLandTargetX = 0;
+  player.flapHitRecoverDuration = 0;
+  player.lastFlapChargeTime = 0;
 }
 
 function clearHitFall(player) {
@@ -799,6 +821,57 @@ function clearChargeState(player, isCancelled = false) {
       }
     }, 100, "chargeCancelledClear");
   }
+}
+
+// ── FLAP: begin the grounded liftoff telegraph ───────────────────────────
+// Shared by the immediate Space-press path (socketHandlers) and the buffered
+// path (gameFunctions.executeInputBuffer) so the two can't drift. Mirrors the
+// raw-parry cleanup it replaces: kills movement/charge/slap-string momentum so
+// the player commits cleanly to the startup. The flight itself (the liftoff
+// impulse) happens when index.js promotes startup → flight; the liftoff is
+// FREE (no charge spent), leaving all FLAP_CHARGES air flaps available. Startup
+// is interruptible — getting hit here cancels the whole flap.
+//
+// Returns false WITHOUT mutating state if the player can't afford the liftoff
+// (gassed or stamina < cost) so callers can surface the "out of stamina" cue.
+function beginFlapStartup(player, now) {
+  if (player.isGassed || player.stamina < FLAP_STAMINA_COST) {
+    return false;
+  }
+
+  player.isFlapping = true;
+  player.flapPhase = "startup";
+  player.flapStartTime = now;
+  player.flapCharges = FLAP_CHARGES; // air flaps available once airborne
+  player.flapVelocityY = 0;
+  player.flapVelocityX = 0;
+  player.flapWingBeatTime = 0;
+  player.flapHitLanded = false;
+  player.flapHitLandStartY = 0;
+  player.flapHitLandStartX = 0;
+  player.flapHitLandTargetX = 0;
+  player.flapHitRecoverDuration = 0;
+  player.lastFlapChargeTime = 0;
+  player.currentAction = "flap";
+  player.actionLockUntil = now + FLAP_STARTUP_MS;
+
+  // Liftoff is the ONLY stamina cost — air flaps are free.
+  player.stamina = Math.max(0, player.stamina - FLAP_STAMINA_COST);
+
+  clearChargeState(player, true);
+  player.movementVelocity = 0;
+  player.isStrafing = false;
+  player.isPowerSliding = false;
+  player.isBraking = false;
+  player.isCrouchStance = false;
+  player.isCrouchStrafing = false;
+  player.pendingSlapCount = 0;
+  player.pendingGrabEnder = false;
+  player.slapStringPosition = 0;
+  player.slapStringWindowUntil = 0;
+  player.isRawParrySuccess = false;
+  player.isPerfectRawParrySuccess = false;
+  return true;
 }
 
 // Centralized action lock helpers to prevent simultaneous actions during input mashing
@@ -972,6 +1045,7 @@ module.exports = {
   canPlayerSidestep,
   resetPlayerAttackStates,
   clearAllActionStates,
+  beginFlapStartup,
   isWithinMapBoundaries,
   constrainToMapBoundaries,
   shouldRestartCharging,

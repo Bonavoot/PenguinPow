@@ -17,6 +17,15 @@ const FAR_DISTANCE = 700; // player gap (game-coords) for min zoom
 const SPRITE_HALF_W = 0; // Sprites are now centred on player.x via CSS translate
 const Y_OFFSET = 12; // fixed vertical bias (%) — positive = show more top / hides dohyo bottom
 
+// ── Flight (flap power-up) vertical follow ──────────────────────────
+// When a wrestler takes flight the camera pans UP a little so the airborne
+// penguin stays framed without losing the grounded opponent. Deliberately
+// subtle and hard-capped — the existing per-frame edge clamp (maxPanY) keeps
+// the dohyo edge hidden, so this can only nudge within the available headroom.
+const FLIGHT_GROUND_Y = 294; // server GROUND_LEVEL (game-coords) — airborne = y above this
+const FLIGHT_REF_HEIGHT = 225; // server FLAP_MAX_HEIGHT — normalises height → 0..1
+const FLIGHT_PAN_UP = 9; // max extra upward pan (%) at full flight height (kept modest on purpose)
+
 // MIN_SCALE floor — derived from the dohyo-crop constraint, NOT a magic number.
 // The full Y_OFFSET downward bias must fit inside the per-frame edge clamp
 // (maxPanY = 50 * (scale - 1)). If scale drops below 1 + Y_OFFSET/50 the clamp
@@ -119,7 +128,17 @@ function getCameraTargetForPositions(p1x, p2x) {
 const READY_CAMERA = getCameraTargetForPositions(PLAYER1_READY_X, PLAYER2_READY_X);
 
 export default function useCamera(containerRef, socket) {
-  const posRef = useRef({ p1x: null, p2x: null });
+  const posRef = useRef({
+    p1x: null,
+    p2x: null,
+    p1y: null,
+    p2y: null,
+    // Last-known flap flags. fighter_action is delta-encoded so isFlapping only
+    // arrives on the ticks it changes — persist it so the flight pan stays gated
+    // to actual flappers (and never tracks, e.g., a clinch-thrown player's Y).
+    p1Flap: false,
+    p2Flap: false,
+  });
   const camRef = useRef({
     scale: READY_CAMERA.scale,
     x: READY_CAMERA.x,
@@ -172,6 +191,12 @@ export default function useCamera(containerRef, socket) {
       if (p1 && p2 && typeof p1.x === "number" && typeof p2.x === "number") {
         posRef.current.p1x = p1.x;
         posRef.current.p2x = p2.x;
+        // Y is tracked too so the camera can follow flight (flap power-up).
+        if (typeof p1.y === "number") posRef.current.p1y = p1.y;
+        if (typeof p2.y === "number") posRef.current.p2y = p2.y;
+        // Persist flap state across deltas (see posRef init note).
+        if (typeof p1.isFlapping === "boolean") posRef.current.p1Flap = p1.isFlapping;
+        if (typeof p2.isFlapping === "boolean") posRef.current.p2Flap = p2.isFlapping;
       }
     };
 
@@ -349,7 +374,21 @@ export default function useCamera(containerRef, socket) {
             normalTargetScale > cam.scale ? SMOOTH_ZOOM_IN : SMOOTH_ZOOM_OUT;
           cam.scale = lerp(cam.scale, normalTargetScale, lerpT(zoomRate));
           cam.x = lerp(cam.x, normalTargetX, lerpT(SMOOTH_FACTOR));
-          cam.y = lerp(cam.y, normalTargetY, lerpT(SMOOTH_FACTOR));
+
+          // Vertical flight follow: pan up a touch ONLY when a FLAPPING wrestler
+          // is airborne (flap take-off). Gated on the flap flag so other sources
+          // of altitude — e.g. a clinch/grab cinematic throw arcing a player up —
+          // never drag the camera's Y. Scaled by the highest flapper, hard-capped
+          // at FLIGHT_PAN_UP, and still subject to the maxPanY clamp below.
+          const { p1y, p2y, p1Flap, p2Flap } = posRef.current;
+          const air1 =
+            p1Flap && typeof p1y === "number" ? p1y - FLIGHT_GROUND_Y : 0;
+          const air2 =
+            p2Flap && typeof p2y === "number" ? p2y - FLIGHT_GROUND_Y : 0;
+          const maxAir = Math.max(0, air1, air2);
+          const flightPanUp =
+            clamp(maxAir / FLIGHT_REF_HEIGHT, 0, 1) * FLIGHT_PAN_UP;
+          cam.y = lerp(cam.y, normalTargetY + flightPanUp, lerpT(SMOOTH_FACTOR));
         } else {
           // ── Pre-fight / between rounds — drift to ready-stance framing ──
           cam.scale = lerp(cam.scale, READY_CAMERA.scale, lerpT(SMOOTH_FACTOR));

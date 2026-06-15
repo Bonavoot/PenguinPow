@@ -317,7 +317,11 @@ const Game = ({
         applyPrediction("dash", direction);
       }
       if (gamepadKeyState[" "] && !keyState[" "]) {
-        applyPrediction("parry_start");
+        // Flap replaces raw parry on Space — don't locally predict a parry
+        // (and its blue flame) for flap players; flight is server-authoritative.
+        if (cp?.activePowerUp !== "flap") {
+          applyPrediction("parry_start");
+        }
       }
       if (!gamepadKeyState[" "] && keyState[" "]) {
         applyPrediction("parry_release");
@@ -390,9 +394,13 @@ const Game = ({
             const direction = keyState.a ? -1 : keyState.d ? 1 : null;
             applyPrediction("dash", direction);
           }
-          // Raw parry (spacebar)
+          // Raw parry (spacebar) — skip for flap players (Space takes flight,
+          // which is server-authoritative; predicting a parry would flash the
+          // blue flame mid-flight).
           else if (key === " ") {
-            applyPrediction("parry_start");
+            if (cp?.activePowerUp !== "flap") {
+              applyPrediction("parry_start");
+            }
           }
           // ICE PHYSICS: Power slide (c or control key)
           else if (key === "c" || key === "control") {

@@ -20,6 +20,7 @@ const {
   shouldRestartCharging,
   startCharging,
   lagCompensatedParryStart,
+  beginFlapStartup,
 } = require("./gameUtils");
 
 // Per-match input audit log (open at first round, close on matchOver)
@@ -391,6 +392,25 @@ function handleWinCondition(room, loser, winner, io, winType) {
       p.ropeJumpDirection = 0;
       p.ropeJumpActiveStartTime = 0;
       p.ropeJumpLandingTime = 0;
+    }
+
+    // Clear flap (flight) state when game ends
+    if (p.isFlapping) {
+      p.y = GROUND_LEVEL;
+      p.isFlapping = false;
+      p.flapPhase = null;
+      p.flapCharges = 0;
+      p.flapVelocityY = 0;
+      p.flapVelocityX = 0;
+      p.flapStartTime = 0;
+      p.flapLandingTime = 0;
+      p.flapWingBeatTime = 0;
+      p.flapHitLanded = false;
+      p.flapHitLandStartY = 0;
+      p.flapHitLandStartX = 0;
+      p.flapHitLandTargetX = 0;
+      p.flapHitRecoverDuration = 0;
+      p.lastFlapChargeTime = 0;
     }
 
     // Clear parry states to prevent jiggle/flash animations persisting into round result
@@ -1161,7 +1181,9 @@ function adjustPlayerPositions(player1, player2, delta) {
     player1.isBeingThrown || player2.isBeingThrown ||
     player1.isSidestepping || player2.isSidestepping ||
     (player1.isRopeJumping && player1.ropeJumpPhase === "active") ||
-    (player2.isRopeJumping && player2.ropeJumpPhase === "active")
+    (player2.isRopeJumping && player2.ropeJumpPhase === "active") ||
+    (player1.isFlapping && player1.flapPhase === "flight") ||
+    (player2.isFlapping && player2.flapPhase === "flight")
   ) {
     return;
   }
@@ -1618,6 +1640,10 @@ function executeInputBuffer(player, rooms) {
   if (player.isHit || player.isBeingThrown || player.isBeingGrabbed) return false;
   if (player.isAtTheRopes || player.isRopeJumping || player.isGrabClashing) return false;
   if (player.canMoveToReady) return false;
+  // While airborne/recovering from a flap, no other buffered action may fire.
+  // (A buffered "flap" liftoff only reaches here once isFlapping is already
+  // false, so this doesn't block re-flapping.)
+  if (player.isFlapping) return false;
 
   const buffer = player.inputBuffer;
 
@@ -1650,6 +1676,28 @@ function executeInputBuffer(player, rooms) {
         clearChargeState(player, true);
         player.inputBuffer = null;
         return true;
+      }
+      break;
+    }
+    case "flap": {
+      // Buffered liftoff for the Flap power-up. Air flaps are never buffered —
+      // they fire immediately in socketHandlers while already airborne.
+      // beginFlapStartup gates affordability (gassed / stamina) internally and
+      // returns false without mutating state, so a stale buffer can't fly for free.
+      if (
+        player.activePowerUp === "flap" &&
+        !player.isFlapping &&
+        !player.isRawParrying && !player.isRawParryStun &&
+        !player.isAttacking && !player.isDodging &&
+        !player.isRecovering && !player.isGrabbing &&
+        !player.isGrabStartup &&
+        !player.isGrabbingMovement && !player.isWhiffingGrab &&
+        !player.isThrowing
+      ) {
+        if (beginFlapStartup(player, simNowForPlayer(player))) {
+          player.inputBuffer = null;
+          return true;
+        }
       }
       break;
     }

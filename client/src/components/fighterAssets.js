@@ -29,6 +29,8 @@ import recovering from "../assets/recovering.png";
 import rawParrySuccess from "../assets/raw-parry-success.png";
 import snowball from "../assets/snowball.png";
 import crouchStance from "../assets/crouch-stance.png";
+import flap1 from "../assets/pumo-flap-1.png";
+import flap2 from "../assets/pumo-flap-2.png";
 
 // ============================================
 // ANIMATED SPRITE IMPORTS (APNGs/GIFs)
@@ -230,6 +232,8 @@ const initializeImagePreloading = () => {
   preloadImage(rawParrySuccess);
   preloadImage(atTheRopes);
   preloadImage(snowball);
+  preloadImage(flap1);
+  preloadImage(flap2);
 
   preloadImage(gameMapBackground);
   preloadImage(dohyoOverlay);
@@ -351,6 +355,8 @@ export {
   rawParrySuccess,
   snowball,
   crouchStance,
+  flap1,
+  flap2,
   pumoWaddle,
   pumoArmy,
   crouching,

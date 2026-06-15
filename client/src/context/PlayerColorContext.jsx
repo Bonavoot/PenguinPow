@@ -70,6 +70,8 @@ import slapAttack1 from "../assets/slapAttack1.png";
 import slapAttack2 from "../assets/slapAttack2.png";
 import bellyLaying from "../assets/pumo-belly-laying.png";
 import bellyLayingEyesOpen from "../assets/pumo-belly-laying-eyes-open.png";
+import flap1 from "../assets/pumo-flap-1.png";
+import flap2 from "../assets/pumo-flap-2.png";
 
 // APNGs (these get mapped to spritesheets, but import them to ensure URL match)
 import crouching from "../assets/blocking.png";
@@ -88,6 +90,7 @@ const GAME_FIGHTER_STATIC_SPRITES = [
   pumoSideProfile, pumoTachiaiPosition, dodging, crouchStance,
   recovering, rawParrySuccess, slapAttack1, slapAttack2,
   crouching, bow, bellyLaying, bellyLayingEyesOpen,
+  flap1, flap2,
 ];
 
 // GameFighter's APNG sprites that get mapped to spritesheets

@@ -34,6 +34,7 @@ const PlayerShadow = memo(forwardRef(({
   isBeingThrown,
   isRingOutThrowCutscene,
   isRopeJumping,
+  isFlapping,
   width,
   height,
   offsetLeft,
@@ -48,7 +49,8 @@ const PlayerShadow = memo(forwardRef(({
       isThrowing ||
       isBeingThrown ||
       isRingOutThrowCutscene ||
-      isRopeJumping
+      isRopeJumping ||
+      isFlapping
     );
 
   // During sidestep, track the player's actual Y (the arc dip).
@@ -89,6 +91,7 @@ PlayerShadow.propTypes = {
   isBeingThrown: PropTypes.bool,
   isRingOutThrowCutscene: PropTypes.bool,
   isRopeJumping: PropTypes.bool,
+  isFlapping: PropTypes.bool,
   width: PropTypes.string,
   height: PropTypes.string,
   offsetLeft: PropTypes.string,

@@ -20,6 +20,7 @@ import snowballImage from "../assets/snowball.png";
 import pumoArmyIcon from "./pumo-army-icon.png";
 import happyFeetIcon from "../assets/happy-feet.png";
 import thickBlubberIcon from "../assets/thick-blubber-icon.png";
+import flapIcon from "../assets/flap-icon.png";
 
 /*
  * PowerUpSelection — three picks on a darkened dohyo, no panel.
@@ -227,6 +228,11 @@ const TYPE_COLORS = {
     main: "#aa77ff",
     deep: "#4a2c8a",
     glow: "rgba(170, 119, 255, 0.45)",
+  },
+  flap: {
+    main: "#34e0c0",
+    deep: "#15705f",
+    glow: "rgba(52, 224, 192, 0.45)",
   },
 };
 const FALLBACK_TYPE = {
@@ -728,6 +734,13 @@ const PowerUpSelection = ({
         icon: thickBlubberIcon,
         active: false,
       },
+      flap: {
+        name: "Flap",
+        description: "Take flight",
+        icon: flapIcon,
+        active: true,
+        usageLabel: "Space",
+      },
     }),
     []
   );
@@ -883,7 +896,7 @@ const PowerUpSelection = ({
                   <PowerName>{info.name}</PowerName>
                   <PowerDesc>{info.description}</PowerDesc>
                   <UsageChip $active={info.active}>
-                    {info.active ? "F To Use" : "Passive"}
+                    {info.active ? info.usageLabel || "F To Use" : "Passive"}
                   </UsageChip>
                 </CardBody>
               </PowerCard>

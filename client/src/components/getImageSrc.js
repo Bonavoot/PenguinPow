@@ -14,6 +14,8 @@ import {
   recovering,
   rawParrySuccess,
   crouchStance,
+  flap1,
+  flap2,
   pumoWaddle,
   pumoArmy,
   crouching,
@@ -100,7 +102,17 @@ const getImageSrc = (
   isResistingThrow,
   isResistingPull,
   isClinchKillThrowVictim,
-  isClinchKillPullVictim
+  isClinchKillPullVictim,
+  // These clinch-jolt args are passed by GameFighter but unused here; kept as
+  // positional placeholders so the trailing flap params line up with the call.
+  isClinchJolting, // eslint-disable-line no-unused-vars
+  isBeingClinchJolted, // eslint-disable-line no-unused-vars
+  isClinchJoltClashing, // eslint-disable-line no-unused-vars
+  clinchJoltRecovery, // eslint-disable-line no-unused-vars
+  // Flap (flight power-up) — trailing params
+  isFlapping,
+  flapPhase,
+  flapFrame
 ) => {
   if (ritualAnimationSrc) {
     return ritualAnimationSrc;
@@ -138,6 +150,15 @@ const getImageSrc = (
   if (isRopeJumping) {
     if (ropeJumpPhase === "startup" || ropeJumpPhase === "landing") return recovering;
     return dodging;
+  }
+  // Flap: grounded startup uses the rope-jump-style recovery pose; in the air
+  // we toggle between the two flap frames (the wing-beat) — flapFrame is the
+  // client-computed 1|2 from the last flapWingBeatTime (see GameFighter).
+  if (isFlapping) {
+    // Grounded startup AND the landing/recovery (whiff or post-slam auto-ground)
+    // both use the rope-jump-style recovery pose rather than holding a flap frame.
+    if (flapPhase === "startup" || flapPhase === "landing") return recovering;
+    return flapFrame === 2 ? flap2 : flap1;
   }
   // Recovery is checked first because isSidestepping stays true through the
   // recovery phase. Without this order, the spin sprite would persist into

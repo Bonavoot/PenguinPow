@@ -39,6 +39,7 @@ const DELTA_TRACKED_PROPS = [
   'snowballs', 'pumoArmy', 'snowballCooldown', 'pumoArmyCooldown', 'snowballThrowsRemaining', 'pumoArmySpawnsRemaining',
   'isPowerSliding', 'isBraking', 'movementVelocity', 'isStrafing',
   'isRopeJumping', 'ropeJumpPhase', 'sizeMultiplier', 'isGassed',
+  'isFlapping', 'flapPhase', 'flapCharges', 'flapWingBeatTime',
   'isSidestepping', 'isSidestepStartup', 'isSidestepRecovery',
   'isSlapParryRecovering',
   'isHitFalling', 'isSidestepHitReturn',
@@ -250,6 +251,7 @@ const POWER_UP_TYPES = {
   SNOWBALL: "snowball",
   PUMO_ARMY: "pumo_army",
   THICK_BLUBBER: "thick_blubber",
+  FLAP: "flap",
 };
 
 const POWER_UP_EFFECTS = {
@@ -258,6 +260,7 @@ const POWER_UP_EFFECTS = {
   [POWER_UP_TYPES.SNOWBALL]: 1.0, // No stat multiplier, just projectile ability
   [POWER_UP_TYPES.PUMO_ARMY]: 1.0, // No stat multiplier, just spawns army
   [POWER_UP_TYPES.THICK_BLUBBER]: 1.0, // No stat multiplier, just hit absorption
+  [POWER_UP_TYPES.FLAP]: 1.0, // No stat multiplier, replaces raw parry with flight
 };
 
 const GRAB_DURATION = 1500; // 1.5 seconds total grab duration
@@ -458,6 +461,56 @@ const ROPE_JUMP_STAMINA_COST = 4;        // Same as dodge
 const ROPE_JUMP_ARC_HEIGHT = 120;        // Peak Y offset above GROUND_LEVEL
 const ROPE_JUMP_SAFE_HEIGHT = 80;        // Y offset above which player can't be hit
 const ROPE_JUMP_BOUNDARY_ZONE = 40;      // Tight to the rope — must be near the boundary to jump
+
+// ============================================
+// FLAP — "Flappy bird" flight power-up (replaces raw parry on Space)
+// ============================================
+// State machine: startup (grounded telegraph) → flight (airborne, velocity
+// physics) → landing (recovery endlag). Liftoff is FREE; the player then has
+// FLAP_CHARGES (3) air flaps. Each press sets the vertical velocity to a hard
+// impulse (NOT additive — that's what makes it read as a flappy-bird flap),
+// then FLAP_GRAVITY pulls them back down each tick. Airborne = fully hit-immune;
+// while DESCENDING the flapper is an attacker (body-slam). The per-tick values
+// are tuned against the fixed ~64Hz timestep (delta ≈ 15.6ms): a single impulse
+// arcs to ~impulse²/(2·FLAP_GRAVITY) — liftoff (14) ≈ 163px, an air flap (12)
+// ≈ 120px from the press point. FLAP_MAX_HEIGHT caps a chained climb so the
+// flapper only dips "a little" into the top UI and is never fully hidden.
+const FLAP_STARTUP_MS = 166;             // Grounded telegraph (matches rope jump; interruptible)
+const FLAP_CHARGES = 3;                  // Air flaps AFTER liftoff (liftoff itself is free)
+const FLAP_LIFTOFF_IMPULSE = 14;         // Upward velocity (px/tick) on the initial liftoff — peaks ~163px, clearly below the top UI
+const FLAP_IMPULSE = 12;                 // Upward velocity (px/tick) per AIR flap press — peaks ~120px from press; chaining climbs toward the cap with effort
+const FLAP_GRAVITY = 0.6;                // Downward accel (px/tick²) on the main fall — fast & committal so the slam isn't a free dodge
+const FLAP_MAX_HEIGHT = 225;             // Y-offset cap above GROUND_LEVEL — the MOST a chained flap can climb
+const FLAP_AIR_MOVE_SPEED = 4.6;         // Horizontal air-control speed (px/tick) via A/D — fine steering while holding
+// Ceiling "feel" fix: a hard velocity clamp at the cap made hitting the ceiling
+// snap from rising → dead-stop → fast drop, which reads as an ugly bounce. The
+// fix is a CUSHION band just below the cap: rising into it bleeds off upward
+// speed (glide to a stop, no slam) and gravity is softened there (HANG at the
+// peak). The instant the wrestler drops BELOW the band, full FLAP_GRAVITY takes
+// over again — so the actual fall stays fast, and normal mid-air arcs (below the
+// band) are totally unaffected, preserving the "perfect flight" skill ceiling.
+const FLAP_CEILING_CUSHION = 42;         // Height (px) of the soft band below the cap
+const FLAP_CEILING_HANG_GRAVITY = 0.34;  // Reduced gravity inside the cushion band — peak hang, not a full float
+// Per-flap horizontal burst: a flap pressed WHILE holding A/D flings the player
+// up-AND-forward (diagonal arc) instead of near-vertical. Decays via friction so
+// it reads as a momentary lunge layered on top of the steering drift. No
+// direction held on the press = no burst (pure vertical).
+const FLAP_FLAP_H_IMPULSE = 7;           // Horizontal velocity (px/tick) added on a directional flap press
+const FLAP_H_FRICTION = 0.88;            // Per-tick decay of the horizontal burst (~58px of lunge per flap)
+const FLAP_CHARGE_COOLDOWN_MS = 150;     // Min interval between flaps (gives the wing-beat room to read)
+const FLAP_STAMINA_COST = 12;            // Liftoff cost only (air flaps are free) — pricier than a dodge since liftoff buys an immune flight + a body-slam; still cheap enough for several flights per bar
+const FLAP_LANDING_RECOVERY_MS = 250;    // WHIFF landing endlag — the punish window
+// Connecting the body-slam ENDS the flight: the flapper drops to the ground
+// FAST (weighty, not floaty) over FLAP_HIT_LANDING_DESCENT_MS, shoved well
+// clear of the victim, then becomes actionable in lockstep with the victim's
+// hitstun (recovery = SLAP_HIT3_STUN_MS, set per-player) so the slam grants NO
+// frame advantage — both wrestlers are actionable on the same tick.
+const FLAP_HIT_LANDING_DESCENT_MS = 90;  // Fast hard drop to the ground after a connect (weighty impact)
+const FLAP_HIT_LANDING_PUSHBACK = 80;    // Backward shove (px) when the slam connects — strong separation
+// Body-slam impulse = half a slap-string finisher (slap3). Uses the same
+// burst-knockback (no-DI) model as slap3 so the "drop on their head" payoff
+// reads like a real heavy hit, just at half the send.
+const FLAP_BODYSLAM_KB_VELOCITY = SLAP_HIT3_KB_VELOCITY * 0.5;
 
 // ============================================
 // Hit Recovery — smooth Y return when hit at non-ground positions
@@ -937,6 +990,25 @@ module.exports = {
   ROPE_JUMP_ARC_HEIGHT,
   ROPE_JUMP_SAFE_HEIGHT,
   ROPE_JUMP_BOUNDARY_ZONE,
+
+  // Flap
+  FLAP_STARTUP_MS,
+  FLAP_CHARGES,
+  FLAP_LIFTOFF_IMPULSE,
+  FLAP_IMPULSE,
+  FLAP_GRAVITY,
+  FLAP_MAX_HEIGHT,
+  FLAP_AIR_MOVE_SPEED,
+  FLAP_CEILING_CUSHION,
+  FLAP_CEILING_HANG_GRAVITY,
+  FLAP_FLAP_H_IMPULSE,
+  FLAP_H_FRICTION,
+  FLAP_CHARGE_COOLDOWN_MS,
+  FLAP_STAMINA_COST,
+  FLAP_LANDING_RECOVERY_MS,
+  FLAP_HIT_LANDING_DESCENT_MS,
+  FLAP_HIT_LANDING_PUSHBACK,
+  FLAP_BODYSLAM_KB_VELOCITY,
 
   // Hit recovery
   HIT_FALL_BASE_MS,

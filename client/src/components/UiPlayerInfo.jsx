@@ -6,6 +6,7 @@ import powerWaterIcon from "../assets/power-water.png";
 import snowballImage from "../assets/snowball.png";
 import pumoArmyIcon from "./pumo-army-icon.png";
 import thickBlubberIcon from "../assets/thick-blubber-icon.png";
+import flapIcon from "../assets/flap-icon.png";
 import { C } from "./menuTheme";
 import BalanceGauge from "./BalanceGauge";
 
@@ -1338,6 +1339,8 @@ const PowerUpSlot = styled.div`
         return "linear-gradient(135deg, #ffcc80, #ff8c00)";
       case "thick_blubber":
         return "linear-gradient(135deg, #9c88ff, #7c4dff)";
+      case "flap":
+        return "linear-gradient(135deg, #34e0c0, #15705f)";
       default:
         return "linear-gradient(135deg, #6c757d, #343a40)";
     }
@@ -2075,6 +2078,7 @@ const UiPlayerInfo = ({
       case "snowball": return snowballImage;
       case "pumo_army": return pumoArmyIcon;
       case "thick_blubber": return thickBlubberIcon;
+      case "flap": return flapIcon;
       default: return "";
     }
   };
