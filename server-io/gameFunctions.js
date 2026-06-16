@@ -406,6 +406,7 @@ function handleWinCondition(room, loser, winner, io, winType) {
       p.flapLandingTime = 0;
       p.flapWingBeatTime = 0;
       p.flapFastFalling = false;
+      p.flapBeatHDir = 0;
       p.flapHitLanded = false;
       p.flapHitLandStartY = 0;
       p.flapHitLandStartX = 0;

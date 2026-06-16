@@ -72,6 +72,7 @@ function cleanupPlayerStates(player) {
   player.flapLandingTime = 0;
   player.flapWingBeatTime = 0;
   player.flapFastFalling = false;
+  player.flapBeatHDir = 0;
   player.flapHitLanded = false;
   player.flapHitLandStartY = 0;
   player.flapHitLandStartX = 0;

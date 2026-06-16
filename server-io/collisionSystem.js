@@ -654,13 +654,16 @@ function processHit(player, otherPlayer, rooms, io) {
     (otherPlayer.isGrabStartup === true || otherPlayer.isGrabbingMovement === true);
   const counterHitFromRopeJumpStartup = otherPlayer.isRopeJumping && otherPlayer.ropeJumpPhase === "startup";
   const counterHitFromSidestepStartup = otherPlayer.isSidestepStartup === true;
+  const counterHitFromFlapStartup =
+    otherPlayer.isFlapping && otherPlayer.flapPhase === "startup";
   // Dodge is a pure movement ability, not an attack — hits against any phase
   // of a dodge land as a clean normal hit (no counter-hit, no punish). Other
-  // movement-ish actions (sidestep, rope jump) ARE still counter-hittable on
-  // startup because they're committed defensive reads with bigger payoffs;
-  // dodge is a quick reposition with no defensive payoff to "earn" a counter.
+  // movement-ish actions (sidestep, rope jump, flap liftoff) ARE still
+  // counter-hittable on startup because they're committed defensive reads with
+  // bigger payoffs; dodge is a quick reposition with no defensive payoff to
+  // "earn" a counter.
   const counterHitRaw = counterHitFromAttacking || counterHitFromIntent || counterHitFromGrabAttempt
-    || counterHitFromRopeJumpStartup || counterHitFromSidestepStartup;
+    || counterHitFromRopeJumpStartup || counterHitFromSidestepStartup || counterHitFromFlapStartup;
 
   // ============================================
   // PUNISH DETECTION

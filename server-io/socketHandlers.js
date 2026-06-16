@@ -543,9 +543,13 @@ function processInputPacket(room, player, data, io, rooms) {
         if (player.keys.d && !player.keys.a) {
           player.flapVelocityX = FLAP_FLAP_H_IMPULSE;
           player.facing = -1;
+          player.flapBeatHDir = 1;
         } else if (player.keys.a && !player.keys.d) {
           player.flapVelocityX = -FLAP_FLAP_H_IMPULSE;
           player.facing = 1;
+          player.flapBeatHDir = -1;
+        } else {
+          player.flapBeatHDir = 0;
         }
         player.flapWingBeatTime = nowSim;
         player.lastFlapChargeTime = nowSim;

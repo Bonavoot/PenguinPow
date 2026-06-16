@@ -3277,6 +3277,348 @@ const PRESETS = {
       });
     }
   },
+
+  // ── FLAP liftoff — vertical launch burst at the moment of takeoff ─────────
+  // Layered like dashStart but aimed upward: ground ring + ice kick + wing
+  // thrust lines + displaced-air puffs. Softer than throwLand (launch, not impact).
+  flapLiftoff(engine, { x, y, facing, beatHDir }) {
+    const dir = facing || 1;
+    const hDir = beatHDir || 0;
+    const lineTilt = hDir * 0.38;
+    const footX = x;
+    const footY = GAME_H - y - 12;
+    const wingY = GAME_H - y - 78;
+    const bodyX = footX;
+
+    // Ground shock ring — smaller/softer than throwLand
+    const ringTextures = [engine.textures.ring, engine.textures.ringAlt];
+    for (let i = 0; i < 2; i++) {
+      const scale = 1 + i * 0.06;
+      engine.spawn({
+        x: footX,
+        y: footY,
+        vx: 0, vy: 0, gravity: 0, drag: 1,
+        size: 8 * scale,
+        sizeEnd: 48 * scale,
+        alpha: rand(0.7, 0.88),
+        alphaEnd: 0,
+        rotation: 0, rotationSpeed: 0,
+        ease: "outExpo", easeAlpha: "outCubic",
+        maxLife: 0.28 + i * 0.02,
+        texture: ringTextures[i],
+        stretchX: 2.2,
+        delay: i * 0.015,
+      });
+    }
+
+    // Feet dust — compact puffs kicked outward from the launch point
+    for (let i = 0; i < 4; i++) {
+      const size = rand(22, 34);
+      engine.spawn({
+        x: footX + rand(-10, 10),
+        y: footY - rand(2, 8),
+        vx: rand(-70, 70),
+        vy: rand(20, 55),
+        gravity: 80,
+        drag: 0.9,
+        size,
+        sizeEnd: size * rand(0.35, 0.5),
+        alpha: rand(0.65, 0.82),
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "inCubic",
+        rotationSpeed: rand(-0.8, 0.8),
+        maxLife: rand(0.22, 0.34),
+        texture: pickPuff(engine.textures),
+      });
+    }
+
+    // Ice chips kicked from the dohyo surface
+    for (let i = 0; i < 3; i++) {
+      const spread = rand(-0.6, 0.6);
+      const speed = rand(90, 170);
+      engine.spawn({
+        x: footX + rand(-8, 8),
+        y: footY - rand(2, 6),
+        vx: Math.cos(spread) * speed + rand(-18, 18),
+        vy: Math.abs(Math.sin(spread)) * speed * 0.45 + rand(10, 30),
+        gravity: 320,
+        drag: 0.95,
+        size: rand(2, 4),
+        sizeEnd: rand(1, 2),
+        alpha: rand(0.55, 0.8),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-4, 4),
+        maxLife: rand(0.16, 0.28),
+        texture: pick([engine.textures.chunk, engine.textures.chunkIce]),
+      });
+    }
+
+    // Upward wing thrust lines — vertical when neutral, tilted with A/D lunge
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 2; i++) {
+        const thickness = rand(2.5, 4);
+        engine.spawn({
+          x: bodyX + side * dir * rand(34, 52) + hDir * rand(6, 14),
+          y: wingY + rand(-6, 10),
+          vx: 0,
+          vy: 0,
+          gravity: 0,
+          drag: 1,
+          size: thickness,
+          sizeEnd: thickness,
+          alpha: rand(0.85, 1.0),
+          alphaEnd: 0,
+          rotation: -Math.PI / 2 + lineTilt,
+          rotationSpeed: 0,
+          ease: "linear",
+          easeAlpha: "inCubic",
+          maxLife: rand(0.1, 0.18),
+          texture: pick([engine.textures.speedLine, engine.textures.speedLineThin]),
+          stretchX: rand(12, 18),
+        });
+      }
+    }
+
+    // Displaced-air puffs — symmetrical below each wing, pushed downward
+    const wakeY = GAME_H - y - 40;
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 2; i++) {
+        const size = rand(16, 24);
+        engine.spawn({
+          x: bodyX + side * dir * rand(30, 50),
+          y: wakeY + rand(4, 14),
+          vx: side * dir * rand(25, 55),
+          vy: rand(60, 110),
+          gravity: 40,
+          drag: 0.92,
+          size,
+          sizeEnd: size * rand(0.45, 0.6),
+          alpha: rand(0.55, 0.75),
+          alphaEnd: 0,
+          ease: "outCubic",
+          easeAlpha: "outQuad",
+          rotationSpeed: 0,
+          maxLife: rand(0.18, 0.28),
+          texture: pickSmallPuff(engine.textures),
+        });
+      }
+    }
+
+    // Wing-tip sparks — mirrored outward from each wing
+    for (const side of [-1, 1]) {
+      engine.spawn({
+        x: bodyX + side * dir * rand(38, 56),
+        y: wingY + rand(4, 14),
+        vx: side * dir * rand(40, 80),
+        vy: rand(40, 80),
+        gravity: 100,
+        drag: 0.92,
+        size: rand(3, 5),
+        sizeEnd: rand(1, 2),
+        alpha: rand(0.85, 1.0),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "outQuad",
+        rotationSpeed: 0,
+        maxLife: rand(0.1, 0.16),
+        texture: pick([engine.textures.spark, engine.textures.sparkSmall]),
+        blendMode: "lighter",
+      });
+    }
+  },
+
+  // ── FLAP air charge — cute down-feather puffs + ice sparkles ─────────────
+  // Soft and playful to match the wing-beat animation; no speed lines.
+  // beatHDir (-1 = A, 0 = neutral, 1 = D) biases puff size/velocity sideways.
+  flapWingBeat(engine, { x, y, facing, beatHDir }) {
+    const dir = facing || 1;
+    const hDir = beatHDir || 0;
+    const wingY = GAME_H - y - 82;
+    const wakeY = GAME_H - y - 74;
+    const bodyX = x;
+
+    // Down-feather puffs — two soft blooms under each wing per beat
+    for (const side of [-1, 1]) {
+      const leadBoost = hDir === 0 ? 1 : side === hDir ? rand(1.15, 1.32) : rand(0.88, 0.96);
+      for (let i = 0; i < 2; i++) {
+        const size = rand(22, 34) * (i === 0 ? leadBoost : leadBoost * 0.75);
+        engine.spawn({
+          x: bodyX + side * dir * rand(32, 52) + hDir * rand(8, 18),
+          y: wakeY + rand(0, 8) + i * rand(1, 4),
+          vx: side * dir * rand(18, 42) + hDir * rand(28, 58),
+          vy: rand(40, 78),
+          gravity: 24,
+          drag: 0.91,
+          size,
+          sizeEnd: size * rand(0.6, 0.78),
+          alpha: rand(0.72, 0.9),
+          alphaEnd: 0,
+          ease: "outCubic",
+          easeAlpha: "inCubic",
+          rotationSpeed: rand(-0.4, 0.4),
+          maxLife: rand(0.34, 0.52),
+          texture: i === 0 ? pickPuff(engine.textures) : pickSmallPuff(engine.textures),
+        });
+      }
+    }
+
+    // Ice sparkles — larger, brighter, always additive; spawn wide at wing tips
+    for (let i = 0; i < 6; i++) {
+      const side = i % 2 === 0 ? -1 : 1;
+      const size = rand(7, 13);
+      engine.spawn({
+        x: bodyX + side * dir * rand(36, 56) + hDir * rand(6, 16),
+        y: wingY + rand(-6, 8),
+        vx: side * dir * rand(14, 36) + hDir * rand(18, 42),
+        vy: rand(-55, -20),
+        gravity: 40,
+        drag: 0.92,
+        size,
+        sizeEnd: rand(3, 5),
+        alpha: rand(0.85, 1.0),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "inCubic",
+        rotationSpeed: rand(-8, 8),
+        maxLife: rand(0.32, 0.5),
+        texture: pick([
+          engine.textures.circleIce,
+          engine.textures.circle,
+          engine.textures.chunkIce,
+        ]),
+        blendMode: "lighter",
+      });
+    }
+
+    // Bright twinkle pinpoints — full spark texture, unmistakable glint
+    for (let i = 0; i < 4; i++) {
+      const side = i % 2 === 0 ? -1 : 1;
+      engine.spawn({
+        x: bodyX + side * dir * rand(38, 58) + hDir * rand(8, 18),
+        y: wingY + rand(-4, 8),
+        vx: side * dir * rand(10, 26) + hDir * rand(14, 32),
+        vy: rand(-42, -12),
+        gravity: 30,
+        drag: 0.9,
+        size: rand(6, 10),
+        sizeEnd: rand(2, 4),
+        alpha: rand(0.9, 1.0),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "inCubic",
+        rotationSpeed: rand(-3, 3),
+        maxLife: rand(0.22, 0.38),
+        texture: pick([engine.textures.spark, engine.textures.sparkSmall]),
+        blendMode: "lighter",
+      });
+    }
+  },
+
+  // ── FLAP fast-fall — committed S-key dive trail ───────────────────────────
+  // Streaks spawn ABOVE the tucked dive pose and shoot downward past the
+  // player (original direction read). Wiggly rotation is intentional.
+  flapFastFallTrail(engine, { x, y, facing }) {
+    const dir = facing || 1;
+    const bodyY = GAME_H - y - 68;
+    const bodyX = x;
+
+    // Vertical dive lines — above the body, streaking down
+    for (let i = 0; i < 4; i++) {
+      const thickness = rand(2.5, 4.5);
+      const stretch = rand(12, 22);
+      engine.spawn({
+        x: bodyX + rand(-28, 28) + dir * rand(-8, 8),
+        y: bodyY - rand(12, 32),
+        vx: dir * rand(-25, 25),
+        vy: rand(180, 340),
+        gravity: 0,
+        drag: 0.96,
+        size: thickness,
+        sizeEnd: thickness * 0.45,
+        alpha: rand(0.8, 1.0),
+        alphaEnd: 0,
+        rotation: Math.PI / 2 + rand(-0.15, 0.15),
+        rotationSpeed: 0,
+        ease: "linear",
+        easeAlpha: "inCubic",
+        maxLife: rand(0.1, 0.2),
+        texture: pick([engine.textures.speedLine, engine.textures.speedLineIce]),
+        stretchX: stretch,
+      });
+    }
+
+    // Thinner accent streaks flanking the dive, further above
+    for (let i = 0; i < 2; i++) {
+      const side = i === 0 ? -1 : 1;
+      const thickness = rand(2, 3);
+      engine.spawn({
+        x: bodyX + side * dir * rand(32, 52),
+        y: bodyY - rand(8, 24),
+        vx: side * rand(15, 40),
+        vy: rand(140, 260),
+        gravity: 0,
+        drag: 0.97,
+        size: thickness,
+        sizeEnd: thickness * 0.4,
+        alpha: rand(0.65, 0.88),
+        alphaEnd: 0,
+        rotation: Math.PI / 2 + side * rand(0.05, 0.2),
+        rotationSpeed: 0,
+        ease: "linear",
+        easeAlpha: "inCubic",
+        maxLife: rand(0.08, 0.16),
+        texture: engine.textures.speedLineThin,
+        stretchX: rand(10, 16),
+      });
+    }
+
+    // Torn-air wisps — ripped upward above the diving silhouette
+    if (Math.random() < 0.7) {
+      const size = rand(10, 18);
+      engine.spawn({
+        x: bodyX + rand(-22, 22),
+        y: bodyY - rand(4, 16),
+        vx: rand(-40, 40),
+        vy: rand(-80, -30),
+        gravity: 20,
+        drag: 0.9,
+        size,
+        sizeEnd: size * rand(0.55, 0.75),
+        alpha: rand(0.45, 0.65),
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-2, 2),
+        maxLife: rand(0.14, 0.24),
+        texture: pickSmallPuff(engine.textures),
+      });
+    }
+
+    // Dive sparks — bright points trailing from above
+    if (Math.random() < 0.45) {
+      engine.spawn({
+        x: bodyX + rand(-20, 20),
+        y: bodyY - rand(6, 20),
+        vx: rand(-50, 50),
+        vy: rand(60, 140),
+        gravity: 80,
+        drag: 0.93,
+        size: rand(3, 5),
+        sizeEnd: rand(1, 2),
+        alpha: rand(0.8, 1.0),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "outQuad",
+        rotationSpeed: 0,
+        maxLife: rand(0.08, 0.14),
+        texture: pick([engine.textures.spark, engine.textures.sparkSmall]),
+        blendMode: "lighter",
+      });
+    }
+  },
 };
 
 // ─── Engine ─────────────────────────────────────────────────────────

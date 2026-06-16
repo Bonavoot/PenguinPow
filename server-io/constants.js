@@ -39,7 +39,7 @@ const DELTA_TRACKED_PROPS = [
   'snowballs', 'pumoArmy', 'snowballCooldown', 'pumoArmyCooldown', 'snowballThrowsRemaining', 'pumoArmySpawnsRemaining',
   'isPowerSliding', 'isBraking', 'movementVelocity', 'isStrafing',
   'isRopeJumping', 'ropeJumpPhase', 'sizeMultiplier', 'isGassed',
-  'isFlapping', 'flapPhase', 'flapCharges', 'flapWingBeatTime', 'flapFastFalling',
+  'isFlapping', 'flapPhase', 'flapCharges', 'flapWingBeatTime', 'flapFastFalling', 'flapBeatHDir',
   'isSidestepping', 'isSidestepStartup', 'isSidestepRecovery',
   'isSlapParryRecovering',
   'isHitFalling', 'isSidestepHitReturn',
@@ -466,7 +466,9 @@ const ROPE_JUMP_BOUNDARY_ZONE = 40;      // Tight to the rope — must be near t
 // FLAP — "Flappy bird" flight power-up (replaces raw parry on Space)
 // ============================================
 // State machine: startup (grounded telegraph) → flight (airborne, velocity
-// physics) → landing (recovery endlag). Liftoff is FREE; the player then has
+// physics) → landing (recovery endlag). Startup is counter-hittable (see
+// processHit); flight is hit-immune; landing whiff is the punish window.
+// Liftoff is FREE; the player then has
 // FLAP_CHARGES (3) air flaps. Each press sets the vertical velocity to a hard
 // impulse (NOT additive — that's what makes it read as a flappy-bird flap),
 // then FLAP_GRAVITY pulls them back down each tick. Airborne = fully hit-immune;

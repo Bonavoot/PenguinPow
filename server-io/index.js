@@ -2036,11 +2036,14 @@ function tick(delta) {
             if (player.keys.d && !player.keys.a) {
               player.flapVelocityX = FLAP_FLAP_H_IMPULSE;
               player.facing = -1;
+              player.flapBeatHDir = 1;
             } else if (player.keys.a && !player.keys.d) {
               player.flapVelocityX = -FLAP_FLAP_H_IMPULSE;
               player.facing = 1;
+              player.flapBeatHDir = -1;
             } else {
               player.flapVelocityX = 0;
+              player.flapBeatHDir = 0;
             }
             player.flapWingBeatTime = now;
             player.lastFlapChargeTime = now;
@@ -2181,6 +2184,7 @@ function tick(delta) {
             player.flapLandingTime = 0;
             player.flapWingBeatTime = 0;
             player.flapFastFalling = false;
+            player.flapBeatHDir = 0;
             player.flapHitLanded = false;
             player.flapHitLandStartY = 0;
             player.flapHitLandStartX = 0;

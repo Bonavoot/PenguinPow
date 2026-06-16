@@ -2326,9 +2326,13 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
         if (cpu.keys.d && !cpu.keys.a) {
           cpu.flapVelocityX = FLAP_FLAP_H_IMPULSE;
           cpu.facing = -1;
+          cpu.flapBeatHDir = 1;
         } else if (cpu.keys.a && !cpu.keys.d) {
           cpu.flapVelocityX = -FLAP_FLAP_H_IMPULSE;
           cpu.facing = 1;
+          cpu.flapBeatHDir = -1;
+        } else {
+          cpu.flapBeatHDir = 0;
         }
         cpu.flapWingBeatTime = currentTime;
         cpu.lastFlapChargeTime = currentTime;

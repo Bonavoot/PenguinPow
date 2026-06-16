@@ -571,6 +571,7 @@ const GameFighter = ({
     flapWingBeatTime: 0,
     flapCharges: 0,
     flapFastFalling: false,
+    flapBeatHDir: 0,
   });
 
   // PERFORMANCE: Position is rendered IMPERATIVELY, outside React.
@@ -2174,6 +2175,7 @@ const GameFighter = ({
           prev.flapWingBeatTime !== newState.flapWingBeatTime ||
           prev.flapCharges !== newState.flapCharges ||
           prev.flapFastFalling !== newState.flapFastFalling ||
+          prev.flapBeatHDir !== newState.flapBeatHDir ||
           prev.isSidestepping !== newState.isSidestepping ||
           prev.isSidestepStartup !== newState.isSidestepStartup ||
           prev.isSidestepRecovery !== newState.isSidestepRecovery ||
@@ -3386,25 +3388,77 @@ const GameFighter = ({
     prevRopeJumpPhase.current = penguin.ropeJumpPhase;
   }, [penguin.ropeJumpPhase, penguin.x, penguin.y, emitParticles]);
 
-  // Flap landing — same smoke ring as the rope jump on touchdown. Fired on the
-  // rising edge of the "landing" phase and pinned to the ground (a whiff lands
-  // there immediately; a post-hit drop finishes a hair later, but the ring
-  // reads as the ground impact either way).
+  // Flap landing — same smoke ring as the rope jump on touchdown. Liftoff burst
+  // fires on startup → flight. Air-charge puffs fire on each flapCharges
+  // decrement (reliable across network snapshots; flapWingBeatTime alone can
+  // miss beats between state packets).
   const prevFlapPhase = useRef(null);
+  const prevFlapChargesParticles = useRef(null);
   useEffect(() => {
+    const x = interpolatedPositionRef.current.x || penguin.x;
+    const y = interpolatedPositionRef.current.y || penguin.y;
+    const facing = penguin.facing ?? 1;
+
+    if (prevFlapPhase.current === "startup" && penguin.flapPhase === "flight") {
+      let beatHDir = 0;
+      if (isLocalPlayer) {
+        const k = getLocalKeyState();
+        if (k?.d && !k?.a) beatHDir = 1;
+        else if (k?.a && !k?.d) beatHDir = -1;
+      } else {
+        beatHDir = penguin.flapBeatHDir ?? 0;
+      }
+      emitParticles("flapLiftoff", { x, y, facing, beatHDir });
+    }
     if (prevFlapPhase.current !== "landing" && penguin.flapPhase === "landing") {
       emitParticles("throwLand", {
-        x: interpolatedPositionRef.current.x || penguin.x,
+        x,
         y: SHADOW_GROUND_LEVEL,
       });
     }
     prevFlapPhase.current = penguin.flapPhase;
-  }, [penguin.flapPhase, penguin.x, emitParticles]);
+  }, [penguin.flapPhase, penguin.x, penguin.y, penguin.facing, penguin.flapBeatHDir, isLocalPlayer, emitParticles]);
 
-  // Flap audio — each wing beat (the liftoff AND every air-flap bump the
-  // server's flapWingBeatTime) plays a layered "whoosh + flap": the
-  // charged-attack whiff for the wing thrust with the dedicated flap-sound on
-  // top. Fired on the rising edge of each new flapWingBeatTime.
+  useEffect(() => {
+    if (penguin.isFlapping && penguin.flapPhase === "flight") {
+      const charges = penguin.flapCharges ?? 0;
+      if (
+        prevFlapChargesParticles.current !== null &&
+        charges < prevFlapChargesParticles.current
+      ) {
+        const x = interpolatedPositionRef.current.x || penguin.x;
+        const y = interpolatedPositionRef.current.y || penguin.y;
+        let beatHDir = 0;
+        if (isLocalPlayer) {
+          const k = getLocalKeyState();
+          if (k?.d && !k?.a) beatHDir = 1;
+          else if (k?.a && !k?.d) beatHDir = -1;
+        } else {
+          beatHDir = penguin.flapBeatHDir ?? 0;
+        }
+        emitParticles("flapWingBeat", {
+          x,
+          y,
+          facing: penguin.facing ?? 1,
+          beatHDir,
+        });
+      }
+      prevFlapChargesParticles.current = charges;
+    } else {
+      prevFlapChargesParticles.current = null;
+    }
+  }, [
+    penguin.isFlapping,
+    penguin.flapPhase,
+    penguin.flapCharges,
+    penguin.x,
+    penguin.y,
+    penguin.facing,
+    isLocalPlayer,
+    emitParticles,
+  ]);
+
+  // Flap audio — each wing beat (liftoff + every air flap) plays layered whoosh.
   const prevFlapBeatSound = useRef(0);
   useEffect(() => {
     if (
@@ -3418,6 +3472,54 @@ const GameFighter = ({
     }
     prevFlapBeatSound.current = penguin.flapWingBeatTime || 0;
   }, [penguin.flapWingBeatTime, penguin.isFlapping, penguin.x]);
+
+  // Flap fast-fall trail — vertical dive streaks while S is held mid-flight.
+  // Interval runs for the whole flight phase; emissions gate on server
+  // flapFastFalling OR local S (same pattern as the dodge-pose swap).
+  const flapFastFallIntervalRef = useRef(null);
+  useEffect(() => {
+    const inFlight =
+      penguin.isFlapping && penguin.flapPhase === "flight";
+
+    if (inFlight) {
+      const EMIT_INTERVAL = 45;
+      flapFastFallIntervalRef.current = setInterval(() => {
+        const p = penguinRef.current;
+        if (!p?.isFlapping || p.flapPhase !== "flight") {
+          clearInterval(flapFastFallIntervalRef.current);
+          flapFastFallIntervalRef.current = null;
+          return;
+        }
+        const diving =
+          p.flapFastFalling ||
+          (isLocalPlayer && !!getLocalKeyState()?.s);
+        if (!diving) return;
+
+        const pos = interpolatedPositionRef.current;
+        emitParticles("flapFastFallTrail", {
+          x: pos?.x ?? p.x,
+          y: pos?.y ?? p.y,
+          facing: p.facing ?? 1,
+        });
+      }, EMIT_INTERVAL);
+    } else if (flapFastFallIntervalRef.current) {
+      clearInterval(flapFastFallIntervalRef.current);
+      flapFastFallIntervalRef.current = null;
+    }
+
+    return () => {
+      if (flapFastFallIntervalRef.current) {
+        clearInterval(flapFastFallIntervalRef.current);
+        flapFastFallIntervalRef.current = null;
+      }
+    };
+  }, [
+    penguin.isFlapping,
+    penguin.flapPhase,
+    penguin.flapFastFalling,
+    isLocalPlayer,
+    emitParticles,
+  ]);
 
   // ─────────────────────────────────────────────────────────────────
   // LOCAL PLAYER HALO — persistent identity marker
