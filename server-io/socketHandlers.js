@@ -535,6 +535,7 @@ function processInputPacket(room, player, data, io, rooms) {
       // wing-beat animation has room to read — see FLAP_CHARGE_COOLDOWN_MS).
       if (
         player.flapCharges > 0 &&
+        !player.flapHitLanded &&
         nowSim - (player.lastFlapChargeTime || 0) >= FLAP_CHARGE_COOLDOWN_MS
       ) {
         player.flapCharges -= 1;

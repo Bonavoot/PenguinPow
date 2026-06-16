@@ -1605,6 +1605,124 @@ const PRESETS = {
     }
   },
 
+  // Fast-fall slam landing — normal ring radius, thicker band; icy shards spread
+  // low inside the ripple (no rising smoke puffs).
+  flapFastFallLand(engine, { x, y }) {
+    const footX = x;
+    const footY = GAME_H - y - 12;
+    // Keep ice/sparks inside the expanding ring footprint.
+    const RING_SPREAD = 44;
+
+    // Same radius as throwLand; thicker stacked band (stretchX + extra ring).
+    const ringTextures = [
+      engine.textures.ring,
+      engine.textures.ringAlt,
+      engine.textures.ringThick,
+    ];
+    for (let i = 0; i < 4; i++) {
+      const scale = 1 + i * 0.05;
+      engine.spawn({
+        x: footX,
+        y: footY,
+        vx: 0,
+        vy: 0,
+        gravity: 0,
+        drag: 1,
+        size: 12 * scale,
+        sizeEnd: 62 * scale,
+        alpha: 0.95,
+        alphaEnd: 0,
+        rotation: 0,
+        rotationSpeed: 0,
+        ease: "outCubic",
+        easeAlpha: "outCubic",
+        maxLife: 0.37 + i * 0.02,
+        texture: ringTextures[i % 3],
+        stretchX: 2.05,
+        delay: i * 0.01,
+      });
+    }
+
+    // Ice crystals — low, spread across the ring interior.
+    for (let i = 0; i < 10; i++) {
+      const angle = rand(0, Math.PI * 2);
+      const dist = rand(10, RING_SPREAD);
+      const size = rand(9, 16);
+      engine.spawn({
+        x: footX + Math.cos(angle) * dist,
+        y: footY - rand(0, 5),
+        vx: Math.cos(angle) * rand(35, 90),
+        vy: rand(-20, 18),
+        gravity: rand(60, 140),
+        drag: 0.92,
+        size,
+        sizeEnd: rand(3, 7),
+        alpha: rand(0.88, 1.0),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "inCubic",
+        rotationSpeed: rand(-12, 12),
+        maxLife: rand(0.32, 0.5),
+        texture: pick([
+          engine.textures.circleIce,
+          engine.textures.chunkIce,
+          engine.textures.circle,
+        ]),
+        blendMode: "lighter",
+        delay: rand(0, 0.03),
+      });
+    }
+
+    // Ice twinkles — wider scatter, still low and inside the ring.
+    for (let i = 0; i < 6; i++) {
+      const angle = rand(0, Math.PI * 2);
+      const dist = rand(14, RING_SPREAD);
+      engine.spawn({
+        x: footX + Math.cos(angle) * dist,
+        y: footY - rand(0, 4),
+        vx: Math.cos(angle) * rand(45, 110),
+        vy: rand(-18, 12),
+        gravity: rand(70, 150),
+        drag: 0.9,
+        size: rand(7, 12),
+        sizeEnd: rand(2, 5),
+        alpha: rand(0.92, 1.0),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "inCubic",
+        rotationSpeed: rand(-5, 5),
+        maxLife: rand(0.24, 0.38),
+        texture: pick([engine.textures.spark, engine.textures.sparkSmall]),
+        blendMode: "lighter",
+        delay: rand(0, 0.025),
+      });
+    }
+
+    // Ice chips — skim outward along the ground inside the ring.
+    for (let i = 0; i < 5; i++) {
+      const angle = rand(-Math.PI * 0.85, Math.PI * 0.85);
+      const dist = rand(6, RING_SPREAD * 0.85);
+      const speed = rand(90, 170);
+      engine.spawn({
+        x: footX + Math.cos(angle) * dist,
+        y: footY - rand(0, 3),
+        vx: Math.cos(angle) * speed,
+        vy: rand(-12, 8),
+        gravity: 380,
+        drag: 0.94,
+        size: rand(4, 8),
+        sizeEnd: rand(1.5, 3.5),
+        alpha: rand(0.8, 0.98),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-6, 6),
+        maxLife: rand(0.26, 0.4),
+        texture: pick([engine.textures.chunk, engine.textures.chunkIce]),
+      });
+    }
+  },
+
   clinchKillThrowLand(engine, { x, y, behindDohyo }) {
     const footX = x;
     const footY = GAME_H - y - 12;
@@ -3102,7 +3220,7 @@ const PRESETS = {
     for (let i = 0; i < SCATTER_COUNT; i++) {
       const angle = (i / SCATTER_COUNT) * Math.PI * 2 + rand(-0.18, 0.18);
       const spd = rand(60, 130);
-      front({
+      engine.spawn({
         x: cx + Math.cos(angle) * SCATTER_R * TILT_X,
         y: cy + Math.sin(angle) * SCATTER_R,
         vx: Math.cos(angle) * spd * TILT_X,
@@ -3131,7 +3249,7 @@ const PRESETS = {
     for (let i = 0; i < 4; i++) {
       const angle = -Math.PI / 2 + rand(-0.5, 0.5);
       const spd = rand(28, 60);
-      front({
+      engine.spawn({
         x: cx + rand(-10, 10),
         y: cy + rand(-4, 4),
         vx: Math.cos(angle) * spd,
@@ -3232,7 +3350,7 @@ const PRESETS = {
         engine.textures.glassShard3,
         engine.textures.glassShard4,
       ]);
-      front({
+      engine.spawn({
         x: cx + Math.cos(angle) * 8,
         y: cy + Math.sin(angle) * 8,
         vx: Math.cos(angle) * spd + dir * rand(20, 45),
@@ -3257,7 +3375,7 @@ const PRESETS = {
     for (let i = 0; i < 12; i++) {
       const angle = rand(0, Math.PI * 2);
       const spd = rand(280, 520);
-      front({
+      engine.spawn({
         x: cx + rand(-5, 5),
         y: cy + rand(-5, 5),
         vx: Math.cos(angle) * spd,

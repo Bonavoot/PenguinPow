@@ -499,7 +499,7 @@ function pilotFlap(cpu, human, st, now) {
   const aligned = absH <= FLAP_DIVE_ALIGN;
   const heightAbove = cpu.y - GROUND_LEVEL;
   const canAirFlap =
-    cpu.flapCharges > 0 && now - (cpu.lastFlapChargeTime || 0) >= FLAP_CHARGE_COOLDOWN_MS;
+    cpu.flapCharges > 0 && !cpu.flapHitLanded && now - (cpu.lastFlapChargeTime || 0) >= FLAP_CHARGE_COOLDOWN_MS;
 
   cpu.facing = horiz > 0 ? 1 : -1;
   if (!aligned) {

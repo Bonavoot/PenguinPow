@@ -126,13 +126,6 @@ function App() {
         >
           <svg width="0" height="0" style={{position:'absolute'}} aria-hidden="true">
             <defs>
-              <filter id="game-sharpen" colorInterpolationFilters="sRGB">
-                <feConvolveMatrix
-                  order="3"
-                  kernelMatrix="0 -0.15 0 -0.15 1.6 -0.15 0 -0.15 0"
-                  preserveAlpha="true"
-                />
-              </filter>
               {/* ── Filmic scene grade ────────────────────────────────────────
                   A gentle tone S-curve that deepens blacks and rolls off
                   highlights so background planes stop reading "milky/faded".

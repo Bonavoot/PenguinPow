@@ -46,7 +46,7 @@ const {
   FLAP_AIR_MOVE_SPEED, FLAP_FASTFALL_GRAVITY, FLAP_FASTFALL_AIR_MOVE_SPEED,
   FLAP_CEILING_CUSHION, FLAP_CEILING_HANG_GRAVITY,
   FLAP_FLAP_H_IMPULSE, FLAP_H_FRICTION,
-  FLAP_LANDING_RECOVERY_MS, FLAP_HIT_LANDING_DESCENT_MS,
+  FLAP_LANDING_RECOVERY_MS,
   HIT_FALL_BASE_MS,
   HIT_FALL_HEIGHT_SCALE,
   HIT_FALL_POP_FRACTION,
@@ -2119,58 +2119,24 @@ function tick(delta) {
           }
           player.x = Math.max(MAP_LEFT_BOUNDARY, Math.min(player.x, MAP_RIGHT_BOUNDARY));
 
-          // Landing: touched ground while descending (or out of charges). This
-          // is the WHIFF path only — a connected body-slam transitions to the
-          // "landing" phase from collisionSystem while still airborne (and gets
-          // the synced hit-landing tween below).
+          // Landing: touched ground while descending (or out of charges). Hit or
+          // whiff — same natural drop; only the recovery window differs.
           if (player.y <= GROUND_LEVEL && player.flapVelocityY <= 0) {
             player.y = GROUND_LEVEL;
             player.flapVelocityY = 0;
             player.flapPhase = "landing";
             player.flapLandingTime = now;
-            player.actionLockUntil = now + FLAP_LANDING_RECOVERY_MS;
+            const recovery = player.flapHitLanded
+              ? player.flapHitRecoverDuration
+              : FLAP_LANDING_RECOVERY_MS;
+            player.actionLockUntil = now + recovery;
             emitThrottledScreenShake(room, io, { type: "rope_landing" });
           }
         } else if (player.flapPhase === "landing") {
           player.flapFastFalling = false;
-          // Hit-landing recovers in lockstep with the victim (flapHitRecoverDuration);
-          // a whiff uses the longer punish window.
           const recovery = player.flapHitLanded
             ? player.flapHitRecoverDuration
             : FLAP_LANDING_RECOVERY_MS;
-
-          // Connected slam, two-stage ground-down handling:
-          //   1) DROP STRAIGHT DOWN (Y only, no horizontal) — fast, ease-IN so
-          //      it accelerates into the dirt (weighty, not floaty).
-          //   2) Once grounded, a small knockback SLIDE along the ground (X only,
-          //      ease-OUT decel) during the remaining recovery. No mid-air shove.
-          // They sit in recovering.png until the synced recovery ends (no advantage).
-          if (player.flapHitLanded) {
-            const elapsed = now - player.flapLandingTime;
-            const descentMs = FLAP_HIT_LANDING_DESCENT_MS;
-            if (elapsed < descentMs && player.flapHitLandStartY > GROUND_LEVEL) {
-              // Stage 1 — straight-down drop. X frozen at the connect position.
-              const t = descentMs > 0 ? Math.min(1, elapsed / descentMs) : 1;
-              const eased = t * t; // ease-IN
-              player.y =
-                player.flapHitLandStartY +
-                (GROUND_LEVEL - player.flapHitLandStartY) * eased;
-              player.x = player.flapHitLandStartX;
-            } else {
-              // Stage 2 — grounded slide. Y pinned; X eases to the pushback target.
-              player.y = GROUND_LEVEL;
-              const slideMs = Math.max(1, recovery - descentMs);
-              const st = Math.min(1, (elapsed - descentMs) / slideMs);
-              const slideEased = 1 - Math.pow(1 - st, 2); // ease-OUT — slide decel
-              player.x =
-                player.flapHitLandStartX +
-                (player.flapHitLandTargetX - player.flapHitLandStartX) * slideEased;
-              player.x = Math.max(
-                MAP_LEFT_BOUNDARY,
-                Math.min(player.x, MAP_RIGHT_BOUNDARY)
-              );
-            }
-          }
 
           if (now >= player.flapLandingTime + recovery) {
             player.y = GROUND_LEVEL;

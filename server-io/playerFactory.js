@@ -202,13 +202,10 @@ function createInitialPlayerState(overrides = {}) {
     flapBeatHDir: 0, // Last wing-beat horizontal dir: -1 (A), 0 (neutral), 1 (D) — drives charge VFX
     flapHitLanded: false, // Did the descending body-slam connect this flight?
     lastFlapChargeTime: 0, // Throttles air flaps (FLAP_CHARGE_COOLDOWN_MS)
-    // Hit-landing tween: when the body-slam connects mid-air the flapper is
-    // smoothly eased down to the ground (+ a small pushback) over a recovery
-    // window synced to the victim's hitstun, so neither side gains advantage.
-    flapHitLandStartY: 0, // Airborne Y at the moment of the connect (tween start)
-    flapHitLandStartX: 0, // X at the moment of the connect (tween start)
-    flapHitLandTargetX: 0, // X after the small non-hit pushback (tween end)
-    flapHitRecoverDuration: 0, // Recovery window (ms) — matches the victim's stun
+    flapHitRecoverDuration: 0, // Recovery window (ms) on touchdown — matches victim stun on a connect
+    flapHitLandStartY: 0, // Legacy — no longer written on connect
+    flapHitLandStartX: 0, // Legacy — no longer written on connect
+    flapHitLandTargetX: 0, // Legacy — no longer written on connect
 
     // === Throws ===
     isThrowing: false,

@@ -41,7 +41,6 @@ const {
   CHARGED_STARTUP_MS,
   GRAB_STARTUP_ARMOR_STAGGER_MS,
   FLAP_BODYSLAM_KB_VELOCITY,
-  FLAP_HIT_LANDING_PUSHBACK,
 } = require("./constants");
 
 const {
@@ -1680,24 +1679,12 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
     return;
   }
 
-  // Connecting ENDS the flight. The flapper can't keep flying after a slam —
-  // they're auto-grounded into a recovery that's synced to the victim's stun
-  // (set below) so the slam grants NO frame advantage. The smooth descent +
-  // small pushback is tweened in the game loop's "landing" branch.
+  // Connecting latches this flight (no double-hit), burns all remaining air
+  // charges, and schedules synced recovery once the flapper naturally touches
+  // down. Flight physics keep running — no self pushback / scripted descent.
   flapper.flapHitLanded = true;
-  flapper.flapPhase = "landing";
-  flapper.flapVelocityY = 0;
-  flapper.flapVelocityX = 0;
-  flapper.flapLandingTime = currentTime;
-  flapper.flapHitLandStartY = flapper.y;
-  flapper.flapHitLandStartX = flapper.x;
-  // Push the flapper back AWAY from the opponent a touch (non-hit recoil).
-  const flapperPushDir = flapper.x < opponent.x ? -1 : 1;
-  flapper.flapHitLandTargetX = flapper.x + flapperPushDir * FLAP_HIT_LANDING_PUSHBACK;
-  // Recover in lockstep with the victim's hitstun → no advantage on landing.
+  flapper.flapCharges = 0;
   flapper.flapHitRecoverDuration = SLAP_HIT3_STUN_MS;
-  flapper.actionLockUntil = currentTime + SLAP_HIT3_STUN_MS;
-  flapper.currentAction = null;
 
   // Knockback away from the flapper (burst model — no DI, like slap3).
   const knockbackDirection = opponent.x >= flapper.x ? 1 : -1;

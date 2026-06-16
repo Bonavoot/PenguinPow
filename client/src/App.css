@@ -395,7 +395,15 @@ body {
      radius on-screen is ~2–2.6× this value. The far backdrop can stay heavily
      defocused (it's just ambient depth) so this stays higher than the crowd. */
   --arena-map-filter: brightness(0.9) saturate(0.96) url(#scene-grade) blur(2.5px);
-  --dohyo-filter: brightness(0.97) saturate(1.05) contrast(1.06) sepia(0.05) hue-rotate(-5deg);
+
+  /* ── Dohyo grade + spotlight are BAKED into dohyo.webp ──
+     The cool/vivid color grade, the icy center light-pool, the warm rope ring
+     and the shaded-surround spotlight falloff are all pre-rendered into the
+     dohyo.webp asset (flattened from the old runtime stack). This removed the
+     per-element SVG color filter that was rasterizing the dohyo at base
+     resolution and softening it — so the platform now renders as a plain, crisp
+     background image. The original ungraded art is kept as dohyo-warm-source.webp
+     in case we ever want to re-bake with different lighting/colors. */
 
   /* ── Camera defaults — JS will drive these later for dynamic pan/zoom ── */
   --cam-scale: 1.305;
@@ -614,14 +622,16 @@ body {
   inset: 0;
   background-image: url(./assets/dohyo.webp);
   background-repeat: no-repeat;
-  background-size: 85% 85%; /* width height — increase 2nd value to make platform taller */
-  background-position: 50% 25%;
+  background-size:86% 80%; /* width height — increase 2nd value to make platform taller */
+  background-position: 50% 10%;
   pointer-events: none;
   z-index: 1;
-  filter: var(--dohyo-filter) url(#game-sharpen);
+  /* No runtime filter: the color grade + spotlight are baked into dohyo.webp,
+     so this renders as a plain crisp background (no filter-region rasterization
+     softening it). Size & perspective below remain fully adjustable. */
   /* ── Perspective tilt — tweak these to flatten / angle the dohyo ── */
-  transform-origin: 50% 10%; /* pivot near the top — back stays wide, front narrows */
-  transform: perspective(600px)
+  transform-origin: 48% 100%; /* pivot near the top — back stays wide, front narrows */
+  transform: perspective(420px)
     /* depth — lower = more dramatic, higher = subtler */ rotateX(5deg)
     /* tilt — back stays anchored, front swings away (narrows) */ scaleY(0.86)
     /* vertical squash — < 1 = flatter, 1 = no change */ translateY(10%); /* raise/lower — negative = up, positive = down */
@@ -645,6 +655,12 @@ body {
   z-index: -1;
   filter: blur(12px);
 }
+
+/* NOTE: the spotlight glow (icy center pool + warm rope ring) and the shaded
+   surround that used to live here as `.dohyo-overlay::after` (screen) and
+   `.dohyo-spot-shade` (multiply) are now BAKED into dohyo.webp. Removing those
+   masked/blended layers also drops two full-screen compositing passes per
+   frame. To re-tune the lighting, re-bake from dohyo-warm-source.webp. */
 
 /* Ring-out occluder host (see Game.jsx). Players normally render in the
    `.game-actors` layer (above the HUD), but a fighter sliding OFF the dohyo

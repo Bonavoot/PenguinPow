@@ -3394,6 +3394,8 @@ const GameFighter = ({
   // miss beats between state packets).
   const prevFlapPhase = useRef(null);
   const prevFlapChargesParticles = useRef(null);
+  const prevFlapFastFallSoundRef = useRef(false);
+  const flapFastFallAtLandRef = useRef(false);
   useEffect(() => {
     const x = interpolatedPositionRef.current.x || penguin.x;
     const y = interpolatedPositionRef.current.y || penguin.y;
@@ -3411,13 +3413,25 @@ const GameFighter = ({
       emitParticles("flapLiftoff", { x, y, facing, beatHDir });
     }
     if (prevFlapPhase.current !== "landing" && penguin.flapPhase === "landing") {
-      emitParticles("throwLand", {
-        x,
-        y: SHADOW_GROUND_LEVEL,
-      });
+      if (flapFastFallAtLandRef.current) {
+        emitParticles("flapFastFallLand", {
+          x,
+          y: SHADOW_GROUND_LEVEL,
+        });
+        addShake("throw_landing");
+      } else {
+        emitParticles("throwLand", {
+          x,
+          y: SHADOW_GROUND_LEVEL,
+        });
+      }
+      flapFastFallAtLandRef.current = false;
+    }
+    if (!isInFlapMechanic(penguin)) {
+      flapFastFallAtLandRef.current = false;
     }
     prevFlapPhase.current = penguin.flapPhase;
-  }, [penguin.flapPhase, penguin.x, penguin.y, penguin.facing, penguin.flapBeatHDir, isLocalPlayer, emitParticles]);
+  }, [penguin.flapPhase, penguin.x, penguin.y, penguin.facing, penguin.flapBeatHDir, penguin.isFlapping, isLocalPlayer, emitParticles]);
 
   useEffect(() => {
     if (penguin.isFlapping && penguin.flapPhase === "flight") {
@@ -3493,6 +3507,20 @@ const GameFighter = ({
         const diving =
           p.flapFastFalling ||
           (isLocalPlayer && !!getLocalKeyState()?.s);
+
+        flapFastFallAtLandRef.current = diving;
+
+        if (diving && !prevFlapFastFallSoundRef.current) {
+          playSound(
+            pickRandomSound(slapWhiffSounds),
+            0.02,
+            null,
+            1.0,
+            xToPan(p.x)
+          );
+        }
+        prevFlapFastFallSoundRef.current = diving;
+
         if (!diving) return;
 
         const pos = interpolatedPositionRef.current;
@@ -3505,6 +3533,7 @@ const GameFighter = ({
     } else if (flapFastFallIntervalRef.current) {
       clearInterval(flapFastFallIntervalRef.current);
       flapFastFallIntervalRef.current = null;
+      prevFlapFastFallSoundRef.current = false;
     }
 
     return () => {
@@ -3512,6 +3541,7 @@ const GameFighter = ({
         clearInterval(flapFastFallIntervalRef.current);
         flapFastFallIntervalRef.current = null;
       }
+      prevFlapFastFallSoundRef.current = false;
     };
   }, [
     penguin.isFlapping,

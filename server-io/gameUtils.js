@@ -45,7 +45,7 @@ const gameNow = () => Number(process.hrtime.bigint() / 1000000n);
 
 // Game constants
 const MAP_LEFT_BOUNDARY = 340;
-const MAP_RIGHT_BOUNDARY = 940;
+const MAP_RIGHT_BOUNDARY = 935;
 
 const DEFAULT_PLAYER_SIZE_MULTIPLIER = 0.85; // 15% smaller default size
 

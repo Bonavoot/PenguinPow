@@ -475,8 +475,8 @@ const ROPE_JUMP_BOUNDARY_ZONE = 40;      // Tight to the rope — must be near t
 // while DESCENDING the flapper is an attacker (body-slam). The per-tick values
 // are tuned against the fixed ~64Hz timestep (delta ≈ 15.6ms): a single impulse
 // arcs to ~impulse²/(2·FLAP_GRAVITY) — liftoff (11.5) ≈ 150px, an air flap (9.5)
-// ≈ 102px from the press point. FLAP_MAX_HEIGHT caps a chained climb so the
-// flapper only dips "a little" into the top UI and is never fully hidden.
+// ≈ 102px from the press point. FLAP_MAX_HEIGHT caps a chained climb just above
+// the visible top of the screen — a modest headroom bump, not a sky-high arc.
 //
 // "FEEL" — soft & cute, not flappy-bird twitchy. The launch impulse and gravity
 // are deliberately LOW and tuned TOGETHER: a low impulse means a gentle pop
@@ -491,7 +491,7 @@ const FLAP_CHARGES = 3;                  // Air flaps AFTER liftoff (liftoff its
 const FLAP_LIFTOFF_IMPULSE = 11.5;       // Upward velocity (px/tick) on the initial liftoff — gentle pop, peaks ~150px, clearly below the top UI
 const FLAP_IMPULSE = 9.5;                // Upward velocity (px/tick) per AIR flap press — soft beat, peaks ~102px; chaining climbs toward the cap with effort
 const FLAP_GRAVITY = 0.44;               // Downward accel (px/tick²) on the main fall — light & graceful (cute float), NOT a heavy plummet. S-key fast-fall is the committal option.
-const FLAP_MAX_HEIGHT = 255;             // Y-offset cap above GROUND_LEVEL — the MOST a chained flap can climb
+const FLAP_MAX_HEIGHT = 300;             // Y-offset cap above GROUND_LEVEL — slightly above the old screen-height cap
 const FLAP_AIR_MOVE_SPEED = 4.6;         // Horizontal air-control speed (px/tick) via A/D — fine steering while holding
 // Fast-fall: holding S in the air commits to a hard dive. Gravity is overridden
 // to a heavier value (beats even the ceiling hang), so the flapper drops fast —
@@ -518,13 +518,10 @@ const FLAP_H_FRICTION = 0.88;            // Per-tick decay of the horizontal bur
 const FLAP_CHARGE_COOLDOWN_MS = 150;     // Min interval between flaps (gives the wing-beat room to read)
 const FLAP_STAMINA_COST = 12;            // Liftoff cost only (air flaps are free) — pricier than a dodge since liftoff buys an immune flight + a body-slam; still cheap enough for several flights per bar
 const FLAP_LANDING_RECOVERY_MS = 250;    // WHIFF landing endlag — the punish window
-// Connecting the body-slam ENDS the flight: the flapper drops to the ground
-// FAST (weighty, not floaty) over FLAP_HIT_LANDING_DESCENT_MS, shoved well
-// clear of the victim, then becomes actionable in lockstep with the victim's
-// hitstun (recovery = SLAP_HIT3_STUN_MS, set per-player) so the slam grants NO
-// frame advantage — both wrestlers are actionable on the same tick.
-const FLAP_HIT_LANDING_DESCENT_MS = 90;  // Fast hard drop to the ground after a connect (weighty impact)
-const FLAP_HIT_LANDING_PUSHBACK = 80;    // Backward shove (px) when the slam connects — strong separation
+// Connecting the body-slam latches the flight and syncs landing recovery to the
+// victim's hitstun (SLAP_HIT3_STUN_MS) so the slam grants NO frame advantage.
+// The flapper keeps normal flight physics until they touch down — no self
+// pushback and no scripted descent on connect.
 // Body-slam impulse = a full slap-string finisher (slap3). Uses the same
 // burst-knockback (no-DI) model so the "drop on their head" payoff reads like a
 // real heavy hit. The move has plenty of counters (parry, dash the landing,
@@ -1027,8 +1024,6 @@ module.exports = {
   FLAP_CHARGE_COOLDOWN_MS,
   FLAP_STAMINA_COST,
   FLAP_LANDING_RECOVERY_MS,
-  FLAP_HIT_LANDING_DESCENT_MS,
-  FLAP_HIT_LANDING_PUSHBACK,
   FLAP_BODYSLAM_KB_VELOCITY,
 
   // Hit recovery

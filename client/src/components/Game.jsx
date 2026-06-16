@@ -785,6 +785,8 @@ const Game = ({
             className="scene-particles-behind"
             aria-hidden="true"
           />
+          {/* Grade + spotlight lighting are baked into dohyo.webp, so this is a
+              plain crisp background layer (no runtime filter / blend layers). */}
           <div className="dohyo-overlay"></div>
           {/* Ring-out occluder target. Players normally live in `.game-actors`
               (above the UI) so flight paints over the nameplates. But that layer

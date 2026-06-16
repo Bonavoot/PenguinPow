@@ -23,7 +23,7 @@ const Y_OFFSET = 12; // fixed vertical bias (%) — positive = show more top / h
 // subtle and hard-capped — the existing per-frame edge clamp (maxPanY) keeps
 // the dohyo edge hidden, so this can only nudge within the available headroom.
 const FLIGHT_GROUND_Y = 294; // server GROUND_LEVEL (game-coords) — airborne = y above this
-const FLIGHT_REF_HEIGHT = 255; // server FLAP_MAX_HEIGHT — normalises height → 0..1
+const FLIGHT_REF_HEIGHT = 300; // server FLAP_MAX_HEIGHT — normalises height → 0..1
 const FLIGHT_PAN_UP = 9; // max extra upward pan (%) at full flight height (kept modest on purpose)
 
 // MIN_SCALE floor — derived from the dohyo-crop constraint, NOT a magic number.
