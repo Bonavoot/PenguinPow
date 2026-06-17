@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, memo } from "react";
 import { createPortal } from "react-dom";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
@@ -409,4 +409,4 @@ CounterGrabEffect.propTypes = {
   }),
 };
 
-export default CounterGrabEffect;
+export default memo(CounterGrabEffect);

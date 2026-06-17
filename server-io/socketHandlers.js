@@ -32,6 +32,7 @@ const {
   beginFlapStartup,
   gameNow,
   simNowForPlayer,
+  lagCompensatedParryStart,
 } = require("./gameUtils");
 
 const {
@@ -622,7 +623,20 @@ function processInputPacket(room, player, data, io, rooms) {
     player.isRawParrySuccess = false;
     player.isPerfectRawParrySuccess = false;
     player.isRawParrying = true;
-    player.rawParryStartTime = simNowForPlayer(player);
+    // PARRY TIMING CONSISTENCY: this edge-triggered path is the PRIMARY route
+    // for human parries (fires the same tick the space press arrives, for
+    // zero-tick responsiveness). It previously stamped raw packet-arrival sim
+    // time, baking network latency + send-throttle + tick phase into the
+    // perfect-parry window — and those JITTER, so an identically-timed press
+    // read "perfect" one round and "regular" the next. The fallback tick path
+    // already backdated via lagCompensatedParryStart; this aligns the primary
+    // path with it so perfect-parry timing is judged on the true press moment
+    // and feels consistent. (Consumes rawParryPressGameTime; the tick path is
+    // skipped once isRawParrying is set, so there's no double-consume.)
+    player.rawParryStartTime = lagCompensatedParryStart(
+      player,
+      simNowForPlayer(player)
+    );
     player.rawParryMinDurationMet = false;
     player.stamina = Math.max(0, player.stamina - RAW_PARRY_STAMINA_COST);
     clearChargeState(player, true);

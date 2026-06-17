@@ -1251,6 +1251,22 @@ function processHit(player, otherPlayer, rooms, io) {
 
       // Emit hit effect at the hit player's position
       if (currentRoom) {
+        // PERF: the counter-hit and punish side banners used to be TWO extra
+        // socket events (`counter_hit` / `punish_banner`) emitted in this same
+        // tick right after `player_hit`. On the client each arrived as its own
+        // socket callback → its own (unbatched) full GameFighter re-render, so
+        // every counter/punish cost an EXTRA heavy reconciliation back-to-back
+        // with the hit render. That doubled render is the counter-hit hitch.
+        // The banners are now folded into the player_hit payload (the client
+        // triggers them from the single handler), so a counter/punish costs the
+        // same one render as a normal hit.
+        //
+        // `showCounterBanner` / `showPunishBanner` carry the RAW (non-latched)
+        // flags so the banner still fires ONLY on the real counter/punish frame,
+        // not on the subsequent latched hits of a slap string (the latched
+        // effectiveCounterHit/effectivePunish below still drive hit VFX styling).
+        const attackerPlayerNumber =
+          currentRoom.players.findIndex((p) => p.id === player.id) + 1;
         io.in(currentRoom.id).emit("player_hit", {
           x: otherPlayer.x,
           y: otherPlayer.y,
@@ -1265,6 +1281,11 @@ function processHit(player, otherPlayer, rooms, io) {
           // styling of the read that started the string (see latch above).
           isCounterHit: effectiveCounterHit,
           isPunish: effectivePunish,
+          // RAW flags + attacker side: client triggers the COUNTER HIT / PUNISH
+          // side banner off these (folded in from the old separate events).
+          showCounterBanner: isCounterHit,
+          showPunishBanner: isPunish,
+          attackerPlayerNumber,
           cinematicKill: isCinematicKill || false,
           knockbackDirection: knockbackDirection,
           // Charged attack shattering grab armor — client recolors the
@@ -1283,28 +1304,6 @@ function processHit(player, otherPlayer, rooms, io) {
           attackerId: player.id,
           victimId: otherPlayer.id,
         });
-
-        // Emit counter hit banner event (separate from hit effect for side banner display)
-        if (isCounterHit) {
-          // Determine which player number hit the counter (for side banner positioning)
-          const attackerPlayerNumber = currentRoom.players.findIndex(p => p.id === player.id) + 1;
-          io.in(currentRoom.id).emit("counter_hit", {
-            x: otherPlayer.x,
-            y: otherPlayer.y,
-            playerNumber: attackerPlayerNumber,
-            counterId: Math.random().toString(36).substr(2, 9),
-            timestamp: Date.now(),
-          });
-        }
-
-        // Punish: only side text (no hit effect) when hitting opponent during recovery
-        if (isPunish) {
-          const attackerPlayerNumber = currentRoom.players.findIndex(p => p.id === player.id) + 1;
-          io.in(currentRoom.id).emit("punish_banner", {
-            grabberPlayerNumber: attackerPlayerNumber,
-            counterId: `punish-hit-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          });
-        }
         
         // ============================================
         // SMASH-STYLE HITSTOP & SCREEN SHAKE

@@ -15,26 +15,26 @@ const CLOSE_DISTANCE = 100; // player gap (game-coords) for max zoom
 const FAR_DISTANCE = 700; // player gap (game-coords) for min zoom
 
 const SPRITE_HALF_W = 0; // Sprites are now centred on player.x via CSS translate
-const Y_OFFSET = 12; // fixed vertical bias (%) — positive = show more top / hides dohyo bottom
+// Vertical framing bias (%) — positive = pan down to favour the ring + crowd over
+// empty map sky. Nudged back toward 12 for NHK-style lower-third wrestler framing
+// (was 9 after the dohyo.webp re-bake; the asset edge is clean enough to tolerate this).
+const Y_OFFSET = 12;
 
 // ── Flight (flap power-up) vertical follow ──────────────────────────
 // When a wrestler takes flight the camera pans UP a little so the airborne
 // penguin stays framed without losing the grounded opponent. Deliberately
-// subtle and hard-capped — the existing per-frame edge clamp (maxPanY) keeps
-// the dohyo edge hidden, so this can only nudge within the available headroom.
-const FLIGHT_GROUND_Y = 294; // server GROUND_LEVEL (game-coords) — airborne = y above this
+// subtle and hard-capped — the per-frame edge clamp (maxPanY) still bounds
+// how far this can nudge within available headroom.
+const FLIGHT_GROUND_Y = 286; // server GROUND_LEVEL (game-coords) — airborne = y above this
 const FLIGHT_REF_HEIGHT = 300; // server FLAP_MAX_HEIGHT — normalises height → 0..1
 const FLIGHT_PAN_UP = 9; // max extra upward pan (%) at full flight height (kept modest on purpose)
 
-// MIN_SCALE floor — derived from the dohyo-crop constraint, NOT a magic number.
-// The full Y_OFFSET downward bias must fit inside the per-frame edge clamp
-// (maxPanY = 50 * (scale - 1)). If scale drops below 1 + Y_OFFSET/50 the clamp
-// eats part of the bias and the bottom of the dohyo creeps into view at the
-// widest zoom (exactly when players are farthest apart). Solve:
-//   50 * (scale - 1) >= Y_OFFSET  →  scale >= 1 + Y_OFFSET/50  (= 1.24 at Y_OFFSET 12)
-const MIN_SCALE = Math.max(1.2, 1 + Y_OFFSET / 50); // widest zoom — guarantees the bottom crop
-const MAX_SCALE = 1.575; // tightest zoom when players are very close
-const DEFAULT_SCALE = 1.305; // fallback before game starts
+// Zoom range — nudged ~1.3% wider so more of the dohyo rope/platform reads in
+// frame without shrinking the wrestlers noticeably. MIN_SCALE must still satisfy
+// the edge clamp: 50 * (scale - 1) >= Y_OFFSET  →  scale >= 1 + Y_OFFSET/50.
+const MIN_SCALE = Math.max(1.225, 1 + Y_OFFSET / 50); // widest zoom (~1.2% out vs old 1.24)
+const MAX_SCALE = 1.555; // tightest zoom when players are very close
+const DEFAULT_SCALE = 1.292; // fallback before game starts
 
 // ── Frame-rate independence ─────────────────────────────────────────
 // Every smoothing/decay constant in this file is authored against a 60fps
@@ -127,7 +127,15 @@ function getCameraTargetForPositions(p1x, p2x) {
 
 const READY_CAMERA = getCameraTargetForPositions(PLAYER1_READY_X, PLAYER2_READY_X);
 
-export default function useCamera(containerRef, socket) {
+// Pre-match broadcast wide shot — full pull-back so the dohyo + crowd read
+// behind the banzuke program overlay (widest zoom, centered on the ring).
+const PREMATCH_CAMERA = {
+  scale: MIN_SCALE,
+  x: 0,
+  y: Y_OFFSET,
+};
+
+export default function useCamera(containerRef, socket, showPreMatchScreen = false) {
   const posRef = useRef({
     p1x: null,
     p2x: null,
@@ -140,9 +148,9 @@ export default function useCamera(containerRef, socket) {
     p2Flap: false,
   });
   const camRef = useRef({
-    scale: READY_CAMERA.scale,
-    x: READY_CAMERA.x,
-    y: READY_CAMERA.y,
+    scale: PREMATCH_CAMERA.scale,
+    x: PREMATCH_CAMERA.x,
+    y: PREMATCH_CAMERA.y,
   });
   const rafId = useRef(null);
 
@@ -157,6 +165,9 @@ export default function useCamera(containerRef, socket) {
   // Player-tracking is off during power-up selection, ready-up, and gyoji
   // calls — camera stays centered until HAKKIYOI (game_start).
   const trackingEnabledRef = useRef(false);
+
+  const prematchRef = useRef(showPreMatchScreen);
+  prematchRef.current = showPreMatchScreen;
 
   // Cinematic kill state
   const cinematicRef = useRef({
@@ -390,10 +401,11 @@ export default function useCamera(containerRef, socket) {
             clamp(maxAir / FLIGHT_REF_HEIGHT, 0, 1) * FLIGHT_PAN_UP;
           cam.y = lerp(cam.y, normalTargetY + flightPanUp, lerpT(SMOOTH_FACTOR));
         } else {
-          // ── Pre-fight / between rounds — drift to ready-stance framing ──
-          cam.scale = lerp(cam.scale, READY_CAMERA.scale, lerpT(SMOOTH_FACTOR));
-          cam.x = lerp(cam.x, READY_CAMERA.x, lerpT(SMOOTH_FACTOR));
-          cam.y = lerp(cam.y, READY_CAMERA.y, lerpT(SMOOTH_FACTOR));
+          // ── Pre-fight / between rounds — prematch = wide broadcast, else ready stance ──
+          const idleTarget = prematchRef.current ? PREMATCH_CAMERA : READY_CAMERA;
+          cam.scale = lerp(cam.scale, idleTarget.scale, lerpT(SMOOTH_FACTOR));
+          cam.x = lerp(cam.x, idleTarget.x, lerpT(SMOOTH_FACTOR));
+          cam.y = lerp(cam.y, idleTarget.y, lerpT(SMOOTH_FACTOR));
         }
 
         // ── Clamp so map edges are never exposed ──

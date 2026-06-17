@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, memo } from "react";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 
@@ -193,4 +193,4 @@ SnowballImpactEffect.propTypes = {
   }),
 };
 
-export default SnowballImpactEffect;
+export default memo(SnowballImpactEffect);

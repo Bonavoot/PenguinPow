@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, memo } from "react";
 import styled from "styled-components";
 import PropTypes from "prop-types";
 import "./SlapParryEffect.css";
@@ -47,4 +47,4 @@ SlapParryEffect.propTypes = {
   }),
 };
 
-export default SlapParryEffect;
+export default memo(SlapParryEffect);

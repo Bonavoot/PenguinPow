@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext, useRef } from "react";
+import { useState, useEffect, useContext, useRef, memo } from "react";
 import styled from "styled-components";
 import { SocketContext } from "../SocketContext";
 import "./ThrowTechEffect.css";
@@ -96,4 +96,4 @@ const ThrowTechEffect = () => {
   );
 };
 
-export default ThrowTechEffect;
+export default memo(ThrowTechEffect);

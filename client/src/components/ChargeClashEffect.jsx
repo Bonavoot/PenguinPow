@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, memo } from "react";
 import styled from "styled-components";
 import PropTypes from "prop-types";
 import "./ChargeClashEffect.css";
@@ -48,4 +48,4 @@ ChargeClashEffect.propTypes = {
   }),
 };
 
-export default ChargeClashEffect;
+export default memo(ChargeClashEffect);

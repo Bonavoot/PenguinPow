@@ -3798,6 +3798,14 @@ export class ParticleEngine {
     this._rafId = null;
     this._lastTime = 0;
     this.frozen = false;
+    // Idle-skip bookkeeping: how many particles were active after the last
+    // _update, and whether we've already committed a final "empty" clear. Lets
+    // _render skip three full-screen clearRects every frame when nothing is on
+    // screen (which is most of the time) instead of paying that cost always.
+    this._activeCount = 0;
+    this._renderedEmpty = false;
+    // Rolling cursor for _acquire() so burst spawns don't re-scan from 0.
+    this._acquireCursor = 0;
 
     for (let i = 0; i < MAX_PARTICLES; i++) {
       this.particles.push(new Particle());
@@ -3933,8 +3941,21 @@ export class ParticleEngine {
   }
 
   _acquire() {
-    for (let i = 0; i < this.particles.length; i++) {
-      if (!this.particles[i].active) return this.particles[i];
+    // Rolling-cursor free-slot search. The old version restarted the scan from
+    // index 0 every spawn, so a burst preset (e.g. perfectParryFlameBurst spawns
+    // ~45 particles in one frame) re-walked the entire active prefix each call —
+    // up to ~MAX_PARTICLES iterations per spawn, on the exact frame an
+    // interaction lands. Starting from where the last slot was found makes the
+    // common case ~O(1): consecutive spawns walk forward through free slots
+    // instead of re-scanning the busy front. Worst case is still a full wrap.
+    const n = this.particles.length;
+    let idx = this._acquireCursor;
+    for (let i = 0; i < n; i++) {
+      if (!this.particles[idx].active) {
+        this._acquireCursor = idx + 1 >= n ? 0 : idx + 1;
+        return this.particles[idx];
+      }
+      idx = idx + 1 >= n ? 0 : idx + 1;
     }
     return null;
   }
@@ -3954,12 +3975,14 @@ export class ParticleEngine {
   }
 
   _update(dt) {
+    let active = 0;
     for (let i = 0; i < this.particles.length; i++) {
       const p = this.particles[i];
       if (!p.active) continue;
 
       if (p.delay > 0) {
         p.delay -= dt;
+        active++;
         continue;
       }
 
@@ -3968,6 +3991,7 @@ export class ParticleEngine {
         p.active = false;
         continue;
       }
+      active++;
 
       p.vy += p.gravity * dt;
       p.vx *= p.drag;
@@ -3991,6 +4015,7 @@ export class ParticleEngine {
         }
       }
     }
+    this._activeCount = active;
   }
 
   _renderParticle(ctx, p) {
@@ -4019,6 +4044,21 @@ export class ParticleEngine {
   _render() {
     const { ctx, ctxBehind, ctxFront } = this;
     if (!ctx) return;
+
+    // IDLE SKIP: when no particles are active, the canvases are already clear
+    // from the last "empty" render, so skip the three full-screen clearRect
+    // calls this frame. This removes a constant per-frame fillrate cost that
+    // previously ran even with nothing on screen. Bypassed while frozen
+    // (hitstop), since new impact VFX can be emitted mid-freeze and must draw.
+    if (!this.frozen && this._activeCount === 0) {
+      if (this._renderedEmpty) return;
+      ctx.clearRect(0, 0, GAME_W, GAME_H);
+      if (ctxBehind) ctxBehind.clearRect(0, 0, GAME_W, GAME_H);
+      if (ctxFront) ctxFront.clearRect(0, 0, GAME_W, GAME_H);
+      this._renderedEmpty = true;
+      return;
+    }
+    this._renderedEmpty = false;
 
     ctx.clearRect(0, 0, GAME_W, GAME_H);
     if (ctxBehind) ctxBehind.clearRect(0, 0, GAME_W, GAME_H);

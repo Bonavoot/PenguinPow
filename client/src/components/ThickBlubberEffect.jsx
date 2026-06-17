@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, memo } from "react";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 
@@ -80,4 +80,4 @@ ThickBlubberEffect.propTypes = {
   isActive: PropTypes.bool.isRequired,
 };
 
-export default ThickBlubberEffect;
+export default memo(ThickBlubberEffect);

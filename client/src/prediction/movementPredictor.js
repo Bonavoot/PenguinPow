@@ -46,7 +46,7 @@ export const PREDICTION_CONSTANTS = {
   MAP_RIGHT_BOUNDARY: 940,
   DOHYO_LEFT_BOUNDARY: 250,
   DOHYO_RIGHT_BOUNDARY: 1030,
-  GROUND_LEVEL: 294,
+  GROUND_LEVEL: 286,
   HITBOX_DISTANCE_VALUE: 68, // Math.round(71 * 0.96) — pushbox half-width
   // Crouch strafe modifiers (inline numbers in the server strafe block)
   CROUCH_TURN_FRICTION: 0.3,

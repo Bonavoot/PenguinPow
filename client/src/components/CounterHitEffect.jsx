@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, memo } from "react";
 import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
 import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
@@ -77,4 +77,4 @@ CounterHitEffect.propTypes = {
   }),
 };
 
-export default CounterHitEffect;
+export default memo(CounterHitEffect);

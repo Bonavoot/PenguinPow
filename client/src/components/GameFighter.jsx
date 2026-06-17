@@ -2425,6 +2425,30 @@ const GameFighter = ({
           cinematicHitstopMs: data.cinematicKill ? 550 : 0,
         });
 
+        // COUNTER HIT / PUNISH side banners — folded into player_hit (were
+        // separate `counter_hit` / `punish_banner` socket events, each of which
+        // cost an extra unbatched GameFighter re-render on the same frame as the
+        // hit). Index 0 owns the HUD banner state (same as the old handlers).
+        // Uses the RAW server flags (showCounterBanner/showPunishBanner) so the
+        // banner fires only on the real counter/punish frame, not on latched
+        // slap-string follow-ups. hitId is the dedup key.
+        if (index === 0) {
+          if (data.showCounterBanner) {
+            setCounterHitEffectPosition({
+              x: data.x + 70,
+              y: PLAYER_MID_Y,
+              counterId: data.hitId || `counter-hit-${Date.now()}`,
+              playerNumber: data.attackerPlayerNumber || 1,
+              timestamp: data.timestamp,
+            });
+          } else if (data.showPunishBanner) {
+            setPunishBannerPosition({
+              counterId: `punish-${data.hitId || Date.now()}`,
+              grabberPlayerNumber: data.attackerPlayerNumber || 1,
+            });
+          }
+        }
+
         const hitFacing = data.facing || 1;
         const facingOffsetPx = (hitFacing === 1 ? -8 : -3) * 12.8;
         const sparkOpts = { x: data.x + 70 + facingOffsetPx, y: PLAYER_MID_Y, facing: hitFacing };
@@ -2541,7 +2565,7 @@ const GameFighter = ({
     socket.on("perfect_parry", handlePerfectParry);
 
     let handleGrabBreak, handleGrabTech, handleClinchTech, handleCounterGrab,
-        handlePunishBanner, handleCounterHit, handleStaminaBlocked;
+        handleStaminaBlocked;
     if (index === 0) {
       handleGrabBreak = (data) => {
         if (
@@ -2615,28 +2639,11 @@ const GameFighter = ({
       };
       socket.on("counter_grab", handleCounterGrab);
 
-      handlePunishBanner = (data) => {
-        if (data?.counterId) {
-          setPunishBannerPosition({
-            counterId: data.counterId,
-            grabberPlayerNumber: data.grabberPlayerNumber ?? 1,
-          });
-        }
-      };
-      socket.on("punish_banner", handlePunishBanner);
-
-      handleCounterHit = (data) => {
-        if (data && typeof data.x === "number" && typeof data.y === "number") {
-          setCounterHitEffectPosition({
-            x: data.x + 70,
-            y: PLAYER_MID_Y,
-            counterId: data.counterId || `counter-hit-${Date.now()}`,
-            playerNumber: data.playerNumber || 1,
-            timestamp: data.timestamp,
-          });
-        }
-      };
-      socket.on("counter_hit", handleCounterHit);
+      // NOTE: counter-hit and punish side banners are no longer separate socket
+      // events — they're folded into the player_hit handler above (which fires
+      // setCounterHitEffectPosition / setPunishBannerPosition off the raw
+      // showCounterBanner / showPunishBanner flags). This removes the extra
+      // per-counter/punish GameFighter re-render that caused the hitch.
 
       handleStaminaBlocked = (data) => {
         if (data.playerId === localId) {
@@ -2938,9 +2945,7 @@ const GameFighter = ({
         socket.off("grab_tech", handleGrabTech);
         socket.off("fighter_action", handleClinchTech);
         socket.off("counter_grab", handleCounterGrab);
-        socket.off("punish_banner", handlePunishBanner);
         socket.off("stamina_blocked", handleStaminaBlocked);
-        socket.off("counter_hit", handleCounterHit);
       }
       socket.off("snowball_hit", handleSnowballHit);
       socket.off("gyoji_call", handleGyojiCall);
@@ -4582,7 +4587,26 @@ const GameFighter = ({
     ? getSpriteRenderInfo(killVictimSprite, renderHitTint, showHitFlashThisFrame, useBlubberTint, true, useArmorTint)
     : spriteRenderInfo;
 
-  const baseSpriteSrc = recoloredSpriteSrc;
+  // GHOST-FRAME / INTERACTION-HITCH FIX:
+  // Key the fighter <img> on the tint- and color-INDEPENDENT base source (the
+  // pose identity), NOT the recolored/tinted blob URL. During combat the tint
+  // toggles every few frames (white impact flash, red damage tint, charge
+  // white, blubber purple); each toggle changes `recoloredSpriteSrc`. When that
+  // was the React `key`, every toggle REMOUNTED the <img> — which (a) starts
+  // blank and must decode → the one-frame "ghost", and (b) restarts the CSS
+  // spritesheet animation from frame 0 → a visible animation reset mid-combo.
+  //
+  // Keying on the base source instead means tint/color changes update `src` IN
+  // PLACE on a stable element: the browser keeps painting the last decoded
+  // frame until the new src decodes (no blank), and the animation keeps running.
+  // A remount (and intended animation restart) now happens ONLY on a genuine
+  // pose change. This mirrors `sourceToRecolor` inside getSpriteRenderInfo:
+  // animated → the spritesheet; static → the original (kill-victim) source.
+  const baseSpriteSrc = spriteConfig
+    ? spriteConfig.spritesheet
+    : isKillVictim
+    ? killVictimSprite
+    : effectiveSpriteSrc;
 
   // Update animation state (will start/stop intervals as needed)
   updateSpriteAnimation(effectiveSpriteSrc);
@@ -4847,6 +4871,7 @@ const GameFighter = ({
             $grabTechRole={penguin.grabTechRole}
             $isGrabWhiffRecovery={penguin.isGrabWhiffRecovery}
             $attackerConfirmTier={attackerConfirmTier}
+            decoding="async"
             draggable={false}
           />
         </AnimatedFighterContainer>
@@ -4944,6 +4969,7 @@ const GameFighter = ({
           $isClinchKillPullVictim={penguin.isClinchKillPullVictim}
           $isBeingThrown={penguin.isBeingThrown}
           $isLocalPlayer={penguin.id === localId}
+          decoding="async"
           style={{ display: showRitualSprite ? "none" : "block" }}
         />
       )}

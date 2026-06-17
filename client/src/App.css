@@ -622,19 +622,19 @@ body {
   inset: 0;
   background-image: url(./assets/dohyo.webp);
   background-repeat: no-repeat;
-  background-size:86% 80%; /* width height — increase 2nd value to make platform taller */
-  background-position: 50% 10%;
+  background-size: 88% 82%; /* width height — increase 2nd value to make platform taller */
+  background-position: 50% 8%;
   pointer-events: none;
   z-index: 1;
   /* No runtime filter: the color grade + spotlight are baked into dohyo.webp,
      so this renders as a plain crisp background (no filter-region rasterization
      softening it). Size & perspective below remain fully adjustable. */
   /* ── Perspective tilt — tweak these to flatten / angle the dohyo ── */
-  transform-origin: 48% 100%; /* pivot near the top — back stays wide, front narrows */
+  transform-origin: 48% 108%; /* pivot near the top — back stays wide, front narrows */
   transform: perspective(420px)
     /* depth — lower = more dramatic, higher = subtler */ rotateX(5deg)
     /* tilt — back stays anchored, front swings away (narrows) */ scaleY(0.86)
-    /* vertical squash — < 1 = flatter, 1 = no change */ translateY(10%); /* raise/lower — negative = up, positive = down */
+    /* vertical squash — < 1 = flatter, 1 = no change */ translateY(9%); /* raise/lower — negative = up, positive = down */
 }
 
 .dohyo-overlay::before {

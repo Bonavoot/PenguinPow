@@ -140,7 +140,7 @@ const Game = ({
   const lastCinematicPunchRef = useRef(0);
   const perfectParryFlashTimeoutRef = useRef(null);
 
-  useCamera(containerRef, socket);
+  useCamera(containerRef, socket, showPreMatchScreen);
 
   const loadGyojiOutfit = useCallback(async (outfit) => {
     await preloadGyojiOutfit(outfit);

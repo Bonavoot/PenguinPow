@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, memo } from "react";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 import penguinHand from "../assets/slap-attack-hand.png";
@@ -199,4 +199,4 @@ SlapAttackHandsEffect.propTypes = {
   slapAnimation: PropTypes.number,
 };
 
-export default SlapAttackHandsEffect;
+export default memo(SlapAttackHandsEffect);

@@ -4,7 +4,7 @@ import { isOutsideDohyo } from "../constants";
 
 // Match the server's GROUND_LEVEL. Exported so GameFighter's imperative
 // position loop can mirror the ground-pinning formula exactly.
-export const SHADOW_GROUND_LEVEL = 294;
+export const SHADOW_GROUND_LEVEL = 286;
 const GROUND_LEVEL = SHADOW_GROUND_LEVEL;
 
 // Two-layer ground shadow for real weight: a tight, dark CONTACT core (sells

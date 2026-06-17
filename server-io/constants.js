@@ -64,7 +64,7 @@ const SCREEN_SHAKE_MIN_INTERVAL = 100; // Minimum ms between screen shakes
 // Core Physics
 // ============================================
 const speedFactor = 0.185; // Scaled for camera zoom (was 0.25)
-const GROUND_LEVEL = 294;
+const GROUND_LEVEL = 286;
 const HITBOX_DISTANCE_VALUE = Math.round(71 * 0.96); // ~68 — PUSHBOX size (body collision, keeps players separated) [8% tighter]
 const CHARGED_HITBOX_DISTANCE_VALUE = Math.round(147 * 0.96); // ~141 → just past pushbox 136 — hit fires at body contact; lunge provides range [8% tighter]
 const SLAP_HITBOX_DISTANCE_VALUE = Math.round(152 * 0.96); // ~146 — must exceed pushbox (136px) so slaps connect at pushbox distance [8% tighter]

@@ -1,3 +1,4 @@
+import { memo } from "react";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 
@@ -95,4 +96,4 @@ EdgeDangerEffect.propTypes = {
   isActive: PropTypes.bool.isRequired,
 };
 
-export default EdgeDangerEffect;
+export default memo(EdgeDangerEffect);

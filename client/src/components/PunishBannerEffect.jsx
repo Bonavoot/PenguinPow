@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, memo } from "react";
 import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
 import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
@@ -66,4 +66,4 @@ PunishBannerEffect.propTypes = {
   }),
 };
 
-export default PunishBannerEffect;
+export default memo(PunishBannerEffect);
