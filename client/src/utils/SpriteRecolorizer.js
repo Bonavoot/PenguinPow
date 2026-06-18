@@ -1457,6 +1457,37 @@ export async function pinDecodedImages(srcs, replace = false) {
 }
 
 /**
+ * Force the browser to RE-DECODE the pinned fighter sprites.
+ *
+ * Even though pinned sprites stay in the DOM, the browser/Electron can purge
+ * their decoded bitmap after long idle (e.g. AFK on a menu, or the tab/window
+ * losing focus). Because the pinned <img> elements live in a hidden,
+ * never-painted container, the browser never re-decodes them on its own — so
+ * they silently go cold and every pose transition ghosts again on the next
+ * round. Calling img.decode() forces the bitmap back into memory. Cheap to run
+ * (decode work is off the main thread) and meant to be called during a rematch /
+ * pre-round window so sprites are hot before play resumes. Batched to avoid a
+ * decode thundering-herd.
+ */
+export async function rewarmDecodedImages() {
+  const pins = [...pinnedDecodedKeys];
+  const BATCH = 16;
+  for (let i = 0; i < pins.length; i += BATCH) {
+    const batch = pins.slice(i, i + BATCH);
+    await Promise.all(
+      batch.map((src) => {
+        const img = decodedImageCache.get(src);
+        if (img && typeof img.decode === "function") {
+          return img.decode().catch(() => {});
+        }
+        // Bitmap (and its <img>) was fully dropped → re-decode & re-add.
+        return preDecodeImage(src);
+      })
+    );
+  }
+}
+
+/**
  * Clear the decoded image cache (for memory management)
  */
 export function clearDecodedImageCache() {

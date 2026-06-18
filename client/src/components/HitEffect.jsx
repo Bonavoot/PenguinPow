@@ -92,11 +92,20 @@ const HitEffect = ({ position }) => {
       }, 90);
     }
 
-    // Chromatic burst on .game-scene: charged + cinematic always get it; counter/punish
+    // Chromatic burst on .game-scene + .game-actors: charged gets it; counter/punish
     // ALSO get it (regardless of attack type) so reads like "you got caught lacking" pop visually.
     // The wrestlers now live in .game-actors (a separate camera layer above the
     // player-info HUD), so punch BOTH layers in lockstep or the players wouldn't aberrate.
-    if (isCinematic || attackType === 'charged' || isCounterHit || isPunish) {
+    //
+    // PERF (freeze fix): cinematic kills are deliberately EXCLUDED here. A cinematic
+    // kill already gets the bespoke `.ko-grade-punch` full-scene grade (Game.jsx,
+    // for the whole KO hitstop) which is a near-identical contrast/saturate/brightness
+    // pass on the SAME two layers. Running chromatic on top of it meant two
+    // full-viewport filter systems overlapping on the single most expensive frame in
+    // the game (KO impact + impact-frame flash + particle explosion + camera punch +
+    // hitstop) — the cinematic-kill hiccup. The grade-punch owns the cinematic grade;
+    // chromatic stays for charged/counter/punish.
+    if (!isCinematic && (attackType === 'charged' || isCounterHit || isPunish)) {
       if (!gameSceneRef.current) {
         gameSceneRef.current = document.querySelector('.game-scene');
       }

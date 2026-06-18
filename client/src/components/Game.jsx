@@ -14,7 +14,7 @@ import {
   startMemoryMonitor,
   setupMemoryMonitorShortcut,
 } from "../utils/memoryMonitor";
-import { clearDecodedImageCache } from "../utils/SpriteRecolorizer";
+import { clearDecodedImageCache, rewarmDecodedImages } from "../utils/SpriteRecolorizer";
 import { pickRandomGyojiOutfit } from "../config/gyojiOutfitPresets";
 import { preloadGyojiOutfit, clearGyojiRecolorCache } from "../utils/GyojiRecolorizer";
 import { ParticleProvider } from "../particles/ParticleContext";
@@ -152,6 +152,12 @@ const Game = ({
       const outfit = pickRandomGyojiOutfit();
       gyojiOutfitRef.current = outfit;
       loadGyojiOutfit(outfit);
+      // Re-decode the pinned fighter sprites before the round starts. The
+      // browser/Electron can purge decoded bitmaps after a long idle on the
+      // rematch screen (the hidden, never-painted preload <img>s don't get
+      // re-decoded on their own), which brought the ghost frames back on the
+      // next round. This forces them hot again during the rematch transition.
+      rewarmDecodedImages();
     };
     socket.on("rematch", handleRematch);
     return () => socket.off("rematch", handleRematch);
