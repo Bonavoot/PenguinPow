@@ -493,10 +493,13 @@ body {
    every win without diluting the rare cinematic-kill punch above. Deliberately
    tiered: cinematic = big snap, ring-out = subtle pop. Game.jsx guards against
    the two firing together. */
-.game-container.ko-grade-punch--lite .game-scene,
-.game-container.ko-grade-punch--lite .game-actors {
-  filter: contrast(1.08) saturate(1.06) brightness(1.01);
-}
+/* PERF: removed. This subtle grade fired a full-viewport `filter:` on .game-scene
+   + .game-actors on EVERY regular ring-out (i.e. nearly every round end) —
+   allocating offscreen GPU buffers right as the RoundResult callout mounts =
+   the round-end hiccup. Same pattern as the removed hit-chromatic. The cinematic
+   KO keeps its (rarer, more noticeable) `.ko-grade-punch` grade below.
+   (The `.ko-grade-punch--lite` class may still be toggled by Game.jsx; with no
+   rule attached it is now a harmless no-op.) */
 
 /* ── Perfect-parry "time-freeze" beat ────────────────────────────────────
    Fires alongside the 250ms perfect-parry hitstop. Two layers, both toggled
@@ -508,10 +511,11 @@ body {
         keyed to rise fast and fall over the freeze so it reads as a camera
         flash-bulb at the clash, not a sustained veil. Cyan matches the parry
         VFX. Pointer-events disabled; sits above the world, below the HUD. */
-.game-container.perfect-parry-flash .game-scene,
-.game-container.perfect-parry-flash .game-actors {
-  filter: contrast(1.06) saturate(1.06) brightness(1.02);
-}
+/* PERF: removed the full-viewport grade `filter:` here. It allocated offscreen
+   GPU buffers on .game-scene + .game-actors on every perfect parry = the
+   perfect-parry hiccup. The prominent cyan flash (::before below) is a cheap
+   opacity-only effect and stays, so the parry still reads as a flash-bulb clash
+   without the per-use filter-layer cost. The cyan ::before flash is kept below. */
 
 .game-container.perfect-parry-flash::before {
   content: '';

@@ -47,6 +47,7 @@ import { addShake } from "../lib/cameraShake";
 import UiPlayerInfo from "./UiPlayerInfo";
 import MatchOver from "./MatchOver";
 import RoundResult from "./RoundResult";
+import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
 import HitEffect from "./HitEffect";
 import RawParryEffect from "./RawParryEffect";
 import { getGlobalVolume } from "./Settings";
@@ -4753,6 +4754,28 @@ const GameFighter = ({
         >
           <RoundResult isVictory={true} winType="slap" />
           <RoundResult isVictory={false} winType="slap" />
+          {/* PERF: pre-inject every SumoAnnouncementBanner type/side variant so the
+              first real COUNTER HIT / PUNISH / PERFECT PARRY callout doesn't pay
+              styled-components CSS injection + first-paint cost mid-combat. Each
+              $type renders a different color/rule treatment (a distinct generated
+              class), so we warm them all, both sides. Unmounts after 2 frames. */}
+          {[
+            "parry",
+            "perfect",
+            "perfectparry",
+            "counter",
+            "counterhit",
+            "punish",
+            "countergrab",
+            "break",
+            "tech",
+            "default",
+          ].map((t) => (
+            <span key={`warm-${t}`}>
+              <SumoAnnouncementBanner text="WARM" type={t} isLeftSide={true} />
+              <SumoAnnouncementBanner text="WARM" type={t} isLeftSide={false} />
+            </span>
+          ))}
         </div>
       )}
       {penguin.id === localId &&
