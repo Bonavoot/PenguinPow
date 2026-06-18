@@ -16,6 +16,7 @@ import {
   clearRecolorCache,
   preDecodeImages,
   preDecodeDataUrl,
+  pinDecodedImages,
   getCacheStats,
 } from "../utils/SpriteRecolorizer";
 import { ANIMATED_SPRITES, STATIC_SPRITES, DEFAULT_COLORS, DEFAULT_BODY_COLORS, COLOR_PRESETS, BODY_COLOR_PRESETS, SPRITE_BASE_COLOR } from "../config/spriteConfig";
@@ -518,6 +519,18 @@ export function PlayerColorProvider({ children }) {
       const batch = recoloredUrls.slice(i, i + 4);
       await Promise.all(batch.map(preDecodeDataUrl));
     }
+
+    // Step 5b: PIN the fighter working set so it can never be evicted from the
+    // decoded cache. This is the fix for the progressive "ghost frames after N
+    // rematches" bug: between-round gyoji/ritual decodes were slowly pushing the
+    // in-use fighter sprites out of the (insertion-ordered, no-touch) decoded
+    // cache, after which every pose-change <img> remount went cold → constant
+    // ghost frames + cold-decode spikes on heavy interactions (counter hits).
+    // recoloredUrls = the custom-color blobs both players actually display;
+    // uniqueSources = the original file URLs a DEFAULT-color player displays.
+    // Pinning both covers either color choice. replace=true releases stale pins
+    // from any earlier color selection.
+    await pinDecodedImages([...recoloredUrls, ...uniqueSources], true);
     
     // Step 6: Wait for browser to fully process all decoded images
     // Multiple RAF cycles + extended timeout ensures GPU textures are uploaded

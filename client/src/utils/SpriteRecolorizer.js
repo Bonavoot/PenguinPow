@@ -1298,16 +1298,27 @@ export function clearRecolorCache() {
 // Keep decoded images in memory to prevent GC and re-decode
 // Uses Map insertion order for O(1) LRU tracking
 // ============================================
-// GHOST FRAME FIX: Increased from 200 to 350.
-// With 2 custom-color players: ~25 sprites × 4 tint variants × 2 players = 200 recolored
-// + ~25 base sprites = 225 total. At 200, tint variants get evicted during gameplay,
-// forcing re-decode on next use = ghost frames. At 350, all variants fit with headroom.
-// Memory cost is ~80-100MB of decoded bitmaps, acceptable since ritual sprites are excluded.
-// Decoded cache also pins blob URLs from being revoked on recolor-cache eviction
-// (see addToCache), so keeping this generous prevents "invisible frame" bugs where
-// an in-use sprite's URL gets revoked due to LRU pressure.
-const MAX_DECODED_CACHE_SIZE = 500;
+// GHOST FRAME FIX (progressive / "after-N-rematches" variant):
+// This cache keeps decoded <img> elements alive in a hidden DOM container so the
+// browser holds their decoded bitmap, and a GameFighter pose-change <img> remount
+// can paint instantly instead of decoding from scratch (the one-frame blank =
+// "ghost"). The earlier 350/500 sizing was BORDERLINE: the real fighter working
+// set (both players × every pose × 5 tint variants × body variants, PLUS the
+// original file URLs pre-decoded in step 4 of preloadSprites) already lands near
+// ~500. This cache is insertion-ordered with NO touch-on-access, so short-lived
+// between-round decodes (gyoji outfits each rematch, ritual sprites) kept getting
+// appended and slowly evicted the in-use fighter sprites. After enough rematches
+// the fighters were fully pushed out → every animation transition went cold →
+// CONSTANT ghost frames. Two-part fix: (1) PIN the fighter working set so it's
+// never evicted (see pinnedDecodedKeys / pinDecodedImages, called after preload),
+// and (2) raise the cap so the pinned set + between-round churn both fit with
+// headroom. The cap now only bounds the NON-pinned (gyoji/ritual) churn.
+const MAX_DECODED_CACHE_SIZE = 800;
 const decodedImageCache = new Map();
+// Sources pinned here are never evicted from decodedImageCache — their hidden
+// decoded <img> stays in the DOM for the whole session. This is the fighter
+// working set (set via pinDecodedImages after preloadSprites).
+const pinnedDecodedKeys = new Set();
 let hiddenImageContainer = null;
 
 function getHiddenContainer() {
@@ -1328,9 +1339,18 @@ function addToDecodedCache(key, img) {
   }
   decodedImageCache.set(key, img);
 
-  // Evict oldest entries (at the front of Map iteration order)
-  while (decodedImageCache.size > MAX_DECODED_CACHE_SIZE) {
-    const oldestKey = decodedImageCache.keys().next().value;
+  if (decodedImageCache.size <= MAX_DECODED_CACHE_SIZE) return;
+
+  // Evict oldest NON-PINNED entries first (front of Map iteration order is
+  // oldest). Pinned entries (the fighter working set) are skipped so their
+  // decoded <img> never leaves the DOM — that's what prevents the progressive
+  // ghost-frame regression. Deleting the just-yielded key during for..of over
+  // a Map is spec-safe. If only pinned entries remain the loop simply ends
+  // (the cache may then hold slightly more than the cap — pinned content is
+  // always retained by design).
+  for (const oldestKey of decodedImageCache.keys()) {
+    if (decodedImageCache.size <= MAX_DECODED_CACHE_SIZE) break;
+    if (pinnedDecodedKeys.has(oldestKey)) continue;
     const oldImg = decodedImageCache.get(oldestKey);
     if (oldImg && oldImg.parentNode) {
       oldImg.parentNode.removeChild(oldImg);
@@ -1411,6 +1431,32 @@ export async function preDecodeImages(imageSrcs) {
 }
 
 /**
+ * Pin a set of image sources so they are NEVER evicted from the decoded cache
+ * (their hidden decoded <img> stays in the DOM for the whole session). This is
+ * the fighter working set — pinning it means GameFighter pose-change <img>
+ * remounts never re-decode, so there are no ghost frames and no mid-combat
+ * decode spikes, regardless of how many rematches/rounds have elapsed.
+ *
+ * Pass replace=true to swap the pinned set wholesale (e.g. once colors are final
+ * for a match) so stale blob URLs from earlier color choices are released back
+ * to normal LRU and the pin set can't grow unbounded across color changes.
+ *
+ * @param {string[]} srcs - Image sources (blob/data/file URLs) to pin + decode.
+ * @param {boolean} [replace=false] - Replace the existing pinned set.
+ */
+export async function pinDecodedImages(srcs, replace = false) {
+  if (!Array.isArray(srcs)) return;
+  if (replace) pinnedDecodedKeys.clear();
+  const toDecode = [];
+  for (const src of srcs) {
+    if (!src) continue;
+    pinnedDecodedKeys.add(src);
+    if (!decodedImageCache.has(src)) toDecode.push(src);
+  }
+  if (toDecode.length) await preDecodeImages(toDecode);
+}
+
+/**
  * Clear the decoded image cache (for memory management)
  */
 export function clearDecodedImageCache() {
@@ -1424,6 +1470,7 @@ export function clearDecodedImageCache() {
     hiddenImageContainer.innerHTML = "";
   }
   decodedImageCache.clear();
+  pinnedDecodedKeys.clear();
 }
 
 /**
