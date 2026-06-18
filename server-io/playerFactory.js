@@ -198,7 +198,9 @@ function createInitialPlayerState(overrides = {}) {
     flapStartTime: 0,
     flapLandingTime: 0,
     flapWingBeatTime: 0, // Timestamp of the last flap — drives the flap2→flap1 wing-beat
-    flapFastFalling: false, // Holding S during flight — fast-fall dive (synced for sprite)
+    flapFastFalling: false, // Dive-locked plummet (S commit during flight) — synced for sprite/VFX
+    flapDiveCommitted: false, // S pressed during flight — latched straight drop until landing
+    flapDiveLockX: 0, // Horizontal position pinned on dive commit
     flapBeatHDir: 0, // Last wing-beat horizontal dir: -1 (A), 0 (neutral), 1 (D) — drives charge VFX
     flapHitLanded: false, // Did the descending body-slam connect this flight?
     lastFlapChargeTime: 0, // Throttles air flaps (FLAP_CHARGE_COOLDOWN_MS)

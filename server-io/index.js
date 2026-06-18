@@ -43,7 +43,7 @@ const {
   ROPE_JUMP_STARTUP_MS, ROPE_JUMP_ACTIVE_MS, ROPE_JUMP_LANDING_RECOVERY_MS,
   ROPE_JUMP_ARC_HEIGHT,
   FLAP_STARTUP_MS, FLAP_LIFTOFF_IMPULSE, FLAP_IMPULSE, FLAP_GRAVITY, FLAP_MAX_HEIGHT,
-  FLAP_AIR_MOVE_SPEED, FLAP_FASTFALL_GRAVITY, FLAP_FASTFALL_AIR_MOVE_SPEED,
+  FLAP_AIR_MOVE_SPEED, FLAP_FASTFALL_GRAVITY, FLAP_DIVE_MIN_DOWN_VELOCITY, FLAP_FASTFALL_AIR_MOVE_SPEED,
   FLAP_CEILING_CUSHION, FLAP_CEILING_HANG_GRAVITY,
   FLAP_FLAP_H_IMPULSE, FLAP_H_FRICTION,
   FLAP_LANDING_RECOVERY_MS,
@@ -2023,6 +2023,8 @@ function tick(delta) {
 
         if (player.flapPhase === "startup") {
           player.flapFastFalling = false;
+          player.flapDiveCommitted = false;
+          player.flapDiveLockX = 0;
           // Grounded telegraph. Interruptible — a hit here runs
           // clearAllActionStates and cancels the whole flap.
           if (now >= player.flapStartTime + FLAP_STARTUP_MS) {
@@ -2054,24 +2056,29 @@ function tick(delta) {
           // deltas never resurrect waddle/strafe state mid-flight.
           player.isStrafing = false;
 
-          player.flapFastFalling = !!player.keys.s;
+          // S-key dive commit: first press locks a straight plummet to the ground
+          // directly below — burns all air charges and pins X for the rest of flight.
+          if (!player.flapDiveCommitted && player.keys.s) {
+            player.flapDiveCommitted = true;
+            player.flapDiveLockX = player.x;
+            player.flapCharges = 0;
+            player.flapVelocityX = 0;
+            if (player.flapVelocityY > 0) player.flapVelocityY = 0;
+            if (player.flapVelocityY > -FLAP_DIVE_MIN_DOWN_VELOCITY) {
+              player.flapVelocityY = -FLAP_DIVE_MIN_DOWN_VELOCITY;
+            }
+          }
+
+          player.flapFastFalling = player.flapDiveCommitted;
+          const isDiveLocked = player.flapDiveCommitted;
 
           // Vertical integration with a SOFT CEILING (see constants).
           const ceiling = GROUND_LEVEL + FLAP_MAX_HEIGHT;
           const cushionStart = ceiling - FLAP_CEILING_CUSHION;
           const inCeilingZone = player.y > cushionStart;
 
-          // FAST-FALL: holding S commits to a hard dive — heavier gravity that
-          // OVERRIDES the ceiling hang/cushion, so the flapper drops fast (and
-          // any residual rise is killed quickly). A deliberate way to crash the
-          // slam down sooner; horizontal steering is also slashed (see below).
-          const isFastFalling = player.keys.s;
-
-          // 1) Glide-to-stop: bleed off upward speed proportionally to how deep
-          //    into the cushion the wrestler is, so flapping into the ceiling
-          //    eases to a halt instead of slamming and rebounding. Skipped while
-          //    fast-falling — a dive shouldn't be cushioned.
-          if (!isFastFalling && inCeilingZone && player.flapVelocityY > 0) {
+          // 1) Glide-to-stop at the ceiling band — skipped while dive-locked.
+          if (!isDiveLocked && inCeilingZone && player.flapVelocityY > 0) {
             const into = Math.min(
               1,
               (player.y - cushionStart) / FLAP_CEILING_CUSHION
@@ -2079,16 +2086,19 @@ function tick(delta) {
             player.flapVelocityY *= Math.max(0, 1 - into);
           }
 
-          // 2) Peak hang: softened gravity inside the band lets them float at the
-          //    top for a beat; full gravity resumes the instant they drop below
-          //    it, keeping the fall fast (position-based, so it's stateless and
-          //    leaves normal mid-air arcs untouched). Fast-fall beats both.
-          const gravity = isFastFalling
+          // 2) Peak hang inside the cushion — dive lock always uses heavy gravity.
+          const gravity = isDiveLocked
             ? FLAP_FASTFALL_GRAVITY
             : inCeilingZone
             ? FLAP_CEILING_HANG_GRAVITY
             : FLAP_GRAVITY;
           player.flapVelocityY -= gravity;
+          if (isDiveLocked) {
+            if (player.flapVelocityY > 0) player.flapVelocityY = 0;
+            if (player.flapVelocityY > -FLAP_DIVE_MIN_DOWN_VELOCITY) {
+              player.flapVelocityY = -FLAP_DIVE_MIN_DOWN_VELOCITY;
+            }
+          }
           player.y += player.flapVelocityY;
 
           // Hard cap on position only (velocity already bled off above).
@@ -2097,25 +2107,26 @@ function tick(delta) {
             if (player.flapVelocityY > 0) player.flapVelocityY = 0;
           }
 
-          // Horizontal air control — free facing, independent of the opponent.
-          // Steering drift (held A/D) layered with the per-flap lunge burst
-          // (flapVelocityX, set on a directional press) which decays via friction.
-          // Steering is cut to a trickle while fast-falling — the dive is a
-          // commitment, not a weaving descent.
-          const airMoveSpeed = isFastFalling
-            ? FLAP_FASTFALL_AIR_MOVE_SPEED
-            : FLAP_AIR_MOVE_SPEED;
-          if (player.keys.d && !player.keys.a) {
-            player.x += airMoveSpeed;
-            player.facing = -1;
-          } else if (player.keys.a && !player.keys.d) {
-            player.x -= airMoveSpeed;
-            player.facing = 1;
-          }
-          if (player.flapVelocityX !== 0) {
-            player.x += player.flapVelocityX;
-            player.flapVelocityX *= FLAP_H_FRICTION;
-            if (Math.abs(player.flapVelocityX) < 0.1) player.flapVelocityX = 0;
+          if (isDiveLocked) {
+            // Locked plummet — no horizontal drift; land exactly below commit point.
+            player.flapVelocityX = 0;
+            player.x = player.flapDiveLockX;
+          } else {
+            // Horizontal air control — free facing, independent of the opponent.
+            // Steering drift (held A/D) layered with the per-flap lunge burst
+            // (flapVelocityX, set on a directional press) which decays via friction.
+            if (player.keys.d && !player.keys.a) {
+              player.x += FLAP_AIR_MOVE_SPEED;
+              player.facing = -1;
+            } else if (player.keys.a && !player.keys.d) {
+              player.x -= FLAP_AIR_MOVE_SPEED;
+              player.facing = 1;
+            }
+            if (player.flapVelocityX !== 0) {
+              player.x += player.flapVelocityX;
+              player.flapVelocityX *= FLAP_H_FRICTION;
+              if (Math.abs(player.flapVelocityX) < 0.1) player.flapVelocityX = 0;
+            }
           }
           player.x = Math.max(MAP_LEFT_BOUNDARY, Math.min(player.x, MAP_RIGHT_BOUNDARY));
 
@@ -2134,6 +2145,8 @@ function tick(delta) {
           }
         } else if (player.flapPhase === "landing") {
           player.flapFastFalling = false;
+          player.flapDiveCommitted = false;
+          player.flapDiveLockX = 0;
           const recovery = player.flapHitLanded
             ? player.flapHitRecoverDuration
             : FLAP_LANDING_RECOVERY_MS;
@@ -2150,6 +2163,8 @@ function tick(delta) {
             player.flapLandingTime = 0;
             player.flapWingBeatTime = 0;
             player.flapFastFalling = false;
+            player.flapDiveCommitted = false;
+            player.flapDiveLockX = 0;
             player.flapBeatHDir = 0;
             player.flapHitLanded = false;
             player.flapHitLandStartY = 0;

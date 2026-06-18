@@ -537,6 +537,7 @@ function processInputPacket(room, player, data, io, rooms) {
       if (
         player.flapCharges > 0 &&
         !player.flapHitLanded &&
+        !player.flapDiveCommitted &&
         nowSim - (player.lastFlapChargeTime || 0) >= FLAP_CHARGE_COOLDOWN_MS
       ) {
         player.flapCharges -= 1;

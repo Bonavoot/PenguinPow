@@ -493,13 +493,12 @@ const FLAP_IMPULSE = 9.5;                // Upward velocity (px/tick) per AIR fl
 const FLAP_GRAVITY = 0.44;               // Downward accel (px/tick²) on the main fall — light & graceful (cute float), NOT a heavy plummet. S-key fast-fall is the committal option.
 const FLAP_MAX_HEIGHT = 300;             // Y-offset cap above GROUND_LEVEL — slightly above the old screen-height cap
 const FLAP_AIR_MOVE_SPEED = 4.6;         // Horizontal air-control speed (px/tick) via A/D — fine steering while holding
-// Fast-fall: holding S in the air commits to a hard dive. Gravity is overridden
-// to a heavier value (beats even the ceiling hang), so the flapper drops fast —
-// a deliberate way to crash the slam down quicker / harder to read. While diving
-// the A/D steering is cut way down so the descent is mostly straight (you commit
-// to the spot, you don't get to keep weaving on the way down).
-const FLAP_FASTFALL_GRAVITY = 1.5;       // Downward accel (px/tick²) while S held — a committed dive. ~3.4× the soft base gravity, so it reads as a decisive "drop" against the cute float.
-const FLAP_FASTFALL_AIR_MOVE_SPEED = 1.1; // Greatly reduced A/D steering during a fast-fall — mostly straight down
+// Fast-fall: pressing S during flight COMMITS to a locked straight plummet —
+// pins X to the spot overhead, drains all remaining air charges, kills upward
+// momentum, and holds heavy dive gravity until touchdown (hit or whiff).
+const FLAP_FASTFALL_GRAVITY = 1.5;       // Downward accel (px/tick²) while dive-locked
+const FLAP_DIVE_MIN_DOWN_VELOCITY = 8;   // Minimum downward speed (px/tick) once committed
+const FLAP_FASTFALL_AIR_MOVE_SPEED = 1.1; // Unused while dive-locked (X is pinned); kept for reference
 // Ceiling "feel" fix: a hard velocity clamp at the cap made hitting the ceiling
 // snap from rising → dead-stop → fast drop, which reads as an ugly bounce. The
 // fix is a CUSHION band just below the cap: rising into it bleeds off upward
@@ -1016,6 +1015,7 @@ module.exports = {
   FLAP_MAX_HEIGHT,
   FLAP_AIR_MOVE_SPEED,
   FLAP_FASTFALL_GRAVITY,
+  FLAP_DIVE_MIN_DOWN_VELOCITY,
   FLAP_FASTFALL_AIR_MOVE_SPEED,
   FLAP_CEILING_CUSHION,
   FLAP_CEILING_HANG_GRAVITY,

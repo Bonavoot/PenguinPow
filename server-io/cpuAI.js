@@ -1258,6 +1258,7 @@ function pilotFlapFlight(cpu, human, aiState, currentTime, distance) {
   const canAirFlap =
     cpu.flapCharges > 0 &&
     !cpu.flapHitLanded &&
+    !cpu.flapDiveCommitted &&
     currentTime - (cpu.lastFlapChargeTime || 0) >= FLAP_CHARGE_COOLDOWN_MS;
 
   // Face + steer toward the opponent.
@@ -2321,6 +2322,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       if (
         cpu.flapCharges > 0 &&
         !cpu.flapHitLanded &&
+        !cpu.flapDiveCommitted &&
         currentTime - (cpu.lastFlapChargeTime || 0) >= FLAP_CHARGE_COOLDOWN_MS
       ) {
         cpu.flapCharges -= 1;
