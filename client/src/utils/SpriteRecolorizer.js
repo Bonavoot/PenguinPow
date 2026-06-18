@@ -1471,18 +1471,44 @@ export async function pinDecodedImages(srcs, replace = false) {
  */
 export async function rewarmDecodedImages() {
   const pins = [...pinnedDecodedKeys];
-  const BATCH = 16;
+  if (!pins.length) return;
+  const container = getHiddenContainer();
+  const BATCH = 12;
   for (let i = 0; i < pins.length; i += BATCH) {
     const batch = pins.slice(i, i + BATCH);
     await Promise.all(
-      batch.map((src) => {
-        const img = decodedImageCache.get(src);
-        if (img && typeof img.decode === "function") {
-          return img.decode().catch(() => {});
-        }
-        // Bitmap (and its <img>) was fully dropped → re-decode & re-add.
-        return preDecodeImage(src);
-      })
+      batch.map(
+        (src) =>
+          new Promise((resolve) => {
+            // CRITICAL: use a FRESH Image, not the cached one. Calling
+            // .decode() on the already-cached <img> is a NO-OP after an idle
+            // bitmap purge — the element still reports complete/naturalWidth,
+            // so the browser resolves immediately WITHOUT re-uploading the
+            // decoded bitmap, and the next paint still decodes cold (= the
+            // ghost returns after AFK). A brand-new Image has never been
+            // decoded, so .decode() genuinely re-decodes and the freshly
+            // decoded element is what we keep referenced in the DOM.
+            const img = new Image();
+            img.src = src;
+            const done = () => {
+              const old = decodedImageCache.get(src);
+              if (old && old !== img && old.parentNode) {
+                old.parentNode.removeChild(old);
+              }
+              if (container && img.parentNode !== container) {
+                container.appendChild(img);
+              }
+              decodedImageCache.set(src, img);
+              resolve();
+            };
+            if (img.decode) {
+              img.decode().then(done).catch(done);
+            } else {
+              img.onload = done;
+              img.onerror = done;
+            }
+          })
+      )
     );
   }
 }

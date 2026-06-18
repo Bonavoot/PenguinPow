@@ -163,6 +163,22 @@ const Game = ({
     return () => socket.off("rematch", handleRematch);
   }, [socket, loadGyojiOutfit]);
 
+  // AFK RECOVERY: when the tab/window regains focus after being hidden (the
+  // exact "AFK'd on the rematch screen" case), the browser has very likely
+  // purged decoded image bitmaps. Force them hot again on return so the next
+  // round/interaction doesn't ghost. Cheap (decode work is off-main-thread).
+  useEffect(() => {
+    const handleVisible = () => {
+      if (document.visibilityState === "visible") rewarmDecodedImages();
+    };
+    document.addEventListener("visibilitychange", handleVisible);
+    window.addEventListener("focus", handleVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisible);
+      window.removeEventListener("focus", handleVisible);
+    };
+  }, []);
+
   const handleResetDisconnectState = useCallback(() => {
     setOpponentDisconnected(false);
     setDisconnectedRoomId(null);
@@ -678,6 +694,11 @@ const Game = ({
     const handleGameStart = () => {
       isGameActiveRef.current = true;
       setLocalGameActive(true);
+      // Force the fighter sprites hot at the start of EVERY round. The browser
+      // can purge decoded bitmaps while idling between rounds (power-up select,
+      // rematch screen) — re-warming here guarantees pose-change <img> remounts
+      // paint warm during the round instead of ghosting on each pose's first use.
+      rewarmDecodedImages();
     };
 
     const handlePerfectParry = () => {

@@ -36,9 +36,6 @@ const HitEffect = ({ position }) => {
   const effectIdCounter = useRef(0);
   const pendingTimeouts = useRef([]);
   const impactFrameTimeoutRef = useRef(null);
-  const gameSceneRef = useRef(null);
-  const gameActorsRef = useRef(null);
-
   const EFFECT_DURATION_SLAP = 550;
   const EFFECT_DURATION_CHARGED = 800;
 
@@ -92,38 +89,17 @@ const HitEffect = ({ position }) => {
       }, 90);
     }
 
-    // Chromatic burst on .game-scene + .game-actors: charged gets it; counter/punish
-    // ALSO get it (regardless of attack type) so reads like "you got caught lacking" pop visually.
-    // The wrestlers now live in .game-actors (a separate camera layer above the
-    // player-info HUD), so punch BOTH layers in lockstep or the players wouldn't aberrate.
-    //
-    // PERF (freeze fix): cinematic kills are deliberately EXCLUDED here. A cinematic
-    // kill already gets the bespoke `.ko-grade-punch` full-scene grade (Game.jsx,
-    // for the whole KO hitstop) which is a near-identical contrast/saturate/brightness
-    // pass on the SAME two layers. Running chromatic on top of it meant two
-    // full-viewport filter systems overlapping on the single most expensive frame in
-    // the game (KO impact + impact-frame flash + particle explosion + camera punch +
-    // hitstop) — the cinematic-kill hiccup. The grade-punch owns the cinematic grade;
-    // chromatic stays for charged/counter/punish.
-    if (!isCinematic && (attackType === 'charged' || isCounterHit || isPunish)) {
-      if (!gameSceneRef.current) {
-        gameSceneRef.current = document.querySelector('.game-scene');
-      }
-      if (!gameActorsRef.current) {
-        gameActorsRef.current = document.querySelector('.game-actors');
-      }
-      const layers = [gameSceneRef.current, gameActorsRef.current].filter(Boolean);
-      if (layers.length) {
-        layers.forEach((el) => el.classList.add('hit-chromatic'));
-        // Punish gets a noticeably longer chromatic tail — it's the "learn from this" hit.
-        const chromDuration = isCinematic ? 200 : (isPunish ? 160 : (isCounterHit ? 130 : 100));
-        const chromTid = setTimeout(
-          () => layers.forEach((el) => el.classList.remove('hit-chromatic')),
-          chromDuration
-        );
-        pendingTimeouts.current.push(chromTid);
-      }
-    }
+    // PERF (freeze fix): the full-scene "chromatic" color punch was REMOVED.
+    // It added `filter:` to two full-viewport layers (.game-scene + .game-actors)
+    // on every charged/counter/punish hit — forcing the browser to allocate
+    // offscreen GPU buffers, filter them for ~100ms, then tear down, EVERY hit.
+    // That per-hit layer thrash was the recurring charged-hit hiccup (slaps never
+    // got it, which is why slaps never hiccuped). It was only a subtle ~100ms
+    // saturate/contrast/brightness bump — the actual impact reads (impact ring,
+    // shockwave, spark burst, impact flash, camera shake + zoom punch, hitstop)
+    // all remain. Cinematic kills keep the bespoke `.ko-grade-punch` grade and
+    // perfect parries keep their cyan flash (both in Game.jsx) — those are rare,
+    // not per-hit, so they don't cause the repeating hiccup.
 
     if (isCinematic && cinematicMs > 0) {
       const unfreezeId = setTimeout(() => {

@@ -48,18 +48,12 @@
 }
 
 /* ============================================
-   CHROMATIC ABERRATION — applied to .game-scene
-   (charged / counter / punish / cinematic)
+   (Removed) full-scene chromatic color-punch — see HitEffect.jsx. It applied a
+   per-hit `filter:` to .game-scene + .game-actors, allocating/tearing down
+   offscreen GPU buffers every charged/counter/punish hit = the recurring
+   charged-hit hiccup. The ring/shockwave/sparks/flash/camera punch carry the
+   impact; cinematic kill (.ko-grade-punch) and perfect parry keep their grades.
    ============================================ */
-.game-scene.hit-chromatic,
-.game-actors.hit-chromatic {
-  animation: chromaticPunch 0.12s ease-out forwards;
-}
-@keyframes chromaticPunch {
-  0% { filter: saturate(1.4) contrast(1.1) brightness(1.06); }
-  40% { filter: saturate(1.15) contrast(1.04) brightness(1.02); }
-  100% { filter: none; }
-}
 
 /* ============================================
    WRAPPER — faux-3D tilt + dual glow (white bloom + dark keyline)
