@@ -15,6 +15,7 @@ import {
   SPRITESHEET_CONFIG_BY_NAME,
 } from "../config/animatedSpriteConfig";
 import PlayerShadow from "./PlayerShadow";
+import DashAfterimageEffect from "./DashAfterimageEffect";
 import ThrowTechEffect from "./ThrowTechEffect";
 import SlapParryEffect from "./SlapParryEffect";
 import ChargeClashEffect from "./ChargeClashEffect";
@@ -2198,7 +2199,15 @@ const GameFighter = ({
           prev.isClinchJoltClashing !== newState.isClinchJoltClashing ||
           prev.clinchJoltRecovery !== newState.clinchJoltRecovery;
 
-        if (!discreteStateChanged) {
+        // Flap guard may clear stale slap flags even when nothing else in the
+        // discrete check changed — still commit so SlapAttackHandsEffect can't
+        // read a pre-flap isSlapAttack from a skipped merge.
+        const flapClearedStaleSlap =
+          isInFlapMechanic(newState) &&
+          (prev.isSlapAttack || prev.isAttacking) &&
+          (!newState.isSlapAttack || !newState.isAttacking);
+
+        if (!discreteStateChanged && !flapClearedStaleSlap) {
           return prev; // No discrete state change, skip re-render
         }
 
@@ -4588,6 +4597,14 @@ const GameFighter = ({
     ? getSpriteRenderInfo(killVictimSprite, renderHitTint, showHitFlashThisFrame, useBlubberTint, true, useArmorTint)
     : spriteRenderInfo;
 
+  const { src: dodgeGhostSpriteSrc } = getSpriteRenderInfo(
+    dodging,
+    false,
+    false,
+    false,
+    true
+  );
+
   // GHOST-FRAME / INTERACTION-HITCH FIX:
   // Key the fighter <img> on the tint- and color-INDEPENDENT base source (the
   // pose identity), NOT the recolored/tinted blob URL. During combat the tint
@@ -4856,6 +4873,17 @@ const GameFighter = ({
       {(() => {
       const fighterSpriteNodes = (
       <>
+      <DashAfterimageEffect
+        isDodging={displayPenguin.isDodging}
+        spriteSrc={dodgeGhostSpriteSrc}
+        facing={penguin.facing ?? -1}
+        dodgeDirection={
+          displayPenguin.dodgeDirection ?? penguin.dodgeDirection ?? penguin.facing ?? 1
+        }
+        getPosition={() => interpolatedPositionRef.current}
+        isAtTheRopes={penguin.isAtTheRopes}
+        fighter={penguin.fighter}
+      />
       {/* Animated Sprite Sheet (when sprite is a spritesheet animation) */}
       {isAnimatedSprite && !showRitualSprite && (
         <AnimatedFighterContainer
@@ -5034,10 +5062,15 @@ const GameFighter = ({
         ))}
 
       <SlapAttackHandsEffect
+        key={uiRoundId}
         x={displayPosition.x}
         y={displayPosition.y}
         facing={penguin.facing ?? -1}
         isActive={
+          !gameOver &&
+          !matchOver &&
+          !penguin.isDead &&
+          !penguin.isBowing &&
           penguin.isSlapAttack === true &&
           penguin.isAttacking === true &&
           !isInFlapMechanic(penguin)

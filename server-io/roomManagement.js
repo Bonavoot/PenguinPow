@@ -204,6 +204,7 @@ function resetRoomAndPlayers(room, io) {
     };
     player.isJumping = false;
     player.isAttacking = false;
+    player.isSlapAttack = false;
     player.isStrafing = false;
     player.isRawParrying = false;
     player.rawParryStartTime = 0;

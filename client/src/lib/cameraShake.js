@@ -33,7 +33,6 @@ export const SHAKE_PROFILES = {
   charged_hit:     { trauma: 0.88, punch: 0.0, rot: 0.50 },
 
   // ── Light / repeatable events ──
-  slap_parry:      { trauma: 0.50, punch: 0.0, rot: 0.0 },
   parry:           { trauma: 0.46, punch: 0.0, rot: 0.0 },
   power_up_reveal: { trauma: 0.30, punch: 0.0, rot: 0.0 },
   round_start:     { trauma: 0.28, punch: 0.0, rot: 0.0 }, // hakkiyoi zoom is in useCamera onGameStart
@@ -48,6 +47,9 @@ export const SHAKE_PROFILES = {
   grab_clash:      { trauma: 0.62, punch: 0.0, rot: 0.30 },
 
   // ── Heavy "this mattered" moments ──
+  // Slap clash — now RARE + DECISIVE, so it reads as a real event: heavy thump
+  // with a clear roll (no zoom). Sits with the other "that mattered" hits.
+  slap_parry:      { trauma: 0.72, punch: 0.0, rot: 0.40 },
   perfect_parry:   { trauma: 0.70, punch: 0.0, rot: 0.45 },
   charge_clash:    { trauma: 0.72, punch: 0.0, rot: 0.45 },
   ring_out:        { trauma: 0.78, punch: 0.0, rot: 0.40 },

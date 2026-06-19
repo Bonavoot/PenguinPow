@@ -417,7 +417,7 @@ export const StyledImage = styled("img")
         : props.$isAttemptingGrabThrow
         ? "attemptingGrabThrowPull 1.0s cubic-bezier(0.4, 0.0, 0.6, 1.0)"
         : props.$isSlapParryRecovering
-        ? "slapParryRecoil 0.14s ease-out"
+        ? "slapParryRecoil 0.2s cubic-bezier(0.22, 1, 0.36, 1)"
         : props.$isRawParrySuccess || props.$isPerfectRawParrySuccess
         ? "rawParryRecoil 0.5s ease-out"
         : props.$isGrabBreaking
@@ -594,10 +594,13 @@ export const StyledImage = styled("img")
     50% { transform: scaleX(var(--facing, 1)); filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000); }
   }
   @keyframes slapParryRecoil {
-    0% { transform: scaleX(calc(var(--facing, 1) * 1.12)) scaleY(0.88) translateX(0); transform-origin: center bottom; }
-    20% { transform: scaleX(calc(var(--facing, 1) * 0.90)) scaleY(1.10) translateX(calc(var(--facing, 1) * -6px)); transform-origin: center bottom; }
-    50% { transform: scaleX(calc(var(--facing, 1) * 1.04)) scaleY(0.96) translateX(calc(var(--facing, 1) * 2px)); transform-origin: center bottom; }
-    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0); transform-origin: center bottom; }
+    /* Clean single-impulse lean-back — no squash/stretch, no oscillation. The
+       body snaps back from the impact (away from the opponent) then smoothly
+       settles. Reads as a crisp recoil rather than a rubbery jiggle. The real
+       gain/lose ground travel is the server knockback slide underneath this. */
+    0% { transform: scaleX(var(--facing, 1)) translateX(0); transform-origin: center bottom; }
+    30% { transform: scaleX(var(--facing, 1)) translateX(calc(var(--facing, 1) * -7px)); transform-origin: center bottom; }
+    100% { transform: scaleX(var(--facing, 1)) translateX(0); transform-origin: center bottom; }
   }
   @keyframes attemptingGrabThrowPull {
     0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0); transform-origin: center bottom; }

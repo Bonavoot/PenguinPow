@@ -123,22 +123,29 @@ const Streak = styled.div`
 const SlapAttackHandsEffect = ({ x, y, facing, isActive, slapAnimation }) => {
   const [hand, setHand] = useState(null);
   const lastSlapRef = useRef(null);
-  const wasActiveRef = useRef(false);
   const handIdCounter = useRef(0);
   const positionCycleRef = useRef(0);
   const handTimeoutRef = useRef(null);
 
   useEffect(() => {
-    // Only show hand effect for slap1 (animation 1) and slap2 (animation 2)
-    if (isActive && (slapAnimation === 1 || slapAnimation === 2) && slapAnimation !== lastSlapRef.current) {
+    // Only show hand effect for slap1 (animation 1) and slap2 (animation 2).
+    // Fire only when slapAnimation advances — the server toggles 1↔2 on every
+    // real slap. Do NOT clear lastSlapRef when isActive drops (e.g. flap
+    // suppression): that used to reset the latch so stale isSlapAttack after
+    // flap re-fired the same animation as a phantom slap.
+    if (
+      isActive &&
+      (slapAnimation === 1 || slapAnimation === 2) &&
+      slapAnimation !== lastSlapRef.current
+    ) {
       lastSlapRef.current = slapAnimation;
 
       const id = ++handIdCounter.current;
-      
+
       const yPositions = [-4, 0, 4, -2, 2];
       const offsetY = yPositions[positionCycleRef.current % yPositions.length];
       positionCycleRef.current++;
-      
+
       const newHand = {
         id,
         offsetY,
@@ -152,14 +159,6 @@ const SlapAttackHandsEffect = ({ x, y, facing, isActive, slapAnimation }) => {
         setHand((current) => (current?.id === id ? null : current));
       }, 200);
     }
-
-    // Only clear the slap latch on active→inactive transition. Clearing every
-    // frame while inactive made the effect re-fire on the next active tick even
-    // when slapAnimation never changed (e.g. isFlapping flicker during flight).
-    if (!isActive && wasActiveRef.current) {
-      lastSlapRef.current = null;
-    }
-    wasActiveRef.current = isActive;
 
     return () => {
       if (handTimeoutRef.current) clearTimeout(handTimeoutRef.current);

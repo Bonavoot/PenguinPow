@@ -2,8 +2,9 @@ const {
   GRAB_STATES, GROUND_LEVEL, TICK_RATE, speedFactor,
   HITBOX_DISTANCE_VALUE, CHARGED_HITBOX_DISTANCE_VALUE, SLAP_HITBOX_DISTANCE_VALUE,
   SIDESTEP_RECOVERY_OVERLAP_THRESHOLD,
-  SLAP_PARRY_WINDOW, SLAP_PARRY_RECOVERY_MS, SLAP_PARRY_HITSTOP_MS,
-  SLAP_PARRY_KNOCKBACK_STRENGTH, SLAP_PARRY_CONSECUTIVE_DECAY_MS,
+  SLAP_PARRY_WINDOW, SLAP_PARRY_NEUTRAL_WINDOW_MS, SLAP_PARRY_HITSTOP_MS,
+  SLAP_PARRY_RECOVERY_WINNER_MS, SLAP_PARRY_RECOVERY_LOSER_MS, SLAP_PARRY_RECOVERY_NEUTRAL_MS,
+  SLAP_PARRY_KNOCKBACK_WINNER, SLAP_PARRY_KNOCKBACK_LOSER, SLAP_PARRY_KNOCKBACK_NEUTRAL,
   DOHYO_FALL_DEPTH,
   POWER_UP_TYPES,
   PERFECT_PARRY_WINDOW, PERFECT_PARRY_KNOCKBACK,
@@ -350,101 +351,105 @@ function resolveSlapParry(player1, player2, room, io) {
   // Sim clock — parry triggers hitstop, so its own recovery deadlines must
   // live on the clock that pauses with it.
   const now = simNow(room);
-  const knockbackDirection1 = player1.x < player2.x ? -1 : 1;
-  const knockbackDirection2 = -knockbackDirection1;
 
-  // Track consecutive parries for escalation
-  const lastParryTime = Math.max(player1.lastSlapParryTime || 0, player2.lastSlapParryTime || 0);
-  const isConsecutive = (now - lastParryTime) < SLAP_PARRY_CONSECUTIVE_DECAY_MS;
-  const consecutiveCount = isConsecutive
-    ? Math.min((player1.slapParryConsecutiveCount || 0) + 1, 4)
-    : 1;
+  // ── GAIN / LOSE / NEUTRAL ────────────────────────────────────────────────
+  // The clash is rare (tight SLAP_PARRY_WINDOW), so it resolves into a real
+  // result instead of a coinflip. The timing GAP between the two slaps decides:
+  //   • gap < NEUTRAL window  → genuine tie  → NEUTRAL (both pop back equally).
+  //   • gap ≥ NEUTRAL window  → someone went first → that player holds center
+  //                             and shoves the other back (ground gained/lost).
+  // This is the "first button wins" fairness of a fighting game, but the prize
+  // is ring control, not a hit — and a near-tie is honestly a tie, so a win
+  // always feels EARNED, never random.
+  const gap = Math.abs(player1.attackStartTime - player2.attackStartTime);
+  const isNeutral = gap < SLAP_PARRY_NEUTRAL_WINDOW_MS;
 
-  [player1, player2].forEach((p) => {
-    p.lastSlapParryTime = now;
-    p.slapParryConsecutiveCount = consecutiveCount;
-  });
+  // Per-player knockback strength + recovery for this outcome.
+  let p1Kb, p2Kb, p1Rec, p2Rec;
+  if (isNeutral) {
+    p1Kb = p2Kb = SLAP_PARRY_KNOCKBACK_NEUTRAL;
+    p1Rec = p2Rec = SLAP_PARRY_RECOVERY_NEUTRAL_MS;
+  } else if (player1.attackStartTime <= player2.attackStartTime) {
+    // player1 went first → player1 wins (holds ground), player2 loses (shoved).
+    p1Kb = SLAP_PARRY_KNOCKBACK_WINNER; p1Rec = SLAP_PARRY_RECOVERY_WINNER_MS;
+    p2Kb = SLAP_PARRY_KNOCKBACK_LOSER;  p2Rec = SLAP_PARRY_RECOVERY_LOSER_MS;
+  } else {
+    p2Kb = SLAP_PARRY_KNOCKBACK_WINNER; p2Rec = SLAP_PARRY_RECOVERY_WINNER_MS;
+    p1Kb = SLAP_PARRY_KNOCKBACK_LOSER;  p1Rec = SLAP_PARRY_RECOVERY_LOSER_MS;
+  }
 
-  const escalation = 1 + (consecutiveCount - 1) * 0.15;
+  const dir1 = player1.x < player2.x ? -1 : 1;
+  const dir2 = -dir1;
 
-  // When one player is pinned at the boundary, their knockback has nowhere to go.
-  // Compensate by boosting the non-cornered player's knockback so they visually
-  // separate instead of overlapping at the wall.
+  // Boundary safety: if a player is pinned at the wall their shove has nowhere
+  // to go (they'd overlap the other). Transfer half of it to the other player
+  // so the pair still separates cleanly.
   const BOUNDARY_PROXIMITY = 30;
   const p1NearWall = player1.x <= MAP_LEFT_BOUNDARY + BOUNDARY_PROXIMITY ||
                      player1.x >= MAP_RIGHT_BOUNDARY - BOUNDARY_PROXIMITY;
   const p2NearWall = player2.x <= MAP_LEFT_BOUNDARY + BOUNDARY_PROXIMITY ||
                      player2.x >= MAP_RIGHT_BOUNDARY - BOUNDARY_PROXIMITY;
+  if (p1NearWall && !p2NearWall) p2Kb += p1Kb * 0.5;
+  else if (p2NearWall && !p1NearWall) p1Kb += p2Kb * 0.5;
 
-  let p1KbScale = escalation;
-  let p2KbScale = escalation;
-  if (p1NearWall && !p2NearWall) {
-    p2KbScale *= 1.6;
-  } else if (p2NearWall && !p1NearWall) {
-    p1KbScale *= 1.6;
-  }
+  applyParryEffect(player1, dir1, p1Kb, p1Rec);
+  applyParryEffect(player2, dir2, p2Kb, p2Rec);
 
-  applyParryEffect(player1, knockbackDirection1, p1KbScale);
-  applyParryEffect(player2, knockbackDirection2, p2KbScale);
-
-  [player1, player2].forEach((p) => {
+  // Clear slap-string state and schedule each player's recovery end.
+  const applyRecovery = (p, recoveryMs) => {
     p.isSlapSliding = false;
     p.isSlapParryRecovering = true;
-
     p.slapStringPosition = 0;
     p.slapStringWindowUntil = 0;
     p.slapWhiffCount = 0;
     p.isSlapWhiffPausing = false;
     p.pendingSlapCount = 0;
 
-    if (p.slapCycleEndCallback) {
-      timeoutManager.clearPlayerSpecific(p.id, "slapCycle");
-      p.attackCooldownUntil = now + SLAP_PARRY_RECOVERY_MS;
-      setPlayerTimeout(p.id, () => {
-        p.isAttacking = false;
-        p.isSlapAttack = false;
-        p.attackType = null;
-        p.isSlapSliding = false;
-        p.slapFacingDirection = null;
-        p.isInStartupFrames = false;
-        p.slapActiveEndTime = 0;
-        p.currentAction = null;
-        p.slapCycleEndCallback = null;
-        p.isSlapParryRecovering = false;
-      }, SLAP_PARRY_RECOVERY_MS, "slapCycle");
-    }
-  });
+    timeoutManager.clearPlayerSpecific(p.id, "slapCycle");
+    p.attackCooldownUntil = now + recoveryMs;
+    setPlayerTimeout(p.id, () => {
+      p.isAttacking = false;
+      p.isSlapAttack = false;
+      p.attackType = null;
+      p.isSlapSliding = false;
+      p.slapFacingDirection = null;
+      p.isInStartupFrames = false;
+      p.slapActiveEndTime = 0;
+      p.currentAction = null;
+      p.slapCycleEndCallback = null;
+      p.isSlapParryRecovering = false;
+    }, recoveryMs, "slapCycle");
+  };
+  applyRecovery(player1, p1Rec);
+  applyRecovery(player2, p2Rec);
 
-  // Hitstop — brief freeze sells the clash impact. Kept FLAT (not escalated): a
-  // longer freeze on consecutive clashes used to make a mash-war progressively
-  // slower, which is exactly the "molasses" feel we're removing. Escalation now
-  // only drives visual juice (knockback pop + screen shake + VFX intensity), so
-  // repeated clashes feel BIGGER without the cadence ever slowing down.
+  // Heavy freeze — THE CLANG. This is now a rare highlight, so it can hit hard.
   triggerHitstopAndEmit(io, room, SLAP_PARRY_HITSTOP_MS, "slap_parry");
 
-  // Screen shake — crisp rattle, NO zoom (slap_parry profile), scales a touch
-  // with consecutive clashes so a mash-war feels bigger without zoom-pumping.
-  emitThrottledScreenShake(room, io, {
-    type: "slap_parry",
-    scale: Math.min(1 + (consecutiveCount - 1) * 0.12, 1.45),
-  });
+  // Heavy, distinct screen shake (slap_parry profile). No escalation/zoom — one
+  // decisive thump per clash.
+  emitThrottledScreenShake(room, io, { type: "slap_parry" });
 
   const midpointX = (player1.x + player2.x) / 2;
   const midpointY = (player1.y + player2.y) / 2;
   io.in(room.id).emit("slap_parry", {
     x: midpointX,
     y: midpointY,
-    intensity: escalation,
-    consecutiveCount,
+    intensity: 1.4,
+    neutral: isNeutral,
     p1x: player1.x,
     p2x: player2.x,
   });
 }
 
-function applyParryEffect(player, knockbackDirection, escalation) {
-  player.slapParryKnockbackVelocity = SLAP_PARRY_KNOCKBACK_STRENGTH * knockbackDirection * escalation;
+function applyParryEffect(player, knockbackDirection, knockbackStrength, recoveryMs) {
+  player.slapParryKnockbackVelocity = knockbackStrength * knockbackDirection;
 
-  player.slapParryImmunityUntil = simNowForPlayer(player) + SLAP_PARRY_RECOVERY_MS + SLAP_PARRY_WINDOW;
+  // Immunity spans only the no-action (recovery) window so the clash can't
+  // resolve into a phantom/free hit while a player is still frozen. It ends WITH
+  // recovery: once a player can act again, slaps connect normally — the winner's
+  // edge is positional (center control), not an unblockable punish.
+  player.slapParryImmunityUntil = simNowForPlayer(player) + recoveryMs;
 }
 
 function resolveChargeClash(player1, player2, p1Charge, p2Charge, room, io) {
