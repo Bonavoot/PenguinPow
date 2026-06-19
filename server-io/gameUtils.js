@@ -507,6 +507,10 @@ function resetPlayerAttackStates(player) {
 // This ensures only ONE state/animation can be active at a time
 // Called when: isHit, isBeingGrabbed, isBeingThrown, isRawParryStun, isAtTheRopes
 function clearAllActionStates(player) {
+  // Tear down slap-string timers/buffers first so a snowball/projectile hit
+  // can't leave a deferred executeSlapAttack that fires once isHit clears.
+  cancelPendingSlapWork(player);
+
   // Clear hit states - prevents conflicting states (e.g., isHit + isBeingGrabbed)
   player.isHit = false;
   player.isAlreadyHit = false;

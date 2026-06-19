@@ -479,14 +479,47 @@ body {
   transition: filter 0.14s ease-out;
 }
 
-/* Cinematic-kill grade-punch: a brief, visceral tone snap on the finishing
-   blow. Contrast + saturation jump and the frame brightens a hair so the KO
-   reads as a hit you FEEL, then eases back out over the hitstop. Toggled from
-   Game.jsx (`.ko-grade-punch` added to .game-container for ~hitstop ms).
-   Applied to BOTH the world and the actors so the whole image punches as one. */
-.game-container.ko-grade-punch .game-scene,
-.game-container.ko-grade-punch .game-actors {
-  filter: contrast(1.18) saturate(1.14) brightness(1.02);
+/* Cinematic-kill framing — the "dark background" cinematic dim.
+   ──────────────────────────────────────────────────────────────────────────
+   PERF (the cinematic freeze fix): this USED to be a `filter: contrast()
+   saturate() brightness()` on .game-scene + .game-actors. That was catastrophic
+   here specifically because, unlike a regular hit, the cinematic kill holds the
+   grade for ~710ms WHILE the camera zooms (it rewrites --cam-scale every frame).
+   A CSS `filter` on a layer that is ALSO transform-animating forces the browser
+   to re-rasterize that whole full-viewport layer into an offscreen buffer and
+   re-apply the filter EVERY FRAME — and .game-actors is the heavy wrestler +
+   VFX subtree. That per-frame filter-of-a-zooming-layer was the sustained
+   freeze/lag the user felt on every kill.
+
+   The replacement keeps the dramatic "dark background" look but is essentially
+   free: a single screen-fixed gradient overlay (.cinematic-dim) that is NOT
+   transform-animated and is driven purely by `opacity`. Opacity on a static
+   composited layer is a GPU-only change — no re-raster, no filter buffers, no
+   interaction with the camera zoom. Fades in/out via the transition below. */
+.cinematic-dim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  /* Above the actors (205) so it darkens the whole field for cinematic focus,
+     but below the main HUD (210) so the RoundResult / announcement callouts
+     stay crisp on top. */
+  z-index: 206;
+  opacity: 0;
+  /* Transparent center keeps the two fighters lit while the surroundings sink
+     into shadow — reads as a spotlight closing in on the finish, i.e. the
+     "dark background" beat, not a flat screen-dim. */
+  background: radial-gradient(
+    ellipse 72% 64% at 50% 52%,
+    transparent 26%,
+    rgba(0, 0, 0, 0.32) 68%,
+    rgba(4, 2, 10, 0.6) 100%
+  );
+  /* Opacity-only — composited cheaply, never touches the zooming layers. */
+  transition: opacity 0.2s ease-out;
+  will-change: opacity;
+}
+.game-container.ko-grade-punch .cinematic-dim {
+  opacity: 1;
 }
 
 /* Lighter, shorter sibling for *regular* ring-outs — a quick blip of juice on

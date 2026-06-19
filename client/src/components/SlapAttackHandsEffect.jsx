@@ -120,12 +120,24 @@ const Streak = styled.div`
   z-index: -1; // Behind the hand
 `;
 
-const SlapAttackHandsEffect = ({ x, y, facing, isActive, slapAnimation }) => {
+const SlapAttackHandsEffect = ({ x, y, facing, isActive, isHit, slapAnimation }) => {
   const [hand, setHand] = useState(null);
   const lastSlapRef = useRef(null);
+  const wasHitRef = useRef(false);
   const handIdCounter = useRef(0);
   const positionCycleRef = useRef(0);
   const handTimeoutRef = useRef(null);
+
+  // Any hit (snowball, slap, clone, etc.) locks the latch to the current
+  // slapAnimation so stale isSlapAttack after isHit clears can't replay it.
+  useEffect(() => {
+    if (isHit && !wasHitRef.current) {
+      if (slapAnimation === 1 || slapAnimation === 2) {
+        lastSlapRef.current = slapAnimation;
+      }
+    }
+    wasHitRef.current = isHit;
+  }, [isHit, slapAnimation]);
 
   useEffect(() => {
     // Only show hand effect for slap1 (animation 1) and slap2 (animation 2).
@@ -195,6 +207,7 @@ SlapAttackHandsEffect.propTypes = {
   y: PropTypes.number.isRequired,
   facing: PropTypes.number.isRequired,
   isActive: PropTypes.bool.isRequired,
+  isHit: PropTypes.bool,
   slapAnimation: PropTypes.number,
 };
 

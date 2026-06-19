@@ -727,10 +727,14 @@ const Game = ({
       }
     };
 
-    // Cinematic-kill grade-punch: for the duration of the KO hitstop, snap the
-    // whole scene to a higher-contrast, richer-saturation grade so the finishing
-    // blow lands with a visceral pop, then ease back out. Pure class toggle —
-    // the filter + transition live in App.css on `.ko-grade-punch .game-scene`.
+    // Cinematic-kill framing: for the duration of the KO hitstop, fade in the
+    // screen-fixed `.cinematic-dim` overlay so the surroundings sink into shadow
+    // (the "dark background" beat) while the camera zooms in, then ease back out.
+    // Pure class toggle — the overlay + opacity transition live in App.css on
+    // `.ko-grade-punch .cinematic-dim`. NOTE: this used to apply a CSS `filter:`
+    // grade to the camera-transformed .game-scene/.game-actors, which forced a
+    // per-frame offscreen re-raster of the heavy zooming layers for the whole
+    // ~710ms hitstop = the cinematic freeze. The opacity-only overlay is free.
     const handleCinematicKill = (data) => {
       const el = containerRef.current;
       if (!el) return;
@@ -835,6 +839,12 @@ const Game = ({
         {/* Screen-space film grain — sits on .game-container (NOT the scene)
             so it's fixed to the lens and never scales/pans with the camera. */}
         <div className="film-grain" aria-hidden="true"></div>
+        {/* Cinematic-kill dim — the "dark background" beat. Screen-fixed (not
+            camera-transformed) and driven purely by opacity via the
+            `.ko-grade-punch` class on .game-container, so it composites for
+            free instead of filtering the zooming scene/actors layers (see
+            .cinematic-dim in App.css for the full freeze-fix rationale). */}
+        <div className="cinematic-dim" aria-hidden="true"></div>
         {/* Player-info HUD target — portal host for the nameplate/health/stamina
             lower-thirds (UiPlayerInfo). Lives UNDER the actors layer so airborne
             penguins paint over it, but above the film-grain/vignette so the panel

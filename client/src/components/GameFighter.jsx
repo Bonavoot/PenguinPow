@@ -248,6 +248,48 @@ function isInFlapMechanic(p) {
   return phase === "startup" || phase === "flight" || phase === "landing";
 }
 
+// Server-side clearAllActionStates clears slap during these — client merge
+// and VFX must mirror that so stale isSlapAttack can't survive a snowball hit,
+// grab, flap, etc.
+function isSlapAttackBlocked(state) {
+  if (!state) return false;
+  return (
+    isInFlapMechanic(state) ||
+    state.isHit === true ||
+    state.isBeingGrabbed === true ||
+    state.isBeingThrown === true ||
+    state.isRawParryStun === true ||
+    state.isAtTheRopes === true
+  );
+}
+
+function clearStaleSlapFlagsOnBlockedState(state) {
+  if (!isSlapAttackBlocked(state)) return;
+  state.isSlapAttack = false;
+  state.isAttacking = false;
+}
+
+function shouldShowSlapAttackHands(p, { gameOver, matchOver } = {}) {
+  if (!p || gameOver || matchOver) return false;
+  if (
+    p.isDead ||
+    p.isBowing ||
+    p.isHit === true ||
+    p.isThrowingSnowball ||
+    p.isThrowing ||
+    p.isBeingGrabbed ||
+    p.isBeingThrown ||
+    p.isBeingPulled ||
+    p.isBeingPushed ||
+    p.isRawParryStun ||
+    p.isAtTheRopes
+  ) {
+    return false;
+  }
+  if (isInFlapMechanic(p)) return false;
+  return p.isSlapAttack === true && p.isAttacking === true;
+}
+
 function mergeFighterPacket(data) {
   if (data === sharedFighterState.lastPacket) return; // already merged this packet
   sharedFighterState.lastPacket = data;
@@ -2096,13 +2138,9 @@ const GameFighter = ({
             false,
         };
 
-        // Flap owns the player — stale slap flags must not survive merge.
-        // A/D air-steer sends facing every tick (re-render); without this,
-        // SlapAttackHandsEffect can fire on stale isSlapAttack mid-flight.
-        if (isInFlapMechanic(newState)) {
-          newState.isSlapAttack = false;
-          newState.isAttacking = false;
-        }
+        // Victim / flap states own the player — stale slap flags must not
+        // survive merge (snowball hits, grabs, flap air-steer, etc.).
+        clearStaleSlapFlagsOnBlockedState(newState);
 
         // PERFORMANCE: Check if any key discrete game states changed
         // Position changes are handled by interpolation refs, so we skip x/y comparison
@@ -2199,15 +2237,15 @@ const GameFighter = ({
           prev.isClinchJoltClashing !== newState.isClinchJoltClashing ||
           prev.clinchJoltRecovery !== newState.clinchJoltRecovery;
 
-        // Flap guard may clear stale slap flags even when nothing else in the
-        // discrete check changed — still commit so SlapAttackHandsEffect can't
-        // read a pre-flap isSlapAttack from a skipped merge.
-        const flapClearedStaleSlap =
-          isInFlapMechanic(newState) &&
+        // Blocked-state guard may clear stale slap flags even when nothing else
+        // in the discrete check changed — still commit so SlapAttackHandsEffect
+        // can't read pre-hit / pre-flap isSlapAttack from a skipped merge.
+        const blockedClearedStaleSlap =
           (prev.isSlapAttack || prev.isAttacking) &&
-          (!newState.isSlapAttack || !newState.isAttacking);
+          (!newState.isSlapAttack || !newState.isAttacking) &&
+          isSlapAttackBlocked(newState);
 
-        if (!discreteStateChanged && !flapClearedStaleSlap) {
+        if (!discreteStateChanged && !blockedClearedStaleSlap) {
           return prev; // No discrete state change, skip re-render
         }
 
@@ -4071,6 +4109,10 @@ const GameFighter = ({
   // when the same player gets re-hit before the trail decay finishes).
   const knockbackTrailIntervalsRef = useRef([]);
 
+  // Tracks the cinematic-kill smoke-trail rAF so it can be cancelled on unmount
+  // / round change (the trail is a distance-based rAF loop, not a setInterval).
+  const cinematicTrailRafRef = useRef(null);
+
   // Add screen shake, thick blubber absorption, and danger zone event listeners
   // MEMORY FIX: Track timeouts so we can clear them on unmount (prevents setState after unmount)
   useEffect(() => {
@@ -4148,25 +4190,70 @@ const GameFighter = ({
       if (isVictim) {
         const trailDir = data.knockbackDirection;
         const trailStartDelay = data.hitstopMs || 550;
-        let trailTick = 0;
+
+        // SMOKE TRAIL — emitted ALONG the victim's flight path.
+        //
+        // The old version dropped one puff per setInterval(16ms) tick at the
+        // victim's *current* position. setInterval drifts and coalesces whenever
+        // the main thread is busy, so any hitch delays/drops a tick — the victim
+        // flies a long way between two real emissions and you get a visible GAP
+        // ("skipped lines"). It was time-based, so it was only ever as smooth as
+        // the frame timing.
+        //
+        // This version is DISTANCE-based and rAF-driven: each frame we read the
+        // freshest interpolated position and lay puffs every SPACING px along the
+        // segment from the last puff to the current position. If a frame is
+        // dropped and the victim jumps far, we BACKFILL the segment with multiple
+        // evenly-spaced puffs (capped per frame) so the trail stays continuous no
+        // matter how janky the timing gets — the gap can't form.
+        const SPACING = 24; // game-px between puffs (even spacing = no gaps)
+        const MAX_FILL = 5; // cap puffs/frame so a long stall can't burst-spawn
+        const TRAIL_DURATION_MS = 820; // ≈ the old 50 ticks × 16ms
 
         const trailStartId = setTimeout(() => {
-          const trailInterval = setInterval(() => {
-            trailTick++;
-            if (trailTick > 50) {
-              clearInterval(trailInterval);
+          const startedAt = performance.now();
+          let last = null;
+          const step = (now) => {
+            if (now - startedAt > TRAIL_DURATION_MS) {
+              cinematicTrailRafRef.current = null;
               return;
             }
-            const victimPos = interpolatedPositionRef.current;
-            if (victimPos && typeof victimPos.x === "number") {
-              emitParticles("cinematicKillTrail", {
-                x: victimPos.x,
-                y: victimPos.y ?? 290,
-                direction: trailDir,
-              });
+            const pos = interpolatedPositionRef.current;
+            if (pos && typeof pos.x === "number") {
+              const py = pos.y ?? 290;
+              if (!last) {
+                last = { x: pos.x, y: py };
+                emitParticles("cinematicKillTrail", {
+                  x: last.x,
+                  y: last.y,
+                  direction: trailDir,
+                });
+              } else {
+                let dx = pos.x - last.x;
+                let dy = py - last.y;
+                let dist = Math.hypot(dx, dy);
+                let fills = 0;
+                while (dist >= SPACING && fills < MAX_FILL) {
+                  const t = SPACING / dist;
+                  last = { x: last.x + dx * t, y: last.y + dy * t };
+                  emitParticles("cinematicKillTrail", {
+                    x: last.x,
+                    y: last.y,
+                    direction: trailDir,
+                  });
+                  dx = pos.x - last.x;
+                  dy = py - last.y;
+                  dist = Math.hypot(dx, dy);
+                  fills++;
+                }
+                // Hit the per-frame cap on a huge jump (a long stall): snap
+                // forward to current so we don't chase a stale backlog next frame.
+                if (fills >= MAX_FILL) last = { x: pos.x, y: py };
+              }
             }
-          }, 16);
-          pendingTimeouts.push(trailInterval);
+            cinematicTrailRafRef.current = requestAnimationFrame(step);
+          };
+          cinematicTrailRafRef.current = requestAnimationFrame(step);
         }, trailStartDelay);
         pendingTimeouts.push(trailStartId);
       }
@@ -4294,6 +4381,11 @@ const GameFighter = ({
         clearTimeout(id);
         clearInterval(id);
       });
+      // Stop the distance-based smoke-trail rAF loop if one is mid-flight.
+      if (cinematicTrailRafRef.current) {
+        cancelAnimationFrame(cinematicTrailRafRef.current);
+        cinematicTrailRafRef.current = null;
+      }
       // Safety net: if this effect tears down mid-cinematic (unmount / round
       // change) the scheduled unfreeze timeout above is cleared, so make sure
       // the engine never gets stranded in its frozen state.
@@ -5066,15 +5158,8 @@ const GameFighter = ({
         x={displayPosition.x}
         y={displayPosition.y}
         facing={penguin.facing ?? -1}
-        isActive={
-          !gameOver &&
-          !matchOver &&
-          !penguin.isDead &&
-          !penguin.isBowing &&
-          penguin.isSlapAttack === true &&
-          penguin.isAttacking === true &&
-          !isInFlapMechanic(penguin)
-        }
+        isActive={shouldShowSlapAttackHands(penguin, { gameOver, matchOver })}
+        isHit={penguin.isHit === true}
         slapAnimation={penguin.slapAnimation}
       />
       <SlapParryEffect position={parryEffectPosition} />
