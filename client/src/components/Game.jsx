@@ -15,8 +15,15 @@ import {
   setupMemoryMonitorShortcut,
 } from "../utils/memoryMonitor";
 import { clearDecodedImageCache, rewarmDecodedImages } from "../utils/SpriteRecolorizer";
-import { pickRandomGyojiOutfit } from "../config/gyojiOutfitPresets";
-import { preloadGyojiOutfit, clearGyojiRecolorCache } from "../utils/GyojiRecolorizer";
+import {
+  pickRandomGyojiOutfit,
+  GYOJI_OUTFIT_PRESETS,
+} from "../config/gyojiOutfitPresets";
+import {
+  preloadGyojiOutfit,
+  clearGyojiRecolorCache,
+  prewarmGyojiOutfit,
+} from "../utils/GyojiRecolorizer";
 import { ParticleProvider } from "../particles/ParticleContext";
 import {
   registerLocalKeyState,
@@ -163,6 +170,35 @@ const Game = ({
     return () => socket.off("rematch", handleRematch);
   }, [socket, loadGyojiOutfit]);
 
+  // PERF: pre-warm every gyoji outfit's recolor during idle time. A rematch
+  // picks a RANDOM outfit and then synchronously recolors all 4 gyoji sheets
+  // (pixel loop + toDataURL PNG encode) on the main thread — a measured
+  // 96–220ms stall right in the match→match transition. Warming the cache now,
+  // one outfit per idle slice (so the warm never blocks a visible frame), makes
+  // every later rematch an instant cache hit. prewarmGyojiOutfit never touches
+  // the active sprites, so this can't change what's on screen.
+  useEffect(() => {
+    const ric =
+      window.requestIdleCallback ||
+      ((fn) => setTimeout(() => fn(), 300));
+    const cic = window.cancelIdleCallback || clearTimeout;
+    let i = 0;
+    let handle = null;
+    let cancelled = false;
+    const warmNext = () => {
+      if (cancelled || i >= GYOJI_OUTFIT_PRESETS.length) return;
+      const outfit = GYOJI_OUTFIT_PRESETS[i++];
+      prewarmGyojiOutfit(outfit).finally(() => {
+        if (!cancelled) handle = ric(warmNext);
+      });
+    };
+    handle = ric(warmNext);
+    return () => {
+      cancelled = true;
+      if (handle != null) cic(handle);
+    };
+  }, []);
+
   // AFK RECOVERY: when the tab/window regains focus after being hidden (the
   // exact "AFK'd on the rematch screen" case), the browser has very likely
   // purged decoded image bitmaps. Force them hot again on return so the next
@@ -196,9 +232,12 @@ const Game = ({
     }
   }, []);
 
-  // Memory monitor - logs to console every 30s, Ctrl+Shift+M for overlay
+  // Memory monitor - DEV ONLY auto-logging (every 30s). In production it added
+  // a periodic DOM-walk + console.log for no player benefit, so the 30s logger
+  // is gated to dev. The manual Ctrl+Shift+M overlay + window.__PENGUIN_DEBUG()
+  // shortcut stay available everywhere for on-demand inspection.
   useEffect(() => {
-    const cleanupMonitor = startMemoryMonitor();
+    const cleanupMonitor = import.meta.env.DEV ? startMemoryMonitor() : null;
     const cleanupShortcut = setupMemoryMonitorShortcut();
     return () => {
       cleanupMonitor?.();
@@ -694,10 +733,21 @@ const Game = ({
     const handleGameStart = () => {
       isGameActiveRef.current = true;
       setLocalGameActive(true);
-      // Force the fighter sprites hot at the start of EVERY round. The browser
-      // can purge decoded bitmaps while idling between rounds (power-up select,
-      // rematch screen) — re-warming here guarantees pose-change <img> remounts
-      // paint warm during the round instead of ghosting on each pose's first use.
+      // PERF: rewarmDecodedImages() used to run HERE, on the exact frame inputs
+      // go live (HAKKIYOI). Kicking off the whole pinned-sprite decode batch on
+      // the first-input frame was a measured ~110ms longtask right when the
+      // round opens = eaten opening moves. It now runs on `power_ups_revealed`
+      // (below) — the dead window ~5s before the round — so sprites are already
+      // hot when the round starts, with no collision with live input.
+    };
+
+    // Re-warm the fighter sprites during the power-up REVEAL (a dead, non-input
+    // moment that reliably fires right before every game_start). The browser
+    // can purge decoded bitmaps while idling on the power-up/rematch screens;
+    // warming here guarantees pose-change <img> remounts paint warm during the
+    // round instead of ghosting — without paying the decode cost on the live
+    // round-start frame.
+    const handlePowerUpsRevealedRewarm = () => {
       rewarmDecodedImages();
     };
 
@@ -769,6 +819,7 @@ const Game = ({
     socket.on("game_reset", handleGameReset);
     socket.on("game_over", handleGameOver);
     socket.on("game_start", handleGameStart);
+    socket.on("power_ups_revealed", handlePowerUpsRevealedRewarm);
     socket.on("perfect_parry", handlePerfectParry);
     socket.on("cinematic_kill", handleCinematicKill);
     socket.on("ring_out", handleRingOut);
@@ -778,6 +829,7 @@ const Game = ({
       socket.off("game_reset", handleGameReset);
       socket.off("game_over", handleGameOver);
       socket.off("game_start", handleGameStart);
+      socket.off("power_ups_revealed", handlePowerUpsRevealedRewarm);
       socket.off("perfect_parry", handlePerfectParry);
       socket.off("cinematic_kill", handleCinematicKill);
       socket.off("ring_out", handleRingOut);
@@ -884,7 +936,6 @@ const Game = ({
                       opponentDisconnected={opponentDisconnected}
                       disconnectedRoomId={disconnectedRoomId}
                       onResetDisconnectState={handleResetDisconnectState}
-                      isPowerUpSelectionActive={isPowerUpSelectionActive}
                       predictionRef={
                         isLocalPlayerFighter ? predictionRef : null
                       }

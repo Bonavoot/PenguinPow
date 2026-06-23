@@ -244,6 +244,30 @@ export async function preloadGyojiOutfit(outfit) {
   return activeGyojiSprites;
 }
 
+// Populate the recolor cache for an outfit WITHOUT swapping the active sprites.
+//
+// PERF: a rematch picks a RANDOM outfit and then synchronously recolors all 4
+// gyoji sheets (960×960 getImageData + HSL pixel loop + toDataURL PNG encode)
+// on the main thread — a measured 96–220ms stall right in the match→match
+// transition. Pre-running the recolor during idle time (see Game.jsx) turns
+// every later rematch into an instant `gyojiRecolorCache` hit. Recolors
+// sequentially (one sheet at a time) so the warm itself never stacks multiple
+// toDataURL encodes into one long frame, and never touches activeGyojiSprites
+// so it can't change what's on screen mid-match.
+export async function prewarmGyojiOutfit(outfit) {
+  if (!outfit) return;
+  const { robe, pattern } = outfit;
+  if (!outfitNeedsRecolor(outfit)) {
+    for (const src of Object.values(GYOJI_IMAGE_SOURCES)) {
+      await preDecodeImages([resolveHiRes(src)]);
+    }
+    return;
+  }
+  for (const src of Object.values(GYOJI_IMAGE_SOURCES)) {
+    await recolorGyojiImage(src, robe, pattern);
+  }
+}
+
 export function clearGyojiRecolorCache() {
   gyojiRecolorCache.clear();
   activeGyojiSprites = null;

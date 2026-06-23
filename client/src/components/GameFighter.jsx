@@ -2457,21 +2457,30 @@ const GameFighter = ({
             }
           }
         }
-        setHitEffectPosition({
-          x: data.x + 70,
-          y: PLAYER_MID_Y,
-          facing: data.facing || 1,
-          timestamp: data.timestamp,
-          hitId: data.hitId,
-          attackType: data.attackType || "slap",
-          isBurstHit: isBurst,
-          isCounterHit: data.isCounterHit || false,
-          isPunish: data.isPunish || false,
-          isArmorBreak: data.isArmorBreak || false,
-          isPowered: data.isPowered || false,
-          cinematicKill: data.cinematicKill || false,
-          cinematicHitstopMs: data.cinematicKill ? 550 : 0,
-        });
+        // PERF: index===0 owns the hit spark. `player_hit` fires on BOTH
+        // GameFighter instances, and HitEffect renders at an absolute world
+        // coordinate (data.x), so without this guard every hit mounted TWO
+        // identical HitEffect DOM trees at the same spot AND re-rendered the
+        // index-1 fighter for nothing. Gating to one instance halves the
+        // per-hit DOM/animation cost — same single effect on screen. (Shake,
+        // sounds, and the counter/punish banner above are already index-0 only.)
+        if (index === 0) {
+          setHitEffectPosition({
+            x: data.x + 70,
+            y: PLAYER_MID_Y,
+            facing: data.facing || 1,
+            timestamp: data.timestamp,
+            hitId: data.hitId,
+            attackType: data.attackType || "slap",
+            isBurstHit: isBurst,
+            isCounterHit: data.isCounterHit || false,
+            isPunish: data.isPunish || false,
+            isArmorBreak: data.isArmorBreak || false,
+            isPowered: data.isPowered || false,
+            cinematicKill: data.cinematicKill || false,
+            cinematicHitstopMs: data.cinematicKill ? 550 : 0,
+          });
+        }
 
         // COUNTER HIT / PUNISH side banners — folded into player_hit (were
         // separate `counter_hit` / `punish_banner` socket events, each of which
@@ -2497,15 +2506,22 @@ const GameFighter = ({
           }
         }
 
-        const hitFacing = data.facing || 1;
-        const facingOffsetPx = (hitFacing === 1 ? -8 : -3) * 12.8;
-        const sparkOpts = { x: data.x + 70 + facingOffsetPx, y: PLAYER_MID_Y, facing: hitFacing };
-        if (data.attackType === "charged") {
-          emitParticles("hitSparkCharged", sparkOpts);
-        } else if (isBurst) {
-          emitParticles("hitSparkBurst", sparkOpts);
-        } else {
-          emitParticles("hitSparkSlap", sparkOpts);
+        // PERF: index===0 owns the hit-spark burst. The particle engine is a
+        // shared singleton, so emitting from both instances spawned DOUBLE the
+        // particles on every hit (charged = 44 instead of the designed 22) —
+        // the heaviest synchronous work on the impact frame. One emit = the
+        // intended count into the shared canvas.
+        if (index === 0) {
+          const hitFacing = data.facing || 1;
+          const facingOffsetPx = (hitFacing === 1 ? -8 : -3) * 12.8;
+          const sparkOpts = { x: data.x + 70 + facingOffsetPx, y: PLAYER_MID_Y, facing: hitFacing };
+          if (data.attackType === "charged") {
+            emitParticles("hitSparkCharged", sparkOpts);
+          } else if (isBurst) {
+            emitParticles("hitSparkBurst", sparkOpts);
+          } else {
+            emitParticles("hitSparkSlap", sparkOpts);
+          }
         }
 
         // Charged-hit knockback trail (A4): only the victim's GameFighter instance
@@ -4007,11 +4023,15 @@ const GameFighter = ({
   }, [penguin.isPerfectRawParrySuccess, penguin.x, penguin.y, penguin.facing, emitParticles, clearRawParryBlueHold]);
 
   useEffect(() => {
-    if (hakkiyoi) {
+    // index===0 owns the round-start announcement audio. This effect runs on
+    // BOTH fighter instances, so without the guard the HAKKIYOI + bell SFX
+    // fired twice on every round start (double-volume/phasing + redundant
+    // decode work on the input frame).
+    if (hakkiyoi && index === 0) {
       playSound(hakkiyoiSound, 0.015);
       playSound(bellSound, 0.005);
     }
-  }, [hakkiyoi]);
+  }, [hakkiyoi, index]);
 
   useEffect(() => {
     if (gyojiCall === "TE WO TSUITE!") {
@@ -4885,6 +4905,14 @@ const GameFighter = ({
               <SumoAnnouncementBanner text="WARM" type={t} isLeftSide={false} />
             </span>
           ))}
+          {/* PERF: warm the round-start HAKKIYOI / TE WO TSUITE announcements
+              too. Profiling showed round 1's game_start paid a ~119ms first-use
+              mount cost (styled-components injection + first paint of this
+              announcement tree) right as opening inputs go live; later rounds
+              were clean. Pre-injecting it here moves that one-time cost into the
+              hidden pre-round warm-up. */}
+          <SumoGameAnnouncement type="hakkiyoi" duration={1.8} />
+          <SumoGameAnnouncement type="tewotsuite" duration={2} />
         </div>
       )}
       {penguin.id === localId &&
@@ -5316,7 +5344,6 @@ GameFighter.propTypes = {
   opponentDisconnected: PropTypes.bool.isRequired,
   disconnectedRoomId: PropTypes.string,
   onResetDisconnectState: PropTypes.func.isRequired,
-  isPowerUpSelectionActive: PropTypes.bool,
   predictionRef: PropTypes.object,
   playerColor: PropTypes.string,
   playerBodyColor: PropTypes.string,
@@ -5336,7 +5363,11 @@ export default React.memo(GameFighter, (prevProps, nextProps) => {
     prevProps.opponentDisconnected === nextProps.opponentDisconnected &&
     prevProps.disconnectedRoomId === nextProps.disconnectedRoomId &&
     prevProps.onResetDisconnectState === nextProps.onResetDisconnectState &&
-    prevProps.isPowerUpSelectionActive === nextProps.isPowerUpSelectionActive &&
+    // NOTE: isPowerUpSelectionActive was intentionally removed here. GameFighter
+    // never reads it in render, but having it in this comparator forced BOTH
+    // fighters to fully re-render every time power-up selection started/ended —
+    // a measured ~70-90ms transition stall for zero visual change. Input gating
+    // for selection lives in Game.jsx, not here.
     prevProps.isCPUMatch === nextProps.isCPUMatch
   );
 });
