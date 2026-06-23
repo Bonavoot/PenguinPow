@@ -68,36 +68,38 @@ const GROUND_LEVEL = 286;
 const HITBOX_DISTANCE_VALUE = Math.round(71 * 0.96); // ~68 — PUSHBOX size (body collision, keeps players separated) [8% tighter]
 const CHARGED_HITBOX_DISTANCE_VALUE = Math.round(147 * 0.96); // ~141 → just past pushbox 136 — hit fires at body contact; lunge provides range [8% tighter]
 const SLAP_HITBOX_DISTANCE_VALUE = Math.round(152 * 0.96); // ~146 — must exceed pushbox (136px) so slaps connect at pushbox distance [8% tighter]
-// ── SLAP CLASH ("slap parry") — RARE, with a GAIN / LOSE / NEUTRAL outcome ──
+// ── SLAP CLASH ("slap parry") — RARE, GROUND-based GAIN / LOSE / NEUTRAL ────
 // Design intent: the clash is NOT the texture of close-range fighting — it's a
 // rare highlight you hit on a genuinely simultaneous read. The DEFAULT outcome
 // of two players mashing is one slap landing first (a clean counter-hit during
 // the other's startup); only near-simultaneous presses clash.
 //
-// When it DOES fire, the result is a ground battle resolved by who committed
-// first — like a fighting game's "first button wins", but expressed as RING
-// CONTROL instead of a hit (that's the sumo twist). It has three states:
-//   • DECISIVE  — one slap clearly started first → that player holds the center
-//                 and shoves the other back. Ground gained / ground lost. Earned.
-//   • NEUTRAL   — the two starts are within ~1 frame (a true tie) → both pop back
-//                 equally, nobody gains ground. Fair, never random.
-// The neutral band is what makes it feel earned-not-random: a coinflip never
-// decides a clash; only a real timing difference does.
+// CRITICAL FAIRNESS RULE: recovery is ALWAYS symmetric — both players unlock at
+// the exact same time. The clash NEVER hands one side a frame/tempo advantage,
+// because a tempo lead snowballs (the loser can't out-mash it, so it feels like
+// "why did he beat me when we were both spamming"). The ONLY thing a clash
+// decides is GROUND (ring control — the sumo win currency), which the loser can
+// always contest by re-approaching:
+//   • DECISIVE  — one slap clearly started first → winner holds the center, the
+//                 other is shoved back toward the rope. Ground gained / lost.
+//   • NEUTRAL   — starts within ~1 frame (a true tie) → both pop back equally,
+//                 nobody gains ground. Fair, never random.
+// Win clashes REPEATEDLY to walk an opponent to the edge — no single clash is
+// ever a free hit or a guaranteed follow-up.
 const SLAP_PARRY_WINDOW = 75; // Near-simultaneous only (~4–5 frames). Wider than this
 // and the clash becomes the constant, neutral, no-progress loop that felt clunky.
 const SLAP_PARRY_NEUTRAL_WINDOW_MS = 30; // Starts within ~1 tick (64Hz ≈ 15.6ms) read
 // as a genuine tie → NEUTRAL (symmetric). Beyond this, someone clearly went first.
 const SLAP_PARRY_KNOCKBACK_VELOCITY = 1.5; // (legacy, unused)
-// Asymmetric recovery (decisive): the winner gets initiative, the loser is locked
-// a touch longer. Kept SMALL — the real reward is positional (the shove below),
-// not a guaranteed frame trap (loser recovers in time to defend a follow-up).
-const SLAP_PARRY_RECOVERY_WINNER_MS = 120;
-const SLAP_PARRY_RECOVERY_LOSER_MS = 150;
-const SLAP_PARRY_RECOVERY_NEUTRAL_MS = 135; // Tie → both locked the same (between the two).
+// Symmetric recovery — IDENTICAL for both players, every outcome. Both unlock
+// together, so mashing-after-clash simply re-clashes (fair) instead of letting
+// the winner run away with the tempo. The reward for winning is GROUND, not frames.
+const SLAP_PARRY_RECOVERY_MS = 135;
 const SLAP_PARRY_HITSTOP_MS = 110; // Heavy freeze — this is the CLANG. Affordable now
 // that clashes are rare; it's the single biggest "this was a big moment" cue.
-// Asymmetric knockback (decisive) — the readable tell. Winner barely moves (holds
-// the center); loser is shoved back toward the rope (~4× the winner's nudge).
+// Asymmetric knockback (decisive) — the readable tell, and the ONLY advantage a
+// clash grants. Winner barely moves (holds the center); loser is shoved back
+// toward the rope (~4× the winner's nudge). Purely positional → always contestable.
 const SLAP_PARRY_KNOCKBACK_WINNER = 0.8;
 const SLAP_PARRY_KNOCKBACK_LOSER = 3.5;
 const SLAP_PARRY_KNOCKBACK_NEUTRAL = 2.0; // Tie → equal, clean pop-apart (no ground change).
@@ -843,9 +845,7 @@ module.exports = {
   SLAP_PARRY_WINDOW,
   SLAP_PARRY_NEUTRAL_WINDOW_MS,
   SLAP_PARRY_KNOCKBACK_VELOCITY,
-  SLAP_PARRY_RECOVERY_WINNER_MS,
-  SLAP_PARRY_RECOVERY_LOSER_MS,
-  SLAP_PARRY_RECOVERY_NEUTRAL_MS,
+  SLAP_PARRY_RECOVERY_MS,
   SLAP_PARRY_HITSTOP_MS,
   SLAP_PARRY_KNOCKBACK_WINNER,
   SLAP_PARRY_KNOCKBACK_LOSER,

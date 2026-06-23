@@ -3,7 +3,7 @@ const {
   HITBOX_DISTANCE_VALUE, CHARGED_HITBOX_DISTANCE_VALUE, SLAP_HITBOX_DISTANCE_VALUE,
   SIDESTEP_RECOVERY_OVERLAP_THRESHOLD,
   SLAP_PARRY_WINDOW, SLAP_PARRY_NEUTRAL_WINDOW_MS, SLAP_PARRY_HITSTOP_MS,
-  SLAP_PARRY_RECOVERY_WINNER_MS, SLAP_PARRY_RECOVERY_LOSER_MS, SLAP_PARRY_RECOVERY_NEUTRAL_MS,
+  SLAP_PARRY_RECOVERY_MS,
   SLAP_PARRY_KNOCKBACK_WINNER, SLAP_PARRY_KNOCKBACK_LOSER, SLAP_PARRY_KNOCKBACK_NEUTRAL,
   DOHYO_FALL_DEPTH,
   POWER_UP_TYPES,
@@ -352,30 +352,31 @@ function resolveSlapParry(player1, player2, room, io) {
   // live on the clock that pauses with it.
   const now = simNow(room);
 
-  // ── GAIN / LOSE / NEUTRAL ────────────────────────────────────────────────
+  // ── GAIN / LOSE / NEUTRAL (GROUND only) ──────────────────────────────────
   // The clash is rare (tight SLAP_PARRY_WINDOW), so it resolves into a real
-  // result instead of a coinflip. The timing GAP between the two slaps decides:
+  // result instead of a coinflip. The timing GAP between the two slaps decides
+  // who gains GROUND — and ONLY ground:
   //   • gap < NEUTRAL window  → genuine tie  → NEUTRAL (both pop back equally).
   //   • gap ≥ NEUTRAL window  → someone went first → that player holds center
   //                             and shoves the other back (ground gained/lost).
-  // This is the "first button wins" fairness of a fighting game, but the prize
-  // is ring control, not a hit — and a near-tie is honestly a tie, so a win
+  // Recovery is SYMMETRIC regardless of outcome (see below): both players unlock
+  // at the same instant, so mashing-after-clash re-clashes fairly instead of the
+  // winner snowballing a tempo lead. A near-tie is honestly a tie, so a win
   // always feels EARNED, never random.
   const gap = Math.abs(player1.attackStartTime - player2.attackStartTime);
   const isNeutral = gap < SLAP_PARRY_NEUTRAL_WINDOW_MS;
 
-  // Per-player knockback strength + recovery for this outcome.
-  let p1Kb, p2Kb, p1Rec, p2Rec;
+  // Per-player knockback strength (the ONLY thing the outcome changes).
+  let p1Kb, p2Kb;
   if (isNeutral) {
     p1Kb = p2Kb = SLAP_PARRY_KNOCKBACK_NEUTRAL;
-    p1Rec = p2Rec = SLAP_PARRY_RECOVERY_NEUTRAL_MS;
   } else if (player1.attackStartTime <= player2.attackStartTime) {
     // player1 went first → player1 wins (holds ground), player2 loses (shoved).
-    p1Kb = SLAP_PARRY_KNOCKBACK_WINNER; p1Rec = SLAP_PARRY_RECOVERY_WINNER_MS;
-    p2Kb = SLAP_PARRY_KNOCKBACK_LOSER;  p2Rec = SLAP_PARRY_RECOVERY_LOSER_MS;
+    p1Kb = SLAP_PARRY_KNOCKBACK_WINNER;
+    p2Kb = SLAP_PARRY_KNOCKBACK_LOSER;
   } else {
-    p2Kb = SLAP_PARRY_KNOCKBACK_WINNER; p2Rec = SLAP_PARRY_RECOVERY_WINNER_MS;
-    p1Kb = SLAP_PARRY_KNOCKBACK_LOSER;  p1Rec = SLAP_PARRY_RECOVERY_LOSER_MS;
+    p2Kb = SLAP_PARRY_KNOCKBACK_WINNER;
+    p1Kb = SLAP_PARRY_KNOCKBACK_LOSER;
   }
 
   const dir1 = player1.x < player2.x ? -1 : 1;
@@ -392,11 +393,12 @@ function resolveSlapParry(player1, player2, room, io) {
   if (p1NearWall && !p2NearWall) p2Kb += p1Kb * 0.5;
   else if (p2NearWall && !p1NearWall) p1Kb += p2Kb * 0.5;
 
-  applyParryEffect(player1, dir1, p1Kb, p1Rec);
-  applyParryEffect(player2, dir2, p2Kb, p2Rec);
+  // Recovery (lockout + immunity) is IDENTICAL for both — no tempo advantage.
+  applyParryEffect(player1, dir1, p1Kb, SLAP_PARRY_RECOVERY_MS);
+  applyParryEffect(player2, dir2, p2Kb, SLAP_PARRY_RECOVERY_MS);
 
-  // Clear slap-string state and schedule each player's recovery end.
-  const applyRecovery = (p, recoveryMs) => {
+  // Clear slap-string state and schedule both players' (symmetric) recovery end.
+  const applyRecovery = (p) => {
     p.isSlapSliding = false;
     p.isSlapParryRecovering = true;
     p.slapStringPosition = 0;
@@ -406,7 +408,7 @@ function resolveSlapParry(player1, player2, room, io) {
     p.pendingSlapCount = 0;
 
     timeoutManager.clearPlayerSpecific(p.id, "slapCycle");
-    p.attackCooldownUntil = now + recoveryMs;
+    p.attackCooldownUntil = now + SLAP_PARRY_RECOVERY_MS;
     setPlayerTimeout(p.id, () => {
       p.isAttacking = false;
       p.isSlapAttack = false;
@@ -418,10 +420,10 @@ function resolveSlapParry(player1, player2, room, io) {
       p.currentAction = null;
       p.slapCycleEndCallback = null;
       p.isSlapParryRecovering = false;
-    }, recoveryMs, "slapCycle");
+    }, SLAP_PARRY_RECOVERY_MS, "slapCycle");
   };
-  applyRecovery(player1, p1Rec);
-  applyRecovery(player2, p2Rec);
+  applyRecovery(player1);
+  applyRecovery(player2);
 
   // Heavy freeze — THE CLANG. This is now a rare highlight, so it can hit hard.
   triggerHitstopAndEmit(io, room, SLAP_PARRY_HITSTOP_MS, "slap_parry");
