@@ -4,6 +4,11 @@ import buttonPressSound2 from "../sounds/button-press-sound-2.mp3";
 import menuMusic from "../sounds/menu-music.mp3";
 import powerUpSelectionHoverSound from "../sounds/power-up-selection-button-hover.mp3";
 import powerUpSelectionPressSound from "../sounds/power-up-selection-button-press.mp3";
+import bellSound from "../sounds/bell-sound.mp3";
+import clapSound from "../sounds/clap2-sound.mp3";
+import roundVictorySound from "../sounds/round-victory-sound.mp3";
+import roundDefeatSound from "../sounds/round-defeat-sound.mp3";
+import winnerSound from "../sounds/winner-sound1.mp3";
 import { getGlobalVolume } from "../components/Settings";
 import { preloadSounds, playBuffer } from "./audioEngine";
 
@@ -15,6 +20,11 @@ preloadSounds([
   buttonPressSound2,
   powerUpSelectionHoverSound,
   powerUpSelectionPressSound,
+  bellSound,
+  clapSound,
+  roundVictorySound,
+  roundDefeatSound,
+  winnerSound,
 ]);
 
 const updateBackgroundMusicVolume = () => {
@@ -91,6 +101,33 @@ const playPowerUpSelectionPressSound = () => {
   playBuffer(powerUpSelectionPressSound, 0.09 * getGlobalVolume());
 };
 
+// ── BASHO results-screen ceremony stingers (spec §5.8 / Phase 9) ──
+// Reused combat/menu cues, dialed to tasteful menu volumes. BASHO-only:
+// nothing here is wired into PvP / VS CPU flows.
+const playBashoGong = () => {
+  playBuffer(bellSound, 0.32 * getGlobalVolume());
+};
+
+const playBashoPurseTick = () => {
+  playBuffer(powerUpSelectionPressSound, 0.05 * getGlobalVolume());
+};
+
+const playBashoFanfare = () => {
+  playBuffer(roundVictorySound, 0.22 * getGlobalVolume());
+};
+
+const playBashoSomber = () => {
+  playBuffer(roundDefeatSound, 0.2 * getGlobalVolume());
+};
+
+const playBashoApplause = () => {
+  playBuffer(clapSound, 0.3 * getGlobalVolume());
+};
+
+const playBashoYusho = () => {
+  playBuffer(winnerSound, 0.3 * getGlobalVolume());
+};
+
 export {
   playButtonHoverSound,
   playButtonPressSound,
@@ -99,4 +136,10 @@ export {
   stopBackgroundMusic,
   playPowerUpSelectionHoverSound,
   playPowerUpSelectionPressSound,
+  playBashoGong,
+  playBashoPurseTick,
+  playBashoFanfare,
+  playBashoSomber,
+  playBashoApplause,
+  playBashoYusho,
 };

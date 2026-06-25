@@ -1699,7 +1699,14 @@ ColoredPlayerPreview.propTypes = {
  * state's only signal, no "Soon" caption needed.
  */
 const CPU_DIFFICULTIES = ["EASY", "NORMAL", "HARD", "IMPOSSIBLE"];
-const AVAILABLE_CPU_DIFFICULTIES = new Set(["HARD", "IMPOSSIBLE"]);
+// All four tiers are now real (one expert brain dialed up/down — see
+// server-io/cpuAI.js DIFFICULTY_PROFILES); EASY/NORMAL are handicapped HARD.
+const AVAILABLE_CPU_DIFFICULTIES = new Set([
+  "EASY",
+  "NORMAL",
+  "HARD",
+  "IMPOSSIBLE",
+]);
 
 const Lobby = ({
   rooms,

@@ -18,7 +18,37 @@ const {
   FLAP_CHARGES,
   FLAP_STAMINA_COST,
   GASSED_DURATION_MS,
+  POWER_UP_TYPES,
 } = require("./constants");
+
+// ============================================
+// THICK BLUBBER hit absorption (shared by collision + projectile paths)
+// ============================================
+//
+// PvP / VS CPU: the single-slot Thick Blubber power-up absorbs ONE hit
+// (activePowerUp === THICK_BLUBBER, gated by hitAbsorptionUsed).
+// BASHO (Phase 7): the draft stacks Thick Blubber into N charges tracked on
+// `bashoBlubberRemaining`. These helpers unify both so the ~5 absorption sites
+// stay identical; non-BASHO players have no bashoBlubberRemaining (undefined →
+// 0), so their behavior is exactly as before.
+
+function hasHitAbsorption(player) {
+  if (!player) return false;
+  return (
+    (player.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
+      !player.hitAbsorptionUsed) ||
+    (player.bashoBlubberRemaining ?? 0) > 0
+  );
+}
+
+function consumeHitAbsorption(player) {
+  if (!player) return;
+  if ((player.bashoBlubberRemaining ?? 0) > 0) {
+    player.bashoBlubberRemaining -= 1; // BASHO stacked charge
+  } else {
+    player.hitAbsorptionUsed = true; // single-slot power-up
+  }
+}
 
 // ============================================
 // MONOTONIC CLOCK HELPER
@@ -1090,6 +1120,10 @@ module.exports = {
 
   // Monotonic clock helper
   gameNow,
+
+  // Thick Blubber hit absorption (single-slot power-up + BASHO stacked charges)
+  hasHitAbsorption,
+  consumeHitAbsorption,
 
   // Pausable simulation clock
   setSimRoomResolver,

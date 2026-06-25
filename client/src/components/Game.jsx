@@ -14,7 +14,11 @@ import {
   startMemoryMonitor,
   setupMemoryMonitorShortcut,
 } from "../utils/memoryMonitor";
-import { clearDecodedImageCache, rewarmDecodedImages } from "../utils/SpriteRecolorizer";
+import {
+  clearDecodedImageCache,
+  clearRecolorCache,
+  rewarmDecodedImages,
+} from "../utils/SpriteRecolorizer";
 import {
   pickRandomGyojiOutfit,
   GYOJI_OUTFIT_PRESETS,
@@ -84,6 +88,10 @@ const Game = ({
   localId,
   setCurrentPage,
   isCPUMatch = false,
+  isBashoMatch = false,
+  bashoBout = null,
+  bashoBoutToken = 0,
+  bashoArmed = false,
 }) => {
   const { socket } = useContext(SocketContext);
   const [isPowerUpSelectionActive, setIsPowerUpSelectionActive] =
@@ -96,7 +104,14 @@ const Game = ({
   const [showPreMatchScreen, setShowPreMatchScreen] = useState(true); // Start with overlay visible
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [isPreloading, setIsPreloading] = useState(true);
-  const preMatchShownRef = useRef(false); // Track if we've already shown/hidden the pre-match
+  // Tracks which bout the pre-match sequence has already run for. For a normal
+  // match this stays 0 (runs once on mount). For a BASHO run it advances with
+  // bashoBoutToken so each bout re-shows the pre-match WITHOUT a remount.
+  const preMatchTokenRef = useRef(-1);
+  const preMatchDoneRef = useRef(false); // current bout's preload finished
+  const bashoBeginningRef = useRef(false); // guards the one-shot "begin bout" emit
+  const bashoArmedRef = useRef(false);
+  bashoArmedRef.current = bashoArmed;
   const gyojiOutfitRef = useRef(pickRandomGyojiOutfit());
   const [, setGyojiRevision] = useState(0);
 
@@ -245,10 +260,23 @@ const Game = ({
     };
   }, []);
 
-  // Free sprite caches when leaving game (reduces memory when in menu/lobby)
+  // Free sprite caches when leaving game (reduces memory when in menu/lobby).
+  //
+  // CRITICAL ORDERING/PAIRING: clearDecodedImageCache() REVOKES the blob URLs of
+  // every decoded sprite. Those exact blob URLs are also the VALUES stored in the
+  // persistent recolor LRU (recoloredImageCache). If we only clear the decoded
+  // cache, the recolor cache survives the unmount still mapping each sprite key
+  // to a now-DEAD (revoked) blob URL. On the next match in the same session (no
+  // page refresh) preloadSprites() → recolorImage() hits that cache and hands
+  // back the dead blob; the <img> fails to load and the browser keeps painting
+  // the previously-shown frame — so poses render as the wrong/last sprite and
+  // animated poses appear to vanish (the BASHO "second run animations all
+  // scrambled" bug). Clearing the recolor cache here keeps the two caches
+  // consistent; the next match re-recolors fresh via the awaited preloadSprites.
   useEffect(() => {
     return () => {
       clearGyojiRecolorCache();
+      clearRecolorCache();
       clearDecodedImageCache();
     };
   }, []);
@@ -645,53 +673,94 @@ const Game = ({
     };
   }, []);
 
-  // Pre-match screen: Show overlay while preloading sprites
-  // This shows the actual game scene (crowd, gyoji, players) behind a semi-transparent overlay
+  // For a BASHO run the bout doesn't START until the DAY card is dismissed
+  // ("Begin"). This emits pre_match_complete once preload is done AND the bout
+  // is armed, after a short pre-match beat. For a normal match this is bypassed
+  // (pre_match_complete fires straight after preload — see the effect below).
+  const beginBashoBout = useCallback(() => {
+    if (!isBashoMatch) return;
+    if (!preMatchDoneRef.current) return; // sprites not ready yet
+    if (!bashoArmedRef.current) return; // DAY card still up
+    if (bashoBeginningRef.current) return; // already starting
+    bashoBeginningRef.current = true;
+    // GHOST-FRAME FIX (basho): the new opponent's freshly-recolored sprites were
+    // decoded + pinned during the reskin, but their decoded bitmaps can be
+    // purged by the browser while the DAY card / pre-match overlay sits idle and
+    // unpainted. Re-decode the pinned working set NOW — a dead, no-input window
+    // right before the bout — so pose transitions paint warm from the first
+    // frame instead of ghosting until the later power_ups_revealed rewarm.
+    rewarmDecodedImages();
+    // Hold the pre-match card for a brief beat, then start the bout.
+    setTimeout(() => {
+      setShowPreMatchScreen(false);
+      socket.emit("pre_match_complete", { roomId: roomName });
+    }, 1100);
+  }, [isBashoMatch, socket, roomName]);
+
+  // Pre-match screen: show overlay while (re)preloading the bout's sprites.
+  // Runs once on mount for a normal match; for BASHO it re-runs each bout as
+  // bashoBoutToken advances (no remount). The opponent recolor between bouts
+  // is light because the originals are already decoded + pinned from bout 1.
   useEffect(() => {
-    // Only run once when game first loads
-    if (preMatchShownRef.current) return;
-    preMatchShownRef.current = true;
+    const token = isBashoMatch ? bashoBoutToken : 0;
+    if (preMatchTokenRef.current === token) return;
+    preMatchTokenRef.current = token;
+
+    const isLightReskin = isBashoMatch && token > 0; // only the opponent changed
+    preMatchDoneRef.current = false;
+    bashoBeginningRef.current = false;
+    setShowPreMatchScreen(true);
 
     const runPreload = async () => {
-
-      // Simulate loading progress while actual preloading happens
-      const progressInterval = setInterval(() => {
-        setLoadingProgress((prev) => {
-          if (prev >= 90) return 90;
-          return prev + Math.random() * 15;
-        });
-      }, 200);
+      let progressInterval = null;
+      if (isLightReskin) {
+        // Heavy decode/pin already done on bout 1 — just recolor the opponent.
+        // No loading bar; the DAY card masks the brief recolor.
+        setIsPreloading(false);
+        setLoadingProgress(100);
+      } else {
+        setIsPreloading(true);
+        setLoadingProgress(0);
+        progressInterval = setInterval(() => {
+          setLoadingProgress((prev) => (prev >= 90 ? 90 : prev + Math.random() * 15));
+        }, 200);
+      }
 
       try {
-        // Preload all recolored sprites
         await preloadSprites(
           player1Color,
           player2Color,
           player1BodyColor,
           player2BodyColor
         );
-
-        await loadGyojiOutfit(gyojiOutfitRef.current);
-
-        // Complete the progress bar
-        clearInterval(progressInterval);
+        if (!isLightReskin) {
+          await loadGyojiOutfit(gyojiOutfitRef.current);
+        }
+        if (progressInterval) clearInterval(progressInterval);
         setLoadingProgress(100);
       } catch (error) {
         console.error("Game: Failed to preload sprites:", error);
-        clearInterval(progressInterval);
+        if (progressInterval) clearInterval(progressInterval);
         setLoadingProgress(100);
       }
 
-      // Hide pre-match screen
       setIsPreloading(false);
-      setShowPreMatchScreen(false);
+      preMatchDoneRef.current = true;
 
-      // Signal server that pre-match is complete - NOW start power-up selection
-      socket.emit("pre_match_complete", { roomId: roomName });
+      if (isBashoMatch) {
+        // Wait for the DAY card "Begin" (arming) before starting the bout.
+        beginBashoBout();
+      } else {
+        setShowPreMatchScreen(false);
+        socket.emit("pre_match_complete", { roomId: roomName });
+      }
     };
 
     runPreload();
   }, [
+    bashoBoutToken,
+    isBashoMatch,
+    beginBashoBout,
     preloadSprites,
     loadGyojiOutfit,
     player1Color,
@@ -701,6 +770,12 @@ const Game = ({
     socket,
     roomName,
   ]);
+
+  // When the DAY card is dismissed (bout armed), start the bout if its sprites
+  // are already preloaded (covers the case where preload finished first).
+  useEffect(() => {
+    if (bashoArmed) beginBashoBout();
+  }, [bashoArmed, beginBashoBout]);
 
   // Handle opponent disconnection - hide power-up selection UI for ALL game phases
   useEffect(() => {
@@ -944,6 +1019,13 @@ const Game = ({
                         i === 0 ? player1BodyColor : player2BodyColor
                       }
                       isCPUMatch={isCPUMatch}
+                      isBashoMatch={isBashoMatch}
+                      bashoPlayerRankLabel={
+                        isBashoMatch ? bashoBout?.playerRankLabel : undefined
+                      }
+                      bashoOpponentRankLabel={
+                        isBashoMatch ? bashoBout?.opponentRankLabel : undefined
+                      }
                     />
                   );
                 })}
@@ -970,23 +1052,51 @@ const Game = ({
           <PreMatchScreen
             player1Name={currentRoom.players[0]?.fighter || "Player 1"}
             player2Name={
-              currentRoom.players[1]?.isCPU
+              isBashoMatch && bashoBout?.opponentName
+                ? bashoBout.opponentName
+                : currentRoom.players[1]?.isCPU
                 ? "CPU"
                 : currentRoom.players[1]?.fighter || "Player 2"
             }
             player1Color={currentRoom.players[0]?.mawashiColor || player1Color}
-            player2Color={currentRoom.players[1]?.mawashiColor || player2Color}
+            player2Color={
+              isBashoMatch
+                ? player2Color
+                : currentRoom.players[1]?.mawashiColor || player2Color
+            }
             player1BodyColor={
               currentRoom.players[0]?.bodyColor || player1BodyColor
             }
             player2BodyColor={
-              currentRoom.players[1]?.bodyColor || player2BodyColor
+              isBashoMatch
+                ? player2BodyColor
+                : currentRoom.players[1]?.bodyColor || player2BodyColor
             }
-            player1Record={{ wins: 0, losses: 0 }}
-            player2Record={{ wins: 0, losses: 0 }}
+            player1Record={
+              isBashoMatch && bashoBout?.playerRecord
+                ? bashoBout.playerRecord
+                : { wins: 0, losses: 0 }
+            }
+            player2Record={
+              isBashoMatch && bashoBout?.opponentRecord
+                ? bashoBout.opponentRecord
+                : { wins: 0, losses: 0 }
+            }
+            player1RankLabel={
+              isBashoMatch ? bashoBout?.playerRankLabel : undefined
+            }
+            player2RankLabel={
+              isBashoMatch ? bashoBout?.opponentRankLabel : undefined
+            }
             loadingProgress={loadingProgress}
             isLoading={isPreloading}
             isCPUMatch={isCPUMatch}
+            isBashoMatch={isBashoMatch}
+            dayLabel={
+              isBashoMatch && bashoBout
+                ? `Day ${bashoBout.day}`
+                : undefined
+            }
           />
         )}
       </div>
@@ -1013,6 +1123,10 @@ Game.propTypes = {
   localId: PropTypes.string.isRequired,
   setCurrentPage: PropTypes.func.isRequired,
   isCPUMatch: PropTypes.bool,
+  isBashoMatch: PropTypes.bool,
+  bashoBout: PropTypes.object,
+  bashoBoutToken: PropTypes.number,
+  bashoArmed: PropTypes.bool,
 };
 
 export default Game;

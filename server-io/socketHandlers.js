@@ -46,6 +46,8 @@ const {
   createCPUPlayer,
   handlePowerUpSelection,
   handleSaltThrowAndPowerUp,
+  applyBashoDraftToPlayer,
+  applyBashoOpponentProfile,
   resetRoomAndPlayers,
 } = require("./roomManagement");
 
@@ -64,7 +66,8 @@ const {
 } = require("./playerFactory");
 
 const { clearAIState } = require("./cpuAI");
-const { clearImpossibleAIState } = require("./cpuAI_impossible");
+const { deriveStatMods } = require("./bashoStatMods");
+const { deriveLoadout } = require("./bashoLoadout");
 
 // Per-match input audit log — appended after rate limit, closed on
 // match-end / disconnect / reset paths below.
@@ -314,10 +317,16 @@ function processInputPacket(room, player, data, io, rooms) {
       } else {
         // Non-slap states: use generic inputBuffer
         if (rising[" "]) {
-          // Flap power-up replaces raw parry on Space (the grab/clinch break
-          // has its own handler and is unaffected). Don't buffer a liftoff
-          // while already airborne — the air-flap re-press path owns that.
-          if (player.activePowerUp === POWER_UP_TYPES.FLAP) {
+          // Flap replaces raw parry on Space (the grab/clinch break has its own
+          // handler and is unaffected). Active when the FLAP power-up is held
+          // OR the BASHO human picked the Flap DEFENSE loadout sidegrade
+          // (player.loadout is absent for every non-BASHO fighter → falsy).
+          // Don't buffer a liftoff while already airborne — the air-flap
+          // re-press path owns that.
+          if (
+            player.activePowerUp === POWER_UP_TYPES.FLAP ||
+            player.loadout?.flapReplacesParry
+          ) {
             if (!player.isFlapping) {
               player.inputBuffer = { type: "flap", timestamp: simNowForPlayer(player) };
             }
@@ -470,8 +479,12 @@ function processInputPacket(room, player, data, io, rooms) {
     if (shouldBlockAction()) {
       if (player.spaceJustPressed) {
         // Don't buffer a flap liftoff while already airborne (air-flap path
-        // handles mid-flight re-presses).
-        if (player.activePowerUp === POWER_UP_TYPES.FLAP) {
+        // handles mid-flight re-presses). Flap is active via the power-up OR
+        // the BASHO Flap loadout sidegrade (loadout absent → falsy elsewhere).
+        if (
+          player.activePowerUp === POWER_UP_TYPES.FLAP ||
+          player.loadout?.flapReplacesParry
+        ) {
           if (!player.isFlapping) {
             player.inputBuffer = { type: "flap", timestamp: simNowForPlayer(player) };
           }
@@ -528,7 +541,8 @@ function processInputPacket(room, player, data, io, rooms) {
   // and is intentionally left intact — Flap only replaces the raw parry.
   if (
     player.spaceJustPressed &&
-    player.activePowerUp === POWER_UP_TYPES.FLAP
+    (player.activePowerUp === POWER_UP_TYPES.FLAP ||
+      player.loadout?.flapReplacesParry)
   ) {
     const nowSim = simNowForPlayer(player);
     if (player.isFlapping && player.flapPhase === "flight") {
@@ -601,6 +615,7 @@ function processInputPacket(room, player, data, io, rooms) {
   if (
     player.spaceJustPressed &&
     player.activePowerUp !== POWER_UP_TYPES.FLAP &&
+    !player.loadout?.flapReplacesParry && // BASHO Flap loadout also suppresses parry
     !shouldBlockAction() &&
     !player.isRawParrying &&
     !player.isRawParryStun &&
@@ -730,15 +745,24 @@ function processInputPacket(room, player, data, io, rooms) {
 
   // Handle F key power-ups (snowball and pumo army) - block during charged attack execution and recovery
   // Use fJustPressed to prevent power-ups from triggering when key is held through other actions
+  //
+  // BASHO Phase 7: the active ability can come from the single-slot power-up
+  // (PvP / VS CPU) OR the stacked draft (player.bashoDraft.snowball / .pumo).
+  // When BOTH are drafted, F is contextual — it throws Snowballs while any
+  // remain, then spawns the Pumo Army. Non-BASHO players have no bashoDraft, so
+  // these collapse to the original single-slot behavior.
+  const canThrowSnowball =
+    (player.activePowerUp === POWER_UP_TYPES.SNOWBALL ||
+      !!player.bashoDraft?.snowball) &&
+    (player.snowballThrowsRemaining ?? 5) > 0;
+  const canSpawnPumo =
+    (player.activePowerUp === POWER_UP_TYPES.PUMO_ARMY ||
+      !!player.bashoDraft?.pumo) &&
+    (player.pumoArmySpawnsRemaining ?? 3) > 0;
   if (
     player.fJustPressed &&
     !shouldBlockAction() &&
-    (player.activePowerUp === POWER_UP_TYPES.SNOWBALL ||
-      player.activePowerUp === POWER_UP_TYPES.PUMO_ARMY) &&
-    (player.activePowerUp !== POWER_UP_TYPES.SNOWBALL ||
-      (player.snowballThrowsRemaining ?? 5) > 0) &&
-    (player.activePowerUp !== POWER_UP_TYPES.PUMO_ARMY ||
-      (player.pumoArmySpawnsRemaining ?? 3) > 0) &&
+    (canThrowSnowball || canSpawnPumo) &&
     !player.snowballCooldown &&
     !player.pumoArmyCooldown &&
     !player.isThrowingSnowball &&
@@ -759,7 +783,7 @@ function processInputPacket(room, player, data, io, rooms) {
       clearChargeState(player, true);
     }
 
-    if (player.activePowerUp === POWER_UP_TYPES.SNOWBALL) {
+    if (canThrowSnowball) {
       // Backfill for older in-progress states where this field may be missing.
       if (player.snowballThrowsRemaining == null) {
         player.snowballThrowsRemaining = 5;
@@ -820,7 +844,7 @@ function processInputPacket(room, player, data, io, rooms) {
         },
         500
       );
-    } else if (player.activePowerUp === POWER_UP_TYPES.PUMO_ARMY) {
+    } else if (canSpawnPumo) {
       if (player.pumoArmySpawnsRemaining == null) {
         player.pumoArmySpawnsRemaining = 3;
       }
@@ -1333,6 +1357,47 @@ function registerSocketHandlers(socket, io, rooms, context) {
     }
   });
 
+  // BASHO only: reset the shared room for the next bout. The client fires this
+  // once the DAY card is fully covering the screen, so the position reset never
+  // flashes. isInitialRound is already true (set when the bout ended), so this
+  // reset skips power-up selection and waits for the next pre_match_complete.
+  socket.on("basho_advance", (data) => {
+    const roomId = data?.roomId || socket.roomId;
+    const room = rooms.find((r) => r.id === roomId);
+    if (!room || room.matchMode !== "basho") return;
+    if (!room.bashoAwaitingReset) return;
+    room.bashoAwaitingReset = false;
+    resetRoomAndPlayers(room, io);
+  });
+
+  // BASHO Phase 7: the human drafts their power-up on the DAY card and sends
+  // the full stacked list here on "Begin Bout" — BEFORE the bout's ritual. The
+  // server applies it to the human only (the firewall); the ritual then runs
+  // automatically with no mid-match selection.
+  socket.on("basho_set_draft", (data) => {
+    const roomId = data?.roomId || socket.roomId;
+    const room = rooms.find((r) => r.id === roomId);
+    if (!room || room.matchMode !== "basho") return;
+    const human = room.players.find((p) => !p.isCPU);
+    if (!human) return;
+    const list = Array.isArray(data.draftedPowerUps) ? data.draftedPowerUps : [];
+    room.bashoDraftList = list;
+    applyBashoDraftToPlayer(human, list);
+  });
+
+  // Phase 8: the client sets the CPU difficulty tier for the upcoming bout
+  // (division base + intra-basho ramp — computed client-side from the live
+  // record). BASHO only; never touches PvP/VS CPU rooms.
+  socket.on("basho_set_difficulty", (data) => {
+    const roomId = data?.roomId || socket.roomId;
+    const room = rooms.find((r) => r.id === roomId);
+    if (!room || room.matchMode !== "basho") return;
+    const VALID = ["EASY", "NORMAL", "HARD", "IMPOSSIBLE"];
+    if (VALID.includes(data?.difficulty)) {
+      room.cpuDifficulty = data.difficulty;
+    }
+  });
+
   socket.on("get_rooms", () => {
     // Send the cleaned/sanitized payload, not the raw rooms structure (which
     // contains huge per-player gameplay state). The lobby UI only needs the
@@ -1546,6 +1611,101 @@ function registerSocketHandlers(socket, io, rooms, context) {
     io.emit("rooms", getCleanedRoomsData(rooms));
   });
 
+  // BASHO bout creation — a FORK of create_cpu_match (left untouched per the
+  // PvP/VS CPU firewall). Reuses the CPU AI + auto-ready pipeline (isCPURoom)
+  // but flags the room with matchMode:"basho" so best-of-1 scoring + the named
+  // opponent's preset colors apply ONLY here, never to a plain VS CPU match.
+  socket.on("create_basho_match", (data) => {
+    const bashoRoomId = `basho-${data.socketId}-${Date.now()}`;
+
+    const room = {
+      id: bashoRoomId,
+      players: [],
+      readyCount: 0,
+      rematchCount: 0,
+      gameStart: false,
+      gameOver: false,
+      matchOver: false,
+      readyStartTime: null,
+      roundStartTimer: null,
+      hakkiyoiCount: 0,
+      teWoTsuiteSent: false,
+      isCPURoom: true,
+      matchMode: "basho",
+      cpuDifficulty: data.difficulty || "HARD",
+      // BASHO runs the WHOLE tournament in ONE room: each bout is a best-of-1
+      // "round" using the native between-rounds reset (no remount, no new
+      // room). The opponent roster (colors per bout) is supplied up front and
+      // the CPU is recolored as bashoBout advances.
+      bashoTotalBouts: Array.isArray(data.opponents) ? data.opponents.length : 1,
+      bashoOpponents: Array.isArray(data.opponents) ? data.opponents : [],
+      // Bouts COMPLETED so far. 0 for a fresh run; for a resume it's the index
+      // of the day being resumed (day N → N-1 completed).
+      bashoBout: Number.isInteger(data.startBout) ? data.startBout : 0,
+      playerAvailablePowerUps: {},
+      playersSelectedPowerUps: {},
+    };
+
+    rooms.push(room);
+
+    socket.join(room.id);
+    socket.roomId = room.id;
+
+    // Human keeps their customized colors AND gets their BASHO stat modifiers
+    // + ability loadout flags. Both are attached to the human ONLY — the CPU
+    // opponent and every non-BASHO player have neither, so combat math and
+    // ability gates are unchanged for them (the firewall).
+    const playerOverrides = data.player || {};
+    room.players.push(
+      createInitialPlayerState({
+        id: data.socketId,
+        ...PLAYER_1_SPAWN,
+        mawashiColor: playerOverrides.mawashiColor || PLAYER_1_SPAWN.mawashiColor,
+        bodyColor: playerOverrides.bodyColor ?? null,
+        statMods: deriveStatMods(playerOverrides.stats || {}),
+        loadout: deriveLoadout(playerOverrides.loadout || {}),
+      })
+    );
+
+    // BASHO Phase 7: the in-run power-up draft STACKS across bouts. Seed the
+    // room's running list from the resume payload (empty for a fresh run) and
+    // apply it to the human, so resumed runs keep their accumulated picks.
+    room.bashoDraftList = Array.isArray(playerOverrides.draftedPowerUps)
+      ? [...playerOverrides.draftedPowerUps]
+      : [];
+    applyBashoDraftToPlayer(room.players[0], room.bashoDraftList);
+
+    // CPU opponent uses the resumed day's named rikishi colors.
+    const cpuPlayerId = `CPU_${bashoRoomId}`;
+    const opp =
+      (room.bashoOpponents && room.bashoOpponents[room.bashoBout]) ||
+      (room.bashoOpponents && room.bashoOpponents[0]) ||
+      data.opponent ||
+      {};
+    if (opp.difficulty) room.cpuDifficulty = opp.difficulty;
+    const cpuPlayer = createCPUPlayer(cpuPlayerId, {
+      mawashiColor: opp.mawashiColor || PLAYER_2_SPAWN.mawashiColor,
+      bodyColor: opp.bodyColor ?? null,
+    });
+    // Apply the opening bout's full opponent profile: AI personality archetype,
+    // and (for a division boss) the stat/size/power-up combat edge. Ordinary
+    // rivals just get their archetype + cleared buffs.
+    applyBashoOpponentProfile(cpuPlayer, opp);
+    room.players.push(cpuPlayer);
+    room.cpuPlayerId = cpuPlayerId;
+
+    registerPlayerInMaps(room.players[0], room);
+    registerPlayerInMaps(cpuPlayer, room);
+
+    socket.emit("basho_match_created", {
+      roomId: room.id,
+      players: room.players,
+    });
+
+    io.in(room.id).emit("lobby", room.players);
+    io.emit("rooms", getCleanedRoomsData(rooms));
+  });
+
   socket.on("set_cpu_difficulty", (data) => {
     const room = rooms.find(r => r.isCPURoom && r.players.some(p => p.id === socket.id));
     if (room && data.difficulty) {
@@ -1577,23 +1737,27 @@ function registerSocketHandlers(socket, io, rooms, context) {
           const cpuPlayer = room.players.find((p) => p.isCPU);
           const humanPlayer = room.players[playerIndex];
           if (cpuPlayer && !cpuPlayer.isReady) {
-            const playerColor = humanPlayer.mawashiColor
-              || (humanPlayer.color === "aqua" ? "#00FFFF" : humanPlayer.color);
-            const availableColors = LOBBY_COLORS.filter(
-              (c) => c.toLowerCase() !== (playerColor || "").toLowerCase()
-            );
-            const chosen = availableColors.length > 0
-              ? availableColors[Math.floor(Math.random() * availableColors.length)]
-              : "#D94848";
-            cpuPlayer.mawashiColor = chosen;
+            // BASHO bouts pre-set the named opponent's colors at room creation;
+            // don't randomize over them. Plain VS CPU keeps the random pick.
+            if (room.matchMode !== "basho") {
+              const playerColor = humanPlayer.mawashiColor
+                || (humanPlayer.color === "aqua" ? "#00FFFF" : humanPlayer.color);
+              const availableColors = LOBBY_COLORS.filter(
+                (c) => c.toLowerCase() !== (playerColor || "").toLowerCase()
+              );
+              const chosen = availableColors.length > 0
+                ? availableColors[Math.floor(Math.random() * availableColors.length)]
+                : "#D94848";
+              cpuPlayer.mawashiColor = chosen;
 
-            const humanBodyHex = (humanPlayer.bodyColor || "").toString().toLowerCase();
-            const availableBodyColors = LOBBY_BODY_COLORS.filter(
-              (c) => (c || "").toString().toLowerCase() !== humanBodyHex
-            );
-            cpuPlayer.bodyColor = availableBodyColors.length > 0
-              ? availableBodyColors[Math.floor(Math.random() * availableBodyColors.length)]
-              : null;
+              const humanBodyHex = (humanPlayer.bodyColor || "").toString().toLowerCase();
+              const availableBodyColors = LOBBY_BODY_COLORS.filter(
+                (c) => (c || "").toString().toLowerCase() !== humanBodyHex
+              );
+              cpuPlayer.bodyColor = availableBodyColors.length > 0
+                ? availableBodyColors[Math.floor(Math.random() * availableBodyColors.length)]
+                : null;
+            }
 
             cpuPlayer.isReady = true;
             room.readyCount++;
@@ -1947,7 +2111,6 @@ function registerSocketHandlers(socket, io, rooms, context) {
         const cpuPlayerId = room.cpuPlayerId || "CPU_PLAYER";
         timeoutManager.clearPlayer(cpuPlayerId);
         clearAIState(cpuPlayerId);
-        clearImpossibleAIState(cpuPlayerId);
 
         // Unregister both players from lookup maps before removal
         room.players.forEach(p => unregisterPlayerFromMaps(p.id));
@@ -2118,7 +2281,6 @@ function registerSocketHandlers(socket, io, rooms, context) {
         const cpuPlayerId = room.cpuPlayerId || "CPU_PLAYER";
         timeoutManager.clearPlayer(cpuPlayerId);
         clearAIState(cpuPlayerId);
-        clearImpossibleAIState(cpuPlayerId);
 
         // Unregister both players from lookup maps before removal
         room.players.forEach(p => unregisterPlayerFromMaps(p.id));

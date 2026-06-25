@@ -324,6 +324,9 @@ const GameFighter = ({
   playerColor, // Custom color for mawashi/headband recoloring
   playerBodyColor, // Custom body color (null = default grey)
   isCPUMatch, // True when playing vs CPU — hides PvP-only HUD bits (rematch tally)
+  isBashoMatch, // True during a BASHO bout — the run controller drives the post-bout flow, so the MatchOver/Rematch UI is suppressed here
+  bashoPlayerRankLabel = null, // BASHO-only: real banzuke rank for the HUD plaque
+  bashoOpponentRankLabel = null, // BASHO-only: opponent's division label for the HUD plaque
 }) => {
   const { socket } = useContext(SocketContext);
   const { emit: emitParticles, clearRawParryBlueHold, setFrozen } = useParticles();
@@ -4781,8 +4784,17 @@ const GameFighter = ({
             roundId={uiRoundId}
             matchOver={matchOver}
             isPlayer1Local={isLocalPlayer}
+            player1RankLabel={bashoPlayerRankLabel}
+            player2RankLabel={bashoOpponentRankLabel}
             player1Stamina={allPlayersData.player1?.stamina ?? 100}
-            player1ActivePowerUp={allPlayersData.player1?.activePowerUp ?? null}
+            player1ActivePowerUp={
+              allPlayersData.player1?.activePowerUp ??
+              ((allPlayersData.player1?.snowballThrowsRemaining ?? 0) > 0
+                ? "snowball"
+                : (allPlayersData.player1?.pumoArmySpawnsRemaining ?? 0) > 0
+                ? "pumo_army"
+                : null)
+            }
             player1SnowballCooldown={
               allPlayersData.player1?.snowballCooldown ?? false
             }
@@ -4800,7 +4812,14 @@ const GameFighter = ({
             player1Balance={allPlayersData.player1?.balance ?? 100}
             player1BalanceGain={p1BalanceGain}
             player2Stamina={allPlayersData.player2?.stamina ?? 100}
-            player2ActivePowerUp={allPlayersData.player2?.activePowerUp ?? null}
+            player2ActivePowerUp={
+              allPlayersData.player2?.activePowerUp ??
+              ((allPlayersData.player2?.snowballThrowsRemaining ?? 0) > 0
+                ? "snowball"
+                : (allPlayersData.player2?.pumoArmySpawnsRemaining ?? 0) > 0
+                ? "pumo_army"
+                : null)
+            }
             player2SnowballCooldown={
               allPlayersData.player2?.snowballCooldown ?? false
             }
@@ -4856,7 +4875,7 @@ const GameFighter = ({
             {index === 0 && showRoundResult && !matchOver && (
               <RoundResult isVictory={winner.id === localId} winType={winType} />
             )}
-            {index === 0 && matchOver && (
+            {index === 0 && matchOver && !isBashoMatch && (
               <MatchOver
                 winner={winner}
                 localId={localId}
@@ -5348,6 +5367,9 @@ GameFighter.propTypes = {
   playerColor: PropTypes.string,
   playerBodyColor: PropTypes.string,
   isCPUMatch: PropTypes.bool,
+  isBashoMatch: PropTypes.bool,
+  bashoPlayerRankLabel: PropTypes.string,
+  bashoOpponentRankLabel: PropTypes.string,
 };
 
 // Optimize the component with React.memo
@@ -5368,6 +5390,7 @@ export default React.memo(GameFighter, (prevProps, nextProps) => {
     // fighters to fully re-render every time power-up selection started/ended —
     // a measured ~70-90ms transition stall for zero visual change. Input gating
     // for selection lives in Game.jsx, not here.
-    prevProps.isCPUMatch === nextProps.isCPUMatch
+    prevProps.isCPUMatch === nextProps.isCPUMatch &&
+    prevProps.isBashoMatch === nextProps.isBashoMatch
   );
 });

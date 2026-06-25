@@ -20,6 +20,8 @@ const {
   DOHYO_RIGHT_BOUNDARY,
   clearHitFall,
   clearSidestepHitReturn,
+  hasHitAbsorption,
+  consumeHitAbsorption,
 } = require("./gameUtils");
 
 // Swept 1D collision: horizontal distance from targetX to the segment the
@@ -88,12 +90,11 @@ function updateProjectiles(room, io, delta) {
           // Check for thick blubber hit absorption
           const isTargetGrabbing = targetPlayer.isGrabStartup || targetPlayer.isGrabbingMovement || targetPlayer.isGrabbing;
           if (
-            targetPlayer.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
-            ((targetPlayer.isAttacking && targetPlayer.attackType === "charged") || isTargetGrabbing) &&
-            !targetPlayer.hitAbsorptionUsed
+            hasHitAbsorption(targetPlayer) &&
+            ((targetPlayer.isAttacking && targetPlayer.attackType === "charged") || isTargetGrabbing)
           ) {
-            // Mark absorption as used for this charge session
-            targetPlayer.hitAbsorptionUsed = true;
+            // Spend the absorption (single-slot power-up or BASHO stacked charge)
+            consumeHitAbsorption(targetPlayer);
 
             // Remove snowball but don't hit the player
             snowball.hasHit = true;
@@ -441,12 +442,11 @@ function updateProjectiles(room, io, delta) {
           // Check for thick blubber hit absorption
           const isOpponentGrabbingClone = opponent.isGrabStartup || opponent.isGrabbingMovement || opponent.isGrabbing;
           if (
-            opponent.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
-            ((opponent.isAttacking && opponent.attackType === "charged") || isOpponentGrabbingClone) &&
-            !opponent.hitAbsorptionUsed
+            hasHitAbsorption(opponent) &&
+            ((opponent.isAttacking && opponent.attackType === "charged") || isOpponentGrabbingClone)
           ) {
-            // Mark absorption as used for this charge session
-            opponent.hitAbsorptionUsed = true;
+            // Spend the absorption (single-slot power-up or BASHO stacked charge)
+            consumeHitAbsorption(opponent);
 
             // Remove clone but don't hit the player
             clone.hasHit = true;

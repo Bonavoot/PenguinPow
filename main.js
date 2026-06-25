@@ -67,6 +67,39 @@ function saveSettings(settings) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// BASHO single-player save file (separate from settings.json).
+// Versioned JSON in userData, written atomically (temp file → rename) so
+// a crash mid-write can never corrupt the existing save. The renderer
+// owns the schema + migrations (client/src/lib/saveStore.js); main just
+// reads/writes the raw document. Steam Cloud can later wrap this path.
+// ─────────────────────────────────────────────────────────────────────
+const bashoSavePath = path.join(app.getPath('userData'), 'basho-save.json');
+
+function loadBashoSave() {
+  try {
+    if (fs.existsSync(bashoSavePath)) {
+      const data = fs.readFileSync(bashoSavePath, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    debugLog(`Error loading basho save: ${error.message}`);
+  }
+  return null;
+}
+
+function writeBashoSave(save) {
+  try {
+    const tmpPath = `${bashoSavePath}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify(save, null, 2));
+    fs.renameSync(tmpPath, bashoSavePath); // atomic swap
+    return true;
+  } catch (error) {
+    debugLog(`Error writing basho save: ${error.message}`);
+    return false;
+  }
+}
+
 let mainWindow;
 
 function createWindow() {
@@ -171,6 +204,15 @@ function createWindow() {
 
 ipcMain.handle('get-settings', () => {
   return loadSettings();
+});
+
+// BASHO save file IPC — renderer handles schema/migrations.
+ipcMain.handle('load-save', () => {
+  return loadBashoSave();
+});
+
+ipcMain.handle('write-save', (event, save) => {
+  return writeBashoSave(save);
 });
 
 ipcMain.handle('save-settings', (event, newSettings) => {

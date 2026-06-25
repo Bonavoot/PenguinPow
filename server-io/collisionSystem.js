@@ -62,6 +62,8 @@ const {
   DOHYO_RIGHT_BOUNDARY,
   clearHitFall,
   clearSidestepHitReturn,
+  hasHitAbsorption,
+  consumeHitAbsorption,
 } = require("./gameUtils");
 
 const { grabBeatsSlap } = require("./combatHelpers");
@@ -303,12 +305,8 @@ function checkCollision(player, otherPlayer, rooms, io) {
       if (otherPlayer.attackType === "charged") {
         // === CHARGED vs CHARGED ===
         // Check thick blubber first — one-sided blubber wins outright
-        const playerHasThickBlubber =
-          player.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
-          !player.hitAbsorptionUsed;
-        const otherPlayerHasThickBlubber =
-          otherPlayer.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
-          !otherPlayer.hitAbsorptionUsed;
+        const playerHasThickBlubber = hasHitAbsorption(player);
+        const otherPlayerHasThickBlubber = hasHitAbsorption(otherPlayer);
 
         if (playerHasThickBlubber && !otherPlayerHasThickBlubber) {
           processHit(player, otherPlayer, rooms, io);
@@ -609,10 +607,7 @@ function processHit(player, otherPlayer, rooms, io) {
     !isSlapAttack &&
     otherPlayer.isGrabStartup &&
     !otherPlayer.isRawParrying &&
-    !(
-      otherPlayer.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
-      !otherPlayer.hitAbsorptionUsed
-    )
+    !hasHitAbsorption(otherPlayer)
   ) {
     if (currentRoom) {
       io.in(currentRoom.id).emit("grab_armor_break", {
@@ -725,15 +720,15 @@ function processHit(player, otherPlayer, rooms, io) {
   // Check for thick blubber hit absorption (only if defender is executing charged attack or grab and hasn't used absorption)
   const isDefenderGrabbing = otherPlayer.isGrabStartup || otherPlayer.isGrabbingMovement || otherPlayer.isGrabbing;
   if (
-    otherPlayer.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
+    hasHitAbsorption(otherPlayer) &&
     ((otherPlayer.isAttacking && otherPlayer.attackType === "charged") || isDefenderGrabbing) &&
-    !otherPlayer.hitAbsorptionUsed &&
     !otherPlayer.isRawParrying
   ) {
     // Raw parry should still work normally
 
-    // Mark absorption as used for this charge session
-    otherPlayer.hitAbsorptionUsed = true;
+    // Mark absorption as used (single-slot power-up) or spend a stacked BASHO
+    // blubber charge.
+    consumeHitAbsorption(otherPlayer);
 
     // CRITICAL: End the attacker's attack to prevent multiple collisions on subsequent ticks
     // For charged attacks, put attacker in recovery state
@@ -1146,6 +1141,27 @@ function processHit(player, otherPlayer, rooms, io) {
       }
     }
 
+    // BASHO attribute mods: POWER scales knockback DEALT (attacker), RESISTANCE
+    // scales knockback RECEIVED (victim). Both default to 1.0 for any player
+    // without statMods (PvP, VS CPU, and the BASHO CPU opponent) → identical to
+    // today. Folded into finalKnockbackMultiplier so it flows into the charged
+    // knockback velocity AND the cinematic-kill predictor consistently; the
+    // fixed slap-finisher velocity is scaled separately below.
+    // BASHO draft: stacked Power Water scales knockback DEALT, mirroring the
+    // power-up (incl. its 0.923 slap dampening). Guarded so an undrafted BASHO
+    // fighter keeps powerMult === 1 and is never dampened; undefined → 1 for
+    // every non-BASHO player.
+    const draftPowerMult = player.bashoDraft?.powerMult ?? 1;
+    const draftPower =
+      draftPowerMult > 1 && isSlapAttack
+        ? draftPowerMult * 0.923
+        : draftPowerMult;
+    const bashoKbFactor =
+      (player.statMods?.power ?? 1) *
+      (otherPlayer.statMods?.resistance ?? 1) *
+      draftPower;
+    finalKnockbackMultiplier *= bashoKbFactor;
+
     let isCinematicKill = false;
     const knockbackAllowed = canApplyKnockback(otherPlayer);
 
@@ -1182,10 +1198,13 @@ function processHit(player, otherPlayer, rooms, io) {
             distanceToBoundaryInKbDir <= SLAP_KILL_RANGE;
 
           if (stringPos === 3) {
-            // STRING HIT 3: physics-based knockback — velocity impulse, no DI
+            // STRING HIT 3: physics-based knockback — velocity impulse, no DI.
+            // The fixed finisher velocity gets the same POWER×RESISTANCE scaling
+            // as the charged knockback (bashoKbFactor = 1.0 for non-BASHO).
             otherPlayer.isBurstKnockback = true;
             otherPlayer.burstKnockbackStartTime = currentTime;
-            otherPlayer.knockbackVelocity.x = knockbackDirection * SLAP_HIT3_KB_VELOCITY;
+            otherPlayer.knockbackVelocity.x =
+              knockbackDirection * SLAP_HIT3_KB_VELOCITY * bashoKbFactor;
             otherPlayer.movementVelocity = 0;
           } else {
             // STRING HITS 1 & 2 (and pos-0 fallback): cinematic combo push —
@@ -1303,7 +1322,9 @@ function processHit(player, otherPlayer, rooms, io) {
           // POWER power-up active on the attacker → client recolors the normal
           // (non-counter / non-punish) white hit VFX to red, signalling the
           // boosted knockback. Counter/punish keep their own special colors.
-          isPowered: player.activePowerUp === POWER_UP_TYPES.POWER,
+          isPowered:
+            player.activePowerUp === POWER_UP_TYPES.POWER ||
+            (player.bashoDraft?.powerMult ?? 1) > 1,
           // attackerId lets the client trigger an attacker-side hit-confirm flash
           // on the attacker's sprite only — distinct from the victim's hit VFX.
           // Without this the attacker has no proprioceptive cue that they "landed it",

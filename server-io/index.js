@@ -149,8 +149,6 @@ const {
 
 // Import CPU AI
 const { updateCPUAI, processCPUInputs } = require("./cpuAI");
-const { updateImpossibleAI } = require("./cpuAI_impossible");
-
 // Import collision system
 const { checkCollision, checkFlapBodySlam } = require("./collisionSystem");
 
@@ -429,12 +427,11 @@ function tick(delta) {
         const cpuPlayer = room.players.find(p => p.isCPU);
         const humanPlayer = room.players.find(p => !p.isCPU);
         if (cpuPlayer && humanPlayer) {
-          // Update AI decision making (sets keys)
-          if (room.cpuDifficulty === "IMPOSSIBLE") {
-            updateImpossibleAI(cpuPlayer, humanPlayer, room, currentTime);
-          } else {
-            updateCPUAI(cpuPlayer, humanPlayer, room, currentTime);
-          }
+          // Update AI decision making (sets keys). One expert brain handles all
+          // tiers — it reads room.cpuDifficulty internally and dials its reaction
+          // quality / cadence / power-up usage up or down (EASY/NORMAL/HARD/
+          // IMPOSSIBLE). See DIFFICULTY_PROFILES in cpuAI.js.
+          updateCPUAI(cpuPlayer, humanPlayer, room, currentTime);
           
           // Process the CPU's inputs (converts keys to actions)
           const gameHelpers = {
@@ -1419,7 +1416,8 @@ function tick(delta) {
       if (
         room.gameOver &&
         now - room.gameOverTime >= 3000 &&
-        !room.matchOver
+        !room.matchOver &&
+        !room.bashoAwaitingReset
       ) {
         // 5 seconds
         resetRoomAndPlayers(room, io);
@@ -1429,7 +1427,8 @@ function tick(delta) {
       // Don't regen while being grabbed, gassed, or in clinch
       if (player.stamina < 100 && !room.gameOver && !player.isBeingGrabbed && !player.isGassed && !player.inClinch) {
         if (staminaRegenCounter >= STAMINA_REGEN_INTERVAL_MS) {
-          player.stamina += STAMINA_REGEN_AMOUNT;
+          // BASHO STAMINA attribute scales regen rate (1.0 for non-BASHO).
+          player.stamina += STAMINA_REGEN_AMOUNT * (player.statMods?.staminaRegen ?? 1);
           player.stamina = Math.min(player.stamina, 100);
         }
       }
@@ -1441,6 +1440,8 @@ function tick(delta) {
         if (player.isCrouchStance) {
           balanceRegen += BALANCE_CROUCH_REGEN_PER_SEC;
         }
+        // BASHO BALANCE attribute scales balance regen rate (1.0 for non-BASHO).
+        balanceRegen *= player.statMods?.balanceRegen ?? 1;
         player.balance = Math.min(BALANCE_MAX, player.balance + balanceRegen * deltaSec);
       }
 
@@ -1702,6 +1703,12 @@ function tick(delta) {
 
           if (player.activePowerUp === POWER_UP_TYPES.SPEED) {
             currentDodgeSpeed *= Math.min(player.powerUpMultiplier * 0.85, 1.5);
+          }
+          // BASHO draft: stacked Happy Feet speeds up the dash too (same 0.85
+          // dampening + 1.5 cap as the power-up). Only when speed was drafted —
+          // speedMult is exactly 1 otherwise, so the dash is never slowed.
+          if ((player.bashoDraft?.speedMult ?? 1) > 1) {
+            currentDodgeSpeed *= Math.min(player.bashoDraft.speedMult * 0.85, 1.5);
           }
 
           let newX = player.x + player.dodgeDirection * delta * currentDodgeSpeed;
@@ -2247,6 +2254,8 @@ function tick(delta) {
         if (player.activePowerUp === POWER_UP_TYPES.SPEED) {
           currentSpeedFactor *= player.powerUpMultiplier;
         }
+        // BASHO draft: stacked Happy Feet picks (1.0 for non-BASHO / undrafted).
+        currentSpeedFactor *= player.bashoDraft?.speedMult ?? 1;
 
         // Calculate new position with grab movement
         const newX =
@@ -2438,6 +2447,11 @@ function tick(delta) {
         if (player.activePowerUp === POWER_UP_TYPES.SPEED) {
           currentSpeedFactor *= player.powerUpMultiplier;
         }
+        // BASHO MOVE SPEED attribute scales walk/strafe displacement (1.0 for
+        // non-BASHO players → unchanged locomotion).
+        currentSpeedFactor *= player.statMods?.moveSpeed ?? 1;
+        // BASHO draft: stacked Happy Feet picks (1.0 for non-BASHO / undrafted).
+        currentSpeedFactor *= player.bashoDraft?.speedMult ?? 1;
         // Reduce speed when size power-up is active
         // if (player.activePowerUp === POWER_UP_TYPES.SIZE) {
         //   currentSpeedFactor *= 0.85;
@@ -3098,6 +3112,7 @@ function tick(delta) {
       if (
         player.keys[" "] &&
         player.activePowerUp !== POWER_UP_TYPES.FLAP && // Flap replaces raw parry on Space
+        !player.loadout?.flapReplacesParry && // BASHO Flap loadout also replaces parry (absent → falsy for non-BASHO)
         !player.isFlapping &&
         !player.isGrabBreaking && // Block raw parry while grab break is active
         !player.isGrabBreakCountered && // Block while countered by grab break
@@ -3318,6 +3333,8 @@ function tick(delta) {
       } else {
         player.speedFactor = speedFactor;
       }
+      // BASHO draft: stacked Happy Feet (1.0 for non-BASHO / undrafted).
+      player.speedFactor *= player.bashoDraft?.speedMult ?? 1;
 
       // Apply size power-up effect
       // if (player.activePowerUp === POWER_UP_TYPES.SIZE) {
@@ -3387,7 +3404,8 @@ function tick(delta) {
       room.gameOver &&
       room.gameOverTime &&
       now - room.gameOverTime >= 3000 &&
-      !room.matchOver
+      !room.matchOver &&
+      !room.bashoAwaitingReset
     ) {
       resetRoomAndPlayers(room, io);
     }

@@ -74,10 +74,25 @@ function addToCache(key, value) {
   }
   recoloredImageCache.set(key, value);
 
-  // Evict oldest entries (at the front of Map iteration order)
-  while (recoloredImageCache.size > MAX_CACHE_SIZE) {
-    const oldestKey = recoloredImageCache.keys().next().value;
+  if (recoloredImageCache.size <= MAX_CACHE_SIZE) return;
+
+  // Evict oldest entries (front of Map iteration order is oldest), but NEVER
+  // evict an entry whose blob is PINNED in the decoded cache (the current
+  // fighter working set). Those blobs are kept alive regardless (eviction can't
+  // revoke them — see the decodedImageCache.has guard below), so dropping their
+  // map key only causes getCachedRecoloredImage() to MISS, after which
+  // GameFighter falls back to a stale local-state blob that may have already
+  // been revoked → a permanently broken <img> (the BASHO "invisible isHit /
+  // chargedAttack" bug: a long run recolors a fresh opponent each day, piling
+  // up entries that evicted the player's own day-1 tint variants). Keeping
+  // pinned mappings means the still-alive pinned blob always resolves.
+  // `continue` on pinned mirrors addToDecodedCache(); if only pinned entries
+  // remain the loop just ends and the cache may sit slightly over cap (fine —
+  // the pinned working set is bounded by pinDecodedImages(replace=true)).
+  for (const oldestKey of recoloredImageCache.keys()) {
+    if (recoloredImageCache.size <= MAX_CACHE_SIZE) break;
     const evictedUrl = recoloredImageCache.get(oldestKey);
+    if (evictedUrl && pinnedDecodedKeys.has(evictedUrl)) continue;
     recoloredImageCache.delete(oldestKey);
     if (evictedUrl && !decodedImageCache.has(evictedUrl) && mayRevokeBlobUrl(evictedUrl)) {
       URL.revokeObjectURL(evictedUrl);

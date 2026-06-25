@@ -1235,9 +1235,13 @@ const PreMatchScreen = ({
   player2BodyColor = null,
   player1Record = { wins: 0, losses: 0 },
   player2Record = { wins: 0, losses: 0 },
+  player1RankLabel = null,
+  player2RankLabel = null,
   loadingProgress = 0,
   isLoading = true,
   isCPUMatch = false,
+  isBashoMatch = false,
+  dayLabel,
 }) => {
   const [displayProgress, setDisplayProgress] = useState(0);
   const [player1Sprite, setPlayer1Sprite] = useState(pumo);
@@ -1248,8 +1252,19 @@ const PreMatchScreen = ({
   const player2Dojo = getSeededValue(player2Name, DOJO_NAMES);
   const player1Style = getSeededValue(player1Name + "style", FIGHTING_STYLES);
   const player2Style = getSeededValue(player2Name + "style", FIGHTING_STYLES);
-  const player1Rank = getRank(player1Record.wins, player1Record.losses);
-  const player2Rank = getRank(player2Record.wins, player2Record.losses);
+  // BASHO passes real banzuke labels (e.g. "Maegashira #7"); split into the
+  // title/number slots the plaque renders. PvP / VS CPU keep the legacy
+  // win-rate heuristic untouched.
+  const labelToRank = (label) => {
+    const m = String(label).match(/^(.*?)(?:\s*#\s*(\d+))?$/);
+    return { title: (m?.[1] || label).toUpperCase(), number: m?.[2] ? `#${m[2]}` : "" };
+  };
+  const player1Rank = player1RankLabel
+    ? labelToRank(player1RankLabel)
+    : getRank(player1Record.wins, player1Record.losses);
+  const player2Rank = player2RankLabel
+    ? labelToRank(player2RankLabel)
+    : getRank(player2Record.wins, player2Record.losses);
 
   useEffect(() => {
     let cancelled = false;
@@ -1346,7 +1361,7 @@ const PreMatchScreen = ({
           <strong>VER.</strong> HATSU
         </BroadcastChip>
         <BroadcastDivider />
-        <BroadcastChip>Day 01</BroadcastChip>
+        <BroadcastChip>{dayLabel || "Day 01"}</BroadcastChip>
       </BroadcastBar>
 
       <LiveIndicator>
@@ -1440,10 +1455,12 @@ const PreMatchScreen = ({
 
         <CenterPillar>
           <CenterFormatLabel>
-            {isCPUMatch ? "VS CPU" : "EXHIBITION"}
+            {isBashoMatch ? "BASHO" : isCPUMatch ? "VS CPU" : "EXHIBITION"}
           </CenterFormatLabel>
           <CenterDivider />
-          <CenterFormatSub>Match&nbsp;01</CenterFormatSub>
+          <CenterFormatSub>
+            {isBashoMatch && dayLabel ? dayLabel : "Match\u00a001"}
+          </CenterFormatSub>
         </CenterPillar>
 
         <PlayerSlot $side="right" $accentColor={p2Accent} $tint={p2Tint}>
@@ -1500,6 +1517,8 @@ PreMatchScreen.propTypes = {
     wins: PropTypes.number,
     losses: PropTypes.number,
   }),
+  player1RankLabel: PropTypes.string,
+  player2RankLabel: PropTypes.string,
   loadingProgress: PropTypes.number,
   isLoading: PropTypes.bool,
   isCPUMatch: PropTypes.bool,

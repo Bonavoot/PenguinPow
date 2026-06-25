@@ -10,11 +10,23 @@ const WIN_TYPE_CONFIG = {
   cinematicKill: { english: "DEMOLISHED !", japanese: "破壊された" },
   grabPush: { english: "FORCE OUT !", japanese: "寄り切り" },
   grabThrow: { english: "OVERARM THROW !", japanese: "上手投げ" },
+  clinchKillThrow: { english: "CRUSHING THROW !", japanese: "掛け投げ" },
+  clinchKillPull: { english: "PULL DOWN !", japanese: "引き落とし" },
   okuridashi: { english: "REAR PUSH OUT!", japanese: "送り出し" },
+  flap: { english: "BODY SLAM !", japanese: "浴びせ倒し" },
   snowball: { english: "RING OUT !", japanese: "場外" },
   pumoClone: { english: "RING OUT !", japanese: "場外" },
   ringOut: { english: "RING OUT !", japanese: "場外" },
 };
+
+/**
+ * Look up the kimarite (winning-move) label for a winType. Shared with the
+ * BASHO results strip so the post-run summary can name each day's finish.
+ * Falls back to the generic ring-out call for unknown/missing types.
+ */
+export function kimariteFor(winType) {
+  return WIN_TYPE_CONFIG[winType] || WIN_TYPE_CONFIG.ringOut;
+}
 
 // ============================================
 // ANIMATIONS

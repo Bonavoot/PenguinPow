@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext, Fragment } from "react";
+import { useState, useEffect, useRef, useContext, Fragment } from "react";
 import PropTypes from "prop-types";
 
 import Lobby from "./Lobby";
@@ -7,8 +7,45 @@ import Game from "./Game";
 import Settings from "./Settings";
 // hello
 import CustomizePage from "./CustomizePage";
+import BashoHub from "./BashoHub";
+import DayCard from "./DayCard";
+import BashoResults from "./BashoResults";
+import { usePlayerColors } from "../context/PlayerColorContext";
+import { writeSave, makeDefaultSave, loadSave } from "../lib/saveStore";
+import {
+  startDay,
+  currentOpponent,
+  recordBout,
+  isRunComplete,
+  applyRunResult,
+} from "../lib/bashoRun";
+import {
+  getDivision,
+  STAT_BASE,
+  ATTRIBUTES,
+  LOADOUT_OPTION_BY_ID,
+  isUnlocked,
+  rollDraftOptions,
+  effectiveDifficulty,
+  DIFFICULTY_ORDER,
+  formatRank,
+} from "../config/bashoConfig";
 import styled, { keyframes, css } from "styled-components";
 import { SocketContext } from "../SocketContext";
+
+/*
+ * Difficulty for a specific bout: the HIGHER of the intra-basho ramp
+ * (effectiveDifficulty — division base + back-third bump) and the opponent's
+ * own floor (a division boss can be IMPOSSIBLE regardless of the ramp). Keeps
+ * a boss from being softened, while still letting the ramp upgrade a normal day.
+ */
+function boutDifficulty(run, boutIndex) {
+  const ramp = effectiveDifficulty(run, boutIndex);
+  const oppFloor = run?.opponents?.[boutIndex]?.difficulty;
+  const ri = DIFFICULTY_ORDER.indexOf(ramp);
+  const oi = DIFFICULTY_ORDER.indexOf(oppFloor);
+  return oi > ri ? oppFloor : ramp;
+}
 import lobbyBackground from "../assets/lobby-bkg.webp";
 
 import pumo from "../assets/pumo-idle.png";
@@ -1057,6 +1094,268 @@ const MainMenu = ({
   const [isCPUMatch, setIsCPUMatch] = useState(false);
   const { socket } = useContext(SocketContext);
 
+  // ── BASHO run state machine (single-player only; gated from PvP/VS CPU) ──
+  const {
+    player1Color,
+    player1BodyColor,
+    setPlayer1Color,
+    setPlayer2Color,
+    setPlayer1BodyColor,
+    setPlayer2BodyColor,
+  } = usePlayerColors();
+  const [isBashoMatch, setIsBashoMatch] = useState(false);
+  const [bashoRun, setBashoRun] = useState(null);
+  const [bashoResult, setBashoResult] = useState(null);
+  // No-remount run presentation: the whole basho plays in ONE mounted Game.
+  // `bashoPhase` toggles the DAY-card overlay; `bashoArmed` releases the bout
+  // after the player dismisses the card; `bashoBoutToken` re-triggers Game's
+  // pre-match (a light opponent recolor) for each new bout without a remount.
+  const [bashoPhase, setBashoPhase] = useState(null); // null | "day" | "bout"
+  const [bashoArmed, setBashoArmed] = useState(false);
+  const [bashoBoutToken, setBashoBoutToken] = useState(0);
+  // The 3 power-up options offered on the current DAY card (Phase 7 draft).
+  const [bashoDraftOptions, setBashoDraftOptions] = useState(null);
+  // Persistent career rank label for the main-menu banzuke card. Refreshed on
+  // mount and whenever we land back on the main menu (so it reflects any rank
+  // movement banked since the last basho run). BASHO save is read-only here.
+  const [careerRankLabel, setCareerRankLabel] = useState(null);
+  // Refs mirror the latest values for use inside once-registered socket
+  // handlers without re-subscribing on every render.
+  const bashoSaveRef = useRef(null);
+  const bashoRunRef = useRef(null);
+  const bashoRoomIdRef = useRef(null);
+  const isBashoMatchRef = useRef(false);
+  const boutResolvedRef = useRef(false);
+  const resolveBoutRef = useRef(null);
+  const player1ColorRef = useRef(player1Color);
+  const player1BodyColorRef = useRef(player1BodyColor);
+  player1ColorRef.current = player1Color;
+  player1BodyColorRef.current = player1BodyColor;
+
+  // Keep the main-menu banzuke card's "Your Rank" in sync with the persistent
+  // career. Reloads whenever we return to the main menu so a rank earned in a
+  // just-finished basho shows up immediately. Read-only — never writes.
+  useEffect(() => {
+    if (currentPage !== "mainMenu") return;
+    let cancelled = false;
+    loadSave().then((save) => {
+      if (cancelled) return;
+      bashoSaveRef.current = bashoSaveRef.current || save;
+      setCareerRankLabel(formatRank(save?.career?.rank));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPage]);
+
+  // Resolve a finished or withdrawn run: apply banzuke movement to the
+  // career, persist, and show the results screen.
+  const finishBasho = (run, withdrawn) => {
+    const save = bashoSaveRef.current || makeDefaultSave();
+    const career = save.career || makeDefaultSave().career;
+    const { career: newCareer, movement, drip, earned, breakdown, tier } =
+      applyRunResult(career, run);
+    const newSave = {
+      ...save,
+      career: newCareer,
+      bashoRun: { ...run, active: false },
+    };
+    bashoSaveRef.current = newSave;
+    writeSave(newSave);
+    isBashoMatchRef.current = false;
+    setIsBashoMatch(false);
+    setIsCPUMatch(false);
+    setBashoPhase(null);
+    setBashoArmed(false);
+    setBashoRun(null);
+    bashoRunRef.current = null;
+    setBashoResult({
+      run,
+      movement,
+      drip,
+      earned,
+      breakdown,
+      tier,
+      withdrawn: !!withdrawn,
+    });
+    setCurrentPage("bashoResults");
+  };
+
+  // Advance to the next bout WITHOUT remounting Game or creating a new room:
+  // recolor the opponent, bump the bout token (re-shows the pre-match), and
+  // raise the DAY card. The server has already reset the shared room and is
+  // waiting for the next pre_match_complete.
+  const goToNextDay = (run2) => {
+    startDay(run2); // fills the next opponent's record in place
+    bashoRunRef.current = run2;
+    const opp = currentOpponent(run2);
+    if (opp) {
+      setPlayer2Color(opp.mawashiColor);
+      setPlayer2BodyColor(opp.bodyColor || null);
+    }
+    boutResolvedRef.current = false;
+    setBashoRun({ ...run2 });
+    setBashoArmed(false);
+    setBashoDraftOptions(rollDraftOptions(3));
+    setBashoPhase("day");
+    setBashoBoutToken((t) => t + 1);
+    const save = { ...(bashoSaveRef.current || makeDefaultSave()), bashoRun: run2 };
+    bashoSaveRef.current = save;
+    writeSave(save);
+    // The server held the bout-end pose and is awaiting our cue to reset the
+    // shared room. Fire it on the next frame — after the (instantly opaque) DAY
+    // card has painted — so the position reset happens fully behind the cover.
+    const roomId = bashoRoomIdRef.current;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        socket.emit("basho_advance", { roomId });
+      });
+    });
+  };
+
+  // DEV (spec §9, bashoDebug flag): fast-forward the run so only the final day
+  // remains to play — for testing the results/ceremony screen without grinding
+  // a whole basho. Skipped days are auto-resolved with an ALTERNATING W/L split
+  // so the final bout actually decides kachi-koshi vs make-koshi (lets us test
+  // both outcomes). Never touches PvP/VS CPU; gated by the dev flag in DayCard.
+  const skipToFinalDay = () => {
+    let run = bashoRunRef.current;
+    if (!run) return;
+    let idx = 0;
+    while (run.day < run.totalBouts) {
+      const won = idx % 2 === 0;
+      run = recordBout(run, won, won ? "slap" : "ringOut");
+      idx += 1;
+    }
+    goToNextDay(run);
+  };
+
+  // Called after each bout's result is recorded: either set up the next day or
+  // tear down the room and show results.
+  const resolveBout = (run2) => {
+    if (isRunComplete(run2)) {
+      socket.emit("leave_room", { roomId: bashoRoomIdRef.current });
+      finishBasho(run2, false);
+    } else {
+      goToNextDay(run2);
+    }
+  };
+  resolveBoutRef.current = resolveBout;
+
+  // DAY card "Begin Bout" → stack the drafted power-up into the run, persist,
+  // and push the full stacked list to the server (applied to the BASHO human
+  // only) BEFORE the bout's ritual. Then release the bout: the ritual + ready
+  // walk run automatically, with no mid-match selection (§Phase 7 rework).
+  const beginBashoBout = (pickedType) => {
+    const run = bashoRunRef.current;
+    if (run && pickedType) {
+      const drafted = [...(run.draftedPowerUps || []), pickedType];
+      const run2 = { ...run, draftedPowerUps: drafted };
+      bashoRunRef.current = run2;
+      setBashoRun({ ...run2 });
+      const save = {
+        ...(bashoSaveRef.current || makeDefaultSave()),
+        bashoRun: run2,
+      };
+      bashoSaveRef.current = save;
+      writeSave(save);
+      socket.emit("basho_set_draft", {
+        roomId: bashoRoomIdRef.current,
+        draftedPowerUps: drafted,
+      });
+    }
+    // Push the effective difficulty for THIS bout (division base + intra-basho
+    // ramp) before the ritual, so the CPU brain is dialed correctly for the
+    // upcoming fight. Computed client-side because the ramp depends on the
+    // live record the client owns.
+    if (run) {
+      socket.emit("basho_set_difficulty", {
+        roomId: bashoRoomIdRef.current,
+        difficulty: boutDifficulty(run, Math.max(0, (run.day || 1) - 1)),
+      });
+    }
+    setBashoDraftOptions(null);
+    setBashoPhase("bout");
+    setBashoArmed(true);
+  };
+
+  const withdrawBasho = () => {
+    const run = bashoRunRef.current;
+    if (!run) return;
+    socket.emit("leave_room", { roomId: bashoRoomIdRef.current });
+    finishBasho(run, true);
+  };
+
+  // Entry point called by BashoHub when starting OR resuming a run. Creates the
+  // single basho room (handing the server the full opponent-color roster) and,
+  // for a resume, the bout index to start from.
+  const startBashoRun = ({ run, save }) => {
+    bashoSaveRef.current = save || makeDefaultSave();
+    startDay(run);
+    bashoRunRef.current = run;
+    boutResolvedRef.current = false;
+    setBashoRun({ ...run });
+    const opp = currentOpponent(run);
+    if (opp) {
+      setPlayer2Color(opp.mawashiColor);
+      setPlayer2BodyColor(opp.bodyColor || null);
+    }
+    const opponents = (run.opponents || []).map((o) => ({
+      mawashiColor: o.mawashiColor,
+      bodyColor: o.bodyColor ?? null,
+      difficulty: o.difficulty || "HARD",
+      // Rival roster: AI personality archetype + (boss-only) combat edge. The
+      // server applies stats/size/powerUps to the BASHO CPU per bout.
+      archetype: o.archetype || "balanced",
+      boss: !!o.boss,
+      stats: o.stats || null,
+      size: o.size || null,
+      powerUps: o.powerUps || [],
+    }));
+    // Effective attribute values (1..10) from the persistent career → the
+    // server derives combat modifiers from these for the BASHO human ONLY.
+    const spent = (bashoSaveRef.current?.career?.statPoints?.spent) || {};
+    const stats = ATTRIBUTES.reduce((acc, a) => {
+      acc[a.key] = STAT_BASE + (spent[a.key] || 0);
+      return acc;
+    }, {});
+    // Persistent ability loadout (selected option ids per category) → the
+    // server derives combat flags from these for the BASHO human ONLY. Filter
+    // out any option the player doesn't actually own (e.g. a legacy save that
+    // had a now-gated option toggled on) so the §6 unlock economy is the
+    // authority on what applies.
+    const career = bashoSaveRef.current?.career || {};
+    const rawLoadout = career.loadout || {};
+    const loadout = Object.fromEntries(
+      Object.entries(rawLoadout).map(([cat, ids]) => [
+        cat,
+        (ids || []).filter((id) => {
+          const opt = LOADOUT_OPTION_BY_ID[id];
+          if (!opt) return false;
+          return !opt.unlock || isUnlocked(career, opt.unlock);
+        }),
+      ]),
+    );
+    socket.emit("create_basho_match", {
+      socketId: socket.id,
+      player: {
+        mawashiColor: player1ColorRef.current,
+        bodyColor: player1BodyColorRef.current,
+        stats,
+        loadout,
+        // Resume support: re-apply any picks already drafted this run.
+        draftedPowerUps: run.draftedPowerUps || [],
+      },
+      opponents,
+      totalBouts: run.totalBouts,
+      startBout: Math.max(0, (run.day || 1) - 1), // resume support
+      // Effective difficulty for the starting day — applies the §5.5 division
+      // base + intra-basho ramp (depends on the live record, so it's computed
+      // here, not baked into the static roster).
+      difficulty: boutDifficulty(run, Math.max(0, (run.day || 1) - 1)),
+    });
+  };
+
   useEffect(() => {
     preGameImages.forEach((src) => {
       const img = new Image();
@@ -1086,6 +1385,91 @@ const MainMenu = ({
       socket.off("cpu_match_failed", handleCPUMatchFailed);
     };
   }, [socket, setCurrentPage]);
+
+  // BASHO bout socket flow. Registered once; all dynamic state is read from
+  // refs. Guarded by isBashoMatchRef so it never reacts to a PvP/VS CPU match.
+  useEffect(() => {
+    const handleBashoCreated = (data) => {
+      bashoRoomIdRef.current = data.roomId;
+      setRoomName(data.roomId);
+      setIsCPUMatch(true); // reuse the CPU AI + auto-ready pipeline
+      isBashoMatchRef.current = true;
+      setIsBashoMatch(true);
+      // Auto-ready the human; the server auto-readies the CPU opponent.
+      socket.emit("ready_count", {
+        playerId: socket.id,
+        isReady: true,
+        roomId: data.roomId,
+      });
+    };
+
+    const handleBashoInitialStart = (payload) => {
+      if (!isBashoMatchRef.current) return; // ignore non-BASHO matches
+      const roomId = payload?.roomId || bashoRoomIdRef.current;
+      const players = payload?.players;
+      if (players?.[0]?.mawashiColor) setPlayer1Color(players[0].mawashiColor);
+      setPlayer1BodyColor(players?.[0]?.bodyColor || null);
+      if (players?.[1]?.mawashiColor) setPlayer2Color(players[1].mawashiColor);
+      setPlayer2BodyColor(players?.[1]?.bodyColor || null);
+      if (players && Array.isArray(players)) {
+        setRooms((prev) =>
+          prev.map((r) =>
+            r.id === roomId
+              ? {
+                  ...r,
+                  players: r.players.map((rp, i) => ({
+                    ...rp,
+                    ...(players[i] || {}),
+                    mawashiColor: players[i]?.mawashiColor ?? rp.mawashiColor,
+                    bodyColor: players[i]?.bodyColor ?? rp.bodyColor,
+                  })),
+                }
+              : r
+          )
+        );
+      }
+      socket.emit("game_reset", true);
+      // First bout: raise DAY 1 card over the (now mounted) game and arm it on
+      // Begin. Subsequent bouts are driven entirely by goToNextDay (no remount).
+      setBashoArmed(false);
+      setBashoBoutToken(0);
+      setBashoDraftOptions(rollDraftOptions(3));
+      setBashoPhase("day");
+      setCurrentPage("game");
+    };
+
+    const handleBashoGameOver = (data) => {
+      if (!isBashoMatchRef.current) return;
+      if (boutResolvedRef.current) return;
+      boutResolvedRef.current = true;
+      const won = data?.winner?.id === localId;
+      const winType = data?.winType || null;
+      // Let the round-result kimarite banner play before transitioning.
+      setTimeout(() => {
+        const run2 = recordBout(bashoRunRef.current, won, winType);
+        if (resolveBoutRef.current) resolveBoutRef.current(run2);
+      }, 3300);
+    };
+
+    socket.on("basho_match_created", handleBashoCreated);
+    socket.on("initial_game_start", handleBashoInitialStart);
+    socket.on("game_over", handleBashoGameOver);
+
+    return () => {
+      socket.off("basho_match_created", handleBashoCreated);
+      socket.off("initial_game_start", handleBashoInitialStart);
+      socket.off("game_over", handleBashoGameOver);
+    };
+  }, [
+    socket,
+    localId,
+    setCurrentPage,
+    setRooms,
+    setPlayer1Color,
+    setPlayer2Color,
+    setPlayer1BodyColor,
+    setPlayer2BodyColor,
+  ]);
 
   useEffect(() => {
     if (currentPage === "game") {
@@ -1121,6 +1505,11 @@ const MainMenu = ({
     playButtonPressSound2();
     console.log("Starting VS CPU match...");
     socket.emit("create_cpu_match", { socketId: socket.id });
+  };
+
+  const handleBasho = () => {
+    playButtonPressSound2();
+    setCurrentPage("basho");
   };
 
   const handleClickOutside = (e) => {
@@ -1170,16 +1559,24 @@ const MainMenu = ({
             <MenuList>
               <MenuButton
                 $primary
-                $disabled
                 $index={0}
+                onClick={handleBasho}
                 onMouseEnter={playButtonHoverSound}
               >
-                Play Online
+                Basho
+              </MenuButton>
+
+              <MenuButton
+                $disabled
+                $index={1}
+                onMouseEnter={playButtonHoverSound}
+              >
+                Matchmaking
                 <SoonMark>Soon</SoonMark>
               </MenuButton>
 
               <MenuButton
-                $index={1}
+                $index={2}
                 onClick={() => {
                   handleDisplayRooms();
                   playButtonPressSound2();
@@ -1190,20 +1587,11 @@ const MainMenu = ({
               </MenuButton>
 
               <MenuButton
-                $index={2}
+                $index={3}
                 onClick={handleVsCPU}
                 onMouseEnter={playButtonHoverSound}
               >
                 VS CPU
-              </MenuButton>
-
-              <MenuButton
-                $index={3}
-                $disabled
-                onMouseEnter={playButtonHoverSound}
-              >
-                Basho Tournament
-                <SoonMark>Soon</SoonMark>
               </MenuButton>
 
               <MenuButton
@@ -1284,7 +1672,9 @@ const MainMenu = ({
               </StatRow>
               <StatRow>
                 <StatLabel>Your Rank</StatLabel>
-                <StatValue $muted>Unranked</StatValue>
+                <StatValue $muted={!careerRankLabel}>
+                  {careerRankLabel || "Unranked"}
+                </StatValue>
               </StatRow>
             </StatList>
           </BanzukeCard>
@@ -1332,6 +1722,25 @@ const MainMenu = ({
     );
   };
 
+  // Per-bout context handed to Game → PreMatchScreen during a BASHO run.
+  const bashoOpp = isBashoMatch && bashoRun ? currentOpponent(bashoRun) : null;
+  const bashoBout =
+    isBashoMatch && bashoRun
+      ? {
+          day: bashoRun.day,
+          totalBouts: bashoRun.totalBouts,
+          opponentName: bashoOpp?.name,
+          opponentRecord: bashoOpp?.record,
+          playerRecord: bashoRun.record,
+          // Real banzuke ranks (BASHO only) so the pre-match plaques show the
+          // career rank instead of the legacy win-rate heuristic. The player
+          // fights the whole basho at their entry rank; opponents are
+          // division-mates, so they carry the division label.
+          playerRankLabel: formatRank(bashoRun.startRank),
+          opponentRankLabel: getDivision(bashoRun.startRank)?.label,
+        }
+      : null;
+
   switch (currentPage) {
     case "mainMenu":
       return (
@@ -1373,13 +1782,62 @@ const MainMenu = ({
             roomName={roomName}
             setCurrentPage={setCurrentPage}
             isCPUMatch={isCPUMatch}
+            isBashoMatch={isBashoMatch}
+            bashoBout={bashoBout}
+            bashoBoutToken={bashoBoutToken}
+            bashoArmed={bashoArmed}
           />
+          {isBashoMatch && bashoPhase === "day" && bashoRun && (
+            <DayCard
+              day={bashoRun.day}
+              totalBouts={bashoRun.totalBouts}
+              divisionLabel={getDivision({ division: bashoRun.division }).label}
+              opponentName={currentOpponent(bashoRun)?.name}
+              opponentRecord={currentOpponent(bashoRun)?.record}
+              opponentArchetype={currentOpponent(bashoRun)?.archetype}
+              opponentIsBoss={currentOpponent(bashoRun)?.boss}
+              playerRecord={bashoRun.record}
+              draftOptions={bashoDraftOptions}
+              onBegin={beginBashoBout}
+              onWithdraw={withdrawBasho}
+              onSkipToFinalDay={skipToFinalDay}
+            />
+          )}
         </div>
       );
     case "customize":
       return (
         <div className="current-page">
           <CustomizePage onBack={() => setCurrentPage("mainMenu")} />
+        </div>
+      );
+    case "basho":
+      return (
+        <div className="current-page">
+          <BashoHub
+            onBack={() => setCurrentPage("mainMenu")}
+            onStartRun={startBashoRun}
+          />
+        </div>
+      );
+    case "bashoResults":
+      return (
+        <div className="current-page">
+          {bashoResult && (
+            <BashoResults
+              run={bashoResult.run}
+              movement={bashoResult.movement}
+              drip={bashoResult.drip}
+              earned={bashoResult.earned}
+              breakdown={bashoResult.breakdown}
+              tier={bashoResult.tier}
+              withdrawn={bashoResult.withdrawn}
+              onReturn={() => {
+                setBashoResult(null);
+                setCurrentPage("basho");
+              }}
+            />
+          )}
         </div>
       );
     default:

@@ -132,6 +132,197 @@ const AI_CONFIG = {
   FLAP_PARRY_CHANCE: 0.35,      // Chance to parry the slam instead (only if parry is available)
 };
 
+// ============================================================================
+// DIFFICULTY TIERS — one brain, dialed up/down (BASHO_MODE_SPEC §5.5)
+// ============================================================================
+//
+// There is ONE expert brain (this file). EASY / NORMAL are the SAME brain with
+// its reaction quality, decision cadence and power-up usage handicapped down;
+// IMPOSSIBLE is the same brain dialed UP to near frame-perfect. HARD resolves to
+// the exact AI_CONFIG baseline, so HARD/VS-CPU/PvP behaviour is byte-for-byte
+// unchanged. The resolved profile is applied at a handful of chokepoints
+// (reaction miss, reaction jitter, decision cooldown, parry/dodge/snowball/flap
+// defence chances, and the power-up offence gate) — NOT by forking the logic.
+//
+// `DIFF` is set once per tick at the top of updateCPUAI from room.cpuDifficulty
+// (the loop is single-threaded and resolves one CPU at a time before executing
+// its inputs, so a module-level active profile is safe). It defaults to HARD so
+// any unset/legacy caller behaves exactly as before.
+// Fields:
+//   missChance/pressureMiss  — chance to whiff a defensive reaction
+//   jitterMin/Max            — reaction delay (ms) before a defensive react fires
+//   decisionCooldown         — ms between major decisions (lower = sharper)
+//   parry/dodge/snowball/flapDefMult — multipliers on those reaction chances
+//   usePowerUps              — may use snowball/army/flap offensively
+//   gripUpMult               — multiplier on clinch grip-up delay (lower = grips
+//                              up faster, so it can defend/break a grab sooner)
+//   clinchEscapeBoost        — multiplier on edge-escape throw/lift chance in clinch
+//   clinchBreakEscape        — will spend a defensive clinch BREAK to escape a
+//                              losing clinch near the edge (tech-out, avoid death)
+//   perfectParry             — tightens parry hold toward the perfect-parry window
+//   whiffPunish              — reliably punishes the human's recovery/whiff/endlag
+const DIFFICULTY_PROFILES = {
+  EASY: {
+    missChance: 0.55, // misses reacting to attacks more than half the time
+    pressureMiss: 0.3,
+    jitterMin: 90,
+    jitterMax: 200, // reactions land ~6-12 frames late
+    decisionCooldown: 240, // sluggish re-decide cadence
+    parryMult: 0.45,
+    dodgeMult: 0.4,
+    snowballParryMult: 0.45,
+    flapDefMult: 0.4,
+    usePowerUps: false, // does not use snowball/army/flap offensively
+    gripUpMult: 1,
+    clinchEscapeBoost: 1,
+    clinchBreakEscape: false,
+    perfectParry: false,
+    whiffPunish: false,
+  },
+  NORMAL: {
+    missChance: 0.34,
+    pressureMiss: 0.12,
+    jitterMin: 35,
+    jitterMax: 110,
+    decisionCooldown: 165,
+    parryMult: 0.78,
+    dodgeMult: 0.78,
+    snowballParryMult: 0.78,
+    flapDefMult: 0.78,
+    usePowerUps: true,
+    gripUpMult: 1,
+    clinchEscapeBoost: 1,
+    clinchBreakEscape: false,
+    perfectParry: false,
+    whiffPunish: false,
+  },
+  HARD: {
+    // Identity profile — resolves to the literal AI_CONFIG baseline below.
+    missChance: AI_CONFIG.REACTION_MISS_CHANCE,
+    pressureMiss: AI_CONFIG.PRESSURE_MISS_CHANCE,
+    jitterMin: AI_CONFIG.REACTION_JITTER_MIN,
+    jitterMax: AI_CONFIG.REACTION_JITTER_MAX,
+    decisionCooldown: AI_CONFIG.DECISION_COOLDOWN,
+    parryMult: 1,
+    dodgeMult: 1,
+    snowballParryMult: 1,
+    flapDefMult: 1,
+    usePowerUps: true,
+    gripUpMult: 1,
+    clinchEscapeBoost: 1,
+    clinchBreakEscape: false,
+    perfectParry: false,
+    whiffPunish: false,
+  },
+  IMPOSSIBLE: {
+    missChance: 0.02, // virtually never whiffs a reaction
+    pressureMiss: 0,
+    jitterMin: 0,
+    jitterMax: 8, // frame-tight reactions (but NOT zero — avoids "robotic" feel)
+    decisionCooldown: 65, // re-decides almost twice as often as HARD
+    parryMult: 2.2, // raw-parries far more reliably (eff. ~0.84, clamped 0.95)
+    dodgeMult: 1.9,
+    snowballParryMult: 1.9,
+    flapDefMult: 1.7,
+    usePowerUps: true,
+    gripUpMult: 0.4, // grips up fast so it isn't free-thrown out of a grab
+    clinchEscapeBoost: 1.6, // fights its way off the edge in clinch
+    clinchBreakEscape: true, // techs out of a lethal clinch instead of dying
+    perfectParry: true, // times parries into the perfect-parry punish window
+    whiffPunish: true, // capitalizes on the human's recovery frames
+  },
+};
+
+// Cache resolved profiles so we don't rebuild the object every tick.
+const _diffCache = {};
+function resolveDifficulty(difficulty) {
+  const key =
+    difficulty && DIFFICULTY_PROFILES[difficulty] ? difficulty : "HARD";
+  if (!_diffCache[key]) _diffCache[key] = { ...DIFFICULTY_PROFILES[key] };
+  return _diffCache[key];
+}
+
+// Active difficulty profile for the CPU currently being processed. Defaults to
+// HARD so the brain is fully functional even if a caller never sets it.
+let DIFF = resolveDifficulty("HARD");
+
+// ============================================
+// AI PERSONALITY ARCHETYPES (BASHO rival roster — Phase 8 follow-up)
+// ============================================
+// A personality is a LIGHT flavor layer applied ON TOP of the difficulty
+// profile, NOT a separate brain. It only nudges two things — the aggression
+// roll weights and the {attack, defense, grab} multipliers that already flow
+// through every offense/defense/grab decision (getAggressionMultiplier). This
+// means an archetype changes a rikishi's STYLE (a pusher slaps, a grappler
+// hunts the belt, a counter waits and punishes) without making them stronger
+// or unfair — difficulty still owns reaction quality.
+//
+// FIREWALL: read per-CPU from `cpu.aiArchetype`. Only the BASHO roster sets it;
+// PvP and VS CPU players have no archetype, so they resolve to `balanced` =
+// the exact legacy weights/multipliers (byte-for-byte unchanged behavior).
+// Fields:
+//   aggrAggressive/aggrBalanced — cumulative thresholds for the 0..1 aggression
+//                                 roll (rest → defensive). balanced = 0.35/0.75
+//                                 (the legacy values).
+//   attackMult/defenseMult/grabMult — layered onto getAggressionMultiplier so
+//                                 the rikishi leans into its preferred game.
+const PERSONALITY_PROFILES = {
+  balanced: {
+    aggrAggressive: 0.35,
+    aggrBalanced: 0.75,
+    attackMult: 1,
+    defenseMult: 1,
+    grabMult: 1,
+  },
+  // Oshi-zumo: relentless forward slaps/charges, rarely reaches for the belt.
+  pusher: {
+    aggrAggressive: 0.5,
+    aggrBalanced: 0.85,
+    attackMult: 1.2,
+    defenseMult: 0.95,
+    grabMult: 0.55,
+  },
+  // Yotsu-zumo: hunts the grab and clinch; less interested in a slap battle.
+  grappler: {
+    aggrAggressive: 0.35,
+    aggrBalanced: 0.72,
+    attackMult: 0.88,
+    defenseMult: 1.0,
+    grabMult: 1.7,
+  },
+  // Patient counter-puncher: parries/dodges more, attacks off your mistakes.
+  counter: {
+    aggrAggressive: 0.2,
+    aggrBalanced: 0.5,
+    attackMult: 0.82,
+    defenseMult: 1.3,
+    grabMult: 0.85,
+  },
+  // All-out brawler / glass cannon: maximum pressure, porous defense.
+  brawler: {
+    aggrAggressive: 0.62,
+    aggrBalanced: 0.92,
+    attackMult: 1.35,
+    defenseMult: 0.7,
+    grabMult: 1.1,
+  },
+};
+
+const _persCache = {};
+function resolvePersonality(archetype) {
+  const key =
+    archetype && PERSONALITY_PROFILES[archetype] ? archetype : "balanced";
+  if (!_persCache[key]) _persCache[key] = { ...PERSONALITY_PROFILES[key] };
+  return _persCache[key];
+}
+
+// Active personality for the CPU currently being processed. Defaults to the
+// neutral `balanced` profile so non-BASHO CPUs are unchanged.
+let PERS = resolvePersonality("balanced");
+
+// Clamp a probability so dialed-up multipliers can't exceed a near-certainty.
+const clampChance = (c) => (c > 0.95 ? 0.95 : c < 0 ? 0 : c);
+
 // AI State tracking per CPU player
 const aiStates = new Map();
 
@@ -216,6 +407,8 @@ function getAIState(playerId) {
       clinchThrowExecuteTime: 0,
       clinchPushPlantDecision: null,
       clinchPushPlantUntil: 0,
+      // Defensive clinch-break (high-tier tech-out) interval gate
+      lastClinchBreakCheck: 0,
       // === FLAP power-up tracking ===
       spaceReleaseTime: 0,       // Release timer for the Space (flap) key press
       lastFlapTime: 0,           // Last liftoff attempt (cooldown gate)
@@ -386,9 +579,12 @@ function randomInRange(min, max) {
 function updateAggressionMode(aiState, currentTime) {
   if (currentTime > aiState.aggressionShiftTime) {
     const roll = Math.random();
-    if (roll < 0.35) {
+    // Personality skews HOW OFTEN the rikishi rolls into each stance (a pusher
+    // is aggressive more often, a counter defensive more often). balanced =
+    // 0.35/0.75 = the legacy split.
+    if (roll < PERS.aggrAggressive) {
       aiState.aggressionMode = 'aggressive';
-    } else if (roll < 0.75) {
+    } else if (roll < PERS.aggrBalanced) {
       aiState.aggressionMode = 'balanced';
     } else {
       aiState.aggressionMode = 'defensive';
@@ -400,11 +596,19 @@ function updateAggressionMode(aiState, currentTime) {
 
 // === NEW: Get aggression multiplier for action chances ===
 function getAggressionMultiplier(aiState) {
+  let base;
   switch (aiState.aggressionMode) {
-    case 'aggressive': return { attack: 1.4, defense: 0.6, grab: 1.3 };
-    case 'defensive': return { attack: 0.7, defense: 1.4, grab: 0.8 };
-    default: return { attack: 1.0, defense: 1.0, grab: 1.0 };
+    case 'aggressive': base = { attack: 1.4, defense: 0.6, grab: 1.3 }; break;
+    case 'defensive': base = { attack: 0.7, defense: 1.4, grab: 0.8 }; break;
+    default: base = { attack: 1.0, defense: 1.0, grab: 1.0 };
   }
+  // Personality leans the rikishi toward its preferred game (oshi vs yotsu vs
+  // counter). balanced multiplies by 1/1/1 → identical to the legacy values.
+  return {
+    attack: base.attack * PERS.attackMult,
+    defense: base.defense * PERS.defenseMult,
+    grab: base.grab * PERS.grabMult,
+  };
 }
 
 // Check if CPU can act (not in a state that blocks actions)
@@ -627,6 +831,13 @@ function updateCPUAI(cpu, human, room, currentTime) {
   
   const aiState = getAIState(cpu.id);
 
+  // Resolve this CPU's difficulty tier (EASY/NORMAL/HARD/IMPOSSIBLE) once for
+  // the whole decision pass. HARD === the AI_CONFIG baseline (no change).
+  DIFF = resolveDifficulty(room && room.cpuDifficulty);
+  // Resolve this CPU's personality archetype (BASHO rival roster). Non-BASHO
+  // CPUs have no archetype → `balanced` → legacy behavior.
+  PERS = resolvePersonality(cpu && cpu.aiArchetype);
+
   // Don't process AI during grab break - both players are locked
   const inClinchBreak = cpu.isGrabBreaking || cpu.isGrabBreakCountered || cpu.isGrabBreakSeparating ||
       human.isGrabBreaking || human.isGrabBreakCountered || human.isGrabBreakSeparating;
@@ -746,6 +957,7 @@ function updateCPUAI(cpu, human, room, currentTime) {
     aiState.clinchThrowExecuteTime = 0;
     aiState.clinchPushPlantDecision = null;
     aiState.clinchPushPlantUntil = 0;
+    aiState.lastClinchBreakCheck = 0;
     aiState.grabDecisionMade = false;
     aiState.grabStrategy = null;
     aiState.grabActionDelay = 0;
@@ -768,8 +980,8 @@ function updateCPUAI(cpu, human, room, currentTime) {
     }
   }
   
-  // Priority 1.5: Use power-up EARLY
-  if (handlePowerUpUsage(cpu, human, aiState, currentTime, distance)) {
+  // Priority 1.5: Use power-up EARLY (EASY does not use power-ups offensively)
+  if (DIFF.usePowerUps && handlePowerUpUsage(cpu, human, aiState, currentTime, distance)) {
     return;
   }
   
@@ -796,6 +1008,13 @@ function updateCPUAI(cpu, human, room, currentTime) {
   if (handleFlapDefense(cpu, human, aiState, currentTime, distance)) {
     return;
   }
+
+  // Priority 2.7: WHIFF PUNISH (high-tier) — the human just whiffed / is in
+  // recovery or endlag; close in and punish with a grab or slap. Only fires when
+  // the human is NOT attacking, so it never competes with the defensive reaction.
+  if (DIFF.whiffPunish && handleWhiffPunish(cpu, human, aiState, currentTime, distance)) {
+    return;
+  }
   
   // Priority 3: React to opponent attacks with HUMAN-LIKE TIMING
   // Under slap pressure (3+ consecutive hits), the AI "wakes up" and gets sharper defensively.
@@ -811,13 +1030,13 @@ function updateCPUAI(cpu, human, room, currentTime) {
         aiState.reactionDetectTime = currentTime;
         aiState.reactionDelay = underPressure
           ? randomInRange(0, AI_CONFIG.PRESSURE_JITTER_MAX)
-          : randomInRange(AI_CONFIG.REACTION_JITTER_MIN, AI_CONFIG.REACTION_JITTER_MAX);
+          : randomInRange(DIFF.jitterMin, DIFF.jitterMax);
         aiState.reactionProcessed = false;
       }
 
       if (!aiState.reactionProcessed && currentTime - aiState.reactionDetectTime >= aiState.reactionDelay) {
         aiState.reactionProcessed = true;
-        const missChance = underPressure ? AI_CONFIG.PRESSURE_MISS_CHANCE : AI_CONFIG.REACTION_MISS_CHANCE;
+        const missChance = underPressure ? DIFF.pressureMiss : DIFF.missChance;
         if (canParry(cpu) && !chance(missChance)) {
           if (handleDefensiveReaction(cpu, human, aiState, currentTime, distance, underPressure)) {
             aiState.consecutiveHitsTaken = 0;
@@ -848,13 +1067,14 @@ function updateCPUAI(cpu, human, room, currentTime) {
   }
   
   // Cooldown between major decisions
-  if (currentTime - aiState.lastDecisionTime < AI_CONFIG.DECISION_COOLDOWN) {
+  if (currentTime - aiState.lastDecisionTime < DIFF.decisionCooldown) {
     handleMovement(cpu, human, aiState, currentTime, distance);
     return;
   }
   
-  // Priority 5.5: FLAP OFFENSE — take flight to slam an opponent (engage or punish a whiff)
-  if (handleFlapOffense(cpu, human, aiState, currentTime, distance)) {
+  // Priority 5.5: FLAP OFFENSE — take flight to slam an opponent (engage or punish
+  // a whiff). EASY does not use power-ups offensively.
+  if (DIFF.usePowerUps && handleFlapOffense(cpu, human, aiState, currentTime, distance)) {
     return;
   }
 
@@ -956,11 +1176,13 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
   const oppNearestEdge = Math.min(oppDistLeft, oppDistRight);
 
   // --- GRIP UP (human-like delay before gripping) ---
+  // Higher tiers grip up faster (gripUpMult < 1) so they reach mutual grip and
+  // can plant/break BEFORE the opponent can throw them out of a fresh grab.
   if (!cpu.hasGrip && cpu.inClinch) {
     if (!aiState.clinchGripUpTime) {
       aiState.clinchGripUpTime = currentTime + randomInRange(
-        AI_CONFIG.CLINCH_GRIP_UP_DELAY_MIN,
-        AI_CONFIG.CLINCH_GRIP_UP_DELAY_MAX
+        AI_CONFIG.CLINCH_GRIP_UP_DELAY_MIN * DIFF.gripUpMult,
+        AI_CONFIG.CLINCH_GRIP_UP_DELAY_MAX * DIFF.gripUpMult
       );
     }
     if (currentTime >= aiState.clinchGripUpTime) {
@@ -985,6 +1207,38 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
   // Detect when CPU is the one pinned at the boundary (closer to edge than opponent)
   const cpuBackedToEdge = cpuNearestEdge < AI_CONFIG.EDGE_DANGER_ZONE && cpuNearestEdge < oppNearestEdge;
 
+  // --- DEFENSIVE CLINCH BREAK (tech out of a lethal clinch) ---
+  // High-tier only. When pinned at the edge and LOSING the balance war, the CPU
+  // would otherwise get shoved/thrown out with no escape (it never broke clinch
+  // before). Spend a break to end the clinch and deny the throw — costs stamina +
+  // half balance, so it's reserved for genuine "about to die" situations and
+  // gated/interval-limited so it can't be spammed. Mirrors the human input gates.
+  if (
+    DIFF.clinchBreakEscape &&
+    cpu.hasGrip &&
+    opponent.hasGrip &&
+    cpuBackedToEdge &&
+    opponentBalance > cpuBalance + 8 && // losing the shove → throw-out is imminent
+    cpuStamina > 28 && // enough stamina that breaking won't gas us
+    !cpu.isGassed &&
+    !cpu.clinchThrowActive && !opponent.clinchThrowActive &&
+    !cpu.isClinchClashing && !opponent.isClinchClashing &&
+    !cpu.isClinchJolting && !cpu.isClinchJoltClashing &&
+    !cpu.isResistingThrow && !cpu.isResistingPull && !cpu.isBeingLifted &&
+    !cpu.clinchBreakRequest && !cpu.isGrabBreaking && !cpu.isGrabBreakCountered &&
+    !cpu.isGrabBreakSeparating
+  ) {
+    if (currentTime - (aiState.lastClinchBreakCheck || 0) > 450) {
+      aiState.lastClinchBreakCheck = currentTime;
+      if (chance(0.75)) {
+        cpu.clinchBreakRequest = true;
+        cpu.clinchBreakRequestTime = currentTime;
+        aiState.lastActionType = "clinch_break_escape";
+        return;
+      }
+    }
+  }
+
   // --- EDGE ESCAPE URGENCY ---
   // When backed against the boundary, throw/lift to escape instead of getting pushed off
   if (cpuBackedToEdge && canRequestAction && !aiState.clinchThrowPending) {
@@ -994,7 +1248,10 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
 
     if (currentTime - (aiState.clinchLastThrowCheck || 0) > edgeCheckInterval) {
       aiState.clinchLastThrowCheck = currentTime;
-      const escapeChance = staminaDesperate ? 0.90 : staminaCritical ? 0.70 : 0.40;
+      const escapeChance = clampChance(
+        (staminaDesperate ? 0.9 : staminaCritical ? 0.7 : 0.4) *
+          DIFF.clinchEscapeBoost
+      );
 
       if (chance(escapeChance)) {
         let action;
@@ -1342,7 +1599,7 @@ function handleFlapDefense(cpu, human, aiState, currentTime, distance) {
   if (!descending || horiz > AI_CONFIG.FLAP_DEF_RANGE) {
     if (
       horiz < AI_CONFIG.FLAP_DEF_RANGE * 1.5 &&
-      currentTime - aiState.lastDecisionTime > AI_CONFIG.DECISION_COOLDOWN
+      currentTime - aiState.lastDecisionTime > DIFF.decisionCooldown
     ) {
       resetAllKeys(cpu);
       const dir = pickFleeDir(cpu, human);
@@ -1359,10 +1616,7 @@ function handleFlapDefense(cpu, human, aiState, currentTime, distance) {
   if (aiState.flapReactTarget !== "incoming") {
     aiState.flapReactTarget = "incoming";
     aiState.flapReactDetectTime = currentTime;
-    aiState.flapReactDelay = randomInRange(
-      AI_CONFIG.REACTION_JITTER_MIN,
-      AI_CONFIG.REACTION_JITTER_MAX
-    );
+    aiState.flapReactDelay = randomInRange(DIFF.jitterMin, DIFF.jitterMax);
     aiState.flapReactProcessed = false;
   }
   if (aiState.flapReactProcessed) return false; // already committed this descent
@@ -1372,9 +1626,11 @@ function handleFlapDefense(cpu, human, aiState, currentTime, distance) {
   const roll = Math.random();
   const canParryHit = cpu.activePowerUp !== POWER_UP_TYPES.FLAP; // FLAP replaces parry
   const aboutToLand = flapperHeight < AI_CONFIG.FLAP_DEF_REACT_HEIGHT;
+  const flapDodgeChance = clampChance(AI_CONFIG.FLAP_DODGE_CHANCE * DIFF.flapDefMult);
+  const flapParryChance = clampChance(AI_CONFIG.FLAP_PARRY_CHANCE * DIFF.flapDefMult);
 
   // Primary: dash out from under the landing.
-  if (canDodge(cpu) && roll < AI_CONFIG.FLAP_DODGE_CHANCE) {
+  if (canDodge(cpu) && roll < flapDodgeChance) {
     resetAllKeys(cpu);
     cpu.keys.shift = true;
     const dir = pickFleeDir(cpu, human);
@@ -1390,7 +1646,7 @@ function handleFlapDefense(cpu, human, aiState, currentTime, distance) {
     canParryHit &&
     aboutToLand &&
     canParry(cpu) &&
-    roll < AI_CONFIG.FLAP_DODGE_CHANCE + AI_CONFIG.FLAP_PARRY_CHANCE
+    roll < flapDodgeChance + flapParryChance
   ) {
     resetAllKeys(cpu);
     cpu.keys.s = true;
@@ -1499,6 +1755,48 @@ function handleCornerEscape(cpu, human, aiState, currentTime, distance, cornered
 }
 
 // Handle ring-out opportunity when opponent is near edge
+// High-tier punish: when the human is in a recovery/whiff/endlag state, close
+// the gap and land the highest-value option in range (grab → clinch throw, else
+// slap). This is the "attack smarter" lever — a strong human player always
+// punishes a whiffed grab or a blocked/recovered attack; now IMPOSSIBLE does too.
+function handleWhiffPunish(cpu, human, aiState, currentTime, distance) {
+  if (!canAct(cpu)) return false;
+  const punishable =
+    human.isRecovering ||
+    human.isInEndlag ||
+    human.isWhiffingGrab ||
+    human.isGrabWhiffRecovery ||
+    human.isRawParryStun;
+  if (!punishable) return false;
+
+  // Out of range — sprint into punish range (don't burn the window strafing).
+  if (distance > AI_CONFIG.GRAB_APPROACH_RANGE) {
+    resetAllKeys(cpu);
+    cpu.facing = cpu.x < human.x ? -1 : 1;
+    if (getDirectionToOpponent(cpu, human) === 1) cpu.keys.d = true;
+    else cpu.keys.a = true;
+    aiState.lastActionType = "whiff_chase";
+    return true;
+  }
+
+  resetAllKeys(cpu);
+  cpu.facing = cpu.x < human.x ? -1 : 1;
+  // Grab is the highest-value punish (converts to a clinch throw); fall back to a
+  // slap if a grab isn't available this frame.
+  if (canGrab(cpu) && distance < AI_CONFIG.GRAB_RANGE) {
+    cpu.keys.mouse2 = true;
+    aiState.lastActionType = "whiff_grab_punish";
+  } else if (canAttack(cpu)) {
+    cpu.keys.mouse1 = true;
+    aiState.mouse1ReleaseTime = currentTime + 40;
+    aiState.lastActionType = "whiff_slap_punish";
+  } else {
+    return false;
+  }
+  aiState.lastDecisionTime = currentTime;
+  return true;
+}
+
 function handleRingOutOpportunity(cpu, human, aiState, currentTime, distance) {
   resetAllKeys(cpu);
   
@@ -1616,9 +1914,11 @@ function handleDefensiveReaction(cpu, human, aiState, currentTime, distance, und
     return true;
   }
   
-  const parryChance = underPressure
-    ? AI_CONFIG.PRESSURE_PARRY_BOOST
-    : AI_CONFIG.PARRY_CHANCE * aggMult.defense;
+  const parryChance = clampChance(
+    (underPressure
+      ? AI_CONFIG.PRESSURE_PARRY_BOOST
+      : AI_CONFIG.PARRY_CHANCE * aggMult.defense) * DIFF.parryMult
+  );
   
   // FLAP replaces raw parry entirely — a flap-CPU can't parry, so skip straight
   // to the dodge option (vs charged) rather than mashing a dead 's'.
@@ -1629,14 +1929,18 @@ function handleDefensiveReaction(cpu, human, aiState, currentTime, distance, und
     aiState.lastDecisionTime = currentTime;
     aiState.pendingParry = true;
     aiState.parryStartTime = currentTime;
-    // Shorter hold = tighter perfect parry timing + less vulnerability after
-    aiState.parryReleaseTime = currentTime + (underPressure ? randomInRange(60, 120) : randomInRange(100, 220));
+    // Shorter hold = tighter perfect parry timing + less vulnerability after.
+    // perfectParry tiers hold a tight window aimed at the perfect-parry frames
+    // (which grant a punish), instead of the looser "safe" hold.
+    aiState.parryReleaseTime = currentTime + (DIFF.perfectParry
+      ? randomInRange(55, 95)
+      : underPressure ? randomInRange(60, 120) : randomInRange(100, 220));
     return true;
   }
   
   // Dodge ONLY vs charged attacks — dodge has i-frames vs charged but NOT vs slaps
   if (human.attackType === 'charged') {
-    const dodgeChance = AI_CONFIG.DODGE_CHANCE * aggMult.defense;
+    const dodgeChance = clampChance(AI_CONFIG.DODGE_CHANCE * aggMult.defense * DIFF.dodgeMult);
     if (roll < parryChance + dodgeChance && canDodge(cpu)) {
       resetAllKeys(cpu);
       cpu.keys.shift = true;
@@ -1689,9 +1993,11 @@ function handleSnowballDefense(cpu, human, aiState, currentTime, distance) {
   }
   
   const roll = Math.random();
-  const parryChance = distance > AI_CONFIG.MID_RANGE ? 
-    AI_CONFIG.SNOWBALL_PARRY_CHANCE * 0.85 :
-    AI_CONFIG.SNOWBALL_PARRY_CHANCE;
+  const parryChance = clampChance(
+    (distance > AI_CONFIG.MID_RANGE
+      ? AI_CONFIG.SNOWBALL_PARRY_CHANCE * 0.85
+      : AI_CONFIG.SNOWBALL_PARRY_CHANCE) * DIFF.snowballParryMult
+  );
   
   if (roll < parryChance && canParry(cpu)) {
     resetAllKeys(cpu);

@@ -292,7 +292,39 @@ function handleWinCondition(room, loser, winner, io, winType) {
   // Stamina stays frozen at end-of-round values.
   // It resets to 100 when resetRoomAndPlayers() runs for the next round.
 
-  if (winCount > 1) {
+  // Match-end decision. Default is first-to-2 (best-of-3) — UNCHANGED for PvP
+  // and VS CPU (`winCount > 1`). BASHO runs N best-of-1 bouts in ONE room:
+  // each fall ends a bout, and the basho ends only after the final bout.
+  // Between bouts we clear wins (so the first-to-2 path never triggers),
+  // advance the CPU to the next day's opponent colors (these survive
+  // resetRoomAndPlayers), and re-arm isInitialRound so the next bout reuses
+  // the native between-rounds reset — no remount, no new room.
+  let isMatchEnd;
+  if (room.matchMode === "basho") {
+    room.bashoBout = (room.bashoBout || 0) + 1;
+    isMatchEnd = room.bashoBout >= (room.bashoTotalBouts || 1);
+    winner.wins = [];
+    loser.wins = [];
+    if (!isMatchEnd) {
+      const cpu = room.players.find((p) => p.isCPU);
+      const next = room.bashoOpponents && room.bashoOpponents[room.bashoBout];
+      if (cpu && next) {
+        cpu.mawashiColor = next.mawashiColor || cpu.mawashiColor;
+        cpu.bodyColor = next.bodyColor ?? null;
+      }
+      if (next && next.difficulty) room.cpuDifficulty = next.difficulty;
+      room.isInitialRound = true;
+      // Do NOT let the loop auto-reset this bout. The client resets the shared
+      // room (via "basho_advance") only once the DAY card is fully covering the
+      // screen — so the winner holds their victory pose and the position reset
+      // never flashes between bouts. See the auto-reset gate in index.js.
+      room.bashoAwaitingReset = true;
+    }
+  } else {
+    isMatchEnd = winCount > 1;
+  }
+
+  if (isMatchEnd) {
     io.in(room.id).emit("match_over", {
       isMatchOver: true,
       winner: winner.fighter,
@@ -604,6 +636,11 @@ function executeSlapAttack(player, rooms) {
 
       if (player.activePowerUp === "power") {
         slapSlideVelocity *= player.powerUpMultiplier - 0.1;
+      }
+      // BASHO draft: stacked Power Water mirrors the slap-slide boost (guarded
+      // so undrafted / non-BASHO fighters keep the base 1.0 slide).
+      if ((player.bashoDraft?.powerMult ?? 1) > 1) {
+        slapSlideVelocity *= player.bashoDraft.powerMult - 0.1;
       }
 
       player.movementVelocity = slideDirection * slapSlideVelocity;
@@ -1700,7 +1737,7 @@ function executeInputBuffer(player, rooms) {
       // beginFlapStartup only denies a GASSED wrestler (returns false without
       // mutating state); with any stamina it fires and may gas them out on cost.
       if (
-        player.activePowerUp === "flap" &&
+        (player.activePowerUp === "flap" || player.loadout?.flapReplacesParry) &&
         !player.isFlapping &&
         !player.isRawParrying && !player.isRawParryStun &&
         !player.isAttacking && !player.isDodging &&

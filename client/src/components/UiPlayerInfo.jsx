@@ -1567,6 +1567,8 @@ const UiPlayerInfo = ({
   roundHistory = [],
   roundId = 0,
   isPlayer1Local = true,
+  player1RankLabel = null,
+  player2RankLabel = null,
   player1Stamina,
   player1ActivePowerUp = null,
   player1SnowballCooldown = false,
@@ -2209,7 +2211,9 @@ const UiPlayerInfo = ({
         <SubBarRow $isRight={false}>
           <BarRowSpacer />
           <RankPlaque>
-            <RankText>JONOKUCHI</RankText>
+            <RankText>
+              {(player1RankLabel || "JONOKUCHI").toUpperCase()}
+            </RankText>
           </RankPlaque>
         </SubBarRow>
       </PlayerWing>
@@ -2337,7 +2341,9 @@ const UiPlayerInfo = ({
         <SubBarRow $isRight={true}>
           <BarRowSpacer />
           <RankPlaque>
-            <RankText>JONOKUCHI</RankText>
+            <RankText>
+              {(player2RankLabel || "JONOKUCHI").toUpperCase()}
+            </RankText>
           </RankPlaque>
         </SubBarRow>
       </PlayerWing>
@@ -2349,6 +2355,8 @@ UiPlayerInfo.propTypes = {
   roundHistory: PropTypes.array,
   roundId: PropTypes.number,
   isPlayer1Local: PropTypes.bool,
+  player1RankLabel: PropTypes.string,
+  player2RankLabel: PropTypes.string,
   player1Stamina: PropTypes.number,
   player1ActivePowerUp: PropTypes.string,
   player1SnowballCooldown: PropTypes.bool,

@@ -15,6 +15,9 @@ const {
   PLAYER_2_SPAWN,
 } = require("./playerFactory");
 
+const { deriveBashoDraft } = require("./bashoDraft");
+const { deriveStatMods } = require("./bashoStatMods");
+
 const LOBBY_COLORS = [
   "#4169E1", "#525252", "#3B5EB0", "#A85DBF", "#2E9E5A", "#1A7A8A", "#E8913A",
   "#E87070", "#D4A520", "#A07348", "#6E8495", "#88C4D8", "#D94848",
@@ -26,19 +29,77 @@ const LOBBY_BODY_COLORS = [
   "#FFB6C1", "#F5C422", "#8B5E3C", "#A8A8A8", "#6ABED0", "#CC3333",
 ];
 
-function createCPUPlayer(uniqueId) {
+function createCPUPlayer(uniqueId, overrides = {}) {
   const cpuPlayerId = uniqueId || `CPU_PLAYER_${Date.now()}`;
+  // `overrides` is applied LAST so a BASHO bout can supply a named opponent's
+  // mawashi/body colors (and future fields). With no overrides this behaves
+  // exactly as the original VS CPU opponent.
   return createInitialPlayerState({
     id: cpuPlayerId,
     isCPU: true,
     ...PLAYER_2_SPAWN,
+    ...overrides,
   });
+}
+
+// Apply a single-slot power-up to a player (the non-stacking PvP / VS CPU
+// model). Used for the BASHO CPU opponent, which keeps one power-up per bout.
+function applySingleSlotPowerUp(player, type) {
+  player.activePowerUp = type;
+  player.powerUpMultiplier = POWER_UP_EFFECTS[type];
+  player.snowballThrowsRemaining =
+    type === POWER_UP_TYPES.SNOWBALL ? 5 : null;
+  player.pumoArmySpawnsRemaining =
+    type === POWER_UP_TYPES.PUMO_ARMY ? 3 : null;
+  player.powerUpRevealed = true;
+}
+
+// BASHO salt-throw ritual: the throw animation, then auto-unlock movement to
+// the ready position. Mirrors handleSaltThrowAndPowerUp but WITHOUT the
+// power-up card reveal (the BASHO pick is made on the DAY card beforehand).
+function bashoSaltThrow(player, room, io) {
+  player.isInRitualPhase = false;
+  player.isThrowingSalt = true;
+  player.saltCooldown = true;
+  player.canMoveToReady = false;
+  setPlayerTimeout(
+    player.id,
+    () => {
+      player.isThrowingSalt = false;
+      player.saltCooldown = false;
+      player.canMoveToReady = true;
+    },
+    1483
+  );
 }
 
 function handlePowerUpSelection(room, io) {
   room.powerUpSelectionPhase = true;
   room.playersSelectedPowerUps = {};
   room.playerAvailablePowerUps = {};
+
+  // BASHO (§Phase 7 rework): the human drafts their power-up on the DAY card
+  // BEFORE the bout (applied via basho_set_draft → applyBashoDraftToPlayer), so
+  // there is NO mid-match card selection. Both fighters just run the salt-throw
+  // ritual and then auto-walk to ready. The CPU still draws a single power-up
+  // (unchanged VS CPU behavior). PvP / VS CPU fall through to the normal
+  // selection path below, fully untouched.
+  if (room.matchMode === "basho") {
+    room.powerUpSelectionPhase = false;
+    const cpuPool = Object.values(POWER_UP_TYPES).filter(
+      (t) => t !== POWER_UP_TYPES.FLAP
+    );
+    room.players.forEach((player) => {
+      if (player.isCPU) {
+        applySingleSlotPowerUp(
+          player,
+          cpuPool[Math.floor(Math.random() * cpuPool.length)]
+        );
+      }
+      bashoSaltThrow(player, room, io);
+    });
+    return;
+  }
 
   if (room.roundStartTimer) {
     clearTimeout(room.roundStartTimer);
@@ -78,8 +139,8 @@ function handlePowerUpSelection(room, io) {
   room.players.forEach((player) => {
     player.isInRitualPhase = true;
 
-    // CPUs can now pilot Flap (see flight AI in cpuAI.js / cpuAI_impossible.js),
-    // so it's part of their pool just like human players.
+    // CPUs can now pilot Flap (see flight AI in cpuAI.js), so it's part of their
+    // pool just like human players.
     const pool = allPowerUps;
     const shuffled = [...pool].sort(() => Math.random() - 0.5);
     const availablePowerUps = shuffled.slice(0, 3);
@@ -153,6 +214,56 @@ function handleSaltThrowAndPowerUp(player, room, io) {
   );
 }
 
+/**
+ * BASHO (Phase 7): apply the human's full STACKED draft list to a player. The
+ * picks accumulate across the run (passives multiply, blubber adds an
+ * absorption charge, the active abilities accumulate uses), and the per-bout
+ * counts reset to the stacked totals each bout. Only ever called for the BASHO
+ * human, so PvP / VS CPU never carry `bashoDraft` (the firewall).
+ */
+function applyBashoDraftToPlayer(player, draftedList) {
+  const list = Array.isArray(draftedList) ? draftedList : [];
+  const d = deriveBashoDraft(list);
+  player.draftedPowerUps = list;
+  player.bashoDraft = d;
+  // The single-slot machinery is fully BYPASSED for the BASHO fighter: every
+  // effect comes from `bashoDraft` (folded into combat with neutral defaults).
+  // Nulling activePowerUp makes all `activePowerUp === X` branches inert so the
+  // stacked multipliers below can't double-count, and powerUpMultiplier stays
+  // neutral. Non-BASHO players never reach here, so PvP / VS CPU are untouched.
+  player.activePowerUp = null;
+  player.powerUpMultiplier = 1;
+  // Per-bout active resources, refreshed from the stacked totals each bout.
+  player.snowballThrowsRemaining = d.snowball ? d.snowballThrows : null;
+  player.pumoArmySpawnsRemaining = d.pumo ? d.pumoSpawns : null;
+  player.bashoBlubberRemaining = d.blubberCharges;
+}
+
+/*
+ * Apply a BASHO roster opponent's full profile to the CPU for the upcoming
+ * bout: colors, AI personality archetype, and — for division BOSSES — the
+ * combat edge (stat mods, larger size, a stacked power-up loadout). Called at
+ * bout 0 (create_basho_match) and after every between-bout reset
+ * (resetRoomAndPlayers) so the buffs survive the reset that zeroes size/power.
+ *
+ * FIREWALL: `statMods`/`bashoDraft`/`sizeMultiplier` are set here on the BASHO
+ * CPU only. They're explicitly CLEARED when the opponent isn't a boss so a
+ * normal next-day rival never inherits the previous boss's buffs. Non-BASHO
+ * CPUs never pass through this path.
+ */
+function applyBashoOpponentProfile(cpu, opponent) {
+  if (!cpu || !opponent) return;
+  cpu.mawashiColor = opponent.mawashiColor || cpu.mawashiColor;
+  cpu.bodyColor = opponent.bodyColor ?? null;
+  cpu.aiArchetype = opponent.archetype || "balanced";
+  // Boss-only combat edge; null/default for ordinary rivals.
+  cpu.statMods = opponent.stats ? deriveStatMods(opponent.stats) : null;
+  cpu.sizeMultiplier = opponent.size || DEFAULT_PLAYER_SIZE_MULTIPLIER;
+  // Stacked power-up loadout (folded via the same BASHO draft model as the
+  // human). Empty list → neutral draft, clearing any prior boss's power-ups.
+  applyBashoDraftToPlayer(cpu, opponent.powerUps || []);
+}
+
 function checkAndRevealPowerUps(room, io) {
   const allPlayersSelected = room.players.every(p => p.pendingPowerUp && !p.powerUpRevealed);
   
@@ -166,7 +277,7 @@ function checkAndRevealPowerUps(room, io) {
         player.pendingPowerUp === POWER_UP_TYPES.PUMO_ARMY ? 3 : null;
       player.powerUpRevealed = true;
     });
-    
+
     io.in(room.id).emit("power_ups_revealed", {
       player1: {
         playerId: room.players[0].id,
@@ -433,6 +544,17 @@ function resetRoomAndPlayers(room, io) {
 
   room.playerAvailablePowerUps = {};
 
+  // BASHO: the reset above zeroed the CPU's size + power resources, so re-apply
+  // the CURRENT bout's opponent profile (colors / archetype / boss buffs). This
+  // is what carries a boss's stats/size/power-ups into the bout about to start;
+  // ordinary rivals get their colors + archetype and cleared buffs.
+  if (room.matchMode === "basho") {
+    const cpu = room.players.find((p) => p.isCPU);
+    const opp =
+      room.bashoOpponents && room.bashoOpponents[room.bashoBout || 0];
+    if (cpu && opp) applyBashoOpponentProfile(cpu, opp);
+  }
+
   if (!room.isInitialRound) {
     handlePowerUpSelection(room, io);
   }
@@ -447,5 +569,7 @@ module.exports = {
   handlePowerUpSelection,
   handleSaltThrowAndPowerUp,
   checkAndRevealPowerUps,
+  applyBashoDraftToPlayer,
+  applyBashoOpponentProfile,
   resetRoomAndPlayers,
 };

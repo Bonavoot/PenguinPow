@@ -23,5 +23,11 @@ contextBridge.exposeInMainWorld("electron", {
     save: (settings) => ipcRenderer.invoke('save-settings', settings),
     setDisplayMode: (mode, width, height) => ipcRenderer.invoke('set-display-mode', mode, width, height),
     getScreenInfo: () => ipcRenderer.invoke('get-screen-info')
+  },
+  // BASHO single-player save file (basho-save.json in userData).
+  // Returns the raw document; renderer (saveStore.js) owns schema/migrations.
+  save: {
+    get: () => ipcRenderer.invoke('load-save'),
+    write: (data) => ipcRenderer.invoke('write-save', data)
   }
 });
