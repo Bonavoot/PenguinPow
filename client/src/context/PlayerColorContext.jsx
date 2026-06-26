@@ -18,8 +18,11 @@ import {
   preDecodeDataUrl,
   pinDecodedImages,
   getCacheStats,
+  flushPersistentCache,
 } from "../utils/SpriteRecolorizer";
 import { ANIMATED_SPRITES, STATIC_SPRITES, DEFAULT_COLORS, DEFAULT_BODY_COLORS, COLOR_PRESETS, BODY_COLOR_PRESETS, SPRITE_BASE_COLOR } from "../config/spriteConfig";
+import { bakedReady, getBakedUrlsForColor } from "../utils/bakedSprites";
+import { getRosterColorCombos } from "../lib/bashoRun";
 import { SPRITESHEET_CONFIG, SPRITESHEET_CONFIG_BY_NAME } from "../config/animatedSpriteConfig";
 
 // Import spritesheets directly to ensure EXACT URL match with GameFighter
@@ -183,19 +186,14 @@ async function recolorPlayerSprites(playerKey, colorHex, skipRecoloring, bodyCol
       )
     );
     armorUrls.filter(Boolean).forEach((url) => allSources.push(url));
-    
-    // If body color is set but mawashi doesn't need recoloring, still recolor base sprites for body
-    if (bodyColorHex) {
-      await Promise.all(
-        uniqueBaseUrls.map(async (src) => {
-          try {
-            const recoloredSrc = await recolorImage(src, colorRanges, colorHex, bodyOpts);
-            allSources.push(recoloredSrc);
-          } catch (_) { /* skip */ }
-        })
-      );
-    }
-    
+
+    // NOTE: the plain base+body recolor is intentionally NOT done here. This
+    // branch now runs in two cases: (1) the default blue + no body (bodyColorHex
+    // is null — nothing to do), and (2) a BAKED (color, body) where the plain
+    // base render is served from the stable baked PNG, so recoloring it live
+    // would be redundant heavy work. Only the brief tint variants above need
+    // live warming since they aren't baked.
+
     return {
       sprites: {
         animated: ANIMATED_SPRITES[playerKey],
@@ -441,9 +439,23 @@ export function PlayerColorProvider({ children }) {
     console.log(`[Preload] Starting sprite preload with colors: P1=${p1Color} body=${p1Body}, P2=${p2Color} body=${p2Body}`);
     const startTime = performance.now();
     
-    const skipP1Recolor = p1Color === SPRITE_BASE_COLOR && !p1Body;
-    const skipP2Recolor = p2Color === SPRITE_BASE_COLOR && !p2Body;
-    
+    // BUILD-TIME BAKE: the BASE color render comes from stable baked PNG files
+    // (resolved synchronously in GameFighter). So when a player's (color, body)
+    // is covered by the manifest we pass skipRecoloring=true: that SKIPS the
+    // expensive base spritesheet recolor (the bulk of preload work + the source
+    // of the per-bout blob churn behind Bug B) while STILL warming the brief
+    // hit/charge/blubber/armor tint variants at the correct color (those tints
+    // aren't baked and stay on the runtime path). Falls back to the full live
+    // recolor for any color not in the manifest, and is a no-op when no bake
+    // has been generated (arrays empty → covered=false).
+    await bakedReady;
+    const p1Baked = getBakedUrlsForColor(p1Color, p1Body);
+    const p2Baked = getBakedUrlsForColor(p2Color, p2Body);
+    const skipP1Recolor =
+      (p1Color === SPRITE_BASE_COLOR && !p1Body) || p1Baked.length > 0;
+    const skipP2Recolor =
+      (p2Color === SPRITE_BASE_COLOR && !p2Body) || p2Baked.length > 0;
+
     const [p1Result, p2Result] = await Promise.all([
       recolorPlayerSprites("player1", p1Color, skipP1Recolor, p1Body),
       recolorPlayerSprites("player2", p2Color, skipP2Recolor, p2Body),
@@ -503,6 +515,11 @@ export function PlayerColorProvider({ children }) {
       ...player2SourcesRef.current.filter(s => s && (s.startsWith('data:') || s.startsWith('blob:'))),
     ];
     
+    // Baked files are real URLs (e.g. "/baked/<hash>.png"), not blob/data — add
+    // them to the pre-decode + pin set so the first pose paints warm.
+    const bakedUrls = [...new Set([...p1Baked, ...p2Baked])];
+    bakedUrls.forEach((u) => allSourcesToPreload.add(u));
+
     const uniqueSources = [...allSourcesToPreload].filter(s => !s.startsWith('data:') && !s.startsWith('blob:'));
     console.log(`[Preload] Pre-decoding ${uniqueSources.length} original sprites + ${recoloredUrls.length} recolored sprites...`);
     
@@ -530,7 +547,7 @@ export function PlayerColorProvider({ children }) {
     // uniqueSources = the original file URLs a DEFAULT-color player displays.
     // Pinning both covers either color choice. replace=true releases stale pins
     // from any earlier color selection.
-    await pinDecodedImages([...recoloredUrls, ...uniqueSources], true);
+    await pinDecodedImages([...recoloredUrls, ...uniqueSources, ...bakedUrls], true);
     
     // Step 6: Wait for browser to fully process all decoded images
     // Multiple RAF cycles + extended timeout ensures GPU textures are uploaded
@@ -558,6 +575,71 @@ export function PlayerColorProvider({ children }) {
     // Access cache stats to ensure worker is initialized
     getCacheStats();
   }, []);
+
+  // ONE-TIME "INSTALL" — pre-recolor every color the game actually uses and let
+  // recolorImage persist each result to IndexedDB (see SpriteRecolorizer +
+  // spriteCacheDB). After this runs once, every match's preload finds its
+  // sprites already computed on disk and just wraps them in object URLs — no
+  // more per-match recolor wait, even across page reloads.
+  //
+  // SCOPE (bounded on purpose — the full mawashi×body matrix would be hundreds
+  // of combos / gigabytes): every mawashi preset at default body, every body
+  // preset at the default mawashi, the entire basho rival + boss roster (their
+  // exact looks, incl. custom boss palettes), plus the current/default player
+  // colors. Any other custom pairing still computes once on first use and is
+  // then persisted automatically.
+  //
+  // NOTE: both players share the same blue base sprites, so each (mawashi,body)
+  // pair only needs warming once — the cache keys are player-agnostic.
+  const installAllColors = useCallback(
+    async (onProgress) => {
+      const combos = [];
+      const seen = new Set();
+      const add = (color, body) => {
+        const c = color || SPRITE_BASE_COLOR;
+        const b = body || null;
+        const key = `${c}|${b}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        combos.push({ color: c, body: b });
+      };
+
+      add(DEFAULT_COLORS.player1, DEFAULT_BODY_COLORS.player1);
+      add(DEFAULT_COLORS.player2, DEFAULT_BODY_COLORS.player2);
+      add(player1Color, player1BodyColor);
+      add(player2Color, player2BodyColor);
+      Object.values(COLOR_PRESETS).forEach((p) => add(p.hex, null));
+      Object.values(BODY_COLOR_PRESETS).forEach((p) => {
+        if (p.hex) add(SPRITE_BASE_COLOR, p.hex);
+      });
+      getRosterColorCombos().forEach((c) => add(c.mawashiColor, c.bodyColor));
+
+      const total = combos.length;
+      let done = 0;
+      if (onProgress) onProgress(0, total);
+      for (const { color, body } of combos) {
+        const skip = color === SPRITE_BASE_COLOR && !body;
+        try {
+          // Recolors the whole sprite set (base + hit/charge/blubber/armor
+          // tints) for this pair; each recolorImage() persists to IndexedDB.
+          await recolorPlayerSprites("player1", color, skip, body);
+        } catch (error) {
+          console.warn("[Install] combo failed:", color, body, error);
+        }
+        done += 1;
+        if (onProgress) onProgress(done, total);
+      }
+
+      // Make sure every persistent write has committed before reporting done.
+      try {
+        await flushPersistentCache();
+      } catch (_) {
+        /* best-effort */
+      }
+      return total;
+    },
+    [player1Color, player2Color, player1BodyColor, player2BodyColor]
+  );
 
   // Reset to default colors
   const resetColors = useCallback(() => {
@@ -608,6 +690,7 @@ export function PlayerColorProvider({ children }) {
     preloadSprites,
     resetColors,
     warmupWorker,
+    installAllColors,
 
     colorPresets: COLOR_PRESETS,
     bodyColorPresets: BODY_COLOR_PRESETS,
@@ -628,6 +711,7 @@ export function PlayerColorProvider({ children }) {
     preloadSprites,
     resetColors,
     warmupWorker,
+    installAllColors,
   ]);
 
   return (

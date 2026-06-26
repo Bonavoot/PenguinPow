@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "bake": "node --no-warnings --loader ./scripts/extResolve.mjs scripts/bakeSprites.mjs",
+    "build": "npm run bake && vite build",
     "lint": "eslint src --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
   },
@@ -30,6 +31,8 @@
     "eslint-plugin-react": "^7.32.2",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.1",
+    "pngjs": "^7.0.0",
+    "sharp": "^0.35.2",
     "vite": "^4.4.0"
   }
 }

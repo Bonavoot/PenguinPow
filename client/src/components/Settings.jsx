@@ -2,6 +2,12 @@ import { useState, useEffect } from "react";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 import { C, FONT_DISPLAY, FONT_BODY } from "./menuTheme";
+import { usePlayerColors } from "../context/PlayerColorContext";
+import {
+  getPersistentCacheCount,
+  clearPersistentCache,
+  isPersistentCacheAvailable,
+} from "../utils/SpriteRecolorizer";
 
 // Global volume state preserved across mounts so audio code outside this
 // component (see getGlobalVolume below) can read the user's last setting.
@@ -218,6 +224,12 @@ const PrimaryButton = styled.button`
     transform: translateY(1px);
     box-shadow: 0 1px 3px rgba(138, 31, 18, 0.25);
   }
+
+  &:disabled {
+    opacity: 0.65;
+    cursor: progress;
+    box-shadow: none;
+  }
 `;
 
 const SecondaryButton = styled.button`
@@ -271,6 +283,70 @@ const ResolutionButton = styled.button`
   }
 `;
 
+const Divider = styled.div`
+  height: 1px;
+  background: ${C.snowBorder};
+  margin: 1.4rem 0 1.25rem;
+`;
+
+const SectionTitle = styled.div`
+  color: ${C.inkText};
+  font-family: ${FONT_DISPLAY};
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+`;
+
+const SectionTag = styled.span`
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: ${C.snowPanelDeep};
+  border: 1px solid ${C.snowBorder};
+  color: ${C.inkTextMute};
+  text-transform: uppercase;
+`;
+
+const HintText = styled.p`
+  color: ${C.inkTextMute};
+  font-size: 0.74rem;
+  line-height: 1.45;
+  margin: 0 0 0.65rem;
+`;
+
+const StatusLine = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.74rem;
+  font-family: ${FONT_DISPLAY};
+  letter-spacing: 0.04em;
+  color: ${({ $ok }) => ($ok ? C.iceDeep : C.inkTextMute)};
+  margin-bottom: 0.5rem;
+`;
+
+const ProgressTrack = styled.div`
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+  background: ${C.snowPanelDeep};
+  border: 1px solid ${C.snowBorder};
+  overflow: hidden;
+  margin: 0.35rem 0 0.6rem;
+`;
+
+const ProgressFill = styled.div`
+  height: 100%;
+  width: ${({ $pct }) => $pct}%;
+  background: ${C.vermillion};
+  transition: width 0.18s ease;
+`;
+
 // Common resolution options 1920x1080 and above.
 const resolutionOptions = [
   { width: 1920, height: 1080, label: "1920x1080" },
@@ -292,6 +368,63 @@ const Settings = ({ onClose }) => {
   });
   const [availableResolutions, setAvailableResolutions] =
     useState(resolutionOptions);
+
+  // ── Sprite Pack (persistent recolor cache) ──
+  const { installAllColors } = usePlayerColors();
+  const cacheAvailable = isPersistentCacheAvailable();
+  const [installState, setInstallState] = useState("idle"); // idle | running | done
+  const [installProgress, setInstallProgress] = useState({ done: 0, total: 0 });
+  const [cacheCount, setCacheCount] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    getPersistentCacheCount().then((n) => {
+      if (alive) setCacheCount(n);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const handleInstallSpritePack = async () => {
+    if (installState === "running") return;
+    setInstallState("running");
+    setInstallProgress({ done: 0, total: 0 });
+    try {
+      await installAllColors((done, total) =>
+        setInstallProgress({ done, total })
+      );
+      const n = await getPersistentCacheCount();
+      setCacheCount(n);
+      try {
+        localStorage.setItem("spritePackInstalled", "1");
+      } catch (_) {
+        /* ignore */
+      }
+      setInstallState("done");
+    } catch (error) {
+      console.error("Sprite pack install failed:", error);
+      setInstallState("idle");
+    }
+  };
+
+  const handleClearSpritePack = async () => {
+    if (installState === "running") return;
+    await clearPersistentCache();
+    try {
+      localStorage.removeItem("spritePackInstalled");
+    } catch (_) {
+      /* ignore */
+    }
+    setCacheCount(0);
+    setInstallState("idle");
+    setInstallProgress({ done: 0, total: 0 });
+  };
+
+  const installPct =
+    installProgress.total > 0
+      ? Math.round((installProgress.done / installProgress.total) * 100)
+      : 0;
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -496,6 +629,61 @@ const Settings = ({ onClose }) => {
             onChange={(e) => setVolume(Number(e.target.value))}
           />
         </ControlGroup>
+
+        <Divider />
+
+        <ControlGroup>
+          <SectionTitle>
+            Sprite Pack <SectionTag>Pre-launch</SectionTag>
+          </SectionTitle>
+          {cacheAvailable ? (
+            <>
+              <HintText>
+                Pre-loads every fighter color the game uses (all belt &amp; body
+                presets, plus every basho rival and boss) and saves them to this
+                browser. Run it once and matches stop pausing to &ldquo;download&rdquo;
+                colors &mdash; even after a refresh.
+              </HintText>
+              <StatusLine $ok={cacheCount > 0}>
+                <span>
+                  {installState === "running"
+                    ? `Installing… ${installProgress.done}/${installProgress.total} color sets`
+                    : cacheCount > 0
+                    ? `Installed · ${cacheCount} sprites cached`
+                    : "Not installed"}
+                </span>
+                {installState === "done" && <span>Done ✓</span>}
+              </StatusLine>
+              {installState === "running" && (
+                <ProgressTrack>
+                  <ProgressFill $pct={installPct} />
+                </ProgressTrack>
+              )}
+              <PrimaryButton
+                onClick={handleInstallSpritePack}
+                disabled={installState === "running"}
+              >
+                {installState === "running"
+                  ? `Installing… ${installPct}%`
+                  : cacheCount > 0
+                  ? "Re-install Sprite Pack"
+                  : "Install Sprite Pack"}
+              </PrimaryButton>
+              {cacheCount > 0 && installState !== "running" && (
+                <SecondaryButton onClick={handleClearSpritePack}>
+                  Clear Cached Sprites
+                </SecondaryButton>
+              )}
+            </>
+          ) : (
+            <HintText>
+              Persistent sprite caching isn&apos;t available in this browser
+              (no IndexedDB), so colors are recomputed each session.
+            </HintText>
+          )}
+        </ControlGroup>
+
+        <Divider />
 
         <PrimaryButton onClick={handleSaveSettings}>Save Settings</PrimaryButton>
         <SecondaryButton onClick={handleReset}>Reset to Default</SecondaryButton>

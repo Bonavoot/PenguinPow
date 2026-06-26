@@ -127,6 +127,31 @@ const BOSSES = {
   },
 };
 
+/*
+ * Every distinct (mawashi, body) color pair used by the rival roster + the
+ * division bosses. Consumed by the Settings "Install Sprite Pack" warmup so
+ * those exact opponent looks are pre-recolored once and never re-loaded
+ * mid-basho — including the bosses' custom palettes that aren't in the normal
+ * color presets. De-duplicated by color pair.
+ */
+export function getRosterColorCombos() {
+  const seen = new Set();
+  const out = [];
+  const add = (mawashiColor, bodyColor) => {
+    if (!mawashiColor) return;
+    const body = bodyColor || null;
+    const key = `${mawashiColor}|${body}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ mawashiColor, bodyColor: body });
+  };
+  Object.values(RIKISHI).forEach((tier) =>
+    tier.forEach((r) => add(r.mawashiColor, r.bodyColor))
+  );
+  Object.values(BOSSES).forEach((b) => add(b.mawashiColor, b.bodyColor));
+  return out;
+}
+
 function shuffle(arr) {
   const out = [...arr];
   for (let i = out.length - 1; i > 0; i--) {

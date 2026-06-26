@@ -1,4 +1,76 @@
 import { resolveHiRes } from "../config/hiResSprites";
+import {
+  idbGetBlob,
+  idbPutBlob,
+  idbFlush,
+  idbCount,
+  idbClear,
+  isPersistentCacheAvailable,
+} from "./spriteCacheDB";
+import {
+  rgbToHsl,
+  hslToRgb,
+  isColorInHslRange,
+  recolorPixel,
+  processImageData,
+  hexToRgb,
+  getHslFromHex,
+  getHueSatFromHex,
+  BLUE_COLOR_RANGES,
+  RED_COLOR_RANGES,
+  GREY_BODY_RANGES,
+  SPRITE_BASE_COLOR,
+  RAINBOW_COLOR,
+  FIRE_COLOR,
+  VAPORWAVE_COLOR,
+  CAMO_COLOR,
+  GALAXY_COLOR,
+  GOLD_COLOR,
+  SPECIAL_COLORS,
+} from "./recolorCore";
+
+// Re-export the pure core API so existing importers of SpriteRecolorizer keep
+// working unchanged (this module remains the public surface for recolor utils).
+export {
+  rgbToHsl,
+  hslToRgb,
+  isColorInHslRange,
+  recolorPixel,
+  hexToRgb,
+  getHslFromHex,
+  getHueSatFromHex,
+  BLUE_COLOR_RANGES,
+  RED_COLOR_RANGES,
+  GREY_BODY_RANGES,
+  SPRITE_BASE_COLOR,
+  RAINBOW_COLOR,
+  FIRE_COLOR,
+  VAPORWAVE_COLOR,
+  CAMO_COLOR,
+  GALAXY_COLOR,
+  GOLD_COLOR,
+  SPECIAL_COLORS,
+};
+
+// When enabled, recolorImage() reads/writes the cross-reload IndexedDB blob
+// store (see spriteCacheDB) so a color computed in any past session is wrapped
+// in a fresh object URL instead of being recomputed. This is what removes the
+// per-match "recoloring" wait. Defaults on; flag exists so it can be killed at
+// runtime if a persistence issue is ever suspected.
+let persistentCacheEnabled = true;
+
+export function setPersistentCacheEnabled(on) {
+  persistentCacheEnabled = !!on;
+}
+
+// Re-exported so UI (Settings install panel) can query/clear the disk cache
+// without importing the DB module directly.
+export {
+  idbFlush as flushPersistentCache,
+  idbCount as getPersistentCacheCount,
+  idbClear as clearPersistentCache,
+  isPersistentCacheAvailable,
+};
 
 /**
  * SpriteRecolorizer - Canvas-based pixel manipulation for precise color replacement
@@ -171,7 +243,9 @@ function initWorker() {
   }
 
   try {
-    recolorWorker = new Worker(new URL("./recolorWorker.js", import.meta.url));
+    recolorWorker = new Worker(new URL("./recolorWorker.js", import.meta.url), {
+      type: "module",
+    });
 
     recolorWorker.onmessage = (e) => {
       const { type, id, payload } = e.data;
@@ -282,225 +356,6 @@ function processInWorker(
 }
 
 /**
- * HSL-based color range definitions for the mawashi (belt) and headband
- *
- * Using HSL is more intuitive and accurate:
- * - Hue: 0-360° color wheel (red=0°, yellow=60°, green=120°, cyan=180°, blue=240°, magenta=300°)
- * - Saturation: 0-100% (gray to vivid)
- * - Lightness: 0-100% (black to white)
- */
-
-// BLUE mawashi/headband (Player 1's default color)
-// Blue hues range from ~180° (cyan) to ~260° (blue-violet)
-// Balance: catch all mawashi shades but exclude nipples (nipples are pinkish, not blue)
-export const BLUE_COLOR_RANGES = {
-  minHue: 190, // Include cyan-blues
-  maxHue: 255, // Include blue-violets
-  minSaturation: 40, // Lower threshold to catch shaded mawashi areas
-  maxSaturation: 100,
-  minLightness: 15, // Include darker shaded areas
-  maxLightness: 85, // Include lighter highlights
-};
-
-// RED mawashi/headband (Player 2's default color)
-// Red hues wrap around: 0-30° and 330-360°
-// The nipples are PINK (less saturated red) - we target VIVID reds only
-// Key insight: nipples have lower saturation AND often higher lightness (pink = light red)
-export const RED_COLOR_RANGES = {
-  minHue: 0,
-  maxHue: 25, // Include orange-reds
-  minHue2: 335, // Red wraps around the hue wheel
-  maxHue2: 360,
-  minSaturation: 60, // Moderately high - catches mawashi, excludes most nipples
-  maxSaturation: 100,
-  minLightness: 20, // Include darker shaded areas
-  maxLightness: 60, // EXCLUDE lighter pinks (nipples are often lighter/pinker)
-};
-
-// GREY body (penguin plumage) — low-saturation pixels between black outlines and white highlights
-export const GREY_BODY_RANGES = {
-  minHue: 0,
-  maxHue: 360, // Hue is irrelevant for desaturated greys
-  minSaturation: 0,
-  maxSaturation: 15, // Only desaturated pixels — mawashi blues (40+) are safe
-  minLightness: 25, // Exclude black outlines / dark detail lines
-  maxLightness: 72, // Exclude white highlights / eyes / bright hair lines
-};
-
-/**
- * Check if a pixel's hue falls within a color range (HSL-based)
- */
-function isColorInHslRange(h, s, l, colorRange) {
-  // Check saturation and lightness first (common to all)
-  if (s < colorRange.minSaturation || s > colorRange.maxSaturation) {
-    return false;
-  }
-  if (l < colorRange.minLightness || l > colorRange.maxLightness) {
-    return false;
-  }
-
-  // Check hue (may have two ranges for red which wraps around)
-  if (h >= colorRange.minHue && h <= colorRange.maxHue) {
-    return true;
-  }
-
-  // Check second hue range if it exists (for red)
-  if (colorRange.minHue2 !== undefined && colorRange.maxHue2 !== undefined) {
-    if (h >= colorRange.minHue2 && h <= colorRange.maxHue2) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-/**
- * Convert RGB to HSL
- */
-function rgbToHsl(r, g, b) {
-  r /= 255;
-  g /= 255;
-  b /= 255;
-
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  let h, s;
-  const l = (max + min) / 2;
-
-  if (max === min) {
-    h = s = 0; // achromatic
-  } else {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    switch (max) {
-      case r:
-        h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
-        break;
-      case g:
-        h = ((b - r) / d + 2) / 6;
-        break;
-      case b:
-        h = ((r - g) / d + 4) / 6;
-        break;
-    }
-  }
-
-  return { h: h * 360, s: s * 100, l: l * 100 };
-}
-
-/**
- * Convert HSL to RGB
- */
-function hslToRgb(h, s, l) {
-  h /= 360;
-  s /= 100;
-  l /= 100;
-
-  let r, g, b;
-
-  if (s === 0) {
-    r = g = b = l; // achromatic
-  } else {
-    const hue2rgb = (p, q, t) => {
-      if (t < 0) t += 1;
-      if (t > 1) t -= 1;
-      if (t < 1 / 6) return p + (q - p) * 6 * t;
-      if (t < 1 / 2) return q;
-      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
-      return p;
-    };
-
-    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-    const p = 2 * l - q;
-    r = hue2rgb(p, q, h + 1 / 3);
-    g = hue2rgb(p, q, h);
-    b = hue2rgb(p, q, h - 1 / 3);
-  }
-
-  return {
-    r: Math.round(r * 255),
-    g: Math.round(g * 255),
-    b: Math.round(b * 255),
-  };
-}
-
-/**
- * Recolor a pixel from source color to target color while preserving relative luminosity
- * This maintains the shading/highlights of the original sprite while shifting toward target lightness
- *
- * @param {number} r - Red channel (0-255)
- * @param {number} g - Green channel (0-255)
- * @param {number} b - Blue channel (0-255)
- * @param {number} targetHue - Target hue (0-360)
- * @param {number} targetSaturation - Target saturation (0-100)
- * @param {number} targetLightness - Target lightness (0-100)
- * @param {number} referenceLightness - Reference lightness of the source color range midpoint (0-100)
- */
-function recolorPixel(
-  r,
-  g,
-  b,
-  targetHue,
-  targetSaturation,
-  targetLightness,
-  referenceLightness
-) {
-  const hsl = rgbToHsl(r, g, b);
-
-  // Calculate how far the original pixel's lightness is from the reference (source midpoint)
-  // This preserves relative shading - darker areas stay darker, lighter areas stay lighter
-  const lightnessOffset = hsl.l - referenceLightness;
-
-  // Apply this offset to the target lightness, with some compression for extreme targets
-  // For very dark targets (black), we compress the range to keep things dark
-  // For very light targets (light pink), we compress the range to keep things light
-  let newLightness;
-
-  if (targetLightness < 20) {
-    // Very dark target (like black): compress lightness range, bias toward dark
-    newLightness = targetLightness + lightnessOffset * 0.3;
-  } else if (targetLightness > 80) {
-    // Very light target (like light pink): compress lightness range, bias toward light
-    newLightness = targetLightness + lightnessOffset * 0.3;
-  } else {
-    // Normal target: preserve more of the original shading
-    newLightness = targetLightness + lightnessOffset * 0.7;
-  }
-
-  // Clamp to valid range
-  newLightness = Math.max(0, Math.min(100, newLightness));
-
-  return hslToRgb(targetHue, targetSaturation, newLightness);
-}
-
-/**
- * Parse a hex color string to RGB
- */
-export function hexToRgb(hex) {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  return result
-    ? {
-        r: parseInt(result[1], 16),
-        g: parseInt(result[2], 16),
-        b: parseInt(result[3], 16),
-      }
-    : null;
-}
-
-/**
- * Get the hue, saturation, and lightness from a hex color
- */
-export function getHslFromHex(hex) {
-  const rgb = hexToRgb(hex);
-  if (!rgb) return { h: 0, s: 100, l: 50 };
-  const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
-  return { h: hsl.h, s: hsl.s, l: hsl.l };
-}
-
-// Alias for backwards compatibility
-export const getHueSatFromHex = getHslFromHex;
-
-/**
  * Recolor an image by replacing specific color ranges with a target color
  *
  * PERFORMANCE: Uses Web Worker to process pixels off main thread
@@ -552,7 +407,10 @@ export async function recolorImage(
     ? targetColorHex
     : null;
 
-  const promise = new Promise((resolve, reject) => {
+  // The expensive path: load → worker/canvas pixel pass → PNG blob → object
+  // URL. Unchanged except that it now also writes the blob to the persistent
+  // store so future sessions skip this entirely.
+  const computeFromPixels = () => new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
 
@@ -644,7 +502,7 @@ export async function recolorImage(
               "Worker processing failed, falling back to main thread:",
               workerError
             );
-            processedData = processPixelsOnMainThread(
+            processedData = processImageData(
               imageData,
               sourceColorRange,
               targetHue,
@@ -667,7 +525,7 @@ export async function recolorImage(
             );
           }
         } else {
-          processedData = processPixelsOnMainThread(
+          processedData = processImageData(
             imageData,
             sourceColorRange,
             targetHue,
@@ -709,6 +567,14 @@ export async function recolorImage(
         // Add to LRU cache
         addToCache(cacheKey, blobUrl);
 
+        // Persist the recolored bytes so this exact color never has to be
+        // recomputed in a future session. Fire-and-forget: the object URL
+        // above doesn't consume the blob, and we must not block the recolor
+        // on a disk write.
+        if (persistentCacheEnabled) {
+          idbPutBlob(cacheKey, blob);
+        }
+
         resolve(blobUrl);
       } catch (error) {
         // Return canvas to pool on error
@@ -726,6 +592,26 @@ export async function recolorImage(
     img.src = hiResSrc;
   });
 
+  // The resolved result: try the persistent store FIRST (cheap object-URL wrap
+  // of previously computed bytes), and only fall back to the expensive pixel
+  // pass on a miss. Wrapping both in one promise keeps the in-flight dedup
+  // (and the GameFighter sync cache) working exactly as before.
+  const promise = (async () => {
+    if (persistentCacheEnabled) {
+      try {
+        const storedBlob = await idbGetBlob(cacheKey);
+        if (storedBlob) {
+          const url = URL.createObjectURL(storedBlob);
+          addToCache(cacheKey, url);
+          return url;
+        }
+      } catch (_) {
+        // fall through to recompute
+      }
+    }
+    return computeFromPixels();
+  })();
+
   // Register the in-flight Promise; clean up when settled (success or failure)
   inFlightRecolors.set(cacheKey, promise);
   promise.then(
@@ -734,530 +620,6 @@ export async function recolorImage(
   );
 
   return promise;
-}
-
-/**
- * Positive-safe modulo (JS % can return negative for negative operands).
- */
-function posMod(n, m) {
-  return ((n % m) + m) % m;
-}
-
-/**
- * Compute per-pixel hue, saturation, and lightness for special color modes.
- * Returns { h, s, l } to use as the target color for this pixel.
- *
- * x/y are RELATIVE to the centroid (center of mass) of all matching pixels
- * in this frame, so they can be negative.  Because the centroid moves with
- * the character and is very stable across frames, the pattern stays locked
- * to the body during animation.
- */
-function getSpecialPixelColor(specialMode, x, y, width, height) {
-  switch (specialMode) {
-    case "rainbow": {
-      const CYCLE = 50;
-      return { h: (posMod(y, CYCLE) / CYCLE) * 360, s: 90, l: 50 };
-    }
-    case "fire": {
-      const CYCLE = 70;
-      const t = posMod(y, CYCLE) / CYCLE;
-      const hue = 55 - t * 55;
-      const lightness = 60 - t * 30;
-      return { h: hue, s: 100, l: lightness };
-    }
-    case "vaporwave": {
-      const CYCLE = 60;
-      const t = posMod(y, CYCLE) / CYCLE;
-      const hue = 300 - t * 120;
-      return { h: hue, s: 80, l: 55 };
-    }
-    case "camo": {
-      const BLOCK = 5;
-      const bx = Math.floor(x / BLOCK);
-      const by = Math.floor(y / BLOCK);
-      let h = (bx * 374761393 + by * 668265263) | 0;
-      h = ((h ^ (h >>> 13)) * 1274126177) | 0;
-      h = (h ^ (h >>> 16)) >>> 0;
-      const val = h % 100;
-      if (val < 28) return { h: 100, s: 40, l: 32 }; // olive green
-      if (val < 52) return { h: 120, s: 38, l: 18 }; // dark green
-      if (val < 72) return { h: 35, s: 50, l: 28 }; // brown
-      if (val < 88) return { h: 55, s: 25, l: 45 }; // tan/khaki
-      return { h: 0, s: 0, l: 10 }; // near-black
-    }
-    case "galaxy": {
-      let hash = (x * 374761393 + y * 668265263) | 0;
-      hash = ((hash ^ (hash >>> 13)) * 1274126177) | 0;
-      hash = (hash ^ (hash >>> 16)) >>> 0;
-      const val = hash % 1000;
-
-      if (val < 3) return { h: 200, s: 10, l: 98 }; // rare brilliant white-blue star
-      if (val < 5) return { h: 45, s: 15, l: 95 }; // rare warm white star
-
-      const CYCLE = 60;
-      const drift = posMod(x + y * 2, CYCLE) / CYCLE;
-
-      if (val < 60) return { h: 310 + drift * 30, s: 70, l: 45 };
-      if (val < 120) return { h: 260 + drift * 20, s: 65, l: 35 };
-
-      const baseHue = 260 + drift * 30;
-      return { h: baseHue, s: 60, l: 15 };
-    }
-    case "gold": {
-      // Metallic gold with diagonal shine streaks
-      const CYCLE = 100;
-      const shine = posMod(x + y, CYCLE) / CYCLE;
-      // Sharp highlight peaks (narrow bright bands, wider dark gold)
-      const peak = Math.pow(Math.sin(shine * Math.PI), 6);
-      const hue = 43 + peak * 5; // 43°-48° slight warm shift at highlights
-      const sat = 90 - peak * 35; // less saturated at bright highlights (more white/metallic)
-      const lightness = 42 + peak * 45; // 42 (rich gold) → 87 (bright shine)
-      return { h: hue, s: sat, l: lightness };
-    }
-    default:
-      return { h: 0, s: 90, l: 50 };
-  }
-}
-
-/**
- * Fallback: Process pixels on main thread (when worker unavailable)
- * This is the same algorithm as the worker, but runs synchronously.
- *
- * For special modes we do TWO passes:
- *   Pass 1 – find the centroid (center of mass) of all matching pixels.
- *            The centroid is extremely stable across animation frames because
- *            it's an average of hundreds of pixels — a few edge pixels shifting
- *            barely changes the result.
- *   Pass 2 – recolor, using coordinates RELATIVE to the centroid so the
- *            pattern stays locked to the body during animation.
- */
-function processPixelsOnMainThread(
-  imageData,
-  sourceColorRange,
-  targetHue,
-  targetSat,
-  targetLight,
-  referenceLightness,
-  specialMode,
-  hitTintRed,
-  width,
-  height,
-  chargeTintWhite = false,
-  blubberTintPurple = false,
-  armorTintPink = false,
-  bodyColorRange = null,
-  bodyTargetHue = 0,
-  bodyTargetSat = 0,
-  bodyTargetLight = 50,
-  bodyReferenceLightness = 49,
-  skipMawashiRecolor = false
-) {
-  const data = imageData.data;
-
-  // --- Pass 1: centroid of matching pixels (only needed for special modes) ---
-  let anchorX = 0,
-    anchorY = 0;
-  let spanW = 1,
-    spanH = 1;
-  if (specialMode) {
-    let sumX = 0,
-      sumY = 0,
-      count = 0;
-    let minX = width,
-      minY = height,
-      maxX = 0,
-      maxY = 0;
-    for (let i = 0; i < data.length; i += 4) {
-      if (data[i + 3] === 0) continue;
-      const ph = rgbToHsl(data[i], data[i + 1], data[i + 2]);
-      if (isColorInHslRange(ph.h, ph.s, ph.l, sourceColorRange)) {
-        const idx = i / 4;
-        const px = idx % width;
-        const py = (idx / width) | 0;
-        sumX += px;
-        sumY += py;
-        count++;
-        if (px < minX) minX = px;
-        if (px > maxX) maxX = px;
-        if (py < minY) minY = py;
-        if (py > maxY) maxY = py;
-      }
-    }
-    if (count > 0) {
-      anchorX = Math.round(sumX / count);
-      anchorY = Math.round(sumY / count);
-      spanW = Math.max(1, maxX - minX + 1);
-      spanH = Math.max(1, maxY - minY + 1);
-    }
-  }
-
-  // --- Pre-compute edge flags + white tinting flags for body neighbor filtering ---
-  const pixelCount = data.length / 4;
-  let edgeFlags = null;
-  let whiteTintFlags = null;
-  let scleraFlags = null;
-  if (bodyColorRange) {
-    edgeFlags = new Uint8Array(pixelCount);
-    const isGreyBody = new Uint8Array(pixelCount);
-    const isWhite = new Uint8Array(pixelCount);
-    const isDark = new Uint8Array(pixelCount);
-    for (let p = 0; p < pixelCount; p++) {
-      const pi = p * 4;
-      if (data[pi + 3] === 0) {
-        edgeFlags[p] = 1;
-        continue;
-      }
-      const pHsl = rgbToHsl(data[pi], data[pi + 1], data[pi + 2]);
-      if (pHsl.l < 15 || pHsl.l > 85) edgeFlags[p] = 1;
-      if (pHsl.l < 15) isDark[p] = 1;
-      if (isColorInHslRange(pHsl.h, pHsl.s, pHsl.l, bodyColorRange)) {
-        isGreyBody[p] = 1;
-      }
-      if (pHsl.l > 72 && pHsl.s <= 15) {
-        isWhite[p] = 1;
-      }
-    }
-
-    // BFS from grey body into adjacent white pixels to find all body-connected whites
-    whiteTintFlags = new Uint8Array(pixelCount);
-    const queue = [];
-    for (let p = 0; p < pixelCount; p++) {
-      if (!isWhite[p]) continue;
-      const px = p % width;
-      const py = (p / width) | 0;
-      if ((px > 0 && isGreyBody[p - 1]) ||
-          (px < width - 1 && isGreyBody[p + 1]) ||
-          (py > 0 && isGreyBody[p - width]) ||
-          (py < height - 1 && isGreyBody[p + width])) {
-        whiteTintFlags[p] = 1;
-        queue.push(p);
-      }
-    }
-    let qi = 0;
-    while (qi < queue.length) {
-      const cp = queue[qi++];
-      const cx = cp % width;
-      const cy = (cp / width) | 0;
-      if (cx > 0 && isWhite[cp - 1] && !whiteTintFlags[cp - 1]) {
-        whiteTintFlags[cp - 1] = 1; queue.push(cp - 1);
-      }
-      if (cx < width - 1 && isWhite[cp + 1] && !whiteTintFlags[cp + 1]) {
-        whiteTintFlags[cp + 1] = 1; queue.push(cp + 1);
-      }
-      if (cy > 0 && isWhite[cp - width] && !whiteTintFlags[cp - width]) {
-        whiteTintFlags[cp - width] = 1; queue.push(cp - width);
-      }
-      if (cy < height - 1 && isWhite[cp + width] && !whiteTintFlags[cp + width]) {
-        whiteTintFlags[cp + width] = 1; queue.push(cp + width);
-      }
-    }
-
-    // Eye protection: find small enclosed white regions (sclera).
-    // Each eye's sclera is a separate white connected component fully enclosed
-    // by the dark eye outline. The face/chest is one huge component (tens of
-    // thousands of pixels). Sclera regions are 50-1000 pixels.
-    const MIN_SCLERA = 20;
-    const MAX_SCLERA = 1400;
-    scleraFlags = new Uint8Array(pixelCount);
-    const wVis = new Uint8Array(pixelCount);
-    for (let p = 0; p < pixelCount; p++) {
-      if (!isWhite[p] || wVis[p]) continue;
-      const comp = [p];
-      wVis[p] = 1;
-      let ci = 0;
-      while (ci < comp.length) {
-        const cp = comp[ci++];
-        const cx = cp % width;
-        const cy = (cp / width) | 0;
-        if (cx > 0 && isWhite[cp - 1] && !wVis[cp - 1])             { wVis[cp - 1] = 1; comp.push(cp - 1); }
-        if (cx < width - 1 && isWhite[cp + 1] && !wVis[cp + 1])     { wVis[cp + 1] = 1; comp.push(cp + 1); }
-        if (cy > 0 && isWhite[cp - width] && !wVis[cp - width])     { wVis[cp - width] = 1; comp.push(cp - width); }
-        if (cy < height - 1 && isWhite[cp + width] && !wVis[cp + width]) { wVis[cp + width] = 1; comp.push(cp + width); }
-      }
-      if (comp.length >= MIN_SCLERA && comp.length <= MAX_SCLERA) {
-        for (let ci2 = 0; ci2 < comp.length; ci2++) {
-          whiteTintFlags[comp[ci2]] = 0;
-          scleraFlags[comp[ci2]] = 1;
-        }
-      }
-    }
-  }
-
-  // --- Pass 2: recolor ---
-  const HIT_RED_RGB = hslToRgb(0, 58, 55);
-  const HIT_BLEND = 0.34;
-  const CHARGE_WHITE_RGB = { r: 255, g: 255, b: 255 };
-  const CHARGE_BLEND = 0.7;
-  const BLUBBER_PURPLE_RGB = hslToRgb(278, 78, 65);
-  const BLUBBER_BLEND = 0.35;
-  // Armor absorb tint — vivid bright pink-red. Matches the contracting
-  // ring color so the body flash and the absorb ring read as ONE event,
-  // not two. Bright + saturated (NOT desaturated like the previous
-  // steel-blue attempt that made the player look "drained") — the player
-  // looks energized/flashed at the absorb instant, like the impact pulsed
-  // through their armor. Distinct from the hit-red (hue 0, lower saturation,
-  // longer hold) — this is hue 345, max saturation, and the duration is a
-  // 120ms snap rather than a sustained tint.
-  // Variable name kept as ARMOR_PINK_RGB for diff stability.
-  const ARMOR_PINK_RGB = hslToRgb(345, 95, 65);
-  const ARMOR_PINK_BLEND = 0.5;
-  const BODY_WHITE_TINT = 0.02;
-  const SCLERA_WHITEN = 0.8;
-  const bodyTintRgb = bodyColorRange ? hslToRgb(bodyTargetHue, bodyTargetSat, bodyTargetLight) : null;
-
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
-    const a = data[i + 3];
-
-    if (a === 0) continue;
-
-    const pixelHsl = rgbToHsl(r, g, b);
-
-    if (
-      isColorInHslRange(pixelHsl.h, pixelHsl.s, pixelHsl.l, sourceColorRange)
-    ) {
-      // --- Mawashi / headband ---
-      if (!skipMawashiRecolor) {
-        let hue = targetHue;
-        let sat = targetSat;
-        let light = targetLight;
-
-        if (specialMode) {
-          const idx = i / 4;
-          const relX = (idx % width) - anchorX;
-          const relY = ((idx / width) | 0) - anchorY;
-          const sc = getSpecialPixelColor(
-            specialMode,
-            relX,
-            relY,
-            spanW,
-            spanH
-          );
-          hue = sc.h;
-          sat = sc.s;
-          light = sc.l;
-        }
-
-        const newColor = recolorPixel(
-          r,
-          g,
-          b,
-          hue,
-          sat,
-          light,
-          referenceLightness
-        );
-        data[i] = newColor.r;
-        data[i + 1] = newColor.g;
-        data[i + 2] = newColor.b;
-      }
-
-      if (chargeTintWhite) {
-        data[i] = Math.round(
-          (1 - CHARGE_BLEND) * data[i] + CHARGE_BLEND * CHARGE_WHITE_RGB.r
-        );
-        data[i + 1] = Math.round(
-          (1 - CHARGE_BLEND) * data[i + 1] + CHARGE_BLEND * CHARGE_WHITE_RGB.g
-        );
-        data[i + 2] = Math.round(
-          (1 - CHARGE_BLEND) * data[i + 2] + CHARGE_BLEND * CHARGE_WHITE_RGB.b
-        );
-      }
-    } else if (
-      bodyColorRange &&
-      isColorInHslRange(pixelHsl.h, pixelHsl.s, pixelHsl.l, bodyColorRange)
-    ) {
-      // --- Body (grey plumage) — skip thin lines (outlines, eyes, hair details) ---
-      const pidx = i / 4;
-      const px = pidx % width;
-      const py = (pidx / width) | 0;
-      let edgeNeighbors = 0;
-      if (px === 0 || edgeFlags[pidx - 1]) edgeNeighbors++;
-      if (px === width - 1 || edgeFlags[pidx + 1]) edgeNeighbors++;
-      if (py === 0 || edgeFlags[pidx - width]) edgeNeighbors++;
-      if (py === height - 1 || edgeFlags[pidx + width]) edgeNeighbors++;
-
-      if (edgeNeighbors >= 2) {
-        if (hitTintRed) {
-          data[i] = Math.round((1 - HIT_BLEND) * r + HIT_BLEND * HIT_RED_RGB.r);
-          data[i + 1] = Math.round(
-            (1 - HIT_BLEND) * g + HIT_BLEND * HIT_RED_RGB.g
-          );
-          data[i + 2] = Math.round(
-            (1 - HIT_BLEND) * b + HIT_BLEND * HIT_RED_RGB.b
-          );
-        } else if (chargeTintWhite) {
-          data[i] = Math.round(
-            (1 - CHARGE_BLEND) * r + CHARGE_BLEND * CHARGE_WHITE_RGB.r
-          );
-          data[i + 1] = Math.round(
-            (1 - CHARGE_BLEND) * g + CHARGE_BLEND * CHARGE_WHITE_RGB.g
-          );
-          data[i + 2] = Math.round(
-            (1 - CHARGE_BLEND) * b + CHARGE_BLEND * CHARGE_WHITE_RGB.b
-          );
-        } else if (blubberTintPurple) {
-          data[i] = Math.round(
-            (1 - BLUBBER_BLEND) * r + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.r
-          );
-          data[i + 1] = Math.round(
-            (1 - BLUBBER_BLEND) * g + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.g
-          );
-          data[i + 2] = Math.round(
-            (1 - BLUBBER_BLEND) * b + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b
-          );
-        } else if (armorTintPink) {
-          data[i] = Math.round(
-            (1 - ARMOR_PINK_BLEND) * r + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.r
-          );
-          data[i + 1] = Math.round(
-            (1 - ARMOR_PINK_BLEND) * g + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.g
-          );
-          data[i + 2] = Math.round(
-            (1 - ARMOR_PINK_BLEND) * b + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.b
-          );
-        }
-        continue;
-      }
-
-      const newColor = recolorPixel(
-        r,
-        g,
-        b,
-        bodyTargetHue,
-        bodyTargetSat,
-        bodyTargetLight,
-        bodyReferenceLightness
-      );
-      data[i] = newColor.r;
-      data[i + 1] = newColor.g;
-      data[i + 2] = newColor.b;
-
-      if (hitTintRed) {
-        data[i] = Math.round(
-          (1 - HIT_BLEND) * data[i] + HIT_BLEND * HIT_RED_RGB.r
-        );
-        data[i + 1] = Math.round(
-          (1 - HIT_BLEND) * data[i + 1] + HIT_BLEND * HIT_RED_RGB.g
-        );
-        data[i + 2] = Math.round(
-          (1 - HIT_BLEND) * data[i + 2] + HIT_BLEND * HIT_RED_RGB.b
-        );
-      } else if (chargeTintWhite) {
-        data[i] = Math.round(
-          (1 - CHARGE_BLEND) * data[i] + CHARGE_BLEND * CHARGE_WHITE_RGB.r
-        );
-        data[i + 1] = Math.round(
-          (1 - CHARGE_BLEND) * data[i + 1] + CHARGE_BLEND * CHARGE_WHITE_RGB.g
-        );
-        data[i + 2] = Math.round(
-          (1 - CHARGE_BLEND) * data[i + 2] + CHARGE_BLEND * CHARGE_WHITE_RGB.b
-        );
-      } else if (blubberTintPurple) {
-        data[i] = Math.round(
-          (1 - BLUBBER_BLEND) * data[i] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.r
-        );
-        data[i + 1] = Math.round(
-          (1 - BLUBBER_BLEND) * data[i + 1] +
-            BLUBBER_BLEND * BLUBBER_PURPLE_RGB.g
-        );
-        data[i + 2] = Math.round(
-          (1 - BLUBBER_BLEND) * data[i + 2] +
-            BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b
-        );
-      } else if (armorTintPink) {
-        data[i] = Math.round(
-          (1 - ARMOR_PINK_BLEND) * data[i] + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.r
-        );
-        data[i + 1] = Math.round(
-          (1 - ARMOR_PINK_BLEND) * data[i + 1] +
-            ARMOR_PINK_BLEND * ARMOR_PINK_RGB.g
-        );
-        data[i + 2] = Math.round(
-          (1 - ARMOR_PINK_BLEND) * data[i + 2] +
-            ARMOR_PINK_BLEND * ARMOR_PINK_RGB.b
-        );
-      }
-    } else if (scleraFlags && scleraFlags[i / 4]) {
-      data[i] = Math.round(r + (255 - r) * SCLERA_WHITEN);
-      data[i + 1] = Math.round(g + (255 - g) * SCLERA_WHITEN);
-      data[i + 2] = Math.round(b + (255 - b) * SCLERA_WHITEN);
-
-      if (hitTintRed) {
-        data[i] = Math.round((1 - HIT_BLEND) * data[i] + HIT_BLEND * HIT_RED_RGB.r);
-        data[i + 1] = Math.round((1 - HIT_BLEND) * data[i + 1] + HIT_BLEND * HIT_RED_RGB.g);
-        data[i + 2] = Math.round((1 - HIT_BLEND) * data[i + 2] + HIT_BLEND * HIT_RED_RGB.b);
-      } else if (blubberTintPurple) {
-        data[i] = Math.round((1 - BLUBBER_BLEND) * data[i] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.r);
-        data[i + 1] = Math.round((1 - BLUBBER_BLEND) * data[i + 1] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.g);
-        data[i + 2] = Math.round((1 - BLUBBER_BLEND) * data[i + 2] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b);
-      } else if (armorTintPink) {
-        data[i] = Math.round((1 - ARMOR_PINK_BLEND) * data[i] + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.r);
-        data[i + 1] = Math.round((1 - ARMOR_PINK_BLEND) * data[i + 1] + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.g);
-        data[i + 2] = Math.round((1 - ARMOR_PINK_BLEND) * data[i + 2] + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.b);
-      }
-    } else if (whiteTintFlags && whiteTintFlags[i / 4]) {
-      data[i] = Math.round((1 - BODY_WHITE_TINT) * r + BODY_WHITE_TINT * bodyTintRgb.r);
-      data[i + 1] = Math.round((1 - BODY_WHITE_TINT) * g + BODY_WHITE_TINT * bodyTintRgb.g);
-      data[i + 2] = Math.round((1 - BODY_WHITE_TINT) * b + BODY_WHITE_TINT * bodyTintRgb.b);
-
-      if (hitTintRed) {
-        data[i] = Math.round((1 - HIT_BLEND) * data[i] + HIT_BLEND * HIT_RED_RGB.r);
-        data[i + 1] = Math.round((1 - HIT_BLEND) * data[i + 1] + HIT_BLEND * HIT_RED_RGB.g);
-        data[i + 2] = Math.round((1 - HIT_BLEND) * data[i + 2] + HIT_BLEND * HIT_RED_RGB.b);
-      } else if (chargeTintWhite) {
-        data[i] = Math.round((1 - CHARGE_BLEND) * data[i] + CHARGE_BLEND * CHARGE_WHITE_RGB.r);
-        data[i + 1] = Math.round((1 - CHARGE_BLEND) * data[i + 1] + CHARGE_BLEND * CHARGE_WHITE_RGB.g);
-        data[i + 2] = Math.round((1 - CHARGE_BLEND) * data[i + 2] + CHARGE_BLEND * CHARGE_WHITE_RGB.b);
-      } else if (blubberTintPurple) {
-        data[i] = Math.round((1 - BLUBBER_BLEND) * data[i] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.r);
-        data[i + 1] = Math.round((1 - BLUBBER_BLEND) * data[i + 1] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.g);
-        data[i + 2] = Math.round((1 - BLUBBER_BLEND) * data[i + 2] + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b);
-      } else if (armorTintPink) {
-        data[i] = Math.round((1 - ARMOR_PINK_BLEND) * data[i] + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.r);
-        data[i + 1] = Math.round((1 - ARMOR_PINK_BLEND) * data[i + 1] + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.g);
-        data[i + 2] = Math.round((1 - ARMOR_PINK_BLEND) * data[i + 2] + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.b);
-      }
-    } else if (hitTintRed) {
-      data[i] = Math.round((1 - HIT_BLEND) * r + HIT_BLEND * HIT_RED_RGB.r);
-      data[i + 1] = Math.round((1 - HIT_BLEND) * g + HIT_BLEND * HIT_RED_RGB.g);
-      data[i + 2] = Math.round((1 - HIT_BLEND) * b + HIT_BLEND * HIT_RED_RGB.b);
-    } else if (chargeTintWhite) {
-      data[i] = Math.round(
-        (1 - CHARGE_BLEND) * r + CHARGE_BLEND * CHARGE_WHITE_RGB.r
-      );
-      data[i + 1] = Math.round(
-        (1 - CHARGE_BLEND) * g + CHARGE_BLEND * CHARGE_WHITE_RGB.g
-      );
-      data[i + 2] = Math.round(
-        (1 - CHARGE_BLEND) * b + CHARGE_BLEND * CHARGE_WHITE_RGB.b
-      );
-    } else if (blubberTintPurple) {
-      data[i] = Math.round(
-        (1 - BLUBBER_BLEND) * r + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.r
-      );
-      data[i + 1] = Math.round(
-        (1 - BLUBBER_BLEND) * g + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.g
-      );
-      data[i + 2] = Math.round(
-        (1 - BLUBBER_BLEND) * b + BLUBBER_BLEND * BLUBBER_PURPLE_RGB.b
-      );
-    } else if (armorTintPink) {
-      data[i] = Math.round(
-        (1 - ARMOR_PINK_BLEND) * r + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.r
-      );
-      data[i + 1] = Math.round(
-        (1 - ARMOR_PINK_BLEND) * g + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.g
-      );
-      data[i + 2] = Math.round(
-        (1 - ARMOR_PINK_BLEND) * b + ARMOR_PINK_BLEND * ARMOR_PINK_RGB.b
-      );
-    }
-  }
-
-  return imageData;
 }
 
 /**
@@ -1596,32 +958,6 @@ export function getCacheStats() {
     inFlightCount: inFlightRecolors.size,
   };
 }
-
-/**
- * The base color of the sprite assets (used for recoloring logic)
- * Sprites are blue - if target color matches this, no recoloring needed
- */
-export const SPRITE_BASE_COLOR = "#4169E1";
-
-/**
- * Special color identifiers
- * When one of these values is passed as targetColorHex, the recoloring system
- * uses a special per-pixel algorithm instead of a flat color.
- */
-export const RAINBOW_COLOR = "rainbow";
-export const FIRE_COLOR = "fire";
-export const VAPORWAVE_COLOR = "vaporwave";
-export const CAMO_COLOR = "camo";
-export const GALAXY_COLOR = "galaxy";
-export const GOLD_COLOR = "gold";
-export const SPECIAL_COLORS = new Set([
-  RAINBOW_COLOR,
-  FIRE_COLOR,
-  VAPORWAVE_COLOR,
-  CAMO_COLOR,
-  GALAXY_COLOR,
-  GOLD_COLOR,
-]);
 
 /**
  * Predefined color options for player customization

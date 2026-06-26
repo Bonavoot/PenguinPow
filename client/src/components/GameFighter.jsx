@@ -42,6 +42,7 @@ import {
   SPRITE_BASE_COLOR,
   COLOR_PRESETS,
 } from "../utils/SpriteRecolorizer";
+import { getBakedSprite } from "../utils/bakedSprites";
 import { usePlayerColors } from "../context/PlayerColorContext";
 import { addShake } from "../lib/cameraShake";
 
@@ -181,8 +182,15 @@ function useRecoloredCloneSrc(baseSrc, ownerColor, ownerBodyColor) {
     !!ownerColor &&
     (ownerColor !== SPRITE_BASE_COLOR || !!ownerBodyColor);
 
-  const cachedSrc = useMemo(() => {
+  // BUILD-TIME BAKE FIRST: clones use the SAME stable baked file as the main
+  // fighter, so both always agree on the current color (no per-bout blob).
+  const bakedSrc = useMemo(() => {
     if (!needsRecolor) return null;
+    return getBakedSprite(baseSrc, ownerColor, ownerBodyColor || null, "base");
+  }, [baseSrc, ownerColor, ownerBodyColor, needsRecolor]);
+
+  const cachedSrc = useMemo(() => {
+    if (!needsRecolor || bakedSrc) return null;
     const opts = ownerBodyColor
       ? { bodyColorRange: GREY_BODY_RANGES, bodyColorHex: ownerBodyColor }
       : {};
@@ -192,7 +200,7 @@ function useRecoloredCloneSrc(baseSrc, ownerColor, ownerBodyColor) {
       ownerColor,
       opts
     );
-  }, [baseSrc, ownerColor, ownerBodyColor, needsRecolor]);
+  }, [baseSrc, ownerColor, ownerBodyColor, needsRecolor, bakedSrc]);
 
   const [asyncSrc, setAsyncSrc] = useState(null);
 
@@ -201,7 +209,7 @@ function useRecoloredCloneSrc(baseSrc, ownerColor, ownerBodyColor) {
     // don't flash the previous owner's color before the new recolor lands.
     setAsyncSrc(null);
 
-    if (!needsRecolor || cachedSrc) return undefined;
+    if (!needsRecolor || bakedSrc || cachedSrc) return undefined;
 
     let cancelled = false;
     const opts = ownerBodyColor
@@ -221,10 +229,10 @@ function useRecoloredCloneSrc(baseSrc, ownerColor, ownerBodyColor) {
     return () => {
       cancelled = true;
     };
-  }, [baseSrc, ownerColor, ownerBodyColor, needsRecolor, cachedSrc]);
+  }, [baseSrc, ownerColor, ownerBodyColor, needsRecolor, bakedSrc, cachedSrc]);
 
   if (!needsRecolor) return baseSrc;
-  return cachedSrc || asyncSrc || baseSrc;
+  return bakedSrc || cachedSrc || asyncSrc || baseSrc;
 }
 
 // =====================================================================
@@ -349,6 +357,19 @@ const GameFighter = ({
     targetColor !== SPRITE_BASE_COLOR || !!playerBodyColor;
   const colorRanges = BLUE_COLOR_RANGES;
 
+  // BASHO no-remount fix: this fighter instance persists across every bout of a
+  // run (keyed by the stable CPU/player id), so its local recolored-sprite cache
+  // outlives the opponent that populated it. When the fighter's color changes
+  // between bouts (a new day's rikishi), drop the previous color's cached blob
+  // URLs: the module-level recolor LRU may have already evicted+revoked them,
+  // and rendering a dead blob shows a broken/wrong-color sprite (the pumo clones
+  // never hit this because their hook re-resolves on every color change). Force
+  // a fresh re-resolve for the new color from the freshly-preloaded global cache.
+  useEffect(() => {
+    setRecoloredSprites({});
+    recoloringInProgress.current.clear();
+  }, [targetColor, playerBodyColor]);
+
   // Get both player colors (belt + body) for pumo clone coloring
   const {
     player1Color: p1Color, player2Color: p2Color,
@@ -418,6 +439,32 @@ const GameFighter = ({
           isAnimated,
           config: spritesheetConfig,
         };
+      }
+
+      // BUILD-TIME BAKE FIRST: a stable, real PNG file for this exact
+      // (sprite, mawashi, body, tint). This is a pure deterministic lookup —
+      // no async, no LRU, no per-bout blob — so the main fighter resolves the
+      // SAME file the clones do and never gets stuck on a prior bout's color
+      // (Bug A), and the URL is identical every bout so there's no blob churn
+      // / ghost frames (Bug B). Misses (arbitrary custom hex, or no bake run)
+      // fall through to the live recolor path below unchanged.
+      const bakedTint = useHitTint
+        ? "hit"
+        : useWhiteFlash
+        ? "charge"
+        : useBlubberTint
+        ? "blubber"
+        : useArmorTint
+        ? "armor"
+        : "base";
+      const bakedSrc = getBakedSprite(
+        sourceToRecolor,
+        targetColor,
+        playerBodyColor || null,
+        bakedTint
+      );
+      if (bakedSrc) {
+        return { src: bakedSrc, isAnimated, config: spritesheetConfig };
       }
 
       // Build options for cache lookup (body color options computed inline to avoid stale closure)
@@ -4741,6 +4788,18 @@ const GameFighter = ({
     ? killVictimSprite
     : effectiveSpriteSrc;
 
+  // BASHO no-remount fix: the fighter <img> is keyed on the color-INDEPENDENT
+  // base source (the ghost-frame fix above) so tint toggles update `src` in
+  // place without remounting/re-decoding. The downside: when this persistent
+  // fighter's COLOR changes between bouts (a new day's opponent), the element
+  // is reused and the browser keeps painting the last-decoded frame (the
+  // PREVIOUS opponent's colors) — the in-place src swap to the new-color blob
+  // doesn't reliably force a re-decode. Folding the color into the key remounts
+  // the <img> ONLY on a genuine color change (rare, between bouts behind the
+  // DAY/pre-match overlay), forcing a clean decode of the new-color sprite,
+  // while tint changes during combat (color stable) still update in place.
+  const spriteColorKey = `${targetColor || ""}:${playerBodyColor || ""}`;
+
   // Update animation state (will start/stop intervals as needed)
   updateSpriteAnimation(effectiveSpriteSrc);
 
@@ -5044,7 +5103,7 @@ const GameFighter = ({
           $attackerConfirmTier={attackerConfirmTier}
         >
           <AnimatedFighterImage
-            key={baseSpriteSrc}
+            key={`${baseSpriteSrc}|${spriteColorKey}`}
             src={recoloredSpriteSrc}
             alt="fighter"
             $frameCount={spriteConfig?.frameCount || 1}
@@ -5071,7 +5130,7 @@ const GameFighter = ({
       {!isAnimatedSprite && (
         <StyledImage
           ref={fighterImgDomRef}
-          key={`${baseSpriteSrc}-${chargeAnimKeyRef.current}`}
+          key={`${baseSpriteSrc}-${chargeAnimKeyRef.current}|${spriteColorKey}`}
           $overrideSrc={recoloredSpriteSrc}
           $fighter={penguin.fighter}
           $isDiving={penguin.isDiving}
@@ -5385,6 +5444,20 @@ export default React.memo(GameFighter, (prevProps, nextProps) => {
     prevProps.opponentDisconnected === nextProps.opponentDisconnected &&
     prevProps.disconnectedRoomId === nextProps.disconnectedRoomId &&
     prevProps.onResetDisconnectState === nextProps.onResetDisconnectState &&
+    // BASHO no-remount fix (root cause of BOTH the stuck-opponent-color bug AND
+    // the progressive ghost frames): the opponent's `player` object reference is
+    // stable across bouts (merged in place), so without comparing the colors
+    // this comparator returned true on a new day and React BAILED OUT — silently
+    // discarding the new playerColor/playerBodyColor prop. The fighter then only
+    // re-rendered via the player2Color CONTEXT change, but with the stale (Day-1)
+    // props the memo never accepted → main fighter stuck on Day-1 colors while
+    // the context-driven clones updated correctly. It also desynced what
+    // preloadSprites PINNED (new color) from what the fighter RENDERED (old
+    // color), so the rendered sprites got LRU-evicted → ghost frames. Comparing
+    // the colors here makes a color change re-render the fighter with fresh
+    // props. These only differ between bouts, so combat re-render cost is zero.
+    prevProps.playerColor === nextProps.playerColor &&
+    prevProps.playerBodyColor === nextProps.playerBodyColor &&
     // NOTE: isPowerUpSelectionActive was intentionally removed here. GameFighter
     // never reads it in render, but having it in this comparator forced BOTH
     // fighters to fully re-render every time power-up selection started/ended —
