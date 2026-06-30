@@ -1026,6 +1026,16 @@ const Game = ({
                       bashoOpponentRankLabel={
                         isBashoMatch ? bashoBout?.opponentRankLabel : undefined
                       }
+                      bashoDraftedPowerUps={
+                        isBashoMatch ? bashoBout?.draftedPowerUps : undefined
+                      }
+                      bashoOpponentPowerUps={
+                        isBashoMatch ? bashoBout?.opponentPowerUps : undefined
+                      }
+                      bashoDay={isBashoMatch ? bashoBout?.day : undefined}
+                      bashoOpponentName={
+                        isBashoMatch ? bashoBout?.opponentName : undefined
+                      }
                     />
                   );
                 })}

@@ -161,6 +161,85 @@ function shuffle(arr) {
   return out;
 }
 
+function hashSeed(input) {
+  const str = String(input ?? 0);
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a += 0x6d2b79f5;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function seededShuffle(arr, seed) {
+  const rng = mulberry32(hashSeed(seed));
+  const out = [...arr];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+/**
+ * Assign each opponent a unique banzuke rank in the player's division.
+ * Numbers never duplicate the player's slot or another CPU in this run.
+ */
+function assignOpponentRanks(opponents, startRank, seed) {
+  const div = getDivision(startRank);
+  if (!div.numbered) {
+    const rank = { division: div.key };
+    return opponents.map((opp) =>
+      opp.rank ? opp : { ...opp, rank: { ...rank } }
+    );
+  }
+
+  const playerNum = startRank.number ?? null;
+  const used = new Set(playerNum != null ? [playerNum] : []);
+  const poolMax = Math.max(
+    div.maxNumber,
+    opponents.length + (playerNum != null ? 1 : 0)
+  );
+  const pool = [];
+  for (let n = 1; n <= poolMax; n++) {
+    if (!used.has(n)) pool.push(n);
+  }
+  const shuffled = seededShuffle(pool, `${seed}:ranks`);
+
+  return opponents.map((opp, i) => {
+    if (opp.rank) return opp;
+    const number = shuffled[i] ?? shuffled[i % shuffled.length] ?? i + 1;
+    used.add(number);
+    return { ...opp, rank: { division: div.key, number } };
+  });
+}
+
+/**
+ * Back-fill opponent ranks on runs saved before per-CPU numbers existed.
+ * Returns a new run object when migration runs; otherwise the input.
+ */
+export function ensureOpponentRanks(run) {
+  if (!run?.opponents?.length || !run.startRank) return run;
+  if (run.opponents.every((o) => o.rank)) return run;
+  const seed = run.seed ?? run.createdAt ?? Date.now();
+  return {
+    ...run,
+    seed,
+    opponents: assignOpponentRanks(run.opponents, run.startRank, seed),
+  };
+}
+
 function clamp(n, lo, hi) {
   return Math.max(lo, Math.min(hi, n));
 }
@@ -237,7 +316,10 @@ export function createRun(career) {
     }
   }
 
-  return {
+  const seed = Date.now();
+  const startRank = { ...career.rank };
+
+  return ensureOpponentRanks({
     active: true,
     division: div.key,
     totalBouts,
@@ -246,12 +328,13 @@ export function createRun(career) {
     record: { wins: 0, losses: 0 },
     results: [], // [{ day, won, winType }]
     opponents,
-    startRank: { ...career.rank },
+    startRank,
+    seed,
     // Stacking in-basho draft (§Phase 7). Accumulates one pick per bout; reset
     // every basho (lives on the run, never the career).
     draftedPowerUps: [],
-    createdAt: Date.now(),
-  };
+    createdAt: seed,
+  });
 }
 
 /**

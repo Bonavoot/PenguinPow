@@ -205,7 +205,8 @@ export function isUnlocked(career, id) {
  * content pass — adding ids is data-only.
  *
  * Picks STACK for the whole run (reset each basho): passives multiply, Thick
- * Blubber adds an absorption charge, the actives accumulate uses.
+ * Blubber adds an absorption charge, actives stack uses but only one active
+ * type is kept at a time (picking a new active replaces the previous one).
  */
 export const BASHO_DRAFT_POOL = [
   "speed",

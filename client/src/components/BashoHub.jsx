@@ -65,7 +65,7 @@ import {
   makeDefaultSave,
   isElectronSave,
 } from "../lib/saveStore";
-import { createRun } from "../lib/bashoRun";
+import { createRun, ensureOpponentRanks } from "../lib/bashoRun";
 import BanzukeBoard from "./BanzukeBoard";
 
 const DEBUG_FLAG_KEY = "bashoDebug";
@@ -1198,7 +1198,17 @@ function BashoHub({ onBack, onStartRun }) {
       saveDocRef.current = doc;
       setCareer(doc.career);
       // Surface a resumable run if one was left in progress.
-      if (doc.bashoRun?.active) setResumeRun(doc.bashoRun);
+      if (doc.bashoRun?.active) {
+        const migrated = ensureOpponentRanks(doc.bashoRun);
+        if (migrated !== doc.bashoRun) {
+          const updated = { ...doc, bashoRun: migrated };
+          saveDocRef.current = updated;
+          writeSave(updated);
+          setResumeRun(migrated);
+        } else {
+          setResumeRun(doc.bashoRun);
+        }
+      }
       // Mark loaded on the next tick so the load-triggered setCareer above
       // doesn't immediately re-persist an identical document.
       loadedRef.current = true;

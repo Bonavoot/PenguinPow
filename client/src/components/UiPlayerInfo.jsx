@@ -302,6 +302,9 @@ const stonePlaceRipple = keyframes`
   }
 `;
 
+// Shared vertical rhythm between HUD strips (stamina ↔ balance, name row ↔ stamina).
+const gaugeStripGap = "clamp(8px, 1cqh, 14px)";
+
 // ============================================
 // MAIN HUD SHELL
 // ============================================
@@ -354,7 +357,7 @@ const PlayerWing = styled.div`
   max-width: min(560px, 45%);
   display: flex;
   flex-direction: column;
-  gap: clamp(4px, 0.6cqh, 8px);
+  gap: 0;
   transition: opacity 240ms ease, filter 240ms ease;
   opacity: ${(p) => (p.$matchOver ? 0.93 : 1)};
   filter: ${(p) => (p.$matchOver ? "brightness(0.94)" : "none")};
@@ -375,7 +378,7 @@ const NameBanner = styled.div`
   box-sizing: border-box;
   padding: 0;
   position: relative;
-  margin-bottom: clamp(2px, 0.4cqh, 6px);
+  margin-bottom: ${gaugeStripGap};
 `;
 
 const NameBlock = styled.div`
@@ -383,6 +386,7 @@ const NameBlock = styled.div`
   flex-direction: column;
   gap: 1px;
   align-items: ${(p) => (p.$isRight ? "flex-end" : "flex-start")};
+  align-self: ${(p) => (p.$alignToMarkBottom ? "flex-end" : "auto")};
   min-width: 0;
   flex: 1;
 `;
@@ -425,7 +429,10 @@ const RankPlaque = styled.div`
   align-items: center;
   justify-content: center;
   gap: clamp(4px, 0.5cqw, 8px);
-  padding: clamp(4px, 0.55cqh, 8px) clamp(12px, 1.5cqw, 22px);
+  padding: ${(p) =>
+    p.$compact
+      ? "clamp(3px, 0.4cqh, 6px) clamp(8px, 1cqw, 14px)"
+      : "clamp(4px, 0.55cqh, 8px) clamp(12px, 1.5cqw, 22px)"};
   position: relative;
 
   background:
@@ -1229,16 +1236,47 @@ const GaugeStack = styled.div`
   min-width: 0;
   display: flex;
   flex-direction: column;
+  position: relative;
+  overflow: visible;
 `;
 
 /* Balance strip — canvas-rendered stance gauge (see BalanceGauge.jsx). */
 const BalStripWrap = styled.div`
   width: 50%;
   align-self: ${(p) => (p.$isRight ? "flex-start" : "flex-end")};
-  margin-top: clamp(8px, 1cqh, 14px);
+  margin-top: ${gaugeStripGap};
 `;
 
-/* Rank plaque — tucked up close to the balance strip */
+/* BASHO boons — overlaid at balance-bar top; out of flow so stamina/balance/power slot stay put. */
+const BoonAnchor = styled.div`
+  position: absolute;
+  top: calc(clamp(22px, 4cqh, 40px) + ${gaugeStripGap});
+  width: 50%;
+  display: flex;
+  align-items: flex-start;
+  flex-shrink: 0;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 2;
+
+  ${(p) =>
+    p.$isRight
+      ? css`
+          right: 0;
+          padding-right: clamp(4px, 0.55cqw, 8px);
+          justify-content: flex-end;
+        `
+      : css`
+          left: 0;
+          padding-left: clamp(4px, 0.55cqw, 8px);
+        `}
+
+  & > * {
+    pointer-events: auto;
+  }
+`;
+
+/* Rank plaque — tucked below balance (non-BASHO layout). */
 const SubBarRow = styled.div`
   display: flex;
   flex-direction: ${(p) => (p.$isRight ? "row-reverse" : "row")};
@@ -1309,6 +1347,49 @@ const slotMountPulse = keyframes`
   100% { transform: scale(1);    filter: brightness(1); }
 `;
 
+const PowerUpIconFrame = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(26px, 3.5cqw, 42px);
+  height: clamp(26px, 3.5cqw, 42px);
+  flex-shrink: 0;
+
+  img {
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    object-fit: contain;
+    position: relative;
+    z-index: 1;
+    filter: ${(p) =>
+      p.$cooldown ? "brightness(0.5) grayscale(0.35)" : "brightness(1)"};
+  }
+`;
+
+/* Charge count — stroked numeral at the bottom-right of the icon frame
+   (same vocabulary as boon stack marks). Sits outside the artwork. */
+const PowerUpChargeMark = styled.span`
+  position: absolute;
+  bottom: clamp(-6px, -0.5cqw, -3px);
+  right: clamp(-3px, -0.3cqw, -1px);
+  font-family: "Bungee", cursive;
+  font-size: clamp(10px, 1.05cqw, 13px);
+  line-height: 1;
+  color: #fff;
+  -webkit-text-stroke: clamp(0.6px, 0.08cqw, 1px) rgba(0, 0, 0, 0.95);
+  text-shadow:
+    1px 0 0 #000,
+    -1px 0 0 #000,
+    0 1px 0 #000,
+    0 -1px 0 #000,
+    0 2px 4px rgba(0, 0, 0, 0.85);
+  pointer-events: none;
+  z-index: 3;
+`;
+
 const PowerUpSlot = styled.div`
   display: flex;
   align-items: center;
@@ -1320,6 +1401,8 @@ const PowerUpSlot = styled.div`
   position: relative;
   transition: all 0.25s ease;
   flex-shrink: 0;
+  /* Clip only the BASHO N/A strike — charge mark sits outside the frame. */
+  overflow: ${(p) => (!p.$active && p.$bashoNa ? "hidden" : "visible")};
 
   border: 1px solid rgba(245, 236, 217, 0.22);
 
@@ -1346,6 +1429,12 @@ const PowerUpSlot = styled.div`
     }
   }};
 
+  border-style: ${(p) => (!p.$active && p.$bashoNa ? "dashed" : "solid")};
+  border-color: ${(p) =>
+    !p.$active && p.$bashoNa
+      ? "rgba(245, 236, 217, 0.2)"
+      : "rgba(245, 236, 217, 0.22)"};
+
   box-shadow:
     0 clamp(2px, 0.18cqw, 4px) clamp(8px, 0.8cqw, 16px) rgba(0, 0, 0, 0.5),
     inset 0 1px 2px rgba(255, 255, 255, 0.05),
@@ -1353,16 +1442,24 @@ const PowerUpSlot = styled.div`
 
   opacity: ${(p) => (p.$active ? 1 : 0.78)};
 
-  img {
-    width: 65%;
-    height: auto;
-    max-width: clamp(26px, 3.5cqw, 42px);
-    max-height: clamp(26px, 3.5cqw, 42px);
-    object-fit: contain;
-    filter: ${(p) => (p.$cooldown ? "brightness(0.5) grayscale(0.35)" : "brightness(1)")};
-    position: relative;
-    z-index: 1;
-  }
+  /* BASHO empty slot — reads as "no active" rather than a dead black tile. */
+  ${(p) =>
+    !p.$active &&
+    p.$bashoNa &&
+    css`
+      &::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 82%;
+        height: 1px;
+        background: rgba(245, 236, 217, 0.2);
+        transform: translate(-50%, -50%) rotate(-42deg);
+        pointer-events: none;
+        z-index: 0;
+      }
+    `}
 
   /* Activation pulse — fires once on mount of an active slot (see the
      comment above the styled-component for triggering details). Empty
@@ -1376,37 +1473,16 @@ const PowerUpSlot = styled.div`
     `}
 `;
 
-const PowerUpChargeBadge = styled.div`
-  position: absolute;
-  bottom: -4px;
-  right: -4px;
-  width: clamp(13px, 1.5cqw, 18px);
-  height: clamp(13px, 1.5cqw, 18px);
-  padding: 0;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: "Bungee", cursive;
-  font-size: clamp(7px, 0.8cqw, 10px);
-  line-height: 1;
-  color: #fff;
-  background: linear-gradient(180deg, #1f2937 0%, #111827 100%);
-  border: 1px solid rgba(168, 212, 255, 0.7);
-  box-shadow:
-    0 2px 5px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.18);
-  z-index: 2;
-  pointer-events: none;
-`;
-
 // ============================================
 // CENTER ROUND INDICATOR — bare floating text
 // ============================================
 
 const CenterRound = styled.div`
   position: absolute;
-  top: clamp(14px, 3cqh, 36px);
+  top: ${(p) =>
+    p.$customCenter
+      ? "clamp(26px, 3.5cqh, 42px)"
+      : "clamp(14px, 3cqh, 36px)"};
   left: 50%;
   transform: translateX(-50%);
   z-index: 1001;
@@ -1590,6 +1666,15 @@ const UiPlayerInfo = ({
   player2Balance = 100,
   player2BalanceGain = 0,
   matchOver = false,
+  player1TopMarks = undefined,
+  player2TopMarks = undefined,
+  centerContent = undefined,
+  player2Name = "PLAYER 2",
+  nameAlignToMarkBottom = false,
+  bashoPowerUpSlots = false,
+  rankInTopMarks = false,
+  player1SubMarks = undefined,
+  player2SubMarks = undefined,
 }) => {
   const s1 = clampStamina(player1Stamina);
   const s2 = clampStamina(player2Stamina);
@@ -2085,8 +2170,48 @@ const UiPlayerInfo = ({
     }
   };
 
+  const renderPowerUpChargeMark = (
+    activePowerUp,
+    snowballRemaining,
+    pumoRemaining
+  ) => {
+    if (activePowerUp === "snowball" && Number.isFinite(snowballRemaining)) {
+      return (
+        <PowerUpChargeMark aria-hidden="true">
+          {Math.max(0, snowballRemaining)}
+        </PowerUpChargeMark>
+      );
+    }
+    if (activePowerUp === "pumo_army" && Number.isFinite(pumoRemaining)) {
+      return (
+        <PowerUpChargeMark aria-hidden="true">
+          {Math.max(0, pumoRemaining)}
+        </PowerUpChargeMark>
+      );
+    }
+    return null;
+  };
+
   const p1Danger = shouldShowLowStaminaWarning(p1DisplayStamina);
   const p2Danger = shouldShowLowStaminaWarning(p2DisplayStamina);
+
+  const renderRankPlaque = (label, compact = false) => (
+    <RankPlaque $compact={compact}>
+      <RankText>{(label || "JONOKUCHI").toUpperCase()}</RankText>
+    </RankPlaque>
+  );
+
+  const renderP1TopMarks = () => {
+    if (rankInTopMarks) return renderRankPlaque(player1RankLabel, true);
+    if (player1TopMarks !== undefined) return player1TopMarks;
+    return renderCenterMarks("player1");
+  };
+
+  const renderP2TopMarks = () => {
+    if (rankInTopMarks) return renderRankPlaque(player2RankLabel, true);
+    if (player2TopMarks !== undefined) return player2TopMarks;
+    return renderCenterMarks("player2");
+  };
 
   return (
     <HudShell $matchOver={matchOver}>
@@ -2094,9 +2219,9 @@ const UiPlayerInfo = ({
       <PlayerWing $matchOver={matchOver}>
         <NameBanner $isRight={false}>
           <WinLossRow $isRight={false}>
-            {renderCenterMarks("player1")}
+            {renderP1TopMarks()}
           </WinLossRow>
-          <NameBlock $isRight={false}>
+          <NameBlock $isRight={false} $alignToMarkBottom={nameAlignToMarkBottom}>
             <FighterName>PLAYER 1</FighterName>
           </NameBlock>
           <BarRowSpacer />
@@ -2172,6 +2297,9 @@ const UiPlayerInfo = ({
                 gainKey={p1BalGainKey}
               />
             </BalStripWrap>
+            {player1SubMarks && (
+              <BoonAnchor $isRight={false}>{player1SubMarks}</BoonAnchor>
+            )}
           </GaugeStack>
           <PowerUpSlot
             /* Stable on cooldown / charge-count changes, changes only
@@ -2180,6 +2308,7 @@ const UiPlayerInfo = ({
                comment for the full rationale. */
             key={`p1-pu-${player1ActivePowerUp || "empty"}`}
             $active={player1ActivePowerUp}
+            $bashoNa={bashoPowerUpSlots}
             $cooldown={getPowerUpIsOnCooldown(
               player1ActivePowerUp,
               player1SnowballCooldown,
@@ -2188,50 +2317,57 @@ const UiPlayerInfo = ({
             )}
           >
             {player1ActivePowerUp && (
-              <img
-                src={getPowerUpIcon(player1ActivePowerUp)}
-                alt={player1ActivePowerUp}
-              />
+              <PowerUpIconFrame
+                $cooldown={getPowerUpIsOnCooldown(
+                  player1ActivePowerUp,
+                  player1SnowballCooldown,
+                  player1PumoArmyCooldown,
+                  player1PumoArmySpawnsRemaining
+                )}
+              >
+                <img
+                  src={getPowerUpIcon(player1ActivePowerUp)}
+                  alt={player1ActivePowerUp}
+                />
+                {renderPowerUpChargeMark(
+                  player1ActivePowerUp,
+                  player1SnowballThrowsRemaining,
+                  player1PumoArmySpawnsRemaining
+                )}
+              </PowerUpIconFrame>
             )}
-            {player1ActivePowerUp === "snowball" &&
-              Number.isFinite(player1SnowballThrowsRemaining) && (
-                <PowerUpChargeBadge>
-                  {Math.max(0, player1SnowballThrowsRemaining)}
-                </PowerUpChargeBadge>
-              )}
-            {player1ActivePowerUp === "pumo_army" &&
-              Number.isFinite(player1PumoArmySpawnsRemaining) && (
-                <PowerUpChargeBadge>
-                  {Math.max(0, player1PumoArmySpawnsRemaining)}
-                </PowerUpChargeBadge>
-              )}
           </PowerUpSlot>
         </BarRow>
 
-        <SubBarRow $isRight={false}>
-          <BarRowSpacer />
-          <RankPlaque>
-            <RankText>
-              {(player1RankLabel || "JONOKUCHI").toUpperCase()}
-            </RankText>
-          </RankPlaque>
-        </SubBarRow>
+        {!rankInTopMarks && (
+          <SubBarRow $isRight={false}>
+            <BarRowSpacer />
+            {renderRankPlaque(player1RankLabel)}
+          </SubBarRow>
+        )}
       </PlayerWing>
 
       {/* ═══ CENTER ROUND ═══ */}
-      <CenterRound $matchOver={matchOver}>
-        <RoundNum>{currentRound}</RoundNum>
-        <RoundText>ROUND</RoundText>
+      <CenterRound
+        $matchOver={matchOver}
+        $customCenter={centerContent != null}
+      >
+        {centerContent ?? (
+          <>
+            <RoundNum>{currentRound}</RoundNum>
+            <RoundText>ROUND</RoundText>
+          </>
+        )}
       </CenterRound>
 
       {/* ═══ PLAYER 2 — West (Nishi) ═══ */}
       <PlayerWing $matchOver={matchOver}>
         <NameBanner $isRight={true}>
           <WinLossRow $isRight={true}>
-            {renderCenterMarks("player2")}
+            {renderP2TopMarks()}
           </WinLossRow>
-          <NameBlock $isRight={true}>
-            <FighterName>PLAYER 2</FighterName>
+          <NameBlock $isRight={true} $alignToMarkBottom={nameAlignToMarkBottom}>
+            <FighterName>{player2Name.toUpperCase()}</FighterName>
           </NameBlock>
           <BarRowSpacer />
         </NameBanner>
@@ -2306,10 +2442,14 @@ const UiPlayerInfo = ({
                 gainKey={p2BalGainKey}
               />
             </BalStripWrap>
+            {player2SubMarks && (
+              <BoonAnchor $isRight={true}>{player2SubMarks}</BoonAnchor>
+            )}
           </GaugeStack>
           <PowerUpSlot
             key={`p2-pu-${player2ActivePowerUp || "empty"}`}
             $active={player2ActivePowerUp}
+            $bashoNa={bashoPowerUpSlots}
             $cooldown={getPowerUpIsOnCooldown(
               player2ActivePowerUp,
               player2SnowballCooldown,
@@ -2318,34 +2458,34 @@ const UiPlayerInfo = ({
             )}
           >
             {player2ActivePowerUp && (
-              <img
-                src={getPowerUpIcon(player2ActivePowerUp)}
-                alt={player2ActivePowerUp}
-              />
+              <PowerUpIconFrame
+                $cooldown={getPowerUpIsOnCooldown(
+                  player2ActivePowerUp,
+                  player2SnowballCooldown,
+                  player2PumoArmyCooldown,
+                  player2PumoArmySpawnsRemaining
+                )}
+              >
+                <img
+                  src={getPowerUpIcon(player2ActivePowerUp)}
+                  alt={player2ActivePowerUp}
+                />
+                {renderPowerUpChargeMark(
+                  player2ActivePowerUp,
+                  player2SnowballThrowsRemaining,
+                  player2PumoArmySpawnsRemaining
+                )}
+              </PowerUpIconFrame>
             )}
-            {player2ActivePowerUp === "snowball" &&
-              Number.isFinite(player2SnowballThrowsRemaining) && (
-                <PowerUpChargeBadge>
-                  {Math.max(0, player2SnowballThrowsRemaining)}
-                </PowerUpChargeBadge>
-              )}
-            {player2ActivePowerUp === "pumo_army" &&
-              Number.isFinite(player2PumoArmySpawnsRemaining) && (
-                <PowerUpChargeBadge>
-                  {Math.max(0, player2PumoArmySpawnsRemaining)}
-                </PowerUpChargeBadge>
-              )}
           </PowerUpSlot>
         </BarRow>
 
-        <SubBarRow $isRight={true}>
-          <BarRowSpacer />
-          <RankPlaque>
-            <RankText>
-              {(player2RankLabel || "JONOKUCHI").toUpperCase()}
-            </RankText>
-          </RankPlaque>
-        </SubBarRow>
+        {!rankInTopMarks && (
+          <SubBarRow $isRight={true}>
+            <BarRowSpacer />
+            {renderRankPlaque(player2RankLabel)}
+          </SubBarRow>
+        )}
       </PlayerWing>
     </HudShell>
   );
@@ -2378,6 +2518,15 @@ UiPlayerInfo.propTypes = {
   player2Balance: PropTypes.number,
   player2BalanceGain: PropTypes.number,
   matchOver: PropTypes.bool,
+  player1TopMarks: PropTypes.node,
+  player2TopMarks: PropTypes.node,
+  centerContent: PropTypes.node,
+  player2Name: PropTypes.string,
+  nameAlignToMarkBottom: PropTypes.bool,
+  bashoPowerUpSlots: PropTypes.bool,
+  rankInTopMarks: PropTypes.bool,
+  player1SubMarks: PropTypes.node,
+  player2SubMarks: PropTypes.node,
 };
 
 export default React.memo(UiPlayerInfo);

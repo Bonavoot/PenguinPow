@@ -15,7 +15,7 @@ const {
   PLAYER_2_SPAWN,
 } = require("./playerFactory");
 
-const { deriveBashoDraft } = require("./bashoDraft");
+const { deriveBashoDraft, normalizeBashoDraftList } = require("./bashoDraft");
 const { deriveStatMods } = require("./bashoStatMods");
 
 const LOBBY_COLORS = [
@@ -81,20 +81,18 @@ function handlePowerUpSelection(room, io) {
   // BASHO (§Phase 7 rework): the human drafts their power-up on the DAY card
   // BEFORE the bout (applied via basho_set_draft → applyBashoDraftToPlayer), so
   // there is NO mid-match card selection. Both fighters just run the salt-throw
-  // ritual and then auto-walk to ready. The CPU still draws a single power-up
-  // (unchanged VS CPU behavior). PvP / VS CPU fall through to the normal
-  // selection path below, fully untouched.
+  // ritual and then auto-walk to ready. The CPU uses the roster opponent's
+  // stacked loadout (applyBashoOpponentProfile) — never a random VS-CPU pick.
+  // PvP / VS CPU fall through to the normal selection path below, untouched.
   if (room.matchMode === "basho") {
     room.powerUpSelectionPhase = false;
-    const cpuPool = Object.values(POWER_UP_TYPES).filter(
-      (t) => t !== POWER_UP_TYPES.FLAP
-    );
+    const opp =
+      room.bashoOpponents && room.bashoOpponents[room.bashoBout || 0];
     room.players.forEach((player) => {
-      if (player.isCPU) {
-        applySingleSlotPowerUp(
-          player,
-          cpuPool[Math.floor(Math.random() * cpuPool.length)]
-        );
+      if (player.isCPU && opp) {
+        applyBashoOpponentProfile(player, opp);
+      } else if (!player.isCPU) {
+        applyBashoDraftToPlayer(player, room.bashoDraftList || []);
       }
       bashoSaltThrow(player, room, io);
     });
@@ -222,7 +220,7 @@ function handleSaltThrowAndPowerUp(player, room, io) {
  * human, so PvP / VS CPU never carry `bashoDraft` (the firewall).
  */
 function applyBashoDraftToPlayer(player, draftedList) {
-  const list = Array.isArray(draftedList) ? draftedList : [];
+  const list = normalizeBashoDraftList(draftedList);
   const d = deriveBashoDraft(list);
   player.draftedPowerUps = list;
   player.bashoDraft = d;

@@ -18,6 +18,7 @@ import {
   recordBout,
   isRunComplete,
   applyRunResult,
+  ensureOpponentRanks,
 } from "../lib/bashoRun";
 import {
   getDivision,
@@ -30,6 +31,10 @@ import {
   DIFFICULTY_ORDER,
   formatRank,
 } from "../config/bashoConfig";
+import {
+  applyBashoDraftPick,
+  normalizeBashoDraftList,
+} from "../config/powerUpConfig";
 import styled, { keyframes, css } from "styled-components";
 import { SocketContext } from "../SocketContext";
 
@@ -1249,7 +1254,7 @@ const MainMenu = ({
   const beginBashoBout = (pickedType) => {
     const run = bashoRunRef.current;
     if (run && pickedType) {
-      const drafted = [...(run.draftedPowerUps || []), pickedType];
+      const drafted = applyBashoDraftPick(run.draftedPowerUps || [], pickedType);
       const run2 = { ...run, draftedPowerUps: drafted };
       bashoRunRef.current = run2;
       setBashoRun({ ...run2 });
@@ -1291,16 +1296,21 @@ const MainMenu = ({
   // for a resume, the bout index to start from.
   const startBashoRun = ({ run, save }) => {
     bashoSaveRef.current = save || makeDefaultSave();
-    startDay(run);
-    bashoRunRef.current = run;
+    const runWithRanks = ensureOpponentRanks(run);
+    if (runWithRanks !== run) {
+      bashoSaveRef.current = { ...bashoSaveRef.current, bashoRun: runWithRanks };
+      writeSave(bashoSaveRef.current);
+    }
+    startDay(runWithRanks);
+    bashoRunRef.current = runWithRanks;
     boutResolvedRef.current = false;
-    setBashoRun({ ...run });
-    const opp = currentOpponent(run);
+    setBashoRun({ ...runWithRanks });
+    const opp = currentOpponent(runWithRanks);
     if (opp) {
       setPlayer2Color(opp.mawashiColor);
       setPlayer2BodyColor(opp.bodyColor || null);
     }
-    const opponents = (run.opponents || []).map((o) => ({
+    const opponents = (runWithRanks.opponents || []).map((o) => ({
       mawashiColor: o.mawashiColor,
       bodyColor: o.bodyColor ?? null,
       difficulty: o.difficulty || "HARD",
@@ -1344,7 +1354,7 @@ const MainMenu = ({
         stats,
         loadout,
         // Resume support: re-apply any picks already drafted this run.
-        draftedPowerUps: run.draftedPowerUps || [],
+        draftedPowerUps: normalizeBashoDraftList(run.draftedPowerUps || []),
       },
       opponents,
       totalBouts: run.totalBouts,
@@ -1737,7 +1747,11 @@ const MainMenu = ({
           // fights the whole basho at their entry rank; opponents are
           // division-mates, so they carry the division label.
           playerRankLabel: formatRank(bashoRun.startRank),
-          opponentRankLabel: getDivision(bashoRun.startRank)?.label,
+          opponentRankLabel: bashoOpp?.rank
+            ? formatRank(bashoOpp.rank)
+            : getDivision(bashoRun.startRank)?.label,
+          draftedPowerUps: normalizeBashoDraftList(bashoRun.draftedPowerUps || []),
+          opponentPowerUps: bashoOpp?.powerUps || [],
         }
       : null;
 
@@ -1792,10 +1806,15 @@ const MainMenu = ({
               day={bashoRun.day}
               totalBouts={bashoRun.totalBouts}
               divisionLabel={getDivision({ division: bashoRun.division }).label}
-              opponentName={currentOpponent(bashoRun)?.name}
-              opponentRecord={currentOpponent(bashoRun)?.record}
-              opponentArchetype={currentOpponent(bashoRun)?.archetype}
-              opponentIsBoss={currentOpponent(bashoRun)?.boss}
+              opponentName={bashoOpp?.name}
+              opponentRankLabel={
+                bashoOpp?.rank
+                  ? formatRank(bashoOpp.rank)
+                  : getDivision(bashoRun.startRank)?.label
+              }
+              opponentRecord={bashoOpp?.record}
+              opponentArchetype={bashoOpp?.archetype}
+              opponentIsBoss={bashoOpp?.boss}
               playerRecord={bashoRun.record}
               draftOptions={bashoDraftOptions}
               onBegin={beginBashoBout}

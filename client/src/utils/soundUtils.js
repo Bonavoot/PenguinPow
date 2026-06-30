@@ -105,7 +105,7 @@ const playPowerUpSelectionPressSound = () => {
 // Reused combat/menu cues, dialed to tasteful menu volumes. BASHO-only:
 // nothing here is wired into PvP / VS CPU flows.
 const playBashoGong = () => {
-  playBuffer(bellSound, 0.32 * getGlobalVolume());
+  playBuffer(bellSound, 0.03 * getGlobalVolume());
 };
 
 const playBashoPurseTick = () => {
@@ -113,7 +113,7 @@ const playBashoPurseTick = () => {
 };
 
 const playBashoFanfare = () => {
-  playBuffer(roundVictorySound, 0.22 * getGlobalVolume());
+  playBuffer(roundVictorySound, 0.05 * getGlobalVolume());
 };
 
 const playBashoSomber = () => {

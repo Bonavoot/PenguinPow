@@ -47,6 +47,8 @@ import { usePlayerColors } from "../context/PlayerColorContext";
 import { addShake } from "../lib/cameraShake";
 
 import UiPlayerInfo from "./UiPlayerInfo";
+import UiPlayerInfoBasho from "./UiPlayerInfoBasho";
+import { getBashoActiveDraft, toBashoHudActive } from "../config/powerUpConfig";
 import MatchOver from "./MatchOver";
 import RoundResult from "./RoundResult";
 import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
@@ -335,6 +337,10 @@ const GameFighter = ({
   isBashoMatch, // True during a BASHO bout — the run controller drives the post-bout flow, so the MatchOver/Rematch UI is suppressed here
   bashoPlayerRankLabel = null, // BASHO-only: real banzuke rank for the HUD plaque
   bashoOpponentRankLabel = null, // BASHO-only: opponent's division label for the HUD plaque
+  bashoDraftedPowerUps = null, // BASHO-only: stacked in-run power-up draft for the boon tray
+  bashoOpponentPowerUps = null, // BASHO-only: CPU rival's passive/active draft loadout
+  bashoDay = 1, // BASHO-only: current honbasho day (center HUD)
+  bashoOpponentName = null, // BASHO-only: CPU rival name for the HUD nameplate
 }) => {
   const { socket } = useContext(SocketContext);
   const { emit: emitParticles, clearRawParryBlueHold, setFrozen } = useParticles();
@@ -4836,66 +4842,86 @@ const GameFighter = ({
       {index === 0 &&
         document.getElementById("game-hud-info") &&
         createPortal(
-          <UiPlayerInfo
-            playerOneWinCount={playerOneWinCount}
-            playerTwoWinCount={playerTwoWinCount}
-            roundHistory={roundHistory}
-            roundId={uiRoundId}
-            matchOver={matchOver}
-            isPlayer1Local={isLocalPlayer}
-            player1RankLabel={bashoPlayerRankLabel}
-            player2RankLabel={bashoOpponentRankLabel}
-            player1Stamina={allPlayersData.player1?.stamina ?? 100}
-            player1ActivePowerUp={
-              allPlayersData.player1?.activePowerUp ??
-              ((allPlayersData.player1?.snowballThrowsRemaining ?? 0) > 0
-                ? "snowball"
-                : (allPlayersData.player1?.pumoArmySpawnsRemaining ?? 0) > 0
-                ? "pumo_army"
-                : null)
+          (() => {
+            const inferActiveFromState = (playerData) => {
+              if (playerData?.activePowerUp) return playerData.activePowerUp;
+              if ((playerData?.snowballThrowsRemaining ?? 0) > 0) return "snowball";
+              if ((playerData?.pumoArmySpawnsRemaining ?? 0) > 0) return "pumo_army";
+              return null;
+            };
+            const bashoHudActive = (draftList, playerData) =>
+              toBashoHudActive(
+                getBashoActiveDraft(draftList || []) ??
+                  inferActiveFromState(playerData)
+              );
+            const bashoPlayerActive = bashoHudActive(
+              bashoDraftedPowerUps,
+              allPlayersData.player1
+            );
+            const bashoOpponentActive = bashoHudActive(
+              bashoOpponentPowerUps,
+              allPlayersData.player2
+            );
+
+            const hudProps = {
+              playerOneWinCount,
+              playerTwoWinCount,
+              roundHistory,
+              roundId: uiRoundId,
+              matchOver,
+              isPlayer1Local: isLocalPlayer,
+              player1RankLabel: bashoPlayerRankLabel,
+              player2RankLabel: bashoOpponentRankLabel,
+              player1Stamina: allPlayersData.player1?.stamina ?? 100,
+              player1ActivePowerUp: isBashoMatch
+                ? bashoPlayerActive
+                : allPlayersData.player1?.activePowerUp ??
+                  inferActiveFromState(allPlayersData.player1),
+              player1SnowballCooldown:
+                allPlayersData.player1?.snowballCooldown ?? false,
+              player1SnowballThrowsRemaining:
+                allPlayersData.player1?.snowballThrowsRemaining ?? null,
+              player1PumoArmyCooldown:
+                allPlayersData.player1?.pumoArmyCooldown ?? false,
+              player1PumoArmySpawnsRemaining:
+                allPlayersData.player1?.pumoArmySpawnsRemaining ?? null,
+              player1IsGassed: allPlayersData.player1?.isGassed ?? false,
+              player1ParryRefund: p1ParryRefund,
+              player1Balance: allPlayersData.player1?.balance ?? 100,
+              player1BalanceGain: p1BalanceGain,
+              player2Stamina: allPlayersData.player2?.stamina ?? 100,
+              player2ActivePowerUp: isBashoMatch
+                ? bashoOpponentActive
+                : allPlayersData.player2?.activePowerUp ??
+                  inferActiveFromState(allPlayersData.player2),
+              player2SnowballCooldown:
+                allPlayersData.player2?.snowballCooldown ?? false,
+              player2SnowballThrowsRemaining:
+                allPlayersData.player2?.snowballThrowsRemaining ?? null,
+              player2PumoArmyCooldown:
+                allPlayersData.player2?.pumoArmyCooldown ?? false,
+              player2PumoArmySpawnsRemaining:
+                allPlayersData.player2?.pumoArmySpawnsRemaining ?? null,
+              player2IsGassed: allPlayersData.player2?.isGassed ?? false,
+              player2ParryRefund: p2ParryRefund,
+              player2Balance: allPlayersData.player2?.balance ?? 100,
+              player2BalanceGain: p2BalanceGain,
+            };
+
+            if (isBashoMatch) {
+              return (
+                <UiPlayerInfoBasho
+                  {...hudProps}
+                  bashoDraftedPowerUps={bashoDraftedPowerUps || []}
+                  bashoOpponentPowerUps={bashoOpponentPowerUps || []}
+                  bashoDay={bashoDay}
+                  bashoOpponentName={bashoOpponentName}
+                />
+              );
             }
-            player1SnowballCooldown={
-              allPlayersData.player1?.snowballCooldown ?? false
-            }
-            player1SnowballThrowsRemaining={
-              allPlayersData.player1?.snowballThrowsRemaining ?? null
-            }
-            player1PumoArmyCooldown={
-              allPlayersData.player1?.pumoArmyCooldown ?? false
-            }
-            player1PumoArmySpawnsRemaining={
-              allPlayersData.player1?.pumoArmySpawnsRemaining ?? null
-            }
-            player1IsGassed={allPlayersData.player1?.isGassed ?? false}
-            player1ParryRefund={p1ParryRefund}
-            player1Balance={allPlayersData.player1?.balance ?? 100}
-            player1BalanceGain={p1BalanceGain}
-            player2Stamina={allPlayersData.player2?.stamina ?? 100}
-            player2ActivePowerUp={
-              allPlayersData.player2?.activePowerUp ??
-              ((allPlayersData.player2?.snowballThrowsRemaining ?? 0) > 0
-                ? "snowball"
-                : (allPlayersData.player2?.pumoArmySpawnsRemaining ?? 0) > 0
-                ? "pumo_army"
-                : null)
-            }
-            player2SnowballCooldown={
-              allPlayersData.player2?.snowballCooldown ?? false
-            }
-            player2SnowballThrowsRemaining={
-              allPlayersData.player2?.snowballThrowsRemaining ?? null
-            }
-            player2PumoArmyCooldown={
-              allPlayersData.player2?.pumoArmyCooldown ?? false
-            }
-            player2PumoArmySpawnsRemaining={
-              allPlayersData.player2?.pumoArmySpawnsRemaining ?? null
-            }
-            player2IsGassed={allPlayersData.player2?.isGassed ?? false}
-            player2ParryRefund={p2ParryRefund}
-            player2Balance={allPlayersData.player2?.balance ?? 100}
-            player2BalanceGain={p2BalanceGain}
-          />,
+
+            return <UiPlayerInfo {...hudProps} />;
+          })(),
           document.getElementById("game-hud-info")
         )}
 
@@ -5429,6 +5455,10 @@ GameFighter.propTypes = {
   isBashoMatch: PropTypes.bool,
   bashoPlayerRankLabel: PropTypes.string,
   bashoOpponentRankLabel: PropTypes.string,
+  bashoDraftedPowerUps: PropTypes.arrayOf(PropTypes.string),
+  bashoOpponentPowerUps: PropTypes.arrayOf(PropTypes.string),
+  bashoDay: PropTypes.number,
+  bashoOpponentName: PropTypes.string,
 };
 
 // Optimize the component with React.memo
@@ -5464,6 +5494,12 @@ export default React.memo(GameFighter, (prevProps, nextProps) => {
     // a measured ~70-90ms transition stall for zero visual change. Input gating
     // for selection lives in Game.jsx, not here.
     prevProps.isCPUMatch === nextProps.isCPUMatch &&
-    prevProps.isBashoMatch === nextProps.isBashoMatch
+    prevProps.isBashoMatch === nextProps.isBashoMatch &&
+    prevProps.bashoPlayerRankLabel === nextProps.bashoPlayerRankLabel &&
+    prevProps.bashoOpponentRankLabel === nextProps.bashoOpponentRankLabel &&
+    prevProps.bashoDraftedPowerUps === nextProps.bashoDraftedPowerUps &&
+    prevProps.bashoOpponentPowerUps === nextProps.bashoOpponentPowerUps &&
+    prevProps.bashoDay === nextProps.bashoDay &&
+    prevProps.bashoOpponentName === nextProps.bashoOpponentName
   );
 });

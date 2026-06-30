@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import styled, { keyframes, css } from "styled-components";
 import { FONT_DISPLAY, FONT_KANJI, FONT_BODY, C } from "./menuTheme";
-import roundDefeatSound from "../sounds/round-defeat-sound.mp3";
+import daySound from "../sounds/day-sound.ogg";
 import { playBuffer } from "../utils/audioEngine";
 import { getGlobalVolume } from "./Settings";
 import {
@@ -216,6 +216,14 @@ const OpponentName = styled.span`
     css`
       text-shadow: 0 0 18px rgba(232, 197, 71, 0.45);
     `}
+`;
+
+const OpponentRank = styled.span`
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(0.65rem, 1.5vmin, 0.95rem);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: ${C.gold};
 `;
 
 // Rival fighting-style tag (archetype kanji + label) shown under the name.
@@ -626,6 +634,7 @@ function DayCard({
   totalBouts,
   divisionLabel,
   opponentName,
+  opponentRankLabel,
   opponentRecord,
   opponentArchetype,
   opponentIsBoss,
@@ -662,7 +671,7 @@ function DayCard({
     if (playedRef.current) return;
     playedRef.current = true;
     try {
-      playBuffer(roundDefeatSound, 0.18 * getGlobalVolume());
+      playBuffer(daySound, 0.18 * getGlobalVolume());
     } catch {
       /* sound is non-critical */
     }
@@ -717,6 +726,9 @@ function DayCard({
           <Versus>
             <VsLabel>{opponentIsBoss ? "Division Gatekeeper" : "Next Opponent"}</VsLabel>
             <OpponentName $boss={opponentIsBoss}>{opponentName}</OpponentName>
+            {opponentRankLabel && (
+              <OpponentRank>{opponentRankLabel}</OpponentRank>
+            )}
             {opponentIsBoss && <BossBadge>Boss</BossBadge>}
             {archetypeMeta && (
               <StyleTag>
@@ -802,6 +814,7 @@ DayCard.propTypes = {
   totalBouts: PropTypes.number,
   divisionLabel: PropTypes.string,
   opponentName: PropTypes.string,
+  opponentRankLabel: PropTypes.string,
   opponentRecord: PropTypes.shape({
     wins: PropTypes.number,
     losses: PropTypes.number,
