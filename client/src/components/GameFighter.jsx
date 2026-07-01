@@ -85,6 +85,7 @@ import {
   saltBasketEmpty,
   snowball,
   attackSound,
+  palmThrustWhiffSound,
   hitSound,
   dodgeSound,
   throwSound,
@@ -343,7 +344,7 @@ const GameFighter = ({
   bashoOpponentName = null, // BASHO-only: CPU rival name for the HUD nameplate
 }) => {
   const { socket } = useContext(SocketContext);
-  const { emit: emitParticles, clearRawParryBlueHold, setFrozen } = useParticles();
+  const { emit: emitParticles, clearRawParryBlueHold, clearPalmThrust, setFrozen } = useParticles();
 
   // ============================================
   // SPRITE RECOLORING STATE
@@ -2226,6 +2227,13 @@ const GameFighter = ({
           prev.isRawParryStun !== newState.isRawParryStun ||
           prev.grabState !== newState.grabState ||
           prev.isSlapAttack !== newState.isSlapAttack ||
+          prev.isPalmThrust !== newState.isPalmThrust ||
+          // Per-thrust VFX nonce — MUST force a commit so the palm-thrust cone
+          // fires on EVERY thrust. Without it, a buffered thrust (isAttacking
+          // already latched true) or a locally-predicted first thrust would
+          // bump the id on a frame with no other discrete change, the commit
+          // would be skipped, and the cone would be dropped or delayed.
+          prev.palmThrustFxId !== newState.palmThrustFxId ||
           prev.chargeAttackPower !== newState.chargeAttackPower ||
           // CRITICAL: Movement/animation states (affects sprite selection)
           prev.isStrafing !== newState.isStrafing || // Controls waddle animation!
@@ -3109,17 +3117,22 @@ const GameFighter = ({
   // to prevent duplicate listeners and cleanup race conditions
 
   useEffect(() => {
-    // Trigger sound for charged attacks (non-slap attacks)
+    // Trigger swing sound for non-slap attacks. Palm thrust gets its own
+    // dedicated whiff sound; charged attacks keep the generic attack sound.
     if (
       penguin.isAttacking &&
       !penguin.isSlapAttack &&
       !lastAttackState.current
     ) {
-      playSound(attackSound, 0.05);
+      if (penguin.isPalmThrust) {
+        playSound(palmThrustWhiffSound, 0.05, null, 1.0, xToPan(penguin.x));
+      } else {
+        playSound(attackSound, 0.05);
+      }
     }
     // Update the last attack state
     lastAttackState.current = penguin.isAttacking && !penguin.isSlapAttack;
-  }, [penguin.isAttacking, penguin.isSlapAttack]);
+  }, [penguin.isAttacking, penguin.isSlapAttack, penguin.isPalmThrust]);
 
   // Separate effect for slap attack sounds based on slapAnimation changes
   useEffect(() => {
@@ -3815,6 +3828,63 @@ const GameFighter = ({
     }
     prevSidestepRecovery.current = penguin.isSidestepRecovery;
   }, [penguin.isSidestepRecovery, emitParticles]);
+
+  // ─────────────────────────────────────────────────────────────────
+  // OPEN-PALM THRUST VFX — force cone
+  //
+  // Fires on every change of palmThrustFxId — a server counter bumped once
+  // per executed thrust. We can't key off the isPalmThrust rising edge:
+  // buffered back+mouse1 spam runs the next thrust while isPalmThrust is
+  // still latched true, so the client never sees false→true and would skip
+  // the buffered cones. The counter changes on every execution → one cone
+  // per thrust, always.
+  //
+  // The preset carries its own lead delay so the cone bloom lands as the arm
+  // reaches full extension (~end of the ~90ms startup). We center on the
+  // sprite exactly like the hit-spark (x + 70 + facingOffsetPx), and pass
+  // dir = -facing — the authoritative forward screen-x direction (see the
+  // auto-facing in gameFunctions) — so the cone always erupts toward the
+  // opponent, never backward.
+  // ─────────────────────────────────────────────────────────────────
+  const prevPalmThrustFxId = useRef(null);
+  useEffect(() => {
+    const fxId = penguin.palmThrustFxId || 0;
+    // Sync (don't fire) on first mount / round remount so a stale non-zero
+    // counter from a prior round can't spawn a phantom cone.
+    if (prevPalmThrustFxId.current === null) {
+      prevPalmThrustFxId.current = fxId;
+      return;
+    }
+    if (fxId !== prevPalmThrustFxId.current) {
+      prevPalmThrustFxId.current = fxId;
+      if (fxId > 0) {
+        const pos = interpolatedPositionRef.current;
+        const px = pos?.x ?? penguin.x;
+        const facing = penguin.facing ?? -1;
+        const facingOffsetPx = (facing === 1 ? -8 : -3) * 12.8;
+        emitParticles("palmThrust", {
+          x: px + 70 + facingOffsetPx,
+          y: PLAYER_MID_Y,
+          dir: -facing,
+          owner: penguin.id,
+        });
+      }
+    }
+  }, [penguin.palmThrustFxId, penguin.facing, penguin.x, emitParticles]);
+
+  // Clear a lingering force cone the instant THIS player gets hit (i.e. gets
+  // punished for whiffing the thrust). Scoped to penguin.id so the cone is
+  // only wiped when its OWNER is hit — NOT when the owner's thrust connects
+  // and the opponent's isHit fires (that global wipe made the cone vanish the
+  // moment it hit). A whiffed cone otherwise hangs frozen mid-air during the
+  // punish's hitstop while the thruster is knocked into a different pose.
+  const prevPalmHitClear = useRef(false);
+  useEffect(() => {
+    if (penguin.isHit && !prevPalmHitClear.current) {
+      clearPalmThrust(penguin.id);
+    }
+    prevPalmHitClear.current = penguin.isHit;
+  }, [penguin.isHit, penguin.id, clearPalmThrust]);
 
   useEffect(() => {
     const STRAFE_VOL = 0.015 * getGlobalVolume();
@@ -4631,7 +4701,8 @@ const GameFighter = ({
     penguin.isFlapping,
     penguin.flapPhase,
     flapFrame,
-    flapUseDodgePose
+    flapUseDodgePose,
+    displayPenguin.isPalmThrust
   );
 
   // Hold previous sprite briefly when transitioning to idle to prevent

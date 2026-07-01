@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import styled, { keyframes, css } from "styled-components";
 import { FONT_DISPLAY, FONT_KANJI, FONT_BODY, C } from "./menuTheme";
@@ -22,11 +22,11 @@ import { AI_ARCHETYPES } from "../config/bashoConfig";
  * DRAFTS this bout's power-up before stepping onto the dohyo.
  *
  * Layout: a TWO-COLUMN stage — run framing (day / division / opponent /
- * record) on the left, the draft + Begin/Withdraw actions on the right. The
- * earlier single tall centered column overflowed at full-screen (the Withdraw
- * link fell off the bottom); splitting the content into two columns roughly
- * halves the vertical footprint so everything fits, and the whole stage still
- * lives in a scroll-safe shell as a last resort on very short viewports.
+ * record) on the left, the draft + Begin/Withdraw actions on the right.
+ * The stage never wraps to a single column; long opponent names wrap/shrink
+ * inside the left column. The stage keeps a fixed design size and scales
+ * uniformly to fill as much of the viewport as possible — never wrapping
+ * to a single column and never leaving empty margins.
  *
  * The draft cards are lifted verbatim from PowerUpSelection (the cream washi
  * trading-card surface: colored art panel, letterpress name, usage hanko) so
@@ -45,7 +45,7 @@ const DRAFT_INFO = {
   },
   power: {
     name: "Power Water",
-    description: "+20% knockback",
+    description: "+5% knockback",
     icon: powerWaterIcon,
     active: false,
   },
@@ -117,7 +117,7 @@ const Screen = styled.div`
   position: fixed;
   inset: 0;
   z-index: 12000;
-  overflow-y: auto;
+  overflow: hidden;
   background:
     radial-gradient(120% 90% at 50% 14%, rgba(40, 30, 18, 0.35) 0%, rgba(0, 0, 0, 0) 55%),
     #050505;
@@ -126,16 +126,26 @@ const Screen = styled.div`
   user-select: none;
 `;
 
-const Stage = styled.div`
-  min-height: 100%;
+const StageScaler = styled.div`
+  width: 100%;
+  height: 100%;
   display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: clamp(1.4rem, 5vw, 4rem);
-  padding: clamp(1.2rem, 4vmin, 2.6rem) clamp(1.4rem, 5vw, 3.5rem);
+  overflow: hidden;
+`;
+
+const Stage = styled.div`
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  gap: 3rem;
+  padding: 2.4rem 3rem;
   box-sizing: border-box;
+  transform-origin: center center;
+  will-change: transform;
 `;
 
 // ── LEFT: RUN FRAMING ───────────────────────────────────────────────────────
@@ -144,15 +154,17 @@ const InfoCol = styled.div`
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: clamp(0.3rem, 1.2vmin, 0.7rem);
-  flex: 0 1 auto;
+  gap: 0.55rem;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 480px;
 `;
 
 const KickerRow = styled.div`
   display: flex;
   align-items: center;
   gap: 0.9rem;
-  font-size: clamp(0.6rem, 1.3vmin, 0.86rem);
+  font-size: 0.82rem;
   letter-spacing: 0.4em;
   text-transform: uppercase;
   color: ${C.creamMute};
@@ -160,14 +172,14 @@ const KickerRow = styled.div`
 `;
 
 const KickerRule = styled.span`
-  width: clamp(20px, 4vw, 48px);
+  width: 40px;
   height: 1px;
   background: ${C.creamFaint};
 `;
 
 const DayKanji = styled.div`
   font-family: ${FONT_KANJI};
-  font-size: clamp(1.4rem, 4vmin, 2.4rem);
+  font-size: 2.2rem;
   font-weight: 700;
   color: ${C.gold};
   letter-spacing: 0.12em;
@@ -177,14 +189,14 @@ const DayKanji = styled.div`
 
 const DayNumber = styled.div`
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(2.6rem, 9vmin, 5.4rem);
+  font-size: 5rem;
   line-height: 0.9;
   color: ${C.cream};
   animation: ${fadeUp} 0.6s ease both 0.08s;
 `;
 
 const DivisionLine = styled.div`
-  font-size: clamp(0.7rem, 1.7vmin, 1rem);
+  font-size: 0.92rem;
   letter-spacing: 0.3em;
   text-transform: uppercase;
   color: ${C.iceBright};
@@ -192,16 +204,18 @@ const DivisionLine = styled.div`
 `;
 
 const Versus = styled.div`
-  margin-top: clamp(0.4rem, 1.6vmin, 1rem);
+  margin-top: 0.75rem;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.25rem;
+  width: 100%;
+  max-width: 100%;
   animation: ${fadeUp} 0.6s ease both 0.24s;
 `;
 
 const VsLabel = styled.span`
-  font-size: clamp(0.58rem, 1.2vmin, 0.78rem);
+  font-size: 0.72rem;
   letter-spacing: 0.4em;
   text-transform: uppercase;
   color: ${C.creamMute};
@@ -209,7 +223,12 @@ const VsLabel = styled.span`
 
 const OpponentName = styled.span`
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(1.3rem, 4vmin, 2.3rem);
+  font-size: ${({ $compact }) => ($compact ? "1.55rem" : "2rem")};
+  line-height: 1.12;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  hyphens: auto;
   color: ${({ $boss }) => ($boss ? C.gold : C.vermillionBright)};
   ${({ $boss }) =>
     $boss &&
@@ -220,7 +239,7 @@ const OpponentName = styled.span`
 
 const OpponentRank = styled.span`
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.65rem, 1.5vmin, 0.95rem);
+  font-size: 0.9rem;
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: ${C.gold};
@@ -232,7 +251,7 @@ const StyleTag = styled.span`
   align-items: center;
   gap: 0.4rem;
   font-family: ${FONT_BODY};
-  font-size: clamp(0.5rem, 1vmin, 0.66rem);
+  font-size: 0.62rem;
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: ${C.creamMute};
@@ -251,7 +270,7 @@ const StyleTag = styled.span`
 // Gold "gatekeeper" badge that marks a division boss.
 const BossBadge = styled.span`
   font-family: ${FONT_BODY};
-  font-size: clamp(0.5rem, 1vmin, 0.66rem);
+  font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 0.3em;
   text-transform: uppercase;
@@ -265,8 +284,8 @@ const BossBadge = styled.span`
 
 const Records = styled.div`
   display: flex;
-  gap: clamp(1.4rem, 5vw, 2.8rem);
-  margin-top: clamp(0.3rem, 1.2vmin, 0.8rem);
+  gap: 2.4rem;
+  margin-top: 0.55rem;
   animation: ${fadeUp} 0.6s ease both 0.3s;
 `;
 
@@ -274,6 +293,8 @@ const RecordCol = styled.div`
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
+  min-width: 0;
+  max-width: min(22vw, 220px);
 `;
 
 const RecordWho = styled.span`
@@ -281,11 +302,15 @@ const RecordWho = styled.span`
   letter-spacing: 0.26em;
   text-transform: uppercase;
   color: ${C.creamMute};
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 `;
 
 const RecordVal = styled.span`
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(1rem, 2.8vmin, 1.6rem);
+  font-size: 1.45rem;
   color: ${C.cream};
 `;
 
@@ -294,12 +319,13 @@ const DraftCol = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(0.7rem, 2vmin, 1.3rem);
-  flex: 0 1 auto;
+  gap: 1.1rem;
+  flex: 0 0 auto;
+  min-width: 0;
 `;
 
 const DraftLabel = styled.div`
-  font-size: clamp(0.64rem, 1.4vmin, 0.9rem);
+  font-size: 0.84rem;
   letter-spacing: 0.34em;
   text-transform: uppercase;
   color: ${C.gold};
@@ -308,12 +334,11 @@ const DraftLabel = styled.div`
 
 const CardsRow = styled.div`
   display: flex;
-  gap: clamp(12px, 1.6vw, 22px);
+  gap: 18px;
   justify-content: center;
   align-items: stretch;
   flex-wrap: nowrap;
-  /* Reserve room for the hover/selected lift so cards don't clip. */
-  padding-top: clamp(14px, 2vmin, 22px);
+  padding-top: 18px;
 `;
 
 // Card surface — copied from PowerUpSelection.PowerCard (cream washi trading
@@ -325,7 +350,7 @@ const PowerCard = styled.button`
 
   position: relative;
   flex: 0 0 auto;
-  width: clamp(116px, 12.5vw, 152px);
+  width: 148px;
   aspect-ratio: 5 / 6;
   display: flex;
   flex-direction: column;
@@ -494,20 +519,20 @@ const Actions = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(0.45rem, 1.4vmin, 0.9rem);
-  margin-top: clamp(0.3rem, 1.2vmin, 0.8rem);
+  gap: 0.65rem;
+  margin-top: 0.5rem;
   animation: ${fadeUp} 0.6s ease both 0.5s;
 `;
 
 const BeginButton = styled.button`
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.95rem, 2.2vmin, 1.4rem);
+  font-size: 1.25rem;
   letter-spacing: 0.08em;
   color: #1a1205;
   background: linear-gradient(160deg, ${C.gold} 0%, ${C.goldDeep} 100%);
   border: none;
   border-radius: 10px;
-  padding: clamp(0.6rem, 1.6vmin, 0.95rem) clamp(2rem, 6vw, 3.2rem);
+  padding: 0.85rem 2.8rem;
   cursor: pointer;
   box-shadow: 0 10px 30px rgba(232, 197, 71, 0.28);
   transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease,
@@ -530,7 +555,7 @@ const BeginButton = styled.button`
 `;
 
 const BeginHint = styled.div`
-  font-size: clamp(0.58rem, 1.2vmin, 0.78rem);
+  font-size: 0.72rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: ${C.creamFaint};
@@ -539,7 +564,7 @@ const BeginHint = styled.div`
 
 const WithdrawLink = styled.button`
   font-family: ${FONT_BODY};
-  font-size: clamp(0.6rem, 1.2vmin, 0.8rem);
+  font-size: 0.74rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: ${C.creamMute};
@@ -629,6 +654,42 @@ function fmtRecord(r) {
   return `${r?.wins ?? 0}–${r?.losses ?? 0}`;
 }
 
+/** Scale the fixed-size stage to fill the viewport as much as possible. */
+function useStageFillScale(stageRef, deps = []) {
+  const [scale, setScale] = useState(1);
+
+  const recompute = useCallback(() => {
+    const stage = stageRef.current;
+    const screen = stage?.parentElement?.parentElement;
+    if (!stage || !screen) return;
+
+    stage.style.transform = "scale(1)";
+    const pad = 12;
+    const sx = (screen.clientWidth - pad) / stage.scrollWidth;
+    const sy = (screen.clientHeight - pad) / stage.scrollHeight;
+    setScale(Math.min(sx, sy));
+  }, [stageRef]);
+
+  useLayoutEffect(() => {
+    recompute();
+    const stage = stageRef.current;
+    const screen = stage?.parentElement?.parentElement;
+    if (!stage || !screen) return undefined;
+
+    const ro = new ResizeObserver(recompute);
+    ro.observe(stage);
+    ro.observe(screen);
+    window.addEventListener("resize", recompute);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", recompute);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recompute, ...deps]);
+
+  return scale;
+}
+
 function DayCard({
   day,
   totalBouts,
@@ -663,9 +724,17 @@ function DayCard({
   const [confirming, setConfirming] = useState(false);
   const [picked, setPicked] = useState(null);
   const playedRef = useRef(false);
+  const stageRef = useRef(null);
 
   const options = Array.isArray(draftOptions) ? draftOptions : [];
   const draftReady = options.length === 0 || picked != null;
+  const compactName = (opponentName?.length ?? 0) > 18;
+  const stageScale = useStageFillScale(stageRef, [
+    confirming,
+    options.length,
+    opponentName,
+    picked,
+  ]);
 
   useEffect(() => {
     if (playedRef.current) return;
@@ -690,31 +759,34 @@ function DayCard({
   if (confirming) {
     return (
       <Screen>
-        <Stage>
-          <ConfirmBox>
-            <ConfirmTitle>Withdraw — Kyūjō</ConfirmTitle>
-            <ConfirmText>
-              Withdraw from the basho? Your banzuke movement is resolved on your
-              current record ({fmtRecord(playerRecord)}). This ends the run.
-            </ConfirmText>
-            <ConfirmButtons>
-              <SmallButton onClick={() => setConfirming(false)}>
-                Keep Fighting
-              </SmallButton>
-              <SmallButton $danger onClick={onWithdraw}>
-                Withdraw
-              </SmallButton>
-            </ConfirmButtons>
-          </ConfirmBox>
-        </Stage>
+        <StageScaler>
+          <Stage ref={stageRef} style={{ transform: `scale(${stageScale})` }}>
+            <ConfirmBox>
+              <ConfirmTitle>Withdraw — Kyūjō</ConfirmTitle>
+              <ConfirmText>
+                Withdraw from the basho? Your banzuke movement is resolved on your
+                current record ({fmtRecord(playerRecord)}). This ends the run.
+              </ConfirmText>
+              <ConfirmButtons>
+                <SmallButton onClick={() => setConfirming(false)}>
+                  Keep Fighting
+                </SmallButton>
+                <SmallButton $danger onClick={onWithdraw}>
+                  Withdraw
+                </SmallButton>
+              </ConfirmButtons>
+            </ConfirmBox>
+          </Stage>
+        </StageScaler>
       </Screen>
     );
   }
 
   return (
     <Screen>
-      <Stage>
-        <InfoCol>
+      <StageScaler>
+        <Stage ref={stageRef} style={{ transform: `scale(${stageScale})` }}>
+          <InfoCol>
           <KickerRow>
             <KickerRule />
             Honbasho · Day {day} of {totalBouts}
@@ -725,7 +797,9 @@ function DayCard({
           <DivisionLine>{divisionLabel}</DivisionLine>
           <Versus>
             <VsLabel>{opponentIsBoss ? "Division Gatekeeper" : "Next Opponent"}</VsLabel>
-            <OpponentName $boss={opponentIsBoss}>{opponentName}</OpponentName>
+            <OpponentName $boss={opponentIsBoss} $compact={compactName}>
+              {opponentName}
+            </OpponentName>
             {opponentRankLabel && (
               <OpponentRank>{opponentRankLabel}</OpponentRank>
             )}
@@ -804,7 +878,8 @@ function DayCard({
             )}
           </Actions>
         </DraftCol>
-      </Stage>
+        </Stage>
+      </StageScaler>
     </Screen>
   );
 }

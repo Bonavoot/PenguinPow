@@ -989,6 +989,39 @@ function generateTextures(s) {
     glassShard4: createGlassShard(r(64), 7129),
     glassFleck: createChunk(r(6), 255, 250, 220, 1.0),
 
+    // ── OPEN-PALM THRUST — force-cone textures ──────────────────────
+    // Warm energy rings (yellow → orange) for the palm-thrust cone.
+    // Crisp glowing rings with a soft halo; the preset renders them as
+    // strongly side-tilted ellipses (small stretchX) so the stacked
+    // rings read as a 3D cone viewed down the thrust axis — same faux-3D
+    // idiom as the hit-effect ring, tilted further onto its side. Three
+    // temperature tiers so the cone graduates from a hot yellow TIP to a
+    // deeper orange BASE near the hand.
+    palmThrustRingHot: createCrispRing(r(150), {
+      stroke: [255, 242, 156], strokeAlpha: 1.0,
+      glow: [255, 212, 96], glowAlpha: 0.78,
+      core: [255, 205, 90], coreAlpha: 0.1,
+      simple: false, crisp: false, thin: false,
+    }),
+    palmThrustRingMid: createCrispRing(r(150), {
+      stroke: [255, 206, 92], strokeAlpha: 1.0,
+      glow: [255, 162, 56], glowAlpha: 0.72,
+      core: [255, 150, 48], coreAlpha: 0.08,
+      simple: false, crisp: false, thin: false,
+    }),
+    palmThrustRingWarm: createCrispRing(r(150), {
+      stroke: [255, 158, 62], strokeAlpha: 1.0,
+      glow: [255, 120, 38], glowAlpha: 0.66,
+      core: [255, 100, 30], coreAlpha: 0.06,
+      simple: false, crisp: false, thin: false,
+    }),
+    // Warm white-gold flash — the "bang" of light at the palm contact.
+    palmThrustFlash: createFlashBloom(r(170), 255, 216, 132),
+    // Warm speed-line for the forward streaks lancing through the cone.
+    palmThrustStreak: createSpeedLine(r(96), r(4), 255, 206, 112, 0.95),
+    // Warm pinpoint spark for the forward sparkle at the strike tip.
+    palmThrustSpark: createChunk(r(9), 255, 222, 132, 1.0),
+
   };
 }
 
@@ -1054,6 +1087,148 @@ function emitImpactSparks(engine, cx, cy, {
 }
 
 const PRESETS = {
+
+  // ── OPEN-PALM THRUST — force cone ──────────────────────────────────
+  // A cone of yellow→orange energy rings that ERUPTS forward from the
+  // palm on a hard open-palm thrust. Reads as a directed shove of force:
+  // the SMALL tip ring snaps in first out at the strike point, then
+  // BIGGER rings fill in behind it back toward the hand (a funnel that
+  // focuses to the tip). Each ring is a strongly side-tilted ellipse
+  // (small stretchX) so the stack looks like a 3D cone viewed down the
+  // thrust axis — the hit-effect ring's faux-3D idiom, tilted further
+  // onto its side per design. A warm core flash + forward streaks and
+  // sparks sell the contact bang and real motion through the cone.
+  //
+  //   x, y  — thrust ORIGIN in game space (sprite center, chest height).
+  //           Caller passes the exact center the hit-spark uses.
+  //   dir   — forward SCREEN-x sign (+1 = right, -1 = left). Caller passes
+  //           -facing (the authoritative forward, see gameFunctions
+  //           auto-facing) so the cone ALWAYS fires toward the opponent,
+  //           never backward.
+  palmThrust(engine, { x, y, dir = 1, owner = null }) {
+    const cx = x;
+    const cy = GAME_H - y;
+    const d = dir >= 0 ? 1 : -1;
+    const T = engine.textures;
+
+    // No artificial lead: the cone fires when the server confirms the thrust,
+    // which already lands ~a network hop into the move — adding a lead on top
+    // made it read as appearing AFTER the strike. Spawn immediately.
+    const LEAD = 0;
+
+    // ── PALM ANCHOR ────────────────────────────────────────────────
+    // The rings are born AT the flipper palm — forward of body center and
+    // raised to ~shoulder height (the slap1 pose extends the flipper
+    // up-and-forward). Everything anchors here so the effect hugs the
+    // player instead of floating out as a giant tunnel.
+    const PALM_FWD = 50; // px forward from body center to the palm
+    const PALM_UP = -6;  // px up from chest to the raised flipper (negative = lower)
+    const palmX = cx + d * PALM_FWD;
+    const palmY = cy - PALM_UP;
+
+    // ── CORE FLASH — the "bang" of contact right at the palm. Pops then
+    // snaps away fast so it reads as a flash, not a lingering blob.
+    engine.spawn({
+      x: palmX, y: palmY,
+      vx: d * 30, vy: 0, gravity: 0, drag: 0.9,
+      size: 30, sizeEnd: 74,
+      alpha: 0.95, alphaEnd: 0,
+      rotation: 0, rotationSpeed: 0,
+      ease: "outCubic", easeAlpha: "outCubic",
+      maxLife: 0.2, delay: LEAD,
+      texture: T.palmThrustFlash,
+      stretchX: 1.1,
+      blendMode: "lighter",
+      aboveFighters: true,
+      palmThrustFx: true,
+      palmThrustOwner: owner,
+    });
+
+    // ── THE CONE OF RINGS ──────────────────────────────────────────
+    // Rings SPAWN at the palm and stack BACK toward the body, growing as
+    // they go — reads as the force blooming out of the flipper. i = 0 is
+    // the small leading ring right at the palm; each ring behind it steps
+    // back (into the player) and gets bigger. Sizes/warmth graduate
+    // palm → body.
+    const N = 3;
+    const STEP = 28;       // px each ring steps back from the palm toward the body
+    const SIZE_TIP = 54;   // ellipse HEIGHT of the ring at the palm (smallest)
+    const SIZE_BASE = 126; // ellipse HEIGHT of the rearmost ring (~70% penguin height)
+    const TILT_X = 0.43;   // strong side tilt → tall/narrow 3D ring
+    const STAGGER = 0.03;  // palm-first reveal cadence
+
+    for (let i = 0; i < N; i++) {
+      const t = i / (N - 1); // 0 = palm ring, 1 = rearmost ring
+      const ringX = palmX - d * i * STEP;
+      const size = SIZE_TIP + (SIZE_BASE - SIZE_TIP) * t;
+      const tex =
+        i === 0 ? T.palmThrustRingHot
+        : i === N - 1 ? T.palmThrustRingWarm
+        : T.palmThrustRingMid;
+      engine.spawn({
+        x: ringX, y: palmY + rand(-2, 2),
+        vx: d * rand(25, 55), vy: 0, gravity: 0, drag: 0.9,
+        size: size * 0.82, sizeEnd: size * 1.12,
+        alpha: 1, alphaEnd: 0,
+        rotation: rand(-0.04, 0.04), rotationSpeed: 0,
+        ease: "outCubic", easeAlpha: "inCubic",
+        maxLife: 0.3 + t * 0.06,
+        delay: LEAD + i * STAGGER,
+        texture: tex,
+        stretchX: TILT_X,
+        blendMode: "lighter",
+        aboveFighters: true,
+        palmThrustFx: true,
+        palmThrustOwner: owner,
+      });
+    }
+
+    // ── FORWARD STREAKS — short warm speed lines lancing forward off the
+    // palm along the thrust axis. Give the burst real forward motion.
+    for (let i = 0; i < 4; i++) {
+      engine.spawn({
+        x: palmX + d * rand(0, 20), y: palmY + rand(-24, 24),
+        vx: d * rand(420, 640), vy: rand(-8, 8),
+        gravity: 0, drag: 0.9,
+        size: rand(2.5, 4.5), sizeEnd: rand(1.2, 2),
+        alpha: rand(0.8, 1), alphaEnd: 0,
+        rotation: 0, rotationSpeed: 0,
+        ease: "outCubic", easeAlpha: "outQuad",
+        maxLife: rand(0.12, 0.18),
+        delay: LEAD + rand(0, 0.03),
+        texture: T.palmThrustStreak,
+        stretchX: rand(9, 14),
+        blendMode: "lighter",
+        aboveFighters: true,
+        palmThrustFx: true,
+        palmThrustOwner: owner,
+      });
+    }
+
+    // ── SPARKS — a few warm pinpoints spitting forward off the palm with
+    // spread for that premium sparkle.
+    for (let i = 0; i < 7; i++) {
+      const ang = (d === 1 ? 0 : Math.PI) + rand(-0.5, 0.5);
+      const spd = rand(150, 340);
+      const size = rand(3, 6);
+      engine.spawn({
+        x: palmX + d * rand(6, 44), y: palmY + rand(-16, 16),
+        vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - 20,
+        gravity: 240, drag: 0.9,
+        size, sizeEnd: size * 0.35,
+        alpha: 1, alphaEnd: 0,
+        rotation: ang, rotationSpeed: 0,
+        ease: "outCubic", easeAlpha: "outQuad",
+        maxLife: rand(0.16, 0.28),
+        delay: LEAD + rand(0, 0.04),
+        texture: T.palmThrustSpark,
+        blendMode: "lighter",
+        aboveFighters: true,
+        palmThrustFx: true,
+        palmThrustOwner: owner,
+      });
+    }
+  },
 
   // Fired once at dash start — smoke puffs, speed lines, ice chips, and burst ring
   dashStart(engine, { x, y, direction, facing }) {
@@ -3864,6 +4039,27 @@ export class ParticleEngine {
     }
   }
 
+  /**
+   * Removes in-flight palm-thrust force-cone particles for ONE owner. Called
+   * when that thruster gets hit (isHit) so a whiffed cone doesn't hang frozen
+   * in the air during the hit's hitstop while the player is knocked into a
+   * totally different pose. Scoped by owner id so the VICTIM of a palm thrust
+   * getting hit can't wipe the ATTACKER's cone (that made it look like the
+   * cone cleared the instant it connected). Omit `owner` to clear all.
+   */
+  clearPalmThrustParticles(owner = null) {
+    for (let i = 0; i < this.particles.length; i++) {
+      const p = this.particles[i];
+      if (
+        p.active &&
+        p.palmThrustFx &&
+        (owner == null || p.palmThrustOwner === owner)
+      ) {
+        p.active = false;
+      }
+    }
+  }
+
   // Bake per-player accent textures (halo ring + trail puff) tinted to the
   // player's mawashi color. Called by PlayerColorContext whenever a player's
   // color is applied, so the engine always has up-to-date colored textures
@@ -3938,6 +4134,8 @@ export class ParticleEngine {
       p.lastFollowY = 0;
     }
     p.rawParryBlueHold = cfg.rawParryBlueHold ?? false;
+    p.palmThrustFx = cfg.palmThrustFx ?? false;
+    p.palmThrustOwner = cfg.palmThrustOwner ?? null;
   }
 
   _acquire() {

@@ -113,7 +113,10 @@ const getImageSrc = (
   isFlapping,
   flapPhase,
   flapFrame,
-  flapUseDodgePose
+  flapUseDodgePose,
+  // Open-palm thrust (back + mouse1) — placeholder reuses the raw-parry-success
+  // pose for the planted strike until a dedicated animation exists.
+  isPalmThrust
 ) => {
   if (ritualAnimationSrc) {
     return ritualAnimationSrc;
@@ -171,6 +174,12 @@ const getImageSrc = (
   if (isSidestepping) return isPerfectParried;
   if (isBowing) return bow;
   if (isPowerSliding) return crouchStance;
+  // Palm thrust placeholder: hold the slap1 strike pose through startup, the
+  // active frames, AND the "visual hold" recovery (server keeps isPalmThrust
+  // true across the hold). Once the server drops the flag for the short tail,
+  // this falls through to the recovery pose below. Must sit BEFORE the generic
+  // isRecovering check so the hold shows the strike, not the recovery pose.
+  if (isPalmThrust && (isAttacking || isRecovering)) return slapAttack1;
   if (isChargingAttack) return recovering;
   if (isRecovering) return recovering;
   if (isThrowingSnowball) return snowballThrow;

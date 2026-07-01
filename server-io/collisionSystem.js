@@ -40,6 +40,9 @@ const {
   COUNTER_HIT_WINDOW_MS,
   SLAP_STARTUP_MS,
   CHARGED_STARTUP_MS,
+  PALM_THRUST_HIT_RECOVERY_MS,
+  PALM_THRUST_HITBOX_DISTANCE_VALUE,
+  PALM_THRUST_KB_VELOCITY,
   GRAB_STARTUP_ARMOR_STAGGER_MS,
   FLAP_BODYSLAM_KB_VELOCITY,
 } = require("./constants");
@@ -66,7 +69,11 @@ const {
   consumeHitAbsorption,
 } = require("./gameUtils");
 
-const { grabBeatsSlap } = require("./combatHelpers");
+const {
+  grabBeatsSlap,
+  isOpponentCloseEnoughForGrab,
+  isOpponentInFrontOfGrabber,
+} = require("./combatHelpers");
 
 const SIM_DELTA = 1000 / TICK_RATE;
 
@@ -220,7 +227,9 @@ function checkCollision(player, otherPlayer, rooms, io) {
   const hitboxDistance =
     player.attackType === "slap"
       ? SLAP_HITBOX_DISTANCE_VALUE
-      : CHARGED_HITBOX_DISTANCE_VALUE * (player.sizeMultiplier || 1);
+      : player.isPalmThrust
+        ? PALM_THRUST_HITBOX_DISTANCE_VALUE * (player.sizeMultiplier || 1)
+        : CHARGED_HITBOX_DISTANCE_VALUE * (player.sizeMultiplier || 1);
 
   // For slap attacks, only check horizontal distance and ensure opponent is in front
   if (player.attackType === "slap") {
@@ -301,6 +310,40 @@ function checkCollision(player, otherPlayer, rooms, io) {
   const chargedHorizontalDistance = Math.abs(chargedDeltaX);
 
   if (chargedOpponentInFront && chargedHorizontalDistance < hitboxDistance) {
+    // PALM THRUST vs a standing grab: the palm is a SINGLE hit, so grab-startup
+    // armor ABSORBS it (breaking that armor takes 2 hits) and the grab
+    // completes — blowing through grab armor stays exclusive to the (committal,
+    // lunging) charged attack. We trigger the exact same absorb VFX/drains a
+    // lone slap would, then end the palm into its normal punishable recovery so
+    // the grabber can cash in. The grab-range check preserves the palm's
+    // superior reach (a grabber inside palm range but OUTSIDE grab range still
+    // eats the palm, so a read grab is the answer up close, not from afar). A
+    // dash grab (isGrabbingMovement) is intentionally NOT included — dash grabs
+    // lose to strikes for slaps too, so the palm stuffs them the same way.
+    if (
+      player.isPalmThrust &&
+      isOpponentCloseEnoughForGrab(otherPlayer, player) &&
+      isOpponentInFrontOfGrabber(otherPlayer, player)
+    ) {
+      if (
+        otherPlayer.isGrabStartup &&
+        !otherPlayer.grabStartupArmorUsed &&
+        !otherPlayer.isRawParrying
+      ) {
+        applyGrabStartupArmor(player, otherPlayer, rooms, io);
+        // End the palm cleanly (applyGrabStartupArmor drops isAttacking, which
+        // would otherwise strand it — the main loop's recovery handoff is gated
+        // on isAttacking). Lazy require avoids any load-order edge; collisionSystem
+        // is only ever required by index.js, so there is no real cycle.
+        const { safelyEndChargedAttack } = require("./gameFunctions");
+        safelyEndChargedAttack(player, rooms);
+        return;
+      }
+      // Already clinching us (active grab) — the palm can't connect.
+      if (otherPlayer.isGrabbing) {
+        return;
+      }
+    }
     if (player.isAttacking && otherPlayer.isAttacking) {
       if (otherPlayer.attackType === "charged") {
         // === CHARGED vs CHARGED ===
@@ -605,6 +648,7 @@ function processHit(player, otherPlayer, rooms, io) {
   // or if the defender is raw parrying (parry plays its own VFX).
   if (
     !isSlapAttack &&
+    !player.isPalmThrust &&
     otherPlayer.isGrabStartup &&
     !otherPlayer.isRawParrying &&
     !hasHitAbsorption(otherPlayer)
@@ -650,6 +694,7 @@ function processHit(player, otherPlayer, rooms, io) {
   // stuffing grab (after armor consumed) IS still a counter hit — that's a
   // skilled chain breaking commitment, and the boost reads correctly there.
   const isChargedArmorBreak = !isSlapAttack &&
+    !player.isPalmThrust &&
     (otherPlayer.isGrabStartup === true || otherPlayer.isGrabbingMovement === true);
   const counterHitFromGrabAttempt = !isChargedArmorBreak &&
     (otherPlayer.isGrabStartup === true || otherPlayer.isGrabbingMovement === true);
@@ -806,11 +851,13 @@ function processHit(player, otherPlayer, rooms, io) {
     // Set recovery state for successful hits
     player.isRecovering = true;
     player.recoveryStartTime = currentTime;
-    player.recoveryDuration = 400;
+    // Palm thrust holds its ground — shorter, rooted on-hit recovery (no slide).
+    player.recoveryDuration = player.isPalmThrust ? PALM_THRUST_HIT_RECOVERY_MS : 400;
     player.recoveryDirection = player.facing;
     // Initialize knockback velocity in the opposite direction of the attack
+    // (palm stays planted — no recoil).
     player.knockbackVelocity = {
-      x: player.facing * -2, // Static knockback amount
+      x: player.isPalmThrust ? 0 : player.facing * -2, // Static knockback amount
       y: 0,
     };
   }
@@ -1147,15 +1194,13 @@ function processHit(player, otherPlayer, rooms, io) {
     // today. Folded into finalKnockbackMultiplier so it flows into the charged
     // knockback velocity AND the cinematic-kill predictor consistently; the
     // fixed slap-finisher velocity is scaled separately below.
-    // BASHO draft: stacked Power Water scales knockback DEALT, mirroring the
-    // power-up (incl. its 0.923 slap dampening). Guarded so an undrafted BASHO
-    // fighter keeps powerMult === 1 and is never dampened; undefined → 1 for
-    // every non-BASHO player.
+    // BASHO draft: stacked Power Water scales knockback DEALT (+5% per pick,
+    // stacks across the run). Guarded so an undrafted BASHO fighter keeps
+    // powerMult === 1; undefined → 1 for every non-BASHO player.
     const draftPowerMult = player.bashoDraft?.powerMult ?? 1;
-    const draftPower =
-      draftPowerMult > 1 && isSlapAttack
-        ? draftPowerMult * 0.923
-        : draftPowerMult;
+    // BASHO draft power is +5% per pick (vs PvP's +30%) — skip the slap
+    // dampening PvP uses (×0.923) so the stated boost actually lands on slaps.
+    const draftPower = draftPowerMult;
     const bashoKbFactor =
       (player.statMods?.power ?? 1) *
       (otherPlayer.statMods?.resistance ?? 1) *
@@ -1187,7 +1232,9 @@ function processHit(player, otherPlayer, rooms, io) {
 
           // ROPE RESISTANCE GATE (per-hit): this slap may only push the victim
           // OUT of the ring if the hit landed while they were already within
-          // SLAP_KILL_RANGE of the boundary they're being knocked toward.
+          // SLAP_KILL_RANGE of the boundary they're being knocked toward,
+          // OR if this is a punish (effectivePunish includes the slap-string
+          // latch so hits 2 & 3 keep the bypass from the opening read).
           // Otherwise the rope catches them (clamped at the edge in the isHit
           // movement block). Measured at connect time using the knockback
           // direction so it's the same intuition for slap1/2/3.
@@ -1195,7 +1242,7 @@ function processHit(player, otherPlayer, rooms, io) {
             ? MAP_RIGHT_BOUNDARY - otherPlayer.x
             : otherPlayer.x - MAP_LEFT_BOUNDARY;
           otherPlayer.slapKnockbackCanRingOut =
-            distanceToBoundaryInKbDir <= SLAP_KILL_RANGE;
+            distanceToBoundaryInKbDir <= SLAP_KILL_RANGE || effectivePunish;
 
           if (stringPos === 3) {
             // STRING HIT 3: physics-based knockback — velocity impulse, no DI.
@@ -1215,6 +1262,41 @@ function processHit(player, otherPlayer, rooms, io) {
           }
         }
 
+      } else if (player.isPalmThrust) {
+        // PALM THRUST: NOT a charged-style finisher. It borrows the slap
+        // string's 3rd-hit burst knockback (same velocity + rope-resistance
+        // clamp), so it can only ring a victim out if they were ALREADY within
+        // SLAP_KILL_RANGE of the boundary they're shoved toward. From mid-ring
+        // the rope catches them at the edge (clamped in the isHit movement
+        // block, gated on isSlapKnockback) — no cinematic KO from range. This
+        // keeps the palm a spacing / wall-carry tool, not a kill move.
+        isCinematicKill = false;
+
+        // HEAVY single hit: the palm's one thrust rivals the slap string's
+        // 3rd-hit burst. It uses slap3's exact burst DELIVERY (isBurstKnockback
+        // → smooth ICE_COAST decay) with its own tunable velocity
+        // (PALM_THRUST_KB_VELOCITY, sitting just under SLAP_HIT3_KB_VELOCITY so a
+        // fully-confirmed slap finisher keeps a slight edge). isSlapKnockback +
+        // the SLAP_KILL_RANGE gate still clamp the victim at the boundary unless
+        // they were already in kill range — no midscreen ring-out.
+        otherPlayer.isSlapKnockback = true;
+        otherPlayer.isBurstKnockback = true;
+        otherPlayer.burstKnockbackStartTime = currentTime;
+        otherPlayer.knockbackVelocity.x =
+          knockbackDirection * PALM_THRUST_KB_VELOCITY * bashoKbFactor;
+        otherPlayer.knockbackVelocity.y = 0;
+        otherPlayer.movementVelocity = 0;
+
+        const distanceToBoundaryInKbDir =
+          knockbackDirection > 0
+            ? MAP_RIGHT_BOUNDARY - otherPlayer.x
+            : otherPlayer.x - MAP_LEFT_BOUNDARY;
+        otherPlayer.slapKnockbackCanRingOut =
+          distanceToBoundaryInKbDir <= SLAP_KILL_RANGE || effectivePunish;
+
+        // Palm holds its ground — no backward recoil on a connected hit.
+        player.movementVelocity = 0;
+        player.knockbackVelocity = { x: 0, y: 0 };
       } else {
         otherPlayer.isSlapKnockback = false;
         otherPlayer.slapKnockbackCanRingOut = false;
@@ -1250,7 +1332,8 @@ function processHit(player, otherPlayer, rooms, io) {
 
         const attackerBounceDirection = -knockbackDirection;
         const attackerBounceMultiplier = 0.3 + (chargePercentage / 100) * 0.5;
-        if (isCinematicKill) {
+        // Palm thrust holds its ground — no backward recoil on a connected hit.
+        if (isCinematicKill || player.isPalmThrust) {
           player.movementVelocity = 0;
         } else {
           player.movementVelocity =
@@ -1446,7 +1529,14 @@ function processHit(player, otherPlayer, rooms, io) {
     otherPlayer.lastHitTime = currentTime;
     otherPlayer.lastHitByStringPos = stringPos;
 
-    const isBurstHit = isSlapAttack && stringPos === 3;
+    // The palm thrust ALSO delivers a burst (isBurstKnockback), so it must use
+    // the SAME short no-DI window as slap3 (SLAP_HIT3_STUN_MS). Without this it
+    // fell into the generic 380ms charged stun → 180ms of EXTRA forced, no-DI
+    // slide on top of slap3's, which (despite a LOWER velocity than slap3) is why
+    // it carried the victim clear across the ring and felt un-DI-able compared to
+    // the slap finisher. Matching the window makes DI open at the same instant as
+    // slap3, so the palm (2.7 < 3.1) now carries LESS than a confirmed slap3.
+    const isBurstHit = (isSlapAttack && stringPos === 3) || player.isPalmThrust;
     const stunDuration = isBurstHit ? SLAP_HIT3_STUN_MS : hitStateDuration;
 
     setPlayerTimeout(

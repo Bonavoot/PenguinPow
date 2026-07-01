@@ -19,7 +19,7 @@ const BROADCAST_EVERY_N_TICKS = 2; // 2 = 32 Hz broadcast (client interpolation 
 const ALWAYS_SEND_PROPS = ['x', 'y', 'facing', 'stamina', 'balance', 'id', 'fighter', 'color', 'mawashiColor', 'bodyColor'];
 
 const DELTA_TRACKED_PROPS = [
-  'isAttacking', 'isSlapAttack', 'slapAnimation', 'attackType',
+  'isAttacking', 'isSlapAttack', 'isPalmThrust', 'palmThrustFxId', 'slapAnimation', 'attackType',
   'isChargingAttack', 'chargeAttackPower', 'chargeStartTime',
   'isBurstKnockback',
   'isGrabbing', 'isBeingGrabbed', 'grabbedOpponent', 'grabState', 'grabAttemptType',
@@ -37,7 +37,7 @@ const DELTA_TRACKED_PROPS = [
   'isGrabFrontalForceOut', 'isBeingGrabFrontalForceOut',
   'knockbackVelocity', 'activePowerUp', 'powerUpMultiplier',
   'snowballs', 'pumoArmy', 'snowballCooldown', 'pumoArmyCooldown', 'snowballThrowsRemaining', 'pumoArmySpawnsRemaining',
-  'isPowerSliding', 'isBraking', 'movementVelocity', 'isStrafing',
+  'isPowerSliding', 'isBraking', 'movementVelocity', 'isStrafing', 'effectiveMoveSpeedMult',
   'isRopeJumping', 'ropeJumpPhase', 'sizeMultiplier', 'isGassed',
   'isFlapping', 'flapPhase', 'flapCharges', 'flapWingBeatTime', 'flapFastFalling', 'flapBeatHDir',
   'isSidestepping', 'isSidestepStartup', 'isSidestepRecovery',
@@ -205,6 +205,41 @@ const SLAP_ONHIT_ATTACKER_PUSH = 1.0;
 const CHARGED_STARTUP_MS = 150;   // Clear windup (unchanged)
 const CHARGED_ACTIVE_MS = 120;    // Hitbox live window
 
+// ── OPEN-PALM THRUST (back + mouse1) ────────────────────────────────────────
+// A rooted, single-hit "hold your ground" strike. Rides the charged
+// hit-resolution path (attackType "charged" + isPalmThrust flag) as a
+// fixed-power mini-charge, but takes NO forward lunge. Fast startup, weak-
+// charged power, and a long whiff recovery make it the committal spacing /
+// edge-finishing counterpart to the advancing slap string. Think Feng b+1:
+// snappy, rewarding on a read, but you eat a punish if it whiffs.
+const PALM_THRUST_STARTUP_MS = 90;         // Fast windup (~5-6 frames)
+const PALM_THRUST_ACTIVE_MS = 90;          // Single clean hit window (hitbox live)
+// Visual "hold": the strike pose lingers after the active frames, but this is
+// REAL recovery — no hitbox, the player can't act, and they ARE punishable. It
+// just renders as the attack pose (slapAttack1) instead of the recovery pose,
+// so the strike reads as a committed, held-out palm.
+const PALM_THRUST_HOLD_MS = 260;
+// The ONLY part shown as the recovery pose — "very very short at the end".
+const PALM_THRUST_END_RECOVERY_MS = 60;
+const PALM_THRUST_HIT_RECOVERY_MS = 200;   // Settle on a confirmed hit
+// Fixed "charge %" fed into the charged knockback formula. 35 sits ABOVE
+// CHARGE_PRIORITY_THRESHOLD (30) so the thrust beats a slap on a simultaneous
+// trade, and yields knockback mult ≈ 0.64 (velocity ≈ 1.7) — a real pop that
+// stays well under a committed charge (~3.2). Tune this one dial for feel.
+const PALM_THRUST_POWER = 35;
+// Heavy single-hit knockback. The palm's identity is "one committed thrust that
+// rivals the slap string's 3rd-hit BURST (SLAP_HIT3_KB_VELOCITY = 3.1) without
+// needing to confirm all 3 hits" — the reward for a slower, rooted, punishable,
+// grab-losable read. Delivered via the slap3 burst model (smooth ICE_COAST
+// slide + rope clamp), so this is directly comparable to 3.1. Sits just under
+// the fully-confirmed finisher so a landed slap string still has a slight edge.
+// This is the one dial for the palm's shove — raise toward 3.1 to match slap3.
+const PALM_THRUST_KB_VELOCITY = 2.7;
+const PALM_THRUST_STAMINA_COST = 6;        // Between slap (3) and charged (9)
+// Rooted (no lunge), so it needs a little more raw reach than the charged
+// hitbox to feel like a committed extended-arm thrust — a touch past slap.
+const PALM_THRUST_HITBOX_DISTANCE_VALUE = Math.round(177 * 0.96); // ~170
+
 const GRAB_STARTUP_MS = 180;      // Readable telegraph (was 150)
 const GRAB_ACTIVE_MS = 100;       // Grab connect window
 
@@ -310,6 +345,19 @@ const ICE_STOP_THRESHOLD = 0.025;       // Velocity threshold for full stop
 
 // Direction changes
 const ICE_TURN_BURST = 0.18;            // Burst in new direction after braking
+
+// Hard safety rail for locomotion. Every walk/strafe/grab-lunge speed
+// multiplier (PvP Happy Feet, BASHO career MOVE SPEED, and stacked Happy Feet
+// draft picks) is folded into ONE authoritative `effectiveMoveSpeedMult` that
+// is clamped here and broadcast to the client, so the predictor renders the
+// exact same displacement (no "camera runs ahead of the sprite" desync). This
+// is deliberately generous — it only exists to catch absurd future combos
+// (e.g. max MOVE SPEED stat stacked with many Happy Feet picks); normal play
+// is bounded by the draft curve's own ceiling (SPEED_STACK_CAP). At this value
+// walk displacement is ~22px per broadcast, far under the client's ~100px
+// interpolation snap. PvP's single Happy Feet (1.4) sits well under it, so
+// PvP/VS CPU are unaffected.
+const MAX_MOVE_SPEED_MULT = 3.0;
 
 // POWER SLIDE (C key) - commit to momentum for speed boost
 const SLIDE_SPEED_BOOST = 1.42;         // 42% faster while power sliding (minor increase from 35%)
@@ -876,6 +924,7 @@ module.exports = {
   ICE_BRAKE_FRICTION,
   ICE_STOP_THRESHOLD,
   ICE_TURN_BURST,
+  MAX_MOVE_SPEED_MULT,
   SLIDE_SPEED_BOOST,
   SLIDE_MAX_SPEED,
   SLIDE_FRICTION,
@@ -923,6 +972,15 @@ module.exports = {
   SLAP_ONHIT_ATTACKER_PUSH,
   CHARGED_STARTUP_MS,
   CHARGED_ACTIVE_MS,
+  PALM_THRUST_STARTUP_MS,
+  PALM_THRUST_ACTIVE_MS,
+  PALM_THRUST_HOLD_MS,
+  PALM_THRUST_END_RECOVERY_MS,
+  PALM_THRUST_HIT_RECOVERY_MS,
+  PALM_THRUST_POWER,
+  PALM_THRUST_KB_VELOCITY,
+  PALM_THRUST_STAMINA_COST,
+  PALM_THRUST_HITBOX_DISTANCE_VALUE,
   GRAB_STARTUP_MS,
   GRAB_ACTIVE_MS,
   DODGE_STARTUP_MS,

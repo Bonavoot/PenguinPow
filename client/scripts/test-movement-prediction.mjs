@@ -288,6 +288,54 @@ console.log("\n[2] Physics step unit tests");
   check("speed power-up does not change velocity", approx(normal.v, boosted.v));
 }
 
+{
+  // The predictor derives its speed multiplier from the server-authoritative
+  // `effectiveMoveSpeedMult` field (PvP Happy Feet + BASHO MOVE SPEED stat +
+  // stacked Happy Feet draft, pre-clamped server-side). This is what keeps the
+  // predicted sprite aligned with the buffed server position — without it the
+  // sprite lags and the camera appears to run ahead. Two predictors fed the
+  // same inputs for the same wall-clock time must differ in displacement by
+  // exactly the multiplier ratio (speedMult scales position, never velocity).
+  const mk = (mult) => ({
+    x: 640,
+    y: C.GROUND_LEVEL,
+    movementVelocity: 0,
+    sizeMultiplier: 1,
+    effectiveMoveSpeedMult: mult,
+  });
+  const keys = { a: false, d: true, s: false };
+  const pNorm = new MovementPredictor();
+  const pFast = new MovementPredictor();
+  let t = 1000;
+  pNorm.update(t, keys, mk(1), null, true, 640);
+  pFast.update(t, keys, mk(1.5), null, true, 640);
+  for (let i = 0; i < 40; i++) {
+    t += 1000 / 60;
+    pNorm.update(t, keys, mk(1), null, true, 640);
+    pFast.update(t, keys, mk(1.5), null, true, 640);
+  }
+  const dNorm = pNorm.sim.x - 640;
+  const dFast = pFast.sim.x - 640;
+  check(
+    "predictor scales displacement by effectiveMoveSpeedMult",
+    dNorm > 0 && approx(dFast / dNorm, 1.5, 1e-6),
+    `ratio=${(dFast / dNorm).toFixed(6)}`
+  );
+  const plain = new MovementPredictor();
+  t = 1000;
+  const noField = { x: 640, y: C.GROUND_LEVEL, movementVelocity: 0, sizeMultiplier: 1 };
+  plain.update(t, keys, noField, null, true, 640);
+  for (let i = 0; i < 40; i++) {
+    t += 1000 / 60;
+    plain.update(t, keys, noField, null, true, 640);
+  }
+  check(
+    "missing effectiveMoveSpeedMult falls back to 1× (stock movement)",
+    approx(plain.sim.x - 640, dNorm, 1e-9),
+    `plain=${(plain.sim.x - 640).toFixed(4)} baseline=${dNorm.toFixed(4)}`
+  );
+}
+
 // ============================================
 // 3. FIXED-TIMESTEP DETERMINISM
 // ============================================

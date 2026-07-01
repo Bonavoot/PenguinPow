@@ -37,6 +37,7 @@ const {
 
 const {
   executeSlapAttack,
+  executePalmThrust,
   executeChargedAttack,
 } = require("./gameFunctions");
 
@@ -337,15 +338,16 @@ function processInputPacket(room, player, data, io, rooms) {
           player.inputBuffer = { type: "sidestep", timestamp: simNowForPlayer(player) };
         } else if (rising.shift && !data.keys.mouse2) {
           player.inputBuffer = { type: "dodge", timestamp: simNowForPlayer(player) };
-        } else if (rising.mouse1 && data.keys.s) {
+        } else if (rising.mouse1) {
           const fwdKey = player.facing === -1 ? 'd' : 'a';
-          if (data.keys[fwdKey]) {
+          const backKey = player.facing === -1 ? 'a' : 'd';
+          if (data.keys.s && data.keys[fwdKey]) {
             player.inputBuffer = { type: "chargedAttack", timestamp: simNowForPlayer(player) };
+          } else if (data.keys[backKey] && !data.keys[fwdKey]) {
+            player.inputBuffer = { type: "palmThrust", timestamp: simNowForPlayer(player) };
           } else {
             player.inputBuffer = { type: "slap", timestamp: simNowForPlayer(player) };
           }
-        } else if (rising.mouse1) {
-          player.inputBuffer = { type: "slap", timestamp: simNowForPlayer(player) };
         } else if (rising.mouse2) {
           player.inputBuffer = { type: "grab", timestamp: simNowForPlayer(player) };
         }
@@ -495,15 +497,16 @@ function processInputPacket(room, player, data, io, rooms) {
         player.inputBuffer = { type: "sidestep", timestamp: simNowForPlayer(player) };
       } else if (player.shiftJustPressed && !data.keys.mouse2) {
         player.inputBuffer = { type: "dodge", timestamp: simNowForPlayer(player) };
-      } else if (player.mouse1JustPressed && data.keys.s) {
+      } else if (player.mouse1JustPressed) {
         const fwdKey = player.facing === -1 ? 'd' : 'a';
-        if (data.keys[fwdKey]) {
+        const backKey = player.facing === -1 ? 'a' : 'd';
+        if (data.keys.s && data.keys[fwdKey]) {
           player.inputBuffer = { type: "chargedAttack", timestamp: simNowForPlayer(player) };
+        } else if (data.keys[backKey] && !data.keys[fwdKey]) {
+          player.inputBuffer = { type: "palmThrust", timestamp: simNowForPlayer(player) };
         } else {
           player.inputBuffer = { type: "slap", timestamp: simNowForPlayer(player) };
         }
-      } else if (player.mouse1JustPressed) {
-        player.inputBuffer = { type: "slap", timestamp: simNowForPlayer(player) };
       } else if (player.mouse2JustPressed && !player.inClinch) {
         player.inputBuffer = { type: "grab", timestamp: simNowForPlayer(player) };
       }
@@ -667,10 +670,14 @@ function processInputPacket(room, player, data, io, rooms) {
     player.slapStringWindowUntil = 0;
   }
 
-  // MOUSE1 PRESS: Check for S+FORWARD+MOUSE1 charged attack combo, else fire slap
+  // MOUSE1 PRESS: S+FORWARD+MOUSE1 = charged, BACK+MOUSE1 = open-palm thrust,
+  // else fire slap.
   if (player.mouse1JustPressed && !shouldBlockAction()) {
     const forwardKey = player.facing === -1 ? 'd' : 'a';
+    const backKey = player.facing === -1 ? 'a' : 'd';
     const wantsChargedAttack = player.keys.s && player.keys[forwardKey];
+    // Back (away from opponent) held, WITHOUT forward — a deliberate back input.
+    const wantsPalmThrust = player.keys[backKey] && !player.keys[forwardKey];
 
     if (wantsChargedAttack && canPlayerSlap(player, { ignoreCooldown: true })) {
       player.chargeAttackPower = 0;
@@ -687,6 +694,10 @@ function processInputPacket(room, player, data, io, rooms) {
       player.isCrouchStrafing = false;
     } else if (wantsChargedAttack && player.isAttacking && player.attackType === "slap") {
       player.inputBuffer = { type: "chargedAttack", timestamp: simNowForPlayer(player) };
+    } else if (wantsPalmThrust && canPlayerSlap(player)) {
+      // Rooted "hold your ground" strike — only from neutral (executePalmThrust
+      // itself guards !isAttacking so it can never eat a slap string).
+      executePalmThrust(player, rooms);
     } else if (canPlayerSlap(player)) {
       executeSlapAttack(player, rooms);
     } else if (player.isAttacking && player.attackType === "slap") {

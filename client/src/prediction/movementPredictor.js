@@ -43,7 +43,7 @@ export const PREDICTION_CONSTANTS = {
   DOHYO_EDGE_PANIC_ZONE: 89,
   // see server-io/gameUtils.js
   MAP_LEFT_BOUNDARY: 340,
-  MAP_RIGHT_BOUNDARY: 940,
+  MAP_RIGHT_BOUNDARY: 935,
   DOHYO_LEFT_BOUNDARY: 250,
   DOHYO_RIGHT_BOUNDARY: 1030,
   GROUND_LEVEL: 286,
@@ -196,7 +196,8 @@ function iceFriction(isActiveBraking, anyMoveKeyHeld, x) {
  * Advance one 64Hz tick of neutral-state ground movement.
  * `sim`: { x, v, wasStrafingRight, wasStrafingLeft, isStrafing, isBraking }
  * `keys`: { a, d, s } booleans (subset of the game key state)
- * `speedMult`: 1 normally, powerUpMultiplier with the speed power-up
+ * `speedMult`: 1 normally, else the server's clamped effectiveMoveSpeedMult
+ *              (folds PvP Happy Feet + BASHO move-speed stat + draft stacks)
  * Mutates and returns `sim`. Must stay in lockstep with server-io/index.js.
  */
 export function stepMovement(sim, keys, speedMult = 1) {
@@ -508,9 +509,15 @@ export class MovementPredictor {
     this.lastUpdateMs = nowMs;
     this.accumulatorMs += dt;
 
+    // The server folds EVERY locomotion buff (PvP Happy Feet, BASHO MOVE SPEED
+    // stat, and stacked Happy Feet draft picks) into one clamped, broadcast
+    // value: `effectiveMoveSpeedMult`. Consume it verbatim so the predicted
+    // sprite moves at exactly the server's speed — otherwise the sprite lags
+    // the true position and the camera (which follows the server position)
+    // appears to run ahead. Falls back to 1 for stock players / older payloads.
     const speedMult =
-      self.activePowerUp === "speed" && typeof self.powerUpMultiplier === "number"
-        ? self.powerUpMultiplier
+      typeof self.effectiveMoveSpeedMult === "number"
+        ? self.effectiveMoveSpeedMult
         : 1;
 
     let stepped = false;

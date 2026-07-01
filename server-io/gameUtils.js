@@ -19,7 +19,38 @@ const {
   FLAP_STAMINA_COST,
   GASSED_DURATION_MS,
   POWER_UP_TYPES,
+  MAX_MOVE_SPEED_MULT,
 } = require("./constants");
+
+// ============================================
+// EFFECTIVE MOVEMENT SPEED (single source of truth)
+// ============================================
+//
+// Every locomotion speed buff funnels through here so the server, the client
+// movement predictor, and (implicitly) the camera all agree on one number:
+//   - PvP Happy Feet         → activePowerUp === SPEED (powerUpMultiplier, 1.4)
+//   - BASHO career MOVE SPEED → statMods.moveSpeed (0.91 .. 1.18)
+//   - BASHO stacked Happy Feet → bashoDraft.speedMult (diminishing-returns curve)
+// The product is clamped to MAX_MOVE_SPEED_MULT so displacement stays inside
+// what the client can render/interpolate — this is what kills the "camera runs
+// ahead of the sprite" desync. Non-BASHO players have no statMods/bashoDraft
+// (undefined → 1) and PvP's 1.4 sits under the cap, so PvP/VS CPU are unchanged.
+// The result is stored on `player.effectiveMoveSpeedMult` each tick and sent in
+// the delta snapshot; the predictor consumes it verbatim (no formula to drift).
+function getEffectiveMoveSpeedMult(player) {
+  if (!player) return 1;
+  let mult = 1;
+  if (
+    player.activePowerUp === POWER_UP_TYPES.SPEED &&
+    typeof player.powerUpMultiplier === "number"
+  ) {
+    mult *= player.powerUpMultiplier;
+  }
+  mult *= player.bashoDraft?.speedMult ?? 1;
+  mult *= player.statMods?.moveSpeed ?? 1;
+  if (mult > MAX_MOVE_SPEED_MULT) mult = MAX_MOVE_SPEED_MULT;
+  return mult;
+}
 
 // ============================================
 // THICK BLUBBER hit absorption (shared by collision + projectile paths)
@@ -508,6 +539,7 @@ function resetPlayerAttackStates(player) {
   player.chargingFacingDirection = null;
   player.slapFacingDirection = null;
   player.isSlapAttack = false;
+  player.isPalmThrust = false;
   player.attackStartTime = 0;
   player.attackEndTime = 0;
   player.attackType = null;
@@ -561,6 +593,7 @@ function clearAllActionStates(player) {
   player.chargingFacingDirection = null;
   player.slapFacingDirection = null;
   player.isSlapAttack = false;
+  player.isPalmThrust = false;
   player.attackStartTime = 0;
   player.attackEndTime = 0;
   player.attackType = null;
@@ -963,6 +996,7 @@ function beginFlapStartup(player, now) {
   // must read as a clean takeoff — nothing on screen but the flap.
   player.isAttacking = false;
   player.isSlapAttack = false;
+  player.isPalmThrust = false;
   player.isChargingAttack = false;
   player.attackType = null;
   player.attackStartTime = 0;
@@ -1159,6 +1193,7 @@ module.exports = {
   isNearDohyoEdge,
   getEdgeProximity,
   getIceFriction,
+  getEffectiveMoveSpeedMult,
   canApplyKnockback,
   setKnockbackImmunity,
   getChargedHitstop,

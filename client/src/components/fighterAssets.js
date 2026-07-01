@@ -53,6 +53,7 @@ import isPerfectParried from "../assets/is_perfect_parried.png"; // APNG
 // SOUND IMPORTS
 // ============================================
 import attackSound from "../sounds/attack-sound.ogg";
+import palmThrustWhiffSound from "../sounds/palm-thrust-whiff.ogg";
 import hitSound from "../sounds/hit-sound.mp3";
 import dodgeSound from "../sounds/dodge-sound.mp3";
 import throwSound from "../sounds/throw-sound.mp3";
@@ -260,6 +261,7 @@ initializeImagePreloading();
 // ============================================
 preloadSounds([
   attackSound,
+  palmThrustWhiffSound,
   hitSound,
   dodgeSound,
   throwSound,
@@ -379,6 +381,7 @@ export {
 // ============================================
 export {
   attackSound,
+  palmThrustWhiffSound,
   hitSound,
   dodgeSound,
   throwSound,

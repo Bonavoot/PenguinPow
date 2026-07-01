@@ -123,6 +123,8 @@ function createInitialPlayerState(overrides = {}) {
     attackStartTime: 0,
     attackEndTime: 0,
     isSlapAttack: false,
+    isPalmThrust: false,
+    palmThrustFxId: 0,
     slapAnimation: 2,
     slapFacingDirection: null,
     slapActiveEndTime: 0,

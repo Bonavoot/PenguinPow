@@ -97,6 +97,7 @@ const {
   isNearDohyoEdge,
   getEdgeProximity,
   getIceFriction,
+  getEffectiveMoveSpeedMult,
   triggerHitstop,
   triggerHitstopAndEmit,
   isRoomInHitstop,
@@ -685,6 +686,8 @@ function tick(delta) {
             player.isRecovering = false;
             player.movementVelocity = 0;
             player.recoveryDirection = null;
+            // Palm thrust's visual-hold flag never survives past its recovery.
+            player.isPalmThrust = false;
 
             player.mouse1HeldDuringAttack = false;
 
@@ -1145,6 +1148,11 @@ function tick(delta) {
               opponent.isAttacking &&
               opponent.attackType === "slap" &&
               grabBeatsSlap(player, opponent);
+            // NOTE: a palm thrust that hits a grab startup is absorbed by the
+            // grab-startup armor and ends its own attack (see collisionSystem),
+            // so by the time the grab connects the palm-thruster is already
+            // !isAttacking — it's caught via the standard neutral path below, no
+            // palm-specific exception needed.
             const canConnect =
               opponentGrabbableNeutral &&
               (!opponent.isAttacking || grabWinsVsSlap);
@@ -2249,13 +2257,9 @@ function tick(delta) {
           return;
         }
 
-        // Move forward during grab movement (after startup hop)
-        let currentSpeedFactor = speedFactor;
-        if (player.activePowerUp === POWER_UP_TYPES.SPEED) {
-          currentSpeedFactor *= player.powerUpMultiplier;
-        }
-        // BASHO draft: stacked Happy Feet picks (1.0 for non-BASHO / undrafted).
-        currentSpeedFactor *= player.bashoDraft?.speedMult ?? 1;
+        // Move forward during grab movement (after startup hop). Same clamped
+        // locomotion multiplier as walking (1.0 for stock PvP/VS CPU).
+        let currentSpeedFactor = speedFactor * getEffectiveMoveSpeedMult(player);
 
         // Calculate new position with grab movement
         const newX =
@@ -2441,17 +2445,11 @@ function tick(delta) {
             !player.isRawParrying &&
             !player.isHit))
       ) {
-        let currentSpeedFactor = speedFactor;
-
-        // Apply speed power-up
-        if (player.activePowerUp === POWER_UP_TYPES.SPEED) {
-          currentSpeedFactor *= player.powerUpMultiplier;
-        }
-        // BASHO MOVE SPEED attribute scales walk/strafe displacement (1.0 for
-        // non-BASHO players → unchanged locomotion).
-        currentSpeedFactor *= player.statMods?.moveSpeed ?? 1;
-        // BASHO draft: stacked Happy Feet picks (1.0 for non-BASHO / undrafted).
-        currentSpeedFactor *= player.bashoDraft?.speedMult ?? 1;
+        // Single authoritative locomotion multiplier (PvP Happy Feet + BASHO
+        // MOVE SPEED stat + stacked Happy Feet draft), clamped and broadcast so
+        // the client predictor renders the exact same displacement. 1.0 for
+        // stock PvP/VS CPU → unchanged locomotion.
+        let currentSpeedFactor = speedFactor * getEffectiveMoveSpeedMult(player);
         // Reduce speed when size power-up is active
         // if (player.activePowerUp === POWER_UP_TYPES.SIZE) {
         //   currentSpeedFactor *= 0.85;
@@ -3215,6 +3213,10 @@ function tick(delta) {
         player.attackType === "charged" &&
         !player.isAtTheRopes
       ) {
+        // Palm thrust is a rooted charged variant — skip the forward lunge
+        // entirely, but still fall through to the attackEndTime → recovery
+        // handoff below so the move ends normally.
+        if (!player.isPalmThrust) {
         const attackDirection = player.facing === 1 ? -1 : 1;
         const chargePower = player.chargeAttackPower || 0;
         const lungeSpeed = 1.5 + (chargePower / 100) * 5.5;
@@ -3307,6 +3309,7 @@ function tick(delta) {
             }
           }
         }
+        } // end !isPalmThrust lunge guard
 
         if (room.simTime >= player.attackEndTime) {
           // Use helper function to safely end charged attacks
@@ -3327,14 +3330,14 @@ function tick(delta) {
       updateGrabActions(player, room, io, delta, rooms);
 
 
-      // Apply speed power-up effect
-      if (player.activePowerUp === POWER_UP_TYPES.SPEED) {
-        player.speedFactor = speedFactor * player.powerUpMultiplier;
-      } else {
-        player.speedFactor = speedFactor;
-      }
-      // BASHO draft: stacked Happy Feet (1.0 for non-BASHO / undrafted).
-      player.speedFactor *= player.bashoDraft?.speedMult ?? 1;
+      // Apply locomotion speed effect. One authoritative, clamped multiplier
+      // (PvP Happy Feet + BASHO MOVE SPEED stat + stacked Happy Feet draft) is
+      // computed here, cached on the player for reuse, and broadcast in the
+      // delta snapshot so the client movement predictor renders the identical
+      // displacement (no camera-ahead-of-sprite desync). 1.0 for stock players.
+      const effMoveSpeedMult = getEffectiveMoveSpeedMult(player);
+      player.effectiveMoveSpeedMult = effMoveSpeedMult;
+      player.speedFactor = speedFactor * effMoveSpeedMult;
 
       // Apply size power-up effect
       // if (player.activePowerUp === POWER_UP_TYPES.SIZE) {
