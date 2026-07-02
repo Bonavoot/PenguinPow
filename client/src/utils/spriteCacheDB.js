@@ -32,7 +32,7 @@ const STORE = "recolors";
 // Bump this to invalidate ALL persisted recolors after a recolor-algorithm
 // change. (Asset content changes invalidate automatically via the hashed
 // source URL baked into each key.)
-export const SPRITE_CACHE_VERSION = "v1";
+export const SPRITE_CACHE_VERSION = "v2";
 
 let available =
   typeof indexedDB !== "undefined" && indexedDB !== null;

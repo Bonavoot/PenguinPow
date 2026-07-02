@@ -61,6 +61,7 @@ import attack from "../assets/attack.png";
 import throwing from "../assets/throwing.png";
 import grabbing from "../assets/grabbing.png";
 import clinchPlanting from "../assets/clinch-planting.png";
+import beltGrabArm from "../assets/belt-grab-arm-only.png";
 import attemptingGrabThrow from "../assets/attempting-grab-throw.png";
 import isAttemptingPull from "../assets/is-attempting-pull.png";
 import pumoSideProfile from "../assets/pumo-ready-position.png";
@@ -221,6 +222,7 @@ const BLUE_STATIC_SPRITES = {
   throwing: throwing,
   grabbing: grabbing,
   clinchPlanting: clinchPlanting,
+  beltGrabArm: beltGrabArm,
   attemptingGrabThrow: attemptingGrabThrow,
   isAttemptingPull: isAttemptingPull,
   readySideProfile: pumoSideProfile,

@@ -13,6 +13,10 @@ import happyFeetIcon from "../assets/happy-feet.png";
 import thickBlubberIcon from "../assets/thick-blubber-icon.png";
 import grabbing from "../assets/grabbing.png";
 import clinchPlanting from "../assets/clinch-planting.png";
+// Arm-only overlay stacked on top of the (armless) grabbing/clinch-planting
+// bodies so two locked penguins' arms visibly overlap. Same 960×960 canvas,
+// pre-aligned to the body — see GameFighter's grab-arm overlay.
+import beltGrabArm from "../assets/belt-grab-arm-only.png";
 import attemptingGrabThrow from "../assets/attempting-grab-throw.png";
 import attemptingPull from "../assets/is-attempting-pull.png";
 import pumoSideProfile from "../assets/pumo-ready-position.png";
@@ -211,6 +215,7 @@ const initializeImagePreloading = () => {
   preloadImage(throwing);
   preloadImage(grabbing);
   preloadImage(clinchPlanting);
+  preloadImage(beltGrabArm);
   preloadImage(grabAttempt);
   preloadImage(attemptingGrabThrow);
   preloadImage(attemptingPull);
@@ -349,6 +354,7 @@ export {
   pumo,
   grabbing,
   clinchPlanting,
+  beltGrabArm,
   attemptingGrabThrow,
   attemptingPull,
   pumoSideProfile,

@@ -42,6 +42,7 @@ export const BAKE_SOURCES = [
   { id: "throwing", file: "throwing.png" },
   { id: "grabbing", file: "grabbing.png" },
   { id: "clinch-planting", file: "clinch-planting.png" },
+  { id: "belt-grab-arm-only", file: "belt-grab-arm-only.png" },
   { id: "attempting-grab-throw", file: "attempting-grab-throw.png" },
   { id: "is-attempting-pull", file: "is-attempting-pull.png" },
   { id: "pumo-ready-position", file: "pumo-ready-position.png" },

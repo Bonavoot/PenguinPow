@@ -139,6 +139,9 @@ import {
   hit as hitSprite,
   bellyLaying as bellyLayingSprite,
   bellyLayingEyesOpen as bellyLayingEyesOpenSprite,
+  grabbing as grabbingSprite,
+  clinchPlanting as clinchPlantingSprite,
+  beltGrabArm as beltGrabArmSprite,
 } from "./fighterAssets";
 import getImageSrc from "./getImageSrc";
 import {
@@ -690,6 +693,7 @@ const GameFighter = ({
   // DOM nodes driven imperatively by the interpolation loop (position only —
   // all flag-dependent styling still flows through React renders).
   const fighterImgDomRef = useRef(null); // StyledImage (static sprite)
+  const grabArmImgDomRef = useRef(null); // grab/clinch arm overlay (static)
   const animContainerDomRef = useRef(null); // AnimatedFighterContainer
   const shadowDomRef = useRef(null); // PlayerShadow root div
   const youLabelDomRef = useRef(null); // pre-game "You" label
@@ -1777,6 +1781,13 @@ const GameFighter = ({
         if (fighterEl) {
           fighterEl.style.left = leftPct;
           fighterEl.style.bottom = bottomPct;
+        }
+        // Grab-arm overlay shares the body's exact position formula so it stays
+        // pixel-locked to the (armless) grab/clinch body as it slides.
+        const grabArmEl = grabArmImgDomRef.current;
+        if (grabArmEl) {
+          grabArmEl.style.left = leftPct;
+          grabArmEl.style.bottom = bottomPct;
         }
         const animEl = animContainerDomRef.current;
         if (animEl) {
@@ -4884,6 +4895,137 @@ const GameFighter = ({
   // while tint changes during combat (color stable) still update in place.
   const spriteColorKey = `${targetColor || ""}:${playerBodyColor || ""}`;
 
+  // ── Grab / clinch ARM overlay ──────────────────────────────────────────────
+  // The grabbing.png and clinch-planting.png bodies are now armless; the arm is
+  // a separate, pre-aligned 960×960 image stacked on top so two locked penguins'
+  // arms visibly overlap. Any state that resolves to one of those two bodies
+  // (grabber, clinch-pusher, grabbed-with-grip, belly-flop, force-out, etc.)
+  // gets the arm — matching whatever the body is currently showing.
+  const showGrabArm =
+    !isKillVictim &&
+    (effectiveSpriteSrc === grabbingSprite ||
+      effectiveSpriteSrc === clinchPlantingSprite);
+  // Recolor the arm through the SAME pipeline as the body (baked file first,
+  // then cache, then live recolor) with the SAME tint flags, so it always
+  // matches the penguin's colors and flashes/tints in lockstep with the body.
+  const recoloredArmSrc = showGrabArm
+    ? getSpriteRenderInfo(
+        beltGrabArmSprite,
+        renderHitTint,
+        showHitFlashThisFrame,
+        useBlubberTint,
+        false,
+        useArmorTint
+      ).src
+    : null;
+  // Facing decides which arm wins the overlap: the two locked penguins always
+  // face opposite directions, so exactly one has facing===1. Both arms sit above
+  // either body (bodies are ≤ 99 during a grab); the +1 puts the facing===1
+  // penguin's arm on top of the other's.
+  const grabArmZ = (penguin.facing ?? -1) === 1 ? 106 : 105;
+  // Planting pose reads as the penguin sitting back/down into the clinch, so
+  // shift the arm slightly BACK (local-space X, symmetric across facing) and
+  // DOWN (screen-space Y). The grabbing pose keeps the arm at 0 (no shift).
+  // +X = back, +Y = down; tune magnitudes to taste.
+  const GRAB_ARM_PLANT_NUDGE_X_PCT = 3; // back
+  const GRAB_ARM_PLANT_NUDGE_Y_PCT = 1.5; // down
+  const isPlantingArm = effectiveSpriteSrc === clinchPlantingSprite;
+  const grabArmNudgeXPct = isPlantingArm ? GRAB_ARM_PLANT_NUDGE_X_PCT : 0;
+  const grabArmNudgeYPct = isPlantingArm ? GRAB_ARM_PLANT_NUDGE_Y_PCT : 0;
+
+  // Shared style-driving props for the static fighter <img>. Spread into BOTH
+  // the body sprite and the grab-arm overlay so the arm inherits the exact same
+  // position/facing/animation/filter and stays pixel-locked to the body through
+  // every grab/clinch animation (strain, belly-flop, force-out, …).
+  const fighterImgStyleProps = {
+    $fighter: penguin.fighter,
+    $isDiving: penguin.isDiving,
+    $isJumping: penguin.isJumping,
+    $isAttacking: displayPenguin.isAttacking,
+    $isDodging: displayPenguin.isDodging,
+    $isStrafing: penguin.isStrafing,
+    $isBraking: displayPenguin.isBraking && !penguin.isRawParryStun,
+    $isPowerSliding: displayPenguin.isPowerSliding,
+    $isRawParrying: displayPenguin.isRawParrying,
+    $isGrabBreaking: penguin.isGrabBreaking,
+    $isReady: penguin.isReady,
+    $readyIntroComplete: readyIntroComplete,
+    $isHit: penguin.isHit,
+    $isDead: penguin.isDead,
+    $isSlapAttack: displayPenguin.isSlapAttack,
+    $isThrowing: penguin.isThrowing,
+    $isRingOutThrowCutscene: penguin.isRingOutThrowCutscene,
+    $isGrabbing: displayPenguin.isGrabbing,
+    $isGrabbingMovement: penguin.isGrabbingMovement,
+    $isBeingGrabbed: penguin.isBeingGrabbed,
+    $isThrowingSalt: penguin.isThrowingSalt,
+    $slapAnimation: displayPenguin.slapAnimation,
+    $isBowing: penguin.isBowing,
+    $isThrowTeching: penguin.isThrowTeching,
+    $isBeingPulled: penguin.isBeingPulled,
+    $isBeingPushed: penguin.isBeingPushed,
+    $grabState: penguin.grabState,
+    $grabAttemptType: penguin.grabAttemptType,
+    $x: displayPosition.x,
+    $y: displayPosition.y,
+    $facing: penguin.facing ?? -1,
+    $throwCooldown: penguin.throwCooldown,
+    $grabCooldown: penguin.grabCooldown,
+    $isChargingAttack: displayPenguin.isChargingAttack,
+    $chargeAttackPower: penguin.chargeAttackPower || 0,
+    $chargingFacingDirection: penguin.chargingFacingDirection,
+    $saltCooldown: penguin.saltCooldown,
+    $grabStartTime: penguin.grabStartTime,
+    $grabbedOpponent: penguin.grabbedOpponent,
+    $grabAttemptStartTime: penguin.grabAttemptStartTime,
+    $throwTechCooldown: penguin.throwTechCooldown,
+    $isSlapParrying: penguin.isSlapParrying,
+    $isSlapParryRecovering: penguin.isSlapParryRecovering,
+    $lastThrowAttemptTime: penguin.lastThrowAttemptTime,
+    $lastGrabAttemptTime: penguin.lastGrabAttemptTime,
+    $dodgeDirection: displayPenguin.dodgeDirection,
+    $justLandedFromDodge: penguin.justLandedFromDodge,
+    $speedFactor: penguin.speedFactor,
+    $sizeMultiplier: penguin.sizeMultiplier,
+    $isRecovering: penguin.isRecovering,
+    $isRawParryStun: penguin.isRawParryStun,
+    $isRawParrySuccess: penguin.isRawParrySuccess,
+    $isPerfectRawParrySuccess: penguin.isPerfectRawParrySuccess,
+    $isThrowingSnowball: penguin.isThrowingSnowball,
+    $isSpawningPumoArmy: penguin.isSpawningPumoArmy,
+    $isAtTheRopes: penguin.isAtTheRopes,
+    $isRopeJumping: penguin.isRopeJumping,
+    $ropeJumpPhase: penguin.ropeJumpPhase,
+    $isCrouchStance: penguin.isCrouchStance,
+    $isCrouchStrafing: penguin.isCrouchStrafing,
+    $isGrabBreakCountered: penguin.isGrabBreakCountered,
+    $isAttemptingGrabThrow: penguin.isAttemptingGrabThrow,
+    $ritualAnimationSrc: null,
+    $isGrabPushing: penguin.isGrabPushing,
+    $isBeingGrabPushed: penguin.isBeingGrabPushed,
+    $isAttemptingPull: penguin.isAttemptingPull,
+    $isBeingPullReversaled: penguin.isBeingPullReversaled,
+    $isGrabSeparating: penguin.isGrabSeparating,
+    $isGrabBellyFlopping: penguin.isGrabBellyFlopping,
+    $isBeingGrabBellyFlopped: penguin.isBeingGrabBellyFlopped,
+    $isGrabFrontalForceOut: penguin.isGrabFrontalForceOut,
+    $isBeingGrabFrontalForceOut: penguin.isBeingGrabFrontalForceOut,
+    $isGrabTeching: penguin.isGrabTeching,
+    $grabTechRole: penguin.grabTechRole,
+    $isGrabWhiffRecovery: penguin.isGrabWhiffRecovery,
+    $isClinchClashing: penguin.isClinchClashing,
+    $isClinchJolting: penguin.isClinchJolting,
+    $isBeingClinchJolted: penguin.isBeingClinchJolted,
+    $isClinchJoltClashing: penguin.isClinchJoltClashing,
+    $clinchJoltRecovery: penguin.clinchJoltRecovery,
+    $isCinematicKillAttacker: isCinematicKillAttacker,
+    $attackerConfirmTier: attackerConfirmTier,
+    $isClinchKillThrowVictim: penguin.isClinchKillThrowVictim,
+    $isClinchKillPullVictim: penguin.isClinchKillPullVictim,
+    $isBeingThrown: penguin.isBeingThrown,
+    $isLocalPlayer: penguin.id === localId,
+  };
+
   // Update animation state (will start/stop intervals as needed)
   updateSpriteAnimation(effectiveSpriteSrc);
 
@@ -5236,93 +5378,29 @@ const GameFighter = ({
           ref={fighterImgDomRef}
           key={`${baseSpriteSrc}-${chargeAnimKeyRef.current}|${spriteColorKey}`}
           $overrideSrc={recoloredSpriteSrc}
-          $fighter={penguin.fighter}
-          $isDiving={penguin.isDiving}
-          $isJumping={penguin.isJumping}
-          $isAttacking={displayPenguin.isAttacking}
-          $isDodging={displayPenguin.isDodging}
-          $isStrafing={penguin.isStrafing}
-          $isBraking={displayPenguin.isBraking && !penguin.isRawParryStun}
-          $isPowerSliding={displayPenguin.isPowerSliding}
-          $isRawParrying={displayPenguin.isRawParrying}
-          $isGrabBreaking={penguin.isGrabBreaking}
-          $isReady={penguin.isReady}
-          $readyIntroComplete={readyIntroComplete}
-          $isHit={penguin.isHit}
-          $isDead={penguin.isDead}
-          $isSlapAttack={displayPenguin.isSlapAttack}
-          $isThrowing={penguin.isThrowing}
-          $isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
-          $isGrabbing={displayPenguin.isGrabbing}
-          $isGrabbingMovement={penguin.isGrabbingMovement}
-          $isBeingGrabbed={penguin.isBeingGrabbed}
-          $isThrowingSalt={penguin.isThrowingSalt}
-          $slapAnimation={displayPenguin.slapAnimation}
-          $isBowing={penguin.isBowing}
-          $isThrowTeching={penguin.isThrowTeching}
-          $isBeingPulled={penguin.isBeingPulled}
-          $isBeingPushed={penguin.isBeingPushed}
-          $grabState={penguin.grabState}
-          $grabAttemptType={penguin.grabAttemptType}
-          $x={displayPosition.x}
-          $y={displayPosition.y}
-          $facing={penguin.facing ?? -1}
-          $throwCooldown={penguin.throwCooldown}
-          $grabCooldown={penguin.grabCooldown}
-          $isChargingAttack={displayPenguin.isChargingAttack}
-          $chargeAttackPower={penguin.chargeAttackPower || 0}
-          $chargingFacingDirection={penguin.chargingFacingDirection}
-          $saltCooldown={penguin.saltCooldown}
-          $grabStartTime={penguin.grabStartTime}
-          $grabbedOpponent={penguin.grabbedOpponent}
-          $grabAttemptStartTime={penguin.grabAttemptStartTime}
-          $throwTechCooldown={penguin.throwTechCooldown}
-          $isSlapParrying={penguin.isSlapParrying}
-          $isSlapParryRecovering={penguin.isSlapParryRecovering}
-          $lastThrowAttemptTime={penguin.lastThrowAttemptTime}
-          $lastGrabAttemptTime={penguin.lastGrabAttemptTime}
-          $dodgeDirection={displayPenguin.dodgeDirection}
-          $justLandedFromDodge={penguin.justLandedFromDodge}
-          $speedFactor={penguin.speedFactor}
-          $sizeMultiplier={penguin.sizeMultiplier}
-          $isRecovering={penguin.isRecovering}
-          $isRawParryStun={penguin.isRawParryStun}
-          $isRawParrySuccess={penguin.isRawParrySuccess}
-          $isPerfectRawParrySuccess={penguin.isPerfectRawParrySuccess}
-          $isThrowingSnowball={penguin.isThrowingSnowball}
-          $isSpawningPumoArmy={penguin.isSpawningPumoArmy}
-          $isAtTheRopes={penguin.isAtTheRopes}
-          $isRopeJumping={penguin.isRopeJumping}
-          $ropeJumpPhase={penguin.ropeJumpPhase}
-          $isCrouchStance={penguin.isCrouchStance}
-          $isCrouchStrafing={penguin.isCrouchStrafing}
-          $isGrabBreakCountered={penguin.isGrabBreakCountered}
-          $isAttemptingGrabThrow={penguin.isAttemptingGrabThrow}
-          $ritualAnimationSrc={null}
-          $isGrabPushing={penguin.isGrabPushing}
-          $isBeingGrabPushed={penguin.isBeingGrabPushed}
-          $isAttemptingPull={penguin.isAttemptingPull}
-          $isBeingPullReversaled={penguin.isBeingPullReversaled}
-          $isGrabSeparating={penguin.isGrabSeparating}
-          $isGrabBellyFlopping={penguin.isGrabBellyFlopping}
-          $isBeingGrabBellyFlopped={penguin.isBeingGrabBellyFlopped}
-          $isGrabFrontalForceOut={penguin.isGrabFrontalForceOut}
-          $isBeingGrabFrontalForceOut={penguin.isBeingGrabFrontalForceOut}
-          $isGrabTeching={penguin.isGrabTeching}
-          $grabTechRole={penguin.grabTechRole}
-          $isGrabWhiffRecovery={penguin.isGrabWhiffRecovery}
-          $isClinchClashing={penguin.isClinchClashing}
-          $isClinchJolting={penguin.isClinchJolting}
-          $isBeingClinchJolted={penguin.isBeingClinchJolted}
-          $isClinchJoltClashing={penguin.isClinchJoltClashing}
-          $clinchJoltRecovery={penguin.clinchJoltRecovery}
-          $isCinematicKillAttacker={isCinematicKillAttacker}
-          $attackerConfirmTier={attackerConfirmTier}
-          $isClinchKillThrowVictim={penguin.isClinchKillThrowVictim}
-          $isClinchKillPullVictim={penguin.isClinchKillPullVictim}
-          $isBeingThrown={penguin.isBeingThrown}
-          $isLocalPlayer={penguin.id === localId}
+          {...fighterImgStyleProps}
           decoding="async"
+          style={{ display: showRitualSprite ? "none" : "block" }}
+        />
+      )}
+
+      {/* Grab / clinch ARM overlay — a second static <img> stacked on the
+          armless grabbing/clinch body. It shares every style-driving prop with
+          the body (so it moves/flips/animates identically) plus its own ref for
+          per-frame position writes and $grabArmLayer for the facing-based
+          over/under z. Keyed off the body's base source so it remounts in sync
+          with the body (grabbing↔clinch) and their CSS animations stay aligned. */}
+      {!isAnimatedSprite && showGrabArm && recoloredArmSrc && (
+        <StyledImage
+          ref={grabArmImgDomRef}
+          key={`grabarm-${baseSpriteSrc}-${chargeAnimKeyRef.current}|${spriteColorKey}`}
+          $overrideSrc={recoloredArmSrc}
+          {...fighterImgStyleProps}
+          $grabArmLayer={grabArmZ}
+          $grabArmNudgeXPct={grabArmNudgeXPct}
+          $grabArmNudgeYPct={grabArmNudgeYPct}
+          decoding="async"
+          draggable={false}
           style={{ display: showRitualSprite ? "none" : "block" }}
         />
       )}

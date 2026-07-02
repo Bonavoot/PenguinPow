@@ -178,6 +178,16 @@ export const getFighterPopFilter = (props) => {
   return base;
 };
 
+// Grab-arm overlay planting nudge → a translate string appended AFTER scaleX so
+// X lives in the sprite's local (pre-flip) space (symmetric "back" per facing)
+// and Y is screen-down. Returns "" when no nudge is set (grabbing pose / body).
+const grabArmNudge = (props) => {
+  const x = props.$grabArmNudgeXPct || 0;
+  const y = props.$grabArmNudgeYPct || 0;
+  if (!x && !y) return "";
+  return ` translateX(${x}%) translateY(${y}%)`;
+};
+
 export const StyledImage = styled("img")
   .withConfig({
     shouldForwardProp: (prop) =>
@@ -368,10 +378,22 @@ export const StyledImage = styled("img")
           ? props.$facing === 1
             ? "scaleX(1) translateY(5%)"
             : "scaleX(-1) translateY(5%)"
+          // $grabArmNudgeXPct / $grabArmNudgeYPct: planting-pose nudge for the
+          // grab-arm overlay only. translateX is in the sprite's LOCAL space
+          // (applied before the scaleX flip), so the SAME X value shifts each
+          // penguin toward its own back regardless of facing; translateY isn't
+          // mirrored, so +Y is down for both. Percentages scale with the sprite.
+          // Tune/ flip the values in GameFighter.
           : props.$facing === 1
-          ? "scaleX(1)"
-          : "scaleX(-1)",
-      zIndex: props.$isClinchKillPullVictim
+          ? `scaleX(1)${grabArmNudge(props)}`
+          : `scaleX(-1)${grabArmNudge(props)}`,
+      // Grab-arm overlay: rides above BOTH locked bodies (which sit at ~98–99
+      // during a grab). $grabArmLayer carries the resolved z (facing decides
+      // which of the two arms wins). Still sinks with the body when outside the
+      // ring, so fall through to the normal formula (→ 0) in that case.
+      zIndex: props.$grabArmLayer && !isOutsideDohyo(props.$x, props.$y)
+        ? props.$grabArmLayer
+        : props.$isClinchKillPullVictim
         ? (isOutsideDohyo(props.$x, props.$y) ? 0 : 102)
         : isOutsideDohyo(props.$x, props.$y)
         ? 0
@@ -382,7 +404,12 @@ export const StyledImage = styled("img")
         : props.$isThrowing || props.$isDodging || props.$isGrabbing
         ? 98
         : 99,
-      filter: getFighterPopFilter(props),
+      // Grab-arm overlay: NO filter. getFighterPopFilter emits an all-around
+      // dark edge contour + a downward ground shadow; on a layer stacked over
+      // the body those cast onto the body and trace a dark seam around the arm.
+      // The body already renders the whole penguin's outline + ground shadow, so
+      // the arm (an interior piece) must stay filter-less for a seamless blend.
+      filter: props.$grabArmLayer ? "none" : getFighterPopFilter(props),
       animation: props.$isClinchKillThrowVictim
         ? "clinchKillThrowSpin 1.2s ease-in forwards"
         : props.$isClinchKillPullVictim
