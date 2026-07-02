@@ -11,6 +11,7 @@ import pumoArmyIcon from "./pumo-army-icon.png";
 import happyFeetIcon from "../assets/happy-feet.png";
 import thickBlubberIcon from "../assets/thick-blubber-icon.png";
 import flapIcon from "../assets/flap-icon.png";
+import shatterPalmIcon from "../assets/shatter-palm-icon.png";
 
 /*
  * PowerUpReveal — printed mini-card pickup per side.
@@ -101,6 +102,7 @@ const TYPE_COLORS = {
   pumo_army: { main: "#ffaa44", deep: "#8a5418" },
   thick_blubber: { main: "#aa77ff", deep: "#4a2c8a" },
   flap: { main: "#34e0c0", deep: "#15705f" },
+  shatter_palm: { main: "#ffe566", deep: "#c99200" },
 };
 
 const FALLBACK_TYPE = { main: C.gold, deep: C.goldDeep };
@@ -430,6 +432,7 @@ const PowerUpReveal = ({ roomId, localId }) => {
       pumo_army: { name: "Pumo Army", icon: pumoArmyIcon },
       thick_blubber: { name: "Thick Blubber", icon: thickBlubberIcon },
       flap: { name: "Flap", icon: flapIcon },
+      shatter_palm: { name: "Shatter Palm", icon: shatterPalmIcon },
     }),
     []
   );

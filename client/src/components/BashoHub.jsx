@@ -30,6 +30,8 @@ import {
 import Snowfall from "./Snowfall";
 import pumo from "../assets/pumo-idle.png";
 import envelopeImg from "../assets/envelope.png";
+import flapIcon from "../assets/flap-icon.png";
+import shatterPalmIcon from "../assets/shatter-palm-icon.png";
 import mainMenuBackground from "../assets/main-menu-bkg-4.webp";
 import {
   C,
@@ -69,6 +71,35 @@ import { createRun, ensureOpponentRanks } from "../lib/bashoRun";
 import BanzukeBoard from "./BanzukeBoard";
 
 const DEBUG_FLAG_KEY = "bashoDebug";
+
+/** Square icon + panel colors for loadout options (matches PowerUpSelection TYPE_COLORS). */
+const LOADOUT_OPTION_ICONS = {
+  flap: {
+    icon: flapIcon,
+    main: "#34e0c0",
+    deep: "#15705f",
+  },
+  shattering_palm: {
+    icon: shatterPalmIcon,
+    // Bright armor-break yellow — flat muddy gold read poorly at small size.
+    gradient:
+      "linear-gradient(180deg, #fff9c4 0%, #ffe566 52%, #ffd024 100%)",
+    main: "#ffe566",
+    deep: "#c99200",
+    imgSize: "86%",
+    imgScale: 1.08,
+  },
+};
+
+/** Kenshō unlock id → loadout option id (for shop row icons). */
+const UNLOCK_LOADOUT_OPTION_ID = {
+  loadout_flap: "flap",
+  loadout_shattering_palm: "shattering_palm",
+};
+
+function getLoadoutOptionIcon(optionId) {
+  return LOADOUT_OPTION_ICONS[optionId] || null;
+}
 
 // ============================================
 // LOCAL ANIMATIONS
@@ -881,6 +912,45 @@ const OptionButton = styled.button`
     cursor: default;
     opacity: ${(p) => (p.$selected ? 0.85 : 0.4)};
   }
+`;
+
+const OptionIcon = styled.div`
+  flex-shrink: 0;
+  width: clamp(38px, 5cqw, 48px);
+  height: clamp(38px, 5cqw, 48px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: ${(p) => p.$gradient || p.$main};
+  box-shadow:
+    inset 0 -2px 0 ${(p) => p.$deep},
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  border: 1px solid ${(p) => p.$deep};
+  border-radius: 2px;
+
+  img {
+    width: ${(p) => p.$imgSize || "82%"};
+    height: ${(p) => p.$imgSize || "82%"};
+    object-fit: contain;
+    transform: scale(${(p) => p.$imgScale ?? 1});
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.38));
+  }
+`;
+
+const OptionIconFallback = styled(OptionIcon)`
+  font-family: ${FONT_KANJI};
+  font-size: clamp(0.85rem, 1.4cqw, 1.05rem);
+  color: ${C.cream};
+  background: ${C.sumiSoft};
+  border-color: ${C.sumiBorder};
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+`;
+
+const ShopOptionIcon = styled(OptionIcon)`
+  width: clamp(34px, 4.4cqw, 42px);
+  height: clamp(34px, 4.4cqw, 42px);
 `;
 
 const OptionCheck = styled.span`
@@ -1710,6 +1780,7 @@ function BashoHub({ onBack, onStartRun }) {
                           const isOn = !locked && selected.includes(opt.id);
                           const cost = opt.cost || 0;
                           const affordable = isOn || cost <= loadoutRemaining;
+                          const visual = getLoadoutOptionIcon(opt.id);
                           return (
                             <OptionButton
                               key={opt.id}
@@ -1721,6 +1792,22 @@ function BashoHub({ onBack, onStartRun }) {
                               onClick={() => toggleLoadoutOption(cat.key, opt)}
                               onMouseEnter={playButtonHoverSound}
                             >
+                              {visual ? (
+                                <OptionIcon
+                                  $main={visual.main}
+                                  $deep={visual.deep}
+                                  $gradient={visual.gradient}
+                                  $imgSize={visual.imgSize}
+                                  $imgScale={visual.imgScale}
+                                  aria-hidden
+                                >
+                                  <img src={visual.icon} alt="" />
+                                </OptionIcon>
+                              ) : (
+                                <OptionIconFallback aria-hidden>
+                                  {opt.kanji}
+                                </OptionIconFallback>
+                              )}
                               <OptionCheck $selected={isOn} aria-hidden>
                                 {isOn ? "✓" : ""}
                               </OptionCheck>
@@ -1764,9 +1851,26 @@ function BashoHub({ onBack, onStartRun }) {
                 {UNLOCKS.map((item) => {
                   const owned = isUnlocked(career, item.id);
                   const affordable = (career.envelopes || 0) >= item.cost;
+                  const optionId = UNLOCK_LOADOUT_OPTION_ID[item.id];
+                  const visual = optionId
+                    ? getLoadoutOptionIcon(optionId)
+                    : null;
                   return (
                     <ShopRow key={item.id} $owned={owned}>
-                      <LoadoutKanji aria-hidden>{item.kanji}</LoadoutKanji>
+                      {visual ? (
+                        <ShopOptionIcon
+                          $main={visual.main}
+                          $deep={visual.deep}
+                          $gradient={visual.gradient}
+                          $imgSize={visual.imgSize}
+                          $imgScale={visual.imgScale}
+                          aria-hidden
+                        >
+                          <img src={visual.icon} alt="" />
+                        </ShopOptionIcon>
+                      ) : (
+                        <LoadoutKanji aria-hidden>{item.kanji}</LoadoutKanji>
+                      )}
                       <ShopBody>
                         <LoadoutName>{item.label}</LoadoutName>
                         {item.sub && <LoadoutSub>{item.sub}</LoadoutSub>}

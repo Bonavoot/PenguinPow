@@ -355,6 +355,69 @@ function createSpeedLine(length, thickness, r, g, b, peakAlpha = 0.9) {
   return c;
 }
 
+// Horizontal speed streak with the palm-thrust ring palette — bright yellow
+// stroke, warm halo, and white-hot core so forward lines match the removed ring.
+function createGlowingSpeedLine(length, thickness, palette) {
+  const glowPad = Math.ceil(thickness * 5);
+  const c = document.createElement("canvas");
+  c.width = length;
+  c.height = thickness + glowPad * 2;
+  const ctx = c.getContext("2d");
+  const cy = c.height / 2;
+  const [sr, sg, sb] = palette.stroke;
+  const [gr, gg, gb] = palette.glow;
+  const glowAlpha = palette.glowAlpha ?? 0.78;
+  const strokeAlpha = palette.strokeAlpha ?? 1.0;
+
+  // Outer warm halo — soft bloom like the ring's glow pass
+  ctx.save();
+  ctx.shadowColor = `rgba(${gr},${gg},${gb},${glowAlpha})`;
+  ctx.shadowBlur = thickness * 4;
+  ctx.strokeStyle = `rgba(${gr},${gg},${gb},${glowAlpha * 0.55})`;
+  ctx.lineWidth = thickness * 2.8;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(length * 0.05, cy);
+  ctx.lineTo(length * 0.95, cy);
+  ctx.stroke();
+  ctx.restore();
+
+  // Tapered body — hot yellow stroke with white-hot center
+  ctx.beginPath();
+  ctx.moveTo(0, cy);
+  ctx.lineTo(length * 0.15, cy - thickness / 2);
+  ctx.lineTo(length * 0.85, cy - thickness / 2);
+  ctx.lineTo(length, cy);
+  ctx.lineTo(length * 0.85, cy + thickness / 2);
+  ctx.lineTo(length * 0.15, cy + thickness / 2);
+  ctx.closePath();
+  const grad = ctx.createLinearGradient(0, 0, length, 0);
+  grad.addColorStop(0, `rgba(${gr},${gg},${gb},0)`);
+  grad.addColorStop(0.15, `rgba(${gr},${gg},${gb},${glowAlpha * 0.55})`);
+  grad.addColorStop(0.35, `rgba(${sr},${sg},${sb},${strokeAlpha * 0.95})`);
+  grad.addColorStop(0.5, `rgba(255,255,255,${strokeAlpha})`);
+  grad.addColorStop(0.65, `rgba(${sr},${sg},${sb},${strokeAlpha * 0.95})`);
+  grad.addColorStop(0.85, `rgba(${gr},${gg},${gb},${glowAlpha * 0.55})`);
+  grad.addColorStop(1, `rgba(${gr},${gg},${gb},0)`);
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Bright rim stroke — ring-like sharp edge with glow
+  ctx.save();
+  ctx.shadowColor = `rgba(${sr},${sg},${sb},0.95)`;
+  ctx.shadowBlur = thickness * 1.6;
+  ctx.strokeStyle = `rgba(${sr},${sg},${sb},${strokeAlpha})`;
+  ctx.lineWidth = Math.max(1, thickness * 0.38);
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(length * 0.12, cy);
+  ctx.lineTo(length * 0.88, cy);
+  ctx.stroke();
+  ctx.restore();
+
+  return c;
+}
+
 function createCloudRing(diameter, bandWidth, seed) {
   // Default white ring — preserved for existing presets that consume it.
   return createColoredCloudRing(diameter, bandWidth, seed, {
@@ -1017,8 +1080,11 @@ function generateTextures(s) {
     }),
     // Warm white-gold flash — the "bang" of light at the palm contact.
     palmThrustFlash: createFlashBloom(r(170), 255, 216, 132),
-    // Warm speed-line for the forward streaks lancing through the cone.
-    palmThrustStreak: createSpeedLine(r(96), r(4), 255, 206, 112, 0.95),
+    // Brighter hot-yellow streak — thicker canvas for a bolder arm read.
+    palmThrustStreak: createGlowingSpeedLine(r(96), r(7), {
+      stroke: [255, 252, 120], strokeAlpha: 1.0,
+      glow: [255, 235, 64], glowAlpha: 0.95,
+    }),
     // Warm pinpoint spark for the forward sparkle at the strike tip.
     palmThrustSpark: createChunk(r(9), 255, 222, 132, 1.0),
 
@@ -1089,15 +1155,7 @@ function emitImpactSparks(engine, cx, cy, {
 const PRESETS = {
 
   // ── OPEN-PALM THRUST — force cone ──────────────────────────────────
-  // A cone of yellow→orange energy rings that ERUPTS forward from the
-  // palm on a hard open-palm thrust. Reads as a directed shove of force:
-  // the SMALL tip ring snaps in first out at the strike point, then
-  // BIGGER rings fill in behind it back toward the hand (a funnel that
-  // focuses to the tip). Each ring is a strongly side-tilted ellipse
-  // (small stretchX) so the stack looks like a 3D cone viewed down the
-  // thrust axis — the hit-effect ring's faux-3D idiom, tilted further
-  // onto its side per design. A warm core flash + forward streaks and
-  // sparks sell the contact bang and real motion through the cone.
+  // Glow streaks, sparks, and core flash on a hard open-palm thrust.
   //
   //   x, y  — thrust ORIGIN in game space (sprite center, chest height).
   //           Caller passes the exact center the hit-spark uses.
@@ -1125,14 +1183,27 @@ const PRESETS = {
     const PALM_UP = -6;  // px up from chest to the raised flipper (negative = lower)
     const palmX = cx + d * PALM_FWD;
     const palmY = cy - PALM_UP;
+    const RING_BACK = 24;  // px back from palm toward player center
+    const ringX = palmX - d * RING_BACK;
+    const RING_DOWN = 6;  // px lower on screen for ring + forward streaks
+    const ringY = palmY + RING_DOWN;
+    const streakCenterY = ringY;
+    // Point along thrust — the half behind the anchor extends back into the arm/body.
+    const streakRot = d > 0 ? 0 : Math.PI;
+    const streakSpawnX = ringX - d * 56;
+    const flashX = ringX - d * 2;
+    const palmFx = (cfg) => ({
+      ...cfg,
+      palmThrustFx: true,
+      palmThrustOwner: owner,
+    });
 
-    // ── CORE FLASH — the "bang" of contact right at the palm. Pops then
-    // snaps away fast so it reads as a flash, not a lingering blob.
+    // ── CORE FLASH — warm bloom at the palms (forward of the arm streaks).
     engine.spawn({
-      x: palmX, y: palmY,
-      vx: d * 30, vy: 0, gravity: 0, drag: 0.9,
-      size: 30, sizeEnd: 74,
-      alpha: 0.95, alphaEnd: 0,
+      x: flashX, y: streakCenterY,
+      vx: 0, vy: 0, gravity: 0, drag: 0.9,
+      size: 36, sizeEnd: 86,
+      alpha: 1, alphaEnd: 0,
       rotation: 0, rotationSpeed: 0,
       ease: "outCubic", easeAlpha: "outCubic",
       maxLife: 0.2, delay: LEAD,
@@ -1144,83 +1215,50 @@ const PRESETS = {
       palmThrustOwner: owner,
     });
 
-    // ── THE CONE OF RINGS ──────────────────────────────────────────
-    // Rings SPAWN at the palm and stack BACK toward the body, growing as
-    // they go — reads as the force blooming out of the flipper. i = 0 is
-    // the small leading ring right at the palm; each ring behind it steps
-    // back (into the player) and gets bigger. Sizes/warmth graduate
-    // palm → body.
-    const N = 3;
-    const STEP = 28;       // px each ring steps back from the palm toward the body
-    const SIZE_TIP = 54;   // ellipse HEIGHT of the ring at the palm (smallest)
-    const SIZE_BASE = 126; // ellipse HEIGHT of the rearmost ring (~70% penguin height)
-    const TILT_X = 0.43;   // strong side tilt → tall/narrow 3D ring
-    const STAGGER = 0.03;  // palm-first reveal cadence
-
-    for (let i = 0; i < N; i++) {
-      const t = i / (N - 1); // 0 = palm ring, 1 = rearmost ring
-      const ringX = palmX - d * i * STEP;
-      const size = SIZE_TIP + (SIZE_BASE - SIZE_TIP) * t;
-      const tex =
-        i === 0 ? T.palmThrustRingHot
-        : i === N - 1 ? T.palmThrustRingWarm
-        : T.palmThrustRingMid;
-      engine.spawn({
-        x: ringX, y: palmY + rand(-2, 2),
-        vx: d * rand(25, 55), vy: 0, gravity: 0, drag: 0.9,
-        size: size * 0.82, sizeEnd: size * 1.12,
-        alpha: 1, alphaEnd: 0,
-        rotation: rand(-0.04, 0.04), rotationSpeed: 0,
-        ease: "outCubic", easeAlpha: "inCubic",
-        maxLife: 0.3 + t * 0.06,
-        delay: LEAD + i * STAGGER,
-        texture: tex,
-        stretchX: TILT_X,
-        blendMode: "lighter",
-        aboveFighters: true,
-        palmThrustFx: true,
-        palmThrustOwner: owner,
-      });
-    }
-
-    // ── FORWARD STREAKS — short warm speed lines lancing forward off the
-    // palm along the thrust axis. Give the burst real forward motion.
-    for (let i = 0; i < 4; i++) {
-      engine.spawn({
-        x: palmX + d * rand(0, 20), y: palmY + rand(-24, 24),
-        vx: d * rand(420, 640), vy: rand(-8, 8),
-        gravity: 0, drag: 0.9,
-        size: rand(2.5, 4.5), sizeEnd: rand(1.2, 2),
-        alpha: rand(0.8, 1), alphaEnd: 0,
-        rotation: 0, rotationSpeed: 0,
+    // ── GLOW STREAKS — bright yellow lines through the arm; thrust-aligned
+    // with the tail running back into the body. Back + front layers wrap the sprite.
+    const FWD_STREAKS = [
+      { yOff: -16, stretch: 20, thick: 6.5, behind: true, alpha: 1 },
+      { yOff: 0, stretch: 19, thick: 6, behind: true, alpha: 0.96 },
+      { yOff: 16, stretch: 20, thick: 6.5, behind: true, alpha: 1 },
+      { yOff: -11, stretch: 18, thick: 5.5, behind: false, alpha: 0.9 },
+      { yOff: 5, stretch: 19, thick: 5.8, behind: false, alpha: 0.92 },
+      { yOff: 18, stretch: 17, thick: 5.4, behind: false, alpha: 0.88 },
+    ];
+    for (const slot of FWD_STREAKS) {
+      engine.spawn(palmFx({
+        x: streakSpawnX + d * rand(-2, 2),
+        y: streakCenterY + slot.yOff + rand(-2, 2),
+        vx: 0, vy: 0,
+        gravity: 0, drag: 1,
+        size: slot.thick, sizeEnd: slot.thick * 0.8,
+        alpha: slot.alpha, alphaEnd: 0,
+        rotation: streakRot, rotationSpeed: 0,
         ease: "outCubic", easeAlpha: "outQuad",
-        maxLife: rand(0.12, 0.18),
-        delay: LEAD + rand(0, 0.03),
+        maxLife: rand(0.18, 0.24),
+        delay: LEAD,
         texture: T.palmThrustStreak,
-        stretchX: rand(9, 14),
+        stretchX: slot.stretch,
         blendMode: "lighter",
-        aboveFighters: true,
-        palmThrustFx: true,
-        palmThrustOwner: owner,
-      });
+        aboveFighters: !slot.behind,
+      }));
     }
 
-    // ── SPARKS — a few warm pinpoints spitting forward off the palm with
-    // spread for that premium sparkle.
-    for (let i = 0; i < 7; i++) {
-      const ang = (d === 1 ? 0 : Math.PI) + rand(-0.5, 0.5);
-      const spd = rand(150, 340);
-      const size = rand(3, 6);
+    // ── SPARKS — warm pinpoints spitting forward from the flash with spread.
+    for (let i = 0; i < 13; i++) {
+      const ang = (d === 1 ? 0 : Math.PI) + rand(-0.55, 0.55);
+      const spd = rand(180, 380);
+      const size = rand(4, 7.5);
       engine.spawn({
-        x: palmX + d * rand(6, 44), y: palmY + rand(-16, 16),
+        x: flashX + d * rand(0, 24), y: streakCenterY + rand(-18, 18),
         vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - 20,
         gravity: 240, drag: 0.9,
         size, sizeEnd: size * 0.35,
         alpha: 1, alphaEnd: 0,
         rotation: ang, rotationSpeed: 0,
         ease: "outCubic", easeAlpha: "outQuad",
-        maxLife: rand(0.16, 0.28),
-        delay: LEAD + rand(0, 0.04),
+        maxLife: rand(0.18, 0.32),
+        delay: LEAD + rand(0, 0.05),
         texture: T.palmThrustSpark,
         blendMode: "lighter",
         aboveFighters: true,

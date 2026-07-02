@@ -219,7 +219,8 @@ const PALM_THRUST_ACTIVE_MS = 90;          // Single clean hit window (hitbox li
 // just renders as the attack pose (slapAttack1) instead of the recovery pose,
 // so the strike reads as a committed, held-out palm.
 const PALM_THRUST_HOLD_MS = 260;
-// The ONLY part shown as the recovery pose — "very very short at the end".
+// The ONLY part shown as the recovery pose for OTHER moves — palm thrust keeps
+// its strike sprite for the full whiff punish window instead.
 const PALM_THRUST_END_RECOVERY_MS = 60;
 const PALM_THRUST_HIT_RECOVERY_MS = 200;   // Settle on a confirmed hit
 // Fixed "charge %" fed into the charged knockback formula. 35 sits ABOVE
@@ -313,6 +314,7 @@ const POWER_UP_TYPES = {
   PUMO_ARMY: "pumo_army",
   THICK_BLUBBER: "thick_blubber",
   FLAP: "flap",
+  SHATTER_PALM: "shatter_palm",
 };
 
 const POWER_UP_EFFECTS = {
@@ -322,6 +324,7 @@ const POWER_UP_EFFECTS = {
   [POWER_UP_TYPES.PUMO_ARMY]: 1.0, // No stat multiplier, just spawns army
   [POWER_UP_TYPES.THICK_BLUBBER]: 1.0, // No stat multiplier, just hit absorption
   [POWER_UP_TYPES.FLAP]: 1.0, // No stat multiplier, replaces raw parry with flight
+  [POWER_UP_TYPES.SHATTER_PALM]: 1.0, // No stat multiplier — palm thrust shatters grab startup armor
 };
 
 const GRAB_DURATION = 1500; // 1.5 seconds total grab duration

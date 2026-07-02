@@ -61,6 +61,7 @@ import pumo from "../assets/pumo-idle.png";
 import attack from "../assets/attack.png";
 import throwing from "../assets/throwing.png";
 import grabbing from "../assets/grabbing.png";
+import clinchPlanting from "../assets/clinch-planting.png";
 import attemptingGrabThrow from "../assets/attempting-grab-throw.png";
 import isAttemptingPull from "../assets/is-attempting-pull.png";
 import pumoSideProfile from "../assets/pumo-ready-position.png";
@@ -72,6 +73,7 @@ import recovering from "../assets/recovering.png";
 import rawParrySuccess from "../assets/raw-parry-success.png";
 import slapAttack1 from "../assets/slapAttack1.png";
 import slapAttack2 from "../assets/slapAttack2.png";
+import palmThrust from "../assets/palm-thrust.png";
 import bellyLaying from "../assets/pumo-belly-laying.png";
 import bellyLayingEyesOpen from "../assets/pumo-belly-laying-eyes-open.png";
 import flap1 from "../assets/pumo-flap-1.png";
@@ -90,9 +92,9 @@ import crouchStrafing from "../assets/crouch-strafing.png";
 
 // GameFighter's static sprites - these are the actual URLs it uses
 const GAME_FIGHTER_STATIC_SPRITES = [
-  pumo, attack, throwing, grabbing, attemptingGrabThrow, isAttemptingPull,
+  pumo, attack, throwing, grabbing, clinchPlanting, attemptingGrabThrow, isAttemptingPull,
   pumoSideProfile, pumoTachiaiPosition, dodging, crouchStance,
-  recovering, rawParrySuccess, slapAttack1, slapAttack2,
+  recovering, rawParrySuccess, slapAttack1, slapAttack2, palmThrust,
   crouching, bow, bellyLaying, bellyLayingEyesOpen,
   flap1, flap2,
 ];

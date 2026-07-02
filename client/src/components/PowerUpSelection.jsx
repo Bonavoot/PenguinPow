@@ -21,6 +21,7 @@ import pumoArmyIcon from "./pumo-army-icon.png";
 import happyFeetIcon from "../assets/happy-feet.png";
 import thickBlubberIcon from "../assets/thick-blubber-icon.png";
 import flapIcon from "../assets/flap-icon.png";
+import shatterPalmIcon from "../assets/shatter-palm-icon.png";
 
 /*
  * PowerUpSelection — three picks on a darkened dohyo, no panel.
@@ -233,6 +234,11 @@ const TYPE_COLORS = {
     main: "#34e0c0",
     deep: "#15705f",
     glow: "rgba(52, 224, 192, 0.45)",
+  },
+  shatter_palm: {
+    main: "#ffe566",
+    deep: "#c99200",
+    glow: "rgba(255, 229, 102, 0.45)",
   },
 };
 const FALLBACK_TYPE = {
@@ -740,6 +746,12 @@ const PowerUpSelection = ({
         icon: flapIcon,
         active: true,
         usageLabel: "Space",
+      },
+      shatter_palm: {
+        name: "Shatter Palm",
+        description: "Break grab armor",
+        icon: shatterPalmIcon,
+        active: false,
       },
     }),
     []

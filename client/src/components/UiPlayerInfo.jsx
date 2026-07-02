@@ -7,6 +7,7 @@ import snowballImage from "../assets/snowball.png";
 import pumoArmyIcon from "./pumo-army-icon.png";
 import thickBlubberIcon from "../assets/thick-blubber-icon.png";
 import flapIcon from "../assets/flap-icon.png";
+import shatterPalmIcon from "../assets/shatter-palm-icon.png";
 import { C } from "./menuTheme";
 import BalanceGauge from "./BalanceGauge";
 
@@ -1424,6 +1425,8 @@ const PowerUpSlot = styled.div`
         return "linear-gradient(135deg, #9c88ff, #7c4dff)";
       case "flap":
         return "linear-gradient(135deg, #34e0c0, #15705f)";
+      case "shatter_palm":
+        return "linear-gradient(135deg, #fff9c4, #ffd024)";
       default:
         return "linear-gradient(135deg, #6c757d, #343a40)";
     }
@@ -2166,6 +2169,7 @@ const UiPlayerInfo = ({
       case "pumo_army": return pumoArmyIcon;
       case "thick_blubber": return thickBlubberIcon;
       case "flap": return flapIcon;
+      case "shatter_palm": return shatterPalmIcon;
       default: return "";
     }
   };

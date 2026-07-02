@@ -22,10 +22,15 @@
 // Returns the flag set read by the combat sites. Tolerant of a missing/oddly
 // shaped argument so a corrupt save can never throw here.
 function deriveLoadout(selected = {}) {
+  const attack = Array.isArray(selected && selected.attack)
+    ? selected.attack
+    : [];
   const defense = Array.isArray(selected && selected.defense)
     ? selected.defense
     : [];
   return {
+    // ATTACK sidegrade: palm thrust shatters grab startup armor (charged-style).
+    palmBreaksGrabArmor: attack.includes("shattering_palm"),
     // DEFENSE sidegrade: swap the raw-parry-on-Space for the flight liftoff.
     flapReplacesParry: defense.includes("flap"),
   };

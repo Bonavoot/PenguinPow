@@ -12,6 +12,7 @@ import pumoArmyIcon from "./pumo-army-icon.png";
 import happyFeetIcon from "../assets/happy-feet.png";
 import thickBlubberIcon from "../assets/thick-blubber-icon.png";
 import grabbing from "../assets/grabbing.png";
+import clinchPlanting from "../assets/clinch-planting.png";
 import attemptingGrabThrow from "../assets/attempting-grab-throw.png";
 import attemptingPull from "../assets/is-attempting-pull.png";
 import pumoSideProfile from "../assets/pumo-ready-position.png";
@@ -20,6 +21,7 @@ import attack from "../assets/attack.png";
 import slapAttack1 from "../assets/slapAttack1.png";
 import slapAttack2 from "../assets/slapAttack2.png";
 import slapAttack3 from "../assets/attack.png";
+import palmThrust from "../assets/palm-thrust.png";
 import dodging from "../assets/dodging.png";
 import throwing from "../assets/throwing.png";
 import salt from "../assets/salt.png";
@@ -130,6 +132,8 @@ import slapAttackHand from "../assets/slap-attack-hand.png";
 export const GROUND_LEVEL = 140;
 export const SPRITE_HALF_W = 0;
 export const PLAYER_MID_Y = 376;
+/** Game-Y anchor for slap/charged/burst hit rings (HitEffect) + canvas impact sparks. */
+export const HIT_EFFECT_Y = PLAYER_MID_Y - 10;
 
 // ============================================
 // RITUAL ANIMATION CONFIGURATION
@@ -206,6 +210,7 @@ const initializeImagePreloading = () => {
   preloadImage(attack);
   preloadImage(throwing);
   preloadImage(grabbing);
+  preloadImage(clinchPlanting);
   preloadImage(grabAttempt);
   preloadImage(attemptingGrabThrow);
   preloadImage(attemptingPull);
@@ -224,6 +229,7 @@ const initializeImagePreloading = () => {
   preloadImage(slapAttack1);
   preloadImage(slapAttack2);
   preloadImage(slapAttack3);
+  preloadImage(palmThrust);
   preloadImage(snowballThrow);
 
   preloadImage(bow);
@@ -342,6 +348,7 @@ export const xToPan = (x, screenWidth = 1100) => {
 export {
   pumo,
   grabbing,
+  clinchPlanting,
   attemptingGrabThrow,
   attemptingPull,
   pumoSideProfile,
@@ -350,6 +357,7 @@ export {
   slapAttack1,
   slapAttack2,
   slapAttack3,
+  palmThrust,
   dodging,
   throwing,
   salt,

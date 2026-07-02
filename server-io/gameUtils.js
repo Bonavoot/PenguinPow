@@ -540,6 +540,8 @@ function resetPlayerAttackStates(player) {
   player.slapFacingDirection = null;
   player.isSlapAttack = false;
   player.isPalmThrust = false;
+  player.palmThrustVisualUntil = 0;
+  timeoutManager.clearPlayerSpecific(player.id, "palmThrustVisualEnd");
   player.attackStartTime = 0;
   player.attackEndTime = 0;
   player.attackType = null;
@@ -594,6 +596,8 @@ function clearAllActionStates(player) {
   player.slapFacingDirection = null;
   player.isSlapAttack = false;
   player.isPalmThrust = false;
+  player.palmThrustVisualUntil = 0;
+  timeoutManager.clearPlayerSpecific(player.id, "palmThrustVisualEnd");
   player.attackStartTime = 0;
   player.attackEndTime = 0;
   player.attackType = null;
@@ -1088,6 +1092,28 @@ function setKnockbackImmunity(player) {
   player.knockbackImmuneEndTime = simNowForPlayer(player) + KNOCKBACK_IMMUNITY_DURATION;
 }
 
+// One authoritative sim-time deadline for the palm-thrust strike sprite. Every
+// code path that extends/clears isPalmThrust should go through this so ring-out
+// wins, hitstop, and on-hit recovery can't fight each other.
+function schedulePalmThrustVisualEnd(player, visualUntilSimTime) {
+  player.palmThrustVisualUntil = Math.max(
+    player.palmThrustVisualUntil || 0,
+    visualUntilSimTime
+  );
+  const now = simNowForPlayer(player);
+  const delay = Math.max(0, player.palmThrustVisualUntil - now);
+  timeoutManager.clearPlayerSpecific(player.id, "palmThrustVisualEnd");
+  setPlayerTimeout(
+    player.id,
+    () => {
+      player.isPalmThrust = false;
+      player.palmThrustVisualUntil = 0;
+    },
+    delay,
+    "palmThrustVisualEnd"
+  );
+}
+
 function getChargedHitstop(chargePower) {
   const normalizedPower = Math.max(0, Math.min(1, (chargePower - 0.3) / 0.7));
   return HITSTOP_CHARGED_MIN_MS + (HITSTOP_CHARGED_MAX_MS - HITSTOP_CHARGED_MIN_MS) * normalizedPower;
@@ -1196,6 +1222,7 @@ module.exports = {
   getEffectiveMoveSpeedMult,
   canApplyKnockback,
   setKnockbackImmunity,
+  schedulePalmThrustVisualEnd,
   getChargedHitstop,
   triggerHitstop,
   triggerHitstopAndEmit,

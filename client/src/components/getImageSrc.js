@@ -1,6 +1,7 @@
 import {
   pumo,
   grabbing,
+  clinchPlanting,
   attemptingGrabThrow,
   attemptingPull,
   pumoSideProfile,
@@ -8,6 +9,7 @@ import {
   attack,
   slapAttack1,
   slapAttack2,
+  palmThrust,
   dodging,
   throwing,
   salt,
@@ -174,12 +176,10 @@ const getImageSrc = (
   if (isSidestepping) return isPerfectParried;
   if (isBowing) return bow;
   if (isPowerSliding) return crouchStance;
-  // Palm thrust placeholder: hold the slap1 strike pose through startup, the
-  // active frames, AND the "visual hold" recovery (server keeps isPalmThrust
-  // true across the hold). Once the server drops the flag for the short tail,
-  // this falls through to the recovery pose below. Must sit BEFORE the generic
-  // isRecovering check so the hold shows the strike, not the recovery pose.
-  if (isPalmThrust && (isAttacking || isRecovering)) return slapAttack1;
+  // Palm thrust: the strike pose IS the whole move — startup, active, and recovery.
+  // Server keeps isPalmThrust true until the move fully ends; never fall through
+  // to the generic recovering sprite.
+  if (isPalmThrust) return palmThrust;
   if (isChargingAttack) return recovering;
   if (isRecovering) return recovering;
   if (isThrowingSnowball) return snowballThrow;
@@ -189,7 +189,7 @@ const getImageSrc = (
   if (isAttemptingGrabThrow) return attemptingGrabThrow;
   if (isResistingThrow) return hit;
   if (isResistingPull) return hit;
-  if (isClinchPlanting) return crouchStance;
+  if (isClinchPlanting) return clinchPlanting;
   if (isClinchPushing) return grabbing;
   if (isBeingGrabbed) {
     if (hasGrip) return grabbing;
@@ -207,7 +207,13 @@ const getImageSrc = (
   if (grabState === "attempting") {
     return grabAttemptType === "throw" ? throwing : grabAttempt;
   }
+  // if (isSlapAttack) {
+  //   if (slapAnimation === 1) return slapAttack1;
+  //   return slapAttack2;
+  // }
+
   if (isSlapAttack) {
+    if (slapAnimation === 3) return palmThrust;
     if (slapAnimation === 1) return slapAttack1;
     return slapAttack2;
   }

@@ -43,6 +43,7 @@ const {
   PALM_THRUST_HIT_RECOVERY_MS,
   PALM_THRUST_HITBOX_DISTANCE_VALUE,
   PALM_THRUST_KB_VELOCITY,
+  PALM_THRUST_ACTIVE_MS,
   GRAB_STARTUP_ARMOR_STAGGER_MS,
   FLAP_BODYSLAM_KB_VELOCITY,
 } = require("./constants");
@@ -67,6 +68,7 @@ const {
   clearSidestepHitReturn,
   hasHitAbsorption,
   consumeHitAbsorption,
+  schedulePalmThrustVisualEnd,
 } = require("./gameUtils");
 
 const {
@@ -74,6 +76,13 @@ const {
   isOpponentCloseEnoughForGrab,
   isOpponentInFrontOfGrabber,
 } = require("./combatHelpers");
+
+function playerPalmBreaksGrabArmor(player) {
+  return (
+    !!player.loadout?.palmBreaksGrabArmor ||
+    player.activePowerUp === POWER_UP_TYPES.SHATTER_PALM
+  );
+}
 
 const SIM_DELTA = 1000 / TICK_RATE;
 
@@ -313,19 +322,22 @@ function checkCollision(player, otherPlayer, rooms, io) {
     // PALM THRUST vs a standing grab: the palm is a SINGLE hit, so grab-startup
     // armor ABSORBS it (breaking that armor takes 2 hits) and the grab
     // completes — blowing through grab armor stays exclusive to the (committal,
-    // lunging) charged attack. We trigger the exact same absorb VFX/drains a
-    // lone slap would, then end the palm into its normal punishable recovery so
-    // the grabber can cash in. The grab-range check preserves the palm's
-    // superior reach (a grabber inside palm range but OUTSIDE grab range still
-    // eats the palm, so a read grab is the answer up close, not from afar). A
-    // dash grab (isGrabbingMovement) is intentionally NOT included — dash grabs
-    // lose to strikes for slaps too, so the palm stuffs them the same way.
+    // lunging) charged attack. BASHO Shatter Palm loadout opts the palm into
+    // charged-style armor break instead (falls through to processHit below).
+    // We trigger the exact same absorb VFX/drains a lone slap would, then end
+    // the palm into its normal punishable recovery so the grabber can cash in.
+    // The grab-range check preserves the palm's superior reach (a grabber inside
+    // palm range but OUTSIDE grab range still eats the palm, so a read grab is
+    // the answer up close, not from afar). A dash grab (isGrabbingMovement) is
+    // intentionally NOT included — dash grabs lose to strikes for slaps too, so
+    // the palm stuffs them the same way.
     if (
       player.isPalmThrust &&
       isOpponentCloseEnoughForGrab(otherPlayer, player) &&
       isOpponentInFrontOfGrabber(otherPlayer, player)
     ) {
       if (
+        !playerPalmBreaksGrabArmor(player) &&
         otherPlayer.isGrabStartup &&
         !otherPlayer.grabStartupArmorUsed &&
         !otherPlayer.isRawParrying
@@ -646,9 +658,11 @@ function processHit(player, otherPlayer, rooms, io) {
   // annotation of the existing rock-paper-scissors (charged > grab); the hit
   // proceeds normally below. Skip if thick blubber will absorb the hit anyway,
   // or if the defender is raw parrying (parry plays its own VFX).
+  const palmBreaksGrabArmor =
+    player.isPalmThrust && playerPalmBreaksGrabArmor(player);
   if (
     !isSlapAttack &&
-    !player.isPalmThrust &&
+    (!player.isPalmThrust || palmBreaksGrabArmor) &&
     otherPlayer.isGrabStartup &&
     !otherPlayer.isRawParrying &&
     !hasHitAbsorption(otherPlayer)
@@ -694,7 +708,7 @@ function processHit(player, otherPlayer, rooms, io) {
   // stuffing grab (after armor consumed) IS still a counter hit — that's a
   // skilled chain breaking commitment, and the boost reads correctly there.
   const isChargedArmorBreak = !isSlapAttack &&
-    !player.isPalmThrust &&
+    (!player.isPalmThrust || palmBreaksGrabArmor) &&
     (otherPlayer.isGrabStartup === true || otherPlayer.isGrabbingMovement === true);
   const counterHitFromGrabAttempt = !isChargedArmorBreak &&
     (otherPlayer.isGrabStartup === true || otherPlayer.isGrabbingMovement === true);
@@ -825,41 +839,68 @@ function processHit(player, otherPlayer, rooms, io) {
     return;
   }
 
-  // For charged attacks, end the attack immediately on hit
+  // For charged attacks, end the attack immediately on hit — EXCEPT palm thrust,
+  // which keeps isAttacking alive through the active window (like slap).
   if (!isSlapAttack) {
     // Set hit tracking flag for charged attacks
     player.chargedAttackHit = true;
 
-    // Reset all attack states first
-    player.isAttacking = false;
-    player.attackStartTime = 0;
-    player.attackEndTime = 0;
-    player.chargingFacingDirection = null;
-    player.isChargingAttack = false;
-    player.chargeStartTime = 0;
-    player.chargeAttackPower = 0;
-
-    // Track if mouse1 is held — enables charge resume after recovery without re-press
-    if (player.keys.mouse1) {
-      player.mouse1HeldDuringAttack = true;
-      // Ensure press time is tracked (may already be set from re-press during animation)
-      if (!player.mouse1PressTime) {
-        player.mouse1PressTime = currentTime;
+    if (player.isPalmThrust) {
+      // Palm thrust: defer recovery until attackEndTime — safelyEndChargedAttack
+      // transitions to on-hit recovery when the active window finishes. Do NOT
+      // zero attackEndTime here or the pose snaps to recovery on connect frame
+      // (and ring-out wins cut it even shorter via handleWinCondition).
+      //
+      // Late connects (counter hits, hitstop drift) can leave only a few ms of
+      // active left — guarantee at least a full active window from this frame.
+      // Strike sprite stays up through the full on-hit recovery (scheduled
+      // precisely when recovery starts in safelyEndChargedAttack).
+      const activeRemain = Math.max(
+        PALM_THRUST_ACTIVE_MS,
+        player.attackEndTime - currentTime
+      );
+      player.attackEndTime = currentTime + activeRemain;
+      player.chargedActiveEndTime = player.attackEndTime;
+      schedulePalmThrustVisualEnd(
+        player,
+        currentTime + activeRemain + PALM_THRUST_HIT_RECOVERY_MS
+      );
+      if (player.keys.mouse1) {
+        player.mouse1HeldDuringAttack = true;
+        if (!player.mouse1PressTime) {
+          player.mouse1PressTime = currentTime;
+        }
       }
-    }
+    } else {
+      // Reset all attack states first
+      player.isAttacking = false;
+      player.attackStartTime = 0;
+      player.attackEndTime = 0;
+      player.chargingFacingDirection = null;
+      player.isChargingAttack = false;
+      player.chargeStartTime = 0;
+      player.chargeAttackPower = 0;
 
-    // Set recovery state for successful hits
-    player.isRecovering = true;
-    player.recoveryStartTime = currentTime;
-    // Palm thrust holds its ground — shorter, rooted on-hit recovery (no slide).
-    player.recoveryDuration = player.isPalmThrust ? PALM_THRUST_HIT_RECOVERY_MS : 400;
-    player.recoveryDirection = player.facing;
-    // Initialize knockback velocity in the opposite direction of the attack
-    // (palm stays planted — no recoil).
-    player.knockbackVelocity = {
-      x: player.isPalmThrust ? 0 : player.facing * -2, // Static knockback amount
-      y: 0,
-    };
+      // Track if mouse1 is held — enables charge resume after recovery without re-press
+      if (player.keys.mouse1) {
+        player.mouse1HeldDuringAttack = true;
+        // Ensure press time is tracked (may already be set from re-press during animation)
+        if (!player.mouse1PressTime) {
+          player.mouse1PressTime = currentTime;
+        }
+      }
+
+      // Set recovery state for successful hits
+      player.isRecovering = true;
+      player.recoveryStartTime = currentTime;
+      player.recoveryDuration = 400;
+      player.recoveryDirection = player.facing;
+      // Initialize knockback velocity in the opposite direction of the attack
+      player.knockbackVelocity = {
+        x: player.facing * -2, // Static knockback amount
+        y: 0,
+      };
+    }
   }
   // For slap attacks: no special handling - executeSlapAttack timeout handles everything
 
@@ -1454,6 +1495,8 @@ function processHit(player, otherPlayer, rooms, io) {
 
           // Screen shake is handled client-side by useCamera (driven by hitCounter +
           // knockback magnitude) — no need to double-shake from the server here.
+        } else if (player.isPalmThrust) {
+          triggerHitstopAndEmit(io, currentRoom, HITSTOP_SLAP_STRING_MS, "slap");
         } else {
           // Charged attacks scale hitstop with charge power
           const hitstopDuration = isCinematicKill

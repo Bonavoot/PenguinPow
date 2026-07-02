@@ -120,6 +120,7 @@ import {
   clap2Sound,
   SPRITE_HALF_W,
   PLAYER_MID_Y,
+  HIT_EFFECT_Y,
   CLAP_SOUND_OFFSET,
   ritualSpritesheetsPlayer1,
   ritualSpritesheetsPlayer2,
@@ -2531,7 +2532,7 @@ const GameFighter = ({
         if (index === 0) {
           setHitEffectPosition({
             x: data.x + 70,
-            y: PLAYER_MID_Y,
+            y: HIT_EFFECT_Y,
             facing: data.facing || 1,
             timestamp: data.timestamp,
             hitId: data.hitId,
@@ -2578,7 +2579,7 @@ const GameFighter = ({
         if (index === 0) {
           const hitFacing = data.facing || 1;
           const facingOffsetPx = (hitFacing === 1 ? -8 : -3) * 12.8;
-          const sparkOpts = { x: data.x + 70 + facingOffsetPx, y: PLAYER_MID_Y, facing: hitFacing };
+          const sparkOpts = { x: data.x + 70 + facingOffsetPx, y: HIT_EFFECT_Y, facing: hitFacing };
           if (data.attackType === "charged") {
             emitParticles("hitSparkCharged", sparkOpts);
           } else if (isBurst) {
@@ -3343,11 +3344,16 @@ const GameFighter = ({
 
   useEffect(() => {
     isChargedLungingRef.current =
-      penguin.isAttacking && penguin.attackType === "charged";
-  }, [penguin.isAttacking, penguin.attackType]);
+      penguin.isAttacking &&
+      penguin.attackType === "charged" &&
+      !penguin.isPalmThrust;
+  }, [penguin.isAttacking, penguin.attackType, penguin.isPalmThrust]);
 
   useEffect(() => {
-    const isLunging = penguin.isAttacking && penguin.attackType === "charged";
+    const isLunging =
+      penguin.isAttacking &&
+      penguin.attackType === "charged" &&
+      !penguin.isPalmThrust;
     if (isLunging) {
       chargedTrailLastX.current = interpolatedPositionRef.current.x || penguin.x;
       const EMIT_INTERVAL = 50;
@@ -3388,6 +3394,7 @@ const GameFighter = ({
   }, [
     penguin.isAttacking,
     penguin.attackType,
+    penguin.isPalmThrust,
     penguin.facing,
     penguin.x,
     penguin.y,

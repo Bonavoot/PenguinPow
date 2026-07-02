@@ -686,8 +686,8 @@ function tick(delta) {
             player.isRecovering = false;
             player.movementVelocity = 0;
             player.recoveryDirection = null;
-            // Palm thrust's visual-hold flag never survives past its recovery.
             player.isPalmThrust = false;
+            player.palmThrustVisualUntil = 0;
 
             player.mouse1HeldDuringAttack = false;
 

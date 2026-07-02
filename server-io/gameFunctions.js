@@ -6,6 +6,7 @@ const {
   simNowForPlayer,
   resetPlayerAttackStates,
   clearChargeState,
+  schedulePalmThrustVisualEnd,
   MAP_LEFT_BOUNDARY,
   MAP_RIGHT_BOUNDARY,
   DOHYO_LEFT_BOUNDARY,
@@ -56,6 +57,7 @@ const {
   PALM_THRUST_ACTIVE_MS,
   PALM_THRUST_HOLD_MS,
   PALM_THRUST_END_RECOVERY_MS,
+  PALM_THRUST_HIT_RECOVERY_MS,
   PALM_THRUST_POWER,
   PALM_THRUST_STAMINA_COST,
   CHARGED_TIER_LIGHT_MS,
@@ -392,13 +394,23 @@ function handleWinCondition(room, loser, winner, io, winType) {
   const loserKnockbackVelocity = { ...loser.knockbackVelocity };
   const loserMovementVelocity = loser.movementVelocity;
 
-  // For the winner, if they're doing a slap attack, let it complete
+  // For the winner, if they're mid slap or palm thrust, let the pose finish
+  // before round-end cleanup snaps them to idle/recovery.
   if (winner.isSlapAttack) {
     const remainingAttackTime = winner.attackEndTime - simNowForPlayer(winner);
     if (remainingAttackTime > 0) {
       setPlayerTimeout(winner.id, () => {
         resetPlayerAttackStates(winner);
       }, remainingAttackTime);
+    }
+  } else if (winner.isPalmThrust || (winner.palmThrustVisualUntil || 0) > simNowForPlayer(winner)) {
+    const now = simNowForPlayer(winner);
+    const until = winner.palmThrustVisualUntil || winner.attackEndTime || now;
+    const remaining = Math.max(0, until - now);
+    if (remaining > 0) {
+      setPlayerTimeout(winner.id, () => {
+        resetPlayerAttackStates(winner);
+      }, remaining);
     }
   } else {
     // If not doing a slap attack, reset attack states immediately
@@ -683,10 +695,21 @@ function executeSlapAttack(player, rooms) {
   // Clear any prior committed whiff-pause state — we're actively slapping again.
   player.isSlapWhiffPausing = false;
 
+  // // Animation is decoupled from string position — alternates every slap visually
+  // // slapAnimationToggle persists across strings so parries cycle naturally
+  // player.slapAnimationToggle = player.slapAnimationToggle === 1 ? 2 : 1;
+  // player.slapAnimation = player.slapAnimationToggle;
+
   // Animation is decoupled from string position — alternates every slap visually
-  // slapAnimationToggle persists across strings so parries cycle naturally
-  player.slapAnimationToggle = player.slapAnimationToggle === 1 ? 2 : 1;
-  player.slapAnimation = player.slapAnimationToggle;
+  // slapAnimationToggle persists across strings so parries cycle naturally.
+  // Hit 3 (finisher) uses slapAnimation === 3 so the client can show the palm
+  // thrust pose without needing a separate slapStringPosition prop.
+  if (player.slapStringPosition === 3) {
+    player.slapAnimation = 3;
+  } else {
+    player.slapAnimationToggle = player.slapAnimationToggle === 1 ? 2 : 1;
+    player.slapAnimation = player.slapAnimationToggle;
+  }
 
   player.currentSlapHitConnected = false;
 
@@ -880,7 +903,7 @@ function executePalmThrust(player, rooms) {
 
   // Drop any stale visual-hold timer from a prior thrust so it can't clear the
   // isPalmThrust flag mid-way through this fresh one.
-  timeoutManager.clearPlayerSpecific(player.id, "palmThrustHoldEnd");
+  timeoutManager.clearPlayerSpecific(player.id, "palmThrustVisualEnd");
 
   if (player.isPowerSliding) {
     player.isPowerSliding = false;
@@ -937,6 +960,11 @@ function executePalmThrust(player, rooms) {
   const activeWindowEnd = now + PALM_THRUST_STARTUP_MS + PALM_THRUST_ACTIVE_MS;
   player.attackEndTime = activeWindowEnd;
   player.chargedActiveEndTime = activeWindowEnd;
+  // Strike pose through active + recovery — only safelyEndChargedAttack (and
+  // processHit on connect) schedule the visual-end timeout. Scheduling here
+  // at activeWindowEnd clears isPalmThrust before recovery handoff, so the
+  // move falls through to generic charged whiff recovery (400ms + slide back).
+  player.palmThrustVisualUntil = activeWindowEnd;
 
   // Startup telegraph — no hitbox until it ends (checkCollision gates on this).
   player.isInStartupFrames = true;
@@ -1510,22 +1538,14 @@ function safelyEndChargedAttack(player, rooms) {
         player.isRecovering = true;
         player.recoveryStartTime = simNowForPlayer(player);
         if (isPalm) {
-          // Palm thrust whiff: it's ALL recovery now (no hitbox, punishable, no
-          // slide), but split into two visual parts. During the HOLD the client
-          // keeps rendering the strike pose (isPalmThrust stays true); the short
-          // END tail renders as the recovery pose (isPalmThrust cleared by the
-          // hold timer). Total = the punish window.
+          // Palm thrust whiff: punishable recovery — strike pose the whole time.
           player.recoveryDuration = PALM_THRUST_HOLD_MS + PALM_THRUST_END_RECOVERY_MS;
           player.recoveryDirection = player.facing;
           player.movementVelocity = 0;
           player.knockbackVelocity = { x: 0, y: 0 };
-          setPlayerTimeout(
-            player.id,
-            () => {
-              player.isPalmThrust = false;
-            },
-            PALM_THRUST_HOLD_MS,
-            "palmThrustHoldEnd"
+          schedulePalmThrustVisualEnd(
+            player,
+            simNowForPlayer(player) + player.recoveryDuration
           );
           palmHoldScheduled = true;
         } else {
@@ -1544,6 +1564,31 @@ function safelyEndChargedAttack(player, rooms) {
   if (!player.isChargingAttack) {
     // Save whether the attack connected before clearing the flag
     const attackConnected = player.chargedAttackHit;
+
+    // Palm thrust on-hit: active window just ended — strike pose through recovery.
+    if (isPalm && attackConnected) {
+      player.isAttacking = false;
+      player.isSlapAttack = false;
+      player.attackStartTime = 0;
+      player.attackEndTime = 0;
+      player.chargingFacingDirection = null;
+      player.attackType = null;
+      player.chargeAttackPower = 0;
+      player.chargedAttackHit = false;
+      player.chargedActiveEndTime = 0;
+      player.isRecovering = true;
+      player.recoveryStartTime = simNowForPlayer(player);
+      player.recoveryDuration = PALM_THRUST_HIT_RECOVERY_MS;
+      player.recoveryDirection = player.facing;
+      player.movementVelocity = 0;
+      player.knockbackVelocity = { x: 0, y: 0 };
+      player.mouse1HeldDuringAttack = false;
+      schedulePalmThrustVisualEnd(
+        player,
+        player.recoveryStartTime + PALM_THRUST_HIT_RECOVERY_MS
+      );
+      palmHoldScheduled = true;
+    } else {
     
     player.isAttacking = false;
     player.isSlapAttack = false;
@@ -1609,6 +1654,7 @@ function safelyEndChargedAttack(player, rooms) {
     } else {
       // Attack connected — processHit already handles recovery, just clear stale flags
       player.mouse1HeldDuringAttack = false;
+    }
     }
   } else {
   }

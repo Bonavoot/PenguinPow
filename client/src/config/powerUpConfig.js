@@ -4,6 +4,7 @@ import snowballImage from "../assets/snowball.png";
 import pumoArmyIcon from "../components/pumo-army-icon.png";
 import thickBlubberIcon from "../assets/thick-blubber-icon.png";
 import flapIcon from "../assets/flap-icon.png";
+import shatterPalmIcon from "../assets/shatter-palm-icon.png";
 import { C } from "../components/menuTheme";
 
 export const POWER_UP_TYPE_COLORS = {
@@ -37,6 +38,11 @@ export const POWER_UP_TYPE_COLORS = {
     deep: "#15705f",
     glow: "rgba(52, 224, 192, 0.45)",
   },
+  shatter_palm: {
+    main: "#ffe566",
+    deep: "#c99200",
+    glow: "rgba(255, 229, 102, 0.45)",
+  },
 };
 
 const FALLBACK_TYPE_COLOR = {
@@ -52,6 +58,7 @@ export const POWER_UP_ICONS = {
   pumo_army: pumoArmyIcon,
   thick_blubber: thickBlubberIcon,
   flap: flapIcon,
+  shatter_palm: shatterPalmIcon,
 };
 
 export const POWER_UP_LABELS = {
@@ -61,6 +68,7 @@ export const POWER_UP_LABELS = {
   pumo_army: "Pumo Army",
   thick_blubber: "Thick Blubber",
   flap: "Flap",
+  shatter_palm: "Shatter Palm",
 };
 
 export function getPowerUpTypeColor(type) {

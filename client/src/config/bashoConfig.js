@@ -72,7 +72,7 @@ export const LOADOUT_BUDGET = 3;
  * A selected option may REPLACE one of these (e.g. Flap replaces Raw Parry).
  */
 export const LOADOUT_DEFAULTS = {
-  attack: ["Slap string", "Charge finisher"],
+  attack: ["Slap string", "Charge finisher", "Palm thrust"],
   defense: ["Raw Parry"],
   movement: ["Dodge", "Sidestep"],
   grappling: ["Grab", "Clinch"],
@@ -94,7 +94,17 @@ export const LOADOUT_DEFAULTS = {
  * pending their own design passes.
  */
 export const LOADOUT_OPTIONS = {
-  attack: [],
+  attack: [
+    {
+      id: "shattering_palm",
+      label: "Shatter Palm",
+      kanji: "砕",
+      cost: 1,
+      replaces: "Palm thrust",
+      unlock: "loadout_shattering_palm",
+      desc: "Your palm thrust shatters grab startup armor instead of being absorbed — the same armor-break read as a charged attack, without the forward lunge commitment.",
+    },
+  ],
   defense: [
     {
       id: "flap",
@@ -177,6 +187,14 @@ export const UNLOCKS = [
     cost: 150,
     desc: "Unlock the Flap defense option: trade your raw parry for a flight liftoff.",
   },
+  {
+    id: "loadout_shattering_palm",
+    label: "Shatter Palm",
+    sub: "Attack Sidegrade",
+    kanji: "砕",
+    cost: 150,
+    desc: "Unlock Shatter Palm: palm thrust breaks grab startup armor like a charged attack.",
+  },
 ];
 
 export const UNLOCK_BY_ID = UNLOCKS.reduce((acc, u) => {
@@ -199,9 +217,9 @@ export function isUnlocked(career, id) {
 
 /*
  * The pool the between-bout DAY-card draft rolls from. These are the existing
- * special power-ups MINUS Flap — Flap lives in the persistent loadout (Defense
- * sidegrade), and the §5.4 "one-home rule" keeps each effect in exactly ONE
- * system (loadout OR draft). The exotic pool expands here in a dedicated
+ * special power-ups MINUS Flap and Shatter Palm — those live in the
+ * persistent loadout (Defense / Attack sidegrades), and the §5.4 "one-home
+ * rule" keeps each effect in exactly ONE system (loadout OR draft). The exotic pool expands here in a dedicated
  * content pass — adding ids is data-only.
  *
  * Picks STACK for the whole run (reset each basho): passives multiply, Thick

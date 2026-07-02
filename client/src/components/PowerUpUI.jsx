@@ -5,6 +5,7 @@ import powerWaterIcon from "../assets/power-water.png";
 import pumoArmyIcon from "./pumo-army-icon.png";
 import happyFeetIcon from "../assets/happy-feet.png";
 import flapIcon from "../assets/flap-icon.png";
+import shatterPalmIcon from "../assets/shatter-palm-icon.png";
 
 const PowerUpUI = ({
   activePowerUp,
@@ -81,6 +82,17 @@ const PowerUpUI = ({
             ready:
               "linear-gradient(135deg, #c8fff4 0%, #34e0c0 30%, #15705f 100%)",
             border: "#15705f",
+          },
+        };
+      case "shatter_palm":
+        return {
+          icon: shatterPalmIcon,
+          isImage: true,
+          name: "Shatter Palm",
+          colors: {
+            ready:
+              "linear-gradient(135deg, #fff9c4 0%, #ffe566 30%, #ffd024 100%)",
+            border: "#c99200",
           },
         };
       default:

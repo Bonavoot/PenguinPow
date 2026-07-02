@@ -60,6 +60,7 @@ import pumo from "../assets/pumo-idle.png";
 import attack from "../assets/attack.png";
 import throwing from "../assets/throwing.png";
 import grabbing from "../assets/grabbing.png";
+import clinchPlanting from "../assets/clinch-planting.png";
 import attemptingGrabThrow from "../assets/attempting-grab-throw.png";
 import isAttemptingPull from "../assets/is-attempting-pull.png";
 import pumoSideProfile from "../assets/pumo-ready-position.png";
@@ -71,6 +72,7 @@ import rawParrySuccess from "../assets/raw-parry-success.png";
 import slapAttack1 from "../assets/slapAttack1.png";
 import slapAttack2 from "../assets/slapAttack2.png";
 import slapAttack3 from "../assets/attack.png";
+import palmThrust from "../assets/palm-thrust.png";
 
 // ============================================
 // SPRITE CONFIGURATIONS
@@ -218,6 +220,7 @@ const BLUE_STATIC_SPRITES = {
   attack: attack,
   throwing: throwing,
   grabbing: grabbing,
+  clinchPlanting: clinchPlanting,
   attemptingGrabThrow: attemptingGrabThrow,
   isAttemptingPull: isAttemptingPull,
   readySideProfile: pumoSideProfile,
@@ -229,6 +232,7 @@ const BLUE_STATIC_SPRITES = {
   slapAttack1: slapAttack1,
   slapAttack2: slapAttack2,
   slapAttack3: slapAttack3,
+  palmThrust: palmThrust,
 };
 
 // Upgrade to @2x static sprites when available
