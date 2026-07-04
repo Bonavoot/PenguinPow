@@ -244,10 +244,10 @@ const PALM_THRUST_HITBOX_DISTANCE_VALUE = Math.round(177 * 0.96); // ~170
 const GRAB_STARTUP_MS = 180;      // Readable telegraph (was 150)
 const GRAB_ACTIVE_MS = 100;       // Grab connect window
 
-const DODGE_STARTUP_MS = 20;      // Near-instant startup (was 40)
-const DODGE_ACTIVE_MS = 175;      // Actual dash movement (was 200)
+const DODGE_STARTUP_MS = 50;      // Readable windup/anticipation before the hop (was 20)
+const DODGE_ACTIVE_MS = 210;      // Actual dash movement — lengthened for readability (was 175); speed lowered to keep the same travel distance
 const DODGE_RECOVERY_MS = 0;      // No recovery — cooldown prevents chain-dash (was 90)
-const DODGE_TOTAL_MS = DODGE_STARTUP_MS + DODGE_ACTIVE_MS + DODGE_RECOVERY_MS; // 220ms
+const DODGE_TOTAL_MS = DODGE_STARTUP_MS + DODGE_ACTIVE_MS + DODGE_RECOVERY_MS; // 260ms
 const DODGE_COOLDOWN_MS = 100;    // Forced idle gap after recovery before next dash (prevents chain-dash blur)
 
 // ============================================
@@ -393,8 +393,8 @@ const INITIAL_MOVEMENT_BURST = ICE_INITIAL_BURST;
 // ============================================
 // Dash Physics - grounded dash with dash slap
 // ============================================
-const DODGE_DURATION = DODGE_STARTUP_MS + DODGE_ACTIVE_MS; // 240ms total before recovery phase
-const DODGE_BASE_SPEED = 3.2; // Grounded dash speed (was 2.0 — buffed to cover ~118px, escapes grab range)
+const DODGE_DURATION = DODGE_STARTUP_MS + DODGE_ACTIVE_MS; // 260ms total before recovery phase
+const DODGE_BASE_SPEED = 2.67; // Grounded dash speed — lowered from 3.2 alongside the longer ACTIVE window so travel stays ~118px but reads slower/weightier (still ~1.4x the sidestep's speed, clearly faster than strafing)
 const DODGE_CANCEL_ACTION_LOCK = 80; // Brief lock after S-cancel to prevent instant pivoting
 
 // ============================================

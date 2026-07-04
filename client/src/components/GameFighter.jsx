@@ -15,7 +15,6 @@ import {
   SPRITESHEET_CONFIG_BY_NAME,
 } from "../config/animatedSpriteConfig";
 import PlayerShadow from "./PlayerShadow";
-import DashAfterimageEffect from "./DashAfterimageEffect";
 import ThrowTechEffect from "./ThrowTechEffect";
 import SlapParryEffect from "./SlapParryEffect";
 import ChargeClashEffect from "./ChargeClashEffect";
@@ -617,6 +616,38 @@ const GameFighter = ({
   const flapBeatRef = useRef({ beat: 0, startedAt: 0 });
   const lastFlapSHeldRef = useRef(false);
   const FLAP_WINGBEAT_MS = 90; // ~down-stroke hold (snappy wing flap)
+
+  // OPEN-PALM THRUST animation: a client-driven forward-only timeline anchored
+  // to the rising edge of isPalmThrust (server keeps the flag true from startup
+  // through recovery). Frame boundaries are cumulative ms since that edge —
+  // tuned to the move's ~90ms startup / ~90ms active cadence, holding the
+  // active strike longest and the smear shortest per the move's feel:
+  //   [0,       STARTUP)  → 0 startup (windup)
+  //   [STARTUP, SMEAR)    → 1 smear   (whoosh, shortest)
+  //   [SMEAR,   ACTIVE)   → 2 active  (strike, held the longest)
+  //   [ACTIVE,  ∞)        → 3 recovery(reuses the startup pose, brief tail)
+  // Held forward-only so the differing hit vs whiff recovery lengths can't
+  // desync the sequence — whichever ends first just drops the flag. The active
+  // strike owns the bulk of the move; recovery is only a short settle before
+  // the flag drops (on-hit recovery is short enough it may skip recovery
+  // entirely and cut straight to the idle/recovering pose).
+  // Flag lifetime on the server is ~500ms whiff / ~380ms hit. The pre-active
+  // smear and the recovery smear are both kept EXTREMELY short (brief flashes)
+  // so the active strike dominates: a ~24ms smear lead-in, then active until
+  // ~460ms, leaving only a ~40ms recovery smear flash on whiff (hit is short
+  // enough it cuts straight to idle).
+  const palmThrustAnimRef = useRef({ startedAt: 0, fxId: 0 });
+  const PALM_THRUST_ANIM = {
+    STARTUP_END: 20,
+    SMEAR_END: 40,
+    ACTIVE_END: 460,
+  };
+
+  // Dash phase clock. Anchored locally on the rising edge of the (predicted)
+  // dodge so the windup→jump pose/arc sequence is reliable regardless of
+  // netcode jitter. Must match DODGE_STARTUP_MS on the server.
+  const dodgeVisualRef = useRef({ startedAt: 0, active: false });
+  const DASH_WINDUP_MS = 50;
 
   const [penguin, setPenguin] = useState({
     id: "",
@@ -1850,6 +1881,14 @@ const GameFighter = ({
         (rendered.hold && nowMs >= idleHoldUntilRef.current) ||
         (rendered.flapBeat &&
           nowMs >= flapBeatRef.current.startedAt + FLAP_WINGBEAT_MS) ||
+        // Palm-thrust animation is mid-sequence: force frames until it settles
+        // on the terminal recovery pose (the ref flag is cleared once frame 3
+        // is committed).
+        rendered.palmThrustAnim ||
+        // Dash is mid-sequence: force frames so the windup→jump→landing pose
+        // and arc advance on their own clock even while briefly stationary
+        // (startup) or when no server packet arrives.
+        rendered.dashAnim ||
         (rendered.prediction &&
           nowMs - predictedState.current.timestamp > PREDICTION_TIMEOUT_MS)
       ) {
@@ -1967,6 +2006,9 @@ const GameFighter = ({
     tint: false,
     hold: false,
     prediction: false,
+    flapBeat: false,
+    palmThrustAnim: false,
+    dashAnim: false,
   });
   // Debounce flag for multi-hit combos (e.g. slap1 → slap2 → slap3). Only the
   // OPENING hit of a string should flash; subsequent hits within the cooldown
@@ -4642,7 +4684,51 @@ const GameFighter = ({
       ? 2
       : 1;
 
-  const displaySpriteSrc = getImageSrc(
+  // OPEN-PALM THRUST frame. Anchor a local clock when a thrust begins, then
+  // advance startup → smear → active → recovery off elapsed ms. We anchor on
+  // each new palmThrustFxId (a per-executed-thrust server counter) as well as
+  // the rising edge, so buffered back-to-back thrusts — where isPalmThrust
+  // never drops between reps — still replay the full sequence. Ref mutated
+  // during render, same pattern as the flap/idle-hold refs.
+  if (displayPenguin.isPalmThrust) {
+    const fxId = penguin.palmThrustFxId || 0;
+    if (
+      !palmThrustAnimRef.current.startedAt ||
+      fxId !== palmThrustAnimRef.current.fxId
+    ) {
+      palmThrustAnimRef.current.startedAt = performance.now();
+      palmThrustAnimRef.current.fxId = fxId;
+    }
+  } else if (palmThrustAnimRef.current.startedAt) {
+    palmThrustAnimRef.current.startedAt = 0;
+  }
+  let palmThrustFrame = 2;
+  if (displayPenguin.isPalmThrust && palmThrustAnimRef.current.startedAt) {
+    const elapsed = performance.now() - palmThrustAnimRef.current.startedAt;
+    if (elapsed < PALM_THRUST_ANIM.STARTUP_END) palmThrustFrame = 0;
+    else if (elapsed < PALM_THRUST_ANIM.SMEAR_END) palmThrustFrame = 1;
+    else if (elapsed < PALM_THRUST_ANIM.ACTIVE_END) palmThrustFrame = 2;
+    else palmThrustFrame = 3;
+  }
+
+  // Anchor the dash clock on the rising edge of the predicted dodge (same
+  // render-anchored pattern as the palm-thrust/flap clocks). Driving the phase
+  // off ONE predicted source removes the previous flicker where the server's
+  // isDodgeStartup arrived out of sync with the predicted isDodging and the
+  // jump pose/arc dropped frames or restarted mid-air.
+  if (displayPenguin.isDodging) {
+    if (!dodgeVisualRef.current.active) {
+      dodgeVisualRef.current.startedAt = performance.now();
+      dodgeVisualRef.current.active = true;
+    }
+  } else {
+    dodgeVisualRef.current.active = false;
+  }
+  const inDashWindup =
+    displayPenguin.isDodging &&
+    performance.now() - dodgeVisualRef.current.startedAt < DASH_WINDUP_MS;
+
+  const rawSpriteSrc = getImageSrc(
     penguin.fighter,
     penguin.isDiving,
     penguin.isJumping,
@@ -4720,8 +4806,22 @@ const GameFighter = ({
     penguin.flapPhase,
     flapFrame,
     flapUseDodgePose,
-    displayPenguin.isPalmThrust
+    displayPenguin.isPalmThrust,
+    palmThrustFrame
   );
+
+  // Dash frames: the dodge now has real anticipation + landing poses.
+  // getImageSrc returns the tucked `dodging` pose for the whole dodge; here we
+  // swap in the braced `recovering` pose for the brief startup windup, and again
+  // for the post-hop landing settle (justLandedFromDodge), so the jump gets the
+  // bookend frames that sell its weight. Landing only overrides an idle (pumo)
+  // frame so it never stomps an action buffered out of the (0ms) recovery, nor
+  // the power-slide crouch pose.
+  const displaySpriteSrc = inDashWindup
+    ? recovering
+    : penguin.justLandedFromDodge && rawSpriteSrc === pumo
+    ? recovering
+    : rawSpriteSrc;
 
   // Hold previous sprite briefly when transitioning to idle to prevent
   // ghost frames during state transition gaps (e.g. isHit=false before isRecovering=true)
@@ -4796,12 +4896,19 @@ const GameFighter = ({
   renderedHitVisualsRef.current.flash = showHitFlashThisFrame;
   renderedHitVisualsRef.current.tint = showHitTintThisFrame;
   renderedHitVisualsRef.current.hold = effectiveSpriteSrc !== displaySpriteSrc;
+  renderedHitVisualsRef.current.dashAnim =
+    displayPenguin.isDodging || penguin.justLandedFromDodge;
   // FLAP wing-beat: when this render committed the down-stroke (flap2), the rAF
   // loop forces the flip back to flap1 once the beat window expires — unless
   // we're in the dodge pose (out of charges or fast-falling), which holds until
   // landing or S is released.
   renderedHitVisualsRef.current.flapBeat =
     !flapUseDodgePose && flapFrame === 2;
+  // OPEN-PALM THRUST: keep re-rendering while the animation hasn't reached its
+  // terminal recovery frame (3) so startup → smear → active advance on their
+  // ms boundaries. Frame 3 is a static hold, so it needs no further forcing.
+  renderedHitVisualsRef.current.palmThrustAnim =
+    displayPenguin.isPalmThrust && palmThrustFrame < 3;
   // True when this render showed merged (unconfirmed) predictions — the rAF
   // watcher uses it to force the cleanup render once the prediction window
   // (PREDICTION_TIMEOUT_MS) lapses without server confirmation.
@@ -4854,14 +4961,6 @@ const GameFighter = ({
     ? getSpriteRenderInfo(killVictimSprite, renderHitTint, showHitFlashThisFrame, useBlubberTint, true, useArmorTint)
     : spriteRenderInfo;
 
-  const { src: dodgeGhostSpriteSrc } = getSpriteRenderInfo(
-    dodging,
-    false,
-    false,
-    false,
-    true
-  );
-
   // GHOST-FRAME / INTERACTION-HITCH FIX:
   // Key the fighter <img> on the tint- and color-INDEPENDENT base source (the
   // pose identity), NOT the recolored/tinted blob URL. During combat the tint
@@ -4877,10 +4976,19 @@ const GameFighter = ({
   // A remount (and intended animation restart) now happens ONLY on a genuine
   // pose change. This mirrors `sourceToRecolor` inside getSpriteRenderInfo:
   // animated → the spritesheet; static → the original (kill-victim) source.
+  // Palm thrust rapidly swaps its static pose (smear → active → startup) within
+  // one move. Since the fighter <img> is keyed on the pose src, letting the key
+  // change per frame would REMOUNT the element three times — each remount starts
+  // blank and must decode → the one-frame ghost between frames. Collapse all
+  // palm-thrust frames to a single stable key identity so the element persists
+  // and swaps `src` IN PLACE (browser keeps painting the last decoded frame
+  // until the next decodes → no blank), exactly like the tint-change handling.
   const baseSpriteSrc = spriteConfig
     ? spriteConfig.spritesheet
     : isKillVictim
     ? killVictimSprite
+    : displayPenguin.isPalmThrust
+    ? "palm-thrust-anim"
     : effectiveSpriteSrc;
 
   // BASHO no-remount fix: the fighter <img> is keyed on the color-INDEPENDENT
@@ -5317,17 +5425,6 @@ const GameFighter = ({
       {(() => {
       const fighterSpriteNodes = (
       <>
-      <DashAfterimageEffect
-        isDodging={displayPenguin.isDodging}
-        spriteSrc={dodgeGhostSpriteSrc}
-        facing={penguin.facing ?? -1}
-        dodgeDirection={
-          displayPenguin.dodgeDirection ?? penguin.dodgeDirection ?? penguin.facing ?? 1
-        }
-        getPosition={() => interpolatedPositionRef.current}
-        isAtTheRopes={penguin.isAtTheRopes}
-        fighter={penguin.fighter}
-      />
       {/* Animated Sprite Sheet (when sprite is a spritesheet animation) */}
       {isAnimatedSprite && !showRitualSprite && (
         <AnimatedFighterContainer

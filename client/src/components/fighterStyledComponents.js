@@ -466,7 +466,11 @@ export const StyledImage = styled("img")
         : props.$isHit
         ? "hitSquash 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)"
         : props.$isDodging
-        ? "dashSquash 0.15s ease-out forwards"
+        ? "dashJump 0.26s linear forwards"
+        : props.$justLandedFromDodge &&
+          !props.$isPowerSliding &&
+          !props.$isBraking
+        ? "dashLanding 0.2s ease-out forwards"
         : props.$isPowerSliding &&
           !props.$isBeingGrabbed &&
           !props.$isBeingThrown &&
@@ -682,23 +686,45 @@ export const StyledImage = styled("img")
     40% { transform: scaleX(calc(var(--facing, 1) * 0.9)) scaleY(1.05) translateY(-2px); transform-origin: center bottom; }
     100% { transform: scaleX(calc(var(--facing, 1) * 0.85)) scaleY(0.9) translateY(3px); transform-origin: center bottom; }
   }
-  @keyframes dashSquash {
-    0% { transform: scaleX(calc(var(--facing, 1) * 1.15)) scaleY(0.85) translateY(0); transform-origin: center bottom; }
-    30% { transform: scaleX(calc(var(--facing, 1) * 1.12)) scaleY(0.88) translateY(0); transform-origin: center bottom; }
-    100% { transform: scaleX(calc(var(--facing, 1) * 1.08)) scaleY(0.92) translateY(0); transform-origin: center bottom; }
+  /* ── Dash jump, split into three real beats (see GameFighter sprite swap) ──
+     The dodge is now a proper jump with bookend frames:
+       - dashWindup  plays during isDodgeStartup on the braced recovering pose:
+         a quick crouch that gathers before the leap (anticipation).
+       - dashJump    plays during the active phase on the tucked dodging pose:
+         an explosive pushoff off the crouch, a real apex with hang time, then
+         a gravity-accelerated fall. Linear timing so the height values (not the
+         easing curve) shape the arc.
+       - dashLanding plays on justLandedFromDodge back on the recovering pose:
+         an impact squash that catches the landing before the ice slide.
+     All squash is VERTICAL only (scaleY, origin center bottom) so scaleX stays
+     locked to facing and the character never stretches horizontally. */
+  @keyframes dashJump {
+    /* One continuous animation over the whole dodge (startup + active), driven
+       by the single predicted isDodging flag so it never restarts mid-air.
+       0-19% (~50ms) = grounded windup crouch; 19-100% (~210ms) = the jump arc.
+       The arc peak is deliberately LOW (~15%) so it stays proportional to the
+       ~118px of forward travel — a tall arc over a short distance reads as
+       fake/sped-up. This is a low forward hop, not a vertical pop. */
+    0%   { transform: scaleX(var(--facing, 1)) translateY(0)    scaleY(1);    transform-origin: center bottom; } /* windup start */
+    11%  { transform: scaleX(var(--facing, 1)) translateY(0)    scaleY(0.92); transform-origin: center bottom; } /* crouching */
+    19%  { transform: scaleX(var(--facing, 1)) translateY(0)    scaleY(0.9);  transform-origin: center bottom; } /* crouch bottom (leaving ground) */
+    33%  { transform: scaleX(var(--facing, 1)) translateY(-9%)  scaleY(1);    transform-origin: center bottom; } /* pushoff */
+    52%  { transform: scaleX(var(--facing, 1)) translateY(-14%) scaleY(1);    transform-origin: center bottom; } /* rising */
+    60%  { transform: scaleX(var(--facing, 1)) translateY(-15%) scaleY(1);    transform-origin: center bottom; } /* apex */
+    68%  { transform: scaleX(var(--facing, 1)) translateY(-13%) scaleY(1);    transform-origin: center bottom; } /* hang */
+    86%  { transform: scaleX(var(--facing, 1)) translateY(-6%)  scaleY(1);    transform-origin: center bottom; } /* falling */
+    100% { transform: scaleX(var(--facing, 1)) translateY(0)    scaleY(1);    transform-origin: center bottom; } /* touchdown */
+  }
+  @keyframes dashLanding {
+    0%   { transform: scaleX(var(--facing, 1)) translateY(0) scaleY(0.9);  transform-origin: center bottom; } /* impact */
+    40%  { transform: scaleX(var(--facing, 1)) translateY(0) scaleY(1.01); transform-origin: center bottom; } /* rebound */
+    100% { transform: scaleX(var(--facing, 1)) translateY(0) scaleY(1);    transform-origin: center bottom; } /* settle */
   }
   @keyframes dashInvincibilityFlash {
     0% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) brightness(2.5) saturate(0.2); }
     40% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) brightness(2.2) saturate(0.3); }
     70% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) brightness(1.3) saturate(0.7); }
     100% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) brightness(1) saturate(1); }
-  }
-  @keyframes dashLanding {
-    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0); transform-origin: center bottom; }
-    25% { transform: scaleX(calc(var(--facing, 1) * 1.06)) scaleY(0.88) translateY(0); transform-origin: center bottom; }
-    55% { transform: scaleX(calc(var(--facing, 1) * 0.98)) scaleY(1.04) translateY(0); transform-origin: center bottom; }
-    80% { transform: scaleX(calc(var(--facing, 1) * 1.02)) scaleY(0.99) translateY(0); transform-origin: center bottom; }
-    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0); transform-origin: center bottom; }
   }
   @keyframes rawParryRecoil {
     0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0); transform-origin: center bottom; }

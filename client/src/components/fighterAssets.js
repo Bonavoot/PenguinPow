@@ -26,6 +26,8 @@ import slapAttack1 from "../assets/slapAttack1.png";
 import slapAttack2 from "../assets/slapAttack2.png";
 import slapAttack3 from "../assets/attack.png";
 import palmThrust from "../assets/palm-thrust.png";
+import palmThrustStartup from "../assets/palm-thrust-startup.png";
+import palmThrustSmear from "../assets/palm-thrust-smear.png";
 import dodging from "../assets/dodging.png";
 import throwing from "../assets/throwing.png";
 import salt from "../assets/salt.png";
@@ -235,6 +237,8 @@ const initializeImagePreloading = () => {
   preloadImage(slapAttack2);
   preloadImage(slapAttack3);
   preloadImage(palmThrust);
+  preloadImage(palmThrustStartup);
+  preloadImage(palmThrustSmear);
   preloadImage(snowballThrow);
 
   preloadImage(bow);
@@ -364,6 +368,8 @@ export {
   slapAttack2,
   slapAttack3,
   palmThrust,
+  palmThrustStartup,
+  palmThrustSmear,
   dodging,
   throwing,
   salt,

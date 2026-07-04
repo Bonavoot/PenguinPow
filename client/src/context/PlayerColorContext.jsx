@@ -75,6 +75,8 @@ import rawParrySuccess from "../assets/raw-parry-success.png";
 import slapAttack1 from "../assets/slapAttack1.png";
 import slapAttack2 from "../assets/slapAttack2.png";
 import palmThrust from "../assets/palm-thrust.png";
+import palmThrustStartup from "../assets/palm-thrust-startup.png";
+import palmThrustSmear from "../assets/palm-thrust-smear.png";
 import bellyLaying from "../assets/pumo-belly-laying.png";
 import bellyLayingEyesOpen from "../assets/pumo-belly-laying-eyes-open.png";
 import flap1 from "../assets/pumo-flap-1.png";
@@ -96,6 +98,7 @@ const GAME_FIGHTER_STATIC_SPRITES = [
   pumo, attack, throwing, grabbing, clinchPlanting, beltGrabArm, attemptingGrabThrow, isAttemptingPull,
   pumoSideProfile, pumoTachiaiPosition, dodging, crouchStance,
   recovering, rawParrySuccess, slapAttack1, slapAttack2, palmThrust,
+  palmThrustStartup, palmThrustSmear,
   crouching, bow, bellyLaying, bellyLayingEyesOpen,
   flap1, flap2,
 ];

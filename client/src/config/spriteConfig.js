@@ -74,6 +74,8 @@ import slapAttack1 from "../assets/slapAttack1.png";
 import slapAttack2 from "../assets/slapAttack2.png";
 import slapAttack3 from "../assets/attack.png";
 import palmThrust from "../assets/palm-thrust.png";
+import palmThrustStartup from "../assets/palm-thrust-startup.png";
+import palmThrustSmear from "../assets/palm-thrust-smear.png";
 
 // ============================================
 // SPRITE CONFIGURATIONS
@@ -235,6 +237,8 @@ const BLUE_STATIC_SPRITES = {
   slapAttack2: slapAttack2,
   slapAttack3: slapAttack3,
   palmThrust: palmThrust,
+  palmThrustStartup: palmThrustStartup,
+  palmThrustSmear: palmThrustSmear,
 };
 
 // Upgrade to @2x static sprites when available

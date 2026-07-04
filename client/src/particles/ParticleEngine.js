@@ -329,6 +329,34 @@ function createChunk(size, r, g, b, peakAlpha = 0.8) {
   return c;
 }
 
+// Glowy dot with a baked-in DARK KEYLINE — a bright core fades through a
+// color band into a dark translucent rim before going transparent. Rendered
+// with NORMAL (not additive) blending, the dark rim darkens the surrounding
+// pixels so the bright core separates cleanly even on a bright / same-color
+// background (the same white-on-white contrast trick the hit FX uses). core,
+// mid, rim are "r,g,b" strings.
+function createGlowDotKeyed(size, core, mid, rim) {
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext("2d");
+  const half = size / 2;
+  // Small hot center with a SOFT glow falloff and only a gentle dark halo
+  // (no hard ring) — reads as a frost glint, not a bordered disc. The dark
+  // halo is subtle: just enough to separate from a bright background.
+  const g = ctx.createRadialGradient(half, half, 0, half, half, half);
+  g.addColorStop(0, `rgba(${core},1)`);
+  g.addColorStop(0.12, `rgba(${core},0.9)`);
+  g.addColorStop(0.3, `rgba(${mid},0.62)`);
+  g.addColorStop(0.5, `rgba(${mid},0.28)`);
+  g.addColorStop(0.68, `rgba(${rim},0.26)`); // soft dark halo (not a ring)
+  g.addColorStop(0.86, `rgba(${rim},0.08)`);
+  g.addColorStop(1, `rgba(${rim},0)`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  return c;
+}
+
 function createSpeedLine(length, thickness, r, g, b, peakAlpha = 0.9) {
   const c = document.createElement("canvas");
   c.width = length;
@@ -574,6 +602,68 @@ function createCrispRing(diameter, palette) {
     ctx.arc(half, half, ringR + strokeW * 0.25, 0, Math.PI * 2);
     ctx.stroke();
   }
+
+  return c;
+}
+
+// Forward-bulging CRESCENT arc — a "bow wave" that reads as a DIRECTIONAL
+// shockwave (force shoved one way) rather than a radial ring. The arc is
+// drawn on the +x side of the canvas (bulge pointing right) and fades to
+// nothing at its tips via per-segment alpha, so stacked/expanding copies
+// read as a clean anime push-wave. Rotate the sprite by 0 (→) or π (←) to
+// aim it down the thrust. Used by the open-palm thrust.
+function createArcWave(diameter, palette) {
+  const c = document.createElement("canvas");
+  c.width = diameter;
+  c.height = diameter;
+  const ctx = c.getContext("2d");
+  const half = diameter / 2;
+  const R = half * 0.72;
+  const strokeW = Math.max(2, diameter * 0.05);
+  const [sr, sg, sb] = palette.stroke;
+  const [gr, gg, gb] = palette.glow;
+  const glowAlpha = palette.glowAlpha ?? 0.8;
+  const strokeAlpha = palette.strokeAlpha ?? 1.0;
+  // Arc span: ~150° centered on +x (from -75° to +75°).
+  const a0 = -Math.PI * 0.42;
+  const a1 = Math.PI * 0.42;
+  const SEG = 44;
+  ctx.lineCap = "round";
+
+  // Draw the arc in short segments, alpha shaped by a sine bell (0 at the
+  // tips, 1 at the center) so the crescent fades out at its ends. Two passes:
+  // a soft wide glow, then a crisp bright core, then a thin white hot edge.
+  const drawArc = (color, baseAlpha, widthMul, blur, radius) => {
+    for (let i = 0; i < SEG; i++) {
+      const t0 = i / SEG;
+      const t1 = (i + 1) / SEG;
+      const mid = (t0 + t1) * 0.5;
+      const fade = Math.sin(mid * Math.PI); // 0 → 1 → 0
+      const ang0 = a0 + (a1 - a0) * t0;
+      const ang1 = a0 + (a1 - a0) * t1;
+      ctx.strokeStyle = `rgba(${color},${baseAlpha * fade})`;
+      ctx.lineWidth = strokeW * widthMul;
+      if (blur > 0) {
+        ctx.shadowColor = `rgba(${color},${0.9 * fade})`;
+        ctx.shadowBlur = blur;
+      } else {
+        ctx.shadowBlur = 0;
+      }
+      ctx.beginPath();
+      ctx.arc(half, half, radius, ang0, ang1);
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+  };
+
+  // Tight glow (kept narrow so it doesn't wash into a grey haze), a CRISP
+  // bright core, a sharp white hot rim on the leading edge, and a thin inner
+  // trailing arc so the wave reads as a defined double-edged energy blade
+  // rather than one soft smear.
+  drawArc(`${gr},${gg},${gb}`, glowAlpha * 0.9, 1.7, strokeW * 1.0, R);
+  drawArc(`${sr},${sg},${sb}`, strokeAlpha, 0.95, strokeW * 0.45, R);
+  drawArc(`255,255,255`, 0.9, 0.34, 0, R + strokeW * 0.26);
+  drawArc(`${sr},${sg},${sb}`, strokeAlpha * 0.5, 0.45, 0, R - strokeW * 0.95);
 
   return c;
 }
@@ -1052,41 +1142,39 @@ function generateTextures(s) {
     glassShard4: createGlassShard(r(64), 7129),
     glassFleck: createChunk(r(6), 255, 250, 220, 1.0),
 
-    // ── OPEN-PALM THRUST — force-cone textures ──────────────────────
-    // Warm energy rings (yellow → orange) for the palm-thrust cone.
-    // Crisp glowing rings with a soft halo; the preset renders them as
-    // strongly side-tilted ellipses (small stretchX) so the stacked
-    // rings read as a 3D cone viewed down the thrust axis — same faux-3D
-    // idiom as the hit-effect ring, tilted further onto its side. Three
-    // temperature tiers so the cone graduates from a hot yellow TIP to a
-    // deeper orange BASE near the hand.
-    palmThrustRingHot: createCrispRing(r(150), {
-      stroke: [255, 242, 156], strokeAlpha: 1.0,
-      glow: [255, 212, 96], glowAlpha: 0.78,
-      core: [255, 205, 90], coreAlpha: 0.1,
-      simple: false, crisp: false, thin: false,
+    // ── OPEN-PALM THRUST — WHITE two-armed push textures ────────────
+    // A quick, powerful two-armed shove, so the FX is a DIRECTIONAL white
+    // force read (the game's white + ice-blue accent palette), not a radial
+    // ring. The core of it is a forward-bulging CRESCENT "bow wave" — three
+    // tiers graduating from a hot white leading edge to a cooler, fainter
+    // ice-white trailing wave — so stacked/expanding copies read as a clean
+    // anime push shoved down the thrust axis.
+    palmThrustArc1: createArcWave(r(160), {
+      stroke: [255, 255, 255], strokeAlpha: 1.0,
+      glow: [238, 247, 255], glowAlpha: 0.85,
     }),
-    palmThrustRingMid: createCrispRing(r(150), {
-      stroke: [255, 206, 92], strokeAlpha: 1.0,
-      glow: [255, 162, 56], glowAlpha: 0.72,
-      core: [255, 150, 48], coreAlpha: 0.08,
-      simple: false, crisp: false, thin: false,
+    palmThrustArc2: createArcWave(r(160), {
+      stroke: [240, 249, 255], strokeAlpha: 1.0,
+      glow: [200, 228, 255], glowAlpha: 0.78,
     }),
-    palmThrustRingWarm: createCrispRing(r(150), {
-      stroke: [255, 158, 62], strokeAlpha: 1.0,
-      glow: [255, 120, 38], glowAlpha: 0.66,
-      core: [255, 100, 30], coreAlpha: 0.06,
-      simple: false, crisp: false, thin: false,
+    palmThrustArc3: createArcWave(r(160), {
+      stroke: [214, 235, 255], strokeAlpha: 0.95,
+      glow: [168, 208, 255], glowAlpha: 0.7,
     }),
-    // Warm white-gold flash — the "bang" of light at the palm contact.
-    palmThrustFlash: createFlashBloom(r(170), 255, 216, 132),
-    // Brighter hot-yellow streak — thicker canvas for a bolder arm read.
+    // Pure white flash — the hot "bang" of light at the palm contact.
+    palmThrustFlash: createFlashBloom(r(180), 255, 255, 255),
+    // Bright white speed-line streak — thicker canvas for a bold arm read.
     palmThrustStreak: createGlowingSpeedLine(r(96), r(7), {
-      stroke: [255, 252, 120], strokeAlpha: 1.0,
-      glow: [255, 235, 64], glowAlpha: 0.95,
+      stroke: [255, 255, 255], strokeAlpha: 1.0,
+      glow: [224, 240, 255], glowAlpha: 0.95,
     }),
-    // Warm pinpoint spark for the forward sparkle at the strike tip.
-    palmThrustSpark: createChunk(r(9), 255, 222, 132, 1.0),
+    // Small GLOWY BLUE ice particles kicked off the palms (snowy-sumo
+    // flavor). Bright near-white core → ice-blue body → DARK NAVY keyline
+    // rim, rendered on normal blend so the dark rim separates them from the
+    // game's bright blue background (additive blue-on-blue just washes out).
+    // Small + round (no stretched slivers) = a spray of glowing frost sparks.
+    palmThrustIceGlow: createGlowDotKeyed(r(20), "240,250,255", "120,195,255", "6,18,50"),
+    palmThrustIceChip: createGlowDotKeyed(r(14), "225,242,255", "95,170,255", "4,12,40"),
 
   };
 }
@@ -1198,44 +1286,82 @@ const PRESETS = {
       palmThrustOwner: owner,
     });
 
-    // ── CORE FLASH — warm bloom at the palms (forward of the arm streaks).
+    // ═══════════════════════════════════════════════════════════════════
+    // ANIME TWO-ARMED PALM PUSH — a clean DIRECTIONAL force read, not a
+    // cloud and not a radial ring. The attack is a flat two-palm shove, so
+    // the FX is: a tight white flash at the palms, a forward-bulging
+    // CRESCENT "bow wave" shoved down the thrust axis (the push itself), a
+    // fan of forward WHITE SPEED LINES (the whoosh), and ICE SHARDS kicked
+    // off the palms. Fast + snappy, nothing floats or lingers.
+    // ═══════════════════════════════════════════════════════════════════
+
+    // ── CORE FLASH — tight white pop of light right at the palms. Small +
+    // fast (no big soft bloom that reads as a blob).
     engine.spawn({
       x: flashX, y: streakCenterY,
       vx: 0, vy: 0, gravity: 0, drag: 0.9,
-      size: 36, sizeEnd: 86,
+      size: 26, sizeEnd: 58,
       alpha: 1, alphaEnd: 0,
       rotation: 0, rotationSpeed: 0,
       ease: "outCubic", easeAlpha: "outCubic",
-      maxLife: 0.2, delay: LEAD,
+      maxLife: 0.13, delay: LEAD,
       texture: T.palmThrustFlash,
-      stretchX: 1.1,
+      stretchX: 1.0,
       blendMode: "lighter",
       aboveFighters: true,
       palmThrustFx: true,
       palmThrustOwner: owner,
     });
 
-    // ── GLOW STREAKS — bright yellow lines through the arm; thrust-aligned
-    // with the tail running back into the body. Back + front layers wrap the sprite.
+    // ── CRESCENT BOW WAVE — the "push". Forward-bulging arcs launched off
+    // the palms down the thrust axis, staggered in time so they read as a
+    // wave of force shoved outward (directional, NOT a radial ring). Rotated
+    // by streakRot so the bulge always points at the opponent; each rides
+    // forward and expands. Tall (stretchX < 1) so the wave stands vertical
+    // across the opponent's body like a shove of air.
+    const WAVES = [
+      { tex: T.palmThrustArc1, s0: 32, s1: 82, life: 0.2, tilt: 0.82, alpha: 1.0, spd: 150, delay: 0.0 },
+      { tex: T.palmThrustArc2, s0: 38, s1: 112, life: 0.24, tilt: 0.8, alpha: 0.85, spd: 120, delay: 0.05 },
+      { tex: T.palmThrustArc3, s0: 44, s1: 142, life: 0.28, tilt: 0.78, alpha: 0.62, spd: 95, delay: 0.1 },
+    ];
+    for (const w of WAVES) {
+      engine.spawn(palmFx({
+        x: flashX - d * 6, y: streakCenterY,
+        vx: d * w.spd, vy: 0, gravity: 0, drag: 0.88,
+        size: w.s0, sizeEnd: w.s1,
+        alpha: w.alpha, alphaEnd: 0,
+        rotation: streakRot, rotationSpeed: 0,
+        ease: "outExpo", easeAlpha: "outCubic",
+        maxLife: w.life, delay: LEAD + w.delay,
+        texture: w.tex,
+        stretchX: w.tilt,
+        blendMode: "lighter",
+        aboveFighters: true,
+      }));
+    }
+
+    // ── SPEED LINES — the signature whoosh: sharp WHITE lines fired forward
+    // down the thrust axis, fanned around palm height. Fast + short so they
+    // snap out and vanish. Back layer wraps behind the arm, front reads over.
     const FWD_STREAKS = [
-      { yOff: -16, stretch: 20, thick: 6.5, behind: true, alpha: 1 },
-      { yOff: 0, stretch: 19, thick: 6, behind: true, alpha: 0.96 },
-      { yOff: 16, stretch: 20, thick: 6.5, behind: true, alpha: 1 },
-      { yOff: -11, stretch: 18, thick: 5.5, behind: false, alpha: 0.9 },
-      { yOff: 5, stretch: 19, thick: 5.8, behind: false, alpha: 0.92 },
-      { yOff: 18, stretch: 17, thick: 5.4, behind: false, alpha: 0.88 },
+      { yOff: -18, stretch: 24, thick: 6.5, behind: true, alpha: 1, spd: 220 },
+      { yOff: 0, stretch: 26, thick: 6.5, behind: true, alpha: 1, spd: 260 },
+      { yOff: 18, stretch: 24, thick: 6.5, behind: true, alpha: 1, spd: 220 },
+      { yOff: -10, stretch: 20, thick: 5.2, behind: false, alpha: 0.92, spd: 300 },
+      { yOff: 8, stretch: 22, thick: 5.6, behind: false, alpha: 0.94, spd: 300 },
+      { yOff: 20, stretch: 18, thick: 5, behind: false, alpha: 0.88, spd: 260 },
     ];
     for (const slot of FWD_STREAKS) {
       engine.spawn(palmFx({
         x: streakSpawnX + d * rand(-2, 2),
         y: streakCenterY + slot.yOff + rand(-2, 2),
-        vx: 0, vy: 0,
-        gravity: 0, drag: 1,
-        size: slot.thick, sizeEnd: slot.thick * 0.8,
+        vx: d * slot.spd, vy: 0,
+        gravity: 0, drag: 0.86,
+        size: slot.thick, sizeEnd: slot.thick * 0.7,
         alpha: slot.alpha, alphaEnd: 0,
         rotation: streakRot, rotationSpeed: 0,
         ease: "outCubic", easeAlpha: "outQuad",
-        maxLife: rand(0.18, 0.24),
+        maxLife: rand(0.12, 0.18),
         delay: LEAD,
         texture: T.palmThrustStreak,
         stretchX: slot.stretch,
@@ -1244,23 +1370,31 @@ const PRESETS = {
       }));
     }
 
-    // ── SPARKS — warm pinpoints spitting forward from the flash with spread.
-    for (let i = 0; i < 13; i++) {
-      const ang = (d === 1 ? 0 : Math.PI) + rand(-0.55, 0.55);
-      const spd = rand(180, 380);
-      const size = rand(4, 7.5);
+    // ── GLOWY BLUE ICE PARTICLES — a spray of small round frost sparks
+    // kicked forward off the palms. Small + ice-blue with a baked dark
+    // keyline (no stretched slivers). NORMAL blend (NOT additive) so the
+    // dark rim separates them from the bright blue background.
+    //
+    // MOMENTUM: spawned BACK at the palms/arm and driven in a TIGHT forward
+    // cone with almost no drag and barely any gravity, so they carry forward
+    // and glide out as they fade — a committed forward push, NOT the
+    // lightweight "shove out and instantly stop" (feather) look that heavy
+    // drag + gravity + an upward pop was producing.
+    for (let i = 0; i < 11; i++) {
+      const ang = (d === 1 ? 0 : Math.PI) + rand(-0.26, 0.26);
+      const spd = rand(150, 320);
+      const size = rand(2.5, 5.5);
       engine.spawn({
-        x: flashX + d * rand(0, 24), y: streakCenterY + rand(-18, 18),
-        vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - 20,
-        gravity: 240, drag: 0.9,
-        size, sizeEnd: size * 0.35,
-        alpha: 1, alphaEnd: 0,
-        rotation: ang, rotationSpeed: 0,
-        ease: "outCubic", easeAlpha: "outQuad",
-        maxLife: rand(0.18, 0.32),
+        x: flashX - d * rand(4, 22), y: streakCenterY + rand(-15, 15),
+        vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
+        gravity: 40, drag: 0.95,
+        size, sizeEnd: size * 0.5,
+        alpha: rand(0.72, 0.92), alphaEnd: 0,
+        rotation: 0, rotationSpeed: 0,
+        ease: "linear", easeAlpha: "inQuad",
+        maxLife: rand(0.13, 0.22),
         delay: LEAD + rand(0, 0.05),
-        texture: T.palmThrustSpark,
-        blendMode: "lighter",
+        texture: i % 3 === 0 ? T.palmThrustIceChip : T.palmThrustIceGlow,
         aboveFighters: true,
         palmThrustFx: true,
         palmThrustOwner: owner,

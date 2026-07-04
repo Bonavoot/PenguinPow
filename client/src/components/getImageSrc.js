@@ -10,6 +10,8 @@ import {
   slapAttack1,
   slapAttack2,
   palmThrust,
+  palmThrustStartup,
+  palmThrustSmear,
   dodging,
   throwing,
   salt,
@@ -116,9 +118,13 @@ const getImageSrc = (
   flapPhase,
   flapFrame,
   flapUseDodgePose,
-  // Open-palm thrust (back + mouse1) — placeholder reuses the raw-parry-success
-  // pose for the planted strike until a dedicated animation exists.
-  isPalmThrust
+  // Open-palm thrust (back + mouse1) — the planted strike is a client-driven
+  // multi-frame animation. isPalmThrust stays true for the whole move; the
+  // frame index (see palmThrustFrame) picks which pose to show:
+  //   0 = startup (windup)   1 = smear (whoosh)
+  //   2 = active strike      3 = recovery (reuses the startup pose)
+  isPalmThrust,
+  palmThrustFrame = 2
 ) => {
   if (ritualAnimationSrc) {
     return ritualAnimationSrc;
@@ -176,10 +182,18 @@ const getImageSrc = (
   if (isSidestepping) return isPerfectParried;
   if (isBowing) return bow;
   if (isPowerSliding) return crouchStance;
-  // Palm thrust: the strike pose IS the whole move — startup, active, and recovery.
-  // Server keeps isPalmThrust true until the move fully ends; never fall through
-  // to the generic recovering sprite.
-  if (isPalmThrust) return palmThrust;
+  // Palm thrust: a client-driven 4-frame animation spanning the whole move.
+  // Server keeps isPalmThrust true from startup through recovery, so we never
+  // fall through to the generic recovering sprite — the frame index drives the
+  // pose: startup → smear → active strike → recovery (startup pose reused).
+  if (isPalmThrust) {
+    // Sequence reads smear → active → startup: the smear pose is the lead-in
+    // windup, and the startup pose doubles as the recovery/settle frame.
+    if (palmThrustFrame === 0) return palmThrustSmear;
+    if (palmThrustFrame === 1) return palmThrustSmear;
+    if (palmThrustFrame === 3) return palmThrustStartup;
+    return palmThrust;
+  }
   if (isChargingAttack) return recovering;
   if (isRecovering) return recovering;
   if (isThrowingSnowball) return snowballThrow;

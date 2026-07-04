@@ -53,6 +53,8 @@ export const BAKE_SOURCES = [
   { id: "raw-parry-success", file: "raw-parry-success.png" },
   { id: "slapAttack1", file: "slapAttack1.png" },
   { id: "slapAttack2", file: "slapAttack2.png" },
+  { id: "palm-thrust-startup", file: "palm-thrust-startup.png" },
+  { id: "palm-thrust-smear", file: "palm-thrust-smear.png" },
   { id: "palm-thrust", file: "palm-thrust.png" },
   { id: "pumo-belly-laying", file: "pumo-belly-laying.png" },
   { id: "pumo-belly-laying-eyes-open", file: "pumo-belly-laying-eyes-open.png" },
