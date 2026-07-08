@@ -3,7 +3,7 @@ const {
   POWER_UP_TYPES, POWER_UP_EFFECTS,
   HITBOX_DISTANCE_VALUE, DOHYO_FALL_DEPTH,
   DODGE_DURATION, DODGE_STAMINA_COST,
-  ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST, ROPE_JUMP_BOUNDARY_ZONE,
+  ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST, ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_CENTER_FRACTION,
   FLAP_STARTUP_MS, FLAP_CHARGES, FLAP_IMPULSE, FLAP_FLAP_H_IMPULSE, FLAP_STAMINA_COST, FLAP_CHARGE_COOLDOWN_MS,
   DODGE_SLIDE_MOMENTUM, DODGE_POWERSLIDE_BOOST,
   DODGE_STARTUP_MS,
@@ -33,6 +33,7 @@ const {
   gameNow,
   simNowForPlayer,
   lagCompensatedParryStart,
+  lagCompensatedEnderPress,
 } = require("./gameUtils");
 
 const {
@@ -214,6 +215,15 @@ function recordParryPressTime(player, data, rising) {
   if (pressGameTime) player.rawParryPressGameTime = pressGameTime;
 }
 
+// PHASE 1: on a rising mouse1 edge, record the player's true press moment (in
+// server gameNow() terms) so the slap-ender ("blue spark") grading can backdate
+// the press toward when the player actually clicked. See lagCompensatedEnderPress().
+function recordEnderPressTime(player, data, rising) {
+  if (!rising || !rising.mouse1) return;
+  const pressGameTime = pressGameTimeFromEvents(data, "mouse1");
+  if (pressGameTime) player.enderPressGameTime = pressGameTime;
+}
+
 // ============================================================
 // PHASE 3: TICK-CONSUMED INPUT DISPATCH
 // ============================================================
@@ -287,6 +297,7 @@ function processInputPacket(room, player, data, io, rooms) {
       // Capture true press moment for lag-compensated parry timing even while
       // input-locked — the buffered parry fires when the lock ends and reads it.
       recordParryPressTime(player, data, rising);
+      recordEnderPressTime(player, data, rising);
 
       // Clear grabBreakSpaceConsumed if spacebar was released during input lock,
       // so raw parry isn't blocked after the lock expires
@@ -306,12 +317,21 @@ function processInputPacket(room, player, data, io, rooms) {
       // During slap attacks, buffer mouse1 for next hits / mouse2 for grab ender
       if (player.isAttacking && player.attackType === "slap") {
         if (rising.mouse1) {
-          const maxBuffer = 3 - (player.slapStringPosition || 1);
-          if (player.pendingSlapCount < maxBuffer) {
+          // PHASE 1: buffer cap clamps at 1 (spec 1.3). The pos2→3 ENDER only
+          // queues AFTER slap2 connects — an early (pre-connect) press does not
+          // queue an ender (the ender is a decision made after seeing slap2
+          // land). The pos1→2 chain still buffers freely so a masher always
+          // completes the basic string.
+          const isEnderInput = (player.slapStringPosition || 1) >= 2;
+          const enderAllowed = !isEnderInput || player.currentSlapHitConnected;
+          if (enderAllowed && player.pendingSlapCount < 1) {
             player.pendingSlapCount++;
+            if (isEnderInput) {
+              player.enderPressTime = lagCompensatedEnderPress(player, simNowForPlayer(player));
+            }
           }
         }
-        if (rising.mouse2 && player.slapStringPosition >= 2) {
+        if (rising.mouse2 && player.slapStringPosition >= 2 && player.currentSlapHitConnected) {
           player.pendingGrabEnder = true;
           player.pendingSlapCount = 0;
         }
@@ -437,6 +457,7 @@ function processInputPacket(room, player, data, io, rooms) {
     // (level-triggered on keys[" "]) and the input buffer both consume this when
     // they actually start the parry, so it must be recorded on the rising edge.
     recordParryPressTime(player, data, rising);
+    recordEnderPressTime(player, data, rising);
 
     // Set mouse1 press flags — true if a press happened ANYWHERE in the
     // packet window, even if the trailing snapshot already shows release.
@@ -699,18 +720,36 @@ function processInputPacket(room, player, data, io, rooms) {
       // itself guards !isAttacking so it can never eat a slap string).
       executePalmThrust(player, rooms);
     } else if (canPlayerSlap(player)) {
+      // PHASE 1: a MANUAL reactive press during the open slap2 window becomes
+      // the slap3 ender — stamp its lag-compensated arrival so the blue-spark
+      // tier grades it against the actionable moment (spec 1.4).
+      if (
+        player.slapStringPosition === 2 &&
+        player.slapStringWindowUntil &&
+        simNowForPlayer(player) <= player.slapStringWindowUntil
+      ) {
+        player.enderPressTime = lagCompensatedEnderPress(player, simNowForPlayer(player));
+      }
       executeSlapAttack(player, rooms);
     } else if (player.isAttacking && player.attackType === "slap") {
-      const maxBuffer = 3 - (player.slapStringPosition || 1);
-      if (player.pendingSlapCount < maxBuffer) {
+      // PHASE 1: cap the mash buffer at 1, and only queue the pos2→3 ender after
+      // slap2 connects (see the locked-path handler for the rationale).
+      const isEnderInput = (player.slapStringPosition || 1) >= 2;
+      const enderAllowed = !isEnderInput || player.currentSlapHitConnected;
+      if (enderAllowed && player.pendingSlapCount < 1) {
         player.pendingSlapCount++;
+        if (isEnderInput) {
+          player.enderPressTime = lagCompensatedEnderPress(player, simNowForPlayer(player));
+        }
       }
     }
   }
 
-  // MOUSE2 DURING SLAP STRING: buffer grab ender (replaces hit 3 with grab)
+  // MOUSE2 DURING SLAP STRING: buffer grab ender (replaces hit 3 with grab).
+  // PHASE 1: only queues AFTER slap2 connects — the ender is a decision made
+  // after seeing slap2 land (spec 1.3), and the seam grab is armorless.
   if (player.mouse2JustPressed && player.isAttacking && player.attackType === "slap" &&
-      player.slapStringPosition >= 2) {
+      player.slapStringPosition >= 2 && player.currentSlapHitConnected) {
     player.pendingGrabEnder = true;
     player.pendingSlapCount = 0;
   }
@@ -1130,7 +1169,7 @@ function processInputPacket(room, player, data, io, rooms) {
 
       const jumpDir = nearLeftBound ? 1 : -1;
       const mapMidpoint = (MAP_LEFT_BOUNDARY + MAP_RIGHT_BOUNDARY) / 2;
-      const targetX = player.x + (mapMidpoint - player.x) * 0.52;
+      const targetX = player.x + (mapMidpoint - player.x) * ROPE_JUMP_CENTER_FRACTION;
 
       player.facing = nearLeftBound ? -1 : 1;
       player.isRopeJumping = true;
@@ -1407,6 +1446,15 @@ function registerSocketHandlers(socket, io, rooms, context) {
     if (VALID.includes(data?.difficulty)) {
       room.cpuDifficulty = data.difficulty;
     }
+    // PHASE 4.4: continuous difficulty. When present, the ladder position drives
+    // an interpolated profile server-side (the discrete tier stays as a fallback
+    // / display value). Clamped to [0,1]; absent leaves the discrete path active.
+    if (typeof data?.ladderPosition === "number" && isFinite(data.ladderPosition)) {
+      room.cpuLadderPosition = Math.max(0, Math.min(1, data.ladderPosition));
+      console.log(
+        `[BASHO] bout difficulty set: tier=${room.cpuDifficulty} L=${room.cpuLadderPosition.toFixed(3)}`
+      );
+    }
   });
 
   socket.on("get_rooms", () => {
@@ -1644,6 +1692,11 @@ function registerSocketHandlers(socket, io, rooms, context) {
       isCPURoom: true,
       matchMode: "basho",
       cpuDifficulty: data.difficulty || "HARD",
+      // PHASE 4.4: continuous difficulty for the opening bout (null = discrete).
+      cpuLadderPosition:
+        typeof data.ladderPosition === "number" && isFinite(data.ladderPosition)
+          ? Math.max(0, Math.min(1, data.ladderPosition))
+          : null,
       // BASHO runs the WHOLE tournament in ONE room: each bout is a best-of-1
       // "round" using the native between-rounds reset (no remount, no new
       // room). The opponent roster (colors per bout) is supplied up front and

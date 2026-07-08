@@ -66,6 +66,8 @@ function createInitialPlayerState(overrides = {}) {
     isAlreadyHit: false,
     isSlapKnockback: false,
     slapKnockbackCanRingOut: false,
+    isChargedKnockback: false,
+    chargedKnockbackCanRingOut: false,
     isParryKnockback: false,
     isBurstKnockback: false,
     burstKnockbackStartTime: 0,
@@ -124,6 +126,7 @@ function createInitialPlayerState(overrides = {}) {
     attackEndTime: 0,
     isSlapAttack: false,
     isPalmThrust: false,
+    palmThrustQueued: false,
     palmThrustFxId: 0,
     palmThrustVisualUntil: 0,
     slapAnimation: 2,
@@ -149,6 +152,14 @@ function createInitialPlayerState(overrides = {}) {
     isSlapWhiffPausing: false,
     slapAnimationToggle: 0,
     currentSlapHitConnected: false,
+    // PHASE 1: ender seam (blue spark) timing + seam-open tracking
+    slapEnderActionableTime: 0,
+    enderPressTime: 0,
+    enderPressGameTime: 0,
+    slapHit3Velocity: 0,
+    slapHit3PerfectEnder: false,
+    seamOpenedByHit: false,
+    seamOpenedTime: 0,
 
     // === Charged attack ===
     isChargingAttack: false,

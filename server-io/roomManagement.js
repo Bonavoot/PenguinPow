@@ -254,6 +254,9 @@ function applyBashoOpponentProfile(cpu, opponent) {
   cpu.mawashiColor = opponent.mawashiColor || cpu.mawashiColor;
   cpu.bodyColor = opponent.bodyColor ?? null;
   cpu.aiArchetype = opponent.archetype || "balanced";
+  // PHASE 4.3: the CPU's curriculum kit is resolved from its BASHO division
+  // (cpuAI gates verbs by division). null for a non-division opponent → full kit.
+  cpu.aiDivision = opponent.division || null;
   // Boss-only combat edge; null/default for ordinary rivals.
   cpu.statMods = opponent.stats ? deriveStatMods(opponent.stats) : null;
   cpu.sizeMultiplier = opponent.size || DEFAULT_PLAYER_SIZE_MULTIPLIER;

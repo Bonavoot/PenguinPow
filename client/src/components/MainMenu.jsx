@@ -30,6 +30,7 @@ import {
   effectiveDifficulty,
   DIFFICULTY_ORDER,
   formatRank,
+  boutLadderPosition,
 } from "../config/bashoConfig";
 import {
   applyBashoDraftPick,
@@ -1277,6 +1278,9 @@ const MainMenu = ({
       socket.emit("basho_set_difficulty", {
         roomId: bashoRoomIdRef.current,
         difficulty: boutDifficulty(run, Math.max(0, (run.day || 1) - 1)),
+        // Phase 4.4: continuous ladder position drives an interpolated CPU
+        // profile server-side; the discrete tier above stays as a fallback.
+        ladderPosition: boutLadderPosition(run, Math.max(0, (run.day || 1) - 1)),
       });
     }
     setBashoDraftOptions(null);
@@ -1317,6 +1321,9 @@ const MainMenu = ({
       // Rival roster: AI personality archetype + (boss-only) combat edge. The
       // server applies stats/size/powerUps to the BASHO CPU per bout.
       archetype: o.archetype || "balanced",
+      // Phase 4.3: the rival's division drives its CPU curriculum kit server-side
+      // (narrow toolkits at low ranks). All rivals in a run share the run division.
+      division: o.rank?.division || runWithRanks.division || null,
       boss: !!o.boss,
       stats: o.stats || null,
       size: o.size || null,
@@ -1363,6 +1370,8 @@ const MainMenu = ({
       // base + intra-basho ramp (depends on the live record, so it's computed
       // here, not baked into the static roster).
       difficulty: boutDifficulty(run, Math.max(0, (run.day || 1) - 1)),
+      // Phase 4.4: continuous ladder position for the opening bout.
+      ladderPosition: boutLadderPosition(run, Math.max(0, (run.day || 1) - 1)),
     });
   };
 

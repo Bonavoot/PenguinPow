@@ -10,8 +10,8 @@ const HitEffectContainer = styled.div`
   position: absolute;
   left: ${props => (props.$x / 1280) * 100 + (props.$facing === 1 ? -8 : -3)}%;
   bottom: ${props => (props.$y / 720) * 100}%;
-  width: 4cqw;
-  height: 4cqw;
+  width: 3.85cqw;
+  height: 3.85cqw;
   transform: translate(-50%, 50%);
   display: flex;
   align-items: center;
@@ -61,6 +61,7 @@ const HitEffect = ({ position }) => {
     const isBurstHit = position.isBurstHit || false;
     const isArmorBreak = position.isArmorBreak || false;
     const isPowered = position.isPowered || false;
+    const isPerfectEnder = position.isPerfectEnder || false;
 
     const isHeavy = attackType === 'charged' || isBurstHit || isCinematic;
 
@@ -75,6 +76,7 @@ const HitEffect = ({ position }) => {
       isPunish,
       isArmorBreak,
       isPowered,
+      isPerfectEnder,
       frozen: isCinematic,
     };
 
@@ -129,6 +131,11 @@ const HitEffect = ({ position }) => {
     };
   }, []);
 
+  // TEMP: the old CSS hit rings (slap / charged / burst / powered / counter /
+  // punish) are fully suppressed — every hit now renders the new sprite-sheet
+  // burst (SlapHitSpriteEffect). Only the cinematic KO screen-flash portal
+  // remains here. `activeEffects` is still tracked so the cinematic freeze
+  // bookkeeping keeps working; it just isn't drawn as a ring anymore.
   return (
     <>
       {impactFrame && createPortal(
@@ -137,59 +144,6 @@ const HitEffect = ({ position }) => {
         />,
         document.getElementById("game-hud") || document.body
       )}
-      {activeEffects.map((effect) => {
-        const isCharged = effect.attackType === 'charged';
-        const isBurst = effect.isBurstHit && !isCharged;
-        const hitTypeClass = isCharged ? 'charged-hit' : (isBurst ? 'burst-hit' : 'slap-hit');
-        const counterHitClass = effect.isCounterHit ? 'counter-hit' : '';
-        const punishHitClass = effect.isPunish ? 'punish-hit' : '';
-        // Charged attack shattering grab armor — recolor the hit glow to
-        // white/yellow to visually link it to the glass-shard armor break.
-        const armorBreakClass = effect.isArmorBreak ? 'armor-break' : '';
-        // POWER power-up — recolor the NORMAL white hit glow to red. Counter,
-        // punish, and armor-break keep their own special reads (they take
-        // precedence), so this only paints the plain confirms red.
-        const poweredClass =
-          effect.isPowered &&
-          !effect.isCounterHit &&
-          !effect.isPunish &&
-          !effect.isArmorBreak
-            ? 'powered-hit'
-            : '';
-        const frozenClass = effect.frozen ? 'cinematic-frozen' : '';
-        // Faux-3D tilt — signed by facing so the ring plane angles toward the
-        // struck side (same rotateY trick the raw-parry ring uses).
-        const ringTiltSigned = effect.facing === -1 ? '55deg' : '-55deg';
-
-        // Hit VFX is a white-hot sibling of the raw-parry glow: a tilted
-        // glowing ring + inner flash, a soft bloom, a held core, and an
-        // afterglow — clean and simple, NOT a stacked blob. A thin dark
-        // keyline (in CSS) keeps the white shapes readable over the
-        // penguins' white bellies. The fast directional IMPACT SPARKS that
-        // fly out through the ring are emitted on the canvas particle engine
-        // (hitSparkSlap / hitSparkBurst / hitSparkCharged) for real motion.
-        // Counter / punish / armor-break recolor the glow for special reads.
-        return (
-          <HitEffectContainer
-            key={effect.id}
-            $x={effect.x}
-            $y={effect.y}
-            $facing={effect.facing}
-          >
-            <div
-              className={`hit-ring-wrapper ${hitTypeClass} ${counterHitClass} ${punishHitClass} ${armorBreakClass} ${poweredClass} ${frozenClass}`}
-              style={{ "--hit-ring-tilt-signed": ringTiltSigned }}
-            >
-              <div className="hit-bloom-glow" />
-              <div
-                className="hit-ring"
-                style={{ transform: effect.facing === 1 ? "scaleX(-1)" : "scaleX(1)" }}
-              />
-              <div className="hit-afterglow" />
-            </div>
-          </HitEffectContainer>
-        );
-      })}
     </>
   );
 };
@@ -204,6 +158,8 @@ HitEffect.propTypes = {
     timestamp: PropTypes.number,
     isCounterHit: PropTypes.bool,
     isPunish: PropTypes.bool,
+    isPerfectEnder: PropTypes.bool,
+    seamOpen: PropTypes.bool,
   }),
 };
 

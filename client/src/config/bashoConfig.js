@@ -341,6 +341,72 @@ export function difficultyForDivision(divisionKey) {
 }
 
 // ============================================
+// CONTINUOUS DIFFICULTY CURVE (spec §4.4) — ladder position L ∈ [0,1]
+// ============================================
+
+/*
+ * Per-division base ladder position. The server interpolates its AI dials
+ * between anchor profiles (EASY 0.0 / NORMAL 0.25 / HARD 0.60 / IMPOSSIBLE 1.0),
+ * so the ramp starts sooner (NORMAL by ~Jonidan) and never plateaus. Banzuke
+ * number eases L toward the next division as you climb within a division.
+ */
+export const DIVISION_BASE_L = {
+  jonokuchi: 0.0,
+  jonidan: 0.15,
+  sandanme: 0.28,
+  makushita: 0.45,
+  juryo: 0.6,
+  maegashira: 0.72,
+  komusubi: 0.82,
+  sekiwake: 0.9,
+  ozeki: 1.0,
+  yokozuna: 1.0,
+};
+
+/* Discrete-tier → anchor L, used for boss overrides (they keep their tier). */
+export const ANCHOR_L = { EASY: 0.0, NORMAL: 0.25, HARD: 0.6, IMPOSSIBLE: 1.0 };
+
+const clampL = (n) => (n < 0 ? 0 : n > 1 ? 1 : n);
+
+/**
+ * Continuous ladder position for a rank: the division base, eased up to ~60% of
+ * the way toward the next division by the normalized banzuke number (top of a
+ * division = closer to the next). Unnumbered san'yaku ranks use their base.
+ */
+export function ladderPosition(rank) {
+  const div = getDivision(rank);
+  const idx = DIVISIONS.findIndex((d) => d.key === div.key);
+  const base = DIVISION_BASE_L[div.key] ?? 0.6;
+  const nextKey = DIVISIONS[Math.min(idx + 1, DIVISIONS.length - 1)]?.key;
+  const nextBase = DIVISION_BASE_L[nextKey] ?? base;
+  let within = 0;
+  if (div.numbered && rank?.number != null && div.maxNumber > 1) {
+    within = clampL(1 - (rank.number - 1) / (div.maxNumber - 1));
+  }
+  return clampL(base + (nextBase - base) * within * 0.6);
+}
+
+/**
+ * Ladder position for a specific bout: a boss keeps its configured tier's anchor
+ * L; ordinary rivals interpolate from their banzuke rank. Applies the same
+ * back-third kachi-koshi ramp as effectiveDifficulty (+0.07 L). `boutIndex` is
+ * 0-based (day − 1).
+ */
+export function boutLadderPosition(run, boutIndex) {
+  const opp = run?.opponents?.[boutIndex];
+  if (opp?.boss && ANCHOR_L[opp.difficulty] != null) return ANCHOR_L[opp.difficulty];
+  const rank = opp?.rank || { division: run?.division };
+  let L = ladderPosition(rank);
+  const total = run?.totalBouts || 1;
+  const backThirdStart = Math.ceil((total * 2) / 3);
+  const kk =
+    run?.kk ?? getDivision({ division: run?.division }).kk ?? Math.ceil(total / 2);
+  const wins = run?.record?.wins ?? 0;
+  if (kk != null && boutIndex >= backThirdStart && wins >= kk) L = clampL(L + 0.07);
+  return Number(L.toFixed(3));
+}
+
+// ============================================
 // AI PERSONALITY ARCHETYPES (rival roster — §5.7 / Phase 8 follow-up)
 // ============================================
 

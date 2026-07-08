@@ -148,7 +148,14 @@ const SLAP_STRING_HIT_TOTAL_MS = SLAP_STARTUP_MS + SLAP_ACTIVE_MS + SLAP_STRING_
 // On hit the string flows normally (up to 3) — landing extends your turn, whiffing
 // interrupts it, which rewards accuracy. Counter resets the instant a slap connects.
 const SLAP_WHIFF_PAUSE_COUNT = 2;   // Consecutive whiffs before the committed pause
-const SLAP_WHIFF_PAUSE_MS = 220;    // Committed lockout duration — the punish window (main dial)
+const SLAP_WHIFF_PAUSE_MS = 300;    // Committed lockout duration — the punish window (main dial).
+                                    // PHASE 2: 220 → 300 so a REACTIVE whiff punish is possible
+                                    // (the old 220 let a delayed punish arrive after you're actionable,
+                                    // which specifically protected spam).
+// PHASE 2 — whiff surcharge. A whiffed slap costs an extra 3 stamina (charged at
+// cycle end when the slap did NOT connect), so a whiffed slap totals 6 while a
+// landed slap stays 3. Makes spacing/accuracy pay in the game's real currency.
+const SLAP_WHIFF_EXTRA_STAMINA = 3;
 
 // Knockback per string position
 const SLAP_STRING_LIGHT_KB_VELOCITY = 0.15;       // Hits 1 & 2: minimal — keeps opponent close for next hit
@@ -178,6 +185,23 @@ const SLAP_HIT3_KB_FRICTION = 0.982;       // Per-tick decay during the forced w
                                            // are visually one motion. Higher = longer, slower glide
                                            // (and more total distance); pair with v0 to hold distance.
 
+// ─── PHASE 1: THE ENDER SEAM — perfect-input finisher ("blue spark") ────────
+// Slap3's burst velocity depends on the ender press timing (see 1.4 of the
+// COMBAT_OVERHAUL_SPEC). Judged on press-arrival vs the attacker's actionable
+// moment (when the slap2 cycle ends), lag-compensated toward the true client
+// press. The earned-string guarantee does NOT change these tiers — precision
+// pays everywhere.
+//   • Buffered during the freeze (pressed before actionable) → SLOPPY (2.4)
+//   • Just-frame: within SLAP_ENDER_JUST_WINDOW_MS of actionable → full (3.1) + spark
+//   • Late (after the window) → SLOPPY (2.4)
+// ~110px of carry difference is the mechanical stake; the spark is psychological.
+const SLAP_HIT3_KB_VELOCITY_SLOPPY = 2.4;  // Mash-tax finisher impulse (~385px carry). Gap to 3.1 = the tax.
+const SLAP_ENDER_JUST_WINDOW_MS = 50;      // Just-frame window after becoming actionable — main difficulty dial.
+// Lag-compensation cap for the ender press moment (mirrors MAX_PARRY_BACKDATE_MS).
+// Backdating only makes the just-frame window HARDER to hit, so a spoofed
+// offset can do no better than the uncompensated (age 0) behavior.
+const MAX_ENDER_BACKDATE_MS = 120;
+
 // ─── SLAP ROPE RESISTANCE ───────────────────────────────────────────────
 // Real-sumo rope feel: a slap can only send the opponent OUT if the hit
 // connected while they were already near the boundary (the "kill zone").
@@ -188,8 +212,10 @@ const SLAP_HIT3_KB_FRICTION = 0.982;       // Per-tick decay during the forced w
 //
 // TUNING: SLAP_KILL_RANGE must be <= how far slap3 actually travels during
 // its hitstun window. If "armed" finishers ever fizzle just short of the
-// rope, either lower this range or raise SLAP_HIT3_KB_VELOCITY. ~95px ≈ the
-// edge-panic zone (89) — i.e. "you were genuinely cornered."
+// rope, either lower this range or raise SLAP_HIT3_KB_VELOCITY. At 45px this
+// is a deliberately tight "already at the rope" band — well inside the wider
+// edge-panic zone (DOHYO_EDGE_PANIC_ZONE = 89) — so a neutral slap finisher
+// only rings out a victim who was genuinely pinned, not merely cornered.
 const SLAP_KILL_RANGE = 45;
 // Where a rope-caught victim comes to rest, measured INWARD from the boundary.
 // Keeps them a few px off the literal edge (not pixel-perfect on the rope) and
@@ -198,6 +224,14 @@ const SLAP_ROPE_RESIST_BUFFER = 12;
 
 // String stun (hits 1 & 2)
 const SLAP_STRING_HIT_STUN_MS = 260;
+
+// ─── PHASE 1: CONTESTABLE SLAP3 (neutral strings only) ──────────────────────
+// A NEUTRAL slap2 leaves the victim in a shorter stun so the slap2→slap3 seam
+// becomes a decision moment (a 2×2 mixup — see spec 1.2). SLAP_STRING_HIT_STUN_MS
+// (260) still applies to hit 1 (keeps 1→2 a true combo) AND to hit 2 of an
+// EARNED string (counter/punish-latched, gassed victim, or victim in the
+// edge-panic zone in the knockback direction), so those enders stay guaranteed.
+const SLAP_STRING_HIT2_STUN_MS = 180;
 
 // On-hit combo push: both players drift forward together on connect (matches whiff slide)
 const SLAP_ONHIT_ATTACKER_PUSH = 1.0;
@@ -223,19 +257,21 @@ const PALM_THRUST_HOLD_MS = 260;
 // its strike sprite for the full whiff punish window instead.
 const PALM_THRUST_END_RECOVERY_MS = 60;
 const PALM_THRUST_HIT_RECOVERY_MS = 200;   // Settle on a confirmed hit
-// Fixed "charge %" fed into the charged knockback formula. 35 sits ABOVE
-// CHARGE_PRIORITY_THRESHOLD (30) so the thrust beats a slap on a simultaneous
-// trade, and yields knockback mult ≈ 0.64 (velocity ≈ 1.7) — a real pop that
-// stays well under a committed charge (~3.2). Tune this one dial for feel.
+// Fixed "charge %" used ONLY for the palm's priority + hitstop, NOT its
+// knockback: 35 sits ABOVE CHARGE_PRIORITY_THRESHOLD (30) so the thrust beats a
+// slap on a simultaneous trade, and it scales the connect hitstop. The actual
+// shove is a fixed burst impulse (PALM_THRUST_KB_VELOCITY below) via the slap3
+// burst model — the palm does NOT run the 0.45+charge^1.3 charged formula.
 const PALM_THRUST_POWER = 35;
-// Heavy single-hit knockback. The palm's identity is "one committed thrust that
-// rivals the slap string's 3rd-hit BURST (SLAP_HIT3_KB_VELOCITY = 3.1) without
-// needing to confirm all 3 hits" — the reward for a slower, rooted, punishable,
-// grab-losable read. Delivered via the slap3 burst model (smooth ICE_COAST
-// slide + rope clamp), so this is directly comparable to 3.1. Sits just under
-// the fully-confirmed finisher so a landed slap string still has a slight edge.
-// This is the one dial for the palm's shove — raise toward 3.1 to match slap3.
-const PALM_THRUST_KB_VELOCITY = 2.7;
+// Heavy single-hit knockback. The palm's identity is "one committed thrust worth
+// a slap-string ENDER without needing to confirm all 3 hits" — the reward for a
+// slower, rooted, punishable, grab-losable read. Delivered via the slap3 burst
+// model (smooth ICE_COAST slide + rope clamp), so it's directly comparable to
+// the finisher: tuned to the STANDARD (sloppy/buffered) slap3 ender
+// (SLAP_HIT3_KB_VELOCITY_SLOPPY = 2.4), NOT the just-frame blue-spark 3.1, so a
+// clean slap finisher still carries a touch farther. This is the one dial for
+// the palm's shove — raise toward 3.1 to match a perfect ender instead.
+const PALM_THRUST_KB_VELOCITY = 2.4;
 const PALM_THRUST_STAMINA_COST = 6;        // Between slap (3) and charged (9)
 // Rooted (no lunge), so it needs a little more raw reach than the charged
 // hitbox to feel like a committed extended-arm thrust — a touch past slap.
@@ -288,15 +324,22 @@ const DODGE_COOLDOWN_MS = 100;    // Forced idle gap after recovery before next 
 // invuln before grab lands, while keeping slap3 (which lands DURING hit-stun)
 // unavoidable. 40ms is still 2x dodge startup (20ms), so dodge remains the
 // faster panic button — sidestep is slower-but-bigger-reward by design.
-const SIDESTEP_STARTUP_MS = 40;       // Vulnerable wind-up — counter-hittable on read
+// PHASE 3.1: 40 → 50ms. The old 40 was tuned for the pre-Phase-1 slap2→grab
+// option-select; the rebuilt seam (buffered wakeup sidestep enters i-frames well
+// before the seam grab) leaves 50 safe there, and it makes a *predicted* corner
+// sidestep actually clippable — reading an escape should pay.
+const SIDESTEP_STARTUP_MS = 50;       // Vulnerable wind-up — counter-hittable on read
 const SIDESTEP_ACTIVE_MS = 400;       // Fixed active phase — same length every time
 const SIDESTEP_RECOVERY_MS = 150;     // Smooth settle to final position, vulnerable (PUNISH on hit)
-const SIDESTEP_TOTAL_MS = SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS + SIDESTEP_RECOVERY_MS; // 590ms total
+const SIDESTEP_TOTAL_MS = SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS + SIDESTEP_RECOVERY_MS; // 600ms total
 const SIDESTEP_STAMINA_COST = 8;      // Expensive — bigger reward than dodge (4) or parry (5)
 const SIDESTEP_TRAVEL = 160;          // Fixed lateral travel — circling step around the dohyo's curve
+// PHASE 3.1: a sidestep STARTED inside the edge-panic zone (DOHYO_EDGE_PANIC_ZONE
+// of a boundary) travels less — escaping the corner no longer refunds the whole
+// war of position. Full-arena sidesteps keep SIDESTEP_TRAVEL.
+const SIDESTEP_TRAVEL_EDGE = 110;     // Reduced travel when cornered
 const SIDESTEP_ARC_DEPTH = 50;        // Fixed Y dip — moves DOWN on screen (toward camera, around the ring's near edge)
 const SIDESTEP_GRAB_TRACK_RANGE = 400; // Generous grab range when target is sidestepping
-const SIDESTEP_INITIATION_RANGE = 280; // (legacy) Max distance to attempt sidestep — currently unenforced; kept for AI heuristics
 const SIDESTEP_RECOVERY_OVERLAP_THRESHOLD = 80; // Only push out during recovery if literally clipping pushbox
 
 // Dohyo edge fall physics - fast heavy drop with maintained horizontal momentum
@@ -377,6 +420,17 @@ const DODGE_POWERSLIDE_BOOST = 1.95;    // Boost if holding C on dodge landing
 
 // Edge awareness
 const DOHYO_EDGE_PANIC_ZONE = 89;       // Scaled for camera zoom (was 120)
+// PHASE 2 — position gate for the read-gated charged cinematic kill. A NEUTRAL
+// charged hit (no counter/punish, not gassed) may only cinematic-KO when the
+// victim was within THIS distance of the boundary (in the knockback direction)
+// AT CONTACT — otherwise the hit is rope-clamped. Measured from the ROPE
+// (MAP_*_BOUNDARY 340/935), NOT the visible fall-out edge (DOHYO 250/1030) which
+// sits ~95px further out, so keep this small or a "58px" zone reads as midscreen.
+// EARNED-EDGE identity: a neutral charge is a positioning/knockback tool, not a
+// raw one-shot — it only KOs by power when the victim is genuinely PINNED against
+// the rope (near point-blank). Everything farther out rope-clamps; reads
+// (counter/punish/gassed) remain the way to KO from range. Main charged-kill dial.
+const CHARGED_KILL_EDGE_ZONE = 24;
 const ICE_EDGE_BRAKE_BONUS = 0.06;      // EXTRA braking power near edge
 const ICE_EDGE_SLIDE_PENALTY = 0.004;   // MORE slippery near edge when not braking
 
@@ -420,16 +474,8 @@ const GRAB_STARTUP_ARMOR_STAGGER_MS = 100;
 
 // Grab whiff recovery — big vulnerable window if grab misses
 const GRAB_WHIFF_RECOVERY_MS = 450; // Whiff recovery duration (fully vulnerable to punishment)
-const GRAB_WHIFF_STUMBLE_VEL = 0.4; // Slight forward stumble velocity during whiff
 
-// Grab tech — both players grab simultaneously, freeze then push apart
-const GRAB_TECH_FREEZE_MS = 350; // Freeze duration before separation (shake/jiggle phase)
-const GRAB_TECH_FORCED_DISTANCE = 40; // Scaled for camera zoom [8% tighter]
 const GRAB_PULL_ATTEMPT_DISTANCE_MULTIPLIER = 1.4; // Larger gap during pull attempt (vs 1.0 for normal grab)
-const GRAB_TECH_TWEEN_DURATION = 120; // Duration of forced separation tween (ms)
-const GRAB_TECH_RESIDUAL_VEL = 1.2; // Residual velocity fed into ice sliding after forced separation
-const GRAB_TECH_INPUT_LOCK_MS = 600; // Total input lock (freeze + separation slide)
-const GRAB_TECH_ANIM_DURATION_MS = 700; // Total tech animation duration (freeze + recovery)
 
 // Grab break constants — Spacebar in clinch (both players must have grip).
 // Soft-gated by stamina: usable below cost, but breaker self-gasses if under-budget.
@@ -452,17 +498,18 @@ const GRAB_STAMINA_DRAIN_INTERVAL = 150;
 // Push starts IMMEDIATELY on grab connect (burst-with-decay).
 // Grabber can interrupt push with pull (backward) or throw (W) during push.
 // ============================================
-const GRAB_ACTION_WINDOW = 350; // 0.35s reaction window for pull/throw counter attempts
 const GRAB_PUSH_BURST_BASE = 2.5;          // Base burst speed when push starts
 const GRAB_PUSH_MOMENTUM_TRANSFER = 0.6;   // Multiplier on approach speed added to burst (power slide grab = devastating)
+// PHASE 3.2 — "caught the henka": a grab that connects on a victim still in
+// sidestep-recovery or rope-jump landing floors the Phase A approach speed to
+// this, so a *read-timed* grab bursts them back cornerward hard even from a
+// standing (zero-approach) catch. Reads should pay out in position.
+const GRAB_CATCH_MIN_BURST_SPEED = 1.5;
 const GRAB_PUSH_DECAY_RATE = 1.6;          // Exponential decay rate (was 2.2 — slower decay for sustained yorikiri push)
 const GRAB_PUSH_MIN_VELOCITY = 0.15;       // Push ends when speed decays below this
-const GRAB_PUSH_MAX_DURATION = 1500;        // Safety cap: push can never exceed this (ms)
 const GRAB_PUSH_BACKWARD_GRACE = 150;       // ms before backward input triggers pull during push (prevents accidental pull)
 const GRAB_PUSH_STAMINA_DRAIN_INTERVAL = 70; // Drain 1 stamina per 70ms mid-ring (~14/sec)
 const GRAB_PUSH_EDGE_STAMINA_DRAIN_INTERVAL = 35; // Drain 1 stamina per 35ms at edge (~29/sec)
-const GRAB_PUSH_RESIST_SPEED_MULT = 0.45;  // Push speed multiplied by this when opponent resists (55% reduction)
-const GRAB_PUSH_RESIST_STAMINA_DRAIN_INTERVAL = 125; // Extra drain on resisting opponent: 1 per 125ms (~8/sec additional, ~22/sec total with grab drain)
 const GRAB_PUSH_SEPARATION_OPPONENT_VEL = 1.2; // Velocity given to opponent when push ends
 const GRAB_PUSH_SEPARATION_GRABBER_VEL = 0.4;  // Velocity given to grabber when push ends
 const GRAB_PUSH_SEPARATION_INPUT_LOCK = 180;    // Input lock after push separation — matches isGrabSeparating duration (ms)
@@ -486,10 +533,8 @@ const RINGOUT_THROW_DURATION_MS = 400; // Match normal throw timing for consiste
 // Parry System
 // ============================================
 const RAW_PARRY_KNOCKBACK = 0.49; // Knockback velocity for charged attack parries
-const RAW_PARRY_STUN_DURATION = 700; // Stun duration (was 1000 — guarantees slap/grab but not charged)
 const RAW_PARRY_SLAP_KNOCKBACK = 0.5; // Lighter knockback for slap parries
 const PERFECT_PARRY_KNOCKBACK = 0.65; // Slightly stronger than regular parry
-const RAW_PARRY_SLAP_STUN_DURATION = 400; // Stun for slap parries (was 500)
 const PERFECT_PARRY_WINDOW = 100; // 100ms window for perfect parries
 const PERFECT_PARRY_SUCCESS_DURATION = 850; // Compressed parry — fast enough to keep pace, long enough for visual read
 const PERFECT_PARRY_ATTACKER_STUN_DURATION = 700; // Stun — comfortable window for slap/grab follow-up
@@ -538,6 +583,10 @@ const ROPE_JUMP_STAMINA_COST = 4;        // Same as dodge
 const ROPE_JUMP_ARC_HEIGHT = 120;        // Peak Y offset above GROUND_LEVEL
 const ROPE_JUMP_SAFE_HEIGHT = 80;        // Y offset above which player can't be hit
 const ROPE_JUMP_BOUNDARY_ZONE = 40;      // Tight to the rope — must be near the boundary to jump
+// PHASE 3.1: escape refund reduction. A rope jump lands only this fraction of the
+// way toward center (was an inline 0.52 in socketHandlers + the CPU input path).
+// Still saves your life; no longer refunds the whole positional war.
+const ROPE_JUMP_CENTER_FRACTION = 0.33;
 
 // ============================================
 // FLAP — "Flappy bird" flight power-up (replaces raw parry on Space)
@@ -730,7 +779,6 @@ const CLINCH_THROW_KILL_THRESHOLD = 15;          // Balance below which = KILL T
 const CLINCH_THROW_DISTANCE = 260;               // Forward throw distance — repositioning push
 const CLINCH_THROW_ARC_HEIGHT = 100;             // Low hill arc (peak ~80px) — not a big sky launch
 const CLINCH_THROW_DURATION_MS = 550;            // Longer travel time for the farther distance
-const CLINCH_CLASH_BALANCE_DRAIN = 8;            // Mutual balance drain on clash
 const CLINCH_CLASH_ANIMATION_MS = 400;           // Cosmetic clash animation duration
 
 // Clinch pull system (Mouse2 + away during clinch)
@@ -823,7 +871,13 @@ const HITSTOP_SLAP_MS = 130;      // Solo/fallback slap freeze (~8 frames). Rare
 // dramatic freeze saved for the BOOM. A shorter freeze here is SAFE for the true combo because the
 // hitstop compensation is symmetric (see collisionSystem) — the combo margin is set by base frame data,
 // not by the hitstop, so the hitstop cancels out of the guarantee math.
-const HITSTOP_SLAP_STRING_MS = 70; // String hits 1 & 2 freeze (~4 frames). Snappy pop. On-hit cadence: 325ms → ~245ms.
+const HITSTOP_SLAP_STRING_MS = 70; // String hit 1 freeze (~4 frames). Snappy pop. On-hit cadence: 325ms → ~245ms.
+// PHASE 1: slap2 connect gets a HEAVIER freeze — this is the ender seam's
+// decision beat. Both players pick their option during this freeze; per Design
+// Principle 1 it reads as the heaviest mid-string IMPACT, not as lag (the sim
+// clock pauses for both, so the true-combo/seam margins are unaffected). The
+// attacker hitstop relief is NOT applied on hit 2 (the freeze is symmetric).
+const HITSTOP_SLAP_HIT2_MS = 140; // slap2 connect freeze (~9 frames) — the decision beat. Main "size of the seam" dial.
 const HITSTOP_SLAP_HIT3_MS = 200; // Combo finisher freeze (~12 frames). The "BOOM" — contrast with the fast lights sells it.
 // Attacker-favored asymmetry on chainable string hits (1 & 2): extend the ATTACKER's recovery by
 // `relief` ms LESS than the victim's stun, so the attacker un-freezes slightly ahead of the victim.
@@ -842,7 +896,16 @@ const HITSTOP_THROW_MS = 100;     // Hitstop when throw lands (6 frames)
 // ============================================
 // Cinematic Kill — guaranteed ring-out finishing blow
 // ============================================
-const CINEMATIC_KILL_MIN_MULTIPLIER = 1.0;
+// Charge % a charged hit must reach to be eligible for a cinematic KO. This is a
+// CLEAN, LEARNABLE line: it keys off the raw charge the player held, NOT the
+// finalKnockbackMultiplier (which is muddied by counter ×1.25 / punish ×1.25 /
+// power-up / basho stat mods, so the "how much charge do I need" answer used to
+// silently shift between ~57% and ~79% depending on context).
+//   - NEUTRAL corner kill (victim pinned at the rope): demands a big commit.
+//   - READ kill (counter / punish / gassed, from range): rewards you with a
+//     lower bar — the read IS the earn, so less charge is required.
+const CHARGED_KILL_MIN_CHARGE = 80;       // neutral, pinned-at-rope KO
+const CHARGED_KILL_READ_MIN_CHARGE = 50;  // counter/punish/gassed KO from range
 const CINEMATIC_KILL_HITSTOP_MS = 550;
 const CINEMATIC_KILL_KNOCKBACK_BOOST = 4.0;
 const CINEMATIC_KB_FRICTION = 0.985;
@@ -938,6 +1001,7 @@ module.exports = {
   DODGE_SLIDE_MOMENTUM,
   DODGE_POWERSLIDE_BOOST,
   DOHYO_EDGE_PANIC_ZONE,
+  CHARGED_KILL_EDGE_ZONE,
   ICE_EDGE_BRAKE_BONUS,
   ICE_EDGE_SLIDE_PENALTY,
 
@@ -964,13 +1028,18 @@ module.exports = {
   SLAP_STRING_HIT_TOTAL_MS,
   SLAP_WHIFF_PAUSE_COUNT,
   SLAP_WHIFF_PAUSE_MS,
+  SLAP_WHIFF_EXTRA_STAMINA,
   SLAP_STRING_LIGHT_KB_VELOCITY,
   SLAP_NEUTRAL_KB_MULTIPLIER,
   SLAP_HIT3_KB_VELOCITY,
+  SLAP_HIT3_KB_VELOCITY_SLOPPY,
+  SLAP_ENDER_JUST_WINDOW_MS,
+  MAX_ENDER_BACKDATE_MS,
   SLAP_KILL_RANGE,
   SLAP_ROPE_RESIST_BUFFER,
   SLAP_HIT3_KB_FRICTION,
   SLAP_STRING_HIT_STUN_MS,
+  SLAP_STRING_HIT2_STUN_MS,
   SLAP_HIT3_STUN_MS,
   SLAP_ONHIT_ATTACKER_PUSH,
   CHARGED_STARTUP_MS,
@@ -999,9 +1068,9 @@ module.exports = {
   SIDESTEP_TOTAL_MS,
   SIDESTEP_STAMINA_COST,
   SIDESTEP_TRAVEL,
+  SIDESTEP_TRAVEL_EDGE,
   SIDESTEP_ARC_DEPTH,
   SIDESTEP_GRAB_TRACK_RANGE,
-  SIDESTEP_INITIATION_RANGE,
   SIDESTEP_RECOVERY_OVERLAP_THRESHOLD,
 
   // Dodge physics
@@ -1018,14 +1087,7 @@ module.exports = {
   GRAB_STARTUP_ARMOR_STAGGER_MS,
   SLAP_ATTACK_STARTUP_MS,
   GRAB_WHIFF_RECOVERY_MS,
-  GRAB_WHIFF_STUMBLE_VEL,
-  GRAB_TECH_FREEZE_MS,
-  GRAB_TECH_FORCED_DISTANCE,
   GRAB_PULL_ATTEMPT_DISTANCE_MULTIPLIER,
-  GRAB_TECH_TWEEN_DURATION,
-  GRAB_TECH_RESIDUAL_VEL,
-  GRAB_TECH_INPUT_LOCK_MS,
-  GRAB_TECH_ANIM_DURATION_MS,
   GRAB_BREAK_STAMINA_COST,
   GRAB_BREAK_PUSH_VELOCITY,
   GRAB_BREAK_FORCED_DISTANCE,
@@ -1037,17 +1099,14 @@ module.exports = {
   GRAB_STAMINA_DRAIN_INTERVAL,
 
   // Grab action system
-  GRAB_ACTION_WINDOW,
   GRAB_PUSH_BURST_BASE,
   GRAB_PUSH_MOMENTUM_TRANSFER,
+  GRAB_CATCH_MIN_BURST_SPEED,
   GRAB_PUSH_DECAY_RATE,
   GRAB_PUSH_MIN_VELOCITY,
-  GRAB_PUSH_MAX_DURATION,
   GRAB_PUSH_BACKWARD_GRACE,
   GRAB_PUSH_STAMINA_DRAIN_INTERVAL,
   GRAB_PUSH_EDGE_STAMINA_DRAIN_INTERVAL,
-  GRAB_PUSH_RESIST_SPEED_MULT,
-  GRAB_PUSH_RESIST_STAMINA_DRAIN_INTERVAL,
   GRAB_PUSH_SEPARATION_OPPONENT_VEL,
   GRAB_PUSH_SEPARATION_GRABBER_VEL,
   GRAB_PUSH_SEPARATION_INPUT_LOCK,
@@ -1065,10 +1124,8 @@ module.exports = {
 
   // Parry system
   RAW_PARRY_KNOCKBACK,
-  RAW_PARRY_STUN_DURATION,
   RAW_PARRY_SLAP_KNOCKBACK,
   PERFECT_PARRY_KNOCKBACK,
-  RAW_PARRY_SLAP_STUN_DURATION,
   PERFECT_PARRY_WINDOW,
   PERFECT_PARRY_SUCCESS_DURATION,
   PERFECT_PARRY_ATTACKER_STUN_DURATION,
@@ -1094,6 +1151,7 @@ module.exports = {
   ROPE_JUMP_ARC_HEIGHT,
   ROPE_JUMP_SAFE_HEIGHT,
   ROPE_JUMP_BOUNDARY_ZONE,
+  ROPE_JUMP_CENTER_FRACTION,
 
   // Flap
   FLAP_STARTUP_MS,
@@ -1201,7 +1259,6 @@ module.exports = {
   CLINCH_THROW_DISTANCE,
   CLINCH_THROW_ARC_HEIGHT,
   CLINCH_THROW_DURATION_MS,
-  CLINCH_CLASH_BALANCE_DRAIN,
   CLINCH_CLASH_ANIMATION_MS,
   CLINCH_PULL_ANIMATION_MS,
   CLINCH_PULL_DISTANCE,
@@ -1257,6 +1314,7 @@ module.exports = {
   SLAP_CHAIN_HIT_GAP_MS,
   HITSTOP_SLAP_MS,
   HITSTOP_SLAP_STRING_MS,
+  HITSTOP_SLAP_HIT2_MS,
   SLAP_STRING_ATTACKER_HITSTOP_RELIEF_MS,
   HITSTOP_SLAP_HIT3_MS,
   HITSTOP_CHARGED_MIN_MS,
@@ -1280,7 +1338,8 @@ module.exports = {
   CHARGED_TIER_HEAVY_SCALE_MS,
 
   // Cinematic kill
-  CINEMATIC_KILL_MIN_MULTIPLIER,
+  CHARGED_KILL_MIN_CHARGE,
+  CHARGED_KILL_READ_MIN_CHARGE,
   CINEMATIC_KILL_HITSTOP_MS,
   CINEMATIC_KILL_KNOCKBACK_BOOST,
   CINEMATIC_KB_FRICTION,

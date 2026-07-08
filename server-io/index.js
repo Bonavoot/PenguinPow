@@ -8,7 +8,7 @@ const e = require("express");
 const {
   GRAB_STATES, TICK_RATE, BROADCAST_EVERY_N_TICKS,
   ALWAYS_SEND_PROPS, DELTA_TRACKED_PROPS, ALL_TRACKED_PROPS,
-  speedFactor, GROUND_LEVEL, HITBOX_DISTANCE_VALUE,
+  speedFactor, GROUND_LEVEL, HITBOX_DISTANCE_VALUE, CHARGED_HITBOX_DISTANCE_VALUE,
   THROW_RANGE, GRAB_RANGE, GRAB_PUSH_SPEED, GRAB_PUSH_DURATION,
   DOHYO_FALL_SPEED, DOHYO_FALL_DEPTH,
   POWER_UP_TYPES, POWER_UP_EFFECTS,
@@ -31,10 +31,7 @@ const {
   GRAB_WALK_SPEED_MULTIPLIER, GRAB_WALK_ACCEL_MULTIPLIER,
   CHARGE_FULL_POWER_MS,
   GRAB_STARTUP_DURATION_MS, GRAB_ACTIVE_MS, GRAB_STARTUP_HOP_HEIGHT, GRAB_LUNGE_DISTANCE, SLAP_ATTACK_STARTUP_MS,
-  GRAB_WHIFF_RECOVERY_MS, GRAB_WHIFF_STUMBLE_VEL,
-  GRAB_TECH_FREEZE_MS, GRAB_TECH_FORCED_DISTANCE,
-  GRAB_TECH_TWEEN_DURATION, GRAB_TECH_RESIDUAL_VEL,
-  GRAB_TECH_INPUT_LOCK_MS, GRAB_TECH_ANIM_DURATION_MS,
+  GRAB_WHIFF_RECOVERY_MS, GRAB_CATCH_MIN_BURST_SPEED,
   GRAB_BREAK_STAMINA_COST, GRAB_BREAK_PUSH_VELOCITY, GRAB_BREAK_FORCED_DISTANCE,
   GRAB_BREAK_TWEEN_DURATION, GRAB_BREAK_RESIDUAL_VEL,
   GRAB_BREAK_INPUT_LOCK_MS, GRAB_BREAK_ACTION_LOCK_MS,
@@ -60,7 +57,7 @@ const {
   SLAP_HIT3_KB_FRICTION,
   SLAP_ROPE_RESIST_BUFFER,
   SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS, SIDESTEP_RECOVERY_MS,
-  SIDESTEP_ARC_DEPTH, SIDESTEP_TRAVEL, SIDESTEP_GRAB_TRACK_RANGE,
+  SIDESTEP_ARC_DEPTH, SIDESTEP_TRAVEL, SIDESTEP_TRAVEL_EDGE, SIDESTEP_GRAB_TRACK_RANGE,
   SIDESTEP_RECOVERY_OVERLAP_THRESHOLD,
   CLINCH_KILL_THROW_ARC_HEIGHT,
   CLINCH_KILL_THROW_DISTANCE,
@@ -116,6 +113,7 @@ const {
   handleWinCondition,
   executeSlapAttack,
   executeChargedAttack,
+  executePalmThrust,
   calculateEffectiveHitboxSize,
   handleReadyPositions,
   arePlayersColliding,
@@ -438,6 +436,7 @@ function tick(delta) {
           const gameHelpers = {
             executeSlapAttack,
             executeChargedAttack,
+            executePalmThrust,
             canPlayerCharge,
             canPlayerSlap,
             canPlayerUseAction,
@@ -920,6 +919,7 @@ function tick(delta) {
             player.isAlreadyHit = false;
             player.isSlapKnockback = false;
             player.isBurstKnockback = false;
+            player.isChargedKnockback = false;
             player.burstKnockbackStartTime = 0;
             player.isParryKnockback = false;
             player.knockbackVelocity.x = 0;
@@ -991,6 +991,24 @@ function tick(delta) {
             // resting POSITION, never the recovery timing — frame advantage
             // stays identical to any other slap, keeping the exchange neutral.
             if (player.isSlapKnockback && !player.slapKnockbackCanRingOut) {
+              const clampedX = Math.max(
+                MAP_LEFT_BOUNDARY + SLAP_ROPE_RESIST_BUFFER,
+                Math.min(player.x, MAP_RIGHT_BOUNDARY - SLAP_ROPE_RESIST_BUFFER)
+              );
+              if (clampedX !== player.x) {
+                player.x = clampedX;
+                player.knockbackVelocity.x = 0;
+              }
+            }
+
+            // PHASE 2 — CHARGED ROPE RESISTANCE. A charged hit that was NOT a
+            // read-gated cinematic kill (see processHit) carries the victim at
+            // full charged velocity until the rope catches them at the edge —
+            // they slam TO the rope (same 12px buffer) instead of through it, so
+            // neutral midscreen charges can no longer ring out. Cinematic-kill
+            // victims fly out via the isCinematicKillVictim branch above and
+            // never reach here.
+            if (player.isChargedKnockback && !player.chargedKnockbackCanRingOut) {
               const clampedX = Math.max(
                 MAP_LEFT_BOUNDARY + SLAP_ROPE_RESIST_BUFFER,
                 Math.min(player.x, MAP_RIGHT_BOUNDARY - SLAP_ROPE_RESIST_BUFFER)
@@ -1171,6 +1189,14 @@ function tick(delta) {
               player.grabStartTime = now;
               player.grabbedOpponent = opponent.id;
 
+              // PHASE 3.2 — "caught the henka": a grab that connects on a victim
+              // still in sidestep-recovery / rope-jump landing floors the Phase A
+              // approach speed so the burst push carries them back cornerward.
+              if (opponent.isSidestepRecovery ||
+                  (opponent.isRopeJumping && opponent.ropeJumpPhase === "landing")) {
+                player.grabApproachSpeed = Math.max(player.grabApproachSpeed || 0, GRAB_CATCH_MIN_BURST_SPEED);
+              }
+
               // One-sided clinch: grabber has grip, opponent does NOT
               player.hasGrip = true;
               player.inClinch = true;
@@ -1196,7 +1222,11 @@ function tick(delta) {
               player.isAttemptingPull = false;
               player.isAttemptingGrabThrow = false;
 
-              // COUNTER GRAB: grabbing during raw parry = locked
+              // COUNTER GRAB: grab landed while the opponent was raw-parrying.
+              // NOTE: isCounterGrabbed is currently a TRACKING flag only — nothing
+              // reads it to gate grab-break, so a counter-grabbed victim can still
+              // break out normally. Kept as scaffolding for a future "no break on
+              // counter-grab" lock; wire a read into the grab-break handler to arm it.
               const wasOpponentRawParrying = opponent.isRawParrying;
               opponent.isCounterGrabbed = wasOpponentRawParrying;
 
@@ -1596,6 +1626,7 @@ function tick(delta) {
             opponent.isAlreadyHit = false;
             opponent.isSlapKnockback = false;
             opponent.isBurstKnockback = false;
+            opponent.isChargedKnockback = false;
             opponent.burstKnockbackStartTime = 0;
 
             // Set Y to correct ground level based on landing context
@@ -1840,7 +1871,16 @@ function tick(delta) {
           if (now >= player.sidestepStartupEndTime) {
             player.isSidestepStartup = false;
 
-            const targetX = player.sidestepStartX + player.sidestepDirection * SIDESTEP_TRAVEL;
+            // PHASE 3.1: a sidestep STARTED inside the edge-panic zone travels
+            // less — escaping the corner stops being a full positional refund.
+            const startDistToEdge = Math.min(
+              player.sidestepStartX - MAP_LEFT_BOUNDARY,
+              MAP_RIGHT_BOUNDARY - player.sidestepStartX
+            );
+            const sidestepTravel = startDistToEdge < DOHYO_EDGE_PANIC_ZONE
+              ? SIDESTEP_TRAVEL_EDGE
+              : SIDESTEP_TRAVEL;
+            const targetX = player.sidestepStartX + player.sidestepDirection * sidestepTravel;
             player.sidestepTargetX = Math.max(MAP_LEFT_BOUNDARY, Math.min(targetX, MAP_RIGHT_BOUNDARY));
 
             player.sidestepActiveEndTime = now + SIDESTEP_ACTIVE_MS;
@@ -2315,6 +2355,14 @@ function tick(delta) {
           player.grabStartTime = now;
           player.grabbedOpponent = opponent.id;
 
+          // PHASE 3.2 — "caught the henka": floor the Phase A approach speed when
+          // the grab connects on a victim still in sidestep-recovery / rope-jump
+          // landing, so the read visibly bursts them back cornerward.
+          if (opponent.isSidestepRecovery ||
+              (opponent.isRopeJumping && opponent.ropeJumpPhase === "landing")) {
+            player.grabApproachSpeed = Math.max(player.grabApproachSpeed || 0, GRAB_CATCH_MIN_BURST_SPEED);
+          }
+
           // One-sided clinch: grabber has grip, opponent does NOT
           player.hasGrip = true;
           player.inClinch = true;
@@ -2342,10 +2390,14 @@ function tick(delta) {
           player.isAttemptingPull = false;
           player.isAttemptingGrabThrow = false;
           
-          // COUNTER GRAB: Only when grabbing opponent during their raw parry. Cannot grab break (LOCKED).
-          // Grabbing during recovery does NOT count as punish - normal grab only.
+          // COUNTER GRAB: grab landed while the opponent was raw-parrying (grabbing
+          // during recovery does NOT count — normal grab only).
+          // NOTE: isCounterGrabbed is a TRACKING flag only — nothing reads it to gate
+          // grab-break, so the victim can still break out normally. Kept as scaffolding
+          // for a future "no break on counter-grab" lock (wire a read into the
+          // grab-break handler to arm it).
           const wasOpponentRawParrying = opponent.isRawParrying;
-          opponent.isCounterGrabbed = wasOpponentRawParrying; // Counter grabbed = cannot grab break
+          opponent.isCounterGrabbed = wasOpponentRawParrying;
 
           if (wasOpponentRawParrying) {
             // Counter Grab: grabbed their raw parry - show LOCKED! effect + "Counter Grab" banner
@@ -3287,7 +3339,22 @@ function tick(delta) {
               ((opponent.isFlapping && opponent.flapPhase === "flight") ||
                 (opponent.isRopeJumping && opponent.ropeJumpPhase === "active"));
             if (opponent && !opponent.isDodging && !opponent.isSidestepping && !oppAirborne) {
-              const minDistance = 30; // Scaled for camera zoom (was 40)
+              // Stop the lunge at the NATURAL body-contact separation instead of
+              // burrowing to 30px. Previously the lunge drove to 30px (sprites
+              // overlapping) and the post-hit min-separation push snapped the
+              // victim back out — the "too inside" / unsmooth charged hit. We now
+              // clamp to the pushbox resting distance (same formula as the
+              // post-hit min-sep push, so its deficit is ~0 → no snap), but never
+              // farther than just inside charged connect range so the hit still
+              // lands. Result: the attacker settles at arm's length on contact.
+              const attackerSize = player.sizeMultiplier || 1;
+              const victimSize = opponent.sizeMultiplier || 1;
+              const restingDist = HITBOX_DISTANCE_VALUE * 2 * Math.max(attackerSize, victimSize);
+              const connectDist = CHARGED_HITBOX_DISTANCE_VALUE * attackerSize;
+              // Target the resting distance (zero post-hit snap for same-size
+              // fighters, since restingDist < connectDist there); the cap only
+              // binds when the victim is much larger, guaranteeing the hit lands.
+              const minDistance = Math.min(restingDist, connectDist - 4);
               const playerToLeft = player.x < opponent.x;
               const playerToRight = player.x > opponent.x;
               

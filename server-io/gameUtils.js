@@ -14,6 +14,7 @@ const {
   SIDESTEP_STAMINA_COST,
   HITBOX_DISTANCE_VALUE,
   MAX_PARRY_BACKDATE_MS,
+  MAX_ENDER_BACKDATE_MS,
   FLAP_STARTUP_MS,
   FLAP_CHARGES,
   FLAP_STAMINA_COST,
@@ -182,6 +183,29 @@ function lagCompensatedParryStart(player, simNowMs) {
   const age = gameNow() - pressGameTime;
   if (!Number.isFinite(age) || age <= 0) return simNowMs;
   const backdate = Math.min(age, MAX_PARRY_BACKDATE_MS);
+  return simNowMs - backdate;
+}
+
+// ============================================================
+// PHASE 1: SLAP-ENDER ("blue spark") LAG-COMPENSATION
+// ============================================================
+// Returns the sim-clock time to record as the ender press arrival, backdated
+// toward the player's TRUE mouse1 press moment (reconstructed from the synced
+// client clock offset in `enderPressGameTime`) instead of packet-arrival time.
+// The just-frame window (SLAP_ENDER_JUST_WINDOW_MS) is judged as
+// `enderPressTime - slapEnderActionableTime`, so — exactly like the parry —
+// baking network jitter into that delta would make an identically-timed press
+// spark one round and fizzle the next. Clamped to [0, MAX_ENDER_BACKDATE_MS]:
+// backdating only makes the window HARDER to hit (moves the press earlier,
+// toward "buffered"), so a spoofed offset can do no better than uncompensated
+// behavior. Consumes the stamp so a stale press can't grade a later ender.
+function lagCompensatedEnderPress(player, simNowMs) {
+  const pressGameTime = player.enderPressGameTime || 0;
+  player.enderPressGameTime = 0;
+  if (!pressGameTime) return simNowMs;
+  const age = gameNow() - pressGameTime;
+  if (!Number.isFinite(age) || age <= 0) return simNowMs;
+  const backdate = Math.min(age, MAX_ENDER_BACKDATE_MS);
   return simNowMs - backdate;
 }
 
@@ -1191,6 +1215,7 @@ module.exports = {
   simNowForPlayer,
   advanceRoomSimTime,
   lagCompensatedParryStart,
+  lagCompensatedEnderPress,
 
   // Classes and instances
   TimeoutManager,

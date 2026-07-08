@@ -51,6 +51,10 @@ const {
   SLAP_STRING_RECOVERY_POS2_MS,
   SLAP_WHIFF_PAUSE_COUNT,
   SLAP_WHIFF_PAUSE_MS,
+  SLAP_WHIFF_EXTRA_STAMINA,
+  SLAP_HIT3_KB_VELOCITY,
+  SLAP_HIT3_KB_VELOCITY_SLOPPY,
+  SLAP_ENDER_JUST_WINDOW_MS,
   CHARGED_STARTUP_MS,
   CHARGED_ACTIVE_MS,
   PALM_THRUST_STARTUP_MS,
@@ -690,6 +694,25 @@ function executeSlapAttack(player, rooms) {
     player.slapStringPosition = 1;
   }
 
+  // ── PHASE 1: BLUE-SPARK ENDER TIER ──────────────────────────────────────
+  // When this slap becomes the finisher (position 3), grade the press timing:
+  // the ender press arrival vs the attacker's actionable moment (when the slap2
+  // cycle ended, stored in slapEnderActionableTime). A press that lands within
+  // SLAP_ENDER_JUST_WINDOW_MS AFTER becoming actionable earns the full 3.1
+  // burst + blue spark; a press buffered during the freeze (arrival < actionable)
+  // or a late press gets the sloppy 2.4. enderPressTime is lag-compensated
+  // toward the true client press (see socketHandlers). No press stamp (CPU,
+  // un-synced client) → sloppy, so the spark is a deliberate skill expression.
+  if (player.slapStringPosition === 3) {
+    const actionable = player.slapEnderActionableTime || now;
+    const pressT = player.enderPressTime || 0;
+    const delta = pressT - actionable;
+    const justFrame = pressT > 0 && delta >= 0 && delta <= SLAP_ENDER_JUST_WINDOW_MS;
+    player.slapHit3Velocity = justFrame ? SLAP_HIT3_KB_VELOCITY : SLAP_HIT3_KB_VELOCITY_SLOPPY;
+    player.slapHit3PerfectEnder = justFrame;
+    player.enderPressTime = 0; // consume
+  }
+
   player.slapStringWindowUntil = 0;
 
   // Clear any prior committed whiff-pause state — we're actively slapping again.
@@ -729,7 +752,14 @@ function executeSlapAttack(player, rooms) {
   // frame trap through the string, so the victim shouldn't get a speed boost to escape it.
   const recentlyRecoveredFromHit = player.lastHitTime && 
     (now - player.lastHitTime < 380) && !player.isHit;
-  const wasComboVictim = player.lastHitByStringPos >= 1;
+  // A true combo victim (hit1, or hit2 of an EARNED string) doesn't get the
+  // desperation speed boost — the attacker earned that frame trap. BUT the
+  // NEUTRAL ender seam (hit2 of an un-earned string, seamOpenedByHit) is a
+  // contestable mixup: the wakeup mash is the "beats grab" leg of the seam RPS
+  // (spec guardrail 5), so it keeps the 45ms desperation startup to reliably
+  // clip the armorless seam grab. seamOpenedByHit is only true when the LAST
+  // hit was a neutral slap2, and the 380ms recentlyRecovered gate bounds it.
+  const wasComboVictim = player.lastHitByStringPos >= 1 && !player.seamOpenedByHit;
   const startupDuration = (recentlyRecoveredFromHit && !wasComboVictim) ? Math.min(45, baseStartupMs) : baseStartupMs;
 
   const attackDuration = baseStartupMs + activeMs;
@@ -768,6 +798,15 @@ function executeSlapAttack(player, rooms) {
       player.slapActiveEndTime = 0;
       player.currentAction = null;
 
+      // PHASE 2 — WHIFF SURCHARGE. A slap that did NOT connect costs an extra
+      // SLAP_WHIFF_EXTRA_STAMINA on top of the SLAP_ATTACK_STAMINA_COST paid at
+      // startup, so a whiffed slap totals 6 while a landed slap stays 3. Charged
+      // once per whiffed cycle, here at cycle end (currentSlapHitConnected still
+      // reflects whether THIS slap connected). Makes spacing pay in stamina.
+      if (!player.currentSlapHitConnected) {
+        player.stamina = Math.max(0, player.stamina - SLAP_WHIFF_EXTRA_STAMINA);
+      }
+
       const isPlayerValid = () => (
         !player.isDodging && !player.isThrowing && !player.isBeingThrown &&
         !player.isGrabbing && !player.isBeingGrabbed && !player.isRawParryStun &&
@@ -781,6 +820,14 @@ function executeSlapAttack(player, rooms) {
           // Landing a slap drops us into the combo path — clear the whiff streak so
           // a connected hit never inherits a pending whiff-pause.
           player.slapWhiffCount = 0;
+          // PHASE 1: slap2's cycle just ended → the attacker is now actionable
+          // for the ender. Stamp this moment so the blue-spark tier can grade
+          // the ender press against it (spec 1.4). A press buffered during the
+          // freeze arrived BEFORE this → sloppy; a reactive press right after
+          // → just-frame.
+          if (finishedPosition === 2) {
+            player.slapEnderActionableTime = simNowForPlayer(player);
+          }
           // Check for grab ender (mouse2 buffered after hit 2)
           if (finishedPosition === 2 && player.pendingGrabEnder) {
             player.pendingSlapCount = 0;
@@ -791,7 +838,11 @@ function executeSlapAttack(player, rooms) {
             player.isGrabStartup = true;
             player.grabStartupStartTime = simNowForPlayer(player);
             player.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
-            player.grabStartupArmorUsed = false; // Fresh slap-armor charge per grab attempt
+            // PHASE 1: a SEAM grab (initiated from the string) carries NO
+            // slap-startup armor — it's a mixup tool, not a neutral grab. Wakeup
+            // mash must cleanly beat it or the 2×2 collapses (spec 1.7). Neutral
+            // grabs keep their armor (set false on their own initiation paths).
+            player.grabStartupArmorUsed = true;
             player.currentAction = "grab_startup";
             player.actionLockUntil = simNowForPlayer(player) + GRAB_STARTUP_DURATION_MS;
             player.grabState = GRAB_STATES.ATTEMPTING;
@@ -825,10 +876,15 @@ function executeSlapAttack(player, rooms) {
           player.slapWhiffCount = (player.slapWhiffCount || 0) + 1;
 
           // After N consecutive whiffs, commit to an un-cancelable recovery pause —
-          // the whiff-punish window. Buffered inputs are KEPT so the rhythm resumes
-          // after the pause, but the player is hard-locked (no slap/dodge/parry) during it.
+          // the whiff-punish window. PHASE 1: buffered slaps are CLEARED when the
+          // pause triggers and the pause NO LONGER auto-resumes a mashed rhythm.
+          // The player is hard-locked during the pause; a FRESH press after it
+          // fires frame 1 (spec 1.3). This makes spacing a real choice — a
+          // whiffed mash no longer "carries on" for free after the punish window.
           if (player.slapWhiffCount >= SLAP_WHIFF_PAUSE_COUNT && isPlayerValid()) {
             player.slapWhiffCount = 0;
+            player.pendingSlapCount = 0; // drop buffered mash — no auto-resume
+            player.pendingGrabEnder = false;
             player.isSlapWhiffPausing = true;
             player.currentAction = "slap_whiff_recovery";
             // Both deadlines are sim-clock (pause through hitstop).
@@ -839,14 +895,8 @@ function executeSlapAttack(player, rooms) {
               if (player.currentAction === "slap_whiff_recovery") {
                 player.currentAction = null;
               }
-              // Resume the BOP-BOP rhythm if the player mashed into the pause.
-              // Guard against a stale fire if the player was interrupted mid-pause.
-              if (player.pendingSlapCount > 0 && !player.isSlapAttack && isPlayerValid()) {
-                player.pendingSlapCount--;
-                executeSlapAttack(player, rooms);
-              } else {
-                player.pendingSlapCount = 0;
-              }
+              // No auto-resume: any slaps buffered during the pause are discarded.
+              player.pendingSlapCount = 0;
             }, SLAP_WHIFF_PAUSE_MS, "slapWhiffPause");
             return;
           }
@@ -1381,9 +1431,20 @@ function adjustPlayerPositions(player1, player2, delta) {
 
   // Charged attacks need to reach the opponent to connect — pushbox yields to hit detection.
   // Without this, the pushbox (148px) prevents the lunge from closing distance.
-  const p1ActiveCharged = player1.isAttacking && player1.attackType === "charged" && !player1.isInStartupFrames;
-  const p2ActiveCharged = player2.isAttacking && player2.attackType === "charged" && !player2.isInStartupFrames;
-  if (p1ActiveCharged || p2ActiveCharged) {
+  //
+  // IMPORTANT: this must cover the ENTIRE charged attack, STARTUP included. The
+  // forward lunge (index.js) runs during startup too, and because it sets x
+  // directly (no movementVelocity), the pushbox would read neither player as
+  // "moving toward" and split the overlap 0.5/0.5 — shoving the VICTIM toward the
+  // edge every startup tick BEFORE the hit lands. That drift let a high-charge
+  // lunge push the victim into the panic zone and cinematic-kill from range,
+  // defeating the Phase 2 read-gate. Yielding through startup keeps the victim at
+  // their true standing position until the strike connects (the anti-passthrough
+  // clamp in index.js still stops the attacker ~30px short, so they never fully
+  // overlap; the post-hit min-separation push handles spacing after the hit).
+  const p1Charged = player1.isAttacking && player1.attackType === "charged";
+  const p2Charged = player2.isAttacking && player2.attackType === "charged";
+  if (p1Charged || p2Charged) {
     return;
   }
 

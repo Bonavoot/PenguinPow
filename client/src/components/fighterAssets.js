@@ -131,6 +131,18 @@ import gyojiPlayer1wins from "../assets/gyoji-player1-wins.png";
 import gyojiPlayer2wins from "../assets/gyoji-player2-wins.png";
 import dodgeEffectGif from "../assets/dodge-effect.gif";
 import slapAttackHand from "../assets/slap-attack-hand.png";
+import slapHitSheet from "../assets/slapattack-hit-effect.png";
+import chargedHitSheet from "../assets/charged-attack-hit-effect.png";
+import grabBreakSheet from "../assets/grab-break-effect.png";
+import chargedAttackSmokeGif from "../assets/charged-attack-smoke.gif";
+import snowEnvelope from "../assets/envelope.png";
+import landingSmokeSheet from "../assets/landing-smoke-effect.png";
+import straightUpSmokeSheet from "../assets/straight-up-smoke-effect.png";
+import tiltedUpSmokeSheet from "../assets/tilted-up-smoke-effect.png";
+import smokePuffSheet from "../assets/smoke-puff-effect.png";
+import dashSmokeSheet from "../assets/dash-smoke-effect.png";
+import chargedSmokeSheet from "../assets/charged-attack-smoke-effect.png";
+import cinematicThrowLandSmokeSheet from "../assets/cinematicKill-throw-landing-smoke-effect.png";
 
 // ============================================
 // CONSTANTS
@@ -205,6 +217,14 @@ const preloadImage = (src) => {
     const img = new Image();
     img.src = src;
     imagePool.set(src, img);
+    // Fetching alone doesn't guarantee the bitmap is DECODED. Effects that use a
+    // sheet as a CSS mask-image render fully-masked (invisible) until the decode
+    // lands, so a short effect can finish before it ever shows. Forcing a decode
+    // at startup makes first use instant. (decode() may reject if unsupported or
+    // the src changes — harmless, so swallow it.)
+    if (typeof img.decode === "function") {
+      img.decode().catch(() => {});
+    }
   }
 };
 
@@ -267,6 +287,18 @@ const initializeImagePreloading = () => {
 
   preloadImage(dodgeEffectGif);
   preloadImage(slapAttackHand);
+  preloadImage(slapHitSheet);
+  preloadImage(chargedHitSheet);
+  preloadImage(grabBreakSheet);
+  preloadImage(chargedAttackSmokeGif);
+  preloadImage(snowEnvelope);
+  preloadImage(landingSmokeSheet);
+  preloadImage(straightUpSmokeSheet);
+  preloadImage(tiltedUpSmokeSheet);
+  preloadImage(smokePuffSheet);
+  preloadImage(dashSmokeSheet);
+  preloadImage(chargedSmokeSheet);
+  preloadImage(cinematicThrowLandSmokeSheet);
 };
 
 initializeImagePreloading();

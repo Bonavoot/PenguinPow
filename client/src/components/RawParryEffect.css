@@ -11,6 +11,11 @@
   position: relative;
   width: 2.7cqw;
   height: 2.7cqw;
+  /* Pass the wrapper's single perspective through to the main ring / inner
+     burst so every ring layer foreshortens in the SAME 3D space (concentric),
+     instead of each container having its own perspective and splitting into a
+     visible double ring. */
+  transform-style: preserve-3d;
 }
 
 /* Main impact ring - outer shockwave for regular parry (cyan/blue) */
@@ -49,6 +54,10 @@
   justify-content: center;
   /* Faux-3D perspective for ring planes; signed value comes from facing */
   --parry-ring-tilt: 55deg;
+  /* Single shared perspective for ALL ring layers (main ring, second
+     shockwave, inner burst, impact lines) so the existing tilt reads with
+     real depth without the layers splitting into a double ring. */
+  perspective: 12cqw;
   isolation: isolate;
   filter: brightness(1.08) saturate(1.15) contrast(1.05);
 }

@@ -1,8 +1,418 @@
 import { DOHYO_LEFT_BOUNDARY, DOHYO_RIGHT_BOUNDARY } from "../constants";
+import landingSmokeSheet from "../assets/landing-smoke-effect.png";
+import straightUpSmokeSheet from "../assets/straight-up-smoke-effect.png";
+import tiltedUpSmokeSheet from "../assets/tilted-up-smoke-effect.png";
+import smokePuffSheet from "../assets/smoke-puff-effect.png";
+import dashSmokeSheet from "../assets/dash-smoke-effect.png";
+import chargedSmokeSheet from "../assets/charged-attack-smoke-effect.png";
+import cinematicThrowLandSmokeSheet from "../assets/cinematicKill-throw-landing-smoke-effect.png";
 
 const MAX_PARTICLES = 500;
 const GAME_W = 1280;
 const GAME_H = 720;
+
+// ── Landing smoke sprite sheet ───────────────────────────────────────────────
+// 1024x1024, a 4x4 grid of 256px frames read left→right/top→bottom. All 16
+// frames hold content: a soft dust puff that blooms (frames ~4–6) then dissipates
+// (→15). Loaded once as a raw Image; the engine draws the current frame's
+// sub-rect per particle (see _renderParticle). Preloaded in fighterAssets too.
+const landingSmokeImg =
+  typeof Image !== "undefined" ? new Image() : null;
+if (landingSmokeImg) {
+  landingSmokeImg.src = landingSmokeSheet;
+  if (typeof landingSmokeImg.decode === "function") {
+    landingSmokeImg.decode().catch(() => {});
+  }
+}
+const LANDING_SMOKE_COLS = 4;
+const LANDING_SMOKE_ROWS = 4;
+const LANDING_SMOKE_FRAMES = 16;
+// Base on-screen footprint (GAME-space px). Dust reads wider than tall, so the
+// puff is stretched horizontally to hug the ground like the old rings did.
+const LANDING_SMOKE_SIZE = 110;
+const LANDING_SMOKE_STRETCH = 1.6;
+// Vertical placement of the puff center relative to the foot contact, as a
+// fraction of the draw size. Positive = LOWER on screen (toward/below the feet),
+// negative = higher. Tune this to sit the dust right at the feet.
+const LANDING_SMOKE_Y_BIAS = -0.04;
+
+// Spawn one animated dust puff at a foot contact point. `scale`/`alpha`/`maxLife`
+// let each landing preset tune the punch while sharing one look. footY is already
+// in canvas space (GAME_H - y - offset). Returns false if the sheet isn't decoded
+// yet so callers can fall back if needed.
+function spawnLandingSmoke(
+  engine,
+  footX,
+  footY,
+  { scale = 1, alpha = 1, maxLife = 0.5, delay = 0, behindDohyo = false } = {}
+) {
+  if (!landingSmokeImg || !landingSmokeImg.complete || !landingSmokeImg.naturalWidth) {
+    return false;
+  }
+  const drawSize = LANDING_SMOKE_SIZE * scale;
+  engine.spawn({
+    x: footX,
+    // Bias the center vertically so the puff sits at the feet (see Y_BIAS).
+    y: footY + drawSize * LANDING_SMOKE_Y_BIAS,
+    vx: 0,
+    vy: 0,
+    gravity: 0,
+    drag: 1,
+    size: drawSize,
+    sizeEnd: drawSize * 1.1, // gentle grow; the sheet itself does most of the bloom
+    alpha,
+    alphaEnd: 0,
+    // Pin rotation — spawn() defaults an unset rotation to a RANDOM angle, which
+    // would draw each puff tilted/sideways. Frames are pre-oriented upright.
+    rotation: 0,
+    rotationSpeed: 0,
+    ease: "outCubic",
+    easeAlpha: "inCubic", // hold opacity, fade only the tail so it vanishes cleanly
+    maxLife,
+    stretchX: LANDING_SMOKE_STRETCH,
+    delay,
+    behindDohyo,
+    sheet: landingSmokeImg,
+    sheetCols: LANDING_SMOKE_COLS,
+    sheetRows: LANDING_SMOKE_ROWS,
+    sheetStart: 0,
+    sheetEnd: LANDING_SMOKE_FRAMES - 1,
+  });
+  return true;
+}
+
+// ── Liftoff smoke sprite sheets (going airborne) ─────────────────────────────
+// Two 1024x1024 4x4 grids of light-gray smoke:
+//   • straight-up: neutral vertical plume (flap with no A/D held)
+//   • tilted-up:   angled plume (flap while strafing A/D; also rope jump)
+// The tilted sheet is drawn pointing one way and mirrored via a negative
+// stretchX when the player goes the other direction.
+function makeSmokeImg(src) {
+  if (typeof Image === "undefined") return null;
+  const img = new Image();
+  img.src = src;
+  if (typeof img.decode === "function") img.decode().catch(() => {});
+  return img;
+}
+const straightUpSmokeImg = makeSmokeImg(straightUpSmokeSheet);
+const tiltedUpSmokeImg = makeSmokeImg(tiltedUpSmokeSheet);
+
+// Small drifting smoke puff (flap air-charge beats + S-key dive wisps). Unlike
+// the landing/liftoff bursts these MOVE, so this just layers the animated sheet
+// onto a normal moving particle. 4x4 grid; the cloud lifecycle lives in frames
+// 4–15 (top row is stray droplets + a star, skipped).
+const smokePuffImg = makeSmokeImg(smokePuffSheet);
+const SMOKE_PUFF_COLS = 4;
+const SMOKE_PUFF_ROWS = 4;
+const SMOKE_PUFF_START = 4; // first real cloud frame (skip droplets/star row)
+const SMOKE_PUFF_END = 15;
+
+// The source art is a hollow cloud OUTLINE (transparent interior), which reads
+// as a ring. This bakes a FILLED version once the image loads: for each frame we
+// find the cloud's silhouette (pixels enclosed by the outline on both axes) and
+// paint a soft fill there, then draw the original outline back on top. Result:
+// a solid cloud body with the hand-drawn edge. Falls back to the raw outline
+// until the bake finishes.
+let smokePuffFilled = null;
+const SMOKE_FILL_ALPHA = 0.72; // interior opacity relative to the outline
+const SMOKE_FILL_RGB = [244, 244, 244];
+
+function buildFilledSmokePuffSheet() {
+  if (!smokePuffImg || typeof document === "undefined") return;
+  const run = () => {
+    const W = smokePuffImg.naturalWidth;
+    const H = smokePuffImg.naturalHeight;
+    if (!W || !H) return;
+    const fw = W / SMOKE_PUFF_COLS;
+    const fh = H / SMOKE_PUFF_ROWS;
+
+    const srcCanvas = document.createElement("canvas");
+    srcCanvas.width = W;
+    srcCanvas.height = H;
+    const sctx = srcCanvas.getContext("2d");
+    sctx.drawImage(smokePuffImg, 0, 0);
+    let img;
+    try {
+      img = sctx.getImageData(0, 0, W, H);
+    } catch {
+      return; // tainted canvas (shouldn't happen for a bundled asset)
+    }
+    const px = img.data;
+
+    const out = document.createElement("canvas");
+    out.width = W;
+    out.height = H;
+    const octx = out.getContext("2d");
+    const fill = octx.createImageData(W, H);
+    const fp = fill.data;
+    const TH = 24; // alpha threshold for "outline pixel"
+    const [fr, fg, fb] = SMOKE_FILL_RGB;
+    const fa = Math.round(SMOKE_FILL_ALPHA * 255);
+
+    const iw = Math.round(fw);
+    const ih = Math.round(fh);
+    const total = SMOKE_PUFF_COLS * SMOKE_PUFF_ROWS;
+    for (let frame = 0; frame < total; frame++) {
+      const bx = Math.round((frame % SMOKE_PUFF_COLS) * fw);
+      const by = Math.round(Math.floor(frame / SMOKE_PUFF_COLS) * fh);
+
+      // 1) Barrier = outline pixels, dilated by 1px so anti-aliased gaps close.
+      const barrier = new Uint8Array(iw * ih);
+      for (let y = 0; y < ih; y++) {
+        for (let x = 0; x < iw; x++) {
+          if (px[((by + y) * W + (bx + x)) * 4 + 3] > TH) barrier[y * iw + x] = 1;
+        }
+      }
+      const bar = new Uint8Array(iw * ih);
+      for (let y = 0; y < ih; y++) {
+        for (let x = 0; x < iw; x++) {
+          if (!barrier[y * iw + x]) continue;
+          for (let dy = -1; dy <= 1; dy++) {
+            const ny = y + dy;
+            if (ny < 0 || ny >= ih) continue;
+            for (let dx = -1; dx <= 1; dx++) {
+              const nx = x + dx;
+              if (nx < 0 || nx >= iw) continue;
+              bar[ny * iw + nx] = 1;
+            }
+          }
+        }
+      }
+
+      // 2) Flood "outside" inward from every border pixel that isn't barrier.
+      const outside = new Uint8Array(iw * ih);
+      const stack = [];
+      const pushIf = (x, y) => {
+        const i = y * iw + x;
+        if (!bar[i] && !outside[i]) {
+          outside[i] = 1;
+          stack.push(i);
+        }
+      };
+      for (let x = 0; x < iw; x++) {
+        pushIf(x, 0);
+        pushIf(x, ih - 1);
+      }
+      for (let y = 0; y < ih; y++) {
+        pushIf(0, y);
+        pushIf(iw - 1, y);
+      }
+      while (stack.length) {
+        const i = stack.pop();
+        const x = i % iw;
+        const y = (i / iw) | 0;
+        if (x > 0) pushIf(x - 1, y);
+        if (x < iw - 1) pushIf(x + 1, y);
+        if (y > 0) pushIf(x, y - 1);
+        if (y < ih - 1) pushIf(x, y + 1);
+      }
+
+      // 3) Anything not reachable from the border is enclosed → fill it.
+      for (let y = 0; y < ih; y++) {
+        for (let x = 0; x < iw; x++) {
+          if (outside[y * iw + x]) continue;
+          const o = ((by + y) * W + (bx + x)) * 4;
+          fp[o] = fr;
+          fp[o + 1] = fg;
+          fp[o + 2] = fb;
+          fp[o + 3] = fa;
+        }
+      }
+    }
+
+    octx.putImageData(fill, 0, 0); // soft interior fill
+    octx.drawImage(smokePuffImg, 0, 0); // crisp outline on top
+    smokePuffFilled = out;
+  };
+  if (smokePuffImg.complete && smokePuffImg.naturalWidth) run();
+  else smokePuffImg.addEventListener("load", run, { once: true });
+}
+buildFilledSmokePuffSheet();
+
+function spawnSmokePuff(engine, cfg) {
+  const sheet = smokePuffFilled || smokePuffImg;
+  const ready = smokePuffFilled
+    ? true
+    : !!(smokePuffImg && smokePuffImg.complete && smokePuffImg.naturalWidth);
+  if (!sheet || !ready) return false;
+  engine.spawn({
+    ...cfg,
+    // Keep puffs upright — the sheet frames are pre-oriented, and spawn() would
+    // otherwise default an unset rotation to a random angle.
+    rotation: 0,
+    rotationSpeed: 0,
+    texture: null,
+    sheet,
+    sheetCols: SMOKE_PUFF_COLS,
+    sheetRows: SMOKE_PUFF_ROWS,
+    sheetStart: SMOKE_PUFF_START,
+    sheetEnd: SMOKE_PUFF_END,
+  });
+  return true;
+}
+
+const LIFTOFF_SMOKE_SIZE = 150; // plumes read tall — bigger than the flat landing puff
+const LIFTOFF_SMOKE_STRETCH = 1; // vertical plume: no horizontal flattening
+// Vertical placement: the plume rises UP from the feet, so its center sits above
+// the foot point. Positive = higher on screen (fraction of draw size).
+const LIFTOFF_SMOKE_Y_LIFT = 0.28;
+// NOTE: if a tilted plume leans the WRONG way for a given direction, flip the
+// sign of the `flip` expressions in flapLiftoff / the liftoffSmoke preset below.
+
+// Spawn one animated liftoff plume at a foot point. `tilted` picks the sheet;
+// `flip` mirrors it horizontally; footY is already in canvas space.
+function spawnLiftoffSmoke(
+  engine,
+  footX,
+  footY,
+  { tilted = false, flip = false, scale = 1, alpha = 1, maxLife = 0.55 } = {}
+) {
+  const sheet = tilted ? tiltedUpSmokeImg : straightUpSmokeImg;
+  if (!sheet || !sheet.complete || !sheet.naturalWidth) return false;
+  const drawSize = LIFTOFF_SMOKE_SIZE * scale;
+  // straight-up content starts a few frames in; tilted holds content from frame 0.
+  const startFrame = tilted ? 0 : 2;
+  engine.spawn({
+    x: footX,
+    y: footY - drawSize * LIFTOFF_SMOKE_Y_LIFT,
+    vx: 0,
+    vy: 0,
+    gravity: 0,
+    drag: 1,
+    size: drawSize,
+    sizeEnd: drawSize * 1.08,
+    alpha,
+    alphaEnd: 0,
+    rotation: 0,
+    rotationSpeed: 0,
+    ease: "outCubic",
+    easeAlpha: "inCubic",
+    maxLife,
+    stretchX: LIFTOFF_SMOKE_STRETCH * (flip ? -1 : 1),
+    sheet,
+    sheetCols: 4,
+    sheetRows: 4,
+    sheetStart: startFrame,
+    sheetEnd: 15,
+  });
+  return true;
+}
+
+// ── Directional swoosh smoke sheets (dash + charged-attack lunge) ────────────
+// Both are 1024x1024, 4x4 grids of a horizontal smoke swoosh that forms then
+// dissipates (all 16 frames used). The art is baked pointing +x; a negative
+// stretchX mirrors it for a leftward move. Each is a one-shot burst spawned at
+// the move's launch point, so it stays put and trails behind as the fighter
+// zips away. If a swoosh ever leans the wrong way, flip the `flip` expression.
+const dashSmokeImg = makeSmokeImg(dashSmokeSheet);
+const chargedSmokeImg = makeSmokeImg(chargedSmokeSheet);
+
+// Per-move tuning. size = footprint (GAME-space px); stretch = horizontal widen;
+// yLift = raise center off the floor (fraction of size); xBias = nudge behind
+// the launch point (fraction of size).
+// flipSign flips the sprite mirror relative to move direction (the two sheets
+// are baked pointing opposite ways), without affecting the behind-launch offset.
+const SWOOSH_SMOKE_CFG = {
+  dash: { size: 200, stretch: 1.2, yLift: 0.24, xBias: 0.08, flipSign: 1 },
+  // Same size/height as the dash. Bigger xBias so it spawns clearly BEHIND the
+  // fighter: unlike the dash (which zips away instantly, leaving its centered
+  // swoosh behind), the charged lunge has startup, so a center-anchored swoosh
+  // would overlap his body and read as "inside" him.
+  charged: { size: 200, stretch: 1.2, yLift: 0.24, xBias: 0.45, flipSign: -1 },
+};
+
+function spawnSwooshSmoke(
+  engine,
+  sheet,
+  cfg,
+  footX,
+  footY,
+  { dir = 1, scale = 1, alpha = 0.9, maxLife = 0.42 } = {}
+) {
+  if (!sheet || !sheet.complete || !sheet.naturalWidth) return false;
+  const drawSize = cfg.size * scale;
+  const sign = cfg.flipSign ?? 1;
+  const flip = sign * dir < 0;
+  engine.spawn({
+    // flipSign also corrects the "behind the launch point" offset for sheets
+    // whose direction convention is inverted (e.g. charged).
+    x: footX - sign * dir * drawSize * cfg.xBias,
+    y: footY - drawSize * cfg.yLift,
+    vx: 0,
+    vy: 0,
+    gravity: 0,
+    drag: 1,
+    size: drawSize,
+    sizeEnd: drawSize * 1.08, // gentle grow; the sheet does the bloom/dissipate
+    alpha,
+    alphaEnd: 0,
+    rotation: 0,
+    rotationSpeed: 0,
+    ease: "outCubic",
+    easeAlpha: "inCubic",
+    maxLife,
+    stretchX: cfg.stretch * (flip ? -1 : 1),
+    sheet,
+    sheetCols: 4,
+    sheetRows: 4,
+    sheetStart: 0,
+    sheetEnd: 15,
+  });
+  return true;
+}
+
+function spawnDashSmoke(engine, footX, footY, opts) {
+  return spawnSwooshSmoke(engine, dashSmokeImg, SWOOSH_SMOKE_CFG.dash, footX, footY, opts);
+}
+
+function spawnChargedSmoke(engine, footX, footY, opts) {
+  return spawnSwooshSmoke(engine, chargedSmokeImg, SWOOSH_SMOKE_CFG.charged, footX, footY, opts);
+}
+
+// ── Cinematic throw-kill landing splash ──────────────────────────────────────
+// Dedicated 1024x1024, 4x4 grid (16 frames) of a wide impact splash that flares
+// up on both sides then settles — used only for the cinematic throw-kill body
+// slam, distinct from the softer generic landing puff.
+const cinematicThrowLandSmokeImg = makeSmokeImg(cinematicThrowLandSmokeSheet);
+const CK_THROW_LAND_SIZE = 220; // wide, heavy impact footprint (GAME-space px)
+const CK_THROW_LAND_STRETCH = 1.1;
+const CK_THROW_LAND_Y_BIAS = -0.15; // negative = higher on screen; lifts the splash up off the floor
+
+function spawnCinematicThrowLandSmoke(
+  engine,
+  footX,
+  footY,
+  { scale = 1, alpha = 1, maxLife = 0.55, behindDohyo = false } = {}
+) {
+  const img = cinematicThrowLandSmokeImg;
+  if (!img || !img.complete || !img.naturalWidth) return false;
+  const drawSize = CK_THROW_LAND_SIZE * scale;
+  engine.spawn({
+    x: footX,
+    y: footY + drawSize * CK_THROW_LAND_Y_BIAS,
+    vx: 0,
+    vy: 0,
+    gravity: 0,
+    drag: 1,
+    size: drawSize,
+    sizeEnd: drawSize * 1.1,
+    alpha,
+    alphaEnd: 0,
+    rotation: 0,
+    rotationSpeed: 0,
+    ease: "outCubic",
+    easeAlpha: "inCubic",
+    maxLife,
+    stretchX: CK_THROW_LAND_STRETCH,
+    behindDohyo,
+    sheet: img,
+    sheetCols: 4,
+    sheetRows: 4,
+    sheetStart: 0,
+    sheetEnd: 15,
+  });
+  return true;
+}
 
 // Cap canvas backing-store DPR. The previous implementation forced at least 2x
 // device pixels, which inflates fillrate cost on every frame for three full-
@@ -771,6 +1181,36 @@ function createFlashBloom(size, r, g, b) {
   return c;
 }
 
+// Clean cel smoke puff — tight 3-blob cluster, crisp hard edge (anime idiom).
+function createHitRingSmokePuff(size, seed) {
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext("2d");
+  const half = size / 2;
+  const srand = makeSeededRand(seed);
+
+  const drawBlob = (ox, oy, br, peak) => {
+    const bx = half + ox * size;
+    const by = half + oy * size;
+    const grad = ctx.createRadialGradient(bx, by, 0, bx, by, br);
+    grad.addColorStop(0, `rgba(255,255,255,${peak})`);
+    grad.addColorStop(0.58, `rgba(255,255,255,${peak * 0.94})`);
+    grad.addColorStop(0.82, `rgba(255,255,255,${peak * 0.32})`);
+    grad.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(bx, by, br, 0, Math.PI * 2);
+    ctx.fill();
+  };
+
+  drawBlob(0, 0, size * 0.32, 1);
+  drawBlob(0.11 + srand() * 0.03, -0.05, size * 0.19, 0.9);
+  drawBlob(-0.09 + srand() * 0.02, 0.06, size * 0.17, 0.85);
+
+  return c;
+}
+
 function createCrossFlare(size, r, g, b, coreMid = "255,235,242", rayPrimaryMid = "255,170,200", raySecondaryMid = "255,200,220") {
   const c = document.createElement("canvas");
   c.width = size;
@@ -830,171 +1270,6 @@ function createCrossFlare(size, r, g, b, coreMid = "255,235,242", rayPrimaryMid 
   return c;
 }
 
-// ─── Hit Spark textures ─────────────────────────────────────────────
-// Irregular starburst — hand-drawn-looking star with jagged rays
-function createHitStarburst(size, seed, r = 255, g = 220, b = 100) {
-  const c = document.createElement("canvas");
-  c.width = size;
-  c.height = size;
-  const ctx = c.getContext("2d");
-  const half = size / 2;
-
-  let s = seed;
-  const srand = () => {
-    s = (s * 9301 + 49297) % 233280;
-    return s / 233280;
-  };
-
-  const rays = 5 + Math.floor(srand() * 4);
-  const baseAngle = srand() * Math.PI * 2;
-
-  for (let i = 0; i < rays; i++) {
-    const angle = baseAngle + (i / rays) * Math.PI * 2 + (srand() - 0.5) * 0.4;
-    const rayLen = half * (0.55 + srand() * 0.4);
-    const tipWidth = size * (0.03 + srand() * 0.04);
-    const baseWidth = size * (0.08 + srand() * 0.07);
-
-    ctx.save();
-    ctx.translate(half, half);
-    ctx.rotate(angle);
-
-    const grad = ctx.createLinearGradient(0, 0, rayLen, 0);
-    grad.addColorStop(0, `rgba(255,255,255,0.95)`);
-    grad.addColorStop(0.3, `rgba(${r},${g},${b},0.9)`);
-    grad.addColorStop(0.7, `rgba(${r},${Math.max(0, g - 60)},${Math.max(0, b - 40)},0.6)`);
-    grad.addColorStop(1, `rgba(${r},${Math.max(0, g - 80)},0,0)`);
-
-    ctx.beginPath();
-    ctx.moveTo(0, -baseWidth);
-    const ctrl1x = rayLen * (0.3 + srand() * 0.2);
-    const ctrl1y = -baseWidth * (0.5 + srand() * 0.5);
-    const ctrl2x = rayLen * (0.6 + srand() * 0.2);
-    const ctrl2y = -tipWidth * (0.3 + srand() * 0.7);
-    ctx.bezierCurveTo(ctrl1x, ctrl1y, ctrl2x, ctrl2y, rayLen, 0);
-    ctx.bezierCurveTo(ctrl2x, tipWidth * (0.3 + srand() * 0.7), ctrl1x, baseWidth * (0.5 + srand() * 0.5), 0, baseWidth);
-    ctx.closePath();
-
-    ctx.fillStyle = grad;
-    ctx.fill();
-    ctx.restore();
-  }
-
-  // White-hot center glow
-  const coreGrad = ctx.createRadialGradient(half, half, 0, half, half, half * 0.35);
-  coreGrad.addColorStop(0, "rgba(255,255,255,1)");
-  coreGrad.addColorStop(0.5, "rgba(255,255,255,0.7)");
-  coreGrad.addColorStop(1, "rgba(255,255,255,0)");
-  ctx.fillStyle = coreGrad;
-  ctx.beginPath();
-  ctx.arc(half, half, half * 0.35, 0, Math.PI * 2);
-  ctx.fill();
-
-  return c;
-}
-
-// Organic slash mark — tapered curved brushstroke
-function createHitSlash(length, thickness, seed, edgeRgb = [255, 200, 80], midRgb = [255, 240, 200]) {
-  const c = document.createElement("canvas");
-  const pad = thickness * 2;
-  c.width = length + pad * 2;
-  c.height = thickness * 4 + pad * 2;
-  const ctx = c.getContext("2d");
-
-  let s = seed;
-  const srand = () => {
-    s = (s * 9301 + 49297) % 233280;
-    return s / 233280;
-  };
-
-  const cy = c.height / 2;
-  const startX = pad;
-  const endX = length + pad;
-  const curveAmt = thickness * (0.5 + srand() * 1.5) * (srand() > 0.5 ? 1 : -1);
-
-  const steps = 16;
-  const points = [];
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const x = startX + (endX - startX) * t;
-    const curve = Math.sin(t * Math.PI) * curveAmt;
-    const thickHere = thickness * Math.sin(t * Math.PI) * (0.8 + srand() * 0.4);
-    const jitterY = (srand() - 0.5) * thickness * 0.3;
-    points.push({ x, y: cy + curve + jitterY, thick: thickHere });
-  }
-
-  // Build upper and lower edges
-  const upper = points.map(p => ({ x: p.x, y: p.y - p.thick }));
-  const lower = points.map(p => ({ x: p.x, y: p.y + p.thick })).reverse();
-
-  ctx.beginPath();
-  ctx.moveTo(upper[0].x, upper[0].y);
-  for (let i = 1; i < upper.length; i++) {
-    const prev = upper[i - 1];
-    const cur = upper[i];
-    ctx.quadraticCurveTo(
-      (prev.x + cur.x) / 2, prev.y + (srand() - 0.5) * thickness * 0.2,
-      cur.x, cur.y
-    );
-  }
-  for (let i = 0; i < lower.length; i++) {
-    const cur = lower[i];
-    ctx.lineTo(cur.x, cur.y);
-  }
-  ctx.closePath();
-
-  const [er, eg, eb] = edgeRgb;
-  const [mr, mg, mb] = midRgb;
-  const grad = ctx.createLinearGradient(startX, 0, endX, 0);
-  grad.addColorStop(0, `rgba(${er},${eg},${eb},0)`);
-  grad.addColorStop(0.15, `rgba(${mr},${mg},${mb},0.9)`);
-  grad.addColorStop(0.5, "rgba(255,255,255,0.95)");
-  grad.addColorStop(0.85, `rgba(${mr},${mg},${mb},0.9)`);
-  grad.addColorStop(1, `rgba(${er},${eg},${eb},0)`);
-  ctx.fillStyle = grad;
-  ctx.fill();
-
-  return c;
-}
-
-// Organic smear — short thick splatter mark
-function createHitSmear(size, seed) {
-  const c = document.createElement("canvas");
-  c.width = size;
-  c.height = size;
-  const ctx = c.getContext("2d");
-  const half = size / 2;
-
-  let s = seed;
-  const srand = () => {
-    s = (s * 9301 + 49297) % 233280;
-    return s / 233280;
-  };
-
-  const blobs = 5 + Math.floor(srand() * 4);
-  const drift = srand() * Math.PI * 2;
-
-  for (let i = 0; i < blobs; i++) {
-    const t = i / blobs;
-    const dist = half * (0.05 + t * 0.45 + (srand() - 0.5) * 0.15);
-    const angle = drift + (srand() - 0.5) * 1.2;
-    const bx = half + Math.cos(angle) * dist;
-    const by = half + Math.sin(angle) * dist;
-    const br = size * (0.12 + srand() * 0.14) * (1 - t * 0.3);
-
-    const grad = ctx.createRadialGradient(bx, by, 0, bx, by, br);
-    grad.addColorStop(0, `rgba(255,255,255,${0.9 - t * 0.2})`);
-    grad.addColorStop(0.4, `rgba(255,${220 - t * 40},${120 - t * 30},${0.8 - t * 0.15})`);
-    grad.addColorStop(0.8, `rgba(255,${180 - t * 50},${60 - t * 20},${0.4 - t * 0.1})`);
-    grad.addColorStop(1, "rgba(255,120,30,0)");
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.ellipse(bx, by, br, br * (0.6 + srand() * 0.5), srand() * Math.PI, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  return c;
-}
-
 function createSpark(size) {
   const c = document.createElement("canvas");
   c.width = size;
@@ -1026,6 +1301,278 @@ function createGroundStreak(length, thickness) {
   ctx.fillStyle = grad;
   ctx.fillRect(0, cy - thickness / 2, length, thickness);
   return c;
+}
+
+// ─── HIT VFX OVERHAUL (Phase A) — cel-burst impact bakery ────────────
+//
+// Status palettes (§4.2). Each hit read is white core -> body band -> thin
+// dark keyline, per Craft Rule 1 (flat tones, never gradient bodies). `volt`
+// gets an extra inner band. All bodies render on NORMAL blend so the baked
+// keyline's dark pixels survive.
+const IMPACT_PALETTES = {
+  white:  { core: [255, 255, 255], body: [240, 246, 255], key: [10, 16, 28] },
+  gold:   { core: [255, 255, 255], body: [255, 208, 84],  key: [46, 30, 0] },
+  purple: { core: [255, 255, 255], body: [186, 132, 255], key: [26, 10, 44] },
+  red:    { core: [255, 255, 255], body: [255, 84, 64],   key: [44, 4, 0] },
+  amber:  { core: [255, 255, 255], body: [255, 232, 128], key: [44, 34, 0] },
+  volt:   { core: [255, 255, 255], body: [43, 99, 255],   innerBand: [156, 196, 255], key: [8, 14, 44] },
+};
+
+function makeSeededRand(seed) {
+  let s = seed % 233280;
+  if (s <= 0) s += 233280;
+  return () => {
+    s = (s * 9301 + 49297) % 233280;
+    return s / 233280;
+  };
+}
+
+const rgb = (c, a = 1) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+
+// Impact FLASH BLOT — an irregular jagged polygon drawn as flat concentric
+// bands (keyline outermost -> body -> [inner band] -> white core). `frame`
+// 1 = the flash (white-dominant); frame 2 = the torn follow-up with 2-3
+// wedge notches cut inward and body-dominant. Same silhouette family for a
+// given seed so the two frames read as one shape SNAPPING between states.
+function createImpactBlot(size, seed, frame, pal) {
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext("2d");
+  const half = size / 2;
+  const srand = makeSeededRand(seed);
+
+  const numPts = 8 + Math.floor(srand() * 5); // 8-12 points
+  const baseAngle = srand() * Math.PI * 2;
+  const ox = (srand() - 0.5) * size * 0.16; // center offset ~8% of radius
+  const oy = (srand() - 0.5) * size * 0.16;
+  const maxR = half * 0.92;
+
+  // Ray lengths deliberately uneven: 35-100% of radius (Craft Rule 4).
+  const radii = [];
+  for (let i = 0; i < numPts; i++) radii.push(maxR * (0.35 + srand() * 0.65));
+
+  // Frame 2 is "torn": cut 2-3 wedge notches inward.
+  if (frame === 2) {
+    const notches = 2 + Math.floor(srand() * 2);
+    for (let n = 0; n < notches; n++) {
+      const ni = Math.floor(srand() * numPts);
+      radii[ni] = maxR * (0.18 + srand() * 0.12);
+    }
+  }
+
+  const tracePoly = (scale) => {
+    ctx.beginPath();
+    for (let i = 0; i < numPts; i++) {
+      const ang = baseAngle + (i / numPts) * Math.PI * 2;
+      const rr = radii[i] * scale;
+      const x = half + ox + Math.cos(ang) * rr;
+      const y = half + oy + Math.sin(ang) * rr;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  };
+
+  // Keyline (outermost) -> body -> optional inner band -> white core.
+  const whiteScale = frame === 1 ? 0.66 : 0.4;
+  ctx.fillStyle = rgb(pal.key, 0.92);
+  tracePoly(1.0);
+  ctx.fill();
+  ctx.fillStyle = rgb(pal.body, 1);
+  tracePoly(0.88);
+  ctx.fill();
+  if (pal.innerBand) {
+    ctx.fillStyle = rgb(pal.innerBand, 1);
+    tracePoly((whiteScale + 0.88) / 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = rgb(pal.core, 1);
+  tracePoly(whiteScale);
+  ctx.fill();
+
+  return c;
+}
+
+// Ejecta CROWN shard — a curved tapered teardrop baked pointing +x (the
+// preset orients it to the velocity angle and stretches it with stretchX).
+// Wide at the base, tip slightly curled; flat keyline -> body -> white core
+// wedge along the leading (tip) edge.
+function createImpactPetal(size, seed, pal) {
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext("2d");
+  const half = size / 2;
+  const srand = makeSeededRand(seed);
+
+  const baseX = size * 0.14;
+  const tipX = size * 0.9;
+  const halfH = size * (0.2 + srand() * 0.08);
+  const curl = (srand() - 0.5) * size * 0.22; // asymmetric tip curl
+
+  const traceTeardrop = (inset) => {
+    const bx = baseX + inset;
+    const tx = tipX - inset;
+    const hh = Math.max(1, halfH - inset);
+    const cyBase = half;
+    const cyTip = half + curl;
+    ctx.beginPath();
+    ctx.moveTo(bx, cyBase);
+    // upper edge, base -> tip
+    ctx.quadraticCurveTo(bx + (tx - bx) * 0.35, cyBase - hh, tx, cyTip);
+    // lower edge, tip -> base
+    ctx.quadraticCurveTo(bx + (tx - bx) * 0.35, cyBase + hh, bx, cyBase);
+    ctx.closePath();
+  };
+
+  const kw = Math.max(1.5, size * 0.05); // keyline width
+  ctx.fillStyle = rgb(pal.key, 0.92);
+  traceTeardrop(0);
+  ctx.fill();
+  ctx.fillStyle = rgb(pal.body, 1);
+  traceTeardrop(kw);
+  ctx.fill();
+  if (pal.innerBand) {
+    ctx.fillStyle = rgb(pal.innerBand, 1);
+    traceTeardrop(kw + size * 0.06);
+    ctx.fill();
+  }
+  // White core wedge hugging the leading (tip) half of the spine.
+  const cyTip = half + curl;
+  ctx.fillStyle = rgb(pal.core, 1);
+  ctx.beginPath();
+  ctx.moveTo(baseX + size * 0.34, half);
+  ctx.quadraticCurveTo(tipX * 0.72, half - halfH * 0.34, tipX - kw, cyTip);
+  ctx.quadraticCurveTo(tipX * 0.72, half + halfH * 0.34, baseX + size * 0.34, half);
+  ctx.closePath();
+  ctx.fill();
+
+  return c;
+}
+
+// DEBRIS chip — a small irregular flat 4-6-sided polygon with a keyline
+// (deliberately NOT the soft-gradient `chunk` texture). A tiny white nick
+// keeps it reading as a lit fleck rather than a dark dot.
+function createImpactChip(size, seed, pal) {
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext("2d");
+  const half = size / 2;
+  const srand = makeSeededRand(seed);
+
+  const numPts = 4 + Math.floor(srand() * 3); // 4-6 sides
+  const baseAngle = srand() * Math.PI * 2;
+  const maxR = half * 0.86;
+  const radii = [];
+  const jit = [];
+  for (let i = 0; i < numPts; i++) {
+    radii.push(maxR * (0.55 + srand() * 0.45));
+    jit.push((srand() - 0.5) * 0.2);
+  }
+
+  const tracePoly = (scale) => {
+    ctx.beginPath();
+    for (let i = 0; i < numPts; i++) {
+      const ang = baseAngle + (i / numPts) * Math.PI * 2 + jit[i];
+      const rr = radii[i] * scale;
+      const x = half + Math.cos(ang) * rr;
+      const y = half + Math.sin(ang) * rr;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  };
+
+  ctx.fillStyle = rgb(pal.key, 0.92);
+  tracePoly(1.0);
+  ctx.fill();
+  ctx.fillStyle = rgb(pal.body, 1);
+  tracePoly(0.7);
+  ctx.fill();
+  // Small offset white nick.
+  ctx.fillStyle = rgb(pal.core, 1);
+  ctx.beginPath();
+  ctx.arc(half - maxR * 0.18, half - maxR * 0.18, Math.max(1, size * 0.12), 0, Math.PI * 2);
+  ctx.fill();
+
+  return c;
+}
+
+// DART — a short flat tapered dart (triangle sliver) with a keyline; the
+// disciplined remnant of the old streak lines. Baked pointing +x; the
+// preset stretches it with stretchX and orients it to velocity.
+function createImpactDart(length, thickness, pal) {
+  const c = document.createElement("canvas");
+  c.width = length;
+  c.height = thickness;
+  const ctx = c.getContext("2d");
+  const cy = thickness / 2;
+
+  const traceDart = (pad) => {
+    ctx.beginPath();
+    ctx.moveTo(length - pad, cy);              // sharp tip (leading)
+    ctx.lineTo(pad, cy - (cy - pad));          // upper base
+    ctx.lineTo(pad + length * 0.14, cy);       // notch at base center
+    ctx.lineTo(pad, cy + (cy - pad));          // lower base
+    ctx.closePath();
+  };
+
+  ctx.fillStyle = rgb(pal.key, 0.92);
+  traceDart(0);
+  ctx.fill();
+  ctx.fillStyle = rgb(pal.body, 1);
+  traceDart(Math.max(1, thickness * 0.22));
+  ctx.fill();
+  // White-hot core sliver down the spine.
+  ctx.fillStyle = rgb(pal.core, 1);
+  ctx.beginPath();
+  ctx.moveTo(length - thickness * 0.6, cy);
+  ctx.lineTo(length * 0.4, cy - thickness * 0.16);
+  ctx.lineTo(length * 0.4, cy + thickness * 0.16);
+  ctx.closePath();
+  ctx.fill();
+
+  return c;
+}
+
+// Bake the full cel-burst kit for every status palette. Returns a map
+// keyed by palette name; each entry holds the seeded texture variants the
+// `emitCelImpact` emitter picks from.
+function buildImpactTextures(r) {
+  const kit = {};
+  let seed = 20260707;
+  const nextSeed = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff);
+
+  for (const name of Object.keys(IMPACT_PALETTES)) {
+    const pal = IMPACT_PALETTES[name];
+    kit[name] = {
+      blotF1: [
+        createImpactBlot(r(96), nextSeed(), 1, pal),
+        createImpactBlot(r(96), nextSeed(), 1, pal),
+      ],
+      blotF2: [
+        createImpactBlot(r(104), nextSeed(), 2, pal),
+        createImpactBlot(r(104), nextSeed(), 2, pal),
+      ],
+      petal: [
+        createImpactPetal(r(64), nextSeed(), pal),
+        createImpactPetal(r(64), nextSeed(), pal),
+        createImpactPetal(r(64), nextSeed(), pal),
+      ],
+      chip: [
+        createImpactChip(r(20), nextSeed(), pal),
+        createImpactChip(r(20), nextSeed(), pal),
+      ],
+      dart: createImpactDart(r(56), r(8), pal),
+      powder: [
+        createColoredPuff(r(56), pal.body, nextSeed()),
+        createColoredPuff(r(56), pal.body, nextSeed()),
+      ],
+    };
+  }
+  return kit;
 }
 
 function generateTextures(s) {
@@ -1079,19 +1626,12 @@ function generateTextures(s) {
     circleGold: createChunk(r(24), 255, 248, 150, 0.95),
     chunkGold: createChunk(r(12), 255, 238, 110, 0.92),
 
-    hitStar1: createHitStarburst(r(64), 1111),
-    hitStar2: createHitStarburst(r(64), 3333),
-    hitStar3: createHitStarburst(r(64), 5555),
-    hitStarBig1: createHitStarburst(r(96), 7777),
-    hitStarBig2: createHitStarburst(r(96), 9999),
-
-    hitSlash1: createHitSlash(r(80), r(6), 2222),
-    hitSlash2: createHitSlash(r(80), r(6), 4444),
-    hitSlash3: createHitSlash(r(60), r(5), 6666),
-
-    hitSmear1: createHitSmear(r(48), 1357),
-    hitSmear2: createHitSmear(r(48), 2468),
-    hitSmear3: createHitSmear(r(48), 3579),
+    // ── HIT VFX OVERHAUL (Phase A) — cel-burst impact kit ──────────
+    // Flat-shaded, dark-keylined impact shapes (blots, ejecta petals,
+    // debris chips, darts, powder) baked per status palette. Consumed by
+    // the `hitImpact` preset / `emitCelImpact`. Replaces the deleted
+    // radial-spark `hitSpark*` textures + gold perfect-ender textures.
+    impact: buildImpactTextures(r),
 
     // ── GRAB-ARMOR ABSORB textures ─────────────────────────────────
     // Abigail-style pink absorb VFX: ONE ring that expands from a
@@ -1176,6 +1716,24 @@ function generateTextures(s) {
     palmThrustIceGlow: createGlowDotKeyed(r(20), "240,250,255", "120,195,255", "6,18,50"),
     palmThrustIceChip: createGlowDotKeyed(r(14), "225,242,255", "95,170,255", "4,12,40"),
 
+    // Hit ring core — premium center burst (star flare + bloom + streaks).
+    hitCoreFlash: createFlashBloom(r(160), 255, 255, 255),
+    hitCoreFlashGold: createFlashBloom(r(160), 255, 210, 80),
+    hitCoreFlashPurple: createFlashBloom(r(160), 170, 120, 255),
+    hitCoreFlashRed: createFlashBloom(r(160), 255, 60, 50),
+    hitCoreFlashAmber: createFlashBloom(r(160), 255, 230, 100),
+    hitCoreCross: createCrossFlare(r(140), 255, 255, 255, "255,252,255", "255,255,255", "240,248,255"),
+    hitCoreCrossGold: createCrossFlare(r(140), 255, 200, 60, "255,246,200", "255,220,110", "255,195,60"),
+    hitCoreCrossPurple: createCrossFlare(r(140), 170, 120, 255, "235,220,255", "180,130,255", "150,90,235"),
+    hitCoreCrossRed: createCrossFlare(r(140), 255, 60, 50, "255,200,188", "255,70,60", "220,28,28"),
+    hitCoreCrossAmber: createCrossFlare(r(140), 255, 230, 100, "255,252,220", "255,235,120", "255,210,80"),
+    hitCorePin: createChunk(r(24), 255, 255, 255, 1.0),
+
+    // Hit ring smoke — cel cloud puffs for circumference burst.
+    hitRingSmoke1: createHitRingSmokePuff(r(64), 8201),
+    hitRingSmoke2: createHitRingSmokePuff(r(64), 8202),
+    hitRingSmoke3: createHitRingSmokePuff(r(64), 8203),
+
   };
 }
 
@@ -1201,43 +1759,359 @@ function pickGoldPuff(textures) {
   return pick([textures.goldPuff1, textures.goldPuff2, textures.goldPuff3, textures.goldPuff4]);
 }
 
-// Directional spark BLAST out of the middle of the hit ring — fast,
-// motion-blurred white streaks firing radially in all directions. Low
-// gravity so they SHOOT OUT and fade (not droop and fall). Shared by the
-// slap / burst / charged presets; tier params scale density / speed /
-// length. cy is already screen-space (GAME_H - y).
-function emitImpactSparks(engine, cx, cy, {
-  count, spdMin, spdMax, sizeMin, sizeMax, stretchMin, stretchMax,
-  lifeMin, lifeMax, gravity = 120,
-}) {
-  for (let i = 0; i < count; i++) {
-    // Even radial spread + jitter so it blasts out in ALL directions
-    // without looking like a mechanical spoked wheel.
-    const ang = (i / count) * Math.PI * 2 + rand(-0.3, 0.3);
-    const spd = rand(spdMin, spdMax);
-    const size = rand(sizeMin, sizeMax);
+const HIT_CORE_TEXTURES = {
+  white:  { flash: "hitCoreFlash",       cross: "hitCoreCross" },
+  gold:   { flash: "hitCoreFlashGold",   cross: "hitCoreCrossGold" },
+  purple: { flash: "hitCoreFlashPurple", cross: "hitCoreCrossPurple" },
+  red:    { flash: "hitCoreFlashRed",    cross: "hitCoreCrossRed" },
+  amber:  { flash: "hitCoreFlashAmber",  cross: "hitCoreCrossAmber" },
+};
+
+function pickHitRingSmoke(textures) {
+  return pick([textures.hitRingSmoke1, textures.hitRingSmoke2, textures.hitRingSmoke3]);
+}
+
+// ─── HIT VFX OVERHAUL (Phase A) — cel-burst impact emitter ───────────
+// One parameterized emitter used by EVERY hit (replaces the deleted
+// radial `emitImpactSparks` + `hitSpark*` presets). Draws "displaced
+// matter": a snapping flash-blot -> torn-blot core, a directional ejecta
+// crown fanned along the knockback, falling debris, disciplined darts, and
+// a brief powder bloom. Flat cel shapes with dark keylines (Craft Rules),
+// NOT rings and NOT even radial spoke wheels (Banned Looks). cx/cy are
+// already screen-space (GAME_H - y).
+//
+//   tier    — "slap" | "burst" | "charged" (density / scale)
+//   dir     — knockback sign (+1 right / -1 left); the crown fans this way
+//   palette — status palette key (see IMPACT_PALETTES / §4.2)
+function emitCelImpact(engine, cx, cy, { tier = "slap", dir = 1, palette = "white" } = {}) {
+  const T = engine.textures;
+  const kit = (T.impact && (T.impact[palette] || T.impact.white)) || null;
+  if (!kit) return;
+
+  const d = dir >= 0 ? 1 : -1;
+  const baseAng = d > 0 ? 0 : Math.PI; // fan center, horizontal along knockback
+  const SPREAD = 1.134; // ±65° crown spread (Tuning dial: fan spread)
+
+  const idx = tier === "charged" ? 2 : tier === "burst" ? 1 : 0;
+  const blot = [40, 52, 66][idx];          // core size in game-px (tuning dial)
+  const fragN = [3, 4, 5][idx];
+  const petalN = [5, 7, 9][idx];
+  const debrisN = [4, 6, 8][idx];
+  const dartN = [3, 4, 5][idx];
+  const powderN = [2, 3, 4][idx];
+
+  // Seed shared by F1/F2 so the torn frame belongs to the same silhouette
+  // family as the flash frame.
+  const seedIdx = Math.floor(Math.random() * kit.blotF1.length);
+  const f1rot = rand(-Math.PI, Math.PI);
+
+  // ── 1 · FLASH BLOT (frame 1) — static jagged pop, snaps in, no fade ──
+  engine.spawn({
+    x: cx, y: cy, vx: 0, vy: 0, gravity: 0, drag: 1,
+    size: blot, sizeEnd: blot * 1.08,
+    alpha: 1, alphaEnd: 1,
+    rotation: f1rot, rotationSpeed: 0,
+    ease: "outCubic",
+    maxLife: 0.06,
+    texture: kit.blotF1[seedIdx],
+    aboveFighters: true,
+  });
+
+  // ── 2 · TORN BLOT (frame 2) — snaps to replace F1, body-dominant ──
+  engine.spawn({
+    x: cx, y: cy, vx: 0, vy: 0, gravity: 0, drag: 1,
+    size: blot * 1.15, sizeEnd: blot * 1.15,
+    alpha: 1, alphaEnd: 1,
+    rotation: f1rot + rand(-0.15, 0.15), rotationSpeed: 0,
+    ease: "linear",
+    maxLife: 0.08,
+    delay: 0.06,
+    texture: kit.blotF2[seedIdx],
+    aboveFighters: true,
+  });
+
+  // ── 3 · FRAGMENTS — the blot dies by BREAKUP into chips off its rim ──
+  for (let i = 0; i < fragN; i++) {
+    const ang = rand(0, Math.PI * 2);
+    const spd = rand(80, 190);
+    const size = blot * rand(0.12, 0.2);
     engine.spawn({
-      x: cx + Math.cos(ang) * rand(2, 8),
-      y: cy + Math.sin(ang) * rand(2, 8),
+      x: cx + Math.cos(ang) * blot * 0.28,
+      y: cy + Math.sin(ang) * blot * 0.28,
       vx: Math.cos(ang) * spd,
       vy: Math.sin(ang) * spd,
-      gravity,
-      drag: 0.9,
-      size,
-      sizeEnd: size * 0.4,
-      alpha: 1,
-      alphaEnd: 0,
-      rotation: ang, // orient the streak along its outward direction
-      rotationSpeed: 0,
+      gravity: 240, drag: 0.9,
+      size, sizeEnd: size * 0.7,
+      alpha: 1, alphaEnd: 1,
+      rotation: rand(0, Math.PI * 2), rotationSpeed: rand(-5, 5),
       ease: "outCubic",
-      easeAlpha: "outQuad",
-      maxLife: rand(lifeMin, lifeMax),
-      texture: pick([engine.textures.speedLine, engine.textures.speedLineThin]),
-      stretchX: rand(stretchMin, stretchMax),
-      blendMode: "lighter",
+      maxLife: rand(0.12, 0.18),
+      delay: 0.14,
+      texture: pick(kit.chip),
       aboveFighters: true,
     });
   }
+
+  // ── 4 · EJECTA CROWN — directional petals fanned along knockback + a
+  //        small back-splash toward the attacker (never a radial wheel) ──
+  const backN = petalN >= 7 ? 2 : 1;
+  const fwdN = petalN - backN;
+  for (let i = 0; i < petalN; i++) {
+    const isBack = i >= fwdN;
+    const ang = isBack
+      ? baseAng + Math.PI + rand(-0.4, 0.4)
+      : baseAng + rand(-SPREAD, SPREAD);
+    const spd = isBack ? rand(120, 240) : rand(300, 650);
+    const vx = Math.cos(ang) * spd;
+    const vy = Math.sin(ang) * spd - rand(0, 60);
+    const size = blot * rand(0.4, 0.6);
+    engine.spawn({
+      x: cx, y: cy, vx, vy,
+      gravity: 120, drag: 0.85,
+      size, sizeEnd: size * 0.35,
+      alpha: 1, alphaEnd: 1,
+      rotation: Math.atan2(vy, vx), rotationSpeed: 0,
+      stretchX: rand(1.4, 2.0),
+      ease: "outExpo", easeAlpha: "outExpo",
+      maxLife: rand(0.2, 0.32),
+      texture: pick(kit.petal),
+      aboveFighters: true,
+    });
+  }
+
+  // ── 5 · DEBRIS CHIPS — heavier, spinning, arc up and fall (mid layer) ──
+  for (let i = 0; i < debrisN; i++) {
+    const ang = baseAng + rand(-SPREAD * 1.4, SPREAD * 1.4);
+    const spd = rand(200, 480);
+    const vx = Math.cos(ang) * spd;
+    const vy = Math.sin(ang) * spd - rand(60, 180);
+    const size = blot * rand(0.14, 0.24);
+    engine.spawn({
+      x: cx, y: cy, vx, vy,
+      gravity: rand(500, 700), drag: 0.985,
+      size, sizeEnd: size * 0.85,
+      alpha: 1, alphaEnd: 1,
+      rotation: rand(0, Math.PI * 2), rotationSpeed: rand(-6, 6),
+      ease: "linear",
+      maxLife: rand(0.3, 0.45),
+      texture: pick(kit.chip),
+    });
+  }
+
+  // ── 6 · DARTS — disciplined streak remnant, clustered inside the fan ──
+  for (let i = 0; i < dartN; i++) {
+    const ang = baseAng + rand(-SPREAD * 0.5, SPREAD * 0.5);
+    const spd = rand(500, 900);
+    const vx = Math.cos(ang) * spd;
+    const vy = Math.sin(ang) * spd;
+    const size = blot * rand(0.4, 0.7);
+    engine.spawn({
+      x: cx, y: cy, vx, vy,
+      gravity: 80, drag: 0.86,
+      size, sizeEnd: size * 0.5,
+      alpha: 1, alphaEnd: 1,
+      rotation: Math.atan2(vy, vx), rotationSpeed: 0,
+      stretchX: rand(3, 6),
+      ease: "outExpo", easeAlpha: "outQuad",
+      maxLife: rand(0.1, 0.16),
+      texture: kit.dart,
+      aboveFighters: true,
+    });
+  }
+
+  // ── 7 · POWDER — soft drift bloom (alpha fade allowed per Craft Rule 3) ──
+  for (let i = 0; i < powderN; i++) {
+    const ang = baseAng + rand(-1.4, 1.4);
+    const spd = rand(40, 120);
+    const size = blot * rand(0.5, 0.8);
+    engine.spawn({
+      x: cx, y: cy,
+      vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - rand(10, 40),
+      gravity: 30, drag: 0.9,
+      size, sizeEnd: size * 1.3,
+      alpha: 0.5, alphaEnd: 0,
+      rotation: rand(0, Math.PI * 2), rotationSpeed: rand(-1, 1),
+      ease: "outCubic", easeAlpha: "linear",
+      maxLife: rand(0.3, 0.45),
+      delay: rand(0.03, 0.06),
+      texture: pick(kit.powder),
+    });
+  }
+}
+
+// Clean anime smoke — center spawn, shoots past the ring with organic variation.
+function emitHitImpactSmoke(engine, cx, cy, { tier = "slap" } = {}) {
+  const T = engine.textures;
+  const idx = tier === "charged" ? 2 : tier === "burst" ? 1 : 0;
+  const scale = [1, 1.06, 1.12][idx];
+  const ringR = [22, 28, 34][idx] * scale;
+  const slots = [6, 7, 8][idx];
+  const basePeak = [18, 20, 22][idx] * scale;
+
+  const spawn = (cfg) => engine.spawn({ ...cfg, aboveFighters: true });
+  const outwardSpeed = (travel, life, drag) => {
+    const frames = life / 0.016;
+    const dragTravel = 0.016 * (1 - drag ** frames) / (1 - drag);
+    return travel / dragTravel;
+  };
+
+  for (let i = 0; i < slots; i++) {
+    const ang =
+      (i / slots) * Math.PI * 2 +
+      rand(-0.16, 0.16) +
+      (i % 2 === 0 ? rand(-0.05, 0.05) : 0);
+    const life = rand(0.28, 0.38);
+    const drag = rand(0.89, 0.92);
+    const travel = ringR * rand(1.35, 1.58);
+    const spd = outwardSpeed(travel, life, drag);
+    const peak = basePeak * rand(0.9, 1.1);
+
+    spawn({
+      x: cx,
+      y: cy,
+      vx: Math.cos(ang) * spd + rand(-6, 6),
+      vy: Math.sin(ang) * spd + rand(-6, 6),
+      gravity: rand(-4, 4),
+      drag,
+      size: peak * rand(0.4, 0.55),
+      sizeEnd: peak * rand(1.12, 1.32),
+      alpha: rand(0.64, 0.8),
+      alphaEnd: 0,
+      rotation: ang + rand(-0.2, 0.2),
+      rotationSpeed: rand(-0.15, 0.15),
+      ease: "outQuad",
+      easeAlpha: "outQuad",
+      maxLife: life,
+      delay: rand(0, 0.02),
+      texture: pickHitRingSmoke(T),
+    });
+  }
+}
+
+// Premium hit ring CENTER — layered starburst + bloom + directional streaks.
+// Lives inside the CSS ring while it's small, fades before the ring empties.
+function emitHitRingCore(engine, cx, cy, { tier = "slap", dir = 1, palette = "white" } = {}) {
+  const T = engine.textures;
+  const tex = HIT_CORE_TEXTURES[palette] || HIT_CORE_TEXTURES.white;
+  const flashTex = T[tex.flash];
+  const crossTex = T[tex.cross];
+  if (!flashTex || !crossTex) return;
+
+  const idx = tier === "charged" ? 2 : tier === "burst" ? 1 : 0;
+  const scale = [1, 1.14, 1.3][idx];
+  const fwd = dir >= 0 ? 1 : -1;
+  const streakRot = fwd > 0 ? 0 : Math.PI;
+
+  const bloomStart = [12, 14, 16][idx];
+  const bloomEnd = [62, 78, 96][idx];
+  const crossStart = [16, 20, 24][idx];
+  const crossEnd = [78, 98, 124][idx];
+  const pinStart = [6, 8, 10][idx];
+  const pinEnd = [18, 24, 30][idx];
+  const sparkleN = [4, 5, 6][idx];
+
+  const front = (cfg) => engine.spawn({ ...cfg, aboveFighters: true });
+
+  // Tight bloom — fills the ring interior with a contained flash.
+  front({
+    x: cx, y: cy, vx: 0, vy: 0, gravity: 0, drag: 1,
+    size: bloomStart * scale, sizeEnd: bloomEnd * scale,
+    alpha: 0.96, alphaEnd: 0,
+    rotation: 0, rotationSpeed: 0,
+    ease: "outExpo", easeAlpha: "linear",
+    maxLife: 0.13,
+    texture: flashTex,
+    blendMode: "lighter",
+  });
+
+  // Inner twinkle sparks — crackle inside the ring perimeter.
+  for (let i = 0; i < sparkleN; i++) {
+    const a = rand(0, Math.PI * 2);
+    const r = rand(8, 28) * scale;
+    front({
+      x: cx + Math.cos(a) * r,
+      y: cy + Math.sin(a) * r * 0.88,
+      vx: 0, vy: 0, gravity: 0, drag: 1,
+      size: rand(1.2, 2), sizeEnd: rand(4, 6) * scale,
+      alpha: 1, alphaEnd: 0,
+      rotation: 0, rotationSpeed: 0,
+      ease: "outExpo", easeAlpha: "outQuad",
+      maxLife: rand(0.06, 0.1),
+      delay: i * 0.016,
+      texture: T.sparkSmall,
+      blendMode: "lighter",
+    });
+  }
+
+  // Primary 8-point cross flare.
+  front({
+    x: cx, y: cy, vx: 0, vy: 0, gravity: 0, drag: 1,
+    size: crossStart * scale, sizeEnd: crossEnd * scale,
+    alpha: 1, alphaEnd: 0,
+    rotation: rand(-0.05, 0.05), rotationSpeed: rand(-0.4, 0.4),
+    ease: "outCubic", easeAlpha: "linear",
+    maxLife: 0.15,
+    texture: crossTex,
+    blendMode: "lighter",
+  });
+
+  // Secondary cross — interleaved 22.5° for a dense 16-spoke star.
+  front({
+    x: cx, y: cy, vx: 0, vy: 0, gravity: 0, drag: 1,
+    size: crossStart * 0.92 * scale, sizeEnd: crossEnd * 0.88 * scale,
+    alpha: 0.82, alphaEnd: 0,
+    rotation: Math.PI / 8 + rand(-0.04, 0.04),
+    rotationSpeed: rand(-0.3, 0.3),
+    ease: "outCubic", easeAlpha: "linear",
+    maxLife: 0.14,
+    delay: 0.012,
+    texture: crossTex,
+    blendMode: "lighter",
+  });
+
+  // Hot pinpoint nucleus.
+  front({
+    x: cx, y: cy, vx: 0, vy: 0, gravity: 0, drag: 1,
+    size: pinStart * scale, sizeEnd: pinEnd * scale,
+    alpha: 1, alphaEnd: 0,
+    rotation: 0, rotationSpeed: 0,
+    ease: "outExpo", easeAlpha: "outQuad",
+    maxLife: 0.1,
+    texture: T.hitCorePin,
+    blendMode: "lighter",
+  });
+
+  // Directional impact streaks — snap forward along the hit (AAA speed-line read).
+  const streakCount = [3, 4, 5][idx];
+  for (let i = 0; i < streakCount; i++) {
+    const yOff = (i - (streakCount - 1) / 2) * rand(5, 9);
+    const stretch = rand(14, 22) * scale;
+    const thick = rand(2, 3.5);
+    const spd = rand(320, 520) * scale;
+    front({
+      x: cx + fwd * rand(-2, 4),
+      y: cy + yOff,
+      vx: fwd * spd,
+      vy: rand(-18, 18),
+      gravity: 0,
+      drag: 0.82,
+      size: thick,
+      sizeEnd: thick * 0.55,
+      alpha: rand(0.88, 1),
+      alphaEnd: 0,
+      rotation: streakRot,
+      rotationSpeed: 0,
+      ease: "outExpo",
+      easeAlpha: "outQuad",
+      maxLife: rand(0.07, 0.11),
+      delay: rand(0, 0.02),
+      texture: T.speedLineThin,
+      stretchX: stretch,
+      blendMode: "lighter",
+    });
+  }
+
+  emitHitImpactSmoke(engine, cx, cy, { tier, dir, palette });
 }
 
 const PRESETS = {
@@ -1402,128 +2276,25 @@ const PRESETS = {
     }
   },
 
-  // Fired once at dash start — smoke puffs, speed lines, ice chips, and burst ring
+  // Fired once at dash start — a single hand-drawn smoke swoosh sprite that
+  // stays at the launch point and trails behind the fighter as they zip away.
+  // (Replaces the old procedural burst: ground dust + speed lines + ice chips +
+  // ring + sparks.)
   dashStart(engine, { x, y, direction, facing }) {
     const dir = direction || facing || 1;
     const footX = x;
     const footY = GAME_H - y;
+    spawnDashSmoke(engine, footX, footY, { dir, maxLife: 0.42 });
+  },
 
-    // ── GROUND DUST — tight compact cluster behind the character ──
-    const puffOffsets = [4, 18, 34];
-    for (let i = 0; i < puffOffsets.length; i++) {
-      const t = i / (puffOffsets.length - 1);
-      const size = rand(28, 38) + t * 12;
-      engine.spawn({
-        x: footX + -dir * (puffOffsets[i] + rand(-2, 2)),
-        y: footY - size * 0.45 + rand(0, 3),
-        vx: -dir * rand(60, 100),
-        vy: rand(-2, 2),
-        gravity: 20,
-        drag: 0.88,
-        size,
-        sizeEnd: size * rand(0.3, 0.45),
-        alpha: rand(0.75, 0.9),
-        alphaEnd: 0,
-        ease: "outCubic",
-        easeAlpha: "inCubic",
-        rotationSpeed: rand(-0.6, 0.6),
-        maxLife: rand(0.28, 0.38),
-        texture: pickPuff(engine.textures),
-      });
-    }
-
-    // ── SPEED LINES — sharp streaks at body height in dash direction ──
-    const bodyY = footY - 55;
-    for (let i = 0; i < 3; i++) {
-      const thickness = rand(2.5, 4);
-      const stretch = rand(14, 22);
-      engine.spawn({
-        x: footX + dir * rand(5, 20),
-        y: bodyY + rand(-20, 20),
-        vx: dir * rand(180, 320),
-        vy: rand(-8, 8),
-        gravity: 0,
-        drag: 0.92,
-        size: thickness,
-        sizeEnd: thickness * 0.6,
-        alpha: rand(0.8, 1.0),
-        alphaEnd: 0,
-        rotation: 0,
-        rotationSpeed: 0,
-        ease: "linear",
-        easeAlpha: "inCubic",
-        maxLife: rand(0.1, 0.16),
-        texture: pick([engine.textures.speedLine, engine.textures.speedLineThin]),
-        stretchX: stretch,
-      });
-    }
-
-    // ── ICE CHIPS — a few small chunks kicked from the ground ────
-    for (let i = 0; i < 4; i++) {
-      const spread = rand(-0.4, 0.4);
-      const speed = rand(100, 200);
-      engine.spawn({
-        x: footX + rand(-6, 6),
-        y: footY - rand(2, 6),
-        vx: -dir * Math.cos(spread) * speed + rand(-20, 20),
-        vy: -Math.abs(Math.sin(spread)) * speed * 0.35 + rand(-8, 0),
-        gravity: 400,
-        drag: 0.96,
-        size: rand(2, 5),
-        sizeEnd: rand(1, 2),
-        alpha: rand(0.6, 0.9),
-        alphaEnd: 0,
-        ease: "linear",
-        easeAlpha: "outQuad",
-        rotationSpeed: rand(-5, 5),
-        maxLife: rand(0.18, 0.3),
-        texture: pick([engine.textures.chunk, engine.textures.chunkIce]),
-      });
-    }
-
-    // ── BURST RING — fast-expanding horizontal shockwave at the feet ──
-    const ringTextures = [engine.textures.ring, engine.textures.ringAlt];
-    for (let i = 0; i < 2; i++) {
-      engine.spawn({
-        x: footX - dir * 8,
-        y: footY - 14,
-        vx: 0, vy: 0, gravity: 0, drag: 1,
-        size: 6 * (1 + i * 0.08),
-        sizeEnd: 36 * (1 + i * 0.08),
-        alpha: rand(0.75, 0.9),
-        alphaEnd: 0,
-        rotation: 0, rotationSpeed: 0,
-        ease: "outExpo", easeAlpha: "outCubic",
-        maxLife: 0.22 + i * 0.03,
-        texture: ringTextures[i],
-        stretchX: 2.4,
-        delay: i * 0.02,
-      });
-    }
-
-    // ── INITIAL SPARKS — bright points that burst from the feet at launch ──
-    for (let i = 0; i < 5; i++) {
-      const angle = rand(-1.0, 0.6);
-      const spd = rand(120, 260);
-      engine.spawn({
-        x: footX + rand(-4, 4),
-        y: footY - rand(3, 10),
-        vx: -dir * Math.cos(angle) * spd + rand(-15, 15),
-        vy: -Math.abs(Math.sin(angle)) * spd * 0.5 + rand(-30, -5),
-        gravity: 500,
-        drag: 0.94,
-        size: rand(4, 7),
-        sizeEnd: rand(1, 2),
-        alpha: rand(0.9, 1.0),
-        alphaEnd: 0,
-        ease: "linear",
-        easeAlpha: "outQuad",
-        rotationSpeed: 0,
-        maxLife: rand(0.12, 0.22),
-        texture: pick([engine.textures.spark, engine.textures.sparkSmall]),
-        blendMode: "lighter",
-      });
-    }
+  // Fired once when the charged-attack (flying headbutt) lunge begins — a single
+  // smoke swoosh sprite that stays at the launch point and trails behind the
+  // lunging fighter. Same one-shot approach as dashStart, own sheet/tuning.
+  chargedLungeSmoke(engine, { x, y, direction, facing }) {
+    const dir = direction || facing || 1;
+    const footX = x;
+    const footY = GAME_H - y;
+    spawnChargedSmoke(engine, footX, footY, { dir, maxLife: 0.46 });
   },
 
   // Called every ~45ms during the dash. Bright sparks arcing down from the feet
@@ -1788,30 +2559,17 @@ const PRESETS = {
     }
   },
 
-  // Expanding ring for pull reversal hop landings. Scales with intensity.
-  // 3 overlapping rings build up opacity like stacked clouds.
+  // Pull reversal hop landing — lighter than a throw touchdown. Same smoke-puff
+  // sprite, scaled/faded down by hop intensity.
   pullReversalLand(engine, { x, y, intensity }) {
     const footX = x;
     const footY = GAME_H - y - 12;
     const s = Math.min(Math.max(intensity || 0.5, 0), 1);
-    const textures = [engine.textures.ring, engine.textures.ringAlt, engine.textures.ringThick];
-    for (let i = 0; i < 3; i++) {
-      const scale = 1 + i * 0.06;
-      engine.spawn({
-        x: footX,
-        y: footY,
-        vx: 0, vy: 0, gravity: 0, drag: 1,
-        size: 8 * (0.5 + s * 0.5) * scale,
-        sizeEnd: 43 * (0.5 + s * 0.5) * scale,
-        alpha: Math.min(1, 0.95 * s),
-        alphaEnd: 0,
-        rotation: 0, rotationSpeed: 0,
-        ease: "outCubic", easeAlpha: "outCubic",
-        maxLife: 0.32 + i * 0.02,
-        texture: textures[i],
-        stretchX: 2.1,
-      });
-    }
+    spawnLandingSmoke(engine, footX, footY, {
+      scale: 0.62 + s * 0.4,
+      alpha: Math.min(1, 0.95 * s),
+      maxLife: 0.44,
+    });
   },
 
   // Clinch kill PULL: a heavy penguin slammed flat on the ice. The body lands
@@ -1825,28 +2583,6 @@ const PRESETS = {
     const footX = x;
     const footY = GAME_H - y - 8;
     const s = Math.min(Math.max(intensity == null ? 1 : intensity, 0), 1);
-
-    // ── WIDE SHOCKWAVE RINGS — broad, flat, hugging the ice ──────────
-    const ringTextures = [engine.textures.ring, engine.textures.ringAlt, engine.textures.ringThick];
-    const ringCount = s > 0.6 ? 3 : 2;
-    for (let i = 0; i < ringCount; i++) {
-      const scale = 1 + i * 0.07;
-      engine.spawn({
-        x: footX,
-        y: footY,
-        vx: 0, vy: 0, gravity: 0, drag: 1,
-        size: 14 * (0.45 + s * 0.55) * scale,
-        sizeEnd: 78 * (0.45 + s * 0.55) * scale,
-        alpha: Math.min(1, 0.95 * s),
-        alphaEnd: 0,
-        rotation: 0, rotationSpeed: 0,
-        ease: "outCubic", easeAlpha: "outCubic",
-        maxLife: 0.34 + i * 0.03,
-        texture: ringTextures[i % 3],
-        stretchX: 3.0,
-        delay: i * 0.012,
-      });
-    }
 
     // ── SIDEWAYS SNOW/ICE SPRAY — displaced from under the belly to BOTH sides ──
     const sprayCount = Math.round(7 * s) + 2;
@@ -1872,30 +2608,6 @@ const PRESETS = {
         rotationSpeed: rand(-6, 6),
         maxLife: rand(0.28, 0.5),
         texture: pick([engine.textures.chunk, engine.textures.chunkIce]),
-      });
-    }
-
-    // ── GROUND DUST PUFFS — billow out low and wide along the ice ──────
-    const puffCount = Math.round(4 * s) + 1;
-    for (let i = 0; i < puffCount; i++) {
-      const side = i % 2 === 0 ? 1 : -1;
-      const size = rand(26, 42) * (0.6 + s * 0.5);
-      engine.spawn({
-        x: footX + side * rand(8, 36),
-        y: footY - size * 0.32 + rand(0, 4),
-        vx: side * rand(50, 130) * (0.5 + s * 0.5),
-        vy: rand(-6, 2),
-        gravity: 18,
-        drag: 0.87,
-        size,
-        sizeEnd: size * rand(0.3, 0.45),
-        alpha: rand(0.6, 0.85) * (0.5 + s * 0.5),
-        alphaEnd: 0,
-        ease: "outCubic",
-        easeAlpha: "inCubic",
-        rotationSpeed: rand(-0.5, 0.5),
-        maxLife: rand(0.3, 0.46),
-        texture: pickPuff(engine.textures),
       });
     }
 
@@ -1928,67 +2640,32 @@ const PRESETS = {
     }
   },
 
-  // Expanding ring for throw landing. Bigger impact than pull reversal.
+  // Landing dust for a throw/jump touchdown. Now an animated smoke-puff sprite
+  // instead of the old expanding rings (bigger impact than pull reversal).
   throwLand(engine, { x, y }) {
     const footX = x;
     const footY = GAME_H - y - 12;
-    const textures = [engine.textures.ring, engine.textures.ringAlt, engine.textures.ringThick];
-    for (let i = 0; i < 3; i++) {
-      const scale = 1 + i * 0.05;
-      engine.spawn({
-        x: footX,
-        y: footY,
-        vx: 0, vy: 0, gravity: 0, drag: 1,
-        size: 12 * scale,
-        sizeEnd: 62 * scale,
-        alpha: 0.95,
-        alphaEnd: 0,
-        rotation: 0, rotationSpeed: 0,
-        ease: "outCubic", easeAlpha: "outCubic",
-        maxLife: 0.37 + i * 0.02,
-        texture: textures[i],
-        stretchX: 2.3,
-      });
-    }
+    spawnLandingSmoke(engine, footX, footY, {
+      scale: 1,
+      alpha: 1,
+      maxLife: 0.5,
+    });
   },
 
-  // Fast-fall slam landing — normal ring radius, thicker band; icy shards spread
-  // low inside the ripple (no rising smoke puffs).
+  // Fast-fall slam landing — a slightly bigger smoke puff for the harder impact,
+  // plus icy shards that spread low inside the footprint.
   flapFastFallLand(engine, { x, y }) {
     const footX = x;
     const footY = GAME_H - y - 12;
-    // Keep ice/sparks inside the expanding ring footprint.
+    // Keep ice/sparks inside the smoke footprint.
     const RING_SPREAD = 44;
 
-    // Same radius as throwLand; thicker stacked band (stretchX + extra ring).
-    const ringTextures = [
-      engine.textures.ring,
-      engine.textures.ringAlt,
-      engine.textures.ringThick,
-    ];
-    for (let i = 0; i < 4; i++) {
-      const scale = 1 + i * 0.05;
-      engine.spawn({
-        x: footX,
-        y: footY,
-        vx: 0,
-        vy: 0,
-        gravity: 0,
-        drag: 1,
-        size: 12 * scale,
-        sizeEnd: 62 * scale,
-        alpha: 0.95,
-        alphaEnd: 0,
-        rotation: 0,
-        rotationSpeed: 0,
-        ease: "outCubic",
-        easeAlpha: "outCubic",
-        maxLife: 0.37 + i * 0.02,
-        texture: ringTextures[i % 3],
-        stretchX: 2.05,
-        delay: i * 0.01,
-      });
-    }
+    // Bigger, punchier puff than a normal touchdown for the slam.
+    spawnLandingSmoke(engine, footX, footY, {
+      scale: 1.15,
+      alpha: 1,
+      maxLife: 0.52,
+    });
 
     // Ice crystals — low, spread across the ring interior.
     for (let i = 0; i < 10; i++) {
@@ -2074,26 +2751,14 @@ const PRESETS = {
     const footX = x;
     const footY = GAME_H - y - 12;
 
-    const ringTextures = [engine.textures.ring, engine.textures.ringAlt, engine.textures.ringThick];
-    for (let i = 0; i < 4; i++) {
-      const scale = 1 + i * 0.08;
-      engine.spawn({
-        x: footX,
-        y: footY,
-        vx: 0, vy: 0, gravity: 0, drag: 1,
-        size: 14 * scale,
-        sizeEnd: 90 * scale,
-        alpha: 0.95,
-        alphaEnd: 0,
-        rotation: 0, rotationSpeed: 0,
-        ease: "outCubic", easeAlpha: "outCubic",
-        maxLife: 0.45 + i * 0.03,
-        texture: ringTextures[i % 3],
-        stretchX: 2.5,
-        delay: i * 0.015,
-        behindDohyo: !!behindDohyo,
-      });
-    }
+    // Dedicated cinematic throw-kill landing splash. Routed behind the dohyo
+    // when the body lands outside the ring so it doesn't paint over the foreground.
+    spawnCinematicThrowLandSmoke(engine, footX, footY, {
+      scale: 1,
+      alpha: 1,
+      maxLife: 0.55,
+      behindDohyo: !!behindDohyo,
+    });
   },
 
   // Salt throw: tight forward arc of small grains that disappear at ground level.
@@ -3262,41 +3927,23 @@ const PRESETS = {
     }
   },
 
-  // ─── Hit Spark presets ──────────────────────────────────────────
-  // Layered on top of existing CSS hit effects for organic texture
-
-  // The hit GLOW (tilted ring + flash + bloom) is the white-hot CSS sibling
-  // of the raw-parry effect (HitEffect.jsx). These canvas presets add the
-  // fast directional IMPACT SPARKS that fly out through the ring in all
-  // directions — the "oomph". (The victim's charged knockback flight trail
-  // is a separate preset and still active.)
-
-  // SLAP — compact, snappy spark burst (small hand, quick tsuppari).
-  hitSparkSlap(engine, { x, y }) {
-    emitImpactSparks(engine, x, GAME_H - y, {
-      count: 13, spdMin: 360, spdMax: 640, sizeMin: 3.5, sizeMax: 5.5,
-      stretchMin: 4, stretchMax: 8, lifeMin: 0.15, lifeMax: 0.27, gravity: 120,
-    });
+  // ─── HIT VFX OVERHAUL (Phase A) — cel-burst impact ───────────────
+  // The single hit preset. Replaces the old CSS ring glow + the deleted
+  // radial `hitSpark*` spark blasts. Draws displaced-matter impacts in the
+  // game's cel language (see `emitCelImpact`). `x`/`y` are game-space; `y`
+  // is converted to screen-space here like the old presets did.
+  //
+  //   dir     — knockback sign (+1/-1); the ejecta crown fans this way.
+  //   tier    — "slap" | "burst" | "charged".
+  //   palette — status palette key (white / gold / purple / red / amber /
+  //             volt). Precedence is resolved by the caller (GameFighter).
+  hitImpact(engine, { x, y, dir = 1, tier = "slap", palette = "white" }) {
+    emitCelImpact(engine, x, GAME_H - y, { tier, dir, palette });
   },
 
-  // CHARGED / HEADBUTT — the heavy hit. Dense, fast, long-tailed spark
-  // EXPLOSION in all directions — this radial burst (plus the bigger CSS
-  // shockwave and no parry-style cross) is what separates the charged hit
-  // from the clean raw-parry deflect.
-  hitSparkCharged(engine, { x, y }) {
-    emitImpactSparks(engine, x, GAME_H - y, {
-      count: 22, spdMin: 460, spdMax: 880, sizeMin: 4.5, sizeMax: 7,
-      stretchMin: 6, stretchMax: 12, lifeMin: 0.18, lifeMax: 0.34, gravity: 100,
-    });
-  },
-
-  // SLAP 3 / BURST — the tsuppari finisher. Bigger / faster than slap 1-2,
-  // but lighter than the charged explosion.
-  hitSparkBurst(engine, { x, y }) {
-    emitImpactSparks(engine, x, GAME_H - y, {
-      count: 17, spdMin: 400, spdMax: 720, sizeMin: 4, sizeMax: 6.5,
-      stretchMin: 5, stretchMax: 10, lifeMin: 0.16, lifeMax: 0.3, gravity: 110,
-    });
+  // Premium center burst for the CSS hit ring — star flare, bloom, streaks.
+  hitRingCore(engine, { x, y, dir = 1, tier = "slap", palette = "white" }) {
+    emitHitRingCore(engine, x, GAME_H - y, { tier, dir, palette });
   },
 
   // ── GRAB ARMOR ABSORB ───────────────────────────────────────────────
@@ -3626,7 +4273,7 @@ const PRESETS = {
   grabArmorBreak(engine, { x, y, facing }) {
     const dir = facing || 1;
     const cx = x;
-    // Same chest-level position math as grabArmorAbsorb / hitSparkSlap.
+    // Same chest-level position math as grabArmorAbsorb / hitImpact.
     const cy = GAME_H - y;
     const front = (cfg) => engine.spawn({ ...cfg, aboveFighters: true });
 
@@ -3743,6 +4390,19 @@ const PRESETS = {
     }
   },
 
+  // Generic liftoff plume — used by the rope jump (angled sheet, mirrored by
+  // facing). `tilted` defaults true; pass dir = facing (±1) to flip.
+  liftoffSmoke(engine, { x, y, tilted = true, dir = 1, scale = 1, maxLife = 0.55 }) {
+    const footX = x;
+    const footY = GAME_H - y - 12;
+    spawnLiftoffSmoke(engine, footX, footY, {
+      tilted,
+      flip: dir < 0,
+      scale,
+      maxLife,
+    });
+  },
+
   // ── FLAP liftoff — vertical launch burst at the moment of takeoff ─────────
   // Layered like dashStart but aimed upward: ground ring + ice kick + wing
   // thrust lines + displaced-air puffs. Softer than throwLand (launch, not impact).
@@ -3755,48 +4415,13 @@ const PRESETS = {
     const wingY = GAME_H - y - 78;
     const bodyX = footX;
 
-    // Ground shock ring — smaller/softer than throwLand
-    const ringTextures = [engine.textures.ring, engine.textures.ringAlt];
-    for (let i = 0; i < 2; i++) {
-      const scale = 1 + i * 0.06;
-      engine.spawn({
-        x: footX,
-        y: footY,
-        vx: 0, vy: 0, gravity: 0, drag: 1,
-        size: 8 * scale,
-        sizeEnd: 48 * scale,
-        alpha: rand(0.7, 0.88),
-        alphaEnd: 0,
-        rotation: 0, rotationSpeed: 0,
-        ease: "outExpo", easeAlpha: "outCubic",
-        maxLife: 0.28 + i * 0.02,
-        texture: ringTextures[i],
-        stretchX: 2.2,
-        delay: i * 0.015,
-      });
-    }
-
-    // Feet dust — compact puffs kicked outward from the launch point
-    for (let i = 0; i < 4; i++) {
-      const size = rand(22, 34);
-      engine.spawn({
-        x: footX + rand(-10, 10),
-        y: footY - rand(2, 8),
-        vx: rand(-70, 70),
-        vy: rand(20, 55),
-        gravity: 80,
-        drag: 0.9,
-        size,
-        sizeEnd: size * rand(0.35, 0.5),
-        alpha: rand(0.65, 0.82),
-        alphaEnd: 0,
-        ease: "outCubic",
-        easeAlpha: "inCubic",
-        rotationSpeed: rand(-0.8, 0.8),
-        maxLife: rand(0.22, 0.34),
-        texture: pickPuff(engine.textures),
-      });
-    }
+    // Launch smoke plume (sprite): straight-up when neutral, angled when the
+    // player is lunging with A/D. Mirror the tilted plume for leftward lunges.
+    const tilted = hDir !== 0;
+    spawnLiftoffSmoke(engine, footX, footY, {
+      tilted,
+      flip: hDir < 0,
+    });
 
     // Ice chips kicked from the dohyo surface
     for (let i = 0; i < 3; i++) {
@@ -3847,31 +4472,6 @@ const PRESETS = {
       }
     }
 
-    // Displaced-air puffs — symmetrical below each wing, pushed downward
-    const wakeY = GAME_H - y - 40;
-    for (const side of [-1, 1]) {
-      for (let i = 0; i < 2; i++) {
-        const size = rand(16, 24);
-        engine.spawn({
-          x: bodyX + side * dir * rand(30, 50),
-          y: wakeY + rand(4, 14),
-          vx: side * dir * rand(25, 55),
-          vy: rand(60, 110),
-          gravity: 40,
-          drag: 0.92,
-          size,
-          sizeEnd: size * rand(0.45, 0.6),
-          alpha: rand(0.55, 0.75),
-          alphaEnd: 0,
-          ease: "outCubic",
-          easeAlpha: "outQuad",
-          rotationSpeed: 0,
-          maxLife: rand(0.18, 0.28),
-          texture: pickSmallPuff(engine.textures),
-        });
-      }
-    }
-
     // Wing-tip sparks — mirrored outward from each wing
     for (const side of [-1, 1]) {
       engine.spawn({
@@ -3905,27 +4505,29 @@ const PRESETS = {
     const wakeY = GAME_H - y - 74;
     const bodyX = x;
 
-    // Down-feather puffs — two soft blooms under each wing per beat
+    // Down-feather puffs — two soft blooms under each wing per beat (4 total)
+    // for a fuller cluster. The second puff is slightly smaller/offset so they
+    // read as a little burst rather than a clone.
     for (const side of [-1, 1]) {
       const leadBoost = hDir === 0 ? 1 : side === hDir ? rand(1.15, 1.32) : rand(0.88, 0.96);
-      for (let i = 0; i < 2; i++) {
-        const size = rand(22, 34) * (i === 0 ? leadBoost : leadBoost * 0.75);
-        engine.spawn({
-          x: bodyX + side * dir * rand(32, 52) + hDir * rand(8, 18),
-          y: wakeY + rand(0, 8) + i * rand(1, 4),
+      for (let k = 0; k < 2; k++) {
+        const sizeMul = k === 0 ? 1 : rand(0.66, 0.82);
+        const size = rand(64, 96) * leadBoost * sizeMul;
+        spawnSmokePuff(engine, {
+          x: bodyX + side * dir * rand(32, 52) + hDir * rand(8, 18) + rand(-10, 10),
+          y: wakeY + rand(0, 8) + k * rand(4, 12),
           vx: side * dir * rand(18, 42) + hDir * rand(28, 58),
           vy: rand(40, 78),
           gravity: 24,
           drag: 0.91,
           size,
-          sizeEnd: size * rand(0.6, 0.78),
+          sizeEnd: size * 1.05, // sheet does the bloom/dissipate itself
           alpha: rand(0.72, 0.9),
           alphaEnd: 0,
           ease: "outCubic",
           easeAlpha: "inCubic",
-          rotationSpeed: rand(-0.4, 0.4),
           maxLife: rand(0.34, 0.52),
-          texture: i === 0 ? pickPuff(engine.textures) : pickSmallPuff(engine.textures),
+          delay: k === 0 ? 0 : rand(0.02, 0.06),
         });
       }
     }
@@ -4040,10 +4642,11 @@ const PRESETS = {
       });
     }
 
-    // Torn-air wisps — ripped upward above the diving silhouette
+    // Torn-air wisps — ripped upward above the diving silhouette (animated
+    // smoke-puff sprite).
     if (Math.random() < 0.7) {
-      const size = rand(10, 18);
-      engine.spawn({
+      const size = rand(38, 58);
+      spawnSmokePuff(engine, {
         x: bodyX + rand(-22, 22),
         y: bodyY - rand(4, 16),
         vx: rand(-40, 40),
@@ -4051,14 +4654,12 @@ const PRESETS = {
         gravity: 20,
         drag: 0.9,
         size,
-        sizeEnd: size * rand(0.55, 0.75),
+        sizeEnd: size * 1.05,
         alpha: rand(0.45, 0.65),
         alphaEnd: 0,
         ease: "outCubic",
         easeAlpha: "outQuad",
-        rotationSpeed: rand(-2, 2),
         maxLife: rand(0.14, 0.24),
-        texture: pickSmallPuff(engine.textures),
       });
     }
 
@@ -4124,6 +4725,14 @@ class Particle {
     this.lastFollowY = 0;
     /** Cleared instantly when a perfect raw parry fires so gold burst isn't mixed with hold-VFX blues. */
     this.rawParryBlueHold = false;
+    // Optional animated sprite sheet. When `sheet` is set, the renderer steps
+    // through frames [sheetStart..sheetEnd] of the grid over the particle's life
+    // instead of drawing a static `texture`.
+    this.sheet = null;
+    this.sheetCols = 1;
+    this.sheetRows = 1;
+    this.sheetStart = 0;
+    this.sheetEnd = 0;
   }
 }
 
@@ -4308,6 +4917,11 @@ export class ParticleEngine {
     p.rawParryBlueHold = cfg.rawParryBlueHold ?? false;
     p.palmThrustFx = cfg.palmThrustFx ?? false;
     p.palmThrustOwner = cfg.palmThrustOwner ?? null;
+    p.sheet = cfg.sheet ?? null;
+    p.sheetCols = cfg.sheetCols ?? 1;
+    p.sheetRows = cfg.sheetRows ?? 1;
+    p.sheetStart = cfg.sheetStart ?? 0;
+    p.sheetEnd = cfg.sheetEnd ?? 0;
   }
 
   _acquire() {
@@ -4407,7 +5021,23 @@ export class ParticleEngine {
     if (p.rotation) ctx.rotate(p.rotation);
     if (p.stretchX !== 1) ctx.scale(p.stretchX, 1);
     const half = size / 2;
-    ctx.drawImage(p.texture, -half, -half, size, size);
+    if (p.sheet) {
+      // Animated sprite sheet: pick the frame for this point in the life, then
+      // blit that frame's sub-rect scaled to the particle's draw size.
+      const total = p.sheetEnd - p.sheetStart + 1;
+      let fi = p.sheetStart + Math.floor(rawT * total);
+      if (fi > p.sheetEnd) fi = p.sheetEnd;
+      // Support both <img> (naturalWidth) and offscreen <canvas> (width) sheets.
+      const sheetW = p.sheet.naturalWidth || p.sheet.width;
+      const sheetH = p.sheet.naturalHeight || p.sheet.height;
+      const fw = sheetW / p.sheetCols;
+      const fh = sheetH / p.sheetRows;
+      const sx = (fi % p.sheetCols) * fw;
+      const sy = Math.floor(fi / p.sheetCols) * fh;
+      ctx.drawImage(p.sheet, sx, sy, fw, fh, -half, -half, size, size);
+    } else {
+      ctx.drawImage(p.texture, -half, -half, size, size);
+    }
     ctx.restore();
   }
 
@@ -4436,7 +5066,7 @@ export class ParticleEngine {
 
     for (let i = 0; i < this.particles.length; i++) {
       const p = this.particles[i];
-      if (!p.active || !p.texture || p.delay > 0) continue;
+      if (!p.active || (!p.texture && !p.sheet) || p.delay > 0) continue;
 
       // `behindDohyoWhenOutside` particles (p.x is tracked in GAME-space)
       // route behind the dohyo only once their owner crosses the ring edge,

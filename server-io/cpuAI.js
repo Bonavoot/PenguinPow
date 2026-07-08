@@ -4,12 +4,14 @@
 // and intelligent grab system usage based on positioning and stamina.
 
 const { ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST,
+        ROPE_JUMP_CENTER_FRACTION,
         SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS, SIDESTEP_TOTAL_MS,
-        SIDESTEP_STAMINA_COST, SIDESTEP_INITIATION_RANGE,
+        SIDESTEP_STAMINA_COST,
         DODGE_STARTUP_MS, DODGE_DURATION, DODGE_STAMINA_COST,
         GRAB_STARTUP_DURATION_MS, GROUND_LEVEL, DOHYO_FALL_DEPTH,
         SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST,
-        RAW_PARRY_STAMINA_COST, POWER_UP_TYPES,
+        RAW_PARRY_STAMINA_COST, POWER_UP_TYPES, SLAP_KILL_RANGE,
+        PALM_THRUST_STAMINA_COST,
         CLINCH_THROW_LAND_THRESHOLD, CLINCH_THROW_KILL_THRESHOLD,
         FLAP_IMPULSE, FLAP_FLAP_H_IMPULSE, FLAP_CHARGE_COOLDOWN_MS, FLAP_STAMINA_COST,
         BALANCE_MAX } = require("./constants");
@@ -88,6 +90,23 @@ const AI_CONFIG = {
   SIDESTEP_CORNER_CHANCE: 0.25,       // Chance to sidestep when cornered and distance is safe
   SIDESTEP_SAFE_MIN_DISTANCE: 100,    // Don't sidestep if opponent is point-blank (startup is punishable)
   SIDESTEP_SAFE_MAX_DISTANCE: 250,    // Don't sidestep if opponent is too far (won't arc past them)
+
+  // === PHASE 3.3/3.4: Corner economy & palm thrust ===
+  // Corner escape used to roll per DECISION TICK → near-certain escape within a
+  // second. Now it's ONE decision per corner entry, then a cooldown before the
+  // CPU re-decides, plus a hard per-round escape budget. Budget spent → the CPU
+  // fights out of the corner instead of fleeing.
+  CORNER_DECISION_COOLDOWN_MS: 1500,  // Min ms between corner-answer re-rolls
+  AI_CORNER_ESCAPE_BUDGET: 2,         // Sidestep/rope-jump escapes allowed per round
+  // Palm thrust — the anti-mash counter-poke the CPU never used before. Shared
+  // cooldown so it stays a read, not a habit.
+  PALM_DECISION_COOLDOWN_MS: 1500,    // Min ms between palm attempts (any context)
+  PALM_COUNTERPOKE_CHANCE: 0.30,      // vs a slap-spammer at poke range (145-180px)
+  PALM_EDGE_FINISH_CHANCE: 0.50,      // opponent pinned within SLAP_KILL_RANGE of rope
+  PALM_COUNTERPOKE_MIN_RANGE: 145,    // Poke band: too close = just slap/grab
+  PALM_COUNTERPOKE_MAX_RANGE: 180,    // Poke band: too far = whiffs
+  PALM_SLAP_SPAM_WINDOW_MS: 4000,     // Rolling window for counting opponent slaps
+  PALM_SLAP_SPAM_THRESHOLD: 3,        // Slaps in window that flag a "spammer"
 
   // Slap string commitment — full rekka strings instead of random isolated slaps
   STRING_FULL_CHANCE: 0.30,           // Chance to do full 3-hit string (mouse1×3)
@@ -242,9 +261,86 @@ function resolveDifficulty(difficulty) {
   return _diffCache[key];
 }
 
+// ── PHASE 4.4: CONTINUOUS DIFFICULTY CURVE (BASHO only) ─────────────────────
+// Replace the 4-cliff tier mapping with interpolation along a ladder position
+// L ∈ [0,1] (division index + banzuke number + back-third ramp, computed
+// client-side). Every numeric dial lerps between the anchor profiles; the
+// IMPOSSIBLE-only booleans soften to an L threshold so they arrive before the
+// very top. Classic VS CPU / PvP never send an L → the discrete resolver above
+// runs untouched (byte-identical firewall).
+const LADDER_ANCHORS = [
+  { L: 0.0,  key: "EASY" },
+  { L: 0.25, key: "NORMAL" },
+  { L: 0.6,  key: "HARD" },
+  { L: 1.0,  key: "IMPOSSIBLE" },
+];
+const LADDER_NUM_DIALS = [
+  "missChance", "pressureMiss", "jitterMin", "jitterMax", "decisionCooldown",
+  "parryMult", "dodgeMult", "snowballParryMult", "flapDefMult",
+  "gripUpMult", "clinchEscapeBoost",
+];
+const _ladderCache = {};
+function resolveDifficultyByLadder(L) {
+  const x = L < 0 ? 0 : L > 1 ? 1 : L;
+  const bucket = Math.round(x * 100); // cache in 1% steps
+  if (_ladderCache[bucket]) return _ladderCache[bucket];
+  let lo = LADDER_ANCHORS[0];
+  let hi = LADDER_ANCHORS[LADDER_ANCHORS.length - 1];
+  for (let i = 0; i < LADDER_ANCHORS.length - 1; i++) {
+    if (x >= LADDER_ANCHORS[i].L && x <= LADDER_ANCHORS[i + 1].L) {
+      lo = LADDER_ANCHORS[i];
+      hi = LADDER_ANCHORS[i + 1];
+      break;
+    }
+  }
+  const span = hi.L - lo.L;
+  const t = span > 0 ? (x - lo.L) / span : 0;
+  const A = DIFFICULTY_PROFILES[lo.key];
+  const B = DIFFICULTY_PROFILES[hi.key];
+  const out = {};
+  for (const k of LADDER_NUM_DIALS) out[k] = A[k] + (B[k] - A[k]) * t;
+  out.usePowerUps = x >= 0.25;
+  out.clinchBreakEscape = x >= 0.8;
+  out.perfectParry = x >= 0.85;
+  out.whiffPunish = x >= 0.85;
+  _ladderCache[bucket] = out;
+  return out;
+}
+// Map a ladder position to the nearest tier-name for the band-keyed tables
+// (legacy seam-wakeup roll, memory N/S, top-band convergence). Midpoints between
+// anchors: 0.125 / 0.425 / 0.80.
+function ladderBandKey(L) {
+  const x = L < 0 ? 0 : L > 1 ? 1 : L;
+  if (x < 0.125) return "EASY";
+  if (x < 0.425) return "NORMAL";
+  if (x < 0.8) return "HARD";
+  return "IMPOSSIBLE";
+}
+
 // Active difficulty profile for the CPU currently being processed. Defaults to
 // HARD so the brain is fully functional even if a caller never sets it.
 let DIFF = resolveDifficulty("HARD");
+// Resolved difficulty KEY (name) for the current CPU — used by tables that vary
+// by tier name rather than by profile field (e.g. the ender-seam wakeup roll).
+let DIFF_KEY = "HARD";
+
+// ── PHASE 1: ENDER-SEAM VICTIM WAKEUP WEIGHTS (spec 1.5) ────────────────────
+// When the CPU eats slap2 of a NEUTRAL string (the seam opens), it rolls ONE
+// wakeup option during the freeze, jittered by the existing reaction pipeline.
+// Rows: parry / mash (desperation slap) / escape (sidestep); the remainder is
+// "eat it" (do nothing → still eats slap3, so beginners feel no change).
+const SEAM_WAKEUP_WEIGHTS = {
+  EASY:       { parry: 0.10, mash: 0.15, escape: 0.05 }, // eat 0.70
+  NORMAL:     { parry: 0.20, mash: 0.20, escape: 0.10 }, // eat 0.50
+  HARD:       { parry: 0.30, mash: 0.25, escape: 0.10 }, // eat 0.35
+  IMPOSSIBLE: { parry: 0.40, mash: 0.30, escape: 0.10 }, // eat 0.20
+};
+
+// ── PHASE 3.3: CORNER-ANSWER MENU (spec 3.3.3) ──────────────────────────────
+// Replaces "always flee". When the CPU commits a corner decision it rolls this
+// menu once (per entry + cooldown). The baseline weights now live in
+// CORNER_POLICY.balanced (Phase 4.2); an archetype flavors them, and a spent
+// escape budget collapses the `escape` slot into `fight` (corner answers only).
 
 // ============================================
 // AI PERSONALITY ARCHETYPES (BASHO rival roster — Phase 8 follow-up)
@@ -319,6 +415,197 @@ function resolvePersonality(archetype) {
 // Active personality for the CPU currently being processed. Defaults to the
 // neutral `balanced` profile so non-BASHO CPUs are unchanged.
 let PERS = resolvePersonality("balanced");
+// Resolved archetype KEY for the current CPU. "balanced" for every non-BASHO
+// player (the firewall) — used to gate the Phase 4 decision-moment policies and
+// memory so PvP / VS CPU stay byte-identical to the legacy behavior.
+let PERS_KEY = "balanced";
+
+// ============================================================================
+// PHASE 4.2 — DECISION-MOMENT POLICIES (per-archetype, rows sum to 1.0)
+// ============================================================================
+// Personality stops being "just multipliers" and expresses itself where the
+// player is watching: the ender seam (attacker + victim) and the corner. The
+// `balanced` row reproduces the Phase 1-3 baselines EXACTLY, so a non-archetype
+// CPU (PERS_KEY === "balanced") is unchanged. Only BASHO rivals carry a real
+// archetype (roomManagement.applyBashoOpponentProfile), so the firewall holds.
+//
+// Ender choice (attacker at the seam): slap3 / grab / bait(walk-away). balanced
+// reproduces the legacy AI_CONFIG.STRING_FULL_CHANCE(0.30)/STRING_GRAB_CHANCE
+// (0.25) split (remainder = bait), so non-BASHO CPUs are byte-identical.
+const ENDER_POLICY = {
+  balanced: { slap3: 0.30, grab: 0.25, bait: 0.45 },
+  pusher:   { slap3: 0.55, grab: 0.15, bait: 0.30 },
+  grappler: { slap3: 0.20, grab: 0.55, bait: 0.25 },
+  counter:  { slap3: 0.30, grab: 0.20, bait: 0.50 },
+  brawler:  { slap3: 0.65, grab: 0.20, bait: 0.15 },
+};
+// Wakeup choice (victim at the seam): parry / mash / escape / eat.
+const WAKEUP_POLICY = {
+  balanced: { parry: 0.25, mash: 0.20, escape: 0.10, eat: 0.45 },
+  pusher:   { parry: 0.15, mash: 0.25, escape: 0.10, eat: 0.50 },
+  grappler: { parry: 0.15, mash: 0.15, escape: 0.10, eat: 0.60 },
+  counter:  { parry: 0.45, mash: 0.10, escape: 0.15, eat: 0.30 },
+  brawler:  { parry: 0.10, mash: 0.40, escape: 0.05, eat: 0.45 },
+};
+// Corner answer: escape / palm / parry / fight / grab. balanced === the Phase 3
+// corner-menu baseline. Only counter/balanced keep escape >= 0.25 (spec 4.2).
+const CORNER_POLICY = {
+  balanced: { escape: 0.35, palm: 0.20, parry: 0.15, fight: 0.20, grab: 0.10 },
+  pusher:   { escape: 0.10, palm: 0.30, parry: 0.10, fight: 0.40, grab: 0.10 },
+  grappler: { escape: 0.15, palm: 0.10, parry: 0.10, fight: 0.20, grab: 0.45 },
+  counter:  { escape: 0.25, palm: 0.25, parry: 0.40, fight: 0.05, grab: 0.05 },
+  brawler:  { escape: 0.10, palm: 0.15, parry: 0.10, fight: 0.55, grab: 0.10 },
+};
+// Clinch style (spec 4.2, the 4th decision moment). NOT a weight row — a set of
+// LEANS applied to the existing handleClinchBehavior rolls: grappler grips up
+// fast and prefers lift/pull; pusher pushes (vs plant) and jolts; counter breaks
+// early; brawler is jolt-happy. `balanced` is all-neutral (mult 1 / bias 0), so a
+// non-archetype CPU takes the exact legacy clinch path (byte-identical rolls).
+//   gripUpMult   — scales the grip-up delay (<1 = grips up sooner)
+//   joltMult     — scales the clinch-jolt probability
+//   pushBias     — added to the neutral push-vs-plant coin (higher = pushes more)
+//   liftPullBias — shifts throw-decision toward lift/pull (higher = more lift/pull)
+//   breakEager   — counter's early defensive clinch break (raises chance + lowers
+//                  the balance-deficit threshold that triggers it)
+const CLINCH_STYLE = {
+  balanced: { gripUpMult: 1.0,  joltMult: 1.0,  pushBias: 0.0,   liftPullBias: 0.0,  breakEager: 0.0 },
+  pusher:   { gripUpMult: 1.0,  joltMult: 1.25, pushBias: 0.20,  liftPullBias: -0.15, breakEager: 0.0 },
+  grappler: { gripUpMult: 0.7,  joltMult: 0.8,  pushBias: -0.05, liftPullBias: 0.30, breakEager: 0.0 },
+  counter:  { gripUpMult: 1.1,  joltMult: 0.7,  pushBias: -0.12, liftPullBias: 0.0,  breakEager: 0.30 },
+  brawler:  { gripUpMult: 0.9,  joltMult: 1.6,  pushBias: 0.10,  liftPullBias: 0.0,  breakEager: 0.0 },
+};
+
+// ============================================================================
+// PHASE 4.3 — CURRICULUM KITS (per-division CPU toolkits, BASHO only)
+// ============================================================================
+// Low ranks are SPECIALISTS with narrow kits (missing verbs, not dumbed-down
+// reactions); each division adds tools so the ladder teaches the game. The verb
+// set is CUMULATIVE down the ladder. Resolved per-CPU from `cpu.aiDivision`
+// (set by the BASHO roster). A non-BASHO CPU has no division → KIT stays null →
+// `hasVerb` returns true for everything → the full legacy kit (the firewall).
+const KIT_DIVISION_ORDER = [
+  "jonokuchi", "jonidan", "sandanme", "makushita",
+  "juryo", "maegashira", "komusubi", "sekiwake", "ozeki", "yokozuna",
+];
+// Verbs ADDED at each division (inherit everything below). Base = slap string,
+// grab, and clinch push ("hit buttons, learn the rope").
+const KIT_ADDS_BY_DIVISION = {
+  jonokuchi:  ["slapString", "grab", "clinchPush"],
+  jonidan:    ["plant", "parry"],
+  sandanme:   ["palm", "clinchThrow"],
+  makushita:  ["jolt", "pull", "sidestep"],
+  juryo:      ["ropeJump", "lift", "powerUps"],
+  maegashira: ["memory", "seamMixups"], // komusubi+ inherit this full kit
+};
+const DIVISION_KIT = (() => {
+  const out = {};
+  let acc = [];
+  for (const key of KIT_DIVISION_ORDER) {
+    acc = acc.concat(KIT_ADDS_BY_DIVISION[key] || []);
+    out[key] = new Set(acc);
+  }
+  return out;
+})();
+
+// Active kit for the CPU being processed (null = full kit / non-BASHO).
+let KIT = null;
+// A verb is available if there's no kit gate (non-BASHO) or the kit includes it.
+function hasVerb(verb) {
+  return !KIT || KIT.has(verb);
+}
+
+// PHASE 4.1 — MEMORY / READ SYSTEM per difficulty band. N = min observations of
+// a modal (>=60%) player choice before the CPU shifts its counter-weight by S;
+// the shift decays over ~20s of contrary evidence. EASY has no memory.
+const MEMORY_MODAL_THRESHOLD = 0.60;  // modal choice frequency that triggers a shift
+const MEMORY_SHIFT_CAP = 0.30;        // total shift ceiling (spec 4.1)
+const MEMORY_DECAY_MS = 20000;        // contrary-evidence decay horizon
+const MEMORY_BANDS = {
+  EASY:       { N: Infinity, S: 0 },    // no memory
+  NORMAL:     { N: 4, S: 0.10 },
+  HARD:       { N: 3, S: 0.20 },
+  IMPOSSIBLE: { N: 2, S: 0.30 },
+};
+
+// True at the IMPOSSIBLE band, where personality deltas converge halfway toward
+// `balanced` ("complete with a lean, never flat" — spec 4.2 top-rank).
+function isTopBand() {
+  return DIFF_KEY === "IMPOSSIBLE";
+}
+
+// Resolve an archetype's policy row, converged 50% toward balanced at the top
+// band. Non-archetype CPUs get the balanced row untouched (legacy).
+function resolvePolicy(table, keys) {
+  const arch = table[PERS_KEY] || table.balanced;
+  if (PERS_KEY === "balanced" || !isTopBand()) return { ...arch };
+  const bal = table.balanced;
+  const out = {};
+  for (const k of keys) out[k] = bal[k] + (arch[k] - bal[k]) * 0.5;
+  return out;
+}
+
+// Weighted single draw over `keys` using `weights` (tolerates non-normalized
+// rows after memory shifts — divides by the live total).
+function weightedPick(weights, keys) {
+  let total = 0;
+  for (const k of keys) total += Math.max(0, weights[k] || 0);
+  if (total <= 0) return keys[keys.length - 1];
+  let r = Math.random() * total;
+  let cum = 0;
+  for (const k of keys) {
+    cum += Math.max(0, weights[k] || 0);
+    if (r < cum) return k;
+  }
+  return keys[keys.length - 1];
+}
+
+// PHASE 4.1: log the HUMAN's slap-string ender choice (slap3 vs grab) via rising
+// edges. Only runs for an archetype CPU, so non-BASHO players are untouched and
+// carry no memory. Old entries age out of the decay window in readPlayerEnderBias.
+function observePlayerEnder(cpu, human, aiState, currentTime) {
+  // PHASE 4.3: memory is a Maegashira+ verb (full kit). Lower ranks don't read.
+  if (PERS_KEY === "balanced" || !human || !hasVerb("memory")) return;
+  const pos = human.slapStringPosition || 0;
+  if (pos >= 3 && (aiState.lastSeenHumanStringPos || 0) < 3) {
+    aiState.playerEnderHistory.push({ choice: "slap3", t: currentTime });
+  }
+  aiState.lastSeenHumanStringPos = pos;
+
+  const grabEnder = !!human.pendingGrabEnder;
+  if (grabEnder && !aiState.humanGrabEnderSeen) {
+    aiState.playerEnderHistory.push({ choice: "grab", t: currentTime });
+  }
+  aiState.humanGrabEnderSeen = grabEnder;
+
+  // Bound the log; the decay window governs relevance, this just caps memory.
+  const hist = aiState.playerEnderHistory;
+  if (hist.length > 12) hist.splice(0, hist.length - 12);
+}
+
+// PHASE 4.1: read the human's modal ender within the decay window and return the
+// wakeup option to reinforce (parry beats slap3, mash beats grab), or null.
+// EASY band = no memory; higher bands need fewer observations + shift harder.
+function readPlayerEnderBias(aiState, currentTime) {
+  if (!hasVerb("memory")) return null;
+  const band = MEMORY_BANDS[DIFF_KEY];
+  if (!band || band.S <= 0 || !isFinite(band.N)) return null;
+  const hist = aiState.playerEnderHistory;
+  if (!hist || hist.length < band.N) return null;
+  let slap3 = 0;
+  let grab = 0;
+  let n = 0;
+  for (let i = hist.length - 1; i >= 0; i--) {
+    if (currentTime - hist[i].t > MEMORY_DECAY_MS) break;
+    if (hist[i].choice === "slap3") slap3++;
+    else if (hist[i].choice === "grab") grab++;
+    n++;
+  }
+  if (n < band.N) return null;
+  const shift = Math.min(band.S, MEMORY_SHIFT_CAP);
+  if (slap3 / n >= MEMORY_MODAL_THRESHOLD) return { option: "parry", amount: shift };
+  if (grab / n >= MEMORY_MODAL_THRESHOLD) return { option: "mash", amount: shift };
+  return null;
+}
 
 // Clamp a probability so dialed-up multipliers can't exceed a near-certainty.
 const clampChance = (c) => (c > 0.95 ? 0.95 : c < 0 ? 0 : c);
@@ -367,6 +654,10 @@ function getAIState(playerId) {
       // === NEW: Read system (preemptive actions instead of pure reactions) ===
       lastReadTime: 0,
       readCooldown: 0,
+      // === PHASE 1: ender-seam victim wakeup ===
+      seamWakeupChoice: null,   // 'parry' | 'mash' | 'escape' | 'eat' | null
+      seamWakeupExpire: 0,      // deadline to execute the rolled wakeup
+      seamHandledTime: 0,       // dedupe key = the hit's seamOpenedTime
       // === NEW: Movement fluidity ===
       movementIntent: null,      // 'approach', 'retreat', 'feint', 'circle'
       movementIntentUntil: 0,
@@ -396,6 +687,20 @@ function getAIState(playerId) {
       reactionProcessed: false,
       // === Rope jump tracking ===
       lastRopeJumpTime: 0,
+      // === PHASE 3.3/3.4: corner economy & palm ===
+      cornerEscapeBudget: AI_CONFIG.AI_CORNER_ESCAPE_BUDGET, // refilled each round
+      lastCornerDecisionTime: 0,   // gate for CORNER_DECISION_COOLDOWN_MS
+      cornerActiveLast: false,     // edge-detect fresh corner entries
+      prevHakkiyoiCount: 0,        // round-transition detector (budget refill)
+      lastPalmTime: 0,             // shared PALM_DECISION_COOLDOWN_MS gate
+      opponentSlapTimes: [],       // rolling timestamps of the human's slaps
+      lastSeenHumanAttackStart: 0, // edge-detect new human attacks for the tracker
+      // === PHASE 4.1: memory / read system ===
+      // Timestamped log of the human's string ENDER choice (slap3 vs grab). Read
+      // to bias the CPU's own wakeup weights (parry beats slap3, mash beats grab).
+      playerEnderHistory: [],      // [{ choice: 'slap3'|'grab', t }]
+      lastSeenHumanStringPos: 0,   // edge-detect the human reaching slap3
+      humanGrabEnderSeen: false,   // edge-detect a human grab ender
       // === Slap pressure tracking — adapts defense after consecutive hits ===
       consecutiveHitsTaken: 0,
       lastHitTime: 0,
@@ -715,7 +1020,9 @@ function canDodge(cpu) {
 
 // Check if CPU can parry
 function canParry(cpu) {
-  return canAct(cpu) && 
+  // PHASE 4.3: parry is a Jonidan+ verb — a Jonokuchi specialist can't answer yet.
+  return hasVerb("parry") &&
+         canAct(cpu) && 
          !cpu.isAttacking && 
          !cpu.isGrabbing &&
          !cpu.isBeingGrabbed &&
@@ -792,6 +1099,8 @@ function handlePendingKeyReleases(cpu, aiState, currentTime) {
   if (aiState.mouse1ReleaseTime > 0 && currentTime >= aiState.mouse1ReleaseTime) {
     cpu.keys.mouse1 = false;
     aiState.mouse1ReleaseTime = 0;
+    // Clear any unconsumed palm intent so it can't retag a later slap press.
+    cpu.palmThrustQueued = false;
   }
   if (aiState.shiftReleaseTime > 0 && currentTime >= aiState.shiftReleaseTime) {
     cpu.keys.shift = false;
@@ -822,21 +1131,55 @@ function handlePendingKeyReleases(cpu, aiState, currentTime) {
 // Main AI update function - called every game tick
 function updateCPUAI(cpu, human, room, currentTime) {
   if (!cpu || !human || !cpu.isCPU) return;
-  
+
+  const aiState = getAIState(cpu.id);
+
+  // PHASE 3.3 — per-round corner escape budget. hakkiyoiCount drops to 0 between
+  // rounds and returns to >0 at each tachiai; watch the 0→>0 edge to refill. This
+  // runs BEFORE the early-return so it can observe the between-round 0 state.
+  if (room.hakkiyoiCount !== aiState.prevHakkiyoiCount) {
+    if (room.hakkiyoiCount > 0 && aiState.prevHakkiyoiCount === 0) {
+      aiState.cornerEscapeBudget = AI_CONFIG.AI_CORNER_ESCAPE_BUDGET;
+      aiState.lastCornerDecisionTime = 0;
+      aiState.cornerActiveLast = false;
+      aiState.opponentSlapTimes = [];
+    }
+    aiState.prevHakkiyoiCount = room.hakkiyoiCount;
+  }
+
   // Don't process AI during game over or before game starts
   if (room.gameOver || room.matchOver || !room.gameStart || room.hakkiyoiCount === 0) {
     resetAllKeys(cpu);
     return;
   }
-  
-  const aiState = getAIState(cpu.id);
 
   // Resolve this CPU's difficulty tier (EASY/NORMAL/HARD/IMPOSSIBLE) once for
   // the whole decision pass. HARD === the AI_CONFIG baseline (no change).
-  DIFF = resolveDifficulty(room && room.cpuDifficulty);
+  // PHASE 4.4: prefer the continuous ladder position when BASHO supplied one;
+  // otherwise fall back to the discrete tier (classic VS CPU — byte-identical).
+  const ladderL = (room && typeof room.cpuLadderPosition === "number")
+    ? room.cpuLadderPosition
+    : null;
+  if (ladderL != null) {
+    DIFF = resolveDifficultyByLadder(ladderL);
+    DIFF_KEY = ladderBandKey(ladderL);
+  } else {
+    DIFF = resolveDifficulty(room && room.cpuDifficulty);
+    DIFF_KEY = (room && room.cpuDifficulty && DIFFICULTY_PROFILES[room.cpuDifficulty])
+      ? room.cpuDifficulty
+      : "HARD";
+  }
   // Resolve this CPU's personality archetype (BASHO rival roster). Non-BASHO
   // CPUs have no archetype → `balanced` → legacy behavior.
   PERS = resolvePersonality(cpu && cpu.aiArchetype);
+  PERS_KEY = (cpu && cpu.aiArchetype && PERSONALITY_PROFILES[cpu.aiArchetype])
+    ? cpu.aiArchetype
+    : "balanced";
+  // PHASE 4.3: resolve this CPU's curriculum kit from its BASHO division. No
+  // division (non-BASHO, or an unknown key) → null → full kit (legacy firewall).
+  KIT = (cpu && cpu.aiDivision && DIVISION_KIT[cpu.aiDivision])
+    ? DIVISION_KIT[cpu.aiDivision]
+    : null;
 
   // Don't process AI during grab break - both players are locked
   const inClinchBreak = cpu.isGrabBreaking || cpu.isGrabBreakCountered || cpu.isGrabBreakSeparating ||
@@ -877,7 +1220,24 @@ function updateCPUAI(cpu, human, room, currentTime) {
   if (aiState.lastHitTime && currentTime - aiState.lastHitTime > AI_CONFIG.PRESSURE_DECAY_TIME) {
     aiState.consecutiveHitsTaken = 0;
   }
-  
+
+  // === PHASE 3.4: track the human's slap frequency (rolling window) ===
+  // Observable info only — edge-detect each new human slap by its attackStartTime
+  // and keep a pruned list of timestamps. Seeds the counter-poke read AND (later)
+  // Phase 4's memory system.
+  if (human.isAttacking && human.attackType === "slap" &&
+      human.attackStartTime && human.attackStartTime !== aiState.lastSeenHumanAttackStart) {
+    aiState.lastSeenHumanAttackStart = human.attackStartTime;
+    aiState.opponentSlapTimes.push(currentTime);
+  }
+  if (aiState.opponentSlapTimes.length) {
+    const spamCutoff = currentTime - AI_CONFIG.PALM_SLAP_SPAM_WINDOW_MS;
+    aiState.opponentSlapTimes = aiState.opponentSlapTimes.filter(t => t >= spamCutoff);
+  }
+
+  // === PHASE 4.1: memory — log the human's string ENDER tendency (BASHO only) ===
+  observePlayerEnder(cpu, human, aiState, currentTime);
+
   // HIGHEST PRIORITY: DI (Directional Influence) - Reduce knockback by holding opposite direction!
   if (cpu.isHit && cpu.knockbackVelocity && Math.abs(cpu.knockbackVelocity.x) > 0.1) {
     handleKnockbackDI(cpu, aiState, currentTime);
@@ -968,7 +1328,15 @@ function updateCPUAI(cpu, human, room, currentTime) {
   if (cpu.isBeingGrabbed && !cpu.isBeingThrown) {
     return;
   }
-  
+
+  // PHASE 1: ENDER-SEAM VICTIM WAKEUP — if the CPU just ate a neutral slap2,
+  // roll/execute a wakeup option (parry / mash / escape / eat). Runs before the
+  // normal reaction pipeline so the buffered choice fires the instant the CPU is
+  // actionable. Detection also happens while still stunned (returns false then).
+  if (handleSeamWakeup(cpu, human, aiState, currentTime)) {
+    return;
+  }
+
   // Handle pending parry release
   if (aiState.pendingParry) {
     if (currentTime >= aiState.parryReleaseTime || !human.isAttacking) {
@@ -985,15 +1353,23 @@ function updateCPUAI(cpu, human, room, currentTime) {
     return;
   }
   
-  // Priority 2: ESCAPE CORNER — but only if opponent is actually blocking the escape route
+  // Priority 2: CORNER ANSWER — but only if opponent is actually blocking the escape route
   // If opponent is on the SAME side as the corner (further into the edge), CPU should
-  // PRESS the advantage, not flee. Only flee when opponent is between CPU and center.
+  // PRESS the advantage, not flee. Only answer when opponent is between CPU and center.
+  // PHASE 3.3: this now rolls a MENU (escape/palm/parry/fight/grab) once per corner
+  // entry + cooldown, spends a per-round escape budget, and FALLS THROUGH to the
+  // defensive reaction pipeline when it declines to commit (no more escape tunnel).
   const corneredSide = getCorneredSide(cpu);
-  const opponentBlocksEscape = (corneredSide === -1 && human.x > cpu.x) ||
-                                (corneredSide === 1 && human.x < cpu.x);
-  if (corneredSide !== 0 && opponentBlocksEscape && canAct(cpu)) {
-    if (handleCornerEscape(cpu, human, aiState, currentTime, distance, corneredSide)) {
-      return;
+  if (corneredSide === 0) {
+    aiState.cornerActiveLast = false; // left the corner — next entry is "fresh"
+  } else {
+    const opponentBlocksEscape = (corneredSide === -1 && human.x > cpu.x) ||
+                                  (corneredSide === 1 && human.x < cpu.x);
+    if (opponentBlocksEscape && canAct(cpu)) {
+      if (handleCornerAnswer(cpu, human, aiState, currentTime, distance, corneredSide)) {
+        return;
+      }
+      // else: on cooldown / declined — fall through so a cornered CPU can still parry.
     }
   }
   
@@ -1012,10 +1388,23 @@ function updateCPUAI(cpu, human, room, currentTime) {
   // Priority 2.7: WHIFF PUNISH (high-tier) — the human just whiffed / is in
   // recovery or endlag; close in and punish with a grab or slap. Only fires when
   // the human is NOT attacking, so it never competes with the defensive reaction.
-  if (DIFF.whiffPunish && handleWhiffPunish(cpu, human, aiState, currentTime, distance)) {
+  // PHASE 4.2: the `counter` archetype is defined by punishing mistakes, so it
+  // unlocks whiff-punish one band early (from HARD), even if its base tier leaves
+  // it off — its identity is "waits and capitalizes."
+  const whiffPunishEnabled = DIFF.whiffPunish ||
+    (PERS_KEY === "counter" && (DIFF_KEY === "HARD" || DIFF_KEY === "IMPOSSIBLE"));
+  if (whiffPunishEnabled && handleWhiffPunish(cpu, human, aiState, currentTime, distance)) {
     return;
   }
-  
+
+  // Priority 2.8: PALM THRUST (PHASE 3.4) — the anti-mash counter-poke the CPU
+  // never used. Edge finisher (opponent pinned at the rope) + counter-poke vs a
+  // slap-spammer at poke range. Gated to neutral (opponent not mid-active-attack)
+  // so it demonstrates the tool without stealing the defensive reaction.
+  if (handlePalmUsage(cpu, human, aiState, currentTime, distance)) {
+    return;
+  }
+
   // Priority 3: React to opponent attacks with HUMAN-LIKE TIMING
   // Under slap pressure (3+ consecutive hits), the AI "wakes up" and gets sharper defensively.
   // Otherwise, normal jitter + miss chance apply.
@@ -1149,6 +1538,10 @@ function handleGrabBreak(cpu, grabber, aiState, currentTime) {
 function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
   resetAllKeys(cpu);
 
+  // PHASE 4.2: per-archetype clinch leans. balanced = neutral (identity), so a
+  // non-archetype CPU runs the exact legacy clinch rolls below.
+  const CS = CLINCH_STYLE[PERS_KEY] || CLINCH_STYLE.balanced;
+
   // During active throw/pull/lift/clash/jolt animations, the system handles everything
   if (cpu.clinchThrowActive || cpu.isClinchClashing || cpu.isClinchThrowing ||
       cpu.isBeingLifted || cpu.isResistingThrow || cpu.isResistingPull ||
@@ -1180,9 +1573,10 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
   // can plant/break BEFORE the opponent can throw them out of a fresh grab.
   if (!cpu.hasGrip && cpu.inClinch) {
     if (!aiState.clinchGripUpTime) {
+      // CS.gripUpMult: grappler grips up fast (0.7), counter a touch slower (1.1).
       aiState.clinchGripUpTime = currentTime + randomInRange(
-        AI_CONFIG.CLINCH_GRIP_UP_DELAY_MIN * DIFF.gripUpMult,
-        AI_CONFIG.CLINCH_GRIP_UP_DELAY_MAX * DIFF.gripUpMult
+        AI_CONFIG.CLINCH_GRIP_UP_DELAY_MIN * DIFF.gripUpMult * CS.gripUpMult,
+        AI_CONFIG.CLINCH_GRIP_UP_DELAY_MAX * DIFF.gripUpMult * CS.gripUpMult
       );
     }
     if (currentTime >= aiState.clinchGripUpTime) {
@@ -1198,9 +1592,12 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
   const cpuBalance = cpu.balance;
   const cpuStamina = cpu.stamina;
 
+  // PHASE 4.3: throw/pull/lift are gated by the clinchThrow verb (Sandanme+). A
+  // lower-division CPU can only push/plant in the clinch.
   const canRequestAction = cpu.hasGrip && !cpu.clinchThrowActive &&
                            !cpu.clinchThrowCooldown && !cpu.clinchThrowRequest &&
-                           !cpu.isClinchClashing;
+                           !cpu.isClinchClashing &&
+                           hasVerb("clinchThrow");
   const canLand = opponentBalance <= CLINCH_THROW_LAND_THRESHOLD;
   const canKill = opponentBalance < CLINCH_THROW_KILL_THRESHOLD;
 
@@ -1218,7 +1615,8 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
     cpu.hasGrip &&
     opponent.hasGrip &&
     cpuBackedToEdge &&
-    opponentBalance > cpuBalance + 8 && // losing the shove → throw-out is imminent
+    // CS.breakEager: the counter bails earlier (threshold 8 → ~2) — "breaks early".
+    opponentBalance > cpuBalance + (8 - CS.breakEager * 20) && // losing the shove → throw-out imminent
     cpuStamina > 28 && // enough stamina that breaking won't gas us
     !cpu.isGassed &&
     !cpu.clinchThrowActive && !opponent.clinchThrowActive &&
@@ -1230,7 +1628,7 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
   ) {
     if (currentTime - (aiState.lastClinchBreakCheck || 0) > 450) {
       aiState.lastClinchBreakCheck = currentTime;
-      if (chance(0.75)) {
+      if (chance(clampChance(0.75 + CS.breakEager))) {
         cpu.clinchBreakRequest = true;
         cpu.clinchBreakRequestTime = currentTime;
         aiState.lastActionType = "clinch_break_escape";
@@ -1284,10 +1682,11 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
 
     if (canKill && chance(AI_CONFIG.CLINCH_THROW_CHANCE_KILL * Math.min(aggMult.grab, 1.3))) {
       const liftViable = cpuNearestEdge > 100;
+      // CS.liftPullBias: grappler favors lift/pull over the raw throw; pusher the reverse.
       let action;
-      if (liftViable && chance(0.40)) {
+      if (liftViable && chance(clampChance(0.40 + CS.liftPullBias))) {
         action = "lift";
-      } else if (chance(0.55)) {
+      } else if (chance(clampChance(0.55 - CS.liftPullBias))) {
         action = "throw";
       } else {
         action = "pull";
@@ -1300,7 +1699,8 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
     } else if (canLand && chance(AI_CONFIG.CLINCH_THROW_CHANCE_LAND * Math.min(aggMult.grab, 1.3))) {
       const roll = Math.random();
       let action = null;
-      if (roll < 0.40) action = "throw";
+      // CS.liftPullBias shrinks the throw slice for grappler (spills into lift/pull).
+      if (roll < 0.40 - CS.liftPullBias) action = "throw";
       else if (roll < 0.65 && cpuNearestEdge > 80) action = "lift";
       else if (roll < 0.85) action = "pull";
       if (action) {
@@ -1326,7 +1726,12 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
   // Execute pending throw/pull/lift after reaction delay
   if (aiState.clinchThrowPending && currentTime >= aiState.clinchThrowExecuteTime) {
     if (canRequestAction) {
-      cpu.clinchThrowRequest = aiState.clinchThrowPending;
+      // PHASE 4.3: pull (Makushita+) and lift (Juryo+) fall back to a plain throw
+      // when the CPU's kit doesn't include them yet.
+      let act = aiState.clinchThrowPending;
+      if (act === "pull" && !hasVerb("pull")) act = "throw";
+      if (act === "lift" && !hasVerb("lift")) act = "throw";
+      cpu.clinchThrowRequest = act;
       cpu.clinchThrowRequestTime = currentTime;
     }
     aiState.clinchThrowPending = null;
@@ -1334,7 +1739,9 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
   }
 
   // --- CLINCH JOLT DECISION (Mouse1 during clinch) ---
-  const canJolt = cpu.hasGrip && !cpu.isClinchJolting && !cpu.clinchJoltRecovery &&
+  // PHASE 4.3: clinch jolt is a Makushita+ verb.
+  const canJolt = hasVerb("jolt") &&
+                  cpu.hasGrip && !cpu.isClinchJolting && !cpu.clinchJoltRecovery &&
                   !cpu.clinchJoltCooldown && !cpu.clinchThrowActive && !cpu.isClinchClashing &&
                   !cpu.clinchJoltRequest && !cpu.isResistingThrow && !cpu.isResistingPull &&
                   !cpu.isBeingLifted && cpuStamina >= 10;
@@ -1358,7 +1765,8 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
         joltChance = 0.0;
       }
 
-      if (chance(joltChance)) {
+      // CS.joltMult: brawler is jolt-happy (1.6), counter/grappler calmer.
+      if (chance(clampChance(joltChance * CS.joltMult))) {
         aiState.clinchJoltPending = true;
         aiState.clinchJoltExecuteTime = currentTime + randomInRange(200, 400);
       }
@@ -1408,11 +1816,17 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
       aiState.clinchPushPlantDecision = "plant";
     } else if (balanceAdvantage > 10) {
       aiState.clinchPushPlantDecision = "push";
-    } else if (chance(0.60)) {
+    } else if (chance(clampChance(0.60 + CS.pushBias))) {
+      // CS.pushBias: pusher leans push (0.80), counter leans plant (0.48).
       aiState.clinchPushPlantDecision = "push";
     } else {
       aiState.clinchPushPlantDecision = "plant";
     }
+  }
+
+  // PHASE 4.3: plant is a Jonidan+ verb — a Jonokuchi CPU only knows how to push.
+  if (aiState.clinchPushPlantDecision === "plant" && !hasVerb("plant")) {
+    aiState.clinchPushPlantDecision = "push";
   }
 
   // Apply the push/plant decision via keys
@@ -1440,6 +1854,8 @@ function handleKnockbackDI(cpu, aiState, currentTime) {
 
 // Handle power-up usage (F key)
 function handlePowerUpUsage(cpu, human, aiState, currentTime, distance) {
+  // PHASE 4.3: active power-up usage is a Juryo+ verb.
+  if (!hasVerb("powerUps")) return false;
   const snowballThrowsRemaining = cpu.snowballThrowsRemaining ?? 5;
   const pumoSpawnsRemaining = cpu.pumoArmySpawnsRemaining ?? 3;
   const hasSnowball = cpu.activePowerUp === "snowball" && snowballThrowsRemaining > 0 && !cpu.snowballCooldown && !cpu.isThrowingSnowball;
@@ -1715,6 +2131,7 @@ function handleCornerEscape(cpu, human, aiState, currentTime, distance, cornered
     // Sidestep escape — arc around the opponent when cornered at safe distance
     if (distance >= AI_CONFIG.SIDESTEP_SAFE_MIN_DISTANCE &&
         distance <= AI_CONFIG.SIDESTEP_SAFE_MAX_DISTANCE &&
+        hasVerb("sidestep") && // PHASE 4.3: sidestep is a Makushita+ verb
         canPlayerSidestep(cpu) &&
         !cpu.isGassed &&
         cpu.stamina >= SIDESTEP_STAMINA_COST + 5 &&
@@ -1731,6 +2148,7 @@ function handleCornerEscape(cpu, human, aiState, currentTime, distance, cornered
     const nearLeftBound = cpu.x - GAME_MAP_LEFT < ROPE_JUMP_BOUNDARY_ZONE + 10;
     const nearRightBound = GAME_MAP_RIGHT - cpu.x < ROPE_JUMP_BOUNDARY_ZONE + 10;
     if ((nearLeftBound || nearRightBound) &&
+        hasVerb("ropeJump") && // PHASE 4.3: rope jump is a Juryo+ verb
         distance > AI_CONFIG.ROPE_JUMP_MIN_DISTANCE &&
         currentTime - aiState.lastRopeJumpTime > AI_CONFIG.ROPE_JUMP_COOLDOWN &&
         !cpu.isGassed &&
@@ -1751,6 +2169,150 @@ function handleCornerEscape(cpu, human, aiState, currentTime, distance, cornered
     return true;
   }
   
+  return false;
+}
+
+// ── PHASE 3.3: CORNER-ANSWER MENU DISPATCHER ────────────────────────────────
+// Rolls ONE decision per corner entry (then honors CORNER_DECISION_COOLDOWN_MS)
+// from the escape/palm/parry/fight/grab menu. Escape is only offered while the
+// per-round budget remains; spent → it collapses into "fight". Returns false
+// (fall through to the defensive pipeline) when on cooldown or when a chosen
+// answer can't execute, so a cornered CPU never tunnel-visions.
+function handleCornerAnswer(cpu, human, aiState, currentTime, distance, corneredSide) {
+  const freshEntry = !aiState.cornerActiveLast;
+  aiState.cornerActiveLast = true;
+
+  // Honor the cooldown except on a fresh corner entry (which always re-decides).
+  if (!freshEntry &&
+      aiState.lastCornerDecisionTime &&
+      currentTime - aiState.lastCornerDecisionTime < AI_CONFIG.CORNER_DECISION_COOLDOWN_MS) {
+    return false; // fall through — stay reactive while we "hold" the corner
+  }
+  aiState.lastCornerDecisionTime = currentTime;
+
+  const hasBudget = (aiState.cornerEscapeBudget || 0) > 0;
+
+  // PHASE 4.2: personality-flavored corner menu (converged at the top band).
+  // balanced === the Phase 3 corner baseline, so non-BASHO is unchanged.
+  const cornerKeys = ['escape', 'palm', 'parry', 'fight', 'grab'];
+  const w = resolvePolicy(CORNER_POLICY, cornerKeys);
+  let choice = weightedPick(w, cornerKeys);
+  // Budget exhausted → corner answers only (escape → fight out).
+  if (choice === 'escape' && !hasBudget) choice = 'fight';
+
+  if (choice === 'escape') {
+    const acted = handleCornerEscape(cpu, human, aiState, currentTime, distance, corneredSide);
+    // Only a REAL escape (sidestep / rope jump) spends the budget; slaps/grabs/
+    // walking that handleCornerEscape may fall back to do not.
+    if (acted && (aiState.lastActionType === 'sidestep_escape' || aiState.lastActionType === 'rope_jump')) {
+      aiState.cornerEscapeBudget = Math.max(0, (aiState.cornerEscapeBudget || 0) - 1);
+    }
+    return acted;
+  }
+
+  if (choice === 'palm') {
+    if (tryPalmThrust(cpu, human, aiState, currentTime, distance, 'corner')) return true;
+    return cornerFight(cpu, human, aiState, currentTime, distance);
+  }
+
+  if (choice === 'parry') {
+    if (canParry(cpu)) {
+      resetAllKeys(cpu);
+      cpu.keys.s = true;
+      aiState.pendingParry = true;
+      aiState.parryReleaseTime = currentTime + randomInRange(200, 320);
+      aiState.lastDecisionTime = currentTime;
+      aiState.lastActionType = 'corner_parry';
+      return true;
+    }
+    return cornerFight(cpu, human, aiState, currentTime, distance);
+  }
+
+  if (choice === 'grab') {
+    if (canGrab(cpu)) {
+      const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
+      if (result) { aiState.lastActionType = 'corner_grab'; return true; }
+    }
+    return cornerFight(cpu, human, aiState, currentTime, distance);
+  }
+
+  // fight
+  return cornerFight(cpu, human, aiState, currentTime, distance);
+}
+
+// "Fight out of the corner" — slap at range, else advance into the opponent.
+function cornerFight(cpu, human, aiState, currentTime, distance) {
+  if (distance < AI_CONFIG.SLAP_RANGE && canAttack(cpu)) {
+    if (chance(0.5)) {
+      if (!pickStringCommitment(aiState, currentTime)) {
+        startCommitment(aiState, 'slap_burst', randomInRange(2, 4), currentTime);
+      }
+    }
+    cpu.keys.mouse1 = true;
+    aiState.mouse1ReleaseTime = currentTime + 40;
+    aiState.lastDecisionTime = currentTime;
+    aiState.lastActionType = 'corner_fight';
+    return true;
+  }
+  // Out of slap range — step toward the opponent to contest the space.
+  const dir = getDirectionToOpponent(cpu, human);
+  if (dir === 1) cpu.keys.d = true;
+  else cpu.keys.a = true;
+  aiState.lastDecisionTime = currentTime;
+  aiState.lastActionType = 'corner_advance';
+  return true;
+}
+
+// ── PHASE 3.4: PALM THRUST ──────────────────────────────────────────────────
+// Shared executor. Queues the back+mouse1 palm for processCPUInputs and stamps
+// the shared cooldown. Faces the opponent first so the rooted thrust fires the
+// right way. Gated by canAttack + stamina + gassed + the PALM_DECISION_COOLDOWN.
+function tryPalmThrust(cpu, human, aiState, currentTime, distance, context) {
+  if (!hasVerb("palm")) return false; // PHASE 4.3: palm is a Sandanme+ verb
+  if (currentTime - aiState.lastPalmTime < AI_CONFIG.PALM_DECISION_COOLDOWN_MS) return false;
+  if (!canAttack(cpu) || cpu.isGassed || cpu.stamina < PALM_THRUST_STAMINA_COST) return false;
+
+  resetAllKeys(cpu);
+  cpu.facing = cpu.x < human.x ? -1 : 1; // face the opponent (palm auto-corrects too)
+  cpu.keys.mouse1 = true;
+  cpu.palmThrustQueued = true;           // consumed in processCPUInputs → executePalmThrust
+  aiState.mouse1ReleaseTime = currentTime + 40;
+  aiState.lastPalmTime = currentTime;
+  aiState.lastDecisionTime = currentTime;
+  aiState.lastActionType = 'palm_' + (context || 'poke');
+  return true;
+}
+
+// Standalone palm priority: edge finisher (opponent pinned at the rope) and the
+// anti-mash counter-poke (opponent spamming slaps at poke range). Neutral-only
+// so it doesn't steal a defensive reaction to a live attack.
+function handlePalmUsage(cpu, human, aiState, currentTime, distance) {
+  if (!hasVerb("palm")) return false; // PHASE 4.3: palm is a Sandanme+ verb
+  if (!canAttack(cpu)) return false;
+  // Don't poke into a live active attack — that's the reaction pipeline's job.
+  if (human.isAttacking && !human.isInStartupFrames) return false;
+
+  // Edge finisher: opponent within SLAP_KILL_RANGE of the rope on the CPU's
+  // facing side — a rooted palm shoves them out. (facing 1 = left, -1 = right.)
+  const opponentFrontEdgeDist = cpu.facing === 1
+    ? human.x - MAP_LEFT_BOUNDARY
+    : MAP_RIGHT_BOUNDARY - human.x;
+  const opponentInFront = cpu.facing === 1 ? human.x < cpu.x : human.x > cpu.x;
+  if (opponentInFront && opponentFrontEdgeDist <= SLAP_KILL_RANGE &&
+      distance < AI_CONFIG.MID_RANGE && chance(AI_CONFIG.PALM_EDGE_FINISH_CHANCE)) {
+    if (tryPalmThrust(cpu, human, aiState, currentTime, distance, 'edge')) return true;
+  }
+
+  // Anti-mash counter-poke: opponent slapped >= threshold in the rolling window
+  // and we're at poke range (too close = slap/grab, too far = whiff).
+  const slapSpam = aiState.opponentSlapTimes.length >= AI_CONFIG.PALM_SLAP_SPAM_THRESHOLD;
+  if (slapSpam &&
+      distance >= AI_CONFIG.PALM_COUNTERPOKE_MIN_RANGE &&
+      distance <= AI_CONFIG.PALM_COUNTERPOKE_MAX_RANGE &&
+      chance(AI_CONFIG.PALM_COUNTERPOKE_CHANCE)) {
+    if (tryPalmThrust(cpu, human, aiState, currentTime, distance, 'poke')) return true;
+  }
+
   return false;
 }
 
@@ -1975,6 +2537,105 @@ function handleDefensiveReaction(cpu, human, aiState, currentTime, distance, und
   return false;
 }
 
+// PHASE 1: is the CPU's in-progress slap string "earned" against `victim`?
+// Mirrors collisionSystem's earned-string gate: opened on a counter/punish read
+// (latched onto the attacker), OR the victim is gassed, OR the victim is already
+// in the edge-panic zone in the direction they'd be knocked (away from the CPU).
+function isStringEarnedAgainst(cpu, victim) {
+  if (cpu.slapStringCounterLatched || cpu.slapStringPunishLatched) return true;
+  if (victim.isGassed) return true;
+  const knockbackDir = victim.x >= cpu.x ? 1 : -1;
+  const distToBoundary = knockbackDir > 0
+    ? MAP_RIGHT_BOUNDARY - victim.x
+    : victim.x - MAP_LEFT_BOUNDARY;
+  return distToBoundary <= AI_CONFIG.EDGE_DANGER_ZONE;
+}
+
+// ── PHASE 1: ENDER-SEAM VICTIM WAKEUP (spec 1.5) ────────────────────────────
+// The CPU just ate slap2 of a NEUTRAL string (collisionSystem set seamOpenedByHit
+// on the victim). During the freeze it rolls ONE wakeup option (parry / mash /
+// escape / eat), then fires it the instant it becomes actionable — mirroring the
+// human's buffered wakeup. "eat" (and any unavailable choice) means do nothing,
+// so it still eats slap3 (beginners feel no change; the layer only opens at
+// intermediate+). Returns true if it executed an action this tick.
+function handleSeamWakeup(cpu, human, aiState, currentTime) {
+  // Detect a freshly-opened seam and roll the wakeup ONCE (deduped on the hit's
+  // timestamp). The roll can happen while still in hitstun (right as the freeze
+  // ends); execution below waits until the CPU can actually act.
+  if (
+    cpu.seamOpenedByHit &&
+    cpu.seamOpenedTime &&
+    aiState.seamHandledTime !== cpu.seamOpenedTime
+  ) {
+    aiState.seamHandledTime = cpu.seamOpenedTime;
+    cpu.seamOpenedByHit = false; // consume
+    let choice;
+    if (PERS_KEY === "balanced") {
+      // Non-BASHO / balanced: exact Phase 1.5 difficulty-keyed behavior.
+      const w = SEAM_WAKEUP_WEIGHTS[DIFF_KEY] || SEAM_WAKEUP_WEIGHTS.HARD;
+      const r = Math.random();
+      choice = "eat";
+      if (r < w.parry) choice = "parry";
+      else if (r < w.parry + w.mash) choice = "mash";
+      else if (r < w.parry + w.mash + w.escape) choice = "escape";
+    } else {
+      // PHASE 4.2/4.1: archetype wakeup policy (converged at the top band),
+      // reinforced by what the human keeps ending strings with (memory read).
+      const w = resolvePolicy(WAKEUP_POLICY, ["parry", "mash", "escape", "eat"]);
+      const bias = readPlayerEnderBias(aiState, currentTime);
+      if (bias) w[bias.option] = (w[bias.option] || 0) + bias.amount;
+      choice = weightedPick(w, ["parry", "mash", "escape", "eat"]);
+    }
+    aiState.seamWakeupChoice = choice;
+    // Generous window so a 1-tick scheduling delay still lands the wakeup.
+    aiState.seamWakeupExpire = currentTime + 400;
+  }
+
+  const choice = aiState.seamWakeupChoice;
+  if (!choice || choice === "eat") return false;
+  if (currentTime >= (aiState.seamWakeupExpire || 0)) {
+    aiState.seamWakeupChoice = null;
+    return false;
+  }
+  // Still stunned/locked → hold the decision until actionable (fires ~frame 1
+  // of wakeup, exactly like a human buffered choice).
+  if (cpu.isHit || !canAct(cpu)) return false;
+
+  aiState.seamWakeupChoice = null;
+  const dir = getDirectionToOpponent(cpu, human);
+
+  if (choice === "parry" && canParry(cpu)) {
+    resetAllKeys(cpu);
+    cpu.keys.s = true;
+    aiState.pendingParry = true;
+    aiState.parryStartTime = currentTime;
+    aiState.parryReleaseTime = currentTime + randomInRange(120, 220);
+    aiState.lastDecisionTime = currentTime;
+    aiState.lastActionType = "seam_parry";
+    return true;
+  }
+  if (choice === "mash" && canAttack(cpu)) {
+    resetAllKeys(cpu);
+    cpu.keys.mouse1 = true;
+    aiState.mouse1ReleaseTime = currentTime + 40;
+    if (dir === 1) cpu.keys.d = true;
+    else cpu.keys.a = true;
+    aiState.lastDecisionTime = currentTime;
+    aiState.lastActionType = "seam_mash";
+    return true;
+  }
+  if (choice === "escape" && hasVerb("sidestep") && canPlayerSidestep(cpu) && !cpu.isGassed) {
+    resetAllKeys(cpu);
+    cpu.keys.s = true;
+    cpu.keys.shift = true;
+    aiState.shiftReleaseTime = currentTime + 80;
+    aiState.lastDecisionTime = currentTime;
+    aiState.lastActionType = "seam_escape";
+    return true;
+  }
+  return false;
+}
+
 // Handle snowball defense
 function handleSnowballDefense(cpu, human, aiState, currentTime, distance) {
   const closestSnowball = getClosestSnowball(cpu, human);
@@ -2068,17 +2729,30 @@ function startCommitment(aiState, action, count, currentTime) {
   }
 }
 
-// Decide which string type to commit to based on config chances
+// Decide which string type to commit to. PHASE 4.2: the ender is drawn from the
+// archetype's ENDER_POLICY (slap3 / grab / bait). balanced reproduces the legacy
+// STRING_FULL_CHANCE/STRING_GRAB_CHANCE roll exactly, so non-BASHO is unchanged.
 function pickStringCommitment(aiState, currentTime) {
-  const roll = Math.random();
-  if (roll < AI_CONFIG.STRING_FULL_CHANCE) {
+  let choice;
+  if (PERS_KEY === "balanced") {
+    const roll = Math.random();
+    if (roll < AI_CONFIG.STRING_FULL_CHANCE) choice = "slap3";
+    else if (roll < AI_CONFIG.STRING_FULL_CHANCE + AI_CONFIG.STRING_GRAB_CHANCE) choice = "grab";
+    else choice = "bait";
+  } else {
+    const w = resolvePolicy(ENDER_POLICY, ["slap3", "grab", "bait"]);
+    choice = weightedPick(w, ["slap3", "grab", "bait"]);
+  }
+
+  if (choice === "slap3") {
     startCommitment(aiState, 'slap_string_full', 3, currentTime);
     return 'slap_string_full';
-  } else if (roll < AI_CONFIG.STRING_FULL_CHANCE + AI_CONFIG.STRING_GRAB_CHANCE) {
+  }
+  if (choice === "grab") {
     startCommitment(aiState, 'slap_string_grab', 2, currentTime);
     return 'slap_string_grab';
   }
-  return null;
+  return null; // bait — no string-ender commitment (single slaps / reset)
 }
 
 // Handle committed action sequences
@@ -2139,8 +2813,16 @@ function handleCommitment(cpu, human, aiState, currentTime, distance) {
       return true;
     }
     if (cpu.isAttacking && cpu.attackType === "slap" && !aiState.stringBuffered) {
-      cpu.pendingSlapCount = 1;
-      cpu.pendingGrabEnder = true;
+      // PHASE 1: if the string is EARNED (opened on a counter/punish, or the
+      // victim is gassed / already cornered), the slap3 finisher is a free
+      // guaranteed round-ender — always take it over the grab mixup (spec 1.5).
+      if (isStringEarnedAgainst(cpu, human)) {
+        cpu.pendingSlapCount = 2;
+        cpu.pendingGrabEnder = false;
+      } else {
+        cpu.pendingSlapCount = 1;
+        cpu.pendingGrabEnder = true;
+      }
       aiState.stringBuffered = true;
       return true;
     }
@@ -2543,10 +3225,16 @@ function handleMovement(cpu, human, aiState, currentTime, distance) {
 // Process CPU inputs and trigger actions
 function processCPUInputs(cpu, opponent, room, gameHelpers) {
   if (!cpu || !cpu.isCPU || !cpu.keys) return;
+
+  // PHASE 4.3: re-resolve the kit for THIS cpu (this runs in a separate pass from
+  // updateCPUAI, so the module-level KIT could otherwise be stale) — keeps the
+  // verb gates below correct and non-BASHO CPUs on the full legacy kit.
+  KIT = (cpu.aiDivision && DIVISION_KIT[cpu.aiDivision]) ? DIVISION_KIT[cpu.aiDivision] : null;
   
   const {
     executeSlapAttack,
     executeChargedAttack,
+    executePalmThrust,
     canPlayerCharge,
     canPlayerSlap,
     canPlayerUseAction,
@@ -2652,6 +3340,19 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     }
     if (!cpu.isFlapping) {
       beginFlapStartup(cpu, currentTime); // gates stamina/gassed internally
+      Object.assign(cpu._prevKeys, cpu.keys);
+      return;
+    }
+  }
+
+  // Process palm thrust (PHASE 3.4) — mirrors the human back+mouse1 palm. The AI
+  // sets palmThrustQueued alongside mouse1; consume it BEFORE the slap branch so
+  // the press becomes a rooted palm, not a slap. executePalmThrust guards
+  // !isAttacking internally so it can never eat a string.
+  if (keyJustPressed("mouse1") && cpu.palmThrustQueued) {
+    cpu.palmThrustQueued = false;
+    if (executePalmThrust && canPlayerSlap(cpu) && !shouldBlockAction()) {
+      executePalmThrust(cpu, rooms);
       Object.assign(cpu._prevKeys, cpu.keys);
       return;
     }
@@ -2807,6 +3508,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       const forwardHeld = (nearLeftBound && cpu.keys.d) || (nearRightBound && cpu.keys.a);
 
       if (forwardHeld && (nearLeftBound || nearRightBound) &&
+          hasVerb("ropeJump") && // PHASE 4.3: rope jump is a Juryo+ verb
           !cpu.isRopeJumping && canDash(cpu) && !cpu.isGassed) {
         clearChargeState(cpu, true);
         cpu.movementVelocity = 0;
@@ -2816,7 +3518,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
 
         const jumpDir = nearLeftBound ? 1 : -1;
         const mapMidpoint = (GAME_MAP_LEFT + GAME_MAP_RIGHT) / 2;
-        const targetX = cpu.x + (mapMidpoint - cpu.x) * 0.52;
+        const targetX = cpu.x + (mapMidpoint - cpu.x) * ROPE_JUMP_CENTER_FRACTION;
 
         cpu.facing = nearLeftBound ? -1 : 1;
         cpu.isRopeJumping = true;

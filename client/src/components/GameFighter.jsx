@@ -32,6 +32,7 @@ import NoStaminaEffect from "./GassedEffect";
 import SnowballImpactEffect from "./SnowballImpactEffect";
 import PumoCloneSpawnEffect from "./PumoCloneSpawnEffect";
 import SlapAttackHandsEffect from "./SlapAttackHandsEffect";
+import SlapHitSpriteEffect from "./SlapHitSpriteEffect";
 import SumoGameAnnouncement from "./SumoGameAnnouncement";
 import {
   recolorImage,
@@ -2540,7 +2541,16 @@ const GameFighter = ({
           const pan = xToPan(data.x);
           if (data.attackType === "slap" && isBurst) {
             const baseSound = pickRandomSound(chargedHitSounds);
-            playSound(baseSound, 0.045, null, 1.0, pan);
+            if (data.isPerfectEnder) {
+              // PHASE 1 perfect (gold-spark) finisher: crisper + slightly hotter
+              // thwack, with a bright parry-success layer on top so the perfect
+              // read rings out distinct from the dull sloppy ender.
+              playSound(baseSound, 0.05, null, 1.12, pan);
+              playSound(rawParrySuccessSound, 0.03, null, 1.25, pan);
+            } else {
+              // Sloppy (buffered / mistimed) ender: duller, heavier thud.
+              playSound(baseSound, 0.04, null, 0.86, pan);
+            }
             if (data.isCounterHit) {
               playSound(baseSound, 0.028, null, 0.72, pan);
             } else if (data.isPunish) {
@@ -2574,6 +2584,12 @@ const GameFighter = ({
               playSound(baseSound, 0.026, null, 1.36, pan);
             }
           }
+          // PHASE 1 seam-open cue: a bright, high "clack" layered on the neutral
+          // slap2 that opens the contestable ender seam — the audio tell that a
+          // decision moment just opened for both players.
+          if (data.seamOpen) {
+            playSound(clap2Sound, 0.03, null, 1.5, pan);
+          }
         }
         // PERF: index===0 owns the hit spark. `player_hit` fires on BOTH
         // GameFighter instances, and HitEffect renders at an absolute world
@@ -2595,6 +2611,8 @@ const GameFighter = ({
             isPunish: data.isPunish || false,
             isArmorBreak: data.isArmorBreak || false,
             isPowered: data.isPowered || false,
+            isPerfectEnder: data.isPerfectEnder || false,
+            seamOpen: data.seamOpen || false,
             cinematicKill: data.cinematicKill || false,
             cinematicHitstopMs: data.cinematicKill ? 550 : 0,
           });
@@ -2624,23 +2642,36 @@ const GameFighter = ({
           }
         }
 
-        // PERF: index===0 owns the hit-spark burst. The particle engine is a
-        // shared singleton, so emitting from both instances spawned DOUBLE the
-        // particles on every hit (charged = 44 instead of the designed 22) —
-        // the heaviest synchronous work on the impact frame. One emit = the
-        // intended count into the shared canvas.
-        if (index === 0) {
-          const hitFacing = data.facing || 1;
-          const facingOffsetPx = (hitFacing === 1 ? -8 : -3) * 12.8;
-          const sparkOpts = { x: data.x + 70 + facingOffsetPx, y: HIT_EFFECT_Y, facing: hitFacing };
-          if (data.attackType === "charged") {
-            emitParticles("hitSparkCharged", sparkOpts);
-          } else if (isBurst) {
-            emitParticles("hitSparkBurst", sparkOpts);
-          } else {
-            emitParticles("hitSparkSlap", sparkOpts);
-          }
-        }
+        // DISABLED: the old canvas center burst (star flare + bloom + streaks).
+        // This was the "old" hit effect that still drew on every slap/charged/
+        // burst hit underneath the new sprite-sheet burst (SlapHitSpriteEffect),
+        // which now owns the impact read. Re-enable this block to bring the
+        // canvas hitRingCore back.
+        // if (index === 0) {
+        //   const hitFacing = data.facing || 1;
+        //   const facingOffsetPx = (hitFacing === 1 ? -8 : -3) * 12.8;
+        //   const hitX = data.x + 70 + facingOffsetPx;
+        //   const knockbackDir =
+        //     data.knockbackDirection || (hitFacing === 1 ? -1 : 1);
+        //   let tier = "slap";
+        //   if (data.attackType === "charged") tier = "charged";
+        //   else if (isBurst) tier = "burst";
+        //
+        //   let palette = "white";
+        //   if (data.isArmorBreak) palette = "amber";
+        //   else if (data.isCounterHit) palette = "gold";
+        //   else if (data.isPunish) palette = "purple";
+        //   else if (data.isPerfectEnder) palette = "gold";
+        //   else if (data.isPowered) palette = "red";
+        //
+        //   emitParticles("hitRingCore", {
+        //     x: hitX,
+        //     y: HIT_EFFECT_Y,
+        //     dir: knockbackDir,
+        //     tier,
+        //     palette,
+        //   });
+        // }
 
         // Charged-hit knockback trail (A4): only the victim's GameFighter instance
         // tracks its own interpolated position over the next ~280ms and emits speed
@@ -2698,7 +2729,9 @@ const GameFighter = ({
         const frontOffset = facing === 1 ? 80 : -80;
         const effectData = {
           x: data.parrierX + 150 + frontOffset,
-          y: PLAYER_MID_Y,
+          // Match the hit-spark height so parry/perfect-parry sit inline with
+          // where hits land (HIT_EFFECT_Y is a touch lower than PLAYER_MID_Y).
+          y: HIT_EFFECT_Y,
           facing: facing,
           timestamp: data.timestamp,
           parryId: data.parryId,
@@ -3402,6 +3435,33 @@ const GameFighter = ({
       !penguin.isPalmThrust;
   }, [penguin.isAttacking, penguin.attackType, penguin.isPalmThrust]);
 
+  // One-shot smoke swoosh at the moment the charged lunge begins (mirrors the
+  // dash-start smoke). Transition-guarded so it fires once, not every frame the
+  // position updates while lunging.
+  const lastChargedLungeState = useRef(false);
+  useEffect(() => {
+    const isLunging =
+      penguin.isAttacking &&
+      penguin.attackType === "charged" &&
+      !penguin.isPalmThrust;
+    if (isLunging && !lastChargedLungeState.current) {
+      emitParticles("chargedLungeSmoke", {
+        x: interpolatedPositionRef.current.x || penguin.x,
+        y: penguin.y,
+        direction: penguin.facing ?? 1,
+      });
+    }
+    lastChargedLungeState.current = isLunging;
+  }, [
+    penguin.isAttacking,
+    penguin.attackType,
+    penguin.isPalmThrust,
+    penguin.facing,
+    penguin.x,
+    penguin.y,
+    emitParticles,
+  ]);
+
   useEffect(() => {
     const isLunging =
       penguin.isAttacking &&
@@ -3574,9 +3634,21 @@ const GameFighter = ({
     wasBeingThrown.current = !!penguin.isBeingThrown;
   }, [penguin.isBeingThrown, penguin.isClinchKillThrowVictim, penguin.x, penguin.y, emitParticles]);
 
-  // Rope jump landing — smoke ring on touchdown
+  // Rope jump — angled liftoff plume on takeoff, smoke puff on touchdown.
   const prevRopeJumpPhase = useRef(null);
   useEffect(() => {
+    // Liftoff: entering the "active" (airborne) phase.
+    if (prevRopeJumpPhase.current !== "active" && penguin.ropeJumpPhase === "active") {
+      emitParticles("liftoffSmoke", {
+        x: interpolatedPositionRef.current.x || penguin.x,
+        y: penguin.y,
+        tilted: true,
+        // facing's sign is opposite to the plume-tilt convention the flap uses
+        // (which keys off movement dir), so negate it to mirror correctly.
+        dir: -(penguin.facing ?? 1),
+        maxLife: 0.4, // rope jump plume plays a bit quicker than the flap's
+      });
+    }
     if (prevRopeJumpPhase.current === "active" && penguin.ropeJumpPhase === "landing") {
       emitParticles("throwLand", {
         x: interpolatedPositionRef.current.x || penguin.x,
@@ -3584,7 +3656,7 @@ const GameFighter = ({
       });
     }
     prevRopeJumpPhase.current = penguin.ropeJumpPhase;
-  }, [penguin.ropeJumpPhase, penguin.x, penguin.y, emitParticles]);
+  }, [penguin.ropeJumpPhase, penguin.facing, penguin.x, penguin.y, emitParticles]);
 
   // Flap landing — same smoke ring as the rope jump on touchdown. Liftoff burst
   // fires on startup → flight. Air-charge puffs fire on each flapCharges
@@ -5550,6 +5622,7 @@ const GameFighter = ({
       <SlapParryEffect position={parryEffectPosition} />
       <ChargeClashEffect position={chargeClashEffectPosition} />
       <HitEffect position={hitEffectPosition} />
+      <SlapHitSpriteEffect position={hitEffectPosition} />
       {index === 0 && (
         <RawParryEffect position={rawParryEffectPosition} />
       )}
