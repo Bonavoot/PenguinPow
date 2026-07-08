@@ -535,7 +535,7 @@ const RINGOUT_THROW_DURATION_MS = 400; // Match normal throw timing for consiste
 const RAW_PARRY_KNOCKBACK = 0.49; // Knockback velocity for charged attack parries
 const RAW_PARRY_SLAP_KNOCKBACK = 0.5; // Lighter knockback for slap parries
 const PERFECT_PARRY_KNOCKBACK = 0.65; // Slightly stronger than regular parry
-const PERFECT_PARRY_WINDOW = 100; // 100ms window for perfect parries
+const PERFECT_PARRY_WINDOW = 120; // Perfect-parry window (ms) measured from the (re-armed) press. Bumped 100→120 for latency/precision forgiveness — still a real read, not braindead.
 const PERFECT_PARRY_SUCCESS_DURATION = 850; // Compressed parry — fast enough to keep pace, long enough for visual read
 const PERFECT_PARRY_ATTACKER_STUN_DURATION = 700; // Stun — comfortable window for slap/grab follow-up
 const PERFECT_PARRY_ANIMATION_LOCK = 370; // 250ms hitstop + 120ms real post-freeze "cool pose" before parrier can act
@@ -552,8 +552,25 @@ const MAX_PARRY_BACKDATE_MS = 120;
 
 // Raw parry commitment: minimum time locked in parry stance
 const RAW_PARRY_MIN_DURATION = 200; // Whiffed parry: punishable but not sluggish (was 375 — felt like parry jail)
-const RAW_PARRY_MAX_DURATION = 550; // Auto-end after this — forces timing, prevents infinite camping
-const RAW_PARRY_COOLDOWN_MS = 150; // Cooldown after parry ends before you can parry again (prevents perfect-window spam)
+const RAW_PARRY_MAX_DURATION = 700; // Auto-end after this — forces timing, prevents infinite camping.
+// Bumped 550→700 so a HELD block (now a reliable, no-stun block by design) doesn't
+// auto-drop right before a telegraphed charged lunge lands. Still finite (anti-camp).
+const RAW_PARRY_COOLDOWN_MS = 150; // Cooldown after a fully-released parry before you can parry again (prevents perfect-window spam). Bypassed by re-arm (see below).
+
+// ── PARRY RE-ARM (Sekiro-style re-tap) ──────────────────────────────────────
+// The perfect window is judged as (hitTime − rawParryStartTime). A single press
+// can't be timed against attacks whose connect time varies wildly (a point-blank
+// slap connects ~55ms after the attacker presses; a charged attack lunges for
+// 300–1000ms+), so one press against a lunge is always "too early" → regular, not
+// perfect. RE-ARM fixes this: a FRESH space press (rising edge) WHILE already
+// parrying re-stamps rawParryStartTime (lag-compensated), re-opening the perfect
+// window so the player can re-time the just-frame against the actual connect.
+// HOLD stays a reliable block (no re-arm without a new press). Anti-mash: each
+// re-arm costs stamina and is rate-limited wider than the perfect window, so
+// spamming leaves gaps and gasses you out instead of guaranteeing a perfect —
+// and a grab still counter-grabs a parry, punishing panic re-taps.
+const RAW_PARRY_REARM_STAMINA_COST = 5;   // Cheaper than the initial 12, but stacks fast when mashed
+const RAW_PARRY_REARM_INTERVAL_MS = 180;  // Min gap between re-arms — wider than PERFECT_PARRY_WINDOW so consecutive re-taps leave real (punishable) gaps
 
 // Parry visual timing
 const PARRY_SUCCESS_DURATION = 500; // How long the parry success pose is held
@@ -1134,6 +1151,8 @@ module.exports = {
   RAW_PARRY_MIN_DURATION,
   RAW_PARRY_MAX_DURATION,
   RAW_PARRY_COOLDOWN_MS,
+  RAW_PARRY_REARM_STAMINA_COST,
+  RAW_PARRY_REARM_INTERVAL_MS,
   MAX_PARRY_BACKDATE_MS,
   PARRY_SUCCESS_DURATION,
   RAW_PARRY_STAMINA_COST,

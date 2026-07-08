@@ -2458,15 +2458,18 @@ const GameFighter = ({
           y: PLAYER_MID_Y,
         });
         playSound(slapParrySound, 0.01);
-        if (index === 0) {
-          emitParticles("slapParryClash", {
-            x: data.x + SPRITE_HALF_W,
-            y: PLAYER_MID_Y,
-            p1x: data.p1x,
-            p2x: data.p2x,
-            intensity: data.intensity || 1,
-          });
-        }
+        // TEST: the new sprite-sheet SlapParryEffect (white grab-break burst) is
+        // the sole slap-parry visual now — the old particle clash burst is
+        // disabled so we can evaluate the sprite on its own.
+        // if (index === 0) {
+        //   emitParticles("slapParryClash", {
+        //     x: data.x + SPRITE_HALF_W,
+        //     y: PLAYER_MID_Y,
+        //     p1x: data.p1x,
+        //     p2x: data.p2x,
+        //     intensity: data.intensity || 1,
+        //   });
+        // }
       }
     };
     socket.on("slap_parry", handleSlapParry);

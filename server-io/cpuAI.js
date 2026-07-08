@@ -191,6 +191,7 @@ const DIFFICULTY_PROFILES = {
     dodgeMult: 0.4,
     snowballParryMult: 0.45,
     flapDefMult: 0.4,
+    parryPunishChance: 0.05, // rarely grabs the human's raw parry — mostly commits a strike INTO it, so the human's parry pays off
     usePowerUps: false, // does not use snowball/army/flap offensively
     gripUpMult: 1,
     clinchEscapeBoost: 1,
@@ -208,6 +209,7 @@ const DIFFICULTY_PROFILES = {
     dodgeMult: 0.78,
     snowballParryMult: 0.78,
     flapDefMult: 0.78,
+    parryPunishChance: 0.15, // still usually presses into a parry; only occasionally grab-punishes it
     usePowerUps: true,
     gripUpMult: 1,
     clinchEscapeBoost: 1,
@@ -226,6 +228,7 @@ const DIFFICULTY_PROFILES = {
     dodgeMult: 1,
     snowballParryMult: 1,
     flapDefMult: 1,
+    parryPunishChance: 0.45, // reads the parry and grab-punishes it about half the time (correct counterplay)
     usePowerUps: true,
     gripUpMult: 1,
     clinchEscapeBoost: 1,
@@ -243,6 +246,7 @@ const DIFFICULTY_PROFILES = {
     dodgeMult: 1.9,
     snowballParryMult: 1.9,
     flapDefMult: 1.7,
+    parryPunishChance: 0.85, // reliably reads and grab-punishes a raw parry (still jittered, never frame-1)
     usePowerUps: true,
     gripUpMult: 0.4, // grips up fast so it isn't free-thrown out of a grab
     clinchEscapeBoost: 1.6, // fights its way off the edge in clinch
@@ -276,7 +280,7 @@ const LADDER_ANCHORS = [
 ];
 const LADDER_NUM_DIALS = [
   "missChance", "pressureMiss", "jitterMin", "jitterMax", "decisionCooldown",
-  "parryMult", "dodgeMult", "snowballParryMult", "flapDefMult",
+  "parryMult", "dodgeMult", "snowballParryMult", "flapDefMult", "parryPunishChance",
   "gripUpMult", "clinchEscapeBoost",
 ];
 const _ladderCache = {};
@@ -658,6 +662,12 @@ function getAIState(playerId) {
       seamWakeupChoice: null,   // 'parry' | 'mash' | 'escape' | 'eat' | null
       seamWakeupExpire: 0,      // deadline to execute the rolled wakeup
       seamHandledTime: 0,       // dedupe key = the hit's seamOpenedTime
+      // === Parry-response node: rank-gated read of the HUMAN's raw parry ===
+      // Rolled ONCE per detected parry (deduped on the human's rawParryStartTime),
+      // then executed after a reaction delay so the grab-punish is never frame-1.
+      parryResponseHandledStart: 0, // dedupe key = human.rawParryStartTime already rolled
+      parryResponseGrab: false,     // won the roll → commit a grab-punish when the delay elapses
+      parryResponseFireAt: 0,       // sim time the (jittered) grab-punish fires
       // === NEW: Movement fluidity ===
       movementIntent: null,      // 'approach', 'retreat', 'feint', 'circle'
       movementIntentUntil: 0,
@@ -836,6 +846,14 @@ function isFacingOpponent(cpu, human) {
 function isGoodGrabOpportunity(cpu, human, distance) {
   if (!isOpponentGrabbable(human)) return false;
   if (!isFacingOpponent(cpu, human)) return false;
+
+  // A raw-parrying opponent is NOT a generic grab opportunity. Grabbing every
+  // parry on sight (a parrier reads as "stationary + in range + grabbable") is
+  // exactly what made the parry feel worthless — the CPU stopped whatever it was
+  // doing to punish it, at every rank. Whether to grab-punish a parry is now the
+  // dedicated, rank-gated parry-response node's call (handleParryResponse); this
+  // generic path always declines so low ranks commit strikes INTO the parry.
+  if (human.isRawParrying) return false;
 
   // Opponent is committed to an action (attacking, recovering) — great time to grab
   if (human.isAttacking || human.isRecovering || human.isHit) return true;
@@ -1382,6 +1400,14 @@ function updateCPUAI(cpu, human, room, currentTime) {
 
   // Priority 2.6: FLAP DEFENSE — opponent is airborne; dash the landing or parry the slam
   if (handleFlapDefense(cpu, human, aiState, currentTime, distance)) {
+    return;
+  }
+
+  // Priority 2.65: PARRY RESPONSE — the human is raw-parrying. Rank-gated read:
+  // low ranks mostly decline (fall through and commit a strike INTO the parry so
+  // the human's read pays); high ranks reliably grab-punish it (with reaction
+  // jitter, never frame-1). Only returns true when it actually commits the grab.
+  if (handleParryResponse(cpu, human, aiState, currentTime, distance)) {
     return;
   }
 
@@ -2321,6 +2347,66 @@ function handlePalmUsage(cpu, human, aiState, currentTime, distance) {
 // the gap and land the highest-value option in range (grab → clinch throw, else
 // slap). This is the "attack smarter" lever — a strong human player always
 // punishes a whiffed grab or a blocked/recovered attack; now IMPOSSIBLE does too.
+// ── PARRY RESPONSE (rank-gated read of the HUMAN's raw parry) ───────────────
+// The old behavior — grab EVERY parry on reaction — made the parry feel
+// worthless (the CPU stopped whatever it was doing to punish it, at every rank).
+// This node decides ONCE per parry whether to grab-punish it, scaled by rank:
+//   • low ranks  → almost never (parryPunishChance ~0.05) → the CPU keeps
+//     committing its strike/approach INTO the parry, so the human's read pays.
+//   • high ranks → reliably reads and grab-punishes (correct counterplay).
+// The commit is delayed by the normal reaction jitter so it's never frame-1.
+// Returns true only when it actually commits the grab (preempting other actions).
+function handleParryResponse(cpu, human, aiState, currentTime, distance) {
+  // Not parrying → reset the per-parry dedupe so the NEXT parry rolls fresh.
+  if (!human.isRawParrying) {
+    aiState.parryResponseHandledStart = 0;
+    aiState.parryResponseGrab = false;
+    aiState.parryResponseFireAt = 0;
+    return false;
+  }
+
+  // New parry (deduped on the human's parry start) → roll ONCE.
+  if (aiState.parryResponseHandledStart !== human.rawParryStartTime) {
+    aiState.parryResponseHandledStart = human.rawParryStartTime;
+    const punishChance =
+      typeof DIFF.parryPunishChance === "number" ? DIFF.parryPunishChance : 0.15;
+    aiState.parryResponseGrab = chance(punishChance);
+    // Reaction jitter so the grab is never frame-1 (floored so even IMPOSSIBLE
+    // reads it a few frames late — human, not psychic).
+    const jitter = Math.max(60, randomInRange(DIFF.jitterMin, DIFF.jitterMax));
+    aiState.parryResponseFireAt = currentTime + jitter;
+  }
+
+  // Lost the roll → decline; fall through so the CPU keeps pressing INTO the
+  // parry (the whole point at low ranks).
+  if (!aiState.parryResponseGrab) return false;
+
+  // Won the roll but the reaction delay hasn't elapsed → let normal offense /
+  // approach run so we're in range when it fires.
+  if (currentTime < aiState.parryResponseFireAt) return false;
+
+  if (!canGrab(cpu) || !isFacingOpponent(cpu, human)) return false;
+
+  // In range → grab-punish; otherwise close the gap toward the parrier.
+  if (distance <= AI_CONFIG.GRAB_RANGE) {
+    resetAllKeys(cpu);
+    cpu.facing = cpu.x < human.x ? -1 : 1;
+    cpu.keys.mouse2 = true;
+    aiState.mouse2ReleaseTime = currentTime + 50;
+    aiState.lastActionType = "parry_grab_punish";
+    aiState.lastDecisionTime = currentTime;
+    return true;
+  } else if (distance < AI_CONFIG.GRAB_APPROACH_RANGE) {
+    resetAllKeys(cpu);
+    cpu.facing = cpu.x < human.x ? -1 : 1;
+    if (getDirectionToOpponent(cpu, human) === 1) cpu.keys.d = true;
+    else cpu.keys.a = true;
+    aiState.lastActionType = "parry_grab_approach";
+    return true;
+  }
+  return false;
+}
+
 function handleWhiffPunish(cpu, human, aiState, currentTime, distance) {
   if (!canAct(cpu)) return false;
   const punishable =

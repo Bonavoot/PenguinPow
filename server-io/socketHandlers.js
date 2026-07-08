@@ -10,6 +10,7 @@ const {
   SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS,
   SIDESTEP_TOTAL_MS, SIDESTEP_STAMINA_COST,
   SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST, RAW_PARRY_STAMINA_COST, RAW_PARRY_COOLDOWN_MS,
+  RAW_PARRY_REARM_STAMINA_COST, RAW_PARRY_REARM_INTERVAL_MS,
   CHARGE_FULL_POWER_MS,
   GRAB_STARTUP_DURATION_MS,
 } = require("./constants");
@@ -689,6 +690,33 @@ function processInputPacket(room, player, data, io, rooms) {
     player.pendingGrabEnder = false;
     player.slapStringPosition = 0;
     player.slapStringWindowUntil = 0;
+  } else if (
+    // PARRY RE-ARM (Sekiro-style re-tap): a FRESH space press while ALREADY
+    // parrying re-stamps the perfect window so the player can re-time the
+    // just-frame against a slow/lunging/delayed attack instead of being locked
+    // to their first press. HOLD stays a reliable block (no new press = no
+    // re-arm). Only re-stamps timing + charges stamina; does NOT touch the
+    // parry pose or any effect. `else if` guarantees the initial-start block
+    // above (which requires !isRawParrying) and this are mutually exclusive, so
+    // the very first press can't also re-arm in the same tick.
+    player.spaceJustPressed &&
+    player.isRawParrying &&
+    !player.isPerfectRawParrySuccess && // never interrupt a landed perfect's lock
+    !player.isRawParrySuccess &&        // or a landed regular parry's success pose
+    player.activePowerUp !== POWER_UP_TYPES.FLAP &&
+    !player.loadout?.flapReplacesParry &&
+    !player.grabBreakSpaceConsumed &&
+    simNowForPlayer(player) >= (player.rawParryRearmUntil || 0)
+  ) {
+    const nowSim = simNowForPlayer(player);
+    // Re-open the perfect window from this press (lag-compensated to the true
+    // press moment, same as the initial start). Re-stamping forward also pushes
+    // back the MAX_DURATION auto-end, so an actively re-tapped block won't drop
+    // right before a committed lunge lands. rawParryMinDurationMet is left as-is
+    // (the main loop only ever sets it true), so release stays responsive.
+    player.rawParryStartTime = lagCompensatedParryStart(player, nowSim);
+    player.stamina = Math.max(0, player.stamina - RAW_PARRY_REARM_STAMINA_COST);
+    player.rawParryRearmUntil = nowSim + RAW_PARRY_REARM_INTERVAL_MS;
   }
 
   // MOUSE1 PRESS: S+FORWARD+MOUSE1 = charged, BACK+MOUSE1 = open-palm thrust,

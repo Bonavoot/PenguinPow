@@ -183,6 +183,7 @@ function createInitialPlayerState(overrides = {}) {
     rawParryPressGameTime: 0,
     rawParryMinDurationMet: false,
     rawParryCooldownUntil: 0,
+    rawParryRearmUntil: 0, // Earliest sim time a held parry may re-arm its perfect window (see RAW_PARRY_REARM_INTERVAL_MS)
     isRawParryStun: false,
     perfectParryStunStartTime: 0,
     perfectParryStunBaseTimeout: null,
