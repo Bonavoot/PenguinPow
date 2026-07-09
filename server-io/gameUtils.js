@@ -607,6 +607,7 @@ function clearAllActionStates(player) {
   player.isBurstKnockback = false;
   player.burstKnockbackStartTime = 0;
   player.isParryKnockback = false;
+  player.isChargedHitRecoil = false;
   
   // Clear attack states
   player.isAttacking = false;

@@ -22,6 +22,7 @@ const {
   DOHYO_EDGE_PANIC_ZONE, ICE_EDGE_BRAKE_BONUS, ICE_EDGE_SLIDE_PENALTY,
   MOVEMENT_ACCELERATION, MOVEMENT_DECELERATION, MAX_MOVEMENT_SPEED,
   MOVEMENT_MOMENTUM, MOVEMENT_FRICTION, ICE_DRIFT_FACTOR,
+  CHARGED_RECOIL_FRICTION,
   MIN_MOVEMENT_THRESHOLD, INITIAL_MOVEMENT_BURST,
   DODGE_DURATION, DODGE_BASE_SPEED,
   DODGE_CANCEL_ACTION_LOCK,
@@ -52,7 +53,8 @@ const {
   STAMINA_REGEN_INTERVAL_MS, STAMINA_REGEN_AMOUNT,
   SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST, DODGE_STAMINA_COST,
   GASSED_DURATION_MS, GASSED_RECOVERY_STAMINA,
-  BALANCE_MAX, BALANCE_PASSIVE_REGEN_PER_SEC, BALANCE_CROUCH_REGEN_PER_SEC,
+  GASSED_RECOVERY_STAMINA_IN_CLINCH, COUNTER_GRAB_BALANCE_DEBUFF,
+  BALANCE_MAX, BALANCE_PASSIVE_REGEN_PER_SEC,
   HITSTOP_GRAB_MS, HITSTOP_THROW_MS, SLAP_PARRY_KB_FRICTION,
   SLAP_HIT3_KB_FRICTION,
   SLAP_ROPE_RESIST_BUFFER,
@@ -643,6 +645,7 @@ function tick(delta) {
           if (player.isDodging) {
             player.isRecovering = false;
             player.movementVelocity = 0;
+            player.isChargedHitRecoil = false;
           }
           const recoveryElapsed = room.simTime - player.recoveryStartTime;
           const isRecoveryGameOverLoser = room.gameOver && player.id === room.loserId;
@@ -656,8 +659,12 @@ function tick(delta) {
 
           // Apply ice-like physics to recovery movement
           if (Math.abs(player.movementVelocity) > MIN_MOVEMENT_THRESHOLD) {
-            // Apply momentum and friction from global ice physics
-            player.movementVelocity *= MOVEMENT_MOMENTUM * MOVEMENT_FRICTION;
+            // Charged on-hit recoil settles on its own FAST friction (snappy pop,
+            // short slide) so the attacker holds pressure range; everything else
+            // uses the slow global ice coast.
+            player.movementVelocity *= player.isChargedHitRecoil
+              ? CHARGED_RECOIL_FRICTION
+              : MOVEMENT_MOMENTUM * MOVEMENT_FRICTION;
 
             // Calculate new position with sliding
             const newX =
@@ -685,6 +692,7 @@ function tick(delta) {
             player.isRecovering = false;
             player.movementVelocity = 0;
             player.recoveryDirection = null;
+            player.isChargedHitRecoil = false;
             player.isPalmThrust = false;
             player.palmThrustVisualUntil = 0;
 
@@ -1223,14 +1231,16 @@ function tick(delta) {
               player.isAttemptingGrabThrow = false;
 
               // COUNTER GRAB: grab landed while the opponent was raw-parrying.
-              // NOTE: isCounterGrabbed is currently a TRACKING flag only — nothing
-              // reads it to gate grab-break, so a counter-grabbed victim can still
-              // break out normally. Kept as scaffolding for a future "no break on
-              // counter-grab" lock; wire a read into the grab-break handler to arm it.
+              // ARM CLAMP: the punished parrier cannot grip up during the Phase A
+              // burst carry (grip granted automatically when the clamp releases —
+              // burst decay, boundary contact, or after the grabber's free throw).
+              // Also seeds a balance debuff so the punish scales with prior damage.
               const wasOpponentRawParrying = opponent.isRawParrying;
               opponent.isCounterGrabbed = wasOpponentRawParrying;
 
               if (wasOpponentRawParrying) {
+                opponent.isArmClamped = true;
+                opponent.balance = Math.max(0, opponent.balance - COUNTER_GRAB_BALANCE_DEBUFF);
                 const grabberPlayerNumber = room.players.indexOf(player) === 0 ? 1 : 2;
                 const centerX = (player.x + opponent.x) / 2;
                 const centerY = (player.y + opponent.y) / 2;
@@ -1471,13 +1481,10 @@ function tick(delta) {
         }
       }
 
-      // Balance regen — passive +5/sec, crouch bonus +10/sec, no regen when gassed or in clinch
+      // Balance regen — passive +5/sec, no regen when gassed or in clinch
       if (player.balance < BALANCE_MAX && !room.gameOver && !player.isGassed && !player.inClinch) {
         const deltaSec = delta / 1000;
         let balanceRegen = BALANCE_PASSIVE_REGEN_PER_SEC;
-        if (player.isCrouchStance) {
-          balanceRegen += BALANCE_CROUCH_REGEN_PER_SEC;
-        }
         // BASHO BALANCE attribute scales balance regen rate (1.0 for non-BASHO).
         balanceRegen *= player.statMods?.balanceRegen ?? 1;
         player.balance = Math.min(BALANCE_MAX, player.balance + balanceRegen * deltaSec);
@@ -2392,14 +2399,16 @@ function tick(delta) {
           
           // COUNTER GRAB: grab landed while the opponent was raw-parrying (grabbing
           // during recovery does NOT count — normal grab only).
-          // NOTE: isCounterGrabbed is a TRACKING flag only — nothing reads it to gate
-          // grab-break, so the victim can still break out normally. Kept as scaffolding
-          // for a future "no break on counter-grab" lock (wire a read into the
-          // grab-break handler to arm it).
+          // ARM CLAMP: the punished parrier cannot grip up during the Phase A burst
+          // carry (grip granted automatically when the clamp releases — burst decay,
+          // boundary contact, or after the grabber's free throw). Also seeds a
+          // balance debuff so the punish scales with prior damage.
           const wasOpponentRawParrying = opponent.isRawParrying;
           opponent.isCounterGrabbed = wasOpponentRawParrying;
 
           if (wasOpponentRawParrying) {
+            opponent.isArmClamped = true;
+            opponent.balance = Math.max(0, opponent.balance - COUNTER_GRAB_BALANCE_DEBUFF);
             // Counter Grab: grabbed their raw parry - show LOCKED! effect + "Counter Grab" banner
             const grabberPlayerNumber = room.players.indexOf(player) === 0 ? 1 : 2;
             const centerX = (player.x + opponent.x) / 2;
@@ -2582,110 +2591,8 @@ function tick(delta) {
         const leftBoundary = MAP_LEFT_BOUNDARY + sizeOffset;
         const rightBoundary = MAP_RIGHT_BOUNDARY - sizeOffset;
 
-        // Handle crouch strafing (when holding s + a or d) - higher priority than normal strafing
         if (
-          player.isCrouchStance &&
           player.keys.d &&
-          !player.keys.a &&
-          !player.isDodging &&
-          !player.isSidestepping &&
-          !player.isThrowing &&
-          !player.isGrabbing &&
-          !player.isGrabbingMovement &&
-          !player.isWhiffingGrab &&
-          !player.isAttacking &&
-          !player.isChargingAttack &&
-          !player.isRecovering &&
-          !player.isRawParryStun &&
-          !player.isRawParrying &&
-          !player.isPerfectRawParrySuccess && // Block during perfect parry animation
-          !player.isGrabBreaking && // Block during grab break animation
-          !player.isGrabBreakCountered && // Block during grab break countered state
-          !player.isGrabBreakSeparating && // Block during grab break separation
-          !player.isThrowingSnowball &&
-          !player.isSpawningPumoArmy &&
-          !player.isAtTheRopes &&
-          !player.isHit
-        ) {
-          // Velocity-based movement for crouch strafing (with minimal sliding)
-          // Apply very high friction when changing directions to minimize sliding
-          if (player.movementVelocity < 0) {
-            player.movementVelocity *= 0.3; // Much higher friction than normal strafing
-          }
-
-          // Very slow acceleration for crouch strafing
-          player.movementVelocity = Math.min(
-            player.movementVelocity + MOVEMENT_ACCELERATION * 0.2, // Much slower acceleration
-            MAX_MOVEMENT_SPEED * 0.3 // Much lower max speed
-          );
-
-          // Calculate new position and check boundaries (half speed for crouch)
-          const crouchSpeedFactor = currentSpeedFactor * 0.5;
-          const newX =
-            player.x + delta * crouchSpeedFactor * player.movementVelocity;
-          if (newX <= rightBoundary || player.isThrowLanded || isGameOverLoser) {
-            player.x = newX;
-          } else {
-            player.x = rightBoundary;
-            player.movementVelocity = 0;
-          }
-          player.isCrouchStrafing = true;
-          if (!player.isAttacking && !player.isChargingAttack) {
-            player.isReady = false;
-          }
-        } else if (
-          player.isCrouchStance &&
-          player.keys.a &&
-          !player.keys.d &&
-          !player.isDodging &&
-          !player.isSidestepping &&
-          !player.isThrowing &&
-          !player.isGrabbing &&
-          !player.isGrabbingMovement &&
-          !player.isWhiffingGrab &&
-          !player.isAttacking &&
-          !player.isChargingAttack &&
-          !player.isRecovering &&
-          !player.isRawParryStun &&
-          !player.isRawParrying &&
-          !player.isPerfectRawParrySuccess && // Block during perfect parry animation
-          !player.isGrabBreaking && // Block during grab break animation
-          !player.isGrabBreakCountered && // Block during grab break countered state
-          !player.isGrabBreakSeparating && // Block during grab break separation
-          !player.isThrowingSnowball &&
-          !player.isSpawningPumoArmy &&
-          !player.isAtTheRopes &&
-          !player.isHit
-        ) {
-          // Velocity-based movement for crouch strafing (with minimal sliding)
-          // Apply very high friction when changing directions to minimize sliding
-          if (player.movementVelocity > 0) {
-            player.movementVelocity *= 0.3; // Much higher friction than normal strafing
-          }
-
-          // Very slow acceleration for crouch strafing
-          player.movementVelocity = Math.max(
-            player.movementVelocity - MOVEMENT_ACCELERATION * 0.2, // Much slower acceleration
-            -MAX_MOVEMENT_SPEED * 0.3 // Much lower max speed
-          );
-
-          // Calculate new position and check boundaries (half speed for crouch)
-          const crouchSpeedFactor = currentSpeedFactor * 0.5;
-          const newX =
-            player.x + delta * crouchSpeedFactor * player.movementVelocity;
-          if (newX >= leftBoundary || player.isThrowLanded || isGameOverLoser) {
-            player.x = newX;
-          } else {
-            player.x = leftBoundary;
-            player.movementVelocity = 0;
-          }
-          player.isCrouchStrafing = true;
-          if (!player.isAttacking && !player.isChargingAttack) {
-            player.isReady = false;
-          }
-        } else if (
-          player.keys.d &&
-          !player.isCrouchStance &&
           !player.isDodging &&
           !player.isSidestepping &&
           !player.isRopeJumping &&
@@ -2770,7 +2677,6 @@ function tick(delta) {
           }
         } else if (
           player.keys.a &&
-          !player.isCrouchStance &&
           !player.isDodging &&
           !player.isSidestepping &&
           !player.isRopeJumping &&
@@ -3024,29 +2930,8 @@ function tick(delta) {
           player.isStrafing = false;
         }
 
-        // Update crouch strafing state
-        if (
-          !player.isCrouchStance ||
-          (!player.keys.a && !player.keys.d) ||
-          player.keys.mouse1 ||
-          player.isAttacking ||
-          player.pendingSlapCount ||
-          (player.slapStrafeCooldown &&
-            now < player.slapStrafeCooldownEndTime) ||
-          player.isHit ||
-          player.isRawParrying ||
-          player.isAtTheRopes
-        ) {
-          // Only apply extra friction if player WAS crouch strafing
-          if (
-            player.isCrouchStrafing &&
-            !player.isHit &&
-            Math.abs(player.movementVelocity) > 0
-          ) {
-            player.movementVelocity *= 0.5; // Extra friction to stop quickly
-          }
-          player.isCrouchStrafing = false;
-        }
+        player.isCrouchStance = false;
+        player.isCrouchStrafing = false;
 
         // Force stop strafing in certain states and add missing ground level check
         if (
@@ -3112,50 +2997,6 @@ function tick(delta) {
       // Force clear strafing when hit (parried or otherwise)
       if (player.isHit) {
         player.isStrafing = false;
-      }
-
-      // Crouch stance
-      if (
-        player.keys.s &&
-        !player.isDodging &&
-        !player.isSidestepping &&
-        !player.isGrabbing &&
-        !player.isBeingGrabbed &&
-        !player.isGrabbingMovement &&
-        !player.isWhiffingGrab &&
-        !player.isGrabClashing &&
-        !player.isGrabSeparating &&
-        !player.isThrowing &&
-        !player.isBeingThrown &&
-        !player.isRecovering &&
-        !player.isAttacking &&
-        !player.isHit &&
-        !player.isRawParryStun &&
-        !player.isRawParrying &&
-        !player.isAtTheRopes &&
-        !player.isChargingAttack
-      ) {
-        // Start crouch stance if not already crouching
-        if (!player.isCrouchStance) {
-          player.isCrouchStance = true;
-          player.isCrouchStrafing = false;
-          // Clear movement momentum when starting crouch stance
-          player.movementVelocity = 0;
-          player.isStrafing = false;
-        }
-        // Only set isReady to false if we're not in an attack state
-        if (!player.isAttacking && !player.isChargingAttack) {
-          player.isReady = false;
-        }
-      }
-
-      // Handle crouch stance ending logic
-      if (player.isCrouchStance) {
-        // End crouch stance when s key is released
-        if (!player.keys.s) {
-          player.isCrouchStance = false;
-          player.isCrouchStrafing = false;
-        }
       }
 
       // raw parry
@@ -3463,7 +3304,12 @@ function tick(delta) {
       if (player.isGassed && now >= player.gassedUntil) {
         player.isGassed = false;
         player.gassedUntil = 0;
-        player.stamina = Math.min(100, GASSED_RECOVERY_STAMINA);
+        // Weaker second wind inside the clinch — a ground-down opponent
+        // shouldn't snap back to full shove power mid-grind.
+        player.stamina = Math.min(
+          100,
+          player.inClinch ? GASSED_RECOVERY_STAMINA_IN_CLINCH : GASSED_RECOVERY_STAMINA
+        );
       }
     });
 

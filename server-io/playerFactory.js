@@ -172,6 +172,7 @@ function createInitialPlayerState(overrides = {}) {
     mouse1HeldDuringAttack: false,
     mouse1BufferedBeforeStart: false,
     mouse1PressTime: 0,
+    isChargedHitRecoil: false,
 
     // === Parry ===
     isSlapParrying: false,
@@ -302,6 +303,14 @@ function createInitialPlayerState(overrides = {}) {
     grabCounterAttempted: false,
     grabCounterInput: null,
     isCounterGrabbed: false,
+    isArmClamped: false,
+    clinchThrowFailStagger: false,
+    hasDeepGrip: false,
+    deepGripPushStart: 0,
+    clinchPushRampStart: 0,
+    reactBraceDeadline: 0,
+    reactBraceRefund: 0,
+    reactBraceUsed: false,
     postGrabInputBuffer: false,
     grabImmune: false,
     grabImmuneEndTime: 0,

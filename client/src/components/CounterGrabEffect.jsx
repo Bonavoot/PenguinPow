@@ -1,313 +1,99 @@
 import { useEffect, useState, useRef, memo } from "react";
 import { createPortal } from "react-dom";
-import styled, { keyframes } from "styled-components";
+import styled from "styled-components";
 import PropTypes from "prop-types";
 import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
-import { HIT_EFFECT_TEXT_DURATION, HIT_EFFECT_TEXT_DELAY } from "../config/hitEffectText";
+import clampedSheet from "../assets/clamped-effect.png";
 
-// Ring contracts inward — starts large, slams to center, overshoots, settles
-const ringContract = keyframes`
-  0% {
-    transform: translate(-50%, -50%) scale(2.8);
-    opacity: 0;
-    border-width: 0.16cqw;
-  }
-  25% {
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 1;
-    border-width: 0.35cqw;
-  }
-  40% {
-    transform: translate(-50%, -50%) scale(0.85);
-    opacity: 1;
-    border-width: 0.42cqw;
-  }
-  55% {
-    transform: translate(-50%, -50%) scale(1.05);
-    opacity: 0.9;
-    border-width: 0.25cqw;
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(1.3);
-    opacity: 0;
-    border-width: 0.08cqw;
-  }
-`;
+// ── Counter-grab "LOCKED / CLAMPED" burst (sprite sheet) ─────────────────────
+// Replaces the old CSS cage/ring/bars/flash/sparks + "LOCKED!" text with a hand-
+// drawn 4x4 / 16-frame magenta electric burst (frame 0 empty; content 1–15). The
+// art's native pink/purple already matches the counter-grab theme, so no recolor
+// is needed. Played once, fast, for the same snappy read as the other sprite FX.
+// The "COUNTER GRAB" side banner is kept (it's the shared announcement system).
+const CL_GRID = 4;
+const CL_START_FRAME = 1;
+const CL_END_FRAME = 15;
+const CL_DURATION_MS = 340; // 15 frames → ~23ms/frame: snappy, display-synced
+const CL_SIZE_CQW = 20;
+const CL_BASELINE_OFFSET_Y = 0;
+const CL_CENTER_OFFSET_X = 0;
 
-// Cage bars contract inward in sync with the ring
-const barContract = keyframes`
-  0% {
-    transform: translate(-50%, -50%) rotate(var(--bar-angle)) scaleX(2.2);
-    opacity: 0;
-  }
-  25% {
-    transform: translate(-50%, -50%) rotate(var(--bar-angle)) scaleX(1);
-    opacity: 1;
-  }
-  40% {
-    transform: translate(-50%, -50%) rotate(var(--bar-angle)) scaleX(0.88);
-    opacity: 1;
-  }
-  55% {
-    transform: translate(-50%, -50%) rotate(var(--bar-angle)) scaleX(1);
-    opacity: 0.8;
-  }
-  100% {
-    transform: translate(-50%, -50%) rotate(var(--bar-angle)) scaleX(1);
-    opacity: 0;
-  }
-`;
-
-// Heavy center flash at the lock-in moment
-const lockFlash = keyframes`
-  0% {
-    transform: translate(-50%, -50%) scale(0);
-    opacity: 0;
-  }
-  15% {
-    transform: translate(-50%, -50%) scale(1.5);
-    opacity: 1;
-  }
-  35% {
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 1;
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(0.4);
-    opacity: 0;
-  }
-`;
-
-// Compression pulse — outward ripple after the cage shuts
-const compressionPulse = keyframes`
-  0% {
-    transform: translate(-50%, -50%) scale(0.5);
-    opacity: 0;
-  }
-  25% {
-    transform: translate(-50%, -50%) scale(0.8);
-    opacity: 0.8;
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(2.2);
-    opacity: 0;
-  }
-`;
-
-// Impact sparks scatter after the lock-in shockwave
-const impactSparkBurst = keyframes`
-  0% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(calc(-50% + var(--spark-dx)), calc(-50% + var(--spark-dy))) scale(0.3);
-  }
-`;
-
-// LOCKED! text — fast heavy slam with settle
-const lockedTextSlam = keyframes`
-  0% {
-    transform: translate(-50%, -50%) scale(0);
-    opacity: 0;
-  }
-  12% {
-    transform: translate(-50%, -50%) scale(1.35);
-    opacity: 1;
-  }
-  22% {
-    transform: translate(-50%, -50%) scale(0.92);
-    opacity: 1;
-  }
-  30% {
-    transform: translate(-50%, -50%) scale(1.05);
-    opacity: 1;
-  }
-  40% {
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 1;
-  }
-  80% {
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 1;
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 0;
-  }
-`;
-
-const EFFECT_TEXT_BASELINE_OFFSET_Y = 0;
-const EFFECT_CENTER_OFFSET_X = 0;
-
-const EffectContainer = styled.div`
+const ClampSprite = styled.div`
   position: absolute;
-  left: ${props => (props.$x / 1280) * 100 + EFFECT_CENTER_OFFSET_X}%;
-  bottom: ${props => (props.$y / 720) * 100 + EFFECT_TEXT_BASELINE_OFFSET_Y}%;
-  width: 5.18cqw;
-  height: 4.82cqw;
+  left: ${(props) => (props.$x / 1280) * 100 + CL_CENTER_OFFSET_X}%;
+  bottom: ${(props) => (props.$y / 720) * 100 + CL_BASELINE_OFFSET_Y}%;
+  width: ${CL_SIZE_CQW}cqw;
+  height: ${CL_SIZE_CQW}cqw;
   transform: translate(-50%, 50%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  transform-origin: center;
   z-index: 170;
   pointer-events: none;
-  contain: layout style;
-  filter:
-    saturate(1.15)
-    brightness(1.1)
-    drop-shadow(0 0 5px rgba(255, 50, 120, 0.3));
+  background-image: url(${clampedSheet});
+  background-repeat: no-repeat;
+  background-size: ${CL_GRID * 100}% ${CL_GRID * 100}%;
+  /* Keep the native magenta; a faint pink bloom sells the electric snap. */
+  filter: saturate(1.15) brightness(1.1) drop-shadow(0 0 5px rgba(255, 50, 120, 0.35));
+  will-change: background-position;
 `;
 
-const CAGE_RADIUS = "2.5cqw";
+const clFrameToBackgroundPosition = (frame) => {
+  const col = frame % CL_GRID;
+  const row = Math.floor(frame / CL_GRID);
+  const x = (col / (CL_GRID - 1)) * 100;
+  const y = (row / (CL_GRID - 1)) * 100;
+  return `${x}% ${y}%`;
+};
 
-const ContractingRing = styled.div`
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: ${CAGE_RADIUS};
-  height: ${CAGE_RADIUS};
-  border-radius: 50%;
-  border: 0.24cqw solid rgba(255, 60, 140, 0.95);
-  box-shadow:
-    0 0 0.5cqw rgba(200, 40, 120, 0.6),
-    0 0 1cqw rgba(150, 40, 220, 0.3);
-  transform: translate(-50%, -50%) scale(2.8);
-  opacity: 0;
-  animation: ${ringContract} 0.45s ease-out forwards;
-`;
+// Plays the sheet once, then renders nothing.
+const ClampSpriteBurst = ({ x, y }) => {
+  const [frame, setFrame] = useState(CL_START_FRAME);
+  const [done, setDone] = useState(false);
+  const rafRef = useRef(null);
+  const startRef = useRef(null);
 
-const LockBar = styled.div`
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 5.0cqw;
-  height: 0.18cqw;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 60, 140, 0.8) 10%,
-    rgba(255, 180, 220, 1) 35%,
-    rgba(255, 255, 255, 1) 50%,
-    rgba(255, 180, 220, 1) 65%,
-    rgba(255, 60, 140, 0.8) 90%,
-    transparent 100%
+  useEffect(() => {
+    const total = CL_END_FRAME - CL_START_FRAME + 1;
+    const frameDuration = CL_DURATION_MS / total;
+    const step = (t) => {
+      if (startRef.current === null) startRef.current = t;
+      const idx = Math.floor((t - startRef.current) / frameDuration);
+      if (idx >= total) {
+        setDone(true);
+        return;
+      }
+      setFrame(CL_START_FRAME + idx);
+      rafRef.current = requestAnimationFrame(step);
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
+  if (done) return null;
+  return (
+    <ClampSprite
+      $x={x}
+      $y={y}
+      style={{ backgroundPosition: clFrameToBackgroundPosition(frame) }}
+    />
   );
-  transform-origin: center;
-  --bar-angle: ${props => props.$angle}deg;
-  transform: translate(-50%, -50%) rotate(var(--bar-angle)) scaleX(2.2);
-  opacity: 0;
-  animation: ${barContract} 0.45s ease-out forwards;
-  box-shadow:
-    0 0 0.25cqw rgba(255, 50, 120, 0.6),
-    0 0 0.6cqw rgba(150, 40, 220, 0.25);
-`;
+};
 
-const LockFlashCore = styled.div`
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 2.0cqw;
-  height: 2.0cqw;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    rgba(255, 255, 255, 1) 0%,
-    rgba(255, 200, 230, 1) 18%,
-    rgba(255, 70, 140, 0.95) 42%,
-    rgba(170, 50, 240, 0.7) 65%,
-    transparent 100%
-  );
-  transform: translate(-50%, -50%) scale(0);
-  animation: ${lockFlash} 0.35s ease-out 0.08s forwards;
-`;
-
-const CompressionPulseRing = styled.div`
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: ${CAGE_RADIUS};
-  height: ${CAGE_RADIUS};
-  border-radius: 50%;
-  border: 0.16cqw solid rgba(255, 100, 170, 0.85);
-  box-shadow:
-    0 0 0.35cqw rgba(255, 60, 140, 0.45);
-  transform: translate(-50%, -50%) scale(0.5);
-  opacity: 0;
-  animation: ${compressionPulse} 0.4s ease-out 0.12s forwards;
-`;
-
-const ImpactSpark = styled.div`
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: ${props => (props.$size * 0.08).toFixed(2)}cqw;
-  height: ${props => (props.$size * 0.08).toFixed(2)}cqw;
-  background: ${props => props.$isRed
-    ? 'linear-gradient(45deg, #ffffff, #cc2244)'
-    : 'linear-gradient(45deg, #ffffff, #9933ff)'};
-  border-radius: 50%;
-  box-shadow:
-    0 0 ${props => (props.$size * 0.16).toFixed(2)}cqw ${props => props.$isRed ? 'rgba(204, 34, 68, 0.85)' : 'rgba(153, 51, 255, 0.85)'};
-  opacity: 0;
-  animation: ${impactSparkBurst} 0.4s ease-out forwards;
-  animation-delay: ${props => props.$delay}s;
-  --spark-dx: ${props => props.$dx}cqw;
-  --spark-dy: ${props => props.$dy}cqw;
-`;
-
-const LockedText = styled.div`
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  font-family: "Bungee", cursive;
-  font-size: 0.86cqw;
-  color: #ff3370;
-  -webkit-text-stroke: clamp(2px, 0.2cqw, 3.5px) #000;
-  paint-order: stroke fill;
-  text-shadow:
-    -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000,
-    2px 2px 0 rgba(100, 15, 45, 0.85), 4px 4px 0 rgba(70, 10, 30, 0.5),
-    0 2px 6px rgba(0, 0, 0, 0.7);
-  z-index: 20;
-  letter-spacing: 0.15em;
-  white-space: nowrap;
-  transform: translate(-50%, -50%) scale(0);
-  animation: ${lockedTextSlam} ${HIT_EFFECT_TEXT_DURATION}s ease-out forwards;
-  animation-delay: ${HIT_EFFECT_TEXT_DELAY}s;
-`;
-
-const BAR_ANGLES = [0, 45, 90, 135];
+ClampSpriteBurst.propTypes = {
+  x: PropTypes.number.isRequired,
+  y: PropTypes.number.isRequired,
+};
 
 const CounterGrabEffect = ({ position }) => {
   const [activeEffects, setActiveEffects] = useState([]);
   const processedCountersRef = useRef(new Set());
   const effectIdCounter = useRef(0);
   const pendingTimeouts = useRef([]);
+  // Kept longer than the sprite so the COUNTER GRAB banner (portal) can play out
+  // its own animation; the sprite unmounts itself after its short burst.
   const EFFECT_DURATION = 1600;
-
-  const generateSparks = () => {
-    const sparks = [];
-    const sparkCount = 6;
-
-    for (let i = 0; i < sparkCount; i++) {
-      const angle = (i / sparkCount) * 360 + (Math.random() * 20 - 10);
-      const radians = angle * (Math.PI / 180);
-      const distance = 3.5 + Math.random() * 2.5;
-
-      sparks.push({
-        id: i,
-        size: 4 + Math.random() * 4,
-        dx: Math.cos(radians) * distance,
-        dy: Math.sin(radians) * distance,
-        delay: 0.12 + i * 0.018,
-        isRed: i % 2 === 0,
-      });
-    }
-
-    return sparks;
-  };
 
   useEffect(() => {
     if (!position || !position.counterId) return;
@@ -337,7 +123,6 @@ const CounterGrabEffect = ({ position }) => {
       counterId: position.counterId,
       x: position.x,
       y: position.y,
-      sparks: generateSparks(),
       grabberPlayerNumber: position.grabberPlayerNumber || 1,
     };
 
@@ -362,36 +147,20 @@ const CounterGrabEffect = ({ position }) => {
     <>
       {activeEffects.map((effect) => {
         const isLeftSide = effect.grabberPlayerNumber === 1;
+        const hudEl = document.getElementById("game-hud");
 
         return (
           <div key={effect.id}>
-            <EffectContainer $x={effect.x} $y={effect.y}>
-              <ContractingRing />
-              {BAR_ANGLES.map((angle) => (
-                <LockBar key={angle} $angle={angle} />
-              ))}
-              <LockFlashCore />
-              <CompressionPulseRing />
-              {effect.sparks.map((spark) => (
-                <ImpactSpark
-                  key={spark.id}
-                  $size={spark.size}
-                  $dx={spark.dx}
-                  $dy={spark.dy}
-                  $delay={spark.delay}
-                  $isRed={spark.isRed}
-                />
-              ))}
-              <LockedText>LOCKED!</LockedText>
-            </EffectContainer>
-            {document.getElementById('game-hud') && createPortal(
-              <SumoAnnouncementBanner
-                text={"COUNTER\nGRAB"}
-                type="countergrab"
-                isLeftSide={isLeftSide}
-              />,
-              document.getElementById('game-hud')
-            )}
+            <ClampSpriteBurst x={effect.x} y={effect.y} />
+            {hudEl &&
+              createPortal(
+                <SumoAnnouncementBanner
+                  text={"COUNTER\nGRAB"}
+                  type="countergrab"
+                  isLeftSide={isLeftSide}
+                />,
+                hudEl
+              )}
           </div>
         );
       })}

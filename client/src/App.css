@@ -556,11 +556,11 @@ body {
   inset: 0;
   pointer-events: none;
   z-index: 199;
-  /* Near-uniform, faint cyan wash. A center-weighted radial spotlit the
-     fighters (the "weird what gets lit up" feel); a flat, low-opacity veil
-     reads as a clean camera flash instead. Never fully clears so there's no
-     bright-center / dark-edge gradient banding. */
-  background: rgba(150, 225, 255, 0.09);
+  /* Flat warm-GOLD wash (kept flat, not radial, so there's no bright-center
+     banding / "weird what gets lit up" feel). A real flash-bulb pop so the
+     perfect parry reads as a decisive clash, not a faint tint. Gold matches the
+     golden perfect-parry burst/lines. Rises fast + falls = flash at impact. */
+  background: rgba(255, 224, 130, 0.32);
   animation: perfect-parry-flash 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 

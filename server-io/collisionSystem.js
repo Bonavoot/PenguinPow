@@ -1,5 +1,5 @@
 const {
-  GRAB_STATES, GROUND_LEVEL, TICK_RATE, speedFactor,
+  GRAB_STATES, GROUND_LEVEL,
   HITBOX_DISTANCE_VALUE, CHARGED_HITBOX_DISTANCE_VALUE, SLAP_HITBOX_DISTANCE_VALUE,
   SIDESTEP_RECOVERY_OVERLAP_THRESHOLD,
   SLAP_PARRY_WINDOW, SLAP_PARRY_NEUTRAL_WINDOW_MS, SLAP_PARRY_HITSTOP_MS,
@@ -29,17 +29,18 @@ const {
   SLAP_STRING_HIT2_STUN_MS,
   SLAP_HIT3_STUN_MS,
   DOHYO_EDGE_PANIC_ZONE,
-  CHARGED_KILL_EDGE_ZONE,
   SLAP_ONHIT_ATTACKER_PUSH,
-  CHARGED_KILL_MIN_CHARGE,
-  CHARGED_KILL_READ_MIN_CHARGE,
+  CHARGED_KILL_REACH_MIN,
+  CHARGED_KILL_REACH_MAX,
+  CHARGED_KILL_REACH_CAP,
+  CHARGED_KILL_MULT_MIN,
+  CHARGED_KILL_MULT_MAX,
+  CHARGED_ATTACKER_RECOIL_BASE,
+  CHARGED_ATTACKER_RECOIL_CHARGE_SCALE,
+  CHARGED_HIT_RECOVERY_MS,
   CHARGE_FULL_POWER_MS,
   CINEMATIC_KILL_HITSTOP_MS,
   CINEMATIC_KILL_KNOCKBACK_BOOST,
-  CINEMATIC_KB_FRICTION,
-  CINEMATIC_KB_DI_FRICTION,
-  CINEMATIC_KB_MOVEMENT_TRANSFER,
-  CINEMATIC_KB_MOVEMENT_FRICTION,
   SIDESTEP_HIT_RETURN_BASE_MS,
   SIDESTEP_HIT_RETURN_MIN_MS,
   COUNTER_HIT_WINDOW_MS,
@@ -89,25 +90,20 @@ function playerPalmBreaksGrabArmor(player) {
   );
 }
 
-const SIM_DELTA = 1000 / TICK_RATE;
-
-function willGuaranteeRingOut(victimX, knockbackDir, finalMultiplier) {
-  let kbVel = 1.7 * knockbackDir * finalMultiplier;
-  let mvVel = 1.2 * knockbackDir * finalMultiplier;
-  let x = victimX;
-
-  for (let i = 0; i < 300; i++) {
-    kbVel *= CINEMATIC_KB_FRICTION;
-    kbVel *= CINEMATIC_KB_DI_FRICTION;
-    mvVel = kbVel * CINEMATIC_KB_MOVEMENT_TRANSFER;
-    mvVel *= CINEMATIC_KB_MOVEMENT_FRICTION;
-
-    x += SIM_DELTA * speedFactor * (kbVel + mvVel);
-
-    if (x <= MAP_LEFT_BOUNDARY || x >= MAP_RIGHT_BOUNDARY) return true;
-    if (Math.abs(kbVel) < 0.01 && Math.abs(mvVel) < 0.01) break;
-  }
-  return false;
+// Charged cinematic-kill "kill reach": how far (px) from the rope, in the
+// knockback direction, a charged hit can still ring the victim OUT. Scales with
+// the full power of the hit (finalKnockbackMultiplier — charge %, POWER
+// power-up / Power Water, BASHO power/resistance, counter-hit, punish) and is
+// hard-capped so a NO-KILL deadzone always survives in the middle of the ring.
+// See constants.js (CHARGED_KILL_* dials) for the geometry rationale.
+function chargedKillReach(finalMultiplier) {
+  const slope =
+    (CHARGED_KILL_REACH_MAX - CHARGED_KILL_REACH_MIN) /
+    (CHARGED_KILL_MULT_MAX - CHARGED_KILL_MULT_MIN);
+  const raw =
+    CHARGED_KILL_REACH_MIN +
+    (finalMultiplier - CHARGED_KILL_MULT_MIN) * slope;
+  return Math.max(0, Math.min(raw, CHARGED_KILL_REACH_CAP));
 }
 
 function checkCollision(player, otherPlayer, rooms, io) {
@@ -921,10 +917,11 @@ function processHit(player, otherPlayer, rooms, io) {
         }
       }
 
-      // Set recovery state for successful hits
+      // Set recovery state for successful hits. Shorter than the victim's
+      // hitstun → the landed charge is PLUS on hit (see CHARGED_HIT_RECOVERY_MS).
       player.isRecovering = true;
       player.recoveryStartTime = currentTime;
-      player.recoveryDuration = 400;
+      player.recoveryDuration = CHARGED_HIT_RECOVERY_MS;
       player.recoveryDirection = player.facing;
       // Initialize knockback velocity in the opposite direction of the attack
       player.knockbackVelocity = {
@@ -1406,44 +1403,27 @@ function processHit(player, otherPlayer, rooms, io) {
         otherPlayer.knockbackVelocity.x = 0;
         otherPlayer.movementVelocity = 0;
 
-        // PHASE 2 — READ-GATED CHARGED KILL. The cinematic KO is no longer a pure
-        // number check: a NEUTRAL midscreen charged hit (any charge %) can't
-        // one-shot anymore. The cinematic kill ALSO requires a read — counter-hit
-        // / punish, OR the victim already within DOHYO_EDGE_PANIC_ZONE of the
-        // boundary in the knockback direction, OR the victim gassed. When the
-        // read isn't there, the hit still lands with full knockback but is
-        // rope-clamped (below + index.js), parking the victim in the panic zone
-        // where the NEXT confirmed hit is earned.
+        // ── CHARGED CINEMATIC KILL — one continuous "kill reach" rule ─────────
+        // The KO is decided by a single, learnable question: at contact, is the
+        // victim within `killReach` of the ROPE (MAP_*_BOUNDARY 340/935) they're
+        // being knocked toward? killReach scales with the FULL power of THIS hit
+        // (finalKnockbackMultiplier already folds in charge %, the POWER power-up
+        // / Power Water, BASHO power & resistance stat mods, counter-hit ×1.25,
+        // and punish ×1.25), so power sources extend the reach even at lower
+        // charge — but a HARD CAP (CHARGED_KILL_REACH_CAP) keeps a wide NO-KILL
+        // deadzone in the middle of the 595px ring: from midscreen a charged hit
+        // can never ring out regardless of power. It rope-clamps the victim at
+        // the edge instead (below + index.js), where the NEXT hit is earned.
+        // No invisible read bypass, no charge cliff — just power vs. distance.
         const distToBoundaryChargedKb = knockbackDirection > 0
           ? MAP_RIGHT_BOUNDARY - otherPlayer.x
           : otherPlayer.x - MAP_LEFT_BOUNDARY;
-        // Position path uses the dedicated (tighter) CHARGED_KILL_EDGE_ZONE, not
-        // the general panic zone — a neutral charge must catch the victim genuinely
-        // close to the rope to KO; farther out, the rope clamp below parks them.
-        // Counter/punish/gassed remain read-based bypasses (earned kills from range).
-        const hasReadKill =
-          effectiveCounterHit || effectivePunish || !!otherPlayer.isGassed;
-        const chargedKillRead =
-          hasReadKill || distToBoundaryChargedKb <= CHARGED_KILL_EDGE_ZONE;
 
-        // Clean, learnable charge line: a read (counter/punish/gassed) lets you KO
-        // with less charge (the read is the earn); a neutral corner kill demands a
-        // big commit. Keyed off raw charge %, NOT finalKnockbackMultiplier, so the
-        // requirement no longer silently drifts with counter/punish/power-up mods.
-        const minChargeForKill = hasReadKill
-          ? CHARGED_KILL_READ_MIN_CHARGE
-          : CHARGED_KILL_MIN_CHARGE;
-
-        // willGuaranteeRingOut stays as the physics safety: a heavily
-        // resistance-modded (BASHO) victim who can't actually be carried out won't
-        // be cinematic-killed even past the charge line.
-        isCinematicKill =
-          chargedKillRead &&
-          chargePercentage >= minChargeForKill &&
-          willGuaranteeRingOut(otherPlayer.x, knockbackDirection, finalKnockbackMultiplier);
+        const killReach = chargedKillReach(finalKnockbackMultiplier);
+        isCinematicKill = distToBoundaryChargedKb <= killReach;
 
         // Marker + gate for the index.js rope clamp: a charged hit that is NOT a
-        // (read-gated) cinematic kill slams the victim TO the rope, not through it.
+        // cinematic kill slams the victim TO the rope, not through it.
         otherPlayer.isChargedKnockback = true;
         otherPlayer.chargedKnockbackCanRingOut = isCinematicKill;
 
@@ -1471,13 +1451,21 @@ function processHit(player, otherPlayer, rooms, io) {
         otherPlayer.movementVelocity = 0;
 
         const attackerBounceDirection = -knockbackDirection;
-        const attackerBounceMultiplier = 0.3 + (chargePercentage / 100) * 0.5;
-        // Palm thrust holds its ground — no backward recoil on a connected hit.
+        // Charge-scaled recoil: a harder charge kicks the attacker back with a
+        // punchy initial pop (that front-loaded snap is the "hard, quick" impact
+        // feel). Palm thrust and cinematic kills hold their ground (no recoil).
+        const attackerBounceMultiplier =
+          CHARGED_ATTACKER_RECOIL_BASE +
+          (chargePercentage / 100) * CHARGED_ATTACKER_RECOIL_CHARGE_SCALE;
         if (isCinematicKill || player.isPalmThrust) {
           player.movementVelocity = 0;
+          player.isChargedHitRecoil = false;
         } else {
           player.movementVelocity =
             2 * attackerBounceDirection * attackerBounceMultiplier;
+          // Settle this recoil on the fast recoil friction (snappy pop, short
+          // slide) rather than the slow global ice coast — see index.js.
+          player.isChargedHitRecoil = true;
         }
         player.knockbackVelocity = { x: 0, y: 0 };
       }

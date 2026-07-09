@@ -90,6 +90,15 @@ function cleanupGrabStates(player, opponent) {
   for (const p of [player, opponent]) {
     timeoutManager.clearPlayerSpecific(p.id, "clinchJoltRecovery");
     timeoutManager.clearPlayerSpecific(p.id, "clinchJoltCooldown");
+    timeoutManager.clearPlayerSpecific(p.id, "clinchThrowFailStagger");
+    p.isArmClamped = false;
+    p.clinchThrowFailStagger = false;
+    p.hasDeepGrip = false;
+    p.deepGripPushStart = 0;
+    p.clinchPushRampStart = 0;
+    p.reactBraceDeadline = 0;
+    p.reactBraceRefund = 0;
+    p.reactBraceUsed = false;
   }
 
   // Clean up grabber states

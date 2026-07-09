@@ -112,23 +112,7 @@ for (const name of [
   );
 }
 
-// Crouch modifiers are inline literals in the server strafe block — make sure
-// they haven't been retuned without updating the mirror.
 const indexSrc = readFileSync(path.join(serverRoot, "index.js"), "utf8");
-check(
-  "crouch accel factor (×0.2) still present in server",
-  indexSrc.includes("MOVEMENT_ACCELERATION * 0.2") &&
-    C.CROUCH_ACCEL_FACTOR === 0.2
-);
-check(
-  "crouch max speed factor (×0.3) still present in server",
-  indexSrc.includes("MAX_MOVEMENT_SPEED * 0.3") &&
-    C.CROUCH_MAX_SPEED_FACTOR === 0.3
-);
-check(
-  "crouch speed factor (×0.5) still present in server",
-  indexSrc.includes("currentSpeedFactor * 0.5") && C.CROUCH_SPEED_FACTOR === 0.5
-);
 check(
   "outside-dohyo velocity penalty (×0.92) still present in server",
   indexSrc.includes("movementVelocity *= 0.92") &&
@@ -232,27 +216,13 @@ console.log("\n[2] Physics step unit tests");
 }
 
 {
-  // Crouch strafe: capped at 30% max speed, moves at half speed factor.
+  // Holding S no longer changes movement — S+D uses normal strafe physics.
   const sim = freshSim(640);
-  for (let i = 0; i < 200; i++) {
-    stepMovement(sim, { a: false, d: true, s: true });
-    sim.x = 640;
-  }
-  check(
-    "crouch strafe caps at 30% max speed",
-    sim.v <= C.ICE_MAX_SPEED * C.CROUCH_MAX_SPEED_FACTOR + 1e-9,
-    `v=${sim.v}`
-  );
-  const before = freshSim(640);
-  before.v = C.ICE_MAX_SPEED * C.CROUCH_MAX_SPEED_FACTOR;
-  const vAfterAccel = Math.min(
-    before.v + C.ICE_ACCELERATION * C.CROUCH_ACCEL_FACTOR,
-    C.ICE_MAX_SPEED * C.CROUCH_MAX_SPEED_FACTOR
-  );
-  stepMovement(before, { a: false, d: true, s: true });
-  const expected =
-    640 + C.TICK_MS * (C.SPEED_FACTOR * C.CROUCH_SPEED_FACTOR) * vAfterAccel;
-  check("crouch strafe uses half speed factor", approx(before.x, expected), `x=${before.x} expected=${expected}`);
+  stepMovement(sim, { a: false, d: true, s: true });
+  const expectedX = 640 + C.TICK_MS * C.SPEED_FACTOR * C.ICE_INITIAL_BURST;
+  const expectedV = C.ICE_INITIAL_BURST * C.ICE_MOVING_FRICTION;
+  check("S+D uses normal push-off burst", approx(sim.x, expectedX), `x=${sim.x} expected=${expectedX}`);
+  check("S+D applies normal post-step friction", approx(sim.v, expectedV), `v=${sim.v} expected=${expectedV}`);
 }
 
 {

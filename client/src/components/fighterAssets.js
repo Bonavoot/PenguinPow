@@ -143,6 +143,8 @@ import smokePuffSheet from "../assets/smoke-puff-effect.png";
 import dashSmokeSheet from "../assets/dash-smoke-effect.png";
 import chargedSmokeSheet from "../assets/charged-attack-smoke-effect.png";
 import cinematicThrowLandSmokeSheet from "../assets/cinematicKill-throw-landing-smoke-effect.png";
+import parryEffectSheet from "../assets/raw-parry-effect.png";
+import clampedEffectSheet from "../assets/clamped-effect.png";
 
 // ============================================
 // CONSTANTS
@@ -299,6 +301,8 @@ const initializeImagePreloading = () => {
   preloadImage(dashSmokeSheet);
   preloadImage(chargedSmokeSheet);
   preloadImage(cinematicThrowLandSmokeSheet);
+  preloadImage(parryEffectSheet);
+  preloadImage(clampedEffectSheet);
 };
 
 initializeImagePreloading();

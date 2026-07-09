@@ -82,6 +82,14 @@ const PUNCH_STOP = 0.001; // cut to zero below this
 // ── Round-start "GO!" punch ──────────────────────────────────────
 const ROUND_START_PUNCH_AMOUNT = 0.035;
 
+// ── Perfect-parry micro-hitstop ──────────────────────────────────
+// A tiny camera freeze on a perfect parry: for this window the camera holds
+// perfectly still (no tracking lerp) and trauma/punch decay is PAUSED, so the
+// shake + zoom-punch "stick" as a freeze-frame at the clash, then release with
+// full energy when it ends. Short enough that catch-up after unfreeze is a
+// pleasing snap, not a lurch. Client-visual only — server sim is untouched.
+const PERFECT_PARRY_FREEZE_MS = 80;
+
 // ── Cinematic kill camera ────────────────────────────────────────
 const CINEMATIC_ZOOM_SCALE = 1.98; // ~10% out from 2.2
 const CINEMATIC_SHAKE_TRAUMA = 0.9; // trauma floor held during freeze (heaviest in game)
@@ -165,6 +173,10 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
   // Player-tracking is off during power-up selection, ready-up, and gyoji
   // calls — camera stays centered until HAKKIYOI (game_start).
   const trackingEnabledRef = useRef(false);
+
+  // Timestamp (performance.now) until which the perfect-parry micro-hitstop
+  // holds the camera frozen. 0 = not freezing.
+  const microFreezeUntilRef = useRef(0);
 
   const prematchRef = useRef(showPreMatchScreen);
   prematchRef.current = showPreMatchScreen;
@@ -265,6 +277,8 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
     const onPerfectParry = () => {
       if (cinematicRef.current.active) return;
       addShake("perfect_parry");
+      // Arm the micro-hitstop freeze-frame (held in the tick loop below).
+      microFreezeUntilRef.current = performance.now() + PERFECT_PARRY_FREEZE_MS;
     };
 
     // ── Unified event shake — ALL server-emitted shakes route here ──
@@ -308,6 +322,14 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
 
         const cam = camRef.current;
         const cin = cinematicRef.current;
+
+        // Perfect-parry micro-hitstop: hold the camera dead still (no tracking
+        // lerp) while the freeze window is open. Only applies during active
+        // tracking and never during a kill cinematic.
+        const frozen =
+          !cin.active &&
+          trackingEnabledRef.current &&
+          performance.now() < microFreezeUntilRef.current;
 
         if (cin.active) {
           const elapsed = performance.now() - cin.startTime;
@@ -378,6 +400,10 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
             cam.x = edgeTargetX;
             cam.y = lerp(cam.y, normalTargetY, lerpT(SMOOTH_FACTOR));
           }
+        } else if (frozen) {
+          // ── Perfect-parry freeze-frame — hold the camera exactly where it is.
+          // Trauma still renders below (shake-in-place) and its decay is paused,
+          // so the clash reads as a hard freeze that releases with full energy.
         } else if (trackingEnabledRef.current) {
           // ── Normal camera behavior — track players during active rounds ──
           // Asymmetric zoom: push IN faster than we pull OUT.
@@ -434,11 +460,14 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
           shakeX = (dir + nx * (1 - SHAKE_DIR_BIAS)) * amt * SHAKE_MAX_OFFSET_X;
           shakeY = ny * amt * SHAKE_MAX_OFFSET_Y;
           shakeRot = nr * amt * shakeState.rot;
-          // Time-based linear trauma decay (frame-rate independent).
-          shakeState.trauma = Math.max(
-            0,
-            shakeState.trauma - TRAUMA_DECAY * (dtMs / 1000),
-          );
+          // Time-based linear trauma decay (frame-rate independent). Paused
+          // during the perfect-parry freeze so the shake "sticks" then releases.
+          if (!frozen) {
+            shakeState.trauma = Math.max(
+              0,
+              shakeState.trauma - TRAUMA_DECAY * (dtMs / 1000),
+            );
+          }
         } else {
           shakeState.trauma = 0;
           resetShakeBias();
@@ -446,8 +475,9 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
 
         // Zoom-punch decays per-frame (independent of trauma so a punch can
         // outlast / precede the rattle, e.g. the ceremonial round-start pulse).
+        // Paused during the perfect-parry freeze so the punched-in zoom holds.
         if (shakeState.punch > PUNCH_STOP) {
-          shakeState.punch *= decayT(PUNCH_DECAY);
+          if (!frozen) shakeState.punch *= decayT(PUNCH_DECAY);
         } else {
           shakeState.punch = 0;
         }

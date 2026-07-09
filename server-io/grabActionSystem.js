@@ -11,9 +11,17 @@ const {
   CLINCH_PUSH_VS_PLANT_SPEED_MULT,
   CLINCH_PLANT_BALANCE_REGEN_PER_SEC,
   CLINCH_PLANT_STAMINA_DRAIN_INTERVAL,
+  CLINCH_NEUTRAL_STAMINA_REGEN_PER_SEC,
   CLINCH_PLANT_STAMINA_DRAIN_PUSHED_INTERVAL,
   CLINCH_PUSH_OPPONENT_STAMINA_DRAIN_INTERVAL,
   CLINCH_PUSH_VS_PUSH_SPEED_SCALE,
+  CLINCH_PUSH_STAMINA_WEIGHT,
+  CLINCH_PUSH_RAMP_DELAY_MS,
+  CLINCH_PUSH_RAMP_RISE_MS,
+  CLINCH_PUSH_RAMP_MAX_MULT,
+  CLINCH_REACT_BRACE_WINDOW_MS,
+  CLINCH_REACT_BRACE_REFUND_FRACTION,
+  CLINCH_REACT_BRACE_STAMINA_COST,
   CLINCH_GASSED_PUSH_MULT,
   CLINCH_STALEMATE_DURATION_MS,
   CLINCH_STALEMATE_MOVEMENT_THRESHOLD,
@@ -88,6 +96,11 @@ const {
   CLINCH_THROW_BOUNDARY_MARGIN,
   CLINCH_THROW_MIN_SEPARATION,
   CLINCH_PULL_SWAP_TWEEN_DURATION,
+  CLINCH_PUSH_STAMINA_FLOOR,
+  CLINCH_THROW_FAIL_STAGGER_MS,
+  DEEP_GRIP_THROW_THRESHOLD_BONUS,
+  DEEP_GRIP_PUSH_MULT,
+  DEEP_GRIP_PUSH_WIN_MS,
   GRAB_BREAK_STAMINA_COST,
   GRAB_BREAK_FORCED_DISTANCE,
   GRAB_BREAK_TWEEN_DURATION,
@@ -109,8 +122,40 @@ const {
 const { correctFacingAfterGrabOrThrow, executeClinchSeparation } = require("./grabMechanics");
 const { cleanupGrabStates, handleWinCondition } = require("./gameFunctions");
 
-function getGassedMult(player) {
-  return player.isGassed ? CLINCH_GASSED_PUSH_MULT : 1;
+// Continuous fatigue: push force lerps from 1.0 (full stamina) to the floor
+// (0 stamina). Gassed overrides with the hard cliff — the arc is
+// 100 stamina → floor → gassed cliff → partial recovery.
+function getPushForceMult(player) {
+  const deepGripMult = player.hasDeepGrip ? DEEP_GRIP_PUSH_MULT : 1;
+  if (player.isGassed) return CLINCH_GASSED_PUSH_MULT * deepGripMult;
+  const staminaRatio = Math.max(0, Math.min(100, player.stamina)) / 100;
+  return (CLINCH_PUSH_STAMINA_FLOOR + (1 - CLINCH_PUSH_STAMINA_FLOOR) * staminaRatio) * deepGripMult;
+}
+
+// Momentum ramp multiplier for an unanswered push. 1.0 until the delay
+// elapses, then linear up to the max over the rise window. The timer
+// (clinchPushRampStart) is maintained in the movement section each tick.
+function getPushRampMult(player, now) {
+  if (!player.clinchPushRampStart) return 1;
+  const held = now - player.clinchPushRampStart;
+  if (held <= CLINCH_PUSH_RAMP_DELAY_MS) return 1;
+  const t = Math.min(1, (held - CLINCH_PUSH_RAMP_DELAY_MS) / CLINCH_PUSH_RAMP_RISE_MS);
+  return 1 + (CLINCH_PUSH_RAMP_MAX_MULT - 1) * t;
+}
+
+// DEEP GRIP — grant the earned-advantage state. Exclusive: taking it strips
+// the opponent's. Emits the callout event so the client can announce it.
+function grantDeepGrip(holder, other, room, io, source) {
+  if (holder.hasDeepGrip) return;
+  holder.hasDeepGrip = true;
+  other.hasDeepGrip = false;
+  other.deepGripPushStart = 0;
+  io.in(room.id).emit("deep_grip", {
+    playerId: holder.id,
+    playerNumber: room.players.indexOf(holder) === 0 ? 1 : 2,
+    source,
+    gripId: `deep-grip-${simNow(room)}-${holder.id}`,
+  });
 }
 
 function isInEdgeZone(playerX) {
@@ -120,18 +165,23 @@ function isInEdgeZone(playerX) {
 
 function getClinchAction(player, opponent) {
   if (!player.hasGrip) return "neutral";
+  if (getPlantIntent(player, opponent)) return "plant";
 
   const towardKey = player.x < opponent.x ? 'd' : 'a';
-  const awayKey = player.x < opponent.x ? 'a' : 'd';
-  const pressingToward = player.keys[towardKey] && !player.keys[awayKey];
-  const pressingAway = player.keys[awayKey] && !player.keys[towardKey];
-  const pressingS = player.keys.s;
-
-  // Plant: S + away (down-back commitment, like a fighting game block)
-  if (pressingS && pressingAway) return "plant";
-  // Push: toward opponent
+  const pressingToward = player.keys[towardKey] && !player.keys[player.x < opponent.x ? 'a' : 'd'];
   if (pressingToward) return "push";
   return "neutral";
+}
+
+// Plant/brace stance intent from raw keys: pull-back (away) alone, or S alone —
+// both dead inputs in the clinch before this, and pull-back is the natural
+// panic motion against an incoming throw. Holding toward overrides S (active
+// aggression wins over a stray S), and toward+away cancel each other out.
+function getPlantIntent(player, opponent) {
+  const towardKey = player.x < opponent.x ? 'd' : 'a';
+  const awayKey = player.x < opponent.x ? 'a' : 'd';
+  const toward = player.keys[towardKey];
+  return (player.keys[awayKey] && !toward) || (player.keys.s && !toward);
 }
 
 function updateGrabActions(player, room, io, delta, rooms) {
@@ -238,6 +288,16 @@ function updateGrabActions(player, room, io, delta, rooms) {
           triggerRingOut(player, opponent, room, io, rooms, opponentAtLeft ? -1 : 1);
           return;
         }
+        // ARM CLAMP ends at boundary contact — a clamped victim pinned at the
+        // edge with zero available inputs would be a pure spectator. The carry
+        // earned its wall; grant the grip so the pinned fight is playable.
+        // (Next tick Phase A exits since the victim now has grip.)
+        if (opponent.isArmClamped) {
+          opponent.isArmClamped = false;
+          opponent.hasGrip = true;
+          opponent.clinchAction = "neutral";
+          opponent.gripAcquiredTime = simNow(room);
+        }
         // Pin at boundary
         player.isAtBoundaryDuringGrab = true;
         player.isEdgePushing = true;
@@ -280,6 +340,17 @@ function updateGrabActions(player, room, io, delta, rooms) {
     opponent.isBeingEdgePushed = false;
     player.isAtBoundaryDuringGrab = false;
     player.grabPushStartTime = 0;
+  }
+
+  // ARM CLAMP release: the counter-grab clamp lasts through the burst carry and
+  // any free throw the grabber filed during it (victim gripless = untechable).
+  // Once the burst is over and no throw is pending/active, the victim is granted
+  // their grip automatically — punished once, positionally, then a fair clinch.
+  if (opponent.isArmClamped && !player.clinchThrowRequest && !player.clinchThrowActive) {
+    opponent.isArmClamped = false;
+    opponent.hasGrip = true;
+    opponent.clinchAction = "neutral";
+    opponent.gripAcquiredTime = simNow(room);
   }
 
   // Determine each player's clinch action
@@ -335,6 +406,7 @@ function updateGrabActions(player, room, io, delta, rooms) {
       breaker.clinchThrowActive || target.clinchThrowActive ||
       breaker.isClinchClashing || target.isClinchClashing ||
       breaker.isClinchJolting || breaker.isClinchJoltClashing ||
+      breaker.clinchThrowFailStagger ||
       breaker.isResistingThrow || breaker.isResistingPull || breaker.isBeingLifted ||
       !breaker.hasGrip || !target.hasGrip;
 
@@ -419,7 +491,8 @@ function updateGrabActions(player, room, io, delta, rooms) {
 
   // --- Process single jolt ---
   for (const [jolter, target] of [[player, opponent], [opponent, player]]) {
-    if (!jolter.clinchJoltRequest || jolter.isClinchJolting || jolter.isClinchJoltClashing) continue;
+    if (!jolter.clinchJoltRequest || jolter.isClinchJolting || jolter.isClinchJoltClashing ||
+        jolter.clinchThrowFailStagger) continue;
 
     jolter.clinchJoltRequest = false;
     jolter.clinchJoltRequestTime = 0;
@@ -475,6 +548,13 @@ function updateGrabActions(player, room, io, delta, rooms) {
       target.clinchJoltPlantInterruptStart = now;
     }
 
+    // DEEP GRIP: a landed jolt always strips the target's deep grip, and
+    // jolting a PLANTED opponent (posture broken, hand slips inside) earns it.
+    if (target.hasDeepGrip) target.hasDeepGrip = false;
+    if (targetAction === "plant") {
+      grantDeepGrip(jolter, target, room, io, "jolt");
+    }
+
     triggerHitstopAndEmit(io, room, CLINCH_JOLT_HITSTOP_MS, "clinch_jolt");
     emitThrottledScreenShake(room, io, { type: "clinch_jolt" });
     io.in(room.id).emit("clinch_jolt", {
@@ -495,9 +575,9 @@ function updateGrabActions(player, room, io, delta, rooms) {
     target.clinchStalemateLastX = target.x;
   }
 
-  // --- Block actions during jolt recovery ---
+  // --- Block actions during jolt recovery / failed-throw stagger ---
   for (const p of [player, opponent]) {
-    if (p.clinchJoltRecovery) {
+    if (p.clinchJoltRecovery || p.clinchThrowFailStagger) {
       p.clinchAction = "neutral";
       if (p === player) {
         player.isClinchPushing = false;
@@ -566,10 +646,12 @@ function updateGrabActions(player, room, io, delta, rooms) {
   if (player.clinchThrowRequest && !player.clinchThrowActive && !player.clinchThrowCooldown &&
       !player.isResistingThrow && !player.isResistingPull && !player.isBeingLifted &&
       !player.clinchJoltRecovery && !player.isClinchJolting &&
+      !player.clinchThrowFailStagger &&
       bufferExpired(player)) requesters.push(player);
   if (opponent.clinchThrowRequest && !opponent.clinchThrowActive && !opponent.clinchThrowCooldown && opponent.hasGrip &&
       !opponent.isResistingThrow && !opponent.isResistingPull && !opponent.isBeingLifted &&
       !opponent.clinchJoltRecovery && !opponent.isClinchJolting &&
+      !opponent.clinchThrowFailStagger &&
       bufferExpired(opponent)) requesters.push(opponent);
 
   for (const actor of requesters) {
@@ -618,19 +700,54 @@ function updateGrabActions(player, room, io, delta, rooms) {
       target.clinchThrowRequestTime = 0;
 
       const targetAction = target === player ? grabberAction : opponentAction;
-      let balanceDrain;
+      let stanceDrain, plantDrain;
       if (actionType === "pull") {
-        balanceDrain = CLINCH_PULL_BALANCE_DRAIN_VS_NEUTRAL;
-        if (targetAction === "push") balanceDrain = CLINCH_PULL_BALANCE_DRAIN_VS_PUSH;
-        else if (targetAction === "plant") balanceDrain = CLINCH_PULL_BALANCE_DRAIN_VS_PLANT;
-        if (isInEdgeZone(target.x)) balanceDrain += CLINCH_EDGE_PULL_DRAIN_BONUS;
+        stanceDrain = CLINCH_PULL_BALANCE_DRAIN_VS_NEUTRAL;
+        if (targetAction === "push") stanceDrain = CLINCH_PULL_BALANCE_DRAIN_VS_PUSH;
+        else if (targetAction === "plant") stanceDrain = CLINCH_PULL_BALANCE_DRAIN_VS_PLANT;
+        plantDrain = CLINCH_PULL_BALANCE_DRAIN_VS_PLANT;
       } else {
-        balanceDrain = CLINCH_THROW_BALANCE_DRAIN_VS_NEUTRAL;
-        if (targetAction === "push") balanceDrain = CLINCH_THROW_BALANCE_DRAIN_VS_PUSH;
-        else if (targetAction === "plant") balanceDrain = CLINCH_THROW_BALANCE_DRAIN_VS_PLANT;
-        if (isInEdgeZone(target.x)) balanceDrain += CLINCH_EDGE_THROW_DRAIN_BONUS;
+        stanceDrain = CLINCH_THROW_BALANCE_DRAIN_VS_NEUTRAL;
+        if (targetAction === "push") stanceDrain = CLINCH_THROW_BALANCE_DRAIN_VS_PUSH;
+        else if (targetAction === "plant") stanceDrain = CLINCH_THROW_BALANCE_DRAIN_VS_PLANT;
+        plantDrain = CLINCH_THROW_BALANCE_DRAIN_VS_PLANT;
+      }
+      let balanceDrain = stanceDrain;
+      if (isInEdgeZone(target.x)) {
+        balanceDrain += actionType === "pull" ? CLINCH_EDGE_PULL_DRAIN_BONUS : CLINCH_EDGE_THROW_DRAIN_BONUS;
       }
       target.balance = Math.max(0, target.balance - balanceDrain);
+
+      // REACT BRACE bookkeeping — the target gets a tight window to snap to
+      // plant on reaction and buy back part of the STANCE gap (edge bonus is
+      // never refundable). Refund 0 if they were already planted — the
+      // pre-read got the full discount and there's nothing left to save.
+      target.reactBraceRefund = Math.round(
+        (stanceDrain - plantDrain) * CLINCH_REACT_BRACE_REFUND_FRACTION
+      );
+      target.reactBraceDeadline = now + CLINCH_REACT_BRACE_WINDOW_MS;
+      target.reactBraceUsed = false;
+      // Seed edge detection with the stance they were caught in, so a key held
+      // from before the throw can never register as a reaction press.
+      target.reactBracePrevPlantIntent = getPlantIntent(target, actor);
+
+      // Surface the stance read — the drain difference (20 vs push, 5 vs plant)
+      // is the heart of the clinch mind game and was previously invisible.
+      // counter_throw credits the actor (caught a pusher); braced credits the
+      // target (their plant blunted it) — playerNumber anchors the banner side.
+      if (targetAction === "push" || targetAction === "plant") {
+        const isCounterThrow = targetAction === "push";
+        const credited = isCounterThrow ? actor : target;
+        io.in(room.id).emit("clinch_callout", {
+          type: isCounterThrow ? "counter_throw" : "braced",
+          actorId: actor.id,
+          targetId: target.id,
+          actionType,
+          playerNumber: room.players.indexOf(credited) === 0 ? 1 : 2,
+          calloutId: `clinch-callout-${now}-${actor.id}`,
+          x: (actor.x + target.x) / 2,
+        });
+      }
     } else if (actionType === "lift") {
       actor.isClinchLifting = true;
       actor.clinchLiftStartTime = now;
@@ -663,6 +780,41 @@ function updateGrabActions(player, room, io, delta, rooms) {
     const activeTarget = activeActor === player ? opponent : player;
     const elapsed = now - activeActor.clinchThrowStartTime;
     const animDuration = activeActor.clinchThrowType === "throw" ? CLINCH_THROW_ANIMATION_MS : CLINCH_PULL_ANIMATION_MS;
+
+    // REACT BRACE — the target is input-LOCKED (no actions) but their key
+    // state still refreshes, so we watch for a plant-intent rising edge
+    // inside the reaction window. Human keys update through the input-lock
+    // branch in socketHandlers; the CPU sets its keys in cpuAI. Gated on
+    // hasGrip so an arm-clamped victim can't soften the counter-grab punish.
+    if (
+      !activeTarget.reactBraceUsed &&
+      activeTarget.reactBraceDeadline &&
+      now <= activeTarget.reactBraceDeadline &&
+      (activeTarget.reactBraceRefund || 0) > 0 &&
+      activeTarget.hasGrip &&
+      !activeTarget.isGassed &&
+      activeTarget.stamina >= CLINCH_REACT_BRACE_STAMINA_COST
+    ) {
+      const plantIntent = getPlantIntent(activeTarget, activeActor);
+      if (plantIntent && !activeTarget.reactBracePrevPlantIntent) {
+        activeTarget.reactBraceUsed = true;
+        activeTarget.stamina = Math.max(0, activeTarget.stamina - CLINCH_REACT_BRACE_STAMINA_COST);
+        activeTarget.balance = Math.min(BALANCE_MAX, activeTarget.balance + activeTarget.reactBraceRefund);
+        // Snap the visible stance to plant for the rest of the animation
+        activeTarget.clinchAction = "plant";
+        activeTarget.isClinchPlanting = true;
+        io.in(room.id).emit("clinch_callout", {
+          type: "braced",
+          actorId: activeActor.id,
+          targetId: activeTarget.id,
+          actionType: activeActor.clinchThrowType,
+          playerNumber: room.players.indexOf(activeTarget) === 0 ? 1 : 2,
+          calloutId: `react-brace-${now}-${activeTarget.id}`,
+          x: (activeActor.x + activeTarget.x) / 2,
+        });
+      }
+      activeTarget.reactBracePrevPlantIntent = plantIntent;
+    }
 
     if (elapsed >= animDuration) {
       resolveClinchThrow(activeActor, activeTarget, room, io, rooms);
@@ -777,6 +929,21 @@ function updateGrabActions(player, room, io, delta, rooms) {
     return;
   }
 
+  // --- Stance latch: freeze the clinch while a throw/pull/lift request buffers ---
+  // Filing a request (e.g. releasing push-back to input a pull) momentarily reads
+  // as "neutral" on the keys. Without this freeze, the ~175ms buffer window lets
+  // the opponent's push carry the requester at full unresisted speed — enough to
+  // cross the entire edge zone. Freezing movement and drains for the buffer means
+  // going for a throw/pull near the edge is a read, not a suicide. No stall risk:
+  // requests always resolve within the clash window and pay full action costs.
+  const requestBuffering =
+    (player.clinchThrowRequest && !bufferExpired(player)) ||
+    (opponent.clinchThrowRequest && !bufferExpired(opponent));
+  if (requestBuffering) {
+    maintainClinchPositions(player, opponent, fixedDistance, leftBoundary, rightBoundary);
+    return;
+  }
+
   // --- Balance and stamina effects ---
 
   // Grabber pushing
@@ -858,25 +1025,84 @@ function updateGrabActions(player, room, io, delta, rooms) {
     }
   }
 
+  // --- Neutral = breathing: recover stamina while not being pushed ---
+  // Gassed players are excluded (the gassed system owns their recovery), and
+  // being pushed while neutral stays a net loss — rest must be earned.
+  for (const [p, pAction, oAction] of [
+    [player, grabberAction, opponentAction],
+    [opponent, opponentAction, grabberAction],
+  ]) {
+    if (pAction === "neutral" && oAction !== "push" && !p.isGassed && p.stamina < 100) {
+      p.stamina = Math.min(100, p.stamina + CLINCH_NEUTRAL_STAMINA_REGEN_PER_SEC * deltaSec);
+    }
+  }
+
+  // --- Deep grip: winning the push ---
+  // Pushing continuously while the opponent doesn't answer with their own
+  // push (they plant or stand neutral) for DEEP_GRIP_PUSH_WIN_MS earns the
+  // deep grip. Any break in the condition resets the timer. Mutual-grip only:
+  // shoving a gripless opponent (Phase A burst / arm clamp) earns nothing.
+  for (const [p, o, pAction, oAction] of [
+    [player, opponent, grabberAction, opponentAction],
+    [opponent, player, opponentAction, grabberAction],
+  ]) {
+    const winningPush = pAction === "push" && oAction !== "push" &&
+      p.hasGrip && o.hasGrip && !p.hasDeepGrip;
+    if (winningPush) {
+      if (!p.deepGripPushStart) {
+        p.deepGripPushStart = now;
+      } else if (now - p.deepGripPushStart >= DEEP_GRIP_PUSH_WIN_MS) {
+        grantDeepGrip(p, o, room, io, "push");
+        p.deepGripPushStart = 0;
+      }
+    } else if (p.deepGripPushStart) {
+      p.deepGripPushStart = 0;
+    }
+  }
+
+  // --- Push momentum ramp timer ---
+  // Builds only while pushing an opponent who is standing NEUTRAL — plant and
+  // push-back are both "answers" and reset it. Being neutral against a push
+  // gets progressively more punishing the longer it goes unaddressed.
+  for (const [p, pAction, oAction] of [
+    [player, grabberAction, opponentAction],
+    [opponent, opponentAction, grabberAction],
+  ]) {
+    if (pAction === "push" && oAction === "neutral") {
+      if (!p.clinchPushRampStart) p.clinchPushRampStart = now;
+    } else if (p.clinchPushRampStart) {
+      p.clinchPushRampStart = 0;
+    }
+  }
+
   // --- Movement ---
   let netPushSpeed = 0; // positive = toward opponent's side
 
   if (grabberAction === "push" && opponentAction === "push") {
-    // Push vs push: balance difference determines who wins the contest
-    const grabberPower = player.balance * getGassedMult(player);
-    const opponentPower = opponent.balance * getGassedMult(opponent);
+    // Push vs push: balance difference (scaled by fatigue) determines who wins.
+    // Stamina contributes an ADDITIVE term (not just the fatigue multiplier) so
+    // power never hard-floors at 0 balance — a fresh player always out-grinds a
+    // drained one instead of freezing against a zero-resource forward-holder.
+    const grabberPower =
+      (player.balance + player.stamina * CLINCH_PUSH_STAMINA_WEIGHT) * getPushForceMult(player);
+    const opponentPower =
+      (opponent.balance + opponent.stamina * CLINCH_PUSH_STAMINA_WEIGHT) * getPushForceMult(opponent);
     const diff = grabberPower - opponentPower;
     netPushSpeed = (diff / BALANCE_MAX) * CLINCH_PUSH_BASE_SPEED * CLINCH_PUSH_VS_PUSH_SPEED_SCALE;
   } else if (grabberAction === "push") {
-    let speed = CLINCH_PUSH_BASE_SPEED * getGassedMult(player);
+    let speed = CLINCH_PUSH_BASE_SPEED * getPushForceMult(player);
     if (opponentAction === "plant") {
       speed *= CLINCH_PUSH_VS_PLANT_SPEED_MULT;
+    } else {
+      speed *= getPushRampMult(player, now); // neutral opponent → snowball
     }
     netPushSpeed = speed;
   } else if (opponentAction === "push") {
-    let speed = CLINCH_PUSH_BASE_SPEED * getGassedMult(opponent);
+    let speed = CLINCH_PUSH_BASE_SPEED * getPushForceMult(opponent);
     if (grabberAction === "plant") {
       speed *= CLINCH_PUSH_VS_PLANT_SPEED_MULT;
+    } else {
+      speed *= getPushRampMult(opponent, now); // neutral opponent → snowball
     }
     netPushSpeed = -speed; // negative = toward grabber's side
   }
@@ -1127,17 +1353,46 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
   clearClinchThrowState(actor);
   target.isResistingThrow = false;
   target.isResistingPull = false;
+  target.reactBraceDeadline = 0;
+  target.reactBraceRefund = 0;
+  target.reactBraceUsed = false;
   actor.clinchThrowCooldown = true;
   setPlayerTimeout(actor.id, () => { actor.clinchThrowCooldown = false; }, CLINCH_THROW_COOLDOWN_MS, "clinchThrowCooldown");
 
+  // DEEP GRIP: the holder's throws/pulls land against higher balance —
+  // the payoff that makes earning the grip worth playing for.
+  const landThreshold = CLINCH_THROW_LAND_THRESHOLD +
+    (actor.hasDeepGrip ? DEEP_GRIP_THROW_THRESHOLD_BONUS : 0);
+
   // --- FAIL: opponent balance above land threshold → stay in clinch ---
-  if (targetBalance > CLINCH_THROW_LAND_THRESHOLD) {
+  if (targetBalance > landThreshold) {
+    // Over-committed: a failed attempt costs the deep grip along with the stagger
+    actor.hasDeepGrip = false;
     target.balance = Math.max(0, target.balance - CLINCH_THROW_FAIL_BALANCE_DRAIN);
     const selfBalDrain = actionType === "pull"
       ? CLINCH_PULL_FAIL_SELF_BALANCE_DRAIN
       : CLINCH_THROW_FAIL_SELF_BALANCE_DRAIN;
     actor.balance = Math.max(0, actor.balance - selfBalDrain);
     actor.stamina = Math.max(0, actor.stamina - CLINCH_THROW_FAIL_STAMINA_COST);
+
+    // Attacker visibly stumbles — a readable punish moment for the defender.
+    // Forced neutral (can't push/plant/jolt/throw/break) for the stagger window,
+    // which makes throw-baiting a teachable strategy instead of silent attrition.
+    actor.clinchThrowFailStagger = true;
+    setPlayerTimeout(actor.id, () => {
+      actor.clinchThrowFailStagger = false;
+    }, CLINCH_THROW_FAIL_STAGGER_MS, "clinchThrowFailStagger");
+
+    io.in(room.id).emit("clinch_throw_fail", {
+      actorId: actor.id,
+      targetId: target.id,
+      actionType,
+      actorX: actor.x,
+      targetX: target.x,
+      // RESISTED credits the defender — banner anchors to their side
+      playerNumber: room.players.indexOf(target) === 0 ? 1 : 2,
+      failId: `clinch-fail-${simNow(room)}-${actor.id}`,
+    });
     return;
   }
 
@@ -1333,6 +1588,15 @@ function triggerRingOut(pusher, victim, room, io, rooms, direction) {
       grabbedRef.isBeingClinchJolted = false;
       grabbedRef.isClinchJoltClashing = false;
       grabbedRef.clinchJoltPlantInterrupt = false;
+      grabbedRef.isArmClamped = false;
+      grabberRef.clinchThrowFailStagger = false;
+      grabbedRef.clinchThrowFailStagger = false;
+      grabberRef.hasDeepGrip = false;
+      grabbedRef.hasDeepGrip = false;
+      grabberRef.deepGripPushStart = 0;
+      grabbedRef.deepGripPushStart = 0;
+      grabberRef.clinchPushRampStart = 0;
+      grabbedRef.clinchPushRampStart = 0;
 
       grabberRef.isThrowing = true;
       grabberRef.throwStartTime = simNow(currentRoom);

@@ -18,6 +18,14 @@ function cleanupPlayerStates(player) {
   player.grabMovementVelocity = 0;
   player.isBeingGrabbed = false;
   player.isCounterGrabbed = false;
+  player.isArmClamped = false;
+  player.clinchThrowFailStagger = false;
+  player.hasDeepGrip = false;
+  player.deepGripPushStart = 0;
+  player.clinchPushRampStart = 0;
+  player.reactBraceDeadline = 0;
+  player.reactBraceRefund = 0;
+  player.reactBraceUsed = false;
   player.isThrowing = false;
   player.isBeingThrown = false;
   player.isAttacking = false;
@@ -122,6 +130,11 @@ function cleanupOpponentStates(opponent) {
   if (opponent) {
     opponent.isBeingGrabbed = false;
     opponent.isCounterGrabbed = false;
+    opponent.isArmClamped = false;
+    opponent.clinchThrowFailStagger = false;
+    opponent.hasDeepGrip = false;
+    opponent.deepGripPushStart = 0;
+    opponent.clinchPushRampStart = 0;
     opponent.isBeingPushed = false;
     opponent.isBeingPulled = false;
     opponent.isBeingThrown = false;
@@ -186,6 +199,8 @@ function getCleanedRoomData(room) {
       grabMovementVelocity: 0,
       isBeingGrabbed: false,
       isCounterGrabbed: false,
+      isArmClamped: false,
+      clinchThrowFailStagger: false,
       isThrowing: false,
       isBeingThrown: false,
       isAttacking: false,
@@ -326,6 +341,8 @@ function getCleanedRoomsData(rooms) {
         isGrabbing: false,
         isBeingGrabbed: false,
         isCounterGrabbed: false,
+        isArmClamped: false,
+        clinchThrowFailStagger: false,
         isThrowing: false,
         isBeingThrown: false,
         isHit: false,

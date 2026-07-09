@@ -1,15 +1,14 @@
 // ============================================
 // CLIENT-SIDE MOVEMENT PREDICTION
 // ============================================
-// Predicts the LOCAL player's basic ground movement (strafe / crouch-strafe /
-// brake / coast) by running the exact same ice physics the server runs, so
+// Predicts the LOCAL player's basic ground movement (strafe / brake / coast) so
 // movement responds on the same frame the key is pressed instead of after a
 // full network round trip. The server stays 100% authoritative: every server
 // snapshot is reconciled against a short history of predicted positions, and
 // any disagreement is folded back in as a smooth visual correction.
 //
 // SCOPE (deliberately narrow):
-//   - Predicted:  A/D strafing, S+A/D crouch strafing, braking, ice coasting,
+//   - Predicted:  A/D strafing, braking, ice coasting,
 //                 map boundary clamps, edge friction zones, speed power-up.
 //   - NOT predicted (prediction suspends, rendering falls back to the normal
 //     server interpolation): attacks, dodges, sidesteps, grabs, clinch,
@@ -48,11 +47,6 @@ export const PREDICTION_CONSTANTS = {
   DOHYO_RIGHT_BOUNDARY: 1030,
   GROUND_LEVEL: 286,
   HITBOX_DISTANCE_VALUE: 68, // Math.round(71 * 0.96) — pushbox half-width
-  // Crouch strafe modifiers (inline numbers in the server strafe block)
-  CROUCH_TURN_FRICTION: 0.3,
-  CROUCH_ACCEL_FACTOR: 0.2,
-  CROUCH_MAX_SPEED_FACTOR: 0.3,
-  CROUCH_SPEED_FACTOR: 0.5,
   OUTSIDE_DOHYO_VELOCITY_PENALTY: 0.92,
 };
 
@@ -195,7 +189,7 @@ function iceFriction(isActiveBraking, anyMoveKeyHeld, x) {
 /**
  * Advance one 64Hz tick of neutral-state ground movement.
  * `sim`: { x, v, wasStrafingRight, wasStrafingLeft, isStrafing, isBraking }
- * `keys`: { a, d, s } booleans (subset of the game key state)
+ * `keys`: { a, d } booleans (subset of the game key state)
  * `speedMult`: 1 normally, else the server's clamped effectiveMoveSpeedMult
  *              (folds PvP Happy Feet + BASHO move-speed stat + draft stacks)
  * Mutates and returns `sim`. Must stay in lockstep with server-io/index.js.
@@ -203,42 +197,10 @@ function iceFriction(isActiveBraking, anyMoveKeyHeld, x) {
 export function stepMovement(sim, keys, speedMult = 1) {
   const delta = C.TICK_MS;
   const csf = C.SPEED_FACTOR * speedMult;
-  const crouch = !!keys.s;
   const left = C.MAP_LEFT_BOUNDARY;
   const right = C.MAP_RIGHT_BOUNDARY;
 
-  if (crouch && keys.d && !keys.a) {
-    // Crouch strafe RIGHT
-    if (sim.v < 0) sim.v *= C.CROUCH_TURN_FRICTION;
-    sim.v = Math.min(
-      sim.v + C.ICE_ACCELERATION * C.CROUCH_ACCEL_FACTOR,
-      C.ICE_MAX_SPEED * C.CROUCH_MAX_SPEED_FACTOR
-    );
-    const newX = sim.x + delta * (csf * C.CROUCH_SPEED_FACTOR) * sim.v;
-    if (newX <= right) {
-      sim.x = newX;
-    } else {
-      sim.x = right;
-      sim.v = 0;
-    }
-    // NOTE: the server's crouch branch intentionally leaves isStrafing /
-    // isBraking untouched (a carried-over isStrafing keeps applying the
-    // post-step moving friction below) — mirror that exactly.
-  } else if (crouch && keys.a && !keys.d) {
-    // Crouch strafe LEFT
-    if (sim.v > 0) sim.v *= C.CROUCH_TURN_FRICTION;
-    sim.v = Math.max(
-      sim.v - C.ICE_ACCELERATION * C.CROUCH_ACCEL_FACTOR,
-      -C.ICE_MAX_SPEED * C.CROUCH_MAX_SPEED_FACTOR
-    );
-    const newX = sim.x + delta * (csf * C.CROUCH_SPEED_FACTOR) * sim.v;
-    if (newX >= left) {
-      sim.x = newX;
-    } else {
-      sim.x = left;
-      sim.v = 0;
-    }
-  } else if (keys.d && !crouch) {
+  if (keys.d && !keys.a) {
     // Ice strafe RIGHT
     const wasMovingLeft = sim.v < -C.ICE_STOP_THRESHOLD;
     if (wasMovingLeft) {
@@ -269,7 +231,7 @@ export function stepMovement(sim, keys, speedMult = 1) {
       sim.x = right;
       sim.v = 0;
     }
-  } else if (keys.a && !crouch) {
+  } else if (keys.a && !keys.d) {
     // Ice strafe LEFT
     const wasMovingRight = sim.v > C.ICE_STOP_THRESHOLD;
     if (wasMovingRight) {

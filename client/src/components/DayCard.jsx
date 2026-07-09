@@ -22,11 +22,17 @@ import { AI_ARCHETYPES } from "../config/bashoConfig";
  * DRAFTS this bout's power-up before stepping onto the dohyo.
  *
  * Layout: a TWO-COLUMN stage — run framing (day / division / opponent /
- * record) on the left, the draft + Begin/Withdraw actions on the right.
- * The stage never wraps to a single column; long opponent names wrap/shrink
- * inside the left column. The stage keeps a fixed design size and scales
- * uniformly to fill as much of the viewport as possible — never wrapping
- * to a single column and never leaving empty margins.
+ * record) on the left, the draft + Begin/Withdraw actions on the right,
+ * split by a thin broadcast divider so the two halves read as ONE match
+ * dossier rather than two stacks floating in a void. The stage never wraps
+ * to a single column; it keeps a fixed design size and scales uniformly to
+ * fill as much of the viewport as possible — never scrolling.
+ *
+ * Presentation is tuned to sit in the same premium printed-broadcast world
+ * as PreMatchScreen: a lit near-black stage (warm top glow + cool floor
+ * pool), a soft edge vignette, and a film-grain wash on top. The opponent's
+ * face is deliberately NOT shown here — that reveal is saved for the
+ * PreMatchScreen after Begin Bout.
  *
  * The draft cards are lifted verbatim from PowerUpSelection (the cream washi
  * trading-card surface: colored art panel, letterpress name, usage hanko) so
@@ -97,6 +103,11 @@ const FALLBACK_TYPE = {
 const getTypeColor = (type) => TYPE_COLORS[type] || FALLBACK_TYPE;
 
 // ── ANIMATIONS ──────────────────────────────────────────────────────────────
+const fadeIn = keyframes`
+  from { opacity: 0; }
+  to   { opacity: 1; }
+`;
+
 const fadeUp = keyframes`
   from { opacity: 0; transform: translateY(14px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -107,23 +118,79 @@ const dayKanjiIn = keyframes`
   100% { opacity: 1; transform: scale(1); letter-spacing: 0.12em; }
 `;
 
+const watermarkIn = keyframes`
+  0%   { opacity: 0; transform: translate(-50%, -46%) scale(1.14); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+`;
+
 const cardDealIn = keyframes`
   from { opacity: 0; transform: translateY(28px); }
   to   { opacity: 1; transform: translateY(0); }
 `;
 
 // ── SHELL ─────────────────────────────────────────────────────────────────
+// Lit near-black stage: a warm gold pool spilling from the top and a cool
+// ice pool rising from the floor turn the flat black into a framed studio
+// space. Kept low-alpha so the surface still reads as "black", just alive.
 const Screen = styled.div`
   position: fixed;
   inset: 0;
   z-index: 12000;
   overflow: hidden;
   background:
-    radial-gradient(120% 90% at 50% 14%, rgba(40, 30, 18, 0.35) 0%, rgba(0, 0, 0, 0) 55%),
+    radial-gradient(
+      130% 100% at 50% -8%,
+      rgba(232, 197, 71, 0.1) 0%,
+      rgba(0, 0, 0, 0) 46%
+    ),
+    radial-gradient(
+      120% 82% at 50% 116%,
+      rgba(28, 78, 110, 0.16) 0%,
+      rgba(0, 0, 0, 0) 54%
+    ),
     #050505;
   color: ${C.cream};
   font-family: ${FONT_BODY};
   user-select: none;
+`;
+
+// Soft edge falloff — the single biggest "premium broadcast" cue: frame the
+// composition with a gentle darkening at the corners instead of an evenly
+// lit flat plane. Sits above the stage; pointer-events off.
+const Vignette = styled.div`
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  background: radial-gradient(
+    ellipse 118% 100% at 50% 46%,
+    transparent 54%,
+    rgba(5, 4, 8, 0.5) 100%
+  );
+`;
+
+// Film grain — the same warm crosshatch wash used on PreMatchScreen so both
+// interstitials read as the same film stock rather than a fresh GPU render.
+const Grain = styled.div`
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6;
+  opacity: 0.22;
+  mix-blend-mode: overlay;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      rgba(60, 40, 20, 0.05) 0,
+      transparent 1px,
+      transparent 3px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(60, 40, 20, 0.04) 0,
+      transparent 1px,
+      transparent 4px
+    );
 `;
 
 const StageScaler = styled.div`
@@ -136,16 +203,34 @@ const StageScaler = styled.div`
 `;
 
 const Stage = styled.div`
+  position: relative;
   display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
   align-items: center;
   justify-content: center;
-  gap: 3rem;
+  gap: 2.8rem;
   padding: 2.4rem 3rem;
   box-sizing: border-box;
   transform-origin: center center;
   will-change: transform;
+`;
+
+// Thin broadcast divider between the two halves — a vertical light-rule that
+// fades top and bottom. Anchors the composition as one dossier.
+const ColumnDivider = styled.div`
+  flex: 0 0 auto;
+  align-self: stretch;
+  width: 1px;
+  margin: 0.6rem 0;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(245, 236, 217, 0.16) 16%,
+    rgba(245, 236, 217, 0.16) 84%,
+    transparent 100%
+  );
+  animation: ${fadeIn} 0.6s ease both 0.3s;
 `;
 
 // ── LEFT: RUN FRAMING ───────────────────────────────────────────────────────
@@ -154,77 +239,170 @@ const InfoCol = styled.div`
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 0.55rem;
-  flex: 1 1 0;
+  gap: 0.5rem;
+  flex: 0 0 auto;
   min-width: 0;
-  max-width: 480px;
+  max-width: 460px;
 `;
 
-const KickerRow = styled.div`
+const Kicker = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.9rem;
-  font-size: 0.82rem;
-  letter-spacing: 0.4em;
+  gap: 0.85rem;
+  font-family: ${FONT_BODY};
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0.46em;
+  text-indent: 0.46em;
   text-transform: uppercase;
   color: ${C.creamMute};
   animation: ${fadeUp} 0.5s ease both;
 `;
 
 const KickerRule = styled.span`
-  width: 40px;
+  width: 34px;
   height: 1px;
   background: ${C.creamFaint};
 `;
 
-const DayKanji = styled.div`
+// Run-progress track — one pip per bout, so the player reads "how deep am I
+// in this run" at a glance. Replaces the old "DAY X OF Y" text (the pips say
+// it). Past days are dim cream, the current day is a glowing gold node.
+const ProgressTrack = styled.div`
+  display: flex;
+  align-items: center;
+  gap: clamp(3px, 0.5vw, 5px);
+  height: 12px;
+  animation: ${fadeUp} 0.5s ease both 0.06s;
+`;
+
+const ProgressPip = styled.span`
+  width: ${(p) => (p.$current ? "10px" : "7px")};
+  height: ${(p) => (p.$current ? "10px" : "7px")};
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: ${(p) =>
+    p.$current ? C.gold : p.$done ? "rgba(245, 236, 217, 0.55)" : "transparent"};
+  border: 1px solid
+    ${(p) =>
+      p.$current
+        ? C.gold
+        : p.$done
+          ? "rgba(245, 236, 217, 0.5)"
+          : "rgba(245, 236, 217, 0.22)"};
+  box-shadow: ${(p) =>
+    p.$current ? "0 0 10px rgba(232, 197, 71, 0.6)" : "none"};
+  transition: all 0.25s ease;
+`;
+
+// Hero day block — a big faint kanji watermark sits behind an engraved-metal
+// "DAY X"; the small gold ordinal (第X日目) rides above as an eyebrow.
+const DayHero = styled.div`
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.35rem 0 0.1rem;
+`;
+
+const HeroKanjiBg = styled.div`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   font-family: ${FONT_KANJI};
-  font-size: 2.2rem;
+  font-weight: 900;
+  font-size: 9.5rem;
+  line-height: 1;
+  color: rgba(245, 236, 217, 0.05);
+  pointer-events: none;
+  user-select: none;
+  z-index: 0;
+  white-space: nowrap;
+  animation: ${watermarkIn} 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+`;
+
+const DayKanji = styled.div`
+  position: relative;
+  z-index: 1;
+  font-family: ${FONT_KANJI};
+  font-size: 1.5rem;
   font-weight: 700;
   color: ${C.gold};
   letter-spacing: 0.12em;
-  text-shadow: 0 6px 30px rgba(232, 197, 71, 0.25);
+  text-shadow: 0 4px 22px rgba(232, 197, 71, 0.28);
   animation: ${dayKanjiIn} 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
 `;
 
 const DayNumber = styled.div`
+  position: relative;
+  z-index: 1;
   font-family: ${FONT_DISPLAY};
-  font-size: 5rem;
-  line-height: 0.9;
-  color: ${C.cream};
+  font-size: 5.2rem;
+  line-height: 0.88;
+  letter-spacing: 0.01em;
+  background: linear-gradient(180deg, #fffaf0 0%, ${C.cream} 52%, #cbb98f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.5))
+    drop-shadow(0 10px 24px rgba(0, 0, 0, 0.55));
   animation: ${fadeUp} 0.6s ease both 0.08s;
 `;
 
 const DivisionLine = styled.div`
-  font-size: 0.92rem;
+  position: relative;
+  z-index: 1;
+  margin-top: 0.15rem;
+  font-family: ${FONT_BODY};
+  font-weight: 600;
+  font-size: 0.9rem;
   letter-spacing: 0.3em;
+  text-indent: 0.3em;
   text-transform: uppercase;
   color: ${C.iceBright};
   animation: ${fadeUp} 0.6s ease both 0.16s;
 `;
 
+const SectionRule = styled.span`
+  width: clamp(120px, 62%, 300px);
+  height: 1px;
+  margin: 0.35rem 0 0.1rem;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(245, 236, 217, 0.22) 28%,
+    rgba(245, 236, 217, 0.22) 72%,
+    transparent
+  );
+  animation: ${fadeIn} 0.6s ease both 0.22s;
+`;
+
 const Versus = styled.div`
-  margin-top: 0.75rem;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.35rem;
   width: 100%;
   max-width: 100%;
   animation: ${fadeUp} 0.6s ease both 0.24s;
 `;
 
 const VsLabel = styled.span`
-  font-size: 0.72rem;
+  font-family: ${FONT_BODY};
+  font-weight: 600;
+  font-size: 0.68rem;
   letter-spacing: 0.4em;
+  text-indent: 0.4em;
   text-transform: uppercase;
   color: ${C.creamMute};
 `;
 
 const OpponentName = styled.span`
   font-family: ${FONT_DISPLAY};
-  font-size: ${({ $compact }) => ($compact ? "1.55rem" : "2rem")};
-  line-height: 1.12;
+  font-size: ${({ $compact }) => ($compact ? "1.6rem" : "2.1rem")};
+  line-height: 1.1;
   max-width: 100%;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -233,31 +411,42 @@ const OpponentName = styled.span`
   ${({ $boss }) =>
     $boss &&
     css`
-      text-shadow: 0 0 18px rgba(232, 197, 71, 0.45);
+      text-shadow: 0 0 20px rgba(232, 197, 71, 0.45);
     `}
+`;
+
+// Rank / boss / style all sit on ONE inline meta row under the name, so the
+// opponent block reads as a single nameplate instead of a stack of labels.
+const OppMeta = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.1rem;
 `;
 
 const OpponentRank = styled.span`
   font-family: ${FONT_DISPLAY};
-  font-size: 0.9rem;
-  letter-spacing: 0.22em;
+  font-size: 0.82rem;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: ${C.gold};
 `;
 
-// Rival fighting-style tag (archetype kanji + label) shown under the name.
 const StyleTag = styled.span`
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
   font-family: ${FONT_BODY};
+  font-weight: 600;
   font-size: 0.62rem;
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: ${C.creamMute};
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 999px;
-  padding: 0.18rem 0.6rem;
+  padding: 0.18rem 0.62rem;
 
   .kanji {
     font-family: ${FONT_KANJI};
@@ -267,38 +456,47 @@ const StyleTag = styled.span`
   }
 `;
 
-// Gold "gatekeeper" badge that marks a division boss.
 const BossBadge = styled.span`
   font-family: ${FONT_BODY};
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   font-weight: 700;
   letter-spacing: 0.3em;
+  text-indent: 0.3em;
   text-transform: uppercase;
   color: ${C.ink};
   background: linear-gradient(180deg, #f1d061, ${C.gold});
   border-radius: 4px;
   padding: 0.2rem 0.55rem;
   box-shadow: 0 0 16px rgba(232, 197, 71, 0.5);
-  animation: ${fadeUp} 0.6s ease both 0.2s;
 `;
 
+// Tale-of-the-tape record split, divided by a hairline.
 const Records = styled.div`
   display: flex;
-  gap: 2.4rem;
-  margin-top: 0.55rem;
+  align-items: stretch;
+  gap: 1.8rem;
+  margin-top: 0.65rem;
   animation: ${fadeUp} 0.6s ease both 0.3s;
+`;
+
+const RecordSep = styled.span`
+  width: 1px;
+  align-self: center;
+  height: 30px;
+  background: rgba(245, 236, 217, 0.16);
 `;
 
 const RecordCol = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  align-items: center;
+  gap: 0.2rem;
   min-width: 0;
-  max-width: min(22vw, 220px);
+  max-width: min(20vw, 200px);
 `;
 
 const RecordWho = styled.span`
-  font-size: clamp(0.54rem, 1.1vmin, 0.74rem);
+  font-size: clamp(0.54rem, 1.1vmin, 0.72rem);
   letter-spacing: 0.26em;
   text-transform: uppercase;
   color: ${C.creamMute};
@@ -310,7 +508,7 @@ const RecordWho = styled.span`
 
 const RecordVal = styled.span`
   font-family: ${FONT_DISPLAY};
-  font-size: 1.45rem;
+  font-size: 1.5rem;
   color: ${C.cream};
 `;
 
@@ -325,8 +523,11 @@ const DraftCol = styled.div`
 `;
 
 const DraftLabel = styled.div`
-  font-size: 0.84rem;
-  letter-spacing: 0.34em;
+  font-family: ${FONT_BODY};
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.36em;
+  text-indent: 0.36em;
   text-transform: uppercase;
   color: ${C.gold};
   animation: ${fadeUp} 0.6s ease both 0.36s;
@@ -538,10 +739,19 @@ const BeginButton = styled.button`
   transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease,
     opacity 0.12s ease;
 
+  .arrow {
+    display: inline-block;
+    margin-left: 0.5rem;
+    transition: transform 0.18s ease;
+  }
+
   &:hover:not(:disabled) {
     transform: translateY(-2px);
     filter: brightness(1.06);
     box-shadow: 0 14px 38px rgba(232, 197, 71, 0.4);
+    .arrow {
+      transform: translateX(4px);
+    }
   }
   &:active:not(:disabled) {
     transform: translateY(0);
@@ -554,12 +764,17 @@ const BeginButton = styled.button`
   }
 `;
 
+// Always occupies the same box; only its text fades. Toggling the text
+// itself would resize this element and shove the actions/cards around,
+// which the design must never do — nothing moves except by intent.
 const BeginHint = styled.div`
   font-size: 0.72rem;
+  line-height: 1.4;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: ${C.creamFaint};
-  min-height: 1em;
+  opacity: ${(p) => (p.$visible ? 1 : 0)};
+  transition: opacity 0.15s ease;
 `;
 
 const WithdrawLink = styled.button`
@@ -729,6 +944,7 @@ function DayCard({
   const options = Array.isArray(draftOptions) ? draftOptions : [];
   const draftReady = options.length === 0 || picked != null;
   const compactName = (opponentName?.length ?? 0) > 18;
+  const pipCount = Math.max(0, Number(totalBouts) || 0);
   const stageScale = useStageFillScale(stageRef, [
     confirming,
     options.length,
@@ -778,6 +994,8 @@ function DayCard({
             </ConfirmBox>
           </Stage>
         </StageScaler>
+        <Vignette />
+        <Grain />
       </Screen>
     );
   }
@@ -787,99 +1005,135 @@ function DayCard({
       <StageScaler>
         <Stage ref={stageRef} style={{ transform: `scale(${stageScale})` }}>
           <InfoCol>
-          <KickerRow>
-            <KickerRule />
-            Honbasho · Day {day} of {totalBouts}
-            <KickerRule />
-          </KickerRow>
-          <DayKanji>第{day}日目</DayKanji>
-          <DayNumber>DAY {day}</DayNumber>
-          <DivisionLine>{divisionLabel}</DivisionLine>
-          <Versus>
-            <VsLabel>{opponentIsBoss ? "Division Gatekeeper" : "Next Opponent"}</VsLabel>
-            <OpponentName $boss={opponentIsBoss} $compact={compactName}>
-              {opponentName}
-            </OpponentName>
-            {opponentRankLabel && (
-              <OpponentRank>{opponentRankLabel}</OpponentRank>
-            )}
-            {opponentIsBoss && <BossBadge>Boss</BossBadge>}
-            {archetypeMeta && (
-              <StyleTag>
-                <span className="kanji">{archetypeMeta.kanji}</span>
-                {archetypeMeta.label}
-              </StyleTag>
-            )}
-          </Versus>
-          <Records>
-            <RecordCol>
-              <RecordWho>You</RecordWho>
-              <RecordVal>{fmtRecord(playerRecord)}</RecordVal>
-            </RecordCol>
-            <RecordCol>
-              <RecordWho>{opponentName}</RecordWho>
-              <RecordVal>{fmtRecord(opponentRecord)}</RecordVal>
-            </RecordCol>
-          </Records>
-        </InfoCol>
+            <Kicker>
+              <KickerRule />
+              Honbasho
+              <KickerRule />
+            </Kicker>
 
-        <DraftCol>
-          {options.length > 0 && (
-            <>
-              <DraftLabel>Draft · Choose Your Edge</DraftLabel>
-              <CardsRow>
-                {options.map((type, index) => {
-                  const info = DRAFT_INFO[type];
-                  if (!info) return null;
-                  const isSelected = picked === type;
-                  const isDimmed = picked != null && !isSelected;
-                  return (
-                    <PowerCard
-                      key={type}
-                      type="button"
-                      $type={type}
-                      $selected={isSelected}
-                      $dimmed={isDimmed}
-                      $index={index}
-                      onClick={() => handlePick(type)}
-                      onMouseEnter={playPowerUpSelectionHoverSound}
-                    >
-                      <CardHeader>
-                        <img src={info.icon} alt={info.name} />
-                      </CardHeader>
-                      <CardBody>
-                        <PowerName>{info.name}</PowerName>
-                        <PowerDesc>{info.description}</PowerDesc>
-                        <UsageChip $active={info.active}>
-                          {info.active ? "F To Use" : "Passive"}
-                        </UsageChip>
-                      </CardBody>
-                    </PowerCard>
-                  );
-                })}
-              </CardsRow>
-            </>
-          )}
-
-          <Actions>
-            <BeginButton onClick={handleBegin} disabled={!draftReady} autoFocus>
-              Begin Bout →
-            </BeginButton>
-            <BeginHint>
-              {options.length > 0 && !picked ? "Select a power-up" : ""}
-            </BeginHint>
-            <WithdrawLink onClick={() => setConfirming(true)}>
-              Withdraw — Fake Injury (Kyūjō)
-            </WithdrawLink>
-            {devEnabled && onSkipToFinalDay && !isFinalDay && (
-              <DevLink onClick={() => onSkipToFinalDay()}>
-                ⚡ Dev: Skip to Final Day
-              </DevLink>
+            {pipCount > 0 && (
+              <ProgressTrack aria-label={`Day ${day} of ${totalBouts}`}>
+                {Array.from({ length: pipCount }).map((_, i) => (
+                  <ProgressPip
+                    key={i}
+                    $done={i < day - 1}
+                    $current={i === day - 1}
+                    aria-hidden
+                  />
+                ))}
+              </ProgressTrack>
             )}
-          </Actions>
-        </DraftCol>
+
+            <DayHero>
+              <HeroKanjiBg aria-hidden>日</HeroKanjiBg>
+              <DayKanji>第{day}日目</DayKanji>
+              <DayNumber>DAY {day}</DayNumber>
+              <DivisionLine>{divisionLabel}</DivisionLine>
+            </DayHero>
+
+            <SectionRule />
+
+            <Versus>
+              <VsLabel>
+                {opponentIsBoss ? "Division Gatekeeper" : "Next Opponent"}
+              </VsLabel>
+              <OpponentName $boss={opponentIsBoss} $compact={compactName}>
+                {opponentName}
+              </OpponentName>
+              {(opponentRankLabel || opponentIsBoss || archetypeMeta) && (
+                <OppMeta>
+                  {opponentRankLabel && (
+                    <OpponentRank>{opponentRankLabel}</OpponentRank>
+                  )}
+                  {opponentIsBoss && <BossBadge>Boss</BossBadge>}
+                  {archetypeMeta && (
+                    <StyleTag>
+                      <span className="kanji">{archetypeMeta.kanji}</span>
+                      {archetypeMeta.label}
+                    </StyleTag>
+                  )}
+                </OppMeta>
+              )}
+            </Versus>
+
+            <Records>
+              <RecordCol>
+                <RecordWho>You</RecordWho>
+                <RecordVal>{fmtRecord(playerRecord)}</RecordVal>
+              </RecordCol>
+              <RecordSep />
+              <RecordCol>
+                <RecordWho>{opponentName}</RecordWho>
+                <RecordVal>{fmtRecord(opponentRecord)}</RecordVal>
+              </RecordCol>
+            </Records>
+          </InfoCol>
+
+          <ColumnDivider aria-hidden />
+
+          <DraftCol>
+            {options.length > 0 && (
+              <>
+                <DraftLabel>Draft · Choose Your Edge</DraftLabel>
+                <CardsRow>
+                  {options.map((type, index) => {
+                    const info = DRAFT_INFO[type];
+                    if (!info) return null;
+                    const isSelected = picked === type;
+                    const isDimmed = picked != null && !isSelected;
+                    return (
+                      <PowerCard
+                        key={type}
+                        type="button"
+                        $type={type}
+                        $selected={isSelected}
+                        $dimmed={isDimmed}
+                        $index={index}
+                        onClick={() => handlePick(type)}
+                        onMouseEnter={playPowerUpSelectionHoverSound}
+                      >
+                        <CardHeader>
+                          <img src={info.icon} alt={info.name} />
+                        </CardHeader>
+                        <CardBody>
+                          <PowerName>{info.name}</PowerName>
+                          <PowerDesc>{info.description}</PowerDesc>
+                          <UsageChip $active={info.active}>
+                            {info.active ? "F To Use" : "Passive"}
+                          </UsageChip>
+                        </CardBody>
+                      </PowerCard>
+                    );
+                  })}
+                </CardsRow>
+              </>
+            )}
+
+            <Actions>
+              <BeginButton onClick={handleBegin} disabled={!draftReady} autoFocus>
+                Begin Bout
+                <span className="arrow" aria-hidden>
+                  →
+                </span>
+              </BeginButton>
+              <BeginHint $visible={options.length > 0 && !picked} aria-hidden={picked != null}>
+                Select a power-up
+              </BeginHint>
+              <WithdrawLink onClick={() => setConfirming(true)}>
+                Withdraw — Fake Injury (Kyūjō)
+              </WithdrawLink>
+              {devEnabled && onSkipToFinalDay && !isFinalDay && (
+                <DevLink onClick={() => onSkipToFinalDay()}>
+                  ⚡ Dev: Skip to Final Day
+                </DevLink>
+              )}
+            </Actions>
+          </DraftCol>
         </Stage>
       </StageScaler>
+
+      <Vignette />
+      <Grain />
     </Screen>
   );
 }

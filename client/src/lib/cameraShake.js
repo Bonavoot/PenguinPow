@@ -18,11 +18,12 @@
 //            a touch on heavy hits is the AAA "snap". Kept tiny so map edges
 //            are never exposed (useCamera also hard-clamps translation).
 // ZOOM POLICY: the trauma-shake bus does NOT zoom at all. The only zoom-punch
-// in the game is the ceremonial hakkiyoi pulse (useCamera onGameStart) and the
-// cinematic-kill camera (useCamera's own CINEMATIC_PUNCH_BOOST). Every profile
-// here is therefore punch: 0 — shake is pure translation + roll. Smaller events
-// still read as clearly lighter because the translation amplitude scales per
-// event. (Per-event roll/trauma stay so each event keeps its distinct weight.)
+// in the game is the ceremonial hakkiyoi pulse (useCamera onGameStart), the
+// cinematic-kill camera (useCamera's own CINEMATIC_PUNCH_BOOST), and the single
+// deliberate exception below: perfect_parry (a rare, decisive "read" moment that
+// earns a real punch). Every OTHER profile here is punch: 0 — shake is pure
+// translation + roll. Smaller events still read as clearly lighter because the
+// translation amplitude scales per event. (Per-event roll/trauma keep weight.)
 export const SHAKE_PROFILES = {
   // ── Per-hit tiers (driven by player_hit: attackType + string position) ──
   // Light pokes (slap 1 & 2 and solo) — snappy rattle.
@@ -50,7 +51,10 @@ export const SHAKE_PROFILES = {
   // Slap clash — now RARE + DECISIVE, so it reads as a real event: heavy thump
   // with a clear roll (no zoom). Sits with the other "that mattered" hits.
   slap_parry:      { trauma: 0.72, punch: 0.0, rot: 0.40 },
-  perfect_parry:   { trauma: 0.70, punch: 0.0, rot: 0.45 },
+  // Perfect parry is a rare, decisive "I read you" moment — the exact case the
+  // zoom policy reserves a punch for. Heavier crunch + roll + a real (but capped)
+  // zoom-punch so it lands like an exclamation point, not just a rattle.
+  perfect_parry:   { trauma: 0.82, punch: 0.08, rot: 0.55 },
   charge_clash:    { trauma: 0.72, punch: 0.0, rot: 0.45 },
   ring_out:        { trauma: 0.78, punch: 0.0, rot: 0.40 },
   kill_throw:      { trauma: 0.92, punch: 0.0, rot: 0.60 },

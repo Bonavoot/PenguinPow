@@ -467,6 +467,11 @@ function resetRoomAndPlayers(room, io) {
     player.isAttemptingGrabThrow = false;
     player.grabThrowAttemptStartTime = 0;
     player.isCounterGrabbed = false;
+    player.isArmClamped = false;
+    player.clinchThrowFailStagger = false;
+    player.hasDeepGrip = false;
+    player.deepGripPushStart = 0;
+    player.clinchPushRampStart = 0;
     player.grabCounterAttempted = false;
     player.grabCounterInput = null;
     player.isThrowTeching = false;

@@ -49,7 +49,9 @@ const DELTA_TRACKED_PROPS = [
   'isResistingThrow', 'isResistingPull',
   'isClinchKillThrowVictim', 'isClinchKillPullVictim',
   'isClinchJolting', 'isBeingClinchJolted', 'isClinchJoltClashing',
-  'clinchJoltRecovery'
+  'clinchJoltRecovery',
+  'isArmClamped', 'clinchThrowFailStagger', 'isCounterGrabbed',
+  'hasDeepGrip'
 ];
 
 // Pre-compute the combined props list once (avoids spread on every call)
@@ -731,7 +733,7 @@ const BALANCE_CHARGED_HIT_DRAIN = 15;           // Balance lost when hit by a ch
 // ============================================
 
 // Clinch push mechanics
-const CLINCH_PUSH_BASE_SPEED = 1.2;             // Base push speed (scaled by balance ratio)
+const CLINCH_PUSH_BASE_SPEED = 1.8;             // Base push speed (scaled by balance ratio)
 const CLINCH_PUSH_STAMINA_DRAIN_PER_SEC = 7;    // Stamina cost for pusher per second (matches burst: 1 per 150ms ≈ 6.7/sec)
 const CLINCH_PUSH_OPPONENT_STAMINA_DRAIN_INTERVAL = 250; // -1 stamina per 250ms on pushed neutral opponent (~4/sec)
 const CLINCH_PUSH_BALANCE_DRAIN_OPPONENT_PER_SEC = 12; // Balance drain on opponent being pushed
@@ -741,13 +743,43 @@ const CLINCH_PUSH_VS_PLANT_SPEED_MULT = 0.3;    // Push speed multiplied by this
 // Clinch plant mechanics — plant recovers balance at the cost of position and small stamina drain
 const CLINCH_PLANT_BALANCE_REGEN_PER_SEC = 15;  // Balance recovery while planting (net +3/sec vs push mid-ring, net -3/sec at edge due to 1.5x drain)
 const CLINCH_PLANT_STAMINA_DRAIN_INTERVAL = 1000; // -1 stamina every 1000ms while planting (~1/sec, small cost)
+
+// NEUTRAL = BREATHING — the only clinch stance that recovers stamina, giving
+// neutral a real identity in the stance economy: push spends stamina for
+// territory, plant drips stamina for balance/throw-safety, jolt spends stamina
+// to crack plants, neutral is where stamina comes back. Only while NOT being
+// pushed — breathing into pressure still nets negative (~4/sec push drain),
+// so resting is only profitable once you've earned the space to do it.
+const CLINCH_NEUTRAL_STAMINA_REGEN_PER_SEC = 3;
 const CLINCH_PLANT_STAMINA_DRAIN_PUSHED_INTERVAL = 500; // -1 stamina every 500ms while planting under push (~2/sec)
 
 // Push vs push mechanics
-const CLINCH_PUSH_VS_PUSH_SPEED_SCALE = 0.8;    // Movement = difference * this (near-stalemate at equal balance)
+const CLINCH_PUSH_VS_PUSH_SPEED_SCALE = 1.0;    // Movement = difference * this (near-stalemate at equal balance)
+// Momentum ramp — an UNANSWERED push (opponent standing neutral: not pushing
+// back, not planting) snowballs instead of drifting at constant speed. After
+// the delay, speed climbs linearly to the max multiplier over the rise window.
+// Plant and push-back both kill the ramp, so ignoring a push is what's punished.
+const CLINCH_PUSH_RAMP_DELAY_MS = 500;          // Unanswered push time before the ramp starts building
+const CLINCH_PUSH_RAMP_RISE_MS = 1000;          // Time from ramp start to full multiplier
+const CLINCH_PUSH_RAMP_MAX_MULT = 1.6;          // Speed multiplier at full ramp
+// Additive stamina term in push-vs-push power: power = (balance + stamina * this) * fatigueMult.
+// Without it, push power hits a hard floor of 0 at 0 balance and stamina becomes
+// irrelevant — two drained players holding forward froze forever regardless of a
+// lopsided stamina situation. With it, a full-stamina player grinds a 0-balance
+// wall backward at ~15-20% speed: conditioning eventually wins the shoving match.
+const CLINCH_PUSH_STAMINA_WEIGHT = 0.2;
 
 // Clinch gassed push penalty — only gassed players have reduced push power
 const CLINCH_GASSED_PUSH_MULT = 0.2;            // 20% push power when gassed
+
+// Continuous fatigue: push force scales with remaining stamina so attrition is a
+// felt arc instead of a binary gassed cliff. Force mult lerps 1.0 (full stamina)
+// down to the floor (0 stamina, not yet gassed). Gassed overrides with the hard 0.2.
+const CLINCH_PUSH_STAMINA_FLOOR = 0.7;          // Push force multiplier at 0 stamina
+
+// Gassed recovery is weaker inside the clinch — prevents the sawtooth where a
+// ground-down opponent snaps back to full shove power mid-grind.
+const GASSED_RECOVERY_STAMINA_IN_CLINCH = 30;   // vs 55 outside the clinch
 
 // Edge push (at boundary)
 const CLINCH_EDGE_STAMINA_DRAIN_PER_SEC = 29;   // Opponent stamina drain at edge (matches burst: 1 per 35ms ≈ 29/sec)
@@ -788,6 +820,35 @@ const CLINCH_PULL_BALANCE_DRAIN_VS_PUSH = 14;    // 70% of throw value
 const CLINCH_PULL_BALANCE_DRAIN_VS_PLANT = 4;    // 70% of throw value
 const CLINCH_PULL_BALANCE_DRAIN_VS_NEUTRAL = 7;  // 70% of throw value
 const CLINCH_PULL_FAIL_SELF_BALANCE_DRAIN = 6;   // Pull is safer — less self-punishment on fail
+
+// Failed throw/pull stagger — the attacker visibly stumbles, giving the defender
+// a readable moment (and making throw-baiting a teachable strategy, not silent attrition)
+const CLINCH_THROW_FAIL_STAGGER_MS = 300;        // Attacker forced neutral, no clinch actions
+
+// Counter-grab ARM CLAMP — grabbing a raw-parrying opponent clamps their arms:
+// they cannot grip up during the Phase A burst carry, and the grabber's mid-burst
+// throw stays untechable. When the clamp ends (burst decays or boundary contact),
+// the victim is granted their grip automatically — punished once, positionally,
+// then the clinch is a fair fight.
+const COUNTER_GRAB_BALANCE_DEBUFF = 10;          // Balance hit on counter-grab connect
+
+// DEEP GRIP — the clinch's earned-advantage layer. Won by out-wrestling the
+// opponent inside the clinch (jolting a planter, or winning the push for a
+// sustained window); lost when the opponent jolts you, when your throw fails,
+// or when the clinch ends. Only one player can hold it at a time.
+const DEEP_GRIP_THROW_THRESHOLD_BONUS = 10;      // Throws/pulls land at balance <= 60 (vs 50)
+const DEEP_GRIP_PUSH_MULT = 1.1;                 // +10% clinch push force while held
+const DEEP_GRIP_PUSH_WIN_MS = 1000;              // Continuous unanswered push time to earn it
+
+// REACT BRACE — snapping to plant DURING an incoming throw/pull startup.
+// High-skill reaction option: the stance read at throw-start still applies in
+// full, but a plant input landed inside this tight window refunds part of the
+// stance-gap drain (never approaching a pre-emptive plant's value). Edge-gated:
+// the key must be PRESSED inside the window, holding it from before is the
+// pre-read plant and already got the better deal.
+const CLINCH_REACT_BRACE_WINDOW_MS = 250;        // Reaction window from throw/pull startup
+const CLINCH_REACT_BRACE_REFUND_FRACTION = 0.4;  // Fraction of (stanceDrain - plantDrain) refunded
+const CLINCH_REACT_BRACE_STAMINA_COST = 4;       // Stamina price — converts stamina into saved balance
 
 // Clinch tech (clash) cost
 const CLINCH_TECH_STAMINA_COST = 8;              // Both players lose stamina on tech — prevents free resets
@@ -923,6 +984,51 @@ const HITSTOP_THROW_MS = 100;     // Hitstop when throw lands (6 frames)
 //     lower bar — the read IS the earn, so less charge is required.
 const CHARGED_KILL_MIN_CHARGE = 80;       // neutral, pinned-at-rope KO
 const CHARGED_KILL_READ_MIN_CHARGE = 50;  // counter/punish/gassed KO from range
+
+// ── CHARGED CINEMATIC KILL — single "kill reach" model ───────────────────────
+// A charged hit rings the victim OUT only if, at contact, they are within
+// `killReach` px of the ROPE (MAP_*_BOUNDARY 340/935) they're being knocked
+// toward. killReach scales with the FULL power of the hit
+// (finalKnockbackMultiplier — which already folds in charge %, the POWER
+// power-up / Power Water, BASHO power & resistance stat mods, counter-hit, and
+// punish), mapped linearly:
+//   mult CHARGED_KILL_MULT_MIN (weakest charge)      → CHARGED_KILL_REACH_MIN
+//   mult CHARGED_KILL_MULT_MAX (neutral 100% charge) → CHARGED_KILL_REACH_MAX
+// Extra power beyond neutral-full keeps extending the reach along the same slope
+// up to CHARGED_KILL_REACH_CAP — so power attributes / power-ups matter even at
+// low charge, but can never turn it into a from-anywhere one-shot.
+//
+// PLAYABLE SPACE: the ring is 595px wide (left rope 340 → right rope 935, center
+// 637). The cap guarantees a wide NO-KILL DEADZONE always survives in the
+// middle: 595 − 2×CHARGED_KILL_REACH_CAP = 595 − 270 = 325px (~55% of the ring)
+// where a charged hit can NEVER ring out no matter the power — it rope-clamps the
+// victim at the edge instead (see collisionSystem + index.js). Whole feel = 5 dials.
+const CHARGED_KILL_REACH_MIN = 20;   // px from rope at the weakest charge (must be pinned)
+const CHARGED_KILL_REACH_MAX = 100;  // px from rope at a neutral 100% charge (outer third of a side)
+const CHARGED_KILL_REACH_CAP = 135;  // absolute max reach — the deadzone guard
+const CHARGED_KILL_MULT_MIN = 0.45;  // finalKnockbackMultiplier at 0% charge (curve floor)
+const CHARGED_KILL_MULT_MAX = 1.2;   // finalKnockbackMultiplier at a neutral 100% charge
+
+// Attacker self-recoil on a NON-lethal charged hit — the backward kick that
+// SELLS the impact. Charge-scaled: recoil velocity = 2 × (BASE + charge% ×
+// SCALE), so a hard charge produces a punchy front-loaded pop (the "hard, quick"
+// feel), a light tap barely nudges. Cinematic kills and palm thrust hold ground
+// (no recoil). These are the impact-feel dials — raise BASE for a firmer floor,
+// raise SCALE to make big charges kick back harder.
+const CHARGED_ATTACKER_RECOIL_BASE = 0.3;         // recoil floor (0% charge)
+const CHARGED_ATTACKER_RECOIL_CHARGE_SCALE = 0.5; // extra recoil at 100% charge
+// Recoil settles on its OWN fast friction (not the slow global ice coast) so the
+// backward kick is a QUICK, HARD pop that stops fast — instead of a long drift
+// that shoves the attacker out of pressure range (the "heavy / no advantage"
+// feel). Lower = snappier / shorter slide.
+const CHARGED_RECOIL_FRICTION = 0.85;
+// Attacker recovery AFTER a connected charged hit. Deliberately SHORTER than the
+// victim's charged hitstun (~380ms) so a landed charge is PLUS on hit — you
+// recover first and can actually use the space/tempo you earned (pressure,
+// reposition, threaten a follow-up). This is what makes a non-lethal charge
+// USEFUL. Whiff/absorbed recovery is unchanged (still committal & punishable).
+const CHARGED_HIT_RECOVERY_MS = 250;
+
 const CINEMATIC_KILL_HITSTOP_MS = 550;
 const CINEMATIC_KILL_KNOCKBACK_BOOST = 4.0;
 const CINEMATIC_KB_FRICTION = 0.985;
@@ -1241,9 +1347,24 @@ module.exports = {
   CLINCH_PUSH_VS_PLANT_SPEED_MULT,
   CLINCH_PLANT_BALANCE_REGEN_PER_SEC,
   CLINCH_PLANT_STAMINA_DRAIN_INTERVAL,
+  CLINCH_NEUTRAL_STAMINA_REGEN_PER_SEC,
   CLINCH_PLANT_STAMINA_DRAIN_PUSHED_INTERVAL,
   CLINCH_PUSH_VS_PUSH_SPEED_SCALE,
+  CLINCH_PUSH_STAMINA_WEIGHT,
+  CLINCH_PUSH_RAMP_DELAY_MS,
+  CLINCH_PUSH_RAMP_RISE_MS,
+  CLINCH_PUSH_RAMP_MAX_MULT,
+  CLINCH_REACT_BRACE_WINDOW_MS,
+  CLINCH_REACT_BRACE_REFUND_FRACTION,
+  CLINCH_REACT_BRACE_STAMINA_COST,
   CLINCH_GASSED_PUSH_MULT,
+  CLINCH_PUSH_STAMINA_FLOOR,
+  GASSED_RECOVERY_STAMINA_IN_CLINCH,
+  CLINCH_THROW_FAIL_STAGGER_MS,
+  COUNTER_GRAB_BALANCE_DEBUFF,
+  DEEP_GRIP_THROW_THRESHOLD_BONUS,
+  DEEP_GRIP_PUSH_MULT,
+  DEEP_GRIP_PUSH_WIN_MS,
   CLINCH_EDGE_STAMINA_DRAIN_PER_SEC,
   CLINCH_EDGE_ZONE_THRESHOLD,
   CLINCH_EDGE_BALANCE_DRAIN_MULT,
@@ -1359,6 +1480,15 @@ module.exports = {
   // Cinematic kill
   CHARGED_KILL_MIN_CHARGE,
   CHARGED_KILL_READ_MIN_CHARGE,
+  CHARGED_KILL_REACH_MIN,
+  CHARGED_KILL_REACH_MAX,
+  CHARGED_KILL_REACH_CAP,
+  CHARGED_KILL_MULT_MIN,
+  CHARGED_KILL_MULT_MAX,
+  CHARGED_ATTACKER_RECOIL_BASE,
+  CHARGED_ATTACKER_RECOIL_CHARGE_SCALE,
+  CHARGED_RECOIL_FRICTION,
+  CHARGED_HIT_RECOVERY_MS,
   CINEMATIC_KILL_HITSTOP_MS,
   CINEMATIC_KILL_KNOCKBACK_BOOST,
   CINEMATIC_KB_FRICTION,

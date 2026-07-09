@@ -137,16 +137,30 @@ export const getFighterPopFilter = (props) => {
   if (props.$isAtTheRopes) {
     return `${base} drop-shadow(0 0 8px rgba(255, 50, 50, 0.7))`;
   }
+  // Clinch balance danger (<15 — every throw/pull/lift is now a kill): the
+  // SAME red rim as at-the-ropes, deliberately. Both mean "you can die right
+  // now", so they share one visual grammar instead of inventing a new color.
+  if (props.$inClinch && props.$balanceDanger) {
+    return `${base} drop-shadow(0 0 8px rgba(255, 50, 50, 0.7))`;
+  }
   if (props.$isGrabBreaking) {
     return `${base} drop-shadow(0 0 8px rgba(0, 255, 128, 0.85))`;
   }
-  // Perfect raw parry: same yellow-gold read as ParticleEngine perfectParryFlameBurst
-  // (createGoldPuff / circleGold) — not the blue hold tint.
+  // Perfect raw parry: a tight GOLD rim so the parrying penguin matches the
+  // golden perfect-parry burst/lines/flash. Gold reads as "perfect/premium" and
+  // contrasts hard against the cool steel-white regular parry.
   if (props.$isPerfectRawParrySuccess) {
-    return `${base} drop-shadow(0 0 10px rgba(255, 248, 160, 0.95)) drop-shadow(0 0 5px rgba(255, 210, 85, 0.9))`;
+    return `${base} drop-shadow(0 0 3px rgba(255, 224, 120, 0.95)) drop-shadow(0 0 1px rgba(255, 240, 175, 1))`;
   }
   if (props.$isRawParrying) {
     return `${base} drop-shadow(0 0 6px rgba(0,130,255,0.9))`;
+  }
+  // Deep grip holder: a subtle burnished-gold rim for the clinch's earned
+  // advantage. Persistent (not a flash), so it stays quieter than the
+  // perfect-parry gold — "who holds the grip" at a glance. Danger red above
+  // still outranks it: "you can die" always wins the rim.
+  if (props.$inClinch && props.$hasDeepGrip) {
+    return `${base} drop-shadow(0 0 5px rgba(255, 194, 71, 0.55))`;
   }
   if (props.$isGrabPushing) {
     return `${base} drop-shadow(0 0 4px rgba(255, 150, 50, 0.5))`;
@@ -463,6 +477,12 @@ export const StyledImage = styled("img")
         ? "grabTechShake 0.25s ease-in-out infinite"
         : props.$isGrabTeching
         ? "grabTechShake 0.25s ease-in-out infinite"
+        : props.$clinchThrowFailStagger
+        ? "clinchFailStumble 0.3s cubic-bezier(0.22, 0.6, 0.35, 1)"
+        : props.$inClinch && props.$balanceDanger
+        ? "clinchTeeterHeavy 0.95s ease-in-out infinite"
+        : props.$inClinch && props.$balanceWobble
+        ? "clinchTeeter 1.5s ease-in-out infinite"
         : props.$isHit
         ? "hitSquash 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)"
         : props.$isDodging
@@ -583,6 +603,32 @@ export const StyledImage = styled("img")
     25% { transform: scaleX(var(--facing, 1)) scaleY(0.95) rotate(-4deg) translateX(-2px) translateY(1px); }
     50% { transform: scaleX(var(--facing, 1)) scaleY(0.95) rotate(2deg) translateX(1px) translateY(-1px); }
     75% { transform: scaleX(var(--facing, 1)) scaleY(0.95) rotate(-2deg) translateX(-1px) translateY(1px); }
+  }
+  /* Clinch balance teeter — skewX shear anchored at the feet (transform-
+     origin is center bottom). Unlike rotation, a shear leaves the ENTIRE
+     bottom edge of the sprite pinned in place: the feet never lift or slide,
+     only the upper body sways sideways over the planted base. That's the
+     physical "losing my footing" read. Asymmetric angles sell weight. */
+  @keyframes clinchTeeter {
+    0%, 100% { transform: scaleX(var(--facing, 1)) skewX(0deg); }
+    32% { transform: scaleX(var(--facing, 1)) skewX(-1.7deg); }
+    68% { transform: scaleX(var(--facing, 1)) skewX(1.2deg); }
+  }
+  @keyframes clinchTeeterHeavy {
+    0%, 100% { transform: scaleX(var(--facing, 1)) skewX(0deg); }
+    30% { transform: scaleX(var(--facing, 1)) skewX(-4deg); }
+    55% { transform: scaleX(var(--facing, 1)) skewX(2.2deg); }
+    78% { transform: scaleX(var(--facing, 1)) skewX(-2.4deg); }
+  }
+  /* Failed clinch throw/pull — the attacker's weight drops as the attempt
+     dies. Pure squash-and-recover in the hitSquash family (no rotation, no
+     lateral jitter): a hard scaleY dip with a matching scaleX bulge, then a
+     smooth settle. Reads as "over-committed and got stuffed". */
+  @keyframes clinchFailStumble {
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1); }
+    22% { transform: scaleX(calc(var(--facing, 1) * 1.14)) scaleY(0.86); }
+    55% { transform: scaleX(calc(var(--facing, 1) * 0.97)) scaleY(1.03); }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1); }
   }
   @keyframes grabTechShake {
     0% { transform: scaleX(var(--facing, 1)) translateX(0px); }

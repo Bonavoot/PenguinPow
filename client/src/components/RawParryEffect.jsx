@@ -1,66 +1,182 @@
 import { useEffect, useState, useRef, useMemo, Fragment } from "react";
 import { createPortal } from "react-dom";
-import styled from "styled-components";
+import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 import "./RawParryEffect.css";
 import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
+import parrySheet from "../assets/raw-parry-effect.png";
 
-// Pre-create indices for perfect parry speed lines
-const PERFECT_LINE_INDICES = [0, 1, 2, 3, 4, 5, 6, 7];
+// ── Raw parry burst (sprite sheet) — shared by BOTH tiers ────────────────────
+// A hand-drawn 8x8 / 64-frame expanding ring (raw-parry-effect.png). The art is
+// DEFAULT GREEN, so each tier recolors it via CSS filter (perfect → gold, regular
+// → steel-white). Being a single sprite plane it takes a CSS perspective tilt
+// cleanly (no multi-layer double-image), so it reads 3D like the old tilted ring.
+// NOTE: the sheet's columns are exact duplicate pairs (col0==col1, …), i.e. it's
+// really ~32 unique steps padded to 64. Reading row-major with the short duration
+// below auto-skips the dupes, so it plays snappy instead of slow-mo. Coverage
+// ramps in ~frame 8 → peak ~24 → dissipates to 63.
+const PP_GRID = 8;
+const PP_START_FRAME = 8; // first frame with a visible ring (0–7 are ~empty)
+const PP_END_FRAME = 63;
+const PP_DURATION_MS = 460; // snappy total across the 56 frames (dupes skipped by timing)
+// Perfect parry is the "special" tier, so it's BIGGER. The regular parry reuses
+// the exact same sprite + tilt at a smaller size and a neutral color, so the
+// hierarchy (special vs. routine) reads instantly.
+const PP_SIZE_CQW_PERFECT = 23;
+const PP_SIZE_CQW_REGULAR = 16;
+const PP_BASELINE_OFFSET_Y = 0;
+// Horizontal nudge toward the front of the parrying player (% of 1280), signed
+// by facing — mirrors the offset the old CSS ring used so the burst lands at the
+// same spot (just in front of / almost inside the player).
+const PP_FRONT_OFFSET_PCT = -15;
+// Perspective tilt. IMPORTANT: perspective() only accepts an absolute length —
+// px, NOT cqw (a cqw here makes the whole transform invalid and it gets dropped,
+// which breaks BOTH the centering and the tilt). Smaller px = stronger 3D.
+const PP_PERSPECTIVE = "600px";
+const PP_TILT = "48deg"; // rotateY tilts left/right like the old ring; swap to rotateX to lay it back
 
-const EFFECT_TEXT_BASELINE_OFFSET_Y = 0;
+// Perfect: recolor the GREEN art → bright shiny GOLD. hue-rotate on colored art
+// can't hit an exact hue, so use the tint recipe: grayscale strips the green,
+// sepia re-tones to a warm gold base, a small hue-rotate nudges it toward bright
+// yellow-gold, and saturate/brightness make it blaze. Warm two-stop bloom on top.
+// Gold is the universal "perfect/premium" signal and contrasts hard with the
+// cool steel-white regular parry.
+const PERFECT_PARRY_FILTER = `grayscale(1) sepia(1) hue-rotate(8deg) saturate(3) brightness(1.25) drop-shadow(0 0 5px rgba(255, 216, 92, 0.9)) drop-shadow(0 0 13px rgba(255, 198, 66, 0.5))`;
+// Regular: strip the green → neutral steel-white. Nothing "special" about a
+// routine parry, so it desaturates to a clean cool clash and lets the golden
+// perfect tier stand out.
+const REGULAR_PARRY_FILTER = `grayscale(1) brightness(1.22) contrast(1.05) drop-shadow(0 0 4px rgba(205, 228, 255, 0.5))`;
 
-/* Container: fixed size (perfect parry size) so both effects share the same center point */
-const RawParryEffectContainer = styled.div`
+const ParrySprite = styled.div`
   position: absolute;
-  left: ${props => (props.$x / 1280) * 100 + (props.$facing === 1 ? -15 : -9)}%;
-  bottom: ${props => (props.$y / 720) * 100 + EFFECT_TEXT_BASELINE_OFFSET_Y}%;
-  width: 4.15cqw;
-  height: 3.85cqw;
-  transform: translate(-50%, 50%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  left: ${(props) =>
+    (props.$x / 1280) * 100 + PP_FRONT_OFFSET_PCT * (props.$facing === 1 ? 1 : 0.6)}%;
+  bottom: ${(props) => (props.$y / 720) * 100 + PP_BASELINE_OFFSET_Y}%;
+  width: ${(props) => props.$size}cqw;
+  height: ${(props) => props.$size}cqw;
+  /* translate centers on the anchor, then perspective()+rotateY tilts the single
+     sprite plane left/right for a clean 3D read (matches the old ring's axis). */
+  transform: translate(-50%, 50%) perspective(${PP_PERSPECTIVE}) rotateY(${PP_TILT});
+  transform-origin: center;
   z-index: 168;
   pointer-events: none;
-  contain: layout style;
-  filter:
-    saturate(1.08)
-    brightness(1.05)
-    drop-shadow(0 0 2px rgba(90, 210, 255, 0.18));
+  background-image: url(${parrySheet});
+  background-repeat: no-repeat;
+  background-size: ${PP_GRID * 100}% ${PP_GRID * 100}%;
+  filter: ${(props) => (props.$isPerfect ? PERFECT_PARRY_FILTER : REGULAR_PARRY_FILTER)};
+  will-change: background-position;
 `;
 
-const ParticleContainer = styled.div`
+const ppFrameToBackgroundPosition = (frame) => {
+  const col = frame % PP_GRID;
+  const row = Math.floor(frame / PP_GRID);
+  const x = (col / (PP_GRID - 1)) * 100;
+  const y = (row / (PP_GRID - 1)) * 100;
+  return `${x}% ${y}%`;
+};
+
+// Plays the sheet once, then renders nothing. Shared by BOTH parry tiers — the
+// tier only changes size + recolor (via $isPerfect).
+const ParrySpriteBurst = ({ x, y, facing, isPerfect }) => {
+  const [frame, setFrame] = useState(PP_START_FRAME);
+  const [done, setDone] = useState(false);
+  const rafRef = useRef(null);
+  const startRef = useRef(null);
+
+  useEffect(() => {
+    const total = PP_END_FRAME - PP_START_FRAME + 1;
+    const frameDuration = PP_DURATION_MS / total;
+    const step = (t) => {
+      if (startRef.current === null) startRef.current = t;
+      const idx = Math.floor((t - startRef.current) / frameDuration);
+      if (idx >= total) {
+        setDone(true);
+        return;
+      }
+      setFrame(PP_START_FRAME + idx);
+      rafRef.current = requestAnimationFrame(step);
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
+  if (done) return null;
+  const pos = ppFrameToBackgroundPosition(frame);
+  return (
+    <ParrySprite
+      $x={x}
+      $y={y}
+      $facing={facing}
+      $isPerfect={isPerfect}
+      $size={isPerfect ? PP_SIZE_CQW_PERFECT : PP_SIZE_CQW_REGULAR}
+      style={{ backgroundPosition: pos }}
+    />
+  );
+};
+
+ParrySpriteBurst.propTypes = {
+  x: PropTypes.number.isRequired,
+  y: PropTypes.number.isRequired,
+  facing: PropTypes.number,
+  isPerfect: PropTypes.bool,
+};
+
+// ── Perfect-parry radial impact lines ────────────────────────────────────────
+// Quick anime-style streaks fanning out from the parry point — extra "pop"
+// reserved for the perfect tier. Each streak shoots outward from center then
+// fades; plays once and unmounts with the parent effect.
+const LINE_COUNT = 12;
+const lineBurst = keyframes`
+  0% { opacity: 0; transform: translateX(0) scaleX(0.2); }
+  22% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(3cqw) scaleX(1); }
+`;
+const LinesWrap = styled.div`
   position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 100%;
-  height: 100%;
-  transform: translate(-50%, -50%);
+  left: ${(props) =>
+    (props.$x / 1280) * 100 + PP_FRONT_OFFSET_PCT * (props.$facing === 1 ? 1 : 0.6)}%;
+  bottom: ${(props) => (props.$y / 720) * 100 + PP_BASELINE_OFFSET_Y}%;
+  width: 0;
+  height: 0;
+  z-index: 167; /* behind the sprite (168) so the burst reads on top */
   pointer-events: none;
-  z-index: 8;
 `;
-
-const Particle = styled.div`
+const LineRotor = styled.div`
   position: absolute;
-  width: 0.17cqw;
-  height: 0.17cqw;
-  background: ${(props) =>
-    props.$isPerfect
-      ? "radial-gradient(circle, #00FFFF, #00BFFF)"
-      : "radial-gradient(circle, #E0FFFF, #00CED1)"};
-  border-radius: 50%;
-  opacity: 0;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
 `;
-
-// Enhanced spark particles with realistic physics and visuals
-const Spark = styled.div`
+const LineStreak = styled.div`
   position: absolute;
-  pointer-events: none;
-  opacity: 0;
-  transform-origin: center;
-  will-change: transform, opacity;
+  left: 2cqw; /* small gap from the exact center */
+  top: -0.16cqw;
+  width: 4cqw;
+  height: 0.32cqw;
+  border-radius: 0.32cqw;
+  background: linear-gradient(90deg, rgba(255, 240, 170, 0.95), rgba(255, 205, 80, 0));
+  transform-origin: left center;
+  animation: ${lineBurst} 300ms cubic-bezier(0.2, 0.85, 0.25, 1) forwards;
 `;
+const PerfectParryLines = ({ x, y, facing }) => {
+  const angles = Array.from({ length: LINE_COUNT }, (_, i) => (360 / LINE_COUNT) * i);
+  return (
+    <LinesWrap $x={x} $y={y} $facing={facing}>
+      {angles.map((a, i) => (
+        <LineRotor key={i} style={{ transform: `rotate(${a}deg)` }}>
+          <LineStreak />
+        </LineRotor>
+      ))}
+    </LinesWrap>
+  );
+};
+PerfectParryLines.propTypes = {
+  x: PropTypes.number.isRequired,
+  y: PropTypes.number.isRequired,
+  facing: PropTypes.number,
+};
 
 const RawParryEffect = ({ position }) => {
   // Track multiple active effects with unique IDs
@@ -75,24 +191,6 @@ const RawParryEffect = ({ position }) => {
     if (!position) return null;
     return position.parryId || position.timestamp;
   }, [position?.parryId, position?.timestamp]);
-
-  // Generate spark particles - balanced for visuals and performance
-  const generateSparks = (effectId, isPerfect) => {
-    const sparkCount = 8;
-    const sparks = [];
-    const baseSize = 0.26; // cqw units
-
-    for (let i = 0; i < sparkCount; i++) {
-      sparks.push({
-        id: `${effectId}-spark-${i}`,
-        size: isPerfect ? baseSize + Math.random() * 0.16 : baseSize + Math.random() * 0.1,
-        sparkIndex: i,
-        isPerfect,
-      });
-    }
-
-    return sparks;
-  };
 
   useEffect(() => {
     if (!position || !parryIdentifier) return;
@@ -117,7 +215,6 @@ const RawParryEffect = ({ position }) => {
       playerNumber: position.playerNumber || 1,
       startTime: currentTime,
       parryId: parryIdentifier,
-      sparks: generateSparks(effectId, position.isPerfect || false),
     };
 
     // Add the new effect to active effects
@@ -151,40 +248,10 @@ const RawParryEffect = ({ position }) => {
   return (
     <>
       {activeEffects.map((effect) => {
-        const parryTiltSigned = effect.facing === -1 ? "55deg" : "-55deg";
-        // Generate basic particles - fixed positions for performance
-        const particlePositions = [[30, 40], [50, 30], [70, 50], [40, 70]];
-        const particles = particlePositions.map(([top, left], i) => (
-          <Particle
-            key={`${effect.id}-particle-${i}`}
-            className="particle"
-            $isPerfect={effect.isPerfect}
-            style={{ top: `${top}%`, left: `${left}%` }}
-          />
-        ));
-
-        // Generate spark particles - simplified for performance
-        const sparkElements = effect.sparks.map((spark) => (
-          <Spark
-            key={spark.id}
-            className={`spark ${spark.isPerfect ? "spark-perfect" : "spark-regular"}`}
-            style={{
-              top: "50%",
-              left: "50%",
-              width: `${spark.size}cqw`,
-              height: `${spark.size}cqw`,
-              background: spark.isPerfect 
-                ? "linear-gradient(45deg, #00FFFF, #FFFFFF)" 
-                : "linear-gradient(45deg, #FFFFFF, #00BFFF)",
-              borderRadius: "50%",
-            }}
-          />
-        ));
-
         // Perfect parry: gets a side announcement banner so the "you read
         // your opponent" callout matches the noticeability of counter
         // hit / punish / counter grab. Regular parry stays silent — the
-        // ring alone is enough signal, and the absence of a banner is
+        // burst alone is enough signal, and the absence of a banner is
         // what makes the perfect tier feel like an upgrade.
         const isLeftSide = (effect.playerNumber || 1) === 1;
         const hudEl =
@@ -194,48 +261,22 @@ const RawParryEffect = ({ position }) => {
 
         return (
           <Fragment key={effect.id}>
-            <RawParryEffectContainer
-              $x={effect.x}
-              $y={effect.y}
-              $facing={effect.facing}
-              $isPerfect={effect.isPerfect}
-            >
-              <div
-                className={`raw-parry-ring-wrapper ${
-                  effect.isPerfect ? "perfect" : "regular"
-                }`}
-                style={{ "--parry-ring-tilt-signed": parryTiltSigned }}
-              >
-                {/* Bloom glow underlayer */}
-                <div className={`parry-bloom-glow ${effect.isPerfect ? "perfect" : "regular"}`} />
-                <div
-                  className={`raw-parry-ring ${
-                    effect.isPerfect ? "perfect" : "regular"
-                  }`}
-                  style={{
-                    transform: effect.facing === 1 ? "scaleX(-1)" : "scaleX(1)",
-                  }}
-                />
-                {/* Held core */}
-                <div className={`parry-held-core ${effect.isPerfect ? "perfect" : "regular"}`} />
-                {/* Perfect parry speed lines - manga-style radial streaks */}
-                {effect.isPerfect && (
-                  <div className="perfect-speed-lines">
-                    {PERFECT_LINE_INDICES.map((i) => (
-                      <div key={i} className="perfect-speed-line" />
-                    ))}
-                  </div>
-                )}
-                <ParticleContainer className="raw-parry-particles">
-                  {particles}
-                </ParticleContainer>
-                <ParticleContainer className="spark-particles">
-                  {sparkElements}
-                </ParticleContainer>
-                {/* Afterglow */}
-                <div className={`parry-afterglow ${effect.isPerfect ? "perfect" : "regular"}`} />
-              </div>
-            </RawParryEffectContainer>
+            {/* Both tiers now use the same sprite burst + tilt; the perfect tier
+                is bigger, electric-blue, and gets radial impact lines, while the
+                regular tier is smaller and neutral steel-white. */}
+            <ParrySpriteBurst
+              x={effect.x}
+              y={effect.y}
+              facing={effect.facing}
+              isPerfect={effect.isPerfect}
+            />
+            {effect.isPerfect && (
+              <PerfectParryLines
+                x={effect.x}
+                y={effect.y}
+                facing={effect.facing}
+              />
+            )}
             {effect.isPerfect && hudEl && createPortal(
               <SumoAnnouncementBanner
                 text="PERFECT"

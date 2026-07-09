@@ -28,6 +28,8 @@ import CounterGrabEffect from "./CounterGrabEffect";
 import PunishBannerEffect from "./PunishBannerEffect";
 import CounterHitEffect from "./CounterHitEffect";
 import EdgeDangerEffect from "./EdgeDangerEffect";
+import GripPromptEffect from "./GripPromptEffect";
+import ClinchCalloutEffect from "./ClinchCalloutEffect";
 import NoStaminaEffect from "./GassedEffect";
 import SnowballImpactEffect from "./SnowballImpactEffect";
 import PumoCloneSpawnEffect from "./PumoCloneSpawnEffect";
@@ -729,6 +731,7 @@ const GameFighter = ({
   const animContainerDomRef = useRef(null); // AnimatedFighterContainer
   const shadowDomRef = useRef(null); // PlayerShadow root div
   const youLabelDomRef = useRef(null); // pre-game "You" label
+  const gripPromptDomRef = useRef(null); // in-clinch "GRIP!" / "CLAMPED!" prompt
   // Mirror of the latest rendered penguin state for the rAF loop (flags used
   // in position formulas: at-the-ropes nudge, shadow ground-pinning).
   const penguinRef = useRef(penguin);
@@ -1513,6 +1516,8 @@ const GameFighter = ({
   const [counterHitEffectPosition, setCounterHitEffectPosition] =
     useState(null);
   const [clinchJoltEffectPosition, setClinchJoltEffectPosition] = useState(null);
+  // Clinch mind-game callouts: COUNTER THROW / BRACED / RESISTED side banners
+  const [clinchCalloutData, setClinchCalloutData] = useState(null);
 
   // "No Stamina" effect - shows when player tries to use action without enough stamina
   const [noStaminaEffectKey, setNoStaminaEffectKey] = useState(0);
@@ -1847,6 +1852,14 @@ const GameFighter = ({
         if (youEl) {
           youEl.style.left = plainLeftPct;
           youEl.style.bottom = `${(newPos.y / 720) * 100 + 21}%`;
+        }
+        // Grip prompt rides the same per-frame position writes as the sprite —
+        // React-prop positioning alone only updates on discrete re-renders,
+        // which made the text visibly chop along during clinch movement.
+        const gripEl = gripPromptDomRef.current;
+        if (gripEl) {
+          gripEl.style.left = `${(newPos.x / 1280) * 100 + 2}%`;
+          gripEl.style.bottom = `${(newPos.y / 720) * 100 + 27}%`;
         }
 
         // Position-driven zIndex flip (falling off the dohyo): needs a real
@@ -2354,7 +2367,15 @@ const GameFighter = ({
           prev.isClinchJolting !== newState.isClinchJolting ||
           prev.isBeingClinchJolted !== newState.isBeingClinchJolted ||
           prev.isClinchJoltClashing !== newState.isClinchJoltClashing ||
-          prev.clinchJoltRecovery !== newState.clinchJoltRecovery;
+          prev.clinchJoltRecovery !== newState.clinchJoltRecovery ||
+          prev.isArmClamped !== newState.isArmClamped ||
+          prev.clinchThrowFailStagger !== newState.clinchThrowFailStagger ||
+          prev.hasDeepGrip !== newState.hasDeepGrip ||
+          // Balance threshold crossings (throwable <=50, kill zone <15) drive the
+          // clinch wobble/stagger animations — balance is ALWAYS_SEND so a plain
+          // value compare would re-render every packet; compare zone membership.
+          (prev.balance <= 50) !== (newState.balance <= 50) ||
+          (prev.balance < 15) !== (newState.balance < 15);
 
         // Blocked-state guard may clear stale slap flags even when nothing else
         // in the discrete check changed — still commit so SlapAttackHandsEffect
@@ -2783,7 +2804,8 @@ const GameFighter = ({
     socket.on("perfect_parry", handlePerfectParry);
 
     let handleGrabBreak, handleGrabTech, handleClinchTech, handleCounterGrab,
-        handleStaminaBlocked;
+    handleStaminaBlocked, handleClinchCallout, handleClinchThrowFail,
+    handleDeepGrip;
     if (index === 0) {
       handleGrabBreak = (data) => {
         if (
@@ -2856,6 +2878,41 @@ const GameFighter = ({
         playSound(counterGrabSound, 0.035);
       };
       socket.on("counter_grab", handleCounterGrab);
+
+      // Clinch stance-read banners: counter_throw (threw a pusher, max drain)
+      // and braced (plant blunted an incoming throw to chip drain).
+      handleClinchCallout = (data) => {
+        if (!data || (data.type !== "counter_throw" && data.type !== "braced"))
+          return;
+        setClinchCalloutData({
+          type: data.type,
+          playerNumber: data.playerNumber || 1,
+          calloutId: data.calloutId || `clinch-callout-${Date.now()}`,
+        });
+      };
+      socket.on("clinch_callout", handleClinchCallout);
+
+      // Failed throw/pull vs balance > 50 — credit the defender with RESISTED
+      handleClinchThrowFail = (data) => {
+        if (!data) return;
+        setClinchCalloutData({
+          type: "resisted",
+          playerNumber: data.playerNumber || 1,
+          calloutId: data.failId || `clinch-fail-${Date.now()}`,
+        });
+      };
+      socket.on("clinch_throw_fail", handleClinchThrowFail);
+
+      // Deep grip earned — announce on the holder's side
+      handleDeepGrip = (data) => {
+        if (!data) return;
+        setClinchCalloutData({
+          type: "deep_grip",
+          playerNumber: data.playerNumber || 1,
+          calloutId: data.gripId || `deep-grip-${Date.now()}`,
+        });
+      };
+      socket.on("deep_grip", handleDeepGrip);
 
       // NOTE: counter-hit and punish side banners are no longer separate socket
       // events — they're folded into the player_hit handler above (which fires
@@ -3164,6 +3221,9 @@ const GameFighter = ({
         socket.off("fighter_action", handleClinchTech);
         socket.off("counter_grab", handleCounterGrab);
         socket.off("stamina_blocked", handleStaminaBlocked);
+        socket.off("clinch_callout", handleClinchCallout);
+        socket.off("clinch_throw_fail", handleClinchThrowFail);
+        socket.off("deep_grip", handleDeepGrip);
       }
       socket.off("snowball_hit", handleSnowballHit);
       socket.off("gyoji_call", handleGyojiCall);
@@ -3965,6 +4025,83 @@ const GameFighter = ({
   }, [penguin.isSidestepRecovery, emitParticles]);
 
   // ─────────────────────────────────────────────────────────────────
+  // CLINCH BALANCE TELL — strain sweat
+  //
+  // While clinched with balance in the throwable zone (<=50), sweat
+  // droplets flick off the fighter on an interval; below the kill
+  // threshold (<15) the spray gets denser/faster and the sprite also
+  // picks up the red danger rim (getFighterPopFilter). Zone crossings
+  // are in discreteStateChanged, so `penguin.balance` here is always
+  // fresh at the boundaries that matter.
+  // ─────────────────────────────────────────────────────────────────
+  const balanceZone = !penguin.inClinch
+    ? 0
+    : (penguin.balance ?? 100) < 15
+    ? 2
+    : (penguin.balance ?? 100) <= 50
+    ? 1
+    : 0;
+  useEffect(() => {
+    if (balanceZone === 0 || penguin.isDead || gameOver) return;
+    const danger = balanceZone === 2;
+    const fire = () => {
+      const pos = interpolatedPositionRef.current;
+      emitParticles("clinchStrainSweat", {
+        x: pos?.x ?? penguin.x,
+        y: pos?.y ?? penguin.y,
+        facing: penguin.facing ?? 1,
+        intensity: danger ? 1 : 0.45,
+      });
+    };
+    fire();
+    const id = setInterval(fire, danger ? 240 : 520);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [balanceZone, penguin.isDead, gameOver, emitParticles]);
+
+  // Arm clamp (counter-grab) — magenta crackle burst on the victim when the
+  // clamp connects, then a smaller sustained zap while it holds. Uses the
+  // clamped-effect sprite sheet; matches the countergrab pink/purple theme.
+  const prevArmClamped = useRef(false);
+  useEffect(() => {
+    if (penguin.isArmClamped && !prevArmClamped.current) {
+      const pos = interpolatedPositionRef.current;
+      emitParticles("clampCrackle", {
+        x: pos?.x ?? penguin.x,
+        y: pos?.y ?? penguin.y,
+        scale: 1.05,
+      });
+    }
+    prevArmClamped.current = !!penguin.isArmClamped;
+    if (!penguin.isArmClamped) return;
+    const id = setInterval(() => {
+      const pos = interpolatedPositionRef.current;
+      emitParticles("clampCrackle", {
+        x: pos?.x ?? penguin.x,
+        y: pos?.y ?? penguin.y,
+        scale: 0.5,
+        alpha: 0.85,
+      });
+    }, 340);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [penguin.isArmClamped, emitParticles]);
+
+  // Failed clinch throw/pull — weight-drop dust at the attacker's feet on the
+  // stagger's rising edge, matching the clinchFailStumble squash.
+  const prevFailStagger = useRef(false);
+  useEffect(() => {
+    if (penguin.clinchThrowFailStagger && !prevFailStagger.current) {
+      const pos = interpolatedPositionRef.current;
+      emitParticles("sidestepLand", {
+        x: pos?.x ?? penguin.x,
+        y: pos?.y ?? penguin.y,
+      });
+    }
+    prevFailStagger.current = !!penguin.clinchThrowFailStagger;
+  }, [penguin.clinchThrowFailStagger, emitParticles]);
+
+  // ─────────────────────────────────────────────────────────────────
   // OPEN-PALM THRUST VFX — force cone
   //
   // Fires on every change of palmThrustFxId — a server counter bumped once
@@ -4270,15 +4407,17 @@ const GameFighter = ({
   useEffect(() => {
     if (penguin.isPerfectRawParrySuccess && !lastPerfectParryState.current) {
       clearRawParryBlueHold();
-      emitParticles("throwLand", {
+      emitParticles("perfectParryLandSmoke", {
         x: penguin.x,
         y: penguin.y,
       });
-      emitParticles("perfectParryFlameBurst", {
-        x: penguin.x,
-        y: penguin.y,
-        facing: penguin.facing,
-      });
+      // Disabled to preview the perfect parry without the gold/yellow flame
+      // smoke (pickGoldPuff burst).
+      // emitParticles("perfectParryFlameBurst", {
+      //   x: penguin.x,
+      //   y: penguin.y,
+      //   facing: penguin.facing,
+      // });
     }
     lastPerfectParryState.current = penguin.isPerfectRawParrySuccess;
   }, [penguin.isPerfectRawParrySuccess, penguin.x, penguin.y, penguin.facing, emitParticles, clearRawParryBlueHold]);
@@ -5201,6 +5340,11 @@ const GameFighter = ({
     $isBeingClinchJolted: penguin.isBeingClinchJolted,
     $isClinchJoltClashing: penguin.isClinchJoltClashing,
     $clinchJoltRecovery: penguin.clinchJoltRecovery,
+    $clinchThrowFailStagger: penguin.clinchThrowFailStagger,
+    $inClinch: penguin.inClinch,
+    $hasDeepGrip: penguin.hasDeepGrip,
+    $balanceDanger: (penguin.balance ?? 100) < 15,
+    $balanceWobble: (penguin.balance ?? 100) <= 50,
     $isCinematicKillAttacker: isCinematicKillAttacker,
     $attackerConfirmTier: attackerConfirmTier,
     $isClinchKillThrowVictim: penguin.isClinchKillThrowVictim,
@@ -5633,6 +5777,7 @@ const GameFighter = ({
       <GrabTechEffect position={grabTechEffectPosition} />
       <ClinchJoltEffect position={clinchJoltEffectPosition} />
       <CounterGrabEffect position={trackedCounterGrabEffectPosition} />
+      {index === 0 && <ClinchCalloutEffect callout={clinchCalloutData} />}
       <PunishBannerEffect position={punishBannerPosition} />
       <CounterHitEffect position={counterHitEffectPosition} />
       <SnowballImpactEffect position={snowballImpactPosition} />
@@ -5647,6 +5792,25 @@ const GameFighter = ({
         y={displayPosition.y}
         facing={penguin.facing ?? -1}
         isActive={penguin.isAtTheRopes}
+      />
+      {/* Grip-up prompt: local player grabbed without a grip — every 100ms
+          gripless is free carry distance for the grabber. Shows CLAMPED!
+          instead when arm-clamped by a counter-grab (grip comes automatically
+          when the clamp releases). */}
+      <GripPromptEffect
+        ref={gripPromptDomRef}
+        x={displayPosition.x}
+        y={displayPosition.y}
+        isActive={
+          penguin.id === localId &&
+          penguin.inClinch === true &&
+          penguin.isBeingGrabbed === true &&
+          !penguin.hasGrip &&
+          !penguin.isBeingLifted &&
+          !penguin.isClinchKillThrowVictim &&
+          !penguin.isClinchKillPullVictim
+        }
+        isClamped={penguin.isArmClamped === true}
       />
       {/* NoStaminaEffect - centered on screen, only render once (index 0) and only for local player */}
       {index === 0 && noStaminaEffectKey > 0 && (

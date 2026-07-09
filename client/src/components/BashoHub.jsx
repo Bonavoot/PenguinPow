@@ -1,16 +1,17 @@
 /**
  * BashoHub — Single-player BASHO career/roguelite hub.
  *
- * Phase 1: the real hub UI shell, built from the CustomizePage template.
- * Large recolored penguin preview (left) + a dossier panel (right) with
- * the 5 persistent ATTRIBUTES, the 5 LOADOUT categories (catalog empty /
- * "Coming soon" for now), the current banzuke rank, an envelopes count,
- * and a prominent START BASHO button. All values read from in-memory
- * placeholder state — persistence lands in Phase 2, the run loop in
- * Phase 3. A dev/debug panel (gated behind a flag / key combo) lets us
- * test without grinding (spec §9).
+ * One-screen, no-scroll fighter dossier laid out as two columns:
+ *   LEFT  — the rikishi: large portrait, persistent ATTRIBUTES, and
+ *           belt/body appearance controls (popovers).
+ *   RIGHT — the LOADOUT board: one row per discipline, five slots each
+ *           (real sidegrades + greyed "coming soon" placeholders), with an
+ *           integrated detail strip that previews on hover and equips/buys on
+ *           click. Locked sidegrades are bought inline with Kenshō — the shop
+ *           is folded into the icons, no separate section.
  *
- * GUARDRAIL: nothing here may affect PvP. This is a single-player sandbox.
+ * All values read from the persisted save (saveStore); the run loop lives in
+ * lib/bashoRun. GUARDRAIL: nothing here may affect PvP.
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -32,7 +33,7 @@ import pumo from "../assets/pumo-idle.png";
 import envelopeImg from "../assets/envelope.png";
 import flapIcon from "../assets/flap-icon.png";
 import shatterPalmIcon from "../assets/shatter-palm-icon.png";
-import mainMenuBackground from "../assets/main-menu-bkg-4.webp";
+import lobbyBackground from "../assets/lockerroom.webp";
 import {
   C,
   FONT_BODY,
@@ -42,7 +43,6 @@ import {
   fadeUp,
   slideInLeft,
   slideInRight,
-  livePulse,
 } from "./menuTheme";
 import {
   ATTRIBUTES,
@@ -50,10 +50,9 @@ import {
   STAT_MAX,
   LOADOUT_CATEGORIES,
   LOADOUT_OPTIONS,
-  LOADOUT_DEFAULTS,
   LOADOUT_BUDGET,
   loadoutSpent,
-  UNLOCKS,
+  UNLOCK_BY_ID,
   isUnlocked,
   DIVISIONS,
   getDivision,
@@ -61,16 +60,93 @@ import {
   boutsForRank,
 } from "../config/bashoConfig";
 import {
+  BELT_SOLIDS,
+  BELT_PATTERNS,
+  BODY_COLORS,
+  BELT_ALL,
+} from "../config/customizeColors";
+import {
   loadSave,
   writeSave,
   resetSave,
   makeDefaultSave,
-  isElectronSave,
 } from "../lib/saveStore";
 import { createRun, ensureOpponentRanks } from "../lib/bashoRun";
 import BanzukeBoard from "./BanzukeBoard";
 
 const DEBUG_FLAG_KEY = "bashoDebug";
+
+/** Every discipline shows this many slots; short catalogs pad with "?". */
+const SLOTS_PER_CATEGORY = 5;
+
+/**
+ * D — the hub's DARK surface palette. Built from the same cool sumi-ink /
+ * ice / vermillion / gold world as the in-game HUD (menuTheme C), but tuned
+ * into layered charcoal surfaces so the dossier reads as a moody, cinematic
+ * "fighter loadout" screen rather than a flat white card. Accents (ice,
+ * vermillion, gold, cream text) still come from C so the theme stays unified.
+ *
+ * Surfaces climb in three steps — deep (inset) < panel (base) < soft (raised)
+ * — which is what gives the UI depth: recessed tracks, floating cards, and
+ * chrome bands all read as distinct planes under one cool light.
+ */
+const D = {
+  page: "#0a0b0d", // deepest backdrop — neutral near-black
+  panelTop: "#191c21", // panel gradient — neutral charcoal catching light up top
+  panelBottom: "#0f1114", // panel gradient — sinks into shadow at the base
+  panel: "#14161a", // panel solid fallback
+  headTop: "#1f232a", // header nameplate band (elevated)
+  headBottom: "#14171c",
+  chromeTop: "#13161a", // footer chrome band
+  chromeBottom: "#0b0c0f",
+  soft: "#1b1e24", // raised surface — rows, slots, buttons
+  softHover: "#242830",
+  deep: "#0c0e11", // recessed inset — empty pips, placeholders
+  border: "rgba(234, 241, 247, 0.12)", // clean cool-white hairline
+  borderSoft: "rgba(234, 241, 247, 0.06)",
+  shadow: "rgba(0, 0, 0, 0.5)",
+  shadowStrong: "rgba(0, 0, 0, 0.68)",
+  textHi: "#f2f6fa", // headings — near-white
+  text: "#d2dae3", // body — cool light gray
+  textMute: "#8a94a1", // meta / captions — muted gray
+  textFaint: "rgba(210, 220, 232, 0.24)", // disabled / hints
+  // Single accent glow — the character's mawashi ice-blue.
+  accentGlow: C.iceGlow,
+  // Bright washi stage the fighter stands on (high-contrast "lightbox").
+  stageTop: "#fdfaf2",
+  stageMid: "#efe6d3",
+  stageBottom: "#e2d3b6",
+};
+
+/* Washi paper weave — same crosshatch recipe as the PowerUpSelection
+   cards and the in-game RankPlaque, so every printed surface reads as
+   the same paper stock. Two variants: dark ink fibers for light
+   surfaces (the portrait stage), faint cream fibers for dark chrome
+   (panel headers). Used sparingly, only for tactile depth. */
+const WASHI_DARK_ON_LIGHT = `
+  repeating-linear-gradient(
+    90deg,
+    transparent 0, transparent 2px,
+    rgba(60, 40, 20, 0.05) 2px, rgba(60, 40, 20, 0.05) 3px
+  ),
+  repeating-linear-gradient(
+    0deg,
+    transparent 0, transparent 4px,
+    rgba(60, 40, 20, 0.04) 4px, rgba(60, 40, 20, 0.04) 5px
+  )
+`;
+const WASHI_LIGHT_ON_DARK = `
+  repeating-linear-gradient(
+    90deg,
+    transparent 0, transparent 3px,
+    rgba(232, 210, 170, 0.028) 3px, rgba(232, 210, 170, 0.028) 4px
+  ),
+  repeating-linear-gradient(
+    0deg,
+    transparent 0, transparent 5px,
+    rgba(232, 210, 170, 0.022) 5px, rgba(232, 210, 170, 0.022) 6px
+  )
+`;
 
 /** Square icon + panel colors for loadout options (matches PowerUpSelection TYPE_COLORS). */
 const LOADOUT_OPTION_ICONS = {
@@ -91,12 +167,6 @@ const LOADOUT_OPTION_ICONS = {
   },
 };
 
-/** Kenshō unlock id → loadout option id (for shop row icons). */
-const UNLOCK_LOADOUT_OPTION_ID = {
-  loadout_flap: "flap",
-  loadout_shattering_palm: "shattering_palm",
-};
-
 function getLoadoutOptionIcon(optionId) {
   return LOADOUT_OPTION_ICONS[optionId] || null;
 }
@@ -115,6 +185,16 @@ const pipFill = keyframes`
   to   { transform: scaleX(1); }
 `;
 
+const popIn = keyframes`
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+`;
+
+const detailShift = keyframes`
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+`;
+
 // ============================================
 // SHELL
 // ============================================
@@ -125,24 +205,29 @@ const PageContainer = styled.div`
   flex-direction: column;
   width: 100%;
   height: 100%;
-  background: ${C.snow};
+  background: ${D.page};
   overflow: hidden;
   container-type: size;
   font-family: "Space Grotesk", sans-serif;
 `;
 
-const BackgroundImage = styled.img`
+// Backdrop mirrors the VS CPU lobby exactly: the locker-room art on
+// center-bottom cover, nudged/zoomed, dimmed and blurred for shallow DoF.
+const BackgroundImage = styled.div`
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  opacity: 0.45;
-  filter: saturate(0.78) brightness(1.18) blur(1.5px);
+  background: url(${lobbyBackground}) center bottom / cover;
+  transform: scale(1.04) translateX(1.1%);
+  transform-origin: 50% 100%;
+  opacity: 0.9;
+  filter: saturate(0.62) brightness(0.86) contrast(1.07) sepia(0.08)
+    blur(2.4px);
   z-index: 0;
   pointer-events: none;
 `;
 
+// Cinematic darkener — same stage-light pool + top/bottom atmospheric dim
+// used on the VS CPU lobby.
 const CinematicOverlay = styled.div`
   position: absolute;
   inset: 0;
@@ -150,21 +235,47 @@ const CinematicOverlay = styled.div`
   pointer-events: none;
   background:
     radial-gradient(
-      ellipse at 50% 100%,
-      rgba(35, 70, 110, 0.18) 0%,
-      transparent 55%
+      ellipse 70% 42% at 50% 70%,
+      transparent 0%,
+      rgba(20, 14, 8, 0.22) 55%,
+      rgba(10, 8, 4, 0.62) 100%
     ),
     linear-gradient(
       180deg,
-      rgba(234, 241, 247, 0.7) 0%,
-      rgba(234, 241, 247, 0.25) 30%,
-      rgba(234, 241, 247, 0.25) 70%,
-      rgba(234, 241, 247, 0.7) 100%
+      rgba(12, 10, 6, 0.42) 0%,
+      rgba(12, 10, 6, 0.18) 22%,
+      rgba(12, 10, 6, 0) 44%,
+      rgba(12, 10, 6, 0) 78%,
+      rgba(8, 12, 20, 0.34) 100%
+    );
+`;
+
+// Paper-grain pass on top of the backdrop (below the UI) — same recipe as
+// the VS CPU lobby so both screens read as the same film stock.
+const GrainOverlay = styled.div`
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.34;
+  mix-blend-mode: overlay;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      rgba(60, 40, 20, 0.05) 0,
+      transparent 1px,
+      transparent 3px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(60, 40, 20, 0.04) 0,
+      transparent 1px,
+      transparent 4px
     );
 `;
 
 // ============================================
-// TOP BAR
+// TOP BAR (slim)
 // ============================================
 
 const TopBar = styled.header`
@@ -173,10 +284,10 @@ const TopBar = styled.header`
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  padding: clamp(10px, 1.8cqh, 18px) clamp(16px, 2.4cqw, 28px);
+  padding: clamp(8px, 1.3cqh, 13px) clamp(16px, 2.4cqw, 30px);
   background: ${C.sumi};
   border-bottom: 1px solid ${C.sumiBorder};
-  box-shadow: 0 2px 10px ${C.sumiShadow};
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
   animation: ${fadeIn} 0.4s ease both;
 `;
 
@@ -192,16 +303,16 @@ const TopBarRight = styled.div`
   gap: clamp(8px, 1.2cqw, 14px);
 `;
 
-const BackButton = styled.button`
+const GhostButton = styled.button`
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: clamp(8px, 1.1cqw, 12px);
-  min-height: 44px;
-  padding: clamp(8px, 1.2cqh, 12px) clamp(14px, 2cqw, 22px);
-  font-family: "Space Grotesk", sans-serif;
+  gap: clamp(7px, 1cqw, 11px);
+  min-height: 38px;
+  padding: clamp(7px, 1cqh, 10px) clamp(13px, 1.8cqw, 20px);
+  font-family: ${FONT_BODY};
   font-weight: 600;
-  font-size: clamp(0.62rem, 0.95cqw, 0.78rem);
+  font-size: clamp(0.58rem, 0.88cqw, 0.72rem);
   text-transform: uppercase;
   letter-spacing: 0.22em;
   color: ${C.creamMute};
@@ -209,26 +320,21 @@ const BackButton = styled.button`
   border: 1px solid ${C.sumiBorder};
   border-radius: 2px;
   cursor: pointer;
-  transition:
-    color 0.18s ease,
-    border-color 0.18s ease,
-    background 0.18s ease,
+  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease,
     transform 0.18s ease;
 
   .arrow {
     font-weight: 700;
     transition: transform 0.2s ease;
   }
-
   &:hover {
-    color: ${C.cream};
+    color: ${D.textHi};
     border-color: ${C.iceMid};
     background: rgba(234, 241, 247, 0.06);
     .arrow {
       transform: translateX(-3px);
     }
   }
-
   &:active {
     transform: scale(0.98);
   }
@@ -243,89 +349,54 @@ const TitleBlock = styled.div`
 
 const PageTitle = styled.h1`
   margin: 0;
-  font-family: "Bungee", cursive;
-  font-size: clamp(1rem, 1.8cqw, 1.4rem);
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(0.92rem, 1.6cqw, 1.28rem);
   color: ${C.cream};
   text-transform: uppercase;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.2em;
   line-height: 1;
 `;
 
 const PageSubtitle = styled.div`
-  font-family: "Space Grotesk", sans-serif;
+  font-family: ${FONT_BODY};
   font-weight: 600;
-  font-size: clamp(0.45rem, 0.7cqw, 0.55rem);
+  font-size: clamp(0.42rem, 0.66cqw, 0.52rem);
   color: ${C.creamMute};
   text-transform: uppercase;
-  letter-spacing: 0.32em;
+  letter-spacing: 0.34em;
 `;
 
-const EnvelopeChip = styled.div`
+// Currency readout — the Kenshō balance sits directly in the top bar as
+// free-standing chrome (envelope glyph + gold figure), NOT boxed in its own
+// plate. A container here just added a competing rectangle next to the
+// title; the icon + gold weight are enough to read it as the wallet.
+const Currency = styled.div`
   display: inline-flex;
   align-items: center;
   gap: clamp(6px, 0.9cqw, 10px);
-  min-height: 44px;
-  padding: clamp(6px, 1cqh, 10px) clamp(12px, 1.6cqw, 18px);
-  font-family: "Space Grotesk", sans-serif;
+  min-height: 38px;
+  font-family: ${FONT_BODY};
   font-weight: 700;
-  font-size: clamp(0.55rem, 0.85cqw, 0.68rem);
+  font-size: clamp(0.6rem, 0.94cqw, 0.78rem);
   color: ${C.gold};
-  background: ${C.sumiSoft};
-  border: 1px solid ${C.sumiBorder};
-  border-radius: 2px;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.1em;
 
   .envelope {
-    height: 1.7em;
+    height: 2.7em;
     width: auto;
     object-fit: contain;
     filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
-    margin-right: 0.1em;
   }
-
-  .label {
-    color: ${C.creamMute};
-    font-weight: 600;
-    letter-spacing: 0.24em;
-    font-size: 0.82em;
-  }
-`;
-
-const SaveIndicator = styled.div`
-  display: inline-flex;
-  align-items: center;
-  gap: clamp(6px, 0.9cqw, 10px);
-  min-height: 44px;
-  padding: clamp(6px, 1cqh, 10px) clamp(12px, 1.6cqw, 18px);
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
-  font-size: clamp(0.45rem, 0.72cqw, 0.55rem);
-  color: ${C.creamMute};
-  background: ${C.sumiSoft};
-  border: 1px solid ${C.sumiBorder};
-  border-radius: 2px;
-  text-transform: uppercase;
-  letter-spacing: 0.24em;
-  white-space: nowrap;
-`;
-
-const SaveDot = styled.span`
-  width: clamp(6px, 0.8cqw, 8px);
-  height: clamp(6px, 0.8cqw, 8px);
-  border-radius: 50%;
-  background: ${(p) => (p.$busy ? C.gold : C.success)};
-  animation: ${livePulse} 2s ease-in-out infinite;
 `;
 
 const DebugToggle = styled.button`
   display: inline-flex;
   align-items: center;
-  min-height: 44px;
-  padding: clamp(6px, 1cqh, 10px) clamp(10px, 1.4cqw, 14px);
-  font-family: "Space Grotesk", sans-serif;
+  min-height: 38px;
+  padding: clamp(5px, 0.8cqh, 9px) clamp(10px, 1.4cqw, 14px);
+  font-family: ${FONT_BODY};
   font-weight: 700;
-  font-size: clamp(0.45rem, 0.7cqw, 0.55rem);
+  font-size: clamp(0.42rem, 0.68cqw, 0.52rem);
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: ${(p) => (p.$active ? C.sumi : C.creamMute)};
@@ -342,7 +413,7 @@ const DebugToggle = styled.button`
 `;
 
 // ============================================
-// STAGE LAYOUT
+// STAGE
 // ============================================
 
 const Stage = styled.main`
@@ -351,26 +422,28 @@ const Stage = styled.main`
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.18fr);
   align-items: stretch;
-  gap: clamp(20px, 3cqw, 48px);
-  padding: clamp(18px, 3cqh, 36px) clamp(24px, 4cqw, 64px);
+  gap: clamp(16px, 2.4cqw, 34px);
+  padding: clamp(16px, 2.6cqh, 30px) clamp(22px, 3.6cqw, 54px);
 `;
 
-// ============================================
-// PREVIEW PANEL (LEFT)
-// ============================================
-
-const PreviewPanel = styled.section`
+// Shared panel shell — a sumi-charcoal plaque with a top→bottom light
+// falloff (top catches the stage light, base sinks into shadow), a cool
+// hairline edge, a soft top inner-glow, and a glowing accent bar across the
+// crown. The gradient + inner light are what make it read as a lit object.
+const Panel = styled.section`
   position: relative;
   display: flex;
   flex-direction: column;
-  background: ${C.snowPanel};
-  border: 1px solid ${C.snowBorder};
-  border-radius: 2px;
+  min-height: 0;
+  background: linear-gradient(180deg, ${D.panelTop} 0%, ${D.panelBottom} 100%);
+  border: 1px solid ${D.border};
+  border-radius: 4px;
   overflow: hidden;
-  box-shadow: 0 8px 22px ${C.snowShadow};
-  animation: ${slideInLeft} 0.5s ease-out 0.15s both;
+  box-shadow:
+    0 18px 40px ${D.shadowStrong},
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 
   &::before {
     content: "";
@@ -378,25 +451,74 @@ const PreviewPanel = styled.section`
     top: 0;
     left: 0;
     right: 0;
-    height: 3px;
-    background: ${C.vermillion};
+    height: 2px;
+    background: ${(p) => p.$accent || C.ice};
+    box-shadow: 0 0 14px ${(p) => p.$glow || C.iceGlow};
+    z-index: 2;
   }
 `;
 
-const PanelHeader = styled.header`
+const LeftPanel = styled(Panel)`
+  animation: ${slideInLeft} 0.5s ease-out 0.12s both;
+`;
+
+const RightPanel = styled(Panel)`
+  animation: ${slideInRight} 0.5s ease-out 0.18s both;
+`;
+
+// Slim header — a thin elevated nameplate band. Slightly lighter than the
+// panel body so it reads as a raised spine the title sits on, closed off by
+// a cool hairline.
+const PanelHead = styled.header`
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: clamp(10px, 1.6cqh, 16px) clamp(16px, 2.2cqw, 24px);
-  background: ${C.sumi};
-  border-bottom: 1px solid ${C.sumiBorder};
+  flex-shrink: 0;
+  padding: clamp(9px, 1.3cqh, 13px) clamp(14px, 1.9cqw, 22px);
+  background: linear-gradient(180deg, ${D.headTop} 0%, ${D.headBottom} 100%);
+  border-bottom: 1px solid ${D.border};
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+
+  /* Faint printed-paper weave for tactile depth on the nameplate band. */
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: ${WASHI_LIGHT_ON_DARK};
+    pointer-events: none;
+  }
+  & > * {
+    position: relative;
+    z-index: 1;
+  }
 `;
 
-const PanelLabel = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.6rem, 0.95cqw, 0.78rem);
-  color: ${C.cream};
+const HeadTitle = styled.h2`
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: clamp(7px, 1cqw, 11px);
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(0.6rem, 0.94cqw, 0.8rem);
+  color: ${D.textHi};
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+
+  &::before {
+    content: "";
+    width: clamp(14px, 1.8cqw, 20px);
+    height: 2px;
+    background: ${(p) => p.$accent || C.ice};
+  }
+`;
+
+const HeadMeta = styled.div`
+  font-family: ${FONT_BODY};
+  font-weight: 700;
+  font-size: clamp(0.42rem, 0.66cqw, 0.52rem);
+  color: ${(p) => (p.$accent ? D.textHi : D.textMute)};
   text-transform: uppercase;
   letter-spacing: 0.22em;
 `;
@@ -405,50 +527,92 @@ const RankChip = styled.button`
   display: inline-flex;
   align-items: center;
   gap: clamp(5px, 0.7cqw, 8px);
-  font-family: "Space Grotesk", sans-serif;
+  font-family: ${FONT_BODY};
   font-weight: 700;
-  font-size: clamp(0.5rem, 0.78cqw, 0.62rem);
-  color: ${C.gold};
+  font-size: clamp(0.48rem, 0.76cqw, 0.6rem);
+  color: ${D.text};
   text-transform: uppercase;
-  letter-spacing: 0.16em;
-  background: transparent;
-  border: 1px solid ${C.sumiBorder};
-  border-radius: 6px;
-  padding: clamp(3px, 0.6cqh, 6px) clamp(7px, 1cqw, 11px);
+  letter-spacing: 0.14em;
+  background: ${D.soft};
+  border: 1px solid ${D.border};
+  border-radius: 999px;
+  padding: clamp(3px, 0.5cqh, 5px) clamp(9px, 1.2cqw, 13px);
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
 
   .ladder {
-    font-size: 1.1em;
+    font-size: 1.05em;
     line-height: 1;
-    opacity: 0.8;
+    opacity: 0.6;
   }
-
   &:hover {
-    border-color: ${C.gold};
-    background: rgba(232, 197, 71, 0.08);
+    border-color: rgba(234, 241, 247, 0.32);
+    color: ${D.textHi};
+    background: ${D.softHover};
   }
 `;
 
-const PreviewStage = styled.div`
-  flex: 1;
-  min-height: 0;
+// ============================================
+// LEFT — PORTRAIT + ATTRIBUTES + APPEARANCE
+// ============================================
+
+const PortraitStage = styled.div`
+  flex: 1 1 auto;
+  min-height: clamp(150px, 26cqh, 300px);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: clamp(16px, 2.4cqh, 28px);
+  padding: clamp(8px, 1.4cqh, 16px) clamp(12px, 1.8cqw, 20px);
   position: relative;
   overflow: hidden;
-  background: ${C.snowSoft};
+  /* High-contrast lightbox: the fighter stands on bright washi paper, lit
+     from above and framed by a soft inset vignette — reads as a premium
+     character-viewer pod set into the dark panel. Deliberate contrast
+     against the warm charcoal chrome around it. */
+  background: radial-gradient(
+    ellipse at 50% 32%,
+    ${D.stageTop} 0%,
+    ${D.stageMid} 58%,
+    ${D.stageBottom} 100%
+  );
+  box-shadow:
+    inset 0 0 0 1px rgba(60, 40, 20, 0.12),
+    inset 0 -24px 42px -18px rgba(70, 48, 24, 0.42),
+    inset 0 16px 30px -18px rgba(255, 252, 244, 0.7);
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: ${WASHI_DARK_ON_LIGHT};
+    pointer-events: none;
+  }
 `;
 
-const PreviewSpotlight = styled.div`
+const PortraitFloor = styled.div`
+  position: absolute;
+  left: 50%;
+  bottom: clamp(10px, 2cqh, 22px);
+  transform: translateX(-50%);
+  width: clamp(120px, 20cqw, 220px);
+  height: clamp(10px, 1.6cqh, 18px);
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(70, 48, 24, 0.34) 0%,
+    transparent 72%
+  );
+  pointer-events: none;
+`;
+
+const PortraitSpotlight = styled.div`
   position: absolute;
   inset: 0;
+  /* Faint mawashi-blue halo behind the fighter — separates it from the
+     paper and ties the stage to the single blue accent. */
   background: radial-gradient(
-    ellipse at center 65%,
-    rgba(126, 203, 240, 0.18) 0%,
-    transparent 60%
+    ellipse at center 44%,
+    rgba(126, 203, 240, 0.13) 0%,
+    transparent 58%
   );
   pointer-events: none;
 `;
@@ -464,202 +628,76 @@ const AvatarBreath = styled.div`
   min-height: 0;
   animation: ${breathe} 2.8s ease-in-out infinite;
   transform-origin: center bottom;
-  filter: drop-shadow(0 14px 18px rgba(35, 70, 110, 0.32));
+  filter: drop-shadow(0 14px 16px rgba(70, 48, 24, 0.38));
 `;
 
-const PreviewImage = styled.img`
-  /* max-height (not height) so the high-res sprite always scales DOWN to fit
-     without overflowing, and stays smoothly resampled — the old
-     image-rendering: pixelated made this hand-drawn (non-pixel-art) penguin
-     look jagged versus the crisp VS-CPU lobby. scaleX(-1) faces him toward the
-     dossier/center like the lobby fighters. */
-  max-height: clamp(200px, 46cqh, 440px);
-  height: auto;
+const PortraitImage = styled.img`
+  height: 100%;
+  max-height: 100%;
   width: auto;
   max-width: 100%;
   object-fit: contain;
   transform: scaleX(-1);
 `;
 
-const PanelFooter = styled.footer`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: clamp(12px, 1.8cqw, 22px);
-  padding: clamp(12px, 1.8cqh, 18px) clamp(16px, 2.2cqw, 24px);
-  background: ${C.sumi};
-  border-top: 1px solid ${C.sumiBorder};
+// Section block for Attributes + Appearance in the left column. Transparent
+// so it floats on the panel's own gradient, but separated by an ENGRAVED
+// divider (dark cut + light catch just below) rather than a flat hairline —
+// gives the stacked sections real depth while the column still reads as one
+// continuous carved plaque.
+const Block = styled.div`
+  flex-shrink: 0;
+  padding: clamp(10px, 1.4cqh, 15px) clamp(14px, 1.9cqw, 22px);
+  border-top: 1px solid rgba(0, 0, 0, 0.38);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  background: transparent;
 `;
 
-const RankStack = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-`;
-
-const RankCategory = styled.div`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
-  font-size: clamp(0.45rem, 0.68cqw, 0.55rem);
-  color: ${C.creamMute};
-  text-transform: uppercase;
-  letter-spacing: 0.32em;
-`;
-
-const RankName = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.95rem, 1.5cqw, 1.2rem);
-  color: ${C.cream};
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-`;
-
-const RecordStack = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-`;
-
-const RecordLabel = styled.div`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
-  font-size: clamp(0.45rem, 0.68cqw, 0.55rem);
-  color: ${C.creamMute};
-  text-transform: uppercase;
-  letter-spacing: 0.28em;
-`;
-
-const RecordValue = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.8rem, 1.3cqw, 1.05rem);
-  color: ${C.iceBright};
-  letter-spacing: 0.06em;
-`;
-
-// ============================================
-// DOSSIER PANEL (RIGHT)
-// ============================================
-
-const ControlsPanel = styled.section`
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  background: ${C.snowPanel};
-  border: 1px solid ${C.snowBorder};
-  border-radius: 2px;
-  overflow: hidden;
-  box-shadow: 0 8px 22px ${C.snowShadow};
-  animation: ${slideInRight} 0.5s ease-out 0.2s both;
-
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 30%;
-    right: 30%;
-    height: 2px;
-    background: ${C.gold};
-    opacity: 0.85;
-  }
-`;
-
-const DossierHeader = styled.header`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: clamp(10px, 1.6cqh, 16px) clamp(16px, 2.2cqw, 24px);
-  background: ${C.sumi};
-  border-bottom: 1px solid ${C.sumiBorder};
-`;
-
-const DossierMeta = styled.div`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
-  font-size: clamp(0.42rem, 0.65cqw, 0.5rem);
-  color: ${C.creamMute};
-  text-transform: uppercase;
-  letter-spacing: 0.32em;
-`;
-
-const ControlsBody = styled.div`
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: clamp(16px, 2.4cqh, 26px);
-  padding: clamp(16px, 2.4cqh, 26px) clamp(18px, 2.4cqw, 28px);
-  overflow-y: auto;
-
-  &::-webkit-scrollbar {
-    width: 6px;
-  }
-  &::-webkit-scrollbar-track {
-    background: ${C.snowPanelDeep};
-  }
-  &::-webkit-scrollbar-thumb {
-    background: ${C.iceMid};
-    border-radius: 2px;
-  }
-  &::-webkit-scrollbar-thumb:hover {
-    background: ${C.iceDeep};
-  }
-`;
-
-const Section = styled.section`
-  display: flex;
-  flex-direction: column;
-  gap: clamp(8px, 1.2cqh, 12px);
-  animation: ${fadeUp} 0.4s ease-out both;
-`;
-
-const SectionHeader = styled.div`
+const BlockHead = styled.div`
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
-  padding-bottom: clamp(6px, 0.8cqh, 8px);
-  border-bottom: 1px solid ${C.snowBorderSoft};
+  gap: 10px;
+  margin-bottom: clamp(7px, 1cqh, 11px);
 `;
 
-const SectionTitle = styled.h2`
-  margin: 0;
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.65rem, 1cqw, 0.82rem);
-  color: ${C.inkText};
-  text-transform: uppercase;
-  letter-spacing: 0.22em;
-`;
-
-const SectionMeta = styled.div`
-  font-family: "Space Grotesk", sans-serif;
+const BlockLabel = styled.div`
+  font-family: ${FONT_BODY};
   font-weight: 700;
-  font-size: clamp(0.42rem, 0.65cqw, 0.5rem);
-  color: ${(p) => (p.$accent ? C.vermillion : C.inkTextMute)};
+  font-size: clamp(0.48rem, 0.74cqw, 0.6rem);
+  color: ${D.textHi};
   text-transform: uppercase;
   letter-spacing: 0.24em;
 `;
 
-// --- Attribute rows ---
+const BlockMeta = styled.div`
+  font-family: ${FONT_BODY};
+  font-weight: 700;
+  font-size: clamp(0.4rem, 0.62cqw, 0.48rem);
+  color: ${(p) => (p.$accent ? C.ice : D.textMute)};
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+`;
+
+// --- Attribute rows (compact for the narrow column) ---
 
 const StatList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: clamp(7px, 1cqh, 11px);
+  gap: clamp(5px, 0.8cqh, 9px);
 `;
 
 const StatRow = styled.div`
   display: grid;
-  grid-template-columns: clamp(20px, 2.4cqw, 28px) minmax(0, 1fr) auto;
+  grid-template-columns: clamp(16px, 2cqw, 22px) minmax(0, 1fr) auto;
   align-items: center;
-  gap: clamp(8px, 1.2cqw, 14px);
+  gap: clamp(8px, 1.1cqw, 13px);
 `;
 
 const StatKanji = styled.div`
   font-family: ${FONT_KANJI};
-  font-size: clamp(0.85rem, 1.4cqw, 1.1rem);
-  color: ${C.iceDeep};
+  font-size: clamp(0.8rem, 1.2cqw, 1rem);
+  color: ${C.ice};
   text-align: center;
   line-height: 1;
 `;
@@ -667,7 +705,7 @@ const StatKanji = styled.div`
 const StatBody = styled.div`
   display: flex;
   flex-direction: column;
-  gap: clamp(3px, 0.5cqh, 5px);
+  gap: clamp(2px, 0.4cqh, 4px);
   min-width: 0;
 `;
 
@@ -681,35 +719,34 @@ const StatLabelRow = styled.div`
 const StatLabel = styled.div`
   font-family: ${FONT_BODY};
   font-weight: 600;
-  font-size: clamp(0.5rem, 0.8cqw, 0.62rem);
-  color: ${C.inkText};
+  font-size: clamp(0.46rem, 0.72cqw, 0.58rem);
+  color: ${D.text};
   letter-spacing: 0.12em;
   text-transform: uppercase;
 `;
 
-const StatDesc = styled.div`
-  font-family: ${FONT_BODY};
-  font-weight: 500;
-  font-size: clamp(0.4rem, 0.6cqw, 0.48rem);
-  color: ${C.inkTextMute};
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-`;
-
 const PipTrack = styled.div`
   display: flex;
-  gap: clamp(2px, 0.4cqw, 4px);
+  gap: clamp(2px, 0.35cqw, 3px);
 `;
 
 const Pip = styled.div`
   flex: 1;
-  height: clamp(5px, 0.8cqh, 7px);
+  height: clamp(4px, 0.6cqh, 5px);
   border-radius: 1px;
-  background: ${(p) => (p.$filled ? C.iceMid : C.snowPanelDeep)};
-  border: 1px solid
-    ${(p) => (p.$filled ? C.iceDeep : C.snowBorderSoft)};
+  /* Filled pips ride the cool ice-accent family — a muted steel-blue, one
+     step calmer than the bright selection ice so the meter still reads as
+     its own element without competing. The old saturated green was the
+     single loudest thing on the screen and pulled the eye to stats before
+     the loadout/CTA; keeping the meter cool lets value (fill length) carry
+     the read instead of a fifth shouting hue. */
+  background: ${(p) =>
+    p.$filled
+      ? "linear-gradient(180deg, #79bfe0 0%, #35708f 100%)"
+      : D.deep};
+  border: 1px solid ${(p) => (p.$filled ? "#2c6182" : D.borderSoft)};
+  box-shadow: ${(p) =>
+    p.$filled ? "0 0 2px rgba(126, 203, 240, 0.3)" : "none"};
   transform-origin: left center;
   ${(p) =>
     p.$filled &&
@@ -719,398 +756,673 @@ const Pip = styled.div`
     `}
 `;
 
-const StatValue = styled.div`
-  font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.7rem, 1.1cqw, 0.9rem);
-  color: ${C.inkText};
-  letter-spacing: 0.04em;
-  min-width: clamp(30px, 3.4cqw, 40px);
-  text-align: center;
-
-  .max {
-    color: ${C.inkTextMute};
-    font-size: 0.7em;
-  }
-`;
-
 const StatControls = styled.div`
   display: flex;
   align-items: center;
-  gap: clamp(3px, 0.5cqw, 6px);
+  gap: clamp(2px, 0.4cqw, 5px);
 `;
 
 const StepButton = styled.button`
-  width: clamp(20px, 2.4cqw, 26px);
-  height: clamp(20px, 2.4cqw, 26px);
+  width: clamp(18px, 2.2cqw, 24px);
+  height: clamp(18px, 2.2cqw, 24px);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.85rem, 1.3cqw, 1.05rem);
+  font-size: clamp(0.78rem, 1.2cqw, 0.98rem);
   line-height: 1;
-  color: ${C.inkText};
-  background: ${C.snowSoft};
-  border: 1px solid ${C.snowBorder};
+  color: ${D.textHi};
+  background: ${D.soft};
+  border: 1px solid ${D.border};
   border-radius: 2px;
   cursor: pointer;
-  transition:
-    color 0.12s ease,
-    border-color 0.12s ease,
-    transform 0.1s ease;
+  transition: color 0.12s ease, border-color 0.12s ease, transform 0.1s ease;
 
   &:hover:not(:disabled) {
-    color: ${C.vermillion};
-    border-color: ${C.vermillion};
+    color: ${C.iceBright};
+    border-color: ${C.iceMid};
   }
   &:active:not(:disabled) {
     transform: scale(0.9);
   }
   &:disabled {
-    opacity: 0.28;
+    opacity: 0.26;
     cursor: default;
   }
 `;
 
-// --- Loadout rows ---
+const StatValue = styled.div`
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(0.6rem, 0.9cqw, 0.76rem);
+  color: ${D.textHi};
+  letter-spacing: 0.02em;
+  min-width: clamp(24px, 2.8cqw, 32px);
+  text-align: center;
 
-const LoadoutList = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: clamp(6px, 0.9cqh, 9px);
+  .max {
+    color: ${D.textFaint};
+    font-size: 0.68em;
+  }
 `;
 
-const LoadoutRow = styled.div`
+// --- Appearance (belt / body) ---
+
+const AppearanceRow = styled.div`
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(8px, 1.1cqw, 12px);
+`;
+
+const AppearanceButton = styled.button`
   display: flex;
   align-items: center;
-  gap: clamp(10px, 1.4cqw, 14px);
-  padding: clamp(8px, 1.2cqh, 12px) clamp(10px, 1.4cqw, 14px);
-  background: ${C.snowSoft};
-  border: 1px solid ${C.snowBorderSoft};
+  gap: clamp(7px, 1cqw, 11px);
+  width: 100%;
+  text-align: left;
+  padding: clamp(6px, 0.9cqh, 9px) clamp(8px, 1.1cqw, 11px);
+  background: ${(p) => (p.$open ? D.soft : D.panel)};
+  border: 1px solid ${(p) => (p.$open ? C.iceMid : D.border)};
   border-radius: 2px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+
+  &:hover {
+    border-color: ${C.iceMid};
+    background: ${D.soft};
+  }
 `;
 
-const LoadoutKanji = styled.div`
-  font-family: ${FONT_KANJI};
-  font-size: clamp(1rem, 1.6cqw, 1.3rem);
-  color: ${C.iceDeep};
-  line-height: 1;
+const AppearanceSwatch = styled.span`
   flex-shrink: 0;
+  width: clamp(18px, 2.4cqw, 24px);
+  height: clamp(18px, 2.4cqw, 24px);
+  border-radius: 50%;
+  background: ${(p) => p.$gradient || p.$color};
+  border: 2px solid ${D.border};
+  box-shadow: 0 1px 3px ${D.shadow};
 `;
 
-const LoadoutNameStack = styled.div`
+const AppearanceText = styled.span`
   display: flex;
   flex-direction: column;
   gap: 1px;
-  flex: 1;
   min-width: 0;
+
+  .cat {
+    font-family: ${FONT_BODY};
+    font-weight: 600;
+    font-size: clamp(0.38rem, 0.58cqw, 0.46rem);
+    color: ${D.textMute};
+    text-transform: uppercase;
+    letter-spacing: 0.24em;
+  }
+  .name {
+    font-family: ${FONT_BODY};
+    font-weight: 700;
+    font-size: clamp(0.48rem, 0.74cqw, 0.6rem);
+    color: ${D.textHi};
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 `;
 
-const LoadoutName = styled.div`
-  font-family: ${FONT_BODY};
-  font-weight: 700;
-  font-size: clamp(0.55rem, 0.85cqw, 0.68rem);
-  color: ${C.inkText};
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
+const Popover = styled.div`
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(9px, 1.3cqh, 13px);
+  padding: clamp(11px, 1.5cqh, 15px);
+  max-height: min(46cqh, 380px);
+  overflow-y: auto;
+  background: ${D.panel};
+  border: 1px solid ${D.border};
+  border-radius: 4px;
+  box-shadow: 0 14px 32px ${D.shadowStrong};
+  animation: ${popIn} 0.16s ease-out both;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: ${C.iceMid};
+    border-radius: 2px;
+  }
 `;
 
-const LoadoutSub = styled.div`
-  font-family: ${FONT_BODY};
-  font-weight: 500;
-  font-size: clamp(0.42rem, 0.62cqw, 0.5rem);
-  color: ${C.inkTextMute};
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-`;
-
-const ComingSoonTag = styled.div`
-  font-family: ${FONT_BODY};
-  font-weight: 700;
-  font-size: clamp(0.4rem, 0.6cqw, 0.48rem);
-  color: ${C.inkTextMute};
-  text-transform: uppercase;
-  letter-spacing: 0.2em;
-  padding: clamp(3px, 0.5cqh, 5px) clamp(7px, 1cqw, 10px);
-  border: 1px dashed ${C.snowBorder};
-  border-radius: 999px;
-  flex-shrink: 0;
-`;
-
-// --- Loadout point-buy cards ---
-
-const LoadoutCard = styled.div`
+const PopoverGroup = styled.div`
   display: flex;
   flex-direction: column;
   gap: clamp(6px, 0.9cqh, 9px);
-  padding: clamp(8px, 1.2cqh, 12px) clamp(10px, 1.4cqw, 14px);
-  background: ${C.snowSoft};
-  border: 1px solid ${C.snowBorderSoft};
-  border-radius: 2px;
 `;
 
-const LoadoutCardHead = styled.div`
+const PopoverTitle = styled.div`
+  font-family: ${FONT_BODY};
+  font-weight: 700;
+  font-size: clamp(0.4rem, 0.6cqw, 0.48rem);
+  color: ${D.textMute};
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+`;
+
+const SwatchGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(${(p) => p.$cols ?? 6}, minmax(0, 1fr));
+  gap: clamp(6px, 0.9cqw, 10px);
+`;
+
+const ColorSwatch = styled.button`
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: ${(p) => (p.$square ? "6px" : "50%")};
+  border: 2px solid ${(p) => (p.$selected ? C.iceBright : D.border)};
+  background: ${(p) => p.$gradient || p.$color};
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: ${(p) =>
+    p.$selected
+      ? `0 0 0 2px rgba(126, 203, 240, 0.55), 0 2px 6px ${D.shadow}`
+      : `0 2px 5px ${D.shadow}`};
+
+  &:hover {
+    transform: scale(1.12);
+    border-color: ${(p) => (p.$selected ? C.iceBright : C.iceMid)};
+  }
+  &:active {
+    transform: scale(0.94);
+  }
+`;
+
+// Light identity footer (division + record) — replaces the heavy dark band.
+const IdentityFooter = styled.footer`
   display: flex;
   align-items: center;
-  gap: clamp(10px, 1.4cqw, 14px);
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: clamp(9px, 1.3cqh, 13px) clamp(14px, 1.9cqw, 22px);
+  border-top: 1px solid ${D.border};
+  background: linear-gradient(180deg, ${D.chromeTop} 0%, ${D.chromeBottom} 100%);
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.3);
 `;
 
-const DefaultChips = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  gap: clamp(4px, 0.6cqw, 6px);
-`;
-
-const DefaultChip = styled.span`
-  font-family: ${FONT_BODY};
-  font-weight: 600;
-  font-size: clamp(0.4rem, 0.58cqw, 0.46rem);
-  color: ${(p) => (p.$struck ? C.inkTextMute : C.inkText)};
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  padding: clamp(2px, 0.4cqh, 4px) clamp(6px, 0.9cqw, 9px);
-  background: ${C.snowPanel};
-  border: 1px solid ${C.snowBorderSoft};
-  border-radius: 999px;
-  text-decoration: ${(p) => (p.$struck ? "line-through" : "none")};
-  opacity: ${(p) => (p.$struck ? 0.55 : 1)};
-`;
-
-const OptionList = styled.div`
+const IdentityStack = styled.div`
   display: flex;
   flex-direction: column;
-  gap: clamp(5px, 0.7cqh, 7px);
+  gap: 1px;
+  align-items: ${(p) => (p.$right ? "flex-end" : "flex-start")};
 `;
 
-const OptionButton = styled.button`
+const IdentityLabel = styled.div`
+  font-family: ${FONT_BODY};
+  font-weight: 600;
+  font-size: clamp(0.38rem, 0.6cqw, 0.48rem);
+  color: ${D.textMute};
+  text-transform: uppercase;
+  letter-spacing: 0.28em;
+`;
+
+const IdentityRank = styled.div`
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(0.72rem, 1.1cqw, 0.95rem);
+  color: ${D.textHi};
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+`;
+
+const IdentityRecord = styled.div`
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(0.72rem, 1.1cqw, 0.95rem);
+  letter-spacing: 0.04em;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.12em;
+
+  .w {
+    color: ${C.success};
+  }
+  .l {
+    color: ${C.vermillionBright};
+  }
+  .sep {
+    color: ${D.textFaint};
+  }
+`;
+
+// ============================================
+// RIGHT — LOADOUT BOARD + DETAIL + START
+// ============================================
+
+const LoadoutBody = styled.div`
+  flex: 1;
+  min-height: 0;
   display: flex;
-  align-items: flex-start;
-  gap: clamp(8px, 1.1cqw, 12px);
-  width: 100%;
-  text-align: left;
-  padding: clamp(7px, 1cqh, 10px) clamp(9px, 1.2cqw, 12px);
-  background: ${(p) => (p.$selected ? "rgba(126, 203, 240, 0.16)" : C.snowPanel)};
-  border: 1px solid
-    ${(p) => (p.$selected ? C.iceDeep : C.snowBorderSoft)};
-  border-radius: 2px;
-  cursor: pointer;
-  transition:
-    background 0.14s ease,
-    border-color 0.14s ease,
-    transform 0.1s ease,
-    opacity 0.14s ease;
-
-  &:hover:not(:disabled) {
-    border-color: ${(p) => (p.$selected ? C.iceDeep : C.iceMid)};
-    background: ${(p) =>
-      p.$selected ? "rgba(126, 203, 240, 0.22)" : C.snowSoft};
-  }
-  &:active:not(:disabled) {
-    transform: scale(0.99);
-  }
-  &:disabled {
-    cursor: default;
-    opacity: ${(p) => (p.$selected ? 0.85 : 0.4)};
-  }
+  flex-direction: column;
+  padding: clamp(12px, 1.7cqh, 18px) clamp(14px, 1.9cqw, 24px);
+  overflow: hidden;
 `;
 
-const OptionIcon = styled.div`
+const LoadoutBoard = styled.div`
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(6px, 0.9cqh, 10px);
+`;
+
+const CategoryRow = styled.div`
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: clamp(96px, 12.5cqw, 138px) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(10px, 1.4cqw, 18px);
+  padding: clamp(5px, 0.8cqh, 9px) clamp(10px, 1.4cqw, 15px);
+  /* Lifted a full value-step above the panel (softHover→soft) with a crisp
+     edge, a top light-catch and a bottom inner-shadow, so each discipline
+     reads as its own raised shelf instead of melting into the panel. */
+  background: linear-gradient(180deg, ${D.softHover} 0%, ${D.soft} 100%);
+  border: 1px solid ${D.border};
+  border-radius: 4px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.35), 0 3px 8px ${D.shadow};
+`;
+
+const CategoryLabel = styled.div`
+  display: flex;
+  align-items: center;
+  gap: clamp(7px, 1cqw, 11px);
+  min-width: 0;
+`;
+
+const CategoryKanji = styled.div`
+  font-family: ${FONT_KANJI};
+  font-size: clamp(1.05rem, 1.7cqw, 1.45rem);
+  color: ${C.ice};
+  line-height: 1;
   flex-shrink: 0;
-  width: clamp(38px, 5cqw, 48px);
-  height: clamp(38px, 5cqw, 48px);
+`;
+
+const CategoryNameStack = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+`;
+
+const CategoryName = styled.div`
+  font-family: ${FONT_BODY};
+  font-weight: 700;
+  font-size: clamp(0.5rem, 0.8cqw, 0.64rem);
+  color: ${D.textHi};
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+`;
+
+const CategorySub = styled.div`
+  font-family: ${FONT_BODY};
+  font-weight: 500;
+  font-size: clamp(0.38rem, 0.56cqw, 0.46rem);
+  color: ${D.textMute};
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+`;
+
+const SlotStrip = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: clamp(6px, 1cqw, 12px);
+`;
+
+// Base square slot. Real options are vivid; placeholders/locked dim out.
+const Slot = styled.button`
+  position: relative;
+  flex-shrink: 0;
+  aspect-ratio: 1;
+  height: clamp(40px, 6cqh, 62px);
+  max-width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
-  background: ${(p) => p.$gradient || p.$main};
-  box-shadow:
-    inset 0 -2px 0 ${(p) => p.$deep},
-    inset 0 1px 0 rgba(255, 255, 255, 0.22);
-  border: 1px solid ${(p) => p.$deep};
-  border-radius: 2px;
+  overflow: visible;
+  padding: 0;
+  background: ${(p) => p.$gradient || p.$main || D.deep};
+  border: 2px solid
+    ${(p) =>
+      p.$selected
+        ? C.iceBright
+        : p.$focused
+          ? C.iceMid
+          : p.$deep || D.border};
+  border-radius: 6px;
+  cursor: ${(p) => (p.$interactive ? "pointer" : "default")};
+  box-shadow: ${(p) =>
+    p.$selected
+      ? `0 0 0 2px ${C.iceBright}, 0 0 16px ${D.accentGlow}, 0 4px 12px ${D.shadow}`
+      : `inset 0 -2px 0 rgba(0,0,0,0.14), 0 2px 6px ${D.shadow}`};
+  transition: transform 0.12s ease, border-color 0.15s ease, box-shadow 0.15s ease,
+    filter 0.15s ease;
 
   img {
-    width: ${(p) => p.$imgSize || "82%"};
-    height: ${(p) => p.$imgSize || "82%"};
+    width: ${(p) => p.$imgSize || "78%"};
+    height: ${(p) => p.$imgSize || "78%"};
     object-fit: contain;
     transform: scale(${(p) => p.$imgScale ?? 1});
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.38));
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.34));
+  }
+
+  &:hover {
+    transform: ${(p) => (p.$interactive ? "translateY(-2px)" : "none")};
+    border-color: ${(p) =>
+      !p.$interactive
+        ? p.$deep || D.border
+        : p.$selected
+          ? C.iceBright
+          : C.iceMid};
+  }
+  &:active {
+    transform: ${(p) => (p.$interactive ? "scale(0.95)" : "none")};
   }
 `;
 
-const OptionIconFallback = styled(OptionIcon)`
+// Locked sidegrade: the icon art stays visible but is dimmed + desaturated
+// so it reads as "dormant / not yours yet" — the small corner padlock does
+// the labelling instead of a big glyph stamped over the artwork.
+const LockedSlot = styled(Slot)`
+  background: ${(p) => p.$gradient || p.$main || D.deep};
+
+  img {
+    opacity: 0.82;
+    filter: saturate(0.72) brightness(0.86)
+      drop-shadow(0 2px 4px rgba(0, 0, 0, 0.34));
+  }
+`;
+
+const PlaceholderSlot = styled(Slot)`
+  /* Empty "coming soon" slots must RECEDE. There are ~20 of them and the
+     old diagonal-stripe fill + full-strength dashed border turned the whole
+     board into loud texture that fought the two real sidegrades and the CTA.
+     Flat recessed inset + a faint hairline + reduced opacity pushes them
+     behind the live content so the eye lands on what's actually actionable. */
+  background: ${D.deep};
+  border-style: dashed;
+  border-color: ${D.borderSoft};
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+  color: ${D.textFaint};
+  opacity: 0.55;
+`;
+
+const SlotKanji = styled.span`
   font-family: ${FONT_KANJI};
-  font-size: clamp(0.85rem, 1.4cqw, 1.05rem);
+  font-size: clamp(1rem, 1.5cqw, 1.35rem);
   color: ${C.cream};
-  background: ${C.sumiSoft};
-  border-color: ${C.sumiBorder};
-  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  line-height: 1;
 `;
 
-const ShopOptionIcon = styled(OptionIcon)`
-  width: clamp(34px, 4.4cqw, 42px);
-  height: clamp(34px, 4.4cqw, 42px);
+const PlaceholderGlyph = styled.span`
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(0.85rem, 1.4cqw, 1.2rem);
+  color: ${D.textFaint};
+  line-height: 1;
 `;
 
-const OptionCheck = styled.span`
-  flex-shrink: 0;
-  width: clamp(14px, 1.8cqw, 18px);
-  height: clamp(14px, 1.8cqw, 18px);
-  margin-top: 1px;
+const SlotCheck = styled.span`
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: clamp(15px, 1.9cqw, 20px);
+  height: clamp(15px, 1.9cqw, 20px);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: clamp(0.6rem, 0.9cqw, 0.75rem);
-  line-height: 1;
-  color: ${(p) => (p.$selected ? C.sumi : C.inkTextMute)};
-  background: ${(p) => (p.$selected ? C.iceBright : "transparent")};
-  border: 1px solid ${(p) => (p.$selected ? C.iceDeep : C.snowBorder)};
-  border-radius: 2px;
+  font-size: clamp(0.55rem, 0.85cqw, 0.7rem);
+  color: ${C.sumi};
+  background: ${C.iceBright};
+  border: 1px solid ${C.iceMid};
+  border-radius: 50%;
+  box-shadow: 0 1px 3px ${C.sumiShadow};
 `;
 
-const OptionBody = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1;
+// Small padlock badge pinned to the bottom-right corner — a dark disc with a
+// cream lock, so it stays legible over any icon color without covering the
+// artwork. Replaces the oversized centered padlock that hid half the icon.
+const SlotLock = styled.span`
+  position: absolute;
+  bottom: -6px;
+  right: -6px;
+  width: clamp(16px, 2cqw, 21px);
+  height: clamp(16px, 2cqw, 21px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: ${C.cream};
+  background: ${C.sumi};
+  border: 1px solid ${D.border};
+  box-shadow: 0 1px 3px ${D.shadowStrong};
+  pointer-events: none;
+
+  svg {
+    width: 58%;
+    height: 58%;
+  }
 `;
 
-const OptionTopRow = styled.div`
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-`;
+// --- Detail strip (integrated, reserved height, no boxed callout) ---
 
-const OptionName = styled.span`
-  font-family: ${FONT_BODY};
-  font-weight: 700;
-  font-size: clamp(0.52rem, 0.8cqw, 0.64rem);
-  color: ${C.inkText};
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-`;
-
-const OptionCost = styled.span`
+const DetailStrip = styled.div`
   flex-shrink: 0;
-  font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.42rem, 0.62cqw, 0.5rem);
-  color: ${(p) => (p.$affordable ? C.vermillion : C.inkTextMute)};
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-`;
-
-const OptionReplaces = styled.span`
-  font-family: ${FONT_BODY};
-  font-weight: 600;
-  font-size: clamp(0.38rem, 0.56cqw, 0.44rem);
-  color: ${C.inkTextMute};
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-`;
-
-const OptionDesc = styled.span`
-  font-family: ${FONT_BODY};
-  font-weight: 500;
-  font-size: clamp(0.4rem, 0.6cqw, 0.48rem);
-  color: ${C.inkTextMute};
-  letter-spacing: 0.02em;
-  line-height: 1.35;
-`;
-
-// --- Kenshō shop (unlocks) ---
-
-const ShopList = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: clamp(6px, 0.9cqh, 9px);
-`;
-
-const ShopRow = styled.div`
   display: flex;
   align-items: center;
-  gap: clamp(10px, 1.4cqw, 14px);
-  padding: clamp(8px, 1.2cqh, 12px) clamp(10px, 1.4cqw, 14px);
-  background: ${C.snowSoft};
-  border: 1px solid
-    ${(p) => (p.$owned ? C.iceDeep : C.snowBorderSoft)};
-  border-radius: 2px;
+  gap: clamp(11px, 1.5cqw, 16px);
+  min-height: clamp(70px, 10.5cqh, 92px);
+  margin-top: clamp(10px, 1.5cqh, 16px);
+  padding-top: clamp(10px, 1.5cqh, 16px);
+  border-top: 1px solid ${D.borderSoft};
 `;
 
-const ShopBody = styled.div`
+const DetailIcon = styled.div`
+  position: relative;
+  flex-shrink: 0;
+  width: clamp(46px, 5.8cqw, 60px);
+  height: clamp(46px, 5.8cqw, 60px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  background: ${(p) => p.$gradient || p.$main || D.deep};
+  border: 1px solid ${(p) => p.$deep || D.border};
+  border-radius: 6px;
+  box-shadow: 0 2px 6px ${D.shadow};
+
+  img {
+    width: ${(p) => p.$imgSize || "80%"};
+    height: ${(p) => p.$imgSize || "80%"};
+    object-fit: contain;
+    opacity: ${(p) => (p.$locked ? 0.82 : 1)};
+    filter: ${(p) =>
+      p.$locked
+        ? "saturate(0.72) brightness(0.86) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.34))"
+        : "drop-shadow(0 2px 4px rgba(0, 0, 0, 0.34))"};
+  }
+
+  /* Small padlock badge pinned to the true bottom-right corner — identical
+     to the loadout slot lock (pokes just outside the icon) so both locks
+     read as the same badge on the same shelf. */
+  .lock {
+    position: absolute;
+    bottom: -6px;
+    right: -6px;
+    width: clamp(16px, 2cqw, 21px);
+    height: clamp(16px, 2cqw, 21px);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    color: ${C.cream};
+    background: ${C.sumi};
+    border: 1px solid ${D.border};
+    box-shadow: 0 1px 3px ${D.shadowStrong};
+
+    svg {
+      width: 58%;
+      height: 58%;
+    }
+  }
+`;
+
+const DetailIconKanji = styled.span`
+  font-family: ${FONT_KANJI};
+  font-size: clamp(1.15rem, 1.8cqw, 1.5rem);
+  color: ${C.cream};
+`;
+
+const DetailBody = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  flex: 1;
+  gap: clamp(2px, 0.5cqh, 5px);
   min-width: 0;
+  flex: 1;
+  animation: ${detailShift} 0.18s ease-out;
 `;
 
-const ShopDesc = styled.div`
+const DetailTopRow = styled.div`
+  display: flex;
+  align-items: baseline;
+  gap: clamp(7px, 1.1cqw, 12px);
+  flex-wrap: wrap;
+`;
+
+const DetailName = styled.span`
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(0.6rem, 0.94cqw, 0.78rem);
+  color: ${D.textHi};
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+`;
+
+const DetailTag = styled.span`
+  font-family: ${FONT_BODY};
+  font-weight: 600;
+  font-size: clamp(0.4rem, 0.6cqw, 0.48rem);
+  color: ${(p) => (p.$accent ? C.ice : D.textMute)};
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+`;
+
+const DetailDesc = styled.p`
+  margin: 0;
   font-family: ${FONT_BODY};
   font-weight: 500;
-  font-size: clamp(0.4rem, 0.6cqw, 0.48rem);
-  color: ${C.inkTextMute};
-  letter-spacing: 0.02em;
-  line-height: 1.35;
+  font-size: clamp(0.44rem, 0.66cqw, 0.54rem);
+  color: ${D.text};
+  letter-spacing: 0.01em;
+  line-height: 1.42;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 `;
 
-const BuyButton = styled.button`
+const DetailAction = styled.div`
   flex-shrink: 0;
-  min-width: clamp(58px, 7cqw, 80px);
-  min-height: clamp(28px, 3.4cqh, 36px);
-  padding: clamp(5px, 0.8cqh, 8px) clamp(8px, 1.2cqw, 12px);
-  font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.5rem, 0.78cqw, 0.62rem);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: ${(p) => (p.$owned ? C.iceDeep : C.cream)};
-  background: ${(p) => (p.$owned ? "transparent" : C.vermillion)};
-  border: 1px solid
-    ${(p) => (p.$owned ? C.iceDeep : C.vermillionBright)};
-  border-radius: 2px;
-  cursor: ${(p) => (p.$owned ? "default" : "pointer")};
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease,
-    transform 0.1s ease,
-    opacity 0.15s ease;
+  display: flex;
+  align-items: center;
+`;
 
-  &:hover:not(:disabled) {
-    background: ${C.vermillionBright};
-  }
+const ActionButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: clamp(32px, 3.8cqh, 40px);
+  padding: clamp(7px, 1cqh, 10px) clamp(13px, 1.7cqw, 19px);
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(0.5rem, 0.76cqw, 0.62rem);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease,
+    transform 0.1s ease, opacity 0.15s ease;
+
+  ${(p) =>
+    p.$variant === "buy" &&
+    css`
+      color: ${C.sumi};
+      background: ${C.gold};
+      border: 1px solid ${C.gold};
+      font-weight: 700;
+      &:hover:not(:disabled) {
+        background: ${C.goldDeep};
+        border-color: ${C.goldDeep};
+      }
+    `}
+  ${(p) =>
+    p.$variant === "equip" &&
+    css`
+      color: ${D.textHi};
+      background: ${C.iceMid};
+      border: 1px solid ${C.iceBright};
+      &:hover:not(:disabled) {
+        background: #4a9fc9;
+      }
+    `}
+  ${(p) =>
+    p.$variant === "equipped" &&
+    css`
+      color: ${C.iceBright};
+      background: rgba(126, 203, 240, 0.09);
+      border: 1px solid ${C.iceMid};
+      &:hover:not(:disabled) {
+        background: rgba(126, 203, 240, 0.16);
+      }
+    `}
+
   &:active:not(:disabled) {
     transform: scale(0.96);
   }
   &:disabled {
     cursor: default;
-    opacity: ${(p) => (p.$owned ? 1 : 0.4)};
-    background: ${(p) => (p.$owned ? "transparent" : C.snowPanelDeep)};
-    color: ${(p) => (p.$owned ? C.iceDeep : C.inkTextMute)};
-    border-color: ${(p) => (p.$owned ? C.iceDeep : C.snowBorder)};
+    opacity: 0.4;
+    background: ${D.deep};
+    color: ${D.textMute};
+    border-color: ${D.border};
   }
 `;
 
-// --- Footer / Start ---
+// --- Start footer (light, prominent CTA) ---
 
-const DossierFooter = styled.footer`
+const StartFooter = styled.footer`
   display: flex;
   align-items: center;
-  gap: clamp(12px, 1.8cqw, 18px);
-  padding: clamp(12px, 1.8cqh, 18px) clamp(18px, 2.4cqw, 28px);
-  background: ${C.sumi};
-  border-top: 1px solid ${C.sumiBorder};
+  gap: clamp(12px, 1.8cqw, 20px);
+  flex-shrink: 0;
+  padding: clamp(11px, 1.5cqh, 16px) clamp(14px, 1.9cqw, 24px);
+  border-top: 1px solid ${D.border};
+  background: linear-gradient(180deg, ${D.chromeTop} 0%, ${D.chromeBottom} 100%);
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.3);
 `;
 
 const StartNote = styled.div`
   flex: 1;
   font-family: ${FONT_BODY};
   font-weight: 600;
-  font-size: clamp(0.45rem, 0.68cqw, 0.55rem);
-  color: ${C.creamMute};
+  font-size: clamp(0.44rem, 0.68cqw, 0.54rem);
+  color: ${D.textMute};
   text-transform: uppercase;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.14em;
   line-height: 1.4;
 `;
 
@@ -1119,37 +1431,35 @@ const StartButton = styled.button`
   align-items: center;
   justify-content: center;
   gap: clamp(8px, 1.1cqw, 12px);
-  min-height: 48px;
-  padding: clamp(12px, 1.7cqh, 17px) clamp(22px, 3cqw, 40px);
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.72rem, 1.1cqw, 0.95rem);
+  min-height: clamp(42px, 5cqh, 52px);
+  padding: clamp(11px, 1.5cqh, 16px) clamp(22px, 3cqw, 42px);
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(0.7rem, 1.05cqw, 0.92rem);
   text-transform: uppercase;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.14em;
   color: ${C.cream};
   background: ${C.vermillion};
   border: 1px solid ${C.vermillionBright};
   border-radius: 2px;
   cursor: pointer;
-  box-shadow: 0 4px 14px ${C.vermillionGlow};
-  transition:
-    background 0.18s ease,
-    transform 0.12s ease,
-    box-shadow 0.18s ease;
+  /* Even halo: the vermillion glow is centered (0 offset) so it reads the
+     same top and bottom; a separate neutral dark drop grounds the button
+     without dragging the colored glow downward. */
+  box-shadow: 0 0 18px ${C.vermillionGlow}, 0 3px 8px rgba(0, 0, 0, 0.35);
+  transition: background 0.18s ease, transform 0.12s ease, box-shadow 0.18s ease;
 
   .arrow {
-    font-family: "Space Grotesk", sans-serif;
+    font-family: ${FONT_BODY};
     font-weight: 700;
     transition: transform 0.2s ease;
   }
-
   &:hover {
     background: ${C.vermillionBright};
-    box-shadow: 0 6px 20px ${C.vermillionGlow};
+    box-shadow: 0 0 26px ${C.vermillionGlow}, 0 4px 10px rgba(0, 0, 0, 0.4);
     .arrow {
       transform: translateX(4px);
     }
   }
-
   &:active {
     transform: scale(0.97);
   }
@@ -1177,7 +1487,7 @@ const DevPanel = styled.div`
 `;
 
 const DevTitle = styled.div`
-  font-family: "Bungee", cursive;
+  font-family: ${FONT_DISPLAY};
   font-size: clamp(0.55rem, 0.85cqw, 0.68rem);
   color: ${C.gold};
   text-transform: uppercase;
@@ -1190,7 +1500,7 @@ const DevButton = styled.button`
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  min-height: 36px;
+  min-height: 34px;
   padding: clamp(6px, 0.9cqh, 9px) clamp(10px, 1.3cqw, 13px);
   font-family: ${FONT_BODY};
   font-weight: 600;
@@ -1208,7 +1518,6 @@ const DevButton = styled.button`
     color: ${C.gold};
     border-color: ${C.gold};
   }
-
   &:active {
     transform: scale(0.98);
   }
@@ -1218,31 +1527,66 @@ const DevButton = styled.button`
 // COMPONENT
 // ============================================
 
+/** Crisp inline padlock — replaces the emoji lock so the locked badge
+ *  renders identically on every platform and matches the UI's line weight. */
+function LockGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden focusable="false">
+      <rect
+        x="4.5"
+        y="10.5"
+        width="15"
+        height="10"
+        rx="2"
+        fill="currentColor"
+      />
+      <path
+        d="M7.5 10.5V8a4.5 4.5 0 0 1 9 0v2.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+/** First real option so the detail strip always has something to show. */
+function firstFocus() {
+  for (const cat of LOADOUT_CATEGORIES) {
+    const opts = LOADOUT_OPTIONS[cat.key] || [];
+    if (opts.length) return { catKey: cat.key, optId: opts[0].id };
+  }
+  return null;
+}
+
 function BashoHub({ onBack, onStartRun }) {
-  const { player1Color, player1BodyColor } = usePlayerColors();
+  const {
+    player1Color,
+    player1BodyColor,
+    setPlayer1Color,
+    setPlayer1BodyColor,
+  } = usePlayerColors();
 
-  // Career state. Seeded with defaults so the UI renders instantly, then
-  // overwritten once the persisted save loads (see effect below).
   const [career, setCareer] = useState(() => makeDefaultSave().career);
-
-  // An in-progress basho from a prior session (resume support — spec §5.8).
   const [resumeRun, setResumeRun] = useState(null);
 
-  // Full save document (everything outside `career`) is held in a ref so we
-  // can re-persist the whole doc without re-rendering on every keystroke.
   const saveDocRef = useRef(null);
   const loadedRef = useRef(false);
   const saveTimerRef = useRef(null);
-  const [saveStatus, setSaveStatus] = useState("idle"); // idle | saving | saved
 
-  // Recolored preview sprite.
   const [previewSrc, setPreviewSrc] = useState(pumo);
   const mountedRef = useRef(true);
 
-  // Standalone banzuke-board overlay (static view of the current position).
   const [showBanzuke, setShowBanzuke] = useState(false);
 
-  // Debug panel (spec §9): enabled via localStorage flag or Ctrl+Shift+B.
+  // Appearance popover ("belt" | "body" | null).
+  const [customizeOpen, setCustomizeOpen] = useState(null);
+  const customizeRef = useRef(null);
+
+  // Option shown in the detail strip. Updated on hover + click of REAL slots.
+  const [focused, setFocused] = useState(() => firstFocus());
+
   const [debugEnabled, setDebugEnabled] = useState(() => {
     try {
       return localStorage.getItem(DEBUG_FLAG_KEY) === "1";
@@ -1259,15 +1603,12 @@ function BashoHub({ onBack, onStartRun }) {
     };
   }, []);
 
-  // Load the persisted save once on mount. loadSave() never throws and
-  // always resolves to a fully-populated, migrated document.
   useEffect(() => {
     let cancelled = false;
     loadSave().then((doc) => {
       if (cancelled) return;
       saveDocRef.current = doc;
       setCareer(doc.career);
-      // Surface a resumable run if one was left in progress.
       if (doc.bashoRun?.active) {
         const migrated = ensureOpponentRanks(doc.bashoRun);
         if (migrated !== doc.bashoRun) {
@@ -1279,34 +1620,26 @@ function BashoHub({ onBack, onStartRun }) {
           setResumeRun(doc.bashoRun);
         }
       }
-      // Mark loaded on the next tick so the load-triggered setCareer above
-      // doesn't immediately re-persist an identical document.
       loadedRef.current = true;
-      setSaveStatus("saved");
     });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // Persist career changes (debounced). Skipped until the initial load
-  // completes so we never clobber the save with the default seed.
   useEffect(() => {
     if (!loadedRef.current) return;
-    setSaveStatus("saving");
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
       const doc = { ...(saveDocRef.current || makeDefaultSave()), career };
       const written = await writeSave(doc);
       saveDocRef.current = written;
-      if (mountedRef.current) setSaveStatus("saved");
     }, 400);
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
   }, [career]);
 
-  // Keyboard combo to toggle the debug flag on/off for testers.
   useEffect(() => {
     const onKey = (e) => {
       if (e.ctrlKey && e.shiftKey && (e.key === "B" || e.key === "b")) {
@@ -1327,8 +1660,25 @@ function BashoHub({ onBack, onStartRun }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Recolor the preview to match the player's chosen colors (same path as
-  // CustomizePage / Lobby). Reuses the shared recolor cache.
+  // Close the appearance popover on outside click / Escape.
+  useEffect(() => {
+    if (!customizeOpen) return;
+    const onDown = (e) => {
+      if (customizeRef.current && !customizeRef.current.contains(e.target)) {
+        setCustomizeOpen(null);
+      }
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") setCustomizeOpen(null);
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [customizeOpen]);
+
   useEffect(() => {
     const needsMawashi = player1Color && player1Color !== SPRITE_BASE_COLOR;
     const needsBody = !!player1BodyColor;
@@ -1358,9 +1708,6 @@ function BashoHub({ onBack, onStartRun }) {
   const handleStart = useCallback(() => {
     playButtonPressSound2();
     if (!onStartRun) return;
-    // Always hand the run controller the freshest career (so debug stat/rank
-    // tweaks made this session are included even if a debounced save is still
-    // pending).
     const baseSave = { ...(saveDocRef.current || makeDefaultSave()), career };
     if (resumeRun) {
       onStartRun({ run: resumeRun, save: baseSave });
@@ -1370,8 +1717,7 @@ function BashoHub({ onBack, onStartRun }) {
     onStartRun({ run, save: { ...baseSave, bashoRun: run } });
   }, [career, resumeRun, onStartRun]);
 
-  // Stat editing is LOCKED while a basho is in progress (resume pending) —
-  // you can't respec mid-tournament (spec §10). It's only editable between runs.
+  // Editing is LOCKED while a basho is in progress (no mid-tournament respec).
   const runLocked = !!resumeRun;
 
   const spendStat = (key) => {
@@ -1402,9 +1748,11 @@ function BashoHub({ onBack, onStartRun }) {
     }));
   };
 
-  // Toggle a loadout sidegrade on/off. Selecting draws from the shared budget;
-  // an unaffordable option is a no-op. Locked while a basho is in progress —
-  // you can't re-build your fighter mid-tournament (same rule as stats).
+  const unlockAll = career.unlocks.includes("__all__");
+
+  const optionLocked = (opt) =>
+    !!opt.unlock && !unlockAll && !career.unlocks.includes(opt.unlock);
+
   const toggleLoadoutOption = (catKey, opt) => {
     if (runLocked) return;
     const cur = career.loadout?.[catKey] || [];
@@ -1423,17 +1771,10 @@ function BashoHub({ onBack, onStartRun }) {
     });
   };
 
-  // A loadout option is locked until its `unlock` is owned (or debug-unlocked).
-  // Locked options can't be selected AND don't apply even if a legacy save had
-  // them toggled on — the hub shows them as off and the send-time filter drops
-  // them, so the gate is authoritative.
-  const optionLocked = (opt) =>
-    !!opt.unlock && !unlockAll && !career.unlocks.includes(opt.unlock);
-
-  // Spend envelopes to permanently unlock a shop item. No-op if already owned,
-  // unaffordable, or a run is in progress (you shop between bashos).
-  const buyUnlock = (item) => {
+  const buyUnlock = (unlockId) => {
     if (runLocked) return;
+    const item = UNLOCK_BY_ID[unlockId];
+    if (!item) return;
     if (isUnlocked(career, item.id)) return;
     if ((career.envelopes || 0) < item.cost) return;
     playButtonPressSound2();
@@ -1444,6 +1785,35 @@ function BashoHub({ onBack, onStartRun }) {
     }));
   };
 
+  // Click a real slot: focus it; if owned + unlocked, toggle equip. Locked
+  // slots only focus (buy is the explicit CTA in the detail strip).
+  const handleSlotClick = (catKey, opt) => {
+    setFocused({ catKey, optId: opt.id });
+    if (runLocked) return;
+    if (optionLocked(opt)) return;
+    toggleLoadoutOption(catKey, opt);
+  };
+
+  const handleSlotHover = (catKey, opt) => {
+    playButtonHoverSound();
+    setFocused({ catKey, optId: opt.id });
+  };
+
+  const handleBeltSelect = (hex) => {
+    playButtonPressSound2();
+    setPlayer1Color(hex);
+  };
+
+  const handleBodySelect = (hex) => {
+    playButtonPressSound2();
+    setPlayer1BodyColor(hex);
+  };
+
+  const toggleCustomize = (which) => {
+    playButtonPressSound2();
+    setCustomizeOpen((cur) => (cur === which ? null : which));
+  };
+
   // ---- Debug actions (in-memory only) ----
 
   const devMaxStats = () => {
@@ -1452,10 +1822,7 @@ function BashoHub({ onBack, onStartRun }) {
       acc[a.key] = STAT_MAX - STAT_BASE;
       return acc;
     }, {});
-    setCareer((c) => ({
-      ...c,
-      statPoints: { available: 0, spent },
-    }));
+    setCareer((c) => ({ ...c, statPoints: { available: 0, spent } }));
   };
 
   const devClearStats = () => {
@@ -1467,8 +1834,6 @@ function BashoHub({ onBack, onStartRun }) {
     }));
   };
 
-  // Grant the full spendable budget so testers can exercise the spend UI
-  // (Max Stats leaves 0 available). Capped at the 20-point career budget.
   const devGrantPoints = () => {
     playButtonPressSound2();
     setCareer((c) => {
@@ -1516,7 +1881,6 @@ function BashoHub({ onBack, onStartRun }) {
     const doc = await resetSave();
     saveDocRef.current = doc;
     setCareer(doc.career);
-    if (mountedRef.current) setSaveStatus("saved");
   };
 
   // ---- Derived display values ----
@@ -1524,12 +1888,32 @@ function BashoHub({ onBack, onStartRun }) {
   const division = getDivision(career.rank);
   const rankLabel = formatRank(career.rank);
   const bouts = boutsForRank(career.rank);
-  const record = `${career.lifetime.boutsWon}-${career.lifetime.boutsLost}`;
-  const unlockAll = career.unlocks.includes("__all__");
 
-  // Loadout point-buy budget (shared across all categories).
   const loadoutUsed = loadoutSpent(career.loadout);
   const loadoutRemaining = LOADOUT_BUDGET - loadoutUsed;
+
+  const selectedBelt = BELT_ALL.find((c) => c.hex === player1Color);
+  const selectedBody = BODY_COLORS.find((c) => c.hex === player1BodyColor);
+  const beltName = selectedBelt?.name || "Default";
+  const bodyName = selectedBody?.name || "Default";
+
+  // Focused option → detail strip state.
+  const focusedOpt = focused
+    ? (LOADOUT_OPTIONS[focused.catKey] || []).find((o) => o.id === focused.optId)
+    : null;
+  const focusedLocked = focusedOpt ? optionLocked(focusedOpt) : false;
+  const focusedSelected =
+    focusedOpt &&
+    !focusedLocked &&
+    (career.loadout?.[focused.catKey] || []).includes(focusedOpt.id);
+  const focusedUnlock = focusedOpt?.unlock ? UNLOCK_BY_ID[focusedOpt.unlock] : null;
+  const focusedVisual = focusedOpt ? getLoadoutOptionIcon(focusedOpt.id) : null;
+  const focusedCost = focusedOpt?.cost || 0;
+  const focusedPointAffordable =
+    !!focusedSelected || focusedCost <= loadoutRemaining;
+  const focusedEnvAffordable = focusedUnlock
+    ? (career.envelopes || 0) >= focusedUnlock.cost
+    : true;
 
   if (showBanzuke) {
     return (
@@ -1545,13 +1929,14 @@ function BashoHub({ onBack, onStartRun }) {
 
   return (
     <PageContainer>
-      <BackgroundImage src={mainMenuBackground} alt="" />
+      <BackgroundImage />
       <CinematicOverlay />
+      <GrainOverlay />
       <Snowfall intensity={15} showFrost={false} zIndex={2} />
 
       <TopBar>
         <TopBarLeft>
-          <BackButton
+          <GhostButton
             onClick={() => {
               playButtonPressSound2();
               onBack();
@@ -1560,7 +1945,7 @@ function BashoHub({ onBack, onStartRun }) {
           >
             <span className="arrow">&larr;</span>
             Back
-          </BackButton>
+          </GhostButton>
         </TopBarLeft>
 
         <TitleBlock>
@@ -1569,19 +1954,15 @@ function BashoHub({ onBack, onStartRun }) {
         </TitleBlock>
 
         <TopBarRight>
-          <SaveIndicator>
-            <SaveDot $busy={saveStatus === "saving"} />
-            {saveStatus === "saving"
-              ? "Saving"
-              : isElectronSave()
-                ? "Saved"
-                : "Saved locally"}
-          </SaveIndicator>
-          <EnvelopeChip>
-            <img className="envelope" src={envelopeImg} alt="" aria-hidden />
-            <span className="label">Kensho</span>
+          <Currency>
+            <img
+              className="envelope"
+              src={envelopeImg}
+              alt="Kenshō"
+              aria-hidden
+            />
             {career.envelopes.toLocaleString()}
-          </EnvelopeChip>
+          </Currency>
           {debugEnabled && (
             <DebugToggle
               $active={devOpen}
@@ -1598,10 +1979,10 @@ function BashoHub({ onBack, onStartRun }) {
       </TopBar>
 
       <Stage>
-        {/* LEFT — wrestler preview + rank */}
-        <PreviewPanel>
-          <PanelHeader>
-            <PanelLabel>Your Rikishi</PanelLabel>
+        {/* LEFT — portrait + attributes + appearance */}
+        <LeftPanel $accent={C.ice} $glow={C.iceGlow}>
+          <PanelHead>
+            <HeadTitle $accent={C.ice}>Your Rikishi</HeadTitle>
             <RankChip
               onClick={() => {
                 playButtonPressSound2();
@@ -1615,296 +1996,391 @@ function BashoHub({ onBack, onStartRun }) {
                 ☰
               </span>
             </RankChip>
-          </PanelHeader>
+          </PanelHead>
 
-          <PreviewStage>
-            <PreviewSpotlight />
+          <PortraitStage>
+            <PortraitSpotlight />
+            <PortraitFloor />
             <AvatarBreath>
-              <PreviewImage src={previewSrc} alt="Your wrestler" />
+              <PortraitImage src={previewSrc} alt="Your wrestler" />
             </AvatarBreath>
-          </PreviewStage>
+          </PortraitStage>
 
-          <PanelFooter>
-            <RankStack>
-              <RankCategory>Current Rank</RankCategory>
-              <RankName>{division.label}</RankName>
-            </RankStack>
-            <RecordStack>
-              <RecordLabel>Lifetime</RecordLabel>
-              <RecordValue>{record}</RecordValue>
-            </RecordStack>
-          </PanelFooter>
-        </PreviewPanel>
-
-        {/* RIGHT — dossier (attributes + loadout + start) */}
-        <ControlsPanel>
-          <DossierHeader>
-            <PanelLabel>Dossier</PanelLabel>
-            <DossierMeta>Pre-Basho</DossierMeta>
-          </DossierHeader>
-
-          <ControlsBody>
-            {/* ATTRIBUTES */}
-            <Section>
-              <SectionHeader>
-                <SectionTitle>Attributes</SectionTitle>
-                <SectionMeta $accent={!runLocked && career.statPoints.available > 0}>
-                  {runLocked
-                    ? "Locked during basho"
-                    : `${career.statPoints.available} pts available`}
-                </SectionMeta>
-              </SectionHeader>
-              <StatList>
-                {ATTRIBUTES.map((attr) => {
-                  const spent = career.statPoints.spent[attr.key] || 0;
-                  const value = STAT_BASE + spent;
-                  return (
-                    <StatRow key={attr.key}>
-                      <StatKanji aria-hidden>{attr.kanji}</StatKanji>
-                      <StatBody>
-                        <StatLabelRow>
-                          <StatLabel>{attr.label}</StatLabel>
-                          <StatDesc>{attr.desc}</StatDesc>
-                        </StatLabelRow>
-                        <PipTrack>
-                          {Array.from({ length: STAT_MAX }).map((_, i) => (
-                            <Pip
-                              key={i}
-                              $filled={i < value}
-                              $index={i}
-                            />
-                          ))}
-                        </PipTrack>
-                      </StatBody>
-                      <StatControls>
-                        <StepButton
-                          aria-label={`Lower ${attr.label}`}
-                          onClick={() => refundStat(attr.key)}
-                          onMouseEnter={playButtonHoverSound}
-                          disabled={runLocked || spent <= 0}
-                        >
-                          &minus;
-                        </StepButton>
-                        <StatValue>
-                          {value}
-                          <span className="max">/{STAT_MAX}</span>
-                        </StatValue>
-                        <StepButton
-                          aria-label={`Raise ${attr.label}`}
-                          onClick={() => spendStat(attr.key)}
-                          onMouseEnter={playButtonHoverSound}
-                          disabled={
-                            runLocked ||
-                            career.statPoints.available <= 0 ||
-                            value >= STAT_MAX
-                          }
-                        >
-                          +
-                        </StepButton>
-                      </StatControls>
-                    </StatRow>
-                  );
-                })}
-              </StatList>
-            </Section>
-
-            {/* LOADOUT */}
-            <Section>
-              <SectionHeader>
-                <SectionTitle>Loadout</SectionTitle>
-                <SectionMeta $accent={!runLocked && loadoutRemaining > 0}>
-                  {runLocked
-                    ? "Locked during basho"
-                    : `${loadoutUsed}/${LOADOUT_BUDGET} pts spent`}
-                </SectionMeta>
-              </SectionHeader>
-              <LoadoutList>
-                {LOADOUT_CATEGORIES.map((cat) => {
-                  const options = LOADOUT_OPTIONS[cat.key] || [];
-                  const selected = career.loadout?.[cat.key] || [];
-                  const defaults = LOADOUT_DEFAULTS[cat.key] || [];
-                  // A default is "struck" once an OWNED option that replaces it
-                  // is on (locked options never apply, so they never strike).
-                  const replaced = new Set(
-                    options
-                      .filter(
-                        (o) =>
-                          selected.includes(o.id) &&
-                          !optionLocked(o) &&
-                          o.replaces,
-                      )
-                      .map((o) => o.replaces),
-                  );
-
-                  if (options.length === 0) {
-                    return (
-                      <LoadoutRow key={cat.key}>
-                        <LoadoutKanji aria-hidden>{cat.kanji}</LoadoutKanji>
-                        <LoadoutNameStack>
-                          <LoadoutName>{cat.label}</LoadoutName>
-                          <LoadoutSub>{cat.sub}</LoadoutSub>
-                        </LoadoutNameStack>
-                        <ComingSoonTag>Coming soon</ComingSoonTag>
-                      </LoadoutRow>
-                    );
-                  }
-
-                  return (
-                    <LoadoutCard key={cat.key}>
-                      <LoadoutCardHead>
-                        <LoadoutKanji aria-hidden>{cat.kanji}</LoadoutKanji>
-                        <LoadoutNameStack>
-                          <LoadoutName>{cat.label}</LoadoutName>
-                          <LoadoutSub>{cat.sub}</LoadoutSub>
-                        </LoadoutNameStack>
-                      </LoadoutCardHead>
-
-                      {defaults.length > 0 && (
-                        <DefaultChips>
-                          {defaults.map((d) => (
-                            <DefaultChip key={d} $struck={replaced.has(d)}>
-                              {d}
-                              {replaced.has(d) ? " · replaced" : " · default"}
-                            </DefaultChip>
-                          ))}
-                        </DefaultChips>
-                      )}
-
-                      <OptionList>
-                        {options.map((opt) => {
-                          // Options gated by the §6 economy require their
-                          // unlock; absent `unlock` = freely selectable. A
-                          // locked option reads as off regardless of the saved
-                          // selection.
-                          const locked = optionLocked(opt);
-                          const isOn = !locked && selected.includes(opt.id);
-                          const cost = opt.cost || 0;
-                          const affordable = isOn || cost <= loadoutRemaining;
-                          const visual = getLoadoutOptionIcon(opt.id);
-                          return (
-                            <OptionButton
-                              key={opt.id}
-                              type="button"
-                              $selected={isOn}
-                              disabled={
-                                runLocked || locked || (!isOn && !affordable)
-                              }
-                              onClick={() => toggleLoadoutOption(cat.key, opt)}
-                              onMouseEnter={playButtonHoverSound}
-                            >
-                              {visual ? (
-                                <OptionIcon
-                                  $main={visual.main}
-                                  $deep={visual.deep}
-                                  $gradient={visual.gradient}
-                                  $imgSize={visual.imgSize}
-                                  $imgScale={visual.imgScale}
-                                  aria-hidden
-                                >
-                                  <img src={visual.icon} alt="" />
-                                </OptionIcon>
-                              ) : (
-                                <OptionIconFallback aria-hidden>
-                                  {opt.kanji}
-                                </OptionIconFallback>
-                              )}
-                              <OptionCheck $selected={isOn} aria-hidden>
-                                {isOn ? "✓" : ""}
-                              </OptionCheck>
-                              <OptionBody>
-                                <OptionTopRow>
-                                  <OptionName>{opt.label}</OptionName>
-                                  <OptionCost $affordable={affordable}>
-                                    {locked
-                                      ? "Locked"
-                                      : `${cost} pt${cost === 1 ? "" : "s"}`}
-                                  </OptionCost>
-                                </OptionTopRow>
-                                {opt.replaces && (
-                                  <OptionReplaces>
-                                    Replaces {opt.replaces}
-                                  </OptionReplaces>
-                                )}
-                                <OptionDesc>{opt.desc}</OptionDesc>
-                              </OptionBody>
-                            </OptionButton>
-                          );
-                        })}
-                      </OptionList>
-                    </LoadoutCard>
-                  );
-                })}
-              </LoadoutList>
-            </Section>
-
-            {/* KENSHŌ SHOP (unlocks) */}
-            <Section>
-              <SectionHeader>
-                <SectionTitle>Kenshō Shop</SectionTitle>
-                <SectionMeta $accent={!runLocked && career.envelopes > 0}>
-                  {runLocked
-                    ? "Locked during basho"
-                    : `${career.envelopes.toLocaleString()} kenshō`}
-                </SectionMeta>
-              </SectionHeader>
-              <ShopList>
-                {UNLOCKS.map((item) => {
-                  const owned = isUnlocked(career, item.id);
-                  const affordable = (career.envelopes || 0) >= item.cost;
-                  const optionId = UNLOCK_LOADOUT_OPTION_ID[item.id];
-                  const visual = optionId
-                    ? getLoadoutOptionIcon(optionId)
-                    : null;
-                  return (
-                    <ShopRow key={item.id} $owned={owned}>
-                      {visual ? (
-                        <ShopOptionIcon
-                          $main={visual.main}
-                          $deep={visual.deep}
-                          $gradient={visual.gradient}
-                          $imgSize={visual.imgSize}
-                          $imgScale={visual.imgScale}
-                          aria-hidden
-                        >
-                          <img src={visual.icon} alt="" />
-                        </ShopOptionIcon>
-                      ) : (
-                        <LoadoutKanji aria-hidden>{item.kanji}</LoadoutKanji>
-                      )}
-                      <ShopBody>
-                        <LoadoutName>{item.label}</LoadoutName>
-                        {item.sub && <LoadoutSub>{item.sub}</LoadoutSub>}
-                        <ShopDesc>{item.desc}</ShopDesc>
-                      </ShopBody>
-                      <BuyButton
-                        type="button"
-                        $owned={owned}
-                        disabled={owned || runLocked || !affordable}
-                        onClick={() => buyUnlock(item)}
+          <Block>
+            <BlockHead>
+              <BlockLabel>Attributes</BlockLabel>
+              <BlockMeta $accent={!runLocked && career.statPoints.available > 0}>
+                {runLocked
+                  ? "Locked"
+                  : `${career.statPoints.available} pts`}
+              </BlockMeta>
+            </BlockHead>
+            <StatList>
+              {ATTRIBUTES.map((attr) => {
+                const spent = career.statPoints.spent[attr.key] || 0;
+                const value = STAT_BASE + spent;
+                return (
+                  <StatRow key={attr.key} title={attr.desc}>
+                    <StatKanji aria-hidden>{attr.kanji}</StatKanji>
+                    <StatBody>
+                      <StatLabelRow>
+                        <StatLabel>{attr.label}</StatLabel>
+                      </StatLabelRow>
+                      <PipTrack>
+                        {Array.from({ length: STAT_MAX }).map((_, i) => (
+                          <Pip key={i} $filled={i < value} $index={i} />
+                        ))}
+                      </PipTrack>
+                    </StatBody>
+                    <StatControls>
+                      <StepButton
+                        aria-label={`Lower ${attr.label}`}
+                        onClick={() => refundStat(attr.key)}
                         onMouseEnter={playButtonHoverSound}
+                        disabled={runLocked || spent <= 0}
                       >
-                        {owned ? "Owned" : `${item.cost} ◆`}
-                      </BuyButton>
-                    </ShopRow>
-                  );
-                })}
-              </ShopList>
-            </Section>
-          </ControlsBody>
+                        &minus;
+                      </StepButton>
+                      <StatValue>
+                        {value}
+                        <span className="max">/{STAT_MAX}</span>
+                      </StatValue>
+                      <StepButton
+                        aria-label={`Raise ${attr.label}`}
+                        onClick={() => spendStat(attr.key)}
+                        onMouseEnter={playButtonHoverSound}
+                        disabled={
+                          runLocked ||
+                          career.statPoints.available <= 0 ||
+                          value >= STAT_MAX
+                        }
+                      >
+                        +
+                      </StepButton>
+                    </StatControls>
+                  </StatRow>
+                );
+              })}
+            </StatList>
+          </Block>
 
-          <DossierFooter>
+          <Block ref={customizeRef}>
+            <BlockHead>
+              <BlockLabel>Appearance</BlockLabel>
+            </BlockHead>
+            <AppearanceRow>
+              <AppearanceButton
+                type="button"
+                $open={customizeOpen === "belt"}
+                onClick={() => toggleCustomize("belt")}
+                onMouseEnter={playButtonHoverSound}
+              >
+                <AppearanceSwatch
+                  $color={player1Color || SPRITE_BASE_COLOR}
+                  $gradient={selectedBelt?.gradient}
+                />
+                <AppearanceText>
+                  <span className="cat">Belt</span>
+                  <span className="name">{beltName}</span>
+                </AppearanceText>
+              </AppearanceButton>
+
+              <AppearanceButton
+                type="button"
+                $open={customizeOpen === "body"}
+                onClick={() => toggleCustomize("body")}
+                onMouseEnter={playButtonHoverSound}
+              >
+                <AppearanceSwatch
+                  $color={player1BodyColor || "#888"}
+                  $gradient={selectedBody?.gradient}
+                />
+                <AppearanceText>
+                  <span className="cat">Body</span>
+                  <span className="name">{bodyName}</span>
+                </AppearanceText>
+              </AppearanceButton>
+
+              {customizeOpen === "belt" && (
+                <Popover role="menu" aria-label="Belt colors">
+                  <PopoverGroup>
+                    <PopoverTitle>Belt Colors</PopoverTitle>
+                    <SwatchGrid $cols={5}>
+                      {BELT_SOLIDS.map((color) => (
+                        <ColorSwatch
+                          key={color.name}
+                          $color={color.hex}
+                          $selected={player1Color === color.hex}
+                          onClick={() => handleBeltSelect(color.hex)}
+                          onMouseEnter={playButtonHoverSound}
+                          title={color.name}
+                          aria-label={color.name}
+                        />
+                      ))}
+                    </SwatchGrid>
+                  </PopoverGroup>
+                  <PopoverGroup>
+                    <PopoverTitle>Special Patterns</PopoverTitle>
+                    <SwatchGrid $cols={5}>
+                      {BELT_PATTERNS.map((color) => (
+                        <ColorSwatch
+                          key={color.name}
+                          $square
+                          $color={color.hex}
+                          $gradient={color.gradient}
+                          $selected={player1Color === color.hex}
+                          onClick={() => handleBeltSelect(color.hex)}
+                          onMouseEnter={playButtonHoverSound}
+                          title={color.name}
+                          aria-label={color.name}
+                        />
+                      ))}
+                    </SwatchGrid>
+                  </PopoverGroup>
+                </Popover>
+              )}
+
+              {customizeOpen === "body" && (
+                <Popover role="menu" aria-label="Body colors">
+                  <PopoverGroup>
+                    <PopoverTitle>Body Colors</PopoverTitle>
+                    <SwatchGrid $cols={5}>
+                      {BODY_COLORS.map((color) => (
+                        <ColorSwatch
+                          key={color.name}
+                          $color={color.hex || "#888"}
+                          $gradient={color.gradient}
+                          $selected={player1BodyColor === color.hex}
+                          onClick={() => handleBodySelect(color.hex)}
+                          onMouseEnter={playButtonHoverSound}
+                          title={color.name}
+                          aria-label={color.name}
+                        />
+                      ))}
+                    </SwatchGrid>
+                  </PopoverGroup>
+                </Popover>
+              )}
+            </AppearanceRow>
+          </Block>
+
+          <IdentityFooter>
+            <IdentityStack>
+              <IdentityLabel>Rank</IdentityLabel>
+              <IdentityRank>{division.label}</IdentityRank>
+            </IdentityStack>
+            <IdentityStack $right>
+              <IdentityLabel>Lifetime</IdentityLabel>
+              <IdentityRecord>
+                <span className="w">{career.lifetime.boutsWon}</span>
+                <span className="sep">–</span>
+                <span className="l">{career.lifetime.boutsLost}</span>
+              </IdentityRecord>
+            </IdentityStack>
+          </IdentityFooter>
+        </LeftPanel>
+
+        {/* RIGHT — loadout board + detail + start */}
+        <RightPanel $accent={C.ice} $glow={C.iceGlow}>
+          <PanelHead>
+            <HeadTitle $accent={C.ice}>Loadout</HeadTitle>
+            <HeadMeta $accent={!runLocked && loadoutRemaining > 0}>
+              {runLocked
+                ? "Locked during basho"
+                : `${loadoutUsed} / ${LOADOUT_BUDGET} pts spent`}
+            </HeadMeta>
+          </PanelHead>
+
+          <LoadoutBody>
+            <LoadoutBoard>
+              {LOADOUT_CATEGORIES.map((cat) => {
+                const options = LOADOUT_OPTIONS[cat.key] || [];
+                const selected = career.loadout?.[cat.key] || [];
+                const placeholders = Math.max(
+                  0,
+                  SLOTS_PER_CATEGORY - options.length,
+                );
+                return (
+                  <CategoryRow key={cat.key}>
+                    <CategoryLabel>
+                      <CategoryKanji aria-hidden>{cat.kanji}</CategoryKanji>
+                      <CategoryNameStack>
+                        <CategoryName>{cat.label}</CategoryName>
+                        <CategorySub>{cat.sub}</CategorySub>
+                      </CategoryNameStack>
+                    </CategoryLabel>
+
+                    <SlotStrip>
+                      {options.map((opt) => {
+                        const locked = optionLocked(opt);
+                        const isOn = !locked && selected.includes(opt.id);
+                        const isFocused =
+                          focused?.catKey === cat.key &&
+                          focused?.optId === opt.id;
+                        const visual = getLoadoutOptionIcon(opt.id);
+                        const SlotEl = locked ? LockedSlot : Slot;
+                        return (
+                          <SlotEl
+                            key={opt.id}
+                            type="button"
+                            $interactive={!runLocked}
+                            $selected={isOn}
+                            $focused={isFocused}
+                            $main={visual?.main}
+                            $deep={visual?.deep}
+                            $gradient={visual?.gradient}
+                            $imgSize={visual?.imgSize}
+                            $imgScale={visual?.imgScale}
+                            title={opt.label}
+                            aria-label={opt.label}
+                            aria-pressed={isOn}
+                            onClick={() => handleSlotClick(cat.key, opt)}
+                            onMouseEnter={() => handleSlotHover(cat.key, opt)}
+                          >
+                            {visual ? (
+                              <img src={visual.icon} alt="" aria-hidden />
+                            ) : (
+                              <SlotKanji aria-hidden>{opt.kanji}</SlotKanji>
+                            )}
+                            {isOn && <SlotCheck aria-hidden>✓</SlotCheck>}
+                            {locked && (
+                              <SlotLock aria-hidden>
+                                <LockGlyph />
+                              </SlotLock>
+                            )}
+                          </SlotEl>
+                        );
+                      })}
+                      {Array.from({ length: placeholders }).map((_, i) => (
+                        <PlaceholderSlot
+                          key={`ph-${i}`}
+                          as="div"
+                          $interactive={false}
+                          title="Coming soon"
+                          aria-label="Coming soon"
+                        >
+                          <PlaceholderGlyph aria-hidden>?</PlaceholderGlyph>
+                        </PlaceholderSlot>
+                      ))}
+                    </SlotStrip>
+                  </CategoryRow>
+                );
+              })}
+            </LoadoutBoard>
+
+            {/* DETAIL — hover to preview, click/CTA to equip or buy */}
+            <DetailStrip>
+              {focusedOpt ? (
+                <>
+                  {focusedVisual ? (
+                    <DetailIcon
+                      $main={focusedVisual.main}
+                      $deep={focusedVisual.deep}
+                      $gradient={focusedVisual.gradient}
+                      $imgSize={focusedVisual.imgSize}
+                      $locked={focusedLocked}
+                      aria-hidden
+                    >
+                      <img src={focusedVisual.icon} alt="" />
+                      {focusedLocked && (
+                        <span className="lock">
+                          <LockGlyph />
+                        </span>
+                      )}
+                    </DetailIcon>
+                  ) : (
+                    <DetailIcon $locked={focusedLocked} aria-hidden>
+                      <DetailIconKanji>{focusedOpt.kanji}</DetailIconKanji>
+                      {focusedLocked && (
+                        <span className="lock">
+                          <LockGlyph />
+                        </span>
+                      )}
+                    </DetailIcon>
+                  )}
+
+                  <DetailBody key={focusedOpt.id}>
+                    <DetailTopRow>
+                      <DetailName>{focusedOpt.label}</DetailName>
+                      {focusedOpt.replaces && (
+                        <DetailTag>Replaces {focusedOpt.replaces}</DetailTag>
+                      )}
+                      {!focusedLocked && (
+                        <DetailTag $accent={focusedSelected}>
+                          {focusedCost} pt{focusedCost === 1 ? "" : "s"}
+                        </DetailTag>
+                      )}
+                    </DetailTopRow>
+                    <DetailDesc>{focusedOpt.desc}</DetailDesc>
+                  </DetailBody>
+
+                  <DetailAction>
+                    {focusedLocked ? (
+                      <ActionButton
+                        type="button"
+                        $variant="buy"
+                        disabled={
+                          runLocked || !focusedUnlock || !focusedEnvAffordable
+                        }
+                        onClick={() =>
+                          focusedUnlock && buyUnlock(focusedUnlock.id)
+                        }
+                        onMouseEnter={playButtonHoverSound}
+                        title={
+                          focusedEnvAffordable
+                            ? "Purchase with Kenshō"
+                            : "Not enough Kenshō"
+                        }
+                      >
+                        {focusedUnlock
+                          ? `Unlock · ${focusedUnlock.cost} ◆`
+                          : "Locked"}
+                      </ActionButton>
+                    ) : (
+                      <ActionButton
+                        type="button"
+                        $variant={focusedSelected ? "equipped" : "equip"}
+                        disabled={
+                          runLocked || (!focusedSelected && !focusedPointAffordable)
+                        }
+                        onClick={() =>
+                          toggleLoadoutOption(focused.catKey, focusedOpt)
+                        }
+                        onMouseEnter={playButtonHoverSound}
+                        title={
+                          focusedSelected
+                            ? "Unequip"
+                            : focusedPointAffordable
+                              ? "Equip"
+                              : "No loadout points left"
+                        }
+                      >
+                        {focusedSelected ? "Equipped ✓" : "Equip"}
+                      </ActionButton>
+                    )}
+                  </DetailAction>
+                </>
+              ) : (
+                <DetailBody>
+                  <DetailDesc>
+                    Hover a discipline slot to preview its sidegrade.
+                  </DetailDesc>
+                </DetailBody>
+              )}
+            </DetailStrip>
+          </LoadoutBody>
+
+          <StartFooter>
             <StartNote>
-              {bouts} bouts &middot; {division.kk ? `${division.kk} wins = kachi-koshi` : "title defense"}
+              {bouts} bouts &middot;{" "}
+              {division.kk ? `${division.kk} wins = kachi-koshi` : "title defense"}
             </StartNote>
-            <StartButton
-              onClick={handleStart}
-              onMouseEnter={playButtonHoverSound}
-            >
+            <StartButton onClick={handleStart} onMouseEnter={playButtonHoverSound}>
               {resumeRun ? "Resume Basho" : "Start Basho"}
               <span className="arrow">&rarr;</span>
             </StartButton>
-          </DossierFooter>
-        </ControlsPanel>
+          </StartFooter>
+        </RightPanel>
       </Stage>
 
       {debugEnabled && devOpen && (

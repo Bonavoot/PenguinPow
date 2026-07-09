@@ -6,6 +6,7 @@ import smokePuffSheet from "../assets/smoke-puff-effect.png";
 import dashSmokeSheet from "../assets/dash-smoke-effect.png";
 import chargedSmokeSheet from "../assets/charged-attack-smoke-effect.png";
 import cinematicThrowLandSmokeSheet from "../assets/cinematicKill-throw-landing-smoke-effect.png";
+import clampedEffectSheet from "../assets/clamped-effect.png";
 
 const MAX_PARTICLES = 500;
 const GAME_W = 1280;
@@ -373,19 +374,64 @@ function spawnChargedSmoke(engine, footX, footY, opts) {
 // Dedicated 1024x1024, 4x4 grid (16 frames) of a wide impact splash that flares
 // up on both sides then settles — used only for the cinematic throw-kill body
 // slam, distinct from the softer generic landing puff.
+// ── Arm-clamp crackle sheet (counter-grab) ───────────────────────────────────
+// 1024x1024, 4x4 grid: a magenta/purple electric burst that shatters into
+// flecks and dissipates. Frame 0 is empty; content lives in ~1–13. Drawn on
+// the clamped victim (front canvas) so the "arms pinned" state visibly zaps.
+const clampedEffectImg = makeSmokeImg(clampedEffectSheet);
+const CLAMP_CRACKLE_FRAMES = { start: 1, end: 13 };
+
 const cinematicThrowLandSmokeImg = makeSmokeImg(cinematicThrowLandSmokeSheet);
 const CK_THROW_LAND_SIZE = 220; // wide, heavy impact footprint (GAME-space px)
 const CK_THROW_LAND_STRETCH = 1.1;
 const CK_THROW_LAND_Y_BIAS = -0.15; // negative = higher on screen; lifts the splash up off the floor
 
+// Bakes a color-tinted copy of a (white/gray) sheet once it loads. Uses
+// `source-atop` (paint the color ONLY over existing non-transparent pixels) at a
+// given `strength` instead of `multiply`: multiply darkens mid-grays into muddy
+// olive, whereas source-atop lays the vivid color on top and keeps the sprite's
+// original alpha, so the result stays BRIGHT and saturated (matches the effect's
+// yellow instead of a dull tan). `strength` = how fully the color takes over
+// (1 = flat color silhouette; lower keeps more of the sprite's own shading).
+// Returns a holder whose .canvas is null until the image has loaded + baked.
+function makeTintedSheet(img, r, g, b, strength = 0.85) {
+  const holder = { canvas: null };
+  if (!img || typeof document === "undefined") return holder;
+  const build = () => {
+    const W = img.naturalWidth;
+    const H = img.naturalHeight;
+    if (!W || !H) return;
+    const c = document.createElement("canvas");
+    c.width = W;
+    c.height = H;
+    const cx = c.getContext("2d");
+    cx.drawImage(img, 0, 0);
+    cx.globalCompositeOperation = "source-atop";
+    cx.globalAlpha = strength;
+    cx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+    cx.fillRect(0, 0, W, H);
+    holder.canvas = c;
+  };
+  if (img.complete && img.naturalWidth) build();
+  else img.addEventListener("load", build, { once: true });
+  return holder;
+}
+
+// Vivid YELLOW variant of the cinematic throw-land splash — reused for the
+// perfect-parry landing smoke so the smoke reads as yellow as the golden burst.
+// The source-atop bake lets us use a saturated yellow without it going muddy.
+const cinematicThrowLandSmokeGold = makeTintedSheet(cinematicThrowLandSmokeImg, 255, 240, 95, 0.88);
+
 function spawnCinematicThrowLandSmoke(
   engine,
   footX,
   footY,
-  { scale = 1, alpha = 1, maxLife = 0.55, behindDohyo = false } = {}
+  { scale = 1, alpha = 1, maxLife = 0.55, behindDohyo = false, tint = null } = {}
 ) {
-  const img = cinematicThrowLandSmokeImg;
-  if (!img || !img.complete || !img.naturalWidth) return false;
+  const goldReady = tint === "gold" && cinematicThrowLandSmokeGold.canvas;
+  const img = goldReady ? cinematicThrowLandSmokeGold.canvas : cinematicThrowLandSmokeImg;
+  // The baked tint canvas is always render-ready; the raw <img> needs a load check.
+  if (!goldReady && (!img || !img.complete || !img.naturalWidth)) return false;
   const drawSize = CK_THROW_LAND_SIZE * scale;
   engine.spawn({
     x: footX,
@@ -2475,6 +2521,99 @@ const PRESETS = {
     }
   },
 
+  // Clinch strain sweat — the on-character balance tell. Small ice-white
+  // droplets flick off the head/shoulders in short gravity arcs, the classic
+  // sumo/anime "straining" read. Called on an interval while a clinched
+  // player's balance is in the throwable zone; intensity ramps the count,
+  // launch speed, and droplet size as balance approaches the kill threshold.
+  clinchStrainSweat(engine, { x, y, facing, intensity = 0.5 }) {
+    const t = Math.min(Math.max(intensity, 0), 1);
+    const headX = x;
+    // 88-112 read as neck height in playtests — true head/temple level sits higher
+    const headY = GAME_H - y - rand(118, 140);
+    const count = t > 0.75 ? 3 : rand(0, 1) < 0.7 ? 2 : 1;
+
+    // FACING CONVENTION: the server sets facing = -1 when this player is on
+    // the LEFT of the opponent (facing right), so direction-to-opponent is
+    // -facing and AWAY from the opponent is +facing. Away is the only side
+    // worth spraying: these render on the main canvas (behind the sprites),
+    // so anything fired inward dies invisibly between the clinched bodies —
+    // and inward sprays from both players read as crossing streams.
+    const side = facing || 1;
+
+    for (let i = 0; i < count; i++) {
+      // Fan of launch angles from flat flicks to steep pops, all outward.
+      // A small offset off the head's side keeps drops from materializing on
+      // the sprite while still reading as flicking off THIS head, not floating
+      // detached in the air beside it.
+      const angle = rand(0.25, 1.0); // radians above horizontal
+      const speed = rand(95, 150) * (0.65 + t * 0.55);
+      const vx = side * Math.cos(angle) * speed;
+      const vy = -Math.sin(angle) * speed;
+      const size = rand(2.4, 4);
+      engine.spawn({
+        x: headX + side * rand(8, 18),
+        y: headY + rand(-8, 8),
+        vx,
+        vy,
+        gravity: 560,
+        drag: 0.985,
+        size,
+        sizeEnd: size * 0.55,
+        alpha: rand(0.8, 0.95),
+        alphaEnd: 0,
+        // Orient the droplet along its launch velocity and stretch on that
+        // axis — a defined "droplet in flight" teardrop read instead of a
+        // smeared horizontal blob. (Engine order: rotate, then scale-X.)
+        rotation: Math.atan2(vy, vx),
+        rotationSpeed: 0,
+        ease: "linear",
+        easeAlpha: "inQuad",
+        maxLife: rand(0.34, 0.5),
+        texture: pick([engine.textures.circle, engine.textures.circleIce]),
+        stretchX: 1.9,
+      });
+    }
+  },
+
+  // Arm-clamp crackle — magenta electric burst from the clamped-effect sheet,
+  // drawn over the victim's upper body. `scale` sizes the burst (big on the
+  // connect frame, small for the sustained crackle while clamped).
+  clampCrackle(engine, { x, y, scale = 1, alpha = 0.95 }) {
+    const sheet = clampedEffectImg;
+    if (!sheet || !sheet.complete || !sheet.naturalWidth) return;
+    const drawSize = 130 * scale;
+    engine.spawn({
+      x: x + rand(-8, 8) * scale,
+      y: GAME_H - y - 72 + rand(-10, 10) * scale,
+      vx: 0,
+      vy: 0,
+      gravity: 0,
+      drag: 1,
+      size: drawSize,
+      sizeEnd: drawSize * 1.06,
+      alpha,
+      alphaEnd: 0,
+      rotation: 0,
+      rotationSpeed: 0,
+      ease: "outCubic",
+      easeAlpha: "inCubic",
+      maxLife: 0.32,
+      stretchX: rand(0, 1) < 0.5 ? -1 : 1,
+      sheet,
+      sheetCols: 4,
+      sheetRows: 4,
+      sheetStart: CLAMP_CRACKLE_FRAMES.start,
+      sheetEnd: CLAMP_CRACKLE_FRAMES.end,
+      aboveFighters: true,
+      // Additive blend: the sheet's black debris lines vanish and the
+      // magenta/white core reads as emitted LIGHT (electric energy) instead
+      // of a translucent decal pasted over the sprite. This is the difference
+      // between "glowing crackle" and "muddy sticker".
+      blendMode: "lighter",
+    });
+  },
+
   // Called every ~50ms during the charged attack lunge (flying headbutt).
   // Big billowing clouds dropped behind the player at mid-body height, jet contrail style.
   chargedAttackTrail(engine, { x, y, direction, speed }) {
@@ -2758,6 +2897,19 @@ const PRESETS = {
       alpha: 1,
       maxLife: 0.55,
       behindDohyo: !!behindDohyo,
+    });
+  },
+
+  // Perfect raw parry — same cinematic landing splash, lifted slightly so it
+  // reads at the parrier's body rather than buried at the feet.
+  perfectParryLandSmoke(engine, { x, y }) {
+    const footX = x;
+    const footY = GAME_H - y - 32;
+    spawnCinematicThrowLandSmoke(engine, footX, footY, {
+      scale: 1,
+      alpha: 1,
+      maxLife: 0.55,
+      tint: "gold", // pale-gold splash matching the golden perfect-parry set
     });
   },
 

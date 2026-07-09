@@ -13,6 +13,7 @@ const { ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST,
         RAW_PARRY_STAMINA_COST, POWER_UP_TYPES, SLAP_KILL_RANGE,
         PALM_THRUST_STAMINA_COST,
         CLINCH_THROW_LAND_THRESHOLD, CLINCH_THROW_KILL_THRESHOLD,
+        DEEP_GRIP_THROW_THRESHOLD_BONUS,
         FLAP_IMPULSE, FLAP_FLAP_H_IMPULSE, FLAP_CHARGE_COOLDOWN_MS, FLAP_STAMINA_COST,
         BALANCE_MAX } = require("./constants");
 const { MAP_LEFT_BOUNDARY: GAME_MAP_LEFT, MAP_RIGHT_BOUNDARY: GAME_MAP_RIGHT,
@@ -1568,6 +1569,24 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
   // non-archetype CPU runs the exact legacy clinch rolls below.
   const CS = CLINCH_STYLE[PERS_KEY] || CLINCH_STYLE.balanced;
 
+  // REACT BRACE — while resisting an incoming throw/pull, the CPU may snap to
+  // plant inside the tight reaction window (mirrors the human option — the
+  // actual key EDGE is detected server-side in grabActionSystem). One roll per
+  // incoming action, with a human-like reaction delay before pressing.
+  if (cpu.isResistingThrow || cpu.isResistingPull) {
+    if (!cpu.reactBraceUsed && cpu.reactBraceDeadline && (cpu.reactBraceRefund || 0) > 0) {
+      if (aiState.reactBraceRollFor !== cpu.reactBraceDeadline) {
+        aiState.reactBraceRollFor = cpu.reactBraceDeadline;
+        const chance = hasVerb("jolt") ? 0.4 : hasVerb("clinchThrow") ? 0.2 : 0;
+        aiState.reactBraceAt = Math.random() < chance
+          ? currentTime + randomInRange(130, 220)
+          : Infinity;
+      }
+      if (currentTime >= aiState.reactBraceAt) cpu.keys.s = true;
+    }
+    return;
+  }
+
   // During active throw/pull/lift/clash/jolt animations, the system handles everything
   if (cpu.clinchThrowActive || cpu.isClinchClashing || cpu.isClinchThrowing ||
       cpu.isBeingLifted || cpu.isResistingThrow || cpu.isResistingPull ||
@@ -1605,9 +1624,13 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
         AI_CONFIG.CLINCH_GRIP_UP_DELAY_MAX * DIFF.gripUpMult * CS.gripUpMult
       );
     }
-    if (currentTime >= aiState.clinchGripUpTime) {
+    // ARM CLAMP (counter-grab): the CPU can't grip up while clamped — the grip
+    // is granted automatically when the clamp releases (grabActionSystem).
+    // Mirrors the human gate in socketHandlers.
+    if (currentTime >= aiState.clinchGripUpTime && !cpu.isArmClamped) {
       cpu.hasGrip = true;
       cpu.clinchAction = "neutral";
+      cpu.gripAcquiredTime = currentTime;
       aiState.clinchGripUpTime = 0;
     }
     return;
@@ -1622,9 +1645,13 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
   // lower-division CPU can only push/plant in the clinch.
   const canRequestAction = cpu.hasGrip && !cpu.clinchThrowActive &&
                            !cpu.clinchThrowCooldown && !cpu.clinchThrowRequest &&
-                           !cpu.isClinchClashing &&
+                           !cpu.isClinchClashing && !cpu.clinchThrowFailStagger &&
                            hasVerb("clinchThrow");
-  const canLand = opponentBalance <= CLINCH_THROW_LAND_THRESHOLD;
+  // Deep grip raises the CPU's landing window the same way the server resolves
+  // it — a CPU holding the deep grip converts its advantage into earlier throws.
+  const cpuLandThreshold = CLINCH_THROW_LAND_THRESHOLD +
+    (cpu.hasDeepGrip ? DEEP_GRIP_THROW_THRESHOLD_BONUS : 0);
+  const canLand = opponentBalance <= cpuLandThreshold;
   const canKill = opponentBalance < CLINCH_THROW_KILL_THRESHOLD;
 
   // Detect when CPU is the one pinned at the boundary (closer to edge than opponent)
@@ -1648,6 +1675,7 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
     !cpu.clinchThrowActive && !opponent.clinchThrowActive &&
     !cpu.isClinchClashing && !opponent.isClinchClashing &&
     !cpu.isClinchJolting && !cpu.isClinchJoltClashing &&
+    !cpu.clinchThrowFailStagger &&
     !cpu.isResistingThrow && !cpu.isResistingPull && !cpu.isBeingLifted &&
     !cpu.clinchBreakRequest && !cpu.isGrabBreaking && !cpu.isGrabBreakCountered &&
     !cpu.isGrabBreakSeparating
@@ -1770,7 +1798,7 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
                   cpu.hasGrip && !cpu.isClinchJolting && !cpu.clinchJoltRecovery &&
                   !cpu.clinchJoltCooldown && !cpu.clinchThrowActive && !cpu.isClinchClashing &&
                   !cpu.clinchJoltRequest && !cpu.isResistingThrow && !cpu.isResistingPull &&
-                  !cpu.isBeingLifted && cpuStamina >= 10;
+                  !cpu.isBeingLifted && !cpu.clinchThrowFailStagger && cpuStamina >= 10;
 
   if (canJolt && !aiState.clinchJoltPending && !aiState.clinchThrowPending && !cpu.clinchThrowRequest) {
     const joltCheckInterval = 1600;

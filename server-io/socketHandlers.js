@@ -1270,10 +1270,13 @@ function processInputPacket(room, player, data, io, rooms) {
   // isBeingGrabbed stays true (keeps position-lock and action blocking intact).
   // hasGrip is used CLIENT-SIDE to switch from being-grabbed to belt-grip animation.
   // The Mouse2 press that acquires grip is consumed — throw can't ride the same press.
+  // ARM CLAMP (counter-grab): the punished parrier cannot grip up manually —
+  // grip is granted automatically when the clamp releases (grabActionSystem).
   if (
     player.mouse2JustPressed &&
     player.isBeingGrabbed &&
     !player.hasGrip &&
+    !player.isArmClamped &&
     player.inClinch
   ) {
     player.hasGrip = true;
@@ -1287,7 +1290,8 @@ function processInputPacket(room, player, data, io, rooms) {
     !player.isClinchJolting && !player.clinchJoltRecovery && !player.clinchJoltCooldown &&
     !player.clinchThrowActive && !player.isClinchClashing &&
     !player.isResistingThrow && !player.isResistingPull && !player.isBeingLifted &&
-    !player.isClinchJoltClashing && !player.clinchJoltRequest
+    !player.isClinchJoltClashing && !player.clinchJoltRequest &&
+    !player.clinchThrowFailStagger
   ) {
     player.clinchJoltRequest = true;
     player.clinchJoltRequestTime = simNowForPlayer(player);
@@ -1302,6 +1306,7 @@ function processInputPacket(room, player, data, io, rooms) {
     !player.isGassed &&
     !player.clinchThrowActive && !player.isClinchClashing &&
     !player.isClinchJolting && !player.isClinchJoltClashing && !player.clinchJoltRecovery &&
+    !player.clinchThrowFailStagger &&
     !player.isResistingThrow && !player.isResistingPull && !player.isBeingLifted &&
     !player.clinchBreakRequest && !player.isGrabBreaking && !player.isGrabBreakCountered &&
     !player.isGrabBreakSeparating
@@ -1324,7 +1329,7 @@ function processInputPacket(room, player, data, io, rooms) {
     player.keys.mouse2 && player.hasGrip && player.inClinch &&
     !gripTooRecent &&
     !player.clinchThrowActive && !player.clinchThrowCooldown && !player.isClinchClashing &&
-    !player.clinchThrowRequest &&
+    !player.clinchThrowRequest && !player.clinchThrowFailStagger &&
     !player.isResistingThrow && !player.isResistingPull && !player.isBeingLifted
   ) {
     const otherPlayer = room.players.find((p) => p.id !== player.id);
