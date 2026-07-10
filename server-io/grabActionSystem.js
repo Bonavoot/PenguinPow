@@ -1522,6 +1522,8 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
         throwerId: actor.id,
         victimX: target.x,
         hitstopMs: 0,
+        durationMs: throwDuration,
+        throwDir,
       });
     }
     if (hitstopMs > 0) triggerHitstopAndEmit(io, room, hitstopMs, "clinch_throw");

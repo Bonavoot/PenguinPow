@@ -20,7 +20,7 @@ const ALWAYS_SEND_PROPS = ['x', 'y', 'facing', 'stamina', 'balance', 'id', 'figh
 
 const DELTA_TRACKED_PROPS = [
   'isAttacking', 'isSlapAttack', 'isPalmThrust', 'palmThrustFxId', 'slapAnimation', 'attackType',
-  'isChargingAttack', 'chargeAttackPower', 'chargeStartTime',
+  'isChargingAttack', 'chargeAttackPower', 'chargeStartTime', 'pendingChargeAttack',
   'isBurstKnockback',
   'isGrabbing', 'isBeingGrabbed', 'grabbedOpponent', 'grabState', 'grabAttemptType',
   'isGrabbingMovement', 'isWhiffingGrab', 'isGrabWhiffRecovery', 'isGrabTeching', 'grabTechRole', 'isGrabStartup',
@@ -241,15 +241,21 @@ const SLAP_ONHIT_ATTACKER_PUSH = 1.0;
 const CHARGED_STARTUP_MS = 150;   // Clear windup (unchanged)
 const CHARGED_ACTIVE_MS = 120;    // Hitbox live window
 
-// ── OPEN-PALM THRUST (back + mouse1) ────────────────────────────────────────
-// A rooted, single-hit "hold your ground" strike. Rides the charged
-// hit-resolution path (attackType "charged" + isPalmThrust flag) as a
-// fixed-power mini-charge, but takes NO forward lunge. Fast startup, weak-
-// charged power, and a long whiff recovery make it the committal spacing /
-// edge-finishing counterpart to the advancing slap string. Think Feng b+1:
-// snappy, rewarding on a read, but you eat a punish if it whiffs.
+// ── OPEN-PALM THRUST (back + mouse1, chargeable) ────────────────────────────
+// A rooted, single-hit "hold your ground" strike. Hold BACK+mouse1 to charge
+// (same shake + 0→100% over CHARGE_FULL_POWER_MS as the headbutt), release to
+// fire. Quick taps (< PALM_THRUST_CHARGE_THRESHOLD_MS) keep the old snappy
+// press→hitbox timing via startup credit and fire at PALM_THRUST_POWER.
+// Rides the charged hit-resolution path (attackType "charged" + isPalmThrust)
+// for priority/hitstop/KB multiplier, but takes NO forward lunge. Knockback
+// magnitude uses the same 0.45+charge^1.3 curve as charged attack; delivery
+// stays slap3-burst + rope-clamp (no midscreen cinematic KO).
 const PALM_THRUST_STARTUP_MS = 90;         // Fast windup (~5-6 frames)
 const PALM_THRUST_ACTIVE_MS = 90;          // Single clean hit window (hitbox live)
+// Hold shorter than this = "tap": fires at PALM_THRUST_POWER with startup
+// credited by hold duration so press→active stays ~PALM_THRUST_STARTUP_MS
+// (same as the old instant-on-press feel). Hold longer = real charge.
+const PALM_THRUST_CHARGE_THRESHOLD_MS = 150;
 // Visual "hold": the strike pose lingers after the active frames, but this is
 // REAL recovery — no hitbox, the player can't act, and they ARE punishable. It
 // just renders as the attack pose (slapAttack1) instead of the recovery pose,
@@ -259,20 +265,12 @@ const PALM_THRUST_HOLD_MS = 260;
 // its strike sprite for the full whiff punish window instead.
 const PALM_THRUST_END_RECOVERY_MS = 60;
 const PALM_THRUST_HIT_RECOVERY_MS = 200;   // Settle on a confirmed hit
-// Fixed "charge %" used ONLY for the palm's priority + hitstop, NOT its
-// knockback: 35 sits ABOVE CHARGE_PRIORITY_THRESHOLD (30) so the thrust beats a
-// slap on a simultaneous trade, and it scales the connect hitstop. The actual
-// shove is a fixed burst impulse (PALM_THRUST_KB_VELOCITY below) via the slap3
-// burst model — the palm does NOT run the 0.45+charge^1.3 charged formula.
+// Default charge % when the thrust is fired without a charge hold (CPU / legacy
+// callers). 35 sits ABOVE CHARGE_PRIORITY_THRESHOLD (30) so an uncharged-path
+// thrust still beats a slap on a simultaneous trade.
 const PALM_THRUST_POWER = 35;
-// Heavy single-hit knockback. The palm's identity is "one committed thrust worth
-// a slap-string ENDER without needing to confirm all 3 hits" — the reward for a
-// slower, rooted, punishable, grab-losable read. Delivered via the slap3 burst
-// model (smooth ICE_COAST slide + rope clamp), so it's directly comparable to
-// the finisher: tuned to the STANDARD (sloppy/buffered) slap3 ender
-// (SLAP_HIT3_KB_VELOCITY_SLOPPY = 2.4), NOT the just-frame blue-spark 3.1, so a
-// clean slap finisher still carries a touch farther. This is the one dial for
-// the palm's shove — raise toward 3.1 to match a perfect ender instead.
+// Legacy dial — palm knockback now uses the charged formula
+// (2.7 * finalKnockbackMultiplier). Kept exported for reference / tuning notes.
 const PALM_THRUST_KB_VELOCITY = 2.4;
 const PALM_THRUST_STAMINA_COST = 6;        // Between slap (3) and charged (9)
 // Rooted (no lunge), so it needs a little more raw reach than the charged
@@ -879,10 +877,10 @@ const CLINCH_LIFT_TARGET_BALANCE_DRAIN = 8;      // Balance drain on target — 
 // ============================================
 
 // Kill Throw (Mouse2+W): High forward arc — launched above the screen, crashes down
-const CLINCH_KILL_THROW_ARC_HEIGHT = 1200;       // High above screen top (visible longer during rise/fall)
-const CLINCH_KILL_THROW_DURATION_MS = 2600;      // Slower pacing so rise/fall are readable
+const CLINCH_KILL_THROW_ARC_HEIGHT = 1000;       // High launch (clears screen) without a pure vertical spike
+const CLINCH_KILL_THROW_DURATION_MS = 1700;      // Overall snappy air time — keep the speed they liked
 const CLINCH_KILL_THROW_HITSTOP_MS = 300;        // Dramatic freeze before the big throw
-const CLINCH_KILL_THROW_DISTANCE = 260;          // Forward distance matching normal throw
+const CLINCH_KILL_THROW_DISTANCE = 300;          // Slightly more forward travel so the arc reads as a throw, not a pop-up
 
 // Normal Throw (Mouse2+W): Small forward arc — repositioning tool
 const CLINCH_THROW_BOUNDARY_MARGIN = 11;         // Stop margin from map edge (matches pull margin)
@@ -1169,6 +1167,7 @@ module.exports = {
   CHARGED_ACTIVE_MS,
   PALM_THRUST_STARTUP_MS,
   PALM_THRUST_ACTIVE_MS,
+  PALM_THRUST_CHARGE_THRESHOLD_MS,
   PALM_THRUST_HOLD_MS,
   PALM_THRUST_END_RECOVERY_MS,
   PALM_THRUST_HIT_RECOVERY_MS,

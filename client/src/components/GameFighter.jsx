@@ -39,6 +39,7 @@ import SumoGameAnnouncement from "./SumoGameAnnouncement";
 import {
   recolorImage,
   getCachedRecoloredImage,
+  preDecodeImage,
   BLUE_COLOR_RANGES,
   GREY_BODY_RANGES,
   SPRITE_BASE_COLOR,
@@ -62,6 +63,12 @@ import SnowEffect from "./SnowEffect";
 import "./theme.css";
 import { SERVER_BROADCAST_HZ, DOHYO_LEFT_BOUNDARY, DOHYO_RIGHT_BOUNDARY, isOutsideDohyo } from "../constants";
 import { SHADOW_GROUND_LEVEL } from "./PlayerShadow";
+// Kill-throw: swap to flat landing art this many px above GROUND_LEVEL so the
+// KO pose finishes the descent (avoids a hard cut on the impact frame).
+const KILL_THROW_LANDING_EARLY_PX = 80;
+// Must clear this height before early-landing can arm — blocks the pre-rise
+// grounded frames at throw start from looking like "near impact".
+const KILL_THROW_PEAK_ARM_PX = 400;
 import { getDisplayHitstopUntil, getEstimatedRtt } from "../lib/serverClock";
 import {
   MovementPredictor,
@@ -141,6 +148,7 @@ import {
   hit as hitSprite,
   bellyLaying as bellyLayingSprite,
   bellyLayingEyesOpen as bellyLayingEyesOpenSprite,
+  cinematicThrowKillLanding as cinematicThrowKillLandingSprite,
   grabbing as grabbingSprite,
   clinchPlanting as clinchPlantingSprite,
   beltGrabArm as beltGrabArmSprite,
@@ -739,6 +747,10 @@ const GameFighter = ({
   // loop watches for position-driven flips (ring-out slides) and forces a
   // re-render so all zIndex formulas update consistently.
   const lastRenderedOutsideRef = useRef(false);
+  // Kill-throw early landing pose: latch that the victim has gone high enough
+  // that a near-ground Y means "falling into impact" (not the pre-rise start).
+  const killThrowAirbornePeakRef = useRef(false);
+  const killThrowShowLandingRef = useRef(false);
   // Bumped by the rAF loop when a time-based visual (hit flash / hit tint /
   // idle sprite hold / dohyo-side flip) needs a re-render to update.
   const [, setVisualTick] = useState(0);
@@ -756,6 +768,8 @@ const GameFighter = ({
     isDodging: false,
     dodgeDirection: null,
     isChargingAttack: false,
+    pendingChargeAttack: null,
+    isPalmThrust: false,
     isRawParrying: false,
     isGrabbing: false,
     // ICE PHYSICS: Movement predictions for responsive feel
@@ -952,7 +966,26 @@ const GameFighter = ({
             predictedState.current = {
               ...predictedState.current,
               isChargingAttack: true,
+              pendingChargeAttack: action.chargeKind || "charged",
+              isPalmThrust: false,
               // CRITICAL: Clear other action predictions to prevent visual flicker
+              isSlapAttack: false,
+              isAttacking: false,
+              isDodging: false,
+              isRawParrying: false,
+              isGrabbing: false,
+              timestamp: now,
+            };
+            predictionChanged = true;
+          }
+          break;
+        case "palm_charge_start":
+          if (canPredictAction(gameStarted) && !isLocalParryActive()) {
+            predictedState.current = {
+              ...predictedState.current,
+              isChargingAttack: true,
+              pendingChargeAttack: "palmThrust",
+              isPalmThrust: false,
               isSlapAttack: false,
               isAttacking: false,
               isDodging: false,
@@ -974,11 +1007,16 @@ const GameFighter = ({
             // attack animation to show during dodge.
             const isDodging =
               penguin.isDodging || predictedState.current.isDodging;
+            const isPalmCharge =
+              (predictedState.current.pendingChargeAttack ||
+                penguin.pendingChargeAttack) === "palmThrust";
             predictedState.current = {
               ...predictedState.current,
               isChargingAttack: false,
+              pendingChargeAttack: null,
               // Only predict attack if NOT dodging - during dodge, server stores as pending
               isAttacking: !isDodging,
+              isPalmThrust: isPalmCharge && !isDodging,
               // CRITICAL: Clear other action predictions to prevent visual flicker
               isSlapAttack: false,
               // Don't clear dodge state - let dodge continue visually
@@ -1264,6 +1302,8 @@ const GameFighter = ({
         isDodging: false,
         dodgeDirection: null,
         isChargingAttack: false,
+        pendingChargeAttack: null,
+        isPalmThrust: false,
         isRawParrying: false,
         isGrabbing: false,
         isPowerSliding: keepPowerSlide ? true : false,
@@ -1305,6 +1345,7 @@ const GameFighter = ({
       predictionAge > 100
     ) {
       predictedState.current.isAttacking = false;
+      predictedState.current.isPalmThrust = false;
     }
 
     // Dodge: If server says no dodge, trust server
@@ -1315,6 +1356,18 @@ const GameFighter = ({
     // Charging: If server says no charging, trust server
     if (prediction.isChargingAttack && !penguin.isChargingAttack) {
       predictedState.current.isChargingAttack = false;
+      predictedState.current.pendingChargeAttack = null;
+    }
+
+    // Palm thrust: clear once server confirms, or drop stale prediction
+    if (prediction.isPalmThrust && penguin.isPalmThrust) {
+      predictedState.current.isPalmThrust = false;
+    } else if (
+      prediction.isPalmThrust &&
+      !penguin.isPalmThrust &&
+      predictionAge > 100
+    ) {
+      predictedState.current.isPalmThrust = false;
     }
 
     // Parrying: If server says no parrying, trust server
@@ -1361,7 +1414,8 @@ const GameFighter = ({
       !p.isRawParrying &&
       !p.isGrabbing &&
       !p.isPowerSliding &&
-      !p.isBraking
+      !p.isBraking &&
+      !p.isPalmThrust
     ) {
       // All predictions cleared, just return server state
       return penguin;
@@ -1377,6 +1431,9 @@ const GameFighter = ({
       isDodging: p.isDodging || penguin.isDodging,
       dodgeDirection: p.isDodging ? p.dodgeDirection : penguin.dodgeDirection,
       isChargingAttack: p.isChargingAttack || penguin.isChargingAttack,
+      pendingChargeAttack:
+        p.pendingChargeAttack || penguin.pendingChargeAttack || null,
+      isPalmThrust: p.isPalmThrust || penguin.isPalmThrust,
       isRawParrying: p.isRawParrying || penguin.isRawParrying,
       isGrabbing: p.isGrabbing || penguin.isGrabbing,
       // ICE PHYSICS: Movement predictions
@@ -1409,6 +1466,8 @@ const GameFighter = ({
       merged.isSlapAttack = penguin.isSlapAttack;
       merged.isAttacking = penguin.isAttacking;
       merged.isChargingAttack = penguin.isChargingAttack;
+      merged.pendingChargeAttack = penguin.pendingChargeAttack;
+      merged.isPalmThrust = penguin.isPalmThrust;
       merged.isGrabbing = penguin.isGrabbing;
     } else if (merged.isRawParrying) {
       // Predicted parry — drop it if the server has committed to another action.
@@ -1869,6 +1928,28 @@ const GameFighter = ({
         ) {
           forceVisualRender();
         }
+
+        // Kill-throw early landing pose: once the victim has peaked, crossing
+        // near-ground swaps hit+spin → flat landing art before impact.
+        if (p.isClinchKillThrowVictim) {
+          if (newPos.y > SHADOW_GROUND_LEVEL + KILL_THROW_PEAK_ARM_PX) {
+            killThrowAirbornePeakRef.current = true;
+          }
+          const showLanding =
+            !p.isBeingThrown ||
+            (killThrowAirbornePeakRef.current &&
+              newPos.y <= SHADOW_GROUND_LEVEL + KILL_THROW_LANDING_EARLY_PX);
+          if (showLanding !== killThrowShowLandingRef.current) {
+            killThrowShowLandingRef.current = showLanding;
+            forceVisualRender();
+          }
+        } else if (
+          killThrowAirbornePeakRef.current ||
+          killThrowShowLandingRef.current
+        ) {
+          killThrowAirbornePeakRef.current = false;
+          killThrowShowLandingRef.current = false;
+        }
       }
 
       // Time-based visual windows (hit flash / hit tint / idle sprite hold /
@@ -2293,6 +2374,7 @@ const GameFighter = ({
           prev.isBeingThrown !== newState.isBeingThrown ||
           prev.isRawParrying !== newState.isRawParrying ||
           prev.isChargingAttack !== newState.isChargingAttack ||
+          prev.pendingChargeAttack !== newState.pendingChargeAttack ||
           prev.isBraking !== newState.isBraking ||
           prev.isPowerSliding !== newState.isPowerSliding ||
           prev.facing !== newState.facing ||
@@ -3059,6 +3141,8 @@ const GameFighter = ({
         isDodging: false,
         dodgeDirection: null,
         isChargingAttack: false,
+        pendingChargeAttack: null,
+        isPalmThrust: false,
         isRawParrying: false,
         isGrabbing: false,
         isPowerSliding: false,
@@ -3101,6 +3185,8 @@ const GameFighter = ({
         isDodging: false,
         dodgeDirection: null,
         isChargingAttack: false,
+        pendingChargeAttack: null,
+        isPalmThrust: false,
         isRawParrying: false,
         isGrabbing: false,
         isPowerSliding: false,
@@ -3694,19 +3780,47 @@ const GameFighter = ({
   // Rise trail + launch sound are handled via the "clinch_kill_throw" socket event.
   const wasBeingThrown = useRef(false);
   useEffect(() => {
+    let echoId = null;
     if (wasBeingThrown.current && !penguin.isBeingThrown) {
       const landX = interpolatedPositionRef.current.x || penguin.x;
       if (penguin.isClinchKillThrowVictim) {
         const outsideDohyo = landX <= DOHYO_LEFT_BOUNDARY || landX >= DOHYO_RIGHT_BOUNDARY;
-        const groundY = outsideDohyo ? penguin.y + 10 : penguin.y + 30;
-        emitParticles("clinchKillThrowLand", { x: landX, y: groundY, behindDohyo: outsideDohyo });
+        emitParticles("clinchKillThrowLand", {
+          x: landX,
+          y: penguin.y,
+          behindDohyo: outsideDohyo,
+        });
         playSound(chargedHit04, 0.09, null, 0.6, xToPan(landX));
+        // Aftershock — server already fired the main kill_throw_land boom;
+        // a delayed echo sells the comic "the ground is still ringing" beat.
+        echoId = setTimeout(() => {
+          addShake("kill_throw_land", { scale: 0.42 });
+        }, 95);
       } else {
         emitParticles("throwLand", { x: landX, y: penguin.y });
       }
     }
     wasBeingThrown.current = !!penguin.isBeingThrown;
+    return () => {
+      if (echoId) clearTimeout(echoId);
+    };
   }, [penguin.isBeingThrown, penguin.isClinchKillThrowVictim, penguin.x, penguin.y, emitParticles]);
+
+  // Warm the throw-kill landing pose as soon as the victim flag arms, so the
+  // mid-arc hit→landing src swap paints from an already-decoded bitmap instead
+  // of flashing a ghost of the previous pose while the new one decodes.
+  useEffect(() => {
+    if (!penguin.isClinchKillThrowVictim) return;
+    const info = getSpriteRenderInfo(
+      cinematicThrowKillLandingSprite,
+      false,
+      false,
+      false,
+      true,
+      false
+    );
+    if (info?.src) preDecodeImage(info.src);
+  }, [penguin.isClinchKillThrowVictim, getSpriteRenderInfo]);
 
   // Rope jump — angled liftoff plume on takeoff, smoke puff on touchdown.
   const prevRopeJumpPhase = useRef(null);
@@ -4543,6 +4657,8 @@ const GameFighter = ({
   // Tracks the cinematic-kill smoke-trail rAF so it can be cancelled on unmount
   // / round change (the trail is a distance-based rAF loop, not a setInterval).
   const cinematicTrailRafRef = useRef(null);
+  // Same pattern for clinch kill-throw descent smoke.
+  const killThrowTrailRafRef = useRef(null);
 
   // Add screen shake, thick blubber absorption, and danger zone event listeners
   // MEMORY FIX: Track timeouts so we can clear them on unmount (prevents setState after unmount)
@@ -4720,6 +4836,65 @@ const GameFighter = ({
         playSound(chargeAttackLaunchSound, 0.18, null, 1.4, xToPan(launchX));
       }, hitstopDelay);
       pendingTimeouts.push(soundId);
+
+      // Descent smoke trail — distance-based rAF (same gap-proof pattern as
+      // cinematicKillTrail). Starts after launch, denser spacing on the way down.
+      if (killThrowTrailRafRef.current) {
+        cancelAnimationFrame(killThrowTrailRafRef.current);
+        killThrowTrailRafRef.current = null;
+      }
+      const throwDir = data.throwDir || penguin.facing || 1;
+      const trailDuration = Math.max(900, (data.durationMs || 1700) + 80);
+      const SPACING = 28;
+      const MAX_FILL = 6;
+      const trailStartId = setTimeout(() => {
+        const startedAt = performance.now();
+        let last = null;
+        const step = (now) => {
+          if (now - startedAt > trailDuration) {
+            killThrowTrailRafRef.current = null;
+            return;
+          }
+          const pos = interpolatedPositionRef.current;
+          if (pos && typeof pos.x === "number") {
+            const py = pos.y ?? 290;
+            if (!last) {
+              last = { x: pos.x, y: py };
+              emitParticles("clinchKillThrowTrail", {
+                x: last.x,
+                y: last.y,
+                direction: throwDir,
+                ascending: true,
+              });
+            } else {
+              let dx = pos.x - last.x;
+              let dy = py - last.y;
+              let dist = Math.hypot(dx, dy);
+              let fills = 0;
+              while (dist >= SPACING && fills < MAX_FILL) {
+                const t = SPACING / dist;
+                const nextY = last.y + dy * t;
+                const segAscending = nextY > last.y + 0.5;
+                last = { x: last.x + dx * t, y: nextY };
+                emitParticles("clinchKillThrowTrail", {
+                  x: last.x,
+                  y: last.y,
+                  direction: throwDir,
+                  ascending: segAscending,
+                });
+                dx = pos.x - last.x;
+                dy = py - last.y;
+                dist = Math.hypot(dx, dy);
+                fills++;
+              }
+              if (fills >= MAX_FILL) last = { x: pos.x, y: py };
+            }
+          }
+          killThrowTrailRafRef.current = requestAnimationFrame(step);
+        };
+        killThrowTrailRafRef.current = requestAnimationFrame(step);
+      }, hitstopDelay);
+      pendingTimeouts.push(trailStartId);
     };
     socket.on("clinch_kill_throw", handleClinchKillThrow);
 
@@ -4817,6 +4992,10 @@ const GameFighter = ({
         cancelAnimationFrame(cinematicTrailRafRef.current);
         cinematicTrailRafRef.current = null;
       }
+      if (killThrowTrailRafRef.current) {
+        cancelAnimationFrame(killThrowTrailRafRef.current);
+        killThrowTrailRafRef.current = null;
+      }
       // Safety net: if this effect tears down mid-cinematic (unmount / round
       // change) the scheduled unfreeze timeout above is cleared, so make sure
       // the engine never gets stranded in its frozen state.
@@ -4873,6 +5052,20 @@ const GameFighter = ({
     displayPosition.x,
     displayPosition.y
   );
+
+  // Kill-throw landing pose: after peaking, swap early (near ground) so the
+  // flat KO art finishes the fall instead of hard-cutting on impact.
+  if (!penguin.isClinchKillThrowVictim) {
+    killThrowAirbornePeakRef.current = false;
+  } else if (displayPosition.y > SHADOW_GROUND_LEVEL + KILL_THROW_PEAK_ARM_PX) {
+    killThrowAirbornePeakRef.current = true;
+  }
+  const showClinchKillThrowLanding =
+    !!penguin.isClinchKillThrowVictim &&
+    (!penguin.isBeingThrown ||
+      (killThrowAirbornePeakRef.current &&
+        displayPosition.y <= SHADOW_GROUND_LEVEL + KILL_THROW_LANDING_EARLY_PX));
+  killThrowShowLandingRef.current = showClinchKillThrowLanding;
 
   // ============================================
   // SPRITE RECOLORING
@@ -5032,7 +5225,10 @@ const GameFighter = ({
     flapFrame,
     flapUseDodgePose,
     displayPenguin.isPalmThrust,
-    palmThrustFrame
+    palmThrustFrame,
+    displayPenguin.pendingChargeAttack || penguin.pendingChargeAttack || null,
+    // Aerial hit+spin only while thrown AND not yet in the early-landing window.
+    penguin.isBeingThrown && !showClinchKillThrowLanding
   );
 
   // Dash frames: the dodge now has real anticipation + landing poses.
@@ -5170,13 +5366,16 @@ const GameFighter = ({
   // that would return a 3-frame strip, while still applying recoloring). The white
   // impact flash still applies here — being on the receiving end of a cinematic
   // kill is exactly when a sharp impact-snap reads strongest.
-  //   • Throw kill → the hit APNG (spinning faceplant arc).
+  //   • Throw kill (high air) → hit pose + CSS spin during the crash arc.
+  //   • Throw kill (near ground / landed) → flat landing art finishes the fall.
   //   • Pull kill  → belly-laying pose: eyes open during the slide, eyes closed
   //     once the bow phase starts.
   const killVictimSprite = penguin.isClinchKillPullVictim
     ? penguin.isBowing
       ? bellyLayingSprite
       : bellyLayingEyesOpenSprite
+    : showClinchKillThrowLanding
+    ? cinematicThrowKillLandingSprite
     : hitSprite;
   const {
     src: recoloredSpriteSrc,
@@ -5210,6 +5409,10 @@ const GameFighter = ({
   // until the next decodes → no blank), exactly like the tint-change handling.
   const baseSpriteSrc = spriteConfig
     ? spriteConfig.spritesheet
+    : penguin.isClinchKillThrowVictim
+    // Stable across hit→landing pose swap so the <img> does NOT remount mid-arc
+    // (remount + decode = the translucent "ghost penguin" in the smoke trail).
+    ? "clinch-kill-throw-victim"
     : isKillVictim
     ? killVictimSprite
     : displayPenguin.isPalmThrust
@@ -5306,6 +5509,8 @@ const GameFighter = ({
     $grabCooldown: penguin.grabCooldown,
     $isChargingAttack: displayPenguin.isChargingAttack,
     $chargeAttackPower: penguin.chargeAttackPower || 0,
+    $pendingChargeAttack:
+      displayPenguin.pendingChargeAttack || penguin.pendingChargeAttack || null,
     $chargingFacingDirection: penguin.chargingFacingDirection,
     $saltCooldown: penguin.saltCooldown,
     $grabStartTime: penguin.grabStartTime,
@@ -5360,6 +5565,7 @@ const GameFighter = ({
     $attackerConfirmTier: attackerConfirmTier,
     $isClinchKillThrowVictim: penguin.isClinchKillThrowVictim,
     $isClinchKillPullVictim: penguin.isClinchKillPullVictim,
+    $showClinchKillThrowLanding: showClinchKillThrowLanding,
     $isBeingThrown: penguin.isBeingThrown,
     $isLocalPlayer: penguin.id === localId,
   };
@@ -5605,8 +5811,10 @@ const GameFighter = ({
           (scene, below the dohyo) while this fighter is outside the ring so it
           sinks behind the platform instead of floating over it. It already
           flips its own z-index to 0 when outside (PlayerShadow), so once it's
-          back in the scene that 0 lands below the dohyo's z:1. */}
-      {(() => {
+          back in the scene that 0 lands below the dohyo's z:1.
+          Hidden only after throw-kill impact (not the early mid-air pose swap):
+          a foot-shadow under the prone sprite reads as floating. */}
+      {!(penguin.isClinchKillThrowVictim && !penguin.isBeingThrown) && (() => {
         const shadowNode = (
           <PlayerShadow
             ref={shadowDomRef}

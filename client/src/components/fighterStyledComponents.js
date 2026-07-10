@@ -134,6 +134,13 @@ export const getFighterPopFilter = (props) => {
   const ground = "drop-shadow(0 2px clamp(1px, 0.12cqw, 3px) rgba(0, 0, 0, 0.45))";
   const base = `${edge} ${ground}`;
 
+  // Kill-throw victim: skip the soft ground drop-shadow. On a spinning / prone
+  // body it reads as a second translucent penguin (the "ghost frame" in the
+  // crash trail). Keep only the tight edge cut so they still separate from BG.
+  if (props.$isClinchKillThrowVictim) {
+    return edge;
+  }
+
   if (props.$isAtTheRopes) {
     return `${base} drop-shadow(0 0 8px rgba(255, 50, 50, 0.7))`;
   }
@@ -373,7 +380,15 @@ export const StyledImage = styled("img")
         props.$isClinchJolting,
         props.$isBeingClinchJolted,
         props.$isClinchJoltClashing,
-        props.$clinchJoltRecovery
+        props.$clinchJoltRecovery,
+        undefined, // isFlapping
+        undefined, // flapPhase
+        undefined, // flapFrame
+        undefined, // flapUseDodgePose
+        undefined, // isPalmThrust
+        2, // palmThrustFrame
+        props.$pendingChargeAttack,
+        props.$isBeingThrown && !props.$showClinchKillThrowLanding
       ),
     style: {
       position: "absolute",
@@ -392,13 +407,16 @@ export const StyledImage = styled("img")
           ? props.$facing === 1
             ? "scaleX(1) scaleY(0.95)"
             : "scaleX(-1) scaleY(0.95)"
-          // Belly-laying pull-kill image: oriented to the victim's preserved facing.
-          // The translateY nudge pushes the body down onto the ice (the image has
-          // padding below the penguin, which otherwise leaves it floating).
+          // Pull-kill belly-laying: small nudge onto the ice.
           : props.$isClinchKillPullVictim
           ? props.$facing === 1
             ? "scaleX(1) translateY(5%)"
             : "scaleX(-1) translateY(5%)"
+          // Throw-kill landing art has more bottom padding — push further down.
+          : props.$showClinchKillThrowLanding
+          ? props.$facing === 1
+            ? "scaleX(1) translateY(10%)"
+            : "scaleX(-1) translateY(10%)"
           // $grabArmNudgeXPct / $grabArmNudgeYPct: planting-pose nudge for the
           // grab-arm overlay only. translateX is in the sprite's LOCAL space
           // (applied before the scaleX flip), so the SAME X value shifts each
@@ -431,8 +449,15 @@ export const StyledImage = styled("img")
       // The body already renders the whole penguin's outline + ground shadow, so
       // the arm (an interior piece) must stay filter-less for a seamless blend.
       filter: props.$grabArmLayer ? "none" : getFighterPopFilter(props),
+      // Kill-throw spin only while airborne (pre-landing pose). On true impact
+      // (!isBeingThrown) play a heavy ground-plant squash — dead weight into the
+      // ice with a short jiggle settle, no bounce arc.
       animation: props.$isClinchKillThrowVictim
-        ? "clinchKillThrowSpin 1.2s ease-in forwards"
+        ? props.$showClinchKillThrowLanding
+          ? props.$isBeingThrown
+            ? "none"
+            : "clinchKillThrowLandSquash 0.58s cubic-bezier(0.22, 0.55, 0.3, 1) forwards"
+          : "clinchKillThrowSpin 0.9s ease-in forwards"
         : props.$isClinchKillPullVictim
         // Pull kill uses the belly-laying pose (already a flat-on-ice image) and
         // the server drives the heavy bounce/slide via Y position — so no CSS
@@ -549,11 +574,15 @@ export const StyledImage = styled("img")
           ? "min(11.56%, 356px)"
           : "min(12.30%, 379px)",
       height: "auto",
-      willChange: "transform",
+      // Kill-throw promotes/demotes layers hard (spin → landing). Leaving
+      // will-change:transform on promotes a compositor layer that can smear a
+      // translucent "ghost" of the old pose into the smoke trail.
+      willChange: props.$isClinchKillThrowVictim ? "auto" : "transform",
       pointerEvents: "none",
-      transformOrigin: props.$isClinchKillThrowVictim
-        ? "center center"
-        : "center bottom",
+      transformOrigin:
+        props.$isClinchKillThrowVictim && !props.$showClinchKillThrowLanding
+          ? "center center"
+          : "center bottom",
       transition: "none",
     },
   }))`
@@ -792,6 +821,16 @@ export const StyledImage = styled("img")
     0% { transform: scaleX(var(--facing, 1)) rotate(0deg); transform-origin: center center; }
     30% { transform: scaleX(var(--facing, 1)) rotate(30deg); transform-origin: center center; }
     100% { transform: scaleX(var(--facing, 1)) rotate(90deg); transform-origin: center center; }
+  }
+  /* Heavy body-slam plant: flatten into the ice, then a short dead-weight
+     jiggle settle. translateY stays planted (rest pose is 10%) — no hop. */
+  @keyframes clinchKillThrowLandSquash {
+    0%   { transform: scaleX(calc(var(--facing, 1) * 1.28)) scaleY(0.55) translateY(18%); transform-origin: center bottom; }
+    18%  { transform: scaleX(calc(var(--facing, 1) * 1.12)) scaleY(0.78) translateY(13%); transform-origin: center bottom; }
+    36%  { transform: scaleX(calc(var(--facing, 1) * 0.96)) scaleY(1.04) translateY(9.5%); transform-origin: center bottom; }
+    52%  { transform: scaleX(calc(var(--facing, 1) * 1.05)) scaleY(0.94) translateY(11%); transform-origin: center bottom; }
+    70%  { transform: scaleX(calc(var(--facing, 1) * 0.98)) scaleY(1.02) translateY(9.8%); transform-origin: center bottom; }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(10%); transform-origin: center bottom; }
   }
 `;
 

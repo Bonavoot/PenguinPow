@@ -454,20 +454,24 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
         let shakeRot = 0;
         if (shakeState.trauma > TRAUMA_STOP) {
           const amt = shakeState.trauma * shakeState.trauma; // perceptual curve
+          const amp = shakeState.amp || 1;
           const phase = (shakeClockRef.current / 1000) * SHAKE_FREQ_HZ;
           const nx = valueNoise(phase);
           const ny = valueNoise(phase + 37.3); // decorrelated channel
           const nr = valueNoise(phase + 71.7); // decorrelated roll channel
           const dir = shakeState.dirX * SHAKE_DIR_BIAS;
-          shakeX = (dir + nx * (1 - SHAKE_DIR_BIAS)) * amt * SHAKE_MAX_OFFSET_X;
-          shakeY = ny * amt * SHAKE_MAX_OFFSET_Y;
+          shakeX = (dir + nx * (1 - SHAKE_DIR_BIAS)) * amt * SHAKE_MAX_OFFSET_X * amp;
+          shakeY = ny * amt * SHAKE_MAX_OFFSET_Y * amp;
           shakeRot = nr * amt * shakeState.rot;
+          // Comic body-slam rumble decays slower so the hit "stays" a beat.
+          const decay =
+            amp > 1.2 ? TRAUMA_DECAY * 0.62 : TRAUMA_DECAY;
           // Time-based linear trauma decay (frame-rate independent). Paused
           // during the perfect-parry freeze so the shake "sticks" then releases.
           if (!frozen) {
             shakeState.trauma = Math.max(
               0,
-              shakeState.trauma - TRAUMA_DECAY * (dtMs / 1000),
+              shakeState.trauma - decay * (dtMs / 1000),
             );
           }
         } else {

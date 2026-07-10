@@ -28,6 +28,7 @@ import {
   hit,
   bellyLaying,
   bellyLayingEyesOpen,
+  cinematicThrowKillLanding,
   snowballThrow,
   beingGrabbed,
   atTheRopes,
@@ -124,13 +125,23 @@ const getImageSrc = (
   //   0 = startup (windup)   1 = smear (whoosh)
   //   2 = active strike      3 = recovery (reuses the startup pose)
   isPalmThrust,
-  palmThrustFrame = 2
+  palmThrustFrame = 2,
+  // Which charge is active while isChargingAttack: "palmThrust" holds the palm
+  // startup pose + shake; anything else uses the generic charged crouch pose.
+  pendingChargeAttack = null,
+  // Kill-throw flight vs grounded: spin uses `hit` high in the air; flat
+  // landing art takes over near the ground (and stays after isBeingThrown clears).
+  isBeingThrown = false
 ) => {
   if (ritualAnimationSrc) {
     return ritualAnimationSrc;
   }
 
-  if (isClinchKillThrowVictim) return hit;
+  if (isClinchKillThrowVictim) {
+    // isBeingThrown here means "still in aerial hit+spin pose" — GameFighter
+    // clears it once the early-landing window arms.
+    return isBeingThrown ? hit : cinematicThrowKillLanding;
+  }
   // Pull kill: eyes open during the slide, then eyes closed once the bow phase begins.
   if (isClinchKillPullVictim) return isBowing ? bellyLaying : bellyLayingEyesOpen;
   if (isAttemptingPull) return attemptingPull;
@@ -194,6 +205,8 @@ const getImageSrc = (
     if (palmThrustFrame === 3) return palmThrustStartup;
     return palmThrust;
   }
+  // Palm charge hold: same shake as charged attack, but the palm startup pose.
+  if (isChargingAttack && pendingChargeAttack === "palmThrust") return palmThrustStartup;
   if (isChargingAttack) return recovering;
   if (isRecovering) return recovering;
   if (isThrowingSnowball) return snowballThrow;

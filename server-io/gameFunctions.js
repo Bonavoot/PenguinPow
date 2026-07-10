@@ -20,6 +20,7 @@ const {
   getSidestepInitData,
   shouldRestartCharging,
   startCharging,
+  startPalmThrustCharging,
   lagCompensatedParryStart,
   beginFlapStartup,
 } = require("./gameUtils");
@@ -59,6 +60,7 @@ const {
   CHARGED_ACTIVE_MS,
   PALM_THRUST_STARTUP_MS,
   PALM_THRUST_ACTIVE_MS,
+  PALM_THRUST_CHARGE_THRESHOLD_MS,
   PALM_THRUST_HOLD_MS,
   PALM_THRUST_END_RECOVERY_MS,
   PALM_THRUST_HIT_RECOVERY_MS,
@@ -942,16 +944,22 @@ function executeSlapAttack(player, rooms) {
 }
 
 // OPEN-PALM THRUST (back + mouse1) — a rooted, single-hit counterpart to the
-// advancing slap string. It rides the charged hit-resolution path (attackType
-// "charged" + isPalmThrust flag) as a fixed-power mini-charge, so it inherits
-// all the battle-tested charged knockback/trade/parry logic for free, but:
+// advancing slap string. Charge with BACK+mouse1 (same power curve as the
+// headbutt), release to fire. Rides the charged hit-resolution path
+// (attackType "charged" + isPalmThrust) so it inherits charged priority /
+// hitstop / KB multiplier math, but:
 //   • takes NO forward lunge (the lunge block in index.js is gated on
 //     !isPalmThrust) — the player holds their ground,
 //   • uses its own fast startup / long whiff-recovery frame data, and
-//   • deals a fixed "weak charged" knockback (PALM_THRUST_POWER).
+//   • delivers knockback via the slap3 burst + rope-clamp model (no midscreen
+//     cinematic KO), scaled by the same 0.45+charge^1.3 multiplier.
 // The whiff recovery (safelyEndChargedAttack) and connected-hit recovery
 // (processHit) both branch on isPalmThrust for their palm-specific values.
-function executePalmThrust(player, rooms) {
+// chargePercentage: 0–100 from the charge hold; defaults to PALM_THRUST_POWER
+// for CPU / buffered callers that fire without a charge session.
+// options.startupCreditMs: subtract from startup (used for quick taps so
+// press→hitbox stays ~PALM_THRUST_STARTUP_MS despite firing on release).
+function executePalmThrust(player, rooms, chargePercentage = PALM_THRUST_POWER, options = {}) {
   // Same central guards as the slap: never fire during a win cinematic or
   // mid-flap (a buffered click must not resolve into a stray thrust).
   const ownerRoom = rooms && rooms.find((room) => room.players.some((p) => p.id === player.id));
@@ -973,6 +981,8 @@ function executePalmThrust(player, rooms) {
   clearChargeState(player);
 
   const now = simNowForPlayer(player);
+  const startupCreditMs = Math.max(0, options.startupCreditMs || 0);
+  const startupMs = Math.max(0, PALM_THRUST_STARTUP_MS - startupCreditMs);
 
   // Auto-correct facing toward the opponent, then lock it for the move so the
   // thrust always fires the correct way even if inputs jitter.
@@ -997,13 +1007,14 @@ function executePalmThrust(player, rooms) {
 
   player.stamina = Math.max(0, player.stamina - PALM_THRUST_STAMINA_COST);
 
-  // Rides the charged resolution path with a fixed power.
+  // Rides the charged resolution path with charge-scaled power.
   player.attackType = "charged";
   player.isPalmThrust = true;
   player.isSlapAttack = false;
   player.isChargingAttack = false;
   player.chargeStartTime = 0;
-  player.chargeAttackPower = PALM_THRUST_POWER;
+  player.pendingChargeAttack = null;
+  player.chargeAttackPower = Math.max(1, Math.min(100, chargePercentage));
   player.chargedAttackHit = false;
 
   player.isAttacking = true;
@@ -1016,7 +1027,7 @@ function executePalmThrust(player, rooms) {
   // client "a NEW thrust fired" — one force-cone per execution, always.
   player.palmThrustFxId = (player.palmThrustFxId || 0) + 1;
 
-  const activeWindowEnd = now + PALM_THRUST_STARTUP_MS + PALM_THRUST_ACTIVE_MS;
+  const activeWindowEnd = now + startupMs + PALM_THRUST_ACTIVE_MS;
   player.attackEndTime = activeWindowEnd;
   player.chargedActiveEndTime = activeWindowEnd;
   // Strike pose through active + recovery — only safelyEndChargedAttack (and
@@ -1026,21 +1037,25 @@ function executePalmThrust(player, rooms) {
   player.palmThrustVisualUntil = activeWindowEnd;
 
   // Startup telegraph — no hitbox until it ends (checkCollision gates on this).
-  player.isInStartupFrames = true;
-  player.startupEndTime = now + PALM_THRUST_STARTUP_MS;
-  setPlayerTimeout(
-    player.id,
-    () => {
-      player.isInStartupFrames = false;
-    },
-    PALM_THRUST_STARTUP_MS,
-    "palmThrustStartupEnd"
-  );
+  // Quick taps credit hold time so press→active ≈ the old instant-on-press timing.
+  if (startupMs > 0) {
+    player.isInStartupFrames = true;
+    player.startupEndTime = now + startupMs;
+    setPlayerTimeout(
+      player.id,
+      () => {
+        player.isInStartupFrames = false;
+      },
+      startupMs,
+      "palmThrustStartupEnd"
+    );
+  } else {
+    player.isInStartupFrames = false;
+    player.startupEndTime = now;
+  }
 
-  // Render as the generic charged "attack" pose (placeholder until a dedicated
-  // animation exists) and lock the action through startup for readability.
   player.currentAction = "charged";
-  player.actionLockUntil = now + PALM_THRUST_STARTUP_MS;
+  player.actionLockUntil = now + startupMs;
 }
 
 function cleanupRoom(room) {
@@ -1899,7 +1914,7 @@ function activateBufferedInputAfterGrab(player, rooms) {
     return;
   }
 
-  // Priority 3: Mouse1 held — S+forward = charged, back = palm thrust, else slap
+  // Priority 3: Mouse1 held — S+forward = charged, back = palm thrust charge, else slap
   if (player.keys.mouse1) {
     player.mouse1PressTime = simNowForPlayer(player);
     const fwdKey = player.facing === -1 ? 'd' : 'a';
@@ -1907,7 +1922,7 @@ function activateBufferedInputAfterGrab(player, rooms) {
     if (player.keys.s && player.keys[fwdKey] && canPlayerSlap(player, { ignoreCooldown: true })) {
       player.chargeAttackPower = 0;
       player.chargeStartTime = 0;
-      startCharging(player);
+      startCharging(player, "charged");
       player.chargingFacingDirection = player.facing;
       player.movementVelocity = 0;
       player.isStrafing = false;
@@ -1918,7 +1933,7 @@ function activateBufferedInputAfterGrab(player, rooms) {
       player.isCrouchStance = false;
       player.isCrouchStrafing = false;
     } else if (player.keys[backKey] && !player.keys[fwdKey] && canPlayerSlap(player)) {
-      executePalmThrust(player, rooms);
+      startPalmThrustCharging(player);
     } else if (canPlayerSlap(player)) {
       executeSlapAttack(player, rooms);
     }
@@ -2054,10 +2069,15 @@ function executeInputBuffer(player, rooms) {
       break;
     }
     case "palmThrust": {
-      // Back + mouse1 buffered during a lock/recovery — fire the thrust the
-      // instant the player can act again (same gate as slap).
+      // Back + mouse1 buffered during a lock/recovery — begin the palm charge
+      // the instant the player can act again (same gate as slap). If mouse1 is
+      // no longer held, fire immediately at default power so the buffer isn't lost.
       if (canPlayerSlap(player)) {
-        executePalmThrust(player, rooms);
+        if (player.keys.mouse1) {
+          startPalmThrustCharging(player);
+        } else {
+          executePalmThrust(player, rooms);
+        }
         player.inputBuffer = null;
         return true;
       }
@@ -2102,7 +2122,7 @@ function executeInputBuffer(player, rooms) {
       if (canPlayerSlap(player, { ignoreCooldown: true })) {
         player.chargeAttackPower = 0;
         player.chargeStartTime = 0;
-        startCharging(player);
+        startCharging(player, "charged");
         player.chargingFacingDirection = player.facing;
         player.movementVelocity = 0;
         player.isStrafing = false;

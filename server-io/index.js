@@ -1564,21 +1564,22 @@ function tick(delta) {
             const hopHeight = arcProgress * 60;
             opponent.y = GROUND_LEVEL + hopHeight;
           } else if (player.isClinchKillThrow) {
-            // Piecewise cinematic arc: rise → brief hang off-screen → crash down
-            const RISE_END = 0.32;
-            const HANG_END = 0.40;
-            const KILL_LAND_OFFSET = 30;
+            // Ballistic-style arc (constant-g feel):
+            //   • Near-symmetric peak — rise and fall take similar time
+            //   • Quadratic on both sides — decelerate up, accelerate down
+            //   • No hang plateau / cubic whip (those read as a mid-air pause
+            //     then a teleport slam)
+            // Horizontal X stays linear with throwProgress = constant air speed.
+            const PEAK_AT = 0.48;
             const clampedProgress = Math.min(throwProgress, 1);
-            if (clampedProgress < RISE_END) {
-              const riseT = clampedProgress / RISE_END;
-              const eased = 1 - (1 - riseT) * (1 - riseT);
+            if (clampedProgress < PEAK_AT) {
+              const riseT = clampedProgress / PEAK_AT;
+              const eased = 1 - (1 - riseT) * (1 - riseT); // ease-out quad
               opponent.y = GROUND_LEVEL + eased * throwArcHeight;
-            } else if (clampedProgress < HANG_END) {
-              opponent.y = GROUND_LEVEL + throwArcHeight;
             } else {
-              const fallT = (clampedProgress - HANG_END) / (1 - HANG_END);
-              const eased = fallT * fallT;
-              opponent.y = GROUND_LEVEL + throwArcHeight * (1 - eased) - KILL_LAND_OFFSET * eased;
+              const fallT = (clampedProgress - PEAK_AT) / (1 - PEAK_AT);
+              const eased = fallT * fallT; // ease-in quad (same |g| family as rise)
+              opponent.y = GROUND_LEVEL + throwArcHeight * (1 - eased);
             }
           } else {
             opponent.y =
@@ -1593,7 +1594,7 @@ function tick(delta) {
             if (wasKillThrow) {
               handleWinCondition(room, opponent, player, io, "clinchKillThrow");
               opponent.isClinchKillThrowVictim = true;
-              emitThrottledScreenShake(room, io, { type: "kill_throw" });
+              emitThrottledScreenShake(room, io, { type: "kill_throw_land" });
               // No landing hitstop for kill throw: room + client hitstop freeze the
               // sim and pin interpolated Y for ~100ms, which reads as a hitch right
               // as the victim touches down. Screen shake + particles sell the impact.
@@ -1639,12 +1640,13 @@ function tick(delta) {
             // Set Y to correct ground level based on landing context
             const landedOutsideDohyo = opponent.x <= DOHYO_LEFT_BOUNDARY || opponent.x >= DOHYO_RIGHT_BOUNDARY;
             if (wasKillThrow) {
-              // Kill throw victim is rotated 90° — offset Y so visual center sits at ground
+              // Flat landing art sits on the ground — no -30 offset (that was for
+              // the old 90°-rotated hit placeholder).
               if (landedOutsideDohyo) {
-                opponent.y = GROUND_LEVEL - DOHYO_FALL_DEPTH - 30;
+                opponent.y = GROUND_LEVEL - DOHYO_FALL_DEPTH;
                 opponent.isFallingOffDohyo = true;
               } else {
-                opponent.y = GROUND_LEVEL - 30;
+                opponent.y = GROUND_LEVEL;
               }
             } else {
               if (landedOutsideDohyo) {

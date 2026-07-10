@@ -167,6 +167,8 @@ function createInitialPlayerState(overrides = {}) {
     chargeMaxDuration: 2000,
     chargeAttackPower: 0,
     chargingFacingDirection: null,
+    // "charged" | "palmThrust" | null — which move the current charge will release into
+    pendingChargeAttack: null,
     chargeCancelled: false,
     wantsToRestartCharge: false,
     mouse1HeldDuringAttack: false,

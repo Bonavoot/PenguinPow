@@ -394,16 +394,22 @@ const Game = ({
 
       // CLIENT-SIDE PREDICTION for gamepad inputs
       if (gamepadKeyState.mouse1 && !keyState.mouse1) {
-        if (gamepadKeyState.s && cp?.facing != null) {
+        if (cp?.facing != null) {
           const forwardKey = cp.facing === -1 ? 'd' : 'a';
-          if (gamepadKeyState[forwardKey]) {
+          const backKey = cp.facing === -1 ? 'a' : 'd';
+          if (gamepadKeyState.s && gamepadKeyState[forwardKey]) {
             applyPrediction("charge_start");
+          } else if (gamepadKeyState[backKey] && !gamepadKeyState[forwardKey]) {
+            applyPrediction("palm_charge_start");
           } else {
             applyPrediction("slap");
           }
         } else {
           applyPrediction("slap");
         }
+      }
+      if (!gamepadKeyState.mouse1 && keyState.mouse1) {
+        applyPrediction("charge_release");
       }
       if (gamepadKeyState.mouse2 && !keyState.mouse2) {
         applyPrediction("grab");
@@ -564,10 +570,13 @@ const Game = ({
         const wasPressed = keyState.mouse1;
         keyState.mouse1 = true;
         if (!wasPressed) pushEvent("mouse1", "down");
-        if (keyState.s && cp?.facing != null) {
+        if (cp?.facing != null) {
           const forwardKey = cp.facing === -1 ? 'd' : 'a';
-          if (keyState[forwardKey]) {
+          const backKey = cp.facing === -1 ? 'a' : 'd';
+          if (keyState.s && keyState[forwardKey]) {
             applyPrediction("charge_start");
+          } else if (keyState[backKey] && !keyState[forwardKey]) {
+            applyPrediction("palm_charge_start");
           } else {
             applyPrediction("slap");
           }

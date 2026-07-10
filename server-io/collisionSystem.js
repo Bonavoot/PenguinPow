@@ -48,7 +48,6 @@ const {
   CHARGED_STARTUP_MS,
   PALM_THRUST_HIT_RECOVERY_MS,
   PALM_THRUST_HITBOX_DISTANCE_VALUE,
-  PALM_THRUST_KB_VELOCITY,
   PALM_THRUST_ACTIVE_MS,
   GRAB_STARTUP_ARMOR_STAGGER_MS,
   FLAP_BODYSLAM_KB_VELOCITY,
@@ -1362,28 +1361,22 @@ function processHit(player, otherPlayer, rooms, io) {
         }
 
       } else if (player.isPalmThrust) {
-        // PALM THRUST: NOT a charged-style finisher. It borrows the slap
-        // string's 3rd-hit burst knockback (same velocity + rope-resistance
-        // clamp), so it can only ring a victim out if they were ALREADY within
-        // SLAP_KILL_RANGE of the boundary they're shoved toward. From mid-ring
-        // the rope catches them at the edge (clamped in the isHit movement
-        // block, gated on isSlapKnockback) — no cinematic KO from range. This
-        // keeps the palm a spacing / wall-carry tool, not a kill move.
+        // PALM THRUST: charge-scaled knockback using the SAME multiplier curve as
+        // charged attack (0.45 + charge^1.3 * 0.75, already in
+        // finalKnockbackMultiplier), delivered via slap3's burst model + rope
+        // clamp — so it can only ring a victim out if they were ALREADY within
+        // SLAP_KILL_RANGE of the boundary. From mid-ring the rope catches them
+        // (no cinematic KO from range). Keeps the palm a spacing / wall-carry
+        // tool whose power scales with charge hold time like the headbutt.
         isCinematicKill = false;
 
-        // HEAVY single hit: the palm's one thrust rivals the slap string's
-        // 3rd-hit burst. It uses slap3's exact burst DELIVERY (isBurstKnockback
-        // → smooth ICE_COAST decay) with its own tunable velocity
-        // (PALM_THRUST_KB_VELOCITY, sitting just under SLAP_HIT3_KB_VELOCITY so a
-        // fully-confirmed slap finisher keeps a slight edge). isSlapKnockback +
-        // the SLAP_KILL_RANGE gate still clamp the victim at the boundary unless
-        // they were already in kill range — no midscreen ring-out.
         otherPlayer.isSlapKnockback = true;
         otherPlayer.isBurstKnockback = true;
         otherPlayer.isChargedKnockback = false;
         otherPlayer.burstKnockbackStartTime = currentTime;
+        // Same base velocity × multiplier as charged (2.7 * finalKnockbackMultiplier).
         otherPlayer.knockbackVelocity.x =
-          knockbackDirection * PALM_THRUST_KB_VELOCITY * bashoKbFactor;
+          2.7 * knockbackDirection * finalKnockbackMultiplier;
         otherPlayer.knockbackVelocity.y = 0;
         otherPlayer.movementVelocity = 0;
 

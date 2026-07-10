@@ -57,7 +57,12 @@ export const SHAKE_PROFILES = {
   perfect_parry:   { trauma: 0.82, punch: 0.08, rot: 0.55 },
   charge_clash:    { trauma: 0.72, punch: 0.0, rot: 0.45 },
   ring_out:        { trauma: 0.78, punch: 0.0, rot: 0.40 },
+  // Legacy alias — clinch kill-throw landing now uses kill_throw_land.
   kill_throw:      { trauma: 0.92, punch: 0.0, rot: 0.60 },
+  // Clinch kill-throw BODY SLAM — comically over-the-top, this landing only.
+  // amp multiplies rendered shake offsets past the normal trauma=1 ceiling;
+  // punch is the rare zoom exception (same policy bucket as perfect_parry).
+  kill_throw_land: { trauma: 1.0, punch: 0.11, rot: 2.0, amp: 1.85 },
 
   default:         { trauma: 0.50, punch: 0.0, rot: 0.10 },
 };
@@ -71,13 +76,14 @@ const state = {
   dirX: 0, // -1 | 0 | 1 — recoil bias along the impact axis (0 = omnidirectional)
   punch: 0, // current zoom-punch amount, decays in useCamera
   rot: 0, // max roll (deg) for the active shake; cleared when trauma hits 0
+  amp: 1, // rendered offset multiplier (kill_throw_land goes >1 for comic slam)
   _dirWeight: 0, // internal: strongest impulse so far owns the recoil direction
 };
 
 // Add a raw trauma impulse. Used directly by the hit-shake path (which derives
 // its own amount/dir/punch from knockback) and indirectly by addShake().
 export function addTrauma(amount, opts = {}) {
-  const { dirX = 0, punch = 0, rot = 0 } = opts;
+  const { dirX = 0, punch = 0, rot = 0, amp = 1 } = opts;
   state.trauma = Math.min(1, state.trauma + amount);
   // Strongest impulse wins the recoil direction (so a big hit isn't overridden
   // by a tiny one landing a frame later).
@@ -87,6 +93,7 @@ export function addTrauma(amount, opts = {}) {
   }
   state.punch = Math.min(PUNCH_CAP, Math.max(state.punch, punch));
   state.rot = Math.max(state.rot, rot);
+  state.amp = Math.max(state.amp, amp || 1);
 }
 
 // Add a named event's shake using the profile table. `scale` lets a caller
@@ -99,6 +106,7 @@ export function addShake(type, opts = {}) {
     dirX,
     punch: p.punch * scale,
     rot: p.rot,
+    amp: p.amp || 1,
   });
 }
 
@@ -117,5 +125,6 @@ export function getShakeState() {
 export function resetShakeBias() {
   state.dirX = 0;
   state.rot = 0;
+  state.amp = 1;
   state._dirWeight = 0;
 }

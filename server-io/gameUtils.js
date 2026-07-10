@@ -864,9 +864,10 @@ function shouldRestartCharging(player) {
   );
 }
 
-function startCharging(player) {
+function startCharging(player, chargeKind = "charged") {
   // NOTE: Charging does NOT cancel power slide - only the released attack does
   // This allows players to charge while sliding for aggressive plays
+  // chargeKind: "charged" (S+forward headbutt) or "palmThrust" (back+mouse1)
   
   player.isChargingAttack = true;
   // chargeStartTime lives on the sim clock: charge progress pauses during
@@ -881,7 +882,24 @@ function startCharging(player) {
     player.chargeAttackPower = 1;
   }
   player.attackType = "charged";
+  player.pendingChargeAttack = chargeKind;
   player.wantsToRestartCharge = false;
+}
+
+// Shared setup when entering a palm-thrust charge (BACK+mouse1 hold).
+function startPalmThrustCharging(player) {
+  player.chargeAttackPower = 0;
+  player.chargeStartTime = 0;
+  startCharging(player, "palmThrust");
+  player.chargingFacingDirection = player.facing;
+  player.movementVelocity = 0;
+  player.isStrafing = false;
+  player.isPowerSliding = false;
+  player.isBraking = false;
+  player.isRawParrySuccess = false;
+  player.isPerfectRawParrySuccess = false;
+  player.isCrouchStance = false;
+  player.isCrouchStrafing = false;
 }
 
 function canPlayerSlap(player, { ignoreCooldown = false } = {}) {
@@ -1238,6 +1256,7 @@ module.exports = {
   constrainToMapBoundaries,
   shouldRestartCharging,
   startCharging,
+  startPalmThrustCharging,
   canPlayerSlap,
   clearChargeState,
   isOutsideDohyo,

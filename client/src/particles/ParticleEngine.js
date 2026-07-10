@@ -384,7 +384,7 @@ const CLAMP_CRACKLE_FRAMES = { start: 1, end: 13 };
 const cinematicThrowLandSmokeImg = makeSmokeImg(cinematicThrowLandSmokeSheet);
 const CK_THROW_LAND_SIZE = 220; // wide, heavy impact footprint (GAME-space px)
 const CK_THROW_LAND_STRETCH = 1.1;
-const CK_THROW_LAND_Y_BIAS = -0.15; // negative = higher on screen; lifts the splash up off the floor
+const CK_THROW_LAND_Y_BIAS = -0.20; // negative = higher on screen; slight lift off the floor
 
 // Bakes a color-tinted copy of a (white/gray) sheet once it loads. Uses
 // `source-atop` (paint the color ONLY over existing non-transparent pixels) at a
@@ -2889,15 +2889,160 @@ const PRESETS = {
   clinchKillThrowLand(engine, { x, y, behindDohyo }) {
     const footX = x;
     const footY = GAME_H - y - 12;
+    const behind = !!behindDohyo;
 
-    // Dedicated cinematic throw-kill landing splash. Routed behind the dohyo
-    // when the body lands outside the ring so it doesn't paint over the foreground.
+    // Primary cinematic splash — scaled up for a heavier body-slam read.
     spawnCinematicThrowLandSmoke(engine, footX, footY, {
-      scale: 1,
+      scale: 1.45,
       alpha: 1,
-      maxLife: 0.55,
-      behindDohyo: !!behindDohyo,
+      maxLife: 0.65,
+      behindDohyo: behind,
     });
+    // Second overlapping splash, slightly offset + delayed, sells a thicker cloud.
+    spawnCinematicThrowLandSmoke(engine, footX + rand(-18, 18), footY + rand(-12, 0), {
+      scale: 1.1,
+      alpha: 0.85,
+      maxLife: 0.5,
+      behindDohyo: behind,
+    });
+
+    // Extra billowing puffs around the impact footprint.
+    for (let i = 0; i < 8; i++) {
+      const size = rand(28, 55);
+      engine.spawn({
+        x: footX + rand(-55, 55),
+        y: footY + rand(-28, -2),
+        vx: rand(-90, 90),
+        vy: rand(-120, -30),
+        gravity: rand(40, 90),
+        drag: 0.92,
+        size,
+        sizeEnd: size * rand(1.5, 2.4),
+        alpha: rand(0.55, 0.85),
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "inQuad",
+        rotationSpeed: rand(-2, 2),
+        maxLife: rand(0.4, 0.7),
+        texture: pickPuff(engine.textures),
+        delay: i * 0.012,
+        behindDohyo: behind,
+      });
+    }
+  },
+
+  // Smoke trail while the kill-throw victim is airborne (esp. the crash down).
+  // `ascending`: tilt the column forward in the throw direction on the way up
+  // so it doesn't read as a straight vertical chimney.
+  // Drawn aboveFighters so the trail wraps over the body instead of sitting
+  // on the mid canvas under the sprite (z50 vs fighter z99).
+  clinchKillThrowTrail(engine, { x, y, direction, ascending = false }) {
+    const dir = direction || 1;
+    const baseY = GAME_H - y - 50;
+    // Forward lean (~25–35°) in throw direction; screen Y is down, so a
+    // forward-up trail leans with rotation matching dir.
+    const forwardTilt = dir * (ascending ? 0.55 : 0.28);
+    const front = { aboveFighters: true };
+
+    if (ascending) {
+      // Way up: bias a little FORWARD of the body (throw direction) so the
+      // liftoff cloud sits in front of the thrower rather than trailing behind.
+      for (let i = 0; i < 2; i++) {
+        const size = rand(28, 52);
+        engine.spawn({
+          ...front,
+          x: x + dir * rand(6, 22) + rand(-8, 8),
+          y: baseY + rand(4, 28),
+          vx: -dir * rand(40, 110) + rand(-15, 15),
+          vy: rand(25, 90),
+          gravity: rand(10, 35),
+          drag: 0.9,
+          size,
+          sizeEnd: size * rand(1.5, 2.3),
+          alpha: rand(0.45, 0.75),
+          alphaEnd: 0,
+          ease: "outCubic",
+          easeAlpha: "inQuad",
+          rotation: forwardTilt + rand(-0.12, 0.12),
+          rotationSpeed: rand(-1.2, 1.2),
+          maxLife: rand(0.4, 0.7),
+          texture: pickPuff(engine.textures),
+          delay: i * 0.012,
+        });
+      }
+
+      for (let i = 0; i < 3; i++) {
+        const size = rand(12, 24);
+        engine.spawn({
+          ...front,
+          x: x + dir * rand(2, 16) + rand(-10, 10),
+          y: baseY + rand(0, 26),
+          vx: -dir * rand(30, 90) + rand(-20, 20),
+          vy: rand(20, 75),
+          gravity: rand(20, 50),
+          drag: 0.88,
+          size,
+          sizeEnd: size * rand(0.7, 1.3),
+          alpha: rand(0.4, 0.65),
+          alphaEnd: 0,
+          ease: "outCubic",
+          easeAlpha: "outQuad",
+          rotation: forwardTilt + rand(-0.2, 0.2),
+          rotationSpeed: rand(-2.5, 2.5),
+          maxLife: rand(0.28, 0.5),
+          texture: pickSmallPuff(engine.textures),
+        });
+      }
+      return;
+    }
+
+    // Way down: denser crash trail, still slightly forward-tilted, over the body.
+    for (let i = 0; i < 2; i++) {
+      const size = rand(28, 52);
+      engine.spawn({
+        ...front,
+        x: x + rand(-14, 14),
+        y: baseY + rand(-16, 16),
+        vx: -dir * rand(20, 70) + rand(-25, 25),
+        vy: rand(-20, 50),
+        gravity: rand(-8, 25),
+        drag: 0.9,
+        size,
+        sizeEnd: size * rand(1.5, 2.3),
+        alpha: rand(0.45, 0.75),
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "inQuad",
+        rotation: forwardTilt + rand(-0.1, 0.1),
+        rotationSpeed: rand(-2, 2),
+        maxLife: rand(0.4, 0.7),
+        texture: pickPuff(engine.textures),
+        delay: i * 0.012,
+      });
+    }
+
+    for (let i = 0; i < 3; i++) {
+      const size = rand(12, 24);
+      engine.spawn({
+        ...front,
+        x: x + rand(-18, 18),
+        y: baseY + rand(-22, 22),
+        vx: rand(-50, 50),
+        vy: rand(-10, 60),
+        gravity: rand(15, 45),
+        drag: 0.88,
+        size,
+        sizeEnd: size * rand(0.7, 1.3),
+        alpha: rand(0.4, 0.65),
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "outQuad",
+        rotation: forwardTilt + rand(-0.15, 0.15),
+        rotationSpeed: rand(-3, 3),
+        maxLife: rand(0.28, 0.5),
+        texture: pickSmallPuff(engine.textures),
+      });
+    }
   },
 
   // Perfect raw parry — same cinematic landing splash, lifted slightly so it

@@ -13,6 +13,8 @@ const {
   RAW_PARRY_REARM_STAMINA_COST, RAW_PARRY_REARM_INTERVAL_MS,
   CHARGE_FULL_POWER_MS,
   GRAB_STARTUP_DURATION_MS,
+  PALM_THRUST_POWER,
+  PALM_THRUST_CHARGE_THRESHOLD_MS,
 } = require("./constants");
 
 const {
@@ -30,6 +32,7 @@ const {
   canPlayerUseAction,
   shouldRestartCharging,
   startCharging,
+  startPalmThrustCharging,
   beginFlapStartup,
   gameNow,
   simNowForPlayer,
@@ -719,8 +722,8 @@ function processInputPacket(room, player, data, io, rooms) {
     player.rawParryRearmUntil = nowSim + RAW_PARRY_REARM_INTERVAL_MS;
   }
 
-  // MOUSE1 PRESS: S+FORWARD+MOUSE1 = charged, BACK+MOUSE1 = open-palm thrust,
-  // else fire slap.
+  // MOUSE1 PRESS: S+FORWARD+MOUSE1 = charged, BACK+MOUSE1 = open-palm thrust
+  // charge, else fire slap.
   if (player.mouse1JustPressed && !shouldBlockAction()) {
     const forwardKey = player.facing === -1 ? 'd' : 'a';
     const backKey = player.facing === -1 ? 'a' : 'd';
@@ -731,7 +734,7 @@ function processInputPacket(room, player, data, io, rooms) {
     if (wantsChargedAttack && canPlayerSlap(player, { ignoreCooldown: true })) {
       player.chargeAttackPower = 0;
       player.chargeStartTime = 0;
-      startCharging(player);
+      startCharging(player, "charged");
       player.chargingFacingDirection = player.facing;
       player.movementVelocity = 0;
       player.isStrafing = false;
@@ -744,9 +747,8 @@ function processInputPacket(room, player, data, io, rooms) {
     } else if (wantsChargedAttack && player.isAttacking && player.attackType === "slap") {
       player.inputBuffer = { type: "chargedAttack", timestamp: simNowForPlayer(player) };
     } else if (wantsPalmThrust && canPlayerSlap(player)) {
-      // Rooted "hold your ground" strike — only from neutral (executePalmThrust
-      // itself guards !isAttacking so it can never eat a slap string).
-      executePalmThrust(player, rooms);
+      // Begin palm charge — release mouse1 to fire (same hold/release as charged).
+      startPalmThrustCharging(player);
     } else if (canPlayerSlap(player)) {
       // PHASE 1: a MANUAL reactive press during the open slap2 window becomes
       // the slap3 ender — stamp its lag-compensated arrival so the blue-spark
@@ -782,18 +784,37 @@ function processInputPacket(room, player, data, io, rooms) {
     player.pendingSlapCount = 0;
   }
 
-  // MOUSE1 RELEASE: Execute charged attack if charging, otherwise clear state
+  // MOUSE1 RELEASE: Execute charged attack or palm thrust if charging
   if (player.mouse1JustReleased) {
     if (player.isRopeJumping && player.ropeJumpPhase === "landing" && player.mouse1PressTime > 0) {
       player.ropeJumpBufferedAttackRelease = simNowForPlayer(player) - player.mouse1PressTime;
     }
     if (player.isChargingAttack) {
       const chargePercentage = player.chargeAttackPower || 1;
+      const isPalmCharge = player.pendingChargeAttack === "palmThrust";
+      const holdMs = player.chargeStartTime
+        ? simNowForPlayer(player) - player.chargeStartTime
+        : 0;
       player.isChargingAttack = false;
       player.chargeStartTime = 0;
       player.chargingFacingDirection = null;
       player.mouse1HeldDuringAttack = false;
-      executeChargedAttack(player, chargePercentage, rooms);
+      player.pendingChargeAttack = null;
+      if (isPalmCharge) {
+        // Quick tap: same baseline power as the old instant thrust, and credit
+        // the hold against startup so press→hitbox stays ~90ms. Real charge
+        // (held past threshold) keeps full startup and scales power up from
+        // that floor so a short charge never hits weaker than a tap.
+        const isTap = holdMs < PALM_THRUST_CHARGE_THRESHOLD_MS;
+        const power = isTap
+          ? PALM_THRUST_POWER
+          : Math.max(PALM_THRUST_POWER, chargePercentage);
+        executePalmThrust(player, rooms, power, {
+          startupCreditMs: isTap ? holdMs : 0,
+        });
+      } else {
+        executeChargedAttack(player, chargePercentage, rooms);
+      }
     } else {
       if (!(player.isAttacking && player.attackType === "charged")) {
         player.chargeAttackPower = 0;
@@ -1239,7 +1260,7 @@ function processInputPacket(room, player, data, io, rooms) {
     if (player.keys[forwardKey] && canPlayerSlap(player, { ignoreCooldown: true })) {
       player.chargeAttackPower = 0;
       player.chargeStartTime = 0;
-      startCharging(player);
+      startCharging(player, "charged");
       player.chargingFacingDirection = player.facing;
       player.movementVelocity = 0;
       player.isStrafing = false;
@@ -1252,12 +1273,35 @@ function processInputPacket(room, player, data, io, rooms) {
     }
   }
 
+  // BACK+MOUSE1 PALM THRUST CHARGE: Continuous check — mouse1 already held,
+  // player adds back after (mirrors the charged continuous path above).
+  if (
+    player.keys.mouse1 &&
+    !player.isChargingAttack &&
+    !player.isAttacking &&
+    !shouldBlockAction()
+  ) {
+    const forwardKey = player.facing === -1 ? 'd' : 'a';
+    const backKey = player.facing === -1 ? 'a' : 'd';
+    // Don't steal a charged-attack input (S+forward takes priority).
+    const wantsChargedAttack = player.keys.s && player.keys[forwardKey];
+    if (
+      !wantsChargedAttack &&
+      player.keys[backKey] &&
+      !player.keys[forwardKey] &&
+      canPlayerSlap(player)
+    ) {
+      startPalmThrustCharging(player);
+    }
+  }
+
   // Clear any lingering charge state when not attacking
   if (player.isChargingAttack && !player.keys.mouse1 && !player.isAttacking) {
     player.isChargingAttack = false;
     player.chargeStartTime = 0;
     player.chargeAttackPower = 0;
     player.chargingFacingDirection = null;
+    player.pendingChargeAttack = null;
     player.attackType = null;
     player.mouse1HeldDuringAttack = false;
   }
