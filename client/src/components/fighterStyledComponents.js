@@ -189,7 +189,14 @@ export const getFighterPopFilter = (props) => {
       :                       "drop-shadow(0 0 6px rgba(255, 245, 220, 0.62))";
     return `${base} ${glow}`;
   }
-  return base;
+  // Neutral state: a WHISPER of cool steel-blue right on the silhouette edge,
+  // layered over the dark cut-out contour. Kept extremely tight + low-alpha —
+  // at any larger radius/opacity it reads as a cheesy glowing halo (the exact
+  // thing the warm rim was killed for). This is just enough cold edge light to
+  // hint the penguin is lit by the icy arena, not a rim you consciously notice.
+  const coolRim =
+    "drop-shadow(0 0 clamp(0.3px, 0.035cqw, 0.8px) rgba(160, 206, 236, 0.26))";
+  return `${base} ${coolRim}`;
 };
 
 // Grab-arm overlay planting nudge → a translate string appended AFTER scaleX so

@@ -15,9 +15,11 @@ const CLOSE_DISTANCE = 100; // player gap (game-coords) for max zoom
 const FAR_DISTANCE = 700; // player gap (game-coords) for min zoom
 
 const SPRITE_HALF_W = 0; // Sprites are now centred on player.x via CSS translate
-// Vertical framing bias (%) — positive = pan down to favour the ring + crowd over
-// empty map sky. Nudged back toward 12 for NHK-style lower-third wrestler framing
-// (was 9 after the dohyo.webp re-bake; the asset edge is clean enough to tolerate this).
+// Vertical framing bias (%) — positive translates the scene DOWN, which lowers
+// the (top-anchored) dohyo + wrestlers toward the vertical centre and pushes the
+// empty ice apron below them off the bottom of the frame, revealing more upper
+// stand instead. Bounded by the edge clamp: MIN_SCALE must satisfy
+// 50*(scale-1) >= Y_OFFSET (see MIN_SCALE).
 const Y_OFFSET = 12;
 
 // ── Flight (flap power-up) vertical follow ──────────────────────────
@@ -29,10 +31,10 @@ const FLIGHT_GROUND_Y = 286; // server GROUND_LEVEL (game-coords) — airborne =
 const FLIGHT_REF_HEIGHT = 300; // server FLAP_MAX_HEIGHT — normalises height → 0..1
 const FLIGHT_PAN_UP = 9; // max extra upward pan (%) at full flight height (kept modest on purpose)
 
-// Zoom range — nudged ~1.3% wider so more of the dohyo rope/platform reads in
-// frame without shrinking the wrestlers noticeably. MIN_SCALE must still satisfy
-// the edge clamp: 50 * (scale - 1) >= Y_OFFSET  →  scale >= 1 + Y_OFFSET/50.
-const MIN_SCALE = Math.max(1.225, 1 + Y_OFFSET / 50); // widest zoom (~1.2% out vs old 1.24)
+// MIN_SCALE must satisfy the edge clamp: 50 * (scale - 1) >= Y_OFFSET  →
+// scale >= 1 + Y_OFFSET/50; the 1.225 floor keeps a margin above that so camera
+// shake never exposes a map edge at the widest zoom.
+const MIN_SCALE = Math.max(1.225, 1 + Y_OFFSET / 50); // widest zoom (players far apart)
 const MAX_SCALE = 1.555; // tightest zoom when players are very close
 const DEFAULT_SCALE = 1.292; // fallback before game starts
 

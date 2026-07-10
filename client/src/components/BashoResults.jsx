@@ -9,7 +9,6 @@ import PropTypes from "prop-types";
 import styled, { keyframes, css } from "styled-components";
 import { FONT_DISPLAY, FONT_KANJI, FONT_BODY, C } from "./menuTheme";
 import { formatRank } from "../config/bashoConfig";
-import { kimariteFor } from "./RoundResult";
 import envelopeImg from "../assets/envelope.png";
 import {
   playBashoGong,
@@ -97,12 +96,29 @@ const envDrop = keyframes`
   }
 `;
 
+const watermarkIn = keyframes`
+  0%   { opacity: 0; transform: translateX(-50%) scale(1.14); }
+  100% { opacity: 1; transform: translateX(-50%) scale(1); }
+`;
+
 const Screen = styled.div`
   position: fixed;
   inset: 0;
   z-index: 12000;
+  /* Lit near-black stage — matches the DAY screen: warm gold pool spilling
+     from the top, cool ice pool rising from the floor. Still reads as black,
+     just framed like a studio space instead of a flat void. */
   background:
-    radial-gradient(130% 100% at 50% 0%, rgba(40, 32, 16, 0.4) 0%, rgba(0, 0, 0, 0) 60%),
+    radial-gradient(
+      130% 100% at 50% -6%,
+      rgba(232, 197, 71, 0.1) 0%,
+      rgba(0, 0, 0, 0) 46%
+    ),
+    radial-gradient(
+      120% 82% at 50% 116%,
+      rgba(28, 78, 110, 0.14) 0%,
+      rgba(0, 0, 0, 0) 54%
+    ),
     #060606;
   /* Hard no-scroll: the inner card is auto-scaled (transform) to always fit
      the viewport, so the whole results layout is visible at once on any window
@@ -114,6 +130,44 @@ const Screen = styled.div`
   font-family: ${FONT_BODY};
   text-align: center;
   overflow: hidden;
+`;
+
+// Soft edge falloff + film grain — the same cinematic wash as the DAY screen
+// and PreMatchScreen so all three interstitials read as one film stock. Both
+// are decorative overlays (pointer-events off) that sit OUTSIDE the measured
+// Scaler, so they never touch the auto-fit math or shift any content.
+const Vignette = styled.div`
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  background: radial-gradient(
+    ellipse 118% 100% at 50% 46%,
+    transparent 54%,
+    rgba(5, 4, 8, 0.5) 100%
+  );
+`;
+
+const Grain = styled.div`
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6;
+  opacity: 0.22;
+  mix-blend-mode: overlay;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      rgba(60, 40, 20, 0.05) 0,
+      transparent 1px,
+      transparent 3px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(60, 40, 20, 0.04) 0,
+      transparent 1px,
+      transparent 4px
+    );
 `;
 
 // The transform target — kept separate from the MEASURED element so offsetSize
@@ -145,6 +199,10 @@ const Columns = styled.div`
 `;
 
 const Panel = styled.div`
+  /* Own stacking context (z-index:0) so the HeroWatermark can sit at
+     z-index:-1 behind the verdict text without escaping the panel. */
+  position: relative;
+  z-index: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -152,22 +210,68 @@ const Panel = styled.div`
   flex: 0 1 auto;
 `;
 
+// Big ghost kanji behind the verdict — 勝 (victory) on a winning record, 負
+// (defeat) on a losing one. Absolute + z-index:-1 so it's purely atmospheric
+// and never adds to the panel's measured size.
+const HeroWatermark = styled.div`
+  position: absolute;
+  z-index: -1;
+  top: clamp(-1rem, 1vh, 1.2rem);
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: ${FONT_KANJI};
+  font-weight: 900;
+  font-size: clamp(7rem, 24vh, 15rem);
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0;
+  color: ${(p) =>
+    p.$kk ? "rgba(232, 197, 71, 0.07)" : "rgba(238, 81, 65, 0.055)"};
+  ${(p) =>
+    p.$show &&
+    css`
+      animation: ${watermarkIn} 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+    `}
+`;
+
 const PanelDivider = styled.div`
   align-self: stretch;
   width: 1px;
-  background: ${C.creamFaint};
-  opacity: 0.5;
+  /* Faded top/bottom rule (matches the DAY screen's column divider) rather
+     than a flat hairline. */
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(245, 236, 217, 0.16) 16%,
+    rgba(245, 236, 217, 0.16) 84%,
+    transparent 100%
+  );
   @media (max-width: 720px) {
     display: none;
   }
 `;
 
 const Kicker = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
   font-size: clamp(0.7rem, 1.5vh, 0.95rem);
   letter-spacing: 0.42em;
+  text-indent: 0.42em;
   text-transform: uppercase;
   color: ${C.creamMute};
+  white-space: nowrap;
   animation: ${rise} 0.5s ease both;
+
+  &::before,
+  &::after {
+    content: "";
+    width: clamp(20px, 3vw, 34px);
+    height: 1px;
+    background: ${C.creamFaint};
+  }
 `;
 
 const Title = styled.h1`
@@ -175,6 +279,10 @@ const Title = styled.h1`
   font-size: clamp(1.7rem, 5.5vh, 3.2rem);
   margin: 0;
   color: ${(p) => (p.$kk ? C.gold : C.cream)};
+  text-shadow: ${(p) =>
+    p.$kk
+      ? "0 0 24px rgba(232, 197, 71, 0.35), 0 2px 6px rgba(0, 0, 0, 0.6)"
+      : "0 2px 8px rgba(0, 0, 0, 0.6)"};
   opacity: 0;
   ${(p) =>
     p.$show &&
@@ -200,7 +308,15 @@ const Record = styled.div`
   font-family: ${FONT_DISPLAY};
   font-size: clamp(1.9rem, 6.5vh, 3.6rem);
   line-height: 1;
+  /* Engraved-metal cream — top-lit gradient + drop shadow, same premium
+     treatment as the DAY number on the day screen. */
+  background: linear-gradient(180deg, #fffaf0 0%, ${C.cream} 52%, #cbb98f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
   color: ${C.cream};
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.5))
+    drop-shadow(0 8px 20px rgba(0, 0, 0, 0.5));
   opacity: 0;
   ${(p) =>
     p.$show &&
@@ -421,13 +537,26 @@ const StatRow = styled.div`
   }
 `;
 
+// Hoshitorihyō (star record) board — a shallow recessed strip the day-stones
+// rest in, so the row reads as a real sumo record table instead of floating
+// tiles. Mounted whenever results exist; only its opacity fades, so no shift.
 const Strip = styled.div`
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 0.45rem;
+  gap: clamp(0.35rem, 1vw, 0.6rem);
   margin-top: clamp(0.4rem, 1.4vh, 1rem);
-  max-width: 44rem;
+  max-width: 46rem;
+  padding: clamp(0.5rem, 1.4vh, 0.85rem) clamp(0.7rem, 1.8vw, 1.15rem);
+  border: 1px solid rgba(245, 236, 217, 0.08);
+  border-radius: 12px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(0, 0, 0, 0.14) 100%
+  );
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 3px 10px rgba(0, 0, 0, 0.35);
   opacity: 0;
   ${(p) =>
     p.$show &&
@@ -440,29 +569,54 @@ const DayCell = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.2rem;
+  gap: 0.28rem;
 `;
 
+// A sumo "boshi" (star). Win = shiroboshi, a glossy pearl-white go-stone;
+// loss = kuroboshi, a dark obsidian stone. The gloss (top-lit radial + inset
+// highlight/shadow + a real drop shadow) is what sells them as physical
+// stones rather than the flat font glyphs they replaced.
 const Pip = styled.span`
-  width: clamp(1.5rem, 4vw, 2rem);
-  height: clamp(1.5rem, 4vw, 2rem);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.7rem, 1.6vh, 0.9rem);
-  color: ${(p) => (p.$won ? "#06210f" : "#2a0808")};
-  background: ${(p) => (p.$won ? C.successBright : C.vermillionBright)};
+  width: clamp(1.35rem, 3.4vw, 1.75rem);
+  height: clamp(1.35rem, 3.4vw, 1.75rem);
+  border-radius: 50%;
+  flex-shrink: 0;
+  ${(p) =>
+    p.$won
+      ? css`
+          background: radial-gradient(
+            circle at 35% 28%,
+            #ffffff 0%,
+            #fbf4e4 44%,
+            #e6d7b8 100%
+          );
+          border: 1px solid rgba(120, 92, 46, 0.4);
+          box-shadow: inset 0 2px 3px rgba(255, 255, 255, 0.95),
+            inset 0 -3px 6px rgba(150, 118, 66, 0.4),
+            0 2px 5px rgba(0, 0, 0, 0.55);
+        `
+      : css`
+          background: radial-gradient(
+            circle at 35% 28%,
+            #474a54 0%,
+            #191a1f 52%,
+            #050506 100%
+          );
+          border: 1px solid rgba(0, 0, 0, 0.75);
+          box-shadow: inset 0 2px 3px rgba(255, 255, 255, 0.16),
+            inset 0 -3px 6px rgba(0, 0, 0, 0.65),
+            0 2px 5px rgba(0, 0, 0, 0.55);
+        `}
 `;
 
-const Kimarite = styled.span`
-  font-family: ${FONT_KANJI};
-  font-size: clamp(0.5rem, 1vh, 0.68rem);
+const Outcome = styled.span`
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(0.55rem, 1.15vh, 0.74rem);
   line-height: 1;
-  color: ${(p) => (p.$won ? C.creamMute : "rgba(214,90,78,0.7)")};
-  max-width: clamp(1.8rem, 4.4vw, 2.4rem);
+  letter-spacing: 0.08em;
   text-align: center;
+  color: ${(p) =>
+    p.$won ? "rgba(134, 239, 172, 0.85)" : "rgba(238, 81, 65, 0.8)"};
 `;
 
 const ButtonRow = styled.div`
@@ -523,6 +677,7 @@ const SecondaryButton = styled.button`
 
 const SkipHint = styled.div`
   position: absolute;
+  z-index: 7;
   bottom: clamp(0.6rem, 2vh, 1.2rem);
   left: 50%;
   transform: translateX(-50%);
@@ -736,6 +891,9 @@ function BashoResults({
                 front (space reserved) and only the $show flag fades each beat
                 in place, so nothing ever re-flows as the ceremony plays. */}
             <Panel>
+              <HeroWatermark $kk={kk} $show={phase >= PHASE.HEADER} aria-hidden>
+                {kk ? "勝" : "負"}
+              </HeroWatermark>
               <Kicker>
                 {withdrawn ? "Kyūjō — Withdrawn" : "Basho Complete"}
               </Kicker>
@@ -834,15 +992,12 @@ function BashoResults({
 
           {run?.results?.length > 0 && (
             <Strip $show={phase >= PHASE.DONE}>
-              {run.results.map((r) => {
-                const km = kimariteFor(r.winType);
-                return (
-                  <DayCell key={r.day}>
-                    <Pip $won={r.won}>{r.won ? "○" : "●"}</Pip>
-                    <Kimarite $won={r.won}>{km.japanese}</Kimarite>
-                  </DayCell>
-                );
-              })}
+              {run.results.map((r) => (
+                <DayCell key={r.day}>
+                  <Pip $won={r.won} aria-label={r.won ? "Win" : "Loss"} />
+                  <Outcome $won={r.won}>{r.won ? "W" : "L"}</Outcome>
+                </DayCell>
+              ))}
             </Strip>
           )}
 
@@ -866,6 +1021,9 @@ function BashoResults({
           </ButtonRow>
         </Stage>
       </Scaler>
+
+      <Vignette />
+      <Grain />
 
       {phase < PHASE.DONE && <SkipHint>Tap to skip</SkipHint>}
     </Screen>

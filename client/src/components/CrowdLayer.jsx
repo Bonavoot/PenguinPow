@@ -132,12 +132,19 @@ const CrowdContainer = styled.div`
        this one); together they were over-darkening the periphery into a void
        and flattening depth. Pulled back so the crowd recedes without dying —
        the cinematic frame darkening is owned by the screen-space vignette. */
-    background: radial-gradient(
-      ellipse 84% 74% at 50% 56%,
-      rgba(0, 0, 0, 0) 34%,
-      rgba(10, 14, 30, 0.11) 78%,
-      rgba(6, 10, 26, 0.24) 100%
-    );
+    background:
+      /* Depth here is DARKNESS, not fog. A translucent cool veil over the upper
+         deck was tried and removed: layered on top of the DoF blur it read as a
+         literal "foggy bright mess" (a milky wash over the blurred back rows)
+         rather than atmospheric recession. The crowd is pushed back purely by
+         the front→back brightness falloff (computeCrowdLightingFilter) plus this
+         corner/edge vignette — both darken, neither hazes. */
+      radial-gradient(
+        ellipse 84% 74% at 50% 56%,
+        rgba(0, 0, 0, 0) 30%,
+        rgba(6, 9, 20, 0.18) 72%,
+        rgba(4, 6, 16, 0.36) 100%
+      );
     pointer-events: none;
     z-index: 9999;
   }
@@ -371,7 +378,12 @@ const computeCrowdLightingFilter = (y, { foreground = false } = {}) => {
   // old 0.61 floor: the sprites are ALSO baked at brightness(0.76), so the old
   // runtime floor compounded to ~0.46 and read as a muddy void. This keeps the
   // crowd reading as people in moody light, not a brown smear.
-  const brightness = 0.72 + ringside * 0.26;       // 0.72 (far) → 0.98 (near)
+  // Wider front→back brightness falloff for real depth (chiaroscuro): ringside
+  // stays punchy while the back/upper rows sink into moody shadow. Floor sits
+  // just above the "muddy void" the notes warn about (baked 0.76 × 0.64 ≈ 0.49),
+  // and the DoF blur + cool haze on those same far rows keep them reading as
+  // "distant", not "underexposed".
+  const brightness = 0.64 + ringside * 0.35;       // 0.64 (far) → 0.99 (near)
   // Saturation gradient. Ringside pops, back-row clothing stays a touch calmer.
   // Kept VIBRANT on purpose — the background is colorful by design and a low
   // floor here produces the hated "faded bright" (washed pastel) look. NEVER

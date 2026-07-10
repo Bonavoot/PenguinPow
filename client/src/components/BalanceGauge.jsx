@@ -1,7 +1,8 @@
 import PropTypes from "prop-types";
 import { useEffect, useRef } from "react";
-import styled from "styled-components";
+import styled, { keyframes, css } from "styled-components";
 import { drawBalanceGauge } from "./balanceGaugeDraw";
+import { C } from "./menuTheme";
 
 const GAUGE_HEIGHT = "clamp(16px, 2.2cqh, 22px)";
 
@@ -11,6 +12,7 @@ const GaugeShell = styled.div`
   display: flex;
   align-items: center;
   height: ${GAUGE_HEIGHT};
+  position: relative;
 `;
 
 const GaugeCanvas = styled.canvas`
@@ -45,16 +47,100 @@ const Strip = styled.div`
   flex-direction: ${(p) => (p.$isRight ? "row-reverse" : "row")};
 `;
 
+/* Deep Grip chip lands with a small stamp settle so the state change reads
+ * as an EARNED event, then sits still (labeled permanently) while active. */
+const gripStamp = keyframes`
+  0%   { opacity: 0; transform: translateY(-2px) scale(0.7); }
+  60%  { opacity: 1; transform: translateY(0)    scale(1.08); }
+  100% { opacity: 1; transform: translateY(0)    scale(1); }
+`;
+
+/* Slow breath so the chip stays alive without strobing. */
+const gripBreath = keyframes`
+  0%, 100% { filter: brightness(1);    }
+  50%      { filter: brightness(1.16); }
+`;
+
+/* Floating state chip pinned just BELOW the gauge (out of the stamina
+ * bar's way), hugging the center-screen edge (there's open space there;
+ * the outer edge holds BASHO boons). Two variants:
+ *   hold   → gold "DEEP GRIP": you earned it, your throws land at 60.
+ *   threat → amber "EXPOSED": opponent holds it, you're throwable at 60. */
+const DeepGripChip = styled.div`
+  position: absolute;
+  top: calc(100% + clamp(2px, 0.3cqh, 4px));
+  ${(p) => (p.$isRight ? "left: 0;" : "right: 0;")}
+  display: inline-flex;
+  align-items: center;
+  gap: clamp(2px, 0.3cqw, 4px);
+  padding: clamp(1px, 0.2cqh, 3px) clamp(4px, 0.6cqw, 8px);
+  border-radius: 2px;
+  font-family: "Bungee", cursive;
+  font-size: clamp(6.5px, 0.78cqw, 9.5px);
+  letter-spacing: 0.12em;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  z-index: 4;
+  transform-origin: ${(p) => (p.$isRight ? "left top" : "right top")};
+  animation: ${gripStamp} 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
+    ${gripBreath} 1.9s ease-in-out infinite;
+
+  ${(p) =>
+    p.$mode === "hold"
+      ? css`
+          color: #2a1f04;
+          background: linear-gradient(180deg, #f3dd7a 0%, ${C.gold} 55%, #b98f13 100%);
+          border: 1px solid #7a5c0c;
+          box-shadow:
+            0 1px 4px rgba(0, 0, 0, 0.55),
+            inset 0 1px 0 rgba(255, 250, 220, 0.55);
+          text-shadow: 0 1px 0 rgba(255, 246, 200, 0.5);
+        `
+      : css`
+          color: ${C.cream};
+          background: linear-gradient(180deg, #d98a2a 0%, #b4611a 55%, #7e3d12 100%);
+          border: 1px solid #5c2c0d;
+          box-shadow:
+            0 1px 4px rgba(0, 0, 0, 0.55),
+            inset 0 1px 0 rgba(255, 220, 170, 0.35);
+          text-shadow: 0 1px 1px rgba(50, 20, 6, 0.7);
+        `}
+`;
+
+const GripKanji = styled.span`
+  font-family: "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  font-weight: 900;
+  font-size: 1.25em;
+  line-height: 1;
+`;
+
 function getCanvasDpr() {
   const dpr = (typeof window !== "undefined" && window.devicePixelRatio) || 1;
   return Math.min(Math.max(dpr, 1), 2);
 }
 
+/**
+ * @param {object} props
+ * @param {number} [props.balance]
+ * @param {boolean} [props.isRight]
+ * @param {boolean} [props.danger]
+ * @param {number} [props.gainKey]
+ * @param {boolean} [props.deepGripThreat] — true when the OPPONENT holds
+ *   Deep Grip (this player's throw land line rises to 60, gauge shows the
+ *   grip gate + "EXPOSED" chip). Hidden otherwise.
+ * @param {boolean} [props.deepGripHold] — true when THIS player holds Deep
+ *   Grip (shows the offensive "DEEP GRIP" chip). Doesn't change this
+ *   player's own throw threshold — it's their advantage over the opponent.
+ */
 const BalanceGauge = ({
   balance = 100,
   isRight = false,
   danger = false,
   gainKey = 0,
+  deepGripThreat = false,
+  deepGripHold = false,
 }) => {
   const canvasRef = useRef(null);
   const shellRef = useRef(null);
@@ -64,6 +150,8 @@ const BalanceGauge = ({
     targetBalance: balance,
     gainStart: null,
     lastGainKey: 0,
+    deepGripT: deepGripThreat ? 1 : 0,
+    targetDeepGrip: deepGripThreat ? 1 : 0,
   });
 
   useEffect(() => {
@@ -74,6 +162,10 @@ const BalanceGauge = ({
       st.gainStart = performance.now();
     }
   }, [balance, gainKey]);
+
+  useEffect(() => {
+    stateRef.current.targetDeepGrip = deepGripThreat ? 1 : 0;
+  }, [deepGripThreat]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -106,6 +198,14 @@ const BalanceGauge = ({
       const dt = 0.18;
       st.displayBalance += (st.targetBalance - st.displayBalance) * dt;
 
+      // Deep Grip install eases a bit snappier than balance so the gate
+      // slide feels earned when the grip lands, not sluggish.
+      const dgDt = 0.22;
+      st.deepGripT += (st.targetDeepGrip - st.deepGripT) * dgDt;
+      if (Math.abs(st.targetDeepGrip - st.deepGripT) < 0.004) {
+        st.deepGripT = st.targetDeepGrip;
+      }
+
       let gainT = null;
       if (st.gainStart != null) {
         gainT = (now - st.gainStart) / 700;
@@ -123,6 +223,7 @@ const BalanceGauge = ({
         danger,
         gainT,
         time: now / 1000,
+        deepGripT: st.deepGripT,
       });
 
       rafRef.current = requestAnimationFrame(tick);
@@ -136,11 +237,20 @@ const BalanceGauge = ({
     };
   }, [isRight, danger]);
 
+  // Hold wins if (somehow) both are set — you're the one with the advantage.
+  const gripMode = deepGripHold ? "hold" : deepGripThreat ? "threat" : null;
+
   return (
     <Strip $isRight={isRight}>
       <BalLabel>BAL</BalLabel>
       <GaugeShell ref={shellRef}>
         <GaugeCanvas ref={canvasRef} aria-hidden="true" />
+        {gripMode && (
+          <DeepGripChip $mode={gripMode} $isRight={isRight}>
+            <GripKanji>握</GripKanji>
+            {gripMode === "hold" ? "DEEP GRIP" : "EXPOSED"}
+          </DeepGripChip>
+        )}
       </GaugeShell>
     </Strip>
   );
@@ -151,6 +261,8 @@ BalanceGauge.propTypes = {
   isRight: PropTypes.bool,
   danger: PropTypes.bool,
   gainKey: PropTypes.number,
+  deepGripThreat: PropTypes.bool,
+  deepGripHold: PropTypes.bool,
 };
 
 export default BalanceGauge;

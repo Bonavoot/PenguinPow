@@ -39,6 +39,12 @@ const BoonRow = styled.div`
   flex-shrink: 0;
 `;
 
+/* Boon chip — now speaks the same "recessed medal slot" language as the HUD's
+ * PowerUpSlot (gradient fill main→deep, cream-faint hairline border, inner
+ * top highlight + inner bottom shade + a real drop shadow, 3px radius) instead
+ * of the old flat type-color square with a hard black outline. Reads as part
+ * of the same broadcast HUD system as the stamina/balance bars rather than a
+ * loose sticker cluster. */
 const BoonChip = styled.div`
   --type-color: ${(p) => p.$color.main};
 
@@ -52,11 +58,17 @@ const BoonChip = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--type-color);
-  border: 1.5px solid rgba(0, 0, 0, 0.88);
+  border-radius: 3px;
+  background: linear-gradient(
+    150deg,
+    ${(p) => p.$color.main} 0%,
+    ${(p) => p.$color.deep} 100%
+  );
+  border: 1px solid rgba(245, 236, 217, 0.24);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.14),
-    0 1px 3px rgba(0, 0, 0, 0.4);
+    0 2px 5px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.32);
   opacity: ${(p) => (p.$matchOver ? 0.82 : 1)};
   transition: opacity 240ms ease;
   animation: ${boonDealIn} 0.26s ease-out backwards;
@@ -65,12 +77,12 @@ const BoonChip = styled.div`
 
   img {
     display: block;
-    width: 72%;
-    height: 72%;
+    width: 70%;
+    height: 70%;
     max-width: none;
     max-height: none;
     object-fit: contain;
-    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3));
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
   }
 `;
 

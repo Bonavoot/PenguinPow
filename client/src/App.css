@@ -428,10 +428,10 @@ body {
   pointer-events: none;
   z-index: 198;
   background: radial-gradient(
-    ellipse 95% 86% at 50% 50%,
-    transparent 60%,
-    rgba(0, 0, 0, 0.13) 88%,
-    rgba(0, 0, 0, 0.26) 100%
+    ellipse 94% 84% at 50% 52%,
+    transparent 54%,
+    rgba(0, 0, 0, 0.17) 84%,
+    rgba(0, 0, 0, 0.32) 100%
   );
 }
 
@@ -693,6 +693,14 @@ body {
   filter: blur(12px);
 }
 
+/* NOTE: A runtime ice-sheen overlay (a screen-blended gloss + drifting glint on
+   .dohyo-overlay::after) was tried and removed. The ice disc is heavily
+   perspective-shifted (the parent's rotateX/scaleY/translateY tilt), so a plain
+   CSS ellipse could not be made to sit accurately inside the ropes without
+   either spilling onto the rope ring or floating off the ice. If the ice ever
+   needs more life, bake the specular into dohyo.webp where it can follow the art
+   exactly, rather than approximating the ellipse at runtime. */
+
 /* NOTE: the spotlight glow (icy center pool + warm rope ring) and the shaded
    surround that used to live here as `.dohyo-overlay::after` (screen) and
    `.dohyo-spot-shade` (multiply) are now BAKED into dohyo.webp. Removing those
@@ -754,19 +762,28 @@ body {
     ),
     /* Cool counter-fill rising off the ice — gives the key a sense of
        direction (warm top / cool bottom) and reinforces the icy theme,
-       instead of one even glow. */
+       instead of one even glow. Lifted (0.12 → 0.16, reach 56% → 60%) so the
+       ring reads as a cold-lit stage the wrestlers stand on — subtle icy
+       uplight that separates their feet/lower body from the dark surround
+       without touching their faces (the warm key above stays off their heads). */
     radial-gradient(
-      ellipse 85% 42% at 50% 102%,
-      rgba(40, 78, 128, 0.12) 0%,
-      transparent 56%
+      ellipse 88% 46% at 50% 102%,
+      rgba(44, 84, 138, 0.16) 0%,
+      rgba(40, 78, 128, 0.05) 38%,
+      transparent 60%
     ),
-    /* Edge darkening — the bulk of the cinematic frame comes from the
-       screen-space vignette; this just reinforces the falloff. */
+    /* Edge darkening — pulled in and deepened a step (transparent core
+       34% → 30%, mid 0.22 → 0.27, corner 0.5 → 0.6) so the surround recedes
+       harder and the lit ring pops by contrast. The transparent centre is
+       kept wide enough that the two wrestlers + the gyoji stay fully out of
+       the falloff — the darkening only bites on the crowd/periphery. Stacks
+       with the (softer) screen-space + crowd vignettes; this is the primary
+       arena falloff so it carries the most weight of the three. */
     radial-gradient(
-      ellipse at 50% 50%,
-      transparent 34%,
-      rgba(0, 0, 0, 0.22) 66%,
-      rgba(0, 0, 0, 0.5) 100%
+      ellipse 96% 90% at 50% 50%,
+      transparent 30%,
+      rgba(0, 0, 0, 0.27) 66%,
+      rgba(0, 0, 0, 0.6) 100%
     );
 }
 
@@ -1363,10 +1380,9 @@ body {
 
 .gyoji {
   position: absolute;
-  /* Slightly inset from the old 41.4% so the smaller gyoji stays
-     horizontally centered on the dohyo (old: 41.4% + 17.33%/2 = 50.07%;
-     new: 42.0% + 16%/2 = 50.00%). */
-  left: 42%;
+  /* Kept horizontally centred on the dohyo as the width shrinks:
+     old: 42.0% + 16%/2 = 50.00%; new: 42.75% + 14.5%/2 = 50.00%. */
+  left: 42.75%;
   bottom: 47.75%;
   /* Phase 2: width pulled in from 17.33% → 16% (~7.7% smaller). Keeps the
      gyoji authentically taller than the wrestlers — as he is in real sumo —
@@ -1374,7 +1390,7 @@ body {
      between the fighters. transform-origin is center-bottom, so the
      reduction comes off the top of the figure; his feet stay planted on
      the dohyo and the breathing animation continues to scale from his feet. */
-  width: 16%;
+  width: 14.5%;
   height: auto;
   z-index: 2;
   pointer-events: none;
@@ -1386,12 +1402,14 @@ body {
      without dimming him so far that he reads as "in shadow". Applied at
      the element level so all gyoji states (idle / ready / win / hakkiyoi
      GIF) inherit the grade uniformly. */
-  /* Saturation nudged back up (0.88 → 0.93): with the key pool + god-rays now
-     lifted off his torso, he no longer needs to be dialed down as hard, and
-     the extra saturation lets the maroon kimono hold its color instead of
-     reading washed/dusty. Still below 1.0 so he stays a supporting figure that
-     doesn't pull focus from the wrestlers (the DoF already separates them). */
-  filter: saturate(0.93) contrast(0.98);
+  /* Visual-weight rebalance: the bright kimono was still winning the frame's
+     attention against the wrestlers (highest chroma + high contrast, dead
+     centre). Pulled saturation 0.93 → 0.86 and added a small brightness trim
+     (0.95) so he sits back one more step into the supporting-cast layer without
+     reading as "in shadow". Combined with the ~9% size reduction above, the eye
+     now lands on the penguins first and treats the gyoji as the official
+     framing the bout — which is his role. */
+  filter: saturate(0.86) brightness(0.95) contrast(0.98);
 }
 
 /* Subtle idle animation for gyoji - gentle stretch from feet */

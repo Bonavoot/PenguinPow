@@ -21,9 +21,9 @@ import BalanceGauge from "./BalanceGauge";
  * fully removed because they read as brown next to the menu's saffron
  * gold token. Greens (regen) and reds (stamina danger) are intentionally
  * preserved — they carry semantic meaning that overrides the cool
- * palette. The balance-bar danger fill DOES use the brand vermillion
- * (`C.vermillion`) so the kill-marker tassel and the danger fill speak
- * the same color language.
+ * palette. The balance gauge uses brand vermillion for the kill-mark
+ * and gold for the throw / Deep Grip install marks so stance risk
+ * reads in the same color language as the rest of the HUD.
  */
 
 // ============================================
@@ -340,10 +340,11 @@ const HudShell = styled.div`
   background:
     linear-gradient(
       180deg,
-      rgba(0, 0, 0, 0.88) 0%,
-      rgba(0, 0, 0, 0.78) 20%,
-      rgba(0, 0, 0, 0.5) 50%,
-      rgba(0, 0, 0, 0.18) 78%,
+      rgba(0, 0, 0, 0.9) 0%,
+      rgba(0, 0, 0, 0.82) 16%,
+      rgba(0, 0, 0, 0.58) 44%,
+      rgba(0, 0, 0, 0.28) 70%,
+      rgba(0, 0, 0, 0.08) 88%,
       transparent 100%
     );
 
@@ -1658,6 +1659,7 @@ const UiPlayerInfo = ({
   player1ParryRefund = 0,
   player1Balance = 100,
   player1BalanceGain = 0,
+  player1HasDeepGrip = false,
   player2Stamina,
   player2ActivePowerUp = null,
   player2SnowballCooldown = false,
@@ -1668,6 +1670,7 @@ const UiPlayerInfo = ({
   player2ParryRefund = 0,
   player2Balance = 100,
   player2BalanceGain = 0,
+  player2HasDeepGrip = false,
   matchOver = false,
   player1TopMarks = undefined,
   player2TopMarks = undefined,
@@ -2241,7 +2244,7 @@ const UiPlayerInfo = ({
               $matchOver={matchOver}
             >
               <BarTrack $isRight={false}>
-                {isPlayer1Local && <YouLabel $isRight={false}>You</YouLabel>}
+                {isPlayer1Local && <YouLabel $isRight={false}>YOU</YouLabel>}
                 <BarFill
                   $stamina={p1DisplayStamina}
                   $danger={p1Danger}
@@ -2299,6 +2302,8 @@ const UiPlayerInfo = ({
                 isRight={false}
                 danger={b1Danger}
                 gainKey={p1BalGainKey}
+                deepGripThreat={player2HasDeepGrip}
+                deepGripHold={player1HasDeepGrip}
               />
             </BalStripWrap>
             {player1SubMarks && (
@@ -2386,7 +2391,7 @@ const UiPlayerInfo = ({
               $matchOver={matchOver}
             >
               <BarTrack $isRight={true}>
-                {!isPlayer1Local && <YouLabel $isRight={true}>You</YouLabel>}
+                {!isPlayer1Local && <YouLabel $isRight={true}>YOU</YouLabel>}
                 <BarFill
                   $stamina={p2DisplayStamina}
                   $danger={p2Danger}
@@ -2444,6 +2449,8 @@ const UiPlayerInfo = ({
                 isRight={true}
                 danger={b2Danger}
                 gainKey={p2BalGainKey}
+                deepGripThreat={player1HasDeepGrip}
+                deepGripHold={player2HasDeepGrip}
               />
             </BalStripWrap>
             {player2SubMarks && (
@@ -2511,6 +2518,7 @@ UiPlayerInfo.propTypes = {
   player1ParryRefund: PropTypes.number,
   player1Balance: PropTypes.number,
   player1BalanceGain: PropTypes.number,
+  player1HasDeepGrip: PropTypes.bool,
   player2Stamina: PropTypes.number,
   player2ActivePowerUp: PropTypes.string,
   player2SnowballCooldown: PropTypes.bool,
@@ -2521,6 +2529,7 @@ UiPlayerInfo.propTypes = {
   player2ParryRefund: PropTypes.number,
   player2Balance: PropTypes.number,
   player2BalanceGain: PropTypes.number,
+  player2HasDeepGrip: PropTypes.bool,
   matchOver: PropTypes.bool,
   player1TopMarks: PropTypes.node,
   player2TopMarks: PropTypes.node,

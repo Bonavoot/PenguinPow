@@ -2175,7 +2175,14 @@ const GameFighter = ({
           snap.p2PaRem !== player2Data.pumoArmySpawnsRemaining ||
           snap.p1Gas !== player1Data.isGassed ||
           snap.p2Gas !== player2Data.isGassed ||
-          snap.p1Edge !== player1Data.isBeingEdgePushed
+          snap.p1Edge !== player1Data.isBeingEdgePushed ||
+          // Integer balance — keeps the stance gauge live without per-packet
+          // float noise from ALWAYS_SEND balance. Deep Grip flips must sync
+          // the victim's throw-gate mark the moment the install lands.
+          snap.p1Bal !== Math.round(player1Data.balance ?? 100) ||
+          snap.p2Bal !== Math.round(player2Data.balance ?? 100) ||
+          snap.p1DG !== !!player1Data.hasDeepGrip ||
+          snap.p2DG !== !!player2Data.hasDeepGrip
         ) {
           snap.p1Stam = player1Data.stamina;
           snap.p2Stam = player2Data.stamina;
@@ -2192,6 +2199,10 @@ const GameFighter = ({
           snap.p1Gas = player1Data.isGassed;
           snap.p2Gas = player2Data.isGassed;
           snap.p1Edge = player1Data.isBeingEdgePushed;
+          snap.p1Bal = Math.round(player1Data.balance ?? 100);
+          snap.p2Bal = Math.round(player2Data.balance ?? 100);
+          snap.p1DG = !!player1Data.hasDeepGrip;
+          snap.p2DG = !!player2Data.hasDeepGrip;
           setAllPlayersData({ player1: player1Data, player2: player2Data });
         }
       }
@@ -5436,6 +5447,7 @@ const GameFighter = ({
               player1ParryRefund: p1ParryRefund,
               player1Balance: allPlayersData.player1?.balance ?? 100,
               player1BalanceGain: p1BalanceGain,
+              player1HasDeepGrip: !!allPlayersData.player1?.hasDeepGrip,
               player2Stamina: allPlayersData.player2?.stamina ?? 100,
               player2ActivePowerUp: isBashoMatch
                 ? bashoOpponentActive
@@ -5453,6 +5465,7 @@ const GameFighter = ({
               player2ParryRefund: p2ParryRefund,
               player2Balance: allPlayersData.player2?.balance ?? 100,
               player2BalanceGain: p2BalanceGain,
+              player2HasDeepGrip: !!allPlayersData.player2?.hasDeepGrip,
             };
 
             if (isBashoMatch) {

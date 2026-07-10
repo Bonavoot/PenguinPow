@@ -1,135 +1,102 @@
 /**
  * Canvas renderer for the in-game balance (stance) gauge.
- * Procedural art — no CSS gradient stacks, no repeating stripe hacks.
+ *
+ * Readability model — the track is a LABELED SCALE, not just a fill:
+ *
+ *   Territory (painted faintly in the empty well, always visible):
+ *     0–15   red    → KILL zone   (a throw here ends the round)
+ *     15–50  gold   → THROW zone  (a throw/pull lands)
+ *     50–60  amber  → GRIP zone   (only a throw threat when Deep Grip is live)
+ *     50/60–100 ice → SAFE zone
+ *
+ *   Gates (persistent notches drawn ON TOP of fill + well so the player can
+ *   always read "how far am I from the next line?"):
+ *     kill gate  @ 15  (vermillion)
+ *     throw gate @ 50  (gold)
+ *     grip gate  @ 60  (amber, only while Deep Grip threatens this player)
+ *
+ *   Fill color still snaps to the current zone (ice / gold / red) so the
+ *   at-a-glance read is unchanged; the marks + territory add the margin
+ *   information the old bar was missing.
+ *
+ * Deep Grip: while the opponent holds it (deepGripT > 0) THIS player's
+ * throw-land line slides 50 → 60, the 50–60 band lights amber, and the
+ * grip gate fades in. The DEEP GRIP / EXPOSED text label is a DOM chip
+ * owned by BalanceGauge.jsx.
  */
 
 import { C } from "./menuTheme";
 
-// Zone thresholds — must match UiPlayerInfo gameplay constants
-export const KILL_ZONE_END = 0.14;
-export const DIVIDER_END = 0.16;
-export const THROW_ZONE_END = 0.5;
-export const SEGMENT_COUNT = 10;
+export const KILL_THRESHOLD = 0.15;
+export const THROW_THRESHOLD = 0.5;
+export const DEEP_GRIP_THROW_THRESHOLD = 0.6;
 
 const INK = "#080a12";
-const INK_MID = "#0e1218";
-const CREAM = "rgba(245, 236, 217, 0.32)";
-const CREAM_BRIGHT = "rgba(245, 252, 255, 0.95)";
+const CREAM = "rgba(245, 236, 217, 0.38)";
 
-/** Mix two #rrggbb hex colors; t = 0 → a, t = 1 → b */
-function mixHex(a, b, t) {
-  const parse = (h) => [
-    parseInt(h.slice(1, 3), 16),
-    parseInt(h.slice(3, 5), 16),
-    parseInt(h.slice(5, 7), 16),
-  ];
-  const [ar, ag, ab] = parse(a);
-  const [br, bg, bb] = parse(b);
-  const lerp = (x, y) => Math.round(x + (y - x) * t);
-  const r = lerp(ar, br);
-  const g = lerp(ag, bg);
-  const bl = lerp(ab, bb);
-  return `rgb(${r}, ${g}, ${bl})`;
-}
+let icePatternCache = null;
+let goldPatternCache = null;
+let killPatternCache = null;
 
-const ZONE_KILL = mixHex(C.vermillionBright, C.ink, 0.3);
-const ZONE_THROW = mixHex(C.gold, C.ink, 0.26);
-
-let fillPatternCache = null;
-
-/** Frost-crystal fill tile — painted once, tiled inside the ice fill */
-function getFillPattern(ctx) {
-  if (fillPatternCache) return fillPatternCache;
-
+function buildFillTile(top, mid, bot, sheen) {
   const tw = 64;
-  const th = 16;
+  const th = 14;
   const tile = document.createElement("canvas");
   tile.width = tw;
   tile.height = th;
   const t = tile.getContext("2d");
 
   const grad = t.createLinearGradient(0, 0, 0, th);
-  grad.addColorStop(0, C.iceBright);
-  grad.addColorStop(0.45, C.ice);
-  grad.addColorStop(1, C.iceMid);
+  grad.addColorStop(0, top);
+  grad.addColorStop(0.5, mid);
+  grad.addColorStop(1, bot);
   t.fillStyle = grad;
   t.fillRect(0, 0, tw, th);
 
-  // Soft top sheen
-  const sheen = t.createLinearGradient(0, 0, 0, th * 0.55);
-  sheen.addColorStop(0, "rgba(245, 252, 255, 0.42)");
-  sheen.addColorStop(1, "rgba(245, 252, 255, 0)");
-  t.fillStyle = sheen;
-  t.fillRect(0, 0, tw, th * 0.55);
+  const s = t.createLinearGradient(0, 0, 0, th * 0.5);
+  s.addColorStop(0, sheen);
+  s.addColorStop(1, "rgba(255,255,255,0)");
+  t.fillStyle = s;
+  t.fillRect(0, 0, tw, th * 0.5);
 
-  // Frost speckles — scattered dots, not scan lines
-  let seed = 42;
-  const rand = () => {
-    seed = (seed * 9301 + 49297) % 233280;
-    return seed / 233280;
-  };
-  for (let i = 0; i < 28; i++) {
-    const fx = rand() * tw;
-    const fy = rand() * th;
-    const fr = 0.4 + rand() * 1.1;
-    t.fillStyle = `rgba(255, 255, 255, ${0.08 + rand() * 0.14})`;
-    t.beginPath();
-    t.arc(fx, fy, fr, 0, Math.PI * 2);
-    t.fill();
+  return tile;
+}
+
+function getIcePattern(ctx) {
+  if (!icePatternCache) {
+    icePatternCache = ctx.createPattern(
+      buildFillTile(C.iceBright, C.ice, C.iceMid, "rgba(245,252,255,0.38)"),
+      "repeat"
+    );
   }
-
-  fillPatternCache = ctx.createPattern(tile, "repeat");
-  return fillPatternCache;
+  return icePatternCache;
 }
 
-function zoneColorAt(normalizedFromLeft, isRight) {
-  // Kill/throw zones sit on the anchor edge (opposite the fill drain direction).
-  // P1 fills from left → danger on left; P2 fills from right → danger on right.
-  const distFromKillEdge = isRight
-    ? 1 - normalizedFromLeft
-    : normalizedFromLeft;
-
-  if (distFromKillEdge < KILL_ZONE_END) return ZONE_KILL;
-  if (distFromKillEdge < DIVIDER_END) return INK;
-  if (distFromKillEdge < THROW_ZONE_END) return ZONE_THROW;
-  return INK_MID;
-}
-
-function drawZoneBackground(ctx, x, y, w, h, isRight) {
-  const steps = 48;
-  const slice = w / steps;
-  for (let i = 0; i < steps; i++) {
-    const normalizedFromLeft = (i + 0.5) / steps;
-    ctx.fillStyle = zoneColorAt(normalizedFromLeft, isRight);
-    ctx.fillRect(x + i * slice, y, slice + 0.5, h);
+function getGoldPattern(ctx) {
+  if (!goldPatternCache) {
+    goldPatternCache = ctx.createPattern(
+      buildFillTile("#f3dd7a", C.gold, "#9a7a18", "rgba(255,245,200,0.32)"),
+      "repeat"
+    );
   }
+  return goldPatternCache;
 }
 
-function drawSegmentTicks(ctx, x, y, w, h, isRight) {
-  const killDividerPos = isRight ? 0.85 : 0.15;
-  const throwDividerPos = 0.5;
-
-  ctx.save();
-  for (let i = 1; i < SEGMENT_COUNT; i++) {
-    const posFromLeft = i / SEGMENT_COUNT;
-    const px = x + w * posFromLeft;
-    const nearKill = Math.abs(posFromLeft - killDividerPos) < 0.07;
-    const nearThrow = Math.abs(posFromLeft - throwDividerPos) < 0.07;
-    ctx.strokeStyle = nearKill
-      ? "rgba(8, 10, 18, 0.9)"
-      : nearThrow
-        ? "rgba(0, 0, 0, 0.45)"
-        : "rgba(0, 0, 0, 0.22)";
-    ctx.lineWidth = nearKill ? 1.25 : i % 5 === 0 ? 1 : 0.65;
-    ctx.beginPath();
-    ctx.moveTo(px, y + 1);
-    ctx.lineTo(px, y + h - 1);
-    ctx.stroke();
+function getKillPattern(ctx) {
+  if (!killPatternCache) {
+    killPatternCache = ctx.createPattern(
+      buildFillTile("#f07868", C.vermillionBright, C.vermillionDeep, "rgba(255,210,190,0.28)"),
+      "repeat"
+    );
   }
-  ctx.restore();
+  return killPatternCache;
 }
 
-/** Symmetric chamfered frame — identical on both ends for P1 and P2 */
+function thresholdX(trackX, trackW, threshold, isRight) {
+  const fromKillEdge = isRight ? 1 - threshold : threshold;
+  return trackX + trackW * fromKillEdge;
+}
+
 function traceTrackOutline(ctx, x, y, w, h) {
   const c = Math.min(2, h * 0.14);
   ctx.beginPath();
@@ -137,16 +104,11 @@ function traceTrackOutline(ctx, x, y, w, h) {
   ctx.lineTo(x + w - c, y);
   ctx.lineTo(x + w, y + c);
   ctx.lineTo(x + w, y + h - c);
-  ctx.lineTo(x + w - c, y + h);
+  ctx.lineTo(x + w, y + h);
   ctx.lineTo(x + c, y + h);
   ctx.lineTo(x, y + h - c);
   ctx.lineTo(x, y + c);
   ctx.closePath();
-}
-
-function fillTrackWell(ctx, x, y, w, h) {
-  traceTrackOutline(ctx, x, y, w, h);
-  ctx.fill();
 }
 
 function strokeTrackOutline(ctx, x, y, w, h, color, lineWidth) {
@@ -156,57 +118,65 @@ function strokeTrackOutline(ctx, x, y, w, h, color, lineWidth) {
   ctx.stroke();
 }
 
-function drawLeadingMarker(ctx, edgeX, y, h, pointingRight, minX, maxX) {
-  const mh = h * 0.72;
-  const my = y + (h - mh) * 0.5;
-  const mw = Math.max(3, h * 0.28);
-
+/**
+ * Paint a faint territory band in the empty well between two balance
+ * fractions. Drawn behind the fill, so only the currently-empty portion
+ * of the track shows the tint — that gives the player a persistent map of
+ * where the danger territory sits regardless of the current fill level.
+ */
+function drawZoneBand(ctx, trackX, trackW, trackY, trackH, aFrac, bFrac, isRight, color, alpha) {
+  const xa = thresholdX(trackX, trackW, aFrac, isRight);
+  const xb = thresholdX(trackX, trackW, bFrac, isRight);
+  const left = Math.min(xa, xb);
+  const w = Math.abs(xb - xa);
+  if (w < 0.5) return;
   ctx.save();
-  // Hard clip — tip and glow must never paint past the track well
-  ctx.beginPath();
-  ctx.rect(minX, y, maxX - minX, h);
-  ctx.clip();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = color;
+  ctx.fillRect(left, trackY, w, trackH);
+  ctx.restore();
+}
 
-  ctx.beginPath();
-  if (pointingRight) {
-    const tipX = Math.min(edgeX + 0.5, maxX - 0.5);
-    ctx.moveTo(tipX - mw, my);
-    ctx.lineTo(tipX, my + mh * 0.5);
-    ctx.lineTo(tipX - mw, my + mh);
-  } else {
-    const tipX = Math.max(edgeX - 0.5, minX + 0.5);
-    ctx.moveTo(tipX + mw, my);
-    ctx.lineTo(tipX, my + mh * 0.5);
-    ctx.lineTo(tipX + mw, my + mh);
-  }
-  ctx.closePath();
-
-  const mg = ctx.createLinearGradient(edgeX - mw, my, edgeX + mw, my + mh);
-  mg.addColorStop(0, CREAM_BRIGHT);
-  mg.addColorStop(1, "rgba(220, 240, 255, 0.85)");
-  ctx.fillStyle = mg;
-  ctx.fill();
+/**
+ * Persistent gate marker — a thin vertical line at a threshold with a dark
+ * underlay (so it reads on light ice fill) and small caps top + bottom (so
+ * it reads as a deliberate gate, not a stray pixel). Drawn on top of both
+ * the fill and the well.
+ */
+function drawThresholdNotch(ctx, x, trackY, trackH, color, alpha) {
+  if (alpha <= 0.01) return;
+  const px = Math.round(x);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  // Dark backing so the mark survives on top of the bright ice fill.
+  ctx.fillStyle = "rgba(0,0,0,0.6)";
+  ctx.fillRect(px - 1.5, trackY, 3, trackH);
+  // Colored hairline.
+  ctx.fillStyle = color;
+  ctx.fillRect(px - 0.5, trackY, 1.5, trackH);
+  // Caps — a stubby serif top and bottom sells the "gate" read.
+  ctx.fillRect(px - 2, trackY - 0.5, 5, 2);
+  ctx.fillRect(px - 2, trackY + trackH - 1.5, 5, 2);
   ctx.restore();
 }
 
 function drawShimmer(ctx, fx, fy, fw, fh, phase, isRight) {
   if (fw < 4) return;
-  const sweepW = fw * 0.38;
+  const sweepW = fw * 0.36;
   const travel = fw + sweepW;
-  const offset = ((phase * 0.35) % 1) * travel;
+  const offset = ((phase * 0.32) % 1) * travel;
   const sx = isRight ? fx + fw - offset : fx + offset - sweepW;
 
   ctx.save();
   ctx.beginPath();
   ctx.rect(fx, fy, fw, fh);
   ctx.clip();
-
   const g = ctx.createLinearGradient(sx, 0, sx + sweepW, 0);
-  g.addColorStop(0, "rgba(255, 255, 255, 0)");
-  g.addColorStop(0.42, "rgba(255, 255, 255, 0)");
-  g.addColorStop(0.5, "rgba(245, 252, 255, 0.28)");
-  g.addColorStop(0.58, "rgba(255, 255, 255, 0)");
-  g.addColorStop(1, "rgba(255, 255, 255, 0)");
+  g.addColorStop(0, "rgba(255,255,255,0)");
+  g.addColorStop(0.48, "rgba(255,255,255,0)");
+  g.addColorStop(0.5, "rgba(255,255,255,0.22)");
+  g.addColorStop(0.52, "rgba(255,255,255,0)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = g;
   ctx.fillRect(fx, fy, fw, fh);
   ctx.restore();
@@ -214,8 +184,6 @@ function drawShimmer(ctx, fx, fy, fw, fh, phase, isRight) {
 
 function drawGainVfx(ctx, fx, fy, fw, fh, gainT, isRight) {
   if (gainT == null || gainT < 0 || gainT > 1) return;
-
-  // Flash envelope — quick peak then fade (700ms total mapped to 0–1)
   const flash =
     gainT < 0.18
       ? gainT / 0.18
@@ -227,30 +195,20 @@ function drawGainVfx(ctx, fx, fy, fw, fh, gainT, isRight) {
   ctx.beginPath();
   ctx.rect(fx, fy, fw, fh);
   ctx.clip();
-
-  ctx.fillStyle = `rgba(200, 235, 255, ${0.55 * flash})`;
+  ctx.fillStyle = `rgba(200,235,255,${0.45 * flash})`;
   ctx.fillRect(fx, fy, fw, fh);
-
-  // Directional sweep
   const sweepP = Math.min(1, gainT / 0.55);
-  const sweepW = fw * 0.45;
+  const sweepW = fw * 0.42;
   const sweepX = isRight
     ? fx + fw * (1 - sweepP) - sweepW * 0.5
     : fx + fw * sweepP - sweepW * 0.5;
-
   const sg = ctx.createLinearGradient(sweepX, 0, sweepX + sweepW, 0);
-  sg.addColorStop(0, "rgba(255, 255, 255, 0)");
-  sg.addColorStop(0.5, `rgba(245, 252, 255, ${0.85 * flash})`);
-  sg.addColorStop(1, "rgba(255, 255, 255, 0)");
+  sg.addColorStop(0, "rgba(255,255,255,0)");
+  sg.addColorStop(0.5, `rgba(245,252,255,${0.75 * flash})`);
+  sg.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = sg;
   ctx.fillRect(fx, fy, fw, fh);
-
   ctx.restore();
-
-  // Frame highlight — inset stroke only (shadowBlur ignores clip and bleeds out)
-  ctx.strokeStyle = `rgba(170, 220, 255, ${0.55 * flash})`;
-  ctx.lineWidth = 1;
-  ctx.strokeRect(fx + 0.5, fy + 0.5, fw - 1, fh - 1);
 }
 
 /**
@@ -266,6 +224,7 @@ export function drawBalanceGauge(ctx, opts) {
     danger,
     gainT,
     time,
+    deepGripT = 0,
   } = opts;
 
   ctx.clearRect(0, 0, width, height);
@@ -278,102 +237,93 @@ export function drawBalanceGauge(ctx, opts) {
 
   if (trackW < 8 || trackH < 6) return;
 
-  // Drop shadow under entire instrument
-  ctx.save();
-  ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+  const pct = Math.max(0, Math.min(100, balance)) / 100;
+  const dg = Math.max(0, Math.min(1, deepGripT));
+  const throwLand =
+    THROW_THRESHOLD + (DEEP_GRIP_THROW_THRESHOLD - THROW_THRESHOLD) * dg;
+  const inKill = pct < KILL_THRESHOLD;
+  const inThrow = pct <= throwLand && !inKill;
+
+  // Drop shadow
+  ctx.fillStyle = "rgba(0,0,0,0.4)";
   ctx.fillRect(trackX, trackY + trackH + 1, trackW, 2);
-  ctx.restore();
 
-  // Recessed well — full width, symmetric chamfered ends
-  ctx.save();
+  // Recessed well
   ctx.fillStyle = INK;
-  fillTrackWell(ctx, trackX, trackY, trackW, trackH);
-  ctx.restore();
+  traceTrackOutline(ctx, trackX, trackY, trackW, trackH);
+  ctx.fill();
 
-  // Zone tint in the well (visible behind low balance)
-  drawZoneBackground(ctx, trackX, trackY, trackW, trackH, isRight);
-
-  // Inner shadow — pressed-in channel
   const wellShadow = ctx.createLinearGradient(0, trackY, 0, trackY + trackH);
-  wellShadow.addColorStop(0, "rgba(0, 0, 0, 0.55)");
-  wellShadow.addColorStop(0.25, "rgba(0, 0, 0, 0.08)");
-  wellShadow.addColorStop(0.75, "rgba(0, 0, 0, 0.05)");
-  wellShadow.addColorStop(1, "rgba(0, 0, 0, 0.35)");
+  wellShadow.addColorStop(0, "rgba(0,0,0,0.45)");
+  wellShadow.addColorStop(0.4, "rgba(0,0,0,0.05)");
+  wellShadow.addColorStop(1, "rgba(0,0,0,0.3)");
   ctx.fillStyle = wellShadow;
   ctx.fillRect(trackX, trackY, trackW, trackH);
 
-  // Segment ticks (fighting-game block read)
-  drawSegmentTicks(ctx, trackX, trackY, trackW, trackH, isRight);
+  // ── Territory bands ──────────────────────────────────────────────
+  // Painted in the empty well (behind fill) so the track is a persistent
+  // labeled scale. Clipped to the track outline so tints don't bleed past
+  // the rounded corners.
+  ctx.save();
+  traceTrackOutline(ctx, trackX, trackY, trackW, trackH);
+  ctx.clip();
+  // KILL territory (0–15) — deep red so the "death" strip reads even empty.
+  drawZoneBand(ctx, trackX, trackW, trackY, trackH, 0, KILL_THRESHOLD, isRight, "rgb(150,26,20)", 0.42);
+  // THROW territory (15–50) — gold.
+  drawZoneBand(ctx, trackX, trackW, trackY, trackH, KILL_THRESHOLD, THROW_THRESHOLD, isRight, "rgb(150,116,26)", 0.26);
+  // GRIP-extension territory (50–60) — amber, brightens with Deep Grip.
+  drawZoneBand(
+    ctx, trackX, trackW, trackY, trackH,
+    THROW_THRESHOLD, DEEP_GRIP_THROW_THRESHOLD, isRight,
+    "rgb(196,132,32)", 0.10 + 0.42 * dg
+  );
+  // SAFE territory (grip line–100) — faint ice so "home" territory reads.
+  drawZoneBand(ctx, trackX, trackW, trackY, trackH, DEEP_GRIP_THROW_THRESHOLD, 1, isRight, "rgb(40,96,132)", 0.14);
+  ctx.restore();
 
-  // Kill→throw sumi divider
-  const divCenter = isRight
-    ? trackX + trackW * (1 - (KILL_ZONE_END + DIVIDER_END) * 0.5)
-    : trackX + trackW * ((KILL_ZONE_END + DIVIDER_END) * 0.5);
-  const divW = Math.max(1.5, trackW * (DIVIDER_END - KILL_ZONE_END));
-  ctx.fillStyle = "rgba(8, 10, 18, 0.96)";
-  ctx.fillRect(divCenter - divW * 0.5, trackY, divW, trackH);
-
-  // ── Balance fill (clipped to inner well so full bar never bleeds past frame) ──
+  // Fill
   const inset = 1.25;
   const innerX = trackX + inset;
   const innerY = trackY + inset;
   const innerW = trackW - inset * 2;
   const innerH = trackH - inset * 2;
-
-  const pct = Math.max(0, Math.min(100, balance)) / 100;
   const fillW = Math.max(0, innerW * pct);
-
-  let fillX;
-  if (isRight) {
-    fillX = innerX + innerW - fillW;
-  } else {
-    fillX = innerX;
-  }
-
-  const atMaxFill = pct >= 0.998 || fillW >= innerW - 0.5;
+  const fillX = isRight ? innerX + innerW - fillW : innerX;
 
   if (fillW > 0.5) {
     ctx.save();
     traceTrackOutline(ctx, innerX, innerY, innerW, innerH);
     ctx.clip();
-
     ctx.beginPath();
     ctx.rect(fillX, innerY, fillW, innerH);
     ctx.clip();
 
-    ctx.fillStyle = getFillPattern(ctx);
+    if (inKill) {
+      ctx.fillStyle = getKillPattern(ctx);
+    } else if (inThrow) {
+      ctx.fillStyle = getGoldPattern(ctx);
+    } else {
+      ctx.fillStyle = getIcePattern(ctx);
+    }
     ctx.fillRect(fillX - 8, innerY, fillW + 16, innerH);
 
-    // Inner luminance — no shadowBlur (shadows ignore clip and bleed past borders)
-    ctx.fillStyle = "rgba(126, 203, 240, 0.18)";
-    ctx.fillRect(fillX, innerY, fillW, innerH);
+    if (inKill) {
+      const kp = 0.1 + 0.08 * (0.5 + 0.5 * Math.sin(time * 7.2));
+      ctx.fillStyle = `rgba(238,81,65,${kp})`;
+      ctx.fillRect(fillX, innerY, fillW, innerH);
+    }
 
     drawShimmer(ctx, fillX, innerY, fillW, innerH, time, isRight);
 
-    const fillDepth = ctx.createLinearGradient(0, innerY + innerH * 0.5, 0, innerY + innerH);
-    fillDepth.addColorStop(0, "rgba(0, 0, 0, 0)");
-    fillDepth.addColorStop(1, "rgba(0, 40, 70, 0.35)");
+    const fillDepth = ctx.createLinearGradient(0, innerY + innerH * 0.4, 0, innerY + innerH);
+    fillDepth.addColorStop(0, "rgba(0,0,0,0)");
+    fillDepth.addColorStop(1, "rgba(0,16,32,0.28)");
     ctx.fillStyle = fillDepth;
     ctx.fillRect(fillX, innerY, fillW, innerH);
-
-    // Leading-edge marker — hidden at 100% (no edge to mark; avoids border overlap)
-    if (fillW > 3 && !atMaxFill) {
-      const edgeX = isRight ? fillX : fillX + fillW;
-      drawLeadingMarker(
-        ctx,
-        edgeX,
-        innerY,
-        innerH,
-        !isRight,
-        innerX,
-        innerX + innerW
-      );
-    }
 
     ctx.restore();
   }
 
-  // Perfect-parry gain overlay (clipped to inner well)
   if (fillW > 0.5 && gainT != null) {
     ctx.save();
     traceTrackOutline(ctx, innerX, innerY, innerW, innerH);
@@ -382,12 +332,32 @@ export function drawBalanceGauge(ctx, opts) {
     ctx.restore();
   }
 
-  // Frame border — cream at rest, vermillion pulse in danger (suppressed during parry gain)
+  // ── Persistent threshold gates ───────────────────────────────────
+  // Drawn on top of fill + well so distance-to-danger is always legible.
+  const killX = thresholdX(trackX, trackW, KILL_THRESHOLD, isRight);
+  const throwX = thresholdX(trackX, trackW, THROW_THRESHOLD, isRight);
+  const gripX = thresholdX(trackX, trackW, DEEP_GRIP_THROW_THRESHOLD, isRight);
+  drawThresholdNotch(ctx, killX, trackY, trackH, "rgba(238,81,65,0.95)", 0.9);
+  drawThresholdNotch(ctx, throwX, trackY, trackH, "rgba(232,197,71,0.95)", 0.85);
+  // Grip gate only materializes while Deep Grip threatens this player.
+  drawThresholdNotch(ctx, gripX, trackY, trackH, "rgba(255,178,64,1)", dg);
+
+  // Frame
   const dangerActive = danger && (gainT == null || gainT > 0.8);
-  const pulse = dangerActive ? 0.72 + 0.28 * (0.5 + 0.5 * Math.sin(time * 8.05)) : 1;
-  const borderColor = dangerActive
-    ? `rgba(${Math.round(216 + 22 * pulse)}, ${Math.round(59 + 22 * pulse)}, ${Math.round(39 + 26 * pulse)}, ${0.78 + 0.22 * pulse})`
-    : CREAM;
+  const pulse = dangerActive
+    ? 0.72 + 0.28 * (0.5 + 0.5 * Math.sin(time * 8.05))
+    : 1;
+
+  let borderColor = CREAM;
+  if (dangerActive) {
+    borderColor = `rgba(${Math.round(216 + 22 * pulse)},${Math.round(59 + 22 * pulse)},${Math.round(39 + 26 * pulse)},${0.8 + 0.2 * pulse})`;
+  } else if (dg > 0.5) {
+    // Under active Deep Grip threat the frame goes amber — matches the lit
+    // grip gate + band so the whole gauge reads "extended throw range".
+    borderColor = `rgba(255,178,64,${0.4 + 0.35 * dg})`;
+  } else if (inThrow) {
+    borderColor = "rgba(232,197,71,0.45)";
+  }
 
   if (dangerActive) {
     strokeTrackOutline(
@@ -396,29 +366,19 @@ export function drawBalanceGauge(ctx, opts) {
       trackY,
       trackW,
       trackH,
-      `rgba(238, 81, 65, ${0.18 * pulse})`,
-      2.5
+      `rgba(238,81,65,${0.18 * pulse})`,
+      2.4
     );
   }
 
-  strokeTrackOutline(ctx, trackX + 0.5, trackY + 0.5, trackW - 1, trackH - 1, borderColor, 1.25);
-
-  // Inner sumi mat
+  strokeTrackOutline(ctx, trackX + 0.5, trackY + 0.5, trackW - 1, trackH - 1, borderColor, 1.2);
   strokeTrackOutline(
     ctx,
     trackX + 1.5,
     trackY + 1.5,
     trackW - 3,
     trackH - 3,
-    "rgba(8, 10, 18, 0.88)",
+    "rgba(8,10,18,0.85)",
     1
   );
-
-  // Top highlight rim
-  ctx.strokeStyle = "rgba(245, 236, 217, 0.1)";
-  ctx.lineWidth = 0.5;
-  ctx.beginPath();
-  ctx.moveTo(trackX + 2, trackY + 1.5);
-  ctx.lineTo(trackX + trackW - 2, trackY + 1.5);
-  ctx.stroke();
 }

@@ -23,11 +23,13 @@ const GyojiShadowElement = styled.div`
       : `${46.05 + SHADOW_RAISE}%`};
   width: ${(props) => (props.$gyojiState === "idle" ? "13%" : "10.25%")};
   height: ${(props) => (props.$gyojiState === "idle" ? "7.8%" : "6.6%")};
+  /* Cool slate falloff to match the fighters' ice-cooled contact shadows —
+     near-neutral core, cold penumbra so the gyoji belongs to the frozen ring. */
   background: radial-gradient(
     ellipse at center,
-    rgba(0, 0, 0, 0.82) 0%,
-    rgba(0, 0, 0, 0.38) ${(props) => (props.$gyojiState === "idle" ? "48%" : "45%")},
-    rgba(0, 0, 0, 0) ${(props) => (props.$gyojiState === "idle" ? "72%" : "66%")}
+    rgba(2, 4, 8, 0.82) 0%,
+    rgba(9, 17, 32, 0.38) ${(props) => (props.$gyojiState === "idle" ? "48%" : "45%")},
+    rgba(14, 24, 42, 0) ${(props) => (props.$gyojiState === "idle" ? "72%" : "66%")}
   );
   border-radius: 50%;
   pointer-events: none;

@@ -35,17 +35,18 @@ const PP_FRONT_OFFSET_PCT = -15;
 const PP_PERSPECTIVE = "600px";
 const PP_TILT = "48deg"; // rotateY tilts left/right like the old ring; swap to rotateX to lay it back
 
-// Perfect: recolor the GREEN art → bright shiny GOLD. hue-rotate on colored art
-// can't hit an exact hue, so use the tint recipe: grayscale strips the green,
-// sepia re-tones to a warm gold base, a small hue-rotate nudges it toward bright
-// yellow-gold, and saturate/brightness make it blaze. Warm two-stop bloom on top.
-// Gold is the universal "perfect/premium" signal and contrasts hard with the
-// cool steel-white regular parry.
-const PERFECT_PARRY_FILTER = `grayscale(1) sepia(1) hue-rotate(8deg) saturate(3) brightness(1.25) drop-shadow(0 0 5px rgba(255, 216, 92, 0.9)) drop-shadow(0 0 13px rgba(255, 198, 66, 0.5))`;
-// Regular: strip the green → neutral steel-white. Nothing "special" about a
-// routine parry, so it desaturates to a clean cool clash and lets the golden
-// perfect tier stand out.
-const REGULAR_PARRY_FILTER = `grayscale(1) brightness(1.22) contrast(1.05) drop-shadow(0 0 4px rgba(205, 228, 255, 0.5))`;
+// Both tiers recolor the GREEN art → BLUE. hue-rotate on colored art can't hit
+// an exact hue, so use the tint recipe: grayscale strips the green, sepia re-tones
+// to a uniform warm base, a big hue-rotate swings it around to a cool electric
+// blue, and saturate/brightness set the intensity.
+//   • Perfect = richer, more saturated electric blue + a two-stop blue bloom.
+//   • Regular = lighter, brighter "bluish-white" (less saturation, more brightness)
+//     so it still reads as the routine tier while sharing the blue color language.
+const PERFECT_PARRY_FILTER = `grayscale(1) sepia(1) hue-rotate(178deg) saturate(3.2) brightness(1.18) drop-shadow(0 0 5px rgba(95, 190, 255, 0.9)) drop-shadow(0 0 13px rgba(70, 165, 255, 0.5))`;
+// Regular: clearly BLUE (blue = block/parry language), just a touch lighter than
+// perfect — slightly less saturation + a hair more brightness — so the perfect
+// tier still reads as the richer, more intense blue.
+const REGULAR_PARRY_FILTER = `grayscale(1) sepia(1) hue-rotate(185deg) saturate(2.8) brightness(1.24) drop-shadow(0 0 4px rgba(120, 195, 255, 0.6))`;
 
 const ParrySprite = styled.div`
   position: absolute;
@@ -156,7 +157,7 @@ const LineStreak = styled.div`
   width: 4cqw;
   height: 0.32cqw;
   border-radius: 0.32cqw;
-  background: linear-gradient(90deg, rgba(255, 240, 170, 0.95), rgba(255, 205, 80, 0));
+  background: linear-gradient(90deg, rgba(200, 235, 255, 0.95), rgba(90, 190, 255, 0));
   transform-origin: left center;
   animation: ${lineBurst} 300ms cubic-bezier(0.2, 0.85, 0.25, 1) forwards;
 `;
@@ -263,7 +264,7 @@ const RawParryEffect = ({ position }) => {
           <Fragment key={effect.id}>
             {/* Both tiers now use the same sprite burst + tilt; the perfect tier
                 is bigger, electric-blue, and gets radial impact lines, while the
-                regular tier is smaller and neutral steel-white. */}
+                regular tier is smaller and a lighter bluish-white. */}
             <ParrySpriteBurst
               x={effect.x}
               y={effect.y}
